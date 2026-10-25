@@ -1725,7 +1725,13 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         float y = dockTopInRoot - 14 * density - 26 * density - hero.getHeight();
         boolean changed = !label.contentEquals(heroName.getText());
         long opened = LastOpened.get(this, adapter.packageAt(position));
-        watchRows.show(adapter.packageAt(position), label, dockTopInRoot - 22 * density - watchRows.height(),
+        View header = findViewById(R.id.leftBlock);
+        int[] at = new int[2], base = new int[2];
+        header.getLocationInWindow(at);
+        root.getLocationInWindow(base);
+        float headerBottom = at[1] - base[1] + header.getHeight();
+        watchRows.show(adapter.packageAt(position), label,
+                watchRows.fit(headerBottom + 18 * density, dockTopInRoot - 22 * density),
                 adapter.artworkAt(position), opened > 0 ? getString(R.string.last_opened, LastOpened.describe(this, opened)) : label);
         if (cinematic && heroArtAlpha > 0f) showHeroArt(position);
 

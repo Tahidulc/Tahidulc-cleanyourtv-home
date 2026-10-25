@@ -264,8 +264,24 @@ final class WatchRows {
 
     // ---- cards -----------------------------------------------------------------------------------
 
-    private int cardWidth() { return dp(240); }
-    private int cardHeight() { return dp(135); }
+    /** Card size in px, 16:9; fit() grows it to fill the space between the header and the dock. */
+    private int cardH = -1;
+    private int cardWidth() { return Math.round(cardHeight() * 16f / 9f); }
+    private int cardHeight() { return cardH > 0 ? cardH : dp(135); }
+
+    /**
+     * Sizes the cards to fill from {@code top} (just under the header) to {@code bottom} (just above the dock),
+     * and returns where the panel's top goes. Cards already on screen are rebuilt when the size changes.
+     */
+    float fit(float top, float bottom) {
+        int chrome = height() - cardHeight();
+        int h = Math.max(dp(110), Math.round(bottom - top) - chrome);
+        if (h != cardH) {
+            cardH = h;
+            if (shownPackage != null && cache.containsKey(shownPackage)) fill(cache.get(shownPackage));
+        }
+        return bottom - height();
+    }
 
     private void setShown(boolean shown) {
         boolean was = panel.getVisibility() == View.VISIBLE;
@@ -323,7 +339,7 @@ final class WatchRows {
         TextView title = new TextView(context);
         title.setText(item.title == null ? "" : item.title);
         title.setTextColor(Color.WHITE);
-        title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f);
+        title.setTextSize(TypedValue.COMPLEX_UNIT_SP, cardHeight() > dp(170) ? 16f : 13f);
         title.setSingleLine(true);
         title.setEllipsize(android.text.TextUtils.TruncateAt.END);
         int p = dp(8);
