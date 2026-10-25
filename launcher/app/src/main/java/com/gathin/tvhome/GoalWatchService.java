@@ -855,7 +855,9 @@ public class GoalWatchService extends Service {
         // by the display, which shows as a hitch; this one only ever changes what it draws.
         WindowManager.LayoutParams lp = new WindowManager.LayoutParams(Math.round(widthDp * d), Math.round(heightDp * d),
                 WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+                // Not FLAG_NOT_TOUCHABLE: Android 12+ caps such an overlay at 80% opacity, which let the picture
+                // through the glass. A TV has no touch screen, and not focusable keeps every key with the app.
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
                         | WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
                 PixelFormat.TRANSLUCENT);
         lp.gravity = Gravity.BOTTOM | Gravity.START;
@@ -1038,18 +1040,33 @@ public class GoalWatchService extends Service {
                 grow.start();
             }).start();
         });
+        // Closing is the opening backwards: the text fades, the pill draws back in to the dot, the dot pops away.
         main.postDelayed(() -> {
             box.setLayerType(View.LAYER_TYPE_HARDWARE, null);
-            box.animate().alpha(0f).scaleX(0.92f).scaleY(0.92f).setDuration(450)
-                    .setInterpolator(new android.view.animation.AccelerateInterpolator()).withEndAction(() -> {
-                host.removeView(box);
-                // Remove the window itself too: even an empty one over the video can show as a faint box
-                // where the TV processes the picture differently under it.
-                try { getSystemService(WindowManager.class).removeView(host); } catch (Exception ignored) { }
-                host = null;
-                shown = null;
-                showNext();
-            }).start();
+            for (int c = 0; c < box.getChildCount(); c++) {
+                box.getChildAt(c).animate().alpha(0f).setStartDelay((box.getChildCount() - 1 - c) * 30L).setDuration(220).start();
+            }
+            box.postDelayed(() -> {
+                android.animation.ValueAnimator shrink = android.animation.ValueAnimator.ofFloat(visible[0], h);
+                shrink.setDuration(700);
+                shrink.setInterpolator(new android.view.animation.AccelerateDecelerateInterpolator());
+                shrink.addUpdateListener(a -> { visible[0] = (float) a.getAnimatedValue(); box.invalidateOutline(); });
+                shrink.addListener(new android.animation.AnimatorListenerAdapter() {
+                    @Override public void onAnimationEnd(android.animation.Animator a) {
+                        box.animate().alpha(0f).scaleX(0.3f).scaleY(0.3f).setDuration(260)
+                                .setInterpolator(new android.view.animation.AnticipateInterpolator(1.5f)).withEndAction(() -> {
+                            host.removeView(box);
+                            // Remove the window itself too: even an empty one over the video can show as a faint
+                            // box where the TV processes the picture differently under it.
+                            try { getSystemService(WindowManager.class).removeView(host); } catch (Exception ignored) { }
+                            host = null;
+                            shown = null;
+                            showNext();
+                        }).start();
+                    }
+                });
+                shrink.start();
+            }, 220 + box.getChildCount() * 30L);
         }, SHOW_MS + 1_400);
     }
 
@@ -1067,9 +1084,20 @@ public class GoalWatchService extends Service {
         panel.setPadding(pad, Math.round(9 * d), pad, Math.round(10 * d));
         SpannableStringBuilder head = new SpannableStringBuilder("🏁  " + race.name.toUpperCase() + "  ·  RESULT");
         head.setSpan(new StyleSpan(Typeface.BOLD), 0, head.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-        panel.addView(text(head, TEXT_SP, 0xFF1A1D24));
+        // The F1 logo leads the heading, as on the other F1 alerts.
+        LinearLayout heading = new LinearLayout(this);
+        heading.setOrientation(LinearLayout.HORIZONTAL);
+        heading.setGravity(Gravity.CENTER_VERTICAL);
+        android.widget.ImageView f1Logo = crest(null, d);
+        f1Logo.setTag(F1Results.F1_LOGO);
+        LinearLayout.LayoutParams llp = sized(Math.round(CREST_DP * d), 0);
+        llp.width = Math.round(CREST_DP * 2 * d);
+        heading.addView(f1Logo, llp);
+        heading.addView(text(head, TEXT_SP, 0xFF1A1D24), gap(Math.round(8 * d)));
+        panel.addView(heading);
         int[] medal = {0xFFB8860B, 0xFF6B7280, 0xFF9A5B2E};
         List<android.widget.ImageView> logoViews = new ArrayList<>();
+        logoViews.add(f1Logo);
         for (int row = 0; row < 2; row++) {
             LinearLayout line = new LinearLayout(this);
             line.setOrientation(LinearLayout.HORIZONTAL);
@@ -1095,8 +1123,9 @@ public class GoalWatchService extends Service {
         for (android.widget.ImageView v : logoViews) {
             String url = (String) v.getTag();
             if (url == null) continue;
+            int size = F1Results.F1_LOGO.equals(url) ? px * 2 : px;
             io.execute(() -> {
-                android.graphics.Bitmap b = ScoresTicker.cachedLogo(this, url, px);
+                android.graphics.Bitmap b = ScoresTicker.cachedLogo(this, url, size);
                 if (b != null) main.post(() -> v.setImageBitmap(b));
             });
         }

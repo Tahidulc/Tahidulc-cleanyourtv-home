@@ -190,6 +190,44 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     private int lunarOffset;
     private TextView stats;
     private List<RaceWeekend.Race> raceCalendar;
+    private List<android.graphics.Rect> keepClear = new ArrayList<>();
+
+    /**
+     * Tells Android where a picture-in-picture window must not go: the top bar (clock, scores, buttons) and the
+     * dock row. TV PiP then sits above the dock instead of over its last tiles.
+     */
+    private void updateKeepClear() {
+        if (Build.VERSION.SDK_INT < 33 || grid == null) return;
+        View root = findViewById(R.id.root);
+        if (root == null || root.getWidth() == 0) return;
+        float d = getResources().getDisplayMetrics().density;
+        int[] base = new int[2], at = new int[2];
+        root.getLocationInWindow(base);
+        List<android.graphics.Rect> rects = new ArrayList<>();
+        View top = findViewById(R.id.topButtons);
+        if (top != null && top.getHeight() > 0) {
+            top.getLocationInWindow(at);
+            rects.add(new android.graphics.Rect(0, 0, root.getWidth(), at[1] - base[1] + top.getHeight() + Math.round(12 * d)));
+        }
+        android.graphics.Rect dock = null;
+        for (int i = 0; i < grid.getChildCount(); i++) {
+            View c = grid.getChildAt(i);
+            int pos = grid.getChildAdapterPosition(c);
+            if (pos < 0 || pos >= COLUMNS) continue;
+            c.getLocationInWindow(at);
+            android.graphics.Rect r = new android.graphics.Rect(at[0] - base[0], at[1] - base[1],
+                    at[0] - base[0] + c.getWidth(), at[1] - base[1] + c.getHeight());
+            if (dock == null) dock = r; else dock.union(r);
+        }
+        if (dock != null) {
+            dock.inset(-Math.round(28 * d), -Math.round(18 * d));
+            rects.add(dock);
+        }
+        if (!rects.equals(keepClear)) {
+            keepClear = rects;
+            root.setPreferKeepClearRects(rects);
+        }
+    }
     private boolean alertsEverywhere;
     private View racePanel;
     private TextView raceKicker, raceHeadline, raceSessions;
@@ -587,6 +625,11 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         hiddenApps = new HashSet<>(cfg.hiddenApps);
 
         grid = findViewById(R.id.grid);
+        // Picture-in-picture (TiviMate's, on Home) stays clear of the dock and the top bar.
+        grid.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> grid.post(this::updateKeepClear));
+        grid.addOnScrollListener(new RecyclerView.OnScrollListener() {
+            @Override public void onScrolled(RecyclerView rv, int dx, int dy) { updateKeepClear(); }
+        });
         rtlAppGrid = getResources().getBoolean(R.bool.rtl_app_grid);
         // Mirror only the app grid; the header and other locales keep their own layouts.
         // single_row: one span laid out sideways, so the same adapter, glass and dock band serve a scrolling row.
