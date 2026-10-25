@@ -63,7 +63,7 @@ final class ScoresTicker {
 
     /** One game, ready to draw. */
     static final class Game {
-        String league, home, away, homeScore, awayScore, detail;
+        String id, league, home, away, homeScore, awayScore, detail;
         /** Logo URLs: the competition (its dark-background version) and both crests; null when ESPN has none. */
         String leagueLogo, homeLogo, awayLogo;
         int state;   // 0 live, 1 upcoming, 2 finished: the order they are shown in
@@ -218,6 +218,7 @@ final class ScoresTicker {
         if (home == null || away == null) return null;
         Game g = new Game();
         String homeId = home.getJSONObject("team").optString("id"), id = e.optString("id");
+        g.id = id;
         JSONArray details = c.optJSONArray("details");
         for (int d = 0; details != null && d < details.length(); d++) {
             JSONObject x = details.getJSONObject(d);
@@ -239,6 +240,14 @@ final class ScoresTicker {
         g.awayLogo = away.getJSONObject("team").optString("logo", null);
         g.homeScore = home.optString("score", "0");
         g.awayScore = away.optString("score", "0");
+        // ESPN can list a goal a refresh before it raises the score; never show fewer goals than it lists.
+        int homeGoals = 0, awayGoals = 0;
+        for (String[] goal : g.goals) {
+            if ("og".equals(goal[4])) continue;   // which side ESPN credits an own goal to is not certain: skip them
+            if ("home".equals(goal[3])) homeGoals++; else awayGoals++;
+        }
+        g.homeScore = String.valueOf(Math.max(homeGoals, parseInt(g.homeScore)));
+        g.awayScore = String.valueOf(Math.max(awayGoals, parseInt(g.awayScore)));
         // ESPN writes "2026-10-25T14:00Z", which Instant.parse refuses (no seconds); OffsetDateTime accepts it.
         ZonedDateTime when = OffsetDateTime.parse(e.getString("date")).toInstant().atZone(zone);
         g.kickoff = when.toInstant().toEpochMilli();
@@ -270,6 +279,10 @@ final class ScoresTicker {
         return fallback;
     }
 
+    private static int parseInt(String s) {
+        try { return Integer.parseInt(s.trim()); } catch (Exception e) { return 0; }
+    }
+
     // ---- goal alerts ------------------------------------------------------------------------------
 
     /** Drops the next goal alert over the scores line for ALERT_MS, then lifts it away. */
@@ -289,7 +302,7 @@ final class ScoresTicker {
         bg.setStroke(dp(1.5f), 0xFF4ADE80);
         a.setBackground(bg);
         a.setPadding(dp(14), 0, dp(14), 0);
-        TextView tag = label(goalTag());
+        TextView tag = label(goalTag(this.games, g));
         a.addView(tag);
         a.addView(logoView(homeGoal ? g.homeLogo : g.awayLogo, dp(12)));
         SpannableStringBuilder line = new SpannableStringBuilder();
@@ -315,8 +328,10 @@ final class ScoresTicker {
         }).start(), ALERT_MS);
     }
 
-    private static CharSequence goalTag() {
-        SpannableStringBuilder s = new SpannableStringBuilder("⚽  GOAL");
+    private static CharSequence goalTag(List<Game> latest, Game g) {
+        // The score from the newest refresh of this game, as the alert goes up.
+        for (Game n : latest) if (n.id != null && n.id.equals(g.id)) { g.homeScore = n.homeScore; g.awayScore = n.awayScore; }
+        SpannableStringBuilder s = new SpannableStringBuilder("⚽");
         s.setSpan(new StyleSpan(Typeface.BOLD), 0, s.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
         s.setSpan(new ForegroundColorSpan(0xFF4ADE80), 0, s.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
         return s;

@@ -57,10 +57,13 @@ public class GoalWatchService extends Service {
     /** Alerts waiting their turn: {first line, score line, home crest url, away crest url}. */
     private final java.util.ArrayDeque<Object[]> queue = new java.util.ArrayDeque<>();
     private final Runnable poll = this::poll;
+    /** The newest read of each game, so an alert shown a minute later carries the score as it is by then. */
+    private final java.util.Map<String, ScoresTicker.Game> latest = new java.util.HashMap<>();
 
     /** Home opened this package: watch for goals while it is in front, if it is one of goal_watch_apps. */
     static void onAppOpened(Context ctx, String pkg) {
-        if (pkg == null || !Arrays.asList(ctx.getResources().getStringArray(R.array.goal_watch_apps)).contains(pkg)) return;
+        List<String> apps = Arrays.asList(ctx.getResources().getStringArray(R.array.goal_watch_apps));
+        if (pkg == null || pkg.equals(ctx.getPackageName()) || !(apps.contains("*") || apps.contains(pkg))) return;
         if (!Settings.canDrawOverlays(ctx)) return;
         try {
             Intent i = new Intent(ctx, GoalWatchService.class);
@@ -98,7 +101,6 @@ public class GoalWatchService extends Service {
             g.awayLogo = "https://a.espncdn.com/i/teamlogos/soccer/500/160.png";
             enqueue(g, new String[]{"test-red", "Declan Rice", "81'", "home", ""}, true);
         }
-        ensureHost();
         if (startedAt == 0) {
             startedAt = System.currentTimeMillis();
             main.post(poll);
@@ -114,6 +116,7 @@ public class GoalWatchService extends Service {
             List<ScoresTicker.Game> games = ScoresTicker.load(leagues);
             main.post(() -> {
                 boolean live = false;
+                for (ScoresTicker.Game g : games) if (g.id != null) latest.put(g.id, g);
                 for (ScoresTicker.Game g : games) {
                     live |= g.state == 0;
                     for (String[] goal : g.goals) {
@@ -143,27 +146,26 @@ public class GoalWatchService extends Service {
     }
 
     private static CharSequence headline(String[] goal, boolean red) {
-        SpannableStringBuilder s = new SpannableStringBuilder(red ? "🟥 RED CARD   " : "⚽ GOAL   ");
+        SpannableStringBuilder s = new SpannableStringBuilder(red ? "🟥  " : "⚽  ");
         s.setSpan(new StyleSpan(Typeface.BOLD), 0, s.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-        s.setSpan(new ForegroundColorSpan(red ? 0xFFFF5A5A : 0xFF4ADE80), 0, s.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        s.setSpan(new ForegroundColorSpan(red ? 0xFFC81E1E : 0xFF15803D), 0, s.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
         int at = s.length();
-        s.append(goal[1]);
+        s.append(surname(goal[1]));
         s.setSpan(new StyleSpan(Typeface.BOLD), at, s.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
         s.append("  ").append(goal[2]);
         if (!goal[4].isEmpty()) s.append(goal[4].equals("pen") ? " (pen)" : " (og)");
         return s;
     }
 
-    /**
-     * Adds the overlay window now, before any alert: adding a window over a playing video makes the display re-plan
-     * its layers, which is the stutter; doing it once, up front, leaves each alert only a change of content.
-     */
+    /** The alert's window: added for one alert at a fixed size (no resize while showing), removed after it. */
     private void ensureHost() {
         if (host != null) return;
         float d = getResources().getDisplayMetrics().density;
         host = new android.widget.FrameLayout(this);
-        WindowManager.LayoutParams lp = new WindowManager.LayoutParams(WindowManager.LayoutParams.WRAP_CONTENT,
-                WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+        // A fixed size, set once: a window that changes size over a playing video is reallocated and re-planned
+        // by the display, which shows as a hitch; this one only ever changes what it draws.
+        WindowManager.LayoutParams lp = new WindowManager.LayoutParams(Math.round(420 * d), Math.round(40 * d),
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
                         | WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
                 PixelFormat.TRANSLUCENT);
@@ -177,10 +179,19 @@ public class GoalWatchService extends Service {
         }
     }
 
+    /** "Mohamed Salah" to "Salah", "Virgil van Dijk" to "van Dijk": everything after the first name. */
+    static String surname(String name) {
+        String n = name == null ? "" : name.trim();
+        int space = n.indexOf(' ');
+        return space > 0 ? n.substring(space + 1) : n;
+    }
+
     private void showNext() {
         if (shown != null || queue.isEmpty()) return;
         Object[] next = queue.poll();
         ScoresTicker.Game g = (ScoresTicker.Game) next[1];
+        ScoresTicker.Game now = g.id == null ? null : latest.get(g.id);
+        if (now != null) g = now;
         float d = getResources().getDisplayMetrics().density;
         // One slim line in the Home screen's frosted pill style: a faint dark base so white text reads over a bright
         // pitch, the pills' white glass and rim on top, and the same soft sheen along the top edge.
@@ -189,7 +200,8 @@ public class GoalWatchService extends Service {
         box.setGravity(Gravity.CENTER_VERTICAL);
         int h = Math.round(28 * d);
         GradientDrawable base = new GradientDrawable();
-        base.setColors(new int[]{0xE0464B56, 0xE02A2E37});   // frosted: a solid, light-grey glass with little show-through
+        // Silver: a light metallic glass, brighter at the top like brushed aluminium, with dark text on it.
+        base.setColors(new int[]{0xF2E9ECF1, 0xF2B9BFC8});
         base.setOrientation(GradientDrawable.Orientation.TOP_BOTTOM);
         base.setCornerRadius(h / 2f);
         android.graphics.drawable.LayerDrawable glass = new android.graphics.drawable.LayerDrawable(
@@ -199,22 +211,20 @@ public class GoalWatchService extends Service {
         int pad = Math.round(12 * d);
         box.setPadding(pad, 0, pad, 0);
         int crestPx = Math.round(14 * d);
-        box.addView(text((CharSequence) next[0], 10.5f, 0xFFFFFFFF));
+        box.addView(text((CharSequence) next[0], 10.5f, 0xFF1A1D24));
+        // Crests stand in for the team names: crest, score, crest.
         box.addView(crest((android.graphics.Bitmap) next[2], d), sized(crestPx, Math.round(10 * d)));
-        SpannableStringBuilder line = new SpannableStringBuilder(g.home + "  ");
-        int at = line.length();
-        line.append(g.homeScore).append("–").append(g.awayScore);
-        line.setSpan(new StyleSpan(Typeface.BOLD), at, line.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-        line.append("  ").append(g.away);
-        box.addView(text(line, 10.5f, 0xFFFFFFFF), gap(Math.round(6 * d)));
+        SpannableStringBuilder line = new SpannableStringBuilder(g.homeScore + "–" + g.awayScore);
+        line.setSpan(new StyleSpan(Typeface.BOLD), 0, line.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        box.addView(text(line, 10.5f, 0xFF1A1D24), gap(Math.round(6 * d)));
         box.addView(crest((android.graphics.Bitmap) next[3], d), sized(crestPx, Math.round(6 * d)));
-        box.addView(text(g.league, 9f, 0xB3FFFFFF), gap(Math.round(8 * d)));
+        box.addView(text(g.league, 9f, 0xA61A1D24), gap(Math.round(8 * d)));
         box.setMinimumHeight(h);
 
         ensureHost();
         if (host == null) return;
         host.addView(box, new android.widget.FrameLayout.LayoutParams(
-                android.widget.FrameLayout.LayoutParams.WRAP_CONTENT, h));
+                android.widget.FrameLayout.LayoutParams.WRAP_CONTENT, h, Gravity.BOTTOM | Gravity.START));
         shown = box;
         // A small glass dot pops in at the corner, the pill then stretches out to the right with its round ends kept
         // (an animated rounded outline, clipped in hardware), and only then does the text fade in.
@@ -258,6 +268,10 @@ public class GoalWatchService extends Service {
             box.animate().alpha(0f).scaleX(0.92f).scaleY(0.92f).setDuration(450)
                     .setInterpolator(new android.view.animation.AccelerateInterpolator()).withEndAction(() -> {
                 host.removeView(box);
+                // Remove the window itself too: even an empty one over the video can show as a faint box
+                // where the TV processes the picture differently under it.
+                try { getSystemService(WindowManager.class).removeView(host); } catch (Exception ignored) { }
+                host = null;
                 shown = null;
                 showNext();
             }).start();

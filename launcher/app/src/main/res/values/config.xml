@@ -483,11 +483,11 @@
         <item>eng.1|PL</item>
         <item>uefa.champions|UCL</item>
     </string-array>
+    <!-- Apps over which goal and red card alerts appear, a minute after they happen, while open from Home.
+         "*" means any app. -->
     <string-array name="goal_watch_apps" translatable="false">
-        <item>ar.tvplayer.tv</item>
+        <item>*</item>
     </string-array>
-    <string name="assistant_glass_label" translatable="false">Assistant glass box</string>
-    <string name="assistant_glass_description" translatable="false">Shows what Google Assistant hears in a glass box in the lower-left corner. Reads Assistant\'s transcript only; nothing is stored.</string>
     <!-- The app OK on a game box opens. -->
     <string name="scores_open_package" translatable="false">ar.tvplayer.tv</string>
     <string-array name="score_leagues" translatable="false">
