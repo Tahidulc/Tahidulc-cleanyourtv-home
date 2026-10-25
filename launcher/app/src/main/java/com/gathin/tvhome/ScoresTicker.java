@@ -70,6 +70,8 @@ final class ScoresTicker {
         long kickoff;
         /** Every goal so far: {unique key, scorer, minute, "home"/"away", "pen"/"og"/""}. */
         final List<String[]> goals = new ArrayList<>();
+        /** Every red card: {unique key, player, minute, "home"/"away", ""}. */
+        final List<String[]> reds = new ArrayList<>();
     }
 
     private static final long ALERT_MS = 10_000L;
@@ -219,13 +221,16 @@ final class ScoresTicker {
         JSONArray details = c.optJSONArray("details");
         for (int d = 0; details != null && d < details.length(); d++) {
             JSONObject x = details.getJSONObject(d);
-            if (!x.optBoolean("scoringPlay")) continue;
+            boolean red = x.optBoolean("redCard") || (x.optJSONObject("type") != null
+                    && x.getJSONObject("type").optString("text").toLowerCase(java.util.Locale.ROOT).contains("red card"));
+            if (!x.optBoolean("scoringPlay") && !red) continue;
             JSONArray who = x.optJSONArray("athletesInvolved");
             String scorer = who != null && who.length() > 0 ? who.getJSONObject(0).optString("displayName") : "";
             String minute = x.optJSONObject("clock") != null ? x.getJSONObject("clock").optString("displayValue") : "";
             String side = homeId.equals(x.optJSONObject("team") != null ? x.getJSONObject("team").optString("id") : "") ? "home" : "away";
             String kind = x.optBoolean("ownGoal") ? "og" : x.optBoolean("penaltyKick") ? "pen" : "";
-            g.goals.add(new String[]{id + "|" + minute + "|" + scorer, scorer, minute, side, kind});
+            if (red) g.reds.add(new String[]{"R|" + id + "|" + minute + "|" + scorer, scorer, minute, side, ""});
+            else g.goals.add(new String[]{id + "|" + minute + "|" + scorer, scorer, minute, side, kind});
         }
         g.league = tag;
         g.home = home.getJSONObject("team").optString("abbreviation");
@@ -537,6 +542,12 @@ final class ScoresTicker {
 
     /** From the disk cache, or from ESPN's resizer at twice the logo size, then saved for next time. */
     private Bitmap fetchLogo(String url) {
+        return cachedLogo(context, url, logo);
+    }
+
+    /** A crest or league logo at about size px: the shared disk cache first, then ESPN's resizer. Off the main thread. */
+    static Bitmap cachedLogo(Context context, String url, int logo) {
+        File logoDir = new File(context.getCacheDir(), "logos");
         File file = new File(logoDir, Integer.toHexString(url.hashCode()) + ".png");
         if (file.isFile()) {
             Bitmap b = BitmapFactory.decodeFile(file.getPath());
