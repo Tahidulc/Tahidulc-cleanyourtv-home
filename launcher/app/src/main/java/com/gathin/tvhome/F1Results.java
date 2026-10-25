@@ -1,0 +1,122 @@
+package com.gathin.tvhome;
+
+import org.json.JSONArray;
+import org.json.JSONObject;
+
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.util.ArrayList;
+import java.util.List;
+
+/** The current F1 race from ESPN's public scoreboard: its state, and the finishing order once it has finished. */
+final class F1Results {
+    static final class Race {
+        String id, name, state;   // state: pre, in, post
+        final List<String> top = new ArrayList<>();   // surnames in finishing order, up to ten
+        final List<String> logos = new ArrayList<>(); // each one's team logo url, or null
+    }
+
+    private static final String FEED = "https://site.api.espn.com/apis/site/v2/sports/racing/f1/scoreboard";
+
+    /** The race session of the scoreboard's event (dates "yyyyMMdd" for a past weekend, or null), or null. */
+    static Race load(String dates) {
+        try {
+            JSONObject board = new JSONObject(get(dates == null ? FEED : FEED + "?dates=" + dates));
+            JSONArray events = board.optJSONArray("events");
+            for (int i = 0; events != null && i < events.length(); i++) {
+                JSONObject e = events.getJSONObject(i);
+                JSONArray comps = e.optJSONArray("competitions");
+                for (int c = 0; comps != null && c < comps.length(); c++) {
+                    JSONObject comp = comps.getJSONObject(c);
+                    if (!"Race".equals(comp.optJSONObject("type") == null ? "" : comp.getJSONObject("type").optString("abbreviation"))) continue;
+                    Race r = new Race();
+                    r.id = comp.optString("id");
+                    r.name = shortName(e.optString("name"));
+                    r.state = comp.getJSONObject("status").getJSONObject("type").optString("state");
+                    JSONArray drivers = comp.optJSONArray("competitors");
+                    List<JSONObject> list = new ArrayList<>();
+                    for (int d = 0; drivers != null && d < drivers.length(); d++) list.add(drivers.getJSONObject(d));
+                    list.sort((a, b) -> Integer.compare(a.optInt("order", 99), b.optInt("order", 99)));
+                    java.util.Map<String, String> teams = teams();
+                    for (JSONObject x : list) {
+                        if (r.top.size() >= 10) break;
+                        JSONObject a = x.optJSONObject("athlete");
+                        String n = a == null ? "" : a.optString("displayName", a.optString("shortName"));
+                        String surname = GoalWatchService.surname(n);
+                        r.top.add(surname);
+                        r.logos.add(logo(teams.get(key(surname))));
+                    }
+                    return r;
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        return null;
+    }
+
+    /** Driver (surname key) to team id for this season, from Jolpica's driver standings (the Ergast successor). */
+    static java.util.Map<String, String> teams() {
+        java.util.Map<String, String> out = new java.util.HashMap<>();
+        try {
+            JSONObject root = new JSONObject(get("https://api.jolpi.ca/ergast/f1/current/driverStandings.json"));
+            JSONArray lists = root.getJSONObject("MRData").getJSONObject("StandingsTable").getJSONArray("StandingsLists");
+            JSONArray standings = lists.getJSONObject(0).getJSONArray("DriverStandings");
+            for (int i = 0; i < standings.length(); i++) {
+                JSONObject st = standings.getJSONObject(i);
+                JSONArray cons = st.getJSONArray("Constructors");
+                String team = cons.getJSONObject(cons.length() - 1).optString("constructorId");   // the latest one
+                out.put(key(st.getJSONObject("Driver").optString("familyName")), team);
+            }
+        } catch (Exception ignored) {
+        }
+        return out;
+    }
+
+    /** "Hülkenberg" and "Hulkenberg" alike: lower case without accents. */
+    static String key(String name) {
+        return java.text.Normalizer.normalize(name == null ? "" : name, java.text.Normalizer.Form.NFD)
+                .replaceAll("\\p{M}", "").toLowerCase(java.util.Locale.ROOT).trim();
+    }
+
+    /** The team's coloured logo on formula1.com, by Jolpica's constructor id. */
+    static String logo(String team) {
+        if (team == null || team.isEmpty()) return null;
+        java.util.Map<String, String> slug = new java.util.HashMap<>();
+        slug.put("red_bull", "redbullracing");
+        slug.put("rb", "racingbulls");
+        slug.put("aston_martin", "astonmartin");
+        String s = slug.containsKey(team) ? slug.get(team) : team.replace("_", "");
+        return "https://media.formula1.com/image/upload/c_lfill,w_96/q_auto/v1740000001/common/f1/"
+                + java.time.Year.now().getValue() + "/" + s + "/" + java.time.Year.now().getValue() + s + "logo.webp";
+    }
+
+    /** "MSC Cruises United States Grand Prix" to "United States Grand Prix": the sponsor goes. */
+    static String shortName(String name) {
+        String[] places = {"Grand Prix"};
+        int gp = name.indexOf(places[0]);
+        if (gp < 0) return name;
+        String before = name.substring(0, gp).trim();
+        String[] words = before.split(" ");
+        // Keep the last one to three capitalised words before "Grand Prix" that look like a place.
+        String[] known = {"United States", "Mexico City", "São Paulo", "Las Vegas", "Abu Dhabi", "Saudi Arabian", "Emilia Romagna", "Great Britain"};
+        for (String k : known) if (before.endsWith(k)) return k + " Grand Prix";
+        return (words.length == 0 ? "" : words[words.length - 1] + " ") + "Grand Prix";
+    }
+
+    private static String get(String url) throws Exception {
+        HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
+        conn.setConnectTimeout(6000);
+        conn.setReadTimeout(8000);
+        try (InputStream in = conn.getInputStream()) {
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            byte[] buf = new byte[8192];
+            int n;
+            while ((n = in.read(buf)) > 0 && out.size() < 2 * 1024 * 1024) out.write(buf, 0, n);
+            return out.toString("UTF-8");
+        } finally {
+            conn.disconnect();
+        }
+    }
+}

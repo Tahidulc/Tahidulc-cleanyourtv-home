@@ -478,6 +478,8 @@
     <!-- BBC News beside a lone resume card (an RSS feed with media:thumbnail); empty leaves the space empty. -->
     <string name="news_panel_url" translatable="false">https://feeds.bbci.co.uk/news/rss.xml</string>
     <!-- Apps over which goal alerts appear (top right, a minute after the goal) while they are open from Home. -->
+    <!-- The F1 race result (top ten) pops up a minute after each race finishes, over the app open from Home. -->
+    <bool name="f1_results_popup">true</bool>
     <!-- The competitions whose goals pop up over those apps. -->
     <string-array name="goal_alert_leagues" translatable="false">
         <item>eng.1|PL</item>

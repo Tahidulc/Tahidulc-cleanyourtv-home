@@ -61,6 +61,8 @@ public class GoalWatchService extends Service {
     private final java.util.Map<String, ScoresTicker.Game> latest = new java.util.HashMap<>();
     /** Each game's state at the last read (0 live, 1 upcoming, 2 finished), to see the moment one finishes. */
     private final java.util.Map<String, Integer> lastState = new java.util.HashMap<>();
+    /** The F1 race's state at the last read, to see the moment it finishes. */
+    private String f1Id, f1State;
 
     /** Home opened this package: watch for goals while it is in front, if it is one of goal_watch_apps. */
     static void onAppOpened(Context ctx, String pkg) {
@@ -103,6 +105,12 @@ public class GoalWatchService extends Service {
             g.awayLogo = "https://a.espncdn.com/i/teamlogos/soccer/500/349.png";
             enqueue(g, new String[]{"test-ft", "", "", "", "ft"}, false);
         }
+        if (intent != null && intent.hasExtra("test_f1")) {
+            io.execute(() -> {
+                F1Results.Race r = F1Results.load(intent.getStringExtra("test_f1"));
+                if (r != null) main.post(() -> showRace(r));
+            });
+        }
         if (intent != null && intent.hasExtra("test_red")) {
             ScoresTicker.Game g = new ScoresTicker.Game();
             g.league = "UCL"; g.home = "ARS"; g.away = "PSG"; g.homeScore = "1"; g.awayScore = "1";
@@ -121,8 +129,18 @@ public class GoalWatchService extends Service {
         if (System.currentTimeMillis() - startedAt > MAX_RUN_MS) { stopSelf(); return; }
         // Only the competitions worth interrupting a programme for (goal_alert_leagues).
         String[] leagues = getResources().getStringArray(R.array.goal_alert_leagues);
+        boolean f1 = getResources().getBoolean(R.bool.f1_results_popup);
         io.execute(() -> {
             List<ScoresTicker.Game> games = ScoresTicker.load(leagues);
+            F1Results.Race race = f1 ? F1Results.load(null) : null;
+            main.post(() -> {
+                if (race != null) {
+                    boolean finished = race.id.equals(f1Id) && "in".equals(f1State) && "post".equals(race.state);
+                    f1Id = race.id;
+                    f1State = race.state;
+                    if (finished) main.postDelayed(() -> showRace(race), DELAY_MS);
+                }
+            });
             main.post(() -> {
                 boolean live = false;
                 for (ScoresTicker.Game g : games) if (g.id != null) latest.put(g.id, g);
@@ -177,12 +195,16 @@ public class GoalWatchService extends Service {
 
     /** The alert's window: added for one alert at a fixed size (no resize while showing), removed after it. */
     private void ensureHost() {
+        ensureHost(420, 40);
+    }
+
+    private void ensureHost(int widthDp, int heightDp) {
         if (host != null) return;
         float d = getResources().getDisplayMetrics().density;
         host = new android.widget.FrameLayout(this);
         // A fixed size, set once: a window that changes size over a playing video is reallocated and re-planned
         // by the display, which shows as a hitch; this one only ever changes what it draws.
-        WindowManager.LayoutParams lp = new WindowManager.LayoutParams(Math.round(420 * d), Math.round(40 * d),
+        WindowManager.LayoutParams lp = new WindowManager.LayoutParams(Math.round(widthDp * d), Math.round(heightDp * d),
                 WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
                         | WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
@@ -294,6 +316,80 @@ public class GoalWatchService extends Service {
                 showNext();
             }).start();
         }, SHOW_MS + 1_400);
+    }
+
+    /**
+     * The race result: the Grand Prix's name, then the top ten in two rows of five, podium numbers in gold, silver
+     * and bronze, on the same silver glass as the football alerts. It stays a little longer than they do.
+     */
+    private void showRace(F1Results.Race race) {
+        if (shown != null || race.top.isEmpty()) return;
+        float d = getResources().getDisplayMetrics().density;
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        GradientDrawable base = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0xF2E9ECF1, 0xF2B9BFC8});
+        base.setCornerRadius(16 * d);
+        panel.setBackground(new android.graphics.drawable.LayerDrawable(new android.graphics.drawable.Drawable[]{
+                base, getDrawable(R.drawable.glass_box).mutate()}));
+        int pad = Math.round(14 * d);
+        panel.setPadding(pad, Math.round(9 * d), pad, Math.round(10 * d));
+        SpannableStringBuilder head = new SpannableStringBuilder("🏁  " + race.name.toUpperCase() + "  ·  RESULT");
+        head.setSpan(new StyleSpan(Typeface.BOLD), 0, head.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        panel.addView(text(head, 10.5f, 0xFF1A1D24));
+        int[] medal = {0xFFB8860B, 0xFF6B7280, 0xFF9A5B2E};
+        java.util.List<android.widget.ImageView> logoViews = new java.util.ArrayList<>();
+        for (int row = 0; row < 2; row++) {
+            LinearLayout line = new LinearLayout(this);
+            line.setOrientation(LinearLayout.HORIZONTAL);
+            line.setGravity(Gravity.CENTER_VERTICAL);
+            for (int i = row * 5; i < Math.min(race.top.size(), row * 5 + 5); i++) {
+                // Position, the team's logo, the surname.
+                SpannableStringBuilder pos = new SpannableStringBuilder(String.valueOf(i + 1));
+                pos.setSpan(new StyleSpan(Typeface.BOLD), 0, pos.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                line.addView(text(pos, 10.5f, i < 3 ? medal[i] : 0xA61A1D24), gap(i == row * 5 ? 0 : Math.round(14 * d)));
+                android.widget.ImageView logo = crest(null, d);
+                logo.setTag(i < race.logos.size() ? race.logos.get(i) : null);
+                line.addView(logo, sized(Math.round(15 * d), Math.round(4 * d)));
+                logoViews.add(logo);
+                line.addView(text(race.top.get(i), 10.5f, 0xFF1A1D24), gap(Math.round(4 * d)));
+            }
+            if (line.getChildCount() == 0) continue;
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT);
+            lp.topMargin = Math.round(5 * d);
+            panel.addView(line, lp);
+        }
+        int px = Math.round(30 * d);
+        for (android.widget.ImageView v : logoViews) {
+            String url = (String) v.getTag();
+            if (url == null) continue;
+            io.execute(() -> {
+                android.graphics.Bitmap b = ScoresTicker.cachedLogo(this, url, px);
+                if (b != null) main.post(() -> v.setImageBitmap(b));
+            });
+        }
+        ensureHost(640, 96);
+        if (host == null) return;
+        host.addView(panel, new android.widget.FrameLayout.LayoutParams(
+                android.widget.FrameLayout.LayoutParams.WRAP_CONTENT, android.widget.FrameLayout.LayoutParams.WRAP_CONTENT,
+                Gravity.BOTTOM | Gravity.START));
+        shown = panel;
+        panel.setAlpha(0f);
+        panel.setTranslationY(14 * d);
+        panel.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+        panel.animate().alpha(1f).translationY(0f).setDuration(600)
+                .setInterpolator(new android.view.animation.DecelerateInterpolator(1.6f))
+                .withEndAction(() -> panel.setLayerType(View.LAYER_TYPE_NONE, null)).start();
+        main.postDelayed(() -> {
+            panel.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+            panel.animate().alpha(0f).setDuration(450).withEndAction(() -> {
+                host.removeView(panel);
+                try { getSystemService(WindowManager.class).removeView(host); } catch (Exception ignored) { }
+                host = null;
+                shown = null;
+                showNext();
+            }).start();
+        }, 15_000);
     }
 
     private TextView text(CharSequence s, float sp, int color) {
