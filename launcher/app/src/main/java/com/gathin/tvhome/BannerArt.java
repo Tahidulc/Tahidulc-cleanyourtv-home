@@ -51,16 +51,28 @@ final class BannerArt {
         int[] px = new int[w * h];
         bmp.getPixels(px, 0, w, 0, 0, w, h);
         int tint = darkest(px, w, h);
-        float[] hsv = new float[3];
-        for (int i = 0; i < px.length; i++) {
-            int c = px[i];
-            Color.RGBToHSV(Color.red(c), Color.green(c), Color.blue(c), hsv);
-            float logo = (1f - hsv[1]) * hsv[2];                 // white text: no colour, full brightness
-            // A narrow ramp: solid letters with a one-pixel soft edge, a touch bolder than the original.
-            float t = Math.max(0f, Math.min(1f, (logo - 0.30f) / 0.22f));
-            px[i] = blend(Color.WHITE, tint, t * Color.alpha(c) / 255f);
+        for (int y = 0; y < h; y++) {
+            // The field behind this row, from its left edge: Disney+ fades navy to teal top to bottom, so one
+            // colour for the whole banner would leave a halo. Each pixel is then "un-mixed": how much of it is the
+            // white logo over that field. Anti-aliased edges keep their in-between values, so they stay smooth.
+            int left = px[y * w + Math.min(2, w - 1)], right = px[y * w + Math.max(0, w - 3)];
+            // The brighter of the two edges: a field that brightens towards one side then leaves no grey smudge.
+            int bg = Color.luminance(left) >= Color.luminance(right) ? left : right;
+            int br = Color.red(bg), bgG = Color.green(bg), bb = Color.blue(bg);
+            for (int x = 0; x < w; x++) {
+                int c = px[y * w + x];
+                float a = Math.max(unmix(Color.red(c), br), Math.max(unmix(Color.green(c), bgG), unmix(Color.blue(c), bb)));
+                a *= Color.alpha(c) / 255f;
+                px[y * w + x] = blend(Color.WHITE, tint, a);
+            }
         }
         return new BitmapDrawable(ctx.getResources(), Bitmap.createBitmap(px, w, h, Bitmap.Config.ARGB_8888));
+    }
+
+    /** How far a channel has moved from the field towards white, 0..1. */
+    private static float unmix(int value, int field) {
+        if (field >= 250) return 0f;
+        return Math.max(0f, Math.min(1f, (value - field) / (float) (255 - field)));
     }
 
     /** The darkest of the banner's four corners: the deep end of a gradient field, readable on white. */

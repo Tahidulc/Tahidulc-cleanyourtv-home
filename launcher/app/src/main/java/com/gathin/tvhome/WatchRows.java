@@ -320,42 +320,64 @@ final class WatchRows {
     private void fill(List<Item> items) {
         strip.removeAllViews();
         if (items == null || items.isEmpty()) {
-            if (resume == null || resume.art == null) { setShown(false); return; }
-            items = new ArrayList<>();
-            items.add(resume);
+            // An app that publishes nothing (TiviMate, Debrid Stream): BBC News across the whole row instead.
+            if (!showNews()) setShown(false);
+            return;
         }
         for (int i = 0; i < items.size(); i++) strip.addView(card(items.get(i), i, items.size()));
-        if (items.size() == 1) addNews();
+
         setCaption(items.get(0));
         setShown(true);
         panel.setAlpha(0f);
         panel.animate().alpha(1f).setDuration(220).start();
     }
 
-    /** Fills the empty space beside a lone card with BBC News, reading the feed when it is older than 15 minutes. */
-    private void addNews() {
+    /** The news row: from the cache when fresh, else read and shown when it arrives. False when there is none yet. */
+    private boolean showNews() {
         String feed = context.getString(R.string.news_panel_url);
-        if (feed.isEmpty()) return;
-        if (!news.isEmpty()) placeNews();
-        if (System.currentTimeMillis() - newsAt < NewsPanel.EVERY_MS) return;
-        newsAt = System.currentTimeMillis();
-        reader.execute(() -> {
-            List<String[]> fresh = NewsPanel.read(feed);
-            main.post(() -> {
-                if (fresh.isEmpty()) { newsAt = 0; return; }
-                news = fresh;
-                if (strip.getChildCount() == 1) placeNews();
+        if (feed.isEmpty()) return false;
+        if (System.currentTimeMillis() - newsAt >= NewsPanel.EVERY_MS) {
+            newsAt = System.currentTimeMillis();
+            final int gen = generation;
+            reader.execute(() -> {
+                List<String[]> fresh = NewsPanel.read(feed);
+                main.post(() -> {
+                    if (fresh.isEmpty()) { newsAt = 0; return; }
+                    news = fresh;
+                    if (gen == generation && strip.getChildCount() == 0) fillNews();
+                });
             });
-        });
+        }
+        if (news.isEmpty()) return false;
+        fillNews();
+        return true;
     }
 
-    private void placeNews() {
-        View parent = (View) panel.getParent();
-        int width = parent.getWidth() - ((FrameLayout.LayoutParams) panel.getLayoutParams()).leftMargin
-                - ((FrameLayout.LayoutParams) panel.getLayoutParams()).rightMargin
-                - scroller.getPaddingLeft() - scroller.getPaddingRight() - cardWidth() - dp(14);
-        if (width < dp(220) || strip.getChildCount() != 1) return;
-        strip.addView(NewsPanel.build(context, density, news, width, cardHeight(), this::loadPoster));
+    private void fillNews() {
+        strip.removeAllViews();
+        for (int i = 0; i < news.size(); i++) strip.addView(newsCard(news.get(i), i, news.size()));
+        setShown(true);
+        panel.setAlpha(0f);
+        panel.animate().alpha(1f).setDuration(220).start();
+    }
+
+    /** One story: its picture across the card, a BBC NEWS tag, the headline at the bottom. OK opens it. */
+    private View newsCard(String[] story, int index, int count) {
+        Item item = new Item();
+        item.title = story[0];
+        item.poster = story[1];
+        item.intent = story[2];
+        item.subtitle = "BBC NEWS";
+        View card = card(item, index, count);
+        card.setOnClickListener(v -> {
+            if (story[2] == null) return;
+            try {
+                context.startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(story[2]))
+                        .addCategory(Intent.CATEGORY_BROWSABLE).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            } catch (Exception ignored) {
+            }
+        });
+        return card;
     }
 
     private void setCaption(Item item) {
@@ -403,7 +425,7 @@ final class WatchRows {
         title.setTextSize(TypedValue.COMPLEX_UNIT_SP, big ? 19f : 14f);
         title.setTypeface(context.getResources().getFont(R.font.outfit_medium));
         title.setLetterSpacing(-0.01f);
-        title.setSingleLine(true);
+        if ("BBC NEWS".equals(item.subtitle)) title.setMaxLines(2); else title.setSingleLine(true);
         title.setEllipsize(android.text.TextUtils.TruncateAt.END);
         title.setShadowLayer(dp(6), 0, dp(1), 0x99000000);
         text.addView(title);
@@ -411,7 +433,9 @@ final class WatchRows {
         if (second != null) {
             TextView sub = new TextView(context);
             sub.setText(second);
-            sub.setTextColor(0xBFFFFFFF);
+            boolean newsTag = "BBC NEWS".equals(second);
+            sub.setTextColor(newsTag ? 0xFFFF4D4D : 0xBFFFFFFF);
+            if (newsTag) { sub.setTypeface(android.graphics.Typeface.DEFAULT_BOLD); sub.setLetterSpacing(0.14f); }
             sub.setTextSize(TypedValue.COMPLEX_UNIT_SP, big ? 13f : 11f);
             sub.setTypeface(context.getResources().getFont(R.font.outfit_regular));
             sub.setSingleLine(true);
@@ -541,7 +565,7 @@ final class WatchRows {
 
     /** "Episode name · 23 min left", "23 min left", "Last opened 30 minutes ago", or nothing. */
     private static String secondLine(Item item) {
-        if (item.art != null) return item.subtitle;
+        if (item.art != null || "BBC NEWS".equals(item.subtitle)) return item.subtitle;
         String left = item.minutesLeft > 0 ? item.minutesLeft + " min left" : null;
         if (item.episode != null && left != null) return item.episode + "  ·  " + left;
         return item.episode != null ? item.episode : left;
