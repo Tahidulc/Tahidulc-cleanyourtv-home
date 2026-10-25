@@ -69,6 +69,10 @@ final class WatchRows {
         /** The resume card: the app's own artwork and when it was last opened, for apps that publish nothing. */
         android.graphics.drawable.Drawable art;
         String subtitle;
+        /** For the resume card: a bundled scene shown full size behind the app's logo (resume_backdrops). */
+        int backdrop;
+        /** A matching picture from another app's published rows (resume_backdrop_queries), shown instead when found. */
+        String liveBackdrop;
     }
 
     private final Context context;
@@ -89,6 +93,10 @@ final class WatchRows {
     private String shownPackage;
     private String label = "";
     private Item resume;
+    private final Map<String, String> backdrops = new HashMap<>();
+    /** BBC News for the space beside a lone card, and when it was read. */
+    private List<String[]> news = new ArrayList<>();
+    private long newsAt;
     private int generation;
 
     WatchRows(Context context, FrameLayout root, float density, Host host) {
@@ -151,6 +159,8 @@ final class WatchRows {
         r.art = art;
         r.title = appLabel;
         r.subtitle = lastOpened;
+        r.backdrop = backdropFor(packageName);
+        r.liveBackdrop = backdrops.get(packageName);
         resume = r;
         if (packageName == null) { hide(); return; }
         if (packageName.equals(shownPackage)) {
@@ -169,6 +179,11 @@ final class WatchRows {
         setShown(false);
         reader.execute(() -> {
             List<Item> items = read(packageName);
+            String live = items.isEmpty() ? findBackdrop(packageName) : null;
+            main.post(() -> {
+                if (live != null) backdrops.put(packageName, live);
+                if (resume != null && live != null && packageName.equals(shownPackage)) resume.liveBackdrop = live;
+            });
             main.post(() -> {
                 cache.put(packageName, items);
                 cachedAt.put(packageName, System.currentTimeMillis());
@@ -310,10 +325,37 @@ final class WatchRows {
             items.add(resume);
         }
         for (int i = 0; i < items.size(); i++) strip.addView(card(items.get(i), i, items.size()));
+        if (items.size() == 1) addNews();
         setCaption(items.get(0));
         setShown(true);
         panel.setAlpha(0f);
         panel.animate().alpha(1f).setDuration(220).start();
+    }
+
+    /** Fills the empty space beside a lone card with BBC News, reading the feed when it is older than 15 minutes. */
+    private void addNews() {
+        String feed = context.getString(R.string.news_panel_url);
+        if (feed.isEmpty()) return;
+        if (!news.isEmpty()) placeNews();
+        if (System.currentTimeMillis() - newsAt < NewsPanel.EVERY_MS) return;
+        newsAt = System.currentTimeMillis();
+        reader.execute(() -> {
+            List<String[]> fresh = NewsPanel.read(feed);
+            main.post(() -> {
+                if (fresh.isEmpty()) { newsAt = 0; return; }
+                news = fresh;
+                if (strip.getChildCount() == 1) placeNews();
+            });
+        });
+    }
+
+    private void placeNews() {
+        View parent = (View) panel.getParent();
+        int width = parent.getWidth() - ((FrameLayout.LayoutParams) panel.getLayoutParams()).leftMargin
+                - ((FrameLayout.LayoutParams) panel.getLayoutParams()).rightMargin
+                - scroller.getPaddingLeft() - scroller.getPaddingRight() - cardWidth() - dp(14);
+        if (width < dp(220) || strip.getChildCount() != 1) return;
+        strip.addView(NewsPanel.build(context, density, news, width, cardHeight(), this::loadPoster));
     }
 
     private void setCaption(Item item) {
@@ -419,7 +461,23 @@ final class WatchRows {
             if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) return index == count - 1;
             return false;
         });
-        if (item.art != null) {
+        if (item.art != null && item.backdrop != 0) {
+            // The scene fills the card; the app's own logo sits small in the top-left corner.
+            image.setImageResource(item.backdrop);
+            if (item.liveBackdrop != null) loadPoster(item.liveBackdrop, image);
+            // The logo floats over the picture with no box: its field knocked out, a soft shadow under it.
+            ImageView badge = new ImageView(context);
+            badge.setImageDrawable(BannerArt.knockout(context, item.art));
+            badge.setScaleType(ImageView.ScaleType.FIT_START);
+            View topShade = new View(context);
+            topShade.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
+                    new int[]{0x8C000000, 0x00000000}));
+            card.addView(topShade, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(110), Gravity.TOP));
+            FrameLayout.LayoutParams blp = new FrameLayout.LayoutParams(dp(150), dp(56), Gravity.TOP | Gravity.START);
+            blp.leftMargin = dp(16);
+            blp.topMargin = dp(16);
+            card.addView(badge, blp);
+        } else if (item.art != null) {
             // Never stretch a banner past MAX_ART_SCALE: a small one sits centred on its own edge colour
             // instead of turning to pixels across the whole card.
             int w = item.art.getIntrinsicWidth(), h = item.art.getIntrinsicHeight();
@@ -438,6 +496,43 @@ final class WatchRows {
             loadPoster(item.poster, image);
         }
         return card;
+    }
+
+    /**
+     * A poster from YouTube's own published rows whose title matches this app's query (resume_backdrop_queries,
+     * "package=words|more words"), e.g. a Premier League highlights thumbnail for TiviMate. Null when none.
+     */
+    private String findBackdrop(String pkg) {
+        String[] words = null;
+        for (String entry : context.getResources().getStringArray(R.array.resume_backdrop_queries)) {
+            String[] kv = entry.split("=", 2);
+            if (kv.length == 2 && kv[0].trim().equals(pkg)) words = kv[1].toLowerCase(java.util.Locale.ROOT).split("\\|");
+        }
+        if (words == null) return null;
+        try (Cursor c = context.getContentResolver().query(Uri.parse("content://android.media.tv/preview_program"),
+                null, null, null, null)) {
+            if (c == null) return null;
+            int iTitle = c.getColumnIndex("title"), iPoster = c.getColumnIndex("poster_art_uri");
+            while (c.moveToNext()) {
+                String title = str(c, iTitle), poster = str(c, iPoster);
+                if (title == null || poster == null) continue;
+                String t = title.toLowerCase(java.util.Locale.ROOT);
+                for (String w : words) if (!w.trim().isEmpty() && t.contains(w.trim())) return poster;
+            }
+        } catch (Exception ignored) {
+        }
+        return null;
+    }
+
+    /** The bundled scene for this app's resume card, from config.xml resume_backdrops ("package=drawable"). */
+    private int backdropFor(String pkg) {
+        for (String entry : context.getResources().getStringArray(R.array.resume_backdrops)) {
+            String[] kv = entry.split("=", 2);
+            if (kv.length == 2 && kv[0].trim().equals(pkg)) {
+                return context.getResources().getIdentifier(kv[1].trim(), "drawable", context.getPackageName());
+            }
+        }
+        return 0;
     }
 
     private String appLabel(Item item) {

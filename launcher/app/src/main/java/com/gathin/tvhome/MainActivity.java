@@ -451,6 +451,30 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         if (cinematic) setUpCinematicShelf(cfg.cinematicScrim);
         weatherLine = new WeatherLine(findViewById(R.id.weather), getString(R.string.weather_latitude),
                 getString(R.string.weather_longitude), getString(R.string.weather_place));
+        // The weather line is a button too: Left from Inputs reaches it, OK opens the five-day forecast.
+        TextView weatherView = findViewById(R.id.weather);
+        weatherView.setFocusable(true);
+        weatherView.setBackgroundResource(R.drawable.pill_bg);
+        weatherView.setPadding(Math.round(12 * density), Math.round(4 * density), Math.round(14 * density), Math.round(4 * density));
+        weatherView.setOnClickListener(v -> weatherLine.showForecast());
+        weatherView.setOnFocusChangeListener((v, has) -> {
+            // On the focused white pill the white cloud would vanish: draw the icon dark too.
+            TextView t = (TextView) v;
+            t.setTextColor(has ? 0xFF111111 : 0xD9FFFFFF);
+            t.setCompoundDrawableTintList(has ? android.content.res.ColorStateList.valueOf(0xFF2A2F3A) : null);
+        });
+        weatherView.setOnKeyListener((v, keyCode, event) -> {
+            if (event.getAction() != KeyEvent.ACTION_DOWN) return false;
+            switch (keyCode) {
+                case KeyEvent.KEYCODE_DPAD_RIGHT: btnInputs.requestFocus(); return true;
+                case KeyEvent.KEYCODE_DPAD_UP: scoresTicker.focus(); return true;
+                case KeyEvent.KEYCODE_DPAD_DOWN:
+                    if (!watchRows.focus()) focusTile(singleRow ? lastFocused : lastFocused % COLUMNS);
+                    return true;
+                case KeyEvent.KEYCODE_DPAD_LEFT: return true;
+                default: return false;
+            }
+        });
         newsTicker = new NewsTicker(this, root, density, getString(R.string.news_feed_url),
                 getString(R.string.news_source));
         if (!getString(R.string.news_feed_url).isEmpty() || getResources().getStringArray(R.array.score_leagues).length > 0) {
@@ -833,7 +857,12 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             int firstButton = btnInputs.getVisibility() == View.VISIBLE ? R.id.btnInputs : firstTopButton().getId();
             int leftButton = rtlMenuBar ? R.id.btnSettings : firstButton;
             int rightButton = rtlMenuBar ? firstButton : R.id.btnSettings;
-            if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT) return v.getId() == leftButton;
+            if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT && v.getId() == leftButton) {
+                View weather = findViewById(R.id.weather);
+                if (weather.getVisibility() == View.VISIBLE) weather.requestFocus();
+                return true;
+            }
+            if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT) return false;
             return keyCode == KeyEvent.KEYCODE_DPAD_RIGHT && v.getId() == rightButton;
         };
         btnInputs.setOnKeyListener(pillKeys);
@@ -1199,6 +1228,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         wallpaperPlayer.stop();
         videoBackdrop.stop();
         weatherLine.stop();
+        weatherLine.dismissForecast();
         newsTicker.stop();
         scoresTicker.stop();
         stopAmbientAnimation();
@@ -2403,13 +2433,17 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             TextView button = (TextView) getLayoutInflater().inflate(R.layout.top_app_button, bar, false);
             // pillKeys finds the bar's ends by id: without one of its own, every app button would be an end.
             button.setId(View.generateViewId());
+            boolean mono = getResources().getBoolean(R.bool.top_bar_apps_mono);
+            if (mono) logo = BannerArt.monoIcon(this, logo);
             logo.setBounds(0, 0, size, size);
             button.setCompoundDrawablesRelative(logo, null, null, null);
-            button.setCompoundDrawableTintList(null);
+            // A mono logo takes the pills' own tint (white, dark on the focused white pill), like Wi-Fi and Settings.
+            if (!mono) button.setCompoundDrawableTintList(null);
             button.setContentDescription(label);
             Intent target = launch;
             button.setOnClickListener(v -> open(new Intent(target)));
-            bar.addView(button, bar.indexOfChild(btnWifi));
+            boolean after = getResources().getBoolean(R.bool.top_bar_apps_after_network);
+            bar.addView(button, bar.indexOfChild(btnWifi) + (after ? 1 + topAppButtons.size() : 0));
             topAppButtons.add(button);
         }
     }
@@ -2694,7 +2728,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         }
         // With a VPN app configured, a VPN that is down matters too: show a red "VPN off" capsule then.
         boolean vpnDown = !vpn && online && !vpnApp.isEmpty();
-        if (vpn || vpnDown) {
+        if ((vpn || vpnDown) && getResources().getBoolean(R.bool.network_vpn_badge)) {
             // Network name, then the green lock-and-VPN (or red "VPN off") capsule drawn in place of the word.
             String badge = getString(vpn ? R.string.vpn : R.string.vpn_off);
             VpnBadge span = new VpnBadge(vpn ? getDrawable(R.drawable.ic_lock) : null, density);

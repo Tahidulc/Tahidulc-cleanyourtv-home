@@ -301,7 +301,9 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
             // uniform_tiles draws the icon, so an app's banner is never loaded. A module card keeps its banner.
             if (!(uniformTiles && card == null)) {
                 banner = bundledBanner(appBanners.get(pkg));
-                if (banner == null) banner = loadBanner(pm, ri);
+                boolean redraw = whiteBanners.contains(pkg) || brandBanners.contains(pkg);
+                // Redrawn banners start from the app's sharpest artwork, so the new edges stay crisp.
+                if (banner == null) banner = loadBanner(pm, ri, redraw ? DisplayMetrics.DENSITY_XXXHIGH : 0);
                 if (banner != null && whiteBanners.contains(pkg)) banner = BannerArt.onWhite(ctx, banner);
                 else if (banner != null && brandBanners.contains(pkg)) banner = BannerArt.brandOnWhite(ctx, banner);
             }
@@ -355,7 +357,7 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
         return id != 0 ? ctx.getDrawable(id) : null;
     }
 
-    private Drawable loadBanner(PackageManager pm, ResolveInfo ri) {
+    private Drawable loadBanner(PackageManager pm, ResolveInfo ri, int minDensity) {
         int id = ri.activityInfo.banner;
         if (id == 0) id = ri.activityInfo.applicationInfo.banner;
         Drawable banner = null;
@@ -363,7 +365,8 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
             try {
                 Resources resources = pm.getResourcesForApplication(ri.activityInfo.applicationInfo);
                 // Keep at least xhdpi detail rather than downsampling artwork before the focus zoom.
-                int density = Math.max(DisplayMetrics.DENSITY_XHIGH, ctx.getResources().getDisplayMetrics().densityDpi);
+                int density = Math.max(Math.max(DisplayMetrics.DENSITY_XHIGH, minDensity),
+                        ctx.getResources().getDisplayMetrics().densityDpi);
                 banner = resources.getDrawableForDensity(id, density, null);
             } catch (PackageManager.NameNotFoundException | Resources.NotFoundException ignored) {
             }

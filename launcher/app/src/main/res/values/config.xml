@@ -460,6 +460,23 @@
         <item>com.disney.disneyplus</item>
         <item>com.amazon.amazonvideo.livingroom</item>
     </string-array>
+    <!-- A scene behind the logo on an app's "pick up where you left off" card (drawable-nodpi, drawn for this TV). -->
+    <string-array name="resume_backdrops" translatable="false">
+        <item>ar.tvplayer.tv=backdrop_stadium</item>
+        <item>com.debridstream.tv=backdrop_cinema</item>
+    </string-array>
+    <!-- The green "VPN" capsule inside the network pill (any VPN, Tailscale included). false hides it; a VPN app
+         can get its own button with top_bar_apps instead. -->
+    <bool name="network_vpn_badge">false</bool>
+    <!-- A live picture for a resume card: the first of YouTube's published recommendations whose title has one of these. -->
+    <string-array name="resume_backdrop_queries" translatable="false">
+        <item>ar.tvplayer.tv=premier league|highlights|epl</item>
+    </string-array>
+    <!-- top_bar_apps: right of the network pill instead of left, and as white glyphs on the frosted pill. -->
+    <bool name="top_bar_apps_after_network">true</bool>
+    <bool name="top_bar_apps_mono">true</bool>
+    <!-- BBC News beside a lone resume card (an RSS feed with media:thumbnail); empty leaves the space empty. -->
+    <string name="news_panel_url" translatable="false">https://feeds.bbci.co.uk/news/rss.xml</string>
     <!-- The app OK on a game box opens. -->
     <string name="scores_open_package" translatable="false">ar.tvplayer.tv</string>
     <string-array name="score_leagues" translatable="false">

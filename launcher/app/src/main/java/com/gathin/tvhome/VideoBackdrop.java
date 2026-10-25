@@ -79,8 +79,13 @@ final class VideoBackdrop implements TextureView.SurfaceTextureListener {
             view.setAlpha(0f);
         }
         if (player != null) {
-            try { player.release(); } catch (Exception ignored) { }
+            // Off the main thread: Android starts the app being opened only once Home's onPause returns, and
+            // releasing a hardware decoder can take a noticeable moment.
+            MediaPlayer old = player;
             player = null;
+            new Thread(() -> {
+                try { old.release(); } catch (Exception ignored) { }
+            }, "backdrop-release").start();
         }
     }
 

@@ -56,7 +56,8 @@ final class BannerArt {
             int c = px[i];
             Color.RGBToHSV(Color.red(c), Color.green(c), Color.blue(c), hsv);
             float logo = (1f - hsv[1]) * hsv[2];                 // white text: no colour, full brightness
-            float t = Math.max(0f, Math.min(1f, (logo - 0.42f) / 0.4f));
+            // A narrow ramp: solid letters with a one-pixel soft edge, a touch bolder than the original.
+            float t = Math.max(0f, Math.min(1f, (logo - 0.30f) / 0.22f));
             px[i] = blend(Color.WHITE, tint, t * Color.alpha(c) / 255f);
         }
         return new BitmapDrawable(ctx.getResources(), Bitmap.createBitmap(px, w, h, Bitmap.Config.ARGB_8888));
@@ -72,8 +73,74 @@ final class BannerArt {
         // Prime's field is bright blue already; deepen any very light corner so the logo keeps contrast.
         float[] hsv = new float[3];
         Color.colorToHSV(best, hsv);
-        hsv[2] = Math.min(hsv[2], 0.85f);
+        hsv[2] = Math.min(hsv[2], 0.62f);
+        hsv[1] = Math.min(1f, Math.max(hsv[1], 0.55f) * 1.15f);
         return Color.HSVToColor(hsv);
+    }
+
+    /**
+     * An app icon as a plain white glyph for a frosted pill: an adaptive icon's foreground layer (its safe zone
+     * cropped so the glyph fills the button), every pixel white at its own alpha. Tint it like any pill icon.
+     */
+    static Drawable monoIcon(Context ctx, Drawable icon) {
+        Drawable src = icon;
+        boolean adaptive = false;
+        if (icon instanceof android.graphics.drawable.AdaptiveIconDrawable
+                && ((android.graphics.drawable.AdaptiveIconDrawable) icon).getForeground() != null) {
+            src = ((android.graphics.drawable.AdaptiveIconDrawable) icon).getForeground();
+            adaptive = true;
+        }
+        int size = 216;
+        Bitmap bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
+        src.setBounds(0, 0, size, size);
+        src.draw(new Canvas(bmp));
+        if (adaptive) {
+            int m = size * 22 / 108;   // the 108dp layer's outer margin around its 64dp-ish glyph area
+            bmp = Bitmap.createBitmap(bmp, m, m, size - 2 * m, size - 2 * m);
+        }
+        int w = bmp.getWidth(), h = bmp.getHeight();
+        int[] px = new int[w * h];
+        bmp.getPixels(px, 0, w, 0, 0, w, h);
+        for (int i = 0; i < px.length; i++) {
+            int c = px[i];
+            int a = Color.alpha(c);
+            if (!adaptive) {
+                // A flat icon: keep only its light parts (a white glyph on a coloured square).
+                int lum = Math.round(0.299f * Color.red(c) + 0.587f * Color.green(c) + 0.114f * Color.blue(c));
+                a = a * Math.max(0, Math.min(255, (lum - 140) * 3)) / 255;
+            }
+            px[i] = Color.argb(a, 255, 255, 255);
+        }
+        return new BitmapDrawable(ctx.getResources(), Bitmap.createBitmap(px, w, h, Bitmap.Config.ARGB_8888));
+    }
+
+    /**
+     * A banner's logo without its box, for laying over a picture: the field colour (sampled at the edge) turns
+     * transparent, dark lettering turns white so it reads on a dark scene, brand colours stay.
+     */
+    static Drawable knockout(Context ctx, Drawable banner) {
+        Bitmap bmp = render(banner, 0, 0);
+        if (bmp == null) return banner;
+        int w = bmp.getWidth(), h = bmp.getHeight();
+        int[] px = new int[w * h];
+        bmp.getPixels(px, 0, w, 0, 0, w, h);
+        int field = px[w + 1];
+        float[] hsv = new float[3];
+        for (int i = 0; i < px.length; i++) {
+            int c = px[i];
+            int dr = Color.red(c) - Color.red(field), dg = Color.green(c) - Color.green(field), db = Color.blue(c) - Color.blue(field);
+            float dist = (float) Math.sqrt(dr * dr + dg * dg + db * db) / 441f;
+            int a = Math.round(Math.max(0f, Math.min(1f, (dist - 0.08f) / 0.25f)) * Color.alpha(c));
+            Color.RGBToHSV(Color.red(c), Color.green(c), Color.blue(c), hsv);
+            int rgb = c;
+            if (hsv[1] < 0.35f || hsv[2] < 0.35f) {
+                // Greys and near-blacks: lettering that was dark on a light field becomes white.
+                rgb = hsv[2] < 0.6f ? Color.WHITE : Color.rgb(Color.red(c), Color.green(c), Color.blue(c));
+                if (Color.luminance(field) < 0.5f) rgb = c;   // a dark field already had light lettering
+            }
+            px[i] = Color.argb(a, Color.red(rgb), Color.green(rgb), Color.blue(rgb));
+        }
+        return new BitmapDrawable(ctx.getResources(), Bitmap.createBitmap(px, w, h, Bitmap.Config.ARGB_8888));
     }
 
     /** The colour just inside the banner's top-left corner, for filling the space around it. */

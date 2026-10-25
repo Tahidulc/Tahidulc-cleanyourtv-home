@@ -68,7 +68,16 @@ final class ScoresTicker {
         String leagueLogo, homeLogo, awayLogo;
         int state;   // 0 live, 1 upcoming, 2 finished: the order they are shown in
         long kickoff;
+        /** Every goal so far: {unique key, scorer, minute, "home"/"away", "pen"/"og"/""}. */
+        final List<String[]> goals = new ArrayList<>();
     }
+
+    private static final long ALERT_MS = 10_000L;
+    /** Goals already announced (or already scored when Home first read the scores). */
+    private final java.util.Set<String> seenGoals = new java.util.HashSet<>();
+    private boolean primed;
+    private final java.util.ArrayDeque<Object[]> alerts = new java.util.ArrayDeque<>();
+    private View alertView;
 
     private final Context context;
     private final float density;
@@ -175,7 +184,15 @@ final class ScoresTicker {
             final boolean anyLive = live;
             main.post(() -> {
                 games = found;
+                // New goals since the last read become alerts; the first read only learns what is already in.
+                for (Game g : found) {
+                    for (String[] goal : g.goals) {
+                        if (seenGoals.add(goal[0]) && primed) alerts.add(new Object[]{g, goal});
+                    }
+                }
+                if (!found.isEmpty()) primed = true;
                 paginate();
+                showNextAlert();
                 if (running) main.postDelayed(refresh, anyLive ? LIVE_MS : IDLE_MS);
             });
         });
@@ -192,6 +209,18 @@ final class ScoresTicker {
         }
         if (home == null || away == null) return null;
         Game g = new Game();
+        String homeId = home.getJSONObject("team").optString("id"), id = e.optString("id");
+        JSONArray details = c.optJSONArray("details");
+        for (int d = 0; details != null && d < details.length(); d++) {
+            JSONObject x = details.getJSONObject(d);
+            if (!x.optBoolean("scoringPlay")) continue;
+            JSONArray who = x.optJSONArray("athletesInvolved");
+            String scorer = who != null && who.length() > 0 ? who.getJSONObject(0).optString("displayName") : "";
+            String minute = x.optJSONObject("clock") != null ? x.getJSONObject("clock").optString("displayValue") : "";
+            String side = homeId.equals(x.optJSONObject("team") != null ? x.getJSONObject("team").optString("id") : "") ? "home" : "away";
+            String kind = x.optBoolean("ownGoal") ? "og" : x.optBoolean("penaltyKick") ? "pen" : "";
+            g.goals.add(new String[]{id + "|" + minute + "|" + scorer, scorer, minute, side, kind});
+        }
         g.league = tag;
         g.home = home.getJSONObject("team").optString("abbreviation");
         g.away = away.getJSONObject("team").optString("abbreviation");
@@ -230,6 +259,58 @@ final class ScoresTicker {
         return fallback;
     }
 
+    // ---- goal alerts ------------------------------------------------------------------------------
+
+    /** Drops the next goal alert over the scores line for ALERT_MS, then lifts it away. */
+    private void showNextAlert() {
+        if (alertView != null || alerts.isEmpty() || !running || box.getVisibility() != View.VISIBLE) return;
+        Object[] next = alerts.poll();
+        Game g = (Game) next[0];
+        String[] goal = (String[]) next[1];
+        boolean homeGoal = "home".equals(goal[3]);
+        LinearLayout a = new LinearLayout(context);
+        a.setOrientation(LinearLayout.HORIZONTAL);
+        a.setGravity(Gravity.CENTER);
+        android.graphics.drawable.GradientDrawable bg = new android.graphics.drawable.GradientDrawable();
+        bg.setCornerRadius(dp(16));
+        bg.setColors(new int[]{0xE6143D2A, 0xE60E2A1D});
+        bg.setOrientation(android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM);
+        bg.setStroke(dp(1.5f), 0xFF4ADE80);
+        a.setBackground(bg);
+        a.setPadding(dp(14), 0, dp(14), 0);
+        TextView tag = label(goalTag());
+        a.addView(tag);
+        a.addView(logoView(homeGoal ? g.homeLogo : g.awayLogo, dp(12)));
+        SpannableStringBuilder line = new SpannableStringBuilder();
+        line.append(goal[1]);
+        line.setSpan(new StyleSpan(Typeface.BOLD), 0, line.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        line.append("  ").append(goal[2]);
+        if (!goal[4].isEmpty()) line.append(goal[4].equals("pen") ? " (pen)" : " (og)");
+        int at = line.length();
+        line.append("     ").append(g.home).append("  ").append(g.homeScore).append("–").append(g.awayScore)
+                .append("  ").append(g.away);
+        line.setSpan(new ForegroundColorSpan(0xCCFFFFFF), at, line.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        a.addView(label(line), margin(dp(8)));
+        a.setLayoutParams(new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(30)));
+        int h = dp(30);
+        a.setTranslationY(-h);
+        box.addView(a);
+        alertView = a;
+        a.animate().translationY(0f).setDuration(FLIP_MS).start();
+        main.postDelayed(() -> a.animate().translationY(-h).alpha(0f).setDuration(FLIP_MS).withEndAction(() -> {
+            box.removeView(a);
+            alertView = null;
+            showNextAlert();
+        }).start(), ALERT_MS);
+    }
+
+    private static CharSequence goalTag() {
+        SpannableStringBuilder s = new SpannableStringBuilder("⚽  GOAL");
+        s.setSpan(new StyleSpan(Typeface.BOLD), 0, s.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        s.setSpan(new ForegroundColorSpan(0xFF4ADE80), 0, s.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        return s;
+    }
+
     // ---- pages -----------------------------------------------------------------------------------
 
     /** Splits the games into pages of as many boxes as fit the width, and shows the current one. */
@@ -240,6 +321,7 @@ final class ScoresTicker {
             box.setVisibility(View.GONE);
             box.removeAllViews();
             shownRow = null;
+            alertView = null;
             return;
         }
         int gap = dp(10);
@@ -259,9 +341,9 @@ final class ScoresTicker {
         if (page >= pages.size()) page = 0;
         int focused = focusedIndex();
         box.setVisibility(View.VISIBLE);
-        box.removeAllViews();
+        if (shownRow != null) box.removeView(shownRow);
         shownRow = row(pages.get(page));
-        box.addView(shownRow);
+        box.addView(shownRow, 0);   // under a goal alert, if one is showing
         if (focused >= 0) focusBox(Math.min(focused, shownRow.getChildCount() - 1));
     }
 
@@ -285,9 +367,9 @@ final class ScoresTicker {
     private void turnPage(boolean forward) {
         if (pages.size() < 2) return;
         page = (page + (forward ? 1 : pages.size() - 1)) % pages.size();
-        box.removeAllViews();
+        if (shownRow != null) box.removeView(shownRow);
         shownRow = row(pages.get(page));
-        box.addView(shownRow);
+        box.addView(shownRow, 0);
         focusBox(forward ? 0 : shownRow.getChildCount() - 1);
     }
 
@@ -299,14 +381,14 @@ final class ScoresTicker {
     /** The current page slides up and out while the next one rises in from below. */
     private void nextPage() {
         // Never flip the page out from under a box the viewer is on.
-        if (running && pages.size() > 1 && shownRow != null && !box.hasFocus()) {
+        if (running && pages.size() > 1 && shownRow != null && !box.hasFocus() && alertView == null) {
             page = (page + 1) % pages.size();
             LinearLayout out = shownRow;
             LinearLayout in = row(pages.get(page));
             int h = box.getHeight() > 0 ? box.getHeight() : dp(30);
             in.setTranslationY(h);
             in.setAlpha(0f);
-            box.addView(in);
+            box.addView(in, 0);
             out.animate().translationY(-h).alpha(0f).setDuration(FLIP_MS)
                     .withEndAction(() -> box.removeView(out)).start();
             in.animate().translationY(0f).alpha(1f).setDuration(FLIP_MS).start();

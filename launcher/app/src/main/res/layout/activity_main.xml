@@ -275,8 +275,8 @@
                         <!-- Current weather (WeatherLine), hidden until Open-Meteo answers. -->
                         <TextView
                             android:id="@+id/weather"
-                            android:gravity="left"
-                            android:layout_width="match_parent"
+                            android:gravity="left|center_vertical"
+                            android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:layout_marginTop="6dp"
                             android:singleLine="true"

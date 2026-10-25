@@ -31,6 +31,73 @@ final class WeatherLine {
     private long fetchedAt;
     private boolean running;
     private final Runnable tick = this::fetch;
+    /** The next five days: {date, weather code, high, low, rain %}. */
+    private volatile java.util.List<String[]> days = new java.util.ArrayList<>();
+    private android.widget.PopupWindow popup;
+
+    /**
+     * The next five days in a glass panel under the weather line: day, icon, high and low, chance of rain.
+     * Back or OK closes it.
+     */
+    void showForecast() {
+        if (days.isEmpty() || (popup != null && popup.isShowing())) return;
+        android.content.Context ctx = view.getContext();
+        float density = ctx.getResources().getDisplayMetrics().density;
+        android.widget.LinearLayout panel = new android.widget.LinearLayout(ctx);
+        panel.setOrientation(android.widget.LinearLayout.HORIZONTAL);
+        panel.setBackgroundResource(R.drawable.glass_panel);
+        int pad = Math.round(18 * density);
+        panel.setPadding(pad, pad, pad, pad);
+        java.time.format.DateTimeFormatter dayName = java.time.format.DateTimeFormatter.ofPattern("EEE", Locale.getDefault());
+        for (String[] d : days) {
+            android.widget.LinearLayout col = new android.widget.LinearLayout(ctx);
+            col.setOrientation(android.widget.LinearLayout.VERTICAL);
+            col.setGravity(android.view.Gravity.CENTER_HORIZONTAL);
+            col.setPadding(Math.round(14 * density), 0, Math.round(14 * density), 0);
+            col.setMinimumWidth(Math.round(78 * density));   // room for "☂ 100%"
+            col.addView(text(ctx, java.time.LocalDate.parse(d[0]).format(dayName).toUpperCase(Locale.getDefault()), 13, 0xB3FFFFFF));
+            android.widget.ImageView icon = new android.widget.ImageView(ctx);
+            icon.setImageResource(icon(Integer.parseInt(d[1]), true));
+            android.widget.LinearLayout.LayoutParams ilp = new android.widget.LinearLayout.LayoutParams(
+                    Math.round(34 * density), Math.round(34 * density));
+            ilp.topMargin = ilp.bottomMargin = Math.round(8 * density);
+            col.addView(icon, ilp);
+            col.addView(text(ctx, d[2] + "°", 20, 0xFFFFFFFF));
+            col.addView(text(ctx, d[3] + "°", 14, 0x99FFFFFF));
+            if (!d[4].isEmpty()) col.addView(text(ctx, "☂ " + d[4] + "%", 12, 0xFF7CC4FF));
+            panel.addView(col);
+        }
+        popup = new android.widget.PopupWindow(panel, android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
+                android.view.ViewGroup.LayoutParams.WRAP_CONTENT, true);
+        popup.setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(0));
+        popup.setElevation(12 * density);
+        panel.setFocusable(true);
+        panel.setOnKeyListener((v, keyCode, event) -> {
+            if (event.getAction() == android.view.KeyEvent.ACTION_UP && (keyCode == android.view.KeyEvent.KEYCODE_DPAD_CENTER
+                    || keyCode == android.view.KeyEvent.KEYCODE_ENTER)) {
+                popup.dismiss();
+                return true;
+            }
+            return false;
+        });
+        popup.showAsDropDown(view, 0, Math.round(10 * density));
+        panel.requestFocus();
+    }
+
+    void dismissForecast() {
+        if (popup != null) popup.dismiss();
+    }
+
+    private static TextView text(android.content.Context ctx, String s, float sp, int color) {
+        TextView t = new TextView(ctx);
+        t.setText(s);
+        t.setTextColor(color);
+        t.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, sp);
+        t.setTypeface(ctx.getResources().getFont(R.font.outfit_regular));
+        t.setGravity(android.view.Gravity.CENTER);
+        t.setSingleLine(true);
+        return t;
+    }
 
     WeatherLine(TextView view, String latitude, String longitude, String place) {
         this.view = view;
@@ -61,7 +128,9 @@ final class WeatherLine {
 
     private void fetch() {
         String url = "https://api.open-meteo.com/v1/forecast?latitude=" + latitude + "&longitude=" + longitude
-                + "&current=temperature_2m,weather_code,is_day&timezone=auto";
+                + "&current=temperature_2m,weather_code,is_day"
+                + "&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max"
+                + "&forecast_days=6&timezone=auto";
         io.execute(() -> {
             String line = null;
             int icon = 0;
@@ -80,7 +149,21 @@ final class WeatherLine {
                 } finally {
                     conn.disconnect();
                 }
-                JSONObject current = new JSONObject(body).getJSONObject("current");
+                JSONObject json = new JSONObject(body);
+                JSONObject current = json.getJSONObject("current");
+                JSONObject daily = json.optJSONObject("daily");
+                if (daily != null) {
+                    java.util.List<String[]> next = new java.util.ArrayList<>();
+                    org.json.JSONArray t = daily.getJSONArray("time"), code = daily.getJSONArray("weather_code"),
+                            hi = daily.getJSONArray("temperature_2m_max"), lo = daily.getJSONArray("temperature_2m_min"),
+                            rain = daily.optJSONArray("precipitation_probability_max");
+                    for (int d = 1; d < t.length() && next.size() < 5; d++) {   // tomorrow on: today is on screen
+                        next.add(new String[]{t.getString(d), String.valueOf(code.getInt(d)),
+                                String.valueOf(Math.round(hi.getDouble(d))), String.valueOf(Math.round(lo.getDouble(d))),
+                                rain == null || rain.isNull(d) ? "" : String.valueOf(rain.getInt(d))});
+                    }
+                    days = next;
+                }
                 long temp = Math.round(current.getDouble("temperature_2m"));
                 int code = current.getInt("weather_code");
                 words = describe(code);
