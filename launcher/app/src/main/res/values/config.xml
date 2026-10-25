@@ -455,6 +455,11 @@
     <string-array name="white_banner_apps" translatable="false">
         <item>com.debridstream.tv</item>
     </string-array>
+    <!-- Apps whose white logo on a brand colour is redrawn as that colour on white, to match the other dock tiles. -->
+    <string-array name="brand_white_apps" translatable="false">
+        <item>com.disney.disneyplus</item>
+        <item>com.amazon.amazonvideo.livingroom</item>
+    </string-array>
     <!-- The app OK on a game box opens. -->
     <string name="scores_open_package" translatable="false">ar.tvplayer.tv</string>
     <string-array name="score_leagues" translatable="false">

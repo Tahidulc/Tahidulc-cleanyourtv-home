@@ -216,6 +216,8 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
     private final Map<String, String> appLabels, appBanners;
     /** Apps whose dark banner is redrawn on white (config.xml white_banner_apps). */
     private final java.util.Set<String> whiteBanners;
+    /** Apps whose white logo on a brand colour is redrawn as the brand colour on white (brand_white_apps). */
+    private final java.util.Set<String> brandBanners;
     /** Every app tile is its icon on a card tinted from that icon, never its banner (config.xml, uniform_tiles). */
     private final boolean uniformTiles;
     private final List<Entry> items = new ArrayList<>();
@@ -245,6 +247,7 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
         this.appLabels = cfg.appLabels;
         this.appBanners = cfg.appBanners;
         this.whiteBanners = new java.util.HashSet<>(Arrays.asList(ctx.getResources().getStringArray(R.array.white_banner_apps)));
+        this.brandBanners = new java.util.HashSet<>(Arrays.asList(ctx.getResources().getStringArray(R.array.brand_white_apps)));
         this.uniformTiles = cfg.uniformTiles;
         // Tiles keep their identity across reload(), so a focused tile stays on its app instead of
         // its view being rebound to whatever app now sits in that slot.
@@ -300,6 +303,7 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
                 banner = bundledBanner(appBanners.get(pkg));
                 if (banner == null) banner = loadBanner(pm, ri);
                 if (banner != null && whiteBanners.contains(pkg)) banner = BannerArt.onWhite(ctx, banner);
+                else if (banner != null && brandBanners.contains(pkg)) banner = BannerArt.brandOnWhite(ctx, banner);
             }
             // The icon is only drawn (and sampled for the glow) when there is no banner, so a tile with a
             // banner skips loading and decoding it.
@@ -654,7 +658,8 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
             Drawable big = pm.getResourcesForApplication(ai.applicationInfo)
                     .getDrawableForDensity(id, DisplayMetrics.DENSITY_XXXHIGH, null);
             if (big == null) return artworkAt(position);
-            return whiteBanners.contains(e.pkg) ? BannerArt.onWhite(ctx, big) : big;
+            return whiteBanners.contains(e.pkg) ? BannerArt.onWhite(ctx, big)
+                    : brandBanners.contains(e.pkg) ? BannerArt.brandOnWhite(ctx, big) : big;
         } catch (Exception ex) {
             return artworkAt(position);
         }

@@ -63,6 +63,9 @@ final class WatchRows {
         String title, poster, intent;
         boolean continueWatching;
         float progress = -1f;
+        /** Episode name, and minutes left in it; for Continue watching only. */
+        String episode;
+        int minutesLeft = -1;
         /** The resume card: the app's own artwork and when it was last opened, for apps that publish nothing. */
         android.graphics.drawable.Drawable art;
         String subtitle;
@@ -104,8 +107,8 @@ final class WatchRows {
         caption.setAllCaps(true);
         caption.setSingleLine(true);
         caption.setPadding(dp(EDGE), 0, 0, 0);
-        panel.addView(caption, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT));
+        // The section line ("Continue watching · Disney+") is gone: the cards speak for themselves.
+        caption.setVisibility(View.GONE);
         scroller = new HorizontalScrollView(context);
         scroller.setHorizontalScrollBarEnabled(false);
         scroller.setClipChildren(false);
@@ -130,7 +133,7 @@ final class WatchRows {
 
     /** Height of the whole panel (caption, cards and their focus room), for placing it above the shelf. */
     int height() {
-        return dp(13 + 6) + dp(EDGE) * 2 + cardHeight();
+        return dp(EDGE) * 2 + cardHeight();
     }
 
     boolean hasCards() {
@@ -221,12 +224,15 @@ final class WatchRows {
                     Item it = new Item();
                     it.title = str(c, iTitle);
                     String ep = str(c, iEp);
-                    if (ep != null && !ep.isEmpty() && !ep.equals(it.title)) it.title = it.title + " · " + ep;
-                    it.poster = first(str(c, iThumb), str(c, iPoster));
+                    if (ep != null && !ep.isEmpty() && !ep.equals(it.title)) it.episode = ep;
+                    it.poster = first(str(c, iPoster), str(c, iThumb));
                     it.intent = str(c, iIntent);
                     it.continueWatching = true;
                     long pos = iPos >= 0 ? c.getLong(iPos) : 0, dur = iDur >= 0 ? c.getLong(iDur) : 0;
-                    if (pos > 0 && dur > 0) it.progress = Math.min(1f, pos / (float) dur);
+                    if (pos > 0 && dur > 0) {
+                        it.progress = Math.min(1f, pos / (float) dur);
+                        it.minutesLeft = (int) Math.max(1, Math.round((dur - pos) / 60_000.0));
+                    }
                     order.add(new long[]{iWhen >= 0 ? c.getLong(iWhen) : 0, found.size()});
                     found.add(it);
                 }
@@ -250,7 +256,7 @@ final class WatchRows {
                     if (iBrowsable >= 0 && c.getInt(iBrowsable) == 0) continue;
                     Item it = new Item();
                     it.title = str(c, iTitle);
-                    it.poster = first(str(c, iThumb), str(c, iPoster));
+                    it.poster = first(str(c, iPoster), str(c, iThumb));
                     it.intent = str(c, iIntent);
                     out.add(it);
                     recommended++;
@@ -339,40 +345,67 @@ final class WatchRows {
 
         View shade = new View(context);
         shade.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
-                new int[]{0x00000000, 0x00000000, 0xD9000000}));
+                new int[]{0x00000000, 0x00000000, 0x66000000, 0xE6000000}));
         card.addView(shade, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT));
 
+        // Title, a quieter second line and the progress pill, stacked at the bottom-left.
+        LinearLayout text = new LinearLayout(context);
+        text.setOrientation(LinearLayout.VERTICAL);
+        int p = dp(16);
+        text.setPadding(p, 0, p, dp(14));
+        boolean big = cardHeight() > dp(170);
         TextView title = new TextView(context);
-        title.setText(item.title == null ? "" : item.title);
+        title.setText(item.art != null ? appLabel(item) : item.title == null ? "" : item.title);
         title.setTextColor(Color.WHITE);
-        title.setTextSize(TypedValue.COMPLEX_UNIT_SP, cardHeight() > dp(170) ? 16f : 13f);
+        title.setTextSize(TypedValue.COMPLEX_UNIT_SP, big ? 19f : 14f);
+        title.setTypeface(context.getResources().getFont(R.font.outfit_medium));
+        title.setLetterSpacing(-0.01f);
         title.setSingleLine(true);
         title.setEllipsize(android.text.TextUtils.TruncateAt.END);
-        int p = dp(8);
-        title.setPadding(p, 0, p, item.progress >= 0 ? dp(9) : dp(6));
-        card.addView(title, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM));
-
-        if (item.progress >= 0) {
-            FrameLayout track = new FrameLayout(context);
-            track.setBackgroundColor(0x59FFFFFF);
-            View bar = new View(context);
-            bar.setBackgroundColor(Color.WHITE);
-            track.addView(bar, new FrameLayout.LayoutParams(Math.max(dp(4),
-                    Math.round((cardWidth() - 2 * p) * item.progress)), ViewGroup.LayoutParams.MATCH_PARENT));
-            FrameLayout.LayoutParams tlp = new FrameLayout.LayoutParams(cardWidth() - 2 * p, dp(3),
-                    Gravity.BOTTOM | Gravity.START);
-            tlp.leftMargin = p;
-            tlp.bottomMargin = dp(5);
-            card.addView(track, tlp);
+        title.setShadowLayer(dp(6), 0, dp(1), 0x99000000);
+        text.addView(title);
+        String second = secondLine(item);
+        if (second != null) {
+            TextView sub = new TextView(context);
+            sub.setText(second);
+            sub.setTextColor(0xBFFFFFFF);
+            sub.setTextSize(TypedValue.COMPLEX_UNIT_SP, big ? 13f : 11f);
+            sub.setTypeface(context.getResources().getFont(R.font.outfit_regular));
+            sub.setSingleLine(true);
+            sub.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            sub.setShadowLayer(dp(5), 0, dp(1), 0x99000000);
+            LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT);
+            slp.topMargin = dp(2);
+            text.addView(sub, slp);
         }
+        if (item.progress >= 0) {
+            // A slim rounded pill: a frosted track with a white fill that has round ends too.
+            int trackW = cardWidth() - 2 * p;
+            FrameLayout track = new FrameLayout(context);
+            GradientDrawable trackBg = new GradientDrawable();
+            trackBg.setColor(0x40FFFFFF);
+            trackBg.setCornerRadius(dp(3));
+            track.setBackground(trackBg);
+            View fill = new View(context);
+            GradientDrawable fillBg = new GradientDrawable();
+            fillBg.setColor(Color.WHITE);
+            fillBg.setCornerRadius(dp(3));
+            fill.setBackground(fillBg);
+            track.addView(fill, new FrameLayout.LayoutParams(Math.max(dp(6), Math.round(trackW * item.progress)),
+                    ViewGroup.LayoutParams.MATCH_PARENT));
+            LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(trackW, dp(5));
+            tlp.topMargin = dp(10);
+            text.addView(track, tlp);
+        }
+        card.addView(text, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM));
 
         card.setOnFocusChangeListener((v, focused) -> {
             v.animate().scaleX(focused ? FOCUS_SCALE : 1f).scaleY(focused ? FOCUS_SCALE : 1f).setDuration(160).start();
             v.setForeground(focused ? ring : null);
             v.setElevation(focused ? dp(6) : 0);
-            if (focused) setCaption(item);
         });
         card.setOnClickListener(v -> {
             if (item.art != null) host.onResumeApp();
@@ -401,11 +434,22 @@ final class WatchRows {
                 bg.setColor(BannerArt.edgeColor(item.art));
             }
             image.setImageDrawable(item.art);
-            if (item.subtitle != null) title.setText(item.subtitle);
         } else {
             loadPoster(item.poster, image);
         }
         return card;
+    }
+
+    private String appLabel(Item item) {
+        return label;
+    }
+
+    /** "Episode name · 23 min left", "23 min left", "Last opened 30 minutes ago", or nothing. */
+    private static String secondLine(Item item) {
+        if (item.art != null) return item.subtitle;
+        String left = item.minutesLeft > 0 ? item.minutesLeft + " min left" : null;
+        if (item.episode != null && left != null) return item.episode + "  ·  " + left;
+        return item.episode != null ? item.episode : left;
     }
 
     private void open(Item item) {
@@ -422,8 +466,18 @@ final class WatchRows {
 
     // ---- posters ---------------------------------------------------------------------------------
 
-    private void loadPoster(String uri, ImageView into) {
-        if (uri == null || uri.isEmpty()) return;
+    /** Disney+ publishes 544x306 images from a server that scales on request: ask for the card's size. */
+    private String sharper(String uri) {
+        if (uri.contains("bamgrid.com/") && uri.contains("/scale?")) {
+            return uri.replaceAll("([?&])width=\\d+", "$1width=" + cardWidth())
+                    .replaceAll("([?&])height=\\d+", "$1height=" + cardHeight());
+        }
+        return uri;
+    }
+
+    private void loadPoster(String raw, ImageView into) {
+        if (raw == null || raw.isEmpty()) return;
+        String uri = sharper(raw);
         Bitmap hit = posters.get(uri);
         if (hit != null) { into.setImageBitmap(hit); return; }
         into.setTag(uri);

@@ -40,6 +40,42 @@ final class BannerArt {
         return new BitmapDrawable(ctx.getResources(), result);
     }
 
+    /**
+     * A white logo on a brand-coloured field (Prime Video's blue, Disney+'s navy-to-teal) redrawn as the brand
+     * colour on white: the brighter and greyer a pixel, the more of the brand colour it gets; the field turns white.
+     */
+    static Drawable brandOnWhite(Context ctx, Drawable banner) {
+        Bitmap bmp = render(banner, 0, 0);
+        if (bmp == null) return banner;
+        int w = bmp.getWidth(), h = bmp.getHeight();
+        int[] px = new int[w * h];
+        bmp.getPixels(px, 0, w, 0, 0, w, h);
+        int tint = darkest(px, w, h);
+        float[] hsv = new float[3];
+        for (int i = 0; i < px.length; i++) {
+            int c = px[i];
+            Color.RGBToHSV(Color.red(c), Color.green(c), Color.blue(c), hsv);
+            float logo = (1f - hsv[1]) * hsv[2];                 // white text: no colour, full brightness
+            float t = Math.max(0f, Math.min(1f, (logo - 0.42f) / 0.4f));
+            px[i] = blend(Color.WHITE, tint, t * Color.alpha(c) / 255f);
+        }
+        return new BitmapDrawable(ctx.getResources(), Bitmap.createBitmap(px, w, h, Bitmap.Config.ARGB_8888));
+    }
+
+    /** The darkest of the banner's four corners: the deep end of a gradient field, readable on white. */
+    private static int darkest(int[] px, int w, int h) {
+        int[] corners = {px[w + 1], px[2 * w - 2], px[(h - 2) * w + 1], px[(h - 1) * w - 2]};
+        int best = corners[0];
+        for (int c : corners) {
+            if (Color.red(c) + Color.green(c) + Color.blue(c) < Color.red(best) + Color.green(best) + Color.blue(best)) best = c;
+        }
+        // Prime's field is bright blue already; deepen any very light corner so the logo keeps contrast.
+        float[] hsv = new float[3];
+        Color.colorToHSV(best, hsv);
+        hsv[2] = Math.min(hsv[2], 0.85f);
+        return Color.HSVToColor(hsv);
+    }
+
     /** The colour just inside the banner's top-left corner, for filling the space around it. */
     static int edgeColor(Drawable d) {
         Bitmap bmp = render(d, 64, 36);
