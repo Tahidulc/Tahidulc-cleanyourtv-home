@@ -476,7 +476,8 @@
     <bool name="top_bar_apps_after_network">true</bool>
     <bool name="top_bar_apps_mono">true</bool>
     <!-- BBC News beside a lone resume card (an RSS feed with media:thumbnail); empty leaves the space empty. -->
-    <string name="news_panel_url" translatable="false">https://feeds.bbci.co.uk/news/rss.xml</string>
+    <!-- Several feeds separated by spaces: the first (Manchester) is preferred, the others fill the row. -->
+    <string name="news_panel_url" translatable="false">https://feeds.bbci.co.uk/news/england/manchester/rss.xml https://feeds.bbci.co.uk/news/rss.xml</string>
     <!-- Apps over which goal alerts appear (top right, a minute after the goal) while they are open from Home. -->
     <!-- The F1 race result (top ten) pops up a minute after each race finishes, over the app open from Home. -->
     <bool name="f1_results_popup">true</bool>
@@ -489,6 +490,35 @@
          "*" means any app. -->
     <string-array name="goal_watch_apps" translatable="false">
         <item>*</item>
+    </string-array>
+    <!-- Headlines that pop up over other apps when a theme sets "news_alerts": "feed url|LABEL", newest stories only. -->
+    <string-array name="news_alert_feeds" translatable="false">
+        <item>https://feeds.bbci.co.uk/news/england/manchester/rss.xml|BBC MANCHESTER</item>
+        <item>https://feeds.bbci.co.uk/news/rss.xml|BBC NEWS</item>
+        <item>https://feeds.bbci.co.uk/sport/rss.xml|BBC SPORT</item>
+    </string-array>
+    <!-- With a theme's "team_alerts": these clubs' goals, red cards and results in any of team_alert_leagues, by
+         ESPN team id. Barcelona, Real Madrid, PSG, AC Milan, Inter, Juventus, Bayern Munich, Borussia Dortmund. -->
+    <string-array name="goal_alert_teams" translatable="false">
+        <item>83</item>
+        <item>86</item>
+        <item>160</item>
+        <item>103</item>
+        <item>110</item>
+        <item>111</item>
+        <item>132</item>
+        <item>124</item>
+    </string-array>
+    <string-array name="team_alert_leagues" translatable="false">
+        <item>esp.1|LALIGA</item>
+        <item>ita.1|SERIE A</item>
+        <item>ger.1|BUND</item>
+        <item>fra.1|L1</item>
+        <item>uefa.europa|UEL</item>
+        <item>esp.copa_del_rey|COPA</item>
+        <item>ita.coppa_italia|COPPA</item>
+        <item>ger.dfb_pokal|POKAL</item>
+        <item>fra.coupe_de_france|CDF</item>
     </string-array>
     <!-- The app OK on a game box opens. -->
     <string name="scores_open_package" translatable="false">ar.tvplayer.tv</string>

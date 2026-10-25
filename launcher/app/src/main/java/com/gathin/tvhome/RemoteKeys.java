@@ -265,6 +265,7 @@ final class RemoteKeys {
         if (open == null) return;
         try {
             ctx.startActivity(open.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            GoalWatchService.onAppOpened(ctx, pkg);   // the same alerts as an app opened from Home
         } catch (ActivityNotFoundException ignored) {
         }
     }

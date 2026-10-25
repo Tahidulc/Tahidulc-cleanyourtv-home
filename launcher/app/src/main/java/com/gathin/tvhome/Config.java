@@ -382,6 +382,14 @@ final class Config {
         return ctx.getExternalFilesDir(null);
     }
 
+    /** One switch from the theme's config.json, for the parts that run outside Home (GoalWatchService). */
+    static boolean themeFlag(Context ctx, String key, boolean fallback) {
+        File dir = dir(ctx);
+        boolean mounted = Environment.MEDIA_MOUNTED.equals(Environment.getExternalStorageState());
+        JSONObject json = read(mounted && dir != null ? new File(dir, FILE_NAME) : new File(ctx.getFilesDir(), FILE_NAME));
+        return json == null ? fallback : json.optBoolean(key, fallback);
+    }
+
     static Config load(Context ctx) {
         Resources res = ctx.getResources();
         List<String> dock = new ArrayList<>(Arrays.asList(res.getStringArray(R.array.dock_apps)));

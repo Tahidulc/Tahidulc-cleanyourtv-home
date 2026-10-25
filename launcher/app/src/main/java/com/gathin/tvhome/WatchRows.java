@@ -340,7 +340,7 @@ final class WatchRows {
             newsAt = System.currentTimeMillis();
             final int gen = generation;
             reader.execute(() -> {
-                List<String[]> fresh = NewsPanel.read(feed);
+                List<String[]> fresh = NewsPanel.readAll(feed);
                 main.post(() -> {
                     if (fresh.isEmpty()) { newsAt = 0; return; }
                     news = fresh;

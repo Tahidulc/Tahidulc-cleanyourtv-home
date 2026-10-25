@@ -190,6 +190,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     private int lunarOffset;
     private TextView stats;
     private List<RaceWeekend.Race> raceCalendar;
+    private boolean alertsEverywhere;
     private View racePanel;
     private TextView raceKicker, raceHeadline, raceSessions;
     /** config.xml show_stats, overridable by a theme. Off: the line is gone and nothing is read. */
@@ -498,6 +499,9 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                         (btnInputs.getVisibility() == View.VISIBLE ? btnInputs : firstTopButton()).requestFocus();
                     }
                 });
+        scoresTicker.showF1(Config.themeFlag(this, "f1_scores_bar", false));
+        alertsEverywhere = Config.themeFlag(this, "alerts_everywhere", false);
+        scoresTicker.showAlerts(!alertsEverywhere);   // the service's pop-ups cover Home then
         if (getResources().getStringArray(R.array.score_leagues).length > 0) {
             // The scores take the top line, across the width of the header; the header moves down for them.
             root.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) ->
@@ -1022,7 +1026,9 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             return;
         }
         restartIdleClock();
-        GoalWatchService.stop(this);   // Home is in front again: its own scores line takes over
+        // Home is in front again: its own scores line takes over, unless the alerts are wanted everywhere (a theme's
+        // "alerts_everywhere"), Home and the screensaver included.
+        if (alertsEverywhere) GoalWatchService.startEverywhere(this); else GoalWatchService.stop(this);
         videoBackdrop.start();
         weatherLine.start();
         newsTicker.start();

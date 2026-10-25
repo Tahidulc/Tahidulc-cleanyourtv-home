@@ -64,6 +64,8 @@ final class ScoresTicker {
     /** One game, ready to draw. */
     static final class Game {
         String id, league, home, away, homeScore, awayScore, detail;
+        /** ESPN's team ids, and the league slug the game came from (for its match summary). */
+        String homeId, awayId, slug;
         /** Logo URLs: the competition (its dark-background version) and both crests; null when ESPN has none. */
         String leagueLogo, homeLogo, awayLogo;
         int state;   // 0 live, 1 upcoming, 2 finished: the order they are shown in
@@ -72,6 +74,23 @@ final class ScoresTicker {
         final List<String[]> goals = new ArrayList<>();
         /** Every red card: {unique key, player, minute, "home"/"away", ""}. */
         final List<String[]> reds = new ArrayList<>();
+        /** An F1 session instead of a game: the leading drivers as {code, team logo url}, else a line of text. */
+        List<String[]> drivers;
+        String text;
+    }
+
+    /** An F1 box beside the football (a theme's "f1_scores_bar"): the live session, else the last one, else the next. */
+    private boolean f1;
+
+    void showF1(boolean on) {
+        f1 = on;
+    }
+
+    /** The goal alert that drops over the line; off when GoalWatchService shows its pop-ups on Home too. */
+    private boolean alertsOn = true;
+
+    void showAlerts(boolean on) {
+        alertsOn = on;
     }
 
     private static final long ALERT_MS = 10_000L;
@@ -159,6 +178,10 @@ final class ScoresTicker {
         main.removeCallbacks(refresh);
         io.execute(() -> {
             List<Game> found = load(leagues);
+            if (f1) {
+                Game race = f1Game(F1Results.weekend(null));
+                if (race != null) found.add(race);
+            }
             found.sort((a, b) -> a.state != b.state ? Integer.compare(a.state, b.state)
                     : a.state == 2 ? Long.compare(b.kickoff, a.kickoff) : Long.compare(a.kickoff, b.kickoff));
             boolean live = false;
@@ -169,7 +192,7 @@ final class ScoresTicker {
                 // New goals since the last read become alerts; the first read only learns what is already in.
                 for (Game g : found) {
                     for (String[] goal : g.goals) {
-                        if (seenGoals.add(goal[0]) && primed) alerts.add(new Object[]{g, goal});
+                        if (seenGoals.add(goal[0]) && primed && alertsOn) alerts.add(new Object[]{g, goal});
                     }
                 }
                 if (!found.isEmpty()) primed = true;
@@ -197,6 +220,7 @@ final class ScoresTicker {
                     Game g = parse(events.getJSONObject(i), tag, zone);
                     if (g == null) continue;
                     g.leagueLogo = leagueLogo;
+                    g.slug = slug;
                     found.add(g);
                 }
             } catch (Exception ignored) {
@@ -234,6 +258,8 @@ final class ScoresTicker {
             else g.goals.add(new String[]{id + "|" + minute + "|" + scorer, scorer, minute, side, kind});
         }
         g.league = tag;
+        g.homeId = homeId;
+        g.awayId = away.getJSONObject("team").optString("id");
         g.home = home.getJSONObject("team").optString("abbreviation");
         g.away = away.getJSONObject("team").optString("abbreviation");
         g.homeLogo = home.getJSONObject("team").optString("logo", null);
@@ -265,6 +291,43 @@ final class ScoresTicker {
         return g;
     }
 
+    /**
+     * The game's major incidents from its ESPN match summary: penalties missed or saved, VAR checks and goals ruled
+     * out (goals and red cards come from the scoreboard). {unique key, what, player, minute}.
+     */
+    static List<String[]> incidents(Game g) {
+        List<String[]> out = new ArrayList<>();
+        if (g.slug == null || g.id == null) return out;
+        try {
+            JSONObject summary = new JSONObject(get("https://site.api.espn.com/apis/site/v2/sports/soccer/" + g.slug
+                    + "/summary?event=" + g.id));
+            JSONArray events = summary.optJSONArray("keyEvents");
+            for (int i = 0; events != null && i < events.length(); i++) {
+                JSONObject k = events.getJSONObject(i);
+                String type = k.optJSONObject("type") == null ? "" : k.getJSONObject("type").optString("text");
+                String what = incident(type);
+                if (what == null) continue;
+                JSONArray who = k.optJSONArray("participants");
+                JSONObject athlete = who != null && who.length() > 0 ? who.getJSONObject(0).optJSONObject("athlete") : null;
+                String minute = k.optJSONObject("clock") == null ? "" : k.getJSONObject("clock").optString("displayValue");
+                out.add(new String[]{"I|" + g.id + "|" + k.optString("id", type + minute), what,
+                        athlete == null ? "" : athlete.optString("displayName"), minute});
+            }
+        } catch (Exception ignored) {
+        }
+        return out;
+    }
+
+    /** The incidents worth a pop-up, with their icon; null for everything else (substitutions, yellow cards). */
+    private static String incident(String type) {
+        String t = type.toLowerCase(java.util.Locale.ROOT);
+        if (t.contains("penalty") && (t.contains("miss") || t.contains("wide") || t.contains("post") || t.contains("bar"))) return "❌  Pen missed";
+        if (t.contains("penalty") && t.contains("saved")) return "🧤  Pen saved";
+        if (t.contains("disallowed") || t.contains("cancelled") || t.contains("overturned")) return "🚫  Goal ruled out";
+        if (t.contains("var")) return "📺  VAR";
+        return null;
+    }
+
     /** The competition's logo for dark backgrounds, else its default one. */
     private static String leagueLogo(JSONObject board) {
         JSONArray leagues = board.optJSONArray("leagues");
@@ -277,6 +340,43 @@ final class ScoresTicker {
             if (fallback == null) fallback = l.optString("href", null);
         }
         return fallback;
+    }
+
+    /**
+     * The weekend's box: a session under way first (its top three and the lap), else one that finished in the last
+     * twelve hours (its top three), else the next qualifying, sprint or race in the coming four days (day and time).
+     */
+    static Game f1Game(F1Results.Weekend w) {
+        if (w == null) return null;
+        long now = System.currentTimeMillis();
+        F1Results.Session live = null, done = null, next = null;
+        for (F1Results.Session s : w.sessions) {
+            if ("in".equals(s.state)) live = s;
+            else if ("post".equals(s.state) && s.counts() && now - s.start < 12 * 60 * 60_000L + 3 * 60 * 60_000L) done = s;
+            else if ("pre".equals(s.state) && s.counts() && next == null && s.start - now < 4 * 24 * 60 * 60_000L) next = s;
+        }
+        F1Results.Session s = live != null ? live : done != null ? done : next;
+        if (s == null) return null;
+        Game g = new Game();
+        g.id = "F1|" + s.id;
+        g.league = "F1";
+        g.leagueLogo = F1Results.F1_LOGO;
+        g.home = s.label;
+        g.kickoff = s.start;
+        g.state = s == live ? 0 : s == done ? 2 : 1;
+        if (s == next) {
+            ZonedDateTime when = java.time.Instant.ofEpochMilli(s.start).atZone(ZoneId.systemDefault());
+            boolean today = when.toLocalDate().equals(LocalDate.now());
+            g.detail = when.format(DateTimeFormatter.ofPattern(today ? "HH:mm" : "EEE HH:mm", java.util.Locale.getDefault()));
+            g.text = w.name.replace("Grand Prix", "GP");
+        } else {
+            g.drivers = new ArrayList<>();
+            for (int i = 0; i < Math.min(3, s.top.size()); i++) {
+                g.drivers.add(new String[]{F1Results.code(s.top.get(i)), s.logos.get(i)});
+            }
+            g.detail = s == live ? (s.isRace() && s.lap > 0 ? "LAP " + s.lap : "LIVE") : "FINAL";
+        }
+        return g;
     }
 
     private static int parseInt(String s) {
@@ -458,9 +558,22 @@ final class ScoresTicker {
             });
             if (g.leagueLogo != null) b.addView(logoView(g.leagueLogo, 0));
             else b.addView(label(league(g)));
-            b.addView(logoView(g.homeLogo, dp(12)));
-            b.addView(label(teams(g)), margin(dp(6)));
-            b.addView(logoView(g.awayLogo, dp(6)));
+            if (g.drivers != null || g.text != null) {
+                // F1: the session, then its top three with their team logos (or the Grand Prix, before it starts).
+                b.addView(label(bold(g.home)), margin(dp(8)));
+                if (g.drivers != null) {
+                    for (String[] d : g.drivers) {
+                        b.addView(logoView(d[1], dp(8)));
+                        b.addView(label(d[0]), margin(dp(3)));
+                    }
+                } else {
+                    b.addView(label(g.text), margin(dp(8)));
+                }
+            } else {
+                b.addView(logoView(g.homeLogo, dp(12)));
+                b.addView(label(teams(g)), margin(dp(6)));
+                b.addView(logoView(g.awayLogo, dp(6)));
+            }
             b.addView(label(detail(g)), margin(dp(8)));
             // Each box grows in proportion to what it holds, so a page always fills the whole line.
             b.setGravity(Gravity.CENTER);
@@ -501,6 +614,13 @@ final class ScoresTicker {
 
     /** Width of one game's box: its texts, three logos and their gaps, and the padding. */
     private int boxWidth(Game g) {
+        if (g.drivers != null || g.text != null) {
+            float t = measure.measureText(g.home) + measure.measureText(detail(g).toString());
+            int extra = dp(8 + 8);
+            if (g.drivers != null) for (String[] d : g.drivers) { t += measure.measureText(d[0]); extra += logo + dp(8 + 3); }
+            else { t += measure.measureText(g.text); extra += dp(8); }
+            return Math.round(t) + logo + extra + dp(24) + dp(4);
+        }
         float text = measure.measureText(teams(g).toString()) + measure.measureText(detail(g).toString());
         int lead = g.leagueLogo != null ? logo : Math.round(measure.measureText(league(g).toString()));
         return Math.round(text) + lead + 2 * logo + dp(12 + 6 + 6 + 8) + dp(24) + dp(4);
@@ -510,6 +630,12 @@ final class ScoresTicker {
         SpannableStringBuilder s = new SpannableStringBuilder(g.league);
         s.setSpan(new StyleSpan(Typeface.BOLD), 0, s.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
         s.setSpan(new ForegroundColorSpan(0xFFC77DFF), 0, s.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        return s;
+    }
+
+    private static CharSequence bold(String text) {
+        SpannableStringBuilder s = new SpannableStringBuilder(text);
+        s.setSpan(new StyleSpan(Typeface.BOLD), 0, s.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
         return s;
     }
 

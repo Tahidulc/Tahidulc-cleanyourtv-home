@@ -29,6 +29,26 @@ final class NewsPanel {
     static final long EVERY_MS = 15 * 60_000L;
     static final int STORIES = 12;
 
+    /**
+     * Several feeds separated by spaces, the first preferred: up to half the stories from it (local news), the rest
+     * from the others in turn, each story once.
+     */
+    static List<String[]> readAll(String feeds) {
+        String[] urls = feeds.trim().split("\\s+");
+        if (urls.length == 1) return read(urls[0]);
+        List<String[]> out = new ArrayList<>();
+        java.util.Set<String> links = new java.util.HashSet<>();
+        for (int f = 0; f < urls.length; f++) {
+            int cap = f == 0 ? STORIES / 2 : STORIES;
+            int taken = 0;
+            for (String[] st : read(urls[f])) {
+                if (out.size() >= STORIES || taken >= cap) break;
+                if (links.add(st[2] == null ? st[0] : st[2]) && links.add(st[0])) { out.add(st); taken++; }
+            }
+        }
+        return out;
+    }
+
     /** {headline, picture url, article link} */
     static List<String[]> read(String feed) {
         List<String[]> out = new ArrayList<>();

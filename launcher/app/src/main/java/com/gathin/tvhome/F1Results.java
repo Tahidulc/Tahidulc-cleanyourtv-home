@@ -19,6 +19,103 @@ final class F1Results {
     }
 
     private static final String FEED = "https://site.api.espn.com/apis/site/v2/sports/racing/f1/scoreboard";
+    static final String F1_LOGO = "https://a.espncdn.com/i/teamlogos/leagues/500/f1.png";
+
+    /** One session of the weekend: practice, sprint qualifying, sprint, qualifying or the race. */
+    static final class Session {
+        String id, abbr, label, state;   // abbr as ESPN writes it (FP1, SS, SR, Qual, Race); state: pre, in, post
+        long start;
+        int lap;   // laps run so far (ESPN's period); 0 when not known
+        final List<String> top = new ArrayList<>();    // surnames in running order, up to ten
+        final List<String> logos = new ArrayList<>();  // each one's team logo url, or null
+
+        /** Qualifying, the sprint and the race: the sessions worth an alert. Practice is not. */
+        boolean counts() {
+            return !abbr.startsWith("FP");
+        }
+
+        boolean isRace() {
+            return "Race".equals(abbr) || "SR".equals(abbr);
+        }
+    }
+
+    /** The scoreboard's current weekend: the Grand Prix and its sessions in order. */
+    static final class Weekend {
+        String name;
+        final List<Session> sessions = new ArrayList<>();
+    }
+
+    /** The weekend on the scoreboard (dates "yyyyMMdd" for a past one, or null for the current), or null. */
+    static Weekend weekend(String dates) {
+        try {
+            JSONObject board = new JSONObject(get(dates == null ? FEED : FEED + "?dates=" + dates));
+            JSONArray events = board.optJSONArray("events");
+            if (events == null || events.length() == 0) return null;
+            JSONObject e = events.getJSONObject(0);
+            Weekend w = new Weekend();
+            w.name = shortName(e.optString("name"));
+            java.util.Map<String, String> teams = null;
+            JSONArray comps = e.optJSONArray("competitions");
+            for (int c = 0; comps != null && c < comps.length(); c++) {
+                JSONObject comp = comps.getJSONObject(c);
+                Session s = new Session();
+                s.abbr = comp.optJSONObject("type") == null ? "" : comp.getJSONObject("type").optString("abbreviation");
+                s.id = e.optString("id") + "|" + s.abbr;
+                s.label = label(s.abbr);
+                JSONObject status = comp.getJSONObject("status");
+                s.state = status.getJSONObject("type").optString("state");
+                s.lap = status.optInt("period", 0);
+                s.start = java.time.OffsetDateTime.parse(comp.optString("date")).toInstant().toEpochMilli();
+                if (!"pre".equals(s.state)) {
+                    if (teams == null) teams = teamsCached();
+                    JSONArray drivers = comp.optJSONArray("competitors");
+                    List<JSONObject> list = new ArrayList<>();
+                    for (int d = 0; drivers != null && d < drivers.length(); d++) list.add(drivers.getJSONObject(d));
+                    list.sort((a, b) -> Integer.compare(a.optInt("order", 99), b.optInt("order", 99)));
+                    for (JSONObject x : list) {
+                        if (s.top.size() >= 10) break;
+                        JSONObject a = x.optJSONObject("athlete");
+                        String surname = GoalWatchService.surname(a == null ? "" : a.optString("displayName", a.optString("shortName")));
+                        s.top.add(surname);
+                        s.logos.add(logo(teams.get(key(surname))));
+                    }
+                }
+                w.sessions.add(s);
+            }
+            return w;
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    /** "Qual" to "QUALIFYING", "SS" to "SPRINT QUALI": the names the TV shows. */
+    static String label(String abbr) {
+        switch (abbr) {
+            case "Qual": return "QUALIFYING";
+            case "Race": return "RACE";
+            case "SS": return "SPRINT QUALI";
+            case "SR": return "SPRINT";
+            default: return abbr.toUpperCase(java.util.Locale.ROOT);
+        }
+    }
+
+    /** "Antonelli" to "ANT": the three letters F1's own graphics use for nearly every driver. */
+    static String code(String surname) {
+        String k = key(surname).replaceAll("[^a-z]", "");
+        return (k.length() > 3 ? k.substring(0, 3) : k).toUpperCase(java.util.Locale.ROOT);
+    }
+
+    private static java.util.Map<String, String> teamCache;
+    private static long teamCacheAt;
+
+    /** teams(), read at most every six hours: a driver changes team between seasons, not between laps. */
+    static synchronized java.util.Map<String, String> teamsCached() {
+        if (teamCache == null || teamCache.isEmpty() || System.currentTimeMillis() - teamCacheAt > 6 * 60 * 60_000L) {
+            teamCache = teams();
+            teamCacheAt = System.currentTimeMillis();
+        }
+        return teamCache;
+    }
 
     /** The race session of the scoreboard's event (dates "yyyyMMdd" for a past weekend, or null), or null. */
     static Race load(String dates) {
@@ -39,7 +136,7 @@ final class F1Results {
                     List<JSONObject> list = new ArrayList<>();
                     for (int d = 0; drivers != null && d < drivers.length(); d++) list.add(drivers.getJSONObject(d));
                     list.sort((a, b) -> Integer.compare(a.optInt("order", 99), b.optInt("order", 99)));
-                    java.util.Map<String, String> teams = teams();
+                    java.util.Map<String, String> teams = teamsCached();
                     for (JSONObject x : list) {
                         if (r.top.size() >= 10) break;
                         JSONObject a = x.optJSONObject("athlete");
