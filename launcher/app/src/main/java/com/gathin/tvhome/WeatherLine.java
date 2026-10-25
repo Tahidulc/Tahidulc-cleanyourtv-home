@@ -64,6 +64,8 @@ final class WeatherLine {
                 + "&current=temperature_2m,weather_code,is_day&timezone=auto";
         io.execute(() -> {
             String line = null;
+            int icon = 0;
+            String words = "";
             try {
                 HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
                 conn.setConnectTimeout(6000);
@@ -80,21 +82,44 @@ final class WeatherLine {
                 }
                 JSONObject current = new JSONObject(body).getJSONObject("current");
                 long temp = Math.round(current.getDouble("temperature_2m"));
-                String words = describe(current.getInt("weather_code"));
-                line = String.format(Locale.getDefault(), "%d°  ·  %s", temp, words)
-                        + (place.isEmpty() ? "" : "  ·  " + place);
+                int code = current.getInt("weather_code");
+                words = describe(code);
+                icon = icon(code, current.optInt("is_day", 1) == 1);
+                line = String.format(Locale.getDefault(), "%d°", temp) + (place.isEmpty() ? "" : "  ·  " + place);
             } catch (Exception ignored) {
             }
             final String text = line;
+            final int iconRes = icon;
+            final String description = words;
             main.post(() -> {
                 if (text != null) {
                     fetchedAt = System.currentTimeMillis();
                     view.setText(text);
+                    view.setContentDescription(description + ", " + text);
+                    android.graphics.drawable.Drawable d = iconRes == 0 ? null : view.getContext().getDrawable(iconRes);
+                    if (d != null) {
+                        int size = Math.round(view.getTextSize() * 1.6f);
+                        d.setBounds(0, 0, size, size);
+                    }
+                    view.setCompoundDrawablePadding(Math.round(view.getTextSize() * 0.6f));
+                    view.setCompoundDrawables(d, null, null, null);
                     view.setVisibility(View.VISIBLE);
                 }
                 if (running) main.postDelayed(tick, text != null ? EVERY_MS : RETRY_MS);
             });
         });
+    }
+
+    /** The icon for a WMO weather code; clear skies get the moon at night. */
+    static int icon(int code, boolean day) {
+        if (code <= 1) return day ? R.drawable.wx_clear : R.drawable.wx_night;
+        if (code == 2) return R.drawable.wx_partly;
+        if (code == 3) return R.drawable.wx_cloud;
+        if (code == 45 || code == 48) return R.drawable.wx_fog;
+        if (code >= 95) return R.drawable.wx_storm;
+        if ((code >= 71 && code <= 77) || code == 85 || code == 86) return R.drawable.wx_snow;
+        if (code >= 51) return R.drawable.wx_rain;
+        return R.drawable.wx_cloud;
     }
 
     /** WMO weather interpretation codes, as Open-Meteo documents them. */

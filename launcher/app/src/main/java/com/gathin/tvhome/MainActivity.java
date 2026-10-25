@@ -138,6 +138,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     private WeatherLine weatherLine;
     private WatchRows watchRows;
     private NewsTicker newsTicker;
+    private ScoresTicker scoresTicker;
     private GlassView glass;
     private View ambient;
     private TextView heroName;
@@ -452,12 +453,25 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                 getString(R.string.weather_longitude), getString(R.string.weather_place));
         newsTicker = new NewsTicker(this, root, density, getString(R.string.news_feed_url),
                 getString(R.string.news_source));
-        if (!getString(R.string.news_feed_url).isEmpty()) {
+        if (!getString(R.string.news_feed_url).isEmpty() || getResources().getStringArray(R.array.score_leagues).length > 0) {
             // Make room for the ticker above the greeting.
             View column = (View) findViewById(R.id.leftBlock).getParent().getParent();
-            column.setPadding(column.getPaddingLeft(), column.getPaddingTop() + Math.round(12 * density),
+            column.setPadding(column.getPaddingLeft(), column.getPaddingTop() + Math.round(22 * density),
                     column.getPaddingRight(), column.getPaddingBottom());
         }
+        scoresTicker = new ScoresTicker(this, root, density, getResources().getStringArray(R.array.score_leagues));
+        if (getResources().getStringArray(R.array.score_leagues).length > 0) {
+            // The scores take the top line, across the width of the header; the header moves down for them.
+            root.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) ->
+                    scoresTicker.place(Math.round(56 * density), Math.round(23 * density), r - l - Math.round(56 * density)));
+        }
+        View btnAssistant = findViewById(R.id.btnAssistant);
+        btnAssistant.setOnClickListener(v -> {
+            try {
+                startActivity(new Intent(Intent.ACTION_ASSIST).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            } catch (Exception ignored) {
+            }
+        });
         watchRows = new WatchRows(this, root, density, new WatchRows.Host() {
             @Override public void onCardsUp() {
                 (btnInputs.getVisibility() == View.VISIBLE ? btnInputs : firstTopButton()).requestFocus();
@@ -807,6 +821,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             return keyCode == KeyEvent.KEYCODE_DPAD_RIGHT && v.getId() == rightButton;
         };
         btnInputs.setOnKeyListener(pillKeys);
+        findViewById(R.id.btnAssistant).setOnKeyListener(pillKeys);
         btnWifi.setOnKeyListener(pillKeys);
         btnSettings.setOnKeyListener(pillKeys);
         btnReorder.setOnKeyListener(pillKeys);
@@ -964,6 +979,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         videoBackdrop.start();
         weatherLine.start();
         newsTicker.start();
+        scoresTicker.start();
         promptsPaused = false;
         if (grid.getAdapter() == null) grid.setAdapter(adapter);   // dropped by onTrimMemory
         switch (tileRefresh.onResume(packagesChangedSinceRebuild())) {
@@ -1168,6 +1184,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         videoBackdrop.stop();
         weatherLine.stop();
         newsTicker.stop();
+        scoresTicker.stop();
         stopAmbientAnimation();
         hero.animate().cancel();
         ambient.animate().cancel();
@@ -1233,6 +1250,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         videoBackdrop.stop();
         weatherLine.close();
         newsTicker.close();
+        scoresTicker.close();
         watchRows.close();
         ConnectivityManager cm = getSystemService(ConnectivityManager.class);
         TvInputManager tim = (TvInputManager) getSystemService(TV_INPUT_SERVICE);

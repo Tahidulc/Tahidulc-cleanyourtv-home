@@ -370,6 +370,14 @@
                     android:drawableStart="@drawable/ic_apps_pill"
                     android:nextFocusDown="@+id/grid" />
 
+                <!-- Google Assistant: opens the TV's own Assistant (ACTION_ASSIST). -->
+                <TextView
+                    android:id="@+id/btnAssistant"
+                    style="@style/TopButtonIcon"
+                    android:drawableStart="@drawable/ic_mic"
+                    android:contentDescription="@string/assistant"
+                    android:nextFocusDown="@+id/grid" />
+
                 <TextView
                     android:id="@+id/btnSettings"
                     style="@style/TopButton"

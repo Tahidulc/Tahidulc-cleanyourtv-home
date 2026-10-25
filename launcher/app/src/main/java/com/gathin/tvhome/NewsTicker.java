@@ -56,13 +56,16 @@ final class NewsTicker {
         view.setTextColor(0xCCFFFFFF);
         view.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f);
         view.setGravity(Gravity.CENTER_VERTICAL);
+        view.setBackgroundResource(R.drawable.glass_box);
+        int pad = Math.round(16 * density);
+        view.setPadding(pad, 0, pad, 0);
         view.setVisibility(View.GONE);
         view.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
         FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
-                Math.round(24 * density), Gravity.TOP);
-        lp.leftMargin = Math.round(62 * density);
+                Math.round(30 * density), Gravity.TOP);
+        lp.leftMargin = Math.round(56 * density);
         lp.rightMargin = Math.round(56 * density);
-        lp.topMargin = Math.round(4 * density);
+        lp.topMargin = Math.round(8 * density);
         root.addView(view, lp);
     }
 

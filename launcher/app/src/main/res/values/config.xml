@@ -446,6 +446,22 @@
     <string name="weather_longitude" translatable="false">-2.2426</string>
     <string name="weather_place" translatable="false">Manchester</string>
     <!-- News ticker along the top: an RSS feed; empty turns the ticker off. -->
-    <string name="news_feed_url" translatable="false">https://feeds.bbci.co.uk/news/rss.xml</string>
+    <string name="news_feed_url" translatable="false"></string>
     <string name="news_source" translatable="false">BBC News</string>
+    <string name="assistant" translatable="false">Google Assistant</string>
+    <!-- Today's football beside the greeting, one box per game: ESPN league ids and the tag each box shows.
+         An empty list turns the scores off. Ids: espn.com/soccer/competitions (eng.1, esp.1, uefa.champions...). -->
+    <string-array name="score_leagues" translatable="false">
+        <item>eng.1|PL</item>
+        <item>eng.2|CHAMP</item>
+        <item>sco.1|SPFL</item>
+        <item>uefa.champions|UCL</item>
+        <item>uefa.europa|UEL</item>
+        <item>eng.fa|FA CUP</item>
+        <item>eng.league_cup|EFL CUP</item>
+        <item>esp.1|LALIGA</item>
+        <item>ita.1|SERIE A</item>
+        <item>ger.1|BUNDES</item>
+        <item>fra.1|LIGUE 1</item>
+    </string-array>
 </resources>
