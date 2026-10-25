@@ -44,6 +44,10 @@ final class WatchRows {
     interface Host {
         void onCardsUp();
         void onCardsDown();
+        /** The strip appeared or went: Home hides the shelf's big app name while the cards take its place. */
+        void onCardsShown(boolean shown);
+        /** OK on the resume card of an app that publishes no rows: open it the way its dock tile does. */
+        void onResumeApp();
     }
 
     private static final int MAX_CONTINUE = 8;
@@ -54,6 +58,9 @@ final class WatchRows {
         String title, poster, intent;
         boolean continueWatching;
         float progress = -1f;
+        /** The resume card: the app's own artwork and when it was last opened, for apps that publish nothing. */
+        android.graphics.drawable.Drawable art;
+        String subtitle;
     }
 
     private final Context context;
@@ -73,6 +80,7 @@ final class WatchRows {
     private final Map<String, Long> cachedAt = new HashMap<>();
     private String shownPackage;
     private String label = "";
+    private Item resume;
     private int generation;
 
     WatchRows(Context context, FrameLayout root, float density, Host host) {
@@ -86,7 +94,7 @@ final class WatchRows {
         panel.setVisibility(View.GONE);
         caption = new TextView(context);
         caption.setTextColor(0xB3FFFFFF);
-        caption.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f);
+        caption.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f);
         caption.setLetterSpacing(0.14f);
         caption.setAllCaps(true);
         caption.setSingleLine(true);
@@ -115,7 +123,7 @@ final class WatchRows {
 
     /** Height of the whole panel (caption, cards and their focus room), for placing it above the shelf. */
     int height() {
-        return dp(12 + 4) + dp(8) * 2 + cardHeight();
+        return dp(13 + 6) + dp(8) * 2 + cardHeight();
     }
 
     boolean hasCards() {
@@ -127,11 +135,16 @@ final class WatchRows {
     }
 
     /** Shows the rows for this dock app at y (root coordinates of the panel's top), reading them if needed. */
-    void show(String packageName, String appLabel, float y) {
+    void show(String packageName, String appLabel, float y, android.graphics.drawable.Drawable art, String lastOpened) {
         panel.setY(y);
+        Item r = new Item();
+        r.art = art;
+        r.title = appLabel;
+        r.subtitle = lastOpened;
+        resume = r;
         if (packageName == null) { hide(); return; }
         if (packageName.equals(shownPackage)) {
-            if (strip.getChildCount() > 0) panel.setVisibility(View.VISIBLE);
+            if (strip.getChildCount() > 0) setShown(true);
             return;
         }
         shownPackage = packageName;
@@ -143,7 +156,7 @@ final class WatchRows {
             return;
         }
         strip.removeAllViews();
-        panel.setVisibility(View.GONE);
+        setShown(false);
         reader.execute(() -> {
             List<Item> items = read(packageName);
             main.post(() -> {
@@ -158,7 +171,7 @@ final class WatchRows {
         if (panel.hasFocus()) return;
         shownPackage = null;
         generation++;
-        panel.setVisibility(View.GONE);
+        setShown(false);
     }
 
     /** Focus the first card; false when there is none. */
@@ -251,24 +264,32 @@ final class WatchRows {
 
     // ---- cards -----------------------------------------------------------------------------------
 
-    private int cardWidth() { return dp(150); }
-    private int cardHeight() { return dp(84); }
+    private int cardWidth() { return dp(240); }
+    private int cardHeight() { return dp(135); }
+
+    private void setShown(boolean shown) {
+        boolean was = panel.getVisibility() == View.VISIBLE;
+        panel.setVisibility(shown ? View.VISIBLE : View.GONE);
+        if (was != shown) host.onCardsShown(shown);
+    }
 
     private void fill(List<Item> items) {
         strip.removeAllViews();
         if (items == null || items.isEmpty()) {
-            panel.setVisibility(View.GONE);
-            return;
+            if (resume == null || resume.art == null) { setShown(false); return; }
+            items = new ArrayList<>();
+            items.add(resume);
         }
         for (int i = 0; i < items.size(); i++) strip.addView(card(items.get(i), i, items.size()));
         setCaption(items.get(0));
-        panel.setVisibility(View.VISIBLE);
+        setShown(true);
         panel.setAlpha(0f);
         panel.animate().alpha(1f).setDuration(220).start();
     }
 
     private void setCaption(Item item) {
-        String section = context.getString(item.continueWatching ? R.string.continue_watching : R.string.recommended);
+        String section = context.getString(item.art != null ? R.string.resume
+                : item.continueWatching ? R.string.continue_watching : R.string.recommended);
         caption.setText(section + "  ·  " + label);
     }
 
@@ -302,7 +323,7 @@ final class WatchRows {
         TextView title = new TextView(context);
         title.setText(item.title == null ? "" : item.title);
         title.setTextColor(Color.WHITE);
-        title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f);
+        title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f);
         title.setSingleLine(true);
         title.setEllipsize(android.text.TextUtils.TruncateAt.END);
         int p = dp(8);
@@ -330,7 +351,10 @@ final class WatchRows {
             v.setElevation(focused ? dp(6) : 0);
             if (focused) setCaption(item);
         });
-        card.setOnClickListener(v -> open(item));
+        card.setOnClickListener(v -> {
+            if (item.art != null) host.onResumeApp();
+            else open(item);
+        });
         card.setOnKeyListener((v, keyCode, event) -> {
             if (event.getAction() != KeyEvent.ACTION_DOWN) return false;
             if (keyCode == KeyEvent.KEYCODE_DPAD_UP) { host.onCardsUp(); return true; }
@@ -339,7 +363,12 @@ final class WatchRows {
             if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) return index == count - 1;
             return false;
         });
-        loadPoster(item.poster, image);
+        if (item.art != null) {
+            image.setImageDrawable(item.art);
+            if (item.subtitle != null) title.setText(item.subtitle);
+        } else {
+            loadPoster(item.poster, image);
+        }
         return card;
     }
 

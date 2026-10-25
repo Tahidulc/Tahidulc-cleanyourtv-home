@@ -456,6 +456,15 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             @Override public void onCardsDown() {
                 focusTile(singleRow ? lastFocused : lastFocused % COLUMNS);
             }
+            @Override public void onCardsShown(boolean shown) {
+                hero.setVisibility(shown ? View.INVISIBLE : View.VISIBLE);
+            }
+            @Override public void onResumeApp() {
+                RecyclerView.ViewHolder vh = grid.findViewHolderForAdapterPosition(
+                        singleRow ? lastFocused : lastFocused % COLUMNS);
+                View tile = vh == null ? null : vh.itemView.findViewById(R.id.card);
+                if (tile != null) tile.performClick();
+            }
         });
         // dock_title false: the name above the dock (and the cinematic lines under it) never shows; the glow
         // still follows the dock.
@@ -1715,7 +1724,9 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         int color = adapter.ambientColorAt(position);
         float y = dockTopInRoot - 14 * density - 26 * density - hero.getHeight();
         boolean changed = !label.contentEquals(heroName.getText());
-        watchRows.show(adapter.packageAt(position), label, y - watchRows.height());
+        long opened = LastOpened.get(this, adapter.packageAt(position));
+        watchRows.show(adapter.packageAt(position), label, dockTopInRoot - 22 * density - watchRows.height(),
+                adapter.artworkAt(position), opened > 0 ? getString(R.string.last_opened, LastOpened.describe(this, opened)) : label);
         if (cinematic && heroArtAlpha > 0f) showHeroArt(position);
 
         if (!animations || reducedMotion) {
