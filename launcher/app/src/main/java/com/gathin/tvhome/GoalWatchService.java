@@ -79,6 +79,13 @@ public class GoalWatchService extends Service {
                 .setContentTitle("Goal alerts").setOngoing(true).build();
         if (Build.VERSION.SDK_INT >= 34) startForeground(7, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
         else startForeground(7, n);
+        if (intent != null && intent.hasExtra("test_goal")) {
+            // adb only (the service needs DUMP from outside): one sample alert now, to check the look over an app.
+            ScoresTicker.Game g = new ScoresTicker.Game();
+            g.league = "PL"; g.home = "LIV"; g.away = "BHA"; g.homeScore = "2"; g.awayScore = "1";
+            queue.add(line(g, new String[]{"test", "Mohamed Salah", "67'", "home", ""}));
+            showNext();
+        }
         if (startedAt == 0) {
             startedAt = System.currentTimeMillis();
             main.post(poll);
