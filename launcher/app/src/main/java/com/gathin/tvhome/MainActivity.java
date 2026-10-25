@@ -134,6 +134,9 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     private RecyclerView grid;
     private FrameLayout root;
     private WallpaperPlayer wallpaperPlayer;
+    private VideoBackdrop videoBackdrop;
+    private WeatherLine weatherLine;
+    private WatchRows watchRows;
     private GlassView glass;
     private View ambient;
     private TextView heroName;
@@ -417,6 +420,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         // the theme's background, so launch looks the same.
         getWindow().setBackgroundDrawable(null);
         wallpaperPlayer = new WallpaperPlayer(this, root, cfg);
+        videoBackdrop = new VideoBackdrop(this, root);
         sky = findViewById(R.id.sky);
         sky.setIntensity(cfg.skyIntensity);
         glass = findViewById(R.id.glass);
@@ -443,6 +447,16 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         cinematicWhiteFocus = cfg.cinematicWhiteFocus;
         heroArtAlpha = cfg.cinematicArt / 100f;
         if (cinematic) setUpCinematicShelf(cfg.cinematicScrim);
+        weatherLine = new WeatherLine(findViewById(R.id.weather), getString(R.string.weather_latitude),
+                getString(R.string.weather_longitude), getString(R.string.weather_place));
+        watchRows = new WatchRows(this, root, density, new WatchRows.Host() {
+            @Override public void onCardsUp() {
+                (btnInputs.getVisibility() == View.VISIBLE ? btnInputs : firstTopButton()).requestFocus();
+            }
+            @Override public void onCardsDown() {
+                focusTile(singleRow ? lastFocused : lastFocused % COLUMNS);
+            }
+        });
         // dock_title false: the name above the dock (and the cinematic lines under it) never shows; the glow
         // still follows the dock.
         if (!cfg.dockTitle) hero.setVisibility(View.GONE);
@@ -764,8 +778,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             if (event.getAction() != KeyEvent.ACTION_DOWN) return false;
             if (keyCode == KeyEvent.KEYCODE_DPAD_UP) return true;
             if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
-                // Back to the dock tile Up came from, not wherever the focus finder lands.
-                focusTile(singleRow ? lastFocused : lastFocused % COLUMNS);
+                // Back to the cards or the dock tile Up came from, not wherever the focus finder lands.
+                if (!watchRows.focus()) focusTile(singleRow ? lastFocused : lastFocused % COLUMNS);
                 return true;
             }
             int firstButton = btnInputs.getVisibility() == View.VISIBLE ? R.id.btnInputs : firstTopButton().getId();
@@ -929,6 +943,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             return;
         }
         restartIdleClock();
+        videoBackdrop.start();
+        weatherLine.start();
         promptsPaused = false;
         if (grid.getAdapter() == null) grid.setAdapter(adapter);   // dropped by onTrimMemory
         switch (tileRefresh.onResume(packagesChangedSinceRebuild())) {
@@ -1130,6 +1146,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         root.removeCallbacks(showIdleClock);
         endReorder();   // Home or another app while reordering keeps the order so far
         wallpaperPlayer.stop();
+        videoBackdrop.stop();
+        weatherLine.stop();
         stopAmbientAnimation();
         hero.animate().cancel();
         ambient.animate().cancel();
@@ -1173,6 +1191,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         heroArtCache.clear();
         heroArtKey = null;
         wallpaperPlayer.releaseForMemoryPressure();
+        watchRows.trim();
         tileRefresh.invalidate();
     }
 
@@ -1191,6 +1210,9 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         super.onDestroy();
         unregisterReceiver(packageReceiver);
         wallpaperPlayer.close();
+        videoBackdrop.stop();
+        weatherLine.close();
+        watchRows.close();
         ConnectivityManager cm = getSystemService(ConnectivityManager.class);
         TvInputManager tim = (TvInputManager) getSystemService(TV_INPUT_SERVICE);
         if (tim != null) tim.unregisterCallback(inputCallback);
@@ -1693,6 +1715,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         int color = adapter.ambientColorAt(position);
         float y = dockTopInRoot - 14 * density - 26 * density - hero.getHeight();
         boolean changed = !label.contentEquals(heroName.getText());
+        watchRows.show(adapter.packageAt(position), label, y - watchRows.height());
         if (cinematic && heroArtAlpha > 0f) showHeroArt(position);
 
         if (!animations || reducedMotion) {
@@ -1959,6 +1982,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
      * name above the dock does not show (every grid tile has its name underneath).
      */
     private void showGlowOnly(int position) {
+        watchRows.hide();
         int color = adapter.ambientColorAt(position);
         stopAmbientAnimation();
         hero.animate().cancel();
@@ -1985,6 +2009,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     }
 
     private void hideHero() {
+        watchRows.hide();
         if (!heroShown) return;
         stopAmbientAnimation();
         hero.animate().cancel();
@@ -2232,7 +2257,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                     rtlAppGrid, keyCode == KeyEvent.KEYCODE_DPAD_LEFT);
         }
         if (keyCode == KeyEvent.KEYCODE_DPAD_UP) {
-            if (position < COLUMNS) return false;          // dock row: let focus move to the top bar
+            // dock row: into the Continue watching cards when the app has any, else on to the top bar
+            if (position < COLUMNS) return watchRows.focus();
             target = position - COLUMNS;
         } else {
             int lastRowStart = ((count - 1) / COLUMNS) * COLUMNS;
