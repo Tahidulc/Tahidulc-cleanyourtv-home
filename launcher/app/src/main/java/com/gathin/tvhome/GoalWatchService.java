@@ -1040,13 +1040,14 @@ public class GoalWatchService extends Service {
                 grow.start();
             }).start();
         });
-        // Closing is the opening backwards: the text fades, the pill draws back in to the dot, the dot pops away.
+        // Closing is the opening backwards: the pill draws back in to the dot with the text going as it passes (the
+        // shrinking outline clips it from the right while it fades), then the dot pops away.
         main.postDelayed(() -> {
             box.setLayerType(View.LAYER_TYPE_HARDWARE, null);
             for (int c = 0; c < box.getChildCount(); c++) {
-                box.getChildAt(c).animate().alpha(0f).setStartDelay((box.getChildCount() - 1 - c) * 30L).setDuration(220).start();
+                box.getChildAt(c).animate().alpha(0f).setStartDelay(0).setDuration(600).start();
             }
-            box.postDelayed(() -> {
+            box.post(() -> {
                 android.animation.ValueAnimator shrink = android.animation.ValueAnimator.ofFloat(visible[0], h);
                 shrink.setDuration(700);
                 shrink.setInterpolator(new android.view.animation.AccelerateDecelerateInterpolator());
@@ -1066,7 +1067,7 @@ public class GoalWatchService extends Service {
                     }
                 });
                 shrink.start();
-            }, 220 + box.getChildCount() * 30L);
+            });
         }, SHOW_MS + 1_400);
     }
 
