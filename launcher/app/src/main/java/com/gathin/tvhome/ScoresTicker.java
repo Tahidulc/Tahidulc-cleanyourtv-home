@@ -156,27 +156,7 @@ final class ScoresTicker {
     private void fetch() {
         main.removeCallbacks(refresh);
         io.execute(() -> {
-            ZoneId zone = ZoneId.systemDefault();
-            String date = LocalDate.now(zone).format(DateTimeFormatter.BASIC_ISO_DATE);
-            List<Game> found = new ArrayList<>();
-            for (String entry : leagues) {
-                String[] parts = entry.split("\\|", 2);
-                String slug = parts[0].trim();
-                String tag = parts.length > 1 ? parts[1].trim() : slug;
-                try {
-                    JSONObject board = new JSONObject(get(String.format(FEED, slug, date)));
-                    String leagueLogo = leagueLogo(board);
-                    JSONArray events = board.optJSONArray("events");
-                    for (int i = 0; events != null && i < events.length(); i++) {
-                        Game g = parse(events.getJSONObject(i), tag, zone);
-                        if (g == null) continue;
-                        g.leagueLogo = leagueLogo;
-                        found.add(g);
-                    }
-                } catch (Exception ignored) {
-                    // one league failing leaves the others
-                }
-            }
+            List<Game> found = load(leagues);
             found.sort((a, b) -> a.state != b.state ? Integer.compare(a.state, b.state)
                     : a.state == 2 ? Long.compare(b.kickoff, a.kickoff) : Long.compare(a.kickoff, b.kickoff));
             boolean live = false;
@@ -196,6 +176,32 @@ final class ScoresTicker {
                 if (running) main.postDelayed(refresh, anyLive ? LIVE_MS : IDLE_MS);
             });
         });
+    }
+
+    /** Today's games for these leagues ("eng.1|PL"), unsorted; a league that fails to load is left out. */
+    static List<Game> load(String[] leagues) {
+        ZoneId zone = ZoneId.systemDefault();
+        String date = LocalDate.now(zone).format(DateTimeFormatter.BASIC_ISO_DATE);
+        List<Game> found = new ArrayList<>();
+        for (String entry : leagues) {
+            String[] parts = entry.split("\\|", 2);
+            String slug = parts[0].trim();
+            String tag = parts.length > 1 ? parts[1].trim() : slug;
+            try {
+                JSONObject board = new JSONObject(get(String.format(FEED, slug, date)));
+                String leagueLogo = leagueLogo(board);
+                JSONArray events = board.optJSONArray("events");
+                for (int i = 0; events != null && i < events.length(); i++) {
+                    Game g = parse(events.getJSONObject(i), tag, zone);
+                    if (g == null) continue;
+                    g.leagueLogo = leagueLogo;
+                    found.add(g);
+                }
+            } catch (Exception ignored) {
+                // one league failing leaves the others
+            }
+        }
+        return found;
     }
 
     private static Game parse(JSONObject e, String tag, ZoneId zone) throws Exception {

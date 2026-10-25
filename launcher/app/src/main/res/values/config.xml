@@ -477,6 +477,10 @@
     <bool name="top_bar_apps_mono">true</bool>
     <!-- BBC News beside a lone resume card (an RSS feed with media:thumbnail); empty leaves the space empty. -->
     <string name="news_panel_url" translatable="false">https://feeds.bbci.co.uk/news/rss.xml</string>
+    <!-- Apps over which goal alerts appear (top right, a minute after the goal) while they are open from Home. -->
+    <string-array name="goal_watch_apps" translatable="false">
+        <item>ar.tvplayer.tv</item>
+    </string-array>
     <!-- The app OK on a game box opens. -->
     <string name="scores_open_package" translatable="false">ar.tvplayer.tv</string>
     <string-array name="score_leagues" translatable="false">

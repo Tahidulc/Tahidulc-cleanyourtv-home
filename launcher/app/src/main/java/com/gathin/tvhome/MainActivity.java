@@ -490,6 +490,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                         if (open == null) return;
                         try {
                             startActivity(open.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+                            GoalWatchService.onAppOpened(MainActivity.this, getString(R.string.scores_open_package));
                         } catch (Exception ignored) {
                         }
                     }
@@ -1021,6 +1022,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             return;
         }
         restartIdleClock();
+        GoalWatchService.stop(this);   // Home is in front again: its own scores line takes over
         videoBackdrop.start();
         weatherLine.start();
         newsTicker.start();
