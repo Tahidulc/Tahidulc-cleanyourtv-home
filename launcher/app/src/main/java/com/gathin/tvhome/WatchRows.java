@@ -56,6 +56,8 @@ final class WatchRows {
     /** The focused card grows this much; EDGE dp of padding around the strip leaves it room on every side. */
     private static final float FOCUS_SCALE = 1.04f;
     private static final int EDGE = 14;
+    /** The most a resume card enlarges an app's banner; past this it shows pixels. */
+    private static final float MAX_ART_SCALE = 1.6f;
 
     static final class Item {
         String title, poster, intent;
@@ -385,6 +387,19 @@ final class WatchRows {
             return false;
         });
         if (item.art != null) {
+            // Never stretch a banner past MAX_ART_SCALE: a small one sits centred on its own edge colour
+            // instead of turning to pixels across the whole card.
+            int w = item.art.getIntrinsicWidth(), h = item.art.getIntrinsicHeight();
+            if (w > 0 && h > 0) {
+                float scale = Math.min(cardWidth() / (float) w, cardHeight() / (float) h);
+                if (scale > MAX_ART_SCALE) {
+                    int padX = Math.max(0, Math.round((cardWidth() - w * MAX_ART_SCALE) / 2f));
+                    int padY = Math.max(0, Math.round((cardHeight() - h * MAX_ART_SCALE) / 2f));
+                    image.setPadding(padX, padY, padX, padY);
+                    image.setScaleType(ImageView.ScaleType.FIT_CENTER);
+                }
+                bg.setColor(BannerArt.edgeColor(item.art));
+            }
             image.setImageDrawable(item.art);
             if (item.subtitle != null) title.setText(item.subtitle);
         } else {
