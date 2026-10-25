@@ -59,6 +59,8 @@ public class GoalWatchService extends Service {
     private final Runnable poll = this::poll;
     /** The newest read of each game, so an alert shown a minute later carries the score as it is by then. */
     private final java.util.Map<String, ScoresTicker.Game> latest = new java.util.HashMap<>();
+    /** Each game's state at the last read (0 live, 1 upcoming, 2 finished), to see the moment one finishes. */
+    private final java.util.Map<String, Integer> lastState = new java.util.HashMap<>();
 
     /** Home opened this package: watch for goals while it is in front, if it is one of goal_watch_apps. */
     static void onAppOpened(Context ctx, String pkg) {
@@ -94,6 +96,13 @@ public class GoalWatchService extends Service {
             g.awayLogo = "https://a.espncdn.com/i/teamlogos/soccer/500/331.png";
             enqueue(g, new String[]{"test", "Mohamed Salah", "67'", "home", ""}, false);
         }
+        if (intent != null && intent.hasExtra("test_ft")) {
+            ScoresTicker.Game g = new ScoresTicker.Game();
+            g.league = "PL"; g.home = "MAN"; g.away = "BOU"; g.homeScore = "3"; g.awayScore = "1";
+            g.homeLogo = "https://a.espncdn.com/i/teamlogos/soccer/500/360.png";
+            g.awayLogo = "https://a.espncdn.com/i/teamlogos/soccer/500/349.png";
+            enqueue(g, new String[]{"test-ft", "", "", "", "ft"}, false);
+        }
         if (intent != null && intent.hasExtra("test_red")) {
             ScoresTicker.Game g = new ScoresTicker.Game();
             g.league = "UCL"; g.home = "ARS"; g.away = "PSG"; g.homeScore = "1"; g.awayScore = "1";
@@ -119,6 +128,10 @@ public class GoalWatchService extends Service {
                 for (ScoresTicker.Game g : games) if (g.id != null) latest.put(g.id, g);
                 for (ScoresTicker.Game g : games) {
                     live |= g.state == 0;
+                    Integer before = g.id == null ? null : lastState.put(g.id, g.state);
+                    if (primed && before != null && before == 0 && g.state == 2) {
+                        main.postDelayed(() -> enqueue(g, new String[]{"FT|" + g.id, "", "", "", "ft"}, false), DELAY_MS);
+                    }
                     for (String[] goal : g.goals) {
                         if (seen.add(goal[0]) && primed) main.postDelayed(() -> enqueue(g, goal, false), DELAY_MS);
                     }
@@ -146,6 +159,11 @@ public class GoalWatchService extends Service {
     }
 
     private static CharSequence headline(String[] goal, boolean red) {
+        if ("ft".equals(goal[4])) {
+            SpannableStringBuilder ft = new SpannableStringBuilder("🏁  FT");
+            ft.setSpan(new StyleSpan(Typeface.BOLD), 0, ft.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            return ft;
+        }
         SpannableStringBuilder s = new SpannableStringBuilder(red ? "🟥  " : "⚽  ");
         s.setSpan(new StyleSpan(Typeface.BOLD), 0, s.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
         s.setSpan(new ForegroundColorSpan(red ? 0xFFC81E1E : 0xFF15803D), 0, s.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
