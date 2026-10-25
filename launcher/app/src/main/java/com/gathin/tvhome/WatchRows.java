@@ -53,6 +53,9 @@ final class WatchRows {
     private static final int MAX_CONTINUE = 8;
     private static final int MAX_RECOMMENDED = 12;
     private static final long CACHE_MS = 60_000L;
+    /** The focused card grows this much; EDGE dp of padding around the strip leaves it room on every side. */
+    private static final float FOCUS_SCALE = 1.04f;
+    private static final int EDGE = 14;
 
     static final class Item {
         String title, poster, intent;
@@ -98,6 +101,7 @@ final class WatchRows {
         caption.setLetterSpacing(0.14f);
         caption.setAllCaps(true);
         caption.setSingleLine(true);
+        caption.setPadding(dp(EDGE), 0, 0, 0);
         panel.addView(caption, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT));
         scroller = new HorizontalScrollView(context);
@@ -105,8 +109,9 @@ final class WatchRows {
         scroller.setClipChildren(false);
         scroller.setClipToPadding(false);
         scroller.setFillViewport(false);
-        int pad = dp(8);
-        scroller.setPadding(0, pad, pad * 2, pad);
+        // Room for the focused card to grow (FOCUS_SCALE) without the scroller clipping its edges.
+        int pad = dp(EDGE);
+        scroller.setPadding(pad, pad, pad * 2, pad);
         strip = new LinearLayout(context);
         strip.setOrientation(LinearLayout.HORIZONTAL);
         strip.setClipChildren(false);
@@ -116,14 +121,14 @@ final class WatchRows {
                 ViewGroup.LayoutParams.WRAP_CONTENT));
         FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP | Gravity.START);
-        lp.leftMargin = dp(72);
+        lp.leftMargin = dp(72 - EDGE);
         lp.rightMargin = dp(40);
         root.addView(panel, lp);
     }
 
     /** Height of the whole panel (caption, cards and their focus room), for placing it above the shelf. */
     int height() {
-        return dp(13 + 6) + dp(8) * 2 + cardHeight();
+        return dp(13 + 6) + dp(EDGE) * 2 + cardHeight();
     }
 
     boolean hasCards() {
@@ -320,7 +325,7 @@ final class WatchRows {
         GradientDrawable ring = new GradientDrawable();
         ring.setColor(Color.TRANSPARENT);
         ring.setCornerRadius(dp(10));
-        ring.setStroke(dp(2), Color.WHITE);
+        ring.setStroke(dp(3), Color.WHITE);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(cardWidth(), cardHeight());
         lp.rightMargin = dp(14);
         card.setLayoutParams(lp);
@@ -362,7 +367,7 @@ final class WatchRows {
         }
 
         card.setOnFocusChangeListener((v, focused) -> {
-            v.animate().scaleX(focused ? 1.08f : 1f).scaleY(focused ? 1.08f : 1f).setDuration(160).start();
+            v.animate().scaleX(focused ? FOCUS_SCALE : 1f).scaleY(focused ? FOCUS_SCALE : 1f).setDuration(160).start();
             v.setForeground(focused ? ring : null);
             v.setElevation(focused ? dp(6) : 0);
             if (focused) setCaption(item);

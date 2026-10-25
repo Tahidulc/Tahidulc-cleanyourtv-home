@@ -445,4 +445,7 @@
     <string name="weather_latitude" translatable="false">53.4808</string>
     <string name="weather_longitude" translatable="false">-2.2426</string>
     <string name="weather_place" translatable="false">Manchester</string>
+    <!-- News ticker along the top: an RSS feed; empty turns the ticker off. -->
+    <string name="news_feed_url" translatable="false">https://feeds.bbci.co.uk/news/rss.xml</string>
+    <string name="news_source" translatable="false">BBC News</string>
 </resources>

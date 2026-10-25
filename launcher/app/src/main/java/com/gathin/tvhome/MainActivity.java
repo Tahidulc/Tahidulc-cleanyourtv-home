@@ -137,6 +137,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     private VideoBackdrop videoBackdrop;
     private WeatherLine weatherLine;
     private WatchRows watchRows;
+    private NewsTicker newsTicker;
     private GlassView glass;
     private View ambient;
     private TextView heroName;
@@ -449,6 +450,14 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         if (cinematic) setUpCinematicShelf(cfg.cinematicScrim);
         weatherLine = new WeatherLine(findViewById(R.id.weather), getString(R.string.weather_latitude),
                 getString(R.string.weather_longitude), getString(R.string.weather_place));
+        newsTicker = new NewsTicker(this, root, density, getString(R.string.news_feed_url),
+                getString(R.string.news_source));
+        if (!getString(R.string.news_feed_url).isEmpty()) {
+            // Make room for the ticker above the greeting.
+            View column = (View) findViewById(R.id.leftBlock).getParent().getParent();
+            column.setPadding(column.getPaddingLeft(), column.getPaddingTop() + Math.round(12 * density),
+                    column.getPaddingRight(), column.getPaddingBottom());
+        }
         watchRows = new WatchRows(this, root, density, new WatchRows.Host() {
             @Override public void onCardsUp() {
                 (btnInputs.getVisibility() == View.VISIBLE ? btnInputs : firstTopButton()).requestFocus();
@@ -954,6 +963,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         restartIdleClock();
         videoBackdrop.start();
         weatherLine.start();
+        newsTicker.start();
         promptsPaused = false;
         if (grid.getAdapter() == null) grid.setAdapter(adapter);   // dropped by onTrimMemory
         switch (tileRefresh.onResume(packagesChangedSinceRebuild())) {
@@ -1157,6 +1167,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         wallpaperPlayer.stop();
         videoBackdrop.stop();
         weatherLine.stop();
+        newsTicker.stop();
         stopAmbientAnimation();
         hero.animate().cancel();
         ambient.animate().cancel();
@@ -1221,6 +1232,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         wallpaperPlayer.close();
         videoBackdrop.stop();
         weatherLine.close();
+        newsTicker.close();
         watchRows.close();
         ConnectivityManager cm = getSystemService(ConnectivityManager.class);
         TvInputManager tim = (TvInputManager) getSystemService(TV_INPUT_SERVICE);
