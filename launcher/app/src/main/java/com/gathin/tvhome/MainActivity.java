@@ -459,7 +459,20 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             column.setPadding(column.getPaddingLeft(), column.getPaddingTop() + Math.round(22 * density),
                     column.getPaddingRight(), column.getPaddingBottom());
         }
-        scoresTicker = new ScoresTicker(this, root, density, getResources().getStringArray(R.array.score_leagues));
+        scoresTicker = new ScoresTicker(this, root, density, getResources().getStringArray(R.array.score_leagues),
+                new ScoresTicker.Host() {
+                    @Override public void onScoresOpen() {
+                        Intent open = getPackageManager().getLeanbackLaunchIntentForPackage(getString(R.string.scores_open_package));
+                        if (open == null) return;
+                        try {
+                            startActivity(open.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+                        } catch (Exception ignored) {
+                        }
+                    }
+                    @Override public void onScoresDown() {
+                        (btnInputs.getVisibility() == View.VISIBLE ? btnInputs : firstTopButton()).requestFocus();
+                    }
+                });
         if (getResources().getStringArray(R.array.score_leagues).length > 0) {
             // The scores take the top line, across the width of the header; the header moves down for them.
             root.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) ->
@@ -808,7 +821,10 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         boolean rtlMenuBar = getResources().getBoolean(R.bool.rtl_menu_bar);
         View.OnKeyListener pillKeys = (v, keyCode, event) -> {
             if (event.getAction() != KeyEvent.ACTION_DOWN) return false;
-            if (keyCode == KeyEvent.KEYCODE_DPAD_UP) return true;
+            if (keyCode == KeyEvent.KEYCODE_DPAD_UP) {
+                scoresTicker.focus();   // up onto the game boxes when there are any; else focus stays here
+                return true;
+            }
             if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
                 // Back to the cards or the dock tile Up came from, not wherever the focus finder lands.
                 if (!watchRows.focus()) focusTile(singleRow ? lastFocused : lastFocused % COLUMNS);

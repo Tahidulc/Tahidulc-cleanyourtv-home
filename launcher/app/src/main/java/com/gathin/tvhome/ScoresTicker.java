@@ -49,6 +49,12 @@ import java.util.Map;
  * otherwise, and nothing runs while Home is not in front. Hidden on a day without games.
  */
 final class ScoresTicker {
+    /** What OK and Down on a game box do: open the configured app, go back to the top bar. */
+    interface Host {
+        void onScoresOpen();
+        void onScoresDown();
+    }
+
     private static final long LIVE_MS = 60_000L;
     private static final long IDLE_MS = 10 * 60_000L;
     private static final long PAGE_MS = 8_000L;
@@ -85,7 +91,10 @@ final class ScoresTicker {
     private final File logoDir;
     private final int logo;
 
-    ScoresTicker(Context context, FrameLayout root, float density, String[] leagues) {
+    private final Host host;
+
+    ScoresTicker(Context context, FrameLayout root, float density, String[] leagues, Host host) {
+        this.host = host;
         this.context = context;
         this.density = density;
         this.leagues = leagues;
@@ -248,10 +257,38 @@ final class ScoresTicker {
         }
         if (!current.isEmpty()) pages.add(current);
         if (page >= pages.size()) page = 0;
+        int focused = focusedIndex();
         box.setVisibility(View.VISIBLE);
         box.removeAllViews();
         shownRow = row(pages.get(page));
         box.addView(shownRow);
+        if (focused >= 0) focusBox(Math.min(focused, shownRow.getChildCount() - 1));
+    }
+
+    /** Focus the first game box; false when there are no scores on screen. */
+    boolean focus() {
+        if (shownRow == null || box.getVisibility() != View.VISIBLE || shownRow.getChildCount() == 0) return false;
+        return shownRow.getChildAt(0).requestFocus();
+    }
+
+    private int focusedIndex() {
+        if (shownRow == null) return -1;
+        for (int i = 0; i < shownRow.getChildCount(); i++) if (shownRow.getChildAt(i).hasFocus()) return i;
+        return -1;
+    }
+
+    private void focusBox(int index) {
+        if (shownRow != null && index >= 0 && index < shownRow.getChildCount()) shownRow.getChildAt(index).requestFocus();
+    }
+
+    /** Left/Right past a page's end: the previous or next page, with the focus on its nearest box. */
+    private void turnPage(boolean forward) {
+        if (pages.size() < 2) return;
+        page = (page + (forward ? 1 : pages.size() - 1)) % pages.size();
+        box.removeAllViews();
+        shownRow = row(pages.get(page));
+        box.addView(shownRow);
+        focusBox(forward ? 0 : shownRow.getChildCount() - 1);
     }
 
     private void schedulePage() {
@@ -261,7 +298,8 @@ final class ScoresTicker {
 
     /** The current page slides up and out while the next one rises in from below. */
     private void nextPage() {
-        if (running && pages.size() > 1 && shownRow != null) {
+        // Never flip the page out from under a box the viewer is on.
+        if (running && pages.size() > 1 && shownRow != null && !box.hasFocus()) {
             page = (page + 1) % pages.size();
             LinearLayout out = shownRow;
             LinearLayout in = row(pages.get(page));
@@ -288,6 +326,28 @@ final class ScoresTicker {
             b.setGravity(Gravity.CENTER_VERTICAL);
             b.setBackgroundResource(R.drawable.glass_box);
             b.setPadding(dp(12), 0, dp(12), 0);
+            b.setFocusable(true);
+            final int index = i, count = list.size();
+            android.graphics.drawable.GradientDrawable ring = new android.graphics.drawable.GradientDrawable();
+            ring.setCornerRadius(dp(16));
+            ring.setStroke(dp(2), 0xFFFFFFFF);
+            ring.setColor(0x26FFFFFF);
+            b.setOnFocusChangeListener((v, has) -> v.setForeground(has ? ring : null));
+            b.setOnClickListener(v -> host.onScoresOpen());
+            b.setOnKeyListener((v, keyCode, event) -> {
+                if (event.getAction() != android.view.KeyEvent.ACTION_DOWN) return false;
+                switch (keyCode) {
+                    case android.view.KeyEvent.KEYCODE_DPAD_DOWN: host.onScoresDown(); return true;
+                    case android.view.KeyEvent.KEYCODE_DPAD_UP: return true;
+                    case android.view.KeyEvent.KEYCODE_DPAD_LEFT:
+                        if (index == 0) turnPage(false); else focusBox(index - 1);
+                        return true;
+                    case android.view.KeyEvent.KEYCODE_DPAD_RIGHT:
+                        if (index == count - 1) turnPage(true); else focusBox(index + 1);
+                        return true;
+                    default: return false;
+                }
+            });
             if (g.leagueLogo != null) b.addView(logoView(g.leagueLogo, 0));
             else b.addView(label(league(g)));
             b.addView(logoView(g.homeLogo, dp(12)));

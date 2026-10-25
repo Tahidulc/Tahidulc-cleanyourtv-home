@@ -451,6 +451,8 @@
     <string name="assistant" translatable="false">Google Assistant</string>
     <!-- Today's football beside the greeting, one box per game: ESPN league ids and the tag each box shows.
          An empty list turns the scores off. Ids: espn.com/soccer/competitions (eng.1, esp.1, uefa.champions...). -->
+    <!-- The app OK on a game box opens. -->
+    <string name="scores_open_package" translatable="false">ar.tvplayer.tv</string>
     <string-array name="score_leagues" translatable="false">
         <item>eng.1|PL</item>
         <item>eng.2|CHAMP</item>
