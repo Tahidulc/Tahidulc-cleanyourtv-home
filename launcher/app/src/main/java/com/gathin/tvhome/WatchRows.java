@@ -367,7 +367,7 @@ final class WatchRows {
         item.title = story[0];
         item.poster = story[1];
         item.intent = story[2];
-        item.subtitle = "BBC NEWS";
+        item.subtitle = story.length > 3 ? story[3] : "BBC NEWS";
         View card = card(item, index, count);
         card.setOnClickListener(v -> {
             if (story[2] == null) return;
@@ -425,7 +425,7 @@ final class WatchRows {
         title.setTextSize(TypedValue.COMPLEX_UNIT_SP, big ? 19f : 14f);
         title.setTypeface(context.getResources().getFont(R.font.outfit_medium));
         title.setLetterSpacing(-0.01f);
-        if ("BBC NEWS".equals(item.subtitle)) title.setMaxLines(2); else title.setSingleLine(true);
+        if (NewsPanel.isTag(item.subtitle)) title.setMaxLines(2); else title.setSingleLine(true);
         title.setEllipsize(android.text.TextUtils.TruncateAt.END);
         title.setShadowLayer(dp(6), 0, dp(1), 0x99000000);
         text.addView(title);
@@ -433,8 +433,9 @@ final class WatchRows {
         if (second != null) {
             TextView sub = new TextView(context);
             sub.setText(second);
-            boolean newsTag = "BBC NEWS".equals(second);
-            sub.setTextColor(newsTag ? 0xFFFF4D4D : 0xBFFFFFFF);
+            boolean newsTag = NewsPanel.isTag(second);
+            // BBC Sport's yellow for sport, BBC News red for the rest.
+            sub.setTextColor(!newsTag ? 0xBFFFFFFF : "BBC SPORT".equals(second) ? 0xFFFFD230 : 0xFFFF4D4D);
             if (newsTag) { sub.setTypeface(android.graphics.Typeface.DEFAULT_BOLD); sub.setLetterSpacing(0.14f); }
             sub.setTextSize(TypedValue.COMPLEX_UNIT_SP, big ? 13f : 11f);
             sub.setTypeface(context.getResources().getFont(R.font.outfit_regular));
@@ -565,7 +566,7 @@ final class WatchRows {
 
     /** "Episode name · 23 min left", "23 min left", "Last opened 30 minutes ago", or nothing. */
     private static String secondLine(Item item) {
-        if (item.art != null || "BBC NEWS".equals(item.subtitle)) return item.subtitle;
+        if (item.art != null || NewsPanel.isTag(item.subtitle)) return item.subtitle;
         String left = item.minutesLeft > 0 ? item.minutesLeft + " min left" : null;
         if (item.episode != null && left != null) return item.episode + "  ·  " + left;
         return item.episode != null ? item.episode : left;

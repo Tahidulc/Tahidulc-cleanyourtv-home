@@ -40,7 +40,7 @@ final class Badges {
             this.tail = tail;
             this.tailColor = tailColor;
             this.wide = wide;
-            h = 19 * d;
+            h = 17 * d;
             gap = 1.5f * d;
             paint.setTypeface(Typeface.DEFAULT_BOLD);
             paint.setTextSize(h * 0.72f);

@@ -62,8 +62,33 @@ public class GoalWatchService extends Service {
     private static final long MAX_RUN_MS = 4 * 60 * 60_000L;
     private static final String CHANNEL = "goal_watch";
     /** The alerts' size: a pill PILL_DP tall, TEXT_SP text, CREST_DP crests and logos fetched at LOGO_DP. */
-    private static final int PILL_DP = 36, CREST_DP = 20, LOGO_DP = 48;
-    private static final float TEXT_SP = 13.5f, SMALL_SP = 11f;
+    private static final int PILL_DP = 32, CREST_DP = 18, LOGO_DP = 48;
+    private static final float TEXT_SP = 12.5f, SMALL_SP = 10f;
+    private static final long WEATHER_MS = 15 * 60_000L;
+
+    /**
+     * A short sound for each kind of alert (a theme's "alert_sounds"), quiet, and played as a UI sound without asking
+     * for audio focus, so whatever is playing carries on at its own volume.
+     */
+    private android.media.SoundPool sounds;
+    private final Map<String, Integer> soundIds = new HashMap<>();
+    private static final float SOUND_VOLUME = 0.35f;
+
+    private void loadSounds() {
+        sounds = new android.media.SoundPool.Builder().setMaxStreams(2).setAudioAttributes(
+                new android.media.AudioAttributes.Builder()
+                        .setUsage(android.media.AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
+                        .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION).build()).build();
+        int[] raw = {R.raw.alert_goal, R.raw.alert_red, R.raw.alert_fulltime, R.raw.alert_incident, R.raw.alert_f1,
+                R.raw.alert_news, R.raw.alert_weather, R.raw.alert_tennis, R.raw.alert_fight, R.raw.alert_reminder};
+        String[] names = {"goal", "red", "fulltime", "incident", "f1", "news", "weather", "tennis", "fight", "reminder"};
+        for (int i = 0; i < raw.length; i++) soundIds.put(names[i], sounds.load(this, raw[i], 1));
+    }
+
+    private void play(String sound) {
+        Integer id = sound == null || sounds == null ? null : soundIds.get(sound);
+        if (id != null) sounds.play(id, SOUND_VOLUME, SOUND_VOLUME, 1, 0, 1f);
+    }
 
     /** The screensaver is on (its own clock sits bottom-left, where the alerts go). */
     private boolean dreaming;
@@ -110,6 +135,11 @@ public class GoalWatchService extends Service {
     private boolean f1Primed, newsPrimed;
     private long newsAt;
     private final Set<String> seenNews = new HashSet<>();
+    /** Weather pop-ups (a theme's "weather_alerts"): warnings already shown, the last rain alert, the last morning. */
+    private boolean weatherAlerts;
+    private final Set<String> seenWarnings = new HashSet<>();
+    private long weatherAt, rainAlertAt;
+    private String morningShown = "";
     private boolean teamAlerts, incidentAlerts, kickoffReminders, tennisAlerts, ufcAlerts, boxingAlerts, everywhere;
     /** Games already reminded of, and games whose incidents have been read once (the first read only learns). */
     private final Set<String> reminded = new HashSet<>(), incidentGames = new HashSet<>();
@@ -187,6 +217,8 @@ public class GoalWatchService extends Service {
             ufcAlerts = Config.themeFlag(this, "ufc_alerts", false);
             boxingAlerts = Config.themeFlag(this, "boxing_alerts", false);
             everywhere = Config.themeFlag(this, "alerts_everywhere", false);
+            weatherAlerts = Config.themeFlag(this, "weather_alerts", false);
+            if (Config.themeFlag(this, "alert_sounds", false)) loadSounds();
         }
         if (intent != null && intent.hasExtra("test_more")) testMore(intent.getStringExtra("test_more"));
         if (intent != null && intent.hasExtra("test_goal")) {
@@ -217,13 +249,13 @@ public class GoalWatchService extends Service {
                 if (w == null) return;
                 main.post(() -> {
                     for (F1Results.Session s : w.sessions) {
-                        if ("Qual".equals(s.abbr)) enqueueParts(sessionOver(w, s));
+                        if ("Qual".equals(s.abbr)) enqueueParts(sessionOver(w, s), "f1");
                     }
                     for (F1Results.Session s : w.sessions) {
                         if (!"Race".equals(s.abbr)) continue;
-                        enqueueParts(sessionStart(w, s));
-                        if (s.top.size() > 1) enqueueParts(leads(s, 1, 23));
-                        enqueueParts(lapUpdate(s, 30));
+                        enqueueParts(sessionStart(w, s), "f1");
+                        if (s.top.size() > 1) enqueueParts(leads(s, 1, 23), "f1");
+                        enqueueParts(lapUpdate(s, 30), "f1");
                     }
                 });
             });
@@ -233,7 +265,7 @@ public class GoalWatchService extends Service {
                 List<String[]> items = readNews(true, boxingAlerts);
                 main.post(() -> {
                     Set<String> labels = new HashSet<>();
-                    for (String[] item : items) if (labels.add(item[0])) enqueueParts(newsLine(item));
+                    for (String[] item : items) if (labels.add(item[0])) enqueueParts(newsLine(item), newsSound(item));
                 });
             });
         }
@@ -273,6 +305,10 @@ public class GoalWatchService extends Service {
         boolean tennisNow = tennisAlerts && now - tennisAt >= TENNIS_MS;
         boolean ufcNow = ufcAlerts && now - ufcAt >= (ufcLive ? 2 * 60_000L : 15 * 60_000L);
         if (tennisNow) tennisAt = now;
+        boolean weatherNow = weatherAlerts && now - weatherAt >= WEATHER_MS;
+        if (weatherNow) weatherAt = now;
+        String lat = getString(R.string.weather_latitude), lon = getString(R.string.weather_longitude);
+        String warnFeed = getString(R.string.weather_warnings_feed), warnArea = getString(R.string.weather_warnings_area);
         if (ufcNow) ufcAt = now;
         // The live F1 alerts include the result panel, so the race alone is read only without them.
         boolean f1 = getResources().getBoolean(R.bool.f1_results_popup) && !f1Live;
@@ -290,6 +326,8 @@ public class GoalWatchService extends Service {
             if (incidentsNow) for (ScoresTicker.Game g : games) if (g.state == 0) incidents.put(g.id, ScoresTicker.incidents(g));
             List<MoreSports.Result> tennis = tennisNow ? MoreSports.tennis() : null;
             List<MoreSports.Result> ufc = ufcNow ? MoreSports.ufc() : null;
+            List<String[]> warnings = weatherNow && !warnFeed.isEmpty() ? WeatherAlerts.warnings(warnFeed, warnArea) : null;
+            WeatherAlerts.Outlook outlook = weatherNow && !lat.isEmpty() ? WeatherAlerts.outlook(lat, lon) : null;
             F1Results.Race race = f1 ? F1Results.load(null) : null;
             F1Results.Weekend weekend = f1Live ? F1Results.weekend(null) : null;
             List<String[]> headlines = news ? readNews(newsAlerts, boxingAlerts) : null;
@@ -307,6 +345,8 @@ public class GoalWatchService extends Service {
                 }
                 if (weekend != null) f1Updates(weekend);
                 if (headlines != null) newsUpdates(headlines);
+                if (warnings != null) for (String[] w : warnings) if (seenWarnings.add(w[0])) enqueueParts(warningLine(w), "weather");
+                if (outlook != null) weatherUpdates(outlook);
                 if (tennis != null) { otherUpdates(tennis, tennisPrimed); if (!tennis.isEmpty()) tennisPrimed = true; }
                 if (ufc != null) {
                     ufcLive = false;
@@ -317,13 +357,13 @@ public class GoalWatchService extends Service {
                 for (ScoresTicker.Game g : games) {
                     if (kickoffReminders && alertTags.contains(g.league) && g.state == 1 && g.kickoff - now > 0
                             && g.kickoff - now <= REMIND_MS && reminded.add(g.id)) {
-                        enqueueParts(kickoffLine(g));
+                        enqueueParts(kickoffLine(g), "reminder");
                     }
                     List<String[]> found = incidents.get(g.id);
                     if (found == null) continue;
                     boolean first = incidentGames.add(g.id);
                     for (String[] inc : found) {
-                        if (seen.add(inc[0]) && !first) main.postDelayed(() -> enqueueFootball(g, incidentHead(inc)), DELAY_MS);
+                        if (seen.add(inc[0]) && !first) main.postDelayed(() -> enqueueFootball(g, incidentHead(inc), "incident"), DELAY_MS);
                     }
                 }
             });
@@ -364,7 +404,7 @@ public class GoalWatchService extends Service {
             Integer lastMark = f1Laps.put(s.id, s.lap / 10);
             if (!f1Primed || before == null) continue;
             if ("pre".equals(before) && "in".equals(s.state)) {
-                enqueueParts(sessionStart(w, s));
+                enqueueParts(sessionStart(w, s), "f1");
             } else if ("in".equals(before) && "post".equals(s.state)) {
                 if ("Race".equals(s.abbr)) {
                     F1Results.Race r = new F1Results.Race();
@@ -374,11 +414,11 @@ public class GoalWatchService extends Service {
                     queue.add(new Object[]{r});
                     showNext();
                 } else {
-                    enqueueParts(sessionOver(w, s));
+                    enqueueParts(sessionOver(w, s), "f1");
                 }
             } else if ("in".equals(s.state)) {
-                if (leader != null && lastLeader != null && !leader.equals(lastLeader)) enqueueParts(leads(s, 0, s.lap));
-                if (s.isRace() && lastMark != null && s.lap / 10 > lastMark && s.lap > 0) enqueueParts(lapUpdate(s, s.lap));
+                if (leader != null && lastLeader != null && !leader.equals(lastLeader)) enqueueParts(leads(s, 0, s.lap), "f1");
+                if (s.isRace() && lastMark != null && s.lap / 10 > lastMark && s.lap > 0) enqueueParts(lapUpdate(s, s.lap), "f1");
             }
         }
         if (!w.sessions.isEmpty()) f1Primed = true;
@@ -476,9 +516,17 @@ public class GoalWatchService extends Service {
     private void newsUpdates(List<String[]> items) {
         Set<String> shownFeeds = new HashSet<>();
         for (String[] item : items) {
-            if (seenNews.add(item[2]) && newsPrimed && shownFeeds.add(item[0])) enqueueParts(newsLine(item));
+            if (seenNews.add(item[2]) && newsPrimed && shownFeeds.add(item[0])) enqueueParts(newsLine(item), newsSound(item));
         }
         if (!items.isEmpty()) newsPrimed = true;
+    }
+
+    private static String newsSound(String[] item) {
+        return "BOXING".equals(item[0]) ? "fight" : "news";
+    }
+
+    private static String otherSound(MoreSports.Result r) {
+        return "UFC".equals(r.tour) ? "fight" : "tennis";
     }
 
     /** The BBC's blocks with NEWS or SPORT, then the headline; boxing's with a glove. */
@@ -490,6 +538,76 @@ public class GoalWatchService extends Service {
         if ("BOXING".equals(item[0])) { parts.add(8); parts.add(bold("🥊  BOXING")); }
         parts.add(8);
         parts.add(item[1]);
+        return parts;
+    }
+
+    // ---- weather -----------------------------------------------------------------------------------
+
+    /** Rain on its way (at most every three hours), and the day's forecast once each morning. */
+    private void weatherUpdates(WeatherAlerts.Outlook o) {
+        long now = System.currentTimeMillis();
+        String place = getString(R.string.weather_place);
+        if (o.rainFrom > 0 && now - rainAlertAt > 3 * 60 * 60_000L) {
+            rainAlertAt = now;
+            List<Object> parts = new ArrayList<>();
+            parts.add(weatherIcon(61));
+            parts.add(8);
+            parts.add(bold("Rain from about " + java.time.Instant.ofEpochMilli(o.rainFrom).atZone(java.time.ZoneId.systemDefault())
+                    .format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"))));
+            parts.add(8);
+            parts.add(new Small(place.toUpperCase(java.util.Locale.getDefault())));
+            enqueueParts(parts, "weather");
+        }
+        java.time.LocalDateTime local = java.time.LocalDateTime.now();
+        String today = local.toLocalDate().toString();
+        if (!today.equals(morningShown) && local.getHour() >= 6 && local.getHour() < 11) {
+            morningShown = today;
+            enqueueParts(forecastLine(o, place), "weather");
+        }
+    }
+
+    /** "[icon] Today 12° / 6°  Showers  ☂ 70%  MANCHESTER". */
+    private List<Object> forecastLine(WeatherAlerts.Outlook o, String place) {
+        List<Object> parts = new ArrayList<>();
+        parts.add(weatherIcon(o.code));
+        parts.add(8);
+        parts.add(bold("Today  " + o.high + "° / " + o.low + "°"));
+        parts.add(8);
+        parts.add(WeatherLine.describe(o.code));
+        if (o.rainChance >= 0) { parts.add(8); parts.add("☂ " + o.rainChance + "%"); }
+        parts.add(8);
+        parts.add(new Small(place.toUpperCase(java.util.Locale.getDefault())));
+        return parts;
+    }
+
+    /** The weather line's own icon, as a picture in the pill. */
+    private android.graphics.drawable.Drawable weatherIcon(int code) {
+        android.graphics.drawable.Drawable d = getDrawable(WeatherLine.icon(code, true));
+        if (d == null) return null;
+        d = d.mutate();
+        // The icons are drawn for the dark Home screen; darkened, they read on the light glass.
+        d.setColorFilter(new android.graphics.PorterDuffColorFilter(0xFF4B5563, android.graphics.PorterDuff.Mode.MULTIPLY));
+        return d;
+    }
+
+    /** "[Met Office icon] YELLOW WIND WARNING  Greater Manchester  from 0300 Tue 27 Oct to 2359 Tue 27 Oct". */
+    private List<Object> warningLine(String[] w) {
+        String title = w[1];
+        String colour = title.contains(" ") ? title.substring(0, title.indexOf(' ')) : "";
+        int of = title.indexOf("warning of "), aff = title.indexOf(" affecting");
+        String kind = of >= 0 && aff > of ? title.substring(of + "warning of ".length(), aff) : "";
+        String head = (colour + " " + kind + " warning").trim().toUpperCase(java.util.Locale.ROOT);
+        SpannableStringBuilder s = new SpannableStringBuilder("⚠️  " + head);
+        s.setSpan(new StyleSpan(Typeface.BOLD), 0, s.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        int tint = colour.equalsIgnoreCase("red") ? 0xFFC81E1E : colour.equalsIgnoreCase("amber") ? 0xFFC2410C : 0xFF8A6100;
+        s.setSpan(new ForegroundColorSpan(tint), 0, s.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        List<Object> parts = new ArrayList<>();
+        if (w[3] != null) { parts.add(new Pic(w[3])); parts.add(8); }
+        parts.add(s);
+        parts.add(8);
+        parts.add(getString(R.string.weather_warnings_area));
+        int valid = w[2].indexOf("valid ");
+        if (valid >= 0) { parts.add(8); parts.add(new Small(w[2].substring(valid + "valid ".length()))); }
         return parts;
     }
 
@@ -539,9 +657,9 @@ public class GoalWatchService extends Service {
         for (MoreSports.Result r : results) {
             String before = otherStates.put(r.id, r.state);
             if (!primedYet || before == null || before.equals(r.state)) continue;
-            if ("post".equals(r.state)) enqueueParts(resultLine(r));
+            if ("post".equals(r.state)) enqueueParts(resultLine(r), otherSound(r));
             else if ("pre".equals(before) && "in".equals(r.state) && (r.mainEvent || "Final".equals(r.round))) {
-                enqueueParts(startLine(r));
+                enqueueParts(startLine(r), otherSound(r));
             }
         }
     }
@@ -627,7 +745,23 @@ public class GoalWatchService extends Service {
             g.homeLogo = "https://a.espncdn.com/i/teamlogos/soccer/500/160.png";
             g.awayLogo = "https://a.espncdn.com/i/teamlogos/soccer/500/132.png";
             g.leagueLogo = "https://a.espncdn.com/i/leaguelogos/soccer/500-dark/2.png";
-            enqueueFootball(g, incidentHead(new String[]{"t", "🧤  Pen saved", "Manuel Neuer", "88'"}));
+            enqueueFootball(g, incidentHead(new String[]{"t", "🧤  Pen saved", "Manuel Neuer", "88'"}), "incident");
+        }
+        if (all || "weather".equals(what)) {
+            String lat = getString(R.string.weather_latitude), lon = getString(R.string.weather_longitude);
+            io.execute(() -> {
+                WeatherAlerts.Outlook o = WeatherAlerts.outlook(lat, lon);
+                main.post(() -> {
+                    if (o != null) enqueueParts(forecastLine(o, getString(R.string.weather_place)), "weather");
+                    List<Object> rain = new ArrayList<>();
+                    rain.add(weatherIcon(61)); rain.add(8); rain.add(bold("Rain from about 15:30")); rain.add(8);
+                    rain.add(new Small(getString(R.string.weather_place).toUpperCase(java.util.Locale.getDefault())));
+                    enqueueParts(rain, "weather");
+                    enqueueParts(warningLine(new String[]{"t", "Yellow warning of wind affecting North West England",
+                            "Yellow warning of wind affecting North West England: Greater Manchester valid from 0300 Tue 27 Oct to 2359 Tue 27 Oct",
+                            "https://data.consumer-digital.api.metoffice.gov.uk/v1/warnings/rss/image/yellow-wind.png"}), "weather");
+                });
+            });
         }
         if (all || "kickoff".equals(what)) {
             ScoresTicker.Game g = new ScoresTicker.Game();
@@ -636,16 +770,16 @@ public class GoalWatchService extends Service {
             g.awayLogo = "https://a.espncdn.com/i/teamlogos/soccer/500/363.png";
             g.leagueLogo = "https://a.espncdn.com/i/leaguelogos/soccer/500-dark/23.png";
             g.kickoff = System.currentTimeMillis() + REMIND_MS;
-            enqueueParts(kickoffLine(g));
+            enqueueParts(kickoffLine(g), "reminder");
         }
         io.execute(() -> {
             List<MoreSports.Result> tennis = all || "tennis".equals(what) ? MoreSports.tennis() : new ArrayList<>();
             List<MoreSports.Result> ufc = all || "ufc".equals(what) ? MoreSports.ufc() : new ArrayList<>();
             List<String[]> boxing = all || "boxing".equals(what) ? readNews(false, true) : new ArrayList<>();
             main.post(() -> {
-                for (MoreSports.Result r : tennis) if ("post".equals(r.state) && "Final".equals(r.round)) { enqueueParts(resultLine(r)); break; }
-                for (MoreSports.Result r : ufc) if (r.mainEvent) { enqueueParts(startLine(r)); enqueueParts(resultLine(r)); break; }
-                if (!boxing.isEmpty()) enqueueParts(newsLine(boxing.get(0)));
+                for (MoreSports.Result r : tennis) if ("post".equals(r.state) && "Final".equals(r.round)) { enqueueParts(resultLine(r), otherSound(r)); break; }
+                for (MoreSports.Result r : ufc) if (r.mainEvent) { enqueueParts(startLine(r), otherSound(r)); enqueueParts(resultLine(r), otherSound(r)); break; }
+                if (!boxing.isEmpty()) enqueueParts(newsLine(boxing.get(0)), "fight");
             });
         });
     }
@@ -653,11 +787,11 @@ public class GoalWatchService extends Service {
     // ---- the alert ---------------------------------------------------------------------------------
 
     private void enqueue(ScoresTicker.Game g, String[] goal, boolean red) {
-        enqueueFootball(g, headline(goal, red));
+        enqueueFootball(g, headline(goal, red), red ? "red" : "ft".equals(goal[4]) ? "fulltime" : "goal");
     }
 
     /** Fetches both crests and the competition's logo (cached on disk by the scores line), then queues the alert. */
-    private void enqueueFootball(ScoresTicker.Game g, CharSequence head) {
+    private void enqueueFootball(ScoresTicker.Game g, CharSequence head, String sound) {
         int px = Math.round(LOGO_DP * getResources().getDisplayMetrics().density);
         io.execute(() -> {
             android.graphics.Bitmap home = g.homeLogo == null ? null : ScoresTicker.cachedLogo(this, g.homeLogo, px);
@@ -665,14 +799,14 @@ public class GoalWatchService extends Service {
             String light = lightLogo(g.leagueLogo);
             android.graphics.Bitmap league = light == null ? null : ScoresTicker.cachedLogo(this, light, px);
             main.post(() -> {
-                queue.add(new Object[]{head, g, home, away, league});
+                queue.add(new Object[]{head, g, home, away, league, sound});
                 showNext();
             });
         });
     }
 
-    /** Fetches the line's pictures, then queues it. */
-    private void enqueueParts(List<Object> parts) {
+    /** Fetches the line's pictures, then queues it with its sound. */
+    private void enqueueParts(List<Object> parts, String sound) {
         int px = Math.round(LOGO_DP * getResources().getDisplayMetrics().density);
         io.execute(() -> {
             List<Object> ready = new ArrayList<>();
@@ -684,7 +818,7 @@ public class GoalWatchService extends Service {
                 else ready.add(o);
             }
             main.post(() -> {
-                queue.add(new Object[]{ready});
+                queue.add(new Object[]{ready, sound});
                 showNext();
             });
         });
@@ -801,10 +935,13 @@ public class GoalWatchService extends Service {
         }
         List<Object> parts;
         boolean wide;
-        if (next.length == 1) {
+        String sound;
+        if (next.length == 2) {
             parts = (List<Object>) next[0];
+            sound = (String) next[1];
             wide = true;
         } else {
+            sound = (String) next[5];
             ScoresTicker.Game g = (ScoresTicker.Game) next[1];
             ScoresTicker.Game now = g.id == null ? null : latest.get(g.id);
             if (now != null) g = now;
@@ -823,7 +960,7 @@ public class GoalWatchService extends Service {
         box.setGravity(Gravity.CENTER_VERTICAL);
         int h = Math.round(PILL_DP * d);
         box.setBackground(glass(h / 2f));
-        int pad = Math.round(15 * d);
+        int pad = Math.round(14 * d);
         box.setPadding(pad, 0, pad, 0);
         int crestPx = Math.round(CREST_DP * d);
         int gap = 0;
@@ -840,7 +977,10 @@ public class GoalWatchService extends Service {
                 android.graphics.drawable.Drawable mark = (android.graphics.drawable.Drawable) part;
                 android.widget.ImageView v = new android.widget.ImageView(this);
                 v.setImageDrawable(mark);
-                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(mark.getIntrinsicWidth(), mark.getIntrinsicHeight());
+                // Drawn marks and vector icons scale cleanly: fit them to the crests' height.
+                int mh = Math.max(1, mark.getIntrinsicHeight());
+                int th = Math.round(crestPx * 0.95f);
+                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(Math.max(1, mark.getIntrinsicWidth() * th / mh), th);
                 lp.leftMargin = gap;
                 box.addView(v, lp);
             } else if (part instanceof Small) {
@@ -855,11 +995,12 @@ public class GoalWatchService extends Service {
         }
         box.setMinimumHeight(h);
 
-        ensureHost(wide ? 1000 : 560, 50);
+        ensureHost(wide ? 940 : 520, 46);
         if (host == null) return;
         host.addView(box, new android.widget.FrameLayout.LayoutParams(
                 android.widget.FrameLayout.LayoutParams.WRAP_CONTENT, h, Gravity.BOTTOM | Gravity.START));
         shown = box;
+        play(sound);
         // A small glass dot pops in at the corner, the pill then stretches out to the right with its round ends kept
         // (an animated rounded outline, clipped in hardware), and only then does the text fade in.
         final float radius = h / 2f;
@@ -959,12 +1100,13 @@ public class GoalWatchService extends Service {
                 if (b != null) main.post(() -> v.setImageBitmap(b));
             });
         }
-        ensureHost(900, 124);
+        ensureHost(840, 116);
         if (host == null) return;
         host.addView(panel, new android.widget.FrameLayout.LayoutParams(
                 android.widget.FrameLayout.LayoutParams.WRAP_CONTENT, android.widget.FrameLayout.LayoutParams.WRAP_CONTENT,
                 Gravity.BOTTOM | Gravity.START));
         shown = panel;
+        play("f1");
         panel.setAlpha(0f);
         panel.setTranslationY(14 * d);
         panel.setLayerType(View.LAYER_TYPE_HARDWARE, null);
@@ -1015,6 +1157,7 @@ public class GoalWatchService extends Service {
 
     @Override public void onDestroy() {
         try { unregisterReceiver(dreams); } catch (Exception ignored) { }
+        if (sounds != null) sounds.release();
         main.removeCallbacksAndMessages(null);
         io.shutdownNow();
         if (host != null) {

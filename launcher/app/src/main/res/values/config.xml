@@ -476,8 +476,11 @@
     <bool name="top_bar_apps_after_network">true</bool>
     <bool name="top_bar_apps_mono">true</bool>
     <!-- BBC News beside a lone resume card (an RSS feed with media:thumbnail); empty leaves the space empty. -->
-    <!-- Several feeds separated by spaces: the first (Manchester) is preferred, the others fill the row. -->
-    <string name="news_panel_url" translatable="false">https://feeds.bbci.co.uk/news/england/manchester/rss.xml https://feeds.bbci.co.uk/news/rss.xml</string>
+    <!-- Several feeds separated by spaces, taken in turn: Manchester leads, then BBC Sport, then the UK. -->
+    <string name="news_panel_url" translatable="false">https://feeds.bbci.co.uk/news/england/manchester/rss.xml https://feeds.bbci.co.uk/sport/rss.xml https://feeds.bbci.co.uk/news/rss.xml</string>
+    <!-- Weather pop-ups (a theme's "weather_alerts"): Met Office warnings for the region that name the area. -->
+    <string name="weather_warnings_feed" translatable="false">https://www.metoffice.gov.uk/public/data/PWSCache/WarningsRSS/Region/nw</string>
+    <string name="weather_warnings_area" translatable="false">Greater Manchester</string>
     <!-- Apps over which goal alerts appear (top right, a minute after the goal) while they are open from Home. -->
     <!-- The F1 race result (top ten) pops up a minute after each race finishes, over the app open from Home. -->
     <bool name="f1_results_popup">true</bool>

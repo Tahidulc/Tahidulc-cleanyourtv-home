@@ -30,23 +30,36 @@ final class NewsPanel {
     static final int STORIES = 12;
 
     /**
-     * Several feeds separated by spaces, the first preferred: up to half the stories from it (local news), the rest
-     * from the others in turn, each story once.
+     * Several feeds separated by spaces, taken in turn (the first, local news, leads): each story once, each with
+     * its tag as a fourth field: BBC MANCHESTER, BBC SPORT or BBC NEWS.
      */
     static List<String[]> readAll(String feeds) {
         String[] urls = feeds.trim().split("\\s+");
-        if (urls.length == 1) return read(urls[0]);
+        List<List<String[]>> lists = new ArrayList<>();
+        for (String u : urls) lists.add(read(u));
         List<String[]> out = new ArrayList<>();
-        java.util.Set<String> links = new java.util.HashSet<>();
-        for (int f = 0; f < urls.length; f++) {
-            int cap = f == 0 ? STORIES / 2 : STORIES;
-            int taken = 0;
-            for (String[] st : read(urls[f])) {
-                if (out.size() >= STORIES || taken >= cap) break;
-                if (links.add(st[2] == null ? st[0] : st[2]) && links.add(st[0])) { out.add(st); taken++; }
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        for (int i = 0; out.size() < STORIES; i++) {
+            boolean any = false;
+            for (int f = 0; f < urls.length && out.size() < STORIES; f++) {
+                if (i >= lists.get(f).size()) continue;
+                any = true;
+                String[] st = lists.get(f).get(i);
+                if (!seen.add(st[0])) continue;
+                out.add(new String[]{st[0], st[1], st[2], tag(urls[f])});
             }
+            if (!any) break;
         }
         return out;
+    }
+
+    static String tag(String feed) {
+        return feed.contains("/sport/") ? "BBC SPORT" : feed.contains("/manchester/") ? "BBC MANCHESTER" : "BBC NEWS";
+    }
+
+    /** A news card's tag, whichever BBC section it is. */
+    static boolean isTag(String s) {
+        return s != null && s.startsWith("BBC ");
     }
 
     /** {headline, picture url, article link} */

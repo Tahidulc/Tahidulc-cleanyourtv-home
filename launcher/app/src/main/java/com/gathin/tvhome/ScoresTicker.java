@@ -689,7 +689,8 @@ final class ScoresTicker {
     /** A crest or league logo at about size px: the shared disk cache first, then ESPN's resizer. Off the main thread. */
     static Bitmap cachedLogo(Context context, String url, int logo) {
         File logoDir = new File(context.getCacheDir(), "logos");
-        File file = new File(logoDir, Integer.toHexString(url.hashCode()) + ".png");
+        // The size is part of the name: a bigger use of the same logo must not get the small copy.
+        File file = new File(logoDir, Integer.toHexString((url + "@" + logo).hashCode()) + ".png");
         if (file.isFile()) {
             Bitmap b = BitmapFactory.decodeFile(file.getPath());
             if (b != null) return b;
