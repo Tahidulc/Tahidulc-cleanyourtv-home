@@ -107,7 +107,15 @@ public class GoalWatchService extends Service {
     }
 
     private final Handler main = new Handler(Looper.getMainLooper());
-    private final ExecutorService io = Executors.newSingleThreadExecutor();
+    /**
+     * Polls, downloads and decodes run at background priority, so they never take a core from the app being watched
+     * (its player and its UI) on a quad-core TV.
+     */
+    private static final java.util.concurrent.ThreadFactory LOW = r -> new Thread(() -> {
+        android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND);
+        r.run();
+    }, "alerts");
+    private final ExecutorService io = Executors.newSingleThreadExecutor(LOW);
     private final Set<String> seen = new HashSet<>();
     private boolean primed;
     private long startedAt;
@@ -858,7 +866,7 @@ public class GoalWatchService extends Service {
                     if (side.crest != null) urls.add(side.crest);
                     for (String[] p : side.players) if (p[1] != null && !urls.contains(p[1])) urls.add(p[1]);
                 }
-                ExecutorService pool = Executors.newFixedThreadPool(6);
+                ExecutorService pool = Executors.newFixedThreadPool(6, LOW);
                 List<java.util.concurrent.Callable<Void>> jobs = new ArrayList<>();
                 for (String url : urls) jobs.add(() -> {
                     android.graphics.Bitmap b = ScoresTicker.cachedLogo(this, url, px);
@@ -996,7 +1004,8 @@ public class GoalWatchService extends Service {
     private void ensureHost(int widthDp, int heightDp) {
         if (host != null) return;
         float d = getResources().getDisplayMetrics().density;
-        host = new android.widget.FrameLayout(this);
+        boolean software = calm();
+        host = new android.widget.FrameLayout(software ? new SoftwareWindow(this) : this);
         // A fixed size, set once: a window that changes size over a playing video is reallocated and re-planned
         // by the display, which shows as a hitch; this one only ever changes what it draws.
         WindowManager.LayoutParams lp = new WindowManager.LayoutParams(Math.round(widthDp * d), Math.round(heightDp * d),
@@ -1004,7 +1013,7 @@ public class GoalWatchService extends Service {
                 // Not FLAG_NOT_TOUCHABLE: Android 12+ caps such an overlay at 80% opacity, which let the picture
                 // through the glass. A TV has no touch screen, and not focusable keeps every key with the app.
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
-                        | WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
+                        | (software ? 0 : WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED),
                 PixelFormat.TRANSLUCENT);
         lp.gravity = Gravity.BOTTOM | Gravity.START;
         lp.x = Math.round(32 * d);
@@ -1015,6 +1024,25 @@ public class GoalWatchService extends Service {
         } catch (Exception e) {
             host = null;
         }
+    }
+
+    /**
+     * Over another app the alert is drawn by the CPU. A window the graphics chip draws gets compressed buffers that
+     * the TCL's spare display planes cannot show, so the TV composes the app's layer and the alert on the GPU while
+     * it is up, and the video underneath misses frames whenever that starts and stops. A plain buffer goes on a plane
+     * of its own, and the app keeps its hardware composition. Android picks software drawing for a window with no
+     * parent from the application's hardware-acceleration flag, read through the root view's context: this one says no.
+     */
+    private static final class SoftwareWindow extends android.content.ContextWrapper {
+        private final android.content.pm.ApplicationInfo info;
+
+        SoftwareWindow(android.content.Context base) {
+            super(base);
+            info = new android.content.pm.ApplicationInfo(base.getApplicationInfo());
+            info.flags &= ~android.content.pm.ApplicationInfo.FLAG_HARDWARE_ACCELERATED;
+        }
+
+        @Override public android.content.pm.ApplicationInfo getApplicationInfo() { return info; }
     }
 
     /** "Mohamed Salah" to "Salah", "Virgil van Dijk" to "van Dijk": everything after the first name. */
@@ -1270,7 +1298,7 @@ public class GoalWatchService extends Service {
         disc.setShape(GradientDrawable.OVAL);
         disc.setColor(0xFFC9D0D9);
         if (f.photo != null) {
-            android.widget.ImageView v = crest(f.photo, d);
+            android.widget.ImageView v = crest(round(f.photo), d);
             v.setScaleType(android.widget.ImageView.ScaleType.CENTER_CROP);
             v.setBackground(disc);
             v.setOutlineProvider(new android.view.ViewOutlineProvider() {
@@ -1283,6 +1311,22 @@ public class GoalWatchService extends Service {
         n.setGravity(Gravity.CENTER);
         n.setBackground(disc);
         return n;
+    }
+
+    /** The photo cut to a disc over the face's grey, in the bitmap itself: a window drawn in software does not clip. */
+    private static android.graphics.Bitmap round(android.graphics.Bitmap src) {
+        int size = Math.min(src.getWidth(), src.getHeight());
+        android.graphics.Bitmap out = android.graphics.Bitmap.createBitmap(size, size, android.graphics.Bitmap.Config.ARGB_8888);
+        android.graphics.Canvas c = new android.graphics.Canvas(out);
+        android.graphics.Paint p = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+        p.setColor(0xFFC9D0D9);
+        c.drawCircle(size / 2f, size / 2f, size / 2f, p);
+        p.setShader(new android.graphics.BitmapShader(src, android.graphics.Shader.TileMode.CLAMP, android.graphics.Shader.TileMode.CLAMP));
+        android.graphics.Matrix m = new android.graphics.Matrix();
+        m.setTranslate(-(src.getWidth() - size) / 2f, -(src.getHeight() - size) / 2f);
+        p.getShader().setLocalMatrix(m);
+        c.drawCircle(size / 2f, size / 2f, size / 2f, p);
+        return out;
     }
 
     private void outline(LinearLayout box, int h, float[] visible) {
