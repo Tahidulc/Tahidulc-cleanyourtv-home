@@ -823,12 +823,24 @@ public class GoalWatchService extends Service {
                     ready.add(new Img(pic.url == null ? null : ScoresTicker.cachedLogo(this, pic.url, px * (pic.wide ? 2 : 1)), pic.wide));
                 } else ready.add(o);
             }
-            Map<String, android.graphics.Bitmap> pictures = new HashMap<>();
-            if (sides != null) for (ScoresTicker.Side side : sides) {
-                if (side.crest != null) pictures.put(side.crest, ScoresTicker.cachedLogo(this, side.crest, px));
-                for (String[] p : side.players) {
-                    if (p[1] != null && !pictures.containsKey(p[1])) pictures.put(p[1], ScoresTicker.cachedLogo(this, p[1], px));
+            // Every picture at once, and no more than ten seconds for all of them: on a slow connection a player
+            // whose photo has not come shows his shirt number instead.
+            Map<String, android.graphics.Bitmap> pictures = new java.util.concurrent.ConcurrentHashMap<>();
+            if (sides != null) {
+                List<String> urls = new ArrayList<>();
+                for (ScoresTicker.Side side : sides) {
+                    if (side.crest != null) urls.add(side.crest);
+                    for (String[] p : side.players) if (p[1] != null && !urls.contains(p[1])) urls.add(p[1]);
                 }
+                ExecutorService pool = Executors.newFixedThreadPool(6);
+                List<java.util.concurrent.Callable<Void>> jobs = new ArrayList<>();
+                for (String url : urls) jobs.add(() -> {
+                    android.graphics.Bitmap b = ScoresTicker.cachedLogo(this, url, px);
+                    if (b != null) pictures.put(url, b);
+                    return null;
+                });
+                try { pool.invokeAll(jobs, 10, java.util.concurrent.TimeUnit.SECONDS); } catch (InterruptedException ignored) { }
+                pool.shutdownNow();
             }
             main.post(() -> {
                 queue.add(new Object[]{ready, "reminder", sides, pictures});
@@ -1151,21 +1163,36 @@ public class GoalWatchService extends Service {
                 LinearLayout chip = new LinearLayout(this);
                 chip.setOrientation(LinearLayout.VERTICAL);
                 chip.setGravity(Gravity.CENTER_HORIZONTAL);
-                android.widget.ImageView face = crest(pics.get(p[1]), d);
-                face.setScaleType(android.widget.ImageView.ScaleType.CENTER_CROP);
                 GradientDrawable disc = new GradientDrawable();
                 disc.setShape(GradientDrawable.OVAL);
                 disc.setColor(0xFFD9DEE5);
-                face.setBackground(disc);
-                face.setOutlineProvider(new android.view.ViewOutlineProvider() {
-                    @Override public void getOutline(View v, android.graphics.Outline o) { o.setOval(0, 0, v.getWidth(), v.getHeight()); }
-                });
-                face.setClipToOutline(true);
-                chip.addView(face, sized(Math.round(30 * d), 0));
+                android.graphics.Bitmap photo = pics.get(p[1]);
+                if (photo != null) {
+                    android.widget.ImageView face = crest(photo, d);
+                    face.setScaleType(android.widget.ImageView.ScaleType.CENTER_CROP);
+                    face.setBackground(disc);
+                    face.setOutlineProvider(new android.view.ViewOutlineProvider() {
+                        @Override public void getOutline(View v, android.graphics.Outline o) { o.setOval(0, 0, v.getWidth(), v.getHeight()); }
+                    });
+                    face.setClipToOutline(true);
+                    LinearLayout.LayoutParams flp = sized(Math.round(30 * d), 0);
+                    flp.gravity = Gravity.CENTER_HORIZONTAL;
+                    chip.addView(face, flp);
+                } else {
+                    // No photo: the shirt number on the same disc.
+                    TextView number = text(bold(p[2]), 11f, 0xFF1A1D24);
+                    number.setGravity(Gravity.CENTER);
+                    number.setBackground(disc);
+                    LinearLayout.LayoutParams nlp = sized(Math.round(30 * d), 0);
+                    nlp.gravity = Gravity.CENTER_HORIZONTAL;
+                    chip.addView(number, nlp);
+                }
                 TextView name = text(p[0], 9.5f, 0xFF1A1D24);
                 name.setMaxWidth(Math.round(78 * d));
                 name.setEllipsize(TextUtils.TruncateAt.END);
-                chip.addView(name);
+                name.setGravity(Gravity.CENTER);
+                chip.addView(name, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT));
                 row.addView(chip, new LinearLayout.LayoutParams(Math.round(80 * d), LinearLayout.LayoutParams.WRAP_CONTENT));
             }
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT,
