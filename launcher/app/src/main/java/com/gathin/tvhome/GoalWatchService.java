@@ -95,6 +95,15 @@ public class GoalWatchService extends Service {
     private final android.content.BroadcastReceiver dreams = new android.content.BroadcastReceiver() {
         @Override public void onReceive(Context c, Intent i) {
             dreaming = Intent.ACTION_DREAMING_STARTED.equals(i.getAction());
+            releaseHeld();
+        }
+    };
+
+    /** Something started or stopped playing: held line-ups come out once nothing plays. */
+    private final android.media.AudioManager.AudioPlaybackCallback playback = new android.media.AudioManager.AudioPlaybackCallback() {
+        @Override public void onPlaybackConfigChanged(List<android.media.AudioPlaybackConfiguration> configs) {
+            // The stream reads as active for a moment after a pause.
+            main.postDelayed(GoalWatchService.this::releaseHeld, 1_500);
         }
     };
 
@@ -104,6 +113,8 @@ public class GoalWatchService extends Service {
         f.addAction(Intent.ACTION_DREAMING_STOPPED);
         if (Build.VERSION.SDK_INT >= 33) registerReceiver(dreams, f, Context.RECEIVER_NOT_EXPORTED);
         else registerReceiver(dreams, f);
+        android.media.AudioManager am = getSystemService(android.media.AudioManager.class);
+        if (am != null) am.registerAudioPlaybackCallback(playback, main);
     }
 
     private final Handler main = new Handler(Looper.getMainLooper());
@@ -236,6 +247,7 @@ public class GoalWatchService extends Service {
             f1Live = Config.themeFlag(this, "f1_live_alerts", false);
             newsAlerts = Config.themeFlag(this, "news_alerts", false);
             frost = Config.themeFlag(this, "frost_alerts", false);
+            stillOverApps = Config.themeFlag(this, "still_over_apps", false);
             teamAlerts = Config.themeFlag(this, "team_alerts", false);
             incidentAlerts = Config.themeFlag(this, "incident_alerts", false);
             kickoffReminders = Config.themeFlag(this, "kickoff_reminders", false);
@@ -306,6 +318,8 @@ public class GoalWatchService extends Service {
             startedAt = System.currentTimeMillis();
             main.post(poll);
         }
+        // Home has come up: line-ups held over a video can be shown now.
+        main.post(this::releaseHeld);
         return START_NOT_STICKY;
     }
 
@@ -1123,6 +1137,23 @@ public class GoalWatchService extends Service {
                 sides = (ScoresTicker.Side[]) next[2];
                 pictures = (Map<String, android.graphics.Bitmap>) next[3];
                 livePage = (List<Object>) next[4];
+                if (stillOnly() && (sides != null || livePage != null)) {
+                    // Over a playing video: one still pill, the kick-off and the channel together; the line-ups
+                    // wait for a pause or Home, under the two clubs and "LINE-UPS".
+                    if (sides != null) {
+                        List<Object> head = new ArrayList<>(livePage != null && livePage.size() > 9 ? livePage.subList(0, 9) : parts);
+                        head.add(14);
+                        head.add(bold("📋  LINE-UPS"));
+                        held = new Object[]{head, sides, pictures, System.currentTimeMillis()};
+                    }
+                    if (livePage != null && livePage.size() >= 3) {
+                        parts = new ArrayList<>(parts);
+                        parts.add(14);
+                        parts.addAll(livePage.subList(livePage.size() - 3, livePage.size()));
+                    }
+                    sides = null;
+                    livePage = null;
+                }
             }
         } else {
             sound = (String) next[5];
@@ -1196,6 +1227,15 @@ public class GoalWatchService extends Service {
             // midfield and attack), and last which channel has it.
             List<List<Object>> pages = sides != null ? lineupPages(sides, pictures) : new ArrayList<>();
             if (livePage != null) pages.add(livePage);
+            if (sides != null) {
+                List<Object> head = parts;
+                if (livePage != null && livePage.size() > 9) {
+                    head = new ArrayList<>(livePage.subList(0, 9));
+                    head.add(14);
+                    head.add(bold("📋  LINE-UPS"));
+                }
+                showingLineup = new Object[]{head, sides, pictures, System.currentTimeMillis()};
+            }
             main.postDelayed(() -> flipPage(box, pages, 0, h), 6_500);
             return;
         }
@@ -1217,6 +1257,33 @@ public class GoalWatchService extends Service {
         return !homeInFront && !dreaming;
     }
 
+    /** still_over_apps (theme): turn off pop-up page changes over a playing video. */
+    private boolean stillOverApps;
+    /** A kick-off reminder's line-ups put off while a video played: {header, sides, pictures, when}. */
+    private Object[] held, showingLineup;
+    private static final long HELD_MS = 3 * 60 * 60_000L;
+
+    /**
+     * Over a playing video on the TCL every change in an alert's window makes the TV compose the whole screen on the
+     * graphics chip, and the video loses frames each time; one still pill costs nothing measurable. With
+     * still_over_apps an alert there is a single still pill, and paged line-ups wait.
+     */
+    private boolean stillOnly() {
+        if (!stillOverApps || !calm()) return false;
+        android.media.AudioManager am = getSystemService(android.media.AudioManager.class);
+        return am != null && am.isMusicActive();
+    }
+
+    /** The held line-ups, once nothing is playing or Home or the screensaver is up; a stale one is dropped. */
+    private void releaseHeld() {
+        if (held == null || stillOnly()) return;
+        Object[] h = held;
+        held = null;
+        if (System.currentTimeMillis() - (Long) h[3] > HELD_MS) return;
+        queue.add(new Object[]{h[0], "reminder", h[1], h[2], null});
+        showNext();
+    }
+
     /** The alert's window gone, and the next one in the queue. */
     private void removeHost() {
         if (host != null) {
@@ -1231,7 +1298,15 @@ public class GoalWatchService extends Service {
     /** The next line-up page slides up into the pill's place; after the last, the pill closes as usual. */
     private void flipPage(LinearLayout old, List<List<Object>> pages, int index, int h) {
         if (host == null) return;
+        if (stillOnly() && showingLineup != null) {
+            // Play was pressed while the pages turned: they stop, and the line-ups wait again.
+            held = showingLineup;
+            showingLineup = null;
+            removeHost();
+            return;
+        }
         if (index >= pages.size()) {
+            showingLineup = null;
             final float[] full = {old.getWidth()};
             outline(old, h, full);
             closePill(old, h, full);
@@ -1554,6 +1629,8 @@ public class GoalWatchService extends Service {
 
     @Override public void onDestroy() {
         try { unregisterReceiver(dreams); } catch (Exception ignored) { }
+        android.media.AudioManager am = getSystemService(android.media.AudioManager.class);
+        if (am != null) am.unregisterAudioPlaybackCallback(playback);
         if (sounds != null) sounds.release();
         main.removeCallbacksAndMessages(null);
         io.shutdownNow();
