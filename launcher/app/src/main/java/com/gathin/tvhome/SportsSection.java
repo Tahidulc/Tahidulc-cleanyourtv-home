@@ -94,6 +94,8 @@ final class SportsSection {
         final List<String[]> stats = new ArrayList<>();   // {label, home, away}
         final List<String> events = new ArrayList<>();    // "67'  ⚽  Salah", newest first
         String commentary;
+        /** The British channel showing it live, if one lists it. */
+        TvGuide.Channel tv;
         /** Before kick-off: each side's starting eleven (surnames), once announced. */
         final List<String> xiHome = new ArrayList<>(), xiAway = new ArrayList<>();
     }
@@ -237,6 +239,8 @@ final class SportsSection {
             List<ScoresTicker.Game> games = ScoresTicker.load(all.toArray(new String[0]));
             ScoresTicker.Game pick = pick(games, alertTags, clubs);
             Featured f = pick == null ? null : featured(pick);
+            if (f != null) f.tv = TvGuide.find(ctx.getResources().getStringArray(R.array.football_tv_channels),
+                    pick.homeName, pick.awayName, pick.kickoff);
             Map<String, Table> fresh = new HashMap<>();
             if (tablesNow) for (String l : tableLeagues) {
                 String[] p = l.split("\\|", 2);
@@ -527,6 +531,16 @@ final class SportsSection {
         score.addView(text(g.away, 18, Color.WHITE, true), gap(dp(18)));
         score.addView(logo(g.awayLogo, 40), sized(dp(40), dp(12)));
         col.addView(score, top(dp(10)));
+        if (f.tv != null) {
+            // "LIVE ON" and the channel's logo, centred under the score.
+            LinearLayout on = row();
+            on.setGravity(Gravity.CENTER);
+            on.addView(text("LIVE ON", 10, 0xB3FFFFFF, true));
+            ImageView tvLogo = logo(f.tv.logo, 18);
+            on.addView(tvLogo, new LinearLayout.LayoutParams(dp(140), dp(16)));
+            ((LinearLayout.LayoutParams) tvLogo.getLayoutParams()).leftMargin = dp(8);
+            col.addView(on, fill(dp(4)));
+        }
         if (f.formationHome != null && f.formationAway != null) {
             TextView form = text(f.formationHome + "        formation        " + f.formationAway, 10, 0x80FFFFFF, false);
             form.setGravity(Gravity.CENTER);

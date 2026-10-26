@@ -337,6 +337,8 @@ final class WatchRows {
     private List<ScoresTicker.Game> whatsOn = new ArrayList<>();
     /** What is on British TV now (UkTv), shown before the fixtures. */
     private List<UkTv.Now> tvNow = new ArrayList<>();
+    /** The British channel each fixture is live on (TvGuide), by game id. */
+    private Map<String, TvGuide.Channel> liveOn = new HashMap<>();
     private long whatsOnAt;
     private Boolean whatsOnOn;
 
@@ -357,10 +359,17 @@ final class WatchRows {
                 if (f1 != null && f1.state != 2) games.add(f1);
                 games.sort((a, b) -> a.state != b.state ? Integer.compare(a.state, b.state) : Long.compare(a.kickoff, b.kickoff));
                 List<ScoresTicker.Game> top = new ArrayList<>(games.subList(0, Math.min(12, games.size())));
+                String[] football = context.getResources().getStringArray(R.array.football_tv_channels);
+                Map<String, TvGuide.Channel> on = new HashMap<>();
+                for (ScoresTicker.Game g : top) {
+                    TvGuide.Channel c = TvGuide.find(football, g.homeName, g.awayName, g.kickoff);
+                    if (c != null && g.id != null) on.put(g.id, c);
+                }
                 main.post(() -> {
                     if (top.isEmpty() && tv.isEmpty()) { whatsOnAt = 0; }
                     whatsOn = top;
                     tvNow = tv;
+                    liveOn = on;
                     if (gen == generation && pkg.equals(shownPackage) && (!top.isEmpty() || !tv.isEmpty())) fillWhatsOn();
                 });
             });
@@ -468,6 +477,30 @@ final class WatchRows {
         flp.leftMargin = dp(16);
         flp.bottomMargin = dp(14);
         card.addView(foot, flp);
+        TvGuide.Channel tv = g.id == null ? null : liveOn.get(g.id);
+        if (tv != null) {
+            // Bottom-right: "LIVE ON" and the channel's logo.
+            LinearLayout on = new LinearLayout(context);
+            on.setGravity(Gravity.CENTER_VERTICAL);
+            TextView label = new TextView(context);
+            label.setText("LIVE ON");
+            label.setTextColor(0xCCFFFFFF);
+            label.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f);
+            label.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+            label.setLetterSpacing(0.1f);
+            on.addView(label);
+            ImageView logo = new ImageView(context);
+            logo.setScaleType(ImageView.ScaleType.FIT_END);
+            loadPoster(tv.logo, logo);
+            LinearLayout.LayoutParams olp = new LinearLayout.LayoutParams(dp(150), dp(20));
+            olp.leftMargin = dp(8);
+            on.addView(logo, olp);
+            FrameLayout.LayoutParams onlp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
+                    Gravity.BOTTOM | Gravity.END);
+            onlp.rightMargin = dp(16);
+            onlp.bottomMargin = dp(14);
+            card.addView(on, onlp);
+        }
         card.setOnFocusChangeListener((v, focused) -> {
             v.animate().scaleX(focused ? FOCUS_SCALE : 1f).scaleY(focused ? FOCUS_SCALE : 1f).setDuration(160).start();
             v.setForeground(focused ? ring : null);

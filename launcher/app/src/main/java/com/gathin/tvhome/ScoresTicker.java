@@ -68,6 +68,10 @@ final class ScoresTicker {
         String homeId, awayId, slug;
         /** The teams' colours (0 when ESPN has none), and while live the match clock in seconds as read at clockAt. */
         int homeColor, awayColor;
+        /** The clubs' full names ("Tottenham Hotspur"), for finding the game in a TV guide. */
+        String homeName, awayName;
+        /** adb tests only: the moment to look up in the TV guide instead of the kick-off. */
+        long tvAt;
         double clockSec;
         long clockAt;
         boolean halftime;
@@ -268,6 +272,8 @@ final class ScoresTicker {
         g.home = home.getJSONObject("team").optString("abbreviation");
         g.away = away.getJSONObject("team").optString("abbreviation");
         g.homeLogo = home.getJSONObject("team").optString("logo", null);
+        g.homeName = home.getJSONObject("team").optString("displayName", null);
+        g.awayName = away.getJSONObject("team").optString("displayName", null);
         g.homeColor = color(home.getJSONObject("team").optString("color", ""));
         g.awayColor = color(away.getJSONObject("team").optString("color", ""));
         if (g.awayColor == g.homeColor) g.awayColor = color(away.getJSONObject("team").optString("alternateColor", ""));
@@ -373,7 +379,8 @@ final class ScoresTicker {
                     JSONObject shot = a.optJSONObject("headshot");
                     String photo = shot != null ? shot.optString("href", null)
                             : "https://a.espncdn.com/i/headshots/soccer/players/full/" + a.optString("id") + ".png";
-                    side.players.add(new String[]{GoalWatchService.surname(a.optString("displayName")), photo, p.optString("jersey", "")});
+                    String pos = p.optJSONObject("position") == null ? "" : p.getJSONObject("position").optString("abbreviation", "");
+                    side.players.add(new String[]{GoalWatchService.surname(a.optString("displayName")), photo, p.optString("jersey", ""), pos});
                 }
                 if (team != null && team.optString("id").equals(g.homeId)) { side.abbr = g.home; side.crest = g.homeLogo; home = side; }
                 else { side.abbr = g.away; side.crest = g.awayLogo; away = side; }

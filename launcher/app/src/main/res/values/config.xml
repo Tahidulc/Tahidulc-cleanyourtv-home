@@ -542,6 +542,25 @@
         <item>3627|TNT Sports 2</item>
         <item>4049|Sky Sports News</item>
     </string-array>
+    <!-- Where a game is on: these British channels' "Live" listings in Sky's guide, in order of preference, the ones that
+         show the big games in 4K (Sky Sports Main Event and Premier League, TNT Sports 1) first. -->
+    <string-array name="football_tv_channels" translatable="false">
+        <item>4002|Sky Sports Main Event</item>
+        <item>4010|Sky Sports Premier League</item>
+        <item>3625|TNT Sports 1</item>
+        <item>3939|Sky Sports Football</item>
+        <item>3627|TNT Sports 2</item>
+        <item>3629|TNT Sports 3</item>
+        <item>4040|TNT Sports 4</item>
+        <item>3940|Sky Sports+</item>
+        <item>4090|Sky Sports Mix</item>
+        <item>1289|Premier Sports 1</item>
+        <item>1290|Premier Sports 2</item>
+        <item>3007|BBC One</item>
+        <item>6504|ITV1</item>
+        <item>4075|Channel 4</item>
+        <item>4058|5</item>
+    </string-array>
     <!-- The live tables in the sports row (a theme's "sports_section"): "league slug|name". -->
     <string-array name="table_leagues" translatable="false">
         <item>eng.1|PREMIER LEAGUE</item>

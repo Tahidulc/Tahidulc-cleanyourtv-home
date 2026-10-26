@@ -157,6 +157,24 @@ public class GoalWatchService extends Service {
         Pic(String url, boolean wide) { this.url = url; this.wide = wide; }
     }
 
+    /** A player on a line-up page: his photo (or null) and shirt number. */
+    private static final class Face {
+        final android.graphics.Bitmap photo;
+        final String number;
+        Face(android.graphics.Bitmap photo, String number) { this.photo = photo; this.number = number; }
+    }
+
+    /** A channel logo to fetch, shown on a dark capsule; ChipImg once fetched. */
+    private static final class Chip {
+        final String url, name;
+        Chip(String url, String name) { this.url = url; this.name = name; }
+    }
+
+    private static final class ChipImg {
+        final android.graphics.Bitmap bitmap;
+        ChipImg(android.graphics.Bitmap bitmap) { this.bitmap = bitmap; }
+    }
+
     /** A fetched Pic. */
     private static final class Img {
         final android.graphics.Bitmap bitmap;
@@ -768,6 +786,11 @@ public class GoalWatchService extends Service {
             g.leagueLogo = "https://a.espncdn.com/i/leaguelogos/soccer/500-dark/23.png";
             g.kickoff = System.currentTimeMillis() + REMIND_MS;
             g.id = "test";
+            // The guide part of the test looks up a real listing: Liverpool v Arsenal, 1 November 2026, 16:30 UK.
+            g.home = "LIV"; g.away = "ARS"; g.homeName = "Liverpool"; g.awayName = "Arsenal";
+            g.homeLogo = "https://a.espncdn.com/i/teamlogos/soccer/500/364.png";
+            g.awayLogo = "https://a.espncdn.com/i/teamlogos/soccer/500/359.png";
+            g.tvAt = 1_793_554_200_000L;
             enqueueReminder(g);
         }
         io.execute(() -> {
@@ -811,11 +834,18 @@ public class GoalWatchService extends Service {
     private void enqueueReminder(ScoresTicker.Game g) {
         List<Object> parts = kickoffLine(g);
         int px = Math.round(LOGO_DP * getResources().getDisplayMetrics().density);
+        String[] channels = getResources().getStringArray(R.array.football_tv_channels);
         io.execute(() -> {
             ScoresTicker.Side[] sides = "test".equals(g.id) ? testSides(g) : ScoresTicker.lineups(g);
+            // "Live on" and the channel, when a British channel lists the game.
+            TvGuide.Channel tv = TvGuide.find(channels, g.homeName, g.awayName, g.tvAt != 0 ? g.tvAt : g.kickoff);
+            if (tv != null) { parts.add(12); parts.add(new Small("LIVE ON")); parts.add(6); parts.add(new Chip(tv.logo, tv.name)); }
             List<Object> ready = new ArrayList<>();
             for (Object o : parts) {
-                if (o instanceof Pic) {
+                if (o instanceof Chip) {
+                    android.graphics.Bitmap logo = ScoresTicker.cachedLogo(this, ((Chip) o).url, px * 4);
+                    ready.add(logo != null ? new ChipImg(logo) : bold(((Chip) o).name));
+                } else if (o instanceof Pic) {
                     Pic pic = (Pic) o;
                     ready.add(new Img(pic.url == null ? null : ScoresTicker.cachedLogo(this, pic.url, px * (pic.wide ? 2 : 1)), pic.wide));
                 } else ready.add(o);
@@ -1009,49 +1039,12 @@ public class GoalWatchService extends Service {
             wide = false;
         }
         float d = getResources().getDisplayMetrics().density;
-        // One slim line in the Home screen's frosted pill style, dark text on the silver glass.
-        LinearLayout box = new LinearLayout(this);
-        box.setOrientation(LinearLayout.HORIZONTAL);
-        box.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout box = pillBox(parts, d);
         int h = Math.round(PILL_DP * d);
-        box.setBackground(glass(h / 2f));
-        int pad = Math.round(14 * d);
-        box.setPadding(pad, 0, pad, 0);
-        int crestPx = Math.round(CREST_DP * d);
-        int gap = 0;
-        for (Object part : parts) {
-            if (part instanceof Integer) { gap = Math.round((Integer) part * d); continue; }
-            if (part == null || part instanceof android.graphics.Bitmap) {
-                box.addView(crest((android.graphics.Bitmap) part, d), sized(crestPx, gap));
-            } else if (part instanceof Img) {
-                Img img = (Img) part;
-                LinearLayout.LayoutParams lp = sized(crestPx, gap);
-                if (img.wide) lp.width = crestPx * 2;
-                box.addView(crest(img.bitmap, d), lp);
-            } else if (part instanceof android.graphics.drawable.Drawable) {
-                android.graphics.drawable.Drawable mark = (android.graphics.drawable.Drawable) part;
-                android.widget.ImageView v = new android.widget.ImageView(this);
-                v.setImageDrawable(mark);
-                // Drawn marks and vector icons scale cleanly: fit them to the crests' height.
-                int mh = Math.max(1, mark.getIntrinsicHeight());
-                int th = Math.round(crestPx * 0.95f);
-                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(Math.max(1, mark.getIntrinsicWidth() * th / mh), th);
-                lp.leftMargin = gap;
-                box.addView(v, lp);
-            } else if (part instanceof Small) {
-                box.addView(text(((Small) part).text, SMALL_SP, 0xB31A1D24), gap(gap));
-            } else {
-                TextView t = text((CharSequence) part, TEXT_SP, 0xFF1A1D24);
-                t.setMaxWidth(Math.round(700 * d));   // a long headline ends in an ellipsis
-                t.setEllipsize(TextUtils.TruncateAt.END);
-                box.addView(t, gap(gap));
-            }
-            gap = 0;
-        }
-        box.setMinimumHeight(h);
 
         // With line-ups to show, the window is sized for their page from the start: it never changes size.
-        ensureHost(sides != null ? 1040 : wide ? 940 : 520, sides != null ? 176 : 46);
+        // Line-up pages are pills too: the same window as any wide line.
+        ensureHost(sides != null || wide ? 940 : 520, 46);
         if (host == null) return;
         host.addView(box, new android.widget.FrameLayout.LayoutParams(
                 android.widget.FrameLayout.LayoutParams.WRAP_CONTENT, h, Gravity.BOTTOM | Gravity.START));
@@ -1095,19 +1088,113 @@ public class GoalWatchService extends Service {
             }).start();
         });
         if (sides != null) {
-            // Page two: the pill lifts away and both elevens rise in its place.
-            final ScoresTicker.Side[] teams = sides;
-            final Map<String, android.graphics.Bitmap> pics = pictures;
-            main.postDelayed(() -> {
-                box.setLayerType(View.LAYER_TYPE_HARDWARE, null);
-                box.animate().translationY(-h).alpha(0f).setDuration(450).withEndAction(() -> host.removeView(box)).start();
-                showLineups(teams, pics);
-            }, 6_500);
+            // Then the line-ups, a page at a time flipping up in the same pill: each side's goalkeeper, defence,
+            // midfield and attack.
+            List<List<Object>> pages = lineupPages(sides, pictures);
+            main.postDelayed(() -> flipPage(box, pages, 0, h), 6_500);
             return;
         }
-        // Closing is the opening backwards: the pill draws back in to the dot with the text going as it passes (the
-        // shrinking outline clips it from the right while it fades), then the dot pops away.
-        main.postDelayed(() -> {
+        main.postDelayed(() -> closePill(box, h, visible), SHOW_MS + 1_400);
+    }
+
+    private static final long PAGE_MS = 3_200L;
+
+    /** The next line-up page slides up into the pill's place; after the last, the pill closes as usual. */
+    private void flipPage(LinearLayout old, List<List<Object>> pages, int index, int h) {
+        if (host == null) return;
+        if (index >= pages.size()) {
+            final float[] full = {old.getWidth()};
+            outline(old, h, full);
+            closePill(old, h, full);
+            return;
+        }
+        float d = getResources().getDisplayMetrics().density;
+        LinearLayout page = pillBox(pages.get(index), d);
+        host.addView(page, new android.widget.FrameLayout.LayoutParams(
+                android.widget.FrameLayout.LayoutParams.WRAP_CONTENT, h, Gravity.BOTTOM | Gravity.START));
+        shown = page;
+        page.setTranslationY(h);
+        page.setAlpha(0f);
+        old.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+        old.animate().translationY(-h).alpha(0f).setDuration(380).withEndAction(() -> host.removeView(old)).start();
+        page.animate().translationY(0f).alpha(1f).setDuration(380).start();
+        main.postDelayed(() -> flipPage(page, pages, index + 1, h), PAGE_MS);
+    }
+
+    /** The pages: for each side, its crest and name, the line ("DEFENCE"), then each player's picture and name. */
+    private List<List<Object>> lineupPages(ScoresTicker.Side[] sides, Map<String, android.graphics.Bitmap> pics) {
+        List<List<Object>> pages = new ArrayList<>();
+        String[] names = {"GOALKEEPER", "DEFENCE", "MIDFIELD", "ATTACK"};
+        for (ScoresTicker.Side side : sides) {
+            List<List<String[]>> groups = new ArrayList<>();
+            for (int i = 0; i < 4; i++) groups.add(new ArrayList<>());
+            for (String[] p : side.players) groups.get(line(p.length > 3 ? p[3] : "")).add(p);
+            for (int i = 0; i < 4; i++) {
+                if (groups.get(i).isEmpty()) continue;
+                List<Object> parts = new ArrayList<>();
+                parts.add(new Img(pics.get(side.crest), false));
+                parts.add(6);
+                parts.add(bold(side.abbr));
+                parts.add(8);
+                parts.add(new Small(names[i] + (i == 0 && side.formation != null && !side.formation.isEmpty() ? "  ·  " + side.formation : "")));
+                for (String[] p : groups.get(i)) {
+                    parts.add(12);
+                    parts.add(new Face(pics.get(p[1]), p[2]));
+                    parts.add(5);
+                    parts.add(p[0]);
+                }
+                pages.add(parts);
+            }
+        }
+        return pages;
+    }
+
+    /** ESPN's position ("G", "CD-L", "RB", "DM", "AM", "CF", "LW") to 0 keeper, 1 defence, 2 midfield, 3 attack. */
+    private static int line(String pos) {
+        String p = pos.toUpperCase(java.util.Locale.ROOT);
+        if (p.startsWith("G")) return 0;
+        if (p.contains("M")) return 2;
+        if (p.contains("D") || p.endsWith("B") || p.contains("WB")) return 1;
+        return 3;
+    }
+
+    /** A player's round photo, or his shirt number on the same disc when there is none. */
+    private View face(Face f, int size, float d) {
+        GradientDrawable disc = new GradientDrawable();
+        disc.setShape(GradientDrawable.OVAL);
+        disc.setColor(0xFFC9D0D9);
+        if (f.photo != null) {
+            android.widget.ImageView v = crest(f.photo, d);
+            v.setScaleType(android.widget.ImageView.ScaleType.CENTER_CROP);
+            v.setBackground(disc);
+            v.setOutlineProvider(new android.view.ViewOutlineProvider() {
+                @Override public void getOutline(View view, android.graphics.Outline o) { o.setOval(0, 0, view.getWidth(), view.getHeight()); }
+            });
+            v.setClipToOutline(true);
+            return v;
+        }
+        TextView n = text(bold(f.number), 9.5f, 0xFF1A1D24);
+        n.setGravity(Gravity.CENTER);
+        n.setBackground(disc);
+        return n;
+    }
+
+    private void outline(LinearLayout box, int h, float[] visible) {
+        final float radius = h / 2f;
+        box.setOutlineProvider(new android.view.ViewOutlineProvider() {
+            @Override public void getOutline(View v, android.graphics.Outline o) {
+                o.setRoundRect(0, 0, Math.min(v.getWidth(), Math.round(visible[0])), v.getHeight(), radius);
+            }
+        });
+        box.setClipToOutline(true);
+    }
+
+    /**
+     * Closing is the opening backwards: the pill draws back in to the dot with the text going as it passes (the
+     * shrinking outline clips it from the right while it fades), then the dot pops away.
+     */
+    private void closePill(LinearLayout box, int h, float[] visible) {
+        {
             box.setLayerType(View.LAYER_TYPE_HARDWARE, null);
             for (int c = 0; c < box.getChildCount(); c++) {
                 box.getChildAt(c).animate().alpha(0f).setStartDelay(0).setDuration(600).start();
@@ -1133,90 +1220,70 @@ public class GoalWatchService extends Service {
                 });
                 shrink.start();
             });
-        }, SHOW_MS + 1_400);
+        }
     }
 
-    /** The line-up page: a row per team, its crest and formation, then each starter's picture and name. */
-    private void showLineups(ScoresTicker.Side[] sides, Map<String, android.graphics.Bitmap> pics) {
-        float d = getResources().getDisplayMetrics().density;
-        LinearLayout panel = new LinearLayout(this);
-        panel.setOrientation(LinearLayout.VERTICAL);
-        panel.setBackground(glass(16 * d));
+    /** One slim line in the Home screen's frosted pill style, dark text on the silver glass, from its parts. */
+    private LinearLayout pillBox(List<Object> parts, float d) {
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.HORIZONTAL);
+        box.setGravity(Gravity.CENTER_VERTICAL);
+        int h = Math.round(PILL_DP * d);
+        box.setBackground(glass(h / 2f));
         int pad = Math.round(14 * d);
-        panel.setPadding(pad, Math.round(9 * d), pad, Math.round(10 * d));
-        panel.addView(text(bold("STARTING LINE-UPS"), SMALL_SP, 0xB31A1D24));
-        for (ScoresTicker.Side side : sides) {
-            LinearLayout row = new LinearLayout(this);
-            row.setOrientation(LinearLayout.HORIZONTAL);
-            row.setGravity(Gravity.CENTER_VERTICAL);
-            LinearLayout team = new LinearLayout(this);
-            team.setOrientation(LinearLayout.VERTICAL);
-            team.setGravity(Gravity.CENTER_HORIZONTAL);
-            team.addView(crest(pics.get(side.crest), d), sized(Math.round(24 * d), 0));
-            team.addView(text(bold(side.abbr), SMALL_SP, 0xFF1A1D24));
-            if (side.formation != null && !side.formation.isEmpty()) team.addView(text(side.formation, 9f, 0x991A1D24));
-            row.addView(team, new LinearLayout.LayoutParams(Math.round(54 * d), LinearLayout.LayoutParams.WRAP_CONTENT));
-            for (String[] p : side.players) {
-                LinearLayout chip = new LinearLayout(this);
-                chip.setOrientation(LinearLayout.VERTICAL);
-                chip.setGravity(Gravity.CENTER_HORIZONTAL);
-                GradientDrawable disc = new GradientDrawable();
-                disc.setShape(GradientDrawable.OVAL);
-                disc.setColor(0xFFD9DEE5);
-                android.graphics.Bitmap photo = pics.get(p[1]);
-                if (photo != null) {
-                    android.widget.ImageView face = crest(photo, d);
-                    face.setScaleType(android.widget.ImageView.ScaleType.CENTER_CROP);
-                    face.setBackground(disc);
-                    face.setOutlineProvider(new android.view.ViewOutlineProvider() {
-                        @Override public void getOutline(View v, android.graphics.Outline o) { o.setOval(0, 0, v.getWidth(), v.getHeight()); }
-                    });
-                    face.setClipToOutline(true);
-                    LinearLayout.LayoutParams flp = sized(Math.round(30 * d), 0);
-                    flp.gravity = Gravity.CENTER_HORIZONTAL;
-                    chip.addView(face, flp);
-                } else {
-                    // No photo: the shirt number on the same disc.
-                    TextView number = text(bold(p[2]), 11f, 0xFF1A1D24);
-                    number.setGravity(Gravity.CENTER);
-                    number.setBackground(disc);
-                    LinearLayout.LayoutParams nlp = sized(Math.round(30 * d), 0);
-                    nlp.gravity = Gravity.CENTER_HORIZONTAL;
-                    chip.addView(number, nlp);
-                }
-                TextView name = text(p[0], 9.5f, 0xFF1A1D24);
-                name.setMaxWidth(Math.round(78 * d));
-                name.setEllipsize(TextUtils.TruncateAt.END);
-                name.setGravity(Gravity.CENTER);
-                chip.addView(name, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
-                        LinearLayout.LayoutParams.WRAP_CONTENT));
-                row.addView(chip, new LinearLayout.LayoutParams(Math.round(80 * d), LinearLayout.LayoutParams.WRAP_CONTENT));
+        box.setPadding(pad, 0, pad, 0);
+        int crestPx = Math.round(CREST_DP * d);
+        int gap = 0;
+        for (Object part : parts) {
+            if (part instanceof Integer) { gap = Math.round((Integer) part * d); continue; }
+            if (part == null || part instanceof android.graphics.Bitmap) {
+                box.addView(crest((android.graphics.Bitmap) part, d), sized(crestPx, gap));
+            } else if (part instanceof Img) {
+                Img img = (Img) part;
+                LinearLayout.LayoutParams lp = sized(crestPx, gap);
+                if (img.wide) lp.width = crestPx * 2;
+                box.addView(crest(img.bitmap, d), lp);
+            } else if (part instanceof android.graphics.drawable.Drawable) {
+                android.graphics.drawable.Drawable mark = (android.graphics.drawable.Drawable) part;
+                android.widget.ImageView v = new android.widget.ImageView(this);
+                v.setImageDrawable(mark);
+                // Drawn marks and vector icons scale cleanly: fit them to the crests' height.
+                int mh = Math.max(1, mark.getIntrinsicHeight());
+                int th = Math.round(crestPx * 0.95f);
+                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(Math.max(1, mark.getIntrinsicWidth() * th / mh), th);
+                lp.leftMargin = gap;
+                box.addView(v, lp);
+            } else if (part instanceof Face) {
+                box.addView(face((Face) part, crestPx, d), sized(crestPx, gap));
+            } else if (part instanceof ChipImg) {
+                // A channel's logo (white, made for dark screens) on a small dark capsule.
+                android.graphics.Bitmap logo = ((ChipImg) part).bitmap;
+                android.widget.ImageView v = new android.widget.ImageView(this);
+                v.setScaleType(android.widget.ImageView.ScaleType.FIT_CENTER);
+                v.setImageBitmap(logo);
+                GradientDrawable cap = new GradientDrawable();
+                cap.setColor(0xFF15171C);
+                cap.setCornerRadius(crestPx / 2f);
+                v.setBackground(cap);
+                int ph = Math.round(4 * d), pw = Math.round(9 * d);
+                v.setPadding(pw, ph, pw, ph);
+                int ch = crestPx + Math.round(2 * d);
+                int cw = Math.min(Math.round(170 * d), Math.round((ch - 2 * ph) * logo.getWidth() / (float) Math.max(1, logo.getHeight())) + 2 * pw);
+                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(cw, ch);
+                lp.leftMargin = gap;
+                box.addView(v, lp);
+            } else if (part instanceof Small) {
+                box.addView(text(((Small) part).text, SMALL_SP, 0xB31A1D24), gap(gap));
+            } else {
+                TextView t = text((CharSequence) part, TEXT_SP, 0xFF1A1D24);
+                t.setMaxWidth(Math.round(700 * d));   // a long headline ends in an ellipsis
+                t.setEllipsize(TextUtils.TruncateAt.END);
+                box.addView(t, gap(gap));
             }
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT);
-            lp.topMargin = Math.round(6 * d);
-            panel.addView(row, lp);
+            gap = 0;
         }
-        if (host == null) return;
-        host.addView(panel, new android.widget.FrameLayout.LayoutParams(
-                android.widget.FrameLayout.LayoutParams.WRAP_CONTENT, android.widget.FrameLayout.LayoutParams.WRAP_CONTENT,
-                Gravity.BOTTOM | Gravity.START));
-        panel.setAlpha(0f);
-        panel.setTranslationY(24 * d);
-        panel.setLayerType(View.LAYER_TYPE_HARDWARE, null);
-        panel.animate().alpha(1f).translationY(0f).setDuration(500).setStartDelay(150)
-                .setInterpolator(new android.view.animation.DecelerateInterpolator(1.6f))
-                .withEndAction(() -> panel.setLayerType(View.LAYER_TYPE_NONE, null)).start();
-        main.postDelayed(() -> {
-            panel.setLayerType(View.LAYER_TYPE_HARDWARE, null);
-            panel.animate().alpha(0f).translationY(16 * d).setDuration(450).withEndAction(() -> {
-                host.removeView(panel);
-                try { getSystemService(WindowManager.class).removeView(host); } catch (Exception ignored) { }
-                host = null;
-                shown = null;
-                showNext();
-            }).start();
-        }, 16_000);
+        box.setMinimumHeight(h);
+        return box;
     }
 
     /**
