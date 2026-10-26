@@ -354,7 +354,7 @@ final class ScoresTicker {
 
     /** One side's starting eleven: {surname, headshot url, shirt number} per player, in ESPN's order. */
     static final class Side {
-        String abbr, crest, formation;
+        String abbr, crest, formation, name;
         final List<String[]> players = new ArrayList<>();
     }
 
@@ -380,10 +380,12 @@ final class ScoresTicker {
                     String photo = shot != null ? shot.optString("href", null)
                             : "https://a.espncdn.com/i/headshots/soccer/players/full/" + a.optString("id") + ".png";
                     String pos = p.optJSONObject("position") == null ? "" : p.getJSONObject("position").optString("abbreviation", "");
-                    side.players.add(new String[]{GoalWatchService.surname(a.optString("displayName")), photo, p.optString("jersey", ""), pos});
+                    side.players.add(new String[]{GoalWatchService.surname(a.optString("displayName")), photo, p.optString("jersey", ""), pos,
+                            a.optString("displayName")});
                 }
                 if (team != null && team.optString("id").equals(g.homeId)) { side.abbr = g.home; side.crest = g.homeLogo; home = side; }
                 else { side.abbr = g.away; side.crest = g.awayLogo; away = side; }
+                side.name = team == null ? null : team.optString("displayName", null);
             }
             if (home == null || away == null || home.players.size() < 11 || away.players.size() < 11) return null;
             return new Side[]{home, away};

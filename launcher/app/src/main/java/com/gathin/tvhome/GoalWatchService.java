@@ -839,18 +839,17 @@ public class GoalWatchService extends Service {
             ScoresTicker.Side[] sides = "test".equals(g.id) ? testSides(g) : ScoresTicker.lineups(g);
             // "Live on" and the channel, when a British channel lists the game.
             TvGuide.Channel tv = TvGuide.find(channels, g.homeName, g.awayName, g.tvAt != 0 ? g.tvAt : g.kickoff);
-            if (tv != null) { parts.add(12); parts.add(new Small("LIVE ON")); parts.add(6); parts.add(new Chip(tv.logo, tv.name)); }
-            List<Object> ready = new ArrayList<>();
-            for (Object o : parts) {
-                if (o instanceof Chip) {
-                    android.graphics.Bitmap logo = ScoresTicker.cachedLogo(this, ((Chip) o).url, px * 4);
-                    ready.add(logo != null ? new ChipImg(logo) : bold(((Chip) o).name));
-                } else if (o instanceof Pic) {
-                    Pic pic = (Pic) o;
-                    ready.add(new Img(pic.url == null ? null : ScoresTicker.cachedLogo(this, pic.url, px * (pic.wide ? 2 : 1)), pic.wide));
-                } else ready.add(o);
+            // The last page, after the line-ups: the two clubs, "LIVE ON" and the channel.
+            List<Object> live = null;
+            if (tv != null) {
+                live = new ArrayList<>();
+                live.add(new Pic(g.homeLogo)); live.add(4); live.add(bold(g.home)); live.add(6); live.add("v"); live.add(6);
+                live.add(new Pic(g.awayLogo)); live.add(4); live.add(bold(g.away)); live.add(14);
+                live.add(bold("📺  LIVE ON")); live.add(8); live.add(new Chip(tv.logo, tv.name));
             }
-            // Every picture at once, and no more than ten seconds for all of them: on a slow connection a player
+            List<Object> ready = resolve(parts, px);
+            List<Object> livePage = live == null ? null : resolve(live, px);
+            // Every picture at once, and no more than fifteen seconds for all of them: on a slow connection a player
             // whose photo has not come shows his shirt number instead.
             Map<String, android.graphics.Bitmap> pictures = new java.util.concurrent.ConcurrentHashMap<>();
             if (sides != null) {
@@ -866,11 +865,21 @@ public class GoalWatchService extends Service {
                     if (b != null) pictures.put(url, b);
                     return null;
                 });
-                try { pool.invokeAll(jobs, 10, java.util.concurrent.TimeUnit.SECONDS); } catch (InterruptedException ignored) { }
+                // ESPN has photos for only some players: the rest from TheSportsDB, filed under the same key.
+                for (ScoresTicker.Side side : sides) for (String[] p : side.players) {
+                    if (p[1] == null || p.length < 5) continue;
+                    jobs.add(() -> {
+                        if (pictures.containsKey(p[1])) return null;
+                        android.graphics.Bitmap b = PlayerPhotos.find(this, p[4], side.name, px);
+                        if (b != null) pictures.putIfAbsent(p[1], b);
+                        return null;
+                    });
+                }
+                try { pool.invokeAll(jobs, 15, java.util.concurrent.TimeUnit.SECONDS); } catch (InterruptedException ignored) { }
                 pool.shutdownNow();
             }
             main.post(() -> {
-                queue.add(new Object[]{ready, "reminder", sides, pictures});
+                queue.add(new Object[]{ready, "reminder", sides, pictures, livePage});
                 showNext();
             });
         });
@@ -880,6 +889,66 @@ public class GoalWatchService extends Service {
     private static ScoresTicker.Side[] testSides(ScoresTicker.Game g) {
         ScoresTicker.Game last = ScoresTicker.lastFinished("eng.1", "PL", 7);
         return last == null ? null : ScoresTicker.lineups(last);
+    }
+
+    /** The line's pictures fetched: Pics to Imgs, Chips to channel logos drawn for the light pill. Off the main thread. */
+    private List<Object> resolve(List<Object> parts, int px) {
+        List<Object> ready = new ArrayList<>();
+        for (Object o : parts) {
+            if (o instanceof Chip) {
+                android.graphics.Bitmap logo = ScoresTicker.cachedLogo(this, ((Chip) o).url, px * 4);
+                ready.add(logo != null ? new ChipImg(inked(logo)) : bold(((Chip) o).name));
+            } else if (o instanceof Pic) {
+                Pic pic = (Pic) o;
+                ready.add(new Img(pic.url == null ? null : ScoresTicker.cachedLogo(this, pic.url, px * (pic.wide ? 2 : 1)), pic.wide));
+            } else ready.add(o);
+        }
+        return ready;
+    }
+
+    /**
+     * A channel logo made for dark screens, for the light pill: its white and grey lettering that stands on the
+     * transparent background drawn in the pill's dark ink; lettering inside a coloured box (Sky's blue and red) stays
+     * white, and the colours and transparent parts stay as they are. A white shape counts as standing on the
+     * background when any of its pixels touches a transparent one.
+     */
+    private static android.graphics.Bitmap inked(android.graphics.Bitmap src) {
+        int w = src.getWidth(), h = src.getHeight();
+        int[] px = new int[w * h];
+        src.getPixels(px, 0, w, 0, 0, w, h);
+        boolean[] light = new boolean[px.length];
+        for (int i = 0; i < px.length; i++) {
+            int c = px[i], a = c >>> 24;
+            int r = (c >> 16) & 0xFF, g = (c >> 8) & 0xFF, b = c & 0xFF;
+            int max = Math.max(r, Math.max(g, b)), min = Math.min(r, Math.min(g, b));
+            light[i] = a > 40 && max - min < 40 && max > 120;
+        }
+        boolean[] seen = new boolean[px.length];
+        int[] stack = new int[px.length];
+        for (int start = 0; start < px.length; start++) {
+            if (!light[start] || seen[start]) continue;
+            // One white shape, and whether it borders the transparent background.
+            int top = 0, count = 0;
+            boolean onBackground = false;
+            stack[top++] = start;
+            seen[start] = true;
+            int[] members = new int[64];
+            while (top > 0) {
+                int i = stack[--top];
+                if (count == members.length) members = java.util.Arrays.copyOf(members, count * 2);
+                members[count++] = i;
+                int x = i % w, y = i / w;
+                int[] around = {x > 0 ? i - 1 : -1, x < w - 1 ? i + 1 : -1, y > 0 ? i - w : -1, y < h - 1 ? i + w : -1};
+                for (int n : around) {
+                    if (n < 0) { onBackground = true; continue; }
+                    if ((px[n] >>> 24) <= 40) onBackground = true;
+                    else if (light[n] && !seen[n]) { seen[n] = true; stack[top++] = n; }
+                }
+            }
+            if (!onBackground) continue;
+            for (int k = 0; k < count; k++) px[members[k]] = (px[members[k]] & 0xFF000000) | 0x1A1D24;
+        }
+        return android.graphics.Bitmap.createBitmap(px, w, h, android.graphics.Bitmap.Config.ARGB_8888);
     }
 
     /** Fetches the line's pictures, then queues it with its sound. */
@@ -1017,13 +1086,15 @@ public class GoalWatchService extends Service {
         String sound;
         ScoresTicker.Side[] sides = null;
         Map<String, android.graphics.Bitmap> pictures = null;
-        if (next.length == 2 || next.length == 4) {
+        List<Object> livePage = null;
+        if (next.length == 2 || next.length == 5) {
             parts = (List<Object>) next[0];
             sound = (String) next[1];
             wide = true;
-            if (next.length == 4) {
+            if (next.length == 5) {
                 sides = (ScoresTicker.Side[]) next[2];
                 pictures = (Map<String, android.graphics.Bitmap>) next[3];
+                livePage = (List<Object>) next[4];
             }
         } else {
             sound = (String) next[5];
@@ -1044,7 +1115,7 @@ public class GoalWatchService extends Service {
 
         // With line-ups to show, the window is sized for their page from the start: it never changes size.
         // Line-up pages are pills too: the same window as any wide line.
-        ensureHost(sides != null || wide ? 940 : 520, 46);
+        ensureHost(sides != null || livePage != null || wide ? 940 : 520, 46);
         if (host == null) return;
         host.addView(box, new android.widget.FrameLayout.LayoutParams(
                 android.widget.FrameLayout.LayoutParams.WRAP_CONTENT, h, Gravity.BOTTOM | Gravity.START));
@@ -1087,10 +1158,11 @@ public class GoalWatchService extends Service {
                 grow.start();
             }).start();
         });
-        if (sides != null) {
-            // Then the line-ups, a page at a time flipping up in the same pill: each side's goalkeeper, defence,
-            // midfield and attack.
-            List<List<Object>> pages = lineupPages(sides, pictures);
+        if (sides != null || livePage != null) {
+            // Then the line-ups, a page at a time flipping up in the same pill (each side's goalkeeper, defence,
+            // midfield and attack), and last which channel has it.
+            List<List<Object>> pages = sides != null ? lineupPages(sides, pictures) : new ArrayList<>();
+            if (livePage != null) pages.add(livePage);
             main.postDelayed(() -> flipPage(box, pages, 0, h), 6_500);
             return;
         }
@@ -1256,19 +1328,13 @@ public class GoalWatchService extends Service {
             } else if (part instanceof Face) {
                 box.addView(face((Face) part, crestPx, d), sized(crestPx, gap));
             } else if (part instanceof ChipImg) {
-                // A channel's logo (white, made for dark screens) on a small dark capsule.
+                // A channel's logo straight on the glass, its lettering already in the pill's ink (inked).
                 android.graphics.Bitmap logo = ((ChipImg) part).bitmap;
                 android.widget.ImageView v = new android.widget.ImageView(this);
                 v.setScaleType(android.widget.ImageView.ScaleType.FIT_CENTER);
                 v.setImageBitmap(logo);
-                GradientDrawable cap = new GradientDrawable();
-                cap.setColor(0xFF15171C);
-                cap.setCornerRadius(crestPx / 2f);
-                v.setBackground(cap);
-                int ph = Math.round(4 * d), pw = Math.round(9 * d);
-                v.setPadding(pw, ph, pw, ph);
-                int ch = crestPx + Math.round(2 * d);
-                int cw = Math.min(Math.round(170 * d), Math.round((ch - 2 * ph) * logo.getWidth() / (float) Math.max(1, logo.getHeight())) + 2 * pw);
+                int ch = crestPx;
+                int cw = Math.min(Math.round(180 * d), Math.round(ch * logo.getWidth() / (float) Math.max(1, logo.getHeight())));
                 LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(cw, ch);
                 lp.leftMargin = gap;
                 box.addView(v, lp);
