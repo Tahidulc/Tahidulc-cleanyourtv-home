@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- wx_night for light backgrounds (the silver pills and alerts): white parts in cloud grey, colours kept. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
+    <path android:fillColor="#FF7D8BB0" android:pathData="M12.3,2a9.5,9.5 0,1 0,9.7 12.4,7.5 7.5,0 0,1 -9.7,-12.4z" />
+</vector>

@@ -582,12 +582,9 @@ public class GoalWatchService extends Service {
 
     /** The weather line's own icon, as a picture in the pill. */
     private android.graphics.drawable.Drawable weatherIcon(int code) {
-        android.graphics.drawable.Drawable d = getDrawable(WeatherLine.icon(code, true));
-        if (d == null) return null;
-        d = d.mutate();
-        // The icons are drawn for the dark Home screen; darkened, they read on the light glass.
-        d.setColorFilter(new android.graphics.PorterDuffColorFilter(0xFF4B5563, android.graphics.PorterDuff.Mode.MULTIPLY));
-        return d;
+        // The light-background version: its own colours, with grey clouds that read on the silver glass.
+        android.graphics.drawable.Drawable d = getDrawable(WeatherLine.lightIcon(code, true));
+        return d == null ? null : d.mutate();
     }
 
     /** "[Met Office icon] YELLOW WIND WARNING  Greater Manchester  from 0300 Tue 27 Oct to 2359 Tue 27 Oct". */

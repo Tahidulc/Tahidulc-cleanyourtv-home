@@ -167,7 +167,8 @@ final class WeatherLine {
                 long temp = Math.round(current.getDouble("temperature_2m"));
                 int code = current.getInt("weather_code");
                 words = describe(code);
-                icon = icon(code, current.optInt("is_day", 1) == 1);
+                boolean isDay = current.optInt("is_day", 1) == 1;
+                icon = light ? lightIcon(code, isDay) : icon(code, isDay);
                 line = String.format(Locale.getDefault(), "%d°", temp) + (place.isEmpty() ? "" : "  ·  " + place);
             } catch (Exception ignored) {
             }
@@ -191,6 +192,25 @@ final class WeatherLine {
                 if (running) main.postDelayed(tick, text != null ? EVERY_MS : RETRY_MS);
             });
         });
+    }
+
+    /** The same icon drawn for a light background (the silver pills, the alerts): grey clouds, colours kept. */
+    static int lightIcon(int code, boolean day) {
+        if (code <= 1) return day ? R.drawable.wx_clear_light : R.drawable.wx_night_light;
+        if (code == 2) return R.drawable.wx_partly_light;
+        if (code == 3) return R.drawable.wx_cloud_light;
+        if (code == 45 || code == 48) return R.drawable.wx_fog_light;
+        if (code >= 95) return R.drawable.wx_storm_light;
+        if ((code >= 71 && code <= 77) || code == 85 || code == 86) return R.drawable.wx_snow_light;
+        if (code >= 51) return R.drawable.wx_rain_light;
+        return R.drawable.wx_cloud_light;
+    }
+
+    /** On a silver pill: the light-background icons. */
+    private volatile boolean light;
+
+    void useLightIcons(boolean on) {
+        light = on;
     }
 
     /** The icon for a WMO weather code; clear skies get the moon at night. */

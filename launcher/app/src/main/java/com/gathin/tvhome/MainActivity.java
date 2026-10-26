@@ -884,10 +884,11 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             TextView weather = findViewById(R.id.weather);
             weather.setOnFocusChangeListener((v, has) -> {
                 ((TextView) v).setTextColor(0xFF000000);
-                ((TextView) v).setCompoundDrawableTintList(android.content.res.ColorStateList.valueOf(0xFF2A2F3A));
+                ((TextView) v).setCompoundDrawableTintList(null);
             });
             weather.setTextColor(0xFF000000);
-            weather.setCompoundDrawableTintList(android.content.res.ColorStateList.valueOf(0xFF2A2F3A));
+            weather.setCompoundDrawableTintList(null);   // the icon keeps its own colours
+            weatherLine.useLightIcons(true);
         }
         iconOnlyButtons = cfg.iconOnlyButtons;
         topMenu = cfg.topMenu;
