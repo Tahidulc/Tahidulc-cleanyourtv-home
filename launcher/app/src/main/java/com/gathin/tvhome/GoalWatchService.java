@@ -1133,6 +1133,10 @@ public class GoalWatchService extends Service {
             }
         });
         box.setClipToOutline(true);
+        if (calm()) {
+            // Over a playing app: no animation at all (see calm()), the pill is simply there.
+            visible[0] = Float.MAX_VALUE;
+        } else {
         for (int c = 0; c < box.getChildCount(); c++) box.getChildAt(c).setAlpha(0f);
         box.setAlpha(0f);
         box.setScaleX(0.3f);
@@ -1158,6 +1162,7 @@ public class GoalWatchService extends Service {
                 grow.start();
             }).start();
         });
+        }
         if (sides != null || livePage != null) {
             // Then the line-ups, a page at a time flipping up in the same pill (each side's goalkeeper, defence,
             // midfield and attack), and last which channel has it.
@@ -1170,6 +1175,30 @@ public class GoalWatchService extends Service {
     }
 
     private static final long PAGE_MS = 3_200L;
+
+    /** Home is in front (MainActivity says so in onResume and onPause). */
+    static volatile boolean homeInFront;
+
+    /**
+     * Over another app the alerts do not animate. Their window makes the TV compose the app's own layer and the alert
+     * on the graphics chip instead of in hardware, for every frame that changes; on a slower set (the TCL) the steady
+     * stream of animation frames over a 4K picture showed as stutter in the video underneath. A still alert costs that
+     * once when it appears and once when it goes. Home and the screensaver keep the animations.
+     */
+    private boolean calm() {
+        return !homeInFront && !dreaming;
+    }
+
+    /** The alert's window gone, and the next one in the queue. */
+    private void removeHost() {
+        if (host != null) {
+            host.removeAllViews();
+            try { getSystemService(WindowManager.class).removeView(host); } catch (Exception ignored) { }
+        }
+        host = null;
+        shown = null;
+        showNext();
+    }
 
     /** The next line-up page slides up into the pill's place; after the last, the pill closes as usual. */
     private void flipPage(LinearLayout old, List<List<Object>> pages, int index, int h) {
@@ -1185,6 +1214,11 @@ public class GoalWatchService extends Service {
         host.addView(page, new android.widget.FrameLayout.LayoutParams(
                 android.widget.FrameLayout.LayoutParams.WRAP_CONTENT, h, Gravity.BOTTOM | Gravity.START));
         shown = page;
+        if (calm()) {
+            host.removeView(old);
+            main.postDelayed(() -> flipPage(page, pages, index + 1, h), PAGE_MS);
+            return;
+        }
         page.setTranslationY(h);
         page.setAlpha(0f);
         old.setLayerType(View.LAYER_TYPE_HARDWARE, null);
@@ -1266,6 +1300,10 @@ public class GoalWatchService extends Service {
      * shrinking outline clips it from the right while it fades), then the dot pops away.
      */
     private void closePill(LinearLayout box, int h, float[] visible) {
+        if (calm()) {
+            removeHost();
+            return;
+        }
         {
             box.setLayerType(View.LAYER_TYPE_HARDWARE, null);
             for (int c = 0; c < box.getChildCount(); c++) {
@@ -1418,6 +1456,10 @@ public class GoalWatchService extends Service {
                 Gravity.BOTTOM | Gravity.START));
         shown = panel;
         play("f1");
+        if (calm()) {
+            main.postDelayed(this::removeHost, 15_000);
+            return;
+        }
         panel.setAlpha(0f);
         panel.setTranslationY(14 * d);
         panel.setLayerType(View.LAYER_TYPE_HARDWARE, null);

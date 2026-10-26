@@ -1114,6 +1114,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         restartIdleClock();
         // Home is in front again: its own scores line takes over, unless the alerts are wanted everywhere (a theme's
         // "alerts_everywhere"), Home and the screensaver included.
+        GoalWatchService.homeInFront = true;
         if (alertsEverywhere) GoalWatchService.startEverywhere(this); else GoalWatchService.stop(this);
         videoBackdrop.start();
         weatherLine.start();
@@ -1317,6 +1318,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
 
     @Override
     protected void onPause() {
+        GoalWatchService.homeInFront = false;
         super.onPause();
         root.removeCallbacks(showIdleClock);
         endReorder();   // Home or another app while reordering keeps the order so far
