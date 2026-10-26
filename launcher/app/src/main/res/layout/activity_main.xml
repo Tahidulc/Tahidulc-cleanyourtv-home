@@ -370,6 +370,15 @@
                     android:drawableStart="@drawable/ic_apps_pill"
                     android:nextFocusDown="@+id/grid" />
 
+                <!-- Google Home: opens the TV's own smart home panel (lights, cameras), where it has one. -->
+                <TextView
+                    android:id="@+id/btnLights"
+                    style="@style/TopButtonIcon"
+                    android:drawableStart="@drawable/ic_bulb"
+                    android:contentDescription="@string/smart_home"
+                    android:visibility="gone"
+                    android:nextFocusDown="@+id/grid" />
+
                 <!-- Google Assistant: opens the TV's own Assistant (ACTION_ASSIST). -->
                 <TextView
                     android:id="@+id/btnAssistant"

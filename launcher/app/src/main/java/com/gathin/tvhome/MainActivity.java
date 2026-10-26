@@ -229,6 +229,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         }
     }
     private boolean alertsEverywhere;
+    /** The sports row under the apps (a theme's "sports_section"); null without it. */
+    private SportsSection sportsSection;
     private View racePanel;
     private TextView raceKicker, raceHeadline, raceSessions;
     /** config.xml show_stats, overridable by a theme. Off: the line is gone and nothing is read. */
@@ -545,6 +547,16 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             root.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) ->
                     scoresTicker.place(Math.round(56 * density), Math.round(23 * density), r - l - Math.round(56 * density)));
         }
+        // Google Home's own panel, part of Google TV's ambient app: shown only where the TV has it.
+        View btnLights = findViewById(R.id.btnLights);
+        Intent smartHome = new Intent("com.google.android.libraries.tv.smarthome.intent.action.OPEN_SMART_HOME")
+                .setPackage("com.google.android.apps.tv.dreamx").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        if (getResources().getBoolean(R.bool.smart_home_button) && smartHome.resolveActivity(getPackageManager()) != null) {
+            btnLights.setVisibility(View.VISIBLE);
+            btnLights.setOnClickListener(v -> {
+                try { startActivity(smartHome); } catch (Exception ignored) { }
+            });
+        }
         View btnAssistant = findViewById(R.id.btnAssistant);
         btnAssistant.setOnClickListener(v -> {
             try {
@@ -686,7 +698,9 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             }
         });
         ((GridLayoutManager) grid.getLayoutManager()).setSpanSizeLookup(new GridLayoutManager.SpanSizeLookup() {
-            @Override public int getSpanSize(int position) { return !singleRow && adapter != null && adapter.isLibraryAt(position) ? COLUMNS : 1; }
+            @Override public int getSpanSize(int position) {
+                return !singleRow && adapter != null && (adapter.isLibraryAt(position) || adapter.isFooterAt(position)) ? COLUMNS : 1;
+            }
         });
         grid.setHasFixedSize(true);
         grid.setItemAnimator(null);
@@ -711,6 +725,12 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                     AnimationUtils.loadAnimation(this, R.anim.tile_enter), 0.06f));
         }
         adapter = new AppAdapter(this, this, COLUMNS, cfg);
+        if (Config.themeFlag(this, "sports_section", false)) {
+            sportsSection = new SportsSection(this, () -> {
+                if (adapter.isLibraryAt(adapter.appCount())) focusLibrary(); else onLibraryUp();
+            });
+            adapter.setFooter(sportsSection.view);
+        }
         dockApps = cfg.dockApps;
         fillDockLeavesSlots = !cfg.fillDock;
         Order savedOrder = Order.load(Order.file(this));
@@ -915,6 +935,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         };
         btnInputs.setOnKeyListener(pillKeys);
         findViewById(R.id.btnAssistant).setOnKeyListener(pillKeys);
+        findViewById(R.id.btnLights).setOnKeyListener(pillKeys);
         btnWifi.setOnKeyListener(pillKeys);
         btnSettings.setOnKeyListener(pillKeys);
         btnReorder.setOnKeyListener(pillKeys);
@@ -1076,6 +1097,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         weatherLine.start();
         newsTicker.start();
         scoresTicker.start();
+        if (sportsSection != null) sportsSection.start();
         promptsPaused = false;
         if (grid.getAdapter() == null) grid.setAdapter(adapter);   // dropped by onTrimMemory
         switch (tileRefresh.onResume(packagesChangedSinceRebuild())) {
@@ -1282,6 +1304,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         weatherLine.dismissForecast();
         newsTicker.stop();
         scoresTicker.stop();
+        if (sportsSection != null) sportsSection.stop();
         stopAmbientAnimation();
         hero.animate().cancel();
         ambient.animate().cancel();
@@ -1348,6 +1371,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         weatherLine.close();
         newsTicker.close();
         scoresTicker.close();
+        if (sportsSection != null) sportsSection.close();
         watchRows.close();
         ConnectivityManager cm = getSystemService(ConnectivityManager.class);
         TvInputManager tim = (TvInputManager) getSystemService(TV_INPUT_SERVICE);
@@ -2408,6 +2432,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             int lastRowStart = ((count - 1) / COLUMNS) * COLUMNS;
             if (position >= lastRowStart) {
                 if (adapter.isLibraryAt(count)) focusLibrary();
+                else focusSports();
                 return true;
             }
             target = Math.min(position + COLUMNS, count - 1);
@@ -2497,6 +2522,18 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             bar.addView(button, bar.indexOfChild(btnWifi) + (after ? 1 + topAppButtons.size() : 0));
             topAppButtons.add(button);
         }
+    }
+
+    @Override public void onLibraryDown() {
+        focusSports();
+    }
+
+    /** Into the sports row: scrolled on screen first, then its first card. */
+    private void focusSports() {
+        if (sportsSection == null || adapter.footerPosition() < 0) return;
+        int pos = adapter.footerPosition();
+        grid.smoothScrollToPosition(pos);
+        grid.postDelayed(() -> sportsSection.focus(), animations ? 350 : 0);
     }
 
     @Override public void onLibraryUp() {

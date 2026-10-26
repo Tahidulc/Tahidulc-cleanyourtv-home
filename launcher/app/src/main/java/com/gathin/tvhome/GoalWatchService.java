@@ -357,7 +357,7 @@ public class GoalWatchService extends Service {
                 for (ScoresTicker.Game g : games) {
                     if (kickoffReminders && alertTags.contains(g.league) && g.state == 1 && g.kickoff - now > 0
                             && g.kickoff - now <= REMIND_MS && reminded.add(g.id)) {
-                        enqueueParts(kickoffLine(g), "reminder");
+                        enqueueReminder(g);
                     }
                     List<String[]> found = incidents.get(g.id);
                     if (found == null) continue;
@@ -770,7 +770,8 @@ public class GoalWatchService extends Service {
             g.awayLogo = "https://a.espncdn.com/i/teamlogos/soccer/500/363.png";
             g.leagueLogo = "https://a.espncdn.com/i/leaguelogos/soccer/500-dark/23.png";
             g.kickoff = System.currentTimeMillis() + REMIND_MS;
-            enqueueParts(kickoffLine(g), "reminder");
+            g.id = "test";
+            enqueueReminder(g);
         }
         io.execute(() -> {
             List<MoreSports.Result> tennis = all || "tennis".equals(what) ? MoreSports.tennis() : new ArrayList<>();
@@ -778,7 +779,8 @@ public class GoalWatchService extends Service {
             List<String[]> boxing = all || "boxing".equals(what) ? readNews(false, true) : new ArrayList<>();
             main.post(() -> {
                 for (MoreSports.Result r : tennis) if ("post".equals(r.state) && "Final".equals(r.round)) { enqueueParts(resultLine(r), otherSound(r)); break; }
-                for (MoreSports.Result r : ufc) if (r.mainEvent) { enqueueParts(startLine(r), otherSound(r)); enqueueParts(resultLine(r), otherSound(r)); break; }
+                // The latest finished main event: next weekend's card has no result yet.
+                for (MoreSports.Result r : ufc) if (r.mainEvent && "post".equals(r.state)) { enqueueParts(startLine(r), otherSound(r)); enqueueParts(resultLine(r), otherSound(r)); break; }
                 if (!boxing.isEmpty()) enqueueParts(newsLine(boxing.get(0)), "fight");
             });
         });
@@ -803,6 +805,42 @@ public class GoalWatchService extends Service {
                 showNext();
             });
         });
+    }
+
+    /**
+     * The kick-off reminder, with the two line-ups as its second page when they are out: the pill shows first, then
+     * flips up to both starting elevens with each player's picture.
+     */
+    private void enqueueReminder(ScoresTicker.Game g) {
+        List<Object> parts = kickoffLine(g);
+        int px = Math.round(LOGO_DP * getResources().getDisplayMetrics().density);
+        io.execute(() -> {
+            ScoresTicker.Side[] sides = "test".equals(g.id) ? testSides(g) : ScoresTicker.lineups(g);
+            List<Object> ready = new ArrayList<>();
+            for (Object o : parts) {
+                if (o instanceof Pic) {
+                    Pic pic = (Pic) o;
+                    ready.add(new Img(pic.url == null ? null : ScoresTicker.cachedLogo(this, pic.url, px * (pic.wide ? 2 : 1)), pic.wide));
+                } else ready.add(o);
+            }
+            Map<String, android.graphics.Bitmap> pictures = new HashMap<>();
+            if (sides != null) for (ScoresTicker.Side side : sides) {
+                if (side.crest != null) pictures.put(side.crest, ScoresTicker.cachedLogo(this, side.crest, px));
+                for (String[] p : side.players) {
+                    if (p[1] != null && !pictures.containsKey(p[1])) pictures.put(p[1], ScoresTicker.cachedLogo(this, p[1], px));
+                }
+            }
+            main.post(() -> {
+                queue.add(new Object[]{ready, "reminder", sides, pictures});
+                showNext();
+            });
+        });
+    }
+
+    /** adb test only: the elevens of the last Premier League game, so the page can be seen on any day. */
+    private static ScoresTicker.Side[] testSides(ScoresTicker.Game g) {
+        ScoresTicker.Game last = ScoresTicker.lastFinished("eng.1", "PL", 7);
+        return last == null ? null : ScoresTicker.lineups(last);
     }
 
     /** Fetches the line's pictures, then queues it with its sound. */
@@ -938,10 +976,16 @@ public class GoalWatchService extends Service {
         List<Object> parts;
         boolean wide;
         String sound;
-        if (next.length == 2) {
+        ScoresTicker.Side[] sides = null;
+        Map<String, android.graphics.Bitmap> pictures = null;
+        if (next.length == 2 || next.length == 4) {
             parts = (List<Object>) next[0];
             sound = (String) next[1];
             wide = true;
+            if (next.length == 4) {
+                sides = (ScoresTicker.Side[]) next[2];
+                pictures = (Map<String, android.graphics.Bitmap>) next[3];
+            }
         } else {
             sound = (String) next[5];
             ScoresTicker.Game g = (ScoresTicker.Game) next[1];
@@ -997,7 +1041,8 @@ public class GoalWatchService extends Service {
         }
         box.setMinimumHeight(h);
 
-        ensureHost(wide ? 940 : 520, 46);
+        // With line-ups to show, the window is sized for their page from the start: it never changes size.
+        ensureHost(sides != null ? 1040 : wide ? 940 : 520, sides != null ? 176 : 46);
         if (host == null) return;
         host.addView(box, new android.widget.FrameLayout.LayoutParams(
                 android.widget.FrameLayout.LayoutParams.WRAP_CONTENT, h, Gravity.BOTTOM | Gravity.START));
@@ -1040,6 +1085,17 @@ public class GoalWatchService extends Service {
                 grow.start();
             }).start();
         });
+        if (sides != null) {
+            // Page two: the pill lifts away and both elevens rise in its place.
+            final ScoresTicker.Side[] teams = sides;
+            final Map<String, android.graphics.Bitmap> pics = pictures;
+            main.postDelayed(() -> {
+                box.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+                box.animate().translationY(-h).alpha(0f).setDuration(450).withEndAction(() -> host.removeView(box)).start();
+                showLineups(teams, pics);
+            }, 6_500);
+            return;
+        }
         // Closing is the opening backwards: the pill draws back in to the dot with the text going as it passes (the
         // shrinking outline clips it from the right while it fades), then the dot pops away.
         main.postDelayed(() -> {
@@ -1069,6 +1125,74 @@ public class GoalWatchService extends Service {
                 shrink.start();
             });
         }, SHOW_MS + 1_400);
+    }
+
+    /** The line-up page: a row per team, its crest and formation, then each starter's picture and name. */
+    private void showLineups(ScoresTicker.Side[] sides, Map<String, android.graphics.Bitmap> pics) {
+        float d = getResources().getDisplayMetrics().density;
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setBackground(glass(16 * d));
+        int pad = Math.round(14 * d);
+        panel.setPadding(pad, Math.round(9 * d), pad, Math.round(10 * d));
+        panel.addView(text(bold("STARTING LINE-UPS"), SMALL_SP, 0xB31A1D24));
+        for (ScoresTicker.Side side : sides) {
+            LinearLayout row = new LinearLayout(this);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            LinearLayout team = new LinearLayout(this);
+            team.setOrientation(LinearLayout.VERTICAL);
+            team.setGravity(Gravity.CENTER_HORIZONTAL);
+            team.addView(crest(pics.get(side.crest), d), sized(Math.round(24 * d), 0));
+            team.addView(text(bold(side.abbr), SMALL_SP, 0xFF1A1D24));
+            if (side.formation != null && !side.formation.isEmpty()) team.addView(text(side.formation, 9f, 0x991A1D24));
+            row.addView(team, new LinearLayout.LayoutParams(Math.round(54 * d), LinearLayout.LayoutParams.WRAP_CONTENT));
+            for (String[] p : side.players) {
+                LinearLayout chip = new LinearLayout(this);
+                chip.setOrientation(LinearLayout.VERTICAL);
+                chip.setGravity(Gravity.CENTER_HORIZONTAL);
+                android.widget.ImageView face = crest(pics.get(p[1]), d);
+                face.setScaleType(android.widget.ImageView.ScaleType.CENTER_CROP);
+                GradientDrawable disc = new GradientDrawable();
+                disc.setShape(GradientDrawable.OVAL);
+                disc.setColor(0xFFD9DEE5);
+                face.setBackground(disc);
+                face.setOutlineProvider(new android.view.ViewOutlineProvider() {
+                    @Override public void getOutline(View v, android.graphics.Outline o) { o.setOval(0, 0, v.getWidth(), v.getHeight()); }
+                });
+                face.setClipToOutline(true);
+                chip.addView(face, sized(Math.round(30 * d), 0));
+                TextView name = text(p[0], 9.5f, 0xFF1A1D24);
+                name.setMaxWidth(Math.round(78 * d));
+                name.setEllipsize(TextUtils.TruncateAt.END);
+                chip.addView(name);
+                row.addView(chip, new LinearLayout.LayoutParams(Math.round(80 * d), LinearLayout.LayoutParams.WRAP_CONTENT));
+            }
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT);
+            lp.topMargin = Math.round(6 * d);
+            panel.addView(row, lp);
+        }
+        if (host == null) return;
+        host.addView(panel, new android.widget.FrameLayout.LayoutParams(
+                android.widget.FrameLayout.LayoutParams.WRAP_CONTENT, android.widget.FrameLayout.LayoutParams.WRAP_CONTENT,
+                Gravity.BOTTOM | Gravity.START));
+        panel.setAlpha(0f);
+        panel.setTranslationY(24 * d);
+        panel.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+        panel.animate().alpha(1f).translationY(0f).setDuration(500).setStartDelay(150)
+                .setInterpolator(new android.view.animation.DecelerateInterpolator(1.6f))
+                .withEndAction(() -> panel.setLayerType(View.LAYER_TYPE_NONE, null)).start();
+        main.postDelayed(() -> {
+            panel.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+            panel.animate().alpha(0f).translationY(16 * d).setDuration(450).withEndAction(() -> {
+                host.removeView(panel);
+                try { getSystemService(WindowManager.class).removeView(host); } catch (Exception ignored) { }
+                host = null;
+                shown = null;
+                showNext();
+            }).start();
+        }, 16_000);
     }
 
     /**

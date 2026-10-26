@@ -61,6 +61,8 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
         /** Hold OK on a tile: the activity shows the tile menu (move, remove from Home, app info). */
         void onTileLongPress(int position, View card);
         void onLibraryUp();
+        /** Down from the library row: into the sports row under it, when there is one. */
+        void onLibraryDown();
     }
 
     static final class Entry {
@@ -401,10 +403,20 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
             button.setOnKeyListener((v, key, event) -> {
                 if (event.getAction() != KeyEvent.ACTION_DOWN) return false;
                 if (key == KeyEvent.KEYCODE_DPAD_UP) listener.onLibraryUp();
+                if (key == KeyEvent.KEYCODE_DPAD_DOWN) listener.onLibraryDown();
                 return key == KeyEvent.KEYCODE_DPAD_UP || key == KeyEvent.KEYCODE_DPAD_DOWN
                         || key == KeyEvent.KEYCODE_DPAD_LEFT || key == KeyEvent.KEYCODE_DPAD_RIGHT;
             });
             return new RecyclerView.ViewHolder(row) { };
+        }
+        if (viewType == 2) {
+            // The sports row under everything: one view, made by Home, shown across the whole width.
+            if (footer.getParent() instanceof ViewGroup) ((ViewGroup) footer.getParent()).removeView(footer);
+            FrameLayout wrap = new FrameLayout(ctx);
+            wrap.setClipChildren(false);
+            wrap.addView(footer);
+            wrap.setLayoutParams(new RecyclerView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+            return new RecyclerView.ViewHolder(wrap) { };
         }
         View v = LayoutInflater.from(parent.getContext()).inflate(R.layout.item_app, parent, false);
         float density = parent.getResources().getDisplayMetrics().density;
@@ -442,7 +454,7 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
 
     @Override
     public void onBindViewHolder(@NonNull RecyclerView.ViewHolder holder, int position) {
-        if (isLibraryAt(position)) return;
+        if (isLibraryAt(position) || isFooterAt(position)) return;
         Holder h = (Holder) holder;
         Entry e = items.get(position);
         if (e.kind == Entry.EMPTY) {
@@ -542,14 +554,26 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
 
     @Override
     public int getItemCount() {
-        return items.size() + (showLibrary ? 1 : 0);
+        return items.size() + (showLibrary ? 1 : 0) + (footer != null ? 1 : 0);
     }
+
+    /** The sports row (SportsSection), after the apps and the library row; null for none. */
+    private View footer;
+
+    void setFooter(View v) {
+        footer = v;
+        notifyDataSetChanged();
+    }
+
+    boolean isFooterAt(int position) { return footer != null && position == items.size() + (showLibrary ? 1 : 0); }
+
+    int footerPosition() { return footer == null ? -1 : items.size() + (showLibrary ? 1 : 0); }
 
     int appCount() { return items.size(); }
 
     boolean isLibraryAt(int position) { return showLibrary && position == items.size(); }
 
-    @Override public int getItemViewType(int position) { return isLibraryAt(position) ? 1 : 0; }
+    @Override public int getItemViewType(int position) { return isLibraryAt(position) ? 1 : isFooterAt(position) ? 2 : 0; }
 
     boolean containsPackage(String pkg) {
         for (Entry entry : items) if (entry.pkg.equals(pkg)) return true;
@@ -558,6 +582,7 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
 
     @Override
     public long getItemId(int position) {
+        if (isFooterAt(position)) return Long.MIN_VALUE + 1;
         return isLibraryAt(position) ? Long.MIN_VALUE : items.get(position).component.flattenToShortString().hashCode();
     }
 

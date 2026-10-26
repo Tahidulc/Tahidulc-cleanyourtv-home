@@ -449,6 +449,7 @@
     <string name="news_feed_url" translatable="false"></string>
     <string name="news_source" translatable="false">BBC News</string>
     <string name="assistant" translatable="false">Google Assistant</string>
+    <string name="smart_home" translatable="false">Google Home</string>
     <!-- Today's football beside the greeting, one box per game: ESPN league ids and the tag each box shows.
          An empty list turns the scores off. Ids: espn.com/soccer/competitions (eng.1, esp.1, uefa.champions...). -->
     <!-- Apps whose dark banner is redrawn on white: black turns white, white and grey text turns dark, colours stay. -->
@@ -488,6 +489,8 @@
     <string-array name="goal_alert_leagues" translatable="false">
         <item>eng.1|PL</item>
         <item>uefa.champions|UCL</item>
+        <item>eng.fa|FA CUP</item>
+        <item>eng.league_cup|EFL CUP</item>
     </string-array>
     <!-- Apps over which goal and red card alerts appear, a minute after they happen, while open from Home.
          "*" means any app. -->
@@ -523,6 +526,16 @@
         <item>ger.dfb_pokal|POKAL</item>
         <item>fra.coupe_de_france|CDF</item>
     </string-array>
+    <!-- The live tables in the sports row (a theme's "sports_section"): "league slug|name". -->
+    <string-array name="table_leagues" translatable="false">
+        <item>eng.1|PREMIER LEAGUE</item>
+        <item>esp.1|LALIGA</item>
+        <item>ita.1|SERIE A</item>
+        <item>ger.1|BUNDESLIGA</item>
+        <item>fra.1|LIGUE 1</item>
+    </string-array>
+    <!-- A light bulb in the top bar that opens Google TV's own Google Home panel, on TVs that have it. -->
+    <bool name="smart_home_button">true</bool>
     <!-- The app OK on a game box opens. -->
     <string name="scores_open_package" translatable="false">ar.tvplayer.tv</string>
     <string-array name="score_leagues" translatable="false">

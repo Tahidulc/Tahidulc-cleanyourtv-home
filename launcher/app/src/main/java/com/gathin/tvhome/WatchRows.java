@@ -321,7 +321,7 @@ final class WatchRows {
         strip.removeAllViews();
         if (items == null || items.isEmpty()) {
             // An app that publishes nothing (TiviMate, Debrid Stream): BBC News across the whole row instead.
-            if (!showNews()) setShown(false);
+            if (!showWhatsOn() && !showNews()) setShown(false);
             return;
         }
         for (int i = 0; i < items.size(); i++) strip.addView(card(items.get(i), i, items.size()));
@@ -330,6 +330,162 @@ final class WatchRows {
         setShown(true);
         panel.setAlpha(0f);
         panel.animate().alpha(1f).setDuration(220).start();
+    }
+
+    // ---- What's on (a theme's "whats_on"): today's games and the next F1 session, on the TiviMate row ------------
+
+    private List<ScoresTicker.Game> whatsOn = new ArrayList<>();
+    private long whatsOnAt;
+    private Boolean whatsOnOn;
+
+    private boolean showWhatsOn() {
+        if (whatsOnOn == null) whatsOnOn = Config.themeFlag(context, "whats_on", false);
+        String pkg = context.getString(R.string.scores_open_package);
+        if (!whatsOnOn || !pkg.equals(shownPackage)) return false;
+        if (System.currentTimeMillis() - whatsOnAt >= 2 * 60_000L) {
+            whatsOnAt = System.currentTimeMillis();
+            final int gen = generation;
+            String[] leagues = context.getResources().getStringArray(R.array.score_leagues);
+            reader.execute(() -> {
+                List<ScoresTicker.Game> games = new ArrayList<>();
+                for (ScoresTicker.Game g : ScoresTicker.load(leagues)) if (g.state != 2) games.add(g);
+                ScoresTicker.Game f1 = ScoresTicker.f1Game(F1Results.weekend(null));
+                if (f1 != null && f1.state != 2) games.add(f1);
+                games.sort((a, b) -> a.state != b.state ? Integer.compare(a.state, b.state) : Long.compare(a.kickoff, b.kickoff));
+                List<ScoresTicker.Game> top = new ArrayList<>(games.subList(0, Math.min(12, games.size())));
+                main.post(() -> {
+                    if (top.isEmpty()) { whatsOnAt = 0; }
+                    whatsOn = top;
+                    if (gen == generation && pkg.equals(shownPackage) && !top.isEmpty()) fillWhatsOn();
+                });
+            });
+        }
+        if (whatsOn.isEmpty()) return false;
+        fillWhatsOn();
+        return true;
+    }
+
+    private void fillWhatsOn() {
+        strip.removeAllViews();
+        for (int i = 0; i < whatsOn.size(); i++) strip.addView(whatsOnCard(whatsOn.get(i), i, whatsOn.size()));
+        setShown(true);
+        panel.setAlpha(0f);
+        panel.animate().alpha(1f).setDuration(220).start();
+    }
+
+    /** One fixture over a dimmed stadium: the competition, both crests, the time or the live score. OK opens TiviMate. */
+    private View whatsOnCard(ScoresTicker.Game g, int index, int count) {
+        FrameLayout card = new FrameLayout(context);
+        card.setFocusable(true);
+        card.setClipToOutline(true);
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(0xFF15171C);
+        bg.setCornerRadius(dp(10));
+        card.setBackground(bg);
+        GradientDrawable ring = new GradientDrawable();
+        ring.setColor(Color.TRANSPARENT);
+        ring.setCornerRadius(dp(10));
+        ring.setStroke(dp(3), Color.WHITE);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(cardWidth(), cardHeight());
+        lp.rightMargin = dp(14);
+        card.setLayoutParams(lp);
+        boolean f1 = g.drivers != null || g.text != null;
+        ImageView scene = new ImageView(context);
+        scene.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        scene.setImageResource(R.drawable.backdrop_stadium);
+        scene.setAlpha(f1 ? 0.25f : 0.45f);
+        card.addView(scene, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        View shade = new View(context);
+        shade.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
+                new int[]{0x99000000, 0x33000000, 0xCC000000}));
+        card.addView(shade, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        int crest = Math.round(cardHeight() * 0.30f);
+        // Top-left: the competition.
+        LinearLayout head = new LinearLayout(context);
+        head.setGravity(Gravity.CENTER_VERTICAL);
+        ImageView leagueLogo = new ImageView(context);
+        leagueLogo.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        if (g.leagueLogo != null) loadPoster(g.leagueLogo, leagueLogo);
+        head.addView(leagueLogo, new LinearLayout.LayoutParams(dp(f1 ? 44 : 26), dp(26)));
+        TextView tag = new TextView(context);
+        tag.setText(f1 ? "FORMULA 1" : g.league);
+        tag.setTextColor(0xE6FFFFFF);
+        tag.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f);
+        tag.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        tag.setLetterSpacing(0.12f);
+        LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        tlp.leftMargin = dp(10);
+        head.addView(tag, tlp);
+        FrameLayout.LayoutParams hlp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.TOP | Gravity.START);
+        hlp.leftMargin = hlp.topMargin = dp(16);
+        card.addView(head, hlp);
+        // Middle: crest, score or time, crest; F1 shows its session and the Grand Prix instead.
+        LinearLayout mid = new LinearLayout(context);
+        mid.setGravity(Gravity.CENTER);
+        String centre = g.state == 1 ? "v" : g.homeScore + " – " + g.awayScore;
+        if (f1) {
+            centre = g.home + (g.text != null ? "\n" + g.text : "");
+        } else {
+            ImageView h = new ImageView(context);
+            h.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            loadPoster(g.homeLogo, h);
+            mid.addView(h, new LinearLayout.LayoutParams(crest, crest));
+        }
+        TextView c = new TextView(context);
+        c.setText(centre);
+        c.setTextColor(Color.WHITE);
+        c.setGravity(Gravity.CENTER);
+        c.setTextSize(TypedValue.COMPLEX_UNIT_SP, f1 ? 22f : g.state == 1 ? 22f : 34f);
+        c.setTypeface(context.getResources().getFont(R.font.outfit_medium));
+        LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        clp.leftMargin = clp.rightMargin = dp(f1 ? 0 : 24);
+        mid.addView(c, clp);
+        if (!f1) {
+            ImageView a = new ImageView(context);
+            a.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            loadPoster(g.awayLogo, a);
+            mid.addView(a, new LinearLayout.LayoutParams(crest, crest));
+        }
+        card.addView(mid, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.CENTER));
+        // Bottom: the teams and when.
+        TextView foot = new TextView(context);
+        String when = g.state == 0 ? "●  LIVE  " + g.detail : whenText(g);
+        foot.setText(f1 ? when : g.home + "  v  " + g.away + "     " + when);
+        foot.setTextColor(g.state == 0 ? 0xFF4ADE80 : 0xE6FFFFFF);
+        foot.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f);
+        foot.setTypeface(context.getResources().getFont(R.font.outfit_medium));
+        foot.setShadowLayer(dp(5), 0, dp(1), 0x99000000);
+        FrameLayout.LayoutParams flp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.BOTTOM | Gravity.START);
+        flp.leftMargin = dp(16);
+        flp.bottomMargin = dp(14);
+        card.addView(foot, flp);
+        card.setOnFocusChangeListener((v, focused) -> {
+            v.animate().scaleX(focused ? FOCUS_SCALE : 1f).scaleY(focused ? FOCUS_SCALE : 1f).setDuration(160).start();
+            v.setForeground(focused ? ring : null);
+            v.setElevation(focused ? dp(6) : 0);
+        });
+        card.setOnClickListener(v -> host.onResumeApp());
+        card.setOnKeyListener((v, keyCode, event) -> {
+            if (event.getAction() != KeyEvent.ACTION_DOWN) return false;
+            if (keyCode == KeyEvent.KEYCODE_DPAD_UP) { host.onCardsUp(); return true; }
+            if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN) { host.onCardsDown(); return true; }
+            if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT) return index == 0;
+            if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) return index == count - 1;
+            return false;
+        });
+        return card;
+    }
+
+    /** "Today 20:00", "Tomorrow 15:00" or "Sat 15:00". */
+    private static String whenText(ScoresTicker.Game g) {
+        java.time.ZonedDateTime at = java.time.Instant.ofEpochMilli(g.kickoff).atZone(java.time.ZoneId.systemDefault());
+        java.time.LocalDate today = java.time.LocalDate.now();
+        String time = at.format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"));
+        if (at.toLocalDate().equals(today)) return "Today " + time;
+        if (at.toLocalDate().equals(today.plusDays(1))) return "Tomorrow " + time;
+        return at.format(java.time.format.DateTimeFormatter.ofPattern("EEE HH:mm", java.util.Locale.getDefault()));
     }
 
     /** The news row: from the cache when fresh, else read and shown when it arrives. False when there is none yet. */

@@ -318,6 +318,62 @@ final class ScoresTicker {
         return out;
     }
 
+    /** The most recent finished game of the league in the last few days, or null. */
+    static Game lastFinished(String slug, String tag, int days) {
+        ZoneId zone = ZoneId.systemDefault();
+        for (int back = 1; back <= days; back++) {
+            String date = LocalDate.now(zone).minusDays(back).format(DateTimeFormatter.BASIC_ISO_DATE);
+            try {
+                JSONArray events = new JSONObject(get(String.format(FEED, slug, date))).optJSONArray("events");
+                for (int i = 0; events != null && i < events.length(); i++) {
+                    Game g = parse(events.getJSONObject(i), tag, zone);
+                    if (g != null && g.state == 2) { g.slug = slug; return g; }
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        return null;
+    }
+
+    /** One side's starting eleven: {surname, headshot url, shirt number} per player, in ESPN's order. */
+    static final class Side {
+        String abbr, crest, formation;
+        final List<String[]> players = new ArrayList<>();
+    }
+
+    /** Both starting line-ups from the match summary, home first; null until they are announced (about an hour before). */
+    static Side[] lineups(Game g) {
+        if (g.slug == null || g.id == null) return null;
+        try {
+            JSONObject summary = new JSONObject(get("https://site.api.espn.com/apis/site/v2/sports/soccer/" + g.slug
+                    + "/summary?event=" + g.id));
+            JSONArray rosters = summary.optJSONArray("rosters");
+            Side home = null, away = null;
+            for (int i = 0; rosters != null && i < rosters.length(); i++) {
+                JSONObject r = rosters.getJSONObject(i);
+                JSONObject team = r.optJSONObject("team");
+                Side side = new Side();
+                side.formation = r.optString("formation", "");
+                JSONArray list = r.optJSONArray("roster");
+                for (int k = 0; list != null && k < list.length(); k++) {
+                    JSONObject p = list.getJSONObject(k);
+                    if (!p.optBoolean("starter")) continue;
+                    JSONObject a = p.getJSONObject("athlete");
+                    JSONObject shot = a.optJSONObject("headshot");
+                    String photo = shot != null ? shot.optString("href", null)
+                            : "https://a.espncdn.com/i/headshots/soccer/players/full/" + a.optString("id") + ".png";
+                    side.players.add(new String[]{GoalWatchService.surname(a.optString("displayName")), photo, p.optString("jersey", "")});
+                }
+                if (team != null && team.optString("id").equals(g.homeId)) { side.abbr = g.home; side.crest = g.homeLogo; home = side; }
+                else { side.abbr = g.away; side.crest = g.awayLogo; away = side; }
+            }
+            if (home == null || away == null || home.players.size() < 11 || away.players.size() < 11) return null;
+            return new Side[]{home, away};
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
     /** The incidents worth a pop-up, with their icon; null for everything else (substitutions, yellow cards). */
     private static String incident(String type) {
         String t = type.toLowerCase(java.util.Locale.ROOT);

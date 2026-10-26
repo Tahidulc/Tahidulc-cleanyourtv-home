@@ -127,8 +127,9 @@ final class MoreSports {
                     r.loser = GoalWatchService.surname(b.getJSONObject("athlete").optString("displayName"));
                     r.winnerFlag = flag(a.getJSONObject("athlete"));
                     r.loserFlag = flag(b.getJSONObject("athlete"));
-                    r.score = method(comp.optJSONArray("details")) + " · R" + status.optInt("period", 1) + " "
-                            + status.optString("displayClock", "");
+                    int round = status.optInt("period", 0);
+                    r.score = method(comp.optJSONArray("details"))
+                            + (round > 0 ? " · R" + round + " " + status.optString("displayClock", "") : "");
                     out.add(r);
                 }
             }
