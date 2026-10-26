@@ -248,6 +248,7 @@ public class GoalWatchService extends Service {
             newsAlerts = Config.themeFlag(this, "news_alerts", false);
             frost = Config.themeFlag(this, "frost_alerts", false);
             stillOverApps = Config.themeFlag(this, "still_over_apps", false);
+            animateOverApps = Config.themeFlag(this, "animate_over_apps", false);
             teamAlerts = Config.themeFlag(this, "team_alerts", false);
             incidentAlerts = Config.themeFlag(this, "incident_alerts", false);
             kickoffReminders = Config.themeFlag(this, "kickoff_reminders", false);
@@ -1254,8 +1255,11 @@ public class GoalWatchService extends Service {
      * once when it appears and once when it goes. Home and the screensaver keep the animations.
      */
     private boolean calm() {
-        return !homeInFront && !dreaming;
+        return !animateOverApps && !homeInFront && !dreaming;
     }
+
+    /** animate_over_apps (theme): the full animations over other apps too, at the cost of the odd video frame. */
+    private boolean animateOverApps;
 
     /** still_over_apps (theme): turn off pop-up page changes over a playing video. */
     private boolean stillOverApps;
