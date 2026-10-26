@@ -70,6 +70,14 @@ final class SportsSection {
     private long tablesAt, f1At;
     private boolean anyLive;
     private final Runnable tick = this::refresh;
+    /** The featured game's pitch and its feed of plays (every 10 s while it is live), and the ticking clock. */
+    private final LivePitch pitch;
+    private TextView playLabel, clockView;
+    private String pitchGame;
+    private final Set<String> seenPlays = new HashSet<>();
+    private final ExecutorService playsIo = Executors.newSingleThreadExecutor();
+    private final Runnable playsTick = this::readPlays;
+    private final Runnable clockTick = this::updateClock;
 
     // The latest data, drawn again whenever any of it changes.
     private Featured featured;
@@ -113,7 +121,9 @@ final class SportsSection {
         int pad = dp(18);
         strip.setPadding(dp(2), pad, dp(40), dp(28));
         view.addView(strip, new ViewGroup.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        featuredCard = card(dp(560));
+        featuredCard = card(dp(720));
+        pitch = new LivePitch(ctx, d);
+        pitch.setListener(p -> { if (playLabel != null) playLabel.setText(p.label); });
         strip.addView(featuredCard);
         for (String l : tableLeagues) {
             FrameLayout c = card(dp(330));
@@ -150,12 +160,57 @@ final class SportsSection {
     void stop() {
         running = false;
         main.removeCallbacks(tick);
+        main.removeCallbacks(playsTick);
+        main.removeCallbacks(clockTick);
     }
 
     void close() {
         stop();
         io.shutdownNow();
         logoIo.shutdownNow();
+        playsIo.shutdownNow();
+    }
+
+    // ---- the live pitch and clock ----------------------------------------------------------------
+
+    private void readPlays() {
+        main.removeCallbacks(playsTick);
+        Featured f = featured;
+        if (!running || f == null || f.game.state != 0 || f.game.slug == null) return;
+        ScoresTicker.Game g = f.game;
+        boolean first = !g.id.equals(pitchGame);
+        if (first) {
+            pitchGame = g.id;
+            seenPlays.clear();
+            pitch.clear();
+            pitch.setColors(g.homeColor != 0 ? g.homeColor : Color.WHITE, g.awayColor != 0 ? g.awayColor : 0xFFFFD54F);
+        }
+        playsIo.execute(() -> {
+            List<LivePitch.Play> plays = LivePitch.latest(g.slug, g.id, g.homeId);
+            main.post(() -> {
+                List<LivePitch.Play> fresh = new ArrayList<>();
+                for (LivePitch.Play p : plays) if (seenPlays.add(p.id)) fresh.add(p);
+                if (!fresh.isEmpty()) pitch.add(fresh, first);
+                if (running) main.postDelayed(playsTick, 10_000L);
+            });
+        });
+    }
+
+    /** The match clock, counting on by the second from ESPN's last reading; HT at half-time. */
+    private void updateClock() {
+        main.removeCallbacks(clockTick);
+        Featured f = featured;
+        if (clockView == null || f == null || f.game.state != 0) return;
+        ScoresTicker.Game g = f.game;
+        String text;
+        if (g.halftime) {
+            text = "●  HALF-TIME";
+        } else {
+            long secs = (long) g.clockSec + (System.currentTimeMillis() - g.clockAt) / 1000L;
+            text = String.format(java.util.Locale.ROOT, "●  LIVE  %d:%02d", secs / 60, secs % 60);
+        }
+        clockView.setText(text);
+        if (running) main.postDelayed(clockTick, 1000L);
     }
 
     // ---- data ------------------------------------------------------------------------------------
@@ -203,6 +258,7 @@ final class SportsSection {
                 }
                 if (standings != null && !standings.isEmpty()) { drivers = standings; drawF1(); }
                 if (running) main.postDelayed(tick, f != null && f.game.state == 0 ? LIVE_MS : IDLE_MS);
+                if (running && f != null && f.game.state == 0) { readPlays(); updateClock(); }
             });
         });
     }
@@ -418,7 +474,7 @@ final class SportsSection {
             v.setForeground(focused ? ring : null);
             v.setElevation(focused ? dp(6) : 0);
         });
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(width, dp(300));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(width, dp(330));
         lp.rightMargin = dp(16);
         c.setLayoutParams(lp);
         return c;
@@ -458,7 +514,10 @@ final class SportsSection {
         }
         ScoresTicker.Game g = f.game;
         String status = g.state == 0 ? "●  LIVE  " + g.detail : g.state == 1 ? "KICK-OFF  " + g.detail : "FULL TIME";
-        col.addView(header(g.leagueLogo, g.league, status));
+        LinearLayout head = (LinearLayout) header(g.leagueLogo, g.league, status);
+        col.addView(head);
+        // While live, the status on the right is the ticking match clock.
+        clockView = g.state == 0 ? (TextView) head.getChildAt(head.getChildCount() - 1) : null;
         // The score line: crest, name, score, name, crest.
         LinearLayout score = row();
         score.setGravity(Gravity.CENTER);
@@ -493,8 +552,21 @@ final class SportsSection {
             }
             return;
         }
-        // Stats as split bars, then the latest incidents and the newest line of commentary.
+        // Stats as split bars, then the latest incidents and the newest line of commentary; while live, the pitch
+        // with the ball moving through the plays comes first.
         LinearLayout body = row();
+        body.setGravity(Gravity.TOP);
+        if (g.state == 0) {
+            LinearLayout left = new LinearLayout(ctx);
+            left.setOrientation(LinearLayout.VERTICAL);
+            if (pitch.getParent() instanceof ViewGroup) ((ViewGroup) pitch.getParent()).removeView(pitch);
+            left.addView(pitch, new LinearLayout.LayoutParams(dp(290), dp(178)));
+            playLabel = text("", 10.5f, 0xCCFFFFFF, false);
+            left.addView(playLabel, top(dp(5)));
+            LinearLayout.LayoutParams llp = new LinearLayout.LayoutParams(dp(290), ViewGroup.LayoutParams.WRAP_CONTENT);
+            llp.rightMargin = dp(18);
+            body.addView(left, llp);
+        }
         LinearLayout stats = new LinearLayout(ctx);
         stats.setOrientation(LinearLayout.VERTICAL);
         for (String[] s : f.stats) stats.addView(statRow(s), fill(dp(6)));

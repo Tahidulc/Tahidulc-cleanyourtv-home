@@ -66,6 +66,11 @@ final class ScoresTicker {
         String id, league, home, away, homeScore, awayScore, detail;
         /** ESPN's team ids, and the league slug the game came from (for its match summary). */
         String homeId, awayId, slug;
+        /** The teams' colours (0 when ESPN has none), and while live the match clock in seconds as read at clockAt. */
+        int homeColor, awayColor;
+        double clockSec;
+        long clockAt;
+        boolean halftime;
         /** Logo URLs: the competition (its dark-background version) and both crests; null when ESPN has none. */
         String leagueLogo, homeLogo, awayLogo;
         int state;   // 0 live, 1 upcoming, 2 finished: the order they are shown in
@@ -263,6 +268,9 @@ final class ScoresTicker {
         g.home = home.getJSONObject("team").optString("abbreviation");
         g.away = away.getJSONObject("team").optString("abbreviation");
         g.homeLogo = home.getJSONObject("team").optString("logo", null);
+        g.homeColor = color(home.getJSONObject("team").optString("color", ""));
+        g.awayColor = color(away.getJSONObject("team").optString("color", ""));
+        if (g.awayColor == g.homeColor) g.awayColor = color(away.getJSONObject("team").optString("alternateColor", ""));
         g.awayLogo = away.getJSONObject("team").optString("logo", null);
         g.homeScore = home.optString("score", "0");
         g.awayScore = away.optString("score", "0");
@@ -281,6 +289,9 @@ final class ScoresTicker {
         if ("in".equals(state)) {
             g.state = 0;
             g.detail = type.optString("shortDetail", "LIVE");
+            g.clockSec = c.getJSONObject("status").optDouble("clock", 0);
+            g.clockAt = System.currentTimeMillis();
+            g.halftime = type.optString("name").contains("HALFTIME");
         } else if ("pre".equals(state)) {
             g.state = 1;
             g.detail = when.format(DateTimeFormatter.ofPattern("HH:mm"));
@@ -433,6 +444,11 @@ final class ScoresTicker {
             g.detail = s == live ? (s.isRace() && s.lap > 0 ? "LAP " + s.lap : "LIVE") : "FINAL";
         }
         return g;
+    }
+
+    /** "004170" to an opaque colour; 0 when it is not one. */
+    static int color(String hex) {
+        try { return hex.length() == 6 ? 0xFF000000 | Integer.parseInt(hex, 16) : 0; } catch (Exception e) { return 0; }
     }
 
     private static int parseInt(String s) {

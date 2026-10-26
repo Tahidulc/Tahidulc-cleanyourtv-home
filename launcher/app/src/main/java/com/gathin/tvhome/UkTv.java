@@ -42,7 +42,8 @@ final class UkTv {
         // The schedule is by UTC day: late in the evening the next programme can be on tomorrow's.
         Map<String, List<JSONObject>> events = new HashMap<>();
         for (int day = 0; day < 2; day++) {
-            String date = Instant.ofEpochMilli(now).plusSeconds(day * 86_400L).atZone(ZoneOffset.UTC)
+            // As a plain date: a zoned one prints its offset too ("20261026Z"), which the guide refuses.
+            String date = Instant.ofEpochMilli(now).plusSeconds(day * 86_400L).atZone(ZoneOffset.UTC).toLocalDate()
                     .format(DateTimeFormatter.BASIC_ISO_DATE);
             try {
                 JSONArray schedule = new JSONObject(get(String.format(SCHEDULE, date, ids))).optJSONArray("schedule");
