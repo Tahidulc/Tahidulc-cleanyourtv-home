@@ -335,6 +335,8 @@ final class WatchRows {
     // ---- What's on (a theme's "whats_on"): today's games and the next F1 session, on the TiviMate row ------------
 
     private List<ScoresTicker.Game> whatsOn = new ArrayList<>();
+    /** What is on British TV now (UkTv), shown before the fixtures. */
+    private List<UkTv.Now> tvNow = new ArrayList<>();
     private long whatsOnAt;
     private Boolean whatsOnOn;
 
@@ -346,7 +348,9 @@ final class WatchRows {
             whatsOnAt = System.currentTimeMillis();
             final int gen = generation;
             String[] leagues = context.getResources().getStringArray(R.array.score_leagues);
+            String[] channels = context.getResources().getStringArray(R.array.uk_tv_channels);
             reader.execute(() -> {
+                List<UkTv.Now> tv = UkTv.now(channels);
                 List<ScoresTicker.Game> games = new ArrayList<>();
                 for (ScoresTicker.Game g : ScoresTicker.load(leagues)) if (g.state != 2) games.add(g);
                 ScoresTicker.Game f1 = ScoresTicker.f1Game(F1Results.weekend(null));
@@ -354,20 +358,23 @@ final class WatchRows {
                 games.sort((a, b) -> a.state != b.state ? Integer.compare(a.state, b.state) : Long.compare(a.kickoff, b.kickoff));
                 List<ScoresTicker.Game> top = new ArrayList<>(games.subList(0, Math.min(12, games.size())));
                 main.post(() -> {
-                    if (top.isEmpty()) { whatsOnAt = 0; }
+                    if (top.isEmpty() && tv.isEmpty()) { whatsOnAt = 0; }
                     whatsOn = top;
-                    if (gen == generation && pkg.equals(shownPackage) && !top.isEmpty()) fillWhatsOn();
+                    tvNow = tv;
+                    if (gen == generation && pkg.equals(shownPackage) && (!top.isEmpty() || !tv.isEmpty())) fillWhatsOn();
                 });
             });
         }
-        if (whatsOn.isEmpty()) return false;
+        if (whatsOn.isEmpty() && tvNow.isEmpty()) return false;
         fillWhatsOn();
         return true;
     }
 
     private void fillWhatsOn() {
         strip.removeAllViews();
-        for (int i = 0; i < whatsOn.size(); i++) strip.addView(whatsOnCard(whatsOn.get(i), i, whatsOn.size()));
+        int count = tvNow.size() + whatsOn.size();
+        for (int i = 0; i < tvNow.size(); i++) strip.addView(tvCard(tvNow.get(i), i, count));
+        for (int i = 0; i < whatsOn.size(); i++) strip.addView(whatsOnCard(whatsOn.get(i), tvNow.size() + i, count));
         setShown(true);
         panel.setAlpha(0f);
         panel.animate().alpha(1f).setDuration(220).start();
@@ -475,6 +482,36 @@ final class WatchRows {
             if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) return index == count - 1;
             return false;
         });
+        return card;
+    }
+
+    /**
+     * A programme on now: its picture across the card with the channel's logo in the corner, the title, how long is
+     * left and what follows, and how far through it is. OK opens TiviMate.
+     */
+    private View tvCard(UkTv.Now n, int index, int count) {
+        Item item = new Item();
+        item.title = n.title;
+        item.poster = n.image;
+        long now = System.currentTimeMillis();
+        item.progress = Math.max(0f, Math.min(1f, (now - n.start) / (float) Math.max(1, n.end - n.start)));
+        item.minutesLeft = (int) Math.max(1, (n.end - now) / 60_000L);
+        String next = n.next == null ? "" : "  ·  Next " + java.time.Instant.ofEpochMilli(n.nextStart)
+                .atZone(java.time.ZoneId.systemDefault()).format(java.time.format.DateTimeFormatter.ofPattern("HH:mm")) + " " + n.next;
+        item.episode = n.channel + next;
+        Intent open = context.getPackageManager().getLeanbackLaunchIntentForPackage(context.getString(R.string.scores_open_package));
+        item.intent = open == null ? null : open.toUri(Intent.URI_INTENT_SCHEME);
+        FrameLayout card = (FrameLayout) card(item, index, count);
+        // The channel's logo, top-left on a soft shade so a light picture never swallows it.
+        View topShade = new View(context);
+        topShade.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0x99000000, 0x00000000}));
+        card.addView(topShade, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(90), Gravity.TOP));
+        ImageView logo = new ImageView(context);
+        logo.setScaleType(ImageView.ScaleType.FIT_START);
+        loadPoster(n.logo, logo);
+        FrameLayout.LayoutParams llp = new FrameLayout.LayoutParams(dp(110), dp(40), Gravity.TOP | Gravity.START);
+        llp.leftMargin = llp.topMargin = dp(14);
+        card.addView(logo, llp);
         return card;
     }
 

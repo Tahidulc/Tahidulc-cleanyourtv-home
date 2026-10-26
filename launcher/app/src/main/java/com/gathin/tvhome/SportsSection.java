@@ -574,10 +574,10 @@ final class SportsSection {
         Integer pageObj = tablePage.get(slug);
         int page = pageObj == null ? 0 : pageObj;
         col.addView(header(t.logo, name + (page == 1 ? "  ·  11–" + t.rows.size() : ""), t.live ? "●  LIVE" : null));
-        col.addView(tableRow("#", null, "TEAM", "P", "GD", "PTS", false, true), top(dp(8)));
+        col.addView(tableRow("#", null, "TEAM", "P", "GD", "PTS", false, true), fill(dp(8)));
         for (int i = page * ROWS; i < Math.min(t.rows.size(), page * ROWS + ROWS); i++) {
             String[] r = t.rows.get(i);
-            col.addView(tableRow(r[0], r[2], r[1], r[3], r[4], r[5], "1".equals(r[6]), false), top(dp(3)));
+            col.addView(tableRow(r[0], r[2], r[1], r[3], r[4], r[5], "1".equals(r[6]), false), fill(dp(3)));
         }
     }
 
@@ -586,6 +586,7 @@ final class SportsSection {
         int dim = head ? 0x80FFFFFF : 0xB3FFFFFF;
         float size = head ? 9.5f : 11.5f;
         TextView rk = text(rank, size, dim, false);
+        rk.setFontFeatureSettings("tnum");   // every digit the same width, so the columns line up
         r.addView(rk, new LinearLayout.LayoutParams(dp(24), ViewGroup.LayoutParams.WRAP_CONTENT));
         if (logo != null) r.addView(logo(logo, 15), sized(dp(15), 0));
         else r.addView(new View(ctx), sized(dp(15), 0));
@@ -596,10 +597,12 @@ final class SportsSection {
         for (String v : new String[]{p, gd}) {
             TextView c = text(v, size, dim, false);
             c.setGravity(Gravity.END);
+            c.setFontFeatureSettings("tnum");
             r.addView(c, new LinearLayout.LayoutParams(dp(34), ViewGroup.LayoutParams.WRAP_CONTENT));
         }
         TextView pt = text(pts, size, head ? dim : Color.WHITE, !head);
         pt.setGravity(Gravity.END);
+        pt.setFontFeatureSettings("tnum");
         r.addView(pt, new LinearLayout.LayoutParams(dp(40), ViewGroup.LayoutParams.WRAP_CONTENT));
         return r;
     }
@@ -612,10 +615,10 @@ final class SportsSection {
             col.addView(text("Loading the standings…", 12, 0x80FFFFFF, false), top(dp(30)));
             return;
         }
-        col.addView(tableRow("#", null, "DRIVER", "", "", "PTS", false, true), top(dp(8)));
+        col.addView(tableRow("#", null, "DRIVER", "", "", "PTS", false, true), fill(dp(8)));
         for (int i = f1Page * ROWS; i < Math.min(drivers.size(), f1Page * ROWS + ROWS); i++) {
             String[] x = drivers.get(i);
-            col.addView(tableRow(x[0], x[4], x[1] + "   " + x[2], "", "", x[3], false, false), top(dp(3)));
+            col.addView(tableRow(x[0], x[4], x[1] + "   " + x[2], "", "", x[3], false, false), fill(dp(3)));
         }
     }
 
@@ -663,7 +666,7 @@ final class SportsSection {
         if (hit != null) { v.setImageBitmap(hit); return v; }
         int px = dp(sizeDp) * 2;
         logoIo.execute(() -> {
-            Bitmap b = ScoresTicker.cachedLogo(ctx, url, px);
+            Bitmap b = ScoresTicker.forDark(ScoresTicker.cachedLogo(ctx, url, px));   // the cards are dark
             if (b != null) main.post(() -> { logos.put(url, b); v.setImageBitmap(b); });
         });
         return v;

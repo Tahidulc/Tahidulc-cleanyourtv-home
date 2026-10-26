@@ -739,7 +739,28 @@ final class ScoresTicker {
 
     /** From the disk cache, or from ESPN's resizer at twice the logo size, then saved for next time. */
     private Bitmap fetchLogo(String url) {
-        return cachedLogo(context, url, logo);
+        return forDark(cachedLogo(context, url, logo));   // the scores line is dark glass
+    }
+
+    /**
+     * The logo as it reads on a dark background: one that is almost black (Mercedes' F1 star) comes back white, the
+     * rest unchanged.
+     */
+    static Bitmap forDark(Bitmap b) {
+        if (b == null) return null;
+        int w = b.getWidth(), h = b.getHeight();
+        int[] px = new int[w * h];
+        b.getPixels(px, 0, w, 0, 0, w, h);
+        long sum = 0;
+        int n = 0;
+        for (int c : px) {
+            if ((c >>> 24) < 128) continue;
+            sum += (((c >> 16) & 0xFF) * 30 + ((c >> 8) & 0xFF) * 59 + (c & 0xFF) * 11) / 100;
+            n++;
+        }
+        if (n == 0 || sum / n >= 70) return b;
+        for (int i = 0; i < px.length; i++) px[i] = (px[i] & 0xFF000000) | 0x00F2F4F7;
+        return Bitmap.createBitmap(px, w, h, Bitmap.Config.ARGB_8888);
     }
 
     /** A crest or league logo at about size px: the shared disk cache first, then ESPN's resizer. Off the main thread. */

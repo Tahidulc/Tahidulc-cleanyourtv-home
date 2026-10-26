@@ -553,9 +553,9 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                 .setPackage("com.google.android.apps.tv.dreamx").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         if (getResources().getBoolean(R.bool.smart_home_button) && smartHome.resolveActivity(getPackageManager()) != null) {
             btnLights.setVisibility(View.VISIBLE);
-            btnLights.setOnClickListener(v -> {
-                try { startActivity(smartHome); } catch (Exception ignored) { }
-            });
+            // The panel of rooms and steps, sent to Google Assistant; its last button opens Google TV's Home panel.
+            btnLights.setOnClickListener(v -> LightsPanel.show(this, btnLights, Config.themeStrings(this, "lights_rooms",
+                    java.util.Arrays.asList(getResources().getStringArray(R.array.lights_rooms))), smartHome));
         }
         View btnAssistant = findViewById(R.id.btnAssistant);
         btnAssistant.setOnClickListener(v -> {
@@ -868,6 +868,27 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         });
         btnLibraryTop.setVisibility(cfg.libraryButton && cfg.appLibrary ? View.VISIBLE : View.GONE);
         addTopBarApps(cfg.topBarApps);
+        if (Config.themeFlag(this, "silver_pills", false)) {
+            // Solid silver top-bar pills with dark text and icons (a theme's "silver_pills").
+            ViewGroup bar = findViewById(R.id.topButtons);
+            android.content.res.ColorStateList ink = getColorStateList(R.color.pill_text_silver);
+            List<TextView> pills = new ArrayList<>();
+            for (int i = 0; i < bar.getChildCount(); i++) if (bar.getChildAt(i) instanceof TextView) pills.add((TextView) bar.getChildAt(i));
+            if (findViewById(R.id.weather) instanceof TextView) pills.add(findViewById(R.id.weather));
+            for (TextView p : pills) {
+                p.setBackgroundResource(R.drawable.pill_bg_silver);
+                p.setTextColor(ink);
+                p.setCompoundDrawableTintList(ink);
+            }
+            // The weather pill's own focus change turns its text white again; on silver it stays black, icon too.
+            TextView weather = findViewById(R.id.weather);
+            weather.setOnFocusChangeListener((v, has) -> {
+                ((TextView) v).setTextColor(0xFF000000);
+                ((TextView) v).setCompoundDrawableTintList(android.content.res.ColorStateList.valueOf(0xFF2A2F3A));
+            });
+            weather.setTextColor(0xFF000000);
+            weather.setCompoundDrawableTintList(android.content.res.ColorStateList.valueOf(0xFF2A2F3A));
+        }
         iconOnlyButtons = cfg.iconOnlyButtons;
         topMenu = cfg.topMenu;
         wifiIconOnly = iconOnlyButtons && cfg.wifiLabelWidth <= 0;
