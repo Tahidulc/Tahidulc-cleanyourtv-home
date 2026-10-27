@@ -632,6 +632,12 @@ final class WatchRows {
                     trending = fresh;
                     if (gen == generation && trendingRow()) fillTrending();
                 });
+                // The badges come from a page per title: the row shows first and takes them in once they are all read,
+                // unless a card has focus then (it gets them the next time the row is drawn).
+                Trending.badges(context, fresh);
+                main.post(() -> {
+                    if (trending == fresh && trendingRow() && !panel.hasFocus()) fillTrending();
+                });
             });
         }
         // The news is read alongside, for the cards after the trending ones.
@@ -660,8 +666,18 @@ final class WatchRows {
         Item item = new Item();
         item.title = t.title;
         String meta = (t.season != null ? t.season + "  ·  " : "") + t.genre + (t.year.isEmpty() ? "" : "  ·  " + t.year);
+        // The Rotten Tomatoes score leads the line, so a poster card still shows it.
+        if (t.tomatoes != null) meta = (t.rotten ? "🟢 " : "🍅 ") + t.tomatoes + "   " + meta;
+        else if (t.stars != null) meta = "★ " + t.stars + "   " + meta;
         item.episode = meta;
         FrameLayout card = (FrameLayout) card(item, index, count);
+        LinearLayout words = (LinearLayout) card.getChildAt(2);
+        View badges = badgeRow(t);
+        if (badges != null) {
+            LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            blp.bottomMargin = dp(6);
+            words.addView(badges, 0, blp);
+        }
         ImageView image = (ImageView) card.getChildAt(0);
         int w = cardWidth(), h = cardHeight();
         if (t.tv) loadPoster(t.crop(w, h), image);
@@ -688,7 +704,7 @@ final class WatchRows {
             FrameLayout.LayoutParams plp = new FrameLayout.LayoutParams(pw, ph, Gravity.END | Gravity.CENTER_VERTICAL);
             plp.rightMargin = dp(14);
             card.addView(poster, plp);
-            View text = card.getChildAt(card.getChildCount() - 2);
+            View text = words;
             int textPad = text.getPaddingLeft();
             TextView about = null;
             if (!t.summary.isEmpty() && h > dp(150)) {
@@ -726,14 +742,14 @@ final class WatchRows {
         sb.append(t.tv ? "TRENDING TV" : "TRENDING FILM");
         tag.setText(sb);
         tag.setTextColor(Color.WHITE);
-        tag.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f);
+        tag.setTextSize(TypedValue.COMPLEX_UNIT_SP, 9f);
         tag.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
-        tag.setLetterSpacing(0.12f);
+        tag.setLetterSpacing(0.1f);
         GradientDrawable capsule = new GradientDrawable();
         capsule.setColor(0x99000000);
         capsule.setCornerRadius(dp(12));
         tag.setBackground(capsule);
-        tag.setPadding(dp(10), dp(4), dp(10), dp(4));
+        tag.setPadding(dp(8), dp(3), dp(8), dp(3));
         FrameLayout.LayoutParams tlp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
                 Gravity.TOP | Gravity.START);
         tlp.leftMargin = tlp.topMargin = dp(14);
@@ -743,6 +759,67 @@ final class WatchRows {
             if (!AppSearchService.search(context, context.getString(R.string.trending_package), t.title)) host.onResumeApp();
         });
         return card;
+    }
+
+    /**
+     * The poster badges, BetterPosters style: the BBFC age in its colour, then the picture and sound the title comes
+     * in on Apple's store (4K or HD, Dolby Vision or HDR, Atmos). Null when the page had none.
+     */
+    private View badgeRow(Trending.Title t) {
+        LinearLayout row = new LinearLayout(context);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        if (t.age != null) row.addView(ageChip(t.age));
+        if (t.quality != null) row.addView(chip(t.quality, "4K".equals(t.quality)));
+        if (t.dolbyVision) row.addView(chip("DV", false));
+        else if (t.hdr) row.addView(chip("HDR", false));
+        if (t.atmos) row.addView(chip("ATMOS", false));
+        return row.getChildCount() == 0 ? null : row;
+    }
+
+    /** A small square in the BBFC's colours: U green, PG yellow, 12 orange, 15 pink, 18 red. */
+    private View ageChip(String age) {
+        int bg = 0xFF5A6270, fg = Color.WHITE;
+        String a = age.toUpperCase(java.util.Locale.ROOT);
+        if (a.equals("U") || a.equals("UC")) bg = 0xFF0BA14B;
+        else if (a.equals("PG")) { bg = 0xFFF7C600; fg = Color.BLACK; }
+        else if (a.startsWith("12")) bg = 0xFFF58220;
+        else if (a.equals("15")) bg = 0xFFE5007E;
+        else if (a.startsWith("18") || a.startsWith("R18")) bg = 0xFFDA1E26;
+        TextView v = chipText(age, fg);
+        GradientDrawable d = new GradientDrawable();
+        d.setColor(bg);
+        d.setCornerRadius(dp(4));
+        d.setStroke(Math.max(1, dp(1)), 0xE6FFFFFF);
+        v.setBackground(d);
+        v.setMinWidth(dp(20));
+        v.setGravity(Gravity.CENTER);
+        return v;
+    }
+
+    /** A quality chip: "4K" solid white, the rest dark glass with a thin white edge. */
+    private View chip(String text, boolean solid) {
+        TextView v = chipText(text, solid ? Color.BLACK : Color.WHITE);
+        GradientDrawable d = new GradientDrawable();
+        d.setColor(solid ? 0xF2FFFFFF : 0x99000000);
+        d.setCornerRadius(dp(4));
+        d.setStroke(Math.max(1, dp(1)), solid ? 0xF2FFFFFF : 0x99FFFFFF);
+        v.setBackground(d);
+        return v;
+    }
+
+    private TextView chipText(String text, int color) {
+        TextView v = new TextView(context);
+        v.setText(text);
+        v.setTextColor(color);
+        v.setTextSize(TypedValue.COMPLEX_UNIT_SP, 8.5f);
+        v.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        v.setLetterSpacing(0.06f);
+        v.setIncludeFontPadding(false);
+        v.setPadding(dp(5), dp(3), dp(5), dp(3));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.rightMargin = dp(5);
+        v.setLayoutParams(lp);
+        return v;
     }
 
     /** The news row: from the cache when fresh, else read and shown when it arrives. False when there is none yet. */

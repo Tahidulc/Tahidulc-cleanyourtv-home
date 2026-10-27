@@ -22,6 +22,9 @@ final class Trending {
         boolean tv;
         int rank;
         String title, season, genre, year, summary;
+        /** Its page on the store, and what that page's badges say: "4K" or "HD", Dolby Vision, HDR, Atmos, age, RT. */
+        String link, quality, age, tomatoes, stars;
+        boolean dolbyVision, hdr, atmos, rotten;
         /** The image without its size: add "/{w}x{h}bb.jpg" for the whole picture, "/{w}x{h}sr.jpg" for a crop. */
         String art;
 
@@ -67,11 +70,122 @@ final class Trending {
                 Matcher s = SIZE.matcher(img);
                 if (t.title.isEmpty() || !s.find()) continue;
                 t.art = img.substring(0, s.start());
+                Object link = e.opt("link");
+                JSONObject l = link instanceof JSONArray ? ((JSONArray) link).optJSONObject(0) : (JSONObject) link;
+                String href = l == null || l.optJSONObject("attributes") == null ? "" : l.getJSONObject("attributes").optString("href", "");
+                t.link = href.replaceAll("\\?.*$", "");
+                // A film's page is read on Apple's TV site, which takes the store's id; the store itself answers a TV
+                // with an "item not available" stub as often as not. Seasons have no such address, so they keep it.
+                if (!tv) t.link = t.link.replace("://itunes.apple.com/", "://tv.apple.com/");
                 out.add(t);
             }
         } catch (Exception ignored) {
         }
         return out;
+    }
+
+    // ---- badges -------------------------------------------------------------------------------------
+
+    private static final Pattern BADGE = Pattern.compile("\\{\"\\$kind\":\"MetadataBadge\"[^}]*\\}");
+    private static final Pattern FIELD = Pattern.compile("\"(\\$type|displayText|fallbackText)\":\"([^\"]*)\"");
+    private static final long BADGES_MS = 24 * 60 * 60_000L;
+
+    /**
+     * Each title's badges from its Apple TV page (the store link redirects there): the first run of MetadataBadge
+     * entries on it is the title's own, as the page shows under its name. Read four at a time at background priority,
+     * and kept a day in the "trend_badges_v2" preferences, so a refresh reads only titles new to the chart.
+     */
+    static void badges(android.content.Context c, List<Title> titles) {
+        android.content.SharedPreferences prefs = c.getSharedPreferences("trend_badges_v2", android.content.Context.MODE_PRIVATE);
+        java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(4, r -> new Thread(() -> {
+            android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND);
+            r.run();
+        }));
+        List<java.util.concurrent.Callable<Void>> jobs = new ArrayList<>();
+        for (Title t : titles) {
+            if (t.link == null || t.link.isEmpty()) continue;
+            String kept = prefs.getString(t.link, null);
+            if (kept != null) {
+                int bar = kept.indexOf('|');
+                long at = bar > 0 ? Long.parseLong(kept.substring(0, bar)) : 0;
+                if (System.currentTimeMillis() - at < BADGES_MS) { apply(t, kept.substring(bar + 1)); continue; }
+            }
+            jobs.add(() -> {
+                String found = read(t.link);
+                // A series' rating from TVmaze (its viewers' average out of ten), as Apple shows none for TV.
+                if (t.tv) {
+                    String stars = tvmaze(t.title);
+                    if (stars != null) found = (found == null ? "" : found) + "tvmaze=" + stars + ";";
+                }
+                if (found != null && !found.isEmpty()) {
+                    prefs.edit().putString(t.link, System.currentTimeMillis() + "|" + found).apply();
+                    apply(t, found);
+                }
+                return null;
+            });
+        }
+        try { pool.invokeAll(jobs, 3, java.util.concurrent.TimeUnit.MINUTES); } catch (InterruptedException ignored) { }
+        pool.shutdownNow();
+    }
+
+    /** "type=text;type=text;..." for the title's own badges, or null when the page could not be read. */
+    private static String read(String link) {
+        String page;
+        try { page = get(link); } catch (Exception e) { return null; }
+        int first = page.indexOf("{\"$kind\":\"MetadataBadge\"");
+        if (first < 0) return "";
+        StringBuilder out = new StringBuilder();
+        Matcher b = BADGE.matcher(page);
+        b.region(first, page.length());
+        int next = first;
+        // The title's badges come in a few lists side by side ("ratingBadges":[...],"playbackBadges":[...]); the run
+        // ends at the first badge further on than that.
+        while (b.find() && b.start() <= next + 40) {
+            next = b.end();
+            String type = "", text = "";
+            Matcher f = FIELD.matcher(b.group());
+            while (f.find()) {
+                if (f.group(1).equals("$type")) type = f.group(2);
+                else if (text.isEmpty()) text = f.group(2);
+            }
+            if (b.group().contains("\"rotten\"")) text += "!";
+            out.append(type).append('=').append(text).append(';');
+        }
+        return out.toString();
+    }
+
+    private static String tvmaze(String title) {
+        try {
+            JSONObject show = new JSONObject(get("https://api.tvmaze.com/singlesearch/shows?q=" + java.net.URLEncoder.encode(title, "UTF-8")));
+            double avg = show.optJSONObject("rating") == null ? 0 : show.getJSONObject("rating").optDouble("average", 0);
+            return avg > 0 ? String.format(java.util.Locale.ROOT, "%.1f", avg) : null;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private static void apply(Title t, String badges) {
+        for (String b : badges.split(";")) {
+            int eq = b.indexOf('=');
+            if (eq < 0) continue;
+            String type = b.substring(0, eq), text = b.substring(eq + 1);
+            switch (type) {
+                case "4k": t.quality = "4K"; break;
+                case "hd": if (t.quality == null) t.quality = "HD"; break;
+                case "dolby-vision": t.dolbyVision = true; break;
+                case "hdr": case "hdr10": case "hdr10-plus": t.hdr = true; break;
+                case "dolby-atmos": t.atmos = true; break;
+                case "rating": if (t.age == null && !text.isEmpty()) t.age = text; break;
+                case "tvmaze": t.stars = text; break;
+                case "rotten-tomatoes":
+                    if (t.tomatoes == null && !text.isEmpty()) {
+                        t.rotten = text.endsWith("!");
+                        t.tomatoes = text.replace("!", "");
+                    }
+                    break;
+                default: break;
+            }
+        }
     }
 
     private static String label(JSONObject e, String key) {
@@ -81,13 +195,15 @@ final class Trending {
 
     private static String get(String url) throws Exception {
         HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
+        // As a browser: the store answers anything else with an "item not available" stub instead of the page.
+        conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36");
         conn.setConnectTimeout(6000);
         conn.setReadTimeout(10000);
         try (InputStream in = conn.getInputStream()) {
             ByteArrayOutputStream out = new ByteArrayOutputStream();
             byte[] buf = new byte[16384];
             int n;
-            while ((n = in.read(buf)) > 0 && out.size() < 2 * 1024 * 1024) out.write(buf, 0, n);
+            while ((n = in.read(buf)) > 0 && out.size() < 3 * 1024 * 1024) out.write(buf, 0, n);
             return out.toString("UTF-8");
         } finally {
             conn.disconnect();
