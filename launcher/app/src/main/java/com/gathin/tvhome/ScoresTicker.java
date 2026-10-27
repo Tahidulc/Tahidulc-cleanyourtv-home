@@ -72,6 +72,8 @@ final class ScoresTicker {
         String homeName, awayName;
         /** adb tests only: the moment to look up in the TV guide instead of the kick-off. */
         long tvAt;
+        /** Where it is on in the US when no British channel has it (ESPN's listing, English-language TV first). */
+        String abroad;
         double clockSec;
         long clockAt;
         boolean halftime;
@@ -324,6 +326,7 @@ final class ScoresTicker {
             g.state = 0;
             g.detail = type.optString("shortDetail", "LIVE");
             g.clockSec = c.getJSONObject("status").optDouble("clock", 0);
+            g.abroad = abroad(c);
             g.clockAt = System.currentTimeMillis();
             g.halftime = type.optString("name").contains("HALFTIME");
         } else if ("pre".equals(state)) {
@@ -739,6 +742,35 @@ final class ScoresTicker {
         float text = measure.measureText(teams(g).toString()) + measure.measureText(detail(g).toString());
         int lead = g.leagueLogo != null ? logo : Math.round(measure.measureText(league(g).toString()));
         return Math.round(text) + lead + 2 * logo + dp(12 + 6 + 6 + 8) + dp(24) + dp(4);
+    }
+
+    /** Spanish-language networks in ESPN's US listings, passed over for an English one. */
+    private static final String[] SPANISH = {"deportes", "univision", "unimas", "unimás", "tudn", "telemundo", "galavision", "galavisión", "vix"};
+
+    /**
+     * The game's US channels from ESPN's scoreboard (its geoBroadcasts): English-language TV first, then streaming,
+     * then anything; joined as "CBS Sports Network / Paramount+". Null when ESPN lists none.
+     */
+    static String abroad(JSONObject competition) {
+        JSONArray geo = competition.optJSONArray("geoBroadcasts");
+        if (geo == null) return null;
+        List<String> tv = new ArrayList<>(), streaming = new ArrayList<>(), other = new ArrayList<>();
+        for (int i = 0; i < geo.length(); i++) {
+            JSONObject b = geo.optJSONObject(i);
+            JSONObject media = b == null ? null : b.optJSONObject("media"), kind = b == null ? null : b.optJSONObject("type");
+            String name = media == null ? "" : media.optString("shortName", "");
+            if (name.isEmpty()) continue;
+            String type = kind == null ? "" : kind.optString("shortName", "");
+            boolean spanish = false;
+            for (String sp : SPANISH) if (name.toLowerCase(java.util.Locale.ROOT).contains(sp)) spanish = true;
+            List<String> into = spanish ? other : "TV".equals(type) ? tv : streaming;
+            if (!into.contains(name)) into.add(name);
+        }
+        List<String> all = new ArrayList<>(tv);
+        all.addAll(streaming);
+        if (all.isEmpty()) all.addAll(other);
+        if (all.isEmpty()) return null;
+        return android.text.TextUtils.join(" / ", all.subList(0, Math.min(2, all.size())));
     }
 
     private static CharSequence league(Game g) {

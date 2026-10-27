@@ -239,8 +239,8 @@ final class SportsSection {
             List<ScoresTicker.Game> games = ScoresTicker.load(all.toArray(new String[0]));
             ScoresTicker.Game pick = pick(games, alertTags, clubs);
             Featured f = pick == null ? null : featured(pick);
-            if (f != null) f.tv = TvGuide.find(ctx.getResources().getStringArray(R.array.football_tv_channels),
-                    pick.homeName, pick.awayName, pick.kickoff);
+            if (f != null) f.tv = TvGuide.orAbroad(TvGuide.find(ctx.getResources().getStringArray(R.array.football_tv_channels),
+                    pick.homeName, pick.awayName, pick.kickoff), f.game);
             Map<String, Table> fresh = new HashMap<>();
             if (tablesNow) for (String l : tableLeagues) {
                 String[] p = l.split("\\|", 2);
@@ -536,9 +536,14 @@ final class SportsSection {
             LinearLayout on = row();
             on.setGravity(Gravity.CENTER);
             on.addView(text("LIVE ON", 10, 0xB3FFFFFF, true));
-            ImageView tvLogo = logo(f.tv.logo, 18);
-            on.addView(tvLogo, new LinearLayout.LayoutParams(dp(140), dp(16)));
-            ((LinearLayout.LayoutParams) tvLogo.getLayoutParams()).leftMargin = dp(8);
+            if (f.tv.logo != null) {
+                ImageView tvLogo = logo(f.tv.logo, 18);
+                on.addView(tvLogo, new LinearLayout.LayoutParams(dp(140), dp(16)));
+                ((LinearLayout.LayoutParams) tvLogo.getLayoutParams()).leftMargin = dp(8);
+            } else {
+                // Abroad, ESPN gives the channel's name only.
+                on.addView(text(f.tv.name, 11, Color.WHITE, true), gap(dp(8)));
+            }
             col.addView(on, fill(dp(4)));
         }
         if (f.formationHome != null && f.formationAway != null) {

@@ -70,6 +70,12 @@ final class TvGuide {
         return null;
     }
 
+    /** The British channel, or else where it is on in the US ("ESPN+ (US)", no logo); null when neither is known. */
+    static Channel orAbroad(Channel uk, ScoresTicker.Game g) {
+        if (uk != null || g == null || g.abroad == null) return uk;
+        return new Channel(g.abroad + " (US)", null);
+    }
+
     /** One club named two ways: a shared word of four letters or more ("palace", "dortmund", "tottenham"). */
     private static boolean same(String sky, String espn) {
         for (String[] alias : ALIASES) if (sky.equals(alias[0]) || sky.startsWith(alias[0] + " ")) sky = alias[1];

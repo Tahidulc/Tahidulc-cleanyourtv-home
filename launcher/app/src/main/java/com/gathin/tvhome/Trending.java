@@ -195,41 +195,49 @@ final class Trending {
     /**
      * Each title's badges from its Apple TV page (the store link redirects there): the first run of MetadataBadge
      * entries on it is the title's own, as the page shows under its name. Read four at a time at background priority,
-     * and kept a day in the "trend_badges_v4" preferences, so a refresh reads only titles new to the chart.
+     * and kept a day in the "trend_badges_v5" preferences, so a refresh reads only titles new to the chart.
      */
     static void badges(android.content.Context c, List<Title> titles) {
-        android.content.SharedPreferences prefs = c.getSharedPreferences("trend_badges_v4", android.content.Context.MODE_PRIVATE);
+        android.content.SharedPreferences prefs = c.getSharedPreferences("trend_badges_v5", android.content.Context.MODE_PRIVATE);
         java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(4, r -> new Thread(() -> {
             android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND);
             r.run();
         }));
         List<java.util.concurrent.Callable<Void>> jobs = new ArrayList<>();
         for (Title t : titles) {
-            if (t.netflix || t.link == null || t.link.isEmpty()) continue;
-            String kept = prefs.getString(t.link, null);
+            // Netflix's titles have no store page: they are kept by name, for their preview clip only.
+            String key = t.netflix ? "nf:" + (t.tv ? "tv:" : "film:") + t.title : t.link;
+            if (key == null || key.isEmpty()) continue;
+            String kept = prefs.getString(key, null);
             if (kept != null) {
                 int bar = kept.indexOf('|');
                 long at = bar > 0 ? Long.parseLong(kept.substring(0, bar)) : 0;
                 if (System.currentTimeMillis() - at < BADGES_MS) {
                     apply(t, kept.substring(bar + 1));
-                    if (t.summary.isEmpty()) t.summary = prefs.getString("about:" + t.link, "");
+                    if (t.summary.isEmpty()) t.summary = prefs.getString("about:" + key, "");
                     continue;
                 }
             }
             jobs.add(() -> {
-                String found = read(t.link);
+                String found = t.netflix ? "" : read(t.link);
                 // A series' rating from TVmaze (its viewers' average out of ten), as Apple shows none for TV.
                 // Its synopsis too: Apple's TV chart has none.
-                if (t.tv) {
+                if (t.tv && !t.netflix) {
                     String[] show = tvmaze(t.title);
                     if (show != null && show[0] != null) found = (found == null ? "" : found) + "tvmaze=" + show[0] + ";";
                     if (show != null && !show[1].isEmpty()) {
                         if (t.summary.isEmpty()) t.summary = show[1];
-                        prefs.edit().putString("about:" + t.link, show[1]).apply();
+                        prefs.edit().putString("about:" + key, show[1]).apply();
                     }
                 }
+                // Something to play: a series has no trailer on its store page and Netflix's titles no page at all,
+                // so the store's search gives an episode's preview clip, or a film's trailer when it sells it.
+                if (t.preview == null && (found == null || !found.contains("trailer="))) {
+                    String clip = searchPreview(t.title, t.tv, c.getString(R.string.trending_country));
+                    if (clip != null) found = (found == null ? "" : found) + "preview=" + clip + ";";
+                }
                 if (found != null && !found.isEmpty()) {
-                    prefs.edit().putString(t.link, System.currentTimeMillis() + "|" + found).apply();
+                    prefs.edit().putString(key, System.currentTimeMillis() + "|" + found).apply();
                     apply(t, found);
                 }
                 return null;
@@ -270,6 +278,27 @@ final class Trending {
     }
 
     /** {rating out of ten or null, synopsis as plain text} for a series, from TVmaze; null when not found. */
+    /**
+     * A preview clip from the iTunes Search API: for a series the first of its episodes' previews whose season is
+     * named after it, for a film its trailer; null when the store has none.
+     */
+    private static String searchPreview(String title, boolean tv, String country) {
+        try {
+            String q = "https://itunes.apple.com/search?country=" + country + "&limit=5&media=" + (tv ? "tvShow&entity=tvEpisode" : "movie&entity=movie")
+                    + "&term=" + java.net.URLEncoder.encode(title, "UTF-8");
+            JSONArray results = new JSONObject(get(q)).optJSONArray("results");
+            String want = title.toLowerCase(java.util.Locale.ROOT);
+            for (int i = 0; results != null && i < results.length(); i++) {
+                JSONObject r = results.getJSONObject(i);
+                String name = (tv ? r.optString("collectionName") : r.optString("trackName")).toLowerCase(java.util.Locale.ROOT);
+                String clip = r.optString("previewUrl", "");
+                if (!clip.isEmpty() && name.startsWith(want)) return clip;
+            }
+        } catch (Exception ignored) {
+        }
+        return null;
+    }
+
     private static String[] tvmaze(String title) {
         try {
             JSONObject show = new JSONObject(get("https://api.tvmaze.com/singlesearch/shows?q=" + java.net.URLEncoder.encode(title, "UTF-8")));
@@ -297,6 +326,7 @@ final class Trending {
                 case "rating": if (t.age == null && !text.isEmpty()) t.age = text; break;
                 case "tvmaze": t.stars = text; break;
                 case "trailer": t.trailer = text; break;
+                case "preview": if (t.preview == null) t.preview = text; break;
                 case "rotten-tomatoes":
                     if (t.tomatoes == null && !text.isEmpty()) {
                         t.rotten = text.contains("!");

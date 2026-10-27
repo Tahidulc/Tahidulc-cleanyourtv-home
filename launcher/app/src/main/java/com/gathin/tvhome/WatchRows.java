@@ -488,7 +488,7 @@ final class WatchRows {
                 String[] football = context.getResources().getStringArray(R.array.football_tv_channels);
                 Map<String, TvGuide.Channel> on = new HashMap<>();
                 for (ScoresTicker.Game g : top) {
-                    TvGuide.Channel c = TvGuide.find(football, g.homeName, g.awayName, g.kickoff);
+                    TvGuide.Channel c = TvGuide.orAbroad(TvGuide.find(football, g.homeName, g.awayName, g.kickoff), g);
                     if (c != null && g.id != null) on.put(g.id, c);
                 }
                 main.post(() -> {
@@ -605,12 +605,24 @@ final class WatchRows {
             label.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
             label.setLetterSpacing(0.1f);
             on.addView(label);
-            ImageView logo = new ImageView(context);
-            logo.setScaleType(ImageView.ScaleType.FIT_END);
-            loadPoster(tv.logo, logo);
-            LinearLayout.LayoutParams olp = new LinearLayout.LayoutParams(dp(150), dp(20));
-            olp.leftMargin = dp(8);
-            on.addView(logo, olp);
+            if (tv.logo != null) {
+                ImageView logo = new ImageView(context);
+                logo.setScaleType(ImageView.ScaleType.FIT_END);
+                loadPoster(tv.logo, logo);
+                LinearLayout.LayoutParams olp = new LinearLayout.LayoutParams(dp(150), dp(20));
+                olp.leftMargin = dp(8);
+                on.addView(logo, olp);
+            } else {
+                // Abroad, ESPN gives the channel's name only.
+                TextView name = new TextView(context);
+                name.setText(tv.name);
+                name.setTextColor(Color.WHITE);
+                name.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f);
+                name.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+                LinearLayout.LayoutParams olp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                olp.leftMargin = dp(8);
+                on.addView(name, olp);
+            }
             FrameLayout.LayoutParams onlp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
                     Gravity.BOTTOM | Gravity.END);
             onlp.rightMargin = dp(14);
@@ -1001,7 +1013,10 @@ final class WatchRows {
 
     // ---- trailers ----------------------------------------------------------------------------------
 
-    private static final long TRAILER_DELAY_MS = 1_200L;
+    /** The trailer starts as the card finishes widening. */
+    private static final long TRAILER_DELAY_MS = WIDEN_MS + 30;
+    /** An HD trailer that has not started by then gives way to the preview clip. */
+    private static final long TRAILER_WAIT_MS = 4_000L;
     private Runnable trailerStart = () -> { };
     private android.media.MediaPlayer player;
     private android.view.TextureView playerView;
@@ -1015,6 +1030,7 @@ final class WatchRows {
      */
     private void playTrailer(View tile, FrameLayout card, Trending.Title t, List<View> covers) {
         String url = t.trailer != null ? t.trailer : t.preview;
+        android.util.Log.i("Trailer", t.title + " trailer=" + t.trailer + " preview=" + t.preview);
         if (url == null) return;
         stopTrailer();
         playingTile = tile;
@@ -1035,6 +1051,7 @@ final class WatchRows {
     }
 
     private void start(android.view.TextureView view, android.view.Surface surface, String url, String fallback) {
+        android.util.Log.i("Trailer", "start " + url + " fallback=" + fallback);
         android.media.MediaPlayer mp = new android.media.MediaPlayer();
         player = mp;
         try {
@@ -1044,7 +1061,9 @@ final class WatchRows {
                     .setContentType(android.media.AudioAttributes.CONTENT_TYPE_MOVIE).build());
             mp.setDataSource(context, Uri.parse(url));
             mp.setOnVideoSizeChangedListener((m, vw, vh) -> crop(view, vw, vh));
+            mp.setOnInfoListener((m, what, extra) -> { android.util.Log.i("Trailer", "info " + what + " " + extra); return false; });
             mp.setOnPreparedListener(m -> {
+                android.util.Log.i("Trailer", "prepared " + m.getVideoWidth() + "x" + m.getVideoHeight());
                 if (player != m) return;
                 m.setVolume(0.8f, 0.8f);
                 m.start();
@@ -1052,6 +1071,7 @@ final class WatchRows {
                 for (View x : playerCovers) x.animate().alpha(0f).setDuration(400).start();
             });
             mp.setOnErrorListener((m, what, extra) -> {
+                android.util.Log.i("Trailer", "error " + what + " " + extra);
                 if (player != m) return true;
                 m.release();
                 player = null;
@@ -1062,6 +1082,16 @@ final class WatchRows {
             });
             mp.setOnCompletionListener(m -> stopTrailer());
             mp.prepareAsync();
+            if (fallback != null) {
+                // Some HLS trailers never answer here (no error, no picture): the preview clip after a short wait.
+                main.postDelayed(() -> {
+                    if (player != mp || mp.isPlaying() || playerView != view) return;
+                    android.util.Log.i("Trailer", "timeout, preview instead");
+                    mp.release();
+                    player = null;
+                    start(view, surface, fallback, null);
+                }, TRAILER_WAIT_MS);
+            }
         } catch (Exception e) {
             mp.release();
             player = null;

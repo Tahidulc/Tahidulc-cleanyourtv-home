@@ -880,7 +880,7 @@ public class GoalWatchService extends Service {
         io.execute(() -> {
             ScoresTicker.Side[] sides = "test".equals(g.id) ? testSides(g) : ScoresTicker.lineups(g);
             // "Live on" and the channel, when a British channel lists the game.
-            TvGuide.Channel tv = TvGuide.find(channels, g.homeName, g.awayName, g.tvAt != 0 ? g.tvAt : g.kickoff);
+            TvGuide.Channel tv = TvGuide.orAbroad(TvGuide.find(channels, g.homeName, g.awayName, g.tvAt != 0 ? g.tvAt : g.kickoff), g);
             // The last page, after the line-ups: the two clubs, "LIVE ON" and the channel.
             List<Object> live = null;
             if (tv != null) {
@@ -938,7 +938,7 @@ public class GoalWatchService extends Service {
         List<Object> ready = new ArrayList<>();
         for (Object o : parts) {
             if (o instanceof Chip) {
-                android.graphics.Bitmap logo = ScoresTicker.cachedLogo(this, ((Chip) o).url, px * 4);
+                android.graphics.Bitmap logo = ((Chip) o).url == null ? null : ScoresTicker.cachedLogo(this, ((Chip) o).url, px * 4);
                 ready.add(logo != null ? new ChipImg(inked(logo)) : bold(((Chip) o).name));
             } else if (o instanceof Pic) {
                 Pic pic = (Pic) o;
