@@ -428,6 +428,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         // restore_key_services: after a force stop, put back the remote's accessibility helpers that Android took
         // off the list (needs WRITE_SECURE_SETTINGS, granted by build-and-install with RESTORE_KEY_SERVICES=1).
         if (cfg.restoreKeyServices) ServiceRepair.restore(this);
+        AppSearchService.ensure(this);
         settingsRevision = settingsRevision();
         applyViewInputsHandler(cfg.handleViewInputs);
         settingsKeycodes = cfg.settingsKeycodes;
@@ -1324,6 +1325,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         endReorder();   // Home or another app while reordering keeps the order so far
         wallpaperPlayer.stop();
         videoBackdrop.stop();
+        watchRows.pause();
         weatherLine.stop();
         weatherLine.dismissForecast();
         newsTicker.stop();

@@ -201,6 +201,13 @@ public class GoalWatchService extends Service {
         Img(android.graphics.Bitmap bitmap, boolean wide) { this.bitmap = bitmap; this.wide = wide; }
     }
 
+    /** A goal's score: the side that scored ("home" or "away", or null for none) has its number roll up to it. */
+    private static final class Score {
+        final int home, away;
+        final String side;
+        Score(int home, int away, String side) { this.home = home; this.away = away; this.side = side; }
+    }
+
     /** The dim tag at the end of a line, like the competition. */
     private static final class Small {
         final CharSequence text;
@@ -836,11 +843,19 @@ public class GoalWatchService extends Service {
     // ---- the alert ---------------------------------------------------------------------------------
 
     private void enqueue(ScoresTicker.Game g, String[] goal, boolean red) {
-        enqueueFootball(g, headline(goal, red), red ? "red" : "ft".equals(goal[4]) ? "fulltime" : "goal");
+        boolean scored = !red && !"ft".equals(goal[4]) && ("home".equals(goal[3]) || "away".equals(goal[3]));
+        enqueueFootball(g, headline(goal, red), red ? "red" : "ft".equals(goal[4]) ? "fulltime" : "goal", scored ? goal[3] : null);
     }
 
-    /** Fetches both crests and the competition's logo (cached on disk by the scores line), then queues the alert. */
     private void enqueueFootball(ScoresTicker.Game g, CharSequence head, String sound) {
+        enqueueFootball(g, head, sound, null);
+    }
+
+    /**
+     * Fetches both crests and the competition's logo (cached on disk by the scores line), then queues the alert;
+     * scoredBy is the side whose goal it is, for the score's roll.
+     */
+    private void enqueueFootball(ScoresTicker.Game g, CharSequence head, String sound, String scoredBy) {
         int px = Math.round(LOGO_DP * getResources().getDisplayMetrics().density);
         io.execute(() -> {
             android.graphics.Bitmap home = g.homeLogo == null ? null : ScoresTicker.cachedLogo(this, g.homeLogo, px);
@@ -848,7 +863,7 @@ public class GoalWatchService extends Service {
             String light = lightLogo(g.leagueLogo);
             android.graphics.Bitmap league = light == null ? null : ScoresTicker.cachedLogo(this, light, px);
             main.post(() -> {
-                queue.add(new Object[]{head, g, home, away, league, sound});
+                queue.add(new Object[]{head, g, home, away, league, sound, scoredBy});
                 showNext();
             });
         });
@@ -1166,8 +1181,16 @@ public class GoalWatchService extends Service {
             ScoresTicker.Game now = g.id == null ? null : latest.get(g.id);
             if (now != null) g = now;
             // Crests stand in for the team names: crest, score, crest.
-            SpannableStringBuilder score = new SpannableStringBuilder(g.homeScore + "–" + g.awayScore);
-            score.setSpan(new StyleSpan(Typeface.BOLD), 0, score.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            Object score;
+            String side = next.length > 6 ? (String) next[6] : null;
+            int hs = parse(g.homeScore), as = parse(g.awayScore);
+            if (side != null && hs >= 0 && as >= 0) {
+                score = new Score(hs, as, side);
+            } else {
+                SpannableStringBuilder plain = new SpannableStringBuilder(g.homeScore + "–" + g.awayScore);
+                plain.setSpan(new StyleSpan(Typeface.BOLD), 0, plain.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                score = plain;
+            }
             // The competition's logo closes the line; its short name when ESPN has no logo.
             Object league = next.length > 4 && next[4] != null ? next[4] : new Small(g.league);
             parts = Arrays.asList(next[0], 10, next[2], 6, score, 6, next[3], 8, league);
@@ -1185,6 +1208,12 @@ public class GoalWatchService extends Service {
                 android.widget.FrameLayout.LayoutParams.WRAP_CONTENT, h, Gravity.BOTTOM | Gravity.START));
         shown = box;
         play(sound);
+        // A goal's number rolls up once the pill has opened and its words are in (at once when it does not animate).
+        if (scoreRoll != null) {
+            Runnable roll = scoreRoll;
+            scoreRoll = null;
+            main.postDelayed(roll, calm() ? 0 : 1_700);
+        }
         // A small glass dot pops in at the corner, the pill then stretches out to the right with its round ends kept
         // (an animated rounded outline, clipped in hardware), and only then does the text fade in.
         final float radius = h / 2f;
@@ -1503,6 +1532,8 @@ public class GoalWatchService extends Service {
                 LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(cw, ch);
                 lp.leftMargin = gap;
                 box.addView(v, lp);
+            } else if (part instanceof Score) {
+                box.addView(scoreView((Score) part, d), gap(gap));
             } else if (part instanceof Small) {
                 box.addView(text(((Small) part).text, SMALL_SP, 0xB31A1D24), gap(gap));
             } else {
@@ -1515,6 +1546,69 @@ public class GoalWatchService extends Service {
         }
         box.setMinimumHeight(h);
         return box;
+    }
+
+    private static int parse(String n) {
+        try { return Integer.parseInt(n.trim()); } catch (Exception e) { return -1; }
+    }
+
+    /** The roll of the score pillBox last built, run by showNext once the pill is up. */
+    private Runnable scoreRoll;
+
+    /**
+     * "1–0" as three views; the scoring side's number sits in a window that starts on the score before the goal and
+     * rolls the old number up and out and the new one up into place, which then flashes green and settles.
+     */
+    private View scoreView(Score sc, float d) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        boolean home = "home".equals(sc.side);
+        View[] rollers = new View[2];
+        for (int i = 0; i < 2; i++) {
+            int now = i == 0 ? sc.home : sc.away;
+            boolean scorer = (i == 0) == home;
+            if (i == 1) row.addView(text(bold("–"), TEXT_SP, 0xFF1A1D24));
+            if (!scorer) { row.addView(text(bold(String.valueOf(now)), TEXT_SP, 0xFF1A1D24)); continue; }
+            android.widget.FrameLayout window = new android.widget.FrameLayout(this);
+            window.setClipChildren(true);
+            TextView was = text(bold(String.valueOf(Math.max(0, now - 1))), TEXT_SP, 0xFF1A1D24);
+            TextView is = text(bold(String.valueOf(now)), TEXT_SP, 0xFF16A34A);
+            was.setGravity(Gravity.CENTER);
+            is.setGravity(Gravity.CENTER);
+            window.addView(was, new android.widget.FrameLayout.LayoutParams(-2, -2, Gravity.CENTER));
+            window.addView(is, new android.widget.FrameLayout.LayoutParams(-2, -2, Gravity.CENTER));
+            is.setAlpha(0f);
+            row.addView(window, new LinearLayout.LayoutParams(-2, Math.round(22 * d)));
+            rollers[0] = was;
+            rollers[1] = is;
+        }
+        if (rollers[0] != null) {
+            TextView was = (TextView) rollers[0], is = (TextView) rollers[1];
+            scoreRoll = () -> {
+                float h = 22 * d;
+                if (calm()) {
+                    was.setAlpha(0f);
+                    is.setAlpha(1f);
+                    is.setTextColor(0xFF1A1D24);
+                    return;
+                }
+                is.setTranslationY(h);
+                is.setAlpha(1f);
+                was.animate().translationY(-h).alpha(0f).setDuration(420)
+                        .setInterpolator(new android.view.animation.AccelerateInterpolator(1.4f)).start();
+                is.animate().translationY(0f).setDuration(520).setStartDelay(80)
+                        .setInterpolator(new android.view.animation.OvershootInterpolator(1.6f)).withEndAction(() -> {
+                    is.setPivotY(is.getHeight() / 2f);
+                    is.animate().scaleX(1.3f).scaleY(1.3f).setDuration(160).withEndAction(() ->
+                            is.animate().scaleX(1f).scaleY(1f).setDuration(220).withEndAction(() -> {
+                                // Back to the pill's ink after a moment in green.
+                                main.postDelayed(() -> is.setTextColor(0xFF1A1D24), 900);
+                            }).start()).start();
+                }).start();
+            };
+        }
+        return row;
     }
 
     /**

@@ -150,6 +150,37 @@ public class AppSearchService extends AccessibilityService {
         }
     }
 
+    /**
+     * Home is on screen: when this helper is switched on in Settings but not running (a TCL turns accessibility off
+     * when it will not start a helper, and starts one only while Home is in front), switch it back on: off the list,
+     * on again, and accessibility on. Needs WRITE_SECURE_SETTINGS, granted from adb; without it, nothing.
+     */
+    static void ensure(Context c) {
+        if (instance != null || c.checkSelfPermission(android.Manifest.permission.WRITE_SECURE_SETTINGS)
+                != android.content.pm.PackageManager.PERMISSION_GRANTED) return;
+        android.content.ContentResolver cr = c.getContentResolver();
+        String me = new android.content.ComponentName(c, AppSearchService.class).flattenToShortString();
+        String list = android.provider.Settings.Secure.getString(cr, android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES);
+        if (list == null || !java.util.Arrays.asList(list.split(":")).contains(me)) return;
+        StringBuilder others = new StringBuilder();
+        for (String entry : list.split(":")) {
+            if (entry.isEmpty() || entry.equals(me)) continue;
+            if (others.length() > 0) others.append(':');
+            others.append(entry);
+        }
+        String without = others.toString(), with = without.isEmpty() ? me : without + ":" + me;
+        new Thread(() -> {
+            try {
+                android.provider.Settings.Secure.putString(cr, android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES, without);
+                Thread.sleep(800);
+                android.provider.Settings.Secure.putString(cr, android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES, with);
+                android.provider.Settings.Secure.putInt(cr, android.provider.Settings.Secure.ACCESSIBILITY_ENABLED, 1);
+            } catch (RuntimeException | InterruptedException ignored) {
+                // The setting is the system's; a refusal leaves the helper off, as before.
+            }
+        }).start();
+    }
+
     @Override protected void onServiceConnected() {
         super.onServiceConnected();
         instance = this;

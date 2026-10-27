@@ -24,6 +24,8 @@ final class Trending {
         String title, season, genre, year, summary;
         /** Its page on the store, and what that page's badges say: "4K" or "HD", Dolby Vision, HDR, Atmos, age, RT. */
         String link, quality, age, tomatoes, stars;
+        /** The trailer: the HD one on Apple's TV page, else the store's short preview clip (a film's, in the chart). */
+        String trailer, preview;
         boolean dolbyVision, hdr, hdr10plus, atmos, rotten, certified;
         /** The image without its size: add "/{w}x{h}bb.jpg" for the whole picture, "/{w}x{h}sr.jpg" for a crop. */
         String art;
@@ -72,6 +74,13 @@ final class Trending {
                 t.art = img.substring(0, s.start());
                 Object link = e.opt("link");
                 JSONObject l = link instanceof JSONArray ? ((JSONArray) link).optJSONObject(0) : (JSONObject) link;
+                if (link instanceof JSONArray) {
+                    JSONArray links = (JSONArray) link;
+                    for (int k = 0; k < links.length(); k++) {
+                        JSONObject a = links.getJSONObject(k).optJSONObject("attributes");
+                        if (a != null && "enclosure".equals(a.optString("rel")) && a.optString("type").startsWith("video/")) t.preview = a.optString("href");
+                    }
+                }
                 String href = l == null || l.optJSONObject("attributes") == null ? "" : l.getJSONObject("attributes").optString("href", "");
                 t.link = href.replaceAll("\\?.*$", "");
                 // A film's page is read on Apple's TV site, which takes the store's id; the store itself answers a TV
@@ -89,14 +98,15 @@ final class Trending {
     private static final Pattern BADGE = Pattern.compile("\\{\"\\$kind\":\"MetadataBadge\"[^}]*\\}");
     private static final Pattern FIELD = Pattern.compile("\"(\\$type|displayText|fallbackText)\":\"([^\"]*)\"");
     private static final long BADGES_MS = 24 * 60 * 60_000L;
+    private static final Pattern TRAILER = Pattern.compile("\"videoUrl\":\\{\"wide\":\"(https://[^\"]+)\"");
 
     /**
      * Each title's badges from its Apple TV page (the store link redirects there): the first run of MetadataBadge
      * entries on it is the title's own, as the page shows under its name. Read four at a time at background priority,
-     * and kept a day in the "trend_badges_v3" preferences, so a refresh reads only titles new to the chart.
+     * and kept a day in the "trend_badges_v4" preferences, so a refresh reads only titles new to the chart.
      */
     static void badges(android.content.Context c, List<Title> titles) {
-        android.content.SharedPreferences prefs = c.getSharedPreferences("trend_badges_v3", android.content.Context.MODE_PRIVATE);
+        android.content.SharedPreferences prefs = c.getSharedPreferences("trend_badges_v4", android.content.Context.MODE_PRIVATE);
         java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(4, r -> new Thread(() -> {
             android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND);
             r.run();
@@ -141,9 +151,12 @@ final class Trending {
     private static String read(String link) {
         String page;
         try { page = get(link); } catch (Exception e) { return null; }
-        int first = page.indexOf("{\"$kind\":\"MetadataBadge\"");
-        if (first < 0) return "";
         StringBuilder out = new StringBuilder();
+        // The page's trailer, an HLS playlist: the first wide video on it is the title's own.
+        Matcher video = TRAILER.matcher(page);
+        if (video.find()) out.append("trailer=").append(video.group(1).replace("\\u0026", "&")).append(';');
+        int first = page.indexOf("{\"$kind\":\"MetadataBadge\"");
+        if (first < 0) return out.toString();
         Matcher b = BADGE.matcher(page);
         b.region(first, page.length());
         int next = first;
@@ -191,6 +204,7 @@ final class Trending {
                 case "dolby-atmos": t.atmos = true; break;
                 case "rating": if (t.age == null && !text.isEmpty()) t.age = text; break;
                 case "tvmaze": t.stars = text; break;
+                case "trailer": t.trailer = text; break;
                 case "rotten-tomatoes":
                     if (t.tomatoes == null && !text.isEmpty()) {
                         t.rotten = text.contains("!");

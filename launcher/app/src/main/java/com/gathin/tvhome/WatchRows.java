@@ -111,8 +111,9 @@ final class WatchRows {
         caption = new TextView(context);
         caption.setTextColor(0xB3FFFFFF);
         caption.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f);
-        caption.setLetterSpacing(0.14f);
-        caption.setAllCaps(true);
+        caption.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f);
+        caption.setTypeface(context.getResources().getFont(R.font.outfit_medium));
+        caption.setLetterSpacing(0.02f);
         caption.setSingleLine(true);
         caption.setPadding(dp(EDGE), 0, 0, 0);
         // The section line ("Continue watching · Disney+") is gone: the cards speak for themselves.
@@ -130,6 +131,12 @@ final class WatchRows {
         strip.setClipChildren(false);
         strip.setClipToPadding(false);
         scroller.addView(strip);
+        // The trending rows' names (setTabs); hidden for every other row.
+        caption.setIncludeFontPadding(false);
+        LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(TABS_DP));
+        clp.bottomMargin = -dp(EDGE) + dp(4);
+        caption.setGravity(Gravity.BOTTOM);
+        panel.addView(caption, clp);
         panel.addView(scroller, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT));
         FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
@@ -154,7 +161,8 @@ final class WatchRows {
 
     /** Shows the rows for this dock app at y (root coordinates of the panel's top), reading them if needed. */
     void show(String packageName, String appLabel, float y, android.graphics.drawable.Drawable art, String lastOpened) {
-        panel.setY(y);
+        baseY = y;
+        panel.setY(y - (caption.getVisibility() == View.VISIBLE ? dp(TABS_DP) - dp(EDGE) + dp(4) : 0));
         Item r = new Item();
         r.art = art;
         r.title = appLabel;
@@ -194,7 +202,13 @@ final class WatchRows {
         });
     }
 
+    /** Home goes to the background: no trailer plays behind the app it opened. */
+    void pause() {
+        stopTrailer();
+    }
+
     void hide() {
+        stopTrailer();
         if (panel.hasFocus()) return;
         shownPackage = null;
         generation++;
@@ -209,6 +223,7 @@ final class WatchRows {
     }
 
     void close() {
+        stopTrailer();
         reader.shutdownNow();
         images.shutdownNow();
         posters.evictAll();
@@ -301,8 +316,10 @@ final class WatchRows {
     private int cardH = -1;
     private static final int MAX_CARD_DP = 240;
     private static final long WIDEN_MS = 220L;
-    private int cardWidth() { return Math.round(cardHeight() * 16f / 9f); }
-    private int posterWidth() { return Math.round(cardHeight() * 2f / 3f); }
+    /** The picture's height: the card's, less the name and line under it. */
+    private int imageHeight() { return cardHeight() - dp(LABEL_DP); }
+    private int cardWidth() { return Math.round(imageHeight() * 16f / 9f); }
+    private int posterWidth() { return Math.round(imageHeight() * 2f / 3f); }
     private int cardHeight() { return cardH > 0 ? cardH : dp(135); }
     /** What a card changes between its poster and its wide look, beyond its width (wide true or false). */
     private final java.util.WeakHashMap<View, java.util.function.Consumer<Boolean>> wideLooks = new java.util.WeakHashMap<>();
@@ -311,6 +328,62 @@ final class WatchRows {
     /** A card's own {poster, wide} widths, and the view its focus ring goes round, when not the card's defaults. */
     private final java.util.WeakHashMap<View, int[]> cardWidths = new java.util.WeakHashMap<>();
     private final java.util.WeakHashMap<View, View> ringOn = new java.util.WeakHashMap<>();
+
+    /**
+     * A tile: the picture's frame (rounded, the focus ring round it) and under it the name and a quieter line, as the
+     * trending posters have. The tile takes focus, widens and narrows; the frame only draws.
+     */
+    private LinearLayout wrap(FrameLayout frame, CharSequence name, CharSequence line, int lineColor, int index, int count,
+            GradientDrawable ring) {
+        LinearLayout tile = new LinearLayout(context);
+        tile.setOrientation(LinearLayout.VERTICAL);
+        tile.setFocusable(true);
+        tile.setClipChildren(false);
+        tile.setClipToPadding(false);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(posterWidth(), cardHeight());
+        lp.rightMargin = dp(14);
+        tile.setLayoutParams(lp);
+        frame.setFocusable(false);
+        tile.addView(frame, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, imageHeight()));
+        ringOn.put(tile, frame);
+        TextView n = new TextView(context);
+        n.setText(name == null ? "" : name);
+        n.setTextColor(Color.WHITE);
+        n.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f);
+        n.setTypeface(context.getResources().getFont(R.font.outfit_medium));
+        n.setSingleLine(true);
+        n.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        LinearLayout.LayoutParams nlp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        nlp.topMargin = dp(5);
+        nlp.leftMargin = dp(2);
+        tile.addView(n, nlp);
+        if (line != null && line.length() > 0) {
+            TextView l = new TextView(context);
+            l.setText(line);
+            l.setTextColor(lineColor);
+            l.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f);
+            l.setTypeface(context.getResources().getFont(R.font.outfit_regular));
+            l.setSingleLine(true);
+            l.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            LinearLayout.LayoutParams llp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            llp.leftMargin = dp(2);
+            tile.addView(l, llp);
+        }
+        tile.setOnFocusChangeListener((v, focused) -> focusLook(v, focused, ring));
+        tile.setOnKeyListener((v, keyCode, event) -> {
+            if (event.getAction() != KeyEvent.ACTION_DOWN) return false;
+            if (keyCode == KeyEvent.KEYCODE_DPAD_UP) { host.onCardsUp(); return true; }
+            if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN) { host.onCardsDown(); return true; }
+            if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT) return index == 0;
+            if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) return index == count - 1;
+            return false;
+        });
+        return tile;
+    }
+
+    private static FrameLayout frameOf(View tile) {
+        return (FrameLayout) ((ViewGroup) tile).getChildAt(0);
+    }
 
     private void focusLook(View v, boolean focused, GradientDrawable ring) {
         v.animate().scaleX(focused ? FOCUS_SCALE : 1f).scaleY(focused ? FOCUS_SCALE : 1f).setDuration(160).start();
@@ -360,6 +433,8 @@ final class WatchRows {
     }
 
     private void fill(List<Item> items) {
+        stopTrailer();
+        setTabs(false);
         strip.removeAllViews();
         if (items == null || items.isEmpty()) {
             // An app that publishes nothing (TiviMate, Debrid Stream): BBC News across the whole row instead.
@@ -422,6 +497,7 @@ final class WatchRows {
     }
 
     private void fillWhatsOn() {
+        setTabs(false);
         strip.removeAllViews();
         int count = tvNow.size() + whatsOn.size();
         for (int i = 0; i < tvNow.size(); i++) strip.addView(tvCard(tvNow.get(i), i, count));
@@ -434,7 +510,6 @@ final class WatchRows {
     /** One fixture over a dimmed stadium: the competition, both crests, the time or the live score. OK opens TiviMate. */
     private View whatsOnCard(ScoresTicker.Game g, int index, int count) {
         FrameLayout card = new FrameLayout(context);
-        card.setFocusable(true);
         card.setClipToOutline(true);
         GradientDrawable bg = new GradientDrawable();
         bg.setColor(0xFF15171C);
@@ -444,9 +519,6 @@ final class WatchRows {
         ring.setColor(Color.TRANSPARENT);
         ring.setCornerRadius(dp(10));
         ring.setStroke(dp(3), Color.WHITE);
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(posterWidth(), cardHeight());
-        lp.rightMargin = dp(14);
-        card.setLayoutParams(lp);
         boolean f1 = g.drivers != null || g.text != null;
         ImageView scene = new ImageView(context);
         scene.setScaleType(ImageView.ScaleType.CENTER_CROP);
@@ -457,7 +529,7 @@ final class WatchRows {
         shade.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
                 new int[]{0x99000000, 0x33000000, 0xCC000000}));
         card.addView(shade, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-        int crest = Math.round(cardHeight() * 0.30f);
+        int crest = Math.round(imageHeight() * 0.28f);
         // Top-left: the competition.
         LinearLayout head = new LinearLayout(context);
         head.setGravity(Gravity.CENTER_VERTICAL);
@@ -509,20 +581,9 @@ final class WatchRows {
         mid.setOrientation(LinearLayout.VERTICAL);
         clp.leftMargin = clp.rightMargin = 0;
         clp.topMargin = clp.bottomMargin = dp(f1 ? 0 : 6);
-        // Bottom: the teams and when.
-        TextView foot = new TextView(context);
+        // Under the picture: the teams (the Grand Prix for F1) and when, green while live.
         String when = g.state == 0 ? "●  LIVE  " + g.detail : whenText(g);
-        String teams = g.home + "  v  " + g.away;
-        foot.setText(f1 ? when : teams + "\n" + when);
-        foot.setTextColor(g.state == 0 ? 0xFF4ADE80 : 0xE6FFFFFF);
-        foot.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f);
-        foot.setTypeface(context.getResources().getFont(R.font.outfit_medium));
-        foot.setShadowLayer(dp(5), 0, dp(1), 0x99000000);
-        FrameLayout.LayoutParams flp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
-                Gravity.BOTTOM | Gravity.START);
-        flp.leftMargin = dp(16);
-        flp.bottomMargin = dp(14);
-        card.addView(foot, flp);
+        String teams = f1 ? (g.text != null ? g.text : "Formula 1") : g.home + "  v  " + g.away;
         TvGuide.Channel tv = g.id == null ? null : liveOn.get(g.id);
         if (tv != null) {
             // Bottom-right: "LIVE ON" and the channel's logo.
@@ -543,33 +604,24 @@ final class WatchRows {
             on.addView(logo, olp);
             FrameLayout.LayoutParams onlp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
                     Gravity.BOTTOM | Gravity.END);
-            onlp.rightMargin = dp(16);
-            onlp.bottomMargin = dp(14);
+            onlp.rightMargin = dp(14);
+            onlp.bottomMargin = dp(12);
             card.addView(on, onlp);
             on.setAlpha(0f);
         }
         final View channel = tv != null ? card.getChildAt(card.getChildCount() - 1) : null;
         final boolean f1Card = f1;
-        // As a poster: the crests stacked over the score, the teams over the time. Wide: side by side, the channel too.
-        wideLooks.put(card, wide -> {
+        LinearLayout tile = wrap(card, teams, when, g.state == 0 ? 0xFF4ADE80 : 0x99FFFFFF, index, count, ring);
+        // As a poster: the crests stacked over the score. Wide: side by side, and the channel too.
+        wideLooks.put(tile, wide -> {
             mid.setOrientation(wide ? LinearLayout.HORIZONTAL : LinearLayout.VERTICAL);
             clp.leftMargin = clp.rightMargin = wide && !f1Card ? dp(24) : 0;
             clp.topMargin = clp.bottomMargin = wide || f1Card ? 0 : dp(6);
             c.setLayoutParams(clp);
-            if (!f1Card) foot.setText(teams + (wide ? "     " : "\n") + when);
             if (channel != null) channel.animate().alpha(wide ? 1f : 0f).setDuration(WIDEN_MS).start();
         });
-        card.setOnFocusChangeListener((v, focused) -> focusLook(v, focused, ring));
-        card.setOnClickListener(v -> host.onResumeApp());
-        card.setOnKeyListener((v, keyCode, event) -> {
-            if (event.getAction() != KeyEvent.ACTION_DOWN) return false;
-            if (keyCode == KeyEvent.KEYCODE_DPAD_UP) { host.onCardsUp(); return true; }
-            if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN) { host.onCardsDown(); return true; }
-            if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT) return index == 0;
-            if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) return index == count - 1;
-            return false;
-        });
-        return card;
+        tile.setOnClickListener(v -> host.onResumeApp());
+        return tile;
     }
 
     /**
@@ -588,7 +640,8 @@ final class WatchRows {
         item.episode = n.channel + next;
         Intent open = context.getPackageManager().getLeanbackLaunchIntentForPackage(context.getString(R.string.scores_open_package));
         item.intent = open == null ? null : open.toUri(Intent.URI_INTENT_SCHEME);
-        FrameLayout card = (FrameLayout) card(item, index, count);
+        View tile = card(item, index, count);
+        FrameLayout card = frameOf(tile);
         // The channel's logo, top-left on a soft shade so a light picture never swallows it.
         View topShade = new View(context);
         topShade.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0x99000000, 0x00000000}));
@@ -596,10 +649,10 @@ final class WatchRows {
         ImageView logo = new ImageView(context);
         logo.setScaleType(ImageView.ScaleType.FIT_START);
         loadPoster(n.logo, logo);
-        FrameLayout.LayoutParams llp = new FrameLayout.LayoutParams(dp(110), dp(40), Gravity.TOP | Gravity.START);
-        llp.leftMargin = llp.topMargin = dp(14);
+        FrameLayout.LayoutParams llp = new FrameLayout.LayoutParams(dp(96), dp(34), Gravity.TOP | Gravity.START);
+        llp.leftMargin = llp.topMargin = dp(10);
         card.addView(logo, llp);
-        return card;
+        return tile;
     }
 
     /** "Today 20:00", "Tomorrow 15:00" or "Sat 15:00". */
@@ -654,14 +707,57 @@ final class WatchRows {
         return true;
     }
 
+    /** The trending row on show: films (with the news after them) or, Up from there, TV. */
+    private boolean tvTab;
+    private float baseY;
+    private static final int TABS_DP = 26;
+
     private void fillTrending() {
+        stopTrailer();
         strip.removeAllViews();
-        int count = trending.size() + news.size();
-        for (int i = 0; i < trending.size(); i++) strip.addView(trendCard(trending.get(i), i, count));
-        for (int i = 0; i < news.size(); i++) strip.addView(newsCard(news.get(i), trending.size() + i, count));
+        List<Trending.Title> row = new ArrayList<>();
+        for (Trending.Title t : trending) if (t.tv == tvTab) row.add(t);
+        List<String[]> after = tvTab ? new ArrayList<>() : news;
+        int count = row.size() + after.size();
+        for (int i = 0; i < row.size(); i++) strip.addView(trendCard(row.get(i), i, count));
+        for (int i = 0; i < after.size(); i++) strip.addView(newsCard(after.get(i), row.size() + i, count));
+        setTabs(true);
         setShown(true);
         panel.setAlpha(0f);
         panel.animate().alpha(1f).setDuration(220).start();
+    }
+
+    /**
+     * The two trending rows' names over the cards, the one on show bright: "Trending Films   Trending TV". They sit in
+     * the room above the cards, which are no taller than MAX_CARD_DP.
+     */
+    private void setTabs(boolean on) {
+        caption.setVisibility(on ? View.VISIBLE : View.GONE);
+        panel.setY(baseY - (on ? dp(TABS_DP) - dp(EDGE) + dp(4) : 0));
+        if (!on) return;
+        android.text.SpannableStringBuilder sb = new android.text.SpannableStringBuilder();
+        String[] names = {"Trending Films", "Trending TV"};
+        for (int i = 0; i < 2; i++) {
+            int at = sb.length();
+            sb.append(names[i]);
+            boolean active = (i == 1) == tvTab;
+            sb.setSpan(new android.text.style.ForegroundColorSpan(active ? Color.WHITE : 0x66FFFFFF), at, sb.length(), 0);
+            if (active) sb.setSpan(new android.text.style.StyleSpan(android.graphics.Typeface.BOLD), at, sb.length(), 0);
+            if (i == 0) sb.append(tvTab ? "      ▾ " : "      ▴ ");
+        }
+        caption.setText(sb);
+    }
+
+    /** Up from the films row shows the TV row, Down from the TV row the films again; focus keeps its place. */
+    private void switchRow(boolean tv, int index) {
+        tvTab = tv;
+        fillTrending();
+        strip.setTranslationY(dp(tv ? -24 : 24));
+        strip.animate().translationY(0f).setDuration(220).start();
+        strip.post(() -> {
+            int i = Math.min(index, strip.getChildCount() - 1);
+            if (i >= 0) strip.getChildAt(i).requestFocus();
+        });
     }
 
     /** Room under a trending poster for its name and year. */
@@ -751,6 +847,14 @@ final class WatchRows {
         }
         for (View x : wideOnly) x.setAlpha(0f);
         looks.add(wide -> { for (View x : wideOnly) x.animate().alpha(wide ? 1f : 0f).setDuration(WIDEN_MS).start(); });
+        // Netflix-style: once it has been wide a moment, the trailer plays across the card, over the artwork and
+        // under the marks; it stops when the card narrows.
+        looks.add(wide -> {
+            main.removeCallbacks(trailerStart);
+            if (!wide) { if (playingTile == tile) stopTrailer(); return; }
+            trailerStart = () -> { if (tile.hasFocus()) playTrailer(tile, card, t, wideOnly); };
+            main.postDelayed(trailerStart, TRAILER_DELAY_MS);
+        });
 
         // Foot of the poster: just the genre, centred; wide, it moves left under the synopsis. The first of a double
         // genre ("Action & Adventure") keeps it short.
@@ -821,17 +925,117 @@ final class WatchRows {
         tile.setOnFocusChangeListener((v, focused) -> focusLook(v, focused, ring));
         tile.setOnKeyListener((v, keyCode, event) -> {
             if (event.getAction() != KeyEvent.ACTION_DOWN) return false;
-            if (keyCode == KeyEvent.KEYCODE_DPAD_UP) { host.onCardsUp(); return true; }
-            if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN) { host.onCardsDown(); return true; }
+            if (keyCode == KeyEvent.KEYCODE_DPAD_UP) { if (tvTab) host.onCardsUp(); else switchRow(true, index); return true; }
+            if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN) { if (tvTab) switchRow(false, index); else host.onCardsDown(); return true; }
             if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT) return index == 0;
             if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) return index == count - 1;
             return false;
         });
         // OK: the app opens on its search for this title (AppSearchService), or just opens without that helper.
         tile.setOnClickListener(v -> {
+            stopTrailer();
             if (!AppSearchService.search(context, context.getString(R.string.trending_package), t.title)) host.onResumeApp();
         });
         return tile;
+    }
+
+    // ---- trailers ----------------------------------------------------------------------------------
+
+    private static final long TRAILER_DELAY_MS = 1_200L;
+    private Runnable trailerStart = () -> { };
+    private android.media.MediaPlayer player;
+    private android.view.TextureView playerView;
+    private View playingTile;
+    private List<View> playerCovers = new ArrayList<>();
+
+    /**
+     * The title's trailer in the card: the HD one from Apple's TV page, or the store's preview clip when that will
+     * not play here. A TextureView, so the rounded card clips it and it widens with the card; the picture is cropped
+     * to fill it (the preview's letterbox goes with that). The synopsis and the side poster make way while it plays.
+     */
+    private void playTrailer(View tile, FrameLayout card, Trending.Title t, List<View> covers) {
+        String url = t.trailer != null ? t.trailer : t.preview;
+        if (url == null) return;
+        stopTrailer();
+        playingTile = tile;
+        playerCovers = covers;
+        android.view.TextureView view = new android.view.TextureView(context);
+        view.setAlpha(0f);
+        card.addView(view, 1, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        playerView = view;
+        view.setSurfaceTextureListener(new android.view.TextureView.SurfaceTextureListener() {
+            @Override public void onSurfaceTextureAvailable(android.graphics.SurfaceTexture st, int w, int h) {
+                if (playerView != view) return;
+                start(view, new android.view.Surface(st), url, t.trailer != null && t.preview != null ? t.preview : null);
+            }
+            @Override public void onSurfaceTextureSizeChanged(android.graphics.SurfaceTexture st, int w, int h) { }
+            @Override public boolean onSurfaceTextureDestroyed(android.graphics.SurfaceTexture st) { return true; }
+            @Override public void onSurfaceTextureUpdated(android.graphics.SurfaceTexture st) { }
+        });
+    }
+
+    private void start(android.view.TextureView view, android.view.Surface surface, String url, String fallback) {
+        android.media.MediaPlayer mp = new android.media.MediaPlayer();
+        player = mp;
+        try {
+            mp.setSurface(surface);
+            mp.setAudioAttributes(new android.media.AudioAttributes.Builder()
+                    .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
+                    .setContentType(android.media.AudioAttributes.CONTENT_TYPE_MOVIE).build());
+            mp.setDataSource(context, Uri.parse(url));
+            mp.setOnVideoSizeChangedListener((m, vw, vh) -> crop(view, vw, vh));
+            mp.setOnPreparedListener(m -> {
+                if (player != m) return;
+                m.setVolume(0.8f, 0.8f);
+                m.start();
+                view.animate().alpha(1f).setDuration(500).start();
+                for (View x : playerCovers) x.animate().alpha(0f).setDuration(400).start();
+            });
+            mp.setOnErrorListener((m, what, extra) -> {
+                if (player != m) return true;
+                m.release();
+                player = null;
+                // The HD trailer will not play on this TV: the preview clip instead.
+                if (fallback != null && playerView == view) start(view, surface, fallback, null);
+                else stopTrailer();
+                return true;
+            });
+            mp.setOnCompletionListener(m -> stopTrailer());
+            mp.prepareAsync();
+        } catch (Exception e) {
+            mp.release();
+            player = null;
+            if (fallback != null) start(view, surface, fallback, null);
+        }
+    }
+
+    /** Scales the TextureView's picture so the video fills the card, cropped, at its own proportions. */
+    private static void crop(android.view.TextureView view, int vw, int vh) {
+        int w = view.getWidth(), h = view.getHeight();
+        if (vw <= 0 || vh <= 0 || w <= 0 || h <= 0) return;
+        float video = vw / (float) vh, card = w / (float) h;
+        android.graphics.Matrix m = new android.graphics.Matrix();
+        if (video > card) m.setScale(video / card, 1f, w / 2f, h / 2f);
+        else m.setScale(1f, card / video, w / 2f, h / 2f);
+        view.setTransform(m);
+    }
+
+    private void stopTrailer() {
+        main.removeCallbacks(trailerStart);
+        if (player != null) {
+            try { player.stop(); } catch (Exception ignored) { }
+            player.release();
+            player = null;
+        }
+        if (playerView != null) {
+            android.view.TextureView view = playerView;
+            playerView = null;
+            if (view.getParent() instanceof ViewGroup) ((ViewGroup) view.getParent()).removeView(view);
+        }
+        // What made way comes back if the card is still wide.
+        if (playingTile != null && playingTile.hasFocus()) for (View x : playerCovers) x.animate().alpha(1f).setDuration(300).start();
+        playingTile = null;
+        playerCovers = new ArrayList<>();
     }
 
     /** The poster's foot colour: the average of its bottom fifth, darkened to a deep shade of it. */
@@ -956,6 +1160,7 @@ final class WatchRows {
     }
 
     private void fillNews() {
+        setTabs(false);
         strip.removeAllViews();
         for (int i = 0; i < news.size(); i++) strip.addView(newsCard(news.get(i), i, news.size()));
         setShown(true);
@@ -965,6 +1170,21 @@ final class WatchRows {
 
     /** One story: its picture across the card, a BBC NEWS tag, the headline at the bottom. OK opens it. */
     private View newsCard(String[] story, int index, int count) {
+        View tile = newsTile(story, index, count);
+        if (trendingRow() && !tvTab) {
+            tile.setOnKeyListener((v, keyCode, event) -> {
+                if (event.getAction() != KeyEvent.ACTION_DOWN) return false;
+                if (keyCode == KeyEvent.KEYCODE_DPAD_UP) { switchRow(true, index); return true; }
+                if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN) { host.onCardsDown(); return true; }
+                if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT) return index == 0;
+                if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) return index == count - 1;
+                return false;
+            });
+        }
+        return tile;
+    }
+
+    private View newsTile(String[] story, int index, int count) {
         Item item = new Item();
         item.title = story[0];
         item.poster = story[1];
@@ -990,7 +1210,6 @@ final class WatchRows {
 
     private View card(Item item, int index, int count) {
         FrameLayout card = new FrameLayout(context);
-        card.setFocusable(true);
         card.setClipToOutline(true);
         GradientDrawable bg = new GradientDrawable();
         bg.setColor(0xFF1C1C22);
@@ -1000,56 +1219,17 @@ final class WatchRows {
         ring.setColor(Color.TRANSPARENT);
         ring.setCornerRadius(dp(10));
         ring.setStroke(dp(3), Color.WHITE);
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(posterWidth(), cardHeight());
-        lp.rightMargin = dp(14);
-        card.setLayoutParams(lp);
 
         ImageView image = new ImageView(context);
         image.setScaleType(ImageView.ScaleType.CENTER_CROP);
         card.addView(image, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT));
 
-        View shade = new View(context);
-        shade.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
-                new int[]{0x00000000, 0x00000000, 0x66000000, 0xE6000000}));
-        card.addView(shade, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT));
-
-        // Title, a quieter second line and the progress pill, stacked at the bottom-left.
-        LinearLayout text = new LinearLayout(context);
-        text.setOrientation(LinearLayout.VERTICAL);
-        int p = dp(16);
-        text.setPadding(p, 0, p, dp(14));
-        boolean big = cardHeight() > dp(170);
-        TextView title = new TextView(context);
-        title.setText(item.art != null ? appLabel(item) : item.title == null ? "" : item.title);
-        title.setTextColor(Color.WHITE);
-        title.setTextSize(TypedValue.COMPLEX_UNIT_SP, big ? 19f : 14f);
-        title.setTypeface(context.getResources().getFont(R.font.outfit_medium));
-        title.setLetterSpacing(-0.01f);
-        title.setMaxLines(2);
-        title.setEllipsize(android.text.TextUtils.TruncateAt.END);
-        title.setShadowLayer(dp(6), 0, dp(1), 0x99000000);
-        text.addView(title);
-        String second = secondLine(item);
-        if (second != null) {
-            TextView sub = new TextView(context);
-            sub.setText(second);
-            boolean newsTag = NewsPanel.isTag(second);
-            // BBC Sport's yellow for sport, BBC News red for the rest.
-            sub.setTextColor(!newsTag ? 0xBFFFFFFF : "BBC SPORT".equals(second) ? 0xFFFFD230 : 0xFFFF4D4D);
-            if (newsTag) { sub.setTypeface(android.graphics.Typeface.DEFAULT_BOLD); sub.setLetterSpacing(0.14f); }
-            sub.setTextSize(TypedValue.COMPLEX_UNIT_SP, big ? 13f : 11f);
-            sub.setTypeface(context.getResources().getFont(R.font.outfit_regular));
-            sub.setSingleLine(true);
-            sub.setEllipsize(android.text.TextUtils.TruncateAt.END);
-            sub.setShadowLayer(dp(5), 0, dp(1), 0x99000000);
-            LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT);
-            slp.topMargin = dp(2);
-            text.addView(sub, slp);
-        }
+        // The name and its line go under the picture; only the progress pill stays on it, over a light shade.
         if (item.progress >= 0) {
+            View shade = new View(context);
+            shade.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0x00000000, 0x99000000}));
+            card.addView(shade, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(36), Gravity.BOTTOM));
             // A slim rounded pill: a frosted track with a white fill that has round ends too.
             FrameLayout track = new FrameLayout(context);
             GradientDrawable trackBg = new GradientDrawable();
@@ -1066,26 +1246,11 @@ final class WatchRows {
             bar.addView(fill, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, Math.max(0.02f, item.progress)));
             bar.addView(new View(context), new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, Math.max(0f, 1f - item.progress)));
             track.addView(bar, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-            LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(5));
-            tlp.topMargin = dp(10);
-            text.addView(track, tlp);
+            FrameLayout.LayoutParams tlp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(4), Gravity.BOTTOM);
+            tlp.leftMargin = tlp.rightMargin = dp(10);
+            tlp.bottomMargin = dp(9);
+            card.addView(track, tlp);
         }
-        card.addView(text, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM));
-
-        card.setOnFocusChangeListener((v, focused) -> focusLook(v, focused, ring));
-        card.setOnClickListener(v -> {
-            if (item.art != null) host.onResumeApp();
-            else open(item);
-        });
-        card.setOnKeyListener((v, keyCode, event) -> {
-            if (event.getAction() != KeyEvent.ACTION_DOWN) return false;
-            if (keyCode == KeyEvent.KEYCODE_DPAD_UP) { host.onCardsUp(); return true; }
-            if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN) { host.onCardsDown(); return true; }
-            if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT) return index == 0;
-            if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) return index == count - 1;
-            return false;
-        });
         if (item.art != null && item.backdrop != 0) {
             // The scene fills the card; the app's own logo sits small in the top-left corner.
             image.setImageResource(item.backdrop);
@@ -1120,7 +1285,17 @@ final class WatchRows {
         } else {
             loadPoster(item.poster, image);
         }
-        return card;
+        String name = item.art != null ? appLabel(item) : item.title;
+        String second = secondLine(item);
+        boolean newsTag = NewsPanel.isTag(second);
+        // BBC Sport's yellow for sport, BBC News red for the rest.
+        int colour = !newsTag ? 0x99FFFFFF : "BBC SPORT".equals(second) ? 0xFFFFD230 : 0xFFFF4D4D;
+        LinearLayout tile = wrap(card, name, second, colour, index, count, ring);
+        tile.setOnClickListener(v -> {
+            if (item.art != null) host.onResumeApp();
+            else open(item);
+        });
+        return tile;
     }
 
     /**
