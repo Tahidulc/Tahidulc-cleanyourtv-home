@@ -321,7 +321,7 @@ final class WatchRows {
         strip.removeAllViews();
         if (items == null || items.isEmpty()) {
             // An app that publishes nothing (TiviMate, Debrid Stream): BBC News across the whole row instead.
-            if (!showWhatsOn() && !showNews()) setShown(false);
+            if (!showWhatsOn() && !showTrending() && !showNews()) setShown(false);
             return;
         }
         for (int i = 0; i < items.size(); i++) strip.addView(card(items.get(i), i, items.size()));
@@ -558,10 +558,144 @@ final class WatchRows {
         return at.format(java.time.format.DateTimeFormatter.ofPattern("EEE HH:mm", java.util.Locale.getDefault()));
     }
 
+    // ---- Trending (a theme's "trending"): films and TV from Apple's charts, on Debrid Stream's row ----------------
+
+    private List<Trending.Title> trending = new ArrayList<>();
+    private long trendingAt;
+    private Boolean trendingOn;
+    private static final long TRENDING_MS = 30 * 60_000L;
+
+    /** The focused app is the one config.xml trending_package names, and the theme wants trending there. */
+    private boolean trendingRow() {
+        if (trendingOn == null) trendingOn = Config.themeFlag(context, "trending", false);
+        return trendingOn && context.getString(R.string.trending_package).equals(shownPackage);
+    }
+
+    /** Trending films and TV, then the news after them; read when stale and shown when it arrives. */
+    private boolean showTrending() {
+        if (!trendingRow()) return false;
+        if (System.currentTimeMillis() - trendingAt >= TRENDING_MS) {
+            trendingAt = System.currentTimeMillis();
+            final int gen = generation;
+            String country = context.getString(R.string.trending_country);
+            reader.execute(() -> {
+                List<Trending.Title> fresh = Trending.read(country, 10);
+                main.post(() -> {
+                    if (fresh.isEmpty()) { trendingAt = 0; return; }
+                    trending = fresh;
+                    if (gen == generation && trendingRow()) fillTrending();
+                });
+            });
+        }
+        // The news is read alongside, for the cards after the trending ones.
+        refreshNews();
+        if (trending.isEmpty()) return false;
+        fillTrending();
+        return true;
+    }
+
+    private void fillTrending() {
+        strip.removeAllViews();
+        int count = trending.size() + news.size();
+        for (int i = 0; i < trending.size(); i++) strip.addView(trendCard(trending.get(i), i, count));
+        for (int i = 0; i < news.size(); i++) strip.addView(newsCard(news.get(i), trending.size() + i, count));
+        setShown(true);
+        panel.setAlpha(0f);
+        panel.animate().alpha(1f).setDuration(220).start();
+    }
+
+    /**
+     * One title: a TV season's 16:9 picture across the card; a film's poster on the right over a dimmed crop of
+     * itself, with its synopsis beside it. Top-left its rank in the chart, the title, genre and year at the bottom.
+     * OK opens Debrid Stream, the way its dock tile does.
+     */
+    private View trendCard(Trending.Title t, int index, int count) {
+        Item item = new Item();
+        item.title = t.title;
+        String meta = (t.season != null ? t.season + "  ·  " : "") + t.genre + (t.year.isEmpty() ? "" : "  ·  " + t.year);
+        item.episode = meta;
+        FrameLayout card = (FrameLayout) card(item, index, count);
+        ImageView image = (ImageView) card.getChildAt(0);
+        int w = cardWidth(), h = cardHeight();
+        loadPoster(t.crop(w, h), image);
+        if (!t.tv) {
+            // The crop of a poster is only a backdrop: dimmed, the whole poster beside the words.
+            image.setAlpha(0.4f);
+            View side = new View(context);
+            side.setBackground(new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
+                    new int[]{0xF2000000, 0xB3000000, 0x33000000}));
+            card.addView(side, 1, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+            int ph = h - dp(28), pw = Math.round(ph * 2f / 3f);
+            ImageView poster = new ImageView(context);
+            poster.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            poster.setClipToOutline(true);
+            GradientDrawable round = new GradientDrawable();
+            round.setColor(0xFF1C1C22);
+            round.setCornerRadius(dp(8));
+            poster.setBackground(round);
+            loadPoster(t.poster(pw, ph), poster);
+            FrameLayout.LayoutParams plp = new FrameLayout.LayoutParams(pw, ph, Gravity.END | Gravity.CENTER_VERTICAL);
+            plp.rightMargin = dp(14);
+            card.addView(poster, plp);
+            // The words keep clear of the poster.
+            View text = card.getChildAt(card.getChildCount() - 2);
+            text.setPadding(text.getPaddingLeft(), 0, pw + dp(28), text.getPaddingBottom());
+            if (!t.summary.isEmpty() && h > dp(150)) {
+                TextView about = new TextView(context);
+                about.setText(t.summary);
+                about.setTextColor(0xB3FFFFFF);
+                about.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f);
+                about.setTypeface(context.getResources().getFont(R.font.outfit_regular));
+                about.setLineSpacing(0, 1.1f);
+                about.setMaxLines(h > dp(240) ? 5 : 3);
+                about.setEllipsize(android.text.TextUtils.TruncateAt.END);
+                FrameLayout.LayoutParams alp = new FrameLayout.LayoutParams(w - pw - dp(60), ViewGroup.LayoutParams.WRAP_CONTENT,
+                        Gravity.TOP | Gravity.START);
+                alp.leftMargin = dp(16);
+                alp.topMargin = dp(56);
+                card.addView(about, alp);
+            }
+        } else {
+            View topShade = new View(context);
+            topShade.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0x99000000, 0x00000000}));
+            card.addView(topShade, 1, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(80), Gravity.TOP));
+        }
+        // Top-left: "#1  TRENDING FILM" on a small dark capsule.
+        TextView tag = new TextView(context);
+        android.text.SpannableStringBuilder sb = new android.text.SpannableStringBuilder("#" + t.rank + "   ");
+        sb.setSpan(new android.text.style.ForegroundColorSpan(0xFFFFD230), 0, sb.length(), 0);
+        sb.append(t.tv ? "TRENDING TV" : "TRENDING FILM");
+        tag.setText(sb);
+        tag.setTextColor(Color.WHITE);
+        tag.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f);
+        tag.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        tag.setLetterSpacing(0.12f);
+        GradientDrawable capsule = new GradientDrawable();
+        capsule.setColor(0x99000000);
+        capsule.setCornerRadius(dp(12));
+        tag.setBackground(capsule);
+        tag.setPadding(dp(10), dp(4), dp(10), dp(4));
+        FrameLayout.LayoutParams tlp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.TOP | Gravity.START);
+        tlp.leftMargin = tlp.topMargin = dp(14);
+        card.addView(tag, tlp);
+        card.setOnClickListener(v -> host.onResumeApp());
+        return card;
+    }
+
     /** The news row: from the cache when fresh, else read and shown when it arrives. False when there is none yet. */
     private boolean showNews() {
+        if (context.getString(R.string.news_panel_url).isEmpty()) return false;
+        refreshNews();
+        if (news.isEmpty()) return false;
+        fillNews();
+        return true;
+    }
+
+    /** Reads the news when it is stale; it fills the row when it comes, if the row is still waiting for it. */
+    private void refreshNews() {
         String feed = context.getString(R.string.news_panel_url);
-        if (feed.isEmpty()) return false;
+        if (feed.isEmpty()) return;
         if (System.currentTimeMillis() - newsAt >= NewsPanel.EVERY_MS) {
             newsAt = System.currentTimeMillis();
             final int gen = generation;
@@ -570,13 +704,12 @@ final class WatchRows {
                 main.post(() -> {
                     if (fresh.isEmpty()) { newsAt = 0; return; }
                     news = fresh;
-                    if (gen == generation && strip.getChildCount() == 0) fillNews();
+                    if (gen != generation) return;
+                    if (trendingRow()) { if (!trending.isEmpty()) fillTrending(); }
+                    else if (strip.getChildCount() == 0) fillNews();
                 });
             });
         }
-        if (news.isEmpty()) return false;
-        fillNews();
-        return true;
     }
 
     private void fillNews() {
