@@ -580,6 +580,8 @@
     <!-- Trending films and TV on this app's row, with a theme's "trending": Apple's charts for trending_country. -->
     <string name="trending_package" translatable="false">com.debridstream.tv</string>
     <string name="trending_country" translatable="false">gb</string>
+    <!-- Netflix's weekly top ten for this country (its Tudum page's name for it), as two of the trending rows. -->
+    <string name="trending_netflix_country" translatable="false">united-kingdom</string>
     <string-array name="score_leagues" translatable="false">
         <item>eng.1|PL</item>
         <item>eng.2|CHAMP</item>

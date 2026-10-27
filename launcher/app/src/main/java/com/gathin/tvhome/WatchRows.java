@@ -80,6 +80,8 @@ final class WatchRows {
     private final float density;
     private final LinearLayout panel;
     private final TextView caption;
+    private final HorizontalScrollView tabsScroll;
+    private final LinearLayout tabs;
     private final HorizontalScrollView scroller;
     private final LinearLayout strip;
     private final Handler main = new Handler(Looper.getMainLooper());
@@ -131,12 +133,19 @@ final class WatchRows {
         strip.setClipChildren(false);
         strip.setClipToPadding(false);
         scroller.addView(strip);
-        // The trending rows' names (setTabs); hidden for every other row.
-        caption.setIncludeFontPadding(false);
+        // The trending rows' tabs (setTabs), Left and Right through them; hidden for every other row.
+        tabsScroll = new HorizontalScrollView(context);
+        tabsScroll.setHorizontalScrollBarEnabled(false);
+        tabsScroll.setClipToPadding(false);
+        tabsScroll.setPadding(dp(EDGE), 0, dp(EDGE), 0);
+        tabs = new LinearLayout(context);
+        tabs.setOrientation(LinearLayout.HORIZONTAL);
+        tabs.setGravity(Gravity.CENTER_VERTICAL);
+        tabsScroll.addView(tabs);
+        tabsScroll.setVisibility(View.GONE);
         LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(TABS_DP));
-        clp.bottomMargin = -dp(EDGE) + dp(4);
-        caption.setGravity(Gravity.BOTTOM);
-        panel.addView(caption, clp);
+        clp.bottomMargin = -dp(EDGE) + dp(6);
+        panel.addView(tabsScroll, clp);
         panel.addView(scroller, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT));
         FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
@@ -162,7 +171,7 @@ final class WatchRows {
     /** Shows the rows for this dock app at y (root coordinates of the panel's top), reading them if needed. */
     void show(String packageName, String appLabel, float y, android.graphics.drawable.Drawable art, String lastOpened) {
         baseY = y;
-        panel.setY(y - (caption.getVisibility() == View.VISIBLE ? dp(TABS_DP) - dp(EDGE) + dp(4) : 0));
+        panel.setY(y - (tabsScroll.getVisibility() == View.VISIBLE ? dp(TABS_DP) - dp(EDGE) + dp(6) : 0));
         Item r = new Item();
         r.art = art;
         r.title = appLabel;
@@ -667,10 +676,15 @@ final class WatchRows {
 
     // ---- Trending (a theme's "trending"): films and TV from Apple's charts, on Debrid Stream's row ----------------
 
-    private List<Trending.Title> trending = new ArrayList<>();
-    private long trendingAt;
+    /** The trending rows (Trending.categories()), the one on show, and each one's titles once read and when. */
+    private final List<Trending.Category> cats = Trending.categories();
+    private int catIndex;
+    private final Map<Integer, List<Trending.Title>> catLists = new HashMap<>();
+    private final Map<Integer, Long> catAt = new HashMap<>();
     private Boolean trendingOn;
     private static final long TRENDING_MS = 30 * 60_000L;
+    private float baseY;
+    private static final int TABS_DP = 34;
 
     /** The focused app is the one config.xml trending_package names, and the theme wants trending there. */
     private boolean trendingRow() {
@@ -678,86 +692,121 @@ final class WatchRows {
         return trendingOn && context.getString(R.string.trending_package).equals(shownPackage);
     }
 
-    /** Trending films and TV, then the news after them; read when stale and shown when it arrives. */
+    /** The row on show, read when stale (and shown when it arrives), with its tabs; the news after the first row. */
     private boolean showTrending() {
         if (!trendingRow()) return false;
-        if (System.currentTimeMillis() - trendingAt >= TRENDING_MS) {
-            trendingAt = System.currentTimeMillis();
-            final int gen = generation;
-            String country = context.getString(R.string.trending_country);
-            reader.execute(() -> {
-                List<Trending.Title> fresh = Trending.read(country, 10);
-                main.post(() -> {
-                    if (fresh.isEmpty()) { trendingAt = 0; return; }
-                    trending = fresh;
-                    if (gen == generation && trendingRow()) fillTrending();
-                });
-                // The badges come from a page per title: the row shows first and takes them in once they are all read,
-                // unless a card has focus then (it gets them the next time the row is drawn).
-                Trending.badges(context, fresh);
-                main.post(() -> {
-                    if (trending == fresh && trendingRow() && !panel.hasFocus()) fillTrending();
-                });
-            });
-        }
-        // The news is read alongside, for the cards after the trending ones.
         refreshNews();
-        if (trending.isEmpty()) return false;
+        load(catIndex);
         fillTrending();
         return true;
     }
 
-    /** The trending row on show: films (with the news after them) or, Up from there, TV. */
-    private boolean tvTab;
-    private float baseY;
-    private static final int TABS_DP = 26;
+    /** Reads row i when it has not been read for a while; then its badges, and the row again once they are in. */
+    private void load(int i) {
+        Long at = catAt.get(i);
+        if (at != null && System.currentTimeMillis() - at < TRENDING_MS) return;
+        catAt.put(i, System.currentTimeMillis());
+        Trending.Category c = cats.get(i);
+        String country = context.getString(R.string.trending_country), netflix = context.getString(R.string.trending_netflix_country);
+        reader.execute(() -> {
+            List<Trending.Title> fresh = Trending.read(country, netflix, c, 10);
+            main.post(() -> {
+                if (fresh.isEmpty()) { catAt.remove(i); return; }
+                catLists.put(i, fresh);
+                if (i == catIndex && trendingRow()) fillTrending();
+            });
+            Trending.badges(context, fresh);
+            main.post(() -> {
+                if (i == catIndex && catLists.get(i) == fresh && trendingRow() && !strip.hasFocus()) fillTrending();
+            });
+        });
+    }
 
     private void fillTrending() {
         stopTrailer();
         strip.removeAllViews();
-        List<Trending.Title> row = new ArrayList<>();
-        for (Trending.Title t : trending) if (t.tv == tvTab) row.add(t);
-        List<String[]> after = tvTab ? new ArrayList<>() : news;
+        List<Trending.Title> row = catLists.containsKey(catIndex) ? catLists.get(catIndex) : new ArrayList<>();
+        List<String[]> after = catIndex == 0 ? news : new ArrayList<>();
         int count = row.size() + after.size();
         for (int i = 0; i < row.size(); i++) strip.addView(trendCard(row.get(i), i, count));
         for (int i = 0; i < after.size(); i++) strip.addView(newsCard(after.get(i), row.size() + i, count));
         setTabs(true);
         setShown(true);
-        panel.setAlpha(0f);
-        panel.animate().alpha(1f).setDuration(220).start();
     }
 
     /**
-     * The two trending rows' names over the cards, the one on show bright: "Trending Films   Trending TV". They sit in
-     * the room above the cards, which are no taller than MAX_CARD_DP.
+     * The tabs over the trending row: every category, the one on show in white, the rest dim; focused (Up from the
+     * row), Left and Right move through them and the row below follows; Down goes back to the row, Up to the top bar.
      */
     private void setTabs(boolean on) {
-        caption.setVisibility(on ? View.VISIBLE : View.GONE);
-        panel.setY(baseY - (on ? dp(TABS_DP) - dp(EDGE) + dp(4) : 0));
+        tabsScroll.setVisibility(on ? View.VISIBLE : View.GONE);
+        panel.setY(baseY - (on ? dp(TABS_DP) - dp(EDGE) + dp(6) : 0));
         if (!on) return;
-        android.text.SpannableStringBuilder sb = new android.text.SpannableStringBuilder();
-        String[] names = {"Trending Films", "Trending TV"};
-        for (int i = 0; i < 2; i++) {
-            int at = sb.length();
-            sb.append(names[i]);
-            boolean active = (i == 1) == tvTab;
-            sb.setSpan(new android.text.style.ForegroundColorSpan(active ? Color.WHITE : 0x66FFFFFF), at, sb.length(), 0);
-            if (active) sb.setSpan(new android.text.style.StyleSpan(android.graphics.Typeface.BOLD), at, sb.length(), 0);
-            if (i == 0) sb.append(tvTab ? "      ▾ " : "      ▴ ");
+        if (tabs.getChildCount() != cats.size()) {
+            tabs.removeAllViews();
+            for (int i = 0; i < cats.size(); i++) tabs.addView(tab(i));
         }
-        caption.setText(sb);
+        for (int i = 0; i < tabs.getChildCount(); i++) styleTab((TextView) tabs.getChildAt(i), i == catIndex, tabs.getChildAt(i).hasFocus());
     }
 
-    /** Up from the films row shows the TV row, Down from the TV row the films again; focus keeps its place. */
-    private void switchRow(boolean tv, int index) {
-        tvTab = tv;
-        fillTrending();
-        strip.setTranslationY(dp(tv ? -24 : 24));
-        strip.animate().translationY(0f).setDuration(220).start();
-        strip.post(() -> {
-            int i = Math.min(index, strip.getChildCount() - 1);
-            if (i >= 0) strip.getChildAt(i).requestFocus();
+    private TextView tab(int i) {
+        TextView v = new TextView(context);
+        v.setText(cats.get(i).name);
+        v.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f);
+        v.setTypeface(context.getResources().getFont(R.font.outfit_medium));
+        v.setSingleLine(true);
+        v.setFocusable(true);
+        v.setGravity(Gravity.CENTER);
+        v.setPadding(dp(12), dp(4), dp(12), dp(4));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.rightMargin = dp(4);
+        v.setLayoutParams(lp);
+        v.setOnFocusChangeListener((x, focused) -> styleTab(v, i == catIndex, focused));
+        v.setOnKeyListener((x, keyCode, event) -> {
+            if (event.getAction() != KeyEvent.ACTION_DOWN) return false;
+            switch (keyCode) {
+                case KeyEvent.KEYCODE_DPAD_LEFT: if (i > 0) pickTab(i - 1); return true;
+                case KeyEvent.KEYCODE_DPAD_RIGHT: if (i < cats.size() - 1) pickTab(i + 1); return true;
+                case KeyEvent.KEYCODE_DPAD_UP: host.onCardsUp(); return true;
+                case KeyEvent.KEYCODE_DPAD_DOWN: focus(); return true;
+                default: return false;
+            }
         });
+        v.setOnClickListener(x -> focus());
+        return v;
+    }
+
+    private void styleTab(TextView v, boolean current, boolean focused) {
+        v.setTextColor(current || focused ? Color.WHITE : 0x80FFFFFF);
+        v.setTypeface(context.getResources().getFont(current ? R.font.outfit_medium : R.font.outfit_regular),
+                current ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
+        GradientDrawable pill = new GradientDrawable();
+        pill.setCornerRadius(dp(14));
+        pill.setColor(focused ? 0x33FFFFFF : current ? 0x14FFFFFF : 0x00000000);
+        if (focused) pill.setStroke(Math.max(1, dp(1.5f)), 0xCCFFFFFF);
+        v.setBackground(pill);
+    }
+
+    /** Moves to tab i: its title in white, and its row below after a moment's pause (Left held down skips past). */
+    private void pickTab(int i) {
+        catIndex = i;
+        View t = tabs.getChildAt(i);
+        t.requestFocus();
+        for (int k = 0; k < tabs.getChildCount(); k++) styleTab((TextView) tabs.getChildAt(k), k == i, k == i);
+        scroller.scrollTo(0, 0);
+        main.removeCallbacks(tabRow);
+        tabRow = () -> { load(i); fillTrending(); t.requestFocus(); };
+        main.postDelayed(tabRow, 260);
+    }
+
+    private Runnable tabRow = () -> { };
+
+    /** Up from the trending row: to its tabs, on the row on show. */
+    private void focusTabs() {
+        View t = tabs.getChildAt(catIndex);
+        if (t == null) { host.onCardsUp(); return; }
+        t.requestFocus();
+        tabsScroll.requestChildFocus(tabs, t);
     }
 
     /** Room under a trending poster for its name and year. */
@@ -870,6 +919,17 @@ final class WatchRows {
         llp.bottomMargin = dp(12);
         card.addView(line, llp);
         looks.add(wide -> line.setGravity(wide ? Gravity.START | Gravity.CENTER_VERTICAL : Gravity.CENTER));
+        if (t.netflix && t.logo != null) {
+            // Netflix's own title logo at the foot, where the store's titles show their genre.
+            ImageView mark = new ImageView(context);
+            mark.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            loadPoster(t.logo, mark);
+            FrameLayout.LayoutParams mlp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(38), Gravity.BOTTOM);
+            mlp.leftMargin = mlp.rightMargin = dp(10);
+            mlp.bottomMargin = dp(10);
+            card.addView(mark, mlp);
+            line.setVisibility(View.GONE);
+        }
         // A soft shade along the top, so the rank and the marks read on a light poster.
         View top = new View(context);
         top.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0x8C000000, 0x00000000}));
@@ -925,8 +985,8 @@ final class WatchRows {
         tile.setOnFocusChangeListener((v, focused) -> focusLook(v, focused, ring));
         tile.setOnKeyListener((v, keyCode, event) -> {
             if (event.getAction() != KeyEvent.ACTION_DOWN) return false;
-            if (keyCode == KeyEvent.KEYCODE_DPAD_UP) { if (tvTab) host.onCardsUp(); else switchRow(true, index); return true; }
-            if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN) { if (tvTab) switchRow(false, index); else host.onCardsDown(); return true; }
+            if (keyCode == KeyEvent.KEYCODE_DPAD_UP) { focusTabs(); return true; }
+            if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN) { host.onCardsDown(); return true; }
             if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT) return index == 0;
             if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) return index == count - 1;
             return false;
@@ -1060,6 +1120,17 @@ final class WatchRows {
     private View marks(Trending.Title t) {
         LinearLayout row = new LinearLayout(context);
         row.setGravity(Gravity.CENTER_VERTICAL);
+        if (t.netflix) {
+            TextView n = new TextView(context);
+            n.setText("NETFLIX");
+            n.setTextColor(0xFFE50914);
+            n.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f);
+            n.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+            n.setLetterSpacing(0.06f);
+            n.setShadowLayer(dp(3), 0, 0, 0xCC000000);
+            row.addView(n);
+            return row;
+        }
         if (t.dolbyVision && t.atmos) row.addView(logo(R.drawable.badge_dolby_atmos_vision, 11.5f, 4));
         else if (t.dolbyVision) row.addView(logo(R.drawable.badge_dolby_vision, 11.5f, 4));
         else if (t.atmos) row.addView(logo(R.drawable.badge_dolby_atmos, 11.5f, 4));
@@ -1152,7 +1223,7 @@ final class WatchRows {
                     if (fresh.isEmpty()) { newsAt = 0; return; }
                     news = fresh;
                     if (gen != generation) return;
-                    if (trendingRow()) { if (!trending.isEmpty()) fillTrending(); }
+                    if (trendingRow()) { if (catLists.containsKey(catIndex)) fillTrending(); }
                     else if (strip.getChildCount() == 0) fillNews();
                 });
             });
@@ -1171,10 +1242,10 @@ final class WatchRows {
     /** One story: its picture across the card, a BBC NEWS tag, the headline at the bottom. OK opens it. */
     private View newsCard(String[] story, int index, int count) {
         View tile = newsTile(story, index, count);
-        if (trendingRow() && !tvTab) {
+        if (trendingRow()) {
             tile.setOnKeyListener((v, keyCode, event) -> {
                 if (event.getAction() != KeyEvent.ACTION_DOWN) return false;
-                if (keyCode == KeyEvent.KEYCODE_DPAD_UP) { switchRow(true, index); return true; }
+                if (keyCode == KeyEvent.KEYCODE_DPAD_UP) { focusTabs(); return true; }
                 if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN) { host.onCardsDown(); return true; }
                 if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT) return index == 0;
                 if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) return index == count - 1;

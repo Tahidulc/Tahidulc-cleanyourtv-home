@@ -29,18 +29,52 @@ final class Trending {
         boolean dolbyVision, hdr, hdr10plus, atmos, rotten, certified;
         /** The image without its size: add "/{w}x{h}bb.jpg" for the whole picture, "/{w}x{h}sr.jpg" for a crop. */
         String art;
+        /** Netflix's: one wide picture (cropped to the card) and the title's logo, and no store page. */
+        String image, logo;
+        boolean netflix;
 
-        String poster(int w, int h) { return art + "/" + w + "x" + h + "bb.jpg"; }
-        String crop(int w, int h) { return art + "/" + w + "x" + h + "sr.jpg"; }
+        String poster(int w, int h) { return art == null ? image : art + "/" + w + "x" + h + "bb.jpg"; }
+        String crop(int w, int h) { return art == null ? image : art + "/" + w + "x" + h + "sr.jpg"; }
     }
 
     private static final String FEED = "https://itunes.apple.com/%s/rss/%s/limit=%d/json";
     private static final Pattern SIZE = Pattern.compile("/\\d+x\\d+[a-z]*\\.(png|jpg)$");
     private static final Pattern SEASON = Pattern.compile("^(.*), ((Season|Series|Part|Volume) .*)$");
 
+    /** A row of the trending section: a chart of the store's (overall or one genre) or Netflix's weekly top ten. */
+    static final class Category {
+        final String name;
+        final boolean tv, netflix;
+        final int genre;
+        Category(String name, boolean tv, boolean netflix, int genre) { this.name = name; this.tv = tv; this.netflix = netflix; this.genre = genre; }
+    }
+
+    /** The rows, in the order the tabs show them: the two top tens, Netflix's two, then genres of films and of TV. */
+    static List<Category> categories() {
+        List<Category> c = new ArrayList<>();
+        c.add(new Category("Top 10 Films", false, false, 0));
+        c.add(new Category("Top 10 TV", true, false, 0));
+        c.add(new Category("Netflix Films", false, true, 0));
+        c.add(new Category("Netflix TV", true, true, 0));
+        // The iTunes Store's genre ids (films 44xx, TV 40xx).
+        Object[][] genres = {{"Action", false, 4401}, {"Comedy", false, 4404}, {"Drama", false, 4406}, {"Thriller", false, 4416},
+                {"Horror", false, 4408}, {"Sci-Fi & Fantasy", false, 4413}, {"Family", false, 4410}, {"Romance", false, 4412},
+                {"Documentary", false, 4405}, {"Drama Series", true, 4001}, {"Comedy Series", true, 4000},
+                {"Sci-Fi & Fantasy TV", true, 4008}, {"Action TV", true, 4003}, {"Reality TV", true, 4007},
+                {"Kids TV", true, 4005}, {"Docuseries", true, 4006}};
+        for (Object[] g : genres) c.add(new Category((String) g[0], (Boolean) g[1], false, (Integer) g[2]));
+        return c;
+    }
+
+    /** One row's titles: from the store's chart (its genre's when it has one), or Netflix's top ten for netflixCountry. */
+    static List<Title> read(String country, String netflixCountry, Category c, int limit) {
+        if (c.netflix) return netflix(netflixCountry, c.tv);
+        return chart(country, c.tv ? "toptvseasons" : "topmovies", limit, c.tv, c.genre);
+    }
+
     static List<Title> read(String country, int each) {
-        List<Title> films = chart(country, "topmovies", each, false);
-        List<Title> tv = chart(country, "toptvseasons", each, true);
+        List<Title> films = chart(country, "topmovies", each, false, 0);
+        List<Title> tv = chart(country, "toptvseasons", each, true, 0);
         List<Title> out = new ArrayList<>();
         for (int i = 0; i < Math.max(films.size(), tv.size()); i++) {
             if (i < films.size()) out.add(films.get(i));
@@ -49,11 +83,15 @@ final class Trending {
         return out;
     }
 
-    private static List<Title> chart(String country, String name, int limit, boolean tv) {
+    private static List<Title> chart(String country, String name, int limit, boolean tv, int genre) {
         List<Title> out = new ArrayList<>();
         try {
-            JSONArray entries = new JSONObject(get(String.format(FEED, country, name, limit)))
-                    .getJSONObject("feed").optJSONArray("entry");
+            String url = String.format(FEED, country, name, limit);
+            if (genre > 0) url = url.replace("/json", "/genre=" + genre + "/json");
+            JSONObject feed = new JSONObject(get(url)).getJSONObject("feed");
+            // A chart of one title has it as an object, not a list.
+            JSONArray entries = feed.optJSONArray("entry");
+            if (entries == null && feed.optJSONObject("entry") != null) entries = new JSONArray().put(feed.getJSONObject("entry"));
             for (int i = 0; entries != null && i < entries.length(); i++) {
                 JSONObject e = entries.getJSONObject(i);
                 Title t = new Title();
@@ -93,6 +131,60 @@ final class Trending {
         return out;
     }
 
+    // ---- Netflix's top ten ------------------------------------------------------------------------------
+
+    private static final Pattern NF_ITEM = Pattern.compile("\"__typename\":\"PulseTop10ItemEntity\"");
+    private static final Pattern NF_RANK = Pattern.compile("\"weeklyRank\":(\\d+)");
+    private static final Pattern NF_TITLE = Pattern.compile("\"Top10PulseVideo\",\"title\":\"((?:[^\"\\\\]|\\\\.)*)\"");
+    private static final Pattern NF_ABOUT = Pattern.compile("\"shortSynopsis\":\"((?:[^\"\\\\]|\\\\.)*)\"");
+    private static final Pattern NF_YEAR = Pattern.compile("\"releaseYear\":(\\d{4})");
+    private static final Pattern NF_AGE = Pattern.compile("\"maturityRating\":\"([^\"]*)\"");
+    private static final Pattern NF_LOGO = Pattern.compile("\"logoArt\".*?\"url\":\"([^\"]+)\"");
+    private static final Pattern NF_STORY = Pattern.compile("\"storyArt\".*?\"url\":\"([^\"]+)\"");
+    private static final Pattern NF_SEASON = Pattern.compile("^(.*?): ((?:Season|Limited Series|Series|Part|Volume|S\\d+).*)$");
+
+    /**
+     * Netflix's weekly top ten for a country (its Tudum page, "united-kingdom"), films or TV: rank, title, synopsis,
+     * year, age, its wide picture and its logo, read from the page's own data.
+     */
+    static List<Title> netflix(String country, boolean tv) {
+        List<Title> out = new ArrayList<>();
+        String page;
+        try { page = get("https://www.netflix.com/tudum/top10/" + country + (tv ? "/tv" : "")); } catch (Exception e) { return out; }
+        Matcher items = NF_ITEM.matcher(page);
+        List<Integer> starts = new ArrayList<>();
+        while (items.find()) starts.add(items.start());
+        java.util.Set<Integer> ranks = new java.util.HashSet<>();
+        for (int i = 0; i < starts.size(); i++) {
+            String seg = page.substring(starts.get(i), i + 1 < starts.size() ? starts.get(i + 1) : Math.min(page.length(), starts.get(i) + 20000));
+            Matcher r = NF_RANK.matcher(seg), n = NF_TITLE.matcher(seg);
+            if (!r.find() || !n.find()) continue;
+            int rank = Integer.parseInt(r.group(1));
+            if (!ranks.add(rank)) continue;
+            Title t = new Title();
+            t.netflix = true;
+            t.tv = tv;
+            t.rank = rank;
+            t.title = unescape(n.group(1));
+            Matcher m = NF_SEASON.matcher(t.title);
+            if (tv && m.matches()) { t.title = m.group(1); t.season = m.group(2); }
+            Matcher a = NF_ABOUT.matcher(seg), y = NF_YEAR.matcher(seg), g = NF_AGE.matcher(seg), lo = NF_LOGO.matcher(seg), st = NF_STORY.matcher(seg);
+            t.summary = a.find() ? unescape(a.group(1)) : "";
+            t.year = y.find() ? y.group(1) : "";
+            t.age = g.find() && !g.group(1).isEmpty() ? g.group(1) : null;
+            t.logo = lo.find() ? unescape(lo.group(1)) : null;
+            t.image = st.find() ? unescape(st.group(1)) : null;
+            t.genre = "";
+            if (t.image != null) out.add(t);
+        }
+        out.sort((p, q) -> Integer.compare(p.rank, q.rank));
+        return out.size() > 10 ? new ArrayList<>(out.subList(0, 10)) : out;
+    }
+
+    private static String unescape(String s) {
+        return s.replace("\\u0026", "&").replace("\\'", "'").replace("\\\"", "\"").replace("\\/", "/");
+    }
+
     // ---- badges -------------------------------------------------------------------------------------
 
     private static final Pattern BADGE = Pattern.compile("\\{\"\\$kind\":\"MetadataBadge\"[^}]*\\}");
@@ -113,7 +205,7 @@ final class Trending {
         }));
         List<java.util.concurrent.Callable<Void>> jobs = new ArrayList<>();
         for (Title t : titles) {
-            if (t.link == null || t.link.isEmpty()) continue;
+            if (t.netflix || t.link == null || t.link.isEmpty()) continue;
             String kept = prefs.getString(t.link, null);
             if (kept != null) {
                 int bar = kept.indexOf('|');

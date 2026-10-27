@@ -167,12 +167,40 @@ final class ScoresTicker {
         main.removeCallbacks(refresh);
         fetch();
         schedulePage();
+        tickClocks();
     }
 
     void stop() {
         running = false;
         main.removeCallbacks(refresh);
         main.removeCallbacks(flip);
+        main.removeCallbacks(clockTick);
+    }
+
+    // ---- live clocks: a live game's box counts its match time by the second -----------------------
+
+    /** {label, game} for each live football box on the line's pages. */
+    private final List<Object[]> clocks = new ArrayList<>();
+    private final Runnable clockTick = this::tickClocks;
+
+    /** "67:23", counting on from ESPN's last reading of the clock; "HT" at half-time; ESPN's own text otherwise. */
+    static String liveClock(Game g) {
+        if (g.halftime) return "HT";
+        if (g.clockAt == 0 || g.clockSec <= 0) return g.detail;
+        long secs = (long) g.clockSec + (System.currentTimeMillis() - g.clockAt) / 1000L;
+        return String.format(java.util.Locale.ROOT, "%d:%02d", secs / 60, secs % 60);
+    }
+
+    private void tickClocks() {
+        main.removeCallbacks(clockTick);
+        for (java.util.Iterator<Object[]> it = clocks.iterator(); it.hasNext(); ) {
+            Object[] c = it.next();
+            TextView v = (TextView) c[0];
+            // A page that was turned away and dropped takes its boxes with it.
+            if (!v.isAttachedToWindow()) { it.remove(); continue; }
+            v.setText(detail((Game) c[1]));
+        }
+        if (running && !clocks.isEmpty()) main.postDelayed(clockTick, 1000L);
     }
 
     void close() {
@@ -655,7 +683,13 @@ final class ScoresTicker {
                 b.addView(label(teams(g)), margin(dp(6)));
                 b.addView(logoView(g.awayLogo, dp(6)));
             }
-            b.addView(label(detail(g)), margin(dp(8)));
+            TextView when = label(detail(g));
+            b.addView(when, margin(dp(8)));
+            if (g.state == 0 && g.drivers == null && g.text == null) {
+                clocks.add(new Object[]{when, g});
+                main.removeCallbacks(clockTick);
+                main.postDelayed(clockTick, 1000L);
+            }
             // Each box grows in proportion to what it holds, so a page always fills the whole line.
             b.setGravity(Gravity.CENTER);
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, dp(30), boxWidth(g));
@@ -735,7 +769,8 @@ final class ScoresTicker {
     }
 
     private static CharSequence detail(Game g) {
-        SpannableStringBuilder s = new SpannableStringBuilder(g.detail);
+        boolean football = g.drivers == null && g.text == null;
+        SpannableStringBuilder s = new SpannableStringBuilder(g.state == 0 && football ? liveClock(g) : g.detail);
         s.setSpan(new ForegroundColorSpan(g.state == 0 ? 0xFF4ADE80 : 0x99FFFFFF), 0, s.length(),
                 Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
         return s;
