@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Reads one app's screen (Debrid Stream) to open its search for a trending tile's title; no events, no keys. -->
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:canRetrieveWindowContent="true"
+    android:accessibilityFlags="flagRetrieveInteractiveWindows"
+    android:packageNames="com.debridstream.tv"
+    android:notificationTimeout="0"
+    android:description="@string/app_search_service_description" />

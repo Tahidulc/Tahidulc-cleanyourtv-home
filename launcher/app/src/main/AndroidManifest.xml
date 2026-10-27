@@ -256,6 +256,19 @@
                 android:name="android.accessibilityservice"
                 android:resource="@xml/input_key_service" />
         </service>
+        <!-- Opens Debrid Stream's search for a trending tile's title (AppSearchService); off until enabled. -->
+        <service
+            android:name=".AppSearchService"
+            android:exported="false"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/app_search_service" />
+        </service>
         <!-- Goal and red card alerts over the app opened from Home (GoalWatchService). -->
         <service
             android:name=".GoalWatchService"

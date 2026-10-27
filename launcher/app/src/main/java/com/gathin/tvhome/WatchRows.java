@@ -607,7 +607,7 @@ final class WatchRows {
     /**
      * One title: a TV season's 16:9 picture across the card; a film's poster on the right over a dimmed crop of
      * itself, with its synopsis beside it. Top-left its rank in the chart, the title, genre and year at the bottom.
-     * OK opens Debrid Stream, the way its dock tile does.
+     * OK opens Debrid Stream on its search for the title.
      */
     private View trendCard(Trending.Title t, int index, int count) {
         Item item = new Item();
@@ -679,7 +679,10 @@ final class WatchRows {
                 Gravity.TOP | Gravity.START);
         tlp.leftMargin = tlp.topMargin = dp(14);
         card.addView(tag, tlp);
-        card.setOnClickListener(v -> host.onResumeApp());
+        // OK: the app opens on its search for this title (AppSearchService), or just opens without that helper.
+        card.setOnClickListener(v -> {
+            if (!AppSearchService.search(context, context.getString(R.string.trending_package), t.title)) host.onResumeApp();
+        });
         return card;
     }
 

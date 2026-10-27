@@ -259,6 +259,10 @@ public class GoalWatchService extends Service {
             weatherAlerts = Config.themeFlag(this, "weather_alerts", false);
             if (Config.themeFlag(this, "alert_sounds", false)) loadSounds();
         }
+        if (intent != null && intent.hasExtra("dump_ui")) AppSearchService.dump();
+        if (intent != null && intent.hasExtra("test_search")) {
+            AppSearchService.search(this, getString(R.string.trending_package), intent.getStringExtra("test_search"));
+        }
         if (intent != null && intent.hasExtra("test_more")) testMore(intent.getStringExtra("test_more"));
         if (intent != null && intent.hasExtra("test_goal")) {
             // adb only (the service needs DUMP from outside): one sample alert now, to check the look over an app.
