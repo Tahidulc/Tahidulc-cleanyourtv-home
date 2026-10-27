@@ -308,14 +308,21 @@ final class WatchRows {
     private final java.util.WeakHashMap<View, java.util.function.Consumer<Boolean>> wideLooks = new java.util.WeakHashMap<>();
 
     /** Focus: the card grows a little and widens from poster to 16:9; it narrows again when focus moves on. */
+    /** A card's own {poster, wide} widths, and the view its focus ring goes round, when not the card's defaults. */
+    private final java.util.WeakHashMap<View, int[]> cardWidths = new java.util.WeakHashMap<>();
+    private final java.util.WeakHashMap<View, View> ringOn = new java.util.WeakHashMap<>();
+
     private void focusLook(View v, boolean focused, GradientDrawable ring) {
         v.animate().scaleX(focused ? FOCUS_SCALE : 1f).scaleY(focused ? FOCUS_SCALE : 1f).setDuration(160).start();
-        v.setForeground(focused ? ring : null);
+        View framed = ringOn.containsKey(v) ? ringOn.get(v) : v;
+        framed.setForeground(focused ? ring : null);
         v.setElevation(focused ? dp(6) : 0);
+        int[] sizes = cardWidths.get(v);
         java.util.function.Consumer<Boolean> look = wideLooks.get(v);
         if (look != null && focused) look.accept(true);
         ViewGroup.LayoutParams lp = v.getLayoutParams();
-        android.animation.ValueAnimator widen = android.animation.ValueAnimator.ofInt(lp.width, focused ? cardWidth() : posterWidth());
+        int to = sizes != null ? sizes[focused ? 1 : 0] : focused ? cardWidth() : posterWidth();
+        android.animation.ValueAnimator widen = android.animation.ValueAnimator.ofInt(lp.width, to);
         widen.setDuration(WIDEN_MS);
         widen.setInterpolator(new android.view.animation.DecelerateInterpolator(1.4f));
         widen.addUpdateListener(a -> { lp.width = (int) a.getAnimatedValue(); v.requestLayout(); });
@@ -657,39 +664,66 @@ final class WatchRows {
         panel.animate().alpha(1f).setDuration(220).start();
     }
 
+    /** Room under a trending poster for its name and year. */
+    private static final int LABEL_DP = 40;
+
     /**
-     * One title: a TV season's 16:9 picture across the card; a film's poster on the right over a dimmed crop of
-     * itself, with its synopsis beside it. Top-left its rank in the chart, the title, genre and year at the bottom.
-     * OK opens Debrid Stream on its search for the title.
+     * One title, BetterPosters style: the poster with "#1 Today" top-left, the Dolby mark and 4K or 1080p top-right,
+     * and its genre and rating at the foot over a fade in the poster's own colour; its name and year underneath.
+     * Wide, the poster widens to 16:9: a film shows its whole poster on the right over a dimmed crop of itself, a series
+     * its picture, both with the synopsis on the left. OK opens Debrid Stream on its search for the title.
      */
     private View trendCard(Trending.Title t, int index, int count) {
-        Item item = new Item();
-        item.title = t.title;
-        String meta = (t.season != null ? t.season + "  ·  " : "") + t.genre + (t.year.isEmpty() ? "" : "  ·  " + t.year);
-        // The Rotten Tomatoes score leads the line, so a poster card still shows it.
-        if (t.tomatoes != null) meta = (t.rotten ? "🟢 " : "🍅 ") + t.tomatoes + "   " + meta;
-        else if (t.stars != null) meta = "★ " + t.stars + "   " + meta;
-        item.episode = meta;
-        FrameLayout card = (FrameLayout) card(item, index, count);
-        LinearLayout words = (LinearLayout) card.getChildAt(2);
-        View badges = badgeRow(t);
-        if (badges != null) {
-            LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            blp.bottomMargin = dp(6);
-            words.addView(badges, 0, blp);
-        }
-        ImageView image = (ImageView) card.getChildAt(0);
-        int w = cardWidth(), h = cardHeight();
-        if (t.tv) loadPoster(t.crop(w, h), image);
-        else loadPoster(t.poster(posterWidth(), h), image);
+        int h = cardHeight(), ph = h - dp(LABEL_DP);
+        int narrow = Math.round(ph * 2f / 3f), wideW = Math.round(ph * 16f / 9f);
+        LinearLayout tile = new LinearLayout(context);
+        tile.setOrientation(LinearLayout.VERTICAL);
+        tile.setFocusable(true);
+        tile.setClipChildren(false);
+        tile.setClipToPadding(false);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(narrow, h);
+        lp.rightMargin = dp(14);
+        tile.setLayoutParams(lp);
+        cardWidths.put(tile, new int[]{narrow, wideW});
+
+        FrameLayout card = new FrameLayout(context);
+        card.setClipToOutline(true);
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(0xFF1C1C22);
+        bg.setCornerRadius(dp(12));
+        card.setBackground(bg);
+        tile.addView(card, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ph));
+        ringOn.put(tile, card);
+        GradientDrawable ring = new GradientDrawable();
+        ring.setColor(Color.TRANSPARENT);
+        ring.setCornerRadius(dp(12));
+        ring.setStroke(dp(3), Color.WHITE);
+
+        ImageView image = new ImageView(context);
+        image.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        card.addView(image, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        // The foot fades into the poster's own colour, darkened, under the genre and rating.
+        View foot = new View(context);
+        foot.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0x00000000, 0xCC000000, 0xF2000000}));
+        card.addView(foot, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Math.round(ph * 0.42f), Gravity.BOTTOM));
+        java.util.function.Consumer<Bitmap> tint = b -> {
+            int c = footColour(b);
+            foot.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
+                    new int[]{c & 0x00FFFFFF, (c & 0x00FFFFFF) | 0xCC000000, (c & 0x00FFFFFF) | 0xF5000000}));
+        };
+        if (t.tv) loadPoster(t.crop(wideW, ph), image, tint);
+        else loadPoster(t.poster(narrow, ph), image, tint);
+
+        List<java.util.function.Consumer<Boolean>> looks = new ArrayList<>();
+        // Wide: a shade over the left for the synopsis, and a film's whole poster on the right.
+        View side = new View(context);
+        side.setBackground(new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
+                t.tv ? new int[]{0xF2000000, 0xB3000000, 0x00000000} : new int[]{0xF7000000, 0xCC000000, 0x80000000}));
+        card.addView(side, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        List<View> wideOnly = new ArrayList<>();
+        wideOnly.add(side);
+        int pw = Math.round((ph - dp(24)) * 2f / 3f);
         if (!t.tv) {
-            // As a poster card, the poster itself. Wide, it turns into a dimmed backdrop with the whole poster beside
-            // the words and the synopsis.
-            View side = new View(context);
-            side.setBackground(new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
-                    new int[]{0xF7000000, 0xCC000000, 0x80000000}));
-            card.addView(side, 1, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-            int ph = h - dp(28), pw = Math.round(ph * 2f / 3f);
             // In a box of its own: the image's fade-in as it loads must not show it while the card is a poster.
             FrameLayout poster = new FrameLayout(context);
             poster.setClipToOutline(true);
@@ -699,128 +733,213 @@ final class WatchRows {
             poster.setBackground(round);
             ImageView posterArt = new ImageView(context);
             posterArt.setScaleType(ImageView.ScaleType.CENTER_CROP);
-            loadPoster(t.poster(posterWidth(), h), posterArt);
+            loadPoster(t.poster(narrow, ph), posterArt);
             poster.addView(posterArt, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-            FrameLayout.LayoutParams plp = new FrameLayout.LayoutParams(pw, ph, Gravity.END | Gravity.CENTER_VERTICAL);
-            plp.rightMargin = dp(14);
+            FrameLayout.LayoutParams plp = new FrameLayout.LayoutParams(pw, ph - dp(24), Gravity.END | Gravity.CENTER_VERTICAL);
+            plp.rightMargin = dp(12);
             card.addView(poster, plp);
-            View text = words;
-            int textPad = text.getPaddingLeft();
-            TextView about = null;
-            if (!t.summary.isEmpty() && h > dp(150)) {
-                about = new TextView(context);
-                about.setText(t.summary);
-                about.setTextColor(0xB3FFFFFF);
-                about.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f);
-                about.setTypeface(context.getResources().getFont(R.font.outfit_regular));
-                about.setLineSpacing(0, 1.1f);
-                about.setMaxLines(h > dp(240) ? 5 : 3);
-                about.setEllipsize(android.text.TextUtils.TruncateAt.END);
-                FrameLayout.LayoutParams alp = new FrameLayout.LayoutParams(w - pw - dp(60), ViewGroup.LayoutParams.WRAP_CONTENT,
-                        Gravity.TOP | Gravity.START);
-                alp.leftMargin = dp(16);
-                alp.topMargin = dp(56);
-                card.addView(about, alp);
-            }
-            final View aboutView = about;
-            final View[] wideOnly = {side, poster, aboutView};
-            for (View x : wideOnly) if (x != null) x.setAlpha(0f);
-            wideLooks.put(card, wide -> {
-                for (View x : wideOnly) if (x != null) x.animate().alpha(wide ? 1f : 0f).setDuration(WIDEN_MS).start();
-                // The words keep clear of the poster.
-                text.setPadding(textPad, 0, wide ? pw + dp(28) : textPad, text.getPaddingBottom());
-            });
-        } else {
-            View topShade = new View(context);
-            topShade.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0x99000000, 0x00000000}));
-            card.addView(topShade, 1, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(80), Gravity.TOP));
+            wideOnly.add(poster);
         }
-        // Top-left: "#1  TRENDING FILM" on a small dark capsule.
-        TextView tag = new TextView(context);
-        android.text.SpannableStringBuilder sb = new android.text.SpannableStringBuilder("#" + t.rank + "   ");
-        sb.setSpan(new android.text.style.ForegroundColorSpan(0xFFFFD230), 0, sb.length(), 0);
-        sb.append(t.tv ? "TRENDING TV" : "TRENDING FILM");
-        tag.setText(sb);
-        tag.setTextColor(Color.WHITE);
-        tag.setTextSize(TypedValue.COMPLEX_UNIT_SP, 9f);
-        tag.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
-        tag.setLetterSpacing(0.1f);
-        GradientDrawable capsule = new GradientDrawable();
-        capsule.setColor(0x99000000);
-        capsule.setCornerRadius(dp(12));
-        tag.setBackground(capsule);
-        tag.setPadding(dp(8), dp(3), dp(8), dp(3));
-        FrameLayout.LayoutParams tlp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
+        if (!t.summary.isEmpty()) {
+            TextView about = synopsis(t.summary, ph);
+            FrameLayout.LayoutParams alp = new FrameLayout.LayoutParams(t.tv ? Math.round(wideW * 0.55f) : wideW - pw - dp(48),
+                    ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP | Gravity.START);
+            alp.leftMargin = dp(14);
+            alp.topMargin = dp(44);
+            card.addView(about, alp);
+            wideOnly.add(about);
+        }
+        for (View x : wideOnly) x.setAlpha(0f);
+        looks.add(wide -> { for (View x : wideOnly) x.animate().alpha(wide ? 1f : 0f).setDuration(WIDEN_MS).start(); });
+
+        // Foot of the poster: "Horror • ★ 8.2" (a film's Rotten Tomatoes tomato and score), centred, one line; wide,
+        // it moves left under the synopsis. The first of a double genre ("Action & Adventure") keeps it short.
+        TextView line = score("", 0xD9FFFFFF);
+        String genre = t.genre.split(" & | / ")[0];
+        android.text.SpannableStringBuilder foot2 = new android.text.SpannableStringBuilder(genre);
+        if (t.tomatoes != null) {
+            foot2.append("  •  ");
+            int at = foot2.length();
+            foot2.append("T ").append(t.tomatoes);
+            android.graphics.drawable.Drawable tomato = context.getDrawable(t.rotten ? R.drawable.badge_rt_rotten
+                    : t.certified ? R.drawable.badge_rt_certified : R.drawable.badge_rt_fresh);
+            if (tomato != null) {
+                tomato.setBounds(0, 0, dp(12), dp(12));
+                foot2.setSpan(new android.text.style.ImageSpan(tomato, android.text.style.DynamicDrawableSpan.ALIGN_CENTER),
+                        at, at + 1, 0);
+            }
+        } else if (t.stars != null) {
+            foot2.append("  •  ★ ").append(t.stars);
+        }
+        line.setText(foot2);
+        line.setGravity(Gravity.CENTER);
+        line.setSingleLine(true);
+        line.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        FrameLayout.LayoutParams llp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.BOTTOM);
+        llp.leftMargin = llp.rightMargin = dp(8);
+        llp.bottomMargin = dp(12);
+        card.addView(line, llp);
+        looks.add(wide -> line.setGravity(wide ? Gravity.START | Gravity.CENTER_VERTICAL : Gravity.CENTER));
+        // A soft shade along the top, so the rank and the marks read on a light poster.
+        View top = new View(context);
+        top.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0x8C000000, 0x00000000}));
+        card.addView(top, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(44), Gravity.TOP));
+        looks.add(wide -> { llp.leftMargin = dp(wide ? 14 : 8); line.setLayoutParams(llp); });
+
+        // Top: "#1 Today" on the left, the Dolby mark and the picture's quality on the right.
+        TextView rank = new TextView(context);
+        rank.setText("#" + t.rank + " Today");
+        rank.setTextColor(Color.WHITE);
+        rank.setTextSize(TypedValue.COMPLEX_UNIT_SP, 9f);
+        rank.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        GradientDrawable pill = new GradientDrawable();
+        pill.setColor(0xCC1E2019);
+        pill.setCornerRadius(dp(6));
+        rank.setBackground(pill);
+        rank.setPadding(dp(5), dp(2), dp(5), dp(2));
+        FrameLayout.LayoutParams rlp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
                 Gravity.TOP | Gravity.START);
-        tlp.leftMargin = tlp.topMargin = dp(14);
-        card.addView(tag, tlp);
+        rlp.leftMargin = rlp.topMargin = dp(7);
+        card.addView(rank, rlp);
+        View marks = marks(t);
+        if (marks != null) {
+            FrameLayout.LayoutParams mlp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(17), Gravity.TOP | Gravity.END);
+            mlp.rightMargin = dp(5);
+            mlp.topMargin = dp(7);
+            card.addView(marks, mlp);
+        }
+
+        // Under the poster: the name, and the year (a series' season too).
+        TextView name = new TextView(context);
+        name.setText(t.title);
+        name.setTextColor(Color.WHITE);
+        name.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f);
+        name.setTypeface(context.getResources().getFont(R.font.outfit_medium));
+        name.setSingleLine(true);
+        name.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        LinearLayout.LayoutParams nlp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        nlp.topMargin = dp(5);
+        nlp.leftMargin = dp(2);
+        tile.addView(name, nlp);
+        TextView year = new TextView(context);
+        year.setText(t.year + (t.season != null ? "  ·  " + t.season : "") + (t.age != null ? "  ·  " + t.age : ""));
+        year.setTextColor(0x99FFFFFF);
+        year.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f);
+        year.setTypeface(context.getResources().getFont(R.font.outfit_regular));
+        year.setSingleLine(true);
+        LinearLayout.LayoutParams ylp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        ylp.leftMargin = dp(2);
+        tile.addView(year, ylp);
+
+        wideLooks.put(tile, wide -> { for (java.util.function.Consumer<Boolean> l : looks) l.accept(wide); });
+        tile.setOnFocusChangeListener((v, focused) -> focusLook(v, focused, ring));
+        tile.setOnKeyListener((v, keyCode, event) -> {
+            if (event.getAction() != KeyEvent.ACTION_DOWN) return false;
+            if (keyCode == KeyEvent.KEYCODE_DPAD_UP) { host.onCardsUp(); return true; }
+            if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN) { host.onCardsDown(); return true; }
+            if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT) return index == 0;
+            if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) return index == count - 1;
+            return false;
+        });
         // OK: the app opens on its search for this title (AppSearchService), or just opens without that helper.
-        card.setOnClickListener(v -> {
+        tile.setOnClickListener(v -> {
             if (!AppSearchService.search(context, context.getString(R.string.trending_package), t.title)) host.onResumeApp();
         });
-        return card;
+        return tile;
     }
 
-    /**
-     * The poster badges, BetterPosters style: the BBFC age in its colour, then the picture and sound the title comes
-     * in on Apple's store (4K or HD, Dolby Vision or HDR, Atmos). Null when the page had none.
-     */
-    private View badgeRow(Trending.Title t) {
+    /** The poster's foot colour: the average of its bottom fifth, darkened to a deep shade of it. */
+    private static int footColour(Bitmap b) {
+        long r = 0, g = 0, bl = 0, n = 0;
+        int w = b.getWidth(), hh = b.getHeight();
+        for (int y = hh * 4 / 5; y < hh; y += Math.max(1, hh / 60)) {
+            for (int x = 0; x < w; x += Math.max(1, w / 24)) {
+                int c = b.getPixel(x, y);
+                r += (c >> 16) & 0xFF; g += (c >> 8) & 0xFF; bl += c & 0xFF; n++;
+            }
+        }
+        if (n == 0) return 0xFF000000;
+        float[] hsv = new float[3];
+        Color.RGBToHSV((int) (r / n), (int) (g / n), (int) (bl / n), hsv);
+        hsv[2] = Math.min(hsv[2], 0.22f);
+        hsv[1] = Math.min(hsv[1], 0.75f);
+        return Color.HSVToColor(hsv);
+    }
+
+    /** Top-right of a poster: the Dolby mark (Atmos and Vision together when it has both), HDR, and 4K or 1080p. */
+    private View marks(Trending.Title t) {
         LinearLayout row = new LinearLayout(context);
         row.setGravity(Gravity.CENTER_VERTICAL);
-        if (t.age != null) row.addView(ageChip(t.age));
-        if (t.quality != null) row.addView(chip(t.quality, "4K".equals(t.quality)));
-        if (t.dolbyVision) row.addView(chip("DV", false));
-        else if (t.hdr) row.addView(chip("HDR", false));
-        if (t.atmos) row.addView(chip("ATMOS", false));
+        if (t.dolbyVision && t.atmos) row.addView(logo(R.drawable.badge_dolby_atmos_vision, 11.5f, 4));
+        else if (t.dolbyVision) row.addView(logo(R.drawable.badge_dolby_vision, 11.5f, 4));
+        else if (t.atmos) row.addView(logo(R.drawable.badge_dolby_atmos, 11.5f, 4));
+        if (!t.dolbyVision && t.hdr10plus) row.addView(logo(R.drawable.badge_hdr10plus, 10, 4));
+        else if (!t.dolbyVision && t.hdr) row.addView(logo(R.drawable.badge_hdr, 10, 4));
+        if ("4K".equals(t.quality)) row.addView(logo(R.drawable.badge_4k, 11, 0));
+        else if ("HD".equals(t.quality)) row.addView(resolution("1080", "p"));
         return row.getChildCount() == 0 ? null : row;
     }
 
-    /** A small square in the BBFC's colours: U green, PG yellow, 12 orange, 15 pink, 18 red. */
-    private View ageChip(String age) {
-        int bg = 0xFF5A6270, fg = Color.WHITE;
-        String a = age.toUpperCase(java.util.Locale.ROOT);
-        if (a.equals("U") || a.equals("UC")) bg = 0xFF0BA14B;
-        else if (a.equals("PG")) { bg = 0xFFF7C600; fg = Color.BLACK; }
-        else if (a.startsWith("12")) bg = 0xFFF58220;
-        else if (a.equals("15")) bg = 0xFFE5007E;
-        else if (a.startsWith("18") || a.startsWith("R18")) bg = 0xFFDA1E26;
-        TextView v = chipText(age, fg);
+    /** "1080p" on a light chip, the p small, as the quality marks are drawn. */
+    private TextView resolution(String number, String unit) {
+        TextView v = new TextView(context);
+        android.text.SpannableStringBuilder sb = new android.text.SpannableStringBuilder(number + unit);
+        sb.setSpan(new android.text.style.RelativeSizeSpan(0.75f), number.length(), sb.length(), 0);
+        v.setText(sb);
+        v.setTextColor(0xFF1C1C1E);
+        v.setTextSize(TypedValue.COMPLEX_UNIT_SP, 8f);
+        v.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        v.setIncludeFontPadding(false);
         GradientDrawable d = new GradientDrawable();
-        d.setColor(bg);
-        d.setCornerRadius(dp(4));
-        d.setStroke(Math.max(1, dp(1)), 0xE6FFFFFF);
+        d.setColor(0xFFEBEBF5);
+        d.setCornerRadius(dp(3));
         v.setBackground(d);
-        v.setMinWidth(dp(20));
-        v.setGravity(Gravity.CENTER);
+        v.setPadding(dp(4), dp(2), dp(4), dp(2));
         return v;
     }
 
-    /** A quality chip: "4K" solid white, the rest dark glass with a thin white edge. */
-    private View chip(String text, boolean solid) {
-        TextView v = chipText(text, solid ? Color.BLACK : Color.WHITE);
-        GradientDrawable d = new GradientDrawable();
-        d.setColor(solid ? 0xF2FFFFFF : 0x99000000);
-        d.setCornerRadius(dp(4));
-        d.setStroke(Math.max(1, dp(1)), solid ? 0xF2FFFFFF : 0x99FFFFFF);
-        v.setBackground(d);
+    private TextView synopsis(String text, int h) {
+        TextView about = new TextView(context);
+        about.setText(text);
+        about.setTextColor(0xB3FFFFFF);
+        about.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f);
+        about.setTypeface(context.getResources().getFont(R.font.outfit_regular));
+        about.setLineSpacing(0, 1.1f);
+        about.setMaxLines(h > dp(200) ? 4 : 3);
+        about.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        return about;
+    }
+
+    /** An official mark, heightDp tall at its own proportions, with a soft shadow so it reads on a light poster. */
+    private View logo(int res, float heightDp, int gapDp) {
+        ImageView v = new ImageView(context);
+        android.graphics.drawable.Drawable d = context.getDrawable(res);
+        v.setImageDrawable(d);
+        v.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        int hh = dp(heightDp);
+        int ww = d == null || d.getIntrinsicHeight() <= 0 ? hh : Math.round(hh * d.getIntrinsicWidth() / (float) d.getIntrinsicHeight());
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ww, hh);
+        lp.rightMargin = dp(gapDp);
+        v.setLayoutParams(lp);
+        v.setElevation(dp(2));
         return v;
     }
 
-    private TextView chipText(String text, int color) {
+    private TextView score(String text, int color) {
         TextView v = new TextView(context);
         v.setText(text);
         v.setTextColor(color);
-        v.setTextSize(TypedValue.COMPLEX_UNIT_SP, 8.5f);
-        v.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
-        v.setLetterSpacing(0.06f);
-        v.setIncludeFontPadding(false);
-        v.setPadding(dp(5), dp(3), dp(5), dp(3));
+        v.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f);
+        v.setTypeface(context.getResources().getFont(R.font.outfit_medium));
+        v.setShadowLayer(dp(4), 0, dp(1), 0xCC000000);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        lp.rightMargin = dp(5);
+        lp.rightMargin = dp(4);
         v.setLayoutParams(lp);
         return v;
     }
+
+
 
     /** The news row: from the cache when fresh, else read and shown when it arrives. False when there is none yet. */
     private boolean showNews() {
@@ -1092,24 +1211,61 @@ final class WatchRows {
     }
 
     private void loadPoster(String raw, ImageView into) {
+        loadPoster(raw, into, null);
+    }
+
+    /** As loadPoster, and then: the picture, once it is on the view. */
+    private void loadPoster(String raw, ImageView into, java.util.function.Consumer<Bitmap> then) {
         if (raw == null || raw.isEmpty()) return;
         String uri = sharper(raw);
         Bitmap hit = posters.get(uri);
-        if (hit != null) { into.setImageBitmap(hit); return; }
+        if (hit != null) { into.setImageBitmap(hit); if (then != null) then.accept(hit); return; }
         into.setTag(uri);
         int target = cardWidth();
         images.execute(() -> {
-            Bitmap bmp = fetch(uri, target);
-            if (bmp == null) return;
+            // YouTube's usual thumbnail is 4:3 with the video letterboxed in it: its widescreen one first.
+            Bitmap bmp = null;
+            java.util.regex.Matcher yt = java.util.regex.Pattern.compile("(https://i\\d?\\.ytimg\\.com/vi(?:_webp)?/[^/]+/)[a-z0-9_]+\\.(?:jpg|webp)").matcher(uri);
+            if (yt.lookingAt()) bmp = fetch(yt.group(1) + "maxresdefault.jpg", target);
+            if (bmp == null) bmp = fetch(uri, target);
+            bmp = unletterbox(bmp);
+            final Bitmap shown = bmp;
+            if (shown == null) return;
             main.post(() -> {
-                posters.put(uri, bmp);
+                posters.put(uri, shown);
                 if (uri.equals(into.getTag())) {
-                    into.setImageBitmap(bmp);
+                    into.setImageBitmap(shown);
+                    if (then != null) then.accept(shown);
                     into.setAlpha(0f);
                     into.animate().alpha(1f).setDuration(200).start();
                 }
             });
         });
+    }
+
+    /**
+     * A picture with black bars baked in above and below (a 4:3 thumbnail of a widescreen video) cut to what is
+     * between them, so it fills the card; any other picture as it is.
+     */
+    private static Bitmap unletterbox(Bitmap b) {
+        if (b == null || b.getHeight() < 40 || b.getWidth() < b.getHeight()) return b;
+        int w = b.getWidth(), h = b.getHeight();
+        int top = 0, bottom = h - 1;
+        while (top < h / 4 && dark(b, top, w)) top++;
+        while (bottom > h * 3 / 4 && dark(b, bottom, w)) bottom--;
+        int cut = bottom - top + 1;
+        // Bars at both ends, as a letterbox has; a dark sky or floor on its own stays.
+        if (top < h / 20 || h - 1 - bottom < h / 20 || cut < h / 2) return b;
+        return Bitmap.createBitmap(b, 0, top, w, cut);
+    }
+
+    /** A row that is all but black: a few points along it, none brighter than a dim grey. */
+    private static boolean dark(Bitmap b, int y, int w) {
+        for (int i = 1; i < 16; i++) {
+            int c = b.getPixel(w * i / 16, y);
+            if (((c >> 16) & 0xFF) + ((c >> 8) & 0xFF) + (c & 0xFF) > 60) return false;
+        }
+        return true;
     }
 
     private Bitmap fetch(String uri, int targetWidth) {

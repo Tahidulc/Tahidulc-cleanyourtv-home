@@ -24,7 +24,7 @@ final class Trending {
         String title, season, genre, year, summary;
         /** Its page on the store, and what that page's badges say: "4K" or "HD", Dolby Vision, HDR, Atmos, age, RT. */
         String link, quality, age, tomatoes, stars;
-        boolean dolbyVision, hdr, atmos, rotten;
+        boolean dolbyVision, hdr, hdr10plus, atmos, rotten, certified;
         /** The image without its size: add "/{w}x{h}bb.jpg" for the whole picture, "/{w}x{h}sr.jpg" for a crop. */
         String art;
 
@@ -93,10 +93,10 @@ final class Trending {
     /**
      * Each title's badges from its Apple TV page (the store link redirects there): the first run of MetadataBadge
      * entries on it is the title's own, as the page shows under its name. Read four at a time at background priority,
-     * and kept a day in the "trend_badges_v2" preferences, so a refresh reads only titles new to the chart.
+     * and kept a day in the "trend_badges_v3" preferences, so a refresh reads only titles new to the chart.
      */
     static void badges(android.content.Context c, List<Title> titles) {
-        android.content.SharedPreferences prefs = c.getSharedPreferences("trend_badges_v2", android.content.Context.MODE_PRIVATE);
+        android.content.SharedPreferences prefs = c.getSharedPreferences("trend_badges_v3", android.content.Context.MODE_PRIVATE);
         java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(4, r -> new Thread(() -> {
             android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND);
             r.run();
@@ -108,14 +108,23 @@ final class Trending {
             if (kept != null) {
                 int bar = kept.indexOf('|');
                 long at = bar > 0 ? Long.parseLong(kept.substring(0, bar)) : 0;
-                if (System.currentTimeMillis() - at < BADGES_MS) { apply(t, kept.substring(bar + 1)); continue; }
+                if (System.currentTimeMillis() - at < BADGES_MS) {
+                    apply(t, kept.substring(bar + 1));
+                    if (t.summary.isEmpty()) t.summary = prefs.getString("about:" + t.link, "");
+                    continue;
+                }
             }
             jobs.add(() -> {
                 String found = read(t.link);
                 // A series' rating from TVmaze (its viewers' average out of ten), as Apple shows none for TV.
+                // Its synopsis too: Apple's TV chart has none.
                 if (t.tv) {
-                    String stars = tvmaze(t.title);
-                    if (stars != null) found = (found == null ? "" : found) + "tvmaze=" + stars + ";";
+                    String[] show = tvmaze(t.title);
+                    if (show != null && show[0] != null) found = (found == null ? "" : found) + "tvmaze=" + show[0] + ";";
+                    if (show != null && !show[1].isEmpty()) {
+                        if (t.summary.isEmpty()) t.summary = show[1];
+                        prefs.edit().putString("about:" + t.link, show[1]).apply();
+                    }
                 }
                 if (found != null && !found.isEmpty()) {
                     prefs.edit().putString(t.link, System.currentTimeMillis() + "|" + found).apply();
@@ -149,16 +158,20 @@ final class Trending {
                 else if (text.isEmpty()) text = f.group(2);
             }
             if (b.group().contains("\"rotten\"")) text += "!";
+            if (b.group().contains("\"certifiedfresh\"")) text += "*";
             out.append(type).append('=').append(text).append(';');
         }
         return out.toString();
     }
 
-    private static String tvmaze(String title) {
+    /** {rating out of ten or null, synopsis as plain text} for a series, from TVmaze; null when not found. */
+    private static String[] tvmaze(String title) {
         try {
             JSONObject show = new JSONObject(get("https://api.tvmaze.com/singlesearch/shows?q=" + java.net.URLEncoder.encode(title, "UTF-8")));
             double avg = show.optJSONObject("rating") == null ? 0 : show.getJSONObject("rating").optDouble("average", 0);
-            return avg > 0 ? String.format(java.util.Locale.ROOT, "%.1f", avg) : null;
+            String about = show.isNull("summary") ? "" : android.text.Html.fromHtml(show.optString("summary", ""),
+                    android.text.Html.FROM_HTML_MODE_COMPACT).toString().trim();
+            return new String[]{avg > 0 ? String.format(java.util.Locale.ROOT, "%.1f", avg) : null, about};
         } catch (Exception e) {
             return null;
         }
@@ -173,14 +186,16 @@ final class Trending {
                 case "4k": t.quality = "4K"; break;
                 case "hd": if (t.quality == null) t.quality = "HD"; break;
                 case "dolby-vision": t.dolbyVision = true; break;
-                case "hdr": case "hdr10": case "hdr10-plus": t.hdr = true; break;
+                case "hdr": case "hdr10": t.hdr = true; break;
+                case "hdr10-plus": t.hdr10plus = true; break;
                 case "dolby-atmos": t.atmos = true; break;
                 case "rating": if (t.age == null && !text.isEmpty()) t.age = text; break;
                 case "tvmaze": t.stars = text; break;
                 case "rotten-tomatoes":
                     if (t.tomatoes == null && !text.isEmpty()) {
-                        t.rotten = text.endsWith("!");
-                        t.tomatoes = text.replace("!", "");
+                        t.rotten = text.contains("!");
+                        t.certified = text.contains("*");
+                        t.tomatoes = text.replace("!", "").replace("*", "");
                     }
                     break;
                 default: break;
