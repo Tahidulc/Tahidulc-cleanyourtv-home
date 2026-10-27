@@ -46,7 +46,75 @@ final class Trending {
         final String name;
         final boolean tv, netflix;
         final int genre;
+        /** Debrid Stream's own Continue Watching, as AppSearchService last copied it. */
+        boolean resume;
         Category(String name, boolean tv, boolean netflix, int genre) { this.name = name; this.tv = tv; this.netflix = netflix; this.genre = genre; }
+    }
+
+    /** The Continue Watching tab, when Debrid Stream's row has been copied in the last fortnight. */
+    static Category resumeCategory(android.content.Context c) {
+        android.content.SharedPreferences p = c.getSharedPreferences(AppSearchService.CONTINUE, android.content.Context.MODE_PRIVATE);
+        if (System.currentTimeMillis() - p.getLong("at", 0) > 14L * 24 * 60 * 60_000L) return null;
+        Category cat = new Category("Continue Watching", false, false, 0);
+        cat.resume = true;
+        return cat;
+    }
+
+    /**
+     * The copied Continue Watching titles with artwork: each looked up in the store as a film, then as a series (its
+     * poster or season artwork), and the answer kept, so the row draws from memory after the first time.
+     */
+    static List<Title> resume(android.content.Context c, String country) {
+        List<Title> out = new ArrayList<>();
+        android.content.SharedPreferences p = c.getSharedPreferences(AppSearchService.CONTINUE, android.content.Context.MODE_PRIVATE);
+        try {
+            JSONArray titles = new JSONArray(p.getString("titles", "[]"));
+            for (int i = 0; i < titles.length(); i++) {
+                String name = titles.getString(i);
+                Title t = new Title();
+                t.title = name;
+                t.rank = 0;
+                t.genre = "";
+                t.year = "";
+                t.summary = "";
+                String art = p.getString("art:" + name, null);
+                if (art == null) {
+                    String[] found = artwork(name, country);
+                    art = found == null ? "" : found[0] + "|" + found[1];
+                    p.edit().putString("art:" + name, art).apply();
+                }
+                if (!art.isEmpty()) {
+                    String[] a = art.split("\\|", 2);
+                    t.art = a[0];
+                    t.tv = a.length > 1 && "tv".equals(a[1]);
+                }
+                if (t.art != null) out.add(t);
+            }
+        } catch (Exception ignored) {
+        }
+        return out;
+    }
+
+    /** {artwork without its size, "film" or "tv"} for a name from the iTunes Search API, or null. */
+    private static String[] artwork(String name, String country) {
+        String[][] tries = {{"movie&entity=movie", "film", "trackName"}, {"tvShow&entity=tvSeason", "tv", "collectionName"}};
+        String want = name.toLowerCase(java.util.Locale.ROOT);
+        for (String[] k : tries) {
+            try {
+                JSONArray results = new JSONObject(get("https://itunes.apple.com/search?country=" + country + "&limit=5&media=" + k[0]
+                        + "&term=" + java.net.URLEncoder.encode(name, "UTF-8"))).optJSONArray("results");
+                for (int i = 0; results != null && i < results.length(); i++) {
+                    JSONObject r = results.getJSONObject(i);
+                    String img = r.optString("artworkUrl100", "");
+                    Matcher m = SIZE.matcher(img);
+                    if (r.optString(k[2]).toLowerCase(java.util.Locale.ROOT).startsWith(want) && m.find()) {
+                        return new String[]{img.substring(0, m.start()), k[1]};
+                    }
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        return null;
     }
 
     /** The rows, in the order the tabs show them: the two top tens, Netflix's two, then genres of films and of TV. */

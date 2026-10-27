@@ -707,6 +707,19 @@ final class WatchRows {
     /** The row on show, read when stale (and shown when it arrives), with its tabs; the news after the first row. */
     private boolean showTrending() {
         if (!trendingRow()) return false;
+        // Debrid Stream's Continue Watching, as the first tab, once the helper has copied it.
+        boolean has = !cats.isEmpty() && cats.get(0).resume;
+        Trending.Category resume = Trending.resumeCategory(context);
+        if (resume != null && !has) {
+            cats.add(0, resume);
+            catLists.clear();
+            catAt.clear();
+            tabs.removeAllViews();
+            catIndex = 0;
+        } else if (has) {
+            // Read again each time: Debrid Stream may have moved on since.
+            catAt.remove(0);
+        }
         refreshNews();
         load(catIndex);
         fillTrending();
@@ -721,7 +734,7 @@ final class WatchRows {
         Trending.Category c = cats.get(i);
         String country = context.getString(R.string.trending_country), netflix = context.getString(R.string.trending_netflix_country);
         reader.execute(() -> {
-            List<Trending.Title> fresh = Trending.read(country, netflix, c, 10);
+            List<Trending.Title> fresh = c.resume ? Trending.resume(context, country) : Trending.read(country, netflix, c, 10);
             main.post(() -> {
                 if (fresh.isEmpty()) { catAt.remove(i); return; }
                 catLists.put(i, fresh);
@@ -738,7 +751,8 @@ final class WatchRows {
         stopTrailer();
         strip.removeAllViews();
         List<Trending.Title> row = catLists.containsKey(catIndex) ? catLists.get(catIndex) : new ArrayList<>();
-        List<String[]> after = catIndex == 0 ? news : new ArrayList<>();
+        int firstChart = !cats.isEmpty() && cats.get(0).resume ? 1 : 0;
+        List<String[]> after = catIndex == firstChart ? news : new ArrayList<>();
         int count = row.size() + after.size();
         for (int i = 0; i < row.size(); i++) strip.addView(trendCard(row.get(i), i, count));
         for (int i = 0; i < after.size(); i++) strip.addView(newsCard(after.get(i), row.size() + i, count));
@@ -950,7 +964,7 @@ final class WatchRows {
 
         // Top: "#1 Today" on the left, the Dolby mark and the picture's quality on the right.
         TextView rank = new TextView(context);
-        rank.setText("#" + t.rank + " Today");
+        rank.setText(t.rank > 0 ? "#" + t.rank + " Today" : "▶  Continue");
         rank.setTextColor(Color.WHITE);
         rank.setTextSize(TypedValue.COMPLEX_UNIT_SP, 9f);
         rank.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
