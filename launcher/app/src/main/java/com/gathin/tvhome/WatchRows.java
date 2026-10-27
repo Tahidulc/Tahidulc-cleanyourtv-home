@@ -169,6 +169,8 @@ final class WatchRows {
         }
         shownPackage = packageName;
         label = appLabel;
+        // Another app's row starts from its first card.
+        scroller.scrollTo(0, 0);
         int gen = ++generation;
         Long at = cachedAt.get(packageName);
         if (at != null && System.currentTimeMillis() - at < CACHE_MS) {
@@ -292,10 +294,43 @@ final class WatchRows {
 
     // ---- cards -----------------------------------------------------------------------------------
 
-    /** Card size in px, 16:9; fit() grows it to fill the space between the header and the dock. */
+    /**
+     * Card size in px. A card stands as a 2:3 poster and widens to 16:9 while it has focus, the way Netflix's rows do;
+     * fit() sizes the height to the space between the header and the dock, up to MAX_CARD_DP.
+     */
     private int cardH = -1;
+    private static final int MAX_CARD_DP = 240;
+    private static final long WIDEN_MS = 220L;
     private int cardWidth() { return Math.round(cardHeight() * 16f / 9f); }
+    private int posterWidth() { return Math.round(cardHeight() * 2f / 3f); }
     private int cardHeight() { return cardH > 0 ? cardH : dp(135); }
+    /** What a card changes between its poster and its wide look, beyond its width (wide true or false). */
+    private final java.util.WeakHashMap<View, java.util.function.Consumer<Boolean>> wideLooks = new java.util.WeakHashMap<>();
+
+    /** Focus: the card grows a little and widens from poster to 16:9; it narrows again when focus moves on. */
+    private void focusLook(View v, boolean focused, GradientDrawable ring) {
+        v.animate().scaleX(focused ? FOCUS_SCALE : 1f).scaleY(focused ? FOCUS_SCALE : 1f).setDuration(160).start();
+        v.setForeground(focused ? ring : null);
+        v.setElevation(focused ? dp(6) : 0);
+        java.util.function.Consumer<Boolean> look = wideLooks.get(v);
+        if (look != null && focused) look.accept(true);
+        ViewGroup.LayoutParams lp = v.getLayoutParams();
+        android.animation.ValueAnimator widen = android.animation.ValueAnimator.ofInt(lp.width, focused ? cardWidth() : posterWidth());
+        widen.setDuration(WIDEN_MS);
+        widen.setInterpolator(new android.view.animation.DecelerateInterpolator(1.4f));
+        widen.addUpdateListener(a -> { lp.width = (int) a.getAnimatedValue(); v.requestLayout(); });
+        widen.addListener(new android.animation.AnimatorListenerAdapter() {
+            @Override public void onAnimationEnd(android.animation.Animator a) {
+                if (look != null && !focused) look.accept(false);
+                // Wider now: keep all of it on screen.
+                if (focused) {
+                    int right = v.getRight() + dp(EDGE) * 2 - scroller.getScrollX();
+                    if (right > scroller.getWidth()) scroller.smoothScrollBy(right - scroller.getWidth(), 0);
+                }
+            }
+        });
+        widen.start();
+    }
 
     /**
      * Sizes the cards to fill from {@code top} (just under the header) to {@code bottom} (just above the dock),
@@ -303,7 +338,7 @@ final class WatchRows {
      */
     float fit(float top, float bottom) {
         int chrome = height() - cardHeight();
-        int h = Math.max(dp(110), Math.round(bottom - top) - chrome);
+        int h = Math.max(dp(110), Math.min(dp(MAX_CARD_DP), Math.round(bottom - top) - chrome));
         if (h != cardH) {
             cardH = h;
             if (shownPackage != null && cache.containsKey(shownPackage)) fill(cache.get(shownPackage));
@@ -402,7 +437,7 @@ final class WatchRows {
         ring.setColor(Color.TRANSPARENT);
         ring.setCornerRadius(dp(10));
         ring.setStroke(dp(3), Color.WHITE);
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(cardWidth(), cardHeight());
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(posterWidth(), cardHeight());
         lp.rightMargin = dp(14);
         card.setLayoutParams(lp);
         boolean f1 = g.drivers != null || g.text != null;
@@ -464,10 +499,14 @@ final class WatchRows {
             mid.addView(a, new LinearLayout.LayoutParams(crest, crest));
         }
         card.addView(mid, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.CENTER));
+        mid.setOrientation(LinearLayout.VERTICAL);
+        clp.leftMargin = clp.rightMargin = 0;
+        clp.topMargin = clp.bottomMargin = dp(f1 ? 0 : 6);
         // Bottom: the teams and when.
         TextView foot = new TextView(context);
         String when = g.state == 0 ? "●  LIVE  " + g.detail : whenText(g);
-        foot.setText(f1 ? when : g.home + "  v  " + g.away + "     " + when);
+        String teams = g.home + "  v  " + g.away;
+        foot.setText(f1 ? when : teams + "\n" + when);
         foot.setTextColor(g.state == 0 ? 0xFF4ADE80 : 0xE6FFFFFF);
         foot.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f);
         foot.setTypeface(context.getResources().getFont(R.font.outfit_medium));
@@ -500,12 +539,20 @@ final class WatchRows {
             onlp.rightMargin = dp(16);
             onlp.bottomMargin = dp(14);
             card.addView(on, onlp);
+            on.setAlpha(0f);
         }
-        card.setOnFocusChangeListener((v, focused) -> {
-            v.animate().scaleX(focused ? FOCUS_SCALE : 1f).scaleY(focused ? FOCUS_SCALE : 1f).setDuration(160).start();
-            v.setForeground(focused ? ring : null);
-            v.setElevation(focused ? dp(6) : 0);
+        final View channel = tv != null ? card.getChildAt(card.getChildCount() - 1) : null;
+        final boolean f1Card = f1;
+        // As a poster: the crests stacked over the score, the teams over the time. Wide: side by side, the channel too.
+        wideLooks.put(card, wide -> {
+            mid.setOrientation(wide ? LinearLayout.HORIZONTAL : LinearLayout.VERTICAL);
+            clp.leftMargin = clp.rightMargin = wide && !f1Card ? dp(24) : 0;
+            clp.topMargin = clp.bottomMargin = wide || f1Card ? 0 : dp(6);
+            c.setLayoutParams(clp);
+            if (!f1Card) foot.setText(teams + (wide ? "     " : "\n") + when);
+            if (channel != null) channel.animate().alpha(wide ? 1f : 0f).setDuration(WIDEN_MS).start();
         });
+        card.setOnFocusChangeListener((v, focused) -> focusLook(v, focused, ring));
         card.setOnClickListener(v -> host.onResumeApp());
         card.setOnKeyListener((v, keyCode, event) -> {
             if (event.getAction() != KeyEvent.ACTION_DOWN) return false;
@@ -617,31 +664,35 @@ final class WatchRows {
         FrameLayout card = (FrameLayout) card(item, index, count);
         ImageView image = (ImageView) card.getChildAt(0);
         int w = cardWidth(), h = cardHeight();
-        loadPoster(t.crop(w, h), image);
+        if (t.tv) loadPoster(t.crop(w, h), image);
+        else loadPoster(t.poster(posterWidth(), h), image);
         if (!t.tv) {
-            // The crop of a poster is only a backdrop: dimmed, the whole poster beside the words.
-            image.setAlpha(0.4f);
+            // As a poster card, the poster itself. Wide, it turns into a dimmed backdrop with the whole poster beside
+            // the words and the synopsis.
             View side = new View(context);
             side.setBackground(new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
-                    new int[]{0xF2000000, 0xB3000000, 0x33000000}));
+                    new int[]{0xF7000000, 0xCC000000, 0x80000000}));
             card.addView(side, 1, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
             int ph = h - dp(28), pw = Math.round(ph * 2f / 3f);
-            ImageView poster = new ImageView(context);
-            poster.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            // In a box of its own: the image's fade-in as it loads must not show it while the card is a poster.
+            FrameLayout poster = new FrameLayout(context);
             poster.setClipToOutline(true);
             GradientDrawable round = new GradientDrawable();
             round.setColor(0xFF1C1C22);
             round.setCornerRadius(dp(8));
             poster.setBackground(round);
-            loadPoster(t.poster(pw, ph), poster);
+            ImageView posterArt = new ImageView(context);
+            posterArt.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            loadPoster(t.poster(posterWidth(), h), posterArt);
+            poster.addView(posterArt, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
             FrameLayout.LayoutParams plp = new FrameLayout.LayoutParams(pw, ph, Gravity.END | Gravity.CENTER_VERTICAL);
             plp.rightMargin = dp(14);
             card.addView(poster, plp);
-            // The words keep clear of the poster.
             View text = card.getChildAt(card.getChildCount() - 2);
-            text.setPadding(text.getPaddingLeft(), 0, pw + dp(28), text.getPaddingBottom());
+            int textPad = text.getPaddingLeft();
+            TextView about = null;
             if (!t.summary.isEmpty() && h > dp(150)) {
-                TextView about = new TextView(context);
+                about = new TextView(context);
                 about.setText(t.summary);
                 about.setTextColor(0xB3FFFFFF);
                 about.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f);
@@ -655,6 +706,14 @@ final class WatchRows {
                 alp.topMargin = dp(56);
                 card.addView(about, alp);
             }
+            final View aboutView = about;
+            final View[] wideOnly = {side, poster, aboutView};
+            for (View x : wideOnly) if (x != null) x.setAlpha(0f);
+            wideLooks.put(card, wide -> {
+                for (View x : wideOnly) if (x != null) x.animate().alpha(wide ? 1f : 0f).setDuration(WIDEN_MS).start();
+                // The words keep clear of the poster.
+                text.setPadding(textPad, 0, wide ? pw + dp(28) : textPad, text.getPaddingBottom());
+            });
         } else {
             View topShade = new View(context);
             topShade.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0x99000000, 0x00000000}));
@@ -760,7 +819,7 @@ final class WatchRows {
         ring.setColor(Color.TRANSPARENT);
         ring.setCornerRadius(dp(10));
         ring.setStroke(dp(3), Color.WHITE);
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(cardWidth(), cardHeight());
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(posterWidth(), cardHeight());
         lp.rightMargin = dp(14);
         card.setLayoutParams(lp);
 
@@ -787,7 +846,7 @@ final class WatchRows {
         title.setTextSize(TypedValue.COMPLEX_UNIT_SP, big ? 19f : 14f);
         title.setTypeface(context.getResources().getFont(R.font.outfit_medium));
         title.setLetterSpacing(-0.01f);
-        if (NewsPanel.isTag(item.subtitle)) title.setMaxLines(2); else title.setSingleLine(true);
+        title.setMaxLines(2);
         title.setEllipsize(android.text.TextUtils.TruncateAt.END);
         title.setShadowLayer(dp(6), 0, dp(1), 0x99000000);
         text.addView(title);
@@ -811,7 +870,6 @@ final class WatchRows {
         }
         if (item.progress >= 0) {
             // A slim rounded pill: a frosted track with a white fill that has round ends too.
-            int trackW = cardWidth() - 2 * p;
             FrameLayout track = new FrameLayout(context);
             GradientDrawable trackBg = new GradientDrawable();
             trackBg.setColor(0x40FFFFFF);
@@ -822,20 +880,19 @@ final class WatchRows {
             fillBg.setColor(Color.WHITE);
             fillBg.setCornerRadius(dp(3));
             fill.setBackground(fillBg);
-            track.addView(fill, new FrameLayout.LayoutParams(Math.max(dp(6), Math.round(trackW * item.progress)),
-                    ViewGroup.LayoutParams.MATCH_PARENT));
-            LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(trackW, dp(5));
+            // The fill is a share of the track, whatever width the card has.
+            LinearLayout bar = new LinearLayout(context);
+            bar.addView(fill, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, Math.max(0.02f, item.progress)));
+            bar.addView(new View(context), new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, Math.max(0f, 1f - item.progress)));
+            track.addView(bar, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+            LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(5));
             tlp.topMargin = dp(10);
             text.addView(track, tlp);
         }
         card.addView(text, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM));
 
-        card.setOnFocusChangeListener((v, focused) -> {
-            v.animate().scaleX(focused ? FOCUS_SCALE : 1f).scaleY(focused ? FOCUS_SCALE : 1f).setDuration(160).start();
-            v.setForeground(focused ? ring : null);
-            v.setElevation(focused ? dp(6) : 0);
-        });
+        card.setOnFocusChangeListener((v, focused) -> focusLook(v, focused, ring));
         card.setOnClickListener(v -> {
             if (item.art != null) host.onResumeApp();
             else open(item);
