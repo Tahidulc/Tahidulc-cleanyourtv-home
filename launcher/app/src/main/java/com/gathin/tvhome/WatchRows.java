@@ -669,7 +669,7 @@ final class WatchRows {
 
     /**
      * One title, BetterPosters style: the poster with "#1 Today" top-left, the Dolby mark and 4K or 1080p top-right,
-     * and its genre and rating at the foot over a fade in the poster's own colour; its name and year underneath.
+     * and its genre at the foot over a fade in the poster's own colour; its name and year underneath.
      * Wide, the poster widens to 16:9: a film shows its whole poster on the right over a dimmed crop of itself, a series
      * its picture, both with the synopsis on the left. OK opens Debrid Stream on its search for the title.
      */
@@ -752,25 +752,10 @@ final class WatchRows {
         for (View x : wideOnly) x.setAlpha(0f);
         looks.add(wide -> { for (View x : wideOnly) x.animate().alpha(wide ? 1f : 0f).setDuration(WIDEN_MS).start(); });
 
-        // Foot of the poster: "Horror • ★ 8.2" (a film's Rotten Tomatoes tomato and score), centred, one line; wide,
-        // it moves left under the synopsis. The first of a double genre ("Action & Adventure") keeps it short.
+        // Foot of the poster: just the genre, centred; wide, it moves left under the synopsis. The first of a double
+        // genre ("Action & Adventure") keeps it short.
         TextView line = score("", 0xD9FFFFFF);
-        String genre = t.genre.split(" & | / ")[0];
-        android.text.SpannableStringBuilder foot2 = new android.text.SpannableStringBuilder(genre);
-        if (t.tomatoes != null) {
-            foot2.append("  •  ");
-            int at = foot2.length();
-            foot2.append("T ").append(t.tomatoes);
-            android.graphics.drawable.Drawable tomato = context.getDrawable(t.rotten ? R.drawable.badge_rt_rotten
-                    : t.certified ? R.drawable.badge_rt_certified : R.drawable.badge_rt_fresh);
-            if (tomato != null) {
-                tomato.setBounds(0, 0, dp(12), dp(12));
-                foot2.setSpan(new android.text.style.ImageSpan(tomato, android.text.style.DynamicDrawableSpan.ALIGN_CENTER),
-                        at, at + 1, 0);
-            }
-        } else if (t.stars != null) {
-            foot2.append("  •  ★ ").append(t.stars);
-        }
+        String foot2 = t.genre.split(" & | / ")[0];
         line.setText(foot2);
         line.setGravity(Gravity.CENTER);
         line.setSingleLine(true);
@@ -823,7 +808,7 @@ final class WatchRows {
         nlp.leftMargin = dp(2);
         tile.addView(name, nlp);
         TextView year = new TextView(context);
-        year.setText(t.year + (t.season != null ? "  ·  " + t.season : "") + (t.age != null ? "  ·  " + t.age : ""));
+        year.setText(t.year + (t.season != null ? "  ·  " + t.season : ""));
         year.setTextColor(0x99FFFFFF);
         year.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f);
         year.setTypeface(context.getResources().getFont(R.font.outfit_regular));
