@@ -61,7 +61,7 @@ final class DeliveryCard {
     /** The code a phone asks to pair with, large, until it is typed in: "📱 Pair HONOR  ·  CODE 9 7 9 6". */
     static Card pairing(Context c, String phone, String code, Drawable glass) {
         float d = c.getResources().getDisplayMetrics().density;
-        LinearLayout card = new LinearLayout(c);
+        LinearLayout card = new RevealBox(c);
         card.setOrientation(LinearLayout.HORIZONTAL);
         card.setGravity(Gravity.CENTER_VERTICAL);
         card.setBackground(glass);
@@ -482,7 +482,7 @@ final class DeliveryCard {
 
     /** A card the shape of the alerts' pills: a rounded glass line, its parts centred. */
     private static LinearLayout pill(Context c, float d, Drawable glass) {
-        LinearLayout card = new LinearLayout(c);
+        LinearLayout card = new RevealBox(c);   // opens and closes as the goal alerts do
         card.setOrientation(LinearLayout.HORIZONTAL);
         card.setGravity(Gravity.CENTER_VERTICAL);
         card.setBackground(glass);

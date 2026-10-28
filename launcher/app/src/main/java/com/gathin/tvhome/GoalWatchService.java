@@ -188,13 +188,16 @@ public class GoalWatchService extends Service {
         shown = panel;
         play(sound);
         Runnable[] closing = new Runnable[1];
+        LinearLayout box = (LinearLayout) panel;
+        final float[] visible = {Float.MAX_VALUE};
         Runnable close = () -> {
             main.removeCallbacks(closing[0]);
             if (pairingClose == closing[0]) pairingClose = null;
             if (shown != panel) return;
-            if (calm()) { removeHost(); return; }
-            panel.setLayerType(animLayer(), null);
-            panel.animate().alpha(0f).translationY(10 * d).setDuration(450).withEndAction(this::removeHost).start();
+            // Closed as a goal alert closes: the words fade, the pill draws back to a dot, the dot goes.
+            visible[0] = box.getWidth();
+            outline(box, box.getHeight(), visible);
+            closePill(box, box.getHeight(), visible);
         };
         closing[0] = close;
         if (card.pairing) pairingClose = close;
@@ -203,31 +206,42 @@ public class GoalWatchService extends Service {
             main.postDelayed(close, card.showMs);
             return;
         }
-        if (lite()) {
-            // Lightly over a playing app: the card, drawn once, rises and fades in; its reveal shows at once.
-            panel.setAlpha(0f);
-            panel.setTranslationY(14 * d);
-            panel.post(() -> {
-                panel.setLayerType(View.LAYER_TYPE_SOFTWARE, null);
-                panel.animate().alpha(1f).translationY(0f).setDuration(300)
-                        .setInterpolator(new android.view.animation.DecelerateInterpolator(1.6f))
-                        .withEndAction(() -> { panel.setLayerType(View.LAYER_TYPE_NONE, null);
-                            card.reveal.accept(stillOnly() ? DeliveryCard.STILL : DeliveryCard.CALM); }).start();
-            });
-            main.postDelayed(close, card.showMs);
-            return;
-        }
-        panel.setAlpha(0f);
-        panel.setScaleX(0.92f);
-        panel.setScaleY(0.92f);
-        panel.setTranslationY(18 * d);
-        panel.post(() -> {
-            panel.setPivotX(0);
-            panel.setPivotY(panel.getHeight());
-            panel.setLayerType(animLayer(), null);
-            panel.animate().alpha(1f).scaleX(1f).scaleY(1f).translationY(0f).setDuration(520)
-                    .setInterpolator(new android.view.animation.OvershootInterpolator(1.4f))
-                    .withEndAction(() -> { panel.setLayerType(View.LAYER_TYPE_NONE, null); card.reveal.accept(DeliveryCard.MOVE); }).start();
+        // Opened as a goal alert opens: a glass dot pops in at the corner, the pill stretches out to the right with
+        // its round ends kept, then the words fade in, and the card's own reveal (its bar filling) plays.
+        for (int c = 0; c < box.getChildCount(); c++) box.getChildAt(c).setAlpha(0f);
+        box.setAlpha(0f);
+        box.setScaleX(0.3f);
+        box.setScaleY(0.3f);
+        box.post(() -> {
+            int h = box.getHeight();
+            visible[0] = h;
+            outline(box, h, visible);
+            box.setPivotX(h / 2f);
+            box.setPivotY(h / 2f);
+            box.setLayerType(animLayer(), null);
+            box.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(280)
+                    .setInterpolator(new android.view.animation.OvershootInterpolator(2f)).withEndAction(() -> {
+                ((RevealBox) box).setFrozen(true);
+                android.animation.ValueAnimator grow = android.animation.ValueAnimator.ofFloat(h, box.getWidth());
+                grow.setDuration(850);
+                grow.setInterpolator(new android.view.animation.DecelerateInterpolator(1.6f));
+                grow.addUpdateListener(a -> { visible[0] = (float) a.getAnimatedValue(); box.invalidateOutline(); box.invalidate(); });
+                grow.addListener(new android.animation.AnimatorListenerAdapter() {
+                    @Override public void onAnimationEnd(android.animation.Animator a) {
+                        ((RevealBox) box).setFrozen(false);
+                        visible[0] = Float.MAX_VALUE;
+                        box.invalidateOutline();
+                        for (int c = 0; c < box.getChildCount(); c++) {
+                            box.getChildAt(c).animate().alpha(1f).setDuration(300).setStartDelay(c * 40L).start();
+                        }
+                        box.postDelayed(() -> {
+                            box.setLayerType(View.LAYER_TYPE_NONE, null);
+                            card.reveal.accept(DeliveryCard.MOVE);
+                        }, 450);
+                    }
+                });
+                grow.start();
+            }).start();
         });
         main.postDelayed(close, card.showMs);
     }
@@ -1398,6 +1412,7 @@ public class GoalWatchService extends Service {
         // (an animated rounded outline, clipped in hardware), and only then does the text fade in.
         final float radius = h / 2f;
         final float[] visible = {h};
+        ((RevealBox) box).visible = visible;
         box.setOutlineProvider(new android.view.ViewOutlineProvider() {
             @Override public void getOutline(View v, android.graphics.Outline o) {
                 // Anchored at the left: the pill grows out to the right from the dot.
@@ -1409,17 +1424,6 @@ public class GoalWatchService extends Service {
         if (calm()) {
             // Over a playing app: no animation at all (see calm()), the pill is simply there.
             visible[0] = Float.MAX_VALUE;
-        } else if (lite()) {
-            // Over a playing app, lightly: the finished pill, drawn once, rises and fades in.
-            visible[0] = Float.MAX_VALUE;
-            box.setAlpha(0f);
-            box.setTranslationY(h * 0.6f);
-            box.post(() -> {
-                box.setLayerType(View.LAYER_TYPE_SOFTWARE, null);
-                box.animate().alpha(1f).translationY(0f).setDuration(280)
-                        .setInterpolator(new android.view.animation.DecelerateInterpolator(1.6f))
-                        .withEndAction(() -> box.setLayerType(View.LAYER_TYPE_NONE, null)).start();
-            });
         } else {
         for (int c = 0; c < box.getChildCount(); c++) box.getChildAt(c).setAlpha(0f);
         box.setAlpha(0f);
@@ -1431,12 +1435,14 @@ public class GoalWatchService extends Service {
             box.setLayerType(animLayer(), null);
             box.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(280)
                     .setInterpolator(new android.view.animation.OvershootInterpolator(2f)).withEndAction(() -> {
+                ((RevealBox) box).setFrozen(true);
                 android.animation.ValueAnimator grow = android.animation.ValueAnimator.ofFloat(h, box.getWidth());
                 grow.setDuration(850);
                 grow.setInterpolator(new android.view.animation.DecelerateInterpolator(1.6f));
-                grow.addUpdateListener(a -> { visible[0] = (float) a.getAnimatedValue(); box.invalidateOutline(); });
+                grow.addUpdateListener(a -> { visible[0] = (float) a.getAnimatedValue(); box.invalidateOutline(); box.invalidate(); });
                 grow.addListener(new android.animation.AnimatorListenerAdapter() {
                     @Override public void onAnimationEnd(android.animation.Animator a) {
+                        ((RevealBox) box).setFrozen(false);
                         for (int c = 0; c < box.getChildCount(); c++) {
                             box.getChildAt(c).animate().alpha(1f).setDuration(300).setStartDelay(c * 40L).start();
                         }
@@ -1739,6 +1745,7 @@ public class GoalWatchService extends Service {
 
     private void outline(LinearLayout box, int h, float[] visible) {
         final float radius = h / 2f;
+        if (box instanceof RevealBox) ((RevealBox) box).visible = visible;
         box.setOutlineProvider(new android.view.ViewOutlineProvider() {
             @Override public void getOutline(View v, android.graphics.Outline o) {
                 o.setRoundRect(0, 0, Math.min(v.getWidth(), Math.round(visible[0])), v.getHeight(), radius);
@@ -1756,21 +1763,18 @@ public class GoalWatchService extends Service {
             removeHost();
             return;
         }
-        if (lite()) {
-            box.setLayerType(View.LAYER_TYPE_SOFTWARE, null);
-            box.animate().alpha(0f).translationY(h * 0.4f).setDuration(220).withEndAction(this::removeHost).start();
-            return;
-        }
         {
             box.setLayerType(animLayer(), null);
             for (int c = 0; c < box.getChildCount(); c++) {
-                box.getChildAt(c).animate().alpha(0f).setStartDelay(0).setDuration(600).start();
+                box.getChildAt(c).animate().alpha(0f).setStartDelay(0).setDuration(lite() ? 300 : 600).start();
             }
-            box.post(() -> {
+            // Drawn by the CPU, the words fade first and the pill then draws back as one picture, not redrawn each frame.
+            box.postDelayed(() -> {
+                if (lite() && box instanceof RevealBox) ((RevealBox) box).setFrozen(true);
                 android.animation.ValueAnimator shrink = android.animation.ValueAnimator.ofFloat(visible[0], h);
                 shrink.setDuration(700);
                 shrink.setInterpolator(new android.view.animation.AccelerateDecelerateInterpolator());
-                shrink.addUpdateListener(a -> { visible[0] = (float) a.getAnimatedValue(); box.invalidateOutline(); });
+                shrink.addUpdateListener(a -> { visible[0] = (float) a.getAnimatedValue(); box.invalidateOutline(); box.invalidate(); });
                 shrink.addListener(new android.animation.AnimatorListenerAdapter() {
                     @Override public void onAnimationEnd(android.animation.Animator a) {
                         box.animate().alpha(0f).scaleX(0.3f).scaleY(0.3f).setDuration(260)
@@ -1786,13 +1790,13 @@ public class GoalWatchService extends Service {
                     }
                 });
                 shrink.start();
-            });
+            }, lite() ? 320 : 0);
         }
     }
 
     /** One slim line in the Home screen's frosted pill style, dark text on the silver glass, from its parts. */
     private LinearLayout pillBox(List<Object> parts, float d) {
-        LinearLayout box = new LinearLayout(this);
+        LinearLayout box = new RevealBox(this);
         box.setOrientation(LinearLayout.HORIZONTAL);
         box.setGravity(Gravity.CENTER_VERTICAL);
         int h = Math.round(PILL_DP * d);
