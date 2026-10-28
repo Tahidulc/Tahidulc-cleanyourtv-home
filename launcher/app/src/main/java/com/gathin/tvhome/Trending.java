@@ -32,9 +32,12 @@ final class Trending {
         /** Netflix's: one wide picture (cropped to the card) and the title's logo, and no store page. */
         String image, logo;
         boolean netflix;
+        /** TMDB's: a poster (image) and a wide backdrop, and the service's own logo for the corner. */
+        String backdrop, service;
+        boolean hasPoster;
 
         String poster(int w, int h) { return art == null ? image : art + "/" + w + "x" + h + "bb.jpg"; }
-        String crop(int w, int h) { return art == null ? image : art + "/" + w + "x" + h + "sr.jpg"; }
+        String crop(int w, int h) { return art == null ? (backdrop != null ? backdrop : image) : art + "/" + w + "x" + h + "sr.jpg"; }
     }
 
     private static final String FEED = "https://itunes.apple.com/%s/rss/%s/limit=%d/json";
@@ -48,7 +51,31 @@ final class Trending {
         final int genre;
         /** Debrid Stream's own Continue Watching, as AppSearchService last copied it. */
         boolean resume;
+        /** TMDB's watch provider id for a streaming service's row (0 otherwise), and its logo. */
+        int provider;
+        String providerLogo;
         Category(String name, boolean tv, boolean netflix, int genre) { this.name = name; this.tv = tv; this.netflix = netflix; this.genre = genre; }
+    }
+
+    /** UK streaming services for TMDB's rows: {name, watch provider id, logo path}. */
+    private static final Object[][] SERVICES = {{"Prime Video", 9, "/gMZdpavHmxFNnLpMHwVxfqeux2g.png"},
+            {"Disney+", 337, "/5eZ872CghnHFLB1j8grszbrx0dx.png"}, {"Apple TV+", 350, "/9icYBfYFcwgCbky5VdGUIKJ4C5i.png"}, {"NOW", 39, "/oFAnvlaEW2KT6J7XM0DXjlWqKu9.png"},
+            {"Paramount+", 531, "/pkx3klJlwW5JdtaulvDx6hDNtch.png"}, {"BBC iPlayer", 38, "/vi6XJCpJ9GpAPD3rDSRzMC812Z.png"},
+            {"ITVX", 41, "/nIViE3wOPV5Jyv45T7hetHyG6iS.png"}, {"Channel 4", 103, "/kMT8p43W3BsXBe9mqCIPDNepser.png"}};
+
+    /** The rows, with a row for each UK streaming service after Netflix's when the theme has a TMDB key. */
+    static List<Category> categories(boolean tmdb) {
+        List<Category> c = categories();
+        if (!tmdb) return c;
+        List<Category> services = new ArrayList<>();
+        for (Object[] sv : SERVICES) {
+            Category cat = new Category((String) sv[0], false, false, 0);
+            cat.provider = (Integer) sv[1];
+            cat.providerLogo = sv[2] == null ? null : "https://image.tmdb.org/t/p/w92" + sv[2];
+            services.add(cat);
+        }
+        c.addAll(4, services);
+        return c;
     }
 
     /** The Continue Watching tab, when Debrid Stream's row has been copied in the last fortnight. */
@@ -61,38 +88,70 @@ final class Trending {
     }
 
     /**
-     * The copied Continue Watching titles with artwork: each looked up in the store as a film, then as a series (its
-     * poster or season artwork), and the answer kept, so the row draws from memory after the first time.
+     * The copied Continue Watching titles with artwork: each looked up on TMDB when the theme has a key (poster,
+     * backdrop and synopsis), else in the store as a film, then as a series; a found answer is kept, so the row draws
+     * from memory after the first time, and one not found is asked again next time.
      */
-    static List<Title> resume(android.content.Context c, String country) {
+    static List<Title> resume(android.content.Context c, String country, String key) {
         List<Title> out = new ArrayList<>();
         android.content.SharedPreferences p = c.getSharedPreferences(AppSearchService.CONTINUE, android.content.Context.MODE_PRIVATE);
         try {
             JSONArray titles = new JSONArray(p.getString("titles", "[]"));
             for (int i = 0; i < titles.length(); i++) {
                 String name = titles.getString(i);
+                JSONObject found;
+                String kept = p.getString("found:" + name, null);
+                if (kept != null) {
+                    found = new JSONObject(kept);
+                } else {
+                    found = key.isEmpty() ? null : lookUp(key, name);
+                    if (found == null) {
+                        String[] art = artwork(name, country);
+                        if (art != null) found = new JSONObject().put("art", art[0]).put("tv", "tv".equals(art[1]));
+                    }
+                    if (found == null) continue;
+                    p.edit().putString("found:" + name, found.toString()).apply();
+                }
                 Title t = new Title();
                 t.title = name;
                 t.rank = 0;
-                t.genre = "";
-                t.year = "";
-                t.summary = "";
-                String art = p.getString("art:" + name, null);
-                if (art == null) {
-                    String[] found = artwork(name, country);
-                    art = found == null ? "" : found[0] + "|" + found[1];
-                    p.edit().putString("art:" + name, art).apply();
-                }
-                if (!art.isEmpty()) {
-                    String[] a = art.split("\\|", 2);
-                    t.art = a[0];
-                    t.tv = a.length > 1 && "tv".equals(a[1]);
-                }
-                if (t.art != null) out.add(t);
+                t.tv = found.optBoolean("tv");
+                t.genre = found.optString("genre");
+                t.year = found.optString("year");
+                t.summary = found.optString("summary");
+                t.art = found.has("art") ? found.optString("art") : null;
+                t.image = found.has("image") ? found.optString("image") : null;
+                t.backdrop = found.has("backdrop") ? found.optString("backdrop") : null;
+                t.hasPoster = t.image != null;
+                out.add(t);
             }
         } catch (Exception ignored) {
         }
         return out;
+    }
+
+    /** The film or series TMDB finds for a name, as the fields resume() keeps, or null. */
+    private static JSONObject lookUp(String key, String name) {
+        try {
+            JSONArray results = new JSONObject(get("https://api.themoviedb.org/3/search/multi?api_key=" + key
+                    + "&include_adult=false&query=" + java.net.URLEncoder.encode(name, "UTF-8"))).optJSONArray("results");
+            for (int i = 0; results != null && i < results.length(); i++) {
+                JSONObject r = results.getJSONObject(i);
+                String type = r.optString("media_type"), poster = r.optString("poster_path", "");
+                if (!"movie".equals(type) && !"tv".equals(type) || poster.isEmpty() || "null".equals(poster)) continue;
+                boolean tv = "tv".equals(type);
+                String back = r.optString("backdrop_path", ""), date = r.optString(tv ? "first_air_date" : "release_date", "");
+                JSONArray ids = r.optJSONArray("genre_ids");
+                JSONObject f = new JSONObject().put("tv", tv).put("summary", r.optString("overview", ""))
+                        .put("year", date.length() >= 4 ? date.substring(0, 4) : "")
+                        .put("genre", ids != null && ids.length() > 0 && GENRES.containsKey(ids.optInt(0)) ? GENRES.get(ids.optInt(0)) : "")
+                        .put("image", "https://image.tmdb.org/t/p/w500" + poster);
+                if (!back.isEmpty() && !"null".equals(back)) f.put("backdrop", "https://image.tmdb.org/t/p/w780" + back);
+                return f;
+            }
+        } catch (Exception ignored) {
+        }
+        return null;
     }
 
     /** {artwork without its size, "film" or "tv"} for a name from the iTunes Search API, or null. */
@@ -199,6 +258,66 @@ final class Trending {
         return out;
     }
 
+    // ---- TMDB: what is popular on each UK streaming service --------------------------------------------
+
+    private static final String TMDB = "https://api.themoviedb.org/3/discover/%s?api_key=%s&watch_region=%s"
+            + "&with_watch_providers=%d&with_watch_monetization_types=flatrate&sort_by=popularity.desc&language=en-GB&%s";
+    private static final java.util.Map<Integer, String> GENRES = new java.util.HashMap<>();
+    static {
+        Object[][] g = {{28, "Action"}, {12, "Adventure"}, {16, "Animation"}, {35, "Comedy"}, {80, "Crime"}, {99, "Documentary"},
+                {18, "Drama"}, {10751, "Family"}, {14, "Fantasy"}, {36, "History"}, {27, "Horror"}, {10402, "Music"},
+                {9648, "Mystery"}, {10749, "Romance"}, {878, "Sci-Fi"}, {53, "Thriller"}, {10752, "War"}, {37, "Western"},
+                {10759, "Action"}, {10762, "Kids"}, {10763, "News"}, {10764, "Reality"}, {10765, "Sci-Fi"}, {10766, "Soap"},
+                {10767, "Talk"}, {10768, "War"}};
+        for (Object[] x : g) GENRES.put((Integer) x[0], (String) x[1]);
+    }
+
+    /**
+     * What is popular on one service in the country now (TMDB's discover, which this product uses though TMDB does not
+     * endorse it): series with an episode in the last six months and films from the last two years, the two lists
+     * taken in turn to ten.
+     */
+    static List<Title> service(String key, String region, Category c) {
+        java.time.LocalDate now = java.time.LocalDate.now();
+        List<Title> tv = tmdb(key, region, c, true, "air_date.gte=" + now.minusMonths(6));
+        List<Title> films = tmdb(key, region, c, false, "primary_release_date.gte=" + now.minusMonths(24));
+        List<Title> out = new ArrayList<>();
+        for (int i = 0; out.size() < 10 && (i < tv.size() || i < films.size()); i++) {
+            if (i < tv.size()) out.add(tv.get(i));
+            if (i < films.size() && out.size() < 10) out.add(films.get(i));
+        }
+        for (int i = 0; i < out.size(); i++) out.get(i).rank = i + 1;
+        return out;
+    }
+
+    private static List<Title> tmdb(String key, String region, Category c, boolean tv, String since) {
+        List<Title> out = new ArrayList<>();
+        try {
+            JSONArray results = new JSONObject(get(String.format(java.util.Locale.ROOT, TMDB, tv ? "tv" : "movie", key, region.toUpperCase(java.util.Locale.ROOT),
+                    c.provider, since))).optJSONArray("results");
+            for (int i = 0; results != null && i < results.length() && out.size() < 6; i++) {
+                JSONObject r = results.getJSONObject(i);
+                String poster = r.optString("poster_path", ""), back = r.optString("backdrop_path", "");
+                if (poster.isEmpty() || "null".equals(poster)) continue;
+                Title t = new Title();
+                t.tv = tv;
+                t.title = r.optString(tv ? "name" : "title");
+                t.summary = r.optString("overview", "");
+                String date = r.optString(tv ? "first_air_date" : "release_date", "");
+                t.year = date.length() >= 4 ? date.substring(0, 4) : "";
+                JSONArray ids = r.optJSONArray("genre_ids");
+                t.genre = ids != null && ids.length() > 0 && GENRES.containsKey(ids.optInt(0)) ? GENRES.get(ids.optInt(0)) : "";
+                t.image = "https://image.tmdb.org/t/p/w500" + poster;
+                t.backdrop = back.isEmpty() || "null".equals(back) ? null : "https://image.tmdb.org/t/p/w780" + back;
+                t.hasPoster = true;
+                t.service = c.providerLogo;
+                out.add(t);
+            }
+        } catch (Exception ignored) {
+        }
+        return out;
+    }
+
     // ---- Netflix's top ten ------------------------------------------------------------------------------
 
     private static final Pattern NF_ITEM = Pattern.compile("\"__typename\":\"PulseTop10ItemEntity\"");
@@ -274,7 +393,8 @@ final class Trending {
         List<java.util.concurrent.Callable<Void>> jobs = new ArrayList<>();
         for (Title t : titles) {
             // Netflix's titles have no store page: they are kept by name, for their preview clip only.
-            String key = t.netflix ? "nf:" + (t.tv ? "tv:" : "film:") + t.title : t.link;
+            boolean page = t.link != null && !t.link.isEmpty();
+            String key = page ? t.link : "nf:" + (t.tv ? "tv:" : "film:") + t.title;
             if (key == null || key.isEmpty()) continue;
             String kept = prefs.getString(key, null);
             if (kept != null) {
@@ -287,10 +407,10 @@ final class Trending {
                 }
             }
             jobs.add(() -> {
-                String found = t.netflix ? "" : read(t.link);
+                String found = page ? read(t.link) : "";
                 // A series' rating from TVmaze (its viewers' average out of ten), as Apple shows none for TV.
                 // Its synopsis too: Apple's TV chart has none.
-                if (t.tv && !t.netflix) {
+                if (t.tv && page) {
                     String[] show = tvmaze(t.title);
                     if (show != null && show[0] != null) found = (found == null ? "" : found) + "tvmaze=" + show[0] + ";";
                     if (show != null && !show[1].isEmpty()) {

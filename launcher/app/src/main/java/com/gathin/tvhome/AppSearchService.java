@@ -14,9 +14,9 @@ import java.util.Locale;
 
 /**
  * Opens an app that has no link to a title (Debrid Stream) on its search for one: starts the app, then reads its
- * screen through accessibility, picks the profile it asks for, opens its search and types the title in. It listens to
- * no events; it only looks at the screen a few times a second for at most SEARCH_MS after a tile asked, so the rest of
- * the time it costs nothing. Without the helper switched on, the app just opens.
+ * screen through accessibility, picks the profile it asks for, opens its search and types the title in, looking a few
+ * times a second for at most SEARCH_MS after a tile asked. It hears only Debrid Stream's own focus changes, to copy its
+ * Continue Watching row (below). Without the helper switched on, the app just opens.
  */
 public class AppSearchService extends AccessibilityService {
     private static final String TAG = "AppSearch";
@@ -199,75 +199,66 @@ public class AppSearchService extends AccessibilityService {
 
     // ---- Continue Watching: Debrid Stream's own row, copied for Home -------------------------------------
 
-    private static final long SCAN_MS = 25_000L;
-    private long scanUntil;
     static final String CONTINUE = "debrid_continue";
-
-    /** Debrid Stream's window came up: look for its Continue Watching row for a while (the profile picker first). */
-    @Override public void onAccessibilityEvent(AccessibilityEvent event) {
-        if (event.getEventType() != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED || target != null) return;
-        boolean was = System.currentTimeMillis() < scanUntil;
-        scanUntil = System.currentTimeMillis() + SCAN_MS;
-        if (!was) main.postDelayed(scan, 1_500);
-    }
-
-    private final Runnable scan = new Runnable() {
-        @Override public void run() {
-            if (System.currentTimeMillis() > scanUntil || target != null) return;
-            if (!readContinue()) main.postDelayed(this, 1_500);
-        }
-    };
+    private static final String HEADING = "continue watching, ";
+    /** The titles seen in the row, in its order as far as it is known, and whether the last look was in the row. */
+    private final java.util.List<String> seen = new java.util.ArrayList<>();
+    private boolean inRow;
+    private long lastLook;
 
     /**
-     * The titles under the app's "Continue Watching" heading: its posters are named by their content description,
-     * so each named view that starts just below the heading, poster-sized, in left-to-right order. Kept for Home
-     * with when they were read. True once found.
+     * Debrid Stream draws its home as one view that names only what is highlighted ("Continue Watching, Spider-Man:
+     * Brand New Day"), so its row is learnt as it is browsed: each title highlighted there is kept, the one the row is
+     * entered on first (it is the row's first card, the one last watched). Copied for Home after each change.
      */
-    private boolean readContinue() {
+    @Override public void onAccessibilityEvent(AccessibilityEvent event) {
+        if (target != null || System.currentTimeMillis() - lastLook < 300) return;
+        lastLook = System.currentTimeMillis();
         AccessibilityNodeInfo root = getRootInActiveWindow();
-        if (root == null || root.getPackageName() == null || !"com.debridstream.tv".contentEquals(root.getPackageName())) return false;
-        AccessibilityNodeInfo head = findText(root, "continue watching", 0);
-        if (head == null) return false;
-        android.graphics.Rect h = new android.graphics.Rect();
-        head.getBoundsInScreen(h);
-        int screen = getResources().getDisplayMetrics().heightPixels;
-        java.util.List<Object[]> found = new java.util.ArrayList<>();
-        collect(root, h, screen, found, 0);
-        if (found.isEmpty()) return false;
-        found.sort((a, b) -> Integer.compare((Integer) a[1], (Integer) b[1]));
-        org.json.JSONArray titles = new org.json.JSONArray();
-        for (Object[] f : found) if (titles.length() < 15) titles.put(f[0]);
+        if (root == null || root.getPackageName() == null || !"com.debridstream.tv".contentEquals(root.getPackageName())) return;
+        String title = highlighted(root, 0);
+        if (title == null) { inRow = false; return; }
+        if (seen.isEmpty()) loadSeen();
+        boolean entering = !inRow;
+        inRow = true;
+        int at = seen.indexOf(title);
+        if (entering) {
+            // Entered on its first card: that title leads, the rest keep their order.
+            if (at == 0) return;
+            if (at > 0) seen.remove(at);
+            seen.add(0, title);
+        } else if (at < 0) {
+            seen.add(title);
+        } else {
+            return;
+        }
+        while (seen.size() > 15) seen.remove(seen.size() - 1);
+        org.json.JSONArray titles = new org.json.JSONArray(seen);
         getSharedPreferences(CONTINUE, MODE_PRIVATE).edit().putString("titles", titles.toString())
                 .putLong("at", System.currentTimeMillis()).apply();
-        Log.i(TAG, "continue watching: " + titles);
-        return true;
     }
 
-    private static AccessibilityNodeInfo findText(AccessibilityNodeInfo n, String text, int depth) {
-        if (n == null || depth > 40) return null;
-        CharSequence t = n.getText();
-        if (t != null && t.toString().toLowerCase(Locale.ROOT).contains(text)) return n;
+    private void loadSeen() {
+        try {
+            org.json.JSONArray a = new org.json.JSONArray(getSharedPreferences(CONTINUE, MODE_PRIVATE).getString("titles", "[]"));
+            for (int i = 0; i < a.length(); i++) seen.add(a.getString(i));
+        } catch (Exception ignored) {
+        }
+    }
+
+    /** The title in a "Continue Watching, …" description on the screen, or null when the row is not highlighted. */
+    private static String highlighted(AccessibilityNodeInfo n, int depth) {
+        if (n == null || depth > 12) return null;
+        CharSequence d = n.getContentDescription();
+        if (d != null && d.toString().toLowerCase(Locale.ROOT).startsWith(HEADING)) {
+            String t = d.toString().substring(HEADING.length()).trim();
+            return t.isEmpty() ? null : t;
+        }
         for (int i = 0; i < n.getChildCount(); i++) {
-            AccessibilityNodeInfo hit = findText(n.getChild(i), text, depth + 1);
+            String hit = highlighted(n.getChild(i), depth + 1);
             if (hit != null) return hit;
         }
         return null;
-    }
-
-    private static void collect(AccessibilityNodeInfo n, android.graphics.Rect head, int screen, java.util.List<Object[]> out, int depth) {
-        if (n == null || depth > 40) return;
-        CharSequence desc = n.getContentDescription();
-        if (desc != null && desc.length() > 1) {
-            android.graphics.Rect r = new android.graphics.Rect();
-            n.getBoundsInScreen(r);
-            boolean below = r.top >= head.bottom - 8 && r.top < head.bottom + screen * 0.45f;
-            boolean poster = r.height() > screen * 0.1f && r.width() > screen * 0.06f;
-            String d = desc.toString();
-            boolean seen = false;
-            for (Object[] o : out) if (o[0].equals(d)) seen = true;
-            if (below && poster && !seen) out.add(new Object[]{d, r.left});
-        }
-        for (int i = 0; i < n.getChildCount(); i++) collect(n.getChild(i), head, screen, out, depth + 1);
     }
 
     @Override public void onInterrupt() {

@@ -390,6 +390,14 @@ final class Config {
         return json == null ? fallback : json.optBoolean(key, fallback);
     }
 
+    /** A string from the theme's config.json, for the parts that read it outside Config; the fallback without it. */
+    static String themeString(Context ctx, String key, String fallback) {
+        File dir = dir(ctx);
+        boolean mounted = Environment.MEDIA_MOUNTED.equals(Environment.getExternalStorageState());
+        JSONObject json = read(mounted && dir != null ? new File(dir, FILE_NAME) : new File(ctx.getFilesDir(), FILE_NAME));
+        return json == null ? fallback : json.optString(key, fallback);
+    }
+
     /** A list from the theme's config.json (strings), for the parts that read it outside Config; the fallback without it. */
     static List<String> themeStrings(Context ctx, String key, List<String> fallback) {
         File dir = dir(ctx);

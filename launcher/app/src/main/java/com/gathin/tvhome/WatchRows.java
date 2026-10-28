@@ -213,10 +213,12 @@ final class WatchRows {
 
     /** Home goes to the background: no trailer plays behind the app it opened. */
     void pause() {
+        main.removeCallbacks(trailerStart);
         stopTrailer();
     }
 
     void hide() {
+        main.removeCallbacks(trailerStart);
         stopTrailer();
         if (panel.hasFocus()) return;
         shownPackage = null;
@@ -689,7 +691,9 @@ final class WatchRows {
     // ---- Trending (a theme's "trending"): films and TV from Apple's charts, on Debrid Stream's row ----------------
 
     /** The trending rows (Trending.categories()), the one on show, and each one's titles once read and when. */
-    private final List<Trending.Category> cats = Trending.categories();
+    /** Read on first use: the streaming services' rows come with the theme's TMDB key (tmdb_key). */
+    private List<Trending.Category> cats = new ArrayList<>();
+    private String tmdbKey;
     private int catIndex;
     private final Map<Integer, List<Trending.Title>> catLists = new HashMap<>();
     private final Map<Integer, Long> catAt = new HashMap<>();
@@ -707,6 +711,10 @@ final class WatchRows {
     /** The row on show, read when stale (and shown when it arrives), with its tabs; the news after the first row. */
     private boolean showTrending() {
         if (!trendingRow()) return false;
+        if (tmdbKey == null) {
+            tmdbKey = Config.themeString(context, "tmdb_key", "").trim();
+            cats = Trending.categories(!tmdbKey.isEmpty());
+        }
         // Debrid Stream's Continue Watching, as the first tab, once the helper has copied it.
         boolean has = !cats.isEmpty() && cats.get(0).resume;
         Trending.Category resume = Trending.resumeCategory(context);
@@ -734,7 +742,8 @@ final class WatchRows {
         Trending.Category c = cats.get(i);
         String country = context.getString(R.string.trending_country), netflix = context.getString(R.string.trending_netflix_country);
         reader.execute(() -> {
-            List<Trending.Title> fresh = c.resume ? Trending.resume(context, country) : Trending.read(country, netflix, c, 10);
+            List<Trending.Title> fresh = c.resume ? Trending.resume(context, country, tmdbKey)
+                    : c.provider > 0 ? Trending.service(tmdbKey, country, c) : Trending.read(country, netflix, c, 10);
             main.post(() -> {
                 if (fresh.isEmpty()) { catAt.remove(i); return; }
                 catLists.put(i, fresh);
@@ -882,19 +891,20 @@ final class WatchRows {
             foot.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
                     new int[]{c & 0x00FFFFFF, (c & 0x00FFFFFF) | 0xCC000000, (c & 0x00FFFFFF) | 0xF5000000}));
         };
-        if (t.tv) loadPoster(t.crop(wideW, ph), image, tint);
+        boolean picture = t.tv && !t.hasPoster;
+        if (picture) loadPoster(t.crop(wideW, ph), image, tint);
         else loadPoster(t.poster(narrow, ph), image, tint);
 
         List<java.util.function.Consumer<Boolean>> looks = new ArrayList<>();
         // Wide: a shade over the left for the synopsis, and a film's whole poster on the right.
         View side = new View(context);
         side.setBackground(new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
-                t.tv ? new int[]{0xF2000000, 0xB3000000, 0x00000000} : new int[]{0xF7000000, 0xCC000000, 0x80000000}));
+                picture ? new int[]{0xF2000000, 0xB3000000, 0x00000000} : new int[]{0xF7000000, 0xCC000000, 0x80000000}));
         card.addView(side, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         List<View> wideOnly = new ArrayList<>();
         wideOnly.add(side);
         int pw = Math.round((ph - dp(24)) * 2f / 3f);
-        if (!t.tv) {
+        if (!picture) {
             // In a box of its own: the image's fade-in as it loads must not show it while the card is a poster.
             FrameLayout poster = new FrameLayout(context);
             poster.setClipToOutline(true);
@@ -913,7 +923,7 @@ final class WatchRows {
         }
         if (!t.summary.isEmpty()) {
             TextView about = synopsis(t.summary, ph);
-            FrameLayout.LayoutParams alp = new FrameLayout.LayoutParams(t.tv ? Math.round(wideW * 0.55f) : wideW - pw - dp(48),
+            FrameLayout.LayoutParams alp = new FrameLayout.LayoutParams(picture ? Math.round(wideW * 0.55f) : wideW - pw - dp(48),
                     ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP | Gravity.START);
             alp.leftMargin = dp(14);
             alp.topMargin = dp(44);
@@ -925,9 +935,16 @@ final class WatchRows {
         // Netflix-style: once it has been wide a moment, the trailer plays across the card, over the artwork and
         // under the marks; it stops when the card narrows.
         looks.add(wide -> {
+            // A card that narrows (at the end of its animation, after the next one has widened) cancels only its own.
+            if (!wide) {
+                if (pendingTile == tile) { main.removeCallbacks(trailerStart); pendingTile = null; }
+                if (playingTile == tile) stopTrailer();
+                return;
+            }
             main.removeCallbacks(trailerStart);
-            if (!wide) { if (playingTile == tile) stopTrailer(); return; }
-            trailerStart = () -> { if (tile.hasFocus()) playTrailer(tile, card, t, wideOnly); };
+            pendingTile = tile;
+            retries = 0;
+            trailerStart = () -> { pendingTile = null; if (tile.hasFocus()) playTrailer(tile, card, t, wideOnly); };
             main.postDelayed(trailerStart, TRAILER_DELAY_MS);
         });
 
@@ -1032,20 +1049,32 @@ final class WatchRows {
     /** An HD trailer that has not started by then gives way to the preview clip. */
     private static final long TRAILER_WAIT_MS = 4_000L;
     private Runnable trailerStart = () -> { };
+    private View pendingTile;
+    private int retries;
     private android.media.MediaPlayer player;
     private android.view.TextureView playerView;
     private View playingTile;
     private List<View> playerCovers = new ArrayList<>();
 
     /**
-     * The title's trailer in the card: the HD one from Apple's TV page, or the store's preview clip when that will
-     * not play here. A TextureView, so the rounded card clips it and it widens with the card; the picture is cropped
+     * The title's trailer in the card: the store's preview clip, or the HD one from Apple's TV page when there is
+     * no clip. A TextureView, so the rounded card clips it and it widens with the card; the picture is cropped
      * to fill it (the preview's letterbox goes with that). The synopsis and the side poster make way while it plays.
      */
     private void playTrailer(View tile, FrameLayout card, Trending.Title t, List<View> covers) {
-        String url = t.trailer != null ? t.trailer : t.preview;
-        android.util.Log.i("Trailer", t.title + " trailer=" + t.trailer + " preview=" + t.preview);
-        if (url == null) return;
+        // The preview clip first: Android's own player turns Apple's HD trailers down (fMP4 HLS), so they are only
+        // tried for a title that has no clip, with the clip as the fallback when there is one.
+        String url = t.preview != null ? t.preview : t.trailer;
+        if (url == null) {
+            // Its clip may still be on its way (a row's previews are looked up after it shows): look again shortly.
+            if (tile.hasFocus() && retries++ < 6) {
+                pendingTile = tile;
+                trailerStart = () -> { pendingTile = null; if (tile.hasFocus()) playTrailer(tile, card, t, covers); };
+                main.postDelayed(trailerStart, 2_000);
+            }
+            return;
+        }
+        retries = 0;
         stopTrailer();
         playingTile = tile;
         playerCovers = covers;
@@ -1056,7 +1085,7 @@ final class WatchRows {
         view.setSurfaceTextureListener(new android.view.TextureView.SurfaceTextureListener() {
             @Override public void onSurfaceTextureAvailable(android.graphics.SurfaceTexture st, int w, int h) {
                 if (playerView != view) return;
-                start(view, new android.view.Surface(st), url, t.trailer != null && t.preview != null ? t.preview : null);
+                start(view, new android.view.Surface(st), url, null);
             }
             @Override public void onSurfaceTextureSizeChanged(android.graphics.SurfaceTexture st, int w, int h) { }
             @Override public boolean onSurfaceTextureDestroyed(android.graphics.SurfaceTexture st) { return true; }
@@ -1065,7 +1094,6 @@ final class WatchRows {
     }
 
     private void start(android.view.TextureView view, android.view.Surface surface, String url, String fallback) {
-        android.util.Log.i("Trailer", "start " + url + " fallback=" + fallback);
         android.media.MediaPlayer mp = new android.media.MediaPlayer();
         player = mp;
         try {
@@ -1075,9 +1103,7 @@ final class WatchRows {
                     .setContentType(android.media.AudioAttributes.CONTENT_TYPE_MOVIE).build());
             mp.setDataSource(context, Uri.parse(url));
             mp.setOnVideoSizeChangedListener((m, vw, vh) -> crop(view, vw, vh));
-            mp.setOnInfoListener((m, what, extra) -> { android.util.Log.i("Trailer", "info " + what + " " + extra); return false; });
             mp.setOnPreparedListener(m -> {
-                android.util.Log.i("Trailer", "prepared " + m.getVideoWidth() + "x" + m.getVideoHeight());
                 if (player != m) return;
                 m.setVolume(0.8f, 0.8f);
                 m.start();
@@ -1085,7 +1111,6 @@ final class WatchRows {
                 for (View x : playerCovers) x.animate().alpha(0f).setDuration(400).start();
             });
             mp.setOnErrorListener((m, what, extra) -> {
-                android.util.Log.i("Trailer", "error " + what + " " + extra);
                 if (player != m) return true;
                 m.release();
                 player = null;
@@ -1100,7 +1125,6 @@ final class WatchRows {
                 // Some HLS trailers never answer here (no error, no picture): the preview clip after a short wait.
                 main.postDelayed(() -> {
                     if (player != mp || mp.isPlaying() || playerView != view) return;
-                    android.util.Log.i("Trailer", "timeout, preview instead");
                     mp.release();
                     player = null;
                     start(view, surface, fallback, null);
@@ -1125,7 +1149,6 @@ final class WatchRows {
     }
 
     private void stopTrailer() {
-        main.removeCallbacks(trailerStart);
         if (player != null) {
             try { player.stop(); } catch (Exception ignored) { }
             player.release();
@@ -1164,6 +1187,19 @@ final class WatchRows {
     private View marks(Trending.Title t) {
         LinearLayout row = new LinearLayout(context);
         row.setGravity(Gravity.CENTER_VERTICAL);
+        if (t.service != null) {
+            // The streaming service's own logo, a small rounded square.
+            ImageView v = new ImageView(context);
+            v.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            v.setClipToOutline(true);
+            GradientDrawable round = new GradientDrawable();
+            round.setCornerRadius(dp(4));
+            round.setColor(0xFF1C1C22);
+            v.setBackground(round);
+            loadPoster(t.service, v);
+            row.addView(v, new LinearLayout.LayoutParams(dp(17), dp(17)));
+            return row;
+        }
         if (t.netflix) {
             TextView n = new TextView(context);
             n.setText("NETFLIX");
