@@ -41,7 +41,8 @@ public class AppSearchService extends AccessibilityService {
     /** Debrid Stream: the found title picked, its page on its way. */
     private boolean opened;
     /** How long the cover stays once done, so what it hides has drawn. */
-    private long hideDelay, pickedAt, lastBack, startedAt;
+    private long hideDelay, pickedAt, lastBack, startedAt, lastSearch;
+    private int searches;
 
     /** Opens pkg and, with the helper on, its search for query. False when the app could not be opened. */
     static boolean search(Context c, String pkg, String query) {
@@ -162,6 +163,8 @@ public class AppSearchService extends AccessibilityService {
         settle = false;
         opened = false;
         lastBack = 0;
+        lastSearch = 0;
+        searches = 0;
         startedAt = System.currentTimeMillis();
         hideDelay = 0;
         candidates = java.util.Collections.singletonList(q);
@@ -224,13 +227,18 @@ public class AppSearchService extends AccessibilityService {
         if (box == null) {
             // Picked, and the search gone: the channel is starting.
             if (picks > 0) { hideDelay = 1500; return false; }
+            // Its menu's search (it answers a click even with the menu folded away), once in a while; when two
+            // clicks have not brought it up, Back, to leave whatever is over it.
+            long now = System.currentTimeMillis();
             AccessibilityNodeInfo search = menuSearch(root);
-            if (search != null && search.isVisibleToUser()) {
+            if (search != null && now - lastSearch > 1_500L && searches < 2) {
                 search.performAction(AccessibilityNodeInfo.ACTION_CLICK);
-            } else if (System.currentTimeMillis() - lastBack > 2_500L && System.currentTimeMillis() - startedAt > 3_000L) {
-                // Still full screen on a channel, its menu out of reach: Back, to its home screen.
+                lastSearch = now;
+                searches++;
+            } else if (now - lastSearch > 2_500L && now - lastBack > 2_500L && now - startedAt > 3_000L) {
                 performGlobalAction(GLOBAL_ACTION_BACK);
-                lastBack = System.currentTimeMillis();
+                lastBack = now;
+                searches = 0;
             }
             return true;
         }
@@ -238,9 +246,11 @@ public class AppSearchService extends AccessibilityService {
             // Picked but still searching: once more after a moment, in case the first did not take; then, as TiviMate
             // stays on its search when the channel picked is the one already playing, Back to the channel.
             long since = System.currentTimeMillis() - pickedAt;
+            AccessibilityNodeInfo results = channelRow(root);
             if (picks < 2 && since > 2_500L) {
-                AccessibilityNodeInfo again = channelNode(root, box);
+                AccessibilityNodeInfo again = results == null ? null : channelNode(results, box);
                 if (again != null) pick(again);
+                else picks = 2;   // nothing to pick again: on to Back
             } else if (picks >= 2 && since > 2_500L) {
                 performGlobalAction(GLOBAL_ACTION_BACK);
                 pickedAt = System.currentTimeMillis();
@@ -250,9 +260,16 @@ public class AppSearchService extends AccessibilityService {
             return true;
         }
         if (typedAt == 0) {
+            // Where its search is listening for a voice (a TV with a microphone remote), the box takes no typing
+            // until it is picked: picked first, which turns it to the keyboard.
+            if (retypes > 0) {
+                box.performAction(AccessibilityNodeInfo.ACTION_FOCUS);
+                box.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+            }
             Bundle text = new Bundle();
-            text.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, query);
-            if (box.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, text)) {
+            text.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, searchTerm(query));
+            boolean set = box.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, text);
+            if (set) {
                 typedAt = System.currentTimeMillis();
                 // Its search runs on the keyboard's Enter, not as the text goes in.
                 if (android.os.Build.VERSION.SDK_INT >= 30) {
@@ -262,10 +279,14 @@ public class AppSearchService extends AccessibilityService {
             return true;
         }
         AccessibilityNodeInfo row = channelRow(root);
-        AccessibilityNodeInfo hit = channelNode(root, box);
+        // Only what the search found counts: the channel's name elsewhere on screen (the recent channels behind the
+        // search, the info bar) is no pick, and before the name is in the box there is nothing found yet.
+        CharSequence typed = box.getText();
+        boolean inBox = typed != null && searchTerm(query).contentEquals(typed);
+        AccessibilityNodeInfo hit = inBox && row != null ? channelNode(row, box) : null;
         // A 4K (UHD) version of the channel first: a plain match is noted, the row looked through a little further for
         // a 4K one, and gone back to when there is none.
-        if (hit != null && (uhd(hit) || settle || row == null)) return pick(hit);
+        if (hit != null && (uhd(hit) || settle)) return pick(hit);
         if (hit != null && foundAt < 0) foundAt = scrolls;
         if (foundAt >= 0 && !backing && scrolls - foundAt >= 3) backing = true;
         if (backing) {
@@ -291,8 +312,10 @@ public class AppSearchService extends AccessibilityService {
         }
         // Its box is a voice search that starts listening by itself and, hearing nothing, clears what was typed:
         // typed again when that happens before anything was found.
+        // On a slower TV (the TCL) it listens for longer and clears the name several times over: typed again, a moment
+        // apart, until it stays.
         CharSequence now = box.getText();
-        if (retypes < 3 && (now == null || !query.contentEquals(now))) {
+        if (retypes < 12 && (now == null || !searchTerm(query).contentEquals(now)) && (typedAt == 0 || System.currentTimeMillis() - typedAt > 1_200L)) {
             retypes++;
             typedAt = 0;
             return true;
@@ -303,6 +326,12 @@ public class AppSearchService extends AccessibilityService {
     }
 
     private boolean pick(AccessibilityNodeInfo hit) {
+        // With the keyboard up (the box was picked to type in it) a pick goes to the keyboard: one Back takes it away
+        // first, and the pick is made at the next look.
+        if (keyboardShown()) {
+            performGlobalAction(GLOBAL_ACTION_BACK);
+            return true;
+        }
         picks++;
         pickedAt = System.currentTimeMillis();
         click(hit);
@@ -560,6 +589,18 @@ public class AppSearchService extends AccessibilityService {
             }
         }
         return same != null ? same : close;
+    }
+
+    /**
+     * What to type in TiviMate's search for a channel: its search matches the letters as typed, so a name with its
+     * number run in ("ITV1", which a playlist may call "ITV 1") is looked for by its letters alone, and plain "5" as
+     * "Channel 5"; the found channels are then matched on the whole name (channelName).
+     */
+    static String searchTerm(String name) {
+        String n = name.trim();
+        if (n.equals("5")) return "Channel 5";
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("^([A-Za-z]+)\\d+$").matcher(n);
+        return m.matches() ? m.group(1) : n;
     }
 
     /**
