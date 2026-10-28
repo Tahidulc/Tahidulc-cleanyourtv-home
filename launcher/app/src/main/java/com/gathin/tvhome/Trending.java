@@ -35,6 +35,8 @@ final class Trending {
         /** TMDB's: a poster (image) and a wide backdrop, and the service's own logo for the corner. */
         String backdrop, service;
         boolean hasPoster;
+        /** The title's id on TMDB when it came from there, so its logo needs no search. */
+        int tmdbId;
 
         String poster(int w, int h) { return art == null ? image : art + "/" + w + "x" + h + "bb.jpg"; }
         String crop(int w, int h) { return art == null ? (backdrop != null ? backdrop : image) : art + "/" + w + "x" + h + "sr.jpg"; }
@@ -123,6 +125,7 @@ final class Trending {
                 t.image = found.has("image") ? found.optString("image") : null;
                 t.backdrop = found.has("backdrop") ? found.optString("backdrop") : null;
                 t.hasPoster = t.image != null;
+                t.tmdbId = found.optInt("id");
                 out.add(t);
             }
         } catch (Exception ignored) {
@@ -142,7 +145,7 @@ final class Trending {
                 boolean tv = "tv".equals(type);
                 String back = r.optString("backdrop_path", ""), date = r.optString(tv ? "first_air_date" : "release_date", "");
                 JSONArray ids = r.optJSONArray("genre_ids");
-                JSONObject f = new JSONObject().put("tv", tv).put("summary", r.optString("overview", ""))
+                JSONObject f = new JSONObject().put("id", r.optInt("id")).put("tv", tv).put("summary", r.optString("overview", ""))
                         .put("year", date.length() >= 4 ? date.substring(0, 4) : "")
                         .put("genre", ids != null && ids.length() > 0 && GENRES.containsKey(ids.optInt(0)) ? GENRES.get(ids.optInt(0)) : "")
                         .put("image", "https://image.tmdb.org/t/p/w500" + poster);
@@ -310,6 +313,7 @@ final class Trending {
                 t.image = "https://image.tmdb.org/t/p/w500" + poster;
                 t.backdrop = back.isEmpty() || "null".equals(back) ? null : "https://image.tmdb.org/t/p/w780" + back;
                 t.hasPoster = true;
+                t.tmdbId = r.optInt("id");
                 t.service = c.providerLogo;
                 out.add(t);
             }
@@ -433,6 +437,77 @@ final class Trending {
         }
         try { pool.invokeAll(jobs, 3, java.util.concurrent.TimeUnit.MINUTES); } catch (InterruptedException ignored) { }
         pool.shutdownNow();
+    }
+
+    private static final long LOGO_RETRY_MS = 24L * 60 * 60_000L;
+
+    /**
+     * Each title's own logo (its name as drawn on the poster) from TMDB, for the foot of a widened card: found by its
+     * TMDB id, or by a search for its name; kept for good once found, and a title with none asked again after a day.
+     * Netflix's titles bring their own.
+     */
+    static void logos(android.content.Context c, List<Title> titles, String key) {
+        if (key.isEmpty()) return;
+        android.content.SharedPreferences prefs = c.getSharedPreferences("trend_logos", android.content.Context.MODE_PRIVATE);
+        java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(4, r -> new Thread(() -> {
+            android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND);
+            r.run();
+        }));
+        List<java.util.concurrent.Callable<Void>> jobs = new ArrayList<>();
+        for (Title t : titles) {
+            if (t.logo != null) continue;
+            String name = (t.tv ? "tv:" : "film:") + t.title;
+            String kept = prefs.getString(name, null);
+            if (kept != null && !kept.startsWith("-")) { t.logo = kept; continue; }
+            if (kept != null && System.currentTimeMillis() - Long.parseLong(kept.substring(1)) < LOGO_RETRY_MS) continue;
+            jobs.add(() -> {
+                String found = logo(key, t);
+                prefs.edit().putString(name, found != null ? found : "-" + System.currentTimeMillis()).apply();
+                if (found != null) t.logo = found;
+                return null;
+            });
+        }
+        try { pool.invokeAll(jobs, 1, java.util.concurrent.TimeUnit.MINUTES); } catch (InterruptedException ignored) { }
+        pool.shutdownNow();
+    }
+
+    /** The title's English (or wordless) PNG logo on TMDB, or null. */
+    private static String logo(String key, Title t) {
+        String type = t.tv ? "tv" : "movie";
+        try {
+            int id = t.tmdbId;
+            if (id == 0) {
+                JSONArray results = new JSONObject(get("https://api.themoviedb.org/3/search/" + type + "?api_key=" + key
+                        + "&query=" + java.net.URLEncoder.encode(t.title, "UTF-8"))).optJSONArray("results");
+                if (results == null || results.length() == 0) return null;
+                // The one with exactly this name, nearest the year given; else TMDB's best match.
+                String want = t.title.toLowerCase(java.util.Locale.ROOT);
+                int best = -1, gap = Integer.MAX_VALUE;
+                for (int i = 0; i < results.length(); i++) {
+                    JSONObject r = results.getJSONObject(i);
+                    if (!r.optString(t.tv ? "name" : "title").toLowerCase(java.util.Locale.ROOT).equals(want)) continue;
+                    String date = r.optString(t.tv ? "first_air_date" : "release_date", "");
+                    int g = date.length() >= 4 && t.year != null && t.year.matches("\\d{4}")
+                            ? Math.abs(Integer.parseInt(date.substring(0, 4)) - Integer.parseInt(t.year)) : 50;
+                    if (g < gap) { gap = g; best = i; }
+                }
+                id = results.getJSONObject(Math.max(best, 0)).optInt("id");
+            }
+            JSONArray logos = new JSONObject(get("https://api.themoviedb.org/3/" + type + "/" + id + "/images?api_key=" + key
+                    + "&include_image_language=en,null")).optJSONArray("logos");
+            String fallback = null;
+            for (int i = 0; logos != null && i < logos.length(); i++) {
+                JSONObject l = logos.getJSONObject(i);
+                String path = l.optString("file_path", "");
+                if (!path.endsWith(".png")) continue;
+                String url = "https://image.tmdb.org/t/p/w300" + path;
+                if ("en".equals(l.optString("iso_639_1"))) return url;
+                if (fallback == null) fallback = url;
+            }
+            return fallback;
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     /** "type=text;type=text;..." for the title's own badges, or null when the page could not be read. */

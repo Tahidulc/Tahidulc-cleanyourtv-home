@@ -86,8 +86,14 @@ final class WatchRows {
     private final LinearLayout strip;
     private final Handler main = new Handler(Looper.getMainLooper());
     private final ExecutorService reader = Executors.newSingleThreadExecutor();
-    private final ExecutorService images = Executors.newFixedThreadPool(2);
-    private final LruCache<String, Bitmap> posters = new LruCache<String, Bitmap>(12 * 1024 * 1024) {
+    private final ExecutorService images = Executors.newFixedThreadPool(4);
+    /** Pictures fetched ahead of being shown (the next tabs' rows), behind the ones on screen. */
+    private final ExecutorService ahead = Executors.newSingleThreadExecutor(r -> new Thread(() -> {
+        android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND);
+        r.run();
+    }));
+    private final LruCache<String, Bitmap> posters = new LruCache<String, Bitmap>(
+            (int) Math.min(Runtime.getRuntime().maxMemory() / 8, 32L * 1024 * 1024)) {
         @Override protected int sizeOf(String key, Bitmap value) { return value.getByteCount(); }
     };
     private final Map<String, List<Item>> cache = new HashMap<>();
@@ -237,6 +243,7 @@ final class WatchRows {
         stopTrailer();
         reader.shutdownNow();
         images.shutdownNow();
+        ahead.shutdownNow();
         posters.evictAll();
     }
 
@@ -734,26 +741,88 @@ final class WatchRows {
         return true;
     }
 
-    /** Reads row i when it has not been read for a while; then its badges, and the row again once they are in. */
+    /** Rows read ahead whose logos and badges are still to be fetched, which happens once they are on show. */
+    private final java.util.Set<Integer> undressed = new java.util.HashSet<>();
+
+    /**
+     * Reads row i when it has not been read for a while, and the posters on it; then its logos and badges, and the row
+     * again once they are in. The tabs either side are read ahead, so a move along the tabs shows its row at once.
+     */
     private void load(int i) {
+        Long at = catAt.get(i);
+        if (at != null && System.currentTimeMillis() - at < TRENDING_MS) {
+            if (undressed.remove(i) && catLists.containsKey(i)) dress(i, catLists.get(i));
+        } else {
+            catAt.put(i, System.currentTimeMillis());
+            reader.execute(() -> {
+                List<Trending.Title> fresh = readRow(i);
+                main.post(() -> {
+                    if (fresh.isEmpty()) { catAt.remove(i); return; }
+                    catLists.put(i, fresh);
+                    if (i == catIndex && trendingRow()) fillTrending();
+                    prefetch(fresh);
+                    dress(i, fresh);
+                });
+            });
+        }
+        readAhead(i + 1);
+        readAhead(i - 1);
+    }
+
+    private void readAhead(int i) {
+        if (i < 0 || i >= cats.size()) return;
         Long at = catAt.get(i);
         if (at != null && System.currentTimeMillis() - at < TRENDING_MS) return;
         catAt.put(i, System.currentTimeMillis());
-        Trending.Category c = cats.get(i);
-        String country = context.getString(R.string.trending_country), netflix = context.getString(R.string.trending_netflix_country);
-        reader.execute(() -> {
-            List<Trending.Title> fresh = c.resume ? Trending.resume(context, country, tmdbKey)
-                    : c.provider > 0 ? Trending.service(tmdbKey, country, c) : Trending.read(country, netflix, c, 10);
+        ahead.execute(() -> {
+            List<Trending.Title> fresh = readRow(i);
             main.post(() -> {
                 if (fresh.isEmpty()) { catAt.remove(i); return; }
                 catLists.put(i, fresh);
-                if (i == catIndex && trendingRow()) fillTrending();
-            });
-            Trending.badges(context, fresh);
-            main.post(() -> {
-                if (i == catIndex && catLists.get(i) == fresh && trendingRow() && !strip.hasFocus()) fillTrending();
+                boolean shown = i == catIndex && trendingRow();
+                if (shown) fillTrending();
+                prefetch(fresh);
+                if (shown) dress(i, fresh);
+                else undressed.add(i);
             });
         });
+    }
+
+    private List<Trending.Title> readRow(int i) {
+        Trending.Category c = cats.get(i);
+        String country = context.getString(R.string.trending_country), netflix = context.getString(R.string.trending_netflix_country);
+        return c.resume ? Trending.resume(context, country, tmdbKey)
+                : c.provider > 0 ? Trending.service(tmdbKey, country, c) : Trending.read(country, netflix, c, 10);
+    }
+
+    /** The row's title logos, then its badges and clips; drawn again once they are in, unless it is being browsed. */
+    private void dress(int i, List<Trending.Title> list) {
+        reader.execute(() -> {
+            Trending.logos(context, list, tmdbKey);
+            main.post(() -> prefetch(list));
+            Trending.badges(context, list);
+            main.post(() -> {
+                if (i == catIndex && catLists.get(i) == list && trendingRow() && !strip.hasFocus()) fillTrending();
+            });
+        });
+    }
+
+    /** The row's pictures fetched to the disk cache ahead of their cards, so a card shows its picture at once. */
+    private void prefetch(List<Trending.Title> list) {
+        for (Trending.Title t : list) {
+            for (String raw : new String[]{artFor(t), t.logo}) {
+                if (raw == null || raw.isEmpty() || !raw.startsWith("http")) continue;
+                String uri = sharper(raw);
+                if (posters.get(uri) != null || waiting.containsKey(uri)) continue;
+                ahead.execute(() -> cachedBytes(uri));
+            }
+        }
+    }
+
+    /** The picture a trending card opens with: a series' still when it has no poster, else the poster. */
+    private String artFor(Trending.Title t) {
+        int ph = cardHeight() - dp(LABEL_DP);
+        return t.tv && !t.hasPoster ? t.crop(Math.round(ph * 16f / 9f), ph) : t.poster(Math.round(ph * 2f / 3f), ph);
     }
 
     private void fillTrending() {
@@ -932,6 +1001,10 @@ final class WatchRows {
         }
         for (View x : wideOnly) x.setAlpha(0f);
         looks.add(wide -> { for (View x : wideOnly) x.animate().alpha(wide ? 1f : 0f).setDuration(WIDEN_MS).start(); });
+        // The trailer plays clear: the shade at the foot makes way too, and is back when the card is a poster again.
+        List<View> covers = new ArrayList<>(wideOnly);
+        covers.add(foot);
+        looks.add(wide -> { if (!wide) foot.animate().alpha(1f).setDuration(WIDEN_MS).start(); });
         // Netflix-style: once it has been wide a moment, the trailer plays across the card, over the artwork and
         // under the marks; it stops when the card narrows.
         looks.add(wide -> {
@@ -944,15 +1017,15 @@ final class WatchRows {
             main.removeCallbacks(trailerStart);
             pendingTile = tile;
             retries = 0;
-            trailerStart = () -> { pendingTile = null; if (tile.hasFocus()) playTrailer(tile, card, t, wideOnly); };
+            trailerStart = () -> { pendingTile = null; if (tile.hasFocus()) playTrailer(tile, card, t, covers); };
             main.postDelayed(trailerStart, TRAILER_DELAY_MS);
         });
 
-        // Foot of the poster: just the genre, centred; wide, it moves left under the synopsis. The first of a double
-        // genre ("Action & Adventure") keeps it short.
+        // Foot of the poster: just the genre, centred (the first of a double genre keeps it short). Wide, the title's
+        // own logo takes its place, small at the bottom left so it keeps clear of the trailer; Netflix's titles show
+        // their logo as a poster too, where the others show the genre.
         TextView line = score("", 0xD9FFFFFF);
-        String foot2 = t.genre.split(" & | / ")[0];
-        line.setText(foot2);
+        line.setText(t.genre.split(" & | / ")[0]);
         line.setGravity(Gravity.CENTER);
         line.setSingleLine(true);
         line.setEllipsize(android.text.TextUtils.TruncateAt.END);
@@ -961,23 +1034,45 @@ final class WatchRows {
         llp.leftMargin = llp.rightMargin = dp(8);
         llp.bottomMargin = dp(12);
         card.addView(line, llp);
-        looks.add(wide -> line.setGravity(wide ? Gravity.START | Gravity.CENTER_VERTICAL : Gravity.CENTER));
-        if (t.netflix && t.logo != null) {
-            // Netflix's own title logo at the foot, where the store's titles show their genre.
-            ImageView mark = new ImageView(context);
-            mark.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        // In a box of its own, which shows and hides it: the logo's fade-in as it loads must not show it on a poster.
+        FrameLayout markBox = new FrameLayout(context);
+        ImageView mark = new ImageView(context);
+        mark.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        mark.setAdjustViewBounds(true);
+        FrameLayout.LayoutParams markLp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT);
+        markBox.addView(mark, markLp);
+        FrameLayout.LayoutParams narrowBox = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(38), Gravity.BOTTOM);
+        narrowBox.leftMargin = narrowBox.rightMargin = dp(10);
+        narrowBox.bottomMargin = dp(10);
+        FrameLayout.LayoutParams wideBox = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(30), Gravity.BOTTOM | Gravity.START);
+        wideBox.leftMargin = dp(14);
+        wideBox.bottomMargin = dp(12);
+        boolean posterMark = t.netflix && t.logo != null;
+        java.util.function.Consumer<Boolean> place = wide -> {
+            markLp.gravity = wide ? Gravity.START | Gravity.CENTER_VERTICAL : Gravity.CENTER;
+            mark.setMaxWidth(wide ? Math.round(wideW * 0.3f) : narrow - dp(20));
+            mark.setLayoutParams(markLp);
+            markBox.setLayoutParams(wide ? wideBox : narrowBox);
+        };
+        card.addView(markBox, posterMark ? narrowBox : wideBox);
+        place.accept(false);
+        if (posterMark) {
             loadPoster(t.logo, mark);
-            FrameLayout.LayoutParams mlp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(38), Gravity.BOTTOM);
-            mlp.leftMargin = mlp.rightMargin = dp(10);
-            mlp.bottomMargin = dp(10);
-            card.addView(mark, mlp);
             line.setVisibility(View.GONE);
+        } else {
+            markBox.setAlpha(0f);
         }
+        looks.add(wide -> {
+            // The logo may have been found after the card was made.
+            if (wide && t.logo != null && mark.getTag() == null) loadPoster(t.logo, mark);
+            place.accept(wide);
+            markBox.animate().alpha(wide || posterMark ? 1f : 0f).setDuration(WIDEN_MS).start();
+            line.animate().alpha(wide ? 0f : 1f).setDuration(WIDEN_MS).start();
+        });
         // A soft shade along the top, so the rank and the marks read on a light poster.
         View top = new View(context);
         top.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0x8C000000, 0x00000000}));
         card.addView(top, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(44), Gravity.TOP));
-        looks.add(wide -> { llp.leftMargin = dp(wide ? 14 : 8); line.setLayoutParams(llp); });
 
         // Top: "#1 Today" on the left, the Dolby mark and the picture's quality on the right.
         TextView rank = new TextView(context);
@@ -1525,13 +1620,22 @@ final class WatchRows {
         loadPoster(raw, into, null);
     }
 
+    /** Views waiting on a picture being fetched, by its address, so a picture shown twice is fetched once. */
+    private final Map<String, List<Object[]>> waiting = new HashMap<>();
+
     /** As loadPoster, and then: the picture, once it is on the view. */
+    @SuppressWarnings("unchecked")
     private void loadPoster(String raw, ImageView into, java.util.function.Consumer<Bitmap> then) {
         if (raw == null || raw.isEmpty()) return;
         String uri = sharper(raw);
+        into.setTag(uri);
         Bitmap hit = posters.get(uri);
         if (hit != null) { into.setImageBitmap(hit); if (then != null) then.accept(hit); return; }
-        into.setTag(uri);
+        List<Object[]> queued = waiting.get(uri);
+        if (queued != null) { queued.add(new Object[]{into, then}); return; }
+        queued = new ArrayList<>();
+        queued.add(new Object[]{into, then});
+        waiting.put(uri, queued);
         int target = cardWidth();
         images.execute(() -> {
             // YouTube's usual thumbnail is 4:3 with the video letterboxed in it: its widescreen one first.
@@ -1539,16 +1643,18 @@ final class WatchRows {
             java.util.regex.Matcher yt = java.util.regex.Pattern.compile("(https://i\\d?\\.ytimg\\.com/vi(?:_webp)?/[^/]+/)[a-z0-9_]+\\.(?:jpg|webp)").matcher(uri);
             if (yt.lookingAt()) bmp = fetch(yt.group(1) + "maxresdefault.jpg", target);
             if (bmp == null) bmp = fetch(uri, target);
-            bmp = unletterbox(bmp);
-            final Bitmap shown = bmp;
-            if (shown == null) return;
+            final Bitmap shown = unletterbox(bmp);
             main.post(() -> {
+                List<Object[]> views = waiting.remove(uri);
+                if (shown == null || views == null) return;
                 posters.put(uri, shown);
-                if (uri.equals(into.getTag())) {
-                    into.setImageBitmap(shown);
-                    if (then != null) then.accept(shown);
-                    into.setAlpha(0f);
-                    into.animate().alpha(1f).setDuration(200).start();
+                for (Object[] v : views) {
+                    ImageView view = (ImageView) v[0];
+                    if (!uri.equals(view.getTag())) continue;
+                    view.setImageBitmap(shown);
+                    if (v[1] != null) ((java.util.function.Consumer<Bitmap>) v[1]).accept(shown);
+                    view.setAlpha(0f);
+                    view.animate().alpha(1f).setDuration(150).start();
                 }
             });
         });
@@ -1579,16 +1685,67 @@ final class WatchRows {
         return true;
     }
 
+    private static final long DISK_CACHE_BYTES = 80L * 1024 * 1024;
+    private int written;
+
+    /** A web picture's bytes from the disk cache, fetched into it first when it is not there; null when it cannot be. */
+    private byte[] cachedBytes(String uri) {
+        java.io.File dir = new java.io.File(context.getCacheDir(), "pictures");
+        java.io.File file = new java.io.File(dir, Integer.toHexString(uri.hashCode()) + "-" + uri.length());
+        if (file.isFile()) {
+            try (InputStream in = new java.io.FileInputStream(file)) {
+                byte[] data = readAll(in);
+                file.setLastModified(System.currentTimeMillis());
+                return data;
+            } catch (Exception ignored) {
+                // Read it from the web again.
+            }
+        }
+        byte[] data;
+        try {
+            HttpURLConnection conn = (HttpURLConnection) new URL(uri).openConnection();
+            conn.setConnectTimeout(6000);
+            conn.setReadTimeout(8000);
+            conn.setInstanceFollowRedirects(true);
+            try (InputStream in = conn.getInputStream()) { data = readAll(in); }
+            finally { conn.disconnect(); }
+        } catch (Exception e) {
+            return null;
+        }
+        if (data == null || data.length == 0) return null;
+        try {
+            if (dir.isDirectory() || dir.mkdirs()) {
+                java.io.File part = new java.io.File(dir, file.getName() + "." + Thread.currentThread().getId() + ".part");
+                try (java.io.FileOutputStream out = new java.io.FileOutputStream(part)) { out.write(data); }
+                if (!part.renameTo(file)) part.delete();
+            }
+            if (++written % 40 == 0) trimDisk(dir);
+        } catch (Exception ignored) {
+            // Shown all the same; only not kept.
+        }
+        return data;
+    }
+
+    /** The disk cache kept under DISK_CACHE_BYTES: the pictures used longest ago go first. */
+    private static synchronized void trimDisk(java.io.File dir) {
+        java.io.File[] files = dir.listFiles();
+        if (files == null) return;
+        long total = 0;
+        for (java.io.File f : files) total += f.length();
+        if (total <= DISK_CACHE_BYTES) return;
+        java.util.Arrays.sort(files, (a, b) -> Long.compare(a.lastModified(), b.lastModified()));
+        for (java.io.File f : files) {
+            if (total <= DISK_CACHE_BYTES * 3 / 4) break;
+            total -= f.length();
+            f.delete();
+        }
+    }
+
     private Bitmap fetch(String uri, int targetWidth) {
         byte[] data;
         try {
             if (uri.startsWith("http")) {
-                HttpURLConnection conn = (HttpURLConnection) new URL(uri).openConnection();
-                conn.setConnectTimeout(6000);
-                conn.setReadTimeout(8000);
-                conn.setInstanceFollowRedirects(true);
-                try (InputStream in = conn.getInputStream()) { data = readAll(in); }
-                finally { conn.disconnect(); }
+                data = cachedBytes(uri);
             } else {
                 try (InputStream in = context.getContentResolver().openInputStream(Uri.parse(uri))) {
                     if (in == null) return null;
