@@ -42,7 +42,7 @@ public class MainActivity extends Activity {
     private static final String TYPE = "_tvhome._tcp.";
 
     private final Handler main = new Handler(Looper.getMainLooper());
-    private LinearLayout root, access, found, paired;
+    private LinearLayout root, access, found, paired, reader;
     private NsdManager nsd;
     private NsdManager.DiscoveryListener discovery;
     private WifiManager.MulticastLock lock;
@@ -76,6 +76,11 @@ public class MainActivity extends Activity {
         heading("3  ·  Apps");
         appList();
 
+        heading("4  ·  What you ordered (optional)");
+        note("To show your order's items on the TV, Delivery to TV reads them off the delivery app's basket or order "
+                + "screen while you have it open. Only the ticked apps' screens, only the item lines.");
+        reader = section();
+
         heading("Try it");
         root.addView(button("Send a test to the TVs", v -> test()));
         root.addView(button("Send a Tesla test", v -> testCar()));
@@ -87,6 +92,7 @@ public class MainActivity extends Activity {
         super.onResume();
         showAccess();
         showPaired();
+        showReader();
     }
 
     @Override protected void onDestroy() {
@@ -105,6 +111,18 @@ public class MainActivity extends Activity {
         access.addView(t);
         if (!on) access.addView(button("Turn on notification access",
                 v -> startActivity(new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))));
+    }
+
+    private void showReader() {
+        reader.removeAllViews();
+        String on = Settings.Secure.getString(getContentResolver(), Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES);
+        boolean enabled = on != null && on.contains(new ComponentName(this, OrderReader.class).flattenToString());
+        TextView t = note(enabled ? "✓  On: items are read from the order screens." : "Off. In the list that opens, tap "
+                + "Delivery to TV · order contents and turn it on.");
+        root.removeView(t);
+        reader.addView(t);
+        if (!enabled) reader.addView(button("Turn on order contents",
+                v -> startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))));
     }
 
     // ---- TVs: discovery and pairing --------------------------------------------------------------
@@ -279,7 +297,7 @@ public class MainActivity extends Activity {
                 main.post(() -> { toast("Paired with " + name); showPaired(); });
             } catch (Exception e) {
                 main.post(() -> problem("Not paired", "wrong code".equals(e.getMessage())
-                        ? "That code did not match, or it is over two minutes old. Tap Pair to get a new one."
+                        ? "That code did not match, or it is over five minutes old. Tap Pair to get a new one."
                         : "The TV did not answer (" + e.getMessage() + ")."));
             }
         }).start();
@@ -335,6 +353,7 @@ public class MainActivity extends Activity {
                 Set<String> now = Relay.apps(this);
                 if (on) now.add(e[0]); else now.remove(e[0]);
                 Relay.setApps(this, now);
+                OrderReader.refresh();
             });
             root.addView(box);
         }
@@ -345,7 +364,7 @@ public class MainActivity extends Activity {
     private void test() {
         if (Relay.tvs(this).isEmpty()) { toast("Pair a TV first"); return; }
         String pkg = Relay.apps(this).contains("com.ubercab.eats") ? "com.ubercab.eats" : getPackageName();
-        String[][] steps = {{"1", "Your order is being prepared", ""}, {"2", "Your courier is on the way", "19:42"},
+        String[][] steps = {{"1", "Nando's is preparing your order", "19:58"}, {"2", "Sam is on the way with your order", "19:58"},
                 {"4", "Your order has been delivered. Enjoy!", ""}};
         for (int i = 0; i < steps.length; i++) {
             String[] s = steps[i];
@@ -353,6 +372,9 @@ public class MainActivity extends Activity {
                 try {
                     Relay.send(this, new JSONObject().put("app", Relay.label(this, pkg)).put("package", pkg)
                             .put("stage", Integer.parseInt(s[0])).put("status", s[1]).put("eta", s[2])
+                            .put("from", "Nando's (test)")
+                            .put("items", new org.json.JSONArray(java.util.Arrays.asList("2× ¼ Chicken PERi-PERi",
+                                    "1× Spicy Rice", "1× Garlic Bread", "1× Bottomless Coke Zero", "1× Macho Peas")))
                             .put("icon", Relay.icon(this, pkg)));
                 } catch (Exception ignored) {
                 }
@@ -361,15 +383,24 @@ public class MainActivity extends Activity {
         toast("Sending three test updates, 12 seconds apart");
     }
 
+    /** A charge going up (42%, then 61%), then complete at 80%, 10 seconds apart. */
     private void testCar() {
         if (Relay.tvs(this).isEmpty()) { toast("Pair a TV first"); return; }
-        try {
-            Relay.send(this, new JSONObject().put("kind", "car").put("app", "Tesla").put("package", Relay.TESLA)
-                    .put("title", "Charging complete").put("status", "Your car has finished charging to 80%.")
-                    .put("battery", 80).put("icon", Relay.icon(this, Relay.TESLA)));
-            toast("Sent a Tesla test");
-        } catch (Exception ignored) {
+        Object[][] steps = {{"Charging", "Charging at 11 kW · 2 hr 10 min to 80%", 42, -1},
+                {"Charging", "Charging at 11 kW · 1 hr 5 min to 80%", 61, 42},
+                {"Charging complete", "Your Model X has finished charging to 80%", 80, -1}};
+        for (int i = 0; i < steps.length; i++) {
+            Object[] s = steps[i];
+            main.postDelayed(() -> {
+                try {
+                    Relay.send(this, new JSONObject().put("kind", "car").put("app", "Tesla").put("package", Relay.TESLA)
+                            .put("title", s[0]).put("status", s[1]).put("battery", s[2]).put("from", s[3])
+                            .put("target", 80).put("icon", Relay.icon(this, Relay.TESLA)));
+                } catch (Exception ignored) {
+                }
+            }, i * 10_000L);
         }
+        toast("Sending three Tesla tests, 10 seconds apart (they show on the TV's Home screen)");
     }
 
     // ---- views -----------------------------------------------------------------------------------

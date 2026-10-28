@@ -1,0 +1,498 @@
+package com.gathin.tvhome;
+
+import android.content.Context;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.graphics.Canvas;
+import android.graphics.Color;
+import android.graphics.Paint;
+import android.graphics.RectF;
+import android.graphics.Typeface;
+import android.graphics.drawable.Drawable;
+import android.graphics.drawable.GradientDrawable;
+import android.text.TextUtils;
+import android.util.Base64;
+import android.util.TypedValue;
+import android.view.Gravity;
+import android.view.View;
+import android.widget.FrameLayout;
+import android.widget.ImageView;
+import android.widget.LinearLayout;
+import android.widget.TextView;
+
+import org.json.JSONArray;
+import org.json.JSONObject;
+
+import java.util.Locale;
+
+/**
+ * The cards the phone's updates become (GoalWatchService shows them): a food order in its app's colours, with the
+ * app's logo, the restaurant, a look of its own for each stage and what was ordered; and the car (Tesla), with the
+ * Tesla mark, a studio picture of the car and its battery.
+ */
+final class DeliveryCard {
+    static final int INK = 0xFF1A1D24, DIM = 0xA61A1D24;
+    static final int MOVE = 0, CALM = 1, STILL = 2;
+
+    private DeliveryCard() {
+    }
+
+    /**
+     * A card ready to show: its view, and what plays once it is up (the stage bar filling, the battery, the order's
+     * items turning up in its place): MOVE animates; CALM (over another app) shows each change at once; STILL (over
+     * a playing video) changes nothing after it appears, so the picture under it is never disturbed.
+     */
+    static final class Card {
+        final View view;
+        final java.util.function.Consumer<Integer> reveal;
+        final int widthDp, heightDp;
+        long showMs = 14_000L;
+        boolean pairing;
+        Card(View view, java.util.function.Consumer<Integer> reveal, int widthDp, int heightDp) {
+            this.view = view;
+            this.reveal = reveal;
+            this.widthDp = widthDp;
+            this.heightDp = heightDp;
+        }
+    }
+
+    // ---- pairing ---------------------------------------------------------------------------------------------------
+
+    /** The code a phone asks to pair with, large, until it is typed in: "📱 Pair HONOR  ·  CODE 9 7 9 6". */
+    static Card pairing(Context c, String phone, String code, Drawable glass) {
+        float d = c.getResources().getDisplayMetrics().density;
+        LinearLayout card = new LinearLayout(c);
+        card.setOrientation(LinearLayout.HORIZONTAL);
+        card.setGravity(Gravity.CENTER_VERTICAL);
+        card.setBackground(glass);
+        card.setPadding(px(d, 18), px(d, 12), px(d, 22), px(d, 12));
+        LinearLayout col = new LinearLayout(c);
+        col.setOrientation(LinearLayout.VERTICAL);
+        TextView head = text(c, "📱  PAIR " + phone.toUpperCase(Locale.ROOT), 10.5f, DIM, true);
+        head.setLetterSpacing(0.1f);
+        col.addView(head);
+        col.addView(text(c, "Type this code on your phone", 13f, INK, false), margins(d, 4, 0));
+        card.addView(col);
+        TextView digits = text(c, code.replace("", " ").trim(), 30f, INK, true);
+        digits.setLetterSpacing(0.12f);
+        card.addView(digits, margins(d, 0, 22));
+        Card out = new Card(card, mode -> { }, 470, 90);
+        out.showMs = 5 * 60_000L;   // until it is typed in (GoalWatchService closes it then), or it runs out
+        out.pairing = true;
+        return out;
+    }
+
+    // ---- food ------------------------------------------------------------------------------------------------------
+
+    /** Each stage's own look: its sign and headline. */
+    private static final String[] STAGE_SIGN = {"🧾", "👨‍🍳", "🛵", "📍", "✅"};
+    private static final String[] STAGE_HEAD = {"Order placed", "Being prepared", "On the way", "Almost there", "Delivered"};
+
+    /** The app's brand colour: its own for the apps we know, else the strongest colour in its icon. */
+    static int brand(String pkg, Bitmap icon) {
+        if (pkg != null) {
+            if (pkg.startsWith("com.ubercab.eats")) return 0xFF06C167;
+            if (pkg.startsWith("com.justeat")) return 0xFFFF8000;
+            if (pkg.startsWith("com.deliveroo")) return 0xFF00CCBC;
+        }
+        if (icon == null) return 0xFF3A7BFF;
+        int best = 0xFF3A7BFF;
+        float score = -1;
+        float[] hsv = new float[3];
+        int step = Math.max(1, icon.getWidth() / 24);
+        for (int y = 0; y < icon.getHeight(); y += step) {
+            for (int x = 0; x < icon.getWidth(); x += step) {
+                int c = icon.getPixel(x, y);
+                if (Color.alpha(c) < 200) continue;
+                Color.colorToHSV(c, hsv);
+                float sc = hsv[1] * Math.min(1f, hsv[2] * 1.4f);
+                if (sc > score) { score = sc; best = c | 0xFF000000; }
+            }
+        }
+        return score < 0.25f ? 0xFF1A1D24 : best;
+    }
+
+    /**
+     * An order's update, about the height of a goal alert: the app's logo, where it is from and the app's own words,
+     * then the bar of stages in the app's colour with the stage and when it arrives. What was ordered takes the
+     * card's place for a few seconds after.
+     */
+    static Card food(Context c, JSONObject u, Drawable glass) {
+        float d = c.getResources().getDisplayMetrics().density;
+        int stage = Math.max(0, Math.min(4, u.optInt("stage", 0)));
+        String pkg = u.optString("package", "");
+        Bitmap icon = decode(u.optString("icon", ""));
+        int brand = brand(pkg, icon);
+        String app = u.optString("app", "Delivery"), from = u.optString("from", "").trim();
+        String status = u.optString("status", "").trim(), eta = u.optString("eta", "").trim();
+
+        LinearLayout card = pill(c, d, glass);
+        card.addView(logo(c, d, icon, brand), new LinearLayout.LayoutParams(px(d, 34), px(d, 34)));
+
+        // The update: "Nando's  ·  Nando's is preparing your order", then the stages.
+        LinearLayout news = new LinearLayout(c);
+        news.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout top = row(c);
+        TextView where = text(c, from.isEmpty() ? app : from, 13f, INK, true);
+        where.setMaxWidth(px(d, 200));
+        top.addView(where);
+        String words = status.isEmpty() || status.equalsIgnoreCase(from) ? STAGE_HEAD[stage] : status;
+        TextView said = text(c, "·  " + words, 12f, DIM, false);
+        said.setMaxWidth(px(d, 280));
+        top.addView(said, margins(d, 0, 6));
+        news.addView(top, margins(d, 0, 0));
+        LinearLayout bottom = row(c);
+        StageBar bar = new StageBar(c, brand, stage);
+        bottom.addView(bar, new LinearLayout.LayoutParams(px(d, 120), px(d, 11)));
+        String tag = STAGE_SIGN[stage] + " " + STAGE_HEAD[stage].toUpperCase(Locale.ROOT)
+                + (eta.isEmpty() || stage == 4 ? "" : "  ·  ARRIVING " + eta.toUpperCase(Locale.ROOT));
+        TextView stageTag = text(c, tag, 9.5f, readable(brand), true);
+        stageTag.setLetterSpacing(0.06f);
+        bottom.addView(stageTag, margins(d, 0, 8));
+        news.addView(bottom, margins(d, 3, 0));
+
+        // What was ordered, when the phone saw it: "2× ¼ Chicken  ·  1× Spicy Rice  ·  …".
+        JSONArray items = u.optJSONArray("items");
+        LinearLayout order = null;
+        if (items != null && items.length() > 0) {
+            order = new LinearLayout(c);
+            order.setOrientation(LinearLayout.VERTICAL);
+            StringBuilder list = new StringBuilder();
+            for (int i = 0; i < items.length(); i++) list.append(i == 0 ? "" : "   ·   ").append(items.optString(i));
+            TextView line = text(c, list, 12.5f, INK, false);
+            line.setMaxWidth(px(d, 470));
+            order.addView(line, margins(d, 0, 0));   // its own width, not the line under it
+            String head = "🧾 YOUR ORDER  ·  " + items.length() + (items.length() == 1 ? " ITEM" : " ITEMS")
+                    + (from.isEmpty() ? "" : "  ·  " + from.toUpperCase(Locale.ROOT));
+            TextView sub = text(c, head, 9.5f, readable(brand), true);
+            sub.setLetterSpacing(0.06f);
+            order.addView(sub, margins(d, 3, 0));
+        }
+        card.addView(news, margins(d, 0, 10));
+        LinearLayout orderPage = order;
+        java.util.function.Consumer<Integer> reveal = mode -> {
+            bar.fill(mode != MOVE);
+            if (orderPage != null && mode != STILL) flip(card, news, orderPage, mode == CALM, 6_000L, px(d, 10));
+        };
+        return new Card(card, reveal, 620, 64);
+    }
+
+    /**
+     * After a while, one face of a card gives way to the other in its place (the card taking the new face's width):
+     * the old rolls up and out, the new rolls up in; at once when the card keeps still.
+     */
+    private static void flip(LinearLayout card, View from, View to, boolean calm, long after, int left) {
+        card.postDelayed(() -> {
+            if (from.getParent() != card) return;
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT);
+            lp.leftMargin = left;
+            to.setVisibility(View.VISIBLE);
+            if (calm) {
+                int at = card.indexOfChild(from);
+                card.removeView(from);
+                card.addView(to, at, lp);
+                return;
+            }
+            float h = from.getHeight();
+            from.animate().alpha(0f).translationY(-h * 0.6f).setDuration(260).withEndAction(() -> {
+                int at = card.indexOfChild(from);
+                card.removeView(from);
+                to.setAlpha(0f);
+                to.setTranslationY(h * 0.6f);
+                card.addView(to, at, lp);
+                to.animate().alpha(1f).translationY(0f).setDuration(300).start();
+            }).start();
+        }, after);
+    }
+
+    /** The bar of five stages: a dot each, joined, filled up to the stage in the brand colour. */
+    private static final class StageBar extends View {
+        private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final int colour, stage;
+        private float progress;
+
+        StageBar(Context c, int colour, int stage) {
+            super(c);
+            this.colour = colour;
+            this.stage = stage;
+            progress = Math.max(0, stage - 1);   // it fills from the last stage to this one
+        }
+
+        void fill(boolean calm) {
+            if (calm) { progress = stage; invalidate(); return; }
+            android.animation.ValueAnimator a = android.animation.ValueAnimator.ofFloat(progress, stage);
+            a.setDuration(900);
+            a.setStartDelay(200);
+            a.setInterpolator(new android.view.animation.DecelerateInterpolator(1.5f));
+            a.addUpdateListener(v -> { progress = (float) v.getAnimatedValue(); invalidate(); });
+            a.start();
+        }
+
+        @Override protected void onDraw(Canvas canvas) {
+            float h = getHeight(), w = getWidth(), cy = h / 2f, r = h * 0.22f, x0 = h / 2f, x1 = w - h / 2f;
+            paint.setColor(0x4D1A1D24);
+            canvas.drawRoundRect(new RectF(x0, cy - r, x1, cy + r), r, r, paint);
+            float to = x0 + (x1 - x0) * progress / 4f;
+            paint.setColor(colour);
+            canvas.drawRoundRect(new RectF(x0, cy - r, Math.max(x0 + 2 * r, to), cy + r), r, r, paint);
+            for (int i = 0; i <= 4; i++) {
+                float x = x0 + (x1 - x0) * i / 4f;
+                boolean reached = i <= progress + 0.01f;
+                paint.setColor(reached ? colour : 0x801A1D24);
+                float dot = i == stage ? h / 2f - 0.5f : h * 0.26f;
+                canvas.drawCircle(x, cy, dot, paint);
+                if (i == stage) {
+                    paint.setColor(Color.WHITE);
+                    canvas.drawCircle(x, cy, dot * 0.42f, paint);
+                }
+            }
+        }
+    }
+
+    // ---- the car ---------------------------------------------------------------------------------------------------
+
+    /**
+     * The car's news, about the height of a goal alert: the car, a small Tesla mark, what happened, and the battery
+     * with the miles it gives. While it charges the bar fills up from where it was, towards the charge limit.
+     */
+    static Card car(Context c, JSONObject u, Drawable glass) {
+        float d = c.getResources().getDisplayMetrics().density;
+        String title = u.optString("title", "").trim(), status = u.optString("status", "").trim();
+        int battery = u.optInt("battery", -1), from = u.optInt("from", -1), target = u.optInt("target", -1);
+        int miles = u.optInt("miles", -1);
+        String all = (title + " " + status).toLowerCase(Locale.ROOT);
+        boolean charging = all.contains("charging") && !all.contains("complete") && !all.contains("stopped")
+                && !all.contains("interrupted") && !all.contains("finished");
+        String model = Config.themeString(c, "tesla_model", "Model X");
+
+        LinearLayout card = pill(c, d, glass);
+        Bitmap art = carArt(c);
+        ImageView car = new ImageView(c);
+        car.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        if (art != null) car.setImageBitmap(art);
+        else car.setImageResource(R.drawable.tesla_t);
+        card.addView(car, new LinearLayout.LayoutParams(art != null ? px(d, 72) : px(d, 22), px(d, art != null ? 34 : 22)));
+
+        LinearLayout col = new LinearLayout(c);
+        col.setOrientation(LinearLayout.VERTICAL);
+        // "T  TESLA · MODEL X", fine and spaced, then what happened.
+        LinearLayout brand = row(c);
+        ImageView t = new ImageView(c);
+        t.setImageResource(R.drawable.tesla_t);
+        brand.addView(t, new LinearLayout.LayoutParams(px(d, 9), px(d, 9)));
+        TextView name = text(c, "TESLA  ·  " + model.toUpperCase(Locale.ROOT), 8.5f, 0xCC1A1D24, false);
+        name.setTypeface(Typeface.create("sans-serif-light", Typeface.NORMAL));
+        name.setLetterSpacing(0.32f);
+        brand.addView(name, margins(d, 0, 5));
+        col.addView(brand, margins(d, 0, 0));
+        LinearLayout what = row(c);
+        TextView head = text(c, title.isEmpty() ? "Tesla" : title, 13f, INK, true);
+        head.setMaxWidth(px(d, 220));
+        what.addView(head);
+        if (!status.isEmpty() && !status.equalsIgnoreCase(title)) {
+            TextView s = text(c, "·  " + status, 11.5f, DIM, false);
+            s.setMaxWidth(px(d, 300));
+            what.addView(s, margins(d, 0, 6));
+        }
+        col.addView(what, margins(d, 2, 0));
+        java.util.function.Consumer<Integer> reveal = mode -> { };
+        if (battery >= 0) {
+            if (miles < 0) {
+                int full = parseInt(Config.themeString(c, "tesla_range_miles", "330"), 330);
+                miles = Math.round(full * battery / 100f);
+            }
+            LinearLayout charge = row(c);
+            Battery b = new Battery(c, battery, from >= 0 && from < battery ? from : charging ? Math.max(0, battery - 10) : 0,
+                    target, charging);
+            charge.addView(b, new LinearLayout.LayoutParams(px(d, 120), px(d, 12)));
+            String level = battery + "%  ·  " + (u.has("miles") ? "" : "≈ ") + miles + " mi"
+                    + (charging && target > battery ? "  ·  TO " + target + "%" : "");
+            TextView l = text(c, level, 10.5f, INK, true);
+            charge.addView(l, margins(d, 0, 8));
+            col.addView(charge, margins(d, 4, 0));
+            reveal = mode -> b.fill(mode != MOVE);
+        }
+        card.addView(col, margins(d, 0, 10));
+        return new Card(card, reveal, 640, 70);
+    }
+
+    /**
+     * The battery: a slim rounded cell filling to its level in green (amber under 50%, red under 20%); while it
+     * charges it fills up from where it was, a bolt rides at its edge and a tick marks the charge limit.
+     */
+    private static final class Battery extends View {
+        private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final int level, from, target;
+        private final boolean charging;
+        private float shown;
+
+        Battery(Context c, int level, int from, int target, boolean charging) {
+            super(c);
+            this.level = Math.max(0, Math.min(100, level));
+            this.from = Math.max(0, Math.min(this.level, from));
+            this.target = target;
+            this.charging = charging;
+            shown = this.from;
+        }
+
+        void fill(boolean calm) {
+            if (calm) { shown = level; invalidate(); return; }
+            android.animation.ValueAnimator a = android.animation.ValueAnimator.ofFloat(from, level);
+            a.setDuration(charging ? 1600 : 1000);
+            a.setStartDelay(200);
+            a.setInterpolator(new android.view.animation.DecelerateInterpolator(1.4f));
+            a.addUpdateListener(v -> { shown = (float) v.getAnimatedValue(); invalidate(); });
+            a.start();
+        }
+
+        @Override protected void onDraw(Canvas canvas) {
+            float h = getHeight(), w = getWidth(), r = h / 2f, tip = h * 0.22f, body = w - tip - 2;
+            paint.setColor(0x4D1A1D24);
+            canvas.drawRoundRect(new RectF(0, 0, body, h), r, r, paint);
+            canvas.drawRoundRect(new RectF(w - tip, h * 0.28f, w, h * 0.72f), tip / 2, tip / 2, paint);
+            int colour = level < 20 ? 0xFFFF453A : level < 50 ? 0xFFFFB800 : 0xFF2FBF5B;
+            paint.setColor(colour);
+            float inset = h * 0.16f, inner = body - 2 * inset, x = inset + Math.max(h * 0.5f, inner * shown / 100f);
+            if (shown > 0) canvas.drawRoundRect(new RectF(inset, inset, x, h - inset), r - inset, r - inset, paint);
+            if (charging && target > 0 && target <= 100) {
+                paint.setColor(0xB31A1D24);
+                float tx = inset + inner * target / 100f;
+                canvas.drawRect(tx - 1, 0, tx + 1, h, paint);
+            }
+            if (charging) {
+                paint.setColor(Color.WHITE);
+                paint.setTextSize(h * 0.85f);
+                paint.setTextAlign(Paint.Align.CENTER);
+                canvas.drawText("⚡", Math.max(h * 0.6f, x - h * 0.45f), h * 0.8f, paint);
+            }
+        }
+    }
+
+    private static int parseInt(String s, int fallback) {
+        try { return Integer.parseInt(s.trim()); } catch (Exception e) { return fallback; }
+    }
+
+    /** A card the shape of the alerts' pills: a rounded glass line, its parts centred. */
+    private static LinearLayout pill(Context c, float d, Drawable glass) {
+        LinearLayout card = new LinearLayout(c);
+        card.setOrientation(LinearLayout.HORIZONTAL);
+        card.setGravity(Gravity.CENTER_VERTICAL);
+        card.setBackground(glass);
+        card.setPadding(px(d, 8), px(d, 7), px(d, 18), px(d, 7));
+        card.setMinimumHeight(px(d, 48));
+        return card;
+    }
+
+    private static ImageView logo(Context c, float d, Bitmap icon, int brand) {
+        ImageView logo = new ImageView(c);
+        if (icon != null) logo.setImageBitmap(round(icon, 0.26f));
+        else logo.setBackground(roundRect(brand, px(d, 9)));
+        return logo;
+    }
+
+    private static LinearLayout row(Context c) {
+        LinearLayout r = new LinearLayout(c);
+        r.setOrientation(LinearLayout.HORIZONTAL);
+        r.setGravity(Gravity.CENTER_VERTICAL);
+        return r;
+    }
+
+    // ---- the car's picture -----------------------------------------------------------------------------------------
+
+    private static Bitmap carArt;
+
+    /**
+     * The car's picture, cut out on its own like the Tesla app's: a Model X ("Tesla Model X 100D Solid Black (1)" by
+     * Damian B Oh, CC BY-SA 4.0, Wikimedia Commons; background removed). Tesla's own renders refuse the TV. Other
+     * models (a theme's "tesla_model") get the Tesla mark instead.
+     */
+    static Bitmap carArt(Context c) {
+        if (carArt != null) return carArt;
+        if (!Config.themeString(c, "tesla_model", "Model X").toLowerCase(Locale.ROOT).contains("x")) return null;
+        carArt = trim(BitmapFactory.decodeResource(c.getResources(), R.drawable.car_model_x));
+        return carArt;
+    }
+
+    /** The picture cut to the car itself: the empty, transparent margins around it removed. */
+    private static Bitmap trim(Bitmap b) {
+        if (b == null) return null;
+        int w = b.getWidth(), h = b.getHeight(), left = w, right = -1, top = h, bottom = -1;
+        int[] row = new int[w];
+        for (int y = 0; y < h; y += 2) {
+            b.getPixels(row, 0, w, 0, y, w, 1);
+            for (int x = 0; x < w; x += 2) {
+                if ((row[x] >>> 24) > 16) {
+                    if (x < left) left = x;
+                    if (x > right) right = x;
+                    if (y < top) top = y;
+                    if (y > bottom) bottom = y;
+                }
+            }
+        }
+        if (right <= left || bottom <= top) return b;
+        Bitmap out = Bitmap.createBitmap(b, left, top, right - left + 1, bottom - top + 1);
+        float scale = Math.min(1f, 600f / out.getWidth());
+        return scale < 1f ? Bitmap.createScaledBitmap(out, Math.round(out.getWidth() * scale), Math.round(out.getHeight() * scale), true) : out;
+    }
+
+    // ---- small helpers ---------------------------------------------------------------------------------------------
+
+    static Bitmap decode(String base64) {
+        try {
+            byte[] png = Base64.decode(base64, Base64.DEFAULT);
+            return png.length > 0 ? BitmapFactory.decodeByteArray(png, 0, png.length) : null;
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+    }
+
+    private static Bitmap round(Bitmap b, float corner) {
+        int s = Math.min(b.getWidth(), b.getHeight());
+        Bitmap out = Bitmap.createBitmap(s, s, Bitmap.Config.ARGB_8888);
+        Canvas canvas = new Canvas(out);
+        Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
+        p.setShader(new android.graphics.BitmapShader(b, android.graphics.Shader.TileMode.CLAMP, android.graphics.Shader.TileMode.CLAMP));
+        canvas.drawRoundRect(new RectF(0, 0, s, s), s * corner, s * corner, p);
+        return out;
+    }
+
+    private static GradientDrawable roundRect(int colour, float radius) {
+        GradientDrawable g = new GradientDrawable();
+        g.setColor(colour);
+        g.setCornerRadius(radius);
+        return g;
+    }
+
+    /** The brand colour dark enough to read on the light glass (Uber's green and Just Eat's orange deepened). */
+    private static int readable(int colour) {
+        float[] hsv = new float[3];
+        Color.colorToHSV(colour, hsv);
+        hsv[2] = Math.min(hsv[2], 0.62f);
+        return Color.HSVToColor(hsv);
+    }
+
+    private static TextView text(Context c, CharSequence s, float sp, int colour, boolean bold) {
+        TextView t = new TextView(c);
+        t.setText(s);
+        t.setTextColor(colour);
+        t.setTextSize(TypedValue.COMPLEX_UNIT_SP, sp);
+        t.setSingleLine(true);
+        t.setEllipsize(TextUtils.TruncateAt.END);
+        t.setIncludeFontPadding(false);
+        if (bold) t.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
+        return t;
+    }
+
+    private static LinearLayout.LayoutParams margins(float d, int top, int left) {
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT);
+        lp.topMargin = px(d, top);
+        lp.leftMargin = px(d, left);
+        return lp;
+    }
+
+    private static int px(float d, float dp) {
+        return Math.round(dp * d);
+    }
+}

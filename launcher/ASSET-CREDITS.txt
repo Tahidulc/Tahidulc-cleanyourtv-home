@@ -1,0 +1,10 @@
+Pictures bundled with the launcher that are not its own
+
+app/src/main/res/drawable-nodpi/car_model_x.webp
+  "Tesla Model X 100D Solid Black (1)" by Damian B Oh, Wikimedia Commons, CC BY-SA 4.0
+  (https://creativecommons.org/licenses/by-sa/4.0/). Background removed and resized; this derivative is under the
+  same licence.
+
+app/src/main/res/drawable/tesla_t.xml
+  The Tesla "T" symbol, from Wikimedia Commons "Tesla T symbol.svg". A trademark of Tesla, Inc., shown here only to
+  mark notifications that come from the Tesla app.

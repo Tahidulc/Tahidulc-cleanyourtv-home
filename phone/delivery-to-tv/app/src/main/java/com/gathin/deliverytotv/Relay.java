@@ -124,23 +124,97 @@ final class Relay {
         return "";
     }
 
-    private static final Pattern PERCENT = Pattern.compile("\\b(\\d{1,3})\\s?%");
+    private static final Pattern PERCENT = Pattern.compile("(\\b(?:to|limit|limit of|target|up to)\\s+)?\\b(\\d{1,3})\\s?%",
+            Pattern.CASE_INSENSITIVE);
+    private static final Pattern MILES = Pattern.compile("\\b(\\d{1,3})\\s?(?:mi|miles)\\b", Pattern.CASE_INSENSITIVE);
 
-    /** The battery level a car notification gives ("Charging complete: 80%"), or -1. */
+    /** The battery level a car notification gives ("Charging complete: 80%", "42% · charging to 80%"), or -1. */
     static int battery(String text) {
         Matcher m = PERCENT.matcher(text);
-        if (!m.find()) return -1;
-        int v = Integer.parseInt(m.group(1));
-        return v <= 100 ? v : -1;
+        int limit = -1;
+        while (m.find()) {
+            int v = Integer.parseInt(m.group(2));
+            if (v > 100) continue;
+            if (m.group(1) == null) return v;
+            limit = v;
+        }
+        // Only "charged to 80%" said: that is where it is when the charge is complete.
+        return text.toLowerCase(Locale.ROOT).matches("(?s).*(complete|finished|done).*") ? limit : -1;
+    }
+
+    /** The charge limit it is charging to ("charging to 80%"), or -1. */
+    static int target(String text) {
+        Matcher m = PERCENT.matcher(text);
+        while (m.find()) if (m.group(1) != null) return Math.min(100, Integer.parseInt(m.group(2)));
+        return -1;
+    }
+
+    /** The range the app gives ("263 mi"), or -1. */
+    static int miles(String text) {
+        Matcher m = MILES.matcher(text);
+        return m.find() ? Integer.parseInt(m.group(1)) : -1;
+    }
+
+    private static final Pattern FROM = Pattern.compile(
+            "(?i:order|food|meal|delivery) (?:from|at) ([A-Z0-9][^.!?\\n]{1,40}?)(?=\\s+(?:is|has|was|will|are)\\b|[.!?\\n,]|$)");
+    private static final Pattern BY = Pattern.compile(
+            "^([A-Z0-9][^.!?\\n]{1,40}?) (?:is preparing|is making|has accepted|accepted your|is cooking|has started|is getting)",
+            Pattern.MULTILINE);
+
+    /** The restaurant, when the app names it ("Your order from Nando's is…", "Nando's is preparing…"), or "". */
+    static String restaurant(String text) {
+        Matcher m = FROM.matcher(text);
+        if (m.find()) return m.group(1).trim();
+        m = BY.matcher(text);
+        if (m.find()) {
+            String r = m.group(1).trim();
+            String l = r.toLowerCase(Locale.ROOT);
+            if (!l.startsWith("your") && !l.startsWith("the restaurant") && !l.startsWith("we") && !l.contains("driver")
+                    && !l.contains("courier") && !l.contains("rider")) return r;
+        }
+        return "";
+    }
+
+    // ---- what was ordered (OrderReader) -----------------------------------------------------------
+
+    /** The items OrderReader last saw on an app's basket or order screen: "2× Big Mac". */
+    static void saveItems(Context c, String pkg, List<String> items) {
+        prefs(c).edit().putString("items:" + pkg, new JSONArray(items).toString())
+                .putLong("itemsAt:" + pkg, System.currentTimeMillis()).apply();
+    }
+
+    /** Those items, while they are recent enough to be this order's (three hours); empty otherwise. */
+    static JSONArray items(Context c, String pkg) {
+        SharedPreferences p = prefs(c);
+        if (System.currentTimeMillis() - p.getLong("itemsAt:" + pkg, 0) > 3 * 60 * 60_000L) return new JSONArray();
+        try {
+            return new JSONArray(p.getString("items:" + pkg, "[]"));
+        } catch (Exception e) {
+            return new JSONArray();
+        }
+    }
+
+    static void clearItems(Context c, String pkg) {
+        prefs(c).edit().remove("items:" + pkg).remove("itemsAt:" + pkg).apply();
+    }
+
+    /** The restaurant OrderReader saw on screen, kept like the items. */
+    static void saveRestaurant(Context c, String pkg, String name) {
+        prefs(c).edit().putString("from:" + pkg, name).apply();
+    }
+
+    static String savedRestaurant(Context c, String pkg) {
+        if (System.currentTimeMillis() - prefs(c).getLong("itemsAt:" + pkg, 0) > 3 * 60 * 60_000L) return "";
+        return prefs(c).getString("from:" + pkg, "");
     }
 
     /** The app's icon as a small PNG, in base64. */
     static String icon(Context c, String pkg) {
         try {
             Drawable d = c.getPackageManager().getApplicationIcon(pkg);
-            Bitmap b = Bitmap.createBitmap(96, 96, Bitmap.Config.ARGB_8888);
+            Bitmap b = Bitmap.createBitmap(192, 192, Bitmap.Config.ARGB_8888);
             Canvas canvas = new Canvas(b);
-            d.setBounds(0, 0, 96, 96);
+            d.setBounds(0, 0, 192, 192);
             d.draw(canvas);
             ByteArrayOutputStream out = new ByteArrayOutputStream();
             b.compress(Bitmap.CompressFormat.PNG, 100, out);

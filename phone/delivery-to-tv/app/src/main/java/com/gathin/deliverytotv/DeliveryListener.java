@@ -41,44 +41,59 @@ public class DeliveryListener extends NotificationListenerService {
         if (key.equals(last.get(pkg))) return;
         last.put(pkg, key);
         try {
+            String from = Relay.restaurant(title + "\n" + body + "\n" + big);
+            if (from.isEmpty()) from = Relay.savedRestaurant(this, pkg);
             JSONObject update = new JSONObject()
                     .put("app", Relay.label(this, pkg))
                     .put("package", pkg)
                     .put("stage", stage)
                     .put("status", status)
                     .put("eta", eta)
+                    .put("from", from)
+                    .put("items", Relay.items(this, pkg))
                     .put("icon", Relay.icon(this, pkg));
             Relay.send(this, update);
+            if (stage == 4) Relay.clearItems(this, pkg);   // delivered: the next order starts afresh
         } catch (Exception ignored) {
         }
     }
 
-    /** When the car app's last pop-up went, by its title: a notification that keeps updating pops up once. */
-    private final Map<String, Long> carShown = new HashMap<>();
+    /** The car's last pop-up: when, and at what battery level. */
+    private long carShownAt;
+    private int carShownLevel = -1;
 
     /**
-     * A car app's notification, as it is: what it says and the battery when it gives it. The same news again within
-     * ten minutes (a charge counting up) only updates Home's car pill, quietly.
+     * A car app's notification, as it is: what it says, the battery, the charge limit and the miles when it gives
+     * them. While it charges (a notification that keeps updating) it goes to the TVs each 5% or quarter of an hour.
      */
     private void car(String pkg, String title, String body) {
         if (title.isEmpty() && body.isEmpty()) return;
         String key = title + "|" + body;
         if (key.equals(last.get(pkg))) return;
         last.put(pkg, key);
+        String all = title + " " + body, low = all.toLowerCase(java.util.Locale.ROOT);
+        int battery = Relay.battery(all);
+        boolean charging = low.contains("charging") && !low.contains("complete") && !low.contains("stopped")
+                && !low.contains("interrupted") && !low.contains("finished");
         long now = System.currentTimeMillis();
-        Long shown = carShown.get(title);
-        boolean quiet = shown != null && now - shown < 10 * 60_000L;
-        if (!quiet) carShown.put(title, now);
+        if (charging && carShownLevel >= 0 && battery >= 0 && battery - carShownLevel < 5 && now - carShownAt < 15 * 60_000L) return;
+        int from = charging ? carShownLevel : -1;
+        carShownAt = now;
+        carShownLevel = charging ? battery : -1;
         try {
-            Relay.send(this, new JSONObject()
+            JSONObject u = new JSONObject()
                     .put("kind", "car")
-                    .put("quiet", quiet)
                     .put("app", Relay.label(this, pkg))
                     .put("package", pkg)
                     .put("title", title)
                     .put("status", body)
-                    .put("battery", Relay.battery(title + " " + body))
-                    .put("icon", Relay.icon(this, pkg)));
+                    .put("battery", battery)
+                    .put("from", from)
+                    .put("target", Relay.target(all))
+                    .put("icon", Relay.icon(this, pkg));
+            int miles = Relay.miles(all);
+            if (miles >= 0) u.put("miles", miles);
+            Relay.send(this, u);
         } catch (Exception ignored) {
         }
     }

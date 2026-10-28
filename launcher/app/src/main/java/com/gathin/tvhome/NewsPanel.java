@@ -62,7 +62,7 @@ final class NewsPanel {
         return s != null && s.startsWith("BBC ");
     }
 
-    /** {headline, picture url, article link} */
+    /** {headline, picture url, article link, published (RFC 822, or null)} */
     static List<String[]> read(String feed) {
         List<String[]> out = new ArrayList<>();
         HttpURLConnection conn = null;
@@ -73,12 +73,13 @@ final class NewsPanel {
             try (InputStream in = conn.getInputStream()) {
                 XmlPullParser p = Xml.newPullParser();
                 p.setInput(in, null);
-                String title = null, image = null, link = null;
+                String title = null, image = null, link = null, date = null;
                 boolean inItem = false;
                 for (int e = p.getEventType(); e != XmlPullParser.END_DOCUMENT && out.size() < STORIES; e = p.next()) {
                     if (e == XmlPullParser.START_TAG) {
                         String n = p.getName();
-                        if ("item".equals(n)) { inItem = true; title = null; image = null; link = null; }
+                        if ("item".equals(n)) { inItem = true; title = null; image = null; link = null; date = null; }
+                        else if (inItem && "pubDate".equals(n)) date = p.nextText().trim();
                         else if (inItem && "title".equals(n)) title = p.nextText().trim();
                         else if (inItem && "link".equals(n)) link = p.nextText().trim();
                         else if (inItem && "thumbnail".equals(n)) image = p.getAttributeValue(null, "url");
@@ -86,7 +87,7 @@ final class NewsPanel {
                         inItem = false;
                         // The feed's pictures are 240 px wide; the same server has an 800 px one for a full card.
                         if (title != null && image != null) out.add(new String[]{title,
-                                image.replace("/standard/240/", "/standard/800/"), link});
+                                image.replace("/standard/240/", "/standard/800/"), link, date});
                     }
                 }
             }

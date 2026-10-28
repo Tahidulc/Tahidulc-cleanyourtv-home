@@ -131,6 +131,21 @@ public class AppSearchService extends AccessibilityService {
         return true;
     }
 
+    /**
+     * Home came to the front (the remote's Home, while a channel or title was loading): the helper stops at once and
+     * its cover goes, so Home is never held behind it.
+     */
+    static void cancel() {
+        if (instance != null) instance.abort();
+    }
+
+    private void abort() {
+        if (target == null && cover == null) return;
+        target = null;
+        main.removeCallbacks(step);
+        removeCover();
+    }
+
     /** adb test only: the open app's accessibility tree, to logcat. */
     static void dump() {
         if (instance == null) { Log.i(TAG, "helper off"); return; }
@@ -185,6 +200,12 @@ public class AppSearchService extends AccessibilityService {
     /** One look at the screen and one move towards the search: true to look again. */
     private boolean advance() {
         AccessibilityNodeInfo root = getRootInActiveWindow();
+        // Home in front once the app had time to open: the person left, and the helper goes with them.
+        if (root != null && getPackageName().contentEquals(String.valueOf(root.getPackageName()))
+                && System.currentTimeMillis() - startedAt > 2_500) {
+            removeCover();
+            return false;
+        }
         if (root == null || root.getPackageName() == null || !target.contentEquals(root.getPackageName())) return true;
         if (channel) return tuneStep(root);
         AccessibilityNodeInfo box = find(root, Kind.EDIT);
@@ -340,7 +361,10 @@ public class AppSearchService extends AccessibilityService {
 
     private static boolean uhd(AccessibilityNodeInfo n) {
         CharSequence t = n.getText();
-        return t != null && t.toString().toLowerCase(Locale.ROOT).matches(".*\\b(4k|uhd)\\b.*");
+        if (t == null) return false;
+        // "UHD", "4K", "Ultra HD", "2160p", and the small raised "ᵁᴴᴰ" some playlists write.
+        String l = t.toString().toLowerCase(Locale.ROOT);
+        return l.matches(".*(\\b4k\\b|uhd|ultra\\s*hd|2160|ᵁᴴᴰ).*") || t.toString().contains("ᵁᴴᴰ");
     }
 
     /** The next channel name to search for, or false when none is left (TiviMate stays on what it found). */
@@ -610,7 +634,9 @@ public class AppSearchService extends AccessibilityService {
         String n = s.toLowerCase(Locale.ROOT).trim();
         n = n.replaceFirst("^(uk|gb)\\s*[:|\\-]\\s*", "");
         if (loose) n = n.replaceAll("\\([^)]*\\)|\\[[^]]*]", " ");
-        n = n.replaceAll("\\b(fhd|uhd|hd|sd|4k|hevc|h265|50fps)\\b", " ").replaceAll("\\s*\\bplus\\b", "+");
+        n = n.replaceAll("\\b(fhd|uhd|hd|sd|4k|hevc|h265|50fps|ultra\\s*hd|2160p?|hdr)\\b", " ").replaceAll("\\s*\\bplus\\b", "+");
+        // Raised tag letters ("ᴴᴰ", "ᵁᴴᴰ") and other modifier letters are tags too.
+        n = n.replaceAll("[\\u02B0-\\u02FF\\u1D2C-\\u1D6A\\u2070-\\u209F]", "");
         n = n.replaceAll("[^\\p{L}\\p{N}+]", "");
         return n.equals("5") ? "channel5" : n;
     }

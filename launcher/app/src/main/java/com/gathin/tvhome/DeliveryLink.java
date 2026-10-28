@@ -35,11 +35,14 @@ final class DeliveryLink {
 
         /** A delivery update: {app, status, stage (0..4), eta, icon (base64 PNG)}. Main thread not guaranteed. */
         void delivery(JSONObject update);
+
+        /** The code was typed in: the phone is paired. Main thread not guaranteed. */
+        void paired();
     }
 
     static final int PORT = 47820;
     private static final String TYPE = "_tvhome._tcp";
-    private static final long CODE_MS = 2 * 60_000L;
+    private static final long CODE_MS = 5 * 60_000L;
     private static final int MAX_BODY = 192 * 1024;
 
     private final Context context;
@@ -128,7 +131,7 @@ final class DeliveryLink {
         if (!method.equals("POST")) { reply(s, 405, "{\"error\":\"POST only\"}"); return; }
         switch (path) {
             case "/pair": {
-                // A new code, shown on the TV for two minutes.
+                // A new code, good for five minutes: it can wait behind an alert already on screen.
                 code = String.format(Locale.ROOT, "%04d", random.nextInt(10_000));
                 codeAt = System.currentTimeMillis();
                 attempts = 0;
@@ -148,6 +151,7 @@ final class DeliveryLink {
                 tokens.add(hex.toString());
                 prefs.edit().putStringSet("tokens", tokens).apply();
                 reply(s, 200, new JSONObject().put("token", hex.toString()).put("tv", name()).toString());
+                sink.paired();
                 return;
             }
             case "/delivery": {

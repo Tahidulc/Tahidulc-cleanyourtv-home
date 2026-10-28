@@ -120,6 +120,7 @@ public class GoalWatchService extends Service {
         deliveries = new DeliveryLink(this, new DeliveryLink.Sink() {
             @Override public void pairing(String phone, String code) { main.post(() -> showPairing(phone, code)); }
             @Override public void delivery(JSONObject update) { main.post(() -> showDelivery(update)); }
+            @Override public void paired() { main.post(() -> { if (pairingClose != null) pairingClose.run(); }); }
         });
         deliveries.start();
     }
@@ -128,139 +129,84 @@ public class GoalWatchService extends Service {
 
     private DeliveryLink deliveries;
 
-    /** The code a phone asks to pair with, for the person to type there. */
+    /** The code a phone asks to pair with, for the person to type there: ahead of any other alert waiting. */
     private void showPairing(String phone, String code) {
-        List<Object> parts = new ArrayList<>();
-        parts.add(bold("📱  Pair " + phone));
-        parts.add(14);
-        parts.add(new Small("CODE"));
-        parts.add(8);
-        SpannableStringBuilder digits = new SpannableStringBuilder(code.replace("", " ").trim());
-        digits.setSpan(new StyleSpan(Typeface.BOLD), 0, digits.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-        digits.setSpan(new android.text.style.RelativeSizeSpan(1.3f), 0, digits.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-        parts.add(digits);
-        queue.add(new Object[]{parts, "reminder"});
+        float d = getResources().getDisplayMetrics().density;
+        queue.removeIf(e -> e.length == 2 && e[0] instanceof DeliveryCard.Card && ((DeliveryCard.Card) e[0]).pairing);
+        queue.removeIf(e -> e.length == 2 && e[0] instanceof DeliveryCard.Card && ((DeliveryCard.Card) e[0]).pairing);
+        queue.addFirst(new Object[]{DeliveryCard.pairing(this, phone, code, glass(20 * d)), "reminder"});
+        if (pairingClose != null) pairingClose.run();   // an older code on screen gives way to the new one
+        if (pairingClose != null) pairingClose.run();   // an older code on screen gives way to the new one
         showNext();
     }
 
-    private static final String[] DELIVERY_STAGES = {"Order placed", "Being prepared", "On the way", "Arriving", "Delivered"};
-
     /**
-     * A delivery app's update: its icon and name, where the order is (its own words), when it arrives, and a bar of
-     * the five stages filled to where it has got to.
+     * A delivery app's update, as a card in that app's colours: its logo, the restaurant, the stage with a look of
+     * its own, the bar of stages and what was ordered (DeliveryCard).
      */
     private void showDelivery(JSONObject u) {
         if ("car".equals(u.optString("kind"))) { showCar(u); return; }
         float d = getResources().getDisplayMetrics().density;
-        int stage = Math.max(0, Math.min(4, u.optInt("stage", 0)));
-        List<Object> parts = new ArrayList<>();
-        android.graphics.Bitmap icon = null;
-        try {
-            byte[] png = android.util.Base64.decode(u.optString("icon", ""), android.util.Base64.DEFAULT);
-            if (png.length > 0) icon = android.graphics.BitmapFactory.decodeByteArray(png, 0, png.length);
-        } catch (IllegalArgumentException ignored) {
-            // no icon: the name alone
-        }
-        if (icon != null) {
-            parts.add(new android.graphics.drawable.BitmapDrawable(getResources(), roundIcon(icon)));
-            parts.add(8);
-        }
-        parts.add(bold(u.optString("app", "Delivery")));
-        parts.add(12);
-        String status = u.optString("status", "").trim();
-        parts.add(status.isEmpty() ? DELIVERY_STAGES[stage] : status.length() > 60 ? status.substring(0, 58) + "…" : status);
-        String eta = u.optString("eta", "").trim();
-        if (!eta.isEmpty() && stage < 4) {
-            parts.add(12);
-            parts.add(new Small("ARRIVING " + eta.toUpperCase(java.util.Locale.ROOT)));
-        }
-        parts.add(14);
-        parts.add(new android.graphics.drawable.BitmapDrawable(getResources(), stagesBar(stage, d)));
-        queue.add(new Object[]{parts, stage == 4 ? "fulltime" : "reminder"});
+        // Ahead of the sports alerts waiting: an order's news is now or never.
+        queue.addFirst(new Object[]{DeliveryCard.food(this, u, glass(24 * d)), u.optInt("stage") == 4 ? "fulltime" : "reminder"});
         showNext();
     }
 
     /**
-     * The car app's notification (Tesla), passed on by the phone: its icon, what it says, and the battery when it
-     * says it. Kept for Home's car pill (CarPill), which shows the latest one.
+     * The car app's notification (Tesla), passed on by the phone: a card with the car, the Tesla mark and the battery,
+     * over any app and on Home.
      */
     private void showCar(JSONObject u) {
-        float d = getResources().getDisplayMetrics().density;
         String title = u.optString("title", "").trim(), status = u.optString("status", "").trim();
-        int battery = u.optInt("battery", -1);
-        if (title.isEmpty() && status.isEmpty()) { CarPill.clear(this); return; }   // nothing to say: the pill goes
-        CarPill.save(this, title, status, battery);
-        if (u.optBoolean("quiet")) return;   // the same news again: the pill only
-        List<Object> parts = new ArrayList<>();
-        android.graphics.Bitmap icon = null;
-        try {
-            byte[] png = android.util.Base64.decode(u.optString("icon", ""), android.util.Base64.DEFAULT);
-            if (png.length > 0) icon = android.graphics.BitmapFactory.decodeByteArray(png, 0, png.length);
-        } catch (IllegalArgumentException ignored) {
-            // no icon: the name alone
-        }
-        if (icon != null) {
-            parts.add(new android.graphics.drawable.BitmapDrawable(getResources(), roundIcon(icon)));
-            parts.add(8);
-        }
-        parts.add(bold(title.isEmpty() ? u.optString("app", "Car") : title.length() > 40 ? title.substring(0, 38) + "…" : title));
-        if (!status.isEmpty()) {
-            parts.add(12);
-            parts.add(status.length() > 70 ? status.substring(0, 68) + "…" : status);
-        }
-        if (battery >= 0) {
-            parts.add(14);
-            parts.add(new android.graphics.drawable.BitmapDrawable(getResources(), batteryBar(battery, d)));
-            parts.add(6);
-            parts.add(new Small(battery + "%"));
-        }
-        queue.add(new Object[]{parts, "reminder"});
+        if (title.isEmpty() && status.isEmpty()) return;
+        float d = getResources().getDisplayMetrics().density;
+        queue.addFirst(new Object[]{DeliveryCard.car(this, u, glass(24 * d)), "reminder"});
         showNext();
     }
 
-    /** The battery as a glass track filled to its level: green, amber under 50%, red under 20%. */
-    private static android.graphics.Bitmap batteryBar(int level, float d) {
-        int w = Math.round(70 * d), h = Math.round(14 * d);
-        android.graphics.Bitmap out = android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888);
-        android.graphics.Canvas c = new android.graphics.Canvas(out);
-        android.graphics.Paint p = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
-        float r = h * 0.28f, cy = h / 2f;
-        p.setColor(0x47FFFFFF);
-        c.drawRoundRect(new android.graphics.RectF(0, cy - r, w, cy + r), r, r, p);
-        p.setColor(level < 20 ? 0xFFFF453A : level < 50 ? 0xFFFFD60A : 0xFF34C759);
-        c.drawRoundRect(new android.graphics.RectF(0, cy - r, Math.max(2 * r, w * Math.min(100, level) / 100f), cy + r), r, r, p);
-        return out;
-    }
+    /** Closes the pairing code's card once the phone has typed it in. */
+    private Runnable pairingClose;
 
-    /** The app's icon with rounded corners, as a phone shows it. */
-    private static android.graphics.Bitmap roundIcon(android.graphics.Bitmap b) {
-        int s = Math.min(b.getWidth(), b.getHeight());
-        android.graphics.Bitmap out = android.graphics.Bitmap.createBitmap(s, s, android.graphics.Bitmap.Config.ARGB_8888);
-        android.graphics.Canvas c = new android.graphics.Canvas(out);
-        android.graphics.Paint p = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
-        p.setShader(new android.graphics.BitmapShader(b, android.graphics.Shader.TileMode.CLAMP, android.graphics.Shader.TileMode.CLAMP));
-        c.drawRoundRect(new android.graphics.RectF(0, 0, s, s), s * 0.24f, s * 0.24f, p);
-        return out;
-    }
-
-    /** Five stages as a bar: a glass track, filled white to the stage reached, a dot at each stage. */
-    private static android.graphics.Bitmap stagesBar(int stage, float d) {
-        int w = Math.round(130 * d), h = Math.round(14 * d);
-        android.graphics.Bitmap out = android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888);
-        android.graphics.Canvas c = new android.graphics.Canvas(out);
-        android.graphics.Paint p = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
-        float r = h * 0.22f, cy = h / 2f, x0 = h / 2f, x1 = w - h / 2f;
-        p.setColor(0x47FFFFFF);
-        c.drawRoundRect(new android.graphics.RectF(x0, cy - r, x1, cy + r), r, r, p);
-        float to = x0 + (x1 - x0) * stage / 4f;
-        p.setColor(stage == 4 ? 0xFF34C759 : 0xFFFFFFFF);
-        c.drawRoundRect(new android.graphics.RectF(x0, cy - r, Math.max(x0 + 2 * r, to), cy + r), r, r, p);
-        for (int i = 0; i <= 4; i++) {
-            float x = x0 + (x1 - x0) * i / 4f;
-            p.setColor(i <= stage ? (stage == 4 ? 0xFF34C759 : 0xFFFFFFFF) : 0x66FFFFFF);
-            c.drawCircle(x, cy, i == stage ? h / 2f - d : h * 0.3f, p);
+    /** A card (DeliveryCard) rises into place, plays its reveal, stays a while and fades. */
+    private void showCard(DeliveryCard.Card card, String sound) {
+        float d = getResources().getDisplayMetrics().density;
+        ensureHost(card.widthDp, card.heightDp);
+        if (host == null) { showNext(); return; }
+        View panel = card.view;
+        host.addView(panel, new android.widget.FrameLayout.LayoutParams(
+                android.widget.FrameLayout.LayoutParams.WRAP_CONTENT, android.widget.FrameLayout.LayoutParams.WRAP_CONTENT,
+                Gravity.BOTTOM | Gravity.START));
+        shown = panel;
+        play(sound);
+        Runnable[] closing = new Runnable[1];
+        Runnable close = () -> {
+            main.removeCallbacks(closing[0]);
+            if (pairingClose == closing[0]) pairingClose = null;
+            if (shown != panel) return;
+            if (calm()) { removeHost(); return; }
+            panel.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+            panel.animate().alpha(0f).translationY(10 * d).setDuration(450).withEndAction(this::removeHost).start();
+        };
+        closing[0] = close;
+        if (card.pairing) pairingClose = close;
+        if (calm()) {
+            card.reveal.accept(stillOnly() ? DeliveryCard.STILL : DeliveryCard.CALM);
+            main.postDelayed(close, card.showMs);
+            return;
         }
-        return out;
+        panel.setAlpha(0f);
+        panel.setScaleX(0.92f);
+        panel.setScaleY(0.92f);
+        panel.setTranslationY(18 * d);
+        panel.post(() -> {
+            panel.setPivotX(0);
+            panel.setPivotY(panel.getHeight());
+            panel.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+            panel.animate().alpha(1f).scaleX(1f).scaleY(1f).translationY(0f).setDuration(520)
+                    .setInterpolator(new android.view.animation.OvershootInterpolator(1.4f))
+                    .withEndAction(() -> { panel.setLayerType(View.LAYER_TYPE_NONE, null); card.reveal.accept(DeliveryCard.MOVE); }).start();
+        });
+        main.postDelayed(close, card.showMs);
     }
 
     private final Handler main = new Handler(Looper.getMainLooper());
@@ -707,20 +653,49 @@ public class GoalWatchService extends Service {
         if (boxing) feeds.add(BOXING_FEED);
         for (String entry : feeds) {
             String[] parts = entry.split("\\|", 2);
+            boolean fight = entry.equals(BOXING_FEED);
+            // Breaking news only: the local feed is left out, and only a feed's lead story counts.
+            if (!fight && parts[0].contains("/manchester/")) continue;
             List<String[]> stories = NewsPanel.read(parts[0].trim());
-            for (int i = 0; i < Math.min(5, stories.size()); i++) {
+            for (int i = 0; i < Math.min(fight ? 5 : 1, stories.size()); i++) {
                 String[] st = stories.get(i);
-                out.add(new String[]{parts.length > 1 ? parts[1].trim() : "NEWS", st[0], st[2] == null ? st[0] : st[2]});
+                // Every lead story is learnt (so a restart does not replay it); only a breaking one pops up.
+                out.add(new String[]{parts.length > 1 ? parts[1].trim() : "NEWS", st[0], st[2] == null ? st[0] : st[2],
+                        fight || breaking(st) ? "pop" : ""});
             }
         }
         return out;
+    }
+
+    /**
+     * Breaking news: a feed's new lead story, published within the last 45 minutes, that is news rather than a
+     * feature (a quiz, a video, a live page's daily round-up, "in pictures").
+     */
+    private static boolean breaking(String[] st) {
+        String t = st[0].toLowerCase(java.util.Locale.ROOT);
+        for (String f : new String[]{"watch:", "quiz", "in pictures", "listen:", "podcast", "week in", "your questions",
+                "what we know", "the papers", "newspaper headlines", "how to ", "explained", "analysis:", "opinion"}) {
+            if (t.startsWith(f) || t.contains(" " + f)) return false;
+        }
+        if (st.length < 4 || st[3] == null) return false;
+        try {
+            long at = java.time.ZonedDateTime.parse(st[3], java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME)
+                    .toInstant().toEpochMilli();
+            return System.currentTimeMillis() - at < 45 * 60_000L;
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     /** A story new to the top five of its feed pops up; at most one per feed each read, the first read only learns. */
     private void newsUpdates(List<String[]> items) {
         Set<String> shownFeeds = new HashSet<>();
         for (String[] item : items) {
-            if (seenNews.add(item[2]) && newsPrimed && shownFeeds.add(item[0])) enqueueParts(newsLine(item), newsSound(item));
+            if (seenNews.add(item[2]) && newsPrimed && "pop".equals(item[3]) && shownFeeds.add(item[0])) {
+                List<Object> line = newsLine(item);
+                if (!"BOXING".equals(item[0])) { line.add(1, 8); line.add(2, bold("BREAKING")); }
+                enqueueParts(line, newsSound(item));
+            }
         }
         if (!items.isEmpty()) newsPrimed = true;
     }
@@ -1315,6 +1290,10 @@ public class GoalWatchService extends Service {
         Object[] next = queue.poll();
         if (next.length == 1 && next[0] instanceof F1Results.Race) {
             showRace((F1Results.Race) next[0]);
+            return;
+        }
+        if (next.length == 2 && next[0] instanceof DeliveryCard.Card) {
+            showCard((DeliveryCard.Card) next[0], (String) next[1]);
             return;
         }
         List<Object> parts;

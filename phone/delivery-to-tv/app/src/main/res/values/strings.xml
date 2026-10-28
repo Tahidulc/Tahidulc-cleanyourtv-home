@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Delivery to TV</string>
+    <string name="order_reader_description">Reads what you ordered from the basket or order screen of the delivery apps ticked in Delivery to TV, so your TVs can show it. Only those apps\' screens are read, and only the item lines are sent, to your TVs at home.</string>
 </resources>
