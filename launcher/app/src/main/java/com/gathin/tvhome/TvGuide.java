@@ -122,6 +122,19 @@ final class TvGuide {
         if (g.broadcasts != null) for (String n : g.broadcasts) if (!names.contains(n)) names.add(n);
         String[] rights = g.slug == null ? null : RIGHTS.get(g.slug);
         if (rights != null) for (String n : rights) if (!names.contains(n)) names.add(n);
+        // Not found in the guide: the first British channel named still has its logo, by its Sky service id.
+        if (logo == null) {
+            for (String n : names) {
+                for (String entry : channels) {
+                    String[] p = entry.split("\\|", 2);
+                    if (p.length == 2 && p[1].trim().equalsIgnoreCase(n.trim())) {
+                        logo = "https://d2n0069hmnqmmx.cloudfront.net/epgdata/1.0/newchanlogos/600/600/skychb" + p[0].trim() + ".png";
+                        break;
+                    }
+                }
+                if (logo != null) break;
+            }
+        }
         return names.isEmpty() ? null : new Watch(names, logo);
     }
 
