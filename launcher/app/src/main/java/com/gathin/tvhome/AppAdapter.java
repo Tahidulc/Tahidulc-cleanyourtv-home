@@ -398,7 +398,15 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
         if (viewType == 1) {
             View row = LayoutInflater.from(ctx).inflate(R.layout.row_app_library, parent, false);
             View button = row.findViewById(R.id.btnLibrary);
-            if (LightUi.on()) {
+            if (LightUi.glass()) {
+                // The glass theme: a clear glass pill that turns white in focus, like the top bar's.
+                android.widget.TextView t = (android.widget.TextView) button;
+                t.setBackgroundResource(R.drawable.pill_bg_glass);
+                android.content.res.ColorStateList ink = new android.content.res.ColorStateList(
+                        new int[][]{{android.R.attr.state_focused}, {}}, new int[]{LightUi.INK, 0xFFFFFFFF});
+                t.setTextColor(ink);
+                t.setCompoundDrawableTintList(ink);
+            } else if (LightUi.on()) {
                 // On a light wallpaper: a white pill with ink text and icon, like the top bar's.
                 android.widget.TextView t = (android.widget.TextView) button;
                 t.setBackgroundResource(R.drawable.pill_bg_light);

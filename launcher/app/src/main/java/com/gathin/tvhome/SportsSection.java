@@ -524,11 +524,13 @@ final class SportsSection {
         c.setFocusable(true);
         c.setClipToOutline(true);
         boolean light = LightUi.on();
+        // Glass theme: smoky glass that lets the wallpaper's colour through, with a bright rim.
         GradientDrawable bg = light
                 ? new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0xFAFFFFFF, 0xF2F7F8FA})
+                : LightUi.glass() ? new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0x8C1A1F2B, 0xA60D1017})
                 : new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0xE6202430, 0xE6121419});
         bg.setCornerRadius(dp(14));
-        bg.setStroke(Math.max(1, dp(1)), light ? 0x14000000 : 0x33FFFFFF);
+        bg.setStroke(Math.max(1, dp(1)), light ? 0x14000000 : LightUi.glass() ? 0x4DFFFFFF : 0x33FFFFFF);
         c.setBackground(bg);
         if (light) c.setElevation(dp(2));
         GradientDrawable ring = new GradientDrawable();

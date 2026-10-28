@@ -207,7 +207,7 @@ final class WatchRows {
             fill(cache.get(packageName));
             return;
         }
-        strip.removeAllViews();
+        clearStrip();
         setShown(false);
         reader.execute(() -> {
             List<Item> items = read(packageName);
@@ -348,6 +348,18 @@ final class WatchRows {
     private int posterWidth() { return Math.round(imageHeight() * 2f / 3f); }
     private int cardHeight() { return cardH > 0 ? cardH : dp(135); }
     /** What a card changes between its poster and its wide look, beyond its width (wide true or false). */
+    /**
+     * The row emptied, and with it every card's entry in the maps below: an entry's value holds its card (the lambda,
+     * the framed child), so a weak key alone never let go, and each rebuilt row kept every old card and its pictures.
+     */
+    private void clearStrip() {
+        stopTrailer();
+        strip.removeAllViews();
+        wideLooks.clear();
+        cardWidths.clear();
+        ringOn.clear();
+    }
+
     private final java.util.WeakHashMap<View, java.util.function.Consumer<Boolean>> wideLooks = new java.util.WeakHashMap<>();
 
     /** Focus: the card grows a little and widens from poster to 16:9; it narrows again when focus moves on. */
@@ -461,7 +473,7 @@ final class WatchRows {
     private void fill(List<Item> items) {
         stopTrailer();
         setTabs(false);
-        strip.removeAllViews();
+        clearStrip();
         if (items == null || items.isEmpty()) {
             // An app that publishes nothing (TiviMate, Debrid Stream): BBC News across the whole row instead.
             if (!showWhatsOn() && !showTrending() && !showNews()) setShown(false);
@@ -524,7 +536,7 @@ final class WatchRows {
 
     private void fillWhatsOn() {
         setTabs(false);
-        strip.removeAllViews();
+        clearStrip();
         int count = tvNow.size() + whatsOn.size();
         for (int i = 0; i < tvNow.size(); i++) strip.addView(tvCard(tvNow.get(i), i, count));
         for (int i = 0; i < whatsOn.size(); i++) strip.addView(whatsOnCard(whatsOn.get(i), tvNow.size() + i, count));
@@ -706,7 +718,12 @@ final class WatchRows {
         FrameLayout.LayoutParams llp = new FrameLayout.LayoutParams(dp(96), dp(34), Gravity.TOP | Gravity.START);
         llp.leftMargin = llp.topMargin = dp(10);
         card.addView(logo, llp);
-        tile.setOnClickListener(v -> { if (!tuneTo(n.channel, bitmapOf(logo))) open(item); });
+        ImageView still = card.getChildAt(0) instanceof ImageView ? (ImageView) card.getChildAt(0) : null;
+        tile.setOnClickListener(v -> {
+            boolean ok = AppSearchService.tune(context, context.getString(R.string.scores_open_package),
+                    java.util.Collections.singletonList(n.channel), bitmapOf(logo), bitmapOf(still));
+            if (!ok) open(item);
+        });
         return tile;
     }
 
@@ -866,7 +883,7 @@ final class WatchRows {
 
     private void fillTrending() {
         stopTrailer();
-        strip.removeAllViews();
+        clearStrip();
         List<Trending.Title> row = catLists.containsKey(catIndex) ? catLists.get(catIndex) : new ArrayList<>();
         for (int i = 0; i < row.size(); i++) strip.addView(trendCard(row.get(i), i, row.size()));
         setTabs(true);
@@ -1601,7 +1618,7 @@ final class WatchRows {
 
     private void fillNews() {
         setTabs(false);
-        strip.removeAllViews();
+        clearStrip();
         for (int i = 0; i < news.size(); i++) strip.addView(newsCard(news.get(i), i, news.size()));
         setShown(true);
         panel.setAlpha(0f);

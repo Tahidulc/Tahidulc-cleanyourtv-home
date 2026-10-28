@@ -648,7 +648,7 @@ final class ScoresTicker {
             LinearLayout b = new LinearLayout(context);
             b.setOrientation(LinearLayout.HORIZONTAL);
             b.setGravity(Gravity.CENTER_VERTICAL);
-            b.setBackgroundResource(LightUi.on() ? R.drawable.glass_light : R.drawable.glass_box);
+            b.setBackgroundResource(LightUi.on() ? R.drawable.glass_light : LightUi.glass() ? R.drawable.glass_dark : R.drawable.glass_box);
             if (LightUi.on()) b.setElevation(dp(3));
             b.setPadding(dp(12), 0, dp(12), 0);
             b.setFocusable(true);

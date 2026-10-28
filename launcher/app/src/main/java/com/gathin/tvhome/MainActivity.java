@@ -487,6 +487,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         heroArt = findViewById(R.id.heroArt);
         cinematic = cfg.cinematicHome;
         LightUi.set(Config.themeFlag(this, "light_ui", false));
+        LightUi.setGlass(Config.themeFlag(this, "glass_ui", false));
         glowStyle = cfg.glowStyle;
         heroDotsShown = cfg.cinematicDots;
         cinematicWhiteFocus = cfg.cinematicWhiteFocus;
@@ -890,7 +891,16 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             for (int i = 0; i < bar.getChildCount(); i++) if (bar.getChildAt(i) instanceof TextView) pills.add((TextView) bar.getChildAt(i));
             if (findViewById(R.id.weather) instanceof TextView) pills.add(findViewById(R.id.weather));
             for (TextView p : pills) {
-                p.setBackgroundResource(LightUi.on() ? R.drawable.pill_bg_light : R.drawable.pill_bg_silver);
+                p.setBackgroundResource(LightUi.on() ? R.drawable.pill_bg_light : LightUi.glass() ? R.drawable.pill_bg_glass
+                        : R.drawable.pill_bg_silver);
+                if (LightUi.glass()) {
+                    // White on the glass, ink on the white of the pill in focus.
+                    ColorStateList onGlass = new ColorStateList(new int[][]{{android.R.attr.state_focused}, {}},
+                            new int[]{LightUi.INK, Color.WHITE});
+                    p.setTextColor(onGlass);
+                    p.setCompoundDrawableTintList(onGlass);
+                    continue;
+                }
                 if (LightUi.on()) {
                     // Ink on the glass, white on the solid ink of the pill in focus.
                     ColorStateList onGlass = new ColorStateList(new int[][]{{android.R.attr.state_focused}, {}},
@@ -906,10 +916,11 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             // The weather pill's own focus change turns its text white again; on silver it stays black, icon too.
             TextView weather = findViewById(R.id.weather);
             weather.setOnFocusChangeListener((v, has) -> {
-                ((TextView) v).setTextColor(LightUi.on() && has ? Color.WHITE : LightUi.on() ? LightUi.INK : 0xFF000000);
+                ((TextView) v).setTextColor(LightUi.on() && has ? Color.WHITE : LightUi.on() ? LightUi.INK
+                        : LightUi.glass() && !has ? Color.WHITE : 0xFF000000);
                 ((TextView) v).setCompoundDrawableTintList(null);
             });
-            weather.setTextColor(LightUi.on() ? LightUi.INK : 0xFF000000);
+            weather.setTextColor(LightUi.on() ? LightUi.INK : LightUi.glass() ? Color.WHITE : 0xFF000000);
             weather.setCompoundDrawableTintList(null);   // the icon keeps its own colours
             weatherLine.useLightIcons(true);
         }

@@ -5,14 +5,14 @@ import android.view.ViewGroup;
 import android.widget.TextView;
 
 /**
- * A theme's "light_ui": Home on a light wallpaper. What is drawn straight on the wallpaper (the clock, the date,
- * names under tiles, tabs, the sports section) turns from white to a dark ink of the same strength; what is drawn on
- * a picture or a pill keeps its own colours.
+ * A theme's "light_ui": Home on a light wallpaper. What is drawn straight on the wallpaper (the clock, the date, names
+ * under tiles, tabs, the sports section) turns from white to a dark ink of the same strength; what is drawn on a
+ * picture or a pill keeps its own colours. And "glass_ui", its dark counterpart (glass(), below).
  */
 final class LightUi {
     static final int INK = 0xFF1D2128;
 
-    private static boolean on;
+    private static boolean on, glass;
 
     private LightUi() {
     }
@@ -23,6 +23,18 @@ final class LightUi {
 
     static boolean on() {
         return on;
+    }
+
+    /**
+     * A theme's "glass_ui": tvOS-style liquid glass over a deep wallpaper. Text stays white; the pills, the scores, the
+     * dock and the cards are clear glass with bright rims, and a pill in focus turns white.
+     */
+    static void setGlass(boolean g) {
+        glass = g && !on;
+    }
+
+    static boolean glass() {
+        return glass;
     }
 
     /** A white (or near white) colour as ink with the same alpha when the UI is light; any other colour as it is. */

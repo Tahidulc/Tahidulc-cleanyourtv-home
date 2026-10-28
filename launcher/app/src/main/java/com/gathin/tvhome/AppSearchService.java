@@ -41,7 +41,7 @@ public class AppSearchService extends AccessibilityService {
     /** Debrid Stream: the found title picked, its page on its way. */
     private boolean opened;
     /** How long the cover stays once done, so what it hides has drawn. */
-    private long hideDelay, pickedAt;
+    private long hideDelay, pickedAt, lastBack, startedAt;
 
     /** Opens pkg and, with the helper on, its search for query. False when the app could not be opened. */
     static boolean search(Context c, String pkg, String query) {
@@ -98,6 +98,11 @@ public class AppSearchService extends AccessibilityService {
      * the helper works (null for none).
      */
     static boolean tune(Context c, String pkg, java.util.List<String> channels, android.graphics.Bitmap logo) {
+        return tune(c, pkg, channels, logo, null);
+    }
+
+    /** As tune, with a picture of what is on (the programme's still) behind the cover too. */
+    static boolean tune(Context c, String pkg, java.util.List<String> channels, android.graphics.Bitmap logo, android.graphics.Bitmap art) {
         java.util.List<String> names = new java.util.ArrayList<>();
         if (channels != null) for (String n : channels) if (n != null && !n.trim().isEmpty() && !names.contains(n.trim())) names.add(n.trim());
         // At most the first five: each name not in the playlist costs a search.
@@ -105,18 +110,22 @@ public class AppSearchService extends AccessibilityService {
         Intent open = c.getPackageManager().getLeanbackLaunchIntentForPackage(pkg);
         if (open == null) open = c.getPackageManager().getLaunchIntentForPackage(pkg);
         if (open == null) return false;
+        boolean helper = instance != null && !names.isEmpty();
+        // With the helper on, TiviMate starts afresh, on its home screen with the menu its search is in: brought back
+        // as it was, it opens full screen on the channel last watched, where there is no menu.
+        open.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | (helper ? Intent.FLAG_ACTIVITY_CLEAR_TASK : 0));
         try {
-            c.startActivity(open.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            c.startActivity(open);
         } catch (Exception e) {
             return false;
         }
-        if (instance != null && !names.isEmpty()) {
+        if (helper) {
             instance.start(pkg, names.get(0));
             instance.channel = true;
             instance.candidates = names;
             // TiviMate searches a whole playlist: allow it longer.
             instance.deadline = System.currentTimeMillis() + TUNE_MS * Math.min(3, names.size());
-            instance.showCover(null, logo, names.get(0), "Opening in TiviMate", 12_000L);
+            instance.showCover(art, logo, names.get(0), LIVE, 12_000L);
         }
         return true;
     }
@@ -152,6 +161,8 @@ public class AppSearchService extends AccessibilityService {
         backing = false;
         settle = false;
         opened = false;
+        lastBack = 0;
+        startedAt = System.currentTimeMillis();
         hideDelay = 0;
         candidates = java.util.Collections.singletonList(q);
         candidate = 0;
@@ -214,7 +225,13 @@ public class AppSearchService extends AccessibilityService {
             // Picked, and the search gone: the channel is starting.
             if (picks > 0) { hideDelay = 1500; return false; }
             AccessibilityNodeInfo search = menuSearch(root);
-            if (search != null) search.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+            if (search != null && search.isVisibleToUser()) {
+                search.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+            } else if (System.currentTimeMillis() - lastBack > 2_500L && System.currentTimeMillis() - startedAt > 3_000L) {
+                // Still full screen on a channel, its menu out of reach: Back, to its home screen.
+                performGlobalAction(GLOBAL_ACTION_BACK);
+                lastBack = System.currentTimeMillis();
+            }
             return true;
         }
         if (picks > 0) {
@@ -313,7 +330,10 @@ public class AppSearchService extends AccessibilityService {
 
     // ---- the cover over the app while the helper works ---------------------------------------------------
 
+    /** The cover's line for a channel: a breathing red dot and "LIVE", as TiviMate tunes. */
+    private static final String LIVE = "\u25CF  LIVE";
     private android.view.View cover, coverBox, coverFill;
+    private final java.util.List<android.animation.Animator> coverLoops = new java.util.ArrayList<>();
     private android.widget.TextView coverTitle;
     private android.animation.ValueAnimator coverProgress;
 
@@ -347,6 +367,17 @@ public class AppSearchService extends AccessibilityService {
             mark.setScaleType(android.widget.ImageView.ScaleType.FIT_CENTER);
             mark.setImageBitmap(logo);
             col.addView(mark, new android.widget.LinearLayout.LayoutParams(Math.round(420 * d), Math.round(150 * d)));
+            // The logo breathes a little while it loads.
+            android.animation.ObjectAnimator pulse = android.animation.ObjectAnimator.ofPropertyValuesHolder(mark,
+                    android.animation.PropertyValuesHolder.ofFloat(android.view.View.SCALE_X, 1f, 1.05f),
+                    android.animation.PropertyValuesHolder.ofFloat(android.view.View.SCALE_Y, 1f, 1.05f));
+            pulse.setDuration(900);
+            pulse.setRepeatCount(android.animation.ValueAnimator.INFINITE);
+            pulse.setRepeatMode(android.animation.ValueAnimator.REVERSE);
+            pulse.setInterpolator(new android.view.animation.AccelerateDecelerateInterpolator());
+            pulse.setStartDelay(420);
+            pulse.start();
+            coverLoops.add(pulse);
         }
         coverTitle = new android.widget.TextView(this);
         coverTitle.setText(title);
@@ -361,7 +392,22 @@ public class AppSearchService extends AccessibilityService {
         col.addView(coverTitle, tlp);
         if (line != null) {
             android.widget.TextView sub = new android.widget.TextView(this);
-            sub.setText(line);
+            if (LIVE.equals(line)) {
+                // The dot in red, breathing.
+                android.text.SpannableString live = new android.text.SpannableString(line);
+                live.setSpan(new android.text.style.ForegroundColorSpan(0xFFFF453A), 0, 1, 0);
+                sub.setText(live);
+                sub.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+                sub.setLetterSpacing(0.2f);
+                android.animation.ObjectAnimator breathe = android.animation.ObjectAnimator.ofFloat(sub, android.view.View.ALPHA, 1f, 0.45f);
+                breathe.setDuration(700);
+                breathe.setRepeatCount(android.animation.ValueAnimator.INFINITE);
+                breathe.setRepeatMode(android.animation.ValueAnimator.REVERSE);
+                breathe.start();
+                coverLoops.add(breathe);
+            } else {
+                sub.setText(line);
+            }
             sub.setTextColor(0xB3FFFFFF);
             sub.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 14f);
             sub.setGravity(android.view.Gravity.CENTER);
@@ -426,6 +472,8 @@ public class AppSearchService extends AccessibilityService {
         if (v == null) return;
         cover = null;
         if (coverProgress != null) coverProgress.cancel();
+        for (android.animation.Animator a : coverLoops) a.cancel();
+        coverLoops.clear();
         if (fill != null) fill.animate().scaleX(1f).setDuration(Math.max(200, delay)).start();
         main.postDelayed(() -> {
             if (box != null) box.animate().scaleX(1.18f).scaleY(1.18f).setDuration(380)
@@ -435,6 +483,8 @@ public class AppSearchService extends AccessibilityService {
     }
 
     private void removeCover() {
+        for (android.animation.Animator a : coverLoops) a.cancel();
+        coverLoops.clear();
         if (cover != null) removeView(cover);
         cover = null;
     }

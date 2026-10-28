@@ -63,7 +63,15 @@ public class DockDecoration extends RecyclerView.ItemDecoration {
         edge.setStyle(Paint.Style.STROKE);
         edge.setStrokeWidth(density);
         edge.setColor(lightGlass ? 0x38FFFFFF : translucent ? 0x26FFFFFF : 0x1FFFFFFF);
-        if (LightUi.on()) {
+        if (LightUi.glass()) {
+            // The glass theme: a clear tray lit from above, a fine bright rim and a sheen, over the wallpaper.
+            band.setColor(0x1AFFFFFF);
+            band.setShadowLayer(18 * density, 0, 6 * density, 0x33000000);
+            edge.setColor(0x40FFFFFF);
+            innerRim.setStyle(Paint.Style.STROKE);
+            innerRim.setStrokeWidth(1.2f * density);
+            innerRim.setColor(0x1FFFFFFF);
+        } else if (LightUi.on()) {
             // On a light wallpaper, liquid glass: a clear tray a shade cooler than the wallpaper, lifted on a soft
             // shadow, with a dark hairline outside, a bright rim inside and a sheen across its top.
             band.setColor(0x14303A4A);
@@ -161,10 +169,10 @@ public class DockDecoration extends RecyclerView.ItemDecoration {
             shaderBottom = rect.bottom;
         }
         c.drawRoundRect(rect, radius, radius, band);
-        if (LightUi.on()) {
+        if (LightUi.on() || LightUi.glass()) {
             if (rect.top != sheenTop || rect.bottom != sheenBottom) {
-                sheen.setShader(new LinearGradient(0, rect.top, 0, rect.top + rect.height() * 0.5f, 0x8CFFFFFF, 0x00FFFFFF,
-                        Shader.TileMode.CLAMP));
+                sheen.setShader(new LinearGradient(0, rect.top, 0, rect.top + rect.height() * 0.5f,
+                        LightUi.glass() ? 0x33FFFFFF : 0x8CFFFFFF, 0x00FFFFFF, Shader.TileMode.CLAMP));
                 sheenTop = rect.top;
                 sheenBottom = rect.bottom;
             }
