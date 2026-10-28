@@ -263,8 +263,8 @@ final class DeliveryCard {
         bg.setCornerRadius(px(d, 24));
         bg.setStroke(Math.max(1, Math.round(d)), 0x26FFFFFF);
         LinearLayout card = pill(c, d, bg);
-        card.setPadding(px(d, 8), px(d, 5), px(d, 16), px(d, 5));
-        card.setMinimumHeight(px(d, 42));
+        card.setPadding(px(d, 7), px(d, 4), px(d, 14), px(d, 4));
+        card.setMinimumHeight(px(d, 36));
         return card;
     }
 
@@ -275,24 +275,24 @@ final class DeliveryCard {
         car.setScaleType(ImageView.ScaleType.FIT_CENTER);
         if (art != null) car.setImageBitmap(art);
         else car.setImageResource(R.drawable.tesla_t);
-        card.addView(car, new LinearLayout.LayoutParams(art != null ? px(d, 64) : px(d, 20), px(d, art != null ? 36 : 20)));
+        card.addView(car, new LinearLayout.LayoutParams(art != null ? px(d, 50) : px(d, 18), px(d, art != null ? 28 : 18)));
         LinearLayout col = new LinearLayout(c);
         col.setOrientation(LinearLayout.VERTICAL);
         LinearLayout head = row(c);
         // The Tesla "T" in its red, leading the car's name, as the brand's mark.
         ImageView t = new ImageView(c);
         t.setImageResource(R.drawable.tesla_t);
-        head.addView(t, new LinearLayout.LayoutParams(px(d, 11), px(d, 11)));
+        head.addView(t, new LinearLayout.LayoutParams(px(d, 10), px(d, 10)));
         String name = Config.themeString(c, "tesla_name", Config.themeString(c, "tesla_model", "Model X"));
-        head.addView(text(c, name, 12.5f, TESLA_TEXT, true), margins(d, 0, 6));
+        head.addView(text(c, name, 11.5f, TESLA_TEXT, true), margins(d, 0, 5));
         if (battery >= 0) {
-            LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(px(d, 17), px(d, 8));
-            clp.leftMargin = px(d, 9);
+            LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(px(d, 15), px(d, 7));
+            clp.leftMargin = px(d, 8);
             head.addView(new Cell(c, battery), clp);
-            head.addView(text(c, (estimated ? "≈ " : "") + miles + " mi", 10.5f, TESLA_GREY, true), margins(d, 0, 5));
+            head.addView(text(c, (estimated ? "≈ " : "") + miles + " mi", 10f, TESLA_GREY, true), margins(d, 0, 4));
         }
         col.addView(head, margins(d, 0, 0));
-        card.addView(col, margins(d, 0, 8));
+        card.addView(col, margins(d, 0, 7));
         return col;
     }
 
@@ -316,30 +316,30 @@ final class DeliveryCard {
 
         LinearLayout card = teslaPill(c, d);
         LinearLayout col = teslaHead(c, d, card, battery, miles, estimated);
-        LinearLayout what = row(c);
-        TextView head = text(c, title.isEmpty() ? "Tesla" : title, 11f, TESLA_TEXT, false);
-        head.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-        head.setMaxWidth(px(d, 200));
-        what.addView(head);
-        if (!status.isEmpty() && !status.equalsIgnoreCase(title)) {
-            TextView st = text(c, "·  " + status, 10.5f, TESLA_GREY, false);
-            st.setMaxWidth(px(d, 280));
-            what.addView(st, margins(d, 0, 6));
-        }
-        col.addView(what, margins(d, 1, 0));
+        // Two slim lines: "T Batmobile ▭ ≈ 201 mi · Charging", then the charge and the details.
+        LinearLayout head = (LinearLayout) col.getChildAt(0);
+        TextView what = text(c, "·  " + (title.isEmpty() ? "Tesla" : title), 11f, TESLA_TEXT, false);
+        what.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        what.setMaxWidth(px(d, 200));
+        head.addView(what, margins(d, 0, 6));
+        LinearLayout second = row(c);
         java.util.function.Consumer<Integer> reveal = mode -> { };
         if (battery >= 0) {
-            LinearLayout charge = row(c);
             Battery b = new Battery(c, battery, from >= 0 && from < battery ? from : charging ? Math.max(0, battery - 10) : 0,
                     target, charging);
-            charge.addView(b, new LinearLayout.LayoutParams(px(d, 130), px(d, 7)));
-            TextView l = text(c, battery + "%" + (charging && target > battery ? "  ·  limit " + target + "%" : ""), 9.5f,
+            second.addView(b, new LinearLayout.LayoutParams(px(d, 100), px(d, 6)));
+            TextView l = text(c, battery + "%" + (charging && target > battery ? " · limit " + target + "%" : ""), 9.5f,
                     charging ? TESLA_GREEN : TESLA_GREY, true);
-            charge.addView(l, margins(d, 0, 8));
-            col.addView(charge, margins(d, 4, 0));
+            second.addView(l, margins(d, 0, 7));
             reveal = mode -> b.fill(mode != MOVE);
         }
-        return new Card(card, reveal, 640, 70);
+        if (!status.isEmpty() && !status.equalsIgnoreCase(title)) {
+            TextView st = text(c, (battery >= 0 ? "·  " : "") + status, 9.5f, TESLA_GREY, false);
+            st.setMaxWidth(px(d, 260));
+            second.addView(st, margins(d, 0, battery >= 0 ? 6 : 0));
+        }
+        if (second.getChildCount() > 0) col.addView(second, margins(d, 3, 0));
+        return new Card(card, reveal, 600, 56);
     }
 
     /** The app's small battery: a grey cell filled to its level. */
@@ -376,24 +376,22 @@ final class DeliveryCard {
 
         LinearLayout card = teslaPill(c, d);
         LinearLayout col = teslaHead(c, d, card, -1, 0, false);
-        LinearLayout what = row(c);
-        TextView head = text(c, arriving ? "Almost home" : "Heading home", 11f, TESLA_TEXT, false);
-        head.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-        what.addView(head);
-        String left = arriving ? "pulling in now"
-                : (minutes >= 0 ? minutes + " min" : "") + (miles >= 0 ? (minutes >= 0 ? "  ·  " : "")
-                + String.format(Locale.UK, miles < 10 ? "%.1f mi" : "%.0f mi", miles) : "");
-        if (!left.isEmpty()) what.addView(text(c, "·  " + left, 10.5f, TESLA_GREY, false), margins(d, 0, 6));
-        col.addView(what, margins(d, 1, 0));
+        // Two slim lines: "T Batmobile · Heading home", then the trip, the minutes and miles, and when.
+        LinearLayout head = (LinearLayout) col.getChildAt(0);
+        TextView what = text(c, "·  " + (arriving ? "Almost home" : "Heading home"), 11f, TESLA_TEXT, false);
+        what.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        head.addView(what, margins(d, 0, 6));
         LinearLayout trip = row(c);
         Trip bar = new Trip(c, done);
-        trip.addView(bar, new LinearLayout.LayoutParams(px(d, 130), px(d, 9)));
-        if (minutes >= 0 && !arriving) {
-            String at = java.time.LocalTime.now().plusMinutes(minutes).format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"));
-            trip.addView(text(c, "Home by " + at, 9.5f, TESLA_GREY, true), margins(d, 0, 8));
-        }
-        col.addView(trip, margins(d, 4, 0));
-        return new Card(card, mode -> bar.fill(mode != MOVE), 640, 70);
+        trip.addView(bar, new LinearLayout.LayoutParams(px(d, 100), px(d, 8)));
+        String left = arriving ? "pulling in now"
+                : (minutes >= 0 ? minutes + " min" : "") + (miles >= 0 ? (minutes >= 0 ? " · " : "")
+                + String.format(Locale.UK, miles < 10 ? "%.1f mi" : "%.0f mi", miles) : "");
+        if (minutes >= 0 && !arriving) left += " · home by " + java.time.LocalTime.now().plusMinutes(minutes)
+                .format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"));
+        if (!left.isEmpty()) trip.addView(text(c, left, 9.5f, TESLA_GREY, true), margins(d, 0, 7));
+        col.addView(trip, margins(d, 3, 0));
+        return new Card(card, mode -> bar.fill(mode != MOVE), 600, 56);
     }
 
     /** The trip as a bar: a slim track, filled in Tesla red as far as the car has come, with a dot for the car. */
