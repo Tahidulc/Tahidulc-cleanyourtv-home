@@ -32,6 +32,16 @@ public class AppSearchService extends AccessibilityService {
     /** The title searched for is a series: its match is looked for under TV Shows first. */
     private boolean wantTv;
     private int picks, retypes, scrolls;
+    /** The channel names to try in turn, and the one being tried. */
+    private java.util.List<String> candidates = java.util.Collections.emptyList();
+    private int candidate;
+    /** Where in the found row a plain match was seen while a 4K one is looked for further on, and going back to it. */
+    private int foundAt = -1;
+    private boolean backing, settle;
+    /** Debrid Stream: the found title picked, its page on its way. */
+    private boolean opened;
+    /** How long the cover stays once done, so what it hides has drawn. */
+    private long hideDelay, pickedAt;
 
     /** Opens pkg and, with the helper on, its search for query. False when the app could not be opened. */
     static boolean search(Context c, String pkg, String query) {
@@ -43,6 +53,18 @@ public class AppSearchService extends AccessibilityService {
      * its own page opens. False when the app could not be opened.
      */
     static boolean search(Context c, String pkg, String query, boolean tv) {
+        return search(c, pkg, query, tv, null);
+    }
+
+    static boolean search(Context c, String pkg, String query, boolean tv, android.graphics.Bitmap art) {
+        return search(c, pkg, query, tv, art, null);
+    }
+
+    /**
+     * As search, with the title's poster and its logo (its name as drawn) for the loading cover shown while the helper
+     * works; either may be null.
+     */
+    static boolean search(Context c, String pkg, String query, boolean tv, android.graphics.Bitmap art, android.graphics.Bitmap logo) {
         Intent open = c.getPackageManager().getLeanbackLaunchIntentForPackage(pkg);
         if (open == null) open = c.getPackageManager().getLaunchIntentForPackage(pkg);
         if (open == null) return false;
@@ -58,6 +80,7 @@ public class AppSearchService extends AccessibilityService {
         if (helper) {
             instance.start(pkg, query);
             instance.wantTv = tv;
+            instance.showCover(art, logo, query, null, 8_000L);
         }
         return true;
     }
@@ -67,6 +90,18 @@ public class AppSearchService extends AccessibilityService {
      * that name from what it finds. False when the app could not be opened; without the helper it just opens.
      */
     static boolean tune(Context c, String pkg, String channel) {
+        return tune(c, pkg, java.util.Collections.singletonList(channel), null);
+    }
+
+    /**
+     * As tune, with the channels to try in turn (the first TiviMate has wins) and the logo for the cover shown while
+     * the helper works (null for none).
+     */
+    static boolean tune(Context c, String pkg, java.util.List<String> channels, android.graphics.Bitmap logo) {
+        java.util.List<String> names = new java.util.ArrayList<>();
+        if (channels != null) for (String n : channels) if (n != null && !n.trim().isEmpty() && !names.contains(n.trim())) names.add(n.trim());
+        // At most the first five: each name not in the playlist costs a search.
+        if (names.size() > 5) names = new java.util.ArrayList<>(names.subList(0, 5));
         Intent open = c.getPackageManager().getLeanbackLaunchIntentForPackage(pkg);
         if (open == null) open = c.getPackageManager().getLaunchIntentForPackage(pkg);
         if (open == null) return false;
@@ -75,11 +110,13 @@ public class AppSearchService extends AccessibilityService {
         } catch (Exception e) {
             return false;
         }
-        if (instance != null && channel != null && !channel.isEmpty()) {
-            instance.start(pkg, channel);
+        if (instance != null && !names.isEmpty()) {
+            instance.start(pkg, names.get(0));
             instance.channel = true;
+            instance.candidates = names;
             // TiviMate searches a whole playlist: allow it longer.
-            instance.deadline = System.currentTimeMillis() + TUNE_MS;
+            instance.deadline = System.currentTimeMillis() + TUNE_MS * Math.min(3, names.size());
+            instance.showCover(null, logo, names.get(0), "Opening in TiviMate", 12_000L);
         }
         return true;
     }
@@ -111,6 +148,13 @@ public class AppSearchService extends AccessibilityService {
         picks = 0;
         retypes = 0;
         scrolls = 0;
+        foundAt = -1;
+        backing = false;
+        settle = false;
+        opened = false;
+        hideDelay = 0;
+        candidates = java.util.Collections.singletonList(q);
+        candidate = 0;
         deadline = System.currentTimeMillis() + SEARCH_MS;
         main.removeCallbacks(step);
         main.postDelayed(step, STEP_MS * 2);
@@ -118,9 +162,9 @@ public class AppSearchService extends AccessibilityService {
 
     private final Runnable step = new Runnable() {
         @Override public void run() {
-            if (target == null || System.currentTimeMillis() > deadline) { target = null; return; }
+            if (target == null || System.currentTimeMillis() > deadline) { target = null; hideCover(0); return; }
             if (advance()) main.postDelayed(this, STEP_MS);
-            else target = null;
+            else { target = null; hideCover(hideDelay); }
         }
     };
 
@@ -130,6 +174,11 @@ public class AppSearchService extends AccessibilityService {
         if (root == null || root.getPackageName() == null || !target.contentEquals(root.getPackageName())) return true;
         if (channel) return tuneStep(root);
         AccessibilityNodeInfo box = find(root, Kind.EDIT);
+        if (opened) {
+            // Picked: done once the search has given way to the title's page.
+            if (box == null) { hideDelay = 700; return false; }
+            return true;
+        }
         if (box != null) {
             if (typedAt == 0) {
                 Bundle text = new Bundle();
@@ -142,7 +191,7 @@ public class AppSearchService extends AccessibilityService {
             if (keyboardShown()) { performGlobalAction(GLOBAL_ACTION_BACK); return true; }
             // Then the film or series of that name, so its page opens; without one, the results stay on screen.
             AccessibilityNodeInfo hit = result(root);
-            if (hit != null) { click(hit); return false; }
+            if (hit != null) { click(hit); opened = true; return true; }
             return System.currentTimeMillis() - typedAt < 8_000L;
         }
         AccessibilityNodeInfo search = find(root, Kind.SEARCH);
@@ -162,9 +211,25 @@ public class AppSearchService extends AccessibilityService {
     private boolean tuneStep(AccessibilityNodeInfo root) {
         AccessibilityNodeInfo box = find(root, Kind.EDIT);
         if (box == null) {
-            if (picks > 0) return false;   // picked, and playing
+            // Picked, and the search gone: the channel is starting.
+            if (picks > 0) { hideDelay = 1500; return false; }
             AccessibilityNodeInfo search = menuSearch(root);
             if (search != null) search.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+            return true;
+        }
+        if (picks > 0) {
+            // Picked but still searching: once more after a moment, in case the first did not take; then, as TiviMate
+            // stays on its search when the channel picked is the one already playing, Back to the channel.
+            long since = System.currentTimeMillis() - pickedAt;
+            if (picks < 2 && since > 2_500L) {
+                AccessibilityNodeInfo again = channelNode(root, box);
+                if (again != null) pick(again);
+            } else if (picks >= 2 && since > 2_500L) {
+                performGlobalAction(GLOBAL_ACTION_BACK);
+                pickedAt = System.currentTimeMillis();
+                picks++;
+                if (picks > 4) return false;
+            }
             return true;
         }
         if (typedAt == 0) {
@@ -179,31 +244,207 @@ public class AppSearchService extends AccessibilityService {
             }
             return true;
         }
+        AccessibilityNodeInfo row = channelRow(root);
         AccessibilityNodeInfo hit = channelNode(root, box);
-        if (hit != null && picks < 2) {
-            picks++;
-            click(hit);
+        // A 4K (UHD) version of the channel first: a plain match is noted, the row looked through a little further for
+        // a 4K one, and gone back to when there is none.
+        if (hit != null && (uhd(hit) || settle || row == null)) return pick(hit);
+        if (hit != null && foundAt < 0) foundAt = scrolls;
+        if (foundAt >= 0 && !backing && scrolls - foundAt >= 3) backing = true;
+        if (backing) {
+            if (scrolls > foundAt && row != null) {
+                row.performAction(AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD);
+                scrolls--;
+                return true;
+            }
+            // Back where the plain one was, with no 4K one after it: the plain one it is, at the next look.
+            backing = false;
+            settle = true;
             return true;
         }
         // A big playlist finds more channels than the row shows, and only those on screen can be read: the row moved
-        // along a page at a time until the channel turns up.
-        if (picks == 0 && scrolls < 25) {
-            AccessibilityNodeInfo row = channelRow(root);
-            if (row != null && row.getChildCount() > 0) {
+        // along a page at a time until the channel turns up; at its end, the next name to try.
+        if (row != null && row.getChildCount() > 0) {
+            if (scrolls < 30 && row.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)) {
                 scrolls++;
-                row.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD);
                 return true;
             }
+            if (foundAt >= 0) { backing = true; return true; }
+            return nextCandidate();
         }
         // Its box is a voice search that starts listening by itself and, hearing nothing, clears what was typed:
         // typed again when that happens before anything was found.
         CharSequence now = box.getText();
-        if (picks == 0 && retypes < 3 && (now == null || !query.contentEquals(now))) {
+        if (retypes < 3 && (now == null || !query.contentEquals(now))) {
             retypes++;
             typedAt = 0;
             return true;
         }
-        return System.currentTimeMillis() - typedAt < 30_000L;
+        // Nothing found for this name: the next.
+        if (System.currentTimeMillis() - typedAt > 12_000L) return nextCandidate();
+        return true;
+    }
+
+    private boolean pick(AccessibilityNodeInfo hit) {
+        picks++;
+        pickedAt = System.currentTimeMillis();
+        click(hit);
+        return true;
+    }
+
+    private static boolean uhd(AccessibilityNodeInfo n) {
+        CharSequence t = n.getText();
+        return t != null && t.toString().toLowerCase(Locale.ROOT).matches(".*\\b(4k|uhd)\\b.*");
+    }
+
+    /** The next channel name to search for, or false when none is left (TiviMate stays on what it found). */
+    private boolean nextCandidate() {
+        if (candidate + 1 >= candidates.size()) return false;
+        query = candidates.get(++candidate);
+        typedAt = 0;
+        retypes = 0;
+        scrolls = 0;
+        foundAt = -1;
+        backing = false;
+        settle = false;
+        if (cover != null) coverTitle.setText(query);
+        return true;
+    }
+
+    // ---- the cover over the app while the helper works ---------------------------------------------------
+
+    private android.view.View cover, coverBox, coverFill;
+    private android.widget.TextView coverTitle;
+    private android.animation.ValueAnimator coverProgress;
+
+    /**
+     * A loading cover over everything while the helper finds its way, so the steps are never seen: a soft blur of the
+     * title's poster, its logo popping in (or its name), and a glass bar that fills as the work goes on, most of the
+     * way over about expectMs and the rest once done. Drawn as the helper's own overlay, which takes no keys.
+     */
+    private void showCover(android.graphics.Bitmap art, android.graphics.Bitmap logo, String title, String line, long expectMs) {
+        removeCover();
+        float d = getResources().getDisplayMetrics().density;
+        android.widget.FrameLayout v = new android.widget.FrameLayout(this);
+        v.setBackgroundColor(0xFF0B0C10);
+        if (art != null) {
+            android.widget.ImageView bg = new android.widget.ImageView(this);
+            bg.setScaleType(android.widget.ImageView.ScaleType.CENTER_CROP);
+            // Shrunk to a few pixels and drawn large again: a soft blur of the poster's colours.
+            android.graphics.Bitmap tiny = android.graphics.Bitmap.createScaledBitmap(art, 16, Math.max(2, 16 * art.getHeight() / Math.max(1, art.getWidth())), true);
+            bg.setImageBitmap(android.graphics.Bitmap.createScaledBitmap(tiny, 64, Math.max(2, 64 * art.getHeight() / Math.max(1, art.getWidth())), true));
+            v.addView(bg, new android.widget.FrameLayout.LayoutParams(-1, -1));
+            android.view.View shade = new android.view.View(this);
+            shade.setBackground(new android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
+                    new int[]{0x8C000000, 0xD9000000}));
+            v.addView(shade, new android.widget.FrameLayout.LayoutParams(-1, -1));
+        }
+        android.widget.LinearLayout col = new android.widget.LinearLayout(this);
+        col.setOrientation(android.widget.LinearLayout.VERTICAL);
+        col.setGravity(android.view.Gravity.CENTER_HORIZONTAL);
+        if (logo != null) {
+            android.widget.ImageView mark = new android.widget.ImageView(this);
+            mark.setScaleType(android.widget.ImageView.ScaleType.FIT_CENTER);
+            mark.setImageBitmap(logo);
+            col.addView(mark, new android.widget.LinearLayout.LayoutParams(Math.round(420 * d), Math.round(150 * d)));
+        }
+        coverTitle = new android.widget.TextView(this);
+        coverTitle.setText(title);
+        coverTitle.setTextColor(0xFFFFFFFF);
+        coverTitle.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, logo != null ? 15f : 32f);
+        coverTitle.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        coverTitle.setGravity(android.view.Gravity.CENTER);
+        coverTitle.setMaxLines(2);
+        coverTitle.setAlpha(logo != null ? 0.75f : 1f);
+        android.widget.LinearLayout.LayoutParams tlp = new android.widget.LinearLayout.LayoutParams(-1, -2);
+        tlp.topMargin = logo != null ? Math.round(10 * d) : 0;
+        col.addView(coverTitle, tlp);
+        if (line != null) {
+            android.widget.TextView sub = new android.widget.TextView(this);
+            sub.setText(line);
+            sub.setTextColor(0xB3FFFFFF);
+            sub.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 14f);
+            sub.setGravity(android.view.Gravity.CENTER);
+            android.widget.LinearLayout.LayoutParams slp = new android.widget.LinearLayout.LayoutParams(-2, -2);
+            slp.topMargin = Math.round(4 * d);
+            col.addView(sub, slp);
+        }
+        // The bar: a clear glass track with a bright fill, its leading edge glowing.
+        android.widget.FrameLayout track = new android.widget.FrameLayout(this);
+        android.graphics.drawable.GradientDrawable trackBg = new android.graphics.drawable.GradientDrawable();
+        trackBg.setColor(0x2EFFFFFF);
+        trackBg.setCornerRadius(3 * d);
+        trackBg.setStroke(Math.max(1, Math.round(d)), 0x40FFFFFF);
+        track.setBackground(trackBg);
+        android.view.View fill = new android.view.View(this);
+        android.graphics.drawable.GradientDrawable fillBg = new android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT, new int[]{0xB3FFFFFF, 0xFFFFFFFF});
+        fillBg.setCornerRadius(3 * d);
+        fill.setBackground(fillBg);
+        fill.setPivotX(0);
+        fill.setScaleX(0f);
+        track.addView(fill, new android.widget.FrameLayout.LayoutParams(-1, -1));
+        android.widget.LinearLayout.LayoutParams blp = new android.widget.LinearLayout.LayoutParams(Math.round(300 * d), Math.round(6 * d));
+        blp.topMargin = Math.round(30 * d);
+        col.addView(track, blp);
+        android.widget.FrameLayout.LayoutParams clp = new android.widget.FrameLayout.LayoutParams(-1, -2, android.view.Gravity.CENTER);
+        clp.leftMargin = clp.rightMargin = Math.round(80 * d);
+        v.addView(col, clp);
+        android.view.WindowManager.LayoutParams lp = new android.view.WindowManager.LayoutParams(-1, -1,
+                android.view.WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+                android.view.WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | android.view.WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+                        | android.view.WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN | android.view.WindowManager.LayoutParams.FLAG_FULLSCREEN,
+                android.graphics.PixelFormat.TRANSLUCENT);
+        try {
+            ((android.view.WindowManager) getSystemService(WINDOW_SERVICE)).addView(v, lp);
+        } catch (RuntimeException e) {
+            return;   // no cover: the steps show, the result is the same
+        }
+        // In: the cover fades up and the logo pops in.
+        v.setAlpha(0f);
+        v.animate().alpha(1f).setDuration(160).start();
+        col.setScaleX(0.86f);
+        col.setScaleY(0.86f);
+        col.animate().scaleX(1f).scaleY(1f).setDuration(420).setInterpolator(new android.view.animation.OvershootInterpolator(1.6f)).start();
+        // The bar to 90% over about expectMs, easing as it goes, so it never stalls nor finishes early.
+        coverProgress = android.animation.ValueAnimator.ofFloat(0f, 0.9f);
+        coverProgress.setDuration(expectMs);
+        coverProgress.setInterpolator(new android.view.animation.DecelerateInterpolator(1.4f));
+        coverProgress.addUpdateListener(a -> fill.setScaleX((float) a.getAnimatedValue()));
+        coverProgress.start();
+        cover = v;
+        coverBox = col;
+        coverFill = fill;
+    }
+
+    /**
+     * The cover away once what it hid has drawn (after delay ms): the bar fills, then the logo swells towards the
+     * viewer as the cover fades, so the page behind pops in.
+     */
+    private void hideCover(long delay) {
+        android.view.View v = cover, box = coverBox, fill = coverFill;
+        if (v == null) return;
+        cover = null;
+        if (coverProgress != null) coverProgress.cancel();
+        if (fill != null) fill.animate().scaleX(1f).setDuration(Math.max(200, delay)).start();
+        main.postDelayed(() -> {
+            if (box != null) box.animate().scaleX(1.18f).scaleY(1.18f).setDuration(380)
+                    .setInterpolator(new android.view.animation.AccelerateInterpolator(1.2f)).start();
+            v.animate().alpha(0f).setDuration(380).setStartDelay(60).withEndAction(() -> removeView(v)).start();
+        }, delay);
+    }
+
+    private void removeCover() {
+        if (cover != null) removeView(cover);
+        cover = null;
+    }
+
+    private void removeView(android.view.View v) {
+        try {
+            ((android.view.WindowManager) getSystemService(WINDOW_SERVICE)).removeView(v);
+        } catch (RuntimeException ignored) {
+            // already gone
+        }
     }
 
     /** The row of channels search found: the list just after its "Channels" heading. */
@@ -249,19 +490,26 @@ public class AppSearchService extends AccessibilityService {
         for (int i = 0; i < n.getChildCount(); i++) collect(n.getChild(i), into, depth + 1);
     }
 
-    /** What search found with the channel's name: the same name first, then the same name but for a "(IRE)"-like tag. */
+    /**
+     * What search found with the channel's name: the same name (a 4K or UHD one before the rest), then the same name
+     * but for a "(IRE)"-like tag.
+     */
     private AccessibilityNodeInfo channelNode(AccessibilityNodeInfo root, AccessibilityNodeInfo box) {
         String want = channelName(query, false), loose = channelName(query, true);
         java.util.List<AccessibilityNodeInfo> all = new java.util.ArrayList<>();
         collect(root, all, 0);
-        AccessibilityNodeInfo close = null;
+        AccessibilityNodeInfo same = null, close = null;
         for (AccessibilityNodeInfo n : all) {
             if (n.isEditable() || n.getText() == null || n.equals(box)) continue;
             String text = n.getText().toString();
-            if (channelName(text, false).equals(want)) return n;
-            if (close == null && channelName(text, true).equals(loose)) close = n;
+            if (channelName(text, false).equals(want)) {
+                if (uhd(n)) return n;
+                if (same == null) same = n;
+            } else if (close == null && channelName(text, true).equals(loose)) {
+                close = n;
+            }
         }
-        return close;
+        return same != null ? same : close;
     }
 
     /**
@@ -402,6 +650,7 @@ public class AppSearchService extends AccessibilityService {
     @Override public void onDestroy() {
         instance = null;
         main.removeCallbacksAndMessages(null);
+        removeCover();
         super.onDestroy();
     }
 

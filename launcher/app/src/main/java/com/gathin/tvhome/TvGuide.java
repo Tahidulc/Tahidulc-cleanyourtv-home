@@ -70,6 +70,61 @@ final class TvGuide {
         return null;
     }
 
+    /** Where to watch a game in TiviMate: the channel names to try in turn, and the first one's logo (or null). */
+    static final class Watch {
+        final List<String> names;
+        final String logo;
+        Watch(List<String> names, String logo) { this.names = names; this.logo = logo; }
+    }
+
+    /**
+     * Each competition's main broadcasters beyond Britain, by ESPN league slug, in the order to try them: what a
+     * playlist from anywhere is likely to carry when Sky's guide and ESPN name nothing it has.
+     */
+    private static final Map<String, String[]> RIGHTS = new HashMap<>();
+    static {
+        RIGHTS.put("eng.1", new String[]{"Sky Sports Premier League", "TNT Sports 1", "NBC", "USA Network", "Peacock", "beIN Sports 1", "Canal+ Sport", "SuperSport Premier League", "Stan Sport", "DAZN 1"});
+        RIGHTS.put("eng.2", new String[]{"Sky Sports Football", "Sky Sports+", "CBS Sports Golazo", "Paramount+"});
+        RIGHTS.put("eng.league_cup", new String[]{"Sky Sports Football", "Sky Sports Main Event", "Sky Sports+", "CBS Sports Golazo", "Paramount+"});
+        RIGHTS.put("eng.fa", new String[]{"BBC One", "ITV1", "TNT Sports 1", "ESPN", "ESPN+"});
+        RIGHTS.put("sco.1", new String[]{"Sky Sports Main Event", "Sky Sports Football", "Premier Sports 1", "CBS Sports Golazo"});
+        RIGHTS.put("uefa.champions", new String[]{"TNT Sports 1", "TNT Sports 2", "Amazon Prime Video", "CBS Sports Network", "Paramount+", "Stan Sport", "beIN Sports 1", "RTE 2"});
+        RIGHTS.put("uefa.europa", new String[]{"TNT Sports 2", "TNT Sports 3", "CBS Sports Golazo", "Paramount+", "Stan Sport"});
+        RIGHTS.put("uefa.europa.conf", new String[]{"TNT Sports 3", "TNT Sports 4", "CBS Sports Golazo", "Paramount+"});
+        RIGHTS.put("esp.1", new String[]{"Premier Sports 1", "LaLiga TV", "ESPN", "ESPN+", "DAZN LaLiga", "beIN Sports 1"});
+        RIGHTS.put("ita.1", new String[]{"TNT Sports 1", "CBS Sports Golazo", "Paramount+", "DAZN 1", "Sky Sport Calcio"});
+        RIGHTS.put("ger.1", new String[]{"Sky Sports Football", "Sky Sports Mix", "ESPN+", "Sky Sport Bundesliga", "DAZN 1"});
+        RIGHTS.put("fra.1", new String[]{"beIN Sports 1", "Ligue 1+", "DAZN 1", "Canal+ Sport"});
+        RIGHTS.put("ned.1", new String[]{"Premier Sports 1", "ESPN 1", "ESPN+", "Viaplay Sports 1"});
+        RIGHTS.put("por.1", new String[]{"Premier Sports 1", "Sport TV1", "GolTV", "Fox Soccer Plus"});
+    }
+
+    /** Formula 1's broadcasters, Britain first. */
+    private static final String[] F1 = {"Sky Sports F1", "F1 TV", "ESPN", "Sky Sport F1", "Viaplay Formula 1", "Canal+ F1", "Kayo", "Fox Sports 506"};
+
+    /**
+     * Where to watch g: the British channel Sky's guide lists, then every channel ESPN lists, then the competition's
+     * main broadcasters; for F1, Sky Sports F1 and the rest. Off the main thread (it may read the guide).
+     */
+    static Watch watch(String[] channels, ScoresTicker.Game g) {
+        List<String> names = new ArrayList<>();
+        String logo = null;
+        boolean f1 = g.drivers != null || g.text != null || F1Results.F1_LOGO.equals(g.leagueLogo);
+        if (f1) {
+            for (String n : F1) names.add(n);
+            return new Watch(names, "https://d2n0069hmnqmmx.cloudfront.net/epgdata/1.0/newchanlogos/600/600/skychb3835.png");
+        }
+        Channel uk = find(channels, g.homeName, g.awayName, g.tvAt != 0 ? g.tvAt : g.kickoff);
+        if (uk != null) {
+            names.add(uk.name);
+            logo = uk.logo;
+        }
+        if (g.broadcasts != null) for (String n : g.broadcasts) if (!names.contains(n)) names.add(n);
+        String[] rights = g.slug == null ? null : RIGHTS.get(g.slug);
+        if (rights != null) for (String n : rights) if (!names.contains(n)) names.add(n);
+        return names.isEmpty() ? null : new Watch(names, logo);
+    }
+
     /** The British channel, or else where it is on in the US ("ESPN+ (US)", no logo); null when neither is known. */
     static Channel orAbroad(Channel uk, ScoresTicker.Game g) {
         if (uk != null || g == null || g.abroad == null) return uk;

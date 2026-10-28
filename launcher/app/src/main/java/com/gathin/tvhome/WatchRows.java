@@ -147,7 +147,14 @@ final class WatchRows {
         tabs = new LinearLayout(context);
         tabs.setOrientation(LinearLayout.HORIZONTAL);
         tabs.setGravity(Gravity.CENTER_VERTICAL);
-        tabsScroll.addView(tabs);
+        // Behind the tabs, one glass lens that slides to the tab on show (moveGlass).
+        FrameLayout track = new FrameLayout(context);
+        tabGlass = new View(context);
+        tabGlass.setBackground(LightUi.on() ? context.getDrawable(R.drawable.glass_light) : darkGlass());
+        tabGlass.setAlpha(0f);
+        track.addView(tabGlass, new FrameLayout.LayoutParams(0, 0));
+        track.addView(tabs, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        tabsScroll.addView(track, new ViewGroup.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT));
         tabsScroll.setVisibility(View.GONE);
         LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(TABS_DP));
         clp.bottomMargin = -dp(EDGE) + dp(6);
@@ -241,6 +248,7 @@ final class WatchRows {
 
     void close() {
         stopTrailer();
+        if (web != null) { web.destroy(); web = null; }
         reader.shutdownNow();
         images.shutdownNow();
         ahead.shutdownNow();
@@ -536,7 +544,7 @@ final class WatchRows {
         GradientDrawable ring = new GradientDrawable();
         ring.setColor(Color.TRANSPARENT);
         ring.setCornerRadius(dp(10));
-        ring.setStroke(dp(3), LightUi.ink(Color.WHITE));
+        ring.setStroke(dp(1.5f), LightUi.ink(Color.WHITE));
         boolean f1 = g.drivers != null || g.text != null;
         ImageView scene = new ImageView(context);
         scene.setScaleType(ImageView.ScaleType.CENTER_CROP);
@@ -642,6 +650,9 @@ final class WatchRows {
         final View channel = tv != null ? card.getChildAt(card.getChildCount() - 1) : null;
         final boolean f1Card = f1;
         LinearLayout tile = wrap(card, teams, when, g.state == 0 ? 0xFF4ADE80 : 0x99FFFFFF, index, count, ring);
+        // Landscape like the programmes beside it, and need not widen.
+        tile.getLayoutParams().width = cardWidth();
+        cardWidths.put(tile, new int[]{cardWidth(), cardWidth()});
         // As a poster: the crests stacked over the score. Wide: side by side, and the channel too.
         wideLooks.put(tile, wide -> {
             mid.setOrientation(wide ? LinearLayout.HORIZONTAL : LinearLayout.VERTICAL);
@@ -650,9 +661,20 @@ final class WatchRows {
             c.setLayoutParams(clp);
             if (channel != null) channel.animate().alpha(wide ? 1f : 0f).setDuration(WIDEN_MS).start();
         });
-        // OK: TiviMate on the channel showing the game, when one is known (an overseas one without its "(US)").
-        String tuneName = tv == null ? null : tv.name.replaceAll("\\s*\\([A-Z]{2}\\)$", "");
-        tile.setOnClickListener(v -> { if (tuneName == null || !tuneTo(tuneName)) host.onResumeApp(); });
+        // The card is landscape from the start: laid out wide once, and kept so.
+        wideLooks.remove(tile).accept(true);
+        // OK: TiviMate on a channel showing the game (TvGuide.watch: Sky's guide, ESPN, the broadcasters abroad).
+        tile.setOnClickListener(v -> {
+            String pkg = context.getString(R.string.scores_open_package);
+            String[] football = context.getResources().getStringArray(R.array.football_tv_channels);
+            reader.execute(() -> {
+                TvGuide.Watch w = TvGuide.watch(football, g);
+                Bitmap logo = w == null || w.logo == null ? null : ScoresTicker.cachedLogo(context, w.logo, dp(96));
+                main.post(() -> {
+                    if (w == null || !AppSearchService.tune(context, pkg, w.names, logo)) host.onResumeApp();
+                });
+            });
+        });
         return tile;
     }
 
@@ -673,7 +695,6 @@ final class WatchRows {
         Intent open = context.getPackageManager().getLeanbackLaunchIntentForPackage(context.getString(R.string.scores_open_package));
         item.intent = open == null ? null : open.toUri(Intent.URI_INTENT_SCHEME);
         View tile = card(item, index, count);
-        tile.setOnClickListener(v -> { if (!tuneTo(n.channel)) open(item); });
         FrameLayout card = frameOf(tile);
         // The channel's logo, top-left on a soft shade so a light picture never swallows it.
         View topShade = new View(context);
@@ -685,12 +706,20 @@ final class WatchRows {
         FrameLayout.LayoutParams llp = new FrameLayout.LayoutParams(dp(96), dp(34), Gravity.TOP | Gravity.START);
         llp.leftMargin = llp.topMargin = dp(10);
         card.addView(logo, llp);
+        tile.setOnClickListener(v -> { if (!tuneTo(n.channel, bitmapOf(logo))) open(item); });
         return tile;
     }
 
     /** TiviMate opened on this channel (AppSearchService finds it through TiviMate's own search). */
-    private boolean tuneTo(String channel) {
-        return AppSearchService.tune(context, context.getString(R.string.scores_open_package), channel);
+    private boolean tuneTo(String channel, Bitmap logo) {
+        return AppSearchService.tune(context, context.getString(R.string.scores_open_package),
+                java.util.Collections.singletonList(channel), logo);
+    }
+
+    /** The picture an image view shows, for the helper's cover; null when it has none yet. */
+    private static Bitmap bitmapOf(ImageView v) {
+        android.graphics.drawable.Drawable d = v == null ? null : v.getDrawable();
+        return d instanceof android.graphics.drawable.BitmapDrawable ? ((android.graphics.drawable.BitmapDrawable) d).getBitmap() : null;
     }
 
     /** "Today 20:00", "Tomorrow 15:00" or "Sat 15:00". */
@@ -857,6 +886,7 @@ final class WatchRows {
             for (int i = 0; i < cats.size(); i++) tabs.addView(tab(i));
         }
         for (int i = 0; i < tabs.getChildCount(); i++) styleTab((TextView) tabs.getChildAt(i), i == catIndex, tabs.getChildAt(i).hasFocus());
+        moveGlass(catIndex, false);
     }
 
     private TextView tab(int i) {
@@ -872,6 +902,7 @@ final class WatchRows {
         lp.rightMargin = dp(4);
         v.setLayoutParams(lp);
         v.setOnFocusChangeListener((x, focused) -> styleTab(v, i == catIndex, focused));
+        v.setPadding(dp(14), dp(5), dp(14), dp(5));
         v.setOnKeyListener((x, keyCode, event) -> {
             if (event.getAction() != KeyEvent.ACTION_DOWN) return false;
             switch (keyCode) {
@@ -890,11 +921,86 @@ final class WatchRows {
         v.setTextColor(LightUi.ink(current || focused ? Color.WHITE : 0x80FFFFFF));
         v.setTypeface(context.getResources().getFont(current ? R.font.outfit_medium : R.font.outfit_regular),
                 current ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
-        GradientDrawable pill = new GradientDrawable();
-        pill.setCornerRadius(dp(14));
-        pill.setColor(LightUi.on() ? (focused ? 0x26000000 : current ? 0x12000000 : 0) : focused ? 0x33FFFFFF : current ? 0x14FFFFFF : 0x00000000);
-        if (focused) pill.setStroke(Math.max(1, dp(1.5f)), LightUi.ink(0xCCFFFFFF));
-        v.setBackground(pill);
+        v.setBackground(null);
+        // The lens swells a little while the tabs have focus, as a pressed glass button does.
+        boolean any = false;
+        for (int k = 0; k < tabs.getChildCount(); k++) any |= tabs.getChildAt(k).hasFocus();
+        float s = any ? 1.08f : 1f;
+        tabGlass.animate().scaleX(s).scaleY(s).setDuration(220).setInterpolator(new android.view.animation.OvershootInterpolator(2f)).start();
+        // And takes a fine rim, so it is plain that the tabs have focus.
+        GradientDrawable rim = null;
+        if (any) {
+            rim = new GradientDrawable();
+            rim.setCornerRadius(dp(21));
+            rim.setStroke(Math.max(1, dp(1.5f)), LightUi.on() ? 0xB31D2128 : 0xE6FFFFFF);
+        }
+        tabGlass.setForeground(rim);
+    }
+
+    // ---- the glass lens behind the tabs ----------------------------------------------------------
+
+    private View tabGlass;
+    private android.animation.ValueAnimator glassLead, glassTrail;
+    private float glassL = -1, glassR = -1;
+
+    /** The dark theme's glass: white light through a clear body, a bright rim. */
+    private GradientDrawable darkGlass() {
+        GradientDrawable g = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0x40FFFFFF, 0x1AFFFFFF});
+        g.setCornerRadius(dp(21));
+        g.setStroke(Math.max(1, dp(1.2f)), 0x99FFFFFF);
+        return g;
+    }
+
+    /**
+     * The lens to tab i, liquid-glass style: the edge in the direction of travel leads quickly and the other follows
+     * with a little overshoot, so the glass stretches as it moves and settles back to the tab's size. At once when
+     * animate is false (the tabs just shown).
+     */
+    private void moveGlass(int i, boolean animate) {
+        View t = tabs.getChildAt(i);
+        if (t == null) return;
+        if (t.getWidth() == 0) { t.post(() -> moveGlass(i, false)); return; }
+        float l = t.getLeft(), r = t.getRight();
+        FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) tabGlass.getLayoutParams();
+        lp.height = t.getHeight();
+        lp.topMargin = t.getTop();
+        if (glassL < 0 || !animate) {
+            glassL = l;
+            glassR = r;
+            placeGlass();
+            tabGlass.setAlpha(1f);
+        } else {
+            boolean right = l > glassL;
+            if (glassLead != null) glassLead.cancel();
+            if (glassTrail != null) glassTrail.cancel();
+            glassLead = edge(right, right ? r : l, 200, new android.view.animation.DecelerateInterpolator(1.6f));
+            glassTrail = edge(!right, right ? l : r, 380, new android.view.animation.OvershootInterpolator(1.4f));
+        }
+        // The tab on show kept in view, centred where the bar allows.
+        int to = Math.max(0, Math.round((l + r) / 2f - tabsScroll.getWidth() / 2f + tabsScroll.getPaddingLeft()));
+        if (animate) tabsScroll.smoothScrollTo(to, 0);
+        else tabsScroll.scrollTo(to, 0);
+    }
+
+    /** One edge of the lens to x: the right edge when right, else the left. */
+    private android.animation.ValueAnimator edge(boolean right, float x, long ms, android.animation.TimeInterpolator ease) {
+        android.animation.ValueAnimator a = android.animation.ValueAnimator.ofFloat(right ? glassR : glassL, x);
+        a.setDuration(ms);
+        a.setInterpolator(ease);
+        a.addUpdateListener(v -> {
+            if (right) glassR = (float) v.getAnimatedValue();
+            else glassL = (float) v.getAnimatedValue();
+            placeGlass();
+        });
+        a.start();
+        return a;
+    }
+
+    private void placeGlass() {
+        FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) tabGlass.getLayoutParams();
+        lp.width = Math.max(dp(20), Math.round(glassR - glassL));
+        tabGlass.setLayoutParams(lp);
+        tabGlass.setTranslationX(glassL);
     }
 
     /** Moves to tab i: its title in white, and its row below after a moment's pause (Left held down skips past). */
@@ -902,21 +1008,33 @@ final class WatchRows {
         catIndex = i;
         View t = tabs.getChildAt(i);
         t.requestFocus();
+        int from = catIndexShown;
         for (int k = 0; k < tabs.getChildCount(); k++) styleTab((TextView) tabs.getChildAt(k), k == i, k == i);
+        moveGlass(i, true);
         scroller.scrollTo(0, 0);
         main.removeCallbacks(tabRow);
-        tabRow = () -> { load(i); fillTrending(); t.requestFocus(); };
+        tabRow = () -> {
+            load(i);
+            fillTrending();
+            t.requestFocus();
+            // The new row glides in from the side it was picked towards.
+            catIndexShown = i;
+            strip.setTranslationX((i > from ? 1 : -1) * dp(60));
+            strip.setAlpha(0f);
+            strip.animate().translationX(0).alpha(1f).setDuration(320)
+                    .setInterpolator(new android.view.animation.DecelerateInterpolator(1.8f)).start();
+        };
         main.postDelayed(tabRow, 260);
     }
 
     private Runnable tabRow = () -> { };
+    private int catIndexShown;
 
     /** Up from the trending row: to its tabs, on the row on show. */
     private void focusTabs() {
         View t = tabs.getChildAt(catIndex);
         if (t == null) { host.onCardsUp(); return; }
         t.requestFocus();
-        tabsScroll.requestChildFocus(tabs, t);
     }
 
     /** Room under a trending poster for its name and year. */
@@ -952,7 +1070,7 @@ final class WatchRows {
         GradientDrawable ring = new GradientDrawable();
         ring.setColor(Color.TRANSPARENT);
         ring.setCornerRadius(dp(12));
-        ring.setStroke(dp(3), LightUi.ink(Color.WHITE));
+        ring.setStroke(dp(1.5f), LightUi.ink(Color.WHITE));
 
         ImageView image = new ImageView(context);
         image.setScaleType(ImageView.ScaleType.CENTER_CROP);
@@ -1138,7 +1256,9 @@ final class WatchRows {
         // OK: the app opens on its search for this title (AppSearchService), or just opens without that helper.
         tile.setOnClickListener(v -> {
             stopTrailer();
-            if (!AppSearchService.search(context, context.getString(R.string.trending_package), t.title, t.tv)) host.onResumeApp();
+            if (!AppSearchService.search(context, context.getString(R.string.trending_package), t.title, t.tv, bitmapOf(image), bitmapOf(mark))) {
+                host.onResumeApp();
+            }
         });
         return tile;
     }
@@ -1166,6 +1286,12 @@ final class WatchRows {
         // The preview clip first: Android's own player turns Apple's HD trailers down (fMP4 HLS), so they are only
         // tried for a title that has no clip, with the clip as the fallback when there is one.
         String url = t.preview != null ? t.preview : t.trailer;
+        // Without a clip, the official trailer on YouTube, in its own embedded player.
+        if (t.preview == null && t.youtube != null) {
+            retries = 0;
+            playYouTube(tile, card, t.youtube, covers);
+            return;
+        }
         if (url == null) {
             // Its clip may still be on its way (a row's previews are looked up after it shows): look again shortly.
             if (tile.hasFocus() && retries++ < 6) {
@@ -1249,7 +1375,69 @@ final class WatchRows {
         view.setTransform(m);
     }
 
+    // ---- YouTube's embedded player, for trailers with no clip of their own ----------------------------
+
+    private android.webkit.WebView web;
+
+    /**
+     * The trailer in YouTube's own embedded player (its IFrame API), across the card under the marks: it fades in once
+     * it plays and the card's poster and synopsis make way, as for a clip. The page is given this app as its origin,
+     * which the embedded player asks of an app. Drawn a little larger than the card, so a cinema trailer's black bars
+     * and the player's own title fall outside it; no captions.
+     */
+    @android.annotation.SuppressLint({"SetJavaScriptEnabled", "AddJavascriptInterface"})
+    private void playYouTube(View tile, FrameLayout card, String id, List<View> covers) {
+        stopTrailer();
+        if (web == null) {
+            try {
+                web = new android.webkit.WebView(context);
+            } catch (RuntimeException e) {
+                return;   // no WebView on this TV: no trailer
+            }
+            android.webkit.WebSettings ws = web.getSettings();
+            ws.setJavaScriptEnabled(true);
+            ws.setMediaPlaybackRequiresUserGesture(false);
+            ws.setDomStorageEnabled(true);
+            web.setBackgroundColor(Color.BLACK);
+            web.setFocusable(false);
+            web.setFocusableInTouchMode(false);
+            web.setVerticalScrollBarEnabled(false);
+            web.setHorizontalScrollBarEnabled(false);
+            web.addJavascriptInterface(new Object() {
+                @android.webkit.JavascriptInterface public void playing() {
+                    main.post(() -> {
+                        if (web == null || playingTile == null) return;
+                        web.animate().alpha(1f).setDuration(500).start();
+                        for (View x : playerCovers) x.animate().alpha(0f).setDuration(400).start();
+                    });
+                }
+                @android.webkit.JavascriptInterface public void ended() {
+                    main.post(WatchRows.this::stopTrailer);
+                }
+            }, "Home");
+        }
+        playingTile = tile;
+        playerCovers = covers;
+        web.setAlpha(0f);
+        card.addView(web, 1, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        String html = "<!doctype html><html><head><meta name=viewport content='width=device-width,initial-scale=1'>"
+                + "<style>html,body{margin:0;height:100%;background:#000;overflow:hidden}#p{position:absolute;inset:0;width:100%;height:100%;transform:scale(1.3)}</style>"
+                + "</head><body><div id=p></div><script src='https://www.youtube.com/iframe_api'></script><script>"
+                + "function onYouTubeIframeAPIReady(){new YT.Player('p',{width:'100%',height:'100%',videoId:'" + id + "',"
+                + "playerVars:{autoplay:1,controls:0,rel:0,playsinline:1,modestbranding:1,iv_load_policy:3,disablekb:1,fs:0,cc_load_policy:0,"
+                + "origin:'https://" + context.getPackageName() + "'},"
+                + "events:{onReady:function(e){try{e.target.unloadModule('captions');}catch(x){}e.target.setVolume(80);e.target.playVideo();},"
+                + "onStateChange:function(e){if(e.data==1)Home.playing();if(e.data==0)Home.ended();}}});}"
+                + "</script></body></html>";
+        web.loadDataWithBaseURL("https://" + context.getPackageName(), html, "text/html", "utf-8", null);
+    }
+
     private void stopTrailer() {
+        if (web != null && web.getParent() instanceof ViewGroup) {
+            // Silenced and taken off the card; kept for the next trailer, as a player is slow to make.
+            web.loadUrl("about:blank");
+            ((ViewGroup) web.getParent()).removeView(web);
+        }
         if (player != null) {
             try { player.stop(); } catch (Exception ignored) { }
             player.release();
@@ -1470,7 +1658,7 @@ final class WatchRows {
         GradientDrawable ring = new GradientDrawable();
         ring.setColor(Color.TRANSPARENT);
         ring.setCornerRadius(dp(10));
-        ring.setStroke(dp(3), LightUi.ink(Color.WHITE));
+        ring.setStroke(dp(1.5f), LightUi.ink(Color.WHITE));
 
         ImageView image = new ImageView(context);
         image.setScaleType(ImageView.ScaleType.CENTER_CROP);
@@ -1534,8 +1722,8 @@ final class WatchRows {
                 bg.setColor(BannerArt.edgeColor(item.art));
             }
             image.setImageDrawable(item.art);
-        } else if (youTube()) {
-            // A video's 16:9 thumbnail on a 16:9 card (sized below): it fills the card, all of it.
+        } else if (landscape()) {
+            // A video's or a programme's 16:9 picture on a 16:9 card (sized below): it fills the card, all of it.
             loadPoster(item.poster, image);
         } else {
             loadPoster(item.poster, image);
@@ -1551,8 +1739,8 @@ final class WatchRows {
             if (item.art != null) host.onResumeApp();
             else open(item);
         });
-        if (item.art == null && youTube()) {
-            // YouTube's cards stay landscape, the shape of its thumbnails, and need not widen.
+        if (item.art == null && landscape()) {
+            // YouTube's and TiviMate's cards stay landscape, the shape of their pictures, and need not widen.
             tile.getLayoutParams().width = cardWidth();
             cardWidths.put(tile, new int[]{cardWidth(), cardWidth()});
         }
@@ -1587,8 +1775,10 @@ final class WatchRows {
         });
     }
 
-    private boolean youTube() {
-        return shownPackage != null && shownPackage.startsWith("com.google.android.youtube");
+    /** A row whose pictures are 16:9 (YouTube's thumbnails, TiviMate's programmes): its cards stay that shape. */
+    private boolean landscape() {
+        return shownPackage != null && (shownPackage.startsWith("com.google.android.youtube")
+                || shownPackage.equals(context.getString(R.string.scores_open_package)));
     }
 
     /**

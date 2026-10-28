@@ -279,6 +279,10 @@ public class GoalWatchService extends Service {
             g.league = "PL"; g.home = "LIV"; g.away = "BHA"; g.homeScore = "2"; g.awayScore = "1";
             g.homeLogo = "https://a.espncdn.com/i/teamlogos/soccer/500/364.png";
             g.awayLogo = "https://a.espncdn.com/i/teamlogos/soccer/500/331.png";
+            // Live, on Sky Sports Premier League, so its "Watch on" step shows too.
+            g.state = 0;
+            g.slug = "eng.1";
+            g.broadcasts.add("Sky Sports Premier League");
             enqueue(g, new String[]{"test", "Mohamed Salah", "67'", "home", ""}, false);
         }
         if (intent != null && intent.hasExtra("test_ft")) {
@@ -305,7 +309,7 @@ public class GoalWatchService extends Service {
                     }
                     for (F1Results.Session s : w.sessions) {
                         if (!"Race".equals(s.abbr)) continue;
-                        enqueueParts(sessionStart(w, s), "f1");
+                        enqueueParts(sessionStart(w, s), "f1", true);
                         if (s.top.size() > 1) enqueueParts(leads(s, 1, 23), "f1");
                         enqueueParts(lapUpdate(s, 30), "f1");
                     }
@@ -458,7 +462,7 @@ public class GoalWatchService extends Service {
             Integer lastMark = f1Laps.put(s.id, s.lap / 10);
             if (!f1Primed || before == null) continue;
             if ("pre".equals(before) && "in".equals(s.state)) {
-                enqueueParts(sessionStart(w, s), "f1");
+                enqueueParts(sessionStart(w, s), "f1", true);
             } else if ("in".equals(before) && "post".equals(s.state)) {
                 if ("Race".equals(s.abbr)) {
                     F1Results.Race r = new F1Results.Race();
@@ -471,8 +475,8 @@ public class GoalWatchService extends Service {
                     enqueueParts(sessionOver(w, s), "f1");
                 }
             } else if ("in".equals(s.state)) {
-                if (leader != null && lastLeader != null && !leader.equals(lastLeader)) enqueueParts(leads(s, 0, s.lap), "f1");
-                if (s.isRace() && lastMark != null && s.lap / 10 > lastMark && s.lap > 0) enqueueParts(lapUpdate(s, s.lap), "f1");
+                if (leader != null && lastLeader != null && !leader.equals(lastLeader)) enqueueParts(leads(s, 0, s.lap), "f1", true);
+                if (s.isRace() && lastMark != null && s.lap / 10 > lastMark && s.lap > 0) enqueueParts(lapUpdate(s, s.lap), "f1", true);
             }
         }
         if (!w.sessions.isEmpty()) f1Primed = true;
@@ -864,8 +868,10 @@ public class GoalWatchService extends Service {
             android.graphics.Bitmap away = g.awayLogo == null ? null : ScoresTicker.cachedLogo(this, g.awayLogo, px);
             String light = lightLogo(g.leagueLogo);
             android.graphics.Bitmap league = light == null ? null : ScoresTicker.cachedLogo(this, light, px);
+            // While the game is on: where to watch it, for the pill's second step.
+            Object[] watch = g.state == 0 ? watchOn(TvGuide.watch(getResources().getStringArray(R.array.football_tv_channels), g)) : null;
             main.post(() -> {
-                queue.add(new Object[]{head, g, home, away, league, sound, scoredBy});
+                queue.add(new Object[]{head, g, home, away, league, sound, scoredBy, watch});
                 showNext();
             });
         });
@@ -997,8 +1003,20 @@ public class GoalWatchService extends Service {
 
     /** Fetches the line's pictures, then queues it with its sound. */
     private void enqueueParts(List<Object> parts, String sound) {
+        enqueueParts(parts, sound, false);
+    }
+
+    /** As enqueueParts; f1Live adds the "Watch on" step (Sky Sports F1 and the rest) after the line. */
+    private void enqueueParts(List<Object> parts, String sound, boolean f1Live) {
         int px = Math.round(LOGO_DP * getResources().getDisplayMetrics().density);
         io.execute(() -> {
+            Object[] watch = null;
+            if (f1Live) {
+                ScoresTicker.Game f1 = new ScoresTicker.Game();
+                f1.leagueLogo = F1Results.F1_LOGO;
+                watch = watchOn(TvGuide.watch(new String[0], f1));
+            }
+            final Object[] watching = watch;
             List<Object> ready = new ArrayList<>();
             for (Object o : parts) {
                 if (o instanceof Pic) {
@@ -1008,10 +1026,18 @@ public class GoalWatchService extends Service {
                 else ready.add(o);
             }
             main.post(() -> {
-                queue.add(new Object[]{ready, sound});
+                queue.add(watching == null ? new Object[]{ready, sound} : new Object[]{ready, sound, watching});
                 showNext();
             });
         });
+    }
+
+    /** {names, logo} for the "Watch on" step, the channel's logo fetched; null without anywhere to watch. */
+    private Object[] watchOn(TvGuide.Watch w) {
+        if (w == null || w.names.isEmpty()) return null;
+        int px = Math.round(96 * getResources().getDisplayMetrics().density);
+        android.graphics.Bitmap logo = w.logo == null ? null : ScoresTicker.cachedLogo(this, w.logo, px);
+        return new Object[]{w.names, logo};
     }
 
     private static CharSequence bold(String text) {
@@ -1151,10 +1177,12 @@ public class GoalWatchService extends Service {
         ScoresTicker.Side[] sides = null;
         Map<String, android.graphics.Bitmap> pictures = null;
         List<Object> livePage = null;
-        if (next.length == 2 || next.length == 5) {
+        Object[] watch = null;
+        if (next.length == 2 || next.length == 3 || next.length == 5) {
             parts = (List<Object>) next[0];
             sound = (String) next[1];
             wide = true;
+            if (next.length == 3) watch = (Object[]) next[2];
             if (next.length == 5) {
                 sides = (ScoresTicker.Side[]) next[2];
                 pictures = (Map<String, android.graphics.Bitmap>) next[3];
@@ -1197,6 +1225,7 @@ public class GoalWatchService extends Service {
             Object league = next.length > 4 && next[4] != null ? next[4] : new Small(g.league);
             parts = Arrays.asList(next[0], 10, next[2], 6, score, 6, next[3], 8, league);
             wide = false;
+            if (next.length > 7) watch = (Object[]) next[7];
         }
         float d = getResources().getDisplayMetrics().density;
         LinearLayout box = pillBox(parts, d);
@@ -1275,7 +1304,95 @@ public class GoalWatchService extends Service {
             main.postDelayed(() -> flipPage(box, pages, 0, h), 6_500);
             return;
         }
+        if (watch != null && !stillOnly()) {
+            Object[] w = watch;
+            main.postDelayed(() -> watchStep(box, h, w), SHOW_MS + 400);
+            return;
+        }
         main.postDelayed(() -> closePill(box, h, visible), SHOW_MS + 1_400);
+    }
+
+    // ---- "Watch on": the alert's second step, OK to watch it in TiviMate --------------------------------------
+
+    private static final long WATCH_MS = 9_000L;
+    private Runnable watchClose;
+
+    /**
+     * The alert flips to "WATCH ON" and the channel's logo, and for a few seconds OK on the remote opens TiviMate on
+     * that channel (the first of w's names the playlist has), the steps hidden under the helper's cover. The window
+     * takes the keys only while this step shows: OK watches, any other key closes it.
+     */
+    @SuppressWarnings("unchecked")
+    private void watchStep(LinearLayout old, int h, Object[] w) {
+        if (host == null || shown != old) return;
+        List<String> names = (List<String>) w[0];
+        android.graphics.Bitmap logo = (android.graphics.Bitmap) w[1];
+        List<Object> parts = new ArrayList<>();
+        parts.add(bold("▶  WATCH ON"));
+        parts.add(10);
+        parts.add(logo != null ? new ChipImg(logo) : bold(names.get(0)));
+        parts.add(12);
+        parts.add(new Small("OK to watch"));
+        float d = getResources().getDisplayMetrics().density;
+        LinearLayout page = pillBox(parts, d);
+        host.addView(page, new android.widget.FrameLayout.LayoutParams(
+                android.widget.FrameLayout.LayoutParams.WRAP_CONTENT, h, Gravity.BOTTOM | Gravity.START));
+        shown = page;
+        // A pop as it comes up, so the change catches the eye.
+        if (calm()) {
+            host.removeView(old);
+        } else {
+            page.setTranslationY(h);
+            page.setAlpha(0f);
+            old.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+            old.animate().translationY(-h).alpha(0f).setDuration(380).withEndAction(() -> host.removeView(old)).start();
+            page.animate().translationY(0f).alpha(1f).setDuration(380).withEndAction(() -> {
+                page.setPivotX(h / 2f);
+                page.setPivotY(h / 2f);
+                page.animate().scaleX(1.06f).scaleY(1.06f).setDuration(140).withEndAction(() ->
+                        page.animate().scaleX(1f).scaleY(1f).setDuration(220)
+                                .setInterpolator(new android.view.animation.OvershootInterpolator(3f)).start()).start();
+            }).start();
+        }
+        takeKeys(true);
+        host.setOnKeyListener((v, keyCode, event) -> {
+            if (event.getAction() != android.view.KeyEvent.ACTION_DOWN) return true;
+            boolean ok = keyCode == android.view.KeyEvent.KEYCODE_DPAD_CENTER || keyCode == android.view.KeyEvent.KEYCODE_ENTER
+                    || keyCode == android.view.KeyEvent.KEYCODE_NUMPAD_ENTER || keyCode == android.view.KeyEvent.KEYCODE_BUTTON_A;
+            endWatch(page, h);
+            if (ok) AppSearchService.tune(this, getString(R.string.scores_open_package), names, logo);
+            return true;
+        });
+        watchClose = () -> endWatch(page, h);
+        main.postDelayed(watchClose, WATCH_MS);
+    }
+
+    /** The "Watch on" step over: the keys back with the app, and the pill closes. */
+    private void endWatch(LinearLayout page, int h) {
+        if (watchClose != null) main.removeCallbacks(watchClose);
+        watchClose = null;
+        if (host == null || shown != page) return;
+        host.setOnKeyListener(null);
+        takeKeys(false);
+        final float[] full = {page.getWidth()};
+        outline(page, h, full);
+        closePill(page, h, full);
+    }
+
+    /** The alert's window takes the remote's keys (for "Watch on"), or leaves them with the app again. */
+    private void takeKeys(boolean take) {
+        if (host == null) return;
+        WindowManager.LayoutParams lp = (WindowManager.LayoutParams) host.getLayoutParams();
+        if (take) lp.flags &= ~WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
+        else lp.flags |= WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
+        try {
+            getSystemService(WindowManager.class).updateViewLayout(host, lp);
+        } catch (Exception ignored) {
+            return;
+        }
+        host.setFocusable(take);
+        host.setFocusableInTouchMode(take);
+        if (take) host.requestFocus();
     }
 
     private static final long PAGE_MS = 3_200L;

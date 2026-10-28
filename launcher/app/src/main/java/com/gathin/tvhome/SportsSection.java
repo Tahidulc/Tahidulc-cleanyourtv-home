@@ -534,7 +534,7 @@ final class SportsSection {
         GradientDrawable ring = new GradientDrawable();
         ring.setColor(Color.TRANSPARENT);
         ring.setCornerRadius(dp(14));
-        ring.setStroke(dp(3), LightUi.ink(Color.WHITE));
+        ring.setStroke(dp(1.5f), LightUi.ink(Color.WHITE));
         c.setOnFocusChangeListener((v, focused) -> {
             v.animate().scaleX(focused ? 1.03f : 1f).scaleY(focused ? 1.03f : 1f).setDuration(160).start();
             v.setForeground(focused ? ring : null);

@@ -26,6 +26,8 @@ final class Trending {
         String link, quality, age, tomatoes, stars;
         /** The trailer: the HD one on Apple's TV page, else the store's short preview clip (a film's, in the chart). */
         String trailer, preview;
+        /** The official trailer's YouTube video id from TMDB, played in YouTube's own embedded player. */
+        String youtube;
         boolean dolbyVision, hdr, hdr10plus, atmos, rotten, certified;
         /** The image without its size: add "/{w}x{h}bb.jpg" for the whole picture, "/{w}x{h}sr.jpg" for a crop. */
         String art;
@@ -71,16 +73,16 @@ final class Trending {
             {"Paramount+", 531, "/pkx3klJlwW5JdtaulvDx6hDNtch.png"}, {"BBC iPlayer", 38, "/vi6XJCpJ9GpAPD3rDSRzMC812Z.png"},
             {"ITVX", 41, "/nIViE3wOPV5Jyv45T7hetHyG6iS.png"}, {"Channel 4", 103, "/kMT8p43W3BsXBe9mqCIPDNepser.png"}};
 
-    /** The rows, with TMDB's trending first and a row for each UK streaming service after Netflix's when the theme has a TMDB key. */
+    /** The rows, with TMDB's new releases and trending first and a row for each UK streaming service after Netflix's when the theme has a TMDB key. */
     static List<Category> categories(boolean tmdb) {
         List<Category> c = categories();
         if (!tmdb) return c;
-        Category trending = new Category("Trending", false, false, 0);
-        trending.trending = true;
-        c.add(0, trending);
         Category fresh = new Category("New Releases", false, false, 0);
         fresh.fresh = true;
-        c.add(1, fresh);
+        c.add(0, fresh);
+        Category trending = new Category("Trending", false, false, 0);
+        trending.trending = true;
+        c.add(1, trending);
         List<Category> services = new ArrayList<>();
         for (Object[] sv : SERVICES) {
             Category cat = new Category((String) sv[0], false, false, 0);
@@ -602,15 +604,22 @@ final class Trending {
         }));
         List<java.util.concurrent.Callable<Void>> jobs = new ArrayList<>();
         for (Title t : titles) {
-            if (t.logo != null) continue;
             String name = (t.tv ? "tv:" : "film:") + t.title;
-            String kept = prefs.getString(name, null);
-            if (kept != null && !kept.startsWith("-")) { t.logo = kept; continue; }
-            if (kept != null && System.currentTimeMillis() - Long.parseLong(kept.substring(1)) < LOGO_RETRY_MS) continue;
+            // Each kept once found; one not found asked again after a day.
+            String keptLogo = prefs.getString(name, null), keptVideo = prefs.getString("yt:" + name, null);
+            if (t.logo == null && keptLogo != null && !keptLogo.startsWith("-")) t.logo = keptLogo;
+            if (keptVideo != null && !keptVideo.startsWith("-")) t.youtube = keptVideo;
+            boolean wantLogo = t.logo == null && stale(keptLogo), wantVideo = t.youtube == null && stale(keptVideo);
+            if (!wantLogo && !wantVideo) continue;
             jobs.add(() -> {
-                String found = logo(key, t);
-                prefs.edit().putString(name, found != null ? found : "-" + System.currentTimeMillis()).apply();
-                if (found != null) t.logo = found;
+                String[] found = lookUpArt(key, t, wantLogo, wantVideo);
+                android.content.SharedPreferences.Editor e = prefs.edit();
+                String miss = "-" + System.currentTimeMillis();
+                if (wantLogo) e.putString(name, found[0] != null ? found[0] : miss);
+                if (wantVideo) e.putString("yt:" + name, found[1] != null ? found[1] : miss);
+                e.apply();
+                if (found[0] != null) t.logo = found[0];
+                if (found[1] != null) t.youtube = found[1];
                 return null;
             });
         }
@@ -618,15 +627,23 @@ final class Trending {
         pool.shutdownNow();
     }
 
-    /** The title's English (or wordless) PNG logo on TMDB, or null. */
-    private static String logo(String key, Title t) {
+    private static boolean stale(String kept) {
+        return kept == null || kept.startsWith("-") && System.currentTimeMillis() - Long.parseLong(kept.substring(1)) >= LOGO_RETRY_MS;
+    }
+
+    /**
+     * {its English (or wordless) PNG logo, its official trailer's YouTube id} on TMDB, either null when there is none,
+     * by its TMDB id or a search for its name.
+     */
+    private static String[] lookUpArt(String key, Title t, boolean wantLogo, boolean wantVideo) {
+        String[] out = new String[2];
         String type = t.tv ? "tv" : "movie";
         try {
             int id = t.tmdbId;
             if (id == 0) {
                 JSONArray results = new JSONObject(get("https://api.themoviedb.org/3/search/" + type + "?api_key=" + key
                         + "&query=" + java.net.URLEncoder.encode(t.title, "UTF-8"))).optJSONArray("results");
-                if (results == null || results.length() == 0) return null;
+                if (results == null || results.length() == 0) return out;
                 // The one with exactly this name, nearest the year given; else TMDB's best match.
                 String want = t.title.toLowerCase(java.util.Locale.ROOT);
                 int best = -1, gap = Integer.MAX_VALUE;
@@ -640,21 +657,34 @@ final class Trending {
                 }
                 id = results.getJSONObject(Math.max(best, 0)).optInt("id");
             }
-            JSONArray logos = new JSONObject(get("https://api.themoviedb.org/3/" + type + "/" + id + "/images?api_key=" + key
-                    + "&include_image_language=en,null")).optJSONArray("logos");
-            String fallback = null;
-            for (int i = 0; logos != null && i < logos.length(); i++) {
-                JSONObject l = logos.getJSONObject(i);
-                String path = l.optString("file_path", "");
-                if (!path.endsWith(".png")) continue;
-                String url = "https://image.tmdb.org/t/p/w300" + path;
-                if ("en".equals(l.optString("iso_639_1"))) return url;
-                if (fallback == null) fallback = url;
+            if (wantLogo) {
+                JSONArray logos = new JSONObject(get("https://api.themoviedb.org/3/" + type + "/" + id + "/images?api_key=" + key
+                        + "&include_image_language=en,null")).optJSONArray("logos");
+                for (int i = 0; logos != null && i < logos.length(); i++) {
+                    JSONObject l = logos.getJSONObject(i);
+                    String path = l.optString("file_path", "");
+                    if (!path.endsWith(".png")) continue;
+                    String url = "https://image.tmdb.org/t/p/w300" + path;
+                    if ("en".equals(l.optString("iso_639_1"))) { out[0] = url; break; }
+                    if (out[0] == null) out[0] = url;
+                }
             }
-            return fallback;
-        } catch (Exception e) {
-            return null;
+            if (wantVideo) {
+                // An official trailer first, then any trailer, then a teaser.
+                JSONArray videos = new JSONObject(get("https://api.themoviedb.org/3/" + type + "/" + id + "/videos?api_key=" + key
+                        + "&include_video_language=en,null")).optJSONArray("results");
+                int best = 99;
+                for (int i = 0; videos != null && i < videos.length(); i++) {
+                    JSONObject v = videos.getJSONObject(i);
+                    if (!"YouTube".equals(v.optString("site")) || v.optString("key").isEmpty()) continue;
+                    String kind = v.optString("type");
+                    int rank = "Trailer".equals(kind) ? (v.optBoolean("official") ? 0 : 1) : "Teaser".equals(kind) ? 2 : 99;
+                    if (rank < best) { best = rank; out[1] = v.optString("key"); }
+                }
+            }
+        } catch (Exception ignored) {
         }
+        return out;
     }
 
     /** "type=text;type=text;..." for the title's own badges, or null when the page could not be read. */

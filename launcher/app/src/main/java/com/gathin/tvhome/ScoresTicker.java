@@ -75,6 +75,8 @@ final class ScoresTicker {
         long tvAt;
         /** Where it is on in the US when no British channel has it (ESPN's listing, English-language TV first). */
         String abroad;
+        /** Every channel ESPN lists for it, English-language TV first. */
+        List<String> broadcasts = new ArrayList<>();
         double clockSec;
         long clockAt;
         boolean halftime;
@@ -328,6 +330,7 @@ final class ScoresTicker {
             g.detail = type.optString("shortDetail", "LIVE");
             g.clockSec = c.getJSONObject("status").optDouble("clock", 0);
             g.abroad = abroad(c);
+            g.broadcasts = broadcasts(c);
             g.clockAt = System.currentTimeMillis();
             g.halftime = type.optString("name").contains("HALFTIME");
         } else if ("pre".equals(state)) {
@@ -754,6 +757,13 @@ final class ScoresTicker {
      * then anything; joined as "CBS Sports Network / Paramount+". Null when ESPN lists none.
      */
     static String abroad(JSONObject competition) {
+        List<String> all = broadcasts(competition);
+        if (all.isEmpty()) return null;
+        return android.text.TextUtils.join(" / ", all.subList(0, Math.min(2, all.size())));
+    }
+
+    /** ESPN's channels for the game: English-language TV, then streaming, then the rest. */
+    static List<String> broadcasts(JSONObject competition) {
         JSONArray geo = competition.optJSONArray("geoBroadcasts");
         if (geo == null) return null;
         List<String> tv = new ArrayList<>(), streaming = new ArrayList<>(), other = new ArrayList<>();
@@ -770,9 +780,8 @@ final class ScoresTicker {
         }
         List<String> all = new ArrayList<>(tv);
         all.addAll(streaming);
-        if (all.isEmpty()) all.addAll(other);
-        if (all.isEmpty()) return null;
-        return android.text.TextUtils.join(" / ", all.subList(0, Math.min(2, all.size())));
+        all.addAll(other);
+        return all;
     }
 
     private static CharSequence league(Game g) {

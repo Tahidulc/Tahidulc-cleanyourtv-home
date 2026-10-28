@@ -538,18 +538,15 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                         } catch (Exception ignored) {
                             return;
                         }
-                        // TiviMate opens at once; then the channel showing the game, from Sky's guide (Sky Sports F1
-                        // for F1), and TiviMate is put on it through its own search.
+                        // TiviMate opens at once; then the channels showing the game (Sky's guide, ESPN's listing, the
+                        // competition's broadcasters), and TiviMate is put on the first it has through its own search.
                         String[] football = getResources().getStringArray(R.array.football_tv_channels);
+                        int px = Math.round(96 * density);
                         new Thread(() -> {
-                            String channel;
-                            if (F1Results.F1_LOGO.equals(g.leagueLogo)) {
-                                channel = "Sky Sports F1";
-                            } else {
-                                TvGuide.Channel c = TvGuide.orAbroad(TvGuide.find(football, g.homeName, g.awayName, g.kickoff), g);
-                                channel = c == null ? null : c.name.replaceAll("\\s*\\([A-Z]{2}\\)$", "");
-                            }
-                            if (channel != null) handler.post(() -> AppSearchService.tune(MainActivity.this, pkg, channel));
+                            TvGuide.Watch w = TvGuide.watch(football, g);
+                            if (w == null) return;
+                            Bitmap logo = w.logo == null ? null : ScoresTicker.cachedLogo(MainActivity.this, w.logo, px);
+                            handler.post(() -> AppSearchService.tune(MainActivity.this, pkg, w.names, logo));
                         }).start();
                     }
                     @Override public void onScoresDown() {
@@ -2830,6 +2827,19 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         root.invalidate();   // a resume that changes nothing on screen still draws once, so the refresh runs
     }
 
+    /** A VPN whose own addresses are all a tailnet's (100.64.0.0/10, or Tailscale's fd7a:115c:a1e0::/48). */
+    private static boolean tailnetOnly(android.net.LinkProperties lp) {
+        if (lp == null || lp.getLinkAddresses().isEmpty()) return false;
+        for (android.net.LinkAddress la : lp.getLinkAddresses()) {
+            byte[] a = la.getAddress().getAddress();
+            boolean cgnat = a.length == 4 && (a[0] & 0xFF) == 100 && (a[1] & 0xC0) == 64;
+            boolean tailscale6 = a.length == 16 && (a[0] & 0xFF) == 0xFD && (a[1] & 0xFF) == 0x7A && (a[2] & 0xFF) == 0x11
+                    && (a[3] & 0xFF) == 0x5C && (a[4] & 0xFF) == 0xA1 && (a[5] & 0xFF) == 0xE0;
+            if (!cgnat && !tailscale6) return false;
+        }
+        return true;
+    }
+
     /** Shows the Wi-Fi network name on the button when we can read it, otherwise the connection type. */
     private void updateWifiLabel() {
         String text = getString(R.string.wifi);
@@ -2846,7 +2856,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                 NetworkCapabilities caps = cm.getNetworkCapabilities(net);
                 if (caps == null) continue;
                 if (caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)) {
-                    vpn = true;
+                    // Tailscale is a VPN to Android too, but only links this box to its own devices: not the VPN.
+                    if (!tailnetOnly(cm.getLinkProperties(net))) vpn = true;
                     continue;
                 }
                 if (!caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)) continue;
@@ -3027,10 +3038,12 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                 pill.addState(states[0], focused);
                 pill.addState(states[1], plain);
                 b.setBackground(pill);
+                b.setCompoundDrawableTintList(ColorStateList.valueOf(Color.WHITE));
             } else if (vpnBackground.containsKey(b)) {
+                // Back to the bar's own look, as it was before the VPN came up.
                 b.setBackground(vpnBackground.get(b));
+                b.setCompoundDrawableTintList(vpnInk.get(b));
             }
-            b.setCompoundDrawableTintList(on ? ColorStateList.valueOf(Color.WHITE) : vpnInk.get(b));
         }
     }
 
