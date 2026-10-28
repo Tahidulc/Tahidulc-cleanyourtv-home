@@ -1498,7 +1498,17 @@ public class GoalWatchService extends Service {
         parts.add(10);
         parts.add(logo != null ? new ChipImg(logo) : bold(names.get(0)));
         parts.add(12);
-        parts.add(new Small("OK to watch"));
+        // "Press [OK] to watch", with this TV's own remote's OK button drawn (a theme's "ok_button": tcl, streamer).
+        String remote = Config.themeString(this, "ok_button", "");
+        if (remote.isEmpty()) {
+            parts.add(new Small("OK to watch"));
+        } else {
+            parts.add(new Small("Press"));
+            parts.add(5);
+            parts.add(new android.graphics.drawable.BitmapDrawable(getResources(), okButton(remote, getResources().getDisplayMetrics().density)));
+            parts.add(5);
+            parts.add(new Small("to watch"));
+        }
         float d = getResources().getDisplayMetrics().density;
         LinearLayout page = pillBox(parts, d);
         host.addView(page, new android.widget.FrameLayout.LayoutParams(
@@ -1531,6 +1541,38 @@ public class GoalWatchService extends Service {
         });
         watchClose = () -> endWatch(page, h);
         main.postDelayed(watchClose, WATCH_MS);
+    }
+
+    /**
+     * The remote's OK button, drawn small for "Press [OK] to watch": the TCL's black round button with OK in white in
+     * its dark ring; the Google TV Streamer's plain pale button in its pale ring.
+     */
+    private static android.graphics.Bitmap okButton(String remote, float d) {
+        int s = Math.round(22 * d);
+        android.graphics.Bitmap b = android.graphics.Bitmap.createBitmap(s, s, android.graphics.Bitmap.Config.ARGB_8888);
+        android.graphics.Canvas c = new android.graphics.Canvas(b);
+        android.graphics.Paint p = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+        float r = s / 2f;
+        boolean streamer = "streamer".equalsIgnoreCase(remote);
+        // The ring of the direction keys, then the button in it.
+        p.setColor(streamer ? 0xFFD9D6CF : 0xFF2B2D31);
+        c.drawCircle(r, r, r, p);
+        p.setColor(streamer ? 0xFFBDB9B0 : 0xFF55585E);
+        p.setStyle(android.graphics.Paint.Style.STROKE);
+        p.setStrokeWidth(Math.max(1f, d * 0.8f));
+        c.drawCircle(r, r, r * 0.62f, p);
+        p.setStyle(android.graphics.Paint.Style.FILL);
+        p.setColor(streamer ? 0xFFEDEAE4 : 0xFF0E0F11);
+        c.drawCircle(r, r, r * 0.56f, p);
+        if (!streamer) {
+            p.setColor(0xFFFFFFFF);
+            p.setTextAlign(android.graphics.Paint.Align.CENTER);
+            p.setTypeface(Typeface.DEFAULT_BOLD);
+            p.setTextSize(r * 0.5f);
+            android.graphics.Paint.FontMetrics fm = p.getFontMetrics();
+            c.drawText("OK", r, r - (fm.ascent + fm.descent) / 2f, p);
+        }
+        return b;
     }
 
     /** The "Watch on" step over: the keys back with the app, and the pill closes. */
