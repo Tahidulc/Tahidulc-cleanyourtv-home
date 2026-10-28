@@ -640,6 +640,15 @@ final class WatchRows {
                 loadPoster(tv.logo, logo);
                 LinearLayout.LayoutParams olp = new LinearLayout.LayoutParams(dp(150), dp(20));
                 olp.leftMargin = dp(8);
+                if (logoBacking()) {
+                    // A dark backing, so a white logo reads on any picture.
+                    logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
+                    logo.setAdjustViewBounds(true);
+                    logo.setBackground(logoBack());
+                    logo.setPadding(dp(7), dp(3), dp(7), dp(3));
+                    olp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(24));
+                    olp.leftMargin = dp(8);
+                }
                 on.addView(logo, olp);
             } else {
                 // Abroad, ESPN gives the channel's name only.
@@ -717,6 +726,16 @@ final class WatchRows {
         loadPoster(n.logo, logo);
         FrameLayout.LayoutParams llp = new FrameLayout.LayoutParams(dp(96), dp(34), Gravity.TOP | Gravity.START);
         llp.leftMargin = llp.topMargin = dp(10);
+        if (logoBacking()) {
+            // On a dark backing that fits the logo, so its white lettering reads on any picture.
+            logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            logo.setAdjustViewBounds(true);
+            logo.setMaxWidth(dp(110));
+            logo.setBackground(logoBack());
+            logo.setPadding(dp(8), dp(4), dp(8), dp(4));
+            llp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(34), Gravity.TOP | Gravity.START);
+            llp.leftMargin = llp.topMargin = dp(10);
+        }
         card.addView(logo, llp);
         ImageView still = card.getChildAt(0) instanceof ImageView ? (ImageView) card.getChildAt(0) : null;
         tile.setOnClickListener(v -> {
@@ -725,6 +744,19 @@ final class WatchRows {
             if (!ok) open(item);
         });
         return tile;
+    }
+
+    /** A theme's "logo_backing": channel logos on a dark backing, so white lettering reads on a light picture. */
+    private boolean logoBacking() {
+        return Config.themeFlag(context, "logo_backing", false);
+    }
+
+    /** The backing: a dark, slightly see-through capsule. */
+    private android.graphics.drawable.Drawable logoBack() {
+        GradientDrawable g = new GradientDrawable();
+        g.setColor(0xB3101114);
+        g.setCornerRadius(dp(8));
+        return g;
     }
 
     /** TiviMate opened on this channel (AppSearchService finds it through TiviMate's own search). */

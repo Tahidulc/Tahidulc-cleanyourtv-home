@@ -1496,7 +1496,9 @@ public class GoalWatchService extends Service {
         List<Object> parts = new ArrayList<>();
         parts.add(bold("▶  WATCH ON"));
         parts.add(10);
-        parts.add(logo != null ? new ChipImg(logo) : bold(names.get(0)));
+        // White lettering made for dark screens, in the pill's ink on its light glass (a theme's "logo_backing").
+        boolean ink = Config.themeFlag(this, "logo_backing", false);
+        parts.add(logo != null ? new ChipImg(ink ? inked(logo) : logo) : bold(names.get(0)));
         parts.add(12);
         // "Press [OK] to watch", with this TV's own remote's OK button drawn (a theme's "ok_button": tcl, streamer).
         String remote = Config.themeString(this, "ok_button", "");
