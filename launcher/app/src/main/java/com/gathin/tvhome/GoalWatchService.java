@@ -1,5 +1,7 @@
 package com.gathin.tvhome;
 
+import org.json.JSONObject;
+
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
@@ -115,6 +117,97 @@ public class GoalWatchService extends Service {
         else registerReceiver(dreams, f);
         android.media.AudioManager am = getSystemService(android.media.AudioManager.class);
         if (am != null) am.registerAudioPlaybackCallback(playback, main);
+        deliveries = new DeliveryLink(this, new DeliveryLink.Sink() {
+            @Override public void pairing(String phone, String code) { main.post(() -> showPairing(phone, code)); }
+            @Override public void delivery(JSONObject update) { main.post(() -> showDelivery(update)); }
+        });
+        deliveries.start();
+    }
+
+    // ---- delivery updates from the phone (DeliveryLink) ----------------------------------------------------
+
+    private DeliveryLink deliveries;
+
+    /** The code a phone asks to pair with, for the person to type there. */
+    private void showPairing(String phone, String code) {
+        List<Object> parts = new ArrayList<>();
+        parts.add(bold("📱  Pair " + phone));
+        parts.add(14);
+        parts.add(new Small("CODE"));
+        parts.add(8);
+        SpannableStringBuilder digits = new SpannableStringBuilder(code.replace("", " ").trim());
+        digits.setSpan(new StyleSpan(Typeface.BOLD), 0, digits.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        digits.setSpan(new android.text.style.RelativeSizeSpan(1.3f), 0, digits.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        parts.add(digits);
+        queue.add(new Object[]{parts, "reminder"});
+        showNext();
+    }
+
+    private static final String[] DELIVERY_STAGES = {"Order placed", "Being prepared", "On the way", "Arriving", "Delivered"};
+
+    /**
+     * A delivery app's update: its icon and name, where the order is (its own words), when it arrives, and a bar of
+     * the five stages filled to where it has got to.
+     */
+    private void showDelivery(JSONObject u) {
+        float d = getResources().getDisplayMetrics().density;
+        int stage = Math.max(0, Math.min(4, u.optInt("stage", 0)));
+        List<Object> parts = new ArrayList<>();
+        android.graphics.Bitmap icon = null;
+        try {
+            byte[] png = android.util.Base64.decode(u.optString("icon", ""), android.util.Base64.DEFAULT);
+            if (png.length > 0) icon = android.graphics.BitmapFactory.decodeByteArray(png, 0, png.length);
+        } catch (IllegalArgumentException ignored) {
+            // no icon: the name alone
+        }
+        if (icon != null) {
+            parts.add(new android.graphics.drawable.BitmapDrawable(getResources(), roundIcon(icon)));
+            parts.add(8);
+        }
+        parts.add(bold(u.optString("app", "Delivery")));
+        parts.add(12);
+        String status = u.optString("status", "").trim();
+        parts.add(status.isEmpty() ? DELIVERY_STAGES[stage] : status.length() > 60 ? status.substring(0, 58) + "…" : status);
+        String eta = u.optString("eta", "").trim();
+        if (!eta.isEmpty() && stage < 4) {
+            parts.add(12);
+            parts.add(new Small("ARRIVING " + eta.toUpperCase(java.util.Locale.ROOT)));
+        }
+        parts.add(14);
+        parts.add(new android.graphics.drawable.BitmapDrawable(getResources(), stagesBar(stage, d)));
+        queue.add(new Object[]{parts, stage == 4 ? "fulltime" : "reminder"});
+        showNext();
+    }
+
+    /** The app's icon with rounded corners, as a phone shows it. */
+    private static android.graphics.Bitmap roundIcon(android.graphics.Bitmap b) {
+        int s = Math.min(b.getWidth(), b.getHeight());
+        android.graphics.Bitmap out = android.graphics.Bitmap.createBitmap(s, s, android.graphics.Bitmap.Config.ARGB_8888);
+        android.graphics.Canvas c = new android.graphics.Canvas(out);
+        android.graphics.Paint p = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+        p.setShader(new android.graphics.BitmapShader(b, android.graphics.Shader.TileMode.CLAMP, android.graphics.Shader.TileMode.CLAMP));
+        c.drawRoundRect(new android.graphics.RectF(0, 0, s, s), s * 0.24f, s * 0.24f, p);
+        return out;
+    }
+
+    /** Five stages as a bar: a glass track, filled white to the stage reached, a dot at each stage. */
+    private static android.graphics.Bitmap stagesBar(int stage, float d) {
+        int w = Math.round(130 * d), h = Math.round(14 * d);
+        android.graphics.Bitmap out = android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888);
+        android.graphics.Canvas c = new android.graphics.Canvas(out);
+        android.graphics.Paint p = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+        float r = h * 0.22f, cy = h / 2f, x0 = h / 2f, x1 = w - h / 2f;
+        p.setColor(0x47FFFFFF);
+        c.drawRoundRect(new android.graphics.RectF(x0, cy - r, x1, cy + r), r, r, p);
+        float to = x0 + (x1 - x0) * stage / 4f;
+        p.setColor(stage == 4 ? 0xFF34C759 : 0xFFFFFFFF);
+        c.drawRoundRect(new android.graphics.RectF(x0, cy - r, Math.max(x0 + 2 * r, to), cy + r), r, r, p);
+        for (int i = 0; i <= 4; i++) {
+            float x = x0 + (x1 - x0) * i / 4f;
+            p.setColor(i <= stage ? (stage == 4 ? 0xFF34C759 : 0xFFFFFFFF) : 0x66FFFFFF);
+            c.drawCircle(x, cy, i == stage ? h / 2f - d : h * 0.3f, p);
+        }
+        return out;
     }
 
     private final Handler main = new Handler(Looper.getMainLooper());
@@ -1849,6 +1942,7 @@ public class GoalWatchService extends Service {
     }
 
     @Override public void onDestroy() {
+        if (deliveries != null) deliveries.stop();
         try { unregisterReceiver(dreams); } catch (Exception ignored) { }
         android.media.AudioManager am = getSystemService(android.media.AudioManager.class);
         if (am != null) am.unregisterAudioPlaybackCallback(playback);
