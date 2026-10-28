@@ -650,7 +650,9 @@ final class WatchRows {
             c.setLayoutParams(clp);
             if (channel != null) channel.animate().alpha(wide ? 1f : 0f).setDuration(WIDEN_MS).start();
         });
-        tile.setOnClickListener(v -> host.onResumeApp());
+        // OK: TiviMate on the channel showing the game, when one is known (an overseas one without its "(US)").
+        String tuneName = tv == null ? null : tv.name.replaceAll("\\s*\\([A-Z]{2}\\)$", "");
+        tile.setOnClickListener(v -> { if (tuneName == null || !tuneTo(tuneName)) host.onResumeApp(); });
         return tile;
     }
 
@@ -671,6 +673,7 @@ final class WatchRows {
         Intent open = context.getPackageManager().getLeanbackLaunchIntentForPackage(context.getString(R.string.scores_open_package));
         item.intent = open == null ? null : open.toUri(Intent.URI_INTENT_SCHEME);
         View tile = card(item, index, count);
+        tile.setOnClickListener(v -> { if (!tuneTo(n.channel)) open(item); });
         FrameLayout card = frameOf(tile);
         // The channel's logo, top-left on a soft shade so a light picture never swallows it.
         View topShade = new View(context);
@@ -683,6 +686,11 @@ final class WatchRows {
         llp.leftMargin = llp.topMargin = dp(10);
         card.addView(logo, llp);
         return tile;
+    }
+
+    /** TiviMate opened on this channel (AppSearchService finds it through TiviMate's own search). */
+    private boolean tuneTo(String channel) {
+        return AppSearchService.tune(context, context.getString(R.string.scores_open_package), channel);
     }
 
     /** "Today 20:00", "Tomorrow 15:00" or "Sat 15:00". */
