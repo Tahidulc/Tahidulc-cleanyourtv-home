@@ -368,7 +368,7 @@ public class AppSearchService extends AccessibilityService {
 
     /**
      * A loading cover over everything while the helper finds its way, so the steps are never seen: a soft blur of the
-     * title's poster, its logo popping in (or its name), and a glass bar that fills as the work goes on, most of the
+     * title's poster, its logo popping in (its name, and the line, only without one), and a glass bar that fills as the work goes on, most of the
      * way over about expectMs and the rest once done. Drawn as the helper's own overlay, which takes no keys.
      */
     private void showCover(android.graphics.Bitmap art, android.graphics.Bitmap logo, String title, String line, long expectMs) {
@@ -415,11 +415,10 @@ public class AppSearchService extends AccessibilityService {
         coverTitle.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
         coverTitle.setGravity(android.view.Gravity.CENTER);
         coverTitle.setMaxLines(2);
-        coverTitle.setAlpha(logo != null ? 0.75f : 1f);
-        android.widget.LinearLayout.LayoutParams tlp = new android.widget.LinearLayout.LayoutParams(-1, -2);
-        tlp.topMargin = logo != null ? Math.round(10 * d) : 0;
-        col.addView(coverTitle, tlp);
-        if (line != null) {
+        // With a logo, the logo and the bar alone: the name only stands in for a logo there is not.
+        coverTitle.setVisibility(logo != null ? android.view.View.GONE : android.view.View.VISIBLE);
+        col.addView(coverTitle, new android.widget.LinearLayout.LayoutParams(-1, -2));
+        if (line != null && logo == null) {
             android.widget.TextView sub = new android.widget.TextView(this);
             if (LIVE.equals(line)) {
                 // The dot in red, breathing.
