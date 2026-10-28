@@ -19,7 +19,8 @@ public class GlassView extends View {
     private final Paint specular = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint rim = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint glow = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private final Paint darkRim = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint darkRim = new Paint(Paint.ANTI_ALIAS_FLAG), glassRim = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private int glassHeight;
     private final RectF rect = new RectF();
     private final float density;
     private float radius;
@@ -87,18 +88,31 @@ public class GlassView extends View {
         float inset = 6f * density;   // room for the glow
         rect.set(inset, inset, getWidth() - inset, getHeight() - inset);
         if (LightUi.on()) {
-            // On a light wallpaper a white rim does not show: a soft shadow around the tile and a dark rim on it.
+            // On a light wallpaper, a liquid glass rim: a soft shadow around the tile, then a thick band of glass,
+            // bright at the top and cool silver below, held between two fine dark edges so it reads on white.
             int rings = 12;
             float step = inset / rings;
             glow.setStrokeWidth(step + 0.5f);
             for (int i = 0; i < rings; i++) {
                 float o = step * (i + 0.5f);
-                glow.setColor(Math.round(0x2E * (1f - (float) i / rings)) << 24);
+                glow.setColor(Math.round(0x38 * (1f - (float) i / rings)) << 24);
                 canvas.drawRoundRect(rect.left - o, rect.top - o, rect.right + o, rect.bottom + o, radius + o, radius + o, glow);
             }
+            float band = 6f * density, half = band / 2f;
             darkRim.setStyle(Paint.Style.STROKE);
-            darkRim.setStrokeWidth(3.5f * density);
-            darkRim.setColor(LightUi.INK);
+            darkRim.setStrokeWidth(Math.max(1f, density));
+            darkRim.setShader(null);
+            darkRim.setColor(0x5C000000);
+            canvas.drawRoundRect(rect.left - band, rect.top - band, rect.right + band, rect.bottom + band, radius + band, radius + band, darkRim);
+            glassRim.setStyle(Paint.Style.STROKE);
+            glassRim.setStrokeWidth(band);
+            if (glassRim.getShader() == null || glassHeight != getHeight()) {
+                glassHeight = getHeight();
+                glassRim.setShader(new LinearGradient(0, rect.top, 0, rect.bottom,
+                        new int[]{0xFFFFFFFF, 0xFFF1F4F8, 0xFFAFBBCB, 0xFFDDE3EC}, new float[]{0f, 0.3f, 0.78f, 1f}, Shader.TileMode.CLAMP));
+            }
+            canvas.drawRoundRect(rect.left - half, rect.top - half, rect.right + half, rect.bottom + half, radius + half, radius + half, glassRim);
+            darkRim.setColor(0x40000000);
             canvas.drawRoundRect(rect, radius, radius, darkRim);
             return;
         }

@@ -801,6 +801,7 @@ final class WatchRows {
         String country = context.getString(R.string.trending_country), netflix = context.getString(R.string.trending_netflix_country);
         return c.resume ? Trending.resume(context, country, tmdbKey)
                 : c.trending ? Trending.trending(tmdbKey)
+                : c.fresh ? Trending.newReleases(tmdbKey, country)
                 : c.provider > 0 ? Trending.service(tmdbKey, country, c) : Trending.read(country, netflix, c, 10);
     }
 
@@ -1081,7 +1082,7 @@ final class WatchRows {
 
         // Top: "#1 Today" on the left, the Dolby mark and the picture's quality on the right.
         TextView rank = new TextView(context);
-        rank.setText(t.rank > 0 ? "#" + t.rank + " Today" : "▶  Continue");
+        rank.setText(t.pill != null ? t.pill : t.rank > 0 ? "#" + t.rank + " Today" : "▶  Continue");
         rank.setTextColor(Color.WHITE);
         rank.setTextSize(TypedValue.COMPLEX_UNIT_SP, 9f);
         rank.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);

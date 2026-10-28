@@ -35,6 +35,8 @@ final class Trending {
         /** TMDB's: a poster (image) and a wide backdrop, and the service's own logo for the corner. */
         String backdrop, service;
         boolean hasPoster;
+        /** The pill on the poster instead of "#N Today" ("NEW" for a new release), or null. */
+        String pill;
         /** The title's id on TMDB when it came from there, so its logo needs no search. */
         int tmdbId;
 
@@ -55,6 +57,8 @@ final class Trending {
         boolean resume;
         /** TMDB's trending films and series of the day; Netflix's films and series together, in one row. */
         boolean trending, both;
+        /** Films just out to stream or buy in the country, and series just begun. */
+        boolean fresh;
         /** TMDB's watch provider id for a streaming service's row (0 otherwise), and its logo. */
         int provider;
         String providerLogo;
@@ -74,6 +78,9 @@ final class Trending {
         Category trending = new Category("Trending", false, false, 0);
         trending.trending = true;
         c.add(0, trending);
+        Category fresh = new Category("New Releases", false, false, 0);
+        fresh.fresh = true;
+        c.add(1, fresh);
         List<Category> services = new ArrayList<>();
         for (Object[] sv : SERVICES) {
             Category cat = new Category((String) sv[0], false, false, 0);
@@ -347,6 +354,59 @@ final class Trending {
             if (i < films.size() && out.size() < 10) out.add(films.get(i));
         }
         for (int i = 0; i < out.size(); i++) out.get(i).rank = i + 1;
+        return out;
+    }
+
+    /**
+     * New releases: films out to stream, rent or buy in the region (a digital or physical release) in the last six
+     * weeks, and series first shown in the last two months, the most watched first, the two taken in turn to twenty.
+     */
+    static List<Title> newReleases(String key, String region) {
+        java.time.LocalDate today = java.time.LocalDate.now();
+        String r = region.toUpperCase(java.util.Locale.ROOT);
+        List<Title> films = discover("https://api.themoviedb.org/3/discover/movie?api_key=" + key + "&region=" + r
+                + "&with_release_type=4|5&release_date.gte=" + today.minusWeeks(6) + "&release_date.lte=" + today
+                + "&sort_by=popularity.desc&language=en-GB&include_adult=false", false);
+        List<Title> tv = discover("https://api.themoviedb.org/3/discover/tv?api_key=" + key + "&first_air_date.gte="
+                + today.minusMonths(2) + "&first_air_date.lte=" + today + "&sort_by=popularity.desc&language=en-GB"
+                + "&with_original_language=en&include_adult=false", true);
+        List<Title> out = new ArrayList<>();
+        for (int i = 0; out.size() < 20 && (i < films.size() || i < tv.size()); i++) {
+            if (i < films.size()) out.add(films.get(i));
+            if (i < tv.size() && out.size() < 20) out.add(tv.get(i));
+        }
+        for (int i = 0; i < out.size(); i++) {
+            out.get(i).rank = i + 1;
+            out.get(i).pill = "NEW";
+        }
+        return out;
+    }
+
+    /** A TMDB discover list as titles with posters. */
+    private static List<Title> discover(String url, boolean tv) {
+        List<Title> out = new ArrayList<>();
+        try {
+            JSONArray results = new JSONObject(get(url)).optJSONArray("results");
+            for (int i = 0; results != null && i < results.length() && out.size() < 12; i++) {
+                JSONObject r = results.getJSONObject(i);
+                String poster = r.optString("poster_path", ""), back = r.optString("backdrop_path", "");
+                if (poster.isEmpty() || "null".equals(poster)) continue;
+                Title t = new Title();
+                t.tv = tv;
+                t.title = r.optString(tv ? "name" : "title");
+                t.summary = r.optString("overview", "");
+                String date = r.optString(tv ? "first_air_date" : "release_date", "");
+                t.year = date.length() >= 4 ? date.substring(0, 4) : "";
+                JSONArray ids = r.optJSONArray("genre_ids");
+                t.genre = ids != null && ids.length() > 0 && GENRES.containsKey(ids.optInt(0)) ? GENRES.get(ids.optInt(0)) : "";
+                t.image = "https://image.tmdb.org/t/p/w500" + poster;
+                t.backdrop = back.isEmpty() || "null".equals(back) ? null : "https://image.tmdb.org/t/p/w780" + back;
+                t.hasPoster = true;
+                t.tmdbId = r.optInt("id");
+                out.add(t);
+            }
+        } catch (Exception ignored) {
+        }
         return out;
     }
 
