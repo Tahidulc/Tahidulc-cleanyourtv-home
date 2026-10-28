@@ -719,23 +719,16 @@ final class WatchRows {
         FrameLayout card = frameOf(tile);
         // The channel's logo, top-left on a soft shade so a light picture never swallows it.
         View topShade = new View(context);
-        topShade.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0x99000000, 0x00000000}));
-        card.addView(topShade, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(90), Gravity.TOP));
+        // With logo_backing, a deeper shade from the corner, so a white logo reads on a light picture (no box).
+        topShade.setBackground(logoBacking()
+                ? new GradientDrawable(GradientDrawable.Orientation.TL_BR, new int[]{0xD9000000, 0x66000000, 0x00000000})
+                : new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0x99000000, 0x00000000}));
+        card.addView(topShade, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(logoBacking() ? 110 : 90), Gravity.TOP));
         ImageView logo = new ImageView(context);
         logo.setScaleType(ImageView.ScaleType.FIT_START);
         loadPoster(n.logo, logo);
         FrameLayout.LayoutParams llp = new FrameLayout.LayoutParams(dp(96), dp(34), Gravity.TOP | Gravity.START);
         llp.leftMargin = llp.topMargin = dp(10);
-        if (logoBacking()) {
-            // On a dark backing that fits the logo, so its white lettering reads on any picture.
-            logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
-            logo.setAdjustViewBounds(true);
-            logo.setMaxWidth(dp(110));
-            logo.setBackground(logoBack());
-            logo.setPadding(dp(8), dp(4), dp(8), dp(4));
-            llp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(34), Gravity.TOP | Gravity.START);
-            llp.leftMargin = llp.topMargin = dp(10);
-        }
         card.addView(logo, llp);
         ImageView still = card.getChildAt(0) instanceof ImageView ? (ImageView) card.getChildAt(0) : null;
         tile.setOnClickListener(v -> {
