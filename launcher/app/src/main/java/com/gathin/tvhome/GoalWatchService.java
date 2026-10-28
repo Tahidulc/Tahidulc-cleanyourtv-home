@@ -145,7 +145,16 @@ public class GoalWatchService extends Service {
      * its own, the bar of stages and what was ordered (DeliveryCard).
      */
     private void showDelivery(JSONObject u) {
-        if ("car".equals(u.optString("kind"))) { showCar(u); return; }
+        String kind = u.optString("kind");
+        if ("car".equals(kind)) { showCar(u); return; }
+        if ("home_eta".equals(kind)) {
+            if (Config.themeFlag(this, "home_eta", false)) {
+                queue.addFirst(new Object[]{DeliveryCard.homeEta(this, u, glass(24 * getResources().getDisplayMetrics().density)), "reminder"});
+                showNext();
+            }
+            return;
+        }
+        if (!kind.isEmpty() && !"delivery".equals(kind)) return;   // something newer than this TV knows
         float d = getResources().getDisplayMetrics().density;
         // Ahead of the sports alerts waiting: an order's news is now or never.
         queue.addFirst(new Object[]{DeliveryCard.food(this, u, glass(24 * d)), u.optInt("stage") == 4 ? "fulltime" : "reminder"});

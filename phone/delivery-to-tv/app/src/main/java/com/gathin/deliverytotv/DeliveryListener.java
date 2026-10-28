@@ -19,6 +19,30 @@ public class DeliveryListener extends NotificationListenerService {
     /** The last update passed on for each app, so a notification redrawn with the same news is not sent again. */
     private final Map<String, String> last = new HashMap<>();
 
+    /** The car's Bluetooth coming and going: a drive starts and ends (HomeTrip). */
+    private final android.content.BroadcastReceiver carLink = new android.content.BroadcastReceiver() {
+        @Override public void onReceive(android.content.Context c, android.content.Intent i) {
+            String car = Relay.car(c);
+            if (car.isEmpty()) return;
+            android.bluetooth.BluetoothDevice dev = i.getParcelableExtra(android.bluetooth.BluetoothDevice.EXTRA_DEVICE);
+            String name;
+            try { name = dev == null ? null : dev.getName(); } catch (SecurityException e) { return; }
+            if (name == null || !name.equals(car)) return;
+            if (android.bluetooth.BluetoothDevice.ACTION_ACL_CONNECTED.equals(i.getAction())) HomeTrip.start(c);
+            else HomeTrip.stop(c);
+        }
+    };
+
+    @Override public void onListenerConnected() {
+        android.content.IntentFilter f = new android.content.IntentFilter(android.bluetooth.BluetoothDevice.ACTION_ACL_CONNECTED);
+        f.addAction(android.bluetooth.BluetoothDevice.ACTION_ACL_DISCONNECTED);
+        try { registerReceiver(carLink, f); } catch (Exception ignored) { }
+    }
+
+    @Override public void onListenerDisconnected() {
+        try { unregisterReceiver(carLink); } catch (Exception ignored) { }
+    }
+
     @Override public void onNotificationPosted(StatusBarNotification sbn) {
         String pkg = sbn.getPackageName();
         if (!Relay.apps(this).contains(pkg)) return;

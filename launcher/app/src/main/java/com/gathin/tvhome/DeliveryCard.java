@@ -252,74 +252,183 @@ final class DeliveryCard {
 
     // ---- the car ---------------------------------------------------------------------------------------------------
 
+    /** The Tesla app's own colours: its near-black, white, the grey of its details, its green and blue. */
+    static final int TESLA_BG = 0xFF151515, TESLA_TEXT = 0xFFFFFFFF, TESLA_GREY = 0xFF9A9A9A, TESLA_TRACK = 0xFF2E2E2E,
+            TESLA_GREEN = 0xFF31C553, TESLA_BLUE = 0xFF3E6AE1;
+
+    /** A pill in the Tesla app's style: its near-black, a faint rim, the pills' round ends. */
+    private static LinearLayout teslaPill(Context c, float d) {
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(TESLA_BG);
+        bg.setCornerRadius(px(d, 24));
+        bg.setStroke(Math.max(1, Math.round(d)), 0x26FFFFFF);
+        LinearLayout card = pill(c, d, bg);
+        card.setPadding(px(d, 10), px(d, 6), px(d, 18), px(d, 6));
+        return card;
+    }
+
+    /** The car's picture, then its name ("Batmobile") with the battery and miles beside it, as the app's header has. */
+    private static LinearLayout teslaHead(Context c, float d, LinearLayout card, int battery, int miles, boolean estimated) {
+        Bitmap art = carArt(c);
+        ImageView car = new ImageView(c);
+        car.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        if (art != null) car.setImageBitmap(art);
+        else car.setImageResource(R.drawable.tesla_t);
+        card.addView(car, new LinearLayout.LayoutParams(art != null ? px(d, 78) : px(d, 22), px(d, art != null ? 44 : 22)));
+        LinearLayout col = new LinearLayout(c);
+        col.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout head = row(c);
+        String name = Config.themeString(c, "tesla_name", Config.themeString(c, "tesla_model", "Model X"));
+        head.addView(text(c, name, 13.5f, TESLA_TEXT, true));
+        if (battery >= 0) {
+            LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(px(d, 19), px(d, 9));
+            clp.leftMargin = px(d, 9);
+            head.addView(new Cell(c, battery), clp);
+            head.addView(text(c, (estimated ? "≈ " : "") + miles + " mi", 11.5f, TESLA_GREY, true), margins(d, 0, 5));
+        }
+        col.addView(head, margins(d, 0, 0));
+        card.addView(col, margins(d, 0, 10));
+        return col;
+    }
+
     /**
-     * The car's news, about the height of a goal alert: the car, a small Tesla mark, what happened, and the battery
-     * with the miles it gives. While it charges the bar fills up from where it was, towards the charge limit.
+     * The car's news in the Tesla app's style, the size of the other pills: the car, its name with the battery and
+     * miles, what happened, and the charge in the app's green, filling up towards the limit while it charges.
      */
     static Card car(Context c, JSONObject u, Drawable glass) {
         float d = c.getResources().getDisplayMetrics().density;
         String title = u.optString("title", "").trim(), status = u.optString("status", "").trim();
         int battery = u.optInt("battery", -1), from = u.optInt("from", -1), target = u.optInt("target", -1);
         int miles = u.optInt("miles", -1);
+        boolean estimated = miles < 0;
+        if (battery >= 0 && miles < 0) {
+            int full = parseInt(Config.themeString(c, "tesla_range_miles", "330"), 330);
+            miles = Math.round(full * battery / 100f);
+        }
         String all = (title + " " + status).toLowerCase(Locale.ROOT);
         boolean charging = all.contains("charging") && !all.contains("complete") && !all.contains("stopped")
                 && !all.contains("interrupted") && !all.contains("finished");
-        String model = Config.themeString(c, "tesla_model", "Model X");
 
-        LinearLayout card = pill(c, d, glass);
-        Bitmap art = carArt(c);
-        ImageView car = new ImageView(c);
-        car.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        if (art != null) car.setImageBitmap(art);
-        else car.setImageResource(R.drawable.tesla_t);
-        card.addView(car, new LinearLayout.LayoutParams(art != null ? px(d, 72) : px(d, 22), px(d, art != null ? 34 : 22)));
-
-        LinearLayout col = new LinearLayout(c);
-        col.setOrientation(LinearLayout.VERTICAL);
-        // "T  TESLA · MODEL X", fine and spaced, then what happened.
-        LinearLayout brand = row(c);
-        ImageView t = new ImageView(c);
-        t.setImageResource(R.drawable.tesla_t);
-        brand.addView(t, new LinearLayout.LayoutParams(px(d, 9), px(d, 9)));
-        TextView name = text(c, "TESLA  ·  " + model.toUpperCase(Locale.ROOT), 8.5f, 0xCC1A1D24, false);
-        name.setTypeface(Typeface.create("sans-serif-light", Typeface.NORMAL));
-        name.setLetterSpacing(0.32f);
-        brand.addView(name, margins(d, 0, 5));
-        col.addView(brand, margins(d, 0, 0));
+        LinearLayout card = teslaPill(c, d);
+        LinearLayout col = teslaHead(c, d, card, battery, miles, estimated);
         LinearLayout what = row(c);
-        TextView head = text(c, title.isEmpty() ? "Tesla" : title, 13f, INK, true);
-        head.setMaxWidth(px(d, 220));
+        TextView head = text(c, title.isEmpty() ? "Tesla" : title, 12f, TESLA_TEXT, false);
+        head.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        head.setMaxWidth(px(d, 200));
         what.addView(head);
         if (!status.isEmpty() && !status.equalsIgnoreCase(title)) {
-            TextView s = text(c, "·  " + status, 11.5f, DIM, false);
-            s.setMaxWidth(px(d, 300));
-            what.addView(s, margins(d, 0, 6));
+            TextView st = text(c, "·  " + status, 11.5f, TESLA_GREY, false);
+            st.setMaxWidth(px(d, 300));
+            what.addView(st, margins(d, 0, 6));
         }
         col.addView(what, margins(d, 2, 0));
         java.util.function.Consumer<Integer> reveal = mode -> { };
         if (battery >= 0) {
-            if (miles < 0) {
-                int full = parseInt(Config.themeString(c, "tesla_range_miles", "330"), 330);
-                miles = Math.round(full * battery / 100f);
-            }
             LinearLayout charge = row(c);
             Battery b = new Battery(c, battery, from >= 0 && from < battery ? from : charging ? Math.max(0, battery - 10) : 0,
                     target, charging);
-            charge.addView(b, new LinearLayout.LayoutParams(px(d, 120), px(d, 12)));
-            String level = battery + "%  ·  " + (u.has("miles") ? "" : "≈ ") + miles + " mi"
-                    + (charging && target > battery ? "  ·  TO " + target + "%" : "");
-            TextView l = text(c, level, 10.5f, INK, true);
+            charge.addView(b, new LinearLayout.LayoutParams(px(d, 150), px(d, 8)));
+            TextView l = text(c, battery + "%" + (charging && target > battery ? "  ·  limit " + target + "%" : ""), 10.5f,
+                    charging ? TESLA_GREEN : TESLA_GREY, true);
             charge.addView(l, margins(d, 0, 8));
-            col.addView(charge, margins(d, 4, 0));
+            col.addView(charge, margins(d, 5, 0));
             reveal = mode -> b.fill(mode != MOVE);
         }
-        card.addView(col, margins(d, 0, 10));
         return new Card(card, reveal, 640, 70);
     }
 
+    /** The app's small battery: a grey cell filled to its level. */
+    private static final class Cell extends View {
+        private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final int level;
+
+        Cell(Context c, int level) {
+            super(c);
+            this.level = Math.max(0, Math.min(100, level));
+        }
+
+        @Override protected void onDraw(Canvas canvas) {
+            float h = getHeight(), w = getWidth(), tip = h * 0.22f, body = w - tip - 1, r = h * 0.28f;
+            paint.setColor(0xFF4A4A4A);
+            canvas.drawRoundRect(new RectF(0, 0, body, h), r, r, paint);
+            canvas.drawRoundRect(new RectF(w - tip, h * 0.3f, w, h * 0.7f), tip / 2, tip / 2, paint);
+            paint.setColor(level < 20 ? 0xFFFF453A : 0xFFB0B0B0);
+            float in = h * 0.18f;
+            canvas.drawRoundRect(new RectF(in, in, in + Math.max(r, (body - 2 * in) * level / 100f), h - in), r * 0.6f, r * 0.6f, paint);
+        }
+    }
+
     /**
-     * The battery: a slim rounded cell filling to its level in green (amber under 50%, red under 20%); while it
-     * charges it fills up from where it was, a bolt rides at its edge and a tick marks the charge limit.
+     * On the way home in the car (the phone's own estimate from where it is), in the Tesla app's style: the car,
+     * "Heading home", the minutes and miles left, and a bar of the trip so far in the app's blue.
+     */
+    static Card homeEta(Context c, JSONObject u, Drawable glass) {
+        float d = c.getResources().getDisplayMetrics().density;
+        int minutes = u.optInt("minutes", -1);
+        double miles = u.optDouble("miles", -1);
+        float done = (float) Math.max(0, Math.min(1, u.optDouble("progress", 0)));
+        boolean arriving = u.optBoolean("arriving");
+
+        LinearLayout card = teslaPill(c, d);
+        LinearLayout col = teslaHead(c, d, card, -1, 0, false);
+        LinearLayout what = row(c);
+        TextView head = text(c, arriving ? "Almost home" : "Heading home", 12f, TESLA_TEXT, false);
+        head.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        what.addView(head);
+        String left = arriving ? "pulling in now"
+                : (minutes >= 0 ? minutes + " min" : "") + (miles >= 0 ? (minutes >= 0 ? "  ·  " : "")
+                + String.format(Locale.UK, miles < 10 ? "%.1f mi" : "%.0f mi", miles) : "");
+        if (!left.isEmpty()) what.addView(text(c, "·  " + left, 11.5f, TESLA_GREY, false), margins(d, 0, 6));
+        col.addView(what, margins(d, 2, 0));
+        LinearLayout trip = row(c);
+        Trip bar = new Trip(c, done);
+        trip.addView(bar, new LinearLayout.LayoutParams(px(d, 150), px(d, 10)));
+        if (minutes >= 0 && !arriving) {
+            String at = java.time.LocalTime.now().plusMinutes(minutes).format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"));
+            trip.addView(text(c, "Home by " + at, 10.5f, TESLA_GREY, true), margins(d, 0, 8));
+        }
+        col.addView(trip, margins(d, 5, 0));
+        return new Card(card, mode -> bar.fill(mode != MOVE), 640, 70);
+    }
+
+    /** The trip as a bar: a slim track, filled in Tesla red as far as the car has come, with a dot for the car. */
+    private static final class Trip extends View {
+        private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final float done;
+        private float shown;
+
+        Trip(Context c, float done) {
+            super(c);
+            this.done = done;
+            shown = Math.max(0, done - 0.1f);
+        }
+
+        void fill(boolean calm) {
+            if (calm) { shown = done; invalidate(); return; }
+            android.animation.ValueAnimator a = android.animation.ValueAnimator.ofFloat(shown, done);
+            a.setDuration(900);
+            a.addUpdateListener(v -> { shown = (float) v.getAnimatedValue(); invalidate(); });
+            a.start();
+        }
+
+        @Override protected void onDraw(Canvas canvas) {
+            float h = getHeight(), w = getWidth(), cy = h / 2f, r = h * 0.2f, x0 = h / 2f, x1 = w - h / 2f;
+            paint.setColor(TESLA_TRACK);
+            canvas.drawRoundRect(new RectF(x0, cy - r, x1, cy + r), r, r, paint);
+            float x = x0 + (x1 - x0) * shown;
+            paint.setColor(TESLA_BLUE);
+            canvas.drawRoundRect(new RectF(x0, cy - r, Math.max(x0 + 2 * r, x), cy + r), r, r, paint);
+            canvas.drawCircle(x, cy, h / 2f - 0.5f, paint);
+            paint.setColor(Color.WHITE);
+            canvas.drawCircle(x, cy, h * 0.2f, paint);
+            paint.setColor(0xFF8A8A8A);
+            canvas.drawCircle(x1, cy, h * 0.3f, paint);   // home
+        }
+    }
+
+    /**
+     * The charge, as the Tesla app draws it: a slim dark track filling in its green (red under 20%); while it
+     * charges it fills up from where it was, and a mark shows the charge limit.
      */
     private static final class Battery extends View {
         private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -347,24 +456,17 @@ final class DeliveryCard {
         }
 
         @Override protected void onDraw(Canvas canvas) {
-            float h = getHeight(), w = getWidth(), r = h / 2f, tip = h * 0.22f, body = w - tip - 2;
-            paint.setColor(0x4D1A1D24);
-            canvas.drawRoundRect(new RectF(0, 0, body, h), r, r, paint);
-            canvas.drawRoundRect(new RectF(w - tip, h * 0.28f, w, h * 0.72f), tip / 2, tip / 2, paint);
-            int colour = level < 20 ? 0xFFFF453A : level < 50 ? 0xFFFFB800 : 0xFF2FBF5B;
-            paint.setColor(colour);
-            float inset = h * 0.16f, inner = body - 2 * inset, x = inset + Math.max(h * 0.5f, inner * shown / 100f);
-            if (shown > 0) canvas.drawRoundRect(new RectF(inset, inset, x, h - inset), r - inset, r - inset, paint);
+            // The app's charge bar: a slim dark track filled in its green (red when low), a mark at the limit.
+            float h = getHeight(), w = getWidth(), r = h / 2f;
+            paint.setColor(TESLA_TRACK);
+            canvas.drawRoundRect(new RectF(0, 0, w, h), r, r, paint);
+            paint.setColor(level < 20 ? 0xFFE82127 : TESLA_GREEN);
+            float x = Math.max(h, w * shown / 100f);
+            if (shown > 0) canvas.drawRoundRect(new RectF(0, 0, x, h), r, r, paint);
             if (charging && target > 0 && target <= 100) {
-                paint.setColor(0xB31A1D24);
-                float tx = inset + inner * target / 100f;
+                paint.setColor(0xFF6A6A6A);
+                float tx = w * target / 100f;
                 canvas.drawRect(tx - 1, 0, tx + 1, h, paint);
-            }
-            if (charging) {
-                paint.setColor(Color.WHITE);
-                paint.setTextSize(h * 0.85f);
-                paint.setTextAlign(Paint.Align.CENTER);
-                canvas.drawText("⚡", Math.max(h * 0.6f, x - h * 0.45f), h * 0.8f, paint);
             }
         }
     }
@@ -409,6 +511,12 @@ final class DeliveryCard {
      */
     static Bitmap carArt(Context c) {
         if (carArt != null) return carArt;
+        // The owner's own car, as the Tesla app draws it (tesla_car.png beside the theme on this TV, never in the repo).
+        java.io.File own = Config.dir(c) == null ? null : new java.io.File(Config.dir(c), "tesla_car.png");
+        if (own != null && own.length() > 0) {
+            carArt = BitmapFactory.decodeFile(own.getPath());
+            if (carArt != null) return carArt;
+        }
         if (!Config.themeString(c, "tesla_model", "Model X").toLowerCase(Locale.ROOT).contains("x")) return null;
         carArt = trim(BitmapFactory.decodeResource(c.getResources(), R.drawable.car_model_x));
         return carArt;

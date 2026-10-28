@@ -165,7 +165,9 @@ final class DeliveryLink {
             }
             case "/hello": {
                 // A phone looking through the network for TVs (when mDNS does not reach it): this TV's name.
-                reply(s, 200, new JSONObject().put("tv", name()).toString());
+                org.json.JSONArray features = new org.json.JSONArray();
+                if (Config.themeFlag(context, "home_eta", false)) features.put("home_eta");
+                reply(s, 200, new JSONObject().put("tv", name()).put("features", features).toString());
                 return;
             }
             case "/unpair": {

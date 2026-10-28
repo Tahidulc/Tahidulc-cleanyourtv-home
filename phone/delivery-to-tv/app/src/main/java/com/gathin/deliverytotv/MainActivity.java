@@ -42,7 +42,7 @@ public class MainActivity extends Activity {
     private static final String TYPE = "_tvhome._tcp.";
 
     private final Handler main = new Handler(Looper.getMainLooper());
-    private LinearLayout root, access, found, paired, reader;
+    private LinearLayout root, access, found, paired, reader, trip;
     private NsdManager nsd;
     private NsdManager.DiscoveryListener discovery;
     private WifiManager.MulticastLock lock;
@@ -81,6 +81,11 @@ public class MainActivity extends Activity {
                 + "screen while you have it open. Only the ticked apps' screens, only the item lines.");
         reader = section();
 
+        heading("5  ·  Time to home (Tesla)");
+        note("When your phone connects to the car's Bluetooth and you head home, the TV shows about how long until "
+                + "you're back. The phone works it out from where it is; it only looks while it is connected to the car.");
+        trip = section();
+
         heading("Try it");
         root.addView(button("Send a test to the TVs", v -> test()));
         root.addView(button("Send a Tesla test", v -> testCar()));
@@ -93,6 +98,7 @@ public class MainActivity extends Activity {
         showAccess();
         showPaired();
         showReader();
+        showTrip();
     }
 
     @Override protected void onDestroy() {
@@ -123,6 +129,111 @@ public class MainActivity extends Activity {
         reader.addView(t);
         if (!enabled) reader.addView(button("Turn on order contents",
                 v -> startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))));
+    }
+
+    // ---- time to home ----------------------------------------------------------------------------------
+
+    private static final String[] TRIP_PERMS = Build.VERSION.SDK_INT >= 33
+            ? new String[]{android.Manifest.permission.ACCESS_FINE_LOCATION, android.Manifest.permission.BLUETOOTH_CONNECT,
+                    android.Manifest.permission.POST_NOTIFICATIONS}
+            : Build.VERSION.SDK_INT >= 31
+            ? new String[]{android.Manifest.permission.ACCESS_FINE_LOCATION, android.Manifest.permission.BLUETOOTH_CONNECT}
+            : new String[]{android.Manifest.permission.ACCESS_FINE_LOCATION};
+
+    private boolean granted(String p) {
+        return checkSelfPermission(p) == PackageManager.PERMISSION_GRANTED;
+    }
+
+    private void showTrip() {
+        trip.removeAllViews();
+        boolean all = true;
+        for (String p : TRIP_PERMS) all &= granted(p);
+        if (!all) {
+            addNote(trip, "First, let it use location and Bluetooth.");
+            trip.addView(button("Allow location and Bluetooth", v -> requestPermissions(TRIP_PERMS, 1)));
+            return;
+        }
+        if (Build.VERSION.SDK_INT >= 29 && !granted(android.Manifest.permission.ACCESS_BACKGROUND_LOCATION)) {
+            addNote(trip, "Then location \"Allow all the time\", so it works with the phone in your pocket: Permissions › "
+                    + "Location › Allow all the time.");
+            trip.addView(button("Open the app's permissions", v -> startActivity(new Intent(
+                    Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.fromParts("package", getPackageName(), null)))));
+        }
+        addNote(trip, Relay.homeSet(this) ? "✓  Home is set." : "Home: not set. Tap this while you're at home.");
+        trip.addView(button(Relay.homeSet(this) ? "Set home again (I'm at home now)" : "Set home (I'm at home now)", v -> setHome()));
+        String car = Relay.car(this);
+        if (car.isEmpty()) car = guessCar();
+        addNote(trip, car.isEmpty() ? "Car: pick its Bluetooth below." : "✓  Car: " + car);
+        trip.addView(button("Choose the car's Bluetooth", v -> chooseCar()));
+        trip.addView(button("Send a test to the TV", v -> {
+            try {
+                Relay.sendHome(this, new JSONObject().put("kind", "home_eta").put("minutes", 14).put("miles", 6.3)
+                        .put("progress", 0.35).put("arriving", false));
+                toast("Sent: it shows on the TVs set to show time to home");
+            } catch (Exception ignored) {
+            }
+        }));
+    }
+
+    private void addNote(LinearLayout into, String text) {
+        TextView t = note(text);
+        root.removeView(t);
+        into.addView(t);
+    }
+
+    /** A paired Bluetooth device that looks like the car (its name says Tesla or Model), taken as the car. */
+    private String guessCar() {
+        try {
+            android.bluetooth.BluetoothManager bm = getSystemService(android.bluetooth.BluetoothManager.class);
+            for (android.bluetooth.BluetoothDevice dev : bm.getAdapter().getBondedDevices()) {
+                String n = dev.getName();
+                if (n != null && n.toLowerCase(java.util.Locale.ROOT).matches(".*(tesla|model [3sxy]).*")) {
+                    Relay.setCar(this, n);
+                    return n;
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        return "";
+    }
+
+    private void chooseCar() {
+        List<String> names = new ArrayList<>();
+        try {
+            android.bluetooth.BluetoothManager bm = getSystemService(android.bluetooth.BluetoothManager.class);
+            for (android.bluetooth.BluetoothDevice dev : bm.getAdapter().getBondedDevices()) if (dev.getName() != null) names.add(dev.getName());
+        } catch (Exception ignored) {
+        }
+        if (names.isEmpty()) { toast("No paired Bluetooth devices"); return; }
+        String[] list = names.toArray(new String[0]);
+        new AlertDialog.Builder(this).setTitle("Your car's Bluetooth")
+                .setItems(list, (d, w) -> { Relay.setCar(this, list[w]); showTrip(); }).show();
+    }
+
+    @SuppressWarnings("MissingPermission")
+    private void setHome() {
+        android.location.LocationManager lm = getSystemService(android.location.LocationManager.class);
+        toast("Finding where you are…");
+        try {
+            java.util.function.Consumer<android.location.Location> got = l -> {
+                if (l == null) { toast("Couldn't get a location: try again near a window"); return; }
+                Relay.setHome(this, l.getLatitude(), l.getLongitude());
+                toast("Home set");
+                showTrip();
+            };
+            if (Build.VERSION.SDK_INT >= 30) {
+                lm.getCurrentLocation(android.location.LocationManager.GPS_PROVIDER, null, getMainExecutor(), got);
+            } else {
+                lm.requestSingleUpdate(android.location.LocationManager.GPS_PROVIDER, got::accept, android.os.Looper.getMainLooper());
+            }
+        } catch (Exception e) {
+            toast("Couldn't get a location: " + e.getMessage());
+        }
+    }
+
+    @Override public void onRequestPermissionsResult(int code, String[] perms, int[] results) {
+        super.onRequestPermissionsResult(code, perms, results);
+        showTrip();
     }
 
     // ---- TVs: discovery and pairing --------------------------------------------------------------

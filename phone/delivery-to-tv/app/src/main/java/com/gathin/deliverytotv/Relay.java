@@ -233,6 +233,58 @@ final class Relay {
         }
     }
 
+    // ---- home, for the time to home (HomeTrip) ---------------------------------------------------
+
+    static void setHome(Context c, double lat, double lng) {
+        prefs(c).edit().putString("homeLat", String.valueOf(lat)).putString("homeLng", String.valueOf(lng)).apply();
+    }
+
+    static boolean homeSet(Context c) {
+        return prefs(c).contains("homeLat");
+    }
+
+    /** Miles in a straight line from home, or -1 with no home set. */
+    static double milesFromHome(Context c, double lat, double lng) {
+        if (!homeSet(c)) return -1;
+        float[] out = new float[1];
+        android.location.Location.distanceBetween(lat, lng, Double.parseDouble(prefs(c).getString("homeLat", "0")),
+                Double.parseDouble(prefs(c).getString("homeLng", "0")), out);
+        return out[0] / 1609.344;
+    }
+
+    /** The car's Bluetooth name: the drive starts when the phone connects to it. */
+    static String car(Context c) {
+        return prefs(c).getString("car", "");
+    }
+
+    static void setCar(Context c, String name) {
+        prefs(c).edit().putString("car", name).apply();
+    }
+
+    /** The time to home, to the TVs that show it (they say so, asked once an hour). */
+    static void sendHome(Context c, JSONObject update) {
+        Context app = c.getApplicationContext();
+        SEND.execute(() -> {
+            for (JSONObject tv : tvs(app)) {
+                try {
+                    String host = tv.getString("host");
+                    int port = tv.getInt("port");
+                    String key = "features:" + host;
+                    SharedPreferences p = prefs(app);
+                    if (System.currentTimeMillis() - p.getLong(key + ":at", 0) > 60 * 60_000L) {
+                        JSONObject hello = post(host, port, "/hello", new JSONObject(), null);
+                        p.edit().putString(key, String.valueOf(hello.optJSONArray("features")))
+                                .putLong(key + ":at", System.currentTimeMillis()).apply();
+                    }
+                    if (!p.getString(key, "").contains("home_eta")) continue;
+                    post(host, port, "/delivery", update, tv.getString("token"));
+                } catch (Exception ignored) {
+                    // that TV is off or away
+                }
+            }
+        });
+    }
+
     // ---- sending --------------------------------------------------------------------------------
 
     /** The update to every paired TV, off the main thread. */
