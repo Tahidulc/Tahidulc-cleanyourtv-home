@@ -719,11 +719,8 @@ final class WatchRows {
         FrameLayout card = frameOf(tile);
         // The channel's logo, top-left on a soft shade so a light picture never swallows it.
         View topShade = new View(context);
-        // With logo_backing, a deeper shade from the corner, so a white logo reads on a light picture (no box).
-        topShade.setBackground(logoBacking()
-                ? new GradientDrawable(GradientDrawable.Orientation.TL_BR, new int[]{0xD9000000, 0x66000000, 0x00000000})
-                : new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0x99000000, 0x00000000}));
-        card.addView(topShade, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(logoBacking() ? 110 : 90), Gravity.TOP));
+        topShade.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0x99000000, 0x00000000}));
+        card.addView(topShade, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(90), Gravity.TOP));
         ImageView logo = new ImageView(context);
         logo.setScaleType(ImageView.ScaleType.FIT_START);
         loadPoster(n.logo, logo);
