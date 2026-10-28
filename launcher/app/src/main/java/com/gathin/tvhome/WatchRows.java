@@ -1533,15 +1533,9 @@ final class WatchRows {
                 bg.setColor(BannerArt.edgeColor(item.art));
             }
             image.setImageDrawable(item.art);
-        } else if (shownPackage != null && shownPackage.startsWith("com.google.android.youtube")) {
-            // A video's 16:9 thumbnail whole across a narrow card, over a soft blur of itself; as the card widens to
-            // 16:9 the thumbnail grows to fill it.
-            ImageView blur = new ImageView(context);
-            blur.setScaleType(ImageView.ScaleType.CENTER_CROP);
-            blur.setColorFilter(new android.graphics.PorterDuffColorFilter(0x33000000, android.graphics.PorterDuff.Mode.SRC_ATOP));
-            card.addView(blur, 0, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-            image.setScaleType(ImageView.ScaleType.FIT_CENTER);
-            loadPoster(item.poster, image, b -> blur.setImageBitmap(blurred(b)));
+        } else if (youTube()) {
+            // A video's 16:9 thumbnail on a 16:9 card (sized below): it fills the card, all of it.
+            loadPoster(item.poster, image);
         } else {
             loadPoster(item.poster, image);
             if (!context.getString(R.string.scores_open_package).equals(shownPackage)) posterOver(card, item.title);
@@ -1556,6 +1550,11 @@ final class WatchRows {
             if (item.art != null) host.onResumeApp();
             else open(item);
         });
+        if (item.art == null && youTube()) {
+            // YouTube's cards stay landscape, the shape of its thumbnails, and need not widen.
+            tile.getLayoutParams().width = cardWidth();
+            cardWidths.put(tile, new int[]{cardWidth(), cardWidth()});
+        }
         View posterBox = card.findViewWithTag(POSTER_BOX);
         if (posterBox != null) {
             // The poster while the card is narrow; the app's own still once it widens.
@@ -1587,11 +1586,8 @@ final class WatchRows {
         });
     }
 
-    /** The picture shrunk to a few pixels and drawn large again: a soft blur of its colours. */
-    private static Bitmap blurred(Bitmap b) {
-        if (b == null || b.getWidth() < 2 || b.getHeight() < 2) return b;
-        Bitmap tiny = Bitmap.createScaledBitmap(b, 24, Math.max(2, 24 * b.getHeight() / b.getWidth()), true);
-        return Bitmap.createScaledBitmap(tiny, 96, Math.max(2, 96 * b.getHeight() / b.getWidth()), true);
+    private boolean youTube() {
+        return shownPackage != null && shownPackage.startsWith("com.google.android.youtube");
     }
 
     /**

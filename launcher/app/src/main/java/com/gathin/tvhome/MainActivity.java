@@ -528,14 +528,29 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         }
         scoresTicker = new ScoresTicker(this, root, density, getResources().getStringArray(R.array.score_leagues),
                 new ScoresTicker.Host() {
-                    @Override public void onScoresOpen() {
-                        Intent open = getPackageManager().getLeanbackLaunchIntentForPackage(getString(R.string.scores_open_package));
+                    @Override public void onScoresOpen(ScoresTicker.Game g) {
+                        String pkg = getString(R.string.scores_open_package);
+                        Intent open = getPackageManager().getLeanbackLaunchIntentForPackage(pkg);
                         if (open == null) return;
                         try {
                             startActivity(open.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
-                            GoalWatchService.onAppOpened(MainActivity.this, getString(R.string.scores_open_package));
+                            GoalWatchService.onAppOpened(MainActivity.this, pkg);
                         } catch (Exception ignored) {
+                            return;
                         }
+                        // TiviMate opens at once; then the channel showing the game, from Sky's guide (Sky Sports F1
+                        // for F1), and TiviMate is put on it through its own search.
+                        String[] football = getResources().getStringArray(R.array.football_tv_channels);
+                        new Thread(() -> {
+                            String channel;
+                            if (F1Results.F1_LOGO.equals(g.leagueLogo)) {
+                                channel = "Sky Sports F1";
+                            } else {
+                                TvGuide.Channel c = TvGuide.orAbroad(TvGuide.find(football, g.homeName, g.awayName, g.kickoff), g);
+                                channel = c == null ? null : c.name.replaceAll("\\s*\\([A-Z]{2}\\)$", "");
+                            }
+                            if (channel != null) handler.post(() -> AppSearchService.tune(MainActivity.this, pkg, channel));
+                        }).start();
                     }
                     @Override public void onScoresDown() {
                         (btnInputs.getVisibility() == View.VISIBLE ? btnInputs : firstTopButton()).requestFocus();

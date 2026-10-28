@@ -51,7 +51,8 @@ import java.util.Map;
 final class ScoresTicker {
     /** What OK and Down on a game box do: open the configured app, go back to the top bar. */
     interface Host {
-        void onScoresOpen();
+        /** OK on a game's box: g is that game. */
+        void onScoresOpen(Game g);
         void onScoresDown();
     }
 
@@ -654,7 +655,7 @@ final class ScoresTicker {
             ring.setStroke(dp(2), LightUi.ink(0xFFFFFFFF));
             ring.setColor(LightUi.on() ? 0x0A000000 : 0x26FFFFFF);
             b.setOnFocusChangeListener((v, has) -> v.setForeground(has ? ring : null));
-            b.setOnClickListener(v -> host.onScoresOpen());
+            b.setOnClickListener(v -> host.onScoresOpen(g));
             b.setOnKeyListener((v, keyCode, event) -> {
                 if (event.getAction() != android.view.KeyEvent.ACTION_DOWN) return false;
                 switch (keyCode) {

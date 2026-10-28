@@ -21,7 +21,7 @@ import java.util.Locale;
  */
 public class AppSearchService extends AccessibilityService {
     private static final String TAG = "AppSearch";
-    private static final long SEARCH_MS = 15_000L, TUNE_MS = 25_000L, STEP_MS = 450L;
+    private static final long SEARCH_MS = 15_000L, TUNE_MS = 45_000L, STEP_MS = 450L;
     private static AppSearchService instance;
 
     private final Handler main = new Handler(Looper.getMainLooper());
@@ -31,7 +31,7 @@ public class AppSearchService extends AccessibilityService {
     private boolean channel;
     /** The title searched for is a series: its match is looked for under TV Shows first. */
     private boolean wantTv;
-    private int picks, retypes;
+    private int picks, retypes, scrolls;
 
     /** Opens pkg and, with the helper on, its search for query. False when the app could not be opened. */
     static boolean search(Context c, String pkg, String query) {
@@ -110,6 +110,7 @@ public class AppSearchService extends AccessibilityService {
         channel = false;
         picks = 0;
         retypes = 0;
+        scrolls = 0;
         deadline = System.currentTimeMillis() + SEARCH_MS;
         main.removeCallbacks(step);
         main.postDelayed(step, STEP_MS * 2);
@@ -184,6 +185,16 @@ public class AppSearchService extends AccessibilityService {
             click(hit);
             return true;
         }
+        // A big playlist finds more channels than the row shows, and only those on screen can be read: the row moved
+        // along a page at a time until the channel turns up.
+        if (picks == 0 && scrolls < 25) {
+            AccessibilityNodeInfo row = channelRow(root);
+            if (row != null && row.getChildCount() > 0) {
+                scrolls++;
+                row.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD);
+                return true;
+            }
+        }
         // Its box is a voice search that starts listening by itself and, hearing nothing, clears what was typed:
         // typed again when that happens before anything was found.
         CharSequence now = box.getText();
@@ -192,7 +203,25 @@ public class AppSearchService extends AccessibilityService {
             typedAt = 0;
             return true;
         }
-        return System.currentTimeMillis() - typedAt < 18_000L;
+        return System.currentTimeMillis() - typedAt < 30_000L;
+    }
+
+    /** The row of channels search found: the list just after its "Channels" heading. */
+    private static AccessibilityNodeInfo channelRow(AccessibilityNodeInfo root) {
+        for (AccessibilityNodeInfo head : root.findAccessibilityNodeInfosByText("Channels")) {
+            if (head.getText() == null || !"channels".equalsIgnoreCase(head.getText().toString().trim())) continue;
+            AccessibilityNodeInfo parent = head.getParent();
+            if (parent == null) continue;
+            boolean after = false;
+            for (int i = 0; i < parent.getChildCount(); i++) {
+                AccessibilityNodeInfo c = parent.getChild(i);
+                if (c == null) continue;
+                if (c.equals(head)) { after = true; continue; }
+                // The first list after the heading with channels in it (the one between holds the playlists' names).
+                if (after && c.getClassName() != null && c.getClassName().toString().endsWith("GridView") && c.getChildCount() > 2) return c;
+            }
+        }
+        return null;
     }
 
     /** TiviMate's menu entry for its search: by its id, else the first entry of the menu down the left. */
@@ -243,7 +272,7 @@ public class AppSearchService extends AccessibilityService {
         String n = s.toLowerCase(Locale.ROOT).trim();
         n = n.replaceFirst("^(uk|gb)\\s*[:|\\-]\\s*", "");
         if (loose) n = n.replaceAll("\\([^)]*\\)|\\[[^]]*]", " ");
-        n = n.replaceAll("\\b(fhd|uhd|hd|sd|4k|hevc|h265|50fps)\\b", " ");
+        n = n.replaceAll("\\b(fhd|uhd|hd|sd|4k|hevc|h265|50fps)\\b", " ").replaceAll("\\s*\\bplus\\b", "+");
         n = n.replaceAll("[^\\p{L}\\p{N}+]", "");
         return n.equals("5") ? "channel5" : n;
     }
