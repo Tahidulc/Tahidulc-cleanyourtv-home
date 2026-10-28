@@ -121,24 +121,104 @@ public class MainActivity extends Activity {
             lock.setReferenceCounted(false);
             lock.acquire();
         }
+        resolving.clear();
+        busy = false;
         discovery = new NsdManager.DiscoveryListener() {
             @Override public void onServiceFound(NsdServiceInfo info) {
-                nsd.resolveService(info, new NsdManager.ResolveListener() {
-                    @Override public void onResolveFailed(NsdServiceInfo i, int e) { }
-                    @Override public void onServiceResolved(NsdServiceInfo i) {
-                        main.post(() -> showFound(i));
-                    }
-                });
+                main.post(() -> { resolving.add(info); resolveNext(); });
             }
             @Override public void onDiscoveryStarted(String t) { }
             @Override public void onDiscoveryStopped(String t) { }
             @Override public void onServiceLost(NsdServiceInfo i) { }
-            @Override public void onStartDiscoveryFailed(String t, int e) { main.post(() -> toast("Could not search the network")); }
+            @Override public void onStartDiscoveryFailed(String t, int e) { }
             @Override public void onStopDiscoveryFailed(String t, int e) { }
         };
-        nsd.discoverServices(TYPE, NsdManager.PROTOCOL_DNS_SD, discovery);
-        main.postDelayed(this::stopDiscovery, 20_000);
+        try {
+            nsd.discoverServices(TYPE, NsdManager.PROTOCOL_DNS_SD, discovery);
+        } catch (Exception e) {
+            discovery = null;
+        }
+        // And straight through the home network, for a TV whose announcement does not reach this phone.
+        scan();
+        main.postDelayed(() -> {
+            stopDiscovery();
+            if (found.getChildCount() == 1 && !(found.getChildAt(0) instanceof LinearLayout)) {
+                TextView none = note("No TVs found. Check the phone is on the same Wi-Fi as the TVs, and that a "
+                        + "VPN on the phone is off, then try again.");
+                root.removeView(none);
+                found.removeAllViews();
+                found.addView(none);
+            }
+        }, 15_000);
     }
+
+    /** TVs to look up, one at a time: many phones can look up only one at once, and drop the rest. */
+    private final java.util.ArrayDeque<NsdServiceInfo> resolving = new java.util.ArrayDeque<>();
+    private boolean busy;
+
+    private void resolveNext() {
+        if (busy || resolving.isEmpty()) return;
+        NsdServiceInfo info = resolving.poll();
+        busy = true;
+        nsd.resolveService(info, new NsdManager.ResolveListener() {
+            int tries;
+            @Override public void onResolveFailed(NsdServiceInfo i, int e) {
+                // Busy with another lookup: try this one again shortly.
+                if (++tries <= 3) main.postDelayed(() -> nsd.resolveService(info, this), 600);
+                else main.post(() -> { busy = false; resolveNext(); });
+            }
+            @Override public void onServiceResolved(NsdServiceInfo i) {
+                main.post(() -> {
+                    if (i.getHost() != null) showFound(i.getServiceName(), i.getHost().getHostAddress(), i.getPort());
+                    busy = false;
+                    resolveNext();
+                });
+            }
+        });
+    }
+
+    /** Every address on this phone's Wi-Fi (its /24), asked "which TV are you?" on the TVs' port. */
+    private void scan() {
+        String base = null;
+        try {
+            android.net.ConnectivityManager cm = getSystemService(android.net.ConnectivityManager.class);
+            for (android.net.Network n : cm.getAllNetworks()) {
+                android.net.NetworkCapabilities caps = cm.getNetworkCapabilities(n);
+                if (caps == null || !caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI)) continue;
+                android.net.LinkProperties lp = cm.getLinkProperties(n);
+                if (lp == null) continue;
+                for (android.net.LinkAddress a : lp.getLinkAddresses()) {
+                    if (a.getAddress() instanceof java.net.Inet4Address) {
+                        String ip = a.getAddress().getHostAddress();
+                        base = ip.substring(0, ip.lastIndexOf('.') + 1);
+                    }
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        if (base == null) return;
+        String prefix = base;
+        java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(32);
+        for (int i = 1; i < 255; i++) {
+            String host = prefix + i;
+            pool.execute(() -> {
+                try (java.net.Socket s = new java.net.Socket()) {
+                    s.connect(new java.net.InetSocketAddress(host, PORT), 400);
+                } catch (Exception e) {
+                    return;
+                }
+                try {
+                    JSONObject r = Relay.post(host, PORT, "/hello", new JSONObject(), null);
+                    String name = r.optString("tv", host);
+                    main.post(() -> showFound(name, host, PORT));
+                } catch (Exception ignored) {
+                }
+            });
+        }
+        pool.shutdown();
+    }
+
+    private static final int PORT = 47820;
 
     private void stopDiscovery() {
         if (discovery != null) {
@@ -148,14 +228,16 @@ public class MainActivity extends Activity {
         if (lock != null && lock.isHeld()) lock.release();
     }
 
-    private void showFound(NsdServiceInfo i) {
-        if (i.getHost() == null) return;
-        String host = i.getHost().getHostAddress(), name = i.getServiceName();
-        for (int k = 0; k < found.getChildCount(); k++) if (name.equals(found.getChildAt(k).getTag())) return;
+    private void showFound(String name, String host, int port) {
+        for (int k = 0; k < found.getChildCount(); k++) {
+            Object tag = found.getChildAt(k).getTag();
+            if (name.equals(tag) || host.equals(found.getChildAt(k).getContentDescription())) return;
+        }
         if (found.getChildCount() == 1 && !(found.getChildAt(0) instanceof LinearLayout)) found.removeAllViews();
         LinearLayout row = row(name);
         row.setTag(name);
-        row.addView(button("Pair", v -> pair(name, host, i.getPort())));
+        row.setContentDescription(host);
+        row.addView(button("Pair", v -> pair(name, host, port)));
         found.addView(row);
     }
 
@@ -166,7 +248,8 @@ public class MainActivity extends Activity {
                 Relay.post(host, port, "/pair", new JSONObject().put("phone", Build.MODEL), null);
                 main.post(() -> askCode(name, host, port));
             } catch (Exception e) {
-                main.post(() -> toast("Could not reach " + name + ": " + e.getMessage()));
+                main.post(() -> problem("Could not reach " + name, "The TV did not answer (" + e.getMessage() + "). Check "
+                        + "the phone is on the same Wi-Fi as the TV and any VPN on the phone is off, then tap Find TVs again."));
             }
         }).start();
     }
@@ -177,9 +260,10 @@ public class MainActivity extends Activity {
         code.setHint("Code on the TV");
         new AlertDialog.Builder(this)
                 .setTitle("Pair with " + name)
-                .setMessage("Type the four-digit code showing on the TV.")
+                .setMessage("Type the four-digit code showing at the bottom left of the TV.")
                 .setView(code)
                 .setPositiveButton("Pair", (d, w) -> confirm(name, host, port, code.getText().toString().trim()))
+                .setNeutralButton("Show code again", (d, w) -> pair(name, host, port))
                 .setNegativeButton("Cancel", null)
                 .show();
     }
@@ -194,7 +278,9 @@ public class MainActivity extends Activity {
                 Relay.saveTvs(this, tvs);
                 main.post(() -> { toast("Paired with " + name); showPaired(); });
             } catch (Exception e) {
-                main.post(() -> toast("Not paired: " + e.getMessage()));
+                main.post(() -> problem("Not paired", "wrong code".equals(e.getMessage())
+                        ? "That code did not match, or it is over two minutes old. Tap Pair to get a new one."
+                        : "The TV did not answer (" + e.getMessage() + ")."));
             }
         }).start();
     }
@@ -330,6 +416,10 @@ public class MainActivity extends Activity {
         b.setText(label);
         b.setOnClickListener(click);
         return b;
+    }
+
+    private void problem(String title, String message) {
+        new AlertDialog.Builder(this).setTitle(title).setMessage(message).setPositiveButton("OK", null).show();
     }
 
     private void toast(String s) {

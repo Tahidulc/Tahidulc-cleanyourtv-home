@@ -71,6 +71,9 @@ final class DeliveryLink {
         server = null;
         thread = null;
         unregister();
+        android.net.ConnectivityManager cm = context.getSystemService(android.net.ConnectivityManager.class);
+        if (cm != null && networks != null) try { cm.unregisterNetworkCallback(networks); } catch (Exception ignored) { }
+        networks = null;
     }
 
     private void serve() {
@@ -156,6 +159,11 @@ final class DeliveryLink {
                 reply(s, 200, "{\"ok\":true}");
                 return;
             }
+            case "/hello": {
+                // A phone looking through the network for TVs (when mDNS does not reach it): this TV's name.
+                reply(s, 200, new JSONObject().put("tv", name()).toString());
+                return;
+            }
             case "/unpair": {
                 // A phone forgetting this TV: its token stops working.
                 Set<String> tokens = new HashSet<>(prefs.getStringSet("tokens", new HashSet<>()));
@@ -195,9 +203,33 @@ final class DeliveryLink {
         return n == null || n.trim().isEmpty() ? Build.MODEL : n.trim();
     }
 
-    private void register() {
+    /**
+     * The TV's announcement again whenever its network changes (another Wi-Fi, a new address): some TVs keep
+     * announcing on the old one, where the phone no longer looks.
+     */
+    private void followNetwork() {
+        android.net.ConnectivityManager cm = context.getSystemService(android.net.ConnectivityManager.class);
+        if (cm == null || networks != null) return;
+        networks = new android.net.ConnectivityManager.NetworkCallback() {
+            private String last;
+            @Override public void onLinkPropertiesChanged(android.net.Network n, android.net.LinkProperties lp) {
+                String now = String.valueOf(lp.getLinkAddresses());
+                if (last != null && !last.equals(now) && server != null) {
+                    unregister();
+                    register();
+                }
+                last = now;
+            }
+        };
+        try { cm.registerDefaultNetworkCallback(networks); } catch (Exception e) { networks = null; }
+    }
+
+    private android.net.ConnectivityManager.NetworkCallback networks;
+
+    private synchronized void register() {
         NsdManager nsd = context.getSystemService(NsdManager.class);
         if (nsd == null) return;
+        followNetwork();
         NsdServiceInfo info = new NsdServiceInfo();
         info.setServiceName(name());
         info.setServiceType(TYPE);
@@ -215,7 +247,7 @@ final class DeliveryLink {
         }
     }
 
-    private void unregister() {
+    private synchronized void unregister() {
         NsdManager nsd = context.getSystemService(NsdManager.class);
         if (nsd == null || registration == null) return;
         try { nsd.unregisterService(registration); } catch (Exception ignored) { }
