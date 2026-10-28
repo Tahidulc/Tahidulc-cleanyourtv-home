@@ -184,13 +184,27 @@ public class GoalWatchService extends Service {
             if (pairingClose == closing[0]) pairingClose = null;
             if (shown != panel) return;
             if (calm()) { removeHost(); return; }
-            panel.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+            panel.setLayerType(animLayer(), null);
             panel.animate().alpha(0f).translationY(10 * d).setDuration(450).withEndAction(this::removeHost).start();
         };
         closing[0] = close;
         if (card.pairing) pairingClose = close;
         if (calm()) {
             card.reveal.accept(stillOnly() ? DeliveryCard.STILL : DeliveryCard.CALM);
+            main.postDelayed(close, card.showMs);
+            return;
+        }
+        if (lite()) {
+            // Lightly over a playing app: the card, drawn once, rises and fades in; its reveal shows at once.
+            panel.setAlpha(0f);
+            panel.setTranslationY(14 * d);
+            panel.post(() -> {
+                panel.setLayerType(View.LAYER_TYPE_SOFTWARE, null);
+                panel.animate().alpha(1f).translationY(0f).setDuration(300)
+                        .setInterpolator(new android.view.animation.DecelerateInterpolator(1.6f))
+                        .withEndAction(() -> { panel.setLayerType(View.LAYER_TYPE_NONE, null);
+                            card.reveal.accept(stillOnly() ? DeliveryCard.STILL : DeliveryCard.CALM); }).start();
+            });
             main.postDelayed(close, card.showMs);
             return;
         }
@@ -201,7 +215,7 @@ public class GoalWatchService extends Service {
         panel.post(() -> {
             panel.setPivotX(0);
             panel.setPivotY(panel.getHeight());
-            panel.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+            panel.setLayerType(animLayer(), null);
             panel.animate().alpha(1f).scaleX(1f).scaleY(1f).translationY(0f).setDuration(520)
                     .setInterpolator(new android.view.animation.OvershootInterpolator(1.4f))
                     .withEndAction(() -> { panel.setLayerType(View.LAYER_TYPE_NONE, null); card.reveal.accept(DeliveryCard.MOVE); }).start();
@@ -348,6 +362,7 @@ public class GoalWatchService extends Service {
             frost = Config.themeFlag(this, "frost_alerts", false);
             stillOverApps = Config.themeFlag(this, "still_over_apps", false);
             animateOverApps = Config.themeFlag(this, "animate_over_apps", false);
+            liteOverApps = Config.themeFlag(this, "lite_over_apps", false);
             teamAlerts = Config.themeFlag(this, "team_alerts", false);
             incidentAlerts = Config.themeFlag(this, "incident_alerts", false);
             kickoffReminders = Config.themeFlag(this, "kickoff_reminders", false);
@@ -1187,7 +1202,7 @@ public class GoalWatchService extends Service {
     private void ensureHost(int widthDp, int heightDp) {
         if (host != null) return;
         float d = getResources().getDisplayMetrics().density;
-        boolean software = calm();
+        boolean software = calm() || lite();
         host = new android.widget.FrameLayout(software ? new SoftwareWindow(this) : this);
         // A fixed size, set once: a window that changes size over a playing video is reallocated and re-planned
         // by the display, which shows as a hitch; this one only ever changes what it draws.
@@ -1385,6 +1400,17 @@ public class GoalWatchService extends Service {
         if (calm()) {
             // Over a playing app: no animation at all (see calm()), the pill is simply there.
             visible[0] = Float.MAX_VALUE;
+        } else if (lite()) {
+            // Over a playing app, lightly: the finished pill, drawn once, rises and fades in.
+            visible[0] = Float.MAX_VALUE;
+            box.setAlpha(0f);
+            box.setTranslationY(h * 0.6f);
+            box.post(() -> {
+                box.setLayerType(View.LAYER_TYPE_SOFTWARE, null);
+                box.animate().alpha(1f).translationY(0f).setDuration(280)
+                        .setInterpolator(new android.view.animation.DecelerateInterpolator(1.6f))
+                        .withEndAction(() -> box.setLayerType(View.LAYER_TYPE_NONE, null)).start();
+            });
         } else {
         for (int c = 0; c < box.getChildCount(); c++) box.getChildAt(c).setAlpha(0f);
         box.setAlpha(0f);
@@ -1393,7 +1419,7 @@ public class GoalWatchService extends Service {
         box.post(() -> {
             box.setPivotX(radius);
             box.setPivotY(box.getHeight() / 2f);
-            box.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+            box.setLayerType(animLayer(), null);
             box.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(280)
                     .setInterpolator(new android.view.animation.OvershootInterpolator(2f)).withEndAction(() -> {
                 android.animation.ValueAnimator grow = android.animation.ValueAnimator.ofFloat(h, box.getWidth());
@@ -1469,7 +1495,7 @@ public class GoalWatchService extends Service {
         } else {
             page.setTranslationY(h);
             page.setAlpha(0f);
-            old.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+            old.setLayerType(animLayer(), null);
             old.animate().translationY(-h).alpha(0f).setDuration(380).withEndAction(() -> host.removeView(old)).start();
             page.animate().translationY(0f).alpha(1f).setDuration(380).withEndAction(() -> {
                 page.setPivotX(h / 2f);
@@ -1538,6 +1564,23 @@ public class GoalWatchService extends Service {
     /** animate_over_apps (theme): the full animations over other apps too, at the cost of the odd video frame. */
     private boolean animateOverApps;
 
+    /**
+     * lite_over_apps (theme): over another app the alerts still animate, but lightly: their window is always drawn by
+     * the CPU (a plain buffer on a display plane of its own, so the video keeps its hardware composition), and each
+     * alert is drawn once into a cached picture that only slides and fades, instead of the glass being redrawn for
+     * every frame of a stretch and grow. For a TV (the TCL) whose video stuttered under the full animations.
+     */
+    private boolean liteOverApps;
+
+    private boolean lite() {
+        return liteOverApps && !homeInFront && !dreaming;
+    }
+
+    /** The layer an animating alert is drawn into: a cached picture (software in a CPU window, else the GPU's). */
+    private int animLayer() {
+        return lite() ? View.LAYER_TYPE_SOFTWARE : View.LAYER_TYPE_HARDWARE;
+    }
+
     /** still_over_apps (theme): turn off pop-up page changes over a playing video. */
     private boolean stillOverApps;
     /** A kick-off reminder's line-ups put off while a video played: {header, sides, pictures, when}. */
@@ -1605,7 +1648,7 @@ public class GoalWatchService extends Service {
         }
         page.setTranslationY(h);
         page.setAlpha(0f);
-        old.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+        old.setLayerType(animLayer(), null);
         old.animate().translationY(-h).alpha(0f).setDuration(380).withEndAction(() -> host.removeView(old)).start();
         page.animate().translationY(0f).alpha(1f).setDuration(380).start();
         main.postDelayed(() -> flipPage(page, pages, index + 1, h), PAGE_MS);
@@ -1704,8 +1747,13 @@ public class GoalWatchService extends Service {
             removeHost();
             return;
         }
+        if (lite()) {
+            box.setLayerType(View.LAYER_TYPE_SOFTWARE, null);
+            box.animate().alpha(0f).translationY(h * 0.4f).setDuration(220).withEndAction(this::removeHost).start();
+            return;
+        }
         {
-            box.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+            box.setLayerType(animLayer(), null);
             for (int c = 0; c < box.getChildCount(); c++) {
                 box.getChildAt(c).animate().alpha(0f).setStartDelay(0).setDuration(600).start();
             }
@@ -1927,12 +1975,12 @@ public class GoalWatchService extends Service {
         }
         panel.setAlpha(0f);
         panel.setTranslationY(14 * d);
-        panel.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+        panel.setLayerType(animLayer(), null);
         panel.animate().alpha(1f).translationY(0f).setDuration(600)
                 .setInterpolator(new android.view.animation.DecelerateInterpolator(1.6f))
                 .withEndAction(() -> panel.setLayerType(View.LAYER_TYPE_NONE, null)).start();
         main.postDelayed(() -> {
-            panel.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+            panel.setLayerType(animLayer(), null);
             panel.animate().alpha(0f).setDuration(450).withEndAction(() -> {
                 host.removeView(panel);
                 try { getSystemService(WindowManager.class).removeView(host); } catch (Exception ignored) { }
