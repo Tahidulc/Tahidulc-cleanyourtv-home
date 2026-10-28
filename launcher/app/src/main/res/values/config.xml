@@ -564,10 +564,17 @@
     <!-- The live tables in the sports row (a theme's "sports_section"): "league slug|name". -->
     <string-array name="table_leagues" translatable="false">
         <item>eng.1|PREMIER LEAGUE</item>
+        <item>uefa.champions|CHAMPIONS LEAGUE</item>
+        <item>eng.2|CHAMPIONSHIP</item>
+        <item>sco.1|SCOTTISH PREMIERSHIP</item>
         <item>esp.1|LALIGA</item>
         <item>ita.1|SERIE A</item>
         <item>ger.1|BUNDESLIGA</item>
         <item>fra.1|LIGUE 1</item>
+        <item>uefa.europa|EUROPA LEAGUE</item>
+        <item>uefa.europa.conf|CONFERENCE LEAGUE</item>
+        <item>ned.1|EREDIVISIE</item>
+        <item>por.1|LIGA PORTUGAL</item>
     </string-array>
     <!-- The rooms in the lights panel, as named in Google Home: "turn on the <room> lights". -->
     <string-array name="lights_rooms" translatable="false">

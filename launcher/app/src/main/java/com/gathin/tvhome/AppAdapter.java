@@ -398,6 +398,14 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
         if (viewType == 1) {
             View row = LayoutInflater.from(ctx).inflate(R.layout.row_app_library, parent, false);
             View button = row.findViewById(R.id.btnLibrary);
+            if (LightUi.on()) {
+                // On a light wallpaper: a white pill with ink text and icon, like the top bar's.
+                android.widget.TextView t = (android.widget.TextView) button;
+                t.setBackgroundResource(R.drawable.pill_bg_light);
+                t.setTextColor(LightUi.INK);
+                t.setCompoundDrawableTintList(android.content.res.ColorStateList.valueOf(LightUi.INK));
+                t.setElevation(2 * ctx.getResources().getDisplayMetrics().density);
+            }
             button.setOnClickListener(v -> listener.onLibraryRequested());
             button.setOnFocusChangeListener((v, focused) -> { if (focused) listener.onLibraryFocused(); });
             button.setOnKeyListener((v, key, event) -> {
@@ -429,6 +437,7 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
         cardLp.height = h;
         card.setLayoutParams(cardLp);
         View name = v.findViewById(R.id.name);
+        LightUi.inkTree(name);
         ViewGroup.MarginLayoutParams nameLp = (ViewGroup.MarginLayoutParams) name.getLayoutParams();
         nameLp.width = w;
         nameLp.topMargin = h + Math.round((dockRow ? 7 : 4) * density);

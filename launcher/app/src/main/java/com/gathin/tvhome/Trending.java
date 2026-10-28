@@ -53,6 +53,8 @@ final class Trending {
         final int genre;
         /** Debrid Stream's own Continue Watching, as AppSearchService last copied it. */
         boolean resume;
+        /** TMDB's trending films and series of the day; Netflix's films and series together, in one row. */
+        boolean trending, both;
         /** TMDB's watch provider id for a streaming service's row (0 otherwise), and its logo. */
         int provider;
         String providerLogo;
@@ -65,10 +67,13 @@ final class Trending {
             {"Paramount+", 531, "/pkx3klJlwW5JdtaulvDx6hDNtch.png"}, {"BBC iPlayer", 38, "/vi6XJCpJ9GpAPD3rDSRzMC812Z.png"},
             {"ITVX", 41, "/nIViE3wOPV5Jyv45T7hetHyG6iS.png"}, {"Channel 4", 103, "/kMT8p43W3BsXBe9mqCIPDNepser.png"}};
 
-    /** The rows, with a row for each UK streaming service after Netflix's when the theme has a TMDB key. */
+    /** The rows, with TMDB's trending first and a row for each UK streaming service after Netflix's when the theme has a TMDB key. */
     static List<Category> categories(boolean tmdb) {
         List<Category> c = categories();
         if (!tmdb) return c;
+        Category trending = new Category("Trending", false, false, 0);
+        trending.trending = true;
+        c.add(0, trending);
         List<Category> services = new ArrayList<>();
         for (Object[] sv : SERVICES) {
             Category cat = new Category((String) sv[0], false, false, 0);
@@ -76,7 +81,9 @@ final class Trending {
             cat.providerLogo = sv[2] == null ? null : "https://image.tmdb.org/t/p/w92" + sv[2];
             services.add(cat);
         }
-        c.addAll(4, services);
+        int netflix = 0;
+        while (netflix < c.size() && !c.get(netflix).netflix) netflix++;
+        c.addAll(Math.min(netflix + 1, c.size()), services);
         return c;
     }
 
@@ -179,13 +186,14 @@ final class Trending {
         return null;
     }
 
-    /** The rows, in the order the tabs show them: the two top tens, Netflix's two, then genres of films and of TV. */
+    /** The rows, in the order the tabs show them: the two top tens, Netflix's, then genres of films and of TV. */
     static List<Category> categories() {
         List<Category> c = new ArrayList<>();
         c.add(new Category("Top 10 Films", false, false, 0));
         c.add(new Category("Top 10 TV", true, false, 0));
-        c.add(new Category("Netflix Films", false, true, 0));
-        c.add(new Category("Netflix TV", true, true, 0));
+        Category netflix = new Category("Netflix", false, true, 0);
+        netflix.both = true;
+        c.add(netflix);
         // The iTunes Store's genre ids (films 44xx, TV 40xx).
         Object[][] genres = {{"Action", false, 4401}, {"Comedy", false, 4404}, {"Drama", false, 4406}, {"Thriller", false, 4416},
                 {"Horror", false, 4408}, {"Sci-Fi & Fantasy", false, 4413}, {"Family", false, 4410}, {"Romance", false, 4412},
@@ -198,6 +206,16 @@ final class Trending {
 
     /** One row's titles: from the store's chart (its genre's when it has one), or Netflix's top ten for netflixCountry. */
     static List<Title> read(String country, String netflixCountry, Category c, int limit) {
+        if (c.netflix && c.both) {
+            // Its two top tens taken in turn, ranked again as one.
+            List<Title> films = netflix(netflixCountry, false), tv = netflix(netflixCountry, true), out = new ArrayList<>();
+            for (int i = 0; i < Math.max(films.size(), tv.size()); i++) {
+                if (i < films.size()) out.add(films.get(i));
+                if (i < tv.size()) out.add(tv.get(i));
+            }
+            for (int i = 0; i < out.size(); i++) out.get(i).rank = i + 1;
+            return out;
+        }
         if (c.netflix) return netflix(netflixCountry, c.tv);
         return chart(country, c.tv ? "toptvseasons" : "topmovies", limit, c.tv, c.genre);
     }
@@ -290,6 +308,36 @@ final class Trending {
             if (i < films.size() && out.size() < 10) out.add(films.get(i));
         }
         for (int i = 0; i < out.size(); i++) out.get(i).rank = i + 1;
+        return out;
+    }
+
+    /** TMDB's films and series trending today, worldwide, ranked as it ranks them. */
+    static List<Title> trending(String key) {
+        List<Title> out = new ArrayList<>();
+        try {
+            JSONArray results = new JSONObject(get("https://api.themoviedb.org/3/trending/all/day?language=en-GB&api_key=" + key))
+                    .optJSONArray("results");
+            for (int i = 0; results != null && i < results.length() && out.size() < 20; i++) {
+                JSONObject r = results.getJSONObject(i);
+                String type = r.optString("media_type"), poster = r.optString("poster_path", ""), back = r.optString("backdrop_path", "");
+                if (!"movie".equals(type) && !"tv".equals(type) || poster.isEmpty() || "null".equals(poster)) continue;
+                Title t = new Title();
+                t.tv = "tv".equals(type);
+                t.title = r.optString(t.tv ? "name" : "title");
+                t.summary = r.optString("overview", "");
+                String date = r.optString(t.tv ? "first_air_date" : "release_date", "");
+                t.year = date.length() >= 4 ? date.substring(0, 4) : "";
+                JSONArray ids = r.optJSONArray("genre_ids");
+                t.genre = ids != null && ids.length() > 0 && GENRES.containsKey(ids.optInt(0)) ? GENRES.get(ids.optInt(0)) : "";
+                t.image = "https://image.tmdb.org/t/p/w500" + poster;
+                t.backdrop = back.isEmpty() || "null".equals(back) ? null : "https://image.tmdb.org/t/p/w780" + back;
+                t.hasPoster = true;
+                t.tmdbId = r.optInt("id");
+                t.rank = out.size() + 1;
+                out.add(t);
+            }
+        } catch (Exception ignored) {
+        }
         return out;
     }
 

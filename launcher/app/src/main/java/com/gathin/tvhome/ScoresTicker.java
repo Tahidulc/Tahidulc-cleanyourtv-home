@@ -644,14 +644,15 @@ final class ScoresTicker {
             LinearLayout b = new LinearLayout(context);
             b.setOrientation(LinearLayout.HORIZONTAL);
             b.setGravity(Gravity.CENTER_VERTICAL);
-            b.setBackgroundResource(R.drawable.glass_box);
+            b.setBackgroundResource(LightUi.on() ? R.drawable.pill_bg_light : R.drawable.glass_box);
+            if (LightUi.on()) b.setElevation(dp(2));
             b.setPadding(dp(12), 0, dp(12), 0);
             b.setFocusable(true);
             final int index = i, count = list.size();
             android.graphics.drawable.GradientDrawable ring = new android.graphics.drawable.GradientDrawable();
             ring.setCornerRadius(dp(16));
-            ring.setStroke(dp(2), 0xFFFFFFFF);
-            ring.setColor(0x26FFFFFF);
+            ring.setStroke(dp(2), LightUi.ink(0xFFFFFFFF));
+            ring.setColor(LightUi.on() ? 0x0A000000 : 0x26FFFFFF);
             b.setOnFocusChangeListener((v, has) -> v.setForeground(has ? ring : null));
             b.setOnClickListener(v -> host.onScoresOpen());
             b.setOnKeyListener((v, keyCode, event) -> {
@@ -706,7 +707,7 @@ final class ScoresTicker {
     private TextView label(CharSequence text) {
         TextView t = new TextView(context);
         t.setSingleLine(true);
-        t.setTextColor(0xE6FFFFFF);
+        t.setTextColor(LightUi.ink(0xE6FFFFFF));
         t.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f);
         t.setIncludeFontPadding(false);
         t.setText(text);
@@ -803,7 +804,7 @@ final class ScoresTicker {
     private static CharSequence detail(Game g) {
         boolean football = g.drivers == null && g.text == null;
         SpannableStringBuilder s = new SpannableStringBuilder(g.state == 0 && football ? liveClock(g) : g.detail);
-        s.setSpan(new ForegroundColorSpan(g.state == 0 ? 0xFF4ADE80 : 0x99FFFFFF), 0, s.length(),
+        s.setSpan(new ForegroundColorSpan(g.state == 0 ? (LightUi.on() ? 0xFF16A34A : 0xFF4ADE80) : LightUi.ink(0x99FFFFFF)), 0, s.length(),
                 Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
         return s;
     }
@@ -831,7 +832,10 @@ final class ScoresTicker {
 
     /** From the disk cache, or from ESPN's resizer at twice the logo size, then saved for next time. */
     private Bitmap fetchLogo(String url) {
-        return forDark(cachedLogo(context, url, logo));   // the scores line is dark glass
+        // The scores line is dark glass, but for a light wallpaper's white pills: there, a competition's logo in its
+        // version for light backgrounds.
+        if (LightUi.on()) return cachedLogo(context, url.replace("/500-dark/", "/500/"), logo);
+        return forDark(cachedLogo(context, url, logo));
     }
 
     /**

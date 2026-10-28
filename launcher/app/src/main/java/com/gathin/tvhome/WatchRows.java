@@ -366,7 +366,7 @@ final class WatchRows {
         ringOn.put(tile, frame);
         TextView n = new TextView(context);
         n.setText(name == null ? "" : name);
-        n.setTextColor(Color.WHITE);
+        n.setTextColor(LightUi.ink(Color.WHITE));
         n.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f);
         n.setTypeface(context.getResources().getFont(R.font.outfit_medium));
         n.setSingleLine(true);
@@ -378,7 +378,7 @@ final class WatchRows {
         if (line != null && line.length() > 0) {
             TextView l = new TextView(context);
             l.setText(line);
-            l.setTextColor(lineColor);
+            l.setTextColor(LightUi.ink(lineColor));
             l.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f);
             l.setTypeface(context.getResources().getFont(R.font.outfit_regular));
             l.setSingleLine(true);
@@ -536,7 +536,7 @@ final class WatchRows {
         GradientDrawable ring = new GradientDrawable();
         ring.setColor(Color.TRANSPARENT);
         ring.setCornerRadius(dp(10));
-        ring.setStroke(dp(3), Color.WHITE);
+        ring.setStroke(dp(3), LightUi.ink(Color.WHITE));
         boolean f1 = g.drivers != null || g.text != null;
         ImageView scene = new ImageView(context);
         scene.setScaleType(ImageView.ScaleType.CENTER_CROP);
@@ -625,7 +625,7 @@ final class WatchRows {
                 // Abroad, ESPN gives the channel's name only.
                 TextView name = new TextView(context);
                 name.setText(tv.name);
-                name.setTextColor(Color.WHITE);
+                name.setTextColor(LightUi.ink(Color.WHITE));
                 name.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f);
                 name.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
                 LinearLayout.LayoutParams olp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
@@ -715,7 +715,7 @@ final class WatchRows {
         return trendingOn && context.getString(R.string.trending_package).equals(shownPackage);
     }
 
-    /** The row on show, read when stale (and shown when it arrives), with its tabs; the news after the first row. */
+    /** The row on show, read when stale (and shown when it arrives), with its tabs. */
     private boolean showTrending() {
         if (!trendingRow()) return false;
         if (tmdbKey == null) {
@@ -729,13 +729,13 @@ final class WatchRows {
             cats.add(0, resume);
             catLists.clear();
             catAt.clear();
+            undressed.clear();
             tabs.removeAllViews();
             catIndex = 0;
         } else if (has) {
             // Read again each time: Debrid Stream may have moved on since.
             catAt.remove(0);
         }
-        refreshNews();
         load(catIndex);
         fillTrending();
         return true;
@@ -792,6 +792,7 @@ final class WatchRows {
         Trending.Category c = cats.get(i);
         String country = context.getString(R.string.trending_country), netflix = context.getString(R.string.trending_netflix_country);
         return c.resume ? Trending.resume(context, country, tmdbKey)
+                : c.trending ? Trending.trending(tmdbKey)
                 : c.provider > 0 ? Trending.service(tmdbKey, country, c) : Trending.read(country, netflix, c, 10);
     }
 
@@ -829,11 +830,7 @@ final class WatchRows {
         stopTrailer();
         strip.removeAllViews();
         List<Trending.Title> row = catLists.containsKey(catIndex) ? catLists.get(catIndex) : new ArrayList<>();
-        int firstChart = !cats.isEmpty() && cats.get(0).resume ? 1 : 0;
-        List<String[]> after = catIndex == firstChart ? news : new ArrayList<>();
-        int count = row.size() + after.size();
-        for (int i = 0; i < row.size(); i++) strip.addView(trendCard(row.get(i), i, count));
-        for (int i = 0; i < after.size(); i++) strip.addView(newsCard(after.get(i), row.size() + i, count));
+        for (int i = 0; i < row.size(); i++) strip.addView(trendCard(row.get(i), i, row.size()));
         setTabs(true);
         setShown(true);
     }
@@ -881,13 +878,13 @@ final class WatchRows {
     }
 
     private void styleTab(TextView v, boolean current, boolean focused) {
-        v.setTextColor(current || focused ? Color.WHITE : 0x80FFFFFF);
+        v.setTextColor(LightUi.ink(current || focused ? Color.WHITE : 0x80FFFFFF));
         v.setTypeface(context.getResources().getFont(current ? R.font.outfit_medium : R.font.outfit_regular),
                 current ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
         GradientDrawable pill = new GradientDrawable();
         pill.setCornerRadius(dp(14));
-        pill.setColor(focused ? 0x33FFFFFF : current ? 0x14FFFFFF : 0x00000000);
-        if (focused) pill.setStroke(Math.max(1, dp(1.5f)), 0xCCFFFFFF);
+        pill.setColor(LightUi.on() ? (focused ? 0x26000000 : current ? 0x12000000 : 0) : focused ? 0x33FFFFFF : current ? 0x14FFFFFF : 0x00000000);
+        if (focused) pill.setStroke(Math.max(1, dp(1.5f)), LightUi.ink(0xCCFFFFFF));
         v.setBackground(pill);
     }
 
@@ -946,7 +943,7 @@ final class WatchRows {
         GradientDrawable ring = new GradientDrawable();
         ring.setColor(Color.TRANSPARENT);
         ring.setCornerRadius(dp(12));
-        ring.setStroke(dp(3), Color.WHITE);
+        ring.setStroke(dp(3), LightUi.ink(Color.WHITE));
 
         ImageView image = new ImageView(context);
         image.setScaleType(ImageView.ScaleType.CENTER_CROP);
@@ -1100,7 +1097,7 @@ final class WatchRows {
         // Under the poster: the name, and the year (a series' season too).
         TextView name = new TextView(context);
         name.setText(t.title);
-        name.setTextColor(Color.WHITE);
+        name.setTextColor(LightUi.ink(Color.WHITE));
         name.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f);
         name.setTypeface(context.getResources().getFont(R.font.outfit_medium));
         name.setSingleLine(true);
@@ -1111,7 +1108,7 @@ final class WatchRows {
         tile.addView(name, nlp);
         TextView year = new TextView(context);
         year.setText(t.year + (t.season != null ? "  ·  " + t.season : ""));
-        year.setTextColor(0x99FFFFFF);
+        year.setTextColor(LightUi.ink(0x99FFFFFF));
         year.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f);
         year.setTypeface(context.getResources().getFont(R.font.outfit_regular));
         year.setSingleLine(true);
@@ -1464,7 +1461,7 @@ final class WatchRows {
         GradientDrawable ring = new GradientDrawable();
         ring.setColor(Color.TRANSPARENT);
         ring.setCornerRadius(dp(10));
-        ring.setStroke(dp(3), Color.WHITE);
+        ring.setStroke(dp(3), LightUi.ink(Color.WHITE));
 
         ImageView image = new ImageView(context);
         image.setScaleType(ImageView.ScaleType.CENTER_CROP);

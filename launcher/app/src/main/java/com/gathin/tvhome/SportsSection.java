@@ -52,7 +52,8 @@ final class SportsSection {
 
     private static final long LIVE_MS = 30_000L, IDLE_MS = 5 * 60_000L;
     private static final long TABLE_LIVE_MS = 2 * 60_000L, TABLE_IDLE_MS = 30 * 60_000L, F1_MS = 6 * 60 * 60_000L;
-    private static final int ROWS = 10;
+    /** Every card's height, and the most rows a table column holds before the table takes another column. */
+    private static final int CARD_DP = 254, PER_COLUMN = 12, COLUMN_DP = 196;
 
     private final Context ctx;
     private final float d;
@@ -82,10 +83,8 @@ final class SportsSection {
     // The latest data, drawn again whenever any of it changes.
     private Featured featured;
     private final Map<String, Table> tables = new HashMap<>();
-    private final Map<String, Integer> tablePage = new HashMap<>();
     private List<String[]> drivers = new ArrayList<>();   // {pos, code, surname, points, logo url}
     private String f1Round = "";
-    private int f1Page;
 
     /** The featured game, ready to draw. */
     static final class Featured {
@@ -123,23 +122,16 @@ final class SportsSection {
         int pad = dp(18);
         strip.setPadding(dp(2), pad, dp(40), dp(28));
         view.addView(strip, new ViewGroup.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        featuredCard = card(dp(720));
+        featuredCard = card(dp(600));
         pitch = new LivePitch(ctx, d);
         pitch.setListener(p -> { if (playLabel != null) playLabel.setText(p.label); });
         strip.addView(featuredCard);
         for (String l : tableLeagues) {
-            FrameLayout c = card(dp(330));
-            String slug = l.split("\\|", 2)[0].trim();
-            c.setOnClickListener(v -> {
-                Integer page = tablePage.get(slug);
-                tablePage.put(slug, page == null || page == 0 ? 1 : 0);
-                drawTable(c, slug);
-            });
+            FrameLayout c = card(dp(230));
             tableCards.add(c);
             strip.addView(c);
         }
-        f1Card = card(dp(330));
-        f1Card.setOnClickListener(v -> { f1Page = 1 - f1Page; drawF1(); });
+        f1Card = card(dp(230));
         strip.addView(f1Card);
         wireKeys();
         drawFeatured();
@@ -462,26 +454,70 @@ final class SportsSection {
 
     // ---- views -----------------------------------------------------------------------------------
 
+    /**
+     * Each competition's own colours for the strip along the top of its card: {ESPN logo id (its version for dark
+     * backgrounds), start colour, end colour, accent}; the accent marks the top places in a table.
+     */
+    private static final Map<String, int[]> BRANDS = new HashMap<>();
+    static {
+        BRANDS.put("eng.1", new int[]{23, 0xFF37003C, 0xFF5E1069, 0xFF00FF85});
+        BRANDS.put("eng.2", new int[]{24, 0xFF0B1A3F, 0xFF1F3471, 0xFFE8B730});
+        BRANDS.put("sco.1", new int[]{45, 0xFF1B1446, 0xFF3D2A7D, 0xFFB79CFF});
+        BRANDS.put("esp.1", new int[]{15, 0xFFD61F2C, 0xFFFF5A4E, 0xFFFFFFFF});
+        BRANDS.put("ita.1", new int[]{12, 0xFF0A2463, 0xFF1F57C8, 0xFF2EE6FF});
+        BRANDS.put("ger.1", new int[]{10, 0xFFB3001B, 0xFFE2001A, 0xFFFFFFFF});
+        BRANDS.put("fra.1", new int[]{9, 0xFF0A1A38, 0xFF183A73, 0xFFDAE025});
+        BRANDS.put("ned.1", new int[]{11, 0xFFC4171D, 0xFFF0592A, 0xFFFFFFFF});
+        BRANDS.put("por.1", new int[]{14, 0xFF00163F, 0xFF00539F, 0xFF34C3FF});
+        BRANDS.put("uefa.champions", new int[]{2, 0xFF07103A, 0xFF1A3A94, 0xFFC9D3F0});
+        BRANDS.put("uefa.europa", new int[]{2310, 0xFFD85A00, 0xFFF39200, 0xFF111111});
+        BRANDS.put("uefa.europa.conf", new int[]{20296, 0xFF00872F, 0xFF1BC45A, 0xFFFFFFFF});
+        BRANDS.put("eng.league_cup", new int[]{41, 0xFF00573F, 0xFF00915A, 0xFFB5E61D});
+        BRANDS.put("eng.fa", new int[]{40, 0xFF0B2A5B, 0xFF1D4E9E, 0xFFE4002B});
+        BRANDS.put("f1", new int[]{0, 0xFF15151E, 0xFF34343F, 0xFFE10600});
+    }
+    private static final int[] PLAIN = {0, 0xFF2A2F3A, 0xFF4A505C, 0xFFFFFFFF};
+
+    private static int[] brand(String slug) {
+        int[] b = slug == null ? null : BRANDS.get(slug);
+        return b != null ? b : PLAIN;
+    }
+
+    private static String brandLogo(String slug) {
+        int id = brand(slug)[0];
+        return id == 0 ? null : "https://a.espncdn.com/i/leaguelogos/soccer/500-dark/" + id + ".png";
+    }
+
     private FrameLayout card(int width) {
         FrameLayout c = new FrameLayout(ctx);
         c.setFocusable(true);
-        GradientDrawable bg = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0xE6202430, 0xE6121419});
+        c.setClipToOutline(true);
+        boolean light = LightUi.on();
+        GradientDrawable bg = light
+                ? new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0xFAFFFFFF, 0xF2F7F8FA})
+                : new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0xE6202430, 0xE6121419});
         bg.setCornerRadius(dp(14));
-        bg.setStroke(Math.max(1, dp(1)), 0x33FFFFFF);
+        bg.setStroke(Math.max(1, dp(1)), light ? 0x14000000 : 0x33FFFFFF);
         c.setBackground(bg);
+        if (light) c.setElevation(dp(2));
         GradientDrawable ring = new GradientDrawable();
         ring.setColor(Color.TRANSPARENT);
         ring.setCornerRadius(dp(14));
-        ring.setStroke(dp(3), Color.WHITE);
+        ring.setStroke(dp(3), LightUi.ink(Color.WHITE));
         c.setOnFocusChangeListener((v, focused) -> {
             v.animate().scaleX(focused ? 1.03f : 1f).scaleY(focused ? 1.03f : 1f).setDuration(160).start();
             v.setForeground(focused ? ring : null);
-            v.setElevation(focused ? dp(6) : 0);
+            v.setElevation(focused ? dp(8) : light ? dp(2) : 0);
         });
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(width, dp(330));
-        lp.rightMargin = dp(16);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(width, dp(CARD_DP));
+        lp.rightMargin = dp(14);
         c.setLayoutParams(lp);
         return c;
+    }
+
+    private void setWidth(FrameLayout card, int width) {
+        ViewGroup.LayoutParams lp = card.getLayoutParams();
+        if (lp.width != width) { lp.width = width; card.setLayoutParams(lp); }
     }
 
     /** Up goes back to the apps from any card; Left and Right stop at the row's ends. */
@@ -499,57 +535,91 @@ final class SportsSection {
         }
     }
 
-    private LinearLayout column(FrameLayout card) {
+    /**
+     * The card emptied and given its competition's strip along the top (logo, title, and a status on the right),
+     * and under it the column its content goes in. The strip's status view is the card's last header view.
+     */
+    private LinearLayout column(FrameLayout card, String slug, String logoUrl, String title, String status) {
         card.removeAllViews();
+        LinearLayout whole = new LinearLayout(ctx);
+        whole.setOrientation(LinearLayout.VERTICAL);
+        int[] b = brand(slug);
+        LinearLayout band = row();
+        band.setBackground(new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, new int[]{b[1], b[2]}));
+        band.setPadding(dp(14), 0, dp(14), 0);
+        if (logoUrl != null) {
+            boolean wide = F1Results.F1_LOGO.equals(logoUrl);
+            ImageView mark = logo(logoUrl, wide ? 34 : 22, true);
+            band.addView(mark, new LinearLayout.LayoutParams(dp(wide ? 34 : 22), dp(22)));
+        }
+        TextView t = text(title, 11, Color.WHITE, true);
+        t.setTextColor(Color.WHITE);
+        t.setLetterSpacing(0.08f);
+        band.addView(t, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        ((LinearLayout.LayoutParams) t.getLayoutParams()).leftMargin = logoUrl != null ? dp(9) : 0;
+        statusView = null;
+        if (status != null) {
+            statusView = text(status, 10, Color.WHITE, true);
+            statusView.setTextColor(status.startsWith("●") ? 0xFF7CFFAE : 0xD9FFFFFF);
+            band.addView(statusView);
+        }
+        whole.addView(band, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(34)));
+        // A hairline of the competition's accent under the strip.
+        View line = new View(ctx);
+        line.setBackgroundColor(b[3]);
+        whole.addView(line, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Math.max(1, dp(2))));
         LinearLayout col = new LinearLayout(ctx);
         col.setOrientation(LinearLayout.VERTICAL);
-        col.setPadding(dp(18), dp(14), dp(18), dp(14));
-        card.addView(col, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        col.setPadding(dp(14), dp(8), dp(14), dp(10));
+        whole.addView(col, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+        card.addView(whole, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         return col;
     }
 
+    private TextView statusView;
+
+    /** Green for live: bright on the dark cards, deeper on the light ones. */
+    private static int liveGreen() {
+        return LightUi.on() ? 0xFF16A34A : 0xFF4ADE80;
+    }
+
     private void drawFeatured() {
-        LinearLayout col = column(featuredCard);
         Featured f = featured;
         if (f == null) {
-            col.addView(header(null, "FOOTBALL", null));
-            col.addView(text("No games today", 16, 0xB3FFFFFF, false), top(dp(40)));
+            LinearLayout col = column(featuredCard, null, null, "FOOTBALL", null);
+            clockView = null;
+            col.addView(text("No games today", 14, 0xB3FFFFFF, false), top(dp(30)));
             return;
         }
         ScoresTicker.Game g = f.game;
         String status = g.state == 0 ? "●  LIVE  " + g.detail : g.state == 1 ? "KICK-OFF  " + g.detail : "FULL TIME";
-        LinearLayout head = (LinearLayout) header(g.leagueLogo, g.league, status);
-        col.addView(head);
+        LinearLayout col = column(featuredCard, g.slug, brandLogo(g.slug) != null ? brandLogo(g.slug) : g.leagueLogo,
+                g.league, status);
         // While live, the status on the right is the ticking match clock.
-        clockView = g.state == 0 ? (TextView) head.getChildAt(head.getChildCount() - 1) : null;
+        clockView = g.state == 0 ? statusView : null;
         // The score line: crest, name, score, name, crest.
         LinearLayout score = row();
         score.setGravity(Gravity.CENTER);
-        score.addView(logo(g.homeLogo, 40), sized(dp(40), 0));
-        score.addView(text(g.home, 18, Color.WHITE, true), gap(dp(12)));
-        score.addView(text(g.state == 1 ? "v" : g.homeScore + "  –  " + g.awayScore, 26, Color.WHITE, true), gap(dp(18)));
-        score.addView(text(g.away, 18, Color.WHITE, true), gap(dp(18)));
-        score.addView(logo(g.awayLogo, 40), sized(dp(40), dp(12)));
-        col.addView(score, top(dp(10)));
+        score.addView(logo(g.homeLogo, 30, false), sized(dp(30), 0));
+        score.addView(text(g.home, 15, Color.WHITE, true), gap(dp(10)));
+        score.addView(text(g.state == 1 ? "v" : g.homeScore + "  –  " + g.awayScore, 22, Color.WHITE, true), gap(dp(16)));
+        score.addView(text(g.away, 15, Color.WHITE, true), gap(dp(16)));
+        score.addView(logo(g.awayLogo, 30, false), sized(dp(30), dp(10)));
+        col.addView(score, fill(dp(2)));
         if (f.tv != null) {
             // "LIVE ON" and the channel's logo, centred under the score.
             LinearLayout on = row();
             on.setGravity(Gravity.CENTER);
-            on.addView(text("LIVE ON", 10, 0xB3FFFFFF, true));
+            on.addView(text("LIVE ON", 9, 0xB3FFFFFF, true));
             if (f.tv.logo != null) {
-                ImageView tvLogo = logo(f.tv.logo, 18);
-                on.addView(tvLogo, new LinearLayout.LayoutParams(dp(140), dp(16)));
+                ImageView tvLogo = logo(f.tv.logo, 16, false);
+                on.addView(tvLogo, new LinearLayout.LayoutParams(dp(120), dp(14)));
                 ((LinearLayout.LayoutParams) tvLogo.getLayoutParams()).leftMargin = dp(8);
             } else {
                 // Abroad, ESPN gives the channel's name only.
-                on.addView(text(f.tv.name, 11, Color.WHITE, true), gap(dp(8)));
+                on.addView(text(f.tv.name, 10, Color.WHITE, true), gap(dp(8)));
             }
-            col.addView(on, fill(dp(4)));
-        }
-        if (f.formationHome != null && f.formationAway != null) {
-            TextView form = text(f.formationHome + "        formation        " + f.formationAway, 10, 0x80FFFFFF, false);
-            form.setGravity(Gravity.CENTER);
-            col.addView(form, fill(dp(4)));
+            col.addView(on, fill(dp(3)));
         }
         if (f.stats.isEmpty()) {
             // Before kick-off: the two elevens side by side, or when to expect them.
@@ -559,15 +629,26 @@ final class SportsSection {
                 for (List<String> side : java.util.Arrays.asList(f.xiHome, f.xiAway)) {
                     LinearLayout c = new LinearLayout(ctx);
                     c.setOrientation(LinearLayout.VERTICAL);
-                    for (int i = 0; i < Math.min(11, side.size()); i++) c.addView(text(side.get(i), 10.5f, 0xD9FFFFFF, false), top(dp(1)));
+                    // Two columns of the eleven a side, so all of it fits.
+                    LinearLayout pair = row();
+                    pair.setGravity(Gravity.TOP);
+                    for (int half = 0; half < 2; half++) {
+                        LinearLayout h = new LinearLayout(ctx);
+                        h.setOrientation(LinearLayout.VERTICAL);
+                        for (int i = half * 6; i < Math.min(half * 6 + 6, Math.min(11, side.size())); i++) {
+                            h.addView(text(side.get(i), 10, 0xD9FFFFFF, false), top(dp(1)));
+                        }
+                        pair.addView(h, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+                    }
+                    c.addView(pair);
                     xi.addView(c, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
                 }
-                col.addView(text("STARTING LINE-UPS", 10, 0x80FFFFFF, true), top(dp(10)));
-                col.addView(xi, fill(dp(4)));
+                col.addView(text("STARTING LINE-UPS", 9, 0x80FFFFFF, true), top(dp(8)));
+                col.addView(xi, fill(dp(3)));
             } else {
-                TextView wait = text("Line-ups are usually out an hour before kick-off", 12, 0x99FFFFFF, false);
+                TextView wait = text("Line-ups are usually out an hour before kick-off", 11, 0x99FFFFFF, false);
                 wait.setGravity(Gravity.CENTER);
-                col.addView(wait, fill(dp(40)));
+                col.addView(wait, fill(dp(30)));
             }
             return;
         }
@@ -579,32 +660,32 @@ final class SportsSection {
             LinearLayout left = new LinearLayout(ctx);
             left.setOrientation(LinearLayout.VERTICAL);
             if (pitch.getParent() instanceof ViewGroup) ((ViewGroup) pitch.getParent()).removeView(pitch);
-            left.addView(pitch, new LinearLayout.LayoutParams(dp(290), dp(178)));
-            playLabel = text("", 10.5f, 0xCCFFFFFF, false);
-            left.addView(playLabel, top(dp(5)));
-            LinearLayout.LayoutParams llp = new LinearLayout.LayoutParams(dp(290), ViewGroup.LayoutParams.WRAP_CONTENT);
-            llp.rightMargin = dp(18);
+            left.addView(pitch, new LinearLayout.LayoutParams(dp(206), dp(126)));
+            playLabel = text("", 9.5f, 0xCCFFFFFF, false);
+            left.addView(playLabel, top(dp(4)));
+            LinearLayout.LayoutParams llp = new LinearLayout.LayoutParams(dp(206), ViewGroup.LayoutParams.WRAP_CONTENT);
+            llp.rightMargin = dp(14);
             body.addView(left, llp);
         }
         LinearLayout stats = new LinearLayout(ctx);
         stats.setOrientation(LinearLayout.VERTICAL);
-        for (String[] s : f.stats) stats.addView(statRow(s), fill(dp(6)));
+        for (String[] st : f.stats) stats.addView(statRow(st), fill(dp(4)));
         body.addView(stats, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.15f));
         LinearLayout events = new LinearLayout(ctx);
         events.setOrientation(LinearLayout.VERTICAL);
-        events.setPadding(dp(18), 0, 0, 0);
-        if (!f.events.isEmpty()) events.addView(text("LATEST", 10, 0x80FFFFFF, true));
-        for (String e : f.events) events.addView(text(e, 12, 0xE6FFFFFF, false), top(dp(5)));
+        events.setPadding(dp(14), 0, 0, 0);
+        if (!f.events.isEmpty()) events.addView(text("LATEST", 9, 0x80FFFFFF, true));
+        for (String e : f.events) events.addView(text(e, 10.5f, 0xE6FFFFFF, false), top(dp(4)));
         if (f.commentary != null) {
-            TextView c = text(f.commentary, 11, 0x99FFFFFF, false);
+            TextView c = text(f.commentary, 10, 0x99FFFFFF, false);
             c.setSingleLine(false);
             c.setMaxLines(3);
             c.setEllipsize(TextUtils.TruncateAt.END);
             c.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.ITALIC));
-            events.addView(c, top(dp(8)));
+            events.addView(c, top(dp(6)));
         }
         body.addView(events, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        col.addView(body, fill(dp(10)));
+        col.addView(body, fill(dp(8)));
     }
 
     /** "12   Shots   9" over a bar split in proportion. */
@@ -613,10 +694,10 @@ final class SportsSection {
         r.setOrientation(LinearLayout.VERTICAL);
         boolean pct = s[0].equals("Possession");
         LinearLayout line = row();
-        TextView h = text(s[1] + (pct ? "%" : ""), 12, Color.WHITE, true);
-        TextView label = text(s[0], 10, 0x99FFFFFF, false);
+        TextView h = text(s[1] + (pct ? "%" : ""), 10.5f, Color.WHITE, true);
+        TextView label = text(s[0], 9, 0x99FFFFFF, false);
         label.setGravity(Gravity.CENTER);
-        TextView a = text(s[2] + (pct ? "%" : ""), 12, Color.WHITE, true);
+        TextView a = text(s[2] + (pct ? "%" : ""), 10.5f, Color.WHITE, true);
         a.setGravity(Gravity.END);
         line.addView(h, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         line.addView(label, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.4f));
@@ -624,7 +705,9 @@ final class SportsSection {
         r.addView(line);
         float hv = parse(s[1]), av = parse(s[2]);
         float share = hv + av <= 0 ? 0.5f : hv / (hv + av);
-        r.addView(new SplitBar(ctx, share), new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(4)));
+        LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(3));
+        blp.topMargin = dp(2);
+        r.addView(new SplitBar(ctx, share), blp);
         return r;
     }
 
@@ -632,7 +715,7 @@ final class SportsSection {
         try { return Float.parseFloat(s.replace("%", "").trim()); } catch (Exception e) { return 0; }
     }
 
-    /** Two rounded halves: the home share in white, the away share dimmer. */
+    /** Two rounded halves: the home share in white (ink on a light card), the away share dimmer. */
     private static final class SplitBar extends View {
         private final float share;
         private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -645,88 +728,121 @@ final class SportsSection {
         @Override protected void onDraw(Canvas c) {
             float w = getWidth(), h = getHeight(), r = h / 2f, gap = h;
             float split = Math.max(r, Math.min(w - r, w * share));
-            paint.setColor(0xF2FFFFFF);
+            paint.setColor(LightUi.ink(0xF2FFFFFF));
             c.drawRoundRect(new RectF(0, 0, split - gap / 2f, h), r, r, paint);
-            paint.setColor(0x5CFFFFFF);
+            paint.setColor(LightUi.ink(0x5CFFFFFF));
             c.drawRoundRect(new RectF(split + gap / 2f, 0, w, h), r, r, paint);
         }
     }
 
+    /** As many columns as a whole table needs side by side, at most PER_COLUMN rows in each. */
+    private static int columns(int rows) {
+        return Math.max(1, (rows + PER_COLUMN - 1) / PER_COLUMN);
+    }
+
+    private int tableWidth(int rows) {
+        int cols = columns(rows);
+        return dp(28) + cols * dp(COLUMN_DP) + (cols - 1) * dp(16);
+    }
+
     private void drawTable(FrameLayout card, String slug) {
-        LinearLayout col = column(card);
         Table t = tables.get(slug);
         String name = slug;
         for (String l : tableLeagues) if (l.startsWith(slug + "|")) name = l.split("\\|", 2)[1].trim();
         if (t == null) {
-            col.addView(header(null, name, null));
-            col.addView(text("Loading the table…", 12, 0x80FFFFFF, false), top(dp(30)));
+            LinearLayout col = column(card, slug, brandLogo(slug), name, null);
+            col.addView(text("Loading the table…", 11, 0x80FFFFFF, false), top(dp(20)));
             return;
         }
-        Integer pageObj = tablePage.get(slug);
-        int page = pageObj == null ? 0 : pageObj;
-        col.addView(header(t.logo, name + (page == 1 ? "  ·  11–" + t.rows.size() : ""), t.live ? "●  LIVE" : null));
-        col.addView(tableRow("#", null, "TEAM", "P", "GD", "PTS", false, true), fill(dp(8)));
-        for (int i = page * ROWS; i < Math.min(t.rows.size(), page * ROWS + ROWS); i++) {
+        setWidth(card, tableWidth(t.rows.size()));
+        LinearLayout col = column(card, slug, brandLogo(slug) != null ? brandLogo(slug) : t.logo, name, t.live ? "●  LIVE" : null);
+        boolean uefa = slug.startsWith("uefa.");
+        int accent = brand(slug)[3], n = t.rows.size();
+        List<String[]> rows = new ArrayList<>();
+        for (int i = 0; i < n; i++) {
             String[] r = t.rows.get(i);
-            col.addView(tableRow(r[0], r[2], r[1], r[3], r[4], r[5], "1".equals(r[6]), false), fill(dp(3)));
+            int rank = i + 1;
+            // The places that matter: a UEFA league phase's top eight and play-off places; a league's top four and
+            // its bottom three.
+            int mark = uefa ? (rank <= 8 ? liveGreen() : rank <= 24 ? 0xFFF5A524 : 0)
+                    : rank <= 4 ? (accent == 0xFFFFFFFF || accent == 0xFF111111 ? brand(slug)[2] : accent) : rank > n - 3 && n > 10 ? 0xFFE5484D : 0;
+            rows.add(new String[]{r[0], r[2], r[1], r[3], r[4], r[5], r[6], String.valueOf(mark)});
         }
+        columnsOf(col, rows, new String[]{"#", "TEAM", "P", "GD", "PTS"});
     }
 
-    private View tableRow(String rank, String logo, String team, String p, String gd, String pts, boolean live, boolean head) {
+    /** The rows in as many side-by-side columns as they need, each with its own heading. */
+    private void columnsOf(LinearLayout col, List<String[]> rows, String[] head) {
+        LinearLayout across = row();
+        across.setGravity(Gravity.TOP);
+        int cols = columns(rows.size()), per = (rows.size() + cols - 1) / cols;
+        for (int c = 0; c < cols; c++) {
+            LinearLayout one = new LinearLayout(ctx);
+            one.setOrientation(LinearLayout.VERTICAL);
+            one.addView(tableRow(head[0], null, head[1], head[2], head[3], head[4], false, true, 0), fill(0));
+            for (int i = c * per; i < Math.min(rows.size(), c * per + per); i++) {
+                String[] r = rows.get(i);
+                one.addView(tableRow(r[0], r[1], r[2], r[3], r[4], r[5], "1".equals(r[6]), false, Integer.parseInt(r[7])), fill(dp(1.5f)));
+            }
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(dp(COLUMN_DP), ViewGroup.LayoutParams.WRAP_CONTENT);
+            if (c > 0) lp.leftMargin = dp(16);
+            across.addView(one, lp);
+        }
+        col.addView(across, fill(0));
+    }
+
+    private View tableRow(String rank, String logo, String team, String p, String gd, String pts, boolean live, boolean head, int mark) {
         LinearLayout r = row();
         int dim = head ? 0x80FFFFFF : 0xB3FFFFFF;
-        float size = head ? 9.5f : 11.5f;
+        float size = head ? 8.5f : 10f;
+        // A short bar of colour before the places that matter.
+        View bar = new View(ctx);
+        if (mark != 0) {
+            GradientDrawable m = new GradientDrawable();
+            m.setColor(mark);
+            m.setCornerRadius(dp(1));
+            bar.setBackground(m);
+        }
+        LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(Math.max(2, dp(2.5f)), dp(head ? 1 : 11));
+        blp.rightMargin = dp(5);
+        r.addView(bar, blp);
         TextView rk = text(rank, size, dim, false);
         rk.setFontFeatureSettings("tnum");   // every digit the same width, so the columns line up
-        r.addView(rk, new LinearLayout.LayoutParams(dp(24), ViewGroup.LayoutParams.WRAP_CONTENT));
-        if (logo != null) r.addView(logo(logo, 15), sized(dp(15), 0));
-        else r.addView(new View(ctx), sized(dp(15), 0));
+        r.addView(rk, new LinearLayout.LayoutParams(dp(18), ViewGroup.LayoutParams.WRAP_CONTENT));
+        if (logo != null) r.addView(logo(logo, 13, false), sized(dp(13), 0));
+        else r.addView(new View(ctx), sized(dp(13), 0));
         TextView tm = text(team + (live ? "  ●" : ""), size, head ? dim : Color.WHITE, !head);
         r.addView(tm, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        ((LinearLayout.LayoutParams) tm.getLayoutParams()).leftMargin = dp(8);
-        if (live) tm.setTextColor(0xFF4ADE80);
+        ((LinearLayout.LayoutParams) tm.getLayoutParams()).leftMargin = dp(6);
+        if (live) tm.setTextColor(liveGreen());
         for (String v : new String[]{p, gd}) {
             TextView c = text(v, size, dim, false);
             c.setGravity(Gravity.END);
             c.setFontFeatureSettings("tnum");
-            r.addView(c, new LinearLayout.LayoutParams(dp(34), ViewGroup.LayoutParams.WRAP_CONTENT));
+            r.addView(c, new LinearLayout.LayoutParams(dp(24), ViewGroup.LayoutParams.WRAP_CONTENT));
         }
         TextView pt = text(pts, size, head ? dim : Color.WHITE, !head);
         pt.setGravity(Gravity.END);
         pt.setFontFeatureSettings("tnum");
-        r.addView(pt, new LinearLayout.LayoutParams(dp(40), ViewGroup.LayoutParams.WRAP_CONTENT));
+        r.addView(pt, new LinearLayout.LayoutParams(dp(28), ViewGroup.LayoutParams.WRAP_CONTENT));
         return r;
     }
 
     private void drawF1() {
-        LinearLayout col = column(f1Card);
-        col.addView(header(F1Results.F1_LOGO, "DRIVERS" + (f1Round.isEmpty() ? "" : "  ·  ROUND " + f1Round)
-                + (f1Page == 1 ? "  ·  11–" + drivers.size() : ""), null));
+        String title = "F1 DRIVERS" + (f1Round.isEmpty() ? "" : "  ·  ROUND " + f1Round);
         if (drivers.isEmpty()) {
-            col.addView(text("Loading the standings…", 12, 0x80FFFFFF, false), top(dp(30)));
+            LinearLayout col = column(f1Card, "f1", F1Results.F1_LOGO, title, null);
+            col.addView(text("Loading the standings…", 11, 0x80FFFFFF, false), top(dp(20)));
             return;
         }
-        col.addView(tableRow("#", null, "DRIVER", "", "", "PTS", false, true), fill(dp(8)));
-        for (int i = f1Page * ROWS; i < Math.min(drivers.size(), f1Page * ROWS + ROWS); i++) {
-            String[] x = drivers.get(i);
-            col.addView(tableRow(x[0], x[4], x[1] + "   " + x[2], "", "", x[3], false, false), fill(dp(3)));
+        setWidth(f1Card, tableWidth(drivers.size()));
+        LinearLayout col = column(f1Card, "f1", F1Results.F1_LOGO, title, null);
+        List<String[]> rows = new ArrayList<>();
+        for (String[] x : drivers) {
+            int rank = num(x[0]);
+            rows.add(new String[]{x[0], x[4], x[2], "", "", x[3], "0", String.valueOf(rank >= 1 && rank <= 3 ? 0xFFE10600 : 0)});
         }
-    }
-
-    /** League logo, the name, and on the right a status ("● LIVE 67'") in green when live. */
-    private View header(String logoUrl, String title, String status) {
-        LinearLayout r = row();
-        if (logoUrl != null) {
-            boolean wide = F1Results.F1_LOGO.equals(logoUrl);
-            r.addView(logo(logoUrl, wide ? 36 : 20), sized(dp(wide ? 36 : 20), 0));
-            ((LinearLayout.LayoutParams) r.getChildAt(0).getLayoutParams()).height = dp(20);
-        }
-        TextView t = text(title, 12, Color.WHITE, true);
-        t.setLetterSpacing(0.08f);
-        r.addView(t, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        ((LinearLayout.LayoutParams) t.getLayoutParams()).leftMargin = logoUrl != null ? dp(10) : 0;
-        if (status != null) r.addView(text(status, 11, status.startsWith("●") ? 0xFF4ADE80 : 0xB3FFFFFF, true));
-        return r;
+        columnsOf(col, rows, new String[]{"#", "DRIVER", "", "", "PTS"});
     }
 
     private LinearLayout row() {
@@ -736,10 +852,11 @@ final class SportsSection {
         return r;
     }
 
+    /** Text in a card: white of the given strength, or ink of it on a light card. */
     private TextView text(String s, float sp, int color, boolean bold) {
         TextView t = new TextView(ctx);
         t.setText(s);
-        t.setTextColor(color);
+        t.setTextColor(LightUi.ink(color));
         t.setTextSize(TypedValue.COMPLEX_UNIT_SP, sp);
         t.setSingleLine(true);
         t.setEllipsize(TextUtils.TruncateAt.END);
@@ -748,17 +865,23 @@ final class SportsSection {
         return t;
     }
 
-    /** A logo from the shared disk cache, filled in when it arrives. */
-    private ImageView logo(String url, int sizeDp) {
+    /**
+     * A logo from the shared disk cache, filled in when it arrives: lightened for a dark card, as it is on a light
+     * one or on a competition's strip (onBand, whose logos are made for dark backgrounds).
+     */
+    private ImageView logo(String url, int sizeDp, boolean onBand) {
         ImageView v = new ImageView(ctx);
         v.setScaleType(ImageView.ScaleType.FIT_CENTER);
         if (url == null) return v;
-        Bitmap hit = logos.get(url);
+        boolean asIs = onBand || LightUi.on();
+        String key = (asIs ? "" : "dark:") + url;
+        Bitmap hit = logos.get(key);
         if (hit != null) { v.setImageBitmap(hit); return v; }
         int px = dp(sizeDp) * 2;
         logoIo.execute(() -> {
-            Bitmap b = ScoresTicker.forDark(ScoresTicker.cachedLogo(ctx, url, px));   // the cards are dark
-            if (b != null) main.post(() -> { logos.put(url, b); v.setImageBitmap(b); });
+            Bitmap raw = ScoresTicker.cachedLogo(ctx, url, px);
+            Bitmap b = asIs ? raw : ScoresTicker.forDark(raw);
+            if (b != null) main.post(() -> { logos.put(key, b); v.setImageBitmap(b); });
         });
         return v;
     }

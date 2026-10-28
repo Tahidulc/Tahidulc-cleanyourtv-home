@@ -486,6 +486,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         heroDots = findViewById(R.id.heroDots);
         heroArt = findViewById(R.id.heroArt);
         cinematic = cfg.cinematicHome;
+        LightUi.set(Config.themeFlag(this, "light_ui", false));
         glowStyle = cfg.glowStyle;
         heroDotsShown = cfg.cinematicDots;
         cinematicWhiteFocus = cfg.cinematicWhiteFocus;
@@ -877,7 +878,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             for (int i = 0; i < bar.getChildCount(); i++) if (bar.getChildAt(i) instanceof TextView) pills.add((TextView) bar.getChildAt(i));
             if (findViewById(R.id.weather) instanceof TextView) pills.add(findViewById(R.id.weather));
             for (TextView p : pills) {
-                p.setBackgroundResource(R.drawable.pill_bg_silver);
+                p.setBackgroundResource(LightUi.on() ? R.drawable.pill_bg_light : R.drawable.pill_bg_silver);
+                if (LightUi.on()) p.setElevation(2 * density);
                 p.setTextColor(ink);
                 p.setCompoundDrawableTintList(ink);
             }
@@ -890,6 +892,11 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             weather.setTextColor(0xFF000000);
             weather.setCompoundDrawableTintList(null);   // the icon keeps its own colours
             weatherLine.useLightIcons(true);
+        }
+        if (LightUi.on()) {
+            // On a light wallpaper: the clock, the date and the rest drawn straight on it in ink.
+            LightUi.inkTree(root);
+            findViewById(R.id.clockDivider).setBackgroundColor(LightUi.ink(Color.WHITE));
         }
         iconOnlyButtons = cfg.iconOnlyButtons;
         topMenu = cfg.topMenu;
@@ -2510,6 +2517,10 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
 
     /** top_bar_apps buttons, in bar order. */
     private final List<View> topAppButtons = new ArrayList<>();
+    /** The top-bar buttons of VPN apps (top_bar_apps), purple while a VPN is up. */
+    private final List<TextView> vpnButtons = new ArrayList<>();
+    private Boolean vpnShown;
+    private final Map<TextView, ColorStateList> vpnInk = new HashMap<>();
 
     /**
      * Puts each top_bar_apps app in the top bar as a round pill with the app's own logo, left of the network pill.
@@ -2547,6 +2558,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             boolean after = getResources().getBoolean(R.bool.top_bar_apps_after_network);
             bar.addView(button, bar.indexOfChild(btnWifi) + (after ? 1 + topAppButtons.size() : 0));
             topAppButtons.add(button);
+            if (pkg.equals(vpnApp) || pkg.toLowerCase(java.util.Locale.ROOT).contains("vpn")) vpnButtons.add(button);
         }
     }
 
@@ -2870,6 +2882,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         } else if (!TextUtils.equals(btnWifi.getText(), text)) {
             btnWifi.setText(text);
         }
+        showVpnButtons(vpn);
         if (wifiIconOnly) {
             btnWifi.setContentDescription(btnWifi.getText());
             btnWifi.setText(null);
@@ -2962,6 +2975,21 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         root.addView(shower, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         shower.play(60, 2200, () -> root.removeView(shower));
+    }
+
+    /**
+     * A VPN app's top-bar button in purple, its logo white, while a VPN is up (a lighter purple when focused); back to
+     * the bar's own look when it goes down.
+     */
+    private void showVpnButtons(boolean on) {
+        if (vpnShown != null && vpnShown == on) return;
+        vpnShown = on;
+        int[][] states = {{android.R.attr.state_focused}, {}};
+        for (TextView b : vpnButtons) {
+            if (on && !vpnInk.containsKey(b)) vpnInk.put(b, b.getCompoundDrawableTintList());
+            b.setBackgroundTintList(on ? new ColorStateList(states, new int[]{0xFFB18CFF, 0xFF7B3FE4}) : null);
+            b.setCompoundDrawableTintList(on ? ColorStateList.valueOf(Color.WHITE) : vpnInk.get(b));
+        }
     }
 
     private static int liftTowardsWhite(int argb, float amount) {
