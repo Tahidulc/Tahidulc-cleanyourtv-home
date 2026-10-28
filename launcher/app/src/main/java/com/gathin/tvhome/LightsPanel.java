@@ -69,9 +69,9 @@ final class LightsPanel {
             LinearLayout row = new LinearLayout(ctx);
             row.setOrientation(LinearLayout.HORIZONTAL);
             TextView on = button(ctx, "On", d);
-            on.setOnClickListener(v -> ask(ctx, "turn on the " + room + " lights"));
+            on.setOnClickListener(v -> send(ctx, panel, v, "turn on the " + room + " lights"));
             TextView off = button(ctx, "Off", d);
-            off.setOnClickListener(v -> ask(ctx, "turn off the " + room + " lights"));
+            off.setOnClickListener(v -> send(ctx, panel, v, "turn off the " + room + " lights"));
             LinearLayout.LayoutParams half = new LinearLayout.LayoutParams(0, Math.round(44 * d), 1f);
             row.addView(on, half);
             LinearLayout.LayoutParams half2 = new LinearLayout.LayoutParams(0, Math.round(44 * d), 1f);
@@ -92,7 +92,7 @@ final class LightsPanel {
             llp.topMargin = Math.round(16 * d);
             panel.addView(label, llp);
             Slider slider = new Slider(ctx, d, 50, level -> value.setText(level + "%"),
-                    level -> ask(ctx, String.format(Locale.ROOT, "set the %s lights to %d%%", room, level)));
+                    level -> send(ctx, panel, null, String.format(Locale.ROOT, "set the %s lights to %d%%", room, level)));
             LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Math.round(36 * d));
             slp.topMargin = Math.round(6 * d);
             panel.addView(slider, slp);
@@ -111,6 +111,16 @@ final class LightsPanel {
         }
         popup.showAsDropDown(anchor, -Math.round(300 * d), Math.round(12 * d), Gravity.START);
         if (first != null) first.requestFocus();
+    }
+
+    /**
+     * The request, with a theme's "quiet_assistant": done out of sight behind a still of the screen and a spinner on
+     * the button (AppSearchService.quietAsk), so Google's own screen never shows; otherwise asked the plain way.
+     */
+    private static void send(Context ctx, View panel, View pressed, String query) {
+        if (Config.themeFlag(ctx, "quiet_assistant", false) && ctx instanceof android.app.Activity
+                && AppSearchService.quietAsk((android.app.Activity) ctx, panel, pressed, query, () -> ask(ctx, query))) return;
+        ask(ctx, query);
     }
 
     /** Hands the request to Google Assistant as text, the way a spoken one arrives. */

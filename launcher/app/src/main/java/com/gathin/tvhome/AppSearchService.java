@@ -146,6 +146,174 @@ public class AppSearchService extends AccessibilityService {
         removeCover();
     }
 
+    // ---- a request to Google Assistant, done out of sight (the lights panel) ---------------------------------
+
+    private android.view.View assistCover;
+    private String assistQuery;
+    private long assistAt;
+    private static final String ASSISTANT = "com.google.android.katniss";
+
+    /**
+     * Sends a request to the Assistant (ask runs it) behind a still of the screen as it is, the open panel drawn on it
+     * and a spinner on the button pressed; once the Assistant has answered, its screen is closed and the still lifts,
+     * so the person never leaves the panel. False without the helper: the caller asks the plain way.
+     */
+    static boolean quietAsk(android.app.Activity a, android.view.View panel, android.view.View pressed, String query, Runnable ask) {
+        if (instance == null || android.os.Build.VERSION.SDK_INT < 26) return false;
+        android.view.View decor = a.getWindow().getDecorView();
+        int w = decor.getWidth(), h = decor.getHeight();
+        if (w <= 0 || h <= 0) return false;
+        android.graphics.Bitmap still = android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888);
+        try {
+            android.view.PixelCopy.request(a.getWindow(), still, result -> {
+                if (instance == null || result != android.view.PixelCopy.SUCCESS) { ask.run(); return; }
+                instance.coverForAssist(still, panel, pressed, query);
+                ask.run();
+            }, new android.os.Handler(android.os.Looper.getMainLooper()));
+        } catch (RuntimeException e) {
+            return false;
+        }
+        return true;
+    }
+
+    private void coverForAssist(android.graphics.Bitmap still, android.view.View panel, android.view.View pressed, String query) {
+        endAssist(false);
+        float d = getResources().getDisplayMetrics().density;
+        android.widget.FrameLayout v = new android.widget.FrameLayout(this);
+        android.widget.ImageView back = new android.widget.ImageView(this);
+        back.setImageBitmap(still);
+        back.setScaleType(android.widget.ImageView.ScaleType.FIT_XY);
+        v.addView(back, new android.widget.FrameLayout.LayoutParams(-1, -1));
+        // The panel, which is a window of its own, drawn where it is.
+        if (panel != null && panel.getWidth() > 0) {
+            android.graphics.Bitmap p = android.graphics.Bitmap.createBitmap(panel.getWidth(), panel.getHeight(), android.graphics.Bitmap.Config.ARGB_8888);
+            panel.draw(new android.graphics.Canvas(p));
+            int[] at = new int[2];
+            panel.getLocationOnScreen(at);
+            android.widget.ImageView pv = new android.widget.ImageView(this);
+            pv.setImageBitmap(p);
+            android.widget.FrameLayout.LayoutParams lp = new android.widget.FrameLayout.LayoutParams(panel.getWidth(), panel.getHeight());
+            lp.leftMargin = at[0];
+            lp.topMargin = at[1];
+            v.addView(pv, lp);
+        }
+        // A spinner on the button pressed while it works.
+        if (pressed != null && pressed.getWidth() > 0) {
+            int[] at = new int[2];
+            pressed.getLocationOnScreen(at);
+            Spinner sp = new Spinner(this, d);
+            android.widget.FrameLayout.LayoutParams lp = new android.widget.FrameLayout.LayoutParams(pressed.getWidth(), pressed.getHeight());
+            lp.leftMargin = at[0];
+            lp.topMargin = at[1];
+            v.addView(sp, lp);
+            sp.start();
+        }
+        android.view.WindowManager.LayoutParams lp = new android.view.WindowManager.LayoutParams(-1, -1,
+                android.view.WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+                android.view.WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | android.view.WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+                        | android.view.WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN | android.view.WindowManager.LayoutParams.FLAG_FULLSCREEN,
+                android.graphics.PixelFormat.TRANSLUCENT);
+        try {
+            ((android.view.WindowManager) getSystemService(WINDOW_SERVICE)).addView(v, lp);
+        } catch (RuntimeException e) {
+            return;
+        }
+        assistCover = v;
+        assistQuery = query;
+        assistAt = System.currentTimeMillis();
+        main.postDelayed(assistWatch, 1_200);
+    }
+
+    /** Watches the Assistant: once it has answered (or gone, or after eight seconds), the request is done. */
+    private final Runnable assistWatch = new Runnable() {
+        @Override public void run() {
+            if (assistQuery == null) return;
+            long since = System.currentTimeMillis() - assistAt;
+            AccessibilityNodeInfo root = getRootInActiveWindow();
+            CharSequence pkg = root == null ? null : root.getPackageName();
+            boolean assistant = pkg != null && ASSISTANT.contentEquals(pkg);
+            if (since > 8_000 || (pkg != null && !assistant && since > 2_500)) { endAssist(assistant); return; }
+            if (assistant && since > 2_000 && answered(root, assistQuery)) {
+                // A moment for the request to go through, then away.
+                main.postDelayed(() -> endAssist(true), 700);
+                assistQuery = assistQuery + "\u0000";   // answered: stop looking
+                return;
+            }
+            main.postDelayed(this, 300);
+        }
+    };
+
+    /** Whether the Assistant shows an answer: words of its own, not the request, not "Listening". */
+    private static boolean answered(AccessibilityNodeInfo n, String query) {
+        if (n == null) return false;
+        CharSequence t = n.getText();
+        if (t != null && t.length() > 3) {
+            String l = t.toString().toLowerCase(Locale.ROOT).trim();
+            String q = query.toLowerCase(Locale.ROOT).replace("\u0000", "");
+            if (!l.equals(q) && !q.contains(l) && !l.contains("listening") && !l.contains("speak") && !l.startsWith("try ")
+                    && !l.contains("search")) return true;
+        }
+        for (int i = 0; i < n.getChildCount(); i++) if (answered(n.getChild(i), query)) return true;
+        return false;
+    }
+
+    /** The request done: the Assistant's screen closed (Back, only while it is in front), then the still lifts. */
+    private void endAssist(boolean closeAssistant) {
+        main.removeCallbacks(assistWatch);
+        assistQuery = null;
+        android.view.View v = assistCover;
+        assistCover = null;
+        if (v == null) return;
+        if (closeAssistant) {
+            AccessibilityNodeInfo root = getRootInActiveWindow();
+            if (root != null && root.getPackageName() != null && ASSISTANT.contentEquals(root.getPackageName()))
+                performGlobalAction(GLOBAL_ACTION_BACK);
+        }
+        main.postDelayed(() -> v.animate().alpha(0f).setDuration(200).withEndAction(() -> removeView(v)).start(), closeAssistant ? 450 : 0);
+    }
+
+    /** A small spinner over the button pressed: the button's white, a turning arc in ink. */
+    private static final class Spinner extends android.view.View {
+        private final android.graphics.Paint paint = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+        private final float d;
+        private float angle;
+        private android.animation.ValueAnimator turn;
+
+        Spinner(Context c, float d) {
+            super(c);
+            this.d = d;
+        }
+
+        void start() {
+            turn = android.animation.ValueAnimator.ofFloat(0, 360);
+            turn.setDuration(900);
+            turn.setRepeatCount(android.animation.ValueAnimator.INFINITE);
+            turn.setInterpolator(new android.view.animation.LinearInterpolator());
+            turn.addUpdateListener(a -> { angle = (float) a.getAnimatedValue(); invalidate(); });
+            turn.start();
+        }
+
+        @Override protected void onDetachedFromWindow() {
+            if (turn != null) turn.cancel();
+            super.onDetachedFromWindow();
+        }
+
+        @Override protected void onDraw(android.graphics.Canvas c) {
+            float w = getWidth(), h = getHeight(), r = h / 2f;
+            paint.setStyle(android.graphics.Paint.Style.FILL);
+            paint.setColor(0xFFFFFFFF);
+            c.drawRoundRect(0, 0, w, h, r, r, paint);
+            float s = h * 0.24f;
+            paint.setStyle(android.graphics.Paint.Style.STROKE);
+            paint.setStrokeWidth(2.5f * d);
+            paint.setStrokeCap(android.graphics.Paint.Cap.ROUND);
+            paint.setColor(0x331A1D24);
+            c.drawCircle(w / 2f, h / 2f, s, paint);
+            paint.setColor(0xFF1A1D24);
+            c.drawArc(w / 2f - s, h / 2f - s, w / 2f + s, h / 2f + s, angle, 100, false, paint);
+        }
+    }
+
     /** adb test only: the open app's accessibility tree, to logcat. */
     static void dump() {
         if (instance == null) { Log.i(TAG, "helper off"); return; }
@@ -767,6 +935,7 @@ public class AppSearchService extends AccessibilityService {
         instance = null;
         main.removeCallbacksAndMessages(null);
         removeCover();
+        if (assistCover != null) removeView(assistCover);
         super.onDestroy();
     }
 
