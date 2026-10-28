@@ -156,6 +156,13 @@ final class DeliveryLink {
                 reply(s, 200, "{\"ok\":true}");
                 return;
             }
+            case "/unpair": {
+                // A phone forgetting this TV: its token stops working.
+                Set<String> tokens = new HashSet<>(prefs.getStringSet("tokens", new HashSet<>()));
+                if (token != null && tokens.remove(token)) prefs.edit().putStringSet("tokens", tokens).apply();
+                reply(s, 200, "{\"ok\":true}");
+                return;
+            }
             default:
                 reply(s, 404, "{\"error\":\"unknown\"}");
         }

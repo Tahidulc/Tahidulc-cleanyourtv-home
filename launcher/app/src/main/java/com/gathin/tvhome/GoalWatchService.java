@@ -150,6 +150,7 @@ public class GoalWatchService extends Service {
      * the five stages filled to where it has got to.
      */
     private void showDelivery(JSONObject u) {
+        if ("car".equals(u.optString("kind"))) { showCar(u); return; }
         float d = getResources().getDisplayMetrics().density;
         int stage = Math.max(0, Math.min(4, u.optInt("stage", 0)));
         List<Object> parts = new ArrayList<>();
@@ -177,6 +178,58 @@ public class GoalWatchService extends Service {
         parts.add(new android.graphics.drawable.BitmapDrawable(getResources(), stagesBar(stage, d)));
         queue.add(new Object[]{parts, stage == 4 ? "fulltime" : "reminder"});
         showNext();
+    }
+
+    /**
+     * The car app's notification (Tesla), passed on by the phone: its icon, what it says, and the battery when it
+     * says it. Kept for Home's car pill (CarPill), which shows the latest one.
+     */
+    private void showCar(JSONObject u) {
+        float d = getResources().getDisplayMetrics().density;
+        String title = u.optString("title", "").trim(), status = u.optString("status", "").trim();
+        int battery = u.optInt("battery", -1);
+        if (title.isEmpty() && status.isEmpty()) { CarPill.clear(this); return; }   // nothing to say: the pill goes
+        CarPill.save(this, title, status, battery);
+        if (u.optBoolean("quiet")) return;   // the same news again: the pill only
+        List<Object> parts = new ArrayList<>();
+        android.graphics.Bitmap icon = null;
+        try {
+            byte[] png = android.util.Base64.decode(u.optString("icon", ""), android.util.Base64.DEFAULT);
+            if (png.length > 0) icon = android.graphics.BitmapFactory.decodeByteArray(png, 0, png.length);
+        } catch (IllegalArgumentException ignored) {
+            // no icon: the name alone
+        }
+        if (icon != null) {
+            parts.add(new android.graphics.drawable.BitmapDrawable(getResources(), roundIcon(icon)));
+            parts.add(8);
+        }
+        parts.add(bold(title.isEmpty() ? u.optString("app", "Car") : title.length() > 40 ? title.substring(0, 38) + "…" : title));
+        if (!status.isEmpty()) {
+            parts.add(12);
+            parts.add(status.length() > 70 ? status.substring(0, 68) + "…" : status);
+        }
+        if (battery >= 0) {
+            parts.add(14);
+            parts.add(new android.graphics.drawable.BitmapDrawable(getResources(), batteryBar(battery, d)));
+            parts.add(6);
+            parts.add(new Small(battery + "%"));
+        }
+        queue.add(new Object[]{parts, "reminder"});
+        showNext();
+    }
+
+    /** The battery as a glass track filled to its level: green, amber under 50%, red under 20%. */
+    private static android.graphics.Bitmap batteryBar(int level, float d) {
+        int w = Math.round(70 * d), h = Math.round(14 * d);
+        android.graphics.Bitmap out = android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888);
+        android.graphics.Canvas c = new android.graphics.Canvas(out);
+        android.graphics.Paint p = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+        float r = h * 0.28f, cy = h / 2f;
+        p.setColor(0x47FFFFFF);
+        c.drawRoundRect(new android.graphics.RectF(0, cy - r, w, cy + r), r, r, p);
+        p.setColor(level < 20 ? 0xFFFF453A : level < 50 ? 0xFFFFD60A : 0xFF34C759);
+        c.drawRoundRect(new android.graphics.RectF(0, cy - r, Math.max(2 * r, w * Math.min(100, level) / 100f), cy + r), r, r, p);
+        return out;
     }
 
     /** The app's icon with rounded corners, as a phone shows it. */

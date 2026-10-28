@@ -136,6 +136,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     private WallpaperPlayer wallpaperPlayer;
     private VideoBackdrop videoBackdrop;
     private WeatherLine weatherLine;
+    private CarPill carPill;
     private WatchRows watchRows;
     private NewsTicker newsTicker;
     private ScoresTicker scoresTicker;
@@ -924,6 +925,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             weather.setCompoundDrawableTintList(null);   // the icon keeps its own colours
             weatherLine.useLightIcons(true);
         }
+        carPill = new CarPill(findViewById(R.id.weather));
         if (LightUi.on()) {
             // On a light wallpaper: the clock, the date and the rest drawn straight on it in ink.
             LightUi.inkTree(root);
@@ -1157,6 +1159,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         if (alertsEverywhere) GoalWatchService.startEverywhere(this); else GoalWatchService.stop(this);
         videoBackdrop.start();
         weatherLine.start();
+        if (carPill != null) carPill.refresh();
         newsTicker.start();
         scoresTicker.start();
         if (sportsSection != null) sportsSection.start();
@@ -1433,6 +1436,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         wallpaperPlayer.close();
         videoBackdrop.stop();
         weatherLine.close();
+        if (carPill != null) carPill.close();
         newsTicker.close();
         scoresTicker.close();
         if (sportsSection != null) sportsSection.close();

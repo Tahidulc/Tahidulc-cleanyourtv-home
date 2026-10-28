@@ -33,9 +33,12 @@ import java.util.regex.Pattern;
  * TVs: its stage read from the words the delivery apps use, its arrival time, and the app's icon.
  */
 final class Relay {
-    /** The delivery apps ticked to begin with (Uber Eats, Just Eat, Deliveroo); more are picked in the app. */
+    /** The car app: its notifications go to the TVs as they are, not read as an order. */
+    static final String TESLA = "com.teslamotors.tesla";
+
+    /** The apps ticked to begin with (Uber Eats, Just Eat, Deliveroo, Tesla); more are picked in the app. */
     static final Set<String> DEFAULT_APPS = new HashSet<>(Arrays.asList(
-            "com.ubercab.eats", "com.justeat.app.uk", "com.justeat.app", "com.deliveroo.orderapp"));
+            "com.ubercab.eats", "com.justeat.app.uk", "com.justeat.app", "com.deliveroo.orderapp", TESLA));
 
     private static final ExecutorService SEND = Executors.newSingleThreadExecutor();
 
@@ -119,6 +122,16 @@ final class Relay {
         m = MINUTES.matcher(text);
         if (m.find()) return "in " + m.group(1) + " min";
         return "";
+    }
+
+    private static final Pattern PERCENT = Pattern.compile("\\b(\\d{1,3})\\s?%");
+
+    /** The battery level a car notification gives ("Charging complete: 80%"), or -1. */
+    static int battery(String text) {
+        Matcher m = PERCENT.matcher(text);
+        if (!m.find()) return -1;
+        int v = Integer.parseInt(m.group(1));
+        return v <= 100 ? v : -1;
     }
 
     /** The app's icon as a small PNG, in base64. */

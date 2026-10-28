@@ -36,7 +36,7 @@ import java.util.Set;
 
 /**
  * Delivery to TV: let it read notifications, find and pair the TVs (each shows a code to type here), and tick the
- * delivery apps whose order updates go to them.
+ * delivery apps whose order updates go to them, and the car app (Tesla).
  */
 public class MainActivity extends Activity {
     private static final String TYPE = "_tvhome._tcp.";
@@ -59,7 +59,8 @@ public class MainActivity extends Activity {
         setContentView(scroll);
 
         heading("Delivery to TV");
-        note("Your delivery apps' order updates, as pop-ups on your TVs at home. Only the apps ticked below are read; "
+        note("Your delivery apps' order updates and your Tesla's notifications, as pop-ups on your TVs at home. "
+                + "Only the apps ticked below are read; "
                 + "nothing leaves your home network.");
 
         heading("1  ·  Notification access");
@@ -72,11 +73,12 @@ public class MainActivity extends Activity {
         found = section();
         paired = section();
 
-        heading("3  ·  Delivery apps");
+        heading("3  ·  Apps");
         appList();
 
         heading("Try it");
         root.addView(button("Send a test to the TVs", v -> test()));
+        root.addView(button("Send a Tesla test", v -> testCar()));
         note("On Honor phones: Settings › Battery › App launch › Delivery to TV › Manage manually, with all three "
                 + "switches on, so the phone does not stop it.");
     }
@@ -203,6 +205,13 @@ public class MainActivity extends Activity {
             String name = tv.optString("name");
             LinearLayout row = row("✓  " + name);
             row.addView(button("Remove", v -> {
+                // The TV forgets this phone too, when it can be reached.
+                new Thread(() -> {
+                    try {
+                        Relay.post(tv.getString("host"), tv.getInt("port"), "/unpair", new JSONObject(), tv.getString("token"));
+                    } catch (Exception ignored) {
+                    }
+                }).start();
                 List<JSONObject> tvs = Relay.tvs(this);
                 tvs.removeIf(t -> name.equals(t.optString("name")));
                 Relay.saveTvs(this, tvs);
@@ -264,6 +273,17 @@ public class MainActivity extends Activity {
             }, i * 12_000L);
         }
         toast("Sending three test updates, 12 seconds apart");
+    }
+
+    private void testCar() {
+        if (Relay.tvs(this).isEmpty()) { toast("Pair a TV first"); return; }
+        try {
+            Relay.send(this, new JSONObject().put("kind", "car").put("app", "Tesla").put("package", Relay.TESLA)
+                    .put("title", "Charging complete").put("status", "Your car has finished charging to 80%.")
+                    .put("battery", 80).put("icon", Relay.icon(this, Relay.TESLA)));
+            toast("Sent a Tesla test");
+        } catch (Exception ignored) {
+        }
     }
 
     // ---- views -----------------------------------------------------------------------------------
