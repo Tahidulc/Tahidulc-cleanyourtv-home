@@ -269,7 +269,8 @@ public class GoalWatchService extends Service {
         if (intent != null && intent.hasExtra("dump_ui")) AppSearchService.dump();
         if (intent != null && intent.hasExtra("test_tune")) AppSearchService.tune(this, getString(R.string.scores_open_package), intent.getStringExtra("test_tune"));
         if (intent != null && intent.hasExtra("test_search")) {
-            AppSearchService.search(this, getString(R.string.trending_package), intent.getStringExtra("test_search"));
+            AppSearchService.search(this, getString(R.string.trending_package), intent.getStringExtra("test_search"),
+                    intent.getBooleanExtra("tv", false));
         }
         if (intent != null && intent.hasExtra("test_more")) testMore(intent.getStringExtra("test_more"));
         if (intent != null && intent.hasExtra("test_goal")) {

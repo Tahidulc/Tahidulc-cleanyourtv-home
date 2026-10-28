@@ -1137,7 +1137,7 @@ final class WatchRows {
         // OK: the app opens on its search for this title (AppSearchService), or just opens without that helper.
         tile.setOnClickListener(v -> {
             stopTrailer();
-            if (!AppSearchService.search(context, context.getString(R.string.trending_package), t.title)) host.onResumeApp();
+            if (!AppSearchService.search(context, context.getString(R.string.trending_package), t.title, t.tv)) host.onResumeApp();
         });
         return tile;
     }

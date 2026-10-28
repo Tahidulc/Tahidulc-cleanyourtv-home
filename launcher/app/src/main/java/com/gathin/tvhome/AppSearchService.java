@@ -29,19 +29,36 @@ public class AppSearchService extends AccessibilityService {
     private long deadline, typedAt;
     /** Tuning TiviMate to a channel (query is its name) rather than searching an app for a title. */
     private boolean channel;
+    /** The title searched for is a series: its match is looked for under TV Shows first. */
+    private boolean wantTv;
     private int picks, retypes;
 
     /** Opens pkg and, with the helper on, its search for query. False when the app could not be opened. */
     static boolean search(Context c, String pkg, String query) {
+        return search(c, pkg, query, false);
+    }
+
+    /**
+     * Opens pkg on its search for query and, with the helper on, the found film (or series, when tv) of that name, so
+     * its own page opens. False when the app could not be opened.
+     */
+    static boolean search(Context c, String pkg, String query, boolean tv) {
         Intent open = c.getPackageManager().getLeanbackLaunchIntentForPackage(pkg);
         if (open == null) open = c.getPackageManager().getLaunchIntentForPackage(pkg);
         if (open == null) return false;
+        boolean helper = instance != null && query != null && !query.isEmpty();
+        // With the helper on, the app starts afresh from its home screen, where its search is: left on a title's own
+        // page, it would come back there, with no search to open.
+        open.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | (helper ? Intent.FLAG_ACTIVITY_CLEAR_TASK : 0));
         try {
-            c.startActivity(open.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            c.startActivity(open);
         } catch (Exception e) {
             return false;
         }
-        if (instance != null && query != null && !query.isEmpty()) instance.start(pkg, query);
+        if (helper) {
+            instance.start(pkg, query);
+            instance.wantTv = tv;
+        }
         return true;
     }
 
@@ -120,9 +137,12 @@ public class AppSearchService extends AccessibilityService {
                 return true;
             }
             // The app shows results as the text goes in, but its field brings up the keyboard over them: one Back
-            // takes the keyboard away (only while it shows, so Back never leaves the search), and Down reaches them.
-            if (keyboardShown()) { performGlobalAction(GLOBAL_ACTION_BACK); return false; }
-            return System.currentTimeMillis() - typedAt < 2_000L;
+            // takes the keyboard away (only while it shows, so Back never leaves the search).
+            if (keyboardShown()) { performGlobalAction(GLOBAL_ACTION_BACK); return true; }
+            // Then the film or series of that name, so its page opens; without one, the results stay on screen.
+            AccessibilityNodeInfo hit = result(root);
+            if (hit != null) { click(hit); return false; }
+            return System.currentTimeMillis() - typedAt < 8_000L;
         }
         AccessibilityNodeInfo search = find(root, Kind.SEARCH);
         if (search != null) { click(search); return true; }
@@ -226,6 +246,41 @@ public class AppSearchService extends AccessibilityService {
         n = n.replaceAll("\\b(fhd|uhd|hd|sd|4k|hevc|h265|50fps)\\b", " ");
         n = n.replaceAll("[^\\p{L}\\p{N}+]", "");
         return n.equals("5") ? "channel5" : n;
+    }
+
+    /**
+     * Among the results (posters named by their description, under "Movies" and "TV Shows"), the one with the title
+     * searched for: in the row for its kind first, the same name before one that only begins the same.
+     */
+    private AccessibilityNodeInfo result(AccessibilityNodeInfo root) {
+        java.util.List<AccessibilityNodeInfo> all = new java.util.ArrayList<>();
+        collect(root, all, 0);
+        String want = plain(query);
+        if (want.isEmpty()) return null;
+        boolean inTv = false;
+        AccessibilityNodeInfo[] best = new AccessibilityNodeInfo[4];   // exact in kind, exact, close in kind, close
+        for (AccessibilityNodeInfo n : all) {
+            CharSequence text = n.getText();
+            if (text != null && !n.isEditable()) {
+                String t = text.toString().trim().toLowerCase(Locale.ROOT);
+                if (t.equals("tv shows") || t.equals("series") || t.equals("tv")) inTv = true;
+                else if (t.equals("movies") || t.equals("films")) inTv = false;
+            }
+            CharSequence desc = n.getContentDescription();
+            if (desc == null) continue;
+            String d = plain(desc.toString());
+            if (d.isEmpty()) continue;
+            boolean kind = inTv == wantTv;
+            int slot = d.equals(want) ? (kind ? 0 : 1) : (d.startsWith(want) || want.startsWith(d)) && Math.min(d.length(), want.length()) >= 4 ? (kind ? 2 : 3) : -1;
+            if (slot >= 0 && best[slot] == null) best[slot] = n;
+        }
+        for (AccessibilityNodeInfo n : best) if (n != null) return n;
+        return null;
+    }
+
+    /** A title to compare: lower case, letters and digits only. */
+    private static String plain(String s) {
+        return s.toLowerCase(Locale.ROOT).replaceAll("[^\\p{L}\\p{N}]", "");
     }
 
     private boolean keyboardShown() {
