@@ -149,6 +149,9 @@ public class AppSearchService extends AccessibilityService {
     // ---- a request to Google Assistant, done out of sight (the lights panel) ---------------------------------
 
     private android.view.View assistCover;
+    private Spinner assistSpinner;
+    /** Whether the sound was muted here for the request (and so is turned back on after it). */
+    private boolean assistMuted;
     private String assistQuery;
     private long assistAt;
     private static final String ASSISTANT = "com.google.android.katniss";
@@ -202,6 +205,7 @@ public class AppSearchService extends AccessibilityService {
             int[] at = new int[2];
             pressed.getLocationOnScreen(at);
             Spinner sp = new Spinner(this, d);
+            assistSpinner = sp;
             android.widget.FrameLayout.LayoutParams lp = new android.widget.FrameLayout.LayoutParams(pressed.getWidth(), pressed.getHeight());
             lp.leftMargin = at[0];
             lp.topMargin = at[1];
@@ -221,6 +225,16 @@ public class AppSearchService extends AccessibilityService {
         assistCover = v;
         assistQuery = query;
         assistAt = System.currentTimeMillis();
+        // The Assistant's spoken answer unheard: the sound off while it works, unless it was off already.
+        android.media.AudioManager am = getSystemService(android.media.AudioManager.class);
+        if (am != null && !am.isStreamMute(android.media.AudioManager.STREAM_MUSIC)) {
+            try {
+                am.adjustStreamVolume(android.media.AudioManager.STREAM_MUSIC, android.media.AudioManager.ADJUST_MUTE, 0);
+                assistMuted = true;
+            } catch (RuntimeException ignored) {
+                // not allowed (Do Not Disturb): it may be heard
+            }
+        }
         main.postDelayed(assistWatch, 1_200);
     }
 
@@ -263,21 +277,38 @@ public class AppSearchService extends AccessibilityService {
         assistQuery = null;
         android.view.View v = assistCover;
         assistCover = null;
+        Spinner sp = assistSpinner;
+        assistSpinner = null;
+        if (assistMuted) {
+            assistMuted = false;
+            // Back on once the Assistant's screen (and its voice) has gone.
+            main.postDelayed(() -> {
+                android.media.AudioManager am = getSystemService(android.media.AudioManager.class);
+                try {
+                    if (am != null) am.adjustStreamVolume(android.media.AudioManager.STREAM_MUSIC, android.media.AudioManager.ADJUST_UNMUTE, 0);
+                } catch (RuntimeException ignored) {
+                }
+            }, closeAssistant ? 900 : 0);
+        }
         if (v == null) return;
+        if (sp != null && closeAssistant) sp.done();
         if (closeAssistant) {
             AccessibilityNodeInfo root = getRootInActiveWindow();
             if (root != null && root.getPackageName() != null && ASSISTANT.contentEquals(root.getPackageName()))
                 performGlobalAction(GLOBAL_ACTION_BACK);
         }
-        main.postDelayed(() -> v.animate().alpha(0f).setDuration(200).withEndAction(() -> removeView(v)).start(), closeAssistant ? 450 : 0);
+        main.postDelayed(() -> v.animate().alpha(0f).setDuration(220).withEndAction(() -> removeView(v)).start(), closeAssistant ? 750 : 0);
     }
 
-    /** A small spinner over the button pressed: the button's white, a turning arc in ink. */
+    /**
+     * Over the button pressed while the request runs: a white pill that pops in with three dots bouncing in turn, then
+     * a green tick drawn in once it is done.
+     */
     private static final class Spinner extends android.view.View {
         private final android.graphics.Paint paint = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
         private final float d;
-        private float angle;
-        private android.animation.ValueAnimator turn;
+        private float phase, tick = -1;
+        private android.animation.ValueAnimator bounce;
 
         Spinner(Context c, float d) {
             super(c);
@@ -285,32 +316,61 @@ public class AppSearchService extends AccessibilityService {
         }
 
         void start() {
-            turn = android.animation.ValueAnimator.ofFloat(0, 360);
-            turn.setDuration(900);
-            turn.setRepeatCount(android.animation.ValueAnimator.INFINITE);
-            turn.setInterpolator(new android.view.animation.LinearInterpolator());
-            turn.addUpdateListener(a -> { angle = (float) a.getAnimatedValue(); invalidate(); });
-            turn.start();
+            setScaleX(0.85f);
+            setScaleY(0.85f);
+            setAlpha(0f);
+            animate().scaleX(1f).scaleY(1f).alpha(1f).setDuration(220)
+                    .setInterpolator(new android.view.animation.OvershootInterpolator(2.2f)).start();
+            bounce = android.animation.ValueAnimator.ofFloat(0, 1);
+            bounce.setDuration(900);
+            bounce.setRepeatCount(android.animation.ValueAnimator.INFINITE);
+            bounce.setInterpolator(new android.view.animation.LinearInterpolator());
+            bounce.addUpdateListener(a -> { phase = (float) a.getAnimatedValue(); invalidate(); });
+            bounce.start();
+        }
+
+        /** Done: the dots give way to a green tick, drawn in stroke by stroke. */
+        void done() {
+            if (bounce != null) bounce.cancel();
+            android.animation.ValueAnimator draw = android.animation.ValueAnimator.ofFloat(0, 1);
+            draw.setDuration(320);
+            draw.addUpdateListener(a -> { tick = (float) a.getAnimatedValue(); invalidate(); });
+            draw.start();
         }
 
         @Override protected void onDetachedFromWindow() {
-            if (turn != null) turn.cancel();
+            if (bounce != null) bounce.cancel();
             super.onDetachedFromWindow();
         }
 
         @Override protected void onDraw(android.graphics.Canvas c) {
-            float w = getWidth(), h = getHeight(), r = h / 2f;
+            float w = getWidth(), h = getHeight(), r = h / 2f, cx = w / 2f, cy = h / 2f;
             paint.setStyle(android.graphics.Paint.Style.FILL);
             paint.setColor(0xFFFFFFFF);
             c.drawRoundRect(0, 0, w, h, r, r, paint);
-            float s = h * 0.24f;
-            paint.setStyle(android.graphics.Paint.Style.STROKE);
-            paint.setStrokeWidth(2.5f * d);
-            paint.setStrokeCap(android.graphics.Paint.Cap.ROUND);
-            paint.setColor(0x331A1D24);
-            c.drawCircle(w / 2f, h / 2f, s, paint);
+            if (tick >= 0) {
+                // The tick: down to the corner, then up, in green.
+                paint.setStyle(android.graphics.Paint.Style.STROKE);
+                paint.setStrokeWidth(3f * d);
+                paint.setStrokeCap(android.graphics.Paint.Cap.ROUND);
+                paint.setColor(0xFF22A45D);
+                float s = h * 0.2f;
+                float ax = cx - s, ay = cy, bx = cx - s * 0.25f, by = cy + s * 0.7f, ex = cx + s * 1.1f, ey = cy - s * 0.75f;
+                float first = Math.min(1f, tick / 0.4f), second = Math.max(0f, (tick - 0.4f) / 0.6f);
+                c.drawLine(ax, ay, ax + (bx - ax) * first, ay + (by - ay) * first, paint);
+                if (second > 0) c.drawLine(bx, by, bx + (ex - bx) * second, by + (ey - by) * second, paint);
+                return;
+            }
+            // Three dots, each rising and falling in turn.
             paint.setColor(0xFF1A1D24);
-            c.drawArc(w / 2f - s, h / 2f - s, w / 2f + s, h / 2f + s, angle, 100, false, paint);
+            float gap = 9f * d, dot = 3.2f * d;
+            for (int i = 0; i < 3; i++) {
+                float p = (phase + 1f - i * 0.18f) % 1f;
+                float lift = (float) Math.max(0, Math.sin(p * Math.PI * 2)) * 4.5f * d;
+                paint.setAlpha(150 + (int) (105 * lift / (4.5f * d)));
+                c.drawCircle(cx + (i - 1) * gap, cy - lift, dot, paint);
+            }
+            paint.setAlpha(255);
         }
     }
 
