@@ -18,6 +18,10 @@ public class DockDecoration extends RecyclerView.ItemDecoration {
     private final float density;
     private final Paint band = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint edge = new Paint(Paint.ANTI_ALIAS_FLAG);
+    /** light_ui's liquid glass: the bright inner rim and the sheen across the top. */
+    private final Paint innerRim = new Paint(Paint.ANTI_ALIAS_FLAG), sheen = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final RectF inner = new RectF();
+    private float sheenTop = -1, sheenBottom = -1;
     private final RectF rect = new RectF();
 
     /** Extra band below the tiles for their names (always_show_names), in px. */
@@ -60,9 +64,14 @@ public class DockDecoration extends RecyclerView.ItemDecoration {
         edge.setStrokeWidth(density);
         edge.setColor(lightGlass ? 0x38FFFFFF : translucent ? 0x26FFFFFF : 0x1FFFFFFF);
         if (LightUi.on()) {
-            // On a light wallpaper: a faint grey tray with a hairline edge, so white tiles stand out on it.
-            band.setColor(0x12000000);
-            edge.setColor(0x14000000);
+            // On a light wallpaper, liquid glass: a clear tray a shade cooler than the wallpaper, lifted on a soft
+            // shadow, with a dark hairline outside, a bright rim inside and a sheen across its top.
+            band.setColor(0x14303A4A);
+            band.setShadowLayer(14 * density, 0, 5 * density, 0x1A000000);
+            edge.setColor(0x1F000000);
+            innerRim.setStyle(Paint.Style.STROKE);
+            innerRim.setStrokeWidth(1.5f * density);
+            innerRim.setColor(0xE6FFFFFF);
         }
     }
 
@@ -152,6 +161,18 @@ public class DockDecoration extends RecyclerView.ItemDecoration {
             shaderBottom = rect.bottom;
         }
         c.drawRoundRect(rect, radius, radius, band);
+        if (LightUi.on()) {
+            if (rect.top != sheenTop || rect.bottom != sheenBottom) {
+                sheen.setShader(new LinearGradient(0, rect.top, 0, rect.top + rect.height() * 0.5f, 0x8CFFFFFF, 0x00FFFFFF,
+                        Shader.TileMode.CLAMP));
+                sheenTop = rect.top;
+                sheenBottom = rect.bottom;
+            }
+            c.drawRoundRect(rect, radius, radius, sheen);
+            float in = 1.6f * density;
+            inner.set(rect.left + in, rect.top + in, rect.right - in, rect.bottom - in);
+            c.drawRoundRect(inner, radius - in, radius - in, innerRim);
+        }
         c.drawRoundRect(rect, radius, radius, edge);
     }
 }

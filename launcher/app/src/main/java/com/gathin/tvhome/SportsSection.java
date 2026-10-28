@@ -478,6 +478,37 @@ final class SportsSection {
     }
     private static final int[] PLAIN = {0, 0xFF2A2F3A, 0xFF4A505C, 0xFFFFFFFF};
 
+    /**
+     * Each competition's name in a free typeface close to its own (the official ones are licensed): rounded for the
+     * Premier League, geometric for UEFA and LaLiga, condensed for the EFL, Serie A and the Bundesliga, F1's
+     * Titillium. Only capitals and digits are bundled, so the names are set in capitals.
+     */
+    private static int brandFont(String slug) {
+        if (slug == null) return R.font.brand_plain;
+        switch (slug) {
+            case "eng.1": return R.font.brand_premier;
+            case "eng.2": case "sco.1": case "eng.league_cup": return R.font.brand_efl;
+            case "esp.1": return R.font.brand_laliga;
+            case "ita.1": return R.font.brand_seriea;
+            case "ger.1": return R.font.brand_bundesliga;
+            case "fra.1": return R.font.brand_ligue1;
+            case "eng.fa": return R.font.brand_facup;
+            case "f1": return R.font.brand_f1;
+            default: return slug.startsWith("uefa.") ? R.font.brand_uefa : R.font.brand_plain;
+        }
+    }
+
+    private final Map<Integer, Typeface> fonts = new HashMap<>();
+
+    private Typeface font(int res) {
+        Typeface t = fonts.get(res);
+        if (t == null) {
+            try { t = ctx.getResources().getFont(res); } catch (Exception e) { t = Typeface.DEFAULT_BOLD; }
+            fonts.put(res, t);
+        }
+        return t;
+    }
+
     private static int[] brand(String slug) {
         int[] b = slug == null ? null : BRANDS.get(slug);
         return b != null ? b : PLAIN;
@@ -552,9 +583,10 @@ final class SportsSection {
             ImageView mark = logo(logoUrl, wide ? 34 : 22, true);
             band.addView(mark, new LinearLayout.LayoutParams(dp(wide ? 34 : 22), dp(22)));
         }
-        TextView t = text(title, 11, Color.WHITE, true);
+        TextView t = text(title.toUpperCase(java.util.Locale.ROOT), 13, Color.WHITE, true);
         t.setTextColor(Color.WHITE);
-        t.setLetterSpacing(0.08f);
+        t.setTypeface(font(brandFont(slug)));
+        t.setLetterSpacing(0.04f);
         band.addView(t, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         ((LinearLayout.LayoutParams) t.getLayoutParams()).leftMargin = logoUrl != null ? dp(9) : 0;
         statusView = null;

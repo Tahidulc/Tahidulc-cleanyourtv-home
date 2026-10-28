@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Liquid glass on a light wallpaper: a clear body faintly whiter at the top, a dark hairline outside, a bright rim
+     just inside it and a sheen across the top half. Shared by the top bar's pills and the scores line. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <gradient android:angle="270" android:startColor="#C7FFFFFF" android:endColor="#66FFFFFF" />
+            <stroke android:width="1dp" android:color="#29000000" />
+            <corners android:radius="21dp" />
+        </shape>
+    </item>
+    <item android:left="1.5dp" android:top="1.5dp" android:right="1.5dp" android:bottom="1.5dp">
+        <shape android:shape="rectangle">
+            <solid android:color="#00FFFFFF" />
+            <stroke android:width="1.2dp" android:color="#F2FFFFFF" />
+            <corners android:radius="19.5dp" />
+        </shape>
+    </item>
+    <item android:left="3dp" android:top="2dp" android:right="3dp" android:height="12dp" android:gravity="top">
+        <shape android:shape="rectangle">
+            <gradient android:angle="270" android:startColor="#A6FFFFFF" android:endColor="#00FFFFFF" />
+            <corners android:topLeftRadius="18dp" android:topRightRadius="18dp" android:bottomLeftRadius="0dp" android:bottomRightRadius="0dp" />
+        </shape>
+    </item>
+</layer-list>

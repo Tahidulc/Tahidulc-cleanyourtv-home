@@ -1525,8 +1525,18 @@ final class WatchRows {
                 bg.setColor(BannerArt.edgeColor(item.art));
             }
             image.setImageDrawable(item.art);
+        } else if (shownPackage != null && shownPackage.startsWith("com.google.android.youtube")) {
+            // A video's 16:9 thumbnail whole across a narrow card, over a soft blur of itself; as the card widens to
+            // 16:9 the thumbnail grows to fill it.
+            ImageView blur = new ImageView(context);
+            blur.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            blur.setColorFilter(new android.graphics.PorterDuffColorFilter(0x33000000, android.graphics.PorterDuff.Mode.SRC_ATOP));
+            card.addView(blur, 0, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+            image.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            loadPoster(item.poster, image, b -> blur.setImageBitmap(blurred(b)));
         } else {
             loadPoster(item.poster, image);
+            if (!context.getString(R.string.scores_open_package).equals(shownPackage)) posterOver(card, item.title);
         }
         String name = item.art != null ? appLabel(item) : item.title;
         String second = secondLine(item);
@@ -1538,7 +1548,42 @@ final class WatchRows {
             if (item.art != null) host.onResumeApp();
             else open(item);
         });
+        View posterBox = card.findViewWithTag(POSTER_BOX);
+        if (posterBox != null) {
+            // The poster while the card is narrow; the app's own still once it widens.
+            wideLooks.put(tile, wide -> posterBox.animate().alpha(wide ? 0f : 1f).setDuration(WIDEN_MS).start());
+        }
         return tile;
+    }
+
+    private static final String POSTER_BOX = "poster";
+    private String posterKey;
+
+    /**
+     * Over an app's landscape still, the title's own portrait poster from TMDB, in a box of its own that shows it
+     * while the card is narrow (its fade-in as it loads must not show it on a wide card).
+     */
+    private void posterOver(FrameLayout card, String title) {
+        if (posterKey == null) posterKey = Config.themeString(context, "tmdb_key", "").trim();
+        if (posterKey.isEmpty() || title == null) return;
+        FrameLayout box = new FrameLayout(context);
+        box.setTag(POSTER_BOX);
+        ImageView poster = new ImageView(context);
+        poster.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        box.addView(poster, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        card.addView(box, 1, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        String key = posterKey;
+        images.execute(() -> {
+            String url = Trending.posterFor(context, key, title);
+            if (url != null) main.post(() -> loadPoster(url, poster));
+        });
+    }
+
+    /** The picture shrunk to a few pixels and drawn large again: a soft blur of its colours. */
+    private static Bitmap blurred(Bitmap b) {
+        if (b == null || b.getWidth() < 2 || b.getHeight() < 2) return b;
+        Bitmap tiny = Bitmap.createScaledBitmap(b, 24, Math.max(2, 24 * b.getHeight() / b.getWidth()), true);
+        return Bitmap.createScaledBitmap(tiny, 96, Math.max(2, 96 * b.getHeight() / b.getWidth()), true);
     }
 
     /**

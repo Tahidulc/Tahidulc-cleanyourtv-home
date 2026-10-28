@@ -140,6 +140,45 @@ final class Trending {
         return out;
     }
 
+    private static final long POSTER_RETRY_MS = 24L * 60 * 60_000L;
+
+    /**
+     * A portrait poster for a title an app publishes as a landscape still ("The Boys", "Reacher - Season 3"), from
+     * TMDB: only for a film or series of exactly that name. Kept once found; a title with none is asked again after a
+     * day. Off the main thread.
+     */
+    static String posterFor(android.content.Context c, String key, String title) {
+        if (key.isEmpty() || title == null || title.trim().isEmpty()) return null;
+        String name = title.replaceAll("(?i)\\s*[-:–(]?\\s*(season|series|staffel|temporada)\\s*\\d+.*$", "")
+                .replaceAll("(?i)\\s*\\((4k|uhd|hd)[^)]*\\)", "").trim();
+        android.content.SharedPreferences prefs = c.getSharedPreferences("app_posters_v2", android.content.Context.MODE_PRIVATE);
+        String kept = prefs.getString(name, null);
+        if (kept != null && !kept.startsWith("-")) return kept;
+        if (kept != null && System.currentTimeMillis() - Long.parseLong(kept.substring(1)) < POSTER_RETRY_MS) return null;
+        String found = null;
+        try {
+            JSONArray results = new JSONObject(get("https://api.themoviedb.org/3/search/multi?api_key=" + key
+                    + "&include_adult=false&query=" + java.net.URLEncoder.encode(name, "UTF-8"))).optJSONArray("results");
+            String want = plain(name);
+            for (int i = 0; results != null && i < results.length() && found == null; i++) {
+                JSONObject r = results.getJSONObject(i);
+                String type = r.optString("media_type"), poster = r.optString("poster_path", "");
+                if (!"movie".equals(type) && !"tv".equals(type) || poster.isEmpty() || "null".equals(poster)) continue;
+                String named = r.optString("tv".equals(type) ? "name" : "title"), original = r.optString("tv".equals(type) ? "original_name" : "original_title");
+                if (plain(named).equals(want) || plain(original).equals(want)) found = "https://image.tmdb.org/t/p/w342" + poster;
+            }
+        } catch (Exception e) {
+            return null;   // asked again next time: the network, not the title
+        }
+        prefs.edit().putString(name, found != null ? found : "-" + System.currentTimeMillis()).apply();
+        return found;
+    }
+
+    /** A name to compare: lower case, without a leading "The", letters and digits only. */
+    private static String plain(String s) {
+        return s == null ? "" : s.toLowerCase(java.util.Locale.ROOT).replaceFirst("^the\\s+", "").replaceAll("[^\\p{L}\\p{N}]", "");
+    }
+
     /** The film or series TMDB finds for a name, as the fields resume() keeps, or null. */
     private static JSONObject lookUp(String key, String name) {
         try {

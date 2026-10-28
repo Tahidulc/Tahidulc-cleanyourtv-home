@@ -879,17 +879,25 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             if (findViewById(R.id.weather) instanceof TextView) pills.add(findViewById(R.id.weather));
             for (TextView p : pills) {
                 p.setBackgroundResource(LightUi.on() ? R.drawable.pill_bg_light : R.drawable.pill_bg_silver);
-                if (LightUi.on()) p.setElevation(2 * density);
+                if (LightUi.on()) {
+                    // Ink on the glass, white on the solid ink of the pill in focus.
+                    ColorStateList onGlass = new ColorStateList(new int[][]{{android.R.attr.state_focused}, {}},
+                            new int[]{Color.WHITE, LightUi.INK});
+                    p.setElevation(3 * density);
+                    p.setTextColor(onGlass);
+                    p.setCompoundDrawableTintList(onGlass);
+                    continue;
+                }
                 p.setTextColor(ink);
                 p.setCompoundDrawableTintList(ink);
             }
             // The weather pill's own focus change turns its text white again; on silver it stays black, icon too.
             TextView weather = findViewById(R.id.weather);
             weather.setOnFocusChangeListener((v, has) -> {
-                ((TextView) v).setTextColor(0xFF000000);
+                ((TextView) v).setTextColor(LightUi.on() && has ? Color.WHITE : LightUi.on() ? LightUi.INK : 0xFF000000);
                 ((TextView) v).setCompoundDrawableTintList(null);
             });
-            weather.setTextColor(0xFF000000);
+            weather.setTextColor(LightUi.on() ? LightUi.INK : 0xFF000000);
             weather.setCompoundDrawableTintList(null);   // the icon keeps its own colours
             weatherLine.useLightIcons(true);
         }
@@ -2521,6 +2529,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     private final List<TextView> vpnButtons = new ArrayList<>();
     private Boolean vpnShown;
     private final Map<TextView, ColorStateList> vpnInk = new HashMap<>();
+    private final Map<TextView, Drawable> vpnBackground = new HashMap<>();
 
     /**
      * Puts each top_bar_apps app in the top bar as a round pill with the app's own logo, left of the network pill.
@@ -2986,8 +2995,26 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         vpnShown = on;
         int[][] states = {{android.R.attr.state_focused}, {}};
         for (TextView b : vpnButtons) {
-            if (on && !vpnInk.containsKey(b)) vpnInk.put(b, b.getCompoundDrawableTintList());
-            b.setBackgroundTintList(on ? new ColorStateList(states, new int[]{0xFFB18CFF, 0xFF7B3FE4}) : null);
+            if (on && !vpnInk.containsKey(b)) {
+                vpnInk.put(b, b.getCompoundDrawableTintList());
+                vpnBackground.put(b, b.getBackground());
+            }
+            if (on) {
+                // Solid purple (a tint would keep the glass see-through); focused, a deeper purple with a white ring,
+                // as the other buttons turn dark in focus.
+                GradientDrawable focused = new GradientDrawable(), plain = new GradientDrawable();
+                focused.setCornerRadius(21 * density);
+                focused.setColor(0xFF4A1FB8);
+                focused.setStroke(Math.round(2 * density), Color.WHITE);
+                plain.setCornerRadius(21 * density);
+                plain.setColor(0xFF8B5CF6);
+                android.graphics.drawable.StateListDrawable pill = new android.graphics.drawable.StateListDrawable();
+                pill.addState(states[0], focused);
+                pill.addState(states[1], plain);
+                b.setBackground(pill);
+            } else if (vpnBackground.containsKey(b)) {
+                b.setBackground(vpnBackground.get(b));
+            }
             b.setCompoundDrawableTintList(on ? ColorStateList.valueOf(Color.WHITE) : vpnInk.get(b));
         }
     }

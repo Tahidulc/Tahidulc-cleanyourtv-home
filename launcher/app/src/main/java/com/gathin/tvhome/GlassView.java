@@ -19,6 +19,7 @@ public class GlassView extends View {
     private final Paint specular = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint rim = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint glow = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint darkRim = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final RectF rect = new RectF();
     private final float density;
     private float radius;
@@ -85,6 +86,22 @@ public class GlassView extends View {
     protected void onDraw(Canvas canvas) {
         float inset = 6f * density;   // room for the glow
         rect.set(inset, inset, getWidth() - inset, getHeight() - inset);
+        if (LightUi.on()) {
+            // On a light wallpaper a white rim does not show: a soft shadow around the tile and a dark rim on it.
+            int rings = 12;
+            float step = inset / rings;
+            glow.setStrokeWidth(step + 0.5f);
+            for (int i = 0; i < rings; i++) {
+                float o = step * (i + 0.5f);
+                glow.setColor(Math.round(0x2E * (1f - (float) i / rings)) << 24);
+                canvas.drawRoundRect(rect.left - o, rect.top - o, rect.right + o, rect.bottom + o, radius + o, radius + o, glow);
+            }
+            darkRim.setStyle(Paint.Style.STROKE);
+            darkRim.setStrokeWidth(3.5f * density);
+            darkRim.setColor(LightUi.INK);
+            canvas.drawRoundRect(rect, radius, radius, darkRim);
+            return;
+        }
 
         // Outer glow: thin rings across the inset, each a little fainter, so it fades out smoothly. Three wide
         // strokes left visible bands once the glow took an app's colour at a stronger alpha. The hardware layer
