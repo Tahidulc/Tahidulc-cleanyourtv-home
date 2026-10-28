@@ -425,6 +425,7 @@ final class WatchRows {
 
     private void focusLook(View v, boolean focused, GradientDrawable ring) {
         v.animate().scaleX(focused ? FOCUS_SCALE : 1f).scaleY(focused ? FOCUS_SCALE : 1f).setDuration(160).start();
+        if (focused) keepLeftInView(v);
         View framed = ringOn.containsKey(v) ? ringOn.get(v) : v;
         framed.setForeground(focused ? ring : null);
         v.setElevation(focused ? dp(6) : 0);
@@ -444,10 +445,27 @@ final class WatchRows {
                 if (focused) {
                     int right = v.getRight() + dp(EDGE) * 2 - scroller.getScrollX();
                     if (right > scroller.getWidth()) scroller.smoothScrollBy(right - scroller.getWidth(), 0);
+                    keepLeftInView(v);
                 }
             }
         });
         widen.start();
+    }
+
+    /**
+     * The focused card's left edge on screen, with room for it to grow: the first card takes the row right back to
+     * its start, so coming back along the row never leaves it cut off at the left.
+     */
+    private void keepLeftInView(View v) {
+        View card = v;
+        while (card.getParent() instanceof View && card.getParent() != strip) card = (View) card.getParent();
+        if (card.getParent() != strip) return;
+        if (strip.indexOfChild(card) == 0) {
+            if (scroller.getScrollX() != 0) scroller.smoothScrollTo(0, 0);
+            return;
+        }
+        int left = card.getLeft() - dp(EDGE) - scroller.getScrollX();
+        if (left < 0) scroller.smoothScrollBy(left, 0);
     }
 
     /**
