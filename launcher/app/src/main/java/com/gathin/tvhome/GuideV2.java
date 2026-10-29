@@ -515,13 +515,12 @@ final class GuideV2 {
                     hide();
                     closed.run();
                     GoalWatchService.onAppOpened(c, "ar.tvplayer.tv");
-                    Bitmap logo = cache.get(logoUrl(ch[0]));
-                    if (logo != null) AppSearchService.tune(c, "ar.tvplayer.tv", java.util.Collections.singletonList(ch[1]), logo);
-                    else io.execute(() -> {
-                        // The logo first, so the cover over TiviMate always shows it.
-                        Bitmap got = ScoresTicker.cachedLogo(c, logoUrl(ch[0]), 128);
+                    // The cover over TiviMate shows the channel's logo large: Sky's full-size picture, trimmed (the
+                    // guide's own copy is list-sized), fetched first so it is always there.
+                    new Thread(() -> {
+                        Bitmap got = HomeV2.trim(ScoresTicker.cachedLogo(c, logoUrl(ch[0]), 512));
                         main.post(() -> AppSearchService.tune(c, "ar.tvplayer.tv", java.util.Collections.singletonList(ch[1]), got));
-                    });
+                    }).start();
                     return true;
                 }
                 draw();
@@ -720,6 +719,7 @@ final class GuideV2 {
         Bitmap hit = cache.get(url);
         if (hit != null) {
             v.setImageBitmap(hit);
+            if (url.contains("newchanlogos")) HomeV2.fitLogo(v, hit);
             if (then != null) then.run();
             return;
         }
@@ -752,6 +752,7 @@ final class GuideV2 {
             main.post(() -> {
                 if (!url.equals(v.getTag(R.id.v2_url))) return;
                 v.setImageBitmap(done);
+                if (url.contains("newchanlogos")) HomeV2.fitLogo(v, done);
                 if (then != null) then.run();
             });
         });

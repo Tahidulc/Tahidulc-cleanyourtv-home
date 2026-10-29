@@ -2,4 +2,6 @@
 <resources>
     <!-- Launcher v2: the picture an ImageView is waiting for, so a late answer for an older one is dropped. -->
     <item type="id" name="v2_url" />
+    <!-- Launcher v2: a channel logo's own room (max height, height), before a block-shaped logo was given more. -->
+    <item type="id" name="v2_logo_h" />
 </resources>

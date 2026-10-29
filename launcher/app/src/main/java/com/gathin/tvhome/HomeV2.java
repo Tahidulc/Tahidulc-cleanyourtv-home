@@ -1454,14 +1454,15 @@ final class HomeV2 {
     void tune(List<String> channels, String logoUrl) {
         String pkg = "ar.tvplayer.tv";
         players.stop();
-        Bitmap have = logoUrl == null ? null : cache.get(logoUrl + "@" + px(64));
-        if (have != null || logoUrl == null) {
+        // The cover over TiviMate shows the channel's logo large: Sky's full-size picture, trimmed, never a tile's copy.
+        if (logoUrl == null) {
             GoalWatchService.onAppOpened(a, pkg);
-            AppSearchService.tune(a, pkg, channels, have);
+            AppSearchService.tune(a, pkg, channels, null);
             return;
         }
         io.execute(() -> {
-            Bitmap logo = ScoresTicker.cachedLogo(a, logoUrl, px(128));
+            Bitmap got = ScoresTicker.cachedLogo(a, logoUrl, px(512));
+            Bitmap logo = logoUrl.contains("newchanlogos") ? trim(got) : got;
             main.post(() -> {
                 GoalWatchService.onAppOpened(a, pkg);
                 AppSearchService.tune(a, pkg, channels, logo);
@@ -1583,6 +1584,7 @@ final class HomeV2 {
         Bitmap hit = cache.get(key);
         if (hit != null) {
             v.setImageBitmap(hit);
+            if (url.contains("newchanlogos")) fitLogo(v, hit);
             if (then != null) then.run();
             return;
         }
@@ -1593,6 +1595,7 @@ final class HomeV2 {
             main.post(() -> {
                 if (!key.equals(v.getTag(R.id.v2_url))) return;
                 v.setImageBitmap(b);
+                if (url.contains("newchanlogos")) fitLogo(v, b);
                 if (then != null) then.run();
             });
         });
@@ -1628,6 +1631,26 @@ final class HomeV2 {
             return url.endsWith("#uhd") ? ScoresTicker.uhdLogo(a, b) : b;
         } catch (Exception | OutOfMemoryError e) {
             return null;
+        }
+    }
+
+    /**
+     * A Sky channel logo in a room made for the long ones (Sky Sports Main Event): a block-shaped one (Sky One, a
+     * square badge) would come out a fraction of their size, so it is given more height, about the same area.
+     */
+    static void fitLogo(ImageView v, Bitmap b) {
+        if (b == null || b.getHeight() == 0) return;
+        Object base = v.getTag(R.id.v2_logo_h);
+        ViewGroup.LayoutParams lp = v.getLayoutParams();
+        int[] room = base instanceof int[] ? (int[]) base : new int[]{v.getMaxHeight(), lp != null ? lp.height : -2};
+        // Only rooms made for long logos (wider than they are tall several times over): not the tiles' white badge.
+        if (room[0] >= Integer.MAX_VALUE / 2 || v.getMaxWidth() < room[0] * 2.5f) return;
+        v.setTag(R.id.v2_logo_h, room);
+        float k = b.getWidth() < b.getHeight() * 2.2f ? 1.75f : 1f;
+        if (room[0] > 0 && room[0] < Integer.MAX_VALUE / 2) v.setMaxHeight(Math.round(room[0] * k));
+        if (lp != null && room[1] > 0) {
+            lp.height = Math.round(room[1] * k);
+            v.setLayoutParams(lp);
         }
     }
 
