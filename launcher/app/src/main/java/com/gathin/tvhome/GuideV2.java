@@ -766,6 +766,7 @@ final class GuideV2 {
         TextView t = new TextView(c);
         t.setTextSize(TypedValue.COMPLEX_UNIT_PX, px(size));
         t.setTypeface(face);
+        t.getPaint().setSubpixelText(true);
         t.setTextColor(colour);
         t.setIncludeFontPadding(false);
         return t;

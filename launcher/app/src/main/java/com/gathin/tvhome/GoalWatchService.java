@@ -1246,10 +1246,12 @@ public class GoalWatchService extends Service {
             lp.width = Math.round(sw * 1728f / 1920f);
             lp.gravity = Gravity.TOP | Gravity.CENTER_HORIZONTAL;
             lp.x = 0;
-            lp.y = Math.round(21 * d);
+            // Centred on the score bar's line (23 dp down), so the alert sits exactly where the pills were.
+            lp.y = Math.round((23 - PILL_DP / 2f) * d);
         }
         try {
             getSystemService(WindowManager.class).addView(host, lp);
+            laneShown(onLane());
         } catch (Exception e) {
             host = null;
         }
@@ -1524,8 +1526,11 @@ public class GoalWatchService extends Service {
         }
         float d = getResources().getDisplayMetrics().density;
         LinearLayout page = pillBox(parts, d);
+        boolean lane = onLane();
+        if (lane) page.setGravity(Gravity.CENTER);
         host.addView(page, new android.widget.FrameLayout.LayoutParams(
-                android.widget.FrameLayout.LayoutParams.WRAP_CONTENT, h, Gravity.BOTTOM | Gravity.START));
+                lane ? android.widget.FrameLayout.LayoutParams.MATCH_PARENT : android.widget.FrameLayout.LayoutParams.WRAP_CONTENT, h,
+                lane ? Gravity.TOP : Gravity.BOTTOM | Gravity.START));
         shown = page;
         // A pop as it comes up, so the change catches the eye.
         if (calm()) {
@@ -1628,6 +1633,17 @@ public class GoalWatchService extends Service {
         return laneHome && homeInFront && !dreaming;
     }
 
+    /** v2's Home listens: true while an alert holds the score bar's place (the pills step aside), false after. */
+    static volatile java.util.function.Consumer<Boolean> laneListener;
+    private boolean hostOnLane;
+
+    private void laneShown(boolean on) {
+        if (hostOnLane == on) return;
+        hostOnLane = on;
+        java.util.function.Consumer<Boolean> l = laneListener;
+        if (l != null) main.post(() -> l.accept(on));
+    }
+
     /**
      * Over another app the alerts do not animate. Their window makes the TV compose the app's own layer and the alert
      * on the graphics chip instead of in hardware, for every frame that changes; on a slower set (the TCL) the steady
@@ -1692,6 +1708,7 @@ public class GoalWatchService extends Service {
             try { getSystemService(WindowManager.class).removeView(host); } catch (Exception ignored) { }
         }
         host = null;
+        laneShown(false);
         shown = null;
         showNext();
     }
@@ -1715,8 +1732,12 @@ public class GoalWatchService extends Service {
         }
         float d = getResources().getDisplayMetrics().density;
         LinearLayout page = pillBox(pages.get(index), d);
+        // On v2's Home the pages fill the lane and centre their words, like the pill they follow.
+        boolean lane = onLane();
+        if (lane) page.setGravity(Gravity.CENTER);
         host.addView(page, new android.widget.FrameLayout.LayoutParams(
-                android.widget.FrameLayout.LayoutParams.WRAP_CONTENT, h, Gravity.BOTTOM | Gravity.START));
+                lane ? android.widget.FrameLayout.LayoutParams.MATCH_PARENT : android.widget.FrameLayout.LayoutParams.WRAP_CONTENT, h,
+                lane ? Gravity.TOP : Gravity.BOTTOM | Gravity.START));
         shown = page;
         if (calm()) {
             host.removeView(old);
@@ -1846,6 +1867,7 @@ public class GoalWatchService extends Service {
                             // box where the TV processes the picture differently under it.
                             try { getSystemService(WindowManager.class).removeView(host); } catch (Exception ignored) { }
                             host = null;
+                            laneShown(false);
                             shown = null;
                             showNext();
                         }).start();
@@ -2041,7 +2063,7 @@ public class GoalWatchService extends Service {
         if (host == null) return;
         host.addView(panel, new android.widget.FrameLayout.LayoutParams(
                 android.widget.FrameLayout.LayoutParams.WRAP_CONTENT, android.widget.FrameLayout.LayoutParams.WRAP_CONTENT,
-                Gravity.BOTTOM | Gravity.START));
+                onLane() ? Gravity.TOP | Gravity.CENTER_HORIZONTAL : Gravity.BOTTOM | Gravity.START));
         shown = panel;
         play("f1");
         if (calm()) {
@@ -2060,6 +2082,7 @@ public class GoalWatchService extends Service {
                 host.removeView(panel);
                 try { getSystemService(WindowManager.class).removeView(host); } catch (Exception ignored) { }
                 host = null;
+                laneShown(false);
                 shown = null;
                 showNext();
             }).start();
@@ -2072,8 +2095,16 @@ public class GoalWatchService extends Service {
         t.setTextColor(color);
         t.setTextSize(TypedValue.COMPLEX_UNIT_SP, sp);
         t.setSingleLine(true);
+        if (onLane()) {
+            // On v2's Home the alert speaks in Home's own face (Inter; its bold is the real semibold).
+            if (homeFace == null) homeFace = getResources().getFont(R.font.inter_ui);
+            t.setTypeface(homeFace);
+            t.getPaint().setSubpixelText(true);
+        }
         return t;
     }
+
+    private android.graphics.Typeface homeFace;
 
     private static LinearLayout.LayoutParams sized(int size, int left) {
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(size, size);
@@ -2107,6 +2138,7 @@ public class GoalWatchService extends Service {
         if (host != null) {
             try { getSystemService(WindowManager.class).removeView(host); } catch (Exception ignored) { }
             host = null;
+            laneShown(false);
             shown = null;
         }
         super.onDestroy();

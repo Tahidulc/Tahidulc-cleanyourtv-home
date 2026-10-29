@@ -134,7 +134,7 @@ final class HomeV2 {
     private final Map<String, Long> rowsAt = new HashMap<>();
     private final Map<String, String> logos = new HashMap<>();
     float s;
-    Typeface regular, semi;
+    Typeface regular, semi, displayRegular, displaySemi;
     String tmdbKey;
     private List<String> dock;
     List<String[]> channels;
@@ -178,8 +178,11 @@ final class HomeV2 {
     void create() {
         int w = a.getResources().getDisplayMetrics().widthPixels, h = a.getResources().getDisplayMetrics().heightPixels;
         s = Math.max(w, h) / 1920f;
-        regular = a.getResources().getFont(R.font.hind_regular);
-        semi = a.getResources().getFont(R.font.hind_semibold);
+        // Inter for text, and its Display cut (tighter, finer) from 34 px up: the clean SF-style look.
+        regular = a.getResources().getFont(R.font.inter_regular);
+        semi = a.getResources().getFont(R.font.inter_semibold);
+        displayRegular = a.getResources().getFont(R.font.inter_display_regular);
+        displaySemi = a.getResources().getFont(R.font.inter_display_semibold);
         tmdbKey = Config.themeString(a, "tmdb_key", "").trim();
         dock = new ArrayList<>(Config.load(a).dockApps);
         channels = guideChannels(a);
@@ -224,6 +227,7 @@ final class HomeV2 {
                 @Override public void onScoresOpen(ScoresTicker.Game game) { }
                 @Override public void onScoresDown() { }
             });
+            scores.setTypeface(a.getResources().getFont(R.font.inter_ui));
             scores.showF1(Config.themeFlag(a, "f1_scores_bar", false));
             scores.showAlerts(!Config.themeFlag(a, "alerts_everywhere", false));
             float dp = a.getResources().getDisplayMetrics().density;
@@ -258,14 +262,14 @@ final class HomeV2 {
         TextClock time = new TextClock(a);
         time.setFormat24Hour("HH:mm");
         time.setFormat12Hour("HH:mm");
-        style(time, 92, a.getResources().getFont(R.font.hind_regular), Color.WHITE);
-        time.setLetterSpacing(-0.02f);
+        style(time, 82, a.getResources().getFont(R.font.inter_display_light), Color.WHITE);
+        time.setLetterSpacing(-0.03f);
         time.setIncludeFontPadding(false);
         hm.addView(time);
         TextClock secs = new TextClock(a);
         secs.setFormat24Hour(":ss");
         secs.setFormat12Hour(":ss");
-        style(secs, 46, regular, 0xB3FFFFFF);
+        style(secs, 40, a.getResources().getFont(R.font.inter_display_light), 0xB3FFFFFF);
         secs.setIncludeFontPadding(false);
         hm.addView(secs);
         // Same-width digits, in a box as wide as the widest time: the date and weather beside it never move.
@@ -274,9 +278,9 @@ final class HomeV2 {
         android.graphics.Paint pt = new android.graphics.Paint();
         pt.setTypeface(time.getTypeface());
         pt.setFontFeatureSettings("tnum");
-        pt.setTextSize(px(92));
+        pt.setTextSize(px(82));
         float w = pt.measureText("00:00");
-        pt.setTextSize(px(46));
+        pt.setTextSize(px(40));
         w += pt.measureText(":00");
         clock.addView(hm, new LinearLayout.LayoutParams(Math.round(w) + px(4), ViewGroup.LayoutParams.WRAP_CONTENT));
         View div = new View(a);
@@ -292,11 +296,12 @@ final class HomeV2 {
         date.setFormat24Hour("EEEE d MMMM");
         date.setFormat12Hour("EEEE d MMMM");
         style(date, 21, regular, 0xB8FFFFFF);
+        date.setSingleLine(true);   // before all-caps: single-line swaps the text transformation
         date.setAllCaps(true);
-        date.setLetterSpacing(0.17f);
+        date.setLetterSpacing(0.15f);
         col.addView(date);
         TextView weather = text(22, regular, Color.WHITE);
-        weather.setLetterSpacing(0.14f);
+        weather.setLetterSpacing(0.06f);
         weather.setGravity(Gravity.CENTER_VERTICAL);
         weather.setPadding(px(24), 0, px(26), 0);
         weather.setBackground(glass(25, false));
@@ -398,7 +403,7 @@ final class HomeV2 {
         hTitle = text(50, semi, Color.WHITE);
         hTitle.setMaxLines(2);
         hTitle.setEllipsize(TextUtils.TruncateAt.END);
-        hTitle.setLineSpacing(0, 0.95f);
+        hTitle.setLineSpacing(0, 1.05f);
         LinearLayout.LayoutParams hlp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         hlp.bottomMargin = px(10);
         htext.addView(hTitle, hlp);
@@ -494,6 +499,11 @@ final class HomeV2 {
 
     void resume() {
         GoalWatchService.laneHome = true;
+        // An alert on Home takes the score bar's place: the pills fade out under it and back once it has gone.
+        if (scores != null) {
+            scores.cover(false);
+            GoalWatchService.laneListener = scores::cover;
+        }
         if (Config.themeFlag(a, "alerts_everywhere", false)) GoalWatchService.startEverywhere(a);
         // Rows age: what is on now and the apps' own rows are read again when Home comes back after a while.
         Long at = rowsAt.get(mode);
@@ -506,6 +516,7 @@ final class HomeV2 {
 
     void stop() {
         GoalWatchService.laneHome = false;
+        GoalWatchService.laneListener = null;
         weatherLine.stop();
         if (scores != null) scores.stop();
         main.removeCallbacks(network);
@@ -1631,7 +1642,12 @@ final class HomeV2 {
 
     private void style(TextView t, float size, Typeface face, int colour) {
         t.setTextSize(TypedValue.COMPLEX_UNIT_PX, px(size));
+        if (size >= 34 && face == regular) face = displayRegular;
+        else if (size >= 34 && face == semi) face = displaySemi;
         t.setTypeface(face);
+        // Glyphs placed on sub-pixels, not snapped to whole ones: even spacing and sharper edges on a TV.
+        t.getPaint().setSubpixelText(true);
+        t.setLineSpacing(0, 1.22f);
         t.setTextColor(colour);
         t.setIncludeFontPadding(false);
     }

@@ -96,6 +96,14 @@ final class ScoresTicker {
     /** An F1 box beside the football (a theme's "f1_scores_bar"): the live session, else the last one, else the next. */
     private boolean f1;
 
+    private Typeface face;
+
+    /** Launcher v2's face for the pills: a family whose bold is its own semibold, so the bold spans stay crisp. */
+    void setTypeface(Typeface family) {
+        face = family;
+        measure.setTypeface(Typeface.create(family, Typeface.BOLD));
+    }
+
     void showF1(boolean on) {
         f1 = on;
     }
@@ -152,6 +160,12 @@ final class ScoresTicker {
         measure.setTextSize(TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, 12f,
                 context.getResources().getDisplayMetrics()));
         measure.setTypeface(Typeface.DEFAULT_BOLD);   // measure as if all bold: the widest case
+    }
+
+    /** Steps aside while an alert stands in the bar's place (launcher v2's Home), and comes back after. */
+    void cover(boolean on) {
+        box.animate().cancel();
+        box.animate().alpha(on ? 0f : 1f).setDuration(on ? 160 : 320).setStartDelay(on ? 0 : 120).start();
     }
 
     /** Puts the boxes at (x, centreY) in root coordinates, up to right; called once the greeting is laid out. */
@@ -714,6 +728,10 @@ final class ScoresTicker {
         t.setTextColor(LightUi.ink(0xE6FFFFFF));
         t.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f);
         t.setIncludeFontPadding(false);
+        if (face != null) {
+            t.setTypeface(face);
+            t.getPaint().setSubpixelText(true);
+        }
         t.setText(text);
         return t;
     }
