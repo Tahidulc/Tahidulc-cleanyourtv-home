@@ -853,7 +853,8 @@ final class PagesV2 {
             if (club == null) return "";
             return club.replace("Wolverhampton Wanderers", "Wolves").replace("Brighton & Hove Albion", "Brighton").replace("Tottenham Hotspur", "Spurs")
                     .replace("Manchester United", "Man United").replace("Manchester City", "Man City").replace("Nottingham Forest", "Nott'm Forest")
-                    .replace(" AFC", "").replace(" FC", "");
+                    .replace("Newcastle United", "Newcastle").replace("West Ham United", "West Ham").replace("Sheffield United", "Sheffield Utd")
+                    .replace("Wolverhampton", "Wolves").replace(" AFC", "").replace(" FC", "");
         }
 
         private ImageView crest() {
