@@ -80,6 +80,27 @@ final class PagesV2 {
         double vote;
         int id;
         boolean tv;
+        /** Its official trailer on YouTube, once looked up ("" when TMDB has none). */
+        String youtube;
+    }
+
+    /** The title's trailer on YouTube from TMDB: an official "Trailer" first, then any trailer or teaser. Off the main thread. */
+    static String trailer(String key, Title t) {
+        try {
+            JSONArray list = new JSONObject(HomeV2.get("https://api.themoviedb.org/3/" + (t.tv ? "tv/" : "movie/") + t.id
+                    + "/videos?language=en-US&api_key=" + key)).optJSONArray("results");
+            String best = "", any = "";
+            for (int i = 0; list != null && i < list.length(); i++) {
+                JSONObject v = list.getJSONObject(i);
+                if (!"YouTube".equals(v.optString("site"))) continue;
+                String type = v.optString("type");
+                if ("Trailer".equals(type) && v.optBoolean("official") && best.isEmpty()) best = v.optString("key");
+                if (("Trailer".equals(type) || "Teaser".equals(type)) && any.isEmpty()) any = v.optString("key");
+            }
+            return best.isEmpty() ? any : best;
+        } catch (Exception e) {
+            return "";
+        }
     }
 
     private static final Map<Integer, String> GENRES = new HashMap<>();
@@ -161,6 +182,97 @@ final class PagesV2 {
         private boolean onTabs;
         private int generation;
         private final Runnable heroLater = this::heroNow;
+
+        // ---- trailers, as on v1: once the poster has widened, its trailer plays across it ----------------------
+
+        /** A moment after the poster widens, so moving along the row does not start one trailer after another. */
+        private static final long TRAILER_DELAY_MS = 1_200L;
+        private android.webkit.WebView web;
+        private FrameLayout trailerTile;
+        private Runnable trailerSoon;
+
+        private void trailerFor(FrameLayout tile, Title t) {
+            if (tile == trailerTile) return;
+            stopTrailer();
+            trailerTile = tile;
+            if (tile == null || t == null || h.tmdbKey.isEmpty()) return;
+            trailerSoon = () -> {
+                if (trailerTile != tile) return;
+                if (t.youtube != null) { if (!t.youtube.isEmpty()) playYouTube(tile, t.youtube); return; }
+                h.io.execute(() -> {
+                    String id = trailer(h.tmdbKey, t);
+                    h.main.post(() -> {
+                        t.youtube = id;
+                        if (trailerTile == tile && !id.isEmpty()) playYouTube(tile, id);
+                    });
+                });
+            };
+            h.main.postDelayed(trailerSoon, TRAILER_DELAY_MS);
+        }
+
+        /**
+         * The trailer in YouTube's embedded player (its IFrame API) over the widened poster's picture, under its name:
+         * it fades in once it plays. Drawn a little larger than the tile, so a cinema trailer's black bars and the
+         * player's own title fall outside it; no captions.
+         */
+        @android.annotation.SuppressLint({"SetJavaScriptEnabled", "AddJavascriptInterface"})
+        private void playYouTube(FrameLayout tile, String id) {
+            if (web == null) {
+                try {
+                    web = new android.webkit.WebView(h.a);
+                } catch (RuntimeException e) {
+                    return;   // no WebView on this TV: no trailer
+                }
+                android.webkit.WebSettings ws = web.getSettings();
+                ws.setJavaScriptEnabled(true);
+                ws.setMediaPlaybackRequiresUserGesture(false);
+                ws.setDomStorageEnabled(true);
+                web.setBackgroundColor(Color.BLACK);
+                web.setFocusable(false);
+                web.setFocusableInTouchMode(false);
+                web.setVerticalScrollBarEnabled(false);
+                web.setHorizontalScrollBarEnabled(false);
+                web.addJavascriptInterface(new Object() {
+                    @android.webkit.JavascriptInterface public void playing() {
+                        h.main.post(() -> { if (web != null && web.getParent() != null) web.animate().alpha(1f).setDuration(500).start(); });
+                    }
+                    @android.webkit.JavascriptInterface public void ended() {
+                        h.main.post(() -> stopTrailer());
+                    }
+                }, "Home");
+            }
+            if (web.getParent() instanceof ViewGroup) ((ViewGroup) web.getParent()).removeView(web);
+            web.setAlpha(0f);
+            tile.addView(web, 2, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+            String pkg = h.a.getPackageName();
+            String html = "<!doctype html><html><head><meta name=viewport content='width=device-width,initial-scale=1'>"
+                    + "<style>html,body{margin:0;height:100%;background:#000;overflow:hidden}#p{position:absolute;inset:0;width:100%;height:100%;transform:scale(1.3)}</style>"
+                    + "</head><body><div id=p></div><script src='https://www.youtube.com/iframe_api'></script><script>"
+                    + "function onYouTubeIframeAPIReady(){new YT.Player('p',{width:'100%',height:'100%',videoId:'" + id + "',"
+                    + "playerVars:{autoplay:1,controls:0,rel:0,playsinline:1,modestbranding:1,iv_load_policy:3,disablekb:1,fs:0,cc_load_policy:0,"
+                    + "origin:'https://" + pkg + "'},"
+                    + "events:{onReady:function(e){try{e.target.unloadModule('captions');}catch(x){}e.target.setVolume(80);e.target.playVideo();},"
+                    + "onStateChange:function(e){if(e.data==1)Home.playing();if(e.data==0)Home.ended();}}});}"
+                    + "</script></body></html>";
+            web.loadDataWithBaseURL("https://" + pkg, html, "text/html", "utf-8", null);
+        }
+
+        private void stopTrailer() {
+            if (trailerSoon != null) h.main.removeCallbacks(trailerSoon);
+            trailerSoon = null;
+            if (web != null && web.getParent() instanceof ViewGroup) {
+                // Silenced and taken off the tile; kept for the next trailer, as a player is slow to make.
+                web.loadUrl("about:blank");
+                ((ViewGroup) web.getParent()).removeView(web);
+            }
+        }
+
+        @Override void close() {
+            trailerTile = null;
+            stopTrailer();
+            if (web != null) { web.destroy(); web = null; }
+            super.close();
+        }
 
         /**
          * tabs null for a page without tabs; source gives a tab's rows (off the main thread); rowY the top of each row's
@@ -373,6 +485,9 @@ final class PagesV2 {
                 int first = !onTabs && ri == row ? Math.max(0, idx - 4) : 0;
                 r.strip.animate().translationX(-first * px(NARROW + GAP)).setDuration(300).setInterpolator(HomeV2.SKY).start();
             }
+            Row focused = onTabs || row >= rows.size() ? null : rows.get(row);
+            boolean has = focused != null && idx < focused.strip.getChildCount() && idx < focused.items.size();
+            trailerFor(has ? (FrameLayout) focused.strip.getChildAt(idx) : null, has ? focused.items.get(idx) : null);
             if (tabBar != null) moveLens();
         }
 
