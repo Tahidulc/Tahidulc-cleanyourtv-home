@@ -406,6 +406,35 @@ final class ScoresTicker {
         return null;
     }
 
+    /**
+     * For a test: each club's starting eleven from its latest finished game in the last few weeks, so a sample
+     * kick-off reminder for (home, away) shows those two clubs' own players; null when either is not found.
+     */
+    static Side[] latestLineups(String slug, String tag, String home, String away, int days) {
+        ZoneId zone = ZoneId.systemDefault();
+        Side h = null, a = null;
+        for (int back = 1; back <= days && (h == null || a == null); back++) {
+            String date = LocalDate.now(zone).minusDays(back).format(DateTimeFormatter.BASIC_ISO_DATE);
+            try {
+                JSONArray events = new JSONObject(get(String.format(FEED, slug, date))).optJSONArray("events");
+                for (int i = 0; events != null && i < events.length(); i++) {
+                    Game g = parse(events.getJSONObject(i), tag, zone);
+                    if (g == null || g.state != 2) continue;
+                    g.slug = slug;
+                    boolean hasHome = h == null && (home.equals(g.home) || home.equals(g.away));
+                    boolean hasAway = a == null && (away.equals(g.home) || away.equals(g.away));
+                    if (!hasHome && !hasAway) continue;
+                    Side[] both = lineups(g);
+                    if (both == null) continue;
+                    if (hasHome) h = home.equals(g.home) ? both[0] : both[1];
+                    if (hasAway) a = away.equals(g.home) ? both[0] : both[1];
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        return h == null || a == null ? null : new Side[]{h, a};
+    }
+
     /** One side's starting eleven: {surname, headshot url, shirt number} per player, in ESPN's order. */
     static final class Side {
         String abbr, crest, formation, name;

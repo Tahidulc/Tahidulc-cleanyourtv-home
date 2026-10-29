@@ -66,6 +66,8 @@ public class GoalWatchService extends Service {
     /** The alerts' size: a pill PILL_DP tall, TEXT_SP text, CREST_DP crests and logos fetched at LOGO_DP. */
     private static final int PILL_DP = 32, CREST_DP = 18, LOGO_DP = 48;
     private static final float TEXT_SP = 12.5f, SMALL_SP = 10f;
+    /** Larger words and crests for the alert being built: a goal on v2's Home (1 otherwise). */
+    private float boost = 1f;
     private static final long WEATHER_MS = 15 * 60_000L;
 
     /**
@@ -416,6 +418,7 @@ public class GoalWatchService extends Service {
             // Live, on Sky Sports Premier League, so its "Watch on" step shows too.
             g.state = 0;
             g.slug = "eng.1";
+            g.leagueLogo = "https://a.espncdn.com/i/leaguelogos/soccer/500-dark/23.png";
             g.broadcasts.add("Sky Sports Premier League");
             enqueue(g, new String[]{"test", "Mohamed Salah", "67'", "home", ""}, false);
         }
@@ -844,7 +847,7 @@ public class GoalWatchService extends Service {
     // ---- football extras, tennis and UFC -----------------------------------------------------------
 
     /** "⏰ 15 MIN · crest v crest · 15:00 · league". */
-    private static List<Object> kickoffLine(ScoresTicker.Game g) {
+    private List<Object> kickoffLine(ScoresTicker.Game g) {
         List<Object> parts = new ArrayList<>();
         long mins = Math.max(1, Math.round((g.kickoff - System.currentTimeMillis()) / 60_000.0));
         parts.add(bold("⏰  KICK-OFF IN " + mins + " MIN"));
@@ -877,9 +880,9 @@ public class GoalWatchService extends Service {
         return s;
     }
 
-    /** ESPN's league logos come in a white version for dark backgrounds; the alerts' glass is light. */
-    private static String lightLogo(String url) {
-        return url == null ? null : url.replace("/500-dark/", "/500/");
+    /** ESPN's league logos come in a white version for dark backgrounds; the alerts' glass is light (not on v2's Home). */
+    private String lightLogo(String url) {
+        return url == null || onLane() ? url : url.replace("/500-dark/", "/500/");
     }
 
     /** A match or fight that ended (any state to post) or a final or main event that began (pre to in). */
@@ -1112,6 +1115,13 @@ public class GoalWatchService extends Service {
 
     /** adb test only: the elevens of the last Premier League game, so the page can be seen on any day. */
     private static ScoresTicker.Side[] testSides(ScoresTicker.Game g) {
+        // The two clubs' own latest elevens, under their crests; any recent game's when they cannot be found.
+        ScoresTicker.Side[] own = ScoresTicker.latestLineups("eng.1", "PL", g.home, g.away, 21);
+        if (own != null) {
+            own[0].abbr = g.home; own[0].crest = g.homeLogo;
+            own[1].abbr = g.away; own[1].crest = g.awayLogo;
+            return own;
+        }
         ScoresTicker.Game last = ScoresTicker.lastFinished("eng.1", "PL", 7);
         return last == null ? null : ScoresTicker.lineups(last);
     }
@@ -1354,6 +1364,7 @@ public class GoalWatchService extends Service {
     private void showNext() {
         if (shown != null || queue.isEmpty()) return;
         Object[] next = queue.poll();
+        boost = 1f;
         if (next.length == 1 && next[0] instanceof F1Results.Race) {
             showRace((F1Results.Race) next[0]);
             return;
@@ -1405,6 +1416,8 @@ public class GoalWatchService extends Service {
             Object score;
             String side = next.length > 6 ? (String) next[6] : null;
             int hs = parse(g.homeScore), as = parse(g.awayScore);
+            // A goal on v2's Home is the bar's news: bigger words and crests.
+            if (side != null && onLane()) boost = 1.3f;
             if (side != null && hs >= 0 && as >= 0) {
                 score = new Score(hs, as, side);
             } else {
@@ -1910,7 +1923,7 @@ public class GoalWatchService extends Service {
         box.setBackground(glass(h / 2f));
         int pad = Math.round(14 * d);
         box.setPadding(pad, 0, pad, 0);
-        int crestPx = Math.round(CREST_DP * d);
+        int crestPx = Math.round(CREST_DP * boost * d);
         int gap = 0;
         for (Object part : parts) {
             if (part instanceof Integer) { gap = Math.round((Integer) part * d); continue; }
@@ -1947,9 +1960,9 @@ public class GoalWatchService extends Service {
             } else if (part instanceof Score) {
                 box.addView(scoreView((Score) part, d), gap(gap));
             } else if (part instanceof Small) {
-                box.addView(text(((Small) part).text, SMALL_SP, ink(0xB31A1D24)), gap(gap));
+                box.addView(text(((Small) part).text, SMALL_SP * boost, ink(0xB31A1D24)), gap(gap));
             } else {
-                TextView t = text((CharSequence) part, TEXT_SP, ink(0xFF1A1D24));
+                TextView t = text((CharSequence) part, TEXT_SP * boost, ink(0xFF1A1D24));
                 t.setMaxWidth(Math.round(700 * d));   // a long headline ends in an ellipsis
                 t.setEllipsize(TextUtils.TruncateAt.END);
                 box.addView(t, gap(gap));
@@ -1980,12 +1993,12 @@ public class GoalWatchService extends Service {
         for (int i = 0; i < 2; i++) {
             int now = i == 0 ? sc.home : sc.away;
             boolean scorer = (i == 0) == home;
-            if (i == 1) row.addView(text(bold("–"), TEXT_SP, ink(0xFF1A1D24)));
-            if (!scorer) { row.addView(text(bold(String.valueOf(now)), TEXT_SP, ink(0xFF1A1D24))); continue; }
+            if (i == 1) row.addView(text(bold("–"), TEXT_SP * boost, ink(0xFF1A1D24)));
+            if (!scorer) { row.addView(text(bold(String.valueOf(now)), TEXT_SP * boost, ink(0xFF1A1D24))); continue; }
             android.widget.FrameLayout window = new android.widget.FrameLayout(this);
             window.setClipChildren(true);
-            TextView was = text(bold(String.valueOf(Math.max(0, now - 1))), TEXT_SP, ink(0xFF1A1D24));
-            TextView is = text(bold(String.valueOf(now)), TEXT_SP, 0xFF16A34A);
+            TextView was = text(bold(String.valueOf(Math.max(0, now - 1))), TEXT_SP * boost, ink(0xFF1A1D24));
+            TextView is = text(bold(String.valueOf(now)), TEXT_SP * boost, 0xFF16A34A);
             was.setGravity(Gravity.CENTER);
             is.setGravity(Gravity.CENTER);
             window.addView(was, new android.widget.FrameLayout.LayoutParams(-2, -2, Gravity.CENTER));
