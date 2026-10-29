@@ -68,6 +68,14 @@ public class GoalWatchService extends Service {
     private static final float TEXT_SP = 12.5f, SMALL_SP = 10f;
     /** Larger words and crests for the alert being built: a goal on v2's Home (1 otherwise). */
     private float boost = 1f;
+    /** The colour of the alert being built, for its glass on v2's Home (0: plain, as football's). */
+    private int laneTint;
+
+    /** A line's colour on Home's glass, put first among its parts. */
+    private static final class Tint {
+        final int colour;
+        Tint(int colour) { this.colour = colour; }
+    }
     private static final long WEATHER_MS = 15 * 60_000L;
 
     /**
@@ -492,6 +500,19 @@ public class GoalWatchService extends Service {
 
     private void poll() {
         if (!everywhere && System.currentTimeMillis() - startedAt > MAX_RUN_MS) { stopSelf(); return; }
+        // Events a person asked to be reminded of (v2's Sport page): "⏰ STARTING IN 5 MIN · title · channel".
+        for (JSONObject r : Reminders.due(this, System.currentTimeMillis())) {
+            long mins = Math.max(0, Math.round((r.optLong("s") - System.currentTimeMillis()) / 60_000.0));
+            List<Object> parts = new ArrayList<>();
+            parts.add(bold(mins > 0 ? "⏰  STARTING IN " + mins + " MIN" : "⏰  STARTING NOW"));
+            parts.add(10);
+            parts.add(r.optString("t"));
+            if (!r.optString("c").isEmpty()) {
+                parts.add(12);
+                parts.add(new Chip(r.optString("l").isEmpty() ? null : r.optString("l"), r.optString("c")));
+            }
+            enqueueParts(parts, "reminder");
+        }
         android.os.PowerManager power = getSystemService(android.os.PowerManager.class);
         if (power != null && !power.isInteractive()) {
             // Screen off: read nothing, look again in a minute (the screensaver counts as on).
@@ -770,6 +791,7 @@ public class GoalWatchService extends Service {
         float d = getResources().getDisplayMetrics().density;
         List<Object> parts = new ArrayList<>();
         boolean sport = item[0].contains("SPORT") || "BOXING".equals(item[0]);
+        parts.add(new Tint(sport ? 0xFFFFC21A : 0xFFD42020));
         parts.add(Badges.bbc(d, sport ? "SPORT" : item[0].replace("BBC ", ""), sport ? 0xFF8A6100 : 0xFFB80000));
         if ("BOXING".equals(item[0])) { parts.add(8); parts.add(bold("🥊  BOXING")); }
         parts.add(8);
@@ -1361,7 +1383,7 @@ public class GoalWatchService extends Service {
      */
     private android.graphics.drawable.Drawable glass(float radius) {
         // On v2's Home: the score pills' own clear glass, as the alert stands in their place.
-        if (onLane()) return getDrawable(ScoresTicker.glassRes()).mutate();
+        if (onLane()) return ScoresTicker.laneGlass(this, laneTint);
         GradientDrawable base = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
                 frost ? new int[]{0xFFFBFCFE, 0xFFE6EAEF, 0xFFD3D9E1} : new int[]{0xFFE9ECF1, 0xFFB9BFC8});
         base.setCornerRadius(radius);
@@ -1410,6 +1432,7 @@ public class GoalWatchService extends Service {
         if (shown != null || queue.isEmpty()) return;
         Object[] next = queue.poll();
         boost = 1f;
+        laneTint = 0;
         if (next.length == 1 && next[0] instanceof F1Results.Race) {
             showRace((F1Results.Race) next[0]);
             return;
@@ -1429,6 +1452,7 @@ public class GoalWatchService extends Service {
             parts = (List<Object>) next[0];
             sound = (String) next[1];
             wide = true;
+            if ("f1".equals(sound)) laneTint = 0xFFE10600;
             if (next.length == 3) watch = (Object[]) next[2];
             if (next.length == 5) {
                 sides = (ScoresTicker.Side[]) next[2];
@@ -1965,12 +1989,14 @@ public class GoalWatchService extends Service {
         box.setOrientation(LinearLayout.HORIZONTAL);
         box.setGravity(Gravity.CENTER_VERTICAL);
         int h = Math.round(PILL_DP * d);
+        for (Object part : parts) if (part instanceof Tint) laneTint = ((Tint) part).colour;
         box.setBackground(glass(h / 2f));
         int pad = Math.round(14 * d);
         box.setPadding(pad, 0, pad, 0);
         int crestPx = Math.round(CREST_DP * boost * d);
         int gap = 0;
         for (Object part : parts) {
+            if (part instanceof Tint) continue;
             if (part instanceof Integer) { gap = Math.round((Integer) part * d); continue; }
             if (part == null || part instanceof android.graphics.Bitmap) {
                 box.addView(crest((android.graphics.Bitmap) part, d), sized(crestPx, gap));

@@ -118,9 +118,12 @@ final class HomeV2 {
         boolean tv;
         /** Sport: "football" or "other", and the competition's logo for the corner chip. */
         String group, compLogo;
+        /** The playlist's stream for a channel's tile (it plays in the tile), and when an event starts (its reminder). */
+        String stream, channel;
+        long start;
     }
 
-    private static final int Z_TOP = 0, Z_RAIL = 1, Z_ROW = 2, Z_CATS = 3;
+    private static final int Z_TOP = 0, Z_RAIL = 1, Z_ROW = 2, Z_CATS = 3, Z_SCORES = 4;
 
     final MainActivity a;
     final Handler main = new Handler(Looper.getMainLooper());
@@ -184,6 +187,8 @@ final class HomeV2 {
         displayRegular = a.getResources().getFont(R.font.inter_display_regular);
         displaySemi = a.getResources().getFont(R.font.inter_display_semibold);
         tmdbKey = Config.themeString(a, "tmdb_key", "").trim();
+        players = new TilePlayer(a);
+        if (!tmdbKey.isEmpty()) players.warm();
         dock = new ArrayList<>(Config.load(a).dockApps);
         channels = guideChannels(a);
         root = new FrameLayout(a);
@@ -224,10 +229,16 @@ final class HomeV2 {
         String[] leagues = a.getResources().getStringArray(R.array.score_leagues);
         if (leagues.length > 0) {
             scores = new ScoresTicker(a, root, a.getResources().getDisplayMetrics().density, leagues, new ScoresTicker.Host() {
-                @Override public void onScoresOpen(ScoresTicker.Game game) { }
-                @Override public void onScoresDown() { }
+                @Override public void onScoresOpen(ScoresTicker.Game game) { watchGame(game); }
+                @Override public void onScoresDown() {
+                    View f = a.getCurrentFocus();
+                    if (f != null) f.clearFocus();
+                    zone = Z_TOP;
+                    paint();
+                }
             });
             scores.setTypeface(a.getResources().getFont(R.font.inter_ui));
+            scores.equalWidths(true);
             scores.showF1(Config.themeFlag(a, "f1_scores_bar", false));
             scores.showAlerts(!Config.themeFlag(a, "alerts_everywhere", false));
             float dp = a.getResources().getDisplayMetrics().density;
@@ -515,6 +526,8 @@ final class HomeV2 {
     }
 
     void stop() {
+        if (players != null) players.stop();
+        playingTile = null;
         GoalWatchService.laneHome = false;
         GoalWatchService.laneListener = null;
         weatherLine.stop();
@@ -563,11 +576,20 @@ final class HomeV2 {
             return true;
         }
         int code = e.getKeyCode();
+        // On the score pills their own keys apply (as on v1): Left and Right along them, OK opens the game, Down back.
+        if (zone == Z_SCORES && code != KeyEvent.KEYCODE_BACK) return false;
         boolean ok = code == KeyEvent.KEYCODE_DPAD_CENTER || code == KeyEvent.KEYCODE_ENTER || code == KeyEvent.KEYCODE_NUMPAD_ENTER;
         boolean nav = code == KeyEvent.KEYCODE_DPAD_UP || code == KeyEvent.KEYCODE_DPAD_DOWN || code == KeyEvent.KEYCODE_DPAD_LEFT
                 || code == KeyEvent.KEYCODE_DPAD_RIGHT;
         if (code == KeyEvent.KEYCODE_BACK) {
-            if (e.getAction() == KeyEvent.ACTION_UP) back();
+            if (e.getAction() == KeyEvent.ACTION_UP) {
+                if (zone == Z_SCORES) {
+                    View f = a.getCurrentFocus();
+                    if (f != null) f.clearFocus();
+                    zone = Z_TOP;
+                    paint();
+                } else back();
+            }
             return true;
         }
         if (!ok && !nav) return false;
@@ -589,7 +611,8 @@ final class HomeV2 {
         int n = shown.size();
         switch (zone) {
             case Z_TOP:
-                if (code == KeyEvent.KEYCODE_DPAD_LEFT && topIdx > 0) topIdx--;
+                if (code == KeyEvent.KEYCODE_DPAD_UP && scores != null && scores.focus()) zone = Z_SCORES;
+                else if (code == KeyEvent.KEYCODE_DPAD_LEFT && topIdx > 0) topIdx--;
                 else if (code == KeyEvent.KEYCODE_DPAD_RIGHT && topIdx < topViews.size() - 1) topIdx++;
                 else if (code == KeyEvent.KEYCODE_DPAD_DOWN) zone = n > 0 ? Z_ROW : Z_RAIL;
                 break;
@@ -671,6 +694,8 @@ final class HomeV2 {
 
     /** Opens the page behind a box: 1 Discover, 2 Movies, 3 TV shows, 4 Sport. Home's own row makes way for it. */
     private void openPage(int which) {
+        players.stop();
+        playingTile = null;
         page = which == 1 ? PagesV2.discover(this) : which == 2 ? PagesV2.movies(this) : which == 3 ? PagesV2.shows(this) : new PagesV2.SportPage(this);
         boolean sport = which == 4, full = which == 2 || which == 3;
         List<View> away = new ArrayList<>(Arrays.asList(label, viewport));
@@ -757,6 +782,7 @@ final class HomeV2 {
         }
         int first = zone == Z_ROW ? Math.max(0, rowIdx - 3) : 0;
         window(row, first);
+        playSoon();
         row.animate().translationX(-first * px(408)).setDuration(240).setInterpolator(SKY).start();
         for (int i = 0; i < catViews.size(); i++) {
             FrameLayout box = (FrameLayout) catViews.get(i);
@@ -787,6 +813,47 @@ final class HomeV2 {
                 for (Drawable d : ((TextView) v).getCompoundDrawables()) if (d != null) d.setTint(ink);
             }
         }
+    }
+
+    // ---- the focused tile plays: a film's or series' trailer, or the channel live, with sound ----------------------
+
+    TilePlayer players;
+    private final Map<Integer, String> trailers = new HashMap<>();
+    private View playingTile;
+    private final Runnable playNow = this::playNow;
+
+    private void playSoon() {
+        View t = zone == Z_ROW && page == null && rowIdx < row.getChildCount() ? row.getChildAt(rowIdx) : null;
+        if (t == playingTile) return;
+        playingTile = t;
+        main.removeCallbacks(playNow);
+        players.stop();
+        if (t != null) main.postDelayed(playNow, 500);
+    }
+
+    private void playNow() {
+        View v = playingTile;
+        if (v == null || rowIdx >= shown.size() || !(v instanceof FrameLayout)) return;
+        Tile t = shown.get(rowIdx);
+        FrameLayout tile = (FrameLayout) v;
+        if (t.stream != null && !t.stream.isEmpty() && !Config.themeString(a, "iptv_server", "").isEmpty()) {
+            players.live(tile, 1, Config.themeString(a, "iptv_server", "") + "/live/" + Config.themeString(a, "iptv_user", "") + "/"
+                    + Config.themeString(a, "iptv_pass", "") + "/" + t.stream);
+            return;
+        }
+        if (t.tmdbId == 0 || tmdbKey.isEmpty()) return;
+        String have = trailers.get(t.tmdbId);
+        if (have != null) { if (!have.isEmpty()) players.trailer(tile, 1, have); return; }
+        PagesV2.Title q = new PagesV2.Title();
+        q.id = t.tmdbId;
+        q.tv = t.tv;
+        io.execute(() -> {
+            String id = PagesV2.trailer(tmdbKey, q);
+            main.post(() -> {
+                trailers.put(t.tmdbId, id);
+                if (playingTile == tile && !id.isEmpty()) players.trailer(tile, 1, id);
+            });
+        });
     }
 
     /**
@@ -1231,6 +1298,8 @@ final class HomeV2 {
             t.progress = Math.max(0f, Math.min(1f, (now - n.start) / (float) Math.max(1, n.end - n.start)));
             String channel = n.channel;
             String logoUrl = n.logo;
+            t.stream = streamOf(channel);
+            t.channel = channel;
             t.ok = () -> tune(channel, logoUrl);
             out.add(t);
         }
@@ -1294,6 +1363,9 @@ final class HomeV2 {
             t.heroMeta = (on ? "On now" : when.format(Instant.ofEpochMilli(st))) + " · Live on " + name.get(sid);
             t.heroText = (String) e[3];
             String ch = name.get(sid);
+            t.stream = on ? streamOf(ch) : null;
+            t.channel = ch;
+            t.start = st;
             t.ok = () -> tune(ch, logo);
             out.add(t);
         }
@@ -1370,10 +1442,41 @@ final class HomeV2 {
     // ---- actions ---------------------------------------------------------------------------------------------------
 
     void tune(String channel, String logoUrl) {
+        tune(java.util.Collections.singletonList(channel), logoUrl);
+    }
+
+    /**
+     * TiviMate on the first of these channels it has, as v1 does (its own search; a 4K version next to the channel is
+     * preferred). The channel's logo is fetched first when it is not to hand, so the cover always shows the logo.
+     */
+    void tune(List<String> channels, String logoUrl) {
         String pkg = "ar.tvplayer.tv";
-        GoalWatchService.onAppOpened(a, pkg);
-        Bitmap logo = logoUrl == null ? null : cache.get(logoUrl + "@" + px(64));
-        AppSearchService.tune(a, pkg, java.util.Collections.singletonList(channel), logo);
+        players.stop();
+        Bitmap have = logoUrl == null ? null : cache.get(logoUrl + "@" + px(64));
+        if (have != null || logoUrl == null) {
+            GoalWatchService.onAppOpened(a, pkg);
+            AppSearchService.tune(a, pkg, channels, have);
+            return;
+        }
+        io.execute(() -> {
+            Bitmap logo = ScoresTicker.cachedLogo(a, logoUrl, px(128));
+            main.post(() -> {
+                GoalWatchService.onAppOpened(a, pkg);
+                AppSearchService.tune(a, pkg, channels, logo);
+            });
+        });
+    }
+
+    /** OK on a score pill: TiviMate on the channel showing that game, found as v1 finds it. */
+    private void watchGame(ScoresTicker.Game g) {
+        String[] football = a.getResources().getStringArray(R.array.football_tv_channels);
+        io.execute(() -> {
+            TvGuide.Watch w = TvGuide.watch(football, g);
+            main.post(() -> {
+                if (w == null || w.names == null || w.names.isEmpty()) { openApp("ar.tvplayer.tv"); return; }
+                tune(w.names, w.logo);
+            });
+        });
     }
 
     void openApp(String pkg) {
@@ -1439,6 +1542,12 @@ final class HomeV2 {
     // ---- the playlist's channels -----------------------------------------------------------------------------------
 
     /** The theme's "guide_channels" ("Sky service id|TiviMate name|group"), in the playlist's order. */
+    private String streamOf(String channelName) {
+        if (channelName == null) return null;
+        for (String[] c : channels) if (c[1].equalsIgnoreCase(channelName)) return c[4];
+        return null;
+    }
+
     static List<String[]> guideChannels(Context c) {
         List<String[]> out = new ArrayList<>();
         for (String line : Config.themeStrings(c, "guide_channels", new ArrayList<>())) {

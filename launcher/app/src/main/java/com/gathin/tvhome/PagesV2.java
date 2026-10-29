@@ -182,95 +182,54 @@ final class PagesV2 {
         private boolean onTabs;
         private int generation;
         private final Runnable heroLater = this::heroNow;
+        /** The rows, together, when there are more than fit: moved up as the focus goes down (null for two rows). */
+        private FrameLayout column;
+
+        private void addRow(View v, int x, int y, int w, int hgt) {
+            if (column == null) { add(v, x, y, w, hgt); return; }
+            FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(px(w), px(hgt));
+            lp.leftMargin = px(x);
+            lp.topMargin = px(y);
+            column.addView(v, lp);
+        }
 
         // ---- trailers, as on v1: once the poster has widened, its trailer plays across it ----------------------
 
-        /** A moment after the poster widens, so moving along the row does not start one trailer after another. */
-        private static final long TRAILER_DELAY_MS = 1_200L;
-        private android.webkit.WebView web;
+        /** Just long enough for the poster to widen, so a trailer starts as soon as you land on it. */
+        private static final long TRAILER_DELAY_MS = 300L;
+        private final TilePlayer player;
         private FrameLayout trailerTile;
         private Runnable trailerSoon;
 
-        private void trailerFor(FrameLayout tile, Title t) {
+        private void trailerFor(FrameLayout tile, Title t, List<Title> row, int at) {
             if (tile == trailerTile) return;
-            stopTrailer();
+            if (trailerSoon != null) h.main.removeCallbacks(trailerSoon);
+            player.stop();
             trailerTile = tile;
             if (tile == null || t == null || h.tmdbKey.isEmpty()) return;
+            // The next few along are looked up now, so their trailers are ready when they are reached.
+            for (int n = at + 1; n < Math.min(row.size(), at + 4); n++) {
+                Title next = row.get(n);
+                if (next.youtube == null) h.io.execute(() -> { if (next.youtube == null) next.youtube = trailer(h.tmdbKey, next); });
+            }
             trailerSoon = () -> {
                 if (trailerTile != tile) return;
-                if (t.youtube != null) { if (!t.youtube.isEmpty()) playYouTube(tile, t.youtube); return; }
+                if (t.youtube != null) { if (!t.youtube.isEmpty()) player.trailer(tile, 2, t.youtube); return; }
                 h.io.execute(() -> {
                     String id = trailer(h.tmdbKey, t);
                     h.main.post(() -> {
                         t.youtube = id;
-                        if (trailerTile == tile && !id.isEmpty()) playYouTube(tile, id);
+                        if (trailerTile == tile && !id.isEmpty()) player.trailer(tile, 2, id);
                     });
                 });
             };
             h.main.postDelayed(trailerSoon, TRAILER_DELAY_MS);
         }
 
-        /**
-         * The trailer in YouTube's embedded player (its IFrame API) over the widened poster's picture, under its name:
-         * it fades in once it plays. Drawn a little larger than the tile, so a cinema trailer's black bars and the
-         * player's own title fall outside it; no captions.
-         */
-        @android.annotation.SuppressLint({"SetJavaScriptEnabled", "AddJavascriptInterface"})
-        private void playYouTube(FrameLayout tile, String id) {
-            if (web == null) {
-                try {
-                    web = new android.webkit.WebView(h.a);
-                } catch (RuntimeException e) {
-                    return;   // no WebView on this TV: no trailer
-                }
-                android.webkit.WebSettings ws = web.getSettings();
-                ws.setJavaScriptEnabled(true);
-                ws.setMediaPlaybackRequiresUserGesture(false);
-                ws.setDomStorageEnabled(true);
-                web.setBackgroundColor(Color.BLACK);
-                web.setFocusable(false);
-                web.setFocusableInTouchMode(false);
-                web.setVerticalScrollBarEnabled(false);
-                web.setHorizontalScrollBarEnabled(false);
-                web.addJavascriptInterface(new Object() {
-                    @android.webkit.JavascriptInterface public void playing() {
-                        h.main.post(() -> { if (web != null && web.getParent() != null) web.animate().alpha(1f).setDuration(500).start(); });
-                    }
-                    @android.webkit.JavascriptInterface public void ended() {
-                        h.main.post(() -> stopTrailer());
-                    }
-                }, "Home");
-            }
-            if (web.getParent() instanceof ViewGroup) ((ViewGroup) web.getParent()).removeView(web);
-            web.setAlpha(0f);
-            tile.addView(web, 2, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-            String pkg = h.a.getPackageName();
-            String html = "<!doctype html><html><head><meta name=viewport content='width=device-width,initial-scale=1'>"
-                    + "<style>html,body{margin:0;height:100%;background:#000;overflow:hidden}#p{position:absolute;inset:0;width:100%;height:100%;transform:scale(1.3)}</style>"
-                    + "</head><body><div id=p></div><script src='https://www.youtube.com/iframe_api'></script><script>"
-                    + "function onYouTubeIframeAPIReady(){new YT.Player('p',{width:'100%',height:'100%',videoId:'" + id + "',"
-                    + "playerVars:{autoplay:1,controls:0,rel:0,playsinline:1,modestbranding:1,iv_load_policy:3,disablekb:1,fs:0,cc_load_policy:0,"
-                    + "origin:'https://" + pkg + "'},"
-                    + "events:{onReady:function(e){try{e.target.unloadModule('captions');}catch(x){}e.target.setVolume(80);e.target.playVideo();},"
-                    + "onStateChange:function(e){if(e.data==1)Home.playing();if(e.data==0)Home.ended();}}});}"
-                    + "</script></body></html>";
-            web.loadDataWithBaseURL("https://" + pkg, html, "text/html", "utf-8", null);
-        }
-
-        private void stopTrailer() {
-            if (trailerSoon != null) h.main.removeCallbacks(trailerSoon);
-            trailerSoon = null;
-            if (web != null && web.getParent() instanceof ViewGroup) {
-                // Silenced and taken off the tile; kept for the next trailer, as a player is slow to make.
-                web.loadUrl("about:blank");
-                ((ViewGroup) web.getParent()).removeView(web);
-            }
-        }
-
         @Override void close() {
             trailerTile = null;
-            stopTrailer();
-            if (web != null) { web.destroy(); web = null; }
+            if (trailerSoon != null) h.main.removeCallbacks(trailerSoon);
+            player.destroy();
             super.close();
         }
 
@@ -280,6 +239,7 @@ final class PagesV2 {
          */
         PosterPage(HomeV2 h, String crumb, int crumbColour, String[] tabs, int[] rowY, java.util.function.Function<Integer, List<Row>> source) {
             super(h);
+            player = new TilePlayer(h.a);
             this.crumb = crumb;
             this.crumbColour = crumbColour;
             this.tabs = tabs;
@@ -289,6 +249,7 @@ final class PagesV2 {
 
         @Override void open() {
             super.open();
+            player.warm();   // YouTube's player page loads now, so the first trailer starts at once
             if (tabs != null) {
                 FrameLayout track = new FrameLayout(h.a);
                 lens = new View(h.a);
@@ -311,10 +272,15 @@ final class PagesV2 {
                 add(track, 216, 516, -2, 50);
                 tabBar.post(this::moveLens);
             }
+            if (rowY.length > 2) {
+                column = new FrameLayout(h.a);
+                column.setClipChildren(false);
+                layer.addView(column, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+            }
             for (int i = 0; i < rowY.length; i++) {
                 Row r = new Row();
                 r.label = h.text(24, h.semi, Color.WHITE);
-                add(r.label, 216, rowY[i], 1500, 34);
+                addRow(r.label, 216, rowY[i], 1500, 34);
                 r.view = new FrameLayout(h.a);
                 r.view.setOutlineProvider(ViewOutlineProvider.BOUNDS);
                 r.view.setClipToOutline(true);
@@ -325,7 +291,7 @@ final class PagesV2 {
                 sl.leftMargin = px(12);
                 sl.topMargin = px(6);
                 r.view.addView(r.strip, sl);
-                add(r.view, 204, rowY[i] + (tabs != null ? 62 : 40) - 6, 1632, TALL + 24);
+                addRow(r.view, 204, rowY[i] + (tabs != null ? 62 : 40) - 6, 1632, TALL + 24);
                 rows.add(r);
             }
             onTabs = false;
@@ -487,7 +453,18 @@ final class PagesV2 {
             }
             Row focused = onTabs || row >= rows.size() ? null : rows.get(row);
             boolean has = focused != null && idx < focused.strip.getChildCount() && idx < focused.items.size();
-            trailerFor(has ? (FrameLayout) focused.strip.getChildAt(idx) : null, has ? focused.items.get(idx) : null);
+            trailerFor(has ? (FrameLayout) focused.strip.getChildAt(idx) : null, has ? focused.items.get(idx) : null,
+                    has ? focused.items : null, idx);
+            // More rows than the screen holds: they move up together, the focused one second from the top.
+            if (column != null && rowY.length > 2) {
+                int top = onTabs ? 0 : Math.max(0, Math.min(row - 1, rowY.length - 2));
+                column.animate().translationY(-px(rowY[top] - rowY[0])).setDuration(320).setInterpolator(HomeV2.SKY).start();
+                for (int ri = 0; ri < rows.size(); ri++) {
+                    float a = ri < top ? 0f : 1f;
+                    rows.get(ri).view.animate().alpha(a).setDuration(200).start();
+                    rows.get(ri).label.animate().alpha(a).setDuration(200).start();
+                }
+            }
             if (tabBar != null) moveLens();
         }
 
@@ -598,18 +575,70 @@ final class PagesV2 {
         });
     }
 
+    /** The rows of the big pages, each one TMDB list, read side by side. */
+    private static final java.util.concurrent.ExecutorService ROWS = java.util.concurrent.Executors.newFixedThreadPool(6);
+
+    private static List<Row> rows(String key, boolean tv, String[][] spec) {
+        List<java.util.concurrent.Future<Row>> wait = new ArrayList<>();
+        for (String[] r : spec) wait.add(ROWS.submit(() -> row(r[0], r[1].isEmpty() ? null : r[1], "n".equals(r[3]), tmdb(key, r[2], tv))));
+        List<Row> out = new ArrayList<>();
+        for (java.util.concurrent.Future<Row> f : wait) {
+            try { out.add(f.get(20, java.util.concurrent.TimeUnit.SECONDS)); } catch (Exception e) { out.add(row("", null, false, new ArrayList<>())); }
+        }
+        return out;
+    }
+
+    private static int[] rowYs(int n) {
+        int[] y = new int[n];
+        for (int i = 0; i < n; i++) y[i] = 504 + i * 286;
+        return y;
+    }
+
+    /** A streaming service's titles in the UK (TMDB's watch providers: Netflix 8, Prime Video 9, Disney+ 337, Apple TV+ 350). */
+    private static String on(boolean tv, int provider) {
+        return "discover/" + (tv ? "tv" : "movie") + "?watch_region=GB&with_watch_providers=" + provider + "&sort_by=popularity.desc";
+    }
+
+    private static String genre(boolean tv, int id) {
+        return "discover/" + (tv ? "tv" : "movie") + "?with_genres=" + id + "&sort_by=popularity.desc&vote_count.gte=150";
+    }
+
     static PosterPage movies(HomeV2 h) {
         String k = h.tmdbKey;
-        return new PosterPage(h, "MOVIES", 0xFFFF4FA3, null, new int[]{504, 790}, t -> Arrays.asList(
-                row("Popular in the UK", "popular right now", false, tmdb(k, "movie/popular?region=GB", false)),
-                row("Top 10 films this week", null, true, tmdb(k, "trending/movie/week", false))));
+        String[][] spec = {
+                {"Popular in the UK", "popular right now", "movie/popular?region=GB", ""},
+                {"Top 10 films this week", "", "trending/movie/week", "n"},
+                {"Trending today", "", "trending/movie/day", ""},
+                {"Netflix", "films", on(false, 8), ""},
+                {"Prime Video", "films", on(false, 9), ""},
+                {"Disney+", "films", on(false, 337), ""},
+                {"Apple TV+", "films", on(false, 350), ""},
+                {"Action", "", genre(false, 28), ""},
+                {"Comedy", "", genre(false, 35), ""},
+                {"Horror", "", genre(false, 27), ""},
+                {"Science fiction", "", genre(false, 878), ""},
+                {"Family", "", genre(false, 10751), ""},
+                {"Coming soon", "in cinemas", "movie/upcoming?region=GB", ""}};
+        return new PosterPage(h, "MOVIES", 0xFFFF4FA3, null, rowYs(spec.length), t -> rows(k, false, spec));
     }
 
     static PosterPage shows(HomeV2 h) {
         String k = h.tmdbKey;
-        return new PosterPage(h, "TV SHOWS", 0xFF4F8BFF, null, new int[]{504, 790}, t -> Arrays.asList(
-                row("Top 10 series this week", null, true, tmdb(k, "trending/tv/week", true)),
-                row("On TV now", "new episodes", false, tmdb(k, "tv/on_the_air?without_genres=10763,10764,10767", true))));
+        String[][] spec = {
+                {"Top 10 series this week", "", "trending/tv/week", "n"},
+                {"On TV now", "new episodes", "tv/on_the_air?without_genres=10763,10764,10767", ""},
+                {"Trending today", "", "trending/tv/day", ""},
+                {"Netflix", "series", on(true, 8), ""},
+                {"Prime Video", "series", on(true, 9), ""},
+                {"Disney+", "series", on(true, 337), ""},
+                {"Apple TV+", "series", on(true, 350), ""},
+                {"Drama", "", genre(true, 18), ""},
+                {"Comedy", "", genre(true, 35), ""},
+                {"Crime", "", genre(true, 80), ""},
+                {"Sci-fi & fantasy", "", genre(true, 10765), ""},
+                {"Documentaries", "", genre(true, 99), ""},
+                {"Animation", "", genre(true, 16), ""}};
+        return new PosterPage(h, "TV SHOWS", 0xFF4F8BFF, null, rowYs(spec.length), t -> rows(k, true, spec));
     }
 
     // ---- Sport -----------------------------------------------------------------------------------------------------
@@ -1338,6 +1367,20 @@ final class PagesV2 {
             return f;
         }
 
+        private boolean held;
+
+        private void remind(HomeV2.Tile t) {
+            String msg;
+            if (t.start <= System.currentTimeMillis()) msg = "Already on: press OK to watch";
+            else {
+                boolean on = Reminders.toggle(h.a, t.title, t.start, t.channel, t.badge);
+                String when = java.time.format.DateTimeFormatter.ofPattern("EEE HH:mm", java.util.Locale.UK)
+                        .withZone(java.time.ZoneId.systemDefault()).format(java.time.Instant.ofEpochMilli(t.start));
+                msg = on ? "🔔  Reminder set · " + t.title + " · " + when : "Reminder off · " + t.title;
+            }
+            android.widget.Toast.makeText(h.a, msg, android.widget.Toast.LENGTH_SHORT).show();
+        }
+
         private void paint() {
             boolean down = zone >= 0;
             cards.animate().alpha(down ? 0f : 1f).translationY(down ? -px(80) : 0).setDuration(260).setInterpolator(HomeV2.SKY).withLayer().start();
@@ -1370,7 +1413,14 @@ final class PagesV2 {
         @Override boolean key(KeyEvent e) {
             int code = e.getKeyCode();
             if (ok(code)) {
+                // Held on a fixture: a reminder for it (held again: taken off). A plain press watches it.
+                if (e.getAction() == KeyEvent.ACTION_DOWN && e.getRepeatCount() == 1 && zone >= 0 && idx < lists.get(zone).size()) {
+                    held = true;
+                    remind(lists.get(zone).get(idx));
+                    return true;
+                }
                 if (e.getAction() == KeyEvent.ACTION_UP) {
+                    if (held) { held = false; return true; }
                     if (zone == -1) { if (cardIdx == 0 && watchOk != null) watchOk.run(); }
                     else if (idx < lists.get(zone).size() && lists.get(zone).get(idx).ok != null) lists.get(zone).get(idx).ok.run();
                 }

@@ -192,7 +192,7 @@ final class DeliveryCard {
         int brand = brand(u.optString("package", ""), icon);
         String app = u.optString("app", "Delivery"), from = u.optString("from", "").trim();
         String status = u.optString("status", "").trim(), eta = u.optString("eta", "").trim();
-        LinearLayout bar = laneBar(c, d);
+        LinearLayout bar = laneBar(c, d, bright(brand));
         bar.addView(logo(c, d, icon, brand), new LinearLayout.LayoutParams(px(d, 20), px(d, 20)));
         bar.addView(laneText(c, from.isEmpty() ? app : from, 12.5f, Color.WHITE, true), margins(d, 0, 8));
         String words = status.isEmpty() || status.equalsIgnoreCase(from) ? STAGE_HEAD[stage] : status;
@@ -401,7 +401,7 @@ final class DeliveryCard {
         String all = (title + " " + status).toLowerCase(Locale.ROOT);
         boolean charging = all.contains("charging") && !all.contains("complete") && !all.contains("stopped")
                 && !all.contains("interrupted") && !all.contains("finished");
-        LinearLayout bar = laneBar(c, d);
+        LinearLayout bar = laneBar(c, d, 0xFFE82127);
         Bitmap art = carArt(c);
         if (art != null) {
             ImageView car = new ImageView(c);
@@ -412,8 +412,8 @@ final class DeliveryCard {
         ImageView t = new ImageView(c);
         t.setImageResource(R.drawable.tesla_t);
         bar.addView(t, margins(d, 0, art != null ? 10 : 0));
-        t.getLayoutParams().width = px(d, 12);
-        t.getLayoutParams().height = px(d, 12);
+        t.getLayoutParams().width = px(d, 16);
+        t.getLayoutParams().height = px(d, 16);
         String name = Config.themeString(c, "tesla_name", Config.themeString(c, "tesla_model", "Model X"));
         bar.addView(laneText(c, name, 12.5f, Color.WHITE, true), margins(d, 0, 6));
         if (battery >= 0) {
@@ -446,11 +446,11 @@ final class DeliveryCard {
     }
 
     /** One line in the score pills' clear glass, the height of the alerts' pills, its parts centred. */
-    private static LinearLayout laneBar(Context c, float d) {
+    private static LinearLayout laneBar(Context c, float d, int tint) {
         LinearLayout bar = new RevealBox(c);
         bar.setOrientation(LinearLayout.HORIZONTAL);
         bar.setGravity(Gravity.CENTER);
-        bar.setBackground(c.getDrawable(ScoresTicker.glassRes()).mutate());
+        bar.setBackground(ScoresTicker.laneGlass(c, tint));
         bar.setPadding(px(d, 14), 0, px(d, 14), 0);
         bar.setMinimumHeight(px(d, 32));
         bar.setLayoutParams(new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, px(d, 32)));

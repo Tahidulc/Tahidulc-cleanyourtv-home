@@ -104,6 +104,13 @@ final class ScoresTicker {
         measure.setTypeface(Typeface.create(family, Typeface.BOLD));
     }
 
+    private boolean equal;
+
+    /** Every pill the same width (launcher v2): the F1 one no wider than the games beside it. */
+    void equalWidths(boolean on) {
+        equal = on;
+    }
+
     void showF1(boolean on) {
         f1 = on;
     }
@@ -165,6 +172,22 @@ final class ScoresTicker {
     /** The pills' glass, which an alert on v2's Home takes too, so it reads as one of them. */
     static int glassRes() {
         return LightUi.on() ? R.drawable.glass_light : LightUi.glass() ? R.drawable.glass_dark : R.drawable.glass_box;
+    }
+
+    /**
+     * An alert's glass on v2's Home: the pills' own, washed with the alert's colour when it has one (F1's red, the
+     * BBC's, the delivery app's, Tesla's), its rim in that colour too; tint 0 for the plain glass (football).
+     */
+    static android.graphics.drawable.Drawable laneGlass(Context c, int tint) {
+        android.graphics.drawable.Drawable base = c.getDrawable(glassRes()).mutate();
+        if (tint == 0) return base;
+        float d = c.getResources().getDisplayMetrics().density;
+        android.graphics.drawable.GradientDrawable wash = new android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
+                new int[]{(tint & 0xFFFFFF) | 0x52000000, (tint & 0xFFFFFF) | 0x2E000000});
+        wash.setCornerRadius(16 * d);
+        wash.setStroke(Math.max(1, Math.round(d)), (tint & 0xFFFFFF) | 0xA6000000);
+        return new android.graphics.drawable.LayerDrawable(new android.graphics.drawable.Drawable[]{base, wash});
     }
 
     /** Steps aside while an alert stands in the bar's place (launcher v2's Home), and comes back after. */
@@ -748,7 +771,7 @@ final class ScoresTicker {
             }
             // Each box grows in proportion to what it holds, so a page always fills the whole line.
             b.setGravity(Gravity.CENTER);
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, dp(30), boxWidth(g));
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, dp(30), equal ? 1f : boxWidth(g));
             if (i > 0) lp.leftMargin = dp(10);
             row.addView(b, lp);
         }

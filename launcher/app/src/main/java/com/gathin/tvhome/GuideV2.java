@@ -440,7 +440,9 @@ final class GuideV2 {
             java.util.Map<String, String> headers = new java.util.HashMap<>();
             headers.put("User-Agent", "TiviMate/5.1.6 (Android 14)");
             mp.setDataSource(c, android.net.Uri.parse(base + (hls ? ".m3u8" : ".ts")), headers);
-            mp.setVolume(0f, 0f);
+            // With sound, as the channel will be in TiviMate.
+            mp.setAudioAttributes(new android.media.AudioAttributes.Builder().setUsage(android.media.AudioAttributes.USAGE_MEDIA)
+                    .setContentType(android.media.AudioAttributes.CONTENT_TYPE_MOVIE).build());
             mp.setOnPreparedListener(m -> {
                 if (player != m) return;
                 m.start();
@@ -513,7 +515,12 @@ final class GuideV2 {
                     closed.run();
                     GoalWatchService.onAppOpened(c, "ar.tvplayer.tv");
                     Bitmap logo = cache.get(logoUrl(ch[0]));
-                    AppSearchService.tune(c, "ar.tvplayer.tv", java.util.Collections.singletonList(ch[1]), logo);
+                    if (logo != null) AppSearchService.tune(c, "ar.tvplayer.tv", java.util.Collections.singletonList(ch[1]), logo);
+                    else io.execute(() -> {
+                        // The logo first, so the cover over TiviMate always shows it.
+                        Bitmap got = ScoresTicker.cachedLogo(c, logoUrl(ch[0]), 128);
+                        main.post(() -> AppSearchService.tune(c, "ar.tvplayer.tv", java.util.Collections.singletonList(ch[1]), got));
+                    });
                     return true;
                 }
                 draw();
