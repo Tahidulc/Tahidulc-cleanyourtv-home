@@ -502,6 +502,17 @@ final class PagesV2 {
         private int zone = -1, idx;   // -1: the match card's watch bar; 0 and 1: the fixture rows
         private TextView watch;
         private Runnable watchOk;
+        /** While the featured game is live: v1's pitch with the ball moving through the plays, the clock, the score. */
+        private boolean alive = true;
+        private LivePitch pitch;
+        private TextView playLabel, kickerView, scoreView;
+        private LinearLayout eventsView;
+        private ScoresTicker.Game liveGame;
+        private final java.util.Set<String> seenPlays = new java.util.HashSet<>();
+        private final java.util.concurrent.ExecutorService playsIo = java.util.concurrent.Executors.newSingleThreadExecutor();
+        private final Runnable playsTick = this::readPlays;
+        private final Runnable clockTick = this::tickClock;
+        private final Runnable scoreTick = this::readScore;
 
         SportPage(HomeV2 h) {
             super(h);
@@ -558,6 +569,84 @@ final class PagesV2 {
                 });
             });
             paint();
+        }
+
+        @Override void close() {
+            alive = false;
+            h.main.removeCallbacks(playsTick);
+            h.main.removeCallbacks(clockTick);
+            h.main.removeCallbacks(scoreTick);
+            playsIo.shutdownNow();
+            super.close();
+        }
+
+        /** The latest plays every 10 seconds, each new one played out on the pitch. */
+        private void readPlays() {
+            h.main.removeCallbacks(playsTick);
+            ScoresTicker.Game g = liveGame;
+            if (!alive || g == null || g.state != 0 || g.slug == null) return;
+            boolean first = seenPlays.isEmpty();
+            playsIo.execute(() -> {
+                List<LivePitch.Play> plays = LivePitch.latest(g.slug, g.id, g.homeId);
+                h.main.post(() -> {
+                    if (!alive) return;
+                    List<LivePitch.Play> fresh = new ArrayList<>();
+                    for (LivePitch.Play p : plays) if (seenPlays.add(p.id)) fresh.add(p);
+                    if (!fresh.isEmpty()) pitch.add(fresh, first);
+                    h.main.postDelayed(playsTick, 10_000L);
+                });
+            });
+        }
+
+        /** The match clock, counting on by the second from ESPN's last reading; half-time at the break. */
+        private void tickClock() {
+            h.main.removeCallbacks(clockTick);
+            ScoresTicker.Game g = liveGame;
+            if (!alive || g == null || g.state != 0) return;
+            if (g.halftime) {
+                kickerView.setText("●  HALF-TIME");
+            } else {
+                long secs = (long) g.clockSec + (System.currentTimeMillis() - g.clockAt) / 1000L;
+                kickerView.setText(String.format(Locale.ROOT, "●  LIVE  %d:%02d", secs / 60, secs % 60));
+            }
+            h.main.postDelayed(clockTick, 1000L);
+        }
+
+        /** The score, the clock's reading and the scorers again every 30 seconds. */
+        private void readScore() {
+            h.main.removeCallbacks(scoreTick);
+            ScoresTicker.Game g = liveGame;
+            if (!alive || g == null) return;
+            String[] leagues = h.a.getResources().getStringArray(R.array.score_leagues);
+            playsIo.execute(() -> {
+                ScoresTicker.Game now = null;
+                for (ScoresTicker.Game x : ScoresTicker.load(leagues)) if (g.id != null && g.id.equals(x.id)) now = x;
+                ScoresTicker.Game fresh = now;
+                h.main.post(() -> {
+                    if (!alive || fresh == null) return;
+                    liveGame = fresh;
+                    scoreView.setText(fresh.homeScore + " – " + fresh.awayScore);
+                    goals(eventsView, fresh, 1);
+                    if (fresh.state != 0) kickerView.setText("FULL TIME");
+                    else h.main.postDelayed(scoreTick, 30_000L);
+                });
+            });
+        }
+
+        private void goals(LinearLayout events, ScoresTicker.Game g, int max) {
+            events.removeAllViews();
+            List<String[]> list = new ArrayList<>(g.goals);
+            int from = Math.max(0, list.size() - max);
+            for (int i = from; i < list.size(); i++) {
+                String[] goal = list.get(i);
+                TextView ev = h.text(19, h.regular, Color.WHITE);
+                String tag = "pen".equals(goal[4]) ? " (pen)" : "og".equals(goal[4]) ? " (og)" : "";
+                ev.setText(goal[2] + "   ⚽ " + goal[1] + tag);
+                ev.setGravity("home".equals(goal[3]) ? Gravity.START : Gravity.END);
+                LinearLayout.LayoutParams gl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                gl.bottomMargin = px(6);
+                events.addView(ev, gl);
+            }
         }
 
         private void addTo(FrameLayout parent, View v, int x, int y, int w, int hgt) {
@@ -693,15 +782,41 @@ final class PagesV2 {
                     }
                     res.setText(r);
                     if (summary[0] != null) possession(poss, summary[0], summary[1], g.homeColor, g.awayColor);
-                    for (String[] goal : g.goals) {
-                        if (events.getChildCount() >= 4) break;
-                        TextView ev = h.text(19, h.regular, Color.WHITE);
-                        String tag = "pen".equals(goal[4]) ? " (pen)" : "og".equals(goal[4]) ? " (og)" : "";
-                        ev.setText(goal[2] + "   ⚽ " + goal[1] + tag);
-                        ev.setGravity("home".equals(goal[3]) ? Gravity.START : Gravity.END);
-                        LinearLayout.LayoutParams gl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-                        gl.bottomMargin = px(8);
-                        events.addView(ev, gl);
+                    kickerView = k;
+                    scoreView = n;
+                    eventsView = events;
+                    if (g.state == 0) {
+                        // Live: v1's pitch, the ball moving through ESPN's play-by-play, the latest touch under it.
+                        liveGame = g;
+                        pitch = new LivePitch(h.a, h.a.getResources().getDisplayMetrics().density);
+                        pitch.setColors(g.homeColor != 0 ? 0xFF000000 | g.homeColor : Color.WHITE, g.awayColor != 0 ? 0xFF000000 | g.awayColor : 0xFFFFD54F);
+                        playLabel = h.text(17, h.regular, 0xCCFFFFFF);
+                        playLabel.setSingleLine(true);
+                        playLabel.setEllipsize(TextUtils.TruncateAt.END);
+                        pitch.setListener(play -> playLabel.setText(play.label));
+                        int at = c.indexOfChild(events);
+                        // Room for the pitch: the minute is on the clock above, and the crests come in a little.
+                        res.setVisibility(View.GONE);
+                        for (ImageView cr : new ImageView[]{hc, ac}) {
+                            ViewGroup.LayoutParams cl = cr.getLayoutParams();
+                            cl.width = px(64);
+                            cl.height = px(64);
+                            cr.setLayoutParams(cl);
+                        }
+                        n.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, px(72));
+                        LinearLayout.LayoutParams pitchLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, px(150));
+                        pitchLp.topMargin = px(14);
+                        c.addView(pitch, at, pitchLp);
+                        LinearLayout.LayoutParams ll = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                        ll.topMargin = px(6);
+                        c.addView(playLabel, at + 1, ll);
+                        ((LinearLayout.LayoutParams) events.getLayoutParams()).topMargin = px(8);
+                        goals(events, g, 1);
+                        readPlays();
+                        tickClock();
+                        h.main.postDelayed(scoreTick, 30_000L);
+                    } else {
+                        goals(events, g, 4);
                     }
                     if (ch != null) {
                         android.text.SpannableStringBuilder b = new android.text.SpannableStringBuilder();
