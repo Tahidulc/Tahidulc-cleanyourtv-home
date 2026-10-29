@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Launcher v2: the rail's YouTube glyph -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:fillColor="#FFFFFFFF" android:fillType="evenOdd" android:pathData="M6.5,5h11A4.5,4.5 0 0 1 22,9.5v5a4.5,4.5 0 0 1 -4.5,4.5h-11A4.5,4.5 0 0 1 2,14.5v-5A4.5,4.5 0 0 1 6.5,5zM10,8.8v6.4l5.4,-3.2z"/>
+</vector>

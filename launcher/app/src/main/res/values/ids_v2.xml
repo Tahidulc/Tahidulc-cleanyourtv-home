@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Launcher v2: the picture an ImageView is waiting for, so a late answer for an older one is dropped. -->
+    <item type="id" name="v2_url" />
+</resources>

@@ -136,6 +136,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     private WallpaperPlayer wallpaperPlayer;
     private VideoBackdrop videoBackdrop;
     private WeatherLine weatherLine;
+    /** Launcher v2, when chosen: it owns the screen and the keys, and v1's own views are never built. */
+    private HomeV2 v2;
     private WatchRows watchRows;
     private NewsTicker newsTicker;
     private ScoresTicker scoresTicker;
@@ -419,6 +421,15 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        // Launcher v2 (the theme's "launcher", or the settings menu's choice on this TV) draws its own Home; v1 below
+        // is untouched by it.
+        if (HomeV2.chosen(this)) {
+            AppSearchService.ensure(this);
+            if (Config.load(this).restoreKeyServices) ServiceRepair.restore(this);
+            v2 = new HomeV2(this);
+            v2.create();
+            return;
+        }
         setContentView(R.layout.activity_main);
         density = getResources().getDisplayMetrics().density;
         // config.xml, overlaid by config.json from a pushed theme (see Config and tools/theme.sh).
@@ -1106,6 +1117,10 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
+        if (v2 != null) {
+            if (intent != null && intent.hasCategory(Intent.CATEGORY_HOME)) v2.home();
+            return;
+        }
         if (openLauncherSettingsIfAsked(intent)) return;
         if (openInputsIfAsked(intent)) return;
         if (intent == null || !intent.hasCategory(Intent.CATEGORY_HOME)) return;
@@ -1124,6 +1139,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     @Override
     protected void onStart() {
         super.onStart();
+        if (v2 != null) { v2.start(); return; }
         stopped = false;
         started = true;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -1138,6 +1154,12 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     @Override
     protected void onResume() {
         super.onResume();
+        if (v2 != null) {
+            GoalWatchService.homeInFront = true;
+            AppSearchService.cancel();
+            v2.resume();
+            return;
+        }
         // A festival that started or ended while Home was in the background: rebuild with or without it.
         if (festive != festival.active(LocalDate.now())) {
             recreate();
@@ -1216,6 +1238,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+        if (v2 != null) return;
         if (requestCode == LAUNCHER_SETTINGS_REQUEST && resultCode == RESULT_OK
                 && data != null && data.getBooleanExtra(LauncherSettingsActivity.EXTRA_REORDER, false)) {
             getIntent().putExtra(LauncherSettingsActivity.EXTRA_REORDER, true);
@@ -1348,6 +1371,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     @Override
     public void onUserInteraction() {
         super.onUserInteraction();
+        if (v2 != null) return;
         restartIdleClock();
     }
 
@@ -1360,6 +1384,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     protected void onPause() {
         GoalWatchService.homeInFront = false;
         super.onPause();
+        if (v2 != null) return;
         root.removeCallbacks(showIdleClock);
         endReorder();   // Home or another app while reordering keeps the order so far
         wallpaperPlayer.stop();
@@ -1387,6 +1412,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     @Override
     protected void onStop() {
         super.onStop();
+        if (v2 != null) { v2.stop(); return; }
         started = false;
         unregisterReceiver(timeReceiver);
         handler.removeCallbacks(clockCheck);
@@ -1402,6 +1428,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     @Override
     public void onTrimMemory(int level) {
         super.onTrimMemory(level);
+        if (v2 != null) { if (level >= TRIM_MEMORY_UI_HIDDEN) v2.trim(); return; }
         // RUNNING_LOW and CRITICAL also arrive while Home is visible when an accessibility service keeps the
         // process in the foreground; never blank the screen the owner is looking at.
         if (!MemoryTrimPolicy.shouldRelease(level, started)) return;
@@ -1420,6 +1447,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     @Override
     public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
+        if (v2 != null) return;
         if (hasFocus) {
             startPendingSettingsReorder();
             if (libraryFocusPending && appLibrary == null) focusLibrary();
@@ -1430,6 +1458,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        if (v2 != null) { v2.destroy(); return; }
         unregisterReceiver(packageReceiver);
         wallpaperPlayer.close();
         videoBackdrop.stop();
@@ -1479,6 +1508,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
      */
     @Override
     public boolean dispatchKeyEvent(KeyEvent event) {
+        if (v2 != null) return v2.key(event) || super.dispatchKeyEvent(event);
         if (handleSettingsKey(event)) return true;
         if (tileMenuEnabled && !reordering && openPopup == null && cardPrompt == null
                 && event.getKeyCode() == KeyEvent.KEYCODE_MENU) {
@@ -2840,7 +2870,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     }
 
     /** A VPN whose own addresses are all a tailnet's (100.64.0.0/10, or Tailscale's fd7a:115c:a1e0::/48). */
-    private static boolean tailnetOnly(android.net.LinkProperties lp) {
+    static boolean tailnetOnly(android.net.LinkProperties lp) {
         if (lp == null || lp.getLinkAddresses().isEmpty()) return false;
         for (android.net.LinkAddress la : lp.getLinkAddresses()) {
             byte[] a = la.getAddress().getAddress();
@@ -3518,6 +3548,10 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         if (moduleCards) addSettingsMenuRow(rows, popup, R.string.module_cards, this::showModuleCards);
         if (dockRow) addSettingsMenuRow(rows, popup, R.string.dock_edit, this::startDockEdit);
         addSettingsMenuRow(rows, popup, R.string.reorder, this::toggleReorder);
+        addSettingsMenuRow(rows, popup, "Switch to launcher v2", () -> {
+            HomeV2.choose(this, "v2");
+            recreate();
+        });
         panel.measure(View.MeasureSpec.UNSPECIFIED, View.MeasureSpec.UNSPECIFIED);
         popup.setWidth(Math.max((int) (200 * density), panel.getMeasuredWidth()));
         // Hebrew puts Settings at the left of the header: grow the menu inward from it.
@@ -3582,6 +3616,10 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     }
 
     private void addSettingsMenuRow(LinearLayout rows, PopupWindow popup, int title, Runnable action) {
+        addSettingsMenuRow(rows, popup, getString(title), action);
+    }
+
+    private void addSettingsMenuRow(LinearLayout rows, PopupWindow popup, CharSequence title, Runnable action) {
         View row = getLayoutInflater().inflate(R.layout.item_input, rows, false);
         row.findViewById(R.id.icon).setVisibility(View.GONE);
         row.findViewById(R.id.dot).setVisibility(View.GONE);

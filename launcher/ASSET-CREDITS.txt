@@ -8,3 +8,10 @@ app/src/main/res/drawable-nodpi/car_model_x.webp
 app/src/main/res/drawable/tesla_t.xml
   The Tesla "T" symbol, from Wikimedia Commons "Tesla T symbol.svg". A trademark of Tesla, Inc., shown here only to
   mark notifications that come from the Tesla app.
+
+Launcher v2
+- res/font/hind_regular.ttf, hind_semibold.ttf: Hind, by the Indian Type Foundry, SIL Open Font License 1.1
+  (https://fonts.google.com/specimen/Hind). Used as v2's Sky-style text face.
+- res/drawable-nodpi/v2_nord.png: the NordVPN mountain mark, cut from NordVPN's own app icon, for the top bar's VPN
+  button on the owner's TV. A trademark of Nord Security; kept out of any upstream pull request.
+- res/drawable/ic_v2_*.xml: drawn for this launcher.
