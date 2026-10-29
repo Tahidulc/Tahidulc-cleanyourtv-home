@@ -880,6 +880,50 @@ public class GoalWatchService extends Service {
         return s;
     }
 
+    private static boolean premier(String url) {
+        return url != null && url.matches(".*/leaguelogos/soccer/500(-dark)?/23\\.png");
+    }
+
+    /**
+     * A competition's logo for the alerts. The Premier League's is its lion alone, as on v1: ESPN's carries the
+     * words under it, so its light version is cut off above them, and drawn white on v2's Home glass.
+     */
+    private android.graphics.Bitmap leagueBitmap(String url, int px) {
+        if (url == null) return null;
+        if (!premier(url)) return ScoresTicker.cachedLogo(this, lightLogo(url), px);
+        android.graphics.Bitmap full = ScoresTicker.cachedLogo(this, url.replace("/500-dark/", "/500/"), px * 2);
+        return full == null ? null : lionOnly(full, onLane());
+    }
+
+    /** The picture down to where its first block ends (the lion, above the gap before the words), white if asked. */
+    private static android.graphics.Bitmap lionOnly(android.graphics.Bitmap b, boolean white) {
+        int w = b.getWidth(), h = b.getHeight();
+        int[] row = new int[w];
+        int top = -1, bottom = h - 1, left = w, right = -1;
+        for (int y = 0; y < h; y++) {
+            b.getPixels(row, 0, w, 0, y, w, 1);
+            boolean any = false;
+            for (int x = 0; x < w; x++) {
+                if ((row[x] >>> 24) <= 24) continue;
+                any = true;
+                if (x < left) left = x;
+                if (x > right) right = x;
+            }
+            if (any && top < 0) top = y;
+            if (!any && top >= 0) { bottom = y - 1; break; }
+        }
+        if (top < 0 || right < left) return b;
+        android.graphics.Bitmap out = android.graphics.Bitmap.createBitmap(b, left, top, right - left + 1, bottom - top + 1)
+                .copy(android.graphics.Bitmap.Config.ARGB_8888, true);
+        if (white) {
+            int[] px = new int[out.getWidth() * out.getHeight()];
+            out.getPixels(px, 0, out.getWidth(), 0, 0, out.getWidth(), out.getHeight());
+            for (int i = 0; i < px.length; i++) px[i] = (px[i] & 0xFF000000) | 0xFFFFFF;
+            out.setPixels(px, 0, out.getWidth(), 0, 0, out.getWidth(), out.getHeight());
+        }
+        return out;
+    }
+
     /** ESPN's league logos come in a white version for dark backgrounds; the alerts' glass is light (not on v2's Home). */
     private String lightLogo(String url) {
         return url == null || onLane() ? url : url.replace("/500-dark/", "/500/");
@@ -1044,8 +1088,7 @@ public class GoalWatchService extends Service {
         io.execute(() -> {
             android.graphics.Bitmap home = g.homeLogo == null ? null : ScoresTicker.cachedLogo(this, g.homeLogo, px);
             android.graphics.Bitmap away = g.awayLogo == null ? null : ScoresTicker.cachedLogo(this, g.awayLogo, px);
-            String light = lightLogo(g.leagueLogo);
-            android.graphics.Bitmap league = light == null ? null : ScoresTicker.cachedLogo(this, light, px);
+            android.graphics.Bitmap league = leagueBitmap(g.leagueLogo, px);
             // While the game is on: where to watch it, for the pill's second step.
             Object[] watch = g.state == 0 ? watchOn(TvGuide.watch(getResources().getStringArray(R.array.football_tv_channels), g)) : null;
             main.post(() -> {
@@ -1135,7 +1178,8 @@ public class GoalWatchService extends Service {
                 ready.add(logo != null ? new ChipImg(onLane() ? logo : inked(logo)) : bold(((Chip) o).name));
             } else if (o instanceof Pic) {
                 Pic pic = (Pic) o;
-                ready.add(new Img(pic.url == null ? null : ScoresTicker.cachedLogo(this, pic.url, px * (pic.wide ? 2 : 1)), pic.wide));
+                ready.add(new Img(pic.url == null ? null : premier(pic.url) ? leagueBitmap(pic.url, px)
+                        : ScoresTicker.cachedLogo(this, pic.url, px * (pic.wide ? 2 : 1)), pic.wide));
             } else ready.add(o);
         }
         return ready;
@@ -1206,7 +1250,8 @@ public class GoalWatchService extends Service {
             for (Object o : parts) {
                 if (o instanceof Pic) {
                     Pic pic = (Pic) o;
-                    ready.add(new Img(pic.url == null ? null : ScoresTicker.cachedLogo(this, pic.url, px * (pic.wide ? 2 : 1)), pic.wide));
+                    ready.add(new Img(pic.url == null ? null : premier(pic.url) ? leagueBitmap(pic.url, px)
+                        : ScoresTicker.cachedLogo(this, pic.url, px * (pic.wide ? 2 : 1)), pic.wide));
                 }
                 else ready.add(o);
             }
