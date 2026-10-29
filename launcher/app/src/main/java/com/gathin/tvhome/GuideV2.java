@@ -122,11 +122,13 @@ final class GuideV2 {
     }
 
     void hide() {
+        stopPreview();
         if (!isOpen()) return;
         root.animate().alpha(0f).setDuration(200).withEndAction(() -> root.setVisibility(View.GONE)).start();
     }
 
     void close() {
+        stopPreview();
         io.shutdownNow();
         pics.shutdownNow();
         cache.evictAll();
@@ -322,12 +324,174 @@ final class GuideV2 {
         return null;
     }
 
+    // ---- the corner preview ----------------------------------------------------------------------------------------
+
+    private FrameLayout pip;
+    private android.view.TextureView video;
+    private android.media.MediaPlayer player;
+    private String[] previewing;
+    private TextView pipTitle;
+    private ImageView pipLogo;
+    private View pipWait;
+
+    /** A channel plays in the corner when the playlist's login is in the theme and the channel has its stream id. */
+    private boolean canPreview(String[] ch) {
+        return ch.length > 4 && !ch[4].isEmpty() && !Config.themeString(c, "iptv_server", "").isEmpty();
+    }
+
+    private void buildPip() {
+        pip = new FrameLayout(c);
+        pip.setClipToOutline(true);
+        pip.setOutlineProvider(new android.view.ViewOutlineProvider() {
+            @Override public void getOutline(View v, android.graphics.Outline o) { o.setRoundRect(0, 0, v.getWidth(), v.getHeight(), px(22)); }
+        });
+        pip.setBackgroundColor(Color.BLACK);
+        pip.setElevation(px(20));
+        video = new android.view.TextureView(c);
+        pip.addView(video, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        pipWait = new View(c);
+        pipWait.setBackgroundColor(0xFF000000);
+        pip.addView(pipWait, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        View shade = new View(c);
+        shade.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0x00000000, 0x00000000, 0xD9000000}));
+        pip.addView(shade, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        TextView live = text(15, semi, Color.WHITE);
+        live.setText("LIVE");
+        live.setLetterSpacing(0.07f);
+        live.setPadding(px(9), px(3), px(9), px(2));
+        live.setBackground(fill(6, 0xFFFF3B4A));
+        FrameLayout.LayoutParams ll = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        ll.leftMargin = px(18);
+        ll.topMargin = px(16);
+        pip.addView(live, ll);
+        TextView hint = text(17, regular, Color.WHITE);
+        hint.setText("OK  Full screen");
+        hint.setPadding(px(14), px(5), px(14), px(4));
+        hint.setBackground(fill(18, 0x8C000000));
+        FrameLayout.LayoutParams hl = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP | Gravity.END);
+        hl.rightMargin = px(16);
+        hl.topMargin = px(14);
+        pip.addView(hint, hl);
+        LinearLayout meta = new LinearLayout(c);
+        meta.setOrientation(LinearLayout.HORIZONTAL);
+        meta.setGravity(Gravity.CENTER_VERTICAL);
+        pipLogo = new ImageView(c);
+        pipLogo.setAdjustViewBounds(true);
+        pipLogo.setMaxHeight(px(28));
+        pipLogo.setMaxWidth(px(160));
+        meta.addView(pipLogo, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, px(28)));
+        pipTitle = text(22, semi, Color.WHITE);
+        pipTitle.setSingleLine(true);
+        pipTitle.setEllipsize(TextUtils.TruncateAt.END);
+        LinearLayout.LayoutParams tl = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        tl.leftMargin = px(14);
+        meta.addView(pipTitle, tl);
+        FrameLayout.LayoutParams ml = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM);
+        ml.leftMargin = px(20);
+        ml.rightMargin = px(20);
+        ml.bottomMargin = px(16);
+        pip.addView(meta, ml);
+        GradientDrawable ring = new GradientDrawable();
+        ring.setCornerRadius(px(22));
+        ring.setStroke(px(2), 0xD9FFFFFF);
+        pip.setForeground(ring);
+        add(pip, 1192, 126, 632, 356);
+        pip.setVisibility(View.GONE);
+    }
+
+    private void preview(String[] ch) {
+        if (pip == null) buildPip();
+        stopPlayer();
+        previewing = ch;
+        Show cur = current();
+        pipTitle.setText(cur != null ? cur.title.replaceFirst("^(?i)live:? ", "") : ch[1]);
+        image(pipLogo, logoUrl(ch[0]), px(160));
+        pipWait.setAlpha(1f);
+        if (pip.getVisibility() != View.VISIBLE) {
+            pip.setVisibility(View.VISIBLE);
+            pip.setAlpha(0f);
+            pip.setScaleX(0.6f);
+            pip.setScaleY(0.6f);
+            pip.setPivotX(px(632));
+            pip.setPivotY(px(356));
+            pip.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(350).setInterpolator(HomeV2.SKY).start();
+        }
+        String base = Config.themeString(c, "iptv_server", "") + "/live/" + Config.themeString(c, "iptv_user", "") + "/"
+                + Config.themeString(c, "iptv_pass", "") + "/" + ch[4];
+        play(base, false);
+    }
+
+    /** Plays the stream into the corner: the plain transport stream (quickest to start), HLS if this TV's player turns that down. */
+    private void play(String base, boolean hls) {
+        android.graphics.SurfaceTexture st = video.getSurfaceTexture();
+        if (st == null) {
+            video.setSurfaceTextureListener(new android.view.TextureView.SurfaceTextureListener() {
+                @Override public void onSurfaceTextureAvailable(android.graphics.SurfaceTexture s, int w, int h) { if (previewing != null) play(base, hls); }
+                @Override public void onSurfaceTextureSizeChanged(android.graphics.SurfaceTexture s, int w, int h) { }
+                @Override public boolean onSurfaceTextureDestroyed(android.graphics.SurfaceTexture s) { stopPlayer(); return true; }
+                @Override public void onSurfaceTextureUpdated(android.graphics.SurfaceTexture s) { }
+            });
+            return;
+        }
+        android.media.MediaPlayer mp = new android.media.MediaPlayer();
+        player = mp;
+        try {
+            mp.setSurface(new android.view.Surface(st));
+            java.util.Map<String, String> headers = new java.util.HashMap<>();
+            headers.put("User-Agent", "TiviMate/5.1.6 (Android 14)");
+            mp.setDataSource(c, android.net.Uri.parse(base + (hls ? ".m3u8" : ".ts")), headers);
+            mp.setVolume(0f, 0f);
+            mp.setOnPreparedListener(m -> {
+                if (player != m) return;
+                m.start();
+                float vw = m.getVideoWidth(), vh = m.getVideoHeight();
+                if (vw > 0 && vh > 0) {
+                    android.graphics.Matrix mx = new android.graphics.Matrix();
+                    float scale = Math.max(video.getWidth() / vw, video.getHeight() / vh);
+                    mx.setScale(vw * scale / video.getWidth(), vh * scale / video.getHeight(), video.getWidth() / 2f, video.getHeight() / 2f);
+                    video.setTransform(mx);
+                }
+            });
+            mp.setOnInfoListener((m, what, extra) -> {
+                if (what == android.media.MediaPlayer.MEDIA_INFO_VIDEO_RENDERING_START && player == m) pipWait.animate().alpha(0f).setDuration(250).start();
+                return false;
+            });
+            mp.setOnErrorListener((m, what, extra) -> {
+                if (player != m) return true;
+                stopPlayer();
+                if (!hls && previewing != null) main.post(() -> play(base, true));
+                return true;
+            });
+            mp.prepareAsync();
+        } catch (Exception e) {
+            stopPlayer();
+            if (!hls) play(base, true);
+        }
+    }
+
+    private void stopPlayer() {
+        android.media.MediaPlayer mp = player;
+        player = null;
+        if (mp == null) return;
+        try { mp.stop(); } catch (Exception ignored) { }
+        mp.release();
+    }
+
+    private void stopPreview() {
+        previewing = null;
+        stopPlayer();
+        if (pip != null && pip.getVisibility() == View.VISIBLE) {
+            pip.animate().alpha(0f).scaleX(0.8f).scaleY(0.8f).setDuration(200).withEndAction(() -> pip.setVisibility(View.GONE)).start();
+        }
+    }
+
     // ---- keys ------------------------------------------------------------------------------------------------------
 
     boolean key(KeyEvent e) {
         int code = e.getKeyCode();
         if (code == KeyEvent.KEYCODE_BACK) {
             if (e.getAction() == KeyEvent.ACTION_UP) {
+                if (previewing != null) { stopPreview(); return true; }
                 hide();
                 closed.run();
             }
@@ -340,6 +504,11 @@ final class GuideV2 {
                     onChips = false;
                 } else if (!list.isEmpty()) {
                     String[] ch = list.get(chan);
+                    // OK once: the channel live in the corner. OK again on the same channel: full screen in TiviMate.
+                    if (previewing != ch && canPreview(ch)) {
+                        preview(ch);
+                        return true;
+                    }
                     hide();
                     closed.run();
                     GoalWatchService.onAppOpened(c, "ar.tvplayer.tv");

@@ -184,7 +184,7 @@ public class GoalWatchService extends Service {
         View panel = card.view;
         host.addView(panel, new android.widget.FrameLayout.LayoutParams(
                 android.widget.FrameLayout.LayoutParams.WRAP_CONTENT, android.widget.FrameLayout.LayoutParams.WRAP_CONTENT,
-                Gravity.BOTTOM | Gravity.START));
+                onLane() ? Gravity.TOP | Gravity.CENTER_HORIZONTAL : Gravity.BOTTOM | Gravity.START));
         shown = panel;
         play(sound);
         Runnable[] closing = new Runnable[1];
@@ -1240,6 +1240,14 @@ public class GoalWatchService extends Service {
         lp.x = Math.round(32 * d);
         // Above the screensaver's clock and caption while it runs.
         lp.y = Math.round((dreaming ? 92 : 30) * d);
+        if (onLane()) {
+            // v2's Home: over the score bar, its width (1728 of 1920), with the bar's top edge.
+            int sw = getResources().getDisplayMetrics().widthPixels;
+            lp.width = Math.round(sw * 1728f / 1920f);
+            lp.gravity = Gravity.TOP | Gravity.CENTER_HORIZONTAL;
+            lp.x = 0;
+            lp.y = Math.round(21 * d);
+        }
         try {
             getSystemService(WindowManager.class).addView(host, lp);
         } catch (Exception e) {
@@ -1398,8 +1406,11 @@ public class GoalWatchService extends Service {
         // Line-up pages are pills too: the same window as any wide line.
         ensureHost(sides != null || livePage != null || wide ? 940 : 520, 46);
         if (host == null) return;
+        boolean lane = onLane();
+        if (lane) box.setGravity(Gravity.CENTER);
         host.addView(box, new android.widget.FrameLayout.LayoutParams(
-                android.widget.FrameLayout.LayoutParams.WRAP_CONTENT, h, Gravity.BOTTOM | Gravity.START));
+                lane ? android.widget.FrameLayout.LayoutParams.MATCH_PARENT : android.widget.FrameLayout.LayoutParams.WRAP_CONTENT, h,
+                lane ? Gravity.TOP : Gravity.BOTTOM | Gravity.START));
         shown = box;
         play(sound);
         // A goal's number rolls up once the pill has opened and its words are in (at once when it does not animate).
@@ -1609,6 +1620,13 @@ public class GoalWatchService extends Service {
 
     /** Home is in front (MainActivity says so in onResume and onPause). */
     static volatile boolean homeInFront;
+
+    /** Launcher v2's Home is the one in front: alerts take the score bar's place, its full width, centred. */
+    static volatile boolean laneHome;
+
+    private boolean onLane() {
+        return laneHome && homeInFront && !dreaming;
+    }
 
     /**
      * Over another app the alerts do not animate. Their window makes the TV compose the app's own layer and the alert

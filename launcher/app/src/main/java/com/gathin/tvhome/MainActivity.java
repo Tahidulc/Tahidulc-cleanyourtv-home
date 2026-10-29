@@ -1383,6 +1383,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     @Override
     protected void onPause() {
         GoalWatchService.homeInFront = false;
+        GoalWatchService.laneHome = false;
         super.onPause();
         if (v2 != null) return;
         root.removeCallbacks(showIdleClock);

@@ -116,13 +116,15 @@ final class HomeV2 {
         Runnable ok;
         int tmdbId;
         boolean tv;
+        /** Sport: "football" or "other", and the competition's logo for the corner chip. */
+        String group, compLogo;
     }
 
     private static final int Z_TOP = 0, Z_RAIL = 1, Z_ROW = 2, Z_CATS = 3;
 
-    private final MainActivity a;
-    private final Handler main = new Handler(Looper.getMainLooper());
-    private final ExecutorService io = Executors.newFixedThreadPool(3);
+    final MainActivity a;
+    final Handler main = new Handler(Looper.getMainLooper());
+    final ExecutorService io = Executors.newFixedThreadPool(3);
     private final ExecutorService pics = Executors.newFixedThreadPool(4);
     private final LruCache<String, Bitmap> cache = new LruCache<String, Bitmap>(
             (int) Math.min(Runtime.getRuntime().maxMemory() / 6, 48L * 1024 * 1024)) {
@@ -131,30 +133,32 @@ final class HomeV2 {
     private final Map<String, List<Tile>> rows = new HashMap<>();
     private final Map<String, Long> rowsAt = new HashMap<>();
     private final Map<String, String> logos = new HashMap<>();
-    private float s;
-    private Typeface regular, semi;
-    private String tmdbKey;
+    float s;
+    Typeface regular, semi;
+    String tmdbKey;
     private List<String> dock;
-    private List<String[]> channels;
+    List<String[]> channels;
 
-    private FrameLayout root;
-    private ImageView heroA, heroB;
+    FrameLayout root;
+    ImageView heroA, heroB;
     private boolean heroFrontA = true;
     private String heroShown;
-    private LinearLayout htext;
+    LinearLayout htext;
     private ImageView hTop, hLogo;
     private TextView hTopText, hTitle, hMeta, hText;
-    private final List<FrameLayout> railViews = new ArrayList<>();
-    private TextView label;
-    private FrameLayout viewport;
+    final List<FrameLayout> railViews = new ArrayList<>();
+    TextView label;
+    FrameLayout viewport;
     private LinearLayout row;
-    private final List<View> catViews = new ArrayList<>();
+    final List<View> catViews = new ArrayList<>();
     private final List<View> topViews = new ArrayList<>();
     private TextView wifi;
     private View vpn;
-    private ScoresTicker scores;
+    ScoresTicker scores;
     private WeatherLine weatherLine;
     private GuideV2 guide;
+    /** The page open over Home (Discover, Movies, TV shows, Sport), or null. */
+    private PagesV2.Page page;
 
     private int zone = Z_ROW, topIdx, railIdx, rowIdx, catIdx;
     /** The rail app whose tiles are in the row (-1: the row is For you or one of the boxes'). */
@@ -271,7 +275,17 @@ final class HomeV2 {
         style(secs, 46, regular, 0xB3FFFFFF);
         secs.setIncludeFontPadding(false);
         hm.addView(secs);
-        clock.addView(hm);
+        // Same-width digits, in a box as wide as the widest time: the date and weather beside it never move.
+        time.setFontFeatureSettings("tnum");
+        secs.setFontFeatureSettings("tnum");
+        android.graphics.Paint pt = new android.graphics.Paint();
+        pt.setTypeface(time.getTypeface());
+        pt.setFontFeatureSettings("tnum");
+        pt.setTextSize(px(92));
+        float w = pt.measureText("00:00");
+        pt.setTextSize(px(46));
+        w += pt.measureText(":00");
+        clock.addView(hm, new LinearLayout.LayoutParams(Math.round(w) + px(4), ViewGroup.LayoutParams.WRAP_CONTENT));
         View div = new View(a);
         div.setBackgroundColor(0x59FFFFFF);
         LinearLayout.LayoutParams dlp = new LinearLayout.LayoutParams(px(2), px(66));
@@ -486,6 +500,7 @@ final class HomeV2 {
     }
 
     void resume() {
+        GoalWatchService.laneHome = true;
         if (Config.themeFlag(a, "alerts_everywhere", false)) GoalWatchService.startEverywhere(a);
         // Rows age: what is on now and the apps' own rows are read again when Home comes back after a while.
         Long at = rowsAt.get(mode);
@@ -497,6 +512,7 @@ final class HomeV2 {
     }
 
     void stop() {
+        GoalWatchService.laneHome = false;
         weatherLine.stop();
         if (scores != null) scores.stop();
         main.removeCallbacks(network);
@@ -516,6 +532,7 @@ final class HomeV2 {
     /** Home pressed: back to For you, first tile, guide closed. */
     void home() {
         guide.hide();
+        closePage();
         railSel = -1;
         zone = Z_ROW;
         rowIdx = 0;
@@ -532,6 +549,14 @@ final class HomeV2 {
     /** All keys come here first; true when v2 used it. */
     boolean key(KeyEvent e) {
         if (guide.isOpen()) return guide.key(e);
+        if (page != null) {
+            if (e.getKeyCode() == KeyEvent.KEYCODE_BACK) {
+                if (e.getAction() == KeyEvent.ACTION_UP) closePage();
+                return true;
+            }
+            page.key(e);
+            return true;
+        }
         int code = e.getKeyCode();
         boolean ok = code == KeyEvent.KEYCODE_DPAD_CENTER || code == KeyEvent.KEYCODE_ENTER || code == KeyEvent.KEYCODE_NUMPAD_ENTER;
         boolean nav = code == KeyEvent.KEYCODE_DPAD_UP || code == KeyEvent.KEYCODE_DPAD_DOWN || code == KeyEvent.KEYCODE_DPAD_LEFT
@@ -625,6 +650,10 @@ final class HomeV2 {
                     guide.show();
                     return;
                 }
+                if (catIdx >= 1 && catIdx <= 4) {
+                    openPage(catIdx);
+                    return;
+                }
                 railSel = -1;
                 load(CAT_MODES[catIdx]);
                 zone = Z_ROW;
@@ -633,6 +662,42 @@ final class HomeV2 {
                 return;
             default:
         }
+    }
+
+    /** Opens the page behind a box: 1 Discover, 2 Movies, 3 TV shows, 4 Sport. Home's own row makes way for it. */
+    private void openPage(int which) {
+        page = which == 1 ? PagesV2.discover(this) : which == 2 ? PagesV2.movies(this) : which == 3 ? PagesV2.shows(this) : new PagesV2.SportPage(this);
+        boolean sport = which == 4, full = which == 2 || which == 3;
+        List<View> away = new ArrayList<>(Arrays.asList(label, viewport));
+        if (full || sport) away.addAll(catViews);
+        if (full) { away.addAll(railViews); away.add(root.findViewWithTag("mark")); }
+        if (sport) { away.add(htext); away.add(heroA); away.add(heroB); }
+        for (View v : away) if (v != null) v.animate().alpha(0f).setDuration(180).start();
+        hidden = away;
+        page.open();
+        paint();
+    }
+
+    private List<View> hidden = new ArrayList<>();
+
+    private void closePage() {
+        if (page == null) return;
+        page.close();
+        page = null;
+        heroTopColour(0xFFC9A7FF);
+        for (View v : hidden) {
+            if (v == heroA || v == heroB) continue;
+            v.animate().alpha(1f).setDuration(220).start();
+        }
+        hidden = new ArrayList<>();
+        heroShown = null;
+        if (rowIdx < shown.size()) hero(shown.get(rowIdx));
+        paint();
+    }
+
+    /** The colour of the words above a hero's title (each page's own: Movies pink, TV shows blue). */
+    void heroTopColour(int colour) {
+        hTopText.setTextColor(colour);
     }
 
     private void selectRail(int i) {
@@ -644,7 +709,7 @@ final class HomeV2 {
 
     // ---- drawing the focus -----------------------------------------------------------------------------------------
 
-    private void paint() {
+    void paint() {
         for (int i = 0; i < railViews.size(); i++) {
             FrameLayout f = railViews.get(i);
             boolean on = zone == Z_RAIL && i == railIdx, sel = i == railSel;
@@ -672,9 +737,9 @@ final class HomeV2 {
         row.animate().translationX(-first * px(408)).setDuration(300).setInterpolator(SKY).start();
         for (int i = 0; i < catViews.size(); i++) {
             FrameLayout box = (FrameLayout) catViews.get(i);
-            boolean on = zone == Z_CATS && i == catIdx;
-            boolean sel = railSel < 0 && i > 0 && CAT_MODES[i].equals(mode);
-            GradientDrawable b = fill(16, on ? 0xEBFFFFFF : sel ? 0x40FFFFFF : 0x14FFFFFF);
+            boolean on = zone == Z_CATS && i == catIdx && page == null;
+            boolean sel = page != null ? i == catIdx : railSel < 0 && i > 0 && CAT_MODES[i].equals(mode);
+            GradientDrawable b = fill(16, on ? 0xEBFFFFFF : sel ? (CAT_COLOURS[i] & 0x00FFFFFF) | 0x73000000 : 0x14FFFFFF);
             b.setStroke(Math.max(1, px(1)), on ? 0xFFFFFFFF : 0x24FFFFFF);
             box.setBackground(b);
             LinearLayout in = (LinearLayout) box.getChildAt(1);
@@ -701,7 +766,7 @@ final class HomeV2 {
         }
     }
 
-    private Drawable ring(int r) {
+    Drawable ring(int r) {
         GradientDrawable g = new GradientDrawable();
         g.setCornerRadius(px(r));
         g.setStroke(px(3), Color.WHITE);
@@ -918,7 +983,7 @@ final class HomeV2 {
     }
 
     /** The picture and the words above the row for a tile: the picture crossfades, the words swap after a beat. */
-    private void hero(Tile t) {
+    void hero(Tile t) {
         String img = t.heroImage != null ? t.heroImage : t.image;
         if (img != null && !img.equals(heroShown)) {
             heroShown = img;
@@ -1011,7 +1076,7 @@ final class HomeV2 {
         return t;
     }
 
-    private String debridPackage() {
+    String debridPackage() {
         for (String p : dock) if (p.contains("debrid") && installed(p)) return p;
         return null;
     }
@@ -1136,7 +1201,7 @@ final class HomeV2 {
     }
 
     /** Live sport over the next three days on the playlist's sports channels, from Sky's guide. */
-    private List<Tile> sport() throws Exception {
+    List<Tile> sport() throws Exception {
         List<String[]> sports = new ArrayList<>();
         for (String[] c : channels) if (c[2].contains("Sport")) sports.add(c);
         StringBuilder ids = new StringBuilder();
@@ -1170,11 +1235,16 @@ final class HomeV2 {
         events.sort((x, y) -> Long.compare((Long) x[0], (Long) y[0]));
         DateTimeFormatter when = DateTimeFormatter.ofPattern("EEE HH:mm", Locale.UK).withZone(ZoneId.systemDefault());
         for (Object[] e : events) {
-            if (out.size() >= 24) break;
+            if (out.size() >= 80) break;
             long st = (Long) e[0], en = (Long) e[1];
             String sid = (String) e[5], uuid = (String) e[4];
             Tile t = new Tile();
-            t.title = ((String) e[2]).replaceFirst("^(?i)live:? ", "").replace("Utd", "United");
+            String raw = (String) e[2];
+            t.title = raw.replaceFirst("^(?i)live:? ", "").replaceFirst("^(EFL|PL|SNF|MNF|B'Liga|SPFL|Serie A|La Liga|WSL|UCL|UEL|FA Cup|Carabao Cup|LaLiga): ", "")
+                    .replace("Utd", "United").replace("C. Palace", "Crystal Palace").replace("B. Munich", "Bayern Munich");
+            String[] comp = competition(raw);
+            t.group = comp[0];
+            t.compLogo = comp[1];
             t.image = uuid.isEmpty() ? null : "https://images.metadata.sky.com/pd-image/" + uuid + "/16-9/640";
             t.heroImage = uuid.isEmpty() ? null : "https://images.metadata.sky.com/pd-image/" + uuid + "/16-9/1280";
             String logo = "https://d2n0069hmnqmmx.cloudfront.net/epgdata/1.0/newchanlogos/600/600/skychb" + sid + ".png";
@@ -1191,6 +1261,24 @@ final class HomeV2 {
             out.add(t);
         }
         return out;
+    }
+
+    /** {"football" or "other", competition logo or null} from a Sky guide title such as "Live PL: Spurs v C. Palace". */
+    static String[] competition(String title) {
+        String t = title.replaceFirst("^(?i)live:? ", "");
+        String espn = "https://a.espncdn.com/i/leaguelogos/soccer/500/";
+        String[][] foot = {{"PL:", "23"}, {"SNF:", "23"}, {"MNF:", "23"}, {"EFL:", "24"}, {"B'Liga:", "10"}, {"Serie A:", "12"},
+                {"SPFL:", "45"}, {"La Liga:", "15"}, {"LaLiga:", "15"}, {"UCL:", "2"}, {"UEL:", "2310"}, {"FA Cup:", "40"},
+                {"Carabao Cup:", "41"}, {"WSL:", null}};
+        for (String[] f : foot) if (t.startsWith(f[0])) return new String[]{"football", f[1] == null ? null : espn + f[1] + ".png"};
+        if (t.matches("(?i).*\\b(v|vs)\\b.*") && !t.matches("(?i).*\\b(nfl|nba|wnba|afl|aflw|bbl|wbbl|ipl|nrl|rugby|cricket|test|t20|odi|darts|netball|super league|urc|hockey|ice|basketball|baseball|bears|saracens|harlequins|quins|bath|sale|gloucester|northampton|exeter|chiefs|red bulls|@)\\b.*"))
+            return new String[]{"football", null};
+        String leagues = "https://a.espncdn.com/i/teamlogos/leagues/500/";
+        if (t.contains("F1")) return new String[]{"other", leagues + "f1.png"};
+        if (t.contains("UFC")) return new String[]{"other", leagues + "ufc.png"};
+        if (t.contains("NFL")) return new String[]{"other", leagues + "nfl.png"};
+        if (t.contains("NBA")) return new String[]{"other", leagues + "nba.png"};
+        return new String[]{"other", null};
     }
 
     private List<Tile> apps() {
@@ -1215,7 +1303,7 @@ final class HomeV2 {
     }
 
     /** The logo of a film or series from TMDB, in English, or null. */
-    private String tmdbLogo(int id, boolean tv) {
+    String tmdbLogo(int id, boolean tv) {
         String k = (tv ? "tv/" : "movie/") + id;
         synchronized (logos) {
             if (logos.containsKey(k)) return logos.get(k);
@@ -1317,12 +1405,13 @@ final class HomeV2 {
         for (String line : Config.themeStrings(c, "guide_channels", new ArrayList<>())) {
             String[] p = line.split("\\|");
             if (p.length < 2 || p[0].trim().isEmpty()) continue;
-            out.add(new String[]{p[0].trim(), p[1].trim(), p.length > 2 ? p[2].trim() : "", p.length > 3 ? p[3].trim() : ""});
+            out.add(new String[]{p[0].trim(), p[1].trim(), p.length > 2 ? p[2].trim() : "", p.length > 3 ? p[3].trim() : "",
+                    p.length > 4 ? p[4].trim() : ""});
         }
         if (out.isEmpty()) {
             for (String line : c.getResources().getStringArray(R.array.uk_tv_channels)) {
                 String[] p = line.split("\\|", 2);
-                out.add(new String[]{p[0].trim(), p.length > 1 ? p[1].trim() : p[0].trim(), "Entertainment", ""});
+                out.add(new String[]{p[0].trim(), p.length > 1 ? p[1].trim() : p[0].trim(), "Entertainment", "", ""});
             }
         }
         return out;
@@ -1458,14 +1547,14 @@ final class HomeV2 {
         return Math.round(design * s);
     }
 
-    private void add(View v, int x, int y, int w, int h) {
+    void add(View v, int x, int y, int w, int h) {
         FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(px(w), px(h));
         lp.leftMargin = px(x);
         lp.topMargin = px(y);
         root.addView(v, lp);
     }
 
-    private TextView text(float size, Typeface face, int colour) {
+    TextView text(float size, Typeface face, int colour) {
         TextView t = new TextView(a);
         style(t, size, face, colour);
         return t;
@@ -1478,7 +1567,7 @@ final class HomeV2 {
         t.setIncludeFontPadding(false);
     }
 
-    private GradientDrawable fill(float radius, int colour) {
+    GradientDrawable fill(float radius, int colour) {
         GradientDrawable g = new GradientDrawable();
         g.setCornerRadius(px(radius));
         g.setColor(colour);
@@ -1491,7 +1580,7 @@ final class HomeV2 {
         return g;
     }
 
-    private ViewOutlineProvider round(float radius) {
+    ViewOutlineProvider round(float radius) {
         int r = px(radius);
         return new ViewOutlineProvider() {
             @Override public void getOutline(View view, Outline outline) {
