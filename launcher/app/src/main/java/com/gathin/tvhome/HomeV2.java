@@ -62,23 +62,16 @@ import java.util.concurrent.Executors;
  * watching and Recommended, live channels for TiviMate) sit in one row of four that lines up with the screen; six
  * large boxes along the bottom open the TV guide, Discover, Movies, TV shows, Sport and the apps.
  *
- * MainActivity hosts it when the theme's "launcher" is "v2" (or the settings menu chose it on this TV); "v1" keeps the
+ * MainActivity hosts it when the theme's "launcher" is "v2"; "v1" (the default) keeps the
  * classic Home, untouched. Everything is drawn in a 1920-wide design space and scaled to the screen, and the remote
  * is handled here zone by zone (top buttons, rail, row, boxes) rather than through Android's focus search.
  */
 final class HomeV2 {
-    static final String PREFS = "launcher_version";
-
-    /** Whether this TV shows launcher v2: the choice made in the settings menu, else the theme's "launcher". */
+    /** Whether this TV shows launcher v2: the theme's "launcher" ("v1" or "v2"), set only when the theme is pushed. */
     static boolean chosen(Context c) {
-        String v = c.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString("version", null);
-        if (v == null) v = Config.themeString(c, "launcher", "v1");
-        return "v2".equalsIgnoreCase(v.trim());
-    }
-
-    /** Remembers "v1" or "v2" on this TV; Home is recreated by the caller. */
-    static void choose(Context c, String version) {
-        c.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString("version", version).apply();
+        // An older build kept a choice from the settings menu here; it no longer counts.
+        c.getSharedPreferences("launcher_version", Context.MODE_PRIVATE).edit().clear().apply();
+        return "v2".equalsIgnoreCase(Config.themeString(c, "launcher", "v1").trim());
     }
 
     // ---- look ------------------------------------------------------------------------------------------------------
@@ -125,7 +118,7 @@ final class HomeV2 {
         boolean tv;
     }
 
-    private static final int Z_TOP = 0, Z_RAIL = 1, Z_ROW = 2, Z_CATS = 3, Z_MENU = 4;
+    private static final int Z_TOP = 0, Z_RAIL = 1, Z_ROW = 2, Z_CATS = 3;
 
     private final MainActivity a;
     private final Handler main = new Handler(Looper.getMainLooper());
@@ -159,13 +152,11 @@ final class HomeV2 {
     private final List<View> topViews = new ArrayList<>();
     private TextView wifi;
     private View vpn;
-    private LinearLayout menu;
-    private final List<TextView> menuRows = new ArrayList<>();
     private ScoresTicker scores;
     private WeatherLine weatherLine;
     private GuideV2 guide;
 
-    private int zone = Z_ROW, topIdx, railIdx, rowIdx, catIdx, menuIdx;
+    private int zone = Z_ROW, topIdx, railIdx, rowIdx, catIdx;
     /** The rail app whose tiles are in the row (-1: the row is For you or one of the boxes'). */
     private int railSel = -1;
     private String mode = "foryou";
@@ -230,7 +221,6 @@ final class HomeV2 {
         rlp.topMargin = px(24);
         viewport.addView(row, rlp);
         buildCats();
-        buildMenu();
 
         String[] leagues = a.getResources().getStringArray(R.array.score_leagues);
         if (leagues.length > 0) {
@@ -349,7 +339,7 @@ final class HomeV2 {
         ImageView mic = icon(R.drawable.ic_mic);
         topButton(bar, mic, px(66), () -> open(new Intent(Intent.ACTION_ASSIST)));
         ImageView gear = icon(R.drawable.ic_settings);
-        topButton(bar, gear, px(66), this::openMenu);
+        topButton(bar, gear, px(66), () -> open(new Intent(android.provider.Settings.ACTION_SETTINGS)));
         FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(px(900), px(66), Gravity.TOP | Gravity.END);
         lp.topMargin = px(112);
         lp.rightMargin = px(96);
@@ -487,29 +477,6 @@ final class HomeV2 {
         }
     }
 
-    private void buildMenu() {
-        menu = new LinearLayout(a);
-        menu.setOrientation(LinearLayout.VERTICAL);
-        menu.setPadding(px(10), px(10), px(10), px(10));
-        GradientDrawable b = fill(22, 0xF0181C4E);
-        b.setStroke(px(1.5f), GLASS_LINE);
-        menu.setBackground(b);
-        menu.setVisibility(View.GONE);
-        String[] items = {"Switch to launcher v1", "Launcher settings", "Android settings"};
-        for (String item : items) {
-            TextView t = text(22, regular, Color.WHITE);
-            t.setText(item);
-            t.setGravity(Gravity.CENTER_VERTICAL);
-            t.setPadding(px(22), 0, px(22), 0);
-            menu.addView(t, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, px(58)));
-            menuRows.add(t);
-        }
-        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(px(380), ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP | Gravity.END);
-        lp.topMargin = px(190);
-        lp.rightMargin = px(96);
-        root.addView(menu, lp);
-    }
-
     // ---- lifecycle -------------------------------------------------------------------------------------------------
 
     void start() {
@@ -546,10 +513,9 @@ final class HomeV2 {
         cache.evictAll();
     }
 
-    /** Home pressed: back to For you, first tile, guide and menu closed. */
+    /** Home pressed: back to For you, first tile, guide closed. */
     void home() {
         guide.hide();
-        menu.setVisibility(View.GONE);
         railSel = -1;
         zone = Z_ROW;
         rowIdx = 0;
@@ -586,17 +552,12 @@ final class HomeV2 {
     }
 
     private void back() {
-        if (zone == Z_MENU) { closeMenu(); return; }
         if (zone != Z_ROW || railSel != -1 || !"foryou".equals(mode) || rowIdx != 0) home();
     }
 
     private void move(int code) {
         int n = shown.size();
         switch (zone) {
-            case Z_MENU:
-                if (code == KeyEvent.KEYCODE_DPAD_UP && menuIdx > 0) menuIdx--;
-                else if (code == KeyEvent.KEYCODE_DPAD_DOWN && menuIdx < menuRows.size() - 1) menuIdx++;
-                break;
             case Z_TOP:
                 if (code == KeyEvent.KEYCODE_DPAD_LEFT && topIdx > 0) topIdx--;
                 else if (code == KeyEvent.KEYCODE_DPAD_RIGHT && topIdx < topViews.size() - 1) topIdx++;
@@ -642,9 +603,6 @@ final class HomeV2 {
 
     private void press() {
         switch (zone) {
-            case Z_MENU:
-                pickMenu();
-                return;
             case Z_TOP:
                 Object r = topViews.get(topIdx).getTag();
                 if (r instanceof Runnable) ((Runnable) r).run();
@@ -740,12 +698,6 @@ final class HomeV2 {
                 ((TextView) v).setTextColor(ink);
                 for (Drawable d : ((TextView) v).getCompoundDrawables()) if (d != null) d.setTint(ink);
             }
-        }
-        for (int i = 0; i < menuRows.size(); i++) {
-            TextView t = menuRows.get(i);
-            boolean on = zone == Z_MENU && i == menuIdx;
-            t.setBackground(on ? fill(14, 0xEBFFFFFF) : null);
-            t.setTextColor(on ? 0xFF1A1D24 : Color.WHITE);
         }
     }
 
@@ -1310,34 +1262,6 @@ final class HomeV2 {
         try {
             a.startActivity(i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
         } catch (Exception ignored) {
-        }
-    }
-
-    private void openMenu() {
-        menuIdx = 0;
-        zone = Z_MENU;
-        menu.setAlpha(0f);
-        menu.setTranslationY(-px(10));
-        menu.setVisibility(View.VISIBLE);
-        menu.animate().alpha(1f).translationY(0).setDuration(200).setInterpolator(SKY).start();
-        paint();
-    }
-
-    private void closeMenu() {
-        menu.setVisibility(View.GONE);
-        zone = Z_TOP;
-        paint();
-    }
-
-    private void pickMenu() {
-        closeMenu();
-        if (menuIdx == 0) {
-            choose(a, "v1");
-            a.recreate();
-        } else if (menuIdx == 1) {
-            open(new Intent(a, LauncherSettingsActivity.class));
-        } else {
-            open(new Intent(android.provider.Settings.ACTION_SETTINGS));
         }
     }
 
