@@ -162,6 +162,11 @@ final class ScoresTicker {
         measure.setTypeface(Typeface.DEFAULT_BOLD);   // measure as if all bold: the widest case
     }
 
+    /** The pills' glass, which an alert on v2's Home takes too, so it reads as one of them. */
+    static int glassRes() {
+        return LightUi.on() ? R.drawable.glass_light : LightUi.glass() ? R.drawable.glass_dark : R.drawable.glass_box;
+    }
+
     /** Steps aside while an alert stands in the bar's place (launcher v2's Home), and comes back after. */
     void cover(boolean on) {
         box.animate().cancel();
@@ -662,7 +667,7 @@ final class ScoresTicker {
             LinearLayout b = new LinearLayout(context);
             b.setOrientation(LinearLayout.HORIZONTAL);
             b.setGravity(Gravity.CENTER_VERTICAL);
-            b.setBackgroundResource(LightUi.on() ? R.drawable.glass_light : LightUi.glass() ? R.drawable.glass_dark : R.drawable.glass_box);
+            b.setBackgroundResource(glassRes());
             if (LightUi.on()) b.setElevation(dp(3));
             b.setPadding(dp(12), 0, dp(12), 0);
             b.setFocusable(true);

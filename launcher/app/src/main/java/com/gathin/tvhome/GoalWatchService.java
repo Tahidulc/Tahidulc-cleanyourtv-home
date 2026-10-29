@@ -177,14 +177,18 @@ public class GoalWatchService extends Service {
     private Runnable pairingClose;
 
     /** A card (DeliveryCard) rises into place, plays its reveal, stays a while and fades. */
-    private void showCard(DeliveryCard.Card card, String sound) {
+    private void showCard(DeliveryCard.Card given, String sound) {
         float d = getResources().getDisplayMetrics().density;
+        // On v2's Home a card becomes one line across the score bar's place, in the pills' clear glass.
+        boolean bar = onLane() && given.lane != null;
+        DeliveryCard.Card card = bar ? given.lane.get() : given;
         ensureHost(card.widthDp, card.heightDp);
         if (host == null) { showNext(); return; }
         View panel = card.view;
         host.addView(panel, new android.widget.FrameLayout.LayoutParams(
-                android.widget.FrameLayout.LayoutParams.WRAP_CONTENT, android.widget.FrameLayout.LayoutParams.WRAP_CONTENT,
-                onLane() ? Gravity.TOP | Gravity.CENTER_HORIZONTAL : Gravity.BOTTOM | Gravity.START));
+                bar ? android.widget.FrameLayout.LayoutParams.MATCH_PARENT : android.widget.FrameLayout.LayoutParams.WRAP_CONTENT,
+                android.widget.FrameLayout.LayoutParams.WRAP_CONTENT,
+                bar ? Gravity.TOP : onLane() ? Gravity.TOP | Gravity.CENTER_HORIZONTAL : Gravity.BOTTOM | Gravity.START));
         shown = panel;
         play(sound);
         Runnable[] closing = new Runnable[1];
@@ -453,6 +457,18 @@ public class GoalWatchService extends Service {
                     Set<String> labels = new HashSet<>();
                     for (String[] item : items) if (labels.add(item[0])) enqueueParts(newsLine(item), newsSound(item));
                 });
+            });
+        }
+        if (intent != null && intent.hasExtra("test_delivery")) {
+            // A phone's update read from a file in the app's folder (a food order or the car), shown as if it came in.
+            String path = intent.getStringExtra("test_delivery");
+            io.execute(() -> {
+                try {
+                    java.io.File f = new java.io.File(Config.dir(this), new java.io.File(path).getName());
+                    JSONObject u = new JSONObject(new String(java.nio.file.Files.readAllBytes(f.toPath()), "UTF-8"));
+                    main.post(() -> showDelivery(u));
+                } catch (Exception ignored) {
+                }
             });
         }
         if (intent != null && intent.hasExtra("test_red")) {
@@ -1106,7 +1122,7 @@ public class GoalWatchService extends Service {
         for (Object o : parts) {
             if (o instanceof Chip) {
                 android.graphics.Bitmap logo = ((Chip) o).url == null ? null : ScoresTicker.cachedLogo(this, ((Chip) o).url, px * 4);
-                ready.add(logo != null ? new ChipImg(inked(logo)) : bold(((Chip) o).name));
+                ready.add(logo != null ? new ChipImg(onLane() ? logo : inked(logo)) : bold(((Chip) o).name));
             } else if (o instanceof Pic) {
                 Pic pic = (Pic) o;
                 ready.add(new Img(pic.url == null ? null : ScoresTicker.cachedLogo(this, pic.url, px * (pic.wide ? 2 : 1)), pic.wide));
@@ -1289,6 +1305,8 @@ public class GoalWatchService extends Service {
      * rim and a soft highlight over the top half.
      */
     private android.graphics.drawable.Drawable glass(float radius) {
+        // On v2's Home: the score pills' own clear glass, as the alert stands in their place.
+        if (onLane()) return getDrawable(ScoresTicker.glassRes()).mutate();
         GradientDrawable base = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
                 frost ? new int[]{0xFFFBFCFE, 0xFFE6EAEF, 0xFFD3D9E1} : new int[]{0xFFE9ECF1, 0xFFB9BFC8});
         base.setCornerRadius(radius);
@@ -1510,7 +1528,7 @@ public class GoalWatchService extends Service {
         parts.add(bold("▶  WATCH ON"));
         parts.add(10);
         // White lettering made for dark screens, in the pill's ink on its light glass (a theme's "logo_backing").
-        boolean ink = Config.themeFlag(this, "logo_backing", false);
+        boolean ink = Config.themeFlag(this, "logo_backing", false) && !onLane();
         parts.add(logo != null ? new ChipImg(ink ? inked(logo) : logo) : bold(names.get(0)));
         parts.add(12);
         // "Press [OK] to watch", with this TV's own remote's OK button drawn (a theme's "ok_button": tcl, streamer).
@@ -1631,6 +1649,11 @@ public class GoalWatchService extends Service {
 
     private boolean onLane() {
         return laneHome && homeInFront && !dreaming;
+    }
+
+    /** The alerts' dark ink on their silver glass; white, at the same strength, on the Home pills' clear glass. */
+    private int ink(int c) {
+        return onLane() ? (c & 0xFF000000) | 0xFFFFFF : c;
     }
 
     /** v2's Home listens: true while an alert holds the score bar's place (the pills step aside), false after. */
@@ -1804,7 +1827,7 @@ public class GoalWatchService extends Service {
             v.setClipToOutline(true);
             return v;
         }
-        TextView n = text(bold(f.number), 9.5f, 0xFF1A1D24);
+        TextView n = text(bold(f.number), 9.5f, 0xFF1A1D24);   // on its grey disc
         n.setGravity(Gravity.CENTER);
         n.setBackground(disc);
         return n;
@@ -1924,9 +1947,9 @@ public class GoalWatchService extends Service {
             } else if (part instanceof Score) {
                 box.addView(scoreView((Score) part, d), gap(gap));
             } else if (part instanceof Small) {
-                box.addView(text(((Small) part).text, SMALL_SP, 0xB31A1D24), gap(gap));
+                box.addView(text(((Small) part).text, SMALL_SP, ink(0xB31A1D24)), gap(gap));
             } else {
-                TextView t = text((CharSequence) part, TEXT_SP, 0xFF1A1D24);
+                TextView t = text((CharSequence) part, TEXT_SP, ink(0xFF1A1D24));
                 t.setMaxWidth(Math.round(700 * d));   // a long headline ends in an ellipsis
                 t.setEllipsize(TextUtils.TruncateAt.END);
                 box.addView(t, gap(gap));
@@ -1957,11 +1980,11 @@ public class GoalWatchService extends Service {
         for (int i = 0; i < 2; i++) {
             int now = i == 0 ? sc.home : sc.away;
             boolean scorer = (i == 0) == home;
-            if (i == 1) row.addView(text(bold("–"), TEXT_SP, 0xFF1A1D24));
-            if (!scorer) { row.addView(text(bold(String.valueOf(now)), TEXT_SP, 0xFF1A1D24)); continue; }
+            if (i == 1) row.addView(text(bold("–"), TEXT_SP, ink(0xFF1A1D24)));
+            if (!scorer) { row.addView(text(bold(String.valueOf(now)), TEXT_SP, ink(0xFF1A1D24))); continue; }
             android.widget.FrameLayout window = new android.widget.FrameLayout(this);
             window.setClipChildren(true);
-            TextView was = text(bold(String.valueOf(Math.max(0, now - 1))), TEXT_SP, 0xFF1A1D24);
+            TextView was = text(bold(String.valueOf(Math.max(0, now - 1))), TEXT_SP, ink(0xFF1A1D24));
             TextView is = text(bold(String.valueOf(now)), TEXT_SP, 0xFF16A34A);
             was.setGravity(Gravity.CENTER);
             is.setGravity(Gravity.CENTER);
@@ -1979,7 +2002,7 @@ public class GoalWatchService extends Service {
                 if (calm()) {
                     was.setAlpha(0f);
                     is.setAlpha(1f);
-                    is.setTextColor(0xFF1A1D24);
+                    is.setTextColor(ink(0xFF1A1D24));
                     return;
                 }
                 is.setTranslationY(h);
@@ -1992,7 +2015,7 @@ public class GoalWatchService extends Service {
                     is.animate().scaleX(1.3f).scaleY(1.3f).setDuration(160).withEndAction(() ->
                             is.animate().scaleX(1f).scaleY(1f).setDuration(220).withEndAction(() -> {
                                 // Back to the pill's ink after a moment in green.
-                                main.postDelayed(() -> is.setTextColor(0xFF1A1D24), 900);
+                                main.postDelayed(() -> is.setTextColor(ink(0xFF1A1D24)), 900);
                             }).start()).start();
                 }).start();
             };
@@ -2023,7 +2046,7 @@ public class GoalWatchService extends Service {
         LinearLayout.LayoutParams llp = sized(Math.round(CREST_DP * d), 0);
         llp.width = Math.round(CREST_DP * 2 * d);
         heading.addView(f1Logo, llp);
-        heading.addView(text(head, TEXT_SP, 0xFF1A1D24), gap(Math.round(8 * d)));
+        heading.addView(text(head, TEXT_SP, ink(0xFF1A1D24)), gap(Math.round(8 * d)));
         panel.addView(heading);
         int[] medal = {0xFFB8860B, 0xFF6B7280, 0xFF9A5B2E};
         List<android.widget.ImageView> logoViews = new ArrayList<>();
@@ -2036,12 +2059,12 @@ public class GoalWatchService extends Service {
                 // Position, the team's logo, the surname.
                 SpannableStringBuilder pos = new SpannableStringBuilder(String.valueOf(i + 1));
                 pos.setSpan(new StyleSpan(Typeface.BOLD), 0, pos.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-                line.addView(text(pos, TEXT_SP, i < 3 ? medal[i] : 0xA61A1D24), gap(i == row * 5 ? 0 : Math.round(16 * d)));
+                line.addView(text(pos, TEXT_SP, i < 3 ? medal[i] : ink(0xA61A1D24)), gap(i == row * 5 ? 0 : Math.round(16 * d)));
                 android.widget.ImageView logo = crest(null, d);
                 logo.setTag(i < race.logos.size() ? race.logos.get(i) : null);
                 line.addView(logo, sized(Math.round(CREST_DP * d), Math.round(5 * d)));
                 logoViews.add(logo);
-                line.addView(text(race.top.get(i), TEXT_SP, 0xFF1A1D24), gap(Math.round(5 * d)));
+                line.addView(text(race.top.get(i), TEXT_SP, ink(0xFF1A1D24)), gap(Math.round(5 * d)));
             }
             if (line.getChildCount() == 0) continue;
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT,

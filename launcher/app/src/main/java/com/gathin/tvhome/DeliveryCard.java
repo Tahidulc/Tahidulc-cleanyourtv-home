@@ -48,6 +48,8 @@ final class DeliveryCard {
         final int widthDp, heightDp;
         long showMs = 14_000L;
         boolean pairing;
+        /** Its one-line form for v2's Home, across the score bar's place (null: the card itself is used). */
+        java.util.function.Supplier<Card> lane;
         Card(View view, java.util.function.Consumer<Integer> reveal, int widthDp, int heightDp) {
             this.view = view;
             this.reveal = reveal;
@@ -174,7 +176,47 @@ final class DeliveryCard {
             bar.fill(mode != MOVE);
             if (orderPage != null && mode != STILL) flip(card, news, orderPage, mode == CALM, 6_000L, px(d, 10));
         };
-        return new Card(card, reveal, 620, 64);
+        Card out = new Card(card, reveal, 620, 64);
+        out.lane = () -> foodBar(c, u);
+        return out;
+    }
+
+    /**
+     * The order's news as one line across v2's Home, in the score pills' clear glass: the app's logo, the restaurant
+     * and what is happening, the bar of stages in the brand colour, the stage and when it arrives, then the order.
+     */
+    static Card foodBar(Context c, JSONObject u) {
+        float d = c.getResources().getDisplayMetrics().density;
+        int stage = Math.max(0, Math.min(4, u.optInt("stage", 0)));
+        Bitmap icon = decode(u.optString("icon", ""));
+        int brand = brand(u.optString("package", ""), icon);
+        String app = u.optString("app", "Delivery"), from = u.optString("from", "").trim();
+        String status = u.optString("status", "").trim(), eta = u.optString("eta", "").trim();
+        LinearLayout bar = laneBar(c, d);
+        bar.addView(logo(c, d, icon, brand), new LinearLayout.LayoutParams(px(d, 20), px(d, 20)));
+        bar.addView(laneText(c, from.isEmpty() ? app : from, 12.5f, Color.WHITE, true), margins(d, 0, 8));
+        String words = status.isEmpty() || status.equalsIgnoreCase(from) ? STAGE_HEAD[stage] : status;
+        TextView said = laneText(c, "·  " + words, 11f, 0xB3FFFFFF, false);
+        said.setMaxWidth(px(d, 300));
+        bar.addView(said, margins(d, 0, 6));
+        StageBar stages = new StageBar(c, bright(brand), stage);
+        stages.light = true;
+        bar.addView(stages, new LinearLayout.LayoutParams(px(d, 110), px(d, 10)));
+        ((LinearLayout.LayoutParams) stages.getLayoutParams()).leftMargin = px(d, 14);
+        String tag = STAGE_SIGN[stage] + " " + STAGE_HEAD[stage].toUpperCase(Locale.ROOT)
+                + (eta.isEmpty() || stage == 4 ? "" : "  ·  ARRIVING " + eta.toUpperCase(Locale.ROOT));
+        TextView stageTag = laneText(c, tag, 9.5f, bright(brand), true);
+        stageTag.setLetterSpacing(0.06f);
+        bar.addView(stageTag, margins(d, 0, 10));
+        JSONArray items = u.optJSONArray("items");
+        if (items != null && items.length() > 0) {
+            StringBuilder list = new StringBuilder("·   ");
+            for (int i = 0; i < items.length(); i++) list.append(i == 0 ? "" : "  ·  ").append(items.optString(i));
+            TextView order = laneText(c, list, 10.5f, 0x99FFFFFF, false);
+            order.setMaxWidth(px(d, 360));
+            bar.addView(order, margins(d, 0, 12));
+        }
+        return new Card(bar, mode -> stages.fill(mode != MOVE), 600, 46);
     }
 
     /**
@@ -211,6 +253,7 @@ final class DeliveryCard {
         private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final int colour, stage;
         private float progress;
+        boolean light;   // on clear glass: a white track and dots
 
         StageBar(Context c, int colour, int stage) {
             super(c);
@@ -231,7 +274,7 @@ final class DeliveryCard {
 
         @Override protected void onDraw(Canvas canvas) {
             float h = getHeight(), w = getWidth(), cy = h / 2f, r = h * 0.22f, x0 = h / 2f, x1 = w - h / 2f;
-            paint.setColor(0x4D1A1D24);
+            paint.setColor(light ? 0x40FFFFFF : 0x4D1A1D24);
             canvas.drawRoundRect(new RectF(x0, cy - r, x1, cy + r), r, r, paint);
             float to = x0 + (x1 - x0) * progress / 4f;
             paint.setColor(colour);
@@ -239,7 +282,7 @@ final class DeliveryCard {
             for (int i = 0; i <= 4; i++) {
                 float x = x0 + (x1 - x0) * i / 4f;
                 boolean reached = i <= progress + 0.01f;
-                paint.setColor(reached ? colour : 0x801A1D24);
+                paint.setColor(reached ? colour : light ? 0x80FFFFFF : 0x801A1D24);
                 float dot = i == stage ? h / 2f - 0.5f : h * 0.26f;
                 canvas.drawCircle(x, cy, dot, paint);
                 if (i == stage) {
@@ -339,7 +382,99 @@ final class DeliveryCard {
             second.addView(st, margins(d, 0, battery >= 0 ? 6 : 0));
         }
         if (second.getChildCount() > 0) col.addView(second, margins(d, 3, 0));
-        return new Card(card, reveal, 600, 56);
+        Card out = new Card(card, reveal, 600, 56);
+        out.lane = () -> carBar(c, u);
+        return out;
+    }
+
+    /**
+     * The car's news as one line across v2's Home, in the score pills' clear glass: the car, the Tesla mark and its
+     * name, the battery and miles, what happened, then the charge in the app's green and the details.
+     */
+    static Card carBar(Context c, JSONObject u) {
+        float d = c.getResources().getDisplayMetrics().density;
+        String title = u.optString("title", "").trim(), status = u.optString("status", "").trim();
+        int battery = u.optInt("battery", -1), from = u.optInt("from", -1), target = u.optInt("target", -1);
+        int miles = u.optInt("miles", -1);
+        boolean estimated = miles < 0;
+        if (battery >= 0 && miles < 0) miles = Math.round(parseInt(Config.themeString(c, "tesla_range_miles", "330"), 330) * battery / 100f);
+        String all = (title + " " + status).toLowerCase(Locale.ROOT);
+        boolean charging = all.contains("charging") && !all.contains("complete") && !all.contains("stopped")
+                && !all.contains("interrupted") && !all.contains("finished");
+        LinearLayout bar = laneBar(c, d);
+        Bitmap art = carArt(c);
+        if (art != null) {
+            ImageView car = new ImageView(c);
+            car.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            car.setImageBitmap(art);
+            bar.addView(car, new LinearLayout.LayoutParams(px(d, 46), px(d, 26)));
+        }
+        ImageView t = new ImageView(c);
+        t.setImageResource(R.drawable.tesla_t);
+        bar.addView(t, margins(d, 0, art != null ? 10 : 0));
+        t.getLayoutParams().width = px(d, 12);
+        t.getLayoutParams().height = px(d, 12);
+        String name = Config.themeString(c, "tesla_name", Config.themeString(c, "tesla_model", "Model X"));
+        bar.addView(laneText(c, name, 12.5f, Color.WHITE, true), margins(d, 0, 6));
+        if (battery >= 0) {
+            LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(px(d, 16), px(d, 8));
+            clp.leftMargin = px(d, 10);
+            bar.addView(new Cell(c, battery), clp);
+            bar.addView(laneText(c, (estimated ? "≈ " : "") + miles + " mi", 11f, 0xD9FFFFFF, false), margins(d, 0, 5));
+        }
+        TextView what = laneText(c, "·  " + (title.isEmpty() ? "Tesla" : title), 11f, 0xD9FFFFFF, false);
+        what.setMaxWidth(px(d, 240));
+        bar.addView(what, margins(d, 0, 6));
+        java.util.function.Consumer<Integer> reveal = mode -> { };
+        if (battery >= 0) {
+            Battery b = new Battery(c, battery, from >= 0 && from < battery ? from : charging ? Math.max(0, battery - 10) : 0,
+                    target, charging);
+            b.track = 0x40FFFFFF;
+            LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(px(d, 110), px(d, 6));
+            blp.leftMargin = px(d, 16);
+            bar.addView(b, blp);
+            bar.addView(laneText(c, battery + "%" + (charging && target > battery ? " · limit " + target + "%" : ""), 11f,
+                    charging ? TESLA_GREEN : 0xD9FFFFFF, true), margins(d, 0, 10));
+            reveal = mode -> b.fill(mode != MOVE);
+        }
+        if (!status.isEmpty() && !status.equalsIgnoreCase(title)) {
+            TextView st = laneText(c, "·  " + status, 10.5f, 0x99FFFFFF, false);
+            st.setMaxWidth(px(d, 300));
+            bar.addView(st, margins(d, 0, 6));
+        }
+        return new Card(bar, reveal, 600, 46);
+    }
+
+    /** One line in the score pills' clear glass, the height of the alerts' pills, its parts centred. */
+    private static LinearLayout laneBar(Context c, float d) {
+        LinearLayout bar = new RevealBox(c);
+        bar.setOrientation(LinearLayout.HORIZONTAL);
+        bar.setGravity(Gravity.CENTER);
+        bar.setBackground(c.getDrawable(ScoresTicker.glassRes()).mutate());
+        bar.setPadding(px(d, 14), 0, px(d, 14), 0);
+        bar.setMinimumHeight(px(d, 32));
+        bar.setLayoutParams(new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, px(d, 32)));
+        return bar;
+    }
+
+    private static Typeface inter;
+
+    /** Words on v2's Home: Inter, as the rest of Home (its bold the real semibold). */
+    private static TextView laneText(Context c, CharSequence s, float sp, int colour, boolean bold) {
+        TextView t = text(c, s, sp, colour, false);
+        if (inter == null) inter = c.getResources().getFont(R.font.inter_ui);
+        t.setTypeface(bold ? Typeface.create(inter, Typeface.BOLD) : inter);
+        t.getPaint().setSubpixelText(true);
+        return t;
+    }
+
+    /** The brand colour bright enough to read on the dark glass (a dark brand lifted). */
+    private static int bright(int colour) {
+        float[] hsv = new float[3];
+        Color.colorToHSV(colour, hsv);
+        hsv[2] = Math.max(hsv[2], 0.85f);
+        hsv[1] = Math.min(hsv[1], 0.85f);
+        return Color.HSVToColor(hsv);
     }
 
     /** The app's small battery: a grey cell filled to its level. */
@@ -438,6 +573,7 @@ final class DeliveryCard {
         private final int level, from, target;
         private final boolean charging;
         private float shown;
+        int track = TESLA_TRACK;
 
         Battery(Context c, int level, int from, int target, boolean charging) {
             super(c);
@@ -461,7 +597,7 @@ final class DeliveryCard {
         @Override protected void onDraw(Canvas canvas) {
             // The app's charge bar: a slim dark track filled in its green (red when low), a mark at the limit.
             float h = getHeight(), w = getWidth(), r = h / 2f;
-            paint.setColor(TESLA_TRACK);
+            paint.setColor(track);
             canvas.drawRoundRect(new RectF(0, 0, w, h), r, r, paint);
             paint.setColor(level < 20 ? 0xFFE82127 : TESLA_GREEN);
             float x = Math.max(h, w * shown / 100f);
