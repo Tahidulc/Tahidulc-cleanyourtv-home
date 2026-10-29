@@ -483,13 +483,13 @@ final class PagesV2 {
         String k = h.tmdbKey;
         return new PosterPage(h, "MOVIES", 0xFFFF4FA3, null, new int[]{504, 790}, t -> Arrays.asList(
                 row("Popular in the UK", "popular right now", false, tmdb(k, "movie/popular?region=GB", false)),
-                row("Top 10 films this week", "from TMDB", true, tmdb(k, "trending/movie/week", false))));
+                row("Top 10 films this week", null, true, tmdb(k, "trending/movie/week", false))));
     }
 
     static PosterPage shows(HomeV2 h) {
         String k = h.tmdbKey;
         return new PosterPage(h, "TV SHOWS", 0xFF4F8BFF, null, new int[]{504, 790}, t -> Arrays.asList(
-                row("Top 10 series this week", "from TMDB", true, tmdb(k, "trending/tv/week", true)),
+                row("Top 10 series this week", null, true, tmdb(k, "trending/tv/week", true)),
                 row("On TV now", "new episodes", false, tmdb(k, "tv/on_the_air?without_genres=10763,10764,10767", true))));
     }
 
@@ -587,13 +587,28 @@ final class PagesV2 {
             return k;
         }
 
-        private TextView heading(LinearLayout c, String s, int font) {
+        private ImageView headLogo;
+
+        /** The competition's name in its own lettering, after its logo (logo may be null, or set later through headLogo). */
+        private TextView heading(LinearLayout c, String s, int font, String logo) {
+            LinearLayout line = new LinearLayout(h.a);
+            line.setOrientation(LinearLayout.HORIZONTAL);
+            line.setGravity(Gravity.CENTER_VERTICAL);
+            headLogo = new ImageView(h.a);
+            headLogo.setAdjustViewBounds(true);
+            headLogo.setMaxHeight(px(40));
+            headLogo.setMaxWidth(px(90));
+            LinearLayout.LayoutParams il = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, px(40));
+            il.rightMargin = px(12);
+            line.addView(headLogo, il);
+            if (logo != null) h.image(headLogo, logo, px(90));
             TextView t = h.text(26, h.a.getResources().getFont(font), Color.WHITE);
             t.setText(s);
+            line.addView(t);
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
             lp.topMargin = px(8);
             lp.bottomMargin = px(10);
-            c.addView(t, lp);
+            c.addView(line, lp);
             return t;
         }
 
@@ -601,7 +616,8 @@ final class PagesV2 {
         private void buildMatch() {
             LinearLayout c = card(216, 592);
             TextView k = kicker(c, "MATCH OF THE DAY");
-            TextView comp = heading(c, "Loading…", R.font.brand_plain);
+            TextView comp = heading(c, "Loading…", R.font.brand_plain, null);
+            ImageView compLogo = headLogo;
             LinearLayout score = new LinearLayout(h.a);
             score.setOrientation(LinearLayout.HORIZONTAL);
             score.setGravity(Gravity.CENTER);
@@ -664,6 +680,7 @@ final class PagesV2 {
                     k.setText(when);
                     if (g.state == 0) k.setTextColor(0xFFFF3B4A);
                     comp.setText(g.league == null ? "" : g.league);
+                    if (g.leagueLogo != null) h.image(compLogo, g.leagueLogo, px(90));
                     h.image(hc, g.homeLogo, px(172));
                     h.image(ac, g.awayLogo, px(172));
                     hn.setText(g.homeName != null ? short_(g.homeName) : g.home);
@@ -809,7 +826,7 @@ final class PagesV2 {
         private void buildTable() {
             LinearLayout c = card(832, 518);
             kicker(c, "LIVE TABLE");
-            heading(c, "Premier League", R.font.brand_premier);
+            heading(c, "Premier League", R.font.brand_premier, "https://a.espncdn.com/i/leaguelogos/soccer/500-dark/23.png");
             LinearLayout list = new LinearLayout(h.a);
             list.setOrientation(LinearLayout.VERTICAL);
             c.addView(list);
@@ -889,7 +906,7 @@ final class PagesV2 {
         private void buildF1() {
             LinearLayout c = card(1374, 450);
             kicker(c, "DRIVERS' STANDINGS");
-            TextView head = heading(c, "Formula 1", R.font.brand_f1);
+            TextView head = heading(c, "Formula 1", R.font.brand_f1, "https://a.espncdn.com/i/teamlogos/leagues/500-dark/f1.png");
             LinearLayout list = new LinearLayout(h.a);
             list.setOrientation(LinearLayout.VERTICAL);
             c.addView(list);
@@ -913,7 +930,7 @@ final class PagesV2 {
                 }
                 String r = round;
                 h.main.post(() -> {
-                    if (!r.isEmpty()) head.setText("Formula 1  ·  after round " + r);
+                    if (!r.isEmpty()) head.setText("after round " + r);
                     for (String[] x : rows) list.addView(driver(x));
                 });
             });
@@ -949,6 +966,13 @@ final class PagesV2 {
             LinearLayout.LayoutParams bl = new LinearLayout.LayoutParams(px(5), px(22));
             bl.rightMargin = px(12);
             r.addView(bar, bl);
+            ImageView team = new ImageView(h.a);
+            team.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            LinearLayout.LayoutParams tl = new LinearLayout.LayoutParams(px(28), px(28));
+            tl.rightMargin = px(12);
+            r.addView(team, tl);
+            String logo = F1Results.logo(x[3]);
+            if (logo != null) h.image(team, logo, px(56));
             TextView n = h.text(20, h.regular, Color.WHITE);
             n.setText(x[1]);
             n.setSingleLine(true);

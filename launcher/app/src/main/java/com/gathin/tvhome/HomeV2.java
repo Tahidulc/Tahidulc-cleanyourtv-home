@@ -1275,6 +1275,8 @@ final class HomeV2 {
             return new String[]{"football", null};
         String leagues = "https://a.espncdn.com/i/teamlogos/leagues/500/";
         if (t.contains("F1")) return new String[]{"other", leagues + "f1.png"};
+        if (t.contains("WNBA")) return new String[]{"other", leagues + "wnba.png"};
+        if (t.matches("(?i).*\\baflw?\\b.*")) return new String[]{"other", leagues + "afl.png"};
         if (t.contains("UFC")) return new String[]{"other", leagues + "ufc.png"};
         if (t.contains("NFL")) return new String[]{"other", leagues + "nfl.png"};
         if (t.contains("NBA")) return new String[]{"other", leagues + "nba.png"};
