@@ -3,6 +3,7 @@ package com.gathin.tvhome;
 import android.animation.ValueAnimator;
 import android.graphics.Color;
 import android.graphics.drawable.GradientDrawable;
+import android.text.SpannableString;
 import android.text.TextUtils;
 import android.view.Gravity;
 import android.view.KeyEvent;
@@ -346,45 +347,48 @@ final class PagesV2 {
                 wide.setScaleType(ImageView.ScaleType.CENTER_CROP);
                 wide.setAlpha(0f);
                 f.addView(wide, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+                // As v1's cards: a deeper shade at the foot, the title in bold, the rating and year under it, and
+                // "#1 TRENDING FILM" at the top of a top ten.
                 View shade = new View(h.a);
-                shade.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0x00000000, 0x00000000, 0x8C000000}));
+                shade.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0x00000000, 0x00000000, 0x59000000, 0xE6000000}));
                 f.addView(shade, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-                if (t.vote > 0) {
-                    TextView b = h.text(15, h.semi, Color.WHITE);
-                    b.setText(String.format(Locale.UK, "★ %.1f", t.vote));
-                    b.setPadding(px(8), px(3), px(8), px(2));
-                    b.setBackground(h.fill(8, 0x8C000000));
-                    FrameLayout.LayoutParams bl = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP | Gravity.END);
-                    bl.topMargin = px(10);
-                    bl.rightMargin = px(10);
-                    f.addView(b, bl);
+                if (r.numbered && i < 10) {
+                    TextView chip = h.text(11, h.semi, Color.WHITE);
+                    SpannableString cs = new SpannableString("#" + (i + 1) + "  TRENDING " + (t.tv ? "TV" : "FILM"));
+                    cs.setSpan(new android.text.style.ForegroundColorSpan(0xFFFFC94D), 0, String.valueOf(i + 1).length() + 1, 0);
+                    chip.setText(cs);
+                    chip.setLetterSpacing(0.06f);
+                    chip.setPadding(px(8), px(4), px(9), px(3));
+                    chip.setBackground(h.fill(9, 0xB3000000));
+                    FrameLayout.LayoutParams cl = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP | Gravity.START);
+                    cl.topMargin = px(9);
+                    cl.leftMargin = px(9);
+                    f.addView(chip, cl);
                 }
-                TextView name = h.text(18, h.semi, Color.WHITE);
+                LinearLayout words = new LinearLayout(h.a);
+                words.setOrientation(LinearLayout.VERTICAL);
+                TextView name = h.text(17, h.semi, Color.WHITE);
                 name.setText(t.title);
-                name.setSingleLine(true);
+                name.setMaxLines(2);
+                name.setLineSpacing(0, 1.0f);
                 name.setEllipsize(TextUtils.TruncateAt.END);
                 name.setShadowLayer(px(6), 0, px(1), 0xCC000000);
-                name.setAlpha(0f);
-                FrameLayout.LayoutParams nl = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM);
-                nl.leftMargin = px(14);
-                nl.rightMargin = px(14);
-                nl.bottomMargin = px(12);
-                f.addView(name, nl);
-                if (r.numbered && i < 10) {
-                    TextView n = new TextView(h.a);
-                    n.setText(String.valueOf(i + 1));
-                    n.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, px(110));
-                    n.setTypeface(h.semi);
-                    n.setTextColor(0x00FFFFFF);
-                    n.getPaint().setStyle(android.graphics.Paint.Style.STROKE);
-                    n.getPaint().setStrokeWidth(px(3));
-                    n.setTextColor(0xD9FFFFFF);
-                    n.setIncludeFontPadding(false);
-                    FrameLayout.LayoutParams ll = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM | Gravity.START);
-                    ll.leftMargin = -px(4);
-                    ll.bottomMargin = -px(18);
-                    f.addView(n, ll);
+                words.addView(name);
+                String meta = (t.vote > 0 ? String.format(Locale.UK, "★ %.1f", t.vote) : "")
+                        + (t.year != null && !t.year.isEmpty() ? (t.vote > 0 ? "  ·  " : "") + t.year : "");
+                if (!meta.isEmpty()) {
+                    TextView m = h.text(13, h.regular, 0xD9FFFFFF);
+                    m.setText(meta);
+                    m.setSingleLine(true);
+                    LinearLayout.LayoutParams ml = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                    ml.topMargin = px(3);
+                    words.addView(m, ml);
                 }
+                FrameLayout.LayoutParams nl = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM);
+                nl.leftMargin = px(11);
+                nl.rightMargin = px(11);
+                nl.bottomMargin = px(10);
+                f.addView(words, nl);
                 LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(px(NARROW), px(TALL));
                 lp.rightMargin = px(GAP);
                 r.strip.addView(f, lp);
@@ -445,7 +449,6 @@ final class PagesV2 {
                     } else {
                         wide.animate().alpha(0f).setDuration(200).start();
                     }
-                    f.getChildAt(f.getChildCount() - (r.numbered && i < 10 ? 2 : 1)).animate().alpha(on ? 1f : 0f).setDuration(200).start();
                     f.setForeground(on ? h.ring(14) : null);
                 }
                 int first = !onTabs && ri == row ? Math.max(0, idx - 4) : 0;

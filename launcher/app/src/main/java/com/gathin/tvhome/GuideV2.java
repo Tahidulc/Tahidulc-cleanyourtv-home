@@ -91,6 +91,7 @@ final class GuideV2 {
 
     GuideV2(Context c, FrameLayout parent, float s, Typeface regular, Typeface semi, List<String[]> channels, Runnable closed) {
         this.c = c;
+        for (String[] ch : channels) if (ch[1].matches("(?i).*\\b(uhd|4k)\\b.*")) UHD.add(ch[0]);
         this.parent = parent;
         this.s = s;
         this.regular = regular;
@@ -701,8 +702,11 @@ final class GuideV2 {
         });
     }
 
+    /** The guide's channels that are UHD in the playlist: their logos say UHD. */
+    private static final java.util.Set<String> UHD = new java.util.HashSet<>();
+
     private static String logoUrl(String sid) {
-        return "https://d2n0069hmnqmmx.cloudfront.net/epgdata/1.0/newchanlogos/600/600/skychb" + sid + ".png";
+        return ScoresTicker.skyLogo(sid, UHD.contains(sid) ? "UHD" : null);
     }
 
     // ---- helpers ---------------------------------------------------------------------------------------------------
@@ -730,6 +734,7 @@ final class GuideV2 {
                     BitmapFactory.Options o = new BitmapFactory.Options();
                     Bitmap full = BitmapFactory.decodeStream(in, null, o);
                     if (url.contains("newchanlogos")) full = HomeV2.trim(full);
+                    if (full != null && url.endsWith("#uhd")) full = ScoresTicker.uhdLogo(c, full);
                     if (full != null && full.getWidth() > width * 2) {
                         b = Bitmap.createScaledBitmap(full, width, Math.round(full.getHeight() * width / (float) full.getWidth()), true);
                         full.recycle();

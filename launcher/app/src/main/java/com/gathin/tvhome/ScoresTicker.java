@@ -951,7 +951,7 @@ final class ScoresTicker {
         File file = new File(logoDir, Integer.toHexString((url + "@" + logo).hashCode()) + ".png");
         if (file.isFile()) {
             Bitmap b = BitmapFactory.decodeFile(file.getPath());
-            if (b != null) return b;
+            if (b != null) return url.endsWith("#uhd") ? uhdLogo(context, b) : b;
         }
         String small = url;
         int at = url.indexOf("/i/");
@@ -976,10 +976,67 @@ final class ScoresTicker {
             if (b != null && (logoDir.isDirectory() || logoDir.mkdirs())) {
                 try (FileOutputStream fo = new FileOutputStream(file)) { fo.write(data); }
             }
-            return b;
+            return b != null && url.endsWith("#uhd") ? uhdLogo(context, b) : b;
         } catch (Exception e) {
             return null;
         }
+    }
+
+    /**
+     * A Sky channel logo for the UHD version of its channel: Sky has no logo of its own for those (its UHD comes in its
+     * HD channels), so the logo's last box, "HD", is widened and says "UHD" instead, in the same white. A logo whose
+     * divider before "HD" cannot be found comes back as it was. A logo URL ending "#uhd" asks for it.
+     */
+    static Bitmap uhdLogo(Context c, Bitmap im) {
+        try {
+            int w = im.getWidth(), h = im.getHeight();
+            int[] px = new int[w * h];
+            im.getPixels(px, 0, w, 0, 0, w, h);
+            int top = -1, bottom = -1;
+            for (int y = 0; y < h; y++) for (int x = 0; x < w; x++) if ((px[y * w + x] >>> 24) > 60) { if (top < 0) top = y; bottom = y; break; }
+            if (top < 0) return im;
+            int high = bottom - top + 1;
+            int[] cov = new int[w];
+            for (int x = 0; x < w; x++) for (int y = top; y <= bottom; y++) if ((px[y * w + x] >>> 24) > 60) cov[x]++;
+            int right = -1;
+            for (int x = w - 1; x >= 0; x--) if (cov[x] > 0) { right = x; break; }
+            int div = -1;
+            for (int x = right - 6; x > w / 3; x--) if (cov[x] >= 0.55f * high && x + 3 < w && cov[x + 3] < 0.4f * high) { div = x; break; }
+            if (div < 0) return im;
+            int tL = -1, tR = -1, tT = -1, tB = -1;
+            for (int x = div + 4; x < right - 3; x++) for (int y = top + 4; y < bottom - 3; y++) {
+                if ((px[y * w + x] >>> 24) <= 60) continue;
+                if (tL < 0) tL = x;
+                tR = x;
+                if (tT < 0 || y < tT) tT = y;
+                if (y > tB) tB = y;
+            }
+            if (tL < 0) return im;
+            int keep = tR + 3, wide = Math.round((keep - div) * 1.5f), nw = div + wide + (w - keep);
+            Bitmap out = Bitmap.createBitmap(nw, h, Bitmap.Config.ARGB_8888);
+            android.graphics.Canvas cv = new android.graphics.Canvas(out);
+            cv.drawBitmap(im, new android.graphics.Rect(0, 0, div + 3, h), new android.graphics.Rect(0, 0, div + 3, h), null);
+            android.graphics.Rect col = new android.graphics.Rect(keep, 0, keep + 1, h);
+            for (int x = div + 3; x < div + wide; x++) cv.drawBitmap(im, col, new android.graphics.Rect(x, 0, x + 1, h), null);
+            cv.drawBitmap(im, new android.graphics.Rect(keep, 0, w, h), new android.graphics.Rect(div + wide, 0, nw, h), null);
+            android.graphics.Paint p = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+            p.setColor(android.graphics.Color.WHITE);
+            p.setTypeface(c.getResources().getFont(R.font.inter_semibold));
+            p.setTextSize((tB - tT + 1) * 1.38f);
+            android.graphics.Rect bb = new android.graphics.Rect();
+            p.getTextBounds("UHD", 0, 3, bb);
+            float cx = div + 3 + (wide - 3) / 2f;
+            cv.drawText("UHD", cx - (bb.left + bb.right) / 2f, (tT + tB) / 2f - (bb.top + bb.bottom) / 2f, p);
+            return out;
+        } catch (RuntimeException e) {
+            return im;
+        }
+    }
+
+    /** A channel's Sky logo, asked for in its UHD form when the playlist's channel is the UHD one. */
+    static String skyLogo(String sid, String channelName) {
+        String url = "https://d2n0069hmnqmmx.cloudfront.net/epgdata/1.0/newchanlogos/600/600/skychb" + sid + ".png";
+        return channelName != null && channelName.matches("(?i).*\\b(uhd|4k)\\b.*") ? url + "#uhd" : url;
     }
 
     private static String get(String url) throws Exception {

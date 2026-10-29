@@ -106,6 +106,25 @@ public class AppSearchService extends AccessibilityService {
     static boolean tune(Context c, String pkg, java.util.List<String> channels, android.graphics.Bitmap logo, android.graphics.Bitmap art) {
         java.util.List<String> names = new java.util.ArrayList<>();
         if (channels != null) for (String n : channels) if (n != null && !n.trim().isEmpty() && !names.contains(n.trim())) names.add(n.trim());
+        // The playlist's UHD version of a channel first, when it has one (the TV guide's list says which): only those
+        // known to exist are tried, as each name not in the playlist costs a search.
+        java.util.List<String> uhd = new java.util.ArrayList<>();
+        for (String line : Config.themeStrings(c, "guide_channels", new java.util.ArrayList<>())) {
+            String[] f = line.split("\\|");
+            if (f.length > 1 && f[1].matches("(?i).*\\b(uhd|4k)\\b.*")) uhd.add(f[1].trim());
+        }
+        if (!uhd.isEmpty()) {
+            java.util.List<String> first = new java.util.ArrayList<>();
+            for (String n : names) {
+                String base = n.replaceAll("(?i)\\s*\\b(f?hd|uhd|4k)\\b\\s*$", "").trim().toLowerCase(Locale.ROOT);
+                for (String u : uhd) {
+                    String ub = u.replaceAll("(?i)\\s*\\b(uhd|4k)\\b.*$", "").trim().toLowerCase(Locale.ROOT);
+                    if (ub.equals(base) && !first.contains(u)) first.add(u);
+                }
+                if (!first.contains(n)) first.add(n);
+            }
+            names = first;
+        }
         // At most the first five: each name not in the playlist costs a search.
         if (names.size() > 5) names = new java.util.ArrayList<>(names.subList(0, 5));
         Intent open = c.getPackageManager().getLeanbackLaunchIntentForPackage(pkg);

@@ -1297,7 +1297,9 @@ final class HomeV2 {
             t.heroText = n.synopsis;
             t.progress = Math.max(0f, Math.min(1f, (now - n.start) / (float) Math.max(1, n.end - n.start)));
             String channel = n.channel;
-            String logoUrl = n.logo;
+            String logoUrl = n.logo != null && channel != null && channel.matches("(?i).*\\b(uhd|4k)\\b.*") ? n.logo + "#uhd" : n.logo;
+            t.badge = logoUrl;
+            t.heroTop = logoUrl;
             t.stream = streamOf(channel);
             t.channel = channel;
             t.ok = () -> tune(channel, logoUrl);
@@ -1353,7 +1355,7 @@ final class HomeV2 {
             t.compLogo = comp[1];
             t.image = uuid.isEmpty() ? null : "https://images.metadata.sky.com/pd-image/" + uuid + "/16-9/640";
             t.heroImage = uuid.isEmpty() ? null : "https://images.metadata.sky.com/pd-image/" + uuid + "/16-9/1280";
-            String logo = "https://d2n0069hmnqmmx.cloudfront.net/epgdata/1.0/newchanlogos/600/600/skychb" + sid + ".png";
+            String logo = ScoresTicker.skyLogo(sid, name.get(sid));
             boolean on = st <= now;
             t.chip = on ? "LIVE NOW" : when.format(Instant.ofEpochMilli(st)).toUpperCase(Locale.UK);
             t.sub = "Live on " + name.get(sid);
@@ -1622,7 +1624,8 @@ final class HomeV2 {
             o = new BitmapFactory.Options();
             o.inSampleSize = sample;
             Bitmap b = BitmapFactory.decodeByteArray(data, 0, data.length, o);
-            return url.contains("newchanlogos") ? trim(b) : b;
+            if (url.contains("newchanlogos")) b = trim(b);
+            return url.endsWith("#uhd") ? ScoresTicker.uhdLogo(a, b) : b;
         } catch (Exception | OutOfMemoryError e) {
             return null;
         }
