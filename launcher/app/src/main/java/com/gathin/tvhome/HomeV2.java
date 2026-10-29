@@ -558,7 +558,8 @@ final class HomeV2 {
                 if (e.getAction() == KeyEvent.ACTION_UP) closePage();
                 return true;
             }
-            page.key(e);
+            int edge = e.getKeyCode();
+            if (!page.key(e) && e.getAction() == KeyEvent.ACTION_DOWN) leavePage(edge);
             return true;
         }
         int code = e.getKeyCode();
@@ -684,6 +685,19 @@ final class HomeV2 {
     }
 
     private List<View> hidden = new ArrayList<>();
+
+    /**
+     * Past a page's edge: the page closes and the focus goes on, as if Home were under it: Down to the boxes (on this
+     * page's own), Left to the rail, Up to the top buttons. Another box then opens with OK, no Back needed.
+     */
+    private void leavePage(int code) {
+        int to = code == KeyEvent.KEYCODE_DPAD_DOWN ? Z_CATS : code == KeyEvent.KEYCODE_DPAD_LEFT ? Z_RAIL
+                : code == KeyEvent.KEYCODE_DPAD_UP ? Z_TOP : -1;
+        if (to < 0) return;
+        closePage();
+        zone = to;
+        paint();
+    }
 
     private void closePage() {
         if (page == null) return;

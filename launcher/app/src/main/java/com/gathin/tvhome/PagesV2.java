@@ -537,22 +537,26 @@ final class PagesV2 {
             if (e.getAction() != KeyEvent.ACTION_DOWN) return code != KeyEvent.KEYCODE_BACK;
             int n = row < rows.size() ? rows.get(row).items.size() : 0;
             switch (code) {
+                // At an edge the key is Home's (false): on to the rail, the top buttons or the boxes, no Back needed.
                 case KeyEvent.KEYCODE_DPAD_LEFT:
-                    if (onTabs) { if (tab > 0) load(tab - 1); }
+                    if (onTabs) { if (tab > 0) load(tab - 1); else return false; }
                     else if (idx > 0) idx--;
+                    else return false;
                     break;
                 case KeyEvent.KEYCODE_DPAD_RIGHT:
                     if (onTabs) { if (tab < tabs.length - 1) load(tab + 1); }
                     else if (idx < n - 1) idx++;
                     break;
                 case KeyEvent.KEYCODE_DPAD_UP:
-                    if (onTabs) return true;
+                    if (onTabs) return false;
                     if (row > 0) { row--; idx = Math.min(idx, Math.max(0, rows.get(row).items.size() - 1)); }
                     else if (tabs != null) onTabs = true;
+                    else return false;
                     break;
                 case KeyEvent.KEYCODE_DPAD_DOWN:
                     if (onTabs) onTabs = false;
                     else if (row < rows.size() - 1) { row++; idx = Math.min(idx, Math.max(0, rows.get(row).items.size() - 1)); }
+                    else return false;
                     break;
                 default:
                     return false;
@@ -1374,17 +1378,21 @@ final class PagesV2 {
             }
             if (e.getAction() != KeyEvent.ACTION_DOWN) return code != KeyEvent.KEYCODE_BACK;
             switch (code) {
+                // At an edge the key is Home's (false): on to the rail, the top buttons or the boxes, no Back needed.
                 case KeyEvent.KEYCODE_DPAD_DOWN:
-                    if (zone < 1) { zone++; idx = 0; }
+                    if (zone >= 1) return false;
+                    zone++; idx = 0;
                     if (zone >= 0 && lists.get(zone).isEmpty() && zone < 1) zone++;
                     break;
                 case KeyEvent.KEYCODE_DPAD_UP:
-                    if (zone >= 0) { zone--; idx = 0; }
+                    if (zone < 0) return false;
+                    zone--; idx = 0;
                     break;
                 case KeyEvent.KEYCODE_DPAD_LEFT:
-                    if (zone >= 0) { if (idx > 0) idx--; }
+                    if (zone >= 0) { if (idx > 0) idx--; else return false; }
                     // On the table card Left and Right page through the leagues; Left from the first goes back to the match.
                     else if (cardIdx == 1) { if (league > 0) showTable(league - 1); else cardIdx = 0; }
+                    else return false;
                     break;
                 case KeyEvent.KEYCODE_DPAD_RIGHT:
                     if (zone >= 0) { if (idx < lists.get(zone).size() - 1) idx++; }
