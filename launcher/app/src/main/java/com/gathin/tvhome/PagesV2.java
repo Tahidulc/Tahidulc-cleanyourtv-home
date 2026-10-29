@@ -351,7 +351,7 @@ final class PagesV2 {
                     if (lp.width != target) {
                         int from = lp.width;
                         ValueAnimator va = ValueAnimator.ofInt(from, target);
-                        va.setDuration(300);
+                        va.setDuration(220);
                         va.setInterpolator(HomeV2.SKY);
                         va.addUpdateListener(an -> { lp.width = (int) an.getAnimatedValue(); f.setLayoutParams(lp); });
                         va.start();
@@ -536,6 +536,7 @@ final class PagesV2 {
                 FrameLayout view = new FrameLayout(h.a);
                 view.setOutlineProvider(ViewOutlineProvider.BOUNDS);
                 view.setClipToOutline(true);
+                view.setClipChildren(false);
                 LinearLayout strip = new LinearLayout(h.a);
                 strip.setOrientation(LinearLayout.HORIZONTAL);
                 FrameLayout.LayoutParams sl = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, px(216));
@@ -656,6 +657,7 @@ final class PagesV2 {
             parent.addView(v, lp);
         }
 
+        /** Static cards (the table, the F1 standings) and fixture tiles are drawn once into a GPU layer, then reused each frame. */
         private LinearLayout card(int x, int w) {
             LinearLayout c = new LinearLayout(h.a);
             c.setOrientation(LinearLayout.VERTICAL);
@@ -938,21 +940,58 @@ final class PagesV2 {
             return out;
         }
 
+        /** The tables Left and Right page through on the table card: {ESPN slug, name, lettering, ESPN logo id}. */
+        private static final Object[][] LEAGUES = {
+                {"eng.1", "Premier League", R.font.brand_premier, "23"}, {"eng.2", "Championship", R.font.brand_efl, "24"},
+                {"esp.1", "LaLiga", R.font.brand_laliga, "15"}, {"ita.1", "Serie A", R.font.brand_seriea, "12"},
+                {"ger.1", "Bundesliga", R.font.brand_bundesliga, "10"}, {"fra.1", "Ligue 1", R.font.brand_ligue1, "9"},
+                {"sco.1", "Scottish Premiership", R.font.brand_plain, "45"}, {"uefa.champions", "Champions League", R.font.brand_uefa, "2"}};
+        private final Map<String, List<String[]>> tables = new HashMap<>();
+        private LinearLayout tableCard, tableList;
+        private TextView tableName, tablePage;
+        private ImageView tableLogo;
+        private int league, cardIdx;
+
         private void buildTable() {
             LinearLayout c = card(832, 518);
-            kicker(c, "LIVE TABLE");
-            heading(c, "Premier League", R.font.brand_premier, "https://a.espncdn.com/i/leaguelogos/soccer/500-dark/23.png");
-            LinearLayout list = new LinearLayout(h.a);
-            list.setOrientation(LinearLayout.VERTICAL);
-            c.addView(list);
-            list.addView(tableRow(null, "", "CLUB", "P", "GD", "PTS", true));
+            c.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+            tableCard = c;
+            LinearLayout top = new LinearLayout(h.a);
+            top.setOrientation(LinearLayout.HORIZONTAL);
+            top.setGravity(Gravity.CENTER_VERTICAL);
+            TextView k = h.text(15, h.semi, 0xA6FFFFFF);
+            k.setLetterSpacing(0.2f);
+            k.setText("LIVE TABLE");
+            top.addView(k, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+            tablePage = h.text(15, h.semi, 0xA6FFFFFF);
+            top.addView(tablePage);
+            c.addView(top);
+            tableName = heading(c, "", R.font.brand_premier, null);
+            tableLogo = headLogo;
+            tableList = new LinearLayout(h.a);
+            tableList.setOrientation(LinearLayout.VERTICAL);
+            c.addView(tableList);
+            showTable(0);
+        }
+
+        private void showTable(int i) {
+            league = i;
+            Object[] l = LEAGUES[i];
+            tableName.setText((String) l[1]);
+            tableName.setTypeface(h.a.getResources().getFont((Integer) l[2]));
+            h.image(tableLogo, "https://a.espncdn.com/i/leaguelogos/soccer/500-dark/" + l[3] + ".png", px(90));
+            tablePage.setText("◀  " + (i + 1) + " / " + LEAGUES.length + "  ▶");
+            List<String[]> have = tables.get((String) l[0]);
+            if (have != null) { fillTable(have); return; }
+            tableList.animate().alpha(0.3f).setDuration(120).start();
+            String slug = (String) l[0];
             h.io.execute(() -> {
                 List<String[]> rows = new ArrayList<>();
                 try {
-                    JSONObject root = new JSONObject(HomeV2.get("https://site.api.espn.com/apis/v2/sports/soccer/eng.1/standings"));
+                    JSONObject root = new JSONObject(HomeV2.get("https://site.api.espn.com/apis/v2/sports/soccer/" + slug + "/standings"));
                     JSONArray entries = root.getJSONArray("children").getJSONObject(0).getJSONObject("standings").getJSONArray("entries");
-                    for (int i = 0; i < entries.length(); i++) {
-                        JSONObject e = entries.getJSONObject(i);
+                    for (int n = 0; n < entries.length(); n++) {
+                        JSONObject e = entries.getJSONObject(n);
                         JSONObject team = e.getJSONObject("team");
                         Map<String, String> st = new HashMap<>();
                         JSONArray stats = e.optJSONArray("stats");
@@ -967,12 +1006,20 @@ final class PagesV2 {
                 } catch (Exception ignored) {
                 }
                 h.main.post(() -> {
-                    for (int i = 0; i < Math.min(10, rows.size()); i++) {
-                        String[] r = rows.get(i);
-                        list.addView(tableRow(r[5], r[0], short_(r[1]), r[2], r[3], r[4], false));
-                    }
+                    if (!rows.isEmpty()) tables.put(slug, rows);
+                    if (league == i) fillTable(rows);
                 });
             });
+        }
+
+        private void fillTable(List<String[]> rows) {
+            tableList.removeAllViews();
+            tableList.addView(tableRow(null, "", "CLUB", "P", "GD", "PTS", true));
+            for (int n = 0; n < Math.min(10, rows.size()); n++) {
+                String[] r = rows.get(n);
+                tableList.addView(tableRow(r[5], r[0], short_(r[1]), r[2], r[3], r[4], false));
+            }
+            tableList.animate().alpha(1f).setDuration(160).start();
         }
 
         private static int num(String s) {
@@ -1020,6 +1067,7 @@ final class PagesV2 {
 
         private void buildF1() {
             LinearLayout c = card(1374, 450);
+            c.setLayerType(View.LAYER_TYPE_HARDWARE, null);
             kicker(c, "DRIVERS' STANDINGS");
             TextView head = heading(c, "Formula 1", R.font.brand_f1, "https://a.espncdn.com/i/teamlogos/leagues/500-dark/f1.png");
             LinearLayout list = new LinearLayout(h.a);
@@ -1166,17 +1214,24 @@ final class PagesV2 {
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(px(384), px(216));
             lp.rightMargin = px(24);
             f.setLayoutParams(lp);
+            f.setLayerType(View.LAYER_TYPE_HARDWARE, null);
             return f;
         }
 
         private void paint() {
             boolean down = zone >= 0;
-            cards.animate().alpha(down ? 0f : 1f).translationY(down ? -px(80) : 0).setDuration(350).setInterpolator(HomeV2.SKY).start();
-            fixtures.animate().translationY(down ? 0 : px(660)).setDuration(400).setInterpolator(HomeV2.SKY).start();
-            GradientDrawable wb = h.fill(30, zone == -1 ? 0xEBFFFFFF : 0x1FFFFFFF);
-            wb.setStroke(px(1.5f), zone == -1 ? Color.WHITE : 0x4DFFFFFF);
+            cards.animate().alpha(down ? 0f : 1f).translationY(down ? -px(80) : 0).setDuration(260).setInterpolator(HomeV2.SKY).withLayer().start();
+            fixtures.animate().translationY(down ? 0 : px(660)).setDuration(300).setInterpolator(HomeV2.SKY).start();
+            boolean onWatch = zone == -1 && cardIdx == 0, onTable = zone == -1 && cardIdx == 1;
+            GradientDrawable wb = h.fill(30, onWatch ? 0xEBFFFFFF : 0x1FFFFFFF);
+            wb.setStroke(px(1.5f), onWatch ? Color.WHITE : 0x4DFFFFFF);
             watch.setBackground(wb);
-            watch.setTextColor(zone == -1 ? 0xFF1A1D24 : Color.WHITE);
+            watch.setTextColor(onWatch ? 0xFF1A1D24 : Color.WHITE);
+            GradientDrawable tb = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, onTable ? new int[]{0x33FFFFFF, 0x14FFFFFF} : new int[]{0x21FFFFFF, 0x0DFFFFFF});
+            tb.setCornerRadius(px(26));
+            tb.setStroke(px(onTable ? 3 : 1.5f), onTable ? Color.WHITE : 0x3DFFFFFF);
+            tableCard.setBackground(tb);
+            tablePage.setTextColor(onTable ? Color.WHITE : 0x73FFFFFF);
             for (int r = 0; r < strips.size(); r++) {
                 LinearLayout s = strips.get(r);
                 for (int i = 0; i < s.getChildCount(); i++) {
@@ -1187,6 +1242,7 @@ final class PagesV2 {
                     f.setElevation(on ? px(8) : 0);
                 }
                 int first = zone == r ? Math.max(0, idx - 3) : 0;
+                HomeV2.window(s, first);
                 s.animate().translationX(-first * px(408)).setDuration(300).setInterpolator(HomeV2.SKY).start();
             }
         }
@@ -1195,7 +1251,7 @@ final class PagesV2 {
             int code = e.getKeyCode();
             if (ok(code)) {
                 if (e.getAction() == KeyEvent.ACTION_UP) {
-                    if (zone == -1) { if (watchOk != null) watchOk.run(); }
+                    if (zone == -1) { if (cardIdx == 0 && watchOk != null) watchOk.run(); }
                     else if (idx < lists.get(zone).size() && lists.get(zone).get(idx).ok != null) lists.get(zone).get(idx).ok.run();
                 }
                 return true;
@@ -1210,10 +1266,14 @@ final class PagesV2 {
                     if (zone >= 0) { zone--; idx = 0; }
                     break;
                 case KeyEvent.KEYCODE_DPAD_LEFT:
-                    if (zone >= 0 && idx > 0) idx--;
+                    if (zone >= 0) { if (idx > 0) idx--; }
+                    // On the table card Left and Right page through the leagues; Left from the first goes back to the match.
+                    else if (cardIdx == 1) { if (league > 0) showTable(league - 1); else cardIdx = 0; }
                     break;
                 case KeyEvent.KEYCODE_DPAD_RIGHT:
-                    if (zone >= 0 && idx < lists.get(zone).size() - 1) idx++;
+                    if (zone >= 0) { if (idx < lists.get(zone).size() - 1) idx++; }
+                    else if (cardIdx == 0) cardIdx = 1;
+                    else if (league < LEAGUES.length - 1) showTable(league + 1);
                     break;
                 default:
                     return false;

@@ -185,25 +185,15 @@ final class HomeV2 {
         channels = guideChannels(a);
         root = new FrameLayout(a);
         root.setClipChildren(false);
-        GradientDrawable bg = new GradientDrawable(GradientDrawable.Orientation.TL_BR, new int[]{BG_MID, BG_DEEP});
-        root.setBackground(bg);
+        // The background, its glow and the shades that keep the words readable, drawn once into one picture: the
+        // graphics chip then fills the screen once a frame instead of four times.
+        root.setBackground(new android.graphics.drawable.BitmapDrawable(a.getResources(), background(w, h)));
         a.setContentView(root);
         a.getWindow().setBackgroundDrawable(null);
-        View glow = new View(a);
-        GradientDrawable g = new GradientDrawable();
-        g.setGradientType(GradientDrawable.RADIAL_GRADIENT);
-        g.setColors(new int[]{BG_GLOW, 0x003A2A9A});
-        g.setGradientRadius(px(1100));
-        g.setGradientCenter(0.85f, 0.1f);
-        glow.setBackground(g);
-        add(glow, 0, 0, 1920, 1080);
 
         heroA = heroView();
         heroB = heroView();
         heroB.setAlpha(0f);
-        // The words over the picture stay readable: a shade from the left, the full height of the screen.
-        add(fade(GradientDrawable.Orientation.LEFT_RIGHT, new int[]{0xCC111548, 0x80111548, 0x00111548}), 0, 0, 1300, 1080);
-        add(fade(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0x8C0A0C32, 0x000A0C32}), 0, 0, 1920, 240);
 
         buildClock();
         buildButtons();
@@ -216,6 +206,8 @@ final class HomeV2 {
         // Clipped to its own box: a row scrolled along stays inside it, clear of the rail.
         viewport.setOutlineProvider(ViewOutlineProvider.BOUNDS);
         viewport.setClipToOutline(true);
+        // Only the box clips, not the row's own bounds: a focused tile grows past the row and keeps its whole outline.
+        viewport.setClipChildren(false);
         add(viewport, 192, 556, 1656, 268);
         row = new LinearLayout(a);
         row.setOrientation(LinearLayout.HORIZONTAL);
@@ -235,7 +227,8 @@ final class HomeV2 {
             scores.showF1(Config.themeFlag(a, "f1_scores_bar", false));
             scores.showAlerts(!Config.themeFlag(a, "alerts_everywhere", false));
             float dp = a.getResources().getDisplayMetrics().density;
-            root.post(() -> scores.place(px(96), Math.round(23 * dp), px(1728)));
+            // place() takes the bar's right edge: 96 in from each side, so the pills sit centred.
+            root.post(() -> scores.place(px(96), Math.round(23 * dp), root.getWidth() - px(96)));
         }
         guide = new GuideV2(a, root, s, regular, semi, channels, this::refocus);
         load("foryou");
@@ -243,7 +236,7 @@ final class HomeV2 {
     }
 
     private ImageView heroView() {
-        ImageView v = new Faded(a, px(560), px(260));
+        ImageView v = new ImageView(a);
         v.setScaleType(ImageView.ScaleType.CENTER_CROP);
         add(v, 520, 0, 1400, 720);
         return v;
@@ -672,7 +665,8 @@ final class HomeV2 {
         if (full || sport) away.addAll(catViews);
         if (full) { away.addAll(railViews); away.add(root.findViewWithTag("mark")); }
         if (sport) { away.add(htext); away.add(heroA); away.add(heroB); }
-        for (View v : away) if (v != null) v.animate().alpha(0f).setDuration(180).start();
+        // Faded views go INVISIBLE too, so the GPU stops drawing them under the page.
+        for (View v : away) if (v != null) v.animate().alpha(0f).setDuration(180).withEndAction(() -> v.setVisibility(View.INVISIBLE)).start();
         hidden = away;
         page.open();
         paint();
@@ -686,6 +680,9 @@ final class HomeV2 {
         page = null;
         heroTopColour(0xFFC9A7FF);
         for (View v : hidden) {
+            if (v == null) continue;
+            v.animate().cancel();
+            v.setVisibility(View.VISIBLE);
             if (v == heroA || v == heroB) continue;
             v.animate().alpha(1f).setDuration(220).start();
         }
@@ -734,7 +731,8 @@ final class HomeV2 {
             ((FrameLayout) t).setForeground(on ? ring(16) : null);
         }
         int first = zone == Z_ROW ? Math.max(0, rowIdx - 3) : 0;
-        row.animate().translationX(-first * px(408)).setDuration(300).setInterpolator(SKY).start();
+        window(row, first);
+        row.animate().translationX(-first * px(408)).setDuration(240).setInterpolator(SKY).start();
         for (int i = 0; i < catViews.size(); i++) {
             FrameLayout box = (FrameLayout) catViews.get(i);
             boolean on = zone == Z_CATS && i == catIdx && page == null;
@@ -766,11 +764,25 @@ final class HomeV2 {
         }
     }
 
+    /**
+     * Only the tiles in view, and one either side for the slide, are drawn: a long row's others are left out, so the
+     * GPU has less to do each frame.
+     */
+    static void window(LinearLayout strip, int first) {
+        for (int i = 0; i < strip.getChildCount(); i++)
+            strip.getChildAt(i).setVisibility(i >= first - 1 && i <= first + 5 ? View.VISIBLE : View.INVISIBLE);
+    }
+
+    /**
+     * The focus outline: a white line drawn just inside the tile's rounded edge, so the clip that rounds the tile never
+     * cuts it, the whole outline showing evenly all round.
+     */
     Drawable ring(int r) {
+        int w = Math.max(2, px(3));
         GradientDrawable g = new GradientDrawable();
-        g.setCornerRadius(px(r));
-        g.setStroke(px(3), Color.WHITE);
-        return g;
+        g.setCornerRadius(Math.max(0, px(r) - w / 2f));
+        g.setStroke(w, Color.WHITE);
+        return new android.graphics.drawable.InsetDrawable(g, (w + 1) / 2);
     }
 
     // ---- the row ---------------------------------------------------------------------------------------------------
@@ -826,7 +838,7 @@ final class HomeV2 {
     private void fill(List<Tile> tiles, int gen) {
         shown = tiles;
         if (rowIdx >= tiles.size()) rowIdx = Math.max(0, tiles.size() - 1);
-        row.animate().alpha(0f).setDuration(110).withEndAction(() -> {
+        row.animate().alpha(0f).setDuration(80).withEndAction(() -> {
             if (gen != generation) return;
             row.removeAllViews();
             for (Tile t : tiles) row.addView(tileView(t));
@@ -835,7 +847,7 @@ final class HomeV2 {
             row.setLayoutParams(rl);
             if (tiles.isEmpty()) for (int i = 0; i < 4; i++) row.addView(emptyTile());
             row.setTranslationX(0);
-            row.animate().alpha(1f).setDuration(180).start();
+            row.animate().alpha(1f).setDuration(140).start();
             paint();
             if (!tiles.isEmpty()) hero(tiles.get(Math.min(rowIdx, tiles.size() - 1)));
         }).start();
@@ -979,7 +991,7 @@ final class HomeV2 {
 
     private void heroSoon() {
         main.removeCallbacks(heroLater);
-        main.postDelayed(heroLater, 320);
+        main.postDelayed(heroLater, 240);
     }
 
     /** The picture and the words above the row for a tile: the picture crossfades, the words swap after a beat. */
@@ -989,16 +1001,16 @@ final class HomeV2 {
             heroShown = img;
             ImageView in = heroFrontA ? heroB : heroA, out = heroFrontA ? heroA : heroB;
             heroFrontA = !heroFrontA;
-            image(in, img, px(1400), () -> {
-                in.animate().alpha(1f).setDuration(450).setInterpolator(SKY).start();
-                out.animate().alpha(0f).setDuration(450).setInterpolator(SKY).start();
+            heroImage(in, img, () -> {
+                in.animate().alpha(1f).setDuration(320).setInterpolator(SKY).withLayer().start();
+                out.animate().alpha(0f).setDuration(320).setInterpolator(SKY).withLayer().start();
             });
         } else if (img == null) {
             heroShown = null;
             heroA.animate().alpha(0f).setDuration(300).start();
             heroB.animate().alpha(0f).setDuration(300).start();
         }
-        htext.animate().alpha(0f).setDuration(120).withEndAction(() -> {
+        htext.animate().alpha(0f).setDuration(90).withEndAction(() -> {
             hTop.setImageDrawable(null);
             hTop.setVisibility(t.heroTop != null && t.heroTop.startsWith("http") ? View.VISIBLE : View.GONE);
             if (hTop.getVisibility() == View.VISIBLE) image(hTop, t.heroTop, px(320));
@@ -1015,7 +1027,7 @@ final class HomeV2 {
             hMeta.setVisibility(t.heroMeta == null ? View.GONE : View.VISIBLE);
             hText.setText(t.heroText);
             hText.setVisibility(t.heroText == null || t.heroText.isEmpty() ? View.GONE : View.VISIBLE);
-            htext.animate().alpha(1f).setDuration(160).start();
+            htext.animate().alpha(1f).setDuration(140).start();
         }).start();
     }
 
@@ -1519,28 +1531,83 @@ final class HomeV2 {
         }
     }
 
-    /** The hero picture, fading out towards its left edge and its foot (an alpha mask, so it melts into any background). */
-    private static final class Faded extends ImageView {
-        private final int left, foot;
-        private final android.graphics.Paint mask = new android.graphics.Paint();
-
-        Faded(Context c, int left, int foot) {
-            super(c);
-            this.left = left;
-            this.foot = foot;
-            mask.setXfermode(new android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.DST_IN));
+    /**
+     * The hero picture, faded towards its left edge and its foot once, when it arrives (an alpha mask baked into the
+     * bitmap off the main thread), so drawing and crossfading it costs no offscreen pass on any frame.
+     */
+    private void heroImage(ImageView v, String url, Runnable then) {
+        String key = url + "#hero";
+        v.setTag(R.id.v2_url, key);
+        Bitmap hit = cache.get(key);
+        if (hit != null) {
+            v.setImageBitmap(hit);
+            then.run();
+            return;
         }
+        pics.execute(() -> {
+            Bitmap b = fetch(url, px(1400));
+            if (b == null) return;
+            Bitmap m = fade(b);
+            cache.put(key, m);
+            main.post(() -> {
+                if (!key.equals(v.getTag(R.id.v2_url))) return;
+                v.setImageBitmap(m);
+                then.run();
+            });
+        });
+    }
 
-        @Override protected void onDraw(android.graphics.Canvas c) {
-            int w = getWidth(), h = getHeight();
-            int save = c.saveLayer(0, 0, w, h, null);
-            super.onDraw(c);
-            mask.setShader(new android.graphics.LinearGradient(0, 0, left, 0, 0x00000000, 0xFF000000, android.graphics.Shader.TileMode.CLAMP));
-            c.drawRect(0, 0, w, h, mask);
-            mask.setShader(new android.graphics.LinearGradient(0, h - foot, 0, h, 0xFF000000, 0x00000000, android.graphics.Shader.TileMode.CLAMP));
-            c.drawRect(0, 0, w, h, mask);
-            c.restoreToCount(save);
-        }
+    /** Home's background in one bitmap: the blue gradient, the glow at the top right and the shades from the left and top. */
+    private Bitmap background(int w, int h) {
+        int sw = Math.max(w, h), sh = Math.min(w, h);
+        Bitmap b = Bitmap.createBitmap(sw, sh, Bitmap.Config.ARGB_8888);
+        android.graphics.Canvas c = new android.graphics.Canvas(b);
+        android.graphics.Paint p = new android.graphics.Paint(android.graphics.Paint.DITHER_FLAG);
+        p.setShader(new android.graphics.LinearGradient(0, 0, sw, sh, BG_MID, BG_DEEP, android.graphics.Shader.TileMode.CLAMP));
+        c.drawRect(0, 0, sw, sh, p);
+        p.setShader(new android.graphics.RadialGradient(sw * 0.85f, sh * 0.1f, px(1100), BG_GLOW, 0x003A2A9A, android.graphics.Shader.TileMode.CLAMP));
+        c.drawRect(0, 0, sw, sh, p);
+        shades(c, p, 0, 0, 1f);
+        return b;
+    }
+
+    /**
+     * The two shades (from the left over 1300 design pixels, from the top over 240) drawn into a canvas whose (0, 0) is at
+     * design point (x0, y0) of the screen, at scale design-to-canvas pixels.
+     */
+    private void shades(android.graphics.Canvas c, android.graphics.Paint p, float x0, float y0, float scale) {
+        float k = s * scale;
+        p.setShader(new android.graphics.LinearGradient(-x0 * k, 0, (1300 - x0) * k, 0, new int[]{0xCC111548, 0x80111548, 0x00111548},
+                null, android.graphics.Shader.TileMode.CLAMP));
+        c.drawRect(-x0 * k, -y0 * k, (1300 - x0) * k, (1080 - y0) * k, p);
+        p.setShader(new android.graphics.LinearGradient(0, -y0 * k, 0, (240 - y0) * k, 0x8C0A0C32, 0x000A0C32, android.graphics.Shader.TileMode.CLAMP));
+        c.drawRect(-x0 * k, -y0 * k, (1920 - x0) * k, (240 - y0) * k, p);
+    }
+
+    /** The bitmap with the hero's fades: out to the left over 40% of the view's width, and out at its foot. */
+    private Bitmap fade(Bitmap src) {
+        int bw = src.getWidth(), bh = src.getHeight();
+        Bitmap out = Bitmap.createBitmap(bw, bh, Bitmap.Config.ARGB_8888);
+        android.graphics.Canvas c = new android.graphics.Canvas(out);
+        c.drawBitmap(src, 0, 0, null);
+        // What centre-crop shows of it in the 1400 by 720 view.
+        float view = 1400f / 720f, visW = bw, visH = bh, x0 = 0, y0 = 0;
+        if (bw / (float) bh > view) { visW = bh * view; x0 = (bw - visW) / 2f; } else { visH = bw / view; y0 = (bh - visH) / 2f; }
+        android.graphics.Paint p = new android.graphics.Paint();
+        p.setXfermode(new android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.DST_IN));
+        p.setShader(new android.graphics.LinearGradient(x0, 0, x0 + visW * 0.4f, 0, 0x00000000, 0xFF000000, android.graphics.Shader.TileMode.CLAMP));
+        c.drawRect(0, 0, bw, bh, p);
+        p.setShader(new android.graphics.LinearGradient(0, y0 + visH * (1 - 260f / 720f), 0, y0 + visH, 0xFF000000, 0x00000000, android.graphics.Shader.TileMode.CLAMP));
+        c.drawRect(0, 0, bw, bh, p);
+        // The background's shades over the picture too (they used to be views above it): the view sits at design
+        // (520, 0), 1400 wide, so one design pixel is visW / 1400 bitmap pixels.
+        android.graphics.Paint q = new android.graphics.Paint();
+        q.setXfermode(new android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.SRC_ATOP));
+        c.save();
+        c.translate(x0, y0);
+        shades(c, q, 520, 0, visW / 1400f / s);
+        c.restore();
+        return out;
     }
 
     // ---- small helpers ---------------------------------------------------------------------------------------------

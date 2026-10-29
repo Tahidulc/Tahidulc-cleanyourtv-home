@@ -1,6 +1,7 @@
 package com.gathin.tvhome;
 
 import android.content.Context;
+import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.LinearGradient;
@@ -44,6 +45,7 @@ final class LivePitch extends View {
     private float ballX = 50, ballY = 50;
     interface Listener { void onPlay(Play p); }
     private Listener listener;
+    private Bitmap grass;
 
     LivePitch(Context c, float density) {
         super(c);
@@ -88,8 +90,7 @@ final class LivePitch extends View {
         return queue.size() > 8 ? STEP_MS / 3 : queue.size() > 3 ? STEP_MS / 2 : STEP_MS;
     }
 
-    @Override protected void onDraw(Canvas c) {
-        float w = getWidth(), h = getHeight();
+    private void drawPitch(Canvas c, float w, float h) {
         float r = 10 * d;
         // Grass: a deep green with mown stripes.
         paint.setStyle(Paint.Style.FILL);
@@ -115,6 +116,18 @@ final class LivePitch extends View {
         c.drawCircle(L + pw * 0.105f, T + ph / 2, 1.6f * d, paint);
         c.drawCircle(R - pw * 0.105f, T + ph / 2, 1.6f * d, paint);
         c.drawCircle(L + pw / 2, T + ph / 2, 1.6f * d, paint);
+    }
+
+    @Override protected void onDraw(Canvas c) {
+        float w = getWidth(), h = getHeight();
+        // The grass and lines never change, so they are drawn once into a bitmap: the ball redraws every frame.
+        if (grass == null || grass.getWidth() != (int) w || grass.getHeight() != (int) h) {
+            if (w <= 0 || h <= 0) return;
+            grass = Bitmap.createBitmap((int) w, (int) h, Bitmap.Config.ARGB_8888);
+            drawPitch(new Canvas(grass), w, h);
+        }
+        c.drawBitmap(grass, 0, 0, null);
+        float m = 6 * d, L = m, T = m, R = w - m, B = h - m, pw = R - L, ph = B - T;
 
         // The trail: the last few touches, fading with age.
         paint.setStyle(Paint.Style.STROKE);
