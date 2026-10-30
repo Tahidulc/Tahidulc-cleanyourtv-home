@@ -22,4 +22,5 @@ Launcher v2
 - res/drawable-nodpi/fmt_dolby_vision.png, fmt_dolby_atmos.png, fmt_dolby.png, fmt_hdr10.png, fmt_hdr10plus.png:
   the Dolby Vision, Dolby Atmos, HDR10 and HDR10+ logos from Wikimedia Commons (Dolby_Vision_(logo).svg,
   Dolby_Atmos_(logo).svg, HDR_10_logo_(black).svg, HDR_10_plus_logo_(black).svg), recoloured white; trademarks of
-  their owners, shown only to say which formats a title is in.
+  their owners, shown only to say which formats a title is in. fmt_dolby_vision_atmos.png is Dolby's combined
+  "Dolby Vision · Atmos" lockup, put together from those two logos (Atmos's word after Vision's, a dot between).

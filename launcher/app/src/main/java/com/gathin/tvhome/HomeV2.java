@@ -1277,7 +1277,13 @@ final class HomeV2 {
             d.setText(t.duration);
             hSpecs.addView(d, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         }
-        for (String m : t.specs) hSpecs.addView(mark(m), gapped(hSpecs.getChildCount() == 0 ? 0 : 10));
+        // Dolby Vision with Atmos: Dolby's one "Dolby Vision · Atmos" badge in the HDR mark's place, not two.
+        List<String> marks = new ArrayList<>(t.specs);
+        if (marks.contains("DOLBY VISION") && marks.contains("DOLBY ATMOS")) {
+            marks.set(marks.indexOf("DOLBY VISION"), "DOLBY VISION ATMOS");
+            marks.remove("DOLBY ATMOS");
+        }
+        for (String m : marks) hSpecs.addView(mark(m), gapped(hSpecs.getChildCount() == 0 ? 0 : 10));
         if (t.service != null) {
             ImageView l = new ImageView(a);
             l.setScaleType(ImageView.ScaleType.FIT_CENTER);
@@ -1330,8 +1336,7 @@ final class HomeV2 {
         try { y = Integer.parseInt(year); } catch (Exception ignored) { }
         String q, h, snd;
         switch (provider == null ? "" : provider) {
-            case "350": q = "4K UHD"; h = "DOLBY VISION"; snd = "DOLBY ATMOS"; break;
-            case "8": case "337": q = y >= 2014 || y == 0 ? "4K UHD" : "HD"; h = y >= 2014 || y == 0 ? "DOLBY VISION" : "HDR10"; snd = y >= 2016 || y == 0 ? "DOLBY ATMOS" : "5.1"; break;
+            case "350": case "8": case "337": q = "4K UHD"; h = "DOLBY VISION"; snd = "DOLBY ATMOS"; break;
             case "9": q = "4K UHD"; h = "HDR10+"; snd = "5.1"; break;
             case "39": case "29": q = "HD"; h = "HDR10"; snd = "5.1"; break;
             default: q = y >= 2015 || y == 0 ? "4K UHD" : "HD"; h = "HDR10"; snd = "5.1";
@@ -1406,7 +1411,8 @@ final class HomeV2 {
      */
     private View mark(String m) {
         // The formats with logos of their own (Dolby's, HDR10's): the logo, in white, at the marks' height.
-        int logo = m.equals("DOLBY VISION") ? R.drawable.fmt_dolby_vision : m.equals("DOLBY ATMOS") ? R.drawable.fmt_dolby_atmos
+        int logo = m.equals("DOLBY VISION ATMOS") ? R.drawable.fmt_dolby_vision_atmos
+                : m.equals("DOLBY VISION") ? R.drawable.fmt_dolby_vision : m.equals("DOLBY ATMOS") ? R.drawable.fmt_dolby_atmos
                 : m.equals("HDR10+") ? R.drawable.fmt_hdr10plus : m.equals("HDR10") ? R.drawable.fmt_hdr10
                 : m.equals("DOLBY") ? R.drawable.fmt_dolby : 0;
         if (logo != 0) {
