@@ -73,7 +73,7 @@ final class F1Results {
                     for (int d = 0; drivers != null && d < drivers.length(); d++) list.add(drivers.getJSONObject(d));
                     list.sort((a, b) -> Integer.compare(a.optInt("order", 99), b.optInt("order", 99)));
                     for (JSONObject x : list) {
-                        if (s.top.size() >= 10) break;
+                        if (s.top.size() >= 22) break;
                         JSONObject a = x.optJSONObject("athlete");
                         String surname = GoalWatchService.surname(a == null ? "" : a.optString("displayName", a.optString("shortName")));
                         s.top.add(surname);
@@ -138,7 +138,7 @@ final class F1Results {
                     list.sort((a, b) -> Integer.compare(a.optInt("order", 99), b.optInt("order", 99)));
                     java.util.Map<String, String> teams = teamsCached();
                     for (JSONObject x : list) {
-                        if (r.top.size() >= 10) break;
+                        if (r.top.size() >= 22) break;
                         JSONObject a = x.optJSONObject("athlete");
                         String n = a == null ? "" : a.optString("displayName", a.optString("shortName"));
                         String surname = GoalWatchService.surname(n);

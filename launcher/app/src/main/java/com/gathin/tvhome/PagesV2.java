@@ -182,6 +182,7 @@ final class PagesV2 {
         private final int[] rowY;
         private final List<Row> rows = new ArrayList<>();
         private LinearLayout tabBar;
+        private android.widget.HorizontalScrollView tabScroll;
         private View lens;
         private int tab, row, idx;
         private boolean onTabs;
@@ -274,7 +275,13 @@ final class PagesV2 {
                     tabBar.addView(v, lp);
                 }
                 track.addView(tabBar, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, px(50)));
-                add(track, 216, 516, -2, 50);
+                // More tabs than the width (the genres): the bar slides along under the focus, cut off at the edges.
+                tabScroll = new android.widget.HorizontalScrollView(h.a);
+                tabScroll.setHorizontalScrollBarEnabled(false);
+                tabScroll.setFocusable(false);
+                tabScroll.setOverScrollMode(View.OVER_SCROLL_NEVER);
+                tabScroll.addView(track, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, px(50)));
+                add(tabScroll, 216, 516, 1608, 50);
                 tabBar.post(this::moveLens);
             }
             if (rowY.length > 2) {
@@ -373,6 +380,12 @@ final class PagesV2 {
         private void moveLens() {
             if (tabBar == null || tab >= tabBar.getChildCount()) return;
             View t = tabBar.getChildAt(tab);
+            if (tabScroll != null) {
+                // The focused tab kept inside the bar, with the next one peeking in.
+                int view = tabScroll.getWidth(), at = tabScroll.getScrollX(), margin = px(120);
+                if (t.getRight() + margin > at + view) tabScroll.smoothScrollTo(t.getRight() + margin - view, 0);
+                else if (t.getLeft() - margin < at) tabScroll.smoothScrollTo(Math.max(0, t.getLeft() - margin), 0);
+            }
             ViewGroup.LayoutParams lp = lens.getLayoutParams();
             int from = lp.width;
             float fromX = lens.getTranslationX();
@@ -641,23 +654,14 @@ final class PagesV2 {
                 {"Disney+", "films", on(false, 337), ""},
                 {"Apple TV+", "films", on(false, 350), ""},
                 {"NOW", "films", on(false, 39), ""},
-                {"Edge-of-your-seat thrillers", "", genre(false, 53), ""},
-                {"Action & adventure", "", genre(false, 28), ""},
-                {"Feel-good comedies", "", "discover/movie?with_genres=35&without_genres=27,53&sort_by=popularity.desc&vote_count.gte=300", ""},
                 {"Hidden gems", "loved by those who found them", "discover/movie?vote_average.gte=7.4&vote_count.gte=150&vote_count.lte=1500&sort_by=vote_average.desc", ""},
                 {"Critically acclaimed", "the best rated of all time", "movie/top_rated?region=GB", ""},
                 {"True stories", "", "discover/movie?with_keywords=9672&sort_by=popularity.desc&vote_count.gte=200", ""},
                 {"Best of British", "", "discover/movie?with_origin_country=GB&sort_by=popularity.desc&vote_count.gte=200", ""},
-                {"Horror", "", genre(false, 27), ""},
-                {"Science fiction", "", genre(false, 878), ""},
-                {"Family night", "", genre(false, 10751), ""},
-                {"Animated", "", genre(false, 16), ""},
-                {"Romance", "", genre(false, 10749), ""},
                 {"90s classics", "", "discover/movie?primary_release_date.gte=1990-01-01&primary_release_date.lte=1999-12-31&sort_by=popularity.desc&vote_count.gte=1000", ""},
                 {"Korean cinema", "", "discover/movie?with_original_language=ko&sort_by=popularity.desc&vote_count.gte=150", ""},
-                {"Documentaries", "", genre(false, 99), ""},
                 {"Coming soon", "in cinemas", "movie/upcoming?region=GB", ""}};
-        return withServices(h, "MOVIES", 0xFFFF4FA3, false, spec);
+        return withGenres(h, "MOVIES", 0xFFFF4FA3, false, spec);
     }
 
     static PosterPage shows(HomeV2 h) {
@@ -674,53 +678,51 @@ final class PagesV2 {
                 {"NOW", "series", on(true, 39), ""},
                 {"BBC iPlayer", "series", on(true, 38), ""},
                 {"Binge in a weekend", "limited series", "discover/tv?with_type=2&sort_by=popularity.desc&vote_count.gte=100", ""},
-                {"Gripping crime", "", genre(true, 80), ""},
-                {"Drama", "", genre(true, 18), ""},
-                {"Comedy", "", genre(true, 35), ""},
                 {"Best of British TV", "", "discover/tv?with_origin_country=GB&sort_by=popularity.desc&vote_count.gte=100", ""},
                 {"Critically acclaimed", "the best rated", "tv/top_rated", ""},
                 {"Hidden gems", "", "discover/tv?vote_average.gte=8&vote_count.gte=100&vote_count.lte=1200&sort_by=vote_average.desc", ""},
-                {"Sci-fi & fantasy", "", genre(true, 10765), ""},
-                {"Action & adventure", "", genre(true, 10759), ""},
-                {"Reality", "", "discover/tv?with_genres=10764&sort_by=popularity.desc&watch_region=GB", ""},
-                {"Documentary series", "", genre(true, 99), ""},
                 {"Anime", "", "discover/tv?with_genres=16&with_original_language=ja&sort_by=popularity.desc&vote_count.gte=100", ""},
-                {"Korean dramas", "", "discover/tv?with_original_language=ko&with_genres=18&sort_by=popularity.desc&vote_count.gte=50", ""},
-                {"Kids", "", "discover/tv?with_genres=10762&sort_by=popularity.desc", ""}};
-        return withServices(h, "TV SHOWS", 0xFF4F8BFF, true, spec);
+                {"Korean dramas", "", "discover/tv?with_original_language=ko&with_genres=18&sort_by=popularity.desc&vote_count.gte=50", ""}};
+        return withGenres(h, "TV SHOWS", 0xFF4F8BFF, true, spec);
     }
 
-    /** The services' tabs after "All": TMDB's watch provider ids in the UK. */
+    /** The streaming services' rows in each genre: TMDB's watch provider ids in the UK. */
     private static final String[] SERVICES = {"Netflix", "Prime Video", "Disney+", "Apple TV+", "NOW"};
     private static final int[] SERVICE_IDS = {8, 9, 337, 350, 39};
 
+    /** The genres along the top of Movies and TV shows: their names and TMDB genre ids. */
+    private static final String[] MOVIE_GENRES = {"Action", "Thriller", "Comedy", "Drama", "Sci-fi", "Horror", "Crime", "Romance", "Family", "Animation", "Documentary"};
+    private static final int[] MOVIE_GENRE_IDS = {28, 53, 35, 18, 878, 27, 80, 10749, 10751, 16, 99};
+    private static final String[] TV_GENRES = {"Drama", "Crime", "Comedy", "Sci-fi & fantasy", "Action", "Mystery", "Reality", "Documentary", "Animation", "Kids"};
+    private static final int[] TV_GENRE_IDS = {18, 80, 35, 10765, 10759, 9648, 10764, 99, 16, 10762};
+
     /**
-     * Movies or TV shows with tabs: "All" (every section), then one per service with its own sections: what is
-     * popular on it, new on it, its best rated, and its genres.
+     * Movies or TV shows with the genres as tabs along the top, as Discover has its categories: "All" (every
+     * section but the genres), then each genre with its own sections: popular, new, best rated, and on each service.
      */
-    private static PosterPage withServices(HomeV2 h, String crumb, int colour, boolean tv, String[][] all) {
+    private static PosterPage withGenres(HomeV2 h, String crumb, int colour, boolean tv, String[][] all) {
         String k = h.tmdbKey;
-        String[] tabs = new String[SERVICES.length + 1];
+        String[] names = tv ? TV_GENRES : MOVIE_GENRES;
+        int[] ids = tv ? TV_GENRE_IDS : MOVIE_GENRE_IDS;
+        String[] tabs = new String[names.length + 1];
         tabs[0] = "All";
-        System.arraycopy(SERVICES, 0, tabs, 1, SERVICES.length);
-        int most = Math.max(all.length, 12);
+        System.arraycopy(names, 0, tabs, 1, names.length);
+        int most = Math.max(all.length, 3 + SERVICES.length);
         int[] y = new int[most];
         for (int i = 0; i < most; i++) y[i] = 586 + i * 310;
         return new PosterPage(h, crumb, colour, tabs, y, t -> {
             if (t == 0) return rows(k, tv, all);
-            int p = SERVICE_IDS[t - 1];
-            String name = SERVICES[t - 1], kind = tv ? "tv" : "movie", dateKey = tv ? "first_air_date" : "primary_release_date";
-            String base = "discover/" + kind + "?watch_region=GB&with_watch_providers=" + p;
+            String name = names[t - 1], kind = tv ? "tv" : "movie", dateKey = tv ? "first_air_date" : "primary_release_date";
+            String base = "discover/" + kind + "?with_genres=" + ids[t - 1];
+            String what = tv ? "series" : "films";
             List<String[]> spec = new ArrayList<>();
-            spec.add(new String[]{"Popular on " + name, "", base + "&sort_by=popularity.desc", ""});
-            spec.add(new String[]{"New on " + name, "the last three months", base + "&sort_by=popularity.desc&" + dateKey + ".gte=" + since(90), ""});
-            spec.add(new String[]{"Best rated on " + name, "", base + "&sort_by=vote_average.desc&vote_count.gte=300", ""});
-            int[][] genres = tv ? new int[][]{{18}, {80}, {35}, {10765}, {10759}, {9648}, {99}, {10764}, {16}}
-                    : new int[][]{{28}, {53}, {35}, {18}, {878}, {27}, {10749}, {10751}, {99}};
-            String[] names = tv ? new String[]{"Drama", "Crime", "Comedy", "Sci-fi & fantasy", "Action & adventure", "Mystery", "Documentaries", "Reality", "Animation"}
-                    : new String[]{"Action", "Thrillers", "Comedy", "Drama", "Science fiction", "Horror", "Romance", "Family", "Documentaries"};
-            for (int g = 0; g < genres.length; g++)
-                spec.add(new String[]{names[g], "on " + name, base + "&with_genres=" + genres[g][0] + "&sort_by=popularity.desc", ""});
+            spec.add(new String[]{"Popular " + name.toLowerCase(Locale.ROOT) + " " + what, "", base + "&sort_by=popularity.desc&vote_count.gte=50", ""});
+            spec.add(new String[]{"New " + name.toLowerCase(Locale.ROOT) + " " + what, "the last six months",
+                    base + "&sort_by=popularity.desc&" + dateKey + ".gte=" + since(180) + "&" + dateKey + ".lte=" + today(), ""});
+            spec.add(new String[]{"Best rated", name.toLowerCase(Locale.ROOT), base + "&sort_by=vote_average.desc&vote_count.gte=500", ""});
+            for (int sv = 0; sv < SERVICES.length; sv++)
+                spec.add(new String[]{SERVICES[sv], name.toLowerCase(Locale.ROOT) + " " + what,
+                        base + "&watch_region=GB&with_watch_providers=" + SERVICE_IDS[sv] + "&sort_by=popularity.desc", ""});
             return rows(k, tv, spec.toArray(new String[0][]));
         });
     }
@@ -1073,6 +1075,9 @@ final class PagesV2 {
             return t;
         }
 
+        /** The last match of the day shown, with its crests: shown at once when Sport opens again. */
+        private static volatile Object[] lastMatch;
+
         // The match of the day: live first, else the latest result, else the next kick-off.
         private void buildMatch() {
             LinearLayout c = card(216, 592);
@@ -1118,6 +1123,19 @@ final class PagesV2 {
 
             String[] leagues = h.a.getResources().getStringArray(R.array.score_leagues);
             String[] footballTv = h.a.getResources().getStringArray(R.array.football_tv_channels);
+            // The match, its crests and competition's logo as soon as they are known (last time's at once on opening),
+            // ahead of the possession, the channel and the rest, which take longer to read.
+            java.util.function.Consumer<Object[]> early = m -> {
+                ScoresTicker.Game g = (ScoresTicker.Game) m[0];
+                comp.setText(g.league == null ? "" : g.league);
+                if (m[1] != null) hc.setImageBitmap((android.graphics.Bitmap) m[1]);
+                if (m[2] != null) ac.setImageBitmap((android.graphics.Bitmap) m[2]);
+                if (m[3] != null) compLogo.setImageBitmap((android.graphics.Bitmap) m[3]);
+                hn.setText(g.homeName != null ? short_(g.homeName) : g.home);
+                an.setText(g.awayName != null ? short_(g.awayName) : g.away);
+                n.setText(g.state == 1 ? "v" : g.homeScore + " – " + g.awayScore);
+            };
+            if (lastMatch != null) early.accept(lastMatch);
             h.io.execute(() -> {
                 List<ScoresTicker.Game> games = ScoresTicker.load(leagues);
                 ScoresTicker.Game best = null;
@@ -1133,6 +1151,12 @@ final class PagesV2 {
                     return;
                 }
                 ScoresTicker.Game g = best;
+                // The crests from the logo cache on disk, straight away (not queued behind the fixtures' pictures).
+                Object[] m = {g, g.homeLogo == null ? null : ScoresTicker.cachedLogo(h.a, g.homeLogo, px(172)),
+                        g.awayLogo == null ? null : ScoresTicker.cachedLogo(h.a, g.awayLogo, px(172)),
+                        g.leagueLogo == null ? null : ScoresTicker.cachedLogo(h.a, g.leagueLogo, px(90))};
+                lastMatch = m;
+                h.main.post(() -> early.accept(m));
                 String[] summary = summary(g);   // {home possession, away possession, shootout home, shootout away}
                 TvGuide.Channel ch = TvGuide.find(footballTv, g.homeName, g.awayName, g.kickoff);
                 h.main.post(() -> {
@@ -1141,9 +1165,9 @@ final class PagesV2 {
                     k.setText(when);
                     if (g.state == 0) k.setTextColor(0xFFFF3B4A);
                     comp.setText(g.league == null ? "" : g.league);
-                    if (g.leagueLogo != null) h.image(compLogo, g.leagueLogo, px(90));
-                    h.image(hc, g.homeLogo, px(172));
-                    h.image(ac, g.awayLogo, px(172));
+                    if (g.leagueLogo != null && m[3] == null) h.image(compLogo, g.leagueLogo, px(90));
+                    if (m[1] == null) h.image(hc, g.homeLogo, px(172));
+                    if (m[2] == null) h.image(ac, g.awayLogo, px(172));
                     hn.setText(g.homeName != null ? short_(g.homeName) : g.home);
                     an.setText(g.awayName != null ? short_(g.awayName) : g.away);
                     n.setText(g.state == 1 ? "v" : g.homeScore + " – " + g.awayScore);
@@ -1318,10 +1342,61 @@ final class PagesV2 {
                 {"ger.1", "Bundesliga", R.font.brand_bundesliga, "10"}, {"fra.1", "Ligue 1", R.font.brand_ligue1, "9"},
                 {"sco.1", "Scottish Premiership", R.font.brand_plain, "45"}, {"uefa.champions", "Champions League", R.font.brand_uefa, "2"}};
         private final Map<String, List<String[]>> tables = new HashMap<>();
-        private LinearLayout tableCard, tableList;
+        private LinearLayout tableCard, tableList, driverCard;
         private TextView tableName, tablePage;
         private ImageView tableLogo;
         private int league, cardIdx;
+        private LinearLayout tableHead;
+        private android.widget.ScrollView tableView, driverView;
+        private LinearLayout driverList;
+        /** The first club (driver) in view when the table (standings) has scrolled. */
+        private int tableTop, driverTop;
+
+        /** A list's window inside its card: scrolled from the keys only, no bar. */
+        private android.widget.ScrollView scroller() {
+            android.widget.ScrollView v = new android.widget.ScrollView(h.a);
+            v.setVerticalScrollBarEnabled(false);
+            v.setFocusable(false);
+            v.setOverScrollMode(View.OVER_SCROLL_NEVER);
+            return v;
+        }
+
+        private boolean scrollTable(int dir) {
+            int to = scrollList(tableView, tableList, tableTop, dir);
+            if (to < 0) return false;
+            tableTop = to;
+            return true;
+        }
+
+        private boolean scrollDrivers(int dir) {
+            if (driverView == null) return false;
+            int to = scrollList(driverView, driverList, driverTop, dir);
+            if (to < 0) return false;
+            driverTop = to;
+            return true;
+        }
+
+        /**
+         * The list a few rows further on (dir 1) or back (dir -1) from row 'top': the new first row, or -1 at its end,
+         * so the key moves the focus on instead.
+         */
+        private int scrollList(android.widget.ScrollView view, LinearLayout list, int top, int dir) {
+            int rows = list.getChildCount();
+            if (rows == 0 || view.getHeight() == 0) return -1;
+            int rowH = Math.max(1, list.getChildAt(0).getHeight());
+            int shown = Math.max(1, view.getHeight() / rowH);
+            int to;
+            if (dir > 0) {
+                if (top + shown >= rows) return -1;
+                to = Math.min(rows - shown, top + 5);
+            } else {
+                if (top == 0) return -1;
+                to = Math.max(0, top - 5);
+            }
+            int y = Math.min(list.getChildAt(to).getTop(), Math.max(0, list.getHeight() - view.getHeight()));
+            view.smoothScrollTo(0, y);
+            return to;
+        }
 
         private void buildTable() {
             LinearLayout c = card(832, 518);
@@ -1339,9 +1414,15 @@ final class PagesV2 {
             c.addView(top);
             tableName = heading(c, "", R.font.brand_premier, null);
             tableLogo = headLogo;
+            tableHead = new LinearLayout(h.a);
+            tableHead.setOrientation(LinearLayout.VERTICAL);
+            c.addView(tableHead);
+            // The whole table, every club: it scrolls inside the card (Down and Up while the card has the focus).
+            tableView = scroller();
             tableList = new LinearLayout(h.a);
             tableList.setOrientation(LinearLayout.VERTICAL);
-            c.addView(tableList);
+            tableView.addView(tableList, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+            c.addView(tableView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
             showTable(0);
         }
 
@@ -1384,9 +1465,12 @@ final class PagesV2 {
         }
 
         private void fillTable(List<String[]> rows) {
+            tableHead.removeAllViews();
+            tableHead.addView(tableRow(null, "", "CLUB", "P", "GD", "PTS", true));
             tableList.removeAllViews();
-            tableList.addView(tableRow(null, "", "CLUB", "P", "GD", "PTS", true));
-            for (int n = 0; n < Math.min(10, rows.size()); n++) {
+            tableTop = 0;
+            tableView.scrollTo(0, 0);
+            for (int n = 0; n < rows.size(); n++) {
                 String[] r = rows.get(n);
                 tableList.addView(tableRow(r[5], r[0], short_(r[1]), r[2], r[3], r[4], false));
             }
@@ -1443,7 +1527,11 @@ final class PagesV2 {
             TextView head = heading(c, "Formula 1", R.font.brand_f1, "https://a.espncdn.com/i/teamlogos/leagues/500-dark/f1.png");
             LinearLayout list = new LinearLayout(h.a);
             list.setOrientation(LinearLayout.VERTICAL);
-            c.addView(list);
+            driverCard = c;
+            driverList = list;
+            driverView = scroller();
+            driverView.addView(list, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+            c.addView(driverView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
             h.io.execute(() -> {
                 List<String[]> rows = new ArrayList<>();
                 String round = "";
@@ -1452,7 +1540,7 @@ final class PagesV2 {
                     JSONObject l = root.getJSONObject("MRData").getJSONObject("StandingsTable").getJSONArray("StandingsLists").getJSONObject(0);
                     round = l.optString("round");
                     JSONArray st = l.getJSONArray("DriverStandings");
-                    for (int i = 0; i < Math.min(10, st.length()); i++) {
+                    for (int i = 0; i < st.length(); i++) {
                         JSONObject x = st.getJSONObject(i);
                         JSONObject dr = x.getJSONObject("Driver");
                         JSONArray cons = x.getJSONArray("Constructors");
@@ -1616,6 +1704,11 @@ final class PagesV2 {
             tb.setCornerRadius(px(26));
             tb.setStroke(px(onTable ? 3 : 1.5f), onTable ? Color.WHITE : 0x3DFFFFFF);
             tableCard.setBackground(tb);
+            boolean onDrivers = zone == -1 && cardIdx == 2;
+            GradientDrawable db = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, onDrivers ? new int[]{0x33FFFFFF, 0x14FFFFFF} : new int[]{0x21FFFFFF, 0x0DFFFFFF});
+            db.setCornerRadius(px(26));
+            db.setStroke(px(onDrivers ? 3 : 1.5f), onDrivers ? Color.WHITE : 0x3DFFFFFF);
+            if (driverCard != null) driverCard.setBackground(db);
             tablePage.setTextColor(onTable ? Color.WHITE : 0x73FFFFFF);
             for (int r = 0; r < strips.size(); r++) {
                 LinearLayout s = strips.get(r);
@@ -1652,24 +1745,28 @@ final class PagesV2 {
             switch (code) {
                 // At an edge the key is Home's (false): on to the rail, the top buttons or the boxes, no Back needed.
                 case KeyEvent.KEYCODE_DPAD_DOWN:
+                    if (zone == -1 && (cardIdx == 1 && scrollTable(1) || cardIdx == 2 && scrollDrivers(1))) return true;
                     if (zone >= 1) return false;
                     zone++; idx = 0;
                     if (zone >= 0 && lists.get(zone).isEmpty() && zone < 1) zone++;
                     break;
                 case KeyEvent.KEYCODE_DPAD_UP:
+                    if (zone == -1 && (cardIdx == 1 && scrollTable(-1) || cardIdx == 2 && scrollDrivers(-1))) return true;
                     if (zone < 0) return false;
                     zone--; idx = 0;
                     break;
                 case KeyEvent.KEYCODE_DPAD_LEFT:
                     if (zone >= 0) { if (idx > 0) idx--; else return false; }
                     // On the table card Left and Right page through the leagues; Left from the first goes back to the match.
+                    else if (cardIdx == 2) cardIdx = 1;
                     else if (cardIdx == 1) { if (league > 0) showTable(league - 1); else cardIdx = 0; }
                     else return false;
                     break;
                 case KeyEvent.KEYCODE_DPAD_RIGHT:
                     if (zone >= 0) { if (idx < lists.get(zone).size() - 1) idx++; }
                     else if (cardIdx == 0) cardIdx = 1;
-                    else if (league < LEAGUES.length - 1) showTable(league + 1);
+                    // Past the last league, on to the F1 standings.
+                    else if (cardIdx == 1) { if (league < LEAGUES.length - 1) showTable(league + 1); else cardIdx = 2; }
                     break;
                 default:
                     return false;

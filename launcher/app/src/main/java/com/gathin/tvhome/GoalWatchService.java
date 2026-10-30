@@ -484,7 +484,7 @@ public class GoalWatchService extends Service {
         if (intent != null && intent.hasExtra("test_f1")) {
             io.execute(() -> {
                 F1Results.Race r = F1Results.load(intent.getStringExtra("test_f1"));
-                if (r != null) main.post(() -> { queue.add(new Object[]{r}); showNext(); });
+                if (r != null) enqueueRace(r);
             });
         }
         if (intent != null && intent.hasExtra("test_f1_live")) {
@@ -613,7 +613,7 @@ public class GoalWatchService extends Service {
                     boolean finished = race.id.equals(f1Id) && "in".equals(f1State) && "post".equals(race.state);
                     f1Id = race.id;
                     f1State = race.state;
-                    if (finished) main.postDelayed(() -> { queue.add(new Object[]{race}); showNext(); }, DELAY_MS);
+                    if (finished) main.postDelayed(() -> enqueueRace(race), DELAY_MS);
                 }
                 if (weekend != null) f1Updates(weekend);
                 if (headlines != null) newsUpdates(headlines);
@@ -683,8 +683,7 @@ public class GoalWatchService extends Service {
                     r.id = s.id; r.name = w.name; r.state = s.state;
                     r.top.addAll(s.top);
                     r.logos.addAll(s.logos);
-                    queue.add(new Object[]{r});
-                    showNext();
+                    enqueueRace(r);
                 } else {
                     enqueueParts(sessionOver(w, s), "f1");
                 }
@@ -1505,12 +1504,12 @@ public class GoalWatchService extends Service {
      */
     private android.graphics.drawable.Drawable glass(float radius) {
         // On v2's Home: the score pills' own clear glass, as the alert stands in their place.
-        if (onLane()) return ScoresTicker.laneGlass(this, laneTint);
         if (darkGlass) {
             GradientDrawable dark = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0xF22A2C31, 0xF2141518});
             dark.setCornerRadius(radius);
             return dark;
         }
+        if (onLane()) return ScoresTicker.laneGlass(this, laneTint);
         GradientDrawable base = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
                 frost ? new int[]{0xFFFBFCFE, 0xFFE6EAEF, 0xFFD3D9E1} : new int[]{0xFFE9ECF1, 0xFFB9BFC8});
         base.setCornerRadius(radius);
@@ -1583,8 +1582,8 @@ public class GoalWatchService extends Service {
             wide = true;
             if ("f1".equals(sound)) {
                 laneTint = 0xFFE10600;
-                // Over an app F1 has Sky Sports F1's look: dark glass, white lettering, the lap in red.
-                darkGlass = !onLane();
+                // F1 has Sky Sports F1's look everywhere: dark glass, white lettering, the lap in red.
+                darkGlass = true;
             }
             if (next.length == 3) watch = (Object[]) next[2];
             if (next.length == 5) {
@@ -2254,71 +2253,61 @@ public class GoalWatchService extends Service {
     private void showRace(F1Results.Race race) {
         if (shown != null || race.top.isEmpty()) { showNext(); return; }
         float d = getResources().getDisplayMetrics().density;
-        // Sky Sports F1's dark glass over an app, as the other F1 alerts.
-        darkGlass = !onLane();
+        // Sky Sports F1's dark glass, as every F1 alert has.
+        darkGlass = true;
         LinearLayout panel = new LinearLayout(this);
         panel.setOrientation(LinearLayout.VERTICAL);
         panel.setBackground(glass(CORNER_DP * d));
-        int pad = Math.round(14 * d);
-        panel.setPadding(pad, Math.round(9 * d), pad, Math.round(10 * d));
+        int pad = Math.round(16 * d);
+        panel.setPadding(pad, Math.round(10 * d), pad, Math.round(12 * d));
         SpannableStringBuilder head = new SpannableStringBuilder("🏁  " + race.name.toUpperCase() + "  ·  RESULT");
         head.setSpan(new StyleSpan(Typeface.BOLD), 0, head.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-        // The F1 logo leads the heading, as on the other F1 alerts.
+        // The F1 logo leads the heading, full size, as on the other F1 alerts.
         LinearLayout heading = new LinearLayout(this);
         heading.setOrientation(LinearLayout.HORIZONTAL);
         heading.setGravity(Gravity.CENTER_VERTICAL);
-        android.widget.ImageView f1Logo = crest(null, d);
-        f1Logo.setTag(F1Results.F1_LOGO);
-        LinearLayout.LayoutParams llp = sized(Math.round(CREST_DP * d), 0);
-        llp.width = Math.round(CREST_DP * 3.6f * d);
+        android.widget.ImageView f1Logo = crest(raceLogos.get(F1Results.F1_LOGO), d);
+        LinearLayout.LayoutParams llp = sized(Math.round(CREST_DP * 1.15f * d), 0);
+        llp.width = Math.round(CREST_DP * 4.4f * d);
         heading.addView(f1Logo, llp);
-        heading.addView(text(head, TEXT_SP, ink(0xFF1A1D24)), gap(Math.round(8 * d)));
+        heading.addView(text(head, TEXT_SP, ink(0xFF1A1D24)), gap(Math.round(10 * d)));
         panel.addView(heading);
-        int[] medal = {0xFFB8860B, 0xFF6B7280, 0xFF9A5B2E};
-        List<android.widget.ImageView> logoViews = new ArrayList<>();
-        logoViews.add(f1Logo);
-        for (int row = 0; row < 2; row++) {
-            LinearLayout line = new LinearLayout(this);
-            line.setOrientation(LinearLayout.HORIZONTAL);
-            line.setGravity(Gravity.CENTER_VERTICAL);
-            for (int i = row * 5; i < Math.min(race.top.size(), row * 5 + 5); i++) {
-                // Position, the team's logo, the surname.
-                SpannableStringBuilder pos = new SpannableStringBuilder(String.valueOf(i + 1));
-                pos.setSpan(new StyleSpan(Typeface.BOLD), 0, pos.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-                line.addView(text(pos, TEXT_SP, i < 3 ? medal[i] : ink(0xA61A1D24)), gap(i == row * 5 ? 0 : Math.round(16 * d)));
-                android.widget.ImageView logo = crest(null, d);
-                logo.setTag(i < race.logos.size() ? race.logos.get(i) : null);
-                line.addView(logo, sized(Math.round(CREST_DP * d), Math.round(5 * d)));
-                logoViews.add(logo);
-                line.addView(text(race.top.get(i), TEXT_SP, ink(0xFF1A1D24)), gap(Math.round(5 * d)));
-            }
-            if (line.getChildCount() == 0) continue;
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT);
-            lp.topMargin = Math.round(5 * d);
-            panel.addView(line, lp);
+        // The whole field from the back to the winner: everyone from P11 down first, then P10 to P1.
+        int n = race.top.size();
+        List<List<Integer>> pages = new ArrayList<>();
+        if (n > 10) {
+            List<Integer> back = new ArrayList<>();
+            for (int i = n - 1; i >= 10; i--) back.add(i);
+            pages.add(back);
         }
-        int px = Math.round(LOGO_DP * d);
-        for (android.widget.ImageView v : logoViews) {
-            String url = (String) v.getTag();
-            if (url == null) continue;
-            int size = F1Results.F1_LOGO.equals(url) ? px * 2 : px;
-            io.execute(() -> {
-                android.graphics.Bitmap got = ScoresTicker.cachedLogo(this, url, F1Results.F1_LOGO.equals(url) ? size * 2 : size);
-                // F1's logo comes as a square with the mark in a band across it: cut to the mark.
-                android.graphics.Bitmap b = F1Results.F1_LOGO.equals(url) ? HomeV2.trim(got) : got;
-                if (b != null) main.post(() -> v.setImageBitmap(darkGlass ? lifted(b) : b));
-            });
-        }
-        ensureHost(840, 116);
+        List<Integer> top = new ArrayList<>();
+        for (int i = Math.min(10, n) - 1; i >= 0; i--) top.add(i);
+        pages.add(top);
+        LinearLayout body = new LinearLayout(this);
+        body.setOrientation(LinearLayout.VERTICAL);
+        panel.addView(body);
+        raceLines(body, race, pages.get(0), d);
+        ensureHost(940, 150);
         if (host == null) return;
         host.addView(panel, new android.widget.FrameLayout.LayoutParams(
                 android.widget.FrameLayout.LayoutParams.WRAP_CONTENT, android.widget.FrameLayout.LayoutParams.WRAP_CONTENT,
                 onLane() ? Gravity.TOP | Gravity.CENTER_HORIZONTAL : Gravity.BOTTOM | Gravity.START));
         shown = panel;
         play("f1");
+        long pageMs = 6_000L, showMs = pages.size() * pageMs + 3_000L;
+        for (int p = 1; p < pages.size(); p++) {
+            List<Integer> page = pages.get(p);
+            main.postDelayed(() -> {
+                if (shown != panel) return;
+                if (calm()) { raceLines(body, race, page, d); return; }
+                body.animate().alpha(0f).setDuration(220).withEndAction(() -> {
+                    raceLines(body, race, page, d);
+                    body.animate().alpha(1f).setDuration(280).start();
+                }).start();
+            }, p * pageMs);
+        }
         if (calm()) {
-            main.postDelayed(() -> { if (shown == panel) removeHost(); }, 15_000);
+            main.postDelayed(() -> { if (shown == panel) removeHost(); }, showMs);
             return;
         }
         panel.setAlpha(0f);
@@ -2340,7 +2329,56 @@ public class GoalWatchService extends Service {
                 shown = null;
                 showNext();
             }).start();
-        }, 15_000);
+        }, showMs);
+    }
+
+    /** Team logos (dark ones lifted for the dark glass) and F1's, fetched before a result card shows. */
+    private final Map<String, android.graphics.Bitmap> raceLogos = new HashMap<>();
+
+    private void enqueueRace(F1Results.Race r) {
+        int px = Math.round(LOGO_DP * getResources().getDisplayMetrics().density);
+        io.execute(() -> {
+            Map<String, android.graphics.Bitmap> got = new HashMap<>();
+            android.graphics.Bitmap f1 = ScoresTicker.cachedLogo(this, F1Results.F1_LOGO, px * 6);
+            // F1's logo comes as a square with the mark in a band across it: cut to the mark.
+            if (f1 != null) got.put(F1Results.F1_LOGO, HomeV2.trim(f1));
+            for (String u : r.logos) {
+                if (u == null || got.containsKey(u)) continue;
+                android.graphics.Bitmap b = ScoresTicker.cachedLogo(this, u, px);
+                if (b != null) got.put(u, lifted(b));
+            }
+            main.post(() -> {
+                raceLogos.putAll(got);
+                queue.add(new Object[]{r});
+                showNext();
+            });
+        });
+    }
+
+    /** One page of the result, in the order given (back to front): at most five to a line, the lines even. */
+    private void raceLines(LinearLayout body, F1Results.Race race, List<Integer> page, float d) {
+        body.removeAllViews();
+        int[] medal = {0xFFE8B931, 0xFFC9CDD4, 0xFFD08A4F};
+        int lines = (page.size() + 4) / 5, per = (page.size() + lines - 1) / lines;
+        for (int row = 0; row * per < page.size(); row++) {
+            LinearLayout line = new LinearLayout(this);
+            line.setOrientation(LinearLayout.HORIZONTAL);
+            line.setGravity(Gravity.CENTER_VERTICAL);
+            for (int k = row * per; k < Math.min(page.size(), row * per + per); k++) {
+                int i = page.get(k);
+                // Position, the team's logo, the surname (the winner's in bold).
+                SpannableStringBuilder pos = new SpannableStringBuilder(String.valueOf(i + 1));
+                pos.setSpan(new StyleSpan(Typeface.BOLD), 0, pos.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                line.addView(text(pos, TEXT_SP, i < 3 ? medal[i] : ink(0xA61A1D24)), gap(k == row * per ? 0 : Math.round(18 * d)));
+                String url = i < race.logos.size() ? race.logos.get(i) : null;
+                line.addView(crest(url == null ? null : raceLogos.get(url), d), sized(Math.round(CREST_DP * d), Math.round(5 * d)));
+                line.addView(text(i == 0 ? bold(race.top.get(i)) : race.top.get(i), TEXT_SP, ink(0xFF1A1D24)), gap(Math.round(5 * d)));
+            }
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT);
+            lp.topMargin = Math.round(6 * d);
+            body.addView(line, lp);
+        }
     }
 
     private TextView text(CharSequence s, float sp, int color) {
