@@ -1331,7 +1331,7 @@ final class HomeV2 {
         String target = pkg != null ? pkg : debridPackage();
         t.ok = () -> {
             if (target != null) {
-                AppSearchService.search(a, target, src.title, src.tv);
+                searchTitle(target, src.title, src.tv, src.tmdbId, t.heroImage);
                 GoalWatchService.onAppOpened(a, target);
             }
         };
@@ -1611,9 +1611,10 @@ final class HomeV2 {
      * TiviMate on the first of these channels it has, as v1 does (its own search; a 4K version next to the channel is
      * preferred). The channel's logo is fetched first when it is not to hand, so the cover always shows the logo.
      */
-    void tune(List<String> channels, String logoUrl) {
+    void tune(List<String> channels, String given) {
         String pkg = "ar.tvplayer.tv";
         players.stop();
+        String logoUrl = given != null ? given : logoFor(channels);
         // The cover over TiviMate shows the channel's logo large: Sky's full-size picture, trimmed, never a tile's copy.
         if (logoUrl == null) {
             GoalWatchService.onAppOpened(a, pkg);
@@ -1628,6 +1629,34 @@ final class HomeV2 {
                 AppSearchService.tune(a, pkg, channels, logo);
             });
         });
+    }
+
+    /**
+     * Opens a title in Debrid Stream (its search, through the helper), with the title's own logo (TMDB's, its name as
+     * drawn) and picture on the cover while it loads: both fetched first, so the cover always has the logo.
+     */
+    void searchTitle(String pkg, String title, boolean tv, int tmdbId, String art) {
+        io.execute(() -> {
+            String logoUrl = tmdbId != 0 && !tmdbKey.isEmpty() ? tmdbLogo(tmdbId, tv) : null;
+            Bitmap logo = logoUrl == null ? null : fetch(logoUrl, px(600));
+            Bitmap pic = art == null ? null : fetch(art, px(960));
+            main.post(() -> {
+                AppSearchService.search(a, pkg, title, tv, pic, logo);
+                GoalWatchService.onAppOpened(a, pkg);
+            });
+        });
+    }
+
+    /** A channel's logo from the TV guide's list, by any of its names: for a tune that came with none. */
+    private String logoFor(List<String> names) {
+        for (String n : names) {
+            String want = n.replaceAll("(?i)\\s*\\b(f?hd|uhd|4k)\\b\\s*$", "").trim();
+            for (String[] c : channels) {
+                String have = c[1].replaceAll("(?i)\\s*\\b(f?hd|uhd|4k)\\b\\s*$", "").trim();
+                if (have.equalsIgnoreCase(want)) return ScoresTicker.skyLogo(c[0], c[1]);
+            }
+        }
+        return null;
     }
 
     /** OK on a score pill: TiviMate on the channel showing that game, found as v1 finds it. */

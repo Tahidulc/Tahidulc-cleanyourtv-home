@@ -285,6 +285,9 @@ final class PagesV2 {
                 r.view = new FrameLayout(h.a);
                 r.view.setOutlineProvider(ViewOutlineProvider.BOUNDS);
                 r.view.setClipToOutline(true);
+                // Only the row's box clips: its strip runs on past the screen, and posters further along must still
+                // draw when it slides left (clipped to the strip's own width they vanished while the focus went on).
+                r.view.setClipChildren(false);
                 r.strip = new LinearLayout(h.a);
                 r.strip.setOrientation(LinearLayout.HORIZONTAL);
                 r.strip.setGravity(Gravity.BOTTOM);
@@ -537,8 +540,7 @@ final class PagesV2 {
                     Title t = rows.get(row).items.get(idx);
                     String pkg = h.debridPackage();
                     if (pkg != null) {
-                        AppSearchService.search(h.a, pkg, t.title, t.tv);
-                        GoalWatchService.onAppOpened(h.a, pkg);
+                        h.searchTitle(pkg, t.title, t.tv, t.id, t.backdrop != null ? t.backdrop : t.poster);
                     }
                 }
                 return true;
@@ -635,21 +637,43 @@ final class PagesV2 {
         return "discover/" + (tv ? "tv" : "movie") + "?with_genres=" + id + "&sort_by=popularity.desc&vote_count.gte=150";
     }
 
+    private static String since(int days) {
+        return java.time.LocalDate.now().minusDays(days).toString();
+    }
+
+    private static String today() {
+        return java.time.LocalDate.now().toString();
+    }
+
     static PosterPage movies(HomeV2 h) {
         String k = h.tmdbKey;
+        String m = "discover/movie?sort_by=popularity.desc&watch_region=GB";
         String[][] spec = {
                 {"Popular in the UK", "popular right now", "movie/popular?region=GB", ""},
                 {"Top 10 films this week", "", "trending/movie/week", "n"},
+                {"New to stream", "out on digital in the last six weeks", m + "&region=GB&with_release_type=4&release_date.gte=" + since(45) + "&release_date.lte=" + today(), ""},
+                {"In cinemas now", "", "movie/now_playing?region=GB", ""},
                 {"Trending today", "", "trending/movie/day", ""},
                 {"Netflix", "films", on(false, 8), ""},
                 {"Prime Video", "films", on(false, 9), ""},
                 {"Disney+", "films", on(false, 337), ""},
                 {"Apple TV+", "films", on(false, 350), ""},
-                {"Action", "", genre(false, 28), ""},
-                {"Comedy", "", genre(false, 35), ""},
+                {"NOW", "films", on(false, 39), ""},
+                {"Edge-of-your-seat thrillers", "", genre(false, 53), ""},
+                {"Action & adventure", "", genre(false, 28), ""},
+                {"Feel-good comedies", "", "discover/movie?with_genres=35&without_genres=27,53&sort_by=popularity.desc&vote_count.gte=300", ""},
+                {"Hidden gems", "loved by those who found them", "discover/movie?vote_average.gte=7.4&vote_count.gte=150&vote_count.lte=1500&sort_by=vote_average.desc", ""},
+                {"Critically acclaimed", "the best rated of all time", "movie/top_rated?region=GB", ""},
+                {"True stories", "", "discover/movie?with_keywords=9672&sort_by=popularity.desc&vote_count.gte=200", ""},
+                {"Best of British", "", "discover/movie?with_origin_country=GB&sort_by=popularity.desc&vote_count.gte=200", ""},
                 {"Horror", "", genre(false, 27), ""},
                 {"Science fiction", "", genre(false, 878), ""},
-                {"Family", "", genre(false, 10751), ""},
+                {"Family night", "", genre(false, 10751), ""},
+                {"Animated", "", genre(false, 16), ""},
+                {"Romance", "", genre(false, 10749), ""},
+                {"90s classics", "", "discover/movie?primary_release_date.gte=1990-01-01&primary_release_date.lte=1999-12-31&sort_by=popularity.desc&vote_count.gte=1000", ""},
+                {"Korean cinema", "", "discover/movie?with_original_language=ko&sort_by=popularity.desc&vote_count.gte=150", ""},
+                {"Documentaries", "", genre(false, 99), ""},
                 {"Coming soon", "in cinemas", "movie/upcoming?region=GB", ""}};
         return new PosterPage(h, "MOVIES", 0xFFFF4FA3, null, rowYs(spec.length), t -> rows(k, false, spec));
     }
@@ -658,18 +682,29 @@ final class PagesV2 {
         String k = h.tmdbKey;
         String[][] spec = {
                 {"Top 10 series this week", "", "trending/tv/week", "n"},
+                {"New series", "started in the last two months", "discover/tv?first_air_date.gte=" + since(60) + "&first_air_date.lte=" + today() + "&sort_by=popularity.desc&with_original_language=en", ""},
                 {"On TV now", "new episodes", "tv/on_the_air?without_genres=10763,10764,10767", ""},
                 {"Trending today", "", "trending/tv/day", ""},
                 {"Netflix", "series", on(true, 8), ""},
                 {"Prime Video", "series", on(true, 9), ""},
                 {"Disney+", "series", on(true, 337), ""},
                 {"Apple TV+", "series", on(true, 350), ""},
+                {"NOW", "series", on(true, 39), ""},
+                {"BBC iPlayer", "series", on(true, 38), ""},
+                {"Binge in a weekend", "limited series", "discover/tv?with_type=2&sort_by=popularity.desc&vote_count.gte=100", ""},
+                {"Gripping crime", "", genre(true, 80), ""},
                 {"Drama", "", genre(true, 18), ""},
                 {"Comedy", "", genre(true, 35), ""},
-                {"Crime", "", genre(true, 80), ""},
+                {"Best of British TV", "", "discover/tv?with_origin_country=GB&sort_by=popularity.desc&vote_count.gte=100", ""},
+                {"Critically acclaimed", "the best rated", "tv/top_rated", ""},
+                {"Hidden gems", "", "discover/tv?vote_average.gte=8&vote_count.gte=100&vote_count.lte=1200&sort_by=vote_average.desc", ""},
                 {"Sci-fi & fantasy", "", genre(true, 10765), ""},
-                {"Documentaries", "", genre(true, 99), ""},
-                {"Animation", "", genre(true, 16), ""}};
+                {"Action & adventure", "", genre(true, 10759), ""},
+                {"Reality", "", "discover/tv?with_genres=10764&sort_by=popularity.desc&watch_region=GB", ""},
+                {"Documentary series", "", genre(true, 99), ""},
+                {"Anime", "", "discover/tv?with_genres=16&with_original_language=ja&sort_by=popularity.desc&vote_count.gte=100", ""},
+                {"Korean dramas", "", "discover/tv?with_original_language=ko&with_genres=18&sort_by=popularity.desc&vote_count.gte=50", ""},
+                {"Kids", "", "discover/tv?with_genres=10762&sort_by=popularity.desc", ""}};
         return new PosterPage(h, "TV SHOWS", 0xFF4F8BFF, null, rowYs(spec.length), t -> rows(k, true, spec));
     }
 

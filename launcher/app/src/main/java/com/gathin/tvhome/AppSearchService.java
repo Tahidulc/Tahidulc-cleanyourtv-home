@@ -141,6 +141,7 @@ public class AppSearchService extends AccessibilityService {
         }
         if (helper) {
             instance.start(pkg, names.get(0));
+            instance.quiet();
             instance.channel = true;
             instance.candidates = names;
             // TiviMate searches a whole playlist: allow it longer.
@@ -438,11 +439,43 @@ public class AppSearchService extends AccessibilityService {
 
     private final Runnable step = new Runnable() {
         @Override public void run() {
-            if (target == null || System.currentTimeMillis() > deadline) { target = null; hideCover(0); return; }
+            if (target == null || System.currentTimeMillis() > deadline) { target = null; loud(); hideCover(0); return; }
             if (advance()) main.postDelayed(this, STEP_MS);
-            else { target = null; hideCover(hideDelay); }
+            else { target = null; loud(); hideCover(hideDelay); }
         }
     };
+
+    /**
+     * Silence while the helper finds a channel: TiviMate's search box is a voice search that bleeps as it starts
+     * listening (again each time it clears the name). The sound comes back the moment the channel is picked, or
+     * the helper gives up or is stopped, and in any case after half a minute.
+     */
+    private boolean tuneMuted;
+    private final Runnable loudLater = this::loud;
+
+    private void quiet() {
+        android.media.AudioManager am = (android.media.AudioManager) getSystemService(AUDIO_SERVICE);
+        if (am == null || tuneMuted) return;
+        for (int stream : new int[]{android.media.AudioManager.STREAM_MUSIC, android.media.AudioManager.STREAM_SYSTEM,
+                android.media.AudioManager.STREAM_NOTIFICATION}) {
+            try { am.adjustStreamVolume(stream, android.media.AudioManager.ADJUST_MUTE, 0); } catch (RuntimeException ignored) { }
+        }
+        tuneMuted = true;
+        main.removeCallbacks(loudLater);
+        main.postDelayed(loudLater, 30_000L);
+    }
+
+    private void loud() {
+        main.removeCallbacks(loudLater);
+        if (!tuneMuted) return;
+        tuneMuted = false;
+        android.media.AudioManager am = (android.media.AudioManager) getSystemService(AUDIO_SERVICE);
+        if (am == null) return;
+        for (int stream : new int[]{android.media.AudioManager.STREAM_MUSIC, android.media.AudioManager.STREAM_SYSTEM,
+                android.media.AudioManager.STREAM_NOTIFICATION}) {
+            try { am.adjustStreamVolume(stream, android.media.AudioManager.ADJUST_UNMUTE, 0); } catch (RuntimeException ignored) { }
+        }
+    }
 
     /** One look at the screen and one move towards the search: true to look again. */
     private boolean advance() {
@@ -603,6 +636,7 @@ public class AppSearchService extends AccessibilityService {
         picks++;
         pickedAt = System.currentTimeMillis();
         click(hit);
+        if (channel) loud();   // the channel's own sound, as it starts
         return true;
     }
 
@@ -782,6 +816,7 @@ public class AppSearchService extends AccessibilityService {
     }
 
     private void removeCover() {
+        loud();
         for (android.animation.Animator a : coverLoops) a.cancel();
         coverLoops.clear();
         if (cover != null) removeView(cover);
