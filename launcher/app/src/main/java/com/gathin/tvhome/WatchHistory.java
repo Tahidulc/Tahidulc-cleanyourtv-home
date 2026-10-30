@@ -247,10 +247,12 @@ public class WatchHistory extends NotificationListenerService {
     /** Looks each new entry up on TMDB (its id, poster and picture), off the main thread; once per entry. */
     static void match(Context c, String key) {
         if (key == null || key.isEmpty()) return;
-        List<Entry> list = new ArrayList<>(load(c));
+        // Looked up on copies, then written onto the list as it is by then: what was watched (or cleared) during
+        // the lookups is kept, not overwritten by the list as it was when they began.
+        List<Entry> list = new ArrayList<>();
+        for (Entry x : load(c)) if (x.tmdbId == 0) list.add(copy(x));
         boolean changed = false;
         for (Entry e : list) {
-            if (e.tmdbId != 0) continue;
             boolean tv = episode(e);
             String name = searchName(e);
             List<PagesV2.Title> got = new ArrayList<>();
@@ -273,7 +275,36 @@ public class WatchHistory extends NotificationListenerService {
             e.overview = t.overview;
             e.year = t.year;
         }
-        if (changed) store(c, list);
+        if (changed) mergeMatches(c, list);
+    }
+
+    private static Entry copy(Entry x) {
+        Entry e = new Entry();
+        e.pkg = x.pkg;
+        e.title = x.title;
+        e.sub = x.sub;
+        e.dur = x.dur;
+        return e;
+    }
+
+    private static synchronized void mergeMatches(Context c, List<Entry> found) {
+        List<Entry> now = new ArrayList<>(load(c));
+        boolean any = false;
+        for (Entry e : now) {
+            if (e.tmdbId != 0) continue;
+            for (Entry f : found) {
+                if (!f.pkg.equals(e.pkg) || !f.title.equals(e.title) || !f.sub.equals(e.sub)) continue;
+                e.tmdbId = f.tmdbId;
+                e.tv = f.tv;
+                e.show = f.show;
+                e.poster = f.poster;
+                e.backdrop = f.backdrop;
+                e.overview = f.overview;
+                e.year = f.year;
+                any = true;
+            }
+        }
+        if (any) store(c, now);
     }
 
     /** Started and not finished: past the first minute or two, short of the credits. */

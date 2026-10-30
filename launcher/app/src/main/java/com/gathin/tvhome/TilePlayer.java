@@ -26,7 +26,17 @@ final class TilePlayer {
     private boolean ready;
     private String pending;
     private FrameLayout tile;
-    private TextureView video;
+    private View video;
+    /**
+     * A slower TV (lite_home): the channel on a SurfaceView, laid over by the TV's own video hardware, not copied
+     * into the launcher's picture each frame. A 4K channel through a TextureView made the graphics chip shrink 4K
+     * frames into the tile fifty times a second and redraw the screen with each one.
+     */
+    private boolean overlay;
+
+    void useOverlay(boolean on) {
+        overlay = on;
+    }
     private MediaPlayer player;
     /** The live picture's surface on the tile's texture, let go with the player (else it leaked each time). */
     private android.view.Surface surface;
@@ -36,7 +46,8 @@ final class TilePlayer {
     /** The tile was kept as a finished picture before the trailer came onto it. */
     private boolean layered;
     private final Runnable reveal = () -> {
-        if (web == null || web.getParent() == null) return;
+        boolean channel = video != null && !(video instanceof TextureView);
+        if (!channel && (web == null || web.getParent() == null)) return;
         revealed = true;
         for (View c : covers) if (c != null) c.animate().alpha(0f).setDuration(450).start();
     };
@@ -126,28 +137,49 @@ final class TilePlayer {
     }
 
     /** A channel live across the tile, with sound: the playlist's stream (base without extension), HLS as the fallback. */
-    void live(FrameLayout into, int at, String base) {
+    void live(FrameLayout into, int at, String base, View cover) {
         stop();
         tile = into;
+        // A tile kept as a finished picture would hold the first frame still (sound on, picture frozen): drawn live
+        // while the channel plays, kept again after.
+        layered = into.getLayerType() == View.LAYER_TYPE_HARDWARE;
+        if (layered) into.setLayerType(View.LAYER_TYPE_NONE, null);
+        if (overlay) {
+            // Under the tile's own picture, which fades away once the channel is really showing; the tile's rounded
+            // corners stay, as the window's own pixels cover the video there.
+            android.view.SurfaceView sv = new android.view.SurfaceView(c);
+            video = sv;
+            covers = new View[]{cover};
+            into.addView(sv, 0, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+            sv.getHolder().addCallback(new android.view.SurfaceHolder.Callback() {
+                @Override public void surfaceCreated(android.view.SurfaceHolder holder) { if (video == sv) stream(sv, holder.getSurface(), base, false); }
+                @Override public void surfaceChanged(android.view.SurfaceHolder holder, int f, int w, int h) { }
+                @Override public void surfaceDestroyed(android.view.SurfaceHolder holder) { if (video == sv) release(); }
+            });
+            return;
+        }
         TextureView v = new TextureView(c);
         v.setAlpha(0f);
         video = v;
         into.addView(v, Math.min(at, into.getChildCount()), new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         v.setSurfaceTextureListener(new TextureView.SurfaceTextureListener() {
-            @Override public void onSurfaceTextureAvailable(android.graphics.SurfaceTexture st, int w, int h) { if (video == v) stream(v, st, base, false); }
+            @Override public void onSurfaceTextureAvailable(android.graphics.SurfaceTexture st, int w, int h) {
+                if (video != v) return;
+                if (surface != null) surface.release();
+                surface = new android.view.Surface(st);
+                stream(v, surface, base, false);
+            }
             @Override public void onSurfaceTextureSizeChanged(android.graphics.SurfaceTexture st, int w, int h) { }
             @Override public boolean onSurfaceTextureDestroyed(android.graphics.SurfaceTexture st) { return true; }
             @Override public void onSurfaceTextureUpdated(android.graphics.SurfaceTexture st) { }
         });
     }
 
-    private void stream(TextureView v, android.graphics.SurfaceTexture st, String base, boolean hls) {
+    private void stream(View v, android.view.Surface into, String base, boolean hls) {
         MediaPlayer mp = new MediaPlayer();
         player = mp;
         try {
-            if (surface != null) surface.release();
-            surface = new android.view.Surface(st);
-            mp.setSurface(surface);
+            mp.setSurface(into);
             java.util.Map<String, String> headers = new java.util.HashMap<>();
             headers.put("User-Agent", "TiviMate/5.1.6 (Android 14)");
             mp.setDataSource(c, android.net.Uri.parse(base + (hls ? ".m3u8" : ".ts")), headers);
@@ -155,21 +187,24 @@ final class TilePlayer {
                 if (player != m) return;
                 m.start();
                 float vw = m.getVideoWidth(), vh = m.getVideoHeight();
-                if (vw > 0 && vh > 0 && v.getWidth() > 0) {
+                if (v instanceof TextureView && vw > 0 && vh > 0 && v.getWidth() > 0) {
                     android.graphics.Matrix mx = new android.graphics.Matrix();
                     float scale = Math.max(v.getWidth() / vw, v.getHeight() / vh);
                     mx.setScale(vw * scale / v.getWidth(), vh * scale / v.getHeight(), v.getWidth() / 2f, v.getHeight() / 2f);
-                    v.setTransform(mx);
+                    ((TextureView) v).setTransform(mx);
                 }
             });
             mp.setOnInfoListener((m, what, extra) -> {
-                if (what == MediaPlayer.MEDIA_INFO_VIDEO_RENDERING_START && player == m) v.animate().alpha(1f).setDuration(350).start();
+                if (what == MediaPlayer.MEDIA_INFO_VIDEO_RENDERING_START && player == m) {
+                    if (v instanceof TextureView) v.animate().alpha(1f).setDuration(350).start();
+                    else main.post(reveal);
+                }
                 return false;
             });
             mp.setOnErrorListener((m, what, extra) -> {
                 if (player != m) return true;
-                release();
-                if (!hls && video == v) main.post(() -> stream(v, st, base, true));
+                releasePlayer();
+                if (!hls && video == v) main.post(() -> { if (video == v) stream(v, into, base, true); });
                 return true;
             });
             mp.prepareAsync();
@@ -179,12 +214,17 @@ final class TilePlayer {
     }
 
     private void release() {
+        releasePlayer();
+        if (surface != null) { surface.release(); surface = null; }
+    }
+
+    /** The player alone: its surface kept for the HLS try that follows. */
+    private void releasePlayer() {
         if (player != null) {
             try { player.stop(); } catch (Exception ignored) { }
             player.release();
             player = null;
         }
-        if (surface != null) { surface.release(); surface = null; }
     }
 
     /** Off the tile: the trailer silenced (its page kept for the next), the channel's player let go. */

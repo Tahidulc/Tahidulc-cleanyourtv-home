@@ -665,7 +665,12 @@ final class ScoresTicker {
         if (focused >= 0) focusBox(Math.min(focused, shownRow.getChildCount() - 1));
     }
 
-    /** Focus the first game box; false when there are no scores on screen. */
+    /** Whether one of the game boxes has Android's focus. */
+    boolean hasFocus() {
+        return box.hasFocus();
+    }
+
+        /** Focus the first game box; false when there are no scores on screen. */
     boolean focus() {
         if (shownRow == null || box.getVisibility() != View.VISIBLE || shownRow.getChildCount() == 0) return false;
         return shownRow.getChildAt(0).requestFocus();

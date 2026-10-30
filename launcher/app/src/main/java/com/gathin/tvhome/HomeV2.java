@@ -201,11 +201,15 @@ final class HomeV2 {
         tmdbKey = Config.themeString(a, "tmdb_key", "").trim();
         lite = Config.themeFlag(a, "lite_home", false);
         players = new TilePlayer(a);
+        players.useOverlay(lite);
         if (!tmdbKey.isEmpty()) players.warm();
         dock = new ArrayList<>(Config.load(a).dockApps);
         channels = guideChannels(a);
         root = new FrameLayout(a);
         root.setClipChildren(false);
+        // Holds Android's focus when nothing on Home should show it (the score pills let go to it).
+        root.setFocusable(true);
+        root.setDefaultFocusHighlightEnabled(false);
         // The background, its glow and the shades that keep the words readable, drawn once into one picture: the
         // graphics chip then fills the screen once a frame instead of four times.
         root.setBackground(new android.graphics.drawable.BitmapDrawable(a.getResources(), background(w, h)));
@@ -229,11 +233,11 @@ final class HomeV2 {
         viewport.setClipToOutline(true);
         // Only the box clips, not the row's own bounds: a focused tile grows past the row and keeps its whole outline.
         viewport.setClipChildren(false);
-        add(viewport, 192, 556, 1656, 268);
+        add(viewport, 192, 556, 1656, TILE_H + 52);
         row = new LinearLayout(a);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setClipChildren(false);
-        FrameLayout.LayoutParams rlp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, px(216));
+        FrameLayout.LayoutParams rlp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, px(TILE_H));
         rlp.leftMargin = px(24);
         rlp.topMargin = px(24);
         viewport.addView(row, rlp);
@@ -521,8 +525,8 @@ final class HomeV2 {
         add(mark, 80, 300 + 16, 5, 32);
     }
 
-    /** The section boxes: all six on screen, lined up under the row of tiles (216 to 1824), tall enough to meet it. */
-    private static final int CAT_GAP = 14, CAT_W = 256, CAT_X = 216 + (1608 - 6 * CAT_W - 5 * CAT_GAP) / 2, CAT_Y = 836, CAT_H = 210;
+    /** The section boxes: all six on screen, lined up under the row of tiles (216 to 1824). */
+    private static final int CAT_GAP = 14, CAT_W = 256, CAT_X = 216 + (1608 - 6 * CAT_W - 5 * CAT_GAP) / 2, CAT_Y = 886, CAT_H = 160;
 
     private void buildCats() {
         int x = CAT_X, w = CAT_W;
@@ -542,11 +546,11 @@ final class HomeV2 {
             ImageView ic = new ImageView(a);
             ic.setImageResource(CAT_ICONS[i]);
             ic.setColorFilter(Color.WHITE);
-            in.addView(ic, new LinearLayout.LayoutParams(px(50), px(50)));
-            TextView t = text(28, regular, Color.WHITE);
+            in.addView(ic, new LinearLayout.LayoutParams(px(40), px(40)));
+            TextView t = text(26, regular, Color.WHITE);
             t.setText(CAT_NAMES[i]);
             LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            tlp.topMargin = px(14);
+            tlp.topMargin = px(10);
             in.addView(t, tlp);
             box.addView(in, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
             add(box, x, CAT_Y, w, CAT_H);
@@ -683,6 +687,13 @@ final class HomeV2 {
                 else if (code == KeyEvent.KEYCODE_DPAD_DOWN) zone = n > 0 ? Z_ROW : Z_RAIL;
                 break;
             case Z_RAIL:
+                if (parked && page != null) {
+                    // Beside an open section: along the rail without changing what shows; Right back into the section.
+                    if (code == KeyEvent.KEYCODE_DPAD_UP) { if (railIdx > 0) railIdx--; else { zone = Z_TOP; topIdx = 0; } }
+                    else if (code == KeyEvent.KEYCODE_DPAD_DOWN) { if (railIdx < railViews.size() - 1) railIdx++; }
+                    else if (code == KeyEvent.KEYCODE_DPAD_RIGHT) { parked = false; zone = Z_CATS; page.entered(); }
+                    break;
+                }
                 if (code == KeyEvent.KEYCODE_DPAD_UP) {
                     if (railIdx > 0) selectRail(railIdx - 1); else { if (appsFromRail) closePage(); zone = Z_TOP; topIdx = 0; }
                 } else if (code == KeyEvent.KEYCODE_DPAD_DOWN) {
@@ -712,7 +723,7 @@ final class HomeV2 {
                     topIdx = 0;
                 } else if (code == KeyEvent.KEYCODE_DPAD_DOWN) {
                     zone = Z_CATS;
-                    catIdx = Math.min(5, rowIdx * 6 / 4);
+                    catIdx = Math.min(5, (rowIdx - Math.max(0, rowIdx - 2)) * 6 / 3);
                 }
                 if (zone == Z_ROW) heroSoon();
                 break;
@@ -742,7 +753,11 @@ final class HomeV2 {
                 return;
             case Z_RAIL:
                 String p = (String) railViews.get(railIdx).getTag();
-                if (p == null) { if (page != null) enterPage(); } else openApp(p);
+                if (p == null) {
+                    // All apps beside a section: the Apps page in its place.
+                    if (parked) { closePage(); zone = Z_RAIL; selectRail(railIdx); }
+                    if (page != null) enterPage();
+                } else openApp(p);
                 return;
             case Z_ROW:
                 if (rowIdx < shown.size()) {
@@ -823,7 +838,7 @@ final class HomeV2 {
         boolean sport = which == 4 || which == 5, full = which == 2 || which == 3;
         List<View> away = new ArrayList<>(Arrays.asList(label, viewport));
         if ((full || sport) && !hover && !keepsBoxes(which)) away.addAll(catViews);
-        if (full) { away.addAll(railViews); away.add(root.findViewWithTag("mark")); }
+        // The rail stays beside every section: Left from a section reaches it (the section kept open under it).
         if (sport) { away.add(htext); away.add(heroA); away.add(heroB); }
         // Faded views go INVISIBLE too, so the GPU stops drawing them under the page.
         for (View v : away) if (v != null) v.animate().alpha(0f).setDuration(180).withEndAction(() -> v.setVisibility(View.INVISIBLE)).start();
@@ -890,6 +905,14 @@ final class HomeV2 {
             clipAboveBoxes();
             zone = Z_RAIL;
             railIdx = railViews.size() - 1;
+            paint();
+            return;
+        }
+        if (to == Z_RAIL && page != null) {
+            // Left out of a section: onto the rail beside it, the section staying; Right goes back in, OK opens an app.
+            parked = true;
+            zone = Z_RAIL;
+            railIdx = Math.max(0, Math.min(railViews.size() - 1, railSel >= 0 ? railSel : 0));
             paint();
             return;
         }
@@ -960,6 +983,9 @@ final class HomeV2 {
     }
 
     void paint() {
+        // A score pill keeps Android's focus (and its light) after OK took the viewer to the game; once Home's own
+        // focus is elsewhere, the pill lets it go, so only one thing is ever lit.
+        if (zone != Z_SCORES && scores != null && scores.hasFocus()) root.requestFocus();
         for (int i = 0; i < railViews.size(); i++) {
             FrameLayout f = railViews.get(i);
             boolean on = zone == Z_RAIL && i == railIdx, sel = i == railSel;
@@ -984,10 +1010,11 @@ final class HomeV2 {
             t.animate().scaleX(on ? 1.07f : 1f).scaleY(on ? 1.07f : 1f).setDuration(150).setInterpolator(SKY).start();
             ((FrameLayout) t).setForeground(on ? ring(16) : null);
         }
-        int first = zone == Z_ROW ? Math.max(0, rowIdx - 3) : 0;
+        // Three tiles in full and the next peeking in: the focus moves along to the third, then the row slides.
+        int first = zone == Z_ROW ? Math.max(0, rowIdx - 2) : 0;
         window(row, first);
         playSoon();
-        row.animate().translationX(-first * px(408)).setDuration(240).setInterpolator(SKY).start();
+        row.animate().translationX(-first * px(TILE_W + 24)).setDuration(240).setInterpolator(SKY).start();
         for (int i = 0; i < catViews.size(); i++) {
             FrameLayout box = (FrameLayout) catViews.get(i);
             boolean on = zone == Z_CATS && i == catIdx && (page == null || preview);
@@ -1054,7 +1081,7 @@ final class HomeV2 {
         FrameLayout tile = (FrameLayout) v;
         if (t.stream != null && !t.stream.isEmpty() && !Config.themeString(a, "iptv_server", "").isEmpty()) {
             players.live(tile, 1, Config.themeString(a, "iptv_server", "") + "/live/" + Config.themeString(a, "iptv_user", "") + "/"
-                    + Config.themeString(a, "iptv_pass", "") + "/" + t.stream);
+                    + Config.themeString(a, "iptv_pass", "") + "/" + t.stream, tile.findViewWithTag("pic"));
             return;
         }
         if (t.tmdbId == 0 || tmdbKey.isEmpty()) return;
@@ -1164,7 +1191,7 @@ final class HomeV2 {
             row.removeAllViews();
             for (Tile t : tiles) row.addView(tileView(t));
             ViewGroup.LayoutParams rl = row.getLayoutParams();
-            rl.width = Math.max(4, tiles.size()) * px(408);
+            rl.width = Math.max(4, tiles.size()) * px(TILE_W + 24);
             row.setLayoutParams(rl);
             if (tiles.isEmpty()) for (int i = 0; i < 4; i++) row.addView(emptyTile());
             row.setTranslationX(0);
@@ -1177,11 +1204,17 @@ final class HomeV2 {
     private View emptyTile() {
         FrameLayout f = new FrameLayout(a);
         f.setBackground(fill(16, 0x10FFFFFF));
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(px(384), px(216));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(px(TILE_W), px(TILE_H));
         lp.rightMargin = px(24);
         f.setLayoutParams(lp);
         return f;
     }
+
+    /**
+     * Home's tiles: larger than the sections' (384 by 216), filling the room down to the boxes; three in full across
+     * the row and the fourth peeking in.
+     */
+    static final int TILE_W = 432, TILE_H = 243;
 
     private View tileView(Tile t) {
         FrameLayout f = new FrameLayout(a);
@@ -1190,7 +1223,7 @@ final class HomeV2 {
         f.setClipToOutline(true);
         f.setOutlineProvider(round(16));
         f.setBackground(fill(16, t.icon != null ? GLASS : 0xFF222433));
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(px(384), px(216));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(px(TILE_W), px(TILE_H));
         lp.rightMargin = px(24);
         f.setLayoutParams(lp);
         f.setTag(t);
@@ -1216,7 +1249,7 @@ final class HomeV2 {
         pic.setTag("pic");   // found by name: a trailer slides in under it
         pic.setScaleType(ImageView.ScaleType.CENTER_CROP);
         f.addView(pic, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-        image(pic, t.image, px(384));
+        image(pic, t.image, px(TILE_W));
         View shade = new View(a);
         shade.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0x00000000, 0x00000000, 0xD9000000}));
         f.addView(shade, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
@@ -1264,7 +1297,7 @@ final class HomeV2 {
             bar.setBackgroundColor(0x40FFFFFF);
             View done = new View(a);
             done.setBackgroundColor(t.progressColour);
-            bar.addView(done, new FrameLayout.LayoutParams(Math.round(px(384) * Math.min(1f, t.progress)), ViewGroup.LayoutParams.MATCH_PARENT));
+            bar.addView(done, new FrameLayout.LayoutParams(Math.round(px(TILE_W) * Math.min(1f, t.progress)), ViewGroup.LayoutParams.MATCH_PARENT));
             f.addView(bar, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, px(5), Gravity.BOTTOM));
         }
         return f;
@@ -1325,17 +1358,25 @@ final class HomeV2 {
     }
 
     /** The picture and the words above the row for a tile: the picture crossfades, the words swap after a beat. */
+    /** Each hero's number: a picture's late arrival for an older one does nothing. */
+    private int heroGen;
+
     void hero(Tile t) {
         String img = t.heroImage != null ? t.heroImage : t.image;
         if (img != null && !img.equals(heroShown)) {
+            // A new picture: any older one still on its way is not to be faded in when it arrives.
+            int gen = ++heroGen;
             heroShown = img;
             ImageView in = heroFrontA ? heroB : heroA, out = heroFrontA ? heroA : heroB;
             heroFrontA = !heroFrontA;
             heroImage(in, img, () -> {
+                // A picture that arrives after the hero has moved on (a section's, back on the TV guide) stays hidden.
+                if (gen != heroGen) return;
                 in.animate().alpha(1f).setDuration(lite ? 200 : 320).setInterpolator(SKY).start();
                 out.animate().alpha(0f).setDuration(lite ? 200 : 320).setInterpolator(SKY).start();
             });
         } else if (img == null) {
+            heroGen++;
             heroShown = null;
             heroA.animate().alpha(0f).setDuration(300).start();
             heroB.animate().alpha(0f).setDuration(300).start();
@@ -1386,8 +1427,9 @@ final class HomeV2 {
             marks.set(marks.indexOf("DOLBY VISION"), "DOLBY VISION ATMOS");
             marks.remove("DOLBY ATMOS");
         }
-        // Picture quality and sound first, then the HDR formats, then any other marks (the service's logo last).
-        marks.sort(java.util.Comparator.comparingInt(m -> QUALITY.contains(m) ? 0
+        // Subtitles and audio description first, then picture quality and sound, the HDR formats, any other marks
+        // (the service's logo last).
+        marks.sort(java.util.Comparator.comparingInt(m -> m.equals("S") || m.equals("AD") ? -1 : QUALITY.contains(m) ? 0
                 : SOUND.contains(m) || m.equals("DOLBY VISION ATMOS") ? 1 : HDR.contains(m) ? 2 : 3));
         for (String m : marks) hSpecs.addView(mark(m), gapped(hSpecs.getChildCount() == 0 ? 0 : 10));
         int wordmark = serviceLogo(t.serviceId);
