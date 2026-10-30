@@ -233,7 +233,9 @@ final class HomeV2 {
         viewport.setClipToOutline(true);
         // Only the box clips, not the row's own bounds: a focused tile grows past the row and keeps its whole outline.
         viewport.setClipChildren(false);
-        add(viewport, 192, 556, 1656, TILE_H + 52);
+        // The four tiles run on past the boxes' line (to 1880), wider than the boxes; cut off just after the fourth
+        // (room for it to grow when focused), so the fifth waits out of sight until the row slides.
+        add(viewport, 192, 556, 1704, TILE_H + 52);
         row = new LinearLayout(a);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setClipChildren(false);
@@ -1014,7 +1016,7 @@ final class HomeV2 {
         int first = zone == Z_ROW ? Math.max(0, rowIdx - 3) : 0;
         window(row, first);
         playSoon();
-        row.animate().translationX(-first * px(TILE_W + 24)).setDuration(240).setInterpolator(SKY).start();
+        row.animate().translationX(-first * px(TILE_W + TILE_GAP)).setDuration(240).setInterpolator(SKY).start();
         for (int i = 0; i < catViews.size(); i++) {
             FrameLayout box = (FrameLayout) catViews.get(i);
             boolean on = zone == Z_CATS && i == catIdx && (page == null || preview);
@@ -1158,7 +1160,17 @@ final class HomeV2 {
             });
             // Title logos for the films and series, after the row is up.
             for (Tile t : done) {
-                if (t.tmdbId == 0 || tmdbKey.isEmpty()) continue;
+                if (tmdbKey.isEmpty()) continue;
+                // A film or series from an app's own row (Netflix's, Prime Video's) has no TMDB id: found by its name,
+                // so it has its logo too. Not channels, apps, sport or YouTube's videos.
+                if (t.tmdbId == 0) {
+                    boolean title = t.stream == null && t.icon == null && t.group == null && t.title != null
+                            && !m.contains("youtube") && !m.equals("ar.tvplayer.tv");
+                    int[] found = title ? findTitle(t.title, t.tv) : null;
+                    if (found == null) continue;
+                    t.tmdbId = found[0];
+                    t.tv = found[1] == 1;
+                }
                 String logo = tmdbLogo(t.tmdbId, t.tv);
                 if (logo == null) continue;
                 t.logo = logo;
@@ -1192,7 +1204,7 @@ final class HomeV2 {
             row.removeAllViews();
             for (Tile t : tiles) row.addView(tileView(t));
             ViewGroup.LayoutParams rl = row.getLayoutParams();
-            rl.width = Math.max(4, tiles.size()) * px(TILE_W + 24);
+            rl.width = Math.max(4, tiles.size()) * px(TILE_W + TILE_GAP);
             row.setLayoutParams(rl);
             if (tiles.isEmpty()) for (int i = 0; i < 4; i++) row.addView(emptyTile());
             row.setTranslationX(0);
@@ -1206,16 +1218,16 @@ final class HomeV2 {
         FrameLayout f = new FrameLayout(a);
         f.setBackground(fill(16, 0x10FFFFFF));
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(px(TILE_W), px(TILE_H));
-        lp.rightMargin = px(24);
+        lp.rightMargin = px(TILE_GAP);
         f.setLayoutParams(lp);
         return f;
     }
 
     /**
-     * Home's tiles: four across, as wide as the sections' (384) and taller (262, not 216), reaching most of the way down
-     * to the boxes.
+     * Home's tiles: four across from 216 to 1880, wider than the sections' (404, not 384, the gaps 16) and taller (262,
+     * not 216), reaching most of the way down to the boxes; Right past the fourth slides the row on.
      */
-    static final int TILE_W = 384, TILE_H = 262;
+    static final int TILE_W = 404, TILE_H = 262, TILE_GAP = 16;
 
     private View tileView(Tile t) {
         FrameLayout f = new FrameLayout(a);
@@ -1225,7 +1237,7 @@ final class HomeV2 {
         f.setOutlineProvider(round(16));
         f.setBackground(fill(16, t.icon != null ? GLASS : 0xFF222433));
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(px(TILE_W), px(TILE_H));
-        lp.rightMargin = px(24);
+        lp.rightMargin = px(TILE_GAP);
         f.setLayoutParams(lp);
         f.setTag(t);
         if (t.icon != null) {
@@ -2014,17 +2026,28 @@ final class HomeV2 {
         }
         String found = null;
         try {
-            JSONObject j = new JSONObject(get("https://api.themoviedb.org/3/" + k + "/images?include_image_language=en,null&api_key=" + tmdbKey));
+            // Every logo it has, in any language: English first, then one with no words of a language, then the
+            // title's own (a Spanish film's Spanish logo), then any; within each, TMDB's best voted.
+            JSONObject j = new JSONObject(get("https://api.themoviedb.org/3/" + k + "/images?api_key=" + tmdbKey));
             JSONArray l = j.optJSONArray("logos");
+            int bestRank = Integer.MAX_VALUE;
+            double bestVote = -1;
             for (int i = 0; l != null && i < l.length(); i++) {
                 JSONObject o = l.getJSONObject(i);
-                if (!"en".equals(o.optString("iso_639_1"))) continue;
-                String path = o.optString("file_path");
-                if (path.endsWith(".svg")) path = path.replace(".svg", ".png");
-                found = "https://image.tmdb.org/t/p/w500" + path;
-                break;
+                String lang = o.isNull("iso_639_1") ? "" : o.optString("iso_639_1");
+                int rank = lang.equals("en") ? 0 : lang.isEmpty() ? 1 : 2;
+                double vote = o.optDouble("vote_average", 0) + o.optInt("vote_count", 0) * 0.001;
+                if (rank < bestRank || rank == bestRank && vote > bestVote) {
+                    bestRank = rank;
+                    bestVote = vote;
+                    String path = o.optString("file_path");
+                    if (path.endsWith(".svg")) path = path.replace(".svg", ".png");
+                    found = "https://image.tmdb.org/t/p/w500" + path;
+                }
             }
-        } catch (Exception ignored) {
+        } catch (Exception e) {
+            // Not answered (the network, TMDB busy): not remembered as having no logo, so the next look asks again.
+            return null;
         }
         synchronized (logos) {
             logos.put(k, found);
@@ -2121,16 +2144,68 @@ final class HomeV2 {
      * Opens a title in Debrid Stream (its search, through the helper), with the title's own logo (TMDB's, its name as
      * drawn) and picture on the cover while it loads: both fetched first, so the cover always has the logo.
      */
+    /**
+     * The title's page in the app (Debrid Stream): the app opens at once, with the cover over it showing whatever of
+     * the title's picture and logo is already in hand (the hero has usually fetched both); what is not comes onto the
+     * cover as it arrives. A title with no TMDB id (an app's own row) is looked up by name for its logo.
+     */
     void searchTitle(String pkg, String title, boolean tv, int tmdbId, String art) {
+        String known;
+        synchronized (logos) {
+            known = tmdbId != 0 ? logos.get((tv ? "tv/" : "movie/") + tmdbId) : null;
+        }
+        Bitmap logo = known == null ? null : cached(known);
+        Bitmap pic = art == null ? null : cached(art);
+        Runnable open = () -> {
+            AppSearchService.search(a, pkg, title, tv, pic, logo);
+            GoalWatchService.onAppOpened(a, pkg);
+        };
+        // The helper off (a TCL turns it off now and then): switched back on first, given a moment to start.
+        if (!AppSearchService.running()) {
+            AppSearchService.ensure(a);
+            main.postDelayed(open, 1600);
+        } else {
+            open.run();
+        }
+        if (logo != null && pic != null) return;
         io.execute(() -> {
-            String logoUrl = tmdbId != 0 && !tmdbKey.isEmpty() ? tmdbLogo(tmdbId, tv) : null;
-            Bitmap logo = logoUrl == null ? null : fetch(logoUrl, px(600));
-            Bitmap pic = art == null ? null : fetch(art, px(960));
-            main.post(() -> {
-                AppSearchService.search(a, pkg, title, tv, pic, logo);
-                GoalWatchService.onAppOpened(a, pkg);
-            });
+            int id = tmdbId;
+            boolean isTv = tv;
+            if (id == 0 && !tmdbKey.isEmpty()) {
+                int[] found = findTitle(title, tv);
+                if (found != null) { id = found[0]; isTv = found[1] == 1; }
+            }
+            String logoUrl = logo != null || id == 0 || tmdbKey.isEmpty() ? null : tmdbLogo(id, isTv);
+            Bitmap l = logo != null ? logo : logoUrl == null ? null : fetch(logoUrl, px(600));
+            Bitmap p = pic != null ? pic : art == null ? null : fetch(art, px(960));
+            main.post(() -> AppSearchService.coverPictures(p, l));
         });
+    }
+
+    /** A picture already fetched for url, at whatever size it was fetched; null when there is none. */
+    private Bitmap cached(String url) {
+        Bitmap best = null;
+        for (Map.Entry<String, Bitmap> e : cache.snapshot().entrySet()) {
+            String k = e.getKey();
+            if (!k.startsWith(url) || (k.length() > url.length() && k.charAt(url.length()) != '@' && k.charAt(url.length()) != '#')) continue;
+            if (k.endsWith("#hero")) continue;   // the hero's copy has its edges faded away
+            if (best == null || e.getValue().getWidth() > best.getWidth()) best = e.getValue();
+        }
+        return best;
+    }
+
+    /** A film or series on TMDB by its name: {id, 1 for a series}; the kind asked for first. Null when none. */
+    int[] findTitle(String title, boolean tv) {
+        try {
+            String q = java.net.URLEncoder.encode(title, "UTF-8");
+            for (boolean series : new boolean[]{tv, !tv}) {
+                JSONArray r = new JSONObject(get("https://api.themoviedb.org/3/search/" + (series ? "tv" : "movie") + "?query=" + q
+                        + "&api_key=" + tmdbKey)).optJSONArray("results");
+                if (r != null && r.length() > 0) return new int[]{r.getJSONObject(0).getInt("id"), series ? 1 : 0};
+            }
+        } catch (Exception ignored) {
+        }
+        return null;
     }
 
     /**

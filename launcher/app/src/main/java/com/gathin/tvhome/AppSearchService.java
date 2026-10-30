@@ -21,7 +21,8 @@ import java.util.Locale;
  */
 public class AppSearchService extends AccessibilityService {
     private static final String TAG = "AppSearch";
-    private static final long SEARCH_MS = 15_000L, TUNE_MS = 45_000L, STEP_MS = 450L;
+    /** A look at the screen every STEP_MS: quick enough that each step follows the last at once. */
+    private static final long SEARCH_MS = 15_000L, TUNE_MS = 45_000L, STEP_MS = 220L;
     private static AppSearchService instance;
 
     private final Handler main = new Handler(Looper.getMainLooper());
@@ -457,7 +458,44 @@ public class AppSearchService extends AccessibilityService {
         spelling = 0;
         deadline = System.currentTimeMillis() + SEARCH_MS;
         main.removeCallbacks(step);
-        main.postDelayed(step, STEP_MS * 2);
+        main.postDelayed(step, STEP_MS);
+    }
+
+    /** Whether the helper is running (switched on and bound by the system). */
+    static boolean running() {
+        return instance != null;
+    }
+
+    /**
+     * The title's picture and logo for the cover, when they arrive after the app was opened (the app is opened at
+     * once, not after they are fetched): the soft background and the logo in place of the name.
+     */
+    static void coverPictures(android.graphics.Bitmap art, android.graphics.Bitmap logo) {
+        if (instance == null || instance.cover == null) return;
+        instance.fillCover(art, logo);
+    }
+
+    private android.widget.ImageView coverBg, coverMark;
+
+    private void fillCover(android.graphics.Bitmap art, android.graphics.Bitmap logo) {
+        if (art != null && coverBg != null && coverBg.getDrawable() == null) {
+            coverBg.setImageBitmap(blur(art));
+            coverBg.setAlpha(0f);
+            coverBg.animate().alpha(1f).setDuration(300).start();
+        }
+        if (logo != null && coverMark != null && coverMark.getDrawable() == null) {
+            coverMark.setImageBitmap(logo);
+            coverMark.setVisibility(android.view.View.VISIBLE);
+            coverMark.setAlpha(0f);
+            coverMark.animate().alpha(1f).setDuration(250).start();
+            if (coverTitle != null) coverTitle.setVisibility(android.view.View.GONE);
+        }
+    }
+
+    /** Shrunk to a few pixels and drawn large again: a soft blur of the poster's colours. */
+    private static android.graphics.Bitmap blur(android.graphics.Bitmap art) {
+        android.graphics.Bitmap tiny = android.graphics.Bitmap.createScaledBitmap(art, 16, Math.max(2, 16 * art.getHeight() / Math.max(1, art.getWidth())), true);
+        return android.graphics.Bitmap.createScaledBitmap(tiny, 64, Math.max(2, 64 * art.getHeight() / Math.max(1, art.getWidth())), true);
     }
 
     private final Runnable step = new Runnable() {
@@ -713,26 +751,28 @@ public class AppSearchService extends AccessibilityService {
         float d = getResources().getDisplayMetrics().density;
         android.widget.FrameLayout v = new android.widget.FrameLayout(this);
         v.setBackgroundColor(0xFF0B0C10);
-        if (art != null) {
-            android.widget.ImageView bg = new android.widget.ImageView(this);
-            bg.setScaleType(android.widget.ImageView.ScaleType.CENTER_CROP);
-            // Shrunk to a few pixels and drawn large again: a soft blur of the poster's colours.
-            android.graphics.Bitmap tiny = android.graphics.Bitmap.createScaledBitmap(art, 16, Math.max(2, 16 * art.getHeight() / Math.max(1, art.getWidth())), true);
-            bg.setImageBitmap(android.graphics.Bitmap.createScaledBitmap(tiny, 64, Math.max(2, 64 * art.getHeight() / Math.max(1, art.getWidth())), true));
-            v.addView(bg, new android.widget.FrameLayout.LayoutParams(-1, -1));
-            android.view.View shade = new android.view.View(this);
-            shade.setBackground(new android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
-                    new int[]{0x8C000000, 0xD9000000}));
-            v.addView(shade, new android.widget.FrameLayout.LayoutParams(-1, -1));
-        }
+        // The poster's colours behind (now, or when the picture arrives), under a shade.
+        android.widget.ImageView bg = new android.widget.ImageView(this);
+        bg.setScaleType(android.widget.ImageView.ScaleType.CENTER_CROP);
+        if (art != null) bg.setImageBitmap(blur(art));
+        v.addView(bg, new android.widget.FrameLayout.LayoutParams(-1, -1));
+        coverBg = bg;
+        android.view.View shade = new android.view.View(this);
+        shade.setBackground(new android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
+                new int[]{0x8C000000, 0xD9000000}));
+        v.addView(shade, new android.widget.FrameLayout.LayoutParams(-1, -1));
         android.widget.LinearLayout col = new android.widget.LinearLayout(this);
         col.setOrientation(android.widget.LinearLayout.VERTICAL);
         col.setGravity(android.view.Gravity.CENTER_HORIZONTAL);
-        if (logo != null) {
-            android.widget.ImageView mark = new android.widget.ImageView(this);
-            mark.setScaleType(android.widget.ImageView.ScaleType.FIT_CENTER);
-            mark.setImageBitmap(logo);
-            col.addView(mark, new android.widget.LinearLayout.LayoutParams(Math.round(420 * d), Math.round(150 * d)));
+        // The title's logo (now, or when it arrives; a film or series loads with its logo, not its name).
+        android.widget.ImageView mark = new android.widget.ImageView(this);
+        mark.setScaleType(android.widget.ImageView.ScaleType.FIT_CENTER);
+        col.addView(mark, new android.widget.LinearLayout.LayoutParams(Math.round(420 * d), Math.round(150 * d)));
+        coverMark = mark;
+        boolean waitsForLogo = logo == null && line == null;
+        mark.setVisibility(logo != null ? android.view.View.VISIBLE : waitsForLogo ? android.view.View.INVISIBLE : android.view.View.GONE);
+        {
+            if (logo != null) mark.setImageBitmap(logo);
             // The logo breathes a little while it loads.
             android.animation.ObjectAnimator pulse = android.animation.ObjectAnimator.ofPropertyValuesHolder(mark,
                     android.animation.PropertyValuesHolder.ofFloat(android.view.View.SCALE_X, 1f, 1.05f),
@@ -748,13 +788,23 @@ public class AppSearchService extends AccessibilityService {
         coverTitle = new android.widget.TextView(this);
         coverTitle.setText(title);
         coverTitle.setTextColor(0xFFFFFFFF);
-        coverTitle.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, logo != null ? 15f : 32f);
-        coverTitle.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        coverTitle.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, logo != null ? 15f : 38f);
+        // With no logo (yet): the name set as a wordmark, heavy, tight and shadowed, where the logo would be.
+        coverTitle.setTypeface(android.graphics.Typeface.create("sans-serif-black", android.graphics.Typeface.BOLD));
+        coverTitle.setLetterSpacing(0.02f);
+        coverTitle.setShadowLayer(12 * d, 0, 3 * d, 0x99000000);
+        coverTitle.setAllCaps(line == null);
         coverTitle.setGravity(android.view.Gravity.CENTER);
         coverTitle.setMaxLines(2);
         // With a logo, the logo and the bar alone: the name only stands in for a logo there is not.
         coverTitle.setVisibility(logo != null ? android.view.View.GONE : android.view.View.VISIBLE);
-        col.addView(coverTitle, new android.widget.LinearLayout.LayoutParams(-1, -2));
+        if (waitsForLogo) {
+            // Over the logo's place while it is fetched: no jump when it arrives.
+            android.widget.LinearLayout.LayoutParams tl = new android.widget.LinearLayout.LayoutParams(-1, -2);
+            tl.topMargin = -Math.round(100 * d);
+            coverTitle.setLayoutParams(tl);
+        }
+        col.addView(coverTitle, coverTitle.getLayoutParams() != null ? coverTitle.getLayoutParams() : new android.widget.LinearLayout.LayoutParams(-1, -2));
         if (line != null && logo == null) {
             android.widget.TextView sub = new android.widget.TextView(this);
             if (LIVE.equals(line)) {
@@ -1045,12 +1095,17 @@ public class AppSearchService extends AccessibilityService {
         if (instance != null || c.checkSelfPermission(android.Manifest.permission.WRITE_SECURE_SETTINGS)
                 != android.content.pm.PackageManager.PERMISSION_GRANTED) return;
         android.content.ContentResolver cr = c.getContentResolver();
-        String me = new android.content.ComponentName(c, AppSearchService.class).flattenToShortString();
+        android.content.ComponentName self = new android.content.ComponentName(c, AppSearchService.class);
+        String me = self.flattenToShortString();
         String list = android.provider.Settings.Secure.getString(cr, android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES);
-        if (list == null || !java.util.Arrays.asList(list.split(":")).contains(me)) return;
+        if (list == null) return;
+        // The list may name it either way ("pkg/.AppSearchService" or "pkg/pkg.AppSearchService"): compared as names.
+        boolean listed = false;
+        for (String entry : list.split(":")) if (self.equals(android.content.ComponentName.unflattenFromString(entry))) listed = true;
+        if (!listed) return;
         StringBuilder others = new StringBuilder();
         for (String entry : list.split(":")) {
-            if (entry.isEmpty() || entry.equals(me)) continue;
+            if (entry.isEmpty() || self.equals(android.content.ComponentName.unflattenFromString(entry))) continue;
             if (others.length() > 0) others.append(':');
             others.append(entry);
         }
