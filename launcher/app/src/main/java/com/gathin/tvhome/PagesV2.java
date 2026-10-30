@@ -97,20 +97,31 @@ final class PagesV2 {
         String app;
     }
 
-    /** The title's trailer on YouTube from TMDB: an official "Trailer" first, then any trailer or teaser. Off the main thread. */
+    /**
+     * The title's trailers on YouTube from TMDB, comma-separated, best first: official trailers, then any trailer, then
+     * teasers, then clips (the player moves on when YouTube will not play one in a tile). Any language when TMDB has
+     * none in English. "" when there are none. Off the main thread.
+     */
     static String trailer(String key, Title t) {
         try {
             JSONArray list = new JSONObject(HomeV2.get("https://api.themoviedb.org/3/" + (t.tv ? "tv/" : "movie/") + t.id
-                    + "/videos?language=en-US&api_key=" + key)).optJSONArray("results");
-            String best = "", any = "";
+                    + "/videos?include_video_language=en,null&api_key=" + key)).optJSONArray("results");
+            List<String>[] ranks = new List[]{new ArrayList<>(), new ArrayList<>(), new ArrayList<>(), new ArrayList<>()};
             for (int i = 0; list != null && i < list.length(); i++) {
                 JSONObject v = list.getJSONObject(i);
-                if (!"YouTube".equals(v.optString("site"))) continue;
+                if (!"YouTube".equals(v.optString("site")) || v.optString("key").isEmpty()) continue;
                 String type = v.optString("type");
-                if ("Trailer".equals(type) && v.optBoolean("official") && best.isEmpty()) best = v.optString("key");
-                if (("Trailer".equals(type) || "Teaser".equals(type)) && any.isEmpty()) any = v.optString("key");
+                int r = "Trailer".equals(type) ? (v.optBoolean("official") ? 0 : 1) : "Teaser".equals(type) ? 2 : "Clip".equals(type) ? 3 : -1;
+                if (r >= 0) ranks[r].add(v.optString("key"));
             }
-            return best.isEmpty() ? any : best;
+            StringBuilder out = new StringBuilder();
+            int n = 0;
+            for (List<String> rank : ranks) for (String k : rank) {
+                if (n++ >= 6) break;
+                if (out.length() > 0) out.append(',');
+                out.append(k);
+            }
+            return out.toString();
         } catch (Exception e) {
             return "";
         }

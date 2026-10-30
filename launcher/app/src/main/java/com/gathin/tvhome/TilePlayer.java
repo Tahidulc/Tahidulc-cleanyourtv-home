@@ -93,6 +93,12 @@ final class TilePlayer {
                 // Loading or paused: YouTube draws its logo and spinner over the picture, so the trailer hides again.
                 main.post(TilePlayer.this::covered);
             }
+            @android.webkit.JavascriptInterface public void state(String id, int st) {
+                android.util.Log.i("TilePlayer", "trailer " + id + " state " + st);
+            }
+            @android.webkit.JavascriptInterface public void refused(String id, int code) {
+                android.util.Log.i("TilePlayer", "trailer " + id + " refused by YouTube (" + code + "), trying the next");
+            }
             @android.webkit.JavascriptInterface public void ended() {
                 main.post(TilePlayer.this::stop);
             }
@@ -105,8 +111,12 @@ final class TilePlayer {
                 + "playerVars:{autoplay:1,controls:0,rel:0,playsinline:1,modestbranding:1,iv_load_policy:3,disablekb:1,fs:0,cc_load_policy:0,showinfo:0,"
                 + "origin:'https://" + pkg + "'},"
                 + "events:{onReady:function(){Home.ready();},"
-                + "onStateChange:function(e){if(e.data==1)Home.playing();else if(e.data==3||e.data==2||e.data==-1||e.data==5)Home.waiting();if(e.data==2)e.target.playVideo();if(e.data==0)Home.ended();}}});}"
-                + "function play(id){try{pl.unloadModule('captions');}catch(x){}pl.setVolume(80);pl.loadVideoById({videoId:id,startSeconds:6});}"
+                + "onError:function(e){Home.refused(cur,e.data);next();},"
+                + "onStateChange:function(e){Home.state(cur,e.data);if(e.data==1)Home.playing();else if(e.data==3||e.data==2||e.data==-1||e.data==5)Home.waiting();if(e.data==2)e.target.playVideo();if(e.data==0)Home.ended();}}});}"
+                // Several trailers, comma-separated: YouTube refuses some in an embedded player (their owner turned
+                // that off, or not in this country): on to the next.
+                + "var q=[],cur='';function play(ids){q=ids.split(',');next();}"
+                + "function next(){cur=q.shift()||'';if(!cur)return;try{pl.unloadModule('captions');}catch(x){}pl.setVolume(80);pl.loadVideoById({videoId:cur,startSeconds:6});}"
                 + "function stop(){try{pl.stopVideo();}catch(x){}}"
                 + "</script></body></html>";
         web.loadDataWithBaseURL("https://" + pkg, html, "text/html", "utf-8", null);

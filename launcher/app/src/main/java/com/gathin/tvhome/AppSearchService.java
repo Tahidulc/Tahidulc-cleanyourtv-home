@@ -508,7 +508,7 @@ public class AppSearchService extends AccessibilityService {
         @Override public void run() {
             if (target == null || System.currentTimeMillis() > deadline) { target = null; loud(); hideCover(0); return; }
             if (advance()) main.postDelayed(this, STEP_MS);
-            else { target = null; loud(); hideCover(hideDelay); }
+            else { target = null; if (!awaitingSound) loud(); hideCover(hideDelay); }
         }
     };
 
@@ -532,8 +532,40 @@ public class AppSearchService extends AccessibilityService {
         main.postDelayed(loudLater, 30_000L);
     }
 
+    /**
+     * The sound back on once the channel picked is playing: while TiviMate is still on the old one its sound goes
+     * on, then stops while the new one loads, then starts again. On at that start (or after ten seconds at most).
+     */
+    private boolean awaitingSound, soundGap;
+    private long soundFrom;
+    private final Runnable soundWatch = new Runnable() {
+        @Override public void run() {
+            android.media.AudioManager am = (android.media.AudioManager) getSystemService(AUDIO_SERVICE);
+            boolean playing = am != null && am.isMusicActive();
+            if (!playing) soundGap = true;
+            if (soundGap && playing || System.currentTimeMillis() - soundFrom > 10_000L || !tuneMuted) {
+                awaitingSound = false;
+                main.postDelayed(loudLater, playing ? 300L : 0L);
+                return;
+            }
+            main.postDelayed(this, 150L);
+        }
+    };
+
+    private void loudWhenNew() {
+        if (!tuneMuted || awaitingSound) return;
+        awaitingSound = true;
+        soundGap = false;
+        soundFrom = System.currentTimeMillis();
+        main.removeCallbacks(loudLater);
+        main.postDelayed(loudLater, 30_000L);
+        main.postDelayed(soundWatch, 150L);
+    }
+
     private void loud() {
         main.removeCallbacks(loudLater);
+        main.removeCallbacks(soundWatch);
+        awaitingSound = false;
         if (!tuneMuted) return;
         tuneMuted = false;
         android.media.AudioManager am = (android.media.AudioManager) getSystemService(AUDIO_SERVICE);
@@ -872,7 +904,7 @@ public class AppSearchService extends AccessibilityService {
         picks++;
         pickedAt = System.currentTimeMillis();
         click(hit);
-        if (channel) loud();   // the channel's own sound, as it starts
+        if (channel) loudWhenNew();   // the new channel's own sound, once it starts (not the old one's tail)
         return true;
     }
 
