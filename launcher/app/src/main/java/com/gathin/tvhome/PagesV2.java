@@ -60,6 +60,10 @@ final class PagesV2 {
         /** True when the page used the key; Back is handled by Home. */
         abstract boolean key(KeyEvent e);
 
+        /** The focus came into the page from the boxes under it (it was showing above them). */
+        void entered() {
+        }
+
         int px(float v) { return h.px(v); }
 
         void add(View v, int x, int y, int w, int hgt) {
@@ -717,6 +721,144 @@ final class PagesV2 {
                 spec.add(new String[]{names[g], "on " + name, base + "&with_genres=" + genres[g][0] + "&sort_by=popularity.desc", ""});
             return rows(k, tv, spec.toArray(new String[0][]));
         });
+    }
+
+    // ---- Apps -------------------------------------------------------------------------------------------------------
+
+    /**
+     * Every app as a grid of wide tiles, five across: the app's own TV banner where it has one (as Android TV's home
+     * shows them), else its icon and name on glass. The grid moves up a row at a time as the focus goes down.
+     */
+    static final class AppsPage extends Page {
+        private static final int COLS = 5, TW = 300, TH = 169, GAP = 24, TOP = 236, SHOWN = 3;
+        private FrameLayout grid;
+        private final List<FrameLayout> tiles = new ArrayList<>();
+        private final List<String> packages = new ArrayList<>();
+        private int idx;
+
+        AppsPage(HomeV2 h) {
+            super(h);
+        }
+
+        @Override void open() {
+            super.open();
+            TextView crumb = h.text(18, h.semi, 0xFF2AD1C9);
+            crumb.setLetterSpacing(0.19f);
+            crumb.setText("APPS");
+            add(crumb, 216, 196, 600, 30);
+            grid = new FrameLayout(h.a);
+            grid.setClipChildren(false);
+            FrameLayout view = new FrameLayout(h.a);
+            view.setClipChildren(false);
+            view.setOutlineProvider(android.view.ViewOutlineProvider.BOUNDS);
+            view.setClipToOutline(true);
+            view.addView(grid, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+            add(view, 196, TOP - 16, COLS * (TW + GAP) + 16, SHOWN * (TH + GAP) + 24);
+            h.io.execute(() -> {
+                android.content.pm.PackageManager pm = h.a.getPackageManager();
+                android.content.Intent q = new android.content.Intent(android.content.Intent.ACTION_MAIN).addCategory(android.content.Intent.CATEGORY_LEANBACK_LAUNCHER);
+                List<android.content.pm.ResolveInfo> found = pm.queryIntentActivities(q, 0);
+                found.sort((x, y) -> x.loadLabel(pm).toString().compareToIgnoreCase(y.loadLabel(pm).toString()));
+                List<String> hidden = Config.load(h.a).hiddenApps;
+                List<Object[]> apps = new ArrayList<>();
+                for (android.content.pm.ResolveInfo r : found) {
+                    String p = r.activityInfo.packageName;
+                    if (p.equals(h.a.getPackageName()) || hidden.contains(p)) continue;
+                    android.graphics.drawable.Drawable banner = r.activityInfo.loadBanner(pm);
+                    if (banner == null) try { banner = pm.getApplicationBanner(p); } catch (Exception ignored) { }
+                    apps.add(new Object[]{p, r.loadLabel(pm).toString(), banner, r.loadIcon(pm)});
+                }
+                h.main.post(() -> build(apps));
+            });
+        }
+
+        private void build(List<Object[]> apps) {
+            for (int i = 0; i < apps.size(); i++) {
+                Object[] a = apps.get(i);
+                FrameLayout f = new FrameLayout(h.a);
+                f.setClipToOutline(true);
+                f.setOutlineProvider(h.round(14));
+                f.setBackground(h.fill(14, 0x26FFFFFF));
+                if (a[2] != null) {
+                    ImageView b = new ImageView(h.a);
+                    b.setScaleType(ImageView.ScaleType.CENTER_CROP);
+                    b.setImageDrawable((android.graphics.drawable.Drawable) a[2]);
+                    f.addView(b, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+                } else {
+                    LinearLayout in = new LinearLayout(h.a);
+                    in.setOrientation(LinearLayout.VERTICAL);
+                    in.setGravity(Gravity.CENTER);
+                    ImageView ic = new ImageView(h.a);
+                    ic.setImageDrawable((android.graphics.drawable.Drawable) a[3]);
+                    ic.setClipToOutline(true);
+                    ic.setOutlineProvider(h.round(16));
+                    in.addView(ic, new LinearLayout.LayoutParams(px(76), px(76)));
+                    TextView n = h.text(19, h.regular, Color.WHITE);
+                    n.setText((String) a[1]);
+                    n.setSingleLine(true);
+                    n.setEllipsize(TextUtils.TruncateAt.END);
+                    LinearLayout.LayoutParams nl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                    nl.topMargin = px(10);
+                    in.addView(n, nl);
+                    f.addView(in, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+                }
+                FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(px(TW), px(TH));
+                lp.leftMargin = px(8 + (i % COLS) * (TW + GAP));
+                lp.topMargin = px(8 + (i / COLS) * (TH + GAP));
+                grid.addView(f, lp);
+                tiles.add(f);
+                packages.add((String) a[0]);
+            }
+            paint();
+        }
+
+        @Override void entered() {
+            paint();
+        }
+
+        private void paint() {
+            for (int i = 0; i < tiles.size(); i++) {
+                boolean on = !h.preview && i == idx;
+                FrameLayout f = tiles.get(i);
+                f.animate().scaleX(on ? 1.07f : 1f).scaleY(on ? 1.07f : 1f).setDuration(150).setInterpolator(HomeV2.SKY).start();
+                f.setForeground(on ? h.ring(14) : null);
+                f.setElevation(on ? px(8) : 0);
+            }
+            int firstRow = Math.max(0, idx / COLS - (SHOWN - 1));
+            grid.animate().translationY(-px(firstRow * (TH + GAP))).setDuration(260).setInterpolator(HomeV2.SKY).start();
+        }
+
+        @Override boolean key(KeyEvent e) {
+            int code = e.getKeyCode();
+            if (ok(code)) {
+                if (e.getAction() == KeyEvent.ACTION_UP && idx < packages.size()) h.openApp(packages.get(idx));
+                return true;
+            }
+            if (e.getAction() != KeyEvent.ACTION_DOWN) return code != KeyEvent.KEYCODE_BACK;
+            int n = tiles.size();
+            // At an edge the key is Home's (false): the rail, the top buttons or the boxes.
+            switch (code) {
+                case KeyEvent.KEYCODE_DPAD_LEFT:
+                    if (idx % COLS == 0) return false;
+                    idx--;
+                    break;
+                case KeyEvent.KEYCODE_DPAD_RIGHT:
+                    if (idx % COLS < COLS - 1 && idx + 1 < n) idx++;
+                    break;
+                case KeyEvent.KEYCODE_DPAD_UP:
+                    if (idx < COLS) return false;
+                    idx -= COLS;
+                    break;
+                case KeyEvent.KEYCODE_DPAD_DOWN:
+                    if (idx + COLS >= n) { if (idx / COLS < (n - 1) / COLS) idx = n - 1; else return false; }
+                    else idx += COLS;
+                    break;
+                default:
+                    return false;
+            }
+            paint();
+            return true;
+        }
     }
 
     // ---- Sport -----------------------------------------------------------------------------------------------------

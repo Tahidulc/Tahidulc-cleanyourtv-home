@@ -348,10 +348,10 @@ final class HomeV2 {
         }
         wifi.setCompoundDrawablePadding(px(12));
         wifi.setText("Wi-Fi");
-        // The TV's inputs (HDMI and the like): the icon alone; OK lists them under it.
+        topButton(bar, wifi, ViewGroup.LayoutParams.WRAP_CONTENT, () -> open(new Intent(android.provider.Settings.ACTION_WIFI_SETTINGS)));
+        // The TV's inputs (HDMI and the like): the icon alone; OK lists them under it. After Wi-Fi.
         ImageView inputs = icon(R.drawable.ic_input);
         topButton(bar, inputs, px(66), () -> showInputs(inputs));
-        topButton(bar, wifi, ViewGroup.LayoutParams.WRAP_CONTENT, () -> open(new Intent(android.provider.Settings.ACTION_WIFI_SETTINGS)));
         ImageView nord = new ImageView(a);
         nord.setImageResource(R.drawable.v2_nord);
         nord.setScaleType(ImageView.ScaleType.FIT_CENTER);
@@ -581,7 +581,7 @@ final class HomeV2 {
     /** All keys come here first; true when v2 used it. */
     boolean key(KeyEvent e) {
         if (guide.isOpen()) return guide.key(e);
-        if (page != null) {
+        if (page != null && !preview) {
             if (e.getKeyCode() == KeyEvent.KEYCODE_BACK) {
                 if (e.getAction() == KeyEvent.ACTION_UP) closePage();
                 return true;
@@ -598,7 +598,10 @@ final class HomeV2 {
                 || code == KeyEvent.KEYCODE_DPAD_RIGHT;
         if (code == KeyEvent.KEYCODE_BACK) {
             if (e.getAction() == KeyEvent.ACTION_UP) {
-                if (zone == Z_SCORES) {
+                if (page != null && preview) {
+                    closePage();
+                    paint();
+                } else if (zone == Z_SCORES) {
                     View f = a.getCurrentFocus();
                     if (f != null) f.clearFocus();
                     zone = Z_TOP;
@@ -657,10 +660,14 @@ final class HomeV2 {
                 break;
             case Z_CATS:
                 if (code == KeyEvent.KEYCODE_DPAD_LEFT) {
-                    if (catIdx > 0) catIdx--; else { zone = Z_RAIL; railIdx = railViews.size() - 1; }
+                    if (catIdx > 0) catIdx--;
+                    else { if (page != null) closePage(); zone = Z_RAIL; railIdx = railViews.size() - 1; }
                 } else if (code == KeyEvent.KEYCODE_DPAD_RIGHT && catIdx < 5) {
                     catIdx++;
                 } else if (code == KeyEvent.KEYCODE_DPAD_UP) {
+                    // Up from a box goes into the section showing above it; with none showing, back to the row.
+                    if (page != null && preview) { enterPage(); return; }
+                    if (page != null) closePage();
                     zone = n > 0 ? Z_ROW : Z_RAIL;
                 }
                 break;
@@ -690,18 +697,14 @@ final class HomeV2 {
                 return;
             case Z_CATS:
                 if (catIdx == 0) {
+                    if (page != null) closePage();
                     guide.show();
                     return;
                 }
-                if (catIdx >= 1 && catIdx <= 4) {
-                    openPage(catIdx);
-                    return;
-                }
-                railSel = -1;
-                load(CAT_MODES[catIdx]);
-                zone = Z_ROW;
-                rowIdx = 0;
-                paint();
+                // OK on a box: into its section (already showing above, or opened now).
+                if (page != null && preview && pageWhich == catIdx) { enterPage(); return; }
+                if (page != null) closePage();
+                openPage(catIdx, false);
                 return;
             default:
         }
@@ -709,19 +712,70 @@ final class HomeV2 {
 
     /** Opens the page behind a box: 1 Discover, 2 Movies, 3 TV shows, 4 Sport. Home's own row makes way for it. */
     private void openPage(int which) {
+        openPage(which, false);
+    }
+
+    // ---- a section showing above the boxes while they keep the focus (hovering one shows it) ------------------------
+
+    /** The section shows above the boxes, which keep the focus: Up or OK goes into it, Left and Right on to others. */
+    boolean preview;
+    private int pageWhich;
+    private final Runnable previewNow = this::previewNow;
+
+    /** The box the focus rests on, a moment after it got there: its section, above the boxes. */
+    private void previewNow() {
+        if (zone != Z_CATS || guide.isOpen()) return;
+        if (page != null && pageWhich == catIdx) return;
+        if (page != null) closePage();
+        if (catIdx == 0) {
+            // The TV guide is full screen: on hover, the channels on now in the row; OK opens the guide.
+            railSel = -1;
+            load("ar.tvplayer.tv");
+            paint();
+            return;
+        }
+        openPage(catIdx, true);
+    }
+
+    /** Into the section showing above the boxes: it takes the keys, and the boxes make way as when it opens on OK. */
+    private void enterPage() {
+        if (page == null) return;
+        preview = false;
+        page.layer.setClipBounds(null);
+        List<View> more = new ArrayList<>();
+        if (pageWhich >= 2) more.addAll(catViews);
+        for (View v : more) v.animate().alpha(0f).setDuration(180).withEndAction(() -> v.setVisibility(View.INVISIBLE)).start();
+        hidden.addAll(more);
+        page.entered();
+        paint();
+    }
+
+    private void openPage(int which, boolean hover) {
         players.stop();
         playingTile = null;
-        page = which == 1 ? PagesV2.discover(this) : which == 2 ? PagesV2.movies(this) : which == 3 ? PagesV2.shows(this) : new PagesV2.SportPage(this);
-        boolean sport = which == 4, full = which == 2 || which == 3;
+        main.removeCallbacks(previewNow);
+        pageWhich = which;
+        preview = hover;
+        page = which == 1 ? PagesV2.discover(this) : which == 2 ? PagesV2.movies(this) : which == 3 ? PagesV2.shows(this)
+                : which == 5 ? new PagesV2.AppsPage(this) : new PagesV2.SportPage(this);
+        boolean sport = which == 4 || which == 5, full = which == 2 || which == 3;
         List<View> away = new ArrayList<>(Arrays.asList(label, viewport));
-        if (full || sport) away.addAll(catViews);
+        if ((full || sport) && !hover) away.addAll(catViews);
         if (full) { away.addAll(railViews); away.add(root.findViewWithTag("mark")); }
         if (sport) { away.add(htext); away.add(heroA); away.add(heroB); }
         // Faded views go INVISIBLE too, so the GPU stops drawing them under the page.
         for (View v : away) if (v != null) v.animate().alpha(0f).setDuration(180).withEndAction(() -> v.setVisibility(View.INVISIBLE)).start();
         hidden = away;
         page.open();
+        if (hover) clipAboveBoxes();
         paint();
+    }
+
+    /** A section showing while the boxes keep the focus is cut off just above them. */
+    private void clipAboveBoxes() {
+        View first = catViews.get(0);
+        int top = first.getTop() > 0 ? first.getTop() : px(852);
+        page.layer.setClipBounds(new android.graphics.Rect(0, 0, Math.max(1, root.getWidth()), top - px(10)));
     }
 
     private List<View> hidden = new ArrayList<>();
@@ -734,6 +788,21 @@ final class HomeV2 {
         int to = code == KeyEvent.KEYCODE_DPAD_DOWN ? Z_CATS : code == KeyEvent.KEYCODE_DPAD_LEFT ? Z_RAIL
                 : code == KeyEvent.KEYCODE_DPAD_UP ? Z_TOP : -1;
         if (to < 0) return;
+        if (to == Z_CATS && page != null) {
+            // Down out of a section: back to the boxes, the section still showing above them.
+            for (View v : catViews) {
+                v.animate().cancel();
+                v.setVisibility(View.VISIBLE);
+                v.animate().alpha(1f).setDuration(200).start();
+            }
+            hidden.removeAll(catViews);
+            preview = true;
+            clipAboveBoxes();
+            zone = Z_CATS;
+            catIdx = pageWhich;
+            paint();
+            return;
+        }
         closePage();
         zone = to;
         paint();
@@ -741,6 +810,8 @@ final class HomeV2 {
 
     private void closePage() {
         if (page == null) return;
+        preview = false;
+        main.removeCallbacks(previewNow);
         page.close();
         page = null;
         heroTopColour(0xFFC9A7FF);
@@ -801,7 +872,7 @@ final class HomeV2 {
         row.animate().translationX(-first * px(408)).setDuration(240).setInterpolator(SKY).start();
         for (int i = 0; i < catViews.size(); i++) {
             FrameLayout box = (FrameLayout) catViews.get(i);
-            boolean on = zone == Z_CATS && i == catIdx && page == null;
+            boolean on = zone == Z_CATS && i == catIdx && (page == null || preview);
             boolean sel = page != null ? i == catIdx : railSel < 0 && i > 0 && CAT_MODES[i].equals(mode);
             GradientDrawable b = fill(16, on ? 0xEBFFFFFF : sel ? (CAT_COLOURS[i] & 0x00FFFFFF) | 0x73000000 : 0x14FFFFFF);
             b.setStroke(Math.max(1, px(1)), on ? 0xFFFFFFFF : 0x24FFFFFF);
@@ -812,6 +883,9 @@ final class HomeV2 {
             ((TextView) in.getChildAt(1)).setTypeface(on ? semi : regular);
             box.animate().scaleX(on ? 1.04f : 1f).scaleY(on ? 1.04f : 1f).setDuration(150).setInterpolator(SKY).start();
         }
+        // Resting on a box shows its section after a moment, no OK needed.
+        main.removeCallbacks(previewNow);
+        if (zone == Z_CATS && (page == null || preview) && !(page != null && pageWhich == catIdx)) main.postDelayed(previewNow, 420);
         for (int i = 0; i < topViews.size(); i++) {
             View v = topViews.get(i);
             boolean on = zone == Z_TOP && i == topIdx;
@@ -938,7 +1012,11 @@ final class HomeV2 {
             case "shows": return "TV SHOWS · NEW AND POPULAR";
             case "sport": return "LIVE SPORT · THIS WEEK";
             case "apps": return "ALL APPS";
-            default: return railLabel(railPkg, appLabel(railPkg));
+            default: {
+                // The guide's hover shows the live row with no rail tile focused: the mode is the package.
+                String pkg = railPkg != null ? railPkg : m;
+                return railLabel(pkg, appLabel(pkg));
+            }
         }
     }
 
