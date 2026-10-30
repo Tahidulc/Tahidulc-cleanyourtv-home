@@ -4,4 +4,6 @@
     <item type="id" name="v2_url" />
     <!-- Launcher v2: a channel logo's own room (max height, height), before a block-shaped logo was given more. -->
     <item type="id" name="v2_logo_h" />
+    <!-- Launcher v2: the look a view was last painted with, so a key press restyles only the views that change. -->
+    <item type="id" name="v2_state" />
 </resources>

@@ -201,8 +201,11 @@ final class PagesV2 {
 
         // ---- trailers, as on v1: once the poster has widened, its trailer plays across it ----------------------
 
-        /** Just long enough for the poster to widen, so a trailer starts as soon as you land on it. */
-        private static final long TRAILER_DELAY_MS = 300L;
+        /**
+         * A moment after landing on a poster: soon enough to feel immediate, long enough that sliding along does not
+         * start YouTube's player at every poster passed (its loading stalled the slide).
+         */
+        private static final long TRAILER_DELAY_MS = 650L;
         private final TilePlayer player;
         private FrameLayout trailerTile;
         private Runnable trailerSoon;
@@ -216,7 +219,8 @@ final class PagesV2 {
             // The next few along are looked up now, so their trailers are ready when they are reached.
             for (int n = at + 1; n < Math.min(row.size(), at + 4); n++) {
                 Title next = row.get(n);
-                if (next.youtube == null) h.io.execute(() -> { if (next.youtube == null) next.youtube = trailer(h.tmdbKey, next); });
+                // On the pages' own pool: Home's single reader stays free for the hero's details and logos.
+                if (next.youtube == null) PAGES.execute(() -> { if (next.youtube == null) next.youtube = trailer(h.tmdbKey, next); });
             }
             trailerSoon = () -> {
                 if (trailerTile != tile) return;
@@ -440,10 +444,17 @@ final class PagesV2 {
                 v.setTextColor(i == tab ? Color.WHITE : 0xBFFFFFFF);
                 v.setTypeface(i == tab ? h.semi : h.regular);
             }
-            GradientDrawable g = h.fill(25, onTabs ? 0xEBFFFFFF : 0x29FFFFFF);
-            g.setStroke(px(1.5f), onTabs ? Color.WHITE : 0x73FFFFFF);
-            lens.setBackground(g);
-            if (onTabs) ((TextView) tabBar.getChildAt(tab)).setTextColor(0xFF1A1D24);
+            if (onTabs) {
+                // The focus on the tabs: the score pills' liquid glass, a brighter rim, the words staying white.
+                GradientDrawable rim = h.fill(25, 0x14FFFFFF);
+                rim.setStroke(px(2), 0xD9FFFFFF);
+                lens.setBackground(new android.graphics.drawable.LayerDrawable(new android.graphics.drawable.Drawable[]{
+                        h.a.getDrawable(ScoresTicker.glassRes()).mutate(), rim}));
+            } else {
+                GradientDrawable g = h.fill(25, 0x29FFFFFF);
+                g.setStroke(px(1.5f), 0x73FFFFFF);
+                lens.setBackground(g);
+            }
         }
 
         private void paint() {
@@ -462,6 +473,8 @@ final class PagesV2 {
                         va.addUpdateListener(an -> { lp.width = (int) an.getAnimatedValue(); f.setLayoutParams(lp); });
                         va.start();
                     }
+                    // Only the posters whose focus changed are touched (two a key press, not the whole row).
+                    if (!HomeV2.restyle(f, on ? 1 : 0)) continue;
                     ImageView wide = (ImageView) f.findViewWithTag("wide");
                     Title t = r.items.get(i);
                     // Widened: the title's own logo at its foot (fetched the first time), over the picture and trailer.

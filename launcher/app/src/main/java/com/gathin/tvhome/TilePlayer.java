@@ -28,6 +28,8 @@ final class TilePlayer {
     private FrameLayout tile;
     private TextureView video;
     private MediaPlayer player;
+    /** The live picture's surface on the tile's texture, let go with the player (else it leaked each time). */
+    private android.view.Surface surface;
     /** The tile's own picture, over the trailer until it is really playing (and again whenever YouTube stops). */
     private View[] covers = new View[0];
     private boolean revealed;
@@ -137,7 +139,9 @@ final class TilePlayer {
         MediaPlayer mp = new MediaPlayer();
         player = mp;
         try {
-            mp.setSurface(new android.view.Surface(st));
+            if (surface != null) surface.release();
+            surface = new android.view.Surface(st);
+            mp.setSurface(surface);
             java.util.Map<String, String> headers = new java.util.HashMap<>();
             headers.put("User-Agent", "TiviMate/5.1.6 (Android 14)");
             mp.setDataSource(c, android.net.Uri.parse(base + (hls ? ".m3u8" : ".ts")), headers);
@@ -169,10 +173,12 @@ final class TilePlayer {
     }
 
     private void release() {
-        if (player == null) return;
-        try { player.stop(); } catch (Exception ignored) { }
-        player.release();
-        player = null;
+        if (player != null) {
+            try { player.stop(); } catch (Exception ignored) { }
+            player.release();
+            player = null;
+        }
+        if (surface != null) { surface.release(); surface = null; }
     }
 
     /** Off the tile: the trailer silenced (its page kept for the next), the channel's player let go. */

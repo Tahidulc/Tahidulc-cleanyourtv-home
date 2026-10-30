@@ -1556,8 +1556,11 @@ public class GoalWatchService extends Service {
     @SuppressWarnings("unchecked")
     private void showNext() {
         if (shown != null || queue.isEmpty()) return;
-        Object[] next = queue.poll();
-        current = next;
+        Object[] polled = queue.poll();
+        current = polled;
+        // A race result on v2's Home runs through the score bar's place as pills, a page at a time.
+        Object[] next = polled.length == 1 && polled[0] instanceof F1Results.Race && onLane()
+                ? raceLane((F1Results.Race) polled[0]) : polled;
         boost = 1f;
         laneTint = 0;
         darkGlass = false;
@@ -1576,17 +1579,20 @@ public class GoalWatchService extends Service {
         Map<String, android.graphics.Bitmap> pictures = null;
         List<Object> livePage = null;
         Object[] watch = null;
-        if (next.length == 2 || next.length == 3 || next.length == 5) {
+        List<List<Object>> more = null;
+        if (next.length == 2 || next.length == 3 || next.length == 5 || next.length == 6) {
             parts = (List<Object>) next[0];
             sound = (String) next[1];
             wide = true;
             if ("f1".equals(sound)) {
                 laneTint = 0xFFE10600;
-                // F1 has Sky Sports F1's look everywhere: dark glass, white lettering, the lap in red.
-                darkGlass = true;
+                // Over an app F1 has Sky Sports F1's look: dark glass, white lettering, the lap in red. On Home it
+                // stands in the score bar's place in the pills' glass, as the football does.
+                darkGlass = !onLane();
             }
             if (next.length == 3) watch = (Object[]) next[2];
-            if (next.length == 5) {
+            if (next.length == 6) more = (List<List<Object>>) next[5];
+            if (next.length >= 5) {
                 sides = (ScoresTicker.Side[]) next[2];
                 pictures = (Map<String, android.graphics.Bitmap>) next[3];
                 livePage = (List<Object>) next[4];
@@ -1705,11 +1711,12 @@ public class GoalWatchService extends Service {
             }).start();
         });
         }
-        if (sides != null || livePage != null) {
+        if (sides != null || livePage != null || more != null) {
             // Then the line-ups, a page at a time flipping up in the same pill (each side's goalkeeper, defence,
-            // midfield and attack), and last which channel has it.
+            // midfield and attack), and last which channel has it; or a race result's pages.
             List<List<Object>> pages = sides != null ? lineupPages(sides, pictures) : new ArrayList<>();
             if (livePage != null) pages.add(livePage);
+            if (more != null) pages.addAll(more);
             if (sides != null) {
                 List<Object> head = parts;
                 if (livePage != null && livePage.size() > 9) {
@@ -2272,16 +2279,16 @@ public class GoalWatchService extends Service {
         heading.addView(f1Logo, llp);
         heading.addView(text(head, TEXT_SP, ink(0xFF1A1D24)), gap(Math.round(10 * d)));
         panel.addView(heading);
-        // The whole field from the back to the winner: everyone from P11 down first, then P10 to P1.
+        // The whole field: P11 to the last first, then P1 to P10.
         int n = race.top.size();
         List<List<Integer>> pages = new ArrayList<>();
         if (n > 10) {
             List<Integer> back = new ArrayList<>();
-            for (int i = n - 1; i >= 10; i--) back.add(i);
+            for (int i = 10; i < n; i++) back.add(i);
             pages.add(back);
         }
         List<Integer> top = new ArrayList<>();
-        for (int i = Math.min(10, n) - 1; i >= 0; i--) top.add(i);
+        for (int i = 0; i < Math.min(10, n); i++) top.add(i);
         pages.add(top);
         LinearLayout body = new LinearLayout(this);
         body.setOrientation(LinearLayout.VERTICAL);
@@ -2355,7 +2362,51 @@ public class GoalWatchService extends Service {
         });
     }
 
-    /** One page of the result, in the order given (back to front): at most five to a line, the lines even. */
+    /**
+     * A race result as v2's Home shows it, in the score bar's place: the F1 logo and the Grand Prix, then pills of
+     * finishers, P11 to the last first and P1 to P10 after, at most five to a pill and the pills even.
+     */
+    private Object[] raceLane(F1Results.Race race) {
+        android.graphics.Bitmap f1 = raceLogos.get(F1Results.F1_LOGO);
+        List<Object> head = new ArrayList<>();
+        head.add(new Img(f1, true));
+        head.add(12);
+        head.add(bold("🏁  " + race.name.toUpperCase(java.util.Locale.ROOT)));
+        head.add(10);
+        head.add(new Small("RESULT"));
+        int n = race.top.size();
+        List<Integer> back = new ArrayList<>(), top = new ArrayList<>();
+        for (int i = 10; i < n; i++) back.add(i);
+        for (int i = 0; i < Math.min(10, n); i++) top.add(i);
+        int[] medal = {0xFFE8B931, 0xFFC9CDD4, 0xFFD08A4F};
+        List<List<Object>> pages = new ArrayList<>();
+        for (List<Integer> group : Arrays.asList(back, top)) {
+            if (group.isEmpty()) continue;
+            int count = (group.size() + 4) / 5, per = (group.size() + count - 1) / count;
+            for (int k = 0; k < group.size(); k += per) {
+                List<Object> page = new ArrayList<>();
+                page.add(new Img(f1, true));
+                page.add(14);
+                for (int j = k; j < Math.min(group.size(), k + per); j++) {
+                    int i = group.get(j);
+                    if (j > k) page.add(18);
+                    SpannableStringBuilder pos = new SpannableStringBuilder(String.valueOf(i + 1));
+                    pos.setSpan(new StyleSpan(Typeface.BOLD), 0, pos.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                    if (i < 3) pos.setSpan(new ForegroundColorSpan(medal[i]), 0, pos.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                    page.add(pos);
+                    page.add(5);
+                    String url = i < race.logos.size() ? race.logos.get(i) : null;
+                    page.add(new Img(url == null ? null : raceLogos.get(url), false));
+                    page.add(5);
+                    page.add(i == 0 ? bold(race.top.get(i)) : race.top.get(i));
+                }
+                pages.add(page);
+            }
+        }
+        return new Object[]{head, "f1", null, null, null, pages};
+    }
+
+    /** One page of the result, in the order given: at most five to a line, the lines even. */
     private void raceLines(LinearLayout body, F1Results.Race race, List<Integer> page, float d) {
         body.removeAllViews();
         int[] medal = {0xFFE8B931, 0xFFC9CDD4, 0xFFD08A4F};

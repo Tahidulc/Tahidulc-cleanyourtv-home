@@ -854,11 +854,24 @@ final class HomeV2 {
 
     // ---- drawing the focus -----------------------------------------------------------------------------------------
 
+    /**
+     * Whether v is to be painted in a look (state) other than the one it has: true once, then false until it changes.
+     * A key press restyles only the few views whose look changes; restyling all of them (new backgrounds, fonts that
+     * lay the text out again, dozens of animations re-run) made every press cost a slow frame or two.
+     */
+    static boolean restyle(View v, int state) {
+        Object was = v.getTag(R.id.v2_state);
+        if (was instanceof Integer && (Integer) was == state) return false;
+        v.setTag(R.id.v2_state, state);
+        return true;
+    }
+
     void paint() {
         for (int i = 0; i < railViews.size(); i++) {
             FrameLayout f = railViews.get(i);
             boolean on = zone == Z_RAIL && i == railIdx, sel = i == railSel;
             boolean colour = (on || sel) && f.getTag() != null;
+            if (!restyle(f, (on ? 1 : 0) | (sel ? 2 : 0) | (colour ? 4 : 0))) continue;
             f.getChildAt(0).animate().alpha(colour ? 1f : 0f).setDuration(150).start();
             f.getChildAt(1).animate().alpha(colour ? 0f : 0.85f).setDuration(150).start();
             f.animate().scaleX(on ? 1.12f : 1f).scaleY(on ? 1.12f : 1f).setDuration(150).setInterpolator(SKY).start();
@@ -874,6 +887,7 @@ final class HomeV2 {
         for (int i = 0; i < row.getChildCount(); i++) {
             View t = row.getChildAt(i);
             boolean on = zone == Z_ROW && i == rowIdx;
+            if (!restyle(t, on ? 1 : 0)) continue;
             t.animate().scaleX(on ? 1.07f : 1f).scaleY(on ? 1.07f : 1f).setDuration(150).setInterpolator(SKY).start();
             t.setElevation(on ? px(8) : 0);
             ((FrameLayout) t).setForeground(on ? ring(16) : null);
@@ -886,6 +900,7 @@ final class HomeV2 {
             FrameLayout box = (FrameLayout) catViews.get(i);
             boolean on = zone == Z_CATS && i == catIdx && (page == null || preview);
             boolean sel = page != null ? i == catIdx : railSel < 0 && i > 0 && CAT_MODES[i].equals(mode);
+            if (!restyle(box, (on ? 1 : 0) | (sel ? 2 : 0))) continue;
             GradientDrawable b = fill(16, on ? 0xEBFFFFFF : sel ? (CAT_COLOURS[i] & 0x00FFFFFF) | 0x73000000 : 0x14FFFFFF);
             b.setStroke(Math.max(1, px(1)), on ? 0xFFFFFFFF : 0x24FFFFFF);
             box.setBackground(b);
@@ -902,6 +917,7 @@ final class HomeV2 {
             View v = topViews.get(i);
             boolean on = zone == Z_TOP && i == topIdx;
             boolean vpnOn = v == vpn && vpnUp;
+            if (!restyle(v, (on ? 1 : 0) | (vpnOn ? 2 : 0))) continue;
             GradientDrawable b = fill(33, on ? 0xEBFFFFFF : vpnOn ? 0x3D9B5CFF : GLASS);
             b.setStroke(px(1.5f), on ? Color.WHITE : vpnOn ? 0xB3C4A8FF : GLASS_LINE);
             v.setBackground(b);
@@ -1251,6 +1267,10 @@ final class HomeV2 {
 
     /** Fills the line under the title; a film's or series' running time and service are looked up the first time. */
     private void specs(Tile t) {
+        // A film or series always has its picture, HDR and sound marks: the store's where it gave them, else the
+        // service's usual ones (filled in once TMDB has said where it streams).
+        String[] have = t.tmdbId != 0 ? details.get(t.tmdbId) : null;
+        if (have != null) apply(t, have);
         hSpecs.removeAllViews();
         if (t.duration != null) {
             TextView d = text(20, semi, 0xEBFFFFFF);
@@ -1264,26 +1284,24 @@ final class HomeV2 {
             l.setBackground(fill(7, 0x33FFFFFF));
             l.setClipToOutline(true);
             l.setOutlineProvider(round(7));
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(px(30), px(30));
-            lp.leftMargin = hSpecs.getChildCount() == 0 ? 0 : px(12);
+            // The service's own logo, clear at the marks' height and no bigger.
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(px(34), px(34));
+            lp.leftMargin = hSpecs.getChildCount() == 0 ? 0 : px(14);
             hSpecs.addView(l, lp);
-            image(l, t.service, px(60));
+            image(l, t.service, px(92));
         }
         hSpecs.setVisibility(hSpecs.getChildCount() == 0 ? View.GONE : View.VISIBLE);
         // As much of the description as fits above the row: three lines on Home, five under a page's hero (its rows
         // start lower down); with the marks' line taking room on Home, two.
         hText.setMaxLines(page != null ? heroLines : hSpecs.getChildCount() > 0 ? 2 : 3);
-        if (t.tmdbId != 0 && t.duration == null && !tmdbKey.isEmpty()) {
-            String[] have = details.get(t.tmdbId);
-            if (have != null) { apply(t, have); if (heroTile == t && (t.duration != null || t.service != null)) specs(t); return; }
+        if (t.tmdbId != 0 && have == null && !tmdbKey.isEmpty()) {
             int id = t.tmdbId;
             boolean tv = t.tv;
             io.execute(() -> {
                 String[] got = tmdbDetails(id, tv);
                 main.post(() -> {
                     details.put(id, got);
-                    apply(t, got);
-                    if (heroTile == t && (t.duration != null || t.service != null)) specs(t);
+                    if (heroTile == t) specs(t);
                 });
             });
         }
@@ -1292,11 +1310,49 @@ final class HomeV2 {
     private static void apply(Tile t, String[] d) {
         if (d[0] != null) t.duration = d[0];
         if (t.service == null && d[1] != null) t.service = d[1];
+        fillSpecs(t, d[2], d[3]);
+    }
+
+    private static final java.util.Set<String> QUALITY = new java.util.HashSet<>(Arrays.asList("4K UHD", "4K", "UHD", "HD", "SD"));
+    private static final java.util.Set<String> HDR = new java.util.HashSet<>(Arrays.asList("DOLBY VISION", "HDR10+", "HDR10", "HDR"));
+    private static final java.util.Set<String> SOUND = new java.util.HashSet<>(Arrays.asList("DOLBY ATMOS", "DOLBY", "5.1"));
+
+    /**
+     * The picture, HDR and sound marks a title lacks, as its service streams it in Britain (TMDB's provider id):
+     * Apple TV+, Netflix and Disney+ in 4K with Dolby Vision and Atmos, Prime Video in 4K with HDR10+ and 5.1, NOW
+     * in HD with 5.1; elsewhere 4K and HDR10 for anything from 2015 on, HD before. The store's own marks win.
+     */
+    private static void fillSpecs(Tile t, String provider, String year) {
+        boolean hasQ = false, hasH = false, hasS = false;
+        for (String m : t.specs) { hasQ |= QUALITY.contains(m); hasH |= HDR.contains(m); hasS |= SOUND.contains(m); }
+        if (hasQ && hasH && hasS) return;
+        int y = 0;
+        try { y = Integer.parseInt(year); } catch (Exception ignored) { }
+        String q, h, snd;
+        switch (provider == null ? "" : provider) {
+            case "350": q = "4K UHD"; h = "DOLBY VISION"; snd = "DOLBY ATMOS"; break;
+            case "8": case "337": q = y >= 2014 || y == 0 ? "4K UHD" : "HD"; h = y >= 2014 || y == 0 ? "DOLBY VISION" : "HDR10"; snd = y >= 2016 || y == 0 ? "DOLBY ATMOS" : "5.1"; break;
+            case "9": q = "4K UHD"; h = "HDR10+"; snd = "5.1"; break;
+            case "39": case "29": q = "HD"; h = "HDR10"; snd = "5.1"; break;
+            default: q = y >= 2015 || y == 0 ? "4K UHD" : "HD"; h = "HDR10"; snd = "5.1";
+        }
+        List<String> out = new ArrayList<>();
+        out.add(hasQ ? first(t.specs, QUALITY) : q);
+        out.add(hasH ? first(t.specs, HDR) : h);
+        out.add(hasS ? first(t.specs, SOUND) : snd);
+        for (String m : t.specs) if (!QUALITY.contains(m) && !HDR.contains(m) && !SOUND.contains(m)) out.add(m);
+        t.specs.clear();
+        t.specs.addAll(out);
+    }
+
+    private static String first(List<String> specs, java.util.Set<String> of) {
+        for (String m : specs) if (of.contains(m)) return m;
+        return null;
     }
 
     /** {running time ("2h 9m", "55 mins"), the UK streaming service's logo}; from TMDB, in one call. */
     private String[] tmdbDetails(int id, boolean tv) {
-        String[] out = new String[2];
+        String[] out = new String[4];
         try {
             JSONObject o = new JSONObject(get("https://api.themoviedb.org/3/" + (tv ? "tv/" : "movie/") + id
                     + "?append_to_response=watch/providers&api_key=" + tmdbKey));
@@ -1312,7 +1368,12 @@ final class HomeV2 {
                     : o.getJSONObject("watch/providers").optJSONObject("results") == null ? null
                     : o.getJSONObject("watch/providers").getJSONObject("results").optJSONObject("GB");
             JSONArray flat = gb == null ? null : gb.optJSONArray("flatrate");
-            if (flat != null && flat.length() > 0) out[1] = "https://image.tmdb.org/t/p/w92" + flat.getJSONObject(0).optString("logo_path");
+            if (flat != null && flat.length() > 0) {
+                out[1] = "https://image.tmdb.org/t/p/w92" + flat.getJSONObject(0).optString("logo_path");
+                out[2] = String.valueOf(flat.getJSONObject(0).optInt("provider_id"));
+            }
+            String date = o.optString(tv ? "first_air_date" : "release_date", "");
+            if (date.length() >= 4) out[3] = date.substring(0, 4);
         } catch (Exception ignored) {
         }
         return out;
