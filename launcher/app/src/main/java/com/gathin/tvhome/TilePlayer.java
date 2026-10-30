@@ -82,8 +82,15 @@ final class TilePlayer {
         web.setFocusableInTouchMode(false);
         web.setVerticalScrollBarEnabled(false);
         web.setHorizontalScrollBarEnabled(false);
+        web.setWebChromeClient(new android.webkit.WebChromeClient() {
+            @Override public boolean onConsoleMessage(android.webkit.ConsoleMessage m) {
+                android.util.Log.i("TilePlayer", "page: " + m.message());
+                return true;
+            }
+        });
         web.addJavascriptInterface(new Object() {
             @android.webkit.JavascriptInterface public void ready() {
+                android.util.Log.i("TilePlayer", "player ready");
                 main.post(() -> { ready = true; if (pending != null) { String id = pending; pending = null; cue(id); } });
             }
             @android.webkit.JavascriptInterface public void playing() {
@@ -143,6 +150,7 @@ final class TilePlayer {
     }
 
     private void cue(String id) {
+        android.util.Log.i("TilePlayer", "cue " + id);
         if (web != null && web.getParent() != null) web.evaluateJavascript("play('" + id.replace("'", "") + "')", null);
     }
 

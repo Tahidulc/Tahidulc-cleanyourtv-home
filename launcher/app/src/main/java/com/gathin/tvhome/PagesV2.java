@@ -103,6 +103,8 @@ final class PagesV2 {
      * none in English. "" when there are none. Off the main thread.
      */
     static String trailer(String key, Title t) {
+        String known = TRAILER_IDS.get((t.tv ? "t" : "m") + t.id);
+        if (known != null) return known;
         try {
             JSONArray list = new JSONObject(HomeV2.get("https://api.themoviedb.org/3/" + (t.tv ? "tv/" : "movie/") + t.id
                     + "/videos?include_video_language=en,null&api_key=" + key)).optJSONArray("results");
@@ -121,9 +123,10 @@ final class PagesV2 {
                 if (out.length() > 0) out.append(',');
                 out.append(k);
             }
+            TRAILER_IDS.put((t.tv ? "t" : "m") + t.id, out.toString());
             return out.toString();
         } catch (Exception e) {
-            return "";
+            return "";   // not remembered: asked again next time
         }
     }
 
@@ -268,12 +271,14 @@ final class PagesV2 {
             for (int n = at + 1; n < Math.min(row.size(), at + 4); n++) {
                 Title next = row.get(n);
                 // On the pages' own pool: Home's single reader stays free for the hero's details and logos.
-                if (next.youtube == null) PAGES.execute(() -> { if (next.youtube == null) next.youtube = trailer(h.tmdbKey, next); });
+                if (next.youtube == null) TRAILERS.execute(() -> { if (next.youtube == null) next.youtube = trailer(h.tmdbKey, next); });
             }
             trailerSoon = () -> {
                 if (trailerTile != tile) return;
                 if (t.youtube != null) { if (!t.youtube.isEmpty()) player.trailer(tile, 0, t.youtube, tile.findViewWithTag("poster"), tile.findViewWithTag("wide")); return; }
-                h.io.execute(() -> {
+                // On the trailers' own threads: behind Home's reader (the hero's pictures, logos and details) a slow
+                // TV often never reached it before the next poster was picked.
+                TRAILERS.execute(() -> {
                     String id = trailer(h.tmdbKey, t);
                     h.main.post(() -> {
                         t.youtube = id;
@@ -865,6 +870,9 @@ final class PagesV2 {
 
     /** The pages' tabs read on a pool of their own: the one in view, and its neighbours ahead. */
     private static final java.util.concurrent.ExecutorService PAGES = java.util.concurrent.Executors.newFixedThreadPool(3);
+    /** The trailer lookups' own threads, and each title's trailers once found ("m123" / "t456"), for every page and tab. */
+    private static final java.util.concurrent.ExecutorService TRAILERS = java.util.concurrent.Executors.newFixedThreadPool(2);
+    private static final Map<String, String> TRAILER_IDS = new java.util.concurrent.ConcurrentHashMap<>();
 
     static PosterPage movies(HomeV2 h) {
         String m = "discover/movie?sort_by=popularity.desc&watch_region=GB";
