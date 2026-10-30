@@ -430,7 +430,7 @@ final class HomeV2 {
         hSpecs = new LinearLayout(a);
         hSpecs.setOrientation(LinearLayout.HORIZONTAL);
         hSpecs.setGravity(Gravity.CENTER_VERTICAL);
-        LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, px(32));
+        LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, px(46));
         slp.bottomMargin = px(8);
         htext.addView(hSpecs, slp);
         hMeta = text(20, regular, 0xC7FFFFFF);
@@ -1306,7 +1306,7 @@ final class HomeV2 {
             l.setImageDrawable(banner);
             l.setClipToOutline(true);
             l.setOutlineProvider(round(7));
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(px(68), px(38));
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(px(80), px(45));
             lp.leftMargin = hSpecs.getChildCount() == 0 ? 0 : px(14);
             hSpecs.addView(l, lp);
         } else if (t.service != null) {
@@ -1316,7 +1316,7 @@ final class HomeV2 {
             l.setClipToOutline(true);
             l.setOutlineProvider(round(7));
             // The service's own logo, clear at the marks' height and no bigger.
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(px(38), px(38));
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(px(44), px(44));
             lp.leftMargin = hSpecs.getChildCount() == 0 ? 0 : px(14);
             hSpecs.addView(l, lp);
             image(l, t.service, px(92));
@@ -1473,6 +1473,15 @@ final class HomeV2 {
      */
     private View mark(String m) {
         // The formats with logos of their own (Dolby's, HDR10's): the logo, in white, at the marks' height.
+        // Dolby's lockup, wider than the rest, a touch lower so it sits with the other marks.
+        if (m.equals("DOLBY VISION ATMOS")) {
+            ImageView v = new ImageView(a);
+            v.setImageResource(R.drawable.fmt_dolby_vision_atmos);
+            v.setAdjustViewBounds(true);
+            v.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            v.setMaxHeight(px(17));
+            return v;
+        }
         int logo = m.equals("DOLBY VISION ATMOS") ? R.drawable.fmt_dolby_vision_atmos
                 : m.equals("DOLBY VISION") ? R.drawable.fmt_dolby_vision : m.equals("DOLBY ATMOS") ? R.drawable.fmt_dolby_atmos
                 : m.equals("HDR10+") ? R.drawable.fmt_hdr10plus : m.equals("HDR10") ? R.drawable.fmt_hdr10
@@ -1660,10 +1669,18 @@ final class HomeV2 {
     }
 
     /** What is on now on the playlist's channels, sport first: OK puts TiviMate on that channel. */
+    /** Live TV's first five, in this order: the main channels, as on any British guide. */
+    private static final String[] MAIN_FIVE = {"(?i)^bbc one\\b.*", "(?i)^bbc two\\b.*", "(?i)^itv ?1\\b.*", "(?i)^channel 4\\b.*", "(?i)^(channel )?5( (hd|uhd))?$"};
+
     private List<Tile> liveNow(boolean sportOnly) {
         List<String[]> order = new ArrayList<>();
-        for (String[] c : channels) if (c[2].contains("Sport")) order.add(c);
-        if (!sportOnly) for (String[] c : channels) if (!c[2].contains("Sport") && order.size() < 24) order.add(c);
+        if (!sportOnly) {
+            // BBC One, BBC Two, ITV1, Channel 4 and 5 first, then the sports channels, then the news.
+            for (String re : MAIN_FIVE)
+                for (String[] c : channels) if (c[1].matches(re)) { order.add(c); break; }
+        }
+        for (String[] c : channels) if (c[2].contains("Sport") && !order.contains(c)) order.add(c);
+        if (!sportOnly) for (String[] c : channels) if (c[2].contains("News") && !order.contains(c) && order.size() < 36) order.add(c);
         if (order.isEmpty()) return new ArrayList<>();
         String[] ids = new String[order.size()];
         Map<String, String> names = new HashMap<>();

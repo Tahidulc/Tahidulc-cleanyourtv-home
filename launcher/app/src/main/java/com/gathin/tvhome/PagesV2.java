@@ -520,7 +520,7 @@ final class PagesV2 {
                 tabScroll.animate().alpha(onTabs ? 1f : 0f).setDuration(200).start();
             }
             // The description's lines: as many as fit above the posters (fewer above a single row, more over many).
-            h.heroLines(tabs == null || onTabs ? 2 : rowY.length > 2 ? 5 : 4);
+            h.heroLines(tabs == null ? 2 : onTabs ? (rowY.length > 2 ? 2 : 1) : rowY.length > 2 ? 5 : 3);
         }
 
         /** Each title's marks from the store, once looked up (empty: the store had none). */
