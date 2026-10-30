@@ -1390,7 +1390,7 @@ final class PagesV2 {
                 {"sco.1", "Scottish Premiership", R.font.brand_plain, "45"}, {"uefa.champions", "Champions League", R.font.brand_uefa, "2"}};
         private final Map<String, List<String[]>> tables = new HashMap<>();
         private LinearLayout tableCard, tableList, driverCard;
-        private TextView tableName, tablePage;
+        private TextView tableName, tablePage, tableKey;
         private ImageView tableLogo;
         private int league, cardIdx;
         private LinearLayout tableHead;
@@ -1470,6 +1470,11 @@ final class PagesV2 {
             tableList.setOrientation(LinearLayout.VERTICAL);
             tableView.addView(tableList, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
             c.addView(tableView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+            tableKey = h.text(14, h.regular, 0xBFFFFFFF);
+            tableKey.setLineSpacing(px(4), 1f);
+            LinearLayout.LayoutParams kl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            kl.topMargin = px(10);
+            c.addView(tableKey, kl);
             showTable(0);
         }
 
@@ -1497,9 +1502,12 @@ final class PagesV2 {
                         for (int k = 0; stats != null && k < stats.length(); k++)
                             st.put(stats.getJSONObject(k).optString("name"), stats.getJSONObject(k).optString("displayValue"));
                         JSONArray tl = team.optJSONArray("logos");
+                        // ESPN's note on the place: "Champions League", "Europa League", "Promotion", "Relegation"…
+                        JSONObject note = e.optJSONObject("note");
                         rows.add(new String[]{st.getOrDefault("rank", ""), team.optString("displayName"), st.getOrDefault("gamesPlayed", ""),
                                 st.getOrDefault("pointDifferential", ""), st.getOrDefault("points", ""),
-                                tl != null && tl.length() > 0 ? tl.getJSONObject(0).optString("href") : null});
+                                tl != null && tl.length() > 0 ? tl.getJSONObject(0).optString("href") : null,
+                                note == null ? null : note.optString("description", null)});
                     }
                     rows.sort((x, y) -> Integer.compare(num(x[0]), num(y[0])));
                 } catch (Exception ignored) {
@@ -1513,14 +1521,29 @@ final class PagesV2 {
 
         private void fillTable(List<String[]> rows) {
             tableHead.removeAllViews();
-            tableHead.addView(tableRow(null, "", "CLUB", "P", "GD", "PTS", true));
+            tableHead.addView(tableRow(null, "", "CLUB", "P", "GD", "PTS", true, null));
             tableList.removeAllViews();
             tableTop = 0;
             tableView.scrollTo(0, 0);
             for (int n = 0; n < rows.size(); n++) {
                 String[] r = rows.get(n);
-                tableList.addView(tableRow(r[5], r[0], short_(r[1]), r[2], r[3], r[4], false));
+                tableList.addView(tableRow(r[5], r[0], short_(r[1]), r[2], r[3], r[4], false, r.length > 6 ? r[6] : null));
             }
+            // The key to the colours, one entry for each kind of place the table has, in table order.
+            android.text.SpannableStringBuilder key = new android.text.SpannableStringBuilder();
+            java.util.Set<Integer> keyed = new java.util.HashSet<>();
+            for (String[] r : rows) {
+                String zone = r.length > 6 ? r[6] : null;
+                int colour = zoneColour(zone);
+                if (colour == 0 || !keyed.add(colour)) continue;
+                if (key.length() > 0) key.append("     ");
+                int at = key.length();
+                key.append("●");
+                key.setSpan(new android.text.style.ForegroundColorSpan(colour), at, key.length(), 0);
+                key.append(" ").append(zoneName(zone));
+            }
+            tableKey.setText(key);
+            tableKey.setVisibility(key.length() == 0 ? View.GONE : View.VISIBLE);
             tableList.animate().alpha(1f).setDuration(160).start();
         }
 
@@ -1528,10 +1551,46 @@ final class PagesV2 {
             try { return Integer.parseInt(s.replace("+", "").trim()); } catch (Exception e) { return 99; }
         }
 
-        private View tableRow(String logo, String pos, String club, String p, String gd, String pts, boolean head) {
+        /**
+         * A place's colour from ESPN's note on it: the Champions League blue, its qualifying lighter, the Europa
+         * League orange, the Conference League green, promotion green (its play-offs teal), relegation red (its
+         * play-off orange); the Champions League's own table: through to the last 16 green, the play-offs blue, out
+         * red. 0 for a place with nothing riding on it.
+         */
+        static int zoneColour(String note) {
+            if (note == null || note.isEmpty()) return 0;
+            String n = note.toLowerCase(Locale.ROOT);
+            boolean playoff = n.contains("playoff") || n.contains("play-off");
+            if (n.contains("relegat")) return playoff ? 0xFFF97316 : 0xFFEF4444;
+            if (n.contains("eliminated")) return 0xFFEF4444;
+            if (n.contains("promotion")) return playoff ? 0xFF2DD4BF : 0xFF22C55E;
+            if (n.contains("round of 16")) return 0xFF22C55E;
+            if (n.contains("knockout")) return 0xFF60A5FA;
+            if (n.contains("conference")) return 0xFF34D399;
+            if (n.contains("europa")) return 0xFFF59E0B;
+            if (n.contains("champions league")) return n.contains("qualif") ? 0xFF93C5FD : 0xFF3B82F6;
+            return 0xFF9CA3AF;
+        }
+
+        /** The key's words for a place: ESPN's, without the seeding ("Knockout phase playoffs - seeded"). */
+        static String zoneName(String note) {
+            int dash = note.indexOf(" - ");
+            String n = dash > 0 ? note.substring(0, dash) : note;
+            if (n.equalsIgnoreCase("Qualifies for round of 16")) return "Round of 16";
+            return title(n.substring(0, 1).toUpperCase(Locale.ROOT) + n.substring(1).toLowerCase(Locale.ROOT));
+        }
+
+        private View tableRow(String logo, String pos, String club, String p, String gd, String pts, boolean head, String zone) {
             LinearLayout r = new LinearLayout(h.a);
             r.setOrientation(LinearLayout.HORIZONTAL);
             r.setGravity(Gravity.CENTER_VERTICAL);
+            // The place's colour: a bar at the row's start (an empty one keeps the columns lined up).
+            int colour = head ? 0 : zoneColour(zone);
+            View bar = new View(h.a);
+            if (colour != 0) bar.setBackground(h.fill(2, colour));
+            LinearLayout.LayoutParams bl = new LinearLayout.LayoutParams(px(4), px(head ? 14 : 24));
+            bl.rightMargin = px(8);
+            r.addView(bar, bl);
             int size = head ? 14 : 20;
             int col = head ? 0x8CFFFFFF : 0xBFFFFFFF;
             TextView a = h.text(size, h.regular, 0x99FFFFFF);
@@ -1560,7 +1619,8 @@ final class PagesV2 {
             r.setPadding(px(6), px(head ? 4 : 7), px(6), px(head ? 2 : 7));
             if (!head) {
                 GradientDrawable g = new GradientDrawable();
-                g.setColor("1".equals(pos) ? 0x1AFFFFFF : 0x00000000);
+                // A wash of the place's colour across the row, so the zones read at a glance.
+                g.setColor(colour != 0 ? (colour & 0x00FFFFFF) | 0x1F000000 : 0x00000000);
                 g.setCornerRadius(px(10));
                 r.setBackground(g);
             }
