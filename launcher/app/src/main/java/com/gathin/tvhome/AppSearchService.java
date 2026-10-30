@@ -22,7 +22,7 @@ import java.util.Locale;
 public class AppSearchService extends AccessibilityService {
     private static final String TAG = "AppSearch";
     /** A look at the screen every STEP_MS: quick enough that each step follows the last at once. */
-    private static final long SEARCH_MS = 15_000L, TUNE_MS = 45_000L, STEP_MS = 220L;
+    private static final long SEARCH_MS = 15_000L, TUNE_MS = 75_000L, STEP_MS = 220L;
     private static AppSearchService instance;
 
     private final Handler main = new Handler(Looper.getMainLooper());
@@ -444,6 +444,8 @@ public class AppSearchService extends AccessibilityService {
         picks = 0;
         retypes = 0;
         scrolls = 0;
+        scrolledAt = enteredAt = 0;
+        nearest = null;
         foundAt = -1;
         backing = false;
         settle = false;
@@ -822,8 +824,12 @@ public class AppSearchService extends AccessibilityService {
         // A big playlist finds more channels than the row shows, and only those on screen can be read: the row moved
         // along a page at a time until the channel turns up; at its end, the next name to try.
         if (row != null && row.getChildCount() > 0) {
-            if (scrolls < 30 && row.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)) {
+            // A page at a time, with a moment for each to fill (the TCL is slow to draw them, and a page passed
+            // before it was drawn was never read).
+            if (System.currentTimeMillis() - scrolledAt < 450L) return true;
+            if (scrolls < 80 && row.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)) {
                 scrolls++;
+                scrolledAt = System.currentTimeMillis();
                 return true;
             }
             if (foundAt >= 0) { backing = true; return true; }
@@ -839,10 +845,22 @@ public class AppSearchService extends AccessibilityService {
             typedAt = 0;
             return true;
         }
-        // Nothing found for this name: the next.
-        if (System.currentTimeMillis() - typedAt > 12_000L) return nextCandidate();
+        // No results yet: its search runs on Enter, which a slow TV can miss while it is still coming back from a
+        // channel: pressed again every few seconds.
+        long waited = System.currentTimeMillis() - typedAt;
+        if (row == null && waited > 6_000L && System.currentTimeMillis() - enteredAt > 6_000L && android.os.Build.VERSION.SDK_INT >= 30) {
+            box.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_IME_ENTER.getId());
+            enteredAt = System.currentTimeMillis();
+        }
+        // Nothing found for this name after half a minute: the next.
+        if (waited > 30_000L) return nextCandidate();
         return true;
     }
+
+    /** When the row last moved on a page, and Enter was last pressed again in the search. */
+    private long scrolledAt, enteredAt;
+    /** The nearest channel seen to the one wanted (its name inside the found one's), picked when no name matches. */
+    private AccessibilityNodeInfo nearest;
 
     private boolean pick(AccessibilityNodeInfo hit) {
         // With the keyboard up (the box was picked to type in it) a pick goes to the keyboard: one Back takes it away
@@ -868,7 +886,15 @@ public class AppSearchService extends AccessibilityService {
 
     /** The next channel name to search for, or false when none is left (TiviMate stays on what it found). */
     private boolean nextCandidate() {
-        if (candidate + 1 >= candidates.size()) return false;
+        if (candidate + 1 >= candidates.size()) {
+            // Every name tried and none found exactly: the nearest one seen, rather than stopping on the search.
+            if (picks == 0 && nearest != null) {
+                AccessibilityNodeInfo n = nearest;
+                nearest = null;
+                if (n.refresh() && n.isVisibleToUser()) return pick(n);
+            }
+            return false;
+        }
         query = candidates.get(++candidate);
         typedAt = 0;
         retypes = 0;
@@ -1127,10 +1153,12 @@ public class AppSearchService extends AccessibilityService {
             return null;
         }
         String want = channelName(query, false), loose = channelName(query, true);
+        String term = searchTerm(query).toLowerCase(Locale.ROOT);
         AccessibilityNodeInfo same = null, close = null;
         for (AccessibilityNodeInfo n : all) {
             if (n.isEditable() || n.getText() == null || n.equals(box)) continue;
             String text = n.getText().toString();
+            if (nearest == null && term.length() >= 3 && text.toLowerCase(Locale.ROOT).contains(term)) nearest = n;
             if (channelName(text, false).equals(want)) {
                 if (uhd(n)) return n;
                 if (same == null) same = n;
