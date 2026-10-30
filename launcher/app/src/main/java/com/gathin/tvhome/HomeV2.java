@@ -1232,7 +1232,20 @@ final class HomeV2 {
      * One mark, drawn as Sky draws "HD": letters in a thin white outline. Subtitles' "S" is filled white; an age rating
      * is a filled square in the BBFC's colour.
      */
-    private TextView mark(String m) {
+    private View mark(String m) {
+        // The formats with logos of their own (Dolby's, HDR10's): the logo, in white, at the marks' height.
+        int logo = m.equals("DOLBY VISION") ? R.drawable.fmt_dolby_vision : m.equals("DOLBY ATMOS") ? R.drawable.fmt_dolby_atmos
+                : m.equals("HDR10+") ? R.drawable.fmt_hdr10plus : m.equals("HDR10") ? R.drawable.fmt_hdr10
+                : m.equals("DOLBY") ? R.drawable.fmt_dolby : 0;
+        if (logo != 0) {
+            ImageView v = new ImageView(a);
+            v.setImageResource(logo);
+            v.setAdjustViewBounds(true);
+            v.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            v.setMaxHeight(px(m.startsWith("HDR") ? 28 : 22));
+            v.setPadding(0, px(m.startsWith("HDR") ? 0 : 3), 0, px(m.startsWith("HDR") ? 0 : 3));
+            return v;
+        }
         boolean age = m.startsWith("age:");
         String label = age ? m.substring(4) : m;
         TextView v = text(age ? 16 : 15, semi, Color.WHITE);
