@@ -471,6 +471,9 @@ final class PagesV2 {
             if (tabBar != null) moveLens();
         }
 
+        /** Each title's marks from the store, once looked up (empty: the store had none). */
+        private static final Map<Integer, List<String>> MARKS = new HashMap<>();
+
         private void heroNow() {
             if (row >= rows.size() || rows.get(row).items.isEmpty()) return;
             Title t = rows.get(row).items.get(Math.min(idx, rows.get(row).items.size() - 1));
@@ -482,8 +485,34 @@ final class PagesV2 {
             String vote = t.vote > 0 ? String.format(Locale.UK, " · ★ %.1f", t.vote) : "";
             tile.heroMeta = TextUtils.join(" · ", nonEmpty(t.year, t.what, t.tv ? "Series" : "Film")) + vote;
             tile.heroText = t.overview;
+            // The running time and the streaming service (TMDB, looked up by Home's hero), and the store's marks.
+            tile.tmdbId = t.id;
+            tile.tv = t.tv;
+            List<String> known = MARKS.get(t.id);
+            if (known != null) tile.specs.addAll(known);
             h.heroTopColour(crumbColour);
             h.hero(tile);
+            if (known == null) h.io.execute(() -> {
+                Trending.Title st = Trending.storeMarks(h.a, t.title, t.year, t.tv);
+                List<String> m = new ArrayList<>();
+                if (st != null) {
+                    if (st.quality != null) m.add(st.quality.equals("4K") ? "4K UHD" : st.quality);
+                    if (st.dolbyVision) m.add("DOLBY VISION");
+                    else if (st.hdr10plus) m.add("HDR10+");
+                    else if (st.hdr) m.add("HDR10");
+                    if (st.atmos) m.add("DOLBY ATMOS");
+                    if (st.age != null) m.add("age:" + st.age);
+                }
+                h.main.post(() -> {
+                    MARKS.put(t.id, m);
+                    if (m.isEmpty()) return;
+                    Title now = rows.get(row).items.isEmpty() ? null : rows.get(row).items.get(Math.min(idx, rows.get(row).items.size() - 1));
+                    if (now != t) return;
+                    tile.specs.clear();
+                    tile.specs.addAll(m);
+                    h.hero(tile);
+                });
+            });
             h.io.execute(() -> {
                 String logo = h.tmdbLogo(t.id, t.tv);
                 if (logo == null) return;

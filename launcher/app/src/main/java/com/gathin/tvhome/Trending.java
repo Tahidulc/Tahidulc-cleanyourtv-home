@@ -739,6 +739,36 @@ final class Trending {
         return null;
     }
 
+    /**
+     * One title's marks from its Apple TV page, as v1's chart has them (4K, Dolby Vision, HDR10+, Atmos, the age
+     * rating): its store page found by name (a film's year must match), then read as badges() reads. Off the main
+     * thread; null when the store has no such title.
+     */
+    static Title storeMarks(android.content.Context c, String title, String year, boolean tv) {
+        try {
+            String q = "https://itunes.apple.com/search?country=gb&limit=6&media=" + (tv ? "tvShow&entity=tvSeason" : "movie&entity=movie")
+                    + "&term=" + java.net.URLEncoder.encode(title, "UTF-8");
+            JSONArray results = new JSONObject(get(q)).optJSONArray("results");
+            String want = title.toLowerCase(java.util.Locale.ROOT);
+            for (int i = 0; results != null && i < results.length(); i++) {
+                JSONObject r = results.getJSONObject(i);
+                String name = (tv ? r.optString("collectionName") : r.optString("trackName")).toLowerCase(java.util.Locale.ROOT);
+                if (!name.startsWith(want)) continue;
+                if (!tv && year != null && !year.isEmpty() && !r.optString("releaseDate").startsWith(year)) continue;
+                String link = tv ? r.optString("collectionViewUrl") : r.optString("trackViewUrl");
+                if (link.isEmpty()) continue;
+                Title t = new Title();
+                t.title = title;
+                t.tv = tv;
+                t.link = tv ? link : link.replace("://itunes.apple.com/", "://tv.apple.com/");
+                badges(c, java.util.Collections.singletonList(t));
+                return t;
+            }
+        } catch (Exception ignored) {
+        }
+        return null;
+    }
+
     private static String[] tvmaze(String title) {
         try {
             JSONObject show = new JSONObject(get("https://api.tvmaze.com/singlesearch/shows?q=" + java.net.URLEncoder.encode(title, "UTF-8")));
