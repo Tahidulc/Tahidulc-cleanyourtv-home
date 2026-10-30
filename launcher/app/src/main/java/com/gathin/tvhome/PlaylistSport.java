@@ -305,6 +305,8 @@ final class PlaylistSport {
         List<HomeV2.Tile> out = new ArrayList<>();
         long now = System.currentTimeMillis();
         DateTimeFormatter when = DateTimeFormatter.ofPattern("EEE HH:mm", Locale.UK).withZone(ZoneId.systemDefault());
+        // Today's scores by league, read once: a game already at full time is no longer "Live now".
+        Map<String, List<ScoresTicker.Game>> boards = new HashMap<>();
         for (Event e : read(h)) {
             if (e.start + 2 * 3_600_000L < now) continue;
             boolean onSky = false;
@@ -317,6 +319,16 @@ final class PlaylistSport {
             t.chip = on ? "LIVE NOW" : when.format(Instant.ofEpochMilli(e.start)).toUpperCase(Locale.UK);
             String hl = e.home != null ? crest(e.home) : null, al = e.away != null ? crest(e.away) : null;
             String slug = e.home == null ? null : league(e.home) != null ? league(e.home) : league(e.away);
+            if (slug != null && e.start <= now) {
+                List<ScoresTicker.Game> board = boards.get(slug);
+                if (board == null) {
+                    board = ScoresTicker.load(new String[]{slug});
+                    boards.put(slug, board);
+                }
+                boolean over = false;
+                for (ScoresTicker.Game g : board) if (g.state == 2 && same(g.homeName + " " + g.awayName, e.home, e.away)) over = true;
+                if (over) continue;
+            }
             String[] showing = channel(e, slug);
             t.channel = showing[0];
             t.badge = showing[1];
