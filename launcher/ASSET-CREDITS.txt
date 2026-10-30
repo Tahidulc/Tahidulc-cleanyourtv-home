@@ -22,8 +22,8 @@ Launcher v2
 - res/drawable-nodpi/fmt_dolby_vision.png, fmt_dolby_atmos.png, fmt_dolby.png: the Dolby Vision and Dolby Atmos
   logos from Wikimedia Commons (Dolby_Vision_(logo).svg, Dolby_Atmos_(logo).svg), recoloured white; fmt_hdr10plus.png:
   the HDR10+ logo from hdr10plus.org (its drop shadow taken off), and fmt_hdr10.png the same artwork without the "+"
-  (the "0" closed); trademarks of their owners, shown only to say which formats a title is in. fmt_dolby_vision_atmos.png is Dolby's combined
-  "Dolby Vision · Atmos" lockup, put together from those two logos (Atmos's word after Vision's, a dot between).
+  (the "0" closed); trademarks of their owners, shown only to say which formats a title is in. fmt_dolby_vision_atmos.png is a compact Dolby lockup (the double-D with Vision over Atmos),
+  put together from those two logos.
 - res/drawable-nodpi/svc_*.png: the streaming services' logos (Netflix, Prime Video, Disney+, Apple TV, Channel 4,
   5, Paramount+ from TMDB's network logos; BBC iPlayer, ITVX and Sky Go from Wikipedia's logo files), trimmed, the
   dark ones drawn white for the dark screen; trademarks of their owners, shown only to say where a title streams.

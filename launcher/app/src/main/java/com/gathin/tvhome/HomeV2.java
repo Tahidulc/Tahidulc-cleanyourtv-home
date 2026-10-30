@@ -1505,13 +1505,13 @@ final class HomeV2 {
      */
     private View mark(String m) {
         // The formats with logos of their own (Dolby's, HDR10's): the logo, in white, at the marks' height.
-        // Dolby's lockup, wider than the rest, a touch lower so it sits with the other marks.
+        // Dolby's double-D with Vision over Atmos: the size of the 4K UHD and HDR10 marks beside it.
         if (m.equals("DOLBY VISION ATMOS")) {
             ImageView v = new ImageView(a);
             v.setImageResource(R.drawable.fmt_dolby_vision_atmos);
             v.setAdjustViewBounds(true);
             v.setScaleType(ImageView.ScaleType.FIT_CENTER);
-            v.setMaxHeight(px(17));
+            v.setMaxHeight(px(29));
             return v;
         }
         int logo = m.equals("DOLBY VISION ATMOS") ? R.drawable.fmt_dolby_vision_atmos
