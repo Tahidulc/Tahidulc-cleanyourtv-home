@@ -126,7 +126,25 @@ final class PagesV2 {
     }
 
     /** A TMDB list ("results") as titles with a poster; tv says what the results are when they do not say it themselves. */
+    /** TMDB's lists, kept half an hour: a page opened again (or read ahead from Home) shows at once. */
+    private static final Map<String, Object[]> LISTS = new HashMap<>();
+    private static final long LIST_MS = 30 * 60_000L;
+
     static List<Title> tmdb(String key, String path, boolean tv) {
+        String k = path + "|" + tv;
+        synchronized (LISTS) {
+            Object[] had = LISTS.get(k);
+            if (had != null && System.currentTimeMillis() - (Long) had[0] < LIST_MS) {
+                @SuppressWarnings("unchecked") List<Title> list = (List<Title>) had[1];
+                return new ArrayList<>(list);
+            }
+        }
+        List<Title> got = readList(key, path, tv);
+        if (!got.isEmpty()) synchronized (LISTS) { LISTS.put(k, new Object[]{System.currentTimeMillis(), got}); }
+        return new ArrayList<>(got);
+    }
+
+    private static List<Title> readList(String key, String path, boolean tv) {
         List<Title> out = new ArrayList<>();
         if (key.isEmpty()) return out;
         try {
@@ -185,11 +203,11 @@ final class PagesV2 {
 
     static final class PosterPage extends Page {
         /** Posters 2:3, widened 16:9, as tall as fits between the tabs and the boxes. */
-        private static final int NARROW = 180, WIDE = 480, TALL = 270, GAP = 20;
+        static final int NARROW = 180, WIDE = 480, TALL = 270, GAP = 20;
         private final String crumb;
         private final int crumbColour;
         private final String[] tabs;
-        private final java.util.function.Function<Integer, List<Row>> source;
+        final java.util.function.Function<Integer, List<Row>> source;
         private final int[] rowY;
         private final List<Row> rows = new ArrayList<>();
         private LinearLayout tabBar;
@@ -200,7 +218,7 @@ final class PagesV2 {
         private int generation;
         private final Runnable heroLater = this::heroNow;
         /** The tab the page opens on; the words shown where a row's posters would be when it has none. */
-        private int startTab;
+        int startTab;
         private TextView emptyView;
 
         PosterPage startOn(int t) {
@@ -483,6 +501,8 @@ final class PagesV2 {
                 lp.rightMargin = px(GAP);
                 r.strip.addView(f, lp);
             }
+            // The first posters' logos fetched now: the one widened shows its logo at once.
+            for (int i = 0; i < Math.min(8, r.items.size()); i++) h.prefetchLogo(r.items.get(i).id, r.items.get(i).tv, 220);
             // The strip as wide as all its posters (and the focused one widened): left to wrap its content, it was
             // held to the screen's width and the posters past it were never drawn.
             ViewGroup.LayoutParams sl = r.strip.getLayoutParams();
@@ -591,6 +611,14 @@ final class PagesV2 {
             }
             Row focused = onTabs || row >= rows.size() ? null : rows.get(row);
             boolean has = focused != null && idx < focused.strip.getChildCount() && idx < focused.items.size();
+            // The next few along: their logos and wide pictures fetched now, so each shows at once when reached.
+            if (has) {
+                for (int n = idx; n < Math.min(focused.items.size(), idx + 4); n++) {
+                    Title nx = focused.items.get(n);
+                    h.prefetchLogo(nx.id, nx.tv, 220);
+                    if (nx.backdrop != null) h.prefetch(nx.backdrop.replace("/w1280/", "/w780/"), px(h.lite ? Math.round(WIDE * 1.12f) : WIDE * 2));
+                }
+            }
             trailerFor(has ? (FrameLayout) focused.strip.getChildAt(idx) : null, has ? focused.items.get(idx) : null,
                     has ? focused.items : null, idx);
             // More rows than the screen holds: they move up together, the focused one second from the top.
@@ -769,6 +797,27 @@ final class PagesV2 {
             }
             return Arrays.asList(row(null, null, false, items));
         }).startOn(resumeEmpty(h, null) ? 1 : 0);
+    }
+
+    /**
+     * Read ahead from Home, a moment after it is up: the tab each of Discover, Movies and TV shows opens on, with its
+     * first posters and their logos in the cache, so a page opens with everything already there.
+     */
+    static void warm(HomeV2 h) {
+        if (h.tmdbKey.isEmpty()) return;
+        for (PosterPage p : new PosterPage[]{discover(h), movies(h), shows(h)}) {
+            int t = p.startTab;
+            PAGES.execute(() -> {
+                int n = 0;
+                for (Row r : p.source.apply(t)) {
+                    for (Title x : r.items) {
+                        if (n++ >= 10) break;
+                        h.prefetch(x.poster, h.px(h.lite ? PosterPage.NARROW : PosterPage.NARROW * 2));
+                        h.prefetchLogo(x.id, x.tv, 220);
+                    }
+                }
+            });
+        }
     }
 
     /** A streaming service's titles in the UK (TMDB's watch providers: Netflix 8, Prime Video 9, Disney+ 337, Apple TV+ 350). */

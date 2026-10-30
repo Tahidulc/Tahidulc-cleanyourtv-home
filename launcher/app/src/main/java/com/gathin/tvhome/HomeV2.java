@@ -581,6 +581,9 @@ final class HomeV2 {
         if (Config.themeFlag(a, "alerts_everywhere", false)) GoalWatchService.startEverywhere(a);
         // What was watched while Home was away, matched to TMDB for Continue Watching.
         io.execute(() -> WatchHistory.match(a, tmdbKey));
+        // Discover, Movies and TV shows read ahead once Home has settled (only what has gone stale is read again).
+        main.removeCallbacks(warmPages);
+        main.postDelayed(warmPages, lite ? 6000 : 3000);
         // Rows age: what is on now and the apps' own rows are read again when Home comes back after a while.
         Long at = rowsAt.get(mode);
         if (at != null && System.currentTimeMillis() - at > 5 * 60_000L) {
@@ -590,7 +593,10 @@ final class HomeV2 {
         }
     }
 
+    private final Runnable warmPages = () -> PagesV2.warm(this);
+
     void stop() {
+        main.removeCallbacks(warmPages);
         if (players != null) players.stop();
         playingTile = null;
         GoalWatchService.laneHome = false;
@@ -651,7 +657,11 @@ final class HomeV2 {
         if (code == KeyEvent.KEYCODE_BACK) {
             if (e.getAction() == KeyEvent.ACTION_UP) {
                 if (page != null && (preview || parked)) {
+                    // Back from a section showing over the boxes: closed, and the focus up on the row, as resting on the
+                    // box would only open the section again.
+                    boolean onBoxes = zone == Z_CATS;
                     closePage();
+                    if (onBoxes && !shown.isEmpty()) zone = Z_ROW;
                     paint();
                 } else if (zone == Z_SCORES) {
                     View f = a.getCurrentFocus();
@@ -805,7 +815,9 @@ final class HomeV2 {
         if (page != null && pageWhich == catIdx) return;
         if (page != null) closePage();
         if (catIdx == 0) {
-            // The TV guide is full screen: on hover, the channels on now in the row; OK opens the guide.
+            // The TV guide is full screen: on hover, the channels on now in the row; OK opens the guide. Once only: each
+            // paint asks for this again, and loading the row each time faded it out and in twice a second.
+            if ("ar.tvplayer.tv".equals(mode) && railSel == -1) return;
             railSel = -1;
             load("ar.tvplayer.tv");
             paint();
@@ -1035,7 +1047,8 @@ final class HomeV2 {
         }
         // Resting on a box shows its section after a moment, no OK needed.
         main.removeCallbacks(previewNow);
-        if (zone == Z_CATS && (page == null || preview) && !(page != null && pageWhich == catIdx)) main.postDelayed(previewNow, 420);
+        boolean guideUp = catIdx == 0 && page == null && "ar.tvplayer.tv".equals(mode) && railSel == -1;
+        if (zone == Z_CATS && (page == null || preview) && !(page != null && pageWhich == catIdx) && !guideUp) main.postDelayed(previewNow, 420);
         for (int i = 0; i < topViews.size(); i++) {
             View v = topViews.get(i);
             boolean on = zone == Z_TOP && i == topIdx;
@@ -1136,6 +1149,9 @@ final class HomeV2 {
     // ---- the row ---------------------------------------------------------------------------------------------------
 
     private void load(String m) {
+        // The row already showing this, as it is: nothing to do (filling it again fades it out and in).
+        List<Tile> already = rows.get(m);
+        if (m.equals(mode) && already != null && already == shown && row.getChildCount() > 0) return;
         mode = m;
         int gen = ++generation;
         String railPkg = railSel >= 0 ? (String) railViews.get(railSel).getTag() : null;
@@ -2238,17 +2254,37 @@ final class HomeV2 {
         foot.addView(l, ll);
         tile.addView(foot, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, px(maxH + 60), Gravity.BOTTOM));
         if (tmdbKey.isEmpty()) return foot;
+        Runnable show = () -> showLogo(tile, foot, maxW, 0);
+        String known;
+        synchronized (logos) {
+            known = logos.get((tv ? "tv/" : "movie/") + tmdbId);
+        }
+        if (known != null) {
+            // Looked up before (read ahead): straight from the cache, no trip through the reader.
+            image(l, known, px(maxW * 2), show);
+            return foot;
+        }
         io.execute(() -> {
             String url = tmdbLogo(tmdbId, tv);
             if (url == null) return;
-            main.post(() -> image(l, url, px(maxW * 2), () -> {
-                // A poster that has narrowed again by the time its logo came keeps it hidden until it widens.
-                ViewGroup.LayoutParams lp = tile.getLayoutParams();
-                if (lp != null && lp.width > 0 && lp.width < px(maxW)) return;
-                foot.animate().alpha(1f).setDuration(250).start();
-            }));
+            main.post(() -> image(l, url, px(maxW * 2), show));
         });
         return foot;
+    }
+
+    /**
+     * The logo in once its poster is wide: a logo that comes while the poster is still widening (a read-ahead one
+     * comes at once) waits for it, a few looks a little apart, rather than staying hidden; one that comes after the
+     * poster narrowed again stays hidden until it widens.
+     */
+    private void showLogo(FrameLayout tile, View foot, int maxW, int tries) {
+        if (foot.getParent() == null) return;
+        ViewGroup.LayoutParams lp = tile.getLayoutParams();
+        if (lp != null && lp.width > 0 && lp.width < px(maxW)) {
+            if (tries < 4) main.postDelayed(() -> showLogo(tile, foot, maxW, tries + 1), 120);
+            return;
+        }
+        foot.animate().alpha(1f).setDuration(250).start();
     }
 
     /** A channel's logo from the TV guide's list, by any of its names: for a tune that came with none. */
@@ -2380,6 +2416,29 @@ final class HomeV2 {
 
     void image(ImageView v, String url, int width) {
         image(v, url, width, null);
+    }
+
+    /** A picture fetched ahead into the cache, at the width a later image(…, url, width) will ask for. */
+    void prefetch(String url, int width) {
+        if (url == null) return;
+        String key = url + "@" + width;
+        if (cache.get(key) != null) return;
+        pics.execute(() -> {
+            if (cache.get(key) != null) return;
+            Bitmap b = fetch(url, width);
+            if (b == null) return;
+            b.prepareToDraw();
+            cache.put(key, b);
+        });
+    }
+
+    /** A film's or series' logo looked up and fetched ahead, as titleLogo(…, maxW, …) will show it. */
+    void prefetchLogo(int id, boolean tv, int maxW) {
+        if (id == 0 || tmdbKey.isEmpty()) return;
+        io.execute(() -> {
+            String url = tmdbLogo(id, tv);
+            if (url != null) prefetch(url, px(maxW * 2));
+        });
     }
 
     void image(ImageView v, String url, int width, Runnable then) {
