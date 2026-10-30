@@ -672,9 +672,13 @@ final class HomeV2 {
                 break;
             case Z_RAIL:
                 if (code == KeyEvent.KEYCODE_DPAD_UP) {
-                    if (railIdx > 0) selectRail(railIdx - 1); else { zone = Z_TOP; topIdx = 0; }
+                    if (railIdx > 0) selectRail(railIdx - 1); else { if (appsFromRail) closePage(); zone = Z_TOP; topIdx = 0; }
                 } else if (code == KeyEvent.KEYCODE_DPAD_DOWN) {
-                    if (railIdx < railViews.size() - 1) selectRail(railIdx + 1); else { zone = Z_CATS; catIdx = 0; }
+                    if (railIdx < railViews.size() - 1) selectRail(railIdx + 1); else { closePage(); zone = Z_CATS; catIdx = 0; }
+                } else if (code == KeyEvent.KEYCODE_DPAD_RIGHT && appsFromRail && page != null) {
+                    // All apps: into the Apps page showing beside it.
+                    enterPage();
+                    return;
                 } else if (code == KeyEvent.KEYCODE_DPAD_RIGHT && n > 0) {
                     zone = Z_ROW;
                     rowIdx = 0;
@@ -682,7 +686,13 @@ final class HomeV2 {
                 break;
             case Z_ROW:
                 if (code == KeyEvent.KEYCODE_DPAD_LEFT) {
-                    if (rowIdx > 0) rowIdx--; else { zone = Z_RAIL; railIdx = Math.max(0, railSel); if (railSel < 0) selectRail(0); }
+                    if (rowIdx > 0) rowIdx--;
+                    else {
+                        zone = Z_RAIL;
+                        railIdx = Math.max(0, railSel);
+                        // Back on All apps (or nothing chosen yet): what it shows comes up with it.
+                        if (railSel < 0 || railViews.get(railSel).getTag() == null) selectRail(railIdx);
+                    }
                 } else if (code == KeyEvent.KEYCODE_DPAD_RIGHT) {
                     if (rowIdx < n - 1) rowIdx++;
                 } else if (code == KeyEvent.KEYCODE_DPAD_UP) {
@@ -697,7 +707,7 @@ final class HomeV2 {
             case Z_CATS:
                 if (code == KeyEvent.KEYCODE_DPAD_LEFT) {
                     if (catIdx > 0) catIdx--;
-                    else { if (page != null) closePage(); zone = Z_RAIL; railIdx = railViews.size() - 1; }
+                    else { if (page != null) closePage(); zone = Z_RAIL; selectRail(railViews.size() - 1); }
                 } else if (code == KeyEvent.KEYCODE_DPAD_RIGHT && catIdx < 5) {
                     catIdx++;
                 } else if (code == KeyEvent.KEYCODE_DPAD_UP) {
@@ -720,7 +730,7 @@ final class HomeV2 {
                 return;
             case Z_RAIL:
                 String p = (String) railViews.get(railIdx).getTag();
-                if (p == null) { zone = Z_ROW; rowIdx = 0; paint(); } else openApp(p);
+                if (p == null) { if (page != null) enterPage(); } else openApp(p);
                 return;
             case Z_ROW:
                 if (rowIdx < shown.size()) {
@@ -856,6 +866,21 @@ final class HomeV2 {
             paint();
             return;
         }
+        if (to == Z_RAIL && appsFromRail && page != null) {
+            // Left out of the Apps page opened from the rail: back on All apps, the page still showing beside it.
+            for (View v : catViews) {
+                v.animate().cancel();
+                v.setVisibility(View.VISIBLE);
+                v.animate().alpha(1f).setDuration(200).start();
+            }
+            hidden.removeAll(catViews);
+            preview = true;
+            clipAboveBoxes();
+            zone = Z_RAIL;
+            railIdx = railViews.size() - 1;
+            paint();
+            return;
+        }
         closePage();
         zone = to;
         paint();
@@ -865,6 +890,7 @@ final class HomeV2 {
         if (page == null) return;
         preview = false;
         parked = false;
+        appsFromRail = false;
         main.removeCallbacks(previewNow);
         page.close();
         page = null;
@@ -887,11 +913,24 @@ final class HomeV2 {
         hTopText.setTextColor(colour);
     }
 
+    /** The Apps page is showing because the rail's All apps has the focus (not the Apps box). */
+    private boolean appsFromRail;
+
     private void selectRail(int i) {
         railIdx = i;
         railSel = i;
         String p = (String) railViews.get(i).getTag();
-        load(p == null ? "apps" : p);
+        if (p == null) {
+            // All apps: the same Apps page as the Apps box, showing as when the box is hovered; Right or OK goes in.
+            if (page != null && pageWhich == 5) { appsFromRail = true; return; }
+            closePage();
+            openPage(5, true);
+            clipAboveBoxes();
+            appsFromRail = true;
+            return;
+        }
+        closePage();
+        load(p);
     }
 
     // ---- drawing the focus -----------------------------------------------------------------------------------------
@@ -940,7 +979,8 @@ final class HomeV2 {
         for (int i = 0; i < catViews.size(); i++) {
             FrameLayout box = (FrameLayout) catViews.get(i);
             boolean on = zone == Z_CATS && i == catIdx && (page == null || preview);
-            boolean sel = page != null ? i == catIdx : railSel < 0 && i > 0 && CAT_MODES[i].equals(mode);
+            // The box whose section is showing (Apps, too, when the rail's All apps opened it).
+            boolean sel = page != null ? i == pageWhich : railSel < 0 && i > 0 && CAT_MODES[i].equals(mode);
             if (!restyle(box, (on ? 1 : 0) | (sel ? 2 : 0))) continue;
             GradientDrawable b = fill(16, on ? 0xEBFFFFFF : sel ? (CAT_COLOURS[i] & 0x00FFFFFF) | 0x73000000 : 0x14FFFFFF);
             b.setStroke(Math.max(1, px(1)), on ? 0xFFFFFFFF : 0x24FFFFFF);
