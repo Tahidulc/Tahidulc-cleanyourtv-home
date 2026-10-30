@@ -295,8 +295,13 @@ final class ScoresTicker {
 
     /** Today's games for these leagues ("eng.1|PL"), unsorted; a league that fails to load is left out. */
     static List<Game> load(String[] leagues) {
+        return load(leagues, LocalDate.now(ZoneId.systemDefault()));
+    }
+
+    /** One day's games for these leagues, unsorted. */
+    static List<Game> load(String[] leagues, LocalDate day) {
         ZoneId zone = ZoneId.systemDefault();
-        String date = LocalDate.now(zone).format(DateTimeFormatter.BASIC_ISO_DATE);
+        String date = day.format(DateTimeFormatter.BASIC_ISO_DATE);
         List<Game> found = new ArrayList<>();
         for (String entry : leagues) {
             String[] parts = entry.split("\\|", 2);

@@ -2041,6 +2041,8 @@ final class HomeV2 {
         }
         // The playlist's own games (Kleva TV's list): those Sky's guide does not have, with their broadcaster.
         out.addAll(PlaylistSport.tiles(this, out));
+        // Then the leagues' other games over the same days (the Premier League's, Europe's), each with its channel.
+        out.addAll(PlaylistSport.leagueTiles(this, out));
         out.sort((x, y) -> Long.compare(x.start, y.start));
         return out;
     }

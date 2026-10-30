@@ -41,6 +41,14 @@ final class PlaylistSport {
     private static List<Event> events;
     private static long readAt;
     private static final Map<String, String> CRESTS = new HashMap<>();
+    /** The broadcaster groups' channel names, {name, broadcaster, logo}, and the clubs' own channels {name, "EPL"}. */
+    private static List<String[]> groupNames = new ArrayList<>(), clubChannels = new ArrayList<>();
+    /** The leagues' coming games, read every quarter of an hour. */
+    private static List<ScoresTicker.Game> fixtures;
+    private static long fixturesAt;
+    /** The competitions whose games join the Sports tiles beyond those the guides list: ESPN slugs. */
+    private static final String[] FIXTURE_LEAGUES = {"eng.1", "uefa.champions", "uefa.europa", "uefa.europa.conf", "esp.1", "ita.1",
+            "ger.1", "fra.1", "sco.1", "eng.fa", "eng.league_cup"};
     /** Each club's league by ESPN slug ("ger.1"), found with its crest. */
     private static final Map<String, String> LEAGUES = new HashMap<>();
 
@@ -117,7 +125,7 @@ final class PlaylistSport {
         if (Config.themeString(h.a, "iptv_server", "").isEmpty()) return out;
         try {
             JSONArray cats = new JSONArray(api(h, "get_live_categories"));
-            List<String[]> broadcasters = new ArrayList<>();
+            List<String[]> broadcasters = new ArrayList<>(), clubGroups = new ArrayList<>();
             List<List<String>> groups = new ArrayList<>();
             for (int g = 0; g < GROUPS.length; g++) groups.add(new ArrayList<>());
             for (int i = 0; i < cats.length(); i++) {
@@ -135,6 +143,7 @@ final class PlaylistSport {
                 }
                 if (name.matches("(?i)^uk\\s*\\|\\s*(tnt sports|sports)\\s*$")) broadcasters.add(new String[]{id, name});
                 for (int g = 0; g < GROUPS.length; g++) if (name.trim().matches(GROUPS[g][0])) groups.get(g).add(id);
+                if (name.matches("(?i)^live \\| (epl|scottish football) \\(.*\\)$")) clubGroups.add(new String[]{id, name.toLowerCase(Locale.ROOT).contains("epl") ? "EPL" : "SPFL"});
             }
             // The broadcasters' guides and groups read side by side: one after another they took a quarter of a minute.
             java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(6);
@@ -146,9 +155,13 @@ final class PlaylistSport {
                 lists.add(f);
             }
             // The broadcasters' channels named for tonight's games: the first group with one for each game.
+            List<java.util.concurrent.Future<String>> clubLists = new ArrayList<>();
+            for (String[] cg : clubGroups) clubLists.add(pool.submit(() -> api(h, "get_live_streams&category_id=" + cg[0])));
+            List<String[]> names = new ArrayList<>(), clubs = new ArrayList<>();
             for (int g = 0; g < GROUPS.length; g++) for (java.util.concurrent.Future<String> group : lists.get(g)) {
                 try {
                     JSONArray s = new JSONArray(group.get(30, java.util.concurrent.TimeUnit.SECONDS));
+                    for (int k = 0; k < s.length(); k++) names.add(new String[]{s.getJSONObject(k).optString("name"), GROUPS[g][1], GROUPS[g][2]});
                     for (Event e : out) {
                         if (e.home == null || e.elsewhere != null) continue;
                         for (int k = 0; k < s.length(); k++) {
@@ -160,6 +173,15 @@ final class PlaylistSport {
                 } catch (Exception ignored) {
                 }
             }
+            for (int c = 0; c < clubLists.size(); c++) {
+                try {
+                    JSONArray s = new JSONArray(clubLists.get(c).get(30, java.util.concurrent.TimeUnit.SECONDS));
+                    for (int k = 0; k < s.length(); k++) clubs.add(new String[]{s.getJSONObject(k).optString("name"), clubGroups.get(c)[1]});
+                } catch (Exception ignored) {
+                }
+            }
+            groupNames = names;
+            clubChannels = clubs;
             List<Listing> guide;
             try {
                 guide = guided.get(40, java.util.concurrent.TimeUnit.SECONDS);
@@ -402,6 +424,105 @@ final class PlaylistSport {
         w.logo = league[1];
         w.ok = () -> h.kleva(home, away, home + " v " + away, art, () -> { });
         return w;
+    }
+
+    /** Today's and the next two days' games in FIXTURE_LEAGUES, from ESPN, each day and league read side by side. */
+    private static synchronized List<ScoresTicker.Game> fixtures() {
+        if (fixtures != null && System.currentTimeMillis() - fixturesAt < 15 * 60_000L) return fixtures;
+        java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(6);
+        List<java.util.concurrent.Future<List<ScoresTicker.Game>>> asked = new ArrayList<>();
+        LocalDate today = LocalDate.now(ZoneId.systemDefault());
+        for (int d = 0; d < 3; d++) for (String slug : FIXTURE_LEAGUES) {
+            LocalDate day = today.plusDays(d);
+            asked.add(pool.submit(() -> ScoresTicker.load(new String[]{slug}, day)));
+        }
+        List<ScoresTicker.Game> out = new ArrayList<>();
+        java.util.Set<String> ids = new java.util.HashSet<>();
+        for (java.util.concurrent.Future<List<ScoresTicker.Game>> f : asked) {
+            try {
+                for (ScoresTicker.Game g : f.get(20, java.util.concurrent.TimeUnit.SECONDS)) if (g.id == null || ids.add(g.id)) out.add(g);
+            } catch (Exception ignored) {
+            }
+        }
+        pool.shutdownNow();
+        fixtures = out;
+        fixturesAt = System.currentTimeMillis();
+        return out;
+    }
+
+    /**
+     * The leagues' games over the next three days that no tile has yet (Sky's guide and the playlist's own lists
+     * have theirs), each with the channel it is on: a British one in Sky's guide (OK tunes TiviMate to it); else, as
+     * the playlist tiles, the league's own channel or a playlist channel for it (OK plays it in Kleva TV); else the
+     * club's own channel in the playlist's Premier League and Scottish groups; else where ESPN lists it. Off the
+     * main thread, after tiles().
+     */
+    static List<HomeV2.Tile> leagueTiles(HomeV2 h, List<HomeV2.Tile> have) {
+        List<HomeV2.Tile> out = new ArrayList<>();
+        long now = System.currentTimeMillis();
+        DateTimeFormatter when = DateTimeFormatter.ofPattern("EEE HH:mm", Locale.UK).withZone(ZoneId.systemDefault());
+        String[] footballTv = h.a.getResources().getStringArray(R.array.football_tv_channels);
+        for (ScoresTicker.Game g : fixtures()) {
+            if (g.state == 2 || g.homeName == null || g.awayName == null || g.kickoff == 0 || g.kickoff > now + 3 * 86_400_000L) continue;
+            boolean shown = false;
+            for (HomeV2.Tile t : have) if (t.title != null && same(t.title, g.homeName, g.awayName)) { shown = true; break; }
+            if (shown) continue;
+            String title = g.homeName + " v " + g.awayName;
+            String art = g.homeLogo != null && g.awayLogo != null ? "crest:" + g.homeLogo + "|" + g.awayLogo : null;
+            String name = null, logo = null;
+            Runnable ok = null;
+            TvGuide.Channel uk = TvGuide.find(footballTv, g.homeName, g.awayName, g.kickoff);
+            if (uk != null) {
+                name = uk.name;
+                logo = uk.logo;
+                String n = name, l = logo;
+                ok = () -> h.tune(n, l);
+            } else {
+                Where w = where(h, g.homeName, g.awayName, g.slug, art);
+                String[] other = w == null ? elsewhere(g.homeName, g.awayName, g.slug) : null;
+                if (w != null) { name = w.name; logo = w.logo; ok = w.ok; }
+                else if (other != null) { name = other[0]; logo = other[1]; }
+                else if (!g.broadcasts.isEmpty()) name = g.broadcasts.get(0);
+                if (ok == null) ok = () -> h.kleva(g.homeName, g.awayName, title, art, () -> { });
+            }
+            HomeV2.Tile t = new HomeV2.Tile();
+            t.title = title;
+            t.group = "football";
+            t.compLogo = g.leagueLogo;
+            boolean on = g.state == 0;
+            t.chip = on ? "LIVE NOW" : when.format(Instant.ofEpochMilli(g.kickoff)).toUpperCase(Locale.UK);
+            t.channel = name;
+            t.badge = logo;
+            String comp = ScoresTicker.competition(g);
+            t.sub = name != null ? "Live on " + name : comp;
+            t.image = art;
+            t.heroImage = art;
+            t.heroTop = logo;
+            t.heroTitle = title;
+            t.heroMeta = (on ? "On now" : when.format(Instant.ofEpochMilli(g.kickoff))) + (name != null ? " · Live on " + name : " · " + comp);
+            t.heroText = comp + ": " + g.homeName + " against " + g.awayName + ".";
+            t.start = g.kickoff;
+            t.ok = ok;
+            out.add(t);
+        }
+        return out;
+    }
+
+    /**
+     * A game's channel from the playlist's lists alone (read() has run): the home club's own channel in its
+     * Premier League or Scottish group, else a broadcaster's channel named for the game. {name, logo or null}.
+     */
+    private static String[] elsewhere(String home, String away, String slug) {
+        if ("eng.1".equals(slug) || "sco.1".equals(slug)) {
+            String want = plain(home);
+            for (String[] c : clubChannels) {
+                String n = plain(c[0]);
+                if (n.equals(want) || n.equals(key(home))) return new String[]{c[1] + ": " + c[0], null};
+            }
+            for (String[] c : clubChannels) if ((" " + plain(c[0]) + " ").contains(" " + key(home) + " ")) return new String[]{c[1] + ": " + c[0], null};
+        }
+        for (String[] c : groupNames) if (same(c[0], home, away)) return new String[]{c[1], c[2]};
+        return null;
     }
 
     /** "PREMIER SPORTS 1 FHD (UK)" as "Premier Sports 1". */
