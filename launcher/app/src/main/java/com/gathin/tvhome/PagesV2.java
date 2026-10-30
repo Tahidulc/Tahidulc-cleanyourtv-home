@@ -1402,6 +1402,9 @@ final class PagesV2 {
                 h.main.post(() -> early.accept(m));
                 String[] summary = summary(g);   // {home possession, away possession, shootout home, shootout away}
                 TvGuide.Channel ch = TvGuide.find(footballTv, g.homeName, g.awayName, g.kickoff);
+                // Not on British TV: the channel the Sports tiles name for it (the league's own, or the playlist's).
+                String art = g.homeLogo != null && g.awayLogo != null ? "crest:" + g.homeLogo + "|" + g.awayLogo : null;
+                PlaylistSport.Where other = ch == null && g.state != 2 ? PlaylistSport.where(h, g.homeName, g.awayName, g.slug, art) : null;
                 h.main.post(() -> {
                     String when = g.state == 0 ? "LIVE" : g.state == 2 ? "FULL TIME" : "KICK-OFF " +
                             DateTimeFormatter.ofPattern("EEE HH:mm", Locale.UK).withZone(ZoneId.systemDefault()).format(Instant.ofEpochMilli(g.kickoff)).toUpperCase(Locale.UK);
@@ -1466,6 +1469,15 @@ final class PagesV2 {
                         watch.setText(b);
                         loadSpan(watch, b, at, ch.logo);
                         watchOk = () -> h.tune(ch.name, ch.logo);
+                    } else if (other != null) {
+                        android.text.SpannableStringBuilder b = new android.text.SpannableStringBuilder();
+                        b.append(g.state == 0 ? "LIVE on  " : "On  ");
+                        int at = b.length();
+                        b.append(other.logo != null ? "  " : other.name);
+                        b.append("   ·   Press OK");
+                        watch.setText(b);
+                        if (other.logo != null) loadSpan(watch, b, at, other.logo);
+                        watchOk = other.ok;
                     } else {
                         watch.setText(g.state == 2 ? "Full time" : "Not on UK TV");
                     }
@@ -1836,10 +1848,10 @@ final class PagesV2 {
             driverView.addView(list, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
             c.addView(driverView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
             h.io.execute(() -> {
-                List<String[]> rows = new ArrayList<>();
-                String round = "";
+                List<String[]> rows = new ArrayList<>(), teams = new ArrayList<>();
+                String round = "", rounds = "";
                 try {
-                    JSONObject root = new JSONObject(HomeV2.get("https://api.jolpi.ca/ergast/f1/current/driverStandings.json"));
+                    JSONObject root = new JSONObject(HomeV2.get("https://api.jolpi.ca/ergast/f1/current/driverStandings.json?limit=100"));
                     JSONObject l = root.getJSONObject("MRData").getJSONObject("StandingsTable").getJSONArray("StandingsLists").getJSONObject(0);
                     round = l.optString("round");
                     JSONArray st = l.getJSONArray("DriverStandings");
@@ -1853,10 +1865,34 @@ final class PagesV2 {
                     }
                 } catch (Exception ignored) {
                 }
-                String r = round;
+                // Then the constructors' championship, under the drivers.
+                try {
+                    JSONObject root = new JSONObject(HomeV2.get("https://api.jolpi.ca/ergast/f1/current/constructorStandings.json?limit=100"));
+                    JSONArray st = root.getJSONObject("MRData").getJSONObject("StandingsTable").getJSONArray("StandingsLists").getJSONObject(0)
+                            .getJSONArray("ConstructorStandings");
+                    for (int i = 0; i < st.length(); i++) {
+                        JSONObject x = st.getJSONObject(i), team = x.getJSONObject("Constructor");
+                        teams.add(new String[]{x.optString("position"), team.optString("name"), x.optString("points"), team.optString("constructorId")});
+                    }
+                } catch (Exception ignored) {
+                }
+                // How many rounds the season has: the calendar's length.
+                try {
+                    rounds = new JSONObject(HomeV2.get("https://api.jolpi.ca/ergast/f1/current.json?limit=100")).getJSONObject("MRData").optString("total");
+                } catch (Exception ignored) {
+                }
+                String r = round, of = rounds;
                 h.main.post(() -> {
-                    if (!r.isEmpty()) head.setText("after round " + r);
+                    if (!r.isEmpty()) head.setText("After Round " + r + (of.isEmpty() || "0".equals(of) ? "" : " of " + of));
                     for (String[] x : rows) list.addView(driver(x));
+                    if (!teams.isEmpty()) {
+                        TextView k = h.text(15, h.semi, 0xA6FFFFFF);
+                        k.setLetterSpacing(0.2f);
+                        k.setText("CONSTRUCTORS' STANDINGS");
+                        k.setPadding(px(4), px(22), 0, px(8));
+                        list.addView(k);
+                        for (String[] x : teams) list.addView(driver(x));
+                    }
                 });
             });
         }

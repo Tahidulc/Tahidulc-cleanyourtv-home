@@ -310,27 +310,16 @@ final class PlaylistSport {
             boolean onSky = false;
             if (e.home != null) for (HomeV2.Tile t : sky) if (t.title != null && same(t.title, e.home, e.away)) { onSky = true; break; }
             if (onSky) continue;
-            String[] ch = e.channel.split("\u0000", 2);
-            String eventChannel = ch[0];
-            String[] by = ch.length > 1 && !ch[1].isEmpty() ? ch[1].split("\u0001", 2) : null;
             HomeV2.Tile t = new HomeV2.Tile();
             t.title = e.title;
             t.group = e.football ? "football" : "other";
             boolean on = e.start <= now;
             t.chip = on ? "LIVE NOW" : when.format(Instant.ofEpochMilli(e.start)).toUpperCase(Locale.UK);
             String hl = e.home != null ? crest(e.home) : null, al = e.away != null ? crest(e.away) : null;
-            // The channel, as Kleva TV would name it: a British broadcaster whose guide has the game; else the
-            // league's own channel; else a broadcaster in the playlist with a channel for it; else the event channel.
-            String[] league = null;
-            if (by == null && e.home != null) {
-                String slug = league(e.home);
-                if (slug == null) slug = league(e.away);
-                league = slug == null ? null : LEAGUE_TV.get(slug);
-            }
-            if (by == null && league == null && e.elsewhere != null) league = e.elsewhere;
-            String showing = by != null ? clean(by[0]) : league != null ? league[0] : null;
-            t.channel = showing != null ? showing : label(eventChannel, e.football);
-            t.badge = by != null && by.length > 1 && !by[1].isEmpty() ? by[1] : by == null && league != null ? league[1] : null;
+            String slug = e.home == null ? null : league(e.home) != null ? league(e.home) : league(e.away);
+            String[] showing = channel(e, slug);
+            t.channel = showing[0];
+            t.badge = showing[1];
             t.sub = "Live on " + t.channel;
             t.heroTop = t.badge;
             t.heroTitle = e.title;
@@ -352,6 +341,55 @@ final class PlaylistSport {
             out.add(t);
         }
         return out;
+    }
+
+    /**
+     * The channel a game is on, as Kleva TV would name it: {name, logo or null}. A British broadcaster whose guide has
+     * the game; else the league's own channel; else a broadcaster in the playlist with a channel for it; else the
+     * playlist's event channel ("Live Football 03").
+     */
+    private static String[] channel(Event e, String slug) {
+        String[] ch = e.channel.split("\u0000", 2);
+        String[] by = ch.length > 1 && !ch[1].isEmpty() ? ch[1].split("\u0001", 2) : null;
+        if (by != null) return new String[]{clean(by[0]), by.length > 1 && !by[1].isEmpty() ? by[1] : null};
+        String[] league = slug == null ? null : LEAGUE_TV.get(slug);
+        if (league != null) return league;
+        if (e.elsewhere != null) return e.elsewhere;
+        return new String[]{label(ch[0], e.football), null};
+    }
+
+    /** Where a game is on and how to watch it, for one no British channel lists: its channel and OK's action. */
+    static final class Where {
+        String name, logo;
+        Runnable ok;
+    }
+
+    /**
+     * Where a game Sky's guide does not have is on (ESPN's club names and league slug), as its Sports tile names it,
+     * and OK playing it in Kleva TV; null when neither the playlist nor the league says. Off the main thread.
+     */
+    static Where where(HomeV2 h, String home, String away, String slug, String art) {
+        if (home == null || away == null) return null;
+        Where w = null;
+        for (Event e : read(h)) {
+            if (e.home == null || !same(e.home + " " + e.away, home, away)) continue;
+            String[] on = channel(e, slug);
+            w = new Where();
+            w.name = on[0];
+            w.logo = on[1];
+            String url = e.stream == null || e.stream.isEmpty() ? null : Config.themeString(h.a, "iptv_server", "").replaceAll("/+$", "") + "/live/"
+                    + Config.themeString(h.a, "iptv_user", "") + "/" + Config.themeString(h.a, "iptv_pass", "") + "/" + e.stream;
+            String name = on[0];
+            w.ok = () -> h.kleva(e.home, e.away, e.title, art, () -> { if (url != null) StreamActivity.play(h.a, url, e.title, name); });
+            return w;
+        }
+        String[] league = slug == null ? null : LEAGUE_TV.get(slug);
+        if (league == null) return null;
+        w = new Where();
+        w.name = league[0];
+        w.logo = league[1];
+        w.ok = () -> h.kleva(home, away, home + " v " + away, art, () -> { });
+        return w;
     }
 
     /** "PREMIER SPORTS 1 FHD (UK)" as "Premier Sports 1". */

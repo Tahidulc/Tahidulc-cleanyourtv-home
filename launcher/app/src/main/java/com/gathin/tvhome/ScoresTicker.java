@@ -887,10 +887,10 @@ final class ScoresTicker {
         for (String[] x : n) NAMES.put(x[0], x[1]);
     }
 
-    /** The game's competition by its full name, in capitals ("BUNDESLIGA"); the tag where the slug is not known. */
+    /** The game's competition by its own name ("Bundesliga"); the tag where the slug is not known. */
     static String competition(Game g) {
         String n = g.slug == null ? null : NAMES.get(g.slug);
-        return n != null ? n.toUpperCase(Locale.UK) : g.league == null ? "" : g.league;
+        return n != null ? n : g.league == null ? "" : g.league;
     }
 
     private static CharSequence league(Game g) {
