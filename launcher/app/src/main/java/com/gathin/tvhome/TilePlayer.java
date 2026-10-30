@@ -49,12 +49,16 @@ final class TilePlayer {
         boolean channel = video != null && !(video instanceof TextureView);
         if (!channel && (web == null || web.getParent() == null)) return;
         revealed = true;
+        if (!channel && web != null) web.setAlpha(1f);
         for (View c : covers) if (c != null) c.animate().alpha(0f).setDuration(450).start();
     };
 
     /** YouTube loading or paused: the tile's pictures back over it. */
     private void covered() {
         main.removeCallbacks(reveal);
+        // YouTube's own pause sign and uploader's name ("Sony Pictures Entertainment") are drawn over a trailer that
+        // is not playing: the player is hidden at once, not left to show while the picture fades back over it.
+        if (web != null) web.setAlpha(0f);
         if (!revealed) return;
         revealed = false;
         for (View c : covers) if (c != null) { c.animate().cancel(); c.animate().alpha(1f).setDuration(150).start(); }
@@ -134,7 +138,7 @@ final class TilePlayer {
         // live while the trailer plays, and kept again after.
         layered = into.getLayerType() == View.LAYER_TYPE_HARDWARE;
         if (layered) into.setLayerType(View.LAYER_TYPE_NONE, null);
-        web.setAlpha(1f);
+        web.setAlpha(0f);   // seen only once playing (reveal), never with YouTube's title and spinner
         into.addView(web, Math.min(at, into.getChildCount()), new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         if (ready) cue(id); else pending = id;
     }
@@ -248,6 +252,7 @@ final class TilePlayer {
         if (layered && tile != null) tile.setLayerType(View.LAYER_TYPE_HARDWARE, null);
         layered = false;
         if (web != null && web.getParent() instanceof ViewGroup) {
+            web.setAlpha(0f);   // hidden before it stops: YouTube draws its pause sign and title as it does
             web.evaluateJavascript("stop()", null);
             web.animate().cancel();
             ((ViewGroup) web.getParent()).removeView(web);
