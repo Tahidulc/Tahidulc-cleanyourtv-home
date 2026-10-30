@@ -446,10 +446,12 @@ final class PagesV2 {
             }
             if (onTabs) {
                 // The focus on the tabs: the score pills' liquid glass, a brighter rim, the words staying white.
-                GradientDrawable rim = h.fill(25, 0x14FFFFFF);
-                rim.setStroke(px(2), 0xD9FFFFFF);
-                lens.setBackground(new android.graphics.drawable.LayerDrawable(new android.graphics.drawable.Drawable[]{
-                        h.a.getDrawable(ScoresTicker.glassRes()).mutate(), rim}));
+                // Lighter than the pills' glass: the picture behind shows through it.
+                android.graphics.drawable.Drawable glass = h.a.getDrawable(ScoresTicker.glassRes()).mutate();
+                glass.setAlpha(150);
+                GradientDrawable rim = h.fill(25, 0x08FFFFFF);
+                rim.setStroke(px(1.5f), 0xA6FFFFFF);
+                lens.setBackground(new android.graphics.drawable.LayerDrawable(new android.graphics.drawable.Drawable[]{glass, rim}));
             } else {
                 GradientDrawable g = h.fill(25, 0x29FFFFFF);
                 g.setStroke(px(1.5f), 0x73FFFFFF);

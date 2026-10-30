@@ -123,7 +123,7 @@ final class HomeV2 {
         long start;
         /** Under the hero's title, as Sky's: the running time, then marks (HD, 4K, DOLBY VISION, ATMOS, S, AD, the
          * age rating) and the streaming service's logo. */
-        String duration, service;
+        String duration, service, serviceId;
         List<String> specs = new ArrayList<>();
     }
 
@@ -586,7 +586,7 @@ final class HomeV2 {
     /** All keys come here first; true when v2 used it. */
     boolean key(KeyEvent e) {
         if (guide.isOpen()) return guide.key(e);
-        if (page != null && !preview) {
+        if (page != null && !preview && !parked) {
             if (e.getKeyCode() == KeyEvent.KEYCODE_BACK) {
                 if (e.getAction() == KeyEvent.ACTION_UP) closePage();
                 return true;
@@ -603,7 +603,7 @@ final class HomeV2 {
                 || code == KeyEvent.KEYCODE_DPAD_RIGHT;
         if (code == KeyEvent.KEYCODE_BACK) {
             if (e.getAction() == KeyEvent.ACTION_UP) {
-                if (page != null && preview) {
+                if (page != null && (preview || parked)) {
                     closePage();
                     paint();
                 } else if (zone == Z_SCORES) {
@@ -634,6 +634,8 @@ final class HomeV2 {
         int n = shown.size();
         switch (zone) {
             case Z_TOP:
+                // Over an open section, Down goes back into it where the focus was.
+                if (code == KeyEvent.KEYCODE_DPAD_DOWN && parked && page != null) { parked = false; zone = Z_CATS; page.entered(); break; }
                 if (code == KeyEvent.KEYCODE_DPAD_UP && scores != null && scores.focus()) zone = Z_SCORES;
                 else if (code == KeyEvent.KEYCODE_DPAD_LEFT && topIdx > 0) topIdx--;
                 else if (code == KeyEvent.KEYCODE_DPAD_RIGHT && topIdx < topViews.size() - 1) topIdx++;
@@ -724,6 +726,8 @@ final class HomeV2 {
 
     /** The section shows above the boxes, which keep the focus: Up or OK goes into it, Left and Right on to others. */
     boolean preview;
+    /** A section open with the focus up on the top buttons (or the score pills): Down goes back into it. */
+    private boolean parked;
     private int pageWhich;
     private final Runnable previewNow = this::previewNow;
 
@@ -815,6 +819,14 @@ final class HomeV2 {
             paint();
             return;
         }
+        if (to == Z_TOP && page != null) {
+            // Up out of a section: on to the weather and the top buttons, the section staying where it is.
+            parked = true;
+            zone = Z_TOP;
+            topIdx = 0;
+            paint();
+            return;
+        }
         closePage();
         zone = to;
         paint();
@@ -823,6 +835,7 @@ final class HomeV2 {
     private void closePage() {
         if (page == null) return;
         preview = false;
+        parked = false;
         main.removeCallbacks(previewNow);
         page.close();
         page = null;
@@ -1284,14 +1297,26 @@ final class HomeV2 {
             marks.remove("DOLBY ATMOS");
         }
         for (String m : marks) hSpecs.addView(mark(m), gapped(hSpecs.getChildCount() == 0 ? 0 : 10));
-        if (t.service != null) {
+        Drawable banner = serviceBanner(t.serviceId);
+        if (banner != null) {
+            // The service's app as the TV shows it (its wide banner, Netflix's or Prime Video's own): clear at a
+            // glance, at the marks' height.
+            ImageView l = new ImageView(a);
+            l.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            l.setImageDrawable(banner);
+            l.setClipToOutline(true);
+            l.setOutlineProvider(round(7));
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(px(68), px(38));
+            lp.leftMargin = hSpecs.getChildCount() == 0 ? 0 : px(14);
+            hSpecs.addView(l, lp);
+        } else if (t.service != null) {
             ImageView l = new ImageView(a);
             l.setScaleType(ImageView.ScaleType.FIT_CENTER);
             l.setBackground(fill(7, 0x33FFFFFF));
             l.setClipToOutline(true);
             l.setOutlineProvider(round(7));
             // The service's own logo, clear at the marks' height and no bigger.
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(px(34), px(34));
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(px(38), px(38));
             lp.leftMargin = hSpecs.getChildCount() == 0 ? 0 : px(14);
             hSpecs.addView(l, lp);
             image(l, t.service, px(92));
@@ -1313,9 +1338,42 @@ final class HomeV2 {
         }
     }
 
+    /** TMDB's UK watch providers and the apps that play them on this TV. */
+    private static final Map<String, String> SERVICE_APPS = new HashMap<>();
+    static {
+        String[][] apps = {{"8", "com.netflix.ninja"}, {"9", "com.amazon.amazonvideo.livingroom"}, {"119", "com.amazon.amazonvideo.livingroom"},
+                {"337", "com.disney.disneyplus"}, {"350", "com.apple.atve.androidtv.appletv"}, {"2", "com.apple.atve.androidtv.appletv"},
+                {"38", "bbc.iplayer.android"}, {"41", "air.ITVMobilePlayer"}, {"54", "air.ITVMobilePlayer"}, {"103", "com.channel4.ondemand"},
+                {"333", "com.channel5.my5"}, {"39", "com.nowtv.androidtv"}, {"29", "com.bskyb.skygo"}, {"73", "com.tubitv"},
+                {"531", "com.cbs.ca"}, {"1899", "com.wbd.stream"}};
+        for (String[] x : apps) SERVICE_APPS.put(x[0], x[1]);
+    }
+    private final Map<String, Drawable> banners = new HashMap<>();
+
+    /** The service's app's TV banner, when the app is on this TV; null otherwise (TMDB's logo stands in). */
+    private Drawable serviceBanner(String provider) {
+        if (provider == null) return null;
+        if (banners.containsKey(provider)) return banners.get(provider);
+        Drawable got = null;
+        String pkg = SERVICE_APPS.get(provider);
+        if (pkg != null) {
+            PackageManager pm = a.getPackageManager();
+            try {
+                Intent i = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LEANBACK_LAUNCHER).setPackage(pkg);
+                List<android.content.pm.ResolveInfo> ri = pm.queryIntentActivities(i, 0);
+                if (!ri.isEmpty()) got = ri.get(0).activityInfo.loadBanner(pm);
+                if (got == null) got = pm.getApplicationBanner(pkg);
+            } catch (Exception ignored) {
+            }
+        }
+        banners.put(provider, got);
+        return got;
+    }
+
     private static void apply(Tile t, String[] d) {
         if (d[0] != null) t.duration = d[0];
         if (t.service == null && d[1] != null) t.service = d[1];
+        if (t.serviceId == null && d[2] != null) t.serviceId = d[2];
         fillSpecs(t, d[2], d[3]);
     }
 
@@ -1331,7 +1389,7 @@ final class HomeV2 {
     private static void fillSpecs(Tile t, String provider, String year) {
         boolean hasQ = false, hasH = false, hasS = false;
         for (String m : t.specs) { hasQ |= QUALITY.contains(m); hasH |= HDR.contains(m); hasS |= SOUND.contains(m); }
-        if (hasQ && hasH && hasS) return;
+        if (hasQ && hasH && hasS && t.specs.contains("HDR10")) return;
         int y = 0;
         try { y = Integer.parseInt(year); } catch (Exception ignored) { }
         String q, h, snd;
@@ -1343,7 +1401,11 @@ final class HomeV2 {
         }
         List<String> out = new ArrayList<>();
         out.add(hasQ ? first(t.specs, QUALITY) : q);
-        out.add(hasH ? first(t.specs, HDR) : h);
+        // Every HDR format it comes in: Dolby Vision and HDR10+ streams carry HDR10 underneath, so HDR10's logo
+        // shows beside theirs (Dolby Vision, HDR10+, HDR10).
+        String hdr = hasH ? first(t.specs, HDR) : h;
+        out.add(hdr);
+        if (!hdr.equals("HDR10")) out.add("HDR10");
         out.add(hasS ? first(t.specs, SOUND) : snd);
         for (String m : t.specs) if (!QUALITY.contains(m) && !HDR.contains(m) && !SOUND.contains(m)) out.add(m);
         t.specs.clear();
