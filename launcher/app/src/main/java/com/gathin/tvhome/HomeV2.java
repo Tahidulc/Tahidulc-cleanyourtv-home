@@ -257,7 +257,12 @@ final class HomeV2 {
     }
 
     private ImageView heroView() {
-        ImageView v = new ImageView(a);
+        // One picture: its fade is drawn straight with the alpha, no offscreen copy of the whole picture first.
+        ImageView v = new ImageView(a) {
+            @Override public boolean hasOverlappingRendering() {
+                return false;
+            }
+        };
         v.setScaleType(ImageView.ScaleType.CENTER_CROP);
         add(v, 520, 0, 1400, 720);
         return v;
@@ -904,7 +909,6 @@ final class HomeV2 {
             boolean on = zone == Z_ROW && i == rowIdx;
             if (!restyle(t, on ? 1 : 0)) continue;
             t.animate().scaleX(on ? 1.07f : 1f).scaleY(on ? 1.07f : 1f).setDuration(150).setInterpolator(SKY).start();
-            t.setElevation(on ? px(8) : 0);
             ((FrameLayout) t).setForeground(on ? ring(16) : null);
         }
         int first = zone == Z_ROW ? Math.max(0, rowIdx - 3) : 0;
@@ -1245,15 +1249,16 @@ final class HomeV2 {
             ImageView in = heroFrontA ? heroB : heroA, out = heroFrontA ? heroA : heroB;
             heroFrontA = !heroFrontA;
             heroImage(in, img, () -> {
-                in.animate().alpha(1f).setDuration(320).setInterpolator(SKY).withLayer().start();
-                out.animate().alpha(0f).setDuration(320).setInterpolator(SKY).withLayer().start();
+                in.animate().alpha(1f).setDuration(320).setInterpolator(SKY).start();
+                out.animate().alpha(0f).setDuration(320).setInterpolator(SKY).start();
             });
         } else if (img == null) {
             heroShown = null;
             heroA.animate().alpha(0f).setDuration(300).start();
             heroB.animate().alpha(0f).setDuration(300).start();
         }
-        htext.animate().alpha(0f).setDuration(90).withEndAction(() -> {
+        // The words fade as one cached picture (withLayer), not redrawn line by line each frame of the fade.
+        htext.animate().alpha(0f).setDuration(90).withLayer().withEndAction(() -> {
             hTop.setImageDrawable(null);
             hTop.setVisibility(t.heroTop != null && t.heroTop.startsWith("http") ? View.VISIBLE : View.GONE);
             if (hTop.getVisibility() == View.VISIBLE) image(hTop, t.heroTop, px(320));
@@ -1272,7 +1277,7 @@ final class HomeV2 {
             specs(t);
             hText.setText(t.heroText);
             hText.setVisibility(t.heroText == null || t.heroText.isEmpty() ? View.GONE : View.VISIBLE);
-            htext.animate().alpha(1f).setDuration(140).start();
+            htext.animate().alpha(1f).setDuration(140).withLayer().start();
         }).start();
     }
 
