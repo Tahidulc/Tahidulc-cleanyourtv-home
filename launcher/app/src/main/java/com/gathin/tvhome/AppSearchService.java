@@ -619,7 +619,7 @@ public class AppSearchService extends AccessibilityService {
      * found that names both clubs (Kleva lists the best first: the event channel, then the broadcasters) picked, so it
      * plays. False when Kleva TV is not on this TV; without the helper it opens on its search.
      */
-    static boolean kleva(Context c, String home, String away, String title, android.graphics.Bitmap art, android.graphics.Bitmap logo) {
+    static boolean kleva(Context c, String home, String away, String title, android.graphics.Bitmap art, android.graphics.Bitmap logo, Runnable missed) {
         Intent open = new Intent(Intent.ACTION_VIEW, android.net.Uri.parse("klevatv://search")).setPackage(KLEVA);
         // Afresh: brought back as it was, Kleva played on whatever it played last behind its search.
         open.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
@@ -632,6 +632,7 @@ public class AppSearchService extends AccessibilityService {
             instance.start(KLEVA, home != null ? home : title);
             instance.kleva = true;
             instance.focused = instance.moves = 0;
+            instance.klevaMissed = missed;
             instance.teams = home != null && away != null ? new String[]{home, away} : new String[]{title};
             instance.showCover(art, logo, title, LIVE, 9_000L);
         }
@@ -640,6 +641,8 @@ public class AppSearchService extends AccessibilityService {
 
     /** Kleva: tries at focusing the game's card, and Downs pressed to reach it. */
     private int focused, moves;
+    /** What to do when Kleva TV's search has nothing for the game. */
+    private Runnable klevaMissed;
     private long lastMove;
 
     /** How many nodes a view holds: a card is a few, a list of them many. */
@@ -714,8 +717,13 @@ public class AppSearchService extends AccessibilityService {
             }
             return true;
         }
-        // Nothing yet: the results come as it searches.
-        return System.currentTimeMillis() - typedAt < 10_000L;
+        // Nothing yet: the results come as it searches. None in the end (Kleva's copy of the playlist can be days
+        // old, without tonight's game): the game played some other way instead of leaving its search on screen.
+        if (System.currentTimeMillis() - typedAt < 10_000L) return true;
+        Runnable r = klevaMissed;
+        klevaMissed = null;
+        if (r != null) main.post(r);
+        return false;
     }
 
     /** A game's channels already picked that TiviMate would only remind about (not on yet there): passed over. */

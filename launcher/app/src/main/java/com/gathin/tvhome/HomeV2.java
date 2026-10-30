@@ -2266,7 +2266,7 @@ final class HomeV2 {
             // Behind them, the clubs' colours blurred (the tile's picture, made again if it has left the cache).
             Bitmap bg = pic != null || art == null ? pic : fetch(art, 480);
             Runnable open = () -> {
-                if (!AppSearchService.kleva(a, home, away, title, bg, pair)) { otherwise.run(); return; }
+                if (!AppSearchService.kleva(a, home, away, title, bg, pair, otherwise)) { otherwise.run(); return; }
                 GoalWatchService.onAppOpened(a, "com.plaintextdev.klevaTv");
             };
             main.postDelayed(open, wake ? Math.max(0, 1600 - (System.currentTimeMillis() - asked)) : 0);
