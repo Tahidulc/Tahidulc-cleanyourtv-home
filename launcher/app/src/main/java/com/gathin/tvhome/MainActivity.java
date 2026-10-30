@@ -1157,6 +1157,9 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         if (v2 != null) {
             GoalWatchService.homeInFront = true;
             AppSearchService.cancel();
+            // Each time Home comes back, not only when it starts: a TCL turns accessibility off now and then, and the
+            // helper that opens a tile's title in Debrid Stream is then switched back on before the next OK.
+            AppSearchService.ensure(this);
             v2.resume();
             return;
         }

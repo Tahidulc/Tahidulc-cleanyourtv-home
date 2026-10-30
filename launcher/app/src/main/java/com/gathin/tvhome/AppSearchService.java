@@ -413,6 +413,27 @@ public class AppSearchService extends AccessibilityService {
         for (int i = 0; i < n.getChildCount(); i++) dump(n.getChild(i), depth + 1);
     }
 
+    /**
+     * The ways a title is typed into an app's search, in turn while nothing found matches: as written; with its
+     * punctuation as spaces ("Dead-End Job" as "Dead End Job"); without what follows a colon; without a leading "The".
+     * Debrid Stream's search finds some titles only one way.
+     */
+    private java.util.List<String> spellings = java.util.Collections.emptyList();
+    private int spelling;
+
+    static java.util.List<String> spellings(String q) {
+        java.util.List<String> out = new java.util.ArrayList<>();
+        if (q == null) return out;
+        String t = q.trim();
+        out.add(t);
+        String spaced = t.replaceAll("[^\\p{L}\\p{N}']+", " ").replace("'", "").trim();
+        if (!out.contains(spaced)) out.add(spaced);
+        int colon = t.indexOf(':');
+        if (colon > 2) { String head = t.substring(0, colon).trim(); if (!out.contains(head)) out.add(head); }
+        if (t.toLowerCase(Locale.ROOT).startsWith("the ")) { String bare = spaced.substring(4).trim(); if (!out.contains(bare)) out.add(bare); }
+        return out;
+    }
+
     private void start(String pkg, String q) {
         target = pkg;
         query = q;
@@ -432,6 +453,8 @@ public class AppSearchService extends AccessibilityService {
         hideDelay = 0;
         candidates = java.util.Collections.singletonList(q);
         candidate = 0;
+        spellings = spellings(q);
+        spelling = 0;
         deadline = System.currentTimeMillis() + SEARCH_MS;
         main.removeCallbacks(step);
         main.postDelayed(step, STEP_MS * 2);
@@ -497,7 +520,8 @@ public class AppSearchService extends AccessibilityService {
         if (box != null) {
             if (typedAt == 0) {
                 Bundle text = new Bundle();
-                text.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, query);
+                text.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,
+                        spelling < spellings.size() ? spellings.get(spelling) : query);
                 if (box.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, text)) typedAt = System.currentTimeMillis();
                 return true;
             }
@@ -507,7 +531,15 @@ public class AppSearchService extends AccessibilityService {
             // Then the film or series of that name, so its page opens; without one, the results stay on screen.
             AccessibilityNodeInfo hit = result(root);
             if (hit != null) { click(hit); opened = true; return true; }
-            return System.currentTimeMillis() - typedAt < 8_000L;
+            // Nothing of that name after a few seconds: the next way of typing it, with the time to find it.
+            long waited = System.currentTimeMillis() - typedAt;
+            if (waited > 3_500L && spelling + 1 < spellings.size()) {
+                spelling++;
+                typedAt = 0;
+                deadline = Math.max(deadline, System.currentTimeMillis() + 6_000L);
+                return true;
+            }
+            return waited < 8_000L;
         }
         AccessibilityNodeInfo search = find(root, Kind.SEARCH);
         if (search != null) { click(search); return true; }
