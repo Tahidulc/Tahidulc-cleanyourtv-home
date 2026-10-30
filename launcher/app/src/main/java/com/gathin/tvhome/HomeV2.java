@@ -148,6 +148,12 @@ final class HomeV2 {
 
     FrameLayout root;
     ImageView heroA, heroB;
+    /**
+     * lite_home (a theme's, for a TV whose graphics chip is slower, the TCL): the same Home, with its big redraws made
+     * rarer and shorter. The hero (most of the screen) changes once the focus rests rather than while it moves, and
+     * cross-fades more quickly; a tile's video starts a moment later, once the focus has settled on it.
+     */
+    boolean lite;
     private boolean heroFrontA = true;
     private String heroShown;
     LinearLayout htext;
@@ -193,6 +199,7 @@ final class HomeV2 {
         displayRegular = a.getResources().getFont(R.font.inter_display_regular);
         displaySemi = a.getResources().getFont(R.font.inter_display_semibold);
         tmdbKey = Config.themeString(a, "tmdb_key", "").trim();
+        lite = Config.themeFlag(a, "lite_home", false);
         players = new TilePlayer(a);
         if (!tmdbKey.isEmpty()) players.warm();
         dock = new ArrayList<>(Config.load(a).dockApps);
@@ -252,8 +259,23 @@ final class HomeV2 {
             root.post(() -> scores.place(px(96), Math.round(23 * dp), root.getWidth() - px(96)));
         }
         guide = new GuideV2(a, root, s, regular, semi, channels, this::refocus);
+        if (lite) cache();
         load("foryou");
         paint();
+    }
+
+    /**
+     * lite_home: the glass pieces that seldom change (the boxes, the rail's icons, the top buttons, the score bar)
+     * each kept as one finished picture on the graphics chip. When a key press redraws the screen, each is put down as
+     * a single image instead of its gradients, rims, icons and words being painted over one another again.
+     */
+    private void cache() {
+        List<View> still = new ArrayList<>(catViews);
+        still.addAll(railViews);
+        still.addAll(topViews);
+        still.add(htext);
+        for (View v : still) v.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+        if (scores != null) scores.layer(true);
     }
 
     private ImageView heroView() {
@@ -964,7 +986,7 @@ final class HomeV2 {
         playingTile = t;
         main.removeCallbacks(playNow);
         players.stop();
-        if (t != null) main.postDelayed(playNow, 500);
+        if (t != null) main.postDelayed(playNow, lite ? 800 : 500);
     }
 
     private void playNow() {
@@ -1017,6 +1039,7 @@ final class HomeV2 {
     private int heroLines = 2;
 
     void heroLines(int lines) {
+        if (lines == heroLines && page != null && hText.getMaxLines() == lines) return;
         heroLines = lines;
         if (page != null) hText.setMaxLines(lines);
     }
@@ -1104,6 +1127,8 @@ final class HomeV2 {
 
     private View tileView(Tile t) {
         FrameLayout f = new FrameLayout(a);
+        // lite_home: the tile as one finished picture (its picture, shade, logo and words painted once).
+        if (lite) f.setLayerType(View.LAYER_TYPE_HARDWARE, null);
         f.setClipToOutline(true);
         f.setOutlineProvider(round(16));
         f.setBackground(fill(16, t.icon != null ? GLASS : 0xFF222433));
@@ -1238,7 +1263,7 @@ final class HomeV2 {
 
     private void heroSoon() {
         main.removeCallbacks(heroLater);
-        main.postDelayed(heroLater, 240);
+        main.postDelayed(heroLater, lite ? 420 : 240);
     }
 
     /** The picture and the words above the row for a tile: the picture crossfades, the words swap after a beat. */
@@ -1249,8 +1274,8 @@ final class HomeV2 {
             ImageView in = heroFrontA ? heroB : heroA, out = heroFrontA ? heroA : heroB;
             heroFrontA = !heroFrontA;
             heroImage(in, img, () -> {
-                in.animate().alpha(1f).setDuration(320).setInterpolator(SKY).start();
-                out.animate().alpha(0f).setDuration(320).setInterpolator(SKY).start();
+                in.animate().alpha(1f).setDuration(lite ? 200 : 320).setInterpolator(SKY).start();
+                out.animate().alpha(0f).setDuration(lite ? 200 : 320).setInterpolator(SKY).start();
             });
         } else if (img == null) {
             heroShown = null;
@@ -1303,6 +1328,9 @@ final class HomeV2 {
             marks.set(marks.indexOf("DOLBY VISION"), "DOLBY VISION ATMOS");
             marks.remove("DOLBY ATMOS");
         }
+        // Picture quality and sound first, then the HDR formats, then any other marks (the service's logo last).
+        marks.sort(java.util.Comparator.comparingInt(m -> QUALITY.contains(m) ? 0
+                : SOUND.contains(m) || m.equals("DOLBY VISION ATMOS") ? 1 : HDR.contains(m) ? 2 : 3));
         for (String m : marks) hSpecs.addView(mark(m), gapped(hSpecs.getChildCount() == 0 ? 0 : 10));
         int wordmark = serviceLogo(t.serviceId);
         Drawable banner = wordmark != 0 ? null : serviceBanner(t.serviceId);
@@ -2004,7 +2032,13 @@ final class HomeV2 {
      * looked up in the background; a title with no logo stays as its picture alone.
      */
     View titleLogo(FrameLayout tile, int tmdbId, boolean tv, int maxW, int maxH) {
-        FrameLayout foot = new FrameLayout(a);
+        // Its fades drawn straight, the shade and the logo each with the alpha: as one group, the foot was painted into
+        // an offscreen copy on every frame of every fade (and the poster's widening changed its size each frame too).
+        FrameLayout foot = new FrameLayout(a) {
+            @Override public boolean hasOverlappingRendering() {
+                return false;
+            }
+        };
         foot.setTag("titlelogo");
         foot.setAlpha(0f);
         View soft = new View(a);
@@ -2167,6 +2201,8 @@ final class HomeV2 {
         pics.execute(() -> {
             Bitmap b = fetch(url, width);
             if (b == null) return;
+            // Handed to the graphics chip now, while it is idle, not on the frame that first shows it.
+            b.prepareToDraw();
             cache.put(key, b);
             main.post(() -> {
                 if (!key.equals(v.getTag(R.id.v2_url))) return;
@@ -2203,6 +2239,11 @@ final class HomeV2 {
             o = new BitmapFactory.Options();
             o.inSampleSize = sample;
             Bitmap b = BitmapFactory.decodeByteArray(data, 0, data.length, o);
+            // lite_home: no wider than it is drawn. A picture twice its size on screen made the graphics chip read four
+            // times its pixels every frame (ten posters at once), and took four times as long to hand over to it.
+            if (lite && b != null && b.getWidth() > width * 1.2f) {
+                b = Bitmap.createScaledBitmap(b, width, Math.max(1, Math.round(b.getHeight() * width / (float) b.getWidth())), true);
+            }
             if (url.contains("newchanlogos")) b = trim(b);
             return url.endsWith("#uhd") ? ScoresTicker.uhdLogo(a, b) : b;
         } catch (Exception | OutOfMemoryError e) {
@@ -2284,6 +2325,7 @@ final class HomeV2 {
             Bitmap b = fetch(url, px(1400));
             if (b == null) return;
             Bitmap m = fade(b);
+            m.prepareToDraw();
             cache.put(key, m);
             main.post(() -> {
                 if (!key.equals(v.getTag(R.id.v2_url))) return;

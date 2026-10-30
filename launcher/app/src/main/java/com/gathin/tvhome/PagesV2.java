@@ -43,7 +43,13 @@ final class PagesV2 {
 
         Page(HomeV2 h) {
             this.h = h;
-            layer = new FrameLayout(h.a);
+            // lite_home: its fade in and out drawn straight onto the screen, each piece with the alpha, instead of the
+            // whole page first being painted into a screen-sized copy on every frame of the fade.
+            layer = new FrameLayout(h.a) {
+                @Override public boolean hasOverlappingRendering() {
+                    return !h.lite;
+                }
+            };
             layer.setClipChildren(false);
         }
 
@@ -270,6 +276,8 @@ final class PagesV2 {
                 lens.setBackground(g);
                 track.addView(lens, new FrameLayout.LayoutParams(0, px(50)));
                 tabBar = new LinearLayout(h.a);
+                // lite_home: the row of tab names as one finished picture; the lens slides over it.
+                if (h.lite) tabBar.setLayerType(View.LAYER_TYPE_HARDWARE, null);
                 tabBar.setOrientation(LinearLayout.HORIZONTAL);
                 for (String t : tabs) {
                     TextView v = h.text(22, h.regular, 0xBFFFFFFF);
@@ -304,13 +312,22 @@ final class PagesV2 {
                 Row r = new Row();
                 r.label = h.text(24, h.semi, Color.WHITE);
                 addRow(r.label, 216, rowY[i], 1500, 34);
-                r.view = new FrameLayout(h.a);
+                // Faded as a row of separate posters (they never overlap), with no offscreen copy per frame.
+                r.view = new FrameLayout(h.a) {
+                    @Override public boolean hasOverlappingRendering() {
+                        return false;
+                    }
+                };
                 r.view.setOutlineProvider(ViewOutlineProvider.BOUNDS);
                 r.view.setClipToOutline(true);
                 // Only the row's box clips: its strip runs on past the screen, and posters further along must still
                 // draw when it slides left (clipped to the strip's own width they vanished while the focus went on).
                 r.view.setClipChildren(false);
-                r.strip = new LinearLayout(h.a);
+                r.strip = new LinearLayout(h.a) {
+                    @Override public boolean hasOverlappingRendering() {
+                        return false;
+                    }
+                };
                 r.strip.setOrientation(LinearLayout.HORIZONTAL);
                 r.strip.setGravity(Gravity.BOTTOM);
                 FrameLayout.LayoutParams sl = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, px(TALL + 12));
@@ -398,6 +415,8 @@ final class PagesV2 {
             for (int i = 0; i < r.items.size(); i++) {
                 Title t = r.items.get(i);
                 FrameLayout f = new FrameLayout(h.a);
+                // Not kept as a finished picture on lite_home: a poster widens and narrows, and a picture that changes
+                // size every frame is made again every frame.
                 f.setClipToOutline(true);
                 f.setOutlineProvider(h.round(14));
                 f.setBackground(h.fill(14, 0xFF222433));
@@ -405,7 +424,8 @@ final class PagesV2 {
                 poster.setTag("poster");
                 poster.setScaleType(ImageView.ScaleType.CENTER_CROP);
                 f.addView(poster, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-                h.image(poster, t.poster, px(NARROW * 2));
+                // As wide as it is drawn on lite_home (twice that elsewhere).
+                h.image(poster, t.poster, px(h.lite ? NARROW : NARROW * 2));
                 ImageView wide = new ImageView(h.a);
                 wide.setTag("wide");   // found by name: the trailer slides in under it, so it moves along
                 wide.setScaleType(ImageView.ScaleType.CENTER_CROP);
@@ -448,6 +468,11 @@ final class PagesV2 {
             r.strip.setLayoutParams(sl);
         }
 
+        /** What the lens and the tab names last showed: the tab, and whether in glass (focus on the tabs). */
+        private int lensTab = -1;
+        private int lensGlass = -1;
+        private ValueAnimator lensAnim;
+
         private void moveLens() {
             if (tabBar == null || tab >= tabBar.getChildCount()) return;
             View t = tabBar.getChildAt(tab);
@@ -460,7 +485,13 @@ final class PagesV2 {
             ViewGroup.LayoutParams lp = lens.getLayoutParams();
             int from = lp.width;
             float fromX = lens.getTranslationX();
+            // Each key press calls this: in the posters the lens stays where it is, so nothing is laid out or redrawn.
+            boolean moves = from != t.getWidth() || fromX != t.getLeft();
+            int glassy = onTabs ? 1 : 0;
+            if (lensTab == tab && lensGlass == glassy && !moves) return;
+            if (lensAnim != null) lensAnim.cancel();
             ValueAnimator va = ValueAnimator.ofFloat(0, 1);
+            lensAnim = va;
             va.setDuration(250);
             va.setInterpolator(HomeV2.SKY);
             va.addUpdateListener(an -> {
@@ -469,12 +500,17 @@ final class PagesV2 {
                 lens.setLayoutParams(lp);
                 lens.setTranslationX(fromX + (t.getLeft() - fromX) * f);
             });
-            va.start();
-            for (int i = 0; i < tabBar.getChildCount(); i++) {
-                TextView v = (TextView) tabBar.getChildAt(i);
-                v.setTextColor(i == tab ? Color.WHITE : 0xBFFFFFFF);
-                v.setTypeface(i == tab ? h.semi : h.regular);
+            if (moves) va.start();
+            if (lensTab != tab) {
+                for (int i = 0; i < tabBar.getChildCount(); i++) {
+                    TextView v = (TextView) tabBar.getChildAt(i);
+                    v.setTextColor(i == tab ? Color.WHITE : 0xBFFFFFFF);
+                    v.setTypeface(i == tab ? h.semi : h.regular);
+                }
+                lensTab = tab;
             }
+            if (lensGlass == glassy) return;
+            lensGlass = glassy;
             if (onTabs) {
                 // The focus on the tabs: the score pills' liquid glass, a brighter rim, the words staying white.
                 // Lighter than the pills' glass: the picture behind shows through it.
@@ -517,7 +553,8 @@ final class PagesV2 {
                     if (on && logo != null && ((FrameLayout) logo).getChildAt(1) instanceof ImageView
                             && ((ImageView) ((FrameLayout) logo).getChildAt(1)).getDrawable() != null) logo.animate().alpha(1f).setDuration(250).start();
                     if (on && t.backdrop != null) {
-                        h.image(wide, t.backdrop.replace("/w1280/", "/w780/"), px(WIDE * 2));
+                        // lite_home: its width on screen at the end of its slow zoom (1.12), no more.
+                        h.image(wide, t.backdrop.replace("/w1280/", "/w780/"), px(h.lite ? Math.round(WIDE * 1.12f) : WIDE * 2));
                         wide.animate().alpha(1f).setDuration(350).start();
                         wide.setScaleX(1.02f);
                         wide.setScaleY(1.02f);
@@ -652,7 +689,7 @@ final class PagesV2 {
             }
             paint();
             h.main.removeCallbacks(heroLater);
-            h.main.postDelayed(heroLater, 300);
+            h.main.postDelayed(heroLater, h.lite ? 450 : 300);
             return true;
         }
     }
@@ -863,6 +900,7 @@ final class PagesV2 {
             for (int i = 0; i < apps.size(); i++) {
                 Object[] a = apps.get(i);
                 FrameLayout f = new FrameLayout(h.a);
+                if (h.lite) f.setLayerType(View.LAYER_TYPE_HARDWARE, null);
                 f.setClipToOutline(true);
                 f.setOutlineProvider(h.round(14));
                 f.setBackground(h.fill(14, 0x26FFFFFF));
@@ -1750,6 +1788,7 @@ final class PagesV2 {
 
         private View fixture(HomeV2.Tile t) {
             FrameLayout f = new FrameLayout(h.a);
+            if (h.lite) f.setLayerType(View.LAYER_TYPE_HARDWARE, null);
             f.setClipToOutline(true);
             f.setOutlineProvider(h.round(16));
             f.setBackground(h.fill(16, 0xFF15182E));

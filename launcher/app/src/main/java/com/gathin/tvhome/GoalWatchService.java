@@ -66,6 +66,8 @@ public class GoalWatchService extends Service {
     /** The alerts' size: a pill PILL_DP tall, TEXT_SP text, CREST_DP crests and logos fetched at LOGO_DP. */
     private static final int PILL_DP = 32, CREST_DP = 18, LOGO_DP = 48;
     private static final float TEXT_SP = 12.5f, SMALL_SP = 10f;
+    /** The F1 result card over an app, smaller than the other alerts: the whole field takes less of the picture. */
+    private static final float RACE_K = 0.8f;
     /** Larger words and crests for the alert being built: a goal on v2's Home (1 otherwise). */
     private float boost = 1f;
     /** The colour of the alert being built, for its glass on v2's Home (0: plain, as football's). */
@@ -2273,8 +2275,9 @@ public class GoalWatchService extends Service {
         LinearLayout panel = new LinearLayout(this);
         panel.setOrientation(LinearLayout.VERTICAL);
         panel.setBackground(glass(CORNER_DP * d));
-        int pad = Math.round(16 * d);
-        panel.setPadding(pad, Math.round(10 * d), pad, Math.round(12 * d));
+        float k = RACE_K;
+        int pad = Math.round(16 * k * d);
+        panel.setPadding(pad, Math.round(10 * k * d), pad, Math.round(12 * k * d));
         SpannableStringBuilder head = new SpannableStringBuilder("🏁  " + race.name.toUpperCase() + "  ·  RESULT");
         head.setSpan(new StyleSpan(Typeface.BOLD), 0, head.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
         // The F1 logo leads the heading, full size, as on the other F1 alerts.
@@ -2282,10 +2285,10 @@ public class GoalWatchService extends Service {
         heading.setOrientation(LinearLayout.HORIZONTAL);
         heading.setGravity(Gravity.CENTER_VERTICAL);
         android.widget.ImageView f1Logo = crest(raceLogos.get(F1Results.F1_LOGO), d);
-        LinearLayout.LayoutParams llp = sized(Math.round(CREST_DP * 1.15f * d), 0);
-        llp.width = Math.round(CREST_DP * 4.4f * d);
+        LinearLayout.LayoutParams llp = sized(Math.round(CREST_DP * 1.15f * k * d), 0);
+        llp.width = Math.round(CREST_DP * 4.4f * k * d);
         heading.addView(f1Logo, llp);
-        heading.addView(text(head, TEXT_SP, ink(0xFF1A1D24)), gap(Math.round(10 * d)));
+        heading.addView(text(head, TEXT_SP * k, ink(0xFF1A1D24)), gap(Math.round(10 * k * d)));
         panel.addView(heading);
         // The whole field: P11 to the last first, then P1 to P10.
         int n = race.top.size();
@@ -2302,7 +2305,7 @@ public class GoalWatchService extends Service {
         body.setOrientation(LinearLayout.VERTICAL);
         panel.addView(body);
         raceLines(body, race, pages.get(0), d);
-        ensureHost(940, 150);
+        ensureHost(Math.round(940 * k), Math.round(150 * k));
         if (host == null) return;
         host.addView(panel, new android.widget.FrameLayout.LayoutParams(
                 android.widget.FrameLayout.LayoutParams.WRAP_CONTENT, android.widget.FrameLayout.LayoutParams.WRAP_CONTENT,
@@ -2428,14 +2431,14 @@ public class GoalWatchService extends Service {
                 // Position, the team's logo, the surname (the winner's in bold).
                 SpannableStringBuilder pos = new SpannableStringBuilder(String.valueOf(i + 1));
                 pos.setSpan(new StyleSpan(Typeface.BOLD), 0, pos.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-                line.addView(text(pos, TEXT_SP, i < 3 ? medal[i] : ink(0xA61A1D24)), gap(k == row * per ? 0 : Math.round(18 * d)));
+                line.addView(text(pos, TEXT_SP * RACE_K, i < 3 ? medal[i] : ink(0xA61A1D24)), gap(k == row * per ? 0 : Math.round(18 * RACE_K * d)));
                 String url = i < race.logos.size() ? race.logos.get(i) : null;
-                line.addView(crest(url == null ? null : raceLogos.get(url), d), sized(Math.round(CREST_DP * d), Math.round(5 * d)));
-                line.addView(text(i == 0 ? bold(race.top.get(i)) : race.top.get(i), TEXT_SP, ink(0xFF1A1D24)), gap(Math.round(5 * d)));
+                line.addView(crest(url == null ? null : raceLogos.get(url), d), sized(Math.round(CREST_DP * RACE_K * d), Math.round(5 * RACE_K * d)));
+                line.addView(text(i == 0 ? bold(race.top.get(i)) : race.top.get(i), TEXT_SP * RACE_K, ink(0xFF1A1D24)), gap(Math.round(5 * RACE_K * d)));
             }
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT);
-            lp.topMargin = Math.round(6 * d);
+            lp.topMargin = Math.round(6 * RACE_K * d);
             body.addView(line, lp);
         }
     }

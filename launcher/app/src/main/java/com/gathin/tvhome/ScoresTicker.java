@@ -190,6 +190,11 @@ final class ScoresTicker {
         return new android.graphics.drawable.LayerDrawable(new android.graphics.drawable.Drawable[]{base, wash});
     }
 
+    /** The bar kept as one finished picture on the graphics chip (a slower TV's Home), redrawn only when it changes. */
+    void layer(boolean on) {
+        box.setLayerType(on ? View.LAYER_TYPE_HARDWARE : View.LAYER_TYPE_NONE, null);
+    }
+
     /** Steps aside while an alert stands in the bar's place (launcher v2's Home), and comes back after. */
     void cover(boolean on) {
         box.animate().cancel();
@@ -711,7 +716,12 @@ final class ScoresTicker {
     }
 
     private LinearLayout row(List<Game> list) {
-        LinearLayout row = new LinearLayout(context);
+        // The page flip fades the row as separate pills (they never overlap), not as an offscreen copy per frame.
+        LinearLayout row = new LinearLayout(context) {
+            @Override public boolean hasOverlappingRendering() {
+                return false;
+            }
+        };
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
         for (int i = 0; i < list.size(); i++) {

@@ -33,6 +33,8 @@ final class TilePlayer {
     /** The tile's own picture, over the trailer until it is really playing (and again whenever YouTube stops). */
     private View[] covers = new View[0];
     private boolean revealed;
+    /** The tile was kept as a finished picture before the trailer came onto it. */
+    private boolean layered;
     private final Runnable reveal = () -> {
         if (web == null || web.getParent() == null) return;
         revealed = true;
@@ -110,6 +112,10 @@ final class TilePlayer {
         tile = into;
         this.covers = covers;
         revealed = false;
+        // YouTube's player cannot draw into a tile kept as a finished picture (a slower TV's Home): the tile is drawn
+        // live while the trailer plays, and kept again after.
+        layered = into.getLayerType() == View.LAYER_TYPE_HARDWARE;
+        if (layered) into.setLayerType(View.LAYER_TYPE_NONE, null);
         web.setAlpha(1f);
         into.addView(web, Math.min(at, into.getChildCount()), new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         if (ready) cue(id); else pending = id;
@@ -189,6 +195,8 @@ final class TilePlayer {
         revealed = false;
         covers = new View[0];
         pending = null;
+        if (layered && tile != null) tile.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+        layered = false;
         if (web != null && web.getParent() instanceof ViewGroup) {
             web.evaluateJavascript("stop()", null);
             web.animate().cancel();
