@@ -87,6 +87,8 @@ final class PagesV2 {
         boolean tv;
         /** Its official trailer on YouTube, once looked up ("" when TMDB has none). */
         String youtube;
+        /** Continue watching: the app it was being watched in, which OK opens again. */
+        String app;
     }
 
     /** The title's trailer on YouTube from TMDB: an official "Trailer" first, then any trailer or teaser. Off the main thread. */
@@ -386,7 +388,11 @@ final class PagesV2 {
                     heroNow();
         }
 
+        /** Films and series started in any app: TMDB id to how far in. */
+        private Map<Integer, Float> watched = new HashMap<>();
+
         private void fill(Row r) {
+            watched = WatchHistory.progress(h.a);
             r.strip.removeAllViews();
             r.strip.setTranslationX(0);
             for (int i = 0; i < r.items.size(); i++) {
@@ -405,6 +411,31 @@ final class PagesV2 {
                 wide.setScaleType(ImageView.ScaleType.CENTER_CROP);
                 wide.setAlpha(0f);
                 f.addView(wide, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+                // Started and not finished (in any app): how far in, as a bar along the poster's foot.
+                Float done = watched.get(t.id);
+                if (done != null) {
+                    FrameLayout bar = new FrameLayout(h.a);
+                    bar.setTag("progress");
+                    bar.setBackgroundColor(0x80000000);
+                    View fill = new View(h.a);
+                    fill.setBackgroundColor(0xFFE50914);
+                    bar.addView(fill, new FrameLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT));
+                    // Inset from the poster's edges, its ends rounded, so the focus outline never covers it.
+                    bar.setClipToOutline(true);
+                    bar.setOutlineProvider(h.round(3));
+                    FrameLayout.LayoutParams bl = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, px(6), Gravity.BOTTOM);
+                    bl.leftMargin = px(10);
+                    bl.rightMargin = px(10);
+                    bl.bottomMargin = px(10);
+                    f.addView(bar, bl);
+                    // As a share of the poster's width, which changes as it widens.
+                    float share = done;
+                    bar.addOnLayoutChangeListener((v, l, tp, rt, b, ol, ot, or, ob) -> {
+                        ViewGroup.LayoutParams fl = fill.getLayoutParams();
+                        int w = Math.round((rt - l) * share);
+                        if (fl.width != w) { fl.width = w; fill.setLayoutParams(fl); }
+                    });
+                }
                 // Just the poster (and its trailer): no words over it, on every page.
                 LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(px(NARROW), px(TALL));
                 lp.rightMargin = px(GAP);
@@ -514,13 +545,10 @@ final class PagesV2 {
                     rows.get(ri).label.animate().alpha(a).setDuration(200).start();
                 }
             }
-            if (tabBar != null) {
-                moveLens();
-                // Down in the posters the tabs make way for the whole description; Up to them brings them back.
-                tabScroll.animate().alpha(onTabs ? 1f : 0f).setDuration(200).start();
-            }
-            // The description's lines: as many as fit above the posters (fewer above a single row, more over many).
-            h.heroLines(tabs == null ? 2 : onTabs ? (rowY.length > 2 ? 2 : 1) : rowY.length > 2 ? 5 : 3);
+            // The tabs stay on screen, in the posters too, so the sections are always in sight.
+            if (tabBar != null) moveLens();
+            // The description's lines: as many as fit above the tabs.
+            h.heroLines(tabs == null ? 2 : rowY.length > 2 ? 2 : 1);
         }
 
         /** Each title's marks from the store, once looked up (empty: the store had none). */
@@ -588,6 +616,7 @@ final class PagesV2 {
                 if (e.getAction() == KeyEvent.ACTION_UP && !onTabs && row < rows.size() && idx < rows.get(row).items.size()) {
                     Title t = rows.get(row).items.get(idx);
                     String pkg = h.debridPackage();
+                    if (t.app != null && !t.app.equals(pkg)) { h.openApp(t.app); return true; }
                     if (pkg != null) {
                         h.searchTitle(pkg, t.title, t.tv, t.id, t.backdrop != null ? t.backdrop : t.poster);
                     }
@@ -770,10 +799,15 @@ final class PagesV2 {
      */
     private static PosterPage sections(HomeV2 h, String crumb, int colour, boolean tv, String[][] spec) {
         String k = h.tmdbKey;
-        String[] tabs = new String[spec.length];
-        for (int i = 0; i < spec.length; i++) tabs[i] = spec[i][0];
-        return new PosterPage(h, crumb, colour, tabs, new int[]{584 - 62},
-                t -> Arrays.asList(row(null, null, "n".equals(spec[t][2]), tmdb(k, spec[t][1], tv))));
+        // Continue Watching leads, when anything is started: what is part-watched in any app, newest first.
+        boolean resume = !WatchHistory.titles(h.a, tv).isEmpty();
+        int first = resume ? 1 : 0;
+        String[] tabs = new String[spec.length + first];
+        if (resume) tabs[0] = "Continue Watching";
+        for (int i = 0; i < spec.length; i++) tabs[i + first] = spec[i][0];
+        return new PosterPage(h, crumb, colour, tabs, new int[]{584 - 62}, t -> t < first
+                ? Arrays.asList(row(null, null, false, WatchHistory.titles(h.a, tv)))
+                : Arrays.asList(row(null, null, "n".equals(spec[t - first][2]), tmdb(k, spec[t - first][1], tv))));
     }
 
     // ---- Apps -------------------------------------------------------------------------------------------------------

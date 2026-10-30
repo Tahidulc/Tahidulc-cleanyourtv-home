@@ -536,6 +536,8 @@ final class HomeV2 {
         // An alert that came up over an app or the screensaver moves into the score bar's place.
         GoalWatchService.relane();
         if (Config.themeFlag(a, "alerts_everywhere", false)) GoalWatchService.startEverywhere(a);
+        // What was watched while Home was away, matched to TMDB for Continue Watching.
+        io.execute(() -> WatchHistory.match(a, tmdbKey));
         // Rows age: what is on now and the apps' own rows are read again when Home comes back after a while.
         Long at = rowsAt.get(mode);
         if (at != null && System.currentTimeMillis() - at > 5 * 60_000L) {
@@ -1606,6 +1608,9 @@ final class HomeV2 {
         if (src.atmos) t.specs.add("DOLBY ATMOS");
         if (src.age != null) t.specs.add("age:" + src.age);
         t.service = src.service;
+        // Part-watched in any app: the bar along the tile's foot, as on the posters.
+        Float done = WatchHistory.progress(a).get(src.tmdbId);
+        if (done != null) { t.progress = done; t.progressColour = 0xFFE50914; }
         t.heroTop = pkg == null ? (src.pill != null ? "NEW RELEASE" : null) : null;
         String target = pkg != null ? pkg : debridPackage();
         t.ok = () -> {

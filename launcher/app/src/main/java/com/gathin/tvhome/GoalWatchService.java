@@ -526,6 +526,14 @@ public class GoalWatchService extends Service {
                 }
             });
         }
+        if (intent != null && intent.hasExtra("test_watch")) {
+            // Continue Watching samples: a film part-watched in Netflix, an episode in Debrid Stream ("clear" empties it).
+            if ("clear".equals(intent.getStringExtra("test_watch"))) WatchHistory.test(this, null, null, null, 0, 0);
+            else {
+                WatchHistory.test(this, "com.netflix.ninja", "The Dark Knight", "", 0.42f, 152 * 60_000L);
+                WatchHistory.test(this, "com.debridstream.tv", "Slow Horses", "S4:E2 Hello Goodbye", 0.65f, 48 * 60_000L);
+            }
+        }
         if (intent != null && intent.hasExtra("test_red")) {
             ScoresTicker.Game g = new ScoresTicker.Game();
             g.league = "UCL"; g.home = "ARS"; g.away = "PSG"; g.homeScore = "1"; g.awayScore = "1";
