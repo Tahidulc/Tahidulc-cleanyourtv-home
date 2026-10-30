@@ -953,7 +953,8 @@ public class AppSearchService extends AccessibilityService {
      * way over about expectMs and the rest once done. Drawn as the helper's own overlay, which takes no keys.
      */
     private void showCover(android.graphics.Bitmap art, android.graphics.Bitmap logo, String title, String line, long expectMs) {
-        removeCover();
+        // The last cover away, but not its sound: a tune has just muted it (quiet() comes first), and this undid that.
+        clearCover();
         float d = getResources().getDisplayMetrics().density;
         android.widget.FrameLayout v = new android.widget.FrameLayout(this);
         v.setBackgroundColor(0xFF0B0C10);
@@ -1105,6 +1106,10 @@ public class AppSearchService extends AccessibilityService {
 
     private void removeCover() {
         loud();
+        clearCover();
+    }
+
+    private void clearCover() {
         for (android.animation.Animator a : coverLoops) a.cancel();
         coverLoops.clear();
         if (cover != null) removeView(cover);

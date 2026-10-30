@@ -82,15 +82,8 @@ final class TilePlayer {
         web.setFocusableInTouchMode(false);
         web.setVerticalScrollBarEnabled(false);
         web.setHorizontalScrollBarEnabled(false);
-        web.setWebChromeClient(new android.webkit.WebChromeClient() {
-            @Override public boolean onConsoleMessage(android.webkit.ConsoleMessage m) {
-                android.util.Log.i("TilePlayer", "page: " + m.message());
-                return true;
-            }
-        });
         web.addJavascriptInterface(new Object() {
             @android.webkit.JavascriptInterface public void ready() {
-                android.util.Log.i("TilePlayer", "player ready");
                 main.post(() -> { ready = true; if (pending != null) { String id = pending; pending = null; cue(id); } });
             }
             @android.webkit.JavascriptInterface public void playing() {
@@ -99,9 +92,6 @@ final class TilePlayer {
             @android.webkit.JavascriptInterface public void waiting() {
                 // Loading or paused: YouTube draws its logo and spinner over the picture, so the trailer hides again.
                 main.post(TilePlayer.this::covered);
-            }
-            @android.webkit.JavascriptInterface public void state(String id, int st) {
-                android.util.Log.i("TilePlayer", "trailer " + id + " state " + st);
             }
             @android.webkit.JavascriptInterface public void refused(String id, int code) {
                 android.util.Log.i("TilePlayer", "trailer " + id + " refused by YouTube (" + code + "), trying the next");
@@ -119,7 +109,7 @@ final class TilePlayer {
                 + "origin:'https://" + pkg + "'},"
                 + "events:{onReady:function(){Home.ready();},"
                 + "onError:function(e){Home.refused(cur,e.data);next();},"
-                + "onStateChange:function(e){Home.state(cur,e.data);if(e.data==1)Home.playing();else if(e.data==3||e.data==2||e.data==-1||e.data==5)Home.waiting();if(e.data==2)e.target.playVideo();if(e.data==0)Home.ended();}}});}"
+                + "onStateChange:function(e){if(e.data==1)Home.playing();else if(e.data==3||e.data==2||e.data==-1||e.data==5)Home.waiting();if(e.data==2)e.target.playVideo();if(e.data==0)Home.ended();}}});}"
                 // Several trailers, comma-separated: YouTube refuses some in an embedded player (their owner turned
                 // that off, or not in this country): on to the next.
                 + "var q=[],cur='';function play(ids){q=ids.split(',');next();}"
@@ -150,7 +140,6 @@ final class TilePlayer {
     }
 
     private void cue(String id) {
-        android.util.Log.i("TilePlayer", "cue " + id);
         if (web != null && web.getParent() != null) web.evaluateJavascript("play('" + id.replace("'", "") + "')", null);
     }
 

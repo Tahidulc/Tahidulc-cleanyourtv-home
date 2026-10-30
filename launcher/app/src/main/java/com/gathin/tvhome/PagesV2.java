@@ -275,13 +275,11 @@ final class PagesV2 {
             }
             trailerSoon = () -> {
                 if (trailerTile != tile) return;
-                android.util.Log.i("TilePlayer", "poster " + (t == null ? "-" : t.title + " #" + t.id) + " trailers " + (t == null ? "" : t.youtube));
                 if (t.youtube != null) { if (!t.youtube.isEmpty()) player.trailer(tile, 0, t.youtube, tile.findViewWithTag("poster"), tile.findViewWithTag("wide")); return; }
                 // On the trailers' own threads: behind Home's reader (the hero's pictures, logos and details) a slow
                 // TV often never reached it before the next poster was picked.
                 TRAILERS.execute(() -> {
                     String id = trailer(h.tmdbKey, t);
-                    android.util.Log.i("TilePlayer", "looked up " + t.title + ": " + id);
                     h.main.post(() -> {
                         t.youtube = id;
                         if (trailerTile == tile && !id.isEmpty()) player.trailer(tile, 0, id, tile.findViewWithTag("poster"), tile.findViewWithTag("wide"));
@@ -294,7 +292,7 @@ final class PagesV2 {
         @Override void close() {
             trailerTile = null;
             if (trailerSoon != null) h.main.removeCallbacks(trailerSoon);
-            player.destroy();
+            player.stop();   // Home's own player: kept, with its page loaded, for Home and the next page
             super.close();
         }
 
@@ -304,7 +302,9 @@ final class PagesV2 {
          */
         PosterPage(HomeV2 h, String crumb, int crumbColour, String[] tabs, int[] rowY, java.util.function.Function<Integer, List<Row>> source) {
             super(h);
-            player = new TilePlayer(h.a);
+            // Home's player, shared: a second YouTube page beside it never finished loading on the TCL, and the
+            // trailers waited for it.
+            player = h.players;
             this.crumb = crumb;
             this.crumbColour = crumbColour;
             this.tabs = tabs;
