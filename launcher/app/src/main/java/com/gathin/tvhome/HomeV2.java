@@ -80,7 +80,7 @@ final class HomeV2 {
     private static final int GLASS = 0x1AFFFFFF, GLASS_LINE = 0x52FFFFFF;
     static final PathInterpolator SKY = new PathInterpolator(0.25f, 0.8f, 0.25f, 1f);
     private static final int[] CAT_COLOURS = {0xFFFF8A1F, 0xFF9B5CFF, 0xFFFF4FA3, 0xFF4F8BFF, 0xFF3DDC84, 0xFF2AD1C9};
-    private static final String[] CAT_NAMES = {"TV Guide", "Discover", "Movies", "TV shows", "Sport", "Apps"};
+    private static final String[] CAT_NAMES = {"TV Guide", "Discover", "Movies", "TV shows", "Sports", "Apps"};
     private static final int[] CAT_ICONS = {R.drawable.ic_v2_guide, R.drawable.ic_v2_discover, R.drawable.ic_v2_movies,
             R.drawable.ic_v2_shows, R.drawable.ic_v2_sport, R.drawable.ic_v2_grid};
     private static final String[] CAT_MODES = {"guide", "discover", "movies", "shows", "sport", "apps"};
@@ -484,8 +484,11 @@ final class HomeV2 {
         add(mark, 80, 300 + 16, 5, 32);
     }
 
+    /** The section boxes: wide, as on Sky, so the last runs off the right edge until the focus brings it in. */
+    private static final int CAT_X = 216, CAT_W = 330, CAT_GAP = 16, CAT_Y = 872, CAT_H = 172;
+
     private void buildCats() {
-        int x = 216, w = (1608 - 5 * 18) / 6;
+        int x = CAT_X, w = CAT_W;
         for (int i = 0; i < 6; i++) {
             FrameLayout box = new FrameLayout(a);
             box.setClipToOutline(true);
@@ -509,9 +512,9 @@ final class HomeV2 {
             tlp.topMargin = px(10);
             in.addView(t, tlp);
             box.addView(in, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-            add(box, x, 852, w, 150);
+            add(box, x, CAT_Y, w, CAT_H);
             catViews.add(box);
-            x += w + 18;
+            x += w + CAT_GAP;
         }
     }
 
@@ -774,7 +777,7 @@ final class HomeV2 {
     /** A section showing while the boxes keep the focus is cut off just above them. */
     private void clipAboveBoxes() {
         View first = catViews.get(0);
-        int top = first.getTop() > 0 ? first.getTop() : px(852);
+        int top = first.getTop() > 0 ? first.getTop() : px(CAT_Y);
         page.layer.setClipBounds(new android.graphics.Rect(0, 0, Math.max(1, root.getWidth()), top - px(10)));
     }
 
@@ -870,6 +873,10 @@ final class HomeV2 {
         window(row, first);
         playSoon();
         row.animate().translationX(-first * px(408)).setDuration(240).setInterpolator(SKY).start();
+        // The boxes slide left just enough for the focused one to sit inside the screen's right margin.
+        int focus = zone == Z_CATS ? catIdx : page != null ? pageWhich : 0;
+        int right = CAT_X + (focus + 1) * (CAT_W + CAT_GAP) - CAT_GAP;
+        float shift = -px(Math.max(0, right - 1824));
         for (int i = 0; i < catViews.size(); i++) {
             FrameLayout box = (FrameLayout) catViews.get(i);
             boolean on = zone == Z_CATS && i == catIdx && (page == null || preview);
@@ -881,7 +888,7 @@ final class HomeV2 {
             ((ImageView) in.getChildAt(0)).setColorFilter(on ? 0xFF1A1D24 : Color.WHITE);
             ((TextView) in.getChildAt(1)).setTextColor(on ? 0xFF1A1D24 : Color.WHITE);
             ((TextView) in.getChildAt(1)).setTypeface(on ? semi : regular);
-            box.animate().scaleX(on ? 1.04f : 1f).scaleY(on ? 1.04f : 1f).setDuration(150).setInterpolator(SKY).start();
+            box.animate().scaleX(on ? 1.04f : 1f).scaleY(on ? 1.04f : 1f).translationX(shift).setDuration(220).setInterpolator(SKY).start();
         }
         // Resting on a box shows its section after a moment, no OK needed.
         main.removeCallbacks(previewNow);
