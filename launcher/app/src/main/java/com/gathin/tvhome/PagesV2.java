@@ -215,12 +215,12 @@ final class PagesV2 {
             }
             trailerSoon = () -> {
                 if (trailerTile != tile) return;
-                if (t.youtube != null) { if (!t.youtube.isEmpty()) player.trailer(tile, 2, t.youtube); return; }
+                if (t.youtube != null) { if (!t.youtube.isEmpty()) player.trailer(tile, 0, t.youtube, tile.findViewWithTag("poster"), tile.findViewWithTag("wide")); return; }
                 h.io.execute(() -> {
                     String id = trailer(h.tmdbKey, t);
                     h.main.post(() -> {
                         t.youtube = id;
-                        if (trailerTile == tile && !id.isEmpty()) player.trailer(tile, 2, id);
+                        if (trailerTile == tile && !id.isEmpty()) player.trailer(tile, 0, id, tile.findViewWithTag("poster"), tile.findViewWithTag("wide"));
                     });
                 });
             };
@@ -295,7 +295,8 @@ final class PagesV2 {
                 sl.leftMargin = px(12);
                 sl.topMargin = px(6);
                 r.view.addView(r.strip, sl);
-                addRow(r.view, 204, rowY[i] + (tabs != null ? 62 : 40) - 6, 1632, TALL + 24);
+                // A row's name sits just over its posters (Discover's one row leaves room under its tabs).
+                addRow(r.view, 204, rowY[i] + (tabs != null && rowY.length == 1 ? 62 : 40) - 6, 1632, TALL + 24);
                 rows.add(r);
             }
             // A page with tabs opens on its first tab; Down goes into the posters.
@@ -344,10 +345,12 @@ final class PagesV2 {
                 f.setOutlineProvider(h.round(14));
                 f.setBackground(h.fill(14, 0xFF222433));
                 ImageView poster = new ImageView(h.a);
+                poster.setTag("poster");
                 poster.setScaleType(ImageView.ScaleType.CENTER_CROP);
                 f.addView(poster, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
                 h.image(poster, t.poster, px(NARROW * 2));
                 ImageView wide = new ImageView(h.a);
+                wide.setTag("wide");   // found by name: the trailer slides in under it, so it moves along
                 wide.setScaleType(ImageView.ScaleType.CENTER_CROP);
                 wide.setAlpha(0f);
                 f.addView(wide, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
@@ -356,6 +359,11 @@ final class PagesV2 {
                 lp.rightMargin = px(GAP);
                 r.strip.addView(f, lp);
             }
+            // The strip as wide as all its posters (and the focused one widened): left to wrap its content, it was
+            // held to the screen's width and the posters past it were never drawn.
+            ViewGroup.LayoutParams sl = r.strip.getLayoutParams();
+            sl.width = px(r.items.size() * (NARROW + GAP) + (WIDE - NARROW) + 40);
+            r.strip.setLayoutParams(sl);
         }
 
         private void moveLens() {
@@ -401,7 +409,7 @@ final class PagesV2 {
                         va.addUpdateListener(an -> { lp.width = (int) an.getAnimatedValue(); f.setLayoutParams(lp); });
                         va.start();
                     }
-                    ImageView wide = (ImageView) f.getChildAt(1);
+                    ImageView wide = (ImageView) f.findViewWithTag("wide");
                     Title t = r.items.get(i);
                     if (on && t.backdrop != null) {
                         h.image(wide, t.backdrop.replace("/w1280/", "/w780/"), px(WIDE * 2));
@@ -423,7 +431,8 @@ final class PagesV2 {
                     has ? focused.items : null, idx);
             // More rows than the screen holds: they move up together, the focused one second from the top.
             if (column != null && rowY.length > 2) {
-                int top = onTabs ? 0 : Math.max(0, Math.min(row - 1, rowY.length - 2));
+                // The focused row takes the first row's place, under the tabs; the next one peeks in below it.
+                int top = onTabs ? 0 : Math.max(0, Math.min(row, rowY.length - 1));
                 column.animate().translationY(-px(rowY[top] - rowY[0])).setDuration(320).setInterpolator(HomeV2.SKY).start();
                 if (tabBar != null) ((View) tabBar.getParent()).animate().alpha(top > 0 ? 0f : 1f).setDuration(200).start();
                 for (int ri = 0; ri < rows.size(); ri++) {
@@ -585,7 +594,7 @@ final class PagesV2 {
 
     private static int[] rowYs(int n) {
         int[] y = new int[n];
-        for (int i = 0; i < n; i++) y[i] = 504 + i * 286;
+        for (int i = 0; i < n; i++) y[i] = 504 + i * 310;
         return y;
     }
 
@@ -684,7 +693,7 @@ final class PagesV2 {
         System.arraycopy(SERVICES, 0, tabs, 1, SERVICES.length);
         int most = Math.max(all.length, 12);
         int[] y = new int[most];
-        for (int i = 0; i < most; i++) y[i] = 586 + i * 286;
+        for (int i = 0; i < most; i++) y[i] = 586 + i * 310;
         return new PosterPage(h, crumb, colour, tabs, y, t -> {
             if (t == 0) return rows(k, tv, all);
             int p = SERVICE_IDS[t - 1];

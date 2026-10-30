@@ -348,6 +348,9 @@ final class HomeV2 {
         }
         wifi.setCompoundDrawablePadding(px(12));
         wifi.setText("Wi-Fi");
+        // The TV's inputs (HDMI and the like): the icon alone; OK lists them under it.
+        ImageView inputs = icon(R.drawable.ic_input);
+        topButton(bar, inputs, px(66), () -> showInputs(inputs));
         topButton(bar, wifi, ViewGroup.LayoutParams.WRAP_CONTENT, () -> open(new Intent(android.provider.Settings.ACTION_WIFI_SETTINGS)));
         ImageView nord = new ImageView(a);
         nord.setImageResource(R.drawable.v2_nord);
@@ -855,7 +858,7 @@ final class HomeV2 {
         }
         if (t.tmdbId == 0 || tmdbKey.isEmpty()) return;
         String have = trailers.get(t.tmdbId);
-        if (have != null) { if (!have.isEmpty()) players.trailer(tile, 1, have); return; }
+        if (have != null) { if (!have.isEmpty()) players.trailer(tile, 0, have, tile.findViewWithTag("pic")); return; }
         PagesV2.Title q = new PagesV2.Title();
         q.id = t.tmdbId;
         q.tv = t.tv;
@@ -863,7 +866,7 @@ final class HomeV2 {
             String id = PagesV2.trailer(tmdbKey, q);
             main.post(() -> {
                 trailers.put(t.tmdbId, id);
-                if (playingTile == tile && !id.isEmpty()) players.trailer(tile, 1, id);
+                if (playingTile == tile && !id.isEmpty()) players.trailer(tile, 0, id, tile.findViewWithTag("pic"));
             });
         });
     }
@@ -994,6 +997,7 @@ final class HomeV2 {
             return f;
         }
         ImageView pic = new ImageView(a);
+        pic.setTag("pic");   // found by name: a trailer slides in under it
         pic.setScaleType(ImageView.ScaleType.CENTER_CROP);
         f.addView(pic, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         image(pic, t.image, px(384));
@@ -1167,8 +1171,9 @@ final class HomeV2 {
             image(l, t.service, px(60));
         }
         hSpecs.setVisibility(hSpecs.getChildCount() == 0 ? View.GONE : View.VISIBLE);
-        // The line takes room: the hero's words move up by as much, clear of the row's name below.
-        htext.animate().translationY(hSpecs.getChildCount() == 0 ? 0 : -px(36)).setDuration(140).start();
+        // The line takes room: under a page's hero (rows lower down) the words keep their place; on Home, whose row
+        // starts higher, the description gives up its second line instead of reaching the row's name.
+        hText.setMaxLines(hSpecs.getChildCount() > 0 && page == null ? 1 : 2);
         if (t.tmdbId != 0 && t.duration == null && !tmdbKey.isEmpty()) {
             String[] have = details.get(t.tmdbId);
             if (have != null) { apply(t, have); if (heroTile == t && (t.duration != null || t.service != null)) specs(t); return; }
@@ -1634,6 +1639,61 @@ final class HomeV2 {
                 AppSearchService.tune(a, pkg, channels, logo);
             });
         });
+    }
+
+    /**
+     * The TV's inputs in a glass list under the button (Android's TV input list: HDMI ports in order, then the rest),
+     * each by its own name; OK on one switches the TV to it. A TV with none says so.
+     */
+    private void showInputs(View anchor) {
+        android.media.tv.TvInputManager tim = (android.media.tv.TvInputManager) a.getSystemService(Context.TV_INPUT_SERVICE);
+        List<android.media.tv.TvInputInfo> list = new ArrayList<>();
+        if (tim != null) for (android.media.tv.TvInputInfo i : tim.getTvInputList()) if (i.isPassthroughInput() && !i.isHidden(a)) list.add(i);
+        list.sort((x, y) -> {
+            boolean hx = x.getType() == android.media.tv.TvInputInfo.TYPE_HDMI, hy = y.getType() == android.media.tv.TvInputInfo.TYPE_HDMI;
+            if (hx != hy) return hx ? -1 : 1;
+            return String.valueOf(label(x)).compareToIgnoreCase(String.valueOf(label(y)));
+        });
+        LinearLayout box = new LinearLayout(a);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(px(10), px(10), px(10), px(10));
+        GradientDrawable bg = fill(26, 0xF21B1F3B);
+        bg.setStroke(Math.max(1, px(1.5f)), GLASS_LINE);
+        box.setBackground(bg);
+        int width = px(320);
+        android.widget.PopupWindow pop = new android.widget.PopupWindow(box, width, ViewGroup.LayoutParams.WRAP_CONTENT, true);
+        pop.setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(Color.TRANSPARENT));
+        if (list.isEmpty()) {
+            TextView none = text(22, regular, 0xB3FFFFFF);
+            none.setText("No inputs on this TV");
+            none.setPadding(px(20), px(16), px(20), px(16));
+            box.addView(none);
+        }
+        for (android.media.tv.TvInputInfo info : list) {
+            TextView row = text(24, regular, Color.WHITE);
+            row.setText(label(info));
+            row.setPadding(px(22), px(14), px(22), px(14));
+            row.setFocusable(true);
+            android.graphics.drawable.StateListDrawable sl = new android.graphics.drawable.StateListDrawable();
+            sl.addState(new int[]{android.R.attr.state_focused}, fill(16, 0xEBFFFFFF));
+            sl.addState(new int[0], new android.graphics.drawable.ColorDrawable(Color.TRANSPARENT));
+            row.setBackground(sl);
+            row.setTextColor(new android.content.res.ColorStateList(new int[][]{{android.R.attr.state_focused}, {}},
+                    new int[]{0xFF1A1D24, Color.WHITE}));
+            row.setOnClickListener(v -> {
+                pop.dismiss();
+                Intent go = new Intent(Intent.ACTION_VIEW, android.media.tv.TvContract.buildChannelUriForPassthroughInput(info.getId()));
+                open(go);
+            });
+            box.addView(row, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        }
+        pop.showAsDropDown(anchor, anchor.getWidth() - width, px(12));
+        if (box.getChildCount() > 0) box.getChildAt(0).requestFocus();
+    }
+
+    private CharSequence label(android.media.tv.TvInputInfo i) {
+        CharSequence custom = i.loadCustomLabel(a);
+        return custom != null && custom.length() > 0 ? custom : i.loadLabel(a);
     }
 
     /**

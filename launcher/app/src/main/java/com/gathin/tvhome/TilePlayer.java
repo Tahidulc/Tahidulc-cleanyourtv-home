@@ -28,7 +28,22 @@ final class TilePlayer {
     private FrameLayout tile;
     private TextureView video;
     private MediaPlayer player;
-    private final Runnable reveal = () -> { if (web != null && web.getParent() != null) web.animate().alpha(1f).setDuration(450).start(); };
+    /** The tile's own picture, over the trailer until it is really playing (and again whenever YouTube stops). */
+    private View[] covers = new View[0];
+    private boolean revealed;
+    private final Runnable reveal = () -> {
+        if (web == null || web.getParent() == null) return;
+        revealed = true;
+        for (View c : covers) if (c != null) c.animate().alpha(0f).setDuration(450).start();
+    };
+
+    /** YouTube loading or paused: the tile's pictures back over it. */
+    private void covered() {
+        main.removeCallbacks(reveal);
+        if (!revealed) return;
+        revealed = false;
+        for (View c : covers) if (c != null) { c.animate().cancel(); c.animate().alpha(1f).setDuration(150).start(); }
+    }
 
     TilePlayer(Context c) {
         this.c = c;
@@ -61,7 +76,7 @@ final class TilePlayer {
             }
             @android.webkit.JavascriptInterface public void waiting() {
                 // Loading or paused: YouTube draws its logo and spinner over the picture, so the trailer hides again.
-                main.post(() -> { main.removeCallbacks(reveal); if (web != null) web.animate().alpha(0f).setDuration(150).start(); });
+                main.post(TilePlayer.this::covered);
             }
             @android.webkit.JavascriptInterface public void ended() {
                 main.post(TilePlayer.this::stop);
@@ -75,20 +90,25 @@ final class TilePlayer {
                 + "playerVars:{autoplay:1,controls:0,rel:0,playsinline:1,modestbranding:1,iv_load_policy:3,disablekb:1,fs:0,cc_load_policy:0,showinfo:0,"
                 + "origin:'https://" + pkg + "'},"
                 + "events:{onReady:function(){Home.ready();},"
-                + "onStateChange:function(e){if(e.data==1)Home.playing();else if(e.data==3||e.data==2)Home.waiting();if(e.data==0)Home.ended();}}});}"
+                + "onStateChange:function(e){if(e.data==1)Home.playing();else if(e.data==3||e.data==2||e.data==-1||e.data==5)Home.waiting();if(e.data==2)e.target.playVideo();if(e.data==0)Home.ended();}}});}"
                 + "function play(id){try{pl.unloadModule('captions');}catch(x){}pl.setVolume(80);pl.loadVideoById({videoId:id,startSeconds:6});}"
                 + "function stop(){try{pl.stopVideo();}catch(x){}}"
                 + "</script></body></html>";
         web.loadDataWithBaseURL("https://" + pkg, html, "text/html", "utf-8", null);
     }
 
-    /** The trailer (a YouTube id) across the tile, under its words (at index 'at'). */
-    void trailer(FrameLayout into, int at, String id) {
+    /**
+     * The trailer (a YouTube id) across the tile at index 'at', under the tile's picture (cover): YouTube's own logo,
+     * title, spinner and pause sign are never seen, as the picture lifts only while the trailer is playing.
+     */
+    void trailer(FrameLayout into, int at, String id, View... covers) {
         stop();
         warm();
         if (web == null) return;
         tile = into;
-        web.setAlpha(0f);
+        this.covers = covers;
+        revealed = false;
+        web.setAlpha(1f);
         into.addView(web, Math.min(at, into.getChildCount()), new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         if (ready) cue(id); else pending = id;
     }
@@ -158,6 +178,10 @@ final class TilePlayer {
     /** Off the tile: the trailer silenced (its page kept for the next), the channel's player let go. */
     void stop() {
         main.removeCallbacks(reveal);
+        // Moving on: the first picture (the poster, a tile's own) comes back at once; the rest belong to the page.
+        if (revealed && covers.length > 0 && covers[0] != null) { covers[0].animate().cancel(); covers[0].setAlpha(1f); }
+        revealed = false;
+        covers = new View[0];
         pending = null;
         if (web != null && web.getParent() instanceof ViewGroup) {
             web.evaluateJavascript("stop()", null);
