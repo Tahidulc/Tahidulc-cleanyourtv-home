@@ -299,12 +299,11 @@ final class DeliveryCard {
     static final int TESLA_BG = 0xFF151515, TESLA_TEXT = 0xFFFFFFFF, TESLA_GREY = 0xFF9A9A9A, TESLA_TRACK = 0xFF2E2E2E,
             TESLA_GREEN = 0xFF31C553, TESLA_BLUE = 0xFF3E6AE1;
 
-    /** A pill in the Tesla app's style: its near-black, a faint rim, the pills' round ends. */
+    /** A card in the Tesla app's style: its near-black to the very edge (no rim), the alerts' rounded corners. */
     private static LinearLayout teslaPill(Context c, float d) {
         GradientDrawable bg = new GradientDrawable();
         bg.setColor(TESLA_BG);
-        bg.setCornerRadius(px(d, 24));
-        bg.setStroke(Math.max(1, Math.round(d)), 0x26FFFFFF);
+        bg.setCornerRadius(px(d, 12));
         LinearLayout card = pill(c, d, bg);
         card.setPadding(px(d, 7), px(d, 4), px(d, 14), px(d, 4));
         card.setMinimumHeight(px(d, 36));
@@ -325,7 +324,7 @@ final class DeliveryCard {
         // The Tesla "T" in its red, leading the car's name, as the brand's mark.
         ImageView t = new ImageView(c);
         t.setImageResource(R.drawable.tesla_t);
-        head.addView(t, new LinearLayout.LayoutParams(px(d, 10), px(d, 10)));
+        head.addView(t, new LinearLayout.LayoutParams(px(d, 14), px(d, 14)));
         String name = Config.themeString(c, "tesla_name", Config.themeString(c, "tesla_model", "Model X"));
         head.addView(text(c, name, 11.5f, TESLA_TEXT, true), margins(d, 0, 5));
         if (battery >= 0) {

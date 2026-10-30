@@ -98,6 +98,7 @@ public class GoalWatchService extends Service {
     }
 
     private void play(String sound) {
+        if (replaying) return;   // an alert moved to its new place has already sounded
         Integer id = sound == null || sounds == null ? null : soundIds.get(sound);
         if (id != null) sounds.play(id, SOUND_VOLUME, SOUND_VOLUME, 1, 0, 1f);
     }
@@ -108,6 +109,7 @@ public class GoalWatchService extends Service {
         @Override public void onReceive(Context c, Intent i) {
             dreaming = Intent.ACTION_DREAMING_STARTED.equals(i.getAction());
             releaseHeld();
+            replace();
         }
     };
 
@@ -133,6 +135,48 @@ public class GoalWatchService extends Service {
             @Override public void paired() { main.post(() -> { if (pairingClose != null) pairingClose.run(); }); }
         });
         deliveries.start();
+        relane = () -> main.postDelayed(this::replace, 250);
+    }
+
+    // ---- Home in front or not: the alert on screen moves to its place there -----------------------------------
+
+    /** Home (MainActivity, v2) says it came to the front or went: run on any thread. */
+    private static volatile Runnable relane;
+
+    static void relane() {
+        Runnable r = relane;
+        if (r != null) r.run();
+    }
+
+    /** The alert showing: its queue entry, to show it again in its new place. Null once it has started closing. */
+    private Object[] current;
+    private boolean replaying;
+
+    /**
+     * Home came to the front or went while an alert showed: drawn for an app (silver, in the corner) it would sit
+     * wrongly on v2's Home, whose alerts take the score bar's place in the pills' glass, and the other way round. It
+     * is taken down at once and shown again from the start in the new place, without its sound.
+     */
+    private void replace() {
+        if (host == null || shown == null || hostOnLane == onLane()) return;
+        Object[] again = current;
+        if (watchClose != null) main.removeCallbacks(watchClose);
+        watchClose = null;
+        showingLineup = null;
+        host.setOnKeyListener(null);
+        host.removeAllViews();
+        try { getSystemService(WindowManager.class).removeView(host); } catch (Exception ignored) { }
+        host = null;
+        laneShown(false);
+        shown = null;
+        current = null;
+        if (again != null) queue.addFirst(again);
+        replaying = again != null;
+        try {
+            showNext();
+        } finally {
+            replaying = false;
+        }
     }
 
     // ---- delivery updates from the phone (DeliveryLink) ----------------------------------------------------
@@ -159,7 +203,7 @@ public class GoalWatchService extends Service {
         if ("car".equals(kind)) { showCar(u); return; }
         if ("home_eta".equals(kind)) {
             if (Config.themeFlag(this, "home_eta", false)) {
-                queue.addFirst(new Object[]{DeliveryCard.homeEta(this, u, glass(24 * getResources().getDisplayMetrics().density)), "reminder"});
+                queue.addFirst(new Object[]{DeliveryCard.homeEta(this, u, glass(CORNER_DP * getResources().getDisplayMetrics().density)), "reminder"});
                 showNext();
             }
             return;
@@ -167,7 +211,7 @@ public class GoalWatchService extends Service {
         if (!kind.isEmpty() && !"delivery".equals(kind)) return;   // something newer than this TV knows
         float d = getResources().getDisplayMetrics().density;
         // Ahead of the sports alerts waiting: an order's news is now or never.
-        queue.addFirst(new Object[]{DeliveryCard.food(this, u, glass(24 * d)), u.optInt("stage") == 4 ? "fulltime" : "reminder"});
+        queue.addFirst(new Object[]{DeliveryCard.food(this, u, glass(CORNER_DP * d)), u.optInt("stage") == 4 ? "fulltime" : "reminder"});
         showNext();
     }
 
@@ -179,7 +223,7 @@ public class GoalWatchService extends Service {
         String title = u.optString("title", "").trim(), status = u.optString("status", "").trim();
         if (title.isEmpty() && status.isEmpty()) return;
         float d = getResources().getDisplayMetrics().density;
-        queue.addFirst(new Object[]{DeliveryCard.car(this, u, glass(24 * d)), "reminder"});
+        queue.addFirst(new Object[]{DeliveryCard.car(this, u, glass(CORNER_DP * d)), "reminder"});
         showNext();
     }
 
@@ -668,10 +712,10 @@ public class GoalWatchService extends Service {
         parts.add(8);
         parts.add(new Pic(s.logos.get(index)));
         parts.add(4);
-        parts.add(bold(F1Results.code(s.top.get(index))));
-        parts.add(4);
+        parts.add(bold(s.top.get(index)));
+        parts.add(5);
         parts.add(s.isRace() ? "leads" : "goes P1");
-        if (s.isRace() && lap > 0) { parts.add(8); parts.add(new Small("LAP " + lap)); }
+        if (s.isRace() && lap > 0) { parts.add(8); parts.add(red("LAP " + lap)); }
         else { parts.add(8); parts.add(new Small(s.label)); }
         return parts;
     }
@@ -679,7 +723,7 @@ public class GoalWatchService extends Service {
     /** "LAP 30 · 1 [logo] ANT  2 [logo] VER  3 [logo] HAM". */
     private static List<Object> lapUpdate(F1Results.Session s, int lap) {
         List<Object> parts = f1Parts();
-        parts.add(bold("🏎  LAP " + lap));
+        parts.add(red("LAP " + lap));
         podium(parts, s);
         parts.add(8);
         parts.add(new Small(s.label));
@@ -705,20 +749,25 @@ public class GoalWatchService extends Service {
         return parts;
     }
 
-    /** The top three: position, team logo, code. */
+    /** The top three as Sky's F1 graphics write them: team badge, surname (the leader in bold), P1 · P2 · P3. */
     private static void podium(List<Object> parts, F1Results.Session s) {
-        int[] medal = {0xFFB8860B, 0xFF6B7280, 0xFF9A5B2E};
         for (int i = 0; i < Math.min(3, s.top.size()); i++) {
-            parts.add(i == 0 ? 10 : 12);
-            SpannableStringBuilder pos = new SpannableStringBuilder(String.valueOf(i + 1));
-            pos.setSpan(new StyleSpan(Typeface.BOLD), 0, pos.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-            pos.setSpan(new ForegroundColorSpan(medal[i]), 0, pos.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-            parts.add(pos);
-            parts.add(4);
+            parts.add(i == 0 ? 10 : 6);
+            if (i > 0) { parts.add(new Small("·")); parts.add(6); }
             parts.add(new Pic(s.logos.get(i)));
-            parts.add(3);
-            parts.add(F1Results.code(s.top.get(i)));
+            parts.add(5);
+            parts.add(i == 0 ? bold(s.top.get(i)) : s.top.get(i));
+            parts.add(5);
+            parts.add(new Small("P" + (i + 1)));
         }
+    }
+
+    /** Sky Sports F1's red, for the lap count. */
+    private static CharSequence red(String text) {
+        SpannableStringBuilder t = new SpannableStringBuilder(text);
+        t.setSpan(new StyleSpan(Typeface.BOLD), 0, t.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        t.setSpan(new ForegroundColorSpan(0xFFE10600), 0, t.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        return t;
     }
 
     // ---- news --------------------------------------------------------------------------------------
@@ -912,7 +961,11 @@ public class GoalWatchService extends Service {
      */
     private android.graphics.Bitmap leagueBitmap(String url, int px) {
         if (url == null) return null;
-        if (!premier(url)) return ScoresTicker.cachedLogo(this, lightLogo(url), px);
+        if (!premier(url)) {
+            // White lettering and stars (the Champions League's ball) in the pill's ink on the light glass.
+            android.graphics.Bitmap b = ScoresTicker.cachedLogo(this, lightLogo(url), px);
+            return b == null || onLane() ? b : inked(b);
+        }
         android.graphics.Bitmap full = ScoresTicker.cachedLogo(this, url.replace("/500-dark/", "/500/"), px * 2);
         return full == null ? null : lionOnly(full, onLane());
     }
@@ -956,9 +1009,9 @@ public class GoalWatchService extends Service {
         for (MoreSports.Result r : results) {
             String before = otherStates.put(r.id, r.state);
             if (!primedYet || before == null || before.equals(r.state)) continue;
-            if ("post".equals(r.state)) enqueueParts(resultLine(r), otherSound(r));
+            if ("post".equals(r.state)) enqueueParts(resultLine(r), otherSound(r), false, otherChannel(r));
             else if ("pre".equals(before) && "in".equals(r.state) && (r.mainEvent || "Final".equals(r.round))) {
-                enqueueParts(startLine(r), otherSound(r));
+                enqueueParts(startLine(r), otherSound(r), false, otherChannel(r));
             }
         }
     }
@@ -968,6 +1021,13 @@ public class GoalWatchService extends Service {
         float d = getResources().getDisplayMetrics().density;
         if ("UFC".equals(r.tour)) return new Pic(MoreSports.UFC_LOGO, true);
         return "WTA".equals(r.tour) ? Badges.tile(d, "WTA", 0xFF4B2683, 0xFFFFFFFF) : Badges.tile(d, "ATP", 0xFF0B2A5B, 0xFFFFFFFF);
+    }
+
+    /** Where tennis and the UFC are on in Britain: Sky Sports Tennis, and TNT Sports. */
+    private static TvGuide.Watch otherChannel(MoreSports.Result r) {
+        return "UFC".equals(r.tour)
+                ? new TvGuide.Watch(new ArrayList<>(Arrays.asList("TNT Sports 1", "TNT Sports 2")), ScoresTicker.skyLogo("3625", null))
+                : new TvGuide.Watch(new ArrayList<>(Arrays.asList("Sky Sports Tennis")), ScoresTicker.skyLogo("1284", null));
     }
 
     /** "ATP 🎾 [flag] Sinner bt [flag] Alcaraz 6-4 7-6 · SF"; "UFC [flag] Steele def. [flag] Gugnon KO/TKO · R1 3:54". */
@@ -982,7 +1042,7 @@ public class GoalWatchService extends Service {
         parts.add(4);
         parts.add(bold(r.winner));
         parts.add(5);
-        parts.add(ufc ? "def." : "bt");
+        parts.add(new Small(ufc ? "def." : "beats"));
         parts.add(5);
         parts.add(new Pic(r.loserFlag));
         parts.add(4);
@@ -1016,6 +1076,16 @@ public class GoalWatchService extends Service {
         parts.add(8);
         parts.add(new Small(r.event));
         return parts;
+    }
+
+    /** A finished match or fight for testMore, flags from ESPN's country set. */
+    private static MoreSports.Result sample(String tour, String winner, String wFlag, String loser, String lFlag, String score, String round, String event) {
+        MoreSports.Result r = new MoreSports.Result();
+        r.id = "test-" + tour; r.tour = tour; r.state = "post"; r.round = round; r.event = event; r.mainEvent = "UFC".equals(tour);
+        r.winner = winner; r.loser = loser; r.score = score;
+        r.winnerFlag = "https://a.espncdn.com/i/teamlogos/countries/500/" + wFlag + ".png";
+        r.loserFlag = "https://a.espncdn.com/i/teamlogos/countries/500/" + lFlag + ".png";
+        return r;
     }
 
     private static String roundTag(String round) {
@@ -1082,9 +1152,15 @@ public class GoalWatchService extends Service {
             List<MoreSports.Result> ufc = all || "ufc".equals(what) ? MoreSports.ufc() : new ArrayList<>();
             List<String[]> boxing = all || "boxing".equals(what) ? readNews(false, true) : new ArrayList<>();
             main.post(() -> {
-                for (MoreSports.Result r : tennis) if ("post".equals(r.state) && "Final".equals(r.round)) { enqueueParts(resultLine(r), otherSound(r)); break; }
+                MoreSports.Result final1 = null, main1 = null;
+                for (MoreSports.Result r : tennis) if ("post".equals(r.state) && "Final".equals(r.round)) { final1 = r; break; }
                 // The latest finished main event: next weekend's card has no result yet.
-                for (MoreSports.Result r : ufc) if (r.mainEvent && "post".equals(r.state)) { enqueueParts(startLine(r), otherSound(r)); enqueueParts(resultLine(r), otherSound(r)); break; }
+                for (MoreSports.Result r : ufc) if (r.mainEvent && "post".equals(r.state)) { main1 = r; break; }
+                // No final or main event in ESPN's feeds this week: made-up ones, to see the look.
+                if (final1 == null && (all || "tennis".equals(what))) final1 = sample("ATP", "Djokovic", "srb", "Humbert", "fra", "4-6 6-3 6-4", "Final", "Paris Masters");
+                if (main1 == null && (all || "ufc".equals(what))) main1 = sample("UFC", "Moicano", "bra", "Nolan", "irl", "KO/TKO · R2 3:12", "Main card", "UFC Fight Night");
+                if (final1 != null) enqueueParts(resultLine(final1), otherSound(final1), false, otherChannel(final1));
+                if (main1 != null) { enqueueParts(startLine(main1), otherSound(main1), false, otherChannel(main1)); enqueueParts(resultLine(main1), otherSound(main1), false, otherChannel(main1)); }
                 if (!boxing.isEmpty()) enqueueParts(newsLine(boxing.get(0)), "fight");
             });
         });
@@ -1110,7 +1186,7 @@ public class GoalWatchService extends Service {
         io.execute(() -> {
             android.graphics.Bitmap home = g.homeLogo == null ? null : ScoresTicker.cachedLogo(this, g.homeLogo, px);
             android.graphics.Bitmap away = g.awayLogo == null ? null : ScoresTicker.cachedLogo(this, g.awayLogo, px);
-            android.graphics.Bitmap league = leagueBitmap(g.leagueLogo, px);
+            android.graphics.Bitmap league = leagueBitmap(g.leagueLogo != null ? g.leagueLogo : leagueLogoFor(g), px);
             // While the game is on: where to watch it, for the pill's second step.
             Object[] watch = g.state == 0 ? watchOn(TvGuide.watch(getResources().getStringArray(R.array.football_tv_channels), g)) : null;
             main.post(() -> {
@@ -1118,6 +1194,24 @@ public class GoalWatchService extends Service {
                 showNext();
             });
         });
+    }
+
+    /** ESPN's competition logos by league (slug, or the short name the scores line uses), when a board gave none. */
+    private static final Map<String, Integer> LEAGUE_IDS = new HashMap<>();
+    static {
+        String[][] ids = {{"eng.1", "23"}, {"PL", "23"}, {"EPL", "23"}, {"eng.2", "24"}, {"CHAMP", "24"}, {"eng.fa", "40"},
+                {"FA CUP", "40"}, {"FAC", "40"}, {"eng.league_cup", "41"}, {"EFL", "41"}, {"CARABAO", "41"},
+                {"uefa.champions", "2"}, {"UCL", "2"}, {"uefa.europa", "2310"}, {"UEL", "2310"},
+                {"uefa.europa.conf", "20296"}, {"UECL", "20296"}, {"esp.1", "15"}, {"LALIGA", "15"}, {"ita.1", "12"},
+                {"SERIE A", "12"}, {"ger.1", "10"}, {"BUNDESLIGA", "10"}, {"fra.1", "9"}, {"LIGUE 1", "9"},
+                {"sco.1", "45"}, {"SPFL", "45"}};
+        for (String[] e : ids) LEAGUE_IDS.put(e[0], Integer.parseInt(e[1]));
+    }
+
+    private static String leagueLogoFor(ScoresTicker.Game g) {
+        Integer id = g.slug != null ? LEAGUE_IDS.get(g.slug) : null;
+        if (id == null && g.league != null) id = LEAGUE_IDS.get(g.league.toUpperCase(java.util.Locale.ROOT));
+        return id == null ? null : "https://a.espncdn.com/i/leaguelogos/soccer/500-dark/" + id + ".png";
     }
 
     /**
@@ -1200,8 +1294,7 @@ public class GoalWatchService extends Service {
                 ready.add(logo != null ? new ChipImg(onLane() ? logo : inked(logo)) : bold(((Chip) o).name));
             } else if (o instanceof Pic) {
                 Pic pic = (Pic) o;
-                ready.add(new Img(pic.url == null ? null : premier(pic.url) ? leagueBitmap(pic.url, px)
-                        : ScoresTicker.cachedLogo(this, pic.url, px * (pic.wide ? 2 : 1)), pic.wide));
+                ready.add(new Img(picture(pic, px), pic.wide));
             } else ready.add(o);
         }
         return ready;
@@ -1252,6 +1345,31 @@ public class GoalWatchService extends Service {
         return android.graphics.Bitmap.createBitmap(px, w, h, android.graphics.Bitmap.Config.ARGB_8888);
     }
 
+    /**
+     * A line's picture, fetched. A wordmark (wide) loses the empty margin around it: F1's and the UFC's logos come as
+     * squares with the mark in a thin band across the middle, which drew them tiny.
+     */
+    private android.graphics.Bitmap picture(Pic pic, int px) {
+        if (pic.url == null) return null;
+        if (premier(pic.url)) return leagueBitmap(pic.url, px);
+        android.graphics.Bitmap b = ScoresTicker.cachedLogo(this, pic.url, px * (pic.wide ? 4 : 1));
+        return pic.wide && b != null ? HomeV2.trim(b) : b;
+    }
+
+    /** A team's black mark (Mercedes' star) drawn light, so it shows on the dark F1 glass; colours stay. */
+    private static android.graphics.Bitmap lifted(android.graphics.Bitmap src) {
+        int w = src.getWidth(), h = src.getHeight();
+        int[] px = new int[w * h];
+        src.getPixels(px, 0, w, 0, 0, w, h);
+        for (int i = 0; i < px.length; i++) {
+            int c = px[i], a = c >>> 24;
+            int r = (c >> 16) & 0xFF, g = (c >> 8) & 0xFF, b = c & 0xFF;
+            int max = Math.max(r, Math.max(g, b)), min = Math.min(r, Math.min(g, b));
+            if (a > 40 && max < 90 && max - min < 40) px[i] = (c & 0xFF000000) | 0xE6E6E6;
+        }
+        return android.graphics.Bitmap.createBitmap(px, w, h, android.graphics.Bitmap.Config.ARGB_8888);
+    }
+
     /** Fetches the line's pictures, then queues it with its sound. */
     private void enqueueParts(List<Object> parts, String sound) {
         enqueueParts(parts, sound, false);
@@ -1259,9 +1377,14 @@ public class GoalWatchService extends Service {
 
     /** As enqueueParts; f1Live adds the "Watch on" step (Sky Sports F1 and the rest) after the line. */
     private void enqueueParts(List<Object> parts, String sound, boolean f1Live) {
+        enqueueParts(parts, sound, f1Live, null);
+    }
+
+    /** As enqueueParts, with the channel it is on (on), whose logo and OK close the line. */
+    private void enqueueParts(List<Object> parts, String sound, boolean f1Live, TvGuide.Watch on) {
         int px = Math.round(LOGO_DP * getResources().getDisplayMetrics().density);
         io.execute(() -> {
-            Object[] watch = null;
+            Object[] watch = on != null ? watchOn(on) : null;
             if (f1Live) {
                 ScoresTicker.Game f1 = new ScoresTicker.Game();
                 f1.leagueLogo = F1Results.F1_LOGO;
@@ -1272,8 +1395,7 @@ public class GoalWatchService extends Service {
             for (Object o : parts) {
                 if (o instanceof Pic) {
                     Pic pic = (Pic) o;
-                    ready.add(new Img(pic.url == null ? null : premier(pic.url) ? leagueBitmap(pic.url, px)
-                        : ScoresTicker.cachedLogo(this, pic.url, px * (pic.wide ? 2 : 1)), pic.wide));
+                    ready.add(new Img(picture(pic, px), pic.wide));
                 }
                 else ready.add(o);
             }
@@ -1384,6 +1506,11 @@ public class GoalWatchService extends Service {
     private android.graphics.drawable.Drawable glass(float radius) {
         // On v2's Home: the score pills' own clear glass, as the alert stands in their place.
         if (onLane()) return ScoresTicker.laneGlass(this, laneTint);
+        if (darkGlass) {
+            GradientDrawable dark = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0xF22A2C31, 0xF2141518});
+            dark.setCornerRadius(radius);
+            return dark;
+        }
         GradientDrawable base = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
                 frost ? new int[]{0xFFFBFCFE, 0xFFE6EAEF, 0xFFD3D9E1} : new int[]{0xFFE9ECF1, 0xFFB9BFC8});
         base.setCornerRadius(radius);
@@ -1431,8 +1558,10 @@ public class GoalWatchService extends Service {
     private void showNext() {
         if (shown != null || queue.isEmpty()) return;
         Object[] next = queue.poll();
+        current = next;
         boost = 1f;
         laneTint = 0;
+        darkGlass = false;
         if (next.length == 1 && next[0] instanceof F1Results.Race) {
             showRace((F1Results.Race) next[0]);
             return;
@@ -1452,7 +1581,11 @@ public class GoalWatchService extends Service {
             parts = (List<Object>) next[0];
             sound = (String) next[1];
             wide = true;
-            if ("f1".equals(sound)) laneTint = 0xFFE10600;
+            if ("f1".equals(sound)) {
+                laneTint = 0xFFE10600;
+                // Over an app F1 has Sky Sports F1's look: dark glass, white lettering, the lap in red.
+                darkGlass = !onLane();
+            }
             if (next.length == 3) watch = (Object[]) next[2];
             if (next.length == 5) {
                 sides = (ScoresTicker.Side[]) next[2];
@@ -1496,9 +1629,16 @@ public class GoalWatchService extends Service {
             }
             // The competition's logo closes the line; its short name when ESPN has no logo.
             Object league = next.length > 4 && next[4] != null ? next[4] : new Small(g.league);
-            parts = Arrays.asList(next[0], 10, next[2], 6, score, 6, next[3], 8, league);
+            // The competition opens the line, as on Sky: [competition] ⚽ Scorer 43' [crest] 1–1 [crest].
+            parts = Arrays.asList(league, 10, next[0], 10, next[2], 6, score, 6, next[3]);
             wide = false;
             if (next.length > 7) watch = (Object[]) next[7];
+        }
+        // Where to watch it closes the line itself: the channel's logo and the remote's OK, which opens it.
+        Object[] inline = watch != null && sides == null && livePage == null && !stillOnly() ? watch : null;
+        if (inline != null) {
+            parts = new ArrayList<>(parts);
+            parts.addAll(watchParts(inline));
         }
         float d = getResources().getDisplayMetrics().density;
         LinearLayout box = pillBox(parts, d);
@@ -1506,7 +1646,7 @@ public class GoalWatchService extends Service {
 
         // With line-ups to show, the window is sized for their page from the start: it never changes size.
         // Line-up pages are pills too: the same window as any wide line.
-        ensureHost(sides != null || livePage != null || wide ? 940 : 520, 46);
+        ensureHost(sides != null || livePage != null || wide || inline != null ? 940 : 520, 46);
         if (host == null) return;
         boolean lane = onLane();
         if (lane) box.setGravity(Gravity.CENTER);
@@ -1523,7 +1663,7 @@ public class GoalWatchService extends Service {
         }
         // A small glass dot pops in at the corner, the pill then stretches out to the right with its round ends kept
         // (an animated rounded outline, clipped in hardware), and only then does the text fade in.
-        final float radius = h / 2f;
+        final float radius = corner(h);
         final float[] visible = {h};
         ((RevealBox) box).visible = visible;
         box.setOutlineProvider(new android.view.ViewOutlineProvider() {
@@ -1583,89 +1723,63 @@ public class GoalWatchService extends Service {
             main.postDelayed(() -> flipPage(box, pages, 0, h), 6_500);
             return;
         }
-        if (watch != null && !stillOnly()) {
-            Object[] w = watch;
-            main.postDelayed(() -> watchStep(box, h, w), SHOW_MS + 400);
+        if (inline != null) {
+            offerWatch(box, h, inline);
             return;
         }
         main.postDelayed(() -> closePill(box, h, visible), SHOW_MS + 1_400);
     }
 
-    // ---- "Watch on": the alert's second step, OK to watch it in TiviMate --------------------------------------
+    // ---- "Watch on": the channel and OK at the end of the line, OK to watch it in TiviMate ------------------------
 
-    private static final long WATCH_MS = 9_000L;
     private Runnable watchClose;
 
     /**
-     * The alert flips to "WATCH ON" and the channel's logo, and for a few seconds OK on the remote opens TiviMate on
-     * that channel (the first of w's names the playlist has), the steps hidden under the helper's cover. The window
-     * takes the keys only while this step shows: OK watches, any other key closes it.
+     * The end of a line with somewhere to watch: the channel's logo (its white lettering in the pill's ink on the
+     * light glass) and this TV's own remote's OK button (a theme's "ok_button": tcl, streamer).
      */
     @SuppressWarnings("unchecked")
-    private void watchStep(LinearLayout old, int h, Object[] w) {
-        if (host == null || shown != old) return;
+    private List<Object> watchParts(Object[] w) {
         List<String> names = (List<String>) w[0];
         android.graphics.Bitmap logo = (android.graphics.Bitmap) w[1];
         List<Object> parts = new ArrayList<>();
-        parts.add(bold("▶  WATCH ON"));
-        parts.add(10);
-        // White lettering made for dark screens, in the pill's ink on its light glass (a theme's "logo_backing").
-        boolean ink = Config.themeFlag(this, "logo_backing", false) && !onLane();
+        parts.add(14);
+        boolean ink = !onLane() && !darkGlass;
         parts.add(logo != null ? new ChipImg(ink ? inked(logo) : logo) : bold(names.get(0)));
-        parts.add(12);
-        // "Press [OK] to watch", with this TV's own remote's OK button drawn (a theme's "ok_button": tcl, streamer).
+        parts.add(10);
         String remote = Config.themeString(this, "ok_button", "");
-        if (remote.isEmpty()) {
-            parts.add(new Small("OK to watch"));
-        } else {
-            parts.add(new Small("Press"));
-            parts.add(5);
-            parts.add(new android.graphics.drawable.BitmapDrawable(getResources(), okButton(remote, getResources().getDisplayMetrics().density)));
-            parts.add(5);
-            parts.add(new Small("to watch"));
-        }
-        float d = getResources().getDisplayMetrics().density;
-        LinearLayout page = pillBox(parts, d);
-        boolean lane = onLane();
-        if (lane) page.setGravity(Gravity.CENTER);
-        host.addView(page, new android.widget.FrameLayout.LayoutParams(
-                lane ? android.widget.FrameLayout.LayoutParams.MATCH_PARENT : android.widget.FrameLayout.LayoutParams.WRAP_CONTENT, h,
-                lane ? Gravity.TOP : Gravity.BOTTOM | Gravity.START));
-        shown = page;
-        // A pop as it comes up, so the change catches the eye.
-        if (calm()) {
-            host.removeView(old);
-        } else {
-            page.setTranslationY(h);
-            page.setAlpha(0f);
-            old.setLayerType(animLayer(), null);
-            old.animate().translationY(-h).alpha(0f).setDuration(380).withEndAction(() -> host.removeView(old)).start();
-            page.animate().translationY(0f).alpha(1f).setDuration(380).withEndAction(() -> {
-                page.setPivotX(h / 2f);
-                page.setPivotY(h / 2f);
-                page.animate().scaleX(1.06f).scaleY(1.06f).setDuration(140).withEndAction(() ->
-                        page.animate().scaleX(1f).scaleY(1f).setDuration(220)
-                                .setInterpolator(new android.view.animation.OvershootInterpolator(3f)).start()).start();
-            }).start();
-        }
+        parts.add(new android.graphics.drawable.BitmapDrawable(getResources(),
+                okButton(remote.isEmpty() ? "tcl" : remote, getResources().getDisplayMetrics().density, darkGlass)));
+        return parts;
+    }
+
+    /**
+     * While a line with a channel shows, OK on the remote opens TiviMate on that channel (the first of w's names the
+     * playlist has), the steps hidden under the helper's cover; any other key closes the alert. The window takes the
+     * keys only while it shows.
+     */
+    @SuppressWarnings("unchecked")
+    private void offerWatch(LinearLayout box, int h, Object[] w) {
+        List<String> names = (List<String>) w[0];
+        android.graphics.Bitmap logo = (android.graphics.Bitmap) w[1];
         takeKeys(true);
         host.setOnKeyListener((v, keyCode, event) -> {
             if (event.getAction() != android.view.KeyEvent.ACTION_DOWN) return true;
             boolean ok = keyCode == android.view.KeyEvent.KEYCODE_DPAD_CENTER || keyCode == android.view.KeyEvent.KEYCODE_ENTER
                     || keyCode == android.view.KeyEvent.KEYCODE_NUMPAD_ENTER || keyCode == android.view.KeyEvent.KEYCODE_BUTTON_A;
-            endWatch(page, h);
+            endWatch(box, h);
             if (ok) AppSearchService.tune(this, getString(R.string.scores_open_package), names, logo);
             return true;
         });
-        watchClose = () -> endWatch(page, h);
-        main.postDelayed(watchClose, WATCH_MS);
+        watchClose = () -> endWatch(box, h);
+        main.postDelayed(watchClose, SHOW_MS + 4_000);
     }
 
     /**
      * The remote's OK button, drawn small for "Press [OK] to watch": the TCL's black round button with OK in white in
      * its dark ring; the Google TV Streamer's plain pale button in its pale ring.
      */
-    private static android.graphics.Bitmap okButton(String remote, float d) {
+    private static android.graphics.Bitmap okButton(String remote, float d, boolean onDark) {
         int s = Math.round(22 * d);
         android.graphics.Bitmap b = android.graphics.Bitmap.createBitmap(s, s, android.graphics.Bitmap.Config.ARGB_8888);
         android.graphics.Canvas c = new android.graphics.Canvas(b);
@@ -1673,7 +1787,8 @@ public class GoalWatchService extends Service {
         float r = s / 2f;
         boolean streamer = "streamer".equalsIgnoreCase(remote);
         // The ring of the direction keys, then the button in it.
-        p.setColor(streamer ? 0xFFD9D6CF : 0xFF2B2D31);
+        // On dark glass the ring is lighter, so the black button still stands out.
+        p.setColor(streamer ? 0xFFD9D6CF : onDark ? 0xFF6B6E75 : 0xFF2B2D31);
         c.drawCircle(r, r, r, p);
         p.setColor(streamer ? 0xFFBDB9B0 : 0xFF55585E);
         p.setStyle(android.graphics.Paint.Style.STROKE);
@@ -1729,13 +1844,26 @@ public class GoalWatchService extends Service {
     /** Launcher v2's Home is the one in front: alerts take the score bar's place, its full width, centred. */
     static volatile boolean laneHome;
 
+    /**
+     * Over an app the alerts are Sky Glass's shape: a rounded rectangle, not a pill. On v2's Home they keep the
+     * round ends of the score pills whose place they take.
+     */
+    private static final float CORNER_DP = 12f;
+
+    private float corner(int h) {
+        return onLane() ? h / 2f : Math.min(h / 2f, CORNER_DP * getResources().getDisplayMetrics().density);
+    }
+
+    /** Sky Sports F1's dark glass, for an F1 line over an app. */
+    private boolean darkGlass;
+
     private boolean onLane() {
         return laneHome && homeInFront && !dreaming;
     }
 
     /** The alerts' dark ink on their silver glass; white, at the same strength, on the Home pills' clear glass. */
     private int ink(int c) {
-        return onLane() ? (c & 0xFF000000) | 0xFFFFFF : c;
+        return onLane() || darkGlass ? (c & 0xFF000000) | 0xFFFFFF : c;
     }
 
     /** v2's Home listens: true while an alert holds the score bar's place (the pills step aside), false after. */
@@ -1815,12 +1943,13 @@ public class GoalWatchService extends Service {
         host = null;
         laneShown(false);
         shown = null;
+        current = null;
         showNext();
     }
 
     /** The next line-up page slides up into the pill's place; after the last, the pill closes as usual. */
     private void flipPage(LinearLayout old, List<List<Object>> pages, int index, int h) {
-        if (host == null) return;
+        if (host == null || shown != old) return;
         if (stillOnly() && showingLineup != null) {
             // Play was pressed while the pages turned: they stop, and the line-ups wait again.
             held = showingLineup;
@@ -1852,7 +1981,7 @@ public class GoalWatchService extends Service {
         page.setTranslationY(h);
         page.setAlpha(0f);
         old.setLayerType(animLayer(), null);
-        old.animate().translationY(-h).alpha(0f).setDuration(380).withEndAction(() -> host.removeView(old)).start();
+        old.animate().translationY(-h).alpha(0f).setDuration(380).withEndAction(() -> { if (host != null) host.removeView(old); }).start();
         page.animate().translationY(0f).alpha(1f).setDuration(380).start();
         main.postDelayed(() -> flipPage(page, pages, index + 1, h), PAGE_MS);
     }
@@ -1932,7 +2061,7 @@ public class GoalWatchService extends Service {
     }
 
     private void outline(LinearLayout box, int h, float[] visible) {
-        final float radius = h / 2f;
+        final float radius = corner(h);
         if (box instanceof RevealBox) ((RevealBox) box).visible = visible;
         box.setOutlineProvider(new android.view.ViewOutlineProvider() {
             @Override public void getOutline(View v, android.graphics.Outline o) {
@@ -1947,6 +2076,9 @@ public class GoalWatchService extends Service {
      * shrinking outline clips it from the right while it fades), then the dot pops away.
      */
     private void closePill(LinearLayout box, int h, float[] visible) {
+        // Moved to Home or away meanwhile: this one has gone, and its copy closes on its own.
+        if (shown != box) return;
+        current = null;
         if (calm()) {
             removeHost();
             return;
@@ -1967,6 +2099,7 @@ public class GoalWatchService extends Service {
                     @Override public void onAnimationEnd(android.animation.Animator a) {
                         box.animate().alpha(0f).scaleX(0.3f).scaleY(0.3f).setDuration(260)
                                 .setInterpolator(new android.view.animation.AnticipateInterpolator(1.5f)).withEndAction(() -> {
+                            if (host == null || shown != box) return;
                             host.removeView(box);
                             // Remove the window itself too: even an empty one over the video can show as a faint
                             // box where the TV processes the picture differently under it.
@@ -1990,7 +2123,7 @@ public class GoalWatchService extends Service {
         box.setGravity(Gravity.CENTER_VERTICAL);
         int h = Math.round(PILL_DP * d);
         for (Object part : parts) if (part instanceof Tint) laneTint = ((Tint) part).colour;
-        box.setBackground(glass(h / 2f));
+        box.setBackground(glass(corner(h)));
         int pad = Math.round(14 * d);
         box.setPadding(pad, 0, pad, 0);
         int crestPx = Math.round(CREST_DP * boost * d);
@@ -2002,8 +2135,15 @@ public class GoalWatchService extends Service {
                 box.addView(crest((android.graphics.Bitmap) part, d), sized(crestPx, gap));
             } else if (part instanceof Img) {
                 Img img = (Img) part;
+                if (darkGlass && img.bitmap != null) img = new Img(lifted(img.bitmap), img.wide);
                 LinearLayout.LayoutParams lp = sized(crestPx, gap);
                 if (img.wide) lp.width = crestPx * 2;
+                // A long, low wordmark (F1's) is drawn as wide as it needs to stand nearly as tall as the crests.
+                if (img.wide && img.bitmap != null && img.bitmap.getWidth() >= 2 * img.bitmap.getHeight()) {
+                    float aspect = img.bitmap.getWidth() / (float) img.bitmap.getHeight();
+                    lp.width = Math.round(Math.min(crestPx * 4.2f, crestPx * 0.9f * aspect));
+                    lp.rightMargin = Math.round(4 * d);
+                }
                 box.addView(crest(img.bitmap, d), lp);
             } else if (part instanceof android.graphics.drawable.Drawable) {
                 android.graphics.drawable.Drawable mark = (android.graphics.drawable.Drawable) part;
@@ -2114,9 +2254,11 @@ public class GoalWatchService extends Service {
     private void showRace(F1Results.Race race) {
         if (shown != null || race.top.isEmpty()) { showNext(); return; }
         float d = getResources().getDisplayMetrics().density;
+        // Sky Sports F1's dark glass over an app, as the other F1 alerts.
+        darkGlass = !onLane();
         LinearLayout panel = new LinearLayout(this);
         panel.setOrientation(LinearLayout.VERTICAL);
-        panel.setBackground(glass(16 * d));
+        panel.setBackground(glass(CORNER_DP * d));
         int pad = Math.round(14 * d);
         panel.setPadding(pad, Math.round(9 * d), pad, Math.round(10 * d));
         SpannableStringBuilder head = new SpannableStringBuilder("🏁  " + race.name.toUpperCase() + "  ·  RESULT");
@@ -2128,7 +2270,7 @@ public class GoalWatchService extends Service {
         android.widget.ImageView f1Logo = crest(null, d);
         f1Logo.setTag(F1Results.F1_LOGO);
         LinearLayout.LayoutParams llp = sized(Math.round(CREST_DP * d), 0);
-        llp.width = Math.round(CREST_DP * 2 * d);
+        llp.width = Math.round(CREST_DP * 3.6f * d);
         heading.addView(f1Logo, llp);
         heading.addView(text(head, TEXT_SP, ink(0xFF1A1D24)), gap(Math.round(8 * d)));
         panel.addView(heading);
@@ -2162,8 +2304,10 @@ public class GoalWatchService extends Service {
             if (url == null) continue;
             int size = F1Results.F1_LOGO.equals(url) ? px * 2 : px;
             io.execute(() -> {
-                android.graphics.Bitmap b = ScoresTicker.cachedLogo(this, url, size);
-                if (b != null) main.post(() -> v.setImageBitmap(b));
+                android.graphics.Bitmap got = ScoresTicker.cachedLogo(this, url, F1Results.F1_LOGO.equals(url) ? size * 2 : size);
+                // F1's logo comes as a square with the mark in a band across it: cut to the mark.
+                android.graphics.Bitmap b = F1Results.F1_LOGO.equals(url) ? HomeV2.trim(got) : got;
+                if (b != null) main.post(() -> v.setImageBitmap(darkGlass ? lifted(b) : b));
             });
         }
         ensureHost(840, 116);
@@ -2174,7 +2318,7 @@ public class GoalWatchService extends Service {
         shown = panel;
         play("f1");
         if (calm()) {
-            main.postDelayed(this::removeHost, 15_000);
+            main.postDelayed(() -> { if (shown == panel) removeHost(); }, 15_000);
             return;
         }
         panel.setAlpha(0f);
@@ -2184,8 +2328,11 @@ public class GoalWatchService extends Service {
                 .setInterpolator(new android.view.animation.DecelerateInterpolator(1.6f))
                 .withEndAction(() -> panel.setLayerType(View.LAYER_TYPE_NONE, null)).start();
         main.postDelayed(() -> {
+            if (shown != panel) return;
+            current = null;
             panel.setLayerType(animLayer(), null);
             panel.animate().alpha(0f).setDuration(450).withEndAction(() -> {
+                if (host == null || shown != panel) return;
                 host.removeView(panel);
                 try { getSystemService(WindowManager.class).removeView(host); } catch (Exception ignored) { }
                 host = null;

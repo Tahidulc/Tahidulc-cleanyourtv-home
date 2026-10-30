@@ -444,7 +444,8 @@ final class PagesV2 {
                 // The focused row takes the first row's place, under the tabs; the next one peeks in below it.
                 int top = onTabs ? 0 : Math.max(0, Math.min(row, rowY.length - 1));
                 column.animate().translationY(-px(rowY[top] - rowY[0])).setDuration(320).setInterpolator(HomeV2.SKY).start();
-                if (tabBar != null) ((View) tabBar.getParent()).animate().alpha(top > 0 ? 0f : 1f).setDuration(200).start();
+                // Down in the posters the tabs make way for the whole description; Up to them brings them back.
+                if (tabBar != null) ((View) tabBar.getParent()).animate().alpha(onTabs ? 1f : 0f).setDuration(200).start();
                 for (int ri = 0; ri < rows.size(); ri++) {
                     float a = ri < top ? 0f : 1f;
                     rows.get(ri).view.animate().alpha(a).setDuration(200).start();
@@ -452,6 +453,7 @@ final class PagesV2 {
                 }
             }
             if (tabBar != null) moveLens();
+            h.heroRoom(rowY.length > 2 && !onTabs);
         }
 
         /** Each title's marks from the store, once looked up (empty: the store had none). */

@@ -1384,6 +1384,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     protected void onPause() {
         GoalWatchService.homeInFront = false;
         GoalWatchService.laneHome = false;
+        GoalWatchService.relane();   // an alert in the score bar's place goes back to the corner over the app
         super.onPause();
         if (v2 != null) return;
         root.removeCallbacks(showIdleClock);

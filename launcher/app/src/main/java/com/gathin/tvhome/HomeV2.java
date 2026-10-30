@@ -438,12 +438,12 @@ final class HomeV2 {
         LinearLayout.LayoutParams mlp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         mlp.bottomMargin = px(10);
         htext.addView(hMeta, mlp);
-        hText = text(23, regular, 0xEBFFFFFF);
-        hText.setMaxLines(2);
+        hText = text(22, regular, 0xEBFFFFFF);
+        hText.setMaxLines(3);
         hText.setEllipsize(TextUtils.TruncateAt.END);
         hText.setShadowLayer(px(10), 0, px(2), 0x73000000);
         htext.addView(hText, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        add(htext, 216, 226, 900, 300);
+        add(htext, 216, 226, 1060, 340);
     }
 
     private void buildRail() {
@@ -484,8 +484,8 @@ final class HomeV2 {
         add(mark, 80, 300 + 16, 5, 32);
     }
 
-    /** The section boxes: all six on screen, as wide as they go between the rail's edge and the top bar's. */
-    private static final int CAT_X = 96, CAT_GAP = 16, CAT_W = (1824 - CAT_X - 5 * CAT_GAP) / 6, CAT_Y = 886, CAT_H = 160;
+    /** The section boxes: all six on screen, about as wide as the top bar, centred on the screen. */
+    private static final int CAT_GAP = 16, CAT_W = 275, CAT_X = (1920 - 6 * CAT_W - 5 * CAT_GAP) / 2, CAT_Y = 886, CAT_H = 160;
 
     private void buildCats() {
         int x = CAT_X, w = CAT_W;
@@ -533,6 +533,8 @@ final class HomeV2 {
             scores.cover(false);
             GoalWatchService.laneListener = scores::cover;
         }
+        // An alert that came up over an app or the screensaver moves into the score bar's place.
+        GoalWatchService.relane();
         if (Config.themeFlag(a, "alerts_everywhere", false)) GoalWatchService.startEverywhere(a);
         // Rows age: what is on now and the apps' own rows are read again when Home comes back after a while.
         Long at = rowsAt.get(mode);
@@ -744,9 +746,11 @@ final class HomeV2 {
     private void enterPage() {
         if (page == null) return;
         preview = false;
-        page.layer.setClipBounds(null);
+        // Movies and TV shows keep the boxes under them: their rows scroll above the boxes, cut off there.
+        boolean keep = keepsBoxes(pageWhich);
+        if (!keep) page.layer.setClipBounds(null);
         List<View> more = new ArrayList<>();
-        if (pageWhich >= 2) more.addAll(catViews);
+        if (pageWhich >= 2 && !keep) more.addAll(catViews);
         for (View v : more) v.animate().alpha(0f).setDuration(180).withEndAction(() -> v.setVisibility(View.INVISIBLE)).start();
         hidden.addAll(more);
         page.entered();
@@ -763,15 +767,20 @@ final class HomeV2 {
                 : which == 5 ? new PagesV2.AppsPage(this) : new PagesV2.SportPage(this);
         boolean sport = which == 4 || which == 5, full = which == 2 || which == 3;
         List<View> away = new ArrayList<>(Arrays.asList(label, viewport));
-        if ((full || sport) && !hover) away.addAll(catViews);
+        if ((full || sport) && !hover && !keepsBoxes(which)) away.addAll(catViews);
         if (full) { away.addAll(railViews); away.add(root.findViewWithTag("mark")); }
         if (sport) { away.add(htext); away.add(heroA); away.add(heroB); }
         // Faded views go INVISIBLE too, so the GPU stops drawing them under the page.
         for (View v : away) if (v != null) v.animate().alpha(0f).setDuration(180).withEndAction(() -> v.setVisibility(View.INVISIBLE)).start();
         hidden = away;
         page.open();
-        if (hover) clipAboveBoxes();
+        if (hover || keepsBoxes(which)) clipAboveBoxes();
         paint();
+    }
+
+    /** Discover, Movies and TV shows: the boxes stay on screen under them, the page cut off just above. */
+    private static boolean keepsBoxes(int which) {
+        return which >= 1 && which <= 3;
     }
 
     /** A section showing while the boxes keep the focus is cut off just above them. */
@@ -967,6 +976,14 @@ final class HomeV2 {
         g.setCornerRadius(Math.max(0, px(r) - w / 2f));
         g.setStroke(w, Color.WHITE);
         return new android.graphics.drawable.InsetDrawable(g, (w + 1) / 2);
+    }
+
+    /** Down in a page's posters, its tabs out of the way (room): the hero's description runs to five lines, else two. */
+    private boolean heroRoom;
+
+    void heroRoom(boolean room) {
+        heroRoom = room;
+        if (page != null) hText.setMaxLines(room ? 5 : 2);
     }
 
     // ---- the row ---------------------------------------------------------------------------------------------------
@@ -1253,9 +1270,9 @@ final class HomeV2 {
             image(l, t.service, px(60));
         }
         hSpecs.setVisibility(hSpecs.getChildCount() == 0 ? View.GONE : View.VISIBLE);
-        // The line takes room: under a page's hero (rows lower down) the words keep their place; on Home, whose row
-        // starts higher, the description gives up its second line instead of reaching the row's name.
-        hText.setMaxLines(hSpecs.getChildCount() > 0 && page == null ? 1 : 2);
+        // As much of the description as fits above the row: three lines on Home, five under a page's hero (its rows
+        // start lower down); with the marks' line taking room on Home, two.
+        hText.setMaxLines(page != null ? (heroRoom ? 5 : 2) : hSpecs.getChildCount() > 0 ? 2 : 3);
         if (t.tmdbId != 0 && t.duration == null && !tmdbKey.isEmpty()) {
             String[] have = details.get(t.tmdbId);
             if (have != null) { apply(t, have); if (heroTile == t && (t.duration != null || t.service != null)) specs(t); return; }
