@@ -36,6 +36,15 @@ public class WatchHistory extends NotificationListenerService {
     private static final String[] SKIP = {"com.spotify", "music", "com.gathin.tvhome", "ar.tvplayer.tv", "bluetooth", "com.google.android.youtube"};
     /** Shorter than this is a clip or a song, not a film or an episode. */
     private static final long MIN_MS = 15 * 60_000L;
+    /** Sport is kept from five minutes: a match's highlights, a race's replay in parts. */
+    private static final long MIN_SPORT_MS = 5 * 60_000L;
+    /** The apps that are all sport (Sky Sports, TNT Sports, DAZN, F1 TV, UEFA.tv and the like), by a part of their name. */
+    private static final String[] SPORT_APPS = {"sport", "dazn", "formula", "f1tv", "uefa", "premierleague", "ufc", "nba", "nfl", "tnt"};
+    /** A title that is sport whatever app plays it. */
+    private static final java.util.regex.Pattern SPORT_WORDS = java.util.regex.Pattern.compile(
+            "(?i).*(grand prix|highlights|match of the day|premier league|champions league|europa league|"
+                    + "fa cup|carabao|qualifying|sprint race|\\bf1\\b|formula 1|ufc \\d|fight night|boxing|wimbledon|"
+                    + "\\bnfl\\b|\\bnba\\b|super bowl|six nations|the ashes).*");
     private static final long TICK_MS = 30_000L;
     private static final int KEEP = 60;
 
@@ -82,20 +91,35 @@ public class WatchHistory extends NotificationListenerService {
         String title = md.getString(MediaMetadata.METADATA_KEY_TITLE);
         if (title == null || title.trim().isEmpty()) title = md.getString(MediaMetadata.METADATA_KEY_DISPLAY_TITLE);
         long dur = md.getLong(MediaMetadata.METADATA_KEY_DURATION);
-        if (title == null || title.trim().isEmpty() || dur < MIN_MS) return;
+        if (title == null || title.trim().isEmpty()) return;
         String sub = md.getString(MediaMetadata.METADATA_KEY_DISPLAY_SUBTITLE);
         if (sub == null) sub = md.getString(MediaMetadata.METADATA_KEY_ARTIST);
+        sub = sub == null ? "" : sub.trim();
+        boolean sport = sport(pkg, title + " " + sub);
+        if (dur < (sport ? MIN_SPORT_MS : MIN_MS)) return;
+        // The app's own picture for it, where it gives one as a web address.
+        String art = null;
+        for (String k : new String[]{MediaMetadata.METADATA_KEY_ART_URI, MediaMetadata.METADATA_KEY_ALBUM_ART_URI, MediaMetadata.METADATA_KEY_DISPLAY_ICON_URI}) {
+            String u = md.getString(k);
+            if (u != null && u.startsWith("http")) { art = u; break; }
+        }
         long pos = st.getPosition() + (long) ((SystemClock.elapsedRealtime() - st.getLastPositionUpdateTime()) * st.getPlaybackSpeed());
-        save(this, pkg, title.trim(), sub == null ? "" : sub.trim(), Math.max(0, Math.min(dur, pos)), dur);
+        save(this, pkg, title.trim(), sub, Math.max(0, Math.min(dur, pos)), dur, sport, art);
+    }
+
+    static boolean sport(String pkg, String words) {
+        String p = pkg.toLowerCase(Locale.ROOT);
+        for (String s : SPORT_APPS) if (p.contains(s)) return true;
+        return SPORT_WORDS.matcher(words).matches();
     }
 
     // ---- the store ---------------------------------------------------------------------------------------------
 
     static final class Entry {
-        String pkg, title, sub, show, poster, backdrop, overview, year;
+        String pkg, title, sub, show, poster, backdrop, overview, year, art;
         long pos, dur, at;
-        int tmdbId;   // 0 not looked up yet, -1 not found
-        boolean tv;
+        int tmdbId;   // 0 not looked up yet, -1 not found (or sport, never looked up)
+        boolean tv, sport;
 
         float progress() {
             return dur <= 0 ? 0f : Math.min(1f, pos / (float) dur);
@@ -131,6 +155,8 @@ public class WatchHistory extends NotificationListenerService {
                 e.backdrop = o.optString("backdrop", null);
                 e.overview = o.optString("overview", null);
                 e.year = o.optString("year", null);
+                e.art = o.optString("art", null);
+                e.sport = o.optBoolean("sport");
                 out.add(e);
             }
         } catch (Exception ignored) {
@@ -153,6 +179,8 @@ public class WatchHistory extends NotificationListenerService {
                 if (e.backdrop != null) o.put("backdrop", e.backdrop);
                 if (e.overview != null) o.put("overview", e.overview);
                 if (e.year != null) o.put("year", e.year);
+                if (e.art != null) o.put("art", e.art);
+                if (e.sport) o.put("sport", true);
                 a.put(o);
             }
             File f = file(c);
@@ -165,7 +193,7 @@ public class WatchHistory extends NotificationListenerService {
     }
 
     /** Where this film or episode is up to, newest first; the same title again replaces its old place. */
-    private static synchronized void save(Context c, String pkg, String title, String sub, long pos, long dur) {
+    private static synchronized void save(Context c, String pkg, String title, String sub, long pos, long dur, boolean sport, String art) {
         List<Entry> list = new ArrayList<>(load(c));
         Entry e = null;
         for (Entry x : list) if (x.pkg.equals(pkg) && x.title.equals(title) && x.sub.equals(sub)) { e = x; break; }
@@ -174,9 +202,14 @@ public class WatchHistory extends NotificationListenerService {
             e.pkg = pkg;
             e.title = title;
             e.sub = sub;
+            android.util.Log.i("WatchHistory", "watching in " + pkg + (sport ? " (sport)" : ""));
         } else {
             list.remove(e);
         }
+        e.sport = sport;
+        // Sport is not a film or series: never looked up on TMDB.
+        if (sport && e.tmdbId == 0) e.tmdbId = -1;
+        if (art != null) e.art = art;
         e.pos = pos;
         e.dur = dur;
         e.at = System.currentTimeMillis();
@@ -187,7 +220,7 @@ public class WatchHistory extends NotificationListenerService {
     /** adb only (through GoalWatchService's test extras): a sample entry, or (pkg null) all of them cleared. */
     static void test(Context c, String pkg, String title, String sub, float share, long dur) {
         if (pkg == null) { store(c, new ArrayList<>()); return; }
-        save(c, pkg, title, sub, (long) (dur * share), dur);
+        save(c, pkg, title, sub, (long) (dur * share), dur, sport(pkg, title + " " + sub), null);
     }
 
     /** "Stranger Things: S4:E3 The Monster" or a subtitle like "S4 E3": the series and that it is one. */
@@ -253,11 +286,11 @@ public class WatchHistory extends NotificationListenerService {
      * Continue watching for Movies (tv false) or TV shows (tv true): one poster per film or series, the newest
      * first, each carrying how far in it is and the app it was watched in.
      */
-    static List<PagesV2.Title> titles(Context c, boolean tv) {
+    static List<PagesV2.Title> titles(Context c, Boolean tv) {
         List<PagesV2.Title> out = new ArrayList<>();
         java.util.Set<Integer> seen = new java.util.HashSet<>();
         for (Entry e : load(c)) {
-            if (e.tmdbId <= 0 || e.tv != tv || !inProgress(e) || !seen.add(e.tmdbId) || e.poster == null) continue;
+            if (e.tmdbId <= 0 || (tv != null && e.tv != tv) || !inProgress(e) || !seen.add(e.tmdbId) || e.poster == null) continue;
             PagesV2.Title t = new PagesV2.Title();
             t.id = e.tmdbId;
             t.tv = e.tv;
@@ -270,6 +303,13 @@ public class WatchHistory extends NotificationListenerService {
             t.app = e.pkg;
             out.add(t);
         }
+        return out;
+    }
+
+    /** Sport started and not finished in any app, the newest first: for the Sports page's own Continue Watching. */
+    static List<Entry> sports(Context c) {
+        List<Entry> out = new ArrayList<>();
+        for (Entry e : load(c)) if (e.sport && inProgress(e) && out.size() < 12) out.add(e);
         return out;
     }
 

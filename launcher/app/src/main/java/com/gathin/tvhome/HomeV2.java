@@ -357,7 +357,16 @@ final class HomeV2 {
         add(clock, 96, 92, 1100, 160);
         weatherLine = new WeatherLine(weather, a.getString(R.string.weather_latitude), a.getString(R.string.weather_longitude),
                 a.getString(R.string.weather_place));
+        // A button too, as on v1: the first of the top row (Left from the Wi-Fi pill), OK opens the weather card.
+        weatherPanel = new WeatherPanel(this, a.getString(R.string.weather_latitude), a.getString(R.string.weather_longitude),
+                a.getString(R.string.weather_place));
+        weatherView = weather;
+        weather.setTag((Runnable) () -> weatherPanel.show());
+        topViews.add(weather);
     }
+
+    private WeatherPanel weatherPanel;
+    private TextView weatherView;
 
     private void buildButtons() {
         LinearLayout bar = new LinearLayout(a);
@@ -469,7 +478,8 @@ final class HomeV2 {
         hText.setMaxLines(3);
         hText.setEllipsize(TextUtils.TruncateAt.END);
         hText.setShadowLayer(px(10), 0, px(2), 0x73000000);
-        htext.addView(hText, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        // The description in a narrower column than the title: a long one wraps before it reaches the picture.
+        htext.addView(hText, new LinearLayout.LayoutParams(px(760), ViewGroup.LayoutParams.WRAP_CONTENT));
         add(htext, 216, 226, 1060, 340);
     }
 
@@ -511,8 +521,8 @@ final class HomeV2 {
         add(mark, 80, 300 + 16, 5, 32);
     }
 
-    /** The section boxes: all six on screen, lined up under the row of tiles (216 to 1824). */
-    private static final int CAT_GAP = 14, CAT_W = 256, CAT_X = 216 + (1608 - 6 * CAT_W - 5 * CAT_GAP) / 2, CAT_Y = 886, CAT_H = 160;
+    /** The section boxes: all six on screen, lined up under the row of tiles (216 to 1824), tall enough to meet it. */
+    private static final int CAT_GAP = 14, CAT_W = 256, CAT_X = 216 + (1608 - 6 * CAT_W - 5 * CAT_GAP) / 2, CAT_Y = 836, CAT_H = 210;
 
     private void buildCats() {
         int x = CAT_X, w = CAT_W;
@@ -532,11 +542,11 @@ final class HomeV2 {
             ImageView ic = new ImageView(a);
             ic.setImageResource(CAT_ICONS[i]);
             ic.setColorFilter(Color.WHITE);
-            in.addView(ic, new LinearLayout.LayoutParams(px(40), px(40)));
-            TextView t = text(26, regular, Color.WHITE);
+            in.addView(ic, new LinearLayout.LayoutParams(px(50), px(50)));
+            TextView t = text(28, regular, Color.WHITE);
             t.setText(CAT_NAMES[i]);
             LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            tlp.topMargin = px(10);
+            tlp.topMargin = px(14);
             in.addView(t, tlp);
             box.addView(in, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
             add(box, x, CAT_Y, w, CAT_H);
@@ -580,6 +590,7 @@ final class HomeV2 {
         GoalWatchService.laneHome = false;
         GoalWatchService.laneListener = null;
         weatherLine.stop();
+        if (weatherPanel != null) weatherPanel.hide();
         if (scores != null) scores.stop();
         main.removeCallbacks(network);
     }
@@ -614,6 +625,7 @@ final class HomeV2 {
 
     /** All keys come here first; true when v2 used it. */
     boolean key(KeyEvent e) {
+        if (weatherPanel != null && weatherPanel.isOpen()) return weatherPanel.key(e);
         if (guide.isOpen()) return guide.key(e);
         if (page != null && !preview && !parked) {
             if (e.getKeyCode() == KeyEvent.KEYCODE_BACK) {
@@ -999,7 +1011,7 @@ final class HomeV2 {
             boolean on = zone == Z_TOP && i == topIdx;
             boolean vpnOn = v == vpn && vpnUp;
             if (!restyle(v, (on ? 1 : 0) | (vpnOn ? 2 : 0))) continue;
-            GradientDrawable b = fill(33, on ? 0xEBFFFFFF : vpnOn ? 0x3D9B5CFF : GLASS);
+            GradientDrawable b = fill(v == weatherView ? 25 : 33, on ? 0xEBFFFFFF : vpnOn ? 0x3D9B5CFF : GLASS);
             b.setStroke(px(1.5f), on ? Color.WHITE : vpnOn ? 0xB3C4A8FF : GLASS_LINE);
             v.setBackground(b);
             int ink = on ? 0xFF1A1D24 : Color.WHITE;
@@ -1008,7 +1020,13 @@ final class HomeV2 {
                 else ((ImageView) v).setColorFilter(ink);
             } else if (v instanceof TextView) {
                 ((TextView) v).setTextColor(ink);
-                for (Drawable d : ((TextView) v).getCompoundDrawables()) if (d != null) d.setTint(ink);
+                // The weather's icon keeps its own colours, darkened only on the white of the focus.
+                for (Drawable d : ((TextView) v).getCompoundDrawables()) {
+                    if (d == null) continue;
+                    // Its own copy: the same icon drawn elsewhere (the weather card's hours) keeps its colours.
+                    d = d.mutate();
+                    if (v == weatherView && !on) d.setTintList(null); else d.setTint(ink);
+                }
             }
         }
     }
@@ -1578,29 +1596,33 @@ final class HomeV2 {
      * One mark, drawn as Sky draws "HD": letters in a thin white outline. Subtitles' "S" is filled white; an age rating
      * is a filled square in the BBFC's colour.
      */
+    /** The marks' boxes: one height for the worded ones (4K UHD, 5.1) and the logos (HDR10, Dolby Vision) alike. */
+    private static final int MARK_H = 28;
+
     private View mark(String m) {
-        // The formats with logos of their own (Dolby's, HDR10's): the logo, in white, at the marks' height.
-        // Dolby's double-D with Vision over Atmos: the size of the 4K UHD and HDR10 marks beside it.
-        if (m.equals("DOLBY VISION ATMOS")) {
-            ImageView v = new ImageView(a);
-            v.setImageResource(R.drawable.fmt_dolby_vision_atmos);
-            v.setAdjustViewBounds(true);
-            v.setScaleType(ImageView.ScaleType.FIT_CENTER);
-            v.setMaxHeight(px(29));
-            return v;
-        }
+        // The formats with logos of their own (Dolby's, HDR10's): the logo in white, inside the same outlined box as
+        // 4K UHD and 5.1, at the same height. Dolby Vision with Atmos is Dolby's one stacked badge, a little taller
+        // inside its box.
         int logo = m.equals("DOLBY VISION ATMOS") ? R.drawable.fmt_dolby_vision_atmos
                 : m.equals("DOLBY VISION") ? R.drawable.fmt_dolby_vision : m.equals("DOLBY ATMOS") ? R.drawable.fmt_dolby_atmos
                 : m.equals("HDR10+") ? R.drawable.fmt_hdr10plus : m.equals("HDR10") ? R.drawable.fmt_hdr10
                 : m.equals("DOLBY") ? R.drawable.fmt_dolby : 0;
         if (logo != 0) {
+            FrameLayout box = new FrameLayout(a);
+            GradientDrawable g = new GradientDrawable();
+            g.setCornerRadius(px(4));
+            g.setStroke(Math.max(1, px(1.5f)), 0xD9FFFFFF);
+            box.setBackground(g);
+            box.setPadding(px(8), 0, px(8), 0);
+            box.setMinimumHeight(px(MARK_H));
             ImageView v = new ImageView(a);
             v.setImageResource(logo);
             v.setAdjustViewBounds(true);
             v.setScaleType(ImageView.ScaleType.FIT_CENTER);
-            v.setMaxHeight(px(m.startsWith("HDR") ? 27 : 22));
-            v.setPadding(0, px(m.startsWith("HDR") ? 0 : 3), 0, px(m.startsWith("HDR") ? 0 : 3));
-            return v;
+            int inner = m.equals("DOLBY VISION ATMOS") ? 22 : m.startsWith("HDR") ? 17 : 15;
+            v.setMaxHeight(px(inner));
+            box.addView(v, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, px(inner), Gravity.CENTER));
+            return box;
         }
         boolean age = m.startsWith("age:");
         String label = age ? m.substring(4) : m;
@@ -1610,6 +1632,7 @@ final class HomeV2 {
         v.setLetterSpacing(age ? 0f : 0.04f);
         v.setPadding(px(age ? 7 : 8), 0, px(age ? 7 : 8), 0);
         v.setMinWidth(px(28));
+        v.setHeight(px(MARK_H));
         GradientDrawable g = new GradientDrawable();
         g.setCornerRadius(px(age ? 6 : 4));
         if (age) {

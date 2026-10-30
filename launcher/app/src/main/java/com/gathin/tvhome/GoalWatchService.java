@@ -534,6 +534,7 @@ public class GoalWatchService extends Service {
             else {
                 WatchHistory.test(this, "com.netflix.ninja", "The Dark Knight", "", 0.42f, 152 * 60_000L);
                 WatchHistory.test(this, "com.debridstream.tv", "Slow Horses", "S4:E2 Hello Goodbye", 0.65f, 48 * 60_000L);
+                WatchHistory.test(this, "com.bskyb.skysports", "Arsenal v Liverpool · Premier League highlights", "", 0.3f, 22 * 60_000L);
             }
         }
         if (intent != null && intent.hasExtra("test_red")) {

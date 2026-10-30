@@ -174,6 +174,8 @@ final class PagesV2 {
     /** One row of posters: the focused one opens out to its wide picture. */
     static final class Row {
         String name, note;
+        /** What to say when the row has nothing in it (Continue Watching before anything is started); null: say nothing. */
+        String empty;
         boolean numbered;
         List<Title> items = new ArrayList<>();
         TextView label;
@@ -196,6 +198,14 @@ final class PagesV2 {
         private boolean onTabs;
         private int generation;
         private final Runnable heroLater = this::heroNow;
+        /** The tab the page opens on; the words shown where a row's posters would be when it has none. */
+        private int startTab;
+        private TextView emptyView;
+
+        PosterPage startOn(int t) {
+            startTab = tabs == null ? 0 : Math.max(0, Math.min(t, tabs.length - 1));
+            return this;
+        }
         /** The rows, together, when there are more than fit: moved up as the focus goes down (null for two rows). */
         private FrameLayout column;
 
@@ -338,9 +348,15 @@ final class PagesV2 {
                 addRow(r.view, 204, rowY[i] + (tabs != null && rowY.length == 1 ? 62 : 40) - 6, 1632, TALL + 24);
                 rows.add(r);
             }
-            // A page with tabs opens on its first tab; Down goes into the posters.
+            // Where a row has nothing (Continue Watching before anything is started): a line saying so.
+            emptyView = h.text(24, h.regular, 0xB3FFFFFF);
+            emptyView.setMaxLines(2);
+            emptyView.setVisibility(View.GONE);
+            add(emptyView, 216, rowY[0] + (tabs != null && rowY.length == 1 ? 62 : 40) + 70, 1200, 80);
+            // A page with tabs opens on its first tab (or the one after an empty Continue Watching); Down goes into the
+            // posters.
             onTabs = tabs != null;
-            load(0);
+            load(startTab);
         }
 
         /** Tabs already read, kept while the page is open: going back to one is instant. */
@@ -398,6 +414,11 @@ final class PagesV2 {
                         }
                         fill(r);
                         r.strip.animate().alpha(1f).setDuration(200).start();
+                        if (i == 0) {
+                            boolean none = g.items.isEmpty() && g.empty != null;
+                            emptyView.setText(none ? g.empty : "");
+                            emptyView.setVisibility(none ? View.VISIBLE : View.GONE);
+                        }
                     }
                     idx = 0;
                     if (!onTabs) row = 0;
@@ -680,7 +701,8 @@ final class PagesV2 {
                     else return false;
                     break;
                 case KeyEvent.KEYCODE_DPAD_DOWN:
-                    if (onTabs) onTabs = false;
+                    // From the tabs into the posters; a tab with none (Continue Watching, nothing started) on to the boxes.
+                    if (onTabs) { if (n == 0) return false; onTabs = false; }
                     else if (row < rows.size() - 1 && !rows.get(row + 1).items.isEmpty()) { row++; idx = Math.min(idx, Math.max(0, rows.get(row).items.size() - 1)); }
                     else return false;
                     break;
@@ -728,23 +750,24 @@ final class PagesV2 {
 
     static PosterPage discover(HomeV2 h) {
         String k = h.tmdbKey;
-        String[] tabs = {"New releases", "Trending", "Netflix", "Disney+", "Prime Video", "Apple TV+"};
-        int[] providers = {0, 0, 8, 337, 9, 350};
+        String[] tabs = {"Continue Watching", "New releases", "Trending", "Netflix", "Disney+", "Prime Video", "Apple TV+"};
+        int[] providers = {0, 0, 0, 8, 337, 9, 350};
         return new PosterPage(h, "DISCOVER", 0xFFC9A7FF, tabs, new int[]{584 - 62}, t -> {
             List<Title> items;
             LocalDate today = LocalDate.now();
-            if (t == 0) {
+            if (t == 0) return Arrays.asList(resumeRow(h, null));
+            if (t == 1) {
                 items = mix(tmdb(k, "discover/movie?region=GB&with_release_type=4|5&release_date.gte=" + today.minusWeeks(6)
                                 + "&release_date.lte=" + today + "&sort_by=popularity.desc", false),
                         tmdb(k, "discover/tv?first_air_date.gte=" + today.minusMonths(2) + "&sort_by=popularity.desc&with_original_language=en", true));
-            } else if (t == 1) {
+            } else if (t == 2) {
                 items = tmdb(k, "trending/all/day", false);
             } else {
                 String w = "&watch_region=GB&with_watch_providers=" + providers[t] + "&sort_by=popularity.desc";
                 items = mix(tmdb(k, "discover/tv?without_genres=10763,10764,10767" + w, true), tmdb(k, "discover/movie?" + w.substring(1), false));
             }
             return Arrays.asList(row(null, null, false, items));
-        });
+        }).startOn(resumeEmpty(h, null) ? 1 : 0);
     }
 
     /** A streaming service's titles in the UK (TMDB's watch providers: Netflix 8, Prime Video 9, Disney+ 337, Apple TV+ 350). */
@@ -836,15 +859,28 @@ final class PagesV2 {
      */
     private static PosterPage sections(HomeV2 h, String crumb, int colour, boolean tv, String[][] spec) {
         String k = h.tmdbKey;
-        // Continue Watching leads, when anything is started: what is part-watched in any app, newest first.
-        boolean resume = !WatchHistory.titles(h.a, tv).isEmpty();
-        int first = resume ? 1 : 0;
-        String[] tabs = new String[spec.length + first];
-        if (resume) tabs[0] = "Continue Watching";
-        for (int i = 0; i < spec.length; i++) tabs[i + first] = spec[i][0];
-        return new PosterPage(h, crumb, colour, tabs, new int[]{584 - 62}, t -> t < first
-                ? Arrays.asList(row(null, null, false, WatchHistory.titles(h.a, tv)))
-                : Arrays.asList(row(null, null, "n".equals(spec[t - first][2]), tmdb(k, spec[t - first][1], tv))));
+        String[] tabs = new String[spec.length + 1];
+        tabs[0] = "Continue Watching";
+        for (int i = 0; i < spec.length; i++) tabs[i + 1] = spec[i][0];
+        PosterPage p = new PosterPage(h, crumb, colour, tabs, new int[]{584 - 62}, t -> t == 0
+                ? Arrays.asList(resumeRow(h, tv))
+                : Arrays.asList(row(null, null, "n".equals(spec[t - 1][2]), tmdb(k, spec[t - 1][1], tv))));
+        return p.startOn(resumeEmpty(h, tv) ? 1 : 0);
+    }
+
+    /**
+     * Continue Watching, the first tab of Discover (films and series), Movies and TV shows: what is part-watched in any
+     * app, the newest first. Always there; with nothing started yet the page opens on the tab after it.
+     */
+    static Row resumeRow(HomeV2 h, Boolean tv) {
+        Row r = row(null, null, false, WatchHistory.titles(h.a, tv));
+        r.empty = "Nothing to pick up yet. " + (tv == null ? "Films and series" : tv ? "Series" : "Films")
+                + " you start in Netflix, Prime Video, Disney+, Debrid Stream and the rest show here, with how far you got.";
+        return r;
+    }
+
+    private static boolean resumeEmpty(HomeV2 h, Boolean tv) {
+        return WatchHistory.titles(h.a, tv).isEmpty();
     }
 
     // ---- Apps -------------------------------------------------------------------------------------------------------
@@ -992,7 +1028,11 @@ final class PagesV2 {
         private FrameLayout cards, fixtures;
         private final List<LinearLayout> strips = new ArrayList<>();
         private final List<List<HomeV2.Tile>> lists = new ArrayList<>();
-        private int zone = -1, idx;   // -1: the match card's watch bar; 0 and 1: the fixture rows
+        private int zone = -1, idx;   // -1: the cards; 0: Continue Watching; 1 and 2: the fixture rows
+        /** The row of sport started in any app (row 0), and the line shown in it when there is none. */
+        private final List<WatchHistory.Entry> resume = new ArrayList<>();
+        private TextView resumeNone;
+        private final List<View> rowViews = new ArrayList<>();
         private TextView watch;
         private Runnable watchOk;
         /** While the featured game is live: v1's pitch with the ball moving through the plays, the clock, the score. */
@@ -1020,12 +1060,13 @@ final class PagesV2 {
             fixtures.setClipChildren(false);
             add(fixtures, 0, 0, 1920, 1080);
             fixtures.setTranslationY(px(660));
-            String[] names = {"LIVE FOOTBALL · THIS WEEK", "MORE LIVE SPORT"};
-            for (int i = 0; i < 2; i++) {
+            String[] names = {"CONTINUE WATCHING", "LIVE FOOTBALL · THIS WEEK", "MORE LIVE SPORT"};
+            for (int i = 0; i < names.length; i++) {
                 TextView l = h.text(18, h.semi, 0xBFFFFFFF);
                 l.setLetterSpacing(0.11f);
                 l.setText(names[i]);
                 addTo(fixtures, l, 216, 236 + i * 300, 1500, 30);
+                rowViews.add(l);
                 FrameLayout view = new FrameLayout(h.a);
                 view.setOutlineProvider(ViewOutlineProvider.BOUNDS);
                 view.setClipToOutline(true);
@@ -1037,9 +1078,25 @@ final class PagesV2 {
                 sl.topMargin = px(24);
                 view.addView(strip, sl);
                 addTo(fixtures, view, 192, 262 + i * 300, 1656, 268);
+                rowViews.add(view);
                 strips.add(strip);
                 lists.add(new ArrayList<>());
             }
+            // Continue Watching: matches, highlights and races part-watched in any app (Sky Sports, TNT Sports, DAZN,
+            // F1 TV, Debrid Stream…), each with how far in; OK opens the app it was in.
+            resumeNone = h.text(22, h.regular, 0x99FFFFFF);
+            resumeNone.setText("Nothing to pick up yet. Matches, highlights and races you start in Sky Sports, TNT Sports, DAZN, F1 TV and the rest show here.");
+            addTo(fixtures, resumeNone, 216, 290, 1500, 40);
+            for (WatchHistory.Entry e : WatchHistory.sports(h.a)) {
+                resume.add(e);
+                HomeV2.Tile t = new HomeV2.Tile();
+                t.title = e.title;
+                String pkg = e.pkg;
+                t.ok = () -> h.openApp(pkg);
+                lists.get(0).add(t);
+                strips.get(0).addView(resumeTile(e));
+            }
+            resumeNone.setVisibility(resume.isEmpty() ? View.VISIBLE : View.GONE);
             buildMatch();
             buildTable();
             buildF1();
@@ -1053,9 +1110,9 @@ final class PagesV2 {
                 List<HomeV2.Tile> foot = new ArrayList<>(), other = new ArrayList<>();
                 for (HomeV2.Tile t : all) ("football".equals(t.group) ? foot : other).add(t);
                 h.main.post(() -> {
-                    lists.set(0, foot);
-                    lists.set(1, other);
-                    for (int i = 0; i < 2; i++) {
+                    lists.set(1, foot);
+                    lists.set(2, other);
+                    for (int i = 1; i < 3; i++) {
                         strips.get(i).removeAllViews();
                         for (HomeV2.Tile t : lists.get(i)) strips.get(i).addView(fixture(t));
                     }
@@ -1786,6 +1843,63 @@ final class PagesV2 {
             return r;
         }
 
+        /** A part-watched match or race: the app's picture for it (else the app's banner), its name, how far in. */
+        private View resumeTile(WatchHistory.Entry e) {
+            FrameLayout f = new FrameLayout(h.a);
+            f.setClipToOutline(true);
+            f.setOutlineProvider(h.round(16));
+            f.setBackground(h.fill(16, 0xFF15182E));
+            ImageView pic = new ImageView(h.a);
+            pic.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            f.addView(pic, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+            if (e.art != null) h.image(pic, e.art, px(384));
+            else {
+                try {
+                    android.content.pm.PackageManager pm = h.a.getPackageManager();
+                    android.graphics.drawable.Drawable b = pm.getApplicationBanner(e.pkg);
+                    pic.setImageDrawable(b != null ? b : pm.getApplicationIcon(e.pkg));
+                    if (b == null) pic.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+                } catch (Exception ignored) {
+                }
+            }
+            View shade = new View(h.a);
+            shade.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0x00000000, 0x00000000, 0xE6000000}));
+            f.addView(shade, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+            LinearLayout cap = new LinearLayout(h.a);
+            cap.setOrientation(LinearLayout.VERTICAL);
+            TextView n = h.text(22, h.semi, Color.WHITE);
+            n.setText(e.title);
+            n.setSingleLine(true);
+            n.setEllipsize(TextUtils.TruncateAt.END);
+            cap.addView(n);
+            TextView left = h.text(16, h.regular, 0xD9FFFFFF);
+            long mins = Math.max(1, (e.dur - e.pos) / 60_000L);
+            left.setText(mins + " min left");
+            cap.addView(left);
+            FrameLayout.LayoutParams capl = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM);
+            capl.leftMargin = px(16);
+            capl.rightMargin = px(14);
+            capl.bottomMargin = px(24);
+            f.addView(cap, capl);
+            // How far in: the same red bar as on the posters.
+            FrameLayout bar = new FrameLayout(h.a);
+            bar.setBackgroundColor(0x80000000);
+            bar.setClipToOutline(true);
+            bar.setOutlineProvider(h.round(3));
+            View done = new View(h.a);
+            done.setBackgroundColor(0xFFE50914);
+            bar.addView(done, new FrameLayout.LayoutParams(Math.round((px(384) - px(32)) * e.progress()), ViewGroup.LayoutParams.MATCH_PARENT));
+            FrameLayout.LayoutParams bl = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, px(6), Gravity.BOTTOM);
+            bl.leftMargin = bl.rightMargin = px(16);
+            bl.bottomMargin = px(10);
+            f.addView(bar, bl);
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(px(384), px(216));
+            lp.rightMargin = px(24);
+            f.setLayoutParams(lp);
+            if (h.lite) f.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+            return f;
+        }
+
         private View fixture(HomeV2.Tile t) {
             FrameLayout f = new FrameLayout(h.a);
             if (h.lite) f.setLayerType(View.LAYER_TYPE_HARDWARE, null);
@@ -1876,7 +1990,13 @@ final class PagesV2 {
         private void paint() {
             boolean down = zone >= 0;
             cards.animate().alpha(down ? 0f : 1f).translationY(down ? -px(80) : 0).setDuration(260).setInterpolator(HomeV2.SKY).withLayer().start();
-            fixtures.animate().translationY(down ? 0 : px(660)).setDuration(300).setInterpolator(HomeV2.SKY).start();
+            // Down the rows: two in sight at once, the ones above sliding up and out.
+            int top = Math.max(0, zone - 1);
+            fixtures.animate().translationY(down ? -px(300) * top : px(660)).setDuration(300).setInterpolator(HomeV2.SKY).start();
+            for (int i = 0; i < rowViews.size(); i++) {
+                rowViews.get(i).animate().alpha(down && i / 2 < top ? 0f : 1f).setDuration(200).start();
+            }
+            resumeNone.animate().alpha(down && top > 0 ? 0f : 1f).setDuration(200).start();
             boolean onWatch = zone == -1 && cardIdx == 0, onTable = zone == -1 && cardIdx == 1;
             GradientDrawable wb = h.fill(30, onWatch ? 0xEBFFFFFF : 0x1FFFFFFF);
             wb.setStroke(px(1.5f), onWatch ? Color.WHITE : 0x4DFFFFFF);
@@ -1911,7 +2031,7 @@ final class PagesV2 {
             int code = e.getKeyCode();
             if (ok(code)) {
                 // Held on a fixture: a reminder for it (held again: taken off). A plain press watches it.
-                if (e.getAction() == KeyEvent.ACTION_DOWN && e.getRepeatCount() == 1 && zone >= 0 && idx < lists.get(zone).size()) {
+                if (e.getAction() == KeyEvent.ACTION_DOWN && e.getRepeatCount() == 1 && zone >= 1 && idx < lists.get(zone).size()) {
                     held = true;
                     remind(lists.get(zone).get(idx));
                     return true;
@@ -1928,14 +2048,17 @@ final class PagesV2 {
                 // At an edge the key is Home's (false): on to the rail, the top buttons or the boxes, no Back needed.
                 case KeyEvent.KEYCODE_DPAD_DOWN:
                     if (zone == -1 && (cardIdx == 1 && scrollTable(1) || cardIdx == 2 && scrollDrivers(1))) return true;
-                    if (zone >= 1) return false;
-                    zone++; idx = 0;
-                    if (zone >= 0 && lists.get(zone).isEmpty() && zone < 1) zone++;
+                    // On down the rows, past any with nothing in them; from the last, on to Home's boxes.
+                    int next = zone + 1;
+                    while (next < lists.size() && lists.get(next).isEmpty()) next++;
+                    if (next >= lists.size()) return false;
+                    zone = next; idx = 0;
                     break;
                 case KeyEvent.KEYCODE_DPAD_UP:
                     if (zone == -1 && (cardIdx == 1 && scrollTable(-1) || cardIdx == 2 && scrollDrivers(-1))) return true;
                     if (zone < 0) return false;
                     zone--; idx = 0;
+                    while (zone >= 0 && lists.get(zone).isEmpty()) zone--;
                     break;
                 case KeyEvent.KEYCODE_DPAD_LEFT:
                     if (zone >= 0) { if (idx > 0) idx--; else return false; }
