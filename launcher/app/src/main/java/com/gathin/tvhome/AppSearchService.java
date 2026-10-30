@@ -593,8 +593,20 @@ public class AppSearchService extends AccessibilityService {
      * TiviMate: its search from the menu, the channel's name typed in, then the found channel of that name picked.
      * Done once the search screen has gone (the channel plays), or after a few picks.
      */
+    /** What the helper is doing, in the log when it changes (adb logcat -s AppSearch): to see where a tune stops. */
+    private String lastTrace;
+
+    private void trace(String s) {
+        if (s.equals(lastTrace)) return;
+        lastTrace = s;
+        android.util.Log.i(TAG, s);
+    }
+
     private boolean tuneStep(AccessibilityNodeInfo root) {
         AccessibilityNodeInfo box = find(root, Kind.EDIT);
+        AccessibilityNodeInfo rowNow = box == null ? null : channelRow(root);
+        trace("tune: box=" + (box != null) + " picks=" + picks + " typed=" + (typedAt > 0) + " row=" + (rowNow == null ? "none" : rowNow.getChildCount())
+                + " keyboard=" + keyboardShown() + " text=" + (box == null ? "" : box.getText()));
         if (box == null) {
             // Picked, and the search gone: the channel is starting.
             if (picks > 0) { hideDelay = 1500; return false; }

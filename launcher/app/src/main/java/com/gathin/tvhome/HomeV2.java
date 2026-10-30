@@ -2421,12 +2421,17 @@ final class HomeV2 {
      * corner. The HD one shows at once in a tile that size, lighter to play, and OK still tunes the UHD one.
      */
     private String previewStream(Tile t) {
-        if (t.channel == null || !t.channel.matches("(?i).*\\b(uhd|4k|hdr)\\b.*")) return t.stream;
-        for (String line : Config.themeStrings(a, "preview_streams", new ArrayList<>())) {
+        return previewStream(a, t.channel, t.stream);
+    }
+
+    /** As above for any channel by name (the TV guide's corner preview too). */
+    static String previewStream(Context c, String channel, String stream) {
+        if (channel == null || !channel.matches("(?i).*\\b(uhd|4k|hdr)\\b.*")) return stream;
+        for (String line : Config.themeStrings(c, "preview_streams", new ArrayList<>())) {
             String[] p = line.split("\\|");
-            if (p.length > 1 && p[0].trim().equalsIgnoreCase(t.channel.trim()) && !p[1].trim().isEmpty()) return p[1].trim();
+            if (p.length > 1 && p[0].trim().equalsIgnoreCase(channel.trim()) && !p[1].trim().isEmpty()) return p[1].trim();
         }
-        return t.stream;
+        return stream;
     }
 
     private String streamOf(String channelName) {

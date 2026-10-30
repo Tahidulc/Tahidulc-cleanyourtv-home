@@ -418,7 +418,7 @@ final class GuideV2 {
             pip.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(350).setInterpolator(HomeV2.SKY).start();
         }
         String base = Config.themeString(c, "iptv_server", "") + "/live/" + Config.themeString(c, "iptv_user", "") + "/"
-                + Config.themeString(c, "iptv_pass", "") + "/" + ch[4];
+                + Config.themeString(c, "iptv_pass", "") + "/" + HomeV2.previewStream(c, ch[1], ch[4]);
         play(base, false);
     }
 
