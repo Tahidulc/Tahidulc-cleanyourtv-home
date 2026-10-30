@@ -267,7 +267,7 @@ final class PagesV2 {
                 tabBar.setOrientation(LinearLayout.HORIZONTAL);
                 for (String t : tabs) {
                     TextView v = h.text(22, h.regular, 0xBFFFFFFF);
-                    v.setText(t);
+                    v.setText(title(t));
                     v.setGravity(Gravity.CENTER);
                     v.setPadding(px(24), 0, px(24), 0);
                     LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, px(50));
@@ -280,6 +280,11 @@ final class PagesV2 {
                 tabScroll.setHorizontalScrollBarEnabled(false);
                 tabScroll.setFocusable(false);
                 tabScroll.setOverScrollMode(View.OVER_SCROLL_NEVER);
+                // Cut off at its own edges, the tabs going out of sight fade away.
+                tabScroll.setOutlineProvider(ViewOutlineProvider.BOUNDS);
+                tabScroll.setClipToOutline(true);
+                tabScroll.setHorizontalFadingEdgeEnabled(true);
+                tabScroll.setFadingEdgeLength(px(70));
                 tabScroll.addView(track, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, px(50)));
                 add(tabScroll, 216, 516, 1608, 50);
                 tabBar.post(this::moveLens);
@@ -315,24 +320,57 @@ final class PagesV2 {
             load(0);
         }
 
+        /** Tabs already read, kept while the page is open: going back to one is instant. */
+        private final Map<Integer, List<Row>> loaded = new HashMap<>();
+        private final Runnable loadNow = this::loadNow;
+
+        /**
+         * Tab t: the lens moves to it at once; its posters come from what was read before, else are read once the
+         * focus stops on it (sliding along the tabs reads nothing in between, which made it stutter).
+         */
         private void load(int t) {
             tab = t;
             int gen = ++generation;
+            if (tabBar != null) moveLens();
+            List<Row> have = loaded.get(t);
+            h.main.removeCallbacks(loadNow);
+            if (have != null) { show(have, gen); return; }
             for (Row r : rows) r.strip.animate().alpha(0.25f).setDuration(150).start();
-            h.io.execute(() -> {
+            if (gen == 1) loadNow(); else h.main.postDelayed(loadNow, 200);
+        }
+
+        private void loadNow() {
+            int t = tab, gen = generation;
+            PAGES.execute(() -> {
                 List<Row> got = source.apply(t);
                 h.main.post(() -> {
+                    loaded.put(t, got);
+                    if (gen == generation) show(got, gen);
+                    // The tabs either side read ahead, so the next step along shows at once.
+                    for (int n : new int[]{t + 1, t - 1}) {
+                        if (n < 0 || tabs == null || n >= tabs.length || loaded.containsKey(n)) continue;
+                        PAGES.execute(() -> {
+                            List<Row> ahead = source.apply(n);
+                            h.main.post(() -> { if (!loaded.containsKey(n)) loaded.put(n, ahead); });
+                        });
+                    }
+                });
+            });
+        }
+
+        private void show(List<Row> got, int gen) {
                     if (gen != generation) return;
                     for (int i = 0; i < rows.size(); i++) {
                         Row r = rows.get(i);
                         Row g = i < got.size() ? got.get(i) : new Row();
                         r.items = g.items;
                         r.numbered = g.numbered;
-                        r.label.setText(g.name == null ? "" : g.name);
-                        if (g.note != null) {
-                            android.text.SpannableString sp = new android.text.SpannableString(g.name + "  · " + g.note);
-                            sp.setSpan(new android.text.style.ForegroundColorSpan(0x8CFFFFFF), g.name.length(), sp.length(), 0);
-                            sp.setSpan(new android.text.style.AbsoluteSizeSpan(px(18)), g.name.length(), sp.length(), 0);
+                        String name = title(g.name);
+                        r.label.setText(name == null ? "" : name);
+                        if (g.note != null && name != null) {
+                            android.text.SpannableString sp = new android.text.SpannableString(name + "  · " + g.note);
+                            sp.setSpan(new android.text.style.ForegroundColorSpan(0x8CFFFFFF), name.length(), sp.length(), 0);
+                            sp.setSpan(new android.text.style.AbsoluteSizeSpan(px(18)), name.length(), sp.length(), 0);
                             r.label.setText(sp);
                         }
                         fill(r);
@@ -342,8 +380,6 @@ final class PagesV2 {
                     if (!onTabs) row = 0;
                     paint();
                     heroNow();
-                });
-            });
         }
 
         private void fill(Row r) {
@@ -457,16 +493,19 @@ final class PagesV2 {
                 // The focused row takes the first row's place, under the tabs; the next one peeks in below it.
                 int top = onTabs ? 0 : Math.max(0, Math.min(row, rowY.length - 1));
                 column.animate().translationY(-px(rowY[top] - rowY[0])).setDuration(320).setInterpolator(HomeV2.SKY).start();
-                // Down in the posters the tabs make way for the whole description; Up to them brings them back.
-                if (tabBar != null) ((View) tabBar.getParent()).animate().alpha(onTabs ? 1f : 0f).setDuration(200).start();
                 for (int ri = 0; ri < rows.size(); ri++) {
                     float a = ri < top ? 0f : 1f;
                     rows.get(ri).view.animate().alpha(a).setDuration(200).start();
                     rows.get(ri).label.animate().alpha(a).setDuration(200).start();
                 }
             }
-            if (tabBar != null) moveLens();
-            h.heroRoom(rowY.length > 2 && !onTabs);
+            if (tabBar != null) {
+                moveLens();
+                // Down in the posters the tabs make way for the whole description; Up to them brings them back.
+                tabScroll.animate().alpha(onTabs ? 1f : 0f).setDuration(200).start();
+            }
+            // The description's lines: as many as fit above the posters (fewer above a single row, more over many).
+            h.heroLines(tabs == null || onTabs ? 2 : rowY.length > 2 ? 5 : 4);
         }
 
         /** Each title's marks from the store, once looked up (empty: the store had none). */
@@ -574,6 +613,29 @@ final class PagesV2 {
         }
     }
 
+    /** Small words left lower case inside a title. */
+    private static final java.util.Set<String> SMALL = new java.util.HashSet<>(Arrays.asList(
+            "a", "an", "and", "of", "on", "in", "the", "to", "for", "at", "by", "&", "v", "vs"));
+
+    /** "Popular romance films" to "Popular Romance Films", "sci-fi" to "Sci-Fi". */
+    static String title(String s) {
+        if (s == null) return null;
+        StringBuilder b = new StringBuilder(s.length());
+        String[] words = s.split(" ", -1);
+        for (int i = 0; i < words.length; i++) {
+            String w = words[i];
+            if (i > 0) b.append(' ');
+            // Small words stay small; a word with capitals of its own (iPlayer, BBC, NOW) stays as it is.
+            if (w.isEmpty() || i > 0 && SMALL.contains(w) || !w.equals(w.toLowerCase(Locale.ROOT))) { b.append(w); continue; }
+            boolean up = true;
+            for (char c : w.toCharArray()) {
+                b.append(up ? Character.toUpperCase(c) : c);
+                up = c == '-';
+            }
+        }
+        return b.toString();
+    }
+
     static Row row(String name, String note, boolean numbered, List<Title> items) {
         Row r = new Row();
         r.name = name;
@@ -604,25 +666,6 @@ final class PagesV2 {
         });
     }
 
-    /** The rows of the big pages, each one TMDB list, read side by side. */
-    private static final java.util.concurrent.ExecutorService ROWS = java.util.concurrent.Executors.newFixedThreadPool(6);
-
-    private static List<Row> rows(String key, boolean tv, String[][] spec) {
-        List<java.util.concurrent.Future<Row>> wait = new ArrayList<>();
-        for (String[] r : spec) wait.add(ROWS.submit(() -> row(r[0], r[1].isEmpty() ? null : r[1], "n".equals(r[3]), tmdb(key, r[2], tv))));
-        List<Row> out = new ArrayList<>();
-        for (java.util.concurrent.Future<Row> f : wait) {
-            try { out.add(f.get(20, java.util.concurrent.TimeUnit.SECONDS)); } catch (Exception e) { out.add(row("", null, false, new ArrayList<>())); }
-        }
-        return out;
-    }
-
-    private static int[] rowYs(int n) {
-        int[] y = new int[n];
-        for (int i = 0; i < n; i++) y[i] = 504 + i * 310;
-        return y;
-    }
-
     /** A streaming service's titles in the UK (TMDB's watch providers: Netflix 8, Prime Video 9, Disney+ 337, Apple TV+ 350). */
     private static String on(boolean tv, int provider) {
         return "discover/" + (tv ? "tv" : "movie") + "?watch_region=GB&with_watch_providers=" + provider + "&sort_by=popularity.desc";
@@ -640,91 +683,82 @@ final class PagesV2 {
         return java.time.LocalDate.now().toString();
     }
 
+    /** The pages' tabs read on a pool of their own: the one in view, and its neighbours ahead. */
+    private static final java.util.concurrent.ExecutorService PAGES = java.util.concurrent.Executors.newFixedThreadPool(3);
+
     static PosterPage movies(HomeV2 h) {
-        String k = h.tmdbKey;
         String m = "discover/movie?sort_by=popularity.desc&watch_region=GB";
-        String[][] spec = {
-                {"Popular in the UK", "popular right now", "movie/popular?region=GB", ""},
-                {"Top 10 films this week", "", "trending/movie/week", "n"},
-                {"New to stream", "out on digital in the last six weeks", m + "&region=GB&with_release_type=4&release_date.gte=" + since(45) + "&release_date.lte=" + today(), ""},
-                {"In cinemas now", "", "movie/now_playing?region=GB", ""},
-                {"Trending today", "", "trending/movie/day", ""},
-                {"Netflix", "films", on(false, 8), ""},
-                {"Prime Video", "films", on(false, 9), ""},
-                {"Disney+", "films", on(false, 337), ""},
-                {"Apple TV+", "films", on(false, 350), ""},
-                {"NOW", "films", on(false, 39), ""},
-                {"Hidden gems", "loved by those who found them", "discover/movie?vote_average.gte=7.4&vote_count.gte=150&vote_count.lte=1500&sort_by=vote_average.desc", ""},
-                {"Critically acclaimed", "the best rated of all time", "movie/top_rated?region=GB", ""},
-                {"True stories", "", "discover/movie?with_keywords=9672&sort_by=popularity.desc&vote_count.gte=200", ""},
-                {"Best of British", "", "discover/movie?with_origin_country=GB&sort_by=popularity.desc&vote_count.gte=200", ""},
-                {"90s classics", "", "discover/movie?primary_release_date.gte=1990-01-01&primary_release_date.lte=1999-12-31&sort_by=popularity.desc&vote_count.gte=1000", ""},
-                {"Korean cinema", "", "discover/movie?with_original_language=ko&sort_by=popularity.desc&vote_count.gte=150", ""},
-                {"Coming soon", "in cinemas", "movie/upcoming?region=GB", ""}};
-        return withGenres(h, "MOVIES", 0xFFFF4FA3, false, spec);
+        return sections(h, "MOVIES", 0xFFFF4FA3, false, new String[][]{
+                {"Popular", "movie/popular?region=GB", ""},
+                {"Top 10", "trending/movie/week", "n"},
+                {"New to stream", m + "&region=GB&with_release_type=4&release_date.gte=" + since(45) + "&release_date.lte=" + today(), ""},
+                {"In cinemas", "movie/now_playing?region=GB", ""},
+                {"Trending", "trending/movie/day", ""},
+                {"Netflix", on(false, 8), ""},
+                {"Prime Video", on(false, 9), ""},
+                {"Disney+", on(false, 337), ""},
+                {"Apple TV+", on(false, 350), ""},
+                {"NOW", on(false, 39), ""},
+                {"Action", genre(false, 28), ""},
+                {"Thriller", genre(false, 53), ""},
+                {"Comedy", "discover/movie?with_genres=35&without_genres=27,53&sort_by=popularity.desc&vote_count.gte=300", ""},
+                {"Drama", genre(false, 18), ""},
+                {"Sci-fi", genre(false, 878), ""},
+                {"Horror", genre(false, 27), ""},
+                {"Crime", genre(false, 80), ""},
+                {"Romance", genre(false, 10749), ""},
+                {"Family", genre(false, 10751), ""},
+                {"Animation", genre(false, 16), ""},
+                {"Documentary", genre(false, 99), ""},
+                {"Hidden gems", "discover/movie?vote_average.gte=7.4&vote_count.gte=150&vote_count.lte=1500&sort_by=vote_average.desc", ""},
+                {"Critically acclaimed", "movie/top_rated?region=GB", ""},
+                {"True stories", "discover/movie?with_keywords=9672&sort_by=popularity.desc&vote_count.gte=200", ""},
+                {"Best of British", "discover/movie?with_origin_country=GB&sort_by=popularity.desc&vote_count.gte=200", ""},
+                {"90s classics", "discover/movie?primary_release_date.gte=1990-01-01&primary_release_date.lte=1999-12-31&sort_by=popularity.desc&vote_count.gte=1000", ""},
+                {"Korean cinema", "discover/movie?with_original_language=ko&sort_by=popularity.desc&vote_count.gte=150", ""},
+                {"Coming soon", "movie/upcoming?region=GB", ""}});
     }
 
     static PosterPage shows(HomeV2 h) {
-        String k = h.tmdbKey;
-        String[][] spec = {
-                {"Top 10 series this week", "", "trending/tv/week", "n"},
-                {"New series", "started in the last two months", "discover/tv?first_air_date.gte=" + since(60) + "&first_air_date.lte=" + today() + "&sort_by=popularity.desc&with_original_language=en", ""},
-                {"On TV now", "new episodes", "tv/on_the_air?without_genres=10763,10764,10767", ""},
-                {"Trending today", "", "trending/tv/day", ""},
-                {"Netflix", "series", on(true, 8), ""},
-                {"Prime Video", "series", on(true, 9), ""},
-                {"Disney+", "series", on(true, 337), ""},
-                {"Apple TV+", "series", on(true, 350), ""},
-                {"NOW", "series", on(true, 39), ""},
-                {"BBC iPlayer", "series", on(true, 38), ""},
-                {"Binge in a weekend", "limited series", "discover/tv?with_type=2&sort_by=popularity.desc&vote_count.gte=100", ""},
-                {"Best of British TV", "", "discover/tv?with_origin_country=GB&sort_by=popularity.desc&vote_count.gte=100", ""},
-                {"Critically acclaimed", "the best rated", "tv/top_rated", ""},
-                {"Hidden gems", "", "discover/tv?vote_average.gte=8&vote_count.gte=100&vote_count.lte=1200&sort_by=vote_average.desc", ""},
-                {"Anime", "", "discover/tv?with_genres=16&with_original_language=ja&sort_by=popularity.desc&vote_count.gte=100", ""},
-                {"Korean dramas", "", "discover/tv?with_original_language=ko&with_genres=18&sort_by=popularity.desc&vote_count.gte=50", ""}};
-        return withGenres(h, "TV SHOWS", 0xFF4F8BFF, true, spec);
+        return sections(h, "TV SHOWS", 0xFF4F8BFF, true, new String[][]{
+                {"Top 10", "trending/tv/week", "n"},
+                {"New series", "discover/tv?first_air_date.gte=" + since(60) + "&first_air_date.lte=" + today() + "&sort_by=popularity.desc&with_original_language=en", ""},
+                {"On TV now", "tv/on_the_air?without_genres=10763,10764,10767", ""},
+                {"Trending", "trending/tv/day", ""},
+                {"Netflix", on(true, 8), ""},
+                {"Prime Video", on(true, 9), ""},
+                {"Disney+", on(true, 337), ""},
+                {"Apple TV+", on(true, 350), ""},
+                {"NOW", on(true, 39), ""},
+                {"BBC iPlayer", on(true, 38), ""},
+                {"Drama", genre(true, 18), ""},
+                {"Crime", genre(true, 80), ""},
+                {"Comedy", genre(true, 35), ""},
+                {"Sci-fi & fantasy", genre(true, 10765), ""},
+                {"Action", genre(true, 10759), ""},
+                {"Mystery", genre(true, 9648), ""},
+                {"Reality", "discover/tv?with_genres=10764&sort_by=popularity.desc&watch_region=GB", ""},
+                {"Documentary", genre(true, 99), ""},
+                {"Animation", "discover/tv?with_genres=16&sort_by=popularity.desc&vote_count.gte=100", ""},
+                {"Kids", "discover/tv?with_genres=10762&sort_by=popularity.desc", ""},
+                {"Binge in a weekend", "discover/tv?with_type=2&sort_by=popularity.desc&vote_count.gte=100", ""},
+                {"Best of British", "discover/tv?with_origin_country=GB&sort_by=popularity.desc&vote_count.gte=100", ""},
+                {"Critically acclaimed", "tv/top_rated", ""},
+                {"Hidden gems", "discover/tv?vote_average.gte=8&vote_count.gte=100&vote_count.lte=1200&sort_by=vote_average.desc", ""},
+                {"Anime", "discover/tv?with_genres=16&with_original_language=ja&sort_by=popularity.desc&vote_count.gte=100", ""},
+                {"Korean dramas", "discover/tv?with_original_language=ko&with_genres=18&sort_by=popularity.desc&vote_count.gte=50", ""}});
     }
 
-    /** The streaming services' rows in each genre: TMDB's watch provider ids in the UK. */
-    private static final String[] SERVICES = {"Netflix", "Prime Video", "Disney+", "Apple TV+", "NOW"};
-    private static final int[] SERVICE_IDS = {8, 9, 337, 350, 39};
-
-    /** The genres along the top of Movies and TV shows: their names and TMDB genre ids. */
-    private static final String[] MOVIE_GENRES = {"Action", "Thriller", "Comedy", "Drama", "Sci-fi", "Horror", "Crime", "Romance", "Family", "Animation", "Documentary"};
-    private static final int[] MOVIE_GENRE_IDS = {28, 53, 35, 18, 878, 27, 80, 10749, 10751, 16, 99};
-    private static final String[] TV_GENRES = {"Drama", "Crime", "Comedy", "Sci-fi & fantasy", "Action", "Mystery", "Reality", "Documentary", "Animation", "Kids"};
-    private static final int[] TV_GENRE_IDS = {18, 80, 35, 10765, 10759, 9648, 10764, 99, 16, 10762};
-
     /**
-     * Movies or TV shows with the genres as tabs along the top, as Discover has its categories: "All" (every
-     * section but the genres), then each genre with its own sections: popular, new, best rated, and on each service.
+     * Movies or TV shows as Discover is laid out: every section a tab along the top ({name, TMDB list, "n" for a
+     * numbered Top 10}), sliding along with Left and Right, and its one row of posters under them.
      */
-    private static PosterPage withGenres(HomeV2 h, String crumb, int colour, boolean tv, String[][] all) {
+    private static PosterPage sections(HomeV2 h, String crumb, int colour, boolean tv, String[][] spec) {
         String k = h.tmdbKey;
-        String[] names = tv ? TV_GENRES : MOVIE_GENRES;
-        int[] ids = tv ? TV_GENRE_IDS : MOVIE_GENRE_IDS;
-        String[] tabs = new String[names.length + 1];
-        tabs[0] = "All";
-        System.arraycopy(names, 0, tabs, 1, names.length);
-        int most = Math.max(all.length, 3 + SERVICES.length);
-        int[] y = new int[most];
-        for (int i = 0; i < most; i++) y[i] = 586 + i * 310;
-        return new PosterPage(h, crumb, colour, tabs, y, t -> {
-            if (t == 0) return rows(k, tv, all);
-            String name = names[t - 1], kind = tv ? "tv" : "movie", dateKey = tv ? "first_air_date" : "primary_release_date";
-            String base = "discover/" + kind + "?with_genres=" + ids[t - 1];
-            String what = tv ? "series" : "films";
-            List<String[]> spec = new ArrayList<>();
-            spec.add(new String[]{"Popular " + name.toLowerCase(Locale.ROOT) + " " + what, "", base + "&sort_by=popularity.desc&vote_count.gte=50", ""});
-            spec.add(new String[]{"New " + name.toLowerCase(Locale.ROOT) + " " + what, "the last six months",
-                    base + "&sort_by=popularity.desc&" + dateKey + ".gte=" + since(180) + "&" + dateKey + ".lte=" + today(), ""});
-            spec.add(new String[]{"Best rated", name.toLowerCase(Locale.ROOT), base + "&sort_by=vote_average.desc&vote_count.gte=500", ""});
-            for (int sv = 0; sv < SERVICES.length; sv++)
-                spec.add(new String[]{SERVICES[sv], name.toLowerCase(Locale.ROOT) + " " + what,
-                        base + "&watch_region=GB&with_watch_providers=" + SERVICE_IDS[sv] + "&sort_by=popularity.desc", ""});
-            return rows(k, tv, spec.toArray(new String[0][]));
-        });
+        String[] tabs = new String[spec.length];
+        for (int i = 0; i < spec.length; i++) tabs[i] = spec[i][0];
+        return new PosterPage(h, crumb, colour, tabs, new int[]{584 - 62},
+                t -> Arrays.asList(row(null, null, "n".equals(spec[t][2]), tmdb(k, spec[t][1], tv))));
     }
 
     // ---- Apps -------------------------------------------------------------------------------------------------------

@@ -978,12 +978,12 @@ final class HomeV2 {
         return new android.graphics.drawable.InsetDrawable(g, (w + 1) / 2);
     }
 
-    /** Down in a page's posters, its tabs out of the way (room): the hero's description runs to five lines, else two. */
-    private boolean heroRoom;
+    /** A page's hero description: as many lines as the page has room for above its posters (two above its tabs). */
+    private int heroLines = 2;
 
-    void heroRoom(boolean room) {
-        heroRoom = room;
-        if (page != null) hText.setMaxLines(room ? 5 : 2);
+    void heroLines(int lines) {
+        heroLines = lines;
+        if (page != null) hText.setMaxLines(lines);
     }
 
     // ---- the row ---------------------------------------------------------------------------------------------------
@@ -1272,7 +1272,7 @@ final class HomeV2 {
         hSpecs.setVisibility(hSpecs.getChildCount() == 0 ? View.GONE : View.VISIBLE);
         // As much of the description as fits above the row: three lines on Home, five under a page's hero (its rows
         // start lower down); with the marks' line taking room on Home, two.
-        hText.setMaxLines(page != null ? (heroRoom ? 5 : 2) : hSpecs.getChildCount() > 0 ? 2 : 3);
+        hText.setMaxLines(page != null ? heroLines : hSpecs.getChildCount() > 0 ? 2 : 3);
         if (t.tmdbId != 0 && t.duration == null && !tmdbKey.isEmpty()) {
             String[] have = details.get(t.tmdbId);
             if (have != null) { apply(t, have); if (heroTile == t && (t.duration != null || t.service != null)) specs(t); return; }
