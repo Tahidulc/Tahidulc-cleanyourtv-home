@@ -530,7 +530,51 @@ public class AppSearchService extends AccessibilityService {
         tuneMuted = true;
         main.removeCallbacks(loudLater);
         main.postDelayed(loudLater, 30_000L);
+        holdFocus(true);
     }
+
+    /**
+     * The sound taken from the app while the helper searches: a box whose sound goes out over HDMI (the Streamer) does
+     * not mute, and TiviMate plays its last channel as it opens. Holding the audio focus pauses that player (as a
+     * call or the assistant would); taken back each time TiviMate asks for it, until the channel is picked.
+     */
+    private android.media.AudioFocusRequest focus;
+    private boolean holding;
+
+    private void holdFocus(boolean on) {
+        android.media.AudioManager am = (android.media.AudioManager) getSystemService(AUDIO_SERVICE);
+        if (am == null) return;
+        holding = on;
+        if (!on) {
+            if (focus != null) am.abandonAudioFocusRequest(focus);
+            focus = null;
+            return;
+        }
+        if (focus == null) {
+            focus = new android.media.AudioFocusRequest.Builder(android.media.AudioManager.AUDIOFOCUS_GAIN)
+                    .setAudioAttributes(new android.media.AudioAttributes.Builder().setUsage(android.media.AudioAttributes.USAGE_MEDIA)
+                            .setContentType(android.media.AudioAttributes.CONTENT_TYPE_MOVIE).build())
+                    .setOnAudioFocusChangeListener(change -> {
+                        android.util.Log.i(TAG, "focus change " + change + (holding ? " (taken back)" : ""));
+                        // TiviMate took it (its last channel starting): taken back at once while still searching.
+                        if (holding && change < 0) main.post(regain);
+                    }, main)
+                    .build();
+        }
+        android.util.Log.i(TAG, "focus asked: " + am.requestAudioFocus(focus));
+        main.removeCallbacks(regain);
+        main.postDelayed(regain, 300L);
+    }
+
+    /** While searching, the focus asked for again every few moments (TiviMate asks again as each player starts). */
+    private final Runnable regain = new Runnable() {
+        @Override public void run() {
+            android.media.AudioManager am = (android.media.AudioManager) getSystemService(AUDIO_SERVICE);
+            if (!holding || focus == null || am == null) return;
+            am.requestAudioFocus(focus);
+            main.postDelayed(this, 300L);
+        }
+    };
 
     /**
      * The sound back on once the channel picked is playing: while TiviMate is still on the old one its sound goes
@@ -553,6 +597,7 @@ public class AppSearchService extends AccessibilityService {
     };
 
     private void loudWhenNew() {
+        holding = false;   // picked: the new channel takes the focus back as it starts
         if (!tuneMuted || awaitingSound) return;
         awaitingSound = true;
         soundGap = false;
@@ -563,6 +608,7 @@ public class AppSearchService extends AccessibilityService {
     }
 
     private void loud() {
+        holdFocus(false);
         main.removeCallbacks(loudLater);
         main.removeCallbacks(soundWatch);
         awaitingSound = false;
