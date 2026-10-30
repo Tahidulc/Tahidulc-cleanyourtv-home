@@ -484,8 +484,8 @@ final class HomeV2 {
         add(mark, 80, 300 + 16, 5, 32);
     }
 
-    /** The section boxes: wide, as on Sky, so the last runs off the right edge until the focus brings it in. */
-    private static final int CAT_X = 216, CAT_W = 330, CAT_GAP = 16, CAT_Y = 872, CAT_H = 172;
+    /** The section boxes: all six on screen, as wide as they go between the rail's edge and the top bar's. */
+    private static final int CAT_X = 96, CAT_GAP = 16, CAT_W = (1824 - CAT_X - 5 * CAT_GAP) / 6, CAT_Y = 886, CAT_H = 160;
 
     private void buildCats() {
         int x = CAT_X, w = CAT_W;
@@ -873,10 +873,6 @@ final class HomeV2 {
         window(row, first);
         playSoon();
         row.animate().translationX(-first * px(408)).setDuration(240).setInterpolator(SKY).start();
-        // The boxes slide left just enough for the focused one to sit inside the screen's right margin.
-        int focus = zone == Z_CATS ? catIdx : page != null ? pageWhich : 0;
-        int right = CAT_X + (focus + 1) * (CAT_W + CAT_GAP) - CAT_GAP;
-        float shift = -px(Math.max(0, right - 1824));
         for (int i = 0; i < catViews.size(); i++) {
             FrameLayout box = (FrameLayout) catViews.get(i);
             boolean on = zone == Z_CATS && i == catIdx && (page == null || preview);
@@ -888,7 +884,7 @@ final class HomeV2 {
             ((ImageView) in.getChildAt(0)).setColorFilter(on ? 0xFF1A1D24 : Color.WHITE);
             ((TextView) in.getChildAt(1)).setTextColor(on ? 0xFF1A1D24 : Color.WHITE);
             ((TextView) in.getChildAt(1)).setTypeface(on ? semi : regular);
-            box.animate().scaleX(on ? 1.04f : 1f).scaleY(on ? 1.04f : 1f).translationX(shift).setDuration(220).setInterpolator(SKY).start();
+            box.animate().scaleX(on ? 1.04f : 1f).scaleY(on ? 1.04f : 1f).setDuration(150).setInterpolator(SKY).start();
         }
         // Resting on a box shows its section after a moment, no OK needed.
         main.removeCallbacks(previewNow);
