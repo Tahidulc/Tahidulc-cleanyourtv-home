@@ -1162,6 +1162,8 @@ final class HomeV2 {
             image(l, t.service, px(60));
         }
         hSpecs.setVisibility(hSpecs.getChildCount() == 0 ? View.GONE : View.VISIBLE);
+        // The line takes room: the hero's words move up by as much, clear of the row's name below.
+        htext.animate().translationY(hSpecs.getChildCount() == 0 ? 0 : -px(36)).setDuration(140).start();
         if (t.tmdbId != 0 && t.duration == null && !tmdbKey.isEmpty()) {
             String[] have = details.get(t.tmdbId);
             if (have != null) { apply(t, have); if (heroTile == t && (t.duration != null || t.service != null)) specs(t); return; }
