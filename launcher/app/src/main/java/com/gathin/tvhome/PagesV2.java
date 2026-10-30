@@ -409,6 +409,9 @@ final class PagesV2 {
                         if (n < 0 || tabs == null || n >= tabs.length || loaded.containsKey(n)) continue;
                         PAGES.execute(() -> {
                             List<Row> ahead = source.apply(n);
+                            // Their first posters fetched too, so the tab along shows its pictures at once.
+                            int k = 0;
+                            for (Row r : ahead) for (Title x : r.items) if (k++ < 10) h.prefetch(posterUrl(h, x), posterWidth(h));
                             h.main.post(() -> { if (!loaded.containsKey(n)) loaded.put(n, ahead); });
                         });
                     }
@@ -465,7 +468,7 @@ final class PagesV2 {
                 poster.setScaleType(ImageView.ScaleType.CENTER_CROP);
                 f.addView(poster, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
                 // As wide as it is drawn on lite_home (twice that elsewhere).
-                h.image(poster, t.poster, px(h.lite ? NARROW : NARROW * 2));
+                h.image(poster, posterUrl(h, t), posterWidth(h));
                 ImageView wide = new ImageView(h.a);
                 wide.setTag("wide");   // found by name: the trailer slides in under it, so it moves along
                 wide.setScaleType(ImageView.ScaleType.CENTER_CROP);
@@ -803,6 +806,18 @@ final class PagesV2 {
      * Read ahead from Home, a moment after it is up: the tab each of Discover, Movies and TV shows opens on, with its
      * first posters and their logos in the cache, so a page opens with everything already there.
      */
+    /**
+     * A poster's picture: on lite_home TMDB's 185-wide one, the size it is drawn (180), a quarter of the 342's bytes to
+     * fetch and decode and nothing to shrink after; elsewhere the 342 (drawn at twice the size for sharpness).
+     */
+    static String posterUrl(HomeV2 h, Title t) {
+        return h.lite && t.poster != null ? t.poster.replace("/w342/", "/w185/") : t.poster;
+    }
+
+    static int posterWidth(HomeV2 h) {
+        return h.px(h.lite ? PosterPage.NARROW : PosterPage.NARROW * 2);
+    }
+
     static void warm(HomeV2 h) {
         if (h.tmdbKey.isEmpty()) return;
         for (PosterPage p : new PosterPage[]{discover(h), movies(h), shows(h)}) {
@@ -811,8 +826,8 @@ final class PagesV2 {
                 int n = 0;
                 for (Row r : p.source.apply(t)) {
                     for (Title x : r.items) {
-                        if (n++ >= 10) break;
-                        h.prefetch(x.poster, h.px(h.lite ? PosterPage.NARROW : PosterPage.NARROW * 2));
+                        if (n++ >= 20) break;
+                        h.prefetch(posterUrl(h, x), posterWidth(h));
                         h.prefetchLogo(x.id, x.tv, 220);
                     }
                 }

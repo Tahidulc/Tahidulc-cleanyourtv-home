@@ -121,6 +121,8 @@ final class HomeV2 {
         /** The playlist's stream for a channel's tile (it plays in the tile), and when an event starts (its reminder). */
         String stream, channel;
         long start;
+        /** A video's thumbnail (YouTube's): shown whole, over a blur of itself, with no words over it. */
+        boolean video;
         /** Under the hero's title, as Sky's: the running time, then marks (HD, 4K, DOLBY VISION, ATMOS, S, AD, the
          * age rating) and the streaming service's logo. */
         String duration, service, serviceId;
@@ -132,7 +134,7 @@ final class HomeV2 {
     final MainActivity a;
     final Handler main = new Handler(Looper.getMainLooper());
     final ExecutorService io = Executors.newFixedThreadPool(3);
-    private final ExecutorService pics = Executors.newFixedThreadPool(4);
+    private final ExecutorService pics = Executors.newFixedThreadPool(6);
     private final LruCache<String, Bitmap> cache = new LruCache<String, Bitmap>(
             (int) Math.min(Runtime.getRuntime().maxMemory() / 6, 48L * 1024 * 1024)) {
         @Override protected int sizeOf(String k, Bitmap b) { return b.getByteCount(); }
@@ -191,6 +193,16 @@ final class HomeV2 {
     // ---- building --------------------------------------------------------------------------------------------------
 
     void create() {
+        // Pictures (and TMDB's answers) kept on disk too, as their servers allow: a page opened after Home restarted
+        // shows its posters from the TV's own storage instead of the network.
+        try {
+            if (android.net.http.HttpResponseCache.getInstalled() == null) {
+                android.net.http.HttpResponseCache.install(new java.io.File(a.getCacheDir(), "http"), 96L * 1024 * 1024);
+            }
+            // Pictures only (fetch asks for it): scores, the weather and the lists are never answered from the disk.
+            new URL("https://localhost/").openConnection().setDefaultUseCaches(false);
+        } catch (java.io.IOException ignored) {
+        }
         int w = a.getResources().getDisplayMetrics().widthPixels, h = a.getResources().getDisplayMetrics().heightPixels;
         s = Math.max(w, h) / 1920f;
         // Inter for text, and its Display cut (tighter, finer) from 34 px up: the clean SF-style look.
@@ -1279,8 +1291,26 @@ final class HomeV2 {
         ImageView pic = new ImageView(a);
         pic.setTag("pic");   // found by name: a trailer slides in under it
         pic.setScaleType(ImageView.ScaleType.CENTER_CROP);
-        f.addView(pic, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-        image(pic, t.image, px(TILE_W));
+        if (t.video) {
+            // A video's thumbnail whole (16:9 in a taller tile): over a soft blur of itself, not black, above and below.
+            ImageView blur = new ImageView(a);
+            blur.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            f.addView(blur, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+            pic.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            f.addView(pic, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+            image(pic, t.image, px(TILE_W), () -> {
+                Drawable d = pic.getDrawable();
+                if (d instanceof android.graphics.drawable.BitmapDrawable) {
+                    Bitmap b = ((android.graphics.drawable.BitmapDrawable) d).getBitmap();
+                    Bitmap tiny = Bitmap.createScaledBitmap(b, 24, Math.max(2, 24 * b.getHeight() / Math.max(1, b.getWidth())), true);
+                    blur.setImageBitmap(tiny);
+                    blur.setColorFilter(0x66000000, android.graphics.PorterDuff.Mode.SRC_ATOP);
+                }
+            });
+        } else {
+            f.addView(pic, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+            image(pic, t.image, px(TILE_W));
+        }
         View shade = new View(a);
         shade.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0x00000000, 0x00000000, 0xD9000000}));
         f.addView(shade, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
@@ -1293,6 +1323,11 @@ final class HomeV2 {
         clp.bottomMargin = px(14);
         f.addView(cap, clp);
         fillCaption(cap, t);
+        // A video's tile is its thumbnail alone (the title is in the hero above): no words over it.
+        if (t.video) {
+            cap.setVisibility(View.GONE);
+            shade.setVisibility(View.GONE);
+        }
         // A film's or series' tile is its picture alone (and its trailer): no words over it.
         if (t.tmdbId != 0 && t.stream == null) {
             cap.setVisibility(View.GONE);
@@ -1805,7 +1840,12 @@ final class HomeV2 {
             Tile t = new Tile();
             t.title = r[0];
             t.image = r[1];
-            t.heroImage = r[1];
+            if (pkg.contains("youtube") && r[1] != null) {
+                // YouTube's thumbnail without the black bars its usual one has: see fetch.
+                t.video = true;
+                t.image = r[1] + "#yt";
+            }
+            t.heroImage = t.image;
             t.heroTop = appLabel(pkg).toUpperCase(Locale.ROOT);
             t.heroTitle = r[0];
             t.heroMeta = r[3];
@@ -2471,10 +2511,12 @@ final class HomeV2 {
     }
 
     private Bitmap fetch(String url, int width) {
+        if (url.endsWith("#yt")) return video(url.substring(0, url.length() - 3), width);
         try {
             byte[] data;
             if (url.startsWith("http")) {
                 HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
+                c.setUseCaches(true);
                 c.setConnectTimeout(6000);
                 c.setReadTimeout(10000);
                 try (InputStream in = c.getInputStream()) {
@@ -2506,6 +2548,27 @@ final class HomeV2 {
         } catch (Exception | OutOfMemoryError e) {
             return null;
         }
+    }
+
+    /**
+     * A YouTube thumbnail whole and without bars: the video's full-size widescreen one (maxresdefault) where it has one;
+     * else its usual one, which is 4:3 with the 16:9 picture between black bars, cut to the picture.
+     */
+    private Bitmap video(String url, int width) {
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("(https://i\\d?\\.ytimg\\.com/vi(?:_webp)?/[^/]+/)").matcher(url);
+        if (m.lookingAt()) {
+            Bitmap wide = fetch(m.group(1).replace("/vi_webp/", "/vi/") + "maxresdefault.jpg", width);
+            if (wide != null && wide.getWidth() > 200) return wide;
+        }
+        Bitmap b = fetch(url, width);
+        if (b == null) return null;
+        float aspect = b.getWidth() / (float) b.getHeight();
+        if (aspect < 1.5f) {
+            // 4:3 with bars: the middle 16:9 of it.
+            int h = Math.round(b.getWidth() * 9f / 16f), top = Math.max(0, (b.getHeight() - h) / 2);
+            b = Bitmap.createBitmap(b, 0, top, b.getWidth(), Math.min(h, b.getHeight() - top));
+        }
+        return b;
     }
 
     /**
