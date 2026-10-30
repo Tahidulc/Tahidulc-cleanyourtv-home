@@ -484,8 +484,8 @@ final class HomeV2 {
         add(mark, 80, 300 + 16, 5, 32);
     }
 
-    /** The section boxes: all six on screen, about as wide as the top bar, centred on the screen. */
-    private static final int CAT_GAP = 16, CAT_W = 275, CAT_X = (1920 - 6 * CAT_W - 5 * CAT_GAP) / 2, CAT_Y = 886, CAT_H = 160;
+    /** The section boxes: all six on screen, lined up under the row of tiles (216 to 1824). */
+    private static final int CAT_GAP = 14, CAT_W = 256, CAT_X = 216 + (1608 - 6 * CAT_W - 5 * CAT_GAP) / 2, CAT_Y = 886, CAT_H = 160;
 
     private void buildCats() {
         int x = CAT_X, w = CAT_W;
