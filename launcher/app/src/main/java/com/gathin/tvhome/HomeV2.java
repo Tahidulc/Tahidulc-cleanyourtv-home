@@ -1083,8 +1083,8 @@ final class HomeV2 {
         FrameLayout tile = (FrameLayout) v;
         if (t.stream != null && !t.stream.isEmpty() && !Config.themeString(a, "iptv_server", "").isEmpty()) {
             players.live(tile, 1, Config.themeString(a, "iptv_server", "") + "/live/" + Config.themeString(a, "iptv_user", "") + "/"
-                    + Config.themeString(a, "iptv_pass", "") + "/" + t.stream, tile.findViewWithTag("pic"),
-                    t.channel != null && t.channel.matches("(?i).*\\b(uhd|4k|hdr)\\b.*"));
+                    + Config.themeString(a, "iptv_pass", "") + "/" + previewStream(t), tile.findViewWithTag("pic"),
+                    t.channel != null && t.channel.matches("(?i).*\\b(uhd|4k|hdr)\\b.*") && previewStream(t).equals(t.stream));
             return;
         }
         if (t.tmdbId == 0 || tmdbKey.isEmpty()) return;
@@ -2336,6 +2336,21 @@ final class HomeV2 {
     // ---- the playlist's channels -----------------------------------------------------------------------------------
 
     /** The theme's "guide_channels" ("Sky service id|TiviMate name|group"), in the playlist's order. */
+    /**
+     * The stream a channel's tile plays: for a UHD channel, its HD version when the theme names one (preview_streams,
+     * "Sky Sports Main Event UHD|3609333"). A UHD channel is HDR: on a TCL its picture cannot be drawn inside Home
+     * (sound only), and shown by the TV's video hardware it switches the whole screen to HDR with a notice in the
+     * corner. The HD one shows at once in a tile that size, lighter to play, and OK still tunes the UHD one.
+     */
+    private String previewStream(Tile t) {
+        if (t.channel == null || !t.channel.matches("(?i).*\\b(uhd|4k|hdr)\\b.*")) return t.stream;
+        for (String line : Config.themeStrings(a, "preview_streams", new ArrayList<>())) {
+            String[] p = line.split("\\|");
+            if (p.length > 1 && p[0].trim().equalsIgnoreCase(t.channel.trim()) && !p[1].trim().isEmpty()) return p[1].trim();
+        }
+        return t.stream;
+    }
+
     private String streamOf(String channelName) {
         if (channelName == null) return null;
         for (String[] c : channels) if (c[1].equalsIgnoreCase(channelName)) return c[4];
