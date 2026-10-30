@@ -1491,9 +1491,16 @@ final class PagesV2 {
             h.image(probe, url, px(200), () -> {
                 android.graphics.drawable.Drawable d = probe.getDrawable();
                 if (d == null) return;
-                int hgt = px(26), w = Math.round(hgt * d.getIntrinsicWidth() / (float) Math.max(1, d.getIntrinsicHeight()));
-                d.setBounds(0, 0, w, hgt);
-                b.setSpan(new android.text.style.ImageSpan(d, android.text.style.ImageSpan.ALIGN_CENTER), at, at + 2, 0);
+                // On a dark chip: the bar turns white, and logos with white lettering ("main event") vanished on it.
+                int hgt = px(22), w = Math.round(hgt * d.getIntrinsicWidth() / (float) Math.max(1, d.getIntrinsicHeight()));
+                int padX = px(9), padY = px(5);
+                GradientDrawable chip = new GradientDrawable();
+                chip.setColor(0xFF15182E);
+                chip.setCornerRadius(px(8));
+                android.graphics.drawable.LayerDrawable on = new android.graphics.drawable.LayerDrawable(new android.graphics.drawable.Drawable[]{chip, d});
+                on.setLayerInset(1, padX, padY, padX, padY);
+                on.setBounds(0, 0, w + 2 * padX, hgt + 2 * padY);
+                b.setSpan(new android.text.style.ImageSpan(on, android.text.style.ImageSpan.ALIGN_CENTER), at, at + 2, 0);
                 v.setText(b);
             });
         }
