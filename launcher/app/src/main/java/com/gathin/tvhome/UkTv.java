@@ -23,6 +23,8 @@ final class UkTv {
     static final class Now {
         String channel, title, synopsis, image, logo, next;
         long start, end, nextStart;
+        /** Sky's own entry for the programme: HD, subtitles, audio description, the audio, the age rating. */
+        org.json.JSONObject raw;
     }
 
     private static final String SCHEDULE = "https://awk.epgsky.com/hawk/linear/schedule/%s/%s";
@@ -71,6 +73,7 @@ final class UkTv {
                 n.synopsis = e.optString("sy", "");
                 n.start = st;
                 n.end = en;
+                n.raw = e;
                 String uuid = e.optString("programmeuuid", "");
                 n.image = uuid.isEmpty() ? null : "https://images.metadata.sky.com/pd-image/" + uuid + "/16-9/640";
                 n.logo = "https://d2n0069hmnqmmx.cloudfront.net/epgdata/1.0/newchanlogos/600/600/skychb" + sid + ".png";

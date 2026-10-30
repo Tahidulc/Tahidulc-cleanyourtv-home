@@ -121,6 +121,10 @@ final class HomeV2 {
         /** The playlist's stream for a channel's tile (it plays in the tile), and when an event starts (its reminder). */
         String stream, channel;
         long start;
+        /** Under the hero's title, as Sky's: the running time, then marks (HD, 4K, DOLBY VISION, ATMOS, S, AD, the
+         * age rating) and the streaming service's logo. */
+        String duration, service;
+        List<String> specs = new ArrayList<>();
     }
 
     private static final int Z_TOP = 0, Z_RAIL = 1, Z_ROW = 2, Z_CATS = 3, Z_SCORES = 4;
@@ -149,6 +153,8 @@ final class HomeV2 {
     LinearLayout htext;
     private ImageView hTop, hLogo;
     private TextView hTopText, hTitle, hMeta, hText;
+    private LinearLayout hSpecs;
+    private Tile heroTile;
     final List<FrameLayout> railViews = new ArrayList<>();
     TextView label;
     FrameLayout viewport;
@@ -418,6 +424,12 @@ final class HomeV2 {
         LinearLayout.LayoutParams hlp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         hlp.bottomMargin = px(10);
         htext.addView(hTitle, hlp);
+        hSpecs = new LinearLayout(a);
+        hSpecs.setOrientation(LinearLayout.HORIZONTAL);
+        hSpecs.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, px(32));
+        slp.bottomMargin = px(8);
+        htext.addView(hSpecs, slp);
         hMeta = text(20, regular, 0xC7FFFFFF);
         hMeta.setLetterSpacing(0.03f);
         LinearLayout.LayoutParams mlp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
@@ -1117,10 +1129,133 @@ final class HomeV2 {
             hTitle.setText(title);
             hMeta.setText(t.heroMeta);
             hMeta.setVisibility(t.heroMeta == null ? View.GONE : View.VISIBLE);
+            heroTile = t;
+            specs(t);
             hText.setText(t.heroText);
             hText.setVisibility(t.heroText == null || t.heroText.isEmpty() ? View.GONE : View.VISIBLE);
             htext.animate().alpha(1f).setDuration(140).start();
         }).start();
+    }
+
+    // ---- the line of marks under the hero's title ------------------------------------------------------------------
+
+    private final Map<Integer, String[]> details = new HashMap<>();
+
+    /** Fills the line under the title; a film's or series' running time and service are looked up the first time. */
+    private void specs(Tile t) {
+        hSpecs.removeAllViews();
+        if (t.duration != null) {
+            TextView d = text(20, semi, 0xEBFFFFFF);
+            d.setText(t.duration);
+            hSpecs.addView(d, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        }
+        for (String m : t.specs) hSpecs.addView(mark(m), gapped(hSpecs.getChildCount() == 0 ? 0 : 10));
+        if (t.service != null) {
+            ImageView l = new ImageView(a);
+            l.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            l.setBackground(fill(7, 0x33FFFFFF));
+            l.setClipToOutline(true);
+            l.setOutlineProvider(round(7));
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(px(30), px(30));
+            lp.leftMargin = hSpecs.getChildCount() == 0 ? 0 : px(12);
+            hSpecs.addView(l, lp);
+            image(l, t.service, px(60));
+        }
+        hSpecs.setVisibility(hSpecs.getChildCount() == 0 ? View.GONE : View.VISIBLE);
+        if (t.tmdbId != 0 && t.duration == null && !tmdbKey.isEmpty()) {
+            String[] have = details.get(t.tmdbId);
+            if (have != null) { apply(t, have); if (heroTile == t && (t.duration != null || t.service != null)) specs(t); return; }
+            int id = t.tmdbId;
+            boolean tv = t.tv;
+            io.execute(() -> {
+                String[] got = tmdbDetails(id, tv);
+                main.post(() -> {
+                    details.put(id, got);
+                    apply(t, got);
+                    if (heroTile == t && (t.duration != null || t.service != null)) specs(t);
+                });
+            });
+        }
+    }
+
+    private static void apply(Tile t, String[] d) {
+        if (d[0] != null) t.duration = d[0];
+        if (t.service == null && d[1] != null) t.service = d[1];
+    }
+
+    /** {running time ("2h 9m", "55 mins"), the UK streaming service's logo}; from TMDB, in one call. */
+    private String[] tmdbDetails(int id, boolean tv) {
+        String[] out = new String[2];
+        try {
+            JSONObject o = new JSONObject(get("https://api.themoviedb.org/3/" + (tv ? "tv/" : "movie/") + id
+                    + "?append_to_response=watch/providers&api_key=" + tmdbKey));
+            int mins = o.optInt("runtime", 0);
+            if (tv) {
+                JSONArray r = o.optJSONArray("episode_run_time");
+                if (r != null && r.length() > 0) mins = r.optInt(0);
+                JSONObject last = o.optJSONObject("last_episode_to_air");
+                if (mins == 0 && last != null) mins = last.optInt("runtime", 0);
+            }
+            if (mins > 0) out[0] = mins >= 90 && !tv ? (mins / 60) + "h " + (mins % 60) + "m" : mins + " mins";
+            JSONObject gb = o.optJSONObject("watch/providers") == null ? null
+                    : o.getJSONObject("watch/providers").optJSONObject("results") == null ? null
+                    : o.getJSONObject("watch/providers").getJSONObject("results").optJSONObject("GB");
+            JSONArray flat = gb == null ? null : gb.optJSONArray("flatrate");
+            if (flat != null && flat.length() > 0) out[1] = "https://image.tmdb.org/t/p/w92" + flat.getJSONObject(0).optString("logo_path");
+        } catch (Exception ignored) {
+        }
+        return out;
+    }
+
+    /** Sky's marks for a programme from its guide entry, and its running time. */
+    static void skySpecs(Tile t, JSONObject e, String channel) {
+        if (e == null) return;
+        long mins = e.optLong("d") / 60;
+        if (mins > 0) t.duration = mins >= 120 ? (mins / 60) + "h " + (mins % 60 == 0 ? "" : (mins % 60) + "m") : mins + " mins";
+        boolean uhd = channel != null && channel.matches("(?i).*\\b(uhd|4k)\\b.*");
+        if (uhd) t.specs.add("UHD");
+        else if (e.optBoolean("hd")) t.specs.add("HD");
+        if (e.optString("at").contains("D")) t.specs.add("DOLBY");
+        if (e.optBoolean("s")) t.specs.add("S");
+        if (e.optBoolean("ad")) t.specs.add("AD");
+        String r = e.optString("r");
+        if (!r.isEmpty() && !r.equals("--")) t.specs.add("age:" + r);
+    }
+
+    private LinearLayout.LayoutParams gapped(int gap) {
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, px(28));
+        lp.leftMargin = px(gap);
+        return lp;
+    }
+
+    /**
+     * One mark, drawn as Sky draws "HD": letters in a thin white outline. Subtitles' "S" is filled white; an age rating
+     * is a filled square in the BBFC's colour.
+     */
+    private TextView mark(String m) {
+        boolean age = m.startsWith("age:");
+        String label = age ? m.substring(4) : m;
+        TextView v = text(age ? 16 : 15, semi, Color.WHITE);
+        v.setText(label);
+        v.setGravity(Gravity.CENTER);
+        v.setLetterSpacing(age ? 0f : 0.04f);
+        v.setPadding(px(age ? 7 : 8), 0, px(age ? 7 : 8), 0);
+        v.setMinWidth(px(28));
+        GradientDrawable g = new GradientDrawable();
+        g.setCornerRadius(px(age ? 6 : 4));
+        if (age) {
+            String u = label.toUpperCase(Locale.ROOT);
+            int c = u.equals("U") ? 0xFF2BA84A : u.equals("PG") ? 0xFFF2B705 : u.startsWith("12") ? 0xFFF07F1A
+                    : u.equals("15") ? 0xFFE6007E : u.equals("18") ? 0xFFDA291C : 0xFF6B7280;
+            g.setColor(c);
+        } else if (m.equals("S")) {
+            g.setColor(0xF2FFFFFF);
+            v.setTextColor(0xFF1A1D24);
+        } else {
+            g.setStroke(Math.max(1, px(1.5f)), 0xD9FFFFFF);
+        }
+        v.setBackground(g);
+        return v;
     }
 
     // ---- reading the rows (off the main thread) --------------------------------------------------------------------
@@ -1169,6 +1304,14 @@ final class HomeV2 {
         String what = src.tv ? "Series" : "Film";
         t.heroMeta = join(" · ", src.year, src.genre, what);
         t.heroText = src.summary;
+        // The store's own marks, where it gave them (v1's: 4K, Dolby Vision, HDR10+, Atmos, the age rating).
+        if (src.quality != null) t.specs.add(src.quality.equals("4K") ? "4K UHD" : src.quality);
+        if (src.dolbyVision) t.specs.add("DOLBY VISION");
+        else if (src.hdr10plus) t.specs.add("HDR10+");
+        else if (src.hdr) t.specs.add("HDR10");
+        if (src.atmos) t.specs.add("DOLBY ATMOS");
+        if (src.age != null) t.specs.add("age:" + src.age);
+        t.service = src.service;
         t.heroTop = pkg == null ? (src.pill != null ? "NEW RELEASE" : null) : null;
         String target = pkg != null ? pkg : debridPackage();
         t.ok = () -> {
@@ -1302,6 +1445,7 @@ final class HomeV2 {
             t.heroTop = logoUrl;
             t.stream = streamOf(channel);
             t.channel = channel;
+            skySpecs(t, n.raw, channel);
             t.ok = () -> tune(channel, logoUrl);
             out.add(t);
         }
@@ -1336,7 +1480,7 @@ final class HomeV2 {
                     long st = e.optLong("st") * 1000L, en = st + e.optLong("d") * 1000L;
                     if (!title.toLowerCase(Locale.ROOT).startsWith("live") || en < now || !seen.add(title + st)) continue;
                     if (title.matches("(?i)live:? (sky sports fc|the premier league show|ref watch|transfer).*")) continue;
-                    events.add(new Object[]{st, en, title, e.optString("sy"), e.optString("programmeuuid"), s.optString("sid")});
+                    events.add(new Object[]{st, en, title, e.optString("sy"), e.optString("programmeuuid"), s.optString("sid"), e});
                 }
             }
         }
@@ -1367,6 +1511,7 @@ final class HomeV2 {
             String ch = name.get(sid);
             t.stream = on ? streamOf(ch) : null;
             t.channel = ch;
+            skySpecs(t, (JSONObject) e[6], ch);
             t.start = st;
             t.ok = () -> tune(ch, logo);
             out.add(t);
