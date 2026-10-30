@@ -1838,7 +1838,17 @@ final class PagesV2 {
         private void buildF1() {
             LinearLayout c = card(1374, 450);
             c.setLayerType(View.LAYER_TYPE_HARDWARE, null);
-            kicker(c, "DRIVERS' STANDINGS");
+            // As the table card: Left and Right between the drivers' and the constructors' standings, Down scrolls.
+            LinearLayout top = new LinearLayout(h.a);
+            top.setOrientation(LinearLayout.HORIZONTAL);
+            top.setGravity(Gravity.CENTER_VERTICAL);
+            f1Kicker = h.text(15, h.semi, 0xA6FFFFFF);
+            f1Kicker.setLetterSpacing(0.2f);
+            f1Kicker.setText("DRIVERS' STANDINGS");
+            top.addView(f1Kicker, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+            f1PageView = h.text(15, h.semi, 0xA6FFFFFF);
+            top.addView(f1PageView);
+            c.addView(top);
             TextView head = heading(c, "Formula 1", R.font.brand_f1, "https://a.espncdn.com/i/teamlogos/leagues/500-dark/f1.png");
             LinearLayout list = new LinearLayout(h.a);
             list.setOrientation(LinearLayout.VERTICAL);
@@ -1884,17 +1894,26 @@ final class PagesV2 {
                 String r = round, of = rounds;
                 h.main.post(() -> {
                     if (!r.isEmpty()) head.setText("After Round " + r + (of.isEmpty() || "0".equals(of) ? "" : " of " + of));
-                    for (String[] x : rows) list.addView(driver(x));
-                    if (!teams.isEmpty()) {
-                        TextView k = h.text(15, h.semi, 0xA6FFFFFF);
-                        k.setLetterSpacing(0.2f);
-                        k.setText("CONSTRUCTORS' STANDINGS");
-                        k.setPadding(px(4), px(22), 0, px(8));
-                        list.addView(k);
-                        for (String[] x : teams) list.addView(driver(x));
-                    }
+                    f1Drivers = rows;
+                    f1Teams = teams;
+                    showF1(f1Page);
                 });
             });
+        }
+
+        private TextView f1Kicker, f1PageView;
+        private List<String[]> f1Drivers = new ArrayList<>(), f1Teams = new ArrayList<>();
+        /** 0 the drivers' standings, 1 the constructors'. */
+        private int f1Page;
+
+        private void showF1(int p) {
+            f1Page = p;
+            f1Kicker.setText(p == 0 ? "DRIVERS' STANDINGS" : "CONSTRUCTORS' STANDINGS");
+            f1PageView.setText(f1Teams.isEmpty() ? "" : "◀  " + (p + 1) + " / 2  ▶");
+            driverList.removeAllViews();
+            for (String[] x : p == 0 ? f1Drivers : f1Teams) driverList.addView(driver(x));
+            driverView.scrollTo(0, 0);
+            driverTop = 0;
         }
 
         private static int teamColour(String team) {
@@ -2114,6 +2133,7 @@ final class PagesV2 {
             db.setStroke(px(onDrivers ? 3 : 1.5f), onDrivers ? Color.WHITE : 0x3DFFFFFF);
             if (driverCard != null) driverCard.setBackground(db);
             tablePage.setTextColor(onTable ? Color.WHITE : 0x73FFFFFF);
+            if (f1PageView != null) f1PageView.setTextColor(onDrivers ? Color.WHITE : 0x73FFFFFF);
             for (int r = 0; r < strips.size(); r++) {
                 LinearLayout s = strips.get(r);
                 for (int i = 0; i < s.getChildCount(); i++) {
@@ -2165,7 +2185,7 @@ final class PagesV2 {
                 case KeyEvent.KEYCODE_DPAD_LEFT:
                     if (zone >= 0) { if (idx > 0) idx--; else return false; }
                     // On the table card Left and Right page through the leagues; Left from the first goes back to the match.
-                    else if (cardIdx == 2) cardIdx = 1;
+                    else if (cardIdx == 2) { if (f1Page > 0) showF1(f1Page - 1); else cardIdx = 1; }
                     else if (cardIdx == 1) { if (league > 0) showTable(league - 1); else cardIdx = 0; }
                     else return false;
                     break;
@@ -2174,6 +2194,7 @@ final class PagesV2 {
                     else if (cardIdx == 0) cardIdx = 1;
                     // Past the last league, on to the F1 standings.
                     else if (cardIdx == 1) { if (league < LEAGUES.length - 1) showTable(league + 1); else cardIdx = 2; }
+                    else if (cardIdx == 2 && f1Page == 0 && !f1Teams.isEmpty()) showF1(1);
                     break;
                 default:
                     return false;
