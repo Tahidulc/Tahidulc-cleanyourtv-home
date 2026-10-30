@@ -264,17 +264,13 @@ final class PlaylistSport {
             // OK: TiviMate on the broadcaster when one is known (its usual channel, found by its search); else the
             // playlist's event channel itself, full screen here (TiviMate leaves those groups out on some TVs, and
             // neither it nor Kleva TV opens a channel from a link).
-            String logo = t.badge;
-            if (by != null) {
-                List<String> names = new ArrayList<>();
-                names.add(by[0]);
-                t.ok = () -> h.tune(names, logo);
-            } else if (e.stream != null && !e.stream.isEmpty()) {
-                String url = Config.themeString(h.a, "iptv_server", "").replaceAll("/+$", "") + "/live/" + Config.themeString(h.a, "iptv_user", "")
-                        + "/" + Config.themeString(h.a, "iptv_pass", "") + "/" + e.stream;
-                String line = t.chip + " · " + t.channel;
-                t.ok = () -> StreamActivity.play(h.a, url, e.title, line);
-            }
+            // OK: Kleva TV, where these games are listed, found by its search and played (its first channel for the
+            // game, from the Royal or Sanctum playlist). Without Kleva TV on the TV: the event channel full screen here.
+            String url = e.stream == null || e.stream.isEmpty() ? null : Config.themeString(h.a, "iptv_server", "").replaceAll("/+$", "") + "/live/"
+                    + Config.themeString(h.a, "iptv_user", "") + "/" + Config.themeString(h.a, "iptv_pass", "") + "/" + e.stream;
+            String line = t.chip + " · " + t.channel;
+            String art = t.image;
+            t.ok = () -> h.kleva(e.home, e.away, e.title, art, () -> { if (url != null) StreamActivity.play(h.a, url, e.title, line); });
             out.add(t);
         }
         return out;

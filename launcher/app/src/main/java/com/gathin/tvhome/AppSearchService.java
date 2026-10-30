@@ -455,6 +455,7 @@ public class AppSearchService extends AccessibilityService {
         hideDelay = 0;
         candidates = java.util.Collections.singletonList(q);
         candidate = 0;
+        kleva = false;
         tried.clear();
         pickedText = null;
         spellings = spellings(q);
@@ -552,6 +553,7 @@ public class AppSearchService extends AccessibilityService {
         }
         if (root == null || root.getPackageName() == null || !target.contentEquals(root.getPackageName())) return true;
         if (channel) return tuneStep(root);
+        if (kleva) return klevaStep(root);
         AccessibilityNodeInfo box = find(root, Kind.EDIT);
         if (opened) {
             // Picked: done once the search has given way to the title's page.
@@ -603,6 +605,117 @@ public class AppSearchService extends AccessibilityService {
         if (s.equals(lastTrace)) return;
         lastTrace = s;
         android.util.Log.i(TAG, s);
+    }
+
+    // ---- Kleva TV: a game found by its search and played ---------------------------------------------------------
+
+    private static final String KLEVA = "com.plaintextdev.klevaTv";
+    /** Playing a game in Kleva TV (query is what is typed; teams are its clubs, or one title for an event). */
+    private boolean kleva;
+    private String[] teams;
+
+    /**
+     * Kleva TV on a game: its search opened by its own link, a club's name typed, and the first channel or programme
+     * found that names both clubs (Kleva lists the best first: the event channel, then the broadcasters) picked, so it
+     * plays. False when Kleva TV is not on this TV; without the helper it opens on its search.
+     */
+    static boolean kleva(Context c, String home, String away, String title, android.graphics.Bitmap art, android.graphics.Bitmap logo) {
+        Intent open = new Intent(Intent.ACTION_VIEW, android.net.Uri.parse("klevatv://search")).setPackage(KLEVA);
+        // Afresh: brought back as it was, Kleva played on whatever it played last behind its search.
+        open.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+        try {
+            c.startActivity(open);
+        } catch (Exception e) {
+            return false;
+        }
+        if (instance != null) {
+            instance.start(KLEVA, home != null ? home : title);
+            instance.kleva = true;
+            instance.focused = instance.moves = 0;
+            instance.teams = home != null && away != null ? new String[]{home, away} : new String[]{title};
+            instance.showCover(art, logo, title, LIVE, 9_000L);
+        }
+        return true;
+    }
+
+    /** Kleva: tries at focusing the game's card, and Downs pressed to reach it. */
+    private int focused, moves;
+    private long lastMove;
+
+    /** How many nodes a view holds: a card is a few, a list of them many. */
+    private static int size(AccessibilityNodeInfo n) {
+        java.util.List<AccessibilityNodeInfo> all = new java.util.ArrayList<>();
+        collect(n, all, 0);
+        return all.size();
+    }
+
+    /** Whether this node, or the text under it, names the game. */
+    private boolean names(AccessibilityNodeInfo n) {
+        java.util.List<AccessibilityNodeInfo> all = new java.util.ArrayList<>();
+        collect(n, all, 0);
+        for (AccessibilityNodeInfo x : all) {
+            if (x.isEditable() || x.getText() == null) continue;
+            String t = x.getText().toString();
+            if (teams.length == 2 ? PlaylistSport.same(t, teams[0], teams[1])
+                    : PlaylistSport.plain(t).contains(PlaylistSport.plain(teams[0]))) return true;
+        }
+        return false;
+    }
+
+    private boolean klevaStep(AccessibilityNodeInfo root) {
+        AccessibilityNodeInfo box = find(root, Kind.EDIT);
+        trace("kleva: box=" + (box != null) + " picked=" + opened + " moves=" + moves + " text=" + (box == null ? "" : box.getText()));
+        if (opened) {
+            // Picked: playing once the search is out of sight. Kleva keeps its search under the player, so a few
+            // seconds after the pick count as started too (the cover had stayed over the game till the end).
+            if (box == null || !box.isVisibleToUser() || System.currentTimeMillis() - pickedAt > 3_000L) { hideDelay = 400; return false; }
+            return true;
+        }
+        if (box == null) {
+            // Not on its search (it came back where it was): its Search button.
+            AccessibilityNodeInfo search = find(root, Kind.SEARCH);
+            if (search != null && System.currentTimeMillis() - lastSearch > 1_500L) { click(search); lastSearch = System.currentTimeMillis(); }
+            return true;
+        }
+        if (typedAt == 0) {
+            Bundle text = new Bundle();
+            text.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, query);
+            if (box.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, text)) typedAt = System.currentTimeMillis();
+            return true;
+        }
+        if (keyboardShown()) { performGlobalAction(GLOBAL_ACTION_BACK); return true; }
+        // Kleva's cards are React Native views that take no click from here: the remote's way in instead, the game's
+        // card focused (by Down from the search, as a person would, when it won't take focus) and OK pressed on it.
+        AccessibilityNodeInfo focus = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT);
+        // (Kleva's card is its picture, which takes the focus, with the programme and channel beside it.)
+        AccessibilityNodeInfo card = focus == null || focus.isEditable() ? null : focus.getParent();
+        if (card != null && size(card) < 16 && names(card)) {
+            if (android.os.Build.VERSION.SDK_INT >= 33) performGlobalAction(GLOBAL_ACTION_DPAD_CENTER);
+            else focus.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+            opened = true;
+            pickedAt = System.currentTimeMillis();
+            return true;
+        }
+        java.util.List<AccessibilityNodeInfo> all = new java.util.ArrayList<>();
+        collect(root, all, 0);
+        for (AccessibilityNodeInfo n : all) {
+            if (n.isEditable() || n.getText() == null || !names(n)) continue;
+            AccessibilityNodeInfo parent = n.getParent();
+            for (int i = 0; parent != null && i < parent.getChildCount(); i++) {
+                AccessibilityNodeInfo at = parent.getChild(i);
+                if (at != null && at.isFocusable()) { at.performAction(AccessibilityNodeInfo.ACTION_FOCUS); break; }
+            }
+            // Still elsewhere after that: one Down a step, from the search to the chips to the first card.
+            long now = System.currentTimeMillis();
+            if (focused++ > 0 && moves < 4 && android.os.Build.VERSION.SDK_INT >= 33 && now - lastMove > 500L) {
+                performGlobalAction(GLOBAL_ACTION_DPAD_DOWN);
+                moves++;
+                lastMove = now;
+            }
+            return true;
+        }
+        // Nothing yet: the results come as it searches.
+        return System.currentTimeMillis() - typedAt < 10_000L;
     }
 
     /** A game's channels already picked that TiviMate would only remind about (not on yet there): passed over. */

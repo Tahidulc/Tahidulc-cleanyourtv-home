@@ -2250,6 +2250,25 @@ final class HomeV2 {
         });
     }
 
+    /**
+     * A game in Kleva TV (its search, the first channel for it, playing), under the cover with the game's picture; the
+     * helper switched back on first if a TCL turned it off. otherwise: when Kleva TV is not on this TV.
+     */
+    void kleva(String home, String away, String title, String art, Runnable otherwise) {
+        players.stop();
+        Bitmap pic = art == null ? null : cached(art);
+        Runnable open = () -> {
+            if (!AppSearchService.kleva(a, home, away, title, pic, null)) { otherwise.run(); return; }
+            GoalWatchService.onAppOpened(a, "com.plaintextdev.klevaTv");
+        };
+        if (!AppSearchService.running()) {
+            AppSearchService.ensure(a);
+            main.postDelayed(open, 1600);
+        } else {
+            open.run();
+        }
+    }
+
     /** A picture already fetched for url, at whatever size it was fetched; null when there is none. */
     private Bitmap cached(String url) {
         Bitmap best = null;
