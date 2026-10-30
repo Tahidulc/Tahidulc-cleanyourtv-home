@@ -1523,7 +1523,7 @@ final class HomeV2 {
             v.setImageResource(logo);
             v.setAdjustViewBounds(true);
             v.setScaleType(ImageView.ScaleType.FIT_CENTER);
-            v.setMaxHeight(px(m.startsWith("HDR") ? 28 : 22));
+            v.setMaxHeight(px(m.startsWith("HDR") ? 27 : 22));
             v.setPadding(0, px(m.startsWith("HDR") ? 0 : 3), 0, px(m.startsWith("HDR") ? 0 : 3));
             return v;
         }

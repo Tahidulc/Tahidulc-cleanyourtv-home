@@ -19,10 +19,10 @@ Launcher v2
   button on the owner's TV. A trademark of Nord Security; kept out of any upstream pull request.
 - res/drawable/ic_v2_*.xml: drawn for this launcher.
 
-- res/drawable-nodpi/fmt_dolby_vision.png, fmt_dolby_atmos.png, fmt_dolby.png, fmt_hdr10.png, fmt_hdr10plus.png:
-  the Dolby Vision, Dolby Atmos, HDR10 and HDR10+ logos from Wikimedia Commons (Dolby_Vision_(logo).svg,
-  Dolby_Atmos_(logo).svg, HDR_10_logo_(black).svg, HDR_10_plus_logo_(black).svg), recoloured white; trademarks of
-  their owners, shown only to say which formats a title is in. fmt_dolby_vision_atmos.png is Dolby's combined
+- res/drawable-nodpi/fmt_dolby_vision.png, fmt_dolby_atmos.png, fmt_dolby.png: the Dolby Vision and Dolby Atmos
+  logos from Wikimedia Commons (Dolby_Vision_(logo).svg, Dolby_Atmos_(logo).svg), recoloured white; fmt_hdr10plus.png:
+  the HDR10+ logo from hdr10plus.org (its drop shadow taken off), and fmt_hdr10.png the same artwork without the "+"
+  (the "0" closed); trademarks of their owners, shown only to say which formats a title is in. fmt_dolby_vision_atmos.png is Dolby's combined
   "Dolby Vision · Atmos" lockup, put together from those two logos (Atmos's word after Vision's, a dot between).
 - res/drawable-nodpi/svc_*.png: the streaming services' logos (Netflix, Prime Video, Disney+, Apple TV, Channel 4,
   5, Paramount+ from TMDB's network logos; BBC iPlayer, ITVX and Sky Go from Wikipedia's logo files), trimmed, the
