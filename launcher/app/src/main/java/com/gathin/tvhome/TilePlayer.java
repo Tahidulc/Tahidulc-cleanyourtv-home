@@ -19,7 +19,7 @@ import android.widget.FrameLayout;
  */
 final class TilePlayer {
     /** YouTube shows the video's title over its first seconds: the trailer stays hidden under the picture until then. */
-    private static final long TITLE_MS = 2_600L;
+    private static final long TITLE_MS = 4_200L;
     private final Context c;
     private final Handler main = new Handler(Looper.getMainLooper());
     private android.webkit.WebView web;
@@ -59,20 +59,24 @@ final class TilePlayer {
             @android.webkit.JavascriptInterface public void playing() {
                 main.post(() -> { main.removeCallbacks(reveal); main.postDelayed(reveal, TITLE_MS); });
             }
+            @android.webkit.JavascriptInterface public void waiting() {
+                // Loading or paused: YouTube draws its logo and spinner over the picture, so the trailer hides again.
+                main.post(() -> { main.removeCallbacks(reveal); if (web != null) web.animate().alpha(0f).setDuration(150).start(); });
+            }
             @android.webkit.JavascriptInterface public void ended() {
                 main.post(TilePlayer.this::stop);
             }
         }, "Home");
         String pkg = c.getPackageName();
         String html = "<!doctype html><html><head><meta name=viewport content='width=device-width,initial-scale=1'>"
-                + "<style>html,body{margin:0;height:100%;background:#000;overflow:hidden}#p{position:absolute;inset:0;width:100%;height:100%;transform:scale(1.55)}</style>"
+                + "<style>html,body{margin:0;height:100%;background:#000;overflow:hidden}#p{position:absolute;inset:0;width:100%;height:100%;transform:scale(1.75)}iframe{pointer-events:none}</style>"
                 + "</head><body><div id=p></div><script src='https://www.youtube.com/iframe_api'></script><script>"
                 + "var pl;function onYouTubeIframeAPIReady(){pl=new YT.Player('p',{width:'100%',height:'100%',"
                 + "playerVars:{autoplay:1,controls:0,rel:0,playsinline:1,modestbranding:1,iv_load_policy:3,disablekb:1,fs:0,cc_load_policy:0,showinfo:0,"
                 + "origin:'https://" + pkg + "'},"
                 + "events:{onReady:function(){Home.ready();},"
-                + "onStateChange:function(e){if(e.data==1)Home.playing();if(e.data==0)Home.ended();}}});}"
-                + "function play(id){try{pl.unloadModule('captions');}catch(x){}pl.setVolume(80);pl.loadVideoById({videoId:id,startSeconds:2});}"
+                + "onStateChange:function(e){if(e.data==1)Home.playing();else if(e.data==3||e.data==2)Home.waiting();if(e.data==0)Home.ended();}}});}"
+                + "function play(id){try{pl.unloadModule('captions');}catch(x){}pl.setVolume(80);pl.loadVideoById({videoId:id,startSeconds:6});}"
                 + "function stop(){try{pl.stopVideo();}catch(x){}}"
                 + "</script></body></html>";
         web.loadDataWithBaseURL("https://" + pkg, html, "text/html", "utf-8", null);

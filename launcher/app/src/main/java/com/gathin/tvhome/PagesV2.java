@@ -298,7 +298,8 @@ final class PagesV2 {
                 addRow(r.view, 204, rowY[i] + (tabs != null ? 62 : 40) - 6, 1632, TALL + 24);
                 rows.add(r);
             }
-            onTabs = false;
+            // A page with tabs opens on its first tab; Down goes into the posters.
+            onTabs = tabs != null;
             load(0);
         }
 
@@ -350,48 +351,7 @@ final class PagesV2 {
                 wide.setScaleType(ImageView.ScaleType.CENTER_CROP);
                 wide.setAlpha(0f);
                 f.addView(wide, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-                // As v1's cards: a deeper shade at the foot, the title in bold, the rating and year under it, and
-                // "#1 TRENDING FILM" at the top of a top ten.
-                View shade = new View(h.a);
-                shade.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0x00000000, 0x00000000, 0x59000000, 0xE6000000}));
-                f.addView(shade, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-                if (r.numbered && i < 10) {
-                    TextView chip = h.text(11, h.semi, Color.WHITE);
-                    SpannableString cs = new SpannableString("#" + (i + 1) + "  TRENDING " + (t.tv ? "TV" : "FILM"));
-                    cs.setSpan(new android.text.style.ForegroundColorSpan(0xFFFFC94D), 0, String.valueOf(i + 1).length() + 1, 0);
-                    chip.setText(cs);
-                    chip.setLetterSpacing(0.06f);
-                    chip.setPadding(px(8), px(4), px(9), px(3));
-                    chip.setBackground(h.fill(9, 0xB3000000));
-                    FrameLayout.LayoutParams cl = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP | Gravity.START);
-                    cl.topMargin = px(9);
-                    cl.leftMargin = px(9);
-                    f.addView(chip, cl);
-                }
-                LinearLayout words = new LinearLayout(h.a);
-                words.setOrientation(LinearLayout.VERTICAL);
-                TextView name = h.text(17, h.semi, Color.WHITE);
-                name.setText(t.title);
-                name.setMaxLines(2);
-                name.setLineSpacing(0, 1.0f);
-                name.setEllipsize(TextUtils.TruncateAt.END);
-                name.setShadowLayer(px(6), 0, px(1), 0xCC000000);
-                words.addView(name);
-                String meta = (t.vote > 0 ? String.format(Locale.UK, "★ %.1f", t.vote) : "")
-                        + (t.year != null && !t.year.isEmpty() ? (t.vote > 0 ? "  ·  " : "") + t.year : "");
-                if (!meta.isEmpty()) {
-                    TextView m = h.text(13, h.regular, 0xD9FFFFFF);
-                    m.setText(meta);
-                    m.setSingleLine(true);
-                    LinearLayout.LayoutParams ml = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-                    ml.topMargin = px(3);
-                    words.addView(m, ml);
-                }
-                FrameLayout.LayoutParams nl = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM);
-                nl.leftMargin = px(11);
-                nl.rightMargin = px(11);
-                nl.bottomMargin = px(10);
-                f.addView(words, nl);
+                // Just the poster (and its trailer): no words over it, on every page.
                 LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(px(NARROW), px(TALL));
                 lp.rightMargin = px(GAP);
                 r.strip.addView(f, lp);
@@ -465,6 +425,7 @@ final class PagesV2 {
             if (column != null && rowY.length > 2) {
                 int top = onTabs ? 0 : Math.max(0, Math.min(row - 1, rowY.length - 2));
                 column.animate().translationY(-px(rowY[top] - rowY[0])).setDuration(320).setInterpolator(HomeV2.SKY).start();
+                if (tabBar != null) ((View) tabBar.getParent()).animate().alpha(top > 0 ? 0f : 1f).setDuration(200).start();
                 for (int ri = 0; ri < rows.size(); ri++) {
                     float a = ri < top ? 0f : 1f;
                     rows.get(ri).view.animate().alpha(a).setDuration(200).start();
@@ -566,7 +527,7 @@ final class PagesV2 {
                     break;
                 case KeyEvent.KEYCODE_DPAD_DOWN:
                     if (onTabs) onTabs = false;
-                    else if (row < rows.size() - 1) { row++; idx = Math.min(idx, Math.max(0, rows.get(row).items.size() - 1)); }
+                    else if (row < rows.size() - 1 && !rows.get(row + 1).items.isEmpty()) { row++; idx = Math.min(idx, Math.max(0, rows.get(row).items.size() - 1)); }
                     else return false;
                     break;
                 default:
@@ -675,7 +636,7 @@ final class PagesV2 {
                 {"Korean cinema", "", "discover/movie?with_original_language=ko&sort_by=popularity.desc&vote_count.gte=150", ""},
                 {"Documentaries", "", genre(false, 99), ""},
                 {"Coming soon", "in cinemas", "movie/upcoming?region=GB", ""}};
-        return new PosterPage(h, "MOVIES", 0xFFFF4FA3, null, rowYs(spec.length), t -> rows(k, false, spec));
+        return withServices(h, "MOVIES", 0xFFFF4FA3, false, spec);
     }
 
     static PosterPage shows(HomeV2 h) {
@@ -705,7 +666,42 @@ final class PagesV2 {
                 {"Anime", "", "discover/tv?with_genres=16&with_original_language=ja&sort_by=popularity.desc&vote_count.gte=100", ""},
                 {"Korean dramas", "", "discover/tv?with_original_language=ko&with_genres=18&sort_by=popularity.desc&vote_count.gte=50", ""},
                 {"Kids", "", "discover/tv?with_genres=10762&sort_by=popularity.desc", ""}};
-        return new PosterPage(h, "TV SHOWS", 0xFF4F8BFF, null, rowYs(spec.length), t -> rows(k, true, spec));
+        return withServices(h, "TV SHOWS", 0xFF4F8BFF, true, spec);
+    }
+
+    /** The services' tabs after "All": TMDB's watch provider ids in the UK. */
+    private static final String[] SERVICES = {"Netflix", "Prime Video", "Disney+", "Apple TV+", "NOW"};
+    private static final int[] SERVICE_IDS = {8, 9, 337, 350, 39};
+
+    /**
+     * Movies or TV shows with tabs: "All" (every section), then one per service with its own sections: what is
+     * popular on it, new on it, its best rated, and its genres.
+     */
+    private static PosterPage withServices(HomeV2 h, String crumb, int colour, boolean tv, String[][] all) {
+        String k = h.tmdbKey;
+        String[] tabs = new String[SERVICES.length + 1];
+        tabs[0] = "All";
+        System.arraycopy(SERVICES, 0, tabs, 1, SERVICES.length);
+        int most = Math.max(all.length, 12);
+        int[] y = new int[most];
+        for (int i = 0; i < most; i++) y[i] = 586 + i * 286;
+        return new PosterPage(h, crumb, colour, tabs, y, t -> {
+            if (t == 0) return rows(k, tv, all);
+            int p = SERVICE_IDS[t - 1];
+            String name = SERVICES[t - 1], kind = tv ? "tv" : "movie", dateKey = tv ? "first_air_date" : "primary_release_date";
+            String base = "discover/" + kind + "?watch_region=GB&with_watch_providers=" + p;
+            List<String[]> spec = new ArrayList<>();
+            spec.add(new String[]{"Popular on " + name, "", base + "&sort_by=popularity.desc", ""});
+            spec.add(new String[]{"New on " + name, "the last three months", base + "&sort_by=popularity.desc&" + dateKey + ".gte=" + since(90), ""});
+            spec.add(new String[]{"Best rated on " + name, "", base + "&sort_by=vote_average.desc&vote_count.gte=300", ""});
+            int[][] genres = tv ? new int[][]{{18}, {80}, {35}, {10765}, {10759}, {9648}, {99}, {10764}, {16}}
+                    : new int[][]{{28}, {53}, {35}, {18}, {878}, {27}, {10749}, {10751}, {99}};
+            String[] names = tv ? new String[]{"Drama", "Crime", "Comedy", "Sci-fi & fantasy", "Action & adventure", "Mystery", "Documentaries", "Reality", "Animation"}
+                    : new String[]{"Action", "Thrillers", "Comedy", "Drama", "Science fiction", "Horror", "Romance", "Family", "Documentaries"};
+            for (int g = 0; g < genres.length; g++)
+                spec.add(new String[]{names[g], "on " + name, base + "&with_genres=" + genres[g][0] + "&sort_by=popularity.desc", ""});
+            return rows(k, tv, spec.toArray(new String[0][]));
+        });
     }
 
     // ---- Sport -----------------------------------------------------------------------------------------------------

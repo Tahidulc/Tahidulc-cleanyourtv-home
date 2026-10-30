@@ -1009,6 +1009,11 @@ final class HomeV2 {
         clp.bottomMargin = px(14);
         f.addView(cap, clp);
         fillCaption(cap, t);
+        // A film's or series' tile is its picture alone (and its trailer): no words over it.
+        if (t.tmdbId != 0 && t.stream == null) {
+            cap.setVisibility(View.GONE);
+            shade.setVisibility(View.GONE);
+        }
         if (t.chip != null) {
             TextView chip = text(16, semi, Color.WHITE);
             chip.setText(t.chip);
