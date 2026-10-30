@@ -920,13 +920,17 @@ public class AppSearchService extends AccessibilityService {
             AccessibilityNodeInfo parent = head.getParent();
             if (parent == null) continue;
             boolean after = false;
+            AccessibilityNodeInfo found = null;
             for (int i = 0; i < parent.getChildCount(); i++) {
                 AccessibilityNodeInfo c = parent.getChild(i);
                 if (c == null) continue;
                 if (c.equals(head)) { after = true; continue; }
-                // The first list after the heading with channels in it (the one between holds the playlists' names).
-                if (after && c.getClassName() != null && c.getClassName().toString().endsWith("GridView") && c.getChildCount() > 2) return c;
+                // The last list after the heading: the channels found. The one between, when there is one, holds the
+                // playlists' names ("Royal", "Sanctum"). Counting children told them apart until a UHD channel, found
+                // alone, made a list of one: it was passed over, and nothing was ever picked.
+                if (after && c.getClassName() != null && c.getClassName().toString().endsWith("GridView") && c.getChildCount() > 0) found = c;
             }
+            if (found != null) return found;
         }
         return null;
     }
