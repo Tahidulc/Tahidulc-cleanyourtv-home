@@ -723,7 +723,7 @@ final class HomeV2 {
                     topIdx = 0;
                 } else if (code == KeyEvent.KEYCODE_DPAD_DOWN) {
                     zone = Z_CATS;
-                    catIdx = Math.min(5, (rowIdx - Math.max(0, rowIdx - 2)) * 6 / 3);
+                    catIdx = Math.min(5, (rowIdx - Math.max(0, rowIdx - 3)) * 6 / 4);
                 }
                 if (zone == Z_ROW) heroSoon();
                 break;
@@ -1010,8 +1010,8 @@ final class HomeV2 {
             t.animate().scaleX(on ? 1.07f : 1f).scaleY(on ? 1.07f : 1f).setDuration(150).setInterpolator(SKY).start();
             ((FrameLayout) t).setForeground(on ? ring(16) : null);
         }
-        // Three tiles in full and the next peeking in: the focus moves along to the third, then the row slides.
-        int first = zone == Z_ROW ? Math.max(0, rowIdx - 2) : 0;
+        // Four tiles in full: the focus moves along to the fourth, then the row slides.
+        int first = zone == Z_ROW ? Math.max(0, rowIdx - 3) : 0;
         window(row, first);
         playSoon();
         row.animate().translationX(-first * px(TILE_W + 24)).setDuration(240).setInterpolator(SKY).start();
@@ -1081,7 +1081,8 @@ final class HomeV2 {
         FrameLayout tile = (FrameLayout) v;
         if (t.stream != null && !t.stream.isEmpty() && !Config.themeString(a, "iptv_server", "").isEmpty()) {
             players.live(tile, 1, Config.themeString(a, "iptv_server", "") + "/live/" + Config.themeString(a, "iptv_user", "") + "/"
-                    + Config.themeString(a, "iptv_pass", "") + "/" + t.stream, tile.findViewWithTag("pic"));
+                    + Config.themeString(a, "iptv_pass", "") + "/" + t.stream, tile.findViewWithTag("pic"),
+                    t.channel != null && t.channel.matches("(?i).*\\b(uhd|4k|hdr)\\b.*"));
             return;
         }
         if (t.tmdbId == 0 || tmdbKey.isEmpty()) return;
@@ -1211,10 +1212,10 @@ final class HomeV2 {
     }
 
     /**
-     * Home's tiles: larger than the sections' (384 by 216), filling the room down to the boxes; three in full across
-     * the row and the fourth peeking in.
+     * Home's tiles: four across, as wide as the sections' (384) and taller (262, not 216), reaching most of the way down
+     * to the boxes.
      */
-    static final int TILE_W = 432, TILE_H = 243;
+    static final int TILE_W = 384, TILE_H = 262;
 
     private View tileView(Tile t) {
         FrameLayout f = new FrameLayout(a);

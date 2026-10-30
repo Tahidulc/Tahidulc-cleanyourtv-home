@@ -137,14 +137,17 @@ final class TilePlayer {
     }
 
     /** A channel live across the tile, with sound: the playlist's stream (base without extension), HLS as the fallback. */
-    void live(FrameLayout into, int at, String base, View cover) {
+    void live(FrameLayout into, int at, String base, View cover, boolean hdr) {
         stop();
         tile = into;
         // A tile kept as a finished picture would hold the first frame still (sound on, picture frozen): drawn live
         // while the channel plays, kept again after.
         layered = into.getLayerType() == View.LAYER_TYPE_HARDWARE;
         if (layered) into.setLayerType(View.LAYER_TYPE_NONE, null);
-        if (overlay) {
+        // An HDR channel (the UHD ones) through the TV's video hardware would switch the whole screen into HDR, and the
+        // TV says so in its corner ("HDR10") on Home: those are drawn in the launcher's own picture instead, which
+        // stays as it is; the TV switches (and says so) only once the channel is watched in an app.
+        if (overlay && !hdr) {
             // Under the tile's own picture, which fades away once the channel is really showing; the tile's rounded
             // corners stay, as the window's own pixels cover the video there.
             android.view.SurfaceView sv = new android.view.SurfaceView(c);

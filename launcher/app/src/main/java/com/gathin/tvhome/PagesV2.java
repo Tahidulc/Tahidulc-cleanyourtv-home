@@ -184,7 +184,8 @@ final class PagesV2 {
     }
 
     static final class PosterPage extends Page {
-        private static final int NARROW = 150, WIDE = 400, TALL = 225, GAP = 20;
+        /** Posters 2:3, widened 16:9, as tall as fits between the tabs and the boxes. */
+        private static final int NARROW = 180, WIDE = 480, TALL = 270, GAP = 20;
         private final String crumb;
         private final int crumbColour;
         private final String[] tabs;
