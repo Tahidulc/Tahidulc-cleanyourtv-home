@@ -411,6 +411,12 @@ final class PagesV2 {
                     }
                     ImageView wide = (ImageView) f.findViewWithTag("wide");
                     Title t = r.items.get(i);
+                    // Widened: the title's own logo at its foot (fetched the first time), over the picture and trailer.
+                    View logo = f.findViewWithTag("titlelogo");
+                    if (on && logo == null) logo = h.titleLogo(f, t.id, t.tv, 220, 62);
+                    if (logo != null && !on) logo.animate().alpha(0f).setDuration(150).start();
+                    if (on && logo != null && ((FrameLayout) logo).getChildAt(1) instanceof ImageView
+                            && ((ImageView) ((FrameLayout) logo).getChildAt(1)).getDrawable() != null) logo.animate().alpha(1f).setDuration(250).start();
                     if (on && t.backdrop != null) {
                         h.image(wide, t.backdrop.replace("/w1280/", "/w780/"), px(WIDE * 2));
                         wide.animate().alpha(1f).setDuration(350).start();

@@ -1017,6 +1017,7 @@ final class HomeV2 {
         if (t.tmdbId != 0 && t.stream == null) {
             cap.setVisibility(View.GONE);
             shade.setVisibility(View.GONE);
+            titleLogo(f, t.tmdbId, t.tv, 230, 64);
         }
         if (t.chip != null) {
             TextView chip = text(16, semi, Color.WHITE);
@@ -1710,6 +1711,41 @@ final class HomeV2 {
                 GoalWatchService.onAppOpened(a, pkg);
             });
         });
+    }
+
+    /**
+     * A film's or series' own logo (TMDB's, its name as drawn) at a tile's foot, over a soft shade, above any trailer:
+     * looked up in the background; a title with no logo stays as its picture alone.
+     */
+    View titleLogo(FrameLayout tile, int tmdbId, boolean tv, int maxW, int maxH) {
+        FrameLayout foot = new FrameLayout(a);
+        foot.setTag("titlelogo");
+        foot.setAlpha(0f);
+        View soft = new View(a);
+        soft.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0x00000000, 0x8C000000}));
+        foot.addView(soft, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        ImageView l = new ImageView(a);
+        l.setAdjustViewBounds(true);
+        l.setScaleType(ImageView.ScaleType.FIT_START);
+        l.setMaxWidth(px(maxW));
+        l.setMaxHeight(px(maxH));
+        FrameLayout.LayoutParams ll = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM | Gravity.START);
+        ll.leftMargin = px(16);
+        ll.bottomMargin = px(14);
+        foot.addView(l, ll);
+        tile.addView(foot, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, px(maxH + 60), Gravity.BOTTOM));
+        if (tmdbKey.isEmpty()) return foot;
+        io.execute(() -> {
+            String url = tmdbLogo(tmdbId, tv);
+            if (url == null) return;
+            main.post(() -> image(l, url, px(maxW * 2), () -> {
+                // A poster that has narrowed again by the time its logo came keeps it hidden until it widens.
+                ViewGroup.LayoutParams lp = tile.getLayoutParams();
+                if (lp != null && lp.width > 0 && lp.width < px(maxW)) return;
+                foot.animate().alpha(1f).setDuration(250).start();
+            }));
+        });
+        return foot;
     }
 
     /** A channel's logo from the TV guide's list, by any of its names: for a tune that came with none. */
