@@ -2015,7 +2015,8 @@ final class PagesV2 {
             dl.rightMargin = px(8);
             on.addView(dot, dl);
             TextView lo = h.text(16, h.regular, 0xD9FFFFFF);
-            lo.setText("Live on ");
+            // With the channel's logo where it has one; its name where not (a playlist's own event channel).
+            lo.setText(t.badge == null && t.channel != null ? "Live on " + t.channel : "Live on ");
             on.addView(lo);
             ImageView ch = new ImageView(h.a);
             ch.setAdjustViewBounds(true);

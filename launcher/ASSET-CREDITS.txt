@@ -25,5 +25,6 @@ Launcher v2
   (the "0" closed); trademarks of their owners, shown only to say which formats a title is in. fmt_dolby_vision_atmos.png is a compact Dolby lockup (the double-D with Vision over Atmos),
   put together from those two logos.
 - res/drawable-nodpi/svc_*.png: the streaming services' logos (Netflix, Prime Video, Disney+, Apple TV, Channel 4,
-  5, Paramount+ from TMDB's network logos; BBC iPlayer, ITVX and Sky Go from Wikipedia's logo files), trimmed, the
+  5, Paramount+ from TMDB's network logos; BBC iPlayer and ITVX from Wikipedia's logo files; Sky's own 2020 wordmark
+  (svc_sky) from TMDB's company logos), trimmed, the
   dark ones drawn white for the dark screen; trademarks of their owners, shown only to say where a title streams.

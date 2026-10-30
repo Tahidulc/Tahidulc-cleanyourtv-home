@@ -147,7 +147,8 @@ public class AppSearchService extends AccessibilityService {
             instance.candidates = names;
             // TiviMate searches a whole playlist: allow it longer.
             instance.deadline = System.currentTimeMillis() + TUNE_MS * Math.min(3, names.size());
-            instance.showCover(art, logo, names.get(0), LIVE, 12_000L);
+            String shown = names.get(0).startsWith("match:") ? names.get(0).substring(6).replace("|", " v ") : names.get(0);
+            instance.showCover(art, logo, shown, LIVE, 12_000L);
         }
         return true;
     }
@@ -454,6 +455,8 @@ public class AppSearchService extends AccessibilityService {
         hideDelay = 0;
         candidates = java.util.Collections.singletonList(q);
         candidate = 0;
+        tried.clear();
+        pickedText = null;
         spellings = spellings(q);
         spelling = 0;
         deadline = System.currentTimeMillis() + SEARCH_MS;
@@ -602,7 +605,19 @@ public class AppSearchService extends AccessibilityService {
         android.util.Log.i(TAG, s);
     }
 
+    /** A game's channels already picked that TiviMate would only remind about (not on yet there): passed over. */
+    private final java.util.Set<String> tried = new java.util.HashSet<>();
+    private String pickedText;
+
     private boolean tuneStep(AccessibilityNodeInfo root) {
+        // Picked a channel that only has the game later: TiviMate offers to remind or record. That away, the next one.
+        if (picks > 0 && query.startsWith("match:") && !root.findAccessibilityNodeInfosByText("Remind").isEmpty()
+                && !root.findAccessibilityNodeInfosByText("Record").isEmpty()) {
+            performGlobalAction(GLOBAL_ACTION_BACK);
+            if (pickedText != null) tried.add(pickedText);
+            picks = 0;
+            return true;
+        }
         AccessibilityNodeInfo box = find(root, Kind.EDIT);
         AccessibilityNodeInfo rowNow = box == null ? null : channelRow(root);
         trace("tune: box=" + (box != null) + " picks=" + picks + " typed=" + (typedAt > 0) + " row=" + (rowNow == null ? "none" : rowNow.getChildCount())
@@ -669,7 +684,7 @@ public class AppSearchService extends AccessibilityService {
         AccessibilityNodeInfo hit = inBox && row != null ? channelNode(row, box) : null;
         // A 4K (UHD) version of the channel first: a plain match is noted, the row looked through a little further for
         // a 4K one, and gone back to when there is none.
-        if (hit != null && (uhd(hit) || settle)) return pick(hit);
+        if (hit != null && (uhd(hit) || settle || query.startsWith("match:"))) return pick(hit);   // a game: the first channel with it
         if (hit != null && foundAt < 0) foundAt = scrolls;
         if (foundAt >= 0 && !backing && scrolls - foundAt >= 3) backing = true;
         if (backing) {
@@ -977,9 +992,20 @@ public class AppSearchService extends AccessibilityService {
      * but for a "(IRE)"-like tag.
      */
     private AccessibilityNodeInfo channelNode(AccessibilityNodeInfo root, AccessibilityNodeInfo box) {
-        String want = channelName(query, false), loose = channelName(query, true);
         java.util.List<AccessibilityNodeInfo> all = new java.util.ArrayList<>();
         collect(root, all, 0);
+        if (query.startsWith("match:")) {
+            // Any channel, in any playlist, named for the game ("Peacock 03: Elversberg vs. Mainz"): the first found.
+            String[] teams = query.substring(6).split("\\|");
+            for (AccessibilityNodeInfo n : all) {
+                if (n.isEditable() || n.getText() == null || n.equals(box) || teams.length < 2) continue;
+                String text = n.getText().toString();
+                if (tried.contains(text)) continue;
+                if (PlaylistSport.same(text, teams[0], teams[1])) { pickedText = text; return n; }
+            }
+            return null;
+        }
+        String want = channelName(query, false), loose = channelName(query, true);
         AccessibilityNodeInfo same = null, close = null;
         for (AccessibilityNodeInfo n : all) {
             if (n.isEditable() || n.getText() == null || n.equals(box)) continue;
@@ -1002,6 +1028,15 @@ public class AppSearchService extends AccessibilityService {
     static String searchTerm(String name) {
         String n = name.trim();
         if (n.equals("5")) return "Channel 5";
+        // A game rather than a channel ("match:Home|Away"): searched by the home club's name.
+        if (n.startsWith("match:")) return n.substring(6).split("\\|")[0].trim();
+        // A playlist's event channel ("03. Elversberg vs Mainz 19:30"): its search finds it by a club's name, not by the
+        // whole line with its number and time; the found channel is then matched on the whole name.
+        java.util.regex.Matcher ev = java.util.regex.Pattern.compile("^\\s*\\d+\\s*[.:)-]\\s*(.+?)\\s+(?:vs?\\.?|v)\\s+.*$",
+                java.util.regex.Pattern.CASE_INSENSITIVE).matcher(n);
+        if (ev.matches()) return ev.group(1).trim();
+        java.util.regex.Matcher one = java.util.regex.Pattern.compile("^\\s*\\d+\\s*[.:)-]\\s*(.+?)\\s+\\d{1,2}[:.]\\d{2}.*$").matcher(n);
+        if (one.matches()) return one.group(1).trim();
         java.util.regex.Matcher m = java.util.regex.Pattern.compile("^([A-Za-z]+)\\d+$").matcher(n);
         return m.matches() ? m.group(1) : n;
     }

@@ -713,9 +713,16 @@ final class HomeV2 {
             case Z_RAIL:
                 if (parked && page != null) {
                     // Beside an open section: along the rail without changing what shows; Right back into the section.
-                    if (code == KeyEvent.KEYCODE_DPAD_UP) { if (railIdx > 0) railIdx--; else { zone = Z_TOP; topIdx = 0; } }
-                    else if (code == KeyEvent.KEYCODE_DPAD_DOWN) { if (railIdx < railViews.size() - 1) railIdx++; }
-                    else if (code == KeyEvent.KEYCODE_DPAD_RIGHT) { parked = false; zone = Z_CATS; page.entered(); }
+                    // Right goes back into the section; Up or Down onto another app shows that app's row in its place
+                    // (YouTube's recommendations), as moving along the rail does anywhere else.
+                    if (code == KeyEvent.KEYCODE_DPAD_RIGHT) { parked = false; zone = Z_CATS; page.entered(); break; }
+                    int to = code == KeyEvent.KEYCODE_DPAD_UP ? railIdx - 1 : code == KeyEvent.KEYCODE_DPAD_DOWN ? railIdx + 1 : railIdx;
+                    if (to < 0) { zone = Z_TOP; topIdx = 0; break; }
+                    if (to == railIdx || to >= railViews.size()) break;
+                    parked = false;
+                    closePage();
+                    zone = Z_RAIL;
+                    selectRail(to);
                     break;
                 }
                 if (code == KeyEvent.KEYCODE_DPAD_UP) {
@@ -1577,7 +1584,7 @@ final class HomeV2 {
             case "41": case "54": return R.drawable.svc_itvx;
             case "103": return R.drawable.svc_c4;
             case "333": return R.drawable.svc_my5;
-            case "29": return R.drawable.svc_skygo;
+            case "29": return R.drawable.svc_sky;
             case "531": case "582": return R.drawable.svc_paramount;
             default: return 0;
         }
@@ -2032,6 +2039,9 @@ final class HomeV2 {
             t.ok = () -> tune(ch, logo);
             out.add(t);
         }
+        // The playlist's own games (Kleva TV's list): those Sky's guide does not have, with their broadcaster.
+        out.addAll(PlaylistSport.tiles(this, out));
+        out.sort((x, y) -> Long.compare(x.start, y.start));
         return out;
     }
 
@@ -2517,6 +2527,7 @@ final class HomeV2 {
 
     private Bitmap fetch(String url, int width) {
         if (url.endsWith("#yt")) return video(url.substring(0, url.length() - 3), width);
+        if (url.startsWith("crest:")) return crests(url.substring(6), width);
         try {
             byte[] data;
             if (url.startsWith("http")) {
@@ -2553,6 +2564,67 @@ final class HomeV2 {
         } catch (Exception | OutOfMemoryError e) {
             return null;
         }
+    }
+
+    /**
+     * A game's picture from its two clubs' crests ("crest:home|away"): each on its own half, in the crest's own colour
+     * (its average, darkened), the halves meeting on a slant, as Kleva TV draws its fixtures.
+     */
+    private Bitmap crests(String spec, int width) {
+        String[] p = spec.split("\\|");
+        if (p.length < 2) return null;
+        Bitmap home = fetch(p[0], width / 2), away = fetch(p[1], width / 2);
+        if (home == null || away == null) return null;
+        int w = Math.max(320, width), h = w * 9 / 16;
+        Bitmap out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
+        android.graphics.Canvas c = new android.graphics.Canvas(out);
+        android.graphics.Paint paint = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG | android.graphics.Paint.FILTER_BITMAP_FLAG);
+        int ch = tone(home), ca = tone(away);
+        android.graphics.Path left = new android.graphics.Path();
+        left.moveTo(0, 0);
+        left.lineTo(w * 0.56f, 0);
+        left.lineTo(w * 0.44f, h);
+        left.lineTo(0, h);
+        left.close();
+        paint.setShader(new android.graphics.LinearGradient(0, 0, 0, h, ch, darker(ch), android.graphics.Shader.TileMode.CLAMP));
+        c.drawRect(0, 0, w, h, paint);
+        paint.setShader(new android.graphics.LinearGradient(0, 0, 0, h, ca, darker(ca), android.graphics.Shader.TileMode.CLAMP));
+        c.save();
+        c.clipOutPath(left);
+        c.drawRect(0, 0, w, h, paint);
+        c.restore();
+        paint.setShader(null);
+        float size = h * 0.56f;
+        for (int i = 0; i < 2; i++) {
+            Bitmap b = i == 0 ? home : away;
+            float scale = size / Math.max(b.getWidth(), b.getHeight());
+            float bw = b.getWidth() * scale, bh = b.getHeight() * scale, cx = w * (i == 0 ? 0.25f : 0.75f), cy = h * 0.46f;
+            c.drawBitmap(b, null, new android.graphics.RectF(cx - bw / 2, cy - bh / 2, cx + bw / 2, cy + bh / 2), paint);
+        }
+        return out;
+    }
+
+    /** A crest's colour: the average of its opaque pixels, kept from going too pale or too dark. */
+    private static int tone(Bitmap b) {
+        Bitmap s = Bitmap.createScaledBitmap(b, 24, 24, true);
+        long r = 0, g = 0, bl = 0, n = 0;
+        for (int y = 0; y < 24; y++) for (int x = 0; x < 24; x++) {
+            int c = s.getPixel(x, y);
+            if (Color.alpha(c) < 200) continue;
+            int lum = (Color.red(c) + Color.green(c) + Color.blue(c)) / 3;
+            if (lum > 235) continue;   // the white of the badge
+            r += Color.red(c); g += Color.green(c); bl += Color.blue(c); n++;
+        }
+        if (n == 0) return 0xFF2A2F4A;
+        float[] hsv = new float[3];
+        Color.RGBToHSV((int) (r / n), (int) (g / n), (int) (bl / n), hsv);
+        hsv[1] = Math.min(1f, hsv[1] * 1.2f);
+        hsv[2] = Math.max(0.35f, Math.min(0.75f, hsv[2]));
+        return Color.HSVToColor(hsv);
+    }
+
+    private static int darker(int c) {
+        return Color.rgb(Color.red(c) * 6 / 10, Color.green(c) * 6 / 10, Color.blue(c) * 6 / 10);
     }
 
     /**
