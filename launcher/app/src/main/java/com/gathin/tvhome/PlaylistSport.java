@@ -41,6 +41,33 @@ final class PlaylistSport {
     private static List<Event> events;
     private static long readAt;
     private static final Map<String, String> CRESTS = new HashMap<>();
+    /** Each club's league by ESPN slug ("ger.1"), found with its crest. */
+    private static final Map<String, String> LEAGUES = new HashMap<>();
+
+    /**
+     * The channel each league's games are on as Kleva TV lists them, when no British channel has the game: its
+     * name and logo. Bundesliga games Sky UK leaves out are on Sky Sport Bundesliga, LaLiga's on LaLiga TV.
+     */
+    private static final Map<String, String[]> LEAGUE_TV = new HashMap<>();
+    static {
+        LEAGUE_TV.put("ger.1", new String[]{"Sky Sport Bundesliga",
+                "https://upload.wikimedia.org/wikipedia/de/thumb/c/ca/Sky_Sport_Bundesliga_2020.svg/960px-Sky_Sport_Bundesliga_2020.svg.png"});
+        LEAGUE_TV.put("esp.1", new String[]{"LaLiga TV", "https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/united-kingdom/laliga-tv-uk.png"});
+    }
+
+    /**
+     * The playlist's broadcaster groups whose channels are named for the game they show ("US (Paramount 001) |
+     * Sheffield United vs. Wrexham"), in the order to name them: the group, the broadcaster's name, its logo (none
+     * where the logo is too dark to read on the tiles: the name then).
+     */
+    private static final String[][] GROUPS = {
+            {"(?i)^live \\| dazn \\(uk\\)$", "DAZN", null},
+            {"(?i)^live \\| peacock\\b.*", "Peacock", null},
+            {"(?i)^live \\| paramount\\+ \\(usa\\)$", "Paramount+", "https://web-storage.ultrabot.live/logos/streams/paramount-plus.png"},
+            {"(?i)^live \\| espn\\+ \\(direct\\)$", "ESPN+", null},
+            {"(?i)^canada \\| tsn\\+$", "TSN+", null},
+            {"(?i)^live \\| viaplay \\(.*\\)$", "Viaplay", null},
+    };
 
     private PlaylistSport() {
     }
@@ -48,6 +75,8 @@ final class PlaylistSport {
     /** One game or event a playlist channel is named for. */
     static final class Event {
         String home, away, title, channel, comp, stream;
+        /** A broadcaster in the playlist with a channel named for the game: its name and logo (or null). */
+        String[] elsewhere;
         long start;
         boolean football;
     }
@@ -89,6 +118,8 @@ final class PlaylistSport {
         try {
             JSONArray cats = new JSONArray(api(h, "get_live_categories"));
             List<String[]> broadcasters = new ArrayList<>();
+            List<List<String>> groups = new ArrayList<>();
+            for (int g = 0; g < GROUPS.length; g++) groups.add(new ArrayList<>());
             for (int i = 0; i < cats.length(); i++) {
                 JSONObject c = cats.getJSONObject(i);
                 String name = c.optString("category_name"), id = c.optString("category_id");
@@ -103,8 +134,39 @@ final class PlaylistSport {
                     }
                 }
                 if (name.matches("(?i)^uk\\s*\\|\\s*(tnt sports|sports)\\s*$")) broadcasters.add(new String[]{id, name});
+                for (int g = 0; g < GROUPS.length; g++) if (name.trim().matches(GROUPS[g][0])) groups.get(g).add(id);
             }
-            List<Listing> guide = guide(h, broadcasters);
+            // The broadcasters' guides and groups read side by side: one after another they took a quarter of a minute.
+            java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(6);
+            java.util.concurrent.Future<List<Listing>> guided = pool.submit(() -> guide(h, broadcasters, pool));
+            List<List<java.util.concurrent.Future<String>>> lists = new ArrayList<>();
+            for (List<String> ids : groups) {
+                List<java.util.concurrent.Future<String>> f = new ArrayList<>();
+                for (String id : ids) f.add(pool.submit(() -> api(h, "get_live_streams&category_id=" + id)));
+                lists.add(f);
+            }
+            // The broadcasters' channels named for tonight's games: the first group with one for each game.
+            for (int g = 0; g < GROUPS.length; g++) for (java.util.concurrent.Future<String> group : lists.get(g)) {
+                try {
+                    JSONArray s = new JSONArray(group.get(30, java.util.concurrent.TimeUnit.SECONDS));
+                    for (Event e : out) {
+                        if (e.home == null || e.elsewhere != null) continue;
+                        for (int k = 0; k < s.length(); k++) {
+                            if (!same(s.getJSONObject(k).optString("name"), e.home, e.away)) continue;
+                            e.elsewhere = new String[]{GROUPS[g][1], GROUPS[g][2]};
+                            break;
+                        }
+                    }
+                } catch (Exception ignored) {
+                }
+            }
+            List<Listing> guide;
+            try {
+                guide = guided.get(40, java.util.concurrent.TimeUnit.SECONDS);
+            } catch (Exception late) {
+                guide = new ArrayList<>();
+            }
+            pool.shutdownNow();
             for (Event e : out) e.channel = e.channel + "\u0000" + broadcaster(e, guide);
         } catch (Exception ignored) {
             // The playlist not answering: no extra fixtures this time, Sky's as before.
@@ -163,27 +225,36 @@ final class PlaylistSport {
     }
 
     /** The broadcasters' guides from the playlist: TNT Sports 1 to 4, Premier Sports, LaLiga TV, Viaplay, Eurosport. */
-    private static List<Listing> guide(HomeV2 h, List<String[]> cats) {
+    private static List<Listing> guide(HomeV2 h, List<String[]> cats, java.util.concurrent.ExecutorService pool) {
         List<Listing> out = new ArrayList<>();
         java.util.Set<String> seen = new java.util.HashSet<>();
+        List<JSONObject> channels = new ArrayList<>();
         for (String[] cat : cats) {
             try {
                 JSONArray s = new JSONArray(api(h, "get_live_streams&category_id=" + cat[0]));
                 for (int i = 0; i < s.length() && seen.size() < 14; i++) {
                     JSONObject st = s.getJSONObject(i);
-                    String name = st.optString("name");
-                    String base = name.toLowerCase(Locale.ROOT).replaceAll("\\s*(\\(uk\\)|f?hd|uhd|4k|sd|50fps)\\s*", " ").replaceAll("\\s+", " ").trim();
-                    if (!base.matches("(tnt sports [1-4]|premier sports [12]|laliga tv|viaplay sports [12]|eurosport [12])") || !seen.add(base)) continue;
-                    JSONArray epg = new JSONObject(api(h, "get_short_epg&stream_id=" + st.optString("stream_id") + "&limit=16")).optJSONArray("epg_listings");
-                    for (int k = 0; epg != null && k < epg.length(); k++) {
-                        JSONObject x = epg.getJSONObject(k);
-                        Listing l = new Listing();
-                        l.title = new String(android.util.Base64.decode(x.optString("title"), android.util.Base64.DEFAULT), "UTF-8");
-                        l.start = x.optLong("start_timestamp") * 1000L;
-                        l.channel = name;
-                        l.logo = st.optString("stream_icon", null);
-                        out.add(l);
-                    }
+                    String base = st.optString("name").toLowerCase(Locale.ROOT).replaceAll("\\s*(\\(uk\\)|f?hd|uhd|4k|sd|50fps)\\s*", " ").replaceAll("\\s+", " ").trim();
+                    if (base.matches("(tnt sports [1-4]|premier sports [12]|laliga tv|viaplay sports [12]|eurosport [12])") && seen.add(base)) channels.add(st);
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        // Each channel's guide asked for at once.
+        List<java.util.concurrent.Future<String>> asked = new ArrayList<>();
+        for (JSONObject st : channels) asked.add(pool.submit(() -> api(h, "get_short_epg&stream_id=" + st.optString("stream_id") + "&limit=16")));
+        for (int c = 0; c < channels.size(); c++) {
+            try {
+                JSONObject st = channels.get(c);
+                JSONArray epg = new JSONObject(asked.get(c).get(20, java.util.concurrent.TimeUnit.SECONDS)).optJSONArray("epg_listings");
+                for (int k = 0; epg != null && k < epg.length(); k++) {
+                    JSONObject x = epg.getJSONObject(k);
+                    Listing l = new Listing();
+                    l.title = new String(android.util.Base64.decode(x.optString("title"), android.util.Base64.DEFAULT), "UTF-8");
+                    l.start = x.optLong("start_timestamp") * 1000L;
+                    l.channel = st.optString("name");
+                    l.logo = st.optString("stream_icon", null);
+                    out.add(l);
                 }
             } catch (Exception ignored) {
             }
@@ -247,18 +318,25 @@ final class PlaylistSport {
             t.group = e.football ? "football" : "other";
             boolean on = e.start <= now;
             t.chip = on ? "LIVE NOW" : when.format(Instant.ofEpochMilli(e.start)).toUpperCase(Locale.UK);
-            String showing = by != null ? clean(by[0]) : null;
+            String hl = e.home != null ? crest(e.home) : null, al = e.away != null ? crest(e.away) : null;
+            // The channel, as Kleva TV would name it: a British broadcaster whose guide has the game; else the
+            // league's own channel; else a broadcaster in the playlist with a channel for it; else the event channel.
+            String[] league = null;
+            if (by == null && e.home != null) {
+                String slug = league(e.home);
+                if (slug == null) slug = league(e.away);
+                league = slug == null ? null : LEAGUE_TV.get(slug);
+            }
+            if (by == null && league == null && e.elsewhere != null) league = e.elsewhere;
+            String showing = by != null ? clean(by[0]) : league != null ? league[0] : null;
             t.channel = showing != null ? showing : label(eventChannel, e.football);
-            t.badge = by != null && by.length > 1 && !by[1].isEmpty() ? by[1] : null;
+            t.badge = by != null && by.length > 1 && !by[1].isEmpty() ? by[1] : by == null && league != null ? league[1] : null;
             t.sub = "Live on " + t.channel;
             t.heroTop = t.badge;
             t.heroTitle = e.title;
             t.heroMeta = (on ? "On now" : when.format(Instant.ofEpochMilli(e.start))) + " · Live on " + t.channel;
             t.heroText = e.home != null ? e.home + " against " + e.away + ", live." : e.title + ", live.";
-            if (e.home != null) {
-                String hl = crest(e.home), al = crest(e.away);
-                if (hl != null && al != null) t.image = "crest:" + hl + "|" + al;
-            }
+            if (hl != null && al != null) t.image = "crest:" + hl + "|" + al;
             t.heroImage = t.image;
             t.start = e.start;
             // OK: TiviMate on the broadcaster when one is known (its usual channel, found by its search); else the
@@ -288,6 +366,13 @@ final class PlaylistSport {
         return b.toString().replace("Tnt", "TNT").replace("Laliga", "LaLiga");
     }
 
+    /** A club's league ("ger.1"), once its crest has been looked up; null when not known. */
+    private static String league(String club) {
+        synchronized (CRESTS) {
+            return LEAGUES.get(plain(club));
+        }
+    }
+
     /** A club's crest from ESPN's search (its football team first), remembered. */
     private static String crest(String club) {
         String k = plain(club);
@@ -303,7 +388,12 @@ final class PlaylistSport {
                 for (int j = 0; c != null && j < c.length(); j++) {
                     JSONObject t = c.getJSONObject(j);
                     String img = t.optJSONObject("image") == null ? "" : t.optJSONObject("image").optString("default");
-                    if ("soccer".equals(t.optString("sport")) && img.startsWith("http")) { found = img; break; }
+                    if ("soccer".equals(t.optString("sport")) && img.startsWith("http")) {
+                        found = img;
+                        String slug = t.optString("defaultLeagueSlug", "");
+                        if (!slug.isEmpty()) synchronized (CRESTS) { LEAGUES.put(k, slug); }
+                        break;
+                    }
                 }
             }
         } catch (Exception e) {

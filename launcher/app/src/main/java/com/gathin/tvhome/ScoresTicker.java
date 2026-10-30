@@ -40,6 +40,7 @@ import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.HashMap;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -872,6 +873,24 @@ final class ScoresTicker {
         all.addAll(streaming);
         all.addAll(other);
         return all;
+    }
+
+    /** Each competition's own name, by ESPN slug, for the places with room for it (the tags are short for the pills). */
+    private static final Map<String, String> NAMES = new HashMap<>();
+    static {
+        String[][] n = {{"eng.1", "Premier League"}, {"eng.2", "Championship"}, {"eng.3", "League One"}, {"eng.4", "League Two"},
+                {"eng.fa", "FA Cup"}, {"eng.league_cup", "EFL Cup"}, {"sco.1", "Scottish Premiership"}, {"uefa.champions", "Champions League"},
+                {"uefa.europa", "Europa League"}, {"uefa.europa.conf", "Conference League"}, {"uefa.nations", "Nations League"},
+                {"esp.1", "LaLiga"}, {"esp.copa_del_rey", "Copa del Rey"}, {"ita.1", "Serie A"}, {"ita.coppa_italia", "Coppa Italia"},
+                {"ger.1", "Bundesliga"}, {"ger.dfb_pokal", "DFB-Pokal"}, {"fra.1", "Ligue 1"}, {"fra.coupe_de_france", "Coupe de France"},
+                {"ned.1", "Eredivisie"}, {"por.1", "Liga Portugal"}, {"usa.1", "MLS"}, {"fifa.world", "World Cup"}};
+        for (String[] x : n) NAMES.put(x[0], x[1]);
+    }
+
+    /** The game's competition by its full name, in capitals ("BUNDESLIGA"); the tag where the slug is not known. */
+    static String competition(Game g) {
+        String n = g.slug == null ? null : NAMES.get(g.slug);
+        return n != null ? n.toUpperCase(Locale.UK) : g.league == null ? "" : g.league;
     }
 
     private static CharSequence league(Game g) {

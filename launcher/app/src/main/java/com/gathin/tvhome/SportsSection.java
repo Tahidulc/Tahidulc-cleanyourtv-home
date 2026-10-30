@@ -628,7 +628,7 @@ final class SportsSection {
         ScoresTicker.Game g = f.game;
         String status = g.state == 0 ? "●  LIVE  " + g.detail : g.state == 1 ? "KICK-OFF  " + g.detail : "FULL TIME";
         LinearLayout col = column(featuredCard, g.slug, brandLogo(g.slug) != null ? brandLogo(g.slug) : g.leagueLogo,
-                g.league, status);
+                ScoresTicker.competition(g), status);
         // While live, the status on the right is the ticking match clock.
         clockView = g.state == 0 ? statusView : null;
         // The score line: crest, name, score, name, crest.

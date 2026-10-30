@@ -2257,16 +2257,39 @@ final class HomeV2 {
     void kleva(String home, String away, String title, String art, Runnable otherwise) {
         players.stop();
         Bitmap pic = art == null ? null : cached(art);
-        Runnable open = () -> {
-            if (!AppSearchService.kleva(a, home, away, title, pic, null)) { otherwise.run(); return; }
-            GoalWatchService.onAppOpened(a, "com.plaintextdev.klevaTv");
-        };
-        if (!AppSearchService.running()) {
-            AppSearchService.ensure(a);
-            main.postDelayed(open, 1600);
-        } else {
-            open.run();
+        boolean wake = !AppSearchService.running();
+        if (wake) AppSearchService.ensure(a);
+        long asked = System.currentTimeMillis();
+        // The loading cover shows the two clubs' crests, not the game's name (they come from the picture's cache).
+        pics.execute(() -> {
+            Bitmap pair = art != null && art.startsWith("crest:") ? pair(art.substring(6)) : null;
+            // Behind them, the clubs' colours blurred (the tile's picture, made again if it has left the cache).
+            Bitmap bg = pic != null || art == null ? pic : fetch(art, 480);
+            Runnable open = () -> {
+                if (!AppSearchService.kleva(a, home, away, title, bg, pair)) { otherwise.run(); return; }
+                GoalWatchService.onAppOpened(a, "com.plaintextdev.klevaTv");
+            };
+            main.postDelayed(open, wake ? Math.max(0, 1600 - (System.currentTimeMillis() - asked)) : 0);
+        });
+    }
+
+    /** "home|away" crests side by side on clear ground, as the loading cover's logo for a game. */
+    private Bitmap pair(String spec) {
+        String[] p = spec.split("\\|");
+        if (p.length < 2) return null;
+        Bitmap home = fetch(p[0], 300), away = fetch(p[1], 300);
+        if (home == null || away == null) return null;
+        int size = 300, gap = 200;
+        Bitmap out = Bitmap.createBitmap(size * 2 + gap, size, Bitmap.Config.ARGB_8888);
+        android.graphics.Canvas c = new android.graphics.Canvas(out);
+        android.graphics.Paint paint = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG | android.graphics.Paint.FILTER_BITMAP_FLAG);
+        for (int i = 0; i < 2; i++) {
+            Bitmap b = i == 0 ? home : away;
+            float scale = size / (float) Math.max(b.getWidth(), b.getHeight());
+            float bw = b.getWidth() * scale, bh = b.getHeight() * scale, cx = i == 0 ? size / 2f : size * 1.5f + gap;
+            c.drawBitmap(b, null, new android.graphics.RectF(cx - bw / 2, (size - bh) / 2, cx + bw / 2, (size + bh) / 2), paint);
         }
+        return out;
     }
 
     /** A picture already fetched for url, at whatever size it was fetched; null when there is none. */

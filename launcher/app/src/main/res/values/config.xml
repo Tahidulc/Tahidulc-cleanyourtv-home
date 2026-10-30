@@ -518,8 +518,8 @@
     <string-array name="team_alert_leagues" translatable="false">
         <item>esp.1|LALIGA</item>
         <item>ita.1|SERIE A</item>
-        <item>ger.1|BUND</item>
-        <item>fra.1|L1</item>
+        <item>ger.1|BUNDESLIGA</item>
+        <item>fra.1|LIGUE 1</item>
         <item>uefa.europa|UEL</item>
         <item>esp.copa_del_rey|COPA</item>
         <item>ita.coppa_italia|COPPA</item>
@@ -599,7 +599,7 @@
         <item>eng.league_cup|EFL CUP</item>
         <item>esp.1|LALIGA</item>
         <item>ita.1|SERIE A</item>
-        <item>ger.1|BUNDES</item>
+        <item>ger.1|BUNDESLIGA</item>
         <item>fra.1|LIGUE 1</item>
     </string-array>
 </resources>

@@ -1370,7 +1370,7 @@ final class PagesV2 {
             // ahead of the possession, the channel and the rest, which take longer to read.
             java.util.function.Consumer<Object[]> early = m -> {
                 ScoresTicker.Game g = (ScoresTicker.Game) m[0];
-                comp.setText(g.league == null ? "" : g.league);
+                comp.setText(ScoresTicker.competition(g));
                 if (m[1] != null) hc.setImageBitmap((android.graphics.Bitmap) m[1]);
                 if (m[2] != null) ac.setImageBitmap((android.graphics.Bitmap) m[2]);
                 if (m[3] != null) compLogo.setImageBitmap((android.graphics.Bitmap) m[3]);
@@ -1407,7 +1407,7 @@ final class PagesV2 {
                             DateTimeFormatter.ofPattern("EEE HH:mm", Locale.UK).withZone(ZoneId.systemDefault()).format(Instant.ofEpochMilli(g.kickoff)).toUpperCase(Locale.UK);
                     k.setText(when);
                     if (g.state == 0) k.setTextColor(0xFFFF3B4A);
-                    comp.setText(g.league == null ? "" : g.league);
+                    comp.setText(ScoresTicker.competition(g));
                     if (g.leagueLogo != null && m[3] == null) h.image(compLogo, g.leagueLogo, px(90));
                     if (m[1] == null) h.image(hc, g.homeLogo, px(172));
                     if (m[2] == null) h.image(ac, g.awayLogo, px(172));

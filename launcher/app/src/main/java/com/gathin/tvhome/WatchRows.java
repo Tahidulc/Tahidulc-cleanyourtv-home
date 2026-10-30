@@ -594,7 +594,7 @@ final class WatchRows {
         if (g.leagueLogo != null) loadPoster(g.leagueLogo, leagueLogo);
         head.addView(leagueLogo, new LinearLayout.LayoutParams(dp(f1 ? 44 : 26), dp(26)));
         TextView tag = new TextView(context);
-        tag.setText(f1 ? "FORMULA 1" : g.league);
+        tag.setText(f1 ? "FORMULA 1" : ScoresTicker.competition(g));
         tag.setTextColor(0xE6FFFFFF);
         tag.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f);
         tag.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
