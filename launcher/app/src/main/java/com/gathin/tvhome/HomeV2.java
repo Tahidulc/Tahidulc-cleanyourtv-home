@@ -1297,8 +1297,22 @@ final class HomeV2 {
             marks.remove("DOLBY ATMOS");
         }
         for (String m : marks) hSpecs.addView(mark(m), gapped(hSpecs.getChildCount() == 0 ? 0 : 10));
-        Drawable banner = serviceBanner(t.serviceId);
-        if (banner != null) {
+        int wordmark = serviceLogo(t.serviceId);
+        Drawable banner = wordmark != 0 ? null : serviceBanner(t.serviceId);
+        if (wordmark != 0) {
+            // The service's own logo on its own, no box: Netflix's red, iPlayer's pink, the others white.
+            ImageView l = new ImageView(a);
+            l.setImageResource(wordmark);
+            l.setAdjustViewBounds(true);
+            l.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            Drawable d = l.getDrawable();
+            boolean wide = d.getIntrinsicWidth() > 2.5f * d.getIntrinsicHeight();
+            l.setMaxHeight(px(wide ? 28 : 46));
+            l.setMaxWidth(px(150));
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            lp.leftMargin = hSpecs.getChildCount() == 0 ? 0 : px(16);
+            hSpecs.addView(l, lp);
+        } else if (banner != null) {
             // The service's app as the TV shows it (its wide banner, Netflix's or Prime Video's own): clear at a
             // glance, at the marks' height.
             ImageView l = new ImageView(a);
@@ -1349,6 +1363,24 @@ final class HomeV2 {
         for (String[] x : apps) SERVICE_APPS.put(x[0], x[1]);
     }
     private final Map<String, Drawable> banners = new HashMap<>();
+
+    /** The services' own logos, transparent, shipped with the launcher (TMDB's providers by id); 0 for the others. */
+    private static int serviceLogo(String provider) {
+        if (provider == null) return 0;
+        switch (provider) {
+            case "8": return R.drawable.svc_netflix;
+            case "9": case "119": return R.drawable.svc_prime;
+            case "337": return R.drawable.svc_disney;
+            case "350": case "2": return R.drawable.svc_appletv;
+            case "38": return R.drawable.svc_iplayer;
+            case "41": case "54": return R.drawable.svc_itvx;
+            case "103": return R.drawable.svc_c4;
+            case "333": return R.drawable.svc_my5;
+            case "29": return R.drawable.svc_skygo;
+            case "531": case "582": return R.drawable.svc_paramount;
+            default: return 0;
+        }
+    }
 
     /** The service's app's TV banner, when the app is on this TV; null otherwise (TMDB's logo stands in). */
     private Drawable serviceBanner(String provider) {
