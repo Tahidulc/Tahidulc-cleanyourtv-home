@@ -226,21 +226,21 @@ final class HomeV2 {
         buildRail();
         label = text(18, semi, 0xBFFFFFFF);
         label.setLetterSpacing(0.11f);
-        add(label, 216, 532, 1500, 34);
+        add(label, 180, 532, 1500, 34);   // over the first tile
         viewport = new FrameLayout(a);
         // Clipped to its own box: a row scrolled along stays inside it, clear of the rail.
         viewport.setOutlineProvider(ViewOutlineProvider.BOUNDS);
         viewport.setClipToOutline(true);
         // Only the box clips, not the row's own bounds: a focused tile grows past the row and keeps its whole outline.
         viewport.setClipChildren(false);
-        // The four tiles run on past the boxes' line (to 1880), wider than the boxes; cut off just after the fourth
-        // (room for it to grow when focused), so the fifth waits out of sight until the row slides.
-        add(viewport, 192, 556, 1704, TILE_H + 52);
+        // The four tiles fill the width from beside the rail (180) to near the screen's edge (1896); the row is cut off
+        // just after the fourth (room for it to grow when focused), so the fifth waits out of sight until it slides.
+        add(viewport, 164, 556, 1743, TILE_H + 52);
         row = new LinearLayout(a);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setClipChildren(false);
         FrameLayout.LayoutParams rlp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, px(TILE_H));
-        rlp.leftMargin = px(24);
+        rlp.leftMargin = px(16);
         rlp.topMargin = px(24);
         viewport.addView(row, rlp);
         buildCats();
@@ -1009,7 +1009,8 @@ final class HomeV2 {
             View t = row.getChildAt(i);
             boolean on = zone == Z_ROW && i == rowIdx;
             if (!restyle(t, on ? 1 : 0)) continue;
-            t.animate().scaleX(on ? 1.07f : 1f).scaleY(on ? 1.07f : 1f).setDuration(150).setInterpolator(SKY).start();
+            // A little less than the sections' 1.07: the tiles fill the row edge to edge, and the fourth stays inside it.
+            t.animate().scaleX(on ? 1.05f : 1f).scaleY(on ? 1.05f : 1f).setDuration(150).setInterpolator(SKY).start();
             ((FrameLayout) t).setForeground(on ? ring(16) : null);
         }
         // Four tiles in full: the focus moves along to the fourth, then the row slides.
@@ -1224,10 +1225,11 @@ final class HomeV2 {
     }
 
     /**
-     * Home's tiles: four across from 216 to 1880, wider than the sections' (404, not 384, the gaps 16) and taller (262,
-     * not 216), reaching most of the way down to the boxes; Right past the fourth slides the row on.
+     * Home's tiles: four across from beside the rail (180) to near the screen's edge (1896), much wider than the
+     * sections' (420, not 384, the gaps 12) and taller (270, not 216), reaching most of the way down to the boxes;
+     * Right past the fourth slides the row on.
      */
-    static final int TILE_W = 404, TILE_H = 262, TILE_GAP = 16;
+    static final int TILE_W = 420, TILE_H = 270, TILE_GAP = 12;
 
     private View tileView(Tile t) {
         FrameLayout f = new FrameLayout(a);
