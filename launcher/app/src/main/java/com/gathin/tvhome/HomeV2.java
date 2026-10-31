@@ -2011,7 +2011,9 @@ final class HomeV2 {
         if (ids.length() == 0) return out;
         long now = System.currentTimeMillis();
         List<Object[]> events = new ArrayList<>();
-        java.util.Set<String> seen = new java.util.HashSet<>();
+        // One listing per programme: the same one on a channel and its 4K twin (Main Event and Main Event UHD) is
+        // kept on the 4K one.
+        Map<String, Integer> seen = new HashMap<>();
         for (int day = 0; day < 3; day++) {
             String date = Instant.ofEpochMilli(now).plusSeconds(day * 86_400L).atZone(ZoneOffset.UTC).toLocalDate().format(DateTimeFormatter.BASIC_ISO_DATE);
             JSONArray sch = new JSONObject(get("https://awk.epgsky.com/hawk/linear/schedule/" + date + "/" + ids)).optJSONArray("schedule");
@@ -2022,9 +2024,12 @@ final class HomeV2 {
                     JSONObject e = ev.getJSONObject(k);
                     String title = e.optString("t");
                     long st = e.optLong("st") * 1000L, en = st + e.optLong("d") * 1000L;
-                    if (!title.toLowerCase(Locale.ROOT).startsWith("live") || en < now || !seen.add(title + st)) continue;
+                    if (!title.toLowerCase(Locale.ROOT).startsWith("live") || en < now) continue;
                     if (title.matches("(?i)live:? (sky sports fc|the premier league show|ref watch|transfer).*")) continue;
-                    events.add(new Object[]{st, en, title, e.optString("sy"), e.optString("programmeuuid"), s.optString("sid"), e});
+                    Object[] row = {st, en, title, e.optString("sy"), e.optString("programmeuuid"), s.optString("sid"), e};
+                    Integer at = seen.get(title + st);
+                    if (at == null) { seen.put(title + st, events.size()); events.add(row); }
+                    else if (uhdName(name.get(s.optString("sid"))) && !uhdName(name.get((String) events.get(at)[5]))) events.set(at, row);
                 }
             }
         }
@@ -2064,8 +2069,14 @@ final class HomeV2 {
         out.addAll(PlaylistSport.tiles(this, out));
         // Then the leagues' other games over the same days (the Premier League's, Europe's), each with its channel.
         out.addAll(PlaylistSport.leagueTiles(this, out));
+        out = PlaylistSport.once(out);
         out.sort((x, y) -> Long.compare(x.start, y.start));
         return out;
+    }
+
+    /** A 4K channel's name ("Sky Sports Main Event UHD", "… 4K"). */
+    static boolean uhdName(String n) {
+        return n != null && n.matches("(?i).*\\b(uhd|4k|ultra ?hd)\\b.*");
     }
 
     /** {"football" or "other", competition logo or null} from a Sky guide title such as "Live PL: Spurs v C. Palace". */

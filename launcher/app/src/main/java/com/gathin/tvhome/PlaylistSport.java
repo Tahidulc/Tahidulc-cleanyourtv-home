@@ -310,6 +310,45 @@ final class PlaylistSport {
         return best;
     }
 
+    /** Words that say nothing about which club it is: two clubs sharing one of them are not the same. */
+    private static final java.util.Set<String> COMMON = new java.util.HashSet<>(java.util.Arrays.asList("city", "united", "town",
+            "athletic", "rovers", "wanderers", "county", "real", "sporting", "olympique", "borussia", "women", "albion", "hotspur",
+            "north", "south", "west", "east", "saint", "inter", "racing", "deportivo", "atletico", "dynamo", "union", "club"));
+
+    /**
+     * Whether a tile already shows this game, however its title names the clubs ("Spurs v C. Palace" for Tottenham
+     * Hotspur v Crystal Palace): within twenty minutes of its kick-off, and naming one of its clubs by a word of its own.
+     */
+    static boolean shown(HomeV2.Tile t, String home, String away, long kickoff) {
+        if (t.title == null) return false;
+        if (same(t.title, home, away)) return true;
+        if (t.start == 0 || Math.abs(t.start - kickoff) > 20 * 60_000L) return false;
+        String title = " " + plain(t.title.replace("Spurs", "Tottenham").replace("Man Utd", "Manchester United").replace("Man City", "Manchester City")
+                .replace("Wolves", "Wolverhampton").replace("Nott'm", "Nottingham").replace("PSG", "Paris")) + " ";
+        for (String club : new String[]{home, away}) {
+            for (String w : plain(club).split(" ")) {
+                if (w.length() >= 4 && !COMMON.contains(w) && title.contains(" " + w + " ")) return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * The tiles with any game shown twice left once (Sky's guide naming it one way on two channels, a league's list
+     * another): the one on a 4K channel kept, else the first. Order kept.
+     */
+    static List<HomeV2.Tile> once(List<HomeV2.Tile> tiles) {
+        List<HomeV2.Tile> out = new ArrayList<>();
+        for (HomeV2.Tile t : tiles) {
+            String[] clubs = t.title == null ? new String[0] : VS.split(t.title.replaceFirst("^[^:]*:\\s*", ""));
+            int twin = -1;
+            if (clubs.length == 2) for (int i = 0; i < out.size() && twin < 0; i++) if (shown(out.get(i), clubs[0], clubs[1], t.start)) twin = i;
+            if (twin < 0) out.add(t);
+            else if (HomeV2.uhdName(t.channel) && !HomeV2.uhdName(out.get(twin).channel)) out.set(twin, t);
+        }
+        return out;
+    }
+
     /** Whether a title is about this game: both clubs' marking words in it. */
     static boolean same(String title, String home, String away) {
         String t = " " + plain(title) + " ";
@@ -332,7 +371,8 @@ final class PlaylistSport {
         for (Event e : read(h)) {
             if (e.start + 2 * 3_600_000L < now) continue;
             boolean onSky = false;
-            if (e.home != null) for (HomeV2.Tile t : sky) if (t.title != null && same(t.title, e.home, e.away)) { onSky = true; break; }
+            if (e.home != null) for (HomeV2.Tile t : sky) if (shown(t, e.home, e.away, e.start)) { onSky = true; break; }
+            if (e.home != null) for (HomeV2.Tile t : out) if (shown(t, e.home, e.away, e.start)) { onSky = true; break; }
             if (onSky) continue;
             HomeV2.Tile t = new HomeV2.Tile();
             t.title = e.title;
@@ -465,7 +505,8 @@ final class PlaylistSport {
         for (ScoresTicker.Game g : fixtures()) {
             if (g.state == 2 || g.homeName == null || g.awayName == null || g.kickoff == 0 || g.kickoff > now + 3 * 86_400_000L) continue;
             boolean shown = false;
-            for (HomeV2.Tile t : have) if (t.title != null && same(t.title, g.homeName, g.awayName)) { shown = true; break; }
+            for (HomeV2.Tile t : have) if (shown(t, g.homeName, g.awayName, g.kickoff)) { shown = true; break; }
+            for (HomeV2.Tile t : out) if (shown(t, g.homeName, g.awayName, g.kickoff)) { shown = true; break; }
             if (shown) continue;
             String title = g.homeName + " v " + g.awayName;
             String art = g.homeLogo != null && g.awayLogo != null ? "crest:" + g.homeLogo + "|" + g.awayLogo : null;
