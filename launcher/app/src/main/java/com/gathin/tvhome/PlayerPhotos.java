@@ -75,6 +75,7 @@ final class PlayerPhotos {
 
     /** {cut-out url ("" for none), nationality} for the best match (same club first); null on failure. */
     private static String[] lookUpWhole(String name, String team) {
+        if (cooling()) return null;
         try {
             JSONObject root = new JSONObject(get("https://www.thesportsdb.com/api/v1/json/123/searchplayers.php?p="
                     + URLEncoder.encode(name, "UTF-8")));
@@ -96,6 +97,11 @@ final class PlayerPhotos {
             return best;
         } catch (Exception e) {
             android.util.Log.w("Photos", "lookup failed for " + name + ": " + e);
+            // TheSportsDB answers "not found" (or "too many") for a while once a TV has asked a lot: left alone for
+            // ten minutes, the photos come from elsewhere meanwhile (the league's, Wikipedia's).
+            if (e instanceof java.io.FileNotFoundException || String.valueOf(e.getMessage()).contains("429")) {
+                coolUntil = System.currentTimeMillis() + 10 * 60_000L;
+            }
             return null;
         }
     }
@@ -200,7 +206,8 @@ final class PlayerPhotos {
         if (url.isEmpty()) return null;
         Bitmap b = ScoresTicker.cachedLogo(ctx, url, 400);
         if (b == null) android.util.Log.i("LineupCard", "wiki photo not fetched: " + url);
-        return b == null ? null : headAndShoulders(b);
+        // Only a photo with a face found in it: a guessed crop can be the back of his head.
+        return b == null || !hasFace(b) ? null : headAndShoulders(b);
     }
 
     /** The photo's address ("" for none), or null when Wikipedia could not be asked. */
@@ -286,6 +293,21 @@ final class PlayerPhotos {
         return Bitmap.createBitmap(src, left, top, Math.round(side), Math.round(side));
     }
 
+    /** Whether Android's face finder sees a face in the picture. */
+    static boolean hasFace(Bitmap src) {
+        int w = src.getWidth() & ~1, h = src.getHeight();
+        if (w < 40 || h < 40) return false;
+        try {
+            Bitmap rgb = src.copy(Bitmap.Config.RGB_565, false);
+            if (rgb.getWidth() != w) rgb = Bitmap.createBitmap(rgb, 0, 0, w, h);
+            android.media.FaceDetector.Face[] faces = new android.media.FaceDetector.Face[1];
+            return new android.media.FaceDetector(w, h, 1).findFaces(rgb, faces) > 0 && faces[0] != null
+                    && faces[0].confidence() >= 0.4f;
+        } catch (RuntimeException e) {
+            return false;
+        }
+    }
+
     /** The same player's name: the same surname, and the same first name or its first letter (accents aside). */
     static boolean sameName(String a, String b) {
         String[] x = plain(a).split(" "), y = plain(b).split(" ");
@@ -324,6 +346,13 @@ final class PlayerPhotos {
         int side = Math.round(Math.min(w, h) * 0.56f);
         int x = (w - side) / 2;
         return Bitmap.createBitmap(b, Math.max(0, x), 0, Math.min(side, w), Math.min(side, h));
+    }
+
+    private static volatile long coolUntil;
+
+    /** Whether TheSportsDB is being left alone after refusing (see lookUpWhole). */
+    static boolean cooling() {
+        return System.currentTimeMillis() < coolUntil;
     }
 
     /** When the last TheSportsDB lookup went out: its free key answers about thirty a minute, so they go 2.1 s apart. */

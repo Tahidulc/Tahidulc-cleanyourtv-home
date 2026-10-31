@@ -271,11 +271,11 @@ final class ScoreCard {
             LinearLayout name = new LinearLayout(c);
             name.setGravity(Gravity.CENTER_VERTICAL);
             String big = d.headline != null ? d.headline : (d.first.isEmpty() ? "" : d.first + " ") + titleCase(d.last);
-            TextView bigText = text(c, big, d.headline != null ? 19 : 22, d.dark ? 0xFFFFFFFF : INK, outfit(c, d.headline != null ? 800 : 900));
+            TextView bigText = text(c, big, d.headline != null ? 19 : 22, d.dark ? 0xFFFFFFFF : INK, d.headline != null ? outfit(c, 800) : nameFace(c));
             if (d.headline != null) bigText.setMaxWidth(px(1000));
             name.addView(bigText);
             if (!d.line.isEmpty()) {
-                TextView small = text(c, d.line, 16, d.dark ? 0xCCFFFFFF : INK_SOFT, outfit(c, 700));
+                TextView small = text(c, d.line, 16, d.dark ? 0xCCFFFFFF : INK_SOFT, nameFace(c));
                 LinearLayout.LayoutParams sl = new LinearLayout.LayoutParams(-2, -2);
                 sl.leftMargin = px(10);
                 name.addView(small, sl);
@@ -447,10 +447,10 @@ final class ScoreCard {
             }
             return v;
         }
-        if (!d.first.isEmpty()) v.addView(text(c, d.first, small + 1, d.dark ? 0xFFFFFFFF : INK_SOFT, outfit(c, 700)), wrap());
-        v.addView(text(c, d.last.toUpperCase(java.util.Locale.UK), big, ink, outfit(c, 900)), wrap());
+        if (!d.first.isEmpty()) v.addView(text(c, d.first, small + 1, d.dark ? 0xFFFFFFFF : INK_SOFT, nameFace(c)), wrap());
+        v.addView(text(c, d.last.toUpperCase(java.util.Locale.UK), big, ink, nameFace(c)), wrap());
         if (!d.line.isEmpty()) {
-            TextView l = text(c, d.line, line, d.dark ? 0xD9FFFFFF : INK_SOFT, outfit(c, 700));
+            TextView l = text(c, d.line, line, d.dark ? 0xD9FFFFFF : INK_SOFT, nameFace(c));
             LinearLayout.LayoutParams ll = new LinearLayout.LayoutParams(-2, -2);
             ll.topMargin = px(3);
             v.addView(l, ll);
@@ -790,6 +790,16 @@ final class ScoreCard {
         v.setEllipsize(TextUtils.TruncateAt.END);
         v.setIncludeFontPadding(false);
         return v;
+    }
+
+    private static Typeface nameFaceType;
+
+    /** The scorer's (or driver's, or fighter's) name and line: Outfit as it first was, its own light default face. */
+    private static Typeface nameFace(Context c) {
+        if (nameFaceType == null) {
+            try { nameFaceType = c.getResources().getFont(R.font.outfit); } catch (RuntimeException e) { nameFaceType = Typeface.DEFAULT; }
+        }
+        return nameFaceType;
     }
 
     /** Outfit at each weight the cards use, read once each. */

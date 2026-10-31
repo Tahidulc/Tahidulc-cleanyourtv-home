@@ -278,7 +278,9 @@ public class GoalWatchService extends Service {
             if (older != null) cut = older;
         }
         android.graphics.Bitmap b = PlayerPhotos.photo(this, cut);
-        return b != null ? b : LineupCard.avatar(kit, kit, "");
+        if (b != null) return b;
+        android.graphics.Bitmap wiki = PlayerPhotos.wikiPhoto(this, who);
+        return wiki != null ? LineupCard.framed(wiki, kit != 0 ? kit : 0xFF151A63) : LineupCard.avatar(kit, kit, "");
     }
 
     // ---- the score cards: F1 ----------------------------------------------------------------------------------
@@ -377,6 +379,9 @@ public class GoalWatchService extends Service {
 
     // ---- the line-up card's photos, ahead of it -----------------------------------------------------------------
 
+    /** test_fixture's elevens, by its made-up game id, taken by enqueueReminder in place of reading them. */
+    private final Map<String, ScoresTicker.Side[]> testLineups = new java.util.concurrent.ConcurrentHashMap<>();
+
     /**
      * A Premier League player's own photo from the league (no nationality: ESPN's gives his flag), this season's, once
      * it has loaded (a player just signed may have none yet); null otherwise.
@@ -426,14 +431,16 @@ public class GoalWatchService extends Service {
                         PlayerPhotos.Cutout pl = premierLeague(full, side.name);
                         if (pl != null) { PlayerPhotos.photo(this, pl); continue; }
                         PlayerPhotos.Cutout cut = PlayerPhotos.cutout(this, full, side.name);
-                        // Refused (TheSportsDB's limit): a minute's rest, up to three times.
-                        for (int tries = 0; cut.url == null && tries < 3; tries++) {
-                            long wait = 60_000L;
-                            try { Thread.sleep(wait); } catch (InterruptedException e) { return; }
+                        // Refused once (TheSportsDB's limit, not a long refusal): a minute's rest, then once more.
+                        if (cut.url == null && !PlayerPhotos.cooling()) {
+                            try { Thread.sleep(60_000L); } catch (InterruptedException e) { return; }
                             cut = PlayerPhotos.cutout(this, full, side.name);
                         }
-                        if (cut.url == null || cut.url.isEmpty()) olderPremierLeague(full, side.name);
-                        else PlayerPhotos.photo(this, cut);   // the picture itself into the cache too
+                        if (cut.url != null && !cut.url.isEmpty()) {
+                            PlayerPhotos.photo(this, cut);   // the picture itself into the cache too
+                        } else if (olderPremierLeague(full, side.name) == null) {
+                            PlayerPhotos.wikiPhoto(this, full);   // his Wikipedia photo kept, for the card
+                        }
                     }
                 }
             });
@@ -996,6 +1003,26 @@ public class GoalWatchService extends Service {
             });
         }
         if (intent != null && intent.hasExtra("test_sky")) testSky();
+        if (intent != null && intent.hasExtra("test_fixture")) {
+            // adb only: "slug|tag|HOME|AWAY|ground": the line-up card for two clubs as if kicking off in 15 minutes, each
+            // in its latest eleven in that competition (the last 30 days), e.g. "esp.1|LALIGA|BAR|RMA|Spotify Camp Nou".
+            String[] f = intent.getStringExtra("test_fixture").split("\\|", -1);
+            if (f.length >= 4) io.execute(() -> {
+                ScoresTicker.Side[] sides = ScoresTicker.latestLineups(f[0], f[1], f[2], f[3], 30);
+                android.util.Log.i("Sport", "test fixture " + f[2] + " v " + f[3] + (sides == null ? ": no line-ups" : ""));
+                if (sides == null) return;
+                ScoresTicker.Game g = new ScoresTicker.Game();
+                g.id = "fixture-test-" + f[2] + f[3];
+                g.slug = f[0]; g.league = f[1]; g.home = f[2]; g.away = f[3];
+                g.homeName = sides[0].name; g.awayName = sides[1].name;
+                g.homeLogo = sides[0].crest; g.awayLogo = sides[1].crest;
+                g.venue = f.length > 4 && !f[4].isEmpty() ? f[4] : null;
+                g.state = 1;
+                g.kickoff = System.currentTimeMillis() + 15 * 60_000L;
+                testLineups.put(g.id, sides);
+                main.post(() -> enqueueReminder(g));
+            });
+        }
         if (intent != null && intent.hasExtra("test_lineup")) {
             // adb only: the line-up card (or the kick-off card) for a real game today, found by a club's name.
             String who = intent.getStringExtra("test_lineup").toLowerCase(java.util.Locale.ROOT);
@@ -1827,7 +1854,8 @@ public class GoalWatchService extends Service {
         int px = Math.round(LOGO_DP * getResources().getDisplayMetrics().density);
         String[] channels = getResources().getStringArray(R.array.football_tv_channels);
         io.execute(() -> {
-            ScoresTicker.Side[] sides = "test".equals(g.id) ? testSides(g) : ScoresTicker.lineups(g);
+            ScoresTicker.Side[] preset = g.id == null ? null : testLineups.remove(g.id);
+            ScoresTicker.Side[] sides = preset != null ? preset : "test".equals(g.id) ? testSides(g) : ScoresTicker.lineups(g);
             // "Live on" and the channel, when a British channel lists the game.
             // The British channel (its UHD one first, where TiviMate has it); else the game's channel in the playlist,
             // with its logo; else where it is on abroad.
@@ -1964,7 +1992,7 @@ public class GoalWatchService extends Service {
                     // mostly already fetched when the line-ups came out (prefetchLineups), a refused lookup asked once more.
                     PlayerPhotos.Cutout cut = premierLeague(full, t.name);
                     if (cut == null) cut = PlayerPhotos.cutout(this, full, t.name);
-                    if (cut.url == null) {
+                    if (cut.url == null && !PlayerPhotos.cooling()) {
                         try { Thread.sleep(2_000); } catch (InterruptedException e) { return; }
                         cut = PlayerPhotos.cutout(this, full, t.name);
                     }
@@ -1976,6 +2004,12 @@ public class GoalWatchService extends Service {
                     pool.execute(() -> {
                         pl.photo = PlayerPhotos.photo(this, found);
                         if (pl.photo == null && p[1] != null) pl.photo = ScoresTicker.cachedLogo(this, p[1], 300);
+                        // In no photo library (a young player, a new signing): his Wikipedia photo, cut to his face
+                        // and shown on shoulders in his side's kit; the kit's figure only when there is none at all.
+                        if (pl.photo == null) {
+                            android.graphics.Bitmap wiki = PlayerPhotos.wikiPhoto(this, full);
+                            if (wiki != null) { pl.photo = wiki; pl.framed = true; }
+                        }
                         String flag = LineupCard.flagUrl(found.nation);
                         // No nationality in TheSportsDB (or one its flags don't cover): ESPN's, so every player has a flag.
                         if (flag == null) {
