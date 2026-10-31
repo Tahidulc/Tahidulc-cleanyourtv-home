@@ -463,6 +463,18 @@ public class GoalWatchService extends Service {
                     intent.getBooleanExtra("tv", false));
         }
         if (intent != null && intent.hasExtra("test_more")) testMore(intent.getStringExtra("test_more"));
+        if (intent != null && intent.hasExtra("test_photo")) {
+            // adb test: a player's Wikipedia photo, saved to the app's files to look at.
+            String who = intent.getStringExtra("test_photo");
+            io.execute(() -> {
+                android.graphics.Bitmap b = PlayerPhotos.wikiPhoto(this, who);
+                android.util.Log.i("LineupCard", "wiki photo " + who + ": " + (b == null ? "none" : b.getWidth() + "x" + b.getHeight()));
+                if (b == null || getExternalFilesDir(null) == null) return;
+                try (java.io.FileOutputStream out = new java.io.FileOutputStream(new java.io.File(getExternalFilesDir(null), "photo-" + who.replace(' ', '_') + ".png"))) {
+                    b.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out);
+                } catch (java.io.IOException ignored) { }
+            });
+        }
         if (intent != null && intent.hasExtra("test_goal")) {
             // adb only (the service needs DUMP from outside): one sample alert now, to check the look over an app.
             ScoresTicker.Game g = new ScoresTicker.Game();
@@ -1348,6 +1360,7 @@ public class GoalWatchService extends Service {
                     pool.execute(() -> {
                         pl.photo = PlayerPhotos.photo(this, found);
                         if (pl.photo == null && p[1] != null) pl.photo = ScoresTicker.cachedLogo(this, p[1], 300);
+                        if (pl.photo == null) { pl.photo = PlayerPhotos.wikiPhoto(this, full); pl.framed = pl.photo != null; }
                         String flag = LineupCard.flagUrl(found.nation);
                         if (flag != null) pl.flag = ScoresTicker.cachedLogo(this, flag, 80);
                     });

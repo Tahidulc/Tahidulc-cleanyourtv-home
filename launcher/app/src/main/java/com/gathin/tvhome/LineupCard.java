@@ -61,6 +61,8 @@ final class LineupCard {
     static final class Player {
         String first = "", last = "", number = "";
         Bitmap photo, flag;
+        /** A photo rather than a cut-out (Wikipedia's): shown in a round frame in the club's colour. */
+        boolean framed;
     }
 
     private static final int NAVY = 0xFF151A63;

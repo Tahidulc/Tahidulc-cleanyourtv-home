@@ -1011,6 +1011,8 @@ final class ScoresTicker {
         }
         try {
             HttpURLConnection conn = (HttpURLConnection) new URL(small).openConnection();
+            // Wikimedia asks every client to name itself.
+            if (small.contains("wikimedia.org")) conn.setRequestProperty("User-Agent", "cleanyourtv-launcher/1.0 (personal TV launcher; github.com/Gathin23/cleanyourtv)");
             conn.setConnectTimeout(6000);
             conn.setReadTimeout(8000);
             byte[] data;

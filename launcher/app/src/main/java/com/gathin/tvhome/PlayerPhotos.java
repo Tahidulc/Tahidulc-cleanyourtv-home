@@ -118,6 +118,114 @@ final class PlayerPhotos {
         }
     }
 
+    // ---- when TheSportsDB has no cut-out: Wikipedia's photo of him ----------------------------------------------
+
+    private static final String UA = "cleanyourtv-launcher/1.0 (personal TV launcher; github.com/Gathin23/cleanyourtv)";
+
+    /**
+     * A photo of the player from Wikipedia, cropped to his head and shoulders: his English article's picture (by his
+     * name, or "name (footballer)"), else the picture Wikidata keeps for him (from any language's article). Looked up
+     * once a name and kept ("" for none). An article counts only when it says he is a footballer. Off the main thread.
+     */
+    static Bitmap wikiPhoto(Context ctx, String fullName) {
+        if (fullName == null || fullName.trim().isEmpty()) return null;
+        SharedPreferences cache = ctx.getSharedPreferences("player_wiki2", Context.MODE_PRIVATE);
+        String url = cache.getString(fullName, null);
+        if (url == null) {
+            url = wikiLookUp(fullName.trim());
+            android.util.Log.i("LineupCard", "wiki " + fullName + " -> " + url);
+            if (url == null) return null;   // failed: another time
+            cache.edit().putString(fullName, url).apply();
+        }
+        if (url.isEmpty()) return null;
+        Bitmap b = ScoresTicker.cachedLogo(ctx, url, 400);
+        if (b == null) android.util.Log.i("LineupCard", "wiki photo not fetched: " + url);
+        return b == null ? null : headAndShoulders(b);
+    }
+
+    /** The photo's address ("" for none), or null when Wikipedia could not be asked. */
+    private static String wikiLookUp(String name) {
+        try {
+            String title = name.replace(' ', '_');
+            String[] titles = {title + "_(footballer)", title};
+            String wikidata = null;
+            for (String t : titles) {
+                JSONObject page;
+                try {
+                    page = new JSONObject(getWiki("https://en.wikipedia.org/api/rest_v1/page/summary/" + URLEncoder.encode(t, "UTF-8").replace("+", "_")));
+                } catch (java.io.FileNotFoundException missing) {
+                    continue;
+                }
+                String about = (page.optString("description", "") + " " + page.optString("extract", "")).toLowerCase(java.util.Locale.ROOT);
+                if (!about.contains("footballer") && !about.contains("football player")) continue;
+                JSONObject thumb = page.optJSONObject("thumbnail");
+                if (thumb != null && !thumb.optString("source", "").isEmpty()) return thumb.optString("source");
+                wikidata = page.optString("wikibase_item", null);
+                if (wikidata != null) break;
+            }
+            if (wikidata == null) return "";
+            JSONObject entity = new JSONObject(getWiki("https://www.wikidata.org/wiki/Special:EntityData/" + wikidata + ".json"))
+                    .getJSONObject("entities").getJSONObject(wikidata);
+            JSONArray images = entity.optJSONObject("claims") == null ? null : entity.getJSONObject("claims").optJSONArray("P18");
+            if (images == null || images.length() == 0) return "";
+            String file = images.getJSONObject(0).getJSONObject("mainsnak").getJSONObject("datavalue").getString("value");
+            return "https://commons.wikimedia.org/wiki/Special:FilePath/" + URLEncoder.encode(file.replace(' ', '_'), "UTF-8") + "?width=330";
+        } catch (Exception e) {
+            android.util.Log.i("LineupCard", "wiki lookup " + name + ": " + e);
+            return null;
+        }
+    }
+
+    private static String getWiki(String url) throws Exception {
+        HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
+        conn.setRequestProperty("User-Agent", UA);
+        conn.setConnectTimeout(6000);
+        conn.setReadTimeout(8000);
+        try (InputStream in = conn.getInputStream()) {
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            byte[] buf = new byte[8192];
+            int n;
+            while ((n = in.read(buf)) > 0 && out.size() < 1024 * 1024) out.write(buf, 0, n);
+            return out.toString("UTF-8");
+        } finally {
+            conn.disconnect();
+        }
+    }
+
+    /**
+     * A photo cut down to the face, found by Android's face finder (a square about three eye-widths across, centred a
+     * little below the eyes); without a face, the top middle of the picture.
+     */
+    static Bitmap headAndShoulders(Bitmap src) {
+        int w = src.getWidth() & ~1, h = src.getHeight();
+        if (w < 40 || h < 40) return src;
+        Bitmap rgb = src.copy(Bitmap.Config.RGB_565, false);
+        if (rgb.getWidth() != w) rgb = Bitmap.createBitmap(rgb, 0, 0, w, h);
+        android.media.FaceDetector.Face[] faces = new android.media.FaceDetector.Face[1];
+        int found = 0;
+        try {
+            found = new android.media.FaceDetector(w, h, 1).findFaces(rgb, faces);
+        } catch (RuntimeException ignored) { }
+        float cx, cy, side;
+        if (found > 0 && faces[0] != null) {
+            android.graphics.PointF mid = new android.graphics.PointF();
+            faces[0].getMidPoint(mid);
+            float eyes = faces[0].eyesDistance();
+            // The face alone (it goes in a round frame on shoulders in his club's colours, so no old shirt shows).
+            cx = mid.x;
+            side = eyes * 3.4f;
+            cy = mid.y + eyes * 0.35f;
+        } else {
+            side = Math.min(w, h) * 0.5f;
+            cx = w / 2f;
+            cy = side * 0.6f;
+        }
+        side = Math.min(side, Math.min(w, h));
+        int left = Math.round(Math.max(0, Math.min(w - side, cx - side / 2)));
+        int top = Math.round(Math.max(0, Math.min(h - side, cy - side / 2)));
+        return Bitmap.createBitmap(src, left, top, Math.round(side), Math.round(side));
+    }
+
     /** The same player's name: the same surname, and the same first name or its first letter (accents aside). */
     static boolean sameName(String a, String b) {
         String[] x = plain(a).split(" "), y = plain(b).split(" ");
