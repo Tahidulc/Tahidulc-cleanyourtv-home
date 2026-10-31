@@ -70,6 +70,8 @@ final class ScoresTicker {
         String homeId, awayId, slug;
         /** The teams' colours (0 when ESPN has none), and while live the match clock in seconds as read at clockAt. */
         int homeColor, awayColor;
+        /** The ground, as ESPN names it ("Anfield"); null when it does not say. */
+        String venue;
         /** Their second colours (ESPN's alternateColor), for the away side's kit when the first colours clash. */
         int homeAlt, awayAlt;
         /** The clubs' full names ("Tottenham Hotspur"), for finding the game in a TV guide. */
@@ -355,6 +357,8 @@ final class ScoresTicker {
             else g.goals.add(new String[]{id + "|" + minute + "|" + scorer, scorer, minute, side, kind});
         }
         g.league = tag;
+        JSONObject ground = c.optJSONObject("venue");
+        if (ground != null && !ground.optString("fullName").isEmpty()) g.venue = ground.optString("fullName");
         g.homeId = homeId;
         g.awayId = away.getJSONObject("team").optString("id");
         g.home = home.getJSONObject("team").optString("abbreviation");

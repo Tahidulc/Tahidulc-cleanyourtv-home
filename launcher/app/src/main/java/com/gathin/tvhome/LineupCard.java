@@ -50,7 +50,8 @@ final class LineupCard {
     static final class Data {
         Bitmap leagueLogo;
         Team home, away;
-        String kickoff, channel;
+        String kickoff, channel, venue, competition;
+        long kickoffAt;
         Bitmap channelLogo;
         /** OK: the game's channel opened (null without one). */
         Runnable watch;
@@ -60,8 +61,10 @@ final class LineupCard {
     static final class Team {
         String name, formation = "", kitName = "Home kit";
         Bitmap crest;
-        /** The kit it wears today: shirt body and sleeves (0 when not known). */
+        /** The kit it wears today: shirt body and sleeves (0 when not known), for its colours on the pitch. */
         int kit, sleeves;
+        /** The kit its players' photos show (its home kit): a player without a photo wears it too, like the rest. */
+        int photoKit, photoSleeves;
         final List<Player> players = new ArrayList<>();
     }
 
@@ -350,7 +353,8 @@ final class LineupCard {
         FrameLayout frame = new FrameLayout(c);
         frame.setClipChildren(true);
         ImageView photo = new ImageView(c);
-        photo.setImageBitmap(p.photo == null ? avatar(t.kit, t.sleeves, p.number) : p.framed ? framed(p.photo, t.kit) : p.photo);
+        photo.setImageBitmap(p.photo == null ? avatar(t.photoKit != 0 ? t.photoKit : t.kit, t.photoKit != 0 ? t.photoSleeves : t.sleeves, p.number)
+                : p.framed ? framed(p.photo, t.kit) : p.photo);
         photo.setScaleType(ImageView.ScaleType.FIT_START);
         frame.addView(photo, new FrameLayout.LayoutParams(px(150), px(150), Gravity.TOP | Gravity.CENTER_HORIZONTAL));
         FrameLayout.LayoutParams fl = new FrameLayout.LayoutParams(-1, -1);
@@ -675,7 +679,7 @@ final class LineupCard {
         private void draw(Canvas cv, Team t, Player pl, float cx, float cy, float tw, float size) {
             float r = px(13);
             // The face in its ring: a cut-out zoomed to the head, a framed photo whole, else the kit's avatar.
-            Bitmap face = pl.photo != null ? pl.photo : avatar(t.kit, t.sleeves, "");
+            Bitmap face = pl.photo != null ? pl.photo : avatar(t.photoKit != 0 ? t.photoKit : t.kit, t.photoKit != 0 ? t.photoSleeves : t.sleeves, "");
             boolean cut = pl.photo != null && !pl.framed;
             float zoom = cut ? 1.9f : 1f;
             Matrix m = new Matrix();
@@ -720,41 +724,86 @@ final class LineupCard {
 
     // ---- the last page -------------------------------------------------------------------------------------------
 
+    /** "Starts in 15 min", "Starts in 1 hr 5 min", or "Kick-off now", from the kick-off and now. */
+    static String startsIn(long kickoff) {
+        if (kickoff <= 0) return null;
+        long min = Math.round((kickoff - System.currentTimeMillis()) / 60_000.0);
+        if (min <= 0) return "Kick-off now";
+        if (min < 60) return "Starts in " + min + " min";
+        long h = min / 60, m = min % 60;
+        return "Starts in " + h + " hr" + (m > 0 ? " " + m + " min" : "");
+    }
+
+    /**
+     * The first page: the competition and the ground across the top, the two crests with "Starts in …" and the
+     * kick-off between them, and at the foot the channel showing it and "Press OK to watch".
+     */
     private static View first(Context c, Data d) {
         FrameLayout page = new FrameLayout(c);
         page.setBackground(new Streaks(0xFF2A35B8, 0xFF080B3A, 0x0EFFFFFF, px(60), px(4)));
+        StringBuilder where = new StringBuilder();
+        if (d.competition != null && !d.competition.isEmpty()) where.append(d.competition);
+        if (d.venue != null && !d.venue.isEmpty()) where.append(where.length() > 0 ? "  ·  " : "").append(d.venue);
+        TextView top = text(c, where.toString().toUpperCase(java.util.Locale.UK), 13, 0xD9FFFFFF,
+                Typeface.create("sans-serif-condensed", Typeface.BOLD));
+        top.setLetterSpacing(0.16f);
+        top.setGravity(Gravity.CENTER);
+        FrameLayout.LayoutParams tl = new FrameLayout.LayoutParams(-1, -2, Gravity.TOP);
+        tl.topMargin = px(16);
+        page.addView(top, tl);
+
         LinearLayout vs = new LinearLayout(c);
         vs.setGravity(Gravity.CENTER);
         vs.addView(club(c, d.home));
-        TextView ko = text(c, d.kickoff != null ? d.kickoff : "v", 32, 0xFFFFFFFF, Typeface.create("sans-serif-black", Typeface.NORMAL));
-        LinearLayout.LayoutParams kl = new LinearLayout.LayoutParams(-2, -2);
-        kl.leftMargin = kl.rightMargin = px(28);
-        vs.addView(ko, kl);
+        LinearLayout mid = new LinearLayout(c);
+        mid.setOrientation(LinearLayout.VERTICAL);
+        mid.setGravity(Gravity.CENTER_HORIZONTAL);
+        String starts = startsIn(d.kickoffAt);
+        TextView when = text(c, starts != null ? starts : "v", starts != null ? 21 : 32, 0xFFFFFFFF,
+                Typeface.create("sans-serif-black", Typeface.NORMAL));
+        when.setGravity(Gravity.CENTER);
+        mid.addView(when, new LinearLayout.LayoutParams(-1, -2));
+        if (d.kickoff != null) {
+            TextView ko = text(c, "Kick-off " + d.kickoff, 13, 0xBFFFFFFF, Typeface.create("sans-serif-medium", Typeface.NORMAL));
+            ko.setGravity(Gravity.CENTER);
+            LinearLayout.LayoutParams kol = new LinearLayout.LayoutParams(-1, -2);
+            kol.topMargin = px(5);
+            mid.addView(ko, kol);
+        }
+        // A set width for the countdown, so "Starts in 1 hr 15 min" is never cut short.
+        LinearLayout.LayoutParams ml = new LinearLayout.LayoutParams(px(230), -2);
+        ml.leftMargin = ml.rightMargin = px(6);
+        ml.bottomMargin = px(18);
+        vs.addView(mid, ml);
         vs.addView(club(c, d.away));
         FrameLayout.LayoutParams vl = new FrameLayout.LayoutParams(-1, -2, Gravity.TOP);
-        vl.topMargin = px(24);
+        vl.topMargin = px(42);
         page.addView(vs, vl);
+
         LinearLayout foot = new LinearLayout(c);
         foot.setGravity(Gravity.CENTER);
-        View ch = channel(c, d, 26);
-        if (ch != null) foot.addView(ch, new LinearLayout.LayoutParams(-2, px(26)));
+        View ch = channel(c, d, 24);
+        if (ch != null) foot.addView(ch, new LinearLayout.LayoutParams(-2, px(24)));
         if (d.watch != null) {
-            LinearLayout.LayoutParams ol = new LinearLayout.LayoutParams(-2, px(34));
+            LinearLayout.LayoutParams ol = new LinearLayout.LayoutParams(-2, px(32));
             ol.leftMargin = px(16);
-            foot.addView(okPill(c, 14, 26), ol);
+            foot.addView(okPill(c, 13.5f, 24), ol);
         }
         FrameLayout.LayoutParams fl = new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM);
-        fl.bottomMargin = px(22);
+        fl.bottomMargin = px(16);
         page.addView(foot, fl);
-        // The crests come in from either side, the kick-off between them, the channel and OK rising last.
+        // The crests come in from either side, the countdown between them, the line above and the channel and OK last.
         View home = vs.getChildAt(0), away = vs.getChildAt(2);
         home.setTranslationX(-px(60)); away.setTranslationX(px(60));
-        home.setAlpha(0f); away.setAlpha(0f); ko.setAlpha(0f); foot.setAlpha(0f);
+        home.setAlpha(0f); away.setAlpha(0f); mid.setAlpha(0f); top.setAlpha(0f); foot.setAlpha(0f);
+        mid.setScaleX(0.85f); mid.setScaleY(0.85f);
         foot.setTranslationY(px(14));
+        top.setTranslationY(-px(8));
         home.animate().translationX(0).alpha(1f).setStartDelay(250).setDuration(520).setInterpolator(new DecelerateInterpolator(2.2f)).start();
         away.animate().translationX(0).alpha(1f).setStartDelay(250).setDuration(520).setInterpolator(new DecelerateInterpolator(2.2f)).start();
-        ko.animate().alpha(1f).setStartDelay(560).setDuration(380).start();
-        foot.animate().translationY(0).alpha(1f).setStartDelay(780).setDuration(420).setInterpolator(new DecelerateInterpolator(2f)).start();
+        mid.animate().alpha(1f).scaleX(1f).scaleY(1f).setStartDelay(520).setDuration(420).setInterpolator(new DecelerateInterpolator(2f)).start();
+        top.animate().alpha(1f).translationY(0).setStartDelay(650).setDuration(380).start();
+        foot.animate().translationY(0).alpha(1f).setStartDelay(800).setDuration(420).setInterpolator(new DecelerateInterpolator(2f)).start();
         return page;
     }
 
@@ -762,11 +811,11 @@ final class LineupCard {
         LinearLayout v = new LinearLayout(c);
         v.setOrientation(LinearLayout.VERTICAL);
         v.setGravity(Gravity.CENTER_HORIZONTAL);
-        v.addView(crest(c, t == null ? null : t.crest), new LinearLayout.LayoutParams(px(70), px(70)));
+        v.addView(crest(c, t == null ? null : t.crest), new LinearLayout.LayoutParams(px(62), px(62)));
         TextView n = text(c, t == null ? "" : t.name, 16, 0xFFFFFFFF, Typeface.create("sans-serif-black", Typeface.NORMAL));
         n.setGravity(Gravity.CENTER);
-        LinearLayout.LayoutParams nl = new LinearLayout.LayoutParams(px(160), -2);
-        nl.topMargin = px(6);
+        LinearLayout.LayoutParams nl = new LinearLayout.LayoutParams(px(150), -2);
+        nl.topMargin = px(5);
         v.addView(n, nl);
         return v;
     }
@@ -894,6 +943,8 @@ final class LineupCard {
         int s = 300;
         Bitmap b = Bitmap.createBitmap(s, s, Bitmap.Config.ARGB_8888);
         Canvas cv = new Canvas(b);
+        // Drawn higher in the frame (the head near the top, as in the players' photos); the shirt runs to the foot.
+        cv.translate(0, -26);
         Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
         // The neck, shadowed under the chin.
         p.setShader(new LinearGradient(0, 140, 0, 182, 0xFF9AA0B2, 0xFFC4C9D6, Shader.TileMode.CLAMP));
@@ -908,14 +959,14 @@ final class LineupCard {
         cv.save();
         cv.clipPath(shirt);
         p.setShader(new LinearGradient(0, 166, 0, 300, lighter(body), darker(body), Shader.TileMode.CLAMP));
-        cv.drawRect(0, 150, s, s, p);
+        cv.drawRect(0, 150, s, s + 40, p);
         if (arms != body) {
             p.setShader(new LinearGradient(0, 166, 0, 300, lighter(arms), darker(arms), Shader.TileMode.CLAMP));
             Path left = new Path();
-            left.moveTo(0, 300);
+            left.moveTo(0, 340);
             left.lineTo(0, 196);
             left.quadTo(58, 180, 84, 206);
-            left.lineTo(70, 300);
+            left.lineTo(70, 340);
             left.close();
             cv.drawPath(left, p);
             Matrix mirror = new Matrix();
@@ -926,9 +977,9 @@ final class LineupCard {
         }
         p.setShader(new LinearGradient(0, 0, s, 0, new int[]{0x55000000, 0x00000000, 0x00000000, 0x55000000},
                 new float[]{0.05f, 0.36f, 0.64f, 0.95f}, Shader.TileMode.CLAMP));
-        cv.drawRect(0, 150, s, s, p);
+        cv.drawRect(0, 150, s, s + 40, p);
         p.setShader(new LinearGradient(0, 166, 0, 236, 0x55FFFFFF, 0x00FFFFFF, Shader.TileMode.CLAMP));
-        cv.drawRect(0, 150, s, s, p);
+        cv.drawRect(0, 150, s, s + 40, p);
         cv.restore();
         p.setShader(null);
         // The collar, in the sleeves' colour where they differ, else white or navy against the shirt.
@@ -985,14 +1036,14 @@ final class LineupCard {
 
     private static Path shoulders() {
         Path body = new Path();
-        body.moveTo(22, 300);
+        body.moveTo(18, 340);
         body.lineTo(34, 222);
         body.quadTo(44, 186, 96, 172);
         body.lineTo(122, 164);
         body.quadTo(150, 186, 178, 164);
         body.lineTo(204, 172);
         body.quadTo(256, 186, 266, 222);
-        body.lineTo(278, 300);
+        body.lineTo(282, 340);
         body.close();
         return body;
     }

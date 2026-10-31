@@ -1170,6 +1170,7 @@ public class GoalWatchService extends Service {
             g.tvAt = 1_793_554_200_000L;
             // Both in red: Arsenal's second colour for the card's "Away kit".
             g.homeColor = 0xFFC8102E; g.awayColor = 0xFFEF0107; g.awayAlt = 0xFF0B1E4B;
+            g.venue = "Anfield"; g.slug = "eng.1";
             enqueueReminder(g);
         }
         io.execute(() -> {
@@ -1322,6 +1323,9 @@ public class GoalWatchService extends Service {
         String leagueLogo = g.leagueLogo != null ? g.leagueLogo : leagueLogoFor(g);
         if (leagueLogo != null) d.leagueLogo = ScoresTicker.cachedLogo(this, leagueLogo, logoPx);
         if (g.kickoff > 0) d.kickoff = new java.text.SimpleDateFormat("HH:mm", java.util.Locale.UK).format(new java.util.Date(g.kickoff));
+        d.kickoffAt = g.kickoff;
+        d.venue = g.venue;
+        d.competition = g.league == null && g.slug == null ? null : ScoresTicker.competition(g);
         if (tv != null) {
             d.channel = tv.name;
             if (tv.logo != null) d.channelLogo = ScoresTicker.cachedLogo(this, tv.logo, logoPx * 2);
@@ -1355,6 +1359,9 @@ public class GoalWatchService extends Service {
             Kits.Kit wears = away ? awayWears : homeWears;
             t.kit = wears != null ? wears.body : away ? (clash && g.awayAlt != 0 ? g.awayAlt : awayKit) : homeKit;
             t.sleeves = wears != null ? wears.sleeves : t.kit;
+            Kits.Kit home = (away ? awayKits : homeKits).length > 0 ? (away ? awayKits : homeKits)[0] : null;
+            t.photoKit = home != null && home.known() ? home.body : (away ? awayKit : homeKit);
+            t.photoSleeves = home != null && home.known() ? home.sleeves : t.photoKit;
             String crest = side.crest != null ? side.crest : away ? g.awayLogo : g.homeLogo;
             if (crest != null) jobs.add(() -> { t.crest = ScoresTicker.cachedLogo(this, crest, logoPx * 2); return null; });
             for (String[] p : side.players) {
