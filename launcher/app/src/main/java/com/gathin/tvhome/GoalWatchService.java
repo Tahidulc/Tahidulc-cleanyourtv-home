@@ -1246,8 +1246,8 @@ public class GoalWatchService extends Service {
                 live.add(new Pic(g.awayLogo)); live.add(4); live.add(bold(g.away)); live.add(14);
                 live.add(bold("📺  LIVE ON")); live.add(8); live.add(new Chip(tv.logo, tv.name));
             }
-            // The line-ups out: Sky's line-up card, small in the top right, in place of the pill and its pages.
-            if (sides != null && Config.themeFlag(this, "lineup_card", true)) {
+            // The line-ups out, and the theme asks for it ("lineup_card"): the line-up card in place of the pill.
+            if (sides != null && Config.themeFlag(this, "lineup_card", false)) {
                 LineupCard.Data card = lineupCard(g, sides, tv, channels);
                 main.post(() -> LineupCard.show(this, card));
                 return;
