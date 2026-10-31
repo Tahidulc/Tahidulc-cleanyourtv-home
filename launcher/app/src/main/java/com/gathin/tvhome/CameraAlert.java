@@ -52,9 +52,9 @@ final class CameraAlert {
     static final String TUYA = "com.tuya.smart";
     private static final String TAG = "Camera";
     private static final long SHOW_MS = 20_000L;
-    /** The card's width; a snapshot fills it at 16:9, over the card's words. */
-    private static final int WIDTH_DP = 360, WORDS_DP = 96;
-    private static final float CORNER_DP = 12f;
+    /** The card's width; it is 16:9, the snapshot filling it under its words. */
+    private static final int WIDTH_DP = 300;
+    private static final float CORNER_DP = 14f;
     private static final int RED = 0xFFFF3B30;
     /** What an alarm says (motion, a person, the doorbell); the rest from Tuya (offline, battery, updates) is not one. */
     private static final Pattern ALARM = Pattern.compile(
@@ -147,21 +147,27 @@ final class CameraAlert {
 
     // ---- the card --------------------------------------------------------------------------------------------
 
+    /**
+     * The card: a small live-camera tile in the top right corner, the alarm's snapshot filling it (16:9), as a camera
+     * app's picture-in-picture would. A red MOTION tag and the time across its top; the camera's name and what Tuya says
+     * over a shade at its foot, with a white "OK Live" pill; a scan line that sweeps down the picture, a red rim that
+     * breathes, a flash as it lands and a red line along its foot that runs down for the 20 seconds it stays. Without a
+     * snapshot, the camera in sonar rings on dark glass.
+     */
     private static void show(Context c, String camera, String what, Bitmap pic, PendingIntent tap) {
         // The same alarm again (Tuya updates its notification as the snapshot arrives): shown afresh, picture and all.
         close(false);
         float d = c.getResources().getDisplayMetrics().density;
         int w = Math.round(WIDTH_DP * d);
-        int picH = pic == null ? 0 : Math.round(w * 9f / 16f);
-        int h = picH + Math.round(WORDS_DP * d);
+        int h = Math.round(w * 9f / 16f);
         float corner = CORNER_DP * d;
+        List<View> pulses = new ArrayList<>();
+        List<android.animation.Animator> loops = new ArrayList<>();
 
         FrameLayout win = new FrameLayout(c);
-        LinearLayout card = new LinearLayout(c);
-        card.setOrientation(LinearLayout.VERTICAL);
-        GradientDrawable glass = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0xF52A2C31, 0xF5141518});
+        FrameLayout card = new FrameLayout(c);
+        GradientDrawable glass = new GradientDrawable(GradientDrawable.Orientation.TL_BR, new int[]{0xFF1E2A2E, 0xFF0B0F12});
         glass.setCornerRadius(corner);
-        glass.setStroke(Math.max(1, Math.round(d)), 0x33FFFFFF);
         card.setBackground(glass);
         card.setOutlineProvider(new ViewOutlineProvider() {
             @Override public void getOutline(View v, Outline o) {
@@ -169,121 +175,142 @@ final class CameraAlert {
             }
         });
         card.setClipToOutline(true);
+        card.setElevation(10 * d);
 
-        List<View> pulses = new ArrayList<>();
         if (pic != null) {
-            FrameLayout top = new FrameLayout(c);
             ImageView shot = new ImageView(c);
             shot.setScaleType(ImageView.ScaleType.CENTER_CROP);
             shot.setImageBitmap(pic);
-            top.addView(shot, new FrameLayout.LayoutParams(-1, -1));
-            // A shade at the picture's foot, so it meets the card's words softly.
-            View shade = new View(c);
-            shade.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0x00000000, 0x66000000}));
-            top.addView(shade, new FrameLayout.LayoutParams(-1, Math.round(48 * d), Gravity.BOTTOM));
-            FrameLayout.LayoutParams tl = new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.START);
-            tl.leftMargin = tl.topMargin = Math.round(12 * d);
-            top.addView(tag(c, d, pulses), tl);
-            card.addView(top, new LinearLayout.LayoutParams(-1, picH));
-        }
-
-        LinearLayout row = new LinearLayout(c);
-        row.setOrientation(LinearLayout.HORIZONTAL);
-        row.setGravity(Gravity.CENTER_VERTICAL);
-        int pad = Math.round(16 * d);
-        row.setPadding(pad, 0, pad, 0);
-        if (pic == null) {
-            // No snapshot: the camera in a red disc that breathes, where the picture would be.
-            FrameLayout disc = new FrameLayout(c);
-            View ring = new View(c);
-            GradientDrawable rg = new GradientDrawable();
-            rg.setShape(GradientDrawable.OVAL);
-            rg.setColor(0x40FF3B30);
-            ring.setBackground(rg);
-            disc.addView(ring, new FrameLayout.LayoutParams(-1, -1));
-            pulses.add(ring);
+            card.addView(shot, new FrameLayout.LayoutParams(-1, -1));
+        } else {
+            // No snapshot: the camera, faint, in rings that spread out from it like sonar.
+            int ring = Math.round(h * 0.62f);
+            for (int i = 0; i < 2; i++) {
+                View r = new View(c);
+                GradientDrawable rg = new GradientDrawable();
+                rg.setShape(GradientDrawable.OVAL);
+                rg.setStroke(Math.round(2 * d), 0xCCFF3B30);
+                r.setBackground(rg);
+                card.addView(r, new FrameLayout.LayoutParams(ring, ring, Gravity.CENTER));
+                android.animation.ObjectAnimator a = android.animation.ObjectAnimator.ofPropertyValuesHolder(r,
+                        android.animation.PropertyValuesHolder.ofFloat(View.SCALE_X, 0.35f, 1.5f),
+                        android.animation.PropertyValuesHolder.ofFloat(View.SCALE_Y, 0.35f, 1.5f),
+                        android.animation.PropertyValuesHolder.ofFloat(View.ALPHA, 0.9f, 0f));
+                a.setDuration(1800);
+                a.setStartDelay(i * 900L);
+                a.setRepeatCount(android.animation.ValueAnimator.INFINITE);
+                loops.add(a);
+            }
             ImageView icon = new ImageView(c);
             icon.setImageResource(R.drawable.ic_camera);
-            icon.setColorFilter(0xFFFFFFFF);
-            GradientDrawable fill = new GradientDrawable();
-            fill.setShape(GradientDrawable.OVAL);
-            fill.setColor(RED);
-            icon.setBackground(fill);
-            int ip = Math.round(10 * d);
-            icon.setPadding(ip, ip, ip, ip);
-            int in = Math.round(46 * d);
-            disc.addView(icon, new FrameLayout.LayoutParams(in, in, Gravity.CENTER));
-            LinearLayout.LayoutParams dl = new LinearLayout.LayoutParams(Math.round(60 * d), Math.round(60 * d));
-            dl.rightMargin = Math.round(14 * d);
-            row.addView(disc, dl);
+            icon.setColorFilter(0xE6FFFFFF);
+            int is = Math.round(h * 0.26f);
+            FrameLayout.LayoutParams il = new FrameLayout.LayoutParams(is, is, Gravity.CENTER);
+            il.bottomMargin = Math.round(10 * d);
+            card.addView(icon, il);
         }
+        // The scan line: a soft bright band that sweeps down the picture, again and again.
+        View scan = new View(c);
+        scan.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0x00FFFFFF, 0x2EFFFFFF, 0x00FFFFFF}));
+        int band = Math.round(26 * d);
+        card.addView(scan, new FrameLayout.LayoutParams(-1, band, Gravity.TOP));
+        android.animation.ObjectAnimator sweep = android.animation.ObjectAnimator.ofFloat(scan, View.TRANSLATION_Y, -band, h);
+        sweep.setDuration(2600);
+        sweep.setRepeatCount(android.animation.ValueAnimator.INFINITE);
+        sweep.setInterpolator(new android.view.animation.AccelerateDecelerateInterpolator());
+        loops.add(sweep);
+        // Shades top and foot, for the words over the picture.
+        View top = new View(c);
+        top.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0x8C000000, 0x00000000}));
+        card.addView(top, new FrameLayout.LayoutParams(-1, Math.round(54 * d), Gravity.TOP));
+        View foot = new View(c);
+        foot.setBackground(new GradientDrawable(GradientDrawable.Orientation.BOTTOM_TOP, new int[]{0xF0000000, 0x99000000, 0x00000000}));
+        card.addView(foot, new FrameLayout.LayoutParams(-1, Math.round(h * 0.58f), Gravity.BOTTOM));
+
+        int pad = Math.round(11 * d);
+        FrameLayout.LayoutParams tl = new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.START);
+        tl.leftMargin = tl.topMargin = pad;
+        card.addView(tag(c, d, pulses), tl);
+        TextView time = text(c, android.text.format.DateFormat.getTimeFormat(c).format(new java.util.Date()), 12f, 0xF2FFFFFF,
+                Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        time.setShadowLayer(4 * d, 0, d, 0xCC000000);
+        FrameLayout.LayoutParams ml = new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.END);
+        ml.rightMargin = pad;
+        ml.topMargin = pad + Math.round(2 * d);
+        card.addView(time, ml);
+
+        // The foot: name and what Tuya says on the left, "OK Live" on the right.
+        LinearLayout row = new LinearLayout(c);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.BOTTOM);
         LinearLayout col = new LinearLayout(c);
         col.setOrientation(LinearLayout.VERTICAL);
-        LinearLayout head = new LinearLayout(c);
-        head.setOrientation(LinearLayout.HORIZONTAL);
-        head.setGravity(Gravity.CENTER_VERTICAL);
-        if (pic == null) {
-            LinearLayout.LayoutParams gl = new LinearLayout.LayoutParams(-2, -2);
-            gl.rightMargin = Math.round(8 * d);
-            head.addView(tag(c, d, pulses), gl);
-        }
-        TextView name = text(c, camera, 17f, 0xFFFFFFFF, Typeface.create("sans-serif-medium", Typeface.BOLD));
-        head.addView(name, new LinearLayout.LayoutParams(0, -2, 1f));
-        TextView time = text(c, android.text.format.DateFormat.getTimeFormat(c).format(new java.util.Date()), 13f, 0x99FFFFFF, Typeface.DEFAULT);
-        head.addView(time, new LinearLayout.LayoutParams(-2, -2));
-        col.addView(head, new LinearLayout.LayoutParams(-1, -2));
-        TextView line = text(c, what, 13.5f, 0xCCFFFFFF, Typeface.DEFAULT);
+        TextView name = text(c, camera, 15f, 0xFFFFFFFF, Typeface.create("sans-serif-medium", Typeface.BOLD));
+        name.setShadowLayer(6 * d, 0, d, 0xCC000000);
+        col.addView(name, new LinearLayout.LayoutParams(-1, -2));
+        TextView line = text(c, what, 11.5f, 0xD9FFFFFF, Typeface.DEFAULT);
+        line.setShadowLayer(4 * d, 0, d, 0xCC000000);
         LinearLayout.LayoutParams ll = new LinearLayout.LayoutParams(-1, -2);
-        ll.topMargin = Math.round(2 * d);
+        ll.topMargin = Math.round(3 * d);
         col.addView(line, ll);
-        // The remote's own OK button drawn small: "[OK] View live", then "Back Close".
-        LinearLayout hint = new LinearLayout(c);
-        hint.setOrientation(LinearLayout.HORIZONTAL);
-        hint.setGravity(Gravity.CENTER_VERTICAL);
+        row.addView(col, new LinearLayout.LayoutParams(0, -2, 1f));
+        LinearLayout pill = new LinearLayout(c);
+        pill.setOrientation(LinearLayout.HORIZONTAL);
+        pill.setGravity(Gravity.CENTER_VERTICAL);
+        GradientDrawable pg = new GradientDrawable();
+        pg.setColor(0xF2FFFFFF);
+        pg.setCornerRadius(20 * d);
+        pill.setBackground(pg);
+        pill.setPadding(Math.round(4 * d), Math.round(4 * d), Math.round(10 * d), Math.round(4 * d));
         String remote = Config.themeString(c, "ok_button", "");
         ImageView ok = new ImageView(c);
-        ok.setImageBitmap(GoalWatchService.okButton(remote.isEmpty() ? "tcl" : remote, d, true));
-        int ks = Math.round(20 * d);
-        hint.addView(ok, new LinearLayout.LayoutParams(ks, ks));
-        TextView live = text(c, "View live", 12.5f, 0xFFFFFFFF, Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        ok.setImageBitmap(GoalWatchService.okButton(remote.isEmpty() ? "tcl" : remote, d, false));
+        int ks = Math.round(18 * d);
+        pill.addView(ok, new LinearLayout.LayoutParams(ks, ks));
+        TextView live = text(c, "Live", 12f, 0xFF111214, Typeface.create("sans-serif-medium", Typeface.BOLD));
         LinearLayout.LayoutParams vl = new LinearLayout.LayoutParams(-2, -2);
-        vl.leftMargin = Math.round(7 * d);
-        hint.addView(live, vl);
-        // "Back" as a key, outlined, then what it does.
-        TextView back = text(c, "Back", 10.5f, 0xCCFFFFFF, Typeface.create("sans-serif-medium", Typeface.NORMAL));
-        GradientDrawable key = new GradientDrawable();
-        key.setCornerRadius(5 * d);
-        key.setStroke(Math.max(1, Math.round(d)), 0x66FFFFFF);
-        back.setBackground(key);
-        back.setPadding(Math.round(7 * d), Math.round(3 * d), Math.round(7 * d), Math.round(3 * d));
-        LinearLayout.LayoutParams bl = new LinearLayout.LayoutParams(-2, -2);
-        bl.leftMargin = Math.round(18 * d);
-        hint.addView(back, bl);
-        TextView shut = text(c, "Close", 12.5f, 0x99FFFFFF, Typeface.DEFAULT);
-        LinearLayout.LayoutParams sl = new LinearLayout.LayoutParams(-2, -2);
-        sl.leftMargin = Math.round(7 * d);
-        hint.addView(shut, sl);
-        LinearLayout.LayoutParams hl = new LinearLayout.LayoutParams(-1, -2);
-        hl.topMargin = Math.round(8 * d);
-        col.addView(hint, hl);
-        row.addView(col, new LinearLayout.LayoutParams(0, -2, 1f));
-        card.addView(row, new LinearLayout.LayoutParams(-1, 0, 1f));
-        win.addView(card, new FrameLayout.LayoutParams(-1, -1));
+        vl.leftMargin = Math.round(5 * d);
+        pill.addView(live, vl);
+        LinearLayout.LayoutParams pl = new LinearLayout.LayoutParams(-2, -2);
+        pl.leftMargin = Math.round(8 * d);
+        row.addView(pill, pl);
+        FrameLayout.LayoutParams rl = new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM);
+        rl.leftMargin = rl.rightMargin = pad;
+        rl.bottomMargin = pad + Math.round(2 * d);
+        card.addView(row, rl);
 
-        // The time left, as a red line along the card's foot that runs down.
+        // The time left: a red line along the foot that runs down.
         View left = new View(c);
         left.setBackgroundColor(RED);
         left.setPivotX(0);
-        win.addView(left, new FrameLayout.LayoutParams(-1, Math.round(3 * d), Gravity.BOTTOM));
+        card.addView(left, new FrameLayout.LayoutParams(-1, Math.round(3 * d), Gravity.BOTTOM));
+        // The rim: red, breathing, like a camera that is recording.
+        View rim = new View(c);
+        GradientDrawable rd = new GradientDrawable();
+        rd.setCornerRadius(corner);
+        rd.setStroke(Math.round(2 * d), RED);
+        rim.setBackground(rd);
+        card.addView(rim, new FrameLayout.LayoutParams(-1, -1));
+        pulses.add(rim);
+        // A flash as it lands, like a shutter.
+        View flash = new View(c);
+        flash.setBackgroundColor(0xFFFFFFFF);
+        flash.setAlpha(0.6f);
+        card.addView(flash, new FrameLayout.LayoutParams(-1, -1));
 
-        WindowManager.LayoutParams lp = new WindowManager.LayoutParams(w, h,
+        // Room around the card for its shadow.
+        int m = Math.round(8 * d);
+        FrameLayout.LayoutParams cl = new FrameLayout.LayoutParams(w, h);
+        cl.leftMargin = cl.topMargin = cl.rightMargin = cl.bottomMargin = m;
+        win.addView(card, cl);
+        WindowManager.LayoutParams lp = new WindowManager.LayoutParams(w + 2 * m, h + 2 * m,
                 WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
                 // Focusable, so OK and Back come here while it shows; the app keeps playing underneath.
                 WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL | WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
                 PixelFormat.TRANSLUCENT);
-        lp.gravity = Gravity.BOTTOM | Gravity.END;
-        lp.x = Math.round(32 * d);
-        lp.y = Math.round(32 * d);
+        lp.gravity = Gravity.TOP | Gravity.END;
+        lp.x = Math.round(20 * d);
+        lp.y = Math.round(20 * d);
         lp.setTitle("CameraAlert");
         try {
             c.getSystemService(WindowManager.class).addView(win, lp);
@@ -309,17 +336,23 @@ final class CameraAlert {
         });
 
         card.setAlpha(0f);
-        card.setTranslationX(w * 0.12f);
-        card.animate().alpha(1f).translationX(0f).setDuration(320).setInterpolator(new DecelerateInterpolator(2f)).start();
+        card.setTranslationY(-h * 0.18f);
+        card.setScaleX(0.94f);
+        card.setScaleY(0.94f);
+        card.animate().alpha(1f).translationY(0f).scaleX(1f).scaleY(1f).setDuration(380)
+                .setInterpolator(new DecelerateInterpolator(2.2f)).start();
+        flash.animate().alpha(0f).setStartDelay(160).setDuration(420).start();
         left.animate().scaleX(0f).setDuration(SHOW_MS).setInterpolator(new LinearInterpolator()).start();
         for (View p : pulses) {
             android.animation.ObjectAnimator a = android.animation.ObjectAnimator.ofFloat(p, View.ALPHA, 1f, 0.25f);
             a.setDuration(700);
             a.setRepeatCount(android.animation.ValueAnimator.INFINITE);
             a.setRepeatMode(android.animation.ValueAnimator.REVERSE);
-            a.start();
+            loops.add(a);
             p.setTag(a);
         }
+        for (android.animation.Animator a : loops) a.start();
+        win.setTag(loops);
         main.removeCallbacks(close);
         main.postDelayed(close, SHOW_MS);
     }
@@ -385,6 +418,9 @@ final class CameraAlert {
 
     private static void stopPulses(View v) {
         if (v.getTag() instanceof android.animation.Animator) ((android.animation.Animator) v.getTag()).cancel();
+        if (v.getTag() instanceof List) {
+            for (Object a : (List<?>) v.getTag()) if (a instanceof android.animation.Animator) ((android.animation.Animator) a).cancel();
+        }
         if (v instanceof android.view.ViewGroup) {
             android.view.ViewGroup g = (android.view.ViewGroup) v;
             for (int i = 0; i < g.getChildCount(); i++) stopPulses(g.getChildAt(i));
