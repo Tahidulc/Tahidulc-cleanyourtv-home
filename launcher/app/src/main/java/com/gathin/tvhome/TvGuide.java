@@ -138,6 +138,33 @@ final class TvGuide {
         return names.isEmpty() ? null : new Watch(names, logo);
     }
 
+    /**
+     * The channel in its UHD form where TiviMate has one (the theme's guide_channels, by Sky service id): its UHD name
+     * ("Sky Sports Main Event UHD") and its logo drawn as UHD. The channel as it was otherwise.
+     */
+    static Channel uhd(android.content.Context c, Channel ch) {
+        if (ch == null || ch.logo == null) return ch;
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("skychb(\\d+)\\.png").matcher(ch.logo);
+        if (!m.find()) return ch;
+        String sid = m.group(1);
+        for (String[] g : HomeV2.guideChannels(c)) {
+            if (sid.equals(g[0]) && HomeV2.uhdName(g[1])) return new Channel(g[1].replaceAll("(?i)\\s+uhd$", " UHD"), ScoresTicker.skyLogo(sid, g[1]));
+        }
+        return ch;
+    }
+
+    /** watch(), the UHD channel first and its UHD logo where TiviMate has one. */
+    static Watch watch(android.content.Context c, String[] channels, ScoresTicker.Game g) {
+        Watch w = watch(channels, g);
+        if (w == null || w.logo == null) return w;
+        Channel up = uhd(c, new Channel(w.names.isEmpty() ? null : w.names.get(0), w.logo));
+        if (up.logo.equals(w.logo)) return w;
+        List<String> names = new ArrayList<>(w.names);
+        names.remove(up.name);
+        names.add(0, up.name);
+        return new Watch(names, up.logo);
+    }
+
     /** The British channel, or else where it is on in the US ("ESPN+ (US)", no logo); null when neither is known. */
     static Channel orAbroad(Channel uk, ScoresTicker.Game g) {
         if (uk != null || g == null || g.abroad == null) return uk;

@@ -1212,7 +1212,7 @@ public class GoalWatchService extends Service {
             android.graphics.Bitmap away = g.awayLogo == null ? null : ScoresTicker.cachedLogo(this, g.awayLogo, px);
             android.graphics.Bitmap league = leagueBitmap(g.leagueLogo != null ? g.leagueLogo : leagueLogoFor(g), px);
             // While the game is on: where to watch it, for the pill's second step.
-            Object[] watch = g.state == 0 ? watchOn(TvGuide.watch(getResources().getStringArray(R.array.football_tv_channels), g)) : null;
+            Object[] watch = g.state == 0 ? watchFor(g) : null;
             main.post(() -> {
                 queue.add(new Object[]{head, g, home, away, league, sound, scoredBy, watch});
                 showNext();
@@ -1249,7 +1249,14 @@ public class GoalWatchService extends Service {
         io.execute(() -> {
             ScoresTicker.Side[] sides = "test".equals(g.id) ? testSides(g) : ScoresTicker.lineups(g);
             // "Live on" and the channel, when a British channel lists the game.
-            TvGuide.Channel tv = TvGuide.orAbroad(TvGuide.find(channels, g.homeName, g.awayName, g.tvAt != 0 ? g.tvAt : g.kickoff), g);
+            // The British channel (its UHD one first, where TiviMate has it); else the game's channel in the playlist,
+            // with its logo; else where it is on abroad.
+            TvGuide.Channel tv = TvGuide.uhd(this, TvGuide.find(channels, g.homeName, g.awayName, g.tvAt != 0 ? g.tvAt : g.kickoff));
+            PlaylistSport.Where inPlaylist = tv == null ? PlaylistSport.where(this, g.homeName, g.awayName, g.slug) : null;
+            if (inPlaylist != null) tv = new TvGuide.Channel(inPlaylist.name, inPlaylist.logo);
+            if (tv == null) tv = TvGuide.orAbroad(null, g);
+            android.util.Log.i("Sport", "kick-off " + g.home + " v " + g.away + " on " + (tv == null ? "-" : tv.name + " " + tv.logo)
+                    + (inPlaylist != null ? " (playlist)" : ""));
             // The last page, after the line-ups: the two clubs, "LIVE ON" and the channel.
             List<Object> live = null;
             if (tv != null) {
@@ -1318,8 +1325,10 @@ public class GoalWatchService extends Service {
             d.channel = tv.name;
             if (tv.logo != null) d.channelLogo = ScoresTicker.cachedLogo(this, tv.logo, logoPx * 2);
         }
-        Object[] w = watchOn(TvGuide.watch(channels, g));
-        if (w != null) {
+        Object[] w = watchFor(g);
+        if (w != null && w.length > 2) {
+            d.watch = (Runnable) w[2];
+        } else if (w != null) {
             @SuppressWarnings("unchecked") List<String> names = (List<String>) w[0];
             android.graphics.Bitmap logo = (android.graphics.Bitmap) w[1];
             d.watch = () -> AppSearchService.tune(this, getString(R.string.scores_open_package), names, logo);
@@ -1513,6 +1522,27 @@ public class GoalWatchService extends Service {
                 showNext();
             });
         });
+    }
+
+    /**
+     * Where to watch a football game: the British channel (UHD first where TiviMate has it), tuned in TiviMate; when
+     * no British channel lists it, its channel in the playlist (TiviMate's and Kleva TV's), played in Kleva TV:
+     * {names, logo} or {names, logo, what OK does}. Off the main thread.
+     */
+    private Object[] watchFor(ScoresTicker.Game g) {
+        String[] channels = getResources().getStringArray(R.array.football_tv_channels);
+        TvGuide.Channel uk = TvGuide.find(channels, g.homeName, g.awayName, g.tvAt != 0 ? g.tvAt : g.kickoff);
+        if (uk == null) {
+            PlaylistSport.Where p = PlaylistSport.where(this, g.homeName, g.awayName, g.slug);
+            if (p != null) {
+                int px = Math.round(96 * getResources().getDisplayMetrics().density);
+                android.graphics.Bitmap logo = p.logo == null ? null : ScoresTicker.cachedLogo(this, p.logo, px);
+                List<String> names = new ArrayList<>();
+                names.add(p.name);
+                return new Object[]{names, logo, p.ok};
+            }
+        }
+        return watchOn(TvGuide.watch(this, channels, g));
     }
 
     /** {names, logo} for the "Watch on" step, the channel's logo fetched; null without anywhere to watch. */
@@ -1884,7 +1914,8 @@ public class GoalWatchService extends Service {
             boolean ok = keyCode == android.view.KeyEvent.KEYCODE_DPAD_CENTER || keyCode == android.view.KeyEvent.KEYCODE_ENTER
                     || keyCode == android.view.KeyEvent.KEYCODE_NUMPAD_ENTER || keyCode == android.view.KeyEvent.KEYCODE_BUTTON_A;
             endWatch(box, h);
-            if (ok) AppSearchService.tune(this, getString(R.string.scores_open_package), names, logo);
+            if (ok && w.length > 2 && w[2] instanceof Runnable) ((Runnable) w[2]).run();
+            else if (ok) AppSearchService.tune(this, getString(R.string.scores_open_package), names, logo);
             return true;
         });
         watchClose = () -> endWatch(box, h);
