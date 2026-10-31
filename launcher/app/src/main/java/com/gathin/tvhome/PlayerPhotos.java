@@ -58,6 +58,14 @@ final class PlayerPhotos {
         SharedPreferences cache = ctx.getSharedPreferences("player_cutouts4", Context.MODE_PRIVATE);
         String kept = cache.getString(fullName, null);
         if (kept == null) {
+            // A cut-out found before (the earlier store) is kept as it is: only its misses are asked again.
+            String earlier = ctx.getSharedPreferences("player_cutouts3", Context.MODE_PRIVATE).getString(fullName, null);
+            if (earlier != null && !earlier.startsWith("\t") && !earlier.isEmpty()) {
+                kept = earlier;
+                cache.edit().putString(fullName, kept).apply();
+            }
+        }
+        if (kept == null) {
             String[] found = lookUpWhole(fullName, team);
             // Refused for the name as written ("Diego Gómez" once came back "not found", a refusal its servers then
             // kept for that address): the same name without accents is another address, and finds him just the same.

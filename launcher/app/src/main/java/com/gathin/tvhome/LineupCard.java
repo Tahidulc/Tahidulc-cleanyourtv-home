@@ -475,12 +475,14 @@ final class LineupCard {
             LinearLayout.LayoutParams ll = new LinearLayout.LayoutParams(iw, ih);
             ll.topMargin = px(8);
             club.addView(line, ll);
-            TextView name = text(c, caption, 9.5f, 0xD9FFFFFF, Typeface.create("sans-serif-condensed", Typeface.BOLD));
-            name.setLetterSpacing(0.1f);
+            TextView name = text(c, caption, caption.length() > 8 && !caption.contains("\n") ? 8.5f : 9.5f, 0xD9FFFFFF,
+                    Typeface.create("sans-serif-condensed", Typeface.BOLD));
+            name.setLetterSpacing(caption.length() > 8 && !caption.contains("\n") ? 0.02f : 0.1f);
             name.setSingleLine(false);
             name.setMaxLines(2);
+            name.setEllipsize(null);
             name.setGravity(Gravity.CENTER);
-            LinearLayout.LayoutParams nl = new LinearLayout.LayoutParams(-2, -2);
+            LinearLayout.LayoutParams nl = new LinearLayout.LayoutParams(px(BAND) - px(6), -2);
             nl.topMargin = px(5);
             club.addView(name, nl);
         }
