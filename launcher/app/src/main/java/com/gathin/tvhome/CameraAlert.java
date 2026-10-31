@@ -53,7 +53,7 @@ final class CameraAlert {
     private static final String TAG = "Camera";
     private static final long SHOW_MS = 20_000L;
     /** The card's width; it is 16:9, the snapshot filling it under its words. */
-    private static final int WIDTH_DP = 300;
+    private static final int WIDTH_DP = 264;
     private static final float CORNER_DP = 14f;
     private static final int RED = 0xFFFF3B30;
     /** What an alarm says (motion, a person, the doorbell); the rest from Tuya (offline, battery, updates) is not one. */
@@ -148,7 +148,7 @@ final class CameraAlert {
     // ---- the card --------------------------------------------------------------------------------------------
 
     /**
-     * The card: a small live-camera tile in the top right corner, the alarm's snapshot filling it (16:9), as a camera
+     * The card: a small live-camera tile in the bottom right corner, the alarm's snapshot filling it (16:9), as a camera
      * app's picture-in-picture would. A red MOTION tag and the time across its top; the camera's name and what Tuya says
      * over a shade at its foot, with a white "OK Live" pill; a scan line that sweeps down the picture, a red rim that
      * breathes, a flash as it lands and a red line along its foot that runs down for the 20 seconds it stays. Without a
@@ -308,7 +308,7 @@ final class CameraAlert {
                 // Focusable, so OK and Back come here while it shows; the app keeps playing underneath.
                 WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL | WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
                 PixelFormat.TRANSLUCENT);
-        lp.gravity = Gravity.TOP | Gravity.END;
+        lp.gravity = Gravity.BOTTOM | Gravity.END;
         lp.x = Math.round(20 * d);
         lp.y = Math.round(20 * d);
         lp.setTitle("CameraAlert");
@@ -336,7 +336,7 @@ final class CameraAlert {
         });
 
         card.setAlpha(0f);
-        card.setTranslationY(-h * 0.18f);
+        card.setTranslationY(h * 0.18f);
         card.setScaleX(0.94f);
         card.setScaleY(0.94f);
         card.animate().alpha(1f).translationY(0f).scaleX(1f).scaleY(1f).setDuration(380)
