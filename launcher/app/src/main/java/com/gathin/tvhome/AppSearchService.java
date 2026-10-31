@@ -1663,6 +1663,8 @@ public class AppSearchService extends AccessibilityService {
     }
 
     @Override protected void onServiceConnected() {
+        // The helper is bound again after an update or a restart: the alerts with it (alerts_everywhere only).
+        if (Config.themeFlag(this, "alerts_everywhere", false)) GoalWatchService.startEverywhere(this);
         super.onServiceConnected();
         instance = this;
     }

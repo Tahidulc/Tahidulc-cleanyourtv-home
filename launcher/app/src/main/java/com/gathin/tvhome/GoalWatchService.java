@@ -562,7 +562,8 @@ public class GoalWatchService extends Service {
         }
         // Home has come up: line-ups held over a video can be shown now.
         main.post(this::releaseHeld);
-        return START_NOT_STICKY;
+        // Running everywhere: started again by Android if it is ever stopped to free memory.
+        return everywhere ? START_STICKY : START_NOT_STICKY;
     }
 
     private void poll() {
