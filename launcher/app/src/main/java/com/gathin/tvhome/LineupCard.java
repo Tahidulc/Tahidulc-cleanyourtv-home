@@ -79,7 +79,8 @@ final class LineupCard {
     /** The card's size in the design's pixels on a 1920-wide screen, and its scale there. */
     private static final int W = 700, H = 232, BAND = 84;
     private static final float SCALE = 0.88f;
-    private static final long FIRST_MS = 8_000L, PLAYERS_MS = 6_000L, PITCH_MS = 9_500L;
+    /** How long each page stays: the fixture, each half eleven, and the pitch (long, for time to press OK). */
+    private static final long FIRST_MS = 11_000L, PLAYERS_MS = 8_000L, PITCH_MS = 16_000L;
     private static final Handler main = new Handler(Looper.getMainLooper());
 
     private static FrameLayout host;
@@ -127,13 +128,6 @@ final class LineupCard {
         return true;
     }
 
-    /**
-     * Light over a playing app (the theme's lite_over_apps, a slower TV such as the TCL): the pages change with a
-     * short fade instead of the wipe, and the players and the pitch's markers are simply there. Every moving frame
-     * over a video makes such a TV compose the picture on its graphics chip, and the video drops frames.
-     */
-    private static boolean lite;
-
     /** The card's height while it shows (the camera card goes above it); 0 otherwise. */
     static int shownHeight() {
         return host != null ? host.getHeight() : 0;
@@ -146,7 +140,6 @@ final class LineupCard {
             main.postDelayed(() -> show(c, d), 2_000L);
             return;
         }
-        lite = Config.themeFlag(c, "lite_over_apps", false) && !GoalWatchService.homeInFront;
         close(false);
         k = c.getResources().getDisplayMetrics().widthPixels / 1920f * SCALE;
         int w = px(W), h = px(H), margin = px(10);
@@ -250,60 +243,42 @@ final class LineupCard {
      */
     private static void turn(Context c, FrameLayout stage, Runnable swap) {
         if (stage.getChildCount() == 0) { swap.run(); return; }
-        if (lite) {
-            stage.removeAllViews();
-            swap.run();
-            View page = stage.getChildAt(stage.getChildCount() - 1);
-            if (page != null) {
-                page.setAlpha(0f);
-                page.animate().alpha(1f).setDuration(200).withLayer().start();
-            }
-            return;
-        }
+        // The panel is drawn once (a layer on the graphics chip) and slid across: no page is redrawn while it moves.
+        int w = stage.getWidth(), h = stage.getHeight();
+        float slant = h * 0.42f;
+        int pw = Math.round(w + 2 * slant);
         Wipe wipe = new Wipe(c);
-        stage.addView(wipe, full());
-        android.animation.ValueAnimator a = android.animation.ValueAnimator.ofFloat(0f, 1f);
-        a.setDuration(900);
-        a.setInterpolator(new android.view.animation.AccelerateDecelerateInterpolator());
+        wipe.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+        stage.addView(wipe, new FrameLayout.LayoutParams(pw, h));
+        wipe.setTranslationX(-pw);
         boolean[] swapped = {false};
-        a.addUpdateListener(v -> {
-            float f = (float) v.getAnimatedValue();
-            wipe.progress = f;
-            wipe.invalidate();
-            if (!swapped[0] && f >= 0.5f) {
-                swapped[0] = true;
-                for (int i = stage.getChildCount() - 1; i >= 0; i--) if (stage.getChildAt(i) != wipe) stage.removeViewAt(i);
-                swap.run();
-                wipe.bringToFront();
-            }
-        });
-        a.addListener(new android.animation.AnimatorListenerAdapter() {
-            @Override public void onAnimationEnd(android.animation.Animator x) { stage.removeView(wipe); }
-        });
-        a.start();
+        // Half way it covers the whole stage: the new page goes in under it then, and its back uncovers it.
+        wipe.animate().translationX(w).setDuration(900).setInterpolator(new android.view.animation.AccelerateDecelerateInterpolator())
+                .setUpdateListener(a -> {
+                    if (swapped[0] || a.getAnimatedFraction() < 0.5f) return;
+                    swapped[0] = true;
+                    for (int i = stage.getChildCount() - 1; i >= 0; i--) if (stage.getChildAt(i) != wipe) stage.removeViewAt(i);
+                    swap.run();
+                    wipe.bringToFront();
+                })
+                .withEndAction(() -> stage.removeView(wipe)).start();
     }
 
     /** The wipe: a slanted navy panel edged in lighter blue and white, its front then its back crossing the stage. */
     private static final class Wipe extends View {
-        float progress;
         private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
 
         Wipe(Context c) { super(c); }
 
+        /** Drawn once: the navy panel, slanted, its front edge (right) and back edge (left) in light blue and white. */
         @Override protected void onDraw(Canvas cv) {
             int w = getWidth(), h = getHeight();
-            float slant = h * 0.42f, span = w + 2 * slant;
-            // Its front reaches the far side at half way; its back follows, uncovering the new page.
-            float front = -slant + Math.min(1f, progress * 2f) * span;
-            float back = -slant + Math.max(0f, progress * 2f - 1f) * span;
-            panel(cv, back, front, h, slant, 0xFF151A63);
-            float edge = px(10);
-            panel(cv, front - edge, front, h, slant, 0xFF3D4BD6);
-            panel(cv, front - edge * 0.35f, front, h, slant, 0xFFFFFFFF);
-            if (progress > 0.5f) {
-                panel(cv, back, back + edge, h, slant, 0xFF3D4BD6);
-                panel(cv, back, back + edge * 0.35f, h, slant, 0xE6FFFFFF);
-            }
+            float slant = h * 0.42f, body = w - slant, edge = px(10);
+            panel(cv, 0, body, h, slant, 0xFF151A63);
+            panel(cv, body - edge, body, h, slant, 0xFF3D4BD6);
+            panel(cv, body - edge * 0.35f, body, h, slant, 0xFFFFFFFF);
+            panel(cv, 0, edge, h, slant, 0xFF3D4BD6);
+            panel(cv, 0, edge * 0.35f, h, slant, 0xE6FFFFFF);
         }
 
         private void panel(Canvas cv, float from, float to, int h, float slant, int colour) {
@@ -400,12 +375,11 @@ final class LineupCard {
         for (int i = 0; i < ps.size(); i++) {
             View col = player(c, t, ps.get(i));
             row.addView(col, new LinearLayout.LayoutParams(0, -1, 1f));
-            // In from the right one after another, as the wipe uncovers them (simply there when light).
-            if (lite) continue;
+            // In from the right one after another, as the wipe uncovers them; each drawn once into a layer that moves.
             col.setAlpha(0f);
             col.setTranslationX(px(46));
             col.animate().alpha(1f).translationX(0f).setStartDelay(120L + 70L * i).setDuration(420)
-                    .setInterpolator(new DecelerateInterpolator(2.2f)).start();
+                    .setInterpolator(new DecelerateInterpolator(2.2f)).withLayer().start();
         }
         page.addView(row, new FrameLayout.LayoutParams(-1, -1));
         return page;
@@ -601,7 +575,6 @@ final class LineupCard {
         private float shown = 1f;
 
         void reveal() {
-            if (lite) return;
             shown = 0f;
             android.animation.ValueAnimator a = android.animation.ValueAnimator.ofFloat(0f, 1f);
             a.setDuration(1300);
@@ -865,14 +838,13 @@ final class LineupCard {
         FrameLayout.LayoutParams ml = new FrameLayout.LayoutParams(px(W - BAND) - 2 * side - px(16), -2, Gravity.CENTER);
         page.addView(mid, ml);
 
-        // The crests come in from either side, then the block between them (all simply there when light).
-        if (lite) return page;
+        // The crests come in from either side, then the block between them, each drawn once into a layer that moves.
         home.setTranslationX(-px(60)); away.setTranslationX(px(60));
         home.setAlpha(0f); away.setAlpha(0f); mid.setAlpha(0f);
         mid.setScaleX(0.9f); mid.setScaleY(0.9f);
-        home.animate().translationX(0).alpha(1f).setStartDelay(250).setDuration(520).setInterpolator(new DecelerateInterpolator(2.2f)).start();
-        away.animate().translationX(0).alpha(1f).setStartDelay(250).setDuration(520).setInterpolator(new DecelerateInterpolator(2.2f)).start();
-        mid.animate().alpha(1f).scaleX(1f).scaleY(1f).setStartDelay(520).setDuration(420).setInterpolator(new DecelerateInterpolator(2f)).start();
+        home.animate().translationX(0).alpha(1f).setStartDelay(250).setDuration(520).setInterpolator(new DecelerateInterpolator(2.2f)).withLayer().start();
+        away.animate().translationX(0).alpha(1f).setStartDelay(250).setDuration(520).setInterpolator(new DecelerateInterpolator(2.2f)).withLayer().start();
+        mid.animate().alpha(1f).scaleX(1f).scaleY(1f).setStartDelay(520).setDuration(420).setInterpolator(new DecelerateInterpolator(2f)).withLayer().start();
         return page;
     }
 
