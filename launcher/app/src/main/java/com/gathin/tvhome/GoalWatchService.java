@@ -278,9 +278,7 @@ public class GoalWatchService extends Service {
             if (older != null) cut = older;
         }
         android.graphics.Bitmap b = PlayerPhotos.photo(this, cut);
-        if (b != null) return b;
-        android.graphics.Bitmap wiki = PlayerPhotos.wikiPhoto(this, who);
-        return wiki != null ? LineupCard.framed(wiki, kit != 0 ? kit : 0xFF151A63) : LineupCard.avatar(kit, kit, "");
+        return b != null ? b : LineupCard.avatar(kit, kit, "");
     }
 
     // ---- the score cards: F1 ----------------------------------------------------------------------------------
@@ -438,8 +436,8 @@ public class GoalWatchService extends Service {
                         }
                         if (cut.url != null && !cut.url.isEmpty()) {
                             PlayerPhotos.photo(this, cut);   // the picture itself into the cache too
-                        } else if (olderPremierLeague(full, side.name) == null) {
-                            PlayerPhotos.wikiPhoto(this, full);   // his Wikipedia photo kept, for the card
+                        } else {
+                            olderPremierLeague(full, side.name);
                         }
                     }
                 }
@@ -2004,12 +2002,6 @@ public class GoalWatchService extends Service {
                     pool.execute(() -> {
                         pl.photo = PlayerPhotos.photo(this, found);
                         if (pl.photo == null && p[1] != null) pl.photo = ScoresTicker.cachedLogo(this, p[1], 300);
-                        // In no photo library (a young player, a new signing): his Wikipedia photo, cut to his face
-                        // and shown on shoulders in his side's kit; the kit's figure only when there is none at all.
-                        if (pl.photo == null) {
-                            android.graphics.Bitmap wiki = PlayerPhotos.wikiPhoto(this, full);
-                            if (wiki != null) { pl.photo = wiki; pl.framed = true; }
-                        }
                         String flag = LineupCard.flagUrl(found.nation);
                         // No nationality in TheSportsDB (or one its flags don't cover): ESPN's, so every player has a flag.
                         if (flag == null) {

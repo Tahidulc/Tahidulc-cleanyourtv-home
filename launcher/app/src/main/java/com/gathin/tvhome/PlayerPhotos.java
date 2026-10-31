@@ -54,8 +54,8 @@ final class PlayerPhotos {
     static Cutout cutout(Context ctx, String fullName, String team) {
         Cutout out = new Cutout();
         if (fullName == null || fullName.isEmpty()) return out;
-        // "3": names and clubs now matched across spellings (Groß, "and" for "&"), so the old misses are asked again.
-        SharedPreferences cache = ctx.getSharedPreferences("player_cutouts3", Context.MODE_PRIVATE);
+        // "4": a miss is now asked again by the player's full name, so the old misses are asked again.
+        SharedPreferences cache = ctx.getSharedPreferences("player_cutouts4", Context.MODE_PRIVATE);
         String kept = cache.getString(fullName, null);
         if (kept == null) {
             String[] found = lookUpWhole(fullName, team);
@@ -63,6 +63,15 @@ final class PlayerPhotos {
             // kept for that address): the same name without accents is another address, and finds him just the same.
             String ascii = java.text.Normalizer.normalize(fullName, java.text.Normalizer.Form.NFD).replaceAll("\\p{M}", "");
             if (found == null && !ascii.equals(fullName)) found = lookUpWhole(ascii, team);
+            // No cut-out under the name he plays by ("Pedri" finds Pedrinho first: the free key returns only the top
+            // match or two): asked again by his full name from his Wikipedia article ("Pedro González López").
+            if (found != null && found[0].isEmpty()) {
+                String full = registeredName(ctx, fullName);
+                if (full != null) {
+                    String[] again = lookUpWhole(full, team);
+                    if (again != null && !again[0].isEmpty()) found = again;
+                }
+            }
             if (found == null) return out;   // the lookup failed: try again another time
             kept = found[0] + "\t" + found[1];
             cache.edit().putString(fullName, kept).apply();
@@ -291,6 +300,41 @@ final class PlayerPhotos {
         int left = Math.round(Math.max(0, Math.min(w - side, cx - side / 2)));
         int top = Math.round(Math.max(0, Math.min(h - side, cy - side / 2)));
         return Bitmap.createBitmap(src, left, top, Math.round(side), Math.round(side));
+    }
+
+    /**
+     * A player's full name, from the first words of his English Wikipedia article ("Pedro González López (born …),
+     * known as Pedri"): only the name, to ask TheSportsDB again. Kept once found ("" for none); null on failure.
+     */
+    static String registeredName(Context ctx, String name) {
+        SharedPreferences cache = ctx.getSharedPreferences("player_fullnames", Context.MODE_PRIVATE);
+        String kept = cache.getString(name, null);
+        if (kept != null) return kept.isEmpty() ? null : kept;
+        String found = "";
+        try {
+            String title = name.trim().replace(' ', '_');
+            for (String t : new String[]{title + "_(footballer)", title}) {
+                JSONObject page;
+                try {
+                    page = new JSONObject(getWiki("https://en.wikipedia.org/api/rest_v1/page/summary/"
+                            + URLEncoder.encode(t, "UTF-8").replace("+", "_")));
+                } catch (java.io.FileNotFoundException missing) {
+                    continue;
+                }
+                String about = (page.optString("description", "") + " " + page.optString("extract", "")).toLowerCase(java.util.Locale.ROOT);
+                if (!about.contains("footballer") && !about.contains("football player")) continue;
+                java.util.regex.Matcher m = java.util.regex.Pattern.compile("^([^(,;]{3,60}?)\\s*[(,]").matcher(page.optString("extract", ""));
+                if (m.find()) {
+                    String n = m.group(1).trim();
+                    if (n.contains(" ") && !n.equalsIgnoreCase(name)) found = n;
+                }
+                break;
+            }
+        } catch (Exception e) {
+            return null;
+        }
+        cache.edit().putString(name, found).apply();
+        return found.isEmpty() ? null : found;
     }
 
     /** Whether Android's face finder sees a face in the picture. */

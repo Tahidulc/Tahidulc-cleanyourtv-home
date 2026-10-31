@@ -195,13 +195,14 @@ final class LineupCard {
         times.add(FIRST_MS);
         for (Team t : new Team[]{d.home, d.away}) {
             if (t == null || t.players.isEmpty()) continue;
-            int split = Math.min(t.players.size(), (t.players.size() + 1) / 2);
-            List<Player> one = t.players.subList(0, split), two = t.players.subList(split, t.players.size());
-            pages.add(() -> turn(c, stage, () -> { teamBand(c, band, t); stage.addView(players(c, t, one), full()); }));
-            times.add(PLAYERS_MS);
-            if (!two.isEmpty()) {
-                pages.add(() -> turn(c, stage, () -> { teamBand(c, band, t); stage.addView(players(c, t, two), full()); }));
-                times.add(PLAYERS_MS);
+            // A page a line: the keeper and the defence, the midfield, the attack (a striker or two with the midfield).
+            List<String> captions = new ArrayList<>();
+            List<List<Player>> lines = byLines(t, captions);
+            for (int i = 0; i < lines.size(); i++) {
+                List<Player> ps = lines.get(i);
+                String caption = captions.get(i);
+                pages.add(() -> turn(c, stage, () -> { teamBand(c, band, t, caption); stage.addView(players(c, t, ps), full()); }));
+                times.add(lines.size() > 2 ? PLAYERS_MS - 1_500L : PLAYERS_MS);
             }
         }
         if (d.home != null && d.away != null && !d.home.players.isEmpty() && !d.away.players.isEmpty()) {
@@ -323,7 +324,74 @@ final class LineupCard {
     }
 
     /** The competition, the club's crest, and its name up the side, fitted to the room under the crest. */
-    private static void teamBand(Context c, FrameLayout band, Team t) {
+    /**
+     * The eleven by its lines, from each player's position (G, a defender's CD/LB/RB…, a forward's F/LF/RF…, else
+     * midfield): the keeper with the defence; the midfield; the attack, or the midfield and attack together when the
+     * attack is one or two. Without positions, the formation's numbers in ESPN's order; without those, two halves.
+     */
+    static List<List<Player>> byLines(Team t, List<String> captions) {
+        List<Player> back = new ArrayList<>(), mid = new ArrayList<>(), front = new ArrayList<>();
+        boolean known = true;
+        for (Player p : t.players) {
+            String pos = p.position == null ? "" : p.position.toUpperCase(java.util.Locale.ROOT);
+            if (pos.isEmpty()) { known = false; break; }
+            if (pos.equals("G") || pos.equals("GK")) back.add(0, p);
+            else if (pos.startsWith("CD") || pos.startsWith("CB") || pos.equals("LB") || pos.equals("RB") || pos.endsWith("WB")
+                    || pos.equals("D") || pos.equals("SW") || pos.startsWith("D-")) back.add(p);
+            else if (pos.equals("F") || pos.startsWith("CF") || pos.equals("LF") || pos.equals("RF") || pos.equals("ST")
+                    || pos.equals("SS") || pos.equals("LW") || pos.equals("RW") || pos.startsWith("F-")) front.add(p);
+            else mid.add(p);
+        }
+        if (!known || back.size() < 2 || mid.isEmpty() && front.isEmpty()) {
+            back.clear(); mid.clear(); front.clear();
+            int[] n = formationLines(t.formation);
+            if (n != null && 1 + sum(n) == t.players.size()) {
+                back.addAll(t.players.subList(0, 1 + n[0]));
+                mid.addAll(t.players.subList(1 + n[0], t.players.size() - n[n.length - 1]));
+                front.addAll(t.players.subList(t.players.size() - n[n.length - 1], t.players.size()));
+            } else {
+                int split = (t.players.size() + 1) / 2;
+                List<List<Player>> halves = new ArrayList<>();
+                halves.add(new ArrayList<>(t.players.subList(0, split)));
+                if (split < t.players.size()) halves.add(new ArrayList<>(t.players.subList(split, t.players.size())));
+                for (int i = 0; i < halves.size(); i++) captions.add("");
+                return halves;
+            }
+        }
+        List<List<Player>> out = new ArrayList<>();
+        out.add(back);
+        captions.add("DEFENCE");
+        if (front.size() <= 2 && mid.size() + front.size() <= 7 || mid.isEmpty() || front.isEmpty()) {
+            List<Player> rest = new ArrayList<>(mid);
+            rest.addAll(front);
+            if (!rest.isEmpty()) {
+                out.add(rest);
+                captions.add(mid.isEmpty() ? "ATTACK" : front.isEmpty() ? "MIDFIELD" : "MIDFIELD\n& ATTACK");
+            }
+        } else {
+            out.add(mid);
+            captions.add("MIDFIELD");
+            out.add(front);
+            captions.add("ATTACK");
+        }
+        return out;
+    }
+
+    private static int[] formationLines(String formation) {
+        if (formation == null || !formation.matches("\\d+(-\\d+)+")) return null;
+        String[] parts = formation.split("-");
+        int[] n = new int[parts.length];
+        for (int i = 0; i < parts.length; i++) n[i] = Integer.parseInt(parts[i]);
+        return n;
+    }
+
+    private static int sum(int[] n) {
+        int s = 0;
+        for (int x : n) s += x;
+        return s;
+    }
+
+    private static void teamBand(Context c, FrameLayout band, Team t, String caption) {
         band.removeAllViews();
         league(c, band, showing, false);
         // As on the fixture page: the club's crest big (no name), and its formation under it.
@@ -338,6 +406,17 @@ final class LineupCard {
             LinearLayout.LayoutParams fl = new LinearLayout.LayoutParams(-2, -2);
             fl.topMargin = px(10);
             club.addView(f, fl);
+        }
+        // Which line this page is: DEFENCE, MIDFIELD, ATTACK.
+        if (caption != null && !caption.isEmpty()) {
+            TextView line = text(c, caption, 10.5f, 0xB3FFFFFF, Typeface.create("sans-serif-condensed", Typeface.BOLD));
+            line.setLetterSpacing(0.12f);
+            line.setSingleLine(false);
+            line.setMaxLines(2);
+            line.setGravity(Gravity.CENTER);
+            LinearLayout.LayoutParams ll = new LinearLayout.LayoutParams(-2, -2);
+            ll.topMargin = px(6);
+            club.addView(line, ll);
         }
         FrameLayout.LayoutParams cl = new FrameLayout.LayoutParams(-1, -2, Gravity.CENTER);
         cl.topMargin = px(20);

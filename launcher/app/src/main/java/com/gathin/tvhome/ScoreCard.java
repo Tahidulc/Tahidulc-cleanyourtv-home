@@ -96,6 +96,8 @@ final class ScoreCard {
     private static float k;
     /** The score's tick and Home's light, waiting to run; dropped when the card goes first. */
     private static final List<Runnable> later = new ArrayList<>();
+    /** The band's stripes drifting, stopped when the card goes. */
+    private static final List<android.animation.Animator> moving = new ArrayList<>();
 
     private ScoreCard() { }
 
@@ -164,7 +166,7 @@ final class ScoreCard {
         LinearLayout band = new LinearLayout(c);
         band.setOrientation(LinearLayout.VERTICAL);
         band.setGravity(Gravity.CENTER);
-        band.setBackground(bandGround(d));
+        band.setBackground(bandGround(d, false));
         if (d.leagueLogo != null) {
             ImageView l = image(c, d.leagueLogo);
             band.addView(l, new LinearLayout.LayoutParams(d.wideMark ? px(62) : px(22), d.wideMark ? px(30) : px(22)));
@@ -174,7 +176,13 @@ final class ScoreCard {
             cl.topMargin = px(5);
             band.addView(image(c, d.crest), cl);
         }
-        card.addView(band, new LinearLayout.LayoutParams(d.wideMark ? px(86) : px(56), h));
+        int bandW = d.wideMark ? px(86) : px(56);
+        FrameLayout bandBox = new FrameLayout(c);
+        bandBox.setBackground(band.getBackground());
+        band.setBackground(null);
+        bandBox.addView(stripes(c, d), new FrameLayout.LayoutParams(bandW + STRIPE_PERIOD_PX(), h));
+        bandBox.addView(band, new FrameLayout.LayoutParams(bandW, h));
+        card.addView(bandBox, new LinearLayout.LayoutParams(bandW, h));
 
         // The stage: pale streaks for football, charcoal for F1.
         LinearLayout stage = new LinearLayout(c);
@@ -251,7 +259,8 @@ final class ScoreCard {
         bar.setClipToOutline(true);
         bar.setBackground(stageGround(d, px(50), px(30)));
         FrameLayout band = new FrameLayout(c);
-        band.setBackground(bandGround(d));
+        band.setBackground(bandGround(d, false));
+        band.addView(stripes(c, d), new FrameLayout.LayoutParams((d.wideMark ? px(150) : px(120)) + STRIPE_PERIOD_PX(), h));
         if (d.leagueLogo != null) band.addView(image(c, d.leagueLogo), new FrameLayout.LayoutParams(d.wideMark ? px(72) : px(27), px(27), Gravity.CENTER));
         bar.addView(band, new LinearLayout.LayoutParams(d.wideMark ? px(150) : px(120), h));
         View label = label(c, d, 23, h);
@@ -271,11 +280,11 @@ final class ScoreCard {
             LinearLayout name = new LinearLayout(c);
             name.setGravity(Gravity.CENTER_VERTICAL);
             String big = d.headline != null ? d.headline : (d.first.isEmpty() ? "" : d.first + " ") + titleCase(d.last);
-            TextView bigText = text(c, big, d.headline != null ? 19 : 22, d.dark ? 0xFFFFFFFF : INK, d.headline != null ? outfit(c, 800) : nameFace(c));
+            TextView bigText = text(c, big, d.headline != null ? 19 : 22, d.dark ? 0xFFFFFFFF : INK, d.headline != null ? outfit(c, 800) : outfit(c, 600));
             if (d.headline != null) bigText.setMaxWidth(px(1000));
             name.addView(bigText);
             if (!d.line.isEmpty()) {
-                TextView small = text(c, d.line, 16, d.dark ? 0xCCFFFFFF : INK_SOFT, nameFace(c));
+                TextView small = text(c, d.line, 16, d.dark ? 0xCCFFFFFF : INK_SOFT, outfit(c, 500));
                 LinearLayout.LayoutParams sl = new LinearLayout.LayoutParams(-2, -2);
                 sl.leftMargin = px(10);
                 name.addView(small, sl);
@@ -386,10 +395,33 @@ final class ScoreCard {
     }
 
     /** The band's ground: the navy, F1's red, or the card's own colours. */
-    private static Drawable bandGround(Data d) {
+    /** The band's ground: the navy, F1's red, or the card's own colours; its stripes too, or (stripes false) not. */
+    private static Drawable bandGround(Data d, boolean withStripes) {
         int a = d.band != 0 ? d.band : d.f1 ? 0xFFE10600 : 0xFF1B2591;
         int b = d.bandDeep != 0 ? d.bandDeep : d.f1 ? 0xFF8E0400 : 0xFF0D1360;
-        return new Streaks(a, b, d.f1 || d.band != 0 ? 0x1AFFFFFF : 0x12FFFFFF, px(14), px(3));
+        return new Streaks(a, b, withStripes ? stripeColour(d) : 0, px(14), px(3));
+    }
+
+    private static int stripeColour(Data d) {
+        return d.f1 || d.band != 0 ? 0x1AFFFFFF : 0x17FFFFFF;
+    }
+
+    /** One stripe and its gap, the distance the band's stripes drift in one beat. */
+    private static int STRIPE_PERIOD_PX() {
+        return Math.max(4, px(14)) + Math.max(1, px(3));
+    }
+
+    /**
+     * The band's light stripes on their own, a period wider than the band: drawn once into a layer, so for a goal or
+     * an incident they can drift along slightly (alive()) with nothing redrawn.
+     */
+    private static View stripes(Context c, Data d) {
+        View v = new View(c);
+        v.setBackground(new Streaks(0, 0, stripeColour(d), px(14), px(3)));
+        v.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+        v.setTranslationX(-STRIPE_PERIOD_PX());
+        v.setTag("stripes");
+        return v;
     }
 
     /** The stage's ground: pale streaks, or charcoal for F1 and fights. */
@@ -447,10 +479,10 @@ final class ScoreCard {
             }
             return v;
         }
-        if (!d.first.isEmpty()) v.addView(text(c, d.first, small + 1, d.dark ? 0xFFFFFFFF : INK_SOFT, nameFace(c)), wrap());
-        v.addView(text(c, d.last.toUpperCase(java.util.Locale.UK), big, ink, nameFace(c)), wrap());
+        if (!d.first.isEmpty()) v.addView(text(c, d.first, small + 1, d.dark ? 0xFFFFFFFF : INK_SOFT, outfit(c, 500)), wrap());
+        v.addView(text(c, d.last.toUpperCase(java.util.Locale.UK), big, ink, outfit(c, 600)), wrap());
         if (!d.line.isEmpty()) {
-            TextView l = text(c, d.line, line, d.dark ? 0xD9FFFFFF : INK_SOFT, nameFace(c));
+            TextView l = text(c, d.line, line, d.dark ? 0xD9FFFFFF : INK_SOFT, outfit(c, 500));
             LinearLayout.LayoutParams ll = new LinearLayout.LayoutParams(-2, -2);
             ll.topMargin = px(3);
             v.addView(l, ll);
@@ -658,6 +690,17 @@ final class ScoreCard {
             later.add(tick);
             main.postDelayed(tick, 800L);
         }
+        // A goal or an incident: the band's stripes drift along, slightly, for the first few seconds.
+        View lines = box.findViewWithTag("stripes");
+        if (lines != null && ("goal".equals(d.kind) || "red".equals(d.kind) || "var".equals(d.kind) || "pen".equals(d.kind))) {
+            android.animation.ObjectAnimator drift = android.animation.ObjectAnimator.ofFloat(lines, View.TRANSLATION_X,
+                    -STRIPE_PERIOD_PX(), 0f);
+            drift.setDuration(1_400);
+            drift.setRepeatCount(3);
+            drift.setInterpolator(new android.view.animation.LinearInterpolator());
+            moving.add(drift);
+            drift.start();
+        }
         if (!onHome) return;
         View sheen = new View(c);
         sheen.setBackground(new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, new int[]{0x00FFFFFF, 0x40FFFFFF, 0x00FFFFFF}));
@@ -714,6 +757,8 @@ final class ScoreCard {
     static void close(boolean fade) {
         for (Runnable r : later) main.removeCallbacks(r);
         later.clear();
+        for (android.animation.Animator a : moving) a.cancel();
+        moving.clear();
         FrameLayout v = host;
         host = null;
         showing = null;
@@ -790,16 +835,6 @@ final class ScoreCard {
         v.setEllipsize(TextUtils.TruncateAt.END);
         v.setIncludeFontPadding(false);
         return v;
-    }
-
-    private static Typeface nameFaceType;
-
-    /** The scorer's (or driver's, or fighter's) name and line: Outfit as it first was, its own light default face. */
-    private static Typeface nameFace(Context c) {
-        if (nameFaceType == null) {
-            try { nameFaceType = c.getResources().getFont(R.font.outfit); } catch (RuntimeException e) { nameFaceType = Typeface.DEFAULT; }
-        }
-        return nameFaceType;
     }
 
     /** Outfit at each weight the cards use, read once each. */
@@ -898,6 +933,6 @@ final class ScoreCard {
 
         @Override public void setAlpha(int a) { }
         @Override public void setColorFilter(ColorFilter f) { }
-        @Override public int getOpacity() { return PixelFormat.OPAQUE; }
+        @Override public int getOpacity() { return PixelFormat.TRANSLUCENT; }
     }
 }
