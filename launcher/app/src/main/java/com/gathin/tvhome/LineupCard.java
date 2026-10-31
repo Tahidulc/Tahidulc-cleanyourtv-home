@@ -202,7 +202,8 @@ final class LineupCard {
                 List<Player> ps = lines.get(i);
                 String caption = captions.get(i);
                 pages.add(() -> turn(c, stage, () -> { teamBand(c, band, t, caption); stage.addView(players(c, t, ps), full()); }));
-                times.add(lines.size() > 2 ? PLAYERS_MS - 1_500L : PLAYERS_MS);
+                // The keeper's page is short; with three lines after it, each a little shorter than with two.
+                times.add("GOALKEEPER".equals(caption) ? 5_000L : lines.size() > 3 ? PLAYERS_MS - 1_500L : PLAYERS_MS);
             }
         }
         if (d.home != null && d.away != null && !d.home.players.isEmpty() && !d.away.players.isEmpty()) {
@@ -326,8 +327,9 @@ final class LineupCard {
     /** The competition, the club's crest, and its name up the side, fitted to the room under the crest. */
     /**
      * The eleven by its lines, from each player's position (G, a defender's CD/LB/RB…, a forward's F/LF/RF…, else
-     * midfield): the keeper with the defence; the midfield; the attack, or the midfield and attack together when the
-     * attack is one or two. Without positions, the formation's numbers in ESPN's order; without those, two halves.
+     * midfield): the keeper on his own; the defence; the midfield; the attack, or the midfield and attack together
+     * when the attack is one or two. Without positions, the formation's numbers in ESPN's order; without those, two
+     * halves.
      */
     static List<List<Player>> byLines(Team t, List<String> captions) {
         List<Player> back = new ArrayList<>(), mid = new ArrayList<>(), front = new ArrayList<>();
@@ -359,6 +361,16 @@ final class LineupCard {
             }
         }
         List<List<Player>> out = new ArrayList<>();
+        // The keeper on a page of his own, then the defence.
+        Player keeper = back.get(0);
+        String kp = keeper.position == null ? "" : keeper.position.toUpperCase(java.util.Locale.ROOT);
+        if (kp.equals("G") || kp.equals("GK") || !known) {
+            List<Player> alone = new ArrayList<>();
+            alone.add(keeper);
+            out.add(alone);
+            captions.add("GOALKEEPER");
+            back = new ArrayList<>(back.subList(1, back.size()));
+        }
         out.add(back);
         captions.add("DEFENCE");
         if (front.size() <= 2 && mid.size() + front.size() <= 7 || mid.isEmpty() || front.isEmpty()) {
