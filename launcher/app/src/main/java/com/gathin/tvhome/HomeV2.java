@@ -653,7 +653,7 @@ final class HomeV2 {
         if (guide.isOpen()) return guide.key(e);
         if (page != null && !preview && !parked) {
             if (e.getKeyCode() == KeyEvent.KEYCODE_BACK) {
-                if (e.getAction() == KeyEvent.ACTION_UP) closePage();
+                if (e.getAction() == KeyEvent.ACTION_UP && !page.back()) closePage();
                 return true;
             }
             int edge = e.getKeyCode();

@@ -70,6 +70,11 @@ final class PagesV2 {
         void entered() {
         }
 
+        /** Back pressed in the page: true when the page used it (else Home closes the page). */
+        boolean back() {
+            return false;
+        }
+
         int px(float v) { return h.px(v); }
 
         void add(View v, int x, int y, int w, int hgt) {
@@ -1716,6 +1721,7 @@ final class PagesV2 {
             TextView k = h.text(15, h.semi, 0xA6FFFFFF);
             k.setLetterSpacing(0.2f);
             k.setText("LIVE TABLE");
+            tableKicker = k;
             top.addView(k, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
             tablePage = h.text(15, h.semi, 0xA6FFFFFF);
             top.addView(tablePage);
@@ -1954,10 +1960,22 @@ final class PagesV2 {
             });
         }
 
-        private TextView f1Kicker, f1PageView;
+        private TextView f1Kicker, f1PageView, tableKicker;
+        /**
+         * Scrolling the table or the standings: OK on the card starts it (Up and Down then move the list), OK or Back
+         * ends it. Otherwise Down from any card goes straight on to the rows below.
+         */
+        private boolean scrolling;
         private List<String[]> f1Drivers = new ArrayList<>(), f1Teams = new ArrayList<>();
         /** 0 the drivers' standings, 1 the constructors'. */
         private int f1Page;
+
+        @Override boolean back() {
+            if (!scrolling) return false;
+            scrolling = false;
+            paint();
+            return true;
+        }
 
         private void showF1(int p) {
             f1Page = p;
@@ -2186,6 +2204,17 @@ final class PagesV2 {
             db.setStroke(px(onDrivers ? 3 : 1.5f), onDrivers ? Color.WHITE : 0x3DFFFFFF);
             if (driverCard != null) driverCard.setBackground(db);
             tablePage.setTextColor(onTable ? Color.WHITE : 0x73FFFFFF);
+            if (!onTable && !onDrivers) scrolling = false;
+            // On a card with a list: how to scroll it, in place of its name while it has the focus.
+            String hint = scrolling ? "▲▼ SCROLL  ·  OK DONE" : "OK TO SCROLL";
+            if (tableKicker != null) {
+                tableKicker.setText(onTable ? hint : "LIVE TABLE");
+                tableKicker.setTextColor(onTable ? Color.WHITE : 0xA6FFFFFF);
+            }
+            if (f1Kicker != null) {
+                f1Kicker.setText(onDrivers ? hint : f1Page == 0 ? "DRIVERS' STANDINGS" : "CONSTRUCTORS' STANDINGS");
+                f1Kicker.setTextColor(onDrivers ? Color.WHITE : 0xA6FFFFFF);
+            }
             if (f1PageView != null) f1PageView.setTextColor(onDrivers ? Color.WHITE : 0x73FFFFFF);
             for (int r = 0; r < strips.size(); r++) {
                 LinearLayout s = strips.get(r);
@@ -2213,7 +2242,10 @@ final class PagesV2 {
                 }
                 if (e.getAction() == KeyEvent.ACTION_UP) {
                     if (held) { held = false; return true; }
-                    if (zone == -1) { if (cardIdx == 0 && watchOk != null) watchOk.run(); }
+                    if (zone == -1) {
+                        if (cardIdx == 0) { if (watchOk != null) watchOk.run(); }
+                        else { scrolling = !scrolling; paint(); }
+                    }
                     else if (idx < lists.get(zone).size() && lists.get(zone).get(idx).ok != null) lists.get(zone).get(idx).ok.run();
                 }
                 return true;
@@ -2222,7 +2254,10 @@ final class PagesV2 {
             switch (code) {
                 // At an edge the key is Home's (false): on to the rail, the top buttons or the boxes, no Back needed.
                 case KeyEvent.KEYCODE_DPAD_DOWN:
-                    if (zone == -1 && (cardIdx == 1 && scrollTable(1) || cardIdx == 2 && scrollDrivers(1))) return true;
+                    if (zone == -1 && scrolling) {
+                        if (cardIdx == 1) scrollTable(1); else if (cardIdx == 2) scrollDrivers(1);
+                        return true;
+                    }
                     // On down the rows, past any with nothing in them; from the last, on to Home's boxes.
                     int next = zone + 1;
                     while (next < lists.size() && lists.get(next).isEmpty()) next++;
@@ -2230,12 +2265,16 @@ final class PagesV2 {
                     zone = next; idx = 0;
                     break;
                 case KeyEvent.KEYCODE_DPAD_UP:
-                    if (zone == -1 && (cardIdx == 1 && scrollTable(-1) || cardIdx == 2 && scrollDrivers(-1))) return true;
+                    if (zone == -1 && scrolling) {
+                        if (cardIdx == 1) scrollTable(-1); else if (cardIdx == 2) scrollDrivers(-1);
+                        return true;
+                    }
                     if (zone < 0) return false;
                     zone--; idx = 0;
                     while (zone >= 0 && lists.get(zone).isEmpty()) zone--;
                     break;
                 case KeyEvent.KEYCODE_DPAD_LEFT:
+                    scrolling = false;
                     if (zone >= 0) { if (idx > 0) idx--; else return false; }
                     // On the table card Left and Right page through the leagues; Left from the first goes back to the match.
                     else if (cardIdx == 2) { if (f1Page > 0) showF1(f1Page - 1); else cardIdx = 1; }
@@ -2243,6 +2282,7 @@ final class PagesV2 {
                     else return false;
                     break;
                 case KeyEvent.KEYCODE_DPAD_RIGHT:
+                    scrolling = false;
                     if (zone >= 0) { if (idx < lists.get(zone).size() - 1) idx++; }
                     else if (cardIdx == 0) cardIdx = 1;
                     // Past the last league, on to the F1 standings.
