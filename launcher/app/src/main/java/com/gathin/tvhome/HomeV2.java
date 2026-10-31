@@ -605,7 +605,26 @@ final class HomeV2 {
         }
     }
 
-    private final Runnable warmPages = () -> PagesV2.warm(this);
+    /** Sport's tiles as last read: shown at once when Sport opens, and read again behind them. */
+    volatile List<Tile> sportTiles;
+    private volatile long sportAt;
+    /** Sport's own reader: not queued behind Home's pictures and details. */
+    final ExecutorService sportIo = Executors.newSingleThreadExecutor();
+
+    private final Runnable warmPages = () -> {
+        PagesV2.warm(this);
+        // Sport's fixtures read ahead too (Sky's guide, the playlist, the leagues take a while): ready when it opens.
+        if (sportTiles == null || System.currentTimeMillis() - sportAt > 10 * 60_000L) sportIo.execute(() -> {
+            try { sportNow(); } catch (Exception ignored) { }
+        });
+    };
+
+    /** sport(), kept for next time (an empty answer, before the channels are known, is not kept). */
+    List<Tile> sportNow() throws Exception {
+        List<Tile> t = sport();
+        if (!t.isEmpty()) { sportTiles = t; sportAt = System.currentTimeMillis(); }
+        return t;
+    }
 
     void stop() {
         main.removeCallbacks(warmPages);
@@ -621,6 +640,7 @@ final class HomeV2 {
 
     void destroy() {
         io.shutdownNow();
+        sportIo.shutdownNow();
         pics.shutdownNow();
         cache.evictAll();
         guide.close();

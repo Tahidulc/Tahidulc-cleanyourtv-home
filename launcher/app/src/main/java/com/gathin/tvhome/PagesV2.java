@@ -1213,25 +1213,33 @@ final class PagesV2 {
             buildMatch();
             buildTable();
             buildF1();
-            h.io.execute(() -> {
+            // The fixtures as last read, at once (read ahead from Home); then read again and put in place of them.
+            List<HomeV2.Tile> have = h.sportTiles;
+            if (have != null) showFixtures(have);
+            h.sportIo.execute(() -> {
                 List<HomeV2.Tile> all;
                 try {
-                    all = h.sport();
+                    all = h.sportNow();
                 } catch (Exception e) {
                     all = new ArrayList<>();
                 }
-                List<HomeV2.Tile> foot = new ArrayList<>(), other = new ArrayList<>();
-                for (HomeV2.Tile t : all) ("football".equals(t.group) ? foot : other).add(t);
-                h.main.post(() -> {
-                    lists.set(1, foot);
-                    lists.set(2, other);
-                    for (int i = 1; i < 3; i++) {
-                        strips.get(i).removeAllViews();
-                        for (HomeV2.Tile t : lists.get(i)) strips.get(i).addView(fixture(t));
-                    }
-                    paint();
-                });
+                List<HomeV2.Tile> got = all;
+                h.main.post(() -> { if (alive && (!got.isEmpty() || have == null)) showFixtures(got); });
             });
+            paint();
+        }
+
+        private void showFixtures(List<HomeV2.Tile> all) {
+            List<HomeV2.Tile> foot = new ArrayList<>(), other = new ArrayList<>();
+            for (HomeV2.Tile t : all) ("football".equals(t.group) ? foot : other).add(t);
+            // Where the focus was in a row, kept as near as the new list allows.
+            lists.set(1, foot);
+            lists.set(2, other);
+            for (int i = 1; i < 3; i++) {
+                strips.get(i).removeAllViews();
+                for (HomeV2.Tile t : lists.get(i)) strips.get(i).addView(fixture(t));
+            }
+            if (zone >= 1 && zone < lists.size()) idx = Math.min(idx, Math.max(0, lists.get(zone).size() - 1));
             paint();
         }
 
@@ -1962,24 +1970,85 @@ final class PagesV2 {
         }
 
         private TextView f1Kicker, f1PageView;
-        /** OK on the table or the standings: straight down to the rows below (shown on a pill while the card has the focus). */
-        private TextView tableJump, f1Jump;
+        /**
+         * The way down past the table and the standings: a "What's on in sport" button at each card's foot, OK on the card
+         * pressing it. A glossy pill in Sport's colours with the remote's OK as a key cap, a red dot beating while anything
+         * is on now, how many, and a chevron that bobs down while the card has the focus; dimmed while it has not.
+         */
+        private View tableJump, f1Jump;
+        private final List<TextView> jumpLabels = new ArrayList<>(), jumpLives = new ArrayList<>();
+        private final List<View> jumpDots = new ArrayList<>(), jumpArrows = new ArrayList<>();
 
-        private TextView jumpPill(LinearLayout card) {
-            TextView t = h.text(15, h.semi, Color.WHITE);
-            t.setLetterSpacing(0.04f);
-            GradientDrawable bg = new GradientDrawable();
-            bg.setColor(0x33FFFFFF);
-            bg.setStroke(Math.max(1, px(1.5f)), 0x8CFFFFFF);
-            bg.setCornerRadius(px(18));
-            t.setBackground(bg);
-            t.setPadding(px(16), px(6), px(16), px(6));
-            t.setVisibility(View.INVISIBLE);
+        private View jumpPill(LinearLayout card) {
+            LinearLayout b = new LinearLayout(h.a);
+            b.setOrientation(LinearLayout.HORIZONTAL);
+            b.setGravity(Gravity.CENTER_VERTICAL);
+            b.setPadding(px(8), px(6), px(14), px(6));
+            GradientDrawable bg = new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, new int[]{0xFF0FA968, 0xFF1D8FB8, 0xFF5B4BDB});
+            bg.setCornerRadius(px(22));
+            bg.setStroke(Math.max(1, px(1.5f)), 0x66FFFFFF);
+            b.setBackground(bg);
+            b.setElevation(px(10));
+            // The key cap: OK, as on the remote.
+            TextView ok = h.text(12, h.semi, 0xFF0B2A3A);
+            ok.setText("OK");
+            ok.setGravity(Gravity.CENTER);
+            ok.setBackground(h.fill(9, 0xF2FFFFFF));
+            ok.setPadding(px(7), px(2), px(7), px(2));
+            b.addView(ok);
+            TextView label = h.text(16, h.semi, Color.WHITE);
+            label.setText("What's on in sport");
+            label.setShadowLayer(px(4), 0, px(1), 0x55000000);
+            LinearLayout.LayoutParams ll = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            ll.leftMargin = px(10);
+            b.addView(label, ll);
+            // The live count, its dot beating.
+            View dot = new View(h.a);
+            dot.setBackground(h.fill(5, 0xFFFF3B4A));
+            LinearLayout.LayoutParams dl = new LinearLayout.LayoutParams(px(9), px(9));
+            dl.leftMargin = px(12);
+            b.addView(dot, dl);
+            TextView live = h.text(13, h.semi, 0xF2FFFFFF);
+            LinearLayout.LayoutParams lv = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            lv.leftMargin = px(5);
+            b.addView(live, lv);
+            TextView arrow = h.text(18, h.semi, Color.WHITE);
+            arrow.setText("⌄");
+            LinearLayout.LayoutParams al = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            al.leftMargin = px(10);
+            b.addView(arrow, al);
+            android.animation.ObjectAnimator beat = android.animation.ObjectAnimator.ofFloat(dot, View.ALPHA, 1f, 0.25f);
+            beat.setDuration(650);
+            beat.setRepeatCount(android.animation.ValueAnimator.INFINITE);
+            beat.setRepeatMode(android.animation.ValueAnimator.REVERSE);
+            beat.start();
+            jumpLabels.add(label);
+            jumpLives.add(live);
+            jumpDots.add(dot);
+            jumpArrows.add(arrow);
+            b.setAlpha(0.45f);
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
             lp.gravity = Gravity.CENTER_HORIZONTAL;
             lp.topMargin = px(10);
-            card.addView(t, lp);
-            return t;
+            card.addView(b, lp);
+            return b;
+        }
+
+        /** The button lit (its card has the focus: bigger, bright, the chevron bobbing) or resting (dimmed). */
+        private void lightJump(View b, boolean on) {
+            int i = b == tableJump ? 0 : 1;
+            if (i >= jumpArrows.size()) return;
+            b.animate().alpha(on ? 1f : 0.45f).scaleX(on ? 1.06f : 1f).scaleY(on ? 1.06f : 1f).setDuration(200).setInterpolator(HomeV2.SKY).start();
+            View arrow = jumpArrows.get(i);
+            arrow.animate().cancel();
+            if (on) bob(arrow); else arrow.setTranslationY(0);
+        }
+
+        private void bob(View arrow) {
+            arrow.animate().translationY(px(4)).setDuration(450).withEndAction(() ->
+                    arrow.animate().translationY(0).setDuration(450).withEndAction(() -> {
+                        if ((arrow == jumpArrows.get(0) && zone == -1 && cardIdx == 1) || (jumpArrows.size() > 1 && arrow == jumpArrows.get(1) && zone == -1 && cardIdx == 2)) bob(arrow);
+                    }).start()).start();
         }
 
         /** The first row below the cards with anything in it (Live Football this week, as a rule); -1 when none has. */
@@ -2219,15 +2288,15 @@ final class PagesV2 {
             db.setStroke(px(onDrivers ? 3 : 1.5f), onDrivers ? Color.WHITE : 0x3DFFFFFF);
             if (driverCard != null) driverCard.setBackground(db);
             tablePage.setTextColor(onTable ? Color.WHITE : 0x73FFFFFF);
-            // The way down past the table: OK, on a pill at the card's foot while it has the focus.
-            int below = firstRow();
-            String jump = below < 0 ? null : "OK  ·  " + (below == 1 ? "Live football this week" : below == 2 ? "More live sport" : "Continue watching") + "  ▾";
-            for (TextView pill : new TextView[]{tableJump, f1Jump}) {
-                if (pill == null) continue;
-                boolean show = jump != null && (pill == tableJump ? onTable : onDrivers);
-                if (show) pill.setText(jump);
-                pill.setVisibility(show ? View.VISIBLE : View.INVISIBLE);
+            // The way down past the table: the "What's on in sport" button, lit on the card with the focus.
+            int liveNow = 0;
+            for (int r = 1; r < lists.size(); r++) for (HomeV2.Tile t : lists.get(r)) if ("LIVE NOW".equals(t.chip)) liveNow++;
+            for (int i = 0; i < jumpLives.size(); i++) {
+                jumpLives.get(i).setText(liveNow > 0 ? liveNow + " live" : "");
+                jumpDots.get(i).setVisibility(liveNow > 0 ? View.VISIBLE : View.GONE);
             }
+            if (tableJump != null && tableJump.getTag() != (Boolean) onTable) { tableJump.setTag(onTable); lightJump(tableJump, onTable); }
+            if (f1Jump != null && f1Jump.getTag() != (Boolean) onDrivers) { f1Jump.setTag(onDrivers); lightJump(f1Jump, onDrivers); }
             if (f1PageView != null) f1PageView.setTextColor(onDrivers ? Color.WHITE : 0x73FFFFFF);
             for (int r = 0; r < strips.size(); r++) {
                 LinearLayout s = strips.get(r);
