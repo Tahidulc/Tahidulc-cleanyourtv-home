@@ -33,7 +33,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * The starting elevens before kick-off, in the style of Sky Sports' Premier League line-ups, small, in the top right
+ * The starting elevens before kick-off, in the style of Sky Sports' Premier League line-ups, small, in the bottom left
  * corner over whatever is on: a navy band with the competition, the club's crest and its name up the side; on a pale
  * streaked ground the players a page at a time, head and shoulders in the club's shirt, each with his number, flag,
  * first name and surname. Both elevens, then the fixture, the kick-off and the channel showing it, where OK watches it.
@@ -134,7 +134,7 @@ final class LineupCard {
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
                         | WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
                 PixelFormat.TRANSLUCENT);
-        lp.gravity = Gravity.TOP | Gravity.END;
+        lp.gravity = Gravity.BOTTOM | Gravity.START;
         lp.x = px(34);
         lp.y = px(34);
         lp.setTitle("LineupCard");
@@ -183,7 +183,7 @@ final class LineupCard {
             }
         };
         card.setAlpha(0f);
-        card.setTranslationX(px(40));
+        card.setTranslationX(-px(40));
         card.animate().alpha(1f).translationX(0f).setDuration(340).setInterpolator(new DecelerateInterpolator(2f)).start();
         step.run();
     }
@@ -441,7 +441,7 @@ final class LineupCard {
             lp.flags |= WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
             v.getContext().getSystemService(WindowManager.class).updateViewLayout(v, lp);
         } catch (RuntimeException ignored) { }
-        v.animate().alpha(0f).translationX(px(30)).setDuration(240).withEndAction(gone).start();
+        v.animate().alpha(0f).translationX(-px(30)).setDuration(240).withEndAction(gone).start();
     }
 
     private static TextView text(Context c, String s, float sizePx, int colour, Typeface face) {
