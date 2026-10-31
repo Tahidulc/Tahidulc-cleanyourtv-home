@@ -112,9 +112,10 @@ final class LineupCard {
         Data d = showing;
         if (host == null || d == null) return false;
         int code = e.getKeyCode();
-        // Back: the card closes.
+        // Back: its key on the card dips as the button goes down, and the card shrinks away towards it as it comes up.
         if (code == KeyEvent.KEYCODE_BACK) {
-            if (e.getAction() == KeyEvent.ACTION_UP && !e.isCanceled()) main.post(() -> close(true));
+            if (e.getAction() == KeyEvent.ACTION_DOWN && e.getRepeatCount() == 0) main.post(() -> PopupMotion.press(host));
+            else if (e.getAction() == KeyEvent.ACTION_UP && !e.isCanceled()) main.post(() -> close(true, true));
             return true;
         }
         if (d.watch == null) return false;
@@ -168,6 +169,7 @@ final class LineupCard {
         // The remote's Back key on the top right corner: Back closes the card.
         ImageView back = new ImageView(c);
         back.setImageBitmap(GoalWatchService.backButton(Config.themeString(c, "ok_button", "tcl"), 2 * margin));
+        back.setTag(PopupMotion.BACK_KEY);
         win.addView(back, new FrameLayout.LayoutParams(2 * margin, 2 * margin, Gravity.TOP | Gravity.END));
 
         WindowManager.LayoutParams lp = new WindowManager.LayoutParams(w + 2 * margin, h + 2 * margin,
@@ -231,7 +233,7 @@ final class LineupCard {
         };
         card.setAlpha(0f);
         card.setTranslationX(-px(40));
-        card.animate().alpha(1f).translationX(0f).setDuration(340).setInterpolator(new DecelerateInterpolator(2f)).start();
+        card.animate().alpha(1f).translationX(0f).setDuration(340).setInterpolator(new DecelerateInterpolator(2f)).withLayer().start();
         step.run();
     }
 
@@ -1084,7 +1086,7 @@ final class LineupCard {
             if (e.getAction() != KeyEvent.ACTION_UP || !down[0]) return true;
             boolean ok = code == KeyEvent.KEYCODE_DPAD_CENTER || code == KeyEvent.KEYCODE_ENTER
                     || code == KeyEvent.KEYCODE_NUMPAD_ENTER || code == KeyEvent.KEYCODE_BUTTON_A;
-            close(true);
+            close(true, code == KeyEvent.KEYCODE_BACK);
             if (ok && d.watch != null) d.watch.run();
             return true;
         });
@@ -1092,6 +1094,11 @@ final class LineupCard {
 
     /** The card away: faded, or at once when another takes its place. */
     static void close(boolean fade) {
+        close(fade, false);
+    }
+
+    /** As close(fade); byBack: closed by Back, so it shrinks away towards its Back key instead of sliding out. */
+    private static void close(boolean fade, boolean byBack) {
         main.removeCallbacksAndMessages(null);
         FrameLayout v = host;
         host = null;
@@ -1107,7 +1114,11 @@ final class LineupCard {
             lp.flags |= WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
             v.getContext().getSystemService(WindowManager.class).updateViewLayout(v, lp);
         } catch (RuntimeException ignored) { }
-        v.animate().alpha(0f).translationX(-px(30)).setDuration(260).withEndAction(gone).start();
+        if (byBack) {
+            PopupMotion.backOut(v, v.getWidth(), 0f, gone);
+            return;
+        }
+        v.animate().alpha(0f).translationX(-px(30)).setDuration(260).withLayer().withEndAction(gone).start();
     }
 
     private static TextView text(Context c, String s, float sizePx, int colour, Typeface face) {

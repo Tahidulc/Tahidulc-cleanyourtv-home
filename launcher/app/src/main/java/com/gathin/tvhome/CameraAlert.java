@@ -317,6 +317,7 @@ final class CameraAlert {
         // The remote's Back key on the top right corner: Back closes the card.
         ImageView backKey = new ImageView(c);
         backKey.setImageBitmap(GoalWatchService.backButton(Config.themeString(c, "ok_button", "tcl"), 2 * m));
+        backKey.setTag(PopupMotion.BACK_KEY);
         win.addView(backKey, new FrameLayout.LayoutParams(2 * m, 2 * m, Gravity.TOP | Gravity.END));
         WindowManager.LayoutParams lp = new WindowManager.LayoutParams(w + 2 * m, h + 2 * m,
                 WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
@@ -343,10 +344,15 @@ final class CameraAlert {
         win.setOnKeyListener((v, code, e) -> {
             // Acted on as the key comes up, and only for a press that began here: a key held as the card appeared
             // belongs to the app.
-            if (e.getAction() == KeyEvent.ACTION_DOWN) { down[0] = true; return true; }
+            if (e.getAction() == KeyEvent.ACTION_DOWN) {
+                if (!down[0] && code == KeyEvent.KEYCODE_BACK) PopupMotion.press(win);
+                down[0] = true;
+                return true;
+            }
             if (e.getAction() != KeyEvent.ACTION_UP || !down[0]) return true;
             boolean open = code == KeyEvent.KEYCODE_DPAD_CENTER || code == KeyEvent.KEYCODE_ENTER
                     || code == KeyEvent.KEYCODE_NUMPAD_ENTER || code == KeyEvent.KEYCODE_BUTTON_A;
+            if (code == KeyEvent.KEYCODE_BACK) { closeByBack(); return true; }
             close(true);
             if (open) live(c, camera, tap);
             return true;
@@ -357,7 +363,7 @@ final class CameraAlert {
         card.setScaleX(0.94f);
         card.setScaleY(0.94f);
         card.animate().alpha(1f).translationY(0f).scaleX(1f).scaleY(1f).setDuration(380)
-                .setInterpolator(new DecelerateInterpolator(2.2f)).start();
+                .setInterpolator(new DecelerateInterpolator(2.2f)).withLayer().start();
         flash.animate().alpha(0f).setStartDelay(160).setDuration(420).start();
         for (View p : pulses) {
             android.animation.ObjectAnimator a = android.animation.ObjectAnimator.ofFloat(p, View.ALPHA, 1f, 0.25f);
@@ -431,8 +437,27 @@ final class CameraAlert {
      */
     static boolean key(KeyEvent e) {
         if (host == null || e.getKeyCode() != KeyEvent.KEYCODE_BACK) return false;
-        if (e.getAction() == KeyEvent.ACTION_UP && !e.isCanceled()) main.post(() -> close(true));
+        if (e.getAction() == KeyEvent.ACTION_DOWN && e.getRepeatCount() == 0) main.post(() -> PopupMotion.press(host));
+        else if (e.getAction() == KeyEvent.ACTION_UP && !e.isCanceled()) main.post(CameraAlert::closeByBack);
         return true;
+    }
+
+    /** Closed by Back: the card shrinks away towards its Back key (top right) and fades. */
+    private static void closeByBack() {
+        main.removeCallbacks(close);
+        FrameLayout v = host;
+        host = null;
+        if (v == null) return;
+        v.setOnKeyListener(null);
+        stopPulses(v);
+        try {
+            WindowManager.LayoutParams lp = (WindowManager.LayoutParams) v.getLayoutParams();
+            lp.flags |= WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
+            v.getContext().getSystemService(WindowManager.class).updateViewLayout(v, lp);
+        } catch (Exception ignored) { }
+        PopupMotion.backOut(v, v.getWidth(), 0f, () -> {
+            try { v.getContext().getSystemService(WindowManager.class).removeView(v); } catch (Exception ignored) { }
+        });
     }
 
     /** The card away, the keys back with the app: faded out, or at once when another takes its place. */
@@ -453,7 +478,7 @@ final class CameraAlert {
             lp.flags |= WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
             v.getContext().getSystemService(WindowManager.class).updateViewLayout(v, lp);
         } catch (Exception ignored) { }
-        v.animate().alpha(0f).translationX(v.getWidth() * 0.08f).setDuration(220).withEndAction(gone).start();
+        v.animate().alpha(0f).translationX(-v.getWidth() * 0.08f).setDuration(220).withLayer().withEndAction(gone).start();
     }
 
     private static void stopPulses(View v) {

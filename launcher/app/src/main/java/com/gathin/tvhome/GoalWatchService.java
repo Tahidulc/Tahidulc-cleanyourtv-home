@@ -647,7 +647,9 @@ public class GoalWatchService extends Service {
         watchClose = null;
         showingLineup = null;
         host.setOnKeyListener(null);
-        removeHost();
+        // Back: the alert shrinks a little and fades, then goes.
+        android.widget.FrameLayout v = host;
+        PopupMotion.backOut(v, v.getWidth() / 2f, v.getHeight() / 2f, () -> { if (host == v) removeHost(); });
     }
 
     @Override public void onCreate() {
@@ -2294,6 +2296,8 @@ public class GoalWatchService extends Service {
         try {
             getSystemService(WindowManager.class).addView(host, lp);
             laneShown(onLane());
+            // Over an app the alerts have no opening movement of their own: the window rises a little and fades in.
+            if (calm()) PopupMotion.in(host, 10 * d);
         } catch (Exception e) {
             host = null;
         }
@@ -2818,7 +2822,25 @@ public class GoalWatchService extends Service {
     }
 
     /** The alert's window gone, and the next one in the queue. */
+    /** The alert's window fading out (over an app, where the alert has no closing movement of its own). */
+    private boolean leaving;
+
     private void removeHost() {
+        android.widget.FrameLayout v = host;
+        // Over an app the alerts have no closing movement of their own: the window fades down and out, then goes.
+        if (v != null && calm() && !leaving && v.getAlpha() > 0.01f && v.isAttachedToWindow()) {
+            leaving = true;
+            PopupMotion.out(v, 10 * getResources().getDisplayMetrics().density, () -> {
+                leaving = false;
+                if (host == v) removeHostNow();
+            });
+            return;
+        }
+        if (leaving) return;   // the fade's end takes it away
+        removeHostNow();
+    }
+
+    private void removeHostNow() {
         if (host != null) {
             host.removeAllViews();
             try { getSystemService(WindowManager.class).removeView(host); } catch (Exception ignored) { }

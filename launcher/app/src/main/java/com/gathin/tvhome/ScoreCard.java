@@ -143,9 +143,15 @@ final class ScoreCard {
         boolean ok = code == KeyEvent.KEYCODE_DPAD_CENTER || code == KeyEvent.KEYCODE_ENTER
                 || code == KeyEvent.KEYCODE_NUMPAD_ENTER || code == KeyEvent.KEYCODE_BUTTON_A;
         if (!back && !(ok && d.watch != null)) return false;
+        if (back) {
+            // The card's Back key dips as the button goes down; as it comes up the card shrinks away towards it.
+            if (e.getAction() == KeyEvent.ACTION_DOWN && e.getRepeatCount() == 0) main.post(() -> PopupMotion.press(host));
+            else if (e.getAction() == KeyEvent.ACTION_UP && !e.isCanceled()) main.post(() -> close(true, true));
+            return true;
+        }
         if (e.getAction() == KeyEvent.ACTION_UP && !e.isCanceled()) main.post(() -> {
             close(true);
-            if (ok) d.watch.run();
+            d.watch.run();
         });
         return true;
     }
@@ -756,7 +762,7 @@ final class ScoreCard {
                 if (e.getAction() != KeyEvent.ACTION_UP || !down[0]) return true;
                 boolean ok = code == KeyEvent.KEYCODE_DPAD_CENTER || code == KeyEvent.KEYCODE_ENTER
                         || code == KeyEvent.KEYCODE_NUMPAD_ENTER || code == KeyEvent.KEYCODE_BUTTON_A;
-                close(true);
+                close(true, code == KeyEvent.KEYCODE_BACK);
                 if (ok && d.watch != null) d.watch.run();
                 return true;
             });
@@ -771,6 +777,11 @@ final class ScoreCard {
 
     /** The card away (faded, or at once), the score bar back on Home, and the next waiting one. */
     static void close(boolean fade) {
+        close(fade, false);
+    }
+
+    /** As close(fade); byBack: closed by Back, so it shrinks away towards its Back key instead of sliding out. */
+    private static void close(boolean fade, boolean byBack) {
         for (Runnable r : later) main.removeCallbacks(r);
         later.clear();
         for (android.animation.Animator a : moving) a.cancel();
@@ -798,6 +809,11 @@ final class ScoreCard {
                 v.getContext().getSystemService(WindowManager.class).updateViewLayout(v, lp);
             }
         } catch (RuntimeException ignored) { }
+        if (byBack) {
+            // Towards the Back key: the card's top right corner, or the bar's right end.
+            PopupMotion.backOut(v, v.getWidth(), wasHome ? v.getHeight() / 2f : 0f, gone);
+            return;
+        }
         content.animate().alpha(0f).translationX(wasHome ? 0 : -px(30)).translationY(wasHome ? -px(18) : 0)
                 .setDuration(220).withLayer().withEndAction(gone).start();
     }
@@ -831,6 +847,7 @@ final class ScoreCard {
     private static View backKey(Context c, int size) {
         ImageView v = new ImageView(c);
         v.setImageBitmap(GoalWatchService.backButton(Config.themeString(c, "ok_button", "tcl"), size));
+        v.setTag(PopupMotion.BACK_KEY);
         return v;
     }
 
