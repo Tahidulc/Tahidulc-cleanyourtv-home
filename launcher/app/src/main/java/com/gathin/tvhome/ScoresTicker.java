@@ -561,7 +561,8 @@ final class ScoresTicker {
             ZonedDateTime when = java.time.Instant.ofEpochMilli(s.start).atZone(ZoneId.systemDefault());
             boolean today = when.toLocalDate().equals(LocalDate.now());
             g.detail = when.format(DateTimeFormatter.ofPattern(today ? "HH:mm" : "EEE HH:mm", java.util.Locale.getDefault()));
-            g.text = w.name.replace("Grand Prix", "GP");
+            // "Mexico City", not "Mexico City Grand Prix": the F1 logo and the session already say what it is.
+            g.text = w.name.replace(" Grand Prix", "").replace("Grand Prix", "").trim();
         } else {
             g.drivers = new ArrayList<>();
             for (int i = 0; i < Math.min(3, s.top.size()); i++) {
@@ -776,7 +777,14 @@ final class ScoresTicker {
                         b.addView(label(d[0]), margin(dp(3)));
                     }
                 } else {
-                    b.addView(label(g.text), margin(dp(8)));
+                    // The race's name gives way (shortened, "…") when the box is narrow: the time after it stays whole.
+                    TextView name = label(g.text);
+                    name.setSingleLine(true);
+                    name.setEllipsize(android.text.TextUtils.TruncateAt.END);
+                    name.setGravity(Gravity.CENTER);
+                    LinearLayout.LayoutParams nl = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+                    nl.leftMargin = dp(8);
+                    b.addView(name, nl);
                 }
             } else {
                 b.addView(logoView(g.homeLogo, dp(12)));
