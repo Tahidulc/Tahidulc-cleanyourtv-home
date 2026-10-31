@@ -449,7 +449,7 @@ final class DeliveryCard {
         LinearLayout bar = new RevealBox(c);
         bar.setOrientation(LinearLayout.HORIZONTAL);
         bar.setGravity(Gravity.CENTER);
-        bar.setBackground(ScoresTicker.laneGlass(c, tint));
+        bar.setBackground(GoalWatchService.rimless(ScoresTicker.laneGlass(c, tint)));
         bar.setPadding(px(d, 14), 0, px(d, 14), 0);
         bar.setMinimumHeight(px(d, 32));
         bar.setLayoutParams(new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, px(d, 32)));

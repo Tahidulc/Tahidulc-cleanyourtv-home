@@ -351,7 +351,6 @@ final class ScoreCard {
             GradientDrawable cd = new GradientDrawable();
             cd.setColor(0xFFE3061B);
             cd.setCornerRadius(px(3));
-            cd.setStroke(Math.max(1, px(1.5f)), 0xFFFFFFFF);
             card.setBackground(cd);
             card.setTag("redcard");
             LinearLayout.LayoutParams rl = new LinearLayout.LayoutParams(px(size * 0.6f), px(size * 0.85f));

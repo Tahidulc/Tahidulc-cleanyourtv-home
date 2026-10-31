@@ -285,14 +285,6 @@ final class CameraAlert {
         left.setBackgroundColor(RED);
         left.setPivotX(0);
         card.addView(left, new FrameLayout.LayoutParams(-1, Math.round(3 * d), Gravity.BOTTOM));
-        // The rim: red, breathing, like a camera that is recording.
-        View rim = new View(c);
-        GradientDrawable rd = new GradientDrawable();
-        rd.setCornerRadius(corner);
-        rd.setStroke(Math.round(2 * d), RED);
-        rim.setBackground(rd);
-        card.addView(rim, new FrameLayout.LayoutParams(-1, -1));
-        pulses.add(rim);
         // A flash as it lands, like a shutter.
         View flash = new View(c);
         flash.setBackgroundColor(0xFFFFFFFF);

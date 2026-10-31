@@ -2090,7 +2090,26 @@ public class GoalWatchService extends Service {
      * Home pills' rim and sheen. Frosted (frost_alerts): paler and milkier, a fine grain like etched glass, a bright
      * rim and a soft highlight over the top half.
      */
+    /**
+     * The alerts' glass, every kind of it, with no rim or edge line: over a picture an outline round the pill reads as a
+     * border, and the alerts are meant to sit on it bare.
+     */
     private android.graphics.drawable.Drawable glass(float radius) {
+        return rimless(glassWithRim(radius));
+    }
+
+    /** A drawable (a layer list of shapes) with every shape's stroke taken off; the same drawable, for chaining. */
+    static android.graphics.drawable.Drawable rimless(android.graphics.drawable.Drawable dr) {
+        if (dr instanceof android.graphics.drawable.LayerDrawable) {
+            android.graphics.drawable.LayerDrawable l = (android.graphics.drawable.LayerDrawable) dr;
+            for (int i = 0; i < l.getNumberOfLayers(); i++) rimless(l.getDrawable(i));
+        } else if (dr instanceof GradientDrawable) {
+            ((GradientDrawable) dr).setStroke(0, 0);
+        }
+        return dr;
+    }
+
+    private android.graphics.drawable.Drawable glassWithRim(float radius) {
         // On v2's Home: the score pills' own clear glass, as the alert stands in their place.
         if (darkGlass) {
             GradientDrawable dark = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0xF22A2C31, 0xF2141518});
@@ -2115,14 +2134,7 @@ public class GoalWatchService extends Service {
         GradientDrawable sheen = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
                 new int[]{0x80FFFFFF, 0x1AFFFFFF, 0x00FFFFFF, 0x00FFFFFF});
         sheen.setCornerRadius(radius);
-        GradientDrawable rim = new GradientDrawable();
-        rim.setCornerRadius(radius);
-        rim.setStroke(Math.max(1, Math.round(1 * d)), 0xF2FFFFFF);
-        GradientDrawable edge = new GradientDrawable();
-        edge.setCornerRadius(radius);
-        edge.setStroke(Math.max(1, Math.round(0.5f * d)), 0x33707884);
-        return new android.graphics.drawable.LayerDrawable(new android.graphics.drawable.Drawable[]{
-                base, grain, sheen, edge, rim});
+        return new android.graphics.drawable.LayerDrawable(new android.graphics.drawable.Drawable[]{base, grain, sheen});
     }
 
     private static android.graphics.Bitmap grainTile;
