@@ -279,12 +279,17 @@ final class ScoreCard {
             }
             LinearLayout name = new LinearLayout(c);
             name.setGravity(Gravity.CENTER_VERTICAL);
-            String big = d.headline != null ? d.headline : (d.first.isEmpty() ? "" : d.first + " ") + titleCase(d.last);
+            // Full time: the result big ("Chelsea win"), the scorers and any red cards after it, small, as on the card
+            // (its first line is the scorers, not a first name).
+            boolean ft = "ft".equals(d.kind);
+            String big = d.headline != null ? d.headline : ft ? d.last : (d.first.isEmpty() ? "" : d.first + " ") + titleCase(d.last);
+            String after = ft ? join(d.first, d.line) : d.line;
             TextView bigText = text(c, big, d.headline != null ? 19 : 22, d.dark ? 0xFFFFFFFF : INK, d.headline != null ? outfit(c, 800) : outfit(c, 600));
             if (d.headline != null) bigText.setMaxWidth(px(1000));
             name.addView(bigText);
-            if (!d.line.isEmpty()) {
-                TextView small = text(c, d.line, 16, d.dark ? 0xCCFFFFFF : INK_SOFT, outfit(c, 500));
+            if (!after.isEmpty()) {
+                TextView small = text(c, after, 16, d.dark ? 0xCCFFFFFF : INK_SOFT, outfit(c, 500));
+                if (ft) small.setMaxWidth(px(820));
                 LinearLayout.LayoutParams sl = new LinearLayout.LayoutParams(-2, -2);
                 sl.leftMargin = px(10);
                 name.addView(small, sl);
@@ -302,6 +307,11 @@ final class ScoreCard {
                 LinearLayout e = new LinearLayout(c);
                 e.setGravity(Gravity.CENTER_VERTICAL);
                 if (!((String) p[0]).isEmpty()) e.addView(text(c, (String) p[0], 20, 0xFFFFFFFF, outfit(c, 900)));
+                if (p[1] != null) {
+                    LinearLayout.LayoutParams fl = new LinearLayout.LayoutParams(px(44), h);
+                    fl.leftMargin = px(6);
+                    e.addView(photo(c, (Bitmap) p[1], px(44), h, px(58), px(-7), px(2)), fl);
+                }
                 if (p[2] != null) {
                     LinearLayout.LayoutParams tl = new LinearLayout.LayoutParams(px(26), px(26));
                     tl.leftMargin = px(8);
@@ -859,6 +869,13 @@ final class ScoreCard {
         try { t = c.getResources().getFont(res); } catch (RuntimeException e) { t = Typeface.create("sans-serif", weight >= 700 ? Typeface.BOLD : Typeface.NORMAL); }
         outfits.put(weight, t);
         return t;
+    }
+
+    /** Two lines' words as one, a dot between them when both have any. */
+    private static String join(String a, String b) {
+        a = a == null ? "" : a.trim();
+        b = b == null ? "" : b.trim();
+        return a.isEmpty() ? b : b.isEmpty() ? a : a + "  ·  " + b;
     }
 
     private static String titleCase(String s) {

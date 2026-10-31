@@ -600,7 +600,13 @@ public class GoalWatchService extends Service {
     /** ESPN's cut-out of a UFC fighter, cropped square to his head and shoulders. */
     private android.graphics.Bitmap fighterPhoto(String id) {
         if (id == null || id.isEmpty()) return null;
-        return ScoresTicker.cachedLogo(this, "https://a.espncdn.com/i/headshots/mma/players/full/" + id + ".png", 200);
+        android.graphics.Bitmap sq = ScoresTicker.cachedLogo(this, "https://a.espncdn.com/i/headshots/mma/players/full/" + id + ".png", 200);
+        if (sq == null || sq.getWidth() < 40) return sq;
+        // ESPN's square has him small in a wide frame: cut to head and shoulders, upright, as the Premier League frames
+        // its players (the cards fit an upright photo to its width, the face at the top).
+        float u = sq.getWidth() / 400f;
+        int x = Math.round(48 * u), y = Math.round(18 * u), w = Math.round(304 * u), h = Math.min(sq.getHeight() - y, Math.round(362 * u));
+        return android.graphics.Bitmap.createBitmap(sq, x, y, Math.min(w, sq.getWidth() - x), h);
     }
 
     /** adb test: one of each score card, with today's Chelsea v Man United and an F1 race, to see them. */
