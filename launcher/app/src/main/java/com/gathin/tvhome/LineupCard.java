@@ -88,6 +88,11 @@ final class LineupCard {
 
     private LineupCard() { }
 
+    /** Whether the card is on screen (the score cards wait for it). */
+    static boolean isShowing() {
+        return host != null;
+    }
+
     private static int px(float v) {
         return Math.max(1, Math.round(v * k));
     }

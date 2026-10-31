@@ -70,7 +70,8 @@ public class InputKeyService extends AccessibilityService {
         if (event.getKeyCode() == KeyEvent.KEYCODE_BACK && AppSearchService.cameraBack(this, event)) return true;
         // OK while the line-up card shows: the game's channel.
         if (LineupCard.key(event)) return true;
-        // Back while a goal, F1 or other alert shows: it closes.
+        // OK (watch) and Back (close) on a score card; Back while any other alert shows closes it.
+        if (ScoreCard.key(event)) return true;
         if (GoalWatchService.back(event)) return true;
         // The on-screen mouse, in apps made for a touch screen (Tuya Smart): arrows move it, OK presses.
         if (Mouse.handle(this, event)) return true;

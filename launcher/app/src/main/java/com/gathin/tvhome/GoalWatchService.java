@@ -137,6 +137,247 @@ public class GoalWatchService extends Service {
         return true;
     }
 
+    // ---- the score cards (ScoreCard): football --------------------------------------------------------------
+
+    /**
+     * A goal, red card or full time as a score card: the scorer's (or sent-off player's) photo, both crests and the
+     * score, and while the game is on where it is and OK to watch it. Off the main thread for the pictures.
+     */
+    private void skyFootball(ScoresTicker.Game g, String type, String who, String minute, String side, String kind) {
+        io.execute(() -> {
+            ScoreCard.Data d = footballData(g);
+            boolean home = !"away".equals(side);
+            int kit = home ? g.homeColor : g.awayColor;
+            if ("ft".equals(type)) {
+                d.label = "FULL";
+                d.labelSmall = "TIME";
+                d.labelColour = 0xFF151A63;
+                d.minute = "FT";
+                int hs = parse(g.homeScore), as = parse(g.awayScore);
+                String winner = hs > as ? g.homeName : as > hs ? g.awayName : null;
+                d.last = winner != null ? winner + " win" : hs >= 0 ? "Draw" : "Full time";
+                StringBuilder scorers = new StringBuilder();
+                for (String[] goal : g.goals) {
+                    if (scorers.length() > 0) scorers.append(" · ");
+                    scorers.append(surname(goal[1])).append(' ').append(goal[2]).append("pen".equals(goal[4]) ? " (pen)" : "og".equals(goal[4]) ? " (og)" : "");
+                }
+                d.first = scorers.toString();
+                StringBuilder off = new StringBuilder();
+                for (String[] r : g.reds) off.append(off.length() > 0 ? " · " : "").append(surname(r[1])).append(" sent off ").append(r[2]);
+                d.line = off.toString();
+                d.crest = null;
+            } else {
+                boolean red = "red".equals(type);
+                d.label = red ? "RED" : "GOAL";
+                d.labelSmall = red ? "CARD" : null;
+                d.labelColour = red ? 0xFFC8102E : kitLabel(kit);
+                String[] name = split(who);
+                d.first = name[0];
+                d.last = name[1];
+                d.line = minute + ("pen".equals(kind) ? " · penalty" : "og".equals(kind) ? " · own goal" : red ? " · sent off" : "");
+                d.crest = home ? d.homeCrest : d.awayCrest;
+                d.photo = playerPhoto(who, home ? g.homeName : g.awayName, kit);
+            }
+            main.post(() -> ScoreCard.show(this, d));
+        });
+    }
+
+    /** A penalty missed or saved, or a VAR decision, as a score card. */
+    private void skyIncident(ScoresTicker.Game g, String[] inc) {
+        io.execute(() -> {
+            ScoreCard.Data d = footballData(g);
+            String what = inc[1].replaceAll("^[^A-Za-z]+", "").trim();
+            String lower = what.toLowerCase(java.util.Locale.ROOT);
+            boolean pen = lower.startsWith("pen");
+            d.label = pen ? "PEN" : "VAR";
+            d.labelColour = pen ? 0xFF151A63 : 0xFF111214;
+            String[] name = split(inc[2]);
+            if (lower.contains("ruled out")) {
+                d.first = "Check complete";
+                d.last = "No goal";
+                d.line = inc[3];
+            } else if (pen) {
+                d.first = name[0];
+                d.last = name[1].isEmpty() ? what : name[1];
+                d.line = inc[3] + (lower.contains("saved") ? " · saved" : " · missed");
+            } else {
+                d.first = "VAR check";
+                d.last = name[1].isEmpty() ? "Review" : name[1];
+                d.line = inc[3];
+            }
+            if (!inc[2].isEmpty()) d.photo = playerPhoto(inc[2], null, 0);
+            main.post(() -> ScoreCard.show(this, d));
+        });
+    }
+
+    /** What every football card has: the competition, both crests and names, the score, and where to watch it. */
+    private ScoreCard.Data footballData(ScoresTicker.Game g) {
+        ScoreCard.Data d = new ScoreCard.Data();
+        int px = Math.round(96 * getResources().getDisplayMetrics().density);
+        d.leagueLogo = leagueBitmap(g.leagueLogo != null ? g.leagueLogo : leagueLogoFor(g), px);
+        d.homeCrest = g.homeLogo == null ? null : ScoresTicker.cachedLogo(this, g.homeLogo, px);
+        d.awayCrest = g.awayLogo == null ? null : ScoresTicker.cachedLogo(this, g.awayLogo, px);
+        d.homeName = g.homeName != null ? g.homeName : g.home;
+        d.awayName = g.awayName != null ? g.awayName : g.away;
+        d.score = (g.homeScore == null ? "0" : g.homeScore) + "–" + (g.awayScore == null ? "0" : g.awayScore);
+        Object[] w = g.state == 0 ? watchFor(g) : null;
+        if (w != null) {
+            @SuppressWarnings("unchecked") List<String> names = (List<String>) w[0];
+            android.graphics.Bitmap logo = (android.graphics.Bitmap) w[1];
+            d.channelLogo = logo;
+            d.channel = names.isEmpty() ? null : names.get(0);
+            d.watch = w.length > 2 && w[2] instanceof Runnable ? (Runnable) w[2]
+                    : () -> AppSearchService.tune(this, getString(R.string.scores_open_package), names, logo);
+        }
+        return d;
+    }
+
+    /** The goal label in the scoring side's colour, navy where that is too pale for white letters. */
+    private static int kitLabel(int kit) {
+        if (kit == 0) return 0xFF151A63;
+        double lum = (0.299 * ((kit >> 16) & 0xFF) + 0.587 * ((kit >> 8) & 0xFF) + 0.114 * (kit & 0xFF)) / 255.0;
+        return lum > 0.6 ? 0xFF151A63 : kit;
+    }
+
+    /** {first names, surname} of a full name. */
+    private static String[] split(String full) {
+        String f = full == null ? "" : full.trim();
+        int sp = f.lastIndexOf(' ');
+        return sp > 0 ? new String[]{f.substring(0, sp), f.substring(sp + 1)} : new String[]{"", f};
+    }
+
+    /** A player's head and shoulders: his cut-out, else the blank figure in his side's colour. */
+    private android.graphics.Bitmap playerPhoto(String who, String team, int kit) {
+        if (who == null || who.isEmpty()) return null;
+        PlayerPhotos.Cutout cut = PlayerPhotos.cutout(this, who, team);
+        android.graphics.Bitmap b = PlayerPhotos.photo(this, cut);
+        return b != null ? b : LineupCard.avatar(kit, kit, "");
+    }
+
+    // ---- the score cards: F1 ----------------------------------------------------------------------------------
+
+    /** As f1Updates, as score cards: a session starting, a new leader, every ten laps, the end. */
+    private void skyF1Updates(F1Results.Weekend w) {
+        for (F1Results.Session s : w.sessions) {
+            if (!s.counts()) continue;
+            String before = f1States.put(s.id, s.state);
+            String leader = s.top.isEmpty() ? null : s.top.get(0);
+            String lastLeader = leader == null ? f1Leaders.get(s.id) : f1Leaders.put(s.id, leader);
+            Integer lastMark = f1Laps.put(s.id, s.lap / 10);
+            if (!f1Primed || before == null) continue;
+            String gp = F1Results.shortName(w.name == null ? "" : w.name).replace("Grand Prix", "GP");
+            if ("pre".equals(before) && "in".equals(s.state)) {
+                skyF1(s.isRace() ? "LIGHTS OUT" : s.label.toUpperCase(java.util.Locale.UK), s.isRace() && !"Race".equals(s.abbr) ? "SPRINT" : null,
+                        null, null, gp, "Live now", null);
+            } else if ("in".equals(before) && "post".equals(s.state)) {
+                String what = "Race".equals(s.abbr) ? "RESULT" : "Qual".equals(s.abbr) ? "POLE" : "SS".equals(s.abbr) ? "SPRINT POLE"
+                        : "SR".equals(s.abbr) ? "SPRINT" : s.label.toUpperCase(java.util.Locale.UK);
+                skyPodium(what, gp, s.top, s.logos, "Race".equals(s.abbr) || "SR".equals(s.abbr) ? "Winner" : "Pole");
+            } else if ("in".equals(s.state)) {
+                boolean newLeader = leader != null && lastLeader != null && !leader.equals(lastLeader);
+                boolean lapMark = s.isRace() && lastMark != null && s.lap / 10 > lastMark && s.lap > 0;
+                if (newLeader || lapMark) {
+                    String others = (s.top.size() > 1 ? "P2 " + s.top.get(1) : "") + (s.top.size() > 2 ? " · P3 " + s.top.get(2) : "");
+                    skyF1(s.isRace() && s.lap > 0 ? "LAP " + s.lap : s.label.toUpperCase(java.util.Locale.UK), null, leader,
+                            s.logos.isEmpty() ? null : s.logos.get(0), leader + (s.isRace() ? " leads" : " goes P1"), others, "P1");
+                }
+            }
+        }
+        if (!w.sessions.isEmpty()) f1Primed = true;
+    }
+
+    /** One F1 card: the label, the driver (photo and team logo) or the weekend's name, a line, and OK to watch. */
+    private void skyF1(String label, String small, String driver, String teamLogo, String big, String line, String position) {
+        io.execute(() -> {
+            ScoreCard.Data d = f1Data();
+            d.label = label;
+            d.labelSmall = small;
+            d.last = big;
+            d.line = line == null ? "" : line;
+            d.position = position;
+            if (driver != null) d.photo = PlayerPhotos.driver(this, driver);
+            if (teamLogo != null) d.teamLogo = ScoresTicker.cachedLogo(this, teamLogo, 96);
+            main.post(() -> ScoreCard.show(this, d));
+        });
+    }
+
+    /** An F1 result's top three, each with his photo and team logo. */
+    private void skyPodium(String label, String small, List<String> top, List<String> logos, String winnerLine) {
+        List<String> names = new ArrayList<>(top), teams = new ArrayList<>(logos);
+        io.execute(() -> {
+            ScoreCard.Data d = f1Data();
+            d.label = label;
+            d.labelSmall = small;
+            for (int i = 0; i < Math.min(3, names.size()); i++) {
+                String team = i < teams.size() ? teams.get(i) : null;
+                d.podium.add(new Object[]{String.valueOf(i + 1), PlayerPhotos.driver(this, names.get(i)),
+                        team == null ? null : ScoresTicker.cachedLogo(this, team, 96), names.get(i), i == 0 ? winnerLine : null});
+            }
+            main.post(() -> ScoreCard.show(this, d));
+        });
+    }
+
+    /** What every F1 card has: the F1 mark in white, and Sky Sports F1 (UHD where TiviMate has it) with OK. */
+    private ScoreCard.Data f1Data() {
+        ScoreCard.Data d = new ScoreCard.Data();
+        d.f1 = true;
+        d.labelColour = 0xFFE10600;
+        android.graphics.Bitmap mark = ScoresTicker.cachedLogo(this, F1Results.F1_LOGO, 200);
+        d.leagueLogo = mark == null ? null : white(mark);
+        ScoresTicker.Game f1 = new ScoresTicker.Game();
+        f1.leagueLogo = F1Results.F1_LOGO;
+        Object[] w = watchOn(TvGuide.watch(this, new String[0], f1));
+        if (w != null) {
+            @SuppressWarnings("unchecked") List<String> names = (List<String>) w[0];
+            android.graphics.Bitmap logo = (android.graphics.Bitmap) w[1];
+            d.channelLogo = logo;
+            d.channel = names.isEmpty() ? null : names.get(0);
+            d.watch = () -> AppSearchService.tune(this, getString(R.string.scores_open_package), names, logo);
+        }
+        return d;
+    }
+
+    /** A logo in plain white (its shape kept), for the F1 mark on Sky Sports F1's red. */
+    private static android.graphics.Bitmap white(android.graphics.Bitmap b) {
+        android.graphics.Bitmap out = android.graphics.Bitmap.createBitmap(b.getWidth(), b.getHeight(), android.graphics.Bitmap.Config.ARGB_8888);
+        android.graphics.Canvas c = new android.graphics.Canvas(out);
+        android.graphics.Paint p = new android.graphics.Paint();
+        p.setColorFilter(new android.graphics.PorterDuffColorFilter(0xFFFFFFFF, android.graphics.PorterDuff.Mode.SRC_IN));
+        c.drawBitmap(b, 0, 0, p);
+        return out;
+    }
+
+    /** adb test: one of each score card, with today's Chelsea v Man United and an F1 race, to see them. */
+    private void testSky() {
+        ScoresTicker.Game g = new ScoresTicker.Game();
+        g.id = "test"; g.slug = "eng.1"; g.league = "PL"; g.state = 0;
+        g.home = "CHE"; g.away = "MUN"; g.homeName = "Chelsea"; g.awayName = "Manchester United";
+        g.homeLogo = "https://a.espncdn.com/i/teamlogos/soccer/500/363.png";
+        g.awayLogo = "https://a.espncdn.com/i/teamlogos/soccer/500/360.png";
+        g.leagueLogo = "https://a.espncdn.com/i/leaguelogos/soccer/500-dark/23.png";
+        g.homeColor = 0xFF14349B; g.awayColor = 0xFFDA020E;
+        g.homeScore = "2"; g.awayScore = "0";
+        g.kickoff = 1_793_449_800_000L; g.tvAt = 1_793_449_800_000L;
+        g.goals.add(new String[]{"t1", "Morgan Rogers", "50'", "home", ""});
+        g.goals.add(new String[]{"t2", "Cole Palmer", "64'", "home", "pen"});
+        g.reds.add(new String[]{"t3", "Lisandro Martínez", "63'", "away", ""});
+        skyFootball(g, "goal", "Cole Palmer", "64'", "home", "pen");
+        skyFootball(g, "red", "Lisandro Martínez", "63'", "away", "");
+        skyIncident(g, new String[]{"t4", "📺  VAR", "", "62'"});
+        ScoresTicker.Game ft = g;
+        main.postDelayed(() -> { ft.state = 2; skyFootball(ft, "ft", "", "", "", "ft"); }, 500);
+        List<String> top = Arrays.asList("Norris", "Verstappen", "Piastri");
+        List<String> logos = Arrays.asList(F1Results.logo("mclaren"), F1Results.logo("red_bull"), F1Results.logo("mclaren"));
+        skyF1("LAP 34", null, "Norris", logos.get(0), "Norris leads", "P2 Verstappen · P3 Piastri", "P1");
+        skyPodium("RESULT", "Mexico City GP", top, logos, "Winner");
+    }
+
+    /** Whether one of the service's own alerts is on screen (the score cards wait for it). */
+    static boolean alertShowing() {
+        GoalWatchService s = self;
+        return s != null && s.host != null;
+    }
+
     /** The alert showing away now, its timers with it. */
     private void dismiss() {
         if (host == null) return;
@@ -374,6 +615,8 @@ public class GoalWatchService extends Service {
     private long weatherAt, rainAlertAt;
     private String morningShown = "";
     private boolean teamAlerts, incidentAlerts, kickoffReminders, tennisAlerts, ufcAlerts, boxingAlerts, everywhere;
+    /** sky_alerts: goals, cards, VAR, full time and F1 as the line-up card's small cards (ScoreCard). */
+    private boolean skyAlerts;
     /** Games already reminded of, and games whose incidents have been read once (the first read only learns). */
     private final Set<String> reminded = new HashSet<>(), incidentGames = new HashSet<>();
     /** Each tennis match's and UFC fight's state at the last read. */
@@ -478,6 +721,7 @@ public class GoalWatchService extends Service {
             ufcAlerts = Config.themeFlag(this, "ufc_alerts", false);
             boxingAlerts = Config.themeFlag(this, "boxing_alerts", false);
             everywhere = Config.themeFlag(this, "alerts_everywhere", false);
+            skyAlerts = Config.themeFlag(this, "sky_alerts", false);
             weatherAlerts = Config.themeFlag(this, "weather_alerts", false);
             if (Config.themeFlag(this, "alert_sounds", false)) loadSounds();
         }
@@ -500,6 +744,7 @@ public class GoalWatchService extends Service {
                 } catch (java.io.IOException ignored) { }
             });
         }
+        if (intent != null && intent.hasExtra("test_sky")) testSky();
         if (intent != null && intent.hasExtra("test_goal")) {
             // adb only (the service needs DUMP from outside): one sample alert now, to check the look over an app.
             ScoresTicker.Game g = new ScoresTicker.Game();
@@ -689,7 +934,9 @@ public class GoalWatchService extends Service {
                     if (found == null) continue;
                     boolean first = incidentGames.add(g.id);
                     for (String[] inc : found) {
-                        if (seen.add(inc[0]) && !first) main.postDelayed(() -> enqueueFootball(g, incidentHead(inc), "incident"), DELAY_MS);
+                        if (seen.add(inc[0]) && !first) main.postDelayed(() -> {
+                            if (skyAlerts) skyIncident(g, inc); else enqueueFootball(g, incidentHead(inc), "incident");
+                        }, DELAY_MS);
                     }
                 }
             });
@@ -741,6 +988,7 @@ public class GoalWatchService extends Service {
      * end (the race's top ten, else the top three). The first read only learns where things stand.
      */
     private void f1Updates(F1Results.Weekend w) {
+        if (skyAlerts) { skyF1Updates(w); return; }
         for (F1Results.Session s : w.sessions) {
             if (!s.counts()) continue;
             String before = f1States.put(s.id, s.state);
@@ -1244,6 +1492,10 @@ public class GoalWatchService extends Service {
     // ---- the alert ---------------------------------------------------------------------------------
 
     private void enqueue(ScoresTicker.Game g, String[] goal, boolean red) {
+        if (skyAlerts) {
+            skyFootball(g, red ? "red" : "ft".equals(goal[4]) ? "ft" : "goal", goal[1], goal[2], goal[3], goal[4]);
+            return;
+        }
         boolean scored = !red && !"ft".equals(goal[4]) && ("home".equals(goal[3]) || "away".equals(goal[3]));
         enqueueFootball(g, headline(goal, red), red ? "red" : "ft".equals(goal[4]) ? "fulltime" : "goal", scored ? goal[3] : null);
     }
@@ -1766,6 +2018,7 @@ public class GoalWatchService extends Service {
     @SuppressWarnings("unchecked")
     private void showNext() {
         if (shown != null || queue.isEmpty()) return;
+        if (ScoreCard.busy() || LineupCard.isShowing()) { main.postDelayed(this::showNext, 1_500L); return; }
         Object[] polled = queue.poll();
         current = polled;
         // A race result on v2's Home runs through the score bar's place as pills, a page at a time.
@@ -2555,6 +2808,10 @@ public class GoalWatchService extends Service {
     private final Map<String, android.graphics.Bitmap> raceLogos = new HashMap<>();
 
     private void enqueueRace(F1Results.Race r) {
+        if (skyAlerts) {
+            skyPodium("RESULT", F1Results.shortName(r.name == null ? "" : r.name).replace("Grand Prix", "GP"), r.top, r.logos, "Winner");
+            return;
+        }
         int px = Math.round(LOGO_DP * getResources().getDisplayMetrics().density);
         io.execute(() -> {
             Map<String, android.graphics.Bitmap> got = new HashMap<>();

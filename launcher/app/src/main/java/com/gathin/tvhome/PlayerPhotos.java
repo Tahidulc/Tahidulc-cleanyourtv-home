@@ -118,6 +118,34 @@ final class PlayerPhotos {
         }
     }
 
+    // ---- F1 drivers ------------------------------------------------------------------------------------------
+
+    /** An F1 driver's cut-out by his surname (TheSportsDB's, a motorsport entry of that surname); null without one. */
+    static Bitmap driver(Context ctx, String surname) {
+        if (surname == null || surname.isEmpty()) return null;
+        SharedPreferences cache = ctx.getSharedPreferences("driver_photos", Context.MODE_PRIVATE);
+        String url = cache.getString(surname, null);
+        if (url == null) {
+            try {
+                JSONObject root = new JSONObject(get("https://www.thesportsdb.com/api/v1/json/123/searchplayers.php?p="
+                        + URLEncoder.encode(surname, "UTF-8")));
+                JSONArray players = root.optJSONArray("player");
+                url = "";
+                for (int i = 0; players != null && i < players.length(); i++) {
+                    JSONObject p = players.getJSONObject(i);
+                    if (!"Motorsport".equalsIgnoreCase(p.optString("strSport"))) continue;
+                    if (!p.optString("strPlayer").toLowerCase(java.util.Locale.ROOT).endsWith(surname.toLowerCase(java.util.Locale.ROOT))) continue;
+                    String img = p.optString("strCutout", "");
+                    if (!img.isEmpty() && !"null".equals(img)) { url = img + "/medium"; break; }
+                }
+                cache.edit().putString(surname, url).apply();
+            } catch (Exception e) {
+                return null;
+            }
+        }
+        return url.isEmpty() ? null : ScoresTicker.cachedLogo(ctx, url, 350);
+    }
+
     // ---- his nationality from ESPN, when TheSportsDB has none --------------------------------------------------
 
     /**
