@@ -361,7 +361,7 @@ public class GoalWatchService extends Service {
     /**
      * A UFC fight as a score card, in the UFC's black and red: a result (the winner head and shoulders, whom he beat,
      * and how and when in the end block), or a main event starting (both fighters, a "v" between them). Where it is on
-     * with OK while the card still has fights to come. Off the main thread for the pictures.
+     * with OK while the card still has fights to come and a guide lists it. Off the main thread for the pictures.
      */
     private void skyFight(MoreSports.Result r, boolean starting) {
         io.execute(() -> {
@@ -386,15 +386,13 @@ public class GoalWatchService extends Service {
                 d.method = how[0];
                 d.methodSmall = how.length > 1 ? how[1] : null;
             }
-            if (!over) {
-                Object[] w = watchOn(otherChannel(r));
-                if (w != null) {
-                    @SuppressWarnings("unchecked") List<String> names = (List<String>) w[0];
-                    android.graphics.Bitmap logo = (android.graphics.Bitmap) w[1];
-                    d.channelLogo = logo;
-                    d.channel = names.isEmpty() ? null : names.get(0);
-                    d.watch = () -> AppSearchService.tune(this, getString(R.string.scores_open_package), names, logo);
-                }
+            // Where it is on only where the playlist's guides list the fight, never assumed; nothing shown otherwise.
+            Object[] w = over ? null : playlistWatch(r.winnerFull, r.loserFull, null);
+            if (w != null) {
+                @SuppressWarnings("unchecked") List<String> names = (List<String>) w[0];
+                d.channelLogo = (android.graphics.Bitmap) w[1];
+                d.channel = names.get(0);
+                d.watch = (Runnable) w[2];
             }
             main.post(() -> ScoreCard.show(this, d));
         });
@@ -1965,27 +1963,41 @@ public class GoalWatchService extends Service {
      * no British channel lists it, its channel in the playlist (TiviMate's and Kleva TV's), played in Kleva TV:
      * {names, logo} or {names, logo, what OK does}. Off the main thread.
      */
+    /**
+     * Where a game is on, only where a guide says so: Sky's (the British channel, its UHD form first where TiviMate
+     * has one), else a broadcaster's own guide in the IPTV playlist. Never guessed from who holds the league's rights
+     * (a 3pm Premier League game is on no British channel): null, and the card shows no channel at all.
+     */
     private Object[] watchFor(ScoresTicker.Game g) {
         String[] channels = getResources().getStringArray(R.array.football_tv_channels);
         TvGuide.Channel uk = TvGuide.find(channels, g.homeName, g.awayName, g.tvAt != 0 ? g.tvAt : g.kickoff);
-        if (uk == null) {
-            PlaylistSport.Where p = PlaylistSport.where(this, g.homeName, g.awayName, g.slug);
-            if (p != null) {
-                int px = Math.round(96 * getResources().getDisplayMetrics().density);
-                android.graphics.Bitmap logo = p.logo == null ? null : ScoresTicker.cachedLogo(this, p.logo, px);
-                List<String> names = new ArrayList<>();
-                names.add(p.name);
-                return new Object[]{names, logo, p.ok};
-            }
+        if (uk != null) {
+            TvGuide.Channel up = TvGuide.uhd(this, uk);
+            List<String> names = new ArrayList<>();
+            names.add(up.name);
+            if (uk.name != null && !uk.name.equals(up.name)) names.add(uk.name);
+            return watchOn(new TvGuide.Watch(names, up.logo));
         }
-        return watchOn(TvGuide.watch(this, channels, g));
+        return playlistWatch(g.homeName, g.awayName, g.slug);
+    }
+
+    /** A game or fight found in the playlist's broadcasters' guides: {names, logo, OK}; null when not found there. */
+    private Object[] playlistWatch(String home, String away, String slug) {
+        PlaylistSport.Where p = PlaylistSport.where(this, home, away, slug);
+        if (p == null || !p.sure || p.name == null) return null;
+        int px = Math.round(96 * getResources().getDisplayMetrics().density);
+        android.graphics.Bitmap logo = p.logo == null ? null : HomeV2.trim(ScoresTicker.cachedLogo(this, p.logo, px));
+        List<String> names = new ArrayList<>();
+        names.add(p.name);
+        return new Object[]{names, logo, p.ok};
     }
 
     /** {names, logo} for the "Watch on" step, the channel's logo fetched; null without anywhere to watch. */
     private Object[] watchOn(TvGuide.Watch w) {
         if (w == null || w.names.isEmpty()) return null;
         int px = Math.round(96 * getResources().getDisplayMetrics().density);
-        android.graphics.Bitmap logo = w.logo == null ? null : ScoresTicker.cachedLogo(this, w.logo, px);
+        // Sky's logos come on a square with room around them: cut to the logo, so it shows at its size and sharp.
+        android.graphics.Bitmap logo = w.logo == null ? null : HomeV2.trim(ScoresTicker.cachedLogo(this, w.logo, px));
         return new Object[]{w.names, logo};
     }
 

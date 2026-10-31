@@ -441,10 +441,10 @@ final class PlaylistSport {
     private static String[] channel(Event e, String slug) {
         String[] ch = e.channel.split("\u0000", 2);
         String[] by = ch.length > 1 && !ch[1].isEmpty() ? ch[1].split("\u0001", 2) : null;
-        if (by != null) return new String[]{clean(by[0]), by.length > 1 && !by[1].isEmpty() ? by[1] : null};
+        if (by != null) return new String[]{clean(by[0]), by.length > 1 && !by[1].isEmpty() ? by[1] : null, "sure"};
         String[] league = slug == null ? null : LEAGUE_TV.get(slug);
         if (league != null) return league;
-        if (e.elsewhere != null) return e.elsewhere;
+        if (e.elsewhere != null) return new String[]{e.elsewhere[0], e.elsewhere.length > 1 ? e.elsewhere[1] : null, "sure"};
         return new String[]{label(ch[0], e.football), null};
     }
 
@@ -452,6 +452,8 @@ final class PlaylistSport {
     static final class Where {
         String name, logo;
         Runnable ok;
+        /** Named by a broadcaster's own guide (or its channel for the game), not guessed from the league. */
+        boolean sure;
     }
 
     /**
@@ -495,6 +497,7 @@ final class PlaylistSport {
             Where w = new Where();
             w.name = on[0];
             w.logo = on[1];
+            w.sure = on.length > 2;
             String url = e.stream == null || e.stream.isEmpty() ? null : Config.themeString(c, "iptv_server", "").replaceAll("/+$", "") + "/live/"
                     + Config.themeString(c, "iptv_user", "") + "/" + Config.themeString(c, "iptv_pass", "") + "/" + e.stream;
             String name = on[0], title = e.title;

@@ -93,6 +93,12 @@ final class LineupCard {
         return host != null;
     }
 
+    /** Drawn smaller than it came: with mip-maps it scales down smoothly instead of jagged (see ScoreCard). */
+    private static Bitmap sharp(Bitmap b) {
+        if (b != null) b.setHasMipMap(true);
+        return b;
+    }
+
     private static int px(float v) {
         return Math.max(1, Math.round(v * k));
     }
@@ -286,7 +292,7 @@ final class LineupCard {
 
     private static void league(Context c, FrameLayout band, Data d) {
         ImageView league = new ImageView(c);
-        league.setImageBitmap(d.leagueLogo);
+        league.setImageBitmap(sharp(d.leagueLogo));
         league.setScaleType(ImageView.ScaleType.FIT_CENTER);
         FrameLayout.LayoutParams ll = new FrameLayout.LayoutParams(px(28), px(28), Gravity.TOP | Gravity.CENTER_HORIZONTAL);
         ll.topMargin = px(12);
@@ -296,7 +302,7 @@ final class LineupCard {
     /** A crest as it is (no disc), with a soft shadow so a dark one still shows on the navy. */
     private static ImageView crest(Context c, Bitmap b) {
         ImageView v = new ImageView(c);
-        v.setImageBitmap(b);
+        v.setImageBitmap(sharp(b));
         v.setScaleType(ImageView.ScaleType.FIT_CENTER);
         v.setElevation(px(3));
         v.setOutlineProvider(null);
@@ -364,8 +370,8 @@ final class LineupCard {
         FrameLayout frame = new FrameLayout(c);
         frame.setClipChildren(true);
         ImageView photo = new ImageView(c);
-        photo.setImageBitmap(p.photo == null ? avatar(t.photoKit != 0 ? t.photoKit : t.kit, t.photoKit != 0 ? t.photoSleeves : t.sleeves, p.number)
-                : p.framed ? framed(p.photo, t.kit) : p.photo);
+        photo.setImageBitmap(sharp(p.photo == null ? avatar(t.photoKit != 0 ? t.photoKit : t.kit, t.photoKit != 0 ? t.photoSleeves : t.sleeves, p.number)
+                : p.framed ? framed(p.photo, t.kit) : p.photo));
         photo.setScaleType(ImageView.ScaleType.FIT_START);
         frame.addView(photo, new FrameLayout.LayoutParams(px(150), px(150), Gravity.TOP | Gravity.CENTER_HORIZONTAL));
         FrameLayout.LayoutParams fl = new FrameLayout.LayoutParams(-1, -1);
@@ -379,7 +385,7 @@ final class LineupCard {
         top.addView(text(c, p.number, 24, NAVY, Typeface.create("sans-serif-black", Typeface.NORMAL)));
         if (p.flag != null) {
             ImageView flag = new ImageView(c);
-            flag.setImageBitmap(p.flag);
+            flag.setImageBitmap(sharp(p.flag));
             flag.setScaleType(ImageView.ScaleType.CENTER_CROP);
             LinearLayout.LayoutParams gl = new LinearLayout.LayoutParams(px(23), px(15));
             gl.leftMargin = px(7);
@@ -869,7 +875,7 @@ final class LineupCard {
     private static View channel(Context c, Data d, int height) {
         if (d.channelLogo != null) {
             ImageView logo = new ImageView(c);
-            logo.setImageBitmap(d.channelLogo);
+            logo.setImageBitmap(sharp(d.channelLogo));
             logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
             logo.setAdjustViewBounds(true);
             logo.setMaxWidth(px(height * 11f));

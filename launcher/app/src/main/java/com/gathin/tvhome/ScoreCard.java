@@ -141,7 +141,7 @@ final class ScoreCard {
     // ---- over an app: the card in the corner ----------------------------------------------------------------------
 
     private static void card(Context c, Data d) {
-        int h = px(96);
+        int h = px(80);
         LinearLayout card = new LinearLayout(c);
         card.setOrientation(LinearLayout.HORIZONTAL);
         float r = px(12);
@@ -158,35 +158,35 @@ final class ScoreCard {
         band.setBackground(bandGround(d));
         if (d.leagueLogo != null) {
             ImageView l = image(c, d.leagueLogo);
-            band.addView(l, new LinearLayout.LayoutParams(d.wideMark ? px(70) : px(24), d.wideMark ? px(36) : px(24)));
+            band.addView(l, new LinearLayout.LayoutParams(d.wideMark ? px(62) : px(22), d.wideMark ? px(30) : px(22)));
         }
         if (d.crest != null && !d.f1) {
-            LinearLayout.LayoutParams cl = new LinearLayout.LayoutParams(px(38), px(38));
-            cl.topMargin = px(7);
+            LinearLayout.LayoutParams cl = new LinearLayout.LayoutParams(px(32), px(32));
+            cl.topMargin = px(5);
             band.addView(image(c, d.crest), cl);
         }
-        card.addView(band, new LinearLayout.LayoutParams(d.wideMark ? px(98) : px(66), h));
+        card.addView(band, new LinearLayout.LayoutParams(d.wideMark ? px(86) : px(56), h));
 
         // The stage: pale streaks for football, charcoal for F1.
         LinearLayout stage = new LinearLayout(c);
         stage.setOrientation(LinearLayout.HORIZONTAL);
         stage.setGravity(Gravity.CENTER_VERTICAL);
         stage.setBackground(stageGround(d, px(40), px(26)));
-        View label = label(c, d, 30, h);
+        View label = label(c, d, 25, h);
         stage.addView(label, new LinearLayout.LayoutParams(-2, h));
         View photo = null;
         if (d.podium.isEmpty()) {
             if (d.photo != null) {
-                photo = photo(c, d.photo, px(88), h, px(122), px(-17), px(-2));
-                stage.addView(photo, new LinearLayout.LayoutParams(px(88), h));
+                photo = photo(c, d.photo, px(74), h, px(102), px(-14), px(-1));
+                stage.addView(photo, new LinearLayout.LayoutParams(px(74), h));
             }
             if (d.picture != null) {
-                LinearLayout.LayoutParams pl = new LinearLayout.LayoutParams(px(122), px(70));
+                LinearLayout.LayoutParams pl = new LinearLayout.LayoutParams(px(104), px(58));
                 pl.leftMargin = px(4);
                 stage.addView(picture(c, d.picture, px(8)), pl);
             }
-            stage.addView(who(c, d, 13, 24, 13), whoParams(photo == null && d.picture == null));
-            if (d.score != null || d.position != null || d.method != null) stage.addView(scoreBlock(c, d, h, 30, 30), new LinearLayout.LayoutParams(-2, h));
+            stage.addView(who(c, d, 12, 21, 12), whoParams(photo == null && d.picture == null));
+            if (d.score != null || d.position != null || d.method != null) stage.addView(scoreBlock(c, d, h, 26, 26), new LinearLayout.LayoutParams(-2, h));
         } else {
             for (Object[] p : d.podium) {
                 if (d.versus && p != d.podium.get(0)) stage.addView(text(c, "v", 20, 0xB3FFFFFF, outfit(c, 600)), new LinearLayout.LayoutParams(-2, -2));
@@ -197,7 +197,7 @@ final class ScoreCard {
             View gap = new View(c);
             stage.addView(gap, new LinearLayout.LayoutParams(px(6), h));
         }
-        if (d.watch != null) stage.addView(watchBlock(c, d, h, 15, 11.5f), new LinearLayout.LayoutParams(-2, h));
+        if (d.watch != null) stage.addView(watchBlock(c, d, h, 15, 10.5f), new LinearLayout.LayoutParams(-2, h));
         card.addView(stage, new LinearLayout.LayoutParams(-2, h));
 
         FrameLayout box = new FrameLayout(c);
@@ -230,7 +230,7 @@ final class ScoreCard {
     // ---- on Home: the bar in the score bar's place ---------------------------------------------------------------
 
     private static void bar(Context c, Data d) {
-        int h = px(58), w = px(1728);
+        int h = px(52), w = px(1728);
         LinearLayout bar = new LinearLayout(c);
         bar.setOrientation(LinearLayout.HORIZONTAL);
         bar.setGravity(Gravity.CENTER_VERTICAL);
@@ -243,11 +243,11 @@ final class ScoreCard {
         bar.setBackground(stageGround(d, px(50), px(30)));
         FrameLayout band = new FrameLayout(c);
         band.setBackground(bandGround(d));
-        if (d.leagueLogo != null) band.addView(image(c, d.leagueLogo), new FrameLayout.LayoutParams(d.wideMark ? px(80) : px(30), px(30), Gravity.CENTER));
+        if (d.leagueLogo != null) band.addView(image(c, d.leagueLogo), new FrameLayout.LayoutParams(d.wideMark ? px(72) : px(27), px(27), Gravity.CENTER));
         bar.addView(band, new LinearLayout.LayoutParams(d.wideMark ? px(150) : px(120), h));
-        View label = label(c, d, 26, h);
+        View label = label(c, d, 23, h);
         bar.addView(label, new LinearLayout.LayoutParams(-2, h));
-        if (d.photo != null && d.podium.isEmpty()) bar.addView(photo(c, d.photo, px(74), h, px(96), px(-11), px(-4)), new LinearLayout.LayoutParams(px(74), h));
+        if (d.photo != null && d.podium.isEmpty()) bar.addView(photo(c, d.photo, px(66), h, px(86), px(-10), px(-3)), new LinearLayout.LayoutParams(px(66), h));
         if (d.picture != null) {
             LinearLayout.LayoutParams pl = new LinearLayout.LayoutParams(px(80), px(46));
             pl.leftMargin = px(8);
@@ -262,11 +262,11 @@ final class ScoreCard {
             LinearLayout name = new LinearLayout(c);
             name.setGravity(Gravity.CENTER_VERTICAL);
             String big = d.headline != null ? d.headline : (d.first.isEmpty() ? "" : d.first + " ") + titleCase(d.last);
-            TextView bigText = text(c, big, d.headline != null ? 21 : 24, d.dark ? 0xFFFFFFFF : NAVY, outfit(c, d.headline != null ? 800 : 900));
+            TextView bigText = text(c, big, d.headline != null ? 19 : 22, d.dark ? 0xFFFFFFFF : NAVY, outfit(c, d.headline != null ? 800 : 900));
             if (d.headline != null) bigText.setMaxWidth(px(1000));
             name.addView(bigText);
             if (!d.line.isEmpty()) {
-                TextView small = text(c, d.line, 18, d.dark ? 0xCCFFFFFF : 0xCC151A63, outfit(c, 600));
+                TextView small = text(c, d.line, 16, d.dark ? 0xCCFFFFFF : 0xCC151A63, outfit(c, 600));
                 LinearLayout.LayoutParams sl = new LinearLayout.LayoutParams(-2, -2);
                 sl.leftMargin = px(10);
                 name.addView(small, sl);
@@ -302,12 +302,12 @@ final class ScoreCard {
         bar.addView(spacer, new LinearLayout.LayoutParams(0, 1, 1f));
         if (d.score != null) {
             if (d.homeName != null) bar.addView(text(c, d.homeName, 20, NAVY, outfit(c, 700)), sideName(true));
-            bar.addView(scoreBlock(c, d, h, 32, 28), new LinearLayout.LayoutParams(-2, h));
+            bar.addView(scoreBlock(c, d, h, 28, 25), new LinearLayout.LayoutParams(-2, h));
             if (d.awayName != null) bar.addView(text(c, d.awayName, 20, NAVY, outfit(c, 700)), sideName(false));
         } else if (d.method != null) {
-            bar.addView(scoreBlock(c, d, h, 32, 28), new LinearLayout.LayoutParams(-2, h));
+            bar.addView(scoreBlock(c, d, h, 28, 25), new LinearLayout.LayoutParams(-2, h));
         }
-        if (d.watch != null) bar.addView(watchBlock(c, d, h, 18, 13), new LinearLayout.LayoutParams(-2, h));
+        if (d.watch != null) bar.addView(watchBlock(c, d, h, 16, 12), new LinearLayout.LayoutParams(-2, h));
 
         FrameLayout box = new FrameLayout(c);
         box.setOutlineProvider(new ViewOutlineProvider() {
@@ -345,8 +345,8 @@ final class ScoreCard {
         LinearLayout v = new LinearLayout(c);
         v.setOrientation(LinearLayout.VERTICAL);
         v.setGravity(Gravity.CENTER_VERTICAL);
-        v.setPadding(px(16), 0, px(24), 0);
-        v.setBackground(new Slant(d.labelColour, px(16), false));
+        v.setPadding(px(14), 0, px(21), 0);
+        v.setBackground(new Slant(d.labelColour, px(14), false));
         if ("red".equals(d.kind)) {
             // The card itself, held up: it gives a little shake as the label lands.
             LinearLayout row = new LinearLayout(c);
@@ -367,7 +367,7 @@ final class ScoreCard {
             v.addView(text(c, d.label, size, 0xFFFFFFFF, outfit(c, 900)));
         }
         if (d.labelSmall != null) {
-            TextView s = text(c, d.labelSmall, 11, 0xD9FFFFFF, Typeface.create("sans-serif-condensed", Typeface.BOLD));
+            TextView s = text(c, d.labelSmall, 10, 0xD9FFFFFF, Typeface.create("sans-serif-condensed", Typeface.BOLD));
             s.setLetterSpacing(0.16f);
             v.addView(s);
         }
@@ -390,7 +390,7 @@ final class ScoreCard {
     /** A news picture, cropped to fill its box, with rounded corners. */
     private static View picture(Context c, Bitmap b, int radius) {
         ImageView i = new ImageView(c);
-        i.setImageBitmap(b);
+        i.setImageBitmap(sharp(b));
         i.setScaleType(ImageView.ScaleType.CENTER_CROP);
         i.setOutlineProvider(new ViewOutlineProvider() {
             @Override public void getOutline(View v, Outline o) { o.setRoundRect(0, 0, v.getWidth(), v.getHeight(), radius); }
@@ -404,7 +404,7 @@ final class ScoreCard {
         FrameLayout f = new FrameLayout(c);
         f.setClipChildren(true);
         ImageView i = new ImageView(c);
-        i.setImageBitmap(b);
+        i.setImageBitmap(sharp(b));
         i.setScaleType(ImageView.ScaleType.FIT_START);
         FrameLayout.LayoutParams il = new FrameLayout.LayoutParams(imageW, imageW);
         il.leftMargin = dx;
@@ -418,7 +418,7 @@ final class ScoreCard {
         v.setOrientation(LinearLayout.VERTICAL);
         int ink = d.dark ? 0xFFFFFFFF : NAVY;
         if (d.headline != null) {
-            TextView head = text(c, d.headline, 17, ink, outfit(c, 800));
+            TextView head = text(c, d.headline, 15.5f, ink, outfit(c, 800));
             head.setSingleLine(false);
             head.setMaxLines(2);
             head.setMaxWidth(px(470));
@@ -471,9 +471,9 @@ final class ScoreCard {
             return v;
         }
         if (d.f1) {
-            v.addView(text(c, d.position == null ? "" : d.position, 24, 0xFFFFFFFF, outfit(c, 900)));
+            v.addView(text(c, d.position == null ? "" : d.position, 22, 0xFFFFFFFF, outfit(c, 900)));
             if (d.teamLogo != null) {
-                LinearLayout.LayoutParams tl = new LinearLayout.LayoutParams(px(40), px(40));
+                LinearLayout.LayoutParams tl = new LinearLayout.LayoutParams(px(34), px(34));
                 tl.leftMargin = px(10);
                 v.addView(image(c, d.teamLogo), tl);
             }
@@ -543,20 +543,20 @@ final class ScoreCard {
         LinearLayout v = new LinearLayout(c);
         v.setGravity(Gravity.CENTER_VERTICAL);
         v.setPadding(px(10), 0, px(10), 0);
-        if (!((String) p[0]).isEmpty()) v.addView(text(c, (String) p[0], 22, 0xFFFFFFFF, outfit(c, 900)), new LinearLayout.LayoutParams(px(26), -2));
-        if (p[1] != null) v.addView(photo(c, (Bitmap) p[1], px(62), h, px(90), px(-14), px(2)), new LinearLayout.LayoutParams(px(62), h));
+        if (!((String) p[0]).isEmpty()) v.addView(text(c, (String) p[0], 20, 0xFFFFFFFF, outfit(c, 900)), new LinearLayout.LayoutParams(px(23), -2));
+        if (p[1] != null) v.addView(photo(c, (Bitmap) p[1], px(54), h, px(78), px(-12), px(2)), new LinearLayout.LayoutParams(px(54), h));
         LinearLayout col = new LinearLayout(c);
         col.setOrientation(LinearLayout.VERTICAL);
         LinearLayout top = new LinearLayout(c);
         top.setGravity(Gravity.CENTER_VERTICAL);
-        if (p[2] != null) top.addView(image(c, (Bitmap) p[2]), new LinearLayout.LayoutParams(px(24), px(24)));
-        TextView n = text(c, ((String) p[3]).toUpperCase(java.util.Locale.UK), 18, 0xFFFFFFFF, outfit(c, 800));
+        if (p[2] != null) top.addView(image(c, (Bitmap) p[2]), new LinearLayout.LayoutParams(px(22), px(22)));
+        TextView n = text(c, ((String) p[3]).toUpperCase(java.util.Locale.UK), 16, 0xFFFFFFFF, outfit(c, 800));
         LinearLayout.LayoutParams nl = new LinearLayout.LayoutParams(-2, -2);
         nl.leftMargin = px(6);
         top.addView(n, nl);
         col.addView(top);
         if (p[4] != null) {
-            TextView g = text(c, (String) p[4], 12, 0xB3FFFFFF, outfit(c, 600));
+            TextView g = text(c, (String) p[4], 11, 0xB3FFFFFF, outfit(c, 600));
             LinearLayout.LayoutParams gl = new LinearLayout.LayoutParams(-2, -2);
             gl.leftMargin = px(30);
             col.addView(g, gl);
@@ -704,9 +704,18 @@ final class ScoreCard {
 
     // ---- small helpers -------------------------------------------------------------------------------------------
 
+    /**
+     * A picture drawn small from a bigger one (a crest, a logo, a player) stays sharp: with mip-maps the graphics chip
+     * scales it down smoothly, where plain filtering at a quarter of its size leaves it jagged and shimmering.
+     */
+    private static Bitmap sharp(Bitmap b) {
+        if (b != null) b.setHasMipMap(true);
+        return b;
+    }
+
     private static ImageView image(Context c, Bitmap b) {
         ImageView v = new ImageView(c);
-        v.setImageBitmap(b);
+        v.setImageBitmap(sharp(b));
         v.setScaleType(ImageView.ScaleType.FIT_CENTER);
         return v;
     }
