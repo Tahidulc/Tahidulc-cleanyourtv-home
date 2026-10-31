@@ -1155,6 +1155,8 @@ public class GoalWatchService extends Service {
             g.homeLogo = "https://a.espncdn.com/i/teamlogos/soccer/500/364.png";
             g.awayLogo = "https://a.espncdn.com/i/teamlogos/soccer/500/359.png";
             g.tvAt = 1_793_554_200_000L;
+            // Both in red: Arsenal's second colour for the card's "Away kit".
+            g.homeColor = 0xFFC8102E; g.awayColor = 0xFFEF0107; g.awayAlt = 0xFF0B1E4B;
             enqueueReminder(g);
         }
         io.execute(() -> {
@@ -1244,6 +1246,12 @@ public class GoalWatchService extends Service {
                 live.add(new Pic(g.awayLogo)); live.add(4); live.add(bold(g.away)); live.add(14);
                 live.add(bold("📺  LIVE ON")); live.add(8); live.add(new Chip(tv.logo, tv.name));
             }
+            // The line-ups out: Sky's line-up card, small in the top right, in place of the pill and its pages.
+            if (sides != null && Config.themeFlag(this, "lineup_card", true)) {
+                LineupCard.Data card = lineupCard(g, sides, tv, channels);
+                main.post(() -> LineupCard.show(this, card));
+                return;
+            }
             List<Object> ready = resolve(parts, px);
             List<Object> livePage = live == null ? null : resolve(live, px);
             // Every picture at once, and no more than fifteen seconds for all of them: on a slow connection a player
@@ -1280,6 +1288,84 @@ public class GoalWatchService extends Service {
                 showNext();
             });
         });
+    }
+
+    /**
+     * Everything the line-up card shows, fetched here off the main thread: each player's whole cut-out and flag
+     * (TheSportsDB; ESPN's headshot, then a figure in the club's colours, when it has none), both crests, the
+     * competition, the channel and what OK watches. The kits: each side in its first colour, unless the away side's
+     * clashes with the home side's, when it wears its second ("Away kit"). No more than twenty seconds for it all.
+     */
+    private LineupCard.Data lineupCard(ScoresTicker.Game g, ScoresTicker.Side[] sides, TvGuide.Channel tv, String[] channels) {
+        LineupCard.Data d = new LineupCard.Data();
+        int logoPx = Math.round(48 * getResources().getDisplayMetrics().density);
+        String leagueLogo = g.leagueLogo != null ? g.leagueLogo : leagueLogoFor(g);
+        if (leagueLogo != null) d.leagueLogo = ScoresTicker.cachedLogo(this, leagueLogo, logoPx);
+        if (g.kickoff > 0) d.kickoff = new java.text.SimpleDateFormat("HH:mm", java.util.Locale.UK).format(new java.util.Date(g.kickoff));
+        if (tv != null) {
+            d.channel = tv.name;
+            if (tv.logo != null) d.channelLogo = ScoresTicker.cachedLogo(this, tv.logo, logoPx * 2);
+        }
+        Object[] w = watchOn(TvGuide.watch(channels, g));
+        if (w != null) {
+            @SuppressWarnings("unchecked") List<String> names = (List<String>) w[0];
+            android.graphics.Bitmap logo = (android.graphics.Bitmap) w[1];
+            d.watch = () -> AppSearchService.tune(this, getString(R.string.scores_open_package), names, logo);
+        }
+        d.remote = Config.themeString(this, "ok_button", "");
+        int homeKit = g.homeColor, awayKit = g.awayColor;
+        boolean clash = homeKit != 0 && awayKit != 0 && LineupCard.distance(homeKit, awayKit) < 120;
+        ExecutorService pool = Executors.newFixedThreadPool(6, LOW);
+        List<java.util.concurrent.Callable<Void>> jobs = new ArrayList<>();
+        // The players are looked up in TheSportsDB one at a time (its free service turns away a burst of them), each
+        // once more after a failure; their pictures then come in parallel. At most forty-five seconds for it all.
+        List<Runnable> lookups = new ArrayList<>();
+        for (int i = 0; i < sides.length; i++) {
+            ScoresTicker.Side side = sides[i];
+            LineupCard.Team t = new LineupCard.Team();
+            boolean away = i == 1;
+            t.name = side.name != null ? side.name : side.abbr;
+            t.formation = side.formation == null ? "" : side.formation;
+            t.kit = away ? (clash && g.awayAlt != 0 ? g.awayAlt : awayKit) : homeKit;
+            t.kitName = away && clash ? "Away kit" : "Home kit";
+            String crest = side.crest != null ? side.crest : away ? g.awayLogo : g.homeLogo;
+            if (crest != null) jobs.add(() -> { t.crest = ScoresTicker.cachedLogo(this, crest, logoPx * 2); return null; });
+            for (String[] p : side.players) {
+                LineupCard.Player pl = new LineupCard.Player();
+                String full = p.length > 4 && p[4] != null ? p[4] : p[0];
+                int sp = full.lastIndexOf(' ');
+                pl.first = sp > 0 ? full.substring(0, sp) : "";
+                pl.last = sp > 0 ? full.substring(sp + 1) : full;
+                pl.number = p[2] == null ? "" : p[2];
+                t.players.add(pl);
+                lookups.add(() -> {
+                    PlayerPhotos.Cutout cut = PlayerPhotos.cutout(this, full, t.name);
+                    if (cut.url == null) {
+                        try { Thread.sleep(1_000); } catch (InterruptedException e) { return; }
+                        cut = PlayerPhotos.cutout(this, full, t.name);
+                    }
+                    PlayerPhotos.Cutout found = cut;
+                    pool.execute(() -> {
+                        pl.photo = PlayerPhotos.photo(this, found);
+                        if (pl.photo == null && p[1] != null) pl.photo = ScoresTicker.cachedLogo(this, p[1], 300);
+                        String flag = LineupCard.flagUrl(found.nation);
+                        if (flag != null) pl.flag = ScoresTicker.cachedLogo(this, flag, 80);
+                    });
+                });
+            }
+            if (away) d.away = t; else d.home = t;
+        }
+        long until = System.currentTimeMillis() + 45_000L;
+        for (java.util.concurrent.Callable<Void> job : jobs) pool.submit(job);
+        for (Runnable lookup : lookups) {
+            if (System.currentTimeMillis() > until) break;
+            lookup.run();
+        }
+        pool.shutdown();
+        try { pool.awaitTermination(Math.max(1, until - System.currentTimeMillis()), java.util.concurrent.TimeUnit.MILLISECONDS); }
+        catch (InterruptedException ignored) { }
+        pool.shutdownNow();
+        return d;
     }
 
     /** adb test only: the elevens of the last Premier League game, so the page can be seen on any day. */

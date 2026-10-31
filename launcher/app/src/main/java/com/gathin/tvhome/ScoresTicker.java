@@ -70,6 +70,8 @@ final class ScoresTicker {
         String homeId, awayId, slug;
         /** The teams' colours (0 when ESPN has none), and while live the match clock in seconds as read at clockAt. */
         int homeColor, awayColor;
+        /** Their second colours (ESPN's alternateColor), for the away side's kit when the first colours clash. */
+        int homeAlt, awayAlt;
         /** The clubs' full names ("Tottenham Hotspur"), for finding the game in a TV guide. */
         String homeName, awayName;
         /** adb tests only: the moment to look up in the TV guide instead of the kick-off. */
@@ -360,6 +362,8 @@ final class ScoresTicker {
         g.homeLogo = home.getJSONObject("team").optString("logo", null);
         g.homeName = home.getJSONObject("team").optString("displayName", null);
         g.awayName = away.getJSONObject("team").optString("displayName", null);
+        g.homeAlt = color(home.getJSONObject("team").optString("alternateColor", ""));
+        g.awayAlt = color(away.getJSONObject("team").optString("alternateColor", ""));
         g.homeColor = color(home.getJSONObject("team").optString("color", ""));
         g.awayColor = color(away.getJSONObject("team").optString("color", ""));
         if (g.awayColor == g.homeColor) g.awayColor = color(away.getJSONObject("team").optString("alternateColor", ""));
