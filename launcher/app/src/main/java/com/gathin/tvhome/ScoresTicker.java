@@ -132,6 +132,8 @@ final class ScoresTicker {
     private final java.util.Set<String> seenGoals = new java.util.HashSet<>();
     private boolean primed;
     private final java.util.ArrayDeque<Object[]> alerts = new java.util.ArrayDeque<>();
+    /** Each game's state at the last read (0 live, 1 to come, 2 finished), for full time. */
+    private final java.util.Map<String, Integer> lastStates = new java.util.HashMap<>();
     private View alertView;
 
     private final Context context;
@@ -286,7 +288,18 @@ final class ScoresTicker {
                 // New goals since the last read become alerts; the first read only learns what is already in.
                 for (Game g : found) {
                     for (String[] goal : g.goals) {
-                        if (seenGoals.add(goal[0]) && primed && alertsOn) alerts.add(new Object[]{g, goal});
+                        if (!seenGoals.add(goal[0]) || !primed) continue;
+                        // With the alerts everywhere, the service's new-style bar announces it instead.
+                        if (alertsOn) alerts.add(new Object[]{g, goal});
+                        else GoalWatchService.fromHome(g, goal);
+                    }
+                }
+                // A game that has just finished: full time, as the new-style bar (with the alerts everywhere).
+                for (Game g : found) {
+                    if (g.id == null) continue;
+                    Integer before = lastStates.put(g.id, g.state);
+                    if (primed && !alertsOn && before != null && before == 0 && g.state == 2) {
+                        GoalWatchService.fromHome(g, new String[]{"FT|" + g.id, "", "", "", "ft"});
                     }
                 }
                 if (!found.isEmpty()) primed = true;

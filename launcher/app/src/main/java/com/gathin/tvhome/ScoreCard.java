@@ -59,6 +59,8 @@ final class ScoreCard {
         Bitmap picture;
         /** The entries are two fighters, a "v" between them. */
         boolean versus;
+        /** F1: the drivers behind the leader, each {"P2", surname, team logo}, shown with their team's logo. */
+        final List<Object[]> others = new ArrayList<>();
         /** goal, red, var, pen, ft, f1 or fight: how it moves. */
         String kind = "";
         /** For a goal: the score before it, which turns over to the new one. */
@@ -265,7 +267,8 @@ final class ScoreCard {
             @Override public void getOutline(View v, Outline o) { o.setRoundRect(0, 0, v.getWidth(), v.getHeight(), r); }
         });
         bar.setClipToOutline(true);
-        bar.setBackground(stageGround(d, px(50), px(30)));
+        // F1: the bar's stripes are a layer of their own that drifts along, like a car going by; others: as drawn.
+        bar.setBackground(d.f1 ? null : stageGround(d, px(50), px(30)));
         FrameLayout band = new FrameLayout(c);
         band.setBackground(bandGround(d, false));
         band.addView(stripes(c, d), new FrameLayout.LayoutParams((d.wideMark ? px(150) : px(120)) + STRIPE_PERIOD_PX(), h));
@@ -291,7 +294,7 @@ final class ScoreCard {
             // (its first line is the scorers, not a first name).
             boolean ft = "ft".equals(d.kind);
             String big = d.headline != null ? d.headline : ft ? d.last : (d.first.isEmpty() ? "" : d.first + " ") + titleCase(d.last);
-            String after = ft ? join(d.first, d.line) : d.line;
+            String after = ft ? join(d.first, d.line) : d.others.isEmpty() ? d.line : "";
             TextView bigText = text(c, big, d.headline != null ? 19 : 22, d.dark ? 0xFFFFFFFF : INK, d.headline != null ? outfit(c, 800) : outfit(c, 600));
             if (d.headline != null) bigText.setMaxWidth(px(1000));
             name.addView(bigText);
@@ -302,6 +305,7 @@ final class ScoreCard {
                 sl.leftMargin = px(10);
                 name.addView(small, sl);
             }
+            for (Object[] o : d.others) name.addView(driver(c, o, 16, 22), driverParams(14));
             LinearLayout.LayoutParams nl = new LinearLayout.LayoutParams(-2, -2);
             nl.leftMargin = px(10);
             bar.addView(name, nl);
@@ -354,6 +358,22 @@ final class ScoreCard {
             @Override public void getOutline(View v, Outline o) { o.setRoundRect(0, 0, v.getWidth(), v.getHeight(), r); }
         });
         box.setClipToOutline(true);
+        if (d.f1) {
+            box.setBackground(new Streaks(0xFF2A2B33, 0xFF16171D, 0, px(50), px(30)));
+            View lines = new View(c);
+            lines.setBackground(new Streaks(0, 0, 0x14FFFFFF, px(50), px(30)));
+            lines.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+            int period = px(50) + px(30);
+            lines.setTranslationX(-period);
+            box.addView(lines, new FrameLayout.LayoutParams(w + period, h));
+            android.animation.ObjectAnimator drift = android.animation.ObjectAnimator.ofFloat(lines, View.TRANSLATION_X, -period, 0f);
+            drift.setDuration(1_600);
+            drift.setRepeatCount(5);
+            drift.setInterpolator(new android.view.animation.LinearInterpolator());
+            moving.add(drift);
+            drift.setStartDelay(300);
+            drift.start();
+        }
         box.addView(bar, new FrameLayout.LayoutParams(w, h));
         FrameLayout win = new FrameLayout(c);
         win.addView(box, new FrameLayout.LayoutParams(w, h));
@@ -505,7 +525,15 @@ final class ScoreCard {
         }
         if (!d.first.isEmpty()) v.addView(text(c, d.first, small + 1, d.dark ? 0xFFFFFFFF : INK_SOFT, outfit(c, 500)), wrap());
         v.addView(text(c, d.last.toUpperCase(java.util.Locale.UK), big, ink, outfit(c, 600)), wrap());
-        if (!d.line.isEmpty()) {
+        if (!d.others.isEmpty()) {
+            // F1: P2 and P3 each with his team's logo.
+            LinearLayout row = new LinearLayout(c);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            for (int i = 0; i < d.others.size(); i++) row.addView(driver(c, d.others.get(i), line, 15), driverParams(i == 0 ? 0 : 10));
+            LinearLayout.LayoutParams rl = new LinearLayout.LayoutParams(-2, -2);
+            rl.topMargin = px(3);
+            v.addView(row, rl);
+        } else if (!d.line.isEmpty()) {
             TextView l = text(c, d.line, line, d.dark ? 0xD9FFFFFF : INK_SOFT, outfit(c, 500));
             LinearLayout.LayoutParams ll = new LinearLayout.LayoutParams(-2, -2);
             ll.topMargin = px(3);
@@ -888,6 +916,29 @@ final class ScoreCard {
         try { t = c.getResources().getFont(res); } catch (RuntimeException e) { t = Typeface.create("sans-serif", weight >= 700 ? Typeface.BOLD : Typeface.NORMAL); }
         outfits.put(weight, t);
         return t;
+    }
+
+    /** One driver behind the leader: "P2", his team's logo, his surname. */
+    private static View driver(Context c, Object[] o, float size, int logoPx) {
+        LinearLayout e = new LinearLayout(c);
+        e.setGravity(Gravity.CENTER_VERTICAL);
+        e.addView(text(c, (String) o[0], size, 0xB3FFFFFF, outfit(c, 600)));
+        if (o[2] != null) {
+            LinearLayout.LayoutParams ll = new LinearLayout.LayoutParams(px(logoPx), px(logoPx));
+            ll.leftMargin = px(5);
+            e.addView(image(c, (Bitmap) o[2]), ll);
+        }
+        TextView n = text(c, (String) o[1], size, 0xFFFFFFFF, outfit(c, 600));
+        LinearLayout.LayoutParams nl = new LinearLayout.LayoutParams(-2, -2);
+        nl.leftMargin = px(5);
+        e.addView(n, nl);
+        return e;
+    }
+
+    private static LinearLayout.LayoutParams driverParams(int left) {
+        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(-2, -2);
+        p.leftMargin = px(left);
+        return p;
     }
 
     /** Two lines' words as one, a dot between them when both have any. */

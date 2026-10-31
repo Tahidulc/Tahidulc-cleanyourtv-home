@@ -305,8 +305,11 @@ public class GoalWatchService extends Service {
                 boolean lapMark = s.isRace() && lastMark != null && s.lap / 10 > lastMark && s.lap > 0;
                 if (newLeader || lapMark) {
                     String others = (s.top.size() > 1 ? "P2 " + s.top.get(1) : "") + (s.top.size() > 2 ? " · P3 " + s.top.get(2) : "");
+                    List<String> behind = new ArrayList<>(s.top.subList(1, Math.min(3, s.top.size())));
+                    List<String> behindLogos = s.logos.size() > 1 ? new ArrayList<>(s.logos.subList(1, Math.min(3, s.logos.size()))) : null;
                     skyF1(s.isRace() && s.lap > 0 ? "LAP " + s.lap : s.label.toUpperCase(java.util.Locale.UK), null, leader,
-                            s.logos.isEmpty() ? null : s.logos.get(0), leader + (s.isRace() ? " leads" : " goes P1"), others, "P1");
+                            s.logos.isEmpty() ? null : s.logos.get(0), leader + (s.isRace() ? " leads" : " goes P1"), others, "P1",
+                            behind, behindLogos);
                 }
             }
         }
@@ -315,6 +318,15 @@ public class GoalWatchService extends Service {
 
     /** One F1 card: the label, the driver (photo and team logo) or the weekend's name, a line, and OK to watch. */
     private void skyF1(String label, String small, String driver, String teamLogo, String big, String line, String position) {
+        skyF1(label, small, driver, teamLogo, big, line, position, null, null);
+    }
+
+    /**
+     * As above, with the drivers behind the leader (P2, P3: surnames and their teams' logo addresses), each shown with
+     * his team's logo in place of the plain line.
+     */
+    private void skyF1(String label, String small, String driver, String teamLogo, String big, String line, String position,
+                       List<String> behind, List<String> behindLogos) {
         io.execute(() -> {
             ScoreCard.Data d = f1Data();
             d.label = label;
@@ -324,6 +336,10 @@ public class GoalWatchService extends Service {
             d.position = position;
             if (driver != null) d.photo = PlayerPhotos.driver(this, driver);
             if (teamLogo != null) d.teamLogo = ScoresTicker.cachedLogo(this, teamLogo, 96);
+            for (int i = 0; behind != null && i < behind.size(); i++) {
+                String logo = behindLogos != null && i < behindLogos.size() ? behindLogos.get(i) : null;
+                d.others.add(new Object[]{"P" + (i + 2), behind.get(i), logo == null ? null : ScoresTicker.cachedLogo(this, logo, 96)});
+            }
             main.post(() -> ScoreCard.show(this, d));
         });
     }
@@ -670,7 +686,8 @@ public class GoalWatchService extends Service {
         main.postDelayed(() -> { ft.state = 2; skyFootball(ft, "ft", "", "", "", "ft"); }, 500);
         List<String> top = Arrays.asList("Norris", "Verstappen", "Piastri");
         List<String> logos = Arrays.asList(F1Results.logo("mclaren"), F1Results.logo("red_bull"), F1Results.logo("mclaren"));
-        skyF1("LAP 34", null, "Norris", logos.get(0), "Norris leads", "P2 Verstappen · P3 Piastri", "P1");
+        skyF1("LAP 34", null, "Norris", logos.get(0), "Norris leads", "P2 Verstappen · P3 Piastri", "P1",
+                top.subList(1, 3), logos.subList(1, 3));
         skyPodium("RESULT", "Mexico City GP", top, logos, "Winner");
     }
 
@@ -1862,7 +1879,23 @@ public class GoalWatchService extends Service {
 
     // ---- the alert ---------------------------------------------------------------------------------
 
+    /** Goals, red cards and full times already announced, by id: Home's score line and this service share it. */
+    private static final Set<String> announced = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+    /**
+     * From Home's score line, for any competition it shows: a goal or full time (goal[4] "ft"), as the new-style bar,
+     * after the same delay as the service's own (the picture runs behind the scores). Once only: a game the service
+     * follows itself is announced by whichever sees it first.
+     */
+    static void fromHome(ScoresTicker.Game g, String[] goal) {
+        GoalWatchService s = self;
+        if (s == null || !s.skyAlerts || g == null || goal == null) return;
+        s.main.postDelayed(() -> s.enqueue(g, goal, false), DELAY_MS);
+    }
+
     private void enqueue(ScoresTicker.Game g, String[] goal, boolean red) {
+        // Once each (Home's score line may have announced it already); adb's samples always show.
+        if (goal[0] != null && !goal[0].startsWith("test") && !announced.add(goal[0])) return;
         if (skyAlerts) {
             skyFootball(g, red ? "red" : "ft".equals(goal[4]) ? "ft" : "goal", goal[1], goal[2], goal[3], goal[4]);
             return;
