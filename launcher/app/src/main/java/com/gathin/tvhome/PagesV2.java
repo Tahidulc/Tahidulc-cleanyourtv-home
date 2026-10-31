@@ -1177,6 +1177,10 @@ final class PagesV2 {
                 view.setClipChildren(false);
                 LinearLayout strip = new LinearLayout(h.a);
                 strip.setOrientation(LinearLayout.HORIZONTAL);
+                // The strip is no wider than the row, but its tiles run on past it and slide in as the row scrolls:
+                // not cut off at its own edge (the row's frame does the cutting), or those further along stay blank.
+                strip.setClipChildren(false);
+                strip.setClipToPadding(false);
                 FrameLayout.LayoutParams sl = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, px(216));
                 sl.leftMargin = px(24);
                 sl.topMargin = px(24);
