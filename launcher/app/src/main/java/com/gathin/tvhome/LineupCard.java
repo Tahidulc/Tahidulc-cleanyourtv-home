@@ -767,8 +767,10 @@ final class LineupCard {
         TextView top = text(c, where.toString(), 14.5f, 0xC7FFFFFF, inter(c, R.font.inter_semibold));
         top.setLetterSpacing(0.01f);
         top.setGravity(Gravity.CENTER);
+        // No channel and no OK (a game no guide lists): the rest sits lower, in the middle, not over an empty foot.
+        int drop = d.channelLogo == null && d.channel == null && d.watch == null ? px(22) : 0;
         FrameLayout.LayoutParams tl = new FrameLayout.LayoutParams(-1, -2, Gravity.TOP);
-        tl.topMargin = px(16);
+        tl.topMargin = px(16) + drop;
         page.addView(top, tl);
 
         LinearLayout vs = new LinearLayout(c);
@@ -796,7 +798,7 @@ final class LineupCard {
         vs.addView(mid, ml);
         vs.addView(club(c, d.away));
         FrameLayout.LayoutParams vl = new FrameLayout.LayoutParams(-1, -2, Gravity.TOP);
-        vl.topMargin = px(42);
+        vl.topMargin = px(42) + drop;
         page.addView(vs, vl);
 
         LinearLayout foot = new LinearLayout(c);
