@@ -356,6 +356,105 @@ public class GoalWatchService extends Service {
         return out;
     }
 
+    // ---- the score cards: fights ------------------------------------------------------------------------------
+
+    /**
+     * A UFC fight as a score card, in the UFC's black and red: a result (the winner head and shoulders, whom he beat,
+     * and how and when in the end block), or a main event starting (both fighters, a "v" between them). Where it is on
+     * with OK while the card still has fights to come. Off the main thread for the pictures.
+     */
+    private void skyFight(MoreSports.Result r, boolean starting) {
+        io.execute(() -> {
+            ScoreCard.Data d = fightData();
+            d.labelColour = 0xFFD20A11;
+            boolean over = !starting && r.mainEvent;
+            if (starting) {
+                d.label = "LIVE";
+                d.labelSmall = "MAIN EVENT";
+                d.versus = true;
+                d.podium.add(fighter(r.winnerId, r.winnerFlag, r.winner));
+                d.podium.add(fighter(r.loserId, r.loserFlag, r.loser));
+            } else {
+                d.label = "RESULT";
+                d.labelSmall = r.mainEvent ? "MAIN EVENT" : r.round == null ? null : r.round.toUpperCase(java.util.Locale.UK);
+                String[] name = split(r.winnerFull != null && !r.winnerFull.isEmpty() ? r.winnerFull : r.winner);
+                d.first = name[0];
+                d.last = name[1];
+                d.line = "def. " + r.loser + (r.event == null || r.event.isEmpty() ? "" : " · " + r.event);
+                d.photo = fighterPhoto(r.winnerId);
+                String[] how = (r.score == null ? "Win" : r.score).split("\\s*·\\s*", 2);
+                d.method = how[0];
+                d.methodSmall = how.length > 1 ? how[1] : null;
+            }
+            if (!over) {
+                Object[] w = watchOn(otherChannel(r));
+                if (w != null) {
+                    @SuppressWarnings("unchecked") List<String> names = (List<String>) w[0];
+                    android.graphics.Bitmap logo = (android.graphics.Bitmap) w[1];
+                    d.channelLogo = logo;
+                    d.channel = names.isEmpty() ? null : names.get(0);
+                    d.watch = () -> AppSearchService.tune(this, getString(R.string.scores_open_package), names, logo);
+                }
+            }
+            main.post(() -> ScoreCard.show(this, d));
+        });
+    }
+
+    /** A boxing headline (BBC Sport) as a score card: its picture, the headline, in black and gold. */
+    private void skyBoxing(String[] item) {
+        io.execute(() -> {
+            ScoreCard.Data d = new ScoreCard.Data();
+            d.dark = true;
+            d.kind = "fight";
+            d.band = 0xFF3A2C0E;
+            d.bandDeep = 0xFF0E0B05;
+            d.wideMark = true;
+            float density = getResources().getDisplayMetrics().density;
+            d.leagueLogo = drawn(Badges.bbc(density, "SPORT", 0xFF8A6100));
+            d.label = "BOXING";
+            d.labelColour = 0xFFB8892B;
+            d.headline = item[1];
+            d.line = "BBC Sport";
+            String pic = item.length > 4 ? item[4] : null;
+            if (pic != null) d.picture = ScoresTicker.cachedLogo(this, pic.replace("/standard/800/", "/standard/240/"), 240);
+            main.post(() -> ScoreCard.show(this, d));
+        });
+    }
+
+    /** What every UFC card has: the UFC's mark in white on black. */
+    private ScoreCard.Data fightData() {
+        ScoreCard.Data d = new ScoreCard.Data();
+        d.dark = true;
+        d.kind = "fight";
+        d.band = 0xFF1C1C1F;
+        d.bandDeep = 0xFF000000;
+        d.wideMark = true;
+        d.block = 0xFFD20A11;
+        android.graphics.Bitmap mark = ScoresTicker.cachedLogo(this, MoreSports.UFC_LOGO, 200);
+        d.leagueLogo = mark == null ? null : white(HomeV2.trim(mark));
+        return d;
+    }
+
+    /** One fighter for a main event's card: {"", head and shoulders, flag, surname, null}. */
+    private Object[] fighter(String id, String flag, String surname) {
+        return new Object[]{"", fighterPhoto(id), flag == null ? null : ScoresTicker.cachedLogo(this, flag, 96), surname, null};
+    }
+
+    /** ESPN's cut-out of a UFC fighter, cropped square to his head and shoulders. */
+    private android.graphics.Bitmap fighterPhoto(String id) {
+        if (id == null || id.isEmpty()) return null;
+        return ScoresTicker.cachedLogo(this, "https://a.espncdn.com/i/headshots/mma/players/full/" + id + ".png", 200);
+    }
+
+    /** A drawable (a badge) as a picture. */
+    private static android.graphics.Bitmap drawn(android.graphics.drawable.Drawable dr) {
+        int w = Math.max(1, dr.getIntrinsicWidth()), h = Math.max(1, dr.getIntrinsicHeight());
+        android.graphics.Bitmap b = android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888);
+        dr.setBounds(0, 0, w, h);
+        dr.draw(new android.graphics.Canvas(b));
+        return b;
+    }
+
     /** adb test: one of each score card, with today's Chelsea v Man United and an F1 race, to see them. */
     private void testSky() {
         ScoresTicker.Game g = new ScoresTicker.Game();
@@ -1117,7 +1216,7 @@ public class GoalWatchService extends Service {
                 String[] st = stories.get(i);
                 // Every lead story is learnt (so a restart does not replay it); only a breaking one pops up.
                 out.add(new String[]{parts.length > 1 ? parts[1].trim() : "NEWS", st[0], st[2] == null ? st[0] : st[2],
-                        fight || breaking(st) ? "pop" : ""});
+                        fight || breaking(st) ? "pop" : "", st[1]});
             }
         }
         return out;
@@ -1148,6 +1247,7 @@ public class GoalWatchService extends Service {
         Set<String> shownFeeds = new HashSet<>();
         for (String[] item : items) {
             if (seenNews.add(item[2]) && newsPrimed && "pop".equals(item[3]) && shownFeeds.add(item[0])) {
+                if (skyAlerts && "BOXING".equals(item[0])) { skyBoxing(item); continue; }
                 List<Object> line = newsLine(item);
                 if (!"BOXING".equals(item[0])) { line.add(1, 8); line.add(2, bold("BREAKING")); }
                 enqueueParts(line, newsSound(item));
@@ -1338,9 +1438,11 @@ public class GoalWatchService extends Service {
         for (MoreSports.Result r : results) {
             String before = otherStates.put(r.id, r.state);
             if (!primedYet || before == null || before.equals(r.state)) continue;
-            if ("post".equals(r.state)) enqueueParts(resultLine(r), otherSound(r), false, otherChannel(r));
-            else if ("pre".equals(before) && "in".equals(r.state) && (r.mainEvent || "Final".equals(r.round))) {
-                enqueueParts(startLine(r), otherSound(r), false, otherChannel(r));
+            boolean card = skyAlerts && "UFC".equals(r.tour);
+            if ("post".equals(r.state)) {
+                if (card) skyFight(r, false); else enqueueParts(resultLine(r), otherSound(r), false, otherChannel(r));
+            } else if ("pre".equals(before) && "in".equals(r.state) && (r.mainEvent || "Final".equals(r.round))) {
+                if (card) skyFight(r, true); else enqueueParts(startLine(r), otherSound(r), false, otherChannel(r));
             }
         }
     }
@@ -1412,6 +1514,7 @@ public class GoalWatchService extends Service {
         MoreSports.Result r = new MoreSports.Result();
         r.id = "test-" + tour; r.tour = tour; r.state = "post"; r.round = round; r.event = event; r.mainEvent = "UFC".equals(tour);
         r.winner = winner; r.loser = loser; r.score = score;
+        if ("Moicano".equals(winner)) { r.winnerId = "3028863"; r.winnerFull = "Renato Moicano"; r.loserId = "5144007"; r.loserFull = "Tom Nolan"; }
         r.winnerFlag = "https://a.espncdn.com/i/teamlogos/countries/500/" + wFlag + ".png";
         r.loserFlag = "https://a.espncdn.com/i/teamlogos/countries/500/" + lFlag + ".png";
         return r;
@@ -1492,8 +1595,10 @@ public class GoalWatchService extends Service {
                 if (final1 == null && (all || "tennis".equals(what))) final1 = sample("ATP", "Djokovic", "srb", "Humbert", "fra", "4-6 6-3 6-4", "Final", "Paris Masters");
                 if (main1 == null && (all || "ufc".equals(what))) main1 = sample("UFC", "Moicano", "bra", "Nolan", "irl", "KO/TKO · R2 3:12", "Main card", "UFC Fight Night");
                 if (final1 != null) enqueueParts(resultLine(final1), otherSound(final1), false, otherChannel(final1));
-                if (main1 != null) { enqueueParts(startLine(main1), otherSound(main1), false, otherChannel(main1)); enqueueParts(resultLine(main1), otherSound(main1), false, otherChannel(main1)); }
-                if (!boxing.isEmpty()) enqueueParts(newsLine(boxing.get(0)), "fight");
+                if (main1 != null && skyAlerts) { skyFight(main1, true); skyFight(main1, false); }
+                else if (main1 != null) { enqueueParts(startLine(main1), otherSound(main1), false, otherChannel(main1)); enqueueParts(resultLine(main1), otherSound(main1), false, otherChannel(main1)); }
+                if (!boxing.isEmpty() && skyAlerts) skyBoxing(boxing.get(0));
+                else if (!boxing.isEmpty()) enqueueParts(newsLine(boxing.get(0)), "fight");
             });
         });
     }

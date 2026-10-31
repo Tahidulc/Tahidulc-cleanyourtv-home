@@ -25,6 +25,8 @@ final class MoreSports {
         String winner, loser, winnerFlag, loserFlag;   // before the end: the two sides, in ESPN's order
         String score;   // tennis: "6-4 7-6"; UFC: "KO/TKO · R1 3:54"
         boolean mainEvent;
+        /** UFC: both fighters' ESPN ids (for their head-and-shoulders cut-outs) and full names, winner first. */
+        String winnerId, loserId, winnerFull, loserFull;
     }
 
     static List<Result> tennis() {
@@ -125,6 +127,10 @@ final class MoreSports {
                     r.state = status.getJSONObject("type").optString("state");
                     r.winner = GoalWatchService.surname(a.getJSONObject("athlete").optString("displayName"));
                     r.loser = GoalWatchService.surname(b.getJSONObject("athlete").optString("displayName"));
+                    r.winnerId = a.optString("id", null);
+                    r.loserId = b.optString("id", null);
+                    r.winnerFull = a.getJSONObject("athlete").optString("displayName");
+                    r.loserFull = b.getJSONObject("athlete").optString("displayName");
                     r.winnerFlag = flag(a.getJSONObject("athlete"));
                     r.loserFlag = flag(b.getJSONObject("athlete"));
                     int round = status.optInt("period", 0);
