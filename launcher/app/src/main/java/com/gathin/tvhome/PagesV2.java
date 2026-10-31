@@ -1216,16 +1216,21 @@ final class PagesV2 {
             // The fixtures as last read, at once (read ahead from Home); then read again and put in place of them.
             List<HomeV2.Tile> have = h.sportTiles;
             if (have != null) showFixtures(have);
-            h.sportIo.execute(() -> {
-                List<HomeV2.Tile> all;
-                try {
-                    all = h.sportNow();
-                } catch (Exception e) {
-                    all = new ArrayList<>();
-                }
-                List<HomeV2.Tile> got = all;
-                h.main.post(() -> { if (alive && (!got.isEmpty() || have == null)) showFixtures(got); });
-            });
+            // While the first read goes on, Sky's tiles as soon as they are known.
+            if (have == null) h.sportEarly = early -> h.main.post(() -> { if (alive && lists.get(1).isEmpty() && lists.get(2).isEmpty()) showFixtures(early); });
+            if (have == null || !h.sportFresh()) {
+                java.util.concurrent.Future<List<HomeV2.Tile>> reading = h.sportFetch();
+                new Thread(() -> {
+                    List<HomeV2.Tile> all;
+                    try {
+                        all = reading.get(120, java.util.concurrent.TimeUnit.SECONDS);
+                    } catch (Exception e) {
+                        all = new ArrayList<>();
+                    }
+                    List<HomeV2.Tile> got = all;
+                    h.main.post(() -> { if (alive && (!got.isEmpty() || have == null)) showFixtures(got); });
+                }, "sport-wait").start();
+            }
             paint();
         }
 
@@ -1245,6 +1250,7 @@ final class PagesV2 {
 
         @Override void close() {
             alive = false;
+            h.sportEarly = null;
             h.main.removeCallbacks(playsTick);
             h.main.removeCallbacks(clockTick);
             h.main.removeCallbacks(scoreTick);

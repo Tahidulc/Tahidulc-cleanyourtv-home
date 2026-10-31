@@ -614,16 +614,31 @@ final class HomeV2 {
     private final Runnable warmPages = () -> {
         PagesV2.warm(this);
         // Sport's fixtures read ahead too (Sky's guide, the playlist, the leagues take a while): ready when it opens.
-        if (sportTiles == null || System.currentTimeMillis() - sportAt > 10 * 60_000L) sportIo.execute(() -> {
-            try { sportNow(); } catch (Exception ignored) { }
-        });
+        if (sportTiles == null || System.currentTimeMillis() - sportAt > 10 * 60_000L) sportFetch();
     };
 
     /** sport(), kept for next time (an empty answer, before the channels are known, is not kept). */
     List<Tile> sportNow() throws Exception {
+        long t0 = System.currentTimeMillis();
         List<Tile> t = sport();
+        android.util.Log.i("Sport", "fixtures read in " + (System.currentTimeMillis() - t0) + " ms: " + t.size() + " tiles");
         if (!t.isEmpty()) { sportTiles = t; sportAt = System.currentTimeMillis(); }
         return t;
+    }
+
+    private java.util.concurrent.Future<List<Tile>> sportFetch;
+    /** Sport's page while open: given Sky's tiles as soon as they are read, before the playlist's and the leagues'. */
+    volatile java.util.function.Consumer<List<Tile>> sportEarly;
+
+    /** The fixtures being read (one read at a time: Sport opening during the read ahead waits for that one). */
+    synchronized java.util.concurrent.Future<List<Tile>> sportFetch() {
+        if (sportFetch == null || sportFetch.isDone()) sportFetch = sportIo.submit(this::sportNow);
+        return sportFetch;
+    }
+
+    /** Whether the fixtures kept were read in the last few minutes (Sport shows them and reads no more). */
+    boolean sportFresh() {
+        return sportTiles != null && System.currentTimeMillis() - sportAt < 3 * 60_000L;
     }
 
     void stop() {
@@ -2009,14 +2024,28 @@ final class HomeV2 {
         }
         List<Tile> out = new ArrayList<>();
         if (ids.length() == 0) return out;
-        long now = System.currentTimeMillis();
+        long now = System.currentTimeMillis(), t0 = now;
+        // Everything read side by side: Sky's three days, the playlist (and its clubs' crests), the leagues' fixtures.
+        // One after another they took most of a minute.
+        ExecutorService ahead = Executors.newFixedThreadPool(5);
+        java.util.concurrent.Future<?> playlist = ahead.submit(() -> PlaylistSport.prepare(this));
+        java.util.concurrent.Future<?> leagues = ahead.submit(PlaylistSport::prepareFixtures);
+        List<java.util.concurrent.Future<String>> days = new ArrayList<>();
+        for (int day = 0; day < 3; day++) {
+            String date = Instant.ofEpochMilli(now).plusSeconds(day * 86_400L).atZone(ZoneOffset.UTC).toLocalDate().format(DateTimeFormatter.BASIC_ISO_DATE);
+            days.add(ahead.submit(() -> get("https://awk.epgsky.com/hawk/linear/schedule/" + date + "/" + ids)));
+        }
         List<Object[]> events = new ArrayList<>();
         // One listing per programme: the same one on a channel and its 4K twin (Main Event and Main Event UHD) is
         // kept on the 4K one.
         Map<String, Integer> seen = new HashMap<>();
-        for (int day = 0; day < 3; day++) {
-            String date = Instant.ofEpochMilli(now).plusSeconds(day * 86_400L).atZone(ZoneOffset.UTC).toLocalDate().format(DateTimeFormatter.BASIC_ISO_DATE);
-            JSONArray sch = new JSONObject(get("https://awk.epgsky.com/hawk/linear/schedule/" + date + "/" + ids)).optJSONArray("schedule");
+        for (java.util.concurrent.Future<String> day : days) {
+            JSONArray sch;
+            try {
+                sch = new JSONObject(day.get(30, java.util.concurrent.TimeUnit.SECONDS)).optJSONArray("schedule");
+            } catch (Exception e) {
+                continue;
+            }
             for (int i = 0; sch != null && i < sch.length(); i++) {
                 JSONObject s = sch.getJSONObject(i);
                 JSONArray ev = s.optJSONArray("events");
@@ -2045,6 +2074,12 @@ final class HomeV2 {
                     .replace("Utd", "United").replace("C. Palace", "Crystal Palace").replace("B. Munich", "Bayern Munich");
             String[] comp = competition(raw);
             t.group = comp[0];
+            // "X v Y" is not always football: cricket, tennis and the rest on their own channels or by their own words.
+            String chan = name.get(sid);
+            if ("football".equals(t.group) && (chan != null && chan.matches("(?i).*\\b(cricket|tennis|golf|f1|racing|darts|nfl|nba)\\b.*")
+                    || raw.matches("(?i).*\\b(wta|atp|tri series|test match|t20|odi|ipl|bbl|nfl|nba|nhl|mlb|darts|snooker|golf|rugby|super league|netball|boxing|ufc)\\b.*"))) {
+                t.group = "other";
+            }
             t.compLogo = comp[1];
             t.image = uuid.isEmpty() ? null : "https://images.metadata.sky.com/pd-image/" + uuid + "/16-9/640";
             t.heroImage = uuid.isEmpty() ? null : "https://images.metadata.sky.com/pd-image/" + uuid + "/16-9/1280";
@@ -2065,8 +2100,17 @@ final class HomeV2 {
             t.ok = () -> tune(ch, logo);
             out.add(t);
         }
+        android.util.Log.i("Sport", "Sky's guide: " + out.size() + " tiles in " + (System.currentTimeMillis() - t0) + " ms");
+        // Sky's tiles on the page now, the rest joining them as they come.
+        java.util.function.Consumer<List<Tile>> early = sportEarly;
+        if (early != null) early.accept(new ArrayList<>(out));
+        try { playlist.get(60, java.util.concurrent.TimeUnit.SECONDS); } catch (Exception ignored) { }
+        android.util.Log.i("Sport", "playlist read by " + (System.currentTimeMillis() - t0) + " ms");
         // The playlist's own games (Kleva TV's list): those Sky's guide does not have, with their broadcaster.
         out.addAll(PlaylistSport.tiles(this, out));
+        try { leagues.get(60, java.util.concurrent.TimeUnit.SECONDS); } catch (Exception ignored) { }
+        android.util.Log.i("Sport", "leagues read by " + (System.currentTimeMillis() - t0) + " ms");
+        ahead.shutdown();
         // Then the leagues' other games over the same days (the Premier League's, Europe's), each with its channel.
         out.addAll(PlaylistSport.leagueTiles(this, out));
         out = PlaylistSport.once(out);

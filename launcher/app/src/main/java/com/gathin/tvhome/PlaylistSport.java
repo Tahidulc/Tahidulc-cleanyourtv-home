@@ -317,13 +317,15 @@ final class PlaylistSport {
 
     /**
      * Whether a tile already shows this game, however its title names the clubs ("Spurs v C. Palace" for Tottenham
-     * Hotspur v Crystal Palace): within twenty minutes of its kick-off, and naming one of its clubs by a word of its own.
+     * Hotspur v Crystal Palace): within two and a half hours of its kick-off, naming one of its clubs by a word of its own.
      */
     static boolean shown(HomeV2.Tile t, String home, String away, long kickoff) {
         if (t.title == null) return false;
         if (same(t.title, home, away)) return true;
-        if (t.start == 0 || Math.abs(t.start - kickoff) > 20 * 60_000L) return false;
-        String title = " " + plain(t.title.replace("Spurs", "Tottenham").replace("Man Utd", "Manchester United").replace("Man City", "Manchester City")
+        // Sky's listing starts with the build-up, up to a couple of hours before kick-off (Chelsea v Man Utd: 11:00 for 12:30).
+        if (t.start == 0 || Math.abs(t.start - kickoff) > 150 * 60_000L) return false;
+        String title = " " + plain(t.title.replace("Spurs", "Tottenham").replace("Man Utd", "Manchester United").replace("Man United", "Manchester United")
+                .replace("Man City", "Manchester City")
                 .replace("Wolves", "Wolverhampton").replace("Nott'm", "Nottingham").replace("PSG", "Paris")) + " ";
         for (String club : new String[]{home, away}) {
             for (String w : plain(club).split(" ")) {
@@ -467,6 +469,25 @@ final class PlaylistSport {
     }
 
     /** Today's and the next two days' games in FIXTURE_LEAGUES, from ESPN, each day and league read side by side. */
+    /** The leagues' fixtures read ahead (sport() starts this beside Sky's guide). */
+    static void prepareFixtures() {
+        fixtures();
+    }
+
+    /** The playlist read and every club's crest (and league) looked up, side by side, ahead of tiles(). */
+    static void prepare(HomeV2 h) {
+        List<Event> all = read(h);
+        java.util.Set<String> clubs = new java.util.LinkedHashSet<>();
+        for (Event e : all) if (e.home != null) { clubs.add(e.home); clubs.add(e.away); }
+        java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(6);
+        List<java.util.concurrent.Future<?>> asked = new ArrayList<>();
+        for (String c : clubs) asked.add(pool.submit(() -> crest(c)));
+        for (java.util.concurrent.Future<?> f : asked) {
+            try { f.get(15, java.util.concurrent.TimeUnit.SECONDS); } catch (Exception ignored) { }
+        }
+        pool.shutdownNow();
+    }
+
     private static synchronized List<ScoresTicker.Game> fixtures() {
         if (fixtures != null && System.currentTimeMillis() - fixturesAt < 15 * 60_000L) return fixtures;
         java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(6);
@@ -529,7 +550,8 @@ final class PlaylistSport {
             HomeV2.Tile t = new HomeV2.Tile();
             t.title = title;
             t.group = "football";
-            t.compLogo = g.leagueLogo;
+            // The competition's own colours, as the Sky tiles have: its white "dark" logo vanished on the corner's white chip.
+            t.compLogo = g.leagueLogo == null ? null : g.leagueLogo.replace("/500-dark/", "/500/");
             boolean on = g.state == 0;
             t.chip = on ? "LIVE NOW" : when.format(Instant.ofEpochMilli(g.kickoff)).toUpperCase(Locale.UK);
             t.channel = name;
