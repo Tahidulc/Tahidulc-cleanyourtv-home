@@ -1,10 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Reads an app's screen: Debrid Stream's, to open its search for a trending tile's title and to note the titles of
      its Continue Watching row as they are highlighted (that app's events only, at most every 400 ms); TiviMate's, to
-     find a tile's channel through its search (its views are marked unimportant, hence the flags). No keys. -->
+     find a tile's channel through its search (its views are marked unimportant, hence the flags); Tuya Smart's, to
+     open a camera's live view (a touch, for a view that takes no click). No keys. -->
 <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
     android:accessibilityFeedbackType="feedbackGeneric"
     android:canRetrieveWindowContent="true"
+    android:canPerformGestures="true"
     android:accessibilityEventTypes="typeViewFocused|typeWindowContentChanged"
     android:accessibilityFlags="flagRetrieveInteractiveWindows|flagIncludeNotImportantViews|flagReportViewIds"
     android:packageNames="com.debridstream.tv"

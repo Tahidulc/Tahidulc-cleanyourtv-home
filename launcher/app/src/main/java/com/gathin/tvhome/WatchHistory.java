@@ -67,6 +67,19 @@ public class WatchHistory extends NotificationListenerService {
         main.post(tick);
     }
 
+    /** Tuya Smart's notifications: a camera's alarm shows over whatever is on (CameraAlert). */
+    @Override public void onNotificationPosted(android.service.notification.StatusBarNotification sbn) {
+        if (sbn == null) return;
+        // Tuya Smart's, and a stand-in posted from adb to check the card (cmd notification post ... camera-test ...).
+        boolean test = "com.android.shell".equals(sbn.getPackageName()) && "camera-test".equals(sbn.getTag());
+        if (!test && !CameraAlert.TUYA.equals(sbn.getPackageName())) return;
+        try {
+            CameraAlert.posted(this, sbn);
+        } catch (RuntimeException e) {
+            android.util.Log.w("Camera", "alert: " + e);
+        }
+    }
+
     @Override public void onListenerDisconnected() {
         main.removeCallbacks(tick);
         if (sessions != null) sessions.removeOnActiveSessionsChangedListener(changed);

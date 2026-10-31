@@ -422,6 +422,16 @@ final class HomeV2 {
             topButton(bar, bulb, px(66), () -> LightsPanel.show(a, bulb, Config.themeStrings(a, "lights_rooms",
                     Arrays.asList(a.getResources().getStringArray(R.array.lights_rooms))), smartHome));
         }
+        // The camera (Tuya Smart's): its live view, where Tuya Smart is on this TV. The first of the theme's cameras.
+        if (installed(CameraAlert.TUYA)) {
+            ImageView cam = icon(R.drawable.ic_camera);
+            int cp = px(17);
+            cam.setPadding(cp, cp, cp, cp);
+            topButton(bar, cam, px(66), () -> {
+                List<String> cams = CameraAlert.cameras(a);
+                CameraAlert.live(a, cams.isEmpty() ? null : cams.get(0), null);
+            });
+        }
         ImageView mic = icon(R.drawable.ic_mic);
         topButton(bar, mic, px(66), () -> open(new Intent(Intent.ACTION_ASSIST)));
         ImageView gear = icon(R.drawable.ic_settings);

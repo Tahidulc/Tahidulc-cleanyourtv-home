@@ -1796,7 +1796,7 @@ public class GoalWatchService extends Service {
      * The remote's OK button, drawn small for "Press [OK] to watch": the TCL's black round button with OK in white in
      * its dark ring; the Google TV Streamer's plain pale button in its pale ring.
      */
-    private static android.graphics.Bitmap okButton(String remote, float d, boolean onDark) {
+    static android.graphics.Bitmap okButton(String remote, float d, boolean onDark) {
         int s = Math.round(22 * d);
         android.graphics.Bitmap b = android.graphics.Bitmap.createBitmap(s, s, android.graphics.Bitmap.Config.ARGB_8888);
         android.graphics.Canvas c = new android.graphics.Canvas(b);

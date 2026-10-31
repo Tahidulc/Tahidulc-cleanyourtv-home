@@ -458,6 +458,7 @@ public class AppSearchService extends AccessibilityService {
         candidates = java.util.Collections.singletonList(q);
         candidate = 0;
         kleva = false;
+        camera = false;
         tried.clear();
         pickedText = null;
         spellings = spellings(q);
@@ -634,6 +635,7 @@ public class AppSearchService extends AccessibilityService {
         if (root == null || root.getPackageName() == null || !target.contentEquals(root.getPackageName())) return true;
         if (channel) return tuneStep(root);
         if (kleva) return klevaStep(root);
+        if (camera) return cameraStep(root);
         AccessibilityNodeInfo box = find(root, Kind.EDIT);
         if (opened) {
             // Picked: done once the search has given way to the title's page.
@@ -685,6 +687,80 @@ public class AppSearchService extends AccessibilityService {
         if (s.equals(lastTrace)) return;
         lastTrace = s;
         android.util.Log.i(TAG, s);
+    }
+
+    // ---- Tuya Smart: a camera's live view -----------------------------------------------------------------------
+
+    /** Opening a camera in Tuya Smart (query is the camera's name). */
+    private boolean camera;
+
+    /** The app in front, as the helper sees it; null without the helper. */
+    static String front() {
+        AppSearchService s = instance;
+        if (s == null) return null;
+        try {
+            AccessibilityNodeInfo root = s.getRootInActiveWindow();
+            return root == null || root.getPackageName() == null ? null : root.getPackageName().toString();
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
+    /**
+     * A camera's live view: Tuya Smart opened, and the camera of that name picked from its list of devices, behind
+     * the cover. False when Tuya Smart is not on this TV; without the helper it opens as it was.
+     */
+    static boolean camera(Context c, String name) {
+        Intent open = c.getPackageManager().getLaunchIntentForPackage(CameraAlert.TUYA);
+        if (open == null) return false;
+        open.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        try {
+            c.startActivity(open);
+        } catch (Exception e) {
+            return false;
+        }
+        if (instance != null && name != null && !name.trim().isEmpty()) {
+            instance.start(CameraAlert.TUYA, name.trim());
+            instance.camera = true;
+            instance.deadline = System.currentTimeMillis() + 20_000L;
+            instance.showCover(null, null, name.trim(), LIVE, 5_000L);
+        }
+        return true;
+    }
+
+    private boolean cameraStep(AccessibilityNodeInfo root) {
+        trace("camera: picked=" + opened);
+        // Picked: the camera's page opens and starts its picture; the cover goes once it has had the time.
+        if (opened) {
+            if (System.currentTimeMillis() - pickedAt > 2_500L) { hideDelay = 300; return false; }
+            return true;
+        }
+        for (AccessibilityNodeInfo n : root.findAccessibilityNodeInfosByText(query)) {
+            if (n.getText() == null || !n.isVisibleToUser() || !query.equalsIgnoreCase(n.getText().toString().trim())) continue;
+            if (!clickable(n)) tap(n);
+            else click(n);
+            opened = true;
+            pickedAt = System.currentTimeMillis();
+            return true;
+        }
+        return true;
+    }
+
+    /** Whether the node, or one above it, takes a click. */
+    private static boolean clickable(AccessibilityNodeInfo n) {
+        for (AccessibilityNodeInfo at = n; at != null; at = at.getParent()) if (at.isClickable()) return true;
+        return false;
+    }
+
+    /** A touch in the middle of the node, for a view that takes no click from here. */
+    private void tap(AccessibilityNodeInfo n) {
+        android.graphics.Rect r = new android.graphics.Rect();
+        n.getBoundsInScreen(r);
+        if (r.isEmpty()) return;
+        android.graphics.Path p = new android.graphics.Path();
+        p.moveTo(r.exactCenterX(), r.exactCenterY());
+        dispatchGesture(new android.accessibilityservice.GestureDescription.Builder()
+                .addStroke(new android.accessibilityservice.GestureDescription.StrokeDescription(p, 0, 60)).build(), null, null);
     }
 
     // ---- Kleva TV: a game found by its search and played ---------------------------------------------------------
