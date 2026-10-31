@@ -1001,6 +1001,27 @@ public class GoalWatchService extends Service {
             });
         }
         if (intent != null && intent.hasExtra("test_sky")) testSky();
+        if (intent != null && intent.hasExtra("test_kickoff_card")) {
+            // adb only: the kick-off as a score card (as when the line-ups are not out yet), Liverpool v Arsenal.
+            ScoresTicker.Game g = new ScoresTicker.Game();
+            g.id = "kickoff-card-test"; g.league = "PL"; g.slug = "eng.1"; g.home = "LIV"; g.away = "ARS";
+            g.homeName = "Liverpool"; g.awayName = "Arsenal"; g.venue = "Anfield"; g.state = 1;
+            g.homeLogo = "https://a.espncdn.com/i/teamlogos/soccer/500/364.png";
+            g.awayLogo = "https://a.espncdn.com/i/teamlogos/soccer/500/359.png";
+            g.leagueLogo = "https://a.espncdn.com/i/leaguelogos/soccer/500-dark/23.png";
+            g.kickoff = System.currentTimeMillis() + 15 * 60_000L;
+            io.execute(() -> {
+                ScoreCard.Data d = kickoffCard(g);
+                main.post(() -> ScoreCard.show(this, d));
+            });
+        }
+        if (intent != null && intent.hasExtra("test_reminder")) {
+            // adb only: an event reminder from the Sport page, as a STARTING card.
+            try {
+                skyReminder(new JSONObject().put("t", intent.getStringExtra("test_reminder"))
+                        .put("c", "Sky Sports Main Event").put("l", ScoresTicker.skyLogo("1301", null)), 5);
+            } catch (org.json.JSONException ignored) { }
+        }
         if (intent != null && intent.hasExtra("test_fixture")) {
             // adb only: "slug|tag|HOME|AWAY|ground": the line-up card for two clubs as if kicking off in 15 minutes, each
             // in its latest eleven in that competition (the last 30 days), e.g. "esp.1|LALIGA|BAR|RMA|Spotify Camp Nou".

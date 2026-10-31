@@ -960,12 +960,17 @@ final class LineupCard {
         LinearLayout.LayoutParams wl = new LinearLayout.LayoutParams(-1, -2);
         wl.topMargin = px(10);
         mid.addView(when, wl);
+        // "Starts in 15 mins" fades in slowly once the crests are in, then the kick-off time under it.
+        when.setAlpha(0f);
+        when.animate().alpha(1f).setStartDelay(950).setDuration(1_400).setInterpolator(new DecelerateInterpolator(1.2f)).withLayer().start();
         if (d.kickoff != null) {
             TextView ko = text(c, "Kick-off " + d.kickoff, 13.5f, 0xB3FFFFFF, inter(c, R.font.inter_regular));
             ko.setGravity(Gravity.CENTER);
             LinearLayout.LayoutParams kol = new LinearLayout.LayoutParams(-1, -2);
             kol.topMargin = px(4);
             mid.addView(ko, kol);
+            ko.setAlpha(0f);
+            ko.animate().alpha(1f).setStartDelay(1_650).setDuration(1_200).setInterpolator(new DecelerateInterpolator(1.2f)).withLayer().start();
         }
         View ch = channel(c, d, 26);
         if (ch != null || d.watch != null) {

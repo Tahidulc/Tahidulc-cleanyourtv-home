@@ -390,6 +390,12 @@ final class ScoreCard {
             TextView s = text(c, d.labelSmall, 10, 0xD9FFFFFF, Typeface.create("sans-serif-condensed", Typeface.BOLD));
             s.setLetterSpacing(0.16f);
             v.addView(s, wrap());
+            // The kick-off's "IN 15 MIN" fades in slowly after the card is in.
+            if ("kickoff".equals(d.kind) || "reminder".equals(d.kind)) {
+                s.setAlpha(0f);
+                s.animate().alpha(1f).setStartDelay(700).setDuration(1_400)
+                        .setInterpolator(new android.view.animation.DecelerateInterpolator(1.2f)).withLayer().start();
+            }
         }
         return v;
     }
