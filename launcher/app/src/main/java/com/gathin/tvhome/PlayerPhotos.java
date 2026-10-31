@@ -54,10 +54,15 @@ final class PlayerPhotos {
     static Cutout cutout(Context ctx, String fullName, String team) {
         Cutout out = new Cutout();
         if (fullName == null || fullName.isEmpty()) return out;
-        SharedPreferences cache = ctx.getSharedPreferences("player_cutouts2", Context.MODE_PRIVATE);
+        // "3": names and clubs now matched across spellings (Groß, "and" for "&"), so the old misses are asked again.
+        SharedPreferences cache = ctx.getSharedPreferences("player_cutouts3", Context.MODE_PRIVATE);
         String kept = cache.getString(fullName, null);
         if (kept == null) {
             String[] found = lookUpWhole(fullName, team);
+            // Refused for the name as written ("Diego Gómez" once came back "not found", a refusal its servers then
+            // kept for that address): the same name without accents is another address, and finds him just the same.
+            String ascii = java.text.Normalizer.normalize(fullName, java.text.Normalizer.Form.NFD).replaceAll("\\p{M}", "");
+            if (found == null && !ascii.equals(fullName)) found = lookUpWhole(ascii, team);
             if (found == null) return out;   // the lookup failed: try again another time
             kept = found[0] + "\t" + found[1];
             cache.edit().putString(fullName, kept).apply();
@@ -80,7 +85,7 @@ final class PlayerPhotos {
                 if (!"Soccer".equalsIgnoreCase(p.optString("strSport"))) continue;
                 String img = p.optString("strCutout", "");
                 if ("null".equals(img)) img = "";
-                boolean sameClub = team != null && !team.isEmpty() && p.optString("strTeam", "").contains(team);
+                boolean sameClub = sameClub(p.optString("strTeam", ""), team);
                 // Only him: the same club, or the same name ("Ben White" also finds Benjamin Whiteman).
                 if (!sameClub && !sameName(name, p.optString("strPlayer", ""))) continue;
                 String nation = p.optString("strNationality", "");
@@ -90,6 +95,7 @@ final class PlayerPhotos {
             }
             return best;
         } catch (Exception e) {
+            android.util.Log.w("Photos", "lookup failed for " + name + ": " + e);
             return null;
         }
     }
@@ -107,7 +113,7 @@ final class PlayerPhotos {
                 String img = p.optString("strCutout", "");
                 if (img.isEmpty() || "null".equals(img)) img = p.optString("strThumb", "");
                 if (img.isEmpty() || "null".equals(img)) continue;
-                boolean sameClub = team != null && !team.isEmpty() && p.optString("strTeam", "").contains(team);
+                boolean sameClub = sameClub(p.optString("strTeam", ""), team);
                 if (!sameClub && !sameName(name, p.optString("strPlayer", ""))) continue;
                 if (best.isEmpty() || sameClub) best = img + "/tiny";
                 if (sameClub) break;
@@ -290,8 +296,25 @@ final class PlayerPhotos {
                 || x[0].startsWith(y[0]) || y[0].startsWith(x[0]));
     }
 
+    /**
+     * One club named two ways: TheSportsDB's "Brighton and Hove Albion" for ESPN's "Brighton & Hove Albion", with or
+     * without "FC" or "AFC".
+     */
+    static boolean sameClub(String theirs, String ours) {
+        if (theirs == null || ours == null || theirs.isEmpty() || ours.isEmpty()) return false;
+        String a = club(theirs), b = club(ours);
+        return !a.isEmpty() && !b.isEmpty() && (a.contains(b) || b.contains(a));
+    }
+
+    private static String club(String s) {
+        return (" " + plain(s.replace("&", " and ")) + " ").replaceAll(" (a?fc|cf|sc) ", " ").trim();
+    }
+
     private static String plain(String s) {
-        String n = java.text.Normalizer.normalize(s == null ? "" : s, java.text.Normalizer.Form.NFD).replaceAll("\\p{M}", "");
+        // Letters that do not come apart into a plain one and a mark: Groß is Gross, Højlund Hojlund.
+        String t = (s == null ? "" : s).replace("ß", "ss").replace("ø", "o").replace("Ø", "O").replace("æ", "ae")
+                .replace("Æ", "Ae").replace("œ", "oe").replace("ł", "l").replace("Ł", "L").replace("đ", "d").replace("ı", "i");
+        String n = java.text.Normalizer.normalize(t, java.text.Normalizer.Form.NFD).replaceAll("\\p{M}", "");
         return n.toLowerCase(java.util.Locale.ROOT).replaceAll("[^a-z ]", " ").replaceAll("\\s+", " ").trim();
     }
 
@@ -303,7 +326,22 @@ final class PlayerPhotos {
         return Bitmap.createBitmap(b, Math.max(0, x), 0, Math.min(side, w), Math.min(side, h));
     }
 
+    /** When the last TheSportsDB lookup went out: its free key answers about thirty a minute, so they go 2.1 s apart. */
+    private static long lastLookup;
+
+    private static void pace(String url) {
+        if (!url.contains("thesportsdb.com/api/")) return;
+        synchronized (PlayerPhotos.class) {
+            long wait = lastLookup + 2_100L - System.currentTimeMillis();
+            if (wait > 0) {
+                try { Thread.sleep(wait); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+            }
+            lastLookup = System.currentTimeMillis();
+        }
+    }
+
     private static String get(String url) throws Exception {
+        pace(url);
         HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
         conn.setConnectTimeout(6000);
         conn.setReadTimeout(8000);

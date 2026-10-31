@@ -356,6 +356,47 @@ public class GoalWatchService extends Service {
         return out;
     }
 
+    // ---- the line-up card's photos, ahead of it -----------------------------------------------------------------
+
+    /** Games whose line-ups' photos are fetched (or being fetched), and when a game without line-ups is asked again. */
+    private final Set<String> photosFetched = java.util.concurrent.ConcurrentHashMap.newKeySet();
+    private final Map<String, Long> lineupsAskAgain = new java.util.concurrent.ConcurrentHashMap<>();
+    private final ExecutorService photoFetch = Executors.newSingleThreadExecutor(LOW);
+
+    /**
+     * The players' photos, fetched as soon as a game's line-ups are out (about an hour before kick-off), a lookup at a
+     * time at TheSportsDB's pace, so the line-up card 15 minutes before has them all at once. Off the main thread.
+     */
+    private void prefetchLineups(List<ScoresTicker.Game> games, long now) {
+        for (ScoresTicker.Game g : games) {
+            if (g.id == null || g.state != 1 || g.kickoff - now <= 0 || g.kickoff - now > 80 * 60_000L) continue;
+            if (photosFetched.contains(g.id) || now < lineupsAskAgain.getOrDefault(g.id, 0L) || !lineupGame(g)) continue;
+            photosFetched.add(g.id);
+            photoFetch.execute(() -> {
+                ScoresTicker.Side[] sides = ScoresTicker.lineups(g);
+                if (sides == null) {
+                    // Not out yet: asked again in five minutes.
+                    lineupsAskAgain.put(g.id, System.currentTimeMillis() + 5 * 60_000L);
+                    photosFetched.remove(g.id);
+                    return;
+                }
+                for (ScoresTicker.Side side : sides) {
+                    for (String[] p : side.players) {
+                        String full = p.length > 4 && p[4] != null ? p[4] : p[0];
+                        PlayerPhotos.Cutout cut = PlayerPhotos.cutout(this, full, side.name);
+                        // Refused (TheSportsDB's limit): a minute's rest, up to three times.
+                        for (int tries = 0; cut.url == null && tries < 3; tries++) {
+                            long wait = 60_000L;
+                            try { Thread.sleep(wait); } catch (InterruptedException e) { return; }
+                            cut = PlayerPhotos.cutout(this, full, side.name);
+                        }
+                        PlayerPhotos.photo(this, cut);   // the picture itself into the cache too
+                    }
+                }
+            });
+        }
+    }
+
     // ---- the score cards: kick-off and reminders ---------------------------------------------------------------
 
     /**
@@ -912,6 +953,21 @@ public class GoalWatchService extends Service {
             });
         }
         if (intent != null && intent.hasExtra("test_sky")) testSky();
+        if (intent != null && intent.hasExtra("test_lineup")) {
+            // adb only: the line-up card (or the kick-off card) for a real game today, found by a club's name.
+            String who = intent.getStringExtra("test_lineup").toLowerCase(java.util.Locale.ROOT);
+            List<String> leagues = new ArrayList<>(Arrays.asList(getResources().getStringArray(R.array.goal_alert_leagues)));
+            leagues.addAll(Arrays.asList(LINEUP_LEAGUES));
+            io.execute(() -> {
+                for (ScoresTicker.Game g : ScoresTicker.load(leagues.toArray(new String[0]))) {
+                    String names = ((g.homeName == null ? "" : g.homeName) + " " + (g.awayName == null ? "" : g.awayName)).toLowerCase(java.util.Locale.ROOT);
+                    if (!names.contains(who)) continue;
+                    android.util.Log.i("Sport", "test line-up " + g.homeName + " v " + g.awayName);
+                    main.post(() -> enqueueReminder(g));
+                    return;
+                }
+            });
+        }
         if (intent != null && intent.hasExtra("test_goal")) {
             // adb only (the service needs DUMP from outside): one sample alert now, to check the look over an app.
             ScoresTicker.Game g = new ScoresTicker.Game();
@@ -1064,6 +1120,7 @@ public class GoalWatchService extends Service {
             List<ScoresTicker.Game> games = new ArrayList<>(byId.values());
             // The Premier League's clubs, for the Champions League games with line-ups (read here, off the main thread).
             if (kickoffReminders) englishClubs = ScoresTicker.englishClubs();
+            if (kickoffReminders && Config.themeFlag(this, "lineup_card", false)) prefetchLineups(games, now);
             Map<String, List<String[]>> incidents = new HashMap<>();
             if (incidentsNow) for (ScoresTicker.Game g : games) if (g.state == 0) incidents.put(g.id, ScoresTicker.incidents(g));
             List<MoreSports.Result> tennis = tennisNow ? MoreSports.tennis() : null;
@@ -1860,9 +1917,11 @@ public class GoalWatchService extends Service {
                 pl.position = p.length > 3 && p[3] != null ? p[3] : "";
                 t.players.add(pl);
                 lookups.add(() -> {
+                    // Mostly already fetched when the line-ups came out (prefetchLineups); a refused lookup (url null,
+                    // not remembered) is asked once more.
                     PlayerPhotos.Cutout cut = PlayerPhotos.cutout(this, full, t.name);
                     if (cut.url == null) {
-                        try { Thread.sleep(1_000); } catch (InterruptedException e) { return; }
+                        try { Thread.sleep(2_000); } catch (InterruptedException e) { return; }
                         cut = PlayerPhotos.cutout(this, full, t.name);
                     }
                     PlayerPhotos.Cutout found = cut;
@@ -1884,9 +1943,16 @@ public class GoalWatchService extends Service {
             }
             if (away) d.away = t; else d.home = t;
         }
-        long until = System.currentTimeMillis() + 45_000L;
+        long until = System.currentTimeMillis() + 60_000L;
         for (java.util.concurrent.Callable<Void> job : jobs) pool.submit(job);
-        for (Runnable lookup : lookups) {
+        // Home and away in turn, so one side's slow lookups cannot leave the other with no photos at all.
+        List<Runnable> turns = new ArrayList<>();
+        int half = lookups.size() / 2;
+        for (int i = 0; i < half || half + i < lookups.size(); i++) {
+            if (i < half) turns.add(lookups.get(i));
+            if (half + i < lookups.size()) turns.add(lookups.get(half + i));
+        }
+        for (Runnable lookup : turns) {
             if (System.currentTimeMillis() > until) break;
             lookup.run();
         }
@@ -2486,6 +2552,41 @@ public class GoalWatchService extends Service {
             android.graphics.Paint.FontMetrics fm = p.getFontMetrics();
             c.drawText("OK", r, r - (fm.ascent + fm.descent) / 2f, p);
         }
+        return b;
+    }
+
+    /**
+     * The remote's Back key, drawn for the pop-ups' corner (Back closes them): on a TCL remote a black round key with
+     * a white return arrow (pointing left, turning back round on the right); on the Streamer's remote the same arrow
+     * on its pale key. Drawn at the size it shows, so it is sharp.
+     */
+    static android.graphics.Bitmap backButton(String remote, int s) {
+        android.graphics.Bitmap b = android.graphics.Bitmap.createBitmap(s, s, android.graphics.Bitmap.Config.ARGB_8888);
+        android.graphics.Canvas c = new android.graphics.Canvas(b);
+        android.graphics.Paint p = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+        boolean streamer = "streamer".equalsIgnoreCase(remote);
+        float r = s / 2f;
+        p.setColor(streamer ? 0xFFEDEAE4 : 0xFF17181B);
+        c.drawCircle(r, r, r, p);
+        p.setColor(streamer ? 0xFF2B2D31 : 0xFFFFFFFF);
+        p.setStyle(android.graphics.Paint.Style.STROKE);
+        p.setStrokeWidth(s * 0.085f);
+        p.setStrokeCap(android.graphics.Paint.Cap.ROUND);
+        p.setStrokeJoin(android.graphics.Paint.Join.ROUND);
+        // The shaft along the top, the turn down the right side, and the tail back along the bottom.
+        android.graphics.Path arrow = new android.graphics.Path();
+        float top = s * 0.39f, bottom = s * 0.67f, turnX = s * 0.585f, rad = (bottom - top) / 2f;
+        arrow.moveTo(s * 0.40f, bottom);
+        arrow.lineTo(turnX, bottom);
+        arrow.arcTo(new android.graphics.RectF(turnX - rad, top, turnX + rad, bottom), 90, -180);
+        arrow.lineTo(s * 0.30f, top);
+        c.drawPath(arrow, p);
+        // The head, pointing left.
+        android.graphics.Path head = new android.graphics.Path();
+        head.moveTo(s * 0.40f, top - s * 0.11f);
+        head.lineTo(s * 0.285f, top);
+        head.lineTo(s * 0.40f, top + s * 0.11f);
+        c.drawPath(head, p);
         return b;
     }
 

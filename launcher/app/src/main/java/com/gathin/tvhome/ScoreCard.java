@@ -211,6 +211,8 @@ final class ScoreCard {
         FrameLayout.LayoutParams fl = new FrameLayout.LayoutParams(-2, h);
         fl.setMargins(m, m, m, m);
         win.addView(box, fl);
+        // The remote's Back key on the top right corner: Back closes it.
+        win.addView(backKey(c, 2 * m), new FrameLayout.LayoutParams(2 * m, 2 * m, Gravity.TOP | Gravity.END));
         WindowManager.LayoutParams lp = new WindowManager.LayoutParams(WindowManager.LayoutParams.WRAP_CONTENT, h + 2 * m,
                 WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
@@ -305,6 +307,10 @@ final class ScoreCard {
             bar.addView(scoreBlock(c, d, h, 28, 25), new LinearLayout.LayoutParams(-2, h));
         }
         if (d.watch != null) bar.addView(watchBlock(c, d, h, 16, 12), new LinearLayout.LayoutParams(-2, h));
+        LinearLayout.LayoutParams kl = new LinearLayout.LayoutParams(px(24), px(24));
+        kl.leftMargin = px(12);
+        kl.rightMargin = px(14);
+        bar.addView(backKey(c, px(24)), kl);
 
         FrameLayout box = new FrameLayout(c);
         box.setOutlineProvider(new ViewOutlineProvider() {
@@ -714,6 +720,13 @@ final class ScoreCard {
     private static Bitmap sharp(Bitmap b) {
         if (b != null) b.setHasMipMap(true);
         return b;
+    }
+
+    /** The remote's Back key (the theme's ok_button remote), drawn at its size. */
+    private static View backKey(Context c, int size) {
+        ImageView v = new ImageView(c);
+        v.setImageBitmap(GoalWatchService.backButton(Config.themeString(c, "ok_button", "tcl"), size));
+        return v;
     }
 
     private static ImageView image(Context c, Bitmap b) {

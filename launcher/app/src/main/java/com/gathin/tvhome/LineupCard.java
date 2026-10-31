@@ -155,6 +155,10 @@ final class LineupCard {
         FrameLayout.LayoutParams cl = new FrameLayout.LayoutParams(w, h);
         cl.setMargins(margin, margin, margin, margin);
         win.addView(card, cl);
+        // The remote's Back key on the top right corner: Back closes the card.
+        ImageView back = new ImageView(c);
+        back.setImageBitmap(GoalWatchService.backButton(Config.themeString(c, "ok_button", "tcl"), 2 * margin));
+        win.addView(back, new FrameLayout.LayoutParams(2 * margin, 2 * margin, Gravity.TOP | Gravity.END));
 
         WindowManager.LayoutParams lp = new WindowManager.LayoutParams(w + 2 * margin, h + 2 * margin,
                 WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
