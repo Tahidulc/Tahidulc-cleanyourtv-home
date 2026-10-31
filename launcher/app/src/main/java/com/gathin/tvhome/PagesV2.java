@@ -1527,7 +1527,7 @@ final class PagesV2 {
                         b.append(g.state == 0 ? "LIVE on  " : g.state == 1 ? "On  " : "Was on  ");
                         int at = b.length();
                         b.append("  ");
-                        b.append("   ·   Press OK");
+                        pressOk(b);
                         watch.setText(b);
                         loadSpan(watch, b, at, ch.logo);
                         watchOk = () -> h.tune(ch.name, ch.logo);
@@ -1536,7 +1536,7 @@ final class PagesV2 {
                         b.append(g.state == 0 ? "LIVE on  " : "On  ");
                         int at = b.length();
                         b.append(other.logo != null ? "  " : other.name);
-                        b.append("   ·   Press OK");
+                        pressOk(b);
                         watch.setText(b);
                         if (other.logo != null) loadSpan(watch, b, at, other.logo);
                         watchOk = other.ok;
@@ -1545,6 +1545,46 @@ final class PagesV2 {
                     }
                 });
             });
+        }
+
+        /**
+         * "Press [OK]" after the channel: the word, then this TV's own remote's OK button (the theme's ok_button),
+         * drawn at the size it shows so it is sharp; it reads on the bar both focused (white) and not (dark glass).
+         */
+        private void pressOk(android.text.SpannableStringBuilder b) {
+            b.append("    Press ");
+            int at = b.length();
+            b.append("  ");
+            int size = px(36);
+            android.graphics.drawable.BitmapDrawable d = new android.graphics.drawable.BitmapDrawable(h.a.getResources(),
+                    okKey(Config.themeString(h.a, "ok_button", "tcl"), size));
+            d.setBounds(0, 0, size, size);
+            b.setSpan(new android.text.style.ImageSpan(d, android.text.style.ImageSpan.ALIGN_CENTER), at, at + 2, 0);
+        }
+
+        /**
+         * The OK button as it looks on the remote, big enough to read in a line of text: the TCL's black button with
+         * OK in white inside the thin grey ring of its direction keys; the Streamer's plain pale button.
+         */
+        private static android.graphics.Bitmap okKey(String remote, int s) {
+            android.graphics.Bitmap bm = android.graphics.Bitmap.createBitmap(s, s, android.graphics.Bitmap.Config.ARGB_8888);
+            android.graphics.Canvas c = new android.graphics.Canvas(bm);
+            android.graphics.Paint p = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+            float r = s / 2f;
+            boolean streamer = "streamer".equalsIgnoreCase(remote);
+            p.setColor(streamer ? 0xFFBDB9B0 : 0xFF6B6E75);
+            c.drawCircle(r, r, r, p);
+            p.setColor(streamer ? 0xFFEDEAE4 : 0xFF0E0F11);
+            c.drawCircle(r, r, r * 0.84f, p);
+            if (!streamer) {
+                p.setColor(Color.WHITE);
+                p.setTextAlign(android.graphics.Paint.Align.CENTER);
+                p.setTypeface(android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.BOLD));
+                p.setTextSize(r * 0.78f);
+                android.graphics.Paint.FontMetrics fm = p.getFontMetrics();
+                c.drawText("OK", r, r - (fm.ascent + fm.descent) / 2f, p);
+            }
+            return bm;
         }
 
         /** Puts the channel's logo into the watch bar's text where the two spaces are. */
