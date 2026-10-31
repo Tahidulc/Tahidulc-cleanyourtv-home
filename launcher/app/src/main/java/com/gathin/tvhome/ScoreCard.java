@@ -396,12 +396,9 @@ final class ScoreCard {
             return v;
         }
         if (d.homeCrest != null) v.addView(image(c, d.homeCrest), new LinearLayout.LayoutParams(px(crest), px(crest)));
-        TextView s = text(c, d.scoreBefore != null ? d.scoreBefore : d.score, size, 0xFFFFFFFF, outfit(c, 900));
-        s.setLetterSpacing(0.04f);
-        s.setTag("score");
         LinearLayout.LayoutParams sl = new LinearLayout.LayoutParams(-2, -2);
         sl.leftMargin = sl.rightMargin = px(10);
-        v.addView(s, sl);
+        v.addView(score(c, d, size), sl);
         if (d.awayCrest != null) v.addView(image(c, d.awayCrest), new LinearLayout.LayoutParams(px(crest), px(crest)));
         if (d.minute != null && !d.minute.isEmpty()) {
             TextView mn = text(c, d.minute, 14, 0xD9FFFFFF, Typeface.create("sans-serif-condensed", Typeface.BOLD));
@@ -410,6 +407,51 @@ final class ScoreCard {
             v.addView(mn, ml);
         }
         return v;
+    }
+
+    /**
+     * The score, each side's number in its own window. After a goal the card opens on the score before it, and the
+     * scorer's side holds both numbers, the new one waiting below, to roll up into place (tagged "roll").
+     */
+    private static View score(Context c, Data d, float size) {
+        String[] now = sides(d.score), before = sides(d.scoreBefore);
+        if (now == null) {
+            TextView s = text(c, d.score, size, 0xFFFFFFFF, outfit(c, 900));
+            s.setLetterSpacing(0.04f);
+            return s;
+        }
+        LinearLayout row = new LinearLayout(c);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        for (int i = 0; i < 2; i++) {
+            if (i == 1) {
+                TextView dash = text(c, "–", size, 0xFFFFFFFF, outfit(c, 900));
+                LinearLayout.LayoutParams dl = new LinearLayout.LayoutParams(-2, -2);
+                row.addView(dash, dl);
+            }
+            FrameLayout cell = new FrameLayout(c);
+            boolean rolls = before != null && !before[i].equals(now[i]);
+            TextView shown = text(c, rolls ? before[i] : now[i], size, 0xFFFFFFFF, outfit(c, 900));
+            shown.setGravity(Gravity.CENTER);
+            shown.setPadding(px(4), 0, px(4), 0);
+            cell.addView(shown, new FrameLayout.LayoutParams(-1, -2, Gravity.CENTER));
+            if (rolls) {
+                TextView next = text(c, now[i], size, 0xFFFFFFFF, outfit(c, 900));
+                next.setGravity(Gravity.CENTER);
+                next.setPadding(px(4), 0, px(4), 0);
+                next.setVisibility(View.INVISIBLE);
+                cell.addView(next, new FrameLayout.LayoutParams(-1, -2, Gravity.CENTER));
+                cell.setTag("roll");
+            }
+            row.addView(cell, new LinearLayout.LayoutParams(-2, -2));
+        }
+        return row;
+    }
+
+    /** "2–1" as {"2", "1"}; null for anything else. */
+    private static String[] sides(String score) {
+        if (score == null) return null;
+        String[] p = score.trim().split("\\s*[–—-]\\s*");
+        return p.length == 2 && !p[0].isEmpty() && !p[1].isEmpty() ? p : null;
     }
 
     /** One of an F1 result's top three: his position, head and shoulders, team logo and surname, his gap. */
@@ -499,16 +541,23 @@ final class ScoreCard {
      * the picture on the graphics chip, and the video drops frames, so the card holds still once it is in.
      */
     private static void alive(Context c, Data d, FrameLayout box, int h) {
-        View score = box.findViewWithTag("score");
-        if (score instanceof TextView && d.scoreBefore != null && !d.scoreBefore.equals(d.score)) {
-            TextView t = (TextView) score;
-            Runnable tick = () -> t.animate().alpha(0f).translationY(-px(12)).setDuration(140).withEndAction(() -> {
-                t.setText(d.score);
-                t.setTranslationY(px(12));
-                t.animate().alpha(1f).translationY(0).setDuration(220).setInterpolator(new DecelerateInterpolator(2f)).start();
-            }).start();
+        // A goal: the scorer's number rolls up out of its window and the new one rolls up in, then gives a little pop.
+        View roll = box.findViewWithTag("roll");
+        if (roll instanceof FrameLayout && ((FrameLayout) roll).getChildCount() == 2) {
+            FrameLayout cell = (FrameLayout) roll;
+            View old = cell.getChildAt(0), next = cell.getChildAt(1);
+            Runnable tick = () -> {
+                float up = cell.getHeight();
+                next.setTranslationY(up);
+                next.setVisibility(View.VISIBLE);
+                old.animate().translationY(-up).setDuration(340).setInterpolator(new DecelerateInterpolator(1.6f)).start();
+                next.animate().translationY(0).setDuration(340).setInterpolator(new DecelerateInterpolator(1.6f))
+                        .withEndAction(() -> next.animate().scaleX(1.22f).scaleY(1.22f).setDuration(110)
+                                .withEndAction(() -> next.animate().scaleX(1f).scaleY(1f).setDuration(220)
+                                        .setInterpolator(new DecelerateInterpolator(2f)).start()).start()).start();
+            };
             later.add(tick);
-            main.postDelayed(tick, 900L);
+            main.postDelayed(tick, 800L);
         }
         if (!onHome) return;
         View sheen = new View(c);
