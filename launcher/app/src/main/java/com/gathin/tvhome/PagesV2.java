@@ -1240,9 +1240,6 @@ final class PagesV2 {
             h.main.removeCallbacks(playsTick);
             h.main.removeCallbacks(clockTick);
             h.main.removeCallbacks(scoreTick);
-            h.main.removeCallbacks(autoNext);
-            if (autoAnim != null) autoAnim.cancel();
-            autoView = null;
             playsIo.shutdownNow();
             super.close();
         }
@@ -1744,6 +1741,7 @@ final class PagesV2 {
             LinearLayout.LayoutParams kl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
             kl.topMargin = px(10);
             c.addView(tableKey, kl);
+            tableJump = jumpPill(c);
             showTable(0);
         }
 
@@ -1794,7 +1792,6 @@ final class PagesV2 {
             tableList.removeAllViews();
             tableTop = 0;
             tableView.scrollTo(0, 0);
-            autoRestart(tableView);
             for (int n = 0; n < rows.size(); n++) {
                 String[] r = rows.get(n);
                 tableList.addView(tableRow(r[5], r[0], short_(r[1]), r[2], r[3], r[4], false, r.length > 6 ? r[6] : null));
@@ -1919,6 +1916,7 @@ final class PagesV2 {
             driverView = scroller();
             driverView.addView(list, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
             c.addView(driverView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+            f1Jump = jumpPill(c);
             h.io.execute(() -> {
                 List<String[]> rows = new ArrayList<>(), teams = new ArrayList<>();
                 String round = "", rounds = "";
@@ -1964,58 +1962,32 @@ final class PagesV2 {
         }
 
         private TextView f1Kicker, f1PageView;
-        /**
-         * The table or the standings with the focus scroll by themselves: down to the end slowly, a pause, back up, and
-         * again, so every club and driver is seen without a key; Down from any card goes straight on to the rows.
-         */
-        private android.widget.ScrollView autoView;
-        private android.animation.ObjectAnimator autoAnim;
-        private final Runnable autoNext = this::autoStep;
-        private boolean autoDown;
+        /** OK on the table or the standings: straight down to the rows below (shown on a pill while the card has the focus). */
+        private TextView tableJump, f1Jump;
 
-        private void autoScroll(android.widget.ScrollView v) {
-            if (v == autoView) return;
-            if (autoView != null) {
-                if (autoAnim != null) autoAnim.cancel();
-                h.main.removeCallbacks(autoNext);
-                autoView.smoothScrollTo(0, 0);
-            }
-            autoView = v;
-            autoAnim = null;
-            autoDown = true;
-            if (v != null) h.main.postDelayed(autoNext, 1500L);
+        private TextView jumpPill(LinearLayout card) {
+            TextView t = h.text(15, h.semi, Color.WHITE);
+            t.setLetterSpacing(0.04f);
+            GradientDrawable bg = new GradientDrawable();
+            bg.setColor(0x33FFFFFF);
+            bg.setStroke(Math.max(1, px(1.5f)), 0x8CFFFFFF);
+            bg.setCornerRadius(px(18));
+            t.setBackground(bg);
+            t.setPadding(px(16), px(6), px(16), px(6));
+            t.setVisibility(View.INVISIBLE);
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            lp.gravity = Gravity.CENTER_HORIZONTAL;
+            lp.topMargin = px(10);
+            card.addView(t, lp);
+            return t;
         }
 
-        /** A new list in the card scrolling by itself (another league, the constructors): from the top again. */
-        private void autoRestart(android.widget.ScrollView v) {
-            if (v != autoView || v == null) return;
-            if (autoAnim != null) autoAnim.cancel();
-            h.main.removeCallbacks(autoNext);
-            autoDown = true;
-            h.main.postDelayed(autoNext, 1500L);
+        /** The first row below the cards with anything in it (Live Football this week, as a rule); -1 when none has. */
+        private int firstRow() {
+            for (int r = 1; r < lists.size(); r++) if (!lists.get(r).isEmpty()) return r;
+            return lists.isEmpty() || lists.get(0).isEmpty() ? -1 : 0;
         }
 
-        private void autoStep() {
-            android.widget.ScrollView v = autoView;
-            if (v == null || v.getChildCount() == 0) return;
-            int max = Math.max(0, v.getChildAt(0).getHeight() - v.getHeight());
-            if (max == 0) { h.main.postDelayed(autoNext, 2000L); return; }   // all in sight (or still loading)
-            int to = autoDown ? max : 0;
-            autoAnim = android.animation.ObjectAnimator.ofInt(v, "scrollY", v.getScrollY(), to);
-            // Slow enough to read as it goes: about a row and a half a second.
-            autoAnim.setDuration(Math.max(800L, Math.abs(to - v.getScrollY()) * 1000L / Math.max(1, px(60))));
-            autoAnim.setInterpolator(new android.view.animation.AccelerateDecelerateInterpolator());
-            autoAnim.addListener(new android.animation.AnimatorListenerAdapter() {
-                boolean cancelled;
-                @Override public void onAnimationCancel(android.animation.Animator a) { cancelled = true; }
-                @Override public void onAnimationEnd(android.animation.Animator a) {
-                    if (cancelled || autoView != v) return;
-                    autoDown = !autoDown;
-                    h.main.postDelayed(autoNext, autoDown ? 2500L : 3000L);
-                }
-            });
-            autoAnim.start();
-        }
         private List<String[]> f1Drivers = new ArrayList<>(), f1Teams = new ArrayList<>();
         /** 0 the drivers' standings, 1 the constructors'. */
         private int f1Page;
@@ -2028,7 +2000,6 @@ final class PagesV2 {
             for (String[] x : p == 0 ? f1Drivers : f1Teams) driverList.addView(driver(x));
             driverView.scrollTo(0, 0);
             driverTop = 0;
-            autoRestart(driverView);
         }
 
         private static int teamColour(String team) {
@@ -2248,7 +2219,15 @@ final class PagesV2 {
             db.setStroke(px(onDrivers ? 3 : 1.5f), onDrivers ? Color.WHITE : 0x3DFFFFFF);
             if (driverCard != null) driverCard.setBackground(db);
             tablePage.setTextColor(onTable ? Color.WHITE : 0x73FFFFFF);
-            autoScroll(onTable ? tableView : onDrivers ? driverView : null);
+            // The way down past the table: OK, on a pill at the card's foot while it has the focus.
+            int below = firstRow();
+            String jump = below < 0 ? null : "OK  ·  " + (below == 1 ? "Live football this week" : below == 2 ? "More live sport" : "Continue watching") + "  ▾";
+            for (TextView pill : new TextView[]{tableJump, f1Jump}) {
+                if (pill == null) continue;
+                boolean show = jump != null && (pill == tableJump ? onTable : onDrivers);
+                if (show) pill.setText(jump);
+                pill.setVisibility(show ? View.VISIBLE : View.INVISIBLE);
+            }
             if (f1PageView != null) f1PageView.setTextColor(onDrivers ? Color.WHITE : 0x73FFFFFF);
             for (int r = 0; r < strips.size(); r++) {
                 LinearLayout s = strips.get(r);
@@ -2276,7 +2255,10 @@ final class PagesV2 {
                 }
                 if (e.getAction() == KeyEvent.ACTION_UP) {
                     if (held) { held = false; return true; }
-                    if (zone == -1) { if (cardIdx == 0 && watchOk != null) watchOk.run(); }
+                    if (zone == -1) {
+                        if (cardIdx == 0) { if (watchOk != null) watchOk.run(); }
+                        else { int r = firstRow(); if (r >= 0) { zone = r; idx = 0; paint(); } }
+                    }
                     else if (idx < lists.get(zone).size() && lists.get(zone).get(idx).ok != null) lists.get(zone).get(idx).ok.run();
                 }
                 return true;
@@ -2285,6 +2267,8 @@ final class PagesV2 {
             switch (code) {
                 // At an edge the key is Home's (false): on to the rail, the top buttons or the boxes, no Back needed.
                 case KeyEvent.KEYCODE_DPAD_DOWN:
+                    // On the table or the standings Down scrolls them, a page at a time; at the end, on down.
+                    if (zone == -1 && (cardIdx == 1 && scrollTable(1) || cardIdx == 2 && scrollDrivers(1))) return true;
                     // On down the rows, past any with nothing in them; from the last, on to Home's boxes.
                     int next = zone + 1;
                     while (next < lists.size() && lists.get(next).isEmpty()) next++;
@@ -2292,7 +2276,7 @@ final class PagesV2 {
                     zone = next; idx = 0;
                     break;
                 case KeyEvent.KEYCODE_DPAD_UP:
-
+                    if (zone == -1 && (cardIdx == 1 && scrollTable(-1) || cardIdx == 2 && scrollDrivers(-1))) return true;
                     if (zone < 0) return false;
                     zone--; idx = 0;
                     while (zone >= 0 && lists.get(zone).isEmpty()) zone--;
