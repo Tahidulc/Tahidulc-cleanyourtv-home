@@ -7,6 +7,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
+import android.accessibilityservice.AccessibilityService.MagnificationController;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
 
@@ -627,8 +628,9 @@ public class AppSearchService extends AccessibilityService {
     private boolean advance() {
         AccessibilityNodeInfo root = getRootInActiveWindow();
         // Home in front once the app had time to open: the person left, and the helper goes with them.
+        // (Tuya Smart, a large app, can take several seconds to show its first window from cold.)
         if (root != null && getPackageName().contentEquals(String.valueOf(root.getPackageName()))
-                && System.currentTimeMillis() - startedAt > 2_500) {
+                && System.currentTimeMillis() - startedAt > (camera ? 9_000 : 2_500)) {
             removeCover();
             return false;
         }
@@ -722,28 +724,156 @@ public class AppSearchService extends AccessibilityService {
         if (instance != null && name != null && !name.trim().isEmpty()) {
             instance.start(CameraAlert.TUYA, name.trim());
             instance.camera = true;
-            instance.deadline = System.currentTimeMillis() + 20_000L;
-            instance.showCover(null, null, name.trim(), LIVE, 5_000L);
+            instance.cameraMoved = 0;
+            instance.cameraBacks = 0;
+            instance.pageAt = 0;
+            instance.unzoom();
+            // From cold, Tuya Smart takes a quarter of a minute to start and the camera's page as long again.
+            instance.deadline = System.currentTimeMillis() + 60_000L;
+            instance.showCover(null, null, name.trim(), LIVE, 12_000L);
         }
         return true;
     }
 
+    /** Tuya Smart's camera page: its button for the picture full screen, and the one that leaves full screen. */
+    private static final String FULL = "tuya_ipc_fullscreen", FULL_BACK = "tuya_ipc_fullscreen_back";
+    /** Tuya: when the helper last got somewhere, and the Backs pressed from a page that was not the way. */
+    private long cameraMoved, pageAt;
+    private int cameraBacks;
+    /** The camera's picture on screen while it is magnified to fill it; null when not. */
+    private android.graphics.Rect zoomed;
+
+    /**
+     * Tuya Smart to the camera full screen: from its home (the camera's card, by name) to the camera's page, and its
+     * full-screen button there, which turns the picture to fill the TV. Tuya keeps its place, so it may open on the
+     * camera's page already, or on another page: Back from there, a few times at most, to its home.
+     */
     private boolean cameraStep(AccessibilityNodeInfo root) {
-        trace("camera: picked=" + opened);
-        // Picked: the camera's page opens and starts its picture; the cover goes once it has had the time.
-        if (opened) {
-            if (System.currentTimeMillis() - pickedAt > 2_500L) { hideDelay = 300; return false; }
+        long now = System.currentTimeMillis();
+        if (cameraMoved == 0) cameraMoved = now;
+        AccessibilityNodeInfo full = described(root, FULL), back = described(root, FULL_BACK);
+        trace("camera: full=" + (full != null) + " fullBack=" + (back != null) + " picked=" + opened + " backs=" + cameraBacks);
+        // Full screen: the picture is on, and the cover goes after a moment for it to settle.
+        // The cover goes once the picture is coming in (Tuya shows its speed over it), or after a few seconds.
+        boolean coming = false;
+        if (back != null || full != null) {
+            if (pageAt == 0) pageAt = now;
+            for (AccessibilityNodeInfo n : root.findAccessibilityNodeInfosByText("KB/S")) coming |= n.isVisibleToUser();
+        }
+        // The camera's page full screen: Tuya, allowed to fill the TV (its portrait lock overridden once over ADB:
+        // am compat enable OVERRIDE_ANY_ORIENTATION and OVERRIDE_UNDEFINED_ORIENTATION_TO_NOSENSOR), opens it so.
+        if (back != null) {
+            unzoom();   // Tuya's own full screen: no magnifier as well
+            if (coming || now - pageAt > 8_000L) { hideDelay = 300; return false; }
             return true;
         }
-        for (AccessibilityNodeInfo n : root.findAccessibilityNodeInfosByText(query)) {
-            if (n.getText() == null || !n.isVisibleToUser() || !query.equalsIgnoreCase(n.getText().toString().trim())) continue;
-            if (!clickable(n)) tap(n);
-            else click(n);
-            opened = true;
-            pickedAt = System.currentTimeMillis();
+        if (full != null) {
+            // The camera's page as a tall phone page. Its own full-screen button takes only a touch, and this TV has
+            // no touch screen, so the picture is brought up to fill the screen by Android's magnifier instead.
+            if (zoomed == null) zoomed = zoom(root);
+            if (zoomed != null && (coming || now - pageAt > 8_000L)) { hideDelay = 300; return false; }
             return true;
+        }
+        // Tuya's one-time "Notification Test" as a camera opens: not shown again, and away.
+        if (!root.findAccessibilityNodeInfosByText("Notification Test").isEmpty()) {
+            for (AccessibilityNodeInfo n : root.findAccessibilityNodeInfosByText("show this message again")) click(n);
+            for (AccessibilityNodeInfo n : root.findAccessibilityNodeInfosByText("Cancel")) {
+                if (n.getText() != null && "Cancel".contentEquals(n.getText())) { click(n); break; }
+            }
+            return true;
+        }
+        if (!opened || now - pickedAt > 6_000L) {
+            for (AccessibilityNodeInfo n : root.findAccessibilityNodeInfosByText(query)) {
+                if (n.getText() == null || !n.isVisibleToUser() || !query.equalsIgnoreCase(n.getText().toString().trim())) continue;
+                if (clickable(n)) click(n);
+                else tap(n);
+                opened = true;
+                pickedAt = cameraMoved = now;
+                return true;
+            }
+        }
+        // Somewhere else in Tuya for a while: its Cameras tab when it has one, or Back towards its home.
+        if (!opened && now - cameraMoved > 4_000L) {
+            for (AccessibilityNodeInfo n : root.findAccessibilityNodeInfosByText("Cameras")) {
+                if (n.getText() != null && n.isVisibleToUser() && "Cameras".equalsIgnoreCase(n.getText().toString().trim())) {
+                    click(n);
+                    cameraMoved = now;
+                    return true;
+                }
+            }
+            if (cameraBacks < 3) {
+                performGlobalAction(GLOBAL_ACTION_BACK);
+                cameraBacks++;
+                cameraMoved = now;
+            }
         }
         return true;
+    }
+
+    /**
+     * The camera's picture magnified to fill the screen: Tuya shows it 16:9 across its page, centred in the space
+     * between its top bar and its buttons (the largest view that touches neither end of the page). Kept so while
+     * the camera's page is in front, and back to normal the moment it is not (unzoomWatch).
+     */
+    private android.graphics.Rect zoom(AccessibilityNodeInfo root) {
+        android.graphics.Rect page = new android.graphics.Rect(), area = null, r = new android.graphics.Rect();
+        root.getBoundsInScreen(page);
+        java.util.List<AccessibilityNodeInfo> all = new java.util.ArrayList<>();
+        collect(root, all, 0);
+        for (AccessibilityNodeInfo n : all) {
+            n.getBoundsInScreen(r);
+            if (r.width() < page.width() * 0.95f || r.top <= page.top + 10 || r.bottom >= page.bottom - 10) continue;
+            if (area == null || r.width() * (long) r.height() > area.width() * (long) area.height()) area = new android.graphics.Rect(r);
+        }
+        if (area == null || area.height() < area.width() * 9 / 16) return null;
+        int h = area.width() * 9 / 16;
+        android.graphics.Rect video = new android.graphics.Rect(area.left, area.centerY() - h / 2, area.right, area.centerY() - h / 2 + h);
+        android.util.DisplayMetrics dm = getResources().getDisplayMetrics();
+        float scale = Math.min(dm.widthPixels / (float) video.width(), dm.heightPixels / (float) video.height());
+        try {
+            MagnificationController mc = getMagnificationController();
+            mc.setScale(scale, false);
+            mc.setCenter(video.exactCenterX(), video.exactCenterY(), false);
+        } catch (RuntimeException e) {
+            Log.i(TAG, "camera: no magnifier " + e);
+            return null;
+        }
+        Log.i(TAG, "camera: zoomed " + video.toShortString() + " x" + scale);
+        main.removeCallbacks(unzoomWatch);
+        main.postDelayed(unzoomWatch, 1_000L);
+        return video;
+    }
+
+    /** Back to normal size once the camera's page has gone (Back, Home, another app). */
+    private final Runnable unzoomWatch = new Runnable() {
+        @Override public void run() {
+            if (zoomed == null) return;
+            AccessibilityNodeInfo root = null;
+            try { root = getRootInActiveWindow(); } catch (RuntimeException ignored) { }
+            boolean still = root != null && CameraAlert.TUYA.contentEquals(String.valueOf(root.getPackageName()))
+                    && described(root, FULL) != null && described(root, FULL_BACK) == null;
+            if (still || (root == null && System.currentTimeMillis() - pickedAt < 2_000L)) {
+                main.postDelayed(this, 400L);
+                return;
+            }
+            unzoom();
+        }
+    };
+
+    private void unzoom() {
+        main.removeCallbacks(unzoomWatch);
+        if (zoomed == null) return;
+        zoomed = null;
+        try { getMagnificationController().reset(false); } catch (RuntimeException ignored) { }
+        Log.i(TAG, "camera: unzoomed");
+    }
+
+    /** The node whose description is exactly this (Tuya's React Native buttons are named so). */
+    private static AccessibilityNodeInfo described(AccessibilityNodeInfo root, String desc) {
+        for (AccessibilityNodeInfo n : root.findAccessibilityNodeInfosByText(desc)) {
+            if (n.getContentDescription() != null && desc.contentEquals(n.getContentDescription())) return n;
+        }
+        return null;
     }
 
     /** Whether the node, or one above it, takes a click. */
@@ -759,8 +889,13 @@ public class AppSearchService extends AccessibilityService {
         if (r.isEmpty()) return;
         android.graphics.Path p = new android.graphics.Path();
         p.moveTo(r.exactCenterX(), r.exactCenterY());
-        dispatchGesture(new android.accessibilityservice.GestureDescription.Builder()
-                .addStroke(new android.accessibilityservice.GestureDescription.StrokeDescription(p, 0, 60)).build(), null, null);
+        boolean sent = dispatchGesture(new android.accessibilityservice.GestureDescription.Builder()
+                .addStroke(new android.accessibilityservice.GestureDescription.StrokeDescription(p, 0, 80)).build(),
+                new GestureResultCallback() {
+                    @Override public void onCompleted(android.accessibilityservice.GestureDescription g) { Log.i(TAG, "tap done " + r.centerX() + "," + r.centerY()); }
+                    @Override public void onCancelled(android.accessibilityservice.GestureDescription g) { Log.i(TAG, "tap cancelled"); }
+                }, main);
+        if (!sent) Log.i(TAG, "tap refused");
     }
 
     // ---- Kleva TV: a game found by its search and played ---------------------------------------------------------
