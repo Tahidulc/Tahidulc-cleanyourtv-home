@@ -457,7 +457,7 @@ final class LineupCard {
         LinearLayout club = new LinearLayout(c);
         club.setOrientation(LinearLayout.VERTICAL);
         club.setGravity(Gravity.CENTER_HORIZONTAL);
-        club.addView(crest(c, t.crest), new LinearLayout.LayoutParams(px(66), px(66)));
+        club.addView(crest(c, t.crest), new LinearLayout.LayoutParams(px(58), px(58)));
         if (t.formation != null && !t.formation.isEmpty()) {
             TextView f = text(c, t.formation, 14, 0xFFFFFFFF, Typeface.create("sans-serif-condensed", Typeface.BOLD));
             f.setLetterSpacing(0.1f);
@@ -466,14 +466,23 @@ final class LineupCard {
             fl.topMargin = px(10);
             club.addView(f, fl);
         }
-        // Which line this page is, as a little pitch with that part lit: the goal, the back, the middle, the front.
+        // Which line this page is: a little pitch with that part lit (the goal, the back, the middle, the front),
+        // and its name under it.
         if (caption != null && !caption.isEmpty()) {
-            int iw = px(30), ih = px(42);
+            int iw = px(26), ih = px(36);
             ImageView line = new ImageView(c);
             line.setImageBitmap(lineIcon(caption, iw, ih));
             LinearLayout.LayoutParams ll = new LinearLayout.LayoutParams(iw, ih);
-            ll.topMargin = px(10);
+            ll.topMargin = px(8);
             club.addView(line, ll);
+            TextView name = text(c, caption, 9.5f, 0xD9FFFFFF, Typeface.create("sans-serif-condensed", Typeface.BOLD));
+            name.setLetterSpacing(0.1f);
+            name.setSingleLine(false);
+            name.setMaxLines(2);
+            name.setGravity(Gravity.CENTER);
+            LinearLayout.LayoutParams nl = new LinearLayout.LayoutParams(-2, -2);
+            nl.topMargin = px(5);
+            club.addView(name, nl);
         }
         FrameLayout.LayoutParams cl = new FrameLayout.LayoutParams(-1, -2, Gravity.CENTER);
         cl.topMargin = px(20);
