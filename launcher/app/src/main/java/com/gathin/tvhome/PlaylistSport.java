@@ -297,8 +297,20 @@ final class PlaylistSport {
     // ---- matching names --------------------------------------------------------------------------------------------
 
     /** A club's name to compare: no accents, no "FC"/"AFC"/"SV"…, "Utd" as "United". */
+    /** plain() as worked out before: the same channel and club names come round thousands of times a read. */
+    private static final Map<String, String> PLAIN = new java.util.concurrent.ConcurrentHashMap<>();
+
     static String plain(String s) {
-        String n = Normalizer.normalize(s == null ? "" : s, Normalizer.Form.NFD).replaceAll("\\p{M}", "").toLowerCase(Locale.ROOT);
+        if (s == null) s = "";
+        String known = PLAIN.get(s);
+        if (known != null) return known;
+        String made = plainNow(s);
+        if (PLAIN.size() < 20_000) PLAIN.put(s, made);
+        return made;
+    }
+
+    private static String plainNow(String s) {
+        String n = Normalizer.normalize(s, Normalizer.Form.NFD).replaceAll("\\p{M}", "").toLowerCase(Locale.ROOT);
         n = n.replace("utd", "united").replace("harve", "havre").replaceAll("[^a-z0-9 ]", " ");
         return (" " + n + " ").replaceAll(" (fc|afc|cf|sc|sv|ac|as|ss|club|de|the|1) ", " ").replaceAll("\\s+", " ").trim();
     }
