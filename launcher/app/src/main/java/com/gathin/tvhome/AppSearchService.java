@@ -715,6 +715,9 @@ public class AppSearchService extends AccessibilityService {
     static boolean camera(Context c, String name) {
         Intent open = c.getPackageManager().getLaunchIntentForPackage(CameraAlert.TUYA);
         if (open == null) return false;
+        // What was on, for Back on the camera to go back to (cameraBack).
+        String was = front();
+        returnTo = was == null || CameraAlert.TUYA.equals(was) ? (returnTo != null ? returnTo : c.getPackageName()) : was;
         open.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         try {
             c.startActivity(open);
@@ -748,6 +751,49 @@ public class AppSearchService extends AccessibilityService {
      * full-screen button there, which turns the picture to fill the TV. Tuya keeps its place, so it may open on the
      * camera's page already, or on another page: Back from there, a few times at most, to its home.
      */
+    /** The app that was on when the camera was opened from here; null when the camera was not. */
+    private static volatile String returnTo;
+
+    /** Whether Tuya Smart's camera page is in front (full screen or not). */
+    static boolean onCameraPage() {
+        AppSearchService s = instance;
+        if (s == null) return false;
+        try {
+            AccessibilityNodeInfo root = s.getRootInActiveWindow();
+            if (root == null || !CameraAlert.TUYA.contentEquals(String.valueOf(root.getPackageName()))) return false;
+            return described(root, FULL_BACK) != null || described(root, FULL) != null;
+        } catch (RuntimeException e) {
+            return false;
+        }
+    }
+
+    /**
+     * Back on the camera's page (InputKeyService passes it here): straight back to what was on, Tuya Smart left as it
+     * is, on the camera's page, so the camera opens again in moments next time instead of from Tuya's home. Only for
+     * a camera opened from the launcher; otherwise Back is Tuya's.
+     */
+    static boolean cameraBack(Context c, android.view.KeyEvent e) {
+        String to = returnTo;
+        if (to == null) return false;
+        Log.i(TAG, "camera: back " + e.getAction() + " to " + to);
+        if (!onCameraPage()) {
+            returnTo = null;   // Back somewhere else: the camera was left some other way
+            return false;
+        }
+        if (e.getAction() == android.view.KeyEvent.ACTION_UP && !e.isCanceled()) {
+            returnTo = null;
+            if (instance != null) instance.unzoom();
+            Intent back = to.equals(c.getPackageName()) ? null : c.getPackageManager().getLeanbackLaunchIntentForPackage(to);
+            if (back == null && !to.equals(c.getPackageName())) back = c.getPackageManager().getLaunchIntentForPackage(to);
+            if (back == null) back = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME);
+            try {
+                c.startActivity(back.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            } catch (RuntimeException ignored) {
+            }
+        }
+        return true;
+    }
+
     private boolean cameraStep(AccessibilityNodeInfo root) {
         long now = System.currentTimeMillis();
         if (cameraMoved == 0) cameraMoved = now;

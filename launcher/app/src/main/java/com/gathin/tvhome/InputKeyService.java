@@ -62,6 +62,8 @@ public class InputKeyService extends AccessibilityService {
 
     @Override
     protected boolean onKeyEvent(KeyEvent event) {
+        // Back on Tuya Smart's camera, opened from the launcher: back to what was on, the camera kept ready.
+        if (event.getKeyCode() == KeyEvent.KEYCODE_BACK && AppSearchService.cameraBack(this, event)) return true;
         if (consumeVolumeKeys && VolumeKeys.handle(this, event)) return true;
         // A scancode entry is more specific than any keycode, so it goes first.
         if (RemoteKeys.handle(this, event, appScancodes.get(event.getScanCode()),
