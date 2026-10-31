@@ -191,6 +191,7 @@ public class GoalWatchService extends Service {
 
     /** A penalty missed or saved, or a VAR decision, as a score card. */
     private void skyIncident(ScoresTicker.Game g, String[] inc) {
+        if (homeOnly(g) && !homeInFront) return;
         io.execute(() -> {
             ScoreCard.Data d = footballData(g);
             String what = inc[1].replaceAll("^[^A-Za-z]+", "").trim();
@@ -1249,6 +1250,8 @@ public class GoalWatchService extends Service {
         if (teamAlerts) all.addAll(Arrays.asList(getResources().getStringArray(R.array.team_alert_leagues)));
         // For the line-ups too: England's games and Real Madrid's and Barcelona's Supercopa.
         if (kickoffReminders) all.addAll(Arrays.asList(LINEUP_LEAGUES));
+        // The Championship and LaLiga, every game: announced on Home only (homeOnly()).
+        all.addAll(Arrays.asList(HOME_LEAGUES));
         String[] leagues = all.toArray(new String[0]);
         boolean incidentsNow = incidentAlerts && polls++ % 3 == 0;
         boolean tennisNow = tennisAlerts && now - tennisAt >= TENNIS_MS;
@@ -1268,7 +1271,7 @@ public class GoalWatchService extends Service {
             Map<String, ScoresTicker.Game> byId = new java.util.LinkedHashMap<>();
             for (ScoresTicker.Game g : ScoresTicker.load(leagues)) {
                 boolean wanted = alertTags.contains(g.league) || clubs.contains(g.homeId) || clubs.contains(g.awayId)
-                        || LINEUP_TEAMS.contains(g.homeId) || LINEUP_TEAMS.contains(g.awayId);
+                        || LINEUP_TEAMS.contains(g.homeId) || LINEUP_TEAMS.contains(g.awayId) || HOME_SLUGS.contains(g.slug);
                 if (wanted && g.id != null && !byId.containsKey(g.id)) byId.put(g.id, g);
             }
             List<ScoresTicker.Game> games = new ArrayList<>(byId.values());
@@ -1276,7 +1279,10 @@ public class GoalWatchService extends Service {
             if (kickoffReminders) englishClubs = ScoresTicker.englishClubs();
             if (kickoffReminders && Config.themeFlag(this, "lineup_card", false)) prefetchLineups(games, now);
             Map<String, List<String[]>> incidents = new HashMap<>();
-            if (incidentsNow) for (ScoresTicker.Game g : games) if (g.state == 0) incidents.put(g.id, ScoresTicker.incidents(g));
+            // A Home-only game's incidents are read only while Home is up (no need to ask otherwise).
+            if (incidentsNow) for (ScoresTicker.Game g : games) {
+                if (g.state == 0 && (homeInFront || !homeOnly(g))) incidents.put(g.id, ScoresTicker.incidents(g));
+            }
             List<MoreSports.Result> tennis = tennisNow ? MoreSports.tennis() : null;
             List<MoreSports.Result> ufc = ufcNow ? MoreSports.ufc() : null;
             List<String[]> warnings = weatherNow && !warnFeed.isEmpty() ? WeatherAlerts.warnings(warnFeed, warnArea) : null;
@@ -1886,6 +1892,25 @@ public class GoalWatchService extends Service {
      */
     static boolean follows(Context c, ScoresTicker.Game g) {
         if (g == null) return false;
+        // The Championship and LaLiga: the long bar on Home too (homeOnly()).
+        if (g.slug != null && HOME_SLUGS.contains(g.slug)) return true;
+        return followsAnywhere(c, g);
+    }
+
+    /**
+     * The Championship's and LaLiga's games: on Home their goals and incidents are the long new-style bar; over an app
+     * they make no alert at all (only the followed competitions and clubs do).
+     */
+    static final String[] HOME_LEAGUES = {"eng.2|CHAMPIONSHIP", "esp.1|LALIGA"};
+    static final Set<String> HOME_SLUGS = new HashSet<>(Arrays.asList("eng.2", "esp.1"));
+
+    /** A game announced only while Home is in front: a Championship or LaLiga game no followed club plays in. */
+    private boolean homeOnly(ScoresTicker.Game g) {
+        return g != null && g.slug != null && HOME_SLUGS.contains(g.slug) && !followsAnywhere(this, g);
+    }
+
+    /** A game this service announces everywhere: its competition is a goal_alert_leagues one, or a club is followed. */
+    private static boolean followsAnywhere(Context c, ScoresTicker.Game g) {
         for (String l : c.getResources().getStringArray(R.array.goal_alert_leagues)) {
             String tag = l.contains("|") ? l.split("\\|", 2)[1].trim() : l.trim();
             if (tag.equals(g.league)) return true;
@@ -1896,6 +1921,8 @@ public class GoalWatchService extends Service {
     }
 
     private void enqueue(ScoresTicker.Game g, String[] goal, boolean red) {
+        // A Championship or LaLiga game: only while Home is in front.
+        if (homeOnly(g) && !homeInFront) return;
         if (skyAlerts) {
             skyFootball(g, red ? "red" : "ft".equals(goal[4]) ? "ft" : "goal", goal[1], goal[2], goal[3], goal[4]);
             return;
