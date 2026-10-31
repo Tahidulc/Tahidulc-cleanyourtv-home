@@ -744,9 +744,9 @@ final class LineupCard {
         StringBuilder where = new StringBuilder();
         if (d.competition != null && !d.competition.isEmpty()) where.append(d.competition);
         if (d.venue != null && !d.venue.isEmpty()) where.append(where.length() > 0 ? "  ·  " : "").append(d.venue);
-        TextView top = text(c, where.toString().toUpperCase(java.util.Locale.UK), 13, 0xD9FFFFFF,
-                Typeface.create("sans-serif-condensed", Typeface.BOLD));
-        top.setLetterSpacing(0.16f);
+        // In Home's own type (Inter), quietly: "Premier League · Anfield".
+        TextView top = text(c, where.toString(), 14.5f, 0xC7FFFFFF, inter(c, R.font.inter_semibold));
+        top.setLetterSpacing(0.01f);
         top.setGravity(Gravity.CENTER);
         FrameLayout.LayoutParams tl = new FrameLayout.LayoutParams(-1, -2, Gravity.TOP);
         tl.topMargin = px(16);
@@ -759,12 +759,12 @@ final class LineupCard {
         mid.setOrientation(LinearLayout.VERTICAL);
         mid.setGravity(Gravity.CENTER_HORIZONTAL);
         String starts = startsIn(d.kickoffAt);
-        TextView when = text(c, starts != null ? starts : "v", starts != null ? 21 : 32, 0xFFFFFFFF,
-                Typeface.create("sans-serif-black", Typeface.NORMAL));
+        TextView when = text(c, starts != null ? starts : "v", starts != null ? 22 : 32, 0xFFFFFFFF,
+                inter(c, R.font.inter_display_semibold));
         when.setGravity(Gravity.CENTER);
         mid.addView(when, new LinearLayout.LayoutParams(-1, -2));
         if (d.kickoff != null) {
-            TextView ko = text(c, "Kick-off " + d.kickoff, 13, 0xBFFFFFFF, Typeface.create("sans-serif-medium", Typeface.NORMAL));
+            TextView ko = text(c, "Kick-off " + d.kickoff, 13.5f, 0xB3FFFFFF, inter(c, R.font.inter_regular));
             ko.setGravity(Gravity.CENTER);
             LinearLayout.LayoutParams kol = new LinearLayout.LayoutParams(-1, -2);
             kol.topMargin = px(5);
@@ -812,12 +812,21 @@ final class LineupCard {
         v.setOrientation(LinearLayout.VERTICAL);
         v.setGravity(Gravity.CENTER_HORIZONTAL);
         v.addView(crest(c, t == null ? null : t.crest), new LinearLayout.LayoutParams(px(62), px(62)));
-        TextView n = text(c, t == null ? "" : t.name, 16, 0xFFFFFFFF, Typeface.create("sans-serif-black", Typeface.NORMAL));
+        TextView n = text(c, t == null ? "" : t.name, 16, 0xFFFFFFFF, inter(c, R.font.inter_semibold));
         n.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams nl = new LinearLayout.LayoutParams(px(150), -2);
         nl.topMargin = px(5);
         v.addView(n, nl);
         return v;
+    }
+
+    /** One of Home's own typefaces (Inter); the system's when it cannot be read. */
+    private static Typeface inter(Context c, int font) {
+        try {
+            return c.getResources().getFont(font);
+        } catch (RuntimeException e) {
+            return Typeface.create("sans-serif-medium", Typeface.NORMAL);
+        }
     }
 
     /** "Press [OK] to watch", on a white pill. */
@@ -830,7 +839,7 @@ final class LineupCard {
         pill.setBackground(bg);
         pill.setPadding(px(keyPx * 0.55f), 0, px(keyPx * 0.55f), 0);
         pill.setElevation(px(2));
-        Typeface bold = Typeface.create("sans-serif-medium", Typeface.BOLD);
+        Typeface bold = inter(c, R.font.inter_semibold);
         pill.addView(text(c, "Press", textPx, 0xFF111214, bold));
         TextView key = text(c, "OK", textPx * 0.62f, 0xFFFFFFFF, Typeface.create("sans-serif-black", Typeface.NORMAL));
         key.setGravity(Gravity.CENTER);
