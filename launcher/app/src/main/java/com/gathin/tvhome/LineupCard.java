@@ -389,6 +389,53 @@ final class LineupCard {
         return out;
     }
 
+    /**
+     * A little upright pitch (the side attacking upwards) with the line's part lit: GOALKEEPER the goal area at its
+     * foot, DEFENCE the back third, MIDFIELD the middle, ATTACK the front, both for the midfield and attack together.
+     * Drawn at the size it shows.
+     */
+    static Bitmap lineIcon(String caption, int w, int h) {
+        Bitmap b = Bitmap.createBitmap(Math.max(1, w), Math.max(1, h), Bitmap.Config.ARGB_8888);
+        Canvas cv = new Canvas(b);
+        Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
+        float s = Math.max(1f, w / 16f), in = s / 2f;
+        RectF field = new RectF(in, in, w - in, h - in);
+        float third = field.height() / 3f;
+        // The lit part.
+        p.setStyle(Paint.Style.FILL);
+        p.setColor(0xE6FFFFFF);
+        float r = s * 1.5f;
+        switch (caption) {
+            case "GOALKEEPER": {
+                float bw = field.width() * 0.5f, bh = field.height() * 0.16f;
+                cv.drawRoundRect(new RectF(w / 2f - bw / 2, field.bottom - bh, w / 2f + bw / 2, field.bottom), r, r, p);
+                break;
+            }
+            case "DEFENCE":
+                cv.drawRoundRect(new RectF(field.left, field.bottom - third, field.right, field.bottom), r, r, p);
+                break;
+            case "MIDFIELD":
+                cv.drawRect(new RectF(field.left, field.top + third, field.right, field.bottom - third), p);
+                break;
+            case "ATTACK":
+                cv.drawRoundRect(new RectF(field.left, field.top, field.right, field.top + third), r, r, p);
+                break;
+            default:   // the midfield and the attack together
+                cv.drawRoundRect(new RectF(field.left, field.top, field.right, field.bottom - third), r, r, p);
+        }
+        // The pitch's lines over it: its edge, halfway, the centre circle and both boxes.
+        p.setStyle(Paint.Style.STROKE);
+        p.setStrokeWidth(s);
+        p.setColor(0x99FFFFFF);
+        cv.drawRoundRect(field, r, r, p);
+        cv.drawLine(field.left, h / 2f, field.right, h / 2f, p);
+        cv.drawCircle(w / 2f, h / 2f, field.width() * 0.18f, p);
+        float boxW = field.width() * 0.5f, boxH = field.height() * 0.16f;
+        cv.drawRect(w / 2f - boxW / 2, field.top, w / 2f + boxW / 2, field.top + boxH, p);
+        cv.drawRect(w / 2f - boxW / 2, field.bottom - boxH, w / 2f + boxW / 2, field.bottom, p);
+        return b;
+    }
+
     private static int[] formationLines(String formation) {
         if (formation == null || !formation.matches("\\d+(-\\d+)+")) return null;
         String[] parts = formation.split("-");
@@ -419,15 +466,13 @@ final class LineupCard {
             fl.topMargin = px(10);
             club.addView(f, fl);
         }
-        // Which line this page is: DEFENCE, MIDFIELD, ATTACK.
+        // Which line this page is, as a little pitch with that part lit: the goal, the back, the middle, the front.
         if (caption != null && !caption.isEmpty()) {
-            TextView line = text(c, caption, 10.5f, 0xB3FFFFFF, Typeface.create("sans-serif-condensed", Typeface.BOLD));
-            line.setLetterSpacing(0.12f);
-            line.setSingleLine(false);
-            line.setMaxLines(2);
-            line.setGravity(Gravity.CENTER);
-            LinearLayout.LayoutParams ll = new LinearLayout.LayoutParams(-2, -2);
-            ll.topMargin = px(6);
+            int iw = px(30), ih = px(42);
+            ImageView line = new ImageView(c);
+            line.setImageBitmap(lineIcon(caption, iw, ih));
+            LinearLayout.LayoutParams ll = new LinearLayout.LayoutParams(iw, ih);
+            ll.topMargin = px(10);
             club.addView(line, ll);
         }
         FrameLayout.LayoutParams cl = new FrameLayout.LayoutParams(-1, -2, Gravity.CENTER);
