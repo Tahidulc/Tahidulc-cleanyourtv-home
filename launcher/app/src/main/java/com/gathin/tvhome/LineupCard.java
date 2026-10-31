@@ -98,8 +98,14 @@ final class LineupCard {
      */
     static boolean key(KeyEvent e) {
         Data d = showing;
-        if (host == null || d == null || d.watch == null) return false;
+        if (host == null || d == null) return false;
         int code = e.getKeyCode();
+        // Back: the card closes.
+        if (code == KeyEvent.KEYCODE_BACK) {
+            if (e.getAction() == KeyEvent.ACTION_UP && !e.isCanceled()) main.post(() -> close(true));
+            return true;
+        }
+        if (d.watch == null) return false;
         boolean ok = code == KeyEvent.KEYCODE_DPAD_CENTER || code == KeyEvent.KEYCODE_ENTER
                 || code == KeyEvent.KEYCODE_NUMPAD_ENTER || code == KeyEvent.KEYCODE_BUTTON_A;
         if (!ok) return false;

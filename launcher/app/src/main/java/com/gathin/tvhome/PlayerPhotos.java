@@ -118,6 +118,32 @@ final class PlayerPhotos {
         }
     }
 
+    // ---- his nationality from ESPN, when TheSportsDB has none --------------------------------------------------
+
+    /**
+     * {nationality, ESPN's flag picture} for an ESPN player (its athlete record), looked up once and kept ("" for
+     * none); null when ESPN cannot be asked. Off the main thread.
+     */
+    static String[] espnNation(Context ctx, String slug, String athleteId) {
+        if (athleteId == null || athleteId.isEmpty()) return null;
+        SharedPreferences cache = ctx.getSharedPreferences("espn_nations", Context.MODE_PRIVATE);
+        String kept = cache.getString(athleteId, null);
+        if (kept == null) {
+            try {
+                JSONObject a = new JSONObject(get("https://sports.core.api.espn.com/v2/sports/soccer/leagues/"
+                        + (slug == null || slug.isEmpty() ? "eng.1" : slug) + "/athletes/" + athleteId + "?lang=en&region=gb"));
+                String nation = a.optString("citizenship", "");
+                JSONObject flag = a.optJSONObject("flag");
+                kept = nation + "\t" + (flag == null ? "" : flag.optString("href", ""));
+                cache.edit().putString(athleteId, kept).apply();
+            } catch (Exception e) {
+                return null;
+            }
+        }
+        String[] parts = kept.split("\t", -1);
+        return new String[]{parts[0], parts.length > 1 ? parts[1] : ""};
+    }
+
     // ---- when TheSportsDB has no cut-out: Wikipedia's photo of him ----------------------------------------------
 
     private static final String UA = "cleanyourtv-launcher/1.0 (personal TV launcher; github.com/Gathin23/cleanyourtv)";

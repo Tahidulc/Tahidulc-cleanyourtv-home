@@ -123,8 +123,33 @@ public class GoalWatchService extends Service {
         }
     };
 
+    /** The running service, for Back from the key helper. */
+    private static volatile GoalWatchService self;
+
+    /**
+     * Back while an alert shows (InputKeyService, before any app): the alert closes at once, and the next waiting one
+     * shows. True when it took the key.
+     */
+    static boolean back(android.view.KeyEvent e) {
+        GoalWatchService s = self;
+        if (e.getKeyCode() != android.view.KeyEvent.KEYCODE_BACK || s == null || s.host == null || s.shown == null) return false;
+        if (e.getAction() == android.view.KeyEvent.ACTION_UP && !e.isCanceled()) s.main.post(s::dismiss);
+        return true;
+    }
+
+    /** The alert showing away now, its timers with it. */
+    private void dismiss() {
+        if (host == null) return;
+        if (watchClose != null) main.removeCallbacks(watchClose);
+        watchClose = null;
+        showingLineup = null;
+        host.setOnKeyListener(null);
+        removeHost();
+    }
+
     @Override public void onCreate() {
         super.onCreate();
+        self = this;
         android.content.IntentFilter f = new android.content.IntentFilter(Intent.ACTION_DREAMING_STARTED);
         f.addAction(Intent.ACTION_DREAMING_STOPPED);
         if (Build.VERSION.SDK_INT >= 33) registerReceiver(dreams, f, Context.RECEIVER_NOT_EXPORTED);
@@ -1384,6 +1409,14 @@ public class GoalWatchService extends Service {
                         pl.photo = PlayerPhotos.photo(this, found);
                         if (pl.photo == null && p[1] != null) pl.photo = ScoresTicker.cachedLogo(this, p[1], 300);
                         String flag = LineupCard.flagUrl(found.nation);
+                        // No nationality in TheSportsDB (or one its flags don't cover): ESPN's, so every player has a flag.
+                        if (flag == null) {
+                            String[] espn = PlayerPhotos.espnNation(this, g.slug, p.length > 5 ? p[5] : null);
+                            if (espn != null) {
+                                flag = LineupCard.flagUrl(espn[0]);
+                                if (flag == null && !espn[1].isEmpty()) flag = espn[1];
+                            }
+                        }
                         if (flag != null) pl.flag = ScoresTicker.cachedLogo(this, flag, 80);
                     });
                 });
@@ -1519,7 +1552,7 @@ public class GoalWatchService extends Service {
             if (f1Live) {
                 ScoresTicker.Game f1 = new ScoresTicker.Game();
                 f1.leagueLogo = F1Results.F1_LOGO;
-                watch = watchOn(TvGuide.watch(new String[0], f1));
+                watch = watchOn(TvGuide.watch(this, new String[0], f1));
             }
             final Object[] watching = watch;
             List<Object> ready = new ArrayList<>();
@@ -2626,6 +2659,7 @@ public class GoalWatchService extends Service {
     }
 
     @Override public void onDestroy() {
+        if (self == this) self = null;
         if (deliveries != null) deliveries.stop();
         try { unregisterReceiver(dreams); } catch (Exception ignored) { }
         android.media.AudioManager am = getSystemService(android.media.AudioManager.class);

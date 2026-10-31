@@ -506,7 +506,7 @@ final class ScoresTicker {
                             : "https://a.espncdn.com/i/headshots/soccer/players/full/" + a.optString("id") + ".png";
                     String pos = p.optJSONObject("position") == null ? "" : p.getJSONObject("position").optString("abbreviation", "");
                     side.players.add(new String[]{GoalWatchService.surname(a.optString("displayName")), photo, p.optString("jersey", ""), pos,
-                            a.optString("displayName")});
+                            a.optString("displayName"), a.optString("id")});
                 }
                 if (team != null && team.optString("id").equals(g.homeId)) { side.abbr = g.home; side.crest = g.homeLogo; home = side; }
                 else { side.abbr = g.away; side.crest = g.awayLogo; away = side; }
