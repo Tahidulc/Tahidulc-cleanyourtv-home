@@ -323,7 +323,7 @@ final class PlayerPhotos {
                 }
                 String about = (page.optString("description", "") + " " + page.optString("extract", "")).toLowerCase(java.util.Locale.ROOT);
                 if (!about.contains("footballer") && !about.contains("football player")) continue;
-                java.util.regex.Matcher m = java.util.regex.Pattern.compile("^([^(,;]{3,60}?)\\s*[(,]").matcher(page.optString("extract", ""));
+                java.util.regex.Matcher m = java.util.regex.Pattern.compile("^([^(,;]{3,60}?)(?:\\s*[(,]|\\s+(?:is|was)\\s+an?\\s)").matcher(page.optString("extract", ""));
                 if (m.find()) {
                     String n = m.group(1).trim();
                     if (n.contains(" ") && !n.equalsIgnoreCase(name)) found = n;
