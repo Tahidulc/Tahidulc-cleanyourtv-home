@@ -406,8 +406,13 @@ final class ScoreCard {
         f.setClipChildren(true);
         ImageView i = new ImageView(c);
         i.setImageBitmap(sharp(b));
-        i.setScaleType(ImageView.ScaleType.FIT_START);
-        FrameLayout.LayoutParams il = new FrameLayout.LayoutParams(imageW, imageW);
+        // An upright photo (the Premier League's own, framed closer than a square cut-out) a little narrower, at its
+        // own height, so the face is the same size as a square one's.
+        boolean upright = b != null && b.getHeight() > b.getWidth() * 1.05f;
+        int iw = upright ? Math.round(imageW * 0.86f) : imageW, ih = upright ? Math.round(iw * b.getHeight() / (float) b.getWidth()) : imageW;
+        i.setScaleType(upright ? ImageView.ScaleType.FIT_XY : ImageView.ScaleType.FIT_START);
+        if (upright) dx += (imageW - iw) / 2;
+        FrameLayout.LayoutParams il = new FrameLayout.LayoutParams(iw, ih);
         il.leftMargin = dx;
         il.topMargin = dy;
         f.addView(i, il);

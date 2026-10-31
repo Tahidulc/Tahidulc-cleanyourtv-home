@@ -296,6 +296,10 @@ final class CameraAlert {
         FrameLayout.LayoutParams cl = new FrameLayout.LayoutParams(w, h);
         cl.leftMargin = cl.topMargin = cl.rightMargin = cl.bottomMargin = m;
         win.addView(card, cl);
+        // The remote's Back key on the top right corner: Back closes the card.
+        ImageView backKey = new ImageView(c);
+        backKey.setImageBitmap(GoalWatchService.backButton(Config.themeString(c, "ok_button", "tcl"), 2 * m));
+        win.addView(backKey, new FrameLayout.LayoutParams(2 * m, 2 * m, Gravity.TOP | Gravity.END));
         WindowManager.LayoutParams lp = new WindowManager.LayoutParams(w + 2 * m, h + 2 * m,
                 WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
                 // Focusable, so OK and Back come here while it shows; the app keeps playing underneath.
@@ -386,6 +390,16 @@ final class CameraAlert {
         v.setEllipsize(TextUtils.TruncateAt.END);
         v.setIncludeFontPadding(false);
         return v;
+    }
+
+    /**
+     * Back while the card shows (the key helper, before any app, so it closes even when the card has not got the
+     * remote's focus): the card closes. True when it took the key.
+     */
+    static boolean key(KeyEvent e) {
+        if (host == null || e.getKeyCode() != KeyEvent.KEYCODE_BACK) return false;
+        if (e.getAction() == KeyEvent.ACTION_UP && !e.isCanceled()) main.post(() -> close(true));
+        return true;
     }
 
     /** The card away, the keys back with the app: faded out, or at once when another takes its place. */

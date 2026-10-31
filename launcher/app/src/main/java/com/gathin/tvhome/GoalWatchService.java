@@ -257,7 +257,12 @@ public class GoalWatchService extends Service {
     /** A player's head and shoulders: his cut-out, else the blank figure in his side's colour. */
     private android.graphics.Bitmap playerPhoto(String who, String team, int kit) {
         if (who == null || who.isEmpty()) return null;
-        PlayerPhotos.Cutout cut = PlayerPhotos.cutout(this, who, team);
+        PlayerPhotos.Cutout cut = premierLeague(who, team);
+        if (cut == null) cut = PlayerPhotos.cutout(this, who, team);
+        if (cut.url == null || cut.url.isEmpty()) {
+            PlayerPhotos.Cutout older = olderPremierLeague(who, team);
+            if (older != null) cut = older;
+        }
         android.graphics.Bitmap b = PlayerPhotos.photo(this, cut);
         return b != null ? b : LineupCard.avatar(kit, kit, "");
     }
@@ -358,6 +363,27 @@ public class GoalWatchService extends Service {
 
     // ---- the line-up card's photos, ahead of it -----------------------------------------------------------------
 
+    /**
+     * A Premier League player's own photo from the league (no nationality: ESPN's gives his flag), this season's, once
+     * it has loaded (a player just signed may have none yet); null otherwise.
+     */
+    private PlayerPhotos.Cutout premierLeague(String fullName, String club) {
+        return loaded(PremierLeague.photo(this, fullName, club));
+    }
+
+    /** Last season's photo from the league, for a player with none this season and none at TheSportsDB; or null. */
+    private PlayerPhotos.Cutout olderPremierLeague(String fullName, String club) {
+        return loaded(PremierLeague.older(PremierLeague.photo(this, fullName, club)));
+    }
+
+    private PlayerPhotos.Cutout loaded(String url) {
+        if (url == null) return null;
+        PlayerPhotos.Cutout cut = new PlayerPhotos.Cutout();
+        cut.url = url;
+        cut.nation = "";
+        return PlayerPhotos.photo(this, cut) != null ? cut : null;
+    }
+
     /** Games whose line-ups' photos are fetched (or being fetched), and when a game without line-ups is asked again. */
     private final Set<String> photosFetched = java.util.concurrent.ConcurrentHashMap.newKeySet();
     private final Map<String, Long> lineupsAskAgain = new java.util.concurrent.ConcurrentHashMap<>();
@@ -383,6 +409,8 @@ public class GoalWatchService extends Service {
                 for (ScoresTicker.Side side : sides) {
                     for (String[] p : side.players) {
                         String full = p.length > 4 && p[4] != null ? p[4] : p[0];
+                        PlayerPhotos.Cutout pl = premierLeague(full, side.name);
+                        if (pl != null) { PlayerPhotos.photo(this, pl); continue; }
                         PlayerPhotos.Cutout cut = PlayerPhotos.cutout(this, full, side.name);
                         // Refused (TheSportsDB's limit): a minute's rest, up to three times.
                         for (int tries = 0; cut.url == null && tries < 3; tries++) {
@@ -390,7 +418,8 @@ public class GoalWatchService extends Service {
                             try { Thread.sleep(wait); } catch (InterruptedException e) { return; }
                             cut = PlayerPhotos.cutout(this, full, side.name);
                         }
-                        PlayerPhotos.photo(this, cut);   // the picture itself into the cache too
+                        if (cut.url == null || cut.url.isEmpty()) olderPremierLeague(full, side.name);
+                        else PlayerPhotos.photo(this, cut);   // the picture itself into the cache too
                     }
                 }
             });
@@ -1917,12 +1946,17 @@ public class GoalWatchService extends Service {
                 pl.position = p.length > 3 && p[3] != null ? p[3] : "";
                 t.players.add(pl);
                 lookups.add(() -> {
-                    // Mostly already fetched when the line-ups came out (prefetchLineups); a refused lookup (url null,
-                    // not remembered) is asked once more.
-                    PlayerPhotos.Cutout cut = PlayerPhotos.cutout(this, full, t.name);
+                    // The Premier League's own photo first (this season's, in this season's kit); else TheSportsDB's,
+                    // mostly already fetched when the line-ups came out (prefetchLineups), a refused lookup asked once more.
+                    PlayerPhotos.Cutout cut = premierLeague(full, t.name);
+                    if (cut == null) cut = PlayerPhotos.cutout(this, full, t.name);
                     if (cut.url == null) {
                         try { Thread.sleep(2_000); } catch (InterruptedException e) { return; }
                         cut = PlayerPhotos.cutout(this, full, t.name);
+                    }
+                    if (cut.url == null || cut.url.isEmpty()) {
+                        PlayerPhotos.Cutout older = olderPremierLeague(full, t.name);
+                        if (older != null) cut = older;
                     }
                     PlayerPhotos.Cutout found = cut;
                     pool.execute(() -> {

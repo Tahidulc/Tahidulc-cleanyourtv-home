@@ -313,7 +313,7 @@ final class PlayerPhotos {
     private static String plain(String s) {
         // Letters that do not come apart into a plain one and a mark: Groß is Gross, Højlund Hojlund.
         String t = (s == null ? "" : s).replace("ß", "ss").replace("ø", "o").replace("Ø", "O").replace("æ", "ae")
-                .replace("Æ", "Ae").replace("œ", "oe").replace("ł", "l").replace("Ł", "L").replace("đ", "d").replace("ı", "i");
+                .replace("Æ", "Ae").replace("œ", "oe").replace("ł", "l").replace("Ł", "L").replace("đ", "d").replace("Đ", "D").replace("ı", "i");
         String n = java.text.Normalizer.normalize(t, java.text.Normalizer.Form.NFD).replaceAll("\\p{M}", "");
         return n.toLowerCase(java.util.Locale.ROOT).replaceAll("[^a-z ]", " ").replaceAll("\\s+", " ").trim();
     }

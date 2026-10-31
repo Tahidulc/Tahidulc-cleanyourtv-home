@@ -181,7 +181,7 @@ final class LineupCard {
         // both on one pitch. Each comes in behind a slanted wipe across the stage, as Sky's line-ups change.
         List<Runnable> pages = new ArrayList<>();
         List<Long> times = new ArrayList<>();
-        pages.add(() -> turn(c, stage, () -> { band.removeAllViews(); league(c, band, d); stage.addView(first(c, d), full()); }));
+        pages.add(() -> turn(c, stage, () -> { band.removeAllViews(); league(c, band, d, true); stage.addView(first(c, d), full()); }));
         times.add(FIRST_MS);
         for (Team t : new Team[]{d.home, d.away}) {
             if (t == null || t.players.isEmpty()) continue;
@@ -293,10 +293,18 @@ final class LineupCard {
 
     // ---- the band ------------------------------------------------------------------------------------------------
 
-    private static void league(Context c, FrameLayout band, Data d) {
+    /**
+     * The competition's mark in the band: big and in the middle on the fixture page (big = true), where the band has
+     * nothing else; small at the top above the crests on the players' and the pitch's pages, clear of them.
+     */
+    private static void league(Context c, FrameLayout band, Data d, boolean big) {
         ImageView league = new ImageView(c);
         league.setImageBitmap(sharp(d.leagueLogo));
         league.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        if (big) {
+            band.addView(league, new FrameLayout.LayoutParams(px(58), px(58), Gravity.CENTER));
+            return;
+        }
         FrameLayout.LayoutParams ll = new FrameLayout.LayoutParams(px(28), px(28), Gravity.TOP | Gravity.CENTER_HORIZONTAL);
         ll.topMargin = px(12);
         band.addView(league, ll);
@@ -314,7 +322,7 @@ final class LineupCard {
     /** The competition, the club's crest, and its name up the side, fitted to the room under the crest. */
     private static void teamBand(Context c, FrameLayout band, Team t) {
         band.removeAllViews();
-        league(c, band, showing);
+        league(c, band, showing, false);
         FrameLayout.LayoutParams cl = new FrameLayout.LayoutParams(px(50), px(50), Gravity.TOP | Gravity.CENTER_HORIZONTAL);
         cl.topMargin = px(48);
         band.addView(crest(c, t.crest), cl);
@@ -328,7 +336,7 @@ final class LineupCard {
     /** For the pitch: both crests, each with its eleven's shape under it. */
     private static void pitchBand(Context c, FrameLayout band, Data d) {
         band.removeAllViews();
-        league(c, band, d);
+        league(c, band, d, false);
         int y = 48;
         for (Team t : new Team[]{d.home, d.away}) {
             FrameLayout.LayoutParams cl = new FrameLayout.LayoutParams(px(46), px(46), Gravity.TOP | Gravity.CENTER_HORIZONTAL);
@@ -372,10 +380,15 @@ final class LineupCard {
         FrameLayout frame = new FrameLayout(c);
         frame.setClipChildren(true);
         ImageView photo = new ImageView(c);
-        photo.setImageBitmap(sharp(p.photo == null ? avatar(t.photoKit != 0 ? t.photoKit : t.kit, t.photoKit != 0 ? t.photoSleeves : t.sleeves, p.number)
-                : p.framed ? framed(p.photo, t.kit) : p.photo));
-        photo.setScaleType(ImageView.ScaleType.FIT_START);
-        frame.addView(photo, new FrameLayout.LayoutParams(px(150), px(150), Gravity.TOP | Gravity.CENTER_HORIZONTAL));
+        Bitmap shown = p.photo == null ? avatar(t.photoKit != 0 ? t.photoKit : t.kit, t.photoKit != 0 ? t.photoSleeves : t.sleeves, p.number)
+                : p.framed ? framed(p.photo, t.kit) : p.photo;
+        photo.setImageBitmap(sharp(shown));
+        // A square cut-out (TheSportsDB's) 150 wide; the Premier League's own, upright and framed closer, 128 wide at
+        // its own height, so the faces come out the same size.
+        boolean upright = shown != null && shown.getHeight() > shown.getWidth() * 1.05f;
+        int pw = upright ? px(128) : px(150), ph = upright ? Math.round(pw * shown.getHeight() / (float) shown.getWidth()) : px(150);
+        photo.setScaleType(upright ? ImageView.ScaleType.FIT_XY : ImageView.ScaleType.FIT_START);
+        frame.addView(photo, new FrameLayout.LayoutParams(pw, ph, Gravity.TOP | Gravity.CENTER_HORIZONTAL));
         FrameLayout.LayoutParams fl = new FrameLayout.LayoutParams(-1, -1);
         fl.topMargin = px(36);
         fl.bottomMargin = px(46);
@@ -754,89 +767,87 @@ final class LineupCard {
     }
 
     /**
-     * The first page: the competition and the ground across the top, the two crests with "Starts in …" and the
-     * kick-off between them, and at the foot the channel showing it and "Press OK to watch".
+     * The first page: the two crests big on either side, and between them, centred as one block, the competition and
+     * the ground, "Starts in …" and the kick-off, and the channel showing it with "Press OK to watch" (when a guide
+     * lists it). Little empty ground: the crests fill the height.
      */
     private static View first(Context c, Data d) {
         FrameLayout page = new FrameLayout(c);
         page.setBackground(new Streaks(0xFF2A35B8, 0xFF080B3A, 0x0EFFFFFF, px(60), px(4)));
+        int side = px(150);
+        View home = club(c, d.home, px(116));
+        FrameLayout.LayoutParams hl = new FrameLayout.LayoutParams(side, -2, Gravity.START | Gravity.CENTER_VERTICAL);
+        hl.leftMargin = px(8);
+        page.addView(home, hl);
+        View away = club(c, d.away, px(116));
+        FrameLayout.LayoutParams al = new FrameLayout.LayoutParams(side, -2, Gravity.END | Gravity.CENTER_VERTICAL);
+        al.rightMargin = px(8);
+        page.addView(away, al);
+
+        LinearLayout mid = new LinearLayout(c);
+        mid.setOrientation(LinearLayout.VERTICAL);
+        mid.setGravity(Gravity.CENTER_HORIZONTAL);
         StringBuilder where = new StringBuilder();
         if (d.competition != null && !d.competition.isEmpty()) where.append(d.competition);
         if (d.venue != null && !d.venue.isEmpty()) where.append(where.length() > 0 ? "  ·  " : "").append(d.venue);
         // In Home's own type (Inter), quietly: "Premier League · Anfield".
-        TextView top = text(c, where.toString(), 14.5f, 0xC7FFFFFF, inter(c, R.font.inter_semibold));
-        top.setLetterSpacing(0.01f);
+        TextView top = text(c, where.toString(), 13.5f, 0xC7FFFFFF, inter(c, R.font.inter_semibold));
         top.setGravity(Gravity.CENTER);
-        // No channel and no OK (a game no guide lists): the rest sits lower, in the middle, not over an empty foot.
-        int drop = d.channelLogo == null && d.channel == null && d.watch == null ? px(22) : 0;
-        FrameLayout.LayoutParams tl = new FrameLayout.LayoutParams(-1, -2, Gravity.TOP);
-        tl.topMargin = px(16) + drop;
-        page.addView(top, tl);
-
-        LinearLayout vs = new LinearLayout(c);
-        vs.setGravity(Gravity.CENTER);
-        vs.addView(club(c, d.home));
-        LinearLayout mid = new LinearLayout(c);
-        mid.setOrientation(LinearLayout.VERTICAL);
-        mid.setGravity(Gravity.CENTER_HORIZONTAL);
+        mid.addView(top, new LinearLayout.LayoutParams(-1, -2));
         String starts = startsIn(d.kickoffAt);
-        TextView when = text(c, starts != null ? starts : "v", starts != null ? 22 : 32, 0xFFFFFFFF,
+        TextView when = text(c, starts != null ? starts : "v", starts != null ? 25 : 34, 0xFFFFFFFF,
                 inter(c, R.font.inter_display_semibold));
         when.setGravity(Gravity.CENTER);
-        mid.addView(when, new LinearLayout.LayoutParams(-1, -2));
+        LinearLayout.LayoutParams wl = new LinearLayout.LayoutParams(-1, -2);
+        wl.topMargin = px(10);
+        mid.addView(when, wl);
         if (d.kickoff != null) {
             TextView ko = text(c, "Kick-off " + d.kickoff, 13.5f, 0xB3FFFFFF, inter(c, R.font.inter_regular));
             ko.setGravity(Gravity.CENTER);
             LinearLayout.LayoutParams kol = new LinearLayout.LayoutParams(-1, -2);
-            kol.topMargin = px(5);
+            kol.topMargin = px(4);
             mid.addView(ko, kol);
         }
-        // A set width for the countdown, so "Starts in 1 hr 15 min" is never cut short.
-        LinearLayout.LayoutParams ml = new LinearLayout.LayoutParams(px(230), -2);
-        ml.leftMargin = ml.rightMargin = px(6);
-        ml.bottomMargin = px(18);
-        vs.addView(mid, ml);
-        vs.addView(club(c, d.away));
-        FrameLayout.LayoutParams vl = new FrameLayout.LayoutParams(-1, -2, Gravity.TOP);
-        vl.topMargin = px(42) + drop;
-        page.addView(vs, vl);
-
-        LinearLayout foot = new LinearLayout(c);
-        foot.setGravity(Gravity.CENTER);
-        View ch = channel(c, d, 24);
-        if (ch != null) foot.addView(ch, new LinearLayout.LayoutParams(-2, px(24)));
-        if (d.watch != null) {
-            LinearLayout.LayoutParams ol = new LinearLayout.LayoutParams(-2, px(32));
-            ol.leftMargin = px(16);
-            foot.addView(okPill(c, 13.5f, 24), ol);
+        View ch = channel(c, d, 26);
+        if (ch != null || d.watch != null) {
+            LinearLayout foot = new LinearLayout(c);
+            foot.setOrientation(LinearLayout.VERTICAL);
+            foot.setGravity(Gravity.CENTER_HORIZONTAL);
+            if (ch != null) foot.addView(ch, new LinearLayout.LayoutParams(-2, px(26)));
+            if (d.watch != null) {
+                LinearLayout.LayoutParams ol = new LinearLayout.LayoutParams(-2, px(30));
+                ol.topMargin = px(ch != null ? 9 : 0);
+                foot.addView(okPill(c, 13, 22), ol);
+            }
+            LinearLayout.LayoutParams fl = new LinearLayout.LayoutParams(-1, -2);
+            fl.topMargin = px(14);
+            mid.addView(foot, fl);
         }
-        FrameLayout.LayoutParams fl = new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM);
-        fl.bottomMargin = px(16);
-        page.addView(foot, fl);
-        // The crests come in from either side, the countdown between them, the line above and the channel and OK last.
-        View home = vs.getChildAt(0), away = vs.getChildAt(2);
+        FrameLayout.LayoutParams ml = new FrameLayout.LayoutParams(px(W - BAND) - 2 * side - px(16), -2, Gravity.CENTER);
+        page.addView(mid, ml);
+
+        // The crests come in from either side, then the block between them.
         home.setTranslationX(-px(60)); away.setTranslationX(px(60));
-        home.setAlpha(0f); away.setAlpha(0f); mid.setAlpha(0f); top.setAlpha(0f); foot.setAlpha(0f);
-        mid.setScaleX(0.85f); mid.setScaleY(0.85f);
-        foot.setTranslationY(px(14));
-        top.setTranslationY(-px(8));
+        home.setAlpha(0f); away.setAlpha(0f); mid.setAlpha(0f);
+        mid.setScaleX(0.9f); mid.setScaleY(0.9f);
         home.animate().translationX(0).alpha(1f).setStartDelay(250).setDuration(520).setInterpolator(new DecelerateInterpolator(2.2f)).start();
         away.animate().translationX(0).alpha(1f).setStartDelay(250).setDuration(520).setInterpolator(new DecelerateInterpolator(2.2f)).start();
         mid.animate().alpha(1f).scaleX(1f).scaleY(1f).setStartDelay(520).setDuration(420).setInterpolator(new DecelerateInterpolator(2f)).start();
-        top.animate().alpha(1f).translationY(0).setStartDelay(650).setDuration(380).start();
-        foot.animate().translationY(0).alpha(1f).setStartDelay(800).setDuration(420).setInterpolator(new DecelerateInterpolator(2f)).start();
         return page;
     }
 
-    private static View club(Context c, Team t) {
+    /** A club: its crest big, its name under it (on two lines when long). */
+    private static View club(Context c, Team t, int crestPx) {
         LinearLayout v = new LinearLayout(c);
         v.setOrientation(LinearLayout.VERTICAL);
         v.setGravity(Gravity.CENTER_HORIZONTAL);
-        v.addView(crest(c, t == null ? null : t.crest), new LinearLayout.LayoutParams(px(62), px(62)));
-        TextView n = text(c, t == null ? "" : t.name, 16, 0xFFFFFFFF, inter(c, R.font.inter_semibold));
+        v.addView(crest(c, t == null ? null : t.crest), new LinearLayout.LayoutParams(crestPx, crestPx));
+        TextView n = text(c, t == null ? "" : t.name, 14.5f, 0xFFFFFFFF, inter(c, R.font.inter_semibold));
         n.setGravity(Gravity.CENTER);
-        LinearLayout.LayoutParams nl = new LinearLayout.LayoutParams(px(150), -2);
-        nl.topMargin = px(5);
+        n.setSingleLine(false);
+        n.setMaxLines(2);
+        LinearLayout.LayoutParams nl = new LinearLayout.LayoutParams(-1, -2);
+        nl.topMargin = px(6);
         v.addView(n, nl);
         return v;
     }
