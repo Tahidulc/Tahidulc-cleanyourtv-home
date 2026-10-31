@@ -82,6 +82,11 @@ final class ScoreCard {
     }
 
     private static final int NAVY = 0xFF151A63;
+    /**
+     * The words on the pale ground: a deeper navy than the blocks' and solid (no see-through), with the line under the
+     * name in a lighter but still solid navy, so they read clearly from the sofa.
+     */
+    private static final int INK = 0xFF0A0D33, INK_SOFT = 0xFF2B3170;
     private static final long SHOW_MS = 9_000L, WATCH_MS = 11_000L;
     private static final Handler main = new Handler(Looper.getMainLooper());
     private static final ArrayDeque<Data> queue = new ArrayDeque<>();
@@ -266,11 +271,11 @@ final class ScoreCard {
             LinearLayout name = new LinearLayout(c);
             name.setGravity(Gravity.CENTER_VERTICAL);
             String big = d.headline != null ? d.headline : (d.first.isEmpty() ? "" : d.first + " ") + titleCase(d.last);
-            TextView bigText = text(c, big, d.headline != null ? 19 : 22, d.dark ? 0xFFFFFFFF : NAVY, outfit(c, d.headline != null ? 800 : 900));
+            TextView bigText = text(c, big, d.headline != null ? 19 : 22, d.dark ? 0xFFFFFFFF : INK, outfit(c, d.headline != null ? 800 : 900));
             if (d.headline != null) bigText.setMaxWidth(px(1000));
             name.addView(bigText);
             if (!d.line.isEmpty()) {
-                TextView small = text(c, d.line, 16, d.dark ? 0xCCFFFFFF : 0xCC151A63, outfit(c, 600));
+                TextView small = text(c, d.line, 16, d.dark ? 0xCCFFFFFF : INK_SOFT, outfit(c, 700));
                 LinearLayout.LayoutParams sl = new LinearLayout.LayoutParams(-2, -2);
                 sl.leftMargin = px(10);
                 name.addView(small, sl);
@@ -305,9 +310,9 @@ final class ScoreCard {
         View spacer = new View(c);
         bar.addView(spacer, new LinearLayout.LayoutParams(0, 1, 1f));
         if (d.score != null) {
-            if (d.homeName != null) bar.addView(text(c, d.homeName, 20, NAVY, outfit(c, 700)), sideName(true));
+            if (d.homeName != null) bar.addView(text(c, d.homeName, 20, INK, outfit(c, 800)), sideName(true));
             bar.addView(scoreBlock(c, d, h, 28, 25), new LinearLayout.LayoutParams(-2, h));
-            if (d.awayName != null) bar.addView(text(c, d.awayName, 20, NAVY, outfit(c, 700)), sideName(false));
+            if (d.awayName != null) bar.addView(text(c, d.awayName, 20, INK, outfit(c, 800)), sideName(false));
         } else if (d.method != null) {
             bar.addView(scoreBlock(c, d, h, 28, 25), new LinearLayout.LayoutParams(-2, h));
         }
@@ -390,7 +395,7 @@ final class ScoreCard {
     /** The stage's ground: pale streaks, or charcoal for F1 and fights. */
     private static Drawable stageGround(Data d, int gap, int width) {
         return d.dark ? new Streaks(0xFF2A2B33, 0xFF16171D, 0x0DFFFFFF, gap, width)
-                : new Streaks(0xFFF4F5FD, 0xFFC2C5EE, 0x8CFFFFFF, gap, width);
+                : new Streaks(0xFFF6F7FD, 0xFFD3D6F3, 0x4DFFFFFF, gap, width);
     }
 
     /** A news picture, cropped to fill its box, with rounded corners. */
@@ -427,7 +432,7 @@ final class ScoreCard {
     private static View who(Context c, Data d, float small, float big, float line) {
         LinearLayout v = new LinearLayout(c);
         v.setOrientation(LinearLayout.VERTICAL);
-        int ink = d.dark ? 0xFFFFFFFF : NAVY;
+        int ink = d.dark ? 0xFFFFFFFF : INK;
         if (d.headline != null) {
             TextView head = text(c, d.headline, 15.5f, ink, outfit(c, 800));
             head.setSingleLine(false);
@@ -438,14 +443,14 @@ final class ScoreCard {
             if (!d.line.isEmpty()) {
                 LinearLayout.LayoutParams ll = new LinearLayout.LayoutParams(-2, -2);
                 ll.topMargin = px(5);
-                v.addView(text(c, d.line, 12, d.dark ? 0xB3FFFFFF : 0xB3151A63, outfit(c, 600)), ll);
+                v.addView(text(c, d.line, 12, d.dark ? 0xB3FFFFFF : INK_SOFT, outfit(c, 600)), ll);
             }
             return v;
         }
-        if (!d.first.isEmpty()) v.addView(text(c, d.first, small, ink, outfit(c, 500)), wrap());
+        if (!d.first.isEmpty()) v.addView(text(c, d.first, small + 1, d.dark ? 0xFFFFFFFF : INK_SOFT, outfit(c, 700)), wrap());
         v.addView(text(c, d.last.toUpperCase(java.util.Locale.UK), big, ink, outfit(c, 900)), wrap());
         if (!d.line.isEmpty()) {
-            TextView l = text(c, d.line, line, d.dark ? 0xD9FFFFFF : 0xD9151A63, outfit(c, 600));
+            TextView l = text(c, d.line, line, d.dark ? 0xD9FFFFFF : INK_SOFT, outfit(c, 700));
             LinearLayout.LayoutParams ll = new LinearLayout.LayoutParams(-2, -2);
             ll.topMargin = px(3);
             v.addView(l, ll);
@@ -787,14 +792,22 @@ final class ScoreCard {
         return v;
     }
 
-    private static Typeface outfitBase;
+    /** Outfit at each weight the cards use, read once each. */
+    private static final java.util.Map<Integer, Typeface> outfits = new java.util.HashMap<>();
 
-    /** Outfit, the launcher's display face, at a weight (100 to 900). */
+    /**
+     * Outfit, the launcher's display face, at a weight (500 to 900). Outfit is a variable font: asking the font file
+     * itself for a weight (Typeface.create) draws its thin default instance, so each weight is its own font resource
+     * with the weight set in it (outfit_medium.xml to outfit_black.xml).
+     */
     private static Typeface outfit(Context c, int weight) {
-        if (outfitBase == null) {
-            try { outfitBase = c.getResources().getFont(R.font.outfit); } catch (RuntimeException e) { outfitBase = Typeface.DEFAULT; }
-        }
-        return android.os.Build.VERSION.SDK_INT >= 28 ? Typeface.create(outfitBase, weight, false) : outfitBase;
+        Typeface t = outfits.get(weight);
+        if (t != null) return t;
+        int res = weight >= 900 ? R.font.outfit_black : weight >= 800 ? R.font.outfit_extrabold : weight >= 700 ? R.font.outfit_bold
+                : weight >= 600 ? R.font.outfit_semibold : R.font.outfit_medium;
+        try { t = c.getResources().getFont(res); } catch (RuntimeException e) { t = Typeface.create("sans-serif", weight >= 700 ? Typeface.BOLD : Typeface.NORMAL); }
+        outfits.put(weight, t);
+        return t;
     }
 
     private static String titleCase(String s) {

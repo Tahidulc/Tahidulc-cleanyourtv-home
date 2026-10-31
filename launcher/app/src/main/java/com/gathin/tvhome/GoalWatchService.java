@@ -222,7 +222,7 @@ public class GoalWatchService extends Service {
     private ScoreCard.Data footballData(ScoresTicker.Game g) {
         ScoreCard.Data d = new ScoreCard.Data();
         int px = Math.round(96 * getResources().getDisplayMetrics().density);
-        d.leagueLogo = leagueBitmap(g.leagueLogo != null ? g.leagueLogo : leagueLogoFor(g), px);
+        d.leagueLogo = bandLogo(g.leagueLogo != null ? g.leagueLogo : leagueLogoFor(g), px);
         d.homeCrest = g.homeLogo == null ? null : ScoresTicker.cachedLogo(this, g.homeLogo, px);
         d.awayCrest = g.awayLogo == null ? null : ScoresTicker.cachedLogo(this, g.awayLogo, px);
         d.homeName = g.homeName != null ? g.homeName : g.home;
@@ -238,6 +238,20 @@ public class GoalWatchService extends Service {
                     : () -> AppSearchService.tune(this, getString(R.string.scores_open_package), names, logo);
         }
         return d;
+    }
+
+    /**
+     * A competition's logo for the score card's navy band: the white version (the Premier League's lion in white,
+     * ESPN's logos for dark grounds), so it shows on the navy; the logo as it is when there is no such version.
+     */
+    private android.graphics.Bitmap bandLogo(String url, int px) {
+        if (url == null) return null;
+        if (premier(url)) {
+            android.graphics.Bitmap full = ScoresTicker.cachedLogo(this, url.replace("/500-dark/", "/500/"), px * 2);
+            return full == null ? null : lionOnly(full, true);
+        }
+        android.graphics.Bitmap dark = url.contains("/500/") ? ScoresTicker.cachedLogo(this, url.replace("/500/", "/500-dark/"), px) : null;
+        return dark != null ? dark : ScoresTicker.cachedLogo(this, url, px);
     }
 
     /** The goal label in the scoring side's colour, navy where that is too pale for white letters. */
