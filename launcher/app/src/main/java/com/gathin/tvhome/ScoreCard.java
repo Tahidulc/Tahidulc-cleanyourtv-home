@@ -44,6 +44,10 @@ import java.util.List;
 final class ScoreCard {
     static final class Data {
         boolean f1;
+        /** goal, red, var, pen, ft or f1: how it moves. */
+        String kind = "";
+        /** For a goal: the score before it, which turns over to the new one. */
+        String scoreBefore;
         /** The label's words, a small line under them (or null), and its colour. */
         String label, labelSmall;
         int labelColour;
@@ -70,6 +74,8 @@ final class ScoreCard {
     private static Data showing;
     private static boolean onHome;
     private static float k;
+    /** The score's tick and Home's light, waiting to run; dropped when the card goes first. */
+    private static final List<Runnable> later = new ArrayList<>();
 
     private ScoreCard() { }
 
@@ -163,18 +169,30 @@ final class ScoreCard {
             stage.addView(who(c, d, 13, 24, 13), whoParams(photo == null));
             if (d.score != null || d.position != null) stage.addView(scoreBlock(c, d, h, 30, 30), new LinearLayout.LayoutParams(-2, h));
         } else {
-            for (Object[] p : d.podium) stage.addView(podiumEntry(c, p, h), new LinearLayout.LayoutParams(-2, h));
+            for (Object[] p : d.podium) {
+                View e = podiumEntry(c, p, h);
+                e.setTag("podium");
+                stage.addView(e, new LinearLayout.LayoutParams(-2, h));
+            }
             View gap = new View(c);
             stage.addView(gap, new LinearLayout.LayoutParams(px(6), h));
         }
         if (d.watch != null) stage.addView(watchBlock(c, d, h, 15, 11.5f), new LinearLayout.LayoutParams(-2, h));
         card.addView(stage, new LinearLayout.LayoutParams(-2, h));
 
+        FrameLayout box = new FrameLayout(c);
+        box.setOutlineProvider(new ViewOutlineProvider() {
+            @Override public void getOutline(View v, Outline o) { o.setRoundRect(0, 0, v.getWidth(), v.getHeight(), r); }
+        });
+        box.setClipToOutline(true);
+        box.setElevation(px(8));
+        card.setElevation(0);
+        box.addView(card, new FrameLayout.LayoutParams(-2, h));
         FrameLayout win = new FrameLayout(c);
         int m = px(10);
         FrameLayout.LayoutParams fl = new FrameLayout.LayoutParams(-2, h);
         fl.setMargins(m, m, m, m);
-        win.addView(card, fl);
+        win.addView(box, fl);
         WindowManager.LayoutParams lp = new WindowManager.LayoutParams(WindowManager.LayoutParams.WRAP_CONTENT, h + 2 * m,
                 WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
@@ -184,18 +202,8 @@ final class ScoreCard {
         lp.y = px(34);
         lp.setTitle("ScoreCard");
         if (!add(c, win, lp, d)) return;
-        // In from the left; the label, the player and the score after it.
-        card.setAlpha(0f);
-        card.setTranslationX(-px(50));
-        card.animate().alpha(1f).translationX(0).setDuration(380).setInterpolator(new DecelerateInterpolator(2.2f)).start();
-        label.setScaleX(0f);
-        label.setPivotX(0);
-        label.animate().scaleX(1f).setStartDelay(220).setDuration(320).setInterpolator(new DecelerateInterpolator(2f)).start();
-        if (photo != null) {
-            photo.setTranslationY(px(30));
-            photo.setAlpha(0f);
-            photo.animate().translationY(0).alpha(1f).setStartDelay(360).setDuration(360).setInterpolator(new DecelerateInterpolator(2f)).start();
-        }
+        enter(box, -px(36), 0);
+        alive(c, d, box, h);
         schedule(d);
     }
 
@@ -271,8 +279,15 @@ final class ScoreCard {
         }
         if (d.watch != null) bar.addView(watchBlock(c, d, h, 18, 13), new LinearLayout.LayoutParams(-2, h));
 
+        FrameLayout box = new FrameLayout(c);
+        box.setOutlineProvider(new ViewOutlineProvider() {
+            @Override public void getOutline(View v, Outline o) { o.setRoundRect(0, 0, v.getWidth(), v.getHeight(), r); }
+        });
+        box.setClipToOutline(true);
+        bar.setElevation(0);
+        box.addView(bar, new FrameLayout.LayoutParams(w, h));
         FrameLayout win = new FrameLayout(c);
-        win.addView(bar, new FrameLayout.LayoutParams(w, h));
+        win.addView(box, new FrameLayout.LayoutParams(w, h));
         WindowManager.LayoutParams lp = new WindowManager.LayoutParams(w, h,
                 WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
@@ -282,12 +297,8 @@ final class ScoreCard {
         lp.setTitle("ScoreCard");
         if (!add(c, win, lp, d)) return;
         lane(true);
-        bar.setAlpha(0f);
-        bar.setTranslationY(-px(30));
-        bar.animate().alpha(1f).translationY(0).setStartDelay(150).setDuration(380).setInterpolator(new DecelerateInterpolator(2f)).start();
-        label.setScaleX(0f);
-        label.setPivotX(0);
-        label.animate().scaleX(1f).setStartDelay(420).setDuration(320).setInterpolator(new DecelerateInterpolator(2f)).start();
+        enter(box, 0, -px(24));
+        alive(c, d, box, h);
         schedule(d);
     }
 
@@ -306,7 +317,25 @@ final class ScoreCard {
         v.setGravity(Gravity.CENTER_VERTICAL);
         v.setPadding(px(16), 0, px(24), 0);
         v.setBackground(new Slant(d.labelColour, px(16), false));
-        v.addView(text(c, d.label, size, 0xFFFFFFFF, outfit(c, 900)));
+        if ("red".equals(d.kind)) {
+            // The card itself, held up: it gives a little shake as the label lands.
+            LinearLayout row = new LinearLayout(c);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            View card = new View(c);
+            GradientDrawable cd = new GradientDrawable();
+            cd.setColor(0xFFE3061B);
+            cd.setCornerRadius(px(3));
+            cd.setStroke(Math.max(1, px(1.5f)), 0xFFFFFFFF);
+            card.setBackground(cd);
+            card.setTag("redcard");
+            LinearLayout.LayoutParams rl = new LinearLayout.LayoutParams(px(size * 0.6f), px(size * 0.85f));
+            rl.rightMargin = px(10);
+            row.addView(card, rl);
+            row.addView(text(c, d.label, size, 0xFFFFFFFF, outfit(c, 900)));
+            v.addView(row);
+        } else {
+            v.addView(text(c, d.label, size, 0xFFFFFFFF, outfit(c, 900)));
+        }
         if (d.labelSmall != null) {
             TextView s = text(c, d.labelSmall, 11, 0xD9FFFFFF, Typeface.create("sans-serif-condensed", Typeface.BOLD));
             s.setLetterSpacing(0.16f);
@@ -367,8 +396,9 @@ final class ScoreCard {
             return v;
         }
         if (d.homeCrest != null) v.addView(image(c, d.homeCrest), new LinearLayout.LayoutParams(px(crest), px(crest)));
-        TextView s = text(c, d.score, size, 0xFFFFFFFF, outfit(c, 900));
+        TextView s = text(c, d.scoreBefore != null ? d.scoreBefore : d.score, size, 0xFFFFFFFF, outfit(c, 900));
         s.setLetterSpacing(0.04f);
+        s.setTag("score");
         LinearLayout.LayoutParams sl = new LinearLayout.LayoutParams(-2, -2);
         sl.leftMargin = sl.rightMargin = px(10);
         v.addView(s, sl);
@@ -452,6 +482,47 @@ final class ScoreCard {
         return v;
     }
 
+    // ---- the movement -------------------------------------------------------------------------------------------
+
+    /** In: one short slide and fade, drawn once into a layer so only that layer moves. */
+    private static void enter(View box, float dx, float dy) {
+        box.setAlpha(0f);
+        box.setTranslationX(dx);
+        box.setTranslationY(dy);
+        box.animate().alpha(1f).translationX(0).translationY(0).setDuration(260)
+                .setInterpolator(new DecelerateInterpolator(2f)).withLayer().start();
+    }
+
+    /**
+     * The one bit of movement after it lands: a goal's score ticks over from the one before; on Home a band of light
+     * also crosses the bar, once. Nothing repeats. Over a playing channel every frame that moves makes the TV compose
+     * the picture on the graphics chip, and the video drops frames, so the card holds still once it is in.
+     */
+    private static void alive(Context c, Data d, FrameLayout box, int h) {
+        View score = box.findViewWithTag("score");
+        if (score instanceof TextView && d.scoreBefore != null && !d.scoreBefore.equals(d.score)) {
+            TextView t = (TextView) score;
+            Runnable tick = () -> t.animate().alpha(0f).translationY(-px(12)).setDuration(140).withEndAction(() -> {
+                t.setText(d.score);
+                t.setTranslationY(px(12));
+                t.animate().alpha(1f).translationY(0).setDuration(220).setInterpolator(new DecelerateInterpolator(2f)).start();
+            }).start();
+            later.add(tick);
+            main.postDelayed(tick, 900L);
+        }
+        if (!onHome) return;
+        View sheen = new View(c);
+        sheen.setBackground(new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, new int[]{0x00FFFFFF, 0x40FFFFFF, 0x00FFFFFF}));
+        sheen.setRotation(18);
+        sheen.setTranslationX(-px(160));
+        box.addView(sheen, new FrameLayout.LayoutParams(px(70), h * 2, Gravity.CENTER_VERTICAL));
+        Runnable sweep = () -> sheen.animate().translationX(box.getWidth() + px(80)).setDuration(900)
+                .setInterpolator(new android.view.animation.AccelerateDecelerateInterpolator())
+                .withEndAction(() -> box.removeView(sheen)).start();
+        later.add(sweep);
+        main.postDelayed(sweep, 450L);
+    }
+
     // ---- window, timing, closing ---------------------------------------------------------------------------------
 
     private static boolean add(Context c, FrameLayout win, WindowManager.LayoutParams lp, Data d) {
@@ -473,6 +544,8 @@ final class ScoreCard {
 
     /** The card away (faded, or at once), the score bar back on Home, and the next waiting one. */
     static void close(boolean fade) {
+        for (Runnable r : later) main.removeCallbacks(r);
+        later.clear();
         FrameLayout v = host;
         host = null;
         showing = null;
@@ -487,8 +560,8 @@ final class ScoreCard {
         if (!fade) { gone.run(); return; }
         View content = v.getChildAt(0);
         if (content == null) { gone.run(); return; }
-        content.animate().alpha(0f).translationX(wasHome ? 0 : -px(40)).translationY(wasHome ? -px(24) : 0)
-                .setDuration(280).withEndAction(gone).start();
+        content.animate().alpha(0f).translationX(wasHome ? 0 : -px(30)).translationY(wasHome ? -px(18) : 0)
+                .setDuration(220).withLayer().withEndAction(gone).start();
     }
 
     /** Home's score pills step aside while the bar holds their place, and come back after. */

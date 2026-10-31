@@ -148,6 +148,7 @@ public class GoalWatchService extends Service {
             ScoreCard.Data d = footballData(g);
             boolean home = !"away".equals(side);
             int kit = home ? g.homeColor : g.awayColor;
+            d.kind = type;
             if ("ft".equals(type)) {
                 d.label = "FULL";
                 d.labelSmall = "TIME";
@@ -177,6 +178,12 @@ public class GoalWatchService extends Service {
                 d.line = minute + ("pen".equals(kind) ? " · penalty" : "og".equals(kind) ? " · own goal" : red ? " · sent off" : "");
                 d.crest = home ? d.homeCrest : d.awayCrest;
                 d.photo = playerPhoto(who, home ? g.homeName : g.awayName, kit);
+                // A goal: the score before it, to turn over to the new one.
+                int hs = parse(g.homeScore), as = parse(g.awayScore);
+                if (!red && hs >= 0 && as >= 0) {
+                    boolean forHome = home != "og".equals(kind);
+                    d.scoreBefore = (forHome ? Math.max(0, hs - 1) : hs) + "–" + (forHome ? as : Math.max(0, as - 1));
+                }
             }
             main.post(() -> ScoreCard.show(this, d));
         });
@@ -189,6 +196,7 @@ public class GoalWatchService extends Service {
             String what = inc[1].replaceAll("^[^A-Za-z]+", "").trim();
             String lower = what.toLowerCase(java.util.Locale.ROOT);
             boolean pen = lower.startsWith("pen");
+            d.kind = pen ? "pen" : "var";
             d.label = pen ? "PEN" : "VAR";
             d.labelColour = pen ? 0xFF151A63 : 0xFF111214;
             String[] name = split(inc[2]);
@@ -321,6 +329,7 @@ public class GoalWatchService extends Service {
     private ScoreCard.Data f1Data() {
         ScoreCard.Data d = new ScoreCard.Data();
         d.f1 = true;
+        d.kind = "f1";
         d.labelColour = 0xFFE10600;
         android.graphics.Bitmap mark = ScoresTicker.cachedLogo(this, F1Results.F1_LOGO, 200);
         d.leagueLogo = mark == null ? null : white(mark);
