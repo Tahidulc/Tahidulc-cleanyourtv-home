@@ -1879,23 +1879,23 @@ public class GoalWatchService extends Service {
 
     // ---- the alert ---------------------------------------------------------------------------------
 
-    /** Goals, red cards and full times already announced, by id: Home's score line and this service share it. */
-    private static final Set<String> announced = java.util.concurrent.ConcurrentHashMap.newKeySet();
-
     /**
-     * From Home's score line, for any competition it shows: a goal or full time (goal[4] "ft"), as the new-style bar,
-     * after the same delay as the service's own (the picture runs behind the scores). Once only: a game the service
-     * follows itself is announced by whichever sees it first.
+     * Whether this service announces a game itself (its competition is a goal_alert_leagues one, or one of its clubs
+     * is a goal_alert_teams club): then its goals and full time are the new-style bar; Home's score line announces
+     * any other game's goal in its own pill.
      */
-    static void fromHome(ScoresTicker.Game g, String[] goal) {
-        GoalWatchService s = self;
-        if (s == null || !s.skyAlerts || g == null || goal == null) return;
-        s.main.postDelayed(() -> s.enqueue(g, goal, false), DELAY_MS);
+    static boolean follows(Context c, ScoresTicker.Game g) {
+        if (g == null) return false;
+        for (String l : c.getResources().getStringArray(R.array.goal_alert_leagues)) {
+            String tag = l.contains("|") ? l.split("\\|", 2)[1].trim() : l.trim();
+            if (tag.equals(g.league)) return true;
+        }
+        Set<String> clubs = new HashSet<>(Arrays.asList(c.getResources().getStringArray(R.array.goal_alert_teams)));
+        clubs.addAll(LINEUP_TEAMS);
+        return clubs.contains(g.homeId) || clubs.contains(g.awayId);
     }
 
     private void enqueue(ScoresTicker.Game g, String[] goal, boolean red) {
-        // Once each (Home's score line may have announced it already); adb's samples always show.
-        if (goal[0] != null && !goal[0].startsWith("test") && !announced.add(goal[0])) return;
         if (skyAlerts) {
             skyFootball(g, red ? "red" : "ft".equals(goal[4]) ? "ft" : "goal", goal[1], goal[2], goal[3], goal[4]);
             return;
