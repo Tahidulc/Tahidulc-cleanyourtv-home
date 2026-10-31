@@ -356,6 +356,76 @@ public class GoalWatchService extends Service {
         return out;
     }
 
+    // ---- the score cards: kick-off and reminders ---------------------------------------------------------------
+
+    /**
+     * A game about to start as a score card: KICK-OFF over the minutes to go, the clubs, the competition and ground,
+     * both crests in the end block with the kick-off time, and where it is on only where a guide lists it.
+     */
+    private ScoreCard.Data kickoffCard(ScoresTicker.Game g) {
+        ScoreCard.Data d = footballData(g);
+        d.kind = "kickoff";
+        long mins = Math.max(0, Math.round((g.kickoff - System.currentTimeMillis()) / 60_000.0));
+        d.label = "KICK-OFF";
+        d.labelSmall = mins > 0 ? "IN " + mins + " MIN" : "NOW";
+        d.labelColour = 0xFF151A63;
+        String full = d.homeName + " v " + d.awayName;
+        d.last = full.length() <= 26 ? full : g.home + " v " + g.away;
+        String comp = ScoresTicker.competition(g);
+        d.first = comp == null ? "" : comp;
+        String time = g.kickoff > 0 ? new java.text.SimpleDateFormat("HH:mm", java.util.Locale.UK).format(new java.util.Date(g.kickoff)) : null;
+        d.line = (g.venue == null || g.venue.isEmpty() ? "" : g.venue) + (time == null ? "" : (g.venue == null || g.venue.isEmpty() ? "" : " · ") + "Kick-off " + time);
+        d.score = "v";
+        d.minute = null;
+        d.channelLogo = null;
+        d.channel = null;
+        d.watch = null;
+        Object[] w = watchFor(g);
+        if (w != null) {
+            @SuppressWarnings("unchecked") List<String> names = (List<String>) w[0];
+            android.graphics.Bitmap logo = (android.graphics.Bitmap) w[1];
+            d.channelLogo = logo;
+            d.channel = names.isEmpty() ? null : names.get(0);
+            d.watch = w.length > 2 && w[2] instanceof Runnable ? (Runnable) w[2]
+                    : () -> AppSearchService.tune(this, getString(R.string.scores_open_package), names, logo);
+        }
+        return d;
+    }
+
+    /** An event asked to be reminded of (v2's Sport page) as a score card: STARTING, its title, and its channel. */
+    private void skyReminder(JSONObject r, long mins) {
+        String title = r.optString("t"), channel = r.optString("c"), logoUrl = r.optString("l");
+        io.execute(() -> {
+            ScoreCard.Data d = new ScoreCard.Data();
+            d.kind = "reminder";
+            d.leagueLogo = emoji("⏰", 120);
+            d.label = "STARTING";
+            d.labelSmall = mins > 0 ? "IN " + mins + " MIN" : "NOW";
+            d.labelColour = 0xFF151A63;
+            d.headline = title;
+            if (!channel.isEmpty()) {
+                int px = Math.round(96 * getResources().getDisplayMetrics().density);
+                android.graphics.Bitmap logo = logoUrl.isEmpty() ? null : HomeV2.trim(ScoresTicker.cachedLogo(this, logoUrl, px));
+                List<String> names = new ArrayList<>(Arrays.asList(channel));
+                d.channelLogo = logo;
+                d.channel = channel;
+                d.watch = () -> AppSearchService.tune(this, getString(R.string.scores_open_package), names, logo);
+            }
+            main.post(() -> ScoreCard.show(this, d));
+        });
+    }
+
+    /** An emoji drawn as a picture (the band's mark where there is no logo). */
+    private static android.graphics.Bitmap emoji(String e, int size) {
+        android.graphics.Bitmap b = android.graphics.Bitmap.createBitmap(size, size, android.graphics.Bitmap.Config.ARGB_8888);
+        android.graphics.Paint p = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+        p.setTextSize(size * 0.8f);
+        p.setTextAlign(android.graphics.Paint.Align.CENTER);
+        android.graphics.Paint.FontMetrics fm = p.getFontMetrics();
+        new android.graphics.Canvas(b).drawText(e, size / 2f, size / 2f - (fm.ascent + fm.descent) / 2f, p);
+        return b;
+    }
+
     // ---- the score cards: fights ------------------------------------------------------------------------------
 
     /**
@@ -407,12 +477,12 @@ public class GoalWatchService extends Service {
             d.band = 0xFF3A2C0E;
             d.bandDeep = 0xFF0E0B05;
             d.wideMark = true;
-            float density = getResources().getDisplayMetrics().density;
-            d.leagueLogo = drawn(Badges.bbc(density, "SPORT", 0xFF8A6100));
+            d.wideMark = false;
+            d.leagueLogo = emoji("🥊", 120);
             d.label = "BOXING";
+            d.labelSmall = "BBC SPORT";
             d.labelColour = 0xFFB8892B;
             d.headline = item[1];
-            d.line = "BBC Sport";
             String pic = item.length > 4 ? item[4] : null;
             if (pic != null) d.picture = ScoresTicker.cachedLogo(this, pic.replace("/standard/800/", "/standard/240/"), 240);
             main.post(() -> ScoreCard.show(this, d));
@@ -442,15 +512,6 @@ public class GoalWatchService extends Service {
     private android.graphics.Bitmap fighterPhoto(String id) {
         if (id == null || id.isEmpty()) return null;
         return ScoresTicker.cachedLogo(this, "https://a.espncdn.com/i/headshots/mma/players/full/" + id + ".png", 200);
-    }
-
-    /** A drawable (a badge) as a picture. */
-    private static android.graphics.Bitmap drawn(android.graphics.drawable.Drawable dr) {
-        int w = Math.max(1, dr.getIntrinsicWidth()), h = Math.max(1, dr.getIntrinsicHeight());
-        android.graphics.Bitmap b = android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888);
-        dr.setBounds(0, 0, w, h);
-        dr.draw(new android.graphics.Canvas(b));
-        return b;
     }
 
     /** adb test: one of each score card, with today's Chelsea v Man United and an F1 race, to see them. */
@@ -900,7 +961,10 @@ public class GoalWatchService extends Service {
                 List<String[]> items = readNews(true, boxingAlerts);
                 main.post(() -> {
                     Set<String> labels = new HashSet<>();
-                    for (String[] item : items) if (labels.add(item[0])) enqueueParts(newsLine(item), newsSound(item));
+                    for (String[] item : items) {
+                        if (!labels.add(item[0])) continue;
+                        if (skyAlerts && "BOXING".equals(item[0])) skyBoxing(item); else enqueueParts(newsLine(item), newsSound(item));
+                    }
                 });
             });
         }
@@ -947,6 +1011,7 @@ public class GoalWatchService extends Service {
         // Events a person asked to be reminded of (v2's Sport page): "⏰ STARTING IN 5 MIN · title · channel".
         for (JSONObject r : Reminders.due(this, System.currentTimeMillis())) {
             long mins = Math.max(0, Math.round((r.optLong("s") - System.currentTimeMillis()) / 60_000.0));
+            if (skyAlerts) { skyReminder(r, mins); continue; }
             List<Object> parts = new ArrayList<>();
             parts.add(bold(mins > 0 ? "⏰  STARTING IN " + mins + " MIN" : "⏰  STARTING NOW"));
             parts.add(10);
@@ -1686,6 +1751,12 @@ public class GoalWatchService extends Service {
                 main.post(() -> LineupCard.show(this, card));
                 return;
             }
+            // No line-ups yet (or no line-up card): the kick-off as a score card.
+            if (skyAlerts) {
+                ScoreCard.Data d = kickoffCard(g);
+                main.post(() -> ScoreCard.show(this, d));
+                return;
+            }
             List<Object> ready = resolve(parts, px);
             List<Object> livePage = live == null ? null : resolve(live, px);
             // Every picture at once, and no more than fifteen seconds for all of them: on a slow connection a player
@@ -1739,11 +1810,13 @@ public class GoalWatchService extends Service {
         d.kickoffAt = g.kickoff;
         d.venue = g.venue;
         d.competition = g.league == null && g.slug == null ? null : ScoresTicker.competition(g);
-        if (tv != null) {
-            d.channel = tv.name;
-            if (tv.logo != null) d.channelLogo = ScoresTicker.cachedLogo(this, tv.logo, logoPx * 2);
-        }
+        // Where it is on only where a guide lists the game (watchFor), never guessed; no channel at all otherwise.
         Object[] w = watchFor(g);
+        if (w != null) {
+            @SuppressWarnings("unchecked") List<String> on = (List<String>) w[0];
+            d.channel = on.isEmpty() ? null : on.get(0);
+            d.channelLogo = (android.graphics.Bitmap) w[1];
+        }
         if (w != null && w.length > 2) {
             d.watch = (Runnable) w[2];
         } else if (w != null) {
