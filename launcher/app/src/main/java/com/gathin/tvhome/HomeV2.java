@@ -917,9 +917,9 @@ final class HomeV2 {
     }
 
     /** Discover, Movies and TV shows: the boxes stay on screen under them, the page cut off just above. */
-    /** Discover, Movies, TV shows and Sport keep the boxes under them: their rows scroll above the boxes, cut off there. */
+    /** Every section keeps the boxes under it (Discover, Movies, TV shows, Sport, Apps): its rows scroll above them. */
     private static boolean keepsBoxes(int which) {
-        return which >= 1 && which <= 4;
+        return which >= 1 && which <= 5;
     }
 
     /** A section showing while the boxes keep the focus is cut off just above them. */

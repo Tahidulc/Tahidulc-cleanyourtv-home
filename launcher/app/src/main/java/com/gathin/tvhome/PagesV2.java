@@ -1977,84 +1977,124 @@ final class PagesV2 {
 
         private TextView f1Kicker, f1PageView;
         /**
-         * The way down past the table and the standings: a "What's on in sport" button at each card's foot, OK on the card
-         * pressing it. A glossy pill in Sport's colours with the remote's OK as a key cap, a red dot beating while anything
-         * is on now, how many, and a chevron that bobs down while the card has the focus; dimmed while it has not.
+         * The way down past the table and the standings: a "What's on in sport" bar across each card's foot, OK on the
+         * card pressing it. At rest a bright glass bar in Sport's colours; on the card with the focus it turns white
+         * with a glowing rim, a sheen sweeping across it now and then, and its arrow bobbing: plainly the thing OK does.
+         * The remote's OK as a key cap, and a red dot beating beside how many things are on now.
          */
         private View tableJump, f1Jump;
-        private final List<TextView> jumpLabels = new ArrayList<>(), jumpLives = new ArrayList<>();
-        private final List<View> jumpDots = new ArrayList<>(), jumpArrows = new ArrayList<>();
+        private final List<Jump> jumps = new ArrayList<>();
+
+        private static final class Jump {
+            FrameLayout box;
+            LinearLayout row;
+            TextView ok, label, live, arrow;
+            View dot, sheen;
+            boolean on;
+        }
 
         private View jumpPill(LinearLayout card) {
+            Jump j = new Jump();
+            FrameLayout box = new FrameLayout(h.a);
+            box.setClipToOutline(true);
+            box.setOutlineProvider(h.round(16));
             LinearLayout b = new LinearLayout(h.a);
             b.setOrientation(LinearLayout.HORIZONTAL);
             b.setGravity(Gravity.CENTER_VERTICAL);
-            b.setPadding(px(8), px(6), px(14), px(6));
-            GradientDrawable bg = new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, new int[]{0xFF0FA968, 0xFF1D8FB8, 0xFF5B4BDB});
-            bg.setCornerRadius(px(22));
-            bg.setStroke(Math.max(1, px(1.5f)), 0x66FFFFFF);
-            b.setBackground(bg);
-            b.setElevation(px(10));
-            // The key cap: OK, as on the remote.
-            TextView ok = h.text(12, h.semi, 0xFF0B2A3A);
+            b.setPadding(px(10), 0, px(10), 0);
+            box.addView(b, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+            TextView ok = h.text(13, h.semi, Color.WHITE);
             ok.setText("OK");
             ok.setGravity(Gravity.CENTER);
-            ok.setBackground(h.fill(9, 0xF2FFFFFF));
-            ok.setPadding(px(7), px(2), px(7), px(2));
+            ok.setPadding(px(8), px(3), px(8), px(3));
             b.addView(ok);
-            TextView label = h.text(16, h.semi, Color.WHITE);
+            LinearLayout words = new LinearLayout(h.a);
+            words.setOrientation(LinearLayout.VERTICAL);
+            TextView label = h.text(18, h.semi, Color.WHITE);
             label.setText("What's on in sport");
-            label.setShadowLayer(px(4), 0, px(1), 0x55000000);
-            LinearLayout.LayoutParams ll = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            ll.leftMargin = px(10);
-            b.addView(label, ll);
-            // The live count, its dot beating.
+            label.setSingleLine(true);
+            words.addView(label);
+            LinearLayout sub = new LinearLayout(h.a);
+            sub.setOrientation(LinearLayout.HORIZONTAL);
+            sub.setGravity(Gravity.CENTER_VERTICAL);
             View dot = new View(h.a);
-            dot.setBackground(h.fill(5, 0xFFFF3B4A));
-            LinearLayout.LayoutParams dl = new LinearLayout.LayoutParams(px(9), px(9));
-            dl.leftMargin = px(12);
-            b.addView(dot, dl);
-            TextView live = h.text(13, h.semi, 0xF2FFFFFF);
+            dot.setBackground(h.fill(4, 0xFFFF3B4A));
+            sub.addView(dot, new LinearLayout.LayoutParams(px(8), px(8)));
+            TextView live = h.text(13, h.regular, 0xD9FFFFFF);
             LinearLayout.LayoutParams lv = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            lv.leftMargin = px(5);
-            b.addView(live, lv);
-            TextView arrow = h.text(18, h.semi, Color.WHITE);
-            arrow.setText("⌄");
-            LinearLayout.LayoutParams al = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            al.leftMargin = px(10);
-            b.addView(arrow, al);
+            lv.leftMargin = px(6);
+            sub.addView(live, lv);
+            words.addView(sub);
+            LinearLayout.LayoutParams wl = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+            wl.leftMargin = px(12);
+            b.addView(words, wl);
+            // The arrow, in a circle of its own.
+            TextView arrow = h.text(20, h.semi, Color.WHITE);
+            arrow.setText("↓");
+            arrow.setGravity(Gravity.CENTER);
+            b.addView(arrow, new LinearLayout.LayoutParams(px(36), px(36)));
+            // The sheen: a soft band of light that crosses the bar while the card has the focus.
+            View sheen = new View(h.a);
+            sheen.setBackground(new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, new int[]{0x00FFFFFF, 0x66FFFFFF, 0x00FFFFFF}));
+            sheen.setVisibility(View.INVISIBLE);
+            box.addView(sheen, new FrameLayout.LayoutParams(px(120), ViewGroup.LayoutParams.MATCH_PARENT));
             android.animation.ObjectAnimator beat = android.animation.ObjectAnimator.ofFloat(dot, View.ALPHA, 1f, 0.25f);
             beat.setDuration(650);
             beat.setRepeatCount(android.animation.ValueAnimator.INFINITE);
             beat.setRepeatMode(android.animation.ValueAnimator.REVERSE);
             beat.start();
-            jumpLabels.add(label);
-            jumpLives.add(live);
-            jumpDots.add(dot);
-            jumpArrows.add(arrow);
-            b.setAlpha(0.45f);
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            lp.gravity = Gravity.CENTER_HORIZONTAL;
+            j.box = box; j.row = b; j.ok = ok; j.label = label; j.live = live; j.dot = dot; j.arrow = arrow; j.sheen = sheen;
+            jumps.add(j);
+            style(j, false);
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, px(58));
             lp.topMargin = px(10);
-            card.addView(b, lp);
-            return b;
+            card.addView(box, lp);
+            return box;
         }
 
-        /** The button lit (its card has the focus: bigger, bright, the chevron bobbing) or resting (dimmed). */
+        /** The bar at rest (bright glass in Sport's colours) or lit (white, dark words, glowing rim). */
+        private void style(Jump j, boolean on) {
+            j.on = on;
+            GradientDrawable bg = on
+                    ? new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0xFFFFFFFF, 0xFFE9F3FF})
+                    : new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, new int[]{0xE60FA968, 0xE61D8FB8, 0xE65B4BDB});
+            bg.setCornerRadius(px(16));
+            bg.setStroke(px(on ? 3 : 1.5f), on ? 0xFF7FE3FF : 0x80FFFFFF);
+            j.box.setBackground(bg);
+            int ink = on ? 0xFF0E1B2E : Color.WHITE;
+            j.label.setTextColor(ink);
+            j.live.setTextColor(on ? 0xCC0E1B2E : 0xD9FFFFFF);
+            j.ok.setTextColor(on ? Color.WHITE : 0xFF0E1B2E);
+            j.ok.setBackground(h.fill(8, on ? 0xFF0E1B2E : 0xF2FFFFFF));
+            j.arrow.setTextColor(on ? Color.WHITE : 0xFF0E1B2E);
+            j.arrow.setBackground(h.fill(18, on ? 0xFF1D8FB8 : 0xF2FFFFFF));
+            j.box.setElevation(on ? px(16) : px(4));
+        }
+
+        /** The bar lit (its card has the focus: white, a little bigger, the sheen crossing, the arrow bobbing) or at rest. */
         private void lightJump(View b, boolean on) {
-            int i = b == tableJump ? 0 : 1;
-            if (i >= jumpArrows.size()) return;
-            b.animate().alpha(on ? 1f : 0.45f).scaleX(on ? 1.06f : 1f).scaleY(on ? 1.06f : 1f).setDuration(200).setInterpolator(HomeV2.SKY).start();
-            View arrow = jumpArrows.get(i);
-            arrow.animate().cancel();
-            if (on) bob(arrow); else arrow.setTranslationY(0);
+            for (Jump j : jumps) {
+                if (j.box != b) continue;
+                style(j, on);
+                b.animate().scaleX(on ? 1.03f : 1f).scaleY(on ? 1.03f : 1f).setDuration(200).setInterpolator(HomeV2.SKY).start();
+                j.arrow.animate().cancel();
+                j.sheen.animate().cancel();
+                if (on) { bob(j); sweep(j); } else { j.arrow.setTranslationY(0); j.sheen.setVisibility(View.INVISIBLE); }
+            }
         }
 
-        private void bob(View arrow) {
-            arrow.animate().translationY(px(4)).setDuration(450).withEndAction(() ->
-                    arrow.animate().translationY(0).setDuration(450).withEndAction(() -> {
-                        if ((arrow == jumpArrows.get(0) && zone == -1 && cardIdx == 1) || (jumpArrows.size() > 1 && arrow == jumpArrows.get(1) && zone == -1 && cardIdx == 2)) bob(arrow);
-                    }).start()).start();
+        private void bob(Jump j) {
+            j.arrow.animate().translationY(px(4)).setDuration(420).withEndAction(() ->
+                    j.arrow.animate().translationY(0).setDuration(420).withEndAction(() -> { if (j.on) bob(j); }).start()).start();
+        }
+
+        private void sweep(Jump j) {
+            if (!j.on) return;
+            j.sheen.setVisibility(View.VISIBLE);
+            j.sheen.setTranslationX(-px(140));
+            j.sheen.animate().translationX(j.box.getWidth() + px(20)).setDuration(900).setStartDelay(500)
+                    .setInterpolator(new android.view.animation.AccelerateDecelerateInterpolator())
+                    .withEndAction(() -> { if (j.on) j.box.postDelayed(() -> sweep(j), 1600); }).start();
         }
 
         /** The first row below the cards with anything in it (Live Football this week, as a rule); -1 when none has. */
@@ -2297,9 +2337,11 @@ final class PagesV2 {
             // The way down past the table: the "What's on in sport" button, lit on the card with the focus.
             int liveNow = 0;
             for (int r = 1; r < lists.size(); r++) for (HomeV2.Tile t : lists.get(r)) if ("LIVE NOW".equals(t.chip)) liveNow++;
-            for (int i = 0; i < jumpLives.size(); i++) {
-                jumpLives.get(i).setText(liveNow > 0 ? liveNow + " live" : "");
-                jumpDots.get(i).setVisibility(liveNow > 0 ? View.VISIBLE : View.GONE);
+            int coming = 0;
+            for (int r = 1; r < lists.size(); r++) coming += lists.get(r).size();
+            for (Jump j : jumps) {
+                j.live.setText(liveNow > 0 ? liveNow + " live now · " + coming + " this week" : coming > 0 ? coming + " games and events this week" : "Live football and more");
+                j.dot.setVisibility(liveNow > 0 ? View.VISIBLE : View.GONE);
             }
             if (tableJump != null && tableJump.getTag() != (Boolean) onTable) { tableJump.setTag(onTable); lightJump(tableJump, onTable); }
             if (f1Jump != null && f1Jump.getTag() != (Boolean) onDrivers) { f1Jump.setTag(onDrivers); lightJump(f1Jump, onDrivers); }
