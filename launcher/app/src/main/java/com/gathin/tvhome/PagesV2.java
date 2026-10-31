@@ -1559,7 +1559,45 @@ final class PagesV2 {
             android.graphics.drawable.BitmapDrawable d = new android.graphics.drawable.BitmapDrawable(h.a.getResources(),
                     okKey(Config.themeString(h.a, "ok_button", "tcl"), size));
             d.setBounds(0, 0, size, size);
-            b.setSpan(new android.text.style.ImageSpan(d, android.text.style.ImageSpan.ALIGN_CENTER), at, at + 2, 0);
+            b.setSpan(new MidSpan(d), at, at + 2, 0);
+        }
+
+        /**
+         * A picture in a line of words, its middle level with the middle of the capitals ("Was on", "Press"), so the
+         * words sit level with the channel's logo and the OK key; an ImageSpan centres on the font's whole line box,
+         * which leaves the words looking low.
+         */
+        static final class MidSpan extends android.text.style.ReplacementSpan {
+            private final android.graphics.drawable.Drawable d;
+            private final android.graphics.Rect cap = new android.graphics.Rect();
+
+            MidSpan(android.graphics.drawable.Drawable d) { this.d = d; }
+
+            private float middle(android.graphics.Paint p) {
+                p.getTextBounds("H", 0, 1, cap);
+                return cap.top / 2f;   // above the baseline, so negative
+            }
+
+            @Override public int getSize(android.graphics.Paint p, CharSequence t, int start, int end, android.graphics.Paint.FontMetricsInt fm) {
+                android.graphics.Rect r = d.getBounds();
+                if (fm != null) {
+                    android.graphics.Paint.FontMetricsInt pf = p.getFontMetricsInt();
+                    int top = Math.round(middle(p) - r.height() / 2f), bottom = top + r.height();
+                    fm.ascent = Math.min(pf.ascent, top);
+                    fm.top = Math.min(pf.top, top);
+                    fm.descent = Math.max(pf.descent, bottom);
+                    fm.bottom = Math.max(pf.bottom, bottom);
+                    fm.leading = pf.leading;
+                }
+                return r.width();
+            }
+
+            @Override public void draw(android.graphics.Canvas c, CharSequence t, int start, int end, float x, int top, int y, int bottom, android.graphics.Paint p) {
+                c.save();
+                c.translate(x, y + middle(p) - d.getBounds().height() / 2f);
+                d.draw(c);
+                c.restore();
+            }
         }
 
         /**
@@ -1602,7 +1640,7 @@ final class PagesV2 {
                 android.graphics.drawable.LayerDrawable on = new android.graphics.drawable.LayerDrawable(new android.graphics.drawable.Drawable[]{chip, d});
                 on.setLayerInset(1, padX, padY, padX, padY);
                 on.setBounds(0, 0, w + 2 * padX, hgt + 2 * padY);
-                b.setSpan(new android.text.style.ImageSpan(on, android.text.style.ImageSpan.ALIGN_CENTER), at, at + 2, 0);
+                b.setSpan(new MidSpan(on), at, at + 2, 0);
                 v.setText(b);
             });
         }
@@ -2017,19 +2055,19 @@ final class PagesV2 {
 
         private TextView f1Kicker, f1PageView;
         /**
-         * The way down past the table and the standings: a "What's on in sport" bar across each card's foot, OK on the
-         * card pressing it. At rest a bright glass bar in Sport's colours; on the card with the focus it turns white
-         * with a glowing rim, a sheen sweeping across it now and then, and its arrow bobbing: plainly the thing OK does.
-         * The remote's OK as a key cap, and a red dot beating beside how many things are on now.
+         * The way down past the table and the standings: a "What's on in Sport" bar across each card's foot, OK on the
+         * card pressing it. Styled as the launcher's own category boxes: dark glass with a hairline rim and Sports'
+         * green along the top at rest; white with dark words on the card with the focus, a little larger. This TV's
+         * own remote's OK button at the start, and a red dot beside how many things are on now.
          */
         private View tableJump, f1Jump;
         private final List<Jump> jumps = new ArrayList<>();
+        private static final int SPORT_GREEN = 0xFF3DDC84;
 
         private static final class Jump {
             FrameLayout box;
-            LinearLayout row;
-            TextView ok, label, live, arrow;
-            View dot, sheen;
+            TextView label, live, arrow;
+            View dot;
             boolean on;
         }
 
@@ -2038,20 +2076,21 @@ final class PagesV2 {
             FrameLayout box = new FrameLayout(h.a);
             box.setClipToOutline(true);
             box.setOutlineProvider(h.round(16));
+            View strip = new View(h.a);
+            strip.setBackgroundColor(SPORT_GREEN);
+            box.addView(strip, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, px(3)));
             LinearLayout b = new LinearLayout(h.a);
             b.setOrientation(LinearLayout.HORIZONTAL);
             b.setGravity(Gravity.CENTER_VERTICAL);
-            b.setPadding(px(10), 0, px(10), 0);
+            b.setPadding(px(12), px(2), px(10), 0);
             box.addView(b, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-            TextView ok = h.text(13, h.semi, Color.WHITE);
-            ok.setText("OK");
-            ok.setGravity(Gravity.CENTER);
-            ok.setPadding(px(8), px(3), px(8), px(3));
-            b.addView(ok);
+            ImageView ok = new ImageView(h.a);
+            ok.setImageBitmap(okKey(Config.themeString(h.a, "ok_button", "tcl"), px(30)));
+            b.addView(ok, new LinearLayout.LayoutParams(px(30), px(30)));
             LinearLayout words = new LinearLayout(h.a);
             words.setOrientation(LinearLayout.VERTICAL);
             TextView label = h.text(18, h.semi, Color.WHITE);
-            label.setText("What's on in sport");
+            label.setText("What's on in Sport");
             label.setSingleLine(true);
             words.addView(label);
             LinearLayout sub = new LinearLayout(h.a);
@@ -2060,7 +2099,7 @@ final class PagesV2 {
             View dot = new View(h.a);
             dot.setBackground(h.fill(4, 0xFFFF3B4A));
             sub.addView(dot, new LinearLayout.LayoutParams(px(8), px(8)));
-            TextView live = h.text(13, h.regular, 0xD9FFFFFF);
+            TextView live = h.text(13, h.regular, 0xB3FFFFFF);
             LinearLayout.LayoutParams lv = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
             lv.leftMargin = px(6);
             sub.addView(live, lv);
@@ -2068,22 +2107,17 @@ final class PagesV2 {
             LinearLayout.LayoutParams wl = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
             wl.leftMargin = px(12);
             b.addView(words, wl);
-            // The arrow, in a circle of its own.
-            TextView arrow = h.text(20, h.semi, Color.WHITE);
+            // Down, in a circle of its own: faint glass at rest, Sports' green when lit.
+            TextView arrow = h.text(18, h.semi, Color.WHITE);
             arrow.setText("↓");
             arrow.setGravity(Gravity.CENTER);
-            b.addView(arrow, new LinearLayout.LayoutParams(px(36), px(36)));
-            // The sheen: a soft band of light that crosses the bar while the card has the focus.
-            View sheen = new View(h.a);
-            sheen.setBackground(new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, new int[]{0x00FFFFFF, 0x66FFFFFF, 0x00FFFFFF}));
-            sheen.setVisibility(View.INVISIBLE);
-            box.addView(sheen, new FrameLayout.LayoutParams(px(120), ViewGroup.LayoutParams.MATCH_PARENT));
+            b.addView(arrow, new LinearLayout.LayoutParams(px(34), px(34)));
             android.animation.ObjectAnimator beat = android.animation.ObjectAnimator.ofFloat(dot, View.ALPHA, 1f, 0.25f);
             beat.setDuration(650);
             beat.setRepeatCount(android.animation.ValueAnimator.INFINITE);
             beat.setRepeatMode(android.animation.ValueAnimator.REVERSE);
             beat.start();
-            j.box = box; j.row = b; j.ok = ok; j.label = label; j.live = live; j.dot = dot; j.arrow = arrow; j.sheen = sheen;
+            j.box = box; j.label = label; j.live = live; j.dot = dot; j.arrow = arrow;
             jumps.add(j);
             style(j, false);
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, px(58));
@@ -2092,49 +2126,25 @@ final class PagesV2 {
             return box;
         }
 
-        /** The bar at rest (bright glass in Sport's colours) or lit (white, dark words, glowing rim). */
+        /** The bar at rest (the category boxes' glass) or lit (white, dark words), as the category boxes are. */
         private void style(Jump j, boolean on) {
             j.on = on;
-            GradientDrawable bg = on
-                    ? new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0xFFFFFFFF, 0xFFE9F3FF})
-                    : new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, new int[]{0xE60FA968, 0xE61D8FB8, 0xE65B4BDB});
-            bg.setCornerRadius(px(16));
-            bg.setStroke(px(on ? 3 : 1.5f), on ? 0xFF7FE3FF : 0x80FFFFFF);
+            GradientDrawable bg = h.fill(16, on ? 0xEBFFFFFF : 0x14FFFFFF);
+            bg.setStroke(Math.max(1, px(1)), on ? Color.WHITE : 0x24FFFFFF);
             j.box.setBackground(bg);
-            int ink = on ? 0xFF0E1B2E : Color.WHITE;
+            int ink = on ? 0xFF1A1D24 : Color.WHITE;
             j.label.setTextColor(ink);
-            j.live.setTextColor(on ? 0xCC0E1B2E : 0xD9FFFFFF);
-            j.ok.setTextColor(on ? Color.WHITE : 0xFF0E1B2E);
-            j.ok.setBackground(h.fill(8, on ? 0xFF0E1B2E : 0xF2FFFFFF));
-            j.arrow.setTextColor(on ? Color.WHITE : 0xFF0E1B2E);
-            j.arrow.setBackground(h.fill(18, on ? 0xFF1D8FB8 : 0xF2FFFFFF));
-            j.box.setElevation(on ? px(16) : px(4));
+            j.live.setTextColor(on ? 0xB31A1D24 : 0xB3FFFFFF);
+            j.arrow.setTextColor(ink);
+            j.arrow.setBackground(h.fill(17, on ? SPORT_GREEN : 0x1FFFFFFF));
         }
 
-        /** The bar lit (its card has the focus: white, a little bigger, the sheen crossing, the arrow bobbing) or at rest. */
         private void lightJump(View b, boolean on) {
             for (Jump j : jumps) {
                 if (j.box != b) continue;
                 style(j, on);
-                b.animate().scaleX(on ? 1.03f : 1f).scaleY(on ? 1.03f : 1f).setDuration(200).setInterpolator(HomeV2.SKY).start();
-                j.arrow.animate().cancel();
-                j.sheen.animate().cancel();
-                if (on) { bob(j); sweep(j); } else { j.arrow.setTranslationY(0); j.sheen.setVisibility(View.INVISIBLE); }
+                b.animate().scaleX(on ? 1.03f : 1f).scaleY(on ? 1.03f : 1f).setDuration(150).setInterpolator(HomeV2.SKY).start();
             }
-        }
-
-        private void bob(Jump j) {
-            j.arrow.animate().translationY(px(4)).setDuration(420).withEndAction(() ->
-                    j.arrow.animate().translationY(0).setDuration(420).withEndAction(() -> { if (j.on) bob(j); }).start()).start();
-        }
-
-        private void sweep(Jump j) {
-            if (!j.on) return;
-            j.sheen.setVisibility(View.VISIBLE);
-            j.sheen.setTranslationX(-px(140));
-            j.sheen.animate().translationX(j.box.getWidth() + px(20)).setDuration(900).setStartDelay(500)
-                    .setInterpolator(new android.view.animation.AccelerateDecelerateInterpolator())
-                    .withEndAction(() -> { if (j.on) j.box.postDelayed(() -> sweep(j), 1600); }).start();
         }
 
         /** The first row below the cards with anything in it (Live Football this week, as a rule); -1 when none has. */
