@@ -1335,6 +1335,10 @@ public class GoalWatchService extends Service {
             d.watch = () -> AppSearchService.tune(this, getString(R.string.scores_open_package), names, logo);
         }
         d.remote = Config.themeString(this, "ok_button", "");
+        // The kits they wear today, from their Wikipedia articles (this season's): the away side in its second or third
+        // kit when its first is too close to the home side's. ESPN's club colours when the articles cannot be read.
+        Kits.Kit[] homeKits = Kits.of(this, sides[0].name), awayKits = Kits.of(this, sides.length > 1 ? sides[1].name : null);
+        Kits.Kit homeWears = Kits.wearing(homeKits, awayKits, false), awayWears = Kits.wearing(awayKits, homeKits, true);
         int homeKit = g.homeColor, awayKit = g.awayColor;
         boolean clash = homeKit != 0 && awayKit != 0 && LineupCard.distance(homeKit, awayKit) < 120;
         ExecutorService pool = Executors.newFixedThreadPool(6, LOW);
@@ -1348,8 +1352,9 @@ public class GoalWatchService extends Service {
             boolean away = i == 1;
             t.name = side.name != null ? side.name : side.abbr;
             t.formation = side.formation == null ? "" : side.formation;
-            t.kit = away ? (clash && g.awayAlt != 0 ? g.awayAlt : awayKit) : homeKit;
-            t.kitName = away && clash ? "Away kit" : "Home kit";
+            Kits.Kit wears = away ? awayWears : homeWears;
+            t.kit = wears != null ? wears.body : away ? (clash && g.awayAlt != 0 ? g.awayAlt : awayKit) : homeKit;
+            t.sleeves = wears != null ? wears.sleeves : t.kit;
             String crest = side.crest != null ? side.crest : away ? g.awayLogo : g.homeLogo;
             if (crest != null) jobs.add(() -> { t.crest = ScoresTicker.cachedLogo(this, crest, logoPx * 2); return null; });
             for (String[] p : side.players) {
@@ -1371,7 +1376,6 @@ public class GoalWatchService extends Service {
                     pool.execute(() -> {
                         pl.photo = PlayerPhotos.photo(this, found);
                         if (pl.photo == null && p[1] != null) pl.photo = ScoresTicker.cachedLogo(this, p[1], 300);
-                        if (pl.photo == null) { pl.photo = PlayerPhotos.wikiPhoto(this, full); pl.framed = pl.photo != null; }
                         String flag = LineupCard.flagUrl(found.nation);
                         if (flag != null) pl.flag = ScoresTicker.cachedLogo(this, flag, 80);
                     });

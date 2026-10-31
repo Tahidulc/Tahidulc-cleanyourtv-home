@@ -60,7 +60,8 @@ final class LineupCard {
     static final class Team {
         String name, formation = "", kitName = "Home kit";
         Bitmap crest;
-        int kit;
+        /** The kit it wears today: shirt body and sleeves (0 when not known). */
+        int kit, sleeves;
         final List<Player> players = new ArrayList<>();
     }
 
@@ -75,7 +76,7 @@ final class LineupCard {
     /** The card's size in the design's pixels on a 1920-wide screen, and its scale there. */
     private static final int W = 700, H = 232, BAND = 84;
     private static final float SCALE = 0.88f;
-    private static final long PLAYERS_MS = 4_200L, PITCH_MS = 7_000L, LAST_MS = 7_000L, LAST_WATCH_MS = 10_000L;
+    private static final long FIRST_MS = 8_000L, PLAYERS_MS = 6_000L, PITCH_MS = 9_500L;
     private static final Handler main = new Handler(Looper.getMainLooper());
 
     private static FrameLayout host;
@@ -132,13 +133,6 @@ final class LineupCard {
         FrameLayout.LayoutParams sl = new FrameLayout.LayoutParams(w - px(BAND), h);
         sl.leftMargin = px(BAND);
         card.addView(stage, sl);
-        // The time the page has left: a line along the stage's foot that fills.
-        View bar = new View(c);
-        bar.setPivotX(0);
-        FrameLayout.LayoutParams bl = new FrameLayout.LayoutParams(w - px(BAND), px(3), Gravity.BOTTOM);
-        bl.leftMargin = px(BAND);
-        card.addView(bar, bl);
-
         FrameLayout.LayoutParams cl = new FrameLayout.LayoutParams(w, h);
         cl.setMargins(margin, margin, margin, margin);
         win.addView(card, cl);
@@ -160,40 +154,38 @@ final class LineupCard {
         host = win;
         showing = d;
 
-        // The pages: each eleven in two (the keeper and defence first), both on one pitch, then the channel.
+        // The pages: the fixture and its channel (OK to watch), each eleven in two (the keeper and defence first), then
+        // both on one pitch. Each comes in behind a slanted wipe across the stage, as Sky's line-ups change.
         List<Runnable> pages = new ArrayList<>();
         List<Long> times = new ArrayList<>();
+        pages.add(() -> turn(c, stage, () -> { band.removeAllViews(); league(c, band, d); stage.addView(first(c, d), full()); }));
+        times.add(FIRST_MS);
         for (Team t : new Team[]{d.home, d.away}) {
             if (t == null || t.players.isEmpty()) continue;
             int split = Math.min(t.players.size(), (t.players.size() + 1) / 2);
-            List<Player> first = t.players.subList(0, split), second = t.players.subList(split, t.players.size());
-            pages.add(() -> { teamBand(c, band, t); slide(stage, players(c, t, first)); });
+            List<Player> one = t.players.subList(0, split), two = t.players.subList(split, t.players.size());
+            pages.add(() -> turn(c, stage, () -> { teamBand(c, band, t); stage.addView(players(c, t, one), full()); }));
             times.add(PLAYERS_MS);
-            if (!second.isEmpty()) {
-                pages.add(() -> { teamBand(c, band, t); slide(stage, players(c, t, second)); });
+            if (!two.isEmpty()) {
+                pages.add(() -> turn(c, stage, () -> { teamBand(c, band, t); stage.addView(players(c, t, two), full()); }));
                 times.add(PLAYERS_MS);
             }
         }
         if (d.home != null && d.away != null && !d.home.players.isEmpty() && !d.away.players.isEmpty()) {
-            pages.add(() -> { pitchBand(c, band, d); slide(stage, pitch(c, d)); });
+            pages.add(() -> turn(c, stage, () -> { pitchBand(c, band, d); stage.addView(pitch(c, d), full()); }));
             times.add(PITCH_MS);
         }
-        pages.add(() -> { band.removeAllViews(); league(c, band, d); slide(stage, last(c, d)); });
-        times.add(d.watch != null ? LAST_WATCH_MS : LAST_MS);
+        // Without the key helper (a TV that has only the screen helper), the first page takes the keys: OK watches.
+        boolean helper = InputKeyService.running;
         int[] at = {0};
         Runnable step = new Runnable() {
             @Override public void run() {
                 if (host != win) return;
                 int i = at[0];
                 pages.get(i).run();
-                // Navy along the pale pages' foot, white along the last page's navy.
-                bar.setBackgroundColor(i < pages.size() - 1 ? NAVY : 0xFFFFFFFF);
-                bar.animate().cancel();
-                bar.setScaleX(0f);
-                bar.animate().scaleX(1f).setDuration(times.get(i)).setInterpolator(new LinearInterpolator()).start();
+                if (i == 0 && d.watch != null && !helper) offerWatch(win, d);
+                if (i == 1 && !helper) unfocus(win);
                 if (i == pages.size() - 1) {
-                    // The last page also takes the keys where no helper passes OK here (OK watches, anything else closes).
-                    if (d.watch != null) offerWatch(win, d);
                     main.postDelayed(() -> { if (host == win) close(true); }, times.get(i));
                     return;
                 }
@@ -207,18 +199,72 @@ final class LineupCard {
         step.run();
     }
 
-    /** A new page slides in from the right as the one before slides away to the left. */
-    private static void slide(FrameLayout stage, View page) {
-        int w = stage.getLayoutParams().width;
-        for (int i = 0; i < stage.getChildCount(); i++) {
-            View old = stage.getChildAt(i);
-            old.animate().translationX(-w).setDuration(420).setInterpolator(new DecelerateInterpolator(1.6f))
-                    .withEndAction(() -> stage.removeView(old)).start();
+    private static FrameLayout.LayoutParams full() {
+        return new FrameLayout.LayoutParams(-1, -1);
+    }
+
+    /**
+     * The next page: the first at once; the rest behind a wipe, slanted bands in the competition's navy and a lighter
+     * blue sweeping across the stage, the new page put in while it is covered and uncovered as the bands go on.
+     */
+    private static void turn(Context c, FrameLayout stage, Runnable swap) {
+        if (stage.getChildCount() == 0) { swap.run(); return; }
+        Wipe wipe = new Wipe(c);
+        stage.addView(wipe, full());
+        android.animation.ValueAnimator a = android.animation.ValueAnimator.ofFloat(0f, 1f);
+        a.setDuration(900);
+        a.setInterpolator(new android.view.animation.AccelerateDecelerateInterpolator());
+        boolean[] swapped = {false};
+        a.addUpdateListener(v -> {
+            float f = (float) v.getAnimatedValue();
+            wipe.progress = f;
+            wipe.invalidate();
+            if (!swapped[0] && f >= 0.5f) {
+                swapped[0] = true;
+                for (int i = stage.getChildCount() - 1; i >= 0; i--) if (stage.getChildAt(i) != wipe) stage.removeViewAt(i);
+                swap.run();
+                wipe.bringToFront();
+            }
+        });
+        a.addListener(new android.animation.AnimatorListenerAdapter() {
+            @Override public void onAnimationEnd(android.animation.Animator x) { stage.removeView(wipe); }
+        });
+        a.start();
+    }
+
+    /** The wipe: a slanted navy panel edged in lighter blue and white, its front then its back crossing the stage. */
+    private static final class Wipe extends View {
+        float progress;
+        private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
+
+        Wipe(Context c) { super(c); }
+
+        @Override protected void onDraw(Canvas cv) {
+            int w = getWidth(), h = getHeight();
+            float slant = h * 0.42f, span = w + 2 * slant;
+            // Its front reaches the far side at half way; its back follows, uncovering the new page.
+            float front = -slant + Math.min(1f, progress * 2f) * span;
+            float back = -slant + Math.max(0f, progress * 2f - 1f) * span;
+            panel(cv, back, front, h, slant, 0xFF151A63);
+            float edge = px(10);
+            panel(cv, front - edge, front, h, slant, 0xFF3D4BD6);
+            panel(cv, front - edge * 0.35f, front, h, slant, 0xFFFFFFFF);
+            if (progress > 0.5f) {
+                panel(cv, back, back + edge, h, slant, 0xFF3D4BD6);
+                panel(cv, back, back + edge * 0.35f, h, slant, 0xE6FFFFFF);
+            }
         }
-        stage.addView(page, new FrameLayout.LayoutParams(-1, -1));
-        if (stage.getChildCount() > 1) {
-            page.setTranslationX(w);
-            page.animate().translationX(0).setDuration(420).setInterpolator(new DecelerateInterpolator(1.6f)).start();
+
+        private void panel(Canvas cv, float from, float to, int h, float slant, int colour) {
+            if (to <= from) return;
+            Path path = new Path();
+            path.moveTo(from, h);
+            path.lineTo(to, h);
+            path.lineTo(to + slant, 0);
+            path.lineTo(from + slant, 0);
+            path.close();
+            p.setColor(colour);
+            cv.drawPath(path, p);
         }
     }
 
@@ -287,10 +333,11 @@ final class LineupCard {
         for (int i = 0; i < ps.size(); i++) {
             View col = player(c, t, ps.get(i));
             row.addView(col, new LinearLayout.LayoutParams(0, -1, 1f));
+            // In from the right one after another, as the wipe uncovers them.
             col.setAlpha(0f);
-            col.setTranslationY(px(12));
-            col.animate().alpha(1f).translationY(0f).setStartDelay(200L + 55L * i).setDuration(300)
-                    .setInterpolator(new DecelerateInterpolator(1.6f)).start();
+            col.setTranslationX(px(46));
+            col.animate().alpha(1f).translationX(0f).setStartDelay(120L + 70L * i).setDuration(420)
+                    .setInterpolator(new DecelerateInterpolator(2.2f)).start();
         }
         page.addView(row, new FrameLayout.LayoutParams(-1, -1));
         return page;
@@ -303,7 +350,7 @@ final class LineupCard {
         FrameLayout frame = new FrameLayout(c);
         frame.setClipChildren(true);
         ImageView photo = new ImageView(c);
-        photo.setImageBitmap(p.photo == null ? avatar(t.kit, p.number) : p.framed ? framed(p.photo, t.kit) : p.photo);
+        photo.setImageBitmap(p.photo == null ? avatar(t.kit, t.sleeves, p.number) : p.framed ? framed(p.photo, t.kit) : p.photo);
         photo.setScaleType(ImageView.ScaleType.FIT_START);
         frame.addView(photo, new FrameLayout.LayoutParams(px(150), px(150), Gravity.TOP | Gravity.CENTER_HORIZONTAL));
         FrameLayout.LayoutParams fl = new FrameLayout.LayoutParams(-1, -1);
@@ -355,10 +402,31 @@ final class LineupCard {
 
     private static View pitch(Context c, Data d) {
         FrameLayout page = new FrameLayout(c);
-        page.setBackground(new Streaks(0xFFF4F5FD, 0xFFC2C5EE, 0x8CFFFFFF, px(86), px(36)));
+        page.setBackground(new Streaks(0xFF1B2591, 0xFF0D1360, 0x10FFFFFF, px(60), px(4)));
+        Pitch field = new Pitch(c, d);
         FrameLayout.LayoutParams fl = new FrameLayout.LayoutParams(-1, -1);
-        fl.setMargins(px(8), px(8), px(8), px(8));
-        page.addView(new Pitch(c, d), fl);
+        fl.setMargins(px(8), px(8), px(8), px(30));
+        page.addView(field, fl);
+        // Under the pitch, clear of every name: the channel's logo, and the OK button.
+        View logo = channel(c, d, 15);
+        if (logo != null) {
+            FrameLayout.LayoutParams ll = new FrameLayout.LayoutParams(-2, px(15), Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
+            ll.bottomMargin = px(8);
+            page.addView(logo, ll);
+        }
+        if (d.watch != null) {
+            TextView ok = text(c, "OK", 8, 0xFF111214, Typeface.create("sans-serif-black", Typeface.NORMAL));
+            ok.setGravity(Gravity.CENTER);
+            GradientDrawable disc = new GradientDrawable();
+            disc.setShape(GradientDrawable.OVAL);
+            disc.setColor(0xFFFFFFFF);
+            ok.setBackground(disc);
+            FrameLayout.LayoutParams ol = new FrameLayout.LayoutParams(px(20), px(20), Gravity.BOTTOM | Gravity.END);
+            ol.bottomMargin = px(5);
+            ol.rightMargin = px(12);
+            page.addView(ok, ol);
+        }
+        field.reveal();
         return page;
     }
 
@@ -455,6 +523,18 @@ final class LineupCard {
         private final List<Player> who = new ArrayList<>();
         private float[] xs = new float[0], ys = new float[0], tws = new float[0], sizes = new float[0];
         private final RectF logoAt = new RectF(), pillAt = new RectF();
+        /** The players coming on, left to right (0 none yet, 1 all). */
+        private float shown = 1f;
+
+        void reveal() {
+            shown = 0f;
+            android.animation.ValueAnimator a = android.animation.ValueAnimator.ofFloat(0f, 1f);
+            a.setDuration(1300);
+            a.setStartDelay(150);
+            a.setInterpolator(new DecelerateInterpolator(1.4f));
+            a.addUpdateListener(v -> { shown = (float) v.getAnimatedValue(); invalidate(); });
+            a.start();
+        }
 
         Pitch(Context c, Data d) {
             super(c);
@@ -487,20 +567,8 @@ final class LineupCard {
                 sizes[i] = tw > maxW ? p.getTextSize() * maxW / tw : p.getTextSize();
                 tws[i] = Math.min(tw, maxW);
             }
-            // The logo at the foot, the pill in the top right corner.
-            if (d.channelLogo != null) {
-                float lh = px(16), lw = lh * d.channelLogo.getWidth() / Math.max(1f, d.channelLogo.getHeight());
-                logoAt.set(w / 2f - lw / 2, h - px(11) - lh, w / 2f + lw / 2, h - px(11));
-            } else {
-                logoAt.setEmpty();
-            }
-            if (d.watch != null) {
-                p.setTextSize(px(10.5f));
-                float pw = p.measureText("Press") + p.measureText("to watch") + px(16) + px(6) * 2 + px(18);
-                pillAt.set(w - px(10) - pw, px(8), w - px(10), px(8) + px(20));
-            } else {
-                pillAt.setEmpty();
-            }
+            logoAt.setEmpty();
+            pillAt.setEmpty();
             settle(w, h);
         }
 
@@ -560,7 +628,16 @@ final class LineupCard {
             cv.drawRect(in, h / 2f - px(48), in + px(46), h / 2f + px(48), p);
             cv.drawRect(w - in - px(46), h / 2f - px(48), w - in, h / 2f + px(48), p);
             p.setStyle(Paint.Style.FILL);
-            for (int i = 0; i < xs.length; i++) draw(cv, teams.get(i), who.get(i), xs[i], ys[i], tws[i], sizes[i]);
+            for (int i = 0; i < xs.length; i++) {
+                // Each player pops up in his place as the reveal crosses the pitch.
+                float t = Math.max(0f, Math.min(1f, (shown * 1.35f - xs[i] / w) / 0.3f));
+                if (t <= 0f) continue;
+                float k = 0.55f + 0.45f * (1f - (1f - t) * (1f - t));
+                cv.save();
+                cv.scale(k, k, xs[i], ys[i]);
+                draw(cv, teams.get(i), who.get(i), xs[i], ys[i], tws[i], sizes[i]);
+                cv.restore();
+            }
             if (d.channelLogo != null && !logoAt.isEmpty()) {
                 cv.drawBitmap(d.channelLogo, null, logoAt, new Paint(Paint.FILTER_BITMAP_FLAG | Paint.ANTI_ALIAS_FLAG));
             }
@@ -598,7 +675,7 @@ final class LineupCard {
         private void draw(Canvas cv, Team t, Player pl, float cx, float cy, float tw, float size) {
             float r = px(13);
             // The face in its ring: a cut-out zoomed to the head, a framed photo whole, else the kit's avatar.
-            Bitmap face = pl.photo != null ? pl.photo : avatar(t.kit, "");
+            Bitmap face = pl.photo != null ? pl.photo : avatar(t.kit, t.sleeves, "");
             boolean cut = pl.photo != null && !pl.framed;
             float zoom = cut ? 1.9f : 1f;
             Matrix m = new Matrix();
@@ -643,7 +720,7 @@ final class LineupCard {
 
     // ---- the last page -------------------------------------------------------------------------------------------
 
-    private static View last(Context c, Data d) {
+    private static View first(Context c, Data d) {
         FrameLayout page = new FrameLayout(c);
         page.setBackground(new Streaks(0xFF2A35B8, 0xFF080B3A, 0x0EFFFFFF, px(60), px(4)));
         LinearLayout vs = new LinearLayout(c);
@@ -669,6 +746,15 @@ final class LineupCard {
         FrameLayout.LayoutParams fl = new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM);
         fl.bottomMargin = px(22);
         page.addView(foot, fl);
+        // The crests come in from either side, the kick-off between them, the channel and OK rising last.
+        View home = vs.getChildAt(0), away = vs.getChildAt(2);
+        home.setTranslationX(-px(60)); away.setTranslationX(px(60));
+        home.setAlpha(0f); away.setAlpha(0f); ko.setAlpha(0f); foot.setAlpha(0f);
+        foot.setTranslationY(px(14));
+        home.animate().translationX(0).alpha(1f).setStartDelay(250).setDuration(520).setInterpolator(new DecelerateInterpolator(2.2f)).start();
+        away.animate().translationX(0).alpha(1f).setStartDelay(250).setDuration(520).setInterpolator(new DecelerateInterpolator(2.2f)).start();
+        ko.animate().alpha(1f).setStartDelay(560).setDuration(380).start();
+        foot.animate().translationY(0).alpha(1f).setStartDelay(780).setDuration(420).setInterpolator(new DecelerateInterpolator(2f)).start();
         return page;
     }
 
@@ -751,6 +837,16 @@ final class LineupCard {
         });
     }
 
+    /** The keys back with the app (after the first page, on a TV without the key helper). */
+    private static void unfocus(FrameLayout win) {
+        win.setOnKeyListener(null);
+        try {
+            WindowManager.LayoutParams lp = (WindowManager.LayoutParams) win.getLayoutParams();
+            lp.flags |= WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
+            win.getContext().getSystemService(WindowManager.class).updateViewLayout(win, lp);
+        } catch (RuntimeException ignored) { }
+    }
+
     /** The card away: faded, or at once when another takes its place. */
     static void close(boolean fade) {
         main.removeCallbacksAndMessages(null);
@@ -789,32 +885,78 @@ final class LineupCard {
         return lum(kit) > 0.62 ? NAVY : 0xFFFFFFFF;
     }
 
-    /** No photo anywhere: a blank avatar, head and shoulders in the team's kit, his number on the chest. */
-    static Bitmap avatar(int kit, String number) {
-        int colour = kit != 0 ? kit : NAVY;
+    /**
+     * No photo anywhere: a blank figure, head and shoulders, in the team's kit as it is today (the shirt's body and
+     * sleeve colours), lit from the top left so it has some depth, his number on the chest.
+     */
+    static Bitmap avatar(int kit, int sleeves, String number) {
+        int body = kit != 0 ? kit : NAVY, arms = sleeves != 0 ? sleeves : body;
         int s = 300;
         Bitmap b = Bitmap.createBitmap(s, s, Bitmap.Config.ARGB_8888);
         Canvas cv = new Canvas(b);
         Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
-        p.setShader(new LinearGradient(0, 36, 0, 156, 0xFFE9EBF3, 0xFFC9CDDB, Shader.TileMode.CLAMP));
-        cv.drawOval(new RectF(98, 36, 202, 156), p);
+        // The neck, shadowed under the chin.
+        p.setShader(new LinearGradient(0, 140, 0, 182, 0xFF9AA0B2, 0xFFC4C9D6, Shader.TileMode.CLAMP));
+        cv.drawRoundRect(new RectF(127, 136, 173, 186), 14, 14, p);
+        // The head, a lit sphere.
+        p.setShader(new android.graphics.RadialGradient(128, 72, 92, new int[]{0xFFF7F8FB, 0xFFDDE0E8, 0xFFB4BAC9},
+                new float[]{0f, 0.55f, 1f}, Shader.TileMode.CLAMP));
+        cv.drawOval(new RectF(98, 38, 202, 160), p);
         p.setShader(null);
-        p.setColor(0xFFC9CDDB);
-        cv.drawRoundRect(new RectF(132, 146, 168, 172), 8, 8, p);
-        cv.drawPath(shoulders(), shirtPaint(colour));
-        p.setColor(trim(colour));
+        // The shirt: the body, the sleeves over the shoulders, shaded at the sides and lit along the top.
+        Path shirt = shoulders();
+        cv.save();
+        cv.clipPath(shirt);
+        p.setShader(new LinearGradient(0, 166, 0, 300, lighter(body), darker(body), Shader.TileMode.CLAMP));
+        cv.drawRect(0, 150, s, s, p);
+        if (arms != body) {
+            p.setShader(new LinearGradient(0, 166, 0, 300, lighter(arms), darker(arms), Shader.TileMode.CLAMP));
+            Path left = new Path();
+            left.moveTo(0, 300);
+            left.lineTo(0, 196);
+            left.quadTo(58, 180, 84, 206);
+            left.lineTo(70, 300);
+            left.close();
+            cv.drawPath(left, p);
+            Matrix mirror = new Matrix();
+            mirror.setScale(-1, 1, 150, 0);
+            Path right = new Path(left);
+            right.transform(mirror);
+            cv.drawPath(right, p);
+        }
+        p.setShader(new LinearGradient(0, 0, s, 0, new int[]{0x55000000, 0x00000000, 0x00000000, 0x55000000},
+                new float[]{0.05f, 0.36f, 0.64f, 0.95f}, Shader.TileMode.CLAMP));
+        cv.drawRect(0, 150, s, s, p);
+        p.setShader(new LinearGradient(0, 166, 0, 236, 0x55FFFFFF, 0x00FFFFFF, Shader.TileMode.CLAMP));
+        cv.drawRect(0, 150, s, s, p);
+        cv.restore();
+        p.setShader(null);
+        // The collar, in the sleeves' colour where they differ, else white or navy against the shirt.
+        int trim = arms != body ? arms : (lum(body) > 0.62 ? NAVY : 0xFFFFFFFF);
+        p.setColor(trim);
         Path collar = new Path();
-        collar.moveTo(122, 164);
-        collar.quadTo(150, 192, 178, 164);
-        collar.lineTo(172, 160);
-        collar.quadTo(150, 180, 128, 160);
+        collar.moveTo(116, 170);
+        collar.quadTo(150, 210, 184, 170);
+        collar.lineTo(175, 165);
+        collar.quadTo(150, 196, 125, 165);
         collar.close();
         cv.drawPath(collar, p);
-        p.setTypeface(Typeface.create("sans-serif-black", Typeface.NORMAL));
-        p.setTextAlign(Paint.Align.CENTER);
-        p.setTextSize(64);
-        if (number != null && !number.isEmpty()) cv.drawText(number, 150, 262, p);
+        // The number, with a soft shadow.
+        if (number != null && !number.isEmpty()) {
+            p.setColor(lum(body) > 0.62 ? NAVY : 0xFFFFFFFF);
+            p.setTypeface(Typeface.create("sans-serif-black", Typeface.NORMAL));
+            p.setTextAlign(Paint.Align.CENTER);
+            p.setTextSize(62);
+            p.setShadowLayer(5, 0, 3, 0x66000000);
+            cv.drawText(number, 150, 268, p);
+            p.clearShadowLayer();
+        }
         return b;
+    }
+
+    private static int lighter(int c) {
+        int r = (c >> 16) & 0xFF, g = (c >> 8) & 0xFF, bl = c & 0xFF;
+        return 0xFF000000 | ((r + (255 - r) / 5) << 16) | ((g + (255 - g) / 5) << 8) | (bl + (255 - bl) / 5);
     }
 
     /** A photo of his face, framed in a white ring on shoulders in the team's kit (an old club's shirt never shows). */

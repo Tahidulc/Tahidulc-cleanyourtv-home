@@ -20,6 +20,9 @@ public class InputKeyService extends AccessibilityService {
 
     private static final String ACTION_VIEW_INPUTS = "com.android.tv.action.VIEW_INPUTS";
 
+    /** Bound and filtering keys: the line-up card takes OK through here, on any page. */
+    static volatile boolean running;
+
     private int[] inputKeycodes = new int[0];
     private Map<Integer, String> appKeys = Collections.emptyMap();
     private Map<Integer, String> appScancodes = Collections.emptyMap();
@@ -37,6 +40,7 @@ public class InputKeyService extends AccessibilityService {
         super.onServiceConnected();
         // From config.xml or a theme's config.json; theme.sh rebinds this service after a push.
         Config config = Config.load(this);
+        running = config.keyFilter;
         // restore_key_services: note that this helper runs, so Home can put it back after a force stop.
         repairRecord = config.restoreKeyServices;
         if (repairRecord) ServiceRepair.connected(this, getClass());
@@ -87,12 +91,14 @@ public class InputKeyService extends AccessibilityService {
     /** Unbound by Android: the user turned the helper off, so Home doesn't put it back (ServiceRepair). */
     @Override
     public boolean onUnbind(Intent intent) {
+        running = false;
         if (repairRecord) ServiceRepair.disconnected(this, getClass());
         return super.onUnbind(intent);
     }
 
     @Override
     public void onDestroy() {
+        running = false;
         if (gamepads != null) gamepads.stop();
         if (consumeVolumeKeys) VolumeKeys.stop();
         super.onDestroy();
