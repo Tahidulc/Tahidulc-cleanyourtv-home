@@ -462,8 +462,25 @@ final class PagesV2 {
                     }
                     idx = 0;
                     if (!onTabs) row = 0;
+                    // Come in from the boxes before the posters had arrived: onto the first poster now they have.
+                    if (intoPosters && onTabs && !rows.isEmpty() && !rows.get(0).items.isEmpty()) { onTabs = false; row = 0; }
+                    intoPosters = false;
                     paint();
                     heroNow();
+        }
+
+        /** Up (or OK) from the boxes: straight onto the first poster, not the tabs above them. */
+        private boolean intoPosters;
+
+        @Override void entered() {
+            if (onTabs && !rows.isEmpty() && !rows.get(0).items.isEmpty()) {
+                onTabs = false;
+                row = 0;
+                idx = 0;
+                paint();
+            } else if (onTabs) {
+                intoPosters = true;   // the tab's posters still coming: onto them when they arrive
+            }
         }
 
         /** Films and series started in any app: TMDB id to how far in. */
@@ -719,6 +736,7 @@ final class PagesV2 {
         }
 
         @Override boolean key(KeyEvent e) {
+            if (e.getAction() == KeyEvent.ACTION_DOWN) intoPosters = false;   // a key of their own first: left where it takes them
             int code = e.getKeyCode();
             if (ok(code)) {
                 if (e.getAction() == KeyEvent.ACTION_UP && !onTabs && row < rows.size() && idx < rows.get(row).items.size()) {
