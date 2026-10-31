@@ -267,8 +267,8 @@ final class ScoreCard {
             @Override public void getOutline(View v, Outline o) { o.setRoundRect(0, 0, v.getWidth(), v.getHeight(), r); }
         });
         bar.setClipToOutline(true);
-        // F1: the bar's stripes are a layer of their own that drifts along, like a car going by; others: as drawn.
-        bar.setBackground(d.f1 ? null : stageGround(d, px(50), px(30)));
+        // The dark bars (F1, UFC, boxing): their stripes are a layer of their own that drifts along; others: as drawn.
+        bar.setBackground(d.dark ? null : stageGround(d, px(50), px(30)));
         FrameLayout band = new FrameLayout(c);
         band.setBackground(bandGround(d, false));
         band.addView(stripes(c, d), new FrameLayout.LayoutParams((d.wideMark ? px(150) : px(120)) + STRIPE_PERIOD_PX(), h));
@@ -358,7 +358,7 @@ final class ScoreCard {
             @Override public void getOutline(View v, Outline o) { o.setRoundRect(0, 0, v.getWidth(), v.getHeight(), r); }
         });
         box.setClipToOutline(true);
-        if (d.f1) {
+        if (d.dark) {
             box.setBackground(new Streaks(0xFF2A2B33, 0xFF16171D, 0, px(50), px(30)));
             View lines = new View(c);
             lines.setBackground(new Streaks(0, 0, 0x14FFFFFF, px(50), px(30)));
