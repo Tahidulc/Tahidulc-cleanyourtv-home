@@ -484,7 +484,26 @@ public class GoalWatchService extends Service {
     /** An event asked to be reminded of (v2's Sport page) as a score card: STARTING, its title, and its channel. */
     private void skyReminder(JSONObject r, long mins) {
         String title = r.optString("t"), channel = r.optString("c"), logoUrl = r.optString("l");
+        long start = r.optLong("s");
         io.execute(() -> {
+            // A football match ("Spurs v C. Palace"): found in the day's fixtures and shown as the kick-off card, both
+            // crests and all, with the reminder's own channel where the guides list none.
+            ScoresTicker.Game game = reminderGame(title, start);
+            if (game != null) {
+                if (game.kickoff == 0) game.kickoff = start;
+                ScoreCard.Data k = kickoffCard(game);
+                k.labelSmall = mins > 0 ? "IN " + mins + " MIN" : "NOW";
+                if (k.watch == null && !channel.isEmpty()) {
+                    int px = Math.round(96 * getResources().getDisplayMetrics().density);
+                    android.graphics.Bitmap logo = logoUrl.isEmpty() ? null : HomeV2.trim(ScoresTicker.cachedLogo(this, logoUrl, px));
+                    List<String> names = new ArrayList<>(Arrays.asList(channel));
+                    k.channelLogo = logo;
+                    k.channel = channel;
+                    k.watch = () -> AppSearchService.tune(this, getString(R.string.scores_open_package), names, logo);
+                }
+                main.post(() -> ScoreCard.show(this, k));
+                return;
+            }
             ScoreCard.Data d = new ScoreCard.Data();
             d.kind = "reminder";
             d.leagueLogo = emoji("⏰", 120);
@@ -502,6 +521,27 @@ public class GoalWatchService extends Service {
             }
             main.post(() -> ScoreCard.show(this, d));
         });
+    }
+
+    /**
+     * The match a reminder's title names ("SNF: Spurs v C. Palace"), from that day's fixtures in the alert leagues,
+     * the clubs' leagues and cups and the line-up competitions; null for anything else. Off the main thread.
+     */
+    private ScoresTicker.Game reminderGame(String title, long start) {
+        if (title == null || start <= 0) return null;
+        String t = title.contains(": ") ? title.substring(title.lastIndexOf(": ") + 2) : title;
+        t = t.replaceAll("\\s*\\(.*?\\)\\s*$", "").trim();
+        String[] p = t.split("\\s+(?:v|vs|V|VS)\\.?\\s+", 2);
+        if (p.length != 2 || p[0].isEmpty() || p[1].isEmpty()) return null;
+        List<String> leagues = new ArrayList<>(Arrays.asList(getResources().getStringArray(R.array.goal_alert_leagues)));
+        leagues.addAll(Arrays.asList(getResources().getStringArray(R.array.team_alert_leagues)));
+        leagues.addAll(Arrays.asList(LINEUP_LEAGUES));
+        java.time.LocalDate day = java.time.Instant.ofEpochMilli(start).atZone(java.time.ZoneId.systemDefault()).toLocalDate();
+        for (ScoresTicker.Game g : ScoresTicker.load(leagues.toArray(new String[0]), day)) {
+            if (TvGuide.sameClub(p[0], g.homeName) && TvGuide.sameClub(p[1], g.awayName)
+                    || TvGuide.sameClub(p[0], g.awayName) && TvGuide.sameClub(p[1], g.homeName)) return g;
+        }
+        return null;
     }
 
     /** An emoji drawn as a picture (the band's mark where there is no logo). */

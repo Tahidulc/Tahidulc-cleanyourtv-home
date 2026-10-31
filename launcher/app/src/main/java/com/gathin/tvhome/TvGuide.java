@@ -171,6 +171,12 @@ final class TvGuide {
         return new Channel(g.abroad + " (US)", null);
     }
 
+    /** A club as a guide names it ("Spurs", "C. Palace") and as ESPN does ("Tottenham Hotspur"): the same club? */
+    static boolean sameClub(String guideName, String espnName) {
+        if (guideName == null || espnName == null || guideName.trim().isEmpty() || espnName.trim().isEmpty()) return false;
+        return same(norm(guideName), norm(espnName));
+    }
+
     /** One club named two ways: a shared word of four letters or more ("palace", "dortmund", "tottenham"). */
     private static boolean same(String sky, String espn) {
         for (String[] alias : ALIASES) if (sky.equals(alias[0]) || sky.startsWith(alias[0] + " ")) sky = alias[1];

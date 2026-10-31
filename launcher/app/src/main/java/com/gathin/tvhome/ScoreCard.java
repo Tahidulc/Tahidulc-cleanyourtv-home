@@ -209,7 +209,9 @@ final class ScoreCard {
                 stage.addView(picture(c, d.picture, px(8)), pl);
             }
             stage.addView(who(c, d, 12, 21, 12), whoParams(photo == null && d.picture == null));
-            if (d.score != null || d.position != null || d.method != null) stage.addView(scoreBlock(c, d, h, 26, 26), new LinearLayout.LayoutParams(-2, h));
+            // A kick-off's crests a size up: they are the card's picture.
+            int crestPx = "kickoff".equals(d.kind) ? 36 : 26;
+            if (d.score != null || d.position != null || d.method != null) stage.addView(scoreBlock(c, d, h, crestPx, 26), new LinearLayout.LayoutParams(-2, h));
         } else {
             for (Object[] p : d.podium) {
                 if (d.versus && p != d.podium.get(0)) stage.addView(text(c, "v", 20, 0xB3FFFFFF, outfit(c, 600)), new LinearLayout.LayoutParams(-2, -2));
@@ -336,7 +338,7 @@ final class ScoreCard {
         bar.addView(spacer, new LinearLayout.LayoutParams(0, 1, 1f));
         if (d.score != null) {
             if (d.homeName != null) bar.addView(text(c, d.homeName, 20, INK, outfit(c, 800)), sideName(true));
-            bar.addView(scoreBlock(c, d, h, 28, 25), new LinearLayout.LayoutParams(-2, h));
+            bar.addView(scoreBlock(c, d, h, "kickoff".equals(d.kind) ? 34 : 28, 25), new LinearLayout.LayoutParams(-2, h));
             if (d.awayName != null) bar.addView(text(c, d.awayName, 20, INK, outfit(c, 800)), sideName(false));
         } else if (d.method != null) {
             bar.addView(scoreBlock(c, d, h, 28, 25), new LinearLayout.LayoutParams(-2, h));
