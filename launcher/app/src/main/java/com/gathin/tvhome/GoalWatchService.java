@@ -1358,6 +1358,7 @@ public class GoalWatchService extends Service {
                 pl.first = sp > 0 ? full.substring(0, sp) : "";
                 pl.last = sp > 0 ? full.substring(sp + 1) : full;
                 pl.number = p[2] == null ? "" : p[2];
+                pl.position = p.length > 3 && p[3] != null ? p[3] : "";
                 t.players.add(pl);
                 lookups.add(() -> {
                     PlayerPhotos.Cutout cut = PlayerPhotos.cutout(this, full, t.name);
