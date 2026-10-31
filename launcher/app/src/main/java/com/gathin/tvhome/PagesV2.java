@@ -1654,7 +1654,7 @@ final class PagesV2 {
         private LinearLayout tableHead;
         private android.widget.ScrollView tableView, driverView;
         private LinearLayout driverList;
-        /** The first club (driver) in view when the table (standings) has scrolled. */
+        /** How far the table (standings) has been scrolled, in pixels: where the last press sent it. */
         private int tableTop, driverTop;
 
         /** A list's window inside its card: scrolled from the keys only, no bar. */
@@ -1686,20 +1686,23 @@ final class PagesV2 {
          * so the key moves the focus on instead.
          */
         private int scrollList(android.widget.ScrollView view, LinearLayout list, int top, int dir) {
-            int rows = list.getChildCount();
-            if (rows == 0 || view.getHeight() == 0) return -1;
-            int rowH = Math.max(1, list.getChildAt(0).getHeight());
-            int shown = Math.max(1, view.getHeight() / rowH);
+            // In pixels, a page at a time (all but a row of what shows, so the eye keeps its place): at the end, -1 at
+            // once, so the next Down goes on to the rows below. Judged from where the list really is (row heights
+            // differ, and a press that moved nothing once left the focus stuck on the card).
+            if (list.getChildCount() == 0 || view.getHeight() == 0) return -1;
+            int max = Math.max(0, list.getHeight() - view.getHeight());
+            int row = Math.max(1, list.getChildAt(0).getHeight());
+            int page = Math.max(row, view.getHeight() - row);
+            int from = Math.max(0, Math.min(max, top));
             int to;
             if (dir > 0) {
-                if (top + shown >= rows) return -1;
-                to = Math.min(rows - shown, top + 5);
+                if (from >= max - 2) return -1;
+                to = Math.min(max, from + page);
             } else {
-                if (top == 0) return -1;
-                to = Math.max(0, top - 5);
+                if (from <= 2) return -1;
+                to = Math.max(0, from - page);
             }
-            int y = Math.min(list.getChildAt(to).getTop(), Math.max(0, list.getHeight() - view.getHeight()));
-            view.smoothScrollTo(0, y);
+            view.smoothScrollTo(0, to);
             return to;
         }
 
