@@ -104,6 +104,11 @@ final class ScoreCard {
         next(ctx.getApplicationContext());
     }
 
+    /** The corner card's height while one shows over an app (the camera card goes above it); 0 otherwise. */
+    static int shownHeight() {
+        return host != null && !onHome ? host.getHeight() : 0;
+    }
+
     /** Whether one is showing (GoalWatchService waits its own alerts meanwhile). */
     static boolean busy() {
         return host != null;
@@ -111,7 +116,7 @@ final class ScoreCard {
 
     private static void next(Context c) {
         if (host != null || queue.isEmpty()) return;
-        if (LineupCard.isShowing() || GoalWatchService.alertShowing()) {
+        if (LineupCard.isShowing() || GoalWatchService.alertShowing() || CameraAlert.isShowing()) {
             main.postDelayed(() -> next(c), 2_000L);
             return;
         }
@@ -664,6 +669,10 @@ final class ScoreCard {
     // ---- window, timing, closing ---------------------------------------------------------------------------------
 
     private static boolean add(Context c, FrameLayout win, WindowManager.LayoutParams lp, Data d) {
+        // Without the key helper (the TCL), the corner card over an app takes the remote's keys while it shows: OK
+        // watches (when there is a channel), Back or any other key closes it. Home's bar leaves Home its keys.
+        boolean takeKeys = !InputKeyService.running && !onHome;
+        if (takeKeys) lp.flags &= ~WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
         try {
             c.getSystemService(WindowManager.class).addView(win, lp);
         } catch (RuntimeException e) {
@@ -672,6 +681,22 @@ final class ScoreCard {
         }
         host = win;
         showing = d;
+        if (takeKeys) {
+            win.setFocusable(true);
+            win.setFocusableInTouchMode(true);
+            win.requestFocus();
+            final boolean[] down = {false};
+            win.setOnKeyListener((v, code, e) -> {
+                // Only a press that began here: a key held as the card came belongs to the app.
+                if (e.getAction() == KeyEvent.ACTION_DOWN) { down[0] = true; return true; }
+                if (e.getAction() != KeyEvent.ACTION_UP || !down[0]) return true;
+                boolean ok = code == KeyEvent.KEYCODE_DPAD_CENTER || code == KeyEvent.KEYCODE_ENTER
+                        || code == KeyEvent.KEYCODE_NUMPAD_ENTER || code == KeyEvent.KEYCODE_BUTTON_A;
+                close(true);
+                if (ok && d.watch != null) d.watch.run();
+                return true;
+            });
+        }
         return true;
     }
 
@@ -698,6 +723,15 @@ final class ScoreCard {
         if (!fade) { gone.run(); return; }
         View content = v.getChildAt(0);
         if (content == null) { gone.run(); return; }
+        // Not focusable while it fades, so the next key already goes to the app.
+        v.setOnKeyListener(null);
+        try {
+            WindowManager.LayoutParams lp = (WindowManager.LayoutParams) v.getLayoutParams();
+            if ((lp.flags & WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE) == 0) {
+                lp.flags |= WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
+                v.getContext().getSystemService(WindowManager.class).updateViewLayout(v, lp);
+            }
+        } catch (RuntimeException ignored) { }
         content.animate().alpha(0f).translationX(wasHome ? 0 : -px(30)).translationY(wasHome ? -px(18) : 0)
                 .setDuration(220).withLayer().withEndAction(gone).start();
     }

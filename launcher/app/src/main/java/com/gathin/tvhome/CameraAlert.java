@@ -26,7 +26,6 @@ import android.view.View;
 import android.view.ViewOutlineProvider;
 import android.view.WindowManager;
 import android.view.animation.DecelerateInterpolator;
-import android.view.animation.LinearInterpolator;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
@@ -54,6 +53,10 @@ final class CameraAlert {
     private static final long SHOW_MS = 20_000L;
     /** The card's width; it is 16:9, the snapshot filling it under its words. */
     private static final int WIDTH_DP = 264;
+    /** The whole card drawn at this size of the design (WIDTH_DP and the rest): small, in the bottom left corner. */
+    private static final float SIZE = 0.66f;
+    /** Pixels for one of the design's dp, at SIZE: set as a card is built, used for its text too. */
+    private static float unit = 1f;
     private static final float CORNER_DP = 14f;
     private static final int RED = 0xFFFF3B30;
     /** What an alarm says (motion, a person, the doorbell); the rest from Tuya (offline, battery, updates) is not one. */
@@ -159,7 +162,8 @@ final class CameraAlert {
     private static void show(Context c, String camera, String what, Bitmap pic, PendingIntent tap) {
         // The same alarm again (Tuya updates its notification as the snapshot arrives): shown afresh, picture and all.
         close(false);
-        float d = c.getResources().getDisplayMetrics().density;
+        float d = c.getResources().getDisplayMetrics().density * SIZE;
+        unit = d;
         int w = Math.round(WIDTH_DP * d);
         int h = Math.round(w * 9f / 16f);
         float corner = CORNER_DP * d;
@@ -199,7 +203,8 @@ final class CameraAlert {
                         android.animation.PropertyValuesHolder.ofFloat(View.ALPHA, 0.9f, 0f));
                 a.setDuration(1800);
                 a.setStartDelay(i * 900L);
-                a.setRepeatCount(android.animation.ValueAnimator.INFINITE);
+                // A few times, then still: nothing keeps moving over a playing video.
+                a.setRepeatCount(2);
                 loops.add(a);
             }
             ImageView icon = new ImageView(c);
@@ -217,7 +222,7 @@ final class CameraAlert {
         card.addView(scan, new FrameLayout.LayoutParams(-1, band, Gravity.TOP));
         android.animation.ObjectAnimator sweep = android.animation.ObjectAnimator.ofFloat(scan, View.TRANSLATION_Y, -band, h);
         sweep.setDuration(2600);
-        sweep.setRepeatCount(android.animation.ValueAnimator.INFINITE);
+        sweep.setRepeatCount(1);
         sweep.setInterpolator(new android.view.animation.AccelerateDecelerateInterpolator());
         loops.add(sweep);
         // Shades top and foot, for the words over the picture.
@@ -232,13 +237,31 @@ final class CameraAlert {
         FrameLayout.LayoutParams tl = new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.START);
         tl.leftMargin = tl.topMargin = pad;
         card.addView(tag(c, d, pulses), tl);
-        TextView time = text(c, android.text.format.DateFormat.getTimeFormat(c).format(new java.util.Date()), 12f, 0xF2FFFFFF,
+        // Top right: the time, then Tuya's own mark (the app's icon), so it is plain whose camera it is.
+        LinearLayout corner2 = new LinearLayout(c);
+        corner2.setGravity(Gravity.CENTER_VERTICAL);
+        TextView time = text(c, android.text.format.DateFormat.getTimeFormat(c).format(new java.util.Date()), 13f, 0xF2FFFFFF,
                 Typeface.create("sans-serif-medium", Typeface.NORMAL));
         time.setShadowLayer(4 * d, 0, d, 0xCC000000);
+        corner2.addView(time);
+        android.graphics.drawable.Drawable tuya = tuyaMark(c);
+        if (tuya != null) {
+            ImageView mark = new ImageView(c);
+            mark.setImageDrawable(tuya);
+            float mr = 5 * d;
+            mark.setOutlineProvider(new ViewOutlineProvider() {
+                @Override public void getOutline(View v, Outline o) { o.setRoundRect(0, 0, v.getWidth(), v.getHeight(), mr); }
+            });
+            mark.setClipToOutline(true);
+            int ms = Math.round(22 * d);
+            LinearLayout.LayoutParams mkl = new LinearLayout.LayoutParams(ms, ms);
+            mkl.leftMargin = Math.round(7 * d);
+            corner2.addView(mark, mkl);
+        }
         FrameLayout.LayoutParams ml = new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.END);
         ml.rightMargin = pad;
-        ml.topMargin = pad + Math.round(2 * d);
-        card.addView(time, ml);
+        ml.topMargin = pad;
+        card.addView(corner2, ml);
 
         // The foot: name and what Tuya says on the left, "OK Live" on the right.
         LinearLayout row = new LinearLayout(c);
@@ -246,10 +269,10 @@ final class CameraAlert {
         row.setGravity(Gravity.BOTTOM);
         LinearLayout col = new LinearLayout(c);
         col.setOrientation(LinearLayout.VERTICAL);
-        TextView name = text(c, camera, 15f, 0xFFFFFFFF, Typeface.create("sans-serif-medium", Typeface.BOLD));
+        TextView name = text(c, camera, 18f, 0xFFFFFFFF, Typeface.create("sans-serif-medium", Typeface.BOLD));
         name.setShadowLayer(6 * d, 0, d, 0xCC000000);
         col.addView(name, new LinearLayout.LayoutParams(-1, -2));
-        TextView line = text(c, what, 11.5f, 0xD9FFFFFF, Typeface.DEFAULT);
+        TextView line = text(c, what, 13.5f, 0xD9FFFFFF, Typeface.DEFAULT);
         line.setShadowLayer(4 * d, 0, d, 0xCC000000);
         LinearLayout.LayoutParams ll = new LinearLayout.LayoutParams(-1, -2);
         ll.topMargin = Math.round(3 * d);
@@ -265,10 +288,10 @@ final class CameraAlert {
         pill.setPadding(Math.round(4 * d), Math.round(4 * d), Math.round(10 * d), Math.round(4 * d));
         String remote = Config.themeString(c, "ok_button", "");
         ImageView ok = new ImageView(c);
-        ok.setImageBitmap(GoalWatchService.okButton(remote.isEmpty() ? "tcl" : remote, d, false));
-        int ks = Math.round(18 * d);
+        ok.setImageBitmap(GoalWatchService.okButton(remote.isEmpty() ? "tcl" : remote, d * 1.15f, false));
+        int ks = Math.round(21 * d);
         pill.addView(ok, new LinearLayout.LayoutParams(ks, ks));
-        TextView live = text(c, "Live", 12f, 0xFF111214, Typeface.create("sans-serif-medium", Typeface.BOLD));
+        TextView live = text(c, "Live", 14f, 0xFF111214, Typeface.create("sans-serif-medium", Typeface.BOLD));
         LinearLayout.LayoutParams vl = new LinearLayout.LayoutParams(-2, -2);
         vl.leftMargin = Math.round(5 * d);
         pill.addView(live, vl);
@@ -280,11 +303,6 @@ final class CameraAlert {
         rl.bottomMargin = pad + Math.round(2 * d);
         card.addView(row, rl);
 
-        // The time left: a red line along the foot that runs down.
-        View left = new View(c);
-        left.setBackgroundColor(RED);
-        left.setPivotX(0);
-        card.addView(left, new FrameLayout.LayoutParams(-1, Math.round(3 * d), Gravity.BOTTOM));
         // A flash as it lands, like a shutter.
         View flash = new View(c);
         flash.setBackgroundColor(0xFFFFFFFF);
@@ -305,9 +323,11 @@ final class CameraAlert {
                 // Focusable, so OK and Back come here while it shows; the app keeps playing underneath.
                 WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL | WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
                 PixelFormat.TRANSLUCENT);
-        lp.gravity = Gravity.BOTTOM | Gravity.END;
-        lp.x = Math.round(20 * d);
-        lp.y = Math.round(20 * d);
+        // Bottom left, its edge on the score cards' (44 px in on a 1920 screen); above a score or line-up card showing.
+        float screen = c.getResources().getDisplayMetrics().widthPixels / 1920f;
+        lp.gravity = Gravity.BOTTOM | Gravity.START;
+        lp.x = Math.max(0, Math.round(44 * screen) - m);
+        lp.y = Math.max(0, Math.round(44 * screen) - m) + Math.max(ScoreCard.shownHeight(), LineupCard.shownHeight());
         lp.setTitle("CameraAlert");
         try {
             c.getSystemService(WindowManager.class).addView(win, lp);
@@ -339,11 +359,10 @@ final class CameraAlert {
         card.animate().alpha(1f).translationY(0f).scaleX(1f).scaleY(1f).setDuration(380)
                 .setInterpolator(new DecelerateInterpolator(2.2f)).start();
         flash.animate().alpha(0f).setStartDelay(160).setDuration(420).start();
-        left.animate().scaleX(0f).setDuration(SHOW_MS).setInterpolator(new LinearInterpolator()).start();
         for (View p : pulses) {
             android.animation.ObjectAnimator a = android.animation.ObjectAnimator.ofFloat(p, View.ALPHA, 1f, 0.25f);
             a.setDuration(700);
-            a.setRepeatCount(android.animation.ValueAnimator.INFINITE);
+            a.setRepeatCount(7);
             a.setRepeatMode(android.animation.ValueAnimator.REVERSE);
             loops.add(a);
             p.setTag(a);
@@ -372,7 +391,7 @@ final class CameraAlert {
         int ds = Math.round(6 * d);
         t.addView(dot, new LinearLayout.LayoutParams(ds, ds));
         pulses.add(dot);
-        TextView word = text(c, "MOTION", 10.5f, 0xFFFFFFFF, Typeface.DEFAULT_BOLD);
+        TextView word = text(c, "MOTION", 12f, 0xFFFFFFFF, Typeface.DEFAULT_BOLD);
         word.setLetterSpacing(0.12f);
         LinearLayout.LayoutParams wl = new LinearLayout.LayoutParams(-2, -2);
         wl.leftMargin = Math.round(5 * d);
@@ -383,13 +402,27 @@ final class CameraAlert {
     private static TextView text(Context c, String s, float sp, int colour, Typeface face) {
         TextView v = new TextView(c);
         v.setText(s);
-        v.setTextSize(TypedValue.COMPLEX_UNIT_SP, sp);
+        v.setTextSize(TypedValue.COMPLEX_UNIT_PX, sp * unit);
         v.setTextColor(colour);
         v.setTypeface(face);
         v.setSingleLine(true);
         v.setEllipsize(TextUtils.TruncateAt.END);
         v.setIncludeFontPadding(false);
         return v;
+    }
+
+    /** Whether the card is up (the score cards wait for it: both sit in the bottom left corner). */
+    static boolean isShowing() {
+        return host != null;
+    }
+
+    /** Tuya's own mark: the Tuya Smart app's icon, from the TV; null without the app. */
+    private static android.graphics.drawable.Drawable tuyaMark(Context c) {
+        try {
+            return c.getPackageManager().getApplicationIcon(TUYA);
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     /**

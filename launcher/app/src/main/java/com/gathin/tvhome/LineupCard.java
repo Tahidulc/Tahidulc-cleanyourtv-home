@@ -127,9 +127,26 @@ final class LineupCard {
         return true;
     }
 
-    /** Opens the card (on the main thread), in place of one already showing. */
+    /**
+     * Light over a playing app (the theme's lite_over_apps, a slower TV such as the TCL): the pages change with a
+     * short fade instead of the wipe, and the players and the pitch's markers are simply there. Every moving frame
+     * over a video makes such a TV compose the picture on its graphics chip, and the video drops frames.
+     */
+    private static boolean lite;
+
+    /** The card's height while it shows (the camera card goes above it); 0 otherwise. */
+    static int shownHeight() {
+        return host != null ? host.getHeight() : 0;
+    }
+
+    /** Opens the card (on the main thread), in place of one already showing; after the camera card, if that is up. */
     static void show(Context ctx, Data d) {
         Context c = ctx.getApplicationContext();
+        if (CameraAlert.isShowing()) {
+            main.postDelayed(() -> show(c, d), 2_000L);
+            return;
+        }
+        lite = Config.themeFlag(c, "lite_over_apps", false) && !GoalWatchService.homeInFront;
         close(false);
         k = c.getResources().getDisplayMetrics().widthPixels / 1920f * SCALE;
         int w = px(W), h = px(H), margin = px(10);
@@ -206,8 +223,9 @@ final class LineupCard {
                 if (host != win) return;
                 int i = at[0];
                 pages.get(i).run();
-                if (i == 0 && d.watch != null && !helper) offerWatch(win, d);
-                if (i == 1 && !helper) unfocus(win);
+                // Without the key helper (the TCL): the card takes the remote's keys while it shows, OK watching
+                // (when there is a channel), Back or any other key closing it.
+                if (i == 0 && !helper) offerWatch(win, d);
                 if (i == pages.size() - 1) {
                     main.postDelayed(() -> { if (host == win) close(true); }, times.get(i));
                     return;
@@ -232,6 +250,16 @@ final class LineupCard {
      */
     private static void turn(Context c, FrameLayout stage, Runnable swap) {
         if (stage.getChildCount() == 0) { swap.run(); return; }
+        if (lite) {
+            stage.removeAllViews();
+            swap.run();
+            View page = stage.getChildAt(stage.getChildCount() - 1);
+            if (page != null) {
+                page.setAlpha(0f);
+                page.animate().alpha(1f).setDuration(200).withLayer().start();
+            }
+            return;
+        }
         Wipe wipe = new Wipe(c);
         stage.addView(wipe, full());
         android.animation.ValueAnimator a = android.animation.ValueAnimator.ofFloat(0f, 1f);
@@ -323,32 +351,41 @@ final class LineupCard {
     private static void teamBand(Context c, FrameLayout band, Team t) {
         band.removeAllViews();
         league(c, band, showing, false);
-        FrameLayout.LayoutParams cl = new FrameLayout.LayoutParams(px(50), px(50), Gravity.TOP | Gravity.CENTER_HORIZONTAL);
-        cl.topMargin = px(48);
-        band.addView(crest(c, t.crest), cl);
-        Upright name = new Upright(c, px(23));
-        name.setText(t.name);
-        FrameLayout.LayoutParams nl = new FrameLayout.LayoutParams(px(40), px(108), Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
-        nl.bottomMargin = px(14);
-        band.addView(name, nl);
+        // As on the fixture page: the club's crest big (no name), and its formation under it.
+        LinearLayout club = new LinearLayout(c);
+        club.setOrientation(LinearLayout.VERTICAL);
+        club.setGravity(Gravity.CENTER_HORIZONTAL);
+        club.addView(crest(c, t.crest), new LinearLayout.LayoutParams(px(66), px(66)));
+        if (t.formation != null && !t.formation.isEmpty()) {
+            TextView f = text(c, t.formation, 14, 0xFFFFFFFF, Typeface.create("sans-serif-condensed", Typeface.BOLD));
+            f.setLetterSpacing(0.1f);
+            f.setGravity(Gravity.CENTER);
+            LinearLayout.LayoutParams fl = new LinearLayout.LayoutParams(-2, -2);
+            fl.topMargin = px(10);
+            club.addView(f, fl);
+        }
+        FrameLayout.LayoutParams cl = new FrameLayout.LayoutParams(-1, -2, Gravity.CENTER);
+        cl.topMargin = px(20);
+        band.addView(club, cl);
     }
 
     /** For the pitch: both crests, each with its eleven's shape under it. */
     private static void pitchBand(Context c, FrameLayout band, Data d) {
         band.removeAllViews();
         league(c, band, d, false);
-        int y = 48;
+        // Both crests a size up, each over its formation, in the room under the competition's mark (12 to 40).
+        int y = 50;
         for (Team t : new Team[]{d.home, d.away}) {
-            FrameLayout.LayoutParams cl = new FrameLayout.LayoutParams(px(46), px(46), Gravity.TOP | Gravity.CENTER_HORIZONTAL);
+            FrameLayout.LayoutParams cl = new FrameLayout.LayoutParams(px(54), px(54), Gravity.TOP | Gravity.CENTER_HORIZONTAL);
             cl.topMargin = px(y);
             band.addView(crest(c, t.crest), cl);
-            TextView f = text(c, t.formation, 12, 0xFFFFFFFF, Typeface.create("sans-serif-condensed", Typeface.BOLD));
+            TextView f = text(c, t.formation, 12.5f, 0xFFFFFFFF, Typeface.create("sans-serif-condensed", Typeface.BOLD));
             f.setLetterSpacing(0.1f);
             f.setGravity(Gravity.CENTER);
             FrameLayout.LayoutParams fl = new FrameLayout.LayoutParams(-1, -2, Gravity.TOP);
-            fl.topMargin = px(y + 49);
+            fl.topMargin = px(y + 57);
             band.addView(f, fl);
-            y += 76;
+            y += 88;
         }
     }
 
@@ -363,7 +400,8 @@ final class LineupCard {
         for (int i = 0; i < ps.size(); i++) {
             View col = player(c, t, ps.get(i));
             row.addView(col, new LinearLayout.LayoutParams(0, -1, 1f));
-            // In from the right one after another, as the wipe uncovers them.
+            // In from the right one after another, as the wipe uncovers them (simply there when light).
+            if (lite) continue;
             col.setAlpha(0f);
             col.setTranslationX(px(46));
             col.animate().alpha(1f).translationX(0f).setStartDelay(120L + 70L * i).setDuration(420)
@@ -563,6 +601,7 @@ final class LineupCard {
         private float shown = 1f;
 
         void reveal() {
+            if (lite) return;
             shown = 0f;
             android.animation.ValueAnimator a = android.animation.ValueAnimator.ofFloat(0f, 1f);
             a.setDuration(1300);
@@ -826,7 +865,8 @@ final class LineupCard {
         FrameLayout.LayoutParams ml = new FrameLayout.LayoutParams(px(W - BAND) - 2 * side - px(16), -2, Gravity.CENTER);
         page.addView(mid, ml);
 
-        // The crests come in from either side, then the block between them.
+        // The crests come in from either side, then the block between them (all simply there when light).
+        if (lite) return page;
         home.setTranslationX(-px(60)); away.setTranslationX(px(60));
         home.setAlpha(0f); away.setAlpha(0f); mid.setAlpha(0f);
         mid.setScaleX(0.9f); mid.setScaleY(0.9f);
@@ -921,19 +961,9 @@ final class LineupCard {
             boolean ok = code == KeyEvent.KEYCODE_DPAD_CENTER || code == KeyEvent.KEYCODE_ENTER
                     || code == KeyEvent.KEYCODE_NUMPAD_ENTER || code == KeyEvent.KEYCODE_BUTTON_A;
             close(true);
-            if (ok) d.watch.run();
+            if (ok && d.watch != null) d.watch.run();
             return true;
         });
-    }
-
-    /** The keys back with the app (after the first page, on a TV without the key helper). */
-    private static void unfocus(FrameLayout win) {
-        win.setOnKeyListener(null);
-        try {
-            WindowManager.LayoutParams lp = (WindowManager.LayoutParams) win.getLayoutParams();
-            lp.flags |= WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
-            win.getContext().getSystemService(WindowManager.class).updateViewLayout(win, lp);
-        } catch (RuntimeException ignored) { }
     }
 
     /** The card away: faded, or at once when another takes its place. */
@@ -1145,36 +1175,6 @@ final class LineupCard {
         @Override public int getOpacity() { return PixelFormat.OPAQUE; }
     }
 
-    /** The club's name up the band, bottom to top, made smaller to fit the room it has. */
-    private static final class Upright extends View {
-        private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private String text = "";
-
-        Upright(Context c, float size) {
-            super(c);
-            p.setColor(0xFFFFFFFF);
-            p.setTypeface(Typeface.create("sans-serif-black", Typeface.NORMAL));
-            p.setTextSize(size);
-        }
-
-        void setText(String t) {
-            text = t == null ? "" : t;
-            invalidate();
-        }
-
-        @Override protected void onDraw(Canvas c) {
-            if (text.isEmpty()) return;
-            float size = p.getTextSize();
-            float w = p.measureText(text);
-            if (w > getHeight()) p.setTextSize(size * getHeight() / w);
-            Paint.FontMetrics fm = p.getFontMetrics();
-            c.save();
-            c.rotate(-90);
-            c.drawText(text, -getHeight(), getWidth() / 2f - (fm.ascent + fm.descent) / 2f, p);
-            c.restore();
-            p.setTextSize(size);
-        }
-    }
 
     // ---- flags ---------------------------------------------------------------------------------------------------
 
