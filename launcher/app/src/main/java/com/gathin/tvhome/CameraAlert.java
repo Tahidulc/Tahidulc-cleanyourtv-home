@@ -177,7 +177,6 @@ final class CameraAlert {
             }
         });
         card.setClipToOutline(true);
-        card.setElevation(10 * d);
 
         if (pic != null) {
             ImageView shot = new ImageView(c);

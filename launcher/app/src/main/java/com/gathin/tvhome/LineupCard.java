@@ -141,7 +141,6 @@ final class LineupCard {
             @Override public void getOutline(View v, Outline o) { o.setRoundRect(0, 0, v.getWidth(), v.getHeight(), r); }
         });
         card.setClipToOutline(true);
-        card.setElevation(px(10));
         card.setBackgroundColor(0xFF0D1360);
 
         // The band down the left, its contents changed with each page; the stage beside it, where pages slide.
@@ -304,7 +303,6 @@ final class LineupCard {
         ImageView v = new ImageView(c);
         v.setImageBitmap(sharp(b));
         v.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        v.setElevation(px(3));
         v.setOutlineProvider(null);
         return v;
     }
@@ -855,7 +853,6 @@ final class LineupCard {
         bg.setCornerRadius(px(keyPx));
         pill.setBackground(bg);
         pill.setPadding(px(keyPx * 0.55f), 0, px(keyPx * 0.55f), 0);
-        pill.setElevation(px(2));
         Typeface bold = inter(c, R.font.inter_semibold);
         pill.addView(text(c, "Press", textPx, 0xFF111214, bold));
         TextView key = text(c, "OK", textPx * 0.62f, 0xFFFFFFFF, Typeface.create("sans-serif-black", Typeface.NORMAL));

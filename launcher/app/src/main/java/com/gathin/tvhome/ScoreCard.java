@@ -149,7 +149,6 @@ final class ScoreCard {
             @Override public void getOutline(View v, Outline o) { o.setRoundRect(0, 0, v.getWidth(), v.getHeight(), r); }
         });
         card.setClipToOutline(true);
-        card.setElevation(px(8));
 
         // The band: the competition and the club; for F1 its own mark on red.
         LinearLayout band = new LinearLayout(c);
@@ -205,8 +204,7 @@ final class ScoreCard {
             @Override public void getOutline(View v, Outline o) { o.setRoundRect(0, 0, v.getWidth(), v.getHeight(), r); }
         });
         box.setClipToOutline(true);
-        box.setElevation(px(8));
-        card.setElevation(0);
+        // No shadow: over a bright picture it shows as a dark rim round the card.
         box.addView(card, new FrameLayout.LayoutParams(-2, h));
         FrameLayout win = new FrameLayout(c);
         int m = px(10);
@@ -239,7 +237,6 @@ final class ScoreCard {
             @Override public void getOutline(View v, Outline o) { o.setRoundRect(0, 0, v.getWidth(), v.getHeight(), r); }
         });
         bar.setClipToOutline(true);
-        bar.setElevation(px(6));
         bar.setBackground(stageGround(d, px(50), px(30)));
         FrameLayout band = new FrameLayout(c);
         band.setBackground(bandGround(d));
@@ -314,7 +311,6 @@ final class ScoreCard {
             @Override public void getOutline(View v, Outline o) { o.setRoundRect(0, 0, v.getWidth(), v.getHeight(), r); }
         });
         box.setClipToOutline(true);
-        bar.setElevation(0);
         box.addView(bar, new FrameLayout.LayoutParams(w, h));
         FrameLayout win = new FrameLayout(c);
         win.addView(box, new FrameLayout.LayoutParams(w, h));
@@ -362,14 +358,14 @@ final class ScoreCard {
             rl.rightMargin = px(10);
             row.addView(card, rl);
             row.addView(text(c, d.label, size, 0xFFFFFFFF, outfit(c, 900)));
-            v.addView(row);
+            v.addView(row, wrap());
         } else {
-            v.addView(text(c, d.label, size, 0xFFFFFFFF, outfit(c, 900)));
+            v.addView(text(c, d.label, size, 0xFFFFFFFF, outfit(c, 900)), wrap());
         }
         if (d.labelSmall != null) {
             TextView s = text(c, d.labelSmall, 10, 0xD9FFFFFF, Typeface.create("sans-serif-condensed", Typeface.BOLD));
             s.setLetterSpacing(0.16f);
-            v.addView(s);
+            v.addView(s, wrap());
         }
         return v;
     }
@@ -423,7 +419,7 @@ final class ScoreCard {
             head.setMaxLines(2);
             head.setMaxWidth(px(470));
             head.setLineSpacing(0, 1.05f);
-            v.addView(head);
+            v.addView(head, wrap());
             if (!d.line.isEmpty()) {
                 LinearLayout.LayoutParams ll = new LinearLayout.LayoutParams(-2, -2);
                 ll.topMargin = px(5);
@@ -431,8 +427,8 @@ final class ScoreCard {
             }
             return v;
         }
-        if (!d.first.isEmpty()) v.addView(text(c, d.first, small, ink, outfit(c, 500)));
-        v.addView(text(c, d.last.toUpperCase(java.util.Locale.UK), big, ink, outfit(c, 900)));
+        if (!d.first.isEmpty()) v.addView(text(c, d.first, small, ink, outfit(c, 500)), wrap());
+        v.addView(text(c, d.last.toUpperCase(java.util.Locale.UK), big, ink, outfit(c, 900)), wrap());
         if (!d.line.isEmpty()) {
             TextView l = text(c, d.line, line, d.dark ? 0xD9FFFFFF : 0xD9151A63, outfit(c, 600));
             LinearLayout.LayoutParams ll = new LinearLayout.LayoutParams(-2, -2);
@@ -459,7 +455,7 @@ final class ScoreCard {
             LinearLayout col = new LinearLayout(c);
             col.setOrientation(LinearLayout.VERTICAL);
             col.setGravity(Gravity.CENTER_HORIZONTAL);
-            col.addView(text(c, d.method.toUpperCase(java.util.Locale.UK), size * 0.78f, 0xFFFFFFFF, outfit(c, 900)));
+            col.addView(text(c, d.method.toUpperCase(java.util.Locale.UK), size * 0.78f, 0xFFFFFFFF, outfit(c, 900)), wrap());
             if (d.methodSmall != null && !d.methodSmall.isEmpty()) {
                 TextView when = text(c, d.methodSmall, 13, 0xD9FFFFFF, Typeface.create("sans-serif-condensed", Typeface.BOLD));
                 when.setLetterSpacing(0.08f);
@@ -554,7 +550,7 @@ final class ScoreCard {
         LinearLayout.LayoutParams nl = new LinearLayout.LayoutParams(-2, -2);
         nl.leftMargin = px(6);
         top.addView(n, nl);
-        col.addView(top);
+        col.addView(top, wrap());
         if (p[4] != null) {
             TextView g = text(c, (String) p[4], 11, 0xB3FFFFFF, outfit(c, 600));
             LinearLayout.LayoutParams gl = new LinearLayout.LayoutParams(-2, -2);
@@ -703,6 +699,14 @@ final class ScoreCard {
     }
 
     // ---- small helpers -------------------------------------------------------------------------------------------
+
+    /**
+     * Wrap-content in both directions. A vertical LinearLayout's own default for a child is MATCH_PARENT, which, with
+     * the column wrapping its content, cuts a long name to the width of a shorter line given explicit params under it.
+     */
+    private static LinearLayout.LayoutParams wrap() {
+        return new LinearLayout.LayoutParams(-2, -2);
+    }
 
     /**
      * A picture drawn small from a bigger one (a crest, a logo, a player) stays sharp: with mip-maps the graphics chip
