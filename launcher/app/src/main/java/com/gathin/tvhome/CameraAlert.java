@@ -102,8 +102,10 @@ final class CameraAlert {
         PowerManager pm = c.getSystemService(PowerManager.class);
         if (pm != null && !pm.isInteractive()) return;
         if (TUYA.equals(AppSearchService.front())) return;
-        // What Tuya says, without the camera's name it opens with ("Front Right: Motion detected").
-        String what = text.isEmpty() ? title : text;
+        // What happened, in a few words: Tuya's title when it is that ("Movement detected", with "Front right camera
+        // has detected movement." under it); otherwise its text without the camera's name it opens with.
+        boolean titleSays = !title.isEmpty() && !title.toLowerCase(Locale.ROOT).contains(camera.toLowerCase(Locale.ROOT));
+        String what = titleSays ? title : text.isEmpty() ? title : text;
         if (what.toLowerCase(Locale.ROOT).startsWith(camera.toLowerCase(Locale.ROOT))) {
             what = what.substring(camera.length()).replaceFirst("^[\\s:\\-\u2013\u2014,]+", "");
         }
