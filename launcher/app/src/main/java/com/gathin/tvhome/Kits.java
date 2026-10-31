@@ -75,7 +75,8 @@ final class Kits {
 
     /** "body,sleeves,shorts,socks;…" for each kit in the infobox, "" when it has none, null when it cannot be read. */
     private static String read(String club) {
-        String[] titles = {club + " F.C.", club + " FC", club + " A.F.C.", club};
+        String[] titles = {club + " F.C.", club + " FC", "FC " + club, club + " CF", club + " A.F.C.",
+                club + " national football team", club};
         for (String t : titles) {
             try {
                 JSONObject j = new JSONObject(get("https://en.wikipedia.org/w/api.php?action=parse&format=json&redirects=1"

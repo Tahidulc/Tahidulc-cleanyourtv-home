@@ -298,6 +298,23 @@ final class ScoresTicker {
     }
 
     /** Today's games for these leagues ("eng.1|PL"), unsorted; a league that fails to load is left out. */
+    private static java.util.Set<String> englishIds = new java.util.HashSet<>();
+    private static long englishAt;
+
+    /** The Premier League clubs' ESPN ids (read once a day); the last read when ESPN cannot be asked. */
+    static synchronized java.util.Set<String> englishClubs() {
+        if (!englishIds.isEmpty() && System.currentTimeMillis() - englishAt < 86_400_000L) return englishIds;
+        try {
+            JSONObject root = new JSONObject(get("https://site.api.espn.com/apis/site/v2/sports/soccer/eng.1/teams"));
+            JSONArray teams = root.getJSONArray("sports").getJSONObject(0).getJSONArray("leagues").getJSONObject(0).getJSONArray("teams");
+            java.util.Set<String> ids = new java.util.HashSet<>();
+            for (int i = 0; i < teams.length(); i++) ids.add(teams.getJSONObject(i).getJSONObject("team").optString("id"));
+            if (!ids.isEmpty()) { englishIds = ids; englishAt = System.currentTimeMillis(); }
+        } catch (Exception ignored) {
+        }
+        return englishIds;
+    }
+
     static List<Game> load(String[] leagues) {
         return load(leagues, LocalDate.now(ZoneId.systemDefault()));
     }
@@ -904,7 +921,9 @@ final class ScoresTicker {
                 {"uefa.europa", "Europa League"}, {"uefa.europa.conf", "Conference League"}, {"uefa.nations", "Nations League"},
                 {"esp.1", "LaLiga"}, {"esp.copa_del_rey", "Copa del Rey"}, {"ita.1", "Serie A"}, {"ita.coppa_italia", "Coppa Italia"},
                 {"ger.1", "Bundesliga"}, {"ger.dfb_pokal", "DFB-Pokal"}, {"fra.1", "Ligue 1"}, {"fra.coupe_de_france", "Coupe de France"},
-                {"ned.1", "Eredivisie"}, {"por.1", "Liga Portugal"}, {"usa.1", "MLS"}, {"fifa.world", "World Cup"}};
+                {"ned.1", "Eredivisie"}, {"por.1", "Liga Portugal"}, {"usa.1", "MLS"}, {"fifa.world", "World Cup"},
+                {"fifa.friendly", "International Friendly"}, {"fifa.worldq.uefa", "World Cup Qualifier"},
+                {"uefa.euroq", "Euro Qualifier"}, {"uefa.euro", "Euros"}, {"esp.super_cup", "Supercopa"}};
         for (String[] x : n) NAMES.put(x[0], x[1]);
     }
 

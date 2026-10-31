@@ -621,6 +621,8 @@ public class GoalWatchService extends Service {
         Set<String> clubs = new HashSet<>(Arrays.asList(getResources().getStringArray(R.array.goal_alert_teams)));
         List<String> all = new ArrayList<>(Arrays.asList(alertLeagues));
         if (teamAlerts) all.addAll(Arrays.asList(getResources().getStringArray(R.array.team_alert_leagues)));
+        // For the line-ups too: England's games and Real Madrid's and Barcelona's Supercopa.
+        if (kickoffReminders) all.addAll(Arrays.asList(LINEUP_LEAGUES));
         String[] leagues = all.toArray(new String[0]);
         boolean incidentsNow = incidentAlerts && polls++ % 3 == 0;
         boolean tennisNow = tennisAlerts && now - tennisAt >= TENNIS_MS;
@@ -639,10 +641,13 @@ public class GoalWatchService extends Service {
             // One entry per game: a club's Champions League game is in both lists.
             Map<String, ScoresTicker.Game> byId = new java.util.LinkedHashMap<>();
             for (ScoresTicker.Game g : ScoresTicker.load(leagues)) {
-                boolean wanted = alertTags.contains(g.league) || clubs.contains(g.homeId) || clubs.contains(g.awayId);
+                boolean wanted = alertTags.contains(g.league) || clubs.contains(g.homeId) || clubs.contains(g.awayId)
+                        || LINEUP_TEAMS.contains(g.homeId) || LINEUP_TEAMS.contains(g.awayId);
                 if (wanted && g.id != null && !byId.containsKey(g.id)) byId.put(g.id, g);
             }
             List<ScoresTicker.Game> games = new ArrayList<>(byId.values());
+            // The Premier League's clubs, for the Champions League games with line-ups (read here, off the main thread).
+            if (kickoffReminders) englishClubs = ScoresTicker.englishClubs();
             Map<String, List<String[]>> incidents = new HashMap<>();
             if (incidentsNow) for (ScoresTicker.Game g : games) if (g.state == 0) incidents.put(g.id, ScoresTicker.incidents(g));
             List<MoreSports.Result> tennis = tennisNow ? MoreSports.tennis() : null;
@@ -676,7 +681,7 @@ public class GoalWatchService extends Service {
                     if (!ufc.isEmpty()) ufcPrimed = true;
                 }
                 for (ScoresTicker.Game g : games) {
-                    if (kickoffReminders && alertTags.contains(g.league) && g.state == 1 && g.kickoff - now > 0
+                    if (kickoffReminders && lineupGame(g) && g.state == 1 && g.kickoff - now > 0
                             && g.kickoff - now <= REMIND_MS && reminded.add(g.id)) {
                         enqueueReminder(g);
                     }
@@ -708,6 +713,25 @@ public class GoalWatchService extends Service {
                 main.postDelayed(poll, live ? POLL_MS : 5 * POLL_MS);
             });
         });
+    }
+
+    /** Competitions read for the line-ups alone: England's internationals, and the Spanish Supercopa. */
+    private static final String[] LINEUP_LEAGUES = {"fifa.friendly|FRIENDLY", "uefa.nations|UNL", "fifa.worldq.uefa|WCQ",
+            "uefa.euroq|EUROQ", "fifa.world|WORLD CUP", "uefa.euro|EURO", "esp.super_cup|SUPERCOPA"};
+    /** Barcelona, Real Madrid and England (ESPN's ids): every game of theirs has its line-ups. */
+    private static final Set<String> LINEUP_TEAMS = new HashSet<>(Arrays.asList("83", "86", "448"));
+    private static final Set<String> LINEUP_CUPS = new HashSet<>(Arrays.asList("PL", "FA CUP", "EFL CUP"));
+    private volatile Set<String> englishClubs = new HashSet<>();
+
+    /**
+     * Which games get the kick-off reminder with the line-ups: every Premier League, FA Cup and EFL Cup game, every
+     * game of Real Madrid, Barcelona and England, and the Champions League games an English club plays in.
+     */
+    private boolean lineupGame(ScoresTicker.Game g) {
+        if (LINEUP_CUPS.contains(g.league)) return true;
+        if (LINEUP_TEAMS.contains(g.homeId) || LINEUP_TEAMS.contains(g.awayId)) return true;
+        if ("UCL".equals(g.league)) return englishClubs.contains(g.homeId) || englishClubs.contains(g.awayId);
+        return false;
     }
 
     // ---- F1 ----------------------------------------------------------------------------------------

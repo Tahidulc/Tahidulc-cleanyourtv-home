@@ -735,9 +735,9 @@ final class LineupCard {
         if (kickoff <= 0) return null;
         long min = Math.round((kickoff - System.currentTimeMillis()) / 60_000.0);
         if (min <= 0) return "Kick-off now";
-        if (min < 60) return "Starts in " + min + " min";
+        if (min < 60) return "Starts in " + min + (min == 1 ? " min" : " mins");
         long h = min / 60, m = min % 60;
-        return "Starts in " + h + " hr" + (m > 0 ? " " + m + " min" : "");
+        return "Starts in " + h + (h == 1 ? " hr" : " hrs") + (m > 0 ? " " + m + (m == 1 ? " min" : " mins") : "");
     }
 
     /**
