@@ -177,7 +177,7 @@ final class ScoreCard {
         band.setBackground(bandGround(d, false));
         if (d.leagueLogo != null) {
             ImageView l = image(c, d.leagueLogo);
-            band.addView(l, new LinearLayout.LayoutParams(d.wideMark ? px(62) : px(22), d.wideMark ? px(30) : px(22)));
+            band.addView(l, new LinearLayout.LayoutParams(d.wideMark ? px(68) : px(22), d.wideMark ? px(30) : px(22)));
         }
         if (d.crest != null && !d.f1) {
             LinearLayout.LayoutParams cl = new LinearLayout.LayoutParams(px(32), px(32));
@@ -272,7 +272,7 @@ final class ScoreCard {
         FrameLayout band = new FrameLayout(c);
         band.setBackground(bandGround(d, false));
         band.addView(stripes(c, d), new FrameLayout.LayoutParams((d.wideMark ? px(150) : px(120)) + STRIPE_PERIOD_PX(), h));
-        if (d.leagueLogo != null) band.addView(image(c, d.leagueLogo), new FrameLayout.LayoutParams(d.wideMark ? px(72) : px(27), px(27), Gravity.CENTER));
+        if (d.leagueLogo != null) band.addView(image(c, d.leagueLogo), new FrameLayout.LayoutParams(d.wideMark ? px(104) : px(27), d.wideMark ? px(32) : px(27), Gravity.CENTER));
         bar.addView(band, new LinearLayout.LayoutParams(d.wideMark ? px(150) : px(120), h));
         View label = label(c, d, 23, h);
         bar.addView(label, new LinearLayout.LayoutParams(-2, h));

@@ -368,7 +368,8 @@ public class GoalWatchService extends Service {
         d.kind = "f1";
         d.labelColour = 0xFFE10600;
         android.graphics.Bitmap mark = ScoresTicker.cachedLogo(this, F1Results.F1_LOGO, 200);
-        d.leagueLogo = mark == null ? null : white(mark);
+        // Trimmed: ESPN's mark sits small in the middle of a square, so untrimmed it showed tiny in its band.
+        d.leagueLogo = mark == null ? null : white(HomeV2.trim(mark));
         ScoresTicker.Game f1 = new ScoresTicker.Game();
         f1.leagueLogo = F1Results.F1_LOGO;
         Object[] w = watchOn(TvGuide.watch(this, new String[0], f1));
