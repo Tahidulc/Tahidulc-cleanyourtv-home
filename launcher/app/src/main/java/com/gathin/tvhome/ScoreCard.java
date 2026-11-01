@@ -293,8 +293,10 @@ final class ScoreCard {
             // Full time: the result big ("Chelsea win"), the scorers and any red cards after it, small, as on the card
             // (its first line is the scorers, not a first name).
             boolean ft = "ft".equals(d.kind);
-            String big = d.headline != null ? d.headline : ft ? d.last : (d.first.isEmpty() ? "" : d.first + " ") + titleCase(d.last);
-            String after = ft ? join(d.first, d.line) : d.others.isEmpty() ? d.line : "";
+            // A kick-off's "Tottenham v Crystal Palace" is already as it should read; a surname ("SALAH") is not.
+            boolean ko = "kickoff".equals(d.kind);
+            String big = d.headline != null ? d.headline : ft || ko ? d.last : (d.first.isEmpty() ? "" : d.first + " ") + titleCase(d.last);
+            String after = ft || ko ? join(d.first, d.line) : d.others.isEmpty() ? d.line : "";
             TextView bigText = text(c, big, d.headline != null ? 19 : 22, d.dark ? 0xFFFFFFFF : INK, d.headline != null ? outfit(c, 800) : outfit(c, 600));
             if (d.headline != null) bigText.setMaxWidth(px(1000));
             name.addView(bigText);
@@ -873,6 +875,39 @@ final class ScoreCard {
         return b;
     }
 
+    /**
+     * A crest for the navy: one that is nearly all dark (Spurs' navy cockerel, Everton's) gets a thin white keyline
+     * round it, as on TV graphics, or it vanishes into the navy; any other crest as it is. Null for null.
+     */
+    static Bitmap onNavy(Bitmap b) {
+        if (b == null) return null;
+        Bitmap small = Bitmap.createScaledBitmap(b, 48, 48, true);
+        int opaque = 0, dark = 0;
+        for (int y = 0; y < 48; y++) {
+            for (int x = 0; x < 48; x++) {
+                int p = small.getPixel(x, y);
+                if ((p >>> 24) < 128) continue;
+                opaque++;
+                double lum = (0.299 * ((p >> 16) & 0xFF) + 0.587 * ((p >> 8) & 0xFF) + 0.114 * (p & 0xFF)) / 255.0;
+                if (lum < 0.28) dark++;
+            }
+        }
+        if (small != b) small.recycle();
+        if (opaque == 0 || dark < opaque * 0.55) return b;
+        int pad = Math.max(2, Math.round(b.getWidth() / 34f));
+        Bitmap out = Bitmap.createBitmap(b.getWidth() + 2 * pad, b.getHeight() + 2 * pad, Bitmap.Config.ARGB_8888);
+        android.graphics.Canvas c = new android.graphics.Canvas(out);
+        android.graphics.Paint white = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG | android.graphics.Paint.FILTER_BITMAP_FLAG);
+        white.setColorFilter(new android.graphics.PorterDuffColorFilter(0xFFFFFFFF, android.graphics.PorterDuff.Mode.SRC_IN));
+        // The crest's outline in white, drawn all round it, then the crest on top.
+        for (int a = 0; a < 360; a += 30) {
+            double r = Math.toRadians(a);
+            c.drawBitmap(b, pad + (float) (Math.cos(r) * pad), pad + (float) (Math.sin(r) * pad), white);
+        }
+        c.drawBitmap(b, pad, pad, null);
+        return out;
+    }
+
     /** The remote's Back key (the theme's ok_button remote), drawn at its size. */
     private static View backKey(Context c, int size) {
         ImageView v = new ImageView(c);
@@ -954,7 +989,7 @@ final class ScoreCard {
         for (String w : s.toLowerCase(java.util.Locale.UK).split(" ")) {
             if (w.isEmpty()) continue;
             if (b.length() > 0) b.append(' ');
-            b.append(Character.toUpperCase(w.charAt(0))).append(w.substring(1));
+            b.append(w.equals("v") ? "v" : Character.toUpperCase(w.charAt(0)) + w.substring(1));
         }
         return b.toString();
     }

@@ -224,8 +224,8 @@ public class GoalWatchService extends Service {
         ScoreCard.Data d = new ScoreCard.Data();
         int px = Math.round(96 * getResources().getDisplayMetrics().density);
         d.leagueLogo = bandLogo(g.leagueLogo != null ? g.leagueLogo : leagueLogoFor(g), px);
-        d.homeCrest = g.homeLogo == null ? null : ScoresTicker.cachedLogo(this, g.homeLogo, px);
-        d.awayCrest = g.awayLogo == null ? null : ScoresTicker.cachedLogo(this, g.awayLogo, px);
+        d.homeCrest = g.homeLogo == null ? null : ScoreCard.onNavy(ScoresTicker.cachedLogo(this, g.homeLogo, px));
+        d.awayCrest = g.awayLogo == null ? null : ScoreCard.onNavy(ScoresTicker.cachedLogo(this, g.awayLogo, px));
         d.homeName = g.homeName != null ? g.homeName : g.home;
         d.awayName = g.awayName != null ? g.awayName : g.away;
         d.score = (g.homeScore == null ? "0" : g.homeScore) + "–" + (g.awayScore == null ? "0" : g.awayScore);
@@ -469,6 +469,25 @@ public class GoalWatchService extends Service {
      * A game about to start as a score card: KICK-OFF over the minutes to go, the clubs, the competition and ground,
      * both crests in the end block with the kick-off time, and where it is on only where a guide lists it.
      */
+    /** A club's name as people say it: "Tottenham Hotspur" is Tottenham, "Manchester United" Man Utd. */
+    private static String shortClub(String name) {
+        if (name == null) return "";
+        switch (name) {
+            case "Manchester United": return "Man Utd";
+            case "Manchester City": return "Man City";
+            case "Wolverhampton Wanderers": return "Wolves";
+            case "Nottingham Forest": return "Nott'm Forest";
+            case "Brighton & Hove Albion": return "Brighton";
+            case "Paris Saint-Germain": return "PSG";
+            case "Internazionale": return "Inter";
+            case "Borussia Dortmund": return "Dortmund";
+            case "Bayer Leverkusen": return "Leverkusen";
+            case "Atletico Madrid": case "Atlético Madrid": return "Atlético";
+            default:
+                return name.replaceFirst(" (Hotspur|Wanderers|Albion|United|Athletic)$", "").replaceFirst("^AFC ", "");
+        }
+    }
+
     private ScoreCard.Data kickoffCard(ScoresTicker.Game g) {
         ScoreCard.Data d = footballData(g);
         d.kind = "kickoff";
@@ -476,8 +495,9 @@ public class GoalWatchService extends Service {
         d.label = "KICK-OFF";
         d.labelSmall = mins > 0 ? "IN " + mins + " MIN" : "NOW";
         d.labelColour = 0xFF151A63;
-        String full = d.homeName + " v " + d.awayName;
-        d.last = full.length() <= 26 ? full : g.home + " v " + g.away;
+        // The clubs' full names when they fit; else as people say them (Tottenham, Man Utd, Wolves); else ESPN's codes.
+        String full = d.homeName + " v " + d.awayName, said = shortClub(d.homeName) + " v " + shortClub(d.awayName);
+        d.last = full.length() <= 26 ? full : said.length() <= 26 ? said : g.home + " v " + g.away;
         String comp = ScoresTicker.competition(g);
         d.first = comp == null ? "" : comp;
         String time = g.kickoff > 0 ? new java.text.SimpleDateFormat("HH:mm", java.util.Locale.UK).format(new java.util.Date(g.kickoff)) : null;
@@ -507,6 +527,9 @@ public class GoalWatchService extends Service {
             // A football match ("Spurs v C. Palace"): found in the day's fixtures and shown as the kick-off card, both
             // crests and all, with the reminder's own channel where the guides list none.
             ScoresTicker.Game game = reminderGame(title, start);
+            // Not in any day's scores (a replay, a game already played, a league no feed has): the two clubs by name,
+            // so it still shows both crests.
+            if (game == null) game = titleFixture(title, start);
             if (game != null) {
                 if (game.kickoff == 0) game.kickoff = start;
                 ScoreCard.Data k = kickoffCard(game);
@@ -547,19 +570,144 @@ public class GoalWatchService extends Service {
      */
     private ScoresTicker.Game reminderGame(String title, long start) {
         if (title == null || start <= 0) return null;
-        String t = title.contains(": ") ? title.substring(title.lastIndexOf(": ") + 2) : title;
-        t = t.replaceAll("\\s*\\(.*?\\)\\s*$", "").trim();
-        String[] p = t.split("\\s+(?:v|vs|V|VS)\\.?\\s+", 2);
-        if (p.length != 2 || p[0].isEmpty() || p[1].isEmpty()) return null;
-        List<String> leagues = new ArrayList<>(Arrays.asList(getResources().getStringArray(R.array.goal_alert_leagues)));
-        leagues.addAll(Arrays.asList(getResources().getStringArray(R.array.team_alert_leagues)));
-        leagues.addAll(Arrays.asList(LINEUP_LEAGUES));
+        String[] p = sides(title);
+        if (p == null) return null;
+        List<String> leagues = clubLeagues();
         java.time.LocalDate day = java.time.Instant.ofEpochMilli(start).atZone(java.time.ZoneId.systemDefault()).toLocalDate();
         for (ScoresTicker.Game g : ScoresTicker.load(leagues.toArray(new String[0]), day)) {
             if (TvGuide.sameClub(p[0], g.homeName) && TvGuide.sameClub(p[1], g.awayName)
                     || TvGuide.sameClub(p[0], g.awayName) && TvGuide.sameClub(p[1], g.homeName)) return g;
         }
         return null;
+    }
+
+    /** The two sides a title names ("SNF: Spurs v C. Palace (Replay)" gives Spurs, C. Palace); null for anything else. */
+    private static String[] sides(String title) {
+        if (title == null) return null;
+        String t = title.contains(": ") ? title.substring(title.lastIndexOf(": ") + 2) : title;
+        t = t.replaceAll("\\s*\\(.*?\\)\\s*$", "").trim();
+        String[] p = t.split("\\s+(?:v|vs|V|VS)\\.?\\s+", 2);
+        if (p.length != 2 || p[0].trim().isEmpty() || p[1].trim().isEmpty()) return null;
+        return new String[]{p[0].trim(), p[1].trim()};
+    }
+
+    /** Every league and cup the launcher follows: the Sport page's, the alert leagues and the line-up competitions. */
+    private List<String> clubLeagues() {
+        List<String> all = new ArrayList<>();
+        java.util.Set<String> slugs = new java.util.HashSet<>();
+        List<String> in = new ArrayList<>(Arrays.asList(getResources().getStringArray(R.array.score_leagues)));
+        in.addAll(Arrays.asList(getResources().getStringArray(R.array.goal_alert_leagues)));
+        in.addAll(Arrays.asList(getResources().getStringArray(R.array.team_alert_leagues)));
+        in.addAll(Arrays.asList(LINEUP_LEAGUES));
+        for (String e : in) if (slugs.add(e.split("\\|", 2)[0].trim())) all.add(e);
+        return all;
+    }
+
+    /** Each club in those competitions: {slug, tag, name, short name, abbreviation, crest}; read once a day. */
+    private static List<String[]> clubs;
+    private static long clubsAt;
+
+    private synchronized List<String[]> clubs() {
+        long now = System.currentTimeMillis();
+        if (clubs != null && now - clubsAt < 86_400_000L) return clubs;
+        java.io.File file = new java.io.File(getCacheDir(), "clubs.tsv");
+        List<String[]> read = new ArrayList<>();
+        if (file.isFile() && now - file.lastModified() < 86_400_000L) {
+            try {
+                for (String line : java.nio.file.Files.readAllLines(file.toPath(), java.nio.charset.StandardCharsets.UTF_8)) {
+                    String[] c = line.split("\t", -1);
+                    if (c.length == 6) read.add(c);
+                }
+            } catch (Exception ignored) {
+                read.clear();
+            }
+        }
+        if (read.isEmpty()) {
+            for (String e : clubLeagues()) {
+                String[] parts = e.split("\\|", 2);
+                String slug = parts[0].trim(), tag = parts.length > 1 ? parts[1].trim() : slug;
+                try {
+                    JSONObject root = new JSONObject(ScoresTicker.get("https://site.api.espn.com/apis/site/v2/sports/soccer/" + slug + "/teams"));
+                    org.json.JSONArray teams = root.getJSONArray("sports").getJSONObject(0).getJSONArray("leagues")
+                            .getJSONObject(0).getJSONArray("teams");
+                    for (int i = 0; i < teams.length(); i++) {
+                        JSONObject t = teams.getJSONObject(i).getJSONObject("team");
+                        org.json.JSONArray logos = t.optJSONArray("logos");
+                        String crest = logos != null && logos.length() > 0 ? logos.getJSONObject(0).optString("href", "") : "";
+                        if (crest.isEmpty()) continue;
+                        read.add(new String[]{slug, tag, t.optString("displayName", ""), t.optString("shortDisplayName", ""),
+                                t.optString("abbreviation", ""), crest});
+                    }
+                } catch (Exception ignored) {
+                    // that competition is left out
+                }
+            }
+            if (!read.isEmpty()) {
+                try (java.io.Writer w = new java.io.OutputStreamWriter(new java.io.FileOutputStream(file), java.nio.charset.StandardCharsets.UTF_8)) {
+                    for (String[] c : read) w.write(String.join("\t", c).replace("\n", " ") + "\n");
+                } catch (Exception ignored) {
+                    // kept in memory only
+                }
+            }
+        }
+        if (!read.isEmpty()) { clubs = read; clubsAt = now; }
+        return clubs == null ? new ArrayList<>() : clubs;
+    }
+
+    private static String plainClub(String s) {
+        return java.text.Normalizer.normalize(s == null ? "" : s, java.text.Normalizer.Form.NFD).replaceAll("\\p{M}", "")
+                .toLowerCase(java.util.Locale.ROOT).replaceAll("\\b(fc|afc|cf)\\b", "").replaceAll("[^a-z0-9 ]", " ")
+                .replaceAll("\\s+", " ").trim();
+    }
+
+    /** The clubs a name could be: those named exactly so first ("Rangers" is Rangers, not Queens Park Rangers). */
+    private static List<String[]> clubsNamed(List<String[]> all, String name) {
+        String n = plainClub(name);
+        List<String[]> exact = new ArrayList<>(), near = new ArrayList<>();
+        for (String[] c : all) {
+            if (n.equals(plainClub(c[2])) || n.equals(plainClub(c[3])) || n.equalsIgnoreCase(c[4])) exact.add(c);
+            else if (TvGuide.sameClub(name, c[2]) || TvGuide.sameClub(name, c[3])) near.add(c);
+        }
+        return exact.isEmpty() ? near : exact;
+    }
+
+    /** A cup or a European or world competition, not a league ("uefa.champions", "eng.fa", "eng.league_cup"). */
+    private static boolean cup(String slug) {
+        return slug.startsWith("uefa.") || slug.startsWith("fifa.") || slug.startsWith("conmebol.") || slug.endsWith(".fa")
+                || slug.contains("cup") || slug.contains("copa") || slug.contains("pokal") || slug.contains("coupe");
+    }
+
+    /**
+     * A match by its title alone, for the crests: both clubs found by name in the competitions followed, from the
+     * same competition where they share one (its logo and name on the card too). Null when either is not found.
+     */
+    private ScoresTicker.Game titleFixture(String title, long start) {
+        String[] p = sides(title);
+        if (p == null) return null;
+        List<String[]> all = clubs();
+        List<String[]> hs = clubsNamed(all, p[0]), as = clubsNamed(all, p[1]);
+        if (hs.isEmpty() || as.isEmpty()) return null;
+        String[] h = hs.get(0), a = as.get(0);
+        // A competition both are in: their league before a cup or a European one (Barcelona v Real Madrid is LaLiga's,
+        // though both are in the Champions League too).
+        boolean shared = false;
+        int best = Integer.MAX_VALUE;
+        for (String[] x : hs) {
+            for (String[] y : as) {
+                if (!x[0].equals(y[0])) continue;
+                int rank = cup(x[0]) ? 1 : 0;
+                if (rank < best) { best = rank; h = x; a = y; shared = true; }
+            }
+        }
+        ScoresTicker.Game g = new ScoresTicker.Game();
+        g.home = h[4]; g.away = a[4];
+        g.homeName = h[2]; g.awayName = a[2];
+        g.homeLogo = h[5]; g.awayLogo = a[5];
+        g.slug = shared ? h[0] : null;
+        g.league = shared ? h[1] : "";
+        g.kickoff = start;
+        g.state = 1;
+        return g;
     }
 
     /** An emoji drawn as a picture (the band's mark where there is no logo). */
@@ -1086,7 +1234,8 @@ public class GoalWatchService extends Service {
             // adb only: an event reminder from the Sport page, as a STARTING card.
             try {
                 skyReminder(new JSONObject().put("t", intent.getStringExtra("test_reminder"))
-                        .put("c", "Sky Sports Main Event").put("l", ScoresTicker.skyLogo("1301", null)), 5);
+                        .put("c", "Sky Sports Main Event").put("l", ScoresTicker.skyLogo("1301", null))
+                        .put("s", System.currentTimeMillis() + 5 * 60_000L), 5);
             } catch (org.json.JSONException ignored) { }
         }
         if (intent != null && intent.hasExtra("test_fixture")) {
@@ -2105,7 +2254,7 @@ public class GoalWatchService extends Service {
             t.photoKit = home != null && home.known() ? home.body : (away ? awayKit : homeKit);
             t.photoSleeves = home != null && home.known() ? home.sleeves : t.photoKit;
             String crest = side.crest != null ? side.crest : away ? g.awayLogo : g.homeLogo;
-            if (crest != null) jobs.add(() -> { t.crest = ScoresTicker.cachedLogo(this, crest, logoPx * 2); return null; });
+            if (crest != null) jobs.add(() -> { t.crest = ScoreCard.onNavy(ScoresTicker.cachedLogo(this, crest, logoPx * 2)); return null; });
             for (String[] p : side.players) {
                 LineupCard.Player pl = new LineupCard.Player();
                 String full = p.length > 4 && p[4] != null ? p[4] : p[0];

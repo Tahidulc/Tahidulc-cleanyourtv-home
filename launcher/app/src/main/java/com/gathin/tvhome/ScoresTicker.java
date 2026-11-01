@@ -1117,7 +1117,7 @@ final class ScoresTicker {
         return channelName != null && channelName.matches("(?i).*\\b(uhd|4k)\\b.*") ? url + "#uhd" : url;
     }
 
-    private static String get(String url) throws Exception {
+    static String get(String url) throws Exception {
         HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
         conn.setConnectTimeout(6000);
         conn.setReadTimeout(8000);
