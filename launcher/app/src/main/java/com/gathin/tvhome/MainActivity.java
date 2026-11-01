@@ -1119,6 +1119,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         super.onNewIntent(intent);
         if (v2 != null) {
             if (intent != null && intent.hasCategory(Intent.CATEGORY_HOME)) v2.home();
+            // adb only (am start ... --ez smart_panel true): the smart home panel, as OK on the light bulb opens it.
+            else if (intent != null && intent.getBooleanExtra("smart_panel", false)) v2.openSmartPanel();
             return;
         }
         if (openLauncherSettingsIfAsked(intent)) return;

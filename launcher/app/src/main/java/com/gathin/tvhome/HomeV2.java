@@ -384,6 +384,7 @@ final class HomeV2 {
     }
 
     private WeatherPanel weatherPanel;
+    private SmartPanel smartPanel;
     private TextView weatherView;
 
     private void buildButtons() {
@@ -418,9 +419,11 @@ final class HomeV2 {
         ImageView bulb = icon(R.drawable.ic_bulb);
         Intent smartHome = new Intent("com.google.android.libraries.tv.smarthome.intent.action.OPEN_SMART_HOME")
                 .setPackage("com.google.android.apps.tv.dreamx").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        if (smartHome.resolveActivity(a.getPackageManager()) != null) {
-            topButton(bar, bulb, px(66), () -> LightsPanel.show(a, bulb, Config.themeStrings(a, "lights_rooms",
-                    Arrays.asList(a.getResources().getStringArray(R.array.lights_rooms))), smartHome));
+        // The smart home panel: the cameras, every light (Tuya's when the TV has a Tuya project, else by Google
+        // Assistant), the brightness, the car and a delivery on its way.
+        if (smartHome.resolveActivity(a.getPackageManager()) != null || installed(CameraAlert.TUYA) || TuyaCloud.configured(a)) {
+            smartPanel = new SmartPanel(this);
+            topButton(bar, bulb, px(66), () -> smartPanel.show());
         }
         // The camera (Tuya Smart's): its live view, where Tuya Smart is on this TV. The first of the theme's cameras.
         if (installed(CameraAlert.TUYA)) {
@@ -676,7 +679,13 @@ final class HomeV2 {
     }
 
     /** Home pressed: back to For you, first tile, guide closed. */
+    /** The smart home panel, from adb's test hook (MainActivity). */
+    void openSmartPanel() {
+        if (smartPanel != null) smartPanel.show();
+    }
+
     void home() {
+        if (smartPanel != null) smartPanel.hide();
         guide.hide();
         closePage();
         railSel = -1;
@@ -694,6 +703,7 @@ final class HomeV2 {
 
     /** All keys come here first; true when v2 used it. */
     boolean key(KeyEvent e) {
+        if (smartPanel != null && smartPanel.isOpen()) return smartPanel.key(e);
         if (weatherPanel != null && weatherPanel.isOpen()) return weatherPanel.key(e);
         if (guide.isOpen()) return guide.key(e);
         if (page != null && !preview && !parked) {

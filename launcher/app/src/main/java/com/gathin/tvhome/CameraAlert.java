@@ -73,6 +73,13 @@ final class CameraAlert {
     private CameraAlert() { }
 
     /** The cameras this TV alerts for and opens, as Tuya Smart names them: the theme's "cameras" (none: any). */
+    private static final java.util.Map<String, Object[]> shots = new java.util.concurrent.ConcurrentHashMap<>();
+
+    /** A camera's latest alarm this session: {picture or null, when}; null when it has had none. */
+    static Object[] lastShot(String camera) {
+        return camera == null ? null : shots.get(camera);
+    }
+
     static List<String> cameras(Context c) {
         return Config.themeStrings(c, "cameras", new ArrayList<>());
     }
@@ -102,6 +109,10 @@ final class CameraAlert {
         // An alarm from a while ago (delivered as the TV woke from standby) is old news.
         long when = n.when > 0 ? n.when : sbn.getPostTime();
         if (System.currentTimeMillis() - when > 2 * 60_000L) return;
+        // Kept for the smart home panel's camera tile: the latest alarm's picture and when it came.
+        Object[] before = shots.get(camera);
+        if (pic != null || before == null) shots.put(camera, new Object[]{pic != null ? pic : null, when});
+        else shots.put(camera, new Object[]{before[0], when});
         PowerManager pm = c.getSystemService(PowerManager.class);
         if (pm != null && !pm.isInteractive()) return;
         if (TUYA.equals(AppSearchService.front())) return;

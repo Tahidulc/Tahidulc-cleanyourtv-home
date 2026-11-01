@@ -1017,6 +1017,7 @@ public class GoalWatchService extends Service {
      */
     private void showDelivery(JSONObject u) {
         String kind = u.optString("kind");
+        if ("delivery".equals(kind) || kind.isEmpty()) { SmartPanel.delivery = u; SmartPanel.deliveryAt = System.currentTimeMillis(); }
         if ("car".equals(kind)) { showCar(u); return; }
         if ("home_eta".equals(kind)) {
             if (Config.themeFlag(this, "home_eta", false)) {
@@ -1039,6 +1040,8 @@ public class GoalWatchService extends Service {
     private void showCar(JSONObject u) {
         String title = u.optString("title", "").trim(), status = u.optString("status", "").trim();
         if (title.isEmpty() && status.isEmpty()) return;
+        SmartPanel.car = u;
+        SmartPanel.carAt = System.currentTimeMillis();
         float d = getResources().getDisplayMetrics().density;
         queue.addFirst(new Object[]{DeliveryCard.car(this, u, glass(CORNER_DP * d)), "reminder"});
         showNext();

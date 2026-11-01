@@ -117,7 +117,7 @@ final class LightsPanel {
      * The request, with a theme's "quiet_assistant": done out of sight behind a still of the screen and a spinner on
      * the button (AppSearchService.quietAsk), so Google's own screen never shows; otherwise asked the plain way.
      */
-    private static void send(Context ctx, View panel, View pressed, String query) {
+    static void send(Context ctx, View panel, View pressed, String query) {
         if (Config.themeFlag(ctx, "quiet_assistant", false) && ctx instanceof android.app.Activity
                 && AppSearchService.quietAsk((android.app.Activity) ctx, panel, pressed, query, () -> ask(ctx, query))) return;
         ask(ctx, query);
