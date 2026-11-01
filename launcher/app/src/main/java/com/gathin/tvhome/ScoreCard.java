@@ -190,7 +190,7 @@ final class ScoreCard {
         FrameLayout bandBox = new FrameLayout(c);
         bandBox.setBackground(band.getBackground());
         band.setBackground(null);
-        bandBox.addView(stripes(c, d), new FrameLayout.LayoutParams(bandW + STRIPE_PERIOD_PX(), h));
+        if (!plainBlack(d)) bandBox.addView(stripes(c, d), new FrameLayout.LayoutParams(bandW + STRIPE_PERIOD_PX(), h));
         bandBox.addView(band, new FrameLayout.LayoutParams(bandW, h));
         card.addView(bandBox, new LinearLayout.LayoutParams(bandW, h));
 
@@ -275,7 +275,7 @@ final class ScoreCard {
         boolean ko = "kickoff".equals(d.kind);
         FrameLayout band = new FrameLayout(c);
         band.setBackground(bandGround(d, false));
-        band.addView(stripes(c, d), new FrameLayout.LayoutParams((d.wideMark ? px(150) : px(120)) + STRIPE_PERIOD_PX(), h));
+        if (!plainBlack(d)) band.addView(stripes(c, d), new FrameLayout.LayoutParams((d.wideMark ? px(150) : px(120)) + STRIPE_PERIOD_PX(), h));
         if (d.leagueLogo != null) band.addView(image(c, d.leagueLogo), new FrameLayout.LayoutParams(d.wideMark ? px(124) : px(40), px(40), Gravity.CENTER));
         bar.addView(band, new LinearLayout.LayoutParams(d.wideMark ? px(150) : px(120), h));
         // A kick-off's label is KICK-OFF alone: how long until it is said once, after the clubs.
@@ -444,9 +444,15 @@ final class ScoreCard {
     /** The band's ground: the navy, F1's red, or the card's own colours. */
     /** The band's ground: the navy, F1's red, or the card's own colours; its stripes too, or (stripes false) not. */
     private static Drawable bandGround(Data d, boolean withStripes) {
+        if (plainBlack(d)) return new Streaks(0xFF141519, 0xFF0B0C0F, 0, px(14), px(3));
         int a = d.band != 0 ? d.band : d.f1 ? 0xFFE10600 : 0xFF1B2591;
         int b = d.bandDeep != 0 ? d.bandDeep : d.f1 ? 0xFF8E0400 : 0xFF0D1360;
         return new Streaks(a, b, withStripes ? stripeColour(d) : 0, px(14), px(3));
+    }
+
+    /** The fights' pop-ups (UFC, boxing): black all over, band too, with no stripes and nothing moving. */
+    private static boolean plainBlack(Data d) {
+        return d.dark && !d.f1;
     }
 
     private static int stripeColour(Data d) {
