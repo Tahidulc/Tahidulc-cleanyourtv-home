@@ -504,6 +504,8 @@ final class LiveCentre {
                 }
             });
             slide.start();
+            // The first pass starts with the line already at the band's left edge, so it is there at once.
+            slide.setCurrentFraction(band / (float) (band + w));
         });
     }
 
