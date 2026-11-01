@@ -10,6 +10,7 @@ import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.PixelFormat;
 import android.graphics.Rect;
+import android.graphics.RectF;
 import android.graphics.Shader;
 import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
@@ -446,6 +447,44 @@ final class LiveCentre {
     }
 
     /** The Live Centre's stamp, where Sky's channel name sits: LIVE on the launcher's green, CENTRE on white. */
+    /**
+     * The LIVE CENTRE stamp painted into a picture of the given height (the Sports page's bar), as the frame draws it:
+     * LIVE in dark green on the launcher's green with its slanted edge, CENTRE in navy on white, rounded corners.
+     */
+    static Bitmap stampPicture(Context c, int height) {
+        float u = height / 38f;
+        Paint live = new Paint(Paint.ANTI_ALIAS_FLAG), word = new Paint(Paint.ANTI_ALIAS_FLAG);
+        live.setTypeface(ScoreCard.outfit(c, 900));
+        live.setTextSize(19 * u);
+        live.setColor(0xFF062814);
+        word.setTypeface(ScoreCard.outfit(c, 900));
+        word.setTextSize(19 * u);
+        word.setLetterSpacing(0.06f);
+        word.setColor(NAVY);
+        float liveW = live.measureText("LIVE") + (12 + 18) * u, wordW = word.measureText("CENTRE");
+        int w = Math.round(liveW + 6 * u + wordW + 14 * u);
+        Bitmap b = Bitmap.createBitmap(w, height, Bitmap.Config.ARGB_8888);
+        Canvas cv = new Canvas(b);
+        Path clip = new Path();
+        clip.addRoundRect(new RectF(0, 0, w, height), 6 * u, 6 * u, Path.Direction.CW);
+        cv.clipPath(clip);
+        cv.drawColor(0xFFFFFFFF);
+        Paint green = new Paint(Paint.ANTI_ALIAS_FLAG);
+        green.setColor(GREEN);
+        Path slant = new Path();
+        slant.moveTo(0, 0);
+        slant.lineTo(liveW, 0);
+        slant.lineTo(liveW - 10 * u, height);
+        slant.lineTo(0, height);
+        slant.close();
+        cv.drawPath(slant, green);
+        Paint.FontMetrics fm = live.getFontMetrics();
+        float base = height / 2f - (fm.ascent + fm.descent) / 2f;
+        cv.drawText("LIVE", 12 * u, base, live);
+        cv.drawText("CENTRE", liveW + 6 * u, base, word);
+        return b;
+    }
+
     private static View stamp(Context c) {
         LinearLayout s = new LinearLayout(c);
         s.setGravity(Gravity.CENTER_VERTICAL);
@@ -497,8 +536,10 @@ final class LiveCentre {
         mini.removeAllViews();
         ScoresTicker.Game g = shown();
         if (g == null) { mini.setVisibility(View.GONE); statsBox.setVisibility(View.GONE); return; }
-        mini.setVisibility(View.VISIBLE);
-        statsBox.setVisibility(View.VISIBLE);
+        if (!boardHidden) {
+            mini.setVisibility(View.VISIBLE);
+            statsBox.setVisibility(View.VISIBLE);
+        }
         mini.addView(edge(c, g.homeColor), new LinearLayout.LayoutParams(px(12), -1));
         mini.addView(side(c, g, true), new LinearLayout.LayoutParams(0, -1, 1f));
         LinearLayout mid = new LinearLayout(c);
@@ -559,8 +600,28 @@ final class LiveCentre {
         else if (g.clockAt > 0 && g.clockSec > 0) {
             long secs = (long) g.clockSec + (System.currentTimeMillis() - g.clockAt) / 1000L;
             t = String.format(Locale.ROOT, "%02d:%02d", secs / 60, secs % 60);
-        } else t = minute(g);
+        } else {
+            // Only the minute ("67'", "90'+3'"): counted on from the start of that minute, as a stadium clock runs,
+            // and never past its end until ESPN says the next minute has come.
+            long secs = countedFromMinute(g);
+            t = secs >= 0 ? String.format(Locale.ROOT, "%02d:%02d", secs / 60, secs % 60) : minute(g);
+        }
         boardClock.setText(t);
+    }
+
+    /** A game's minute as ESPN last gave it, and when it was first seen: {minute (with added time), seen at}. */
+    private static final Map<String, long[]> minuteSeen = new HashMap<>();
+
+    private static long countedFromMinute(ScoresTicker.Game g) {
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("(\\d+)'?\\s*(?:\\+\\s*(\\d+))?").matcher(g.detail == null ? "" : g.detail);
+        if (!m.find()) return -1;
+        int minute = Integer.parseInt(m.group(1)) + (m.group(2) == null ? 0 : Integer.parseInt(m.group(2)));
+        if (minute <= 0) return -1;
+        long now = System.currentTimeMillis();
+        long[] seen = minuteSeen.get(g.id);
+        if (seen == null || seen[0] != minute) { seen = new long[]{minute, now}; minuteSeen.put(g.id, seen); }
+        long into = Math.min(59, (now - seen[1]) / 1000L);
+        return (minute - 1) * 60L + into;
     }
 
     private static final Runnable clockTick = new Runnable() {
@@ -1292,20 +1353,71 @@ final class LiveCentre {
         return handle(e.getKeyCode(), e);
     }
 
+    /**
+     * Up: onto the scoreboard (a white ring round it; brought back first if it was put away). On it, Left and Right
+     * change the game and Back puts the scoreboard and its stats away; Down comes off it. Off it, Left and Right turn
+     * the column's leagues and Back closes the Live Centre.
+     */
     private static boolean handle(int code, KeyEvent e) {
+        boolean down = e.getAction() == KeyEvent.ACTION_DOWN;
         if (code == KeyEvent.KEYCODE_BACK) {
-            if (e.getAction() == KeyEvent.ACTION_UP && !e.isCanceled()) main.post(LiveCentre::close);
+            if (e.getAction() == KeyEvent.ACTION_UP && !e.isCanceled()) main.post(() -> { if (onBoard) hideBoard(); else close(); });
             return true;
         }
-        if (code == KeyEvent.KEYCODE_DPAD_UP || code == KeyEvent.KEYCODE_DPAD_DOWN) {
-            if (e.getAction() == KeyEvent.ACTION_DOWN && e.getRepeatCount() == 0) main.post(() -> step(code == KeyEvent.KEYCODE_DPAD_DOWN ? 1 : -1));
+        if (code == KeyEvent.KEYCODE_DPAD_UP) {
+            if (down && e.getRepeatCount() == 0) main.post(() -> focusBoard(true));
+            return true;
+        }
+        if (code == KeyEvent.KEYCODE_DPAD_DOWN) {
+            if (down && e.getRepeatCount() == 0) main.post(() -> focusBoard(false));
             return true;
         }
         if (code == KeyEvent.KEYCODE_DPAD_LEFT || code == KeyEvent.KEYCODE_DPAD_RIGHT) {
-            if (e.getAction() == KeyEvent.ACTION_DOWN) main.post(() -> { leagueAt += code == KeyEvent.KEYCODE_DPAD_RIGHT ? 1 : -1; fillLeague(app); });
+            int by = code == KeyEvent.KEYCODE_DPAD_RIGHT ? 1 : -1;
+            if (down && e.getRepeatCount() == 0) main.post(() -> {
+                if (onBoard) step(by);
+                else { leagueAt += by; fillLeague(app); }
+            });
             return true;
         }
         return false;
+    }
+
+    /** Whether the remote is on the scoreboard, and whether the scoreboard has been put away. */
+    private static boolean onBoard, boardHidden;
+
+    private static void focusBoard(boolean on) {
+        if (host == null || mini == null) return;
+        if (on && boardHidden) {
+            boardHidden = false;
+            for (View v : new View[]{mini, statsBox}) {
+                v.setVisibility(View.VISIBLE);
+                v.setAlpha(0f);
+                v.setTranslationY(-px(20));
+                v.animate().alpha(1f).translationY(0).setDuration(280).start();
+            }
+        }
+        onBoard = on;
+        for (View v : new View[]{mini, statsBox}) {
+            GradientDrawable ring = new GradientDrawable();
+            ring.setCornerRadius(px(14));
+            ring.setStroke(px(4), 0xFFFFFFFF);
+            v.setForeground(on ? ring : null);
+            v.animate().scaleX(on ? 1.03f : 1f).scaleY(on ? 1.03f : 1f).setDuration(160).start();
+        }
+        mini.setPivotX(0);
+        mini.setPivotY(0);
+        statsBox.setPivotX(0);
+        statsBox.setPivotY(0);
+    }
+
+    /** Back on the scoreboard: it and its stats slide away (Up brings them back). */
+    private static void hideBoard() {
+        focusBoard(false);
+        boardHidden = true;
+        for (View v : new View[]{mini, statsBox}) {
+            v.animate().alpha(0f).translationY(-px(20)).setDuration(240).withEndAction(() -> { if (boardHidden) v.setVisibility(View.GONE); }).start();
+        }
     }
 
     /** The next or the previous live game shown, its channel put on when a guide lists it. */
@@ -1448,6 +1560,8 @@ final class LiveCentre {
     }
 
     static void close() {
+        onBoard = false;
+        boardHidden = false;
         main.removeCallbacks(clockTick);
         main.removeCallbacks(statsTurn);
         if (host != null && !InputKeyService.running) AppSearchService.keysFor("live", false);

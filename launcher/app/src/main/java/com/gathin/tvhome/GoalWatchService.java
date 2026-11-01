@@ -1389,6 +1389,47 @@ public class GoalWatchService extends Service {
             g.broadcasts.add("Sky Sports Premier League");
             enqueue(g, new String[]{"test", "Mohamed Salah", "67'", "home", ""}, false);
         }
+        if (intent != null && intent.hasExtra("test_render_bar")) {
+            // adb only: the Sports page's Live Centre bar drawn to a file (nothing on screen): files/bar.png.
+            try {
+                float d = getResources().getDisplayMetrics().widthPixels / 1920f;
+                android.text.SpannableStringBuilder b = new android.text.SpannableStringBuilder("Press  ");
+                int at = b.length();
+                b.append("  ");
+                int ok = Math.round(36 * d);
+                android.graphics.drawable.BitmapDrawable okd = new android.graphics.drawable.BitmapDrawable(getResources(),
+                        PagesV2.SportPage.okKey(Config.themeString(this, "ok_button", "tcl"), ok));
+                okd.setBounds(0, 0, ok, ok);
+                b.setSpan(new PagesV2.SportPage.MidSpan(okd), at, at + 2, 0);
+                b.append("   for   ");
+                int st = b.length();
+                b.append("  ");
+                android.graphics.Bitmap sb = LiveCentre.stampPicture(this, Math.round(34 * d));
+                android.graphics.drawable.BitmapDrawable sd = new android.graphics.drawable.BitmapDrawable(getResources(), sb);
+                sd.setBounds(0, 0, sb.getWidth(), sb.getHeight());
+                b.setSpan(new PagesV2.SportPage.MidSpan(sd), st, st + 2, 0);
+                android.widget.TextView v = new android.widget.TextView(this);
+                v.setText(b);
+                v.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, 20 * d);
+                v.setTextColor(0xFF1A1D24);
+                v.setGravity(android.view.Gravity.CENTER);
+                GradientDrawable bg = new GradientDrawable();
+                bg.setColor(0xEBFFFFFF);
+                bg.setCornerRadius(30 * d);
+                v.setBackground(bg);
+                int w = Math.round(536 * d), hgt = Math.round(60 * d);
+                v.measure(android.view.View.MeasureSpec.makeMeasureSpec(w, android.view.View.MeasureSpec.EXACTLY),
+                        android.view.View.MeasureSpec.makeMeasureSpec(hgt, android.view.View.MeasureSpec.EXACTLY));
+                v.layout(0, 0, w, hgt);
+                android.graphics.Bitmap out = android.graphics.Bitmap.createBitmap(w, hgt, android.graphics.Bitmap.Config.ARGB_8888);
+                android.graphics.Canvas cv = new android.graphics.Canvas(out);
+                cv.drawColor(0xFF13196A);
+                v.draw(cv);
+                java.io.File f = new java.io.File(getExternalFilesDir(null), "bar.png");
+                try (java.io.FileOutputStream o = new java.io.FileOutputStream(f)) { out.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, o); }
+            } catch (Exception ignored) {
+            }
+        }
         if (intent != null && intent.hasExtra("test_goal_other")) {
             // adb only: a goal in a game no club or competition of the alerts is followed in (one of today's live games
             // from Home's score pills, else a Serie A sample): on Home the new-style bar, over an app nothing.

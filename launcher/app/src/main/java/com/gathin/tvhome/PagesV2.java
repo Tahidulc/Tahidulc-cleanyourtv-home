@@ -1585,8 +1585,22 @@ final class PagesV2 {
             liveRows = new LinearLayout(h.a);
             liveRows.setOrientation(LinearLayout.VERTICAL);
             c.addView(liveRows, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
-            android.text.SpannableStringBuilder b = new android.text.SpannableStringBuilder("Open Live Centre");
-            pressOk(b);
+            // "Press [OK] for [LIVE|CENTRE]": this remote's OK button and the Live Centre's own stamp, no words for them.
+            android.text.SpannableStringBuilder b = new android.text.SpannableStringBuilder("Press  ");
+            int at = b.length();
+            b.append("  ");
+            int okSize = px(36);
+            android.graphics.drawable.BitmapDrawable ok = new android.graphics.drawable.BitmapDrawable(h.a.getResources(),
+                    okKey(Config.themeString(h.a, "ok_button", "tcl"), okSize));
+            ok.setBounds(0, 0, okSize, okSize);
+            b.setSpan(new MidSpan(ok), at, at + 2, 0);
+            b.append("   for   ");
+            int st = b.length();
+            b.append("  ");
+            android.graphics.Bitmap stampBm = LiveCentre.stampPicture(h.a, px(34));
+            android.graphics.drawable.BitmapDrawable stamp = new android.graphics.drawable.BitmapDrawable(h.a.getResources(), stampBm);
+            stamp.setBounds(0, 0, stampBm.getWidth(), stampBm.getHeight());
+            b.setSpan(new MidSpan(stamp), st, st + 2, 0);
             watch.setText(b);
             LinearLayout.LayoutParams wl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, px(60));
             wl.topMargin = px(10);
@@ -1709,12 +1723,43 @@ final class PagesV2 {
          * The OK button as it looks on the remote, big enough to read in a line of text: the TCL's black button with
          * OK in white inside the thin grey ring of its direction keys; the Streamer's plain pale button.
          */
-        private static android.graphics.Bitmap okKey(String remote, int s) {
+        static android.graphics.Bitmap okKey(String remote, int s) {
             android.graphics.Bitmap bm = android.graphics.Bitmap.createBitmap(s, s, android.graphics.Bitmap.Config.ARGB_8888);
             android.graphics.Canvas c = new android.graphics.Canvas(bm);
             android.graphics.Paint p = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
             float r = s / 2f;
             boolean streamer = "streamer".equalsIgnoreCase(remote);
+            if ("tcl".equalsIgnoreCase(remote)) {
+                // The TCL remote's: the arrows' dark ring with its four marks, the round OK button in the middle.
+                p.setColor(0xFF2A2C31);
+                c.drawCircle(r, r, r, p);
+                p.setColor(0xFF8A8E96);
+                float m = r * 0.86f, tri = r * 0.10f;
+                for (int i = 0; i < 4; i++) {
+                    android.graphics.Path a = new android.graphics.Path();
+                    float cx = r + (i == 1 ? m : i == 3 ? -m : 0), cy = r + (i == 2 ? m : i == 0 ? -m : 0);
+                    float dx = i == 1 ? 1 : i == 3 ? -1 : 0, dy = i == 2 ? 1 : i == 0 ? -1 : 0;
+                    a.moveTo(cx + dx * tri, cy + dy * tri);
+                    a.lineTo(cx - dx * tri + dy * tri, cy - dy * tri + dx * tri);
+                    a.lineTo(cx - dx * tri - dy * tri, cy - dy * tri - dx * tri);
+                    a.close();
+                    c.drawPath(a, p);
+                }
+                p.setColor(0xFF0B0C0E);
+                c.drawCircle(r, r, r * 0.62f, p);
+                p.setStyle(android.graphics.Paint.Style.STROKE);
+                p.setStrokeWidth(Math.max(1f, r * 0.05f));
+                p.setColor(0xFF4A4E56);
+                c.drawCircle(r, r, r * 0.62f, p);
+                p.setStyle(android.graphics.Paint.Style.FILL);
+                p.setColor(Color.WHITE);
+                p.setTextAlign(android.graphics.Paint.Align.CENTER);
+                p.setTypeface(android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.BOLD));
+                p.setTextSize(r * 0.50f);
+                android.graphics.Paint.FontMetrics fm = p.getFontMetrics();
+                c.drawText("OK", r, r - (fm.ascent + fm.descent) / 2f, p);
+                return bm;
+            }
             p.setColor(streamer ? 0xFFBDB9B0 : 0xFF6B6E75);
             c.drawCircle(r, r, r, p);
             p.setColor(streamer ? 0xFFEDEAE4 : 0xFF0E0F11);
