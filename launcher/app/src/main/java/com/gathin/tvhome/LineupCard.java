@@ -86,6 +86,10 @@ final class LineupCard {
     private static FrameLayout host;
     private static Data showing;
     private static float k;
+    /** Whether the one showing is Home's bar (it gives the score pills their place back when it goes). */
+    private static boolean bar;
+    /** The bar's streaks drifting, stopped when it goes. */
+    private static final List<android.animation.Animator> drifting = new ArrayList<>();
 
     private LineupCard() { }
 
@@ -142,6 +146,8 @@ final class LineupCard {
             return;
         }
         close(false);
+        // On Home: the same line-ups as a wide bar across the top, in the style of Home's score bars.
+        if (GoalWatchService.laneHome && GoalWatchService.homeInFront) { showBar(c, d); return; }
         k = c.getResources().getDisplayMetrics().widthPixels / 1920f * SCALE;
         int w = px(W), h = px(H), margin = px(10);
 
@@ -235,6 +241,301 @@ final class LineupCard {
         card.setTranslationX(-px(40));
         card.animate().alpha(1f).translationX(0f).setDuration(340).setInterpolator(new DecelerateInterpolator(2f)).withLayer().start();
         step.run();
+    }
+
+    // ---- on Home: the bar across the top ---------------------------------------------------------------------------
+
+    private static final int INK = 0xFF0A0D33, INK_SOFT = 0xFF2B3170;
+    /** The bar's pages: the fixture, then each eleven (all of it at once, by its lines). */
+    private static final long BAR_FIRST_MS = 9_000L, BAR_TEAM_MS = 13_000L;
+
+    /**
+     * The line-ups on Home, in the style of Home's score bars: a wide bar across the top on the pale streaked ground
+     * (its streaks drifting), the navy band at its left end with the competition, then the club's crest and shape;
+     * the LINE-UPS label; and the pages turning behind the same wipe as the card's: both clubs with the kick-off and
+     * the channel (OK watches), then each eleven across the bar, grouped keeper, defence, midfield and attack, each
+     * player's head and shoulders, number and surname. Back closes it.
+     */
+    private static void showBar(Context c, Data d) {
+        k = c.getResources().getDisplayMetrics().widthPixels / 1920f;
+        int w = px(1728), h = px(150), bandW = px(150);
+        float r = px(28);
+        FrameLayout win = new FrameLayout(c);
+        FrameLayout box = new FrameLayout(c);
+        box.setOutlineProvider(new ViewOutlineProvider() {
+            @Override public void getOutline(View v, Outline o) { o.setRoundRect(0, 0, v.getWidth(), v.getHeight(), r); }
+        });
+        box.setClipToOutline(true);
+        box.setBackground(new Streaks(0xFFF6F7FD, 0xFFD3D6F3, 0, px(50), px(30)));
+        // The streaks on a layer of their own, a period wider, drifting one period and again: only the layer moves.
+        int period = px(50) + px(30);
+        View lines = new View(c);
+        lines.setBackground(new Streaks(0, 0, 0x4DFFFFFF, px(50), px(30)));
+        lines.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+        FrameLayout.LayoutParams linesLp = new FrameLayout.LayoutParams(-1, h);
+        linesLp.leftMargin = -period;
+        box.addView(lines, linesLp);
+        android.animation.ObjectAnimator drift = android.animation.ObjectAnimator.ofFloat(lines, View.TRANSLATION_X, 0f, period);
+        drift.setDuration(Math.round(period / (float) px(30) * 1_000));
+        drift.setRepeatCount(android.animation.ValueAnimator.INFINITE);
+        drift.setInterpolator(new LinearInterpolator());
+        drift.setStartDelay(300);
+        drifting.add(drift);
+
+        LinearLayout row = new LinearLayout(c);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        FrameLayout band = new FrameLayout(c);
+        band.setBackground(new Streaks(0xFF1B2591, 0xFF0D1360, 0x17FFFFFF, px(14), px(3)));
+        row.addView(band, new LinearLayout.LayoutParams(bandW, h));
+        row.addView(barLabel(c, d, h), new LinearLayout.LayoutParams(-2, h));
+        FrameLayout stage = new FrameLayout(c);
+        stage.setClipChildren(true);
+        row.addView(stage, new LinearLayout.LayoutParams(0, h, 1f));
+        ImageView back = new ImageView(c);
+        back.setImageBitmap(GoalWatchService.backButton(Config.themeString(c, "ok_button", "tcl"), px(26)));
+        back.setTag(PopupMotion.BACK_KEY);
+        LinearLayout.LayoutParams bl = new LinearLayout.LayoutParams(px(26), px(26));
+        bl.gravity = Gravity.TOP;
+        bl.topMargin = px(14);
+        bl.leftMargin = px(8);
+        bl.rightMargin = px(18);
+        row.addView(back, bl);
+        box.addView(row, new FrameLayout.LayoutParams(w, h));
+        win.addView(box, new FrameLayout.LayoutParams(w, h));
+
+        WindowManager.LayoutParams lp = new WindowManager.LayoutParams(w, h,
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
+                        | WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
+                PixelFormat.TRANSLUCENT);
+        lp.gravity = Gravity.TOP | Gravity.CENTER_HORIZONTAL;
+        lp.y = px(14);
+        lp.setTitle("LineupCard");
+        try {
+            c.getSystemService(WindowManager.class).addView(win, lp);
+        } catch (RuntimeException e) {
+            drifting.clear();
+            return;
+        }
+        host = win;
+        showing = d;
+        bar = true;
+        ScoreCard.lane(true);
+        drift.start();
+
+        List<Runnable> pages = new ArrayList<>();
+        List<Long> times = new ArrayList<>();
+        pages.add(() -> turn(c, stage, () -> { barBand(c, band, d.leagueLogo, null); stage.addView(barFirst(c, d), full()); }));
+        times.add(BAR_FIRST_MS);
+        for (Team t : new Team[]{d.home, d.away}) {
+            if (t == null || t.players.isEmpty()) continue;
+            pages.add(() -> turn(c, stage, () -> { barBand(c, band, t.crest, t.formation); stage.addView(barTeam(c, t), full()); }));
+            times.add(BAR_TEAM_MS);
+        }
+        boolean helper = InputKeyService.running;
+        int[] at = {0};
+        Runnable step = new Runnable() {
+            @Override public void run() {
+                if (host != win) return;
+                int i = at[0];
+                pages.get(i).run();
+                if (i == 0 && !helper) offerWatch(win, d);
+                if (i == pages.size() - 1) {
+                    main.postDelayed(() -> { if (host == win) close(true); }, times.get(i));
+                    return;
+                }
+                at[0]++;
+                main.postDelayed(this, times.get(i));
+            }
+        };
+        box.setAlpha(0f);
+        box.setTranslationY(-px(24));
+        box.animate().alpha(1f).translationY(0f).setDuration(300).setInterpolator(new DecelerateInterpolator(2f)).withLayer().start();
+        step.run();
+    }
+
+    /** The bar's navy band: a mark big in the middle (the competition's, or the club's crest), its shape under it. */
+    private static void barBand(Context c, FrameLayout band, Bitmap mark, String formation) {
+        band.removeAllViews();
+        LinearLayout col = new LinearLayout(c);
+        col.setOrientation(LinearLayout.VERTICAL);
+        col.setGravity(Gravity.CENTER_HORIZONTAL);
+        boolean shape = formation != null && !formation.isEmpty();
+        col.addView(crest(c, mark), new LinearLayout.LayoutParams(px(shape ? 70 : 80), px(shape ? 70 : 80)));
+        if (shape) {
+            TextView f = text(c, formation, 17, 0xFFFFFFFF, Typeface.create("sans-serif-condensed", Typeface.BOLD));
+            f.setLetterSpacing(0.1f);
+            f.setGravity(Gravity.CENTER);
+            LinearLayout.LayoutParams fl = new LinearLayout.LayoutParams(-2, -2);
+            fl.topMargin = px(8);
+            col.addView(f, fl);
+        }
+        band.addView(col, new FrameLayout.LayoutParams(-1, -2, Gravity.CENTER));
+        col.setAlpha(0f);
+        col.animate().alpha(1f).setDuration(380).withLayer().start();
+    }
+
+    /** LINE-UPS on the slanted navy label, the kick-off under it. */
+    private static View barLabel(Context c, Data d, int h) {
+        LinearLayout v = new LinearLayout(c);
+        v.setOrientation(LinearLayout.VERTICAL);
+        v.setGravity(Gravity.CENTER_VERTICAL);
+        v.setPadding(px(18), 0, px(30), 0);
+        v.setBackground(new ScoreCard.Slant(NAVY, px(22), false));
+        v.addView(text(c, "LINE-UPS", 28, 0xFFFFFFFF, ScoreCard.outfit(c, 900)), new LinearLayout.LayoutParams(-2, -2));
+        if (d.kickoff != null) {
+            TextView s = text(c, "KICK-OFF " + d.kickoff, 12, 0xD9FFFFFF, Typeface.create("sans-serif-condensed", Typeface.BOLD));
+            s.setLetterSpacing(0.16f);
+            LinearLayout.LayoutParams sl = new LinearLayout.LayoutParams(-2, -2);
+            sl.topMargin = px(4);
+            v.addView(s, sl);
+        }
+        return v;
+    }
+
+    /**
+     * The fixture: the home crest, "Barcelona v Real Madrid", the competition and the ground, "Starts in 14 mins"
+     * (fading in slowly) and the kick-off, the away crest; at the right end the channel and "Press OK to watch".
+     */
+    private static View barFirst(Context c, Data d) {
+        LinearLayout page = new LinearLayout(c);
+        page.setOrientation(LinearLayout.HORIZONTAL);
+        page.setGravity(Gravity.CENTER_VERTICAL);
+        page.setPadding(px(30), 0, px(10), 0);
+        View home = crest(c, d.home == null ? null : d.home.crest);
+        page.addView(home, new LinearLayout.LayoutParams(px(104), px(104)));
+        LinearLayout mid = new LinearLayout(c);
+        mid.setOrientation(LinearLayout.VERTICAL);
+        String names = (d.home == null ? "" : d.home.name) + " v " + (d.away == null ? "" : d.away.name);
+        mid.addView(text(c, names, 36, INK, ScoreCard.outfit(c, 800)), new LinearLayout.LayoutParams(-2, -2));
+        StringBuilder where = new StringBuilder();
+        if (d.competition != null && !d.competition.isEmpty()) where.append(d.competition);
+        if (d.venue != null && !d.venue.isEmpty()) where.append(where.length() > 0 ? "  ·  " : "").append(d.venue);
+        if (where.length() > 0) {
+            LinearLayout.LayoutParams wl = new LinearLayout.LayoutParams(-2, -2);
+            wl.topMargin = px(6);
+            mid.addView(text(c, where.toString(), 19, INK_SOFT, ScoreCard.outfit(c, 500)), wl);
+        }
+        String starts = startsIn(d.kickoffAt);
+        if (starts != null) {
+            TextView when = text(c, starts + (d.kickoff != null ? "  ·  Kick-off " + d.kickoff : ""), 22, INK, ScoreCard.outfit(c, 700));
+            LinearLayout.LayoutParams kl = new LinearLayout.LayoutParams(-2, -2);
+            kl.topMargin = px(6);
+            mid.addView(when, kl);
+            when.setAlpha(0f);
+            when.animate().alpha(1f).setStartDelay(950).setDuration(1_400).setInterpolator(new DecelerateInterpolator(1.2f)).withLayer().start();
+        }
+        LinearLayout.LayoutParams ml = new LinearLayout.LayoutParams(-2, -2);
+        ml.leftMargin = ml.rightMargin = px(30);
+        page.addView(mid, ml);
+        View away = crest(c, d.away == null ? null : d.away.crest);
+        page.addView(away, new LinearLayout.LayoutParams(px(104), px(104)));
+        page.addView(new View(c), new LinearLayout.LayoutParams(0, 1, 1f));
+        // The channel on the darkest ground, as on the score bars: its logo and "Press OK to watch".
+        View ch = channel(c, d, 30);
+        if (ch != null || d.watch != null) {
+            LinearLayout foot = new LinearLayout(c);
+            foot.setOrientation(LinearLayout.VERTICAL);
+            foot.setGravity(Gravity.CENTER);
+            foot.setPadding(px(34), px(16), px(28), px(16));
+            foot.setBackground(new ScoreCard.Slant(0xFF0E0F14, px(22), true));
+            if (ch != null) foot.addView(ch, new LinearLayout.LayoutParams(-2, px(30)));
+            if (d.watch != null) {
+                LinearLayout.LayoutParams ol = new LinearLayout.LayoutParams(-2, px(32));
+                ol.topMargin = px(ch != null ? 12 : 0);
+                foot.addView(okPill(c, 15, 24), ol);
+            }
+            page.addView(foot, new LinearLayout.LayoutParams(-2, -1));
+        }
+        home.setTranslationX(-px(50)); away.setTranslationX(px(50));
+        home.setAlpha(0f); away.setAlpha(0f); mid.setAlpha(0f);
+        home.animate().translationX(0).alpha(1f).setStartDelay(200).setDuration(480).setInterpolator(new DecelerateInterpolator(2.2f)).withLayer().start();
+        away.animate().translationX(0).alpha(1f).setStartDelay(200).setDuration(480).setInterpolator(new DecelerateInterpolator(2.2f)).withLayer().start();
+        mid.animate().alpha(1f).setStartDelay(420).setDuration(420).withLayer().start();
+        return page;
+    }
+
+    /** One eleven across the bar, by its lines (each with its little pitch icon and name over it), a thin rule between. */
+    private static View barTeam(Context c, Team t) {
+        LinearLayout page = new LinearLayout(c);
+        page.setOrientation(LinearLayout.HORIZONTAL);
+        page.setPadding(px(14), px(10), px(6), px(8));
+        List<String> captions = new ArrayList<>();
+        List<List<Player>> lines = byLines(t, captions);
+        // The keeper with the defence's group is too narrow alone for his caption: every group gets room for one.
+        int n = 0;
+        for (int i = 0; i < lines.size(); i++) {
+            List<Player> ps = lines.get(i);
+            if (i > 0) {
+                View rule = new View(c);
+                rule.setBackgroundColor(0x33151A63);
+                LinearLayout.LayoutParams rl = new LinearLayout.LayoutParams(Math.max(1, px(2)), -1);
+                rl.leftMargin = rl.rightMargin = px(6);
+                rl.topMargin = px(6);
+                rl.bottomMargin = px(6);
+                page.addView(rule, rl);
+            }
+            LinearLayout group = new LinearLayout(c);
+            group.setOrientation(LinearLayout.VERTICAL);
+            LinearLayout head = new LinearLayout(c);
+            head.setGravity(Gravity.CENTER);
+            String caption = captions.get(i);
+            ImageView icon = new ImageView(c);
+            icon.setImageBitmap(lineIcon(caption, px(11), px(15)));
+            head.addView(icon, new LinearLayout.LayoutParams(px(11), px(15)));
+            TextView cap = text(c, caption.replace("\n", " "), 12, INK_SOFT, Typeface.create("sans-serif-condensed", Typeface.BOLD));
+            cap.setLetterSpacing(0.14f);
+            LinearLayout.LayoutParams cl = new LinearLayout.LayoutParams(-2, -2);
+            cl.leftMargin = px(6);
+            head.addView(cap, cl);
+            group.addView(head, new LinearLayout.LayoutParams(-1, px(18)));
+            LinearLayout people = new LinearLayout(c);
+            people.setOrientation(LinearLayout.HORIZONTAL);
+            for (Player p : ps) {
+                View cell = barPlayer(c, t, p);
+                people.addView(cell, new LinearLayout.LayoutParams(0, -1, 1f));
+                cell.setAlpha(0f);
+                cell.setTranslationX(px(36));
+                cell.animate().alpha(1f).translationX(0f).setStartDelay(120L + 60L * n++).setDuration(380)
+                        .setInterpolator(new DecelerateInterpolator(2.2f)).withLayer().start();
+            }
+            group.addView(people, new LinearLayout.LayoutParams(-1, 0, 1f));
+            page.addView(group, new LinearLayout.LayoutParams(0, -1, Math.max(ps.size(), 1.6f)));
+        }
+        return page;
+    }
+
+    /** One player on the bar: head and shoulders, his number at the corner, his surname under him. */
+    private static View barPlayer(Context c, Team t, Player p) {
+        LinearLayout col = new LinearLayout(c);
+        col.setOrientation(LinearLayout.VERTICAL);
+        col.setGravity(Gravity.CENTER_HORIZONTAL);
+        FrameLayout frame = new FrameLayout(c);
+        frame.setClipChildren(true);
+        Bitmap shown = p.photo == null ? avatar(t.photoKit != 0 ? t.photoKit : t.kit, t.photoKit != 0 ? t.photoSleeves : t.sleeves, p.number)
+                : p.framed ? framed(p.photo, t.kit) : p.photo;
+        ImageView photo = new ImageView(c);
+        photo.setImageBitmap(sharp(shown));
+        boolean upright = shown != null && shown.getHeight() > shown.getWidth() * 1.05f;
+        int pw = upright ? px(72) : px(84), ph = upright && shown != null ? Math.round(pw * shown.getHeight() / (float) shown.getWidth()) : px(84);
+        photo.setScaleType(upright ? ImageView.ScaleType.FIT_XY : ImageView.ScaleType.FIT_START);
+        frame.addView(photo, new FrameLayout.LayoutParams(pw, ph, Gravity.TOP | Gravity.CENTER_HORIZONTAL));
+        TextView num = text(c, p.number, 17, NAVY, Typeface.create("sans-serif-black", Typeface.NORMAL));
+        FrameLayout.LayoutParams nl = new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.START);
+        nl.leftMargin = px(2);
+        frame.addView(num, nl);
+        col.addView(frame, new LinearLayout.LayoutParams(-1, 0, 1f));
+        TextView last = text(c, p.last, 16, INK, ScoreCard.outfit(c, 700));
+        last.setGravity(Gravity.CENTER);
+        last.setSingleLine(false);
+        last.setMaxLines(1);
+        last.setEllipsize(null);
+        last.setAutoSizeTextTypeUniformWithConfiguration(px(9), px(16), 1, TypedValue.COMPLEX_UNIT_PX);
+        LinearLayout.LayoutParams ll = new LinearLayout.LayoutParams(-1, px(21));
+        ll.topMargin = px(2);
+        col.addView(last, ll);
+        return col;
     }
 
     private static FrameLayout.LayoutParams full() {
@@ -1100,13 +1401,18 @@ final class LineupCard {
     /** As close(fade); byBack: closed by Back, so it shrinks away towards its Back key instead of sliding out. */
     private static void close(boolean fade, boolean byBack) {
         main.removeCallbacksAndMessages(null);
+        for (android.animation.Animator a : drifting) a.cancel();
+        drifting.clear();
         FrameLayout v = host;
+        boolean wasBar = bar;
         host = null;
         showing = null;
+        bar = false;
         if (v == null) return;
         v.setOnKeyListener(null);
         Runnable gone = () -> {
             try { v.getContext().getSystemService(WindowManager.class).removeView(v); } catch (RuntimeException ignored) { }
+            if (wasBar) ScoreCard.lane(false);
         };
         if (!fade) { gone.run(); return; }
         try {
@@ -1115,10 +1421,11 @@ final class LineupCard {
             v.getContext().getSystemService(WindowManager.class).updateViewLayout(v, lp);
         } catch (RuntimeException ignored) { }
         if (byBack) {
-            PopupMotion.backOut(v, v.getWidth(), 0f, gone);
+            PopupMotion.backOut(v, v.getWidth(), wasBar ? v.getHeight() / 2f : 0f, gone);
             return;
         }
-        v.animate().alpha(0f).translationX(-px(30)).setDuration(260).withLayer().withEndAction(gone).start();
+        if (wasBar) v.animate().alpha(0f).translationY(-px(18)).setDuration(240).withLayer().withEndAction(gone).start();
+        else v.animate().alpha(0f).translationX(-px(30)).setDuration(260).withLayer().withEndAction(gone).start();
     }
 
     private static TextView text(Context c, String s, float sizePx, int colour, Typeface face) {

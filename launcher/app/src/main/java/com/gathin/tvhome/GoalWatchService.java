@@ -491,6 +491,7 @@ public class GoalWatchService extends Service {
     private ScoreCard.Data kickoffCard(ScoresTicker.Game g) {
         ScoreCard.Data d = footballData(g);
         d.kind = "kickoff";
+        d.kickoffAt = g.kickoff;
         long mins = Math.max(0, Math.round((g.kickoff - System.currentTimeMillis()) / 60_000.0));
         d.label = "KICK-OFF";
         d.labelSmall = mins > 0 ? "IN " + mins + " MIN" : "NOW";

@@ -69,6 +69,8 @@ final class ScoreCard {
         String label, labelSmall;
         int labelColour;
         Bitmap leagueLogo, crest;
+        /** A kick-off's time (for "Kick-off in 5 mins" on Home's bar); 0 otherwise. */
+        long kickoffAt;
         /** The player: head and shoulders (a cut-out), his first name and surname, and a line under them. */
         Bitmap photo;
         String first = "", last = "", line = "";
@@ -196,7 +198,7 @@ final class ScoreCard {
         LinearLayout stage = new LinearLayout(c);
         stage.setOrientation(LinearLayout.HORIZONTAL);
         stage.setGravity(Gravity.CENTER_VERTICAL);
-        stage.setBackground(stageGround(d, px(40), px(26)));
+        // Its ground is the box's (below), with the streaks drifting across it on a layer of their own.
         View label = label(c, d, 25, h);
         stage.addView(label, new LinearLayout.LayoutParams(-2, h));
         View photo = null;
@@ -233,6 +235,8 @@ final class ScoreCard {
         });
         box.setClipToOutline(true);
         // No shadow: over a bright picture it shows as a dark rim round the card.
+        box.setBackground(stageFill(d, px(40), px(26)));
+        box.addView(drifting(c, d, px(40), px(26), h), driftParams(px(40), px(26), h));
         box.addView(card, new FrameLayout.LayoutParams(-2, h));
         FrameLayout win = new FrameLayout(c);
         int m = px(10);
@@ -267,14 +271,18 @@ final class ScoreCard {
             @Override public void getOutline(View v, Outline o) { o.setRoundRect(0, 0, v.getWidth(), v.getHeight(), r); }
         });
         bar.setClipToOutline(true);
-        // The dark bars (F1, UFC, boxing): their stripes are a layer of their own that drifts along; others: as drawn.
-        bar.setBackground(d.dark ? null : stageGround(d, px(50), px(30)));
+        // Its ground is the box's (below), with the streaks drifting across it on a layer of their own.
+        boolean ko = "kickoff".equals(d.kind);
         FrameLayout band = new FrameLayout(c);
         band.setBackground(bandGround(d, false));
         band.addView(stripes(c, d), new FrameLayout.LayoutParams((d.wideMark ? px(150) : px(120)) + STRIPE_PERIOD_PX(), h));
-        if (d.leagueLogo != null) band.addView(image(c, d.leagueLogo), new FrameLayout.LayoutParams(d.wideMark ? px(104) : px(27), d.wideMark ? px(32) : px(27), Gravity.CENTER));
+        if (d.leagueLogo != null) band.addView(image(c, d.leagueLogo), new FrameLayout.LayoutParams(d.wideMark ? px(124) : px(40), px(40), Gravity.CENTER));
         bar.addView(band, new LinearLayout.LayoutParams(d.wideMark ? px(150) : px(120), h));
+        // A kick-off's label is KICK-OFF alone: how long until it is said once, after the clubs.
+        String small = d.labelSmall;
+        if (ko) d.labelSmall = null;
         View label = label(c, d, 23, h);
+        d.labelSmall = small;
         bar.addView(label, new LinearLayout.LayoutParams(-2, h));
         if (d.photo != null && d.podium.isEmpty()) bar.addView(photo(c, d.photo, px(66), h, px(86), px(-10), px(-3)), new LinearLayout.LayoutParams(px(66), h));
         if (d.picture != null) {
@@ -293,19 +301,26 @@ final class ScoreCard {
             // Full time: the result big ("Chelsea win"), the scorers and any red cards after it, small, as on the card
             // (its first line is the scorers, not a first name).
             boolean ft = "ft".equals(d.kind);
-            // A kick-off's "Tottenham v Crystal Palace" is already as it should read; a surname ("SALAH") is not.
-            boolean ko = "kickoff".equals(d.kind);
-            String big = d.headline != null ? d.headline : ft || ko ? d.last : (d.first.isEmpty() ? "" : d.first + " ") + titleCase(d.last);
-            String after = ft || ko ? join(d.first, d.line) : d.others.isEmpty() ? d.line : "";
+            // A kick-off: "Tottenham Hotspur v Crystal Palace", then "Kick-off in 5 mins", then the crests (no names
+            // again beside them). A surname ("SALAH") is title-cased; a result or a kick-off reads as it is.
+            String big = d.headline != null ? d.headline : ko ? d.homeName + " v " + d.awayName : ft ? d.last
+                    : (d.first.isEmpty() ? "" : d.first + " ") + titleCase(d.last);
+            String after = ko ? kickoffIn(d) : ft ? join(d.first, d.line) : d.others.isEmpty() ? d.line : "";
             TextView bigText = text(c, big, d.headline != null ? 19 : 22, d.dark ? 0xFFFFFFFF : INK, d.headline != null ? outfit(c, 800) : outfit(c, 600));
             if (d.headline != null) bigText.setMaxWidth(px(1000));
             name.addView(bigText);
             if (!after.isEmpty()) {
-                TextView small = text(c, after, 16, d.dark ? 0xCCFFFFFF : INK_SOFT, outfit(c, 500));
-                if (ft) small.setMaxWidth(px(820));
+                TextView after2 = text(c, after, ko ? 18 : 16, d.dark ? 0xCCFFFFFF : INK_SOFT, outfit(c, ko ? 600 : 500));
+                if (ft) after2.setMaxWidth(px(820));
                 LinearLayout.LayoutParams sl = new LinearLayout.LayoutParams(-2, -2);
-                sl.leftMargin = px(10);
-                name.addView(small, sl);
+                sl.leftMargin = px(ko ? 16 : 10);
+                name.addView(after2, sl);
+                if (ko) {
+                    // "Kick-off in 5 mins" fades in slowly once the bar is in.
+                    after2.setAlpha(0f);
+                    after2.animate().alpha(1f).setStartDelay(700).setDuration(1_400)
+                            .setInterpolator(new DecelerateInterpolator(1.2f)).withLayer().start();
+                }
             }
             for (Object[] o : d.others) name.addView(driver(c, o, 16, 22), driverParams(14));
             LinearLayout.LayoutParams nl = new LinearLayout.LayoutParams(-2, -2);
@@ -343,9 +358,9 @@ final class ScoreCard {
         View spacer = new View(c);
         bar.addView(spacer, new LinearLayout.LayoutParams(0, 1, 1f));
         if (d.score != null) {
-            if (d.homeName != null) bar.addView(text(c, d.homeName, 20, INK, outfit(c, 800)), sideName(true));
-            bar.addView(scoreBlock(c, d, h, "kickoff".equals(d.kind) ? 34 : 28, 25), new LinearLayout.LayoutParams(-2, h));
-            if (d.awayName != null) bar.addView(text(c, d.awayName, 20, INK, outfit(c, 800)), sideName(false));
+            if (d.homeName != null && !ko) bar.addView(text(c, d.homeName, 20, INK, outfit(c, 800)), sideName(true));
+            bar.addView(scoreBlock(c, d, h, ko ? 36 : 28, 25), new LinearLayout.LayoutParams(-2, h));
+            if (d.awayName != null && !ko) bar.addView(text(c, d.awayName, 20, INK, outfit(c, 800)), sideName(false));
         } else if (d.method != null) {
             bar.addView(scoreBlock(c, d, h, 28, 25), new LinearLayout.LayoutParams(-2, h));
         }
@@ -360,22 +375,8 @@ final class ScoreCard {
             @Override public void getOutline(View v, Outline o) { o.setRoundRect(0, 0, v.getWidth(), v.getHeight(), r); }
         });
         box.setClipToOutline(true);
-        if (d.dark) {
-            box.setBackground(new Streaks(0xFF2A2B33, 0xFF16171D, 0, px(50), px(30)));
-            View lines = new View(c);
-            lines.setBackground(new Streaks(0, 0, 0x14FFFFFF, px(50), px(30)));
-            lines.setLayerType(View.LAYER_TYPE_HARDWARE, null);
-            int period = px(50) + px(30);
-            lines.setTranslationX(-period);
-            box.addView(lines, new FrameLayout.LayoutParams(w + period, h));
-            android.animation.ObjectAnimator drift = android.animation.ObjectAnimator.ofFloat(lines, View.TRANSLATION_X, -period, 0f);
-            drift.setDuration(1_600);
-            drift.setRepeatCount(5);
-            drift.setInterpolator(new android.view.animation.LinearInterpolator());
-            moving.add(drift);
-            drift.setStartDelay(300);
-            drift.start();
-        }
+        box.setBackground(stageFill(d, px(50), px(30)));
+        box.addView(drifting(c, d, px(50), px(30), h), driftParams(px(50), px(30), h));
         box.addView(bar, new FrameLayout.LayoutParams(w, h));
         FrameLayout win = new FrameLayout(c);
         win.addView(box, new FrameLayout.LayoutParams(w, h));
@@ -470,10 +471,44 @@ final class ScoreCard {
         return v;
     }
 
-    /** The stage's ground: pale streaks, or charcoal for F1 and fights. */
-    private static Drawable stageGround(Data d, int gap, int width) {
-        return d.dark ? new Streaks(0xFF2A2B33, 0xFF16171D, 0x0DFFFFFF, gap, width)
-                : new Streaks(0xFFF6F7FD, 0xFFD3D6F3, 0x4DFFFFFF, gap, width);
+    /** The stage's ground without its streaks: pale, or charcoal for F1 and fights. */
+    private static Drawable stageFill(Data d, int gap, int width) {
+        return d.dark ? new Streaks(0xFF2A2B33, 0xFF16171D, 0, gap, width) : new Streaks(0xFFF6F7FD, 0xFFD3D6F3, 0, gap, width);
+    }
+
+    /**
+     * The stage's streaks on a layer of their own, a period wider than the pop-up (its params start a period to the
+     * left), drifting one period to the right and again while it shows: drawn once, only the layer moves, so the
+     * picture under it is not redrawn. Stopped when it closes.
+     */
+    private static View drifting(Context c, Data d, int gap, int width, int h) {
+        View lines = new View(c);
+        lines.setBackground(new Streaks(0, 0, d.dark ? 0x14FFFFFF : 0x4DFFFFFF, gap, width));
+        lines.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+        int period = Math.max(4, gap) + Math.max(1, width);
+        android.animation.ObjectAnimator drift = android.animation.ObjectAnimator.ofFloat(lines, View.TRANSLATION_X, 0f, period);
+        drift.setDuration(Math.round(period / (float) px(30) * 1_000));
+        drift.setRepeatCount(android.animation.ValueAnimator.INFINITE);
+        drift.setInterpolator(new android.view.animation.LinearInterpolator());
+        drift.setStartDelay(300);
+        moving.add(drift);
+        drift.start();
+        return lines;
+    }
+
+    private static FrameLayout.LayoutParams driftParams(int gap, int width, int h) {
+        FrameLayout.LayoutParams p = new FrameLayout.LayoutParams(-1, h);
+        p.leftMargin = -(Math.max(4, gap) + Math.max(1, width));
+        return p;
+    }
+
+    /** "Kick-off in 5 mins" from a kick-off's time; its line as it was without one. */
+    private static String kickoffIn(Data d) {
+        if (d.kickoffAt <= 0) return d.line == null ? "" : d.line;
+        long min = Math.round((d.kickoffAt - System.currentTimeMillis()) / 60_000.0);
+        if (min <= 0) return "Kicking off now";
+        if (min < 60) return "Kick-off in " + min + (min == 1 ? " min" : " mins");
+        return "Kick-off " + new java.text.SimpleDateFormat("HH:mm", java.util.Locale.UK).format(new java.util.Date(d.kickoffAt));
     }
 
     /** A news picture, cropped to fill its box, with rounded corners. */
@@ -744,13 +779,13 @@ final class ScoreCard {
             later.add(tick);
             main.postDelayed(tick, 800L);
         }
-        // A goal or an incident: the band's stripes drift along, slightly, for the first few seconds.
+        // Every pop-up: the band's stripes drift along, slightly, while it shows.
         View lines = box.findViewWithTag("stripes");
-        if (lines != null && ("goal".equals(d.kind) || "red".equals(d.kind) || "var".equals(d.kind) || "pen".equals(d.kind))) {
+        if (lines != null) {
             android.animation.ObjectAnimator drift = android.animation.ObjectAnimator.ofFloat(lines, View.TRANSLATION_X,
                     -STRIPE_PERIOD_PX(), 0f);
             drift.setDuration(1_400);
-            drift.setRepeatCount(3);
+            drift.setRepeatCount(android.animation.ValueAnimator.INFINITE);
             drift.setInterpolator(new android.view.animation.LinearInterpolator());
             moving.add(drift);
             drift.start();
@@ -778,6 +813,8 @@ final class ScoreCard {
         try {
             c.getSystemService(WindowManager.class).addView(win, lp);
         } catch (RuntimeException e) {
+            for (android.animation.Animator a : moving) a.cancel();
+            moving.clear();
             main.post(() -> next(c));
             return false;
         }
@@ -851,7 +888,7 @@ final class ScoreCard {
     }
 
     /** Home's score pills step aside while the bar holds their place, and come back after. */
-    private static void lane(boolean on) {
+    static void lane(boolean on) {
         java.util.function.Consumer<Boolean> l = GoalWatchService.laneListener;
         if (l != null) l.accept(on);
     }
@@ -943,7 +980,7 @@ final class ScoreCard {
      * itself for a weight (Typeface.create) draws its thin default instance, so each weight is its own font resource
      * with the weight set in it (outfit_medium.xml to outfit_black.xml).
      */
-    private static Typeface outfit(Context c, int weight) {
+    static Typeface outfit(Context c, int weight) {
         Typeface t = outfits.get(weight);
         if (t != null) return t;
         int res = weight >= 900 ? R.font.outfit_black : weight >= 800 ? R.font.outfit_extrabold : weight >= 700 ? R.font.outfit_bold
@@ -995,7 +1032,7 @@ final class ScoreCard {
     }
 
     /** A colour block with one slanted edge: the right (a label) or the left (a block at the end). */
-    private static final class Slant extends Drawable {
+    static final class Slant extends Drawable {
         private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final int slant;
         private final boolean left;
