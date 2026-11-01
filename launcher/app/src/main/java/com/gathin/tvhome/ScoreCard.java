@@ -298,7 +298,7 @@ final class ScoreCard {
             if (d.teamLogo != null && d.f1) {
                 LinearLayout.LayoutParams tl = new LinearLayout.LayoutParams(px(30), px(30));
                 tl.leftMargin = px(6);
-                bar.addView(image(c, d.teamLogo), tl);
+                bar.addView(teamTile(c, d.teamLogo, px(30)), tl);
             }
             LinearLayout name = new LinearLayout(c);
             name.setGravity(Gravity.CENTER_VERTICAL);
@@ -308,7 +308,7 @@ final class ScoreCard {
             // A kick-off: "Tottenham Hotspur v Crystal Palace", then "Kick-off in 5 mins", then the crests (no names
             // again beside them). A surname ("SALAH") is title-cased; a result or a kick-off reads as it is.
             String big = d.headline != null ? d.headline : ko ? d.homeName + " v " + d.awayName : ft ? d.last
-                    : (d.first.isEmpty() ? "" : d.first + " ") + titleCase(d.last);
+                    : (d.first.isEmpty() ? "" : d.first + " ") + (d.f1 ? d.last : titleCase(d.last));
             String after = ko ? kickoffIn(d) : ft ? join(d.first, d.line) : d.others.isEmpty() ? d.line : "";
             TextView bigText = text(c, big, d.headline != null ? 19 : 22, d.dark ? 0xFFFFFFFF : INK, d.headline != null ? outfit(c, 800) : outfit(c, 600));
             if (d.headline != null) bigText.setMaxWidth(px(1000));
@@ -348,7 +348,7 @@ final class ScoreCard {
                 if (p[2] != null) {
                     LinearLayout.LayoutParams tl = new LinearLayout.LayoutParams(px(26), px(26));
                     tl.leftMargin = px(8);
-                    e.addView(image(c, (Bitmap) p[2]), tl);
+                    e.addView(teamTile(c, (Bitmap) p[2], px(26)), tl);
                 }
                 TextView n = text(c, titleCase((String) p[3]), 20, 0xFFFFFFFF, outfit(c, 800));
                 LinearLayout.LayoutParams nl = new LinearLayout.LayoutParams(-2, -2);
@@ -655,7 +655,7 @@ final class ScoreCard {
             if (d.teamLogo != null) {
                 LinearLayout.LayoutParams tl = new LinearLayout.LayoutParams(px(34), px(34));
                 tl.leftMargin = px(10);
-                v.addView(image(c, d.teamLogo), tl);
+                v.addView(teamTile(c, d.teamLogo, px(34)), tl);
             }
             return v;
         }
@@ -1025,6 +1025,45 @@ final class ScoreCard {
         return v;
     }
 
+    /** An F1 team's logo straight on F1's black, its dark parts lifted to white so it shows (onBlack). */
+    private static View teamTile(Context c, Bitmap b, int size) {
+        return image(c, onBlack(b));
+    }
+
+    private static final java.util.Map<Bitmap, Bitmap> blackSafe = java.util.Collections.synchronizedMap(new java.util.WeakHashMap<>());
+
+    /**
+     * A logo made to show on black, with no tile behind it: its black, near-black and very dark parts (Mercedes' and
+     * Audi's black, Haas's lettering, a dark navy) turned white, smoothly, while its colours stay as they are
+     * (Ferrari's red and yellow, McLaren's orange, Williams' blue). Kept per picture.
+     */
+    static Bitmap onBlack(Bitmap b) {
+        if (b == null) return null;
+        Bitmap have = blackSafe.get(b);
+        if (have != null) return have;
+        Bitmap src = b.getConfig() == Bitmap.Config.ARGB_8888 ? b : b.copy(Bitmap.Config.ARGB_8888, false);
+        int w = src.getWidth(), h = src.getHeight();
+        int[] px = new int[w * h];
+        src.getPixels(px, 0, w, 0, 0, w, h);
+        for (int i = 0; i < px.length; i++) {
+            int a = px[i] >>> 24;
+            if (a < 8) continue;
+            int r = (px[i] >> 16) & 0xFF, g = (px[i] >> 8) & 0xFF, bl = px[i] & 0xFF;
+            int max = Math.max(r, Math.max(g, bl));
+            if (max >= 110) continue;
+            // Dark: towards white, all the way below 50, a blend between, so the edges stay smooth.
+            float t = Math.min(1f, (110 - max) / 60f);
+            r = Math.round(r + (242 - r) * t);
+            g = Math.round(g + (242 - g) * t);
+            bl = Math.round(bl + (245 - bl) * t);
+            px[i] = (a << 24) | (r << 16) | (g << 8) | bl;
+        }
+        Bitmap out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
+        out.setPixels(px, 0, w, 0, 0, w, h);
+        blackSafe.put(b, out);
+        return out;
+    }
+
     private static ImageView image(Context c, Bitmap b) {
         ImageView v = new ImageView(c);
         v.setImageBitmap(sharp(b));
@@ -1070,7 +1109,7 @@ final class ScoreCard {
         if (o[2] != null) {
             LinearLayout.LayoutParams ll = new LinearLayout.LayoutParams(px(logoPx), px(logoPx));
             ll.leftMargin = px(5);
-            e.addView(image(c, (Bitmap) o[2]), ll);
+            e.addView(teamTile(c, (Bitmap) o[2], px(logoPx)), ll);
         }
         TextView n = text(c, (String) o[1], size, 0xFFFFFFFF, outfit(c, 600));
         LinearLayout.LayoutParams nl = new LinearLayout.LayoutParams(-2, -2);

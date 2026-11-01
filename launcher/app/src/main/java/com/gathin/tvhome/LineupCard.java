@@ -858,18 +858,11 @@ final class LineupCard {
     private static View f1Logo(Context c, F1 f, F1Results.Row r, int size) {
         Bitmap logo = r.logo == null ? null : f.logos.get(r.logo);
         if (logo == null) return new View(c);
-        FrameLayout tile = new FrameLayout(c);
-        GradientDrawable bg = new GradientDrawable();
-        bg.setColor(0xF2FFFFFF);
-        bg.setCornerRadius(size * 0.26f);
-        tile.setBackground(bg);
-        int pad = Math.max(1, Math.round(size * 0.14f));
-        tile.setPadding(pad, pad, pad, pad);
+        // Straight on the black, no tile: a dark logo's dark parts lifted to white so it shows (ScoreCard.onBlack).
         ImageView l = new ImageView(c);
-        l.setImageBitmap(sharp(logo));
+        l.setImageBitmap(sharp(ScoreCard.onBlack(logo)));
         l.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        tile.addView(l, new FrameLayout.LayoutParams(-1, -1));
-        return tile;
+        return l;
     }
 
     private static Bitmap blank;

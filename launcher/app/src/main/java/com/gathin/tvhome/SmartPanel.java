@@ -94,6 +94,9 @@ final class SmartPanel {
         card.setElevation(h.px(24));
         body = new LinearLayout(h.a);
         body.setOrientation(LinearLayout.VERTICAL);
+        // A tile in focus grows a little and wears its ring: drawn past its row's edges, not cut off at them.
+        body.setClipChildren(false);
+        body.setClipToPadding(false);
         body.setPadding(h.px(32), h.px(28), h.px(32), h.px(28));
         card.addView(body, new FrameLayout.LayoutParams(-1, -2));
         FrameLayout.LayoutParams cl = new FrameLayout.LayoutParams(h.px(660), -2, Gravity.TOP | Gravity.END);
@@ -152,6 +155,7 @@ final class SmartPanel {
         body.addView(lh, lhl);
         lightBox = new LinearLayout(h.a);
         lightBox.setOrientation(LinearLayout.VERTICAL);
+        lightBox.setClipChildren(false);
         LinearLayout.LayoutParams lbl = new LinearLayout.LayoutParams(-1, -2);
         lbl.topMargin = h.px(12);
         body.addView(lightBox, lbl);
@@ -202,11 +206,13 @@ final class SmartPanel {
         kl.topMargin = h.px(22);
         body.addView(kicker("CAMERAS"), kl);
         LinearLayout r = new LinearLayout(h.a);
+        r.setClipChildren(false);
         List<View> focus = new ArrayList<>();
         for (int i = 0; i < Math.min(2, names.size()); i++) {
             String name = names.get(i);
             LinearLayout cell = new LinearLayout(h.a);
             cell.setOrientation(LinearLayout.VERTICAL);
+            cell.setClipChildren(false);
             FrameLayout tile = new FrameLayout(h.a);
             tile.setBackground(h.fill(20, 0xFF262B35));
             tile.setClipToOutline(true);
@@ -417,6 +423,7 @@ final class SmartPanel {
         for (int i = 0; i < lights.size(); i++) {
             if (i % 3 == 0) {
                 r = new LinearLayout(h.a);
+                r.setClipChildren(false);
                 LinearLayout.LayoutParams rl = new LinearLayout.LayoutParams(-1, h.px(128));
                 if (i > 0) rl.topMargin = h.px(12);
                 lightBox.addView(r, rl);

@@ -559,7 +559,10 @@ public class AppSearchService extends AccessibilityService {
             return;
         }
         if (focus == null) {
-            focus = new android.media.AudioFocusRequest.Builder(android.media.AudioManager.AUDIOFOCUS_GAIN)
+            // Transient, as the assistant's: TiviMate pauses while it is held and plays on by itself once it is given
+            // back. Held for good (AUDIOFOCUS_GAIN) its player stayed paused afterwards whenever the channel picked was
+            // the one already on (the Live Centre and the F1 timing put on what is often already playing).
+            focus = new android.media.AudioFocusRequest.Builder(android.media.AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
                     .setAudioAttributes(new android.media.AudioAttributes.Builder().setUsage(android.media.AudioAttributes.USAGE_MEDIA)
                             .setContentType(android.media.AudioAttributes.CONTENT_TYPE_MOVIE).build())
                     .setOnAudioFocusChangeListener(change -> {

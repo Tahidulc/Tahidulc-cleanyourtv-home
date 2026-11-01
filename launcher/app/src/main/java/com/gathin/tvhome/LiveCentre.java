@@ -121,7 +121,90 @@ final class LiveCentre {
     private static List<ScoresTicker.Game> read(Context c) {
         List<ScoresTicker.Game> all = ScoresTicker.load(LEAGUES);
         all.sort((a, b) -> a.state != b.state ? Integer.compare(a.state, b.state) : Integer.compare(rank(a), rank(b)));
+        // The tables of the leagues with games under way (their standings before today's games went on).
+        for (ScoresTicker.Game g : all) if ((g.state == 0 || testCard) && g.slug != null) standings(g.slug);
         return all;
+    }
+
+    // ---- live tables ----------------------------------------------------------------------------------------------
+
+    /** A club's line in a table: ESPN's id, name, crest, played, goal difference, points, and its place. */
+    private static final class Club {
+        String id, name, abbr, logo;
+        int played, gd, pts, rank;
+    }
+
+    private static final Map<String, List<Club>> tables = new java.util.concurrent.ConcurrentHashMap<>();
+    private static final Map<String, Long> tablesAt = new java.util.concurrent.ConcurrentHashMap<>();
+
+    /** A league's standings from ESPN (as they stood before today's games under way), kept ten minutes. Off the main thread. */
+    private static void standings(String slug) {
+        Long at = tablesAt.get(slug);
+        if (at != null && System.currentTimeMillis() - at < 10 * 60_000L) return;
+        tablesAt.put(slug, System.currentTimeMillis());
+        try {
+            org.json.JSONObject root = new org.json.JSONObject(ScoresTicker.get("https://site.api.espn.com/apis/v2/sports/soccer/" + slug + "/standings"));
+            org.json.JSONArray entries = root.getJSONArray("children").getJSONObject(0).getJSONObject("standings").getJSONArray("entries");
+            List<Club> rows = new ArrayList<>();
+            for (int n = 0; n < entries.length(); n++) {
+                org.json.JSONObject e = entries.getJSONObject(n), team = e.getJSONObject("team");
+                Map<String, String> st = new HashMap<>();
+                org.json.JSONArray stats = e.optJSONArray("stats");
+                for (int k = 0; stats != null && k < stats.length(); k++) {
+                    org.json.JSONObject x = stats.getJSONObject(k);
+                    st.put(x.optString("name"), x.optString("value", x.optString("displayValue")));
+                }
+                Club c = new Club();
+                c.id = team.optString("id");
+                c.name = team.optString("displayName");
+                c.abbr = team.optString("abbreviation");
+                org.json.JSONArray logos = team.optJSONArray("logos");
+                c.logo = logos != null && logos.length() > 0 ? logos.getJSONObject(0).optString("href") : null;
+                c.played = intOf(st.get("gamesPlayed"));
+                c.gd = intOf(st.get("pointDifferential"));
+                c.pts = intOf(st.get("points"));
+                c.rank = intOf(st.get("rank"));
+                rows.add(c);
+            }
+            rows.sort((a, b) -> Integer.compare(a.rank, b.rank));
+            if (!rows.isEmpty()) tables.put(slug, rows);
+        } catch (Exception e) {
+            tablesAt.put(slug, System.currentTimeMillis() - 9 * 60_000L);   // again in a minute
+        }
+    }
+
+    private static int intOf(String v) {
+        try { return v == null ? 0 : Math.round(Float.parseFloat(v)); } catch (NumberFormatException e) { return 0; }
+    }
+
+    /**
+     * The table as it stands now: the standings with every game under way counted at its score (played, goal
+     * difference, points), sorted again. {club, its place before, playing now (its score "2-1"), or null}.
+     */
+    private static List<Object[]> liveTable(String slug) {
+        List<Club> base = tables.get(slug);
+        if (base == null) return null;
+        Map<String, Club> now = new HashMap<>();
+        for (Club c : base) {
+            Club x = new Club();
+            x.id = c.id; x.name = c.name; x.abbr = c.abbr; x.logo = c.logo;
+            x.played = c.played; x.gd = c.gd; x.pts = c.pts; x.rank = c.rank;
+            now.put(c.id, x);
+        }
+        Map<String, String> playing = new HashMap<>();
+        for (ScoresTicker.Game g : games) {
+            if ((g.state != 0 && !(testCard && g.state == 1)) || !slug.equals(g.slug)) continue;
+            Club h = now.get(g.homeId), a = now.get(g.awayId);
+            int hs = intOf(g.homeScore), as = intOf(g.awayScore);
+            if (h != null) { h.played++; h.gd += hs - as; h.pts += hs > as ? 3 : hs == as ? 1 : 0; playing.put(h.id, hs + "–" + as); }
+            if (a != null) { a.played++; a.gd += as - hs; a.pts += as > hs ? 3 : hs == as ? 1 : 0; playing.put(a.id, as + "–" + hs); }
+        }
+        List<Club> sorted = new ArrayList<>(now.values());
+        sorted.sort((x, y) -> x.pts != y.pts ? Integer.compare(y.pts, x.pts) : x.gd != y.gd ? Integer.compare(y.gd, x.gd)
+                : Integer.compare(x.rank, y.rank));
+        List<Object[]> out = new ArrayList<>();
+        for (Club c : sorted) out.add(new Object[]{c, c.rank, playing.get(c.id)});
+        return out;
     }
 
     private static int rank(ScoresTicker.Game g) {
@@ -375,16 +458,22 @@ final class LiveCentre {
     /** The column's league block: the league's name and logo, then each game's score, its minute at the end. */
     private static void fillLeague(Context c) {
         leagueBox.removeAllViews();
-        List<String> leagues = new ArrayList<>();
+        // The pages in turn: a league's scores, then its live table while it has games under way ("t:" + slug).
+        List<String> pages = new ArrayList<>();
         for (String e : LEAGUES) {
             String slug = e.split("\\|")[0];
-            for (ScoresTicker.Game g : games) if (slug.equals(g.slug)) { leagues.add(slug); break; }
+            boolean any = false, live = false;
+            for (ScoresTicker.Game g : games) if (slug.equals(g.slug)) { any = true; live |= g.state == 0 || testCard; }
+            if (any) pages.add(slug);
+            if (live && tables.containsKey(slug)) pages.add("t:" + slug);
         }
-        if (leagues.isEmpty()) {
+        if (pages.isEmpty()) {
             leagueBox.addView(text(c, "No games today", 20, 0xFFC9CEF2, ScoreCard.outfit(c, 500)));
             return;
         }
-        String slug = leagues.get(Math.floorMod(leagueAt, leagues.size()));
+        String page = pages.get(Math.floorMod(leagueAt, pages.size()));
+        if (page.startsWith("t:")) { fillTable(c, page.substring(2)); return; }
+        String slug = page;
         String name = slug;
         for (String e : LEAGUES) if (e.startsWith(slug + "|")) name = e.split("\\|")[1];
         LinearLayout head = new LinearLayout(c);
@@ -422,6 +511,92 @@ final class LiveCentre {
         }
         leagueBox.setAlpha(0f);
         leagueBox.animate().alpha(1f).setDuration(300).withLayer().start();
+    }
+
+    /**
+     * A league's live table, every club: its place (and the places it has moved since kick-off, in green or red), its
+     * crest and name, played, goal difference and points; the clubs playing now on a green wash with their score.
+     */
+    private static void fillTable(Context c, String slug) {
+        List<Object[]> rows = liveTable(slug);
+        if (rows == null) return;
+        String name = slug;
+        for (String e : LEAGUES) if (e.startsWith(slug + "|")) name = e.split("\\|")[1];
+        LinearLayout head = new LinearLayout(c);
+        head.setGravity(Gravity.CENTER_VERTICAL);
+        ImageView logo = new ImageView(c);
+        logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        for (ScoresTicker.Game g : games) if (slug.equals(g.slug) && g.leagueLogo != null) { loadCrest(logo, g.leagueLogo); break; }
+        head.addView(logo, new LinearLayout.LayoutParams(px(30), px(30)));
+        TextView ln = text(c, titleCase(name), 24, 0xFFFFFFFF, ScoreCard.outfit(c, 600));
+        LinearLayout.LayoutParams nl = new LinearLayout.LayoutParams(0, -2, 1f);
+        nl.leftMargin = px(10);
+        head.addView(ln, nl);
+        TextView tag = text(c, "LIVE TABLE", 13, 0xFF062814, ScoreCard.outfit(c, 900));
+        tag.setLetterSpacing(0.08f);
+        tag.setPadding(px(8), px(4), px(8), px(4));
+        GradientDrawable tb = new GradientDrawable();
+        tb.setColor(GREEN);
+        tb.setCornerRadius(px(4));
+        tag.setBackground(tb);
+        head.addView(tag);
+        leagueBox.addView(head);
+        leagueBox.addView(tableLine(c, null, "", "", "P", "GD", "PTS", null, 0, true), new LinearLayout.LayoutParams(-1, px(24)));
+        int max = Math.min(rows.size(), 20);
+        for (int i = 0; i < max; i++) {
+            Object[] r = rows.get(i);
+            Club club = (Club) r[0];
+            int moved = (Integer) r[1] - (i + 1);
+            leagueBox.addView(tableLine(c, club.logo, String.valueOf(i + 1), shortName(club.name, club.abbr), String.valueOf(club.played),
+                    (club.gd > 0 ? "+" : "") + club.gd, String.valueOf(club.pts), (String) r[2], moved, false),
+                    new LinearLayout.LayoutParams(-1, px(rows.size() > 18 ? 26 : 28)));
+        }
+        leagueBox.setAlpha(0f);
+        leagueBox.animate().alpha(1f).setDuration(300).withLayer().start();
+    }
+
+    private static View tableLine(Context c, String crest, String pos, String name, String p, String gd, String pts, String score,
+                                  int moved, boolean header) {
+        LinearLayout r = new LinearLayout(c);
+        r.setGravity(Gravity.CENTER_VERTICAL);
+        r.setPadding(px(4), 0, px(4), 0);
+        if (score != null) {
+            GradientDrawable bg = new GradientDrawable();
+            bg.setColor(0x293DDC84);
+            bg.setCornerRadius(px(5));
+            r.setBackground(bg);
+        }
+        int muted = 0xFFAEB5E8;
+        float size = header ? 12 : 15;
+        TextView ps = text(c, pos, size, header ? muted : 0xFFFFFFFF, ScoreCard.outfit(c, 700));
+        ps.setGravity(Gravity.END);
+        r.addView(ps, new LinearLayout.LayoutParams(px(22), -2));
+        TextView mv = text(c, moved > 0 ? "▲" : moved < 0 ? "▼" : "", 10, moved > 0 ? GREEN : 0xFFFF5A5F, ScoreCard.outfit(c, 700));
+        mv.setGravity(Gravity.CENTER);
+        r.addView(mv, new LinearLayout.LayoutParams(px(16), -2));
+        ImageView cr = new ImageView(c);
+        cr.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        if (crest != null) loadCrest(cr, crest);
+        r.addView(cr, new LinearLayout.LayoutParams(px(18), px(18)));
+        TextView n = text(c, name, size, 0xFFFFFFFF, ScoreCard.outfit(c, header ? 700 : 600));
+        LinearLayout.LayoutParams nl = new LinearLayout.LayoutParams(0, -2, 1f);
+        nl.leftMargin = px(8);
+        r.addView(n, nl);
+        if (score != null) {
+            TextView sc = text(c, score, 12, GREEN, ScoreCard.outfit(c, 800));
+            LinearLayout.LayoutParams sl = new LinearLayout.LayoutParams(-2, -2);
+            sl.rightMargin = px(6);
+            r.addView(sc, sl);
+        }
+        for (String[] col : new String[][]{{p, "30"}, {gd, "40"}}) {
+            TextView t = text(c, col[0], size, header ? muted : 0xFFC9CEF2, ScoreCard.outfit(c, 600));
+            t.setGravity(Gravity.END);
+            r.addView(t, new LinearLayout.LayoutParams(px(Integer.parseInt(col[1])), -2));
+        }
+        TextView pt = text(c, pts, size, header ? muted : 0xFFFFFFFF, ScoreCard.outfit(c, 800));
+        pt.setGravity(Gravity.END);
+        r.addView(pt, new LinearLayout.LayoutParams(px(40), -2));
+        return r;
     }
 
     /** One Premier League game large at the column's foot, as Sky shows one: each side and its score in a box. */

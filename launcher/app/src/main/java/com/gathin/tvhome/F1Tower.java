@@ -489,16 +489,11 @@ final class F1Tower {
         return r;
     }
 
-    /** The team's logo on a small white tile, as on the F1 boards, so a dark logo shows on the black. */
+    /** The team's logo straight on the black, its dark parts lifted to white so it shows (ScoreCard.onBlack). */
     private static View logoTile(Context c, String url, int size) {
         FrameLayout tile = new FrameLayout(c);
         if (url == null) return tile;
-        GradientDrawable bg = new GradientDrawable();
-        bg.setColor(0xF2FFFFFF);
-        bg.setCornerRadius(size * 0.26f);
-        tile.setBackground(bg);
-        int pad = Math.max(1, Math.round(size * 0.14f));
-        tile.setPadding(pad, pad, pad, pad);
+        // Straight on the black, no tile: a dark logo's dark parts lifted to white so it shows (ScoreCard.onBlack).
         ImageView v = new ImageView(c);
         v.setScaleType(ImageView.ScaleType.FIT_CENTER);
         tile.addView(v, new FrameLayout.LayoutParams(-1, -1));
@@ -509,7 +504,7 @@ final class F1Tower {
             io.execute(() -> {
                 Bitmap b = ScoresTicker.cachedLogo(app, url, 64);
                 if (b == null) return;
-                Bitmap t = HomeV2.trim(b);
+                Bitmap t = ScoreCard.onBlack(HomeV2.trim(b));
                 main.post(() -> { logos.put(url, t); v.setImageBitmap(t); });
             });
         }
