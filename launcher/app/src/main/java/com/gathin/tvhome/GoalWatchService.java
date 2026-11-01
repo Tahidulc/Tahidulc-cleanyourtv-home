@@ -155,8 +155,9 @@ public class GoalWatchService extends Service {
                 d.labelColour = 0xFF151A63;
                 d.minute = "FT";
                 int hs = parse(g.homeScore), as = parse(g.awayScore);
-                String winner = hs > as ? g.homeName : as > hs ? g.awayName : null;
-                d.last = winner != null ? winner + " win" : hs >= 0 ? "Draw" : "Full time";
+                // The winner by name (else by its three letters, where the name is not known); a draw only when level.
+                String winner = hs > as ? (g.homeName != null ? g.homeName : g.home) : as > hs ? (g.awayName != null ? g.awayName : g.away) : null;
+                d.last = winner != null ? winner + " win" : hs >= 0 && hs == as ? "Draw" : "Full time";
                 StringBuilder scorers = new StringBuilder();
                 for (String[] goal : g.goals) {
                     if (scorers.length() > 0) scorers.append(" · ");
@@ -1505,6 +1506,7 @@ public class GoalWatchService extends Service {
         if (intent != null && intent.hasExtra("test_ft")) {
             ScoresTicker.Game g = new ScoresTicker.Game();
             g.league = "PL"; g.home = "MAN"; g.away = "BOU"; g.homeScore = "3"; g.awayScore = "1";
+            g.homeName = "Manchester United"; g.awayName = "Bournemouth";
             g.homeLogo = "https://a.espncdn.com/i/teamlogos/soccer/500/360.png";
             g.awayLogo = "https://a.espncdn.com/i/teamlogos/soccer/500/349.png";
             enqueue(g, new String[]{"test-ft", "", "", "", "ft"}, false);
@@ -1628,6 +1630,7 @@ public class GoalWatchService extends Service {
         if (intent != null && intent.hasExtra("test_red")) {
             ScoresTicker.Game g = new ScoresTicker.Game();
             g.league = "UCL"; g.home = "ARS"; g.away = "PSG"; g.homeScore = "1"; g.awayScore = "1";
+            g.homeName = "Arsenal"; g.awayName = "Paris Saint-Germain";
             g.homeLogo = "https://a.espncdn.com/i/teamlogos/soccer/500/359.png";
             g.awayLogo = "https://a.espncdn.com/i/teamlogos/soccer/500/160.png";
             enqueue(g, new String[]{"test-red", "Declan Rice", "81'", "home", ""}, true);

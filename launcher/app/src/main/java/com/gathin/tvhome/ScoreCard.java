@@ -180,14 +180,15 @@ final class ScoreCard {
         band.setBackground(bandGround(d, false));
         if (d.leagueLogo != null) {
             ImageView l = image(c, d.leagueLogo);
-            band.addView(l, new LinearLayout.LayoutParams(d.wideMark ? px(68) : px(22), d.wideMark ? px(30) : px(22)));
+            band.addView(l, new LinearLayout.LayoutParams(d.wideMark ? px(68) : px(26), d.wideMark ? px(30) : px(26)));
         }
         if (d.crest != null && !d.f1) {
-            LinearLayout.LayoutParams cl = new LinearLayout.LayoutParams(px(32), px(32));
-            cl.topMargin = px(5);
+            // The club's crest as large as the band allows, so it reads clearly.
+            LinearLayout.LayoutParams cl = new LinearLayout.LayoutParams(px(40), px(40));
+            cl.topMargin = px(4);
             band.addView(image(c, d.crest), cl);
         }
-        int bandW = d.wideMark ? px(86) : px(56);
+        int bandW = d.wideMark ? px(86) : px(62);
         FrameLayout bandBox = new FrameLayout(c);
         bandBox.setBackground(band.getBackground());
         band.setBackground(null);
@@ -215,7 +216,8 @@ final class ScoreCard {
             }
             stage.addView(who(c, d, 12, 21, 12), whoParams(photo == null && d.picture == null));
             // A kick-off's crests a size up: they are the card's picture.
-            int crestPx = "kickoff".equals(d.kind) ? 36 : 26;
+            // The crests as large as the card's height allows, so a detailed one (Arsenal's, PSG's) stays clear.
+            int crestPx = "kickoff".equals(d.kind) ? 52 : 46;
             if (d.score != null || d.position != null || d.method != null) stage.addView(scoreBlock(c, d, h, crestPx, 26), new LinearLayout.LayoutParams(-2, h));
         } else {
             for (Object[] p : d.podium) {
@@ -296,9 +298,9 @@ final class ScoreCard {
         }
         if (d.podium.isEmpty()) {
             if (d.teamLogo != null && d.f1) {
-                LinearLayout.LayoutParams tl = new LinearLayout.LayoutParams(px(30), px(30));
+                LinearLayout.LayoutParams tl = new LinearLayout.LayoutParams(px(36), px(36));
                 tl.leftMargin = px(6);
-                bar.addView(teamTile(c, d.teamLogo, px(30)), tl);
+                bar.addView(teamTile(c, d.teamLogo, px(36)), tl);
             }
             LinearLayout name = new LinearLayout(c);
             name.setGravity(Gravity.CENTER_VERTICAL);
@@ -346,9 +348,10 @@ final class ScoreCard {
                     e.addView(photo(c, (Bitmap) p[1], px(44), h, px(58), px(-7), px(2)), fl);
                 }
                 if (p[2] != null) {
-                    LinearLayout.LayoutParams tl = new LinearLayout.LayoutParams(px(26), px(26));
+                    // The team's logo large enough to read (Ferrari's horse, Mercedes' star).
+                    LinearLayout.LayoutParams tl = new LinearLayout.LayoutParams(px(34), px(34));
                     tl.leftMargin = px(8);
-                    e.addView(teamTile(c, (Bitmap) p[2], px(26)), tl);
+                    e.addView(teamTile(c, (Bitmap) p[2], px(34)), tl);
                 }
                 TextView n = text(c, titleCase((String) p[3]), 20, 0xFFFFFFFF, outfit(c, 800));
                 LinearLayout.LayoutParams nl = new LinearLayout.LayoutParams(-2, -2);
@@ -364,7 +367,7 @@ final class ScoreCard {
         bar.addView(spacer, ko ? new LinearLayout.LayoutParams(px(22), 1) : new LinearLayout.LayoutParams(0, 1, 1f));
         if (d.score != null) {
             if (d.homeName != null && !ko) bar.addView(text(c, d.homeName, 20, INK, outfit(c, 800)), sideName(true));
-            bar.addView(scoreBlock(c, d, h, ko ? 36 : 28, 25), new LinearLayout.LayoutParams(-2, h));
+            bar.addView(scoreBlock(c, d, h, ko ? 40 : 38, 25), new LinearLayout.LayoutParams(-2, h));
             if (d.awayName != null && !ko) bar.addView(text(c, d.awayName, 20, INK, outfit(c, 800)), sideName(false));
         } else if (d.method != null) {
             bar.addView(scoreBlock(c, d, h, 28, 25), new LinearLayout.LayoutParams(-2, h));
@@ -608,7 +611,7 @@ final class ScoreCard {
             // F1: P2 and P3 each with his team's logo.
             LinearLayout row = new LinearLayout(c);
             row.setGravity(Gravity.CENTER_VERTICAL);
-            for (int i = 0; i < d.others.size(); i++) row.addView(driver(c, d.others.get(i), line, 15), driverParams(i == 0 ? 0 : 10));
+            for (int i = 0; i < d.others.size(); i++) row.addView(driver(c, d.others.get(i), line, 22), driverParams(i == 0 ? 0 : 10));
             LinearLayout.LayoutParams rl = new LinearLayout.LayoutParams(-2, -2);
             rl.topMargin = px(3);
             v.addView(row, rl);
@@ -653,9 +656,9 @@ final class ScoreCard {
         if (d.f1) {
             v.addView(text(c, d.position == null ? "" : d.position, 22, 0xFFFFFFFF, outfit(c, 900)));
             if (d.teamLogo != null) {
-                LinearLayout.LayoutParams tl = new LinearLayout.LayoutParams(px(34), px(34));
+                LinearLayout.LayoutParams tl = new LinearLayout.LayoutParams(px(40), px(40));
                 tl.leftMargin = px(10);
-                v.addView(teamTile(c, d.teamLogo, px(34)), tl);
+                v.addView(teamTile(c, d.teamLogo, px(40)), tl);
             }
             return v;
         }
@@ -729,7 +732,8 @@ final class ScoreCard {
         col.setOrientation(LinearLayout.VERTICAL);
         LinearLayout top = new LinearLayout(c);
         top.setGravity(Gravity.CENTER_VERTICAL);
-        if (p[2] != null) top.addView(image(c, (Bitmap) p[2]), new LinearLayout.LayoutParams(px(22), px(22)));
+        // The team's logo large enough to read beside the name (Ferrari's horse, Mercedes' star), lifted to show on black.
+        if (p[2] != null) top.addView(image(c, onBlack((Bitmap) p[2])), new LinearLayout.LayoutParams(px(32), px(32)));
         TextView n = text(c, ((String) p[3]).toUpperCase(java.util.Locale.UK), 16, 0xFFFFFFFF, outfit(c, 800));
         LinearLayout.LayoutParams nl = new LinearLayout.LayoutParams(-2, -2);
         nl.leftMargin = px(6);
@@ -1045,14 +1049,27 @@ final class ScoreCard {
         int w = src.getWidth(), h = src.getHeight();
         int[] px = new int[w * h];
         src.getPixels(px, 0, w, 0, 0, w, h);
+        // A logo with a bright ground of its own (Ferrari's yellow shield) shows on black as it is, its dark parts
+        // (the horse) on that ground: only a logo that is mostly dark or grey is lifted.
+        int opaque = 0, dim = 0;
+        for (int i = 0; i < px.length; i += 3) {
+            if ((px[i] >>> 24) < 128) continue;
+            opaque++;
+            int r = (px[i] >> 16) & 0xFF, g = (px[i] >> 8) & 0xFF, bl = px[i] & 0xFF;
+            int max = Math.max(r, Math.max(g, bl)), min = Math.min(r, Math.min(g, bl));
+            if (max < (max - min < 28 ? 170 : 110)) dim++;
+        }
+        if (opaque == 0 || dim < opaque * 0.45) return b;
         for (int i = 0; i < px.length; i++) {
             int a = px[i] >>> 24;
             if (a < 8) continue;
             int r = (px[i] >> 16) & 0xFF, g = (px[i] >> 8) & 0xFF, bl = px[i] & 0xFF;
-            int max = Math.max(r, Math.max(g, bl));
-            if (max >= 110) continue;
-            // Dark: towards white, all the way below 50, a blend between, so the edges stay smooth.
-            float t = Math.min(1f, (110 - max) / 60f);
+            int max = Math.max(r, Math.max(g, bl)), min = Math.min(r, Math.min(g, bl));
+            // Dark, or a mid grey (Mercedes' silver star): towards white, all the way well below the limit, a blend
+            // between, so the edges stay smooth. Colours are kept unless they are near black.
+            int limit = max - min < 28 ? 170 : 110;
+            if (max >= limit) continue;
+            float t = Math.min(1f, (limit - max) / 60f);
             r = Math.round(r + (242 - r) * t);
             g = Math.round(g + (242 - g) * t);
             bl = Math.round(bl + (245 - bl) * t);
