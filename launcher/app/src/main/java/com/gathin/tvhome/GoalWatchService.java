@@ -453,7 +453,7 @@ public class GoalWatchService extends Service {
     }
 
     /** A logo in plain white (its shape kept), for the F1 mark on Sky Sports F1's red. */
-    private static android.graphics.Bitmap white(android.graphics.Bitmap b) {
+    static android.graphics.Bitmap white(android.graphics.Bitmap b) {
         android.graphics.Bitmap out = android.graphics.Bitmap.createBitmap(b.getWidth(), b.getHeight(), android.graphics.Bitmap.Config.ARGB_8888);
         android.graphics.Canvas c = new android.graphics.Canvas(out);
         android.graphics.Paint p = new android.graphics.Paint();
@@ -1419,6 +1419,19 @@ public class GoalWatchService extends Service {
                     }
                 });
             });
+        }
+        if (intent != null && intent.hasExtra("test_live_centre")) {
+            // adb only: the Live Centre, on the live game (a followed club's first), as OK on the Sports page opens it.
+            String id = intent.getStringExtra("test_live_centre");
+            LiveCentre.open(this, id == null || id.isEmpty() ? null : id);
+        }
+        if (intent != null && intent.hasExtra("test_live_card")) {
+            // adb only: the Sports page's Live Centre card with today's games, as if they were under way.
+            LiveCentre.testCard = !"off".equals(intent.getStringExtra("test_live_card"));
+        }
+        if (intent != null && intent.hasExtra("test_f1_tower")) {
+            // adb only: the F1 timing tower, over Sky Sports F1 as on a race weekend.
+            F1Tower.open(this, !"stay".equals(intent.getStringExtra("test_f1_tower")));
         }
         if (intent != null && intent.hasExtra("test_breaking")) {
             // adb only: the first BBC News story as a breaking alert, exactly as one would pop up.
@@ -2618,6 +2631,21 @@ public class GoalWatchService extends Service {
         List<String> names = new ArrayList<>();
         names.add(p.name);
         return new Object[]{names, logo, p.ok};
+    }
+
+    /** Where a game is on, for the Live Centre: {names, logo} or {names, logo, OK}; null when nowhere (or not running). */
+    static Object[] watchForGame(ScoresTicker.Game g) {
+        GoalWatchService s = self;
+        return s == null || g == null ? null : s.watchFor(g);
+    }
+
+    /** Sky Sports F1 (UHD where TiviMate has it), for the timing tower: {names, logo}; null when not in the guide. */
+    static Object[] f1Watch(Context c) {
+        GoalWatchService s = self;
+        if (s == null) return null;
+        ScoresTicker.Game f1 = new ScoresTicker.Game();
+        f1.leagueLogo = F1Results.F1_LOGO;
+        return s.watchOn(TvGuide.watch(s, new String[0], f1));
     }
 
     /** {names, logo} for the "Watch on" step, the channel's logo fetched; null without anywhere to watch. */

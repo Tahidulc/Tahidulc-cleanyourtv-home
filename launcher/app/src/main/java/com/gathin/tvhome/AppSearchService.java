@@ -469,6 +469,12 @@ public class AppSearchService extends AccessibilityService {
         main.postDelayed(step, STEP_MS);
     }
 
+    /** Whether a channel search is under way (its cover up, or a channel still to find). */
+    static boolean tuning() {
+        AppSearchService s = instance;
+        return s != null && (s.target != null || s.cover != null);
+    }
+
     /** Whether the helper is running (switched on and bound by the system). */
     static boolean running() {
         return instance != null;

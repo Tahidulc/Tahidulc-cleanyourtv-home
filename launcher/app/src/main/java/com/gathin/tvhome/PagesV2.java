@@ -1254,6 +1254,7 @@ final class PagesV2 {
             h.main.removeCallbacks(playsTick);
             h.main.removeCallbacks(clockTick);
             h.main.removeCallbacks(scoreTick);
+            h.main.removeCallbacks(liveTick);
             playsIo.shutdownNow();
             super.close();
         }
@@ -1442,6 +1443,13 @@ final class PagesV2 {
             };
             if (lastMatch != null) early.accept(lastMatch);
             h.io.execute(() -> {
+                // Games under way in the Premier League, the Championship or Europe's top leagues: the Live Centre
+                // card in place of the match of the day.
+                List<ScoresTicker.Game> live = liveGames();
+                if (!live.isEmpty()) {
+                    h.main.post(() -> buildLive(c, live));
+                    return;
+                }
                 List<ScoresTicker.Game> games = ScoresTicker.load(leagues);
                 ScoresTicker.Game best = null;
                 long now = System.currentTimeMillis();
@@ -1543,6 +1551,103 @@ final class PagesV2 {
                     } else {
                         watch.setText(g.state == 2 ? "Full time" : "Not on UK TV");
                     }
+                });
+            });
+        }
+
+        /** The six leagues' games under way, the Premier League's first (all today's, for the test hook). */
+        private List<ScoresTicker.Game> liveGames() {
+            List<ScoresTicker.Game> live = new ArrayList<>();
+            for (ScoresTicker.Game g : ScoresTicker.load(LiveCentre.LEAGUES)) if (g.state == 0 || LiveCentre.testCard) live.add(g);
+            live.sort((a, b) -> Integer.compare(leagueRank(a), leagueRank(b)));
+            return live;
+        }
+
+        private static int leagueRank(ScoresTicker.Game g) {
+            for (int i = 0; i < LiveCentre.LEAGUES.length; i++) if (LiveCentre.LEAGUES[i].startsWith(g.slug + "|")) return i;
+            return LiveCentre.LEAGUES.length;
+        }
+
+        private LinearLayout liveRows;
+        private TextView liveKicker;
+        private final Runnable liveTick = this::readLive;
+
+        /**
+         * The Live Centre card: LIVE NOW and how many games, every one under way with its competition's logo, the
+         * score and the minute (read again every 30 seconds), and the bar along the foot: Open Live Centre, OK.
+         */
+        private void buildLive(LinearLayout c, List<ScoresTicker.Game> live) {
+            if (!alive) return;
+            c.removeAllViews();
+            liveKicker = kicker(c, "");
+            liveKicker.setTextColor(0xFFFF3B4A);
+            heading(c, "Live Centre", R.font.brand_plain, null);
+            liveRows = new LinearLayout(h.a);
+            liveRows.setOrientation(LinearLayout.VERTICAL);
+            c.addView(liveRows, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+            android.text.SpannableStringBuilder b = new android.text.SpannableStringBuilder("Open Live Centre");
+            pressOk(b);
+            watch.setText(b);
+            LinearLayout.LayoutParams wl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, px(60));
+            wl.topMargin = px(10);
+            c.addView(watch, wl);
+            watchOk = () -> LiveCentre.open(h.a, null);
+            fillLive(live);
+            h.main.postDelayed(liveTick, 30_000L);
+        }
+
+        private void fillLive(List<ScoresTicker.Game> live) {
+            int n = 0;
+            for (ScoresTicker.Game g : live) if (g.state == 0) n++;
+            liveKicker.setText("●  LIVE NOW · " + (LiveCentre.testCard && n == 0 ? live.size() : n) + (n == 1 ? " GAME" : " GAMES"));
+            liveRows.removeAllViews();
+            int shown = 0;
+            String slug = null;
+            for (ScoresTicker.Game g : live) {
+                if (shown >= 8) break;
+                LinearLayout r = new LinearLayout(h.a);
+                r.setOrientation(LinearLayout.HORIZONTAL);
+                r.setGravity(Gravity.CENTER_VERTICAL);
+                r.setPadding(0, px(9), 0, px(9));
+                if (shown > 0 && !java.util.Objects.equals(g.slug, slug)) r.setPadding(0, px(17), 0, px(9));
+                slug = g.slug;
+                ImageView logo = new ImageView(h.a);
+                logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
+                if (g.leagueLogo != null) h.image(logo, g.leagueLogo, px(56));
+                LinearLayout.LayoutParams ll = new LinearLayout.LayoutParams(px(28), px(28));
+                ll.rightMargin = px(14);
+                r.addView(logo, ll);
+                TextView names = h.text(20, h.regular, Color.WHITE);
+                names.setText(short_(g.homeName != null ? g.homeName : g.home) + "  v  " + short_(g.awayName != null ? g.awayName : g.away));
+                names.setSingleLine(true);
+                names.setEllipsize(TextUtils.TruncateAt.END);
+                r.addView(names, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+                TextView score = h.text(22, h.semi, Color.WHITE);
+                score.setText(g.state == 1 ? "v" : g.homeScore + "–" + g.awayScore);
+                score.setGravity(Gravity.CENTER);
+                r.addView(score, new LinearLayout.LayoutParams(px(76), ViewGroup.LayoutParams.WRAP_CONTENT));
+                TextView min = h.text(17, h.semi, g.state == 0 ? SPORT_GREEN : 0x99FFFFFF);
+                min.setText(g.state == 2 ? "FT" : g.state == 1 ? DateTimeFormatter.ofPattern("HH:mm", Locale.UK)
+                        .withZone(ZoneId.systemDefault()).format(Instant.ofEpochMilli(g.kickoff)) : g.halftime ? "HT" : g.detail == null ? "" : g.detail);
+                min.setGravity(Gravity.END);
+                r.addView(min, new LinearLayout.LayoutParams(px(70), ViewGroup.LayoutParams.WRAP_CONTENT));
+                liveRows.addView(r);
+                View rule = new View(h.a);
+                rule.setBackgroundColor(0x14FFFFFF);
+                liveRows.addView(rule, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Math.max(1, px(1))));
+                shown++;
+            }
+        }
+
+        private void readLive() {
+            h.main.removeCallbacks(liveTick);
+            if (!alive || liveRows == null) return;
+            playsIo.execute(() -> {
+                List<ScoresTicker.Game> live = liveGames();
+                h.main.post(() -> {
+                    if (!alive) return;
+                    if (!live.isEmpty()) fillLive(live);
+                    h.main.postDelayed(liveTick, 30_000L);
                 });
             });
         }
@@ -2044,7 +2149,9 @@ final class PagesV2 {
                 } catch (Exception ignored) {
                 }
                 String r = round, of = rounds;
+                String[] timing = f1Timing();
                 h.main.post(() -> {
+                    if (timing != null) timingBar(timing);
                     if (!r.isEmpty()) head.setText("After Round " + r + (of.isEmpty() || "0".equals(of) ? "" : " of " + of));
                     f1Drivers = rows;
                     f1Teams = teams;
@@ -2054,6 +2161,45 @@ final class PagesV2 {
         }
 
         private TextView f1Kicker, f1PageView;
+        /** On a race weekend, from first practice to two hours after the race: OK on the F1 card opens the timing. */
+        private boolean f1TimingOn;
+
+        /** {what's on, the line under it} while a race weekend's timing is worth opening; null otherwise. */
+        private static String[] f1Timing() {
+            F1Results.Weekend w = F1Results.weekend(null);
+            if (w == null || w.sessions.isEmpty()) return null;
+            long now = System.currentTimeMillis();
+            F1Results.Session first = w.sessions.get(0), last = w.sessions.get(w.sessions.size() - 1);
+            if (now < first.start - 3 * 3_600_000L || now > last.start + 5 * 3_600_000L) return null;
+            for (F1Results.Session s : w.sessions) {
+                if (!"in".equals(s.state)) continue;
+                String what = F1Results.label(s.abbr);
+                return new String[]{what + " LIVE", s.isRace() && s.lap > 0 ? "Lap " + s.lap + " · live timing over any app" : "Live timing over any app"};
+            }
+            for (F1Results.Session s : w.sessions) {
+                if (!"pre".equals(s.state)) continue;
+                String at = DateTimeFormatter.ofPattern("EEE HH:mm", Locale.UK).withZone(ZoneId.systemDefault()).format(Instant.ofEpochMilli(s.start));
+                return new String[]{s.isRace() ? "Starting grid & timing" : "F1 timing", F1Results.label(s.abbr).charAt(0)
+                        + F1Results.label(s.abbr).substring(1).toLowerCase(Locale.UK) + " " + at + " · over any app"};
+            }
+            return new String[]{"F1 timing", "Final classification · over any app"};
+        }
+
+        /** The F1 card's bar becomes the timing's: the F1 red along its top, OK opening the tower over Sky Sports F1. */
+        private void timingBar(String[] t) {
+            for (Jump j : jumps) {
+                if (j.box != f1Jump) continue;
+                f1TimingOn = true;
+                j.label.setText(t[0].charAt(0) + t[0].substring(1).toLowerCase(Locale.UK).replace("f1", "F1"));
+                j.live.setText(t[1]);
+                j.dot.setVisibility(t[0].endsWith("LIVE") ? View.VISIBLE : View.GONE);
+                j.arrow.setText("›");
+                j.accent = 0xFFE10600;
+                View strip = j.box.getChildAt(0);
+                if (strip != null) strip.setBackgroundColor(0xFFE10600);
+                style(j, j.on);
+            }
+        }
         /**
          * The way down past the table and the standings: a "What's on in Sport" bar across each card's foot, OK on the
          * card pressing it. Styled as the launcher's own category boxes: dark glass with a hairline rim and Sports'
@@ -2069,6 +2215,7 @@ final class PagesV2 {
             TextView label, live, arrow;
             View dot;
             boolean on;
+            int accent = SPORT_GREEN;
         }
 
         private View jumpPill(LinearLayout card) {
@@ -2136,7 +2283,7 @@ final class PagesV2 {
             j.label.setTextColor(ink);
             j.live.setTextColor(on ? 0xB31A1D24 : 0xB3FFFFFF);
             j.arrow.setTextColor(ink);
-            j.arrow.setBackground(h.fill(17, on ? SPORT_GREEN : 0x1FFFFFFF));
+            j.arrow.setBackground(h.fill(17, on ? j.accent : 0x1FFFFFFF));
         }
 
         private void lightJump(View b, boolean on) {
@@ -2424,6 +2571,7 @@ final class PagesV2 {
                     if (held) { held = false; return true; }
                     if (zone == -1) {
                         if (cardIdx == 0) { if (watchOk != null) watchOk.run(); }
+                        else if (cardIdx == 2 && f1TimingOn) F1Tower.open(h.a, true);
                         else { int r = firstRow(); if (r >= 0) { zone = r; idx = 0; paint(); } }
                     }
                     else if (idx < lists.get(zone).size() && lists.get(zone).get(idx).ok != null) lists.get(zone).get(idx).ok.run();

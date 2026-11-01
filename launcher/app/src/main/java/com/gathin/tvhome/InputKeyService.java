@@ -70,6 +70,8 @@ public class InputKeyService extends AccessibilityService {
         if (event.getKeyCode() == KeyEvent.KEYCODE_BACK && AppSearchService.cameraBack(this, event)) return true;
         // OK while the line-up card shows: the game's channel.
         if (CameraAlert.key(event)) return true;
+        if (LiveCentre.key(event)) return true;
+        if (F1Tower.key(event)) return true;
         if (LineupCard.key(event)) return true;
         // OK (watch) and Back (close) on a score card; Back while any other alert shows closes it.
         if (ScoreCard.key(event)) return true;

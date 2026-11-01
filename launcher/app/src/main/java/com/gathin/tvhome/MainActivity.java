@@ -1157,6 +1157,9 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         if (v2 != null) {
             GoalWatchService.homeInFront = true;
             AppSearchService.cancel();
+            // Home pressed over the Live Centre or the F1 timing: they belong to the channel, not to Home.
+            if (!LiveCentre.isShowing() || !LiveCentre.overHome()) LiveCentre.close();
+            F1Tower.close();
             // Each time Home comes back, not only when it starts: a TCL turns accessibility off now and then, and the
             // helper that opens a tile's title in Debrid Stream is then switched back on before the next OK.
             AppSearchService.ensure(this);
