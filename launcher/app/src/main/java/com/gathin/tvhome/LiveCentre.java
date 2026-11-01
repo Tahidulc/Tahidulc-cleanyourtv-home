@@ -609,7 +609,9 @@ final class LiveCentre {
                 if (lastGoal.containsKey(g.id)) named.add(lastGoal.get(g.id));
                 if (lastSub.containsKey(g.id)) named.add(lastSub.get(g.id));
             }
+            for (ScoresTicker.Game g : one) if (lastLineups.containsKey(g.id)) named.addAll(lastLineups.get(g.id));
             for (String[] p : named) {
+                if ("lineup".equals(p[3])) for (String who : p[2].split("\\|")) face(who, p[5]);
                 if ("player".equals(p[3]) || "sub".equals(p[3])) face(p[1], p.length > 5 ? p[5] : null);
                 if ("sub".equals(p[3])) face(p[2], p[5]);
                 if ("goals".equals(p[3]) && p.length > 5) for (int s2 = 4; s2 <= 5; s2++) for (String who : p[s2].split("\\|")) face(who, null);
@@ -630,6 +632,7 @@ final class LiveCentre {
                         // Its latest goal and substitution as they fold out when they happen, then every page.
                         if (lastGoal.containsKey(g.id)) { rows.add(g); pageOf.add(lastGoal.get(g.id)); }
                         if (lastSub.containsKey(g.id)) { rows.add(g); pageOf.add(lastSub.get(g.id)); }
+                        if (g.state != 1 && lastLineups.containsKey(g.id)) for (String[] x : lastLineups.get(g.id)) { rows.add(g); pageOf.add(x); }
                         for (int p = 0; ps != null && p < ps.size(); p++) { rows.add(g); pageOf.add(ps.get(p)); }
                         continue;
                     }
@@ -844,6 +847,8 @@ final class LiveCentre {
             String[] star = g.state != 1 ? starPage(g, d.optJSONArray("rosters")) : null;
             String[] shapes = formations(g, d.optJSONArray("rosters"));
             String[] odds = winChance(d.optJSONArray("odds"));
+            List<String[]> xi = lineupPages(g, d.optJSONArray("rosters"));
+            lineupsOut(g, xi);
             if (goals != null) pages.add(goals);
             if (g.state != 1 && h.containsKey("possessionPct")) {
                 pages.add(new String[]{"POSSESSION", pct(h.get("possessionPct")), pct(a.get("possessionPct")), "bar"});
@@ -870,7 +875,8 @@ final class LiveCentre {
                 if (h.containsKey("blockedShots")) pages.add(new String[]{"BLOCKED SHOTS", h.get("blockedShots"), a.get("blockedShots"), "bar"});
             } else {
                 if (odds != null) pages.add(odds);
-                if (shapes != null) pages.add(shapes);
+                if (xi != null) pages.addAll(xi);
+                else if (shapes != null) pages.add(shapes);
                 if (star != null) pages.add(star);
             }
             // Form: each side's last five, oldest first as ESPN lists them.
@@ -907,10 +913,11 @@ final class LiveCentre {
             if (g.state != 1) newEvents(g, d.optJSONArray("keyEvents"));
             // The pictures of the players the pages name, looked up once and kept.
             for (String[] p : pages) {
-                if ("player".equals(p[3])) faces.execute(() -> face(p[1], p[5]));
+                if ("lineup".equals(p[3])) for (String who : p[2].split("\\|")) wantFace(who, p[5]);
+                if ("player".equals(p[3])) wantFace(p[1], p[5]);
                 if ("goals".equals(p[3]) && p.length > 5) {
-                    for (String who : p[4].split("\\|")) faces.execute(() -> face(who, g.homeName));
-                    for (String who : p[5].split("\\|")) faces.execute(() -> face(who, g.awayName));
+                    for (String who : p[4].split("\\|")) wantFace(who, g.homeName);
+                    for (String who : p[5].split("\\|")) wantFace(who, g.awayName);
                 }
             }
         } catch (Exception ignored) {
@@ -999,7 +1006,7 @@ final class LiveCentre {
                 if (saves > 0) did.add(count((int) saves, "save"));
                 best = score;
                 pick = new String[]{"PLAYER OF THE MATCH", who.optString("displayName"), TextUtils.join("  ·  ", did), "player",
-                        home ? g.homeLogo : g.awayLogo, home ? g.homeName : g.awayName, String.valueOf(home ? g.homeColor : g.awayColor)};
+                        home ? g.homeLogo : g.awayLogo, home ? g.homeName : g.awayName, String.valueOf(sideColours(g)[home ? 0 : 1])};
             }
         }
         return pick;
@@ -1158,6 +1165,8 @@ final class LiveCentre {
                 row.addView(v, new LinearLayout.LayoutParams(-1, -2));
             } else if ("goals".equals(p[3]) && goalChips(c, g, p, row, room)) {
                 // Each scorer with his picture (goalChips), when they all fit.
+            } else if ("lineup".equals(p[3])) {
+                lineupRow(c, p, row, room);
             } else if ("sub".equals(p[3])) {
                 int half = (room - px(18)) / 2;
                 row.addView(subSide(c, p[1], true, p, half), new LinearLayout.LayoutParams(half, -2));
@@ -1348,6 +1357,17 @@ final class LiveCentre {
         return b;
     }
 
+    /** Players whose pictures are waiting to be looked up, so each is asked for once at a time. */
+    private static final java.util.Set<String> faceQueued = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+    /** A player's picture looked up in the background, unless it is kept, known missing, or already waiting. */
+    private static void wantFace(String who, String club) {
+        if (who == null || who.isEmpty() || crests.get("face|" + who) != null || noFace.contains(who) || !faceQueued.add(who)) return;
+        faces.execute(() -> {
+            try { face(who, club); } finally { faceQueued.remove(who); }
+        });
+    }
+
     private static Bitmap cutout(String url) {
         if (url == null) return null;
         PlayerPhotos.Cutout c = new PlayerPhotos.Cutout();
@@ -1438,6 +1458,121 @@ final class LiveCentre {
         return side;
     }
 
+    // ---- the line-ups ----------------------------------------------------------------------------------------------
+
+    /** Each game's line-ups as pages once they are out (for adb's test and render). */
+    private static final Map<String, List<String[]>> lastLineups = new java.util.concurrent.ConcurrentHashMap<>();
+    /** Whether each game read had its line-ups yet, so their coming out can be told. */
+    private static final Map<String, Boolean> lineupsKnown = new java.util.concurrent.ConcurrentHashMap<>();
+
+    /**
+     * Both starting elevens as four pages, home first: each side's keeper and defence, then its midfield and attack,
+     * every player with his picture and surname, the side and its formation across the top.
+     * {label, surnames ("|"), full names ("|"), "lineup", crest, club, kit}. Null until both are out.
+     */
+    private static List<String[]> lineupPages(ScoresTicker.Game g, org.json.JSONArray rosters) throws org.json.JSONException {
+        List<String[]> out = new ArrayList<>();
+        for (int side = 0; side < 2; side++) {
+            org.json.JSONObject r = null;
+            for (int i = 0; rosters != null && i < rosters.length(); i++) {
+                org.json.JSONObject x = rosters.getJSONObject(i);
+                if ("home".equals(x.optString("homeAway")) == (side == 0)) r = x;
+            }
+            org.json.JSONArray players = r == null ? null : r.optJSONArray("roster");
+            List<String[]> back = new ArrayList<>(), front = new ArrayList<>();   // {surname, full name, position}
+            for (int i = 0; players != null && i < players.length(); i++) {
+                org.json.JSONObject pl = players.getJSONObject(i);
+                if (!pl.optBoolean("starter")) continue;
+                org.json.JSONObject a = pl.optJSONObject("athlete");
+                if (a == null) continue;
+                String pos = pl.optJSONObject("position") == null ? "" : pl.getJSONObject("position").optString("abbreviation").toUpperCase(Locale.ROOT);
+                String last = a.optString("lastName", "");
+                String[] one = {last.isEmpty() || "null".equals(last) ? a.optString("displayName") : last, a.optString("displayName"), pos};
+                (defence(pos) ? back : front).add(one);
+            }
+            if (back.size() + front.size() < 11) return null;
+            java.util.Comparator<String[]> across = (x, y) -> Integer.compare(across(x[2]), across(y[2]));
+            back.sort(across);
+            front.sort(across);
+            boolean home = side == 0;
+            String name = (home ? g.homeName : g.awayName);
+            String shape = r.optString("formation", "");
+            String label = "LINE-UP  ·  " + (name == null ? "" : name.toUpperCase(Locale.ROOT)) + (shape.isEmpty() ? "" : "  ·  " + shape);
+            for (List<String[]> line : java.util.Arrays.asList(back, front)) {
+                List<String> sur = new ArrayList<>(), full = new ArrayList<>();
+                for (String[] x : line) { sur.add(x[0]); full.add(x[1]); }
+                out.add(new String[]{label, TextUtils.join("|", sur), TextUtils.join("|", full), "lineup",
+                        home ? g.homeLogo : g.awayLogo, name, String.valueOf(sideColours(g)[home ? 0 : 1])});
+            }
+        }
+        return out;
+    }
+
+    /** The keeper and the back line ("G", "CD-L", "RB", "LWB"...). */
+    private static boolean defence(String pos) {
+        return pos.equals("G") || pos.equals("GK") || pos.startsWith("CD") || pos.startsWith("CB") || pos.equals("D")
+                || pos.equals("RB") || pos.equals("LB") || pos.equals("RWB") || pos.equals("LWB") || pos.equals("SW");
+    }
+
+    /** Where a position stands, keeper first, then from the back forward and, along each line, right to left. */
+    private static int across(String pos) {
+        int line = pos.equals("G") || pos.equals("GK") ? 0 : defence(pos) ? 1 : pos.startsWith("DM") ? 2
+                : pos.startsWith("CM") || pos.equals("M") ? 3 : pos.equals("RM") || pos.equals("LM") ? 4
+                : pos.startsWith("AM") ? 5 : 6;
+        // Right to left: the right-back (or right winger) outside the right centre-back, and so on.
+        int side = pos.endsWith("-R") ? 1 : pos.endsWith("-L") ? 3 : pos.startsWith("R") ? 0 : pos.startsWith("L") ? 4 : 2;
+        return line * 5 + side;
+    }
+
+    /**
+     * The line-ups read: kept, and when they have just come out (the game read before without them) told at once:
+     * the panel folds out with all four pages in turn, the pictures looked up as it goes (it waits no more than a few
+     * seconds for them).
+     */
+    private static void lineupsOut(ScoresTicker.Game g, List<String[]> xi) {
+        if (xi != null) lastLineups.put(g.id, xi);
+        Boolean before = lineupsKnown.put(g.id, xi != null);
+        if (xi == null || before == null || before) return;
+        tellLineups(g.id, xi);
+    }
+
+    private static void tellLineups(String gameId, List<String[]> xi) {
+        java.util.concurrent.atomic.AtomicBoolean told = new java.util.concurrent.atomic.AtomicBoolean();
+        Runnable tell = () -> { if (told.compareAndSet(false, true)) showEvents(gameId, new ArrayList<>(xi)); };
+        faces.execute(() -> {
+            for (String[] p : xi) for (String who : p[2].split("\\|")) face(who, p[5]);
+            main.post(tell);
+        });
+        main.postDelayed(tell, 6_000L);
+    }
+
+    /** One line of a side's eleven: each player's picture over his surname, across the panel. */
+    private static void lineupRow(Context c, String[] p, LinearLayout row, int room) {
+        String[] names = p[1].split("\\|"), full = p[2].split("\\|");
+        int n = Math.max(1, names.length), chip = Math.min(px(86), room / n), kit = p.length > 6 ? intOf(p[6]) : 0;
+        row.setGravity(Gravity.CENTER);
+        for (int i = 0; i < names.length; i++) {
+            LinearLayout one = new LinearLayout(c);
+            one.setOrientation(LinearLayout.VERTICAL);
+            one.setGravity(Gravity.CENTER_HORIZONTAL);
+            one.addView(portrait(c, i < full.length ? full[i] : names[i], null, kit, 44), new LinearLayout.LayoutParams(px(44), px(44)));
+            TextView t = text(c, names[i], 15, INK, ScoreCard.outfit(c, 700));
+            t.setGravity(Gravity.CENTER);
+            fit(t, 15, 10, chip - px(6));
+            LinearLayout.LayoutParams tl = new LinearLayout.LayoutParams(-1, -2);
+            tl.topMargin = px(3);
+            one.addView(t, tl);
+            row.addView(one, new LinearLayout.LayoutParams(chip, -2));
+        }
+    }
+
+    /** adb's test hook: the shown game's line-ups told as if just out. */
+    static void testLineups() {
+        ScoresTicker.Game g = shown();
+        List<String[]> xi = g == null ? null : lastLineups.get(g.id);
+        if (xi != null) tellLineups(g.id, xi);
+    }
+
     // ---- goals and substitutions as they happen: the panel folds out with them ------------------------------------
 
     /** Each game's goals and substitutions already seen, so only new ones fold the panel out. */
@@ -1474,13 +1609,13 @@ final class LiveCentre {
             String[] page;
             if (sub) {
                 page = new String[]{"SUBSTITUTION  ·  " + side + "  ·  " + at, a, b, "sub", home ? g.homeLogo : g.awayLogo, club,
-                        String.valueOf(home ? g.homeColor : g.awayColor)};
+                        String.valueOf(sideColours(g)[home ? 0 : 1])};
                 lastSub.put(g.id, page);
             } else {
                 String how = type.contains("penalty") ? "Penalty" : type.contains("own goal") ? "Own goal"
                         : !b.isEmpty() ? "Assist: " + b : type.contains("header") ? "Header" : "";
                 page = new String[]{"GOAL  ·  " + side + "  ·  " + at, a, how, "player", home ? g.homeLogo : g.awayLogo, club,
-                        String.valueOf(home ? g.homeColor : g.awayColor)};
+                        String.valueOf(sideColours(g)[home ? 0 : 1])};
                 lastGoal.put(g.id, page);
             }
             String key = type + "|" + (e.optJSONObject("clock") == null ? "" : e.getJSONObject("clock").optString("value")) + "|" + a;
@@ -1520,9 +1655,10 @@ final class LiveCentre {
             }
             eventOn = true;
             main.removeCallbacks(statsTurn);
-            putPage(pageView(app, shown(), foldOuts.remove(0)), statsOpen);
+            String[] p = foldOuts.remove(0);
+            putPage(pageView(app, shown(), p), statsOpen);
             if (!statsOpen) openStats(true);
-            main.postDelayed(this, EVENT_MS);
+            main.postDelayed(this, "lineup".equals(p[3]) ? 6_500L : EVENT_MS);
         }
     };
 

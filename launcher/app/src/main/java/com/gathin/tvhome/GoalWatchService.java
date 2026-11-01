@@ -1390,8 +1390,9 @@ public class GoalWatchService extends Service {
             enqueue(g, new String[]{"test", "Mohamed Salah", "67'", "home", ""}, false);
         }
         if (intent != null && intent.hasExtra("test_live_event")) {
-            // adb only: with the Live Centre open, its game's latest substitution (else goal) folds out as if new.
-            LiveCentre.testEvent();
+            // adb only: with the Live Centre open, its game's latest substitution (else goal) folds out as if new;
+            // "lineups": its line-ups, as if just announced.
+            if ("lineups".equals(intent.getStringExtra("test_live_event"))) LiveCentre.testLineups(); else LiveCentre.testEvent();
         }
         if (intent != null && intent.hasExtra("test_render_boards")) {
             // adb only: a Live Centre scoreboard for each competition, drawn to files/boards.png (nothing on screen);
