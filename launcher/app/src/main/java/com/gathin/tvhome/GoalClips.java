@@ -40,6 +40,36 @@ final class GoalClips {
     private static final Set<String> used = new HashSet<>();
     private static boolean polling;
 
+    /** A finished game whose official highlights are waited for: the game, its score line, when to look next. */
+    private static final class High {
+        ScoresTicker.Game g;
+        String line;
+        long since, nextAt;
+    }
+
+    private static final long HIGH_EVERY_MS = 2 * 60_000L, HIGH_FOR_MS = 3 * 60 * 60_000L, HIGH_FIRST_MS = 4 * 60_000L;
+    private static final List<High> highs = new ArrayList<>();
+    /** Games whose highlights have been asked for this time the launcher runs (each once). */
+    private static final Set<String> highAsked = new HashSet<>();
+
+    /**
+     * A game just finished in the Live Centre: its official highlights looked for (where there is an official source
+     * for its league), a few minutes from now and then every two, for three hours, and offered once up.
+     */
+    static void highlights(ScoresTicker.Game g, String line) {
+        if (g == null || g.id == null || !OfficialVideos.covered(g.slug) || !highAsked.add(g.id)) return;
+        High h = new High();
+        h.g = g;
+        h.line = line;
+        h.since = System.currentTimeMillis();
+        h.nextAt = h.since + HIGH_FIRST_MS;
+        synchronized (wants) { highs.add(h); }
+        if (!polling) {
+            polling = true;
+            main.postDelayed(poll, 30_000L);
+        }
+    }
+
     private GoalClips() { }
 
     /** A new goal (on the main thread): its clip looked for from now on. */
@@ -61,7 +91,7 @@ final class GoalClips {
 
     /** Stops looking (the Live Centre closed). */
     static void stop() {
-        synchronized (wants) { wants.clear(); }
+        synchronized (wants) { wants.clear(); highs.clear(); }
         polling = false;
         main.removeCallbacks(poll);
     }
@@ -69,12 +99,26 @@ final class GoalClips {
     private static final Runnable poll = new Runnable() {
         @Override public void run() {
             List<Want> now;
+            List<High> due = new ArrayList<>();
+            boolean waiting;
             synchronized (wants) {
                 long t = System.currentTimeMillis();
                 wants.removeIf(w -> t - w.since > FOR_MS);
+                highs.removeIf(h -> t - h.since > HIGH_FOR_MS);
                 now = new ArrayList<>(wants);
+                for (High h : highs) if (t >= h.nextAt) { due.add(h); h.nextAt = t + HIGH_EVERY_MS; }
+                waiting = !highs.isEmpty();
             }
-            if (now.isEmpty()) { polling = false; return; }
+            if (now.isEmpty() && !waiting) { polling = false; return; }
+            if (!due.isEmpty()) io.execute(() -> {
+                for (High h : due) {
+                    List<OfficialVideos.Video> found = OfficialVideos.highlights(h.g);
+                    if (found.isEmpty()) continue;
+                    synchronized (wants) { highs.remove(h); }
+                    main.post(() -> LiveCentre.offerHighlights(h.line, found));
+                }
+            });
+            if (now.isEmpty()) { main.postDelayed(this, EVERY_MS); return; }
             io.execute(() -> {
                 Set<String> games = new HashSet<>();
                 for (Want w : now) games.add(w.slug + "|" + w.game);
@@ -119,7 +163,7 @@ final class GoalClips {
         return waiting == 1 && fresh == 1 ? onlyNew : null;
     }
 
-    /** A game's clips on ESPN, newest first: {id, headline, mp4}. Off the main thread. */
+    /** A game's clips on ESPN, newest first: {id, headline, mp4, picture}. Off the main thread. */
     static List<String[]> clips(String slug, String game) {
         List<String[]> out = new ArrayList<>();
         try {
@@ -132,7 +176,7 @@ final class GoalClips {
                 JSONObject hd = src.optJSONObject("HD");
                 String url = hd != null ? hd.optString("href") : src.optString("href");
                 if (url == null || url.isEmpty() || !url.endsWith(".mp4")) continue;
-                out.add(new String[]{x.optString("id", url), x.optString("headline"), url});
+                out.add(new String[]{x.optString("id", url), x.optString("headline"), url, x.optString("thumbnail", "")});
             }
         } catch (Exception ignored) {
         }

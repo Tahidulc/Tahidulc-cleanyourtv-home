@@ -1415,6 +1415,18 @@ public class GoalWatchService extends Service {
             // "lineups": its line-ups, as if just announced.
             if ("lineups".equals(intent.getStringExtra("test_live_event"))) LiveCentre.testLineups(); else LiveCentre.testEvent();
         }
+        if (intent != null && intent.hasExtra("test_render_highlights")) {
+            // adb only: a finished game's highlights offered and played in the Live Centre, photographed off screen.
+            LiveCentre.renderHighlights(this, intent.getStringExtra("test_render_highlights"));
+        }
+        if (intent != null && intent.hasExtra("test_highlights")) {
+            // adb only: with the Live Centre open, a finished game's official highlights offered (a club's name, or "").
+            LiveCentre.testHighlights(intent.getStringExtra("test_highlights"));
+        }
+        if (intent != null && intent.hasExtra("test_yt")) {
+            // adb only: whether YouTube plays these videos here (comma separated ids), to files/yt.txt; nothing on screen.
+            YouTubeBox.test(this, intent.getStringExtra("test_yt").split(","));
+        }
         if (intent != null && intent.hasExtra("test_tuya")) {
             // adb only: what the Tuya cloud project sees, and whether its cameras stream, to files/tuya.txt.
             TuyaCloud.test(this);

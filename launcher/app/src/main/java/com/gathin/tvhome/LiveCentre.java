@@ -731,6 +731,45 @@ final class LiveCentre {
 
     /** adb only: where the next frame built is photographed instead of shown (live_*.png), or null. */
     private static java.io.File renderTo;
+    /** adb only: the highlights to photograph offered and played in that frame, with their game's line; or null. */
+    private static List<OfficialVideos.Video> renderHighlights;
+    private static String renderHighlightsLine;
+
+    /**
+     * adb only: the Live Centre over a pitch with a finished game's official highlights (by a club's name) offered and
+     * then played large, photographed on a display of its own (files/shots/high_0.png, high_1.png); nothing shown.
+     */
+    static void renderHighlights(Context ctx, String club) {
+        if (host != null) return;
+        app = ctx.getApplicationContext();
+        String want = club == null ? "" : OfficialVideos.plain(club);
+        io.execute(() -> {
+            List<ScoresTicker.Game> read = scores();
+            for (ScoresTicker.Game g : read) {
+                if (g.state != 2 || !OfficialVideos.covered(g.slug)) continue;
+                if (!want.isEmpty() && !OfficialVideos.plain(g.homeName + " " + g.awayName).contains(want)) continue;
+                List<OfficialVideos.Video> v = OfficialVideos.highlights(g);
+                if (v.isEmpty()) continue;
+                crest(g.homeLogo);
+                crest(g.awayLogo);
+                compLogo(compUrl(g));
+                stats(g);
+                java.io.File dir = new java.io.File(app.getExternalFilesDir(null), "shots");
+                dir.mkdirs();
+                String line = g.homeName + " " + score(g.homeScore) + "–" + score(g.awayScore) + " " + g.awayName;
+                main.post(() -> {
+                    if (host != null) return;
+                    games = read;
+                    shownId = g.id;
+                    renderHighlights = v;
+                    renderHighlightsLine = line;
+                    renderTo = dir;
+                    show(false);
+                });
+                return;
+            }
+        });
+    }
 
     /**
      * adb only: the Live Centre over a pitch (standing in for the channel), photographed as the screen would draw it
@@ -783,6 +822,21 @@ final class LiveCentre {
         root.addView(win, new FrameLayout.LayoutParams(-1, -1));
         List<Runnable> steps = new ArrayList<>();
         List<java.io.File> out = new ArrayList<>();
+        if (renderHighlights != null) {
+            List<OfficialVideos.Video> v = renderHighlights;
+            String line = renderHighlightsLine;
+            renderHighlights = null;
+            steps.add(() -> offerHighlights(line, v));
+            out.add(new java.io.File(dir, "high_0.png"));
+            steps.add(LiveCentre::watchOffer);
+            out.add(new java.io.File(dir, "high_1.png"));
+            Snap.series(c, root, w, h, steps, out, 7_000L, () -> {
+                closeBig();
+                if (host == win) host = null;
+                try (java.io.FileOutputStream o = new java.io.FileOutputStream(new java.io.File(dir, "high_done.txt"))) { o.write('1'); } catch (Exception ignored) { }
+            });
+            return;
+        }
         for (int i = 0; xi != null && i < xi.size(); i++) {
             String[] p = xi.get(i);
             steps.add(() -> { putPage(pageView(app, g, p), false); setOpen(1); clockNow(); });
@@ -2475,6 +2529,8 @@ final class LiveCentre {
             Integer before = lastStates.put(g.id, g.state);
             if (!first && before != null && before == 0 && g.state == 2) {
                 fresh.add(new Object[]{999, new String[]{"FT", line, "Full time", "", ""}});
+                GoalClips.highlights(g, (g.homeName != null ? g.homeName : g.home) + " " + score(g.homeScore) + "–"
+                        + score(g.awayScore) + " " + (g.awayName != null ? g.awayName : g.away));
             }
         }
         // F1: lights out, a new leader, the result (or pole).
@@ -2669,6 +2725,16 @@ final class LiveCentre {
      */
     private static boolean handle(int code, KeyEvent e) {
         boolean down = e.getAction() == KeyEvent.ACTION_DOWN;
+        // Highlights playing: Back stops them (the channel's sound comes back); every other key waits.
+        if (bigBox != null) {
+            if (code == KeyEvent.KEYCODE_BACK && e.getAction() == KeyEvent.ACTION_UP && !e.isCanceled()) main.post(LiveCentre::closeBig);
+            return code != KeyEvent.KEYCODE_VOLUME_UP && code != KeyEvent.KEYCODE_VOLUME_DOWN && code != KeyEvent.KEYCODE_VOLUME_MUTE;
+        }
+        // A highlights card up: OK plays them.
+        if (offerBox != null && (code == KeyEvent.KEYCODE_DPAD_CENTER || code == KeyEvent.KEYCODE_ENTER || code == KeyEvent.KEYCODE_NUMPAD_ENTER)) {
+            if (e.getAction() == KeyEvent.ACTION_UP && !e.isCanceled()) main.post(LiveCentre::watchOffer);
+            return true;
+        }
         if (code == KeyEvent.KEYCODE_BACK) {
             if (e.getAction() == KeyEvent.ACTION_UP && !e.isCanceled()) main.post(() -> { if (onBoard) hideBoard(); else close(); });
             return true;
@@ -2842,6 +2908,243 @@ final class LiveCentre {
         main.postDelayed(clipTimeout, 90_000L);
     }
 
+    // ---- official highlights at full time ------------------------------------------------------------------------
+
+    private static FrameLayout offerBox, bigBox;
+    private static List<OfficialVideos.Video> offerList;
+    private static String offerLine;
+    private static final List<Object[]> offerQueue = new ArrayList<>();
+    private static android.media.MediaPlayer bigPlayer;
+    private static android.webkit.WebView bigWeb;
+    private static android.media.AudioFocusRequest bigFocus;
+    private static final long OFFER_MS = 20_000L;
+    private static final Runnable offerTimeout = () -> endOffer(true);
+
+    /**
+     * A finished game's official highlights are up: a card in the clip's corner (HIGHLIGHTS on blue, the result, the
+     * video's picture and "OK Watch") for twenty seconds; OK plays them. Waits for a goal clip or another card.
+     */
+    static void offerHighlights(String line, List<OfficialVideos.Video> list) {
+        if (host == null || list == null || list.isEmpty()) return;
+        if (clipBox != null || offerBox != null || bigBox != null) { offerQueue.add(new Object[]{line, list}); return; }
+        Context c = app;
+        int w = px(576), h = px(324);
+        FrameLayout box = new FrameLayout(c);
+        box.setClipToOutline(true);
+        box.setOutlineProvider(round(px(14)));
+        box.setBackgroundColor(0xFF000000);
+        box.setElevation(px(14));
+        LinearLayout col = new LinearLayout(c);
+        col.setOrientation(LinearLayout.VERTICAL);
+        col.addView(videoHead(c, "HIGHLIGHTS", line, null), new LinearLayout.LayoutParams(-1, px(38)));
+        FrameLayout pic = new FrameLayout(c);
+        ImageView thumb = new ImageView(c);
+        thumb.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        pic.addView(thumb, new FrameLayout.LayoutParams(-1, -1));
+        // "OK Watch" in a white pill at the picture's foot.
+        LinearLayout pill = new LinearLayout(c);
+        pill.setGravity(Gravity.CENTER_VERTICAL);
+        pill.setPadding(px(12), px(6), px(16), px(6));
+        GradientDrawable pg = new GradientDrawable();
+        pg.setColor(0xF2FFFFFF);
+        pg.setCornerRadius(px(24));
+        pill.setBackground(pg);
+        ImageView ok = new ImageView(c);
+        ok.setImageBitmap(PagesV2.SportPage.okKey(Config.themeString(c, "ok_button", "tcl"), px(30)));
+        pill.addView(ok, new LinearLayout.LayoutParams(px(30), px(30)));
+        TextView watch = text(c, "Watch", 19, INK, ScoreCard.outfit(c, 800));
+        LinearLayout.LayoutParams wl = new LinearLayout.LayoutParams(-2, -2);
+        wl.leftMargin = px(8);
+        pill.addView(watch, wl);
+        FrameLayout.LayoutParams pl = new FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM | Gravity.END);
+        pl.rightMargin = px(14);
+        pl.bottomMargin = px(14);
+        pic.addView(pill, pl);
+        col.addView(pic, new LinearLayout.LayoutParams(w, h));
+        box.addView(col, new FrameLayout.LayoutParams(-1, -1));
+        FrameLayout.LayoutParams bl = new FrameLayout.LayoutParams(w, h + px(38), Gravity.TOP | Gravity.START);
+        bl.leftMargin = px(1500 - 576 - 26);
+        bl.topMargin = px(900 - 324 - 38 - 22);
+        host.addView(box, bl);
+        offerBox = box;
+        offerList = list;
+        offerLine = line;
+        String t = list.get(0).thumb;
+        if (t != null && !t.isEmpty()) io.execute(() -> {
+            Bitmap b = ScoresTicker.cachedLogo(app, t, 480);
+            if (b != null) main.post(() -> thumb.setImageBitmap(b));
+        });
+        box.setAlpha(0f);
+        box.setTranslationY(px(30));
+        box.animate().alpha(1f).translationY(0).setDuration(320).setInterpolator(new DecelerateInterpolator(2f)).start();
+        main.removeCallbacks(offerTimeout);
+        main.postDelayed(offerTimeout, OFFER_MS);
+    }
+
+    /** The card away; the next one waiting (or a goal clip's turn) after it unless the highlights are being played. */
+    private static void endOffer(boolean next) {
+        main.removeCallbacks(offerTimeout);
+        FrameLayout box = offerBox;
+        offerBox = null;
+        if (box == null) return;
+        box.animate().alpha(0f).translationY(px(30)).setDuration(260).withEndAction(() -> {
+            if (box.getParent() instanceof android.view.ViewGroup) ((android.view.ViewGroup) box.getParent()).removeView(box);
+            if (next && host != null && bigBox == null && clipBox == null && !offerQueue.isEmpty()) {
+                Object[] n = offerQueue.remove(0);
+                @SuppressWarnings("unchecked") List<OfficialVideos.Video> v = (List<OfficialVideos.Video>) n[1];
+                offerHighlights((String) n[0], v);
+            }
+        }).start();
+    }
+
+    /** OK on the card: the highlights played large over the channel, with their sound. */
+    private static void watchOffer() {
+        List<OfficialVideos.Video> list = offerList;
+        String line = offerLine;
+        endOffer(false);
+        if (list != null) playBig(list, 0, line);
+    }
+
+    /**
+     * Highlights played large over the channel's picture, with their sound (the channel's paused meanwhile, as for a
+     * moment, and back when they end or Back stops them); a video YouTube will not play here gives way to the next.
+     */
+    private static void playBig(List<OfficialVideos.Video> list, int at, String line) {
+        if (host == null || at >= list.size()) { closeBig(); return; }
+        closeBig();
+        Context c = app;
+        OfficialVideos.Video v = list.get(at);
+        // Under the scoreboard and above the ticker, over the middle of the channel's picture.
+        int w = px(1216), h = px(684);
+        FrameLayout box = new FrameLayout(c);
+        box.setClipToOutline(true);
+        box.setOutlineProvider(round(px(16)));
+        box.setBackgroundColor(0xFF000000);
+        box.setElevation(px(18));
+        LinearLayout col = new LinearLayout(c);
+        col.setOrientation(LinearLayout.VERTICAL);
+        col.addView(videoHead(c, "HIGHLIGHTS", line, "Back to close"), new LinearLayout.LayoutParams(-1, px(44)));
+        View video;
+        if (v.youtube != null) {
+            bigWeb = YouTubeBox.make(c, v.youtube, false, ev -> {
+                if (ev.startsWith("error")) playBig(list, at + 1, line);
+                else if ("state0".equals(ev)) closeBig();
+            });
+            video = bigWeb;
+        } else {
+            android.view.TextureView tv = new android.view.TextureView(c);
+            tv.setSurfaceTextureListener(new android.view.TextureView.SurfaceTextureListener() {
+                @Override public void onSurfaceTextureAvailable(android.graphics.SurfaceTexture st, int sw, int sh) {
+                    android.media.MediaPlayer mp = new android.media.MediaPlayer();
+                    bigPlayer = mp;
+                    try {
+                        mp.setDataSource(v.mp4);
+                        mp.setSurface(new android.view.Surface(st));
+                        mp.setOnPreparedListener(m -> { if (bigPlayer == m) m.start(); });
+                        mp.setOnCompletionListener(m -> closeBig());
+                        mp.setOnErrorListener((m, what, extra) -> { playBig(list, at + 1, line); return true; });
+                        mp.prepareAsync();
+                    } catch (Exception e) {
+                        playBig(list, at + 1, line);
+                    }
+                }
+                @Override public void onSurfaceTextureSizeChanged(android.graphics.SurfaceTexture st, int sw, int sh) { }
+                @Override public boolean onSurfaceTextureDestroyed(android.graphics.SurfaceTexture st) { return true; }
+                @Override public void onSurfaceTextureUpdated(android.graphics.SurfaceTexture st) { }
+            });
+            video = tv;
+        }
+        col.addView(video, new LinearLayout.LayoutParams(w, h));
+        box.addView(col, new FrameLayout.LayoutParams(-1, -1));
+        FrameLayout.LayoutParams bl = new FrameLayout.LayoutParams(w, h + px(44), Gravity.TOP | Gravity.START);
+        bl.leftMargin = px((1500 - 1216) / 2);
+        bl.topMargin = px(22 + BOARD_H + 18);
+        host.addView(box, bl);
+        bigBox = box;
+        box.setAlpha(0f);
+        box.setScaleX(0.96f);
+        box.setScaleY(0.96f);
+        box.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(300).setInterpolator(new DecelerateInterpolator(2f)).start();
+        // The channel's sound paused for the highlights' (a passing interruption, so TiviMate carries on after).
+        android.media.AudioManager am = c.getSystemService(android.media.AudioManager.class);
+        bigFocus = new android.media.AudioFocusRequest.Builder(android.media.AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
+                .setAudioAttributes(new android.media.AudioAttributes.Builder().setUsage(android.media.AudioAttributes.USAGE_MEDIA)
+                        .setContentType(android.media.AudioAttributes.CONTENT_TYPE_MOVIE).build()).build();
+        if (am != null) am.requestAudioFocus(bigFocus);
+    }
+
+    /** The highlights stopped and away, the channel's sound back; the next card waiting, if any. */
+    static void closeBig() {
+        android.webkit.WebView web = bigWeb;
+        bigWeb = null;
+        android.media.MediaPlayer mp = bigPlayer;
+        bigPlayer = null;
+        if (mp != null) { try { mp.release(); } catch (RuntimeException ignored) { } }
+        if (bigFocus != null && app != null) {
+            android.media.AudioManager am = app.getSystemService(android.media.AudioManager.class);
+            if (am != null) am.abandonAudioFocusRequest(bigFocus);
+            bigFocus = null;
+        }
+        FrameLayout box = bigBox;
+        bigBox = null;
+        if (web != null) {
+            web.loadUrl("about:blank");
+            main.postDelayed(web::destroy, 400L);
+        }
+        if (box == null) return;
+        box.animate().alpha(0f).setDuration(220).withEndAction(() -> {
+            if (box.getParent() instanceof android.view.ViewGroup) ((android.view.ViewGroup) box.getParent()).removeView(box);
+            if (host != null && clipBox == null && offerBox == null && !offerQueue.isEmpty()) {
+                Object[] n = offerQueue.remove(0);
+                @SuppressWarnings("unchecked") List<OfficialVideos.Video> v = (List<OfficialVideos.Video>) n[1];
+                offerHighlights((String) n[0], v);
+            }
+        }).start();
+    }
+
+    /** A video box's head: its label on a blue slant, the game, and a hint at the right when given. */
+    private static View videoHead(Context c, String what, String line, String hint) {
+        LinearLayout head = new LinearLayout(c);
+        head.setGravity(Gravity.CENTER_VERTICAL);
+        head.setBackgroundColor(NAVY);
+        head.setPadding(0, 0, px(14), 0);
+        TextView label = text(c, what, 17, 0xFFFFFFFF, ScoreCard.outfit(c, 900));
+        label.setGravity(Gravity.CENTER_VERTICAL);
+        label.setPadding(px(14), 0, px(20), 0);
+        label.setBackground(new ScoreCard.Slant(0xFF2457E0, px(10), false));
+        head.addView(label, new LinearLayout.LayoutParams(-2, -1));
+        TextView match = text(c, line == null ? "" : line, 18, 0xFFFFFFFF, ScoreCard.outfit(c, 700));
+        LinearLayout.LayoutParams ml = new LinearLayout.LayoutParams(0, -2, 1f);
+        ml.leftMargin = px(12);
+        head.addView(match, ml);
+        if (hint != null) {
+            TextView h = text(c, hint, 15, 0xFFC9CEF2, ScoreCard.outfit(c, 600));
+            head.addView(h, new LinearLayout.LayoutParams(-2, -2));
+        }
+        return head;
+    }
+
+    /**
+     * adb only: with the Live Centre open, a finished game's highlights offered as at full time (a game by a club's
+     * name, else the first finished one with highlights up).
+     */
+    static void testHighlights(String club) {
+        if (host == null) return;
+        String want = club == null ? "" : OfficialVideos.plain(club);
+        List<ScoresTicker.Game> pool = new ArrayList<>(games);
+        io.execute(() -> {
+            for (ScoresTicker.Game g : pool) {
+                if (g.state != 2 || !OfficialVideos.covered(g.slug)) continue;
+                if (!want.isEmpty() && !OfficialVideos.plain(g.homeName + " " + g.awayName).contains(want)) continue;
+                List<OfficialVideos.Video> v = OfficialVideos.highlights(g);
+                if (v.isEmpty()) continue;
+                String line = g.homeName + " " + score(g.homeScore) + "–" + score(g.awayScore) + " " + g.awayName;
+                main.post(() -> offerHighlights(line, v));
+                return;
+            }
+        });
+    }
+
     private static final Runnable clipTimeout = LiveCentre::endClip;
 
     /** The clip done (or failed): its frame away, and the next one waiting played. */
@@ -2858,12 +3161,21 @@ final class LiveCentre {
             if (!clipQueue.isEmpty() && host != null) {
                 String[] n = clipQueue.remove(0);
                 playClip(n[0], n[1], n[2], n[3]);
+            } else if (!offerQueue.isEmpty() && host != null) {
+                Object[] n = offerQueue.remove(0);
+                @SuppressWarnings("unchecked") List<OfficialVideos.Video> v = (List<OfficialVideos.Video>) n[1];
+                offerHighlights((String) n[0], v);
             }
         }).start();
     }
 
     static void close() {
         if (folding != null) { folding.cancel(); folding = null; }
+        closeBig();
+        offerQueue.clear();
+        main.removeCallbacks(offerTimeout);
+        offerBox = null;
+        offerList = null;
         onBoard = false;
         boardHidden = false;
         eventOn = false;
