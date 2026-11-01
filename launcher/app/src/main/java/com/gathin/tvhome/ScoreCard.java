@@ -134,7 +134,7 @@ final class ScoreCard {
         }
         Data d = queue.poll();
         if (d.f1) { d.dark = true; d.wideMark = true; }
-        onHome = GoalWatchService.laneHome && GoalWatchService.homeInFront;
+        onHome = GoalWatchService.laneHome && GoalWatchService.homeInFront || PopupFrame.isShowing();
         k = c.getResources().getDisplayMetrics().widthPixels / 1920f;
         if (onHome) bar(c, d); else card(c, d);
     }

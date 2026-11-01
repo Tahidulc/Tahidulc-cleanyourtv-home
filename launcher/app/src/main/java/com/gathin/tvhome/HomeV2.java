@@ -79,9 +79,9 @@ final class HomeV2 {
     static final int BG_DEEP = 0xFF11154A, BG_MID = 0xFF1D2378, BG_GLOW = 0xFF3A2A9A;
     private static final int GLASS = 0x1AFFFFFF, GLASS_LINE = 0x52FFFFFF;
     static final PathInterpolator SKY = new PathInterpolator(0.25f, 0.8f, 0.25f, 1f);
-    private static final int[] CAT_COLOURS = {0xFFFF8A1F, 0xFF9B5CFF, 0xFFFF4FA3, 0xFF4F8BFF, 0xFF3DDC84, 0xFF2AD1C9};
-    private static final String[] CAT_NAMES = {"TV Guide", "Discover", "Movies", "TV shows", "Sports", "Apps"};
-    private static final int[] CAT_ICONS = {R.drawable.ic_v2_guide, R.drawable.ic_v2_discover, R.drawable.ic_v2_movies,
+    static final int[] CAT_COLOURS = {0xFFFF8A1F, 0xFF9B5CFF, 0xFFFF4FA3, 0xFF4F8BFF, 0xFF3DDC84, 0xFF2AD1C9};
+    static final String[] CAT_NAMES = {"TV Guide", "Discover", "Movies", "TV shows", "Sports", "Apps"};
+    static final int[] CAT_ICONS = {R.drawable.ic_v2_guide, R.drawable.ic_v2_discover, R.drawable.ic_v2_movies,
             R.drawable.ic_v2_shows, R.drawable.ic_v2_sport, R.drawable.ic_v2_grid};
     private static final String[] CAT_MODES = {"guide", "discover", "movies", "shows", "sport", "apps"};
 
@@ -650,7 +650,8 @@ final class HomeV2 {
         if (players != null) players.stop();
         playingTile = null;
         GoalWatchService.laneHome = false;
-        GoalWatchService.laneListener = null;
+        // Pop-up mode's frame has its own pills for the alerts to stand in for: left to it.
+        if (!PopupFrame.isShowing()) GoalWatchService.laneListener = null;
         weatherLine.stop();
         if (weatherPanel != null) weatherPanel.hide();
         if (scores != null) scores.stop();
@@ -737,8 +738,61 @@ final class HomeV2 {
             return true;
         }
         if (e.getAction() != KeyEvent.ACTION_DOWN) return true;
+        if (popUp(code, e)) return true;
         move(code);
         return true;
+    }
+
+    // ---- pop-up mode: Up twice on an app or a tile opens it inside Home's frame (PopupFrame) ----------------------
+
+    private long popUpAt;
+    private Runnable popTarget;
+    private int popZone, popRail, popRow;
+
+    /**
+     * Up pressed twice on the rail's app or a tile: the first moves on as ever (the item it left noted), the second
+     * puts the focus back on that item and opens it in pop-up mode. Only with the key helper, which keeps the remote
+     * with the app once it is open.
+     */
+    private boolean popUp(int code, KeyEvent e) {
+        if (code != KeyEvent.KEYCODE_DPAD_UP || e.getRepeatCount() > 0 || !PopupFrame.available() || page != null) {
+            if (code != KeyEvent.KEYCODE_DPAD_UP) popTarget = null;
+            return false;
+        }
+        long now = android.os.SystemClock.uptimeMillis();
+        if (popTarget != null && now - popUpAt < 450L) {
+            Runnable go = popTarget;
+            popTarget = null;
+            zone = popZone;
+            if (zone == Z_RAIL) { railIdx = popRail; selectRail(railIdx); } else rowIdx = popRow;
+            paint();
+            go.run();
+            main.postDelayed(() -> PopupFrame.show(a), 350L);
+            return true;
+        }
+        popTarget = null;
+        if (zone == Z_RAIL && railIdx < railViews.size()) {
+            String p = (String) railViews.get(railIdx).getTag();
+            if (p != null) popTarget = () -> openApp(p);
+        } else if (zone == Z_ROW && rowIdx < shown.size()) {
+            popTarget = shown.get(rowIdx).ok;
+        }
+        popUpAt = now;
+        popZone = zone;
+        popRail = railIdx;
+        popRow = rowIdx;
+        return false;
+    }
+
+    /** A box chosen in pop-up mode's frame: Home on that box's section (0 the TV guide). */
+    void openBox(int which) {
+        if (which < 0 || which > 5) return;
+        guide.hide();
+        if (page != null) closePage();
+        zone = Z_CATS;
+        catIdx = which;
+        if (which == 0) guide.show(); else openPage(which, false);
+        paint();
     }
 
     private void back() {

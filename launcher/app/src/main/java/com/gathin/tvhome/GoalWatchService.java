@@ -1442,6 +1442,10 @@ public class GoalWatchService extends Service {
             String id = intent.getStringExtra("test_live_centre");
             LiveCentre.open(this, id == null || id.isEmpty() ? null : id);
         }
+        if (intent != null && intent.hasExtra("test_popup")) {
+            // adb only (adb's keys never reach the key helper): pop-up mode's "boxes", "pills", "app" or "leave".
+            PopupFrame.test(intent.getStringExtra("test_popup"));
+        }
         if (intent != null && intent.hasExtra("test_goal_clip")) {
             // adb only: a finished game's goal clip in the Live Centre, if it is open ("esp.1|<ESPN event id>").
             GoalClips.test(intent.getStringExtra("test_goal_clip"));
@@ -3098,7 +3102,7 @@ public class GoalWatchService extends Service {
     private boolean darkGlass;
 
     private boolean onLane() {
-        return laneHome && homeInFront && !dreaming;
+        return (laneHome && homeInFront || PopupFrame.isShowing()) && !dreaming;
     }
 
     /** The alerts' dark ink on their silver glass; white, at the same strength, on the Home pills' clear glass. */

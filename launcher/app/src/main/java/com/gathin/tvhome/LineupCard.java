@@ -149,7 +149,7 @@ final class LineupCard {
         wipeBody = 0xFF151A63;
         wipeEdge = 0xFF3D4BD6;
         // On Home: the same line-ups as a wide bar across the top, in the style of Home's score bars.
-        if (GoalWatchService.laneHome && GoalWatchService.homeInFront) { showBar(c, d); return; }
+        if (GoalWatchService.laneHome && GoalWatchService.homeInFront || PopupFrame.isShowing()) { showBar(c, d); return; }
         k = c.getResources().getDisplayMetrics().widthPixels / 1920f * SCALE;
         int w = px(W), h = px(H), margin = px(10);
 
@@ -570,7 +570,7 @@ final class LineupCard {
         carrier.watch = f.watch;
         carrier.channel = f.channel;
         carrier.channelLogo = f.channelLogo;
-        if (GoalWatchService.laneHome && GoalWatchService.homeInFront) f1Bar(c, f, carrier); else f1Card(c, f, carrier);
+        if (GoalWatchService.laneHome && GoalWatchService.homeInFront || PopupFrame.isShowing()) f1Bar(c, f, carrier); else f1Card(c, f, carrier);
     }
 
     private static boolean sprint(F1 f) {

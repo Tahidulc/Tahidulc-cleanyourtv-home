@@ -1121,6 +1121,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             if (intent != null && intent.hasCategory(Intent.CATEGORY_HOME)) v2.home();
             // adb only (am start ... --ez smart_panel true): the smart home panel, as OK on the light bulb opens it.
             else if (intent != null && intent.getBooleanExtra("smart_panel", false)) v2.openSmartPanel();
+            // A box chosen in pop-up mode's frame (PopupFrame): Home on that box's section.
+            else if (intent != null && intent.hasExtra("open_box")) v2.openBox(intent.getIntExtra("open_box", -1));
             return;
         }
         if (openLauncherSettingsIfAsked(intent)) return;
@@ -1159,6 +1161,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         if (v2 != null) {
             GoalWatchService.homeInFront = true;
             AppSearchService.cancel();
+            // Back on Home: pop-up mode is over.
+            PopupFrame.close();
             // Home pressed over the Live Centre or the F1 timing: they belong to the channel, not to Home.
             if (!LiveCentre.isShowing() || !LiveCentre.overHome()) LiveCentre.close();
             F1Tower.close();

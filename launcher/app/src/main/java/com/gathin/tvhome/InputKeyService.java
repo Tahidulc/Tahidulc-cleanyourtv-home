@@ -76,6 +76,8 @@ public class InputKeyService extends AccessibilityService {
         // OK (watch) and Back (close) on a score card; Back while any other alert shows closes it.
         if (ScoreCard.key(event)) return true;
         if (GoalWatchService.back(event)) return true;
+        // Pop-up mode: Back twice leaves it, Down or Up twice takes the remote to its boxes or pills.
+        if (PopupFrame.key(event)) return true;
         // The on-screen mouse, in apps made for a touch screen (Tuya Smart): arrows move it, OK presses.
         if (Mouse.handle(this, event)) return true;
         if (consumeVolumeKeys && VolumeKeys.handle(this, event)) return true;
