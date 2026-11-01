@@ -498,7 +498,32 @@ public class AppSearchService extends AccessibilityService {
     protected boolean onKeyEvent(android.view.KeyEvent event) {
         if (InputKeyService.running || keysWanted.isEmpty()) return false;
         if (LiveCentre.key(event) || F1Tower.key(event)) return true;
-        return PopupFrame.isShowing() && PopupFrame.key(event);
+        if (PopupFrame.isShowing() && PopupFrame.key(event)) return true;
+        return okOn(event);
+    }
+
+    /** When this helper last pressed OK itself, so that press goes by untouched should it come through here. */
+    private long okSentAt;
+
+    /**
+     * OK for the app (or the frame) while this helper takes the keys: in pop-up mode on the TCL, OK handed back from
+     * here did nothing in the app, so the press is kept here and made again, on its release, with Android's own D-pad
+     * OK (as Kleva TV's search is driven below), which reaches whatever window has the remote. A held OK is no
+     * loss: the TCL gives a filtered key no auto-repeat, so no app saw a long press here before either.
+     */
+    private boolean okOn(android.view.KeyEvent e) {
+        int code = e.getKeyCode();
+        if (code != android.view.KeyEvent.KEYCODE_DPAD_CENTER && code != android.view.KeyEvent.KEYCODE_ENTER
+                && code != android.view.KeyEvent.KEYCODE_NUMPAD_ENTER) return false;
+        if (android.os.Build.VERSION.SDK_INT < 33) return false;
+        if (android.os.SystemClock.uptimeMillis() - okSentAt < 400L) return false;
+        if (e.getAction() == android.view.KeyEvent.ACTION_UP && !e.isCanceled()) {
+            main.post(() -> {
+                okSentAt = android.os.SystemClock.uptimeMillis();
+                if (!performGlobalAction(GLOBAL_ACTION_DPAD_CENTER)) Log.i(TAG, "OK not sent");
+            });
+        }
+        return true;
     }
 
     /** Whether a channel search is under way (its cover up, or a channel still to find). */

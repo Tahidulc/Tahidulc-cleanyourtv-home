@@ -179,9 +179,11 @@ final class PopupFrame {
         win.setClipChildren(false);
 
         params = new WindowManager.LayoutParams(-1, -1, WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-                // Not FLAG_NOT_TOUCHABLE: Android caps such an overlay at 80% opacity, and the app showed through the
-                // frame. A TV has no touch screen to block.
+                // Touchable only while the frame has the remote: Android caps an untouchable overlay at 80% opacity,
+                // and the app showed through the frame. The rest of the time a tap (the on-screen mouse, or the
+                // channel helper picking a channel) goes through to the app under it.
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
+                        | WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
                         | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN | WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
                 PixelFormat.TRANSLUCENT);
         params.setTitle("PopupFrame");
@@ -334,7 +336,7 @@ final class PopupFrame {
     /** The remote to the frame: its window takes the focus, on the first box (or the first score pill). */
     private static void takeFocus(boolean toBoxes) {
         if (host == null) return;
-        params.flags &= ~WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
+        params.flags &= ~(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE);
         try { app.getSystemService(WindowManager.class).updateViewLayout(host, params); } catch (RuntimeException e) { return; }
         focused = true;
         main.removeCallbacks(hide);
@@ -353,7 +355,7 @@ final class PopupFrame {
         View f = host.findFocus();
         if (f != null) f.clearFocus();
         host.setDescendantFocusability(android.view.ViewGroup.FOCUS_BLOCK_DESCENDANTS);
-        params.flags |= WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
+        params.flags |= WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE;
         try { app.getSystemService(WindowManager.class).updateViewLayout(host, params); } catch (RuntimeException ignored) { }
         focused = false;
         main.removeCallbacks(backToApp);
