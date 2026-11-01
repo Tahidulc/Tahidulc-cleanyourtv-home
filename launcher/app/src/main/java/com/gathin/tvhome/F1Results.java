@@ -66,6 +66,7 @@ final class F1Results {
                 s.state = status.getJSONObject("type").optString("state");
                 s.lap = status.optInt("period", 0);
                 s.start = java.time.OffsetDateTime.parse(comp.optString("date")).toInstant().toEpochMilli();
+                learnIds(comp);
                 if (!"pre".equals(s.state)) {
                     if (teams == null) teams = teamsCached();
                     JSONArray drivers = comp.optJSONArray("competitors");
@@ -86,6 +87,43 @@ final class F1Results {
         } catch (Exception ignored) {
             return null;
         }
+    }
+
+    /** ESPN's id for each driver (by surname key), learnt from the scoreboard: his headshot is named by it. */
+    private static final java.util.Map<String, String> espnIds = new java.util.concurrent.ConcurrentHashMap<>();
+    private static long espnIdsAt;
+
+    private static void learnIds(JSONObject comp) {
+        JSONArray drivers = comp.optJSONArray("competitors");
+        for (int d = 0; drivers != null && d < drivers.length(); d++) {
+            JSONObject x = drivers.optJSONObject(d);
+            JSONObject a = x == null ? null : x.optJSONObject("athlete");
+            if (a == null || x.optString("id").isEmpty()) continue;
+            espnIds.put(key(GoalWatchService.surname(a.optString("displayName", a.optString("shortName")))), x.optString("id"));
+        }
+    }
+
+    /**
+     * ESPN's headshot of a driver by his surname (all framed alike, in this season's team kit, on no background), or
+     * null when ESPN does not know him. The scoreboard is read for the ids when they are not known yet.
+     */
+    static String espnHeadshot(String surname) {
+        if (surname == null || surname.isEmpty()) return null;
+        String k = key(surname);
+        if (!espnIds.containsKey(k) && System.currentTimeMillis() - espnIdsAt > 30 * 60_000L) {
+            espnIdsAt = System.currentTimeMillis();
+            try {
+                JSONObject board = new JSONObject(get(FEED));
+                JSONArray events = board.optJSONArray("events");
+                for (int i = 0; events != null && i < events.length(); i++) {
+                    JSONArray comps = events.getJSONObject(i).optJSONArray("competitions");
+                    for (int c = 0; comps != null && c < comps.length(); c++) learnIds(comps.getJSONObject(c));
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        String id = espnIds.get(k);
+        return id == null ? null : "https://a.espncdn.com/i/headshots/rpm/players/full/" + id + ".png";
     }
 
     /** "Qual" to "QUALIFYING", "SS" to "SPRINT QUALI": the names the TV shows. */
@@ -175,6 +213,8 @@ final class F1Results {
     static final class Row {
         int pos;
         String first = "", last = "", code = "", team = "", gap = "", status = "";
+        /** Jolpica's constructor id ("mclaren", "red_bull"): the team's colour and logo; "" when not known. */
+        String teamId = "";
         int points = -1;
         /** His team's logo address, or null. */
         String logo;
@@ -210,7 +250,7 @@ final class F1Results {
             for (int i = 0; i < results.length(); i++) {
                 JSONObject x = results.getJSONObject(i);
                 Row r = driver(x);
-                r.pos = x.optInt("position", i + 1);
+                r.pos = i + 1;
                 r.status = x.optString("status");
                 String points = x.optString("points", "");
                 try { r.points = (int) Math.round(Double.parseDouble(points)); } catch (NumberFormatException ignored) { }
@@ -246,7 +286,7 @@ final class F1Results {
             for (int i = 0; i < results.length(); i++) {
                 JSONObject x = results.getJSONObject(i);
                 Row r = driver(x);
-                r.pos = x.optInt("position", i + 1);
+                r.pos = i + 1;
                 r.gap = x.optString("Q3", x.optString("Q2", x.optString("Q1", "")));
                 b.rows.add(r);
             }
@@ -265,7 +305,8 @@ final class F1Results {
         JSONObject team = x.optJSONObject("Constructor");
         if (team != null) {
             r.team = team.optString("name");
-            r.logo = logo(team.optString("constructorId"));
+            r.teamId = team.optString("constructorId");
+            r.logo = logo(r.teamId);
         }
         return r;
     }
@@ -295,6 +336,26 @@ final class F1Results {
             if (!out.isEmpty() || fullNames == null) { fullNames = out; fullNamesAt = out.isEmpty() ? now - 86_400_000L + 600_000L : now; }
         }
         return fullNames.get(key(surname));
+    }
+
+    /** A team's colour, as its cars and F1's graphics use it, by Jolpica's constructor id; F1's red for one not known. */
+    static int teamColour(String id) {
+        if (id == null) return 0xFFE10600;
+        switch (id) {
+            case "mercedes": return 0xFF27F4D2;
+            case "ferrari": return 0xFFE8002D;
+            case "mclaren": return 0xFFFF8000;
+            case "red_bull": return 0xFF3671C6;
+            case "aston_martin": return 0xFF229971;
+            case "alpine": return 0xFFFF87BC;
+            case "williams": return 0xFF64C4FF;
+            case "rb": return 0xFF6692FF;
+            case "haas": return 0xFFB6BABD;
+            case "sauber": return 0xFF52E252;
+            case "audi": return 0xFFBB0A30;
+            case "cadillac": return 0xFFC9A227;
+            default: return 0xFFE10600;
+        }
     }
 
     /** "Hülkenberg" and "Hulkenberg" alike: lower case without accents. */

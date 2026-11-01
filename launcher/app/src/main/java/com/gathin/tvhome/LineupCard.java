@@ -822,11 +822,7 @@ final class LineupCard {
         col.addView(name, nml);
         LinearLayout sub = new LinearLayout(c);
         sub.setGravity(Gravity.CENTER_VERTICAL);
-        Bitmap logo = r.logo == null ? null : f.logos.get(r.logo);
-        ImageView l = new ImageView(c);
-        if (logo != null) l.setImageBitmap(sharp(logo));
-        l.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        sub.addView(l, new LinearLayout.LayoutParams(px(15), px(15)));
+        sub.addView(f1Logo(c, f, r, px(19)), new LinearLayout.LayoutParams(px(19), px(19)));
         String gap = r.gap.isEmpty() ? (winner ? "Winner" : "") : r.gap;
         TextView g = text(c, gap, 12, 0xCCFFFFFF, ScoreCard.outfit(c, 600));
         LinearLayout.LayoutParams gl = new LinearLayout.LayoutParams(-2, -2);
@@ -852,6 +848,27 @@ final class LineupCard {
         photo.setScaleType(ImageView.ScaleType.FIT_XY);
         frame.addView(photo, new FrameLayout.LayoutParams(w, w, Gravity.TOP | Gravity.CENTER_HORIZONTAL));
         return frame;
+    }
+
+    /**
+     * His team's logo on a small white tile, so every one shows on the black: Mercedes', Audi's, Aston Martin's and
+     * Cadillac's are dark, and vanished on it. An empty space of the same size where there is no logo.
+     */
+    private static View f1Logo(Context c, F1 f, F1Results.Row r, int size) {
+        Bitmap logo = r.logo == null ? null : f.logos.get(r.logo);
+        if (logo == null) return new View(c);
+        FrameLayout tile = new FrameLayout(c);
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(0xF2FFFFFF);
+        bg.setCornerRadius(size * 0.26f);
+        tile.setBackground(bg);
+        int pad = Math.max(1, Math.round(size * 0.14f));
+        tile.setPadding(pad, pad, pad, pad);
+        ImageView l = new ImageView(c);
+        l.setImageBitmap(sharp(logo));
+        l.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        tile.addView(l, new FrameLayout.LayoutParams(-1, -1));
+        return tile;
     }
 
     private static Bitmap blank;
@@ -913,13 +930,10 @@ final class LineupCard {
         LinearLayout.LayoutParams fl = new LinearLayout.LayoutParams(ps, -1);
         fl.leftMargin = px(2);
         v.addView(f1Photo(c, f, r, ps, ps), fl);
-        Bitmap logo = r.logo == null ? null : f.logos.get(r.logo);
-        ImageView l = new ImageView(c);
-        if (logo != null) l.setImageBitmap(sharp(logo));
-        l.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        LinearLayout.LayoutParams lgl = new LinearLayout.LayoutParams(px(wide ? 18 : 15), px(wide ? 18 : 15));
+        int ls = px(wide ? 20 : 17);
+        LinearLayout.LayoutParams lgl = new LinearLayout.LayoutParams(ls, ls);
         lgl.leftMargin = px(6);
-        v.addView(l, lgl);
+        v.addView(f1Logo(c, f, r, ls), lgl);
         LinearLayout name = new LinearLayout(c);
         name.setGravity(Gravity.CENTER_VERTICAL);
         if (wide && !r.first.isEmpty()) {
@@ -995,9 +1009,10 @@ final class LineupCard {
         slot.setBackground(bg);
         slot.setClipToOutline(true);
         slot.setOutlineProvider(ViewOutlineProvider.BACKGROUND);
+        // The edge in his team's colour (McLaren's papaya, Ferrari's red, Mercedes' teal), as on F1's grid graphics.
         View edge = new View(c);
-        edge.setBackgroundColor(F1_RED);
-        slot.addView(edge, new LinearLayout.LayoutParams(px(4), -1));
+        edge.setBackgroundColor(F1Results.teamColour(r.teamId));
+        slot.addView(edge, new LinearLayout.LayoutParams(px(5), -1));
         TextView pos = text(c, String.valueOf(r.pos), big ? 22 : 15, 0xFFFFFFFF, ScoreCard.outfit(c, 900));
         pos.setGravity(Gravity.CENTER);
         slot.addView(pos, new LinearLayout.LayoutParams(px(big ? 38 : 30), -2));
@@ -1012,13 +1027,10 @@ final class LineupCard {
         LinearLayout.LayoutParams nl = new LinearLayout.LayoutParams(0, -2, 1f);
         nl.leftMargin = px(8);
         slot.addView(names, nl);
-        Bitmap logo = r.logo == null ? null : f.logos.get(r.logo);
-        ImageView l = new ImageView(c);
-        if (logo != null) l.setImageBitmap(sharp(logo));
-        l.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        LinearLayout.LayoutParams ll = new LinearLayout.LayoutParams(px(big ? 24 : 17), px(big ? 24 : 17));
+        int ls = px(big ? 28 : 20);
+        LinearLayout.LayoutParams ll = new LinearLayout.LayoutParams(ls, ls);
         ll.rightMargin = px(10);
-        slot.addView(l, ll);
+        slot.addView(f1Logo(c, f, r, ls), ll);
         return slot;
     }
 
@@ -1190,11 +1202,7 @@ final class LineupCard {
             col.addView(text(c, big ? r.last.toUpperCase(java.util.Locale.UK) : r.last, big ? 19 : 16, 0xFFFFFFFF, ScoreCard.outfit(c, 800)));
             LinearLayout sub = new LinearLayout(c);
             sub.setGravity(Gravity.CENTER_VERTICAL);
-            Bitmap logo = r.logo == null ? null : f.logos.get(r.logo);
-            ImageView l = new ImageView(c);
-            if (logo != null) l.setImageBitmap(sharp(logo));
-            l.setScaleType(ImageView.ScaleType.FIT_CENTER);
-            sub.addView(l, new LinearLayout.LayoutParams(px(16), px(16)));
+            sub.addView(f1Logo(c, f, r, px(19)), new LinearLayout.LayoutParams(px(19), px(19)));
             String gap = r.gap.isEmpty() && big && !f.grid && r.pos == 1 ? "Winner" : r.gap;
             if (!gap.isEmpty()) {
                 boolean out = "DNF".equals(gap);

@@ -156,7 +156,15 @@ final class PlayerPhotos {
      */
     static Bitmap driver(Context ctx, String surname) {
         if (surname == null || surname.isEmpty()) return null;
-        SharedPreferences cache = ctx.getSharedPreferences("driver_photos2", Context.MODE_PRIVATE);
+        // ESPN's headshot first: every driver framed alike, in this season's kit, and no limit on asking. Its picture is
+        // wider than tall; the square around his head and shoulders is kept, as the other photos are square.
+        String espn = F1Results.espnHeadshot(surname);
+        Bitmap head = espn == null ? null : ScoresTicker.cachedLogo(ctx, espn, 160);
+        if (head != null && head.getWidth() > 0 && head.getHeight() > 0) {
+            int side = Math.min(head.getWidth(), head.getHeight());
+            return Bitmap.createBitmap(head, (head.getWidth() - side) / 2, 0, side, side);
+        }
+        SharedPreferences cache = ctx.getSharedPreferences("driver_photos3", Context.MODE_PRIVATE);
         String url = cache.getString(surname, null);
         long missedAt = cache.getLong(surname + "#missed", 0);
         if (url == null || (url.isEmpty() && System.currentTimeMillis() - missedAt > 86_400_000L)) {
@@ -176,7 +184,8 @@ final class PlayerPhotos {
                     for (int i = 0; players != null && i < players.length(); i++) {
                         JSONObject p = players.getJSONObject(i);
                         if (!"Motorsport".equalsIgnoreCase(p.optString("strSport"))) continue;
-                        if (!plain(p.optString("strPlayer")).endsWith(want)) continue;
+                        // His surname as a word anywhere in the name: "Carlos Sainz Jr" is Sainz.
+                        if (!(" " + plain(p.optString("strPlayer")) + " ").contains(" " + want + " ")) continue;
                         String img = p.optString("strCutout", "");
                         if (!img.isEmpty() && !"null".equals(img)) { url = img + "/medium"; break; }
                     }

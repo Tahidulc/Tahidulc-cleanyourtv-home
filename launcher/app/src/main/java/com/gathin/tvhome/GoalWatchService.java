@@ -428,6 +428,8 @@ public class GoalWatchService extends Service {
                     r.last = names.get(i);
                     r.code = F1Results.code(r.last);
                     r.logo = i < logos.size() ? logos.get(i) : null;
+                    String team = F1Results.teamsCached().get(F1Results.key(r.last));
+                    r.teamId = team == null ? "" : team;
                     f.rows.add(r);
                 }
             }
@@ -1418,6 +1420,17 @@ public class GoalWatchService extends Service {
                 });
             });
         }
+        if (intent != null && intent.hasExtra("test_breaking")) {
+            // adb only: the first BBC News story as a breaking alert, exactly as one would pop up.
+            io.execute(() -> {
+                List<String[]> items = readNews(true, false);
+                for (String[] item : items) {
+                    if (!item[0].contains("NEWS")) continue;
+                    main.post(() -> enqueueParts(breakingLine(item), newsSound(item)));
+                    break;
+                }
+            });
+        }
         if (intent != null && intent.hasExtra("test_news")) {
             io.execute(() -> {
                 List<String[]> items = readNews(true, boxingAlerts);
@@ -1779,9 +1792,7 @@ public class GoalWatchService extends Service {
         for (String[] item : items) {
             if (seenNews.add(item[2]) && newsPrimed && "pop".equals(item[3]) && shownFeeds.add(item[0])) {
                 if (skyAlerts && "BOXING".equals(item[0])) { skyBoxing(item); continue; }
-                List<Object> line = newsLine(item);
-                if (!"BOXING".equals(item[0])) { line.add(1, 8); line.add(2, bold("BREAKING")); }
-                enqueueParts(line, newsSound(item));
+                enqueueParts(breakingLine(item), newsSound(item));
             }
         }
         if (!items.isEmpty()) newsPrimed = true;
@@ -1793,6 +1804,21 @@ public class GoalWatchService extends Service {
 
     private static String otherSound(MoreSports.Result r) {
         return "UFC".equals(r.tour) ? "fight" : "tennis";
+    }
+
+    /**
+     * A breaking story's line: the BBC's blocks with NEWS or SPORT, BREAKING after them (with room on both sides, so
+     * it never runs into the logo: it was put between the colour and the logo, touching it), then the headline.
+     */
+    private List<Object> breakingLine(String[] item) {
+        List<Object> line = newsLine(item);
+        if ("BOXING".equals(item[0])) return line;
+        int at = 0;
+        while (at < line.size() && !(line.get(at) instanceof android.graphics.drawable.Drawable)) at++;
+        if (at >= line.size()) at = 0;
+        line.add(at + 1, 12);
+        line.add(at + 2, bold("BREAKING"));
+        return line;
     }
 
     /** The BBC's blocks with NEWS or SPORT, then the headline; boxing's with a glove. */
