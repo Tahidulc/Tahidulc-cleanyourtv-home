@@ -250,16 +250,16 @@ final class LineupCard {
     private static final long BAR_FIRST_MS = 9_000L, BAR_TEAM_MS = 13_000L;
 
     /**
-     * The line-ups on Home, in the style of Home's score bars: a wide bar across the top on the pale streaked ground
-     * (its streaks drifting), the navy band at its left end with the competition, then the club's crest and shape;
-     * the LINE-UPS label; and the pages turning behind the same wipe as the card's: both clubs with the kick-off and
-     * the channel (OK watches), then each eleven across the bar, grouped keeper, defence, midfield and attack, each
-     * player's head and shoulders, number and surname. Back closes it.
+     * The line-ups on Home, in the style of Home's score bars and no taller than fits above the clock: a long pill
+     * across the top on the pale streaked ground, the navy band at its left end (the competition, then the club's
+     * crest and shape) with its stripes drifting, the LINE-UPS label, and the pages turning behind the card's wipe:
+     * the fixture with the kick-off and the channel (OK watches), then each eleven across the bar by its lines, each
+     * player's head and shoulders, number and surname. The streaks drift on layers of their own. Back closes it.
      */
     private static void showBar(Context c, Data d) {
         k = c.getResources().getDisplayMetrics().widthPixels / 1920f;
-        int w = px(1728), h = px(150), bandW = px(150);
-        float r = px(28);
+        int w = px(1728), h = px(80), bandW = px(130);
+        float r = h / 2f;
         FrameLayout win = new FrameLayout(c);
         FrameLayout box = new FrameLayout(c);
         box.setOutlineProvider(new ViewOutlineProvider() {
@@ -267,39 +267,29 @@ final class LineupCard {
         });
         box.setClipToOutline(true);
         box.setBackground(new Streaks(0xFFF6F7FD, 0xFFD3D6F3, 0, px(50), px(30)));
-        // The streaks on a layer of their own, a period wider, drifting one period and again: only the layer moves.
-        int period = px(50) + px(30);
-        View lines = new View(c);
-        lines.setBackground(new Streaks(0, 0, 0x4DFFFFFF, px(50), px(30)));
-        lines.setLayerType(View.LAYER_TYPE_HARDWARE, null);
-        FrameLayout.LayoutParams linesLp = new FrameLayout.LayoutParams(-1, h);
-        linesLp.leftMargin = -period;
-        box.addView(lines, linesLp);
-        android.animation.ObjectAnimator drift = android.animation.ObjectAnimator.ofFloat(lines, View.TRANSLATION_X, 0f, period);
-        drift.setDuration(Math.round(period / (float) px(30) * 1_000));
-        drift.setRepeatCount(android.animation.ValueAnimator.INFINITE);
-        drift.setInterpolator(new LinearInterpolator());
-        drift.setStartDelay(300);
-        drifting.add(drift);
+        box.addView(driftingLines(c, 0x4DFFFFFF, px(50), px(30), h), driftParams(px(50) + px(30), h));
 
         LinearLayout row = new LinearLayout(c);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
+        // The band: its navy, its fine stripes drifting along on a layer of their own, the mark over them.
         FrameLayout band = new FrameLayout(c);
-        band.setBackground(new Streaks(0xFF1B2591, 0xFF0D1360, 0x17FFFFFF, px(14), px(3)));
+        band.setBackground(new Streaks(0xFF1B2591, 0xFF0D1360, 0, px(14), px(3)));
+        band.setClipChildren(true);
+        band.addView(driftingLines(c, 0x17FFFFFF, px(14), px(3), h), driftParams(px(14) + px(3), h));
+        FrameLayout mark = new FrameLayout(c);
+        band.addView(mark, new FrameLayout.LayoutParams(-1, -1));
         row.addView(band, new LinearLayout.LayoutParams(bandW, h));
         row.addView(barLabel(c, d, h), new LinearLayout.LayoutParams(-2, h));
         FrameLayout stage = new FrameLayout(c);
         stage.setClipChildren(true);
         row.addView(stage, new LinearLayout.LayoutParams(0, h, 1f));
         ImageView back = new ImageView(c);
-        back.setImageBitmap(GoalWatchService.backButton(Config.themeString(c, "ok_button", "tcl"), px(26)));
+        back.setImageBitmap(GoalWatchService.backButton(Config.themeString(c, "ok_button", "tcl"), px(24)));
         back.setTag(PopupMotion.BACK_KEY);
-        LinearLayout.LayoutParams bl = new LinearLayout.LayoutParams(px(26), px(26));
-        bl.gravity = Gravity.TOP;
-        bl.topMargin = px(14);
-        bl.leftMargin = px(8);
-        bl.rightMargin = px(18);
+        LinearLayout.LayoutParams bl = new LinearLayout.LayoutParams(px(24), px(24));
+        bl.leftMargin = px(10);
+        bl.rightMargin = px(16);
         row.addView(back, bl);
         box.addView(row, new FrameLayout.LayoutParams(w, h));
         win.addView(box, new FrameLayout.LayoutParams(w, h));
@@ -310,11 +300,12 @@ final class LineupCard {
                         | WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
                 PixelFormat.TRANSLUCENT);
         lp.gravity = Gravity.TOP | Gravity.CENTER_HORIZONTAL;
-        lp.y = px(14);
+        lp.y = px(12);
         lp.setTitle("LineupCard");
         try {
             c.getSystemService(WindowManager.class).addView(win, lp);
         } catch (RuntimeException e) {
+            for (android.animation.Animator a : drifting) a.cancel();
             drifting.clear();
             return;
         }
@@ -322,15 +313,15 @@ final class LineupCard {
         showing = d;
         bar = true;
         ScoreCard.lane(true);
-        drift.start();
+        for (android.animation.Animator a : drifting) a.start();
 
         List<Runnable> pages = new ArrayList<>();
         List<Long> times = new ArrayList<>();
-        pages.add(() -> turn(c, stage, () -> { barBand(c, band, d.leagueLogo, null); stage.addView(barFirst(c, d), full()); }));
+        pages.add(() -> turn(c, stage, () -> { barBand(c, mark, d.leagueLogo, null); stage.addView(barFirst(c, d), full()); }));
         times.add(BAR_FIRST_MS);
         for (Team t : new Team[]{d.home, d.away}) {
             if (t == null || t.players.isEmpty()) continue;
-            pages.add(() -> turn(c, stage, () -> { barBand(c, band, t.crest, t.formation); stage.addView(barTeam(c, t), full()); }));
+            pages.add(() -> turn(c, stage, () -> { barBand(c, mark, t.crest, t.formation); stage.addView(barTeam(c, t), full()); }));
             times.add(BAR_TEAM_MS);
         }
         boolean helper = InputKeyService.running;
@@ -355,20 +346,41 @@ final class LineupCard {
         step.run();
     }
 
-    /** The bar's navy band: a mark big in the middle (the competition's, or the club's crest), its shape under it. */
+    /** Streaks alone on a layer, a period wider than their place, drifting one period to the right and again. */
+    private static View driftingLines(Context c, int colour, int gap, int width, int h) {
+        View lines = new View(c);
+        lines.setBackground(new Streaks(0, 0, colour, gap, width));
+        lines.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+        int period = Math.max(4, gap) + Math.max(1, width);
+        android.animation.ObjectAnimator a = android.animation.ObjectAnimator.ofFloat(lines, View.TRANSLATION_X, 0f, period);
+        a.setDuration(Math.max(900, Math.round(period / (float) px(30) * 1_000)));
+        a.setRepeatCount(android.animation.ValueAnimator.INFINITE);
+        a.setInterpolator(new LinearInterpolator());
+        a.setStartDelay(300);
+        drifting.add(a);
+        return lines;
+    }
+
+    private static FrameLayout.LayoutParams driftParams(int period, int h) {
+        FrameLayout.LayoutParams p = new FrameLayout.LayoutParams(-1, h);
+        p.leftMargin = -period;
+        return p;
+    }
+
+    /** The band's mark: big in the middle (the competition's), or the club's crest with its shape under it. */
     private static void barBand(Context c, FrameLayout band, Bitmap mark, String formation) {
         band.removeAllViews();
         LinearLayout col = new LinearLayout(c);
         col.setOrientation(LinearLayout.VERTICAL);
         col.setGravity(Gravity.CENTER_HORIZONTAL);
         boolean shape = formation != null && !formation.isEmpty();
-        col.addView(crest(c, mark), new LinearLayout.LayoutParams(px(shape ? 70 : 80), px(shape ? 70 : 80)));
+        col.addView(crest(c, mark), new LinearLayout.LayoutParams(px(shape ? 44 : 52), px(shape ? 44 : 52)));
         if (shape) {
-            TextView f = text(c, formation, 17, 0xFFFFFFFF, Typeface.create("sans-serif-condensed", Typeface.BOLD));
+            TextView f = text(c, formation, 13, 0xFFFFFFFF, Typeface.create("sans-serif-condensed", Typeface.BOLD));
             f.setLetterSpacing(0.1f);
             f.setGravity(Gravity.CENTER);
             LinearLayout.LayoutParams fl = new LinearLayout.LayoutParams(-2, -2);
-            fl.topMargin = px(8);
+            fl.topMargin = px(3);
             col.addView(f, fl);
         }
         band.addView(col, new FrameLayout.LayoutParams(-1, -2, Gravity.CENTER));
@@ -381,89 +393,84 @@ final class LineupCard {
         LinearLayout v = new LinearLayout(c);
         v.setOrientation(LinearLayout.VERTICAL);
         v.setGravity(Gravity.CENTER_VERTICAL);
-        v.setPadding(px(18), 0, px(30), 0);
-        v.setBackground(new ScoreCard.Slant(NAVY, px(22), false));
-        v.addView(text(c, "LINE-UPS", 28, 0xFFFFFFFF, ScoreCard.outfit(c, 900)), new LinearLayout.LayoutParams(-2, -2));
+        v.setPadding(px(16), 0, px(26), 0);
+        v.setBackground(new ScoreCard.Slant(NAVY, px(16), false));
+        v.addView(text(c, "LINE-UPS", 23, 0xFFFFFFFF, ScoreCard.outfit(c, 900)), new LinearLayout.LayoutParams(-2, -2));
         if (d.kickoff != null) {
-            TextView s = text(c, "KICK-OFF " + d.kickoff, 12, 0xD9FFFFFF, Typeface.create("sans-serif-condensed", Typeface.BOLD));
+            TextView s = text(c, "KICK-OFF " + d.kickoff, 10, 0xD9FFFFFF, Typeface.create("sans-serif-condensed", Typeface.BOLD));
             s.setLetterSpacing(0.16f);
             LinearLayout.LayoutParams sl = new LinearLayout.LayoutParams(-2, -2);
-            sl.topMargin = px(4);
+            sl.topMargin = px(3);
             v.addView(s, sl);
         }
         return v;
     }
 
     /**
-     * The fixture: the home crest, "Barcelona v Real Madrid", the competition and the ground, "Starts in 14 mins"
-     * (fading in slowly) and the kick-off, the away crest; at the right end the channel and "Press OK to watch".
+     * The fixture: the home crest, "Tottenham Hotspur v Crystal Palace" with the ground, "Starts in 15 mins" and the
+     * kick-off under it (fading in slowly), the away crest; at the right end the channel and "Press OK to watch".
      */
     private static View barFirst(Context c, Data d) {
         LinearLayout page = new LinearLayout(c);
         page.setOrientation(LinearLayout.HORIZONTAL);
         page.setGravity(Gravity.CENTER_VERTICAL);
-        page.setPadding(px(30), 0, px(10), 0);
+        page.setPadding(px(22), 0, 0, 0);
         View home = crest(c, d.home == null ? null : d.home.crest);
-        page.addView(home, new LinearLayout.LayoutParams(px(104), px(104)));
+        page.addView(home, new LinearLayout.LayoutParams(px(56), px(56)));
         LinearLayout mid = new LinearLayout(c);
         mid.setOrientation(LinearLayout.VERTICAL);
         String names = (d.home == null ? "" : d.home.name) + " v " + (d.away == null ? "" : d.away.name);
-        mid.addView(text(c, names, 36, INK, ScoreCard.outfit(c, 800)), new LinearLayout.LayoutParams(-2, -2));
-        StringBuilder where = new StringBuilder();
-        if (d.competition != null && !d.competition.isEmpty()) where.append(d.competition);
-        if (d.venue != null && !d.venue.isEmpty()) where.append(where.length() > 0 ? "  ·  " : "").append(d.venue);
-        if (where.length() > 0) {
-            LinearLayout.LayoutParams wl = new LinearLayout.LayoutParams(-2, -2);
-            wl.topMargin = px(6);
-            mid.addView(text(c, where.toString(), 19, INK_SOFT, ScoreCard.outfit(c, 500)), wl);
-        }
+        mid.addView(text(c, names, 25, INK, ScoreCard.outfit(c, 800)), new LinearLayout.LayoutParams(-2, -2));
+        StringBuilder under = new StringBuilder();
+        if (d.venue != null && !d.venue.isEmpty()) under.append(d.venue);
         String starts = startsIn(d.kickoffAt);
-        if (starts != null) {
-            TextView when = text(c, starts + (d.kickoff != null ? "  ·  Kick-off " + d.kickoff : ""), 22, INK, ScoreCard.outfit(c, 700));
+        if (starts != null) under.append(under.length() > 0 ? "  ·  " : "").append(starts);
+        if (d.kickoff != null) under.append(under.length() > 0 ? "  ·  " : "").append("Kick-off ").append(d.kickoff);
+        if (under.length() > 0) {
+            TextView when = text(c, under.toString(), 16, INK_SOFT, ScoreCard.outfit(c, 600));
             LinearLayout.LayoutParams kl = new LinearLayout.LayoutParams(-2, -2);
-            kl.topMargin = px(6);
+            kl.topMargin = px(3);
             mid.addView(when, kl);
             when.setAlpha(0f);
             when.animate().alpha(1f).setStartDelay(950).setDuration(1_400).setInterpolator(new DecelerateInterpolator(1.2f)).withLayer().start();
         }
         LinearLayout.LayoutParams ml = new LinearLayout.LayoutParams(-2, -2);
-        ml.leftMargin = ml.rightMargin = px(30);
+        ml.leftMargin = ml.rightMargin = px(20);
         page.addView(mid, ml);
         View away = crest(c, d.away == null ? null : d.away.crest);
-        page.addView(away, new LinearLayout.LayoutParams(px(104), px(104)));
+        page.addView(away, new LinearLayout.LayoutParams(px(56), px(56)));
         page.addView(new View(c), new LinearLayout.LayoutParams(0, 1, 1f));
         // The channel on the darkest ground, as on the score bars: its logo and "Press OK to watch".
-        View ch = channel(c, d, 30);
+        View ch = channel(c, d, 20);
         if (ch != null || d.watch != null) {
             LinearLayout foot = new LinearLayout(c);
-            foot.setOrientation(LinearLayout.VERTICAL);
-            foot.setGravity(Gravity.CENTER);
-            foot.setPadding(px(34), px(16), px(28), px(16));
-            foot.setBackground(new ScoreCard.Slant(0xFF0E0F14, px(22), true));
-            if (ch != null) foot.addView(ch, new LinearLayout.LayoutParams(-2, px(30)));
+            foot.setOrientation(LinearLayout.HORIZONTAL);
+            foot.setGravity(Gravity.CENTER_VERTICAL);
+            foot.setPadding(px(30), 0, px(18), 0);
+            foot.setBackground(new ScoreCard.Slant(0xFF0E0F14, px(16), true));
+            if (ch != null) foot.addView(ch, new LinearLayout.LayoutParams(-2, px(20)));
             if (d.watch != null) {
-                LinearLayout.LayoutParams ol = new LinearLayout.LayoutParams(-2, px(32));
-                ol.topMargin = px(ch != null ? 12 : 0);
-                foot.addView(okPill(c, 15, 24), ol);
+                LinearLayout.LayoutParams ol = new LinearLayout.LayoutParams(-2, px(26));
+                ol.leftMargin = px(ch != null ? 14 : 0);
+                foot.addView(okPill(c, 12, 19), ol);
             }
             page.addView(foot, new LinearLayout.LayoutParams(-2, -1));
         }
-        home.setTranslationX(-px(50)); away.setTranslationX(px(50));
+        home.setTranslationX(-px(40)); away.setTranslationX(px(40));
         home.setAlpha(0f); away.setAlpha(0f); mid.setAlpha(0f);
-        home.animate().translationX(0).alpha(1f).setStartDelay(200).setDuration(480).setInterpolator(new DecelerateInterpolator(2.2f)).withLayer().start();
-        away.animate().translationX(0).alpha(1f).setStartDelay(200).setDuration(480).setInterpolator(new DecelerateInterpolator(2.2f)).withLayer().start();
-        mid.animate().alpha(1f).setStartDelay(420).setDuration(420).withLayer().start();
+        home.animate().translationX(0).alpha(1f).setStartDelay(200).setDuration(460).setInterpolator(new DecelerateInterpolator(2.2f)).withLayer().start();
+        away.animate().translationX(0).alpha(1f).setStartDelay(200).setDuration(460).setInterpolator(new DecelerateInterpolator(2.2f)).withLayer().start();
+        mid.animate().alpha(1f).setStartDelay(400).setDuration(400).withLayer().start();
         return page;
     }
 
-    /** One eleven across the bar, by its lines (each with its little pitch icon and name over it), a thin rule between. */
+    /** One eleven across the bar, its lines (keeper, defence, midfield, attack) apart by a thin rule. */
     private static View barTeam(Context c, Team t) {
         LinearLayout page = new LinearLayout(c);
         page.setOrientation(LinearLayout.HORIZONTAL);
-        page.setPadding(px(14), px(10), px(6), px(8));
+        page.setPadding(px(10), px(3), px(4), px(3));
         List<String> captions = new ArrayList<>();
         List<List<Player>> lines = byLines(t, captions);
-        // The keeper with the defence's group is too narrow alone for his caption: every group gets room for one.
         int n = 0;
         for (int i = 0; i < lines.size(); i++) {
             List<Player> ps = lines.get(i);
@@ -471,43 +478,21 @@ final class LineupCard {
                 View rule = new View(c);
                 rule.setBackgroundColor(0x33151A63);
                 LinearLayout.LayoutParams rl = new LinearLayout.LayoutParams(Math.max(1, px(2)), -1);
-                rl.leftMargin = rl.rightMargin = px(6);
-                rl.topMargin = px(6);
-                rl.bottomMargin = px(6);
+                rl.leftMargin = rl.rightMargin = px(5);
+                rl.topMargin = rl.bottomMargin = px(8);
                 page.addView(rule, rl);
             }
             LinearLayout group = new LinearLayout(c);
-            group.setOrientation(LinearLayout.VERTICAL);
-            LinearLayout head = new LinearLayout(c);
-            head.setGravity(Gravity.CENTER);
-            String caption = captions.get(i);
-            // The little pitch is drawn in white for the navy band: here it sits on a navy chip of its own.
-            ImageView icon = new ImageView(c);
-            icon.setImageBitmap(lineIcon(caption, px(11), px(15)));
-            GradientDrawable chip = new GradientDrawable();
-            chip.setColor(NAVY);
-            chip.setCornerRadius(px(3));
-            icon.setBackground(chip);
-            icon.setPadding(px(2), px(2), px(2), px(2));
-            head.addView(icon, new LinearLayout.LayoutParams(px(15), px(19)));
-            TextView cap = text(c, caption.replace("\n", " "), 12, INK_SOFT, Typeface.create("sans-serif-condensed", Typeface.BOLD));
-            cap.setLetterSpacing(0.14f);
-            LinearLayout.LayoutParams cl = new LinearLayout.LayoutParams(-2, -2);
-            cl.leftMargin = px(6);
-            head.addView(cap, cl);
-            group.addView(head, new LinearLayout.LayoutParams(-1, px(18)));
-            LinearLayout people = new LinearLayout(c);
-            people.setOrientation(LinearLayout.HORIZONTAL);
+            group.setOrientation(LinearLayout.HORIZONTAL);
             for (Player p : ps) {
                 View cell = barPlayer(c, t, p);
-                people.addView(cell, new LinearLayout.LayoutParams(0, -1, 1f));
+                group.addView(cell, new LinearLayout.LayoutParams(0, -1, 1f));
                 cell.setAlpha(0f);
-                cell.setTranslationX(px(36));
-                cell.animate().alpha(1f).translationX(0f).setStartDelay(120L + 60L * n++).setDuration(380)
+                cell.setTranslationX(px(30));
+                cell.animate().alpha(1f).translationX(0f).setStartDelay(120L + 55L * n++).setDuration(360)
                         .setInterpolator(new DecelerateInterpolator(2.2f)).withLayer().start();
             }
-            group.addView(people, new LinearLayout.LayoutParams(-1, 0, 1f));
-            page.addView(group, new LinearLayout.LayoutParams(0, -1, Math.max(ps.size(), 1.6f)));
+            page.addView(group, new LinearLayout.LayoutParams(0, -1, ps.size()));
         }
         return page;
     }
@@ -524,23 +509,22 @@ final class LineupCard {
         ImageView photo = new ImageView(c);
         photo.setImageBitmap(sharp(shown));
         boolean upright = shown != null && shown.getHeight() > shown.getWidth() * 1.05f;
-        int pw = upright ? px(72) : px(84), ph = upright && shown != null ? Math.round(pw * shown.getHeight() / (float) shown.getWidth()) : px(84);
+        int pw = upright ? px(48) : px(58), ph = upright && shown != null ? Math.round(pw * shown.getHeight() / (float) shown.getWidth()) : px(58);
         photo.setScaleType(upright ? ImageView.ScaleType.FIT_XY : ImageView.ScaleType.FIT_START);
         frame.addView(photo, new FrameLayout.LayoutParams(pw, ph, Gravity.TOP | Gravity.CENTER_HORIZONTAL));
-        TextView num = text(c, p.number, 17, NAVY, Typeface.create("sans-serif-black", Typeface.NORMAL));
+        TextView num = text(c, p.number, 13, NAVY, Typeface.create("sans-serif-black", Typeface.NORMAL));
         FrameLayout.LayoutParams nl = new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.START);
-        nl.leftMargin = px(2);
+        nl.leftMargin = px(4);
+        nl.topMargin = px(2);
         frame.addView(num, nl);
         col.addView(frame, new LinearLayout.LayoutParams(-1, 0, 1f));
-        TextView last = text(c, p.last, 16, INK, ScoreCard.outfit(c, 700));
+        TextView last = text(c, p.last, 13, INK, ScoreCard.outfit(c, 700));
         last.setGravity(Gravity.CENTER);
         last.setSingleLine(false);
         last.setMaxLines(1);
         last.setEllipsize(null);
-        last.setAutoSizeTextTypeUniformWithConfiguration(px(9), px(16), 1, TypedValue.COMPLEX_UNIT_PX);
-        LinearLayout.LayoutParams ll = new LinearLayout.LayoutParams(-1, px(21));
-        ll.topMargin = px(2);
-        col.addView(last, ll);
+        last.setAutoSizeTextTypeUniformWithConfiguration(px(8), px(13), 1, TypedValue.COMPLEX_UNIT_PX);
+        col.addView(last, new LinearLayout.LayoutParams(-1, px(16)));
         return col;
     }
 

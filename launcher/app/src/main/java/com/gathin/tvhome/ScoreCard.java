@@ -236,7 +236,7 @@ final class ScoreCard {
         box.setClipToOutline(true);
         // No shadow: over a bright picture it shows as a dark rim round the card.
         box.setBackground(stageFill(d, px(40), px(26)));
-        box.addView(drifting(c, d, px(40), px(26), h), driftParams(px(40), px(26), h));
+        if (!d.dark) box.addView(drifting(c, d, px(40), px(26), h), driftParams(px(40), px(26), h));
         box.addView(card, new FrameLayout.LayoutParams(-2, h));
         FrameLayout win = new FrameLayout(c);
         int m = px(10);
@@ -376,7 +376,7 @@ final class ScoreCard {
         });
         box.setClipToOutline(true);
         box.setBackground(stageFill(d, px(50), px(30)));
-        box.addView(drifting(c, d, px(50), px(30), h), driftParams(px(50), px(30), h));
+        if (!d.dark) box.addView(drifting(c, d, px(50), px(30), h), driftParams(px(50), px(30), h));
         box.addView(bar, new FrameLayout.LayoutParams(w, h));
         FrameLayout win = new FrameLayout(c);
         win.addView(box, new FrameLayout.LayoutParams(w, h));
@@ -471,9 +471,9 @@ final class ScoreCard {
         return v;
     }
 
-    /** The stage's ground without its streaks: pale, or charcoal for F1 and fights. */
+    /** The stage's ground without its streaks: pale; plain black for F1 and fights (no streaks, nothing moving). */
     private static Drawable stageFill(Data d, int gap, int width) {
-        return d.dark ? new Streaks(0xFF2A2B33, 0xFF16171D, 0, gap, width) : new Streaks(0xFFF6F7FD, 0xFFD3D6F3, 0, gap, width);
+        return d.dark ? new Streaks(0xFF141519, 0xFF0B0C0F, 0, gap, width) : new Streaks(0xFFF6F7FD, 0xFFD3D6F3, 0, gap, width);
     }
 
     /**
@@ -779,9 +779,9 @@ final class ScoreCard {
             later.add(tick);
             main.postDelayed(tick, 800L);
         }
-        // Every pop-up: the band's stripes drift along, slightly, while it shows.
+        // Every pop-up but F1's and the fights' (plain black, still): the band's stripes drift along, slightly.
         View lines = box.findViewWithTag("stripes");
-        if (lines != null) {
+        if (lines != null && !d.dark) {
             android.animation.ObjectAnimator drift = android.animation.ObjectAnimator.ofFloat(lines, View.TRANSLATION_X,
                     -STRIPE_PERIOD_PX(), 0f);
             drift.setDuration(1_400);

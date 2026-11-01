@@ -833,8 +833,16 @@ public class GoalWatchService extends Service {
         skyFootball(g, "goal", "Cole Palmer", "64'", "home", "pen");
         skyFootball(g, "red", "Lisandro Martínez", "63'", "away", "");
         skyIncident(g, new String[]{"t4", "📺  VAR", "", "62'"});
-        ScoresTicker.Game ft = g;
-        main.postDelayed(() -> { ft.state = 2; skyFootball(ft, "ft", "", "", "", "ft"); }, 500);
+        // Full time on a copy: the cards above are still being made from g, live (with its channel), on the io thread.
+        ScoresTicker.Game ft = new ScoresTicker.Game();
+        ft.id = g.id; ft.slug = g.slug; ft.league = g.league; ft.state = 2;
+        ft.home = g.home; ft.away = g.away; ft.homeName = g.homeName; ft.awayName = g.awayName;
+        ft.homeLogo = g.homeLogo; ft.awayLogo = g.awayLogo; ft.leagueLogo = g.leagueLogo;
+        ft.homeColor = g.homeColor; ft.awayColor = g.awayColor; ft.homeScore = g.homeScore; ft.awayScore = g.awayScore;
+        ft.kickoff = g.kickoff; ft.tvAt = g.tvAt;
+        ft.goals.addAll(g.goals);
+        ft.reds.addAll(g.reds);
+        main.postDelayed(() -> skyFootball(ft, "ft", "", "", "", "ft"), 500);
         List<String> top = Arrays.asList("Norris", "Verstappen", "Piastri");
         List<String> logos = Arrays.asList(F1Results.logo("mclaren"), F1Results.logo("red_bull"), F1Results.logo("mclaren"));
         skyF1("LAP 34", null, "Norris", logos.get(0), "Norris leads", "P2 Verstappen · P3 Piastri", "P1",
@@ -1228,6 +1236,16 @@ public class GoalWatchService extends Service {
             g.kickoff = System.currentTimeMillis() + 15 * 60_000L;
             io.execute(() -> {
                 ScoreCard.Data d = kickoffCard(g);
+                // A made-up match is in no guide: on Sky Sports Main Event, as the reminder test is, to show its channel.
+                if (d.watch == null) {
+                    String logoUrl = ScoresTicker.skyLogo("1301", null);
+                    int px = Math.round(96 * getResources().getDisplayMetrics().density);
+                    android.graphics.Bitmap logo = logoUrl == null ? null : HomeV2.trim(ScoresTicker.cachedLogo(this, logoUrl, px));
+                    List<String> names = new ArrayList<>(Arrays.asList("Sky Sports Main Event"));
+                    d.channelLogo = logo;
+                    d.channel = "Sky Sports Main Event";
+                    d.watch = () -> AppSearchService.tune(this, getString(R.string.scores_open_package), names, logo);
+                }
                 main.post(() -> ScoreCard.show(this, d));
             });
         }
