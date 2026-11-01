@@ -677,9 +677,11 @@ final class LiveCentre {
         } else if (v instanceof TextView) {
             TextView t = (TextView) v;
             android.text.Layout l = t.getLayout();
-            if (l == null || (t.getGravity() & Gravity.HORIZONTAL_GRAVITY_MASK) != Gravity.CENTER_HORIZONTAL) return;
+            if (l == null) return;
             int space = t.getWidth() - t.getCompoundPaddingLeft() - t.getCompoundPaddingRight();
-            t.scrollTo((int) Math.floor((l.getLineLeft(0) + l.getLineRight(0)) / 2f - space / 2f), 0);
+            int along = Gravity.getAbsoluteGravity(t.getGravity(), View.LAYOUT_DIRECTION_LTR) & Gravity.HORIZONTAL_GRAVITY_MASK;
+            if (along == Gravity.CENTER_HORIZONTAL) t.scrollTo((int) Math.floor((l.getLineLeft(0) + l.getLineRight(0)) / 2f - space / 2f), 0);
+            else if (along == Gravity.RIGHT) t.scrollTo((int) Math.ceil(l.getLineRight(0) - space), 0);
         }
     }
 
@@ -823,11 +825,20 @@ final class LiveCentre {
                 org.json.JSONArray st = t.optJSONArray("statistics");
                 for (int k = 0; st != null && k < st.length(); k++) m.put(st.getJSONObject(k).optString("name"), st.getJSONObject(k).optString("displayValue"));
             }
+            // Who scored, the player of the match, both formations and the win chances before kick-off.
+            String[] goals = g.state != 1 ? goalsPage(g, d.optJSONArray("keyEvents")) : null;
+            String[] star = g.state != 1 ? starPage(g, d.optJSONArray("rosters")) : null;
+            String[] shapes = formations(g, d.optJSONArray("rosters"));
+            String[] odds = winChance(d.optJSONArray("odds"));
+            if (goals != null) pages.add(goals);
             if (g.state != 1 && h.containsKey("possessionPct")) {
                 pages.add(new String[]{"POSSESSION", pct(h.get("possessionPct")), pct(a.get("possessionPct")), "bar"});
                 if (h.containsKey("totalShots")) pages.add(new String[]{"SHOTS (ON TARGET)", h.get("totalShots") + " (" + h.getOrDefault("shotsOnTarget", "0") + ")",
                         a.get("totalShots") + " (" + a.getOrDefault("shotsOnTarget", "0") + ")", "bar"});
+                if (star != null) pages.add(star);
+                if (odds != null) pages.add(odds);
                 if (h.containsKey("wonCorners")) pages.add(new String[]{"CORNERS", h.get("wonCorners"), a.get("wonCorners"), "bar"});
+                if (shapes != null) pages.add(shapes);
                 if (h.containsKey("accuratePasses") && h.containsKey("totalPasses"))
                     pages.add(new String[]{"PASS ACCURACY", passes(h), passes(a), "bar"});
                 if (h.containsKey("foulsCommitted")) pages.add(new String[]{"FOULS", h.get("foulsCommitted"), a.get("foulsCommitted"), "bar"});
@@ -835,6 +846,18 @@ final class LiveCentre {
                 if (cards > 0) pages.add(new String[]{"CARDS (RED)", h.get("yellowCards") + " (" + h.getOrDefault("redCards", "0") + ")",
                         a.get("yellowCards") + " (" + a.getOrDefault("redCards", "0") + ")", "bar"});
                 if (h.containsKey("saves")) pages.add(new String[]{"SAVES", h.get("saves"), a.get("saves"), "bar"});
+                // The detailed stats.
+                if (h.containsKey("offsides")) pages.add(new String[]{"OFFSIDES", h.get("offsides"), a.get("offsides"), "bar"});
+                if (h.containsKey("totalTackles")) pages.add(new String[]{"TACKLES WON", of(h, "effectiveTackles", "totalTackles"), of(a, "effectiveTackles", "totalTackles"), "bar"});
+                if (h.containsKey("interceptions")) pages.add(new String[]{"INTERCEPTIONS", h.get("interceptions"), a.get("interceptions"), "bar"});
+                if (h.containsKey("totalCrosses")) pages.add(new String[]{"CROSSES COMPLETED", of(h, "accurateCrosses", "totalCrosses"), of(a, "accurateCrosses", "totalCrosses"), "bar"});
+                if (h.containsKey("totalLongBalls")) pages.add(new String[]{"LONG BALLS COMPLETED", of(h, "accurateLongBalls", "totalLongBalls"), of(a, "accurateLongBalls", "totalLongBalls"), "bar"});
+                if (h.containsKey("totalClearance")) pages.add(new String[]{"CLEARANCES", h.get("totalClearance"), a.get("totalClearance"), "bar"});
+                if (h.containsKey("blockedShots")) pages.add(new String[]{"BLOCKED SHOTS", h.get("blockedShots"), a.get("blockedShots"), "bar"});
+            } else {
+                if (odds != null) pages.add(odds);
+                if (shapes != null) pages.add(shapes);
+                if (star != null) pages.add(star);
             }
             // Form: each side's last five, oldest first as ESPN lists them.
             org.json.JSONArray five = d.optJSONArray("lastFiveGames");
@@ -879,6 +902,121 @@ final class LiveCentre {
     private static String passes(Map<String, String> m) {
         int ok = intOf(m.get("accuratePasses")), all = intOf(m.get("totalPasses"));
         return all > 0 ? Math.round(ok * 100f / all) + "%" : "";
+    }
+
+    /** "15/22": the ones that came off, of all tried. */
+    private static String of(Map<String, String> m, String done, String tried) {
+        return intOf(m.get(done)) + "/" + intOf(m.get(tried));
+    }
+
+    /**
+     * Each side's scorers in the order they scored, a scorer's goals together: "Ünal 68' · Satriano 73'",
+     * "Mbappé 11' pen, 54'". Null before a goal.
+     */
+    private static String[] goalsPage(ScoresTicker.Game g, org.json.JSONArray events) throws org.json.JSONException {
+        Map<String, List<String>> home = new java.util.LinkedHashMap<>(), away = new java.util.LinkedHashMap<>();
+        for (int i = 0; events != null && i < events.length(); i++) {
+            org.json.JSONObject e = events.getJSONObject(i);
+            if (!e.optBoolean("scoringPlay")) continue;
+            String type = e.optJSONObject("type") == null ? "" : e.getJSONObject("type").optString("text").toLowerCase(Locale.ROOT);
+            if (type.contains("shootout")) continue;
+            org.json.JSONArray ps = e.optJSONArray("participants");
+            org.json.JSONObject who = ps == null || ps.length() == 0 ? null : ps.getJSONObject(0).optJSONObject("athlete");
+            String name = who == null ? "" : GoalWatchService.surname(who.optString("displayName"));
+            if (name.isEmpty()) continue;
+            String at = e.optJSONObject("clock") == null ? "" : e.getJSONObject("clock").optString("displayValue").replace("'+", "+");
+            if (type.contains("penalty")) at += " pen";
+            else if (type.contains("own goal")) at += " og";
+            String team = e.optJSONObject("team") == null ? "" : e.getJSONObject("team").optString("id");
+            (team.equals(g.awayId) ? away : home).computeIfAbsent(name, x -> new ArrayList<>()).add(at);
+        }
+        if (home.isEmpty() && away.isEmpty()) return null;
+        return new String[]{"GOALS", scorers(home), scorers(away), "goals"};
+    }
+
+    private static String scorers(Map<String, List<String>> m) {
+        StringBuilder b = new StringBuilder();
+        for (Map.Entry<String, List<String>> e : m.entrySet()) {
+            if (b.length() > 0) b.append("  ·  ");
+            b.append(e.getKey()).append(' ').append(TextUtils.join(", ", e.getValue()));
+        }
+        return b.toString();
+    }
+
+    /**
+     * The player of the match so far, from both line-ups' own figures: goals count most, then assists, shots on
+     * target, saves and fouls won, less cards and own goals. {label, name, what he has done, "player", his crest}.
+     * Null until someone has done enough (a goal, or a couple of shots on target, or a few saves).
+     */
+    private static String[] starPage(ScoresTicker.Game g, org.json.JSONArray rosters) throws org.json.JSONException {
+        double best = 3.99;
+        String[] pick = null;
+        for (int r = 0; rosters != null && r < rosters.length(); r++) {
+            org.json.JSONObject side = rosters.getJSONObject(r);
+            boolean home = "home".equals(side.optString("homeAway"));
+            org.json.JSONArray players = side.optJSONArray("roster");
+            for (int i = 0; players != null && i < players.length(); i++) {
+                org.json.JSONObject pl = players.getJSONObject(i);
+                Map<String, Double> v = new HashMap<>();
+                org.json.JSONArray st = pl.optJSONArray("stats");
+                for (int k = 0; st != null && k < st.length(); k++) v.put(st.getJSONObject(k).optString("name"), st.getJSONObject(k).optDouble("value", 0));
+                double goals = v.getOrDefault("totalGoals", 0d), assists = v.getOrDefault("goalAssists", 0d);
+                double onTarget = v.getOrDefault("shotsOnTarget", 0d), shots = v.getOrDefault("totalShots", 0d), saves = v.getOrDefault("saves", 0d);
+                double score = 10 * goals + 6 * assists + 2 * onTarget + 0.5 * Math.max(0, shots - onTarget) + 1.5 * saves
+                        + 0.3 * v.getOrDefault("foulsSuffered", 0d) - 2 * v.getOrDefault("yellowCards", 0d)
+                        - 6 * v.getOrDefault("redCards", 0d) - 6 * v.getOrDefault("ownGoals", 0d);
+                if (score <= best) continue;
+                org.json.JSONObject who = pl.optJSONObject("athlete");
+                if (who == null) continue;
+                List<String> did = new ArrayList<>();
+                if (goals > 0) did.add(count((int) goals, "goal"));
+                if (assists > 0) did.add(count((int) assists, "assist"));
+                if (goals == 0 && onTarget > 0) did.add(count((int) onTarget, "shot") + " on target");
+                if (saves > 0) did.add(count((int) saves, "save"));
+                best = score;
+                pick = new String[]{"PLAYER OF THE MATCH", who.optString("displayName"), TextUtils.join("  ·  ", did), "player",
+                        home ? g.homeLogo : g.awayLogo};
+            }
+        }
+        return pick;
+    }
+
+    private static String count(int n, String what) {
+        return n + " " + what + (n == 1 ? "" : "s");
+    }
+
+    /** Both sides' formations once the line-ups are out ("4-2-3-1"). */
+    private static String[] formations(ScoresTicker.Game g, org.json.JSONArray rosters) throws org.json.JSONException {
+        String h = null, a = null;
+        for (int r = 0; rosters != null && r < rosters.length(); r++) {
+            org.json.JSONObject side = rosters.getJSONObject(r);
+            String f = side.optString("formation", "");
+            if (f.isEmpty()) continue;
+            if ("home".equals(side.optString("homeAway"))) h = f; else a = f;
+        }
+        return h == null || a == null ? null : new String[]{"FORMATIONS", h, a, "text"};
+    }
+
+    /**
+     * Each side's chance of winning, and of a draw, as the odds before kick-off put them (each price as a chance, the
+     * three scaled to make 100). {label, home, away, "three", draw}. Null without prices.
+     */
+    private static String[] winChance(org.json.JSONArray odds) {
+        org.json.JSONObject o = odds == null || odds.length() == 0 ? null : odds.optJSONObject(0);
+        if (o == null) return null;
+        double h = chance(o.optJSONObject("homeTeamOdds")), a = chance(o.optJSONObject("awayTeamOdds")), d = chance(o.optJSONObject("drawOdds"));
+        if (h <= 0 || a <= 0 || d <= 0) return null;
+        double all = h + a + d;
+        int ph = (int) Math.round(100 * h / all), pa = (int) Math.round(100 * a / all);
+        return new String[]{"WIN CHANCE  ·  BEFORE KICK-OFF", ph + "%", pa + "%", "three", Math.max(0, 100 - ph - pa) + "%"};
+    }
+
+    /** A price (American odds, +260 or -500) as the chance it stands for. */
+    private static double chance(org.json.JSONObject x) {
+        if (x == null || !x.has("moneyLine")) return 0;
+        double m = x.optDouble("moneyLine", 0);
+        if (m == 0 || Double.isNaN(m)) return 0;
+        return m > 0 ? 100 / (m + 100) : -m / (-m + 100);
     }
 
     private static String ordinal(int n) {
@@ -975,10 +1113,61 @@ final class LiveCentre {
             LinearLayout.LayoutParams rl = new LinearLayout.LayoutParams(-1, -2);
             rl.topMargin = px(8);
             page.addView(row, rl);
+            int room = px(STATS_W) - px(44);
             if ("venue".equals(p[3])) {
-                TextView v = text(c, p[1], 26, INK, ScoreCard.outfit(c, 700));
+                // The ground's name as large as the panel takes it: 34 for "Anfield", smaller for a long one.
+                TextView v = text(c, p[1], 34, INK, ScoreCard.outfit(c, 800));
                 v.setGravity(Gravity.CENTER);
+                fit(v, 34, 20, room);
                 row.addView(v, new LinearLayout.LayoutParams(-1, -2));
+            } else if ("goals".equals(p[3])) {
+                // Each side's scorers in as much of the row as they need: a side yet to score leaves its room to the other.
+                TextView hs = text(c, p[1].isEmpty() ? "–" : p[1], 24, INK, ScoreCard.outfit(c, 700));
+                TextView as = text(c, p[2].isEmpty() ? "–" : p[2], 24, INK, ScoreCard.outfit(c, 700));
+                as.setGravity(Gravity.END);
+                int avail = room - px(18);
+                float wh = hs.getPaint().measureText(hs.getText().toString()), wa = as.getPaint().measureText(as.getText().toString());
+                int bh = wh + wa <= avail ? (int) Math.ceil(wh) : Math.round(avail * wh / (wh + wa));
+                int ba = avail - bh;
+                fit(hs, 24, 14, bh);
+                fit(as, 24, 14, ba);
+                row.addView(hs, new LinearLayout.LayoutParams(bh, -2));
+                row.addView(new View(c), new LinearLayout.LayoutParams(px(18), 1));
+                row.addView(as, new LinearLayout.LayoutParams(ba, -2));
+            } else if ("player".equals(p[3])) {
+                ImageView crest = new ImageView(c);
+                crest.setScaleType(ImageView.ScaleType.FIT_CENTER);
+                loadCrest(crest, p.length > 4 ? p[4] : null);
+                row.addView(crest, new LinearLayout.LayoutParams(px(46), px(46)));
+                LinearLayout who = new LinearLayout(c);
+                who.setOrientation(LinearLayout.VERTICAL);
+                TextView name = text(c, p[1], 30, INK, ScoreCard.outfit(c, 800));
+                fit(name, 30, 18, room - px(60));
+                who.addView(name);
+                TextView did = text(c, p[2], 18, STAT_LABEL, ScoreCard.outfit(c, 600));
+                fit(did, 18, 13, room - px(60));
+                LinearLayout.LayoutParams dl = new LinearLayout.LayoutParams(-2, -2);
+                dl.topMargin = px(2);
+                who.addView(did, dl);
+                LinearLayout.LayoutParams wl = new LinearLayout.LayoutParams(0, -2, 1f);
+                wl.leftMargin = px(14);
+                row.addView(who, wl);
+            } else if ("three".equals(p[3])) {
+                row.addView(text(c, p[1], 34, INK, ScoreCard.outfit(c, 800)), new LinearLayout.LayoutParams(-2, -2));
+                LinearLayout mid = new LinearLayout(c);
+                mid.setOrientation(LinearLayout.VERTICAL);
+                mid.setGravity(Gravity.CENTER_HORIZONTAL);
+                TextView draw = text(c, "DRAW " + (p.length > 4 ? p[4] : ""), 14, STAT_LABEL, ScoreCard.outfit(c, 800));
+                draw.setGravity(Gravity.CENTER);
+                mid.addView(draw);
+                LinearLayout.LayoutParams bl3 = new LinearLayout.LayoutParams(-1, px(10));
+                bl3.topMargin = px(5);
+                mid.addView(split3(c, p[1], p.length > 4 ? p[4] : "0", p[2]), bl3);
+                LinearLayout.LayoutParams ml3 = new LinearLayout.LayoutParams(0, -2, 1f);
+                ml3.leftMargin = px(16);
+                ml3.rightMargin = px(16);
+                row.addView(mid, ml3);
+                row.addView(text(c, p[2], 34, INK, ScoreCard.outfit(c, 800)), new LinearLayout.LayoutParams(-2, -2));
             } else if ("form".equals(p[3])) {
                 row.addView(form(c, p[1]), new LinearLayout.LayoutParams(0, -2, 1f));
                 row.addView(new View(c), new LinearLayout.LayoutParams(px(18), 1));
@@ -1018,6 +1207,37 @@ final class LiveCentre {
         bar.addView(gap, new LinearLayout.LayoutParams(px(3), -1));
         bar.addView(r, new LinearLayout.LayoutParams(0, -1, Math.max(0.02f, 1f - share)));
         return bar;
+    }
+
+    /** Win, draw, win as one bar: the favourite's share in the scoreboard's red, the other paler, the draw grey. */
+    private static View split3(Context c, String hv, String dv, String av) {
+        float h = leadingNumber(hv), d = leadingNumber(dv), a = leadingNumber(av);
+        LinearLayout bar = new LinearLayout(c);
+        bar.setClipToOutline(true);
+        bar.setOutlineProvider(round(px(5)));
+        float[] parts = {h, d, a};
+        int[] colours = {h >= a ? 0xFFE3283A : 0xFFF2A3AB, 0xFFC4C8DC, a > h ? 0xFFE3283A : 0xFFF2A3AB};
+        for (int i = 0; i < 3; i++) {
+            if (i > 0) {
+                View gap = new View(c);
+                gap.setBackgroundColor(0xFFF4F5FA);
+                bar.addView(gap, new LinearLayout.LayoutParams(px(3), -1));
+            }
+            View v = new View(c);
+            v.setBackgroundColor(colours[i]);
+            bar.addView(v, new LinearLayout.LayoutParams(0, -1, Math.max(0.02f, parts[i])));
+        }
+        return bar;
+    }
+
+    /** The text at up to maxPx (design pixels), smaller as needed, down to minPx, to fit in widthPx on one line. */
+    private static void fit(TextView v, float maxPx, float minPx, int widthPx) {
+        android.graphics.Paint pt = new android.graphics.Paint(v.getPaint());
+        float size = maxPx * k;
+        pt.setTextSize(size);
+        float w = pt.measureText(v.getText().toString());
+        if (w > widthPx && w > 0) size = Math.max(minPx * k, size * widthPx / w * 0.98f);
+        v.setTextSize(TypedValue.COMPLEX_UNIT_PX, size);
     }
 
     private static float leadingNumber(String v) {
