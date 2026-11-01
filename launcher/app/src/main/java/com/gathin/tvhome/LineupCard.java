@@ -895,24 +895,34 @@ final class LineupCard {
         FrameLayout.LayoutParams fl = new FrameLayout.LayoutParams(-1, -1);
         fl.setMargins(px(8), px(8), px(8), px(30));
         page.addView(field, fl);
-        // Under the pitch, clear of every name: the channel's logo, and the OK button.
+        // Under the pitch, clear of every name, in one line: the kick-off ("Kick-off 01:43 · Starts in 14 mins") and,
+        // where a guide lists the game, its channel's logo and "Press OK to watch".
+        LinearLayout foot = new LinearLayout(c);
+        foot.setOrientation(LinearLayout.HORIZONTAL);
+        foot.setGravity(Gravity.CENTER_VERTICAL);
+        String starts = startsIn(d.kickoffAt);
+        StringBuilder when = new StringBuilder();
+        if (d.kickoff != null) when.append("Kick-off ").append(d.kickoff);
+        if (starts != null && !starts.startsWith("Kick-off")) when.append(when.length() > 0 ? "  ·  " : "").append(starts);
+        else if (starts != null && when.length() == 0) when.append(starts);
+        if (when.length() > 0) foot.addView(text(c, when.toString(), 12.5f, 0xFFFFFFFF, inter(c, R.font.inter_semibold)), new LinearLayout.LayoutParams(-2, -2));
         View logo = channel(c, d, 15);
         if (logo != null) {
-            FrameLayout.LayoutParams ll = new FrameLayout.LayoutParams(-2, px(15), Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
-            ll.bottomMargin = px(8);
-            page.addView(logo, ll);
+            LinearLayout.LayoutParams ll = new LinearLayout.LayoutParams(-2, px(15));
+            ll.leftMargin = px(when.length() > 0 ? 16 : 0);
+            foot.addView(logo, ll);
         }
         if (d.watch != null) {
-            TextView ok = text(c, "OK", 8, 0xFF111214, Typeface.create("sans-serif-black", Typeface.NORMAL));
-            ok.setGravity(Gravity.CENTER);
-            GradientDrawable disc = new GradientDrawable();
-            disc.setShape(GradientDrawable.OVAL);
-            disc.setColor(0xFFFFFFFF);
-            ok.setBackground(disc);
-            FrameLayout.LayoutParams ol = new FrameLayout.LayoutParams(px(20), px(20), Gravity.BOTTOM | Gravity.END);
-            ol.bottomMargin = px(5);
-            ol.rightMargin = px(12);
-            page.addView(ok, ol);
+            LinearLayout.LayoutParams ol = new LinearLayout.LayoutParams(-2, px(20));
+            ol.leftMargin = px(10);
+            foot.addView(okPill(c, 10.5f, 15), ol);
+        }
+        if (foot.getChildCount() > 0) {
+            FrameLayout.LayoutParams fl2 = new FrameLayout.LayoutParams(-2, px(22), Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
+            fl2.bottomMargin = px(4);
+            page.addView(foot, fl2);
+            foot.setAlpha(0f);
+            foot.animate().alpha(1f).setStartDelay(900).setDuration(900).withLayer().start();
         }
         field.reveal();
         return page;

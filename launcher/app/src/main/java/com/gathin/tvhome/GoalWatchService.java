@@ -2248,6 +2248,15 @@ public class GoalWatchService extends Service {
             android.graphics.Bitmap logo = (android.graphics.Bitmap) w[1];
             d.watch = () -> AppSearchService.tune(this, getString(R.string.scores_open_package), names, logo);
         }
+        if (w == null && g.id != null && g.id.startsWith("fixture-test-")) {
+            // adb's made-up fixture is in no guide: on Sky Sports Main Event, as the other tests are, to show the channel.
+            String logoUrl = ScoresTicker.skyLogo("1301", null);
+            android.graphics.Bitmap logo = logoUrl == null ? null : HomeV2.trim(ScoresTicker.cachedLogo(this, logoUrl, logoPx));
+            List<String> names = new ArrayList<>(Arrays.asList("Sky Sports Main Event"));
+            d.channel = "Sky Sports Main Event";
+            d.channelLogo = logo;
+            d.watch = () -> AppSearchService.tune(this, getString(R.string.scores_open_package), names, logo);
+        }
         d.remote = Config.themeString(this, "ok_button", "");
         // The kits they wear today, from their Wikipedia articles (this season's): the away side in its second or third
         // kit when its first is too close to the home side's. ESPN's club colours when the articles cannot be read.

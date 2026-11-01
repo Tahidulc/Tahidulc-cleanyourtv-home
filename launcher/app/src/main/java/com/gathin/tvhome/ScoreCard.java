@@ -227,7 +227,7 @@ final class ScoreCard {
             View gap = new View(c);
             stage.addView(gap, new LinearLayout.LayoutParams(px(6), h));
         }
-        if (d.watch != null) stage.addView(watchBlock(c, d, h, 15, 10.5f), new LinearLayout.LayoutParams(-2, h));
+        if (d.watch != null) stage.addView(watchBlock(c, d, h, 15, 10.5f), watchParams(stage, h));
         card.addView(stage, new LinearLayout.LayoutParams(-2, h));
 
         FrameLayout box = new DriftBox(c);
@@ -366,7 +366,7 @@ final class ScoreCard {
         } else if (d.method != null) {
             bar.addView(scoreBlock(c, d, h, 28, 25), new LinearLayout.LayoutParams(-2, h));
         }
-        if (d.watch != null) bar.addView(watchBlock(c, d, h, 16, 12), new LinearLayout.LayoutParams(-2, h));
+        if (d.watch != null) bar.addView(watchBlock(c, d, h, 16, 12), watchParams(bar, h));
         LinearLayout.LayoutParams kl = new LinearLayout.LayoutParams(px(24), px(24));
         kl.leftMargin = px(12);
         kl.rightMargin = px(14);
@@ -628,6 +628,7 @@ final class ScoreCard {
     /** The score in its navy block (crest, score, crest, minute), or for F1 the position and team logo on red. */
     private static View scoreBlock(Context c, Data d, int h, int crest, float size) {
         LinearLayout v = new LinearLayout(c);
+        v.setTag(BLOCK);
         v.setGravity(Gravity.CENTER_VERTICAL);
         v.setPadding(px(22), 0, px(16), 0);
         v.setBackground(new Slant(d.block != 0 ? d.block : d.f1 ? 0xFFE10600 : NAVY, px(14), true));
@@ -741,6 +742,20 @@ final class ScoreCard {
         cl.leftMargin = px(6);
         v.addView(col, cl);
         return v;
+    }
+
+    /** The tag on a coloured block (the score's, F1's position) that the channel's block may follow straight on. */
+    private static final String BLOCK = "block";
+
+    /**
+     * The channel's block straight after a coloured block (the score, the crests, F1's position) tucks its slanted edge
+     * over that block's end: side by side, the slant left a pale wedge of the ground between them.
+     */
+    private static LinearLayout.LayoutParams watchParams(LinearLayout row, int h) {
+        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(-2, h);
+        View last = row.getChildCount() > 0 ? row.getChildAt(row.getChildCount() - 1) : null;
+        if (last != null && BLOCK.equals(last.getTag())) p.leftMargin = -px(14);
+        return p;
     }
 
     /** Where it is on and "Press OK to watch", on the darkest ground. */
