@@ -380,30 +380,25 @@ final class LiveCentre {
 
         // The game's scoreboard in the top left corner, wide and tall enough to cover the broadcaster's own, and its
         // stats beside it.
-        mini = new LinearLayout(c);
-        mini.setOrientation(LinearLayout.HORIZONTAL);
-        mini.setClipToOutline(true);
-        mini.setOutlineProvider(round(px(14)));
-        mini.setElevation(px(12));
-        FrameLayout.LayoutParams ml = new FrameLayout.LayoutParams(px(BOARD_W), px(BOARD_H), Gravity.TOP | Gravity.START);
+        // The scoreboard and its stats are one bar: the stats and facts fold out of the scoreboard's right end, the
+        // bar's rounded end going out with them, and back in.
+        bar = new Bar(c);
+        bar.setElevation(px(12));
+        FrameLayout.LayoutParams ml = new FrameLayout.LayoutParams(px(BOARD_W + STATS_W), px(BOARD_H), Gravity.TOP | Gravity.START);
         ml.leftMargin = px(24);
         ml.topMargin = px(22);
-        win.addView(mini, ml);
-        // The stats and facts fold out of the scoreboard's right end and back in: a panel tucked behind it (the
-        // scoreboard is drawn over it, higher up), in a drawer that hides whatever of it has not come out yet.
-        statsDrawer = new FrameLayout(c);
-        FrameLayout.LayoutParams stl = new FrameLayout.LayoutParams(px(STATS_W + TUCK), px(BOARD_H), Gravity.TOP | Gravity.START);
-        stl.leftMargin = px(24 + BOARD_W - TUCK);
-        stl.topMargin = px(22);
-        win.addView(statsDrawer, stl);
+        win.addView(bar, ml);
         statsBox = new FrameLayout(c);
-        statsBox.setClipToOutline(true);
-        statsBox.setOutlineProvider(round(px(14)));
         statsBox.setBackground(statsGround());
-        statsBox.setPadding(px(TUCK), 0, 0, 0);
-        statsDrawer.addView(statsBox, new FrameLayout.LayoutParams(-1, -1));
+        FrameLayout.LayoutParams stl = new FrameLayout.LayoutParams(px(STATS_W), -1, Gravity.TOP | Gravity.START);
+        stl.leftMargin = px(BOARD_W);
+        bar.addView(statsBox, stl);
+        mini = new LinearLayout(c);
+        mini.setOrientation(LinearLayout.HORIZONTAL);
+        bar.addView(mini, new FrameLayout.LayoutParams(px(BOARD_W), -1, Gravity.TOP | Gravity.START));
         statsOpen = false;
-        statsBox.setTranslationX(-px(STATS_W + TUCK));
+        openNow = 0;
+        setOpen(0);
 
         // Back closes it: the remote's Back key in the column's top right corner.
         ImageView back = new ImageView(c);
@@ -526,13 +521,17 @@ final class LiveCentre {
         fillCentre(c);
     }
 
-    private static final int BOARD_W = 748, BOARD_H = 112, STATS_W = 540, COMP_W = 108, TUCK = 18;
+    private static final int BOARD_W = 748, BOARD_H = 112, STATS_W = 540, COMP_W = 108;
     /** The stats' labels on the white panel: a soft navy. */
     private static final int STAT_LABEL = 0xFF6A6F9C;
     /** Each page of stats on show, how many pages per fold-out, the scoreboard alone in between, the first fold-out. */
     private static final long STATS_MS = 6_000L, SHUT_MS = 15_000L, FIRST_OPEN_MS = 4_000L;
     private static final int PAGES_OPEN = 2;
-    private static FrameLayout statsBox, statsDrawer;
+    private static FrameLayout statsBox;
+    private static Bar bar;
+    /** How far the stats have folded out (0 in, 1 out), and the fold under way. */
+    private static float openNow;
+    private static android.animation.ValueAnimator folding;
     /** Whether the stats are folded out now, and how many pages they have shown this time. */
     private static boolean statsOpen;
     private static int pagesShown;
@@ -545,11 +544,8 @@ final class LiveCentre {
     private static void fillMini(Context c) {
         mini.removeAllViews();
         ScoresTicker.Game g = shown();
-        if (g == null) { mini.setVisibility(View.GONE); statsDrawer.setVisibility(View.GONE); return; }
-        if (!boardHidden) {
-            mini.setVisibility(View.VISIBLE);
-            statsDrawer.setVisibility(View.VISIBLE);
-        }
+        if (g == null) { bar.setVisibility(View.GONE); return; }
+        if (!boardHidden) bar.setVisibility(View.VISIBLE);
         buildBoard(c, mini, g);
         clockNow();
         fillStats(c, false);
@@ -620,7 +616,7 @@ final class LiveCentre {
                 float was = k;
                 k = app.getResources().getDisplayMetrics().widthPixels / 1920f;
                 TextView score = boardScore, clockView = boardClock;
-                int w = px(BOARD_W), h = px(BOARD_H), gap = px(16), sw = px(STATS_W + TUCK);
+                int w = px(BOARD_W), h = px(BOARD_H), gap = px(16), sw = px(STATS_W);
                 // The first game three times (alone, then folded out on two pages of its stats), then one game of
                 // each other competition alone.
                 List<ScoresTicker.Game> rows = new ArrayList<>();
@@ -640,22 +636,30 @@ final class LiveCentre {
                     pageOf.add(null);
                     if (i == 0 && ps != null) for (int p = 0; p < Math.min(2, ps.size()); p++) { rows.add(g); pageOf.add(ps.get(Math.floorMod(statAt + p, ps.size()))); }
                 }
-                Bitmap out = Bitmap.createBitmap(w - px(TUCK) + sw + 2 * gap, Math.max(1, rows.size()) * (h + gap) + gap, Bitmap.Config.ARGB_8888);
+                Bitmap out = Bitmap.createBitmap(w + sw + 2 * gap, Math.max(1, rows.size()) * (h + gap) + gap, Bitmap.Config.ARGB_8888);
                 Canvas cv = new Canvas(out);
                 cv.drawColor(0xFF2A2E3A);
                 for (int i = 0; i < rows.size(); i++) {
                     ScoresTicker.Game g = rows.get(i);
-                    if (pageOf.get(i) != null) {
-                        FrameLayout panel = new FrameLayout(app);
-                        panel.setBackground(statsGround());
-                        panel.setPadding(px(TUCK), 0, 0, 0);
-                        panel.addView(pageView(app, g, pageOf.get(i)), new FrameLayout.LayoutParams(-1, -1));
-                        panel.measure(View.MeasureSpec.makeMeasureSpec(sw, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(h, View.MeasureSpec.EXACTLY));
-                        panel.layout(0, 0, sw, h);
-                        centreTexts(panel);
+                    boolean out2 = pageOf.get(i) != null;
+                    float reach = out2 ? w + sw : w, r = px(14);
+                    cv.save();
+                    cv.translate(gap, gap + i * (h + gap));
+                    // One bar: one outline round the scoreboard and, folded out, its stats.
+                    android.graphics.Path clip = new android.graphics.Path();
+                    clip.addRoundRect(new RectF(0, 0, reach, h), r, r, android.graphics.Path.Direction.CW);
+                    cv.clipPath(clip);
+                    if (out2) {
                         cv.save();
-                        cv.translate(gap + w - px(TUCK), gap + i * (h + gap));
-                        panel.draw(cv);
+                        cv.translate(w, 0);
+                        android.graphics.drawable.Drawable ground2 = statsGround();
+                        ground2.setBounds(0, 0, sw, h);
+                        ground2.draw(cv);
+                        View page = pageView(app, g, pageOf.get(i));
+                        page.measure(View.MeasureSpec.makeMeasureSpec(sw, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(h, View.MeasureSpec.EXACTLY));
+                        page.layout(0, 0, sw, h);
+                        centreTexts(page);
+                        page.draw(cv);
                         cv.restore();
                     }
                     LinearLayout b = new LinearLayout(app);
@@ -665,13 +669,13 @@ final class LiveCentre {
                     b.measure(View.MeasureSpec.makeMeasureSpec(w, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(h, View.MeasureSpec.EXACTLY));
                     b.layout(0, 0, w, h);
                     centreTexts(b);
-                    cv.save();
-                    cv.translate(gap, gap + i * (h + gap));
-                    // The scoreboard's own rounded corners, as its outline gives them on screen.
-                    android.graphics.Path clip = new android.graphics.Path();
-                    clip.addRoundRect(new RectF(0, 0, w, h), px(14), px(14), android.graphics.Path.Direction.CW);
-                    cv.clipPath(clip);
                     b.draw(cv);
+                    if (out2) {
+                        android.graphics.Paint hair = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+                        hair.setColor(0x260A0D33);
+                        hair.setStrokeWidth(Math.max(1, px(1.5f)));
+                        cv.drawLine(w, h * 0.24f, w, h * 0.76f, hair);
+                    }
                     cv.restore();
                 }
                 boardScore = score;
@@ -889,45 +893,45 @@ final class LiveCentre {
             }
             Canvas c = new Canvas(frame);
             c.drawBitmap(ground, 0, 0, null);
-            float x0 = px(24), y0 = px(22), bw = px(BOARD_W), bh = px(BOARD_H), dx = px(24 + BOARD_W - TUCK), dw = px(STATS_W + TUCK), r = px(14);
+            float x0 = px(24), y0 = px(22), bw = px(BOARD_W), bh = px(BOARD_H), sw = px(STATS_W), r = px(14);
+            float reach = bw + (float) ((1 - p.shut) * sw);
             int layer = c.saveLayerAlpha(0, 0, W, H, (int) Math.round(255 * p.alpha));
             c.translate(0, px((float) p.rise));
             c.scale((float) p.scale, (float) p.scale, x0, y0);
-            // The stats panel, out of the drawer as far as it has come.
+            // One bar: its shadow, then the scoreboard and as much of the stats as has come out, in one outline.
+            android.graphics.Paint shade = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+            shade.setColor(0xFF000000);
+            shade.setShadowLayer(px(16), 0, px(5), 0x73000000);
+            c.drawRoundRect(new RectF(x0, y0, x0 + reach, y0 + bh), r, r, shade);
+            c.save();
+            c.translate(x0, y0);
+            android.graphics.Path clip = new android.graphics.Path();
+            clip.addRoundRect(new RectF(0, 0, reach, bh), r, r, android.graphics.Path.Direction.CW);
+            c.clipPath(clip);
             if (p.page != null && p.shut < 1) {
                 c.save();
-                c.clipRect(dx, y0, dx + dw, y0 + bh);
-                c.translate(dx - (float) (p.shut * dw), y0);
-                android.graphics.Path round = new android.graphics.Path();
-                round.addRoundRect(new RectF(0, 0, dw, bh), r, r, android.graphics.Path.Direction.CW);
-                c.clipPath(round);
+                c.translate(bw - (float) (p.shut * sw), 0);
                 android.graphics.drawable.Drawable ground2 = statsGround();
-                ground2.setBounds(0, 0, (int) dw, (int) bh);
+                ground2.setBounds(0, 0, (int) sw, (int) bh);
                 ground2.draw(c);
-                c.translate(px(TUCK), 0);
                 double newQ = p.turn, oldQ = Math.min(1, p.turn * 320 / 260);
                 if (p.before != null && oldQ < 1) page(c, views.get(p.before), 1 - ease.getInterpolation((float) oldQ), -18 * ease.getInterpolation((float) oldQ));
                 page(c, views.get(p.page), p.before == null ? 1 : ease.getInterpolation((float) newQ), p.before == null ? 0 : 18 * (1 - ease.getInterpolation((float) newQ)));
                 c.restore();
-                if (p.ring) ring(c, dx - (float) (p.shut * dw) + px(TUCK), y0, dw - px(TUCK), bh, r);
             }
-            // The scoreboard over it, with its shadow.
-            android.graphics.Paint shade = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
-            shade.setColor(0xFF000000);
-            shade.setShadowLayer(px(16), 0, px(5), 0x73000000);
-            c.drawRoundRect(new RectF(x0, y0, x0 + bw, y0 + bh), r, r, shade);
-            c.save();
-            c.translate(x0, y0);
-            android.graphics.Path clip = new android.graphics.Path();
-            clip.addRoundRect(new RectF(0, 0, bw, bh), r, r, android.graphics.Path.Direction.CW);
-            c.clipPath(clip);
             board.draw(c);
+            if (reach > bw + px(4)) {
+                android.graphics.Paint hair = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+                hair.setColor(0x260A0D33);
+                hair.setStrokeWidth(Math.max(1, px(1.5f)));
+                c.drawLine(bw, bh * 0.24f, bw, bh * 0.76f, hair);
+            }
             c.restore();
-            if (p.ring) ring(c, x0, y0, bw, bh, r);
+            if (p.ring) ring(c, x0, y0, reach, bh, r);
             c.restoreToCount(layer);
             caption(c, p.caption);
             java.io.File f = new java.io.File(dir, String.format(Locale.ROOT, "f%04d.jpg", frameAt));
-            try (java.io.FileOutputStream o = new java.io.FileOutputStream(f)) { frame.compress(Bitmap.CompressFormat.JPEG, 88, o); } catch (Exception ignored) { }
+            try (java.io.FileOutputStream o = new java.io.FileOutputStream(f)) { frame.compress(Bitmap.CompressFormat.JPEG, 82, o); } catch (Exception ignored) { }
         }
 
         void page(Canvas c, View v, float alpha, float rise) {
@@ -1386,11 +1390,63 @@ final class LiveCentre {
     /** The stats fold out of the scoreboard's right end (slowing as they come), or back in behind it. */
     private static void openStats(boolean open) {
         statsOpen = open;
-        if (statsBox == null) return;
-        statsBox.animate().cancel();
-        statsBox.animate().translationX(open ? 0f : -px(STATS_W + TUCK)).setDuration(open ? 620 : 460)
-                .setInterpolator(open ? new DecelerateInterpolator(2.4f) : new android.view.animation.AccelerateInterpolator(1.8f))
-                .start();
+        if (bar == null) return;
+        if (folding != null) folding.cancel();
+        folding = android.animation.ValueAnimator.ofFloat(openNow, open ? 1f : 0f);
+        folding.setDuration(open ? 620 : 460);
+        folding.setInterpolator(open ? new DecelerateInterpolator(2.4f) : new android.view.animation.AccelerateInterpolator(1.8f));
+        folding.addUpdateListener(a -> setOpen((float) a.getAnimatedValue()));
+        folding.start();
+    }
+
+    /** The bar this far out: its rounded end past the scoreboard by that share of the stats, the stats coming with it. */
+    private static void setOpen(float f) {
+        openNow = f;
+        if (bar == null || statsBox == null) return;
+        bar.reveal(px(BOARD_W) + f * px(STATS_W));
+        statsBox.setTranslationX(-(1 - f) * px(STATS_W));
+    }
+
+    /**
+     * The scoreboard and its stats as one bar: a single outline and shadow round both, its rounded right end as far
+     * out as the stats have come, a hairline between the scoreboard and the stats while they show, and the remote's
+     * white ring round the whole of it when chosen.
+     */
+    private static final class Bar extends FrameLayout {
+        float reveal;
+        boolean ring;
+        private final android.graphics.Paint line = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG),
+                edge = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+
+        Bar(Context c) {
+            super(c);
+            setWillNotDraw(false);
+            setClipToOutline(true);
+            setOutlineProvider(new ViewOutlineProvider() {
+                @Override public void getOutline(View v, Outline o) { o.setRoundRect(0, 0, Math.max(1, Math.round(reveal)), v.getHeight(), px(14)); }
+            });
+            line.setColor(0x260A0D33);
+            line.setStrokeWidth(Math.max(1, px(1.5f)));
+            edge.setStyle(android.graphics.Paint.Style.STROKE);
+            edge.setStrokeWidth(px(4));
+            edge.setColor(0xFFFFFFFF);
+        }
+
+        void reveal(float w) {
+            reveal = w;
+            invalidateOutline();
+            invalidate();
+        }
+
+        @Override protected void dispatchDraw(Canvas c) {
+            super.dispatchDraw(c);
+            float x = px(BOARD_W), h = getHeight();
+            if (reveal > x + px(4)) c.drawLine(x, h * 0.24f, x, h * 0.76f, line);
+            if (ring) {
+                float in = px(2);
+                c.drawRoundRect(new RectF(in, in, reveal - in, h - in), px(13), px(13), edge);
+            }
+        }
     }
 
     /** Another game on the scoreboard: its stats fold out soon (or, already out, show it a page or two more). */
@@ -1403,11 +1459,9 @@ final class LiveCentre {
         main.postDelayed(statsTurn, statsOpen ? STATS_MS : 1_200L);
     }
 
-    /** The stats panel's ground: the scoreboard's own white. */
+    /** The stats' ground: the scoreboard's own white, as its sides have it (the bar's outline rounds its end). */
     private static android.graphics.drawable.Drawable statsGround() {
-        GradientDrawable sb = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0xFFFFFFFF, 0xFFE9ECF5});
-        sb.setCornerRadius(px(14));
-        return sb;
+        return new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0xFFFFFFFF, 0xFFE9ECF5});
     }
 
     /** One page of the stats: its label across the top, the home side's figure left, the away side's right. */
@@ -2573,35 +2627,25 @@ final class LiveCentre {
         if (host == null || mini == null) return;
         if (on && boardHidden) {
             boardHidden = false;
-            for (View v : new View[]{mini, statsDrawer}) {
-                v.setVisibility(View.VISIBLE);
-                v.setAlpha(0f);
-                v.setTranslationY(-px(20));
-                v.animate().alpha(1f).translationY(0).setDuration(280).start();
-            }
+            bar.setVisibility(View.VISIBLE);
+            bar.setAlpha(0f);
+            bar.setTranslationY(-px(20));
+            bar.animate().alpha(1f).translationY(0).setDuration(280).start();
         }
         onBoard = on;
-        for (View v : new View[]{mini, statsBox}) {
-            GradientDrawable ring = new GradientDrawable();
-            ring.setCornerRadius(px(14));
-            ring.setStroke(px(4), 0xFFFFFFFF);
-            v.setForeground(on ? ring : null);
-        }
-        // Both grow from the scoreboard's top left corner, so the stats stay tucked behind it.
-        mini.setPivotX(0);
-        mini.setPivotY(0);
-        statsDrawer.setPivotX(-(px(24 + BOARD_W - TUCK) - px(24)));
-        statsDrawer.setPivotY(0);
-        for (View v : new View[]{mini, statsDrawer}) v.animate().scaleX(on ? 1.03f : 1f).scaleY(on ? 1.03f : 1f).setDuration(160).start();
+        bar.ring = on;
+        bar.invalidate();
+        // It grows from its top left corner.
+        bar.setPivotX(0);
+        bar.setPivotY(0);
+        bar.animate().scaleX(on ? 1.03f : 1f).scaleY(on ? 1.03f : 1f).setDuration(160).start();
     }
 
     /** Back on the scoreboard: it and its stats slide away (Up brings them back). */
     private static void hideBoard() {
         focusBoard(false);
         boardHidden = true;
-        for (View v : new View[]{mini, statsDrawer}) {
-            v.animate().alpha(0f).translationY(-px(20)).setDuration(240).withEndAction(() -> { if (boardHidden) v.setVisibility(View.GONE); }).start();
-        }
+        bar.animate().alpha(0f).translationY(-px(20)).setDuration(240).withEndAction(() -> { if (boardHidden) bar.setVisibility(View.GONE); }).start();
     }
 
     /** The next or the previous live game shown, its channel put on when a guide lists it. */
@@ -2744,6 +2788,7 @@ final class LiveCentre {
     }
 
     static void close() {
+        if (folding != null) { folding.cancel(); folding = null; }
         onBoard = false;
         boardHidden = false;
         eventOn = false;
