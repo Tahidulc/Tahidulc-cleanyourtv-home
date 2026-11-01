@@ -802,55 +802,72 @@ final class LineupCard {
         LinearLayout col = new LinearLayout(c);
         col.setOrientation(LinearLayout.VERTICAL);
         col.setGravity(Gravity.CENTER_HORIZONTAL);
-        FrameLayout frame = new FrameLayout(c);
-        frame.setClipChildren(true);
-        Bitmap ph = f.photos.get(r.pos);
-        if (ph != null) {
-            ImageView photo = new ImageView(c);
-            photo.setImageBitmap(sharp(ph));
-            photo.setScaleType(ImageView.ScaleType.FIT_START);
-            int pw = px(winner ? 124 : 108);
-            frame.addView(photo, new FrameLayout.LayoutParams(pw, pw, Gravity.TOP | Gravity.CENTER_HORIZONTAL));
-        } else {
-            TextView code = text(c, r.code, 30, 0x40FFFFFF, ScoreCard.outfit(c, 900));
-            frame.addView(code, new FrameLayout.LayoutParams(-2, -2, Gravity.CENTER));
-        }
-        col.addView(frame, new LinearLayout.LayoutParams(-1, 0, 1f));
+        // The same size for all three, their tops level: the photos are framed alike, so the faces line up.
+        col.addView(f1Photo(c, f, r, px(112), px(112)), new LinearLayout.LayoutParams(px(112), px(112)));
         LinearLayout name = new LinearLayout(c);
         name.setGravity(Gravity.CENTER_VERTICAL);
-        TextView pos = text(c, String.valueOf(r.pos), winner ? 17 : 15, 0xFFFFFFFF, ScoreCard.outfit(c, 900));
+        TextView pos = text(c, String.valueOf(r.pos), 15, 0xFFFFFFFF, ScoreCard.outfit(c, 900));
         pos.setGravity(Gravity.CENTER);
         GradientDrawable pb = new GradientDrawable();
-        pb.setColor(F1_RED);
+        pb.setColor(winner ? F1_RED : 0xFF3A3C46);
         pb.setCornerRadius(px(4));
         pos.setBackground(pb);
-        pos.setPadding(px(6), px(1), px(6), px(1));
-        name.addView(pos);
-        TextView last = text(c, r.last.toUpperCase(java.util.Locale.UK), winner ? 18 : 15.5f, 0xFFFFFFFF, ScoreCard.outfit(c, 800));
+        name.addView(pos, new LinearLayout.LayoutParams(px(22), px(20)));
+        TextView last = text(c, r.last.toUpperCase(java.util.Locale.UK), 16, 0xFFFFFFFF, ScoreCard.outfit(c, 800));
         LinearLayout.LayoutParams ll = new LinearLayout.LayoutParams(-2, -2);
         ll.leftMargin = px(7);
         name.addView(last, ll);
-        col.addView(name, new LinearLayout.LayoutParams(-2, -2));
+        LinearLayout.LayoutParams nml = new LinearLayout.LayoutParams(-2, -2);
+        nml.topMargin = px(4);
+        col.addView(name, nml);
         LinearLayout sub = new LinearLayout(c);
         sub.setGravity(Gravity.CENTER_VERTICAL);
         Bitmap logo = r.logo == null ? null : f.logos.get(r.logo);
-        if (logo != null) {
-            ImageView l = new ImageView(c);
-            l.setImageBitmap(sharp(logo));
-            l.setScaleType(ImageView.ScaleType.FIT_CENTER);
-            sub.addView(l, new LinearLayout.LayoutParams(px(15), px(15)));
-        }
+        ImageView l = new ImageView(c);
+        if (logo != null) l.setImageBitmap(sharp(logo));
+        l.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        sub.addView(l, new LinearLayout.LayoutParams(px(15), px(15)));
         String gap = r.gap.isEmpty() ? (winner ? "Winner" : "") : r.gap;
-        if (!gap.isEmpty()) {
-            TextView g = text(c, gap, 12, 0xCCFFFFFF, ScoreCard.outfit(c, 600));
-            LinearLayout.LayoutParams gl = new LinearLayout.LayoutParams(-2, -2);
-            gl.leftMargin = px(logo != null ? 6 : 0);
-            sub.addView(g, gl);
-        }
+        TextView g = text(c, gap, 12, 0xCCFFFFFF, ScoreCard.outfit(c, 600));
+        LinearLayout.LayoutParams gl = new LinearLayout.LayoutParams(-2, -2);
+        gl.leftMargin = px(6);
+        sub.addView(g, gl);
         LinearLayout.LayoutParams sbl = new LinearLayout.LayoutParams(-2, -2);
         sbl.topMargin = px(3);
         col.addView(sub, sbl);
         return col;
+    }
+
+    /**
+     * A driver's head and shoulders in a box of its own size (w by h): his photo (they are all framed alike, his head
+     * at the top) drawn w wide from the top of the box, or a plain figure where there is none, so every box in a row
+     * or a column is the same and the faces and everything beside them line up.
+     */
+    private static View f1Photo(Context c, F1 f, F1Results.Row r, int w, int h) {
+        FrameLayout frame = new FrameLayout(c);
+        frame.setClipChildren(true);
+        Bitmap ph = f.photos.get(r.pos);
+        ImageView photo = new ImageView(c);
+        photo.setImageBitmap(sharp(ph != null ? ph : driverBlank(256)));
+        photo.setScaleType(ImageView.ScaleType.FIT_XY);
+        frame.addView(photo, new FrameLayout.LayoutParams(w, w, Gravity.TOP | Gravity.CENTER_HORIZONTAL));
+        return frame;
+    }
+
+    private static Bitmap blank;
+
+    /** A plain figure, framed as the photos are (head at the top, shoulders to the foot), for a driver without one. */
+    private static Bitmap driverBlank(int s) {
+        if (blank != null) return blank;
+        Bitmap b = Bitmap.createBitmap(s, s, Bitmap.Config.ARGB_8888);
+        Canvas cv = new Canvas(b);
+        Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
+        p.setColor(0xFF3A3C46);
+        cv.drawRoundRect(new RectF(s * 0.12f, s * 0.58f, s * 0.88f, s * 1.2f), s * 0.2f, s * 0.2f, p);
+        cv.drawRect(s * 0.42f, s * 0.42f, s * 0.58f, s * 0.62f, p);
+        cv.drawOval(new RectF(s * 0.33f, s * 0.08f, s * 0.67f, s * 0.48f), p);
+        blank = b;
+        return b;
     }
 
     /** Positions from..to-1 as lines, in one column (with first names and points) or two. */
@@ -892,19 +909,22 @@ final class LineupCard {
         TextView pos = text(c, String.valueOf(r.pos), wide ? 16 : 14, 0xFFFFFFFF, ScoreCard.outfit(c, 900));
         pos.setGravity(Gravity.CENTER);
         v.addView(pos, new LinearLayout.LayoutParams(px(26), -2));
+        int ps = px(wide ? 26 : 24);
+        LinearLayout.LayoutParams fl = new LinearLayout.LayoutParams(ps, -1);
+        fl.leftMargin = px(2);
+        v.addView(f1Photo(c, f, r, ps, ps), fl);
         Bitmap logo = r.logo == null ? null : f.logos.get(r.logo);
         ImageView l = new ImageView(c);
         if (logo != null) l.setImageBitmap(sharp(logo));
         l.setScaleType(ImageView.ScaleType.FIT_CENTER);
         LinearLayout.LayoutParams lgl = new LinearLayout.LayoutParams(px(wide ? 18 : 15), px(wide ? 18 : 15));
-        lgl.leftMargin = px(4);
+        lgl.leftMargin = px(6);
         v.addView(l, lgl);
         LinearLayout name = new LinearLayout(c);
         name.setGravity(Gravity.CENTER_VERTICAL);
         if (wide && !r.first.isEmpty()) {
             name.addView(text(c, r.first, 13, 0xB3FFFFFF, ScoreCard.outfit(c, 500)));
-            LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(px(5), 1);
-            name.addView(new View(c), sp);
+            name.addView(new View(c), new LinearLayout.LayoutParams(px(5), 1));
         }
         name.addView(text(c, wide ? r.last.toUpperCase(java.util.Locale.UK) : r.last, wide ? 15 : 13.5f, 0xFFFFFFFF, ScoreCard.outfit(c, wide ? 800 : 700)));
         LinearLayout.LayoutParams nl = new LinearLayout.LayoutParams(0, -2, 1f);
@@ -912,16 +932,21 @@ final class LineupCard {
         v.addView(name, nl);
         if (!r.gap.isEmpty()) {
             boolean out = "DNF".equals(r.gap);
-            v.addView(text(c, r.gap, wide ? 13 : 11.5f, out ? 0xFFFF5A52 : 0xCCFFFFFF, ScoreCard.outfit(c, 600)), new LinearLayout.LayoutParams(-2, -2));
+            TextView g = text(c, r.gap, wide ? 13 : 11.5f, out ? 0xFFFF5A52 : 0xCCFFFFFF, ScoreCard.outfit(c, 600));
+            g.setGravity(Gravity.END);
+            v.addView(g, new LinearLayout.LayoutParams(-2, -2));
         }
-        if (wide && r.points > 0) {
-            TextView pts = text(c, "+" + r.points, 11, 0xFFFFFFFF, ScoreCard.outfit(c, 800));
-            GradientDrawable pb = new GradientDrawable();
-            pb.setColor(F1_RED);
-            pb.setCornerRadius(px(8));
-            pts.setBackground(pb);
-            pts.setPadding(px(7), px(1), px(7), px(1));
-            LinearLayout.LayoutParams pl = new LinearLayout.LayoutParams(-2, -2);
+        if (wide) {
+            // The points in a column of their own, so they stand level down the page (empty for none).
+            TextView pts = text(c, r.points > 0 ? "+" + r.points : "", 11, 0xFFFFFFFF, ScoreCard.outfit(c, 800));
+            pts.setGravity(Gravity.CENTER);
+            if (r.points > 0) {
+                GradientDrawable pb = new GradientDrawable();
+                pb.setColor(F1_RED);
+                pb.setCornerRadius(px(8));
+                pts.setBackground(pb);
+            }
+            LinearLayout.LayoutParams pl = new LinearLayout.LayoutParams(px(34), px(17));
             pl.leftMargin = px(10);
             v.addView(pts, pl);
         }
@@ -969,22 +994,16 @@ final class LineupCard {
         bg.setCornerRadius(px(6));
         slot.setBackground(bg);
         slot.setClipToOutline(true);
+        slot.setOutlineProvider(ViewOutlineProvider.BACKGROUND);
         View edge = new View(c);
         edge.setBackgroundColor(F1_RED);
         slot.addView(edge, new LinearLayout.LayoutParams(px(4), -1));
         TextView pos = text(c, String.valueOf(r.pos), big ? 22 : 15, 0xFFFFFFFF, ScoreCard.outfit(c, 900));
         pos.setGravity(Gravity.CENTER);
-        slot.addView(pos, new LinearLayout.LayoutParams(px(big ? 36 : 28), -2));
-        Bitmap ph = f.photos.get(r.pos);
-        if (big && ph != null) {
-            FrameLayout frame = new FrameLayout(c);
-            frame.setClipChildren(true);
-            ImageView photo = new ImageView(c);
-            photo.setImageBitmap(sharp(ph));
-            photo.setScaleType(ImageView.ScaleType.FIT_START);
-            frame.addView(photo, new FrameLayout.LayoutParams(px(70), px(70), Gravity.TOP | Gravity.CENTER_HORIZONTAL));
-            slot.addView(frame, new LinearLayout.LayoutParams(px(70), -1));
-        }
+        slot.addView(pos, new LinearLayout.LayoutParams(px(big ? 38 : 30), -2));
+        // Every slot its photo box, the same size down the page: his photo from the top, or the plain figure.
+        int ps = px(big ? 70 : 34);
+        slot.addView(f1Photo(c, f, r, ps, ps), new LinearLayout.LayoutParams(ps, -1));
         LinearLayout names = new LinearLayout(c);
         names.setOrientation(LinearLayout.VERTICAL);
         if (big && !r.first.isEmpty()) names.addView(text(c, r.first, 12, 0xB3FFFFFF, ScoreCard.outfit(c, 500)));
@@ -994,14 +1013,12 @@ final class LineupCard {
         nl.leftMargin = px(8);
         slot.addView(names, nl);
         Bitmap logo = r.logo == null ? null : f.logos.get(r.logo);
-        if (logo != null) {
-            ImageView l = new ImageView(c);
-            l.setImageBitmap(sharp(logo));
-            l.setScaleType(ImageView.ScaleType.FIT_CENTER);
-            LinearLayout.LayoutParams ll = new LinearLayout.LayoutParams(px(big ? 24 : 17), px(big ? 24 : 17));
-            ll.rightMargin = px(10);
-            slot.addView(l, ll);
-        }
+        ImageView l = new ImageView(c);
+        if (logo != null) l.setImageBitmap(sharp(logo));
+        l.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        LinearLayout.LayoutParams ll = new LinearLayout.LayoutParams(px(big ? 24 : 17), px(big ? 24 : 17));
+        ll.rightMargin = px(10);
+        slot.addView(l, ll);
         return slot;
     }
 
@@ -1139,8 +1156,12 @@ final class LineupCard {
         return page;
     }
 
-    /** Positions from..to-1 across the bar: with photos (the podium, the front rows), or as compact entries. */
-    private static View f1BarRow(Context c, F1 f, int from, int to, boolean photos) {
+    /**
+     * Positions from..to-1 across the bar, every entry the same width with its parts in fixed places (number, photo,
+     * then the surname with the logo and gap under it), so numbers and faces line up from one entry and page to the
+     * next; the podium's and the front rows' photos a size up.
+     */
+    private static View f1BarRow(Context c, F1 f, int from, int to, boolean big) {
         LinearLayout page = new LinearLayout(c);
         page.setOrientation(LinearLayout.HORIZONTAL);
         page.setPadding(px(12), 0, px(4), 0);
@@ -1154,41 +1175,39 @@ final class LineupCard {
                 page.addView(rule, rl);
             }
             LinearLayout e = new LinearLayout(c);
-            e.setGravity(Gravity.CENTER);
-            TextView pos = text(c, String.valueOf(r.pos), photos ? 22 : 18, 0xFFFFFFFF, ScoreCard.outfit(c, 900));
-            e.addView(pos);
-            Bitmap ph = photos ? f.photos.get(r.pos) : null;
-            if (ph != null) {
-                FrameLayout frame = new FrameLayout(c);
-                frame.setClipChildren(true);
-                ImageView photo = new ImageView(c);
-                photo.setImageBitmap(sharp(ph));
-                photo.setScaleType(ImageView.ScaleType.FIT_START);
-                frame.addView(photo, new FrameLayout.LayoutParams(px(72), px(72), Gravity.TOP | Gravity.CENTER_HORIZONTAL));
-                LinearLayout.LayoutParams fl = new LinearLayout.LayoutParams(px(66), px(72));
-                fl.leftMargin = px(6);
-                fl.topMargin = px(8);
-                e.addView(frame, fl);
-            }
-            Bitmap logo = r.logo == null ? null : f.logos.get(r.logo);
-            if (logo != null) {
-                ImageView l = new ImageView(c);
-                l.setImageBitmap(sharp(logo));
-                l.setScaleType(ImageView.ScaleType.FIT_CENTER);
-                LinearLayout.LayoutParams ll = new LinearLayout.LayoutParams(px(20), px(20));
-                ll.leftMargin = px(8);
-                e.addView(l, ll);
-            }
+            e.setGravity(Gravity.CENTER_VERTICAL | Gravity.START);
+            e.setPadding(px(8), 0, px(4), 0);
+            TextView pos = text(c, String.valueOf(r.pos), big ? 22 : 18, 0xFFFFFFFF, ScoreCard.outfit(c, 900));
+            pos.setGravity(Gravity.CENTER);
+            e.addView(pos, new LinearLayout.LayoutParams(px(big ? 30 : 26), -2));
+            int ps = px(big ? 68 : 50);
+            LinearLayout.LayoutParams fl = new LinearLayout.LayoutParams(ps, -1);
+            fl.leftMargin = px(4);
+            fl.topMargin = px(big ? 8 : 14);
+            e.addView(f1Photo(c, f, r, ps, ps), fl);
             LinearLayout col = new LinearLayout(c);
             col.setOrientation(LinearLayout.VERTICAL);
-            col.addView(text(c, photos ? r.last.toUpperCase(java.util.Locale.UK) : r.last, photos ? 19 : 16.5f, 0xFFFFFFFF, ScoreCard.outfit(c, 800)));
-            String gap = r.gap.isEmpty() && photos && !f.grid && r.pos == 1 ? "Winner" : r.gap;
+            col.addView(text(c, big ? r.last.toUpperCase(java.util.Locale.UK) : r.last, big ? 19 : 16, 0xFFFFFFFF, ScoreCard.outfit(c, 800)));
+            LinearLayout sub = new LinearLayout(c);
+            sub.setGravity(Gravity.CENTER_VERTICAL);
+            Bitmap logo = r.logo == null ? null : f.logos.get(r.logo);
+            ImageView l = new ImageView(c);
+            if (logo != null) l.setImageBitmap(sharp(logo));
+            l.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            sub.addView(l, new LinearLayout.LayoutParams(px(16), px(16)));
+            String gap = r.gap.isEmpty() && big && !f.grid && r.pos == 1 ? "Winner" : r.gap;
             if (!gap.isEmpty()) {
                 boolean out = "DNF".equals(gap);
-                col.addView(text(c, gap + (!f.grid && r.points > 0 && photos ? "  ·  +" + r.points : ""), photos ? 14 : 12.5f,
-                        out ? 0xFFFF5A52 : 0xCCFFFFFF, ScoreCard.outfit(c, 600)));
+                TextView g = text(c, gap + (!f.grid && r.points > 0 && big ? "  ·  +" + r.points : ""), big ? 14 : 12.5f,
+                        out ? 0xFFFF5A52 : 0xCCFFFFFF, ScoreCard.outfit(c, 600));
+                LinearLayout.LayoutParams gl = new LinearLayout.LayoutParams(-2, -2);
+                gl.leftMargin = px(5);
+                sub.addView(g, gl);
             }
-            LinearLayout.LayoutParams cl = new LinearLayout.LayoutParams(-2, -2);
+            LinearLayout.LayoutParams sbl = new LinearLayout.LayoutParams(-2, -2);
+            sbl.topMargin = px(2);
+            col.addView(sub, sbl);
+            LinearLayout.LayoutParams cl = new LinearLayout.LayoutParams(0, -2, 1f);
             cl.leftMargin = px(8);
             e.addView(col, cl);
             page.addView(e, new LinearLayout.LayoutParams(0, -1, 1f));
@@ -1197,6 +1216,9 @@ final class LineupCard {
             e.animate().alpha(1f).translationX(0f).setStartDelay(120L + 60L * (i - from)).setDuration(340)
                     .setInterpolator(new DecelerateInterpolator(2.2f)).withLayer().start();
         }
+        // A short last page keeps its entries the width of a full one, so they stand where those above them did.
+        int full = big ? (f.grid ? 6 : 3) : (f.grid ? 8 : (from == 3 ? 7 : 6));
+        for (int i = to - from; i < full; i++) page.addView(new View(c), new LinearLayout.LayoutParams(0, -1, 1f));
         return page;
     }
 

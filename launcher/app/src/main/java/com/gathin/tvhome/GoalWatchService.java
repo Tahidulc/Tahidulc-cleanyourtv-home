@@ -287,6 +287,12 @@ public class GoalWatchService extends Service {
     /** As f1Updates, as score cards: a session starting, a new leader, every ten laps, the end. */
     private void skyF1Updates(F1Results.Weekend w) {
         long nowMs = System.currentTimeMillis();
+        // Once a weekend, every driver's photo fetched ahead (on the photo thread), for the grid and the result.
+        List<String> drivers = new ArrayList<>();
+        for (F1Results.Session x : w.sessions) for (String n : x.top) if (!drivers.contains(n)) drivers.add(n);
+        if (!drivers.isEmpty() && f1Warmed.add(w.name == null ? "" : w.name)) {
+            photoFetch.execute(() -> { for (String n : drivers) PlayerPhotos.driver(this, n); });
+        }
         for (F1Results.Session s : w.sessions) {
             if (!s.counts()) continue;
             // Fifteen minutes before a race or sprint: its starting grid, from the qualifying that set it.
@@ -392,8 +398,8 @@ public class GoalWatchService extends Service {
         return d;
     }
 
-    /** The races whose starting grid has shown (once each). */
-    private final java.util.Set<String> f1Grids = new java.util.HashSet<>();
+    /** The races whose starting grid has shown (once each), and the weekends whose drivers' photos are fetched. */
+    private final java.util.Set<String> f1Grids = new java.util.HashSet<>(), f1Warmed = new java.util.HashSet<>();
 
     /**
      * An F1 board (LineupCard.showF1): a race's or sprint's full result (grid false) or its starting grid, from
@@ -404,7 +410,9 @@ public class GoalWatchService extends Service {
     private void f1Board(boolean grid, String gpName, String session, List<String> order, List<String> orderLogos, long startAt) {
         List<String> names = order == null ? new ArrayList<>() : new ArrayList<>(order);
         List<String> logos = orderLogos == null ? new ArrayList<>() : new ArrayList<>(orderLogos);
-        io.execute(() -> {
+        // On the photo thread, not io: the first time, every driver's photo is paced out over most of a minute, and the
+        // goal alerts must not wait behind it.
+        photoFetch.execute(() -> {
             LineupCard.F1 f = new LineupCard.F1();
             f.grid = grid;
             f.session = session;
@@ -429,8 +437,8 @@ public class GoalWatchService extends Service {
             for (F1Results.Row r : f.rows) {
                 if (r.logo != null && !f.logos.containsKey(r.logo)) f.logos.put(r.logo, ScoresTicker.cachedLogo(this, r.logo, 96));
             }
-            for (int i = 0; i < Math.min(grid ? 6 : 3, f.rows.size()); i++) {
-                F1Results.Row r = f.rows.get(i);
+            // Every driver's photo (kept once found, so after the first time this is quick); the plain figure without one.
+            for (F1Results.Row r : f.rows) {
                 android.graphics.Bitmap ph = PlayerPhotos.driver(this, r.last);
                 if (ph != null) f.photos.put(r.pos, ph);
             }
