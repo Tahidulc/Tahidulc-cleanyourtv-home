@@ -527,6 +527,8 @@ final class LiveCentre {
     }
 
     private static final int BOARD_W = 748, BOARD_H = 112, STATS_W = 540, COMP_W = 108, TUCK = 18;
+    /** The stats' labels on the white panel: a soft navy. */
+    private static final int STAT_LABEL = 0xFF6A6F9C;
     /** Each page of stats on show, how many pages per fold-out, the scoreboard alone in between, the first fold-out. */
     private static final long STATS_MS = 6_000L, SHUT_MS = 15_000L, FIRST_OPEN_MS = 4_000L;
     private static final int PAGES_OPEN = 2;
@@ -557,7 +559,6 @@ final class LiveCentre {
     private static void buildBoard(Context c, LinearLayout into, ScoresTicker.Game g) {
         View comp = compTile(c, g);
         if (comp != null) into.addView(comp, new LinearLayout.LayoutParams(px(COMP_W), -1));
-        into.addView(edge(c, g.homeColor), new LinearLayout.LayoutParams(px(12), -1));
         into.addView(side(c, g, true), new LinearLayout.LayoutParams(0, -1, 1f));
         LinearLayout mid = new LinearLayout(c);
         mid.setOrientation(LinearLayout.VERTICAL);
@@ -573,7 +574,6 @@ final class LiveCentre {
         mid.addView(boardClock, cl);
         into.addView(mid, new LinearLayout.LayoutParams(px(210), -1));
         into.addView(side(c, g, false), new LinearLayout.LayoutParams(0, -1, 1f));
-        into.addView(edge(c, g.awayColor), new LinearLayout.LayoutParams(px(12), -1));
     }
 
     /**
@@ -718,31 +718,21 @@ final class LiveCentre {
         return b;
     }
 
-    private static View edge(Context c, int colour) {
-        View v = new View(c);
-        // A white or very pale kit (Sevilla's, Real Madrid's) would vanish against the white side: navy instead.
-        int r = (colour >> 16) & 0xFF, gr = (colour >> 8) & 0xFF, b = colour & 0xFF;
-        boolean pale = (r * 299 + gr * 587 + b * 114) / 1000 > 215;
-        v.setBackgroundColor(colour != 0 && !pale ? 0xFF000000 | colour : NAVY);
-        return v;
-    }
-
-    /** One side: its crest over its three letters, on white. */
+    /** One side: its crest alone, large, on white (its three letters only while it has no crest). */
     private static View side(Context c, ScoresTicker.Game g, boolean home) {
-        LinearLayout v = new LinearLayout(c);
-        v.setOrientation(LinearLayout.VERTICAL);
-        v.setGravity(Gravity.CENTER);
+        FrameLayout v = new FrameLayout(c);
         v.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0xFFFFFFFF, 0xFFE9ECF5}));
+        String logo = home ? g.homeLogo : g.awayLogo;
+        if (logo == null) {
+            TextView name = text(c, home ? g.home : g.away, 38, INK, ScoreCard.outfit(c, 800));
+            name.setLetterSpacing(0.04f);
+            v.addView(name, new FrameLayout.LayoutParams(-2, -2, Gravity.CENTER));
+            return v;
+        }
         ImageView crest = new ImageView(c);
         crest.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        loadCrest(crest, home ? g.homeLogo : g.awayLogo);
-        v.addView(crest, new LinearLayout.LayoutParams(px(52), px(52)));
-        TextView name = text(c, home ? g.home : g.away, 34, INK, ScoreCard.outfit(c, 800));
-        name.setLetterSpacing(0.04f);
-        name.setGravity(Gravity.CENTER);
-        LinearLayout.LayoutParams nl = new LinearLayout.LayoutParams(-2, -2);
-        nl.topMargin = px(2);
-        v.addView(name, nl);
+        loadCrest(crest, logo);
+        v.addView(crest, new FrameLayout.LayoutParams(px(84), px(84), Gravity.CENTER));
         return v;
     }
 
@@ -925,11 +915,10 @@ final class LiveCentre {
         main.postDelayed(statsTurn, statsOpen ? STATS_MS : 1_200L);
     }
 
-    /** The stats panel's ground: the launcher's navy, with the scoreboard's red along its foot. */
+    /** The stats panel's ground: the scoreboard's own white, with its red along the foot. */
     private static android.graphics.drawable.Drawable statsGround() {
-        GradientDrawable sb = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0xFF161C70, 0xFF0E1450});
+        GradientDrawable sb = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0xFFFFFFFF, 0xFFE9ECF5});
         sb.setCornerRadius(px(14));
-        sb.setStroke(Math.max(1, px(1.5f)), 0x33FFFFFF);
         GradientDrawable red = new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, new int[]{0xFFB8121F, 0xFFE3283A});
         android.graphics.drawable.LayerDrawable l = new android.graphics.drawable.LayerDrawable(new android.graphics.drawable.Drawable[]{sb, red});
         l.setLayerGravity(1, Gravity.BOTTOM | Gravity.FILL_HORIZONTAL);
@@ -961,11 +950,11 @@ final class LiveCentre {
         page.setGravity(Gravity.CENTER);
         page.setPadding(px(22), px(10), px(22), px(10));
         if (pages == null || pages.isEmpty()) {
-            TextView t = text(c, g == null ? "" : ScoresTicker.competition(g), 22, 0xFFC9CEF2, ScoreCard.outfit(c, 600));
+            TextView t = text(c, g == null ? "" : ScoresTicker.competition(g), 22, STAT_LABEL, ScoreCard.outfit(c, 600));
             page.addView(t);
         } else {
             String[] p = pages.get(Math.floorMod(statAt, pages.size()));
-            TextView label = text(c, p[0], 16, 0xFFAEB5E8, ScoreCard.outfit(c, 800));
+            TextView label = text(c, p[0], 16, STAT_LABEL, ScoreCard.outfit(c, 800));
             label.setLetterSpacing(0.14f);
             page.addView(label);
             LinearLayout row = new LinearLayout(c);
@@ -974,7 +963,7 @@ final class LiveCentre {
             rl.topMargin = px(8);
             page.addView(row, rl);
             if ("venue".equals(p[3])) {
-                TextView v = text(c, p[1], 26, 0xFFFFFFFF, ScoreCard.outfit(c, 700));
+                TextView v = text(c, p[1], 26, INK, ScoreCard.outfit(c, 700));
                 v.setGravity(Gravity.CENTER);
                 row.addView(v, new LinearLayout.LayoutParams(-1, -2));
             } else if ("form".equals(p[3])) {
@@ -982,17 +971,17 @@ final class LiveCentre {
                 row.addView(new View(c), new LinearLayout.LayoutParams(px(18), 1));
                 row.addView(form(c, p[2]), new LinearLayout.LayoutParams(0, -2, 1f));
             } else {
-                TextView hv = text(c, p[1], 34, 0xFFFFFFFF, ScoreCard.outfit(c, 800));
+                TextView hv = text(c, p[1], 34, INK, ScoreCard.outfit(c, 800));
                 row.addView(hv, new LinearLayout.LayoutParams(-2, -2));
                 if ("bar".equals(p[3])) {
                     LinearLayout.LayoutParams bl = new LinearLayout.LayoutParams(0, px(10), 1f);
                     bl.leftMargin = px(16);
                     bl.rightMargin = px(16);
-                    row.addView(split(c, g, p[1], p[2]), bl);
+                    row.addView(split(c, p[1], p[2]), bl);
                 } else {
                     row.addView(new View(c), new LinearLayout.LayoutParams(0, 1, 1f));
                 }
-                TextView av = text(c, p[2], 34, 0xFFFFFFFF, ScoreCard.outfit(c, 800));
+                TextView av = text(c, p[2], 34, INK, ScoreCard.outfit(c, 800));
                 row.addView(av, new LinearLayout.LayoutParams(-2, -2));
             }
         }
@@ -1000,18 +989,19 @@ final class LiveCentre {
     }
 
     /** The two sides' share of a stat as one bar in their colours (the home side's from the left). */
-    private static View split(Context c, ScoresTicker.Game g, String hv, String av) {
+    private static View split(Context c, String hv, String av) {
         float h = leadingNumber(hv), a = leadingNumber(av);
         float share = h + a <= 0 ? 0.5f : h / (h + a);
         LinearLayout bar = new LinearLayout(c);
         bar.setClipToOutline(true);
         bar.setOutlineProvider(round(px(5)));
+        // Both sides in the scoreboard's red, the side ahead in full and the other paler.
         View l = new View(c), r = new View(c);
-        l.setBackgroundColor(g != null && g.homeColor != 0 ? 0xFF000000 | g.homeColor : GREEN);
-        r.setBackgroundColor(g != null && g.awayColor != 0 ? 0xFF000000 | g.awayColor : 0xFFAEB5E8);
+        l.setBackgroundColor(share >= 0.5f ? 0xFFE3283A : 0xFFF2A3AB);
+        r.setBackgroundColor(share >= 0.5f && share != 0.5f ? 0xFFF2A3AB : 0xFFE3283A);
         bar.addView(l, new LinearLayout.LayoutParams(0, -1, Math.max(0.02f, share)));
         View gap = new View(c);
-        gap.setBackgroundColor(0xFF0E1450);
+        gap.setBackgroundColor(0xFFF4F5FA);
         bar.addView(gap, new LinearLayout.LayoutParams(px(3), -1));
         bar.addView(r, new LinearLayout.LayoutParams(0, -1, Math.max(0.02f, 1f - share)));
         return bar;
@@ -1857,7 +1847,7 @@ final class LiveCentre {
         if (url == null) return null;
         Bitmap have = crests.get(url);
         if (have != null) return have;
-        Bitmap b = ScoresTicker.cachedLogo(app, url, 64);
+        Bitmap b = ScoresTicker.cachedLogo(app, url, 112);
         if (b == null) return null;
         Bitmap n = ScoreCard.onNavy(b);
         crests.put(url, n);
