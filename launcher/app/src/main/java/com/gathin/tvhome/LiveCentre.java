@@ -389,18 +389,21 @@ final class LiveCentre {
         ml.leftMargin = px(24);
         ml.topMargin = px(22);
         win.addView(mini, ml);
+        // The stats and facts fold out of the scoreboard's right end and back in: a panel tucked behind it (the
+        // scoreboard is drawn over it, higher up), in a drawer that hides whatever of it has not come out yet.
+        statsDrawer = new FrameLayout(c);
+        FrameLayout.LayoutParams stl = new FrameLayout.LayoutParams(px(STATS_W + TUCK), px(BOARD_H), Gravity.TOP | Gravity.START);
+        stl.leftMargin = px(24 + BOARD_W - TUCK);
+        stl.topMargin = px(22);
+        win.addView(statsDrawer, stl);
         statsBox = new FrameLayout(c);
         statsBox.setClipToOutline(true);
         statsBox.setOutlineProvider(round(px(14)));
-        statsBox.setElevation(px(12));
-        GradientDrawable sb = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0xFF161C70, 0xFF0E1450});
-        sb.setCornerRadius(px(14));
-        sb.setStroke(Math.max(1, px(1.5f)), 0x33FFFFFF);
-        statsBox.setBackground(sb);
-        FrameLayout.LayoutParams stl = new FrameLayout.LayoutParams(px(STATS_W), px(BOARD_H), Gravity.TOP | Gravity.START);
-        stl.leftMargin = px(24 + BOARD_W + 14);
-        stl.topMargin = px(22);
-        win.addView(statsBox, stl);
+        statsBox.setBackground(statsGround());
+        statsBox.setPadding(px(TUCK), 0, 0, 0);
+        statsDrawer.addView(statsBox, new FrameLayout.LayoutParams(-1, -1));
+        statsOpen = false;
+        statsBox.setTranslationX(-px(STATS_W + TUCK));
 
         // Back closes it: the remote's Back key in the column's top right corner.
         ImageView back = new ImageView(c);
@@ -441,7 +444,7 @@ final class LiveCentre {
         win.animate().alpha(1f).setDuration(320).withLayer().start();
         main.postDelayed(tick, 1_000L);
         main.post(clockTick);
-        main.postDelayed(statsTurn, STATS_MS);
+        main.postDelayed(statsTurn, FIRST_OPEN_MS);
         main.postDelayed(reread, READ_MS);
         main.postDelayed(nextLeague, LEAGUE_MS);
     }
@@ -523,9 +526,14 @@ final class LiveCentre {
         fillCentre(c);
     }
 
-    private static final int BOARD_W = 748, BOARD_H = 112, STATS_W = 540, COMP_W = 108;
-    private static final long STATS_MS = 6_500L;
-    private static FrameLayout statsBox;
+    private static final int BOARD_W = 748, BOARD_H = 112, STATS_W = 540, COMP_W = 108, TUCK = 18;
+    /** Each page of stats on show, how many pages per fold-out, the scoreboard alone in between, the first fold-out. */
+    private static final long STATS_MS = 6_000L, SHUT_MS = 15_000L, FIRST_OPEN_MS = 4_000L;
+    private static final int PAGES_OPEN = 2;
+    private static FrameLayout statsBox, statsDrawer;
+    /** Whether the stats are folded out now, and how many pages they have shown this time. */
+    private static boolean statsOpen;
+    private static int pagesShown;
     private static TextView boardScore, boardClock;
 
     /**
@@ -535,10 +543,10 @@ final class LiveCentre {
     private static void fillMini(Context c) {
         mini.removeAllViews();
         ScoresTicker.Game g = shown();
-        if (g == null) { mini.setVisibility(View.GONE); statsBox.setVisibility(View.GONE); return; }
+        if (g == null) { mini.setVisibility(View.GONE); statsDrawer.setVisibility(View.GONE); return; }
         if (!boardHidden) {
             mini.setVisibility(View.VISIBLE);
-            statsBox.setVisibility(View.VISIBLE);
+            statsDrawer.setVisibility(View.VISIBLE);
         }
         buildBoard(c, mini, g);
         clockNow();
@@ -580,27 +588,58 @@ final class LiveCentre {
             java.util.Set<String> seen = new java.util.HashSet<>();
             for (ScoresTicker.Game g : read) if (g.slug != null && seen.add(g.slug)) one.add(g);
             for (ScoresTicker.Game g : one) { crest(g.homeLogo); crest(g.awayLogo); compLogo(compUrl(g)); }
+            if (!one.isEmpty()) stats(one.get(0));
             main.post(() -> {
                 float was = k;
                 k = app.getResources().getDisplayMetrics().widthPixels / 1920f;
                 TextView score = boardScore, clockView = boardClock;
-                int w = px(BOARD_W), h = px(BOARD_H), gap = px(16);
-                Bitmap out = Bitmap.createBitmap(w + 2 * gap, Math.max(1, one.size()) * (h + gap) + gap, Bitmap.Config.ARGB_8888);
+                int w = px(BOARD_W), h = px(BOARD_H), gap = px(16), sw = px(STATS_W + TUCK);
+                // The first game three times (alone, then folded out on two pages of its stats), then one game of
+                // each other competition alone.
+                List<ScoresTicker.Game> rows = new ArrayList<>();
+                List<Integer> pageOf = new ArrayList<>();
+                for (int i = 0; i < one.size(); i++) {
+                    rows.add(one.get(i));
+                    pageOf.add(-1);
+                    if (i == 0) for (int p = 0; p < 2; p++) { rows.add(one.get(0)); pageOf.add(p); }
+                }
+                Bitmap out = Bitmap.createBitmap(w - px(TUCK) + sw + 2 * gap, Math.max(1, rows.size()) * (h + gap) + gap, Bitmap.Config.ARGB_8888);
                 Canvas cv = new Canvas(out);
                 cv.drawColor(0xFF2A2E3A);
-                for (int i = 0; i < one.size(); i++) {
+                int was0 = statAt;
+                for (int i = 0; i < rows.size(); i++) {
+                    ScoresTicker.Game g = rows.get(i);
+                    if (pageOf.get(i) >= 0) {
+                        statAt = was0 + pageOf.get(i);
+                        FrameLayout panel = new FrameLayout(app);
+                        panel.setBackground(statsGround());
+                        panel.setPadding(px(TUCK), 0, 0, 0);
+                        panel.addView(statsPage(app, g), new FrameLayout.LayoutParams(-1, -1));
+                        panel.measure(View.MeasureSpec.makeMeasureSpec(sw, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(h, View.MeasureSpec.EXACTLY));
+                        panel.layout(0, 0, sw, h);
+                        centreTexts(panel);
+                        cv.save();
+                        cv.translate(gap + w - px(TUCK), gap + i * (h + gap));
+                        panel.draw(cv);
+                        cv.restore();
+                    }
                     LinearLayout b = new LinearLayout(app);
                     b.setOrientation(LinearLayout.HORIZONTAL);
-                    buildBoard(app, b, one.get(i));
-                    boardClock.setText(clockText(one.get(i)));
+                    buildBoard(app, b, g);
+                    boardClock.setText(clockText(g));
                     b.measure(View.MeasureSpec.makeMeasureSpec(w, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(h, View.MeasureSpec.EXACTLY));
                     b.layout(0, 0, w, h);
                     centreTexts(b);
                     cv.save();
                     cv.translate(gap, gap + i * (h + gap));
+                    // The scoreboard's own rounded corners, as its outline gives them on screen.
+                    android.graphics.Path clip = new android.graphics.Path();
+                    clip.addRoundRect(new RectF(0, 0, w, h), px(14), px(14), android.graphics.Path.Direction.CW);
+                    cv.clipPath(clip);
                     b.draw(cv);
                     cv.restore();
                 }
+                statAt = was0;
                 boardScore = score;
                 boardClock = clockView;
                 k = was;
@@ -841,21 +880,82 @@ final class LiveCentre {
         return n + s;
     }
 
+    /**
+     * The scoreboard alone, then its stats folding out of it: PAGES_OPEN pages of stats and facts, one after the
+     * other, then folded back in, and the scoreboard alone again. Nothing folds out until the game has stats.
+     */
     private static final Runnable statsTurn = new Runnable() {
         @Override public void run() {
             if (host == null) return;
-            statAt++;
-            fillStats(app, true);
-            main.postDelayed(this, STATS_MS);
+            ScoresTicker.Game g = shown();
+            List<String[]> pages = g == null ? null : statPages.get(g.id);
+            if (!statsOpen) {
+                if (pages == null || pages.isEmpty() || boardHidden) { main.postDelayed(this, SHUT_MS / 3); return; }
+                statAt++;
+                fillStats(app, false);
+                openStats(true);
+                pagesShown = 1;
+                main.postDelayed(this, STATS_MS);
+            } else if (pagesShown < Math.min(PAGES_OPEN, pages == null ? 1 : pages.size())) {
+                statAt++;
+                fillStats(app, true);
+                pagesShown++;
+                main.postDelayed(this, STATS_MS);
+            } else {
+                openStats(false);
+                main.postDelayed(this, SHUT_MS);
+            }
         }
     };
+
+    /** The stats fold out of the scoreboard's right end (slowing as they come), or back in behind it. */
+    private static void openStats(boolean open) {
+        statsOpen = open;
+        if (statsBox == null) return;
+        statsBox.animate().cancel();
+        statsBox.animate().translationX(open ? 0f : -px(STATS_W + TUCK)).setDuration(open ? 620 : 460)
+                .setInterpolator(open ? new DecelerateInterpolator(2.4f) : new android.view.animation.AccelerateInterpolator(1.8f))
+                .start();
+    }
+
+    /** Another game on the scoreboard: its stats fold out soon (or, already out, show it a page or two more). */
+    private static void restartStats() {
+        main.removeCallbacks(statsTurn);
+        pagesShown = 0;
+        main.postDelayed(statsTurn, statsOpen ? STATS_MS : 1_200L);
+    }
+
+    /** The stats panel's ground: the launcher's navy, with the scoreboard's red along its foot. */
+    private static android.graphics.drawable.Drawable statsGround() {
+        GradientDrawable sb = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0xFF161C70, 0xFF0E1450});
+        sb.setCornerRadius(px(14));
+        sb.setStroke(Math.max(1, px(1.5f)), 0x33FFFFFF);
+        GradientDrawable red = new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, new int[]{0xFFB8121F, 0xFFE3283A});
+        android.graphics.drawable.LayerDrawable l = new android.graphics.drawable.LayerDrawable(new android.graphics.drawable.Drawable[]{sb, red});
+        l.setLayerGravity(1, Gravity.BOTTOM | Gravity.FILL_HORIZONTAL);
+        l.setLayerHeight(1, px(4));
+        return l;
+    }
 
     /** One page of the stats: its label across the top, the home side's figure left, the away side's right. */
     private static void fillStats(Context c, boolean turn) {
         if (statsBox == null) return;
-        ScoresTicker.Game g = shown();
-        List<String[]> pages = g == null ? null : statPages.get(g.id);
         View old = statsBox.getChildCount() > 0 ? statsBox.getChildAt(statsBox.getChildCount() - 1) : null;
+        View page = statsPage(c, shown());
+        statsBox.addView(page, new FrameLayout.LayoutParams(-1, -1));
+        if (old != null && turn) {
+            page.setAlpha(0f);
+            page.setTranslationY(px(18));
+            page.animate().alpha(1f).translationY(0).setDuration(320).start();
+            old.animate().alpha(0f).translationY(-px(18)).setDuration(260).withEndAction(() -> statsBox.removeView(old)).start();
+        } else if (old != null) {
+            statsBox.removeView(old);
+        }
+    }
+
+    /** The game's stats page now showing (statAt), or its competition while it has none. */
+    private static View statsPage(Context c, ScoresTicker.Game g) {
+        List<String[]> pages = g == null ? null : statPages.get(g.id);
         LinearLayout page = new LinearLayout(c);
         page.setOrientation(LinearLayout.VERTICAL);
         page.setGravity(Gravity.CENTER);
@@ -896,15 +996,7 @@ final class LiveCentre {
                 row.addView(av, new LinearLayout.LayoutParams(-2, -2));
             }
         }
-        statsBox.addView(page, new FrameLayout.LayoutParams(-1, -1));
-        if (old != null && turn) {
-            page.setAlpha(0f);
-            page.setTranslationY(px(18));
-            page.animate().alpha(1f).translationY(0).setDuration(320).start();
-            old.animate().alpha(0f).translationY(-px(18)).setDuration(260).withEndAction(() -> statsBox.removeView(old)).start();
-        } else if (old != null) {
-            statsBox.removeView(old);
-        }
+        return page;
     }
 
     /** The two sides' share of a stat as one bar in their colours (the home side's from the left). */
@@ -1512,7 +1604,7 @@ final class LiveCentre {
         if (host == null || mini == null) return;
         if (on && boardHidden) {
             boardHidden = false;
-            for (View v : new View[]{mini, statsBox}) {
+            for (View v : new View[]{mini, statsDrawer}) {
                 v.setVisibility(View.VISIBLE);
                 v.setAlpha(0f);
                 v.setTranslationY(-px(20));
@@ -1525,19 +1617,20 @@ final class LiveCentre {
             ring.setCornerRadius(px(14));
             ring.setStroke(px(4), 0xFFFFFFFF);
             v.setForeground(on ? ring : null);
-            v.animate().scaleX(on ? 1.03f : 1f).scaleY(on ? 1.03f : 1f).setDuration(160).start();
         }
+        // Both grow from the scoreboard's top left corner, so the stats stay tucked behind it.
         mini.setPivotX(0);
         mini.setPivotY(0);
-        statsBox.setPivotX(0);
-        statsBox.setPivotY(0);
+        statsDrawer.setPivotX(-(px(24 + BOARD_W - TUCK) - px(24)));
+        statsDrawer.setPivotY(0);
+        for (View v : new View[]{mini, statsDrawer}) v.animate().scaleX(on ? 1.03f : 1f).scaleY(on ? 1.03f : 1f).setDuration(160).start();
     }
 
     /** Back on the scoreboard: it and its stats slide away (Up brings them back). */
     private static void hideBoard() {
         focusBoard(false);
         boardHidden = true;
-        for (View v : new View[]{mini, statsBox}) {
+        for (View v : new View[]{mini, statsDrawer}) {
             v.animate().alpha(0f).translationY(-px(20)).setDuration(240).withEndAction(() -> { if (boardHidden) v.setVisibility(View.GONE); }).start();
         }
     }
@@ -1554,7 +1647,7 @@ final class LiveCentre {
         fillMini(app);
         io.execute(() -> {
             stats(next);
-            main.post(() -> { if (host != null) fillStats(app, false); });
+            main.post(() -> { if (host != null) { fillStats(app, false); restartStats(); } });
             Object[] w = GoalWatchService.watchForGame(app, next);
             main.post(() -> {
                 if (host == null) return;
