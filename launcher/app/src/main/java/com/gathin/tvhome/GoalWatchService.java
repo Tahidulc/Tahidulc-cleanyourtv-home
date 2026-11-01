@@ -1389,6 +1389,10 @@ public class GoalWatchService extends Service {
             g.broadcasts.add("Sky Sports Premier League");
             enqueue(g, new String[]{"test", "Mohamed Salah", "67'", "home", ""}, false);
         }
+        if (intent != null && intent.hasExtra("test_render_boards")) {
+            // adb only: a Live Centre scoreboard for each competition, drawn to files/boards.png (nothing on screen).
+            LiveCentre.renderBoards(this);
+        }
         if (intent != null && intent.hasExtra("test_render_bar")) {
             // adb only: the Sports page's Live Centre bar drawn to a file (nothing on screen): files/bar.png.
             try {
@@ -1949,7 +1953,7 @@ public class GoalWatchService extends Service {
         return s;
     }
 
-    private static boolean premier(String url) {
+    static boolean premier(String url) {
         return url != null && url.matches(".*/leaguelogos/soccer/500(-dark)?/23\\.png");
     }
 
@@ -1969,7 +1973,7 @@ public class GoalWatchService extends Service {
     }
 
     /** The picture down to where its first block ends (the lion, above the gap before the words), white if asked. */
-    private static android.graphics.Bitmap lionOnly(android.graphics.Bitmap b, boolean white) {
+    static android.graphics.Bitmap lionOnly(android.graphics.Bitmap b, boolean white) {
         int w = b.getWidth(), h = b.getHeight();
         int[] row = new int[w];
         int top = -1, bottom = h - 1, left = w, right = -1;
@@ -2278,7 +2282,7 @@ public class GoalWatchService extends Service {
         for (String[] e : ids) LEAGUE_IDS.put(e[0], Integer.parseInt(e[1]));
     }
 
-    private static String leagueLogoFor(ScoresTicker.Game g) {
+    static String leagueLogoFor(ScoresTicker.Game g) {
         Integer id = g.slug != null ? LEAGUE_IDS.get(g.slug) : null;
         if (id == null && g.league != null) id = LEAGUE_IDS.get(g.league.toUpperCase(java.util.Locale.ROOT));
         return id == null ? null : "https://a.espncdn.com/i/leaguelogos/soccer/500-dark/" + id + ".png";

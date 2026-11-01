@@ -184,7 +184,7 @@ final class LiveCentre {
         }
         // Every crest ready before it is drawn: the games', the leagues' and the tables' clubs'.
         if (c != null) {
-            for (ScoresTicker.Game g : all) { crest(g.homeLogo); crest(g.awayLogo); crest(g.leagueLogo); }
+            for (ScoresTicker.Game g : all) { crest(g.homeLogo); crest(g.awayLogo); crest(g.leagueLogo); compLogo(compUrl(g)); }
             for (List<Club> t : tables.values()) for (Club x : t) crest(x.logo);
         }
     }
@@ -523,7 +523,7 @@ final class LiveCentre {
         fillCentre(c);
     }
 
-    private static final int BOARD_W = 640, BOARD_H = 112, STATS_W = 540;
+    private static final int BOARD_W = 748, BOARD_H = 112, STATS_W = 540, COMP_W = 108;
     private static final long STATS_MS = 6_500L;
     private static FrameLayout statsBox;
     private static TextView boardScore, boardClock;
@@ -540,8 +540,17 @@ final class LiveCentre {
             mini.setVisibility(View.VISIBLE);
             statsBox.setVisibility(View.VISIBLE);
         }
-        mini.addView(edge(c, g.homeColor), new LinearLayout.LayoutParams(px(12), -1));
-        mini.addView(side(c, g, true), new LinearLayout.LayoutParams(0, -1, 1f));
+        buildBoard(c, mini, g);
+        clockNow();
+        fillStats(c, false);
+    }
+
+    /** The scoreboard's parts, left to right: the competition, the home side, the score and clock, the away side. */
+    private static void buildBoard(Context c, LinearLayout into, ScoresTicker.Game g) {
+        View comp = compTile(c, g);
+        if (comp != null) into.addView(comp, new LinearLayout.LayoutParams(px(COMP_W), -1));
+        into.addView(edge(c, g.homeColor), new LinearLayout.LayoutParams(px(12), -1));
+        into.addView(side(c, g, true), new LinearLayout.LayoutParams(0, -1, 1f));
         LinearLayout mid = new LinearLayout(c);
         mid.setOrientation(LinearLayout.VERTICAL);
         mid.setGravity(Gravity.CENTER);
@@ -554,11 +563,120 @@ final class LiveCentre {
         LinearLayout.LayoutParams cl = new LinearLayout.LayoutParams(-2, -2);
         cl.topMargin = px(2);
         mid.addView(boardClock, cl);
-        mini.addView(mid, new LinearLayout.LayoutParams(px(210), -1));
-        mini.addView(side(c, g, false), new LinearLayout.LayoutParams(0, -1, 1f));
-        mini.addView(edge(c, g.awayColor), new LinearLayout.LayoutParams(px(12), -1));
-        clockNow();
-        fillStats(c, false);
+        into.addView(mid, new LinearLayout.LayoutParams(px(210), -1));
+        into.addView(side(c, g, false), new LinearLayout.LayoutParams(0, -1, 1f));
+        into.addView(edge(c, g.awayColor), new LinearLayout.LayoutParams(px(12), -1));
+    }
+
+    /**
+     * adb only: one scoreboard per competition (a game from each, live first) drawn to files/boards.png, nothing on
+     * screen. The Live Centre's own board, when it is open, is left as it is.
+     */
+    static void renderBoards(Context ctx) {
+        if (app == null) app = ctx.getApplicationContext();
+        io.execute(() -> {
+            List<ScoresTicker.Game> read = scores();
+            List<ScoresTicker.Game> one = new ArrayList<>();
+            java.util.Set<String> seen = new java.util.HashSet<>();
+            for (ScoresTicker.Game g : read) if (g.slug != null && seen.add(g.slug)) one.add(g);
+            for (ScoresTicker.Game g : one) { crest(g.homeLogo); crest(g.awayLogo); compLogo(compUrl(g)); }
+            main.post(() -> {
+                float was = k;
+                k = app.getResources().getDisplayMetrics().widthPixels / 1920f;
+                TextView score = boardScore, clockView = boardClock;
+                int w = px(BOARD_W), h = px(BOARD_H), gap = px(16);
+                Bitmap out = Bitmap.createBitmap(w + 2 * gap, Math.max(1, one.size()) * (h + gap) + gap, Bitmap.Config.ARGB_8888);
+                Canvas cv = new Canvas(out);
+                cv.drawColor(0xFF2A2E3A);
+                for (int i = 0; i < one.size(); i++) {
+                    LinearLayout b = new LinearLayout(app);
+                    b.setOrientation(LinearLayout.HORIZONTAL);
+                    buildBoard(app, b, one.get(i));
+                    boardClock.setText(clockText(one.get(i)));
+                    b.measure(View.MeasureSpec.makeMeasureSpec(w, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(h, View.MeasureSpec.EXACTLY));
+                    b.layout(0, 0, w, h);
+                    centreTexts(b);
+                    cv.save();
+                    cv.translate(gap, gap + i * (h + gap));
+                    b.draw(cv);
+                    cv.restore();
+                }
+                boardScore = score;
+                boardClock = clockView;
+                k = was;
+                java.io.File f = new java.io.File(app.getExternalFilesDir(null), "boards.png");
+                try (java.io.FileOutputStream o = new java.io.FileOutputStream(f)) { out.compress(Bitmap.CompressFormat.PNG, 100, o); } catch (Exception ignored) { }
+            });
+        });
+    }
+
+    /**
+     * A centred one-line TextView is laid out very wide and scrolled to its text just before it is drawn on screen;
+     * drawn off screen it is never scrolled, and its text lands far off to the right. Scrolled here as on screen.
+     */
+    private static void centreTexts(View v) {
+        if (v instanceof android.view.ViewGroup) {
+            android.view.ViewGroup g = (android.view.ViewGroup) v;
+            for (int i = 0; i < g.getChildCount(); i++) centreTexts(g.getChildAt(i));
+        } else if (v instanceof TextView) {
+            TextView t = (TextView) v;
+            android.text.Layout l = t.getLayout();
+            if (l == null || (t.getGravity() & Gravity.HORIZONTAL_GRAVITY_MASK) != Gravity.CENTER_HORIZONTAL) return;
+            int space = t.getWidth() - t.getCompoundPaddingLeft() - t.getCompoundPaddingRight();
+            t.scrollTo((int) Math.floor((l.getLineLeft(0) + l.getLineRight(0)) / 2f - space / 2f), 0);
+        }
+    }
+
+    /** The competition's mark at the scoreboard's left end, in white on its own colour, as the broadcasters show it. */
+    private static View compTile(Context c, ScoresTicker.Game g) {
+        String url = compUrl(g);
+        if (url == null) return null;
+        FrameLayout t = new FrameLayout(c);
+        t.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, compColours(g.slug)));
+        ImageView logo = new ImageView(c);
+        logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        t.addView(logo, new FrameLayout.LayoutParams(px(76), px(76), Gravity.CENTER));
+        Bitmap have = crests.get("comp|" + url);
+        if (have != null) logo.setImageBitmap(have);
+        else io.execute(() -> {
+            Bitmap b = compLogo(url);
+            if (b != null) main.post(() -> logo.setImageBitmap(b));
+        });
+        return t;
+    }
+
+    private static String compUrl(ScoresTicker.Game g) {
+        return g == null ? null : g.leagueLogo != null ? g.leagueLogo : GoalWatchService.leagueLogoFor(g);
+    }
+
+    /** The Premier League's purple, UEFA's night blue, else the launcher's navy: {top, bottom}. */
+    private static int[] compColours(String slug) {
+        if ("eng.1".equals(slug)) return new int[]{0xFF4B0E58, 0xFF2E0033};
+        if (slug != null && slug.startsWith("uefa.")) return new int[]{0xFF15257A, 0xFF070E40};
+        return new int[]{NAVY, NAVY_DEEP};
+    }
+
+    /**
+     * A competition's logo for its tile: ESPN's version for dark grounds; the Premier League's lion alone, in white
+     * (ESPN's carries the words under it). Kept with the crests. Off the main thread.
+     */
+    private static Bitmap compLogo(String url) {
+        if (url == null) return null;
+        String key = "comp|" + url;
+        Bitmap have = crests.get(key);
+        if (have != null) return have;
+        Bitmap b;
+        if (GoalWatchService.premier(url)) {
+            Bitmap full = ScoresTicker.cachedLogo(app, url.replace("/500-dark/", "/500/"), 160);
+            b = full == null ? null : GoalWatchService.lionOnly(full, true);
+        } else {
+            Bitmap dark = url.contains("/500/") ? ScoresTicker.cachedLogo(app, url.replace("/500/", "/500-dark/"), 128) : null;
+            b = ScoreCard.onNavy(dark != null ? dark : ScoresTicker.cachedLogo(app, url, 128));
+            // The Bundesliga's red badge alone: its wordmark under it is too dark to read on the navy.
+            if (b != null && url.matches(".*/leaguelogos/soccer/500(-dark)?/10\\.png")) b = GoalWatchService.lionOnly(b, false);
+        }
+        if (b != null) crests.put(key, b);
+        return b;
     }
 
     private static View edge(Context c, int colour) {
@@ -593,6 +711,10 @@ final class LiveCentre {
     private static void clockNow() {
         ScoresTicker.Game g = shown();
         if (boardClock == null || g == null) return;
+        boardClock.setText(clockText(g));
+    }
+
+    private static String clockText(ScoresTicker.Game g) {
         String t;
         if (g.state == 2) t = "FT";
         else if (g.state == 1) t = minute(g);
@@ -606,7 +728,7 @@ final class LiveCentre {
             long secs = countedFromMinute(g);
             t = secs >= 0 ? String.format(Locale.ROOT, "%02d:%02d", secs / 60, secs % 60) : minute(g);
         }
-        boardClock.setText(t);
+        return t;
     }
 
     /** A game's minute as ESPN last gave it, and when it was first seen: {minute (with added time), seen at}. */
