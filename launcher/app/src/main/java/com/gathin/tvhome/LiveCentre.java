@@ -131,6 +131,17 @@ final class LiveCentre {
                 incidents.put(g.id, ScoresTicker.incidents(g));
             }
         }
+        // F1's weekend (its sessions, live order and laps), and tennis and UFC every fourth read.
+        if (c != null) {
+            F1Results.Weekend w = F1Results.weekend(null);
+            if (w != null) f1 = w;
+            if (reads % 4 == 1) {
+                List<MoreSports.Result> o = new ArrayList<>();
+                try { o.addAll(MoreSports.tennis()); } catch (RuntimeException ignored) { }
+                try { o.addAll(MoreSports.ufc()); } catch (RuntimeException ignored) { }
+                others = o;
+            }
+        }
         // Every crest ready before it is drawn: the games', the leagues' and the tables' clubs'.
         if (c != null) {
             for (ScoresTicker.Game g : all) { crest(g.homeLogo); crest(g.awayLogo); crest(g.leagueLogo); }
@@ -151,6 +162,10 @@ final class LiveCentre {
     /** Each game under way's VAR decisions and penalties ({key, what, player, minute}), and how many reads so far. */
     private static final Map<String, List<String[]>> incidents = new java.util.concurrent.ConcurrentHashMap<>();
     private static int reads;
+    /** F1's weekend as last read, tennis and UFC as last read, and how each session or match stood before. */
+    private static volatile F1Results.Weekend f1;
+    private static volatile List<MoreSports.Result> others = new ArrayList<>();
+    private static final Map<String, String> otherStates = new HashMap<>();
     private static final Map<String, Long> tablesAt = new java.util.concurrent.ConcurrentHashMap<>();
 
     /** A league's standings from ESPN (as they stood before today's games under way), kept ten minutes. Off the main thread. */
@@ -663,6 +678,15 @@ final class LiveCentre {
             else s.append(g.home).append(' ').append(score(g.homeScore)).append('–').append(score(g.awayScore)).append(' ').append(g.away)
                     .append(" (").append(minute(g)).append(")    ·    ");
         }
+        F1Results.Weekend w = f1;
+        if (w != null) {
+            for (F1Results.Session x : w.sessions) {
+                if (!"in".equals(x.state) || x.top.isEmpty()) continue;
+                s.append("     F1  ").append(x.isRace() && x.lap > 0 ? "LAP " + x.lap : F1Results.label(x.abbr)).append("   ");
+                for (int i = 0; i < Math.min(5, x.top.size()); i++) s.append(i + 1).append(' ').append(F1Results.code(x.top.get(i))).append("   ");
+                s.append(" ·    ");
+            }
+        }
         if (s.length() == 0) s.append("     No games today     ");
         String text = s.toString();
         if (text.equals(tickerText.getText().toString())) return;
@@ -713,7 +737,7 @@ final class LiveCentre {
             label.setGravity(Gravity.CENTER_VERTICAL);
             label.setPadding(px(10), 0, px(18), 0);
             label.setBackground(new ScoreCard.Slant(colour, px(8), false));
-            row.addView(label, new LinearLayout.LayoutParams(px(84), px(26)));
+            row.addView(label, new LinearLayout.LayoutParams(px(100), px(26)));
             TextView match = text(c, e[1], 17, 0xFFFFFFFF, ScoreCard.outfit(c, 700));
             LinearLayout.LayoutParams ml = new LinearLayout.LayoutParams(0, -2, 1.2f);
             ml.leftMargin = px(14);
@@ -802,6 +826,37 @@ final class LiveCentre {
                 fresh.add(new Object[]{999, new String[]{"FT", line, "Full time", "", ""}});
             }
         }
+        // F1: lights out, a new leader, the result (or pole).
+        F1Results.Weekend w = f1;
+        if (w != null) {
+            String gp = F1Results.shortName(w.name == null ? "" : w.name).replace("Grand Prix", "GP");
+            for (F1Results.Session x : w.sessions) {
+                if (!x.counts()) continue;
+                String before = otherStates.put("f1|" + x.id, x.state);
+                String leader = x.top.isEmpty() ? null : x.top.get(0);
+                String lastLeader = leader == null ? null : otherStates.put("f1l|" + x.id, leader);
+                if (first || before == null) continue;
+                String where = gp + " · " + F1Results.label(x.abbr).charAt(0) + F1Results.label(x.abbr).substring(1).toLowerCase(Locale.UK);
+                if ("pre".equals(before) && "in".equals(x.state)) {
+                    fresh.add(new Object[]{1000, new String[]{"F1", where, x.isRace() ? "Lights out" : "Under way", "", ""}});
+                } else if ("in".equals(before) && "post".equals(x.state) && leader != null) {
+                    String rest = (x.top.size() > 1 ? " · P2 " + x.top.get(1) : "") + (x.top.size() > 2 ? " · P3 " + x.top.get(2) : "");
+                    fresh.add(new Object[]{1000, new String[]{"F1", where, (x.isRace() ? "Winner " : "Pole ") + leader + rest, "", ""}});
+                } else if ("in".equals(x.state) && leader != null && lastLeader != null && !leader.equals(lastLeader)) {
+                    fresh.add(new Object[]{1000, new String[]{"F1", where + (x.isRace() && x.lap > 0 ? " · Lap " + x.lap : ""), leader + " leads", "", ""}});
+                }
+            }
+        }
+        // Tennis and UFC: each match or fight as it ends.
+        for (MoreSports.Result r : others) {
+            String before = otherStates.put("o|" + r.id, r.state);
+            if (first || before == null || "post".equals(before) || !"post".equals(r.state)) continue;
+            boolean ufc = "UFC".equals(r.tour);
+            String where = ufc ? (r.event == null ? "UFC" : r.event) + (r.mainEvent ? " · Main event" : "")
+                    : r.tour + (r.event == null ? "" : " · " + r.event) + (r.round == null ? "" : " · " + r.round);
+            fresh.add(new Object[]{1000, new String[]{ufc ? "UFC" : "TENNIS", where,
+                    r.winner + " beat " + r.loser + (r.score == null || r.score.isEmpty() ? "" : " · " + r.score), "", ""}});
+        }
         fresh.sort((a, b) -> Integer.compare((Integer) b[0], (Integer) a[0]));
         List<String[]> add = new ArrayList<>();
         for (Object[] f : fresh) add.add((String[]) f[1]);
@@ -822,6 +877,10 @@ final class LiveCentre {
             case "FT": return NAVY;
             case "VAR": return 0xFF7B4DFF;
             case "PEN": return 0xFFFF8A1F;
+            case "F1": return 0xFFE10600;
+            case "UFC": return 0xFF2E2E36;
+            case "TENNIS": return 0xFF3E8E2E;
+            case "BOXING": return 0xFFB8901E;
             default: return 0xFF1F9D5C;
         }
     }
@@ -883,7 +942,10 @@ final class LiveCentre {
                 {"RED", h + " 1  " + a + " 0", "Saliba", "38'", "away"},
                 {"VAR", h + " 1  " + a + " 0", "Goal ruled out · offside", "52'", ""},
                 {"PEN", h + " 1  " + a + " 0", "Raya · Penalty saved", "64'", ""},
-                {"FT", h + " 1  " + a + " 0", "Full time", "", ""}};
+                {"FT", h + " 1  " + a + " 0", "Full time", "", ""},
+                {"F1", "Mexico City GP · Race · Lap 23", "Norris leads", "", ""},
+                {"UFC", "UFC Fight Night · Main event", "Pereira beat Ankalaev · KO/TKO R2", "", ""},
+                {"TENNIS", "ATP · Paris Masters · Quarterfinal", "Sinner beat Fritz · 6-4 7-6", "", ""}};
         for (int i = 0; i < script.length; i++) {
             String[] e = script[i];
             main.postDelayed(() -> {
