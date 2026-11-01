@@ -469,6 +469,27 @@ public class AppSearchService extends AccessibilityService {
         main.postDelayed(step, STEP_MS);
     }
 
+    /**
+     * Pop-up mode on a TV without the key helper (the TCL): this helper takes the remote's keys while pop-up mode is
+     * open (Back, Down and Up pressed twice), and gives them up as it closes, as filtering keys costs the TCL's remote
+     * its auto-repeat. Its other work is not changed.
+     */
+    static void keysForPopup(boolean on) {
+        AppSearchService s = instance;
+        if (s == null) return;
+        android.accessibilityservice.AccessibilityServiceInfo info = s.getServiceInfo();
+        if (info == null) return;
+        int was = info.flags;
+        info.flags = on ? was | android.accessibilityservice.AccessibilityServiceInfo.FLAG_REQUEST_FILTER_KEY_EVENTS
+                : was & ~android.accessibilityservice.AccessibilityServiceInfo.FLAG_REQUEST_FILTER_KEY_EVENTS;
+        if (info.flags != was) s.setServiceInfo(info);
+    }
+
+    @Override
+    protected boolean onKeyEvent(android.view.KeyEvent event) {
+        return !InputKeyService.running && PopupFrame.isShowing() && PopupFrame.key(event);
+    }
+
     /** Whether a channel search is under way (its cover up, or a channel still to find). */
     static boolean tuning() {
         AppSearchService s = instance;

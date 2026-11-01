@@ -72,9 +72,12 @@ final class PopupFrame {
         return host != null;
     }
 
-    /** Whether pop-up mode can work here: v2 and the key helper (it keeps the remote with the app). */
+    /**
+     * Whether pop-up mode can work here: with the key helper, or (a TCL, which has none) with the channel helper
+     * taking the keys while pop-up mode is open (AppSearchService.keysForPopup). Either keeps the remote with the app.
+     */
     static boolean available() {
-        return InputKeyService.running;
+        return InputKeyService.running || AppSearchService.running();
     }
 
     // ---- open and close -------------------------------------------------------------------------------------------
@@ -190,6 +193,7 @@ final class PopupFrame {
         host = win;
         focused = false;
         backAt = 0;
+        if (!InputKeyService.running) AppSearchService.keysForPopup(true);
         // Home's alerts come in across the top, in the pills' place, as on Home.
         if (scores != null) {
             scores.start();
@@ -208,6 +212,7 @@ final class PopupFrame {
     /** Pop-up mode over: the frame away (Home itself, coming back, also calls this). */
     static void close() {
         main.removeCallbacks(hide);
+        if (host != null && !InputKeyService.running) AppSearchService.keysForPopup(false);
         FrameLayout v = host;
         host = null;
         focused = false;
@@ -337,6 +342,7 @@ final class PopupFrame {
     private static void showChrome() {
         if (host == null) return;
         chrome = true;
+        host.setVisibility(View.VISIBLE);
         for (View v : new View[]{frameView, boxRow, backBox}) {
             if (v == null) continue;
             v.setVisibility(View.VISIBLE);
@@ -356,7 +362,12 @@ final class PopupFrame {
             if (v == null) continue;
             v.animate().alpha(0f).setDuration(420).withEndAction(() -> { if (!chrome) v.setVisibility(View.INVISIBLE); }).start();
         }
-        if (boxRow != null) boxRow.postDelayed(() -> { if (!chrome && boxRow != null) boxRow.setVisibility(View.INVISIBLE); }, 450L);
+        // Once faded, the window is not drawn at all (its surface hidden), so nothing costs the TV anything over the app.
+        if (boxRow != null) boxRow.postDelayed(() -> {
+            if (chrome || host == null) return;
+            if (boxRow != null) boxRow.setVisibility(View.INVISIBLE);
+            if (backBox == null || backBox.getVisibility() != View.VISIBLE) host.setVisibility(View.GONE);
+        }, 450L);
     };
 
     /** adb's test hook: the remote to the boxes or the pills, back to the app, or out. */
@@ -372,12 +383,16 @@ final class PopupFrame {
     private static void hintBack() {
         if (backHint == null) return;
         if (!chrome && backBox != null) {
+            host.setVisibility(View.VISIBLE);
             backBox.setVisibility(View.VISIBLE);
             backBox.animate().cancel();
             backBox.setAlpha(1f);
             backBox.postDelayed(() -> {
-                if (!chrome && backBox != null) backBox.animate().alpha(0f).setDuration(300)
-                        .withEndAction(() -> { if (!chrome && backBox != null) backBox.setVisibility(View.INVISIBLE); }).start();
+                if (!chrome && backBox != null) backBox.animate().alpha(0f).setDuration(300).withEndAction(() -> {
+                    if (chrome || backBox == null) return;
+                    backBox.setVisibility(View.INVISIBLE);
+                    if (host != null) host.setVisibility(View.GONE);
+                }).start();
             }, BACK_TWICE_MS);
         }
         backHint.setTextColor(0xFFFFD166);
