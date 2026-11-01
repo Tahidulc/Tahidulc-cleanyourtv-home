@@ -683,6 +683,305 @@ final class LiveCentre {
         });
     }
 
+    // ---- adb only: the scoreboard's animations drawn to frames, for a video ---------------------------------------
+
+    /**
+     * adb only: the scoreboard and its notifications as they move, drawn frame by frame off screen (nothing shown) with
+     * the same curves and timings as on screen, the holds between shortened: the stats folding out and turning a page
+     * and folding in, a goal, a substitution, the line-ups, then the remote's Up (the ring), Back (put away) and Up
+     * (back). Thirty frames a second at 1280 x 720 over a pitch, to files/video/f0000.jpg on; files/video/done.txt last.
+     */
+    static void renderVideo(Context ctx) {
+        if (app == null) app = ctx.getApplicationContext();
+        io.execute(() -> {
+            List<ScoresTicker.Game> read = scores();
+            ScoresTicker.Game pick = null;
+            for (ScoresTicker.Game x : read) if (pick == null && x.state == 0 && x.slug != null) pick = x;
+            for (ScoresTicker.Game x : read) if (pick == null && x.state == 2 && x.slug != null) pick = x;
+            if (pick == null) return;
+            ScoresTicker.Game g = pick;
+            stats(g);
+            crest(g.homeLogo);
+            crest(g.awayLogo);
+            compLogo(compUrl(g));
+            List<String[]> named = new ArrayList<>();
+            if (statPages.get(g.id) != null) named.addAll(statPages.get(g.id));
+            if (lastGoal.get(g.id) != null) named.add(lastGoal.get(g.id));
+            if (lastSub.get(g.id) != null) named.add(lastSub.get(g.id));
+            if (lastLineups.get(g.id) != null) named.addAll(lastLineups.get(g.id));
+            for (String[] p : named) {
+                if ("lineup".equals(p[3])) for (String who : p[2].split("\\|")) face(who, p[5]);
+                if ("player".equals(p[3]) || "sub".equals(p[3])) face(p[1], p.length > 5 ? p[5] : null);
+                if ("sub".equals(p[3])) face(p[2], p[5]);
+                if ("goals".equals(p[3]) && p.length > 5) for (int s2 = 4; s2 <= 5; s2++) for (String who : p[s2].split("\\|")) face(who, null);
+            }
+            main.post(() -> new Film(g).start());
+        });
+    }
+
+    /** The film's script: a step's kind, how long it takes, the page it brings, and the caption from then on. */
+    private static final class Shot {
+        static final int HOLD = 0, OPEN = 1, TURN = 2, SHUT = 3, RING = 4, HIDE = 5, SHOW = 6;
+        final int kind;
+        final long ms;
+        final String[] page;
+        final String caption;
+        Shot(int kind, long ms, String[] page, String caption) { this.kind = kind; this.ms = ms; this.page = page; this.caption = caption; }
+    }
+
+    /** Where everything stands at a moment of the film. */
+    private static final class Pose {
+        double shut = 1, turn = 1, scale = 1, alpha = 1, rise = 0;
+        String[] page, before;
+        boolean ring;
+        String caption = "";
+        Pose copy() {
+            Pose o = new Pose();
+            o.shut = shut; o.turn = turn; o.scale = scale; o.alpha = alpha; o.rise = rise;
+            o.page = page; o.before = before; o.ring = ring; o.caption = caption;
+            return o;
+        }
+    }
+
+    private static final class Film {
+        static final int FPS = 30, W = 1280, H = 720;
+        final ScoresTicker.Game g;
+        final List<Shot> script = new ArrayList<>();
+        final List<Pose> starts = new ArrayList<>();
+        final Map<String[], View> views = new java.util.IdentityHashMap<>();
+        final android.view.animation.Interpolator out = new DecelerateInterpolator(2.4f), in = new android.view.animation.AccelerateInterpolator(1.8f),
+                ease = new android.view.animation.AccelerateDecelerateInterpolator();
+        LinearLayout board;
+        TextView clockView;
+        Bitmap ground, frame;
+        java.io.File dir;
+        long total;
+        int frameAt, clockShown = -1, clockBase = -1;
+        float was;
+
+        Film(ScoresTicker.Game g) { this.g = g; }
+
+        void start() {
+            was = k;
+            k = W / 1920f;
+            List<String[]> pages = statPages.get(g.id);
+            List<String[]> bars = new ArrayList<>();
+            for (int i = 0; pages != null && i < pages.size(); i++) if ("bar".equals(pages.get(i)[3]) && bars.size() < 2) bars.add(pages.get(i));
+            String[] goal = lastGoal.get(g.id), sub = lastSub.get(g.id);
+            List<String[]> xi = lastLineups.get(g.id);
+            add(Shot.HOLD, 1500, null, "The scoreboard");
+            if (bars.size() == 2) {
+                add(Shot.OPEN, 620, bars.get(0), "Stats fold out of the scoreboard");
+                add(Shot.HOLD, 2400, null, null);
+                add(Shot.TURN, 320, bars.get(1), "Next page of stats");
+                add(Shot.HOLD, 2400, null, null);
+                add(Shot.SHUT, 460, null, "Folding back in");
+                add(Shot.HOLD, 1200, null, null);
+            }
+            if (goal != null) {
+                add(Shot.OPEN, 620, goal, "A goal");
+                add(Shot.HOLD, 3200, null, null);
+                add(Shot.SHUT, 460, null, null);
+                add(Shot.HOLD, 1000, null, null);
+            }
+            if (sub != null) {
+                add(Shot.OPEN, 620, sub, "A substitution");
+                add(Shot.HOLD, 3200, null, null);
+                add(Shot.SHUT, 460, null, null);
+                add(Shot.HOLD, 1000, null, null);
+            }
+            if (xi != null && xi.size() == 4) {
+                add(Shot.OPEN, 620, xi.get(0), "The line-ups are out");
+                for (int i = 1; i < 4; i++) {
+                    add(Shot.HOLD, 2200, null, null);
+                    add(Shot.TURN, 320, xi.get(i), null);
+                }
+                add(Shot.HOLD, 2200, null, null);
+                add(Shot.SHUT, 460, null, null);
+                add(Shot.HOLD, 1000, null, null);
+            }
+            add(Shot.RING, 160, null, "Up: the scoreboard chosen");
+            add(Shot.HOLD, 1000, null, null);
+            add(Shot.HIDE, 240, null, "Back: put away");
+            add(Shot.HOLD, 1100, null, null);
+            add(Shot.SHOW, 280, null, "Up: back again");
+            add(Shot.HOLD, 1600, null, null);
+            // Each step's starting pose, from the one before.
+            Pose p = new Pose();
+            for (Shot s : script) { starts.add(p.copy()); p = pose(s, p, 1); total += s.ms; }
+            // The scoreboard, the pages and the pitch, made once.
+            board = new LinearLayout(app);
+            board.setOrientation(LinearLayout.HORIZONTAL);
+            TextView score = boardScore, clock = boardClock;
+            buildBoard(app, board, g);
+            clockView = boardClock;
+            boardScore = score;
+            boardClock = clock;
+            String t = clockText(g);
+            if (t.matches("\\d+:\\d\\d")) clockBase = Integer.parseInt(t.split(":")[0]) * 60 + Integer.parseInt(t.split(":")[1]);
+            clockView.setText(t);
+            lay(board, px(BOARD_W), px(BOARD_H));
+            for (Shot s : script) if (s.page != null && !views.containsKey(s.page)) {
+                View v = pageView(app, g, s.page);
+                lay(v, px(STATS_W), px(BOARD_H));
+                views.put(s.page, v);
+            }
+            ground = pitch();
+            frame = Bitmap.createBitmap(W, H, Bitmap.Config.ARGB_8888);
+            dir = new java.io.File(app.getExternalFilesDir(null), "video");
+            java.io.File[] old = dir.listFiles();
+            if (old != null) for (java.io.File f : old) f.delete();
+            dir.mkdirs();
+            main.post(this::next);
+        }
+
+        void add(int kind, long ms, String[] page, String caption) { script.add(new Shot(kind, ms, page, caption)); }
+
+        void lay(View v, int w, int h) {
+            v.measure(View.MeasureSpec.makeMeasureSpec(w, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(h, View.MeasureSpec.EXACTLY));
+            v.layout(0, 0, w, h);
+            centreTexts(v);
+        }
+
+        /** The pose a step leaves at a share of its way through (q from 0 to 1). */
+        Pose pose(Shot s, Pose from, double q) {
+            Pose o = from.copy();
+            if (s.caption != null) o.caption = s.caption;
+            switch (s.kind) {
+                case Shot.OPEN: o.page = s.page; o.before = null; o.turn = 1; o.shut = 1 - out.getInterpolation((float) q); break;
+                case Shot.TURN: o.before = from.page; o.page = s.page; o.turn = q; break;
+                case Shot.SHUT: o.shut = in.getInterpolation((float) q); break;
+                case Shot.RING: o.ring = true; o.scale = 1 + 0.03 * ease.getInterpolation((float) q); break;
+                case Shot.HIDE:
+                    o.ring = false;
+                    o.scale = 1.03 - 0.03 * ease.getInterpolation((float) Math.min(1, q * 240 / 160));
+                    o.alpha = 1 - ease.getInterpolation((float) q);
+                    o.rise = -20 * ease.getInterpolation((float) q);
+                    break;
+                case Shot.SHOW: o.scale = 1; o.alpha = ease.getInterpolation((float) q); o.rise = -20 * (1 - ease.getInterpolation((float) q)); break;
+                default: break;
+            }
+            return o;
+        }
+
+        void next() {
+            long frames = total * FPS / 1000;
+            for (int n = 0; n < 4 && frameAt <= frames; n++, frameAt++) draw(frameAt * 1000L / FPS);
+            if (frameAt <= frames) { main.post(this::next); return; }
+            k = was;
+            try (java.io.FileOutputStream o = new java.io.FileOutputStream(new java.io.File(dir, "done.txt"))) {
+                o.write((frameAt + "\n").getBytes());
+            } catch (Exception ignored) { }
+        }
+
+        void draw(long t) {
+            long at = 0;
+            int i = 0;
+            while (i < script.size() - 1 && at + script.get(i).ms <= t) at += script.get(i++).ms;
+            Shot s = script.get(i);
+            Pose p = pose(s, starts.get(i), s.ms == 0 ? 1 : Math.min(1, (t - at) / (double) s.ms));
+            // The match clock, a second on every second of film.
+            if (clockBase >= 0 && clockShown != (int) (t / 1000)) {
+                clockShown = (int) (t / 1000);
+                int secs = clockBase + clockShown;
+                clockView.setText(String.format(Locale.ROOT, "%02d:%02d", secs / 60, secs % 60));
+                lay(board, px(BOARD_W), px(BOARD_H));
+            }
+            Canvas c = new Canvas(frame);
+            c.drawBitmap(ground, 0, 0, null);
+            float x0 = px(24), y0 = px(22), bw = px(BOARD_W), bh = px(BOARD_H), dx = px(24 + BOARD_W - TUCK), dw = px(STATS_W + TUCK), r = px(14);
+            int layer = c.saveLayerAlpha(0, 0, W, H, (int) Math.round(255 * p.alpha));
+            c.translate(0, px((float) p.rise));
+            c.scale((float) p.scale, (float) p.scale, x0, y0);
+            // The stats panel, out of the drawer as far as it has come.
+            if (p.page != null && p.shut < 1) {
+                c.save();
+                c.clipRect(dx, y0, dx + dw, y0 + bh);
+                c.translate(dx - (float) (p.shut * dw), y0);
+                android.graphics.Path round = new android.graphics.Path();
+                round.addRoundRect(new RectF(0, 0, dw, bh), r, r, android.graphics.Path.Direction.CW);
+                c.clipPath(round);
+                android.graphics.drawable.Drawable ground2 = statsGround();
+                ground2.setBounds(0, 0, (int) dw, (int) bh);
+                ground2.draw(c);
+                c.translate(px(TUCK), 0);
+                double newQ = p.turn, oldQ = Math.min(1, p.turn * 320 / 260);
+                if (p.before != null && oldQ < 1) page(c, views.get(p.before), 1 - ease.getInterpolation((float) oldQ), -18 * ease.getInterpolation((float) oldQ));
+                page(c, views.get(p.page), p.before == null ? 1 : ease.getInterpolation((float) newQ), p.before == null ? 0 : 18 * (1 - ease.getInterpolation((float) newQ)));
+                c.restore();
+                if (p.ring) ring(c, dx - (float) (p.shut * dw) + px(TUCK), y0, dw - px(TUCK), bh, r);
+            }
+            // The scoreboard over it, with its shadow.
+            android.graphics.Paint shade = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+            shade.setColor(0xFF000000);
+            shade.setShadowLayer(px(16), 0, px(5), 0x73000000);
+            c.drawRoundRect(new RectF(x0, y0, x0 + bw, y0 + bh), r, r, shade);
+            c.save();
+            c.translate(x0, y0);
+            android.graphics.Path clip = new android.graphics.Path();
+            clip.addRoundRect(new RectF(0, 0, bw, bh), r, r, android.graphics.Path.Direction.CW);
+            c.clipPath(clip);
+            board.draw(c);
+            c.restore();
+            if (p.ring) ring(c, x0, y0, bw, bh, r);
+            c.restoreToCount(layer);
+            caption(c, p.caption);
+            java.io.File f = new java.io.File(dir, String.format(Locale.ROOT, "f%04d.jpg", frameAt));
+            try (java.io.FileOutputStream o = new java.io.FileOutputStream(f)) { frame.compress(Bitmap.CompressFormat.JPEG, 88, o); } catch (Exception ignored) { }
+        }
+
+        void page(Canvas c, View v, float alpha, float rise) {
+            if (v == null || alpha <= 0) return;
+            int l = c.saveLayerAlpha(0, -px(30), px(STATS_W), px(BOARD_H) + px(30), Math.round(255 * Math.max(0, Math.min(1, alpha))));
+            c.translate(0, px(rise));
+            v.draw(c);
+            c.restoreToCount(l);
+        }
+
+        void ring(Canvas c, float x, float y, float w, float h, float r) {
+            android.graphics.Paint pt = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+            pt.setStyle(android.graphics.Paint.Style.STROKE);
+            pt.setStrokeWidth(px(4));
+            pt.setColor(0xFFFFFFFF);
+            c.drawRoundRect(new RectF(x + px(2), y + px(2), x + w - px(2), y + h - px(2)), r, r, pt);
+        }
+
+        void caption(Canvas c, String text) {
+            if (text == null || text.isEmpty()) return;
+            android.graphics.Paint pt = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+            pt.setTypeface(ScoreCard.outfit(app, 700));
+            pt.setTextSize(px(34));
+            float tw = pt.measureText(text), pad = px(26), h = px(68), x = px(48), y = H - px(48) - h;
+            android.graphics.Paint bg = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+            bg.setColor(0xCC0B0F45);
+            c.drawRoundRect(new RectF(x, y, x + tw + 2 * pad, y + h), h / 2, h / 2, bg);
+            pt.setColor(0xFFFFFFFF);
+            c.drawText(text, x + pad, y + h / 2 - (pt.ascent() + pt.descent()) / 2, pt);
+        }
+
+        /** A pitch under floodlights: mown stripes, darker towards the edges. */
+        Bitmap pitch() {
+            Bitmap b = Bitmap.createBitmap(W, H, Bitmap.Config.ARGB_8888);
+            Canvas c = new Canvas(b);
+            android.graphics.Paint pt = new android.graphics.Paint();
+            int stripe = W / 12;
+            for (int i = 0; i < 12; i++) {
+                pt.setColor(i % 2 == 0 ? 0xFF2F7D36 : 0xFF2A7231);
+                c.drawRect(i * stripe, 0, (i + 1) * stripe + 1, H, pt);
+            }
+            android.graphics.Paint shade = new android.graphics.Paint();
+            shade.setShader(new android.graphics.RadialGradient(W / 2f, H * 0.55f, W * 0.75f, 0x00000000, 0x99000000, android.graphics.Shader.TileMode.CLAMP));
+            c.drawRect(0, 0, W, H, shade);
+            android.graphics.Paint line = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+            line.setColor(0x99FFFFFF);
+            line.setStyle(android.graphics.Paint.Style.STROKE);
+            line.setStrokeWidth(px(5));
+            c.drawLine(W / 2f, 0, W / 2f, H, line);
+            c.drawCircle(W / 2f, H * 0.55f, H * 0.2f, line);
+            return b;
+        }
+    }
+
     /**
      * A centred one-line TextView is laid out very wide and scrolled to its text just before it is drawn on screen;
      * drawn off screen it is never scrolled, and its text lands far off to the right. Scrolled here as on screen.
