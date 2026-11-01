@@ -1389,6 +1389,27 @@ public class GoalWatchService extends Service {
             g.broadcasts.add("Sky Sports Premier League");
             enqueue(g, new String[]{"test", "Mohamed Salah", "67'", "home", ""}, false);
         }
+        if (intent != null && intent.hasExtra("test_goal_other")) {
+            // adb only: a goal in a game no club or competition of the alerts is followed in (one of today's live games
+            // from Home's score pills, else a Serie A sample): on Home the new-style bar, over an app nothing.
+            io.execute(() -> {
+                ScoresTicker.Game pick = null;
+                for (ScoresTicker.Game x : ScoresTicker.load(homeLeagues(this))) {
+                    if (followsAnywhere(this, x)) continue;
+                    if (pick == null || x.state == 0 && pick.state != 0) pick = x;
+                }
+                if (pick == null) {
+                    pick = new ScoresTicker.Game();
+                    pick.league = "SERIE A"; pick.slug = "ita.1"; pick.home = "COMO"; pick.away = "VEN";
+                    pick.homeName = "Como"; pick.awayName = "Venezia";
+                }
+                ScoresTicker.Game g = pick;
+                g.state = 0;
+                g.homeScore = "1";
+                g.awayScore = "0";
+                main.post(() -> enqueue(g, new String[]{"test-other", "Nico Paz", "34'", "home", ""}, false));
+            });
+        }
         if (intent != null && intent.hasExtra("test_ft")) {
             ScoresTicker.Game g = new ScoresTicker.Game();
             g.league = "PL"; g.home = "MAN"; g.away = "BOU"; g.homeScore = "3"; g.awayScore = "1";
@@ -1561,8 +1582,8 @@ public class GoalWatchService extends Service {
         if (teamAlerts) all.addAll(Arrays.asList(getResources().getStringArray(R.array.team_alert_leagues)));
         // For the line-ups too: England's games and Real Madrid's and Barcelona's Supercopa.
         if (kickoffReminders) all.addAll(Arrays.asList(LINEUP_LEAGUES));
-        // The Championship and LaLiga, every game: announced on Home only (homeOnly()).
-        all.addAll(Arrays.asList(HOME_LEAGUES));
+        // Every other competition on Home's score pills, every game: announced on Home only (homeOnly()).
+        all.addAll(Arrays.asList(homeLeagues(this)));
         String[] leagues = all.toArray(new String[0]);
         boolean incidentsNow = incidentAlerts && polls++ % 3 == 0;
         boolean tennisNow = tennisAlerts && now - tennisAt >= TENNIS_MS;
@@ -1582,7 +1603,7 @@ public class GoalWatchService extends Service {
             Map<String, ScoresTicker.Game> byId = new java.util.LinkedHashMap<>();
             for (ScoresTicker.Game g : ScoresTicker.load(leagues)) {
                 boolean wanted = alertTags.contains(g.league) || clubs.contains(g.homeId) || clubs.contains(g.awayId)
-                        || LINEUP_TEAMS.contains(g.homeId) || LINEUP_TEAMS.contains(g.awayId) || HOME_SLUGS.contains(g.slug);
+                        || LINEUP_TEAMS.contains(g.homeId) || LINEUP_TEAMS.contains(g.awayId) || homeSlugs(this).contains(g.slug);
                 if (wanted && g.id != null && !byId.containsKey(g.id)) byId.put(g.id, g);
             }
             List<ScoresTicker.Game> games = new ArrayList<>(byId.values());
@@ -2118,21 +2139,44 @@ public class GoalWatchService extends Service {
      */
     static boolean follows(Context c, ScoresTicker.Game g) {
         if (g == null) return false;
-        // The Championship and LaLiga: the long bar on Home too (homeOnly()).
-        if (g.slug != null && HOME_SLUGS.contains(g.slug)) return true;
+        // Every competition on Home's score pills: the long bar on Home too (homeOnly()).
+        if (g.slug != null && homeSlugs(c).contains(g.slug)) return true;
         return followsAnywhere(c, g);
     }
 
     /**
-     * The Championship's and LaLiga's games: on Home their goals and incidents are the long new-style bar; over an app
-     * they make no alert at all (only the followed competitions and clubs do).
+     * Every competition on Home's score pills (score_leagues) that is not a goal_alert_leagues one: the Championship,
+     * the SPFL, the Europa League, LaLiga, Serie A, the Bundesliga, Ligue 1. On Home their goals, red cards, incidents
+     * and full times are the long new-style bar, as the Premier League's are, so the score pills never drop their own
+     * older alert; over an app they make no alert at all (only the followed competitions and clubs do).
      */
-    static final String[] HOME_LEAGUES = {"eng.2|CHAMPIONSHIP", "esp.1|LALIGA"};
-    static final Set<String> HOME_SLUGS = new HashSet<>(Arrays.asList("eng.2", "esp.1"));
+    private static String[] homeLeagues;
+    private static Set<String> homeSlugs;
+
+    static synchronized String[] homeLeagues(Context c) {
+        if (homeLeagues != null) return homeLeagues;
+        Set<String> followed = new HashSet<>();
+        for (String l : c.getResources().getStringArray(R.array.goal_alert_leagues)) followed.add(l.split("\\|", 2)[0].trim());
+        List<String> out = new ArrayList<>();
+        Set<String> slugs = new HashSet<>();
+        for (String l : c.getResources().getStringArray(R.array.score_leagues)) {
+            String slug = l.split("\\|", 2)[0].trim();
+            if (followed.contains(slug) || !slugs.add(slug)) continue;
+            out.add(l);
+        }
+        homeSlugs = slugs;
+        homeLeagues = out.toArray(new String[0]);
+        return homeLeagues;
+    }
+
+    static Set<String> homeSlugs(Context c) {
+        if (homeSlugs == null) homeLeagues(c);
+        return homeSlugs;
+    }
 
     /** A game announced only while Home is in front: a Championship or LaLiga game no followed club plays in. */
     private boolean homeOnly(ScoresTicker.Game g) {
-        return g != null && g.slug != null && HOME_SLUGS.contains(g.slug) && !followsAnywhere(this, g);
+        return g != null && g.slug != null && homeSlugs(this).contains(g.slug) && !followsAnywhere(this, g);
     }
 
     /** A game this service announces everywhere: its competition is a goal_alert_leagues one, or a club is followed. */
