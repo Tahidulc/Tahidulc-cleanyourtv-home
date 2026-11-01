@@ -580,15 +580,27 @@ final class LiveCentre {
      * adb only: one scoreboard per competition (a game from each, live first) drawn to files/boards.png, nothing on
      * screen. The Live Centre's own board, when it is open, is left as it is.
      */
-    static void renderBoards(Context ctx) {
+    static void renderBoards(Context ctx, boolean every) {
         if (app == null) app = ctx.getApplicationContext();
         io.execute(() -> {
             List<ScoresTicker.Game> read = scores();
             List<ScoresTicker.Game> one = new ArrayList<>();
             java.util.Set<String> seen = new java.util.HashSet<>();
-            for (ScoresTicker.Game g : read) if (g.slug != null && seen.add(g.slug)) one.add(g);
+            if (every) {
+                // Every page there is: a game under way or just over (its match stats), then one still to come.
+                ScoresTicker.Game on = null, next = null;
+                for (ScoresTicker.Game g : read) {
+                    if (on == null && g.state != 1) on = g;
+                    if (next == null && g.state == 1) next = g;
+                }
+                if (on != null) one.add(on);
+                if (next != null) one.add(next);
+            } else {
+                for (ScoresTicker.Game g : read) if (g.slug != null && seen.add(g.slug)) one.add(g);
+            }
             for (ScoresTicker.Game g : one) { crest(g.homeLogo); crest(g.awayLogo); compLogo(compUrl(g)); }
-            if (!one.isEmpty()) stats(one.get(0));
+            if (every) for (ScoresTicker.Game g : one) stats(g);
+            else if (!one.isEmpty()) stats(one.get(0));
             main.post(() -> {
                 float was = k;
                 k = app.getResources().getDisplayMetrics().widthPixels / 1920f;
@@ -599,6 +611,11 @@ final class LiveCentre {
                 List<ScoresTicker.Game> rows = new ArrayList<>();
                 List<Integer> pageOf = new ArrayList<>();
                 for (int i = 0; i < one.size(); i++) {
+                    if (every) {
+                        List<String[]> ps = statPages.get(one.get(i).id);
+                        for (int p = 0; ps != null && p < ps.size(); p++) { rows.add(one.get(i)); pageOf.add(Math.floorMod(p - statAt, ps.size())); }
+                        continue;
+                    }
                     rows.add(one.get(i));
                     pageOf.add(-1);
                     if (i == 0) for (int p = 0; p < 2; p++) { rows.add(one.get(0)); pageOf.add(p); }

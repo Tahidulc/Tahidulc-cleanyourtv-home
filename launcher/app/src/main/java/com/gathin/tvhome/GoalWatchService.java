@@ -1390,8 +1390,9 @@ public class GoalWatchService extends Service {
             enqueue(g, new String[]{"test", "Mohamed Salah", "67'", "home", ""}, false);
         }
         if (intent != null && intent.hasExtra("test_render_boards")) {
-            // adb only: a Live Centre scoreboard for each competition, drawn to files/boards.png (nothing on screen).
-            LiveCentre.renderBoards(this);
+            // adb only: a Live Centre scoreboard for each competition, drawn to files/boards.png (nothing on screen);
+            // "all": every page of stats and facts, a game under way or over and one to come, each folded out.
+            LiveCentre.renderBoards(this, "all".equals(intent.getStringExtra("test_render_boards")));
         }
         if (intent != null && intent.hasExtra("test_render_bar")) {
             // adb only: the Sports page's Live Centre bar drawn to a file (nothing on screen): files/bar.png.
