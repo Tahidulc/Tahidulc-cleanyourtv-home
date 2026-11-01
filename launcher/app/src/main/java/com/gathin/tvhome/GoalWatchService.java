@@ -2634,14 +2634,25 @@ public class GoalWatchService extends Service {
     }
 
     /** Where a game is on, for the Live Centre: {names, logo} or {names, logo, OK}; null when nowhere (or not running). */
-    static Object[] watchForGame(ScoresTicker.Game g) {
-        GoalWatchService s = self;
+    static Object[] watchForGame(Context c, ScoresTicker.Game g) {
+        GoalWatchService s = running(c);
         return s == null || g == null ? null : s.watchFor(g);
+    }
+
+    /** The service, started first when it is not running (off the main thread: waits up to three seconds for it). */
+    private static GoalWatchService running(Context c) {
+        GoalWatchService s = self;
+        if (s != null || c == null) return s;
+        startEverywhere(c.getApplicationContext());
+        for (int i = 0; i < 15 && self == null; i++) {
+            try { Thread.sleep(200); } catch (InterruptedException e) { return self; }
+        }
+        return self;
     }
 
     /** Sky Sports F1 (UHD where TiviMate has it), for the timing tower: {names, logo}; null when not in the guide. */
     static Object[] f1Watch(Context c) {
-        GoalWatchService s = self;
+        GoalWatchService s = running(c);
         if (s == null) return null;
         ScoresTicker.Game f1 = new ScoresTicker.Game();
         f1.leagueLogo = F1Results.F1_LOGO;

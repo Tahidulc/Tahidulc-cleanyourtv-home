@@ -105,7 +105,7 @@ final class LiveCentre {
         io.execute(() -> {
             List<ScoresTicker.Game> read = read(app);
             ScoresTicker.Game pick = choose(read, gameId);
-            Object[] w = pick == null ? null : GoalWatchService.watchForGame(pick);
+            Object[] w = pick == null ? null : GoalWatchService.watchForGame(app, pick);
             main.post(() -> {
                 games = read;
                 shownId = pick == null ? null : pick.id;
@@ -682,7 +682,7 @@ final class LiveCentre {
         shownId = next.id;
         fillMini(app);
         io.execute(() -> {
-            Object[] w = GoalWatchService.watchForGame(next);
+            Object[] w = GoalWatchService.watchForGame(app, next);
             main.post(() -> {
                 if (host == null) return;
                 boolean on = w != null && tune(w);
