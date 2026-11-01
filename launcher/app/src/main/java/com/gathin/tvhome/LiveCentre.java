@@ -183,7 +183,7 @@ final class LiveCentre {
         // The column down the right.
         LinearLayout column = new LinearLayout(c);
         column.setOrientation(LinearLayout.VERTICAL);
-        column.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0xF2151A63, 0xF20B0F45}));
+        column.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0xFF151A63, 0xFF0B0F45}));
         column.setPadding(px(30), px(34), px(30), px(26));
         FrameLayout.LayoutParams col = new FrameLayout.LayoutParams(px(420), -1, Gravity.END);
         win.addView(column, col);
@@ -221,7 +221,7 @@ final class LiveCentre {
         tickerLine = band;
         eventsBox = new LinearLayout(c);
         eventsBox.setOrientation(LinearLayout.VERTICAL);
-        eventsBox.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0xF20E1450, 0xF20A0D3D}));
+        eventsBox.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0xFF0E1450, 0xFF0A0D3D}));
         eventsBox.setPadding(px(24), px(8), px(24), px(8));
         foot.addView(eventsBox, new LinearLayout.LayoutParams(-1, 0, 1f));
 
@@ -378,10 +378,10 @@ final class LiveCentre {
         List<String> leagues = new ArrayList<>();
         for (String e : LEAGUES) {
             String slug = e.split("\\|")[0];
-            for (ScoresTicker.Game g : games) if (slug.equals(g.slug) && g.state != 1) { leagues.add(slug); break; }
+            for (ScoresTicker.Game g : games) if (slug.equals(g.slug)) { leagues.add(slug); break; }
         }
         if (leagues.isEmpty()) {
-            leagueBox.addView(text(c, "No games under way", 20, 0xFFC9CEF2, ScoreCard.outfit(c, 500)));
+            leagueBox.addView(text(c, "No games today", 20, 0xFFC9CEF2, ScoreCard.outfit(c, 500)));
             return;
         }
         String slug = leagues.get(Math.floorMod(leagueAt, leagues.size()));
@@ -400,14 +400,14 @@ final class LiveCentre {
         leagueBox.addView(head);
         int n = 0;
         for (ScoresTicker.Game g : games) {
-            if (!slug.equals(g.slug) || g.state == 1) continue;
+            if (!slug.equals(g.slug)) continue;
             if (n++ >= 8) break;
             LinearLayout row = new LinearLayout(c);
             row.setGravity(Gravity.CENTER_VERTICAL);
             row.setPadding(0, px(9), 0, 0);
             TextView h = text(c, g.home, 19, 0xFFFFFFFF, ScoreCard.outfit(c, 600));
             row.addView(h, new LinearLayout.LayoutParams(px(66), -2));
-            TextView s = text(c, score(g.homeScore) + "–" + score(g.awayScore), 19, INK, ScoreCard.outfit(c, 800));
+            TextView s = text(c, g.state == 1 ? "v" : score(g.homeScore) + "–" + score(g.awayScore), 19, INK, ScoreCard.outfit(c, 800));
             s.setGravity(Gravity.CENTER);
             s.setBackgroundColor(0xFFFFFFFF);
             row.addView(s, new LinearLayout.LayoutParams(px(60), px(28)));
@@ -430,6 +430,7 @@ final class LiveCentre {
         List<ScoresTicker.Game> pl = new ArrayList<>();
         for (ScoresTicker.Game g : games) if ("eng.1".equals(g.slug) && g.state == 0) pl.add(g);
         if (pl.isEmpty()) for (ScoresTicker.Game g : games) if ("eng.1".equals(g.slug) && g.state == 2) pl.add(g);
+        if (pl.isEmpty()) for (ScoresTicker.Game g : games) if ("eng.1".equals(g.slug)) pl.add(g);
         if (pl.isEmpty()) return;
         ScoresTicker.Game g = pl.get(Math.floorMod(featuredAt, pl.size()));
         View rule = new View(c);
@@ -448,9 +449,11 @@ final class LiveCentre {
             row.setPadding(0, px(10), 0, 0);
             TextView name = text(c, shortName(home ? g.homeName : g.awayName, home ? g.home : g.away), 30, 0xFFFFFFFF, ScoreCard.outfit(c, 700));
             row.addView(name, new LinearLayout.LayoutParams(0, -2, 1f));
-            TextView s = text(c, score(home ? g.homeScore : g.awayScore), 30, INK, ScoreCard.outfit(c, 800));
+            TextView s = text(c, g.state == 1 ? "" : score(home ? g.homeScore : g.awayScore), 30, INK, ScoreCard.outfit(c, 800));
             s.setGravity(Gravity.CENTER);
             s.setBackgroundColor(0xFFFFFFFF);
+            // Before kick-off: no score, so no box.
+            if (g.state == 1) s.setVisibility(View.INVISIBLE);
             row.addView(s, new LinearLayout.LayoutParams(px(44), px(44)));
             featured.addView(row);
         }
@@ -461,15 +464,15 @@ final class LiveCentre {
         StringBuilder s = new StringBuilder();
         String last = null;
         for (ScoresTicker.Game g : games) {
-            if (g.state == 1) continue;
             if (!java.util.Objects.equals(g.slug, last)) {
                 last = g.slug;
                 for (String e : LEAGUES) if (e.startsWith(g.slug + "|")) s.append("     ").append(e.split("\\|")[1]).append("   ");
             }
-            s.append(g.home).append(' ').append(score(g.homeScore)).append('–').append(score(g.awayScore)).append(' ').append(g.away)
+            if (g.state == 1) s.append(g.home).append(" v ").append(g.away).append(" (").append(minute(g)).append(")    ·    ");
+            else s.append(g.home).append(' ').append(score(g.homeScore)).append('–').append(score(g.awayScore)).append(' ').append(g.away)
                     .append(" (").append(minute(g)).append(")    ·    ");
         }
-        if (s.length() == 0) s.append("     No games under way     ");
+        if (s.length() == 0) s.append("     No games today     ");
         String text = s.toString();
         if (text.equals(tickerText.getText().toString())) return;
         // Sliding already: the new scores go in when this pass ends, so the line never jumps back mid-way.

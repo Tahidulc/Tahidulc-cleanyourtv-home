@@ -50,6 +50,7 @@ final class SmartPanel {
         FrameLayout tile;
         TextView state;
         ImageView bulb;
+        Switch toggle;
     }
 
     private final HomeV2 h;
@@ -407,7 +408,7 @@ final class SmartPanel {
         for (int i = 0; i < lights.size(); i++) {
             if (i % 3 == 0) {
                 r = new LinearLayout(h.a);
-                LinearLayout.LayoutParams rl = new LinearLayout.LayoutParams(-1, h.px(104));
+                LinearLayout.LayoutParams rl = new LinearLayout.LayoutParams(-1, h.px(128));
                 if (i > 0) rl.topMargin = h.px(12);
                 lightBox.addView(r, rl);
                 focus = new ArrayList<>();
@@ -453,9 +454,16 @@ final class SmartPanel {
         LinearLayout col = new LinearLayout(h.a);
         col.setOrientation(LinearLayout.VERTICAL);
         col.setPadding(h.px(16), h.px(14), h.px(12), h.px(12));
+        // The bulb, and the switch across from it: plain to see that OK turns it on or off.
+        LinearLayout top = new LinearLayout(h.a);
+        top.setGravity(Gravity.CENTER_VERTICAL);
         l.bulb = new ImageView(h.a);
         l.bulb.setImageResource(R.drawable.ic_bulb);
-        col.addView(l.bulb, new LinearLayout.LayoutParams(h.px(26), h.px(26)));
+        top.addView(l.bulb, new LinearLayout.LayoutParams(h.px(28), h.px(28)));
+        top.addView(new View(h.a), new LinearLayout.LayoutParams(0, 1, 1f));
+        l.toggle = new Switch(h.a);
+        top.addView(l.toggle, new LinearLayout.LayoutParams(h.px(50), h.px(28)));
+        col.addView(top, new LinearLayout.LayoutParams(-1, -2));
         TextView name = h.text(19, h.semi, Color.WHITE);
         name.setText(l.name);
         name.setSingleLine(true);
@@ -469,6 +477,7 @@ final class SmartPanel {
         col.addView(l.state, sl);
         t.addView(col, new FrameLayout.LayoutParams(-1, -1));
         t.setTag(l);
+        l.tile = t;
         look(l);
         return t;
     }
@@ -478,8 +487,8 @@ final class SmartPanel {
         if (l.tile == null) return;
         boolean low = l.on && l.level > 0 && l.level < 35;
         int ink = l.on && !low ? 0xFF2A1F00 : Color.WHITE;
-        GradientDrawable bg = h.fill(20, !l.online ? 0x0AFFFFFF : l.on ? (low ? GOLD : YELLOW) : 0x12FFFFFF);
-        if (!l.on) bg.setStroke(Math.max(1, h.px(1.5f)), 0x2EFFFFFF);
+        GradientDrawable bg = h.fill(20, !l.online ? 0x0AFFFFFF : l.on ? (low ? GOLD : YELLOW) : 0x1AFFFFFF);
+        if (!l.on) bg.setStroke(Math.max(1, h.px(1.5f)), 0x47FFFFFF);
         l.tile.setBackground(bg);
         LinearLayout col = (LinearLayout) l.tile.getChildAt(0);
         ((TextView) col.getChildAt(1)).setTextColor(ink);
@@ -491,6 +500,7 @@ final class SmartPanel {
         else if (!l.on) s = "Off";
         else s = l.level > 0 ? "On · " + l.level + "%" : "On";
         l.state.setText(s);
+        l.toggle.set(l.on && l.online, low);
         l.tile.setAlpha(l.online ? 1f : 0.55f);
     }
 
@@ -633,7 +643,7 @@ final class SmartPanel {
                 if (v == slider) { slider.focus(f); continue; }
                 ((FrameLayout) v).setForeground(f ? h.ring(20) : null);
                 v.animate().scaleX(f ? 1.05f : 1f).scaleY(f ? 1.05f : 1f).setDuration(150).setInterpolator(HomeV2.SKY).start();
-                v.setElevation(f ? h.px(8) : 0);
+                v.setTranslationZ(0);
             }
         }
     }
@@ -649,6 +659,31 @@ final class SmartPanel {
 
     private static String capitalise(String s) {
         return s == null || s.isEmpty() ? "" : Character.toUpperCase(s.charAt(0)) + s.substring(1);
+    }
+
+    /** A tile's on/off switch: a dark track with the knob to the right when on, faint glass with it to the left off. */
+    private final class Switch extends View {
+        private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private boolean on, low;
+
+        Switch(Context c) {
+            super(c);
+        }
+
+        void set(boolean on, boolean low) {
+            this.on = on;
+            this.low = low;
+            invalidate();
+        }
+
+        @Override protected void onDraw(Canvas c) {
+            float w = getWidth(), ht = getHeight(), r = ht / 2f, knob = r - h.px(4);
+            paint.setStyle(Paint.Style.FILL);
+            paint.setColor(on ? (low ? 0x66000000 : 0xFF2A1F00) : 0x33FFFFFF);
+            c.drawRoundRect(new RectF(0, 0, w, ht), r, r, paint);
+            paint.setColor(on ? (low ? YELLOW : 0xFFFFD66B) : Color.WHITE);
+            c.drawCircle(on ? w - r : r, r, knob, paint);
+        }
     }
 
     /**

@@ -2537,6 +2537,7 @@ final class PagesV2 {
             int coming = 0;
             for (int r = 1; r < lists.size(); r++) coming += lists.get(r).size();
             for (Jump j : jumps) {
+                if (f1TimingOn && j.box == f1Jump) continue;   // the F1 timing's own line stays
                 j.live.setText(liveNow > 0 ? liveNow + " live now · " + coming + " this week" : coming > 0 ? coming + " games and events this week" : "Live football and more");
                 j.dot.setVisibility(liveNow > 0 ? View.VISIBLE : View.GONE);
             }

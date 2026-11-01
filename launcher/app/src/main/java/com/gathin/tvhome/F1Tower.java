@@ -40,7 +40,7 @@ import java.util.concurrent.Executors;
  * every ten seconds off the main thread; Back closes it, every other key goes on to TiviMate.
  */
 final class F1Tower {
-    private static final int RED = 0xFFE10600, RED_DEEP = 0xFF9E0400, BLACK = 0xF2141519, BLACK_DEEP = 0xFF0B0C0F,
+    private static final int RED = 0xFFE10600, RED_DEEP = 0xFF9E0400, BLACK = 0xFF141519, BLACK_DEEP = 0xFF0B0C0F,
             GAIN = 0xFF3DDC84, LOSS = 0xFFFF5A5F, NONE = Integer.MIN_VALUE;
     private static final String OPENF1 = "https://api.openf1.org/v1/";
     private static final long READ_MS = 10_000L;
@@ -446,7 +446,7 @@ final class F1Tower {
         }
         boolean anyGap = false, anyChange = false;
         for (Line l : b.lines) { anyGap |= !l.gap.isEmpty(); anyChange |= l.change != NONE; }
-        for (Line l : b.lines) rows.addView(row(c, l, anyGap, anyChange), new LinearLayout.LayoutParams(-1, px(33)));
+        for (Line l : b.lines) rows.addView(row(c, l, anyGap, anyChange), new LinearLayout.LayoutParams(-1, px(b.lines.size() > 20 ? 39 : 40)));
     }
 
     private static View row(Context c, Line l, boolean gaps, boolean changes) {

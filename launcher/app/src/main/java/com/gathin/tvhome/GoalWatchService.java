@@ -1428,6 +1428,11 @@ public class GoalWatchService extends Service {
             String id = intent.getStringExtra("test_live_centre");
             LiveCentre.open(this, id == null || id.isEmpty() ? null : id);
         }
+        if (intent != null && intent.hasExtra("test_close")) {
+            // adb only: closes the Live Centre and the F1 timing (adb's own Back never reaches the key helper).
+            LiveCentre.close();
+            F1Tower.close();
+        }
         if (intent != null && intent.hasExtra("test_live_card")) {
             // adb only: the Sports page's Live Centre card with today's games, as if they were under way.
             LiveCentre.testCard = !"off".equals(intent.getStringExtra("test_live_card"));
