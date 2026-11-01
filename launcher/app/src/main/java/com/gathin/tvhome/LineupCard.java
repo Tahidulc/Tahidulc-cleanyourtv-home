@@ -481,9 +481,15 @@ final class LineupCard {
             LinearLayout head = new LinearLayout(c);
             head.setGravity(Gravity.CENTER);
             String caption = captions.get(i);
+            // The little pitch is drawn in white for the navy band: here it sits on a navy chip of its own.
             ImageView icon = new ImageView(c);
             icon.setImageBitmap(lineIcon(caption, px(11), px(15)));
-            head.addView(icon, new LinearLayout.LayoutParams(px(11), px(15)));
+            GradientDrawable chip = new GradientDrawable();
+            chip.setColor(NAVY);
+            chip.setCornerRadius(px(3));
+            icon.setBackground(chip);
+            icon.setPadding(px(2), px(2), px(2), px(2));
+            head.addView(icon, new LinearLayout.LayoutParams(px(15), px(19)));
             TextView cap = text(c, caption.replace("\n", " "), 12, INK_SOFT, Typeface.create("sans-serif-condensed", Typeface.BOLD));
             cap.setLetterSpacing(0.14f);
             LinearLayout.LayoutParams cl = new LinearLayout.LayoutParams(-2, -2);

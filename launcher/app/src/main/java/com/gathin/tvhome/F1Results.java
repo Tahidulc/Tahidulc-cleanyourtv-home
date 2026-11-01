@@ -171,6 +171,33 @@ final class F1Results {
         return out;
     }
 
+    private static java.util.Map<String, String> fullNames;
+    private static long fullNamesAt;
+
+    /**
+     * A driver's full name by his surname ("Norris" is Lando Norris), from this season's standings, read once a day;
+     * null when he is not in them or they cannot be read. A photo search by surname alone finds the wrong Norris.
+     */
+    static synchronized String fullName(String surname) {
+        long now = System.currentTimeMillis();
+        if (fullNames == null || now - fullNamesAt > 86_400_000L) {
+            java.util.Map<String, String> out = new java.util.HashMap<>();
+            try {
+                JSONObject root = new JSONObject(get("https://api.jolpi.ca/ergast/f1/current/driverStandings.json"));
+                JSONArray lists = root.getJSONObject("MRData").getJSONObject("StandingsTable").getJSONArray("StandingsLists");
+                JSONArray standings = lists.getJSONObject(0).getJSONArray("DriverStandings");
+                for (int i = 0; i < standings.length(); i++) {
+                    JSONObject dr = standings.getJSONObject(i).getJSONObject("Driver");
+                    String family = dr.optString("familyName");
+                    out.put(key(family), (dr.optString("givenName") + " " + family).trim());
+                }
+            } catch (Exception ignored) {
+            }
+            if (!out.isEmpty() || fullNames == null) { fullNames = out; fullNamesAt = out.isEmpty() ? now - 86_400_000L + 600_000L : now; }
+        }
+        return fullNames.get(key(surname));
+    }
+
     /** "Hülkenberg" and "Hulkenberg" alike: lower case without accents. */
     static String key(String name) {
         return java.text.Normalizer.normalize(name == null ? "" : name, java.text.Normalizer.Form.NFD)

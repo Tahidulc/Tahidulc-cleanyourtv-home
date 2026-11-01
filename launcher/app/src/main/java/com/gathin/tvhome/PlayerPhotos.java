@@ -149,28 +149,46 @@ final class PlayerPhotos {
 
     // ---- F1 drivers ------------------------------------------------------------------------------------------
 
-    /** An F1 driver's cut-out by his surname (TheSportsDB's, a motorsport entry of that surname); null without one. */
+    /**
+     * An F1 driver's cut-out by his surname (TheSportsDB's motorsport entry): looked for by his full name first (from
+     * the season's standings: "Norris" alone finds a footballer), then the surname. Kept once found; a miss is tried
+     * again after a day. Null without one.
+     */
     static Bitmap driver(Context ctx, String surname) {
         if (surname == null || surname.isEmpty()) return null;
-        SharedPreferences cache = ctx.getSharedPreferences("driver_photos", Context.MODE_PRIVATE);
+        SharedPreferences cache = ctx.getSharedPreferences("driver_photos2", Context.MODE_PRIVATE);
         String url = cache.getString(surname, null);
-        if (url == null) {
-            try {
-                JSONObject root = new JSONObject(get("https://www.thesportsdb.com/api/v1/json/123/searchplayers.php?p="
-                        + URLEncoder.encode(surname, "UTF-8")));
-                JSONArray players = root.optJSONArray("player");
-                url = "";
-                for (int i = 0; players != null && i < players.length(); i++) {
-                    JSONObject p = players.getJSONObject(i);
-                    if (!"Motorsport".equalsIgnoreCase(p.optString("strSport"))) continue;
-                    if (!p.optString("strPlayer").toLowerCase(java.util.Locale.ROOT).endsWith(surname.toLowerCase(java.util.Locale.ROOT))) continue;
-                    String img = p.optString("strCutout", "");
-                    if (!img.isEmpty() && !"null".equals(img)) { url = img + "/medium"; break; }
+        long missedAt = cache.getLong(surname + "#missed", 0);
+        if (url == null || (url.isEmpty() && System.currentTimeMillis() - missedAt > 86_400_000L)) {
+            url = "";
+            String full = F1Results.fullName(surname);
+            java.util.List<String> asks = new java.util.ArrayList<>();
+            if (full != null && !full.equalsIgnoreCase(surname)) asks.add(full);
+            asks.add(surname);
+            String want = plain(surname);
+            boolean answered = false;
+            for (String ask : asks) {
+                try {
+                    JSONObject root = new JSONObject(get("https://www.thesportsdb.com/api/v1/json/123/searchplayers.php?p="
+                            + URLEncoder.encode(ask, "UTF-8")));
+                    answered = true;
+                    JSONArray players = root.optJSONArray("player");
+                    for (int i = 0; players != null && i < players.length(); i++) {
+                        JSONObject p = players.getJSONObject(i);
+                        if (!"Motorsport".equalsIgnoreCase(p.optString("strSport"))) continue;
+                        if (!plain(p.optString("strPlayer")).endsWith(want)) continue;
+                        String img = p.optString("strCutout", "");
+                        if (!img.isEmpty() && !"null".equals(img)) { url = img + "/medium"; break; }
+                    }
+                } catch (Exception e) {
+                    // asked too often, or offline: the next way, and again later
                 }
-                cache.edit().putString(surname, url).apply();
-            } catch (Exception e) {
-                return null;
+                if (!url.isEmpty()) break;
             }
+            if (answered || !url.isEmpty()) {
+                cache.edit().putString(surname, url).putLong(surname + "#missed", url.isEmpty() ? System.currentTimeMillis() : 0).apply();
+            }
+            if (url.isEmpty()) return null;
         }
         return url.isEmpty() ? null : ScoresTicker.cachedLogo(ctx, url, 350);
     }
