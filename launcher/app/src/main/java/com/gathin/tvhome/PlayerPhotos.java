@@ -159,7 +159,8 @@ final class PlayerPhotos {
         // ESPN's headshot first: every driver framed alike, in this season's kit, and no limit on asking. Its picture is
         // wider than tall; the square around his head and shoulders is kept, as the other photos are square.
         String espn = F1Results.espnHeadshot(surname);
-        Bitmap head = espn == null ? null : ScoresTicker.cachedLogo(ctx, espn, 160);
+        // Its full size (600 x 436), so the square kept is as large as the picture allows.
+        Bitmap head = espn == null ? null : ScoresTicker.cachedLogo(ctx, espn, 300);
         if (head != null && head.getWidth() > 0 && head.getHeight() > 0) {
             int side = Math.min(head.getWidth(), head.getHeight());
             return Bitmap.createBitmap(head, (head.getWidth() - side) / 2, 0, side, side);

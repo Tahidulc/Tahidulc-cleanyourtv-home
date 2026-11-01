@@ -1020,44 +1020,120 @@ final class ScoresTicker {
         return Bitmap.createBitmap(px, w, h, Bitmap.Config.ARGB_8888);
     }
 
-    /** A crest or league logo at about size px: the shared disk cache first, then ESPN's resizer. Off the main thread. */
+    /**
+     * A crest, logo or photo for drawing at about size px: fetched once at its source's full size into the disk cache,
+     * then made from that copy at twice the size (at least 256 pixels) with smooth scaling. Off the main thread.
+     */
     static Bitmap cachedLogo(Context context, String url, int logo) {
-        File logoDir = new File(context.getCacheDir(), "logos");
-        // The size is part of the name: a bigger use of the same logo must not get the small copy.
-        File file = new File(logoDir, Integer.toHexString((url + "@" + logo).hashCode()) + ".png");
-        if (file.isFile()) {
-            Bitmap b = BitmapFactory.decodeFile(file.getPath());
-            if (b != null) return url.endsWith("#uhd") ? uhdLogo(context, b) : b;
+        if (url == null || url.isEmpty()) return null;
+        File dir = new File(context.getCacheDir(), "pictures");
+        dropOldCache(context);
+        // Every picture kept once, as its source publishes it (full size): each use takes its own size from that copy.
+        String src = original(url);
+        File file = new File(dir, Integer.toHexString(src.hashCode()) + Integer.toHexString(src.length()) + ".img");
+        if (!file.isFile()) {
+            byte[] data = download(src);
+            if (data == null) return null;
+            BitmapFactory.Options bounds = new BitmapFactory.Options();
+            bounds.inJustDecodeBounds = true;
+            BitmapFactory.decodeByteArray(data, 0, data.length, bounds);
+            if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null;
+            if (dir.isDirectory() || dir.mkdirs()) {
+                File part = new File(dir, file.getName() + ".part");
+                try (FileOutputStream fo = new FileOutputStream(part)) { fo.write(data); } catch (Exception e) { return null; }
+                if (!part.renameTo(file)) { part.delete(); return null; }
+            }
         }
-        String small = url;
-        int at = url.indexOf("/i/");
-        if (url.startsWith("https://a.espncdn.com/") && at > 0) {
-            small = "https://a.espncdn.com/combiner/i?img=" + url.substring(at) + "&w=" + logo * 2 + "&h=" + logo * 2;
+        // At least twice the size it is drawn at (and never under 256 pixels), so it stays sharp however it is shown.
+        Bitmap b = decodeTo(file, Math.max(256, Math.min(1024, logo * 2)));
+        if (b == null) { file.delete(); return null; }
+        return url.endsWith("#uhd") ? uhdLogo(context, b) : b;
+    }
+
+    /**
+     * The full-size picture behind an address: ESPN's original rather than its resizer's copy, TheSportsDB's full cut-out
+     * rather than its smaller ones.
+     */
+    static String original(String url) {
+        String u = url.endsWith("#uhd") ? url.substring(0, url.length() - 4) : url;
+        if (u.startsWith("https://a.espncdn.com/combiner/i?img=")) {
+            String img = u.substring("https://a.espncdn.com/combiner/i?img=".length());
+            int amp = img.indexOf('&');
+            u = "https://a.espncdn.com" + (amp < 0 ? img : img.substring(0, amp));
         }
+        return u.replaceAll("(thesportsdb\\.com/images/.+)/(tiny|small|medium|preview)$", "$1");
+    }
+
+    private static byte[] download(String src) {
         try {
-            HttpURLConnection conn = (HttpURLConnection) new URL(small).openConnection();
+            HttpURLConnection conn = (HttpURLConnection) new URL(src).openConnection();
             // Wikimedia asks every client to name itself.
-            if (small.contains("wikimedia.org")) conn.setRequestProperty("User-Agent", "cleanyourtv-launcher/1.0 (personal TV launcher; github.com/Gathin23/cleanyourtv)");
+            if (src.contains("wikimedia.org")) conn.setRequestProperty("User-Agent", "cleanyourtv-launcher/1.0 (personal TV launcher; github.com/Gathin23/cleanyourtv)");
             conn.setConnectTimeout(6000);
-            conn.setReadTimeout(8000);
-            byte[] data;
+            conn.setReadTimeout(10000);
             try (InputStream in = conn.getInputStream()) {
                 ByteArrayOutputStream out = new ByteArrayOutputStream();
-                byte[] buf = new byte[8192];
+                byte[] buf = new byte[16384];
                 int n;
-                while ((n = in.read(buf)) > 0 && out.size() < 512 * 1024) out.write(buf, 0, n);
-                data = out.toByteArray();
+                while ((n = in.read(buf)) > 0) {
+                    out.write(buf, 0, n);
+                    if (out.size() > 6 * 1024 * 1024) return null;
+                }
+                return out.toByteArray();
             } finally {
                 conn.disconnect();
             }
-            Bitmap b = BitmapFactory.decodeByteArray(data, 0, data.length);
-            if (b != null && (logoDir.isDirectory() || logoDir.mkdirs())) {
-                try (FileOutputStream fo = new FileOutputStream(file)) { fo.write(data); }
-            }
-            return b != null && url.endsWith("#uhd") ? uhdLogo(context, b) : b;
         } catch (Exception e) {
             return null;
         }
+    }
+
+    /**
+     * The picture from its file at about the size asked (its longer side), never larger than it is: read in coarsely
+     * (whole halvings, cheaply) to no less than one and a half times that, then brought down in halves with filtering
+     * and a last smooth step, so edges stay clean; marked for mipmaps, so drawn smaller still it stays smooth.
+     */
+    private static Bitmap decodeTo(File f, int target) {
+        BitmapFactory.Options o = new BitmapFactory.Options();
+        o.inJustDecodeBounds = true;
+        BitmapFactory.decodeFile(f.getPath(), o);
+        if (o.outWidth <= 0 || o.outHeight <= 0) return null;
+        int big = Math.max(o.outWidth, o.outHeight), sample = 1;
+        while (big / (sample * 2) >= target * 3 / 2) sample *= 2;
+        BitmapFactory.Options d = new BitmapFactory.Options();
+        d.inSampleSize = sample;
+        d.inPreferredConfig = Bitmap.Config.ARGB_8888;
+        Bitmap b = BitmapFactory.decodeFile(f.getPath(), d);
+        if (b == null) return null;
+        while (Math.max(b.getWidth(), b.getHeight()) >= target * 2) {
+            Bitmap half = Bitmap.createScaledBitmap(b, Math.max(1, b.getWidth() / 2), Math.max(1, b.getHeight() / 2), true);
+            if (half != b) b.recycle();
+            b = half;
+        }
+        int now = Math.max(b.getWidth(), b.getHeight());
+        if (now > target) {
+            float k = target / (float) now;
+            Bitmap fit = Bitmap.createScaledBitmap(b, Math.max(1, Math.round(b.getWidth() * k)), Math.max(1, Math.round(b.getHeight() * k)), true);
+            if (fit != b) b.recycle();
+            b = fit;
+        }
+        b.setHasMipMap(true);
+        return b;
+    }
+
+    private static boolean oldCacheDropped;
+
+    /** The cache of the smaller copies the pictures used to be kept as, cleared away once. */
+    private static void dropOldCache(Context context) {
+        if (oldCacheDropped) return;
+        oldCacheDropped = true;
+        File old = new File(context.getCacheDir(), "logos");
+        if (!old.isDirectory()) return;
+        new Thread(() -> {
+            File[] fs = old.listFiles();
+            if (fs != null) for (File x : fs) x.delete();
+            old.delete();
+        }).start();
     }
 
     /**
