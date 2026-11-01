@@ -485,6 +485,12 @@ public class AppSearchService extends AccessibilityService {
         if (info.flags != was) s.setServiceInfo(info);
     }
 
+    /** Back sent to the app in front, as a press of the remote's Back (pop-up mode's short Back, held back first). */
+    static void globalBack() {
+        AppSearchService s = instance;
+        if (s != null) s.performGlobalAction(GLOBAL_ACTION_BACK);
+    }
+
     @Override
     protected boolean onKeyEvent(android.view.KeyEvent event) {
         return !InputKeyService.running && PopupFrame.isShowing() && PopupFrame.key(event);

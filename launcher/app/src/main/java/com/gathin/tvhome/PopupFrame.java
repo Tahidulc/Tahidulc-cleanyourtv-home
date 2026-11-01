@@ -32,17 +32,18 @@ import java.util.List;
  * a tile) shows inside Home's frame. Home's navy round its edges with the app in a rounded window in the middle, the
  * score pills across the top (where Home's alerts come in as on Home) and the six boxes along the foot, and the
  * remote's Back key in the top corner, as the alerts have it. The app keeps the remote: everything in it works as
- * ever. Down twice takes the remote to the boxes, Up twice to the score pills (OK opens either, Back returns to the
- * app). Back twice in a row leaves pop-up mode for Home. Home coming back to the front ends it.
+ * ever, Back included (apps go back with it, often twice in a row). Back held down a moment brings the frame in with
+ * the remote on the boxes (Up to the score pills, OK opens either); there Back once returns to the app, Back twice in
+ * a row leaves pop-up mode for Home. Home coming back to the front ends it too.
  *
  * The frame hides itself: the app is never resized (only the system's own tools can put an app in a window), so the
- * frame comes in when pop-up mode opens and whenever Down or Up is pressed twice, and fades away five seconds after
- * it was last used, the app whole on the screen again and nothing left standing on it (no screen burn-in). Home's
- * alerts come across the top all the same.
+ * frame shows only while it has the remote, the app whole on the screen the rest of the time and nothing left
+ * standing on it (no screen burn-in); as pop-up mode opens, a small pill says how to bring it in. Home's alerts come
+ * across the top all the same.
  */
 final class PopupFrame {
     private static final int TOP = 104, FOOT = 150, SIDE = 28, RADIUS = 26;
-    private static final long TWICE_MS = 450L, BACK_TWICE_MS = 1_500L;
+    private static final long BACK_TWICE_MS = 1_500L;
 
     private static final Handler main = new Handler(Looper.getMainLooper());
     private static Context app;
@@ -55,7 +56,7 @@ final class PopupFrame {
     private static float k;
     /** Whether the frame has the remote (its boxes or pills), not the app. */
     private static boolean focused;
-    private static long downAt, upAt, backAt;
+    private static long backAt;
     private static final long HIDE_MS = 5_000L;
     /** The frame's parts that come and go, and whether they show now. */
     private static View frameView, boxRow;
@@ -203,10 +204,13 @@ final class PopupFrame {
                 if (backBox != null && (on || chrome)) backBox.animate().alpha(on ? 0f : 1f).setDuration(on ? 160 : 320).start();
             };
         }
+        // The app whole from the start: no frame over it, only a word on how to bring Home's boxes in.
         chrome = false;
-        showChrome();
-        main.removeCallbacks(hide);
-        main.postDelayed(hide, HIDE_MS);
+        frameView.setVisibility(View.INVISIBLE);
+        if (boxRow != null) { boxRow.setAlpha(0f); boxRow.setVisibility(View.INVISIBLE); }
+        if (backBox != null) { backBox.setAlpha(0f); backBox.setVisibility(View.INVISIBLE); }
+        if (scores != null) scores.cover(true);
+        hint(c, win);
     }
 
     /** Pop-up mode over: the frame away (Home itself, coming back, also calls this). */
@@ -276,38 +280,56 @@ final class PopupFrame {
         if (host == null) return false;
         int code = e.getKeyCode();
         if (e.getAction() == KeyEvent.ACTION_UP && swallowUp == code) { swallowUp = 0; return true; }
+        // The Back this frame sent on to the app itself (a short press, below): on its way, untouched.
+        if (passBack && code == KeyEvent.KEYCODE_BACK) {
+            if (e.getAction() == KeyEvent.ACTION_UP) passBack = false;
+            return false;
+        }
         if (focused) {
             if (code == KeyEvent.KEYCODE_BACK) {
-                if (e.getAction() == KeyEvent.ACTION_UP) main.post(PopupFrame::leaveFocus);
+                if (e.getAction() == KeyEvent.ACTION_DOWN && e.getRepeatCount() == 0) {
+                    long now = SystemClock.uptimeMillis();
+                    main.removeCallbacks(backToApp);
+                    if (now - backAt < BACK_TWICE_MS) {
+                        backAt = 0;
+                        swallowUp = code;
+                        main.post(PopupFrame::leave);
+                    } else {
+                        // Once: "x2" lights; again soon leaves pop-up mode, else the remote goes back to the app.
+                        backAt = now;
+                        main.post(PopupFrame::hintBack);
+                        main.postDelayed(backToApp, BACK_TWICE_MS);
+                    }
+                }
                 return true;
             }
             return false;   // on to the frame's own window, which has the focus
         }
-        if (e.getAction() != KeyEvent.ACTION_DOWN || e.getRepeatCount() > 0) return false;
-        long now = SystemClock.uptimeMillis();
-        if (code == KeyEvent.KEYCODE_BACK) {
-            if (now - backAt < BACK_TWICE_MS) {
-                swallowUp = code;
-                backAt = 0;
-                main.post(PopupFrame::leave);
-                return true;
+        // With the app: every key is the app's but Back held down a moment, which brings the frame in. A short Back
+        // is held back until it is let go, then sent on to the app as the one Back it was.
+        if (code != KeyEvent.KEYCODE_BACK) return false;
+        if (e.getAction() == KeyEvent.ACTION_DOWN) {
+            if (e.getRepeatCount() == 0) {
+                held = false;
+                main.removeCallbacks(holdBack);
+                main.postDelayed(holdBack, HOLD_MS);
             }
-            backAt = now;
-            main.post(PopupFrame::hintBack);
-            return false;
+            return true;
         }
-        if (code == KeyEvent.KEYCODE_DPAD_DOWN) {
-            if (now - downAt < TWICE_MS) { swallowUp = code; downAt = 0; main.post(() -> takeFocus(true)); return true; }
-            downAt = now;
-            return false;
+        main.removeCallbacks(holdBack);
+        if (!held && !e.isCanceled()) {
+            passBack = true;
+            main.postDelayed(() -> passBack = false, 800L);
+            AppSearchService.globalBack();
         }
-        if (code == KeyEvent.KEYCODE_DPAD_UP) {
-            if (now - upAt < TWICE_MS) { swallowUp = code; upAt = 0; main.post(() -> takeFocus(false)); return true; }
-            upAt = now;
-            return false;
-        }
-        return false;
+        held = false;
+        return true;
     }
+
+    private static final long HOLD_MS = 700L;
+    private static boolean held, passBack;
+    private static final Runnable holdBack = () -> { held = true; takeFocus(true); };
+    private static final Runnable backToApp = PopupFrame::leaveFocus;
 
     /** The remote to the frame: its window takes the focus, on the first box (or the first score pill). */
     private static void takeFocus(boolean toBoxes) {
@@ -334,8 +356,9 @@ final class PopupFrame {
         params.flags |= WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
         try { app.getSystemService(WindowManager.class).updateViewLayout(host, params); } catch (RuntimeException ignored) { }
         focused = false;
+        main.removeCallbacks(backToApp);
         main.removeCallbacks(hide);
-        main.postDelayed(hide, 2_500L);
+        main.postDelayed(hide, 400L);
     }
 
     /** The frame in: the navy, the pills, the boxes and the Back key fade and slide into place over the app. */
@@ -343,6 +366,7 @@ final class PopupFrame {
         if (host == null) return;
         chrome = true;
         host.setVisibility(View.VISIBLE);
+        if (hintView != null) { hintView.setVisibility(View.GONE); hintView = null; }
         for (View v : new View[]{frameView, boxRow, backBox}) {
             if (v == null) continue;
             v.setVisibility(View.VISIBLE);
@@ -377,6 +401,43 @@ final class PopupFrame {
         else if ("app".equals(what)) leaveFocus();
         else if ("leave".equals(what)) leave();
         else if ("close".equals(what)) close();
+    }
+
+    private static View hintView;
+
+    /** "Pop-up mode · hold Back for Home": a small pill at the top for four seconds as pop-up mode opens. */
+    private static void hint(Context c, FrameLayout win) {
+        LinearLayout pill = new LinearLayout(c);
+        pill.setGravity(Gravity.CENTER_VERTICAL);
+        pill.setPadding(px(22), px(10), px(22), px(10));
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(0xE6141A6B);
+        bg.setCornerRadius(px(30));
+        bg.setStroke(Math.max(1, px(1.5f)), 0x52FFFFFF);
+        pill.setBackground(bg);
+        pill.addView(text(c, "Pop-up mode  ·  hold", 20, 0xFFFFFFFF), new LinearLayout.LayoutParams(-2, -2));
+        ImageView key = new ImageView(c);
+        key.setImageBitmap(GoalWatchService.backButton(Config.themeString(c, "ok_button", "tcl"), px(30)));
+        LinearLayout.LayoutParams kl = new LinearLayout.LayoutParams(px(30), px(30));
+        kl.leftMargin = px(10);
+        kl.rightMargin = px(10);
+        pill.addView(key, kl);
+        pill.addView(text(c, "for Home", 20, 0xFFFFFFFF), new LinearLayout.LayoutParams(-2, -2));
+        FrameLayout.LayoutParams pl = new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.CENTER_HORIZONTAL);
+        pl.topMargin = px(28);
+        win.addView(pill, pl);
+        hintView = pill;
+        pill.setAlpha(0f);
+        pill.setTranslationY(-px(20));
+        pill.animate().alpha(1f).translationY(0).setDuration(300).start();
+        main.postDelayed(() -> {
+            if (hintView != pill) return;
+            pill.animate().alpha(0f).translationY(-px(20)).setDuration(300).withEndAction(() -> {
+                pill.setVisibility(View.GONE);
+                hintView = null;
+                if (!chrome && host != null) host.setVisibility(View.GONE);
+            }).start();
+        }, 4_000L);
     }
 
     /** After one Back: "×2" lights up a moment, so it is plain that one more leaves. */
