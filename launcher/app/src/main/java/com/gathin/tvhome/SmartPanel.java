@@ -328,6 +328,7 @@ final class SmartPanel {
         List<TuyaCloud.Light> t = lastTuya;
         if (t != null && TuyaCloud.configured(h.a)) {
             for (TuyaCloud.Light x : t) lights.add(fromTuya(x));
+            livingFirst(lights);
             source.setText("Tuya");
             return;
         }
@@ -342,7 +343,14 @@ final class SmartPanel {
             l.level = p.getInt(room + ".level", 50);
             lights.add(l);
         }
+        livingFirst(lights);
         source.setText(TuyaCloud.configured(h.a) ? "Reading Tuya…" : "Google Assistant");
+    }
+
+    /** The living room's lights first, the rest in their order. */
+    private static void livingFirst(List<Light> list) {
+        list.sort((a, b) -> Boolean.compare(!a.name.toLowerCase(Locale.ROOT).contains("living"),
+                !b.name.toLowerCase(Locale.ROOT).contains("living")));
     }
 
     private Light fromTuya(TuyaCloud.Light x) {
@@ -377,6 +385,7 @@ final class SmartPanel {
                 String pickedName = picked == null ? null : picked.name;
                 lights.clear();
                 for (TuyaCloud.Light x : read) lights.add(fromTuya(x));
+                livingFirst(lights);
                 source.setText("Tuya · " + read.size() + (read.size() == 1 ? " light" : " lights"));
                 int lr = lightsRow();
                 int at = row >= lr && lr >= 0 ? (row - lr) * 3 + col : -1;

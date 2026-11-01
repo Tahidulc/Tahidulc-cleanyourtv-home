@@ -419,22 +419,13 @@ final class HomeV2 {
         ImageView bulb = icon(R.drawable.ic_bulb);
         Intent smartHome = new Intent("com.google.android.libraries.tv.smarthome.intent.action.OPEN_SMART_HOME")
                 .setPackage("com.google.android.apps.tv.dreamx").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        // The smart home panel: the cameras, every light (Tuya's when the TV has a Tuya project, else by Google
+        // The smart home panel: the cameras (Tuya Smart's live view), every light (Tuya's when the TV has a Tuya project, else by Google
         // Assistant), the brightness, the car and a delivery on its way.
         if (smartHome.resolveActivity(a.getPackageManager()) != null || installed(CameraAlert.TUYA) || TuyaCloud.configured(a)) {
             smartPanel = new SmartPanel(this);
             topButton(bar, bulb, px(66), () -> smartPanel.show());
         }
-        // The camera (Tuya Smart's): its live view, where Tuya Smart is on this TV. The first of the theme's cameras.
-        if (installed(CameraAlert.TUYA)) {
-            ImageView cam = icon(R.drawable.ic_camera);
-            int cp = px(17);
-            cam.setPadding(cp, cp, cp, cp);
-            topButton(bar, cam, px(66), () -> {
-                List<String> cams = CameraAlert.cameras(a);
-                CameraAlert.live(a, cams.isEmpty() ? null : cams.get(0), null);
-            });
-        }
+        // No camera button of its own: the cameras are in the smart home panel.
         ImageView mic = icon(R.drawable.ic_mic);
         topButton(bar, mic, px(66), () -> open(new Intent(Intent.ACTION_ASSIST)));
         ImageView gear = icon(R.drawable.ic_settings);
