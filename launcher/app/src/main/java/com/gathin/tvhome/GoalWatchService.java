@@ -1442,6 +1442,10 @@ public class GoalWatchService extends Service {
             String id = intent.getStringExtra("test_live_centre");
             LiveCentre.open(this, id == null || id.isEmpty() ? null : id);
         }
+        if (intent != null && intent.hasExtra("test_live_events")) {
+            // adb only: a goal, a red card, a VAR decision, a penalty and full time in the open Live Centre.
+            LiveCentre.testEvents();
+        }
         if (intent != null && intent.hasExtra("test_popup")) {
             // adb only (adb's keys never reach the key helper): pop-up mode's "boxes", "pills", "app" or "leave".
             PopupFrame.test(intent.getStringExtra("test_popup"));

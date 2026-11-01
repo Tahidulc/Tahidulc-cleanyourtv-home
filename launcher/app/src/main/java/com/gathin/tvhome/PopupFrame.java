@@ -34,6 +34,11 @@ import java.util.List;
  * remote's Back key in the top corner, as the alerts have it. The app keeps the remote: everything in it works as
  * ever. Down twice takes the remote to the boxes, Up twice to the score pills (OK opens either, Back returns to the
  * app). Back twice in a row leaves pop-up mode for Home. Home coming back to the front ends it.
+ *
+ * The frame hides itself: the app is never resized (only the system's own tools can put an app in a window), so the
+ * frame comes in when pop-up mode opens and whenever Down or Up is pressed twice, and fades away five seconds after
+ * it was last used, the app whole on the screen again and nothing left standing on it (no screen burn-in). Home's
+ * alerts come across the top all the same.
  */
 final class PopupFrame {
     private static final int TOP = 104, FOOT = 150, SIDE = 28, RADIUS = 26;
@@ -51,6 +56,10 @@ final class PopupFrame {
     /** Whether the frame has the remote (its boxes or pills), not the app. */
     private static boolean focused;
     private static long downAt, upAt, backAt;
+    private static final long HIDE_MS = 5_000L;
+    /** The frame's parts that come and go, and whether they show now. */
+    private static View frameView, boxRow;
+    private static boolean chrome;
     private static int swallowUp;
 
     private PopupFrame() { }
@@ -78,7 +87,9 @@ final class PopupFrame {
         FrameLayout win = new FrameLayout(c);
         // No box or pill takes Android's focus (or looks chosen) until the frame has the remote.
         win.setDescendantFocusability(android.view.ViewGroup.FOCUS_BLOCK_DESCENDANTS);
-        win.addView(new Frame(c), new FrameLayout.LayoutParams(-1, -1));
+        frameView = new Frame(c);
+        frameView.setAlpha(0f);
+        win.addView(frameView, new FrameLayout.LayoutParams(-1, -1));
 
         // The score pills across the top, as on Home (Home's alerts take their place there).
         String[] leagues = c.getResources().getStringArray(R.array.score_leagues);
@@ -160,6 +171,7 @@ final class PopupFrame {
         FrameLayout.LayoutParams rl = new FrameLayout.LayoutParams(-1, px(96), Gravity.BOTTOM);
         rl.bottomMargin = px(27);
         win.addView(row, rl);
+        boxRow = row;
         win.setClipChildren(false);
 
         params = new WindowManager.LayoutParams(-1, -1, WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
@@ -183,16 +195,19 @@ final class PopupFrame {
             scores.start();
             // An alert across the top: the pills and the Back key make way (the alert has its own Back key).
             GoalWatchService.laneListener = on -> {
-                if (scores != null) scores.cover(on);
-                if (backBox != null) backBox.animate().alpha(on ? 0f : 1f).setDuration(on ? 160 : 320).start();
+                if (scores != null && (on || chrome)) scores.cover(on);
+                if (backBox != null && (on || chrome)) backBox.animate().alpha(on ? 0f : 1f).setDuration(on ? 160 : 320).start();
             };
         }
-        win.setAlpha(0f);
-        win.animate().alpha(1f).setDuration(300).start();
+        chrome = false;
+        showChrome();
+        main.removeCallbacks(hide);
+        main.postDelayed(hide, HIDE_MS);
     }
 
     /** Pop-up mode over: the frame away (Home itself, coming back, also calls this). */
     static void close() {
+        main.removeCallbacks(hide);
         FrameLayout v = host;
         host = null;
         focused = false;
@@ -295,6 +310,8 @@ final class PopupFrame {
         params.flags &= ~WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
         try { app.getSystemService(WindowManager.class).updateViewLayout(host, params); } catch (RuntimeException e) { return; }
         focused = true;
+        main.removeCallbacks(hide);
+        showChrome();
         host.setDescendantFocusability(android.view.ViewGroup.FOCUS_AFTER_DESCENDANTS);
         host.post(() -> {
             if (host == null) return;
@@ -312,7 +329,35 @@ final class PopupFrame {
         params.flags |= WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
         try { app.getSystemService(WindowManager.class).updateViewLayout(host, params); } catch (RuntimeException ignored) { }
         focused = false;
+        main.removeCallbacks(hide);
+        main.postDelayed(hide, 2_500L);
     }
+
+    /** The frame in: the navy, the pills, the boxes and the Back key fade and slide into place over the app. */
+    private static void showChrome() {
+        if (host == null) return;
+        chrome = true;
+        for (View v : new View[]{frameView, boxRow, backBox}) {
+            if (v == null) continue;
+            v.setVisibility(View.VISIBLE);
+            v.animate().cancel();
+            v.animate().alpha(1f).translationY(0).setDuration(260).setInterpolator(HomeV2.SKY).start();
+        }
+        if (scores != null) scores.cover(false);
+    }
+
+    /** The frame away, the app whole again: nothing of it left on the screen (the alerts still come across the top). */
+    private static final Runnable hide = () -> {
+        if (host == null || focused) return;
+        chrome = false;
+        if (scores != null) scores.cover(true);
+        if (boxRow != null) boxRow.animate().alpha(0f).translationY(px(40)).setDuration(420).start();
+        for (View v : new View[]{frameView, backBox}) {
+            if (v == null) continue;
+            v.animate().alpha(0f).setDuration(420).withEndAction(() -> { if (!chrome) v.setVisibility(View.INVISIBLE); }).start();
+        }
+        if (boxRow != null) boxRow.postDelayed(() -> { if (!chrome && boxRow != null) boxRow.setVisibility(View.INVISIBLE); }, 450L);
+    };
 
     /** adb's test hook: the remote to the boxes or the pills, back to the app, or out. */
     static void test(String what) {
@@ -320,11 +365,21 @@ final class PopupFrame {
         else if ("pills".equals(what)) takeFocus(false);
         else if ("app".equals(what)) leaveFocus();
         else if ("leave".equals(what)) leave();
+        else if ("close".equals(what)) close();
     }
 
     /** After one Back: "×2" lights up a moment, so it is plain that one more leaves. */
     private static void hintBack() {
         if (backHint == null) return;
+        if (!chrome && backBox != null) {
+            backBox.setVisibility(View.VISIBLE);
+            backBox.animate().cancel();
+            backBox.setAlpha(1f);
+            backBox.postDelayed(() -> {
+                if (!chrome && backBox != null) backBox.animate().alpha(0f).setDuration(300)
+                        .withEndAction(() -> { if (!chrome && backBox != null) backBox.setVisibility(View.INVISIBLE); }).start();
+            }, BACK_TWICE_MS);
+        }
         backHint.setTextColor(0xFFFFD166);
         backHint.animate().scaleX(1.3f).scaleY(1.3f).setDuration(160).withEndAction(() ->
                 backHint.animate().scaleX(1f).scaleY(1f).setDuration(220).start()).start();

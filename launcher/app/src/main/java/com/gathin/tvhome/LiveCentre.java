@@ -123,6 +123,14 @@ final class LiveCentre {
         all.sort((a, b) -> a.state != b.state ? Integer.compare(a.state, b.state) : Integer.compare(rank(a), rank(b)));
         // The tables of the leagues with games under way (their standings before today's games went on).
         for (ScoresTicker.Game g : all) if ((g.state == 0 || testCard) && g.slug != null) standings(g.slug);
+        // VAR decisions and penalties missed or saved: each game under way's match summary, every other read.
+        if (c != null && (reads++ % 2 == 0)) {
+            int n = 0;
+            for (ScoresTicker.Game g : all) {
+                if (g.state != 0 || n++ >= 12) continue;
+                incidents.put(g.id, ScoresTicker.incidents(g));
+            }
+        }
         // Every crest ready before it is drawn: the games', the leagues' and the tables' clubs'.
         if (c != null) {
             for (ScoresTicker.Game g : all) { crest(g.homeLogo); crest(g.awayLogo); crest(g.leagueLogo); }
@@ -140,6 +148,9 @@ final class LiveCentre {
     }
 
     private static final Map<String, List<Club>> tables = new java.util.concurrent.ConcurrentHashMap<>();
+    /** Each game under way's VAR decisions and penalties ({key, what, player, minute}), and how many reads so far. */
+    private static final Map<String, List<String[]>> incidents = new java.util.concurrent.ConcurrentHashMap<>();
+    private static int reads;
     private static final Map<String, Long> tablesAt = new java.util.concurrent.ConcurrentHashMap<>();
 
     /** A league's standings from ESPN (as they stood before today's games under way), kept ten minutes. Off the main thread. */
@@ -697,7 +708,7 @@ final class LiveCentre {
             if (n++ >= 4) break;
             LinearLayout row = new LinearLayout(c);
             row.setGravity(Gravity.CENTER_VERTICAL);
-            int colour = "RED".equals(e[0]) ? RED : "FT".equals(e[0]) ? NAVY : 0xFF1F9D5C;
+            int colour = eventColour(e[0]);
             TextView label = text(c, e[0], 15, 0xFFFFFFFF, ScoreCard.outfit(c, 900));
             label.setGravity(Gravity.CENTER_VERTICAL);
             label.setPadding(px(10), 0, px(18), 0);
@@ -775,6 +786,17 @@ final class LiveCentre {
                 seen.put(key, now);
                 fresh.add(new Object[]{minuteValue(red[2]), new String[]{"RED", line, GoalWatchService.surname(red[1]), red[2], red[3]}});
             }
+            List<String[]> inc = incidents.get(g.id);
+            for (int i = 0; inc != null && i < inc.size(); i++) {
+                String[] x = inc.get(i);
+                String key = g.id + "|i" + x[0];
+                if (seen.containsKey(key)) continue;
+                seen.put(key, now);
+                String what = x[1] == null ? "" : x[1].replaceAll("^[^A-Za-z]+", "").trim();
+                boolean pen = what.toLowerCase(Locale.UK).contains("pen");
+                String who = x[2] == null || x[2].isEmpty() ? what : GoalWatchService.surname(x[2]) + " · " + what;
+                fresh.add(new Object[]{minuteValue(x[3]), new String[]{pen ? "PEN" : "VAR", line, who, x[3] == null ? "" : x[3], ""}});
+            }
             Integer before = lastStates.put(g.id, g.state);
             if (!first && before != null && before == 0 && g.state == 2) {
                 fresh.add(new Object[]{999, new String[]{"FT", line, "Full time", "", ""}});
@@ -785,6 +807,92 @@ final class LiveCentre {
         for (Object[] f : fresh) add.add((String[]) f[1]);
         events.addAll(0, add);
         while (events.size() > 20) events.remove(events.size() - 1);
+        // What has just happened flashes across the ticker, the oldest first.
+        if (!first) for (int i = add.size() - 1; i >= 0; i--) flash(add.get(i));
+    }
+
+    // ---- the ticker's flash ---------------------------------------------------------------------------------------
+
+    private static final List<String[]> flashes = new ArrayList<>();
+    private static View flashing;
+
+    private static int eventColour(String kind) {
+        switch (kind) {
+            case "RED": return RED;
+            case "FT": return NAVY;
+            case "VAR": return 0xFF7B4DFF;
+            case "PEN": return 0xFFFF8A1F;
+            default: return 0xFF1F9D5C;
+        }
+    }
+
+    /**
+     * An event across the ticker's white band for nine seconds, as a news channel's breaking strap: its label on
+     * the slant in its colour (GOAL green, RED red, VAR purple, PEN orange, FT navy), the game's score and who. The
+     * scores slide on again after. Events that come together take their turn.
+     */
+    static void flash(String[] e) {
+        if (host == null || tickerLine == null) return;
+        if (flashing != null) { flashes.add(e); return; }
+        Context c = app;
+        FrameLayout band = (FrameLayout) tickerLine;
+        LinearLayout strap = new LinearLayout(c);
+        strap.setGravity(Gravity.CENTER_VERTICAL);
+        strap.setBackgroundColor(0xFFFFFFFF);
+        TextView label = text(c, e[0], 21, 0xFFFFFFFF, ScoreCard.outfit(c, 900));
+        label.setGravity(Gravity.CENTER_VERTICAL);
+        label.setPadding(px(22), 0, px(30), 0);
+        label.setLetterSpacing(0.06f);
+        label.setBackground(new ScoreCard.Slant(eventColour(e[0]), px(14), false));
+        strap.addView(label, new LinearLayout.LayoutParams(-2, -1));
+        TextView match = text(c, e[1], 21, INK, ScoreCard.outfit(c, 800));
+        LinearLayout.LayoutParams ml = new LinearLayout.LayoutParams(-2, -2);
+        ml.leftMargin = px(16);
+        strap.addView(match, ml);
+        TextView who = text(c, "·  " + e[2] + (e[3] == null || e[3].isEmpty() ? "" : "  " + e[3]), 21, 0xFF4A507F, ScoreCard.outfit(c, 700));
+        LinearLayout.LayoutParams wl = new LinearLayout.LayoutParams(0, -2, 1f);
+        wl.leftMargin = px(14);
+        strap.addView(who, wl);
+        band.addView(strap, new FrameLayout.LayoutParams(-1, -1));
+        flashing = strap;
+        strap.setTranslationY(-band.getHeight());
+        strap.animate().translationY(0).setDuration(320).setInterpolator(new DecelerateInterpolator(2f)).start();
+        label.setScaleX(0.6f);
+        label.setScaleY(0.6f);
+        label.animate().scaleX(1f).scaleY(1f).setStartDelay(200).setDuration(260).setInterpolator(new android.view.animation.OvershootInterpolator(2f)).start();
+        main.postDelayed(() -> strap.animate().translationY(band.getHeight()).setDuration(280).withEndAction(() -> {
+            band.removeView(strap);
+            if (flashing == strap) flashing = null;
+            if (!flashes.isEmpty() && host != null) flash(flashes.remove(0));
+        }).start(), 9_000L);
+    }
+
+    /**
+     * adb's test hook: a goal, a red card, a VAR decision, a penalty saved and full time in one of today's games
+     * (the Premier League's first), each on the ticker and in the events, ten seconds apart.
+     */
+    static void testEvents() {
+        if (host == null) return;
+        ScoresTicker.Game g = null;
+        for (ScoresTicker.Game x : games) if ("eng.1".equals(x.slug)) { g = x; break; }
+        if (g == null && !games.isEmpty()) g = games.get(0);
+        if (g == null) return;
+        String h = g.home, a = g.away;
+        String[][] script = {
+                {"GOAL", h + " 1  " + a + " 0", "Salah", "23'", "home"},
+                {"RED", h + " 1  " + a + " 0", "Saliba", "38'", "away"},
+                {"VAR", h + " 1  " + a + " 0", "Goal ruled out · offside", "52'", ""},
+                {"PEN", h + " 1  " + a + " 0", "Raya · Penalty saved", "64'", ""},
+                {"FT", h + " 1  " + a + " 0", "Full time", "", ""}};
+        for (int i = 0; i < script.length; i++) {
+            String[] e = script[i];
+            main.postDelayed(() -> {
+                if (host == null) return;
+                events.add(0, e);
+                fillEvents(app);
+                flash(e);
+            }, i * 10_500L);
+        }
     }
 
     private static int minuteValue(String m) {
@@ -996,6 +1104,8 @@ final class LiveCentre {
 
     static void close() {
         GoalClips.stop();
+        flashes.clear();
+        flashing = null;
         clipQueue.clear();
         android.media.MediaPlayer mp = clipPlayer;
         clipPlayer = null;
