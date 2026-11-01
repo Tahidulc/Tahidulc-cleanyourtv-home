@@ -2749,9 +2749,12 @@ final class LiveCentre {
 
     // ---- goal clips -----------------------------------------------------------------------------------------------
 
-    /** The games a goal's clip is looked for in: the Premier League's, the Champions League's, and the big clubs'. */
+    /**
+     * The games a goal's clip is looked for in: every LaLiga game (ESPN publishes a clip of each of its goals), the
+     * Premier League's and the Champions League's, and the big clubs' anywhere (in case ESPN has one).
+     */
     private static boolean clipWanted(ScoresTicker.Game g) {
-        if ("eng.1".equals(g.slug) || "uefa.champions".equals(g.slug)) return true;
+        if ("esp.1".equals(g.slug) || "eng.1".equals(g.slug) || "uefa.champions".equals(g.slug)) return true;
         String both = F1Results.key((g.homeName == null ? "" : g.homeName) + " | " + (g.awayName == null ? "" : g.awayName));
         for (String club : new String[]{"real madrid", "barcelona", "ac milan", "internazionale", "inter milan", "juventus",
                 "bayern", "paris saint-germain", "paris saint germain"}) {
