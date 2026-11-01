@@ -404,7 +404,8 @@ final class F1Tower {
                 PixelFormat.TRANSLUCENT);
         lp.gravity = Gravity.TOP | Gravity.START;
         lp.setTitle("F1Tower");
-        boolean takeKeys = !InputKeyService.running;
+        // The remote stays with TiviMate: keys through the key helper, or the channel helper on a TV without one.
+        boolean takeKeys = !InputKeyService.running && !AppSearchService.running();
         if (takeKeys) lp.flags &= ~WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
         try {
             c.getSystemService(WindowManager.class).addView(win, lp);
@@ -412,6 +413,7 @@ final class F1Tower {
             return;
         }
         host = win;
+        if (!InputKeyService.running && !takeKeys) AppSearchService.keysFor("f1", true);
         if (takeKeys) {
             // Without the key helper (the TCL) the tower takes the remote's keys itself while it shows.
             win.setFocusable(true);
@@ -538,6 +540,7 @@ final class F1Tower {
 
     static void close() {
         main.removeCallbacks(reread);
+        if (host != null && !InputKeyService.running) AppSearchService.keysFor("f1", false);
         FrameLayout v = host;
         host = null;
         if (v == null) return;

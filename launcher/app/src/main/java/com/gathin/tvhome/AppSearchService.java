@@ -470,17 +470,20 @@ public class AppSearchService extends AccessibilityService {
     }
 
     /**
-     * Pop-up mode on a TV without the key helper (the TCL): this helper takes the remote's keys while pop-up mode is
-     * open (Back, Down and Up pressed twice), and gives them up as it closes, as filtering keys costs the TCL's remote
-     * its auto-repeat. Its other work is not changed.
+     * On a TV without the key helper (the TCL): this helper takes the remote's keys while pop-up mode, the Live Centre
+     * or the F1 timing is open ("popup", "live", "f1"), and gives them up once none is, as filtering keys costs the
+     * TCL's remote its auto-repeat. Its other work is not changed.
      */
-    static void keysForPopup(boolean on) {
+    private static final java.util.Set<String> keysWanted = new java.util.HashSet<>();
+
+    static void keysFor(String who, boolean on) {
+        if (on) keysWanted.add(who); else keysWanted.remove(who);
         AppSearchService s = instance;
         if (s == null) return;
         android.accessibilityservice.AccessibilityServiceInfo info = s.getServiceInfo();
         if (info == null) return;
         int was = info.flags;
-        info.flags = on ? was | android.accessibilityservice.AccessibilityServiceInfo.FLAG_REQUEST_FILTER_KEY_EVENTS
+        info.flags = !keysWanted.isEmpty() ? was | android.accessibilityservice.AccessibilityServiceInfo.FLAG_REQUEST_FILTER_KEY_EVENTS
                 : was & ~android.accessibilityservice.AccessibilityServiceInfo.FLAG_REQUEST_FILTER_KEY_EVENTS;
         if (info.flags != was) s.setServiceInfo(info);
     }
@@ -493,7 +496,9 @@ public class AppSearchService extends AccessibilityService {
 
     @Override
     protected boolean onKeyEvent(android.view.KeyEvent event) {
-        return !InputKeyService.running && PopupFrame.isShowing() && PopupFrame.key(event);
+        if (InputKeyService.running || keysWanted.isEmpty()) return false;
+        if (LiveCentre.key(event) || F1Tower.key(event)) return true;
+        return PopupFrame.isShowing() && PopupFrame.key(event);
     }
 
     /** Whether a channel search is under way (its cover up, or a channel still to find). */

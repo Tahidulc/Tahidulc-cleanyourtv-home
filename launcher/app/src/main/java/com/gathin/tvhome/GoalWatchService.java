@@ -1461,7 +1461,8 @@ public class GoalWatchService extends Service {
         if (intent != null && intent.hasExtra("test_live_centre")) {
             // adb only: the Live Centre, on the live game (a followed club's first), as OK on the Sports page opens it.
             String id = intent.getStringExtra("test_live_centre");
-            LiveCentre.open(this, id == null || id.isEmpty() ? null : id);
+            if ("here".equals(id)) LiveCentre.openHere(this);
+            else LiveCentre.open(this, id == null || id.isEmpty() ? null : id);
         }
         if (intent != null && intent.hasExtra("test_live_events")) {
             // adb only: a goal, a red card, a VAR decision, a penalty and full time in the open Live Centre.

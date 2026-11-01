@@ -75,7 +75,7 @@ final class PopupFrame {
 
     /**
      * Whether pop-up mode can work here: with the key helper, or (a TCL, which has none) with the channel helper
-     * taking the keys while pop-up mode is open (AppSearchService.keysForPopup). Either keeps the remote with the app.
+     * taking the keys while pop-up mode is open (AppSearchService.keysFor). Either keeps the remote with the app.
      */
     static boolean available() {
         return InputKeyService.running || AppSearchService.running();
@@ -194,7 +194,7 @@ final class PopupFrame {
         host = win;
         focused = false;
         backAt = 0;
-        if (!InputKeyService.running) AppSearchService.keysForPopup(true);
+        if (!InputKeyService.running) AppSearchService.keysFor("popup", true);
         // Home's alerts come in across the top, in the pills' place, as on Home.
         if (scores != null) {
             scores.start();
@@ -216,7 +216,7 @@ final class PopupFrame {
     /** Pop-up mode over: the frame away (Home itself, coming back, also calls this). */
     static void close() {
         main.removeCallbacks(hide);
-        if (host != null && !InputKeyService.running) AppSearchService.keysForPopup(false);
+        if (host != null && !InputKeyService.running) AppSearchService.keysFor("popup", false);
         FrameLayout v = host;
         host = null;
         focused = false;

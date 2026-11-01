@@ -103,7 +103,9 @@ final class LiveCentre {
         app = ctx.getApplicationContext();
         close();
         io.execute(() -> {
-            List<ScoresTicker.Game> read = read(app);
+            // The scores alone first, so the game's channel goes on at once; the tables, incidents, F1, crests and the
+            // game's stats are read after, while TiviMate finds the channel.
+            List<ScoresTicker.Game> read = scores();
             ScoresTicker.Game pick = choose(read, gameId);
             Object[] w = pick == null ? null : GoalWatchService.watchForGame(app, pick);
             main.post(() -> {
@@ -111,16 +113,53 @@ final class LiveCentre {
                 shownId = pick == null ? null : pick.id;
                 learn(read, true);
                 boolean tuning = w != null && tune(w);
-                show(!tuning && w == null);
-                if (tuning) waitForTiviMate(0);
+                if (tuning) waitForTiviMate(0); else show(w == null);
             });
+            extras(read);
+            if (pick != null) stats(pick);
+            main.post(() -> { if (host != null) fill(); });
+        });
+    }
+
+    /** adb's test hook ("here"): the frame over whatever is on, its channel not changed. */
+    static void openHere(Context ctx) {
+        app = ctx.getApplicationContext();
+        close();
+        io.execute(() -> {
+            List<ScoresTicker.Game> read = scores();
+            ScoresTicker.Game pick = choose(read, null);
+            if (pick != null) stats(pick);
+            main.post(() -> {
+                games = read;
+                shownId = pick == null ? null : pick.id;
+                learn(read, true);
+                show(false);
+            });
+            extras(read);
+            main.post(() -> { if (host != null) fill(); });
         });
     }
 
     /** The six leagues' games today, live first, the Premier League's first within each state. */
     private static List<ScoresTicker.Game> read(Context c) {
+        List<ScoresTicker.Game> all = scores();
+        if (c != null) extras(all);
+        ScoresTicker.Game g = null;
+        for (ScoresTicker.Game x : all) if (x.id != null && x.id.equals(shownId)) g = x;
+        if (g != null) stats(g);
+        return all;
+    }
+
+    /** The leagues' games, live first, the Premier League's first within each state. */
+    private static List<ScoresTicker.Game> scores() {
         List<ScoresTicker.Game> all = ScoresTicker.load(LEAGUES);
         all.sort((a, b) -> a.state != b.state ? Integer.compare(a.state, b.state) : Integer.compare(rank(a), rank(b)));
+        return all;
+    }
+
+    /** Everything else the frame shows, read after the scores: tables, incidents, F1, tennis and UFC, crests. */
+    private static void extras(List<ScoresTicker.Game> all) {
+        Context c = app;
         // The tables of the leagues with games under way (their standings before today's games went on).
         for (ScoresTicker.Game g : all) if ((g.state == 0 || testCard) && g.slug != null) standings(g.slug);
         // VAR decisions and penalties missed or saved: each game under way's match summary, every other read.
@@ -147,7 +186,6 @@ final class LiveCentre {
             for (ScoresTicker.Game g : all) { crest(g.homeLogo); crest(g.awayLogo); crest(g.leagueLogo); }
             for (List<Club> t : tables.values()) for (Club x : t) crest(x.logo);
         }
-        return all;
     }
 
     // ---- live tables ----------------------------------------------------------------------------------------------
@@ -339,15 +377,29 @@ final class LiveCentre {
         eventsBox.setPadding(px(24), px(8), px(24), px(8));
         foot.addView(eventsBox, new LinearLayout.LayoutParams(-1, 0, 1f));
 
-        // The game's score, small, in the top left corner (over the broadcaster's own).
+        // The game's scoreboard in the top left corner, wide and tall enough to cover the broadcaster's own, and its
+        // stats beside it.
         mini = new LinearLayout(c);
-        mini.setOrientation(LinearLayout.VERTICAL);
+        mini.setOrientation(LinearLayout.HORIZONTAL);
         mini.setClipToOutline(true);
-        mini.setOutlineProvider(round(px(12)));
-        FrameLayout.LayoutParams ml = new FrameLayout.LayoutParams(px(270), -2, Gravity.TOP | Gravity.START);
-        ml.leftMargin = px(28);
-        ml.topMargin = px(26);
+        mini.setOutlineProvider(round(px(14)));
+        mini.setElevation(px(12));
+        FrameLayout.LayoutParams ml = new FrameLayout.LayoutParams(px(BOARD_W), px(BOARD_H), Gravity.TOP | Gravity.START);
+        ml.leftMargin = px(24);
+        ml.topMargin = px(22);
         win.addView(mini, ml);
+        statsBox = new FrameLayout(c);
+        statsBox.setClipToOutline(true);
+        statsBox.setOutlineProvider(round(px(14)));
+        statsBox.setElevation(px(12));
+        GradientDrawable sb = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0xFF161C70, 0xFF0E1450});
+        sb.setCornerRadius(px(14));
+        sb.setStroke(Math.max(1, px(1.5f)), 0x33FFFFFF);
+        statsBox.setBackground(sb);
+        FrameLayout.LayoutParams stl = new FrameLayout.LayoutParams(px(STATS_W), px(BOARD_H), Gravity.TOP | Gravity.START);
+        stl.leftMargin = px(24 + BOARD_W + 14);
+        stl.topMargin = px(22);
+        win.addView(statsBox, stl);
 
         // Back closes it: the remote's Back key in the column's top right corner.
         ImageView back = new ImageView(c);
@@ -364,7 +416,10 @@ final class LiveCentre {
                         | WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
                 PixelFormat.TRANSLUCENT);
         lp.setTitle("LiveCentre");
-        boolean takeKeys = !InputKeyService.running;
+        // The remote stays with TiviMate (the window never takes the focus): its keys come through the key helper, or
+        // on a TV without one (the TCL) through the channel helper while the frame shows. Taking the focus instead hid
+        // TiviMate from the channel helper as it searched, and the channel was never put on.
+        boolean takeKeys = !InputKeyService.running && !AppSearchService.running();
         if (takeKeys) lp.flags &= ~WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
         try {
             c.getSystemService(WindowManager.class).addView(win, lp);
@@ -372,8 +427,9 @@ final class LiveCentre {
             return;
         }
         host = win;
+        if (!InputKeyService.running && !takeKeys) AppSearchService.keysFor("live", true);
         if (takeKeys) {
-            // Without the key helper (the TCL) the frame takes the remote's keys itself while it shows.
+            // With no helper at all the frame takes the remote's keys itself while it shows.
             win.setFocusable(true);
             win.setFocusableInTouchMode(true);
             win.requestFocus();
@@ -383,6 +439,8 @@ final class LiveCentre {
         win.setAlpha(0f);
         win.animate().alpha(1f).setDuration(320).withLayer().start();
         main.postDelayed(tick, 1_000L);
+        main.post(clockTick);
+        main.postDelayed(statsTurn, STATS_MS);
         main.postDelayed(reread, READ_MS);
         main.postDelayed(nextLeague, LEAGUE_MS);
     }
@@ -426,64 +484,287 @@ final class LiveCentre {
         fillCentre(c);
     }
 
+    private static final int BOARD_W = 640, BOARD_H = 112, STATS_W = 540;
+    private static final long STATS_MS = 6_500L;
+    private static FrameLayout statsBox;
+    private static TextView boardScore, boardClock;
+
+    /**
+     * The scoreboard as the broadcasters draw theirs, larger: each side on white with its crest over its three letters,
+     * edged in its own colour, and between them the score and the match clock on red.
+     */
     private static void fillMini(Context c) {
         mini.removeAllViews();
         ScoresTicker.Game g = shown();
-        if (g == null) { mini.setVisibility(View.GONE); return; }
+        if (g == null) { mini.setVisibility(View.GONE); statsBox.setVisibility(View.GONE); return; }
         mini.setVisibility(View.VISIBLE);
-        LinearLayout head = new LinearLayout(c);
-        head.setGravity(Gravity.CENTER_VERTICAL);
-        head.setBackgroundColor(NAVY);
-        head.setPadding(px(14), px(6), px(14), px(6));
-        head.addView(text(c, minute(g), 22, 0xFFFFFFFF, ScoreCard.outfit(c, 800)));
-        TextView ground = text(c, g.venue == null ? "" : g.venue, 12, 0xFFC9CEF2, ScoreCard.outfit(c, 500));
-        LinearLayout.LayoutParams gl = new LinearLayout.LayoutParams(0, -2, 1f);
-        gl.leftMargin = px(10);
-        head.addView(ground, gl);
-        mini.addView(head, new LinearLayout.LayoutParams(-1, -2));
-        LinearLayout body = new LinearLayout(c);
-        body.setOrientation(LinearLayout.VERTICAL);
-        body.setBackgroundColor(0xF7FFFFFF);
-        body.setPadding(px(14), px(8), px(10), px(10));
-        body.addView(text(c, ScoresTicker.competition(g), 13, NAVY, ScoreCard.outfit(c, 700)));
-        body.addView(side(c, g, true), new LinearLayout.LayoutParams(-1, -2));
-        body.addView(side(c, g, false), new LinearLayout.LayoutParams(-1, -2));
-        mini.addView(body, new LinearLayout.LayoutParams(-1, -2));
+        statsBox.setVisibility(View.VISIBLE);
+        mini.addView(edge(c, g.homeColor), new LinearLayout.LayoutParams(px(12), -1));
+        mini.addView(side(c, g, true), new LinearLayout.LayoutParams(0, -1, 1f));
+        LinearLayout mid = new LinearLayout(c);
+        mid.setOrientation(LinearLayout.VERTICAL);
+        mid.setGravity(Gravity.CENTER);
+        mid.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0xFFE3283A, 0xFFB8121F}));
+        boardScore = text(c, g.state == 1 ? "v" : score(g.homeScore) + "-" + score(g.awayScore), 58, 0xFFFFFFFF, ScoreCard.outfit(c, 900));
+        boardScore.setGravity(Gravity.CENTER);
+        mid.addView(boardScore, new LinearLayout.LayoutParams(-2, -2));
+        boardClock = text(c, "", 27, 0xFFFFFFFF, ScoreCard.outfit(c, 700));
+        boardClock.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams cl = new LinearLayout.LayoutParams(-2, -2);
+        cl.topMargin = px(2);
+        mid.addView(boardClock, cl);
+        mini.addView(mid, new LinearLayout.LayoutParams(px(210), -1));
+        mini.addView(side(c, g, false), new LinearLayout.LayoutParams(0, -1, 1f));
+        mini.addView(edge(c, g.awayColor), new LinearLayout.LayoutParams(px(12), -1));
+        clockNow();
+        fillStats(c, false);
     }
 
-    /** One side in the corner card: its crest, name and score box, and its scorers under it. */
+    private static View edge(Context c, int colour) {
+        View v = new View(c);
+        // A white or very pale kit (Sevilla's, Real Madrid's) would vanish against the white side: navy instead.
+        int r = (colour >> 16) & 0xFF, gr = (colour >> 8) & 0xFF, b = colour & 0xFF;
+        boolean pale = (r * 299 + gr * 587 + b * 114) / 1000 > 215;
+        v.setBackgroundColor(colour != 0 && !pale ? 0xFF000000 | colour : NAVY);
+        return v;
+    }
+
+    /** One side: its crest over its three letters, on white. */
     private static View side(Context c, ScoresTicker.Game g, boolean home) {
         LinearLayout v = new LinearLayout(c);
         v.setOrientation(LinearLayout.VERTICAL);
-        v.setPadding(0, px(6), 0, 0);
-        LinearLayout row = new LinearLayout(c);
-        row.setGravity(Gravity.CENTER_VERTICAL);
+        v.setGravity(Gravity.CENTER);
+        v.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0xFFFFFFFF, 0xFFE9ECF5}));
         ImageView crest = new ImageView(c);
         crest.setScaleType(ImageView.ScaleType.FIT_CENTER);
         loadCrest(crest, home ? g.homeLogo : g.awayLogo);
-        row.addView(crest, new LinearLayout.LayoutParams(px(24), px(24)));
-        TextView name = text(c, shortName(home ? g.homeName : g.awayName, home ? g.home : g.away), 19, INK, ScoreCard.outfit(c, 700));
-        LinearLayout.LayoutParams nl = new LinearLayout.LayoutParams(0, -2, 1f);
-        nl.leftMargin = px(8);
-        row.addView(name, nl);
-        TextView score = text(c, score(home ? g.homeScore : g.awayScore), 20, 0xFFFFFFFF, ScoreCard.outfit(c, 800));
-        score.setGravity(Gravity.CENTER);
-        score.setBackgroundColor(NAVY);
-        row.addView(score, new LinearLayout.LayoutParams(px(30), px(30)));
-        v.addView(row);
-        StringBuilder who = new StringBuilder();
-        for (String[] goal : g.goals) {
-            if (!(home ? "home" : "away").equals(goal[3])) continue;
-            if (who.length() > 0) who.append(", ");
-            who.append(GoalWatchService.surname(goal[1])).append(' ').append(goal[2]);
-        }
-        if (who.length() > 0) {
-            TextView w = text(c, who.toString(), 11.5f, 0xFF4A507F, ScoreCard.outfit(c, 500));
-            LinearLayout.LayoutParams wl = new LinearLayout.LayoutParams(-1, -2);
-            wl.leftMargin = px(32);
-            v.addView(w, wl);
-        }
+        v.addView(crest, new LinearLayout.LayoutParams(px(52), px(52)));
+        TextView name = text(c, home ? g.home : g.away, 34, INK, ScoreCard.outfit(c, 800));
+        name.setLetterSpacing(0.04f);
+        name.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams nl = new LinearLayout.LayoutParams(-2, -2);
+        nl.topMargin = px(2);
+        v.addView(name, nl);
         return v;
+    }
+
+    /** The match clock: minutes and seconds counting on from ESPN's last reading; HT, FT, or the kick-off time. */
+    private static void clockNow() {
+        ScoresTicker.Game g = shown();
+        if (boardClock == null || g == null) return;
+        String t;
+        if (g.state == 2) t = "FT";
+        else if (g.state == 1) t = minute(g);
+        else if (g.halftime) t = "HT";
+        else if (g.clockAt > 0 && g.clockSec > 0) {
+            long secs = (long) g.clockSec + (System.currentTimeMillis() - g.clockAt) / 1000L;
+            t = String.format(Locale.ROOT, "%02d:%02d", secs / 60, secs % 60);
+        } else t = minute(g);
+        boardClock.setText(t);
+    }
+
+    private static final Runnable clockTick = new Runnable() {
+        @Override public void run() {
+            if (host == null) return;
+            clockNow();
+            main.postDelayed(this, 1_000L);
+        }
+    };
+
+    // ---- the game's stats, beside the scoreboard -----------------------------------------------------------------
+
+    /** The shown game's stats from its ESPN match summary: {label, home, away, kind} pages; kind "bar" or "form". */
+    private static final Map<String, List<String[]>> statPages = new java.util.concurrent.ConcurrentHashMap<>();
+    private static int statAt;
+
+    /** Reads the game's match summary: the match stats while it is on or over, the form and the places always. */
+    private static void stats(ScoresTicker.Game g) {
+        if (g == null || g.id == null || g.slug == null) return;
+        List<String[]> pages = new ArrayList<>();
+        try {
+            org.json.JSONObject d = new org.json.JSONObject(ScoresTicker.get("https://site.api.espn.com/apis/site/v2/sports/soccer/"
+                    + g.slug + "/summary?event=" + g.id));
+            Map<String, String> h = new HashMap<>(), a = new HashMap<>();
+            org.json.JSONObject box = d.optJSONObject("boxscore");
+            org.json.JSONArray teams = box == null ? null : box.optJSONArray("teams");
+            for (int i = 0; teams != null && i < teams.length(); i++) {
+                org.json.JSONObject t = teams.getJSONObject(i);
+                String id = t.getJSONObject("team").optString("id");
+                Map<String, String> m = id.equals(g.homeId) ? h : id.equals(g.awayId) ? a : (i == 0 ? h : a);
+                org.json.JSONArray st = t.optJSONArray("statistics");
+                for (int k = 0; st != null && k < st.length(); k++) m.put(st.getJSONObject(k).optString("name"), st.getJSONObject(k).optString("displayValue"));
+            }
+            if (g.state != 1 && h.containsKey("possessionPct")) {
+                pages.add(new String[]{"POSSESSION", pct(h.get("possessionPct")), pct(a.get("possessionPct")), "bar"});
+                if (h.containsKey("totalShots")) pages.add(new String[]{"SHOTS (ON TARGET)", h.get("totalShots") + " (" + h.getOrDefault("shotsOnTarget", "0") + ")",
+                        a.get("totalShots") + " (" + a.getOrDefault("shotsOnTarget", "0") + ")", "bar"});
+                if (h.containsKey("wonCorners")) pages.add(new String[]{"CORNERS", h.get("wonCorners"), a.get("wonCorners"), "bar"});
+                if (h.containsKey("accuratePasses") && h.containsKey("totalPasses"))
+                    pages.add(new String[]{"PASS ACCURACY", passes(h), passes(a), "bar"});
+                if (h.containsKey("foulsCommitted")) pages.add(new String[]{"FOULS", h.get("foulsCommitted"), a.get("foulsCommitted"), "bar"});
+                int cards = intOf(h.get("yellowCards")) + intOf(a.get("yellowCards")) + intOf(h.get("redCards")) + intOf(a.get("redCards"));
+                if (cards > 0) pages.add(new String[]{"CARDS (RED)", h.get("yellowCards") + " (" + h.getOrDefault("redCards", "0") + ")",
+                        a.get("yellowCards") + " (" + a.getOrDefault("redCards", "0") + ")", "bar"});
+                if (h.containsKey("saves")) pages.add(new String[]{"SAVES", h.get("saves"), a.get("saves"), "bar"});
+            }
+            // Form: each side's last five, oldest first as ESPN lists them.
+            org.json.JSONArray five = d.optJSONArray("lastFiveGames");
+            String fh = null, fa = null;
+            for (int i = 0; five != null && i < five.length(); i++) {
+                org.json.JSONObject x = five.getJSONObject(i);
+                String id = x.optJSONObject("team") == null ? "" : x.getJSONObject("team").optString("id");
+                StringBuilder r = new StringBuilder();
+                org.json.JSONArray ev = x.optJSONArray("events");
+                for (int k = 0; ev != null && k < ev.length() && r.length() < 5; k++) r.append(ev.getJSONObject(k).optString("gameResult", "-"));
+                if (id.equals(g.homeId)) fh = r.toString(); else if (id.equals(g.awayId)) fa = r.toString();
+            }
+            if (fh != null && fa != null) pages.add(new String[]{"FORM · LAST FIVE", fh, fa, "form"});
+            // The league table: each side's place and points.
+            org.json.JSONObject table = d.optJSONObject("standings");
+            org.json.JSONArray groups = table == null ? null : table.optJSONArray("groups");
+            String ph = null, pa = null;
+            for (int gi = 0; groups != null && gi < groups.length(); gi++) {
+                org.json.JSONObject st = groups.getJSONObject(gi).optJSONObject("standings");
+                org.json.JSONArray entries = st == null ? null : st.optJSONArray("entries");
+                for (int i = 0; entries != null && i < entries.length(); i++) {
+                    org.json.JSONObject e = entries.getJSONObject(i);
+                    Map<String, String> v = new HashMap<>();
+                    org.json.JSONArray es = e.optJSONArray("stats");
+                    for (int k = 0; es != null && k < es.length(); k++) v.put(es.getJSONObject(k).optString("name"), es.getJSONObject(k).optString("displayValue"));
+                    String place = ordinal(intOf(v.get("rank"))) + " · " + v.getOrDefault("points", "0") + " pts";
+                    if (e.optString("id").equals(g.homeId)) ph = place;
+                    if (e.optString("id").equals(g.awayId)) pa = place;
+                }
+            }
+            if (ph != null && pa != null) pages.add(new String[]{"LEAGUE TABLE", ph, pa, "text"});
+            if (g.state == 1 && g.venue != null) pages.add(0, new String[]{"KICK-OFF " + minute(g), g.venue, "", "venue"});
+        } catch (Exception ignored) {
+        }
+        if (!pages.isEmpty()) statPages.put(g.id, pages);
+    }
+
+    private static String pct(String v) {
+        try { return Math.round(Float.parseFloat(v)) + "%"; } catch (RuntimeException e) { return v == null ? "" : v; }
+    }
+
+    private static String passes(Map<String, String> m) {
+        int ok = intOf(m.get("accuratePasses")), all = intOf(m.get("totalPasses"));
+        return all > 0 ? Math.round(ok * 100f / all) + "%" : "";
+    }
+
+    private static String ordinal(int n) {
+        int t = n % 100;
+        String s = t >= 11 && t <= 13 ? "th" : n % 10 == 1 ? "st" : n % 10 == 2 ? "nd" : n % 10 == 3 ? "rd" : "th";
+        return n + s;
+    }
+
+    private static final Runnable statsTurn = new Runnable() {
+        @Override public void run() {
+            if (host == null) return;
+            statAt++;
+            fillStats(app, true);
+            main.postDelayed(this, STATS_MS);
+        }
+    };
+
+    /** One page of the stats: its label across the top, the home side's figure left, the away side's right. */
+    private static void fillStats(Context c, boolean turn) {
+        if (statsBox == null) return;
+        ScoresTicker.Game g = shown();
+        List<String[]> pages = g == null ? null : statPages.get(g.id);
+        View old = statsBox.getChildCount() > 0 ? statsBox.getChildAt(statsBox.getChildCount() - 1) : null;
+        LinearLayout page = new LinearLayout(c);
+        page.setOrientation(LinearLayout.VERTICAL);
+        page.setGravity(Gravity.CENTER);
+        page.setPadding(px(22), px(10), px(22), px(10));
+        if (pages == null || pages.isEmpty()) {
+            TextView t = text(c, g == null ? "" : ScoresTicker.competition(g), 22, 0xFFC9CEF2, ScoreCard.outfit(c, 600));
+            page.addView(t);
+        } else {
+            String[] p = pages.get(Math.floorMod(statAt, pages.size()));
+            TextView label = text(c, p[0], 16, 0xFFAEB5E8, ScoreCard.outfit(c, 800));
+            label.setLetterSpacing(0.14f);
+            page.addView(label);
+            LinearLayout row = new LinearLayout(c);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            LinearLayout.LayoutParams rl = new LinearLayout.LayoutParams(-1, -2);
+            rl.topMargin = px(8);
+            page.addView(row, rl);
+            if ("venue".equals(p[3])) {
+                TextView v = text(c, p[1], 26, 0xFFFFFFFF, ScoreCard.outfit(c, 700));
+                v.setGravity(Gravity.CENTER);
+                row.addView(v, new LinearLayout.LayoutParams(-1, -2));
+            } else if ("form".equals(p[3])) {
+                row.addView(form(c, p[1]), new LinearLayout.LayoutParams(0, -2, 1f));
+                row.addView(new View(c), new LinearLayout.LayoutParams(px(18), 1));
+                row.addView(form(c, p[2]), new LinearLayout.LayoutParams(0, -2, 1f));
+            } else {
+                TextView hv = text(c, p[1], 34, 0xFFFFFFFF, ScoreCard.outfit(c, 800));
+                row.addView(hv, new LinearLayout.LayoutParams(-2, -2));
+                if ("bar".equals(p[3])) {
+                    LinearLayout.LayoutParams bl = new LinearLayout.LayoutParams(0, px(10), 1f);
+                    bl.leftMargin = px(16);
+                    bl.rightMargin = px(16);
+                    row.addView(split(c, g, p[1], p[2]), bl);
+                } else {
+                    row.addView(new View(c), new LinearLayout.LayoutParams(0, 1, 1f));
+                }
+                TextView av = text(c, p[2], 34, 0xFFFFFFFF, ScoreCard.outfit(c, 800));
+                row.addView(av, new LinearLayout.LayoutParams(-2, -2));
+            }
+        }
+        statsBox.addView(page, new FrameLayout.LayoutParams(-1, -1));
+        if (old != null && turn) {
+            page.setAlpha(0f);
+            page.setTranslationY(px(18));
+            page.animate().alpha(1f).translationY(0).setDuration(320).start();
+            old.animate().alpha(0f).translationY(-px(18)).setDuration(260).withEndAction(() -> statsBox.removeView(old)).start();
+        } else if (old != null) {
+            statsBox.removeView(old);
+        }
+    }
+
+    /** The two sides' share of a stat as one bar in their colours (the home side's from the left). */
+    private static View split(Context c, ScoresTicker.Game g, String hv, String av) {
+        float h = leadingNumber(hv), a = leadingNumber(av);
+        float share = h + a <= 0 ? 0.5f : h / (h + a);
+        LinearLayout bar = new LinearLayout(c);
+        bar.setClipToOutline(true);
+        bar.setOutlineProvider(round(px(5)));
+        View l = new View(c), r = new View(c);
+        l.setBackgroundColor(g != null && g.homeColor != 0 ? 0xFF000000 | g.homeColor : GREEN);
+        r.setBackgroundColor(g != null && g.awayColor != 0 ? 0xFF000000 | g.awayColor : 0xFFAEB5E8);
+        bar.addView(l, new LinearLayout.LayoutParams(0, -1, Math.max(0.02f, share)));
+        View gap = new View(c);
+        gap.setBackgroundColor(0xFF0E1450);
+        bar.addView(gap, new LinearLayout.LayoutParams(px(3), -1));
+        bar.addView(r, new LinearLayout.LayoutParams(0, -1, Math.max(0.02f, 1f - share)));
+        return bar;
+    }
+
+    private static float leadingNumber(String v) {
+        if (v == null) return 0;
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("[0-9]+(\\.[0-9]+)?").matcher(v);
+        return m.find() ? Float.parseFloat(m.group()) : 0;
+    }
+
+    /** Last five as chips: W green, D grey, L red. */
+    private static View form(Context c, String results) {
+        LinearLayout f = new LinearLayout(c);
+        f.setGravity(Gravity.CENTER);
+        for (int i = 0; i < results.length(); i++) {
+            char r = results.charAt(i);
+            TextView chip = text(c, String.valueOf(r), 20, 0xFFFFFFFF, ScoreCard.outfit(c, 900));
+            chip.setGravity(Gravity.CENTER);
+            GradientDrawable bg = new GradientDrawable();
+            bg.setCornerRadius(px(6));
+            bg.setColor(r == 'W' ? 0xFF1F9D5C : r == 'L' ? 0xFFD0182B : 0xFF5A6090);
+            chip.setBackground(bg);
+            LinearLayout.LayoutParams cl = new LinearLayout.LayoutParams(px(36), px(36));
+            if (i > 0) cl.leftMargin = px(6);
+            f.addView(chip, cl);
+        }
+        return f;
     }
 
     /** The column's league block: the league's name and logo, then each game's score, its minute at the end. */
@@ -1038,6 +1319,8 @@ final class LiveCentre {
         shownId = next.id;
         fillMini(app);
         io.execute(() -> {
+            stats(next);
+            main.post(() -> { if (host != null) fillStats(app, false); });
             Object[] w = GoalWatchService.watchForGame(app, next);
             main.post(() -> {
                 if (host == null) return;
@@ -1165,6 +1448,9 @@ final class LiveCentre {
     }
 
     static void close() {
+        main.removeCallbacks(clockTick);
+        main.removeCallbacks(statsTurn);
+        if (host != null && !InputKeyService.running) AppSearchService.keysFor("live", false);
         GoalClips.stop();
         flashes.clear();
         flashing = null;
