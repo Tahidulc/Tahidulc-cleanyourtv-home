@@ -1442,6 +1442,10 @@ public class GoalWatchService extends Service {
             String id = intent.getStringExtra("test_live_centre");
             LiveCentre.open(this, id == null || id.isEmpty() ? null : id);
         }
+        if (intent != null && intent.hasExtra("test_goal_clip")) {
+            // adb only: a finished game's goal clip in the Live Centre, if it is open ("esp.1|<ESPN event id>").
+            GoalClips.test(intent.getStringExtra("test_goal_clip"));
+        }
         if (intent != null && intent.hasExtra("test_close")) {
             // adb only: closes the Live Centre and the F1 timing (adb's own Back never reaches the key helper).
             LiveCentre.close();

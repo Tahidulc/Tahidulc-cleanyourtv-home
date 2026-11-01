@@ -48,8 +48,8 @@ import java.util.concurrent.Executors;
  * read every 30 seconds off the main thread; the ticker is one layer sliding along.
  */
 final class LiveCentre {
-    static final String[] LEAGUES = {"eng.1|PREMIER LEAGUE", "eng.2|CHAMPIONSHIP", "esp.1|LALIGA", "ita.1|SERIE A",
-            "ger.1|BUNDESLIGA", "fra.1|LIGUE 1"};
+    static final String[] LEAGUES = {"eng.1|PREMIER LEAGUE", "uefa.champions|CHAMPIONS LEAGUE", "eng.2|CHAMPIONSHIP",
+            "esp.1|LALIGA", "ita.1|SERIE A", "ger.1|BUNDESLIGA", "fra.1|LIGUE 1"};
     private static final String TIVIMATE = "ar.tvplayer.tv";
     /** adb's test hook (test_live_card): the Sports page shows the Live Centre card with today's games, live or not. */
     static volatile boolean testCard;
@@ -123,6 +123,11 @@ final class LiveCentre {
         all.sort((a, b) -> a.state != b.state ? Integer.compare(a.state, b.state) : Integer.compare(rank(a), rank(b)));
         // The tables of the leagues with games under way (their standings before today's games went on).
         for (ScoresTicker.Game g : all) if ((g.state == 0 || testCard) && g.slug != null) standings(g.slug);
+        // Every crest ready before it is drawn: the games', the leagues' and the tables' clubs'.
+        if (c != null) {
+            for (ScoresTicker.Game g : all) { crest(g.homeLogo); crest(g.awayLogo); crest(g.leagueLogo); }
+            for (List<Club> t : tables.values()) for (Club x : t) crest(x.logo);
+        }
         return all;
     }
 
@@ -761,6 +766,7 @@ final class LiveCentre {
                 String key = g.id + "|" + goal[0];
                 if (seen.containsKey(key)) continue;
                 seen.put(key, now);
+                if (!first && clipWanted(g)) GoalClips.look(g, GoalWatchService.surname(goal[1]), goal[2], line);
                 fresh.add(new Object[]{minuteValue(goal[2]), new String[]{"GOAL", line, GoalWatchService.surname(goal[1]), goal[2], goal[3]}});
             }
             for (String[] red : g.reds) {
@@ -876,7 +882,126 @@ final class LiveCentre {
         });
     }
 
+    // ---- goal clips -----------------------------------------------------------------------------------------------
+
+    /** The games a goal's clip is looked for in: the Premier League's, the Champions League's, and the big clubs'. */
+    private static boolean clipWanted(ScoresTicker.Game g) {
+        if ("eng.1".equals(g.slug) || "uefa.champions".equals(g.slug)) return true;
+        String both = F1Results.key((g.homeName == null ? "" : g.homeName) + " | " + (g.awayName == null ? "" : g.awayName));
+        for (String club : new String[]{"real madrid", "barcelona", "ac milan", "internazionale", "inter milan", "juventus",
+                "bayern", "paris saint-germain", "paris saint germain"}) {
+            if (both.contains(club)) return true;
+        }
+        return false;
+    }
+
+    private static FrameLayout clipBox;
+    private static android.media.MediaPlayer clipPlayer;
+    private static final List<String[]> clipQueue = new ArrayList<>();
+
+    /**
+     * A goal's clip, played once in a frame over the bottom right of the picture, as a replay would be: GOAL on the
+     * green slant, the scorer and the minute above it; muted, the channel's own sound carrying on. Clips that come while
+     * one plays wait their turn; none longer than 90 seconds.
+     */
+    static void playClip(String url, String scorer, String minute, String line) {
+        if (host == null || url == null) return;
+        if (clipBox != null) { clipQueue.add(new String[]{url, scorer, minute, line}); return; }
+        Context c = app;
+        int w = px(576), h = px(324);
+        FrameLayout box = new FrameLayout(c);
+        box.setClipToOutline(true);
+        box.setOutlineProvider(round(px(14)));
+        box.setBackgroundColor(0xFF000000);
+        box.setElevation(px(14));
+        LinearLayout col = new LinearLayout(c);
+        col.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout head = new LinearLayout(c);
+        head.setGravity(Gravity.CENTER_VERTICAL);
+        head.setBackgroundColor(NAVY);
+        head.setPadding(0, 0, px(14), 0);
+        TextView label = text(c, "GOAL", 17, 0xFF062814, ScoreCard.outfit(c, 900));
+        label.setGravity(Gravity.CENTER_VERTICAL);
+        label.setPadding(px(14), 0, px(20), 0);
+        label.setBackground(new ScoreCard.Slant(GREEN, px(10), false));
+        head.addView(label, new LinearLayout.LayoutParams(-2, -1));
+        TextView who = text(c, (scorer == null ? "" : scorer) + (minute == null || minute.isEmpty() ? "" : "  " + minute), 18,
+                0xFFFFFFFF, ScoreCard.outfit(c, 700));
+        LinearLayout.LayoutParams wl = new LinearLayout.LayoutParams(-2, -2);
+        wl.leftMargin = px(10);
+        head.addView(who, wl);
+        TextView match = text(c, line == null ? "" : line, 14, 0xFFC9CEF2, ScoreCard.outfit(c, 600));
+        match.setGravity(Gravity.END);
+        LinearLayout.LayoutParams ml = new LinearLayout.LayoutParams(0, -2, 1f);
+        ml.leftMargin = px(10);
+        head.addView(match, ml);
+        col.addView(head, new LinearLayout.LayoutParams(-1, px(38)));
+        android.view.TextureView video = new android.view.TextureView(c);
+        col.addView(video, new LinearLayout.LayoutParams(w, h));
+        box.addView(col, new FrameLayout.LayoutParams(-1, -1));
+        FrameLayout.LayoutParams bl = new FrameLayout.LayoutParams(w, h + px(38), Gravity.TOP | Gravity.START);
+        bl.leftMargin = px(1500 - 576 - 26);
+        bl.topMargin = px(900 - 324 - 38 - 22);
+        host.addView(box, bl);
+        clipBox = box;
+        box.setAlpha(0f);
+        box.setTranslationY(px(30));
+        video.setSurfaceTextureListener(new android.view.TextureView.SurfaceTextureListener() {
+            @Override public void onSurfaceTextureAvailable(android.graphics.SurfaceTexture st, int sw, int sh) {
+                android.media.MediaPlayer mp = new android.media.MediaPlayer();
+                clipPlayer = mp;
+                try {
+                    mp.setDataSource(url);
+                    mp.setSurface(new android.view.Surface(st));
+                    mp.setVolume(0f, 0f);
+                    mp.setOnPreparedListener(m -> {
+                        if (clipPlayer != m) return;
+                        m.start();
+                        box.animate().alpha(1f).translationY(0).setDuration(320).setInterpolator(new DecelerateInterpolator(2f)).start();
+                    });
+                    mp.setOnCompletionListener(m -> endClip());
+                    mp.setOnErrorListener((m, what, extra) -> { endClip(); return true; });
+                    mp.prepareAsync();
+                } catch (Exception e) {
+                    endClip();
+                }
+            }
+            @Override public void onSurfaceTextureSizeChanged(android.graphics.SurfaceTexture st, int sw, int sh) { }
+            @Override public boolean onSurfaceTextureDestroyed(android.graphics.SurfaceTexture st) { return true; }
+            @Override public void onSurfaceTextureUpdated(android.graphics.SurfaceTexture st) { }
+        });
+        main.removeCallbacks(clipTimeout);
+        main.postDelayed(clipTimeout, 90_000L);
+    }
+
+    private static final Runnable clipTimeout = LiveCentre::endClip;
+
+    /** The clip done (or failed): its frame away, and the next one waiting played. */
+    private static void endClip() {
+        main.removeCallbacks(clipTimeout);
+        android.media.MediaPlayer mp = clipPlayer;
+        clipPlayer = null;
+        if (mp != null) { try { mp.release(); } catch (RuntimeException ignored) { } }
+        FrameLayout box = clipBox;
+        if (box == null) return;
+        box.animate().alpha(0f).translationY(px(30)).setDuration(260).withEndAction(() -> {
+            if (box.getParent() instanceof android.view.ViewGroup) ((android.view.ViewGroup) box.getParent()).removeView(box);
+            if (clipBox == box) clipBox = null;
+            if (!clipQueue.isEmpty() && host != null) {
+                String[] n = clipQueue.remove(0);
+                playClip(n[0], n[1], n[2], n[3]);
+            }
+        }).start();
+    }
+
     static void close() {
+        GoalClips.stop();
+        clipQueue.clear();
+        android.media.MediaPlayer mp = clipPlayer;
+        clipPlayer = null;
+        if (mp != null) { try { mp.release(); } catch (RuntimeException ignored) { } }
+        clipBox = null;
+        main.removeCallbacks(clipTimeout);
         main.removeCallbacks(tick);
         main.removeCallbacks(reread);
         main.removeCallbacks(nextLeague);
@@ -925,12 +1050,31 @@ final class LiveCentre {
         return b.toString();
     }
 
+    /** Every crest and league logo, ready to draw: read with the games and the tables, so none is waited for. */
+    private static final android.util.LruCache<String, Bitmap> crests = new android.util.LruCache<String, Bitmap>(6 * 1024 * 1024) {
+        @Override protected int sizeOf(String k, Bitmap b) { return b.getByteCount(); }
+    };
+
     private static void loadCrest(ImageView v, String url) {
         if (url == null) return;
+        Bitmap have = crests.get(url);
+        if (have != null) { v.setImageBitmap(have); return; }
         io.execute(() -> {
-            Bitmap b = ScoresTicker.cachedLogo(app, url, 96);
-            if (b != null) main.post(() -> v.setImageBitmap(ScoreCard.onNavy(b)));
+            Bitmap b = crest(url);
+            if (b != null) main.post(() -> v.setImageBitmap(b));
         });
+    }
+
+    /** A crest from the logo cache on disk (or ESPN), keylined for the navy, kept in memory. Off the main thread. */
+    private static Bitmap crest(String url) {
+        if (url == null) return null;
+        Bitmap have = crests.get(url);
+        if (have != null) return have;
+        Bitmap b = ScoresTicker.cachedLogo(app, url, 64);
+        if (b == null) return null;
+        Bitmap n = ScoreCard.onNavy(b);
+        crests.put(url, n);
+        return n;
     }
 
     private static TextView text(Context c, String s, float sizePx, int colour, Typeface face) {
