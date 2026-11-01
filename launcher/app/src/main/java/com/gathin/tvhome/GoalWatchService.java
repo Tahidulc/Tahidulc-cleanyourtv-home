@@ -1394,6 +1394,10 @@ public class GoalWatchService extends Service {
             // "lineups": its line-ups, as if just announced.
             if ("lineups".equals(intent.getStringExtra("test_live_event"))) LiveCentre.testLineups(); else LiveCentre.testEvent();
         }
+        if (intent != null && intent.hasExtra("test_tuya")) {
+            // adb only: what the Tuya cloud project sees, and whether its cameras stream, to files/tuya.txt.
+            TuyaCloud.test(this);
+        }
         if (intent != null && intent.hasExtra("test_render_video")) {
             // adb only: the scoreboard's animations, frame by frame, to files/video/ (nothing on screen).
             LiveCentre.renderVideo(this);

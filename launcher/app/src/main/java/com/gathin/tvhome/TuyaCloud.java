@@ -182,6 +182,106 @@ final class TuyaCloud {
         if (l.level > 0 && before != l.max) l.level = Math.max(1, Math.min(100, Math.round(l.level * before / (float) l.max)));
     }
 
+    // ---- cameras ------------------------------------------------------------------------------------------------
+
+    /** Tuya's categories for cameras: the smart camera, the doorbell camera and the like. */
+    private static final String[] CAMERAS = {"sp", "dghsxj", "sp_wnq", "spsxj", "kj"};
+
+    /**
+     * Every device the project sees: a Smart Home project lists those of its linked app accounts; a project of another
+     * kind (custom, hotel and so on) lists them as the project's own things.
+     */
+    static JSONArray devices(Context c) throws Exception {
+        JSONArray found = null;
+        try {
+            JSONObject r = call(c, "GET", "/v1.0/iot-01/associated-users/devices?size=100", null);
+            found = r.optJSONObject("result") == null ? null : r.getJSONObject("result").optJSONArray("devices");
+        } catch (Exception ignored) { }
+        if (found != null && found.length() > 0) return found;
+        try {
+            JSONObject r = call(c, "GET", "/v2.0/cloud/thing/device?page_size=20", null);
+            Object res = r.opt("result");
+            if (res instanceof JSONArray && ((JSONArray) res).length() > 0) return (JSONArray) res;
+        } catch (Exception ignored) { }
+        JSONObject r = call(c, "GET", "/v1.3/iot-03/devices?page_size=50", null);
+        JSONObject res = r.optJSONObject("result");
+        return res == null ? new JSONArray() : res.optJSONArray("list") != null ? res.getJSONArray("list") : new JSONArray();
+    }
+
+    /** The account's cameras: {device id, name, "1" when online}. */
+    static List<String[]> cameras(Context c) throws Exception {
+        JSONArray devices = devices(c);
+        List<String[]> out = new ArrayList<>();
+        for (int i = 0; devices != null && i < devices.length(); i++) {
+            JSONObject d = devices.getJSONObject(i);
+            String cat = d.optString("category");
+            boolean cam = false;
+            for (String k : CAMERAS) cam |= k.equals(cat);
+            if (cam) out.add(new String[]{d.optString("id"), d.optString("name", "Camera").trim(), d.optBoolean("online", true) ? "1" : "0"});
+        }
+        return out;
+    }
+
+    /**
+     * A camera's live stream from Tuya's cloud (the IoT Video Live Stream service): its address for "hls" or "rtsp",
+     * good for a few minutes; an exception when Tuya refuses (the service not authorised to the project, say).
+     */
+    static String stream(Context c, String deviceId, String type) throws Exception {
+        JSONObject r = call(c, "POST", "/v1.0/devices/" + deviceId + "/stream/actions/allocate", new JSONObject().put("type", type).toString());
+        JSONObject res = r.optJSONObject("result");
+        return res == null ? null : res.optString("url", null);
+    }
+
+    /**
+     * adb's check of the project, off the main thread, to files/tuya.txt: whether its key is taken, every device it
+     * sees (name, category, online), and for each camera whether a live stream is given (never the keys, the token or
+     * a stream's address).
+     */
+    static void test(Context c) {
+        Context app = c.getApplicationContext();
+        new Thread(() -> {
+            StringBuilder b = new StringBuilder();
+            try {
+                call(app, "GET", "/v1.0/iot-01/associated-users/devices?size=100", null);
+                b.append("key: ok\n");
+                for (String path : new String[]{"/v1.0/iot-01/associated-users/devices?size=100", "/v2.0/cloud/thing/device?page_size=20", "/v1.3/iot-03/devices?page_size=50"}) {
+                    try {
+                        JSONObject r = call(app, "GET", path, null);
+                        Object res = r.opt("result");
+                        int n = res instanceof JSONArray ? ((JSONArray) res).length()
+                                : res instanceof JSONObject ? (((JSONObject) res).optJSONArray("devices") != null ? ((JSONObject) res).getJSONArray("devices").length()
+                                : ((JSONObject) res).optJSONArray("list") != null ? ((JSONObject) res).getJSONArray("list").length() : -1) : -1;
+                        b.append("list ").append(path.substring(0, path.indexOf('?'))).append(": ").append(n).append('\n');
+                    } catch (Exception e) {
+                        b.append("list ").append(path.substring(0, path.indexOf('?'))).append(": refused, ").append(e.getMessage()).append('\n');
+                    }
+                }
+                JSONArray devices = devices(app);
+                for (int i = 0; devices != null && i < devices.length(); i++) {
+                    JSONObject d = devices.getJSONObject(i);
+                    b.append("device: ").append(d.optString("name")).append(" | ").append(d.optString("category"))
+                            .append(" | online ").append(d.optBoolean("online")).append('\n');
+                }
+                for (String[] cam : cameras(app)) {
+                    for (String type : new String[]{"hls", "rtsp"}) {
+                        try {
+                            String url = stream(app, cam[0], type);
+                            b.append("stream ").append(type).append(" ").append(cam[1]).append(": ")
+                                    .append(url == null ? "none" : "ok (" + (url.startsWith("rtsp") ? "rtsp" : url.contains(".m3u8") ? "m3u8" : "other") + ")").append('\n');
+                        } catch (Exception e) {
+                            b.append("stream ").append(type).append(" ").append(cam[1]).append(": refused, ").append(e.getMessage()).append('\n');
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                b.append("failed: ").append(e.getMessage()).append('\n');
+            }
+            try (java.io.FileOutputStream o = new java.io.FileOutputStream(new java.io.File(app.getExternalFilesDir(null), "tuya.txt"))) {
+                o.write(b.toString().getBytes(StandardCharsets.UTF_8));
+            } catch (Exception ignored) { }
+        }).start();
+    }
+
     // ---- the API --------------------------------------------------------------------------------------------------
 
     private static String base(Context c) {
