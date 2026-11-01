@@ -314,7 +314,7 @@ final class LineupCard {
         host = win;
         showing = d;
         bar = true;
-        ScoreCard.lane(true);
+        ScoreCard.lane("lineup", true);
         for (android.animation.Animator a : drifting) a.start();
 
         List<Runnable> pages = new ArrayList<>();
@@ -558,7 +558,8 @@ final class LineupCard {
     /** Opens an F1 board (on the main thread): the card in the corner over an app, or on Home the bar across the top. */
     static void showF1(Context ctx, F1 f) {
         Context c = ctx.getApplicationContext();
-        if (CameraAlert.isShowing() || ScoreCard.busy()) {
+        // One at a time: after a score card, a camera alarm or an older alert (news, weather) has gone.
+        if (CameraAlert.isShowing() || ScoreCard.busy() || GoalWatchService.alertShowing()) {
             retry.postDelayed(() -> showF1(c, f), 2_000L);
             return;
         }
@@ -1099,7 +1100,7 @@ final class LineupCard {
         host = win;
         showing = carrier;
         bar = true;
-        ScoreCard.lane(true);
+        ScoreCard.lane("lineup", true);
 
         List<Runnable> pages = new ArrayList<>();
         List<Long> times = new ArrayList<>();
@@ -2117,7 +2118,7 @@ final class LineupCard {
         v.setOnKeyListener(null);
         Runnable gone = () -> {
             try { v.getContext().getSystemService(WindowManager.class).removeView(v); } catch (RuntimeException ignored) { }
-            if (wasBar) ScoreCard.lane(false);
+            if (wasBar) ScoreCard.lane("lineup", false);
         };
         if (!fade) { gone.run(); return; }
         try {

@@ -946,8 +946,23 @@ final class ScoreCard {
 
     /** Home's score pills step aside while the bar holds their place, and come back after. */
     static void lane(boolean on) {
+        lane("card", on);
+    }
+
+    /** Who holds the pills' place now: the score card, the line-up or F1 board, the older alerts. */
+    private static final java.util.Set<String> laneHolders = new java.util.HashSet<>();
+
+    /**
+     * One of them takes the pills' place or gives it up (on the main thread). The pills come back only once every one
+     * has gone: an alert closing a moment after the next one opened (an F1 board straight after a score card) no
+     * longer brings them back behind it, where they showed at its rounded corners.
+     */
+    static void lane(String who, boolean on) {
+        boolean before = !laneHolders.isEmpty();
+        if (on) laneHolders.add(who); else laneHolders.remove(who);
+        boolean now = !laneHolders.isEmpty();
         java.util.function.Consumer<Boolean> l = GoalWatchService.laneListener;
-        if (l != null) l.accept(on);
+        if (l != null && (now != before || on)) l.accept(now);
     }
 
     // ---- small helpers -------------------------------------------------------------------------------------------

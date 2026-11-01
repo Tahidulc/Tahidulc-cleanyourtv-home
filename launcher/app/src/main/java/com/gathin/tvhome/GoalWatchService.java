@@ -319,17 +319,29 @@ public class GoalWatchService extends Service {
             } else if ("in".equals(s.state)) {
                 boolean newLeader = leader != null && lastLeader != null && !leader.equals(lastLeader);
                 boolean lapMark = s.isRace() && lastMark != null && s.lap / 10 > lastMark && s.lap > 0;
-                if (newLeader || lapMark) {
-                    String others = (s.top.size() > 1 ? "P2 " + s.top.get(1) : "") + (s.top.size() > 2 ? " · P3 " + s.top.get(2) : "");
-                    List<String> behind = new ArrayList<>(s.top.subList(1, Math.min(3, s.top.size())));
-                    List<String> behindLogos = s.logos.size() > 1 ? new ArrayList<>(s.logos.subList(1, Math.min(3, s.logos.size()))) : null;
-                    skyF1(s.isRace() && s.lap > 0 ? "LAP " + s.lap : s.label.toUpperCase(java.util.Locale.UK), null, leader,
-                            s.logos.isEmpty() ? null : s.logos.get(0), leader + (s.isRace() ? " leads" : " goes P1"), others, "P1",
-                            behind, behindLogos);
-                }
+                if (newLeader || lapMark) skyLeader(s, 0, s.lap);
             }
         }
         if (!w.sessions.isEmpty()) f1Primed = true;
+    }
+
+    /**
+     * "Norris leads": the driver at index (the leader, or for the test hook another) with his photo and team logo, the
+     * lap (or the session), and P2 and P3 behind him with their teams' logos.
+     */
+    private void skyLeader(F1Results.Session s, int index, int lap) {
+        if (index >= s.top.size()) return;
+        String who = s.top.get(index);
+        List<String> rest = new ArrayList<>(), restLogos = new ArrayList<>();
+        for (int i = 0; i < s.top.size() && rest.size() < 2; i++) {
+            if (i == index) continue;
+            rest.add(s.top.get(i));
+            restLogos.add(i < s.logos.size() ? s.logos.get(i) : null);
+        }
+        String others = (rest.size() > 0 ? "P2 " + rest.get(0) : "") + (rest.size() > 1 ? " · P3 " + rest.get(1) : "");
+        skyF1(s.isRace() && lap > 0 ? "LAP " + lap : s.label.toUpperCase(java.util.Locale.UK), null, who,
+                index < s.logos.size() ? s.logos.get(index) : null, who + (s.isRace() ? " leads" : " goes P1"), others, "P1",
+                rest, restLogos);
     }
 
     /** One F1 card: the label, the driver (photo and team logo) or the weekend's name, a line, and OK to watch. */
@@ -1411,14 +1423,16 @@ public class GoalWatchService extends Service {
                 F1Results.Weekend w = F1Results.weekend(intent.getStringExtra("test_f1_live"));
                 if (w == null) return;
                 main.post(() -> {
+                    // As skyF1Updates shows them: pole, lights out, a new leader, a lap update.
+                    String gp = F1Results.shortName(w.name == null ? "" : w.name).replace("Grand Prix", "GP");
                     for (F1Results.Session s : w.sessions) {
-                        if ("Qual".equals(s.abbr)) enqueueParts(sessionOver(w, s), "f1");
+                        if ("Qual".equals(s.abbr) && !s.top.isEmpty()) skyPodium("POLE", gp, s.top, s.logos, "Pole");
                     }
                     for (F1Results.Session s : w.sessions) {
-                        if (!"Race".equals(s.abbr)) continue;
-                        enqueueParts(sessionStart(w, s), "f1", true);
-                        if (s.top.size() > 1) enqueueParts(leads(s, 1, 23), "f1");
-                        enqueueParts(lapUpdate(s, 30), "f1");
+                        if (!"Race".equals(s.abbr) || s.top.size() < 3) continue;
+                        skyF1("LIGHTS OUT", null, null, null, gp, "Live now", null);
+                        skyLeader(s, 1, 23);
+                        skyLeader(s, 0, 30);
                     }
                 });
             });
@@ -1661,106 +1675,8 @@ public class GoalWatchService extends Service {
      * end (the race's top ten, else the top three). The first read only learns where things stand.
      */
     private void f1Updates(F1Results.Weekend w) {
-        if (skyAlerts) { skyF1Updates(w); return; }
-        for (F1Results.Session s : w.sessions) {
-            if (!s.counts()) continue;
-            String before = f1States.put(s.id, s.state);
-            String leader = s.top.isEmpty() ? null : s.top.get(0);
-            String lastLeader = leader == null ? f1Leaders.get(s.id) : f1Leaders.put(s.id, leader);
-            Integer lastMark = f1Laps.put(s.id, s.lap / 10);
-            if (!f1Primed || before == null) continue;
-            if ("pre".equals(before) && "in".equals(s.state)) {
-                enqueueParts(sessionStart(w, s), "f1", true);
-            } else if ("in".equals(before) && "post".equals(s.state)) {
-                if ("Race".equals(s.abbr)) {
-                    F1Results.Race r = new F1Results.Race();
-                    r.id = s.id; r.name = w.name; r.state = s.state;
-                    r.top.addAll(s.top);
-                    r.logos.addAll(s.logos);
-                    enqueueRace(r);
-                } else {
-                    enqueueParts(sessionOver(w, s), "f1");
-                }
-            } else if ("in".equals(s.state)) {
-                if (leader != null && lastLeader != null && !leader.equals(lastLeader)) enqueueParts(leads(s, 0, s.lap), "f1", true);
-                if (s.isRace() && lastMark != null && s.lap / 10 > lastMark && s.lap > 0) enqueueParts(lapUpdate(s, s.lap), "f1", true);
-            }
-        }
-        if (!w.sessions.isEmpty()) f1Primed = true;
-    }
-
-    /** "[F1] 🚦 LIGHTS OUT · United States GP" for a race, "⏱ QUALIFYING · ..." for the others. */
-    private static List<Object> sessionStart(F1Results.Weekend w, F1Results.Session s) {
-        List<Object> parts = f1Parts();
-        parts.add(bold((s.isRace() ? "🚦  LIGHTS OUT" : "⏱  " + s.label) + (s.isRace() && !"Race".equals(s.abbr) ? " · SPRINT" : "")));
-        parts.add(8);
-        parts.add(w.name.replace("Grand Prix", "GP"));
-        return parts;
-    }
-
-    /** "🏎 [logo] ANT leads · LAP 23"; in qualifying "⏱ [logo] ANT goes P1". */
-    private static List<Object> leads(F1Results.Session s, int index, int lap) {
-        List<Object> parts = f1Parts();
-        parts.add(bold(s.isRace() ? "🏎" : "⏱"));
-        parts.add(8);
-        parts.add(new Pic(s.logos.get(index)));
-        parts.add(4);
-        parts.add(bold(s.top.get(index)));
-        parts.add(5);
-        parts.add(s.isRace() ? "leads" : "goes P1");
-        if (s.isRace() && lap > 0) { parts.add(8); parts.add(red("LAP " + lap)); }
-        else { parts.add(8); parts.add(new Small(s.label)); }
-        return parts;
-    }
-
-    /** "LAP 30 · 1 [logo] ANT  2 [logo] VER  3 [logo] HAM". */
-    private static List<Object> lapUpdate(F1Results.Session s, int lap) {
-        List<Object> parts = f1Parts();
-        parts.add(red("LAP " + lap));
-        podium(parts, s);
-        parts.add(8);
-        parts.add(new Small(s.label));
-        return parts;
-    }
-
-    /** "🏁 POLE · 1 ANT 2 VER 3 HAM" after qualifying; the sprint and sprint qualifying likewise. */
-    private static List<Object> sessionOver(F1Results.Weekend w, F1Results.Session s) {
-        List<Object> parts = f1Parts();
-        String what = "Qual".equals(s.abbr) ? "POLE" : "SS".equals(s.abbr) ? "SPRINT POLE" : "SR".equals(s.abbr) ? "SPRINT" : s.label;
-        parts.add(bold("🏁  " + what));
-        podium(parts, s);
-        parts.add(8);
-        parts.add(new Small(w.name.replace("Grand Prix", "GP")));
-        return parts;
-    }
-
-    /** Every F1 line opens with the F1 logo. */
-    private static List<Object> f1Parts() {
-        List<Object> parts = new ArrayList<>();
-        parts.add(new Pic(F1Results.F1_LOGO, true));
-        parts.add(8);
-        return parts;
-    }
-
-    /** The top three as Sky's F1 graphics write them: team badge, surname (the leader in bold), P1 · P2 · P3. */
-    private static void podium(List<Object> parts, F1Results.Session s) {
-        for (int i = 0; i < Math.min(3, s.top.size()); i++) {
-            parts.add(i == 0 ? 10 : 6);
-            if (i > 0) { parts.add(new Small("·")); parts.add(6); }
-            parts.add(new Pic(s.logos.get(i)));
-            parts.add(5);
-            parts.add(i == 0 ? bold(s.top.get(i)) : s.top.get(i));
-            parts.add(5);
-            parts.add(new Small("P" + (i + 1)));
-        }
-    }
-
-    /** Sky Sports F1's red, for the lap count. */
-    private static CharSequence red(String text) {
-        SpannableStringBuilder t = new SpannableStringBuilder(text);
-        t.setSpan(new StyleSpan(Typeface.BOLD), 0, t.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-        t.setSpan(new ForegroundColorSpan(0xFFE10600), 0, t.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-        return t;
+        // Always the score cards' style: the older pills sat among the football scores on Home and read as one of them.
+        skyF1Updates(w);
     }
 
     // ---- news --------------------------------------------------------------------------------------
@@ -3193,8 +3109,7 @@ public class GoalWatchService extends Service {
     private void laneShown(boolean on) {
         if (hostOnLane == on) return;
         hostOnLane = on;
-        java.util.function.Consumer<Boolean> l = laneListener;
-        if (l != null) main.post(() -> l.accept(on));
+        main.post(() -> ScoreCard.lane("pill", on));
     }
 
     /**
@@ -3676,27 +3591,7 @@ public class GoalWatchService extends Service {
     private final Map<String, android.graphics.Bitmap> raceLogos = new HashMap<>();
 
     private void enqueueRace(F1Results.Race r) {
-        if (skyAlerts) {
-            f1Board(false, r.name, "RACE", r.top, r.logos, 0);
-            return;
-        }
-        int px = Math.round(LOGO_DP * getResources().getDisplayMetrics().density);
-        io.execute(() -> {
-            Map<String, android.graphics.Bitmap> got = new HashMap<>();
-            android.graphics.Bitmap f1 = ScoresTicker.cachedLogo(this, F1Results.F1_LOGO, px * 6);
-            // F1's logo comes as a square with the mark in a band across it: cut to the mark.
-            if (f1 != null) got.put(F1Results.F1_LOGO, HomeV2.trim(f1));
-            for (String u : r.logos) {
-                if (u == null || got.containsKey(u)) continue;
-                android.graphics.Bitmap b = ScoresTicker.cachedLogo(this, u, px);
-                if (b != null) got.put(u, lifted(b));
-            }
-            main.post(() -> {
-                raceLogos.putAll(got);
-                queue.add(new Object[]{r});
-                showNext();
-            });
-        });
+        f1Board(false, r.name, "RACE", r.top, r.logos, 0);
     }
 
     /**
