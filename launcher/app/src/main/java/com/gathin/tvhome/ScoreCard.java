@@ -21,6 +21,7 @@ import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.ViewOutlineProvider;
 import android.view.WindowManager;
 import android.view.animation.DecelerateInterpolator;
@@ -229,7 +230,7 @@ final class ScoreCard {
         if (d.watch != null) stage.addView(watchBlock(c, d, h, 15, 10.5f), new LinearLayout.LayoutParams(-2, h));
         card.addView(stage, new LinearLayout.LayoutParams(-2, h));
 
-        FrameLayout box = new FrameLayout(c);
+        FrameLayout box = new DriftBox(c);
         box.setOutlineProvider(new ViewOutlineProvider() {
             @Override public void getOutline(View v, Outline o) { o.setRoundRect(0, 0, v.getWidth(), v.getHeight(), r); }
         });
@@ -355,8 +356,9 @@ final class ScoreCard {
                 bar.addView(e, el);
             }
         }
+        // The rest at the right end; a kick-off's bar is only as long as it needs (crests and channel after its line).
         View spacer = new View(c);
-        bar.addView(spacer, new LinearLayout.LayoutParams(0, 1, 1f));
+        bar.addView(spacer, ko ? new LinearLayout.LayoutParams(px(22), 1) : new LinearLayout.LayoutParams(0, 1, 1f));
         if (d.score != null) {
             if (d.homeName != null && !ko) bar.addView(text(c, d.homeName, 20, INK, outfit(c, 800)), sideName(true));
             bar.addView(scoreBlock(c, d, h, ko ? 36 : 28, 25), new LinearLayout.LayoutParams(-2, h));
@@ -370,17 +372,18 @@ final class ScoreCard {
         kl.rightMargin = px(14);
         bar.addView(backKey(c, px(24)), kl);
 
-        FrameLayout box = new FrameLayout(c);
+        FrameLayout box = new DriftBox(c);
         box.setOutlineProvider(new ViewOutlineProvider() {
             @Override public void getOutline(View v, Outline o) { o.setRoundRect(0, 0, v.getWidth(), v.getHeight(), r); }
         });
         box.setClipToOutline(true);
         box.setBackground(stageFill(d, px(50), px(30)));
         if (!d.dark) box.addView(drifting(c, d, px(50), px(30), h), driftParams(px(50), px(30), h));
-        box.addView(bar, new FrameLayout.LayoutParams(w, h));
+        int bw = ko ? ViewGroup.LayoutParams.WRAP_CONTENT : w;
+        box.addView(bar, new FrameLayout.LayoutParams(bw, h));
         FrameLayout win = new FrameLayout(c);
-        win.addView(box, new FrameLayout.LayoutParams(w, h));
-        WindowManager.LayoutParams lp = new WindowManager.LayoutParams(w, h,
+        win.addView(box, new FrameLayout.LayoutParams(bw, h));
+        WindowManager.LayoutParams lp = new WindowManager.LayoutParams(bw, h,
                 WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
                         | WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED, PixelFormat.TRANSLUCENT);
@@ -488,7 +491,7 @@ final class ScoreCard {
      * picture under it is not redrawn. Stopped when it closes.
      */
     private static View drifting(Context c, Data d, int gap, int width, int h) {
-        View lines = new View(c);
+        View lines = new DriftLines(c, Math.max(4, gap) + Math.max(1, width));
         lines.setBackground(new Streaks(0, 0, d.dark ? 0x14FFFFFF : 0x4DFFFFFF, gap, width));
         lines.setLayerType(View.LAYER_TYPE_HARDWARE, null);
         int period = Math.max(4, gap) + Math.max(1, width);
@@ -503,9 +506,39 @@ final class ScoreCard {
     }
 
     private static FrameLayout.LayoutParams driftParams(int gap, int width, int h) {
-        FrameLayout.LayoutParams p = new FrameLayout.LayoutParams(-1, h);
-        p.leftMargin = -(Math.max(4, gap) + Math.max(1, width));
-        return p;
+        return new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+    }
+
+    /**
+     * The streaks' layer: no size of its own, so a pop-up stays as wide as its contents (a layer as wide as its parent
+     * made every card over an app stretch across the screen); DriftBox lays it over the whole box.
+     */
+    static final class DriftLines extends View {
+        final int period;
+
+        DriftLines(Context c, int period) {
+            super(c);
+            this.period = period;
+        }
+
+        @Override protected void onMeasure(int widthSpec, int heightSpec) {
+            setMeasuredDimension(0, 0);
+        }
+    }
+
+    /** A pop-up's box, as big as its contents, with its streaks' layer laid over all of it and a period to the left. */
+    static final class DriftBox extends FrameLayout {
+        DriftBox(Context c) {
+            super(c);
+        }
+
+        @Override protected void onLayout(boolean changed, int l, int t, int r, int b) {
+            super.onLayout(changed, l, t, r, b);
+            for (int i = 0; i < getChildCount(); i++) {
+                View v = getChildAt(i);
+                if (v instanceof DriftLines) v.layout(-((DriftLines) v).period, 0, getWidth(), getHeight());
+            }
+        }
     }
 
     /** "Kick-off in 5 mins" from a kick-off's time; its line as it was without one. */
