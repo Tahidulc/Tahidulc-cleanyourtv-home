@@ -409,6 +409,12 @@ final class LiveCentre {
         bl.topMargin = px(26);
         win.addView(back, bl);
 
+        if (renderTo != null) {
+            java.io.File dir = renderTo;
+            renderTo = null;
+            photograph(c, win, dir);
+            return;
+        }
         WindowManager.LayoutParams lp = new WindowManager.LayoutParams(-1, -1,
                 WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
@@ -720,6 +726,72 @@ final class LiveCentre {
                 if ("goals".equals(p[3]) && p.length > 5) for (int s2 = 4; s2 <= 5; s2++) for (String who : p[s2].split("\\|")) face(who, null);
             }
             main.post(() -> new Film(g).start());
+        });
+    }
+
+    /** adb only: where the next frame built is photographed instead of shown (live_*.png), or null. */
+    private static java.io.File renderTo;
+
+    /**
+     * adb only: the Live Centre over a pitch (standing in for the channel), photographed as the screen would draw it
+     * but on a display of its own (nothing shown, the TV may sleep): a game under way that has its line-ups, its
+     * scoreboard folded out on each side's line-up pages, to files/shots/live_0.png on.
+     */
+    static void renderScreen(Context ctx) {
+        if (host != null) return;
+        app = ctx.getApplicationContext();
+        io.execute(() -> {
+            List<ScoresTicker.Game> read = scores();
+            extras(read);
+            ScoresTicker.Game pick = null;
+            for (ScoresTicker.Game g : read) {
+                if (pick != null || g.state != 0 || g.slug == null) continue;
+                stats(g);
+                if (lastLineups.get(g.id) != null) pick = g;
+            }
+            if (pick == null) return;
+            ScoresTicker.Game g = pick;
+            for (String[] p : lastLineups.get(g.id)) for (String who : p[2].split("\\|")) face(who, p[5]);
+            crest(g.homeLogo);
+            crest(g.awayLogo);
+            compLogo(compUrl(g));
+            java.io.File dir = new java.io.File(app.getExternalFilesDir(null), "shots");
+            dir.mkdirs();
+            main.post(() -> {
+                if (host != null) return;
+                games = read;
+                shownId = g.id;
+                renderTo = dir;
+                show(false);
+            });
+        });
+    }
+
+    /** The frame built, filled and photographed on its own display, the scoreboard folded out on each line-up page. */
+    private static void photograph(Context c, FrameLayout win, java.io.File dir) {
+        // Filled as if shown (the frame fills itself only while it is up), and let go of once photographed.
+        host = win;
+        fill();
+        ScoresTicker.Game g = shown();
+        List<String[]> xi = g == null ? null : lastLineups.get(g.id);
+        int w = c.getResources().getDisplayMetrics().widthPixels, h = c.getResources().getDisplayMetrics().heightPixels;
+        FrameLayout root = new FrameLayout(c);
+        ImageView ground = new ImageView(c);
+        ground.setScaleType(ImageView.ScaleType.FIT_XY);
+        ground.setImageBitmap(Snap.pitch(w, h));
+        root.addView(ground, new FrameLayout.LayoutParams(-1, -1));
+        root.addView(win, new FrameLayout.LayoutParams(-1, -1));
+        List<Runnable> steps = new ArrayList<>();
+        List<java.io.File> out = new ArrayList<>();
+        for (int i = 0; xi != null && i < xi.size(); i++) {
+            String[] p = xi.get(i);
+            steps.add(() -> { putPage(pageView(app, g, p), false); setOpen(1); clockNow(); });
+            out.add(new java.io.File(dir, "live_" + i + ".png"));
+        }
+        if (steps.isEmpty()) { host = null; return; }
+        Snap.series(c, root, w, h, steps, out, 1_500L, () -> {
+            if (host == win) host = null;
+            try (java.io.FileOutputStream o = new java.io.FileOutputStream(new java.io.File(dir, "live_done.txt"))) { o.write('1'); } catch (Exception ignored) { }
         });
     }
 

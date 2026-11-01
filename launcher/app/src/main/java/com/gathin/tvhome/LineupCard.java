@@ -148,8 +148,10 @@ final class LineupCard {
         close(false);
         wipeBody = 0xFF151A63;
         wipeEdge = 0xFF3D4BD6;
+        java.io.File shots = renderTo;
+        renderTo = null;
         // On Home: the same line-ups as a wide bar across the top, in the style of Home's score bars.
-        if (GoalWatchService.laneHome && GoalWatchService.homeInFront || PopupFrame.isShowing()) { showBar(c, d); return; }
+        if (shots == null && (GoalWatchService.laneHome && GoalWatchService.homeInFront || PopupFrame.isShowing())) { showBar(c, d); return; }
         k = c.getResources().getDisplayMetrics().widthPixels / 1920f * SCALE;
         int w = px(W), h = px(H), margin = px(10);
 
@@ -180,6 +182,10 @@ final class LineupCard {
         back.setTag(PopupMotion.BACK_KEY);
         win.addView(back, new FrameLayout.LayoutParams(2 * margin, 2 * margin, Gravity.TOP | Gravity.END));
 
+        if (shots != null) {
+            photograph(c, d, win, band, stage, w, h, margin, shots);
+            return;
+        }
         WindowManager.LayoutParams lp = new WindowManager.LayoutParams(w + 2 * margin, h + 2 * margin,
                 WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
@@ -243,6 +249,54 @@ final class LineupCard {
         card.setTranslationX(-px(40));
         card.animate().alpha(1f).translationX(0f).setDuration(340).setInterpolator(new DecelerateInterpolator(2f)).withLayer().start();
         step.run();
+    }
+
+    /** adb only: where the next card is photographed, page by page, instead of shown (lineup_*.png); or null. */
+    static java.io.File renderTo;
+
+    /**
+     * adb only: the card over a pitch (standing in for an app), photographed on a display of its own as the screen would
+     * draw it, one picture a page (the fixture, each side's lines, both on the pitch); nothing shown.
+     */
+    private static void photograph(Context c, Data d, FrameLayout win, FrameLayout band, FrameLayout stage, int w, int h, int margin, java.io.File dir) {
+        List<Runnable> swaps = new ArrayList<>();
+        swaps.add(() -> { band.removeAllViews(); league(c, band, d, true); stage.addView(first(c, d), full()); });
+        for (Team t : new Team[]{d.home, d.away}) {
+            if (t == null || t.players.isEmpty()) continue;
+            List<String> captions = new ArrayList<>();
+            List<List<Player>> lines = byLines(t, captions);
+            for (int i = 0; i < lines.size(); i++) {
+                List<Player> ps = lines.get(i);
+                String caption = captions.get(i);
+                swaps.add(() -> { teamBand(c, band, t, caption); stage.addView(players(c, t, ps), full()); });
+            }
+        }
+        if (d.home != null && d.away != null && !d.home.players.isEmpty() && !d.away.players.isEmpty())
+            swaps.add(() -> { pitchBand(c, band, d); stage.addView(pitch(c, d), full()); });
+        int sw = c.getResources().getDisplayMetrics().widthPixels, sh = c.getResources().getDisplayMetrics().heightPixels;
+        FrameLayout root = new FrameLayout(c);
+        ImageView ground = new ImageView(c);
+        ground.setScaleType(ImageView.ScaleType.FIT_XY);
+        ground.setImageBitmap(Snap.pitch(sw, sh));
+        root.addView(ground, new FrameLayout.LayoutParams(-1, -1));
+        FrameLayout.LayoutParams wl = new FrameLayout.LayoutParams(w + 2 * margin, h + 2 * margin, Gravity.BOTTOM | Gravity.START);
+        wl.leftMargin = px(34);
+        wl.bottomMargin = px(34);
+        root.addView(win, wl);
+        List<Runnable> steps = new ArrayList<>();
+        List<java.io.File> out = new ArrayList<>();
+        for (int i = 0; i < swaps.size(); i++) {
+            Runnable swap = swaps.get(i);
+            steps.add(() -> { stage.removeAllViews(); swap.run(); });
+            out.add(new java.io.File(dir, "lineup_" + i + ".png"));
+        }
+        // Its pages fill and move only while the card is up: up for the photographs, let go of after.
+        host = win;
+        showing = d;
+        Snap.series(c, root, sw, sh, steps, out, 2_400L, () -> {
+            if (host == win) { host = null; showing = null; }
+            try (java.io.FileOutputStream o = new java.io.FileOutputStream(new java.io.File(dir, "lineup_done.txt"))) { o.write('1'); } catch (Exception ignored) { }
+        });
     }
 
     // ---- on Home: the bar across the top ---------------------------------------------------------------------------

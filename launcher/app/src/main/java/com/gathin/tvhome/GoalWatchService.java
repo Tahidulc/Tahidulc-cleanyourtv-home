@@ -1361,6 +1361,27 @@ public class GoalWatchService extends Service {
                 main.post(() -> enqueueReminder(g));
             });
         }
+        if (intent != null && intent.hasExtra("test_render_live")) {
+            // adb only: the Live Centre with its scoreboard folded out on the line-ups, photographed off screen.
+            LiveCentre.renderScreen(this);
+        }
+        if (intent != null && intent.hasExtra("test_render_lineup")) {
+            // adb only: the line-up card of a real game today (by a club's name), photographed page by page off screen.
+            java.io.File dir = new java.io.File(getExternalFilesDir(null), "shots");
+            dir.mkdirs();
+            LineupCard.renderTo = dir;
+            String who = intent.getStringExtra("test_render_lineup").toLowerCase(java.util.Locale.ROOT);
+            List<String> leagues = new ArrayList<>(Arrays.asList(getResources().getStringArray(R.array.goal_alert_leagues)));
+            leagues.addAll(Arrays.asList(LINEUP_LEAGUES));
+            io.execute(() -> {
+                for (ScoresTicker.Game g : ScoresTicker.load(leagues.toArray(new String[0]))) {
+                    String names = ((g.homeName == null ? "" : g.homeName) + " " + (g.awayName == null ? "" : g.awayName)).toLowerCase(java.util.Locale.ROOT);
+                    if (!names.contains(who)) continue;
+                    main.post(() -> enqueueReminder(g));
+                    return;
+                }
+            });
+        }
         if (intent != null && intent.hasExtra("test_lineup")) {
             // adb only: the line-up card (or the kick-off card) for a real game today, found by a club's name.
             String who = intent.getStringExtra("test_lineup").toLowerCase(java.util.Locale.ROOT);
