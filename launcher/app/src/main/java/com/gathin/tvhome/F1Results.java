@@ -171,6 +171,105 @@ final class F1Results {
         return out;
     }
 
+    /** One driver's line in a classification or on the grid. */
+    static final class Row {
+        int pos;
+        String first = "", last = "", code = "", team = "", gap = "", status = "";
+        int points = -1;
+        /** His team's logo address, or null. */
+        String logo;
+    }
+
+    /** A classification with its Grand Prix's name ("Mexico City Grand Prix"). */
+    static final class Board {
+        String name = "";
+        final List<Row> rows = new ArrayList<>();
+    }
+
+    /** Whether two names are the same Grand Prix: "Mexico City Grand Prix" and ESPN's "Mexico City GP", alike. */
+    static boolean sameGrandPrix(String a, String b) {
+        if (a == null || b == null) return false;
+        String x = key(a).replace("grand prix", "").replace("gp", "").trim(), y = key(b).replace("grand prix", "").replace("gp", "").trim();
+        return !x.isEmpty() && !y.isEmpty() && (x.contains(y) || y.contains(x));
+    }
+
+    /**
+     * The last race's (or sprint's) full result from Jolpica, every driver with his gap or time, points and how he
+     * finished, when it is this Grand Prix's (gp null: whichever it is); null when it is not in yet or cannot be read.
+     */
+    static Board jolpicaResult(String gp, boolean sprint) {
+        try {
+            JSONObject root = new JSONObject(get("https://api.jolpi.ca/ergast/f1/current/last/" + (sprint ? "sprint" : "results") + ".json"));
+            JSONArray races = root.getJSONObject("MRData").getJSONObject("RaceTable").getJSONArray("Races");
+            if (races.length() == 0) return null;
+            JSONObject race = races.getJSONObject(0);
+            Board b = new Board();
+            b.name = race.optString("raceName");
+            if (gp != null && !sameGrandPrix(gp, b.name)) return null;
+            JSONArray results = race.getJSONArray(sprint ? "SprintResults" : "Results");
+            for (int i = 0; i < results.length(); i++) {
+                JSONObject x = results.getJSONObject(i);
+                Row r = driver(x);
+                r.pos = x.optInt("position", i + 1);
+                r.status = x.optString("status");
+                String points = x.optString("points", "");
+                try { r.points = (int) Math.round(Double.parseDouble(points)); } catch (NumberFormatException ignored) { }
+                JSONObject time = x.optJSONObject("Time");
+                if (time != null) r.gap = time.optString("time");
+                else if (r.status.startsWith("+")) r.gap = r.status.replace(" Laps", " laps").replace(" Lap", " lap");
+                else if (!"Finished".equals(r.status)) r.gap = "DNF";
+                b.rows.add(r);
+            }
+            return b.rows.isEmpty() ? null : b;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /**
+     * The coming race's qualifying from Jolpica (each driver's best lap in the last part he reached), when it is this
+     * Grand Prix's (gp null: whichever it is); null when it is not in yet or cannot be read.
+     */
+    static Board jolpicaQualifying(String gp) {
+        try {
+            JSONObject next = new JSONObject(get("https://api.jolpi.ca/ergast/f1/current/next.json"));
+            JSONArray nr = next.getJSONObject("MRData").getJSONObject("RaceTable").getJSONArray("Races");
+            String round = nr.length() > 0 ? nr.getJSONObject(0).optString("round") : "last";
+            JSONObject root = new JSONObject(get("https://api.jolpi.ca/ergast/f1/current/" + round + "/qualifying.json"));
+            JSONArray races = root.getJSONObject("MRData").getJSONObject("RaceTable").getJSONArray("Races");
+            if (races.length() == 0) return null;
+            JSONObject race = races.getJSONObject(0);
+            Board b = new Board();
+            b.name = race.optString("raceName");
+            if (gp != null && !sameGrandPrix(gp, b.name)) return null;
+            JSONArray results = race.getJSONArray("QualifyingResults");
+            for (int i = 0; i < results.length(); i++) {
+                JSONObject x = results.getJSONObject(i);
+                Row r = driver(x);
+                r.pos = x.optInt("position", i + 1);
+                r.gap = x.optString("Q3", x.optString("Q2", x.optString("Q1", "")));
+                b.rows.add(r);
+            }
+            return b.rows.isEmpty() ? null : b;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private static Row driver(JSONObject x) throws org.json.JSONException {
+        Row r = new Row();
+        JSONObject d = x.getJSONObject("Driver");
+        r.first = d.optString("givenName");
+        r.last = d.optString("familyName");
+        r.code = d.optString("code", code(r.last));
+        JSONObject team = x.optJSONObject("Constructor");
+        if (team != null) {
+            r.team = team.optString("name");
+            r.logo = logo(team.optString("constructorId"));
+        }
+        return r;
+    }
+
     private static java.util.Map<String, String> fullNames;
     private static long fullNamesAt;
 

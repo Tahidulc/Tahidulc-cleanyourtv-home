@@ -286,8 +286,15 @@ public class GoalWatchService extends Service {
 
     /** As f1Updates, as score cards: a session starting, a new leader, every ten laps, the end. */
     private void skyF1Updates(F1Results.Weekend w) {
+        long nowMs = System.currentTimeMillis();
         for (F1Results.Session s : w.sessions) {
             if (!s.counts()) continue;
+            // Fifteen minutes before a race or sprint: its starting grid, from the qualifying that set it.
+            if (s.isRace() && "pre".equals(s.state) && s.start - nowMs > 0 && s.start - nowMs <= 15 * 60_000L && f1Grids.add(s.id)) {
+                F1Results.Session q = null;
+                for (F1Results.Session x : w.sessions) if (("Race".equals(s.abbr) ? "Qual" : "SS").equals(x.abbr)) q = x;
+                if (q != null && !q.top.isEmpty()) f1Board(true, w.name, "Race".equals(s.abbr) ? "RACE" : "SPRINT", q.top, q.logos, s.start);
+            }
             String before = f1States.put(s.id, s.state);
             String leader = s.top.isEmpty() ? null : s.top.get(0);
             String lastLeader = leader == null ? f1Leaders.get(s.id) : f1Leaders.put(s.id, leader);
@@ -300,7 +307,9 @@ public class GoalWatchService extends Service {
             } else if ("in".equals(before) && "post".equals(s.state)) {
                 String what = "Race".equals(s.abbr) ? "RESULT" : "Qual".equals(s.abbr) ? "POLE" : "SS".equals(s.abbr) ? "SPRINT POLE"
                         : "SR".equals(s.abbr) ? "SPRINT" : s.label.toUpperCase(java.util.Locale.UK);
-                skyPodium(what, gp, s.top, s.logos, "Race".equals(s.abbr) || "SR".equals(s.abbr) ? "Winner" : "Pole");
+                // A race or sprint: its full result, page by page; qualifying: the top three, as before.
+                if (s.isRace()) f1Board(false, w.name, "Race".equals(s.abbr) ? "RACE" : "SPRINT", s.top, s.logos, 0);
+                else skyPodium(what, gp, s.top, s.logos, "Race".equals(s.abbr) || "SR".equals(s.abbr) ? "Winner" : "Pole");
             } else if ("in".equals(s.state)) {
                 boolean newLeader = leader != null && lastLeader != null && !leader.equals(lastLeader);
                 boolean lapMark = s.isRace() && lastMark != null && s.lap / 10 > lastMark && s.lap > 0;
@@ -381,6 +390,56 @@ public class GoalWatchService extends Service {
             d.watch = () -> AppSearchService.tune(this, getString(R.string.scores_open_package), names, logo);
         }
         return d;
+    }
+
+    /** The races whose starting grid has shown (once each). */
+    private final java.util.Set<String> f1Grids = new java.util.HashSet<>();
+
+    /**
+     * An F1 board (LineupCard.showF1): a race's or sprint's full result (grid false) or its starting grid, from
+     * Jolpica when it has this Grand Prix (times, gaps, points, who retired; the grid's qualifying times), else from
+     * ESPN's order (surnames and team logos only). The podium's or the front rows' photos, every team's logo, the F1
+     * mark and the channel showing F1, fetched first. Off the main thread.
+     */
+    private void f1Board(boolean grid, String gpName, String session, List<String> order, List<String> orderLogos, long startAt) {
+        List<String> names = order == null ? new ArrayList<>() : new ArrayList<>(order);
+        List<String> logos = orderLogos == null ? new ArrayList<>() : new ArrayList<>(orderLogos);
+        io.execute(() -> {
+            LineupCard.F1 f = new LineupCard.F1();
+            f.grid = grid;
+            f.session = session;
+            f.startAt = startAt;
+            F1Results.Board rich = grid ? F1Results.jolpicaQualifying(gpName) : F1Results.jolpicaResult(gpName, "SPRINT".equals(session));
+            f.gp = F1Results.shortName(gpName != null ? gpName : rich != null ? rich.name : "");
+            if (rich != null) {
+                f.rows.addAll(rich.rows);
+            } else {
+                for (int i = 0; i < names.size(); i++) {
+                    F1Results.Row r = new F1Results.Row();
+                    r.pos = i + 1;
+                    r.last = names.get(i);
+                    r.code = F1Results.code(r.last);
+                    r.logo = i < logos.size() ? logos.get(i) : null;
+                    f.rows.add(r);
+                }
+            }
+            if (f.rows.isEmpty()) return;
+            android.graphics.Bitmap mark = ScoresTicker.cachedLogo(this, F1Results.F1_LOGO, 200);
+            f.mark = mark == null ? null : white(HomeV2.trim(mark));
+            for (F1Results.Row r : f.rows) {
+                if (r.logo != null && !f.logos.containsKey(r.logo)) f.logos.put(r.logo, ScoresTicker.cachedLogo(this, r.logo, 96));
+            }
+            for (int i = 0; i < Math.min(grid ? 6 : 3, f.rows.size()); i++) {
+                F1Results.Row r = f.rows.get(i);
+                android.graphics.Bitmap ph = PlayerPhotos.driver(this, r.last);
+                if (ph != null) f.photos.put(r.pos, ph);
+            }
+            ScoreCard.Data d = f1Data();
+            f.channel = d.channel;
+            f.channelLogo = d.channelLogo;
+            f.watch = d.watch;
+            main.post(() -> LineupCard.showF1(this, f));
+        });
     }
 
     /** A logo in plain white (its shape kept), for the F1 mark on Sky Sports F1's red. */
@@ -1311,6 +1370,21 @@ public class GoalWatchService extends Service {
             g.homeLogo = "https://a.espncdn.com/i/teamlogos/soccer/500/360.png";
             g.awayLogo = "https://a.espncdn.com/i/teamlogos/soccer/500/349.png";
             enqueue(g, new String[]{"test-ft", "", "", "", "ft"}, false);
+        }
+        if (intent != null && intent.hasExtra("test_f1_result")) {
+            // adb only: the last race's full result (Jolpica's, whichever Grand Prix it was).
+            f1Board(false, null, "RACE", null, null, 0);
+        }
+        if (intent != null && intent.hasExtra("test_f1_grid")) {
+            // adb only: this weekend's grid from its qualifying, as if lights out were in 15 minutes.
+            io.execute(() -> {
+                F1Results.Weekend w = F1Results.weekend(null);
+                F1Results.Session q = null;
+                for (F1Results.Session x : w == null ? new ArrayList<F1Results.Session>() : w.sessions) if ("Qual".equals(x.abbr) && !x.top.isEmpty()) q = x;
+                if (q == null) return;
+                F1Results.Session found = q;
+                main.post(() -> f1Board(true, w.name, "RACE", found.top, found.logos, System.currentTimeMillis() + 15 * 60_000L));
+            });
         }
         if (intent != null && intent.hasExtra("test_f1")) {
             io.execute(() -> {
@@ -3522,7 +3596,7 @@ public class GoalWatchService extends Service {
 
     private void enqueueRace(F1Results.Race r) {
         if (skyAlerts) {
-            skyPodium("RESULT", F1Results.shortName(r.name == null ? "" : r.name).replace("Grand Prix", "GP"), r.top, r.logos, "Winner");
+            f1Board(false, r.name, "RACE", r.top, r.logos, 0);
             return;
         }
         int px = Math.round(LOGO_DP * getResources().getDisplayMetrics().density);

@@ -146,6 +146,8 @@ final class LineupCard {
             return;
         }
         close(false);
+        wipeBody = 0xFF151A63;
+        wipeEdge = 0xFF3D4BD6;
         // On Home: the same line-ups as a wide bar across the top, in the style of Home's score bars.
         if (GoalWatchService.laneHome && GoalWatchService.homeInFront) { showBar(c, d); return; }
         k = c.getResources().getDisplayMetrics().widthPixels / 1920f * SCALE;
@@ -528,6 +530,676 @@ final class LineupCard {
         return col;
     }
 
+    // ---- F1: a race's full result, and the starting grid before it -------------------------------------------------
+
+    /** An F1 board: a race's (or sprint's) full result, or its starting grid before lights out. */
+    static final class F1 {
+        boolean grid;
+        /** "Mexico City Grand Prix"; RACE or SPRINT. */
+        String gp = "", session = "RACE";
+        /** The grid's lights out; 0 for a result. */
+        long startAt;
+        /** The F1 mark in white. */
+        Bitmap mark;
+        final List<F1Results.Row> rows = new ArrayList<>();
+        /** Team logos by their address; photos by position (the podium's, the front rows'). */
+        final java.util.Map<String, Bitmap> logos = new java.util.HashMap<>();
+        final java.util.Map<Integer, Bitmap> photos = new java.util.HashMap<>();
+        String channel;
+        Bitmap channelLogo;
+        Runnable watch;
+    }
+
+    /** Sky Sports F1's colours: F1's red, and a plain black ground (nothing on it moves). */
+    private static final int F1_RED = 0xFFE10600, F1_RED_DEEP = 0xFF8E0400, F1_BLACK = 0xFF141519, F1_BLACK_DEEP = 0xFF0B0C0F,
+            F1_SLOT = 0xFF24252C;
+    private static final Handler retry = new Handler(Looper.getMainLooper());
+
+    /** Opens an F1 board (on the main thread): the card in the corner over an app, or on Home the bar across the top. */
+    static void showF1(Context ctx, F1 f) {
+        Context c = ctx.getApplicationContext();
+        if (CameraAlert.isShowing() || ScoreCard.busy()) {
+            retry.postDelayed(() -> showF1(c, f), 2_000L);
+            return;
+        }
+        close(false);
+        wipeBody = F1_BLACK;
+        wipeEdge = F1_RED;
+        Data carrier = new Data();
+        carrier.watch = f.watch;
+        carrier.channel = f.channel;
+        carrier.channelLogo = f.channelLogo;
+        if (GoalWatchService.laneHome && GoalWatchService.homeInFront) f1Bar(c, f, carrier); else f1Card(c, f, carrier);
+    }
+
+    private static boolean sprint(F1 f) {
+        return "SPRINT".equals(f.session);
+    }
+
+    private static String lightsOut(long at) {
+        if (at <= 0) return null;
+        long min = Math.round((at - System.currentTimeMillis()) / 60_000.0);
+        String time = new java.text.SimpleDateFormat("HH:mm", java.util.Locale.UK).format(new java.util.Date(at));
+        if (min <= 0) return "Lights out now  ·  " + time;
+        return "Lights out in " + min + (min == 1 ? " min" : " mins") + "  ·  " + time;
+    }
+
+    private static View f1Channel(Context c, F1 f, int height) {
+        Data cd = new Data();
+        cd.channel = f.channel;
+        cd.channelLogo = f.channelLogo;
+        return channel(c, cd, height);
+    }
+
+    /** A page's steps: each page put in behind the wipe, the next after its time, the board closing after the last. */
+    private static void run(FrameLayout win, Data carrier, List<Runnable> pages, List<Long> times) {
+        boolean helper = InputKeyService.running;
+        int[] at = {0};
+        Runnable step = new Runnable() {
+            @Override public void run() {
+                if (host != win) return;
+                int i = at[0];
+                pages.get(i).run();
+                if (i == 0 && !helper) offerWatch(win, carrier);
+                if (i == pages.size() - 1) {
+                    main.postDelayed(() -> { if (host == win) close(true); }, times.get(i));
+                    return;
+                }
+                at[0]++;
+                main.postDelayed(this, times.get(i));
+            }
+        };
+        step.run();
+    }
+
+    // -- over an app: the card -----------------------------------------------------------------------------------------
+
+    private static void f1Card(Context c, F1 f, Data carrier) {
+        k = c.getResources().getDisplayMetrics().widthPixels / 1920f * SCALE;
+        int w = px(W), h = px(H), margin = px(10);
+        FrameLayout win = new FrameLayout(c);
+        FrameLayout card = new FrameLayout(c);
+        float r = px(14);
+        card.setOutlineProvider(new ViewOutlineProvider() {
+            @Override public void getOutline(View v, Outline o) { o.setRoundRect(0, 0, v.getWidth(), v.getHeight(), r); }
+        });
+        card.setClipToOutline(true);
+        card.setBackground(new Streaks(F1_BLACK, F1_BLACK_DEEP, 0, px(60), px(4)));
+        FrameLayout band = new FrameLayout(c);
+        band.setBackground(new Streaks(F1_RED, F1_RED_DEEP, 0x1AFFFFFF, px(14), px(3)));
+        card.addView(band, new FrameLayout.LayoutParams(px(BAND), h));
+        FrameLayout stage = new FrameLayout(c);
+        stage.setClipChildren(true);
+        FrameLayout.LayoutParams sl = new FrameLayout.LayoutParams(w - px(BAND), h);
+        sl.leftMargin = px(BAND);
+        card.addView(stage, sl);
+        FrameLayout.LayoutParams cl = new FrameLayout.LayoutParams(w, h);
+        cl.setMargins(margin, margin, margin, margin);
+        win.addView(card, cl);
+        ImageView back = new ImageView(c);
+        back.setImageBitmap(GoalWatchService.backButton(Config.themeString(c, "ok_button", "tcl"), 2 * margin));
+        back.setTag(PopupMotion.BACK_KEY);
+        win.addView(back, new FrameLayout.LayoutParams(2 * margin, 2 * margin, Gravity.TOP | Gravity.END));
+        WindowManager.LayoutParams lp = new WindowManager.LayoutParams(w + 2 * margin, h + 2 * margin,
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
+                        | WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
+                PixelFormat.TRANSLUCENT);
+        lp.gravity = Gravity.BOTTOM | Gravity.START;
+        lp.x = px(34);
+        lp.y = px(34);
+        lp.setTitle("LineupCard");
+        try {
+            c.getSystemService(WindowManager.class).addView(win, lp);
+        } catch (RuntimeException e) {
+            return;
+        }
+        host = win;
+        showing = carrier;
+        bar = false;
+
+        List<Runnable> pages = new ArrayList<>();
+        List<Long> times = new ArrayList<>();
+        int n = f.rows.size();
+        if (f.grid) {
+            pages.add(() -> turn(c, stage, () -> { f1Band(c, band, f, "STARTING\nGRID"); stage.addView(f1Title(c, f), full()); }));
+            times.add(9_000L);
+            int[][] spans = {{0, 4}, {4, 12}, {12, 22}};
+            for (int[] sp : spans) {
+                final int a = sp[0], b = Math.min(sp[1], n);
+                if (a >= b) continue;
+                pages.add(() -> turn(c, stage, () -> { f1Band(c, band, f, "P" + (a + 1) + "–P" + b); stage.addView(f1Slots(c, f, a, b), full()); }));
+                times.add(a == 0 ? 9_000L : 10_000L);
+            }
+        } else {
+            pages.add(() -> turn(c, stage, () -> { f1Band(c, band, f, "PODIUM"); stage.addView(f1Podium(c, f), full()); }));
+            times.add(10_000L);
+            if (n > 3) {
+                final int b = Math.min(10, n);
+                pages.add(() -> turn(c, stage, () -> { f1Band(c, band, f, "P4–P" + b + "\nPOINTS"); stage.addView(f1List(c, f, 3, b, 1), full()); }));
+                times.add(10_000L);
+            }
+            if (n > 10) {
+                pages.add(() -> turn(c, stage, () -> { f1Band(c, band, f, "P11–P" + n); stage.addView(f1List(c, f, 10, n, 2), full()); }));
+                times.add(11_000L);
+            }
+        }
+        card.setAlpha(0f);
+        card.setTranslationX(-px(40));
+        card.animate().alpha(1f).translationX(0f).setDuration(340).setInterpolator(new DecelerateInterpolator(2f)).withLayer().start();
+        run(win, carrier, pages, times);
+    }
+
+    /** The red band: the F1 mark, RACE or SPRINT, and which part of the board this page is. */
+    private static void f1Band(Context c, FrameLayout band, F1 f, String caption) {
+        band.removeAllViews();
+        LinearLayout col = new LinearLayout(c);
+        col.setOrientation(LinearLayout.VERTICAL);
+        col.setGravity(Gravity.CENTER_HORIZONTAL);
+        ImageView mark = new ImageView(c);
+        mark.setImageBitmap(sharp(f.mark));
+        mark.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        col.addView(mark, new LinearLayout.LayoutParams(px(64), px(17)));
+        TextView ses = text(c, f.session, 10, 0xE6FFFFFF, Typeface.create("sans-serif-condensed", Typeface.BOLD));
+        ses.setLetterSpacing(0.18f);
+        LinearLayout.LayoutParams sl = new LinearLayout.LayoutParams(-2, -2);
+        sl.topMargin = px(6);
+        col.addView(ses, sl);
+        TextView cap = text(c, caption, 12.5f, 0xFFFFFFFF, Typeface.create("sans-serif-condensed", Typeface.BOLD));
+        cap.setLetterSpacing(0.08f);
+        cap.setSingleLine(false);
+        cap.setMaxLines(2);
+        cap.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams cpl = new LinearLayout.LayoutParams(px(BAND) - px(6), -2);
+        cpl.topMargin = px(16);
+        col.addView(cap, cpl);
+        band.addView(col, new FrameLayout.LayoutParams(-1, -2, Gravity.CENTER));
+        col.setAlpha(0f);
+        col.animate().alpha(1f).setDuration(360).withLayer().start();
+    }
+
+    /** The grid's first page: STARTING GRID, the Grand Prix, "Lights out in 15 mins · 20:00", the channel and OK. */
+    private static View f1Title(Context c, F1 f) {
+        LinearLayout page = new LinearLayout(c);
+        page.setOrientation(LinearLayout.VERTICAL);
+        page.setGravity(Gravity.CENTER);
+        page.addView(text(c, sprint(f) ? "SPRINT GRID" : "STARTING GRID", 32, 0xFFFFFFFF, ScoreCard.outfit(c, 900)), new LinearLayout.LayoutParams(-2, -2));
+        LinearLayout.LayoutParams gl = new LinearLayout.LayoutParams(-2, -2);
+        gl.topMargin = px(4);
+        page.addView(text(c, f.gp, 15, 0xCCFFFFFF, inter(c, R.font.inter_semibold)), gl);
+        String lights = lightsOut(f.startAt);
+        if (lights != null) {
+            TextView when = text(c, lights, 19, 0xFFFFFFFF, ScoreCard.outfit(c, 700));
+            LinearLayout.LayoutParams wl = new LinearLayout.LayoutParams(-2, -2);
+            wl.topMargin = px(10);
+            page.addView(when, wl);
+            when.setAlpha(0f);
+            when.animate().alpha(1f).setStartDelay(900).setDuration(1_300).setInterpolator(new DecelerateInterpolator(1.2f)).withLayer().start();
+        }
+        View ch = f1Channel(c, f, 22);
+        if (ch != null || f.watch != null) {
+            LinearLayout foot = new LinearLayout(c);
+            foot.setGravity(Gravity.CENTER_VERTICAL);
+            if (ch != null) foot.addView(ch, new LinearLayout.LayoutParams(-2, px(22)));
+            if (f.watch != null) {
+                LinearLayout.LayoutParams ol = new LinearLayout.LayoutParams(-2, px(26));
+                ol.leftMargin = px(ch != null ? 12 : 0);
+                foot.addView(okPill(c, 12, 19), ol);
+            }
+            LinearLayout.LayoutParams fl = new LinearLayout.LayoutParams(-2, -2);
+            fl.topMargin = px(14);
+            page.addView(foot, fl);
+        }
+        return page;
+    }
+
+    /** The podium: P2, P1 and P3 side by side, each his photo, position and surname, team logo and time or gap. */
+    private static View f1Podium(Context c, F1 f) {
+        FrameLayout page = new FrameLayout(c);
+        TextView head = text(c, (f.gp + "  ·  " + (sprint(f) ? "Sprint" : "Race") + " result").toUpperCase(java.util.Locale.UK), 11,
+                0xB3FFFFFF, Typeface.create("sans-serif-condensed", Typeface.BOLD));
+        head.setLetterSpacing(0.12f);
+        FrameLayout.LayoutParams hl = new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.START);
+        hl.leftMargin = px(14);
+        hl.topMargin = px(10);
+        page.addView(head, hl);
+        if (f.watch != null || f.channelLogo != null) {
+            LinearLayout chip = new LinearLayout(c);
+            chip.setGravity(Gravity.CENTER_VERTICAL);
+            View ch = f1Channel(c, f, 13);
+            if (ch != null) chip.addView(ch, new LinearLayout.LayoutParams(-2, px(13)));
+            if (f.watch != null) {
+                LinearLayout.LayoutParams ol = new LinearLayout.LayoutParams(-2, px(18));
+                ol.leftMargin = px(8);
+                chip.addView(okPill(c, 9.5f, 14), ol);
+            }
+            FrameLayout.LayoutParams cpl = new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.END);
+            cpl.rightMargin = px(18);
+            cpl.topMargin = px(6);
+            page.addView(chip, cpl);
+        }
+        LinearLayout row = new LinearLayout(c);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setPadding(px(6), 0, px(6), px(6));
+        int[] order = {1, 0, 2};
+        int n = 0;
+        for (int idx : order) {
+            if (idx >= f.rows.size()) continue;
+            View e = f1PodiumPlace(c, f, f.rows.get(idx), idx == 0);
+            row.addView(e, new LinearLayout.LayoutParams(0, -1, idx == 0 ? 1.15f : 1f));
+            e.setAlpha(0f);
+            e.setTranslationY(px(18));
+            e.animate().alpha(1f).translationY(0f).setStartDelay(idx == 0 ? 420L : 180L + 90L * n++).setDuration(420)
+                    .setInterpolator(new DecelerateInterpolator(2f)).withLayer().start();
+        }
+        FrameLayout.LayoutParams rl = new FrameLayout.LayoutParams(-1, -1);
+        rl.topMargin = px(28);
+        page.addView(row, rl);
+        return page;
+    }
+
+    private static View f1PodiumPlace(Context c, F1 f, F1Results.Row r, boolean winner) {
+        LinearLayout col = new LinearLayout(c);
+        col.setOrientation(LinearLayout.VERTICAL);
+        col.setGravity(Gravity.CENTER_HORIZONTAL);
+        FrameLayout frame = new FrameLayout(c);
+        frame.setClipChildren(true);
+        Bitmap ph = f.photos.get(r.pos);
+        if (ph != null) {
+            ImageView photo = new ImageView(c);
+            photo.setImageBitmap(sharp(ph));
+            photo.setScaleType(ImageView.ScaleType.FIT_START);
+            int pw = px(winner ? 124 : 108);
+            frame.addView(photo, new FrameLayout.LayoutParams(pw, pw, Gravity.TOP | Gravity.CENTER_HORIZONTAL));
+        } else {
+            TextView code = text(c, r.code, 30, 0x40FFFFFF, ScoreCard.outfit(c, 900));
+            frame.addView(code, new FrameLayout.LayoutParams(-2, -2, Gravity.CENTER));
+        }
+        col.addView(frame, new LinearLayout.LayoutParams(-1, 0, 1f));
+        LinearLayout name = new LinearLayout(c);
+        name.setGravity(Gravity.CENTER_VERTICAL);
+        TextView pos = text(c, String.valueOf(r.pos), winner ? 17 : 15, 0xFFFFFFFF, ScoreCard.outfit(c, 900));
+        pos.setGravity(Gravity.CENTER);
+        GradientDrawable pb = new GradientDrawable();
+        pb.setColor(F1_RED);
+        pb.setCornerRadius(px(4));
+        pos.setBackground(pb);
+        pos.setPadding(px(6), px(1), px(6), px(1));
+        name.addView(pos);
+        TextView last = text(c, r.last.toUpperCase(java.util.Locale.UK), winner ? 18 : 15.5f, 0xFFFFFFFF, ScoreCard.outfit(c, 800));
+        LinearLayout.LayoutParams ll = new LinearLayout.LayoutParams(-2, -2);
+        ll.leftMargin = px(7);
+        name.addView(last, ll);
+        col.addView(name, new LinearLayout.LayoutParams(-2, -2));
+        LinearLayout sub = new LinearLayout(c);
+        sub.setGravity(Gravity.CENTER_VERTICAL);
+        Bitmap logo = r.logo == null ? null : f.logos.get(r.logo);
+        if (logo != null) {
+            ImageView l = new ImageView(c);
+            l.setImageBitmap(sharp(logo));
+            l.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            sub.addView(l, new LinearLayout.LayoutParams(px(15), px(15)));
+        }
+        String gap = r.gap.isEmpty() ? (winner ? "Winner" : "") : r.gap;
+        if (!gap.isEmpty()) {
+            TextView g = text(c, gap, 12, 0xCCFFFFFF, ScoreCard.outfit(c, 600));
+            LinearLayout.LayoutParams gl = new LinearLayout.LayoutParams(-2, -2);
+            gl.leftMargin = px(logo != null ? 6 : 0);
+            sub.addView(g, gl);
+        }
+        LinearLayout.LayoutParams sbl = new LinearLayout.LayoutParams(-2, -2);
+        sbl.topMargin = px(3);
+        col.addView(sub, sbl);
+        return col;
+    }
+
+    /** Positions from..to-1 as lines, in one column (with first names and points) or two. */
+    private static View f1List(Context c, F1 f, int from, int to, int columns) {
+        LinearLayout page = new LinearLayout(c);
+        page.setOrientation(LinearLayout.HORIZONTAL);
+        page.setPadding(px(10), px(10), px(14), px(10));
+        int per = (int) Math.ceil((to - from) / (double) columns);
+        int n = 0;
+        for (int col = 0; col < columns; col++) {
+            if (col > 0) {
+                View rule = new View(c);
+                rule.setBackgroundColor(0x33FFFFFF);
+                LinearLayout.LayoutParams rl = new LinearLayout.LayoutParams(Math.max(1, px(1.5f)), -1);
+                rl.leftMargin = rl.rightMargin = px(10);
+                page.addView(rule, rl);
+            }
+            LinearLayout list = new LinearLayout(c);
+            list.setOrientation(LinearLayout.VERTICAL);
+            for (int i = 0; i < per; i++) {
+                int idx = from + col * per + i;
+                View line = idx < to ? f1Line(c, f, f.rows.get(idx), columns == 1) : new View(c);
+                list.addView(line, new LinearLayout.LayoutParams(-1, 0, 1f));
+                if (idx < to) {
+                    line.setAlpha(0f);
+                    line.setTranslationX(px(24));
+                    line.animate().alpha(1f).translationX(0f).setStartDelay(140L + 45L * n++).setDuration(320)
+                            .setInterpolator(new DecelerateInterpolator(2f)).withLayer().start();
+                }
+            }
+            page.addView(list, new LinearLayout.LayoutParams(0, -1, 1f));
+        }
+        return page;
+    }
+
+    private static View f1Line(Context c, F1 f, F1Results.Row r, boolean wide) {
+        LinearLayout v = new LinearLayout(c);
+        v.setGravity(Gravity.CENTER_VERTICAL);
+        TextView pos = text(c, String.valueOf(r.pos), wide ? 16 : 14, 0xFFFFFFFF, ScoreCard.outfit(c, 900));
+        pos.setGravity(Gravity.CENTER);
+        v.addView(pos, new LinearLayout.LayoutParams(px(26), -2));
+        Bitmap logo = r.logo == null ? null : f.logos.get(r.logo);
+        ImageView l = new ImageView(c);
+        if (logo != null) l.setImageBitmap(sharp(logo));
+        l.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        LinearLayout.LayoutParams lgl = new LinearLayout.LayoutParams(px(wide ? 18 : 15), px(wide ? 18 : 15));
+        lgl.leftMargin = px(4);
+        v.addView(l, lgl);
+        LinearLayout name = new LinearLayout(c);
+        name.setGravity(Gravity.CENTER_VERTICAL);
+        if (wide && !r.first.isEmpty()) {
+            name.addView(text(c, r.first, 13, 0xB3FFFFFF, ScoreCard.outfit(c, 500)));
+            LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(px(5), 1);
+            name.addView(new View(c), sp);
+        }
+        name.addView(text(c, wide ? r.last.toUpperCase(java.util.Locale.UK) : r.last, wide ? 15 : 13.5f, 0xFFFFFFFF, ScoreCard.outfit(c, wide ? 800 : 700)));
+        LinearLayout.LayoutParams nl = new LinearLayout.LayoutParams(0, -2, 1f);
+        nl.leftMargin = px(8);
+        v.addView(name, nl);
+        if (!r.gap.isEmpty()) {
+            boolean out = "DNF".equals(r.gap);
+            v.addView(text(c, r.gap, wide ? 13 : 11.5f, out ? 0xFFFF5A52 : 0xCCFFFFFF, ScoreCard.outfit(c, 600)), new LinearLayout.LayoutParams(-2, -2));
+        }
+        if (wide && r.points > 0) {
+            TextView pts = text(c, "+" + r.points, 11, 0xFFFFFFFF, ScoreCard.outfit(c, 800));
+            GradientDrawable pb = new GradientDrawable();
+            pb.setColor(F1_RED);
+            pb.setCornerRadius(px(8));
+            pts.setBackground(pb);
+            pts.setPadding(px(7), px(1), px(7), px(1));
+            LinearLayout.LayoutParams pl = new LinearLayout.LayoutParams(-2, -2);
+            pl.leftMargin = px(10);
+            v.addView(pts, pl);
+        }
+        return v;
+    }
+
+    /** Grid slots from..to-1, two by two and staggered as on the grid: the odd places a half-slot ahead of the even. */
+    private static View f1Slots(Context c, F1 f, int from, int to) {
+        LinearLayout page = new LinearLayout(c);
+        page.setOrientation(LinearLayout.HORIZONTAL);
+        page.setPadding(px(10), px(8), px(14), px(8));
+        int count = to - from, per = (count + 1) / 2;
+        boolean big = from == 0;
+        int n = 0;
+        for (int side = 0; side < 2; side++) {
+            LinearLayout col = new LinearLayout(c);
+            col.setOrientation(LinearLayout.VERTICAL);
+            if (side == 1) col.addView(new View(c), new LinearLayout.LayoutParams(-1, 0, 0.5f));
+            for (int j = 0; j < per; j++) {
+                int idx = from + j * 2 + side;
+                View slot = idx < to ? f1Slot(c, f, f.rows.get(idx), big) : new View(c);
+                LinearLayout.LayoutParams sl = new LinearLayout.LayoutParams(-1, 0, 1f);
+                sl.topMargin = sl.bottomMargin = px(3);
+                col.addView(slot, sl);
+                if (idx < to) {
+                    slot.setAlpha(0f);
+                    slot.setTranslationY(px(14));
+                    slot.animate().alpha(1f).translationY(0f).setStartDelay(140L + 55L * n++).setDuration(340)
+                            .setInterpolator(new DecelerateInterpolator(2f)).withLayer().start();
+                }
+            }
+            if (side == 0) col.addView(new View(c), new LinearLayout.LayoutParams(-1, 0, 0.5f));
+            LinearLayout.LayoutParams cl = new LinearLayout.LayoutParams(0, -1, 1f);
+            if (side == 1) cl.leftMargin = px(12);
+            page.addView(col, cl);
+        }
+        return page;
+    }
+
+    private static View f1Slot(Context c, F1 f, F1Results.Row r, boolean big) {
+        LinearLayout slot = new LinearLayout(c);
+        slot.setGravity(Gravity.CENTER_VERTICAL);
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(F1_SLOT);
+        bg.setCornerRadius(px(6));
+        slot.setBackground(bg);
+        slot.setClipToOutline(true);
+        View edge = new View(c);
+        edge.setBackgroundColor(F1_RED);
+        slot.addView(edge, new LinearLayout.LayoutParams(px(4), -1));
+        TextView pos = text(c, String.valueOf(r.pos), big ? 22 : 15, 0xFFFFFFFF, ScoreCard.outfit(c, 900));
+        pos.setGravity(Gravity.CENTER);
+        slot.addView(pos, new LinearLayout.LayoutParams(px(big ? 36 : 28), -2));
+        Bitmap ph = f.photos.get(r.pos);
+        if (big && ph != null) {
+            FrameLayout frame = new FrameLayout(c);
+            frame.setClipChildren(true);
+            ImageView photo = new ImageView(c);
+            photo.setImageBitmap(sharp(ph));
+            photo.setScaleType(ImageView.ScaleType.FIT_START);
+            frame.addView(photo, new FrameLayout.LayoutParams(px(70), px(70), Gravity.TOP | Gravity.CENTER_HORIZONTAL));
+            slot.addView(frame, new LinearLayout.LayoutParams(px(70), -1));
+        }
+        LinearLayout names = new LinearLayout(c);
+        names.setOrientation(LinearLayout.VERTICAL);
+        if (big && !r.first.isEmpty()) names.addView(text(c, r.first, 12, 0xB3FFFFFF, ScoreCard.outfit(c, 500)));
+        names.addView(text(c, r.last.toUpperCase(java.util.Locale.UK), big ? 17 : 13.5f, 0xFFFFFFFF, ScoreCard.outfit(c, 800)));
+        if (!r.gap.isEmpty()) names.addView(text(c, r.gap, big ? 12 : 10.5f, 0xB3FFFFFF, ScoreCard.outfit(c, 600)));
+        LinearLayout.LayoutParams nl = new LinearLayout.LayoutParams(0, -2, 1f);
+        nl.leftMargin = px(8);
+        slot.addView(names, nl);
+        Bitmap logo = r.logo == null ? null : f.logos.get(r.logo);
+        if (logo != null) {
+            ImageView l = new ImageView(c);
+            l.setImageBitmap(sharp(logo));
+            l.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            LinearLayout.LayoutParams ll = new LinearLayout.LayoutParams(px(big ? 24 : 17), px(big ? 24 : 17));
+            ll.rightMargin = px(10);
+            slot.addView(l, ll);
+        }
+        return slot;
+    }
+
+    // -- on Home: the bar -----------------------------------------------------------------------------------------------
+
+    private static void f1Bar(Context c, F1 f, Data carrier) {
+        k = c.getResources().getDisplayMetrics().widthPixels / 1920f;
+        int w = px(1728), h = px(80), bandW = px(150);
+        float r = h / 2f;
+        FrameLayout win = new FrameLayout(c);
+        FrameLayout box = new FrameLayout(c);
+        box.setOutlineProvider(new ViewOutlineProvider() {
+            @Override public void getOutline(View v, Outline o) { o.setRoundRect(0, 0, v.getWidth(), v.getHeight(), r); }
+        });
+        box.setClipToOutline(true);
+        box.setBackground(new Streaks(F1_BLACK, F1_BLACK_DEEP, 0, px(50), px(30)));
+        LinearLayout row = new LinearLayout(c);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        FrameLayout band = new FrameLayout(c);
+        band.setBackground(new Streaks(F1_RED, F1_RED_DEEP, 0x1AFFFFFF, px(14), px(3)));
+        ImageView mark = new ImageView(c);
+        mark.setImageBitmap(sharp(f.mark));
+        mark.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        band.addView(mark, new FrameLayout.LayoutParams(px(118), px(40), Gravity.CENTER));
+        row.addView(band, new LinearLayout.LayoutParams(bandW, h));
+        LinearLayout label = new LinearLayout(c);
+        label.setOrientation(LinearLayout.VERTICAL);
+        label.setGravity(Gravity.CENTER_VERTICAL);
+        label.setPadding(px(16), 0, px(26), 0);
+        label.setBackground(new ScoreCard.Slant(F1_RED, px(16), false));
+        label.addView(text(c, f.grid ? (sprint(f) ? "SPRINT GRID" : "GRID") : sprint(f) ? "SPRINT" : "RESULT", 23, 0xFFFFFFFF, ScoreCard.outfit(c, 900)),
+                new LinearLayout.LayoutParams(-2, -2));
+        TextView small = text(c, f.gp.replace("Grand Prix", "GP").toUpperCase(java.util.Locale.UK), 10, 0xD9FFFFFF,
+                Typeface.create("sans-serif-condensed", Typeface.BOLD));
+        small.setLetterSpacing(0.16f);
+        LinearLayout.LayoutParams sml = new LinearLayout.LayoutParams(-2, -2);
+        sml.topMargin = px(3);
+        label.addView(small, sml);
+        row.addView(label, new LinearLayout.LayoutParams(-2, h));
+        FrameLayout stage = new FrameLayout(c);
+        stage.setClipChildren(true);
+        row.addView(stage, new LinearLayout.LayoutParams(0, h, 1f));
+        ImageView back = new ImageView(c);
+        back.setImageBitmap(GoalWatchService.backButton(Config.themeString(c, "ok_button", "tcl"), px(24)));
+        back.setTag(PopupMotion.BACK_KEY);
+        LinearLayout.LayoutParams bl = new LinearLayout.LayoutParams(px(24), px(24));
+        bl.leftMargin = px(10);
+        bl.rightMargin = px(16);
+        row.addView(back, bl);
+        box.addView(row, new FrameLayout.LayoutParams(w, h));
+        win.addView(box, new FrameLayout.LayoutParams(w, h));
+        WindowManager.LayoutParams lp = new WindowManager.LayoutParams(w, h,
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
+                        | WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
+                PixelFormat.TRANSLUCENT);
+        lp.gravity = Gravity.TOP | Gravity.CENTER_HORIZONTAL;
+        lp.y = px(12);
+        lp.setTitle("LineupCard");
+        try {
+            c.getSystemService(WindowManager.class).addView(win, lp);
+        } catch (RuntimeException e) {
+            return;
+        }
+        host = win;
+        showing = carrier;
+        bar = true;
+        ScoreCard.lane(true);
+
+        List<Runnable> pages = new ArrayList<>();
+        List<Long> times = new ArrayList<>();
+        int n = f.rows.size();
+        if (f.grid) {
+            pages.add(() -> turn(c, stage, () -> stage.addView(f1BarTitle(c, f), full())));
+            times.add(9_000L);
+            int[][] spans = {{0, 6}, {6, 14}, {14, 22}};
+            for (int[] sp : spans) {
+                final int a = sp[0], b = Math.min(sp[1], n);
+                if (a >= b) continue;
+                pages.add(() -> turn(c, stage, () -> stage.addView(f1BarRow(c, f, a, b, a == 0), full())));
+                times.add(a == 0 ? 10_000L : 9_000L);
+            }
+        } else {
+            pages.add(() -> turn(c, stage, () -> stage.addView(f1BarRow(c, f, 0, Math.min(3, n), true), full())));
+            times.add(10_000L);
+            int[][] spans = {{3, 10}, {10, 16}, {16, 22}};
+            for (int[] sp : spans) {
+                final int a = sp[0], b = Math.min(sp[1], n);
+                if (a >= b) continue;
+                pages.add(() -> turn(c, stage, () -> stage.addView(f1BarRow(c, f, a, b, false), full())));
+                times.add(9_000L);
+            }
+        }
+        box.setAlpha(0f);
+        box.setTranslationY(-px(24));
+        box.animate().alpha(1f).translationY(0f).setDuration(300).setInterpolator(new DecelerateInterpolator(2f)).withLayer().start();
+        run(win, carrier, pages, times);
+    }
+
+    /** The grid's first page on the bar: STARTING GRID, the Grand Prix and lights out; the channel and OK at the end. */
+    private static View f1BarTitle(Context c, F1 f) {
+        LinearLayout page = new LinearLayout(c);
+        page.setGravity(Gravity.CENTER_VERTICAL);
+        page.setPadding(px(22), 0, 0, 0);
+        page.addView(text(c, sprint(f) ? "Sprint grid" : "Starting grid", 26, 0xFFFFFFFF, ScoreCard.outfit(c, 800)), new LinearLayout.LayoutParams(-2, -2));
+        LinearLayout col = new LinearLayout(c);
+        col.setOrientation(LinearLayout.VERTICAL);
+        col.addView(text(c, f.gp, 16, 0xCCFFFFFF, ScoreCard.outfit(c, 600)), new LinearLayout.LayoutParams(-2, -2));
+        String lights = lightsOut(f.startAt);
+        if (lights != null) {
+            TextView when = text(c, lights, 17, 0xFFFFFFFF, ScoreCard.outfit(c, 700));
+            col.addView(when, new LinearLayout.LayoutParams(-2, -2));
+            when.setAlpha(0f);
+            when.animate().alpha(1f).setStartDelay(800).setDuration(1_300).setInterpolator(new DecelerateInterpolator(1.2f)).withLayer().start();
+        }
+        LinearLayout.LayoutParams cl = new LinearLayout.LayoutParams(-2, -2);
+        cl.leftMargin = px(22);
+        page.addView(col, cl);
+        page.addView(new View(c), new LinearLayout.LayoutParams(0, 1, 1f));
+        View ch = f1Channel(c, f, 20);
+        if (ch != null || f.watch != null) {
+            LinearLayout foot = new LinearLayout(c);
+            foot.setGravity(Gravity.CENTER_VERTICAL);
+            foot.setPadding(px(30), 0, px(18), 0);
+            foot.setBackground(new ScoreCard.Slant(0xFF000000, px(16), true));
+            if (ch != null) foot.addView(ch, new LinearLayout.LayoutParams(-2, px(20)));
+            if (f.watch != null) {
+                LinearLayout.LayoutParams ol = new LinearLayout.LayoutParams(-2, px(26));
+                ol.leftMargin = px(ch != null ? 14 : 0);
+                foot.addView(okPill(c, 12, 19), ol);
+            }
+            page.addView(foot, new LinearLayout.LayoutParams(-2, -1));
+        }
+        return page;
+    }
+
+    /** Positions from..to-1 across the bar: with photos (the podium, the front rows), or as compact entries. */
+    private static View f1BarRow(Context c, F1 f, int from, int to, boolean photos) {
+        LinearLayout page = new LinearLayout(c);
+        page.setOrientation(LinearLayout.HORIZONTAL);
+        page.setPadding(px(12), 0, px(4), 0);
+        for (int i = from; i < to; i++) {
+            F1Results.Row r = f.rows.get(i);
+            if (i > from) {
+                View rule = new View(c);
+                rule.setBackgroundColor(0x2EFFFFFF);
+                LinearLayout.LayoutParams rl = new LinearLayout.LayoutParams(Math.max(1, px(1.5f)), -1);
+                rl.topMargin = rl.bottomMargin = px(16);
+                page.addView(rule, rl);
+            }
+            LinearLayout e = new LinearLayout(c);
+            e.setGravity(Gravity.CENTER);
+            TextView pos = text(c, String.valueOf(r.pos), photos ? 22 : 18, 0xFFFFFFFF, ScoreCard.outfit(c, 900));
+            e.addView(pos);
+            Bitmap ph = photos ? f.photos.get(r.pos) : null;
+            if (ph != null) {
+                FrameLayout frame = new FrameLayout(c);
+                frame.setClipChildren(true);
+                ImageView photo = new ImageView(c);
+                photo.setImageBitmap(sharp(ph));
+                photo.setScaleType(ImageView.ScaleType.FIT_START);
+                frame.addView(photo, new FrameLayout.LayoutParams(px(72), px(72), Gravity.TOP | Gravity.CENTER_HORIZONTAL));
+                LinearLayout.LayoutParams fl = new LinearLayout.LayoutParams(px(66), px(72));
+                fl.leftMargin = px(6);
+                fl.topMargin = px(8);
+                e.addView(frame, fl);
+            }
+            Bitmap logo = r.logo == null ? null : f.logos.get(r.logo);
+            if (logo != null) {
+                ImageView l = new ImageView(c);
+                l.setImageBitmap(sharp(logo));
+                l.setScaleType(ImageView.ScaleType.FIT_CENTER);
+                LinearLayout.LayoutParams ll = new LinearLayout.LayoutParams(px(20), px(20));
+                ll.leftMargin = px(8);
+                e.addView(l, ll);
+            }
+            LinearLayout col = new LinearLayout(c);
+            col.setOrientation(LinearLayout.VERTICAL);
+            col.addView(text(c, photos ? r.last.toUpperCase(java.util.Locale.UK) : r.last, photos ? 19 : 16.5f, 0xFFFFFFFF, ScoreCard.outfit(c, 800)));
+            String gap = r.gap.isEmpty() && photos && !f.grid && r.pos == 1 ? "Winner" : r.gap;
+            if (!gap.isEmpty()) {
+                boolean out = "DNF".equals(gap);
+                col.addView(text(c, gap + (!f.grid && r.points > 0 && photos ? "  ·  +" + r.points : ""), photos ? 14 : 12.5f,
+                        out ? 0xFFFF5A52 : 0xCCFFFFFF, ScoreCard.outfit(c, 600)));
+            }
+            LinearLayout.LayoutParams cl = new LinearLayout.LayoutParams(-2, -2);
+            cl.leftMargin = px(8);
+            e.addView(col, cl);
+            page.addView(e, new LinearLayout.LayoutParams(0, -1, 1f));
+            e.setAlpha(0f);
+            e.setTranslationX(px(26));
+            e.animate().alpha(1f).translationX(0f).setStartDelay(120L + 60L * (i - from)).setDuration(340)
+                    .setInterpolator(new DecelerateInterpolator(2.2f)).withLayer().start();
+        }
+        return page;
+    }
+
     private static FrameLayout.LayoutParams full() {
         return new FrameLayout.LayoutParams(-1, -1);
     }
@@ -559,6 +1231,9 @@ final class LineupCard {
                 .withEndAction(() -> stage.removeView(wipe)).start();
     }
 
+    /** The wipe's colours: the line-ups' navy and lighter blue; F1's black and red. */
+    private static int wipeBody = 0xFF151A63, wipeEdge = 0xFF3D4BD6;
+
     /** The wipe: a slanted navy panel edged in lighter blue and white, its front then its back crossing the stage. */
     private static final class Wipe extends View {
         private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -569,10 +1244,10 @@ final class LineupCard {
         @Override protected void onDraw(Canvas cv) {
             int w = getWidth(), h = getHeight();
             float slant = h * 0.42f, body = w - slant, edge = px(10);
-            panel(cv, 0, body, h, slant, 0xFF151A63);
-            panel(cv, body - edge, body, h, slant, 0xFF3D4BD6);
+            panel(cv, 0, body, h, slant, wipeBody);
+            panel(cv, body - edge, body, h, slant, wipeEdge);
             panel(cv, body - edge * 0.35f, body, h, slant, 0xFFFFFFFF);
-            panel(cv, 0, edge, h, slant, 0xFF3D4BD6);
+            panel(cv, 0, edge, h, slant, wipeEdge);
             panel(cv, 0, edge * 0.35f, h, slant, 0xE6FFFFFF);
         }
 
