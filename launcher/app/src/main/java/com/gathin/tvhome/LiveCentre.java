@@ -915,15 +915,11 @@ final class LiveCentre {
         main.postDelayed(statsTurn, statsOpen ? STATS_MS : 1_200L);
     }
 
-    /** The stats panel's ground: the scoreboard's own white, with its red along the foot. */
+    /** The stats panel's ground: the scoreboard's own white. */
     private static android.graphics.drawable.Drawable statsGround() {
         GradientDrawable sb = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0xFFFFFFFF, 0xFFE9ECF5});
         sb.setCornerRadius(px(14));
-        GradientDrawable red = new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, new int[]{0xFFB8121F, 0xFFE3283A});
-        android.graphics.drawable.LayerDrawable l = new android.graphics.drawable.LayerDrawable(new android.graphics.drawable.Drawable[]{sb, red});
-        l.setLayerGravity(1, Gravity.BOTTOM | Gravity.FILL_HORIZONTAL);
-        l.setLayerHeight(1, px(4));
-        return l;
+        return sb;
     }
 
     /** One page of the stats: its label across the top, the home side's figure left, the away side's right. */
