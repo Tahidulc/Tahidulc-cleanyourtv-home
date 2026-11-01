@@ -285,7 +285,10 @@ final class ScoreCard {
         View label = label(c, d, 23, h);
         d.labelSmall = small;
         bar.addView(label, new LinearLayout.LayoutParams(-2, h));
-        if (d.photo != null && d.podium.isEmpty()) bar.addView(photo(c, d.photo, px(66), h, px(86), px(-10), px(-3)), new LinearLayout.LayoutParams(px(66), h));
+        // A driver's headshot (ESPN's, head to collar in a square) smaller than a footballer's, so the whole head shows in
+        // the bar's height, chin and hair included.
+        if (d.photo != null && d.podium.isEmpty()) bar.addView(d.f1 ? photo(c, d.photo, px(66), h, px(71), px(-3), px(-2))
+                : photo(c, d.photo, px(66), h, px(86), px(-10), px(-3)), new LinearLayout.LayoutParams(px(66), h));
         if (d.picture != null) {
             LinearLayout.LayoutParams pl = new LinearLayout.LayoutParams(px(80), px(46));
             pl.leftMargin = px(8);
