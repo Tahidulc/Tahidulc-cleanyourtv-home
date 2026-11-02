@@ -160,7 +160,7 @@ final class YourShows {
             String a = pr == null ? null : HomeV2.serviceApp(String.valueOf(pr.optInt("provider_id")));
             if (a != null && ReleaseAlerts.installed(h.a, a)) app = pr.optString("provider_name", null);
         }
-        t.foot = "Out " + (ChronoUnit.DAYS.between(out, today) == 0 ? "today" : ChronoUnit.DAYS.between(out, today) == 1 ? "yesterday"
+        t.foot = "Out " + (ChronoUnit.DAYS.between(out, today) == 0 ? "Today" : ChronoUnit.DAYS.between(out, today) == 1 ? "Yesterday"
                 : out.format(DateTimeFormatter.ofPattern("EEEE", Locale.UK)));
         t.what = (premiere ? "Season " + se + " starts: " : "New episode: ") + "S" + se + " E" + ep + named(last) + ", out " + when(out, today)
                 + (app != null ? " · on " + app : "");
