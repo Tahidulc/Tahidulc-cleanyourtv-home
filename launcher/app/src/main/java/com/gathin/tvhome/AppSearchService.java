@@ -23,7 +23,11 @@ import java.util.Locale;
 public class AppSearchService extends AccessibilityService {
     private static final String TAG = "AppSearch";
     /** A look at the screen every STEP_MS: quick enough that each step follows the last at once. */
-    private static final long SEARCH_MS = 15_000L, TUNE_MS = 75_000L, STEP_MS = 220L;
+    /**
+     * A channel tune gives up after TUNE_MS in all (it was minutes, with the cover up the whole time and TiviMate on
+     * the last channel, or its search, once it lifted).
+     */
+    private static final long SEARCH_MS = 15_000L, TUNE_MS = 30_000L, STEP_MS = 220L;
     private static AppSearchService instance;
 
     private final Handler main = new Handler(Looper.getMainLooper());
@@ -106,6 +110,33 @@ public class AppSearchService extends AccessibilityService {
 
     /** As tune, with a picture of what is on (the programme's still) behind the cover too. */
     static boolean tune(Context c, String pkg, java.util.List<String> channels, android.graphics.Bitmap logo, android.graphics.Bitmap art) {
+        final java.util.List<String> all = tuneNames(c, channels);
+        // The helper not connected (a TCL drops it now and then): without it TiviMate only opens, on the channel last
+        // watched. Connected again first, then the tune.
+        if (instance == null && !all.isEmpty() && ensure(c)) {
+            whenReady(() -> pick(c, pkg, all, logo, art), 0);
+            return c.getPackageManager().getLaunchIntentForPackage(pkg) != null;
+        }
+        return pick(c, pkg, all, logo, art);
+    }
+
+    /**
+     * adb test only: "kleva:A,B" tunes Kleva TV alone, "tivimate:A,B" (or plain "A,B") TiviMate alone, each with the
+     * names as a tile gives them; the log line "done ... in N ms" says how it went.
+     */
+    static void testTune(Context c, String spec) {
+        boolean k = spec.startsWith("kleva:");
+        String list = spec.replaceFirst("^(kleva|tivimate):", "");
+        java.util.List<String> names = tuneNames(c, java.util.Arrays.asList(list.split(",")));
+        Runnable go = () -> {
+            if (k) { if (!klevaChannel(c, names, null, null, null)) android.util.Log.i(TAG, "done kleva-channel: not started"); }
+            else tivimate(c, "ar.tvplayer.tv", names, null, null);
+        };
+        if (instance == null && ensure(c)) whenReady(go, 0); else go.run();
+    }
+
+    /** The names to try, in turn: a UHD version first where the playlist has one, at most five. */
+    private static java.util.List<String> tuneNames(Context c, java.util.List<String> channels) {
         java.util.List<String> names = new java.util.ArrayList<>();
         if (channels != null) for (String n : channels) if (n != null && !n.trim().isEmpty() && !names.contains(n.trim())) names.add(n.trim());
         // The playlist's UHD version of a channel first, when it has one (the TV guide's list says which): only those
@@ -129,6 +160,29 @@ public class AppSearchService extends AccessibilityService {
         }
         // At most the first five: each name not in the playlist costs a search.
         if (names.size() > 5) names = new java.util.ArrayList<>(names.subList(0, 5));
+        return names;
+    }
+
+    /** r once the helper is connected, or after about three seconds without it. */
+    private static void whenReady(Runnable r, int tries) {
+        if (instance != null || tries >= 15) { r.run(); return; }
+        new Handler(Looper.getMainLooper()).postDelayed(() -> whenReady(r, tries + 1), 200);
+    }
+
+    /**
+     * Which app tunes: Kleva TV first where this TV's theme says "channel_app": "kleva" (its search lists each channel
+     * once and plays the pick full screen), TiviMate when Kleva TV has no such channel; otherwise TiviMate.
+     */
+    private static boolean pick(Context c, String pkg, java.util.List<String> names, android.graphics.Bitmap logo, android.graphics.Bitmap art) {
+        if ("ar.tvplayer.tv".equals(pkg) && "kleva".equals(Config.themeString(c, "channel_app", ""))) {
+            java.util.List<String> plain = new java.util.ArrayList<>();
+            for (String n : names) if (!n.startsWith("match:")) plain.add(n);
+            if (!plain.isEmpty() && klevaChannel(c, plain, logo, art, () -> tivimate(c, pkg, names, logo, art))) return true;
+        }
+        return tivimate(c, pkg, names, logo, art);
+    }
+
+    private static boolean tivimate(Context c, String pkg, java.util.List<String> names, android.graphics.Bitmap logo, android.graphics.Bitmap art) {
         Intent open = c.getPackageManager().getLeanbackLaunchIntentForPackage(pkg);
         if (open == null) open = c.getPackageManager().getLaunchIntentForPackage(pkg);
         if (open == null) return false;
@@ -146,8 +200,7 @@ public class AppSearchService extends AccessibilityService {
             instance.quiet();
             instance.channel = true;
             instance.candidates = names;
-            // TiviMate searches a whole playlist: allow it longer.
-            instance.deadline = System.currentTimeMillis() + TUNE_MS * Math.min(3, names.size());
+            instance.deadline = System.currentTimeMillis() + TUNE_MS;
             String shown = names.get(0).startsWith("match:") ? names.get(0).substring(6).replace("|", " v ") : names.get(0);
             instance.showCover(art, logo, shown, LIVE, 12_000L);
         }
@@ -459,6 +512,9 @@ public class AppSearchService extends AccessibilityService {
         candidates = java.util.Collections.singletonList(q);
         candidate = 0;
         kleva = false;
+        wanted = null;
+        missed = false;
+        pickedName = null;
         camera = false;
         tried.clear();
         pickedText = null;
@@ -571,11 +627,47 @@ public class AppSearchService extends AccessibilityService {
 
     private final Runnable step = new Runnable() {
         @Override public void run() {
-            if (target == null || System.currentTimeMillis() > deadline) { target = null; loud(); hideCover(0); return; }
-            if (advance()) main.postDelayed(this, STEP_MS);
-            else { target = null; if (!awaitingSound) loud(); hideCover(hideDelay); }
+            if (target == null) { loud(); hideCover(0); return; }
+            boolean late = System.currentTimeMillis() > deadline;
+            if (!late && advance()) { main.postDelayed(this, STEP_MS); return; }
+            // How long it took and how it ended, in the log (adb logcat -s AppSearch), to time one way against another.
+            android.util.Log.i(TAG, "done " + (kleva ? (wanted != null ? "kleva-channel" : "kleva-game") : channel ? "tivimate" : target)
+                    + " in " + (System.currentTimeMillis() - startedAt) + " ms: " + (late ? "TIMED OUT" : missed ? "NOT FOUND" : "ok")
+                    + " picks=" + picks + " query=" + query + " picked=" + pickedName);
+            if (channel && picks == 0 && (late || missed)) { giveUp(); return; }
+            target = null;
+            if (late) { loud(); hideCover(0); }
+            else { if (!awaitingSound) loud(); hideCover(hideDelay); }
         }
     };
+
+    /** A channel tune that found nothing to pick, or ran out of time; set by nextCandidate. */
+    private boolean missed;
+    /** The text of what was picked, for the log. */
+    private String pickedName;
+
+    /**
+     * A channel not found: TiviMate's search closed if it is still on screen (so it is never left over the picture),
+     * and the cover says so for a moment before it lifts, rather than lifting on some other channel without a word.
+     */
+    private void giveUp() {
+        AccessibilityNodeInfo root = getRootInActiveWindow();
+        if (root != null && target != null && target.contentEquals(String.valueOf(root.getPackageName()))
+                && find(root, Kind.EDIT) != null) {
+            if (keyboardShown()) performGlobalAction(GLOBAL_ACTION_BACK);
+            main.postDelayed(() -> performGlobalAction(GLOBAL_ACTION_BACK), 250);
+        }
+        target = null;
+        loud();
+        if (coverTitle != null) {
+            String name = query == null ? "" : query.startsWith("match:") ? query.substring(6).replace("|", " v ") : query;
+            coverTitle.setAllCaps(false);
+            coverTitle.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 18f);
+            coverTitle.setText("Couldn't find " + name);
+            coverTitle.setVisibility(android.view.View.VISIBLE);
+        }
+        hideCover(2_200);
+    }
 
     /**
      * Silence while the helper finds a channel: TiviMate's search box is a voice search that bleeps as it starts
@@ -1042,6 +1134,50 @@ public class AppSearchService extends AccessibilityService {
         return true;
     }
 
+    /**
+     * Kleva TV on a channel: its search, the channel's name typed (without its HD or UHD), and the card for that
+     * channel picked, which plays it full screen. Kleva keeps one card per channel, its HD, FHD and 4K copies together,
+     * so there is no long row to page through as in TiviMate. missed: when it has no such channel (TiviMate then).
+     * False when Kleva TV is not on this TV, or the helper is off.
+     */
+    static boolean klevaChannel(Context c, java.util.List<String> names, android.graphics.Bitmap logo, android.graphics.Bitmap art, Runnable missed) {
+        if (instance == null || names.isEmpty()) return false;
+        Intent open = new Intent(Intent.ACTION_VIEW, android.net.Uri.parse("klevatv://search")).setPackage(KLEVA);
+        open.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+        try {
+            c.startActivity(open);
+        } catch (Exception e) {
+            return false;
+        }
+        String first = names.get(0);
+        String typed = first.replaceAll("(?i)\\s*\\b(f?hd|uhd|4k|sd)\\b\\s*", " ").replaceAll("\\s+", " ").trim();
+        if (typed.length() < 3) typed = searchTerm(first);
+        instance.start(KLEVA, typed);
+        instance.kleva = true;
+        instance.focused = instance.moves = 0;
+        instance.klevaMissed = missed;
+        instance.teams = null;
+        java.util.List<String> want = new java.util.ArrayList<>();
+        for (String n : names) { String w = channelName(n, false); if (!w.isEmpty() && !want.contains(w)) want.add(w); }
+        instance.wanted = want;
+        instance.quiet();
+        instance.showCover(art, logo, first, LIVE, 6_000L);
+        return true;
+    }
+
+    /** Kleva on a channel: the names wanted, as channelName writes them; null for a game. */
+    private java.util.List<String> wanted;
+
+    /** Whether a line of Kleva's names one of the channels wanted ("UK: Sky Sports Main Event", ": Sky Atlantic"). */
+    private boolean channelLine(String t) {
+        String bare = t.replaceFirst("^\\s*[A-Za-z]{0,3}\\s*[|:]\\s*", "");
+        String n = channelName(bare, false);
+        if (wanted.contains(n)) return true;
+        String loose = channelName(bare, true);
+        for (String w : wanted) if (loose.equals(w)) return true;
+        return false;
+    }
+
     /** Kleva: tries at focusing the game's card, and Downs pressed to reach it. */
     private int focused, moves;
     /** What to do when Kleva TV's search has nothing for the game. */
@@ -1062,10 +1198,35 @@ public class AppSearchService extends AccessibilityService {
         for (AccessibilityNodeInfo x : all) {
             if (x.isEditable() || x.getText() == null) continue;
             String t = x.getText().toString();
+            if (wanted != null) { if (channelLine(t)) return true; continue; }
             if (teams.length == 2 ? PlaylistSport.same(t, teams[0], teams[1])
                     : PlaylistSport.plain(t).contains(PlaylistSport.plain(teams[0]))) return true;
         }
         return false;
+    }
+
+    /**
+     * On a channel, the remote's step towards the card that names it, from the card in focus: Down while the focus is
+     * still above the results (the search, its chips), else Right or Left along the row.
+     */
+    private static int towards(AccessibilityNodeInfo card, AccessibilityNodeInfo line) {
+        if (card == null) return GLOBAL_ACTION_DPAD_DOWN;
+        android.graphics.Rect at = new android.graphics.Rect(), goal = new android.graphics.Rect();
+        card.getBoundsInScreen(at);
+        line.getBoundsInScreen(goal);
+        if (goal.top >= at.bottom) return GLOBAL_ACTION_DPAD_DOWN;
+        if (goal.left >= at.right) return GLOBAL_ACTION_DPAD_RIGHT;
+        if (goal.right <= at.left) return GLOBAL_ACTION_DPAD_LEFT;
+        return GLOBAL_ACTION_DPAD_DOWN;
+    }
+
+    /** A card's lines, for the log. */
+    private static String cardText(AccessibilityNodeInfo card) {
+        java.util.List<AccessibilityNodeInfo> all = new java.util.ArrayList<>();
+        collect(card, all, 0);
+        StringBuilder b = new StringBuilder();
+        for (AccessibilityNodeInfo x : all) if (x.getText() != null) b.append(b.length() > 0 ? " / " : "").append(x.getText());
+        return b.toString();
     }
 
     private boolean klevaStep(AccessibilityNodeInfo root) {
@@ -1095,17 +1256,25 @@ public class AppSearchService extends AccessibilityService {
         AccessibilityNodeInfo focus = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT);
         // (Kleva's card is its picture, which takes the focus, with the programme and channel beside it.)
         AccessibilityNodeInfo card = focus == null || focus.isEditable() ? null : focus.getParent();
+        // On a channel, only what is under the results' heading counts: the recent searches above it can carry the
+        // very name typed, and OK there would only search again.
+        int floor = wanted == null ? Integer.MIN_VALUE : resultsTop(root);
+        if (wanted != null && floor == Integer.MAX_VALUE) return System.currentTimeMillis() - typedAt < 7_000L || klevaMiss();
+        if (card != null && top(card) < floor) card = null;
         if (card != null && size(card) < 16 && names(card)) {
             if (android.os.Build.VERSION.SDK_INT >= 33) performGlobalAction(GLOBAL_ACTION_DPAD_CENTER);
             else focus.performAction(AccessibilityNodeInfo.ACTION_CLICK);
             opened = true;
+            picks++;
             pickedAt = System.currentTimeMillis();
+            pickedName = cardText(card);
+            if (wanted != null) loudWhenNew();
             return true;
         }
         java.util.List<AccessibilityNodeInfo> all = new java.util.ArrayList<>();
         collect(root, all, 0);
         for (AccessibilityNodeInfo n : all) {
-            if (n.isEditable() || n.getText() == null || !names(n)) continue;
+            if (n.isEditable() || n.getText() == null || top(n) < floor || !names(n)) continue;
             AccessibilityNodeInfo parent = n.getParent();
             for (int i = 0; parent != null && i < parent.getChildCount(); i++) {
                 AccessibilityNodeInfo at = parent.getChild(i);
@@ -1113,8 +1282,8 @@ public class AppSearchService extends AccessibilityService {
             }
             // Still elsewhere after that: one Down a step, from the search to the chips to the first card.
             long now = System.currentTimeMillis();
-            if (focused++ > 0 && moves < 4 && android.os.Build.VERSION.SDK_INT >= 33 && now - lastMove > 500L) {
-                performGlobalAction(GLOBAL_ACTION_DPAD_DOWN);
+            if (focused++ > 0 && moves < (wanted != null ? 12 : 4) && android.os.Build.VERSION.SDK_INT >= 33 && now - lastMove > (wanted != null ? 350L : 500L)) {
+                performGlobalAction(wanted != null ? towards(card, n) : GLOBAL_ACTION_DPAD_DOWN);
                 moves++;
                 lastMove = now;
             }
@@ -1122,11 +1291,33 @@ public class AppSearchService extends AccessibilityService {
         }
         // Nothing yet: the results come as it searches. None in the end (Kleva's copy of the playlist can be days
         // old, without tonight's game): the game played some other way instead of leaving its search on screen.
-        if (System.currentTimeMillis() - typedAt < 10_000L) return true;
+        if (System.currentTimeMillis() - typedAt < (wanted != null ? 7_000L : 10_000L)) return true;
+        return klevaMiss();
+    }
+
+    /** Kleva has nothing for it: the other way (klevaMissed), and this tune ends. */
+    private boolean klevaMiss() {
+        missed = true;
+        android.util.Log.i(TAG, "kleva: nothing for " + query + (klevaMissed != null ? ", trying the other way" : ""));
         Runnable r = klevaMissed;
         klevaMissed = null;
         if (r != null) main.post(r);
         return false;
+    }
+
+    private static int top(AccessibilityNodeInfo n) {
+        android.graphics.Rect r = new android.graphics.Rect();
+        n.getBoundsInScreen(r);
+        return r.top;
+    }
+
+    /** The top of Kleva's results ("Channels & Programmes" and the like), or MAX_VALUE before there are any. */
+    private static int resultsTop(AccessibilityNodeInfo root) {
+        for (AccessibilityNodeInfo h : root.findAccessibilityNodeInfosByText("Channels")) {
+            if (h.isEditable() || h.getText() == null || !h.getText().toString().trim().toLowerCase(Locale.ROOT).startsWith("channels")) continue;
+            return top(h);
+        }
+        return Integer.MAX_VALUE;
     }
 
     /** A game's channels already picked that TiviMate would only remind about (not on yet there): passed over. */
@@ -1166,14 +1357,15 @@ public class AppSearchService extends AccessibilityService {
         }
         if (picks > 0) {
             // Picked but still searching: once more after a moment, in case the first did not take; then, as TiviMate
-            // stays on its search when the channel picked is the one already playing, Back to the channel.
+            // stays on its search when the channel picked is the one already playing, Back to the channel. (Sooner
+            // than before: the search sat over the picture for five seconds.)
             long since = System.currentTimeMillis() - pickedAt;
             AccessibilityNodeInfo results = channelRow(root);
-            if (picks < 2 && since > 2_500L) {
+            if (picks < 2 && since > 1_800L) {
                 AccessibilityNodeInfo again = results == null ? null : channelNode(results, box);
                 if (again != null) pick(again);
                 else picks = 2;   // nothing to pick again: on to Back
-            } else if (picks >= 2 && since > 2_500L) {
+            } else if (picks >= 2 && since > 1_500L) {
                 performGlobalAction(GLOBAL_ACTION_BACK);
                 pickedAt = System.currentTimeMillis();
                 picks++;
@@ -1228,7 +1420,8 @@ public class AppSearchService extends AccessibilityService {
             // A page at a time, with a moment for each to fill (the TCL is slow to draw them, and a page passed
             // before it was drawn was never read).
             if (System.currentTimeMillis() - scrolledAt < 450L) return true;
-            if (scrolls < 80 && row.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)) {
+            // (At most 30 pages: past that the name is too common to find this way, and the next name is tried.)
+            if (scrolls < 30 && row.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)) {
                 scrolls++;
                 scrolledAt = System.currentTimeMillis();
                 return true;
@@ -1253,8 +1446,8 @@ public class AppSearchService extends AccessibilityService {
             box.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_IME_ENTER.getId());
             enteredAt = System.currentTimeMillis();
         }
-        // Nothing found for this name after half a minute: the next.
-        if (waited > 30_000L) return nextCandidate();
+        // Nothing found for this name after twelve seconds: the next.
+        if (waited > 12_000L) return nextCandidate();
         return true;
     }
 
@@ -1272,6 +1465,7 @@ public class AppSearchService extends AccessibilityService {
         }
         picks++;
         pickedAt = System.currentTimeMillis();
+        pickedName = String.valueOf(hit.getText());
         click(hit);
         if (channel) loudWhenNew();   // the new channel's own sound, once it starts (not the old one's tail)
         return true;
@@ -1294,6 +1488,7 @@ public class AppSearchService extends AccessibilityService {
                 nearest = null;
                 if (n.refresh() && n.isVisibleToUser()) return pick(n);
             }
+            missed = picks == 0;
             return false;
         }
         query = candidates.get(++candidate);
@@ -1697,18 +1892,18 @@ public class AppSearchService extends AccessibilityService {
      * when it will not start a helper, and starts one only while Home is in front), switch it back on: off the list,
      * on again, and accessibility on. Needs WRITE_SECURE_SETTINGS, granted from adb; without it, nothing.
      */
-    static void ensure(Context c) {
+    static boolean ensure(Context c) {
         if (instance != null || c.checkSelfPermission(android.Manifest.permission.WRITE_SECURE_SETTINGS)
-                != android.content.pm.PackageManager.PERMISSION_GRANTED) return;
+                != android.content.pm.PackageManager.PERMISSION_GRANTED) return false;
         android.content.ContentResolver cr = c.getContentResolver();
         android.content.ComponentName self = new android.content.ComponentName(c, AppSearchService.class);
         String me = self.flattenToShortString();
         String list = android.provider.Settings.Secure.getString(cr, android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES);
-        if (list == null) return;
+        if (list == null) return false;
         // The list may name it either way ("pkg/.AppSearchService" or "pkg/pkg.AppSearchService"): compared as names.
         boolean listed = false;
         for (String entry : list.split(":")) if (self.equals(android.content.ComponentName.unflattenFromString(entry))) listed = true;
-        if (!listed) return;
+        if (!listed) return false;
         StringBuilder others = new StringBuilder();
         for (String entry : list.split(":")) {
             if (entry.isEmpty() || self.equals(android.content.ComponentName.unflattenFromString(entry))) continue;
@@ -1726,6 +1921,7 @@ public class AppSearchService extends AccessibilityService {
                 // The setting is the system's; a refusal leaves the helper off, as before.
             }
         }).start();
+        return true;
     }
 
     @Override protected void onServiceConnected() {
