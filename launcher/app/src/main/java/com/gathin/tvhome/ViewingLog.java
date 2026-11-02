@@ -130,6 +130,36 @@ final class ViewingLog {
         }
     }
 
+    /** Every film and series watched here ("tv:123", "mv:456") and the last day it played (this log and WatchHistory). */
+    static synchronized java.util.Map<String, LocalDate> watched(Context c) {
+        java.util.Map<String, LocalDate> out = new java.util.HashMap<>();
+        JSONObject days = all(c);
+        for (Iterator<String> it = days.keys(); it.hasNext(); ) {
+            String date = it.next();
+            JSONObject t = days.optJSONObject(date) == null ? null : days.optJSONObject(date).optJSONObject("t");
+            LocalDate d;
+            try {
+                d = LocalDate.parse(date);
+            } catch (Exception e) {
+                continue;
+            }
+            for (Iterator<String> k = t == null ? null : t.keys(); k != null && k.hasNext(); ) {
+                String key = k.next();
+                if (!key.startsWith("tv:") && !key.startsWith("mv:")) continue;
+                LocalDate had = out.get(key);
+                if (had == null || d.isAfter(had)) out.put(key, d);
+            }
+        }
+        for (WatchHistory.Entry e : WatchHistory.load(c)) {
+            if (e.tmdbId <= 0) continue;
+            String key = (e.tv ? "tv:" : "mv:") + e.tmdbId;
+            LocalDate d = java.time.Instant.ofEpochMilli(e.at).atZone(java.time.ZoneId.systemDefault()).toLocalDate();
+            LocalDate had = out.get(key);
+            if (had == null || d.isAfter(had)) out.put(key, d);
+        }
+        return out;
+    }
+
     /** Clears it all (Your viewing's "Clear"). */
     static synchronized void clear(Context c) {
         all = new JSONObject();

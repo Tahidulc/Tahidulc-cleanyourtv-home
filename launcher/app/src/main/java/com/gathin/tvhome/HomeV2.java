@@ -404,6 +404,46 @@ final class HomeV2 {
     private SearchPanel search;
     /** Your viewing: the chart button in the top bar. */
     private ViewingPanel viewing;
+    /** A title's panel: OK held on a poster. */
+    private TitlePanel titlePanel;
+
+    /** A title's panel (the cast, the films so far, My list); play is what OK on its poster does. */
+    void showTitle(PagesV2.Title t, Runnable play) {
+        if (titlePanel == null) titlePanel = new TitlePanel(this);
+        titlePanel.show(t, play);
+    }
+
+    /**
+     * OK on a title in the panels: on one of the TV's streaming apps, Debrid Stream's page for it (as the pages do; the
+     * app itself where Debrid Stream is not on this TV); on none of them, the store on the TV that sells it, else a note.
+     */
+    void openTitle(PagesV2.Title t) {
+        io.execute(() -> {
+            JSONObject gb = null;
+            try {
+                JSONObject r = new JSONObject(get("https://api.themoviedb.org/3/" + (t.tv ? "tv/" : "movie/") + t.id
+                        + "/watch/providers?api_key=" + tmdbKey)).optJSONObject("results");
+                gb = r == null ? null : r.optJSONObject("GB");
+            } catch (Exception ignored) {
+                // treated as on none of the apps
+            }
+            JSONObject g = gb;
+            main.post(() -> openTitle(t, g));
+        });
+    }
+
+    void openTitle(PagesV2.Title t, JSONObject gb) {
+        String art = t.backdrop != null ? t.backdrop : t.poster;
+        String app = onYourApps(this, gb);
+        if (app != null) {
+            String d = debridPackage();
+            searchTitle(d != null ? d : app, t.title, t.tv, t.id, art);
+            return;
+        }
+        String store = storeFor(this, gb);
+        if (store != null) { searchTitle(store, t.title, t.tv, t.id, art); return; }
+        android.widget.Toast.makeText(a, t.title + " isn't on your streaming apps yet", android.widget.Toast.LENGTH_SHORT).show();
+    }
     private TextView weatherView;
 
     private void buildButtons() {
@@ -716,6 +756,7 @@ final class HomeV2 {
     }
 
     void home() {
+        if (titlePanel != null) titlePanel.hide();
         if (viewing != null) viewing.hide();
         if (search != null) search.hide();
         if (smartPanel != null) smartPanel.hide();
@@ -753,6 +794,7 @@ final class HomeV2 {
 
     /** All keys come here first; true when v2 used it. */
     boolean key(KeyEvent e) {
+        if (titlePanel != null && titlePanel.isOpen()) return titlePanel.key(e);
         if (viewing != null && viewing.isOpen()) return viewing.key(e);
         if (search != null && search.isOpen()) return search.key(e);
         if (e.getKeyCode() == KeyEvent.KEYCODE_SEARCH && search != null) {

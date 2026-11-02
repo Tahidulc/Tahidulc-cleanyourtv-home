@@ -783,18 +783,35 @@ final class PagesV2 {
             return out.toArray(new String[0]);
         }
 
+        /** OK held on a poster: its panel opened. */
+        private boolean held;
+
+        /** OK on a poster: its own action, else the app it was being watched in, else Debrid Stream's page for it. */
+        private void play(Title t) {
+            if (t.ok != null) { t.ok.run(); return; }
+            String pkg = h.debridPackage();
+            if (t.app != null && !t.app.equals(pkg)) { h.openApp(t.app); return; }
+            if (pkg != null) h.searchTitle(pkg, t.title, t.tv, t.id, t.backdrop != null ? t.backdrop : t.poster);
+        }
+
         @Override boolean key(KeyEvent e) {
             if (e.getAction() == KeyEvent.ACTION_DOWN) intoPosters = false;   // a key of their own first: left where it takes them
             int code = e.getKeyCode();
             if (ok(code)) {
-                if (e.getAction() == KeyEvent.ACTION_UP && !onTabs && row < rows.size() && idx < rows.get(row).items.size()) {
-                    Title t = rows.get(row).items.get(idx);
-                    if (t.ok != null) { t.ok.run(); return true; }
-                    String pkg = h.debridPackage();
-                    if (t.app != null && !t.app.equals(pkg)) { h.openApp(t.app); return true; }
-                    if (pkg != null) {
-                        h.searchTitle(pkg, t.title, t.tv, t.id, t.backdrop != null ? t.backdrop : t.poster);
+                boolean has = !onTabs && row < rows.size() && idx < rows.get(row).items.size();
+                if (e.getAction() == KeyEvent.ACTION_DOWN && e.getRepeatCount() == 0) held = false;
+                // Held: the title's panel (the cast, the films so far, My list); its release is then not a press.
+                if (e.getAction() == KeyEvent.ACTION_DOWN && e.getRepeatCount() > 0) {
+                    if (has && !held) {
+                        held = true;
+                        Title t = rows.get(row).items.get(idx);
+                        h.showTitle(t, () -> play(t));
                     }
+                    return true;
+                }
+                if (e.getAction() == KeyEvent.ACTION_UP) {
+                    if (held) { held = false; return true; }
+                    if (has) play(rows.get(row).items.get(idx));
                 }
                 return true;
             }
