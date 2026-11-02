@@ -937,7 +937,7 @@ final class HomeV2 {
                     if (matchIdx > 0) { matchIdx--; break; }
                     zone = Z_RAIL;
                     railIdx = Math.max(0, railSel);
-                    if (railSel < 0 || railViews.get(railSel).getTag() == null) selectRail(railIdx);
+                    if (railSel < 0 || railSel >= railViews.size() || railViews.get(railSel).getTag() == null) selectRail(railIdx);
                 } else if (code == KeyEvent.KEYCODE_DPAD_RIGHT) {
                     if (matchIdx < match.buttonCount() - 1) matchIdx++;
                     break;
@@ -947,8 +947,9 @@ final class HomeV2 {
                 } else if (code == KeyEvent.KEYCODE_DPAD_DOWN) {
                     zone = n > 0 ? Z_ROW : Z_CATS;
                 }
-                // Off Match Day: the hero is the tile's again.
-                if (zone != Z_MATCH && rowIdx < n) hero(shown.get(rowIdx));
+                // Off Match Day: the hero is the tile's again. The row read again: Left onto the rail has just put that
+                // app's row in its place (empty on a TCL at first), and the old count crashed Home.
+                if (zone != Z_MATCH && rowIdx < shown.size()) hero(shown.get(rowIdx));
                 break;
             case Z_RAIL:
                 if (parked && page != null) {
@@ -985,7 +986,7 @@ final class HomeV2 {
                         zone = Z_RAIL;
                         railIdx = Math.max(0, railSel);
                         // Back on All apps (or nothing chosen yet): what it shows comes up with it.
-                        if (railSel < 0 || railViews.get(railSel).getTag() == null) selectRail(railIdx);
+                        if (railSel < 0 || railSel >= railViews.size() || railViews.get(railSel).getTag() == null) selectRail(railIdx);
                     }
                 } else if (code == KeyEvent.KEYCODE_DPAD_RIGHT) {
                     if (rowIdx < n - 1) rowIdx++;
@@ -1023,10 +1024,12 @@ final class HomeV2 {
                 match.press(matchIdx);
                 return;
             case Z_TOP:
+                if (topIdx < 0 || topIdx >= topViews.size()) return;
                 Object r = topViews.get(topIdx).getTag();
                 if (r instanceof Runnable) ((Runnable) r).run();
                 return;
             case Z_RAIL:
+                if (railIdx < 0 || railIdx >= railViews.size()) return;
                 String p = (String) railViews.get(railIdx).getTag();
                 if (p == null) {
                     // All apps beside a section: the Apps page in its place.
@@ -1230,6 +1233,8 @@ final class HomeV2 {
     private boolean appsFromRail;
 
     private void selectRail(int i) {
+        // The rail fills in a moment after Home starts: a key in that moment has no app to land on (it crashed).
+        if (i < 0 || i >= railViews.size()) return;
         railIdx = i;
         railSel = i;
         String p = (String) railViews.get(i).getTag();
@@ -1428,7 +1433,7 @@ final class HomeV2 {
         if (m.equals(mode) && already != null && already == shown && row.getChildCount() > 0) return;
         mode = m;
         int gen = ++generation;
-        String railPkg = railSel >= 0 ? (String) railViews.get(railSel).getTag() : null;
+        String railPkg = railSel >= 0 && railSel < railViews.size() ? (String) railViews.get(railSel).getTag() : null;
         label.setText(labelFor(m, railPkg));
         List<Tile> cached = rows.get(m);
         if (cached != null) {
