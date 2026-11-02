@@ -73,6 +73,9 @@ final class MatchDay {
         boolean blackout;
         /** A Champions League game Prime Video shows in Britain (the evening's one game Sky's guide does not list). */
         boolean prime;
+        /** Each side's top scorer in the competition (ESPN's leaders), and his cut-out in the club's kit (TheSportsDB). */
+        String homeStar, awayStar;
+        Bitmap homePlayer, awayPlayer;
     }
 
     private final HomeV2 h;
@@ -348,6 +351,7 @@ final class MatchDay {
             // Not live on British TV: no channel for the game itself; Soccer Saturday follows it on Sky Sports News.
             loadImages(best);
             form(best);
+            stars(best);
             return best;
         }
         if (best.channel == null) {
@@ -379,7 +383,30 @@ final class MatchDay {
         loadImages(best);
         if (best.logo == null && best.channelLogo != null) best.logo = HomeV2.trim(ScoresTicker.cachedLogo(c, best.channelLogo, h.px(360)));
         form(best);
+        stars(best);
         return best;
+    }
+
+    /**
+     * Without Sky's picture for the game, the launcher makes its own as a broadcaster would: each side's top scorer
+     * in the competition, cut out in the club's kit, standing in front of the club's colours.
+     */
+    private void stars(Pick p) {
+        if (p.picture != null) return;
+        int tall = h.px(652);
+        if (p.homeStar != null) p.homePlayer = cutout(p.homeStar, name(p.g, true), tall);
+        if (p.awayStar != null) p.awayPlayer = cutout(p.awayStar, name(p.g, false), tall);
+    }
+
+    private Bitmap cutout(String player, String club, int tall) {
+        try {
+            PlayerPhotos.Cutout cut = PlayerPhotos.cutout(c, player, club);
+            if (cut == null || cut.url == null || cut.url.isEmpty()) return null;
+            // The full-size original (the loader drops TheSportsDB's "/medium"), as tall as the picture.
+            return ScoresTicker.cachedLogo(c, cut.url, tall / 2);
+        } catch (RuntimeException e) {
+            return null;
+        }
     }
 
     private void loadImages(Pick best) {
@@ -471,6 +498,24 @@ final class MatchDay {
                 if (id.equals(p.g.homeId)) p.homeForm = f.toString();
                 else if (id.equals(p.g.awayId)) p.awayForm = f.toString();
             }
+            // Each side's top scorer in this competition (ESPN's "leaders", goals first).
+            JSONArray leaders = s.optJSONArray("leaders");
+            for (int i = 0; leaders != null && i < leaders.length(); i++) {
+                JSONObject t = leaders.getJSONObject(i);
+                String id = t.optJSONObject("team") == null ? "" : t.getJSONObject("team").optString("id");
+                JSONArray cats = t.optJSONArray("leaders");
+                String star = null;
+                for (int k = 0; cats != null && k < cats.length() && star == null; k++) {
+                    JSONObject cat = cats.getJSONObject(k);
+                    if (!cat.optString("name").toLowerCase(Locale.UK).contains("goal") && k + 1 < cats.length()) continue;
+                    JSONArray top = cat.optJSONArray("leaders");
+                    if (top != null && top.length() > 0 && top.getJSONObject(0).optJSONObject("athlete") != null) {
+                        star = top.getJSONObject(0).getJSONObject("athlete").optString("displayName", null);
+                    }
+                }
+                if (id.equals(p.g.homeId)) p.homeStar = star;
+                else if (id.equals(p.g.awayId)) p.awayStar = star;
+            }
         } catch (Exception ignored) {
             // no form: the line stays empty
         }
@@ -522,6 +567,7 @@ final class MatchDay {
         channelText.setText(said == null ? "" : said);
         channelText.setVisibility(said != null ? View.VISIBLE : View.GONE);
         backdrop.colours(g.homeColor, g.awayColor, g.awayAlt);
+        backdrop.players(p.homePlayer, p.awayPlayer);
         DateTimeFormatter hm = DateTimeFormatter.ofPattern("HH:mm");
         String ko = Instant.ofEpochMilli(g.kickoff).atZone(ZoneId.systemDefault()).format(hm);
         String text;
@@ -661,6 +707,8 @@ final class MatchDay {
      */
     static final class Backdrop extends View {
         private int home = 0xFFDA020E, away = 0xFF034694;
+        private Bitmap left, right;
+        private android.graphics.Rect leftBounds, rightBounds;
         private final android.graphics.Paint paint = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
         private final android.graphics.Paint mask = new android.graphics.Paint();
 
@@ -681,6 +729,15 @@ final class MatchDay {
             invalidate();
         }
 
+        void players(Bitmap l, Bitmap r) {
+            if (l == left && r == right) return;
+            left = l;
+            right = r;
+            leftBounds = l == null ? null : opaque(l);
+            rightBounds = r == null ? null : opaque(r);
+            invalidate();
+        }
+
         private static boolean near(int x, int y) {
             int dr = Color.red(x) - Color.red(y), dg = Color.green(x) - Color.green(y), db = Color.blue(x) - Color.blue(y);
             return dr * dr + dg * dg + db * db < 90 * 90;
@@ -688,6 +745,37 @@ final class MatchDay {
 
         private static int darker(int col) {
             return Color.rgb(Color.red(col) * 55 / 100, Color.green(col) * 55 / 100, Color.blue(col) * 55 / 100);
+        }
+
+        private void player(android.graphics.Canvas cv, Bitmap b, android.graphics.Rect bounds, float cx, float h, int glow) {
+            if (b == null || bounds == null) return;
+            float tall = h * 0.92f, scale = tall / bounds.height(), wide = bounds.width() * scale;
+            float x = cx - wide / 2, y = h - tall;
+            paint.setShader(new android.graphics.RadialGradient(cx, h * 0.62f, h * 0.55f, glow, 0x00FFFFFF, android.graphics.Shader.TileMode.CLAMP));
+            cv.drawCircle(cx, h * 0.62f, h * 0.55f, paint);
+            paint.setShader(null);
+            android.graphics.Paint shade = new android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG);
+            shade.setColorFilter(new android.graphics.PorterDuffColorFilter(0x66000000, android.graphics.PorterDuff.Mode.SRC_IN));
+            android.graphics.RectF to = new android.graphics.RectF(x, y, x + wide, h);
+            cv.drawBitmap(b, bounds, new android.graphics.RectF(to.left + h * 0.02f, to.top + h * 0.012f, to.right + h * 0.02f, to.bottom), shade);
+            cv.drawBitmap(b, bounds, to, new android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG | android.graphics.Paint.ANTI_ALIAS_FLAG));
+        }
+
+        /** The part of a cut-out that is not see-through. */
+        private static android.graphics.Rect opaque(Bitmap b) {
+            int w = b.getWidth(), h = b.getHeight(), l = w, t = h, r = -1, btm = -1;
+            int[] row = new int[w];
+            for (int y = 0; y < h; y += 2) {
+                b.getPixels(row, 0, w, 0, y, w, 1);
+                for (int x = 0; x < w; x += 2) {
+                    if ((row[x] >>> 24) < 40) continue;
+                    if (x < l) l = x;
+                    if (x > r) r = x;
+                    if (y < t) t = y;
+                    if (y > btm) btm = y;
+                }
+            }
+            return r < 0 ? null : new android.graphics.Rect(l, t, Math.min(w, r + 2), Math.min(h, btm + 2));
         }
 
         @Override protected void onDraw(android.graphics.Canvas cv) {
@@ -705,6 +793,22 @@ final class MatchDay {
             android.graphics.Path slash = new android.graphics.Path();
             slash.moveTo(w * 0.633f, 0); slash.lineTo(w * 0.644f, 0); slash.lineTo(w * 0.466f, h); slash.lineTo(w * 0.455f, h); slash.close();
             cv.drawPath(slash, paint);
+            // Light streaks across the slant, soft-edged, as a broadcaster's match graphic has.
+            float[][] streaks = {{0.30f, 0.05f, 0.28f}, {0.37f, 0.014f, 0.45f}, {0.64f, 0.07f, 0.2f}, {0.71f, 0.011f, 0.42f}};
+            cv.save();
+            cv.skew(-0.42f, 0);   // on the slant: x moves left 0.42 for each 1 down
+            for (float[] st : streaks) {
+                float x0 = w * st[0], sw = w * st[1];
+                int a = Math.round(255 * st[2]);
+                paint.setShader(new android.graphics.LinearGradient(x0, 0, x0 + sw, 0, new int[]{0x00FFFFFF, (a << 24) | 0xFFFFFF, 0x00FFFFFF},
+                        null, android.graphics.Shader.TileMode.CLAMP));
+                cv.drawRect(x0, 0, x0 + sw, h, paint);
+            }
+            cv.restore();
+            paint.setShader(null);
+            // Each side's player, standing on the foot of the picture, a soft glow behind and a shadow beside.
+            player(cv, this.left, leftBounds, w * 0.31f, h, 0x33FFFFFF);
+            player(cv, this.right, rightBounds, w * 0.73f, h, 0x2EFFE6AA);
             mask.setShader(new android.graphics.LinearGradient(0, 0, w * 0.36f, 0, 0x00000000, 0xFF000000, android.graphics.Shader.TileMode.CLAMP));
             cv.drawRect(0, 0, w, h, mask);
             mask.setShader(new android.graphics.LinearGradient(0, h * 0.6f, 0, h, 0xFF000000, 0x00000000, android.graphics.Shader.TileMode.CLAMP));
