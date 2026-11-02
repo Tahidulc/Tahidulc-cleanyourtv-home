@@ -54,8 +54,10 @@ final class Surprise {
     private FrameLayout overlay;
     private final List<TextView> moodViews = new ArrayList<>(), whoViews = new ArrayList<>(), buttons = new ArrayList<>();
     private TextView timeView, name, line, why, about;
-    /** Debrid Stream's mark after "on", in the line of details: what Play opens. */
-    private ImageView onMark;
+    /** After "on" in the line of details: Debrid Stream's mark, then the services that carry the film (DiceRoll.marks). */
+    private LinearLayout marks;
+    /** The reel thrown like dice. */
+    private DiceRoll dice;
     private final ImageView[] reel = new ImageView[5];
     private int mood, who = 1, row = 2, col;
     private boolean byBed = true, spinning;
@@ -129,6 +131,7 @@ final class Surprise {
     private void hide() {
         if (shown == this) shown = null;
         gen++;
+        dice.stop();
         View o = overlay;
         o.animate().alpha(0f).setDuration(180).withEndAction(() -> h.root.removeView(o)).start();
         h.paint();
@@ -187,6 +190,7 @@ final class Surprise {
         rg.setStroke(h.px(6), Color.WHITE);
         ring.setBackground(rg);
         place(ring, 810, 316, 300, 450);
+        dice = new DiceRoll(h, overlay, reel, ring);
         // Under the reel, as the TV shows' spin: the film, why it suits (yellow), its details with where Play opens it,
         // and what it is about.
         name = h.text(30, semi, Color.WHITE);
@@ -199,13 +203,10 @@ final class Surprise {
         meta.setGravity(Gravity.CENTER);
         line = h.text(18, regular, 0xD9FFFFFF);
         meta.addView(line);
-        onMark = new ImageView(c);
-        onMark.setAdjustViewBounds(true);
-        onMark.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        onMark.setVisibility(View.GONE);
-        LinearLayout.LayoutParams ml = new LinearLayout.LayoutParams(-2, h.px(38));
-        ml.leftMargin = h.px(10);
-        meta.addView(onMark, ml);
+        marks = new LinearLayout(c);
+        marks.setGravity(Gravity.CENTER_VERTICAL);
+        marks.setVisibility(View.GONE);
+        meta.addView(marks, new LinearLayout.LayoutParams(-2, h.px(42)));
         place(meta, 0, 856, 1920, 42);
         about = h.text(17, regular, 0xB3FFFFFF);
         about.setGravity(Gravity.CENTER);
@@ -239,8 +240,9 @@ final class Surprise {
         name.setText("");
         line.setText("");
         about.setText("");
-        onMark.setVisibility(View.GONE);
-        why.setText("Spinning…");
+        marks.setVisibility(View.GONE);
+        why.setText("Rolling the dice…");
+        dice.start(new ArrayList<>(pics));
         int m = mood, w = who;
         boolean bed = byBed;
         IO.execute(() -> {
@@ -271,13 +273,25 @@ final class Surprise {
             List<PagesV2.Title> five = got.subList(0, Math.min(9, got.size()));
             List<Bitmap> bitmaps = new ArrayList<>();
             for (PagesV2.Title t : five) bitmaps.add(ScoresTicker.cachedLogo(c, t.poster, h.px(300)));
+            // Where the pick is streaming in the UK, for the marks after "on".
+            org.json.JSONObject where = null;
+            if (!five.isEmpty()) {
+                try {
+                    org.json.JSONObject r = new org.json.JSONObject(HomeV2.get("https://api.themoviedb.org/3/movie/" + five.get(0).id
+                            + "/watch/providers?api_key=" + h.tmdbKey)).optJSONObject("results");
+                    where = r == null ? null : r.optJSONObject("GB");
+                } catch (Exception ignored) {
+                    // Debrid Stream's mark alone
+                }
+            }
             int rt = runtime;
+            org.json.JSONObject gb = where;
             MAIN.post(() -> {
                 if (my != gen || shown != this) return;
                 pool = new ArrayList<>(five);
                 pics.clear();
                 pics.addAll(bitmaps);
-                roll(my, 0, rt);
+                land(my, rt, gb);
             });
         });
     }
@@ -287,41 +301,35 @@ final class Surprise {
         return false;
     }
 
-    /** The reel's turns: the posters stepping along, slowing, stopping with the pick (the first) in the middle. */
-    private void roll(int my, int step, int runtime) {
+    /** The dice land: the pick (the first) on the middle card, the others round it; then its details. */
+    private void land(int my, int runtime, org.json.JSONObject gb) {
         if (my != gen || shown != this) return;
-        if (pool.isEmpty()) {
+        Bitmap[] last = new Bitmap[5];
+        int n = pics.size();
+        for (int i = 0; i < 5; i++) last[i] = n == 0 ? DiceRoll.die(1 + random.nextInt(6)) : pics.get(((i - 2) % n + n) % n);
+        dice.land(last, () -> {
+            if (my != gen || shown != this) return;
             spinning = false;
-            why.setText("Nothing on your apps for this right now. Try another mood, or turn off Done by bed.");
-            for (ImageView v : reel) v.setImageDrawable(null);
-            pick = null;
-            return;
-        }
-        int steps = 12, n = pics.size();
-        int centre = step >= steps ? 0 : (steps - step) % n;
-        for (int i = 0; i < 5; i++) {
-            Bitmap b = pics.get(((centre + i - 2) % n + n) % n);
-            if (b != null) reel[i].setImageBitmap(b); else reel[i].setImageDrawable(null);
-        }
-        if (step < steps) {
-            MAIN.postDelayed(() -> roll(my, step + 1, runtime), 60 + step * 18L);
-            return;
-        }
-        spinning = false;
-        pick = pool.get(0);
-        reel[2].setScaleX(0.94f);
-        reel[2].setScaleY(0.94f);
-        reel[2].animate().scaleX(1f).scaleY(1f).setDuration(260).start();
-        name.setText(pick.title);
-        String vote = pick.vote > 0 ? String.format(Locale.UK, "★ %.1f", pick.vote) : "";
-        // Where Play opens it: Debrid Stream's page (as the page's posters do), its mark after "on".
-        android.graphics.Bitmap mark = ReleaseAlerts.installed(c, ReleaseAlerts.DEBRID) ? ReleaseAlerts.debridLogo(c) : null;
-        line.setText(String.join("  ·  ", nonEmpty(pick.year, pick.what, runtime > 0 ? runtime / 60 + "h " + String.format(Locale.UK, "%02d", runtime % 60) + "m" : "", vote,
-                mark != null ? "on" : "")));
-        onMark.setImageBitmap(mark);
-        onMark.setVisibility(mark != null ? View.VISIBLE : View.GONE);
-        why.setText((runtime > 0 ? FitsTonight.heroLine(c, runtime) + " · " : "") + MOODS[mood][0] + " · not watched on this TV yet");
-        about.setText(pick.overview == null ? "" : pick.overview);
+            if (pool.isEmpty()) {
+                why.setText("Nothing on your apps for this right now. Try another mood, or turn off Done by bed.");
+                pick = null;
+                return;
+            }
+            pick = pool.get(0);
+            name.setText(pick.title);
+            String vote = pick.vote > 0 ? String.format(Locale.UK, "★ %.1f", pick.vote) : "";
+            // Where Play opens it: Debrid Stream's mark first, then the services it is on.
+            boolean on = DiceRoll.marks(h, marks, gb);
+            line.setText(String.join("  ·  ", nonEmpty(pick.year, pick.what, runtime > 0 ? runtime / 60 + "h " + String.format(Locale.UK, "%02d", runtime % 60) + "m" : "", vote,
+                    on ? "on" : "")));
+            why.setText((runtime > 0 ? FitsTonight.heroLine(c, runtime) + " · " : "") + MOODS[mood][0] + " · not watched on this TV yet");
+            about.setText(pick.overview == null ? "" : pick.overview);
+            for (View v : new View[]{name, why, line, marks, about}) {
+                v.setAlpha(0f);
+                v.setTranslationY(h.px(10));
+                v.animate().alpha(1f).translationY(0).setDuration(320).start();
+            }
+        });
     }
 
     private static String[] nonEmpty(String... s) {

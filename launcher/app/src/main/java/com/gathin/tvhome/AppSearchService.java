@@ -107,7 +107,7 @@ public class AppSearchService extends AccessibilityService {
                 // over the episode's own picture.
                 instance.coverEpisode = new String[]{"SEASON " + instance.epSeason + "  ·  EPISODE " + instance.epNumber,
                         pendingName == null ? "" : pendingName};
-                instance.showCover(art, logo, query, null, 20_000L);
+                instance.showCover(art, logo, query, null, 24_000L);
                 instance.coverEpisode = null;
                 if (pendingStill != null && instance.coverBg != null) {
                     instance.coverBg.setImageBitmap(pendingStill);
@@ -135,6 +135,8 @@ public class AppSearchService extends AccessibilityService {
     private int epSeason, epNumber, epMoves;
     private String epName;
     private long epStepAt;
+    /** When OK went to the found episode (0: not yet), and when its player first showed. */
+    private long epPlayAt, epFrameAt;
 
     /** Surprise me: the episode the series' page should go on to, for the search that follows within a few seconds. */
     static void wantEpisode(int season, int episode, String name) {
@@ -188,12 +190,49 @@ public class AppSearchService extends AccessibilityService {
         int num = number(digitsChild(f));
         String name = descChild(f);
         if (num == epNumber || (epName != null && !epName.isEmpty() && name != null && same(name, epName))) {
-            android.util.Log.i(TAG, "episode found: S" + epSeason + " E" + epNumber + " in " + epMoves + " moves");
+            android.util.Log.i(TAG, "episode found: S" + epSeason + " E" + epNumber + " in " + epMoves + " moves; playing it");
             epSeason = 0;
-            hideDelay = 500;
-            return false;
+            // OK on it, as one would: Debrid Stream takes its best source and plays. The cover stays until the player is up.
+            press(GLOBAL_ACTION_DPAD_CENTER);
+            epPlayAt = now;
+            epFrameAt = 0;
+            deadline = Math.max(deadline, now + 20_000L);
+            return true;
         }
         return press(num > 0 && num > epNumber ? GLOBAL_ACTION_DPAD_UP : GLOBAL_ACTION_DPAD_DOWN);
+    }
+
+    /**
+     * After OK on the episode: the cover stays over the app's black loading screen until its player shows the episode
+     * under way (the time past 00:00), or three seconds after the player shows (its controls may have gone), or after
+     * 12 seconds with no player (a list of sources, say, left to the person).
+     */
+    private boolean playerStep(AccessibilityNodeInfo root) {
+        long now = System.currentTimeMillis();
+        boolean frame = !root.findAccessibilityNodeInfosByViewId(ReleaseAlerts.DEBRID + ":id/exo_content_frame").isEmpty();
+        if (frame && epFrameAt == 0) epFrameAt = now;
+        boolean going = frame && moving(root);
+        if (going || (epFrameAt > 0 && now - epFrameAt > 3_000L) || now - epPlayAt > 12_000L) {
+            android.util.Log.i(TAG, (frame ? "episode playing" : "no player") + " " + (now - epPlayAt) + " ms after OK");
+            epPlayAt = 0;
+            hideDelay = 300;
+            return false;
+        }
+        return true;
+    }
+
+    /** A player's time under way: a "0:12" or "01:02:03" that is not all noughts. */
+    private static boolean moving(AccessibilityNodeInfo n) {
+        if (n == null) return false;
+        CharSequence t = n.getText();
+        if (t != null && t.toString().matches("\\d{1,2}(:\\d{2}){1,2}") && !t.toString().matches("[0:]+")) {
+            // Not the clock in the corner ("1:47" beside "PM"): the elapsed time is low on the screen.
+            android.graphics.Rect r = new android.graphics.Rect();
+            n.getBoundsInScreen(r);
+            if (r.top > 600 && r.left < 600) return true;
+        }
+        for (int i = 0; i < n.getChildCount(); i++) if (moving(n.getChild(i))) return true;
+        return false;
     }
 
     private boolean press(int action) {
@@ -691,6 +730,7 @@ public class AppSearchService extends AccessibilityService {
         candidate = 0;
         kleva = false;
         epSeason = 0;
+        epPlayAt = 0;
         epMoves = 0;
         epStepAt = 0;
         wanted = null;
@@ -982,6 +1022,7 @@ public class AppSearchService extends AccessibilityService {
             // Picked: done once the search has given way to the title's page, or with an episode asked for (Surprise
             // me), once that episode is found on it.
             if (box == null) {
+                if (epPlayAt > 0) return playerStep(root);
                 if (epSeason > 0) return episodeStep(root);
                 hideDelay = 700;
                 return false;
@@ -1864,16 +1905,6 @@ public class AppSearchService extends AccessibilityService {
         android.widget.LinearLayout.LayoutParams blp = new android.widget.LinearLayout.LayoutParams(Math.round(300 * d), Math.round(6 * d));
         blp.topMargin = Math.round(30 * d);
         col.addView(track, blp);
-        if (coverEpisode != null) {
-            android.widget.TextView how = new android.widget.TextView(this);
-            how.setText("Finding it in Debrid Stream");
-            how.setTextColor(0x99FFFFFF);
-            how.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 12f);
-            how.setGravity(android.view.Gravity.CENTER);
-            android.widget.LinearLayout.LayoutParams hl = new android.widget.LinearLayout.LayoutParams(-2, -2);
-            hl.topMargin = Math.round(12 * d);
-            col.addView(how, hl);
-        }
         android.widget.FrameLayout.LayoutParams clp = new android.widget.FrameLayout.LayoutParams(-1, -2, android.view.Gravity.CENTER);
         clp.leftMargin = clp.rightMargin = Math.round(80 * d);
         v.addView(col, clp);

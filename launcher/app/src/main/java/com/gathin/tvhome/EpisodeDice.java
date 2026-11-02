@@ -82,8 +82,10 @@ final class EpisodeDice {
     private FrameLayout overlay;
     private final List<TextView> moodViews = new ArrayList<>(), pickViews = new ArrayList<>(), buttons = new ArrayList<>();
     private TextView lengthView, name, episode, line, about;
-    /** Debrid Stream's mark after "on", in the line of details: what Play opens. */
-    private ImageView onMark;
+    /** After "on" in the line of details: Debrid Stream's mark, then the services that carry the show (DiceRoll.marks). */
+    private LinearLayout marks;
+    /** The reel thrown like dice. */
+    private DiceRoll dice;
     private final ImageView[] reel = new ImageView[5];
     private int mood, how, row = 2, col;
     private boolean quick, rolling;
@@ -166,6 +168,7 @@ final class EpisodeDice {
     private void hide() {
         if (shown == this) shown = null;
         gen++;
+        dice.stop();
         View o = overlay;
         o.animate().alpha(0f).setDuration(180).withEndAction(() -> h.root.removeView(o)).start();
         h.paint();
@@ -224,6 +227,7 @@ final class EpisodeDice {
         rg.setStroke(h.px(6), Color.WHITE);
         ring.setBackground(rg);
         place(ring, 810, 316, 300, 450);
+        dice = new DiceRoll(h, overlay, reel, ring);
         name = h.text(30, semi, Color.WHITE);
         name.setGravity(Gravity.CENTER);
         place(name, 0, 778, 1920, 44);
@@ -234,13 +238,10 @@ final class EpisodeDice {
         meta.setGravity(Gravity.CENTER);
         line = h.text(18, regular, 0xD9FFFFFF);
         meta.addView(line);
-        onMark = new ImageView(c);
-        onMark.setAdjustViewBounds(true);
-        onMark.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        onMark.setVisibility(View.GONE);
-        LinearLayout.LayoutParams ml = new LinearLayout.LayoutParams(-2, h.px(38));
-        ml.leftMargin = h.px(10);
-        meta.addView(onMark, ml);
+        marks = new LinearLayout(c);
+        marks.setGravity(Gravity.CENTER_VERTICAL);
+        marks.setVisibility(View.GONE);
+        meta.addView(marks, new LinearLayout.LayoutParams(-2, h.px(42)));
         place(meta, 0, 856, 1920, 42);
         about = h.text(17, regular, 0xB3FFFFFF);
         about.setGravity(Gravity.CENTER);
@@ -278,8 +279,9 @@ final class EpisodeDice {
         name.setText("");
         episode.setText("");
         line.setText("");
-        onMark.setVisibility(View.GONE);
-        about.setText("Spinning…");
+        marks.setVisibility(View.GONE);
+        about.setText("Rolling the dice…");
+        dice.start(new ArrayList<>(pics));
         int m = mood, w = how;
         boolean q = quick;
         IO.execute(() -> {
@@ -310,7 +312,7 @@ final class EpisodeDice {
                 if (my != gen || shown != this) return;
                 pics.clear();
                 pics.addAll(bitmaps);
-                spin(my, 0, result);
+                land(my, result);
             });
         });
     }
@@ -418,48 +420,42 @@ final class EpisodeDice {
         return null;
     }
 
-    /** The reel's turns: the posters stepping along, slowing, stopping with the pick's show in the middle. */
-    private void spin(int my, int step, Object[] result) {
+    /** The dice land: the picked show on the middle card, the mood's others round it; then the episode. */
+    private void land(int my, Object[] result) {
         if (my != gen || shown != this) return;
-        if (pics.isEmpty() || result == null) {
+        Bitmap[] last = new Bitmap[5];
+        int n = pics.size();
+        for (int i = 0; i < 5; i++) last[i] = n == 0 ? DiceRoll.die(1 + random.nextInt(6)) : pics.get(((i - 2) % n + n) % n);
+        dice.land(last, () -> {
+            if (my != gen || shown != this) return;
             rolling = false;
-            about.setText(pics.isEmpty() ? "None of these shows is on your streaming apps right now. Try another mood."
-                    : "No episode fits that right now. Try another option, or spin again.");
-            for (ImageView v : reel) v.setImageDrawable(null);
-            pick = null;
-            return;
-        }
-        int steps = 12, n = pics.size();
-        int centre = step >= steps ? 0 : (steps - step) % n;
-        for (int i = 0; i < 5; i++) {
-            Bitmap b = pics.get(((centre + i - 2) % n + n) % n);
-            if (b != null) reel[i].setImageBitmap(b); else reel[i].setImageDrawable(null);
-        }
-        if (step < steps) {
-            MAIN.postDelayed(() -> spin(my, step + 1, result), 60 + step * 18L);
-            return;
-        }
-        rolling = false;
-        pick = (PagesV2.Title) result[1];
-        reel[2].setScaleX(0.94f);
-        reel[2].setScaleY(0.94f);
-        reel[2].animate().scaleX(1f).scaleY(1f).setDuration(260).start();
-        name.setText(pick.title);
-        episode.setText((String) result[2]);
-        // Where Play opens it: Debrid Stream's page for the show (as the page's posters do), its mark after "on";
-        // without Debrid Stream on the TV, the streaming service's name.
-        android.graphics.Bitmap mark = ReleaseAlerts.installed(c, ReleaseAlerts.DEBRID) ? ReleaseAlerts.debridLogo(c) : null;
-        String details = (String) result[3], app = (String) result[5];
-        line.setText(mark != null ? (details.isEmpty() ? "on" : details + "  ·  on")
-                : app != null ? (details.isEmpty() ? "on " + app : details + "  ·  on " + app) : details);
-        onMark.setImageBitmap(mark);
-        onMark.setVisibility(mark != null ? View.VISIBLE : View.GONE);
-        pickSeason = (Integer) result[6];
-        pickEpisode = (Integer) result[7];
-        pickEpisodeName = (String) result[8];
-        pickStill = (android.graphics.Bitmap) result[9];
-        String what = (String) result[4];
-        about.setText(what.isEmpty() ? MOODS[mood][0] + " · " + PICKS[how] : what);
+            if (pics.isEmpty() || result == null) {
+                about.setText(pics.isEmpty() ? "None of these shows is on your streaming apps right now. Try another mood."
+                        : "No episode fits that right now. Try another option, or spin again.");
+                pick = null;
+                return;
+            }
+            pick = (PagesV2.Title) result[1];
+            name.setText(pick.title);
+            episode.setText((String) result[2]);
+            // Where Play opens it: Debrid Stream's mark first, then the services the show is on; without any mark,
+            // the service's name.
+            boolean on = DiceRoll.marks(h, marks, YourShows.gb((JSONObject) result[0]));
+            String details = (String) result[3], app = (String) result[5];
+            line.setText(on ? (details.isEmpty() ? "on" : details + "  ·  on")
+                    : app != null ? (details.isEmpty() ? "on " + app : details + "  ·  on " + app) : details);
+            pickSeason = (Integer) result[6];
+            pickEpisode = (Integer) result[7];
+            pickEpisodeName = (String) result[8];
+            pickStill = (android.graphics.Bitmap) result[9];
+            String what = (String) result[4];
+            about.setText(what.isEmpty() ? MOODS[mood][0] + " · " + PICKS[how] : what);
+            for (View v : new View[]{name, episode, line, marks, about}) {
+                v.setAlpha(0f);
+                v.setTranslationY(h.px(10));
+                v.animate().alpha(1f).translationY(0).setDuration(320).start();
+            }
+        });
     }
 
     private boolean onKey(KeyEvent e) {
