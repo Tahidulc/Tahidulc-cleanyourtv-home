@@ -765,13 +765,16 @@ final class MatchDay {
         }
     }
 
+    /** The one gap between Match Day's buttons. */
+    private static final int GAP = 18;
+
     private void addButton(String text, Runnable action) {
         TextView b = h.text(19, semi, Color.WHITE);
         b.setText(text);
         b.setGravity(Gravity.CENTER);
         b.setPadding(h.px(26), 0, h.px(26), 0);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, h.px(52));
-        lp.rightMargin = h.px(16);
+        lp.rightMargin = h.px(GAP);
         buttons.addView(b, lp);
         buttonViews.add(b);
         actions.add(action);
@@ -787,7 +790,7 @@ final class MatchDay {
         mark.setScaleType(ImageView.ScaleType.FIT_CENTER);
         b.addView(mark, new FrameLayout.LayoutParams(logo.getWidth(), logo.getHeight(), Gravity.CENTER));
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, h.px(52));
-        lp.rightMargin = h.px(16);
+        lp.rightMargin = h.px(GAP);
         buttons.addView(b, lp);
         buttonViews.add(b);
         actions.add(action);
@@ -946,7 +949,10 @@ final class MatchDay {
             bg.setStroke(h.px(lit ? 0 : 2), 0x73FFFFFF);
             b.setBackground(bg);
             if (b instanceof TextView) ((TextView) b).setTextColor(lit ? 0xFF12178A : Color.WHITE);
-            b.animate().scaleX(lit ? 1.05f : 1f).scaleY(lit ? 1.05f : 1f).setDuration(150).start();
+            // Lit by its white fill alone, not grown: a grown button ate into the gap beside it, and the gaps between
+            // the buttons have to stay the same.
+            b.setScaleX(1f);
+            b.setScaleY(1f);
         }
     }
 }
