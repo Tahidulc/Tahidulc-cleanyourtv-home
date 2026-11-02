@@ -117,6 +117,13 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     /** Idle time on Home before ClockActivity; 0 is off (config.xml, home_idle_clock_minutes). */
     private long idleClockMs;
     private final Runnable showIdleClock = () -> startActivity(new Intent(this, ClockActivity.class));
+    /** Launcher v2: Ambient mode after the theme's "ambient_minutes" without a key on Home (0, the default, is off). */
+    private final android.os.Handler ambientTimer = new android.os.Handler(android.os.Looper.getMainLooper());
+    private long ambientMs;
+    private final Runnable showAmbient = () -> {
+        if (ambientNow()) startActivity(new Intent(this, AmbientActivity.class));
+        else restartAmbient();
+    };
     private String liveTvAction;
     private String liveTvInputId;
     /** The app library is on (config.xml, app_library): only then can the tile menu take an app off Home. */
@@ -1170,6 +1177,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             // helper that opens a tile's title in Debrid Stream is then switched back on before the next OK.
             AppSearchService.ensure(this);
             v2.resume();
+            ambientMs = ambientMinutes() * 60_000L;
+            restartAmbient();
             return;
         }
         // A festival that started or ended while Home was in the background: rebuild with or without it.
@@ -1383,8 +1392,33 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     @Override
     public void onUserInteraction() {
         super.onUserInteraction();
-        if (v2 != null) return;
+        if (v2 != null) { restartAmbient(); return; }
         restartIdleClock();
+    }
+
+    private void restartAmbient() {
+        ambientTimer.removeCallbacks(showAmbient);
+        if (ambientMs > 0) ambientTimer.postDelayed(showAmbient, ambientMs);
+    }
+
+    private long ambientMinutes() {
+        try {
+            return Math.max(0, Math.min(240, Long.parseLong(Config.themeString(this, "ambient_minutes", "0").trim())));
+        } catch (NumberFormatException e) {
+            return 0;
+        }
+    }
+
+    /**
+     * Whether Home can give way to Ambient mode now: the screen on, nothing playing (a preview with its sound, an
+     * alert's chime) and no alert or Live Centre up. Otherwise it waits another round.
+     */
+    private boolean ambientNow() {
+        android.os.PowerManager pm = getSystemService(android.os.PowerManager.class);
+        if (pm != null && !pm.isInteractive()) return false;
+        android.media.AudioManager am = getSystemService(android.media.AudioManager.class);
+        if (am != null && am.isMusicActive()) return false;
+        return !GoalWatchService.alertShowing() && !LiveCentre.isShowing();
     }
 
     private void restartIdleClock() {
@@ -1398,6 +1432,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         GoalWatchService.laneHome = false;
         GoalWatchService.relane();   // an alert in the score bar's place goes back to the corner over the app
         super.onPause();
+        ambientTimer.removeCallbacks(showAmbient);
         if (v2 != null) return;
         root.removeCallbacks(showIdleClock);
         endReorder();   // Home or another app while reordering keeps the order so far
