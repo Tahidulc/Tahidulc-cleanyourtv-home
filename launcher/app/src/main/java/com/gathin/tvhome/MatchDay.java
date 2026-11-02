@@ -54,6 +54,8 @@ final class MatchDay {
             "uefa.europa|UEL", "esp.copa_del_rey|COPA", "ita.coppa_italia|COPPA", "ger.dfb_pokal|POKAL", "fra.coupe_de_france|CDF"};
     private static final String[] ENGLAND_LEAGUES = {"fifa.friendly|FRIENDLY", "uefa.nations|NATIONS LEAGUE",
             "fifa.worldq.uefa|WC QUALIFIER", "uefa.euroq|EURO QUALIFIER", "uefa.euro|EURO", "fifa.world|WORLD CUP"};
+    /** The Premier League's bigger clubs, first among the 3pm games. */
+    private static final Set<String> BIG = new HashSet<>(Arrays.asList("359", "363", "364", "382", "367", "361", "362"));
     /** A game shows until this long after its kick-off. */
     private static final long AFTER_MS = 3 * 3600_000L;
 
@@ -67,6 +69,8 @@ final class MatchDay {
         long coverFrom;
         Bitmap league, home, away, logo;
         String homeForm = "", awayForm = "";
+        /** A 3pm Saturday Premier League game: not shown live on British TV; followed through Soccer Saturday. */
+        boolean blackout;
     }
 
     private final HomeV2 h;
@@ -321,6 +325,8 @@ final class MatchDay {
                 show = TvGuide.show(channels, name(g, true), name(g, false), g.kickoff);
                 if (show != null) rank = 4;
             }
+            // 3pm on a Saturday: not live on British TV, followed all the same (the bigger clubs' game first).
+            if (rank == 0 && blackout(g)) rank = BIG.contains(g.homeId) || BIG.contains(g.awayId) ? 5 : 6;
             if (rank == 0) continue;
             if (best == null || better(g, rank, best)) {
                 best = new Pick();
@@ -330,6 +336,13 @@ final class MatchDay {
             }
         }
         if (best == null) return null;
+        best.blackout = blackout(best.g);
+        if (best.blackout) {
+            // Not live on British TV: no channel for the game itself; Soccer Saturday follows it on Sky Sports News.
+            loadImages(best);
+            form(best);
+            return best;
+        }
         if (best.channel == null) {
             Object[] show = TvGuide.show(channels, name(best.g, true), name(best.g, false), best.g.kickoff);
             if (show != null) apply(best, show);
@@ -354,13 +367,33 @@ final class MatchDay {
         // The UHD channel's logo (Sky's, its HD box redrawn as UHD) wherever the UHD channel is the one tuned.
         if (best.watch != null && !best.watch.isEmpty() && HomeV2.uhdName(best.watch.get(0)) && best.channelLogo != null
                 && !best.channelLogo.endsWith("#uhd")) best.channelLogo = best.channelLogo + "#uhd";
+        loadImages(best);
+        if (best.logo == null && best.channelLogo != null) best.logo = HomeV2.trim(ScoresTicker.cachedLogo(c, best.channelLogo, h.px(360)));
+        form(best);
+        return best;
+    }
+
+    private void loadImages(Pick best) {
         int crest = h.px(96) * 2;
         if (best.g.homeLogo != null) best.home = ScoresTicker.cachedLogo(c, best.g.homeLogo, crest);
         if (best.g.awayLogo != null) best.away = ScoresTicker.cachedLogo(c, best.g.awayLogo, crest);
         if (best.g.leagueLogo != null) best.league = ScoresTicker.cachedLogo(c, best.g.leagueLogo.replace("/500/", "/500-dark/"), h.px(48) * 2);
-        if (best.logo == null && best.channelLogo != null) best.logo = HomeV2.trim(ScoresTicker.cachedLogo(c, best.channelLogo, h.px(360)));
-        form(best);
-        return best;
+    }
+
+    /** A Premier League game kicking off around 3pm on a Saturday, British time (the hour British TV may not show). */
+    static boolean blackout(ScoresTicker.Game g) {
+        if (g == null || !"eng.1".equals(g.slug) || g.kickoff == 0) return false;
+        java.time.ZonedDateTime t = Instant.ofEpochMilli(g.kickoff).atZone(ZoneId.of("Europe/London"));
+        int minute = t.getHour() * 60 + t.getMinute();
+        return t.getDayOfWeek() == java.time.DayOfWeek.SATURDAY && minute >= 14 * 60 + 45 && minute <= 15 * 60 + 15;
+    }
+
+    /** Sky Sports News from the TV guide's channels: {name, logo url}; null when the guide has none. */
+    private String[] soccerSaturday() {
+        for (String[] ch : HomeV2.guideChannels(c)) {
+            if (ch[1].toLowerCase(Locale.ROOT).contains("sky sports news")) return new String[]{ch[1], ScoresTicker.skyLogo(ch[0], ch[1])};
+        }
+        return null;
     }
 
     /** Manchester United first, then England, then the followed clubs; the rest only when on British TV. */
@@ -379,6 +412,9 @@ final class MatchDay {
         if ((rank == 1) != (best.rank == 1)) return rank == 1;
         int a = order(g.state), b = order(best.g.state);
         if (a != b) return a < b;
+        // Two still to come: the one starting first (then the better rank). Two live: the better rank, then the
+        // earlier. Two finished: the more recent.
+        if (g.state == 1 && g.kickoff != best.g.kickoff) return g.kickoff < best.g.kickoff;
         if (rank != best.rank) return rank < best.rank;
         return g.state == 2 ? g.kickoff > best.g.kickoff : g.kickoff < best.g.kickoff;
     }
@@ -481,7 +517,8 @@ final class MatchDay {
         else if (done) text = "Kick-off was " + ko;
         else if (p.coverFrom > 0 && p.coverFrom < g.kickoff) text = "Live from " + Instant.ofEpochMilli(p.coverFrom).atZone(ZoneId.systemDefault()).format(hm) + " · kick-off " + ko;
         else text = "Kick-off " + ko;
-        if (p.channel == null && p.watch == null) text += " · Not on British TV";
+        if (p.blackout) text += live ? " · not live on UK TV · Soccer Saturday on Sky Sports News" : " · 3pm, not live on UK TV";
+        else if (p.channel == null && p.watch == null) text += " · Not on British TV";
         line.setText(text);
         buttons(p);
         chip.setText("▲  MATCH DAY  ·  " + g.home + (live || done ? "  " + g.homeScore + "–" + g.awayScore + "  " : " v ") + g.away
@@ -552,6 +589,10 @@ final class MatchDay {
                     () -> h.tune(p.watch, p.channelLogo));
         }
         addButton("Live Centre", () -> LiveCentre.open(c, g.id));
+        String[] ssn = p.blackout ? soccerSaturday() : null;
+        if (ssn != null && g.state != 2) {
+            addButton("Soccer Saturday", () -> h.tune(java.util.Collections.singletonList(ssn[0]), ssn[1]));
+        }
         if (g.state == 1) {
             long at = p.coverFrom > 0 && p.coverFrom < g.kickoff ? p.coverFrom : g.kickoff;
             String when = Instant.ofEpochMilli(at).atZone(ZoneId.systemDefault()).format(hm);
