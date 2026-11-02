@@ -44,6 +44,15 @@ final class TvGuide {
             {"sheff utd", "sheffield united"}, {"sheff wed", "sheffield wednesday"}, {"qpr", "queens park rangers"}};
 
     static synchronized Channel find(String[] channels, String home, String away, long kickoff) {
+        Object[] s = show(channels, home, away, kickoff);
+        return s == null ? null : new Channel((String) s[0], (String) s[1]);
+    }
+
+    /**
+     * As find, with the programme as well: {channel name, logo url, start ms, end ms, Sky's programme id (its picture
+     * is images.metadata.sky.com/pd-image/ID/16-9/1280)}; null when no channel shows the game live.
+     */
+    static synchronized Object[] show(String[] channels, String home, String away, long kickoff) {
         if (home == null || away == null || kickoff == 0) return null;
         String date = Instant.ofEpochMilli(kickoff).atZone(ZoneOffset.UTC).toLocalDate().format(DateTimeFormatter.BASIC_ISO_DATE);
         List<Object[]> events = schedule(channels, date);
@@ -62,8 +71,9 @@ final class TvGuide {
                 String t1 = norm(title.substring(colon >= 0 ? colon + 1 : 4, v));
                 String t2 = norm(title.substring(v + 3));
                 if (same(t1, h) && same(t2, a) || same(t1, a) && same(t2, h)) {
-                    return new Channel(p.length > 1 ? p[1].trim() : sid,
-                            "https://d2n0069hmnqmmx.cloudfront.net/epgdata/1.0/newchanlogos/600/600/skychb" + sid + ".png");
+                    return new Object[]{p.length > 1 ? p[1].trim() : sid,
+                            "https://d2n0069hmnqmmx.cloudfront.net/epgdata/1.0/newchanlogos/600/600/skychb" + sid + ".png",
+                            st, en, e.length > 4 ? e[4] : ""};
                 }
             }
         }
@@ -210,7 +220,7 @@ final class TvGuide {
                 for (int k = 0; ev != null && k < ev.length(); k++) {
                     JSONObject e = ev.getJSONObject(k);
                     long st = e.optLong("st") * 1000L;
-                    out.add(new Object[]{s.optString("sid"), e.optString("t"), st, st + e.optLong("d") * 1000L});
+                    out.add(new Object[]{s.optString("sid"), e.optString("t"), st, st + e.optLong("d") * 1000L, e.optString("programmeuuid")});
                 }
             }
             days.put(date, out);

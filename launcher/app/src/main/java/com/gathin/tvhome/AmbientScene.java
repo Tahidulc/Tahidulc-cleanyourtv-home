@@ -45,7 +45,12 @@ final class AmbientScene {
     private final FrameLayout root, stage;
     private final TextView clock, date, weather, tomorrow;
     private final ImageView weatherIcon;
-    private final LinearLayout cards, strip;
+    private final LinearLayout cards, strip, left;
+    private TextView hint;
+    /** When the scene started, and whether the clock is on the right (it changes sides every few minutes). */
+    private long startedAt;
+    private boolean flipped;
+    private static final long FLIP_MS = 5 * 60_000L;
     private final Handler main = new Handler(Looper.getMainLooper());
     private final ExecutorService io = Executors.newSingleThreadExecutor();
     private final Random random = new Random();
@@ -64,9 +69,9 @@ final class AmbientScene {
         stage = new FrameLayout(c);
         root.addView(stage, new FrameLayout.LayoutParams(-1, -1));
 
-        LinearLayout left = new LinearLayout(c);
+        left = new LinearLayout(c);
         left.setOrientation(LinearLayout.VERTICAL);
-        clock = text(280, "sans-serif-thin", 0xFFFFFFFF);
+        clock = text(280, "sans-serif-thin", 0xE6FFFFFF);
         clock.setLetterSpacing(-0.03f);
         clock.setIncludeFontPadding(false);
         left.addView(clock);
@@ -97,7 +102,10 @@ final class AmbientScene {
         strip.setGravity(Gravity.CENTER_VERTICAL);
         strip.setPadding(px(140), 0, px(140), 0);
         strip.setBackgroundColor(0x0DFFFFFF);
-        root.addView(strip, new FrameLayout.LayoutParams(-1, px(84), Gravity.BOTTOM));
+        // Inside the drifting stage, clear of the edge: it moves with everything else.
+        FrameLayout.LayoutParams sp = new FrameLayout.LayoutParams(-1, px(84), Gravity.BOTTOM);
+        sp.bottomMargin = px(36);
+        stage.addView(strip, sp);
         showStrip(new ArrayList<>());
     }
 
@@ -108,8 +116,12 @@ final class AmbientScene {
     void start() {
         if (running) return;
         running = true;
+        startedAt = System.currentTimeMillis();
         tick.run();
         refresh.run();
+        main.postDelayed(flip, FLIP_MS);
+        // The way out is shown for the first minute only: no words left standing on the screen.
+        main.postDelayed(() -> { if (hint != null) hint.animate().alpha(0f).setDuration(1_500).start(); }, 60_000L);
     }
 
     void stop() {
@@ -130,13 +142,44 @@ final class AmbientScene {
             ZonedDateTime now = ZonedDateTime.now();
             clock.setText(now.format(DateTimeFormatter.ofPattern("HH:mm")));
             date.setText(now.format(DateTimeFormatter.ofPattern("EEEE d MMMM", Locale.UK)));
-            int h = now.getHour();
-            float dim = h >= 23 || h < 6 ? 0.6f : 1f;
-            stage.animate().translationX((random.nextFloat() * 60 - 30) * k).translationY((random.nextFloat() * 40 - 20) * k)
-                    .alpha(dim).setDuration(4_000).start();
-            strip.setAlpha(dim);
+            stage.animate().translationX((random.nextFloat() * 80 - 40) * k).translationY((random.nextFloat() * 50 - 25) * k)
+                    .alpha(dim()).setDuration(4_000).start();
             long toNext = 60_000L - (System.currentTimeMillis() % 60_000L) + 50;
             main.postDelayed(this, toNext);
+        }
+    };
+
+    /** Full brightness for the first five minutes, then a little lower; lower still from 23:00 to 06:00. */
+    private float dim() {
+        int h = ZonedDateTime.now().getHour();
+        if (h >= 23 || h < 6) return 0.55f;
+        return System.currentTimeMillis() - startedAt < 5 * 60_000L ? 1f : 0.8f;
+    }
+
+    /**
+     * Every five minutes the clock and the cards change sides, through a fade: with the minute's drift, no part of the
+     * screen shows the same thing for long.
+     */
+    private final Runnable flip = new Runnable() {
+        @Override public void run() {
+            if (!running) return;
+            stage.animate().cancel();
+            stage.animate().alpha(0f).setDuration(700).withEndAction(() -> {
+                flipped = !flipped;
+                FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) left.getLayoutParams();
+                lp.gravity = (flipped ? Gravity.END : Gravity.START) | Gravity.TOP;
+                lp.leftMargin = flipped ? 0 : px(140);
+                lp.rightMargin = flipped ? px(140) : 0;
+                left.setLayoutParams(lp);
+                left.setGravity(flipped ? Gravity.END : Gravity.START);
+                FrameLayout.LayoutParams cp = (FrameLayout.LayoutParams) cards.getLayoutParams();
+                cp.gravity = (flipped ? Gravity.START : Gravity.END) | Gravity.TOP;
+                cp.leftMargin = flipped ? px(120) : 0;
+                cp.rightMargin = flipped ? 0 : px(120);
+                cards.setLayoutParams(cp);
+                stage.animate().alpha(dim()).setDuration(900).start();
+            }).start();
+            main.postDelayed(this, FLIP_MS);
         }
     };
 
@@ -390,8 +433,9 @@ final class AmbientScene {
         }
         View gap = new View(c);
         strip.addView(gap, new LinearLayout.LayoutParams(0, 1, 1f));
-        TextView hint = text(20, "sans-serif", 0x8CFFFFFF);
+        hint = text(20, "sans-serif", 0x8CFFFFFF);
         hint.setText("Any button wakes Home");
+        if (running && System.currentTimeMillis() - startedAt > 60_000L) hint.setAlpha(0f);
         strip.addView(hint);
     }
 

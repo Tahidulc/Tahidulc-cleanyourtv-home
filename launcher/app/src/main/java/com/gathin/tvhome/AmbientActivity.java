@@ -28,10 +28,41 @@ public class AmbientActivity extends Activity {
     protected void onResume() {
         super.onResume();
         scene.start();
+        long ms = minutes() * 60_000L;
+        if (ms > 0) handler.postDelayed(toScreensaver, ms);
+    }
+
+    private final android.os.Handler handler = new android.os.Handler(android.os.Looper.getMainLooper());
+
+    /**
+     * After the theme's "ambient_screensaver_minutes" (10 when not set; 0: never) the TV's own screensaver takes over,
+     * started as Settings' "Start now" does (Android's Somnambulator); on a TV without it, the launcher's clock
+     * screensaver, which moves on black.
+     */
+    private final Runnable toScreensaver = () -> {
+        android.content.Intent dream = new android.content.Intent(android.content.Intent.ACTION_MAIN)
+                .setClassName("com.android.systemui", "com.android.systemui.Somnambulator")
+                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
+        try {
+            if (dream.resolveActivity(getPackageManager()) != null) startActivity(dream);
+            else startActivity(new android.content.Intent(this, ClockActivity.class));
+        } catch (RuntimeException e) {
+            startActivity(new android.content.Intent(this, ClockActivity.class));
+        }
+        finish();
+    };
+
+    private long minutes() {
+        try {
+            return Math.max(0, Math.min(240, Long.parseLong(Config.themeString(this, "ambient_screensaver_minutes", "10").trim())));
+        } catch (NumberFormatException e) {
+            return 10;
+        }
     }
 
     @Override
     protected void onPause() {
+        handler.removeCallbacks(toScreensaver);
         scene.stop();
         super.onPause();
         finish();   // never left behind in the back stack

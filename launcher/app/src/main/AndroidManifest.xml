@@ -33,6 +33,8 @@
     <queries>
         <!-- Google Assistant, which the lights panel sends its requests to. -->
         <package android:name="com.google.android.katniss" />
+        <!-- System UI's Somnambulator, which starts the screensaver now (Ambient mode hands over to it). -->
+        <package android:name="com.android.systemui" />
         <!-- Google TV's own Google Home panel (in its ambient app), for the lights button. -->
         <intent>
             <action android:name="com.google.android.libraries.tv.smarthome.intent.action.OPEN_SMART_HOME" />

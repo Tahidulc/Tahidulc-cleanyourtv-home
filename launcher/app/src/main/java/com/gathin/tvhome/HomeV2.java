@@ -129,7 +129,7 @@ final class HomeV2 {
         List<String> specs = new ArrayList<>();
     }
 
-    private static final int Z_TOP = 0, Z_RAIL = 1, Z_ROW = 2, Z_CATS = 3, Z_SCORES = 4;
+    private static final int Z_TOP = 0, Z_RAIL = 1, Z_ROW = 2, Z_CATS = 3, Z_SCORES = 4, Z_MATCH = 5;
 
     final MainActivity a;
     final Handler main = new Handler(Looper.getMainLooper());
@@ -178,6 +178,11 @@ final class HomeV2 {
     private PagesV2.Page page;
 
     private int zone = Z_ROW, topIdx, railIdx, rowIdx, catIdx;
+    /** Match Day at the top of Home (MatchDay), and which of its buttons the focus is on. */
+    private MatchDay match;
+    private int matchIdx;
+    /** Home has just come back: when Match Day has a game, the focus starts on it. */
+    private boolean matchFirst = true;
     /** The rail app whose tiles are in the row (-1: the row is For you or one of the boxes'). */
     private int railSel = -1;
     private String mode = "foryou";
@@ -239,6 +244,12 @@ final class HomeV2 {
         label = text(18, semi, 0xBFFFFFFF);
         label.setLetterSpacing(0.11f);
         add(label, 180, 532, 1500, 34);   // over the first tile
+        match = new MatchDay(this);
+        add(match.panel, 216, 190, 1320, 342);
+        FrameLayout chipBox = new FrameLayout(a);
+        chipBox.addView(match.chip, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.END));
+        add(chipBox, 1120, 524, 700, 40);
+        match.changed = this::matchChanged;
         viewport = new FrameLayout(a);
         // Clipped to its own box: a row scrolled along stays inside it, clear of the rail.
         viewport.setOutlineProvider(ViewOutlineProvider.BOUNDS);
@@ -587,6 +598,9 @@ final class HomeV2 {
 
     void resume() {
         GoalWatchService.laneHome = true;
+        matchFirst = true;
+        match.start();
+        if (match.active() && zone == Z_ROW && page == null && !guide.isOpen()) { zone = Z_MATCH; matchIdx = 0; matchFirst = false; paint(); }
         // An alert on Home takes the score bar's place: the pills fade out under it and back once it has gone.
         if (scores != null) {
             scores.cover(false);
@@ -647,6 +661,7 @@ final class HomeV2 {
 
     void stop() {
         main.removeCallbacks(warmPages);
+        if (match != null) match.stop();
         if (players != null) players.stop();
         playingTile = null;
         GoalWatchService.laneHome = false;
@@ -683,7 +698,24 @@ final class HomeV2 {
         railSel = -1;
         zone = Z_ROW;
         rowIdx = 0;
+        if (match != null && match.active()) { zone = Z_MATCH; matchIdx = 0; }
         load("foryou");
+        paint();
+    }
+
+    /**
+     * Match Day came, changed or went: Home just back with the focus on the first tile moves up onto it; gone (or put
+     * away with Back) while the focus was on it, the focus goes down to the row.
+     */
+    private void matchChanged() {
+        if (match.active()) {
+            if (matchFirst && zone == Z_ROW && rowIdx == 0 && page == null && !guide.isOpen()) { zone = Z_MATCH; matchIdx = 0; }
+            matchFirst = false;
+            matchIdx = Math.max(0, Math.min(matchIdx, match.buttonCount() - 1));
+        } else if (zone == Z_MATCH) {
+            zone = shown.isEmpty() ? Z_RAIL : Z_ROW;
+            if (rowIdx < shown.size()) hero(shown.get(rowIdx));
+        }
         paint();
     }
 
@@ -722,6 +754,9 @@ final class HomeV2 {
                     closePage();
                     if (onBoxes && !shown.isEmpty()) zone = Z_ROW;
                     paint();
+                } else if (zone == Z_MATCH) {
+                    // Back on Match Day: put away until tomorrow, the focus on the row.
+                    match.hideToday();
                 } else if (zone == Z_SCORES) {
                     View f = a.getCurrentFocus();
                     if (f != null) f.clearFocus();
@@ -808,7 +843,26 @@ final class HomeV2 {
                 if (code == KeyEvent.KEYCODE_DPAD_UP && scores != null && scores.focus()) zone = Z_SCORES;
                 else if (code == KeyEvent.KEYCODE_DPAD_LEFT && topIdx > 0) topIdx--;
                 else if (code == KeyEvent.KEYCODE_DPAD_RIGHT && topIdx < topViews.size() - 1) topIdx++;
+                else if (code == KeyEvent.KEYCODE_DPAD_DOWN && match.active() && page == null) { zone = Z_MATCH; matchIdx = 0; }
                 else if (code == KeyEvent.KEYCODE_DPAD_DOWN) zone = n > 0 ? Z_ROW : Z_RAIL;
+                break;
+            case Z_MATCH:
+                if (code == KeyEvent.KEYCODE_DPAD_LEFT) {
+                    if (matchIdx > 0) { matchIdx--; break; }
+                    zone = Z_RAIL;
+                    railIdx = Math.max(0, railSel);
+                    if (railSel < 0 || railViews.get(railSel).getTag() == null) selectRail(railIdx);
+                } else if (code == KeyEvent.KEYCODE_DPAD_RIGHT) {
+                    if (matchIdx < match.buttonCount() - 1) matchIdx++;
+                    break;
+                } else if (code == KeyEvent.KEYCODE_DPAD_UP) {
+                    zone = Z_TOP;
+                    topIdx = 0;
+                } else if (code == KeyEvent.KEYCODE_DPAD_DOWN) {
+                    zone = n > 0 ? Z_ROW : Z_CATS;
+                }
+                // Off Match Day: the hero is the tile's again.
+                if (zone != Z_MATCH && rowIdx < n) hero(shown.get(rowIdx));
                 break;
             case Z_RAIL:
                 if (parked && page != null) {
@@ -850,8 +904,9 @@ final class HomeV2 {
                 } else if (code == KeyEvent.KEYCODE_DPAD_RIGHT) {
                     if (rowIdx < n - 1) rowIdx++;
                 } else if (code == KeyEvent.KEYCODE_DPAD_UP) {
-                    zone = Z_TOP;
-                    topIdx = 0;
+                    // Up from the row: Match Day when there is one today, else the top bar.
+                    if (match.active() && page == null) { zone = Z_MATCH; matchIdx = 0; }
+                    else { zone = Z_TOP; topIdx = 0; }
                 } else if (code == KeyEvent.KEYCODE_DPAD_DOWN) {
                     zone = Z_CATS;
                     catIdx = Math.min(5, (rowIdx - Math.max(0, rowIdx - 3)) * 6 / 4);
@@ -878,6 +933,9 @@ final class HomeV2 {
 
     private void press() {
         switch (zone) {
+            case Z_MATCH:
+                match.press(matchIdx);
+                return;
             case Z_TOP:
                 Object r = topViews.get(topIdx).getTag();
                 if (r instanceof Runnable) ((Runnable) r).run();
@@ -1120,6 +1178,16 @@ final class HomeV2 {
         // A score pill keeps Android's focus (and its light) after OK took the viewer to the game; once Home's own
         // focus is elsewhere, the pill lets it go, so only one thing is ever lit.
         if (zone != Z_SCORES && scores != null && scores.hasFocus()) root.requestFocus();
+        if (match != null) {
+            boolean onMatch = zone == Z_MATCH && match.active();
+            match.paint(onMatch, matchIdx, page == null && !guide.isOpen());
+            if (onMatch) {
+                main.removeCallbacks(heroLater);
+                htext.animate().cancel();
+                htext.setAlpha(0f);
+                heroPicture(match.pick().picture);
+            }
+        }
         for (int i = 0; i < railViews.size(); i++) {
             FrameLayout f = railViews.get(i);
             boolean on = zone == Z_RAIL && i == railIdx, sel = i == railSel;
@@ -1536,7 +1604,15 @@ final class HomeV2 {
     private int heroGen;
 
     void hero(Tile t) {
+        // Match Day holds the top while the focus is on it: the tile's picture and words wait for the focus.
+        if (zone == Z_MATCH && match != null && match.active()) { heroTile = t; return; }
         String img = t.heroImage != null ? t.heroImage : t.image;
+        heroPicture(img);
+        htextFor(t);
+    }
+
+    /** The hero's picture, cross-faded in (null: none). */
+    void heroPicture(String img) {
         if (img != null && !img.equals(heroShown)) {
             // A new picture: any older one still on its way is not to be faded in when it arrives.
             int gen = ++heroGen;
@@ -1555,6 +1631,9 @@ final class HomeV2 {
             heroA.animate().alpha(0f).setDuration(300).start();
             heroB.animate().alpha(0f).setDuration(300).start();
         }
+    }
+
+    private void htextFor(Tile t) {
         // The words fade as one cached picture (withLayer), not redrawn line by line each frame of the fade.
         htext.animate().alpha(0f).setDuration(90).withLayer().withEndAction(() -> {
             hTop.setImageDrawable(null);
