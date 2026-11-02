@@ -100,6 +100,15 @@ final class PagesV2 {
         String youtube;
         /** Continue watching: the app it was being watched in, which OK opens again. */
         String app;
+        /** A label on the poster's top corner (Your shows: "NEW · S4 E1", "E7 TOMORROW"), its colours. */
+        String badge;
+        int badgeBg, badgeFg;
+        /** A line along the poster's foot (Your shows: "S3 · 5 of 8"). */
+        String foot;
+        /** Fits tonight: its running time in minutes; the poster says when it would end if started now. 0: not shown. */
+        int runtime;
+        /** What OK does instead of the page's own (Your shows, a series on none of the TV's apps). */
+        Runnable ok;
     }
 
     /**
@@ -539,7 +548,37 @@ final class PagesV2 {
                         if (fl.width != w) { fl.width = w; fill.setLayoutParams(fl); }
                     });
                 }
-                // Just the poster (and its trailer): no words over it, on every page.
+                // Fits tonight and Your shows: a line along the foot (when it would end; where the series is up to),
+                // on a shade, faded out while the poster is widened (its logo goes there).
+                String foot = t.runtime > 0 ? FitsTonight.ends(t.runtime) : t.foot;
+                if (foot != null) {
+                    TextView line = h.text(t.runtime > 0 ? 18 : 15, h.semi, Color.WHITE);
+                    line.setTag("foot");
+                    line.setText(foot);
+                    line.setSingleLine(true);
+                    line.setGravity(Gravity.BOTTOM);
+                    line.setPadding(px(10), px(34), px(10), px(done != null ? 24 : 12));
+                    line.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0x00000000, 0xD9000000}));
+                    f.addView(line, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM));
+                    // The bar stays on top of the shade.
+                    View bar = f.findViewWithTag("progress");
+                    if (bar != null) bar.bringToFront();
+                }
+                if (t.badge != null) {
+                    TextView b = h.text(13, h.semi, t.badgeFg);
+                    b.setText(t.badge);
+                    b.setLetterSpacing(0.06f);
+                    b.setSingleLine(true);
+                    b.setPadding(px(8), px(4), px(8), px(4));
+                    b.setBackground(h.fill(6, t.badgeBg));
+                    b.setMaxWidth(px(NARROW - 16));
+                    FrameLayout.LayoutParams bl = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
+                            Gravity.TOP | Gravity.START);
+                    bl.leftMargin = px(8);
+                    bl.topMargin = px(8);
+                    f.addView(b, bl);
+                }
+                // Otherwise just the poster (and its trailer): no words over it.
                 LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(px(NARROW), px(TALL));
                 lp.rightMargin = px(GAP);
                 r.strip.addView(f, lp);
@@ -632,6 +671,8 @@ final class PagesV2 {
                     ImageView wide = (ImageView) f.findViewWithTag("wide");
                     Title t = r.items.get(i);
                     // Widened: the title's own logo at its foot (fetched the first time), over the picture and trailer.
+                    View footLine = f.findViewWithTag("foot");
+                    if (footLine != null) footLine.animate().alpha(on ? 0f : 1f).setDuration(on ? 120 : 250).start();
                     View logo = f.findViewWithTag("titlelogo");
                     if (on && logo == null) logo = h.titleLogo(f, t.id, t.tv, 220, 62);
                     if (logo != null && !on) logo.animate().alpha(0f).setDuration(150).start();
@@ -693,7 +734,9 @@ final class PagesV2 {
             tile.heroImage = t.backdrop != null ? t.backdrop : t.poster;
             tile.heroTop = crumb;
             String vote = t.vote > 0 ? String.format(Locale.UK, " · ★ %.1f", t.vote) : "";
-            tile.heroMeta = TextUtils.join(" · ", nonEmpty(t.year, t.what, t.tv ? "Series" : "Film")) + vote;
+            // Fits tonight: when it would end, first.
+            String fit = t.runtime > 0 ? FitsTonight.heroLine(h.a, t.runtime) : null;
+            tile.heroMeta = TextUtils.join(" · ", nonEmpty(fit, t.year, t.what, t.tv ? "Series" : "Film")) + vote;
             tile.heroText = t.overview;
             // The running time and the streaming service (TMDB, looked up by Home's hero), and the store's marks.
             tile.tmdbId = t.id;
@@ -746,6 +789,7 @@ final class PagesV2 {
             if (ok(code)) {
                 if (e.getAction() == KeyEvent.ACTION_UP && !onTabs && row < rows.size() && idx < rows.get(row).items.size()) {
                     Title t = rows.get(row).items.get(idx);
+                    if (t.ok != null) { t.ok.run(); return true; }
                     String pkg = h.debridPackage();
                     if (t.app != null && !t.app.equals(pkg)) { h.openApp(t.app); return true; }
                     if (pkg != null) {
@@ -902,6 +946,7 @@ final class PagesV2 {
     static PosterPage movies(HomeV2 h) {
         String m = "discover/movie?sort_by=popularity.desc&watch_region=GB";
         return sections(h, "MOVIES", 0xFFFF4FA3, false, new String[][]{
+                {"Fits tonight", "@fits", ""},
                 {"Popular", "movie/popular?region=GB", ""},
                 {"Top 10", "trending/movie/week", "n"},
                 {"New to stream", m + "&region=GB&with_release_type=4&release_date.gte=" + since(45) + "&release_date.lte=" + today(), ""},
@@ -973,6 +1018,8 @@ final class PagesV2 {
         for (int i = 0; i < spec.length; i++) tabs[i + 1] = spec[i][0];
         PosterPage p = new PosterPage(h, crumb, colour, tabs, new int[]{584 - 62}, t -> t == 0
                 ? Arrays.asList(resumeRow(h, tv))
+                // The tabs of their own: Fits tonight (Movies), Your shows (TV shows).
+                : "@fits".equals(spec[t - 1][1]) ? Arrays.asList(FitsTonight.row(h))
                 : Arrays.asList(row(null, null, "n".equals(spec[t - 1][2]), tmdb(k, spec[t - 1][1], tv))));
         return p.startOn(resumeEmpty(h, tv) ? 1 : 0);
     }

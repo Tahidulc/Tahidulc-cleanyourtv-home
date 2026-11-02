@@ -1781,6 +1781,42 @@ final class HomeV2 {
         return SERVICE_APPS.get(provider);
     }
 
+    /** TMDB's UK streaming services whose apps are on this TV, as discover's with_watch_providers takes them ("8|9|337"). */
+    static String installedProviders(HomeV2 h) {
+        StringBuilder b = new StringBuilder();
+        for (Map.Entry<String, String> e : SERVICE_APPS.entrySet()) {
+            if ("2".equals(e.getKey())) continue;   // Apple's store, not a subscription
+            if (h.installed(e.getValue())) b.append(b.length() > 0 ? "|" : "").append(e.getKey());
+        }
+        return b.toString();
+    }
+
+    /** The app on this TV that streams a title in the UK (TMDB's "flatrate" providers for it, gb), or null. */
+    static String onYourApps(HomeV2 h, JSONObject gb) {
+        JSONArray flat = gb == null ? null : gb.optJSONArray("flatrate");
+        for (int i = 0; flat != null && i < flat.length(); i++) {
+            JSONObject p = flat.optJSONObject(i);
+            String app = p == null ? null : SERVICE_APPS.get(String.valueOf(p.optInt("provider_id")));
+            if (app != null && h.installed(app)) return app;
+        }
+        return null;
+    }
+
+    /** The store on this TV that rents or sells a title in the UK (Prime Video, Apple TV, YouTube, Google TV), or null. */
+    static String storeFor(HomeV2 h, JSONObject gb) {
+        String[][] stores = {{"10", "com.amazon.amazonvideo.livingroom"}, {"2", "com.apple.atve.androidtv.appletv"},
+                {"192", "com.google.android.youtube.tv"}, {"3", "com.google.android.videos"}};
+        for (String kind : new String[]{"rent", "buy"}) {
+            JSONArray list = gb == null ? null : gb.optJSONArray(kind);
+            for (int i = 0; list != null && i < list.length(); i++) {
+                JSONObject p = list.optJSONObject(i);
+                String id = p == null ? "" : String.valueOf(p.optInt("provider_id"));
+                for (String[] s : stores) if (s[0].equals(id) && h.installed(s[1])) return s[1];
+            }
+        }
+        return null;
+    }
+
     /** The services' own logos, transparent, shipped with the launcher (TMDB's providers by id); 0 for the others. */
     static int serviceLogo(String provider) {
         if (provider == null) return 0;
