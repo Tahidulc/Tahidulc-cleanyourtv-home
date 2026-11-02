@@ -50,6 +50,11 @@ public class AppSearchService extends AccessibilityService {
     private long hideDelay, pickedAt, lastBack, startedAt, lastSearch;
     private int searches;
 
+    /** The screen locked as the power button does (the TV to sleep); false without the helper or on Android 8. */
+    static boolean sleepScreen() {
+        return instance != null && android.os.Build.VERSION.SDK_INT >= 28 && instance.performGlobalAction(GLOBAL_ACTION_LOCK_SCREEN);
+    }
+
     /** Opens pkg and, with the helper on, its search for query. False when the app could not be opened. */
     static boolean search(Context c, String pkg, String query) {
         return search(c, pkg, query, false);

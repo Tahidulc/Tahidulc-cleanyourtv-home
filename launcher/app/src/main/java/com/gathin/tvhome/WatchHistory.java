@@ -91,6 +91,11 @@ public class WatchHistory extends NotificationListenerService {
         if (sessions != null) sessions.removeOnActiveSessionsChangedListener(changed);
     }
 
+    /** The media sessions playing now (SleepAfter watches the one it was asked about). */
+    List<MediaController> controllers() {
+        return controllers;
+    }
+
     private void tick() {
         for (MediaController c : controllers) {
             try {
@@ -101,6 +106,10 @@ public class WatchHistory extends NotificationListenerService {
                 log(c);
             } catch (Exception ignored) {
             }
+        }
+        try {
+            SleepAfter.tick(this, controllers);
+        } catch (Exception ignored) {
         }
         main.postDelayed(tick, TICK_MS);
     }
