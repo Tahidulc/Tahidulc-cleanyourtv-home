@@ -17,8 +17,10 @@ import java.util.concurrent.Executors;
 
 /**
  * The current weather beside the date ("11° · Light rain · Manchester"), from Open-Meteo (no key), for the
- * config.xml weather_latitude / weather_longitude. Read when Home comes up and every 30 minutes while it is
- * visible, never in the background. Hidden until the first answer arrives.
+ * config.xml weather_latitude / weather_longitude, and from MET Norway's forecast when Open-Meteo does not answer (it
+ * turns callers away when busy). Read when Home comes up and every 30 minutes while it is visible, never in the
+ * background; after a miss, again in a minute, then two, then every five. The last reading is kept, so Home starting
+ * afresh (an update, a crash) shows it at once if it is under three hours old; hidden only with none at all.
  */
 final class WeatherLine {
     private static final long EVERY_MS = 30 * 60_000L;
@@ -30,6 +32,9 @@ final class WeatherLine {
     private final ExecutorService io = Executors.newSingleThreadExecutor();
     private long fetchedAt;
     private boolean running;
+    /** Misses in a row, for the wait before the next try. */
+    private int misses;
+    private static final long KEEP_MS = 3 * 60 * 60_000L;
     private final Runnable tick = this::fetch;
     /** The next five days: {date, weather code, high, low, rain %}. */
     private volatile java.util.List<String[]> days = new java.util.ArrayList<>();
@@ -105,6 +110,77 @@ final class WeatherLine {
         this.longitude = longitude;
         this.place = place;
         view.setVisibility(View.GONE);
+        // The last reading at once, while a new one is fetched.
+        android.content.SharedPreferences p = view.getContext().getSharedPreferences("weather_line", android.content.Context.MODE_PRIVATE);
+        long at = p.getLong("at", 0);
+        if (at > 0 && System.currentTimeMillis() - at < KEEP_MS) {
+            show(p.getLong("temp", 0), p.getInt("code", 3), p.getBoolean("day", true));
+            fetchedAt = at;
+        }
+    }
+
+    /** "11°  ·  Manchester", with its icon, on the pill. */
+    private void show(long temp, int code, boolean isDay) {
+        String text = String.format(Locale.getDefault(), "%d°", temp) + (place.isEmpty() ? "" : "  ·  " + place);
+        view.setText(text);
+        view.setContentDescription(describe(code) + ", " + text);
+        int iconRes = light ? lightIcon(code, isDay) : icon(code, isDay);
+        android.graphics.drawable.Drawable d = view.getContext().getDrawable(iconRes);
+        if (d != null) {
+            int size = Math.round(view.getTextSize() * 1.6f);
+            d.setBounds(0, 0, size, size);
+        }
+        view.setCompoundDrawablePadding(Math.round(view.getTextSize() * 0.6f));
+        view.setCompoundDrawables(d, null, null, null);
+        view.setVisibility(View.VISIBLE);
+    }
+
+    /** {temperature, WMO code, 1 by day} from MET Norway's forecast for the next hour; null when it does not answer. */
+    private long[] metNorway() {
+        try {
+            String url = String.format(Locale.ROOT, "https://api.met.no/weatherapi/locationforecast/2.0/compact?lat=%.4f&lon=%.4f",
+                    Double.parseDouble(latitude), Double.parseDouble(longitude));
+            HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
+            conn.setConnectTimeout(6000);
+            conn.setReadTimeout(8000);
+            // MET Norway asks every caller to say who it is.
+            conn.setRequestProperty("User-Agent", "TVHome launcher (com.gathin.tvhome; github.com/Gathin23/cleanyourtv)");
+            String body;
+            try (InputStream in = conn.getInputStream()) {
+                ByteArrayOutputStream out = new ByteArrayOutputStream();
+                byte[] buf = new byte[8192];
+                int n;
+                while ((n = in.read(buf)) > 0 && out.size() < 512 * 1024) out.write(buf, 0, n);
+                body = out.toString("UTF-8");
+            } finally {
+                conn.disconnect();
+            }
+            JSONObject now = new JSONObject(body).getJSONObject("properties").getJSONArray("timeseries").getJSONObject(0)
+                    .getJSONObject("data");
+            double temp = now.getJSONObject("instant").getJSONObject("details").getDouble("air_temperature");
+            JSONObject next = now.optJSONObject("next_1_hours");
+            if (next == null) next = now.optJSONObject("next_6_hours");
+            String symbol = next == null ? "cloudy" : next.getJSONObject("summary").optString("symbol_code", "cloudy");
+            return new long[]{Math.round(temp), wmo(symbol), symbol.endsWith("_night") ? 0 : 1};
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /** MET Norway's symbol ("partlycloudy_day", "lightrainshowers_night") as the nearest WMO code. */
+    static int wmo(String symbol) {
+        String s = symbol.replaceAll("_(day|night|polartwilight)$", "");
+        if (s.contains("thunder")) return 95;
+        if (s.startsWith("clearsky")) return 0;
+        if (s.startsWith("fair")) return 1;
+        if (s.startsWith("partlycloudy")) return 2;
+        if (s.equals("fog")) return 45;
+        if (s.contains("snowshowers")) return 85;
+        if (s.contains("snow")) return s.startsWith("heavy") ? 75 : s.startsWith("light") ? 71 : 73;
+        if (s.contains("sleet")) return 66;
+        if (s.contains("rainshowers")) return s.startsWith("heavy") ? 82 : 80;
+        if (s.contains("rain")) return s.startsWith("heavy") ? 65 : s.startsWith("light") ? 61 : 63;
+        return 3;
     }
 
     void start() {
@@ -132,9 +208,7 @@ final class WeatherLine {
                 + "&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max"
                 + "&forecast_days=6&timezone=auto";
         io.execute(() -> {
-            String line = null;
-            int icon = 0;
-            String words = "";
+            long[] got = null;
             try {
                 HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
                 conn.setConnectTimeout(6000);
@@ -164,32 +238,25 @@ final class WeatherLine {
                     }
                     days = next;
                 }
-                long temp = Math.round(current.getDouble("temperature_2m"));
-                int code = current.getInt("weather_code");
-                words = describe(code);
-                boolean isDay = current.optInt("is_day", 1) == 1;
-                icon = light ? lightIcon(code, isDay) : icon(code, isDay);
-                line = String.format(Locale.getDefault(), "%d°", temp) + (place.isEmpty() ? "" : "  ·  " + place);
+                got = new long[]{Math.round(current.getDouble("temperature_2m")), current.getInt("weather_code"),
+                        current.optInt("is_day", 1)};
             } catch (Exception ignored) {
+                // busy or unreachable: MET Norway next
             }
-            final String text = line;
-            final int iconRes = icon;
-            final String description = words;
+            if (got == null) got = metNorway();
+            final long[] reading = got;
             main.post(() -> {
-                if (text != null) {
+                if (reading != null) {
+                    misses = 0;
                     fetchedAt = System.currentTimeMillis();
-                    view.setText(text);
-                    view.setContentDescription(description + ", " + text);
-                    android.graphics.drawable.Drawable d = iconRes == 0 ? null : view.getContext().getDrawable(iconRes);
-                    if (d != null) {
-                        int size = Math.round(view.getTextSize() * 1.6f);
-                        d.setBounds(0, 0, size, size);
-                    }
-                    view.setCompoundDrawablePadding(Math.round(view.getTextSize() * 0.6f));
-                    view.setCompoundDrawables(d, null, null, null);
-                    view.setVisibility(View.VISIBLE);
+                    show(reading[0], (int) reading[1], reading[2] == 1);
+                    view.getContext().getSharedPreferences("weather_line", android.content.Context.MODE_PRIVATE).edit()
+                            .putLong("at", fetchedAt).putLong("temp", reading[0]).putInt("code", (int) reading[1])
+                            .putBoolean("day", reading[2] == 1).apply();
+                } else {
+                    misses++;
                 }
-                if (running) main.postDelayed(tick, text != null ? EVERY_MS : RETRY_MS);
+                if (running) main.postDelayed(tick, reading != null ? EVERY_MS : misses == 1 ? 60_000L : misses == 2 ? 120_000L : RETRY_MS);
             });
         });
     }
