@@ -190,7 +190,7 @@ final class YourShows {
         return null;
     }
 
-    private static JSONObject details(String key, int id) {
+    static JSONObject details(String key, int id) {
         if (key == null || key.isEmpty()) return null;
         synchronized (DETAILS) {
             Object[] had = DETAILS.get(id);

@@ -1,0 +1,230 @@
+package com.gathin.tvhome;
+
+import android.content.Context;
+import android.content.SharedPreferences;
+import android.graphics.Bitmap;
+
+import org.json.JSONArray;
+import org.json.JSONObject;
+
+import java.time.LocalDate;
+import java.time.LocalTime;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+
+/**
+ * Pop-ups when something new comes out (theme "release_alerts", on unless set false): a new episode of a series
+ * watched on this TV in the last two months (Your shows), and a new film arriving on the TV's own streaming apps
+ * (TMDB's UK digital and TV releases on those services, the popular ones, two a day at most).
+ * For a title on one of the TV's streaming apps the card says "Released on Debrid Stream" and OK opens Debrid
+ * Stream's page for it, as Movies and TV shows do. A new episode of a series on none of the TV's apps says only that
+ * it is out; OK opens the store on the TV that sells it, when there is one. Black card, white writing; each title
+ * once. Checked every two hours while the alerts service runs, between 08:00 and 23:30.
+ */
+final class ReleaseAlerts {
+    private ReleaseAlerts() { }
+
+    static final String DEBRID = "com.debridstream.tv";
+    private static final int RED = 0xFFE8112D;
+
+    static boolean on(Context c) {
+        return Config.themeFlag(c, "release_alerts", true);
+    }
+
+    /** Off the main thread. force (adb's test): any hour, and the newest even if shown before. */
+    static void check(Context c, boolean force) {
+        String key = Config.themeString(c, "tmdb_key", "").trim();
+        if (key.isEmpty() || !force && !on(c)) return;
+        int now = LocalTime.now().toSecondOfDay() / 60;
+        if (!force && (now < 8 * 60 || now > 23 * 60 + 30)) return;
+        SharedPreferences p = c.getSharedPreferences("releases", Context.MODE_PRIVATE);
+        Set<String> told = new HashSet<>(p.getStringSet("told", new HashSet<>()));
+        List<ScoreCard.Data> cards = new ArrayList<>();
+        try {
+            episodes(c, key, told, force, cards);
+        } catch (Exception ignored) {
+            // the episodes left for next time
+        }
+        try {
+            films(c, key, told, force, cards);
+        } catch (Exception ignored) {
+            // the films left for next time
+        }
+        if (told.size() > 300) told.clear();
+        p.edit().putStringSet("told", told).apply();
+        android.os.Handler main = new android.os.Handler(android.os.Looper.getMainLooper());
+        for (ScoreCard.Data d : cards) main.post(() -> ScoreCard.show(c, d));
+    }
+
+    /** New episodes, out today or yesterday, of the series watched here, that have not been watched yet. */
+    private static void episodes(Context c, String key, Set<String> told, boolean force, List<ScoreCard.Data> out) {
+        long since = System.currentTimeMillis() - 60L * 24 * 3600_000L;
+        Set<Integer> seen = new HashSet<>();
+        LocalDate today = LocalDate.now();
+        for (WatchHistory.Entry e : WatchHistory.load(c)) {
+            if (!e.tv || e.tmdbId <= 0 || e.at < since || !seen.add(e.tmdbId)) continue;
+            JSONObject d = YourShows.details(key, e.tmdbId);
+            JSONObject last = d == null ? null : d.optJSONObject("last_episode_to_air");
+            if (last == null) continue;
+            LocalDate aired;
+            try {
+                aired = LocalDate.parse(last.optString("air_date"));
+            } catch (Exception x) {
+                continue;
+            }
+            if (aired.isAfter(today) || aired.isBefore(today.minusDays(force ? 30 : 1))) continue;
+            int s = last.optInt("season_number"), ep = last.optInt("episode_number");
+            // Already watched (that one, or one after it)?
+            int[] at = YourShows.position(e);
+            if (at != null && (at[0] > s || at[0] == s && at[1] >= ep && (at[1] > ep || e.progress() > 0.5f))) continue;
+            String id = "tv:" + e.tmdbId + ":" + s + "x" + ep;
+            if (!told.add(id) && !force) continue;
+            String name = d.optString("name", e.show != null ? e.show : e.title);
+            String epName = last.optString("name", "");
+            ScoreCard.Data card = base(c, key, e.tmdbId, true);
+            card.label = "NEW EPISODE";
+            card.headline = name + " · S" + s + " E" + ep + (epName.isEmpty() || epName.matches("(?i)episode \\d+") ? "" : " “" + epName + "”");
+            String still = last.optString("still_path", "");
+            card.picture = picture(c, !still.isEmpty() && !"null".equals(still) ? "https://image.tmdb.org/t/p/w300" + still
+                    : backdrop(d, "w300"));
+            String art = backdrop(d, "w1280");
+            JSONObject gb = YourShows.gb(d);
+            if (onApps(c, gb)) {
+                debrid(c, card, name, true, art);
+            } else {
+                card.line = aired.equals(today) ? "Out today" : "Out yesterday";
+                String store = store(c, gb);
+                if (store != null) {
+                    card.channel = storeName(store);
+                    card.watch = () -> AppSearchService.search(c, store, name, true, null, null);
+                }
+            }
+            out.add(card);
+            if (out.size() >= 3) return;
+        }
+    }
+
+    /** New films on the TV's streaming apps, out today or yesterday: the two most popular. */
+    private static void films(Context c, String key, Set<String> told, boolean force, List<ScoreCard.Data> out) throws Exception {
+        String providers = providers(c);
+        if (providers.isEmpty()) return;
+        LocalDate today = LocalDate.now();
+        JSONArray r = new JSONObject(HomeV2.get("https://api.themoviedb.org/3/discover/movie?watch_region=GB&region=GB"
+                + "&with_watch_monetization_types=flatrate&with_release_type=4|6&with_watch_providers=" + providers
+                + "&release_date.gte=" + today.minusDays(force ? 10 : 1) + "&release_date.lte=" + today
+                + "&sort_by=popularity.desc&language=en-GB&api_key=" + key)).optJSONArray("results");
+        int added = 0;
+        for (int i = 0; r != null && i < r.length() && added < 2; i++) {
+            JSONObject f = r.getJSONObject(i);
+            if (f.optDouble("popularity") < 30 && !force) continue;
+            int id = f.optInt("id");
+            if (!told.add("film:" + id) && !force) continue;
+            String name = f.optString("title");
+            ScoreCard.Data card = base(c, key, id, false);
+            card.label = "NEW FILM";
+            String year = f.optString("release_date", "");
+            card.headline = name + (year.length() >= 4 ? " (" + year.substring(0, 4) + ")" : "");
+            String back = f.optString("backdrop_path", "");
+            String art = back.isEmpty() || "null".equals(back) ? null : "https://image.tmdb.org/t/p/w1280" + back;
+            card.picture = picture(c, art == null ? null : art.replace("/w1280/", "/w300/"));
+            debrid(c, card, name, false, art);
+            out.add(card);
+            added++;
+        }
+    }
+
+    /** The card's black ground, the title's own logo in the band, the red label. */
+    private static ScoreCard.Data base(Context c, String key, int id, boolean tv) {
+        ScoreCard.Data d = new ScoreCard.Data();
+        d.dark = true;
+        d.kind = "release";
+        d.band = 0xFF141519;
+        d.bandDeep = 0xFF000000;
+        d.labelColour = RED;
+        d.wideMark = true;
+        try {
+            JSONArray logos = new JSONObject(HomeV2.get("https://api.themoviedb.org/3/" + (tv ? "tv/" : "movie/") + id
+                    + "/images?include_image_language=en,null&api_key=" + key)).optJSONArray("logos");
+            for (int i = 0; logos != null && i < logos.length(); i++) {
+                JSONObject l = logos.getJSONObject(i);
+                if (!"en".equals(l.optString("iso_639_1")) || !l.optString("file_path").endsWith(".png")) continue;
+                Bitmap b = ScoresTicker.cachedLogo(c, "https://image.tmdb.org/t/p/w300" + l.optString("file_path"), 200);
+                if (b != null) d.leagueLogo = HomeV2.trim(b);
+                break;
+            }
+        } catch (Exception ignored) {
+            // no logo: the band is plain
+        }
+        return d;
+    }
+
+    /** "Released on Debrid Stream": OK opens Debrid Stream's page for the title (its search, through the helper). */
+    private static void debrid(Context c, ScoreCard.Data card, String name, boolean tv, String art) {
+        card.line = "Released on Debrid Stream";
+        if (!installed(c, DEBRID)) return;
+        card.channel = "Debrid Stream";
+        Bitmap pic = art == null ? null : ScoresTicker.cachedLogo(c, art, 640);
+        card.watch = () -> {
+            AppSearchService.search(c, DEBRID, name, tv, pic, null);
+            GoalWatchService.onAppOpened(c, DEBRID);
+        };
+    }
+
+    private static Bitmap picture(Context c, String url) {
+        return url == null ? null : ScoresTicker.cachedLogo(c, url, 300);
+    }
+
+    private static String backdrop(JSONObject d, String size) {
+        String b = d.optString("backdrop_path", "");
+        return b.isEmpty() || "null".equals(b) ? null : "https://image.tmdb.org/t/p/" + size + b;
+    }
+
+    /** The TV's streaming services as discover's with_watch_providers takes them ("8|9|337"). */
+    static String providers(Context c) {
+        StringBuilder b = new StringBuilder();
+        for (String id : new String[]{"8", "9", "119", "337", "350", "38", "41", "54", "103", "333", "39", "29", "73", "531", "1899"}) {
+            String app = HomeV2.serviceApp(id);
+            if (app != null && installed(c, app)) b.append(b.length() > 0 ? "|" : "").append(id);
+        }
+        return b.toString();
+    }
+
+    private static boolean onApps(Context c, JSONObject gb) {
+        JSONArray flat = gb == null ? null : gb.optJSONArray("flatrate");
+        for (int i = 0; flat != null && i < flat.length(); i++) {
+            JSONObject p = flat.optJSONObject(i);
+            String app = p == null ? null : HomeV2.serviceApp(String.valueOf(p.optInt("provider_id")));
+            if (app != null && installed(c, app)) return true;
+        }
+        return false;
+    }
+
+    private static String store(Context c, JSONObject gb) {
+        String[][] stores = {{"10", "com.amazon.amazonvideo.livingroom"}, {"2", "com.apple.atve.androidtv.appletv"},
+                {"192", "com.google.android.youtube.tv"}, {"3", "com.google.android.videos"}};
+        for (String kind : new String[]{"rent", "buy"}) {
+            JSONArray list = gb == null ? null : gb.optJSONArray(kind);
+            for (int i = 0; list != null && i < list.length(); i++) {
+                JSONObject p = list.optJSONObject(i);
+                String id = p == null ? "" : String.valueOf(p.optInt("provider_id"));
+                for (String[] s : stores) if (s[0].equals(id) && installed(c, s[1])) return s[1];
+            }
+        }
+        return null;
+    }
+
+    private static String storeName(String pkg) {
+        return pkg.contains("amazon") ? "Prime Video" : pkg.contains("apple") ? "Apple TV" : pkg.contains("youtube") ? "YouTube" : "Google TV";
+    }
+
+    static boolean installed(Context c, String pkg) {
+        try {
+            c.getPackageManager().getPackageInfo(pkg, 0);
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+}

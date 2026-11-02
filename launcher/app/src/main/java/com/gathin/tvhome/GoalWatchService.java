@@ -1263,6 +1263,14 @@ public class GoalWatchService extends Service {
         ctx.stopService(new Intent(ctx, GoalWatchService.class));
     }
 
+    /** New episodes of the series watched here and new films on the TV's apps, every two hours (ReleaseAlerts). */
+    private final Runnable releases = new Runnable() {
+        @Override public void run() {
+            io.execute(() -> ReleaseAlerts.check(GoalWatchService.this, false));
+            main.postDelayed(this, 2 * 3600_000L);
+        }
+    };
+
     @Override public int onStartCommand(Intent intent, int flags, int startId) {
         NotificationManager nm = getSystemService(NotificationManager.class);
         if (Build.VERSION.SDK_INT >= 26 && nm != null && nm.getNotificationChannel(CHANNEL) == null) {
@@ -1289,7 +1297,11 @@ public class GoalWatchService extends Service {
             skyAlerts = Config.themeFlag(this, "sky_alerts", false);
             weatherAlerts = Config.themeFlag(this, "weather_alerts", false);
             if (Config.themeFlag(this, "alert_sounds", false)) loadSounds();
+            // New episodes and films (ReleaseAlerts): first a few minutes after the start, then every two hours.
+            main.removeCallbacks(releases);
+            main.postDelayed(releases, 3 * 60_000L);
         }
+        if (intent != null && intent.hasExtra("test_release")) io.execute(() -> ReleaseAlerts.check(this, true));
         if (intent != null && intent.hasExtra("dump_ui")) AppSearchService.dump();
         if (intent != null && intent.hasExtra("test_tune")) AppSearchService.testTune(this, intent.getStringExtra("test_tune"));
         if (intent != null && intent.hasExtra("test_ambient")) {
