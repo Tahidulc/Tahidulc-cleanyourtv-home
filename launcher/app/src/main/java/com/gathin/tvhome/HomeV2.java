@@ -402,8 +402,10 @@ final class HomeV2 {
     private SmartPanel smartPanel;
     /** One search for everything: the magnifier in the top bar, or the remote's Search key. */
     private SearchPanel search;
-    /** Your viewing: the chart button in the top bar. */
+    /** Your viewing: in the Control Centre. */
     private ViewingPanel viewing;
+    /** The Control Centre: the one button at the top right. */
+    private ControlCentre controlCentre;
     /** A title's panel: OK held on a poster. */
     private TitlePanel titlePanel;
 
@@ -457,51 +459,47 @@ final class HomeV2 {
         LinearLayout bar = new LinearLayout(a);
         bar.setOrientation(LinearLayout.HORIZONTAL);
         bar.setGravity(Gravity.END);
+        // One button, the Control Centre (after Apple TV's): the Wi-Fi network's name and the controls icon, purple while
+        // NordVPN is on; OK opens the panel with what used to be a row of buttons here.
         wifi = text(24, regular, Color.WHITE);
         wifi.setGravity(Gravity.CENTER_VERTICAL);
-        wifi.setPadding(px(22), 0, px(24), 0);
-        Drawable wi = a.getDrawable(R.drawable.ic_wifi);
-        if (wi != null) {
-            wi = wi.mutate();
-            wi.setBounds(0, 0, px(30), px(30));
-            wi.setTint(Color.WHITE);
-            wifi.setCompoundDrawables(wi, null, null, null);
-        }
-        wifi.setCompoundDrawablePadding(px(12));
+        wifi.setPadding(px(22), 0, px(22), 0);
+        Drawable wi = a.getDrawable(R.drawable.ic_wifi), cc = a.getDrawable(R.drawable.ic_controls);
+        if (wi != null) { wi = wi.mutate(); wi.setBounds(0, 0, px(30), px(30)); wi.setTint(Color.WHITE); }
+        if (cc != null) { cc = cc.mutate(); cc.setBounds(0, 0, px(30), px(30)); cc.setTint(Color.WHITE); }
+        wifi.setCompoundDrawables(wi, null, cc, null);
+        wifi.setCompoundDrawablePadding(px(14));
         wifi.setText("Wi-Fi");
-        topButton(bar, wifi, ViewGroup.LayoutParams.WRAP_CONTENT, () -> open(new Intent(android.provider.Settings.ACTION_WIFI_SETTINGS)));
-        // The TV's inputs (HDMI and the like): the icon alone; OK lists them under it. After Wi-Fi.
-        ImageView inputs = icon(R.drawable.ic_input);
-        topButton(bar, inputs, px(66), () -> showInputs(inputs));
-        ImageView nord = new ImageView(a);
-        nord.setImageResource(R.drawable.v2_nord);
-        nord.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        int ip = px(19);
-        nord.setPadding(ip, ip + px(1), ip, ip - px(1));
-        vpn = nord;
+        vpn = wifi;
+        List<ControlCentre.Item> items = new ArrayList<>();
+        items.add(new ControlCentre.Item("Wi-Fi", R.drawable.ic_wifi, () -> wifi.getText().toString(), null,
+                () -> open(new Intent(android.provider.Settings.ACTION_WIFI_SETTINGS))));
+        items.add(new ControlCentre.Item("Inputs", R.drawable.ic_input, () -> "HDMI and sources", null, () -> showInputs(wifi)));
         String vpnApp = Config.themeStrings(a, "top_bar_apps", new ArrayList<>()).isEmpty() ? ""
                 : Config.themeStrings(a, "top_bar_apps", new ArrayList<>()).get(0);
-        if (!vpnApp.isEmpty() && installed(vpnApp)) topButton(bar, nord, px(66), () -> openApp(vpnApp));
-        ImageView bulb = icon(R.drawable.ic_bulb);
+        if (!vpnApp.isEmpty() && installed(vpnApp)) {
+            items.add(new ControlCentre.Item("NordVPN", R.drawable.v2_nord, () -> vpnUp ? "Connected" : "Off", () -> vpnUp, () -> openApp(vpnApp)));
+        }
         Intent smartHome = new Intent("com.google.android.libraries.tv.smarthome.intent.action.OPEN_SMART_HOME")
                 .setPackage("com.google.android.apps.tv.dreamx").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         // The smart home panel: the cameras (Tuya Smart's live view), every light (Tuya's when the TV has a Tuya project, else by Google
         // Assistant), the brightness, the car and a delivery on its way.
         if (smartHome.resolveActivity(a.getPackageManager()) != null || installed(CameraAlert.TUYA) || TuyaCloud.configured(a)) {
             smartPanel = new SmartPanel(this);
-            topButton(bar, bulb, px(66), () -> smartPanel.show());
+            items.add(new ControlCentre.Item("Lights & home", R.drawable.ic_bulb, () -> "Lights, cameras, the car", null, () -> smartPanel.show()));
         }
-        // No camera button of its own: the cameras are in the smart home panel.
         viewing = new ViewingPanel(this);
-        ImageView chart = icon(R.drawable.ic_chart);
-        topButton(bar, chart, px(66), () -> viewing.show());
+        items.add(new ControlCentre.Item("Your viewing", R.drawable.ic_chart, () -> "Your week on TV", null, () -> viewing.show()));
         search = new SearchPanel(this);
-        ImageView find = icon(R.drawable.ic_search);
-        topButton(bar, find, px(66), () -> search.show());
-        ImageView mic = icon(R.drawable.ic_mic);
-        topButton(bar, mic, px(66), () -> open(new Intent(Intent.ACTION_ASSIST)));
-        ImageView gear = icon(R.drawable.ic_settings);
-        topButton(bar, gear, px(66), () -> open(new Intent(android.provider.Settings.ACTION_SETTINGS)));
+        items.add(new ControlCentre.Item("Search", R.drawable.ic_search, () -> "TV, films, sport", null, () -> search.show()));
+        items.add(new ControlCentre.Item("Assistant", R.drawable.ic_mic, () -> "Ask Google", null, () -> open(new Intent(Intent.ACTION_ASSIST))));
+        items.add(new ControlCentre.Item("Settings", R.drawable.ic_settings, () -> "The TV's settings", null,
+                () -> open(new Intent(android.provider.Settings.ACTION_SETTINGS))));
+        // The cameras at the top, when the TV has them: the first one named in the theme, OK opening the smart home panel.
+        List<String> cams = CameraAlert.cameras(a);
+        String cam = smartPanel == null || !installed(CameraAlert.TUYA) ? null : cams.isEmpty() ? "Cameras" : cams.get(0);
+        controlCentre = new ControlCentre(this, items, cam, cam == null ? null : () -> smartPanel.show());
+        topButton(bar, wifi, ViewGroup.LayoutParams.WRAP_CONTENT, () -> controlCentre.show());
         FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(px(1000), px(66), Gravity.TOP | Gravity.END);
         lp.topMargin = px(112);
         lp.rightMargin = px(96);
@@ -763,6 +761,7 @@ final class HomeV2 {
     }
 
     void home() {
+        if (controlCentre != null) controlCentre.hide();
         Surprise.close();
         Recap.close();
         if (titlePanel != null) titlePanel.hide();
@@ -803,6 +802,7 @@ final class HomeV2 {
 
     /** All keys come here first; true when v2 used it. */
     boolean key(KeyEvent e) {
+        if (controlCentre != null && controlCentre.isOpen()) return controlCentre.key(e);
         if (Surprise.isOpen()) return Surprise.key(e);
         if (Recap.isOpen()) return Recap.key(e);
         if (titlePanel != null && titlePanel.isOpen()) return titlePanel.key(e);
