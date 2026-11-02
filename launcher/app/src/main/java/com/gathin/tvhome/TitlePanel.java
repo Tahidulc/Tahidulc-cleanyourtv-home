@@ -527,8 +527,17 @@ final class TitlePanel {
         focused.getLocationOnScreen(at);
         overlay.getLocationOnScreen(base);
         FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(h.px(380), -2);
-        lp.leftMargin = Math.min(at[0] - base[0], h.px(1920 - 420));
-        lp.topMargin = Math.max(h.px(40), at[1] - base[1] - h.px(250));
+        int x = at[0] - base[0], y = at[1] - base[1];
+        if (y + focused.getHeight() + h.px(12 + 260) <= h.px(1070)) {
+            // Under the cast, clear of the story and the buttons.
+            lp.leftMargin = Math.min(x, h.px(1920 - 420));
+            lp.topMargin = y + focused.getHeight() + h.px(12);
+        } else {
+            // No room under it (a film with its series above): beside the one focused.
+            boolean right = x + focused.getWidth() + h.px(400) <= h.px(1900);
+            lp.leftMargin = right ? x + focused.getWidth() + h.px(10) : x - h.px(390);
+            lp.topMargin = Math.min(y, h.px(1070 - 260));
+        }
         overlay.addView(castCard, lp);
     }
 

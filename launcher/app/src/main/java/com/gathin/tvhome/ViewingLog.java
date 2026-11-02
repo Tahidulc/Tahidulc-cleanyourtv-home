@@ -160,6 +160,20 @@ final class ViewingLog {
         return out;
     }
 
+    /** The first day logged on this TV, or null before anything has been. */
+    static synchronized LocalDate firstDay(Context c) {
+        LocalDate first = null;
+        for (Iterator<String> it = all(c).keys(); it.hasNext(); ) {
+            try {
+                LocalDate d = LocalDate.parse(it.next());
+                if (first == null || d.isBefore(first)) first = d;
+            } catch (Exception ignored) {
+                // not a day
+            }
+        }
+        return first;
+    }
+
     /** Clears it all (Your viewing's "Clear"). */
     static synchronized void clear(Context c) {
         all = new JSONObject();

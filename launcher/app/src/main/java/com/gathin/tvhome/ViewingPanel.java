@@ -279,6 +279,19 @@ final class ViewingPanel {
             return Double.compare(a, b);
         });
         FrameLayout v = new FrameLayout(c);
+        // Fewer than four weeks logged: no rating yet, only the hours so far.
+        LocalDate first = ViewingLog.firstDay(c);
+        boolean counting = first == null || first.isAfter(LocalDate.now().minusDays(28));
+        if (counting) {
+            secs.clear();
+            for (LocalDate d = first == null ? LocalDate.now() : first; !d.isAfter(LocalDate.now()); d = d.plusDays(1)) {
+                JSONObject a = ViewingLog.day(c, d).optJSONObject("a");
+                for (Iterator<String> it = a == null ? null : a.keys(); it != null && it.hasNext(); ) {
+                    String p = it.next();
+                    secs.put(p, secs.getOrDefault(p, 0) + a.optInt(p));
+                }
+            }
+        }
         double total = 0;
         int paidSecs = 0;
         for (String p : apps) { total += price.get(p); paidSecs += secs.getOrDefault(p, 0); }
@@ -286,7 +299,10 @@ final class ViewingPanel {
         head.setText("Are your apps worth it?");
         place(v, head, 96, 128, 900, 56);
         TextView sum = h.text(19, regular, 0xD9FFFFFF);
-        sum.setText(name + " · £" + money(total) + " a month for " + hm(paidSecs)
+        sum.setText(counting ? "Still counting: this TV's log started " + (first == null || first.equals(LocalDate.now()) ? "today"
+                : "on " + first.format(DateTimeFormatter.ofPattern("d MMMM", Locale.UK)))
+                + ". The value of each app shows once there are four weeks of it. So far: " + hm(paidSecs) + " in paid apps."
+                : name + " · £" + money(total) + " a month for " + hm(paidSecs)
                 + (paidSecs >= 3600 ? " · £" + money(total / (paidSecs / 3600.0)) + " an hour" : ""));
         place(v, sum, 96, 190, 1500, 30);
         if (apps.isEmpty()) {
@@ -301,7 +317,8 @@ final class ViewingPanel {
             double cost = price.get(p), hour = per(cost, s);
             String word;
             int colour;
-            if (s < 600) { word = "NOT USED"; colour = 0xFFFF5A5A; }
+            if (counting) { word = "COUNTING"; colour = 0x59FFFFFF; }
+            else if (s < 600) { word = "NOT USED"; colour = 0xFFFF5A5A; }
             else if (hour < 1) { word = "BEST VALUE"; colour = 0xFF3DDC84; }
             else if (hour < 2) { word = "GOOD VALUE"; colour = 0xFF3DDC84; }
             else if (hour < 4) { word = "OK"; colour = YELLOW; }
@@ -325,10 +342,10 @@ final class ViewingPanel {
             LinearLayout line = new LinearLayout(c);
             line.setGravity(Gravity.BOTTOM);
             TextView big = h.text(46, heavy, Color.WHITE);
-            big.setText(s < 600 ? "—" : hour < 1 ? Math.round(hour * 100) + "p" : "£" + money(hour));
+            big.setText(counting ? hm(s) : s < 600 ? "—" : hour < 1 ? Math.round(hour * 100) + "p" : "£" + money(hour));
             line.addView(big);
             TextView sm = h.text(17, regular, 0xCCFFFFFF);
-            sm.setText((s < 600 ? "" : "an hour · ") + hm(s) + " for £" + money(cost));
+            sm.setText(counting ? "so far · £" + money(cost) + " a month" : (s < 600 ? "" : "an hour · ") + hm(s) + " for £" + money(cost));
             LinearLayout.LayoutParams sl = new LinearLayout.LayoutParams(-2, -2);
             sl.leftMargin = h.px(12);
             sl.bottomMargin = h.px(10);
@@ -360,8 +377,9 @@ final class ViewingPanel {
                 card.addView(w, wl);
             }
             String tip = tips.get(p);
+            if (counting) tip = null;
             String advice = tip != null ? (hour >= 4 || s < 600 ? "Tip · " + tip + ": keep it till then, pause after" : "Coming · " + tip)
-                    : hour >= 4 || s < 600 ? "Tip · Nothing you watch there is coming soon: pausing it saves £" + money(cost) + " a month" : null;
+                    : !counting && (hour >= 4 || s < 600) ? "Tip · Nothing you watch there is coming soon: pausing it saves £" + money(cost) + " a month" : null;
             if (advice != null) {
                 TextView t = h.text(15, semi, Color.WHITE);
                 t.setText(advice);

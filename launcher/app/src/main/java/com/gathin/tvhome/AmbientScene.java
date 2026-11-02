@@ -74,7 +74,10 @@ final class AmbientScene {
         clock = text(280, "sans-serif-thin", 0xE6FFFFFF);
         clock.setLetterSpacing(-0.03f);
         clock.setIncludeFontPadding(false);
-        left.addView(clock);
+        // One line, as wide as the widest time ("23:59" at this size is under 760): measured by the font, the box came
+        // out narrower than the thin digits draw on some TVs, and the minutes were cut off.
+        clock.setSingleLine(true);
+        left.addView(clock, new LinearLayout.LayoutParams(px(780), -2));
         date = text(36, "sans-serif-light", 0xD9FFFFFF);
         left.addView(date, margins(10, 6, 0, 0));
         LinearLayout wx = new LinearLayout(c);
@@ -172,6 +175,7 @@ final class AmbientScene {
                 lp.rightMargin = flipped ? px(140) : 0;
                 left.setLayoutParams(lp);
                 left.setGravity(flipped ? Gravity.END : Gravity.START);
+                clock.setGravity(flipped ? Gravity.END : Gravity.START);
                 FrameLayout.LayoutParams cp = (FrameLayout.LayoutParams) cards.getLayoutParams();
                 cp.gravity = (flipped ? Gravity.START : Gravity.END) | Gravity.TOP;
                 cp.leftMargin = flipped ? px(120) : 0;
