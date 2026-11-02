@@ -65,7 +65,15 @@ final class DoorbellAlert {
     private static long shownAt;
     /** The latest ring: {picture or null, when, the doorbell's name}; null before the first. */
     private static volatile Object[] last;
-    private static final Runnable close = () -> close(true);
+    private static final Runnable close = () -> { close(true); pipClose(); };
+    /** The live view's window in the corner (doorbell_pip, on a TV with windows): its task, -1 for none. */
+    private static int pipTask = -1;
+    private static Context pipCtx;
+
+    private static void pipClose() {
+        if (pipTask >= 0 && pipCtx != null) Windowed.close(pipCtx, pipTask);
+        pipTask = -1;
+    }
 
     private DoorbellAlert() { }
 
@@ -282,7 +290,8 @@ final class DoorbellAlert {
             down[0] = false;
             if (code == KeyEvent.KEYCODE_DPAD_CENTER || code == KeyEvent.KEYCODE_ENTER || code == KeyEvent.KEYCODE_NUMPAD_ENTER) {
                 close(false);
-                answer(c, tap);
+                // Already live in the corner: that window grows to the whole screen; else the ring's own screen.
+                if (pipTask >= 0) { Windowed.full(c, pipTask); pipTask = -1; } else answer(c, tap);
                 return true;
             }
             if (code == KeyEvent.KEYCODE_BACK) { closeByBack(); return true; }
@@ -299,6 +308,14 @@ final class DoorbellAlert {
         main.removeCallbacks(close);
         main.postDelayed(close, SHOW_MS);
         if (!again && Config.themeFlag(c, "doorbell_chime", true)) chime(c);
+        // The live view in a window in the bottom right corner while the card shows, what is on going on behind it.
+        if (!again && tap != null && Config.themeFlag(c, "doorbell_pip", false) && Windowed.supported(c)) {
+            pipCtx = c;
+            Windowed.openTap(c, tap, app(c), Windowed.rect(c, 1920 - 24 - 640, 1080 - 24 - 360, 1920 - 24, 1080 - 24), id -> {
+                pipTask = id;
+                AlertLog.note(c, "doorbell: " + (id >= 0 ? "live view in the corner" : "live view did not open in a window"));
+            });
+        }
     }
 
     private static TextView text(Context c, String s, float px, int colour, Typeface face) {
@@ -433,6 +450,7 @@ final class DoorbellAlert {
 
     private static void closeByBack() {
         main.removeCallbacks(close);
+        pipClose();
         FrameLayout v = host;
         host = null;
         if (v == null) return;

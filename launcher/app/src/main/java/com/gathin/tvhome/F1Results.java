@@ -223,6 +223,8 @@ final class F1Results {
     /** A classification with its Grand Prix's name ("Mexico City Grand Prix"). */
     static final class Board {
         String name = "";
+        /** The season's round it was (Jolpica's), "" when not known. */
+        String round = "";
         final List<Row> rows = new ArrayList<>();
     }
 
@@ -245,6 +247,7 @@ final class F1Results {
             JSONObject race = races.getJSONObject(0);
             Board b = new Board();
             b.name = race.optString("raceName");
+            b.round = race.optString("round");
             if (gp != null && !sameGrandPrix(gp, b.name)) return null;
             JSONArray results = race.getJSONArray(sprint ? "SprintResults" : "Results");
             for (int i = 0; i < results.length(); i++) {
@@ -294,6 +297,62 @@ final class F1Results {
         } catch (Exception e) {
             return null;
         }
+    }
+
+    /**
+     * The drivers' championship after this race (or sprint): Jolpica's standings, with the race's points added when
+     * they are not in them yet (its standings come a few hours after); each row's points the season's total, its gap
+     * "312 pts", and its status how many places it moved with this race ("▲2", "▼1", ""). Empty when unreadable.
+     */
+    static List<Row> standings(Board race) {
+        List<Row> out = new ArrayList<>();
+        try {
+            JSONObject root = new JSONObject(get("https://api.jolpi.ca/ergast/f1/current/driverStandings.json"));
+            JSONArray lists = root.getJSONObject("MRData").getJSONObject("StandingsTable").getJSONArray("StandingsLists");
+            if (lists.length() == 0) return out;
+            JSONObject list = lists.getJSONObject(0);
+            boolean behind = race != null && !race.round.isEmpty() && !race.round.equals(list.optString("round"));
+            JSONArray ds = list.getJSONArray("DriverStandings");
+            java.util.Map<String, Integer> racePts = new java.util.HashMap<>();
+            if (race != null) for (Row r : race.rows) if (r.points > 0) racePts.put(key(r.last), r.points);
+            for (int i = 0; i < ds.length(); i++) {
+                JSONObject x = ds.getJSONObject(i);
+                Row r = new Row();
+                JSONObject d = x.getJSONObject("Driver");
+                r.first = d.optString("givenName");
+                r.last = d.optString("familyName");
+                r.code = d.optString("code", code(r.last));
+                JSONArray teams = x.optJSONArray("Constructors");
+                if (teams != null && teams.length() > 0) {
+                    JSONObject t = teams.getJSONObject(teams.length() - 1);
+                    r.team = t.optString("name");
+                    r.teamId = t.optString("constructorId");
+                    r.logo = logo(r.teamId);
+                }
+                double pts = 0;
+                try { pts = Double.parseDouble(x.optString("points", "0")); } catch (NumberFormatException ignored) { }
+                int got = racePts.getOrDefault(key(r.last), 0);
+                r.points = (int) Math.round(pts) + (behind ? got : 0);
+                r.pos = r.points - got;   // before this race, for now: the places it moved worked out below
+                out.add(r);
+            }
+            // Places before this race (by the points without it), then after.
+            List<Row> before = new ArrayList<>(out);
+            before.sort((a, b) -> b.pos - a.pos);
+            java.util.Map<Row, Integer> was = new java.util.HashMap<>();
+            for (int i = 0; i < before.size(); i++) was.put(before.get(i), i + 1);
+            out.sort((a, b) -> b.points - a.points);
+            for (int i = 0; i < out.size(); i++) {
+                Row r = out.get(i);
+                r.pos = i + 1;
+                int moved = race == null ? 0 : was.get(r) - r.pos;
+                r.status = moved > 0 ? "▲" + moved : moved < 0 ? "▼" + (-moved) : "";
+                r.gap = r.points + " pts";
+            }
+        } catch (Exception e) {
+            out.clear();
+        }
+        return out;
     }
 
     private static Row driver(JSONObject x) throws org.json.JSONException {

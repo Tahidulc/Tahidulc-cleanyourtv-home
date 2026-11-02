@@ -815,6 +815,8 @@ final class MatchDay {
         if (ssn != null && g.state != 2) {
             addButton("Soccer Saturday", () -> h.tune(java.util.Collections.singletonList(ssn[0]), ssn[1]));
         }
+        // Match night: TiviMate in a window in the Live Centre's picture, the Live Centre round it (windows: the Streamer).
+        if (g.state == 0 && MatchNight.can(c)) addButton("Match night", () -> MatchNight.start(h, g));
         // Predictions (the theme's predictions): each player's score before kick-off; afterwards the picks.
         if (Predictions.on(c) && (g.state == 1 || Predictions.has(c, g.id))) {
             addButton(Predictions.label(c, g), () -> Predictions.open(h, g));

@@ -609,6 +609,10 @@ final class LineupCard {
         /** Team logos by their address; photos by position (the podium's, the front rows'). */
         final java.util.Map<String, Bitmap> logos = new java.util.HashMap<>();
         final java.util.Map<Integer, Bitmap> photos = new java.util.HashMap<>();
+        /** Photos by surname (F1Results.key), for the standings, whose places are not the race's. */
+        final java.util.Map<String, Bitmap> faces = new java.util.HashMap<>();
+        /** After a race: the drivers' championship as it now stands (F1Results.standings); empty otherwise. */
+        final List<F1Results.Row> standings = new ArrayList<>();
         String channel;
         Bitmap channelLogo;
         Runnable watch;
@@ -748,6 +752,11 @@ final class LineupCard {
             if (n > 10) {
                 pages.add(() -> turn(c, stage, () -> { f1Band(c, band, f, "P11–P" + n); stage.addView(f1List(c, f, 10, n, 2), full()); }));
                 times.add(11_000L);
+            }
+            // The championship as it now stands: the top ten, each with the places he moved.
+            if (!f.standings.isEmpty()) {
+                pages.add(() -> turn(c, stage, () -> { f1Band(c, band, f, "DRIVERS'\nSTANDINGS"); stage.addView(f1Table(c, f), full()); }));
+                times.add(12_000L);
             }
         }
         card.setAlpha(0f);
@@ -908,7 +917,8 @@ final class LineupCard {
     private static View f1Photo(Context c, F1 f, F1Results.Row r, int w, int h) {
         FrameLayout frame = new FrameLayout(c);
         frame.setClipChildren(true);
-        Bitmap ph = f.photos.get(r.pos);
+        Bitmap ph = f.faces.get(F1Results.key(r.last));
+        if (ph == null) ph = f.photos.get(r.pos);
         ImageView photo = new ImageView(c);
         photo.setImageBitmap(sharp(ph != null ? ph : driverBlank(256)));
         photo.setScaleType(ImageView.ScaleType.FIT_XY);
@@ -979,12 +989,42 @@ final class LineupCard {
         return page;
     }
 
+    /** The drivers' standings, top ten: place, team colour, photo, logo, name, points, and the places moved. */
+    private static View f1Table(Context c, F1 f) {
+        LinearLayout list = new LinearLayout(c);
+        list.setOrientation(LinearLayout.VERTICAL);
+        list.setPadding(px(10), px(10), px(14), px(10));
+        int n = Math.min(10, f.standings.size());
+        for (int i = 0; i < n; i++) {
+            F1Results.Row r = f.standings.get(i);
+            LinearLayout line = (LinearLayout) f1Line(c, f, r, true);
+            TextView move = text(c, r.status, 12, r.status.startsWith("▲") ? 0xFF3DDC84 : 0xFFFF5A52, ScoreCard.outfit(c, 800));
+            move.setGravity(Gravity.CENTER);
+            line.addView(move, new LinearLayout.LayoutParams(px(34), -2));
+            list.addView(line, new LinearLayout.LayoutParams(-1, 0, 1f));
+            line.setAlpha(0f);
+            line.setTranslationX(px(24));
+            line.animate().alpha(1f).translationX(0f).setStartDelay(140L + 45L * i).setDuration(320)
+                    .setInterpolator(new DecelerateInterpolator(2f)).withLayer().start();
+        }
+        return list;
+    }
+
     private static View f1Line(Context c, F1 f, F1Results.Row r, boolean wide) {
         LinearLayout v = new LinearLayout(c);
         v.setGravity(Gravity.CENTER_VERTICAL);
         TextView pos = text(c, String.valueOf(r.pos), wide ? 16 : 14, 0xFFFFFFFF, ScoreCard.outfit(c, 900));
         pos.setGravity(Gravity.CENTER);
         v.addView(pos, new LinearLayout.LayoutParams(px(26), -2));
+        // His team's colour, a short bar before his photo (as on F1's own timing graphics).
+        View bar = new View(c);
+        GradientDrawable tb = new GradientDrawable();
+        tb.setColor(F1Results.teamColour(r.teamId));
+        tb.setCornerRadius(px(2));
+        bar.setBackground(tb);
+        LinearLayout.LayoutParams bl = new LinearLayout.LayoutParams(px(4), px(wide ? 22 : 18));
+        bl.rightMargin = px(4);
+        v.addView(bar, bl);
         int ps = px(wide ? 26 : 24);
         LinearLayout.LayoutParams fl = new LinearLayout.LayoutParams(ps, -1);
         fl.leftMargin = px(2);
@@ -1062,8 +1102,10 @@ final class LineupCard {
     private static View f1Slot(Context c, F1 f, F1Results.Row r, boolean big) {
         LinearLayout slot = new LinearLayout(c);
         slot.setGravity(Gravity.CENTER_VERTICAL);
-        GradientDrawable bg = new GradientDrawable();
-        bg.setColor(F1_SLOT);
+        // The slot in his team's colour, strongest at its edge and fading into the grey (F1's grid graphics).
+        int team = F1Results.teamColour(r.teamId);
+        GradientDrawable bg = new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
+                new int[]{mix(team, F1_SLOT, 0.62f), mix(team, F1_SLOT, 0.28f), F1_SLOT});
         bg.setCornerRadius(px(6));
         slot.setBackground(bg);
         slot.setClipToOutline(true);
@@ -1091,6 +1133,14 @@ final class LineupCard {
         ll.rightMargin = px(10);
         slot.addView(f1Logo(c, f, r, ls), ll);
         return slot;
+    }
+
+    /** a over b, a's share given: a team's colour toned into the slot's grey, so white writing stays clear on it. */
+    private static int mix(int a, int b, float share) {
+        int r = Math.round(((a >> 16) & 0xFF) * share + ((b >> 16) & 0xFF) * (1 - share));
+        int g = Math.round(((a >> 8) & 0xFF) * share + ((b >> 8) & 0xFF) * (1 - share));
+        int bl = Math.round((a & 0xFF) * share + (b & 0xFF) * (1 - share));
+        return 0xFF000000 | r << 16 | g << 8 | bl;
     }
 
     // -- on Home: the bar -----------------------------------------------------------------------------------------------

@@ -95,7 +95,7 @@ final class TwoUp {
     }
 
     /** Whether this TV puts apps in windows: 1 yes, -1 no (its system has multi-window off), 0 not yet known. */
-    private static int support(Context c) {
+    static int support(Context c) {
         return c.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getInt("support", 0);
     }
 
@@ -356,7 +356,7 @@ final class TwoUp {
     // ---- reading the TV's tasks ---------------------------------------------------------------------------------------
 
     /** The TV's tasks: each with its app (am stack list), then each one's windowing mode (dumpsys). */
-    private static final String LIST = "am stack list; echo @@@; dumpsys activity activities | grep -E '^ +\\* Task\\{'";
+    static final String LIST = "am stack list; echo @@@; dumpsys activity activities | grep -E '^ +\\* Task\\{'";
     private static final Pattern APP = Pattern.compile("taskId=(\\d+): ([^/ ]+)/");
     private static final Pattern MODE = Pattern.compile("\\* Task\\{\\S+ #(\\d+) .*?mode=(\\w+)");
 
@@ -365,7 +365,7 @@ final class TwoUp {
      * By the app's package from the stack list: a task's affinity is not always its package (YouTube's is
      * com.google.android.youtube.tv.main).
      */
-    private static int[] taskOf(String out, String p) {
+    static int[] taskOf(String out, String p) {
         int at = out.indexOf("@@@");
         String stacks = at < 0 ? out : out.substring(0, at), dump = at < 0 ? "" : out.substring(at);
         Matcher m = APP.matcher(stacks);
@@ -380,7 +380,7 @@ final class TwoUp {
         return null;
     }
 
-    private static ComponentName launch(PackageManager pm, String p) {
+    static ComponentName launch(PackageManager pm, String p) {
         Intent i = pm.getLeanbackLaunchIntentForPackage(p);
         if (i == null) i = pm.getLaunchIntentForPackage(p);
         return i == null ? null : i.getComponent();

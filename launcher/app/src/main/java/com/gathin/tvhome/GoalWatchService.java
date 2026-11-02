@@ -477,10 +477,20 @@ public class GoalWatchService extends Service {
             for (F1Results.Row r : f.rows) {
                 if (r.logo != null && !f.logos.containsKey(r.logo)) f.logos.put(r.logo, ScoresTicker.cachedLogo(this, r.logo, 96));
             }
+            // After the race: the championship as it now stands (the race's points added if not in yet).
+            if (!grid && "RACE".equals(session)) f.standings.addAll(F1Results.standings(rich));
+            for (F1Results.Row r : f.standings) {
+                if (r.logo != null && !f.logos.containsKey(r.logo)) f.logos.put(r.logo, ScoresTicker.cachedLogo(this, r.logo, 96));
+            }
             // Every driver's photo (kept once found, so after the first time this is quick); the plain figure without one.
             for (F1Results.Row r : f.rows) {
                 android.graphics.Bitmap ph = PlayerPhotos.driver(this, r.last);
-                if (ph != null) f.photos.put(r.pos, ph);
+                if (ph != null) { f.photos.put(r.pos, ph); f.faces.put(F1Results.key(r.last), ph); }
+            }
+            for (F1Results.Row r : f.standings) {
+                if (f.faces.containsKey(F1Results.key(r.last))) continue;
+                android.graphics.Bitmap ph = PlayerPhotos.driver(this, r.last);
+                if (ph != null) f.faces.put(F1Results.key(r.last), ph);
             }
             ScoreCard.Data d = f1Data();
             f.channel = d.channel;

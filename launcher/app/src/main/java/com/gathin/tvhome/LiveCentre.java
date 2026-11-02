@@ -124,11 +124,16 @@ final class LiveCentre {
 
     /** adb's test hook ("here"): the frame over whatever is on, its channel not changed. */
     static void openHere(Context ctx) {
+        openHere(ctx, null);
+    }
+
+    /** The frame over whatever is on, on this game (Match night: TiviMate in its window in the frame's picture). */
+    static void openHere(Context ctx, String gameId) {
         app = ctx.getApplicationContext();
         close();
         io.execute(() -> {
             List<ScoresTicker.Game> read = scores();
-            ScoresTicker.Game pick = choose(read, null);
+            ScoresTicker.Game pick = choose(read, gameId);
             if (pick != null) stats(pick);
             main.post(() -> {
                 games = read;
@@ -3187,6 +3192,7 @@ final class LiveCentre {
     }
 
     static void close() {
+        MatchNight.ended();
         if (folding != null) { folding.cancel(); folding = null; }
         closeBig();
         offerQueue.clear();
