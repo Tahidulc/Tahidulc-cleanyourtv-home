@@ -50,6 +50,24 @@ final class AlertLog {
         });
     }
 
+    /** The app in front now (the last one moved to the front in the last half hour, by usage access); "?" unknown. */
+    static String front(Context c) {
+        try {
+            android.app.usage.UsageStatsManager um = c.getSystemService(android.app.usage.UsageStatsManager.class);
+            long now = System.currentTimeMillis();
+            android.app.usage.UsageEvents ev = um.queryEvents(now - 30 * 60_000L, now);
+            android.app.usage.UsageEvents.Event e = new android.app.usage.UsageEvents.Event();
+            String last = "?";
+            while (ev.hasNextEvent()) {
+                ev.getNextEvent(e);
+                if (e.getEventType() == android.app.usage.UsageEvents.Event.ACTIVITY_RESUMED) last = e.getPackageName();
+            }
+            return last;
+        } catch (RuntimeException e) {
+            return "?";
+        }
+    }
+
     /** A game in a few words: "NEW 0-1 EVE". */
     static String game(ScoresTicker.Game g) {
         return g == null ? "?" : g.home + " " + g.homeScore + "-" + g.awayScore + " " + g.away;

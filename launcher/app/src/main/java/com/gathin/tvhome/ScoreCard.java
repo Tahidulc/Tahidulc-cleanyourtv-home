@@ -156,7 +156,8 @@ final class ScoreCard {
         if (d.f1) { d.dark = true; d.wideMark = true; }
         onHome = GoalWatchService.laneHome && GoalWatchService.homeInFront || PopupFrame.isShowing();
         k = c.getResources().getDisplayMetrics().widthPixels / 1920f;
-        AlertLog.note(c, "card shown " + (onHome ? "on Home (in the score bar's place)" : PopupFrame.isShowing() ? "in pop-up mode's frame" : "over the app")
+        AlertLog.note(c, "card shown " + (onHome ? "on Home (in the score bar's place)" : PopupFrame.isShowing() ? "in pop-up mode's frame"
+                : "over the app (" + AlertLog.front(c) + ")")
                 + ": " + d.label + (d.labelSmall != null ? " " + d.labelSmall : "") + " " + d.first + " " + d.last + " " + d.line);
         if (onHome) bar(c, d); else card(c, d);
     }
@@ -959,11 +960,16 @@ final class ScoreCard {
         if (v == null) return;
         Context c = v.getContext().getApplicationContext();
         boolean wasHome = onHome;
+        final boolean[] went = {false};
         Runnable gone = () -> {
+            if (went[0]) return;
+            went[0] = true;
             try { v.getContext().getSystemService(WindowManager.class).removeView(v); } catch (RuntimeException ignored) { }
             if (wasHome) lane(false);
             main.postDelayed(() -> next(c), 400L);
         };
+        // Its closing movement may be interrupted, and then never reports its end: the window goes all the same.
+        main.postDelayed(gone, 900L);
         if (!fade) { gone.run(); return; }
         View content = v.getChildAt(0);
         if (content == null) { gone.run(); return; }

@@ -972,6 +972,8 @@ public class GoalWatchService extends Service {
         // Back: the alert shrinks a little and fades, then goes.
         android.widget.FrameLayout v = host;
         PopupMotion.backOut(v, v.getWidth() / 2f, v.getHeight() / 2f, () -> { if (host == v) removeHost(); });
+        // Its movement interrupted, it never reports its end: the alert is taken down all the same.
+        main.postDelayed(() -> { if (host == v) { leaving = false; removeHostNow(); } }, 1_200L);
     }
 
     @Override public void onCreate() {
@@ -3440,10 +3442,19 @@ public class GoalWatchService extends Service {
         // Over an app the alerts have no closing movement of their own: the window fades down and out, then goes.
         if (v != null && calm() && !leaving && v.getAlpha() > 0.01f && v.isAttachedToWindow()) {
             leaving = true;
-            PopupMotion.out(v, 10 * getResources().getDisplayMetrics().density, () -> {
+            Runnable done = () -> {
+                if (!leaving || host != v) return;
                 leaving = false;
-                if (host == v) removeHostNow();
-            });
+                removeHostNow();
+            };
+            PopupMotion.out(v, 10 * getResources().getDisplayMetrics().density, done);
+            // A fade that is interrupted (Back as it went, another movement on it) never reports its end: without this
+            // the alert counted as up for good, and every alert and score card after it waited behind it (Newcastle v
+            // Everton's goal, red card and full time on the Streamer, 2 Nov).
+            main.postDelayed(() -> {
+                if (leaving && host == v) AlertLog.note(this, "an alert's fade-out never finished: taken down");
+                done.run();
+            }, 700L);
             return;
         }
         if (leaving) return;   // the fade's end takes it away

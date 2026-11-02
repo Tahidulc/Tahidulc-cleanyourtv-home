@@ -62,6 +62,10 @@ final class TwoUp {
     private static final List<String> pickPkgs = new ArrayList<>();
     private static int focus;
     private static String firstPick;
+    /** Each attempt's number: one given up (Back or Home while checking) is not carried on when its answer comes. */
+    private static int gen;
+    /** Why it could not be done, for the message card (null: the TV's system has multi-window off). */
+    private static String failWhy;
 
     private TwoUp() { }
 
@@ -111,9 +115,14 @@ final class TwoUp {
         Context c0 = home.a;
         if (support(c0) == 0) {
             busy = true;
+            failWhy = null;
+            int my = ++gen;
             build(MESSAGE);
+            // While the TV asks whether to allow the launcher's own connection, the card says so.
+            main.postDelayed(() -> { if (my == gen && busy && mode == MESSAGE) build(MESSAGE); }, 9_000L);
             LocalAdb.shellOut(c0, "settings put global enable_freeform_support 1; settings put global force_resizable_activities 1; "
                     + "am start --windowingMode 5 -n " + c0.getPackageName() + "/.TwoUpProbe >/dev/null 2>&1; sleep 2; echo done", out -> {
+                if (my != gen) return;   // given up meanwhile
                 busy = false;
                 if (out == null) { failed(c0); return; }
                 if (support(c0) == 0) probed(c0, false);   // it never opened: as good as no
@@ -180,11 +189,18 @@ final class TwoUp {
         });
     }
 
-    /** It could not be done (no debugging connection, or an app would not open in a window): back as it was. */
+    /** It could not be done (no debugging connection, or an app would not open in a window): back as it was, and why. */
     private static void failed(Context c) {
         busy = false;
+        LocalAdb.State st = LocalAdb.state();
         end(c, -1);
-        if (h != null) android.widget.Toast.makeText(h.a, "Two at once needs the TV's network debugging on", android.widget.Toast.LENGTH_LONG).show();
+        failWhy = st == LocalAdb.State.NO_DEBUGGING
+                ? "Split screen needs the TV's network debugging switched on (Settings, System, Developer options)."
+                : st == LocalAdb.State.WAITING_FOR_ALLOW
+                ? "The TV didn't let the launcher's own connection in. The first time, a box asks to allow it: choose Always allow "
+                + "and Allow. On some TVs (the Google TV Streamer) that box never appears, so split screen can't be set up there."
+                : "The apps couldn't be opened side by side. Try again in a moment.";
+        build(MESSAGE);
     }
 
     // ---- the windows ---------------------------------------------------------------------------------------------------
@@ -228,9 +244,19 @@ final class TwoUp {
         }
     }
 
-    /** Home pressed while both are up: the options, over Home. */
+    /** Back (or Home) on the check or a message: given up, nothing left half done, Home as it was. */
+    private static void giveUp() {
+        if (busy && !active) { gen++; busy = false; }
+        failWhy = null;
+        build(NONE);
+    }
+
+    /** Home pressed while both are up: the options, over Home. (On the check, the choice or a message: they go.) */
     static boolean home(HomeV2 home) {
-        if (!active) return false;
+        if (!active) {
+            if (mode != NONE) giveUp();
+            return false;
+        }
         h = home;
         options();
         return true;
@@ -548,18 +574,26 @@ final class TwoUp {
     /** Checking this TV (the first time), or why it cannot: its system has Android's multi-window switched off. */
     private static void messageView() {
         if (busy) {
-            card("Split screen", "Checking this TV can show two apps at once…");
+            boolean asking = LocalAdb.state() == LocalAdb.State.WAITING_FOR_ALLOW;
+            LinearLayout card = card("Split screen", asking ? "Waiting for the TV to allow the launcher's own connection…"
+                    : "Checking this TV can show two apps at once…");
+            TextView how = text(19, semi(), 0xB3FFFFFF, "");
+            how.setSingleLine(false);
+            how.setEllipsize(null);
+            how.setText(asking ? "If a box asks \"Allow USB debugging?\", choose Always allow, then Allow. Back stops."
+                    : "Back stops.");
+            card.addView(how);
             return;
         }
-        LinearLayout card = card("Split screen isn't available on this TV", null);
+        LinearLayout card = card(failWhy != null ? "Split screen couldn't start" : "Split screen isn't available on this TV", null);
         TextView why = text(21, semi(), 0xD9FFFFFF, "");
         why.setSingleLine(false);
         why.setEllipsize(null);
-        why.setText("This TV's own software has Android's two-windows feature switched off, so two apps can't share the "
-                + "screen here. It works on the Google TV Streamer.");
+        why.setText(failWhy != null ? failWhy : "This TV's own software has Android's two-windows feature switched off, so two apps "
+                + "can't share the screen here. It works on the Google TV Streamer.");
         why.setPadding(0, px(14), 0, px(18));
         card.addView(why);
-        row(card, "OK", () -> build(NONE));
+        row(card, "OK", () -> { failWhy = null; build(NONE); });
         paintRows();
     }
 
@@ -630,7 +664,7 @@ final class TwoUp {
         int code = e.getKeyCode();
         boolean ok = code == KeyEvent.KEYCODE_DPAD_CENTER || code == KeyEvent.KEYCODE_ENTER || code == KeyEvent.KEYCODE_NUMPAD_ENTER;
         if (mode == MESSAGE) {
-            if (!busy && (ok || code == KeyEvent.KEYCODE_BACK)) build(NONE);
+            if (code == KeyEvent.KEYCODE_BACK || !busy && ok) giveUp();
             return true;
         }
         if (mode == PICK) {
