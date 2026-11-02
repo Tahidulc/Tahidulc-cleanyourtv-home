@@ -78,11 +78,34 @@ final class PagesV2 {
         int px(float v) { return h.px(v); }
 
         void add(View v, int x, int y, int w, int hgt) {
+            FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(w < 0 ? w : px(wide(x, w)), hgt < 0 ? hgt : px(hgt));
+            lp.leftMargin = px(across(x));
+            lp.topMargin = px(y);
+            layer.addView(v, lp);
+        }
+
+        /** As add, at exactly the place given: for a page laid out for the dock layout itself. */
+        void addAt(View v, int x, int y, int w, int hgt) {
             FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(w < 0 ? w : px(w), hgt < 0 ? hgt : px(hgt));
             lp.leftMargin = px(x);
             lp.topMargin = px(y);
             layer.addView(v, lp);
         }
+
+        /**
+         * The pages were laid out beside the rail of apps, from 216 to 1824. In the dock layout the rail has gone and
+         * that span is 48 to 1872 (Home's own edges): a place in it is stretched across, so rows, tabs and cards use the
+         * whole width (what sits at the screen's own edge, such as a full-screen frame at 0, stays where it is).
+         */
+        int across(int x) {
+            return h.dockMode && x >= 180 ? Math.round(48 + (x - 216) * SPAN) : x;
+        }
+
+        int wide(int x, int w) {
+            return h.dockMode && x >= 180 && w > 0 ? Math.round(w * SPAN) : w;
+        }
+
+        static final float SPAN = 1824f / 1608f;
 
         static boolean ok(int code) {
             return code == KeyEvent.KEYCODE_DPAD_CENTER || code == KeyEvent.KEYCODE_ENTER || code == KeyEvent.KEYCODE_NUMPAD_ENTER;
@@ -230,8 +253,14 @@ final class PagesV2 {
     }
 
     static final class PosterPage extends Page {
-        /** Posters 2:3, widened 16:9, as tall as fits between the tabs and the boxes. */
-        static final int NARROW = 180, WIDE = 480, TALL = 270, GAP = 20;
+        /**
+         * Posters 2:3, widened 16:9, as tall as fits between the tabs and the boxes (beside the rail), or the dock (in
+         * the dock layout, where the old boxes' room is free: 207 x 310, widened to 551).
+         */
+        final int NARROW, WIDE, TALL;
+        static final int GAP = 20;
+        /** The widest a poster is drawn, for reading its picture at the size it shows. */
+        static final int NARROW_MOST = 207;
         private final String crumb;
         private final int crumbColour;
         private final String[] tabs;
@@ -258,8 +287,8 @@ final class PagesV2 {
 
         private void addRow(View v, int x, int y, int w, int hgt) {
             if (column == null) { add(v, x, y, w, hgt); return; }
-            FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(px(w), px(hgt));
-            lp.leftMargin = px(x);
+            FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(px(wide(x, w)), px(hgt));
+            lp.leftMargin = px(across(x));
             lp.topMargin = px(y);
             column.addView(v, lp);
         }
@@ -316,6 +345,9 @@ final class PagesV2 {
          */
         PosterPage(HomeV2 h, String crumb, int crumbColour, String[] tabs, int[] rowY, java.util.function.Function<Integer, List<Row>> source) {
             super(h);
+            NARROW = h.dockMode ? NARROW_MOST : 180;
+            WIDE = h.dockMode ? 551 : 480;
+            TALL = h.dockMode ? 310 : 270;
             // Home's player, shared: a second YouTube page beside it never finished loading on the TCL, and the
             // trailers waited for it.
             player = h.players;
@@ -970,7 +1002,7 @@ final class PagesV2 {
     }
 
     static int posterWidth(HomeV2 h) {
-        return h.px(h.lite ? PosterPage.NARROW : PosterPage.NARROW * 2);
+        return h.px(h.lite ? PosterPage.NARROW_MOST : PosterPage.NARROW_MOST * 2);
     }
 
     static void warm(HomeV2 h) {
@@ -1126,7 +1158,9 @@ final class PagesV2 {
      * shows them), else its icon and name on glass. The grid moves up a row at a time as the focus goes down.
      */
     static final class AppsPage extends Page {
-        private static final int COLS = 5, TW = 300, TH = 169, GAP = 24, TOP = 236, SHOWN = 3;
+        /** Five across, three down beside the rail; six across, four down in the dock layout, edge to edge (48 to 1872). */
+        private final int COLS, TW, TH, TOP, SHOWN;
+        private static final int GAP = 24;
         private FrameLayout grid;
         private final List<FrameLayout> tiles = new ArrayList<>();
         private final List<String> packages = new ArrayList<>();
@@ -1134,6 +1168,11 @@ final class PagesV2 {
 
         AppsPage(HomeV2 h) {
             super(h);
+            COLS = h.dockMode ? 6 : 5;
+            TW = h.dockMode ? 284 : 300;
+            TH = h.dockMode ? 160 : 169;
+            TOP = h.dockMode ? 228 : 236;
+            SHOWN = h.dockMode ? 4 : 3;
         }
 
         @Override void open() {
@@ -1141,7 +1180,7 @@ final class PagesV2 {
             TextView crumb = h.text(18, h.semi, 0xFF2AD1C9);
             crumb.setLetterSpacing(0.19f);
             crumb.setText("APPS");
-            add(crumb, 216, 196, 600, 30);
+            if (h.dockMode) addAt(crumb, 48, 190, 600, 30); else add(crumb, 216, 196, 600, 30);
             grid = new FrameLayout(h.a);
             grid.setClipChildren(false);
             FrameLayout view = new FrameLayout(h.a);
@@ -1149,7 +1188,8 @@ final class PagesV2 {
             view.setOutlineProvider(android.view.ViewOutlineProvider.BOUNDS);
             view.setClipToOutline(true);
             view.addView(grid, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-            add(view, 196, TOP - 16, COLS * (TW + GAP) + 16, SHOWN * (TH + GAP) + 24);
+            if (h.dockMode) addAt(view, 40, TOP - 16, COLS * (TW + GAP) + 16, SHOWN * (TH + GAP) + 8);
+            else add(view, 196, TOP - 16, COLS * (TW + GAP) + 16, SHOWN * (TH + GAP) + 24);
             h.io.execute(() -> {
                 android.content.pm.PackageManager pm = h.a.getPackageManager();
                 android.content.Intent q = new android.content.Intent(android.content.Intent.ACTION_MAIN).addCategory(android.content.Intent.CATEGORY_LEANBACK_LAUNCHER);
@@ -1456,8 +1496,8 @@ final class PagesV2 {
         }
 
         private void addTo(FrameLayout parent, View v, int x, int y, int w, int hgt) {
-            FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(px(w), px(hgt));
-            lp.leftMargin = px(x);
+            FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(px(wide(x, w)), px(hgt));
+            lp.leftMargin = px(across(x));
             lp.topMargin = px(y);
             parent.addView(v, lp);
         }

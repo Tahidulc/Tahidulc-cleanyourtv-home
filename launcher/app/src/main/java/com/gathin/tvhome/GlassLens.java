@@ -5,7 +5,6 @@ import android.graphics.Canvas;
 import android.graphics.LinearGradient;
 import android.graphics.Matrix;
 import android.graphics.Paint;
-import android.graphics.Path;
 import android.graphics.RectF;
 import android.graphics.Shader;
 import android.graphics.SweepGradient;
@@ -27,10 +26,15 @@ final class GlassLens extends View {
     private long last;
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final RectF box = new RectF();
-    private final Path clip = new Path();
     private final Matrix turn = new Matrix();
     private final SweepGradient rainbow;
     private final int[] rainbowColours = {0xD9FF8CD2, 0xF28CD2FF, 0xFFFFFFFF, 0xD9FFE28C, 0xE6AA8CFF, 0xD9FF8CD2};
+    // Made once on a unit square and moved into place each frame by a matrix: a new gradient every frame cost the
+    // TV's GPU a fresh program each time.
+    private final LinearGradient body = new LinearGradient(0, 0, 0, 1, 0x52FFFFFF, 0x17FFFFFF, Shader.TileMode.CLAMP);
+    private final LinearGradient edge = new LinearGradient(0, 0, 0, 1, 0xE6FFFFFF, 0x00FFFFFF, Shader.TileMode.CLAMP);
+    private final LinearGradient band = new LinearGradient(0, 0, 1, 0, new int[]{0x00FFFFFF, 0x80FFFFFF, 0x00FFFFFF}, null, Shader.TileMode.CLAMP);
+    private final Matrix place = new Matrix();
 
     GlassLens(Context c, float unit) {
         super(c);
@@ -53,6 +57,27 @@ final class GlassLens extends View {
             travelled = false;
         }
         alphaTo = 1f;
+        kick();
+    }
+
+    /**
+     * The box moved on its own (the row sliding under the glass, the focused tile with it): the glass keeps flowing
+     * after it on the same springs, this being the same journey, not a new one.
+     */
+    void follow(float x, float y, float w, float h, float radius) {
+        if (!placed || alpha < 0.05f) return;
+        tgt[0] = x; tgt[1] = y; tgt[2] = w; tgt[3] = h; tgt[4] = radius;
+        kick();
+    }
+
+    /**
+     * The row slid under the glass instead of the glass moving (past the fourth tile): a push the way the focus went, so
+     * it still leans and stretches that way, springs back onto the tile and shines as it lands, as when it travels.
+     */
+    void push(float dx) {
+        if (!placed || alpha < 0.05f) return;
+        vel[0] += dx;
+        travelled = true;
         kick();
     }
 
@@ -114,33 +139,47 @@ final class GlassLens extends View {
         c.scale(stretchX, stretchY, cx, cy);
         box.set(x, y, x + w, y + h);
         int a = Math.round(255 * alpha);
+        // Nothing here is blurred or clipped: a blur (the glow, the shadow) is worked out again for every frame the glass
+        // changes shape, and that, with a clip for the shine, was what made the TCL drop frames while it moved.
 
         // The frosted body (the pill), fading out as it becomes a ring round a picture.
         if (fill > 0.01f) {
             paint.setStyle(Paint.Style.FILL);
-            paint.setShader(new LinearGradient(0, y, 0, y + h, 0x52FFFFFF, 0x17FFFFFF, Shader.TileMode.CLAMP));
+            place.setScale(1f, h);
+            place.postTranslate(0, y);
+            body.setLocalMatrix(place);
+            paint.setShader(body);
             paint.setAlpha(Math.round(a * fill));
-            paint.setShadowLayer(14 * unit, 0, 6 * unit, 0x59040628);
             c.drawRoundRect(box, r, r, paint);
-            paint.clearShadowLayer();
             // Light along its top edge.
-            paint.setShader(new LinearGradient(0, y, 0, y + h * 0.4f, 0xE6FFFFFF, 0x00FFFFFF, Shader.TileMode.CLAMP));
+            place.setScale(1f, h * 0.4f);
+            place.postTranslate(0, y);
+            edge.setLocalMatrix(place);
+            paint.setShader(edge);
             paint.setStyle(Paint.Style.STROKE);
             paint.setStrokeWidth(1.6f * unit);
             paint.setAlpha(Math.round(a * fill));
             c.drawRoundRect(box, r, r, paint);
         }
-        // The ring: white, glowing a cool blue round the picture.
+        // The ring: white, with a cool blue glow round the picture drawn as two soft lines outside it.
         if (fill < 0.99f) {
+            float ring = 1f - fill;
             paint.setShader(null);
             paint.setStyle(Paint.Style.STROKE);
-            paint.setStrokeWidth(3.2f * unit);
+            paint.setColor(0xFF82A0FF);
+            paint.setStrokeWidth(12f * unit);
+            paint.setAlpha(Math.round(a * ring * 0.10f));
+            float g2 = 6f * unit;
+            c.drawRoundRect(x - g2, y - g2, x + w + g2, y + h + g2, r + g2, r + g2, paint);
+            paint.setStrokeWidth(6f * unit);
+            paint.setAlpha(Math.round(a * ring * 0.22f));
+            float g1 = 2.5f * unit;
+            c.drawRoundRect(x - g1, y - g1, x + w + g1, y + h + g1, r + g1, r + g1, paint);
             paint.setColor(0xF2FFFFFF);
-            paint.setAlpha(Math.round(a * (1f - fill)));
-            paint.setShadowLayer(20 * unit, 0, 0, 0x9982A0FF);
+            paint.setStrokeWidth(3.2f * unit);
+            paint.setAlpha(Math.round(a * ring * 0.95f));
             float in = 1.6f * unit;
             c.drawRoundRect(x + in, y + in, x + w - in, y + h - in, Math.max(0, r - in), Math.max(0, r - in), paint);
-            paint.clearShadowLayer();
         }
         // The rainbow edge, turning slowly, faster as it flies.
         turn.setRotate(angle);
@@ -152,19 +191,17 @@ final class GlassLens extends View {
         paint.setAlpha(Math.round(a * 0.85f));
         float e = 0.6f * unit;
         c.drawRoundRect(x - e, y - e, x + w + e, y + h + e, r + e, r + e, paint);
-        // The shine sweeping across as it lands.
+        // The shine sweeping across as it lands: a band of light painted into the glass's own shape (no clip needed).
         if (shine >= 0f) {
-            clip.reset();
-            clip.addRoundRect(box, r, r, Path.Direction.CW);
-            int s2 = c.save();
-            c.clipPath(clip);
-            float band = w * 0.36f, bx = x - band + (w + band * 2) * shine;
+            float wide = w * 0.36f, bx = x - wide + (w + wide * 2) * shine;
+            place.setScale(wide, 1f);
+            place.postTranslate(bx - wide / 2f, 0);
+            place.postSkew(-0.3f, 0, bx, cy);
+            band.setLocalMatrix(place);
+            paint.setShader(band);
             paint.setStyle(Paint.Style.FILL);
-            paint.setShader(new LinearGradient(bx - band / 2, y, bx + band / 2, y + h * 0.35f,
-                    new int[]{0x00FFFFFF, 0x80FFFFFF, 0x00FFFFFF}, null, Shader.TileMode.CLAMP));
-            paint.setAlpha(Math.round(a * (float) Math.sin(Math.PI * shine)));
-            c.drawRect(bx - band, y - h, bx + band, y + h * 2, paint);
-            c.restoreToCount(s2);
+            paint.setAlpha(Math.round(a * (float) Math.sin(Math.PI * shine) * (fill > 0.5f ? 1f : 0.6f)));
+            c.drawRoundRect(box, r, r, paint);
         }
         paint.setShader(null);
         c.restoreToCount(save);

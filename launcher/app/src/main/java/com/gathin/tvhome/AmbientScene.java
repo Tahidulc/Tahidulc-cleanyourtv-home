@@ -33,8 +33,9 @@ import java.util.concurrent.Executors;
  * tomorrow's, and on the right a few glanceable cards: the next game (or the one on now, with its score), the next
  * Formula 1 session, the camera's last motion, and the car: on the way home, how far away it is and when it gets
  * back (the phone's own estimate), else its latest news and charge (the Tesla app's notifications, passed on by the
- * phone). Along the foot, today's results. Everything drifts a little every
- * minute and dims late at night, so nothing burns in; it never keeps the screen on by itself, so the TV still goes
+ * phone). Along the foot, a bar that stays put and turns its page every few seconds: the games on now, the next
+ * hours' weather, the rest of today's games, today's results and the news. The clock and cards drift a little every
+ * minute, the bar's words change, and everything dims late at night, so nothing burns in; it never keeps the screen on by itself, so the TV still goes
  * to sleep on its own timer. Shared by AmbientActivity (Home left idle) and AmbientDream (the system screensaver).
  *
  * Laid out on a 1920 x 1080 design, scaled to the screen, as the mock-up was drawn.
@@ -47,8 +48,12 @@ final class AmbientScene {
     private final FrameLayout root, stage;
     private final TextView clock, date, weather, tomorrow;
     private final ImageView weatherIcon;
-    private final LinearLayout cards, strip, left;
+    private final LinearLayout cards, strip, left, page;
     private TextView hint;
+    /** The bar's pages ({label, items}), the one showing, and how long each stays. */
+    private final List<Strip> pages = new ArrayList<>();
+    private int pageAt = -1;
+    private static final long PAGE_MS = 12_000L, LIVE_MS = 3 * 60_000L;
     /** When the scene started, and whether the clock is on the right (it changes sides every few minutes). */
     private long startedAt;
     private boolean flipped;
@@ -111,11 +116,17 @@ final class AmbientScene {
         strip.setGravity(Gravity.CENTER_VERTICAL);
         strip.setPadding(px(140), 0, px(140), 0);
         strip.setBackgroundColor(0x0DFFFFFF);
-        // Inside the drifting stage, clear of the edge: it moves with everything else.
+        // Outside the drifting stage: the bar stays where it is (it moved with everything else, a band the width of
+        // the screen sliding about every minute); its words change page every few seconds instead, so none stay put.
         FrameLayout.LayoutParams sp = new FrameLayout.LayoutParams(-1, px(84), Gravity.BOTTOM);
         sp.bottomMargin = px(36);
-        stage.addView(strip, sp);
-        showStrip(new ArrayList<>());
+        root.addView(strip, sp);
+        page = new LinearLayout(c);
+        page.setGravity(Gravity.CENTER_VERTICAL);
+        strip.addView(page, new LinearLayout.LayoutParams(0, -1, 1f));
+        hint = text(20, "sans-serif", 0x8CFFFFFF);
+        hint.setText("Any button wakes Home");
+        strip.addView(hint, margins(40, 0, 0, 0));
     }
 
     View view() {
@@ -130,6 +141,8 @@ final class AmbientScene {
         tick.run();
         refresh.run();
         main.postDelayed(flip, FLIP_MS);
+        main.postDelayed(turn, PAGE_MS);
+        hint.setAlpha(1f);
         // The way out is shown for the first minute only: no words left standing on the screen.
         main.postDelayed(() -> { if (hint != null) hint.animate().alpha(0f).setDuration(1_500).start(); }, 60_000L);
     }
@@ -155,6 +168,7 @@ final class AmbientScene {
             date.setText(now.format(DateTimeFormatter.ofPattern("EEEE d MMMM", Locale.UK)));
             stage.animate().translationX((random.nextFloat() * 80 - 40) * k).translationY((random.nextFloat() * 50 - 25) * k)
                     .alpha(dim()).setDuration(4_000).start();
+            strip.animate().alpha(dim()).setDuration(4_000).start();
             // On the way home, the minutes left and the time home move on each minute.
             if (tripActive()) showCards();
             long toNext = 60_000L - (System.currentTimeMillis() % 60_000L) + 50;
@@ -209,13 +223,21 @@ final class AmbientScene {
     private void load() {
         Object[] wx = weather();
         List<Card> found = new ArrayList<>();
-        List<String> results = new ArrayList<>();
-        Card match = match(results);
+        List<String> results = new ArrayList<>(), onNow = new ArrayList<>(), later = new ArrayList<>();
+        Card match = match(results, onNow, later);
         if (match != null) found.add(match);
         Card f1 = f1();
         if (f1 != null) found.add(f1);
         Card cam = camera();
         if (cam != null) found.add(cam);
+        List<String[]> news = new ArrayList<>();
+        try {
+            String feeds = c.getString(R.string.news_panel_url);
+            if (!feeds.isEmpty()) news.addAll(NewsPanel.readAll(feeds));
+        } catch (RuntimeException ignored) {
+            // no news: the bar goes without
+        }
+        List<Strip> made = strips(wx, onNow, later, results, news);
         main.post(() -> {
             if (!running) return;
             if (wx != null) {
@@ -226,9 +248,14 @@ final class AmbientScene {
             others.clear();
             others.addAll(found);
             showCards();
-            showStrip(results);
+            showStrip(made);
+            // A game on: its score kept fresh on the bar (and its card) every few minutes, not every half hour.
+            main.removeCallbacks(liveAgain);
+            if (!onNow.isEmpty()) main.postDelayed(liveAgain, LIVE_MS);
         });
     }
+
+    private final Runnable liveAgain = () -> { if (running) io.execute(this::load); };
 
     /** The car's news came in from the phone (GoalWatchService): the cards again, at once, if Ambient is on screen. */
     static void carNews() {
@@ -260,7 +287,8 @@ final class AmbientScene {
         try {
             JSONObject json = new JSONObject(ScoresTicker.get("https://api.open-meteo.com/v1/forecast?latitude=" + lat
                     + "&longitude=" + lon + "&current=temperature_2m,weather_code,is_day"
-                    + "&daily=temperature_2m_max,precipitation_probability_max&forecast_days=2&timezone=auto"));
+                    + "&daily=temperature_2m_max,precipitation_probability_max,sunset&forecast_days=2&timezone=auto"
+                    + "&hourly=temperature_2m,weather_code,is_day&forecast_hours=6"));
             JSONObject now = json.getJSONObject("current");
             int code = now.getInt("weather_code");
             boolean day = now.optInt("is_day", 1) == 1;
@@ -274,7 +302,24 @@ final class AmbientScene {
                 org.json.JSONArray rain = daily.optJSONArray("precipitation_probability_max");
                 if (rain != null && !rain.isNull(1) && rain.getInt(1) >= 50) next += ", rain likely";
             }
-            return new Object[]{line, WeatherLine.icon(code, day), next};
+            // The next few hours, on the hour, for the bar: {"18:00", "10°", icon}; and today's sunset.
+            List<Object[]> hours = new ArrayList<>();
+            JSONObject hourly = json.optJSONObject("hourly");
+            if (hourly != null) {
+                org.json.JSONArray t = hourly.getJSONArray("time"), temp = hourly.getJSONArray("temperature_2m"), wc = hourly.getJSONArray("weather_code");
+                org.json.JSONArray isDay = hourly.optJSONArray("is_day");
+                for (int i = 1; i < t.length() && hours.size() < 4; i++) {
+                    String at = t.getString(i);
+                    hours.add(new Object[]{at.substring(at.indexOf('T') + 1), Math.round(temp.getDouble(i)) + "°",
+                            WeatherLine.icon(wc.getInt(i), isDay == null || isDay.optInt(i, 1) == 1)});
+                }
+            }
+            String sunset = null;
+            if (daily != null && daily.optJSONArray("sunset") != null && daily.getJSONArray("sunset").length() > 0) {
+                String ss = daily.getJSONArray("sunset").getString(0);
+                if (ss.contains("T") && LocalDate.now().toString().equals(ss.substring(0, ss.indexOf('T')))) sunset = ss.substring(ss.indexOf('T') + 1);
+            }
+            return new Object[]{line, WeatherLine.icon(code, day), next, hours, sunset};
         } catch (Exception e) {
             return null;
         }
@@ -284,7 +329,7 @@ final class AmbientScene {
      * The game on now in the followed competitions, else the next one in the coming week (one with a British
      * channel first); today's finished ones go into results.
      */
-    private Card match(List<String> results) {
+    private Card match(List<String> results, List<String> onNow, List<String> later) {
         String[] leagues = c.getResources().getStringArray(R.array.goal_alert_leagues);
         ZoneId zone = ZoneId.systemDefault();
         LocalDate today = LocalDate.now(zone);
@@ -293,8 +338,12 @@ final class AmbientScene {
             List<ScoresTicker.Game> day = ScoresTicker.load(leagues, today.plusDays(i));
             day.sort((a, b) -> Long.compare(a.kickoff, b.kickoff));
             if (i == 0) {
+                DateTimeFormatter hm = DateTimeFormatter.ofPattern("HH:mm");
                 for (ScoresTicker.Game g : day) {
                     if (g.state == 2 && results.size() < 4) results.add(g.home + " " + g.homeScore + "–" + g.awayScore + " " + g.away);
+                    if (g.state == 0 && onNow.size() < 3) onNow.add(ScoresTicker.liveClock(g) + "   " + g.home + " " + g.homeScore + "–" + g.awayScore + " " + g.away);
+                    if (g.state == 1 && g.kickoff > now && later.size() < 4)
+                        later.add(Instant.ofEpochMilli(g.kickoff).atZone(zone).format(hm) + "   " + g.home + " v " + g.away);
                 }
                 for (ScoresTicker.Game g : day) if (g.state == 0) return gameCard(g, true);
             }
@@ -564,31 +613,112 @@ final class AmbientScene {
     }
 
     /** The foot: today's results (when there are any) and how to leave. */
-    private void showStrip(List<String> results) {
-        strip.removeAllViews();
-        if (!results.isEmpty()) {
-            TextView chip = text(14, "sans-serif-black", 0xFFFFFFFF);
-            chip.setText("TODAY'S RESULTS");
-            chip.setLetterSpacing(0.14f);
-            chip.setPadding(px(12), px(6), px(12), px(6));
-            GradientDrawable g = new GradientDrawable();
-            g.setCornerRadius(px(8));
-            g.setColor(0x1FFFFFFF);
-            chip.setBackground(g);
-            strip.addView(chip);
-            for (String r : results) {
-                TextView t = text(20, "sans-serif", 0xD9FFFFFF);
-                t.setText("FT  " + r);
-                t.setSingleLine(true);
-                strip.addView(t, margins(40, 0, 0, 0));
-            }
+    /** One page of the bar: its label (in a chip, red for LIVE) and its items ({words, icon or 0}). */
+    private static final class Strip {
+        final String label;
+        final List<Object[]> items = new ArrayList<>();
+        /** A headline: one item that takes the bar's width, cut short with an ellipsis if it is longer. */
+        boolean wide;
+
+        Strip(String label) {
+            this.label = label;
         }
-        View gap = new View(c);
-        strip.addView(gap, new LinearLayout.LayoutParams(0, 1, 1f));
-        hint = text(20, "sans-serif", 0x8CFFFFFF);
-        hint.setText("Any button wakes Home");
-        if (running && System.currentTimeMillis() - startedAt > 60_000L) hint.setAlpha(0f);
-        strip.addView(hint);
+    }
+
+    /**
+     * The bar's pages, in the order they come round: the games on now, the next hours' weather (and sunset), the rest
+     * of today's games, today's results, then up to three headlines (local news first), one to a page.
+     */
+    private List<Strip> strips(Object[] wx, List<String> onNow, List<String> later, List<String> results, List<String[]> news) {
+        List<Strip> out = new ArrayList<>();
+        if (!onNow.isEmpty()) {
+            Strip p = new Strip("LIVE");
+            for (String s : onNow) p.items.add(new Object[]{s, 0});
+            out.add(p);
+        }
+        if (wx != null && wx.length > 3 && wx[3] instanceof List && !((List<?>) wx[3]).isEmpty()) {
+            Strip p = new Strip("NEXT HOURS");
+            for (Object o : (List<?>) wx[3]) {
+                Object[] h = (Object[]) o;
+                p.items.add(new Object[]{h[0] + "   " + h[1], h[2]});
+            }
+            if (wx[4] != null) p.items.add(new Object[]{"Sunset " + wx[4], 0});
+            out.add(p);
+        }
+        if (!later.isEmpty()) {
+            Strip p = new Strip("LATER TODAY");
+            for (String s : later) p.items.add(new Object[]{s, 0});
+            out.add(p);
+        }
+        if (!results.isEmpty()) {
+            Strip p = new Strip("TODAY'S RESULTS");
+            for (String s : results) p.items.add(new Object[]{"FT  " + s, 0});
+            out.add(p);
+        }
+        for (int i = 0; i < Math.min(3, news.size()); i++) {
+            String[] st = news.get(i);
+            Strip p = new Strip(st.length > 3 && st[3] != null ? st[3] : "NEWS");
+            p.items.add(new Object[]{st[0], 0});
+            p.wide = true;
+            out.add(p);
+        }
+        return out;
+    }
+
+    private void showStrip(List<Strip> made) {
+        pages.clear();
+        pages.addAll(made);
+        if (pageAt < 0 || pageAt >= pages.size()) pageAt = 0;
+        fillPage();
+    }
+
+    /** Every few seconds, the bar's next page, through a fade (the bar itself stays where it is). */
+    private final Runnable turn = new Runnable() {
+        @Override public void run() {
+            if (!running) return;
+            main.postDelayed(this, PAGE_MS);
+            if (pages.size() < 2) return;
+            page.animate().cancel();
+            page.animate().alpha(0f).setDuration(450).withEndAction(() -> {
+                pageAt = (pageAt + 1) % pages.size();
+                fillPage();
+                page.animate().alpha(1f).setDuration(550).start();
+            }).start();
+        }
+    };
+
+    private void fillPage() {
+        page.removeAllViews();
+        if (pages.isEmpty()) return;
+        Strip p = pages.get(Math.max(0, Math.min(pageAt, pages.size() - 1)));
+        TextView chip = text(14, "sans-serif-black", 0xFFFFFFFF);
+        chip.setText(p.label);
+        chip.setLetterSpacing(0.14f);
+        chip.setSingleLine(true);
+        chip.setPadding(px(12), px(6), px(12), px(6));
+        GradientDrawable g = new GradientDrawable();
+        g.setCornerRadius(px(8));
+        g.setColor("LIVE".equals(p.label) ? 0xFFE8112D : 0x1FFFFFFF);
+        chip.setBackground(g);
+        page.addView(chip);
+        for (Object[] item : p.items) {
+            LinearLayout one = new LinearLayout(c);
+            one.setGravity(Gravity.CENTER_VERTICAL);
+            int icon = item[1] instanceof Integer ? (Integer) item[1] : 0;
+            if (icon != 0) {
+                ImageView iv = new ImageView(c);
+                iv.setImageResource(icon);
+                one.addView(iv, new LinearLayout.LayoutParams(px(30), px(30)));
+            }
+            TextView t = text(20, "sans-serif", 0xD9FFFFFF);
+            t.setText((String) item[0]);
+            t.setSingleLine(true);
+            t.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            one.addView(t, icon != 0 ? margins(10, 0, 0, 0) : new LinearLayout.LayoutParams(p.wide ? -1 : -2, -2));
+            LinearLayout.LayoutParams lp = p.wide ? new LinearLayout.LayoutParams(0, -2, 1f) : new LinearLayout.LayoutParams(-2, -2);
+            lp.leftMargin = px(p.wide ? 28 : 40);
+            page.addView(one, lp);
+        }
     }
 
     private TextView text(float designPx, String family, int color) {

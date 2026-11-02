@@ -606,6 +606,10 @@ final class HomeV2 {
         // The description in a narrower column than the title: a long one wraps before it reaches the picture.
         htext.addView(hText, new LinearLayout.LayoutParams(px(760), ViewGroup.LayoutParams.WRAP_CONTENT));
         add(htext, dockMode ? 56 : 216, 226, 1060, 340);
+        // A slower TV: the hero's words kept as a finished picture, made again only when they change. Drawn live, the
+        // description's soft shadow was worked out again on every frame Home drew, and while a trailer or channel plays
+        // in a tile that is every frame, leaving the TCL's graphics chip little room for the glass and the row's slide.
+        if (Config.themeFlag(a, "lite_home", false)) htext.setLayerType(View.LAYER_TYPE_HARDWARE, null);
     }
 
     private void buildRail() {
@@ -734,13 +738,8 @@ final class HomeV2 {
         if (lens == null) return;
         boolean overHome = page == null && !guide.isOpen();
         if (zone == Z_ROW && overHome && rowIdx < row.getChildCount()) {
-            int first = Math.max(0, rowIdx - 3);
-            FrameLayout.LayoutParams vp = (FrameLayout.LayoutParams) viewport.getLayoutParams();
-            float w = px(TILE_W), h = px(TILE_H), grow = 1.05f;
-            float x = vp.leftMargin + px(rowInset()) + (rowIdx - first) * px(TILE_W + TILE_GAP) - w * (grow - 1) / 2f;
-            float y = vp.topMargin + px(24) - h * (grow - 1) / 2f;
-            float pad = px(7);
-            lens.to(x - pad, y - pad, w * grow + 2 * pad, h * grow + 2 * pad, px(16) * grow + pad, true);
+            float[] b = tileGlass();
+            lens.to(b[0], b[1], b[2], b[3], b[4], true);
             return;
         }
         View item = zone == Z_RAIL && railIdx < railViews.size() ? railViews.get(railIdx)
@@ -753,6 +752,19 @@ final class HomeV2 {
         }
         lens.hide();
     }
+
+    /** The glass round the focused tile, where it rests once the row has slid (four tiles in full). */
+    private float[] tileGlass() {
+        int first = Math.max(0, rowIdx - 3);
+        FrameLayout.LayoutParams vp = (FrameLayout.LayoutParams) viewport.getLayoutParams();
+        float w = px(TILE_W), h = px(TILE_H), grow = 1.05f, pad = px(7);
+        float x = vp.leftMargin + px(rowInset()) + (rowIdx - first) * px(TILE_W + TILE_GAP) - w * (grow - 1) / 2f;
+        float y = vp.topMargin + px(24) - h * (grow - 1) / 2f;
+        return new float[]{x - pad, y - pad, w * grow + 2 * pad, h * grow + 2 * pad, px(16) * grow + pad};
+    }
+
+    /** The row's first tile in full when the glass last stood on the row; -1 when the focus was elsewhere. */
+    private int glassFirst = -1;
 
     /** The section boxes: all six on screen, lined up under the row of tiles (216 to 1824). */
     private static final int CAT_GAP = 14, CAT_W = 256, CAT_X = 216 + (1608 - 6 * CAT_W - 5 * CAT_GAP) / 2, CAT_Y = 886, CAT_H = 160;
@@ -1585,6 +1597,13 @@ final class HomeV2 {
         window(row, first);
         playSoon();
         row.animate().translationX(-first * px(TILE_W + TILE_GAP)).setDuration(240).setInterpolator(SKY).start();
+        if (dockMode && lens != null) {
+            // Past the fourth tile the row slides and the focused tile comes to where the glass already is: pushed the
+            // way the focus went, the glass still travels a little, stretches, springs back and shines (it stood still).
+            boolean onRow = zone == Z_ROW && page == null && !guide.isOpen();
+            if (onRow && glassFirst >= 0 && first != glassFirst) lens.push((first > glassFirst ? 1 : -1) * px(70));
+            glassFirst = onRow ? first : -1;
+        }
         for (int i = 0; dockMode && i < catViews.size(); i++) {
             // A section in the dock: white and a little bolder under the glass, swelling with it.
             FrameLayout box = (FrameLayout) catViews.get(i);
