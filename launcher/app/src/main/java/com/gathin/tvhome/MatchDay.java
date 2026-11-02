@@ -178,7 +178,7 @@ final class MatchDay {
             LinearLayout.LayoutParams up = new LinearLayout.LayoutParams(-2, -2);
             up.topMargin = h.px(3);
             box.addView(u, up);
-            LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(h.px(78), h.px(58));
+            LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(h.px(78), h.px(56));
             bp.leftMargin = h.px(10);
             countdown.addView(box, bp);
         }
@@ -188,19 +188,17 @@ final class MatchDay {
         third.addView(form, gap(30));
         events = row();
         third.addView(events);
-        place(third, 0, 158, 1320, 58);
+        place(third, 0, 156, 1320, 56);
 
         LinearLayout fourth = row();
         channelView = new ImageView(c);
-        channelView.setAdjustViewBounds(true);
-        channelView.setMaxHeight(h.px(32));
-        channelView.setMaxWidth(h.px(360));
-        fourth.addView(channelView, new LinearLayout.LayoutParams(-2, h.px(32)));
+        channelView.setScaleType(ImageView.ScaleType.FIT_XY);
+        fourth.addView(channelView, new LinearLayout.LayoutParams(h.px(342), h.px(32)));
         channelText = h.text(19, regular, 0xE6FFFFFF);
         fourth.addView(channelText, gap(14));
         line = h.text(19, regular, 0xE6FFFFFF);
         fourth.addView(line, gap(14));
-        place(fourth, 0, 220, 1320, 36);
+        place(fourth, 0, 220, 1320, LOGO_MAX);
 
         buttons = row();
         // The lit button grows a little: drawn past its row and the panel rather than clipped at the edge.
@@ -209,7 +207,9 @@ final class MatchDay {
         panel.setClipChildren(false);
         panel.setClipToPadding(false);
         // A clear gap under the channel's logo, the buttons still well above For You's heading.
-        place(buttons, 0, 270, 1320, 56);
+        place(buttons, 0, 274, 1320, 56);
+        // The channel's logo as wide as the Watch button under it, both ends in line.
+        buttons.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, orr, ob) -> alignLogo());
 
         chip = h.text(17, semi, Color.WHITE);
         chip.setLetterSpacing(0.06f);
@@ -654,6 +654,7 @@ final class MatchDay {
         android.graphics.drawable.Drawable primeIcon = p.prime && p.logo == null ? appIcon(PRIME) : null;
         if (primeIcon != null) channelView.setImageDrawable(primeIcon); else channelView.setImageBitmap(p.logo);
         channelView.setVisibility(p.logo != null || primeIcon != null ? View.VISIBLE : View.GONE);
+        alignLogo();
         String said = p.prime && p.logo == null ? "Live on Prime Video" : p.logo == null && p.channel != null ? p.channel : null;
         channelText.setText(said == null ? "" : said);
         channelText.setVisibility(said != null ? View.VISIBLE : View.GONE);
@@ -730,6 +731,7 @@ final class MatchDay {
 
     /** Watch (the channel in TiviMate, else the Live Centre), the Live Centre, and a reminder before kick-off. */
     private void buttons(Pick p) {
+        watchButton = null;
         buttons.removeAllViews();
         buttonViews.clear();
         actions.clear();
@@ -740,6 +742,7 @@ final class MatchDay {
             // a playlist's country prefix ("UK: ", "UK | ").
             String ch = p.watch.get(0).replaceFirst("^[A-Za-z]{2,3}\\s*[:|]\\s*", "").trim();
             addButton((g.state == 0 ? "Watch live on " : "Watch on ") + ch, () -> h.tune(p.watch, p.channelLogo));
+            watchButton = (TextView) buttonViews.get(buttonViews.size() - 1);
         }
         if (p.prime && g.state != 2 && appIcon(PRIME) != null) {
             addButton("Open Prime Video", () -> {
@@ -764,6 +767,49 @@ final class MatchDay {
                 if (last instanceof TextView) ((TextView) last).setText(set ? "Reminder set for " + when : "Remind me at " + when);
             });
         }
+    }
+
+    /** The Watch button (null without one), whose width the channel's logo above it takes. */
+    private TextView watchButton;
+    /** The channel logo's height: at most this tall (its row's height), at least LOGO_MIN. */
+    private static final int LOGO_MAX = 38, LOGO_MIN = 26, LOGO_H = 32;
+
+    /**
+     * The channel's logo exactly as wide as the Watch button, so their left and right ends line up: scaled to the
+     * button's width while its height stays between LOGO_MIN and LOGO_MAX; a logo too wide for that widens the
+     * button to match instead; one too narrow even at LOGO_MAX sits at the button's left end. Without a Watch button,
+     * the logo at its usual height.
+     */
+    private void alignLogo() {
+        android.graphics.drawable.Drawable d = channelView.getDrawable();
+        if (d == null || d.getIntrinsicWidth() <= 0 || d.getIntrinsicHeight() <= 0) return;
+        float aspect = d.getIntrinsicWidth() / (float) d.getIntrinsicHeight();
+        int w, hh;
+        TextView b = watchButton;
+        int bw = b == null ? 0 : b.getWidth();
+        if (bw <= 0) {
+            hh = h.px(LOGO_H);
+            w = Math.round(hh * aspect);
+        } else {
+            hh = Math.round(bw / aspect);
+            w = bw;
+            if (hh > h.px(LOGO_MAX)) {
+                hh = h.px(LOGO_MAX);
+                w = Math.round(hh * aspect);
+            } else if (hh < h.px(LOGO_MIN)) {
+                hh = h.px(LOGO_H);
+                w = Math.round(hh * aspect);
+                if (b.getMinWidth() != w) {
+                    b.setMinWidth(w);
+                    return;   // laid out again at the new width, and aligned then
+                }
+            }
+        }
+        LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) channelView.getLayoutParams();
+        if (lp.width == w && lp.height == hh) return;
+        lp.width = w;
+        lp.height = hh;
+        channelView.setLayoutParams(lp);
     }
 
     /** The one gap between Match Day's buttons. */
