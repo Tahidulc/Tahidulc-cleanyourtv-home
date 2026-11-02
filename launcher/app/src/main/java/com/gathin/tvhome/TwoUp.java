@@ -28,8 +28,9 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Two at once (picture and picture): two apps on the screen together, TiviMate beside YouTube say, each in its own
- * window: side by side, the same size, or one big with the other small beside it. Android shrinks an app into a
+ * Split screen (two at once, picture and picture): two apps on the screen together, TiviMate beside YouTube say, each
+ * in its own window: side by side, the same size and as big as the screen's width allows, or one big with the other
+ * small beside it. Android shrinks an app into a
  * window only for its own tools, so the launcher asks the TV's debugging connection (LocalAdb) for them: its
  * freeform-windows setting on, each app opened in a window of its own and placed. The remote works the app in front;
  * Home brings the options: the remote to the other one, swap them round, the layout, which one is heard (the other
@@ -152,9 +153,11 @@ final class TwoUp {
         float k = w / 1920f;
         int[][] b = new int[2][];
         if (layout == SIDE) {
-            int pw = Math.round(932 * k), ph = Math.round(524 * k), top = Math.round(270 * k);
-            b[0] = new int[]{Math.round(24 * k), top, Math.round(24 * k) + pw, top + ph};
-            b[1] = new int[]{w - Math.round(24 * k) - pw, top, w - Math.round(24 * k), top + ph};
+            // Split screen: the two as big as the screen's width allows, edge to edge with a thin gap between.
+            int edge = Math.round(4 * k), gap = Math.round(8 * k);
+            int pw = (w - 2 * edge - gap) / 2, ph = Math.round(pw * 9f / 16f), top = (ht - ph) / 2;
+            b[0] = new int[]{edge, top, edge + pw, top + ph};
+            b[1] = new int[]{w - edge - pw, top, w - edge, top + ph};
         } else {
             int bw = Math.round(1376 * k), bh = Math.round(774 * k), sw = Math.round(472 * k), sh = Math.round(266 * k), top = Math.round(150 * k);
             b[0] = new int[]{Math.round(24 * k), top, Math.round(24 * k) + bw, top + bh};
@@ -378,11 +381,11 @@ final class TwoUp {
             lp.topMargin = b[i][3] + px(16);
             layer.addView(tag, lp);
         }
-        TextView title = text(16, heavy(), 0x99FFFFFF, "TWO AT ONCE");
+        TextView title = text(16, heavy(), 0x99FFFFFF, layout == SIDE ? "SPLIT SCREEN" : "TWO AT ONCE");
         title.setLetterSpacing(0.16f);
         FrameLayout.LayoutParams tl = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         tl.leftMargin = px(28);
-        tl.topMargin = px(layout == SIDE ? 220 : 104);
+        tl.topMargin = px(layout == SIDE ? 216 : 104);
         layer.addView(title, tl);
         TextView hint = text(18, semi(), 0x8CFFFFFF, busy ? "Opening both…" : "Home: switch the remote, swap, layout, sound");
         FrameLayout.LayoutParams hl = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -416,7 +419,7 @@ final class TwoUp {
     /** The options, a list down a glass card: the first goes back to both as they were. */
     private static void optionsView() {
         String a = name(pkg[0]), b = name(pkg[1]);
-        LinearLayout card = card("Two at once", a + "  ·  " + b);
+        LinearLayout card = card(layout == SIDE ? "Split screen" : "Two at once", a + "  ·  " + b);
         row(card, "Back to both", () -> back(control));
         row(card, "Remote to " + name(pkg[1 - control]), () -> back(1 - control));
         row(card, "Swap them round", () -> {
@@ -428,7 +431,7 @@ final class TwoUp {
             save(h.a);
             back(control);
         });
-        row(card, layout == SIDE ? "One big, one small" : "Side by side, the same size", () -> {
+        row(card, layout == SIDE ? "One big, one small" : "Split screen, the same size", () -> {
             layout = layout == SIDE ? BIG : SIDE;
             back(control);
         });
@@ -488,8 +491,8 @@ final class TwoUp {
 
     /** The apps to choose from, in a row: OK on one, then on the other. */
     private static void pickView() {
-        LinearLayout card = card("Two at once", firstPick == null ? "Choose the first app (left, or the big one)"
-                : "Now the second, beside " + name(firstPick));
+        LinearLayout card = card("Split screen", firstPick == null ? "Choose the first app, for the left"
+                : "Now the second, for the right, beside " + name(firstPick));
         LinearLayout line = new LinearLayout(h.a);
         line.setOrientation(LinearLayout.HORIZONTAL);
         line.setGravity(Gravity.CENTER_HORIZONTAL);
@@ -575,6 +578,6 @@ final class TwoUp {
     }
 
     static String describe() {
-        return active ? String.format(Locale.UK, "%s + %s", name(pkg[0]), name(pkg[1])) : "Two apps on screen";
+        return active ? String.format(Locale.UK, "%s + %s", name(pkg[0]), name(pkg[1])) : "Two apps side by side";
     }
 }

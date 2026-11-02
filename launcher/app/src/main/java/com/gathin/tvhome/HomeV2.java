@@ -527,8 +527,8 @@ final class HomeV2 {
         items.add(new ControlCentre.Item("Wi-Fi", R.drawable.ic_wifi, () -> wifi.getText().toString(), null,
                 () -> open(new Intent(android.provider.Settings.ACTION_WIFI_SETTINGS))));
         items.add(new ControlCentre.Item("Inputs", R.drawable.ic_input, () -> "HDMI and sources", null, () -> showInputs(wifi)));
-        // Two at once: two apps on screen together (TiviMate beside YouTube), the dock's apps to choose from.
-        items.add(new ControlCentre.Item("Two at once", R.drawable.ic_two_up, TwoUp::describe, TwoUp::active, () -> {
+        // Split screen: two apps on screen together (TiviMate beside YouTube), the dock's apps to choose from.
+        items.add(new ControlCentre.Item("Split screen", R.drawable.ic_two_up, TwoUp::describe, TwoUp::active, () -> {
             controlCentre.hide();
             List<String> apps = new ArrayList<>(dock);
             apps.add("ar.tvplayer.tv");

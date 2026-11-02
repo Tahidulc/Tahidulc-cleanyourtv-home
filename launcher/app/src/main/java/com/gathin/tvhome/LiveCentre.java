@@ -404,6 +404,7 @@ final class LiveCentre {
         statsOpen = false;
         openNow = 0;
         setOpen(0);
+        if (!SHOW_BOARD) bar.setVisibility(View.GONE);
 
         // Back closes it: the remote's Back key in the column's top right corner.
         ImageView back = new ImageView(c);
@@ -539,6 +540,11 @@ final class LiveCentre {
      * (about 380 x 44). It was the full size, which took too much of the picture.
      */
     private static final float BOARD_SCALE = 0.6f;
+    /**
+     * Whether the game's scoreboard shows in the top left corner (with its stats folding out of it, Up taking the
+     * remote to it). Off: the channel's own scoreboard shows there instead, nothing of ours over it.
+     */
+    private static final boolean SHOW_BOARD = false;
     /** The stats' labels on the white panel: a soft navy. */
     private static final int STAT_LABEL = 0xFF6A6F9C;
     /** Each page of stats on show, how many pages per fold-out, the scoreboard alone in between, the first fold-out. */
@@ -562,7 +568,7 @@ final class LiveCentre {
         mini.removeAllViews();
         ScoresTicker.Game g = shown();
         if (g == null) { bar.setVisibility(View.GONE); return; }
-        if (!boardHidden) bar.setVisibility(View.VISIBLE);
+        if (SHOW_BOARD && !boardHidden) bar.setVisibility(View.VISIBLE);
         buildBoard(c, mini, g);
         clockNow();
         fillStats(c, false);
@@ -2751,7 +2757,7 @@ final class LiveCentre {
             return true;
         }
         if (code == KeyEvent.KEYCODE_DPAD_UP) {
-            if (down && e.getRepeatCount() == 0) main.post(() -> focusBoard(true));
+            if (SHOW_BOARD && down && e.getRepeatCount() == 0) main.post(() -> focusBoard(true));
             return true;
         }
         if (code == KeyEvent.KEYCODE_DPAD_DOWN) {
@@ -3069,7 +3075,7 @@ final class LiveCentre {
         box.addView(col, new FrameLayout.LayoutParams(-1, -1));
         FrameLayout.LayoutParams bl = new FrameLayout.LayoutParams(w, h + px(44), Gravity.TOP | Gravity.START);
         bl.leftMargin = px((1500 - 1216) / 2);
-        bl.topMargin = px(22 + BOARD_H * BOARD_SCALE + 18);
+        bl.topMargin = px(22 + (SHOW_BOARD ? BOARD_H * BOARD_SCALE + 18 : 0));
         host.addView(box, bl);
         bigBox = box;
         box.setAlpha(0f);
@@ -3188,7 +3194,7 @@ final class LiveCentre {
         offerBox = null;
         offerList = null;
         onBoard = false;
-        boardHidden = false;
+        boardHidden = !SHOW_BOARD;
         eventOn = false;
         foldOuts.clear();
         main.removeCallbacks(nextEvent);
