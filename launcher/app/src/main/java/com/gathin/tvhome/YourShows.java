@@ -177,6 +177,11 @@ final class YourShows {
             t.ok = store != null ? () -> h.searchTitle(store, name, true, id, art)
                     : () -> Toast.makeText(h.a, name + " isn't on your streaming apps yet", Toast.LENGTH_SHORT).show();
         }
+        // Back after a break (three weeks or more) with episodes to go: Previously on first.
+        if (left > 0 && at != null && (System.currentTimeMillis() - e.at) / 86_400_000L >= Recap.GAP_DAYS) {
+            Runnable go = t.ok != null ? t.ok : () -> h.playLikePages(t);
+            t.ok = () -> Recap.open(h, t, go);
+        }
         return new Object[]{t, rank, order};
     }
 

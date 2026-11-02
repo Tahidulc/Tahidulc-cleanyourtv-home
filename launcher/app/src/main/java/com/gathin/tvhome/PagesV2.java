@@ -789,9 +789,7 @@ final class PagesV2 {
         /** OK on a poster: its own action, else the app it was being watched in, else Debrid Stream's page for it. */
         private void play(Title t) {
             if (t.ok != null) { t.ok.run(); return; }
-            String pkg = h.debridPackage();
-            if (t.app != null && !t.app.equals(pkg)) { h.openApp(t.app); return; }
-            if (pkg != null) h.searchTitle(pkg, t.title, t.tv, t.id, t.backdrop != null ? t.backdrop : t.poster);
+            h.playLikePages(t);
         }
 
         @Override boolean key(KeyEvent e) {

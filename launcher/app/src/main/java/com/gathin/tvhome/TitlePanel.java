@@ -261,6 +261,7 @@ final class TitlePanel {
             boolean now = MyList.toggle(c, title, HomeV2.onYourApps(h, (JSONObject) got[6]) != null);
             listButton.setText(now ? "✓  On My list" : "＋  My list");
         });
+        if (t.tv && Recap.can(c, t.id)) addButton(bar, "↺  Previously on", () -> { hide(); Recap.open(h, t, play); });
 
         int y = 500;
         // The films so far.

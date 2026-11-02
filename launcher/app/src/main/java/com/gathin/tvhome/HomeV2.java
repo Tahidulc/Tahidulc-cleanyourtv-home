@@ -432,6 +432,13 @@ final class HomeV2 {
         });
     }
 
+    /** What OK on a poster does in Discover, Movies and TV shows: the app it was watched in, else Debrid Stream's page. */
+    void playLikePages(PagesV2.Title t) {
+        String pkg = debridPackage();
+        if (t.app != null && !t.app.equals(pkg)) { openApp(t.app); return; }
+        if (pkg != null) searchTitle(pkg, t.title, t.tv, t.id, t.backdrop != null ? t.backdrop : t.poster);
+    }
+
     void openTitle(PagesV2.Title t, JSONObject gb) {
         String art = t.backdrop != null ? t.backdrop : t.poster;
         String app = onYourApps(this, gb);
@@ -756,6 +763,7 @@ final class HomeV2 {
     }
 
     void home() {
+        Recap.close();
         if (titlePanel != null) titlePanel.hide();
         if (viewing != null) viewing.hide();
         if (search != null) search.hide();
@@ -794,6 +802,7 @@ final class HomeV2 {
 
     /** All keys come here first; true when v2 used it. */
     boolean key(KeyEvent e) {
+        if (Recap.isOpen()) return Recap.key(e);
         if (titlePanel != null && titlePanel.isOpen()) return titlePanel.key(e);
         if (viewing != null && viewing.isOpen()) return viewing.key(e);
         if (search != null && search.isOpen()) return search.key(e);
