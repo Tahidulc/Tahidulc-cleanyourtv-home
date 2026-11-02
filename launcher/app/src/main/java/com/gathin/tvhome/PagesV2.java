@@ -280,7 +280,7 @@ final class PagesV2 {
             if (trailerSoon != null) h.main.removeCallbacks(trailerSoon);
             player.stop();
             trailerTile = tile;
-            if (tile == null || t == null || h.tmdbKey.isEmpty()) return;
+            if (tile == null || t == null || t.id <= 0 || h.tmdbKey.isEmpty()) return;
             // The next few along are looked up now, so their trailers are ready when they are reached.
             for (int n = at + 1; n < Math.min(row.size(), at + 4); n++) {
                 Title next = row.get(n);
@@ -745,6 +745,8 @@ final class PagesV2 {
             if (known != null) tile.specs.addAll(known);
             h.heroTopColour(crumbColour);
             h.hero(tile);
+            // A tile that is not a film or series (Surprise me's moods): nothing more to look up.
+            if (t.id <= 0) return;
             if (known == null) h.io.execute(() -> {
                 Trending.Title st = Trending.storeMarks(h.a, t.title, t.year, t.tv);
                 List<String> m = new ArrayList<>();
@@ -962,6 +964,7 @@ final class PagesV2 {
         String m = "discover/movie?sort_by=popularity.desc&watch_region=GB";
         return sections(h, "MOVIES", 0xFFFF4FA3, false, new String[][]{
                 {"Fits tonight", "@fits", ""},
+                {"Surprise me", "@surprise", ""},
                 {"Popular", "movie/popular?region=GB", ""},
                 {"Top 10", "trending/movie/week", "n"},
                 {"New to stream", m + "&region=GB&with_release_type=4&release_date.gte=" + since(45) + "&release_date.lte=" + today(), ""},
@@ -1037,6 +1040,7 @@ final class PagesV2 {
                 // The tabs of their own: Fits tonight (Movies), Your shows (TV shows).
                 : "@fits".equals(spec[t - 1][1]) ? Arrays.asList(FitsTonight.row(h))
                 : "@yourshows".equals(spec[t - 1][1]) ? Arrays.asList(YourShows.row(h))
+                : "@surprise".equals(spec[t - 1][1]) ? Arrays.asList(Surprise.row(h))
                 : Arrays.asList(row(null, null, "n".equals(spec[t - 1][2]), tmdb(k, spec[t - 1][1], tv))));
         // Nothing to continue: the tab after it, past Your shows too when no series has been watched yet.
         if (!resumeEmpty(h, tv)) return p.startOn(0);

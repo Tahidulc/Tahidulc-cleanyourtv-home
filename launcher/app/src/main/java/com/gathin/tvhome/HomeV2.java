@@ -763,6 +763,7 @@ final class HomeV2 {
     }
 
     void home() {
+        Surprise.close();
         Recap.close();
         if (titlePanel != null) titlePanel.hide();
         if (viewing != null) viewing.hide();
@@ -802,6 +803,7 @@ final class HomeV2 {
 
     /** All keys come here first; true when v2 used it. */
     boolean key(KeyEvent e) {
+        if (Surprise.isOpen()) return Surprise.key(e);
         if (Recap.isOpen()) return Recap.key(e);
         if (titlePanel != null && titlePanel.isOpen()) return titlePanel.key(e);
         if (viewing != null && viewing.isOpen()) return viewing.key(e);
