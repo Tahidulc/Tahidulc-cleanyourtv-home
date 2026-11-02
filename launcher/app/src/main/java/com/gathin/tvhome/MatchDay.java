@@ -71,12 +71,17 @@ final class MatchDay {
         String homeForm = "", awayForm = "";
         /** A 3pm Saturday Premier League game: not shown live on British TV; followed through Soccer Saturday. */
         boolean blackout;
+        /** A Champions League game Prime Video shows in Britain (the evening's one game Sky's guide does not list). */
+        boolean prime;
     }
 
     private final HomeV2 h;
     private final Context c;
     final FrameLayout panel;
     final TextView chip;
+    /** The two clubs' colours behind the crests, where Sky's guide has no picture for the game. */
+    final Backdrop backdrop;
+    private static final String PRIME = "com.amazon.amazonvideo.livingroom";
     private final ImageView leagueView, homeCrest, awayCrest, channelView;
     private final TextView state, clock, subtitle, homeName, awayName, middle, line, channelText;
     private final LinearLayout countdown, form, events, buttons;
@@ -99,6 +104,8 @@ final class MatchDay {
         regular = c.getResources().getFont(R.font.inter_regular);
         panel = new FrameLayout(c);
         panel.setVisibility(View.GONE);
+        backdrop = new Backdrop(c);
+        backdrop.setVisibility(View.GONE);
 
         LinearLayout top = row();
         leagueView = new ImageView(c);
@@ -347,6 +354,8 @@ final class MatchDay {
             Object[] show = TvGuide.show(channels, name(best.g, true), name(best.g, false), best.g.kickoff);
             if (show != null) apply(best, show);
         }
+        // A Champions League game the guide does not list on an evening it lists the others: Prime Video's.
+        best.prime = best.channel == null && "uefa.champions".equals(best.g.slug) && TvGuide.listsLive(channels, best.g.kickoff, "live ucl");
         try {
             Object[] w = GoalWatchService.watchForGame(c, best.g);
             if (w != null && w[0] instanceof List) {
@@ -506,10 +515,13 @@ final class MatchDay {
             for (String[] red : g.reds) eventChip(red[2] + "  " + red[1], 0xFFE8112D, true);
             if (g.goals.isEmpty() && g.reds.isEmpty()) eventChip(live ? "No goals yet" : "No goals", 0, false);
         }
-        channelView.setImageBitmap(p.logo);
-        channelView.setVisibility(p.logo != null ? View.VISIBLE : View.GONE);
-        channelText.setText(p.logo == null && p.channel != null ? p.channel : "");
-        channelText.setVisibility(p.logo == null && p.channel != null ? View.VISIBLE : View.GONE);
+        android.graphics.drawable.Drawable primeIcon = p.prime && p.logo == null ? appIcon(PRIME) : null;
+        if (primeIcon != null) channelView.setImageDrawable(primeIcon); else channelView.setImageBitmap(p.logo);
+        channelView.setVisibility(p.logo != null || primeIcon != null ? View.VISIBLE : View.GONE);
+        String said = p.prime && p.logo == null ? "Live on Prime Video" : p.logo == null && p.channel != null ? p.channel : null;
+        channelText.setText(said == null ? "" : said);
+        channelText.setVisibility(said != null ? View.VISIBLE : View.GONE);
+        backdrop.colours(g.homeColor, g.awayColor, g.awayAlt);
         DateTimeFormatter hm = DateTimeFormatter.ofPattern("HH:mm");
         String ko = Instant.ofEpochMilli(g.kickoff).atZone(ZoneId.systemDefault()).format(hm);
         String text;
@@ -518,6 +530,7 @@ final class MatchDay {
         else if (p.coverFrom > 0 && p.coverFrom < g.kickoff) text = "Live from " + Instant.ofEpochMilli(p.coverFrom).atZone(ZoneId.systemDefault()).format(hm) + " · kick-off " + ko;
         else text = "Kick-off " + ko;
         if (p.blackout) text += live ? " · not live on UK TV · Soccer Saturday on Sky Sports News" : " · 3pm, not live on UK TV";
+        else if (p.prime) text += "";
         else if (p.channel == null && p.watch == null) text += " · Not on British TV";
         line.setText(text);
         buttons(p);
@@ -585,8 +598,19 @@ final class MatchDay {
         DateTimeFormatter hm = DateTimeFormatter.ofPattern("HH:mm");
         if (p.watch != null && !p.watch.isEmpty()) {
             boolean early = g.state == 1 && System.currentTimeMillis() < (p.coverFrom > 0 ? p.coverFrom : g.kickoff);
-            addButton(g.state == 0 ? "Watch live" : g.state == 2 ? "Watch on " + p.watch.get(0) : early ? "Watch " + p.watch.get(0) : "Watch the build-up",
+            // A channel from Sky's guide is named; one found through the playlist (as the Sports page does) is not.
+            boolean listed = p.listedName != null;
+            String ch = p.watch.get(0);
+            addButton(g.state == 0 ? "Watch live" : g.state == 2 ? (listed ? "Watch on " + ch : "Watch")
+                            : early ? (listed ? "Watch " + ch : "Watch the game") : "Watch the build-up",
                     () -> h.tune(p.watch, p.channelLogo));
+        }
+        if (p.prime && g.state != 2 && appIcon(PRIME) != null) {
+            addButton("Open Prime Video", () -> {
+                android.content.Intent open = c.getPackageManager().getLeanbackLaunchIntentForPackage(PRIME);
+                if (open == null) open = c.getPackageManager().getLaunchIntentForPackage(PRIME);
+                if (open != null) c.startActivity(open.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK));
+            });
         }
         addButton("Live Centre", () -> LiveCentre.open(c, g.id));
         String[] ssn = p.blackout ? soccerSaturday() : null;
@@ -625,10 +649,77 @@ final class MatchDay {
         if (i >= 0 && i < actions.size()) actions.get(i).run();
     }
 
+    /** An installed app's icon, or null when it is not on this TV. */
+    private android.graphics.drawable.Drawable appIcon(String pkg) {
+        try {
+            return c.getPackageManager().getApplicationIcon(pkg);
+        } catch (android.content.pm.PackageManager.NameNotFoundException e) {
+            return null;
+        }
+    }
+
+    /**
+     * The clubs' colours split on a slant behind the crests, as a broadcaster's match graphic, faded into Home's blue on
+     * the left and at the foot.
+     */
+    static final class Backdrop extends View {
+        private int home = 0xFFDA020E, away = 0xFF034694;
+        private final android.graphics.Paint paint = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+        private final android.graphics.Paint mask = new android.graphics.Paint();
+
+        Backdrop(Context c) {
+            super(c);
+            setLayerType(View.LAYER_TYPE_HARDWARE, null);
+            mask.setXfermode(new android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.DST_IN));
+        }
+
+        void colours(int h, int a, int aAlt) {
+            int hh = h == 0 ? 0xFFDA020E : h | 0xFF000000;
+            int aa = a == 0 ? 0xFF034694 : a | 0xFF000000;
+            // Two near-identical colours (red against red): the away side in its second colour.
+            if (aAlt != 0 && near(hh, aa)) aa = aAlt | 0xFF000000;
+            if (hh == home && aa == away) return;
+            home = hh;
+            away = aa;
+            invalidate();
+        }
+
+        private static boolean near(int x, int y) {
+            int dr = Color.red(x) - Color.red(y), dg = Color.green(x) - Color.green(y), db = Color.blue(x) - Color.blue(y);
+            return dr * dr + dg * dg + db * db < 90 * 90;
+        }
+
+        private static int darker(int col) {
+            return Color.rgb(Color.red(col) * 55 / 100, Color.green(col) * 55 / 100, Color.blue(col) * 55 / 100);
+        }
+
+        @Override protected void onDraw(android.graphics.Canvas cv) {
+            float w = getWidth(), h = getHeight();
+            android.graphics.Path left = new android.graphics.Path();
+            left.moveTo(0, 0); left.lineTo(w * 0.64f, 0); left.lineTo(w * 0.46f, h); left.lineTo(0, h); left.close();
+            paint.setShader(new android.graphics.LinearGradient(0, 0, w * 0.5f, h, home, darker(home), android.graphics.Shader.TileMode.CLAMP));
+            cv.drawPath(left, paint);
+            android.graphics.Path right = new android.graphics.Path();
+            right.moveTo(w * 0.64f, 0); right.lineTo(w, 0); right.lineTo(w, h); right.lineTo(w * 0.46f, h); right.close();
+            paint.setShader(new android.graphics.LinearGradient(w, 0, w * 0.5f, h, away, darker(away), android.graphics.Shader.TileMode.CLAMP));
+            cv.drawPath(right, paint);
+            paint.setShader(null);
+            paint.setColor(0xD9FFFFFF);
+            android.graphics.Path slash = new android.graphics.Path();
+            slash.moveTo(w * 0.633f, 0); slash.lineTo(w * 0.644f, 0); slash.lineTo(w * 0.466f, h); slash.lineTo(w * 0.455f, h); slash.close();
+            cv.drawPath(slash, paint);
+            mask.setShader(new android.graphics.LinearGradient(0, 0, w * 0.36f, 0, 0x00000000, 0xFF000000, android.graphics.Shader.TileMode.CLAMP));
+            cv.drawRect(0, 0, w, h, mask);
+            mask.setShader(new android.graphics.LinearGradient(0, h * 0.6f, 0, h, 0xFF000000, 0x00000000, android.graphics.Shader.TileMode.CLAMP));
+            cv.drawRect(0, 0, w, h, mask);
+        }
+    }
+
     /** Shown (and lit on button i) while Home's focus is on Match Day; otherwise the chip by For You's heading. */
     void paint(boolean focused, int i, boolean chipAllowed) {
         boolean on = focused && active();
         panel.setVisibility(on ? View.VISIBLE : View.GONE);
+        backdrop.setVisibility(on && pick.picture == null ? View.VISIBLE : View.GONE);
         chip.setVisibility(!focused && chipAllowed && active() ? View.VISIBLE : View.GONE);
         for (int k = 0; k < buttonViews.size(); k++) {
             TextView b = buttonViews.get(k);

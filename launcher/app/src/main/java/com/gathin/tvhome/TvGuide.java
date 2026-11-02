@@ -80,6 +80,25 @@ final class TvGuide {
         return null;
     }
 
+    /**
+     * Whether Sky's guide lists any live programme starting with this ("Live UCL") on these channels around this
+     * time: a Champions League evening the guide knows. The one game of it the guide does not list is then the one
+     * Prime Video shows.
+     */
+    static synchronized boolean listsLive(String[] channels, long at, String prefix) {
+        if (at == 0) return false;
+        String date = Instant.ofEpochMilli(at).atZone(ZoneOffset.UTC).toLocalDate().format(DateTimeFormatter.BASIC_ISO_DATE);
+        java.util.Set<String> sids = new java.util.HashSet<>();
+        for (String c : channels) sids.add(c.split("\\|", 2)[0].trim());
+        String want = prefix.toLowerCase(Locale.ROOT);
+        for (Object[] e : schedule(channels, date)) {
+            if (!sids.contains(e[0])) continue;
+            long st = (Long) e[2], en = (Long) e[3];
+            if (at >= st && at <= en && ((String) e[1]).toLowerCase(Locale.ROOT).startsWith(want)) return true;
+        }
+        return false;
+    }
+
     /** Where to watch a game in TiviMate: the channel names to try in turn, and the first one's logo (or null). */
     static final class Watch {
         final List<String> names;

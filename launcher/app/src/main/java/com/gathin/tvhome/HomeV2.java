@@ -245,6 +245,10 @@ final class HomeV2 {
         label.setLetterSpacing(0.11f);
         add(label, 180, 532, 1500, 34);   // over the first tile
         match = new MatchDay(this);
+        // The clubs' colours where the hero's picture would be, just above it.
+        FrameLayout.LayoutParams blp = new FrameLayout.LayoutParams(px(1160), px(652));
+        blp.leftMargin = px(760);
+        root.addView(match.backdrop, root.indexOfChild(heroB) + 1, blp);
         add(match.panel, 216, 190, 1320, 342);
         FrameLayout chipBox = new FrameLayout(a);
         chipBox.addView(match.chip, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.END));
