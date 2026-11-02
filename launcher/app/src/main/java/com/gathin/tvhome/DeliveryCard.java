@@ -31,16 +31,7 @@ import java.util.Locale;
  * Tesla mark, a studio picture of the car and its battery.
  */
 final class DeliveryCard {
-    /** The cards' ink: dark on the silver glass, white on the black (black_alerts, GoalWatchService sets it). */
-    static int INK = 0xFF1A1D24, DIM = 0xA61A1D24;
-    /** Over an app on black (black_alerts): white writing, a white track, the brands' colours brightened. */
-    static boolean black;
-
-    static void black(boolean on) {
-        black = on;
-        INK = on ? 0xFFFFFFFF : 0xFF1A1D24;
-        DIM = on ? 0xB3FFFFFF : 0xA61A1D24;
-    }
+    static final int INK = 0xFF1A1D24, DIM = 0xA61A1D24;
     static final int MOVE = 0, CALM = 1, STILL = 2;
 
     private DeliveryCard() {
@@ -120,7 +111,7 @@ final class DeliveryCard {
                 if (sc > score) { score = sc; best = c | 0xFF000000; }
             }
         }
-        return score < 0.25f ? INK : best;
+        return score < 0.25f ? 0xFF1A1D24 : best;
     }
 
     /**
@@ -262,7 +253,7 @@ final class DeliveryCard {
         private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final int colour, stage;
         private float progress;
-        boolean light = black;   // on clear (or black) glass: a white track and dots
+        boolean light;   // on clear glass: a white track and dots
 
         StageBar(Context c, int colour, int stage) {
             super(c);
@@ -721,7 +712,6 @@ final class DeliveryCard {
 
     /** The brand colour dark enough to read on the light glass (Uber's green and Just Eat's orange deepened). */
     private static int readable(int colour) {
-        if (black) return bright(colour);
         float[] hsv = new float[3];
         Color.colorToHSV(colour, hsv);
         hsv[2] = Math.min(hsv[2], 0.62f);
