@@ -87,6 +87,7 @@ public class WatchHistory extends NotificationListenerService {
 
     @Override public void onListenerDisconnected() {
         main.removeCallbacks(tick);
+        ViewingLog.save(this);
         if (sessions != null) sessions.removeOnActiveSessionsChangedListener(changed);
     }
 
@@ -96,8 +97,29 @@ public class WatchHistory extends NotificationListenerService {
                 record(c);
             } catch (Exception ignored) {
             }
+            try {
+                log(c);
+            } catch (Exception ignored) {
+            }
         }
         main.postDelayed(tick, TICK_MS);
+    }
+
+    /** Your viewing's log (ViewingLog): half a minute more of whatever is playing, music and the launcher aside. */
+    private void log(MediaController c) {
+        String pkg = c.getPackageName();
+        if (pkg.contains("com.gathin.tvhome") || pkg.contains("spotify") || pkg.contains("music") || pkg.contains("bluetooth")) return;
+        PlaybackState st = c.getPlaybackState();
+        if (st == null || st.getState() != PlaybackState.STATE_PLAYING) return;
+        MediaMetadata md = c.getMetadata();
+        String title = md == null ? null : md.getString(MediaMetadata.METADATA_KEY_TITLE);
+        if ((title == null || title.trim().isEmpty()) && md != null) title = md.getString(MediaMetadata.METADATA_KEY_DISPLAY_TITLE);
+        String sub = md == null ? null : md.getString(MediaMetadata.METADATA_KEY_DISPLAY_SUBTITLE);
+        if (sub == null && md != null) sub = md.getString(MediaMetadata.METADATA_KEY_ARTIST);
+        title = title == null ? "" : title.trim();
+        sub = sub == null ? "" : sub.trim();
+        Object[] id = ViewingLog.identify(this, pkg, title, sub);
+        ViewingLog.add(this, pkg, (String) id[0], (String) id[1], (Integer) id[2], (Boolean) id[3], (String) id[4], (int) (TICK_MS / 1000));
     }
 
     private void record(MediaController c) {

@@ -402,6 +402,8 @@ final class HomeV2 {
     private SmartPanel smartPanel;
     /** One search for everything: the magnifier in the top bar, or the remote's Search key. */
     private SearchPanel search;
+    /** Your viewing: the chart button in the top bar. */
+    private ViewingPanel viewing;
     private TextView weatherView;
 
     private void buildButtons() {
@@ -443,6 +445,9 @@ final class HomeV2 {
             topButton(bar, bulb, px(66), () -> smartPanel.show());
         }
         // No camera button of its own: the cameras are in the smart home panel.
+        viewing = new ViewingPanel(this);
+        ImageView chart = icon(R.drawable.ic_chart);
+        topButton(bar, chart, px(66), () -> viewing.show());
         search = new SearchPanel(this);
         ImageView find = icon(R.drawable.ic_search);
         topButton(bar, find, px(66), () -> search.show());
@@ -450,7 +455,7 @@ final class HomeV2 {
         topButton(bar, mic, px(66), () -> open(new Intent(Intent.ACTION_ASSIST)));
         ImageView gear = icon(R.drawable.ic_settings);
         topButton(bar, gear, px(66), () -> open(new Intent(android.provider.Settings.ACTION_SETTINGS)));
-        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(px(900), px(66), Gravity.TOP | Gravity.END);
+        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(px(1000), px(66), Gravity.TOP | Gravity.END);
         lp.topMargin = px(112);
         lp.rightMargin = px(96);
         root.addView(bar, lp);
@@ -706,6 +711,7 @@ final class HomeV2 {
     }
 
     void home() {
+        if (viewing != null) viewing.hide();
         if (search != null) search.hide();
         if (smartPanel != null) smartPanel.hide();
         guide.hide();
@@ -742,6 +748,7 @@ final class HomeV2 {
 
     /** All keys come here first; true when v2 used it. */
     boolean key(KeyEvent e) {
+        if (viewing != null && viewing.isOpen()) return viewing.key(e);
         if (search != null && search.isOpen()) return search.key(e);
         if (e.getKeyCode() == KeyEvent.KEYCODE_SEARCH && search != null) {
             if (e.getAction() == KeyEvent.ACTION_UP) {
