@@ -63,7 +63,7 @@ final class MatchDay {
         /** 1 Manchester United, 2 England, 3 a followed club, 4 a major game on British TV. */
         int rank;
         List<String> watch;
-        String channel, channelLogo, picture;
+        String channel, channelLogo, picture, listedName;
         long coverFrom;
         Bitmap league, home, away, logo;
         String homeForm = "", awayForm = "";
@@ -343,8 +343,17 @@ final class MatchDay {
                 if (w.length > 1 && w[1] instanceof Bitmap) best.logo = (Bitmap) w[1];
             }
         } catch (RuntimeException ignored) {
-            // no channel: Watch opens the Live Centre instead
+            // no channel from the alerts' lookup: Sky's listing below, else Watch is left out
         }
+        // Sky's listing as the way in when the alerts' lookup had none: its UHD channel first, then the listed one.
+        if ((best.watch == null || best.watch.isEmpty()) && best.channel != null) {
+            best.watch = new ArrayList<>();
+            best.watch.add(best.channel);
+            if (best.listedName != null && !best.listedName.equals(best.channel)) best.watch.add(best.listedName);
+        }
+        // The UHD channel's logo (Sky's, its HD box redrawn as UHD) wherever the UHD channel is the one tuned.
+        if (best.watch != null && !best.watch.isEmpty() && HomeV2.uhdName(best.watch.get(0)) && best.channelLogo != null
+                && !best.channelLogo.endsWith("#uhd")) best.channelLogo = best.channelLogo + "#uhd";
         int crest = h.px(96) * 2;
         if (best.g.homeLogo != null) best.home = ScoresTicker.cachedLogo(c, best.g.homeLogo, crest);
         if (best.g.awayLogo != null) best.away = ScoresTicker.cachedLogo(c, best.g.awayLogo, crest);
@@ -378,9 +387,16 @@ final class MatchDay {
         return state == 0 ? 0 : state == 1 ? 1 : 2;
     }
 
-    private static void apply(Pick p, Object[] show) {
-        p.channel = (String) show[0];
-        p.channelLogo = (String) show[1];
+    /**
+     * The channel Sky's guide lists the game on, in its UHD form (name and UHD logo) where the playlist has the UHD
+     * channel, so Match Day shows and tunes the 4K one first; else the HD one.
+     */
+    private void apply(Pick p, Object[] show) {
+        TvGuide.Channel listed = new TvGuide.Channel((String) show[0], (String) show[1]);
+        TvGuide.Channel up = TvGuide.uhd(c, listed);
+        p.channel = up.name;
+        p.channelLogo = up.logo;
+        p.listedName = listed.name;
         p.coverFrom = (Long) show[2];
         String id = (String) show[4];
         if (id != null && !id.isEmpty()) p.picture = "https://images.metadata.sky.com/pd-image/" + id + "/16-9/1280";

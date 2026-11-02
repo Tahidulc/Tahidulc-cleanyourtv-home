@@ -1220,6 +1220,18 @@ public class AppSearchService extends AccessibilityService {
         return GLOBAL_ACTION_DPAD_DOWN;
     }
 
+    /** On a channel: whether the focused card is as good a picture (UHD, HD...) as any card naming the channel. */
+    private boolean bestCardHere(AccessibilityNodeInfo root, AccessibilityNodeInfo card, int floor) {
+        int here = quality(cardText(card)), best = here;
+        java.util.List<AccessibilityNodeInfo> all = new java.util.ArrayList<>();
+        collect(root, all, 0);
+        for (AccessibilityNodeInfo n : all) {
+            if (n.isEditable() || n.getText() == null || top(n) < floor || !names(n)) continue;
+            best = Math.max(best, quality(n.getText().toString()));
+        }
+        return here >= best;
+    }
+
     /** A card's lines, for the log. */
     private static String cardText(AccessibilityNodeInfo card) {
         java.util.List<AccessibilityNodeInfo> all = new java.util.ArrayList<>();
@@ -1261,7 +1273,7 @@ public class AppSearchService extends AccessibilityService {
         int floor = wanted == null ? Integer.MIN_VALUE : resultsTop(root);
         if (wanted != null && floor == Integer.MAX_VALUE) return System.currentTimeMillis() - typedAt < 7_000L || klevaMiss();
         if (card != null && top(card) < floor) card = null;
-        if (card != null && size(card) < 16 && names(card)) {
+        if (card != null && size(card) < 16 && names(card) && (wanted == null || bestCardHere(root, card, floor))) {
             if (android.os.Build.VERSION.SDK_INT >= 33) performGlobalAction(GLOBAL_ACTION_DPAD_CENTER);
             else focus.performAction(AccessibilityNodeInfo.ACTION_CLICK);
             opened = true;
@@ -1273,8 +1285,19 @@ public class AppSearchService extends AccessibilityService {
         }
         java.util.List<AccessibilityNodeInfo> all = new java.util.ArrayList<>();
         collect(root, all, 0);
+        // On a channel, its best picture among the cards (UHD, then HD, then the rest): that card is the one to reach.
+        AccessibilityNodeInfo best = null;
+        if (wanted != null) {
+            int bestQ = -1;
+            for (AccessibilityNodeInfo n : all) {
+                if (n.isEditable() || n.getText() == null || top(n) < floor || !names(n)) continue;
+                int q = quality(n.getText().toString());
+                if (q > bestQ) { best = n; bestQ = q; }
+            }
+        }
         for (AccessibilityNodeInfo n : all) {
             if (n.isEditable() || n.getText() == null || top(n) < floor || !names(n)) continue;
+            if (best != null && !n.equals(best)) continue;
             AccessibilityNodeInfo parent = n.getParent();
             for (int i = 0; parent != null && i < parent.getChildCount(); i++) {
                 AccessibilityNodeInfo at = parent.getChild(i);
@@ -1469,6 +1492,15 @@ public class AppSearchService extends AccessibilityService {
         click(hit);
         if (channel) loudWhenNew();   // the new channel's own sound, once it starts (not the old one's tail)
         return true;
+    }
+
+    /** A channel name's picture: 3 UHD or 4K, 2 FHD or HD, 1 no mark, 0 SD. */
+    static int quality(String name) {
+        String l = name.toLowerCase(Locale.ROOT);
+        if (l.matches(".*(\\b4k\\b|uhd|ultra\\s*hd|2160).*") || name.contains("ᵁᴴᴰ")) return 3;
+        if (l.matches(".*\\b(f?hd|1080p?|720p?)\\b.*") || name.contains("ᴴᴰ")) return 2;
+        if (l.matches(".*\\bsd\\b.*")) return 0;
+        return 1;
     }
 
     private static boolean uhd(AccessibilityNodeInfo n) {
@@ -1756,15 +1788,19 @@ public class AppSearchService extends AccessibilityService {
         String want = channelName(query, false), loose = channelName(query, true);
         String term = searchTerm(query).toLowerCase(Locale.ROOT);
         AccessibilityNodeInfo same = null, close = null;
+        int sameQ = -1, closeQ = -1;
         for (AccessibilityNodeInfo n : all) {
             if (n.isEditable() || n.getText() == null || n.equals(box)) continue;
             String text = n.getText().toString();
             if (nearest == null && term.length() >= 3 && text.toLowerCase(Locale.ROOT).contains(term)) nearest = n;
+            // The best picture of the channel: UHD at once, else HD (or FHD) over one with no mark, over SD.
+            int q = quality(text);
             if (channelName(text, false).equals(want)) {
-                if (uhd(n)) return n;
-                if (same == null) same = n;
-            } else if (close == null && channelName(text, true).equals(loose)) {
+                if (q == 3) return n;
+                if (q > sameQ) { same = n; sameQ = q; }
+            } else if (q > closeQ && channelName(text, true).equals(loose)) {
                 close = n;
+                closeQ = q;
             }
         }
         return same != null ? same : close;
