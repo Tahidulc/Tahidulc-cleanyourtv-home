@@ -35,7 +35,7 @@ import java.util.concurrent.Executors;
  * the TV's own streaming apps: any episode, a top-rated one (from the best-rated third of a season), or the first
  * episode of a show not yet watched here; any length, or under 25 minutes. The reel of posters spins and stops on the
  * show, with the episode (season, number, title, its rating and length, and what happens). Play opens the show as the
- * page's posters do; Spin again picks another. Up and Down between the moods, the options and the buttons; Left and
+ * page's posters do; Roll Again picks another. Up and Down between the moods, the options and the buttons; Left and
  * Right along them; OK chooses; Back closes.
  */
 final class EpisodeDice {
@@ -251,7 +251,7 @@ final class EpisodeDice {
         LinearLayout bar = new LinearLayout(c);
         bar.setGravity(Gravity.CENTER);
         buttons.add(chip(bar, "▶  Play", 21, 60, semi));
-        buttons.add(chip(bar, "🎲  Spin again", 21, 60, semi));
+        buttons.add(chip(bar, "🎲  Roll Again", 21, 60, semi));
         place(bar, 0, 956, 1920, 66);
         paint();
     }
@@ -431,7 +431,7 @@ final class EpisodeDice {
             rolling = false;
             if (pics.isEmpty() || result == null) {
                 about.setText(pics.isEmpty() ? "None of these shows is on your streaming apps right now. Try another mood."
-                        : "No episode fits that right now. Try another option, or spin again.");
+                        : "No episode fits that right now. Try another option, or roll again.");
                 pick = null;
                 return;
             }

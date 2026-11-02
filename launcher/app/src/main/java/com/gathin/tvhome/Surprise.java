@@ -28,7 +28,7 @@ import java.util.concurrent.Executors;
  * Surprise me: Movies' tab of moods (Cosy, Edge of my seat, Mind-bending …), each opening a spin that picks one film
  * on the TV's own streaming apps for that mood, not yet watched here, for who is watching (just me, two of us, the
  * family: rated PG at most) and, when asked, done before bed. The reel of posters spins and stops on the pick; Play
- * opens it (as the panels do), Spin again picks another. Up and Down between the moods, who and the buttons; Left and
+ * opens it (as the panels do), Roll Again picks another. Up and Down between the moods, who and the buttons; Left and
  * Right along them; OK chooses; Back closes.
  */
 final class Surprise {
@@ -216,7 +216,7 @@ final class Surprise {
         LinearLayout bar = new LinearLayout(c);
         bar.setGravity(Gravity.CENTER);
         buttons.add(chip(bar, "▶  Play", 21, 62, semi));
-        buttons.add(chip(bar, "🎲  Spin again", 21, 62, semi));
+        buttons.add(chip(bar, "🎲  Roll Again", 21, 62, semi));
         place(bar, 0, 956, 1920, 66);
         paint();
     }

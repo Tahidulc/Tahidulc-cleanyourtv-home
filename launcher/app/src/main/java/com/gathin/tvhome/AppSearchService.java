@@ -102,6 +102,14 @@ public class AppSearchService extends AccessibilityService {
                 instance.deadline = System.currentTimeMillis() + 40_000L;
             }
             pendingSeason = 0;
+            // A poster's OK: on from the title's page to its Play (an episode asked for comes first).
+            if (!episode && ReleaseAlerts.DEBRID.equals(pkg) && query.equals(pendingPlay)
+                    && System.currentTimeMillis() - pendingPlayAt < 15_000L) {
+                instance.playQuery = query;
+                instance.playMode = pendingPlayYes == null ? -1 : pendingPlayYes ? 1 : 0;
+                if (instance.playMode != 0) instance.deadline = System.currentTimeMillis() + 40_000L;
+            }
+            pendingPlay = null;
             if (episode) {
                 // The loading cover for an episode: the programme's logo, the season and number, the episode's title,
                 // over the episode's own picture.
@@ -137,6 +145,35 @@ public class AppSearchService extends AccessibilityService {
     private long epStepAt;
     /** When OK went to the found episode (0: not yet), and when its player first showed. */
     private long epPlayAt, epFrameAt;
+    /**
+     * The title's page in Debrid Stream: go on to its Play (1), stop there (0), or not known yet (-1: whether the title
+     * is on one of the TV's streaming apps is still being looked up); and when the page was first seen.
+     */
+    private int playMode;
+    private String playQuery;
+    private long pageSeenAt;
+    /** Play asked for the next Debrid Stream search of this title (wantPlay), when, and the answer if known yet. */
+    private static String pendingPlay;
+    private static long pendingPlayAt;
+    private static Boolean pendingPlayYes;
+
+    /**
+     * A poster's OK: the coming search for query in Debrid Stream goes on to the Play on the title's page, once yes is
+     * known (null: playDecided will say, within a few seconds; until then the helper waits on the page).
+     */
+    static void wantPlay(String query, Boolean yes) {
+        pendingPlay = query;
+        pendingPlayYes = yes;
+        pendingPlayAt = System.currentTimeMillis();
+    }
+
+    /** The answer for wantPlay: before the search starts, or while the helper waits on the title's page. */
+    static void playDecided(String query, boolean yes) {
+        if (query == null) return;
+        if (query.equals(pendingPlay)) pendingPlayYes = yes;
+        AppSearchService s = instance;
+        if (s != null && s.playMode == -1 && query.equals(s.playQuery)) s.playMode = yes ? 1 : 0;
+    }
 
     /** Surprise me: the episode the series' page should go on to, for the search that follows within a few seconds. */
     static void wantEpisode(int season, int episode, String name) {
@@ -203,17 +240,58 @@ public class AppSearchService extends AccessibilityService {
     }
 
     /**
+     * A poster's OK, on the title's page in Debrid Stream: its Play pressed (the film, or the series from where it was
+     * left), as soon as the page has drawn it, and the cover kept up until the player is running. Only for a title on
+     * one of the TV's streaming apps; while that is still being looked up, the page waits up to four seconds.
+     */
+    private boolean coverPlayStep(AccessibilityNodeInfo root) {
+        long now = System.currentTimeMillis();
+        if (pageSeenAt == 0) pageSeenAt = now;
+        if (playMode < 0) {
+            if (now - pageSeenAt < 4_000L) return true;
+            playMode = 0;
+        }
+        AccessibilityNodeInfo play = playMode > 0 ? playButton(root) : null;
+        if (play == null) {
+            if (playMode > 0 && now - pageSeenAt < 5_000L) return true;
+            playMode = 0;
+            hideDelay = 300;
+            return false;
+        }
+        android.util.Log.i(TAG, "title page: Play (" + play.getText() + ") " + (now - pageSeenAt) + " ms after it showed");
+        playMode = 0;
+        click(play);
+        epPlayAt = now;
+        epFrameAt = 0;
+        deadline = Math.max(deadline, now + 20_000L);
+        return true;
+    }
+
+    /** The title page's Play: its "Play" (or "Resume", "Continue…") button's words. */
+    private static AccessibilityNodeInfo playButton(AccessibilityNodeInfo n) {
+        if (n == null) return null;
+        CharSequence t = n.getText();
+        if (t != null && t.toString().trim().matches("(?i)(play|resume|continue)( .*)?")) return n;
+        for (int i = 0; i < n.getChildCount(); i++) {
+            AccessibilityNodeInfo h = playButton(n.getChild(i));
+            if (h != null) return h;
+        }
+        return null;
+    }
+
+    /**
      * After OK on the episode: the cover stays over the app's black loading screen until its player shows the episode
-     * under way (the time past 00:00), or three seconds after the player shows (its controls may have gone), or after
-     * 12 seconds with no player (a list of sources, say, left to the person).
+     * under way (the time past 00:00, so not over the black while a big file buffers or the TV changes to HDR), or seven
+     * seconds after the player shows (its controls may have gone), or after 15 seconds with no player (a list of
+     * sources, say, left to the person).
      */
     private boolean playerStep(AccessibilityNodeInfo root) {
         long now = System.currentTimeMillis();
         boolean frame = !root.findAccessibilityNodeInfosByViewId(ReleaseAlerts.DEBRID + ":id/exo_content_frame").isEmpty();
         if (frame && epFrameAt == 0) epFrameAt = now;
         boolean going = frame && moving(root);
-        if (going || (epFrameAt > 0 && now - epFrameAt > 3_000L) || now - epPlayAt > 12_000L) {
-            android.util.Log.i(TAG, (frame ? "episode playing" : "no player") + " " + (now - epPlayAt) + " ms after OK");
+        if (going || (epFrameAt > 0 && now - epFrameAt > 7_000L) || now - epPlayAt > 15_000L) {
+            android.util.Log.i(TAG, (going ? "playing" : frame ? "player up, time not seen" : "no player") + " " + (now - epPlayAt) + " ms after OK");
             epPlayAt = 0;
             hideDelay = 300;
             return false;
@@ -731,6 +809,9 @@ public class AppSearchService extends AccessibilityService {
         kleva = false;
         epSeason = 0;
         epPlayAt = 0;
+        playMode = 0;
+        playQuery = null;
+        pageSeenAt = 0;
         epMoves = 0;
         epStepAt = 0;
         wanted = null;
@@ -1024,6 +1105,7 @@ public class AppSearchService extends AccessibilityService {
             if (box == null) {
                 if (epPlayAt > 0) return playerStep(root);
                 if (epSeason > 0) return episodeStep(root);
+                if (playMode != 0) return coverPlayStep(root);
                 hideDelay = 700;
                 return false;
             }

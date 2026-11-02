@@ -438,7 +438,16 @@ final class HomeV2 {
     void playLikePages(PagesV2.Title t) {
         String pkg = debridPackage();
         if (t.app != null && !t.app.equals(pkg)) { openApp(t.app); return; }
-        if (pkg != null) searchTitle(pkg, t.title, t.tv, t.id, t.backdrop != null ? t.backdrop : t.poster);
+        if (pkg == null) return;
+        // On from Debrid Stream's page to its Play, for a title on one of the TV's streaming apps (looked up while the
+        // search runs; a title on none of them stops at its page, as before).
+        AppSearchService.wantPlay(t.title, t.id == 0 ? Boolean.FALSE : null);
+        searchTitle(pkg, t.title, t.tv, t.id, t.backdrop != null ? t.backdrop : t.poster);
+        if (t.id == 0) return;
+        io.execute(() -> {
+            boolean yes = onYourApps(this, PagesV2.providersGb(tmdbKey, t.id, t.tv)) != null;
+            main.post(() -> AppSearchService.playDecided(t.title, yes));
+        });
     }
 
     void openTitle(PagesV2.Title t, JSONObject gb) {
@@ -446,6 +455,8 @@ final class HomeV2 {
         String app = onYourApps(this, gb);
         if (app != null) {
             String d = debridPackage();
+            // On your apps: Debrid Stream's page and on to its Play (Surprise me's episode, when asked, comes first).
+            if (d != null) AppSearchService.wantPlay(t.title, Boolean.TRUE);
             searchTitle(d != null ? d : app, t.title, t.tv, t.id, art);
             return;
         }
