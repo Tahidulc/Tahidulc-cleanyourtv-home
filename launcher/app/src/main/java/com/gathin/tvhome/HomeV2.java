@@ -191,6 +191,8 @@ final class HomeV2 {
     private View dockBg, dockSep;
     /** The dock: its top and height; the sections' width. */
     private static final int DOCK_Y = 944, DOCK_H = 100, DOCK_APP = 64, DOCK_SEC = 112, DOCK_GAP = 14;
+    /** How far a dock app's icon rises under the focus (as the sections do), and the glass's margin round it. */
+    static final int APP_LIFT = 4, APP_GLASS = 7;
     /** Match Day's panel, from the top of the screen. */
     private static final int MATCH_Y = 190;
     TextView label;
@@ -775,6 +777,16 @@ final class HomeV2 {
         }
         View item = zone == Z_RAIL && railIdx < railViews.size() ? railViews.get(railIdx)
                 : zone == Z_CATS && catIdx < catViews.size() && (page == null || preview) ? catViews.get(catIdx) : null;
+        if (item != null && zone == Z_RAIL) {
+            // An app's icon: the glass a rounded square round it, the same margin all round, its corners following the
+            // icon's, rising with it. (The sections' pill, wider than tall and left where it was as the icon rose, left
+            // the icon off centre, poking out of its top over a thick band of glass below.)
+            FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) item.getLayoutParams();
+            float grow = 1.2f, size = lp.width * grow, m = px(APP_GLASS);
+            float cx = lp.leftMargin + lp.width / 2f, cy = lp.topMargin + lp.height / 2f - px(APP_LIFT);
+            lens.to(cx - size / 2f - m, cy - size / 2f - m, size + 2 * m, size + 2 * m, px(18) * grow + m, false);
+            return;
+        }
         if (item != null) {
             FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) item.getLayoutParams();
             float grow = 1.2f, w = lp.width * grow, cx = lp.leftMargin + lp.width / 2f;
@@ -1630,7 +1642,7 @@ final class HomeV2 {
             f.getChildAt(1).setAlpha(app ? 0f : 0.9f);
             f.setForeground(null);
             if (!app) f.setBackground(fill(18, GLASS));
-            f.animate().scaleX(sw).scaleY(sw).translationY(on ? -px(6) : 0).setDuration(260).setInterpolator(SKY).start();
+            f.animate().scaleX(sw).scaleY(sw).translationY(on ? -px(APP_LIFT) : 0).setDuration(260).setInterpolator(SKY).start();
         }
         for (int i = 0; !dockMode && i < railViews.size(); i++) {
             FrameLayout f = railViews.get(i);

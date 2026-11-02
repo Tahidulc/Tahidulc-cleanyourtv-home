@@ -269,7 +269,7 @@ final class PopupFrame {
             int d = at < 0 ? 9 : Math.abs(i - at);
             float sw = d == 0 ? 1.2f : d == 1 ? 1.07f : 1f;
             boolean on = d == 0;
-            v.animate().scaleX(sw).scaleY(sw).translationY(on ? -px(i < dockApps ? 6 : 4) : 0).setDuration(260).setInterpolator(HomeV2.SKY).start();
+            v.animate().scaleX(sw).scaleY(sw).translationY(on ? -px(i < dockApps ? HomeV2.APP_LIFT : 4) : 0).setDuration(260).setInterpolator(HomeV2.SKY).start();
             if (i >= dockApps && v instanceof FrameLayout && ((FrameLayout) v).getChildAt(0) instanceof LinearLayout) {
                 LinearLayout in = (LinearLayout) ((FrameLayout) v).getChildAt(0);
                 ((ImageView) in.getChildAt(0)).setColorFilter(on ? Color.WHITE : HomeV2.CAT_COLOURS[HomeV2.DOCK_ORDER[i - dockApps]]);
@@ -279,6 +279,13 @@ final class PopupFrame {
         if (lens == null) return;
         if (at < 0 || at >= boxes.size()) { lens.hide(); return; }
         FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) boxes.get(at).getLayoutParams();
+        if (at < dockApps) {
+            // An app's icon: a rounded square of glass round it, the same margin all round, rising with it (as on Home).
+            float size = lp.width * 1.2f, m = px(HomeV2.APP_GLASS);
+            float cx = lp.leftMargin + lp.width / 2f, cy = lp.topMargin + lp.height / 2f - px(HomeV2.APP_LIFT);
+            lens.to(cx - size / 2f - m, cy - size / 2f - m, size + 2 * m, size + 2 * m, px(18) * 1.2f + m, false);
+            return;
+        }
         float w = lp.width * 1.2f, cx = lp.leftMargin + lp.width / 2f;
         lens.to(cx - w / 2f - px(10), px(8), w + px(20), px(DOCK_H - 16), px(26), false);
     }
