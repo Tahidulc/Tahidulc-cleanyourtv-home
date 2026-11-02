@@ -884,24 +884,69 @@ final class PagesV2 {
 
     static PosterPage discover(HomeV2 h) {
         String k = h.tmdbKey;
-        String[] tabs = {"Continue Watching", "New releases", "Trending", "Netflix", "Disney+", "Prime Video", "Apple TV+"};
-        int[] providers = {0, 0, 0, 8, 337, 9, 350};
+        String[] tabs = {"Continue Watching", "My list", "New releases", "Trending", "Netflix", "Disney+", "Prime Video", "Apple TV+"};
+        int[] providers = {0, 0, 0, 0, 8, 337, 9, 350};
         return new PosterPage(h, "DISCOVER", 0xFFC9A7FF, tabs, new int[]{584 - 62}, t -> {
             List<Title> items;
             LocalDate today = LocalDate.now();
             if (t == 0) return Arrays.asList(resumeRow(h, null));
-            if (t == 1) {
+            if (t == 1) return Arrays.asList(myListRow(h));
+            if (t == 2) {
                 items = mix(tmdb(k, "discover/movie?region=GB&with_release_type=4|5&release_date.gte=" + today.minusWeeks(6)
                                 + "&release_date.lte=" + today + "&sort_by=popularity.desc", false),
                         tmdb(k, "discover/tv?first_air_date.gte=" + today.minusMonths(2) + "&sort_by=popularity.desc&with_original_language=en", true));
-            } else if (t == 2) {
+            } else if (t == 3) {
                 items = tmdb(k, "trending/all/day", false);
             } else {
                 String w = "&watch_region=GB&with_watch_providers=" + providers[t] + "&sort_by=popularity.desc";
                 items = mix(tmdb(k, "discover/tv?without_genres=10763,10764,10767" + w, true), tmdb(k, "discover/movie?" + w.substring(1), false));
             }
             return Arrays.asList(row(null, null, false, items));
-        }).startOn(resumeEmpty(h, null) ? 1 : 0);
+        }).startOn(resumeEmpty(h, null) ? (MyList.all(h.a).isEmpty() ? 2 : 1) : 0);
+    }
+
+    /** Each title's UK providers (TMDB), kept an hour: My list's posters say which are not on the TV's apps yet. */
+    private static final Map<String, Object[]> PROVIDERS = new HashMap<>();
+
+    static JSONObject providersGb(String key, int id, boolean tv) {
+        String k = (tv ? "tv:" : "mv:") + id;
+        synchronized (PROVIDERS) {
+            Object[] had = PROVIDERS.get(k);
+            if (had != null && System.currentTimeMillis() - (Long) had[0] < 3600_000L) return (JSONObject) had[1];
+        }
+        JSONObject gb = null;
+        try {
+            JSONObject r = new JSONObject(HomeV2.get("https://api.themoviedb.org/3/" + (tv ? "tv/" : "movie/") + id + "/watch/providers?api_key=" + key))
+                    .optJSONObject("results");
+            gb = r == null ? null : r.optJSONObject("GB");
+        } catch (Exception ignored) {
+            // asked again next time
+        }
+        synchronized (PROVIDERS) { PROVIDERS.put(k, new Object[]{System.currentTimeMillis(), gb}); }
+        return gb;
+    }
+
+    /**
+     * My list: what was kept from a title's panel, newest first. A title on one of the TV's streaming apps opens as the
+     * page's others do; one on none of them says so on its poster, and OK opens the store that sells it, else a note
+     * (a pop-up says when it arrives on one of the apps).
+     */
+    static Row myListRow(HomeV2 h) {
+        List<Title> items = MyList.titles(h.a);
+        for (Title t : items) {
+            JSONObject gb = providersGb(h.tmdbKey, t.id, t.tv);
+            if (HomeV2.onYourApps(h, gb) != null) continue;
+            t.badge = "NOT ON YOUR APPS";
+            t.badgeBg = 0xB3000000;
+            t.badgeFg = Color.WHITE;
+            String store = HomeV2.storeFor(h, gb);
+            t.ok = store != null ? () -> h.searchTitle(store, t.title, t.tv, t.id, t.backdrop != null ? t.backdrop : t.poster)
+                    : () -> android.widget.Toast.makeText(h.a, t.title + " isn't on your apps yet: a pop-up will say when it is",
+                    android.widget.Toast.LENGTH_LONG).show();
+        }
+        Row r = row(null, null, false, items);
+        r.empty = "Nothing on My list yet. Hold OK on any poster and choose My list to keep it here.";
+        return r;
     }
 
     /**

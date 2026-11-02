@@ -52,6 +52,11 @@ final class ReleaseAlerts {
         } catch (Exception ignored) {
             // the films left for next time
         }
+        try {
+            fromList(c, key, cards);
+        } catch (Exception ignored) {
+            // My list left for next time
+        }
         if (told.size() > 300) told.clear();
         p.edit().putStringSet("told", told).apply();
         ScoreCard.Data month = monthCard(c, p, force);
@@ -150,6 +155,28 @@ final class ReleaseAlerts {
             }
             out.add(card);
             if (out.size() >= 3) return;
+        }
+    }
+
+    /** My list: a title that was on none of the TV's apps when kept, now on one of them (two a check at most). */
+    private static void fromList(Context c, String key, List<ScoreCard.Data> out) {
+        int added = 0;
+        for (JSONObject o : MyList.all(c)) {
+            if (o.optBoolean("apps") || added >= 2) continue;
+            int id = o.optInt("id");
+            boolean tv = o.optBoolean("tv");
+            JSONObject gb = PagesV2.providersGb(key, id, tv);
+            if (!onApps(c, gb)) continue;
+            MyList.arrived(c, id, tv);
+            String name = o.optString("title");
+            ScoreCard.Data card = base(c, key, id, tv);
+            card.label = "FROM YOUR LIST";
+            card.headline = name + " is now on your apps";
+            String back = o.optString("backdrop", null);
+            card.picture = picture(c, back == null || "null".equals(back) ? null : back.replace("/w1280/", "/w300/"));
+            debrid(c, card, name, tv, back);
+            out.add(card);
+            added++;
         }
     }
 
