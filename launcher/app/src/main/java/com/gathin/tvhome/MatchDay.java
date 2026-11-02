@@ -165,18 +165,20 @@ final class MatchDay {
             GradientDrawable g = h.fill(12, 0x4D000000);
             g.setStroke(Math.max(1, h.px(1)), 0x40FFFFFF);
             box.setBackground(g);
-            digits[i] = h.text(32, heavy, Color.WHITE);
+            digits[i] = h.text(30, heavy, Color.WHITE);
             digits[i].setFontFeatureSettings("tnum");
             digits[i].setLineSpacing(0, 1f);
             digits[i].setGravity(Gravity.CENTER);
             box.addView(digits[i], new LinearLayout.LayoutParams(-2, -2));
-            TextView u = h.text(11, semi, 0xCCFFFFFF);
+            // The unit tucked up under the digits (into the room the font keeps below them for letters that hang
+            // down, which digits never use), so the pair sits in the middle of the box, clear of its edge.
+            TextView u = h.text(10, semi, 0xCCFFFFFF);
             u.setText(units[i]);
-            u.setLetterSpacing(0.16f);
+            u.setLetterSpacing(0.14f);
             u.setLineSpacing(0, 1f);
             u.setGravity(Gravity.CENTER);
             LinearLayout.LayoutParams up = new LinearLayout.LayoutParams(-2, -2);
-            up.topMargin = h.px(3);
+            up.topMargin = -h.px(5);
             box.addView(u, up);
             LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(h.px(78), h.px(56));
             bp.leftMargin = h.px(10);

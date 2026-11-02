@@ -1780,6 +1780,29 @@ final class ViewingPanel {
                 return i;
             }
         }
+        // The app's full logo from its TV banner (TiviMate, YouTube, Debrid Stream …), as Netflix's is shown.
+        Object[] full = AppLogos.logo(c, pkg);
+        if (full != null) {
+            ImageView i = new ImageView(c);
+            i.setImageBitmap((Bitmap) full[0]);
+            i.setAdjustViewBounds(true);
+            i.setScaleType(ImageView.ScaleType.FIT_START);
+            if ((Boolean) full[1]) {
+                // A banner on a picture, as a small card.
+                i.setClipToOutline(true);
+                i.setOutlineProvider(h.round(6));
+            } else {
+                Bitmap b = (Bitmap) full[0];
+                if (b.getWidth() < b.getHeight() * 2.6f) {
+                    // A compact logo (the mark over the name, as Debrid Stream's): a third larger than a wordmark,
+                    // from its left end, so its name can be read too.
+                    i.addOnLayoutChangeListener((v, l, t, r, bt, ol, ot, orr, ob) -> { v.setPivotX(0); v.setPivotY((bt - t) / 2f); });
+                    i.setScaleX(1.35f);
+                    i.setScaleY(1.35f);
+                }
+            }
+            return i;
+        }
         LinearLayout v = new LinearLayout(c);
         v.setGravity(Gravity.CENTER_VERTICAL);
         PackageManager pm = c.getPackageManager();

@@ -763,6 +763,7 @@ final class HomeV2 {
     void home() {
         if (controlCentre != null) controlCentre.hide();
         Surprise.close();
+        EpisodeDice.close();
         Recap.close();
         if (titlePanel != null) titlePanel.hide();
         if (viewing != null) viewing.hide();
@@ -804,6 +805,7 @@ final class HomeV2 {
     boolean key(KeyEvent e) {
         if (controlCentre != null && controlCentre.isOpen()) return controlCentre.key(e);
         if (Surprise.isOpen()) return Surprise.key(e);
+        if (EpisodeDice.isOpen()) return EpisodeDice.key(e);
         if (Recap.isOpen()) return Recap.key(e);
         if (titlePanel != null && titlePanel.isOpen()) return titlePanel.key(e);
         if (viewing != null && viewing.isOpen()) return viewing.key(e);
