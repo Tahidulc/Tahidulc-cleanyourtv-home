@@ -292,7 +292,7 @@ final class AmbientScene {
         try {
             JSONObject json = new JSONObject(ScoresTicker.get("https://api.open-meteo.com/v1/forecast?latitude=" + lat
                     + "&longitude=" + lon + "&current=temperature_2m,weather_code,is_day"
-                    + "&daily=temperature_2m_max,precipitation_probability_max,sunset&forecast_days=2&timezone=auto"
+                    + "&daily=temperature_2m_max,precipitation_probability_max,sunrise,sunset&forecast_days=2&timezone=auto"
                     + "&hourly=temperature_2m,weather_code,is_day&forecast_hours=6"));
             JSONObject now = json.getJSONObject("current");
             int code = now.getInt("weather_code");
@@ -307,7 +307,7 @@ final class AmbientScene {
                 org.json.JSONArray rain = daily.optJSONArray("precipitation_probability_max");
                 if (rain != null && !rain.isNull(1) && rain.getInt(1) >= 50) next += ", rain likely";
             }
-            // The next few hours, on the hour, for the bar: {"18:00", "10°", icon}; and today's sunset.
+            // The next few hours, on the hour, for the bar: {"18:00", "10°", icon}.
             List<Object[]> hours = new ArrayList<>();
             JSONObject hourly = json.optJSONObject("hourly");
             if (hourly != null) {
@@ -319,10 +319,17 @@ final class AmbientScene {
                             WeatherLine.icon(wc.getInt(i), isDay == null || isDay.optInt(i, 1) == 1)});
                 }
             }
+            // Today's sunset, or once it has gone, tomorrow's sunrise (the place's own clock, as the hours are).
             String sunset = null;
-            if (daily != null && daily.optJSONArray("sunset") != null && daily.getJSONArray("sunset").length() > 0) {
-                String ss = daily.getJSONArray("sunset").getString(0);
-                if (ss.contains("T") && LocalDate.now().toString().equals(ss.substring(0, ss.indexOf('T')))) sunset = ss.substring(ss.indexOf('T') + 1);
+            org.json.JSONArray sets = daily == null ? null : daily.optJSONArray("sunset"), rises = daily == null ? null : daily.optJSONArray("sunrise");
+            String nowAt = now.optString("time", "");
+            if (sets != null && sets.length() > 0) {
+                String ss = sets.getString(0);
+                if (ss.contains("T") && LocalDate.now().toString().equals(ss.substring(0, ss.indexOf('T')))) {
+                    if (nowAt.isEmpty() || nowAt.compareTo(ss) < 0) sunset = "Sunset " + ss.substring(ss.indexOf('T') + 1);
+                    else if (rises != null && rises.length() > 1 && rises.getString(1).contains("T"))
+                        sunset = "Sunrise " + rises.getString(1).substring(rises.getString(1).indexOf('T') + 1);
+                }
             }
             return new Object[]{line, WeatherLine.icon(code, day), next, hours, sunset};
         } catch (Exception e) {
@@ -649,7 +656,7 @@ final class AmbientScene {
                 Object[] h = (Object[]) o;
                 p.items.add(new Object[]{h[0] + "   " + h[1], h[2]});
             }
-            if (wx[4] != null) p.items.add(new Object[]{"Sunset " + wx[4], 0});
+            if (wx[4] != null) p.items.add(new Object[]{wx[4], 0});
             out.add(p);
         }
         if (!later.isEmpty()) {

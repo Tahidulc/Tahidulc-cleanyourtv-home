@@ -3297,6 +3297,8 @@ final class HomeV2 {
         if (url.startsWith("mood:")) return MoodArt.draw(a, url, width);
         // The Kids page's YouTube Kids card: drawn here too.
         if (url.startsWith("ytkids:")) return KidsArt.draw(a, url, width);
+        // The Kids page's shows the launcher draws (space, dance).
+        if (url.startsWith("kidsact:")) return KidsArt.scene(a, url.substring(8), width);
         try {
             byte[] data;
             if (url.startsWith("http")) {

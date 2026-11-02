@@ -276,8 +276,13 @@ final class PagesV2 {
         private final Runnable heroLater = this::heroNow;
         /** The tab the page opens on; the words shown where a row's posters would be when it has none. */
         int startTab;
-        /** The Kids page's little ones, when the TV has their pictures: walking about above the tabs. */
-        final List<KidsBuddy> buddies = new ArrayList<>();
+        /**
+         * The Kids page's shows at the top while the focus is on the tabs, and the family's children, when the TV has
+         * their pictures, about above the tabs (KidsPlay); null on other pages.
+         */
+        KidsPlay play;
+        /** The show at the top now (-1: a title's picture is there). */
+        private int actShown = -1;
         private TextView emptyView;
 
         PosterPage startOn(int t) {
@@ -335,7 +340,7 @@ final class PagesV2 {
         }
 
         @Override void close() {
-            for (KidsBuddy b : buddies) b.stop();
+            if (play != null) play.stop();
             trailerTile = null;
             if (trailerSoon != null) h.main.removeCallbacks(trailerSoon);
             player.stop();   // Home's own player: kept, with its page loaded, for Home and the next page
@@ -443,10 +448,11 @@ final class PagesV2 {
             // posters.
             onTabs = tabs != null;
             load(startTab);
-            for (KidsBuddy b : buddies) {
-                // Feet on the line just above the tabs, on the picture side (clear of the description on the left).
-                add(b, 0, 516 - 214, 164, 214);
-                b.start();
+            if (play != null) {
+                // Over the picture at the top, down to the line just above the tabs (feet on it); the description on the
+                // left is left clear.
+                addAt(play, 520, 0, 1400, 516);
+                play.start();
             }
         }
 
@@ -772,6 +778,20 @@ final class PagesV2 {
         private static final Map<Integer, List<String>> MARKS = new HashMap<>();
 
         private void heroNow() {
+            // The Kids page on its tabs: its show at the top (once, not again at every tab), not the first title's.
+            if (play != null) {
+                boolean shows = onTabs && play.hasShows();
+                play.shows(shows);
+                if (shows) {
+                    if (actShown != play.act()) {
+                        actShown = play.act();
+                        h.heroTopColour(crumbColour);
+                        h.hero(play.tile(crumb));
+                    }
+                    return;
+                }
+                actShown = -1;
+            }
             if (row >= rows.size() || rows.get(row).items.isEmpty()) return;
             Title t = rows.get(row).items.get(Math.min(idx, rows.get(row).items.size() - 1));
             HomeV2.Tile tile = new HomeV2.Tile();
@@ -844,7 +864,7 @@ final class PagesV2 {
         }
 
         @Override boolean key(KeyEvent e) {
-            for (KidsBuddy b : buddies) b.hush();
+            if (play != null) play.hush();
             return pageKey(e);
         }
 
@@ -1169,15 +1189,11 @@ final class PagesV2 {
             }
             return Arrays.asList(row(null, null, false, items));
         });
-        // The family's own little ones, drawn as cartoons, when the TV has their pictures (KidsBuddy.cast): never otherwise.
-        // Two at a time on a slower TV, three otherwise, coming in one after another and taking turns.
-        List<java.io.File> cast = h.dockMode ? KidsBuddy.cast(h.a) : new ArrayList<>();
-        if (!cast.isEmpty()) {
-            KidsBuddy.Stage stage = new KidsBuddy.Stage(cast, new java.util.Random().nextInt(cast.size()));
-            int n = Math.min(cast.size(), h.lite ? 2 : 3);
-            for (int i = 0; i < n; i++)
-                p.buddies.add(new KidsBuddy(h.a, stage, h.px(1000) / 1000f, h.px(940), h.px(1720), h.lite, 600L + 2600L * i));
-        }
+        // The shows at the top and the family's own children as 3D cartoons, when the TV has their pictures and scenes
+        // (KidsPlay.cast, KidsPlay.scenes): never otherwise.
+        List<java.io.File> cast = h.dockMode ? KidsPlay.cast(h.a) : new ArrayList<>();
+        List<java.io.File> scenes = h.dockMode ? KidsPlay.scenes(h.a) : new ArrayList<>();
+        if (!cast.isEmpty() || !scenes.isEmpty()) p.play = new KidsPlay(h, cast, scenes, p::heroNow);
         return p.startOn(0);
     }
 

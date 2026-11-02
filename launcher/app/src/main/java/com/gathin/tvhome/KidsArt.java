@@ -148,6 +148,201 @@ final class KidsArt {
         return b;
     }
 
+    /**
+     * The Kids page's two shows the launcher draws for the top of the page (KidsPlay), at the hero's shape (1400 x 720):
+     * "space", a night of stars and coloured nebulae with a ringed planet, a moon and a little rocket; "dance", a party
+     * with string lights, a glitter ball, spotlights and a shining floor.
+     */
+    static Bitmap scene(Context c, String kind, int width) {
+        int w = Math.max(200, width), h = Math.round(w * 720f / 1400f);
+        Bitmap b = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
+        Canvas cv = new Canvas(b);
+        Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
+        Random r = new Random(kind.hashCode());
+        if ("dance".equals(kind)) dance(cv, p, r, w, h); else space(cv, p, r, w, h);
+        return b;
+    }
+
+    private static void glow(Canvas cv, Paint p, float x, float y, float rad, int colour) {
+        p.setShader(new RadialGradient(x, y, rad, colour, colour & 0x00FFFFFF, Shader.TileMode.CLAMP));
+        cv.drawCircle(x, y, rad, p);
+        p.setShader(null);
+    }
+
+    private static void space(Canvas cv, Paint p, Random r, int w, int h) {
+        p.setShader(new LinearGradient(0, 0, 0, h, new int[]{0xFF070726, 0xFF15103F, 0xFF2A1050}, null, Shader.TileMode.CLAMP));
+        cv.drawRect(0, 0, w, h, p);
+        p.setShader(null);
+        // Nebulae, soft and coloured.
+        glow(cv, p, w * 0.68f, h * 0.38f, w * 0.42f, 0x669B5CFF);
+        glow(cv, p, w * 0.48f, h * 0.78f, w * 0.30f, 0x4D20C9C9);
+        glow(cv, p, w * 0.93f, h * 0.82f, w * 0.26f, 0x47FF5EC8);
+        glow(cv, p, w * 0.30f, h * 0.20f, w * 0.22f, 0x334CC9F0);
+        // Stars, a few with a glow.
+        for (int i = 0; i < 320; i++) {
+            float x = r.nextFloat() * w, y = r.nextFloat() * h, rad = (0.4f + r.nextFloat() * r.nextFloat() * 1.9f) * w / 1400f;
+            int a = 90 + r.nextInt(165);
+            if (rad > 1.5f * w / 1400f) glow(cv, p, x, y, rad * 5f, (a / 3) << 24 | 0xFFFFFF);
+            p.setColor(a << 24 | (r.nextInt(5) == 0 ? 0xFFE7B5 : r.nextInt(4) == 0 ? 0xBFD9FF : 0xFFFFFF));
+            cv.drawCircle(x, y, rad, p);
+        }
+        float k = w / 1400f;
+        // A ringed planet, top right: the ring's far side behind it, the near side in front.
+        float px = w * 0.83f, py = h * 0.27f, pr = 92 * k;
+        RectF ring = new RectF(px - pr * 1.9f, py - pr * 0.5f, px + pr * 1.9f, py + pr * 0.5f);
+        cv.save();
+        cv.rotate(-14, px, py);
+        p.setStyle(Paint.Style.STROKE);
+        p.setStrokeWidth(16 * k);
+        p.setColor(0xCCFFD9A0);
+        cv.drawArc(ring, 180, 180, false, p);
+        p.setStyle(Paint.Style.FILL);
+        p.setShader(new LinearGradient(px - pr, py - pr, px + pr, py + pr, new int[]{0xFFFFC07A, 0xFFFF7A6B, 0xFFB0408F}, null, Shader.TileMode.CLAMP));
+        cv.drawCircle(px, py, pr, p);
+        p.setShader(null);
+        cv.save();
+        android.graphics.Path clip = new android.graphics.Path();
+        clip.addCircle(px, py, pr, android.graphics.Path.Direction.CW);
+        cv.clipPath(clip);
+        p.setColor(0x33FFFFFF);
+        for (int i = -2; i <= 2; i++) cv.drawRect(px - pr, py + i * pr * 0.36f - pr * 0.07f, px + pr, py + i * pr * 0.36f + pr * 0.07f, p);
+        p.setColor(0x55000000);
+        cv.drawCircle(px + pr * 0.45f, py + pr * 0.45f, pr * 1.05f, p);
+        cv.restore();
+        p.setStyle(Paint.Style.STROKE);
+        p.setColor(0xE6FFE2B0);
+        cv.drawArc(ring, 0, 180, false, p);
+        p.setStyle(Paint.Style.FILL);
+        cv.restore();
+        // A moon with its craters.
+        float mx = w * 0.57f, my = h * 0.17f, mr = 38 * k;
+        glow(cv, p, mx, my, mr * 2.4f, 0x33FFFFFF);
+        p.setColor(0xFFE8E6F0);
+        cv.drawCircle(mx, my, mr, p);
+        p.setColor(0xFFC9C5D8);
+        cv.drawCircle(mx - mr * 0.35f, my - mr * 0.2f, mr * 0.22f, p);
+        cv.drawCircle(mx + mr * 0.3f, my + mr * 0.35f, mr * 0.16f, p);
+        cv.drawCircle(mx + mr * 0.4f, my - mr * 0.35f, mr * 0.1f, p);
+        // A small blue-green world, low on the right.
+        float ex = w * 0.97f, ey = h * 0.86f, er = 120 * k;
+        glow(cv, p, ex, ey, er * 1.35f, 0x5540A0FF);
+        p.setShader(new LinearGradient(ex - er, ey - er, ex + er, ey + er, 0xFF3C8DFF, 0xFF123A8A, Shader.TileMode.CLAMP));
+        cv.drawCircle(ex, ey, er, p);
+        p.setShader(null);
+        p.setColor(0xFF3DBE6E);
+        cv.drawOval(new RectF(ex - er * 0.7f, ey - er * 0.55f, ex - er * 0.1f, ey - er * 0.05f), p);
+        cv.drawOval(new RectF(ex - er * 0.2f, ey + er * 0.1f, ex + er * 0.4f, ey + er * 0.6f), p);
+        // A little rocket on its way up, flame and all.
+        rocket(cv, p, w * 0.70f, h * 0.60f, 1.0f * k, -32);
+    }
+
+    private static void rocket(Canvas cv, Paint p, float x, float y, float k, float tilt) {
+        cv.save();
+        cv.translate(x, y);
+        cv.rotate(tilt);
+        float bw = 26 * k, bh = 74 * k;
+        android.graphics.Path flame = new android.graphics.Path();
+        flame.moveTo(-bw * 0.55f, bh * 0.5f);
+        flame.quadTo(0, bh * 1.55f, bw * 0.55f, bh * 0.5f);
+        flame.close();
+        p.setShader(new LinearGradient(0, bh * 0.5f, 0, bh * 1.4f, 0xFFFFE066, 0x00FF5E2B, Shader.TileMode.CLAMP));
+        cv.drawPath(flame, p);
+        p.setShader(null);
+        p.setColor(0xFFE53935);
+        android.graphics.Path fins = new android.graphics.Path();
+        fins.moveTo(-bw * 0.5f, bh * 0.1f);
+        fins.lineTo(-bw * 1.05f, bh * 0.55f);
+        fins.lineTo(-bw * 0.5f, bh * 0.45f);
+        fins.close();
+        fins.moveTo(bw * 0.5f, bh * 0.1f);
+        fins.lineTo(bw * 1.05f, bh * 0.55f);
+        fins.lineTo(bw * 0.5f, bh * 0.45f);
+        fins.close();
+        cv.drawPath(fins, p);
+        p.setColor(0xFFF4F4FA);
+        cv.drawRoundRect(new RectF(-bw / 2f, -bh / 2f, bw / 2f, bh / 2f), bw / 2f, bw / 2f, p);
+        p.setColor(0xFFE53935);
+        android.graphics.Path nose = new android.graphics.Path();
+        nose.moveTo(-bw / 2f, -bh * 0.3f);
+        nose.quadTo(0, -bh * 0.85f, bw / 2f, -bh * 0.3f);
+        nose.close();
+        cv.drawPath(nose, p);
+        p.setColor(0xFF4CC9F0);
+        cv.drawCircle(0, -bh * 0.05f, bw * 0.24f, p);
+        p.setColor(0x99FFFFFF);
+        cv.drawCircle(-bw * 0.07f, -bh * 0.09f, bw * 0.08f, p);
+        cv.restore();
+    }
+
+    private static void dance(Canvas cv, Paint p, Random r, int w, int h) {
+        float k = w / 1400f;
+        p.setShader(new LinearGradient(0, 0, 0, h, new int[]{0xFF140A33, 0xFF3A0F5C, 0xFF1A0730}, new float[]{0f, 0.62f, 1f}, Shader.TileMode.CLAMP));
+        cv.drawRect(0, 0, w, h, p);
+        p.setShader(null);
+        // Soft coloured lights out of focus.
+        int[] bokeh = {0x40FF5EC8, 0x404CC9F0, 0x40FFC93C, 0x403DDC84, 0x409B5CFF};
+        for (int i = 0; i < 46; i++) glow(cv, p, r.nextFloat() * w, r.nextFloat() * h * 0.7f, (10 + r.nextFloat() * 34) * k, bokeh[i % bokeh.length]);
+        // Spotlights from above.
+        int[] beams = {0x30FF5EC8, 0x304CC9F0, 0x30FFC93C, 0x309B5CFF};
+        for (int i = 0; i < 4; i++) {
+            float x = w * (0.38f + 0.18f * i);
+            android.graphics.Path cone = new android.graphics.Path();
+            cone.moveTo(x - 10 * k, 0);
+            cone.lineTo(x + 10 * k, 0);
+            cone.lineTo(x + 170 * k + (i - 1.5f) * 80 * k, h * 0.8f);
+            cone.lineTo(x - 170 * k + (i - 1.5f) * 80 * k, h * 0.8f);
+            cone.close();
+            p.setShader(new LinearGradient(0, 0, 0, h * 0.8f, beams[i], beams[i] & 0x00FFFFFF, Shader.TileMode.CLAMP));
+            cv.drawPath(cone, p);
+        }
+        p.setShader(null);
+        // The floor, shining, with pools of coloured light.
+        float floor = h * 0.74f;
+        p.setShader(new LinearGradient(0, floor, 0, h, 0xFF2B0E4A, 0xFF0E0418, Shader.TileMode.CLAMP));
+        cv.drawRect(0, floor, w, h, p);
+        p.setShader(null);
+        glow(cv, p, w * 0.55f, floor + 40 * k, 220 * k, 0x55FF5EC8);
+        glow(cv, p, w * 0.80f, floor + 50 * k, 200 * k, 0x554CC9F0);
+        glow(cv, p, w * 0.98f, floor + 30 * k, 160 * k, 0x45FFC93C);
+        // String lights along the top.
+        android.graphics.Path wire = new android.graphics.Path();
+        wire.moveTo(w * 0.3f, h * 0.05f);
+        wire.quadTo(w * 0.62f, h * 0.24f, w * 1.02f, h * 0.03f);
+        p.setStyle(Paint.Style.STROKE);
+        p.setStrokeWidth(2 * k);
+        p.setColor(0x99FFFFFF);
+        cv.drawPath(wire, p);
+        p.setStyle(Paint.Style.FILL);
+        android.graphics.PathMeasure pm = new android.graphics.PathMeasure(wire, false);
+        float[] at = new float[2];
+        int[] bulbs = {0xFFFF5E5B, 0xFFFFC93C, 0xFF3DDC84, 0xFF4CC9F0, 0xFFFF8AC2, 0xFF9B5CFF};
+        for (int i = 0; i <= 18; i++) {
+            pm.getPosTan(pm.getLength() * i / 18f, at, null);
+            glow(cv, p, at[0], at[1] + 8 * k, 20 * k, (bulbs[i % bulbs.length] & 0x00FFFFFF) | 0x66000000);
+            p.setColor(bulbs[i % bulbs.length]);
+            cv.drawCircle(at[0], at[1] + 8 * k, 6 * k, p);
+        }
+        // A glitter ball, hanging.
+        float gx = w * 0.62f, gy = h * 0.17f, gr = 44 * k;
+        p.setColor(0x99FFFFFF);
+        cv.drawRect(gx - k, 0, gx + k, gy - gr, p);
+        glow(cv, p, gx, gy, gr * 2.6f, 0x40FFFFFF);
+        p.setShader(new RadialGradient(gx - gr * 0.3f, gy - gr * 0.3f, gr * 1.3f, 0xFFF2F2F8, 0xFF6F6F86, Shader.TileMode.CLAMP));
+        cv.drawCircle(gx, gy, gr, p);
+        p.setShader(null);
+        cv.save();
+        android.graphics.Path ball = new android.graphics.Path();
+        ball.addCircle(gx, gy, gr, android.graphics.Path.Direction.CW);
+        cv.clipPath(ball);
+        p.setColor(0x55303045);
+        float cell = gr / 4.5f;
+        for (float y = gy - gr; y <= gy + gr; y += cell) cv.drawRect(gx - gr, y, gx + gr, y + 1.2f * k, p);
+        for (float x = gx - gr; x <= gx + gr; x += cell) cv.drawRect(x, gy - gr, x + 1.2f * k, gy + gr, p);
+        cv.restore();
+        p.setColor(0xFFFFFFFF);
+        for (int i = 0; i < 7; i++) cv.drawCircle(gx + (r.nextFloat() - 0.5f) * gr * 1.4f, gy + (r.nextFloat() - 0.5f) * gr * 1.4f, 1.8f * k, p);
+    }
+
     private static String longest(String s) {
         String best = "";
         for (String part : s.split(" ")) if (part.length() > best.length()) best = part;
