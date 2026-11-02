@@ -203,6 +203,17 @@
             android:noHistory="true"
             android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen" />
 
+        <!-- Split screen (TwoUp): opened once by the TV's own debugging connection in a window of its own, it notes whether
+             Android really gave it one (some TVs, the TCL, switch Android's multi-window off) and closes at once. -->
+        <activity
+            android:name=".TwoUpProbe"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:resizeableActivity="true"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
         <!-- stock_home_redirect at boot: HomeKeyService opens this invisible activity once, so the screen behind
              it sends a window event when it closes (HomeKeyService.probeAtBoot). -->
         <activity

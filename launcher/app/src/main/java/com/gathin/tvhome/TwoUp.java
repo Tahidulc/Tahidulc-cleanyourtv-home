@@ -54,7 +54,7 @@ final class TwoUp {
     private static HomeV2 h;
     private static FrameLayout layer;
     /** What the layer shows: nothing, the pictures' backdrop, the options, or the apps to choose from. */
-    private static final int NONE = 0, BACKDROP = 1, OPTIONS = 2, PICK = 3;
+    private static final int NONE = 0, BACKDROP = 1, OPTIONS = 2, PICK = 3, MESSAGE = 4;
     private static int mode = NONE;
     private static final List<TextView> rows = new ArrayList<>();
     private static final List<Runnable> acts = new ArrayList<>();
@@ -71,7 +71,7 @@ final class TwoUp {
 
     /** Whether the options or the apps to choose from are up (Home's keys come here). */
     static boolean open() {
-        return mode == OPTIONS || mode == PICK;
+        return mode == OPTIONS || mode == PICK || mode == MESSAGE;
     }
 
     // ---- starting ----------------------------------------------------------------------------------------------------
@@ -80,6 +80,7 @@ final class TwoUp {
     static void choose(HomeV2 home, List<String> apps) {
         h = home;
         if (active) { options(); return; }
+        if (support(home.a) < 0) { build(MESSAGE); return; }
         pickPkgs.clear();
         PackageManager pm = home.a.getPackageManager();
         for (String p : apps) if (p != null && !pickPkgs.contains(p) && launch(pm, p) != null) pickPkgs.add(p);
@@ -89,10 +90,43 @@ final class TwoUp {
         build(PICK);
     }
 
-    /** a on the left (or big), b on the right (or small), the remote with b. */
+    /** Whether this TV puts apps in windows: 1 yes, -1 no (its system has multi-window off), 0 not yet known. */
+    private static int support(Context c) {
+        return c.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getInt("support", 0);
+    }
+
+    /** From TwoUpProbe: whether Android really gave it a window of its own. */
+    static void probed(Context c, boolean inWindow) {
+        c.getApplicationContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putInt("support", inWindow ? 1 : -1).apply();
+    }
+
+    /**
+     * a on the left (or big), b on the right (or small), the remote with b. The first time, the launcher's own see-through
+     * check (TwoUpProbe) is opened in a window first: on a TV whose system will not (the TCL) it says so, and nothing that
+     * is open is closed.
+     */
     static void start(HomeV2 home, String a, String b) {
         h = home;
         if (busy || a == null || b == null || a.equals(b)) return;
+        Context c0 = home.a;
+        if (support(c0) == 0) {
+            busy = true;
+            build(MESSAGE);
+            LocalAdb.shellOut(c0, "settings put global enable_freeform_support 1; settings put global force_resizable_activities 1; "
+                    + "am start --windowingMode 5 -n " + c0.getPackageName() + "/.TwoUpProbe >/dev/null 2>&1; sleep 2; echo done", out -> {
+                busy = false;
+                if (out == null) { failed(c0); return; }
+                if (support(c0) == 0) probed(c0, false);   // it never opened: as good as no
+                start(home, a, b);
+            });
+            return;
+        }
+        if (support(c0) < 0) {
+            // Android's multi-window is off on this TV: its settings put back as they were, and why.
+            LocalAdb.shell(c0, "settings delete global enable_freeform_support; settings delete global force_resizable_activities");
+            build(MESSAGE);
+            return;
+        }
         PackageManager pm = home.a.getPackageManager();
         ComponentName ca = launch(pm, a), cb = launch(pm, b);
         if (ca == null || cb == null) return;
@@ -112,8 +146,7 @@ final class TwoUp {
         Context c = home.a;
         // Freeform windows on (Android's developer setting: on at once, no restart), then each app in a window of
         // its own: one already open full screen is closed first, as Android brings it back as it was otherwise.
-        LocalAdb.shellOut(c, "settings put global enable_freeform_support 1; settings put global force_resizable_activities 1; "
-                + "dumpsys activity activities | grep -E '^ +\\* Task\\{'", out -> {
+        LocalAdb.shellOut(c, "settings put global enable_freeform_support 1; settings put global force_resizable_activities 1; " + LIST, out -> {
             if (out == null) { failed(c); return; }
             StringBuilder cmd = new StringBuilder();
             for (int i = 0; i < 2; i++) {
@@ -122,14 +155,23 @@ final class TwoUp {
                 if (t != null) cmd.append("am stack remove ").append(t[0]).append("; ");
             }
             for (int i = 0; i < 2; i++) cmd.append("am start --windowingMode 5 -n ").append(comp[i]).append(" >/dev/null 2>&1; sleep 1; ");
-            cmd.append("sleep 1; dumpsys activity activities | grep -E '^ +\\* Task\\{'");
+            cmd.append("sleep 1; ").append(LIST);
             LocalAdb.shellOut(c, cmd.toString(), got -> {
                 if (got == null) { failed(c); return; }
+                boolean windows = true;
                 for (int i = 0; i < 2; i++) {
                     int[] t = taskOf(got, pkg[i]);
                     task[i] = t == null ? -1 : t[0];
+                    if (t != null && t[1] == 0) windows = false;
                 }
                 if (task[0] < 0 || task[1] < 0) { failed(c); return; }
+                if (!windows) {
+                    // Opened full screen all the same: this TV will not; noted, both left as they are.
+                    probed(c, false);
+                    busy = false;
+                    end(c, 1);
+                    return;
+                }
                 busy = false;
                 for (int i = 0; i < 2; i++) GoalWatchService.onAppOpened(c, pkg[i]);
                 place(c, true);
@@ -287,14 +329,27 @@ final class TwoUp {
 
     // ---- reading the TV's tasks ---------------------------------------------------------------------------------------
 
-    private static final Pattern TASK = Pattern.compile("\\* Task\\{\\S+ #(\\d+) type=standard A=\\d+:(\\S+) .*?mode=(\\w+)");
+    /** The TV's tasks: each with its app (am stack list), then each one's windowing mode (dumpsys). */
+    private static final String LIST = "am stack list; echo @@@; dumpsys activity activities | grep -E '^ +\\* Task\\{'";
+    private static final Pattern APP = Pattern.compile("taskId=(\\d+): ([^/ ]+)/");
+    private static final Pattern MODE = Pattern.compile("\\* Task\\{\\S+ #(\\d+) .*?mode=(\\w+)");
 
-    /** The app's task in dumpsys's list: {id, 1 if in a window (freeform) else 0}; null when it has none. */
-    private static int[] taskOf(String dump, String p) {
-        Matcher m = TASK.matcher(dump);
+    /**
+     * The app's task (the top one when it has more): {id, 1 if in a window (freeform) else 0}; null when it has none.
+     * By the app's package from the stack list: a task's affinity is not always its package (YouTube's is
+     * com.google.android.youtube.tv.main).
+     */
+    private static int[] taskOf(String out, String p) {
+        int at = out.indexOf("@@@");
+        String stacks = at < 0 ? out : out.substring(0, at), dump = at < 0 ? "" : out.substring(at);
+        Matcher m = APP.matcher(stacks);
         while (m.find()) {
             if (!m.group(2).equals(p)) continue;
-            return new int[]{Integer.parseInt(m.group(1)), "freeform".equals(m.group(3)) ? 1 : 0};
+            String id = m.group(1);
+            Matcher mode = MODE.matcher(dump);
+            boolean free = false;
+            while (mode.find()) if (mode.group(1).equals(id)) { free = "freeform".equals(mode.group(2)); break; }
+            return new int[]{Integer.parseInt(id), free ? 1 : 0};
         }
         return null;
     }
@@ -338,6 +393,7 @@ final class TwoUp {
         layer.bringToFront();
         if (what == BACKDROP) backdrop();
         else if (what == OPTIONS) optionsView();
+        else if (what == MESSAGE) messageView();
         else pickView();
     }
 
@@ -489,6 +545,24 @@ final class TwoUp {
         }
     }
 
+    /** Checking this TV (the first time), or why it cannot: its system has Android's multi-window switched off. */
+    private static void messageView() {
+        if (busy) {
+            card("Split screen", "Checking this TV can show two apps at once…");
+            return;
+        }
+        LinearLayout card = card("Split screen isn't available on this TV", null);
+        TextView why = text(21, semi(), 0xD9FFFFFF, "");
+        why.setSingleLine(false);
+        why.setEllipsize(null);
+        why.setText("This TV's own software has Android's two-windows feature switched off, so two apps can't share the "
+                + "screen here. It works on the Google TV Streamer.");
+        why.setPadding(0, px(14), 0, px(18));
+        card.addView(why);
+        row(card, "OK", () -> build(NONE));
+        paintRows();
+    }
+
     /** The apps to choose from, in a row: OK on one, then on the other. */
     private static void pickView() {
         LinearLayout card = card("Split screen", firstPick == null ? "Choose the first app, for the left"
@@ -555,6 +629,10 @@ final class TwoUp {
         if (e.getAction() != KeyEvent.ACTION_DOWN) return true;
         int code = e.getKeyCode();
         boolean ok = code == KeyEvent.KEYCODE_DPAD_CENTER || code == KeyEvent.KEYCODE_ENTER || code == KeyEvent.KEYCODE_NUMPAD_ENTER;
+        if (mode == MESSAGE) {
+            if (!busy && (ok || code == KeyEvent.KEYCODE_BACK)) build(NONE);
+            return true;
+        }
         if (mode == PICK) {
             if (code == KeyEvent.KEYCODE_BACK) { build(NONE); return true; }
             if (code == KeyEvent.KEYCODE_DPAD_LEFT && focus > 0) focus--;
