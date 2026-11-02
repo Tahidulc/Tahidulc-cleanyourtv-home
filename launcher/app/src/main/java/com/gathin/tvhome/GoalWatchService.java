@@ -145,6 +145,17 @@ public class GoalWatchService extends Service {
      */
     private void skyFootball(ScoresTicker.Game g, String type, String who, String minute, String side, String kind) {
         io.execute(() -> {
+            try {
+                skyFootballNow(g, type, who, minute, side, kind);
+            } catch (RuntimeException e) {
+                // A card that could not be built (a picture, a name) is noted, not lost without a word.
+                AlertLog.note(this, "card failed to build: " + type + " " + AlertLog.game(g) + " " + who + " " + minute + ": " + e);
+            }
+        });
+    }
+
+    private void skyFootballNow(ScoresTicker.Game g, String type, String who, String minute, String side, String kind) {
+        {
             ScoreCard.Data d = footballData(g);
             boolean home = !"away".equals(side);
             int kit = home ? g.homeColor : g.awayColor;
@@ -186,8 +197,9 @@ public class GoalWatchService extends Service {
                     d.scoreBefore = (forHome ? Math.max(0, hs - 1) : hs) + "–" + (forHome ? as : Math.max(0, as - 1));
                 }
             }
+            AlertLog.note(this, "card queued: " + type + " " + AlertLog.game(g) + (who != null && !who.isEmpty() ? ", " + who + " " + minute : ""));
             main.post(() -> ScoreCard.show(this, d));
-        });
+        }
     }
 
     /** A penalty missed or saved, or a VAR decision, as a score card. */
@@ -936,6 +948,18 @@ public class GoalWatchService extends Service {
     static boolean alertShowing() {
         GoalWatchService s = self;
         return s != null && s.host != null;
+    }
+
+    /** An alert's words, for the pop-up history. */
+    private static String describe(Object[] entry) {
+        StringBuilder b = new StringBuilder();
+        if (entry != null) for (Object o : entry) {
+            if (o instanceof CharSequence) b.append(o).append(' ');
+            else if (o instanceof List) { for (Object p : (List<?>) o) if (p instanceof CharSequence) b.append(p).append(' '); }
+            else if (o instanceof F1Results.Race) b.append("F1 result ");
+        }
+        String s = b.toString().replaceAll("\\s+", " ").trim();
+        return s.length() > 160 ? s.substring(0, 160) + "…" : s;
     }
 
     /** The alert showing away now, its timers with it. */
@@ -1690,6 +1714,9 @@ public class GoalWatchService extends Service {
         return everywhere ? START_STICKY : START_NOT_STICKY;
     }
 
+    /** The screen-off pause noted in the pop-up history (once each time). */
+    private boolean offNoted;
+
     private void poll() {
         if (!everywhere && System.currentTimeMillis() - startedAt > MAX_RUN_MS) { stopSelf(); return; }
         // Events a person asked to be reminded of (v2's Sport page): "⏰ STARTING IN 5 MIN · title · channel".
@@ -1709,9 +1736,13 @@ public class GoalWatchService extends Service {
         android.os.PowerManager power = getSystemService(android.os.PowerManager.class);
         if (power != null && !power.isInteractive()) {
             // Screen off: read nothing, look again in a minute (the screensaver counts as on).
+            if (!offNoted) AlertLog.note(this, "screen off: scores not read until it is on");
+            offNoted = true;
             main.postDelayed(poll, 60_000L);
             return;
         }
+        if (offNoted) AlertLog.note(this, "screen on: reading the scores again");
+        offNoted = false;
         long now = System.currentTimeMillis();
         // Only the competitions worth interrupting a programme for (goal_alert_leagues), and with team_alerts the
         // leagues and cups the goal_alert_teams clubs play in, for those clubs' games only.
@@ -1808,13 +1839,24 @@ public class GoalWatchService extends Service {
                     live |= g.state == 0;
                     Integer before = g.id == null ? null : lastState.put(g.id, g.state);
                     if (primed && before != null && before == 0 && g.state == 2) {
+                        AlertLog.note(this, "full time seen: " + AlertLog.game(g) + " (card in a minute)");
                         main.postDelayed(() -> enqueue(g, new String[]{"FT|" + g.id, "", "", "", "ft"}, false), DELAY_MS);
                     }
                     for (String[] goal : g.goals) {
-                        if (seen.add(goal[0]) && primed) main.postDelayed(() -> enqueue(g, goal, false), DELAY_MS);
+                        if (!seen.add(goal[0])) continue;
+                        if (primed) {
+                            AlertLog.note(this, "goal seen: " + AlertLog.game(g) + ", " + goal[1] + " " + goal[2] + " (card in a minute)");
+                            main.postDelayed(() -> enqueue(g, goal, false), DELAY_MS);
+                        } else if (g.state == 0) {
+                            AlertLog.note(this, "goal already in on the first read, not announced: " + AlertLog.game(g) + ", " + goal[1] + " " + goal[2]);
+                        }
                     }
                     for (String[] card : g.reds) {
-                        if (seen.add(card[0]) && primed) main.postDelayed(() -> enqueue(g, card, true), DELAY_MS);
+                        if (!seen.add(card[0])) continue;
+                        if (primed) {
+                            AlertLog.note(this, "red card seen: " + AlertLog.game(g) + ", " + card[1] + " " + card[2] + " (card in a minute)");
+                            main.postDelayed(() -> enqueue(g, card, true), DELAY_MS);
+                        }
                     }
                 }
                 if (!games.isEmpty()) primed = true;
@@ -2333,7 +2375,10 @@ public class GoalWatchService extends Service {
 
     private void enqueue(ScoresTicker.Game g, String[] goal, boolean red) {
         // A Championship or LaLiga game: only while Home is in front.
-        if (homeOnly(g) && !homeInFront) return;
+        if (homeOnly(g) && !homeInFront) {
+            AlertLog.note(this, "not shown (a Home-only game, Home not in front): " + AlertLog.game(g) + " " + goal[1] + " " + goal[2]);
+            return;
+        }
         if (skyAlerts) {
             skyFootball(g, red ? "red" : "ft".equals(goal[4]) ? "ft" : "goal", goal[1], goal[2], goal[3], goal[4]);
             return;
@@ -2943,11 +2988,25 @@ public class GoalWatchService extends Service {
         return grainTile;
     }
 
+    /** Since when the next alert has waited for a card to go (a stale one is not waited for past WAIT_MAX_MS). */
+    private long waitingSince;
+    static final long WAIT_MAX_MS = 90_000L;
+
     @SuppressWarnings("unchecked")
     private void showNext() {
         if (shown != null || queue.isEmpty()) return;
-        if (ScoreCard.busy() || LineupCard.isShowing()) { main.postDelayed(this::showNext, 1_500L); return; }
+        if (ScoreCard.busy() || LineupCard.isShowing()) {
+            long now = android.os.SystemClock.uptimeMillis();
+            if (waitingSince == 0) {
+                waitingSince = now;
+                AlertLog.note(this, "alert waiting: " + (ScoreCard.busy() ? "a score card" : "the line-up card") + " is up");
+            }
+            if (now - waitingSince < WAIT_MAX_MS) { main.postDelayed(this::showNext, 1_500L); return; }
+            AlertLog.note(this, "alert waited 90 s for a card to go: shown all the same");
+        }
+        waitingSince = 0;
         Object[] polled = queue.poll();
+        AlertLog.note(this, "alert shown: " + describe(polled));
         current = polled;
         // A race result on v2's Home runs through the score bar's place as pills, a page at a time.
         Object[] next = polled.length == 1 && polled[0] instanceof F1Results.Race && onLane()

@@ -147,6 +147,7 @@ final class LineupCard {
     /** Opens the card (on the main thread), in place of one already showing; after the camera card, if that is up. */
     static void show(Context ctx, Data d) {
         Context c = ctx.getApplicationContext();
+        AlertLog.note(c, "line-up card shown" + (CameraAlert.isShowing() ? " (after the camera card)" : ""));
         if (CameraAlert.isShowing()) {
             main.postDelayed(() -> show(c, d), 2_000L);
             return;

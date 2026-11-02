@@ -133,16 +133,31 @@ final class ScoreCard {
         return host != null;
     }
 
+    /** Since when the next card has waited for another pop-up to go (not past GoalWatchService.WAIT_MAX_MS). */
+    private static long waitingSince;
+
     private static void next(Context c) {
         if (host != null || queue.isEmpty()) return;
         if (LineupCard.isShowing() || GoalWatchService.alertShowing() || CameraAlert.isShowing()) {
-            main.postDelayed(() -> next(c), 2_000L);
-            return;
+            long now = android.os.SystemClock.uptimeMillis();
+            if (waitingSince == 0) {
+                waitingSince = now;
+                AlertLog.note(c, "card waiting: " + (LineupCard.isShowing() ? "the line-up card" : GoalWatchService.alertShowing() ? "an alert" : "the camera card") + " is up");
+            }
+            // One left up too long (or never taken down) is not waited for for ever: a goal is not lost behind it.
+            if (now - waitingSince < GoalWatchService.WAIT_MAX_MS) {
+                main.postDelayed(() -> next(c), 2_000L);
+                return;
+            }
+            AlertLog.note(c, "card waited 90 s for another pop-up to go: shown all the same");
         }
+        waitingSince = 0;
         Data d = queue.poll();
         if (d.f1) { d.dark = true; d.wideMark = true; }
         onHome = GoalWatchService.laneHome && GoalWatchService.homeInFront || PopupFrame.isShowing();
         k = c.getResources().getDisplayMetrics().widthPixels / 1920f;
+        AlertLog.note(c, "card shown " + (onHome ? "on Home (in the score bar's place)" : PopupFrame.isShowing() ? "in pop-up mode's frame" : "over the app")
+                + ": " + d.label + (d.labelSmall != null ? " " + d.labelSmall : "") + " " + d.first + " " + d.last + " " + d.line);
         if (onHome) bar(c, d); else card(c, d);
     }
 
