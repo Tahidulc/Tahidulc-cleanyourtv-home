@@ -597,13 +597,10 @@ final class MatchDay {
         ScoresTicker.Game g = p.g;
         DateTimeFormatter hm = DateTimeFormatter.ofPattern("HH:mm");
         if (p.watch != null && !p.watch.isEmpty()) {
-            boolean early = g.state == 1 && System.currentTimeMillis() < (p.coverFrom > 0 ? p.coverFrom : g.kickoff);
-            // A channel from Sky's guide is named; one found through the playlist (as the Sports page does) is not.
-            boolean listed = p.listedName != null;
-            String ch = p.watch.get(0);
-            addButton(g.state == 0 ? "Watch live" : g.state == 2 ? (listed ? "Watch on " + ch : "Watch")
-                            : early ? (listed ? "Watch " + ch : "Watch the game") : "Watch the build-up",
-                    () -> h.tune(p.watch, p.channelLogo));
+            // The channel by name, however it was found (Sky's guide, or the playlist as the Sports page does), without
+            // a playlist's country prefix ("UK: ", "UK | ").
+            String ch = p.watch.get(0).replaceFirst("^[A-Za-z]{2,3}\\s*[:|]\\s*", "").trim();
+            addButton((g.state == 0 ? "Watch live on " : "Watch on ") + ch, () -> h.tune(p.watch, p.channelLogo));
         }
         if (p.prime && g.state != 2 && appIcon(PRIME) != null) {
             addButton("Open Prime Video", () -> {
