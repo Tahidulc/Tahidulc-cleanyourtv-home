@@ -252,6 +252,8 @@ final class HomeV2 {
         players.useOverlay(lite);
         if (!tmdbKey.isEmpty()) players.warm();
         dock = new ArrayList<>(Config.load(a).dockApps);
+        // Two at once left mid-way (the launcher restarted): its windows full size and every app's sound back.
+        TwoUp.recover(a);
         channels = guideChannels(a);
         root = new FrameLayout(a);
         root.setClipChildren(false);
@@ -525,6 +527,14 @@ final class HomeV2 {
         items.add(new ControlCentre.Item("Wi-Fi", R.drawable.ic_wifi, () -> wifi.getText().toString(), null,
                 () -> open(new Intent(android.provider.Settings.ACTION_WIFI_SETTINGS))));
         items.add(new ControlCentre.Item("Inputs", R.drawable.ic_input, () -> "HDMI and sources", null, () -> showInputs(wifi)));
+        // Two at once: two apps on screen together (TiviMate beside YouTube), the dock's apps to choose from.
+        items.add(new ControlCentre.Item("Two at once", R.drawable.ic_two_up, TwoUp::describe, TwoUp::active, () -> {
+            controlCentre.hide();
+            List<String> apps = new ArrayList<>(dock);
+            apps.add("ar.tvplayer.tv");
+            apps.add("com.google.android.youtube.tv");
+            TwoUp.choose(this, apps);
+        }));
         String vpnApp = Config.themeStrings(a, "top_bar_apps", new ArrayList<>()).isEmpty() ? ""
                 : Config.themeStrings(a, "top_bar_apps", new ArrayList<>()).get(0);
         if (!vpnApp.isEmpty() && installed(vpnApp)) {
@@ -1008,6 +1018,8 @@ final class HomeV2 {
     }
 
     void home() {
+        // Home pressed while two apps are on screen together: their options, not Home.
+        if (TwoUp.home(this)) return;
         if (controlCentre != null) controlCentre.hide();
         Surprise.close();
         EpisodeDice.close();
@@ -1078,6 +1090,8 @@ final class HomeV2 {
             main.removeCallbacks(matchBack);
             main.postDelayed(matchBack, MATCH_BACK_MS);
         }
+        // Two at once: its options (Home pressed while both are up) or the apps to choose from.
+        if (TwoUp.open()) return TwoUp.key(e);
         if (controlCentre != null && controlCentre.isOpen()) return controlCentre.key(e);
         if (Surprise.isOpen()) return Surprise.key(e);
         if (EpisodeDice.isOpen()) return EpisodeDice.key(e);

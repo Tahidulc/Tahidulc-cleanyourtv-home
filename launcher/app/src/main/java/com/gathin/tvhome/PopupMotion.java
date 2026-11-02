@@ -14,6 +14,32 @@ final class PopupMotion {
     /** The tag on a card's Back key view. */
     static final String BACK_KEY = "backkey";
 
+    /**
+     * How long a card that came up by itself lets the remote's keys go on to the app: a press already on its way when
+     * it appeared was meant for the app (the line-up card took an OK pressed in TiviMate's guide 0.6 s after it came
+     * up, watched the game's channel and was gone before it could be read).
+     */
+    static final long FRESH_MS = 1_500L;
+
+    /**
+     * Whether a card shown at shownAt passes this key on to the app: pressed down within FRESH_MS of it coming up, and
+     * the same key's release after such a press (passing[0] remembers it). Call for each key the card would take.
+     */
+    static boolean passOn(KeyEvent e, long shownAt, int[] passing) {
+        if (e.getAction() == KeyEvent.ACTION_DOWN) {
+            if (e.getRepeatCount() == 0 && android.os.SystemClock.uptimeMillis() - shownAt < FRESH_MS) {
+                passing[0] = e.getKeyCode();
+                return true;
+            }
+            return passing[0] == e.getKeyCode();
+        }
+        if (passing[0] == e.getKeyCode()) {
+            if (e.getAction() == KeyEvent.ACTION_UP) passing[0] = 0;
+            return true;
+        }
+        return false;
+    }
+
     private PopupMotion() { }
 
     static boolean isBack(KeyEvent e) {

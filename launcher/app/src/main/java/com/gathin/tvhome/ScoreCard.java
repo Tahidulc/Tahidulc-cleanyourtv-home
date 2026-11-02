@@ -101,6 +101,9 @@ final class ScoreCard {
     private static final ArrayDeque<Data> queue = new ArrayDeque<>();
     private static FrameLayout host;
     private static Data showing;
+    /** When the card came up, and the key it is letting through to the app (PopupMotion.passOn). */
+    private static long shownAt;
+    private static final int[] passing = {0};
     private static boolean onHome;
     private static float k;
     /** The score's tick and Home's light, waiting to run; dropped when the card goes first. */
@@ -152,6 +155,8 @@ final class ScoreCard {
         boolean ok = code == KeyEvent.KEYCODE_DPAD_CENTER || code == KeyEvent.KEYCODE_ENTER
                 || code == KeyEvent.KEYCODE_NUMPAD_ENTER || code == KeyEvent.KEYCODE_BUTTON_A;
         if (!back && !(ok && d.watch != null)) return false;
+        // Its first moments: Back and OK go on to the app they were pressed for.
+        if (PopupMotion.passOn(e, shownAt, passing)) return false;
         if (back) {
             // The card's Back key dips as the button goes down; as it comes up the card shrinks away towards it.
             if (e.getAction() == KeyEvent.ACTION_DOWN && e.getRepeatCount() == 0) main.post(() -> PopupMotion.press(host));
@@ -874,7 +879,6 @@ final class ScoreCard {
         // Without the key helper (the TCL), the corner card over an app takes the remote's keys while it shows: OK
         // watches (when there is a channel), Back or any other key closes it. Home's bar leaves Home its keys.
         boolean takeKeys = !InputKeyService.running && !onHome;
-        if (takeKeys) lp.flags &= ~WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
         try {
             c.getSystemService(WindowManager.class).addView(win, lp);
         } catch (RuntimeException e) {
@@ -885,7 +889,22 @@ final class ScoreCard {
         }
         host = win;
         showing = d;
-        if (takeKeys) {
+        shownAt = android.os.SystemClock.uptimeMillis();
+        // The remote's keys taken only after its first moments: a press already on its way was meant for the app.
+        if (takeKeys) main.postDelayed(() -> { if (host == win) takeKeys(c, win, d); }, PopupMotion.FRESH_MS);
+        return true;
+    }
+
+    /** The card's window takes the remote (a TV without the key helper): OK watches, Back or any other key closes. */
+    private static void takeKeys(Context c, FrameLayout win, Data d) {
+        try {
+            WindowManager.LayoutParams lp = (WindowManager.LayoutParams) win.getLayoutParams();
+            lp.flags &= ~WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
+            c.getSystemService(WindowManager.class).updateViewLayout(win, lp);
+        } catch (RuntimeException e) {
+            return;
+        }
+        {
             win.setFocusable(true);
             win.setFocusableInTouchMode(true);
             win.requestFocus();
@@ -901,7 +920,6 @@ final class ScoreCard {
                 return true;
             });
         }
-        return true;
     }
 
     private static void schedule(Data d) {

@@ -101,6 +101,30 @@ final class LocalAdb {
         });
     }
 
+    /**
+     * Runs a shell command on the TV in the background, after any before it, and hands its output (null when the TV
+     * refused it) to done on the main thread.
+     */
+    static void shellOut(Context c, String command, java.util.function.Consumer<String> done) {
+        Context app = c.getApplicationContext();
+        android.os.Handler main = new android.os.Handler(android.os.Looper.getMainLooper());
+        RUN.execute(() -> {
+            String out = null;
+            try {
+                if (socket != null || connect(app)) out = run(command, true);
+            } catch (IOException | RuntimeException e) {
+                close();
+                try {
+                    if (connect(app)) out = run(command, true);
+                } catch (IOException | RuntimeException again) {
+                    close();
+                }
+            }
+            String result = out;
+            main.post(() -> done.accept(result));
+        });
+    }
+
     /** Connects and signs in, the TV asking to allow this key the first time; false when it will not. */
     private static boolean connect(Context c) throws IOException {
         close();
@@ -152,18 +176,27 @@ final class LocalAdb {
 
     /** One command on its own stream, waiting for it to finish (its output is not needed). */
     private static void run(String command) throws IOException {
+        run(command, false);
+    }
+
+    /** One command on its own stream, waiting (up to 20 s) for it to finish; its output when keep, else null. */
+    private static String run(String command, boolean keep) throws IOException {
         int local = nextId++;
         send(OPEN, local, 0, ("shell:" + command + "\0").getBytes(StandardCharsets.UTF_8));
-        long until = System.currentTimeMillis() + 10_000;
+        java.io.ByteArrayOutputStream got = keep ? new java.io.ByteArrayOutputStream() : null;
+        long until = System.currentTimeMillis() + 20_000;
         while (System.currentTimeMillis() < until) {
             Message m = read();
             if (m.arg1 != local) continue;
-            if (m.command == WRTE) send(OKAY, local, m.arg0, new byte[0]);
-            else if (m.command == CLSE) {
+            if (m.command == WRTE) {
+                if (got != null && m.data != null) got.write(m.data, 0, m.data.length);
+                send(OKAY, local, m.arg0, new byte[0]);
+            } else if (m.command == CLSE) {
                 send(CLSE, local, m.arg0, new byte[0]);
-                return;
+                return got == null ? null : got.toString("UTF-8");
             }
         }
+        return got == null ? null : got.toString("UTF-8");
     }
 
     private static void close() {

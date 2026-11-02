@@ -3159,6 +3159,14 @@ public class GoalWatchService extends Service {
     private void offerWatch(LinearLayout box, int h, Object[] w) {
         List<String> names = (List<String>) w[0];
         android.graphics.Bitmap logo = (android.graphics.Bitmap) w[1];
+        // The remote's keys taken after a moment: a press already on its way when the alert came was meant for the app.
+        View was = host;
+        main.postDelayed(() -> { if (host == was && host != null) watchKeys(box, h, w, names, logo); }, PopupMotion.FRESH_MS);
+        watchClose = () -> endWatch(box, h);
+        main.postDelayed(watchClose, SHOW_MS + 4_000);
+    }
+
+    private void watchKeys(LinearLayout box, int h, Object[] w, List<String> names, android.graphics.Bitmap logo) {
         takeKeys(true);
         host.setOnKeyListener((v, keyCode, event) -> {
             if (event.getAction() != android.view.KeyEvent.ACTION_DOWN) return true;
@@ -3169,8 +3177,6 @@ public class GoalWatchService extends Service {
             else if (ok) AppSearchService.tune(this, getString(R.string.scores_open_package), names, logo);
             return true;
         });
-        watchClose = () -> endWatch(box, h);
-        main.postDelayed(watchClose, SHOW_MS + 4_000);
     }
 
     /**

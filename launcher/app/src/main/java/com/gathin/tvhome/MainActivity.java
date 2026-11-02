@@ -1133,6 +1133,11 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             // adb only (--ez assist_test true): the panel, and the Assistant's working sign over the first light, for a
             // question that changes nothing ("what time is it").
             else if (intent != null && intent.getBooleanExtra("assist_test", false)) v2.testAssist();
+            // adb only (--es two_up "pkgA,pkgB"): the two apps on screen together, as Control Centre's Two at once does.
+            else if (intent != null && intent.hasExtra("two_up")) {
+                String[] two = String.valueOf(intent.getStringExtra("two_up")).split(",");
+                if (two.length == 2) TwoUp.start(v2, two[0].trim(), two[1].trim());
+            }
             // A box chosen in pop-up mode's frame (PopupFrame): Home on that box's section.
             else if (intent != null && intent.hasExtra("open_box")) v2.openBox(intent.getIntExtra("open_box", -1));
             // The card on the 1st of the month (ReleaseAlerts): Your viewing on last month.
@@ -1431,7 +1436,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         if (pm != null && !pm.isInteractive()) return false;
         android.media.AudioManager am = getSystemService(android.media.AudioManager.class);
         if (am != null && am.isMusicActive()) return false;
-        return !GoalWatchService.alertShowing() && !LiveCentre.isShowing();
+        return !GoalWatchService.alertShowing() && !LiveCentre.isShowing() && !TwoUp.active();
     }
 
     private void restartIdleClock() {

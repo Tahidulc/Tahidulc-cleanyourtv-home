@@ -85,6 +85,9 @@ final class LineupCard {
 
     private static FrameLayout host;
     private static Data showing;
+    /** When the card came up, and the key it is letting through to the app (PopupMotion.passOn). */
+    private static long shownAt;
+    private static final int[] passing = {0};
     private static float k;
     /** Whether the one showing is Home's bar (it gives the score pills their place back when it goes). */
     private static boolean bar;
@@ -116,6 +119,9 @@ final class LineupCard {
         Data d = showing;
         if (host == null || d == null) return false;
         int code = e.getKeyCode();
+        // Its first moments: Back and OK go on to the app they were pressed for.
+        if ((code == KeyEvent.KEYCODE_BACK || code == KeyEvent.KEYCODE_DPAD_CENTER || code == KeyEvent.KEYCODE_ENTER
+                || code == KeyEvent.KEYCODE_NUMPAD_ENTER || code == KeyEvent.KEYCODE_BUTTON_A) && PopupMotion.passOn(e, shownAt, passing)) return false;
         // Back: its key on the card dips as the button goes down, and the card shrinks away towards it as it comes up.
         if (code == KeyEvent.KEYCODE_BACK) {
             if (e.getAction() == KeyEvent.ACTION_DOWN && e.getRepeatCount() == 0) main.post(() -> PopupMotion.press(host));
@@ -202,6 +208,7 @@ final class LineupCard {
         }
         host = win;
         showing = d;
+        shownAt = android.os.SystemClock.uptimeMillis();
 
         // The pages: the fixture and its channel (OK to watch), each eleven in two (the keeper and defence first), then
         // both on one pitch. Each comes in behind a slanted wipe across the stage, as Sky's line-ups change.
@@ -293,6 +300,7 @@ final class LineupCard {
         // Its pages fill and move only while the card is up: up for the photographs, let go of after.
         host = win;
         showing = d;
+        shownAt = android.os.SystemClock.uptimeMillis();
         Snap.series(c, root, sw, sh, steps, out, 2_400L, () -> {
             if (host == win) { host = null; showing = null; }
             try (java.io.FileOutputStream o = new java.io.FileOutputStream(new java.io.File(dir, "lineup_done.txt"))) { o.write('1'); } catch (Exception ignored) { }
@@ -367,6 +375,7 @@ final class LineupCard {
         }
         host = win;
         showing = d;
+        shownAt = android.os.SystemClock.uptimeMillis();
         bar = true;
         ScoreCard.lane("lineup", true);
         for (android.animation.Animator a : drifting) a.start();
@@ -711,6 +720,7 @@ final class LineupCard {
         }
         host = win;
         showing = carrier;
+        shownAt = android.os.SystemClock.uptimeMillis();
         bar = false;
 
         List<Runnable> pages = new ArrayList<>();
@@ -1146,6 +1156,7 @@ final class LineupCard {
         }
         host = win;
         showing = carrier;
+        shownAt = android.os.SystemClock.uptimeMillis();
         bar = true;
         ScoreCard.lane("lineup", true);
 
@@ -2124,6 +2135,12 @@ final class LineupCard {
 
     /** On a TV with no helper to pass OK here: the window takes the keys on the last page; OK watches, any other closes. */
     private static void offerWatch(FrameLayout win, Data d) {
+        // Not in its first moments: a press already on its way was meant for the app (PopupMotion.FRESH_MS).
+        long wait = PopupMotion.FRESH_MS - (android.os.SystemClock.uptimeMillis() - shownAt);
+        if (wait > 0) {
+            main.postDelayed(() -> { if (host == win) offerWatch(win, d); }, wait);
+            return;
+        }
         try {
             WindowManager.LayoutParams lp = (WindowManager.LayoutParams) win.getLayoutParams();
             lp.flags &= ~WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
