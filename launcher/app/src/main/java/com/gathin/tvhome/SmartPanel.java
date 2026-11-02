@@ -40,6 +40,9 @@ final class SmartPanel {
     /** The car's and a delivery's latest news from the phone (GoalWatchService), with when it came. */
     static volatile JSONObject car, delivery;
     static volatile long carAt, deliveryAt;
+    /** The phone's latest trip home ("home_eta": minutes, miles, progress) and when it came; Ambient mode shows it. */
+    static volatile JSONObject trip;
+    static volatile long tripAt;
 
     /** One light as the panel shows it: from Tuya (t set), or a room for Google Assistant (state as last set). */
     private static final class Light {

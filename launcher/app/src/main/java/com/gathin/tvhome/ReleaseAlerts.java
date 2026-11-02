@@ -239,11 +239,47 @@ final class ReleaseAlerts {
         card.line = "Released on Debrid Stream";
         if (!installed(c, DEBRID)) return;
         card.channel = "Debrid Stream";
+        // Debrid Stream's own mark (the red play button and its name), large enough to read at a glance.
+        card.channelLogo = debridLogo(c);
+        card.channelLogoScale = 2.4f;
         Bitmap pic = art == null ? null : ScoresTicker.cachedLogo(c, art, 640);
         card.watch = () -> {
             AppSearchService.search(c, DEBRID, name, tv, pic, null);
             GoalWatchService.onAppOpened(c, DEBRID);
         };
+    }
+
+    private static Bitmap debridLogo;
+
+    /**
+     * Debrid Stream's mark from its own TV banner (white and red on black): the black made see-through, so it sits on
+     * the card's dark ground with no box round it, and trimmed to the mark. Null when the app has no banner.
+     */
+    static synchronized Bitmap debridLogo(Context c) {
+        if (debridLogo != null) return debridLogo;
+        try {
+            android.graphics.drawable.Drawable dr = c.getPackageManager().getApplicationBanner(DEBRID);
+            if (dr == null) return null;
+            int w = dr.getIntrinsicWidth() > 0 ? dr.getIntrinsicWidth() : 432;
+            int hh = dr.getIntrinsicHeight() > 0 ? dr.getIntrinsicHeight() : 243;
+            Bitmap b = Bitmap.createBitmap(w, hh, Bitmap.Config.ARGB_8888);
+            android.graphics.Canvas cv = new android.graphics.Canvas(b);
+            dr.setBounds(0, 0, w, hh);
+            dr.draw(cv);
+            int[] px = new int[w * hh];
+            b.getPixels(px, 0, w, 0, 0, w, hh);
+            for (int i = 0; i < px.length; i++) {
+                int r = (px[i] >> 16) & 0xFF, g = (px[i] >> 8) & 0xFF, bl = px[i] & 0xFF;
+                int a = Math.max(r, Math.max(g, bl));
+                // Black to see-through, keeping each colour as it showed over black (the grey of "STREAM" included).
+                px[i] = a < 12 ? 0 : (a << 24) | ((r * 255 / a) << 16) | ((g * 255 / a) << 8) | (bl * 255 / a);
+            }
+            b.setPixels(px, 0, w, 0, 0, w, hh);
+            debridLogo = HomeV2.trim(b);
+        } catch (Exception | OutOfMemoryError e) {
+            return null;
+        }
+        return debridLogo;
     }
 
     private static Bitmap picture(Context c, String url) {

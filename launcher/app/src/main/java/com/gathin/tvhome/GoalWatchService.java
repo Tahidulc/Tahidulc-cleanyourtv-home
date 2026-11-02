@@ -1033,6 +1033,9 @@ public class GoalWatchService extends Service {
         if ("delivery".equals(kind) || kind.isEmpty()) { SmartPanel.delivery = u; SmartPanel.deliveryAt = System.currentTimeMillis(); }
         if ("car".equals(kind)) { showCar(u); return; }
         if ("home_eta".equals(kind)) {
+            SmartPanel.trip = u;
+            SmartPanel.tripAt = System.currentTimeMillis();
+            AmbientScene.carNews();
             if (Config.themeFlag(this, "home_eta", false)) {
                 queue.addFirst(new Object[]{DeliveryCard.homeEta(this, u, glass(CORNER_DP * getResources().getDisplayMetrics().density)), "reminder"});
                 showNext();
@@ -1055,6 +1058,7 @@ public class GoalWatchService extends Service {
         if (title.isEmpty() && status.isEmpty()) return;
         SmartPanel.car = u;
         SmartPanel.carAt = System.currentTimeMillis();
+        AmbientScene.carNews();
         float d = getResources().getDisplayMetrics().density;
         queue.addFirst(new Object[]{DeliveryCard.car(this, u, glass(CORNER_DP * d)), "reminder"});
         showNext();

@@ -84,6 +84,8 @@ final class ScoreCard {
         final List<Object[]> podium = new ArrayList<>();
         /** Where it is on (its logo, or its name), and what OK does; null without anywhere to watch. */
         Bitmap channelLogo;
+        /** How much larger than a channel's logo it is drawn (Debrid Stream's two-line mark, on the release cards). */
+        float channelLogoScale = 1f;
         String channel;
         Runnable watch;
     }
@@ -777,8 +779,8 @@ final class ScoreCard {
         if (d.channelLogo != null) {
             ImageView l = image(c, d.channelLogo);
             l.setAdjustViewBounds(true);
-            l.setMaxWidth(px(logoH * 9));
-            v.addView(l, new LinearLayout.LayoutParams(-2, px(logoH)));
+            l.setMaxWidth(px(logoH * 9 * d.channelLogoScale));
+            v.addView(l, new LinearLayout.LayoutParams(-2, px(logoH * d.channelLogoScale)));
         } else if (d.channel != null) {
             v.addView(text(c, d.channel, logoH * 0.8f, 0xFFFFFFFF, outfit(c, 800)));
         }

@@ -155,20 +155,28 @@ final class MatchDay {
         countdown.addView(k);
         String[] units = {"HRS", "MINS", "SECS"};
         for (int i = 0; i < 3; i++) {
+            // Each box: the two digits and the unit under them, both centred across the box and the pair centred
+            // down it (added at their own width: a vertical row's default would stretch them and left-align the text).
             LinearLayout box = new LinearLayout(c);
             box.setOrientation(LinearLayout.VERTICAL);
             box.setGravity(Gravity.CENTER);
             GradientDrawable g = h.fill(12, 0x4D000000);
             g.setStroke(Math.max(1, h.px(1)), 0x40FFFFFF);
             box.setBackground(g);
-            digits[i] = h.text(34, heavy, Color.WHITE);
+            digits[i] = h.text(32, heavy, Color.WHITE);
             digits[i].setFontFeatureSettings("tnum");
-            box.addView(digits[i]);
+            digits[i].setLineSpacing(0, 1f);
+            digits[i].setGravity(Gravity.CENTER);
+            box.addView(digits[i], new LinearLayout.LayoutParams(-2, -2));
             TextView u = h.text(11, semi, 0xCCFFFFFF);
             u.setText(units[i]);
             u.setLetterSpacing(0.16f);
-            box.addView(u);
-            LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(h.px(74), h.px(58));
+            u.setLineSpacing(0, 1f);
+            u.setGravity(Gravity.CENTER);
+            LinearLayout.LayoutParams up = new LinearLayout.LayoutParams(-2, -2);
+            up.topMargin = h.px(3);
+            box.addView(u, up);
+            LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(h.px(78), h.px(60));
             bp.leftMargin = h.px(10);
             countdown.addView(box, bp);
         }
@@ -193,7 +201,12 @@ final class MatchDay {
         place(fourth, 0, 240, 1320, 36);
 
         buttons = row();
-        place(buttons, 0, 286, 1320, 54);
+        // The lit button grows a little: drawn past its row and the panel rather than clipped at the edge.
+        buttons.setClipChildren(false);
+        buttons.setClipToPadding(false);
+        panel.setClipChildren(false);
+        panel.setClipToPadding(false);
+        place(buttons, 0, 284, 1320, 56);
 
         chip = h.text(17, semi, Color.WHITE);
         chip.setLetterSpacing(0.06f);
@@ -655,6 +668,8 @@ final class MatchDay {
         else if (p.channel == null && p.watch == null) text += " · Not on British TV";
         line.setText(text);
         buttons(p);
+        // The buttons were made again: their pills (and the lit one) back at once, not only when the focus next moves.
+        if (painted) paint(lastFocused, lastIdx, lastChip);
         chip.setText("▲  MATCH DAY  ·  " + g.home + (live || done ? "  " + g.homeScore + "–" + g.awayScore + "  " : " v ") + g.away
                 + (g.state == 1 ? "  ·  " + ko : live ? "  ·  " + ScoresTicker.liveClock(g) : ""));
     }
@@ -909,7 +924,15 @@ final class MatchDay {
     }
 
     /** Shown (and lit on button i) while Home's focus is on Match Day; otherwise the chip by For You's heading. */
+    private boolean painted, lastFocused, lastChip;
+    private int lastIdx;
+
     void paint(boolean focused, int i, boolean chipAllowed) {
+        painted = true;
+        lastFocused = focused;
+        lastIdx = i;
+        lastChip = chipAllowed;
+        i = Math.max(0, Math.min(i, buttonViews.size() - 1));
         boolean on = focused && active();
         panel.setVisibility(on ? View.VISIBLE : View.GONE);
         backdrop.setVisibility(on && pick.picture == null ? View.VISIBLE : View.GONE);

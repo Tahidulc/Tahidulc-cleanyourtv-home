@@ -84,21 +84,21 @@ final class ControlCentre {
         overlay.setBackgroundColor(0x59000014);
         LinearLayout panel = new LinearLayout(c);
         panel.setOrientation(LinearLayout.VERTICAL);
-        panel.setPadding(h.px(30), h.px(26), h.px(30), h.px(30));
+        panel.setPadding(px(30), px(26), px(30), px(30));
         GradientDrawable g = new GradientDrawable(GradientDrawable.Orientation.TL_BR, new int[]{0xF51A2296, 0xF5121980, 0xF50B0F5A});
-        g.setCornerRadius(h.px(40));
-        g.setStroke(Math.max(1, h.px(1.5f)), 0x40FFFFFF);
+        g.setCornerRadius(px(40));
+        g.setStroke(Math.max(1, px(1.5f)), 0x40FFFFFF);
         panel.setBackground(g);
         panel.setClipToOutline(true);
-        panel.setOutlineProvider(h.round(40));
+        panel.setOutlineProvider(round(40));
 
-        TextView title = h.text(36, heavy, Color.WHITE);
+        TextView title = text(36, heavy, Color.WHITE);
         title.setText("Control Centre");
         panel.addView(title);
         int row = 0;
         if (camera != null && openCamera != null) {
             panel.addView(heading("CAMERAS"), headParams());
-            panel.addView(cameraTile(), new LinearLayout.LayoutParams(-1, h.px(220)));
+            panel.addView(cameraTile(), new LinearLayout.LayoutParams(-1, px(220)));
             acts.add(() -> { hide(); openCamera.run(); });
             at.add(new int[]{row++, 0, 2});
         }
@@ -108,13 +108,13 @@ final class ControlCentre {
             Item it = items.get(i);
             if (i % 2 == 0) {
                 line = new LinearLayout(c);
-                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, h.px(86));
-                if (i > 0) lp.topMargin = h.px(14);
+                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, px(86));
+                if (i > 0) lp.topMargin = px(14);
                 panel.addView(line, lp);
             }
             View t = tile(it);
             LinearLayout.LayoutParams tp = new LinearLayout.LayoutParams(0, -1, 1f);
-            if (i % 2 == 1) tp.leftMargin = h.px(14);
+            if (i % 2 == 1) tp.leftMargin = px(14);
             line.addView(t, tp);
             tiles.add(t);
             acts.add(() -> { hide(); it.ok.run(); });
@@ -125,16 +125,16 @@ final class ControlCentre {
         FrameLayout box = new FrameLayout(c);
         box.addView(panel, new FrameLayout.LayoutParams(-1, -2));
         box.setClipChildren(true);
-        FrameLayout.LayoutParams bl = new FrameLayout.LayoutParams(h.px(640), -2, Gravity.TOP | Gravity.END);
-        bl.topMargin = h.px(184);
+        FrameLayout.LayoutParams bl = new FrameLayout.LayoutParams(px(640), -2, Gravity.TOP | Gravity.END);
+        bl.topMargin = h.px(172);
         bl.rightMargin = h.px(96);
         overlay.addView(box, bl);
         h.root.addView(overlay, new FrameLayout.LayoutParams(-1, -1));
         box.setAlpha(0f);
-        box.setTranslationY(-h.px(16));
+        box.setTranslationY(-px(16));
         box.setScaleX(0.97f);
         box.setScaleY(0.97f);
-        box.setPivotX(h.px(640));
+        box.setPivotX(px(640));
         box.setPivotY(0);
         box.animate().alpha(1f).translationY(0).scaleX(1f).scaleY(1f).setDuration(220).setInterpolator(HomeV2.SKY).start();
         focus = camera != null && openCamera != null ? 1 : 0;
@@ -151,7 +151,7 @@ final class ControlCentre {
     }
 
     private TextView heading(String s) {
-        TextView t = h.text(15, semi, 0xB3FFFFFF);
+        TextView t = text(15, semi, 0xB3FFFFFF);
         t.setText(s);
         t.setLetterSpacing(0.16f);
         return t;
@@ -159,17 +159,17 @@ final class ControlCentre {
 
     private LinearLayout.LayoutParams headParams() {
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, -2);
-        lp.topMargin = h.px(22);
-        lp.bottomMargin = h.px(12);
+        lp.topMargin = px(22);
+        lp.bottomMargin = px(12);
         return lp;
     }
 
     /** The cameras: the latest alarm's picture when there has been one this session, the camera's name over it. */
     private View cameraTile() {
         FrameLayout f = new FrameLayout(c);
-        f.setBackground(h.fill(24, 0xFF0A0E46));
+        f.setBackground(fill(24, 0xFF0A0E46));
         f.setClipToOutline(true);
-        f.setOutlineProvider(h.round(24));
+        f.setOutlineProvider(round(24));
         Object[] shot = CameraAlert.lastShot(camera);
         Bitmap pic = shot != null && shot[0] instanceof Bitmap ? (Bitmap) shot[0] : null;
         if (pic != null) {
@@ -181,7 +181,7 @@ final class ControlCentre {
             ImageView i = new ImageView(c);
             i.setImageResource(R.drawable.ic_camera);
             i.setColorFilter(0x66FFFFFF);
-            f.addView(i, new FrameLayout.LayoutParams(h.px(96), h.px(96), Gravity.CENTER));
+            f.addView(i, new FrameLayout.LayoutParams(px(96), px(96), Gravity.CENTER));
         }
         View shade = new View(c);
         shade.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0x00000000, 0x00000000, 0xB3000000}));
@@ -191,20 +191,20 @@ final class ControlCentre {
         ImageView icon = new ImageView(c);
         icon.setImageResource(R.drawable.ic_camera);
         icon.setColorFilter(Color.WHITE);
-        name.addView(icon, new LinearLayout.LayoutParams(h.px(28), h.px(28)));
-        TextView t = h.text(21, semi, Color.WHITE);
+        name.addView(icon, new LinearLayout.LayoutParams(px(28), px(28)));
+        TextView t = text(21, semi, Color.WHITE);
         t.setText(camera);
         LinearLayout.LayoutParams tl = new LinearLayout.LayoutParams(-2, -2);
-        tl.leftMargin = h.px(10);
+        tl.leftMargin = px(10);
         name.addView(t, tl);
         if (shot == null) {
-            TextView s = h.text(16, regular, 0xBFFFFFFF);
+            TextView s = text(16, regular, 0xBFFFFFFF);
             s.setText("  ·  live view");
             name.addView(s);
         }
         FrameLayout.LayoutParams nl = new FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM | Gravity.START);
-        nl.leftMargin = h.px(18);
-        nl.bottomMargin = h.px(14);
+        nl.leftMargin = px(18);
+        nl.bottomMargin = px(14);
         f.addView(name, nl);
         tiles.add(f);
         return f;
@@ -213,31 +213,50 @@ final class ControlCentre {
     private View tile(Item it) {
         LinearLayout t = new LinearLayout(c);
         t.setGravity(Gravity.CENTER_VERTICAL);
-        t.setPadding(h.px(18), 0, h.px(14), 0);
+        t.setPadding(px(18), 0, px(14), 0);
         ImageView i = new ImageView(c);
         i.setImageResource(it.icon);
         i.setTag("icon");
-        t.addView(i, new LinearLayout.LayoutParams(h.px(32), h.px(32)));
+        t.addView(i, new LinearLayout.LayoutParams(px(32), px(32)));
         LinearLayout words = new LinearLayout(c);
         words.setOrientation(LinearLayout.VERTICAL);
-        TextView n = h.text(19, semi, Color.WHITE);
+        TextView n = text(19, semi, Color.WHITE);
         n.setText(it.name);
         n.setSingleLine(true);
         n.setTag("name");
         words.addView(n);
         String st = it.state == null ? null : it.state.get();
         if (st != null && !st.isEmpty()) {
-            TextView s = h.text(14, regular, 0xB3FFFFFF);
+            TextView s = text(14, regular, 0xB3FFFFFF);
             s.setText(st);
             s.setSingleLine(true);
             s.setTag("state");
             words.addView(s);
         }
         LinearLayout.LayoutParams wl = new LinearLayout.LayoutParams(0, -2, 1f);
-        wl.leftMargin = h.px(14);
+        wl.leftMargin = px(14);
         t.addView(words, wl);
         t.setTag(it);
         return t;
+    }
+
+    /** The panel a size down from Home's own measures, so it ends well clear of the foot of the screen. */
+    private static final float K = 0.8f;
+
+    private int px(float v) {
+        return h.px(v * K);
+    }
+
+    private TextView text(float size, android.graphics.Typeface face, int colour) {
+        return h.text(size * K, face, colour);
+    }
+
+    private GradientDrawable fill(float radius, int colour) {
+        return h.fill(radius * K, colour);
+    }
+
+    private android.view.ViewOutlineProvider round(float radius) {
+        return h.round(radius * K);
     }
 
     boolean key(KeyEvent e) {
@@ -283,14 +302,14 @@ final class ControlCentre {
             if (it == null) {
                 // The camera: a white ring when focused.
                 GradientDrawable ring = new GradientDrawable();
-                ring.setCornerRadius(h.px(24));
-                if (on) ring.setStroke(h.px(4), Color.WHITE);
+                ring.setCornerRadius(px(24));
+                if (on) ring.setStroke(px(4), Color.WHITE);
                 ((FrameLayout) t).setForeground(ring);
                 t.animate().scaleX(on ? 1.02f : 1f).scaleY(on ? 1.02f : 1f).setDuration(140).start();
                 continue;
             }
-            GradientDrawable bg = h.fill(22, on ? Color.WHITE : lit ? 0x669B5CFF : 0x33050838);
-            if (!on) bg.setStroke(Math.max(1, h.px(1)), lit ? 0xB3C4A8FF : 0x26FFFFFF);
+            GradientDrawable bg = fill(22, on ? Color.WHITE : lit ? 0x669B5CFF : 0x33050838);
+            if (!on) bg.setStroke(Math.max(1, px(1)), lit ? 0xB3C4A8FF : 0x26FFFFFF);
             t.setBackground(bg);
             int ink = on ? NAVY : Color.WHITE;
             ((ImageView) t.findViewWithTag("icon")).setColorFilter(on ? NAVY : lit ? 0xFFD9C4FF : Color.WHITE);

@@ -75,6 +75,7 @@ final class ViewingPanel {
     void show(int first) {
         if (open) { load(first); return; }
         open = true;
+        AppUsage.ensure(c);
         overlay = new FrameLayout(c);
         overlay.setBackground(new GradientDrawable(GradientDrawable.Orientation.TL_BR, new int[]{0xFF10157E, 0xFF1B279F, 0xFF2838C0}));
         overlay.setClickable(true);
@@ -142,6 +143,10 @@ final class ViewingPanel {
             Map<Integer, Bitmap> pics = new HashMap<>();
             Map<Integer, List<String>> kinds = new HashMap<>();
             Map<String, String> notes = t == 2 ? appNotes() : new HashMap<>();
+            Map<String, Integer> week = t == 1 ? new HashMap<>() : AppUsage.recent(c, 7);
+            AppUsage.Span span = t == 0 ? AppUsage.span(c, 14) : null;
+            Map<String, Integer> today = t == 2 ? AppUsage.recent(c, 1) : new HashMap<>();
+            Map<String, Integer> month = t == 2 ? AppUsage.lastDays(c, 30) : new HashMap<>();
             try {
                 List<JSONObject> want = prefetch(t);
                 for (int i = 0; i < want.size(); i++) {
@@ -158,6 +163,10 @@ final class ViewingPanel {
                 posters = pics;
                 genres = kinds;
                 tips = notes;
+                usedWeek = week;
+                usage14 = span;
+                usedToday = today;
+                used30 = month;
                 View v;
                 try {
                     v = build(t);
@@ -169,6 +178,32 @@ final class ViewingPanel {
                 v.animate().alpha(1f).setDuration(200).start();
             });
         });
+    }
+
+    /** How long each app was open (AppUsage): the last 7 days, today, the last 30 days. Empty without usage access. */
+    private Map<String, Integer> usedWeek = new HashMap<>(), usedToday = new HashMap<>(), used30 = new HashMap<>();
+    /** The last fourteen days of app time, by day and hour (This week's hours, bars, heat map and habits). */
+    private AppUsage.Span usage14;
+
+    /**
+     * The log's days with Android's app time in place of what played: each day's seconds in each app ("a") and in
+     * each hour ("h"); the titles ("t") stay the log's. from: the span's first day to use.
+     */
+    private static List<JSONObject> withUse(List<JSONObject> log, AppUsage.Span use, int from) {
+        List<JSONObject> out = new ArrayList<>();
+        for (int i = 0; i < log.size(); i++) {
+            try {
+                JSONObject d = new JSONObject(log.get(i).toString());
+                d.put("a", new JSONObject(use.dayApps.get(from + i)));
+                JSONArray hh = new JSONArray();
+                for (int k = 0; k < 24; k++) hh.put(use.hours[from + i][k]);
+                d.put("h", hh);
+                out.add(d);
+            } catch (Exception e) {
+                out.add(log.get(i));
+            }
+        }
+        return out;
     }
 
     /** The posters each tab shows, fetched before it is drawn. */
@@ -251,16 +286,17 @@ final class ViewingPanel {
     }
 
     private View appsView() {
+        FrameLayout v = new FrameLayout(c);
+        boolean byUse = !used30.isEmpty();
+        // What played in each app last month (ViewingLog): the titles under a paid app, and its hours without usage access.
         LocalDate any = LocalDate.now().minusMonths(1);
-        String name = monthName(any);
-        List<JSONObject> days = month(any);
-        Map<String, Integer> secs = new HashMap<>();
+        Map<String, Integer> played = new HashMap<>();
         Map<String, Map<String, Integer>> what = new HashMap<>();
-        for (JSONObject d : days) {
+        for (JSONObject d : month(any)) {
             JSONObject a = d.optJSONObject("a");
             for (Iterator<String> it = a == null ? null : a.keys(); it != null && it.hasNext(); ) {
                 String p = it.next();
-                secs.put(p, secs.getOrDefault(p, 0) + a.optInt(p));
+                played.put(p, played.getOrDefault(p, 0) + a.optInt(p));
             }
             JSONObject t = d.optJSONObject("t");
             for (Iterator<String> it = t == null ? null : t.keys(); it != null && it.hasNext(); ) {
@@ -271,19 +307,12 @@ final class ViewingPanel {
                 m.put(one.optString("n"), m.getOrDefault(one.optString("n"), 0) + one.optInt("s"));
             }
         }
-        Map<String, Double> price = prices();
-        List<String> apps = new ArrayList<>();
-        for (String p : price.keySet()) if (ReleaseAlerts.installed(c, p)) apps.add(p);
-        apps.sort((x, y) -> {
-            double a = per(price.get(x), secs.getOrDefault(x, 0)), b = per(price.get(y), secs.getOrDefault(y, 0));
-            return Double.compare(a, b);
-        });
-        FrameLayout v = new FrameLayout(c);
-        // Fewer than four weeks logged: no rating yet, only the hours so far.
+        // Without usage access, fewer than four weeks logged: no rating yet, only the hours so far.
         LocalDate first = ViewingLog.firstDay(c);
-        boolean counting = first == null || first.isAfter(LocalDate.now().minusDays(28));
+        boolean counting = !byUse && (first == null || first.isAfter(LocalDate.now().minusDays(28)));
+        Map<String, Integer> secs = byUse ? used30 : played;
         if (counting) {
-            secs.clear();
+            secs = new HashMap<>();
             for (LocalDate d = first == null ? LocalDate.now() : first; !d.isAfter(LocalDate.now()); d = d.plusDays(1)) {
                 JSONObject a = ViewingLog.day(c, d).optJSONObject("a");
                 for (Iterator<String> it = a == null ? null : a.keys(); it != null && it.hasNext(); ) {
@@ -292,110 +321,162 @@ final class ViewingPanel {
                 }
             }
         }
-        double total = 0;
-        int paidSecs = 0;
-        for (String p : apps) { total += price.get(p); paidSecs += secs.getOrDefault(p, 0); }
+
         TextView head = h.text(40, heavy, Color.WHITE);
-        head.setText("Are your apps worth it?");
+        head.setText("Your apps");
         place(v, head, 96, 128, 900, 56);
+        int all = 0;
+        for (int s : used30.values()) all += s;
         TextView sum = h.text(19, regular, 0xD9FFFFFF);
-        sum.setText(counting ? "Still counting: this TV's log started " + (first == null || first.equals(LocalDate.now()) ? "today"
-                : "on " + first.format(DateTimeFormatter.ofPattern("d MMMM", Locale.UK)))
-                + ". The value of each app shows once there are four weeks of it. So far: " + hm(paidSecs) + " in paid apps."
-                : name + " · £" + money(total) + " a month for " + hm(paidSecs)
-                + (paidSecs >= 3600 ? " · £" + money(total / (paidSecs / 3600.0)) + " an hour" : ""));
-        place(v, sum, 96, 190, 1500, 30);
-        if (apps.isEmpty()) {
-            TextView none = h.text(24, regular, 0xD9FFFFFF);
-            none.setText("No paid streaming apps on this TV.");
-            place(v, none, 96, 260, 1200, 40);
-            return v;
+        sum.setText(byUse ? "Every app opened on this TV in the last 30 days: " + hm(all) + " in all, " + hm(all / 30) + " a day. "
+                + "Counted by Android on the TV, never sent anywhere."
+                : "Waiting for usage access: Android's record of how long each app is open. Until then, only what played in apps shows.");
+        place(v, sum, 96, 190, 1700, 30);
+
+        // Left: every app, longest first, with the last 30 days, this week and today.
+        LinearLayout list = card(v, 96, 244, 1060, 740);
+        LinearLayout cols = new LinearLayout(c);
+        cols.setGravity(Gravity.CENTER_VERTICAL);
+        cols.addView(label("EVERY APP YOU USE"), new LinearLayout.LayoutParams(0, -2, 1f));
+        for (String col : new String[]{"30 DAYS", "THIS WEEK", "TODAY"}) {
+            TextView l = label(col);
+            l.setGravity(Gravity.END);
+            cols.addView(l, new LinearLayout.LayoutParams(h.px(col.equals("30 DAYS") ? 120 : 130), -2));
         }
-        for (int i = 0; i < Math.min(6, apps.size()); i++) {
+        list.addView(cols);
+        List<Map.Entry<String, Integer>> rows = new ArrayList<>((byUse ? used30 : usedWeek).entrySet());
+        rows.sort((x, y) -> y.getValue() - x.getValue());
+        int top = rows.isEmpty() ? 1 : rows.get(0).getValue();
+        for (int i = 0; i < Math.min(9, rows.size()); i++) list.addView(usageRow(rows.get(i).getKey(), rows.get(i).getValue(), top, i == 0));
+        if (rows.isEmpty()) {
+            TextView n = h.text(20, regular, 0xBFFFFFFF);
+            n.setText(byUse ? "Nothing opened in the last 30 days." : "Usage access is being turned on. Open this tab again in a moment.");
+            LinearLayout.LayoutParams nl = new LinearLayout.LayoutParams(-1, -2);
+            nl.topMargin = h.px(20);
+            list.addView(n, nl);
+        } else if (rows.size() > 9) {
+            int rest = 0;
+            for (int i = 9; i < rows.size(); i++) rest += rows.get(i).getValue();
+            TextView more = h.text(15, regular, 0x99FFFFFF);
+            more.setText("and " + (rows.size() - 9) + " more, " + hm(rest) + " between them");
+            LinearLayout.LayoutParams ml = new LinearLayout.LayoutParams(-1, -2);
+            ml.topMargin = h.px(8);
+            list.addView(more, ml);
+        }
+
+        // Right: the paid ones, what each costs an hour of use.
+        Map<String, Double> price = prices();
+        List<String> apps = new ArrayList<>();
+        for (String p : price.keySet()) if (ReleaseAlerts.installed(c, p)) apps.add(p);
+        Map<String, Integer> use = secs;
+        apps.sort((x, y) -> Double.compare(per(price.get(x), use.getOrDefault(x, 0)), per(price.get(y), use.getOrDefault(y, 0))));
+        TextView paid = label(counting ? "THE PAID ONES · STILL COUNTING" : "ARE THE PAID ONES WORTH IT?");
+        place(v, paid, 1186, 244, 640, 30);
+        if (apps.isEmpty()) {
+            TextView none = h.text(18, regular, 0xBFFFFFFF);
+            none.setText("No paid streaming apps on this TV.");
+            place(v, none, 1186, 284, 640, 40);
+        }
+        for (int i = 0; i < Math.min(5, apps.size()); i++) {
             String p = apps.get(i);
-            int s = secs.getOrDefault(p, 0);
-            double cost = price.get(p), hour = per(cost, s);
-            String word;
-            int colour;
-            if (counting) { word = "COUNTING"; colour = 0x59FFFFFF; }
-            else if (s < 600) { word = "NOT USED"; colour = 0xFFFF5A5A; }
-            else if (hour < 1) { word = "BEST VALUE"; colour = 0xFF3DDC84; }
-            else if (hour < 2) { word = "GOOD VALUE"; colour = 0xFF3DDC84; }
-            else if (hour < 4) { word = "OK"; colour = YELLOW; }
-            else { word = "HARDLY USED"; colour = 0xFFFF5A5A; }
-            LinearLayout card = new LinearLayout(c);
-            card.setOrientation(LinearLayout.VERTICAL);
-            card.setPadding(h.px(26), h.px(20), h.px(26), h.px(18));
-            GradientDrawable g = h.fill(24, CARD);
-            g.setStroke(h.px(colour == 0xFFFF5A5A ? 2 : 1), colour == 0xFFFF5A5A ? colour : EDGE);
-            card.setBackground(g);
-            LinearLayout top = new LinearLayout(c);
-            top.setGravity(Gravity.CENTER_VERTICAL);
-            top.addView(appMark(p), new LinearLayout.LayoutParams(0, h.px(34), 1f));
-            TextView chip = h.text(14, semi, colour == YELLOW ? NAVY : colour == 0xFF3DDC84 ? 0xFF06331B : Color.WHITE);
-            chip.setText(word);
-            chip.setLetterSpacing(0.08f);
-            chip.setPadding(h.px(10), h.px(4), h.px(10), h.px(4));
-            chip.setBackground(h.fill(6, colour));
-            top.addView(chip);
-            card.addView(top);
-            LinearLayout line = new LinearLayout(c);
-            line.setGravity(Gravity.BOTTOM);
-            TextView big = h.text(46, heavy, Color.WHITE);
-            big.setText(counting ? hm(s) : s < 600 ? "—" : hour < 1 ? Math.round(hour * 100) + "p" : "£" + money(hour));
-            line.addView(big);
-            TextView sm = h.text(17, regular, 0xCCFFFFFF);
-            sm.setText(counting ? "so far · £" + money(cost) + " a month" : (s < 600 ? "" : "an hour · ") + hm(s) + " for £" + money(cost));
-            LinearLayout.LayoutParams sl = new LinearLayout.LayoutParams(-2, -2);
-            sl.leftMargin = h.px(12);
-            sl.bottomMargin = h.px(10);
-            line.addView(sm, sl);
-            LinearLayout.LayoutParams ll = new LinearLayout.LayoutParams(-1, -2);
-            ll.topMargin = h.px(8);
-            card.addView(line, ll);
-            FrameLayout track = new FrameLayout(c);
-            track.setBackground(h.fill(5, 0x24FFFFFF));
-            View fill = new View(c);
-            fill.setBackground(h.fill(5, colour));
-            float share = s < 600 ? 0.04f : (float) Math.max(0.06, Math.min(1, 1 - hour / 6));
-            track.addView(fill, new FrameLayout.LayoutParams(Math.round(h.px(500) * share), -1));
-            LinearLayout.LayoutParams tl = new LinearLayout.LayoutParams(h.px(500), h.px(10));
-            tl.topMargin = h.px(8);
-            card.addView(track, tl);
-            Map<String, Integer> on = what.get(p);
-            if (on != null && !on.isEmpty()) {
-                List<Map.Entry<String, Integer>> list = new ArrayList<>(on.entrySet());
-                list.sort((x, y) -> y.getValue() - x.getValue());
-                StringBuilder b = new StringBuilder();
-                for (int k = 0; k < Math.min(2, list.size()); k++) b.append(k == 0 ? "" : ", ").append(list.get(k).getKey());
-                if (list.size() > 2) b.append(" and ").append(list.size() - 2).append(" more");
-                TextView w = h.text(16, regular, 0xCCFFFFFF);
-                w.setText(b + ".");
-                w.setSingleLine(true);
-                LinearLayout.LayoutParams wl = new LinearLayout.LayoutParams(-1, -2);
-                wl.topMargin = h.px(10);
-                card.addView(w, wl);
-            }
-            String tip = tips.get(p);
-            if (counting) tip = null;
-            String advice = tip != null ? (hour >= 4 || s < 600 ? "Tip · " + tip + ": keep it till then, pause after" : "Coming · " + tip)
-                    : !counting && (hour >= 4 || s < 600) ? "Tip · Nothing you watch there is coming soon: pausing it saves £" + money(cost) + " a month" : null;
-            if (advice != null) {
-                TextView t = h.text(15, semi, Color.WHITE);
-                t.setText(advice);
-                t.setMaxLines(2);
-                t.setPadding(h.px(12), h.px(8), h.px(12), h.px(8));
-                t.setBackground(h.fill(12, colour == 0xFFFF5A5A ? 0x2EFF5A5A : 0x14FFFFFF));
-                LinearLayout.LayoutParams al = new LinearLayout.LayoutParams(-1, -2);
-                al.topMargin = h.px(10);
-                card.addView(t, al);
-            }
-            place(v, card, 96 + (i % 3) * 584, 250 + (i / 3) * 340, 560, 318);
+            place(v, valueCard(p, use.getOrDefault(p, 0), price.get(p), counting, what.get(p)), 1186, 282 + i * 142, 638, 130);
         }
         TextView foot = h.text(15, regular, 0x99FFFFFF);
         foot.setText("Prices are the theme's app_prices, or the usual UK price where it gives none. Nothing is cancelled for you: it only tells you.");
         place(v, foot, 96, 1000, 1600, 30);
         return v;
+    }
+
+    /** One app in the list: its mark, a bar against the most used, then the last 30 days, this week and today. */
+    private View usageRow(String pkg, int secs, int top, boolean first) {
+        LinearLayout row = new LinearLayout(c);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(0, h.px(9), 0, h.px(9));
+        FrameLayout mark = new FrameLayout(c);
+        mark.addView(appMark(pkg), new FrameLayout.LayoutParams(-2, h.px(32), Gravity.CENTER_VERTICAL));
+        row.addView(mark, new LinearLayout.LayoutParams(h.px(250), h.px(36)));
+        FrameLayout track = new FrameLayout(c);
+        track.setBackground(h.fill(7, 0x24FFFFFF));
+        View fill = new View(c);
+        fill.setBackground(h.fill(7, first ? YELLOW : 0xBFFFFFFF));
+        track.addView(fill, new FrameLayout.LayoutParams(Math.max(h.px(6), Math.round(h.px(300) * secs / (float) top)), -1));
+        LinearLayout.LayoutParams tp = new LinearLayout.LayoutParams(h.px(300), h.px(14));
+        tp.rightMargin = h.px(20);
+        row.addView(track, tp);
+        row.addView(new View(c), new LinearLayout.LayoutParams(0, 1, 1f));
+        int[] times = {secs, usedWeek.getOrDefault(pkg, 0), usedToday.getOrDefault(pkg, 0)};
+        for (int k = 0; k < 3; k++) {
+            TextView t = h.text(k == 0 ? 21 : 18, k == 0 ? semi : regular, k == 0 ? Color.WHITE : 0xCCFFFFFF);
+            t.setText(times[k] < 60 ? "—" : hm(times[k]));
+            t.setGravity(Gravity.END);
+            t.setSingleLine(true);
+            row.addView(t, new LinearLayout.LayoutParams(h.px(k == 0 ? 120 : 130), -2));
+        }
+        return row;
+    }
+
+    /** A paid app: its mark and verdict, what it costs an hour of use, and a tip or what was watched on it. */
+    private View valueCard(String p, int s, double cost, boolean counting, Map<String, Integer> on) {
+        double hour = per(cost, s);
+        String word;
+        int colour;
+        if (counting) { word = "COUNTING"; colour = 0x59FFFFFF; }
+        else if (s < 600) { word = "NOT USED"; colour = 0xFFFF5A5A; }
+        else if (hour < 1) { word = "BEST VALUE"; colour = 0xFF3DDC84; }
+        else if (hour < 2) { word = "GOOD VALUE"; colour = 0xFF3DDC84; }
+        else if (hour < 4) { word = "OK"; colour = YELLOW; }
+        else { word = "HARDLY USED"; colour = 0xFFFF5A5A; }
+        LinearLayout card = new LinearLayout(c);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setPadding(h.px(22), h.px(14), h.px(22), h.px(12));
+        GradientDrawable g = h.fill(20, CARD);
+        g.setStroke(h.px(colour == 0xFFFF5A5A ? 2 : 1), colour == 0xFFFF5A5A ? colour : EDGE);
+        card.setBackground(g);
+        LinearLayout top = new LinearLayout(c);
+        top.setGravity(Gravity.CENTER_VERTICAL);
+        top.addView(appMark(p), new LinearLayout.LayoutParams(0, h.px(28), 1f));
+        TextView big = h.text(30, heavy, Color.WHITE);
+        big.setText(counting ? hm(s) : s < 600 ? "—" : hour < 1 ? Math.round(hour * 100) + "p" : "£" + money(hour));
+        top.addView(big);
+        TextView sm = h.text(15, regular, 0xCCFFFFFF);
+        sm.setText(counting ? "so far" : s < 600 ? "" : "an hour");
+        LinearLayout.LayoutParams sl = new LinearLayout.LayoutParams(-2, -2);
+        sl.leftMargin = h.px(8);
+        sl.rightMargin = h.px(14);
+        top.addView(sm, sl);
+        TextView chip = h.text(13, semi, colour == YELLOW ? NAVY : colour == 0xFF3DDC84 ? 0xFF06331B : Color.WHITE);
+        chip.setText(word);
+        chip.setLetterSpacing(0.08f);
+        chip.setPadding(h.px(10), h.px(4), h.px(10), h.px(4));
+        chip.setBackground(h.fill(6, colour));
+        top.addView(chip);
+        card.addView(top);
+        TextView hours = h.text(16, regular, 0xCCFFFFFF);
+        hours.setText(hm(s) + (counting ? " so far" : " in 30 days") + " for £" + money(cost) + " a month");
+        LinearLayout.LayoutParams hl = new LinearLayout.LayoutParams(-1, -2);
+        hl.topMargin = h.px(6);
+        card.addView(hours, hl);
+        String tip = counting ? null : tips.get(p);
+        String advice = tip != null ? (hour >= 4 || s < 600 ? "Tip · " + tip + ": keep it till then, pause after" : "Coming · " + tip)
+                : !counting && (hour >= 4 || s < 600) ? "Tip · Nothing you watch there is coming soon: pausing it saves £" + money(cost) + " a month" : null;
+        if (advice == null && on != null && !on.isEmpty()) {
+            List<Map.Entry<String, Integer>> list = new ArrayList<>(on.entrySet());
+            list.sort((x, y) -> y.getValue() - x.getValue());
+            StringBuilder b = new StringBuilder("Watched · ");
+            for (int k = 0; k < Math.min(2, list.size()); k++) b.append(k == 0 ? "" : ", ").append(list.get(k).getKey());
+            if (list.size() > 2) b.append(" and ").append(list.size() - 2).append(" more");
+            advice = b.toString();
+        }
+        if (advice != null) {
+            TextView t = h.text(14, semi, Color.WHITE);
+            t.setText(advice);
+            t.setSingleLine(true);
+            t.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            LinearLayout.LayoutParams al = new LinearLayout.LayoutParams(-1, -2);
+            al.topMargin = h.px(6);
+            card.addView(t, al);
+        }
+        return card;
     }
 
     private static double per(double price, int secs) {
@@ -710,11 +791,22 @@ final class ViewingPanel {
     private View week() {
         LocalDate today = LocalDate.now();
         List<JSONObject> week = days(today, 7), before = days(today.minusDays(7), 7);
+        // Android's record of how long each app was open, where it can be read: every app, whether or not it says what
+        // it plays. The week before only when the record reaches back that far.
+        AppUsage.Span use = usage14;
+        int used = 0;
+        for (int i = 7; use != null && i < 14; i++) used += use.days[i];
+        boolean byTime = use != null && used >= 60;
+        if (byTime) {
+            week = withUse(week, use, 7);
+            before = use.days[0] > 0 ? withUse(before, use, 0) : new ArrayList<>();
+            while (before.size() < 7) before.add(new JSONObject());
+        }
         FrameLayout v = new FrameLayout(c);
         int sum = 0, was = 0;
         int[] perDay = new int[7];
         for (int i = 0; i < 7; i++) { perDay[i] = total(week.get(i)); sum += perDay[i]; was += total(before.get(i)); }
-        if (sum < 60) {
+        if (sum < 60 && usedWeek.isEmpty()) {
             TextView none = h.text(26, regular, 0xD9FFFFFF);
             none.setText("Nothing watched on this TV in the last week yet. What plays in any app (and on live TV) shows here, "
                     + "counted on the TV and never sent anywhere.");
@@ -779,10 +871,12 @@ final class ViewingPanel {
                 apps.put(k, apps.getOrDefault(k, 0) + a.optInt(p));
             }
         }
-        List<Map.Entry<String, Integer>> appList = new ArrayList<>(apps.entrySet());
+        // Every app by name (TiviMate and Debrid Stream too), by how long it was open, where Android's record is readable.
+        boolean byUse = !usedWeek.isEmpty();
+        List<Map.Entry<String, Integer>> appList = new ArrayList<>((byUse ? usedWeek : apps).entrySet());
         appList.sort((x, y) -> y.getValue() - x.getValue());
         LinearLayout where = card(v, 676, 150, 560, 300);
-        where.addView(label("WHERE"));
+        where.addView(label(byUse ? "WHERE · TIME IN EACH APP" : "WHERE"));
         int top = appList.isEmpty() ? 1 : appList.get(0).getValue();
         for (int i = 0; i < Math.min(6, appList.size()); i++) where.addView(appRow(appList.get(i).getKey(), appList.get(i).getValue(), top, i == 0));
 
@@ -836,7 +930,8 @@ final class ViewingPanel {
         place(v, chips, 96, 730, 1728, 56);
         for (String s : habits(today, week, perDay, sum)) chips.addView(chip(s), chipParams());
         TextView foot = h.text(15, regular, 0x99FFFFFF);
-        foot.setText("Counted on this TV from what plays in your apps and on live TV. It never leaves the TV.");
+        foot.setText(byTime ? "Time in each app, counted by Android on this TV; the titles from what played. It never leaves the TV."
+                : "Counted on this TV from what plays in your apps and on live TV. It never leaves the TV.");
         place(v, foot, 96, 1000, 1500, 30);
         return v;
     }
@@ -921,8 +1016,11 @@ final class ViewingPanel {
         List<String> out = new ArrayList<>();
         // Nights in a row with a quarter of an hour or more, up to today (or yesterday, early in the day).
         int streak = 0;
-        for (int i = 0; i < 60; i++) {
-            int s = total(ViewingLog.day(c, today.minusDays(i)));
+        AppUsage.Span use = usage14;
+        int used = 0;
+        for (int i = 0; use != null && i < use.days.length; i++) used += use.days[i];
+        for (int i = 0; i < (used >= 60 ? 14 : 60); i++) {
+            int s = used >= 60 ? use.days[13 - i] : total(ViewingLog.day(c, today.minusDays(i)));
             if (s >= 15 * 60) streak++;
             else if (i > 0) break;
         }
@@ -1026,7 +1124,9 @@ final class ViewingPanel {
         }
         TextView t = h.text(15, semi, Color.WHITE);
         try {
-            t.setText(pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)));
+            CharSequence name = pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0));
+            // Debrid Stream calls itself "DebridStream".
+            t.setText(ReleaseAlerts.DEBRID.equals(pkg) ? "Debrid Stream" : name);
         } catch (Exception e) {
             t.setText(pkg);
         }

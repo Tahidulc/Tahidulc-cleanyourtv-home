@@ -166,7 +166,11 @@ final class DeliveryLink {
             case "/hello": {
                 // A phone looking through the network for TVs (when mDNS does not reach it): this TV's name.
                 org.json.JSONArray features = new org.json.JSONArray();
-                if (Config.themeFlag(context, "home_eta", false)) features.put("home_eta");
+                // The trip home: for its pop-up ("home_eta"), and for Ambient mode's car card ("ambient_car", on unless
+                // the theme turns it off).
+                if (Config.themeFlag(context, "home_eta", false) || Config.themeFlag(context, "ambient_car", true)) {
+                    features.put("home_eta");
+                }
                 reply(s, 200, new JSONObject().put("tv", name()).put("features", features).toString());
                 return;
             }

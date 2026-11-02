@@ -31,7 +31,9 @@ import java.util.concurrent.Executors;
 /**
  * Ambient mode: what the TV shows when nobody is using it. A large thin clock and the date, the weather now and
  * tomorrow's, and on the right a few glanceable cards: the next game (or the one on now, with its score), the next
- * Formula 1 session, the camera's last motion. Along the foot, today's results. Everything drifts a little every
+ * Formula 1 session, the camera's last motion, and the car: on the way home, how far away it is and when it gets
+ * back (the phone's own estimate), else its latest news and charge (the Tesla app's notifications, passed on by the
+ * phone). Along the foot, today's results. Everything drifts a little every
  * minute and dims late at night, so nothing burns in; it never keeps the screen on by itself, so the TV still goes
  * to sleep on its own timer. Shared by AmbientActivity (Home left idle) and AmbientDream (the system screensaver).
  *
@@ -55,6 +57,10 @@ final class AmbientScene {
     private final ExecutorService io = Executors.newSingleThreadExecutor();
     private final Random random = new Random();
     private boolean running;
+    /** The cards from the last read (the game, F1, the camera); the car's is made fresh each time they are shown. */
+    private final List<Card> others = new ArrayList<>();
+    /** The scene on screen now, told at once when the car's news comes in. */
+    private static volatile java.lang.ref.WeakReference<AmbientScene> live;
 
     AmbientScene(Context context) {
         c = context;
@@ -119,6 +125,7 @@ final class AmbientScene {
     void start() {
         if (running) return;
         running = true;
+        live = new java.lang.ref.WeakReference<>(this);
         startedAt = System.currentTimeMillis();
         tick.run();
         refresh.run();
@@ -129,6 +136,7 @@ final class AmbientScene {
 
     void stop() {
         running = false;
+        if (live != null && live.get() == this) live = null;
         main.removeCallbacksAndMessages(null);
         stage.animate().cancel();
     }
@@ -147,6 +155,8 @@ final class AmbientScene {
             date.setText(now.format(DateTimeFormatter.ofPattern("EEEE d MMMM", Locale.UK)));
             stage.animate().translationX((random.nextFloat() * 80 - 40) * k).translationY((random.nextFloat() * 50 - 25) * k)
                     .alpha(dim()).setDuration(4_000).start();
+            // On the way home, the minutes left and the time home move on each minute.
+            if (tripActive()) showCards();
             long toNext = 60_000L - (System.currentTimeMillis() % 60_000L) + 50;
             main.postDelayed(this, toNext);
         }
@@ -213,14 +223,32 @@ final class AmbientScene {
                 weatherIcon.setImageResource((Integer) wx[1]);
                 tomorrow.setText((String) wx[2]);
             }
-            cards.removeAllViews();
-            for (Card card : found) {
-                LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(-1, -2);
-                p.bottomMargin = px(18);
-                cards.addView(card.view(), p);
-            }
+            others.clear();
+            others.addAll(found);
+            showCards();
             showStrip(results);
         });
+    }
+
+    /** The car's news came in from the phone (GoalWatchService): the cards again, at once, if Ambient is on screen. */
+    static void carNews() {
+        java.lang.ref.WeakReference<AmbientScene> ref = live;
+        AmbientScene scene = ref == null ? null : ref.get();
+        if (scene != null) scene.main.post(() -> { if (scene.running) scene.showCards(); });
+    }
+
+    /** The car's card first (it is the most timely), then the game, F1 and the camera. */
+    private void showCards() {
+        cards.removeAllViews();
+        List<Card> all = new ArrayList<>();
+        Card car = car();
+        if (car != null) all.add(car);
+        all.addAll(others);
+        for (Card card : all) {
+            LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(-1, -2);
+            p.bottomMargin = px(18);
+            cards.addView(card.view(), p);
+        }
     }
 
     // ---- what the cards say --------------------------------------------------------------------------------
@@ -346,6 +374,95 @@ final class AmbientScene {
         return card;
     }
 
+    // ---- the car ---------------------------------------------------------------------------------------------------
+
+    private static final long TRIP_MS = 45 * 60_000L, CAR_MS = 12 * 3_600_000L;
+    private static final int TESLA_BLUE = 0xFF3E6AE1, TESLA_GREEN = 0xFF31C553;
+
+    /** A trip home the phone told of in the last 45 minutes, not long since over. */
+    private static boolean tripActive() {
+        JSONObject trip = SmartPanel.trip;
+        long gone = System.currentTimeMillis() - SmartPanel.tripAt;
+        if (trip == null || gone > TRIP_MS) return false;
+        int minutes = trip.optInt("minutes", -1);
+        return minutes < 0 || gone < (minutes + 10) * 60_000L;
+    }
+
+    /**
+     * On the way home: how far away the car is, the minutes left and the time it gets home, with the trip so far as a
+     * bar in the Tesla app's blue. Otherwise the car's latest news from the last twelve hours (charging, locked, a
+     * software update), with its charge as a bar. Null when the phone has told of neither.
+     */
+    private Card car() {
+        long now = System.currentTimeMillis();
+        String name = Config.themeString(c, "tesla_name", Config.themeString(c, "tesla_model", "Tesla"));
+        JSONObject news = SmartPanel.car;
+        boolean fresh = news != null && now - SmartPanel.carAt < CAR_MS;
+        int battery = fresh ? news.optInt("battery", -1) : -1;
+        DateTimeFormatter hm = DateTimeFormatter.ofPattern("HH:mm");
+        if (tripActive()) {
+            JSONObject trip = SmartPanel.trip;
+            int minutes = trip.optInt("minutes", -1);
+            double miles = trip.optDouble("miles", -1);
+            int gone = (int) ((now - SmartPanel.tripAt) / 60_000L);
+            int left = minutes < 0 ? -1 : Math.max(0, minutes - gone);
+            boolean arriving = trip.optBoolean("arriving") || left == 0;
+            Card k = new Card();
+            k.label = name.toUpperCase(Locale.UK) + (arriving ? "  ·  ALMOST HOME" : "  ·  HEADING HOME");
+            String far = miles >= 0 ? String.format(Locale.UK, miles < 10 ? "%.1f mi" : "%.0f mi", miles) : null;
+            k.title = arriving ? "Pulling in now" : far != null ? far + " from home" : left + " min from home";
+            List<String> bits = new ArrayList<>();
+            if (!arriving && left > 0) {
+                bits.add(left + " min");
+                bits.add("home by " + java.time.LocalTime.now().plusMinutes(left).format(hm));
+            }
+            if (battery >= 0) bits.add(battery + "% battery");
+            if (bits.isEmpty()) bits.add("Updated " + Instant.ofEpochMilli(SmartPanel.tripAt).atZone(ZoneId.systemDefault()).format(hm));
+            k.note = String.join("  ·  ", bits);
+            k.icon = R.drawable.tesla_t;
+            k.tint = 0xFF151515;
+            double done = trip.optDouble("progress", -1);
+            if (arriving) done = 1;
+            k.progress = done < 0 ? -1 : (float) Math.min(1, done);
+            k.barColour = TESLA_BLUE;
+            return k;
+        }
+        if (!fresh) return null;
+        String title = news.optString("title", "").trim(), status = news.optString("status", "").trim();
+        String all = (title + " " + status).toLowerCase(Locale.ROOT);
+        boolean charging = all.contains("charging") && !all.contains("complete") && !all.contains("stopped")
+                && !all.contains("interrupted") && !all.contains("finished");
+        Card k = new Card();
+        k.label = name.toUpperCase(Locale.UK) + "  ·  TESLA";
+        k.title = !title.isEmpty() ? title : !status.isEmpty() ? status : "Tesla";
+        List<String> bits = new ArrayList<>();
+        if (battery >= 0) {
+            int miles = news.optInt("miles", -1);
+            if (miles < 0) {
+                int full;
+                try {
+                    full = Integer.parseInt(Config.themeString(c, "tesla_range_miles", "330").trim());
+                } catch (NumberFormatException e) {
+                    full = 330;
+                }
+                miles = Math.round(full * battery / 100f);
+                bits.add(battery + "%  ≈ " + miles + " mi");
+            } else {
+                bits.add(battery + "%  " + miles + " mi");
+            }
+        }
+        if (!status.isEmpty() && !status.equalsIgnoreCase(k.title)) bits.add(status);
+        bits.add(Instant.ofEpochMilli(SmartPanel.carAt).atZone(ZoneId.systemDefault()).format(hm));
+        k.note = String.join("  ·  ", bits);
+        k.icon = R.drawable.tesla_t;
+        k.tint = 0xFF151515;
+        if (battery >= 0) {
+            k.progress = battery / 100f;
+            k.barColour = charging ? TESLA_GREEN : 0xD9FFFFFF;
+        }
+        return k;
+    }
+
     /** "Today 17:30", "Tomorrow 15:00", "Sat 12:30". */
     private static String day(long at) {
         ZonedDateTime t = Instant.ofEpochMilli(at).atZone(ZoneId.systemDefault());
@@ -363,6 +480,11 @@ final class AmbientScene {
         int tint;
         Bitmap picture;
         boolean hasChannel;
+        /** A brand mark drawn on the tint (the Tesla "T"), in place of a picture or a badge. */
+        int icon;
+        /** A bar under the words (the trip so far, the car's charge), 0 to 1; -1 for none. */
+        float progress = -1;
+        int barColour;
 
         View view() {
             LinearLayout row = new LinearLayout(c);
@@ -374,7 +496,17 @@ final class AmbientScene {
             glass.setStroke(Math.max(1, px(1)), 0x1FFFFFFF);
             row.setBackground(glass);
             View mark;
-            if (picture != null) {
+            if (icon != 0) {
+                ImageView pic = new ImageView(c);
+                pic.setImageResource(icon);
+                pic.setScaleType(ImageView.ScaleType.FIT_CENTER);
+                pic.setPadding(px(14), px(14), px(14), px(14));
+                GradientDrawable chip = new GradientDrawable();
+                chip.setCornerRadius(px(18));
+                chip.setColor(tint);
+                pic.setBackground(chip);
+                mark = pic;
+            } else if (picture != null) {
                 ImageView pic = new ImageView(c);
                 pic.setImageBitmap(picture);
                 pic.setScaleType(ImageView.ScaleType.FIT_CENTER);
@@ -408,6 +540,22 @@ final class AmbientScene {
             n.setSingleLine(true);
             n.setEllipsize(android.text.TextUtils.TruncateAt.END);
             words.addView(n, margins(0, 6, 0, 0));
+            if (progress >= 0) {
+                FrameLayout track = new FrameLayout(c);
+                GradientDrawable tg = new GradientDrawable();
+                tg.setCornerRadius(px(4));
+                tg.setColor(0x24FFFFFF);
+                track.setBackground(tg);
+                View fill = new View(c);
+                GradientDrawable fg = new GradientDrawable();
+                fg.setCornerRadius(px(4));
+                fg.setColor(barColour);
+                fill.setBackground(fg);
+                track.addView(fill, new FrameLayout.LayoutParams(Math.max(px(8), Math.round(px(440) * Math.min(1f, progress))), -1));
+                LinearLayout.LayoutParams tp = new LinearLayout.LayoutParams(px(440), px(8));
+                tp.topMargin = px(12);
+                words.addView(track, tp);
+            }
             LinearLayout.LayoutParams wp = new LinearLayout.LayoutParams(0, -2, 1f);
             wp.leftMargin = px(22);
             row.addView(words, wp);
