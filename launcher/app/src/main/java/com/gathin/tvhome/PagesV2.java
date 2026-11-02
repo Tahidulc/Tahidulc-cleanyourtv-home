@@ -682,9 +682,15 @@ final class PagesV2 {
                         // lite_home: its width on screen at the end of its slow zoom (1.12), no more.
                         h.image(wide, t.backdrop.replace("/w1280/", "/w780/"), px(h.lite ? Math.round(WIDE * 1.12f) : WIDE * 2));
                         wide.animate().alpha(1f).setDuration(350).start();
-                        wide.setScaleX(1.02f);
-                        wide.setScaleY(1.02f);
-                        wide.animate().scaleX(1.12f).scaleY(1.12f).setDuration(6000).setInterpolator(new android.view.animation.LinearInterpolator()).start();
+                        if (t.backdrop.startsWith("mood:")) {
+                            // Surprise me's mood cards hold still: the slow zoom took their name and "Spin" past the card's edge.
+                            wide.setScaleX(1f);
+                            wide.setScaleY(1f);
+                        } else {
+                            wide.setScaleX(1.02f);
+                            wide.setScaleY(1.02f);
+                            wide.animate().scaleX(1.12f).scaleY(1.12f).setDuration(6000).setInterpolator(new android.view.animation.LinearInterpolator()).start();
+                        }
                     } else {
                         wide.animate().alpha(0f).setDuration(200).start();
                     }
@@ -732,6 +738,8 @@ final class PagesV2 {
             tile.title = t.title;
             tile.heroTitle = t.title;
             tile.heroImage = t.backdrop != null ? t.backdrop : t.poster;
+            // A mood's picture at the top goes without its words: the page already names it, and the name showed through the tabs.
+            if (tile.heroImage != null && tile.heroImage.startsWith("mood:")) tile.heroImage = tile.heroImage.replace(":w", ":b");
             tile.heroTop = crumb;
             String vote = t.vote > 0 ? String.format(Locale.UK, " · ★ %.1f", t.vote) : "";
             // Fits tonight: when it would end, first.

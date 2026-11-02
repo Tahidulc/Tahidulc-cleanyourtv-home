@@ -53,7 +53,9 @@ final class Surprise {
     private Context c;
     private FrameLayout overlay;
     private final List<TextView> moodViews = new ArrayList<>(), whoViews = new ArrayList<>(), buttons = new ArrayList<>();
-    private TextView timeView, name, line, why;
+    private TextView timeView, name, line, why, about;
+    /** Debrid Stream's mark after "on", in the line of details: what Play opens. */
+    private ImageView onMark;
     private final ImageView[] reel = new ImageView[5];
     private int mood, who = 1, row = 2, col;
     private boolean byBed = true, spinning;
@@ -145,15 +147,15 @@ final class Surprise {
         crumb.setText("MOVIES");
         crumb.setLetterSpacing(0.3f);
         crumb.setGravity(Gravity.CENTER);
-        place(crumb, 0, 60, 1920, 26);
+        place(crumb, 0, 52, 1920, 26);
         TextView head = h.text(54, heavy, Color.WHITE);
         head.setText("Surprise me");
         head.setGravity(Gravity.CENTER);
-        place(head, 0, 88, 1920, 74);
+        place(head, 0, 80, 1920, 74);
         LinearLayout moods = new LinearLayout(c);
         moods.setGravity(Gravity.CENTER);
         for (String[] m : MOODS) moodViews.add(chip(moods, m[0], 20, 50, semi));
-        place(moods, 0, 186, 1920, 54);
+        place(moods, 0, 174, 1920, 54);
         LinearLayout whoRow = new LinearLayout(c);
         whoRow.setGravity(Gravity.CENTER_VERTICAL | Gravity.CENTER_HORIZONTAL);
         TextView wl = h.text(14, semi, 0xB3FFFFFF);
@@ -166,8 +168,8 @@ final class Surprise {
         tl.setLetterSpacing(0.16f);
         whoRow.addView(tl);
         timeView = chip(whoRow, "", 17, 44, semi);
-        place(whoRow, 0, 256, 1920, 50);
-        int[][] at = {{256, 412, 200, 300}, {550, 407, 210, 315}, {810, 336, 300, 450}, {1160, 407, 210, 315}, {1464, 412, 200, 300}};
+        place(whoRow, 0, 242, 1920, 50);
+        int[][] at = {{256, 392, 200, 300}, {550, 387, 210, 315}, {810, 316, 300, 450}, {1160, 387, 210, 315}, {1464, 392, 200, 300}};
         for (int i = 0; i < 5; i++) {
             ImageView v = new ImageView(c);
             v.setScaleType(ImageView.ScaleType.CENTER_CROP);
@@ -184,21 +186,37 @@ final class Surprise {
         rg.setCornerRadius(h.px(20));
         rg.setStroke(h.px(6), Color.WHITE);
         ring.setBackground(rg);
-        place(ring, 810, 336, 300, 450);
+        place(ring, 810, 316, 300, 450);
+        // Under the reel, as the TV shows' spin: the film, why it suits (yellow), its details with where Play opens it,
+        // and what it is about.
         name = h.text(30, semi, Color.WHITE);
         name.setGravity(Gravity.CENTER);
-        place(name, 0, 800, 1920, 44);
-        line = h.text(20, regular, 0xD9FFFFFF);
-        line.setGravity(Gravity.CENTER);
-        place(line, 0, 846, 1920, 30);
-        why = h.text(19, semi, YELLOW);
+        place(name, 0, 778, 1920, 44);
+        why = h.text(21, semi, YELLOW);
         why.setGravity(Gravity.CENTER);
-        place(why, 0, 880, 1920, 30);
+        place(why, 0, 822, 1920, 34);
+        LinearLayout meta = new LinearLayout(c);
+        meta.setGravity(Gravity.CENTER);
+        line = h.text(18, regular, 0xD9FFFFFF);
+        meta.addView(line);
+        onMark = new ImageView(c);
+        onMark.setAdjustViewBounds(true);
+        onMark.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        onMark.setVisibility(View.GONE);
+        LinearLayout.LayoutParams ml = new LinearLayout.LayoutParams(-2, h.px(38));
+        ml.leftMargin = h.px(10);
+        meta.addView(onMark, ml);
+        place(meta, 0, 856, 1920, 42);
+        about = h.text(17, regular, 0xB3FFFFFF);
+        about.setGravity(Gravity.CENTER);
+        about.setMaxLines(2);
+        about.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        place(about, 360, 900, 1200, 50);
         LinearLayout bar = new LinearLayout(c);
         bar.setGravity(Gravity.CENTER);
         buttons.add(chip(bar, "▶  Play", 21, 62, semi));
         buttons.add(chip(bar, "🎲  Spin again", 21, 62, semi));
-        place(bar, 0, 926, 1920, 70);
+        place(bar, 0, 956, 1920, 66);
         paint();
     }
 
@@ -220,6 +238,8 @@ final class Surprise {
         spinning = true;
         name.setText("");
         line.setText("");
+        about.setText("");
+        onMark.setVisibility(View.GONE);
         why.setText("Spinning…");
         int m = mood, w = who;
         boolean bed = byBed;
@@ -293,9 +313,15 @@ final class Surprise {
         reel[2].setScaleY(0.94f);
         reel[2].animate().scaleX(1f).scaleY(1f).setDuration(260).start();
         name.setText(pick.title);
-        String vote = pick.vote > 0 ? String.format(Locale.UK, " · ★ %.1f", pick.vote) : "";
-        line.setText(String.join(" · ", nonEmpty(pick.year, pick.what, runtime > 0 ? runtime / 60 + "h " + String.format(Locale.UK, "%02d", runtime % 60) + "m" : "")) + vote);
+        String vote = pick.vote > 0 ? String.format(Locale.UK, "★ %.1f", pick.vote) : "";
+        // Where Play opens it: Debrid Stream's page (as the page's posters do), its mark after "on".
+        android.graphics.Bitmap mark = ReleaseAlerts.installed(c, ReleaseAlerts.DEBRID) ? ReleaseAlerts.debridLogo(c) : null;
+        line.setText(String.join("  ·  ", nonEmpty(pick.year, pick.what, runtime > 0 ? runtime / 60 + "h " + String.format(Locale.UK, "%02d", runtime % 60) + "m" : "", vote,
+                mark != null ? "on" : "")));
+        onMark.setImageBitmap(mark);
+        onMark.setVisibility(mark != null ? View.VISIBLE : View.GONE);
         why.setText((runtime > 0 ? FitsTonight.heroLine(c, runtime) + " · " : "") + MOODS[mood][0] + " · not watched on this TV yet");
+        about.setText(pick.overview == null ? "" : pick.overview);
     }
 
     private static String[] nonEmpty(String... s) {

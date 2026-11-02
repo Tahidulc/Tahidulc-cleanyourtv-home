@@ -1307,6 +1307,12 @@ public class GoalWatchService extends Service {
         }
         if (intent != null && intent.hasExtra("test_release")) io.execute(() -> ReleaseAlerts.check(this, true));
         if (intent != null && intent.hasExtra("dump_ui")) AppSearchService.dump();
+        // adb only: a series opened in Debrid Stream through the helper, as Play does ("--es test_dsshow 'The Simpsons'").
+        if (intent != null && intent.hasExtra("test_dsshow")) {
+            String[] spec = intent.getStringExtra("test_dsshow").split("\\|");
+            if (spec.length >= 3) AppSearchService.wantEpisode(Integer.parseInt(spec[1].trim()), Integer.parseInt(spec[2].trim()), spec.length > 3 ? spec[3] : null);
+            main.post(() -> AppSearchService.search(this, ReleaseAlerts.DEBRID, spec[0], true));
+        }
         if (intent != null && intent.hasExtra("test_tune")) AppSearchService.testTune(this, intent.getStringExtra("test_tune"));
         if (intent != null && intent.hasExtra("test_ambient")) {
             startActivity(new Intent(this, AmbientActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));

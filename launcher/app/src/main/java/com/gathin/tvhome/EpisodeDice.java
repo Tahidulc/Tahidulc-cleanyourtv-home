@@ -82,11 +82,17 @@ final class EpisodeDice {
     private FrameLayout overlay;
     private final List<TextView> moodViews = new ArrayList<>(), pickViews = new ArrayList<>(), buttons = new ArrayList<>();
     private TextView lengthView, name, episode, line, about;
+    /** Debrid Stream's mark after "on", in the line of details: what Play opens. */
+    private ImageView onMark;
     private final ImageView[] reel = new ImageView[5];
     private int mood, how, row = 2, col;
     private boolean quick, rolling;
     private final List<Bitmap> pics = new ArrayList<>();
     private PagesV2.Title pick;
+    /** The picked episode, for Play to find in Debrid Stream: its season, number and name. */
+    private int pickSeason, pickEpisode;
+    private String pickEpisodeName;
+    private android.graphics.Bitmap pickStill;
     private int gen;
     private final Random random = new Random();
 
@@ -224,19 +230,28 @@ final class EpisodeDice {
         episode = h.text(24, semi, YELLOW);
         episode.setGravity(Gravity.CENTER);
         place(episode, 0, 822, 1920, 36);
+        LinearLayout meta = new LinearLayout(c);
+        meta.setGravity(Gravity.CENTER);
         line = h.text(18, regular, 0xD9FFFFFF);
-        line.setGravity(Gravity.CENTER);
-        place(line, 0, 860, 1920, 28);
+        meta.addView(line);
+        onMark = new ImageView(c);
+        onMark.setAdjustViewBounds(true);
+        onMark.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        onMark.setVisibility(View.GONE);
+        LinearLayout.LayoutParams ml = new LinearLayout.LayoutParams(-2, h.px(38));
+        ml.leftMargin = h.px(10);
+        meta.addView(onMark, ml);
+        place(meta, 0, 856, 1920, 42);
         about = h.text(17, regular, 0xB3FFFFFF);
         about.setGravity(Gravity.CENTER);
         about.setMaxLines(2);
         about.setEllipsize(android.text.TextUtils.TruncateAt.END);
-        place(about, 360, 890, 1200, 50);
+        place(about, 360, 900, 1200, 50);
         LinearLayout bar = new LinearLayout(c);
         bar.setGravity(Gravity.CENTER);
         buttons.add(chip(bar, "▶  Play", 21, 60, semi));
         buttons.add(chip(bar, "🎲  Spin again", 21, 60, semi));
-        place(bar, 0, 952, 1920, 66);
+        place(bar, 0, 956, 1920, 66);
         paint();
     }
 
@@ -263,6 +278,7 @@ final class EpisodeDice {
         name.setText("");
         episode.setText("");
         line.setText("");
+        onMark.setVisibility(View.GONE);
         about.setText("Spinning…");
         int m = mood, w = how;
         boolean q = quick;
@@ -391,9 +407,13 @@ final class EpisodeDice {
                 String a = pr == null ? null : HomeV2.serviceApp(String.valueOf(pr.optInt("provider_id")));
                 if (a != null && ReleaseAlerts.installed(c, a)) app = pr.optString("provider_name", null);
             }
-            if (app != null) bits.add("on " + app);
             t.what = head;
-            return new Object[]{d, t, head, String.join("  ·  ", bits), ep.optString("overview", "")};
+            // The episode's own picture, for the cover while Debrid Stream finds it.
+            String still = ep.optString("still_path", "");
+            android.graphics.Bitmap stillPic = still.isEmpty() || "null".equals(still) ? null
+                    : ScoresTicker.cachedLogo(c, "https://image.tmdb.org/t/p/w780" + still, 960);
+            return new Object[]{d, t, head, String.join("  ·  ", bits), ep.optString("overview", ""), app, s, n,
+                    ep.optString("name", ""), stillPic};
         }
         return null;
     }
@@ -426,7 +446,18 @@ final class EpisodeDice {
         reel[2].animate().scaleX(1f).scaleY(1f).setDuration(260).start();
         name.setText(pick.title);
         episode.setText((String) result[2]);
-        line.setText((String) result[3]);
+        // Where Play opens it: Debrid Stream's page for the show (as the page's posters do), its mark after "on";
+        // without Debrid Stream on the TV, the streaming service's name.
+        android.graphics.Bitmap mark = ReleaseAlerts.installed(c, ReleaseAlerts.DEBRID) ? ReleaseAlerts.debridLogo(c) : null;
+        String details = (String) result[3], app = (String) result[5];
+        line.setText(mark != null ? (details.isEmpty() ? "on" : details + "  ·  on")
+                : app != null ? (details.isEmpty() ? "on " + app : details + "  ·  on " + app) : details);
+        onMark.setImageBitmap(mark);
+        onMark.setVisibility(mark != null ? View.VISIBLE : View.GONE);
+        pickSeason = (Integer) result[6];
+        pickEpisode = (Integer) result[7];
+        pickEpisodeName = (String) result[8];
+        pickStill = (android.graphics.Bitmap) result[9];
         String what = (String) result[4];
         about.setText(what.isEmpty() ? MOODS[mood][0] + " · " + PICKS[how] : what);
     }
@@ -460,8 +491,13 @@ final class EpisodeDice {
             if (pick != null && !rolling) {
                 PagesV2.Title t = pick;
                 hide();
-                // The episode to look for, said once the show is opening.
-                android.widget.Toast.makeText(c.getApplicationContext(), t.title + ": " + t.what, android.widget.Toast.LENGTH_LONG).show();
+                // In Debrid Stream the helper goes on from the series' page to the episode itself (its season, then
+                // the episode, left highlighted for OK); anywhere else, the episode to look for is said.
+                if (ReleaseAlerts.installed(c, ReleaseAlerts.DEBRID) && AppSearchService.running()) {
+                    AppSearchService.wantEpisode(pickSeason, pickEpisode, pickEpisodeName, pickStill);
+                } else {
+                    android.widget.Toast.makeText(c.getApplicationContext(), t.title + ": " + t.what, android.widget.Toast.LENGTH_LONG).show();
+                }
                 h.openTitle(t);
             }
         } else roll();

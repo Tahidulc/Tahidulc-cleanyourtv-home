@@ -92,9 +92,182 @@ public class AppSearchService extends AccessibilityService {
         if (helper) {
             instance.start(pkg, query);
             instance.wantTv = tv;
-            instance.showCover(art, logo, query, null, 8_000L);
+            // Surprise me's episode, asked for just before (wantEpisode): found on the series' page too.
+            boolean episode = tv && ReleaseAlerts.DEBRID.equals(pkg) && pendingSeason > 0
+                    && System.currentTimeMillis() - pendingAt < 15_000L;
+            if (episode) {
+                instance.epSeason = pendingSeason;
+                instance.epNumber = pendingEpisode;
+                instance.epName = pendingName;
+                instance.deadline = System.currentTimeMillis() + 40_000L;
+            }
+            pendingSeason = 0;
+            if (episode) {
+                // The loading cover for an episode: the programme's logo, the season and number, the episode's title,
+                // over the episode's own picture.
+                instance.coverEpisode = new String[]{"SEASON " + instance.epSeason + "  ·  EPISODE " + instance.epNumber,
+                        pendingName == null ? "" : pendingName};
+                instance.showCover(art, logo, query, null, 20_000L);
+                instance.coverEpisode = null;
+                if (pendingStill != null && instance.coverBg != null) {
+                    instance.coverBg.setImageBitmap(pendingStill);
+                    instance.coverBg.setAlpha(0.85f);
+                }
+            } else {
+                instance.showCover(art, logo, query, null, 8_000L);
+            }
+            pendingStill = null;
         }
         return true;
+    }
+
+    // ---- Debrid Stream: an episode on the series' page ---------------------------------------------------------
+
+    /** The episode the next series search in Debrid Stream should end on (Surprise me's pick), and when it was asked. */
+    private static int pendingSeason, pendingEpisode;
+    private static String pendingName;
+    private static long pendingAt;
+    /** The episode's picture (TMDB's still), for the cover while it is found. */
+    private static android.graphics.Bitmap pendingStill;
+    /** The cover's two episode lines (its season and number, its title) while it is being made; null otherwise. */
+    private String[] coverEpisode;
+    /** This search's episode to find: season, number and name (season 0: none, the series' page is the end). */
+    private int epSeason, epNumber, epMoves;
+    private String epName;
+    private long epStepAt;
+
+    /** Surprise me: the episode the series' page should go on to, for the search that follows within a few seconds. */
+    static void wantEpisode(int season, int episode, String name) {
+        wantEpisode(season, episode, name, null);
+    }
+
+    static void wantEpisode(int season, int episode, String name, android.graphics.Bitmap still) {
+        pendingStill = still;
+        pendingSeason = season;
+        pendingEpisode = episode;
+        pendingName = name;
+        pendingAt = System.currentTimeMillis();
+    }
+
+    /**
+     * From the series' page in Debrid Stream to the episode, as one would with the remote: its "More episodes", then
+     * on the episodes page (the seasons down the left, the shown season's episodes on the right, the season following
+     * the highlight) Left into the seasons and Up or Down to the season, Right into its episodes and Down to the
+     * episode by its number (or its name), where it stops, highlighted, for OK to play. Steps a third of a second apart
+     * so the app's highlight keeps up; Android 13 and later (the D-pad presses it makes); otherwise the page is the end.
+     */
+    private boolean episodeStep(AccessibilityNodeInfo root) {
+        if (android.os.Build.VERSION.SDK_INT < 33 || epMoves > 120) { epSeason = 0; hideDelay = 600; return false; }
+        long now = System.currentTimeMillis();
+        if (now - epStepAt < 340) return true;
+        epStepAt = now;
+        android.graphics.Rect all = new android.graphics.Rect();
+        root.getBoundsInScreen(all);
+        int split = all.left + Math.round(all.width() * 0.33f);
+        AccessibilityNodeInfo header = seasonHeader(root, split);
+        if (header == null) {
+            // The series' page: its "More episodes" (the page may still be drawing).
+            AccessibilityNodeInfo more = withText(root, "More episodes");
+            if (more == null) more = withText(root, "Episodes");
+            if (more != null) { click(more); epMoves++; }
+            return true;
+        }
+        int shown = number(String.valueOf(header.getText()));
+        AccessibilityNodeInfo f = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT);
+        android.graphics.Rect fr = new android.graphics.Rect();
+        if (f != null) f.getBoundsInScreen(fr);
+        boolean inSeasons = f != null && fr.centerX() < split;
+        if (shown != epSeason) {
+            if (!inSeasons) return press(GLOBAL_ACTION_DPAD_LEFT);
+            int at = number(childText(f, "Season "));
+            // The season highlighted already: its episodes are loading (the app's spinner), and the heading follows.
+            if (at == epSeason) return true;
+            return press(at > 0 && at > epSeason ? GLOBAL_ACTION_DPAD_UP : GLOBAL_ACTION_DPAD_DOWN);
+        }
+        if (inSeasons || f == null) return press(GLOBAL_ACTION_DPAD_RIGHT);
+        int num = number(digitsChild(f));
+        String name = descChild(f);
+        if (num == epNumber || (epName != null && !epName.isEmpty() && name != null && same(name, epName))) {
+            android.util.Log.i(TAG, "episode found: S" + epSeason + " E" + epNumber + " in " + epMoves + " moves");
+            epSeason = 0;
+            hideDelay = 500;
+            return false;
+        }
+        return press(num > 0 && num > epNumber ? GLOBAL_ACTION_DPAD_UP : GLOBAL_ACTION_DPAD_DOWN);
+    }
+
+    private boolean press(int action) {
+        epMoves++;
+        performGlobalAction(action);
+        return true;
+    }
+
+    /** The shown season's heading on the episodes page: "Season 5" in the right-hand part. */
+    private static AccessibilityNodeInfo seasonHeader(AccessibilityNodeInfo n, int split) {
+        if (n == null) return null;
+        CharSequence t = n.getText();
+        if (t != null && t.toString().matches("Season \\d+")) {
+            android.graphics.Rect r = new android.graphics.Rect();
+            n.getBoundsInScreen(r);
+            if (r.left >= split && n.getParent() != null && !n.getParent().isClickable()) return n;
+        }
+        for (int i = 0; i < n.getChildCount(); i++) {
+            AccessibilityNodeInfo h = seasonHeader(n.getChild(i), split);
+            if (h != null) return h;
+        }
+        return null;
+    }
+
+    private static AccessibilityNodeInfo withText(AccessibilityNodeInfo n, String text) {
+        if (n == null) return null;
+        if (n.getText() != null && text.equalsIgnoreCase(n.getText().toString().trim())) return n;
+        for (int i = 0; i < n.getChildCount(); i++) {
+            AccessibilityNodeInfo h = withText(n.getChild(i), text);
+            if (h != null) return h;
+        }
+        return null;
+    }
+
+    /** The first text under n that starts with prefix ("Season "), or "". */
+    private static String childText(AccessibilityNodeInfo n, String prefix) {
+        if (n == null) return "";
+        if (n.getText() != null && n.getText().toString().startsWith(prefix)) return n.getText().toString();
+        for (int i = 0; i < n.getChildCount(); i++) {
+            String t = childText(n.getChild(i), prefix);
+            if (!t.isEmpty()) return t;
+        }
+        return "";
+    }
+
+    /** The first text under n that is only a number (an episode tile's number), or "". */
+    private static String digitsChild(AccessibilityNodeInfo n) {
+        if (n == null) return "";
+        if (n.getText() != null && n.getText().toString().trim().matches("\\d{1,4}")) return n.getText().toString().trim();
+        for (int i = 0; i < n.getChildCount(); i++) {
+            String t = digitsChild(n.getChild(i));
+            if (!t.isEmpty()) return t;
+        }
+        return "";
+    }
+
+    /** The first description under n (an episode tile's name), or null. */
+    private static String descChild(AccessibilityNodeInfo n) {
+        if (n == null) return null;
+        if (n.getContentDescription() != null && n.getContentDescription().length() > 0) return n.getContentDescription().toString();
+        for (int i = 0; i < n.getChildCount(); i++) {
+            String t = descChild(n.getChild(i));
+            if (t != null) return t;
+        }
+        return null;
+    }
+
+    private static int number(String s) {
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("(\\d+)").matcher(s == null ? "" : s);
+        return m.find() ? Integer.parseInt(m.group(1)) : -1;
+    }
+
+    private static boolean same(String a, String b) {
+        return a.replaceAll("[^A-Za-z0-9]", "").equalsIgnoreCase(b.replaceAll("[^A-Za-z0-9]", ""));
     }
 
     /**
@@ -517,6 +690,9 @@ public class AppSearchService extends AccessibilityService {
         candidates = java.util.Collections.singletonList(q);
         candidate = 0;
         kleva = false;
+        epSeason = 0;
+        epMoves = 0;
+        epStepAt = 0;
         wanted = null;
         missed = false;
         pickedName = null;
@@ -803,8 +979,13 @@ public class AppSearchService extends AccessibilityService {
         if (camera) return cameraStep(root);
         AccessibilityNodeInfo box = find(root, Kind.EDIT);
         if (opened) {
-            // Picked: done once the search has given way to the title's page.
-            if (box == null) { hideDelay = 700; return false; }
+            // Picked: done once the search has given way to the title's page, or with an episode asked for (Surprise
+            // me), once that episode is found on it.
+            if (box == null) {
+                if (epSeason > 0) return episodeStep(root);
+                hideDelay = 700;
+                return false;
+            }
             return true;
         }
         if (box != null) {
@@ -1613,6 +1794,33 @@ public class AppSearchService extends AccessibilityService {
             coverTitle.setLayoutParams(tl);
         }
         col.addView(coverTitle, coverTitle.getLayoutParams() != null ? coverTitle.getLayoutParams() : new android.widget.LinearLayout.LayoutParams(-1, -2));
+        if (coverEpisode != null) {
+            // An episode: its season and number, small and spaced, then its title, large.
+            android.widget.TextView which = new android.widget.TextView(this);
+            which.setText(coverEpisode[0]);
+            which.setTextColor(0xCCFFFFFF);
+            which.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 13f);
+            which.setLetterSpacing(0.22f);
+            which.setTypeface(android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL));
+            which.setGravity(android.view.Gravity.CENTER);
+            which.setShadowLayer(8 * d, 0, 2 * d, 0x99000000);
+            android.widget.LinearLayout.LayoutParams wl = new android.widget.LinearLayout.LayoutParams(-2, -2);
+            wl.topMargin = Math.round(22 * d);
+            col.addView(which, wl);
+            if (!coverEpisode[1].isEmpty()) {
+                android.widget.TextView named = new android.widget.TextView(this);
+                named.setText("\u201C" + coverEpisode[1] + "\u201D");
+                named.setTextColor(0xFFFFFFFF);
+                named.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 30f);
+                named.setTypeface(android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.BOLD));
+                named.setGravity(android.view.Gravity.CENTER);
+                named.setMaxLines(2);
+                named.setShadowLayer(14 * d, 0, 3 * d, 0xB3000000);
+                android.widget.LinearLayout.LayoutParams nl = new android.widget.LinearLayout.LayoutParams(-2, -2);
+                nl.topMargin = Math.round(6 * d);
+                col.addView(named, nl);
+            }
+        }
         if (line != null && logo == null) {
             android.widget.TextView sub = new android.widget.TextView(this);
             if (LIVE.equals(line)) {
@@ -1656,6 +1864,16 @@ public class AppSearchService extends AccessibilityService {
         android.widget.LinearLayout.LayoutParams blp = new android.widget.LinearLayout.LayoutParams(Math.round(300 * d), Math.round(6 * d));
         blp.topMargin = Math.round(30 * d);
         col.addView(track, blp);
+        if (coverEpisode != null) {
+            android.widget.TextView how = new android.widget.TextView(this);
+            how.setText("Finding it in Debrid Stream");
+            how.setTextColor(0x99FFFFFF);
+            how.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 12f);
+            how.setGravity(android.view.Gravity.CENTER);
+            android.widget.LinearLayout.LayoutParams hl = new android.widget.LinearLayout.LayoutParams(-2, -2);
+            hl.topMargin = Math.round(12 * d);
+            col.addView(how, hl);
+        }
         android.widget.FrameLayout.LayoutParams clp = new android.widget.FrameLayout.LayoutParams(-1, -2, android.view.Gravity.CENTER);
         clp.leftMargin = clp.rightMargin = Math.round(80 * d);
         v.addView(col, clp);

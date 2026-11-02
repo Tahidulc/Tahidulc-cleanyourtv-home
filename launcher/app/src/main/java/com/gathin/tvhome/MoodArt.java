@@ -45,13 +45,15 @@ final class MoodArt {
             String[] p = url.split(":");
             boolean tv = "tv".equals(p[1]);
             int i = Integer.parseInt(p[2]);
-            boolean wide = p.length > 3 && "w".equals(p[3]);
+            // "w" wide, "b" wide and bare (no name or "Spin": the picture at the top of the page), else a poster.
+            boolean bare = p.length > 3 && "b".equals(p[3]);
+            boolean wide = bare || p.length > 3 && "w".equals(p[3]);
             Object[][] set = tv ? TV : MOVIES;
             if (i < 0 || i >= set.length) return null;
             String name = tv ? EpisodeDice.MOODS[i][0] : Surprise.MOODS[i][0];
             int w = Math.max(64, Math.min(width, 1600)), h = wide ? Math.round(w * 9 / 16f) : Math.round(w * 1.5f);
             Bitmap b = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
-            paint(c, new Canvas(b), w, h, set[i], name, tv, wide, i);
+            paint(c, new Canvas(b), w, h, set[i], bare ? null : name, tv, wide, i);
             return b;
         } catch (Exception | OutOfMemoryError e) {
             return null;
@@ -97,6 +99,7 @@ final class MoodArt {
         sp.setShadowLayer(size * 0.08f, 0, size * 0.04f, 0x66000000);
         cv.drawText(sign, gx, gy + size * 0.36f, sp);
 
+        if (name == null) return;
         // A shade along the foot for the words, the name, and "Spin".
         Paint shade = new Paint();
         shade.setShader(new LinearGradient(0, h * (wide ? 0.45f : 0.55f), 0, h, 0x00000000, 0xB3000000, Shader.TileMode.CLAMP));
@@ -107,7 +110,7 @@ final class MoodArt {
         np.setTypeface(heavy);
         np.setColor(Color.WHITE);
         np.setShadowLayer(w * 0.01f, 0, w * 0.005f, 0x80000000);
-        float margin = wide ? w * 0.05f : w * 0.08f;
+        float margin = wide ? w * 0.065f : w * 0.08f;
         float nameSize = wide ? h * 0.12f : w * 0.135f;
         np.setTextSize(nameSize);
         // The name on one line where it fits, else on two (at its spaces, the halves as even as they come).
