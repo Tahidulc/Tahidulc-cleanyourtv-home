@@ -236,64 +236,138 @@ final class ViewingPanel {
             {"com.wbd.stream", "HBO Max", "9.99", "month"}, {"ar.tvplayer.tv", "TiviMate", "10.99", "year"},
             {ReleaseAlerts.DEBRID, "Debrid Stream", "2.29", "month"}};
 
-    /** What an app costs: the amount, by the year or the month, and when it next renews (null when not known). */
+    /**
+     * One thing paid for in an app: the app's own subscription (name null) or an in-app purchase (TiviMate's
+     * playlists, Debrid Stream's Torbox). The amount, how many months it covers, and the date that matters: the next
+     * renewal when it renews by itself, else the day it ends.
+     */
     static final class Plan {
+        String name;
         double amount;
-        boolean yearly;
-        LocalDate renews;
+        int months = 1;
+        LocalDate date;
+        boolean renews = true;
 
-        /** The cost of a month, a yearly plan spread over twelve. */
+        /** The cost of a month: a year's or three months' price spread over its months. */
         double monthly() {
-            return yearly ? amount / 12 : amount;
+            return amount / months;
         }
 
-        /** The next renewal from today: a date given in the past moves on a month (or a year) at a time. */
+        /** Still paid for today: it renews, or it has not yet ended. */
+        boolean active() {
+            return renews || date == null || !date.isBefore(LocalDate.now());
+        }
+
+        /** The next renewal (a date given in the past moves on a period at a time), or the end; null when not known. */
         LocalDate next() {
-            if (renews == null) return null;
-            LocalDate d = renews, today = LocalDate.now();
-            for (int i = 0; d.isBefore(today) && i < 1200; i++) d = yearly ? d.plusYears(1) : d.plusMonths(1);
+            if (date == null || !renews) return date;
+            LocalDate d = date, today = LocalDate.now();
+            for (int i = 0; d.isBefore(today) && i < 1200; i++) d = d.plusMonths(months);
             return d;
         }
 
+        /** "£10.99 a year", "£2.27 a month", "£23.33 for 3 months". */
         String price() {
-            return "£" + money(amount) + (yearly ? " a year" : " a month");
+            return "£" + money(amount) + (months == 1 ? " a month" : months == 12 ? " a year" : " for " + months + " months");
         }
     }
 
+    /** "month", "year", "3 months", "2 years": in months. */
+    private static int months(String period) {
+        String t = period.trim().toLowerCase(Locale.UK);
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("(\\d+)").matcher(t);
+        int n = m.find() ? Integer.parseInt(m.group(1)) : 1;
+        return t.contains("year") ? 12 * n : Math.max(1, n);
+    }
+
+    private static LocalDate date(String s) {
+        try {
+            return s == null || s.trim().isEmpty() ? null : LocalDate.parse(s.trim());
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /** The package a name in the theme means ("Debrid Stream" or "DebridStream"), or the name itself. */
+    private static String pkgFor(String who) {
+        for (String[] p : PAID) if (p[1].replace(" ", "").equalsIgnoreCase(who.trim().replace(" ", ""))) return p[0];
+        return who.trim();
+    }
+
     /**
-     * What each app costs: the theme's "app_prices" lines ("Netflix|12.99", or with the period and the next renewal,
-     * "TiviMate|10.99|year|2027-06-15"), else the usual UK price.
+     * What each app costs, as its plans: the usual UK price, else the theme's "app_prices" ("Netflix|12.99", or with
+     * the period and the next renewal, "TiviMate|10.99|year|2027-06-15"); an app named in "app_plans" has exactly the
+     * plans listed there, its own and its in-app purchases: "App|Plan|amount|month, year or 3 months|date|renews or
+     * ends" (the date the next renewal, or the end).
      */
-    private Map<String, Plan> prices() {
-        Map<String, Plan> out = new LinkedHashMap<>();
+    private Map<String, List<Plan>> prices() {
+        Map<String, List<Plan>> out = new LinkedHashMap<>();
         for (String[] p : PAID) {
             Plan plan = new Plan();
             plan.amount = Double.parseDouble(p[2]);
-            plan.yearly = "year".equals(p[3]);
-            out.put(p[0], plan);
+            plan.months = "year".equals(p[3]) ? 12 : 1;
+            out.put(p[0], new ArrayList<>(java.util.Collections.singletonList(plan)));
         }
         for (String line : Config.themeStrings(c, "app_prices", new ArrayList<>())) {
             String[] kv = line.split("\\|");
             if (kv.length < 2) continue;
-            String who = kv[0].trim();
-            for (String[] p : PAID) if (p[1].equalsIgnoreCase(who) || p[1].replace(" ", "").equalsIgnoreCase(who.replace(" ", ""))) who = p[0];
-            Plan plan = out.containsKey(who) ? out.get(who) : new Plan();
+            String who = pkgFor(kv[0]);
+            List<Plan> list = out.computeIfAbsent(who, k -> new ArrayList<>(java.util.Collections.singletonList(new Plan())));
+            Plan plan = list.get(0);
             try {
                 plan.amount = Double.parseDouble(kv[1].trim().replace("£", ""));
             } catch (NumberFormatException e) {
                 continue;
             }
-            if (kv.length > 2 && !kv[2].trim().isEmpty()) plan.yearly = kv[2].trim().toLowerCase(Locale.UK).contains("year");
-            if (kv.length > 3) {
-                try {
-                    plan.renews = LocalDate.parse(kv[3].trim());
-                } catch (Exception ignored) {
-                    // no renewal date
-                }
+            if (kv.length > 2 && !kv[2].trim().isEmpty()) plan.months = months(kv[2]);
+            if (kv.length > 3) plan.date = date(kv[3]);
+        }
+        java.util.Set<String> listed = new java.util.HashSet<>();
+        for (String line : Config.themeStrings(c, "app_plans", new ArrayList<>())) {
+            String[] kv = line.split("\\|", -1);
+            if (kv.length < 3) continue;
+            String who = pkgFor(kv[0]);
+            if (listed.add(who)) out.put(who, new ArrayList<>());
+            Plan plan = new Plan();
+            String name = kv[1].trim();
+            plan.name = name.isEmpty() || pkgFor(name).equals(who) ? null : name;
+            try {
+                plan.amount = Double.parseDouble(kv[2].trim().replace("£", ""));
+            } catch (NumberFormatException e) {
+                continue;
             }
-            out.put(who, plan);
+            if (kv.length > 3 && !kv[3].trim().isEmpty()) plan.months = months(kv[3]);
+            if (kv.length > 4) plan.date = date(kv[4]);
+            if (kv.length > 5) plan.renews = !kv[5].trim().toLowerCase(Locale.UK).startsWith("end");
+            out.get(who).add(plan);
         }
         return out;
+    }
+
+    /** What an app costs a month now: every plan still paid for. */
+    private static double monthly(List<Plan> plans) {
+        double m = 0;
+        for (Plan p : plans) if (p.active()) m += p.monthly();
+        return m;
+    }
+
+    /**
+     * What was paid for an app in the last twelve months, where the theme says when: each purchase that does not
+     * renew (paid its period before it ends), and the last payment of each yearly or longer plan that does. Monthly
+     * renewals are left out, their start not being known. -1 when nothing is known.
+     */
+    private static double paidInYear(List<Plan> plans) {
+        LocalDate today = LocalDate.now(), from = today.minusYears(1);
+        double sum = 0;
+        boolean known = false;
+        for (Plan p : plans) {
+            LocalDate paid;
+            if (!p.renews && p.date != null) paid = p.date.minusMonths(p.months);
+            else if (p.renews && p.date != null && p.months >= 12) paid = p.next().minusMonths(p.months);
+            else continue;
+            if (paid.isAfter(from) && !paid.isAfter(today)) { sum += p.amount; known = true; }
+        }
+        return known ? sum : -1;
     }
 
     /** Tips for each app, from the series watched here (Your shows): what is coming on it, and when it ends. */
@@ -411,12 +485,12 @@ final class ViewingPanel {
             list.addView(more, ml);
         }
 
-        // Right: the paid ones, what each costs an hour of use.
-        Map<String, Plan> price = prices();
+        // Right: the paid ones, what each costs an hour of use, with their in-app purchases.
+        Map<String, List<Plan>> price = prices();
         List<String> apps = new ArrayList<>();
-        for (String p : price.keySet()) if (ReleaseAlerts.installed(c, p)) apps.add(p);
+        for (String p : price.keySet()) if (ReleaseAlerts.installed(c, p) && !price.get(p).isEmpty()) apps.add(p);
         Map<String, Integer> use = secs;
-        apps.sort((x, y) -> Double.compare(per(price.get(x).monthly(), use.getOrDefault(x, 0)), per(price.get(y).monthly(), use.getOrDefault(y, 0))));
+        apps.sort((x, y) -> Double.compare(per(monthly(price.get(x)), use.getOrDefault(x, 0)), per(monthly(price.get(y)), use.getOrDefault(y, 0))));
         TextView paid = label(counting ? "THE PAID ONES · STILL COUNTING" : "ARE THE PAID ONES WORTH IT?");
         place(v, paid, 1186, 244, 640, 30);
         if (apps.isEmpty()) {
@@ -424,13 +498,22 @@ final class ViewingPanel {
             none.setText("No paid streaming apps on this TV.");
             place(v, none, 1186, 284, 640, 40);
         }
-        // Six to a column: the streaming apps and the two paid helpers (TiviMate, Debrid Stream).
-        for (int i = 0; i < Math.min(6, apps.size()); i++) {
-            String p = apps.get(i);
-            place(v, valueCard(p, use.getOrDefault(p, 0), price.get(p), counting, what.get(p)), 1186, 280 + i * 118, 638, 110);
+        // Apps not opened in 30 days (with nothing coming on them) share one card at the foot.
+        List<String> unused = new ArrayList<>();
+        if (!counting) for (String p : apps) if (use.getOrDefault(p, 0) < 600 && tips.get(p) == null) unused.add(p);
+        if (unused.size() < 2) unused.clear();
+        LinearLayout column = new LinearLayout(c);
+        column.setOrientation(LinearLayout.VERTICAL);
+        place(v, column, 1186, 280, 638, 716);
+        for (String p : apps) {
+            if (unused.contains(p)) continue;
+            LinearLayout.LayoutParams cl = new LinearLayout.LayoutParams(-1, -2);
+            cl.bottomMargin = h.px(10);
+            column.addView(valueCard(p, use.getOrDefault(p, 0), price.get(p), counting, what.get(p)), cl);
         }
+        if (!unused.isEmpty()) column.addView(unusedCard(unused, price), new LinearLayout.LayoutParams(-1, -2));
         TextView foot = h.text(15, regular, 0x99FFFFFF);
-        foot.setText("Prices are the theme's app_prices, or the usual UK price where it gives none. Nothing is cancelled for you: it only tells you.");
+        foot.setText("Prices and in-app purchases are the theme's app_prices and app_plans, or the usual UK price. Nothing is cancelled for you: it only tells you.");
         place(v, foot, 96, 1000, 1600, 30);
         return v;
     }
@@ -464,24 +547,64 @@ final class ViewingPanel {
     }
 
     /** A paid app: its mark and verdict, what it costs an hour of use, and a tip or what was watched on it. */
-    private View valueCard(String p, int s, Plan plan, boolean counting, Map<String, Integer> on) {
-        double cost = plan.monthly();
+    private static String day(LocalDate d) {
+        return d.format(DateTimeFormatter.ofPattern(d.getYear() == LocalDate.now().getYear() ? "d MMM" : "d MMM yyyy", Locale.UK));
+    }
+
+    /** "in 5 days", "tomorrow", "today". */
+    private static String in(long days) {
+        return days == 0 ? "today" : days == 1 ? "tomorrow" : "in " + days + " days";
+    }
+
+    private static final int RED = 0xFFFF5A5A, GREEN = 0xFF3DDC84;
+
+    /** The verdict's chip: its words on its colour. */
+    private TextView chip(String word, int colour) {
+        TextView chip = h.text(13, semi, colour == YELLOW ? NAVY : colour == GREEN ? 0xFF06331B : Color.WHITE);
+        chip.setText(word);
+        chip.setLetterSpacing(0.08f);
+        chip.setPadding(h.px(10), h.px(4), h.px(10), h.px(4));
+        chip.setBackground(h.fill(6, colour));
+        return chip;
+    }
+
+    private TextView small(String text, boolean bold, int colour) {
+        TextView t = h.text(14, bold ? semi : regular, colour);
+        t.setText(text);
+        t.setSingleLine(true);
+        t.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        return t;
+    }
+
+    private LinearLayout.LayoutParams under(int top) {
+        LinearLayout.LayoutParams l = new LinearLayout.LayoutParams(-1, -2);
+        l.topMargin = h.px(top);
+        return l;
+    }
+
+    /**
+     * A paid app: its mark and verdict and what it costs an hour of use, all its plans still paid for counted (the
+     * app's own and its in-app purchases, each with its price and when it renews or ends), what was paid in the last
+     * year where known, and a tip: a renewal or an end coming up, a series coming, or what was watched.
+     */
+    private View valueCard(String p, int s, List<Plan> plans, boolean counting, Map<String, Integer> on) {
+        double cost = monthly(plans);
         double hour = per(cost, s);
-        LocalDate renews = plan.next();
-        long days = renews == null ? -1 : java.time.temporal.ChronoUnit.DAYS.between(LocalDate.now(), renews);
+        List<Plan> live = new ArrayList<>();
+        for (Plan pl : plans) if (pl.active()) live.add(pl);
         String word;
         int colour;
         if (counting) { word = "COUNTING"; colour = 0x59FFFFFF; }
-        else if (s < 600) { word = "NOT USED"; colour = 0xFFFF5A5A; }
-        else if (hour < 1) { word = "BEST VALUE"; colour = 0xFF3DDC84; }
-        else if (hour < 2) { word = "GOOD VALUE"; colour = 0xFF3DDC84; }
+        else if (s < 600) { word = "NOT USED"; colour = RED; }
+        else if (hour < 1) { word = "BEST VALUE"; colour = GREEN; }
+        else if (hour < 2) { word = "GOOD VALUE"; colour = GREEN; }
         else if (hour < 4) { word = "OK"; colour = YELLOW; }
-        else { word = "HARDLY USED"; colour = 0xFFFF5A5A; }
+        else { word = "HARDLY USED"; colour = RED; }
         LinearLayout card = new LinearLayout(c);
         card.setOrientation(LinearLayout.VERTICAL);
-        card.setPadding(h.px(22), h.px(10), h.px(22), h.px(8));
+        card.setPadding(h.px(22), h.px(10), h.px(22), h.px(10));
         GradientDrawable g = h.fill(20, CARD);
-        g.setStroke(h.px(colour == 0xFFFF5A5A ? 2 : 1), colour == 0xFFFF5A5A ? colour : EDGE);
+        g.setStroke(h.px(colour == RED ? 2 : 1), colour == RED ? colour : EDGE);
         card.setBackground(g);
         LinearLayout top = new LinearLayout(c);
         top.setGravity(Gravity.CENTER_VERTICAL);
@@ -495,35 +618,56 @@ final class ViewingPanel {
         sl.leftMargin = h.px(8);
         sl.rightMargin = h.px(14);
         top.addView(sm, sl);
-        TextView chip = h.text(13, semi, colour == YELLOW ? NAVY : colour == 0xFF3DDC84 ? 0xFF06331B : Color.WHITE);
-        chip.setText(word);
-        chip.setLetterSpacing(0.08f);
-        chip.setPadding(h.px(10), h.px(4), h.px(10), h.px(4));
-        chip.setBackground(h.fill(6, colour));
-        top.addView(chip);
+        top.addView(chip(word, colour));
         card.addView(top);
+
+        // How long, and what it costs: one plan on the line itself; several as the month's total, then one line each.
+        boolean several = live.size() > 1;
+        Plan only = live.isEmpty() ? plans.get(0) : live.get(0);
+        LocalDate onlyNext = only.next();
         TextView hours = h.text(16, regular, 0xCCFFFFFF);
-        hours.setText(hm(s) + (counting ? " so far" : " in 30 days") + " for " + plan.price()
-                + (renews == null ? "" : " · renews " + renews.format(DateTimeFormatter.ofPattern(
-                renews.getYear() == LocalDate.now().getYear() ? "d MMM" : "d MMM yyyy", Locale.UK))));
+        hours.setText(hm(s) + (counting ? " so far" : " in 30 days") + (several
+                ? " · £" + money(cost) + " a month for " + live.size() + " plans"
+                : " for " + only.price() + (onlyNext == null ? "" : (only.renews ? " · renews " : " · ends ") + day(onlyNext))));
         hours.setSingleLine(true);
         hours.setEllipsize(android.text.TextUtils.TruncateAt.END);
-        LinearLayout.LayoutParams hl = new LinearLayout.LayoutParams(-1, -2);
-        hl.topMargin = h.px(4);
-        card.addView(hours, hl);
+        card.addView(hours, under(4));
+        if (several) {
+            for (Plan pl : live) {
+                LocalDate d = pl.next();
+                String when = d == null ? (pl.renews ? " · renews monthly" : "") : (pl.renews ? " · renews " : " · ends ") + day(d);
+                card.addView(small("•  " + (pl.name == null ? appName(p) : pl.name) + " · " + pl.price() + when, false, 0xCCFFFFFF), under(3));
+            }
+        }
+        double year = paidInYear(plans);
+        boolean bought = false;
+        for (Plan pl : plans) if (!pl.renews) bought = true;
+        if (bought && year > 0) card.addView(small("£" + money(year) + " paid in the last 12 months", false, 0x99FFFFFF), under(3));
+
+        // The tip: the soonest renewal or end in the next fortnight comes first.
         String tip = counting ? null : tips.get(p);
         boolean poor = !counting && (hour >= 4 || s < 600);
-        String when = days == 0 ? "today" : days == 1 ? "tomorrow" : "in " + days + " days";
+        Plan soon = null;
+        long soonDays = Long.MAX_VALUE;
+        for (Plan pl : live) {
+            LocalDate d = pl.next();
+            if (d == null) continue;
+            long dd = java.time.temporal.ChronoUnit.DAYS.between(LocalDate.now(), d);
+            if (dd >= 0 && dd <= (pl.renews ? 10 : 14) && dd < soonDays) { soon = pl; soonDays = dd; }
+        }
+        String what = soon == null ? null : soon.name == null ? appName(p) : soon.name;
         String advice;
-        if (days >= 0 && days <= 10 && poor && tip == null) {
+        if (soon != null && !soon.renews) {
+            advice = what + " ends " + in(soonDays) + (poor ? " · let it go, it is hardly used" : " · renew it if you still watch it");
+        } else if (soon != null && poor && tip == null) {
             // Little used and renewing soon: the moment to stop it.
-            advice = "Renews " + when + " · cancel before then to save " + plan.price().replace(" a ", " this ");
+            advice = what + " renews " + in(soonDays) + " · cancel before then to save " + soon.price().replace(" a ", " this ");
         } else if (tip != null) {
             advice = poor ? "Tip · " + tip + ": keep it till then, pause after" : "Coming · " + tip;
         } else if (poor) {
             advice = "Tip · Nothing you watch there is coming soon: pausing it saves £" + money(cost) + " a month";
-        } else if (days >= 0 && days <= 10) {
-            advice = "Renews " + when + " · £" + money(plan.amount) + ", worth keeping";
+        } else if (soon != null) {
+            advice = what + " renews " + in(soonDays) + " · £" + money(soon.amount) + ", worth keeping";
         } else {
             advice = null;
         }
@@ -535,16 +679,53 @@ final class ViewingPanel {
             if (list.size() > 2) b.append(" and ").append(list.size() - 2).append(" more");
             advice = b.toString();
         }
-        if (advice != null) {
-            TextView t = h.text(14, semi, Color.WHITE);
-            t.setText(advice);
-            t.setSingleLine(true);
-            t.setEllipsize(android.text.TextUtils.TruncateAt.END);
-            LinearLayout.LayoutParams al = new LinearLayout.LayoutParams(-1, -2);
-            al.topMargin = h.px(4);
-            card.addView(t, al);
-        }
+        if (advice != null) card.addView(small(advice, true, Color.WHITE), under(5));
         return card;
+    }
+
+    /** The apps not opened in 30 days, together: their marks, what they cost between them, and what pausing saves. */
+    private View unusedCard(List<String> apps, Map<String, List<Plan>> price) {
+        LinearLayout card = new LinearLayout(c);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setPadding(h.px(22), h.px(12), h.px(22), h.px(12));
+        GradientDrawable g = h.fill(20, CARD);
+        g.setStroke(h.px(2), RED);
+        card.setBackground(g);
+        LinearLayout top = new LinearLayout(c);
+        top.setGravity(Gravity.CENTER_VERTICAL);
+        double sum = 0;
+        StringBuilder each = new StringBuilder();
+        for (String p : apps) {
+            View mark = appMark(p);
+            LinearLayout.LayoutParams ml = new LinearLayout.LayoutParams(-2, h.px(26));
+            ml.rightMargin = h.px(18);
+            top.addView(mark, ml);
+            double m = monthly(price.get(p));
+            sum += m;
+            each.append(each.length() == 0 ? "" : " · ").append(appName(p)).append(" £").append(money(m));
+        }
+        top.addView(new View(c), new LinearLayout.LayoutParams(0, 1, 1f));
+        top.addView(chip("NOT USED", RED));
+        card.addView(top);
+        TextView line = h.text(16, regular, 0xCCFFFFFF);
+        line.setText("Not opened in 30 days · " + each + " a month");
+        line.setSingleLine(true);
+        line.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        card.addView(line, under(6));
+        String n = apps.size() == 2 ? "both" : apps.size() == 3 ? "all three" : "all " + apps.size();
+        card.addView(small("Tip · Nothing you watch on them is coming soon: pausing " + n + " saves £" + money(sum) + " a month", true, Color.WHITE), under(5));
+        return card;
+    }
+
+    /** An app's name ("Debrid Stream" for DebridStream). */
+    private String appName(String pkg) {
+        for (String[] p : PAID) if (p[0].equals(pkg)) return p[1];
+        try {
+            PackageManager pm = c.getPackageManager();
+            return pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString();
+        } catch (Exception e) {
+            return pkg;
+        }
     }
 
     private static double per(double price, int secs) {
