@@ -92,38 +92,26 @@ final class EpisodeDice {
 
     // ---- TV shows' tab: the moods ---------------------------------------------------------------------------------
 
-    /** The moods as posters (each its first show's that is on the TV's apps); OK on one spins for it. */
+    /**
+     * The moods as cards of their own (MoodArt: each mood's colours, its sign and its name), not a show's poster, which
+     * looked like a spin for that one show. OK on one spins for it.
+     */
     static PagesV2.Row row(HomeV2 h) {
         List<PagesV2.Title> items = new ArrayList<>();
         for (int i = 0; i < MOODS.length; i++) {
-            JSONObject face = null;
-            for (String show : MOODS[i][2].split(";")) {
-                int id = id(h, show);
-                JSONObject d = id > 0 ? YourShows.details(h.tmdbKey, id) : null;
-                if (d != null && HomeV2.onYourApps(h, YourShows.gb(d)) != null) { face = d; break; }
-            }
-            if (face == null) continue;
-            String poster = face.optString("poster_path", ""), back = face.optString("backdrop_path", "");
-            if (poster.isEmpty() || "null".equals(poster)) continue;
             PagesV2.Title t = new PagesV2.Title();
             t.title = MOODS[i][0];
             t.overview = MOODS[i][1] + ". OK spins for an episode, from the shows on your streaming apps.";
             t.year = "";
             t.what = "Surprise me";
             t.tv = true;
-            t.poster = "https://image.tmdb.org/t/p/w342" + poster;
-            t.backdrop = !back.isEmpty() && !"null".equals(back) ? "https://image.tmdb.org/t/p/w1280" + back : null;
-            t.badge = MOODS[i][0].toUpperCase(Locale.UK);
-            t.badgeBg = YELLOW;
-            t.badgeFg = NAVY;
-            t.foot = "🎲  Spin for one";
+            t.poster = "mood:tv:" + i + ":p";
+            t.backdrop = "mood:tv:" + i + ":w";
             int m = i;
             t.ok = () -> open(h, m);
             items.add(t);
         }
-        PagesV2.Row r = PagesV2.row(null, null, false, items);
-        r.empty = "Surprise me picks episodes from the shows on your streaming apps: none of them is on yet.";
-        return r;
+        return PagesV2.row(null, null, false, items);
     }
 
     /** A show's TMDB id from its name and first year ("Friends|1994"), looked up once and kept. 0 when not found. */

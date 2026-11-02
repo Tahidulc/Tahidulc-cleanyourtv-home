@@ -65,30 +65,26 @@ final class Surprise {
 
     // ---- Movies' tab: the moods -----------------------------------------------------------------------------------
 
-    /** The moods as posters (each the most popular film for it on the TV's apps); OK on one spins for it. */
+    /**
+     * The moods as cards of their own (MoodArt: each mood's colours, its sign and its name), not a film's poster, which
+     * looked like a spin for that one film. OK on one spins for it.
+     */
     static PagesV2.Row row(HomeV2 h) {
         List<PagesV2.Title> items = new ArrayList<>();
         for (int i = 0; i < MOODS.length; i++) {
-            List<PagesV2.Title> got = PagesV2.tmdb(h.tmdbKey, query(h.a, i, 0, false, 1), false);
             PagesV2.Title t = new PagesV2.Title();
             t.title = MOODS[i][0];
             t.overview = MOODS[i][1] + ", from the films on your streaming apps. OK spins for one you haven't seen.";
             t.year = "";
             t.what = "Surprise me";
             t.tv = false;
-            if (!got.isEmpty()) { t.poster = got.get(0).poster; t.backdrop = got.get(0).backdrop; }
-            if (t.poster == null) continue;
-            t.badge = MOODS[i][0].toUpperCase(Locale.UK);
-            t.badgeBg = YELLOW;
-            t.badgeFg = NAVY;
-            t.foot = "🎲  Spin for one";
+            t.poster = "mood:mv:" + i + ":p";
+            t.backdrop = "mood:mv:" + i + ":w";
             int m = i;
             t.ok = () -> open(h, m);
             items.add(t);
         }
-        PagesV2.Row r = PagesV2.row(null, null, false, items);
-        r.empty = "Surprise me picks from the films on your streaming apps: none is installed yet.";
-        return r;
+        return PagesV2.row(null, null, false, items);
     }
 
     /** TMDB's discover for a mood on the TV's apps; who 2 is the family (PG at most); within the time to bed if asked. */

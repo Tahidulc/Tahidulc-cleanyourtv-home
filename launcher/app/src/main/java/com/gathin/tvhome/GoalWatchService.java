@@ -1637,6 +1637,26 @@ public class GoalWatchService extends Service {
                 }
             });
         }
+        if (intent != null && intent.hasExtra("test_moodart")) {
+            // adb only: Surprise me's mood cards drawn into the app's folder (moodart-tv-0-p.png …), to look at them
+            // without the screen on.
+            io.execute(() -> {
+                for (String kind : new String[]{"tv", "mv"}) {
+                    for (int i = 0; i < (kind.equals("tv") ? EpisodeDice.MOODS.length : Surprise.MOODS.length); i++) {
+                        for (String shape : new String[]{"p", "w"}) {
+                            android.graphics.Bitmap b = MoodArt.draw(this, "mood:" + kind + ":" + i + ":" + shape, shape.equals("p") ? 420 : 960);
+                            if (b == null) continue;
+                            try (java.io.FileOutputStream out = new java.io.FileOutputStream(new java.io.File(Config.dir(this),
+                                    "moodart-" + kind + "-" + i + "-" + shape + ".png"))) {
+                                b.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out);
+                            } catch (Exception ignored) {
+                                // that one left out
+                            }
+                        }
+                    }
+                }
+            });
+        }
         if (intent != null && intent.hasExtra("test_watch")) {
             // Continue Watching samples: a film part-watched in Netflix, an episode in Debrid Stream ("clear" empties it).
             if ("clear".equals(intent.getStringExtra("test_watch"))) WatchHistory.test(this, null, null, null, 0, 0);

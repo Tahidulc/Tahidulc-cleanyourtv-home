@@ -2919,6 +2919,8 @@ final class HomeV2 {
     private Bitmap fetch(String url, int width) {
         if (url.endsWith("#yt")) return video(url.substring(0, url.length() - 3), width);
         if (url.startsWith("crest:")) return crests(url.substring(6), width);
+        // Surprise me's moods: drawn here, not fetched.
+        if (url.startsWith("mood:")) return MoodArt.draw(a, url, width);
         try {
             byte[] data;
             if (url.startsWith("http")) {
