@@ -147,7 +147,7 @@ final class MatchDay {
         teams.addView(awayCrest, ac);
         // The rows packed a little tighter than they were, so the buttons end higher and For You's heading under them
         // has room to breathe.
-        place(teams, 0, 56, 1320, 100);
+        place(teams, 0, 54, 1320, 100);
 
         LinearLayout third = row();
         countdown = row();
@@ -188,7 +188,7 @@ final class MatchDay {
         third.addView(form, gap(30));
         events = row();
         third.addView(events);
-        place(third, 0, 162, 1320, 58);
+        place(third, 0, 158, 1320, 58);
 
         LinearLayout fourth = row();
         channelView = new ImageView(c);
@@ -200,7 +200,7 @@ final class MatchDay {
         fourth.addView(channelText, gap(14));
         line = h.text(19, regular, 0xE6FFFFFF);
         fourth.addView(line, gap(14));
-        place(fourth, 0, 226, 1320, 36);
+        place(fourth, 0, 220, 1320, 36);
 
         buttons = row();
         // The lit button grows a little: drawn past its row and the panel rather than clipped at the edge.
@@ -208,7 +208,8 @@ final class MatchDay {
         buttons.setClipToPadding(false);
         panel.setClipChildren(false);
         panel.setClipToPadding(false);
-        place(buttons, 0, 266, 1320, 56);
+        // A clear gap under the channel's logo, the buttons still well above For You's heading.
+        place(buttons, 0, 270, 1320, 56);
 
         chip = h.text(17, semi, Color.WHITE);
         chip.setLetterSpacing(0.06f);
