@@ -84,7 +84,14 @@ final class MatchDay {
     private final HomeV2 h;
     private final Context c;
     final FrameLayout panel;
-    final TextView chip;
+    /** Match Day tucked away by For You's heading while the focus is elsewhere: Up (or a minute idle) brings it back. */
+    final LinearLayout chip;
+    private TextView chipKey, chipText;
+    private ImageView chipHome, chipAway;
+    private View chipLive;
+    /** Called when the game kicks off: Home brings Match Day back up if it is tucked away. */
+    Runnable kickedOff;
+    private boolean panelShown, chipShown;
     /** The two clubs' colours behind the crests, where Sky's guide has no picture for the game. */
     final Backdrop backdrop;
     private static final String PRIME = "com.amazon.amazonvideo.livingroom";
@@ -213,11 +220,46 @@ final class MatchDay {
         // The channel's logo as wide as the Watch button under it, both ends in line.
         buttons.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, orr, ob) -> alignLogo());
 
-        chip = h.text(17, semi, Color.WHITE);
-        chip.setLetterSpacing(0.06f);
+        // The tucked-away Match Day: the Up key drawn as a keycap, MATCH DAY in gold, both crests either side of the
+        // game, a red dot when it is live; glass with a gold edge, plain to see beside For You's heading.
+        chip = new LinearLayout(c);
         chip.setGravity(Gravity.CENTER_VERTICAL);
-        chip.setPadding(h.px(16), 0, h.px(18), 0);
-        chip.setBackground(h.fill(18, 0x33FFFFFF));
+        chip.setPadding(h.px(6), 0, h.px(18), 0);
+        GradientDrawable cg = h.fill(20, 0x2EFFFFFF);
+        cg.setStroke(Math.max(1, h.px(1.5f)), 0x8CFFD04D);
+        chip.setBackground(cg);
+        chipKey = h.text(13, semi, 0xFF12178A);
+        chipKey.setText("▲");
+        chipKey.setGravity(Gravity.CENTER);
+        chipKey.setBackground(h.fill(14, Color.WHITE));
+        chip.addView(chipKey, new LinearLayout.LayoutParams(h.px(28), h.px(28)));
+        TextView md = h.text(14, semi, 0xFFFFD04D);
+        md.setText("MATCH DAY");
+        md.setLetterSpacing(0.16f);
+        LinearLayout.LayoutParams mdl = new LinearLayout.LayoutParams(-2, -2);
+        mdl.leftMargin = h.px(12);
+        mdl.rightMargin = h.px(12);
+        chip.addView(md, mdl);
+        chipLive = new View(c);
+        GradientDrawable dot = new GradientDrawable();
+        dot.setShape(GradientDrawable.OVAL);
+        dot.setColor(0xFFE3061B);
+        chipLive.setBackground(dot);
+        LinearLayout.LayoutParams dl = new LinearLayout.LayoutParams(h.px(10), h.px(10));
+        dl.rightMargin = h.px(10);
+        chip.addView(chipLive, dl);
+        chipHome = new ImageView(c);
+        chipHome.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        chip.addView(chipHome, new LinearLayout.LayoutParams(h.px(26), h.px(26)));
+        chipText = h.text(17, semi, Color.WHITE);
+        chipText.setLetterSpacing(0.04f);
+        chipText.setSingleLine(true);
+        LinearLayout.LayoutParams ctl = new LinearLayout.LayoutParams(-2, -2);
+        ctl.leftMargin = ctl.rightMargin = h.px(10);
+        chip.addView(chipText, ctl);
+        chipAway = new ImageView(c);
+        chipAway.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        chip.addView(chipAway, new LinearLayout.LayoutParams(h.px(26), h.px(26)));
         chip.setVisibility(View.GONE);
     }
 
@@ -306,12 +348,14 @@ final class MatchDay {
                     android.util.Log.i("MatchDay", p == null ? (failed ? "read failed: no game" : "no game today")
                             : "game " + p.g.id + " rank " + p.rank);
                     boolean was = active();
+                    boolean kickOff = pick != null && p != null && pick.g.id.equals(p.g.id) && pick.g.state == 1 && p.g.state == 0;
                     String before = pick == null ? null : pick.g.id + pick.g.state;
                     pick = p;
                     if (p != null) bind(p);
                     String after = p == null ? null : p.g.id + p.g.state;
                     boolean differs = before == null ? after != null : !before.equals(after);
                     if (changed != null && (was != active() || differs)) changed.run();
+                    if (kickOff && kickedOff != null) kickedOff.run();
                 });
             });
             long soon = pick != null && (pick.g.state == 0 || pick.g.kickoff - System.currentTimeMillis() < 20 * 60_000L) || readFailed
@@ -682,8 +726,13 @@ final class MatchDay {
         buttons(p);
         // The buttons were made again: their pills (and the lit one) back at once, not only when the focus next moves.
         if (painted) paint(lastFocused, lastIdx, lastChip);
-        chip.setText("▲  MATCH DAY  ·  " + g.home + (live || done ? "  " + g.homeScore + "–" + g.awayScore + "  " : " v ") + g.away
-                + (g.state == 1 ? "  ·  " + ko : live ? "  ·  " + ScoresTicker.liveClock(g) : ""));
+        chipText.setText(g.home + (live || done ? "  " + g.homeScore + "–" + g.awayScore + "  " : "  v  ") + g.away
+                + (g.state == 1 ? "   " + ko : live ? "   " + ScoresTicker.liveClock(g) : ""));
+        chipHome.setImageBitmap(p.home);
+        chipAway.setImageBitmap(p.away);
+        chipHome.setVisibility(p.home != null ? View.VISIBLE : View.GONE);
+        chipAway.setVisibility(p.away != null ? View.VISIBLE : View.GONE);
+        chipLive.setVisibility(live ? View.VISIBLE : View.GONE);
     }
 
     /** The two names made smaller together until the line fits beside the crests and the score. */
@@ -994,9 +1043,30 @@ final class MatchDay {
         lastChip = chipAllowed;
         i = Math.max(0, Math.min(i, buttonViews.size() - 1));
         boolean on = focused && active();
+        boolean chipOn = !focused && chipAllowed && active();
+        // Coming back: Match Day slides down into place and fades up, its backdrop with it; going: the chip slides in
+        // from the right by For You's heading, its Up key nudging once, to say where it went and how to bring it back.
+        if (on && !panelShown) {
+            panel.setAlpha(0f);
+            panel.setTranslationY(-h.px(14));
+            panel.animate().alpha(1f).translationY(0).setDuration(320).setInterpolator(HomeV2.SKY).start();
+            backdrop.setAlpha(0f);
+            backdrop.animate().alpha(1f).setDuration(420).start();
+        }
+        if (chipOn && !chipShown) {
+            chip.setAlpha(0f);
+            chip.setTranslationX(h.px(30));
+            chip.animate().alpha(1f).translationX(0).setDuration(320).setInterpolator(HomeV2.SKY).start();
+            chipKey.setScaleX(1f);
+            chipKey.setScaleY(1f);
+            chipKey.animate().scaleX(1.25f).scaleY(1.25f).setStartDelay(360).setDuration(160)
+                    .withEndAction(() -> chipKey.animate().scaleX(1f).scaleY(1f).setStartDelay(0).setDuration(220).start()).start();
+        }
+        panelShown = on;
+        chipShown = chipOn;
         panel.setVisibility(on ? View.VISIBLE : View.GONE);
         backdrop.setVisibility(on && pick.picture == null ? View.VISIBLE : View.GONE);
-        chip.setVisibility(!focused && chipAllowed && active() ? View.VISIBLE : View.GONE);
+        chip.setVisibility(chipOn ? View.VISIBLE : View.GONE);
         for (int k = 0; k < buttonViews.size(); k++) {
             View b = buttonViews.get(k);
             boolean lit = on && k == i;

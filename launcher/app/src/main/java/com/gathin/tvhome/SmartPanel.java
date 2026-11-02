@@ -65,6 +65,10 @@ final class SmartPanel {
     private boolean open;
     private final List<Light> lights = new ArrayList<>();
     private static List<TuyaCloud.Light> lastTuya;
+    /** Tuya's lights not read yet and none kept from before: placeholders shimmer where the tiles will be. */
+    private boolean loading;
+    /** A key pressed since the card opened: the focus is the viewer's, not moved for them when the lights arrive. */
+    private boolean touched;
     /** The rows the remote moves through: cameras, the lights three to a row, the brightness. */
     private final List<List<View>> rows = new ArrayList<>();
     private int row, col;
@@ -83,6 +87,7 @@ final class SmartPanel {
     void show() {
         if (open) return;
         open = true;
+        touched = false;
         overlay = new FrameLayout(h.a);
         dim = new View(h.a);
         dim.setBackgroundColor(0x8C050816);
@@ -102,6 +107,15 @@ final class SmartPanel {
         body.setClipToPadding(false);
         body.setPadding(h.px(32), h.px(28), h.px(32), h.px(28));
         card.addView(body, new FrameLayout.LayoutParams(-1, -2));
+        // The lights' box growing or shrinking as they arrive: the card's height eases to fit, the rest sliding with it
+        // (from just after the card has opened, so its first layout is not animated from nothing).
+        FrameLayout o = overlay;
+        LinearLayout b = body;
+        card.postDelayed(() -> {
+            if (overlay != o) return;
+            b.setLayoutTransition(changing());
+            o.setLayoutTransition(changing());
+        }, 340);
         FrameLayout.LayoutParams cl = new FrameLayout.LayoutParams(h.px(660), -2, Gravity.TOP | Gravity.END);
         cl.rightMargin = h.px(78);
         cl.topMargin = h.px(196);
@@ -117,6 +131,19 @@ final class SmartPanel {
         card.setPivotY(0);
         card.animate().alpha(1f).scaleX(1f).scaleY(1f).translationY(0).setDuration(320).setInterpolator(HomeV2.SKY).start();
         readTuya();
+    }
+
+    /** Only layout changes animate (a size or place changing), not views coming and going. */
+    private static android.animation.LayoutTransition changing() {
+        android.animation.LayoutTransition t = new android.animation.LayoutTransition();
+        t.disableTransitionType(android.animation.LayoutTransition.APPEARING);
+        t.disableTransitionType(android.animation.LayoutTransition.DISAPPEARING);
+        t.disableTransitionType(android.animation.LayoutTransition.CHANGE_APPEARING);
+        t.disableTransitionType(android.animation.LayoutTransition.CHANGE_DISAPPEARING);
+        t.enableTransitionType(android.animation.LayoutTransition.CHANGING);
+        t.setDuration(android.animation.LayoutTransition.CHANGING, 260);
+        t.setInterpolator(android.animation.LayoutTransition.CHANGING, HomeV2.SKY);
+        return t;
     }
 
     void hide() {
@@ -334,11 +361,19 @@ final class SmartPanel {
     /** Tuya's lights as last read (shown at once), else the theme's rooms for Google Assistant with what was last set. */
     private void loadLights() {
         lights.clear();
+        loading = false;
+        if (lastTuya == null) lastTuya = cachedTuya();
         List<TuyaCloud.Light> t = lastTuya;
         if (t != null && TuyaCloud.configured(h.a)) {
+            // The lights as last read (kept across restarts), at once; Tuya's fresh answer updates them in place.
             for (TuyaCloud.Light x : t) lights.add(fromTuya(x));
             livingFirst(lights);
             source.setText("Tuya");
+            return;
+        }
+        if (TuyaCloud.configured(h.a)) {
+            loading = true;
+            source.setText("Reading your lights…");
             return;
         }
         SharedPreferences p = prefs();
@@ -388,26 +423,113 @@ final class SmartPanel {
                 if (!open) return;
                 if (read == null) {
                     source.setText(lastTuya == null ? "Tuya not reachable" : "Tuya · not refreshed");
+                    if (loading) { loading = false; fillLights(); paint(); }
                     return;
                 }
                 lastTuya = read;
-                String pickedName = picked == null ? null : picked.name;
-                lights.clear();
-                for (TuyaCloud.Light x : read) lights.add(fromTuya(x));
-                livingFirst(lights);
+                saveTuya(read);
+                List<Light> fresh = new ArrayList<>();
+                for (TuyaCloud.Light x : read) fresh.add(fromTuya(x));
+                livingFirst(fresh);
                 source.setText("Tuya · " + read.size() + (read.size() == 1 ? " light" : " lights"));
+                if (sameLights(lights, fresh)) {
+                    // The same lights: their states brought up to date on the tiles already there, nothing redrawn.
+                    for (int i = 0; i < fresh.size(); i++) {
+                        Light l = lights.get(i), n = fresh.get(i);
+                        l.t = n.t;
+                        l.on = n.on;
+                        l.known = true;
+                        l.online = n.online;
+                        l.level = n.level;
+                        look(l);
+                    }
+                    showLevel();
+                    return;
+                }
+                // Different lights (or the first answer): the old tiles fade, the new ones come in one after another.
+                boolean wasEmpty = lights.isEmpty();
+                String pickedName = picked == null ? null : picked.name;
                 int lr = lightsRow();
                 int at = row >= lr && lr >= 0 ? (row - lr) * 3 + col : -1;
-                fillLights();
-                for (Light l : lights) if (l.name.equals(pickedName)) picked = l;
-                if (at >= 0) {
-                    int n = Math.min(at, lights.size() - 1);
-                    row = lightsRow() + Math.max(0, n) / 3;
-                    col = Math.max(0, n) % 3;
-                }
-                paint();
+                lightBox.animate().cancel();
+                lightBox.animate().alpha(0f).setDuration(wasEmpty ? 160 : 120).withEndAction(() -> {
+                    if (!open) return;
+                    loading = false;
+                    lights.clear();
+                    lights.addAll(fresh);
+                    fillLights();
+                    for (Light l : lights) if (l.name.equals(pickedName)) picked = l;
+                    if (!lights.isEmpty() && (at >= 0 || (!touched && wasEmpty))) {
+                        int n = Math.max(0, Math.min(at, lights.size() - 1));
+                        row = lightsRow() + n / 3;
+                        col = n % 3;
+                        picked = lights.get(n);
+                        showLevel();
+                    }
+                    paint();
+                    lightBox.setAlpha(1f);
+                    for (int i = 0; i < lights.size(); i++) {
+                        View t = lights.get(i).tile;
+                        t.setAlpha(0f);
+                        t.setTranslationY(h.px(12));
+                        t.animate().alpha(1f).translationY(0).setStartDelay(i * 45L).setDuration(260).setInterpolator(HomeV2.SKY).start();
+                    }
+                }).start();
             });
         });
+    }
+
+    /** The same lights, in the same order. */
+    private static boolean sameLights(List<Light> a, List<Light> b) {
+        if (a.size() != b.size() || a.isEmpty()) return false;
+        for (int i = 0; i < a.size(); i++) {
+            if (!a.get(i).name.equals(b.get(i).name) || a.get(i).t == null) return false;
+        }
+        return true;
+    }
+
+    /** Tuya's lights as last read, kept on the TV (names, ids and states, no keys), for the next time Home starts. */
+    private void saveTuya(List<TuyaCloud.Light> list) {
+        try {
+            org.json.JSONArray a = new org.json.JSONArray();
+            for (TuyaCloud.Light x : list) {
+                JSONObject o = new JSONObject();
+                o.put("id", x.id).put("name", x.name).put("category", x.category).put("switch", x.switchCode)
+                        .put("bright", x.brightCode).put("online", x.online).put("on", x.on).put("level", x.level)
+                        .put("min", x.min).put("max", x.max);
+                a.put(o);
+            }
+            prefs().edit().putString("tuya_lights", a.toString()).apply();
+        } catch (Exception ignored) {
+            // read again next time
+        }
+    }
+
+    private List<TuyaCloud.Light> cachedTuya() {
+        String s = prefs().getString("tuya_lights", null);
+        if (s == null) return null;
+        try {
+            org.json.JSONArray a = new org.json.JSONArray(s);
+            List<TuyaCloud.Light> out = new ArrayList<>();
+            for (int i = 0; i < a.length(); i++) {
+                JSONObject o = a.getJSONObject(i);
+                TuyaCloud.Light x = new TuyaCloud.Light();
+                x.id = o.optString("id", null);
+                x.name = o.optString("name", "Light");
+                x.category = o.isNull("category") ? null : o.optString("category", null);
+                x.switchCode = o.isNull("switch") ? null : o.optString("switch", null);
+                x.brightCode = o.isNull("bright") ? null : o.optString("bright", null);
+                x.online = o.optBoolean("online", true);
+                x.on = o.optBoolean("on", false);
+                x.level = o.optInt("level", -1);
+                x.min = o.optInt("min", 10);
+                x.max = o.optInt("max", 1000);
+                if (x.id != null) out.add(x);
+            }
+            return out.isEmpty() ? null : out;
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     /** The light tiles, three to a row, and the remote's rows for them. */
@@ -416,7 +538,16 @@ final class SmartPanel {
         // Drop the old light rows and the slider row; the cameras' row stays.
         while (rows.size() > (lr < 0 ? rowsBeforeLights() : lr)) rows.remove(rows.size() - 1);
         lightBox.removeAllViews();
-        if (lights.isEmpty()) {
+        if (lights.isEmpty() && loading) {
+            // Three tiles' worth of shimmer while Tuya is first read.
+            LinearLayout sk = new LinearLayout(h.a);
+            for (int i = 0; i < 3; i++) {
+                LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(0, -1, 1f);
+                if (i > 0) sp.leftMargin = h.px(12);
+                sk.addView(new Shimmer(h.a, i * 140L), sp);
+            }
+            lightBox.addView(sk, new LinearLayout.LayoutParams(-1, h.px(128)));
+        } else if (lights.isEmpty()) {
             TextView none = h.text(18, h.regular, 0xB3FFFFFF);
             none.setText("No lights found");
             lightBox.addView(none);
@@ -610,6 +741,7 @@ final class SmartPanel {
             return true;
         }
         if (code == KeyEvent.KEYCODE_HOME) return false;
+        if (e.getAction() == KeyEvent.ACTION_DOWN) touched = true;
         if (rows.isEmpty()) return true;
         View on = current();
         boolean onSlider = on == slider;
@@ -683,25 +815,91 @@ final class SmartPanel {
     /** A tile's on/off switch: a dark track with the knob to the right when on, faint glass with it to the left off. */
     private final class Switch extends View {
         private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private boolean on, low;
+        private final RectF track = new RectF();
+        private boolean on, low, ever;
+        /** The knob's way across: 0 off (left) to 1 on (right), sliding between when it changes. */
+        private float pos;
+        private android.animation.ValueAnimator slide;
 
         Switch(Context c) {
             super(c);
         }
 
         void set(boolean on, boolean low) {
+            boolean was = this.on;
             this.on = on;
             this.low = low;
-            invalidate();
+            if (slide != null) slide.cancel();
+            if (!ever || was == on || !isAttachedToWindow()) {
+                ever = true;
+                pos = on ? 1f : 0f;
+                invalidate();
+                return;
+            }
+            slide = android.animation.ValueAnimator.ofFloat(pos, on ? 1f : 0f);
+            slide.setDuration(200);
+            slide.setInterpolator(HomeV2.SKY);
+            slide.addUpdateListener(a -> { pos = (float) a.getAnimatedValue(); invalidate(); });
+            slide.start();
         }
 
         @Override protected void onDraw(Canvas c) {
             float w = getWidth(), ht = getHeight(), r = ht / 2f, knob = r - h.px(4);
+            android.animation.ArgbEvaluator mix = new android.animation.ArgbEvaluator();
             paint.setStyle(Paint.Style.FILL);
-            paint.setColor(on ? (low ? 0x66000000 : 0xFF2A1F00) : 0x33FFFFFF);
-            c.drawRoundRect(new RectF(0, 0, w, ht), r, r, paint);
-            paint.setColor(on ? (low ? YELLOW : 0xFFFFD66B) : Color.WHITE);
-            c.drawCircle(on ? w - r : r, r, knob, paint);
+            paint.setColor((Integer) mix.evaluate(pos, 0x33FFFFFF, low ? 0x66000000 : 0xFF2A1F00));
+            track.set(0, 0, w, ht);
+            c.drawRoundRect(track, r, r, paint);
+            paint.setColor((Integer) mix.evaluate(pos, Color.WHITE, low ? YELLOW : 0xFFFFD66B));
+            c.drawCircle(r + (w - 2 * r) * pos, r, knob, paint);
+        }
+    }
+
+    /** A tile's placeholder while the lights are read: glass, with a soft band of light passing across it. */
+    private final class Shimmer extends View {
+        private final Paint base = new Paint(Paint.ANTI_ALIAS_FLAG), band = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final RectF box = new RectF();
+        private final long delay;
+        private android.animation.ValueAnimator run;
+        private float at = -1f;
+
+        Shimmer(Context c, long delay) {
+            super(c);
+            this.delay = delay;
+            base.setColor(0x14FFFFFF);
+        }
+
+        @Override protected void onAttachedToWindow() {
+            super.onAttachedToWindow();
+            run = android.animation.ValueAnimator.ofFloat(-1f, 2f);
+            run.setDuration(1300);
+            run.setStartDelay(delay);
+            run.setRepeatCount(android.animation.ValueAnimator.INFINITE);
+            run.addUpdateListener(a -> { at = (float) a.getAnimatedValue(); invalidate(); });
+            run.start();
+        }
+
+        @Override protected void onDetachedFromWindow() {
+            if (run != null) run.cancel();
+            super.onDetachedFromWindow();
+        }
+
+        @Override protected void onDraw(Canvas c) {
+            float w = getWidth(), ht = getHeight(), r = h.px(20);
+            box.set(0, 0, w, ht);
+            c.drawRoundRect(box, r, r, base);
+            float x = at * w, half = w * 0.45f;
+            band.setShader(new android.graphics.LinearGradient(x - half, 0, x + half, ht * 0.3f,
+                    new int[]{0x00FFFFFF, 0x1FFFFFFF, 0x00FFFFFF}, null, android.graphics.Shader.TileMode.CLAMP));
+            c.drawRoundRect(box, r, r, band);
+            // The tile's shape in outline: a bulb's place, the name's, the state's.
+            base.setColor(0x1AFFFFFF);
+            c.drawCircle(h.px(30), h.px(28), h.px(13), base);
+            box.set(h.px(16), ht * 0.52f, w * 0.72f, ht * 0.52f + h.px(16));
+            c.drawRoundRect(box, h.px(8), h.px(8), base);
+            box.set(h.px(16), ht * 0.52f + h.px(26), w * 0.45f, ht * 0.52f + h.px(38));
+            c.drawRoundRect(box, h.px(6), h.px(6), base);
+            base.setColor(0x14FFFFFF);
         }
     }
 

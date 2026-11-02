@@ -254,6 +254,7 @@ final class HomeV2 {
         chipBox.addView(match.chip, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.END));
         add(chipBox, 1120, 524, 700, 40);
         match.changed = this::matchChanged;
+        match.kickedOff = () -> bringBackMatch(true);
         viewport = new FrameLayout(a);
         // Clipped to its own box: a row scrolled along stays inside it, clear of the rail.
         viewport.setOutlineProvider(ViewOutlineProvider.BOUNDS);
@@ -670,6 +671,8 @@ final class HomeV2 {
         GoalWatchService.laneHome = true;
         matchFirst = true;
         match.start();
+        main.removeCallbacks(matchBack);
+        main.postDelayed(matchBack, MATCH_BACK_MS);
         if (match.active() && zone == Z_ROW && page == null && !guide.isOpen()) { zone = Z_MATCH; matchIdx = 0; matchFirst = false; paint(); }
         // An alert on Home takes the score bar's place: the pills fade out under it and back once it has gone.
         if (scores != null) {
@@ -731,6 +734,7 @@ final class HomeV2 {
 
     void stop() {
         main.removeCallbacks(warmPages);
+        main.removeCallbacks(matchBack);
         if (match != null) match.stop();
         if (players != null) players.stop();
         playingTile = null;
@@ -791,9 +795,33 @@ final class HomeV2 {
     }
 
     /**
-     * Match Day came, changed or went: Home just back with the focus on the first tile moves up onto it; gone (or put
-     * away with Back) while the focus was on it, the focus goes down to the row.
+     * Match Day came, changed or went: Home just back with the focus on the first tile moves up onto it; gone while the
+     * focus was on it, the focus goes down to the row.
      */
+    /** A minute with no key pressed on Home: Match Day comes back up from its chip. */
+    private static final long MATCH_BACK_MS = 60_000L;
+    private final Runnable matchBack = () -> bringBackMatch(false);
+
+    /**
+     * Match Day back up from its chip by itself: after a minute with no key pressed (as Home's top comes back on other
+     * TVs), and when the game kicks off. Only while the focus is on For You or the boxes with nothing open over Home;
+     * otherwise the idle wait starts again.
+     */
+    private void bringBackMatch(boolean kickOff) {
+        if (match == null || !match.active() || zone == Z_MATCH) return;
+        boolean busy = page != null || guide.isOpen() || (controlCentre != null && controlCentre.isOpen())
+                || (smartPanel != null && smartPanel.isOpen()) || (weatherPanel != null && weatherPanel.isOpen())
+                || (titlePanel != null && titlePanel.isOpen()) || (viewing != null && viewing.isOpen())
+                || (search != null && search.isOpen()) || Surprise.isOpen() || EpisodeDice.isOpen() || Recap.isOpen();
+        if (busy || (zone != Z_ROW && zone != Z_CATS)) {
+            if (!kickOff) { main.removeCallbacks(matchBack); main.postDelayed(matchBack, MATCH_BACK_MS); }
+            return;
+        }
+        zone = Z_MATCH;
+        matchIdx = 0;
+        paint();
+    }
+
     private void matchChanged() {
         if (match.active()) {
             if (matchFirst && zone == Z_ROW && rowIdx == 0 && page == null && !guide.isOpen()) { zone = Z_MATCH; matchIdx = 0; }
@@ -814,6 +842,10 @@ final class HomeV2 {
 
     /** All keys come here first; true when v2 used it. */
     boolean key(KeyEvent e) {
+        if (e.getAction() == KeyEvent.ACTION_DOWN) {
+            main.removeCallbacks(matchBack);
+            main.postDelayed(matchBack, MATCH_BACK_MS);
+        }
         if (controlCentre != null && controlCentre.isOpen()) return controlCentre.key(e);
         if (Surprise.isOpen()) return Surprise.key(e);
         if (EpisodeDice.isOpen()) return EpisodeDice.key(e);
