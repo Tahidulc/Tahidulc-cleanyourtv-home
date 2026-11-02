@@ -1000,22 +1000,26 @@ final class ScoresTicker {
     }
 
     /**
-     * The logo as it reads on a dark background: one that is almost black (Mercedes' F1 star) comes back white, the
-     * rest unchanged.
+     * The logo as it reads on a dark background: one that is almost black and without colour (Mercedes' F1 star)
+     * comes back white (as ESPN's own version for dark grounds does Spurs' navy cockerel), the rest unchanged. A dark
+     * crest in strong colour (Everton's royal blue) is the club's own badge and stays as it is (it came back a white
+     * shape).
      */
     static Bitmap forDark(Bitmap b) {
         if (b == null) return null;
         int w = b.getWidth(), h = b.getHeight();
         int[] px = new int[w * h];
         b.getPixels(px, 0, w, 0, 0, w, h);
-        long sum = 0;
+        long sum = 0, chroma = 0;
         int n = 0;
         for (int c : px) {
             if ((c >>> 24) < 128) continue;
-            sum += (((c >> 16) & 0xFF) * 30 + ((c >> 8) & 0xFF) * 59 + (c & 0xFF) * 11) / 100;
+            int r = (c >> 16) & 0xFF, g = (c >> 8) & 0xFF, bl = c & 0xFF;
+            sum += (r * 30 + g * 59 + bl * 11) / 100;
+            chroma += Math.max(r, Math.max(g, bl)) - Math.min(r, Math.min(g, bl));
             n++;
         }
-        if (n == 0 || sum / n >= 70) return b;
+        if (n == 0 || sum / n >= 70 || chroma / n >= 90) return b;
         for (int i = 0; i < px.length; i++) px[i] = (px[i] & 0xFF000000) | 0x00F2F4F7;
         return Bitmap.createBitmap(px, w, h, Bitmap.Config.ARGB_8888);
     }

@@ -32,7 +32,8 @@ import java.util.Random;
  * adventure the children float about among the stars; at the dance party they dance. Down in the posters the picture
  * at the top is the title's again, and the children walk about on the line above the tabs: waddling along, hopping,
  * spinning round, wriggling with excitement and kicking a ball to one another. The children's pictures are the
- * family's own, kept on the TV only (the theme folder's kids_3d*.png, cut out; "sit" in the name for one who sits),
+ * family's own, kept on the TV only (the theme folder's kids_3d*.png, cut out; "sit" in the name for one who sits,
+ * "ride" for one on a bouncy ride-on toy, who bounces along on it, rocks and bounces for joy),
  * never in the launcher or its repository; without them there are no children and no shows of theirs. Everything
  * keeps still a moment whenever a key is pressed, so the page moves without them costing a frame, and goes gentler on
  * a slower TV (lite_home).
@@ -95,13 +96,13 @@ final class KidsPlay extends View {
 
     // ---- the children -----------------------------------------------------------------------------------------------
 
-    private static final int STAND = 0, WALK = 1, HOP = 2, SPIN = 3, WIGGLE = 4, KICK = 5, SCOOT = 6;
+    private static final int STAND = 0, WALK = 1, HOP = 2, SPIN = 3, WIGGLE = 4, KICK = 5, SCOOT = 6, RIDE = 7, ROCK = 8;
     /** Where the children are: on the line above the tabs, hidden in the picture, floating, dancing. */
     private static final int GROUND = 0, HIDDEN = 1, FLOAT = 2, DANCING = 3;
 
     private static final class Kid {
         Bitmap pic;
-        boolean sits;
+        boolean sits, rides;
         float x, lift, rot, sx = 1f, sy = 1f, alpha, face = 1f;
         float fy;            // floating: the height of its middle above the line
         int doing = STAND;
@@ -152,8 +153,10 @@ final class KidsPlay extends View {
         line.setStrokeCap(Paint.Cap.ROUND);
         for (File f : cast) {
             Kid k = new Kid();
-            k.sits = f.getName().toLowerCase(Locale.ROOT).contains("sit");
-            k.pic = read(f, Math.round((k.sits ? 172 : 232) * u));
+            String name = f.getName().toLowerCase(Locale.ROOT);
+            k.rides = name.contains("ride");
+            k.sits = !k.rides && name.contains("sit");
+            k.pic = read(f, Math.round((k.rides ? 214 : k.sits ? 172 : 232) * u));
             if (k.pic == null) continue;
             k.phase = random.nextFloat() * 6.28f;
             kids.add(k);
@@ -605,6 +608,14 @@ final class KidsPlay extends View {
         int bar = (int) (beat / 4f) % 4;
         float b = beat - (float) Math.floor(beat);
         float s = (float) Math.sin(Math.PI * beat);
+        if (k.rides) {
+            // On the ride-on: bouncing to the beat, rocking as it lands.
+            k.lift = Math.abs(s) * 24 * u;
+            k.rot = (float) Math.sin(Math.PI * beat / 2f) * 7f;
+            k.sy = 1f - 0.05f * (1f - Math.abs(s));
+            k.sx = 2f - k.sy;
+            return;
+        }
         if (k.sits) {
             // The little one bounces and claps along.
             k.lift = Math.abs(s) * 14 * u;
@@ -675,10 +686,32 @@ final class KidsPlay extends View {
                 if (Math.abs(d) < 2 * u) stand(k, now);
                 break;
             }
+            case RIDE: {
+                // Bouncing along on the ride-on toy: up and forward, squashing a little at each landing.
+                float d = k.toX - k.x;
+                k.face = d >= 0 ? 1f : -1f;
+                k.step += dt * 6.28f * 1.9f;
+                float bob = Math.abs((float) Math.sin(k.step));
+                k.lift = bob * 24 * u;
+                k.rot = (float) Math.sin(k.step) * 5f * k.face;
+                k.sy = 1f - 0.06f * (1f - bob);
+                k.sx = 2f - k.sy;
+                float speed = 110 * u;
+                if (Math.abs(d) <= speed * dt) { k.x = k.toX; stand(k, now); } else k.x += Math.signum(d) * speed * dt;
+                break;
+            }
+            case ROCK: {
+                // Rocking back and forth on it, as on a rocking horse.
+                float p = Math.min(1f, k.age / k.length);
+                k.rot = (float) Math.sin(k.age * 6.5f) * 9f * (float) Math.sin(Math.PI * p);
+                k.lift = 0;
+                if (p >= 1f) stand(k, now);
+                break;
+            }
             case HOP:
             case SPIN: {
                 float p = Math.min(1f, k.age / k.length);
-                float high = (k.doing == SPIN ? 92 : k.sits ? 36 : 70) * u;
+                float high = (k.doing == SPIN ? 92 : k.sits ? 36 : k.rides ? 54 : 70) * u;
                 if (p < 0.15f) {           // crouch
                     float q = p / 0.15f;
                     k.sy = 1f - 0.12f * q;
@@ -749,6 +782,19 @@ final class KidsPlay extends View {
             ball.rest = 0;
             ball.alpha = 1f;
             ball.to = mate;
+            return;
+        }
+        if (k.rides) {
+            if (r < 45) {
+                k.doing = RIDE;
+                float to = k.x;
+                for (int tries = 0; tries < 10; tries++) {
+                    to = clampX(rnd(500, 1300) * u, k);
+                    if (Math.abs(to - k.x) > 140 * u && clear(to, k)) break;
+                }
+                k.toX = to;
+            } else if (r < 72) { k.doing = ROCK; k.length = 1.8f; }
+            else { k.doing = HOP; k.length = 0.65f; }
             return;
         }
         if (k.sits) {
@@ -823,7 +869,7 @@ final class KidsPlay extends View {
         if (!floating || k.lift < 120 * u) {
             float far = Math.min(1f, k.lift / (140 * u));
             fill.setColor(Color.argb(Math.round(70 * (1f - far) * k.alpha), 0, 0, 0));
-            float half = w * (k.sits ? 0.42f : 0.36f) * (1f - 0.45f * far);
+            float half = w * (k.rides ? 0.44f : k.sits ? 0.42f : 0.36f) * (1f - 0.45f * far);
             oval.set(k.x - half, g - 7 * u, k.x + half, g + 7 * u);
             c.drawOval(oval, fill);
         }
