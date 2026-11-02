@@ -68,7 +68,15 @@ final class CameraAlert {
 
     private static final Handler main = new Handler(Looper.getMainLooper());
     private static FrameLayout host;
-    private static final Runnable close = () -> close(true);
+    private static final Runnable close = () -> { close(true); pipClose(); };
+    /** The alarm's live view in a window in the corner (camera_pip, a TV with windows): its task, -1 for none. */
+    private static int pipTask = -1;
+    private static Context pipCtx;
+
+    private static void pipClose() {
+        if (pipTask >= 0 && pipCtx != null) Windowed.close(pipCtx, pipTask);
+        pipTask = -1;
+    }
 
     private CameraAlert() { }
 
@@ -365,7 +373,9 @@ final class CameraAlert {
                     || code == KeyEvent.KEYCODE_NUMPAD_ENTER || code == KeyEvent.KEYCODE_BUTTON_A;
             if (code == KeyEvent.KEYCODE_BACK) { closeByBack(); return true; }
             close(true);
-            if (open) live(c, camera, tap);
+            // Already live in the corner: that window to the whole screen; else Tuya Smart on the camera.
+            if (open && pipTask >= 0) { Windowed.full(c, pipTask); pipTask = -1; } else if (open) live(c, camera, tap);
+            else pipClose();
             return true;
         });
 
@@ -388,6 +398,15 @@ final class CameraAlert {
         win.setTag(loops);
         main.removeCallbacks(close);
         main.postDelayed(close, SHOW_MS);
+        // The alarm's own page (its notification's tap) in a window in the bottom right corner while the card shows,
+        // what is on going on behind it: on a TV that puts apps in windows (the Streamer), when the theme asks.
+        if (tap != null && pipTask < 0 && Config.themeFlag(c, "camera_pip", false) && Windowed.supported(c)) {
+            pipCtx = c;
+            Windowed.openTap(c, tap, TUYA, Windowed.rect(c, 1920 - 24 - 640, 1080 - 24 - 360, 1920 - 24, 1080 - 24), id -> {
+                pipTask = id;
+                AlertLog.note(c, "camera: " + (id >= 0 ? "the alarm in a corner window" : "the alarm did not open in a window"));
+            });
+        }
     }
 
     /** The red "MOTION" tag, with a dot that breathes. */
@@ -456,6 +475,7 @@ final class CameraAlert {
     /** Closed by Back: the card shrinks away towards its Back key (top right) and fades. */
     private static void closeByBack() {
         main.removeCallbacks(close);
+        pipClose();
         FrameLayout v = host;
         host = null;
         if (v == null) return;

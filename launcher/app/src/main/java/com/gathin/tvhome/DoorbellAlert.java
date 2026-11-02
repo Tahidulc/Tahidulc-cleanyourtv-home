@@ -309,7 +309,7 @@ final class DoorbellAlert {
         main.postDelayed(close, SHOW_MS);
         if (!again && Config.themeFlag(c, "doorbell_chime", true)) chime(c);
         // The live view in a window in the bottom right corner while the card shows, what is on going on behind it.
-        if (!again && tap != null && Config.themeFlag(c, "doorbell_pip", false) && Windowed.supported(c)) {
+        if (!again && tap != null && (Config.themeFlag(c, "camera_pip", false) || Config.themeFlag(c, "doorbell_pip", false)) && Windowed.supported(c)) {
             pipCtx = c;
             Windowed.openTap(c, tap, app(c), Windowed.rect(c, 1920 - 24 - 640, 1080 - 24 - 360, 1920 - 24, 1080 - 24), id -> {
                 pipTask = id;
