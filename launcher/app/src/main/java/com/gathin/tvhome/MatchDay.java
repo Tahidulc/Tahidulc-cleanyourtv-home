@@ -89,7 +89,7 @@ final class MatchDay {
     private final TextView state, clock, subtitle, homeName, awayName, middle, line, channelText;
     private final LinearLayout countdown, form, events, buttons;
     private final TextView[] digits = new TextView[3];
-    private final List<TextView> buttonViews = new ArrayList<>();
+    private final List<View> buttonViews = new ArrayList<>();
     private final List<Runnable> actions = new ArrayList<>();
     private final Handler main = new Handler(Looper.getMainLooper());
     private final ExecutorService io = Executors.newSingleThreadExecutor();
@@ -392,10 +392,73 @@ final class MatchDay {
      * in the competition, cut out in the club's kit, standing in front of the club's colours.
      */
     private void stars(Pick p) {
+        // TheSportsDB's artwork for the fixture: always for the Champions League, else where Sky has no picture.
+        if (p.picture == null || "uefa.champions".equals(p.g.slug)) {
+            String art = artwork(p.g);
+            if (art != null) p.picture = art;
+        }
         if (p.picture != null) return;
         int tall = h.px(652);
         if (p.homeStar != null) p.homePlayer = cutout(p.homeStar, name(p.g, true), tall);
         if (p.awayStar != null) p.awayPlayer = cutout(p.awayStar, name(p.g, false), tall);
+    }
+
+    /**
+     * TheSportsDB's picture for a fixture (its "thumb", 1280 x 720: the two crests and the competition's mark, as
+     * the competition's own graphics), found by the clubs' names as ESPN gives them, then tidied ("AS Roma" as
+     * "Roma", "Internazionale" as "Inter"), then by their first words; only a game on the same day counts. Kept per
+     * game, found or not, so each game is asked about once.
+     */
+    private String artwork(ScoresTicker.Game g) {
+        if (g.id == null) return null;
+        SharedPreferences kept = c.getSharedPreferences("match_art", Context.MODE_PRIVATE);
+        if (kept.contains(g.id)) {
+            String had = kept.getString(g.id, "");
+            return had.isEmpty() ? null : had;
+        }
+        String day = Instant.ofEpochMilli(g.kickoff).atZone(java.time.ZoneOffset.UTC).toLocalDate().toString();
+        String home = name(g, true), away = name(g, false);
+        String found = null;
+        for (String[] pair : new String[][]{{home, away}, {tidy(home), tidy(away)}, {first(home), first(away)}}) {
+            found = thumb(pair[0], pair[1], day);
+            if (found != null) break;
+        }
+        // Only a definite answer is kept: a failed request is asked again next time.
+        if (found != null || !lastFailed) kept.edit().putString(g.id, found == null ? "" : found).apply();
+        return found;
+    }
+
+    private boolean lastFailed;
+
+    private String thumb(String home, String away, String day) {
+        try {
+            String q = (home + " vs " + away).replace(' ', '_');
+            JSONObject root = new JSONObject(ScoresTicker.get("https://www.thesportsdb.com/api/v1/json/123/searchevents.php?e="
+                    + java.net.URLEncoder.encode(q, "UTF-8")));
+            lastFailed = false;
+            JSONArray ev = root.optJSONArray("event");
+            for (int i = 0; ev != null && i < ev.length(); i++) {
+                JSONObject e = ev.getJSONObject(i);
+                String thumb = e.optString("strThumb", "");
+                if (day.equals(e.optString("dateEvent")) && thumb.startsWith("http")) return thumb;
+            }
+        } catch (Exception e) {
+            lastFailed = true;
+        }
+        return null;
+    }
+
+    /** A club's name as TheSportsDB tends to write it: without "AS", "FC" and the like, Internazionale as Inter. */
+    private static String tidy(String n) {
+        String t = n.replaceAll("(?i)^(AS|AC|FC|SS|SSC|SC|RC|RCD|CF|CD|UD|SV|VfB|VfL|OGC|1\\.\\s*FC)\\s+", "")
+                .replaceAll("(?i)\\s+(FC|CF|SC|AFC|Rotterdam|Lisbon)$", "");
+        return t.replaceAll("(?i)internazionale", "Inter");
+    }
+
+    private static String first(String n) {
+        String t = tidy(n).trim();
+        int sp = t.indexOf(' ');
+        return sp > 0 ? t.substring(0, sp) : t;
     }
 
     private Bitmap cutout(String player, String club, int tall) {
@@ -655,7 +718,8 @@ final class MatchDay {
                 if (open != null) c.startActivity(open.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK));
             });
         }
-        addButton("Live Centre", () -> LiveCentre.open(c, g.id));
+        // The Live Centre's own stamp (LIVE on green, CENTRE on white), as the Live Centre shows it.
+        addLogoButton(LiveCentre.stampPicture(c, h.px(30)), "Live Centre", () -> LiveCentre.open(c, g.id));
         String[] ssn = p.blackout ? soccerSaturday() : null;
         if (ssn != null && g.state != 2) {
             addButton("Soccer Saturday", () -> h.tune(java.util.Collections.singletonList(ssn[0]), ssn[1]));
@@ -666,8 +730,8 @@ final class MatchDay {
             String title = g.home + " v " + g.away;
             addButton("Remind me at " + when, () -> {
                 boolean set = Reminders.toggle(c, title, at, p.channel, p.channelLogo);
-                TextView b = buttonViews.get(buttonViews.size() - 1);
-                b.setText(set ? "Reminder set for " + when : "Remind me at " + when);
+                View last = buttonViews.get(buttonViews.size() - 1);
+                if (last instanceof TextView) ((TextView) last).setText(set ? "Reminder set for " + when : "Remind me at " + when);
             });
         }
     }
@@ -677,6 +741,22 @@ final class MatchDay {
         b.setText(text);
         b.setGravity(Gravity.CENTER);
         b.setPadding(h.px(26), 0, h.px(26), 0);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, h.px(52));
+        lp.rightMargin = h.px(16);
+        buttons.addView(b, lp);
+        buttonViews.add(b);
+        actions.add(action);
+    }
+
+    /** A button that is a picture (the Live Centre's stamp) on the same pill as the others. */
+    private void addLogoButton(Bitmap logo, String name, Runnable action) {
+        FrameLayout b = new FrameLayout(c);
+        b.setPadding(h.px(18), 0, h.px(18), 0);
+        b.setContentDescription(name);
+        ImageView mark = new ImageView(c);
+        mark.setImageBitmap(logo);
+        mark.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        b.addView(mark, new FrameLayout.LayoutParams(logo.getWidth(), logo.getHeight(), Gravity.CENTER));
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, h.px(52));
         lp.rightMargin = h.px(16);
         buttons.addView(b, lp);
@@ -823,12 +903,12 @@ final class MatchDay {
         backdrop.setVisibility(on && pick.picture == null ? View.VISIBLE : View.GONE);
         chip.setVisibility(!focused && chipAllowed && active() ? View.VISIBLE : View.GONE);
         for (int k = 0; k < buttonViews.size(); k++) {
-            TextView b = buttonViews.get(k);
+            View b = buttonViews.get(k);
             boolean lit = on && k == i;
             GradientDrawable bg = h.fill(26, lit ? 0xFFFFFFFF : 0x1FFFFFFF);
             bg.setStroke(h.px(lit ? 0 : 2), 0x73FFFFFF);
             b.setBackground(bg);
-            b.setTextColor(lit ? 0xFF12178A : Color.WHITE);
+            if (b instanceof TextView) ((TextView) b).setTextColor(lit ? 0xFF12178A : Color.WHITE);
             b.animate().scaleX(lit ? 1.05f : 1f).scaleY(lit ? 1.05f : 1f).setDuration(150).start();
         }
     }
