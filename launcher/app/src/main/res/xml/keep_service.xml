@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- KeepService: no event types, no flags, no window content, no keys. It is only there so that accessibility stays
+     on while the launcher's working helpers restart (see KeepService). -->
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:description="@string/keep_service_description" />

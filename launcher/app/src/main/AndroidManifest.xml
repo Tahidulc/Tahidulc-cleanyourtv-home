@@ -292,6 +292,21 @@
                 android:name="android.accessibilityservice"
                 android:resource="@xml/input_key_service" />
         </service>
+        <!-- Keeps accessibility on while the helpers above and below restart (KeepService), in a small process of its
+             own so Home restarting does not take it down too. It does nothing else. -->
+        <service
+            android:name=".KeepService"
+            android:exported="false"
+            android:process=":keep"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/keep_service" />
+        </service>
         <!-- Opens Debrid Stream's search for a trending tile's title (AppSearchService); off until enabled. -->
         <service
             android:name=".AppSearchService"

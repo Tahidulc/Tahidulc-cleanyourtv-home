@@ -1929,13 +1929,55 @@ public class AppSearchService extends AccessibilityService {
     }
 
     /**
+     * KeepService on the enabled list (added; nothing else is removed or changed), so that accessibility stays on for
+     * every app while this helper restarts: with none connected at all, Android 14 apps closing a window at that moment
+     * crashed (see KeepService). Needs WRITE_SECURE_SETTINGS; without it, nothing.
+     */
+    static void keepOn(Context c) {
+        if (c.checkSelfPermission(android.Manifest.permission.WRITE_SECURE_SETTINGS)
+                != android.content.pm.PackageManager.PERMISSION_GRANTED) return;
+        try {
+            android.content.ContentResolver cr = c.getContentResolver();
+            android.content.ComponentName keep = new android.content.ComponentName(c, KeepService.class);
+            String list = android.provider.Settings.Secure.getString(cr, android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES);
+            if (list != null && !list.equals("null")) {
+                for (String entry : list.split(":")) if (keep.equals(android.content.ComponentName.unflattenFromString(entry))) return;
+            }
+            String with = list == null || list.isEmpty() || list.equals("null") ? keep.flattenToShortString() : list + ":" + keep.flattenToShortString();
+            android.provider.Settings.Secure.putString(cr, android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES, with);
+        } catch (RuntimeException ignored) {
+            // The setting is the system's; a refusal leaves it as it was.
+        }
+    }
+
+    /** Whether Android has this helper bound (connected, or connecting in a process just started), by its own list. */
+    private static boolean bound(Context c) {
+        try {
+            android.view.accessibility.AccessibilityManager am = c.getSystemService(android.view.accessibility.AccessibilityManager.class);
+            if (am == null) return false;
+            for (android.accessibilityservice.AccessibilityServiceInfo i
+                    : am.getEnabledAccessibilityServiceList(android.accessibilityservice.AccessibilityServiceInfo.FEEDBACK_ALL_MASK)) {
+                android.content.pm.ResolveInfo r = i.getResolveInfo();
+                if (r != null && r.serviceInfo != null && c.getPackageName().equals(r.serviceInfo.packageName)
+                        && AppSearchService.class.getName().equals(r.serviceInfo.name)) return true;
+            }
+        } catch (RuntimeException ignored) {
+            // not known: as unbound
+        }
+        return false;
+    }
+
+    /**
      * Home is on screen: when this helper is switched on in Settings but not running (a TCL turns accessibility off
      * when it will not start a helper, and starts one only while Home is in front), switch it back on: off the list,
-     * on again, and accessibility on. Needs WRITE_SECURE_SETTINGS, granted from adb; without it, nothing.
+     * on again, and accessibility on, with KeepService on the list throughout so accessibility never goes off for the
+     * apps meanwhile. Bound already and only still connecting (Home's process has just started): left to finish,
+     * not switched off under it. Needs WRITE_SECURE_SETTINGS, granted from adb; without it, nothing.
      */
     static boolean ensure(Context c) {
         if (instance != null || c.checkSelfPermission(android.Manifest.permission.WRITE_SECURE_SETTINGS)
                 != android.content.pm.PackageManager.PERMISSION_GRANTED) return false;
+        keepOn(c);
         android.content.ContentResolver cr = c.getContentResolver();
         android.content.ComponentName self = new android.content.ComponentName(c, AppSearchService.class);
         String me = self.flattenToShortString();
@@ -1945,6 +1987,8 @@ public class AppSearchService extends AccessibilityService {
         boolean listed = false;
         for (String entry : list.split(":")) if (self.equals(android.content.ComponentName.unflattenFromString(entry))) listed = true;
         if (!listed) return false;
+        // Connecting already: the caller waits for it (whenReady), nothing is switched.
+        if (bound(c)) return true;
         StringBuilder others = new StringBuilder();
         for (String entry : list.split(":")) {
             if (entry.isEmpty() || self.equals(android.content.ComponentName.unflattenFromString(entry))) continue;

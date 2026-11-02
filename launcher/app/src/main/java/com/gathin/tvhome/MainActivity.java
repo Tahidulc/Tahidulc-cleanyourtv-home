@@ -431,6 +431,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         // Launcher v2 (the theme's "launcher", or the settings menu's choice on this TV) draws its own Home; v1 below
         // is untouched by it.
         if (HomeV2.chosen(this)) {
+            // KeepService listed first, so accessibility stays on for the apps while the helpers below restart.
+            AppSearchService.keepOn(this);
             AppSearchService.ensure(this);
             if (Config.load(this).restoreKeyServices) ServiceRepair.restore(this);
             v2 = new HomeV2(this);

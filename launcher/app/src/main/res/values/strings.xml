@@ -74,6 +74,7 @@
     <string name="off">Off</string>
     <string name="enable">Enable</string>
     <string name="app_search_service_description" translatable="false">Opens Debrid Stream\'s search for the trending title chosen on Home.</string>
+    <string name="keep_service_description">Keeps accessibility on while the launcher\'s helpers restart, so apps do not crash. It reads nothing.</string>
     <string name="input_key_service_description">Opens the input switcher when the remote\'s Input button is pressed.</string>
     <string name="home_key_name">Home button</string>
     <string name="home_key_description">Makes the remote\'s Home button open this launcher.</string>
