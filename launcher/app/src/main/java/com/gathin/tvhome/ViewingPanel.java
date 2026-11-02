@@ -107,6 +107,7 @@ final class ViewingPanel {
     void hide() {
         if (!open) return;
         open = false;
+        detail = null;
         gen++;
         View o = overlay;
         overlay = null;
@@ -116,11 +117,42 @@ final class ViewingPanel {
 
     boolean key(KeyEvent e) {
         int code = e.getKeyCode();
-        if (code == KeyEvent.KEYCODE_BACK || code == KeyEvent.KEYCODE_ESCAPE) {
+        boolean back = code == KeyEvent.KEYCODE_BACK || code == KeyEvent.KEYCODE_ESCAPE;
+        // An app's page: Back or OK closes it, Left and Right step through the apps.
+        if (detail != null) {
+            boolean ok = code == KeyEvent.KEYCODE_DPAD_CENTER || code == KeyEvent.KEYCODE_ENTER || code == KeyEvent.KEYCODE_NUMPAD_ENTER;
+            if (back || ok) {
+                if (e.getAction() == KeyEvent.ACTION_UP) closeDetail();
+                return true;
+            }
+            if (e.getAction() != KeyEvent.ACTION_DOWN) return true;
+            if (code == KeyEvent.KEYCODE_DPAD_LEFT && detailAt > 0) openDetail(detailApps, detailAt - 1);
+            else if (code == KeyEvent.KEYCODE_DPAD_RIGHT && detailAt < detailApps.size() - 1) openDetail(detailApps, detailAt + 1);
+            return true;
+        }
+        // On a row or card: Back returns to the tabs.
+        if (back && pick >= 0) {
+            if (e.getAction() == KeyEvent.ACTION_UP) { pick = -1; paintPicks(); }
+            return true;
+        }
+        if (back) {
             if (e.getAction() == KeyEvent.ACTION_UP) hide();
             return true;
         }
+        // OK on a row or card opens its app's page as the button comes up (on the way down, the page would open and
+        // its own OK close it again with the same press).
+        boolean okKey = code == KeyEvent.KEYCODE_DPAD_CENTER || code == KeyEvent.KEYCODE_ENTER || code == KeyEvent.KEYCODE_NUMPAD_ENTER;
+        if (okKey && pick >= 0) {
+            if (e.getAction() == KeyEvent.ACTION_UP && !e.isCanceled()) {
+                int col = pickCol.get(pick);
+                List<String> order = new ArrayList<>();
+                for (int i = 0; i < picks.size(); i++) if (pickCol.get(i) == col) order.addAll(pickApps.get(i));
+                openDetail(order, order.indexOf(pickApps.get(pick).get(0)));
+            }
+            return true;
+        }
         if (e.getAction() != KeyEvent.ACTION_DOWN) return true;
+        if (pickKey(code)) return true;
         if (code == KeyEvent.KEYCODE_DPAD_LEFT && tab > 0) load(tab - 1);
         else if (code == KeyEvent.KEYCODE_DPAD_RIGHT && tab < tabs.length - 1) load(tab + 1);
         return true;
@@ -129,6 +161,11 @@ final class ViewingPanel {
     private void load(int t) {
         tab = t;
         int my = ++gen;
+        picks.clear();
+        pickCol.clear();
+        pickApps.clear();
+        pick = -1;
+        if (detail != null) { overlay.removeView(detail); detail = null; }
         for (int i = 0; i < tabViews.size(); i++) {
             TextView v = tabViews.get(i);
             boolean on = i == t;
@@ -144,7 +181,8 @@ final class ViewingPanel {
             Map<Integer, List<String>> kinds = new HashMap<>();
             Map<String, String> notes = t == 2 ? appNotes() : new HashMap<>();
             Map<String, Integer> week = t == 1 ? new HashMap<>() : AppUsage.recent(c, 7);
-            AppUsage.Span span = t == 0 ? AppUsage.span(c, 14) : null;
+            AppUsage.Span span = t == 1 ? null : AppUsage.span(c, 14);
+            Map<String, Long> lastOpen = t == 2 ? AppUsage.lastUsed(c) : new HashMap<>();
             Map<String, Integer> today = t == 2 ? AppUsage.recent(c, 1) : new HashMap<>();
             Map<String, Integer> month = t == 2 ? AppUsage.lastDays(c, 30) : new HashMap<>();
             try {
@@ -165,6 +203,7 @@ final class ViewingPanel {
                 tips = notes;
                 usedWeek = week;
                 usage14 = span;
+                lastUsed = lastOpen;
                 usedToday = today;
                 used30 = month;
                 View v;
@@ -184,6 +223,370 @@ final class ViewingPanel {
     private Map<String, Integer> usedWeek = new HashMap<>(), usedToday = new HashMap<>(), used30 = new HashMap<>();
     /** The last fourteen days of app time, by day and hour (This week's hours, bars, heat map and habits). */
     private AppUsage.Span usage14;
+    /** When each app was last opened (the last six months). */
+    private Map<String, Long> lastUsed = new HashMap<>();
+
+    // ---- Your apps: picking an app, and its page of numbers -------------------------------------------------------
+
+    /** What can be picked on Your apps: each row and card, its column (0 the list, 1 the paid ones) and its apps. */
+    private final List<View> picks = new ArrayList<>();
+    private final List<Integer> pickCol = new ArrayList<>();
+    private final List<List<String>> pickApps = new ArrayList<>();
+    /** The one picked (-1: the focus is on the tabs). */
+    private int pick = -1;
+    /** The app page open over the tab, the apps it steps through and which one it shows. */
+    private FrameLayout detail;
+    private List<String> detailApps;
+    private int detailAt;
+    /** Your apps' numbers, kept for the app pages: the plans, what played in each app, all apps' time together. */
+    private Map<String, List<Plan>> plansNow = new HashMap<>();
+    private Map<String, Map<String, Integer>> playedOn = new HashMap<>();
+    private int allSecs;
+
+    private void addPick(View v, int col, List<String> apps) {
+        picks.add(v);
+        pickCol.add(col);
+        pickApps.add(apps);
+    }
+
+    /** The picked row or card ringed in white; the others plain. */
+    private void paintPicks() {
+        for (int i = 0; i < picks.size(); i++) {
+            View v = picks.get(i);
+            if (i == pick) {
+                GradientDrawable ring = new GradientDrawable();
+                ring.setCornerRadius(h.px(pickCol.get(i) == 0 ? 14 : 20));
+                ring.setColor(pickCol.get(i) == 0 ? 0x1FFFFFFF : 0x00000000);
+                ring.setStroke(h.px(3), Color.WHITE);
+                v.setForeground(ring);
+            } else {
+                v.setForeground(null);
+            }
+        }
+        // The tab's ring only while the focus is on the tabs.
+        for (int i = 0; i < tabViews.size(); i++) {
+            boolean on = i == tab;
+            GradientDrawable g = h.fill(25, on ? 0x29FFFFFF : 0);
+            if (on && pick < 0) g.setStroke(h.px(2), Color.WHITE);
+            tabViews.get(i).setBackground(g);
+        }
+    }
+
+    /** Up and Down along a column, Left and Right across to the nearest in the other; OK opens its app's page. */
+    private boolean pickKey(int code) {
+        if (picks.isEmpty()) return false;
+        if (pick < 0) {
+            if (code != KeyEvent.KEYCODE_DPAD_DOWN) return false;
+            pick = 0;
+            paintPicks();
+            return true;
+        }
+        int col = pickCol.get(pick);
+        switch (code) {
+            case KeyEvent.KEYCODE_DPAD_UP: {
+                int to = -1;
+                for (int i = pick - 1; i >= 0; i--) if (pickCol.get(i) == col) { to = i; break; }
+                pick = to;
+                break;
+            }
+            case KeyEvent.KEYCODE_DPAD_DOWN:
+                for (int i = pick + 1; i < picks.size(); i++) if (pickCol.get(i) == col) { pick = i; break; }
+                break;
+            case KeyEvent.KEYCODE_DPAD_LEFT:
+            case KeyEvent.KEYCODE_DPAD_RIGHT: {
+                int want = code == KeyEvent.KEYCODE_DPAD_LEFT ? 0 : 1;
+                if (want == col) return true;
+                int[] at = new int[2];
+                picks.get(pick).getLocationOnScreen(at);
+                int y = at[1], best = -1, bestD = Integer.MAX_VALUE;
+                for (int i = 0; i < picks.size(); i++) {
+                    if (pickCol.get(i) != want) continue;
+                    picks.get(i).getLocationOnScreen(at);
+                    int d = Math.abs(at[1] - y);
+                    if (d < bestD) { bestD = d; best = i; }
+                }
+                if (best >= 0) pick = best;
+                break;
+            }
+            default:
+                return true;
+        }
+        paintPicks();
+        return true;
+    }
+
+    private void openDetail(List<String> apps, int at) {
+        detailApps = apps;
+        detailAt = Math.max(0, at);
+        if (detail == null) {
+            detail = new FrameLayout(c);
+            detail.setBackgroundColor(0xD905081F);
+            detail.setClickable(true);
+            overlay.addView(detail, new FrameLayout.LayoutParams(-1, -1));
+            detail.setAlpha(0f);
+            detail.animate().alpha(1f).setDuration(160).start();
+        }
+        detail.removeAllViews();
+        View page = appPage(detailApps.get(detailAt));
+        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(h.px(1300), -2, Gravity.CENTER);
+        detail.addView(page, lp);
+    }
+
+    private void closeDetail() {
+        if (detail == null) return;
+        View d = detail;
+        detail = null;
+        d.animate().alpha(0f).setDuration(140).withEndAction(() -> { if (overlay != null) overlay.removeView(d); }).start();
+    }
+
+    /** "today 10:52", "yesterday 21:14", "Sat 31 Oct", "12 Sep". */
+    private static String ago(long at) {
+        java.time.ZonedDateTime z = java.time.Instant.ofEpochMilli(at).atZone(java.time.ZoneId.systemDefault());
+        LocalDate d = z.toLocalDate(), today = LocalDate.now();
+        String hmm = z.format(DateTimeFormatter.ofPattern("HH:mm"));
+        if (d.equals(today)) return "today " + hmm;
+        if (d.equals(today.minusDays(1))) return "yesterday " + hmm;
+        if (d.isAfter(today.minusDays(7))) return z.format(DateTimeFormatter.ofPattern("EEE d MMM", Locale.UK));
+        return z.format(DateTimeFormatter.ofPattern(d.getYear() == today.getYear() ? "d MMM" : "d MMM yyyy", Locale.UK));
+    }
+
+    private LinearLayout statTile(String label, String value, String under) {
+        LinearLayout t = new LinearLayout(c);
+        t.setOrientation(LinearLayout.VERTICAL);
+        t.setPadding(h.px(20), h.px(14), h.px(20), h.px(14));
+        t.setBackground(cardGround());
+        t.addView(label(label));
+        TextView v = h.text(34, heavy, Color.WHITE);
+        v.setText(value);
+        v.setSingleLine(true);
+        LinearLayout.LayoutParams vl = new LinearLayout.LayoutParams(-2, -2);
+        vl.topMargin = h.px(4);
+        t.addView(v, vl);
+        if (under != null) {
+            TextView u = h.text(14, regular, 0xB3FFFFFF);
+            u.setText(under);
+            u.setSingleLine(true);
+            t.addView(u);
+        }
+        return t;
+    }
+
+    /** Bars, the largest in yellow, with small labels under each and its time over it. */
+    private LinearLayout bars(int[] values, String[] names, int height, boolean times) {
+        LinearLayout bars = new LinearLayout(c);
+        bars.setGravity(Gravity.BOTTOM);
+        int most = 1;
+        for (int v : values) most = Math.max(most, v);
+        for (int i = 0; i < values.length; i++) {
+            LinearLayout col = new LinearLayout(c);
+            col.setOrientation(LinearLayout.VERTICAL);
+            col.setGravity(Gravity.CENTER_HORIZONTAL | Gravity.BOTTOM);
+            if (times) {
+                TextView n = h.text(11, semi, 0xCCFFFFFF);
+                n.setText(values[i] >= 60 ? hmShort(values[i]) : "");
+                n.setSingleLine(true);
+                col.addView(n);
+            }
+            View b = new View(c);
+            b.setBackground(h.fill(5, values[i] == most && most > 1 ? YELLOW : 0x8CFFFFFF));
+            LinearLayout.LayoutParams bl = new LinearLayout.LayoutParams(-1, Math.max(h.px(3), Math.round(h.px(height) * values[i] / (float) most)));
+            bl.leftMargin = bl.rightMargin = h.px(3);
+            bl.topMargin = h.px(3);
+            col.addView(b, bl);
+            TextView d = h.text(11, semi, 0xB3FFFFFF);
+            d.setText(names[i]);
+            d.setSingleLine(true);
+            col.addView(d);
+            bars.addView(col, new LinearLayout.LayoutParams(0, -2, 1f));
+        }
+        return bars;
+    }
+
+    /**
+     * One app's page: how long it was open (30 days, this week, today, a day), its share of all the TV's time and its
+     * place among the apps, the last fourteen days and the hours of the day it is used, how often it is opened and its
+     * longest stretch; for a paid one what it costs (a month, an hour, a day, a year at this rate), each plan with
+     * when it renews or ends, what was paid in the last year, and what £1 an hour would take; and what played there.
+     */
+    private View appPage(String pkg) {
+        LinearLayout box = new LinearLayout(c);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(h.px(44), h.px(34), h.px(44), h.px(28));
+        GradientDrawable g = new GradientDrawable(GradientDrawable.Orientation.TL_BR, new int[]{0xFF1A2296, 0xFF121980, 0xFF0B0F5A});
+        g.setCornerRadius(h.px(32));
+        g.setStroke(h.px(1.5f), 0x40FFFFFF);
+        box.setBackground(g);
+        int s30 = used30.getOrDefault(pkg, 0), sWeek = usedWeek.getOrDefault(pkg, 0), sToday = usedToday.getOrDefault(pkg, 0);
+        List<Plan> plans = plansNow.get(pkg);
+        boolean paid = plans != null && !plans.isEmpty() && ReleaseAlerts.installed(c, pkg);
+        double cost = paid ? monthly(plans) : 0, hour = per(cost, s30);
+
+        // The app, and its verdict when it is paid for.
+        LinearLayout head = new LinearLayout(c);
+        head.setGravity(Gravity.CENTER_VERTICAL);
+        head.addView(appMark(pkg), new LinearLayout.LayoutParams(0, h.px(44), 1f));
+        if (paid) {
+            String word;
+            int colour;
+            if (s30 < 600) { word = "NOT USED"; colour = RED; }
+            else if (hour < 1) { word = "BEST VALUE"; colour = GREEN; }
+            else if (hour < 2) { word = "GOOD VALUE"; colour = GREEN; }
+            else if (hour < 4) { word = "OK"; colour = YELLOW; }
+            else { word = "HARDLY USED"; colour = RED; }
+            head.addView(chip(word, colour));
+        }
+        box.addView(head);
+        List<Map.Entry<String, Integer>> ranked = new ArrayList<>(used30.entrySet());
+        ranked.sort((x, y) -> y.getValue() - x.getValue());
+        int place = 0;
+        for (int i = 0; i < ranked.size(); i++) if (ranked.get(i).getKey().equals(pkg)) place = i + 1;
+        AppUsage.Span sp = usage14;
+        int opens = sp == null ? 0 : sp.opens.getOrDefault(pkg, 0);
+        Long last = sp != null && sp.last.containsKey(pkg) ? sp.last.get(pkg) : lastUsed.get(pkg);
+        List<String> about = new ArrayList<>();
+        about.add(last == null ? "Not opened in the last six months" : "Last opened " + ago(last));
+        if (opens > 0) about.add("opened " + opens + (opens == 1 ? " time" : " times") + " in 14 days");
+        if (place > 0) about.add("#" + place + " of " + ranked.size() + " apps on this TV");
+        TextView sub = h.text(18, regular, 0xD9FFFFFF);
+        sub.setText(String.join("  ·  ", about));
+        box.addView(sub, under(8));
+
+        // The numbers.
+        LinearLayout tiles = new LinearLayout(c);
+        int share = allSecs > 0 ? Math.round(s30 * 100f / allSecs) : 0;
+        String[][] t = {{"30 DAYS", hm(s30), null}, {"THIS WEEK", hm(sWeek), null}, {"TODAY", hm(sToday), null},
+                {"A DAY", hm(s30 / 30), "on average"}, {"SHARE", share + "%", "of all the TV's time"}};
+        for (int i = 0; i < t.length; i++) {
+            LinearLayout.LayoutParams tl = new LinearLayout.LayoutParams(0, -2, 1f);
+            if (i > 0) tl.leftMargin = h.px(14);
+            tiles.addView(statTile(t[i][0], t[i][1], t[i][2]), tl);
+        }
+        box.addView(tiles, under(20));
+
+        // The last fourteen days, and the hours of the day.
+        LinearLayout charts = new LinearLayout(c);
+        LinearLayout days = new LinearLayout(c);
+        days.setOrientation(LinearLayout.VERTICAL);
+        days.setPadding(h.px(22), h.px(16), h.px(22), h.px(12));
+        days.setBackground(cardGround());
+        days.addView(label("LAST 14 DAYS"));
+        int[] perDay = new int[14];
+        String[] dayNames = new String[14];
+        for (int i = 0; i < 14; i++) {
+            perDay[i] = sp == null ? 0 : sp.dayApps.get(i).getOrDefault(pkg, 0);
+            dayNames[i] = LocalDate.now().minusDays(13 - i).getDayOfWeek().getDisplayName(TextStyle.NARROW, Locale.UK);
+        }
+        days.addView(bars(perDay, dayNames, 90, true), under(8));
+        LinearLayout.LayoutParams dl = new LinearLayout.LayoutParams(0, h.px(200), 1.15f);
+        charts.addView(days, dl);
+        LinearLayout hours = new LinearLayout(c);
+        hours.setOrientation(LinearLayout.VERTICAL);
+        hours.setPadding(h.px(22), h.px(16), h.px(22), h.px(12));
+        hours.setBackground(cardGround());
+        int[] perHour = sp == null || !sp.appHours.containsKey(pkg) ? new int[24] : sp.appHours.get(pkg);
+        int bestH = -1, bestS = 0;
+        for (int k = 0; k < 24; k++) {
+            int three = perHour[k] + perHour[(k + 1) % 24] + perHour[(k + 2) % 24];
+            if (three > bestS) { bestS = three; bestH = k; }
+        }
+        LinearLayout hh = new LinearLayout(c);
+        hh.addView(label("TIME OF DAY"), new LinearLayout.LayoutParams(0, -2, 1f));
+        if (bestH >= 0) {
+            TextView b = h.text(14, semi, YELLOW);
+            b.setText(String.format(Locale.UK, "Mostly %02d:00–%02d:00", bestH, (bestH + 3) % 24));
+            hh.addView(b);
+        }
+        hours.addView(hh);
+        String[] hourNames = new String[24];
+        for (int k = 0; k < 24; k++) hourNames[k] = k % 6 == 0 ? String.format(Locale.UK, "%02d", k) : "";
+        hours.addView(bars(perHour, hourNames, 104, false), under(8));
+        LinearLayout.LayoutParams hl = new LinearLayout.LayoutParams(0, h.px(200), 1f);
+        hl.leftMargin = h.px(14);
+        charts.addView(hours, hl);
+        int any = 0;
+        for (int v : perDay) any += v;
+        if (any >= 60) box.addView(charts, under(14));
+        else {
+            TextView none = h.text(20, regular, 0xD9FFFFFF);
+            boolean brief = last != null && last > System.currentTimeMillis() - 14L * 24 * 3_600_000L;
+            none.setText(brief ? "Only opened briefly in the last 14 days (under a minute each time)." : "Not opened in the last 14 days.");
+            box.addView(none, under(18));
+        }
+
+        // How it is used.
+        if (sp != null && sp.longest.containsKey(pkg)) {
+            int longest = sp.longest.get(pkg);
+            int typical = opens > 0 ? sp.apps.getOrDefault(pkg, 0) / opens : 0;
+            TextView use = h.text(17, regular, 0xD9FFFFFF);
+            use.setText("Longest stretch " + hm(longest) + " (" + ago(sp.longestAt.get(pkg)) + ")"
+                    + (typical >= 60 ? "  ·  about " + hm(typical) + " each time it is opened" : ""));
+            box.addView(use, under(14));
+        }
+
+        // What it costs.
+        if (paid) {
+            box.addView(label("WHAT IT COSTS"), under(18));
+            List<String> money = new ArrayList<>();
+            money.add("£" + money(cost) + " a month");
+            if (s30 >= 600) money.add((hour < 1 ? Math.round(hour * 100) + "p" : "£" + money(hour)) + " an hour");
+            int daysUsed = 0;
+            for (int v : perDay) if (v >= 60) daysUsed++;
+            if (daysUsed > 0) {
+                double perUseDay = cost * 12 / 365 * 14 / daysUsed;
+                money.add((perUseDay < 1 ? Math.round(perUseDay * 100) + "p" : "£" + money(perUseDay)) + " a day it is used");
+            }
+            money.add("£" + money(cost * 12) + " a year at this rate");
+            TextView m = h.text(20, semi, Color.WHITE);
+            m.setText(String.join("  ·  ", money));
+            box.addView(m, under(6));
+            for (Plan pl : plans) {
+                LocalDate d = pl.next();
+                long left = d == null ? -1 : java.time.temporal.ChronoUnit.DAYS.between(LocalDate.now(), d);
+                String state = !pl.active() ? "ended " + day(d) : d == null ? (pl.renews ? "renews monthly" : "")
+                        : (pl.renews ? "renews " : "ends ") + day(d) + " (" + in(left) + ")";
+                TextView pt = small("•  " + (pl.name == null ? appName(pkg) : pl.name) + " · " + pl.price() + (state.isEmpty() ? "" : " · " + state),
+                        false, pl.active() ? 0xE6FFFFFF : 0x80FFFFFF);
+                pt.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, h.px(16));
+                box.addView(pt, under(4));
+            }
+            List<String> more = new ArrayList<>();
+            double year = paidInYear(plans);
+            boolean bought = false;
+            for (Plan pl : plans) if (!pl.renews) bought = true;
+            if (bought && year > 0) more.add("£" + money(year) + " paid in the last 12 months");
+            if (s30 < 600) more.add("pausing it saves £" + money(cost) + " a month, £" + money(cost * 12) + " a year");
+            else if (hour >= 1) {
+                int need = (int) Math.ceil(cost * 3600);
+                more.add("£1 an hour would take " + hm(need) + " a month (now " + hm(s30) + ")");
+            } else {
+                more.add("under £1 an hour: well used");
+            }
+            TextView mt = h.text(16, semi, YELLOW);
+            mt.setText(String.join("  ·  ", more));
+            box.addView(mt, under(8));
+        }
+
+        // What played there.
+        Map<String, Integer> on = playedOn.get(pkg);
+        if (on != null && !on.isEmpty()) {
+            List<Map.Entry<String, Integer>> list = new ArrayList<>(on.entrySet());
+            list.sort((x, y) -> y.getValue() - x.getValue());
+            StringBuilder b = new StringBuilder();
+            for (int k = 0; k < Math.min(4, list.size()); k++) b.append(k == 0 ? "" : ",  ").append(list.get(k).getKey()).append(" ").append(hm(list.get(k).getValue()));
+            box.addView(label("WATCHED THERE LAST MONTH"), under(18));
+            TextView w = h.text(17, regular, 0xD9FFFFFF);
+            w.setText(b.toString());
+            w.setSingleLine(true);
+            w.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            box.addView(w, under(6));
+        }
+
+        TextView foot = h.text(14, regular, 0x99FFFFFF);
+        foot.setText((detailApps.size() > 1 ? "◀ ▶  other apps (" + (detailAt + 1) + " of " + detailApps.size() + ")   ·   " : "") + "Back to close");
+        foot.setGravity(Gravity.END);
+        box.addView(foot, under(16));
+        return box;
+    }
 
     /**
      * The log's days with Android's app time in place of what played: each day's seconds in each app ("a") and in
@@ -443,11 +846,13 @@ final class ViewingPanel {
             }
         }
 
+        playedOn = what;
         TextView head = h.text(40, heavy, Color.WHITE);
         head.setText("Your apps");
         place(v, head, 96, 128, 900, 56);
         int all = 0;
         for (int s : used30.values()) all += s;
+        allSecs = all;
         TextView sum = h.text(19, regular, 0xD9FFFFFF);
         sum.setText(byUse ? "Every app opened on this TV in the last 30 days: " + hm(all) + " in all, " + hm(all / 30) + " a day. "
                 + "Counted by Android on the TV, never sent anywhere."
@@ -468,7 +873,11 @@ final class ViewingPanel {
         List<Map.Entry<String, Integer>> rows = new ArrayList<>((byUse ? used30 : usedWeek).entrySet());
         rows.sort((x, y) -> y.getValue() - x.getValue());
         int top = rows.isEmpty() ? 1 : rows.get(0).getValue();
-        for (int i = 0; i < Math.min(9, rows.size()); i++) list.addView(usageRow(rows.get(i).getKey(), rows.get(i).getValue(), top, i == 0));
+        for (int i = 0; i < Math.min(9, rows.size()); i++) {
+            View r = usageRow(rows.get(i).getKey(), rows.get(i).getValue(), top, i == 0);
+            list.addView(r);
+            addPick(r, 0, java.util.Collections.singletonList(rows.get(i).getKey()));
+        }
         if (rows.isEmpty()) {
             TextView n = h.text(20, regular, 0xBFFFFFFF);
             n.setText(byUse ? "Nothing opened in the last 30 days." : "Usage access is being turned on. Open this tab again in a moment.");
@@ -487,6 +896,7 @@ final class ViewingPanel {
 
         // Right: the paid ones, what each costs an hour of use, with their in-app purchases.
         Map<String, List<Plan>> price = prices();
+        plansNow = price;
         List<String> apps = new ArrayList<>();
         for (String p : price.keySet()) if (ReleaseAlerts.installed(c, p) && !price.get(p).isEmpty()) apps.add(p);
         Map<String, Integer> use = secs;
@@ -509,12 +919,21 @@ final class ViewingPanel {
             if (unused.contains(p)) continue;
             LinearLayout.LayoutParams cl = new LinearLayout.LayoutParams(-1, -2);
             cl.bottomMargin = h.px(10);
-            column.addView(valueCard(p, use.getOrDefault(p, 0), price.get(p), counting, what.get(p)), cl);
+            View card = valueCard(p, use.getOrDefault(p, 0), price.get(p), counting, what.get(p));
+            column.addView(card, cl);
+            addPick(card, 1, java.util.Collections.singletonList(p));
         }
-        if (!unused.isEmpty()) column.addView(unusedCard(unused, price), new LinearLayout.LayoutParams(-1, -2));
+        if (!unused.isEmpty()) {
+            View card = unusedCard(unused, price);
+            column.addView(card, new LinearLayout.LayoutParams(-1, -2));
+            addPick(card, 1, unused);
+        }
+        TextView hint = h.text(15, semi, 0xB3FFFFFF);
+        hint.setText("▼ to pick an app, OK for its numbers");
+        place(v, hint, 1186, 1000, 640, 30);
         TextView foot = h.text(15, regular, 0x99FFFFFF);
-        foot.setText("Prices and in-app purchases are the theme's app_prices and app_plans, or the usual UK price. Nothing is cancelled for you: it only tells you.");
-        place(v, foot, 96, 1000, 1600, 30);
+        foot.setText("Prices from the theme's app_prices and app_plans, or the usual UK price. Nothing is cancelled for you.");
+        place(v, foot, 96, 1000, 1060, 30);
         return v;
     }
 
@@ -522,7 +941,8 @@ final class ViewingPanel {
     private View usageRow(String pkg, int secs, int top, boolean first) {
         LinearLayout row = new LinearLayout(c);
         row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setPadding(0, h.px(9), 0, h.px(9));
+        // A little room each side for the ring when it is picked.
+        row.setPadding(h.px(10), h.px(9), h.px(10), h.px(9));
         FrameLayout mark = new FrameLayout(c);
         mark.addView(appMark(pkg), new FrameLayout.LayoutParams(-2, h.px(32), Gravity.CENTER_VERTICAL));
         row.addView(mark, new LinearLayout.LayoutParams(h.px(250), h.px(36)));

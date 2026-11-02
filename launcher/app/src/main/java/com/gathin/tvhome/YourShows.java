@@ -71,6 +71,110 @@ final class YourShows {
         return row;
     }
 
+    /** How far back a new episode counts as new. */
+    private static final int NEW_DAYS = 7;
+
+    /**
+     * TV shows' "New episodes" tab: every episode out in the last week, newest first, for the series you watch here
+     * first (a red NEW badge, with how far you are), then the most popular series on the TV's own streaming apps (the
+     * episode in white, and which app). OK as Your shows does: a series on one of the TV's apps as the page's other
+     * tabs, one on none of them its store, else a line.
+     */
+    static PagesV2.Row fresh(HomeV2 h) {
+        LocalDate today = LocalDate.now(), from = today.minusDays(NEW_DAYS);
+        List<Object[]> mine = new ArrayList<>(), others = new ArrayList<>();
+        Set<Integer> seen = new HashSet<>();
+        long since = System.currentTimeMillis() - 180L * 24 * 3600_000L;
+        // Yours.
+        for (WatchHistory.Entry e : WatchHistory.load(h.a)) {
+            if (!e.tv || e.tmdbId <= 0 || e.at < since || !seen.add(e.tmdbId)) continue;
+            if (seen.size() > 15) break;
+            try {
+                JSONObject d = details(h.tmdbKey, e.tmdbId);
+                JSONObject last = d == null ? null : d.optJSONObject("last_episode_to_air");
+                LocalDate out = date(last);
+                if (out == null || out.isBefore(from) || out.isAfter(today)) continue;
+                PagesV2.Title t = episode(h, d, last, out, today, true);
+                if (t == null) continue;
+                int[] at = position(e);
+                if (at != null) t.foot = "You're on S" + at[0] + " E" + at[1];
+                mine.add(new Object[]{t, out.toEpochDay()});
+            } catch (Exception ignored) {
+                // that series left out this time
+            }
+        }
+        // The rest: out this week on the TV's apps, most watched first (TMDB's popularity), news, soaps and talk left out.
+        String providers = ReleaseAlerts.providers(h.a);
+        if (!providers.isEmpty() && h.tmdbKey != null && !h.tmdbKey.isEmpty()) {
+            try {
+                JSONArray res = new JSONObject(HomeV2.get("https://api.themoviedb.org/3/discover/tv?language=en-GB&watch_region=GB"
+                        + "&with_watch_providers=" + providers + "&with_watch_monetization_types=flatrate"
+                        + "&air_date.gte=" + from + "&air_date.lte=" + today
+                        + "&without_genres=10763,10766,10767&vote_count.gte=20&sort_by=popularity.desc&api_key=" + h.tmdbKey))
+                        .optJSONArray("results");
+                for (int i = 0; res != null && i < res.length() && others.size() < 16; i++) {
+                    int id = res.getJSONObject(i).optInt("id");
+                    if (id <= 0 || !seen.add(id)) continue;
+                    JSONObject d = details(h.tmdbKey, id);
+                    JSONObject last = d == null ? null : d.optJSONObject("last_episode_to_air");
+                    LocalDate out = date(last);
+                    if (out == null || out.isBefore(from) || out.isAfter(today)) continue;
+                    PagesV2.Title t = episode(h, d, last, out, today, false);
+                    if (t != null) others.add(new Object[]{t, out.toEpochDay()});
+                }
+            } catch (Exception ignored) {
+                // yours only this time
+            }
+        }
+        mine.sort((x, y) -> Long.compare((Long) y[1], (Long) x[1]));
+        List<PagesV2.Title> items = new ArrayList<>();
+        for (Object[] r : mine) items.add((PagesV2.Title) r[0]);
+        for (Object[] r : others) items.add((PagesV2.Title) r[0]);
+        PagesV2.Row row = PagesV2.row(null, null, false, items);
+        row.empty = "New episodes from the last week show here: the series you watch first, then the most popular on your apps.";
+        return row;
+    }
+
+    /** A new episode as a poster: the series, its badge (red for yours), the day it came out, and what OK does. */
+    private static PagesV2.Title episode(HomeV2 h, JSONObject d, JSONObject last, LocalDate out, LocalDate today, boolean yours) {
+        PagesV2.Title t = new PagesV2.Title();
+        t.id = d.optInt("id");
+        t.tv = true;
+        t.title = d.optString("name", "");
+        String poster = d.optString("poster_path", ""), back = d.optString("backdrop_path", "");
+        if (poster.isEmpty() || "null".equals(poster)) return null;
+        t.poster = "https://image.tmdb.org/t/p/w342" + poster;
+        t.backdrop = !back.isEmpty() && !"null".equals(back) ? "https://image.tmdb.org/t/p/w1280" + back : null;
+        t.vote = d.optDouble("vote_average", 0);
+        t.year = "";
+        int se = last.optInt("season_number"), ep = last.optInt("episode_number");
+        boolean premiere = ep == 1;
+        t.badge = (yours ? "NEW · " : "") + "S" + se + " E" + ep;
+        t.badgeBg = yours ? RED : WHITE;
+        t.badgeFg = yours ? WHITE : NAVY;
+        String app = null;
+        JSONObject gb = gb(d);
+        JSONArray flat = gb == null ? null : gb.optJSONArray("flatrate");
+        for (int i = 0; flat != null && i < flat.length() && app == null; i++) {
+            JSONObject pr = flat.optJSONObject(i);
+            String a = pr == null ? null : HomeV2.serviceApp(String.valueOf(pr.optInt("provider_id")));
+            if (a != null && ReleaseAlerts.installed(h.a, a)) app = pr.optString("provider_name", null);
+        }
+        t.foot = "Out " + (ChronoUnit.DAYS.between(out, today) == 0 ? "today" : ChronoUnit.DAYS.between(out, today) == 1 ? "yesterday"
+                : out.format(DateTimeFormatter.ofPattern("EEEE", Locale.UK)));
+        t.what = (premiere ? "Season " + se + " starts: " : "New episode: ") + "S" + se + " E" + ep + named(last) + ", out " + when(out, today)
+                + (app != null ? " · on " + app : "");
+        t.overview = !last.optString("overview").isEmpty() ? last.optString("overview") : d.optString("overview", "");
+        if (HomeV2.onYourApps(h, gb) == null) {
+            String store = HomeV2.storeFor(h, gb);
+            String name = t.title, art = t.backdrop != null ? t.backdrop : t.poster;
+            int id = t.id;
+            t.ok = store != null ? () -> h.searchTitle(store, name, true, id, art)
+                    : () -> Toast.makeText(h.a, name + " isn't on your streaming apps yet", Toast.LENGTH_SHORT).show();
+        }
+        return t;
+    }
+
     /** {title, rank (0 new, 1 to go, 2 coming, 3 undated), order within the rank} for one series; null to leave it out. */
     private static Object[] series(HomeV2 h, WatchHistory.Entry e) throws Exception {
         JSONObject d = details(h.tmdbKey, e.tmdbId);

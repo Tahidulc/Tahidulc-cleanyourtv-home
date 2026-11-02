@@ -67,6 +67,14 @@ final class AppUsage {
         final int[][] hours;
         /** Each day's seconds in each app. */
         final java.util.List<Map<String, Integer>> dayApps = new java.util.ArrayList<>();
+        /** Each app's seconds in each hour of the day, all the days together. */
+        final Map<String, int[]> appHours = new HashMap<>();
+        /**
+         * Each app's stretches in front (each time it was opened and used for a minute or more), its longest
+         * (seconds), when that began, and when it was last in front.
+         */
+        final Map<String, Integer> opens = new HashMap<>(), longest = new HashMap<>();
+        final Map<String, Long> longestAt = new HashMap<>(), last = new HashMap<>();
 
         Span(int n) {
             days = new int[n];
@@ -129,8 +137,13 @@ final class AppUsage {
         out.apps.putAll(keep(c, raw));
         // Each kept stretch split at the hours it crosses.
         for (Object[] r : runs) {
-            if (!out.apps.containsKey((String) r[0])) continue;
+            String pkg = (String) r[0];
+            if (!out.apps.containsKey(pkg)) continue;
             long t = (Long) r[1], to = (Long) r[2];
+            int secsAll = (int) ((to - t) / 1000);
+            if (secsAll >= 60) out.opens.merge(pkg, 1, Integer::sum);
+            if (secsAll > out.longest.getOrDefault(pkg, 0)) { out.longest.put(pkg, secsAll); out.longestAt.put(pkg, t); }
+            if (to > out.last.getOrDefault(pkg, 0L)) out.last.put(pkg, to);
             while (t < to) {
                 java.time.ZonedDateTime z = java.time.Instant.ofEpochMilli(t).atZone(zone);
                 long next = z.truncatedTo(java.time.temporal.ChronoUnit.HOURS).plusHours(1).toInstant().toEpochMilli();
@@ -140,7 +153,8 @@ final class AppUsage {
                     int secs = (int) ((cut - t) / 1000);
                     out.days[day] += secs;
                     out.hours[day][z.getHour()] += secs;
-                    out.dayApps.get(day).merge((String) r[0], secs, Integer::sum);
+                    out.dayApps.get(day).merge(pkg, secs, Integer::sum);
+                    out.appHours.computeIfAbsent(pkg, k -> new int[24])[z.getHour()] += secs;
                 }
                 t = cut;
             }
@@ -178,6 +192,24 @@ final class AppUsage {
             if (out.getOrDefault(w.getKey(), 0) < w.getValue()) out.put(w.getKey(), w.getValue());
         }
         return keep(c, out);
+    }
+
+    /** When each app was last opened, from Android's totals over the last six months (an app not used lately too). */
+    static Map<String, Long> lastUsed(Context c) {
+        Map<String, Long> out = new HashMap<>();
+        if (!allowed(c)) return out;
+        long end = System.currentTimeMillis();
+        try {
+            UsageStatsManager usm = (UsageStatsManager) c.getSystemService(Context.USAGE_STATS_SERVICE);
+            for (Map.Entry<String, UsageStats> s : usm.queryAndAggregateUsageStats(end - 183L * 24 * 3_600_000L, end).entrySet()) {
+                // When it was last on screen (Android 10 on), not its last use of any kind (a service, a widget).
+                long at = android.os.Build.VERSION.SDK_INT >= 29 ? s.getValue().getLastTimeVisible() : s.getValue().getLastTimeUsed();
+                if (at > 0 && s.getValue().getTotalTimeInForeground() > 0) out.put(s.getKey(), at);
+            }
+        } catch (RuntimeException ignored) {
+            // not known
+        }
+        return out;
     }
 
     /**

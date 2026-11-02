@@ -1043,6 +1043,7 @@ final class PagesV2 {
     static PosterPage shows(HomeV2 h) {
         return sections(h, "TV SHOWS", 0xFF4F8BFF, true, new String[][]{
                 {"Your shows", "@yourshows", ""},
+                {"New episodes", "@newepisodes", ""},
                 {"Top 10", "trending/tv/week", "n"},
                 {"New series", "discover/tv?first_air_date.gte=" + since(60) + "&first_air_date.lte=" + today() + "&sort_by=popularity.desc&with_original_language=en", ""},
                 {"On TV now", "tv/on_the_air?without_genres=10763,10764,10767", ""},
@@ -1085,6 +1086,7 @@ final class PagesV2 {
                 // The tabs of their own: Fits tonight (Movies), Your shows (TV shows).
                 : "@fits".equals(spec[t - 1][1]) ? Arrays.asList(FitsTonight.row(h))
                 : "@yourshows".equals(spec[t - 1][1]) ? Arrays.asList(YourShows.row(h))
+                : "@newepisodes".equals(spec[t - 1][1]) ? Arrays.asList(YourShows.fresh(h))
                 : "@surprise".equals(spec[t - 1][1]) ? Arrays.asList(Surprise.row(h))
                 : Arrays.asList(row(null, null, "n".equals(spec[t - 1][2]), tmdb(k, spec[t - 1][1], tv))));
         // Nothing to continue: the tab after it, past Your shows too when no series has been watched yet.
