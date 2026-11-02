@@ -857,8 +857,11 @@ final class HomeV2 {
                     if (onBoxes && !shown.isEmpty()) zone = Z_ROW;
                     paint();
                 } else if (zone == Z_MATCH) {
-                    // Back on Match Day: put away until tomorrow, the focus on the row.
-                    match.hideToday();
+                    // Back on Match Day: down to the row, Match Day staying where it is. (It used to put Match Day away
+                    // until the next day, which a Back pressed out of habit did without anyone meaning it.)
+                    zone = shown.isEmpty() ? Z_CATS : Z_ROW;
+                    if (rowIdx < shown.size()) hero(shown.get(rowIdx));
+                    paint();
                 } else if (zone == Z_SCORES) {
                     View f = a.getCurrentFocus();
                     if (f != null) f.clearFocus();

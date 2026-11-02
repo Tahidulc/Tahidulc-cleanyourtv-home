@@ -91,6 +91,9 @@ final class ControlCentre {
         panel.setBackground(g);
         panel.setClipToOutline(true);
         panel.setOutlineProvider(round(40));
+        // A focused tile grows a little: into the panel's margin, not cut off at it.
+        panel.setClipToPadding(false);
+        panel.setClipChildren(false);
 
         TextView title = text(36, heavy, Color.WHITE);
         title.setText("Control Centre");
@@ -108,6 +111,7 @@ final class ControlCentre {
             Item it = items.get(i);
             if (i % 2 == 0) {
                 line = new LinearLayout(c);
+                line.setClipChildren(false);
                 LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, px(86));
                 if (i > 0) lp.topMargin = px(14);
                 panel.addView(line, lp);
@@ -300,10 +304,12 @@ final class ControlCentre {
             Item it = t.getTag() instanceof Item ? (Item) t.getTag() : null;
             boolean lit = it != null && it.lit != null && Boolean.TRUE.equals(it.lit.get());
             if (it == null) {
-                // The camera: a white ring when focused.
+                // The camera: a white ring when focused, along the tile's own rounded edge (the stroke sits half its
+                // width inside the edge, so its corners are rounded by that much less to follow it).
+                int w = px(4);
                 GradientDrawable ring = new GradientDrawable();
-                ring.setCornerRadius(px(24));
-                if (on) ring.setStroke(px(4), Color.WHITE);
+                ring.setCornerRadius(Math.max(0, px(24) - w / 2f));
+                if (on) ring.setStroke(w, Color.WHITE);
                 ((FrameLayout) t).setForeground(ring);
                 t.animate().scaleX(on ? 1.02f : 1f).scaleY(on ? 1.02f : 1f).setDuration(140).start();
                 continue;

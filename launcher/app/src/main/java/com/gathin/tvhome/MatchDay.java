@@ -260,9 +260,9 @@ final class MatchDay {
 
     // ---- state ---------------------------------------------------------------------------------------------------
 
-    /** Whether Match Day has a game to show now (and it was not put away for today). */
+    /** Whether Match Day has a game to show now. */
     boolean active() {
-        return pick != null && !hiddenToday(pick);
+        return pick != null;
     }
 
     Pick pick() {
@@ -272,6 +272,8 @@ final class MatchDay {
     void start() {
         if (running) return;
         running = true;
+        // What Back on Match Day used to put away for the day (before 2.93) shows again.
+        prefs().edit().remove("hidden").apply();
         refresh.run();
         main.post(tick);
     }
@@ -280,17 +282,6 @@ final class MatchDay {
         running = false;
         main.removeCallbacks(refresh);
         main.removeCallbacks(tick);
-    }
-
-    /** Back on Match Day: put away until tomorrow, for this game. */
-    void hideToday() {
-        if (pick == null) return;
-        prefs().edit().putString("hidden", LocalDate.now() + "|" + pick.g.id).apply();
-        if (changed != null) changed.run();
-    }
-
-    private boolean hiddenToday(Pick p) {
-        return (LocalDate.now() + "|" + p.g.id).equals(prefs().getString("hidden", ""));
     }
 
     private SharedPreferences prefs() {
@@ -303,7 +294,17 @@ final class MatchDay {
             if (!running) return;
             io.execute(() -> {
                 Pick p = choose();
+                boolean failed = readFailed;
                 main.post(() -> {
+                    // A read that failed (no games at all came back) keeps the game already shown until it is over.
+                    if (p == null && failed && pick != null && System.currentTimeMillis() < pick.g.kickoff + AFTER_MS) {
+                        android.util.Log.i("MatchDay", "read failed: keeping " + pick.g.id);
+                        main.removeCallbacks(refresh);
+                        if (running) main.postDelayed(refresh, 60_000L);
+                        return;
+                    }
+                    android.util.Log.i("MatchDay", p == null ? (failed ? "read failed: no game" : "no game today")
+                            : "game " + p.g.id + " rank " + p.rank);
                     boolean was = active();
                     String before = pick == null ? null : pick.g.id + pick.g.state;
                     pick = p;
@@ -313,7 +314,8 @@ final class MatchDay {
                     if (changed != null && (was != active() || differs)) changed.run();
                 });
             });
-            long soon = pick != null && (pick.g.state == 0 || pick.g.kickoff - System.currentTimeMillis() < 20 * 60_000L) ? 60_000L : 10 * 60_000L;
+            long soon = pick != null && (pick.g.state == 0 || pick.g.kickoff - System.currentTimeMillis() < 20 * 60_000L) || readFailed
+                    ? 60_000L : 10 * 60_000L;
             main.postDelayed(this, soon);
         }
     };
@@ -339,6 +341,9 @@ final class MatchDay {
 
     // ---- choosing the game -------------------------------------------------------------------------------------------
 
+    /** The last read brought back no games at all: the feed did not answer (a day with none still lists other leagues'). */
+    private volatile boolean readFailed;
+
     private Pick choose() {
         LocalDate today = LocalDate.now(ZoneId.systemDefault());
         long now = System.currentTimeMillis();
@@ -346,6 +351,7 @@ final class MatchDay {
         for (String[] leagues : new String[][]{MAJOR, CLUB_LEAGUES, ENGLAND_LEAGUES}) {
             for (ScoresTicker.Game g : ScoresTicker.load(leagues, today)) if (g.id != null && !all.containsKey(g.id)) all.put(g.id, g);
         }
+        readFailed = all.isEmpty();
         String[] channels = c.getResources().getStringArray(R.array.football_tv_channels);
         Pick best = null;
         for (ScoresTicker.Game g : all.values()) {
