@@ -225,26 +225,73 @@ final class ViewingPanel {
 
     // ---- your apps: what they cost an hour ----------------------------------------------------------------------
 
-    /** The streaming apps with a monthly price: package, name, typical UK price (the theme's app_prices replace it). */
+    /**
+     * The paid apps: package, name, typical UK price, and whether it is paid by the month or the year (the theme's
+     * app_prices replace the price, and can give the next renewal).
+     */
     private static final String[][] PAID = {
-            {"com.netflix.ninja", "Netflix", "12.99"}, {"com.amazon.amazonvideo.livingroom", "Prime Video", "8.99"},
-            {"com.disney.disneyplus", "Disney+", "9.99"}, {"com.apple.atve.androidtv.appletv", "Apple TV", "9.99"},
-            {"com.nowtv.androidtv", "NOW", "9.99"}, {"com.cbs.ca", "Paramount+", "6.99"}, {"com.wbd.stream", "HBO Max", "9.99"}};
+            {"com.netflix.ninja", "Netflix", "12.99", "month"}, {"com.amazon.amazonvideo.livingroom", "Prime Video", "8.99", "month"},
+            {"com.disney.disneyplus", "Disney+", "9.99", "month"}, {"com.apple.atve.androidtv.appletv", "Apple TV", "9.99", "month"},
+            {"com.nowtv.androidtv", "NOW", "9.99", "month"}, {"com.cbs.ca", "Paramount+", "6.99", "month"},
+            {"com.wbd.stream", "HBO Max", "9.99", "month"}, {"ar.tvplayer.tv", "TiviMate", "10.99", "year"},
+            {ReleaseAlerts.DEBRID, "Debrid Stream", "2.29", "month"}};
 
-    /** What each app's subscription costs a month: the theme's "app_prices" ("Netflix|12.99"), else the usual UK price. */
-    private Map<String, Double> prices() {
-        Map<String, Double> out = new LinkedHashMap<>();
-        for (String[] p : PAID) out.put(p[0], Double.parseDouble(p[2]));
+    /** What an app costs: the amount, by the year or the month, and when it next renews (null when not known). */
+    static final class Plan {
+        double amount;
+        boolean yearly;
+        LocalDate renews;
+
+        /** The cost of a month, a yearly plan spread over twelve. */
+        double monthly() {
+            return yearly ? amount / 12 : amount;
+        }
+
+        /** The next renewal from today: a date given in the past moves on a month (or a year) at a time. */
+        LocalDate next() {
+            if (renews == null) return null;
+            LocalDate d = renews, today = LocalDate.now();
+            for (int i = 0; d.isBefore(today) && i < 1200; i++) d = yearly ? d.plusYears(1) : d.plusMonths(1);
+            return d;
+        }
+
+        String price() {
+            return "£" + money(amount) + (yearly ? " a year" : " a month");
+        }
+    }
+
+    /**
+     * What each app costs: the theme's "app_prices" lines ("Netflix|12.99", or with the period and the next renewal,
+     * "TiviMate|10.99|year|2027-06-15"), else the usual UK price.
+     */
+    private Map<String, Plan> prices() {
+        Map<String, Plan> out = new LinkedHashMap<>();
+        for (String[] p : PAID) {
+            Plan plan = new Plan();
+            plan.amount = Double.parseDouble(p[2]);
+            plan.yearly = "year".equals(p[3]);
+            out.put(p[0], plan);
+        }
         for (String line : Config.themeStrings(c, "app_prices", new ArrayList<>())) {
             String[] kv = line.split("\\|");
             if (kv.length < 2) continue;
             String who = kv[0].trim();
-            for (String[] p : PAID) if (p[1].equalsIgnoreCase(who)) who = p[0];
+            for (String[] p : PAID) if (p[1].equalsIgnoreCase(who) || p[1].replace(" ", "").equalsIgnoreCase(who.replace(" ", ""))) who = p[0];
+            Plan plan = out.containsKey(who) ? out.get(who) : new Plan();
             try {
-                out.put(who, Double.parseDouble(kv[1].trim().replace("£", "")));
-            } catch (NumberFormatException ignored) {
-                // left as it was
+                plan.amount = Double.parseDouble(kv[1].trim().replace("£", ""));
+            } catch (NumberFormatException e) {
+                continue;
             }
+            if (kv.length > 2 && !kv[2].trim().isEmpty()) plan.yearly = kv[2].trim().toLowerCase(Locale.UK).contains("year");
+            if (kv.length > 3) {
+                try {
+                    plan.renews = LocalDate.parse(kv[3].trim());
+                } catch (Exception ignored) {
+                    // no renewal date
+                }
+            }
+            out.put(who, plan);
         }
         return out;
     }
@@ -365,11 +412,11 @@ final class ViewingPanel {
         }
 
         // Right: the paid ones, what each costs an hour of use.
-        Map<String, Double> price = prices();
+        Map<String, Plan> price = prices();
         List<String> apps = new ArrayList<>();
         for (String p : price.keySet()) if (ReleaseAlerts.installed(c, p)) apps.add(p);
         Map<String, Integer> use = secs;
-        apps.sort((x, y) -> Double.compare(per(price.get(x), use.getOrDefault(x, 0)), per(price.get(y), use.getOrDefault(y, 0))));
+        apps.sort((x, y) -> Double.compare(per(price.get(x).monthly(), use.getOrDefault(x, 0)), per(price.get(y).monthly(), use.getOrDefault(y, 0))));
         TextView paid = label(counting ? "THE PAID ONES · STILL COUNTING" : "ARE THE PAID ONES WORTH IT?");
         place(v, paid, 1186, 244, 640, 30);
         if (apps.isEmpty()) {
@@ -377,9 +424,10 @@ final class ViewingPanel {
             none.setText("No paid streaming apps on this TV.");
             place(v, none, 1186, 284, 640, 40);
         }
-        for (int i = 0; i < Math.min(5, apps.size()); i++) {
+        // Six to a column: the streaming apps and the two paid helpers (TiviMate, Debrid Stream).
+        for (int i = 0; i < Math.min(6, apps.size()); i++) {
             String p = apps.get(i);
-            place(v, valueCard(p, use.getOrDefault(p, 0), price.get(p), counting, what.get(p)), 1186, 282 + i * 142, 638, 130);
+            place(v, valueCard(p, use.getOrDefault(p, 0), price.get(p), counting, what.get(p)), 1186, 280 + i * 118, 638, 110);
         }
         TextView foot = h.text(15, regular, 0x99FFFFFF);
         foot.setText("Prices are the theme's app_prices, or the usual UK price where it gives none. Nothing is cancelled for you: it only tells you.");
@@ -416,8 +464,11 @@ final class ViewingPanel {
     }
 
     /** A paid app: its mark and verdict, what it costs an hour of use, and a tip or what was watched on it. */
-    private View valueCard(String p, int s, double cost, boolean counting, Map<String, Integer> on) {
+    private View valueCard(String p, int s, Plan plan, boolean counting, Map<String, Integer> on) {
+        double cost = plan.monthly();
         double hour = per(cost, s);
+        LocalDate renews = plan.next();
+        long days = renews == null ? -1 : java.time.temporal.ChronoUnit.DAYS.between(LocalDate.now(), renews);
         String word;
         int colour;
         if (counting) { word = "COUNTING"; colour = 0x59FFFFFF; }
@@ -428,7 +479,7 @@ final class ViewingPanel {
         else { word = "HARDLY USED"; colour = 0xFFFF5A5A; }
         LinearLayout card = new LinearLayout(c);
         card.setOrientation(LinearLayout.VERTICAL);
-        card.setPadding(h.px(22), h.px(14), h.px(22), h.px(12));
+        card.setPadding(h.px(22), h.px(10), h.px(22), h.px(8));
         GradientDrawable g = h.fill(20, CARD);
         g.setStroke(h.px(colour == 0xFFFF5A5A ? 2 : 1), colour == 0xFFFF5A5A ? colour : EDGE);
         card.setBackground(g);
@@ -452,13 +503,30 @@ final class ViewingPanel {
         top.addView(chip);
         card.addView(top);
         TextView hours = h.text(16, regular, 0xCCFFFFFF);
-        hours.setText(hm(s) + (counting ? " so far" : " in 30 days") + " for £" + money(cost) + " a month");
+        hours.setText(hm(s) + (counting ? " so far" : " in 30 days") + " for " + plan.price()
+                + (renews == null ? "" : " · renews " + renews.format(DateTimeFormatter.ofPattern(
+                renews.getYear() == LocalDate.now().getYear() ? "d MMM" : "d MMM yyyy", Locale.UK))));
+        hours.setSingleLine(true);
+        hours.setEllipsize(android.text.TextUtils.TruncateAt.END);
         LinearLayout.LayoutParams hl = new LinearLayout.LayoutParams(-1, -2);
-        hl.topMargin = h.px(6);
+        hl.topMargin = h.px(4);
         card.addView(hours, hl);
         String tip = counting ? null : tips.get(p);
-        String advice = tip != null ? (hour >= 4 || s < 600 ? "Tip · " + tip + ": keep it till then, pause after" : "Coming · " + tip)
-                : !counting && (hour >= 4 || s < 600) ? "Tip · Nothing you watch there is coming soon: pausing it saves £" + money(cost) + " a month" : null;
+        boolean poor = !counting && (hour >= 4 || s < 600);
+        String when = days == 0 ? "today" : days == 1 ? "tomorrow" : "in " + days + " days";
+        String advice;
+        if (days >= 0 && days <= 10 && poor && tip == null) {
+            // Little used and renewing soon: the moment to stop it.
+            advice = "Renews " + when + " · cancel before then to save " + plan.price().replace(" a ", " this ");
+        } else if (tip != null) {
+            advice = poor ? "Tip · " + tip + ": keep it till then, pause after" : "Coming · " + tip;
+        } else if (poor) {
+            advice = "Tip · Nothing you watch there is coming soon: pausing it saves £" + money(cost) + " a month";
+        } else if (days >= 0 && days <= 10) {
+            advice = "Renews " + when + " · £" + money(plan.amount) + ", worth keeping";
+        } else {
+            advice = null;
+        }
         if (advice == null && on != null && !on.isEmpty()) {
             List<Map.Entry<String, Integer>> list = new ArrayList<>(on.entrySet());
             list.sort((x, y) -> y.getValue() - x.getValue());
@@ -473,7 +541,7 @@ final class ViewingPanel {
             t.setSingleLine(true);
             t.setEllipsize(android.text.TextUtils.TruncateAt.END);
             LinearLayout.LayoutParams al = new LinearLayout.LayoutParams(-1, -2);
-            al.topMargin = h.px(6);
+            al.topMargin = h.px(4);
             card.addView(t, al);
         }
         return card;
