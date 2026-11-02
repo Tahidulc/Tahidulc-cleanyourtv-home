@@ -164,6 +164,19 @@ final class HomeV2 {
     private LinearLayout hSpecs;
     private Tile heroTile;
     final List<FrameLayout> railViews = new ArrayList<>();
+    /**
+     * The dock layout (theme "home_dock", on unless turned off): no rail down the left; the rail's apps, in their own
+     * colours, and the six sections in one glass dock along the foot, and the row of tiles the full width above it.
+     */
+    boolean dockMode;
+    /** The liquid-glass focus over the row and the dock (the dock layout). */
+    private GlassLens lens;
+    /** The dock's glass and the rule between its apps and its sections. */
+    private View dockBg, dockSep;
+    /** The dock: its top and height; the sections' width. */
+    private static final int DOCK_Y = 944, DOCK_H = 100, DOCK_APP = 64, DOCK_SEC = 112, DOCK_GAP = 14;
+    /** Match Day's panel, from the top of the screen. */
+    private static final int MATCH_Y = 190;
     TextView label;
     FrameLayout viewport;
     private LinearLayout row;
@@ -217,6 +230,8 @@ final class HomeV2 {
         displaySemi = a.getResources().getFont(R.font.inter_display_semibold);
         tmdbKey = Config.themeString(a, "tmdb_key", "").trim();
         lite = Config.themeFlag(a, "lite_home", false);
+        dockMode = Config.themeFlag(a, "home_dock", true);
+        if (dockMode) { TILE_W = 448; TILE_H = 300; }
         players = new TilePlayer(a);
         players.useOverlay(lite);
         if (!tmdbKey.isEmpty()) players.warm();
@@ -243,16 +258,19 @@ final class HomeV2 {
         buildRail();
         label = text(18, semi, 0xBFFFFFFF);
         label.setLetterSpacing(0.11f);
-        add(label, 180, 532, 1500, 34);   // over the first tile
+        // The row's heading (For You, Live TV, Netflix...) over the first tile, always a clear gap under Match Day's
+        // buttons (they end at 520), never over them: 552 in the dock layout, 532 beside the rail.
+        int headY = MATCH_Y + MatchDay.BUTTONS_Y + MatchDay.BUTTONS_H + (dockMode ? 32 : 12);
+        add(label, dockMode ? 48 : 180, headY, 1500, 34);
         match = new MatchDay(this);
         // The clubs' colours where the hero's picture would be, just above it.
         FrameLayout.LayoutParams blp = new FrameLayout.LayoutParams(px(1160), px(652));
         blp.leftMargin = px(760);
         root.addView(match.backdrop, root.indexOfChild(heroB) + 1, blp);
-        add(match.panel, 216, 190, 1320, 342);
+        add(match.panel, dockMode ? 56 : 216, MATCH_Y, 1320, 342);
         FrameLayout chipBox = new FrameLayout(a);
         chipBox.addView(match.chip, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.END));
-        add(chipBox, 1120, 524, 700, 40);
+        add(chipBox, dockMode ? 1176 : 1120, headY - (dockMode ? 4 : 8), 700, 40);
         match.changed = this::matchChanged;
         match.kickedOff = () -> bringBackMatch(true);
         viewport = new FrameLayout(a);
@@ -263,15 +281,18 @@ final class HomeV2 {
         viewport.setClipChildren(false);
         // The four tiles fill the width from beside the rail (180) to near the screen's edge (1896); the row is cut off
         // just after the fourth (room for it to grow when focused), so the fifth waits out of sight until it slides.
-        add(viewport, 164, 556, 1743, TILE_H + 52);
+        // The dock layout: the row from the left edge (48) to near the right (1876), four wider tiles in it. Its window
+        // starts at 36, where the tile before the first ends once the row has slid (kept for the slide): no sliver of it.
+        if (dockMode) add(viewport, 36, 576, 1884, TILE_H + 52); else add(viewport, 164, 556, 1743, TILE_H + 52);
         row = new LinearLayout(a);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setClipChildren(false);
         FrameLayout.LayoutParams rlp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, px(TILE_H));
-        rlp.leftMargin = px(16);
+        rlp.leftMargin = px(rowInset());
         rlp.topMargin = px(24);
         viewport.addView(row, rlp);
         buildCats();
+        if (dockMode) layoutDock();
 
         String[] leagues = a.getResources().getStringArray(R.array.score_leagues);
         if (leagues.length > 0) {
@@ -388,7 +409,7 @@ final class HomeV2 {
         wlp.topMargin = px(10);
         col.addView(weather, wlp);
         clock.addView(col);
-        add(clock, 96, 92, 1100, 160);
+        add(clock, dockMode ? 52 : 96, 92, 1100, 160);
         weatherLine = new WeatherLine(weather, a.getString(R.string.weather_latitude), a.getString(R.string.weather_longitude),
                 a.getString(R.string.weather_place));
         // A button too, as on v1: the first of the top row (Left from the Wi-Fi pill), OK opens the weather card.
@@ -584,7 +605,7 @@ final class HomeV2 {
         hText.setShadowLayer(px(10), 0, px(2), 0x73000000);
         // The description in a narrower column than the title: a long one wraps before it reaches the picture.
         htext.addView(hText, new LinearLayout.LayoutParams(px(760), ViewGroup.LayoutParams.WRAP_CONTENT));
-        add(htext, 216, 226, 1060, 340);
+        add(htext, dockMode ? 56 : 216, 226, 1060, 340);
     }
 
     private void buildRail() {
@@ -604,7 +625,7 @@ final class HomeV2 {
             if (p != null) {
                 try {
                     Drawable icon = a.getPackageManager().getApplicationIcon(p);
-                    art.setImageDrawable(icon);
+                    art.setImageDrawable(fullSquare(icon));
                 } catch (PackageManager.NameNotFoundException ignored) {
                 }
             }
@@ -613,22 +634,131 @@ final class HomeV2 {
             g.setImageResource(glyph(p));
             g.setAlpha(0.85f);
             f.addView(g, new FrameLayout.LayoutParams(px(30), px(30), Gravity.CENTER));
-            add(f, 96, y, 64, 64);
+            if (!dockMode) add(f, 96, y, 64, 64);
             railViews.add(f);
             y += 84;
         }
-        // The white bar beside the app whose tiles are showing.
+        // The white bar beside the app whose tiles are showing (in the dock, a dot under it).
         View mark = new View(a);
         mark.setBackground(fill(3, Color.WHITE));
         mark.setAlpha(0f);
         mark.setTag("mark");
-        add(mark, 80, 300 + 16, 5, 32);
+        if (!dockMode) add(mark, 80, 300 + 16, 5, 32);
+        else markView = mark;
+    }
+
+    private View markView;
+
+    /**
+     * An app's icon filling its whole rounded square. An adaptive icon (Disney+, Prime Video) is two layers Android
+     * shows through its circle mask, which left the button's glass showing in the corners; here its layers are drawn
+     * edge to edge instead, the middle 72 of their 108 units filling the square, as a square-icon launcher shows them.
+     * Any other icon comes back as it is.
+     */
+    private Drawable fullSquare(Drawable icon) {
+        if (!(icon instanceof android.graphics.drawable.AdaptiveIconDrawable)) return icon;
+        android.graphics.drawable.AdaptiveIconDrawable ad = (android.graphics.drawable.AdaptiveIconDrawable) icon;
+        try {
+            int n = Math.max(96, px(DOCK_APP * 1.5f));   // sharp at the dock's swell
+            Bitmap b = Bitmap.createBitmap(n, n, Bitmap.Config.ARGB_8888);
+            android.graphics.Canvas c = new android.graphics.Canvas(b);
+            int o = n / 4;   // the layers are half as big again as what shows: a quarter off each side
+            for (Drawable layer : new Drawable[]{ad.getBackground(), ad.getForeground()}) {
+                if (layer == null) continue;
+                layer.setBounds(-o, -o, n + o, n + o);
+                layer.draw(c);
+            }
+            return new android.graphics.drawable.BitmapDrawable(a.getResources(), b);
+        } catch (RuntimeException e) {
+            return icon;
+        }
+    }
+
+    /** Where the row starts inside its window: the first tile at 48 in the dock layout, 180 beside the rail. */
+    private int rowInset() {
+        return dockMode ? 12 : 16;
+    }
+
+    /**
+     * The dock: one pane of glass along the foot, centred; the apps (their own icons, as the rail showed them when
+     * focused) then a thin rule then the six sections, each its icon in its colour over its name. The liquid-glass
+     * focus sits between the glass and the icons.
+     */
+    private void layoutDock() {
+        int n = railViews.size();
+        int width = 40 + n * DOCK_APP + (n - 1) * DOCK_GAP + DOCK_GAP + 2 + DOCK_GAP + 6 * DOCK_SEC + 5 * DOCK_GAP;
+        int x0 = (1920 - width) / 2;
+        dockBg = new View(a);
+        GradientDrawable g = fill(30, 0x1FFFFFFF);
+        g.setStroke(px(1.5f), 0x3DFFFFFF);
+        dockBg.setBackground(g);
+        add(dockBg, x0, DOCK_Y, width, DOCK_H);
+        lens = new GlassLens(a, s);
+        root.addView(lens, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        int x = x0 + 20;
+        for (FrameLayout f : railViews) {
+            add(f, x, DOCK_Y + (DOCK_H - DOCK_APP) / 2, DOCK_APP, DOCK_APP);
+            x += DOCK_APP + DOCK_GAP;
+        }
+        dockSep = new View(a);
+        dockSep.setBackgroundColor(0x47FFFFFF);
+        add(dockSep, x, DOCK_Y + 20, 2, DOCK_H - 40);
+        x += 2 + DOCK_GAP;
+        for (View box : catViews) {
+            add(box, x, DOCK_Y + 10, DOCK_SEC, DOCK_H - 20);
+            x += DOCK_SEC + DOCK_GAP;
+        }
+        if (markView != null) {
+            markView.setBackground(fill(3, Color.WHITE));
+            add(markView, 0, DOCK_Y + DOCK_H - 11, 6, 6);
+        }
+    }
+
+    /** A dock item's place in the dock (apps first, then the sections); -1 when the focus is not in the dock. */
+    private int dockFocus() {
+        if (zone == Z_RAIL) return railIdx;
+        if (zone == Z_CATS) return railViews.size() + catIdx;
+        return -1;
+    }
+
+    /** The dock swells under the focus: the item itself most, its neighbours a little. */
+    private float swell(int at) {
+        int f = dockFocus();
+        if (f < 0) return 1f;
+        int d = Math.abs(at - f);
+        return d == 0 ? 1.2f : d == 1 ? 1.07f : 1f;
+    }
+
+    /** The glass to whatever has the focus: a ring round the tile, a pill behind the dock item; else away. */
+    private void placeLens() {
+        if (lens == null) return;
+        boolean overHome = page == null && !guide.isOpen();
+        if (zone == Z_ROW && overHome && rowIdx < row.getChildCount()) {
+            int first = Math.max(0, rowIdx - 3);
+            FrameLayout.LayoutParams vp = (FrameLayout.LayoutParams) viewport.getLayoutParams();
+            float w = px(TILE_W), h = px(TILE_H), grow = 1.05f;
+            float x = vp.leftMargin + px(rowInset()) + (rowIdx - first) * px(TILE_W + TILE_GAP) - w * (grow - 1) / 2f;
+            float y = vp.topMargin + px(24) - h * (grow - 1) / 2f;
+            float pad = px(7);
+            lens.to(x - pad, y - pad, w * grow + 2 * pad, h * grow + 2 * pad, px(16) * grow + pad, true);
+            return;
+        }
+        View item = zone == Z_RAIL && railIdx < railViews.size() ? railViews.get(railIdx)
+                : zone == Z_CATS && catIdx < catViews.size() && (page == null || preview) ? catViews.get(catIdx) : null;
+        if (item != null) {
+            FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) item.getLayoutParams();
+            float grow = 1.2f, w = lp.width * grow, cx = lp.leftMargin + lp.width / 2f;
+            lens.to(cx - w / 2f - px(10), px(DOCK_Y + 8), w + px(20), px(DOCK_H - 16), px(26), false);
+            return;
+        }
+        lens.hide();
     }
 
     /** The section boxes: all six on screen, lined up under the row of tiles (216 to 1824). */
     private static final int CAT_GAP = 14, CAT_W = 256, CAT_X = 216 + (1608 - 6 * CAT_W - 5 * CAT_GAP) / 2, CAT_Y = 886, CAT_H = 160;
 
     private void buildCats() {
+        if (dockMode) { buildDockSections(); return; }
         int x = CAT_X, w = CAT_W;
         for (int i = 0; i < 6; i++) {
             FrameLayout box = new FrameLayout(a);
@@ -656,6 +786,32 @@ final class HomeV2 {
             add(box, x, CAT_Y, w, CAT_H);
             catViews.add(box);
             x += w + CAT_GAP;
+        }
+    }
+
+    /** The sections for the dock: the icon in the section's colour over its name; placed by layoutDock. */
+    private void buildDockSections() {
+        for (int i = 0; i < 6; i++) {
+            FrameLayout box = new FrameLayout(a);
+            box.setClipChildren(false);
+            View strip = new View(a);
+            strip.setVisibility(View.GONE);
+            box.addView(strip, new FrameLayout.LayoutParams(1, 1));
+            LinearLayout in = new LinearLayout(a);
+            in.setOrientation(LinearLayout.VERTICAL);
+            in.setGravity(Gravity.CENTER);
+            ImageView ic = new ImageView(a);
+            ic.setImageResource(CAT_ICONS[i]);
+            ic.setColorFilter(CAT_COLOURS[i]);
+            in.addView(ic, new LinearLayout.LayoutParams(px(32), px(32)));
+            TextView t = text(16, regular, Color.WHITE);
+            t.setText(CAT_NAMES[i]);
+            t.setSingleLine(true);
+            LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            tlp.topMargin = px(6);
+            in.addView(t, tlp);
+            box.addView(in, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+            catViews.add(box);
         }
     }
 
@@ -988,6 +1144,7 @@ final class HomeV2 {
             case Z_MATCH:
                 if (code == KeyEvent.KEYCODE_DPAD_LEFT) {
                     if (matchIdx > 0) { matchIdx--; break; }
+                    if (dockMode) break;   // no rail to the left
                     zone = Z_RAIL;
                     railIdx = Math.max(0, railSel);
                     if (railSel < 0 || railSel >= railViews.size() || railViews.get(railSel).getTag() == null) selectRail(railIdx);
@@ -1005,6 +1162,21 @@ final class HomeV2 {
                 if (zone != Z_MATCH && rowIdx < shown.size()) hero(shown.get(rowIdx));
                 break;
             case Z_RAIL:
+                if (dockMode) {
+                    // Along the dock's apps: each shows its tiles as it is passed; past the last, on to the sections.
+                    if (code == KeyEvent.KEYCODE_DPAD_LEFT) {
+                        if (railIdx > 0) selectRail(railIdx - 1);
+                    } else if (code == KeyEvent.KEYCODE_DPAD_RIGHT) {
+                        if (railIdx < railViews.size() - 1) selectRail(railIdx + 1);
+                        else { if (appsFromRail) closePage(); zone = Z_CATS; catIdx = 0; }
+                    } else if (code == KeyEvent.KEYCODE_DPAD_UP) {
+                        if (appsFromRail && page != null) { enterPage(); return; }
+                        int m = shown.size();
+                        if (m > 0) { zone = Z_ROW; rowIdx = Math.min(rowIdx, m - 1); hero(shown.get(rowIdx)); }
+                        else { zone = Z_TOP; topIdx = 0; }
+                    }
+                    break;
+                }
                 if (parked && page != null) {
                     // Beside an open section: along the rail without changing what shows; Right back into the section.
                     // Right goes back into the section; Up or Down onto another app shows that app's row in its place
@@ -1035,7 +1207,7 @@ final class HomeV2 {
             case Z_ROW:
                 if (code == KeyEvent.KEYCODE_DPAD_LEFT) {
                     if (rowIdx > 0) rowIdx--;
-                    else {
+                    else if (!dockMode) {
                         zone = Z_RAIL;
                         railIdx = Math.max(0, railSel);
                         // Back on All apps (or nothing chosen yet): what it shows comes up with it.
@@ -1048,12 +1220,14 @@ final class HomeV2 {
                     if (match.active() && page == null) { zone = Z_MATCH; matchIdx = 0; }
                     else { zone = Z_TOP; topIdx = 0; }
                 } else if (code == KeyEvent.KEYCODE_DPAD_DOWN) {
+                    if (dockMode) { downToDock(); break; }
                     zone = Z_CATS;
                     catIdx = Math.min(5, (rowIdx - Math.max(0, rowIdx - 3)) * 6 / 4);
                 }
                 if (zone == Z_ROW) heroSoon();
                 break;
             case Z_CATS:
+                if (dockMode && code == KeyEvent.KEYCODE_DPAD_DOWN) break;
                 if (code == KeyEvent.KEYCODE_DPAD_LEFT) {
                     if (catIdx > 0) catIdx--;
                     else { if (page != null) closePage(); zone = Z_RAIL; selectRail(railViews.size() - 1); }
@@ -1069,6 +1243,28 @@ final class HomeV2 {
             default:
         }
         paint();
+    }
+
+    /**
+     * Down from the row in the dock layout: onto the dock item under the focused tile. An app is only pointed at, its
+     * tiles not yet in the row (Left, Right or OK do that); a section shows above, as resting on it does.
+     */
+    private void downToDock() {
+        int first = Math.max(0, rowIdx - 3);
+        FrameLayout.LayoutParams vp = (FrameLayout.LayoutParams) viewport.getLayoutParams();
+        float cx = vp.leftMargin + px(rowInset()) + (rowIdx - first) * px(TILE_W + TILE_GAP) + px(TILE_W) / 2f;
+        int best = -1;
+        float bestD = Float.MAX_VALUE;
+        List<View> all = new ArrayList<>(railViews);
+        all.addAll(catViews);
+        for (int i = 0; i < all.size(); i++) {
+            FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) all.get(i).getLayoutParams();
+            float d = Math.abs(lp.leftMargin + lp.width / 2f - cx);
+            if (d < bestD) { bestD = d; best = i; }
+        }
+        if (best < 0) return;
+        if (best < railViews.size()) { zone = Z_RAIL; railIdx = best; }
+        else { zone = Z_CATS; catIdx = best - railViews.size(); }
     }
 
     private void press() {
@@ -1087,6 +1283,8 @@ final class HomeV2 {
                 if (p == null) {
                     // All apps beside a section: the Apps page in its place.
                     if (parked) { closePage(); zone = Z_RAIL; selectRail(railIdx); }
+                    // In the dock, pointed at from the row: the Apps page opened now.
+                    if (dockMode && page == null) selectRail(railIdx);
                     if (page != null) enterPage();
                 } else openApp(p);
                 return;
@@ -1201,6 +1399,8 @@ final class HomeV2 {
      * page's own), Left to the rail, Up to the top buttons. Another box then opens with OK, no Back needed.
      */
     private void leavePage(int code) {
+        // The dock layout has nothing to the left of a page: Left at its edge stays.
+        if (dockMode && code == KeyEvent.KEYCODE_DPAD_LEFT) return;
         int to = code == KeyEvent.KEYCODE_DPAD_DOWN ? Z_CATS : code == KeyEvent.KEYCODE_DPAD_LEFT ? Z_RAIL
                 : code == KeyEvent.KEYCODE_DPAD_UP ? Z_TOP : -1;
         if (to < 0) return;
@@ -1332,7 +1532,20 @@ final class HomeV2 {
                 heroPicture(match.pick().picture);
             }
         }
-        for (int i = 0; i < railViews.size(); i++) {
+        for (int i = 0; dockMode && i < railViews.size(); i++) {
+            // The dock: every app in its own colours, swelling as the glass comes near.
+            FrameLayout f = railViews.get(i);
+            boolean on = zone == Z_RAIL && i == railIdx;
+            float sw = swell(i);
+            if (!restyle(f, (on ? 1 : 0) | Math.round(sw * 100) << 2)) continue;
+            boolean app = f.getTag() != null;
+            f.getChildAt(0).setAlpha(app ? 1f : 0f);
+            f.getChildAt(1).setAlpha(app ? 0f : 0.9f);
+            f.setForeground(null);
+            if (!app) f.setBackground(fill(18, GLASS));
+            f.animate().scaleX(sw).scaleY(sw).translationY(on ? -px(6) : 0).setDuration(260).setInterpolator(SKY).start();
+        }
+        for (int i = 0; !dockMode && i < railViews.size(); i++) {
             FrameLayout f = railViews.get(i);
             boolean on = zone == Z_RAIL && i == railIdx, sel = i == railSel;
             boolean colour = (on || sel) && f.getTag() != null;
@@ -1343,8 +1556,16 @@ final class HomeV2 {
             f.setForeground(on ? ring(18) : null);
             if (f.getTag() == null) f.setBackground(fill(18, on || sel ? 0x4DFFFFFF : GLASS));
         }
-        View mark = root.findViewWithTag("mark");
-        if (mark != null) {
+        View mark = dockMode ? markView : root.findViewWithTag("mark");
+        if (dockMode && mark != null) {
+            // The dot under the app whose tiles are showing.
+            boolean show = railSel >= 0 && railSel < railViews.size() && zone != Z_RAIL;
+            mark.animate().alpha(show ? 1f : 0f).setDuration(150).start();
+            if (railSel >= 0 && railSel < railViews.size()) {
+                FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) railViews.get(railSel).getLayoutParams();
+                mark.setTranslationX(lp.leftMargin + lp.width / 2f - px(3));
+            }
+        } else if (mark != null) {
             boolean show = railSel >= 0 && zone != Z_RAIL;
             mark.animate().alpha(show ? 1f : 0f).setDuration(150).start();
             if (railSel >= 0) mark.animate().translationY(px(84) * railSel).setDuration(200).setInterpolator(SKY).start();
@@ -1355,14 +1576,28 @@ final class HomeV2 {
             if (!restyle(t, on ? 1 : 0)) continue;
             // A little less than the sections' 1.07: the tiles fill the row edge to edge, and the fourth stays inside it.
             t.animate().scaleX(on ? 1.05f : 1f).scaleY(on ? 1.05f : 1f).setDuration(150).setInterpolator(SKY).start();
-            ((FrameLayout) t).setForeground(on ? ring(16) : null);
+            // The dock layout's ring is the liquid glass, drawn over the row.
+            ((FrameLayout) t).setForeground(on && !dockMode ? ring(16) : null);
         }
+        if (dockMode) placeLens();
         // Four tiles in full: the focus moves along to the fourth, then the row slides.
         int first = zone == Z_ROW ? Math.max(0, rowIdx - 3) : 0;
         window(row, first);
         playSoon();
         row.animate().translationX(-first * px(TILE_W + TILE_GAP)).setDuration(240).setInterpolator(SKY).start();
-        for (int i = 0; i < catViews.size(); i++) {
+        for (int i = 0; dockMode && i < catViews.size(); i++) {
+            // A section in the dock: white and a little bolder under the glass, swelling with it.
+            FrameLayout box = (FrameLayout) catViews.get(i);
+            boolean on = zone == Z_CATS && i == catIdx && (page == null || preview);
+            boolean sel = page != null && i == pageWhich;
+            float sw = swell(railViews.size() + i);
+            if (!restyle(box, (on ? 1 : 0) | (sel ? 2 : 0) | Math.round(sw * 100) << 2)) continue;
+            LinearLayout in = (LinearLayout) box.getChildAt(1);
+            ((TextView) in.getChildAt(1)).setTypeface(on || sel ? semi : regular);
+            ((ImageView) in.getChildAt(0)).setColorFilter(on ? Color.WHITE : CAT_COLOURS[i]);
+            box.animate().scaleX(sw).scaleY(sw).translationY(on ? -px(4) : 0).setDuration(260).setInterpolator(SKY).start();
+        }
+        for (int i = 0; !dockMode && i < catViews.size(); i++) {
             FrameLayout box = (FrameLayout) catViews.get(i);
             boolean on = zone == Z_CATS && i == catIdx && (page == null || preview);
             // The box whose section is showing (Apps, too, when the rail's All apps opened it).
@@ -1577,7 +1812,9 @@ final class HomeV2 {
      * sections' (420, not 384, the gaps 12) and taller (270, not 216), reaching most of the way down to the boxes;
      * Right past the fourth slides the row on.
      */
-    static final int TILE_W = 420, TILE_H = 270, TILE_GAP = 12;
+    /** A tile's size: four to a page (wider and taller in the dock layout, with no rail beside them). */
+    int TILE_W = 420, TILE_H = 270;
+    static final int TILE_GAP = 12;
 
     private View tileView(Tile t) {
         FrameLayout f = new FrameLayout(a);

@@ -215,8 +215,9 @@ final class MatchDay {
         buttons.setClipToPadding(false);
         panel.setClipChildren(false);
         panel.setClipToPadding(false);
-        // A clear gap under the channel's logo, the buttons still well above For You's heading.
-        place(buttons, 0, 274, 1320, 56);
+        // A clear gap under the channel's logo, the buttons still well above For You's heading (Home places the
+        // heading from BUTTONS_Y and BUTTONS_H, so it can never sit over them).
+        place(buttons, 0, BUTTONS_Y, 1320, BUTTONS_H);
         // The channel's logo as wide as the Watch button under it, both ends in line.
         buttons.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, orr, ob) -> alignLogo());
 
@@ -869,6 +870,9 @@ final class MatchDay {
         channelView.setLayoutParams(lp);
     }
 
+    /** Where the buttons' row sits in the panel, and its height: Home keeps the row's heading clear under it. */
+    static final int BUTTONS_Y = 274, BUTTONS_H = 56;
+
     /** The one gap between Match Day's buttons. */
     private static final int GAP = 18;
 
@@ -898,6 +902,14 @@ final class MatchDay {
         buttons.addView(b, lp);
         buttonViews.add(b);
         actions.add(action);
+    }
+
+    /** A navy line just inside the Live Centre stamp's rounded edge (its corners are 6 of its 38 high). */
+    private android.graphics.drawable.Drawable stampEdge() {
+        GradientDrawable g = new GradientDrawable();
+        g.setCornerRadius(h.px(30) * 6f / 38f);
+        g.setStroke(Math.max(2, h.px(2)), 0xFF12178A);
+        return g;
     }
 
     int buttonCount() {
@@ -1074,6 +1086,8 @@ final class MatchDay {
             bg.setStroke(h.px(lit ? 0 : 2), 0x73FFFFFF);
             b.setBackground(bg);
             if (b instanceof TextView) ((TextView) b).setTextColor(lit ? 0xFF12178A : Color.WHITE);
+            // The Live Centre's stamp on a lit (white) pill: a navy edge round it, so its white half keeps its shape.
+            if (b instanceof FrameLayout && ((FrameLayout) b).getChildCount() > 0) ((FrameLayout) b).getChildAt(0).setForeground(lit ? stampEdge() : null);
             // Lit by its white fill alone, not grown: a grown button ate into the gap beside it, and the gaps between
             // the buttons have to stay the same.
             b.setScaleX(1f);
