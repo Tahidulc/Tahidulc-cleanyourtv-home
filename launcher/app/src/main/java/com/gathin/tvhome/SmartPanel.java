@@ -227,11 +227,16 @@ final class SmartPanel {
         return k;
     }
 
-    /** The theme's cameras (Tuya Smart's), two to a row: the last alarm's picture under a red tag, else LIVE. */
+    /**
+     * The theme's cameras (Tuya Smart's), two to a row: the last alarm's picture under a red tag, else LIVE; and the
+     * doorbell (CloudEdge) beside them when it is on the TV, its last ring's picture or a bell.
+     */
     private void cameras() {
-        if (!installed(CameraAlert.TUYA)) return;
-        List<String> names = CameraAlert.cameras(h.a);
-        if (names.isEmpty()) names = java.util.Collections.singletonList("Camera");
+        boolean tuya = installed(CameraAlert.TUYA), bell = DoorbellAlert.installed(h.a);
+        if (!tuya && !bell) return;
+        List<String> names = tuya ? CameraAlert.cameras(h.a) : new ArrayList<>();
+        if (tuya && names.isEmpty()) names = java.util.Collections.singletonList("Camera");
+        if (bell && names.size() > 1) names = names.subList(0, 1);
         LinearLayout.LayoutParams kl = new LinearLayout.LayoutParams(-2, -2);
         kl.topMargin = h.px(22);
         body.addView(kicker("CAMERAS"), kl);
@@ -289,7 +294,52 @@ final class SmartPanel {
             r.addView(cell, cellLp);
             focus.add(tile);
         }
-        if (names.size() == 1) r.addView(new View(h.a), new LinearLayout.LayoutParams(0, 1, 1f));
+        if (bell) {
+            LinearLayout cell = new LinearLayout(h.a);
+            cell.setOrientation(LinearLayout.VERTICAL);
+            cell.setClipChildren(false);
+            FrameLayout tile = new FrameLayout(h.a);
+            tile.setBackground(new GradientDrawable(GradientDrawable.Orientation.TL_BR, new int[]{0xFF3A2A0E, 0xFF1C1F3A}));
+            tile.setClipToOutline(true);
+            tile.setOutlineProvider(h.round(20));
+            Object[] ring = DoorbellAlert.lastRing();
+            if (ring != null && ring[0] instanceof Bitmap) {
+                ImageView pic = new ImageView(h.a);
+                pic.setScaleType(ImageView.ScaleType.CENTER_CROP);
+                pic.setImageBitmap((Bitmap) ring[0]);
+                tile.addView(pic, new FrameLayout.LayoutParams(-1, -1));
+            } else {
+                TextView b = h.text(44, h.regular, Color.WHITE);
+                b.setText("🔔");
+                tile.addView(b, new FrameLayout.LayoutParams(-2, -2, Gravity.CENTER));
+            }
+            TextView tag = h.text(13, h.semi, ring != null ? 0xFF1A1100 : Color.WHITE);
+            tag.setText(ring != null ? "RANG  " + new java.text.SimpleDateFormat("HH:mm", Locale.UK).format(new java.util.Date((Long) ring[1])) : "DOORBELL");
+            tag.setLetterSpacing(0.1f);
+            tag.setPadding(h.px(9), h.px(4), h.px(9), h.px(4));
+            tag.setBackground(h.fill(7, ring != null ? 0xFFFFB020 : 0x40FFFFFF));
+            FrameLayout.LayoutParams tl = new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.START);
+            tl.leftMargin = h.px(10);
+            tl.topMargin = h.px(10);
+            tile.addView(tag, tl);
+            tile.setTag(new Runnable() {
+                @Override public void run() {
+                    hide();
+                    DoorbellAlert.open(h.a);
+                }
+            });
+            cell.addView(tile, new LinearLayout.LayoutParams(-1, h.px(166)));
+            TextView label = h.text(19, h.semi, Color.WHITE);
+            label.setText("Doorbell");
+            LinearLayout.LayoutParams ll = new LinearLayout.LayoutParams(-1, -2);
+            ll.topMargin = h.px(8);
+            cell.addView(label, ll);
+            LinearLayout.LayoutParams cellLp = new LinearLayout.LayoutParams(0, -2, 1f);
+            if (!names.isEmpty()) cellLp.leftMargin = h.px(14);
+            r.addView(cell, cellLp);
+            focus.add(tile);
+        }
+        if (names.size() + (bell ? 1 : 0) == 1) r.addView(new View(h.a), new LinearLayout.LayoutParams(0, 1, 1f));
         LinearLayout.LayoutParams rl = new LinearLayout.LayoutParams(-1, -2);
         rl.topMargin = h.px(12);
         body.addView(r, rl);
@@ -585,7 +635,7 @@ final class SmartPanel {
     }
 
     private int camerasRows() {
-        return installed(CameraAlert.TUYA) ? 1 : 0;
+        return installed(CameraAlert.TUYA) || DoorbellAlert.installed(h.a) ? 1 : 0;
     }
 
     private int rowsBeforeLights() {
@@ -685,7 +735,7 @@ final class SmartPanel {
             });
         } else {
             remember(l);
-            LightsPanel.send(h.a, null, l.tile, (to ? "turn on the " : "turn off the ") + l.room + " lights");
+            LightsPanel.send(h.a, null, l.tile, (to ? "turn on the " : "turn off the ") + l.room + " lights", h.px(20));
         }
     }
 
@@ -706,7 +756,7 @@ final class SmartPanel {
             });
         } else {
             remember(l);
-            LightsPanel.send(h.a, null, slider, String.format(Locale.ROOT, "set the %s lights to %d%%", l.room, level));
+            LightsPanel.send(h.a, null, slider, String.format(Locale.ROOT, "set the %s lights to %d%%", l.room, level), slider.getHeight() / 2f);
         }
     }
 
@@ -721,6 +771,12 @@ final class SmartPanel {
             look(l);
             if (picked == l) showLevel();
         });
+    }
+
+    /** adb test: the Assistant's working sign over the first light's tile, for "what time is it" (nothing changes). */
+    void testAssist() {
+        if (!open || lights.isEmpty() || lights.get(0).tile == null) return;
+        LightsPanel.send(h.a, null, lights.get(0).tile, "what time is it", h.px(20));
     }
 
     private void remember(Light l) {

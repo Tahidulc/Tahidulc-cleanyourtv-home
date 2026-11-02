@@ -1130,6 +1130,9 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             if (intent != null && intent.hasCategory(Intent.CATEGORY_HOME)) v2.home();
             // adb only (am start ... --ez smart_panel true): the smart home panel, as OK on the light bulb opens it.
             else if (intent != null && intent.getBooleanExtra("smart_panel", false)) v2.openSmartPanel();
+            // adb only (--ez assist_test true): the panel, and the Assistant's working sign over the first light, for a
+            // question that changes nothing ("what time is it").
+            else if (intent != null && intent.getBooleanExtra("assist_test", false)) v2.testAssist();
             // A box chosen in pop-up mode's frame (PopupFrame): Home on that box's section.
             else if (intent != null && intent.hasExtra("open_box")) v2.openBox(intent.getIntExtra("open_box", -1));
             // The card on the 1st of the month (ReleaseAlerts): Your viewing on last month.

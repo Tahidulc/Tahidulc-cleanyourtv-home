@@ -69,6 +69,7 @@ public class InputKeyService extends AccessibilityService {
         // Back on Tuya Smart's camera, opened from the launcher: back to what was on, the camera kept ready.
         if (event.getKeyCode() == KeyEvent.KEYCODE_BACK && AppSearchService.cameraBack(this, event)) return true;
         // OK while the line-up card shows: the game's channel.
+        if (DoorbellAlert.key(event)) return true;
         if (CameraAlert.key(event)) return true;
         if (LiveCentre.key(event)) return true;
         if (F1Tower.key(event)) return true;

@@ -533,6 +533,14 @@ public class AppSearchService extends AccessibilityService {
      * so the person never leaves the panel. False without the helper: the caller asks the plain way.
      */
     static boolean quietAsk(android.app.Activity a, android.view.View panel, android.view.View pressed, String query, Runnable ask) {
+        return quietAsk(a, panel, pressed, query, ask, -1f);
+    }
+
+    /**
+     * As quietAsk, the working sign over the pressed view drawn to its shape: corner its corners' radius on screen
+     * (a light's tile in the smart home panel); below 0, a pill (the lights panel's keys).
+     */
+    static boolean quietAsk(android.app.Activity a, android.view.View panel, android.view.View pressed, String query, Runnable ask, float corner) {
         if (instance == null || android.os.Build.VERSION.SDK_INT < 26) return false;
         android.view.View decor = a.getWindow().getDecorView();
         int w = decor.getWidth(), h = decor.getHeight();
@@ -541,7 +549,7 @@ public class AppSearchService extends AccessibilityService {
         try {
             android.view.PixelCopy.request(a.getWindow(), still, result -> {
                 if (instance == null || result != android.view.PixelCopy.SUCCESS) { ask.run(); return; }
-                instance.coverForAssist(still, panel, pressed, query);
+                instance.coverForAssist(still, panel, pressed, query, corner);
                 ask.run();
             }, new android.os.Handler(android.os.Looper.getMainLooper()));
         } catch (RuntimeException e) {
@@ -550,7 +558,7 @@ public class AppSearchService extends AccessibilityService {
         return true;
     }
 
-    private void coverForAssist(android.graphics.Bitmap still, android.view.View panel, android.view.View pressed, String query) {
+    private void coverForAssist(android.graphics.Bitmap still, android.view.View panel, android.view.View pressed, String query, float corner) {
         endAssist(false);
         float d = getResources().getDisplayMetrics().density;
         android.widget.FrameLayout v = new android.widget.FrameLayout(this);
@@ -571,15 +579,20 @@ public class AppSearchService extends AccessibilityService {
             lp.topMargin = at[1];
             v.addView(pv, lp);
         }
-        // A spinner on the button pressed while it works.
+        // A spinner on the button pressed while it works: where it is on screen and as big as it shows (a focused tile
+        // is drawn a little larger than its layout), in its own shape.
         if (pressed != null && pressed.getWidth() > 0) {
-            int[] at = new int[2];
-            pressed.getLocationOnScreen(at);
-            Spinner sp = new Spinner(this, d);
+            android.graphics.Rect on = new android.graphics.Rect();
+            if (!pressed.getGlobalVisibleRect(on) || on.isEmpty()) {
+                int[] at = new int[2];
+                pressed.getLocationOnScreen(at);
+                on.set(at[0], at[1], at[0] + pressed.getWidth(), at[1] + pressed.getHeight());
+            }
+            Spinner sp = new Spinner(this, d, corner < 0 ? -1f : corner * Math.max(1f, pressed.getScaleX()));
             assistSpinner = sp;
-            android.widget.FrameLayout.LayoutParams lp = new android.widget.FrameLayout.LayoutParams(pressed.getWidth(), pressed.getHeight());
-            lp.leftMargin = at[0];
-            lp.topMargin = at[1];
+            android.widget.FrameLayout.LayoutParams lp = new android.widget.FrameLayout.LayoutParams(on.width(), on.height());
+            lp.leftMargin = on.left;
+            lp.topMargin = on.top;
             v.addView(sp, lp);
             sp.start();
         }
@@ -678,12 +691,19 @@ public class AppSearchService extends AccessibilityService {
     private static final class Spinner extends android.view.View {
         private final android.graphics.Paint paint = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
         private final float d;
+        /** The pressed view's corners on screen; below 0, a white pill (a key). */
+        private final float corner;
         private float phase, tick = -1;
         private android.animation.ValueAnimator bounce;
 
         Spinner(Context c, float d) {
+            this(c, d, -1f);
+        }
+
+        Spinner(Context c, float d, float corner) {
             super(c);
             this.d = d;
+            this.corner = corner;
         }
 
         void start() {
@@ -715,6 +735,7 @@ public class AppSearchService extends AccessibilityService {
         }
 
         @Override protected void onDraw(android.graphics.Canvas c) {
+            if (corner >= 0) { drawTile(c); return; }
             float w = getWidth(), h = getHeight(), r = h / 2f, cx = w / 2f, cy = h / 2f;
             paint.setStyle(android.graphics.Paint.Style.FILL);
             paint.setColor(0xFFFFFFFF);
@@ -739,6 +760,47 @@ public class AppSearchService extends AccessibilityService {
                 float p = (phase + 1f - i * 0.18f) % 1f;
                 float lift = (float) Math.max(0, Math.sin(p * Math.PI * 2)) * 4.5f * d;
                 paint.setAlpha(150 + (int) (105 * lift / (4.5f * d)));
+                c.drawCircle(cx + (i - 1) * gap, cy - lift, dot, paint);
+            }
+            paint.setAlpha(255);
+        }
+
+        /**
+         * Over a tile: the tile's own shape in dark glass, three white dots rising in turn in its middle, then a white
+         * disc with a green tick drawn into it.
+         */
+        private void drawTile(android.graphics.Canvas c) {
+            float w = getWidth(), h = getHeight(), cx = w / 2f, cy = h / 2f, s = Math.min(w, h);
+            paint.setStyle(android.graphics.Paint.Style.FILL);
+            paint.setColor(0xE60E1450);
+            c.drawRoundRect(0, 0, w, h, corner, corner, paint);
+            paint.setStyle(android.graphics.Paint.Style.STROKE);
+            paint.setStrokeWidth(Math.max(1f, 1.5f * d));
+            paint.setColor(0x59FFFFFF);
+            float in = paint.getStrokeWidth() / 2f;
+            c.drawRoundRect(in, in, w - in, h - in, Math.max(0, corner - in), Math.max(0, corner - in), paint);
+            paint.setStyle(android.graphics.Paint.Style.FILL);
+            if (tick >= 0) {
+                float r = s * 0.2f;
+                paint.setColor(0xFFFFFFFF);
+                c.drawCircle(cx, cy, r * Math.min(1f, 0.6f + tick), paint);
+                paint.setStyle(android.graphics.Paint.Style.STROKE);
+                paint.setStrokeWidth(Math.max(2f, r * 0.16f));
+                paint.setStrokeCap(android.graphics.Paint.Cap.ROUND);
+                paint.setColor(0xFF22A45D);
+                float t = r * 0.5f;
+                float ax = cx - t, ay = cy, bx = cx - t * 0.25f, by = cy + t * 0.7f, ex = cx + t * 1.1f, ey = cy - t * 0.75f;
+                float first = Math.min(1f, tick / 0.4f), second = Math.max(0f, (tick - 0.4f) / 0.6f);
+                c.drawLine(ax, ay, ax + (bx - ax) * first, ay + (by - ay) * first, paint);
+                if (second > 0) c.drawLine(bx, by, bx + (ex - bx) * second, by + (ey - by) * second, paint);
+                return;
+            }
+            float dot = Math.max(3.2f * d, Math.min(7f * d, s * 0.05f)), gap = dot * 3f, rise = dot * 1.4f;
+            paint.setColor(0xFFFFFFFF);
+            for (int i = 0; i < 3; i++) {
+                float p = (phase + 1f - i * 0.18f) % 1f;
+                float lift = (float) Math.max(0, Math.sin(p * Math.PI * 2)) * rise;
+                paint.setAlpha(140 + (int) (115 * lift / rise));
                 c.drawCircle(cx + (i - 1) * gap, cy - lift, dot, paint);
             }
             paint.setAlpha(255);

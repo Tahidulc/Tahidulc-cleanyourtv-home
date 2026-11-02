@@ -510,7 +510,7 @@ final class HomeV2 {
         // The cameras at the top, when the TV has them: the first one named in the theme, OK opening the smart home panel.
         List<String> cams = CameraAlert.cameras(a);
         String cam = smartPanel == null || !installed(CameraAlert.TUYA) ? null : cams.isEmpty() ? "Cameras" : cams.get(0);
-        controlCentre = new ControlCentre(this, items, cam, cam == null ? null : () -> smartPanel.show());
+        controlCentre = new ControlCentre(this, items, cam, cam == null ? null : () -> smartPanel.show(), () -> DoorbellAlert.open(a));
         topButton(bar, wifi, ViewGroup.LayoutParams.WRAP_CONTENT, () -> controlCentre.show());
         FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(px(1000), px(66), Gravity.TOP | Gravity.END);
         lp.topMargin = px(112);
@@ -763,6 +763,13 @@ final class HomeV2 {
     /** The smart home panel, from adb's test hook (MainActivity). */
     void openSmartPanel() {
         if (smartPanel != null) smartPanel.show();
+    }
+
+    /** adb test (MainActivity, assist_test): the smart home panel's Assistant sign on its first light, asking the time. */
+    void testAssist() {
+        if (smartPanel == null) return;
+        smartPanel.show();
+        main.postDelayed(smartPanel::testAssist, 900);
     }
 
     /** Your viewing, opened on a tab (MainActivity, from the card on the 1st of the month). */

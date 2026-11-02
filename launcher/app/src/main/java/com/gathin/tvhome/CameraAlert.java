@@ -136,7 +136,7 @@ final class CameraAlert {
      * The alarm's snapshot: its big picture, or a large icon shaped like a photo (wider than tall and not small; a
      * square one is only Tuya's logo).
      */
-    private static Bitmap picture(Context c, Notification n) {
+    static Bitmap picture(Context c, Notification n) {
         Object p = n.extras.get(Notification.EXTRA_PICTURE);
         if (p instanceof Bitmap) return (Bitmap) p;
         if (p instanceof Icon) return bitmap(((Icon) p).loadDrawable(c));

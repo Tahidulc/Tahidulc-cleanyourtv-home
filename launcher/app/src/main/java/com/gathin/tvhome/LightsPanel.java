@@ -118,8 +118,13 @@ final class LightsPanel {
      * the button (AppSearchService.quietAsk), so Google's own screen never shows; otherwise asked the plain way.
      */
     static void send(Context ctx, View panel, View pressed, String query) {
+        send(ctx, panel, pressed, query, -1f);
+    }
+
+    /** As send, the working sign over the pressed view in its shape (corner: its corners' radius; below 0, a pill). */
+    static void send(Context ctx, View panel, View pressed, String query, float corner) {
         if (Config.themeFlag(ctx, "quiet_assistant", false) && ctx instanceof android.app.Activity
-                && AppSearchService.quietAsk((android.app.Activity) ctx, panel, pressed, query, () -> ask(ctx, query))) return;
+                && AppSearchService.quietAsk((android.app.Activity) ctx, panel, pressed, query, () -> ask(ctx, query), corner)) return;
         ask(ctx, query);
     }
 

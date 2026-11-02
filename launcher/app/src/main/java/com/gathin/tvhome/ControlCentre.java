@@ -48,6 +48,8 @@ final class ControlCentre {
     /** The camera tile: {name, open}; null without cameras. */
     private final String camera;
     private final Runnable openCamera;
+    /** The doorbell's app opened; its tile shows beside the camera's while the app (CloudEdge) is on the TV. */
+    private final Runnable openDoorbell;
     private final Typeface heavy, semi, regular;
     private FrameLayout overlay;
     private boolean open;
@@ -57,12 +59,13 @@ final class ControlCentre {
     private final List<int[]> at = new ArrayList<>();
     private int focus;
 
-    ControlCentre(HomeV2 home, List<Item> items, String camera, Runnable openCamera) {
+    ControlCentre(HomeV2 home, List<Item> items, String camera, Runnable openCamera, Runnable openDoorbell) {
         h = home;
         c = home.a;
         this.items = items;
         this.camera = camera;
         this.openCamera = openCamera;
+        this.openDoorbell = openDoorbell;
         heavy = c.getResources().getFont(R.font.outfit_extrabold);
         semi = c.getResources().getFont(R.font.inter_semibold);
         regular = c.getResources().getFont(R.font.inter_regular);
@@ -99,11 +102,30 @@ final class ControlCentre {
         title.setText("Control Centre");
         panel.addView(title);
         int row = 0;
-        if (camera != null && openCamera != null) {
+        boolean cam = camera != null && openCamera != null;
+        boolean bell = openDoorbell != null && DoorbellAlert.installed(c);
+        int camTiles = 0;
+        if (cam || bell) {
+            // The camera and the doorbell side by side (either alone across the panel).
             panel.addView(heading("CAMERAS"), headParams());
-            panel.addView(cameraTile(), new LinearLayout.LayoutParams(-1, px(220)));
-            acts.add(() -> { hide(); openCamera.run(); });
-            at.add(new int[]{row++, 0, 2});
+            LinearLayout camRow = new LinearLayout(c);
+            camRow.setClipChildren(false);
+            if (cam) {
+                camRow.addView(cameraTile(), new LinearLayout.LayoutParams(0, -1, 1f));
+                acts.add(() -> { hide(); openCamera.run(); });
+                at.add(new int[]{row, 0, bell ? 1 : 2});
+                camTiles++;
+            }
+            if (bell) {
+                LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(0, -1, 1f);
+                if (cam) bp.leftMargin = px(14);
+                camRow.addView(doorbellTile(), bp);
+                acts.add(() -> { hide(); openDoorbell.run(); });
+                at.add(new int[]{row, cam ? 1 : 0, cam ? 1 : 2});
+                camTiles++;
+            }
+            panel.addView(camRow, new LinearLayout.LayoutParams(-1, px(cam && bell ? 190 : 220)));
+            row++;
         }
         panel.addView(heading("CONTROLS"), headParams());
         LinearLayout line = null;
@@ -141,7 +163,7 @@ final class ControlCentre {
         box.setPivotX(px(640));
         box.setPivotY(0);
         box.animate().alpha(1f).translationY(0).scaleX(1f).scaleY(1f).setDuration(220).setInterpolator(HomeV2.SKY).start();
-        focus = camera != null && openCamera != null ? 1 : 0;
+        focus = camTiles;
         paint();
     }
 
@@ -206,6 +228,47 @@ final class ControlCentre {
             s.setText("  ·  live view");
             name.addView(s);
         }
+        FrameLayout.LayoutParams nl = new FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM | Gravity.START);
+        nl.leftMargin = px(18);
+        nl.bottomMargin = px(14);
+        f.addView(name, nl);
+        tiles.add(f);
+        return f;
+    }
+
+    /** The doorbell: the last ring's picture this session (else a bell), "Doorbell" and when it last rang over it. */
+    private View doorbellTile() {
+        FrameLayout f = new FrameLayout(c);
+        f.setBackground(fill(24, 0xFF0A0E46));
+        f.setClipToOutline(true);
+        f.setOutlineProvider(round(24));
+        Object[] ring = DoorbellAlert.lastRing();
+        Bitmap pic = ring != null && ring[0] instanceof Bitmap ? (Bitmap) ring[0] : null;
+        if (pic != null) {
+            ImageView i = new ImageView(c);
+            i.setImageBitmap(pic);
+            i.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            f.addView(i, new FrameLayout.LayoutParams(-1, -1));
+        } else {
+            f.setBackground(new GradientDrawable(GradientDrawable.Orientation.TL_BR, new int[]{0xFF3A2A0E, 0xFF14102A, 0xFF0A0E46}));
+            TextView b = text(54, regular, Color.WHITE);
+            b.setText("🔔");
+            FrameLayout.LayoutParams bl = new FrameLayout.LayoutParams(-2, -2, Gravity.CENTER);
+            bl.bottomMargin = px(20);
+            f.addView(b, bl);
+        }
+        View shade = new View(c);
+        shade.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0x00000000, 0x00000000, 0xB3000000}));
+        f.addView(shade, new FrameLayout.LayoutParams(-1, -1));
+        LinearLayout name = new LinearLayout(c);
+        name.setOrientation(LinearLayout.VERTICAL);
+        TextView t = text(21, semi, Color.WHITE);
+        t.setText("Doorbell");
+        name.addView(t);
+        TextView s = text(15, regular, 0xBFFFFFFF);
+        s.setText(ring == null ? "CloudEdge" : "Rang at " + new java.text.SimpleDateFormat("HH:mm", java.util.Locale.UK)
+                .format(new java.util.Date((Long) ring[1])));
+        name.addView(s);
         FrameLayout.LayoutParams nl = new FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM | Gravity.START);
         nl.leftMargin = px(18);
         nl.bottomMargin = px(14);

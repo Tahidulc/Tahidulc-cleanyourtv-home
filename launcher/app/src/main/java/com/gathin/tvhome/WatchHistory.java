@@ -75,6 +75,16 @@ public class WatchHistory extends NotificationListenerService {
             if (t != null) Mouse.test(this, t.toString());
             return;
         }
+        // The doorbell's app (CloudEdge), and a stand-in from adb (cmd notification post ... doorbell-test ...).
+        boolean bellTest = "com.android.shell".equals(sbn.getPackageName()) && "doorbell-test".equals(sbn.getTag());
+        if (bellTest || DoorbellAlert.app(this).equals(sbn.getPackageName())) {
+            try {
+                DoorbellAlert.posted(this, sbn);
+            } catch (RuntimeException e) {
+                android.util.Log.w("Doorbell", "alert: " + e);
+            }
+            return;
+        }
         // Tuya Smart's, and a stand-in posted from adb to check the card (cmd notification post ... camera-test ...).
         boolean test = "com.android.shell".equals(sbn.getPackageName()) && "camera-test".equals(sbn.getTag());
         if (!test && !CameraAlert.TUYA.equals(sbn.getPackageName())) return;
