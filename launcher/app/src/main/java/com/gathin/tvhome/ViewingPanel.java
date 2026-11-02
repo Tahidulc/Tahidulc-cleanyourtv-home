@@ -60,7 +60,7 @@ final class ViewingPanel {
         heavy = c.getResources().getFont(R.font.outfit_extrabold);
         semi = c.getResources().getFont(R.font.inter_semibold);
         regular = c.getResources().getFont(R.font.inter_regular);
-        tabs = new String[]{"This week", monthName(LocalDate.now().minusMonths(1))};
+        tabs = new String[]{"This week", monthName(LocalDate.now().minusMonths(1)), "Your apps"};
     }
 
     boolean isOpen() {
@@ -141,6 +141,7 @@ final class ViewingPanel {
         io.execute(() -> {
             Map<Integer, Bitmap> pics = new HashMap<>();
             Map<Integer, List<String>> kinds = new HashMap<>();
+            Map<String, String> notes = t == 2 ? appNotes() : new HashMap<>();
             try {
                 List<JSONObject> want = prefetch(t);
                 for (int i = 0; i < want.size(); i++) {
@@ -156,6 +157,7 @@ final class ViewingPanel {
                 if (my != gen || !open) return;
                 posters = pics;
                 genres = kinds;
+                tips = notes;
                 View v;
                 try {
                     v = build(t);
@@ -177,12 +179,213 @@ final class ViewingPanel {
 
     /** The titles whose posters (the first five) and kinds a tab shows. Off the main thread. */
     private List<JSONObject> prefetch(int t) {
+        if (t == 2) return new ArrayList<>();
         List<JSONObject> all = t == 1 ? titles(month(LocalDate.now().minusMonths(1))) : titles(days(LocalDate.now(), 7));
         return all.subList(0, Math.min(t == 1 ? 10 : 5, all.size()));
     }
 
     private View build(int t) {
-        return t == 1 ? monthView() : week();
+        return t == 2 ? appsView() : t == 1 ? monthView() : week();
+    }
+
+    // ---- your apps: what they cost an hour ----------------------------------------------------------------------
+
+    /** The streaming apps with a monthly price: package, name, typical UK price (the theme's app_prices replace it). */
+    private static final String[][] PAID = {
+            {"com.netflix.ninja", "Netflix", "12.99"}, {"com.amazon.amazonvideo.livingroom", "Prime Video", "8.99"},
+            {"com.disney.disneyplus", "Disney+", "9.99"}, {"com.apple.atve.androidtv.appletv", "Apple TV", "9.99"},
+            {"com.nowtv.androidtv", "NOW", "9.99"}, {"com.cbs.ca", "Paramount+", "6.99"}, {"com.wbd.stream", "HBO Max", "9.99"}};
+
+    /** What each app's subscription costs a month: the theme's "app_prices" ("Netflix|12.99"), else the usual UK price. */
+    private Map<String, Double> prices() {
+        Map<String, Double> out = new LinkedHashMap<>();
+        for (String[] p : PAID) out.put(p[0], Double.parseDouble(p[2]));
+        for (String line : Config.themeStrings(c, "app_prices", new ArrayList<>())) {
+            String[] kv = line.split("\\|");
+            if (kv.length < 2) continue;
+            String who = kv[0].trim();
+            for (String[] p : PAID) if (p[1].equalsIgnoreCase(who)) who = p[0];
+            try {
+                out.put(who, Double.parseDouble(kv[1].trim().replace("£", "")));
+            } catch (NumberFormatException ignored) {
+                // left as it was
+            }
+        }
+        return out;
+    }
+
+    /** Tips for each app, from the series watched here (Your shows): what is coming on it, and when it ends. */
+    private Map<String, String> tips = new HashMap<>();
+
+    private Map<String, String> appNotes() {
+        Map<String, String> out = new HashMap<>();
+        java.util.Set<Integer> seen = new java.util.HashSet<>();
+        LocalDate today = LocalDate.now();
+        for (WatchHistory.Entry e : WatchHistory.load(c)) {
+            if (!e.tv || e.tmdbId <= 0 || !seen.add(e.tmdbId) || seen.size() > 15) continue;
+            JSONObject d = YourShows.details(h.tmdbKey, e.tmdbId);
+            if (d == null) continue;
+            JSONObject gb = YourShows.gb(d), next = d.optJSONObject("next_episode_to_air");
+            JSONArray flat = gb == null ? null : gb.optJSONArray("flatrate");
+            String app = null;
+            for (int i = 0; flat != null && i < flat.length() && app == null; i++) {
+                String a = HomeV2.serviceApp(String.valueOf(flat.optJSONObject(i).optInt("provider_id")));
+                if (a != null && ReleaseAlerts.installed(c, a)) app = a;
+            }
+            if (app == null || next == null || out.containsKey(app)) continue;
+            try {
+                LocalDate nd = LocalDate.parse(next.optString("air_date"));
+                int season = next.optInt("season_number"), ep = next.optInt("episode_number");
+                int count = 0;
+                JSONArray ss = d.optJSONArray("seasons");
+                for (int i = 0; ss != null && i < ss.length(); i++) if (ss.getJSONObject(i).optInt("season_number") == season) count = ss.getJSONObject(i).optInt("episode_count");
+                // Weekly from the next one: the season's last episode.
+                LocalDate end = count > ep ? nd.plusWeeks(count - ep) : nd;
+                out.put(app, d.optString("name") + (ep == 1 ? " is back " : " has new episodes until ")
+                        + (ep == 1 ? nd : end).format(DateTimeFormatter.ofPattern("d MMM", Locale.UK)) + (ep == 1 ? "" : " (weekly)"));
+            } catch (Exception ignored) {
+                // no note for it
+            }
+        }
+        return out;
+    }
+
+    private View appsView() {
+        LocalDate any = LocalDate.now().minusMonths(1);
+        String name = monthName(any);
+        List<JSONObject> days = month(any);
+        Map<String, Integer> secs = new HashMap<>();
+        Map<String, Map<String, Integer>> what = new HashMap<>();
+        for (JSONObject d : days) {
+            JSONObject a = d.optJSONObject("a");
+            for (Iterator<String> it = a == null ? null : a.keys(); it != null && it.hasNext(); ) {
+                String p = it.next();
+                secs.put(p, secs.getOrDefault(p, 0) + a.optInt(p));
+            }
+            JSONObject t = d.optJSONObject("t");
+            for (Iterator<String> it = t == null ? null : t.keys(); it != null && it.hasNext(); ) {
+                JSONObject one = t.optJSONObject(it.next());
+                String p = one.optString("p", "");
+                if (p.isEmpty() || one.optString("n").isEmpty()) continue;
+                Map<String, Integer> m = what.computeIfAbsent(p, k -> new HashMap<>());
+                m.put(one.optString("n"), m.getOrDefault(one.optString("n"), 0) + one.optInt("s"));
+            }
+        }
+        Map<String, Double> price = prices();
+        List<String> apps = new ArrayList<>();
+        for (String p : price.keySet()) if (ReleaseAlerts.installed(c, p)) apps.add(p);
+        apps.sort((x, y) -> {
+            double a = per(price.get(x), secs.getOrDefault(x, 0)), b = per(price.get(y), secs.getOrDefault(y, 0));
+            return Double.compare(a, b);
+        });
+        FrameLayout v = new FrameLayout(c);
+        double total = 0;
+        int paidSecs = 0;
+        for (String p : apps) { total += price.get(p); paidSecs += secs.getOrDefault(p, 0); }
+        TextView head = h.text(40, heavy, Color.WHITE);
+        head.setText("Are your apps worth it?");
+        place(v, head, 96, 128, 900, 56);
+        TextView sum = h.text(19, regular, 0xD9FFFFFF);
+        sum.setText(name + " · £" + money(total) + " a month for " + hm(paidSecs)
+                + (paidSecs >= 3600 ? " · £" + money(total / (paidSecs / 3600.0)) + " an hour" : ""));
+        place(v, sum, 96, 190, 1500, 30);
+        if (apps.isEmpty()) {
+            TextView none = h.text(24, regular, 0xD9FFFFFF);
+            none.setText("No paid streaming apps on this TV.");
+            place(v, none, 96, 260, 1200, 40);
+            return v;
+        }
+        for (int i = 0; i < Math.min(6, apps.size()); i++) {
+            String p = apps.get(i);
+            int s = secs.getOrDefault(p, 0);
+            double cost = price.get(p), hour = per(cost, s);
+            String word;
+            int colour;
+            if (s < 600) { word = "NOT USED"; colour = 0xFFFF5A5A; }
+            else if (hour < 1) { word = "BEST VALUE"; colour = 0xFF3DDC84; }
+            else if (hour < 2) { word = "GOOD VALUE"; colour = 0xFF3DDC84; }
+            else if (hour < 4) { word = "OK"; colour = YELLOW; }
+            else { word = "HARDLY USED"; colour = 0xFFFF5A5A; }
+            LinearLayout card = new LinearLayout(c);
+            card.setOrientation(LinearLayout.VERTICAL);
+            card.setPadding(h.px(26), h.px(20), h.px(26), h.px(18));
+            GradientDrawable g = h.fill(24, CARD);
+            g.setStroke(h.px(colour == 0xFFFF5A5A ? 2 : 1), colour == 0xFFFF5A5A ? colour : EDGE);
+            card.setBackground(g);
+            LinearLayout top = new LinearLayout(c);
+            top.setGravity(Gravity.CENTER_VERTICAL);
+            top.addView(appMark(p), new LinearLayout.LayoutParams(0, h.px(34), 1f));
+            TextView chip = h.text(14, semi, colour == YELLOW ? NAVY : colour == 0xFF3DDC84 ? 0xFF06331B : Color.WHITE);
+            chip.setText(word);
+            chip.setLetterSpacing(0.08f);
+            chip.setPadding(h.px(10), h.px(4), h.px(10), h.px(4));
+            chip.setBackground(h.fill(6, colour));
+            top.addView(chip);
+            card.addView(top);
+            LinearLayout line = new LinearLayout(c);
+            line.setGravity(Gravity.BOTTOM);
+            TextView big = h.text(46, heavy, Color.WHITE);
+            big.setText(s < 600 ? "—" : hour < 1 ? Math.round(hour * 100) + "p" : "£" + money(hour));
+            line.addView(big);
+            TextView sm = h.text(17, regular, 0xCCFFFFFF);
+            sm.setText((s < 600 ? "" : "an hour · ") + hm(s) + " for £" + money(cost));
+            LinearLayout.LayoutParams sl = new LinearLayout.LayoutParams(-2, -2);
+            sl.leftMargin = h.px(12);
+            sl.bottomMargin = h.px(10);
+            line.addView(sm, sl);
+            LinearLayout.LayoutParams ll = new LinearLayout.LayoutParams(-1, -2);
+            ll.topMargin = h.px(8);
+            card.addView(line, ll);
+            FrameLayout track = new FrameLayout(c);
+            track.setBackground(h.fill(5, 0x24FFFFFF));
+            View fill = new View(c);
+            fill.setBackground(h.fill(5, colour));
+            float share = s < 600 ? 0.04f : (float) Math.max(0.06, Math.min(1, 1 - hour / 6));
+            track.addView(fill, new FrameLayout.LayoutParams(Math.round(h.px(500) * share), -1));
+            LinearLayout.LayoutParams tl = new LinearLayout.LayoutParams(h.px(500), h.px(10));
+            tl.topMargin = h.px(8);
+            card.addView(track, tl);
+            Map<String, Integer> on = what.get(p);
+            if (on != null && !on.isEmpty()) {
+                List<Map.Entry<String, Integer>> list = new ArrayList<>(on.entrySet());
+                list.sort((x, y) -> y.getValue() - x.getValue());
+                StringBuilder b = new StringBuilder();
+                for (int k = 0; k < Math.min(2, list.size()); k++) b.append(k == 0 ? "" : ", ").append(list.get(k).getKey());
+                if (list.size() > 2) b.append(" and ").append(list.size() - 2).append(" more");
+                TextView w = h.text(16, regular, 0xCCFFFFFF);
+                w.setText(b + ".");
+                w.setSingleLine(true);
+                LinearLayout.LayoutParams wl = new LinearLayout.LayoutParams(-1, -2);
+                wl.topMargin = h.px(10);
+                card.addView(w, wl);
+            }
+            String tip = tips.get(p);
+            String advice = tip != null ? (hour >= 4 || s < 600 ? "Tip · " + tip + ": keep it till then, pause after" : "Coming · " + tip)
+                    : hour >= 4 || s < 600 ? "Tip · Nothing you watch there is coming soon: pausing it saves £" + money(cost) + " a month" : null;
+            if (advice != null) {
+                TextView t = h.text(15, semi, Color.WHITE);
+                t.setText(advice);
+                t.setMaxLines(2);
+                t.setPadding(h.px(12), h.px(8), h.px(12), h.px(8));
+                t.setBackground(h.fill(12, colour == 0xFFFF5A5A ? 0x2EFF5A5A : 0x14FFFFFF));
+                LinearLayout.LayoutParams al = new LinearLayout.LayoutParams(-1, -2);
+                al.topMargin = h.px(10);
+                card.addView(t, al);
+            }
+            place(v, card, 96 + (i % 3) * 584, 250 + (i / 3) * 340, 560, 318);
+        }
+        TextView foot = h.text(15, regular, 0x99FFFFFF);
+        foot.setText("Prices are the theme's app_prices, or the usual UK price where it gives none. Nothing is cancelled for you: it only tells you.");
+        place(v, foot, 96, 1000, 1600, 30);
+        return v;
+    }
+
+    private static double per(double price, int secs) {
+        return secs < 600 ? 999 : price / (secs / 3600.0);
+    }
+
+    private static String money(double v) {
+        return String.format(Locale.UK, "%.2f", v);
     }
 
     /** A film's or series' poster (when asked) and genres, from TMDB: {Bitmap or null, List<String>}. Off the main thread. */
