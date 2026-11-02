@@ -242,6 +242,7 @@ final class AmbientScene {
         } catch (RuntimeException ignored) {
             // no news: the bar goes without
         }
+        Prayer.refresh(c);
         List<Strip> made = strips(wx, onNow, later, results, news);
         main.post(() -> {
             if (!running) return;
@@ -659,6 +660,27 @@ final class AmbientScene {
             if (wx[4] != null) p.items.add(new Object[]{wx[4], 0});
             out.add(p);
         }
+        // Prayer times (when the theme asks for them), the next one marked; in Ramadan, sehri and iftar first.
+        int ramadan = Prayer.on(c) ? Prayer.ramadanDay(c) : 0;
+        if (ramadan > 0) {
+            List<String[]> t = Prayer.today(c);
+            Strip p = new Strip("RAMADAN · DAY " + ramadan);
+            for (String[] x : t) {
+                if ("Fajr".equals(x[0])) p.items.add(new Object[]{"Sehri ends " + x[1], 0});
+                if ("Maghrib".equals(x[0])) p.items.add(new Object[]{"Iftar " + x[1], 0});
+            }
+            if (!p.items.isEmpty()) out.add(p);
+        }
+        if (Prayer.on(c) && !Prayer.today(c).isEmpty()) {
+            Strip p = new Strip("PRAYER TIMES");
+            Object[] next = Prayer.next(c);
+            for (String[] x : Prayer.today(c)) {
+                if ("Sunrise".equals(x[0])) continue;
+                boolean isNext = next != null && x[0].equals(next[0]) && x[1].equals(next[1]);
+                p.items.add(new Object[]{x[0] + "  " + x[1] + (isNext ? "  ‹ next" : ""), 0});
+            }
+            out.add(p);
+        }
         if (!later.isEmpty()) {
             Strip p = new Strip("LATER TODAY");
             for (String s : later) p.items.add(new Object[]{s, 0});
@@ -737,7 +759,8 @@ final class AmbientScene {
         GradientDrawable g = new GradientDrawable();
         g.setCornerRadius(px(8));
         boolean bd = "BANGLADESH".equals(p.label);
-        g.setColor("LIVE".equals(p.label) ? 0xFFE8112D : bd ? 0xFF006A4E : "DID YOU KNOW?".equals(p.label) ? 0xFF5B3FC4 : 0x1FFFFFFF);
+        boolean prayer = "PRAYER TIMES".equals(p.label) || p.label.startsWith("RAMADAN");
+        g.setColor("LIVE".equals(p.label) ? 0xFFE8112D : bd ? 0xFF006A4E : prayer ? 0xFF0F6B4F : "DID YOU KNOW?".equals(p.label) ? 0xFF5B3FC4 : 0x1FFFFFFF);
         chip.setBackground(g);
         if (bd) {
             // The flag's red disc before its name.

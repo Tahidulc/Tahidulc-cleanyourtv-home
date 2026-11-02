@@ -38,6 +38,12 @@ final class DeliveryLink {
 
         /** The code was typed in: the phone is paired. Main thread not guaranteed. */
         void paired();
+
+        /** A message from the other TV or a phone's browser: {text, from}. Main thread not guaranteed. */
+        default void message(JSONObject m) { }
+
+        /** What was playing on the other TV, to put on here (TvLink.openSent). Main thread not guaranteed. */
+        default void send(JSONObject s) { }
     }
 
     static final int PORT = 47820;
@@ -127,7 +133,18 @@ final class DeliveryLink {
             if (n < 0) break;
             read += n;
         }
-        JSONObject json = length > 0 ? new JSONObject(new String(body, StandardCharsets.UTF_8)) : new JSONObject();
+        // A phone's browser: the page for messages (TvLink.page), and nothing else without POST.
+        if (method.equals("GET") && (path.equals("/") || path.equals("/message") || path.startsWith("/?"))) {
+            reply(s, 200, "text/html; charset=utf-8", TvLink.page(context));
+            return;
+        }
+        JSONObject json;
+        try {
+            json = length > 0 ? new JSONObject(new String(body, StandardCharsets.UTF_8)) : new JSONObject();
+        } catch (org.json.JSONException e) {
+            reply(s, 400, "{\"error\":\"not JSON\"}");
+            return;
+        }
         if (!method.equals("POST")) { reply(s, 405, "{\"error\":\"POST only\"}"); return; }
         switch (path) {
             case "/pair": {
@@ -174,6 +191,24 @@ final class DeliveryLink {
                 reply(s, 200, new JSONObject().put("tv", name()).put("features", features).toString());
                 return;
             }
+            case "/message": {
+                // A few words for the screen: from the other TV, or a phone on the TV's page ("here" false: only on to
+                // the other TVs it names).
+                if (!TvLink.accept(json)) { reply(s, 429, "{\"error\":\"wait a moment\"}"); return; }
+                json.put("text", TvLink.clean(json.optString("text")));
+                if (json.optBoolean("here", true)) sink.message(json);
+                if (json.has("to")) new Thread(() -> TvLink.forward(context, json), "tv-link-forward").start();
+                reply(s, 200, "{\"ok\":true}");
+                return;
+            }
+            case "/send": {
+                // What the other TV was playing: not while this one is off (it would play to a dark screen).
+                android.os.PowerManager pm = context.getSystemService(android.os.PowerManager.class);
+                if (pm != null && !pm.isInteractive()) { reply(s, 409, "{\"error\":\"the TV is off\"}"); return; }
+                sink.send(json);
+                reply(s, 200, "{\"ok\":true}");
+                return;
+            }
             case "/unpair": {
                 // A phone forgetting this TV: its token stops working.
                 Set<String> tokens = new HashSet<>(prefs.getStringSet("tokens", new HashSet<>()));
@@ -199,9 +234,13 @@ final class DeliveryLink {
     }
 
     private static void reply(Socket s, int status, String body) throws Exception {
+        reply(s, status, "application/json", body);
+    }
+
+    private static void reply(Socket s, int status, String type, String body) throws Exception {
         byte[] b = body.getBytes(StandardCharsets.UTF_8);
         OutputStream out = s.getOutputStream();
-        out.write(("HTTP/1.1 " + status + " OK\r\nContent-Type: application/json\r\nContent-Length: " + b.length
+        out.write(("HTTP/1.1 " + status + " OK\r\nContent-Type: " + type + "\r\nContent-Length: " + b.length
                 + "\r\nConnection: close\r\n\r\n").getBytes(StandardCharsets.UTF_8));
         out.write(b);
         out.flush();

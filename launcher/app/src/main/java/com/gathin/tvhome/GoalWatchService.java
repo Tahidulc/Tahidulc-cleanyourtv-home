@@ -101,6 +101,8 @@ public class GoalWatchService extends Service {
 
     private void play(String sound) {
         if (replaying) return;   // an alert moved to its new place has already sounded
+        // A message from the other TV or the phone: its own three notes, always (asked for even with alerts silent).
+        if ("message".equals(sound)) { DoorbellAlert.tones(this, TvLink.TONE, 0.16f); return; }
         Integer id = sound == null || sounds == null ? null : soundIds.get(sound);
         if (id != null) sounds.play(id, SOUND_VOLUME, SOUND_VOLUME, 1, 0, 1f);
     }
@@ -144,9 +146,17 @@ public class GoalWatchService extends Service {
      * score, and while the game is on where it is and OK to watch it. Off the main thread for the pictures.
      */
     private void skyFootball(ScoresTicker.Game g, String type, String who, String minute, String side, String kind) {
+        skyFootball(g, type, who, minute, side, kind, null, null);
+    }
+
+    /**
+     * The same, for the event with this key (Today's alerts marks it shown when it comes up), and at the score it made
+     * (home, away; null: the game's score now), for a goal shown again from Today's alerts.
+     */
+    private void skyFootball(ScoresTicker.Game g, String type, String who, String minute, String side, String kind, String key, int[] at) {
         io.execute(() -> {
             try {
-                skyFootballNow(g, type, who, minute, side, kind);
+                skyFootballNow(g, type, who, minute, side, kind, key, at);
             } catch (RuntimeException e) {
                 // A card that could not be built (a picture, a name) is noted, not lost without a word.
                 AlertLog.note(this, "card failed to build: " + type + " " + AlertLog.game(g) + " " + who + " " + minute + ": " + e);
@@ -154,9 +164,12 @@ public class GoalWatchService extends Service {
         });
     }
 
-    private void skyFootballNow(ScoresTicker.Game g, String type, String who, String minute, String side, String kind) {
+    private void skyFootballNow(ScoresTicker.Game g, String type, String who, String minute, String side, String kind, String key, int[] at) {
         {
             ScoreCard.Data d = footballData(g);
+            d.key = key;
+            if (at != null) d.score = at[0] + "–" + at[1];
+            d.again = key == null && at != null || key == null && "ft".equals(type) && g.state == 2;
             boolean home = !"away".equals(side);
             int kit = home ? g.homeColor : g.awayColor;
             d.kind = type;
@@ -191,7 +204,7 @@ public class GoalWatchService extends Service {
                 d.crest = home ? d.homeCrest : d.awayCrest;
                 d.photo = playerPhoto(who, home ? g.homeName : g.awayName, kit);
                 // A goal: the score before it, to turn over to the new one.
-                int hs = parse(g.homeScore), as = parse(g.awayScore);
+                int hs = at != null ? at[0] : parse(g.homeScore), as = at != null ? at[1] : parse(g.awayScore);
                 if (!red && hs >= 0 && as >= 0) {
                     boolean forHome = home != "og".equals(kind);
                     d.scoreBefore = (forHome ? Math.max(0, hs - 1) : hs) + "–" + (forHome ? as : Math.max(0, as - 1));
@@ -989,6 +1002,8 @@ public class GoalWatchService extends Service {
             @Override public void pairing(String phone, String code) { main.post(() -> showPairing(phone, code)); }
             @Override public void delivery(JSONObject update) { main.post(() -> showDelivery(update)); }
             @Override public void paired() { main.post(() -> { if (pairingClose != null) pairingClose.run(); }); }
+            @Override public void message(JSONObject m) { main.post(() -> showMessage(m)); }
+            @Override public void send(JSONObject s) { main.post(() -> TvLink.openSent(GoalWatchService.this, s)); }
         });
         deliveries.start();
         relane = () -> main.postDelayed(this::replace, 250);
@@ -1038,6 +1053,20 @@ public class GoalWatchService extends Service {
     // ---- delivery updates from the phone (DeliveryLink) ----------------------------------------------------
 
     private DeliveryLink deliveries;
+
+    /**
+     * A message from the other TV or a phone ("Dinner's ready"): who it is from and the words, over whatever is on,
+     * ahead of the alerts waiting, with its three soft notes (always, even with the alerts' sounds off).
+     */
+    private void showMessage(JSONObject m) {
+        String from = m.optString("from", "").trim();
+        AlertLog.note(this, "message from " + (from.isEmpty() ? "?" : from) + ": " + m.optString("text"));
+        List<Object> parts = new ArrayList<>();
+        parts.add(bold("💬  " + (from.isEmpty() ? "MESSAGE" : "FROM " + from.toUpperCase(java.util.Locale.ROOT))));
+        parts.add(14);
+        parts.add(m.optString("text"));
+        enqueueParts(parts, "message");
+    }
 
     /** The code a phone asks to pair with, for the person to type there: ahead of any other alert waiting. */
     private void showPairing(String phone, String code) {
@@ -1851,6 +1880,7 @@ public class GoalWatchService extends Service {
                             main.postDelayed(() -> enqueue(g, goal, false), DELAY_MS);
                         } else if (g.state == 0) {
                             AlertLog.note(this, "goal already in on the first read, not announced: " + AlertLog.game(g) + ", " + goal[1] + " " + goal[2]);
+                            AlertToday.why(this, goal[0], "before the TV was on");
                         }
                     }
                     for (String[] card : g.reds) {
@@ -2379,10 +2409,11 @@ public class GoalWatchService extends Service {
         // A Championship or LaLiga game: only while Home is in front.
         if (homeOnly(g) && !homeInFront) {
             AlertLog.note(this, "not shown (a Home-only game, Home not in front): " + AlertLog.game(g) + " " + goal[1] + " " + goal[2]);
+            AlertToday.why(this, goal[0], "Home wasn't open");
             return;
         }
         if (skyAlerts) {
-            skyFootball(g, red ? "red" : "ft".equals(goal[4]) ? "ft" : "goal", goal[1], goal[2], goal[3], goal[4]);
+            skyFootball(g, red ? "red" : "ft".equals(goal[4]) ? "ft" : "goal", goal[1], goal[2], goal[3], goal[4], goal[0], null);
             return;
         }
         boolean scored = !red && !"ft".equals(goal[4]) && ("home".equals(goal[3]) || "away".equals(goal[3]));
@@ -2805,6 +2836,47 @@ public class GoalWatchService extends Service {
     static Object[] watchForGame(Context c, ScoresTicker.Game g) {
         GoalWatchService s = running(c);
         return s == null || g == null ? null : s.watchFor(g);
+    }
+
+    /**
+     * Today's games for Today's alerts (off the main thread): the ones this service read today (from the followed
+     * competitions and clubs, and any other with a pop-up shown), else read now from the followed competitions.
+     */
+    static List<ScoresTicker.Game> today(Context c) {
+        GoalWatchService s = running(c);
+        List<ScoresTicker.Game> all = new ArrayList<>();
+        for (int i = 0; s != null && i < 3; i++) {
+            try {
+                all = new ArrayList<>(s.latest.values());
+                break;
+            } catch (RuntimeException busy) {
+                all = new ArrayList<>();   // changed while being read: again
+            }
+        }
+        if (all.isEmpty()) {
+            List<String> leagues = new ArrayList<>(Arrays.asList(c.getResources().getStringArray(R.array.goal_alert_leagues)));
+            leagues.addAll(Arrays.asList(c.getResources().getStringArray(R.array.team_alert_leagues)));
+            all = ScoresTicker.load(leagues.toArray(new String[0]));
+        }
+        java.time.LocalDate day = java.time.LocalDate.now();
+        java.time.ZoneId zone = java.time.ZoneId.systemDefault();
+        List<ScoresTicker.Game> out = new ArrayList<>();
+        Set<String> ids = new HashSet<>();
+        for (ScoresTicker.Game g : all) {
+            if (g == null || g.id == null || g.state == 1 || g.kickoff <= 0 || !ids.add(g.id)) continue;
+            if (!java.time.Instant.ofEpochMilli(g.kickoff).atZone(zone).toLocalDate().equals(day)) continue;
+            if (followsAnywhere(c, g) || AlertToday.anyShown(c, g)) out.add(g);
+        }
+        out.sort((x, y) -> Long.compare(y.kickoff, x.kickoff));
+        return out;
+    }
+
+    /** A goal, red card or full time from Today's alerts as its score card again, at the score it made (off the main thread). */
+    static void replay(Context c, ScoresTicker.Game g, String type, String[] ev, int[] at) {
+        GoalWatchService s = running(c);
+        if (s == null) return;
+        AlertLog.note(s, "shown again from Today's alerts: " + type + " " + AlertLog.game(g) + " " + ev[1] + " " + ev[2]);
+        s.main.post(() -> s.skyFootball(g, type, ev[1], ev[2], ev[3], ev[4], null, at));
     }
 
     /** The service, started first when it is not running (off the main thread: waits up to three seconds for it). */

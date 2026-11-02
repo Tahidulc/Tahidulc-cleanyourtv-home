@@ -348,6 +348,14 @@ final class DoorbellAlert {
      * at the TV's own volume, whatever is on ducking under it.
      */
     private static void chime(Context c) {
+        tones(c, new double[]{659.25, 523.25}, 0.55f);
+    }
+
+    /**
+     * Soft bell tones one after another (step seconds apart), each dying away, at the TV's own volume with whatever is
+     * on ducking under them: the doorbell's ding-dong, and a message's three rising notes (TvLink).
+     */
+    static void tones(Context c, double[] notes, float step) {
         new Thread(() -> {
             AudioManager am = c.getSystemService(AudioManager.class);
             AudioAttributes aa = new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA)
@@ -355,11 +363,10 @@ final class DoorbellAlert {
             AudioFocusRequest focus = new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
                     .setAudioAttributes(aa).build();
             if (am != null) am.requestAudioFocus(focus);
-            int rate = 44100, len = Math.round(rate * 1.9f);
+            int rate = 44100, len = Math.round(rate * (step * (notes.length - 1) + 1.35f));
             double[] mix = new double[len];
-            double[] notes = {659.25, 523.25};
             for (int k = 0; k < notes.length; k++) {
-                int start = Math.round(rate * 0.55f * k);
+                int start = Math.round(rate * step * k);
                 for (int i = start; i < len; i++) {
                     double t = (i - start) / (double) rate;
                     double env = Math.exp(-t * 2.6) * Math.min(1.0, t * 300);
@@ -377,7 +384,7 @@ final class DoorbellAlert {
                         .setTransferMode(AudioTrack.MODE_STATIC).setBufferSizeInBytes(len * 2).build();
                 track.write(pcm, 0, len);
                 track.play();
-                Thread.sleep(2000);
+                Thread.sleep(len * 1000L / rate + 100);
             } catch (Exception e) {
                 Log.w(TAG, "chime: " + e);
             } finally {

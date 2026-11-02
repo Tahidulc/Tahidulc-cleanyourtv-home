@@ -36,7 +36,20 @@ final class KidsArt {
             {"Peppa Pig", "Peppa Pig official", 0xFFFF8AC2, 0xFFE0457B},
             {"PAW Patrol", "PAW Patrol official", 0xFF2F80ED, 0xFFE53935},
             {"Hey Duggee", "Hey Duggee official", 0xFFFFB238, 0xFF7A4A1F},
-            {"Cocomelon", "Cocomelon nursery rhymes", 0xFF8BD450, 0xFF2E9E5B}};
+            {"Cocomelon", "Cocomelon nursery rhymes", 0xFF8BD450, 0xFF2E9E5B},
+            // The Bangla tab (from BANGLA on): rhymes, the alphabet, stories and cartoons in Bangla, asked for in Bangla.
+            {"Bangla for kids", "বাংলা ছড়া ও কার্টুন for kids", 0xFF006A4E, 0xFFF42A41},
+            {"Bangla rhymes", "বাংলা ছড়া bangla rhymes for kids", 0xFF0F9D58, 0xFFFFC93C},
+            {"Bangla alphabet", "স্বরবর্ণ ব্যঞ্জনবর্ণ bangla alphabet for kids", 0xFFF42A41, 0xFFFF9F43},
+            {"Bangla stories", "বাংলা গল্প bangla cartoon golpo for kids", 0xFF7B2FF7, 0xFF006A4E},
+            {"Bangla numbers", "বাংলা সংখ্যা ১ থেকে ১০ for kids", 0xFF2F80ED, 0xFF3DDC84},
+            {"Thakurmar Jhuli", "ঠাকুরমার ঝুলি cartoon", 0xFFE0457B, 0xFF7A4A1F},
+            {"Meena", "Meena cartoon bangla", 0xFFFF8AC2, 0xFF1E9A86},
+            {"Sisimpur", "Sisimpur সিসিমপুর", 0xFFFFB238, 0xFF0F9D58},
+            {"Bangla songs", "বাংলা শিশুতোষ গান kids songs", 0xFFFF4FA3, 0xFF006A4E}};
+
+    /** Where the Bangla topics start in TOPICS: BANGLA leads the Bangla tab (and Top picks); the rest follow it. */
+    static final int BANGLA = 10;
 
     private KidsArt() { }
 

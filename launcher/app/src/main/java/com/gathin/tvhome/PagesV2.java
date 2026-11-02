@@ -1162,6 +1162,7 @@ final class PagesV2 {
         String[][] spec = {
                 {"Top picks", "@top"},
                 {"YouTube", "@youtube"},
+                {"Bangla", "@bangla"},
                 {"Kids TV", "discover/tv?with_genres=10762&with_original_language=en&watch_region=GB&sort_by=popularity.desc"},
                 {"Favourites", "discover/tv?with_genres=10762&sort_by=vote_count.desc"},
                 {"Family films", FAMILY + "&vote_count.gte=200"},
@@ -1177,9 +1178,12 @@ final class PagesV2 {
             String what = spec[t][1];
             List<Title> items = new ArrayList<>();
             if ("@youtube".equals(what)) {
-                for (int n = 1; n < KidsArt.TOPICS.length; n++) items.add(youTubeCard(h, n));
+                for (int n = 1; n < KidsArt.BANGLA; n++) items.add(youTubeCard(h, n));
+            } else if ("@bangla".equals(what)) {
+                for (int n = KidsArt.BANGLA + 1; n < KidsArt.TOPICS.length; n++) items.add(youTubeCard(h, n));
             } else if ("@top".equals(what)) {
                 items.add(youTubeCard(h, 0));
+                items.add(youTubeCard(h, KidsArt.BANGLA));
                 items.addAll(mix(tmdb(k, kidsTv(apps), true), tmdb(k, FAMILY + onApps(apps), false)));
             } else if (what.startsWith("@")) {
                 String app = what.substring(1);
@@ -1217,7 +1221,9 @@ final class PagesV2 {
         t.title = (String) KidsArt.TOPICS[n][0];
         t.year = "";
         t.what = "YouTube";
-        t.overview = "Opens YouTube on " + KidsArt.TOPICS[n][1] + ": videos made for children, ready to pick from.";
+        t.overview = n >= KidsArt.BANGLA
+                ? "Opens YouTube on " + KidsArt.TOPICS[n][0] + ": rhymes, letters and stories in Bangla, made for children."
+                : "Opens YouTube on " + KidsArt.TOPICS[n][1] + ": videos made for children, ready to pick from.";
         t.poster = "ytkids:p:" + n;
         t.backdrop = "ytkids:w:" + n;
         t.ok = () -> KidsArt.open(h, n);

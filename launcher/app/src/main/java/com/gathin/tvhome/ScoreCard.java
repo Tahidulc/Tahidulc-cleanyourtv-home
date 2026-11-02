@@ -66,6 +66,10 @@ final class ScoreCard {
         final List<Object[]> others = new ArrayList<>();
         /** goal, red, var, pen, ft, f1 or fight: how it moves. */
         String kind = "";
+        /** The goal's, red card's or full time's key (ScoresTicker), for Today's alerts; null for anything else. */
+        String key;
+        /** Shown again from Today's alerts: always the full card (Home's bar would be under its panel). */
+        boolean again;
         /** For a goal: the score before it, which turns over to the new one. */
         String scoreBefore;
         /** The label's words, a small line under them (or null), and its colour. */
@@ -154,11 +158,12 @@ final class ScoreCard {
         waitingSince = 0;
         Data d = queue.poll();
         if (d.f1) { d.dark = true; d.wideMark = true; }
-        onHome = GoalWatchService.laneHome && GoalWatchService.homeInFront || PopupFrame.isShowing();
+        onHome = !d.again && (GoalWatchService.laneHome && GoalWatchService.homeInFront || PopupFrame.isShowing());
         k = c.getResources().getDisplayMetrics().widthPixels / 1920f;
         AlertLog.note(c, "card shown " + (onHome ? "on Home (in the score bar's place)" : PopupFrame.isShowing() ? "in pop-up mode's frame"
                 : "over the app (" + AlertLog.front(c) + ")")
                 + ": " + d.label + (d.labelSmall != null ? " " + d.labelSmall : "") + " " + d.first + " " + d.last + " " + d.line);
+        if (d.key != null) AlertToday.shown(c, d.key);
         if (onHome) bar(c, d); else card(c, d);
     }
 

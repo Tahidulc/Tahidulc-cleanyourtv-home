@@ -427,9 +427,24 @@ final class HomeV2 {
         weather.setBackground(glass(25, false));
         weather.setCompoundDrawablePadding(px(12));
         LinearLayout.LayoutParams wlp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, px(50));
-        wlp.topMargin = px(10);
-        col.addView(weather, wlp);
+        // The weather, and beside it the next prayer (Prayer: when the theme asks; in Ramadan, iftar or sehri).
+        LinearLayout pills = new LinearLayout(a);
+        pills.setOrientation(LinearLayout.HORIZONTAL);
+        pills.addView(weather, wlp);
+        prayerView = text(22, regular, Color.WHITE);
+        prayerView.setLetterSpacing(0.04f);
+        prayerView.setGravity(Gravity.CENTER_VERTICAL);
+        prayerView.setPadding(px(22), 0, px(24), 0);
+        prayerView.setBackground(glass(25, false));
+        prayerView.setVisibility(View.GONE);
+        LinearLayout.LayoutParams plp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, px(50));
+        plp.leftMargin = px(12);
+        pills.addView(prayerView, plp);
+        LinearLayout.LayoutParams pillsLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, px(50));
+        pillsLp.topMargin = px(10);
+        col.addView(pills, pillsLp);
         clock.addView(col);
+        if (Prayer.on(a)) main.post(prayerTick);
         add(clock, dockMode ? 52 : 96, 92, 1100, 160);
         weatherLine = new WeatherLine(weather, a.getString(R.string.weather_latitude), a.getString(R.string.weather_longitude),
                 a.getString(R.string.weather_place));
@@ -442,6 +457,27 @@ final class HomeV2 {
     }
 
     private WeatherPanel weatherPanel;
+    /** The next prayer beside the weather (Prayer), its words again each minute, the timetable read once a day. */
+    private TextView prayerView;
+    private long prayerRead;
+    private final Runnable prayerTick = new Runnable() {
+        @Override public void run() {
+            if (prayerView == null) return;
+            if (System.currentTimeMillis() - prayerRead > 3 * 3_600_000L) {
+                prayerRead = System.currentTimeMillis();
+                io.execute(() -> { Prayer.refresh(a); main.post(this::paintPrayer); });
+            }
+            paintPrayer();
+            main.removeCallbacks(this);
+            main.postDelayed(this, 60_000L);
+        }
+
+        private void paintPrayer() {
+            String s = Prayer.pill(a);
+            prayerView.setVisibility(s == null ? View.GONE : View.VISIBLE);
+            if (s != null) prayerView.setText("\u263E  " + s);
+        }
+    };
     private SmartPanel smartPanel;
     /** One search for everything: the magnifier in the top bar, or the remote's Search key. */
     private SearchPanel search;
@@ -550,6 +586,11 @@ final class HomeV2 {
             smartPanel = new SmartPanel(this);
             items.add(new ControlCentre.Item("Lights & home", R.drawable.ic_bulb, () -> "Lights, cameras, the car", null, () -> smartPanel.show()));
         }
+        // The other TV: a message popped up there (with a chime), or what is playing here sent over to it.
+        items.add(new ControlCentre.Item("Message", R.drawable.ic_message, () -> "Pop up on the other TV", null, () -> TvLink.open(this, false)));
+        items.add(new ControlCentre.Item("Send to other TV", R.drawable.ic_cast, () -> TvLink.describe(a), null, () -> TvLink.open(this, true)));
+        // Today's alerts: every goal, red card and full time today, what came up and what was missed, OK showing it again.
+        items.add(new ControlCentre.Item("Today's alerts", R.drawable.ic_bell, AlertToday::summary, null, () -> AlertToday.open(this)));
         viewing = new ViewingPanel(this);
         items.add(new ControlCentre.Item("Your viewing", R.drawable.ic_chart, () -> "Your week on TV", null, () -> viewing.show()));
         search = new SearchPanel(this);
@@ -1036,6 +1077,8 @@ final class HomeV2 {
         Surprise.close();
         EpisodeDice.close();
         Recap.close();
+        AlertToday.close();
+        TvLink.close();
         if (titlePanel != null) titlePanel.hide();
         if (viewing != null) viewing.hide();
         if (search != null) search.hide();
@@ -1068,7 +1111,8 @@ final class HomeV2 {
         boolean busy = page != null || guide.isOpen() || (controlCentre != null && controlCentre.isOpen())
                 || (smartPanel != null && smartPanel.isOpen()) || (weatherPanel != null && weatherPanel.isOpen())
                 || (titlePanel != null && titlePanel.isOpen()) || (viewing != null && viewing.isOpen())
-                || (search != null && search.isOpen()) || Surprise.isOpen() || EpisodeDice.isOpen() || Recap.isOpen();
+                || (search != null && search.isOpen()) || Surprise.isOpen() || EpisodeDice.isOpen() || Recap.isOpen()
+                || AlertToday.isOpen() || TvLink.isOpen();
         if (busy || (zone != Z_ROW && zone != Z_CATS)) {
             if (!kickOff) { main.removeCallbacks(matchBack); main.postDelayed(matchBack, MATCH_BACK_MS); }
             return;
@@ -1108,6 +1152,8 @@ final class HomeV2 {
         if (Surprise.isOpen()) return Surprise.key(e);
         if (EpisodeDice.isOpen()) return EpisodeDice.key(e);
         if (Recap.isOpen()) return Recap.key(e);
+        if (AlertToday.isOpen()) return AlertToday.key(e);
+        if (TvLink.isOpen()) return TvLink.key(e);
         if (titlePanel != null && titlePanel.isOpen()) return titlePanel.key(e);
         if (viewing != null && viewing.isOpen()) return viewing.key(e);
         if (search != null && search.isOpen()) return search.key(e);
