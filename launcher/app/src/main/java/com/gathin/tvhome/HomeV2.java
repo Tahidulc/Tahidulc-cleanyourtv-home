@@ -874,9 +874,9 @@ final class HomeV2 {
     private int popZone, popRail, popRow;
 
     /**
-     * Up pressed twice on the rail's app or a tile: the first moves on as ever (the item it left noted), the second
-     * puts the focus back on that item and opens it in pop-up mode. Only with the key helper, which keeps the remote
-     * with the app once it is open.
+     * Up pressed twice on a tile: the first moves on as ever (the tile it left noted), the second puts the focus back on
+     * that tile and opens it in pop-up mode. Not on the rail's apps, where Up is for going through them. Only with the
+     * key helper, which keeps the remote with the app once it is open.
      */
     private boolean popUp(int code, KeyEvent e) {
         if (code != KeyEvent.KEYCODE_DPAD_UP || e.getRepeatCount() > 0 || !PopupFrame.available() || page != null) {
@@ -895,12 +895,7 @@ final class HomeV2 {
             return true;
         }
         popTarget = null;
-        if (zone == Z_RAIL && railIdx < railViews.size()) {
-            String p = (String) railViews.get(railIdx).getTag();
-            if (p != null) popTarget = () -> openApp(p);
-        } else if (zone == Z_ROW && rowIdx < shown.size()) {
-            popTarget = shown.get(rowIdx).ok;
-        }
+        if (zone == Z_ROW && rowIdx < shown.size()) popTarget = shown.get(rowIdx).ok;
         popUpAt = now;
         popZone = zone;
         popRail = railIdx;
