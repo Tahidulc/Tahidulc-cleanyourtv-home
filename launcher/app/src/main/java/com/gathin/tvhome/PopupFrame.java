@@ -30,7 +30,8 @@ import java.util.List;
 /**
  * Pop-up mode (launcher v2, a TV with the key helper): an app opened from Home with Up pressed twice (on the rail or on
  * a tile) shows inside Home's frame. Home's navy round its edges with the app in a rounded window in the middle, the
- * score pills across the top (where Home's alerts come in as on Home) and the six boxes along the foot, and the
+ * score pills across the top (where Home's alerts come in as on Home) and Home's dock along the foot (the dock's apps
+ * in their own icons, then the six sections, the liquid glass behind the one chosen; the six boxes beside the rail), and the
  * remote's Back key in the top corner, as the alerts have it. The app keeps the remote: everything in it works as
  * ever, Back included (apps go back with it, often twice in a row). Back held down a moment brings the frame in with
  * the remote on the boxes (Up to the score pills, OK opens either); there Back once returns to the app, Back twice in
@@ -60,6 +61,9 @@ final class PopupFrame {
     private static final long HIDE_MS = 5_000L;
     /** The frame's parts that come and go, and whether they show now. */
     private static View frameView, boxRow;
+    /** The dock layout: the glass behind the dock item chosen, the apps' count (the sections come after), the first to take the remote. */
+    private static GlassLens lens;
+    private static int dockApps, firstFocus;
     private static boolean chrome;
     private static int swallowUp;
 
@@ -100,7 +104,7 @@ final class PopupFrame {
         if (leagues.length > 0) {
             scores = new ScoresTicker(c, win, c.getResources().getDisplayMetrics().density, leagues, new ScoresTicker.Host() {
                 @Override public void onScoresOpen(ScoresTicker.Game g) { leaveFocus(); watch(g); }
-                @Override public void onScoresDown() { if (!boxes.isEmpty()) boxes.get(0).requestFocus(); }
+                @Override public void onScoresDown() { if (!boxes.isEmpty()) boxes.get(Math.min(firstFocus, boxes.size() - 1)).requestFocus(); }
             });
             scores.setTypeface(c.getResources().getFont(R.font.inter_ui));
             scores.equalWidths(true);
@@ -127,7 +131,177 @@ final class PopupFrame {
         win.addView(back, bl);
         backBox = back;
 
+        if (Config.themeFlag(c, "home_dock", true)) {
+            buildDock(c, win);
+        } else {
+            buildBoxes(c, win);
+        }
+        win.setClipChildren(false);
+        finishShow(c, win);
+    }
+
+    // ---- the dock (the dock layout) ------------------------------------------------------------------------------
+
+    private static final int DOCK_H = 100, DOCK_APP = 64, DOCK_SEC = 112, DOCK_GAP = 14;
+
+    /**
+     * Home's dock along the foot, as on Home: one pane of glass, the dock's apps in their own icons (All apps last),
+     * a thin rule, the six sections (each its icon in its colour over its name). The item with the remote swells, its
+     * neighbours a little, and the liquid glass flows behind it from one to the next. An app chosen opens (pop-up mode
+     * goes on, over it); All apps or a section opens Home on that section, as the boxes did.
+     */
+    private static void buildDock(Context c, FrameLayout win) {
+        boxes.clear();
+        List<String> apps = new ArrayList<>();
+        android.content.pm.PackageManager pm = c.getPackageManager();
+        for (String p : Config.load(c).dockApps) {
+            try { pm.getPackageInfo(p, 0); apps.add(p); } catch (android.content.pm.PackageManager.NameNotFoundException ignored) { }
+        }
+        apps.add(null);   // All apps
+        dockApps = apps.size();
+        firstFocus = dockApps;   // the TV guide, as the boxes started on
+        int width = 40 + dockApps * DOCK_APP + (dockApps - 1) * DOCK_GAP + DOCK_GAP + 2 + DOCK_GAP + 6 * DOCK_SEC + 5 * DOCK_GAP;
+        int x0 = (1920 - width) / 2;
+        FrameLayout pane = new FrameLayout(c);
+        pane.setClipChildren(false);
+        View bg = new View(c);
+        GradientDrawable g = new GradientDrawable();
+        g.setCornerRadius(px(30));
+        g.setColor(0x1FFFFFFF);
+        g.setStroke(Math.max(1, px(1.5f)), 0x3DFFFFFF);
+        bg.setBackground(g);
+        place(pane, bg, x0, 0, width, DOCK_H);
+        lens = new GlassLens(c, k);
+        pane.addView(lens, new FrameLayout.LayoutParams(-1, -1));
+        int x = x0 + 20;
+        for (int i = 0; i < dockApps; i++) {
+            String p = apps.get(i);
+            FrameLayout f = new FrameLayout(c);
+            f.setClipToOutline(true);
+            f.setOutlineProvider(new android.view.ViewOutlineProvider() {
+                @Override public void getOutline(View v, android.graphics.Outline o) { o.setRoundRect(0, 0, v.getWidth(), v.getHeight(), px(18)); }
+            });
+            GradientDrawable fb = new GradientDrawable();
+            fb.setCornerRadius(px(18));
+            fb.setColor(0x1AFFFFFF);
+            f.setBackground(fb);
+            ImageView art = new ImageView(c);
+            if (p != null) {
+                art.setScaleType(ImageView.ScaleType.CENTER_CROP);
+                try { art.setImageDrawable(HomeV2.fullSquare(c, pm.getApplicationIcon(p), Math.max(96, px(DOCK_APP * 1.5f)))); }
+                catch (android.content.pm.PackageManager.NameNotFoundException ignored) { }
+                f.addView(art, new FrameLayout.LayoutParams(-1, -1));
+            } else {
+                art.setImageResource(HomeV2.glyph(null));
+                art.setAlpha(0.9f);
+                f.addView(art, new FrameLayout.LayoutParams(px(30), px(30), Gravity.CENTER));
+            }
+            dockItem(f, i, p);
+            place(pane, f, x, (DOCK_H - DOCK_APP) / 2, DOCK_APP, DOCK_APP);
+            x += DOCK_APP + DOCK_GAP;
+        }
+        View rule = new View(c);
+        rule.setBackgroundColor(0x47FFFFFF);
+        place(pane, rule, x, 20, 2, DOCK_H - 40);
+        x += 2 + DOCK_GAP;
+        for (int i = 0; i < 6; i++) {
+            FrameLayout box = new FrameLayout(c);
+            box.setClipChildren(false);
+            LinearLayout in = new LinearLayout(c);
+            in.setOrientation(LinearLayout.VERTICAL);
+            in.setGravity(Gravity.CENTER);
+            ImageView ic = new ImageView(c);
+            ic.setImageResource(HomeV2.CAT_ICONS[i]);
+            ic.setColorFilter(HomeV2.CAT_COLOURS[i]);
+            in.addView(ic, new LinearLayout.LayoutParams(px(32), px(32)));
+            TextView t = text(c, HomeV2.CAT_NAMES[i], 16, 0xFFFFFFFF);
+            LinearLayout.LayoutParams tl = new LinearLayout.LayoutParams(-2, -2);
+            tl.topMargin = px(6);
+            in.addView(t, tl);
+            box.addView(in, new FrameLayout.LayoutParams(-1, -1));
+            dockItem(box, dockApps + i, null);
+            place(pane, box, x, 10, DOCK_SEC, DOCK_H - 20);
+            x += DOCK_SEC + DOCK_GAP;
+        }
+        FrameLayout.LayoutParams pl = new FrameLayout.LayoutParams(-1, px(DOCK_H), Gravity.BOTTOM);
+        pl.bottomMargin = px(25);   // in the middle of the band under the app's window
+        win.addView(pane, pl);
+        boxRow = pane;
+    }
+
+    private static void place(FrameLayout parent, View v, int x, int y, int w, int h) {
+        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(px(w), px(h));
+        lp.leftMargin = px(x);
+        lp.topMargin = px(y);
+        parent.addView(v, lp);
+    }
+
+    /** A dock item: takes the remote, swells under the glass, and does what it is for with OK. */
+    private static void dockItem(View v, int at, String pkg) {
+        v.setFocusable(true);
+        v.setOnFocusChangeListener((vv, has) -> {
+            if (has) { dockLook(at); return; }
+            vv.post(() -> { if (host != null && (host.findFocus() == null || !boxes.contains(host.findFocus()))) dockLook(-1); });
+        });
+        v.setOnClickListener(vv -> {
+            if (at >= dockApps) openBox(at - dockApps);
+            else if (pkg == null) openBox(5);
+            else openDockApp(pkg);
+        });
+        int last = dockApps + 5;
+        v.setOnKeyListener((vv, code, e) -> {
+            if (e.getAction() != KeyEvent.ACTION_DOWN) return false;
+            if (code == KeyEvent.KEYCODE_DPAD_UP) { if (scores == null || !scores.focus()) leaveFocus(); return true; }
+            if (code == KeyEvent.KEYCODE_DPAD_DOWN) return true;
+            if (code == KeyEvent.KEYCODE_DPAD_LEFT) { if (at > 0) boxes.get(at - 1).requestFocus(); return true; }
+            if (code == KeyEvent.KEYCODE_DPAD_RIGHT) { if (at < last) boxes.get(at + 1).requestFocus(); return true; }
+            return false;
+        });
+        boxes.add(v);
+    }
+
+    /** The dock under the remote at item `at` (-1: none): the swell, the lift, the section's white icon, the glass. */
+    private static void dockLook(int at) {
+        for (int i = 0; i < boxes.size(); i++) {
+            View v = boxes.get(i);
+            int d = at < 0 ? 9 : Math.abs(i - at);
+            float sw = d == 0 ? 1.2f : d == 1 ? 1.07f : 1f;
+            boolean on = d == 0;
+            v.animate().scaleX(sw).scaleY(sw).translationY(on ? -px(i < dockApps ? 6 : 4) : 0).setDuration(260).setInterpolator(HomeV2.SKY).start();
+            if (i >= dockApps && v instanceof FrameLayout && ((FrameLayout) v).getChildAt(0) instanceof LinearLayout) {
+                LinearLayout in = (LinearLayout) ((FrameLayout) v).getChildAt(0);
+                ((ImageView) in.getChildAt(0)).setColorFilter(on ? Color.WHITE : HomeV2.CAT_COLOURS[i - dockApps]);
+                ((TextView) in.getChildAt(1)).setTypeface(app.getResources().getFont(on ? R.font.inter_semibold : R.font.inter_ui));
+            }
+        }
+        if (lens == null) return;
+        if (at < 0 || at >= boxes.size()) { lens.hide(); return; }
+        FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) boxes.get(at).getLayoutParams();
+        float w = lp.width * 1.2f, cx = lp.leftMargin + lp.width / 2f;
+        lens.to(cx - w / 2f - px(10), px(8), w + px(20), px(DOCK_H - 16), px(26), false);
+    }
+
+    /** An app from the dock: it opens, pop-up mode going on over it, the remote back with it. */
+    private static void openDockApp(String pkg) {
+        android.content.pm.PackageManager pm = app.getPackageManager();
+        Intent i = pm.getLeanbackLaunchIntentForPackage(pkg);
+        if (i == null) i = pm.getLaunchIntentForPackage(pkg);
+        if (i == null) return;
+        leaveFocus();
+        try {
+            app.startActivity(i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            GoalWatchService.onAppOpened(app, pkg);
+        } catch (RuntimeException ignored) {
+        }
+    }
+
+    // ---- the six boxes (beside the rail) ---------------------------------------------------------------------------
+
+    private static void buildBoxes(Context c, FrameLayout win) {
         // The six boxes along the foot, Home's own, a little lower.
+        lens = null;
+        dockApps = 0;
+        firstFocus = 0;
         LinearLayout row = new LinearLayout(c);
         row.setGravity(Gravity.CENTER);
         boxes.clear();
@@ -176,8 +350,9 @@ final class PopupFrame {
         rl.bottomMargin = px(27);
         win.addView(row, rl);
         boxRow = row;
-        win.setClipChildren(false);
+    }
 
+    private static void finishShow(Context c, FrameLayout win) {
         params = new WindowManager.LayoutParams(-1, -1, WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
                 // Touchable only while the frame has the remote: Android caps an untouchable overlay at 80% opacity,
                 // and the app showed through the frame. The rest of the time a tap (the on-screen mouse, or the
@@ -228,6 +403,7 @@ final class PopupFrame {
             scores = null;
         }
         boxes.clear();
+        lens = null;
         if (v == null) return;
         v.animate().alpha(0f).setDuration(200).withEndAction(() -> {
             try { v.getContext().getSystemService(WindowManager.class).removeView(v); } catch (RuntimeException ignored) { }
@@ -345,7 +521,7 @@ final class PopupFrame {
         host.post(() -> {
             if (host == null) return;
             if (!toBoxes && scores != null && scores.focus()) return;
-            if (!boxes.isEmpty()) boxes.get(0).requestFocus();
+            if (!boxes.isEmpty()) boxes.get(Math.min(firstFocus, boxes.size() - 1)).requestFocus();
         });
     }
 

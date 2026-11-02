@@ -24,6 +24,11 @@ final class GlassLens extends View {
     private boolean placed, moving, travelled;
     private float alpha, alphaTo, fill, fillTo, angle, shine = -1f;
     private long last;
+    /**
+     * The springs for this journey: lively from one tile or dock item to the next (a quarter past and back), calmer on
+     * a long sweep, such as back to the first tile of a new page, where a quarter of the way would fly off the screen.
+     */
+    private float springK = 0.15f, springD = 0.70f;
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final RectF box = new RectF();
     private final Matrix turn = new Matrix();
@@ -46,6 +51,9 @@ final class GlassLens extends View {
     void to(float x, float y, float w, float h, float radius, boolean ring) {
         float[] t = {x, y, w, h, radius};
         travelled = !placed || Math.hypot(x - tgt[0], y - tgt[1]) > 40 * unit;
+        boolean longWay = Math.hypot(x - cur[0], y - cur[1]) > 600 * unit;
+        springK = longWay ? 0.12f : 0.15f;
+        springD = longWay ? 0.55f : 0.70f;
         System.arraycopy(t, 0, tgt, 0, 5);
         fillTo = ring ? 0f : 1f;
         if (!placed || alpha < 0.05f) {
@@ -101,7 +109,7 @@ final class GlassLens extends View {
         // Springs: pulled to the target, damped, a little bounce at the end.
         float still = 0f;
         for (int i = 0; i < 5; i++) {
-            vel[i] = vel[i] * (float) Math.pow(0.70, dt) + (tgt[i] - cur[i]) * 0.15f * dt;
+            vel[i] = vel[i] * (float) Math.pow(springD, dt) + (tgt[i] - cur[i]) * springK * dt;
             cur[i] += vel[i] * dt;
             still += Math.abs(vel[i]) + Math.abs(tgt[i] - cur[i]) * 0.1f;
         }

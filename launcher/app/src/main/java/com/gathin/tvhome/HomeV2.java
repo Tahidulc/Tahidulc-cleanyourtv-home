@@ -86,7 +86,7 @@ final class HomeV2 {
     private static final String[] CAT_MODES = {"guide", "discover", "movies", "shows", "sport", "apps"};
 
     /** The rail: a glyph for each kind of dock app, matched on its package. */
-    private static int glyph(String pkg) {
+    static int glyph(String pkg) {
         if (pkg == null) return R.drawable.ic_v2_apps;
         if (pkg.equals("ar.tvplayer.tv") || pkg.contains("tivimate")) return R.drawable.ic_v2_tv;
         if (pkg.contains("youtube")) return R.drawable.ic_v2_youtube;
@@ -281,9 +281,10 @@ final class HomeV2 {
         viewport.setClipChildren(false);
         // The four tiles fill the width from beside the rail (180) to near the screen's edge (1896); the row is cut off
         // just after the fourth (room for it to grow when focused), so the fifth waits out of sight until it slides.
-        // The dock layout: the row from the left edge (48) to near the right (1876), four wider tiles in it. Its window
-        // starts at 36, where the tile before the first ends once the row has slid (kept for the slide): no sliver of it.
-        if (dockMode) add(viewport, 36, 576, 1884, TILE_H + 52); else add(viewport, 164, 556, 1743, TILE_H + 52);
+        // The dock layout: the row from the left edge (48) to near the right (1876), four wider tiles in it, a page at a
+        // time. Its window is cut where the gaps either side of the page are (36 and 1888): nothing of the page before or
+        // after shows, only the four, with room for the focused one to grow.
+        if (dockMode) add(viewport, 36, 576, 1852, TILE_H + 52); else add(viewport, 164, 556, 1743, TILE_H + 52);
         row = new LinearLayout(a);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setClipChildren(false);
@@ -660,10 +661,14 @@ final class HomeV2 {
      * Any other icon comes back as it is.
      */
     private Drawable fullSquare(Drawable icon) {
+        return fullSquare(a, icon, Math.max(96, px(DOCK_APP * 1.5f)));   // sharp at the dock's swell
+    }
+
+    /** fullSquare at n pixels square (the pop-up frame's dock uses it too). */
+    static Drawable fullSquare(android.content.Context a, Drawable icon, int n) {
         if (!(icon instanceof android.graphics.drawable.AdaptiveIconDrawable)) return icon;
         android.graphics.drawable.AdaptiveIconDrawable ad = (android.graphics.drawable.AdaptiveIconDrawable) icon;
         try {
-            int n = Math.max(96, px(DOCK_APP * 1.5f));   // sharp at the dock's swell
             Bitmap b = Bitmap.createBitmap(n, n, Bitmap.Config.ARGB_8888);
             android.graphics.Canvas c = new android.graphics.Canvas(b);
             int o = n / 4;   // the layers are half as big again as what shows: a quarter off each side
@@ -755,7 +760,7 @@ final class HomeV2 {
 
     /** The glass round the focused tile, where it rests once the row has slid (four tiles in full). */
     private float[] tileGlass() {
-        int first = Math.max(0, rowIdx - 3);
+        int first = rowFirst();
         FrameLayout.LayoutParams vp = (FrameLayout.LayoutParams) viewport.getLayoutParams();
         float w = px(TILE_W), h = px(TILE_H), grow = 1.05f, pad = px(7);
         float x = vp.leftMargin + px(rowInset()) + (rowIdx - first) * px(TILE_W + TILE_GAP) - w * (grow - 1) / 2f;
@@ -763,8 +768,42 @@ final class HomeV2 {
         return new float[]{x - pad, y - pad, w * grow + 2 * pad, h * grow + 2 * pad, px(16) * grow + pad};
     }
 
-    /** The row's first tile in full when the glass last stood on the row; -1 when the focus was elsewhere. */
-    private int glassFirst = -1;
+    /**
+     * The row's first tile in full. In the dock layout the row goes a page of four at a time, and the page stays put
+     * while the focus is in the dock or on Match Day (back up, the same four are there). Beside the rail the focus moves
+     * along to the fourth, then the row slides one tile at a time, back to the start when the focus leaves it.
+     */
+    private int rowFirst() {
+        int i = Math.max(0, Math.min(rowIdx, row.getChildCount() - 1));
+        if (dockMode) return (i / 4) * 4;
+        return zone == Z_ROW ? Math.max(0, i - 3) : 0;
+    }
+
+    /** The page the row last showed, so a turn to another can be seen and given its animation; -1 before the first. */
+    private int shownFirst = -1;
+
+    /**
+     * Onto another page of four: the row slides the whole page, the new page's tiles coming in one after another (a
+     * short wave, each a touch behind the one before, as if drawn along), while the glass sweeps across with them to
+     * the tile the focus lands on. The page before stays drawn until it has slid out of sight.
+     */
+    private void turnPage(int first) {
+        int dir = shownFirst < 0 ? 0 : Integer.signum(first - shownFirst);
+        shownFirst = first;
+        for (int i = 0; i < row.getChildCount(); i++)
+            row.getChildAt(i).setVisibility(i >= first - 4 && i <= first + 7 ? View.VISIBLE : View.INVISIBLE);
+        row.animate().translationX(-first * px(TILE_W + TILE_GAP)).setDuration(dir == 0 ? 240 : 460).setInterpolator(SKY).start();
+        if (dir == 0) return;
+        for (int k = 0; k < 4 && first + k < row.getChildCount(); k++) {
+            // Coming in from the right going on (from the left going back), the far end of the page furthest behind.
+            int n = dir > 0 ? k : 3 - k;
+            View t = row.getChildAt(first + k);
+            t.animate().cancel();
+            t.setTranslationX(dir * px(70 + 45 * n));
+            t.setAlpha(0.55f);
+            t.animate().translationX(0).alpha(1f).setStartDelay(40L * n).setDuration(420).setInterpolator(SKY).start();
+        }
+    }
 
     /** The section boxes: all six on screen, lined up under the row of tiles (216 to 1824). */
     private static final int CAT_GAP = 14, CAT_W = 256, CAT_X = 216 + (1608 - 6 * CAT_W - 5 * CAT_GAP) / 2, CAT_Y = 886, CAT_H = 160;
@@ -1262,7 +1301,7 @@ final class HomeV2 {
      * tiles not yet in the row (Left, Right or OK do that); a section shows above, as resting on it does.
      */
     private void downToDock() {
-        int first = Math.max(0, rowIdx - 3);
+        int first = rowFirst();
         FrameLayout.LayoutParams vp = (FrameLayout.LayoutParams) viewport.getLayoutParams();
         float cx = vp.leftMargin + px(rowInset()) + (rowIdx - first) * px(TILE_W + TILE_GAP) + px(TILE_W) / 2f;
         int best = -1;
@@ -1513,6 +1552,8 @@ final class HomeV2 {
             return;
         }
         closePage();
+        // The dock layout: another app's tiles start at their first page.
+        if (dockMode) rowIdx = 0;
         load(p);
     }
 
@@ -1592,18 +1633,16 @@ final class HomeV2 {
             ((FrameLayout) t).setForeground(on && !dockMode ? ring(16) : null);
         }
         if (dockMode) placeLens();
-        // Four tiles in full: the focus moves along to the fourth, then the row slides.
-        int first = zone == Z_ROW ? Math.max(0, rowIdx - 3) : 0;
-        window(row, first);
-        playSoon();
-        row.animate().translationX(-first * px(TILE_W + TILE_GAP)).setDuration(240).setInterpolator(SKY).start();
-        if (dockMode && lens != null) {
-            // Past the fourth tile the row slides and the focused tile comes to where the glass already is: pushed the
-            // way the focus went, the glass still travels a little, stretches, springs back and shines (it stood still).
-            boolean onRow = zone == Z_ROW && page == null && !guide.isOpen();
-            if (onRow && glassFirst >= 0 && first != glassFirst) lens.push((first > glassFirst ? 1 : -1) * px(70));
-            glassFirst = onRow ? first : -1;
+        // Four tiles in full. The dock layout: a page of four at a time. Beside the rail: the focus moves along to the
+        // fourth, then the row slides one at a time.
+        int first = rowFirst();
+        if (dockMode) {
+            if (first != shownFirst) turnPage(first);
+        } else {
+            window(row, first);
+            row.animate().translationX(-first * px(TILE_W + TILE_GAP)).setDuration(240).setInterpolator(SKY).start();
         }
+        playSoon();
         for (int i = 0; dockMode && i < catViews.size(); i++) {
             // A section in the dock: white and a little bolder under the glass, swelling with it.
             FrameLayout box = (FrameLayout) catViews.get(i);
