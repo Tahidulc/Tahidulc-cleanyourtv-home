@@ -276,6 +276,8 @@ final class PagesV2 {
         private final Runnable heroLater = this::heroNow;
         /** The tab the page opens on; the words shown where a row's posters would be when it has none. */
         int startTab;
+        /** The Kids page's little ones, when the TV has their pictures: walking about above the tabs. */
+        final List<KidsBuddy> buddies = new ArrayList<>();
         private TextView emptyView;
 
         PosterPage startOn(int t) {
@@ -333,6 +335,7 @@ final class PagesV2 {
         }
 
         @Override void close() {
+            for (KidsBuddy b : buddies) b.stop();
             trailerTile = null;
             if (trailerSoon != null) h.main.removeCallbacks(trailerSoon);
             player.stop();   // Home's own player: kept, with its page loaded, for Home and the next page
@@ -440,6 +443,11 @@ final class PagesV2 {
             // posters.
             onTabs = tabs != null;
             load(startTab);
+            for (KidsBuddy b : buddies) {
+                // Feet on the line just above the tabs, on the picture side (clear of the description on the left).
+                add(b, 0, 516 - 214, 164, 214);
+                b.start();
+            }
         }
 
         /** Tabs already read, kept while the page is open: going back to one is instant. */
@@ -777,7 +785,7 @@ final class PagesV2 {
             // Fits tonight: when it would end, first.
             String fit = t.runtime > 0 ? FitsTonight.heroLine(h.a, t.runtime) : null;
             // An app's card (YouTube Kids) is neither a series nor a film.
-            tile.heroMeta = TextUtils.join(" · ", nonEmpty(fit, t.year, t.what, "App".equals(t.what) ? null : t.tv ? "Series" : "Film")) + vote;
+            tile.heroMeta = TextUtils.join(" · ", nonEmpty(fit, t.year, t.what, t.poster != null && t.poster.startsWith("ytkids:") ? null : t.tv ? "Series" : "Film")) + vote;
             tile.heroText = t.overview;
             // The running time and the streaming service (TMDB, looked up by Home's hero), and the store's marks.
             tile.tmdbId = t.id;
@@ -836,6 +844,11 @@ final class PagesV2 {
         }
 
         @Override boolean key(KeyEvent e) {
+            for (KidsBuddy b : buddies) b.hush();
+            return pageKey(e);
+        }
+
+        private boolean pageKey(KeyEvent e) {
             if (e.getAction() == KeyEvent.ACTION_DOWN) intoPosters = false;   // a key of their own first: left where it takes them
             int code = e.getKeyCode();
             if (ok(code)) {
@@ -1118,8 +1131,9 @@ final class PagesV2 {
 
     /**
      * Kids (the dock's seventh section): children's TV and films as Movies and TV shows are laid out, a tab each, OK on
-     * a poster doing what it does there. Top picks leads with YouTube Kids (open, or its Google Play page when it is not
-     * on the TV yet), then the children's series and family films on the TV's own apps. Films are the BBFC's U and PG.
+     * a poster doing what it does there. Top picks leads with YouTube for kids (YouTube on a search made for children;
+     * the YouTube tab has more: cartoons, nursery rhymes, learning, Bluey...), then the children's series and family films
+     * on the TV's own apps. Films are the BBFC's U and PG.
      */
     static PosterPage kids(HomeV2 h) {
         String k = h.tmdbKey;
@@ -1127,6 +1141,7 @@ final class PagesV2 {
         String apps = mine.isEmpty() ? "8|9|337" : mine;
         String[][] spec = {
                 {"Top picks", "@top"},
+                {"YouTube", "@youtube"},
                 {"Kids TV", "discover/tv?with_genres=10762&with_original_language=en&watch_region=GB&sort_by=popularity.desc"},
                 {"Favourites", "discover/tv?with_genres=10762&sort_by=vote_count.desc"},
                 {"Family films", FAMILY + "&vote_count.gte=200"},
@@ -1141,8 +1156,10 @@ final class PagesV2 {
         PosterPage p = new PosterPage(h, "KIDS", HomeV2.CAT_COLOURS[HomeV2.KIDS], tabs, new int[]{584 - 62}, t -> {
             String what = spec[t][1];
             List<Title> items = new ArrayList<>();
-            if ("@top".equals(what)) {
-                items.add(youTubeKids(h));
+            if ("@youtube".equals(what)) {
+                for (int n = 1; n < KidsArt.TOPICS.length; n++) items.add(youTubeCard(h, n));
+            } else if ("@top".equals(what)) {
+                items.add(youTubeCard(h, 0));
                 items.addAll(mix(tmdb(k, kidsTv(apps), true), tmdb(k, FAMILY + onApps(apps), false)));
             } else if (what.startsWith("@")) {
                 String app = what.substring(1);
@@ -1152,6 +1169,15 @@ final class PagesV2 {
             }
             return Arrays.asList(row(null, null, false, items));
         });
+        // The family's own little ones, drawn as cartoons, when the TV has their pictures (KidsBuddy.cast): never otherwise.
+        // Two at a time on a slower TV, three otherwise, coming in one after another and taking turns.
+        List<java.io.File> cast = h.dockMode ? KidsBuddy.cast(h.a) : new ArrayList<>();
+        if (!cast.isEmpty()) {
+            KidsBuddy.Stage stage = new KidsBuddy.Stage(cast, new java.util.Random().nextInt(cast.size()));
+            int n = Math.min(cast.size(), h.lite ? 2 : 3);
+            for (int i = 0; i < n; i++)
+                p.buddies.add(new KidsBuddy(h.a, stage, h.px(1000) / 1000f, h.px(940), h.px(1720), h.lite, 600L + 2600L * i));
+        }
         return p.startOn(0);
     }
 
@@ -1166,33 +1192,19 @@ final class PagesV2 {
         return "&watch_region=GB&with_watch_monetization_types=flatrate&with_watch_providers=" + providers + "&vote_count.gte=50";
     }
 
-    /** YouTube Kids as a card of its own: OK opens it, or its Google Play page while it is not on the TV. */
-    static Title youTubeKids(HomeV2 h) {
-        boolean have = KidsArt.installed(h.a);
+    /**
+     * A YouTube card for children: YouTube Kids is not offered on every TV (not on this TCL), so OK opens YouTube itself
+     * on a search made for children (KidsArt.TOPICS: cartoons, nursery rhymes, Bluey...).
+     */
+    static Title youTubeCard(HomeV2 h, int n) {
         Title t = new Title();
-        t.title = "YouTube Kids";
+        t.title = (String) KidsArt.TOPICS[n][0];
         t.year = "";
-        t.what = "App";
-        t.overview = have
-                ? "Shows, music and learning made for children, in YouTube's own app for kids, with its parental controls. OK opens it."
-                : "YouTube's own app for children: shows, music and learning, with parental controls. It isn't on this TV yet: OK opens it in Google Play to install.";
-        t.poster = "ytkids:p";
-        t.backdrop = "ytkids:w";
-        t.ok = () -> {
-            if (KidsArt.installed(h.a)) { h.openApp(KidsArt.YOUTUBE_KIDS); return; }
-            android.content.Intent store = new android.content.Intent(android.content.Intent.ACTION_VIEW,
-                    android.net.Uri.parse("market://details?id=" + KidsArt.YOUTUBE_KIDS)).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
-            try {
-                h.a.startActivity(store);
-            } catch (Exception e) {
-                try {
-                    h.a.startActivity(new android.content.Intent(android.content.Intent.ACTION_VIEW,
-                            android.net.Uri.parse("https://play.google.com/store/apps/details?id=" + KidsArt.YOUTUBE_KIDS))
-                            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK));
-                } catch (Exception ignored) {
-                }
-            }
-        };
+        t.what = "YouTube";
+        t.overview = "Opens YouTube on " + KidsArt.TOPICS[n][1] + ": videos made for children, ready to pick from.";
+        t.poster = "ytkids:p:" + n;
+        t.backdrop = "ytkids:w:" + n;
+        t.ok = () -> KidsArt.open(h, n);
         return t;
     }
 

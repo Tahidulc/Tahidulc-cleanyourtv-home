@@ -205,7 +205,8 @@ final class PopupFrame {
         rule.setBackgroundColor(0x47FFFFFF);
         place(pane, rule, x, 20, 2, DOCK_H - 40);
         x += 2 + DOCK_GAP;
-        for (int i = 0; i < sections; i++) {
+        for (int k = 0; k < sections; k++) {
+            int i = HomeV2.DOCK_ORDER[k];   // Kids before Apps, as on Home
             FrameLayout box = new FrameLayout(c);
             box.setClipChildren(false);
             LinearLayout in = new LinearLayout(c);
@@ -220,7 +221,7 @@ final class PopupFrame {
             tl.topMargin = px(6);
             in.addView(t, tl);
             box.addView(in, new FrameLayout.LayoutParams(-1, -1));
-            dockItem(box, dockApps + i, null);
+            dockItem(box, dockApps + k, null);
             place(pane, box, x, 10, DOCK_SEC, DOCK_H - 20);
             x += DOCK_SEC + DOCK_GAP;
         }
@@ -245,7 +246,7 @@ final class PopupFrame {
             vv.post(() -> { if (host != null && (host.findFocus() == null || !boxes.contains(host.findFocus()))) dockLook(-1); });
         });
         v.setOnClickListener(vv -> {
-            if (at >= dockApps) openBox(at - dockApps);
+            if (at >= dockApps) openBox(HomeV2.DOCK_ORDER[at - dockApps]);
             else if (pkg == null) openBox(5);
             else openDockApp(pkg);
         });
@@ -271,7 +272,7 @@ final class PopupFrame {
             v.animate().scaleX(sw).scaleY(sw).translationY(on ? -px(i < dockApps ? 6 : 4) : 0).setDuration(260).setInterpolator(HomeV2.SKY).start();
             if (i >= dockApps && v instanceof FrameLayout && ((FrameLayout) v).getChildAt(0) instanceof LinearLayout) {
                 LinearLayout in = (LinearLayout) ((FrameLayout) v).getChildAt(0);
-                ((ImageView) in.getChildAt(0)).setColorFilter(on ? Color.WHITE : HomeV2.CAT_COLOURS[i - dockApps]);
+                ((ImageView) in.getChildAt(0)).setColorFilter(on ? Color.WHITE : HomeV2.CAT_COLOURS[HomeV2.DOCK_ORDER[i - dockApps]]);
                 ((TextView) in.getChildAt(1)).setTypeface(app.getResources().getFont(on ? R.font.inter_semibold : R.font.inter_ui));
             }
         }

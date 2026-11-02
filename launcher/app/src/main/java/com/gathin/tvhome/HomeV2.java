@@ -86,6 +86,20 @@ final class HomeV2 {
             R.drawable.ic_v2_shows, R.drawable.ic_v2_sport, R.drawable.ic_v2_grid, R.drawable.ic_v2_kids};
     private static final String[] CAT_MODES = {"guide", "discover", "movies", "shows", "sport", "apps", "kids"};
     static final int KIDS = 6;
+    /** The sections' order along the dock: Kids between Sports and Apps. */
+    static final int[] DOCK_ORDER = {0, 1, 2, 3, 4, KIDS, 5};
+
+    /** Where section `which` stands along the dock (beside the rail, its own place). */
+    private int dockPos(int which) {
+        if (!dockMode) return which;
+        for (int i = 0; i < DOCK_ORDER.length; i++) if (DOCK_ORDER[i] == which) return i;
+        return which;
+    }
+
+    /** The section standing at place `pos` along the dock. */
+    private int sectionAt(int pos) {
+        return dockMode ? DOCK_ORDER[pos] : pos;
+    }
 
     /** The rail: a glyph for each kind of dock app, matched on its package. */
     static int glyph(String pkg) {
@@ -715,8 +729,8 @@ final class HomeV2 {
         dockSep.setBackgroundColor(0x47FFFFFF);
         add(dockSep, x, DOCK_Y + 20, 2, DOCK_H - 40);
         x += 2 + DOCK_GAP;
-        for (View box : catViews) {
-            add(box, x, DOCK_Y + 10, DOCK_SEC, DOCK_H - 20);
+        for (int k = 0; k < catViews.size(); k++) {
+            add(catViews.get(sectionAt(k)), x, DOCK_Y + 10, DOCK_SEC, DOCK_H - 20);
             x += DOCK_SEC + DOCK_GAP;
         }
         if (markView != null) {
@@ -728,7 +742,7 @@ final class HomeV2 {
     /** A dock item's place in the dock (apps first, then the sections); -1 when the focus is not in the dock. */
     private int dockFocus() {
         if (zone == Z_RAIL) return railIdx;
-        if (zone == Z_CATS) return railViews.size() + catIdx;
+        if (zone == Z_CATS) return railViews.size() + dockPos(catIdx);
         return -1;
     }
 
@@ -800,10 +814,12 @@ final class HomeV2 {
             // Coming in from the right going on (from the left going back), the far end of the page furthest behind.
             int n = dir > 0 ? k : 3 - k;
             View t = row.getChildAt(first + k);
-            t.animate().cancel();
+            // The focused tile keeps growing to its focus size with the rest of its arrival (cancelling its animation
+            // left it at its resting size, smaller than the glass round it, which is drawn for the grown tile).
+            float size = zone == Z_ROW && first + k == rowIdx ? 1.05f : 1f;
             t.setTranslationX(dir * px(70 + 45 * n));
             t.setAlpha(0.55f);
-            t.animate().translationX(0).alpha(1f).setStartDelay(40L * n).setDuration(420).setInterpolator(SKY).start();
+            t.animate().translationX(0).alpha(1f).scaleX(size).scaleY(size).setStartDelay(40L * n).setDuration(420).setInterpolator(SKY).start();
         }
     }
 
@@ -1283,10 +1299,10 @@ final class HomeV2 {
             case Z_CATS:
                 if (dockMode && code == KeyEvent.KEYCODE_DPAD_DOWN) break;
                 if (code == KeyEvent.KEYCODE_DPAD_LEFT) {
-                    if (catIdx > 0) catIdx--;
+                    if (dockPos(catIdx) > 0) catIdx = sectionAt(dockPos(catIdx) - 1);
                     else { if (page != null) closePage(); zone = Z_RAIL; selectRail(railViews.size() - 1); }
-                } else if (code == KeyEvent.KEYCODE_DPAD_RIGHT && catIdx < catViews.size() - 1) {
-                    catIdx++;
+                } else if (code == KeyEvent.KEYCODE_DPAD_RIGHT && dockPos(catIdx) < catViews.size() - 1) {
+                    catIdx = sectionAt(dockPos(catIdx) + 1);
                 } else if (code == KeyEvent.KEYCODE_DPAD_UP) {
                     // Up from a box goes into the section showing above it; with none showing, back to the row.
                     if (page != null && preview) { enterPage(); return; }
@@ -1346,7 +1362,8 @@ final class HomeV2 {
                 if (rowIdx < shown.size()) {
                     View t = row.getChildAt(rowIdx);
                     if (t != null) t.animate().scaleX(0.97f).scaleY(0.97f).setDuration(90)
-                            .withEndAction(() -> t.animate().scaleX(1.07f).scaleY(1.07f).setDuration(140).setInterpolator(SKY).start()).start();
+                            // Back to the focus size the glass is drawn for (beside the rail, the ring is the tile's own).
+                            .withEndAction(() -> t.animate().scaleX(dockMode ? 1.05f : 1.07f).scaleY(dockMode ? 1.05f : 1.07f).setDuration(140).setInterpolator(SKY).start()).start();
                     Runnable go = shown.get(rowIdx).ok;
                     if (go != null) main.postDelayed(go, 120);
                 }
@@ -1631,7 +1648,8 @@ final class HomeV2 {
             boolean on = zone == Z_ROW && i == rowIdx;
             if (!restyle(t, on ? 1 : 0)) continue;
             // A little less than the sections' 1.07: the tiles fill the row edge to edge, and the fourth stays inside it.
-            t.animate().scaleX(on ? 1.05f : 1f).scaleY(on ? 1.05f : 1f).setDuration(150).setInterpolator(SKY).start();
+            // No start delay left over from a page turn's wave: the focus grows at once.
+            t.animate().scaleX(on ? 1.05f : 1f).scaleY(on ? 1.05f : 1f).setStartDelay(0).setDuration(150).setInterpolator(SKY).start();
             // The dock layout's ring is the liquid glass, drawn over the row.
             ((FrameLayout) t).setForeground(on && !dockMode ? ring(16) : null);
         }
@@ -1651,7 +1669,7 @@ final class HomeV2 {
             FrameLayout box = (FrameLayout) catViews.get(i);
             boolean on = zone == Z_CATS && i == catIdx && (page == null || preview);
             boolean sel = page != null && i == pageWhich;
-            float sw = swell(railViews.size() + i);
+            float sw = swell(railViews.size() + dockPos(i));
             if (!restyle(box, (on ? 1 : 0) | (sel ? 2 : 0) | Math.round(sw * 100) << 2)) continue;
             LinearLayout in = (LinearLayout) box.getChildAt(1);
             ((TextView) in.getChildAt(1)).setTypeface(on || sel ? semi : regular);
