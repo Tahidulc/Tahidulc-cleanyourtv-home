@@ -400,6 +400,8 @@ final class HomeV2 {
 
     private WeatherPanel weatherPanel;
     private SmartPanel smartPanel;
+    /** One search for everything: the magnifier in the top bar, or the remote's Search key. */
+    private SearchPanel search;
     private TextView weatherView;
 
     private void buildButtons() {
@@ -441,6 +443,9 @@ final class HomeV2 {
             topButton(bar, bulb, px(66), () -> smartPanel.show());
         }
         // No camera button of its own: the cameras are in the smart home panel.
+        search = new SearchPanel(this);
+        ImageView find = icon(R.drawable.ic_search);
+        topButton(bar, find, px(66), () -> search.show());
         ImageView mic = icon(R.drawable.ic_mic);
         topButton(bar, mic, px(66), () -> open(new Intent(Intent.ACTION_ASSIST)));
         ImageView gear = icon(R.drawable.ic_settings);
@@ -695,7 +700,13 @@ final class HomeV2 {
         if (smartPanel != null) smartPanel.show();
     }
 
+    /** What the microphone heard for Search (MainActivity's answer from the speech recogniser). */
+    void heard(String words) {
+        if (search != null) search.heard(words);
+    }
+
     void home() {
+        if (search != null) search.hide();
         if (smartPanel != null) smartPanel.hide();
         guide.hide();
         closePage();
@@ -731,6 +742,15 @@ final class HomeV2 {
 
     /** All keys come here first; true when v2 used it. */
     boolean key(KeyEvent e) {
+        if (search != null && search.isOpen()) return search.key(e);
+        if (e.getKeyCode() == KeyEvent.KEYCODE_SEARCH && search != null) {
+            if (e.getAction() == KeyEvent.ACTION_UP) {
+                if (smartPanel != null) smartPanel.hide();
+                if (weatherPanel != null) weatherPanel.hide();
+                search.show();
+            }
+            return true;
+        }
         if (smartPanel != null && smartPanel.isOpen()) return smartPanel.key(e);
         if (weatherPanel != null && weatherPanel.isOpen()) return weatherPanel.key(e);
         if (guide.isOpen()) return guide.key(e);
@@ -1756,8 +1776,13 @@ final class HomeV2 {
     }
     private final Map<String, Drawable> banners = new HashMap<>();
 
+    /** The app on this TV for a TMDB provider id, or null (Search). */
+    static String serviceApp(String provider) {
+        return SERVICE_APPS.get(provider);
+    }
+
     /** The services' own logos, transparent, shipped with the launcher (TMDB's providers by id); 0 for the others. */
-    private static int serviceLogo(String provider) {
+    static int serviceLogo(String provider) {
         if (provider == null) return 0;
         switch (provider) {
             case "8": return R.drawable.svc_netflix;
@@ -3106,7 +3131,7 @@ final class HomeV2 {
         };
     }
 
-    private boolean installed(String pkg) {
+    boolean installed(String pkg) {
         try {
             a.getPackageManager().getPackageInfo(pkg, 0);
             return true;
