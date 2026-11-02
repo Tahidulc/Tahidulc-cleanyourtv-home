@@ -60,7 +60,7 @@ final class ViewingPanel {
         heavy = c.getResources().getFont(R.font.outfit_extrabold);
         semi = c.getResources().getFont(R.font.inter_semibold);
         regular = c.getResources().getFont(R.font.inter_regular);
-        tabs = new String[]{"This week"};
+        tabs = new String[]{"This week", monthName(LocalDate.now().minusMonths(1))};
     }
 
     boolean isOpen() {
@@ -68,7 +68,12 @@ final class ViewingPanel {
     }
 
     void show() {
-        if (open) return;
+        show(0);
+    }
+
+    /** Opened on a tab (1: last month, from the card on the 1st of the month). */
+    void show(int first) {
+        if (open) { load(first); return; }
         open = true;
         overlay = new FrameLayout(c);
         overlay.setBackground(new GradientDrawable(GradientDrawable.Orientation.TL_BR, new int[]{0xFF10157E, 0xFF1B279F, 0xFF2838C0}));
@@ -95,7 +100,7 @@ final class ViewingPanel {
         h.root.addView(overlay, new FrameLayout.LayoutParams(-1, -1));
         overlay.setAlpha(0f);
         overlay.animate().alpha(1f).setDuration(220).start();
-        load(0);
+        load(Math.max(0, Math.min(first, tabs.length - 1)));
     }
 
     void hide() {
@@ -135,10 +140,14 @@ final class ViewingPanel {
         // The posters fetched off the main thread; the views made on it.
         io.execute(() -> {
             Map<Integer, Bitmap> pics = new HashMap<>();
+            Map<Integer, List<String>> kinds = new HashMap<>();
             try {
-                for (JSONObject x : prefetch(t)) {
-                    Bitmap b = poster(x.optInt("id"), x.optBoolean("tv"));
-                    if (b != null) pics.put(x.optInt("id"), b);
+                List<JSONObject> want = prefetch(t);
+                for (int i = 0; i < want.size(); i++) {
+                    JSONObject x = want.get(i);
+                    Object[] d = details(x.optInt("id"), x.optBoolean("tv"), i < 5);
+                    if (d[0] != null) pics.put(x.optInt("id"), (Bitmap) d[0]);
+                    kinds.put(x.optInt("id"), (List<String>) d[1]);
                 }
             } catch (Exception ignored) {
                 // no posters this time
@@ -146,6 +155,7 @@ final class ViewingPanel {
             main.post(() -> {
                 if (my != gen || !open) return;
                 posters = pics;
+                genres = kinds;
                 View v;
                 try {
                     v = build(t);
@@ -162,14 +172,302 @@ final class ViewingPanel {
     /** The posters each tab shows, fetched before it is drawn. */
     private Map<Integer, Bitmap> posters = new HashMap<>();
 
-    /** The titles whose posters a tab shows. Off the main thread. */
+    /** Each title's kinds (TMDB's genres), for last month's personality. */
+    private Map<Integer, List<String>> genres = new HashMap<>();
+
+    /** The titles whose posters (the first five) and kinds a tab shows. Off the main thread. */
     private List<JSONObject> prefetch(int t) {
-        List<JSONObject> all = titles(days(LocalDate.now(), 7));
-        return all.subList(0, Math.min(5, all.size()));
+        List<JSONObject> all = t == 1 ? titles(month(LocalDate.now().minusMonths(1))) : titles(days(LocalDate.now(), 7));
+        return all.subList(0, Math.min(t == 1 ? 10 : 5, all.size()));
     }
 
     private View build(int t) {
-        return week();
+        return t == 1 ? monthView() : week();
+    }
+
+    /** A film's or series' poster (when asked) and genres, from TMDB: {Bitmap or null, List<String>}. Off the main thread. */
+    private Object[] details(int id, boolean tv, boolean picture) {
+        List<String> kinds = new ArrayList<>();
+        if (id <= 0 || h.tmdbKey.isEmpty()) return new Object[]{null, kinds};
+        try {
+            JSONObject d = new JSONObject(HomeV2.get("https://api.themoviedb.org/3/" + (tv ? "tv/" : "movie/") + id + "?api_key=" + h.tmdbKey));
+            JSONArray g = d.optJSONArray("genres");
+            for (int i = 0; g != null && i < g.length(); i++) kinds.add(g.getJSONObject(i).optString("name"));
+            String p = d.optString("poster_path", "");
+            Bitmap b = !picture || p.isEmpty() || "null".equals(p) ? null : ScoresTicker.cachedLogo(c, "https://image.tmdb.org/t/p/w342" + p, h.px(260));
+            return new Object[]{b, kinds};
+        } catch (Exception e) {
+            return new Object[]{picture ? poster(id, tv) : null, kinds};
+        }
+    }
+
+    static String monthName(LocalDate d) {
+        return d.getMonth().getDisplayName(TextStyle.FULL, Locale.UK);
+    }
+
+    /** A calendar month's records, its first day first. */
+    private List<JSONObject> month(LocalDate any) {
+        LocalDate first = any.withDayOfMonth(1);
+        List<JSONObject> out = new ArrayList<>();
+        for (LocalDate d = first; d.getMonthValue() == first.getMonthValue(); d = d.plusDays(1)) out.add(ViewingLog.day(c, d));
+        return out;
+    }
+
+    // ---- last month ---------------------------------------------------------------------------------------------
+
+    private View monthView() {
+        LocalDate any = LocalDate.now().minusMonths(1), first = any.withDayOfMonth(1);
+        String name = monthName(any);
+        List<JSONObject> days = month(any), before = month(any.minusMonths(1));
+        int sum = 0, was = 0, live = 0, late = 0, weekend = 0, withTv = 0, bestDay = 0, bestSecs = 0;
+        for (int i = 0; i < days.size(); i++) {
+            JSONObject d = days.get(i);
+            int s = total(d);
+            sum += s;
+            if (s >= 15 * 60) withTv++;
+            if (s > bestSecs) { bestSecs = s; bestDay = i; }
+            DayOfWeek dow = first.plusDays(i).getDayOfWeek();
+            if (dow == DayOfWeek.SATURDAY || dow == DayOfWeek.SUNDAY) weekend += s;
+            JSONArray hh = d.optJSONArray("h");
+            for (int k = 21; k < 24; k++) late += hh == null ? 0 : hh.optInt(k);
+            for (int k = 0; k < 3; k++) late += hh == null ? 0 : hh.optInt(k);
+            JSONObject a = d.optJSONObject("a");
+            for (Iterator<String> it = a == null ? null : a.keys(); it != null && it.hasNext(); ) {
+                String p = it.next();
+                if (ViewingLog.live(p)) live += a.optInt(p);
+            }
+        }
+        for (JSONObject d : before) was += total(d);
+        FrameLayout v = new FrameLayout(c);
+        if (sum < 30 * 60) {
+            TextView none = h.text(26, regular, 0xD9FFFFFF);
+            none.setText("Not enough watched on this TV in " + name + " for a round-up. Next month's is on the 1st.");
+            place(v, none, 96, 200, 1300, 120);
+            return v;
+        }
+        // The month's hours, big.
+        TextView kicker = h.text(18, semi, YELLOW);
+        kicker.setText("YOUR " + name.toUpperCase(Locale.UK) + " ON TV");
+        kicker.setLetterSpacing(0.28f);
+        place(v, kicker, 120, 140, 900, 30);
+        int hours = Math.round(sum / 3600f);
+        TextView big = h.text(150, heavy, Color.WHITE);
+        big.setText(hours + (hours == 1 ? " hour" : " hours"));
+        big.setLetterSpacing(-0.03f);
+        place(v, big, 108, 168, 1200, 200);
+        TextView sub = h.text(26, regular, 0xEBFFFFFF);
+        int days24 = sum / 86400, rest = (sum % 86400) / 3600;
+        String compare = was <= 0 ? "" : ", " + Math.abs(hours - Math.round(was / 3600f)) + (hours >= Math.round(was / 3600f) ? " more" : " fewer")
+                + " than " + monthName(any.minusMonths(1));
+        sub.setText((days24 > 0 ? "That's " + days24 + (days24 == 1 ? " day and " : " days and ") + rest + " hours" : "That's " + hm(sum)) + compare + ".");
+        place(v, sub, 120, 372, 1200, 40);
+
+        // The top show, then the next four.
+        List<JSONObject> titles = titles(days);
+        JSONObject top = null;
+        for (JSONObject t : titles) if (t.optBoolean("tv")) { top = t; break; }
+        if (top == null && !titles.isEmpty()) top = titles.get(0);
+        if (top != null) {
+            FrameLayout pic = new FrameLayout(c);
+            pic.setBackground(h.fill(20, 0xFF0B0F55));
+            pic.setClipToOutline(true);
+            pic.setOutlineProvider(h.round(20));
+            ImageView pi = new ImageView(c);
+            pi.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            Bitmap b = posters.get(top.optInt("id"));
+            if (b != null) pi.setImageBitmap(b);
+            pic.addView(pi, new FrameLayout.LayoutParams(-1, -1));
+            TextView one = h.text(36, heavy, YELLOW);
+            one.setText("#1");
+            one.setShadowLayer(h.px(10), 0, h.px(2), 0xB3000000);
+            FrameLayout.LayoutParams ol = new FrameLayout.LayoutParams(-2, -2);
+            ol.leftMargin = h.px(12);
+            ol.topMargin = h.px(6);
+            pic.addView(one, ol);
+            GradientDrawable ring = new GradientDrawable();
+            ring.setCornerRadius(h.px(20));
+            ring.setStroke(h.px(5), YELLOW);
+            pic.setForeground(ring);
+            place(v, pic, 120, 440, 230, 345);
+            LinearLayout col = new LinearLayout(c);
+            col.setOrientation(LinearLayout.VERTICAL);
+            TextView head = h.text(16, semi, 0xD9FFFFFF);
+            head.setText(top.optBoolean("tv") ? "YOUR TOP SHOW" : "YOUR TOP FILM");
+            head.setLetterSpacing(0.2f);
+            col.addView(head);
+            TextView n = h.text(48, heavy, Color.WHITE);
+            n.setText(top.optString("n"));
+            n.setMaxLines(2);
+            col.addView(n);
+            int eps = top.optJSONArray("eps") == null ? 0 : top.optJSONArray("eps").length();
+            int span = 0;
+            for (JSONObject d : days) if (d.optJSONObject("t") != null && d.optJSONObject("t").has(keyOf(top))) span++;
+            TextView line = h.text(22, regular, 0xEBFFFFFF);
+            line.setText((eps > 1 ? eps + " episodes in " + span + (span == 1 ? " day" : " days") + " · " : "") + hm(top.optInt("s")));
+            col.addView(line);
+            String app = top.optString("p", "");
+            if (!app.isEmpty()) {
+                LinearLayout on = new LinearLayout(c);
+                on.setGravity(Gravity.CENTER_VERTICAL);
+                TextView w = h.text(18, regular, 0xD9FFFFFF);
+                w.setText("on  ");
+                on.addView(w);
+                on.addView(appMark(app), new LinearLayout.LayoutParams(-2, h.px(26)));
+                LinearLayout.LayoutParams onl = new LinearLayout.LayoutParams(-2, -2);
+                onl.topMargin = h.px(8);
+                col.addView(on, onl);
+            }
+            place(v, col, 380, 600, 420, 200);
+        }
+        LinearLayout list = new LinearLayout(c);
+        list.setOrientation(LinearLayout.VERTICAL);
+        int n = 2;
+        for (JSONObject t : titles) {
+            if (t == top) continue;
+            if (n > 5) break;
+            LinearLayout row = new LinearLayout(c);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            TextView num = h.text(34, heavy, 0xD9FFFFFF);
+            num.setText(String.valueOf(n++));
+            row.addView(num, new LinearLayout.LayoutParams(h.px(50), -2));
+            ImageView p = new ImageView(c);
+            p.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            p.setBackground(h.fill(8, 0xFF0B0F55));
+            p.setClipToOutline(true);
+            p.setOutlineProvider(h.round(8));
+            Bitmap b = posters.get(t.optInt("id"));
+            if (b != null) p.setImageBitmap(b);
+            row.addView(p, new LinearLayout.LayoutParams(h.px(60), h.px(90)));
+            LinearLayout words = new LinearLayout(c);
+            words.setOrientation(LinearLayout.VERTICAL);
+            TextView tn = h.text(21, semi, Color.WHITE);
+            tn.setText(t.optString("n"));
+            tn.setSingleLine(true);
+            words.addView(tn);
+            TextView tt = h.text(17, regular, 0xCCFFFFFF);
+            tt.setText(hm(t.optInt("s")));
+            words.addView(tt);
+            LinearLayout.LayoutParams wl = new LinearLayout.LayoutParams(h.px(380), -2);
+            wl.leftMargin = h.px(16);
+            row.addView(words, wl);
+            LinearLayout.LayoutParams rl = new LinearLayout.LayoutParams(-2, -2);
+            rl.bottomMargin = h.px(14);
+            list.addView(row, rl);
+        }
+        place(v, list, 860, 440, 520, 440);
+
+        // Your TV personality.
+        LinearLayout card = new LinearLayout(c);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setPadding(h.px(30), h.px(26), h.px(30), h.px(26));
+        card.setBackground(h.fill(26, 0xF2FFFFFF));
+        TextView ph = h.text(15, semi, 0xFFFF2D7A);
+        ph.setText("YOUR TV PERSONALITY");
+        ph.setLetterSpacing(0.2f);
+        card.addView(ph);
+        String[] who = personality(titles, live, late, weekend, sum);
+        TextView pn = h.text(42, heavy, NAVY);
+        pn.setText(who[0]);
+        LinearLayout.LayoutParams pl = new LinearLayout.LayoutParams(-1, -2);
+        pl.topMargin = h.px(8);
+        card.addView(pn, pl);
+        TextView pt = h.text(19, regular, 0xD910157E);
+        pt.setText(who[1]);
+        pt.setLineSpacing(0, 1.15f);
+        LinearLayout.LayoutParams tl = new LinearLayout.LayoutParams(-1, -2);
+        tl.topMargin = h.px(10);
+        card.addView(pt, tl);
+        place(v, card, 1380, 120, 440, 330);
+
+        // The month in four facts.
+        LinearLayout facts = new LinearLayout(c);
+        int films = 0;
+        JSONObject longest = null;
+        for (JSONObject t : titles) {
+            if (t.optBoolean("tv") || !keyOf(t).startsWith("mv:")) continue;
+            films++;
+            if (longest == null || t.optInt("s") > longest.optInt("s")) longest = t;
+        }
+        LocalDate big1 = first.plusDays(bestDay);
+        String[][] four = {
+                {"BIGGEST DAY", big1.getDayOfWeek().getDisplayName(TextStyle.FULL, Locale.UK) + " " + big1.getDayOfMonth() + " · " + hm(bestSecs)},
+                {"LIVE TV & SPORT", hm(live)},
+                {"FILMS", films == 0 ? "None" : films + (longest != null ? " · most, " + longest.optString("n") : "")},
+                {"DAYS WITH TV", withTv + " of " + days.size()}};
+        for (String[] f : four) {
+            LinearLayout col = new LinearLayout(c);
+            col.setOrientation(LinearLayout.VERTICAL);
+            TextView a = h.text(14, semi, 0xB3FFFFFF);
+            a.setText(f[0]);
+            a.setLetterSpacing(0.18f);
+            col.addView(a);
+            TextView b = h.text(21, semi, Color.WHITE);
+            b.setText(f[1]);
+            b.setSingleLine(true);
+            col.addView(b);
+            facts.addView(col, new LinearLayout.LayoutParams(h.px(420), -2));
+        }
+        place(v, facts, 120, 900, 1700, 80);
+        return v;
+    }
+
+    /** The key a title was logged under. */
+    private static String keyOf(JSONObject t) {
+        int id = t.optInt("id");
+        return id > 0 ? (t.optBoolean("tv") ? "tv:" : "mv:") + id : "x:" + t.optString("n");
+    }
+
+    /** {name, line}: the month's TV personality, from the kinds watched most (by time) and when. */
+    private String[] personality(List<JSONObject> titles, int live, int late, int weekend, int sum) {
+        Map<String, Integer> kinds = new HashMap<>();
+        for (JSONObject t : titles) {
+            List<String> g = genres.get(t.optInt("id"));
+            if (g == null) continue;
+            for (String k : g) {
+                String group = group(k);
+                if (group != null) kinds.put(group, kinds.getOrDefault(group, 0) + t.optInt("s"));
+            }
+        }
+        String best = null;
+        int bestS = 0;
+        for (Map.Entry<String, Integer> e : kinds.entrySet()) if (e.getValue() > bestS) { best = e.getKey(); bestS = e.getValue(); }
+        int latePct = Math.round(late * 100f / Math.max(1, sum));
+        String when = latePct >= 50 ? "Late-Night" : weekend * 100f / Math.max(1, sum) >= 50 ? "Weekend" : "Evening";
+        if (live * 100f / Math.max(1, sum) >= 40 || best == null) {
+            return new String[]{"The " + when + " Matchday Regular", "Live TV and sport were " + Math.round(live * 100f / Math.max(1, sum))
+                    + "% of your month, and " + latePct + "% of your hours were after 9pm."};
+        }
+        String noun;
+        switch (best) {
+            case "Crime and thrillers": noun = "Detective"; break;
+            case "Comedy": noun = "Comedy Fan"; break;
+            case "Sci-fi and fantasy": noun = "Explorer"; break;
+            case "Drama": noun = "Drama Lover"; break;
+            case "Animation and family": noun = "Family Screener"; break;
+            case "Documentaries": noun = "Fact Finder"; break;
+            case "Reality": noun = "Reality Watcher"; break;
+            case "Action": noun = "Action Hero"; break;
+            case "Horror": noun = "Fright Fan"; break;
+            default: noun = "Romantic";
+        }
+        return new String[]{"The " + when + " " + noun, best + " made up " + Math.round(bestS * 100f / Math.max(1, sum))
+                + "% of your month, and " + latePct + "% of your hours were after 9pm."};
+    }
+
+    private static String group(String genre) {
+        switch (genre) {
+            case "Crime": case "Thriller": case "Mystery": return "Crime and thrillers";
+            case "Comedy": return "Comedy";
+            case "Science Fiction": case "Sci-Fi & Fantasy": case "Fantasy": return "Sci-fi and fantasy";
+            case "Drama": return "Drama";
+            case "Animation": case "Family": case "Kids": return "Animation and family";
+            case "Documentary": return "Documentaries";
+            case "Reality": return "Reality";
+            case "Action": case "Action & Adventure": case "Adventure": case "War": case "War & Politics": return "Action";
+            case "Horror": return "Horror";
+            case "Romance": return "Romance";
+            default: return null;
+        }
     }
 
     // ---- This week -------------------------------------------------------------------------------------------------

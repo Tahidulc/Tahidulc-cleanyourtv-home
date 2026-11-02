@@ -1130,6 +1130,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             else if (intent != null && intent.getBooleanExtra("smart_panel", false)) v2.openSmartPanel();
             // A box chosen in pop-up mode's frame (PopupFrame): Home on that box's section.
             else if (intent != null && intent.hasExtra("open_box")) v2.openBox(intent.getIntExtra("open_box", -1));
+            // The card on the 1st of the month (ReleaseAlerts): Your viewing on last month.
+            else if (intent != null && intent.hasExtra("viewing_tab")) v2.showViewing(intent.getIntExtra("viewing_tab", 0));
             return;
         }
         if (openLauncherSettingsIfAsked(intent)) return;

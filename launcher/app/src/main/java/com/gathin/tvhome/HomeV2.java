@@ -705,6 +705,11 @@ final class HomeV2 {
         if (smartPanel != null) smartPanel.show();
     }
 
+    /** Your viewing, opened on a tab (MainActivity, from the card on the 1st of the month). */
+    void showViewing(int tab) {
+        if (viewing != null) viewing.show(tab);
+    }
+
     /** What the microphone heard for Search (MainActivity's answer from the speech recogniser). */
     void heard(String words) {
         if (search != null) search.heard(words);

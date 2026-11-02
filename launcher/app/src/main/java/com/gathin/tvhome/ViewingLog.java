@@ -21,7 +21,7 @@ import java.util.List;
  * music and the launcher left out). Kept in viewing.json in the app's own files, a year and a half of days, and
  * never sent anywhere.
  * A day: {"a": {package: seconds}, "h": [24 hours' seconds], "t": {key: {"s": seconds, "n": name, "id": TMDB id,
- * "tv": series, "e": [episodes]}}}.
+ * "tv": series, "p": the app, "e": [episodes]}}}.
  */
 final class ViewingLog {
     private ViewingLog() { }
@@ -80,7 +80,7 @@ final class ViewingLog {
             JSONObject one = t.optJSONObject(key);
             if (one == null) {
                 if (t.length() >= 40) return;   // a day of clips: the first forty kept
-                one = new JSONObject().put("n", name);
+                one = new JSONObject().put("n", name).put("p", pkg);
                 if (tmdb > 0) one.put("id", tmdb).put("tv", tv);
                 t.put(key, one);
             }

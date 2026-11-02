@@ -54,8 +54,55 @@ final class ReleaseAlerts {
         }
         if (told.size() > 300) told.clear();
         p.edit().putStringSet("told", told).apply();
+        ScoreCard.Data month = monthCard(c, p, force);
+        if (month != null) cards.add(month);
         android.os.Handler main = new android.os.Handler(android.os.Looper.getMainLooper());
         for (ScoreCard.Data d : cards) main.post(() -> ScoreCard.show(c, d));
+    }
+
+    /**
+     * On the first three days of a month, once, from 10:00: "Your October on TV" (its hours and top show), OK opening
+     * Your viewing on last month's tab.
+     */
+    private static ScoreCard.Data monthCard(Context c, SharedPreferences p, boolean force) {
+        LocalDate today = LocalDate.now();
+        int hour = LocalTime.now().getHour();
+        String month = today.minusMonths(1).withDayOfMonth(1).toString().substring(0, 7);
+        if (!force && (today.getDayOfMonth() > 3 || hour < 10 || hour > 22 || month.equals(p.getString("month_told", "")))) return null;
+        int secs = 0, best = 0;
+        String top = null;
+        java.util.Map<String, Integer> shows = new java.util.HashMap<>();
+        for (LocalDate d = today.minusMonths(1).withDayOfMonth(1); d.isBefore(today.withDayOfMonth(1)); d = d.plusDays(1)) {
+            JSONObject day = ViewingLog.day(c, d);
+            secs += ViewingPanel.total(day);
+            JSONObject t = day.optJSONObject("t");
+            for (java.util.Iterator<String> it = t == null ? null : t.keys(); it != null && it.hasNext(); ) {
+                String k = it.next();
+                if (!k.startsWith("tv:") && !k.startsWith("mv:")) continue;
+                JSONObject one = t.optJSONObject(k);
+                int s = shows.getOrDefault(k, 0) + one.optInt("s");
+                shows.put(k, s);
+                if (s > best) { best = s; top = one.optString("n"); }
+            }
+        }
+        if (secs < 3600 && !force) return null;
+        p.edit().putString("month_told", month).apply();
+        String name = ViewingPanel.monthName(today.minusMonths(1));
+        ScoreCard.Data d = new ScoreCard.Data();
+        d.dark = true;
+        d.kind = "release";
+        d.band = 0xFF141519;
+        d.bandDeep = 0xFF000000;
+        d.labelColour = 0xFFFFD04D;
+        d.label = "YOUR " + name.toUpperCase(java.util.Locale.UK);
+        d.headline = Math.round(secs / 3600f) + " hours on the TV" + (top != null ? " · top: " + top : "");
+        d.line = "Your month on TV is ready";
+        d.okWords = "to see it";
+        d.channel = "Your viewing";
+        d.watch = () -> c.startActivity(new android.content.Intent(c, MainActivity.class)
+                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK | android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                .putExtra("viewing_tab", 1));
+        return d;
     }
 
     /** New episodes, out today or yesterday, of the series watched here, that have not been watched yet. */

@@ -55,6 +55,8 @@ final class ScoreCard {
         int block;
         /** A fight's result in the end block: how it was won ("KO/TKO"), and when ("R2 3:12"). */
         String method, methodSmall;
+        /** The words after "Press OK" ("to watch" unless given). */
+        String okWords = "to watch";
         /** A headline in place of a name (boxing's news), with its picture. */
         String headline;
         Bitmap picture;
@@ -803,7 +805,7 @@ final class ScoreCard {
         LinearLayout.LayoutParams kl = new LinearLayout.LayoutParams(ks, ks);
         kl.leftMargin = kl.rightMargin = px(4);
         pill.addView(key, kl);
-        pill.addView(text(c, "to watch", textPx, 0xFF111214, outfit(c, 700)));
+        pill.addView(text(c, d.okWords, textPx, 0xFF111214, outfit(c, 700)));
         LinearLayout.LayoutParams pl = new LinearLayout.LayoutParams(-2, -2);
         if (onHome) pl.leftMargin = px(14); else pl.topMargin = px(7);
         v.addView(pill, pl);
