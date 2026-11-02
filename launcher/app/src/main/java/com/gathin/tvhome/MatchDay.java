@@ -815,6 +815,10 @@ final class MatchDay {
         if (ssn != null && g.state != 2) {
             addButton("Soccer Saturday", () -> h.tune(java.util.Collections.singletonList(ssn[0]), ssn[1]));
         }
+        // Predictions (the theme's predictions): each player's score before kick-off; afterwards the picks.
+        if (Predictions.on(c) && (g.state == 1 || Predictions.has(c, g.id))) {
+            addButton(Predictions.label(c, g), () -> Predictions.open(h, g));
+        }
         if (g.state == 1) {
             long at = p.coverFrom > 0 && p.coverFrom < g.kickoff ? p.coverFrom : g.kickoff;
             String when = Instant.ofEpochMilli(at).atZone(ZoneId.systemDefault()).format(hm);

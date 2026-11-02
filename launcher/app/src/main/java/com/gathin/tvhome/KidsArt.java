@@ -61,6 +61,7 @@ final class KidsArt {
         try {
             h.a.startActivity(search);
             GoalWatchService.onAppOpened(h.a, YOUTUBE);
+            KidsNight.opened(h.a);
         } catch (Exception e) {
             h.openApp(YOUTUBE);
         }
@@ -172,8 +173,80 @@ final class KidsArt {
         Canvas cv = new Canvas(b);
         Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
         Random r = new Random(kind.hashCode());
-        if ("dance".equals(kind)) dance(cv, p, r, w, h); else space(cv, p, r, w, h);
+        if ("dance".equals(kind)) dance(cv, p, r, w, h); else if ("night".equals(kind)) night(cv, p, r, w, h); else space(cv, p, r, w, h);
         return b;
+    }
+
+    /** Bedtime: a deep blue night, a big glowing moon, stars, soft clouds, rolling hills and a little house lit up. */
+    private static void night(Canvas cv, Paint p, Random r, int w, int h) {
+        float k = w / 1400f;
+        p.setShader(new LinearGradient(0, 0, 0, h, new int[]{0xFF050A2E, 0xFF13205E, 0xFF2D3C86}, null, Shader.TileMode.CLAMP));
+        cv.drawRect(0, 0, w, h, p);
+        p.setShader(null);
+        glow(cv, p, w * 0.30f, h * 0.30f, w * 0.30f, 0x334C6FFF);
+        for (int i = 0; i < 260; i++) {
+            float x = r.nextFloat() * w, y = r.nextFloat() * h * 0.72f, rad = (0.5f + r.nextFloat() * r.nextFloat() * 1.8f) * k;
+            int a = 80 + r.nextInt(170);
+            if (rad > 1.6f * k) glow(cv, p, x, y, rad * 5f, (a / 3) << 24 | 0xFFFFFF);
+            p.setColor(a << 24 | (r.nextInt(5) == 0 ? 0xFFF1C2 : 0xFFFFFF));
+            cv.drawCircle(x, y, rad, p);
+        }
+        // The moon, top right: a crescent with its glow (the dark part the sky's own colour).
+        float mx = w * 0.80f, my = h * 0.26f, mr = 78 * k;
+        glow(cv, p, mx, my, mr * 3.2f, 0x55FFE9A8);
+        p.setColor(0xFFFFF1C4);
+        cv.drawCircle(mx, my, mr, p);
+        p.setColor(0x22D9B86A);
+        cv.drawCircle(mx - mr * 0.25f, my + mr * 0.2f, mr * 0.18f, p);
+        cv.drawCircle(mx + mr * 0.2f, my - mr * 0.3f, mr * 0.12f, p);
+        p.setColor(0xFF0E1A52);
+        cv.drawCircle(mx + mr * 0.42f, my - mr * 0.18f, mr * 0.86f, p);
+        // Soft clouds drifting across, see-through.
+        float[][] clouds = {{0.18f, 0.22f, 1f}, {0.55f, 0.14f, 0.8f}, {0.92f, 0.48f, 0.7f}, {0.40f, 0.42f, 0.6f}};
+        for (float[] cl : clouds) {
+            float cx = w * cl[0], cy = h * cl[1], s = 70 * k * cl[2];
+            p.setColor(0x2EFFFFFF);
+            cv.drawCircle(cx, cy, s, p);
+            cv.drawCircle(cx - s * 1.1f, cy + s * 0.25f, s * 0.7f, p);
+            cv.drawCircle(cx + s * 1.1f, cy + s * 0.2f, s * 0.75f, p);
+            cv.drawRoundRect(new RectF(cx - s * 1.8f, cy + s * 0.1f, cx + s * 1.8f, cy + s * 0.75f), s * 0.35f, s * 0.35f, p);
+        }
+        // Two rolling hills, the far one paler.
+        android.graphics.Path hill = new android.graphics.Path();
+        hill.moveTo(0, h * 0.80f);
+        hill.cubicTo(w * 0.25f, h * 0.66f, w * 0.45f, h * 0.84f, w * 0.70f, h * 0.70f);
+        hill.cubicTo(w * 0.85f, h * 0.62f, w * 0.95f, h * 0.70f, w, h * 0.68f);
+        hill.lineTo(w, h);
+        hill.lineTo(0, h);
+        hill.close();
+        p.setColor(0xFF1E2E6E);
+        cv.drawPath(hill, p);
+        hill.reset();
+        hill.moveTo(0, h * 0.90f);
+        hill.cubicTo(w * 0.30f, h * 0.80f, w * 0.60f, h * 0.95f, w, h * 0.84f);
+        hill.lineTo(w, h);
+        hill.lineTo(0, h);
+        hill.close();
+        p.setColor(0xFF121D4E);
+        cv.drawPath(hill, p);
+        // The little house on the far hill, its windows warm.
+        float hx = w * 0.70f, hy = h * 0.70f, hw = 92 * k, hh = 66 * k;
+        p.setColor(0xFF0B1440);
+        cv.drawRect(hx - hw / 2f, hy - hh, hx + hw / 2f, hy + 4 * k, p);
+        android.graphics.Path roof = new android.graphics.Path();
+        roof.moveTo(hx - hw * 0.62f, hy - hh);
+        roof.lineTo(hx, hy - hh * 1.75f);
+        roof.lineTo(hx + hw * 0.62f, hy - hh);
+        roof.close();
+        cv.drawPath(roof, p);
+        glow(cv, p, hx, hy - hh * 0.5f, hw * 1.3f, 0x40FFC163);
+        p.setColor(0xFFFFC870);
+        cv.drawRect(hx - hw * 0.34f, hy - hh * 0.78f, hx - hw * 0.08f, hy - hh * 0.42f, p);
+        cv.drawRect(hx + hw * 0.08f, hy - hh * 0.78f, hx + hw * 0.34f, hy - hh * 0.42f, p);
+        // A round tree beside it.
+        p.setColor(0xFF0B1440);
+        cv.drawRect(hx - hw * 1.25f, hy - hh * 0.6f, hx - hw * 1.15f, hy + 4 * k, p);
+        cv.drawCircle(hx - hw * 1.2f, hy - hh * 0.95f, 34 * k, p);
     }
 
     private static void glow(Canvas cv, Paint p, float x, float y, float rad, int colour) {

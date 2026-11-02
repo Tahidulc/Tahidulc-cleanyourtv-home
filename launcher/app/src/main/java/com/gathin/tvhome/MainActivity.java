@@ -1138,10 +1138,20 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                 String[] two = String.valueOf(intent.getStringExtra("two_up")).split(",");
                 if (two.length == 2) TwoUp.start(v2, two[0].trim(), two[1].trim());
             }
+            // adb only (--es test_birthday "Name|5"): the birthday greeting, now.
+            else if (intent != null && intent.hasExtra("test_birthday")) {
+                String[] b = (String.valueOf(intent.getStringExtra("test_birthday")) + "|").split("\\|");
+                Birthday.greet(v2, b[0], b.length > 1 ? b[1] : "");
+            }
             // A box chosen in pop-up mode's frame (PopupFrame): Home on that box's section.
             else if (intent != null && intent.hasExtra("open_box")) v2.openBox(intent.getIntExtra("open_box", -1));
             // The card on the 1st of the month (ReleaseAlerts): Your viewing on last month.
-            else if (intent != null && intent.hasExtra("viewing_tab")) v2.showViewing(intent.getIntExtra("viewing_tab", 0));
+            // On last month, the animated story first (MonthRecap), which ends there.
+            else if (intent != null && intent.hasExtra("viewing_tab")) {
+                if (intent.getIntExtra("viewing_tab", 0) == 1) MonthRecap.open(v2); else v2.showViewing(intent.getIntExtra("viewing_tab", 0));
+            }
+            // adb only (--ez test_recap true): last month's story, now.
+            else if (intent != null && intent.getBooleanExtra("test_recap", false)) MonthRecap.open(v2);
             return;
         }
         if (openLauncherSettingsIfAsked(intent)) return;

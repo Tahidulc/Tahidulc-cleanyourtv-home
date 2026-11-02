@@ -51,7 +51,11 @@ public class WatchHistory extends NotificationListenerService {
     private final Handler main = new Handler(Looper.getMainLooper());
     private MediaSessionManager sessions;
     private List<MediaController> controllers = new ArrayList<>();
-    private final MediaSessionManager.OnActiveSessionsChangedListener changed = list -> controllers = list == null ? new ArrayList<>() : list;
+    private final MediaSessionManager.OnActiveSessionsChangedListener changed = list -> {
+        controllers = list == null ? new ArrayList<>() : list;
+        // Cinema mode: each session watched for a film starting, pausing or reaching its credits.
+        Cinema.sessions(this, controllers);
+    };
     private final Runnable tick = this::tick;
 
     @Override public void onListenerConnected() {
@@ -60,6 +64,7 @@ public class WatchHistory extends NotificationListenerService {
         try {
             sessions.addOnActiveSessionsChangedListener(changed, me, main);
             controllers = sessions.getActiveSessions(me);
+            Cinema.sessions(this, controllers);
         } catch (SecurityException e) {
             return;   // not allowed as a listener yet
         }
@@ -119,6 +124,10 @@ public class WatchHistory extends NotificationListenerService {
         }
         try {
             SleepAfter.tick(this, controllers);
+        } catch (Exception ignored) {
+        }
+        try {
+            Cinema.tick(this, controllers);
         } catch (Exception ignored) {
         }
         main.postDelayed(tick, TICK_MS);

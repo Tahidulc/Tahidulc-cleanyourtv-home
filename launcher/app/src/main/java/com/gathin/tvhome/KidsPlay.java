@@ -78,7 +78,7 @@ final class KidsPlay extends View {
         }
     }
 
-    static final int BALLOONS = 0, CONFETTI = 1, SEASIDE = 2, SPACE = 3, DANCE = 4;
+    static final int BALLOONS = 0, CONFETTI = 1, SEASIDE = 2, SPACE = 3, DANCE = 4, NIGHT = 5;
 
     private static Act actFor(File f) {
         String n = f.getName().toLowerCase(Locale.ROOT);
@@ -98,7 +98,7 @@ final class KidsPlay extends View {
 
     private static final int STAND = 0, WALK = 1, HOP = 2, SPIN = 3, WIGGLE = 4, KICK = 5, SCOOT = 6, RIDE = 7, ROCK = 8;
     /** Where the children are: on the line above the tabs, hidden in the picture, floating, dancing. */
-    private static final int GROUND = 0, HIDDEN = 1, FLOAT = 2, DANCING = 3;
+    private static final int GROUND = 0, HIDDEN = 1, FLOAT = 2, DANCING = 3, SLEEPY = 4;
 
     private static final class Kid {
         Bitmap pic;
@@ -173,6 +173,22 @@ final class KidsPlay extends View {
             if (!spaceScene) acts.add(0, new Act("kidsact:space", "Space adventure!", "Floating among the stars", SPACE, true));
             acts.add(Math.min(3, acts.size()), new Act("kidsact:dance", "Dance party!", "Everybody dance!", DANCE, true));
         }
+        // Past the children's bedtime (KidsNight): only the night scene, the children yawning and waving goodnight.
+        if (KidsNight.isNight(h.a)) {
+            acts.clear();
+            acts.add(new Act("kidsact:night", "Bedtime!", "Time for sleep. Goodnight, sleep tight", NIGHT, !kids.isEmpty()));
+        } else {
+            // A child's birthday (Birthday): the jungle party first, for them, the children out dancing in it.
+            String[] day = Birthday.today(h.a);
+            if (day != null) {
+                String pic = "kidsact:dance";
+                for (int i = 0; i < acts.size(); i++) {
+                    if (acts.get(i).effect == BALLOONS) { pic = acts.get(i).picture; acts.remove(i); break; }
+                }
+                acts.add(0, new Act(pic, "Happy birthday, " + day[0] + "!", day[1].isEmpty() ? "It's a party! 🎂" : day[0] + " is " + day[1] + " today! 🎂",
+                        BALLOONS, !kids.isEmpty()));
+            }
+        }
         // Spread along the line, coming in one after another from the right.
         for (int i = 0; i < kids.size(); i++) {
             Kid k = kids.get(i);
@@ -223,7 +239,7 @@ final class KidsPlay extends View {
         t.heroImage = a.picture;
         t.heroTop = crumb;
         t.heroMeta = a.line;
-        t.heroText = "Down for cartoons, films and YouTube";
+        t.heroText = a.effect == NIGHT ? "One more cartoon, then off to bed" : "Down for cartoons, films and YouTube";
         return t;
     }
 
@@ -318,7 +334,7 @@ final class KidsPlay extends View {
     private void place() {
         int was = where;
         Act a = acts.isEmpty() ? null : acts.get(act % acts.size());
-        where = !showing || a == null ? GROUND : !a.out ? HIDDEN : a.effect == SPACE ? FLOAT : DANCING;
+        where = !showing || a == null ? GROUND : !a.out ? HIDDEN : a.effect == SPACE ? FLOAT : a.effect == NIGHT ? SLEEPY : DANCING;
         if (where == was) return;
         for (int i = 0; i < kids.size(); i++) {
             Kid k = kids.get(i);
@@ -344,8 +360,9 @@ final class KidsPlay extends View {
             } else if (where == FLOAT) {
                 k.fy = (i % 2 == 0 ? 250 : 150) * u + random.nextInt(40) * u;
                 k.toX = (520 + i * 290 + random.nextInt(60)) * u;
-            } else if (where == DANCING) {
+            } else if (where == DANCING || where == SLEEPY) {
                 k.toX = spot(i, kids.size());
+                k.step = -1;
             }
         }
         ball.on = false;
@@ -383,7 +400,7 @@ final class KidsPlay extends View {
 
     // ---- what goes on over the picture ----------------------------------------------------------------------------
 
-    private static final int P_BALLOON = 0, P_CONFETTI = 1, P_SPARK = 2, P_NOTE = 3, P_SHOOT = 4, P_GULL = 5;
+    private static final int P_BALLOON = 0, P_CONFETTI = 1, P_SPARK = 2, P_NOTE = 3, P_SHOOT = 4, P_GULL = 5, P_ZZZ = 6;
     private static final int MAX = 64;
     private final int[] kind = new int[MAX], colour = new int[MAX];
     private final float[] px = new float[MAX], py = new float[MAX], vx = new float[MAX], vy = new float[MAX],
@@ -461,6 +478,17 @@ final class KidsPlay extends View {
                     add(P_SHOOT, rnd(900, 1400) * u, rnd(90, 190) * u, -760 * u, 300 * u, 1.3f, 150 * u, 0xFFFFFFFF);
                 }
                 break;
+            case NIGHT:
+                // Stars twinkling over the hills, now and then a shooting star.
+                if (spawn > 0.35f / k) {
+                    spawn = 0;
+                    add(P_SPARK, rnd(440, 1390) * u, rnd(15, 300) * u, 0, 0, rnd(1.2f, 2.2f), rnd(4, 9) * u, 0xFFFFFFFF);
+                }
+                if (burst > 7f) {
+                    burst = 0;
+                    add(P_SHOOT, rnd(900, 1400) * u, rnd(40, 140) * u, -620 * u, 220 * u, 1.5f, 130 * u, 0xFFFFFFFF);
+                }
+                break;
             case DANCE:
                 if (spawn > 0.4f / k && !kids.isEmpty()) {
                     spawn = 0;
@@ -497,6 +525,11 @@ final class KidsPlay extends View {
                     break;
                 case P_NOTE:
                     px[i] += (vx[i] + (float) Math.sin(age[i] * 2.4f + phase[i]) * 22 * u) * dt;
+                    py[i] += vy[i] * dt;
+                    break;
+                case P_ZZZ:
+                    if (age[i] < 0) break;   // waiting its turn
+                    px[i] += (vx[i] + (float) Math.sin(age[i] * 2f + phase[i]) * 10 * u) * dt;
                     py[i] += vy[i] * dt;
                     break;
                 default:
@@ -576,6 +609,9 @@ final class KidsPlay extends View {
                 case DANCING:
                     dance(k, i, t, dt);
                     break;
+                case SLEEPY:
+                    sleepy(k, i, t, dt);
+                    break;
                 default:
                     walkAbout(k, i, now, dt, t);
             }
@@ -654,6 +690,52 @@ final class KidsPlay extends View {
                 k.rot = 0;
                 k.sy = 1f;
         }
+    }
+
+    /**
+     * Bedtime: each child to its place, slowly, then swaying a little; in turn (every nine seconds, a third apart)
+     * one yawns, a long stretch with a few Zs drifting up, then waves goodnight.
+     */
+    private void sleepy(Kid k, int i, float t, float dt) {
+        k.alpha = Math.min(1f, k.alpha + dt * 1.5f);
+        float d = k.toX - k.x;
+        if (Math.abs(d) > 4 * u) {
+            k.x += Math.signum(d) * Math.min(Math.abs(d), 120 * u * dt);
+            k.face = Math.signum(d);
+            k.rot = (float) Math.sin(t * 7f) * 3f;
+            k.lift = Math.abs((float) Math.sin(t * 7f)) * 4 * u;
+            return;
+        }
+        k.face = 1f;
+        float cycle = 9f, in = (t + i * 3f) % cycle;
+        int which = (int) Math.floor((t + i * 3f) / cycle);
+        float e = 1f - (float) Math.exp(-dt * 4f);
+        float rot = (float) Math.sin(t * 0.8f + k.phase) * (k.rides ? 4f : 2.5f), sy = 1f, sx = 1f, lift = 0f;
+        if (in < 2.2f) {
+            // The yawn: a slow stretch up, held, and down.
+            float p = in / 2.2f, s = (float) Math.sin(Math.PI * p);
+            sy = 1f + 0.07f * s;
+            sx = 1f - 0.03f * s;
+            rot = -4f * s;
+            if (k.step != which) {
+                k.step = which;
+                float top = ground() - k.pic.getHeight() * (k.sits ? 0.85f : 0.92f);
+                for (int z = 0; z < 3; z++) {
+                    int n = add(P_ZZZ, k.x + (24 + z * 8) * u, top - z * 6 * u, rnd(8, 22) * u, -rnd(26, 38) * u, 3.4f,
+                            (22 + z * 7) * u, 0xFFCFE0FF);
+                    if (n >= 0) age[n] = -z * 0.55f;
+                }
+            }
+        } else if (in < 4.0f) {
+            // Goodnight: a wave, a quick rock from side to side, settling.
+            float p = (in - 2.2f) / 1.8f;
+            rot = (float) Math.sin(p * Math.PI * 6f) * 9f * (1f - p);
+            lift = (float) Math.abs(Math.sin(p * Math.PI * 3f)) * 6 * u * (1f - p);
+        }
+        k.rot += (rot - k.rot) * e;
+        k.sy += (sy - k.sy) * e;
+        k.sx += (sx - k.sx) * e;
+        k.lift += (lift - k.lift) * e;
     }
 
     /** On the line above the tabs: standing, then off doing something. */
@@ -1037,6 +1119,17 @@ final class KidsPlay extends View {
                     path.quadTo(x - s * 0.45f, y - s * (0.55f + flap), x, y);
                     path.quadTo(x + s * 0.45f, y - s * (0.55f + flap), x + s, y - s * (0.2f + flap));
                     c.drawPath(path, line);
+                    break;
+                }
+                case P_ZZZ: {
+                    if (p < 0) break;
+                    float a = p < 0.2f ? p / 0.2f : 1f - (p - 0.2f) / 0.8f;
+                    fill.setColor((colour[i] & 0x00FFFFFF) | (Math.round(235 * a) << 24));
+                    fill.setTextSize(s * (0.8f + 0.4f * p));
+                    fill.setTextAlign(Paint.Align.CENTER);
+                    fill.setFakeBoldText(true);
+                    c.drawText("z", x, y, fill);
+                    fill.setFakeBoldText(false);
                     break;
                 }
                 case P_NOTE: {

@@ -1868,6 +1868,8 @@ public class GoalWatchService extends Service {
                 for (ScoresTicker.Game g : games) if (g.id != null) latest.put(g.id, g);
                 for (ScoresTicker.Game g : games) {
                     live |= g.state == 0;
+                    // A finished game with the family's predictions: who was closest, once (Predictions).
+                    if (g.state == 2) Predictions.settle(this, g);
                     Integer before = g.id == null ? null : lastState.put(g.id, g.state);
                     if (primed && before != null && before == 0 && g.state == 2) {
                         AlertLog.note(this, "full time seen: " + AlertLog.game(g) + " (card in a minute)");

@@ -970,6 +970,8 @@ final class HomeV2 {
         // An alert that came up over an app or the screensaver moves into the score bar's place.
         GoalWatchService.relane();
         if (Config.themeFlag(a, "alerts_everywhere", false)) GoalWatchService.startEverywhere(a);
+        // A child's birthday: the party greets them the first time Home comes up that day (Birthday).
+        main.postDelayed(() -> Birthday.maybeGreet(this), 1_200L);
         // What was watched while Home was away, matched to TMDB for Continue Watching.
         io.execute(() -> WatchHistory.match(a, tmdbKey));
         // Discover, Movies and TV shows read ahead once Home has settled (only what has gone stale is read again).
@@ -1079,6 +1081,9 @@ final class HomeV2 {
         Recap.close();
         AlertToday.close();
         TvLink.close();
+        Birthday.close();
+        MonthRecap.close();
+        Predictions.close();
         if (titlePanel != null) titlePanel.hide();
         if (viewing != null) viewing.hide();
         if (search != null) search.hide();
@@ -1112,7 +1117,8 @@ final class HomeV2 {
                 || (smartPanel != null && smartPanel.isOpen()) || (weatherPanel != null && weatherPanel.isOpen())
                 || (titlePanel != null && titlePanel.isOpen()) || (viewing != null && viewing.isOpen())
                 || (search != null && search.isOpen()) || Surprise.isOpen() || EpisodeDice.isOpen() || Recap.isOpen()
-                || AlertToday.isOpen() || TvLink.isOpen();
+                || AlertToday.isOpen() || TvLink.isOpen() || Birthday.isOpen() || MonthRecap.isOpen()
+                || Predictions.isOpen();
         if (busy || (zone != Z_ROW && zone != Z_CATS)) {
             if (!kickOff) { main.removeCallbacks(matchBack); main.postDelayed(matchBack, MATCH_BACK_MS); }
             return;
@@ -1154,6 +1160,9 @@ final class HomeV2 {
         if (Recap.isOpen()) return Recap.key(e);
         if (AlertToday.isOpen()) return AlertToday.key(e);
         if (TvLink.isOpen()) return TvLink.key(e);
+        if (Birthday.isOpen()) return Birthday.key(e);
+        if (MonthRecap.isOpen()) return MonthRecap.key(e);
+        if (Predictions.isOpen()) return Predictions.key(e);
         if (titlePanel != null && titlePanel.isOpen()) return titlePanel.key(e);
         if (viewing != null && viewing.isOpen()) return viewing.key(e);
         if (search != null && search.isOpen()) return search.key(e);

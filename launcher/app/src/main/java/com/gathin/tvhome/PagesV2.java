@@ -859,6 +859,8 @@ final class PagesV2 {
 
         /** OK on a poster: its own action, else the app it was being watched in, else Debrid Stream's page for it. */
         private void play(Title t) {
+            // From the Kids page after bedtime: the gentle timer (KidsNight; KidsArt's own cards start it themselves).
+            if ("KIDS".equals(crumb) && t.ok == null) KidsNight.opened(h.a);
             if (t.ok != null) { t.ok.run(); return; }
             h.playLikePages(t);
         }
