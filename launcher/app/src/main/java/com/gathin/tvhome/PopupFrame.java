@@ -160,7 +160,8 @@ final class PopupFrame {
         apps.add(null);   // All apps
         dockApps = apps.size();
         firstFocus = dockApps;   // the TV guide, as the boxes started on
-        int width = 40 + dockApps * DOCK_APP + (dockApps - 1) * DOCK_GAP + DOCK_GAP + 2 + DOCK_GAP + 6 * DOCK_SEC + 5 * DOCK_GAP;
+        int sections = HomeV2.CAT_NAMES.length;
+        int width = 40 + dockApps * DOCK_APP + (dockApps - 1) * DOCK_GAP + DOCK_GAP + 2 + DOCK_GAP + sections * DOCK_SEC + (sections - 1) * DOCK_GAP;
         int x0 = (1920 - width) / 2;
         FrameLayout pane = new FrameLayout(c);
         pane.setClipChildren(false);
@@ -204,7 +205,7 @@ final class PopupFrame {
         rule.setBackgroundColor(0x47FFFFFF);
         place(pane, rule, x, 20, 2, DOCK_H - 40);
         x += 2 + DOCK_GAP;
-        for (int i = 0; i < 6; i++) {
+        for (int i = 0; i < sections; i++) {
             FrameLayout box = new FrameLayout(c);
             box.setClipChildren(false);
             LinearLayout in = new LinearLayout(c);
@@ -248,7 +249,7 @@ final class PopupFrame {
             else if (pkg == null) openBox(5);
             else openDockApp(pkg);
         });
-        int last = dockApps + 5;
+        int last = dockApps + HomeV2.CAT_NAMES.length - 1;
         v.setOnKeyListener((vv, code, e) -> {
             if (e.getAction() != KeyEvent.ACTION_DOWN) return false;
             if (code == KeyEvent.KEYCODE_DPAD_UP) { if (scores == null || !scores.focus()) leaveFocus(); return true; }

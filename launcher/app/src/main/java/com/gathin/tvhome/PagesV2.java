@@ -771,12 +771,13 @@ final class PagesV2 {
             tile.heroTitle = t.title;
             tile.heroImage = t.backdrop != null ? t.backdrop : t.poster;
             // A mood's picture at the top goes without its words: the page already names it, and the name showed through the tabs.
-            if (tile.heroImage != null && tile.heroImage.startsWith("mood:")) tile.heroImage = tile.heroImage.replace(":w", ":b");
+            if (tile.heroImage != null && (tile.heroImage.startsWith("mood:") || tile.heroImage.startsWith("ytkids:"))) tile.heroImage = tile.heroImage.replace(":w", ":b");
             tile.heroTop = crumb;
             String vote = t.vote > 0 ? String.format(Locale.UK, " · ★ %.1f", t.vote) : "";
             // Fits tonight: when it would end, first.
             String fit = t.runtime > 0 ? FitsTonight.heroLine(h.a, t.runtime) : null;
-            tile.heroMeta = TextUtils.join(" · ", nonEmpty(fit, t.year, t.what, t.tv ? "Series" : "Film")) + vote;
+            // An app's card (YouTube Kids) is neither a series nor a film.
+            tile.heroMeta = TextUtils.join(" · ", nonEmpty(fit, t.year, t.what, "App".equals(t.what) ? null : t.tv ? "Series" : "Film")) + vote;
             tile.heroText = t.overview;
             // The running time and the streaming service (TMDB, looked up by Home's hero), and the store's marks.
             tile.tmdbId = t.id;
@@ -1111,6 +1112,88 @@ final class PagesV2 {
                 {"Hidden gems", "discover/tv?vote_average.gte=8&vote_count.gte=100&vote_count.lte=1200&sort_by=vote_average.desc", ""},
                 {"Anime", "discover/tv?with_genres=16&with_original_language=ja&sort_by=popularity.desc&vote_count.gte=100", ""},
                 {"Korean dramas", "discover/tv?with_original_language=ko&with_genres=18&sort_by=popularity.desc&vote_count.gte=50", ""}});
+    }
+
+    // ---- Kids ---------------------------------------------------------------------------------------------------------
+
+    /**
+     * Kids (the dock's seventh section): children's TV and films as Movies and TV shows are laid out, a tab each, OK on
+     * a poster doing what it does there. Top picks leads with YouTube Kids (open, or its Google Play page when it is not
+     * on the TV yet), then the children's series and family films on the TV's own apps. Films are the BBFC's U and PG.
+     */
+    static PosterPage kids(HomeV2 h) {
+        String k = h.tmdbKey;
+        String mine = ReleaseAlerts.providers(h.a);
+        String apps = mine.isEmpty() ? "8|9|337" : mine;
+        String[][] spec = {
+                {"Top picks", "@top"},
+                {"Kids TV", "discover/tv?with_genres=10762&with_original_language=en&watch_region=GB&sort_by=popularity.desc"},
+                {"Favourites", "discover/tv?with_genres=10762&sort_by=vote_count.desc"},
+                {"Family films", FAMILY + "&vote_count.gte=200"},
+                {"Animated films", "discover/movie?with_genres=16&certification_country=GB&certification.lte=PG&sort_by=popularity.desc&vote_count.gte=200"},
+                {"New films", FAMILY + "&primary_release_date.gte=" + since(400) + "&primary_release_date.lte=" + today()},
+                {"Disney+", "@337"},
+                {"Netflix", "@8"},
+                {"Prime Video", "@9"},
+                {"CBeebies & CBBC", "discover/tv?with_genres=10762&watch_region=GB&with_watch_providers=38&sort_by=popularity.desc"}};
+        String[] tabs = new String[spec.length];
+        for (int i = 0; i < spec.length; i++) tabs[i] = spec[i][0];
+        PosterPage p = new PosterPage(h, "KIDS", HomeV2.CAT_COLOURS[HomeV2.KIDS], tabs, new int[]{584 - 62}, t -> {
+            String what = spec[t][1];
+            List<Title> items = new ArrayList<>();
+            if ("@top".equals(what)) {
+                items.add(youTubeKids(h));
+                items.addAll(mix(tmdb(k, kidsTv(apps), true), tmdb(k, FAMILY + onApps(apps), false)));
+            } else if (what.startsWith("@")) {
+                String app = what.substring(1);
+                items.addAll(mix(tmdb(k, kidsTv(app), true), tmdb(k, FAMILY + onApps(app), false)));
+            } else {
+                items.addAll(tmdb(k, what, what.startsWith("discover/tv")));
+            }
+            return Arrays.asList(row(null, null, false, items));
+        });
+        return p.startOn(0);
+    }
+
+    /** The BBFC's U and PG family films, the most popular first. */
+    private static final String FAMILY = "discover/movie?with_genres=10751&certification_country=GB&certification.lte=PG&sort_by=popularity.desc";
+
+    private static String kidsTv(String providers) {
+        return "discover/tv?with_genres=10762&watch_region=GB&with_watch_monetization_types=flatrate&with_watch_providers=" + providers + "&sort_by=popularity.desc";
+    }
+
+    private static String onApps(String providers) {
+        return "&watch_region=GB&with_watch_monetization_types=flatrate&with_watch_providers=" + providers + "&vote_count.gte=50";
+    }
+
+    /** YouTube Kids as a card of its own: OK opens it, or its Google Play page while it is not on the TV. */
+    static Title youTubeKids(HomeV2 h) {
+        boolean have = KidsArt.installed(h.a);
+        Title t = new Title();
+        t.title = "YouTube Kids";
+        t.year = "";
+        t.what = "App";
+        t.overview = have
+                ? "Shows, music and learning made for children, in YouTube's own app for kids, with its parental controls. OK opens it."
+                : "YouTube's own app for children: shows, music and learning, with parental controls. It isn't on this TV yet: OK opens it in Google Play to install.";
+        t.poster = "ytkids:p";
+        t.backdrop = "ytkids:w";
+        t.ok = () -> {
+            if (KidsArt.installed(h.a)) { h.openApp(KidsArt.YOUTUBE_KIDS); return; }
+            android.content.Intent store = new android.content.Intent(android.content.Intent.ACTION_VIEW,
+                    android.net.Uri.parse("market://details?id=" + KidsArt.YOUTUBE_KIDS)).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
+            try {
+                h.a.startActivity(store);
+            } catch (Exception e) {
+                try {
+                    h.a.startActivity(new android.content.Intent(android.content.Intent.ACTION_VIEW,
+                            android.net.Uri.parse("https://play.google.com/store/apps/details?id=" + KidsArt.YOUTUBE_KIDS))
+                            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK));
+                } catch (Exception ignored) {
+                }
+            }
+        };
+        return t;
     }
 
     /**

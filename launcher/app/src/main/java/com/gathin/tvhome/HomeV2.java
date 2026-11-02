@@ -79,11 +79,13 @@ final class HomeV2 {
     static final int BG_DEEP = 0xFF11154A, BG_MID = 0xFF1D2378, BG_GLOW = 0xFF3A2A9A;
     private static final int GLASS = 0x1AFFFFFF, GLASS_LINE = 0x52FFFFFF;
     static final PathInterpolator SKY = new PathInterpolator(0.25f, 0.8f, 0.25f, 1f);
-    static final int[] CAT_COLOURS = {0xFFFF8A1F, 0xFF9B5CFF, 0xFFFF4FA3, 0xFF4F8BFF, 0xFF3DDC84, 0xFF2AD1C9};
-    static final String[] CAT_NAMES = {"TV Guide", "Discover", "Movies", "TV shows", "Sports", "Apps"};
+    // The sections. Kids (6) is the dock layout's own, after Apps; beside the rail there are the first six boxes.
+    static final int[] CAT_COLOURS = {0xFFFF8A1F, 0xFF9B5CFF, 0xFFFF4FA3, 0xFF4F8BFF, 0xFF3DDC84, 0xFF2AD1C9, 0xFFFFC93C};
+    static final String[] CAT_NAMES = {"TV Guide", "Discover", "Movies", "TV shows", "Sports", "Apps", "Kids"};
     static final int[] CAT_ICONS = {R.drawable.ic_v2_guide, R.drawable.ic_v2_discover, R.drawable.ic_v2_movies,
-            R.drawable.ic_v2_shows, R.drawable.ic_v2_sport, R.drawable.ic_v2_grid};
-    private static final String[] CAT_MODES = {"guide", "discover", "movies", "shows", "sport", "apps"};
+            R.drawable.ic_v2_shows, R.drawable.ic_v2_sport, R.drawable.ic_v2_grid, R.drawable.ic_v2_kids};
+    private static final String[] CAT_MODES = {"guide", "discover", "movies", "shows", "sport", "apps", "kids"};
+    static final int KIDS = 6;
 
     /** The rail: a glyph for each kind of dock app, matched on its package. */
     static int glyph(String pkg) {
@@ -694,8 +696,8 @@ final class HomeV2 {
      * focus sits between the glass and the icons.
      */
     private void layoutDock() {
-        int n = railViews.size();
-        int width = 40 + n * DOCK_APP + (n - 1) * DOCK_GAP + DOCK_GAP + 2 + DOCK_GAP + 6 * DOCK_SEC + 5 * DOCK_GAP;
+        int n = railViews.size(), sections = catViews.size();
+        int width = 40 + n * DOCK_APP + (n - 1) * DOCK_GAP + DOCK_GAP + 2 + DOCK_GAP + sections * DOCK_SEC + (sections - 1) * DOCK_GAP;
         int x0 = (1920 - width) / 2;
         dockBg = new View(a);
         GradientDrawable g = fill(30, 0x1FFFFFFF);
@@ -842,7 +844,7 @@ final class HomeV2 {
 
     /** The sections for the dock: the icon in the section's colour over its name; placed by layoutDock. */
     private void buildDockSections() {
-        for (int i = 0; i < 6; i++) {
+        for (int i = 0; i < CAT_NAMES.length; i++) {
             FrameLayout box = new FrameLayout(a);
             box.setClipChildren(false);
             View strip = new View(a);
@@ -1167,7 +1169,8 @@ final class HomeV2 {
 
     /** A box chosen in pop-up mode's frame: Home on that box's section (0 the TV guide). */
     void openBox(int which) {
-        if (which < 0 || which > 5) return;
+        // Any section there is: Kids (6) only in the dock layout.
+        if (which < 0 || which >= catViews.size()) return;
         guide.hide();
         if (page != null) closePage();
         zone = Z_CATS;
@@ -1282,7 +1285,7 @@ final class HomeV2 {
                 if (code == KeyEvent.KEYCODE_DPAD_LEFT) {
                     if (catIdx > 0) catIdx--;
                     else { if (page != null) closePage(); zone = Z_RAIL; selectRail(railViews.size() - 1); }
-                } else if (code == KeyEvent.KEYCODE_DPAD_RIGHT && catIdx < 5) {
+                } else if (code == KeyEvent.KEYCODE_DPAD_RIGHT && catIdx < catViews.size() - 1) {
                     catIdx++;
                 } else if (code == KeyEvent.KEYCODE_DPAD_UP) {
                     // Up from a box goes into the section showing above it; with none showing, back to the row.
@@ -1416,8 +1419,8 @@ final class HomeV2 {
         pageWhich = which;
         preview = hover;
         page = which == 1 ? PagesV2.discover(this) : which == 2 ? PagesV2.movies(this) : which == 3 ? PagesV2.shows(this)
-                : which == 5 ? new PagesV2.AppsPage(this) : new PagesV2.SportPage(this);
-        boolean sport = which == 4 || which == 5, full = which == 2 || which == 3;
+                : which == 5 ? new PagesV2.AppsPage(this) : which == KIDS ? PagesV2.kids(this) : new PagesV2.SportPage(this);
+        boolean sport = which == 4 || which == 5, full = which == 2 || which == 3 || which == KIDS;
         List<View> away = new ArrayList<>(Arrays.asList(label, viewport));
         if ((full || sport) && !hover && !keepsBoxes(which)) away.addAll(catViews);
         // The rail stays beside every section: Left from a section reaches it (the section kept open under it).
@@ -1433,7 +1436,7 @@ final class HomeV2 {
     /** Discover, Movies and TV shows: the boxes stay on screen under them, the page cut off just above. */
     /** Every section keeps the boxes under it (Discover, Movies, TV shows, Sport, Apps): its rows scroll above them. */
     private static boolean keepsBoxes(int which) {
-        return which >= 1 && which <= 5;
+        return which >= 1 && which <= KIDS;
     }
 
     /** A section showing while the boxes keep the focus is cut off just above them. */
@@ -3274,6 +3277,8 @@ final class HomeV2 {
         if (url.startsWith("crest:")) return crests(url.substring(6), width);
         // Surprise me's moods: drawn here, not fetched.
         if (url.startsWith("mood:")) return MoodArt.draw(a, url, width);
+        // The Kids page's YouTube Kids card: drawn here too.
+        if (url.startsWith("ytkids:")) return KidsArt.draw(a, url, width);
         try {
             byte[] data;
             if (url.startsWith("http")) {
