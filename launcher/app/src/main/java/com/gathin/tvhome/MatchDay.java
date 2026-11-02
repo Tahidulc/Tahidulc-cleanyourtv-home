@@ -40,10 +40,10 @@ import java.util.concurrent.Executors;
  * six boxes, the rail and the top bar stay where they are; Down goes to For You (a small chip by its heading says Up
  * comes back), Back hides Match Day until tomorrow.
  *
- * Which game: Manchester United's first; then England's; then Barcelona, Real Madrid, Bayern Munich, PSG, AC Milan,
- * Inter and Juventus; then the Premier League, Champions League, EFL Cup and FA Cup games live on British TV (Sky's
- * guide lists them). Each shows from the morning of the day until three hours after its kick-off; with several, the
- * one live now, else the next to start.
+ * Which game: Manchester United's first; then the Premier League, Champions League, EFL Cup and FA Cup games live
+ * on British TV (Sky's guide lists them); then the 3pm Saturday Premier League games; then England's; then
+ * Barcelona, Real Madrid, Bayern Munich, PSG, AC Milan, Inter and Juventus. Each shows from the morning of the day
+ * until three hours after its kick-off; with several, the one live now, else the next to start.
  */
 final class MatchDay {
     private static final String MAN_UNITED = "360", ENGLAND = "448";
@@ -62,7 +62,10 @@ final class MatchDay {
     /** What Match Day shows. */
     static final class Pick {
         ScoresTicker.Game g;
-        /** 1 Manchester United, 2 England, 3 a followed club, 4 a major game on British TV. */
+        /**
+         * 1 Manchester United; 2 a Premier League, Champions League, EFL Cup or FA Cup game on British TV; 3 and 4 a 3pm
+         * Saturday Premier League game (a bigger club's, then the rest); 5 England; 6 a followed club.
+         */
         int rank;
         List<String> watch;
         String channel, channelLogo, picture, listedName;
@@ -329,14 +332,16 @@ final class MatchDay {
         Pick best = null;
         for (ScoresTicker.Game g : all.values()) {
             if (g.kickoff == 0 || now > g.kickoff + AFTER_MS) continue;
-            int rank = rank(g);
+            // In order: Manchester United; the Premier League, Champions League, EFL Cup and FA Cup on British TV;
+            // the 3pm Saturday Premier League games (the bigger clubs' first); England; the followed clubs.
+            int rank = MAN_UNITED.equals(g.homeId) || MAN_UNITED.equals(g.awayId) ? 1 : 0;
             Object[] show = null;
             if (rank == 0 && g.slug != null && MAJOR_SLUGS.contains(g.slug)) {
                 show = TvGuide.show(channels, name(g, true), name(g, false), g.kickoff);
-                if (show != null) rank = 4;
+                if (show != null) rank = 2;
             }
-            // 3pm on a Saturday: not live on British TV, followed all the same (the bigger clubs' game first).
-            if (rank == 0 && blackout(g)) rank = BIG.contains(g.homeId) || BIG.contains(g.awayId) ? 5 : 6;
+            if (rank == 0 && blackout(g)) rank = BIG.contains(g.homeId) || BIG.contains(g.awayId) ? 3 : 4;
+            if (rank == 0) rank = rank(g);
             if (rank == 0) continue;
             if (best == null || better(g, rank, best)) {
                 best = new Pick();
@@ -498,8 +503,8 @@ final class MatchDay {
     /** Manchester United first, then England, then the followed clubs; the rest only when on British TV. */
     private static int rank(ScoresTicker.Game g) {
         if (MAN_UNITED.equals(g.homeId) || MAN_UNITED.equals(g.awayId)) return 1;
-        if (ENGLAND.equals(g.homeId) || ENGLAND.equals(g.awayId)) return 2;
-        if (CLUBS.contains(g.homeId) || CLUBS.contains(g.awayId)) return 3;
+        if (ENGLAND.equals(g.homeId) || ENGLAND.equals(g.awayId)) return 5;
+        if (CLUBS.contains(g.homeId) || CLUBS.contains(g.awayId)) return 6;
         return 0;
     }
 
@@ -515,7 +520,14 @@ final class MatchDay {
         // earlier. Two finished: the more recent.
         if (g.state == 1 && g.kickoff != best.g.kickoff) return g.kickoff < best.g.kickoff;
         if (rank != best.rank) return rank < best.rank;
+        // Level: a game with England or a followed club in it (Real Madrid's Champions League game over another).
+        boolean mine = followed(g), theirs = followed(best.g);
+        if (mine != theirs) return mine;
         return g.state == 2 ? g.kickoff > best.g.kickoff : g.kickoff < best.g.kickoff;
+    }
+
+    private static boolean followed(ScoresTicker.Game g) {
+        return ENGLAND.equals(g.homeId) || ENGLAND.equals(g.awayId) || CLUBS.contains(g.homeId) || CLUBS.contains(g.awayId);
     }
 
     private static int order(int state) {
