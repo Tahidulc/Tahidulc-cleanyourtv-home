@@ -76,6 +76,18 @@ final class LineupCard {
     }
 
     private static final int NAVY = 0xFF151A63;
+    /** Over an app (black_alerts): black grounds and white writing in place of the navy and the pale pages. */
+    private static boolean black;
+
+    /** The ground's colours: as given, or near-black when the card is black. */
+    private static Streaks ground(int a, int b, int lines, int gap, int width) {
+        return black ? new Streaks(0xFF17181C, 0xFF050506, lines == 0 ? 0 : 0x10FFFFFF, gap, width) : new Streaks(a, b, lines, gap, width);
+    }
+
+    /** The players' ink: navy on the pale pages, white on black. */
+    private static int ink() {
+        return black ? 0xFFFFFFFF : NAVY;
+    }
     /** The card's size in the design's pixels on a 1920-wide screen, and its scale there. */
     private static final int W = 700, H = 232, BAND = 84;
     private static final float SCALE = 0.88f;
@@ -151,7 +163,13 @@ final class LineupCard {
         java.io.File shots = renderTo;
         renderTo = null;
         // On Home: the same line-ups as a wide bar across the top, in the style of Home's score bars.
+        black = false;
         if (shots == null && (GoalWatchService.laneHome && GoalWatchService.homeInFront || PopupFrame.isShowing())) { showBar(c, d); return; }
+        black = GoalWatchService.blackAlerts(c);
+        if (black) {
+            wipeBody = 0xFF0B0C0F;
+            wipeEdge = 0xFF3A3C44;
+        }
         k = c.getResources().getDisplayMetrics().widthPixels / 1920f * SCALE;
         int w = px(W), h = px(H), margin = px(10);
 
@@ -162,11 +180,11 @@ final class LineupCard {
             @Override public void getOutline(View v, Outline o) { o.setRoundRect(0, 0, v.getWidth(), v.getHeight(), r); }
         });
         card.setClipToOutline(true);
-        card.setBackgroundColor(0xFF0D1360);
+        card.setBackgroundColor(black ? 0xFF000000 : 0xFF0D1360);
 
         // The band down the left, its contents changed with each page; the stage beside it, where pages slide.
         FrameLayout band = new FrameLayout(c);
-        band.setBackground(new Streaks(0xFF1B2591, 0xFF0D1360, 0x12FFFFFF, px(21), px(3)));
+        band.setBackground(ground(0xFF1B2591, 0xFF0D1360, 0x12FFFFFF, px(21), px(3)));
         card.addView(band, new FrameLayout.LayoutParams(px(BAND), h));
         FrameLayout stage = new FrameLayout(c);
         stage.setClipChildren(true);
@@ -1561,7 +1579,7 @@ final class LineupCard {
 
     private static View players(Context c, Team t, List<Player> ps) {
         FrameLayout page = new FrameLayout(c);
-        page.setBackground(new Streaks(0xFFF4F5FD, 0xFFC2C5EE, 0x8CFFFFFF, px(86), px(36)));
+        page.setBackground(ground(0xFFF4F5FD, 0xFFC2C5EE, 0x8CFFFFFF, px(86), px(36)));
         LinearLayout row = new LinearLayout(c);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setPadding(px(6), 0, px(6), 0);
@@ -1602,7 +1620,7 @@ final class LineupCard {
         LinearLayout top = new LinearLayout(c);
         top.setOrientation(LinearLayout.HORIZONTAL);
         top.setGravity(Gravity.CENTER_VERTICAL);
-        top.addView(text(c, p.number, 24, NAVY, Typeface.create("sans-serif-black", Typeface.NORMAL)));
+        top.addView(text(c, p.number, 24, ink(), Typeface.create("sans-serif-black", Typeface.NORMAL)));
         if (p.flag != null) {
             ImageView flag = new ImageView(c);
             flag.setImageBitmap(sharp(p.flag));
@@ -1619,10 +1637,10 @@ final class LineupCard {
         LinearLayout nm = new LinearLayout(c);
         nm.setOrientation(LinearLayout.VERTICAL);
         nm.setGravity(Gravity.CENTER_HORIZONTAL);
-        TextView first = text(c, p.first.isEmpty() ? " " : p.first, 11, NAVY, Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        TextView first = text(c, p.first.isEmpty() ? " " : p.first, 11, ink(), Typeface.create("sans-serif-medium", Typeface.NORMAL));
         first.setGravity(Gravity.CENTER);
         nm.addView(first, new LinearLayout.LayoutParams(-1, -2));
-        TextView last = text(c, p.last, 17, NAVY, Typeface.create("sans-serif-black", Typeface.NORMAL));
+        TextView last = text(c, p.last, 17, ink(), Typeface.create("sans-serif-black", Typeface.NORMAL));
         last.setGravity(Gravity.CENTER);
         // A long surname fits by getting smaller, never cut short.
         last.setSingleLine(false);
@@ -1643,7 +1661,7 @@ final class LineupCard {
 
     private static View pitch(Context c, Data d) {
         FrameLayout page = new FrameLayout(c);
-        page.setBackground(new Streaks(0xFF1B2591, 0xFF0D1360, 0x10FFFFFF, px(60), px(4)));
+        page.setBackground(ground(0xFF1B2591, 0xFF0D1360, 0x10FFFFFF, px(60), px(4)));
         Pitch field = new Pitch(c, d);
         FrameLayout.LayoutParams fl = new FrameLayout.LayoutParams(-1, -1);
         fl.setMargins(px(8), px(8), px(8), px(30));
@@ -1988,7 +2006,7 @@ final class LineupCard {
      */
     private static View first(Context c, Data d) {
         FrameLayout page = new FrameLayout(c);
-        page.setBackground(new Streaks(0xFF2A35B8, 0xFF080B3A, 0x0EFFFFFF, px(60), px(4)));
+        page.setBackground(ground(0xFF2A35B8, 0xFF080B3A, 0x0EFFFFFF, px(60), px(4)));
         int side = px(150);
         View home = club(c, d.home, px(116));
         FrameLayout.LayoutParams hl = new FrameLayout.LayoutParams(side, -2, Gravity.START | Gravity.CENTER_VERTICAL);

@@ -183,7 +183,8 @@ final class CameraAlert {
 
         FrameLayout win = new FrameLayout(c);
         FrameLayout card = new FrameLayout(c);
-        GradientDrawable glass = new GradientDrawable(GradientDrawable.Orientation.TL_BR, new int[]{0xFF1E2A2E, 0xFF0B0F12});
+        GradientDrawable glass = new GradientDrawable(GradientDrawable.Orientation.TL_BR,
+                GoalWatchService.blackAlerts(c) ? new int[]{0xFF16171A, 0xFF000000} : new int[]{0xFF1E2A2E, 0xFF0B0F12});
         glass.setCornerRadius(corner);
         card.setBackground(glass);
         card.setOutlineProvider(new ViewOutlineProvider() {

@@ -135,6 +135,11 @@ final class ScoreCard {
         Data d = queue.poll();
         if (d.f1) { d.dark = true; d.wideMark = true; }
         onHome = GoalWatchService.laneHome && GoalWatchService.homeInFront || PopupFrame.isShowing();
+        // Over an app (black_alerts): black, with white writing, its score block charcoal rather than navy.
+        if (!onHome && GoalWatchService.blackAlerts(c) && !d.dark) {
+            d.dark = true;
+            if (d.block == 0 && !d.f1) d.block = 0xFF26272D;
+        }
         k = c.getResources().getDisplayMetrics().widthPixels / 1920f;
         if (onHome) bar(c, d); else card(c, d);
     }

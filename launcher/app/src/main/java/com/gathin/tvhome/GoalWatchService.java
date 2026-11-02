@@ -1168,6 +1168,17 @@ public class GoalWatchService extends Service {
 
     /** The theme's extras, read when the service starts. */
     private boolean f1Live, newsAlerts, frost;
+    /** Over an app every alert is black with white writing (theme "black_alerts", on unless set false). */
+    private boolean black;
+
+    static boolean blackAlerts(Context c) {
+        return Config.themeFlag(c, "black_alerts", true);
+    }
+
+    /** White marks (logos, crests' lettering) rather than the ink-dark ones: on Home's glass, and on black. */
+    private boolean whiteMarks() {
+        return onLane() || darkGlass || black;
+    }
     /** Each F1 session's state, leader and ten-lap mark at the last read. */
     private final Map<String, String> f1States = new HashMap<>(), f1Leaders = new HashMap<>();
     private final Map<String, Integer> f1Laps = new HashMap<>();
@@ -1296,6 +1307,8 @@ public class GoalWatchService extends Service {
             everywhere = Config.themeFlag(this, "alerts_everywhere", false);
             skyAlerts = Config.themeFlag(this, "sky_alerts", false);
             weatherAlerts = Config.themeFlag(this, "weather_alerts", false);
+            black = blackAlerts(this);
+            DeliveryCard.black(black);
             if (Config.themeFlag(this, "alert_sounds", false)) loadSounds();
             // New episodes and films (ReleaseAlerts): first a few minutes after the start, then every two hours.
             main.removeCallbacks(releases);
@@ -2031,10 +2044,10 @@ public class GoalWatchService extends Service {
         if (!premier(url)) {
             // White lettering and stars (the Champions League's ball) in the pill's ink on the light glass.
             android.graphics.Bitmap b = ScoresTicker.cachedLogo(this, lightLogo(url), px);
-            return b == null || onLane() ? b : inked(b);
+            return b == null || whiteMarks() ? b : inked(b);
         }
         android.graphics.Bitmap full = ScoresTicker.cachedLogo(this, url.replace("/500-dark/", "/500/"), px * 2);
-        return full == null ? null : lionOnly(full, onLane());
+        return full == null ? null : lionOnly(full, whiteMarks());
     }
 
     /** The picture down to where its first block ends (the lion, above the gap before the words), white if asked. */
@@ -2068,7 +2081,7 @@ public class GoalWatchService extends Service {
 
     /** ESPN's league logos come in a white version for dark backgrounds; the alerts' glass is light (not on v2's Home). */
     private String lightLogo(String url) {
-        return url == null || onLane() ? url : url.replace("/500-dark/", "/500/");
+        return url == null || whiteMarks() ? url : url.replace("/500-dark/", "/500/");
     }
 
     /** A match or fight that ended (any state to post) or a final or main event that began (pre to in). */
@@ -2575,7 +2588,7 @@ public class GoalWatchService extends Service {
         for (Object o : parts) {
             if (o instanceof Chip) {
                 android.graphics.Bitmap logo = ((Chip) o).url == null ? null : ScoresTicker.cachedLogo(this, ((Chip) o).url, px * 4);
-                ready.add(logo != null ? new ChipImg(onLane() ? logo : inked(logo)) : bold(((Chip) o).name));
+                ready.add(logo != null ? new ChipImg(whiteMarks() ? logo : inked(logo)) : bold(((Chip) o).name));
             } else if (o instanceof Pic) {
                 Pic pic = (Pic) o;
                 ready.add(new Img(picture(pic, px), pic.wide));
@@ -2871,8 +2884,9 @@ public class GoalWatchService extends Service {
 
     private android.graphics.drawable.Drawable glassWithRim(float radius) {
         // On v2's Home: the score pills' own clear glass, as the alert stands in their place.
-        if (darkGlass) {
-            GradientDrawable dark = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0xF22A2C31, 0xF2141518});
+        if (darkGlass || black && !onLane()) {
+            // Black, white writing: every alert over an app (black_alerts), and F1's always.
+            GradientDrawable dark = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0xF516171A, 0xF5000000});
             dark.setCornerRadius(radius);
             return dark;
         }
@@ -2924,7 +2938,7 @@ public class GoalWatchService extends Service {
                 ? raceLane((F1Results.Race) polled[0]) : polled;
         boost = 1f;
         laneTint = 0;
-        darkGlass = false;
+        darkGlass = black && !onLane();
         if (next.length == 1 && next[0] instanceof F1Results.Race) {
             showRace((F1Results.Race) next[0]);
             return;
