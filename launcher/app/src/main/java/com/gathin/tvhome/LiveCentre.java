@@ -384,6 +384,11 @@ final class LiveCentre {
         // bar's rounded end going out with them, and back in.
         bar = new Bar(c);
         bar.setElevation(px(12));
+        // Shown smaller, from its top left corner (where it sits): everything in it, the stats too, in proportion.
+        bar.setPivotX(0);
+        bar.setPivotY(0);
+        bar.setScaleX(BOARD_SCALE);
+        bar.setScaleY(BOARD_SCALE);
         FrameLayout.LayoutParams ml = new FrameLayout.LayoutParams(px(BOARD_W + STATS_W), px(BOARD_H), Gravity.TOP | Gravity.START);
         ml.leftMargin = px(24);
         ml.topMargin = px(22);
@@ -528,6 +533,12 @@ final class LiveCentre {
     }
 
     private static final int BOARD_W = 748, BOARD_H = 112, STATS_W = 540, COMP_W = 108;
+    /**
+     * The scoreboard (and the stats folding out of it) drawn at this size: built at the sizes above, then shown at 0.6,
+     * about 450 x 67 on a 1920 x 1080 screen, a little bigger than the Premier League's own international score box
+     * (about 380 x 44). It was the full size, which took too much of the picture.
+     */
+    private static final float BOARD_SCALE = 0.6f;
     /** The stats' labels on the white panel: a soft navy. */
     private static final int STAT_LABEL = 0xFF6A6F9C;
     /** Each page of stats on show, how many pages per fold-out, the scoreboard alone in between, the first fold-out. */
@@ -2776,7 +2787,7 @@ final class LiveCentre {
         // It grows from its top left corner.
         bar.setPivotX(0);
         bar.setPivotY(0);
-        bar.animate().scaleX(on ? 1.03f : 1f).scaleY(on ? 1.03f : 1f).setDuration(160).start();
+        bar.animate().scaleX(BOARD_SCALE * (on ? 1.03f : 1f)).scaleY(BOARD_SCALE * (on ? 1.03f : 1f)).setDuration(160).start();
     }
 
     /** Back on the scoreboard: it and its stats slide away (Up brings them back). */
@@ -3058,7 +3069,7 @@ final class LiveCentre {
         box.addView(col, new FrameLayout.LayoutParams(-1, -1));
         FrameLayout.LayoutParams bl = new FrameLayout.LayoutParams(w, h + px(44), Gravity.TOP | Gravity.START);
         bl.leftMargin = px((1500 - 1216) / 2);
-        bl.topMargin = px(22 + BOARD_H + 18);
+        bl.topMargin = px(22 + BOARD_H * BOARD_SCALE + 18);
         host.addView(box, bl);
         bigBox = box;
         box.setAlpha(0f);

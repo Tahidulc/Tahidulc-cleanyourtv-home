@@ -53,6 +53,9 @@ final class AmbientScene {
     /** The bar's pages ({label, items}), the one showing, and how long each stays. */
     private final List<Strip> pages = new ArrayList<>();
     private int pageAt = -1;
+    /** The facts, Bangladesh first and twice as often (AmbientFacts), and the next one to show. */
+    private final List<String[]> facts = AmbientFacts.order();
+    private int factAt;
     private static final long PAGE_MS = 12_000L, LIVE_MS = 3 * 60_000L;
     /** When the scene started, and whether the clock is on the right (it changes sides every few minutes). */
     private long startedAt;
@@ -127,6 +130,8 @@ final class AmbientScene {
         hint = text(20, "sans-serif", 0x8CFFFFFF);
         hint.setText("Any button wakes Home");
         strip.addView(hint, margins(40, 0, 0, 0));
+        // Facts at once, before the games, weather and news are read.
+        showStrip(new ArrayList<>());
     }
 
     View view() {
@@ -619,6 +624,8 @@ final class AmbientScene {
         final List<Object[]> items = new ArrayList<>();
         /** A headline: one item that takes the bar's width, cut short with an ellipsis if it is longer. */
         boolean wide;
+        /** A fact's place: the next fact is shown each time it comes round. */
+        boolean fact;
 
         Strip(String label) {
             this.label = label;
@@ -667,7 +674,24 @@ final class AmbientScene {
 
     private void showStrip(List<Strip> made) {
         pages.clear();
-        pages.addAll(made);
+        // A fact after each page of news, games and weather (only facts when there is none of those yet).
+        for (Strip p : made) {
+            pages.add(p);
+            Strip f = new Strip("");
+            f.fact = true;
+            f.wide = true;
+            pages.add(f);
+        }
+        if (made.isEmpty()) {
+            Strip f = new Strip("");
+            f.fact = true;
+            f.wide = true;
+            pages.add(f);
+            Strip g = new Strip("");
+            g.fact = true;
+            g.wide = true;
+            pages.add(g);
+        }
         if (pageAt < 0 || pageAt >= pages.size()) pageAt = 0;
         fillPage();
     }
@@ -691,6 +715,13 @@ final class AmbientScene {
         page.removeAllViews();
         if (pages.isEmpty()) return;
         Strip p = pages.get(Math.max(0, Math.min(pageAt, pages.size() - 1)));
+        if (p.fact && !facts.isEmpty()) {
+            // The next fact: its chip (Bangladesh's in its flag's green, with the red disc) and its words.
+            String[] f = facts.get(factAt++ % facts.size());
+            p = new Strip(f[0]);
+            p.wide = true;
+            p.items.add(new Object[]{f[1], 0});
+        }
         TextView chip = text(14, "sans-serif-black", 0xFFFFFFFF);
         chip.setText(p.label);
         chip.setLetterSpacing(0.14f);
@@ -698,8 +729,18 @@ final class AmbientScene {
         chip.setPadding(px(12), px(6), px(12), px(6));
         GradientDrawable g = new GradientDrawable();
         g.setCornerRadius(px(8));
-        g.setColor("LIVE".equals(p.label) ? 0xFFE8112D : 0x1FFFFFFF);
+        boolean bd = "BANGLADESH".equals(p.label);
+        g.setColor("LIVE".equals(p.label) ? 0xFFE8112D : bd ? 0xFF006A4E : "DID YOU KNOW?".equals(p.label) ? 0xFF5B3FC4 : 0x1FFFFFFF);
         chip.setBackground(g);
+        if (bd) {
+            // The flag's red disc before its name.
+            GradientDrawable disc = new GradientDrawable();
+            disc.setShape(GradientDrawable.OVAL);
+            disc.setColor(0xFFF42A41);
+            disc.setSize(px(12), px(12));
+            chip.setCompoundDrawablesRelativeWithIntrinsicBounds(disc, null, null, null);
+            chip.setCompoundDrawablePadding(px(8));
+        }
         page.addView(chip);
         for (Object[] item : p.items) {
             LinearLayout one = new LinearLayout(c);
