@@ -934,7 +934,7 @@ final class PagesV2 {
             return h.dockMode && rowY.length == 1 && Config.themeFlag(h.a, "poster_slider", true);
         }
 
-        static final long SLIDER_MS = 520, WIDEN_MS = 420, LAND_PAUSE_MS = 550, SLIDER_TRAILER_MS = 1650;
+        static final long SLIDER_MS = 520, WIDEN_MS = 420, LAND_PAUSE_MS = 2500, SLIDER_TRAILER_MS = SLIDER_MS + LAND_PAUSE_MS + WIDEN_MS + 150;
         private static final float[] SCALE = {1f, 0.84f, 0.76f, 0.7f, 0.66f, 0.62f, 0.6f};
         private static final float[] SHADE = {0f, 0.4f, 0.55f, 0.66f, 0.74f, 0.82f, 0.9f};
         /** Where the row is (the focus, as a fraction while sliding), which poster is widened and how far, which landed. */
