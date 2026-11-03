@@ -1035,13 +1035,13 @@ final class ScoresTicker {
     }
 
     /**
-     * One game as option F, "Wedges": on a dark ground with square corners, a slanted wedge in each club's own colour
-     * from either end (the competition's mark, the home crest and code on the left one; the away code and crest on the
-     * right), the score on the dark plate between them in bold italic, then after the whole fixture the time, FT, or the
-     * live minute in green with a green dot that blinks as it ticks. Changing games, the wedges charge in from the ends
-     * and the plate flips in (charge); a goal, the scorer's wedge lunges across with a flash as the score rolls up
-     * (lunge). Focused: a white rim inside its own edge (it stays its size, so nothing is cut off). F1: its red wedge
-     * with the session, then the leaders with their team logos.
+     * One game as a broadcast score graphic (as a match's own on screen): the competition's logo on a small dark block
+     * at the start, a white tile with the home crest and code, the score on a blue block in the middle with the match
+     * clock under it (the kick-off time before, FT after), and a white tile with the away code and crest. No clubs'
+     * colours. Changing games, the two tiles slide in from the ends and the middle flips in (charge); a goal, the
+     * scorer's tile pulses under a flash as the score rolls up (lunge). Focused: a white and navy rim inside its edge,
+     * seen on the white and the blue alike (it stays its size, so nothing is cut off). F1: its red block and logo, the
+     * session and its leaders on the white, the lap or time on the blue.
      */
     private FrameLayout skyBox(Game g, int index, int count) {
         // Square-edged, as the notifications over the apps (not a pill).
@@ -1051,11 +1051,7 @@ final class ScoresTicker {
                 return false;
             }
         };
-        android.graphics.drawable.GradientDrawable ground = new android.graphics.drawable.GradientDrawable();
-        ground.setColor(0xFF0C0D1D);
-        ground.setCornerRadius(r);
-        ground.setStroke(Math.max(1, sk(1)), 0x1FFFFFFF);
-        b.setBackground(ground);
+        b.setBackgroundColor(BUG_WHITE_FOOT);
         Shown shown = new Shown();
         shown.key = key(g);
         shown.state = g.state;
@@ -1070,12 +1066,17 @@ final class ScoresTicker {
         });
         b.setClipToOutline(true);
         b.setFocusable(true);
-        android.graphics.drawable.GradientDrawable ring = new android.graphics.drawable.GradientDrawable();
-        ring.setCornerRadius(r);
-        ring.setColor(0x1FFFFFFF);
-        ring.setStroke(sk(2.5f), 0xF2FFFFFF);
-        // Focused: the box lit and a white rim drawn inside its own edge (it stays its size: grown, the rim was cut
-        // off by the bar's box).
+        android.graphics.drawable.GradientDrawable outer = new android.graphics.drawable.GradientDrawable();
+        outer.setCornerRadius(r);
+        outer.setStroke(sk(3), 0xFFFFFFFF);
+        android.graphics.drawable.GradientDrawable inner = new android.graphics.drawable.GradientDrawable();
+        inner.setCornerRadius(Math.max(0, r - sk(3)));
+        inner.setStroke(sk(2), BUG_NAVY);
+        android.graphics.drawable.LayerDrawable ring = new android.graphics.drawable.LayerDrawable(
+                new android.graphics.drawable.Drawable[]{outer, inner});
+        ring.setLayerInset(1, sk(3), sk(3), sk(3), sk(3));
+        // Focused: a white rim with a navy one inside it, inside the box's own edge (it stays its size: grown, the rim
+        // was cut off by the bar's box), seen on the white tiles and the blue middle alike.
         b.setOnFocusChangeListener((v, has) -> v.setForeground(has ? ring : null));
         b.setOnClickListener(v -> host.onScoresOpen(g));
         // Left and Right slide through the games one by one; past the first or the last, out to the top row's
@@ -1101,124 +1102,138 @@ final class ScoresTicker {
             }
         });
         boolean f1 = shown.f1;
-        int homeCol = f1 ? SkyStyle.F1_RED : wedgeColour(g.homeColor, 0xFF3A4CC0);
-        int awayCol = wedgeColour(g.awayColor == g.homeColor ? (g.awayAlt != 0 ? g.awayAlt : 0) : g.awayColor, 0xFF6B7280);
-        int homeInk = lightGround(homeCol) ? 0xFF0C0D1D : 0xFFFFFFFF, awayInk = lightGround(awayCol) ? 0xFF0C0D1D : 0xFFFFFFFF;
-        // The wedges, under everything else.
-        View hw = new View(context);
-        hw.setBackground(new Wedge(homeCol, 0f, 1f, 0.85f, 0f));
-        FrameLayout.LayoutParams hl = new FrameLayout.LayoutParams(sk(f1 ? 150 : 158), ViewGroup.LayoutParams.MATCH_PARENT);
-        b.addView(hw, hl);
-        shown.homeWedge = hw;
-        if (!f1) {
-            View aw = new View(context);
-            aw.setBackground(new Wedge(awayCol, 0.16f, 1f, 0.84f, 0f));
-            FrameLayout.LayoutParams al = new FrameLayout.LayoutParams(sk(148), ViewGroup.LayoutParams.MATCH_PARENT);
-            al.leftMargin = sk(208);
-            b.addView(aw, al);
-            shown.awayWedge = aw;
-        }
-        // On the home wedge: the competition's mark, then the crest and code (or F1's session).
-        LinearLayout left = new LinearLayout(context);
-        left.setGravity(Gravity.CENTER_VERTICAL);
+        // The competition's logo on its dark block (F1's red), at the start.
+        FrameLayout comp = new FrameLayout(context);
+        comp.setBackground(new android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
+                f1 ? new int[]{SkyStyle.F1_RED, SkyStyle.F1_DEEP} : new int[]{0xFF141B63, BUG_NAVY}));
         if (g.leagueLogo != null) {
             ImageView lv = new ImageView(context);
             lv.setScaleType(ImageView.ScaleType.FIT_CENTER);
             loadLogo(g.leagueLogo, lv);
-            left.addView(lv, new LinearLayout.LayoutParams(sk(f1 ? 30 : 18), sk(20)));
+            comp.addView(lv, new FrameLayout.LayoutParams(sk(f1 ? 40 : 30), sk(30), Gravity.CENTER));
         } else {
-            left.addView(wedgeText(league(g), 11, homeInk, 800));
+            TextView lt = skyText(league(g), 11, 0xFFFFFFFF, 800);
+            comp.addView(lt, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER));
         }
+        b.addView(comp, new FrameLayout.LayoutParams(sk(BUG_COMP), ViewGroup.LayoutParams.MATCH_PARENT));
         if (f1) {
-            LinearLayout.LayoutParams sl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            sl.leftMargin = sk(8);
-            left.addView(wedgeText(g.home, 16, homeInk, 900), sl);
-        } else {
-            LinearLayout.LayoutParams cl = new LinearLayout.LayoutParams(sk(24), sk(24));
-            cl.leftMargin = sk(7);
-            left.addView(glassCrest(g.homeLogo), cl);
-            LinearLayout.LayoutParams tl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            tl.leftMargin = sk(7);
-            left.addView(wedgeText(g.home, 18, homeInk, 900), tl);
-        }
-        FrameLayout.LayoutParams ll = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT);
-        ll.leftMargin = sk(9);
-        b.addView(left, ll);
-        shown.homeGroup = left;
-        if (f1) {
-            // F1: the leaders with their team logos (or the Grand Prix's name before it starts), on the dark ground.
+            // F1: the session and its leaders (team logos) on the white, the lap or time on the blue at the end.
             LinearLayout mid = new LinearLayout(context);
             mid.setGravity(Gravity.CENTER_VERTICAL);
+            mid.setBackground(bugWhite());
+            mid.setPadding(sk(10), 0, sk(8), 0);
+            mid.addView(skyText(g.home, 15, BUG_INK, 800));
             if (g.drivers != null) {
                 for (String[] d : g.drivers) {
                     ImageView tl = new ImageView(context);
                     tl.setScaleType(ImageView.ScaleType.FIT_CENTER);
-                    loadLogo(d[1], tl);
+                    loadLogo("light:" + d[1], tl);
                     LinearLayout.LayoutParams il = new LinearLayout.LayoutParams(sk(18), sk(18));
-                    il.leftMargin = mid.getChildCount() == 0 ? 0 : sk(9);
+                    il.leftMargin = sk(9);
                     mid.addView(tl, il);
                     LinearLayout.LayoutParams nl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-                    nl.leftMargin = sk(4);
-                    mid.addView(wedgeText(d[0], 15, 0xFFFFFFFF, 800), nl);
+                    nl.leftMargin = sk(3);
+                    mid.addView(skyText(d[0], 14, BUG_INK, 700), nl);
                 }
             } else {
-                TextView name = wedgeText(g.text, 15, 0xE6FFFFFF, 700);
+                TextView name = skyText(g.text, 14, BUG_INK, 600);
                 name.setEllipsize(android.text.TextUtils.TruncateAt.END);
-                mid.addView(name, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+                LinearLayout.LayoutParams nl = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+                nl.leftMargin = sk(9);
+                mid.addView(name, nl);
             }
             FrameLayout.LayoutParams ml = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
-            ml.leftMargin = sk(162);
-            ml.rightMargin = sk(70);
+            ml.leftMargin = sk(BUG_COMP);
+            ml.rightMargin = sk(86);
             b.addView(mid, ml);
-            shown.awayGroup = mid;
-        } else {
-            // The score (or "v" before kick-off) on the dark plate between the wedges.
-            TextView plate = wedgeText(plateText(g), g.state == 1 ? 18 : 25, g.state == 1 ? 0xCCFFFFFF : 0xFFFFFFFF, 900);
-            plate.setGravity(Gravity.CENTER);
-            FrameLayout.LayoutParams pl = new FrameLayout.LayoutParams(sk(90), ViewGroup.LayoutParams.MATCH_PARENT);
-            pl.leftMargin = sk(138);
-            b.addView(plate, pl);
-            shown.plate = plate;
-            // On the away wedge: its code, then its crest.
-            LinearLayout right = new LinearLayout(context);
-            right.setGravity(Gravity.CENTER_VERTICAL);
-            right.addView(wedgeText(g.away, 18, awayInk, 900));
-            LinearLayout.LayoutParams cl = new LinearLayout.LayoutParams(sk(24), sk(24));
-            cl.leftMargin = sk(7);
-            right.addView(glassCrest(g.awayLogo), cl);
-            FrameLayout.LayoutParams rl = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT);
-            rl.leftMargin = sk(236);
-            b.addView(right, rl);
-            shown.awayGroup = right;
+            shown.homeWedge = mid;
+            shown.homeGroup = mid;
+            LinearLayout end = bugMiddle();
+            TextView when = skyText(detail(g), 15, 0xFFFFFFFF, 800);
+            when.setTag("skyclock");
+            when.setFontFeatureSettings("tnum");
+            end.addView(when);
+            b.addView(end, new FrameLayout.LayoutParams(sk(86), ViewGroup.LayoutParams.MATCH_PARENT, Gravity.END));
+            shown.when = when;
+            shown.awayGroup = end;
+            return b;
         }
-        // After the whole fixture: the time, FT, or live the minute in green with a dot that blinks as it ticks.
-        boolean live = g.state == 0 && !f1;
-        LinearLayout end = new LinearLayout(context);
-        end.setGravity(Gravity.CENTER);
-        if (live) {
-            View dot = new View(context);
-            dot.setTag("skydot");
-            android.graphics.drawable.GradientDrawable dg = new android.graphics.drawable.GradientDrawable();
-            dg.setShape(android.graphics.drawable.GradientDrawable.OVAL);
-            dg.setColor(LIVE_GREEN);
-            dot.setBackground(dg);
-            LinearLayout.LayoutParams dl = new LinearLayout.LayoutParams(sk(6), sk(6));
-            dl.rightMargin = sk(4);
-            end.addView(dot, dl);
-        }
-        TextView when = wedgeText(detail(g), 15, live ? LIVE_GREEN : 0xE6FFFFFF, 800);
-        when.setTag("skyclock");
-        shown.when = when;
-        // Same-width digits: the live clock ticking each second never moves the box's edge.
+        // The home tile: its crest, then its code, navy on white.
+        LinearLayout home = new LinearLayout(context);
+        home.setGravity(Gravity.CENTER_VERTICAL);
+        home.setBackground(bugWhite());
+        home.setPadding(sk(10), 0, sk(8), 0);
+        home.addView(glassCrest(g.homeLogo), new LinearLayout.LayoutParams(sk(32), sk(32)));
+        TextView hc = skyText(g.home, 19, BUG_INK, 800);
+        hc.setGravity(Gravity.CENTER);
+        home.addView(hc, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        FrameLayout.LayoutParams hl = new FrameLayout.LayoutParams(sk(BUG_TILE), ViewGroup.LayoutParams.MATCH_PARENT);
+        hl.leftMargin = sk(BUG_COMP);
+        b.addView(home, hl);
+        shown.homeWedge = home;
+        shown.homeGroup = home;
+        // The away tile: its code, then its crest, to the box's end.
+        LinearLayout away = new LinearLayout(context);
+        away.setGravity(Gravity.CENTER_VERTICAL);
+        away.setBackground(bugWhite());
+        away.setPadding(sk(8), 0, sk(10), 0);
+        TextView ac = skyText(g.away, 19, BUG_INK, 800);
+        ac.setGravity(Gravity.CENTER);
+        away.addView(ac, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        away.addView(glassCrest(g.awayLogo), new LinearLayout.LayoutParams(sk(32), sk(32)));
+        FrameLayout.LayoutParams al = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
+        al.leftMargin = sk(BUG_COMP + BUG_TILE + BUG_MID);
+        b.addView(away, al);
+        shown.awayWedge = away;
+        shown.awayGroup = away;
+        // The middle: the score large (the kick-off time before), the clock (or FT, or the day) small under it.
+        LinearLayout mid = bugMiddle();
+        mid.setOrientation(LinearLayout.VERTICAL);
+        TextView plate = skyText(g.state == 1 ? detail(g) : plateText(g), g.state == 1 ? 20 : 23, 0xFFFFFFFF, 900);
+        plate.setGravity(Gravity.CENTER);
+        plate.setFontFeatureSettings("tnum");
+        mid.addView(plate, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        boolean live = g.state == 0;
+        TextView when = skyText(g.state == 1 ? "KICK-OFF" : g.state == 2 ? "FT" : detail(g), g.state == 1 ? 10 : 12.5f, 0xEBFFFFFF, 700);
+        when.setGravity(Gravity.CENTER);
         when.setFontFeatureSettings("tnum");
-        end.addView(when);
-        b.addView(end, new FrameLayout.LayoutParams(sk(66), ViewGroup.LayoutParams.MATCH_PARENT, Gravity.END));
+        if (g.state == 1) when.setLetterSpacing(0.1f);
+        LinearLayout.LayoutParams wl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        wl.topMargin = sk(1);
+        mid.addView(when, wl);
+        FrameLayout.LayoutParams pl = new FrameLayout.LayoutParams(sk(BUG_MID), ViewGroup.LayoutParams.MATCH_PARENT);
+        pl.leftMargin = sk(BUG_COMP + BUG_TILE);
+        b.addView(mid, pl);
+        shown.plate = plate;
+        shown.when = when;
         if (live) {
+            when.setTag("skyclock");
             clocks.add(new Object[]{when, g});
             main.removeCallbacks(clockTick);
             main.postDelayed(clockTick, 1000L);
         }
         return b;
+    }
+
+    /** The score graphic's widths on the 1920 design: the competition's block, each white tile, the blue middle. */
+    private static final int BUG_COMP = 48, BUG_TILE = 134, BUG_MID = 98;
+    /** Its navy (the competition's block and the focus rim), its ink on the white, and the white's foot. */
+    private static final int BUG_NAVY = 0xFF0B1150, BUG_INK = 0xFF0B1150, BUG_WHITE_FOOT = 0xFFE4E7F1;
+
+    /** A white tile's ground: white, a touch greyer at its foot, a hairline between it and the next. */
+    private android.graphics.drawable.Drawable bugWhite() {
+        android.graphics.drawable.GradientDrawable g = new android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0xFFFFFFFF, BUG_WHITE_FOOT});
+        return g;
+    }
+
+    /** The blue middle: royal blue, lighter at its top, its words centred. */
+    private LinearLayout bugMiddle() {
+        LinearLayout m = new LinearLayout(context);
+        m.setGravity(Gravity.CENTER);
+        m.setBackground(new android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
+                new int[]{0xFF2A4FD0, 0xFF16308F}));
+        return m;
     }
 
     /** The live minute's green (the clock ticking), and its dot's. */
@@ -1238,70 +1253,9 @@ final class ScoresTicker {
         return t;
     }
 
-    /** A club's colour made fit for a wedge carrying its words: near black lifted, a white kit a slate grey. */
-    private static int wedgeColour(int c, int fallback) {
-        if (c == 0) c = fallback;
-        float[] hsv = new float[3];
-        android.graphics.Color.colorToHSV(c | 0xFF000000, hsv);
-        if (hsv[2] < 0.3f) hsv[2] = 0.36f;
-        if (hsv[1] < 0.12f && hsv[2] > 0.8f) hsv[2] = 0.42f;
-        return android.graphics.Color.HSVToColor(hsv);
-    }
-
-    /** Whether a wedge's colour is light enough (a bright yellow) that its words go dark. */
-    private static boolean lightGround(int c) {
-        double l = (0.2126 * android.graphics.Color.red(c) + 0.7152 * android.graphics.Color.green(c) + 0.0722 * android.graphics.Color.blue(c)) / 255.0;
-        return l > 0.62;
-    }
-
     /**
-     * A slanted wedge in a club's colour, a little lighter at its top than its foot; its four corners as shares of
-     * its width (top-left, top-right, bottom-right, bottom-left). Its path and shader made when its size changes.
-     */
-    private static final class Wedge extends android.graphics.drawable.Drawable {
-        private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final android.graphics.Path path = new android.graphics.Path();
-        private final int colour;
-        private final float tl, tr, br, bl;
-
-        Wedge(int colour, float tl, float tr, float br, float bl) {
-            this.colour = colour;
-            this.tl = tl;
-            this.tr = tr;
-            this.br = br;
-            this.bl = bl;
-        }
-
-        @Override protected void onBoundsChange(android.graphics.Rect b) {
-            float[] hsv = new float[3];
-            android.graphics.Color.colorToHSV(colour, hsv);
-            float v = hsv[2];
-            hsv[2] = Math.min(1f, v * 1.12f);
-            int top = android.graphics.Color.HSVToColor(hsv);
-            hsv[2] = v * 0.7f;
-            int foot = android.graphics.Color.HSVToColor(hsv);
-            fill.setShader(new android.graphics.LinearGradient(0, b.top, 0, b.bottom, top, foot, android.graphics.Shader.TileMode.CLAMP));
-            float w = b.width();
-            path.reset();
-            path.moveTo(b.left + tl * w, b.top);
-            path.lineTo(b.left + tr * w, b.top);
-            path.lineTo(b.left + br * w, b.bottom);
-            path.lineTo(b.left + bl * w, b.bottom);
-            path.close();
-        }
-
-        @Override public void draw(android.graphics.Canvas c) {
-            c.drawPath(path, fill);
-        }
-
-        @Override public void setAlpha(int a) { }
-        @Override public void setColorFilter(android.graphics.ColorFilter f) { }
-        @Override public int getOpacity() { return android.graphics.PixelFormat.TRANSLUCENT; }
-    }
-
-    /**
-     * A new game's box arriving (option F): its wedges charge in from the two ends, its words come up on them and its
-     * score plate flips in. Cheap: the views' own moves, no picture made.
+     * A new game's box arriving: its two tiles slide in from the ends, their words come up on them and the middle's
+     * score flips in. Cheap: the views' own moves, no picture made.
      */
     private void charge(LinearLayout row) {
         float w = sk(260);
@@ -1331,13 +1285,13 @@ final class ScoresTicker {
         }
     }
 
-    /** A goal (option F): the scorer's wedge lunges across towards the plate and back, under a quick flash of light. */
+    /** A goal: the scorer's tile pulses towards the middle and back, under a quick flash of light. */
     private void lunge(FrameLayout box, View wedge, boolean home) {
         if (wedge == null) return;
         if (covered) { heldRolls.add(() -> lunge(box, wedge, home)); return; }
         wedge.setPivotX(home ? 0f : wedge.getWidth());
         wedge.animate().cancel();
-        wedge.animate().scaleX(1.28f).setDuration(150).setInterpolator(SLIDE).withEndAction(() ->
+        wedge.animate().scaleX(1.1f).setDuration(150).setInterpolator(SLIDE).withEndAction(() ->
                 wedge.animate().scaleX(1f).setDuration(320).setInterpolator(SLIDE).withEndAction(null).start()).start();
         View flash = new View(context);
         flash.setBackgroundColor(0xFFFFFFFF);
