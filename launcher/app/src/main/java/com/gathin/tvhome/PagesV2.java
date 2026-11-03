@@ -1046,8 +1046,8 @@ final class PagesV2 {
         }
 
         /**
-         * The focused poster lifted off the page: raised towards the viewer on a spring with a soft long shadow (its
-         * outline's), nudged up, a light sheen along its top under the white ring; the others lie flat.
+         * The focused poster lifted off the page: nudged up on a spring (no shadow under it), a light sheen along its
+         * top under the white ring; the others lie flat.
          */
         private void focusLook(FrameLayout f, boolean on) {
             f.setForeground(on ? liftedRing() : null);
@@ -2055,7 +2055,7 @@ final class PagesV2 {
                 Fluid.spring(f, androidx.dynamicanimation.animation.DynamicAnimation.SCALE_X, on ? 1.07f : 1f, Fluid.STIFF_SMALL, Fluid.DAMP_SMALL);
                 Fluid.spring(f, androidx.dynamicanimation.animation.DynamicAnimation.SCALE_Y, on ? 1.07f : 1f, Fluid.STIFF_SMALL, Fluid.DAMP_SMALL);
                 f.setForeground(on ? h.ring(14) : null);
-                // Lifted off the page when focused (a spring, a soft long shadow).
+                // Lifted off the page when focused (a spring; no shadow).
                 Fluid.lift(f, on, px(22), 0);
             }
             int firstRow = Math.max(0, idx / COLS - (SHOWN - 1));
@@ -2891,6 +2891,9 @@ final class PagesV2 {
             LinearLayout.LayoutParams hl = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
             hl.leftMargin = px(20);
             stageButtons.addView(stageHint, hl);
+            // Just the three buttons: the words beside them ("While games are on, this turns into the Live Centre…")
+            // kept out of sight (the view stays, so what sets it still can).
+            stageHint.setVisibility(View.GONE);
 
             String[] leagues = h.a.getResources().getStringArray(R.array.score_leagues);
             String[] footballTv = h.a.getResources().getStringArray(R.array.football_tv_channels);
@@ -3406,10 +3409,13 @@ final class PagesV2 {
                 {"ger.1", "Bundesliga", R.font.brand_bundesliga, "10"}, {"fra.1", "Ligue 1", R.font.brand_ligue1, "9"},
                 {"sco.1", "Scottish Premiership", R.font.brand_plain, "45"}, {"uefa.champions", "Champions League", R.font.brand_uefa, "2"}};
         private final Map<String, List<String[]>> tables = new HashMap<>();
-        /** The tables panel beside the stage: its tabs (the league, F1 drivers, F1 teams), which shows, its key line. */
+        /**
+         * The tables panel beside the stage: its two tabs (the league, ‹ 1/8 › through the 8 of them; F1, ‹ Drivers ›
+         * and ‹ Teams › the same way), which shows, its key line.
+         */
         private LinearLayout panel, panelTabs, tableList;
         private GradientDrawable panelBg;
-        private final TextView[] tabs = new TextView[3];
+        private final TextView[] tabs = new TextView[2];
         private int panelTab;
         private TextView tableKey;
         private CharSequence tableKeyText = "";
@@ -3524,15 +3530,16 @@ final class PagesV2 {
             panelTabs.setGravity(Gravity.CENTER_VERTICAL);
             panelTabs.setPadding(px(4), px(4), px(4), px(4));
             panelTabs.setBackground(h.fill(23, 0x40000000));
-            for (int i = 0; i < 3; i++) {
+            for (int i = 0; i < 2; i++) {
                 TextView t = h.text(16, h.regular, 0xBFFFFFFF);
                 t.setGravity(Gravity.CENTER);
                 t.setSingleLine(true);
                 t.setEllipsize(TextUtils.TruncateAt.END);
                 t.setPadding(px(10), 0, px(10), 0);
-                // The competitions by their own logos: F1's on its two tabs, the league's on the first (showTable).
-                if (i > 0) logoTab(t, F1Results.F1_LOGO, "F1", i == 1 ? "Drivers" : "Teams");
-                LinearLayout.LayoutParams tl = new LinearLayout.LayoutParams(0, px(38), i == 0 ? 1.5f : 1f);
+                // The competitions by their own logos: F1's on its tab (Drivers, then Teams, with the arrows as the
+                // leagues have), the league's on the first (showTable).
+                if (i > 0) logoTab(t, F1Results.F1_LOGO, "F1", f1Arrows(1));
+                LinearLayout.LayoutParams tl = new LinearLayout.LayoutParams(0, px(38), 1f);
                 if (i > 0) tl.leftMargin = px(4);
                 panelTabs.addView(t, tl);
                 tabs[i] = t;
@@ -3566,10 +3573,16 @@ final class PagesV2 {
             showTable(0);
         }
 
-        /** The panel's tab: 0 the league's table, 1 F1's drivers, 2 F1's teams. */
+        /** The F1 tab's words after its logo: which of its two tables, between the arrows (as the leagues' "‹ 1/8 ›"). */
+        private static String f1Arrows(int tab) {
+            return "‹  " + (tab == 2 ? "Teams" : "Drivers") + "  ›";
+        }
+
+        /** The panel's tab: 0 the league's table, 1 F1's drivers, 2 F1's teams (both on the one F1 tab). */
         private void showPanel(int tab) {
             panelTab = tab;
             boolean f1 = tab > 0;
+            if (f1) logoTab(tabs[1], F1Results.F1_LOGO, "F1", f1Arrows(tab));
             tableView.setVisibility(f1 ? View.GONE : View.VISIBLE);
             driverView.setVisibility(f1 ? View.VISIBLE : View.GONE);
             tableHead.removeAllViews();
@@ -4105,7 +4118,7 @@ final class PagesV2 {
                 panelBg.setStroke(px(onPanel ? 3 : 1.5f), onPanel ? Color.WHITE : 0x3DFFFFFF);
                 panel.invalidate();
                 for (int i = 0; i < tabs.length; i++) {
-                    boolean shownTab = i == panelTab;
+                    boolean shownTab = i == Math.min(1, panelTab);
                     GradientDrawable tg = shownTab ? h.fill(19, onPanel ? 0x47FFFFFF : 0x2EFFFFFF) : null;
                     if (tg != null && onPanel) tg.setStroke(px(2), Color.WHITE);
                     tabs[i].setBackground(tg);
@@ -4150,11 +4163,12 @@ final class PagesV2 {
                     boolean slim = zone == TONIGHT;
                     float grow = slim ? 1.05f : 1.07f;
                     now.animate().scaleX(grow).scaleY(grow).setDuration(150).setInterpolator(HomeV2.SKY).start();
-                    // Tonight's card: its solid focused ground under the ring, so its lifted shadow stays round it.
+                    // Tonight's card: its solid focused ground under the ring.
                     android.graphics.drawable.Drawable[] gr = slimGrounds.get(now);
                     if (gr != null) now.setBackground(gr[1]);
+                    // No raised shadow under it (it showed through the glass cards and was cut at the strip's edge
+                    // as the row slid along): the ring and the grow are the focus.
                     now.setForeground(h.ring(slim ? 20 : 16));
-                    now.setElevation(px(slim ? 10 : 8));
                 }
                 paintedTile = now;
             }

@@ -143,16 +143,16 @@ final class Fluid {
     }
 
     /**
-     * Lifted off the page (focused) or laid back down: raised towards the viewer with a soft long shadow and a nudge up,
-     * on a spring. The shadow follows the view's outline.
+     * Lifted off the page (focused) or laid back down: a nudge up on a spring, no shadow (z is no longer used). The
+     * shadow it once cast (raised towards the viewer, black) was cut off square at the edge of the row that clips the
+     * posters, showed through see-through boxes, and trailed behind as the focus moved along a row.
      */
     static void lift(View v, boolean up, float z, float rise) {
-        spring(v, DynamicAnimation.TRANSLATION_Z, up ? z : 0f, STIFF_SMALL * 0.7f, 0.82f);
-        spring(v, DynamicAnimation.TRANSLATION_Y, up ? -rise : 0f, STIFF_SMALL * 0.7f, 0.82f);
-        if (android.os.Build.VERSION.SDK_INT >= 28) {
-            v.setOutlineSpotShadowColor(0xFF000000);
-            v.setOutlineAmbientShadowColor(0xFF000000);
+        if (v.getTranslationZ() != 0f) {
+            stop(v, DynamicAnimation.TRANSLATION_Z);
+            v.setTranslationZ(0f);
         }
+        spring(v, DynamicAnimation.TRANSLATION_Y, up ? -rise : 0f, STIFF_SMALL * 0.7f, 0.82f);
     }
 
     /** The visible rect of a view on the screen (for growing something out of it). */

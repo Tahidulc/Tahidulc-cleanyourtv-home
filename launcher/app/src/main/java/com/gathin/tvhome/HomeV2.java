@@ -2081,7 +2081,7 @@ final class HomeV2 {
             // A little less than the sections' 1.07: the tiles fill the row edge to edge, and the fourth stays inside it.
             // No start delay left over from a page turn's wave: the focus grows at once.
             t.animate().scaleX(on ? 1.05f : 1f).scaleY(on ? 1.05f : 1f).setStartDelay(0).setDuration(150).setInterpolator(SKY).start();
-            // Lifted off the page when focused: raised on a spring, a soft long shadow under it.
+            // Lifted off the page when focused: on a spring (no shadow under it).
             Fluid.lift(t, on, px(22), 0);
             // The dock layout's ring is the liquid glass, drawn over the row.
             ((FrameLayout) t).setForeground(on && !dockMode ? ring(16) : null);
