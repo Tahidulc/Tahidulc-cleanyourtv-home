@@ -1042,8 +1042,8 @@ final class ScoresTicker {
      * at the start, a white tile with the home crest and code, the score on a blue block in the middle with the match
      * clock under it (the kick-off time before, FT after), and a white tile with the away code and crest. No clubs'
      * colours. Changing games, the two tiles slide in from the ends and the middle flips in (charge); a goal, the
-     * scorer's tile pulses under a flash as the score rolls up (lunge). Focused: a white and navy rim inside its edge,
-     * seen on the white and the blue alike (it stays its size, so nothing is cut off). F1: its red block and logo, the
+     * scorer's tile pulses under a flash as the score rolls up (lunge). Focused: a white rim inside its edge (it stays its
+     * size, so nothing is cut off). F1: its red block and logo, the
      * session and its leaders on the white, the lap or time on the blue.
      */
     private FrameLayout skyBox(Game g, int index, int count) {
@@ -1069,17 +1069,11 @@ final class ScoresTicker {
         });
         b.setClipToOutline(true);
         b.setFocusable(true);
-        android.graphics.drawable.GradientDrawable outer = new android.graphics.drawable.GradientDrawable();
-        outer.setCornerRadius(r);
-        outer.setStroke(sk(3), 0xFFFFFFFF);
-        android.graphics.drawable.GradientDrawable inner = new android.graphics.drawable.GradientDrawable();
-        inner.setCornerRadius(Math.max(0, r - sk(3)));
-        inner.setStroke(sk(2), BUG_NAVY);
-        android.graphics.drawable.LayerDrawable ring = new android.graphics.drawable.LayerDrawable(
-                new android.graphics.drawable.Drawable[]{outer, inner});
-        ring.setLayerInset(1, sk(3), sk(3), sk(3), sk(3));
-        // Focused: a white rim with a navy one inside it, inside the box's own edge (it stays its size: grown, the rim
-        // was cut off by the bar's box), seen on the white tiles and the blue middle alike.
+        android.graphics.drawable.GradientDrawable ring = new android.graphics.drawable.GradientDrawable();
+        ring.setCornerRadius(r);
+        ring.setStroke(sk(3), 0xFFFFFFFF);
+        // Focused: a plain white rim inside the box's own edge (it stays its size: grown, the rim was cut off by the
+        // bar's box); no navy line inside it (it read as a black gap between the rim and the white tiles).
         b.setOnFocusChangeListener((v, has) -> v.setForeground(has ? ring : null));
         b.setOnClickListener(v -> host.onScoresOpen(g));
         // Left and Right slide through the games one by one; past the first or the last, out to the top row's
