@@ -275,7 +275,9 @@ final class HomeV2 {
         dockMode = Config.themeFlag(a, "home_dock", true);
         if (dockMode) { TILE_W = 448; TILE_H = 300; }
         corners = dockMode && Config.themeFlag(a, "top_corners", true);
-        ScoresTicker.frost = corners && Config.themeFlag(a, "frosted_pills", true);
+        // The top bar in the notifications' own Sky-style look (theme "sky_top"): no pills; else the frosted ones.
+        ScoresTicker.sky = corners && Config.themeFlag(a, "sky_top", true);
+        ScoresTicker.frost = corners && !ScoresTicker.sky && Config.themeFlag(a, "frosted_pills", true);
         players = new TilePlayer(a);
         players.useOverlay(lite);
         if (!tmdbKey.isEmpty()) players.warm();
@@ -479,43 +481,54 @@ final class HomeV2 {
     }
 
     /**
-     * Option B's right end, on one line with the Control Centre button and the score pill at the left: the weather
-     * (its icon and the temperature, a small glass pill, still a button: OK opens the weather card), the date, then
-     * the time, all compact and right-aligned, so the most room is left under them.
+     * The top bar's right end, compact: the date over the weather (two small lines, right-aligned; the weather still a
+     * button: OK opens the weather card), a fine rule, then the time. No pills: plain words on the picture, the focus
+     * a white chip under the weather when it is on it.
      */
     private void buildCorners() {
         LinearLayout line = new LinearLayout(a);
         line.setOrientation(LinearLayout.HORIZONTAL);
         line.setGravity(Gravity.CENTER_VERTICAL | Gravity.END);
         line.setBaselineAligned(false);
-        TextView weather = text(17, regular, Color.WHITE);
-        weather.setLetterSpacing(0.02f);
-        weather.setGravity(Gravity.CENTER_VERTICAL);
-        weather.setSingleLine(true);
-        weather.setPadding(px(12), 0, px(15), 0);
-        weather.setBackground(glass(18, false));
-        line.addView(weather, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, px(36)));
+        LinearLayout col = new LinearLayout(a);
+        col.setOrientation(LinearLayout.VERTICAL);
+        col.setGravity(Gravity.END);
         TextClock date = new TextClock(a);
         date.setFormat24Hour("EEE d MMM");
         date.setFormat12Hour("EEE d MMM");
-        style(date, 17, regular, 0xD9FFFFFF);
+        style(date, 16, semi, 0xE6FFFFFF);
         date.setSingleLine(true);
-        date.setLetterSpacing(0.02f);
+        date.setLetterSpacing(0.04f);
+        date.setIncludeFontPadding(false);
         LinearLayout.LayoutParams dlp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        dlp.leftMargin = px(14);
-        line.addView(date, dlp);
+        dlp.rightMargin = px(8);
+        col.addView(date, dlp);
+        TextView weather = text(16, regular, Color.WHITE);
+        weather.setLetterSpacing(0.02f);
+        weather.setGravity(Gravity.CENTER_VERTICAL);
+        weather.setSingleLine(true);
+        weather.setIncludeFontPadding(false);
+        weather.setPadding(px(8), 0, px(8), 0);
+        LinearLayout.LayoutParams wlp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, px(28));
+        wlp.topMargin = px(2);
+        col.addView(weather, wlp);
+        line.addView(col);
+        View rule = new View(a);
+        rule.setBackgroundColor(0x59FFFFFF);
+        LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(px(2), px(42));
+        rlp.leftMargin = px(12);
+        rlp.rightMargin = px(16);
+        line.addView(rule, rlp);
         TextClock time = new TextClock(a);
         time.setFormat24Hour("HH:mm");
         time.setFormat12Hour("HH:mm");
-        style(time, 38, a.getResources().getFont(R.font.inter_display_light), Color.WHITE);
+        style(time, 44, a.getResources().getFont(R.font.inter_display_light), Color.WHITE);
         time.setLetterSpacing(-0.02f);
         time.setIncludeFontPadding(false);
         time.setFontFeatureSettings("tnum");
-        LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        tlp.leftMargin = px(14);
-        line.addView(time, tlp);
-        add(line, 1864 - CORNER_RIGHT_W, CORNER_Y - 30, CORNER_RIGHT_W, 60);
-        // The temperature alone on the pill (the place is in the weather card).
+        line.addView(time);
+        add(line, 1864 - CORNER_RIGHT_W, CORNER_Y - 32, CORNER_RIGHT_W, 64);
+        // The temperature alone (the place is in the weather card).
         weatherLine = new WeatherLine(weather, a.getString(R.string.weather_latitude), a.getString(R.string.weather_longitude), "");
         weatherPanel = new WeatherPanel(this, a.getString(R.string.weather_latitude), a.getString(R.string.weather_longitude),
                 a.getString(R.string.weather_place));
@@ -527,7 +540,7 @@ final class HomeV2 {
     /** Option B: the score pill's place (right of it, the Control Centre button) and its line's centre, in design pixels. */
     static final int CORNER_CC = 56, CORNER_PILL_X = 56 + CORNER_CC + 14, CORNER_PILL_R = CORNER_PILL_X + 414, CORNER_Y = 46;
     /** Option B's right end (weather, date, time), right-aligned in this width; the alerts' lane stops short of it. */
-    static final int CORNER_RIGHT_W = 420, CORNER_LANE_R = 1864 - 340;
+    static final int CORNER_RIGHT_W = 360, CORNER_LANE_R = 1864 - 270;
 
     /** Option B's dots under the score pill: one for each game, the one showing long and white. */
     private void showPageDots(int at, int of) {
@@ -715,7 +728,7 @@ final class HomeV2 {
             int p = px(14);
             ccButton.setPadding(p, p, p, p);
             ccButton.setColorFilter(Color.WHITE);
-            ccButton.setBackground(glass(CORNER_CC / 2f, false));
+            if (!ScoresTicker.sky) ccButton.setBackground(glass(CORNER_CC / 2f, false));
             ccButton.setTag((Runnable) () -> controlCentre.show());
             ccButton.setContentDescription("Control Centre");
             vpn = ccButton;
@@ -2016,11 +2029,13 @@ final class HomeV2 {
             boolean on = zone == Z_TOP && i == topIdx;
             boolean vpnOn = v == vpn && vpnUp;
             if (!restyle(v, (on ? 1 : 0) | (vpnOn ? 2 : 0))) continue;
-            float rad = v == weatherView ? (corners ? 19 : 25) : v == ccButton ? CORNER_CC / 2f : 33;
+            float rad = v == weatherView ? (ScoresTicker.sky ? 14 : corners ? 19 : 25) : v == ccButton ? CORNER_CC / 2f : 33;
             GradientDrawable b = fill(rad, on ? 0xEBFFFFFF : vpnOn ? 0x3D9B5CFF : GLASS);
             b.setStroke(px(1.5f), on ? Color.WHITE : vpnOn ? 0xB3C4A8FF : GLASS_LINE);
             // Option B's pills frosted, as the score pill: a tinted body under the glass, the words clear on any picture.
-            v.setBackground(!on && ScoresTicker.frost ? frost(rad, vpnOn) : b);
+            // The Sky top bar: no pills, the words and the icon plain on the picture until focused (a white chip then).
+            v.setBackground(!on && ScoresTicker.sky ? (vpnOn ? fill(rad, 0x3D9B5CFF) : null)
+                    : !on && ScoresTicker.frost ? frost(rad, vpnOn) : b);
             int ink = on ? 0xFF1A1D24 : Color.WHITE;
             if (v instanceof ImageView) {
                 if (v == vpn) ((ImageView) v).setColorFilter(on ? 0xFF1A1D24 : vpnOn ? 0xFFC9A2FF : Color.WHITE);
