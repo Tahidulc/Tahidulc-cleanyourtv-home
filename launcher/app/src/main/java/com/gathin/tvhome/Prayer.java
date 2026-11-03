@@ -17,7 +17,8 @@ import java.util.Locale;
 /**
  * Prayer times where the TV is (the weather's latitude and longitude, Manchester here), from Aladhan's free timetable
  * service, for the day and the next: Fajr, Sunrise, Dhuhr, Asr, Maghrib and Isha, and the Islamic date. In Ramadan,
- * sehri (it ends at Fajr) and iftar (Maghrib) with how long until each. On when the theme says prayer_times; the
+ * sehri (it ends at Fajr) and iftar (Maghrib) with how long until each, in the Control Centre's own section and on
+ * Ambient mode's bar. On when the theme says prayer_times; the
  * method and school are the theme's prayer_method (15, Moonsighting Committee, as most British mosques) and
  * prayer_school (1, Hanafi, for Asr). Read at most once a day for each date, kept in the app's settings.
  */
@@ -149,13 +150,16 @@ final class Prayer {
         return m >= 60 ? (m / 60) + "h " + (m % 60) + "m" : m + "m";
     }
 
-    /** Home's pill: in Ramadan "Iftar 16:33 · 2h 14m", else the next prayer, "Asr 14:12"; null when off or unknown. */
-    static String pill(Context c) {
-        if (!on(c)) return null;
+    /**
+     * The Control Centre's heading for the section: in Ramadan "RAMADAN · IFTAR 16:33 · IN 2H 14M", else the next
+     * prayer and how long until it, "PRAYER TIMES · ASR IN 1H 20M"; null when off or not read yet.
+     */
+    static String heading(Context c) {
+        if (!on(c) || today(c).isEmpty()) return null;
         Object[] r = ramadan(c);
-        if (r != null) return r[0] + " " + r[1] + "  ·  " + until((Long) r[2]);
+        if (r != null) return ("Ramadan · " + r[0] + " " + r[1] + " · in " + until((Long) r[2])).toUpperCase(Locale.UK);
         Object[] n = next(c);
-        return n == null ? null : n[0] + " " + n[1] + ((Long) n[2] <= 60 ? "  ·  in " + until((Long) n[2]) : "");
+        return ("Prayer times" + (n == null ? "" : " · " + n[0] + " in " + until((Long) n[2]))).toUpperCase(Locale.UK);
     }
 
     /** The Islamic date: "12 Jumada al-Awwal 1448"; null unknown. */

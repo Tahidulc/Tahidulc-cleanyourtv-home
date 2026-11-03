@@ -427,24 +427,9 @@ final class HomeV2 {
         weather.setBackground(glass(25, false));
         weather.setCompoundDrawablePadding(px(12));
         LinearLayout.LayoutParams wlp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, px(50));
-        // The weather, and beside it the next prayer (Prayer: when the theme asks; in Ramadan, iftar or sehri).
-        LinearLayout pills = new LinearLayout(a);
-        pills.setOrientation(LinearLayout.HORIZONTAL);
-        pills.addView(weather, wlp);
-        prayerView = text(22, regular, Color.WHITE);
-        prayerView.setLetterSpacing(0.04f);
-        prayerView.setGravity(Gravity.CENTER_VERTICAL);
-        prayerView.setPadding(px(22), 0, px(24), 0);
-        prayerView.setBackground(glass(25, false));
-        prayerView.setVisibility(View.GONE);
-        LinearLayout.LayoutParams plp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, px(50));
-        plp.leftMargin = px(12);
-        pills.addView(prayerView, plp);
-        LinearLayout.LayoutParams pillsLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, px(50));
-        pillsLp.topMargin = px(10);
-        col.addView(pills, pillsLp);
+        wlp.topMargin = px(10);
+        col.addView(weather, wlp);
         clock.addView(col);
-        if (Prayer.on(a)) main.post(prayerTick);
         add(clock, dockMode ? 52 : 96, 92, 1100, 160);
         weatherLine = new WeatherLine(weather, a.getString(R.string.weather_latitude), a.getString(R.string.weather_longitude),
                 a.getString(R.string.weather_place));
@@ -457,27 +442,6 @@ final class HomeV2 {
     }
 
     private WeatherPanel weatherPanel;
-    /** The next prayer beside the weather (Prayer), its words again each minute, the timetable read once a day. */
-    private TextView prayerView;
-    private long prayerRead;
-    private final Runnable prayerTick = new Runnable() {
-        @Override public void run() {
-            if (prayerView == null) return;
-            if (System.currentTimeMillis() - prayerRead > 3 * 3_600_000L) {
-                prayerRead = System.currentTimeMillis();
-                io.execute(() -> { Prayer.refresh(a); main.post(this::paintPrayer); });
-            }
-            paintPrayer();
-            main.removeCallbacks(this);
-            main.postDelayed(this, 60_000L);
-        }
-
-        private void paintPrayer() {
-            String s = Prayer.pill(a);
-            prayerView.setVisibility(s == null ? View.GONE : View.VISIBLE);
-            if (s != null) prayerView.setText("\u263E  " + s);
-        }
-    };
     private SmartPanel smartPanel;
     /** One search for everything: the magnifier in the top bar, or the remote's Search key. */
     private SearchPanel search;
@@ -970,6 +934,8 @@ final class HomeV2 {
         // An alert that came up over an app or the screensaver moves into the score bar's place.
         GoalWatchService.relane();
         if (Config.themeFlag(a, "alerts_everywhere", false)) GoalWatchService.startEverywhere(a);
+        // Prayer times for the Control Centre's section: today's and tomorrow's timetable, read when not yet kept.
+        if (Prayer.on(a)) io.execute(() -> Prayer.refresh(a));
         // A child's birthday: the party greets them the first time Home comes up that day (Birthday).
         main.postDelayed(() -> Birthday.maybeGreet(this), 1_200L);
         // What was watched while Home was away, matched to TMDB for Continue Watching.

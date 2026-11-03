@@ -147,6 +147,7 @@ final class ControlCentre {
             at.add(new int[]{row + i / 2, i % 2, 1});
         }
         if (items.size() % 2 == 1 && line != null) line.addView(new View(c), new LinearLayout.LayoutParams(0, -1, 1f));
+        prayerSection(panel);
 
         FrameLayout box = new FrameLayout(c);
         box.addView(panel, new FrameLayout.LayoutParams(-1, -2));
@@ -156,6 +157,13 @@ final class ControlCentre {
         bl.rightMargin = h.px(96);
         overlay.addView(box, bl);
         h.root.addView(overlay, new FrameLayout.LayoutParams(-1, -1));
+        // Taller than the room under the top bar (many controls, the cameras and prayer times): up just enough.
+        box.post(() -> {
+            int over = box.getBottom() - (overlay.getHeight() - h.px(24));
+            if (over <= 0) return;
+            bl.topMargin = Math.max(h.px(24), bl.topMargin - over);
+            box.setLayoutParams(bl);
+        });
         box.setAlpha(0f);
         box.setTranslationY(-px(16));
         box.setScaleX(0.97f);
@@ -174,6 +182,38 @@ final class ControlCentre {
         overlay = null;
         o.animate().alpha(0f).setDuration(160).withEndAction(() -> h.root.removeView(o)).start();
         h.paint();
+    }
+
+    /**
+     * Prayer times (Prayer, when the theme asks): today's five in a row, the next one lit, and in the heading how long
+     * until it (in Ramadan, iftar or sehri). Words only: the remote passes over it.
+     */
+    private void prayerSection(LinearLayout panel) {
+        String head = Prayer.heading(c);
+        if (head == null) return;
+        panel.addView(heading(head), headParams());
+        Object[] next = Prayer.next(c);
+        LinearLayout row = new LinearLayout(c);
+        boolean first = true;
+        for (String[] p : Prayer.today(c)) {
+            if ("Sunrise".equals(p[0])) continue;
+            boolean lit = next != null && p[0].equals(next[0]) && p[1].equals(next[1]);
+            LinearLayout box = new LinearLayout(c);
+            box.setOrientation(LinearLayout.VERTICAL);
+            box.setGravity(Gravity.CENTER);
+            box.setBackground(fill(18, lit ? 0xFFFFFFFF : 0x1FFFFFFF));
+            TextView name = text(15, semi, lit ? 0xCC10157E : 0xB3FFFFFF);
+            name.setText(p[0]);
+            box.addView(name);
+            TextView time = text(24, heavy, lit ? 0xFF10157E : Color.WHITE);
+            time.setText(p[1]);
+            box.addView(time);
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, -1, 1f);
+            if (!first) lp.leftMargin = px(10);
+            first = false;
+            row.addView(box, lp);
+        }
+        panel.addView(row, new LinearLayout.LayoutParams(-1, px(80)));
     }
 
     private TextView heading(String s) {
