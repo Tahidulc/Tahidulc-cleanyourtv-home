@@ -130,13 +130,14 @@ final class ScoresTicker {
     }
 
     /**
-     * A Home bar's window (h high) put in its place: under option B in the lane, from its left (or, for one only as long
-     * as it needs, right-aligned to the lane's end), centred on the pill's line; else across the top, centred, at y.
+     * A Home bar's window (h high) put in its place: under option B in the lane from its left (the pill's), centred on
+     * the pill's line; else across the top, centred, at y.
      */
     static void placeBar(Context c, android.view.WindowManager.LayoutParams lp, int h, int y, boolean wrap) {
         if (corner()) {
-            lp.gravity = Gravity.TOP | (wrap ? Gravity.END : Gravity.START);
-            lp.x = wrap ? c.getResources().getDisplayMetrics().widthPixels - laneRight : laneLeft;
+            // From the lane's start (the pill's left), growing to the right; one only as long as it needs, the same.
+            lp.gravity = Gravity.TOP | Gravity.START;
+            lp.x = laneLeft;
             lp.y = Math.max(0, laneCentre - h / 2);
         } else {
             lp.gravity = Gravity.TOP | Gravity.CENTER_HORIZONTAL;
@@ -246,13 +247,19 @@ final class ScoresTicker {
     /** Steps aside while an alert stands in the bar's place (launcher v2's Home), and comes back after. */
     void cover(boolean on) {
         box.animate().cancel();
+        // Home's pill under option B: the bar has just folded back into it, so it shows again at once.
+        if (isHomePill && !on) { box.animate().alpha(1f).setDuration(180).setStartDelay(0).start(); return; }
         box.animate().alpha(on ? 0f : 1f).setDuration(on ? 160 : 320).setStartDelay(on ? 0 : 120).start();
     }
+
+    /** Home's one pill under option B: its place is where the alerts grow out of (PillMorph). */
+    boolean isHomePill;
 
     /** Puts the boxes at (x, centreY) in root coordinates, up to right; called once the greeting is laid out. */
     void place(int x, int centreY, int right) {
         FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) box.getLayoutParams();
         int w = Math.max(0, right - x);
+        if (isHomePill) PillMorph.pill(x, centreY - lp.height / 2, right, centreY - lp.height / 2 + lp.height);
         if (lp.width == w && lp.leftMargin == x && lp.topMargin == centreY - lp.height / 2) return;
         lp.width = w;
         lp.leftMargin = x;

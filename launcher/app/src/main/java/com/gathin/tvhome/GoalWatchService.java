@@ -3060,6 +3060,8 @@ public class GoalWatchService extends Service {
             laneShown(onLane());
             // Over an app the alerts have no opening movement of their own: the window rises a little and fades in.
             if (calm()) PopupMotion.in(host, 10 * d);
+            // Option B on Home: it grows out of the score pill.
+            else if (onLane() && !PopupFrame.isShowing()) PillMorph.open(host, lp.x, lp.y);
             windowFails = 0;
         } catch (Exception e) {
             host = null;
@@ -3645,6 +3647,17 @@ public class GoalWatchService extends Service {
             return;
         }
         if (leaving) return;   // the fade's end takes it away
+        // Option B on Home: it folds back into the score pill, then goes.
+        if (v != null && hostOnLane && !PopupFrame.isShowing() && v.isAttachedToWindow()) {
+            leaving = true;
+            Runnable done = () -> {
+                if (!leaving || host != v) return;
+                leaving = false;
+                removeHostNow();
+            };
+            if (PillMorph.close(v, done)) return;
+            leaving = false;
+        }
         removeHostNow();
     }
 

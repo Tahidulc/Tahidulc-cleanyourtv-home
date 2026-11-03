@@ -300,6 +300,8 @@ final class ScoreCard {
         // crests stay); else across the score bar's place.
         boolean corner = ScoresTicker.corner();
         int h = px(52), w = corner ? ScoresTicker.laneRight - ScoresTicker.laneLeft : px(1728);
+        // A lane narrower than the bar needs: the names beside the score go (the crests stay).
+        boolean tight = corner && w < px(1360);
         LinearLayout bar = new LinearLayout(c);
         bar.setOrientation(LinearLayout.HORIZONTAL);
         bar.setGravity(Gravity.CENTER_VERTICAL);
@@ -347,12 +349,12 @@ final class ScoreCard {
                     : (d.first.isEmpty() ? "" : d.first + " ") + (d.f1 ? d.last : titleCase(d.last));
             String after = ko ? kickoffIn(d) : ft ? join(d.first, d.line) : d.others.isEmpty() ? d.line : "";
             TextView bigText = text(c, big, d.headline != null ? 19 : 22, d.dark ? 0xFFFFFFFF : INK, d.headline != null ? outfit(c, 800) : outfit(c, 600));
-            if (d.headline != null) bigText.setMaxWidth(px(corner ? 560 : 1000));
+            if (d.headline != null) bigText.setMaxWidth(px(tight ? 560 : corner ? 760 : 1000));
             else if (corner && ko) bigText.setMaxWidth(px(520));
             name.addView(bigText);
             if (!after.isEmpty()) {
                 TextView after2 = text(c, after, ko ? 18 : 16, d.dark ? 0xCCFFFFFF : INK_SOFT, outfit(c, ko ? 600 : 500));
-                if (ft) after2.setMaxWidth(px(corner ? 420 : 820));
+                if (ft) after2.setMaxWidth(px(tight ? 420 : corner ? 600 : 820));
                 LinearLayout.LayoutParams sl = new LinearLayout.LayoutParams(-2, -2);
                 sl.leftMargin = px(ko ? 16 : 10);
                 name.addView(after2, sl);
@@ -401,9 +403,9 @@ final class ScoreCard {
         View spacer = new View(c);
         bar.addView(spacer, ko ? new LinearLayout.LayoutParams(px(22), 1) : new LinearLayout.LayoutParams(0, 1, 1f));
         if (d.score != null) {
-            if (d.homeName != null && !ko && !corner) bar.addView(text(c, d.homeName, 20, INK, outfit(c, 800)), sideName(true));
+            if (d.homeName != null && !ko && !tight) bar.addView(text(c, d.homeName, 20, INK, outfit(c, 800)), sideName(true));
             bar.addView(scoreBlock(c, d, h, ko ? 40 : 38, 25), new LinearLayout.LayoutParams(-2, h));
-            if (d.awayName != null && !ko && !corner) bar.addView(text(c, d.awayName, 20, INK, outfit(c, 800)), sideName(false));
+            if (d.awayName != null && !ko && !tight) bar.addView(text(c, d.awayName, 20, INK, outfit(c, 800)), sideName(false));
         } else if (d.method != null) {
             bar.addView(scoreBlock(c, d, h, 28, 25), new LinearLayout.LayoutParams(-2, h));
         }
@@ -432,7 +434,8 @@ final class ScoreCard {
         lp.setTitle("ScoreCard");
         if (!add(c, win, lp, d)) return;
         lane(true);
-        enter(box, 0, -px(24));
+        // Option B: the bar grows out of the score pill; else in from above.
+        if (PillMorph.on()) PillMorph.open(win, lp.x, lp.y); else enter(box, 0, -px(24));
         alive(c, d, box, h);
         schedule(d);
     }
@@ -992,6 +995,8 @@ final class ScoreCard {
                 v.getContext().getSystemService(WindowManager.class).updateViewLayout(v, lp);
             }
         } catch (RuntimeException ignored) { }
+        // Option B: the bar folds back into the score pill.
+        if (wasHome && PillMorph.close(v, gone)) return;
         if (byBack) {
             // Towards the Back key: the card's top right corner, or the bar's right end.
             PopupMotion.backOut(v, v.getWidth(), wasHome ? v.getHeight() / 2f : 0f, gone);

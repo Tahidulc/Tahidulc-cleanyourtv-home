@@ -361,8 +361,9 @@ final class HomeV2 {
                 // Option B: one pill at the top right, beside the Control Centre button, cycling through the games.
                 scores.pageListener = this::showPageDots;
                 root.post(() -> scores.place(px(CORNER_PILL_X), px(CORNER_Y), px(CORNER_PILL_R)));
-                // An alert grows out of the pill to the left, as far as the clock's column (the time stays in sight).
-                ScoresTicker.lane(px(600), px(1864), px(CORNER_Y));
+                // An alert grows out of the pill to the right, as far as the weather, date and time (they stay in sight).
+                ScoresTicker.lane(px(CORNER_PILL_X), px(CORNER_LANE_R), px(CORNER_Y));
+                scores.isHomePill = true;
             } else {
                 // place() takes the bar's right edge: 96 in from each side, so the pills sit centred.
                 root.post(() -> scores.place(px(96), Math.round(23 * dp), root.getWidth() - px(96)));
@@ -478,44 +479,44 @@ final class HomeV2 {
     }
 
     /**
-     * Option B's top left, on one line with the score pill and the Control Centre button across the screen: the time,
-     * the date and the weather (a small glass pill, still a button: OK opens the weather card). One line, so the most
-     * room is left under it.
+     * Option B's right end, on one line with the Control Centre button and the score pill at the left: the weather
+     * (its icon and the temperature, a small glass pill, still a button: OK opens the weather card), the date, then
+     * the time, all compact and right-aligned, so the most room is left under them.
      */
     private void buildCorners() {
         LinearLayout line = new LinearLayout(a);
         line.setOrientation(LinearLayout.HORIZONTAL);
-        line.setGravity(Gravity.CENTER_VERTICAL);
+        line.setGravity(Gravity.CENTER_VERTICAL | Gravity.END);
         line.setBaselineAligned(false);
-        TextClock time = new TextClock(a);
-        time.setFormat24Hour("HH:mm");
-        time.setFormat12Hour("HH:mm");
-        style(time, 46, a.getResources().getFont(R.font.inter_display_light), Color.WHITE);
-        time.setLetterSpacing(-0.02f);
-        time.setIncludeFontPadding(false);
-        time.setFontFeatureSettings("tnum");
-        line.addView(time);
+        TextView weather = text(17, regular, Color.WHITE);
+        weather.setLetterSpacing(0.02f);
+        weather.setGravity(Gravity.CENTER_VERTICAL);
+        weather.setSingleLine(true);
+        weather.setPadding(px(12), 0, px(15), 0);
+        weather.setBackground(glass(18, false));
+        line.addView(weather, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, px(36)));
         TextClock date = new TextClock(a);
         date.setFormat24Hour("EEE d MMM");
         date.setFormat12Hour("EEE d MMM");
-        style(date, 19, regular, 0xD9FFFFFF);
+        style(date, 17, regular, 0xD9FFFFFF);
         date.setSingleLine(true);
         date.setLetterSpacing(0.02f);
         LinearLayout.LayoutParams dlp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        dlp.leftMargin = px(18);
+        dlp.leftMargin = px(14);
         line.addView(date, dlp);
-        TextView weather = text(18, regular, Color.WHITE);
-        weather.setLetterSpacing(0.04f);
-        weather.setGravity(Gravity.CENTER_VERTICAL);
-        weather.setSingleLine(true);
-        weather.setPadding(px(14), 0, px(18), 0);
-        weather.setBackground(glass(19, false));
-        LinearLayout.LayoutParams wlp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, px(38));
-        wlp.leftMargin = px(14);
-        line.addView(weather, wlp);
-        add(line, 56, CORNER_Y - 32, 900, 64);
-        weatherLine = new WeatherLine(weather, a.getString(R.string.weather_latitude), a.getString(R.string.weather_longitude),
-                a.getString(R.string.weather_place));
+        TextClock time = new TextClock(a);
+        time.setFormat24Hour("HH:mm");
+        time.setFormat12Hour("HH:mm");
+        style(time, 38, a.getResources().getFont(R.font.inter_display_light), Color.WHITE);
+        time.setLetterSpacing(-0.02f);
+        time.setIncludeFontPadding(false);
+        time.setFontFeatureSettings("tnum");
+        LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        tlp.leftMargin = px(14);
+        line.addView(time, tlp);
+        add(line, 1864 - CORNER_RIGHT_W, CORNER_Y - 30, CORNER_RIGHT_W, 60);
+        // The temperature alone on the pill (the place is in the weather card).
+        weatherLine = new WeatherLine(weather, a.getString(R.string.weather_latitude), a.getString(R.string.weather_longitude), "");
         weatherPanel = new WeatherPanel(this, a.getString(R.string.weather_latitude), a.getString(R.string.weather_longitude),
                 a.getString(R.string.weather_place));
         weatherView = weather;
@@ -524,7 +525,9 @@ final class HomeV2 {
     }
 
     /** Option B: the score pill's place (right of it, the Control Centre button) and its line's centre, in design pixels. */
-    static final int CORNER_PILL_X = 1376, CORNER_PILL_R = 1790, CORNER_Y = 46, CORNER_CC = 56;
+    static final int CORNER_CC = 56, CORNER_PILL_X = 56 + CORNER_CC + 14, CORNER_PILL_R = CORNER_PILL_X + 414, CORNER_Y = 46;
+    /** Option B's right end (weather, date, time), right-aligned in this width; the alerts' lane stops short of it. */
+    static final int CORNER_RIGHT_W = 420, CORNER_LANE_R = 1864 - 340;
 
     /** Option B's dots under the score pill: one for each game, the one showing long and white. */
     private void showPageDots(int at, int of) {
@@ -560,6 +563,7 @@ final class HomeV2 {
             v.animate().alpha(on ? 0f : 1f).setDuration(on ? 160 : 320).setStartDelay(on ? 0 : 120).start();
         }
     }
+
 
     private WeatherPanel weatherPanel;
     private SmartPanel smartPanel;
@@ -715,8 +719,9 @@ final class HomeV2 {
             ccButton.setTag((Runnable) () -> controlCentre.show());
             ccButton.setContentDescription("Control Centre");
             vpn = ccButton;
-            add(ccButton, 1920 - 56 - CORNER_CC, CORNER_Y - CORNER_CC / 2, CORNER_CC, CORNER_CC);
-            topViews.add(ccButton);
+            // At the top left, first of the top row (Left/Right in the screen's order: it, then the weather).
+            add(ccButton, 56, CORNER_Y - CORNER_CC / 2, CORNER_CC, CORNER_CC);
+            topViews.add(0, ccButton);
             pageDots = new LinearLayout(a);
             pageDots.setOrientation(LinearLayout.HORIZONTAL);
             pageDots.setGravity(Gravity.CENTER);

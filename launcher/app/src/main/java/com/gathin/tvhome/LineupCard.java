@@ -370,6 +370,8 @@ final class LineupCard {
         lp.setTitle("LineupCard");
         try {
             c.getSystemService(WindowManager.class).addView(win, lp);
+            // Option B: the bar grows out of the score pill.
+            PillMorph.open(win, lp.x, lp.y);
         } catch (RuntimeException e) {
             for (android.animation.Animator a : drifting) a.cancel();
             drifting.clear();
@@ -1207,6 +1209,8 @@ final class LineupCard {
         lp.setTitle("LineupCard");
         try {
             c.getSystemService(WindowManager.class).addView(win, lp);
+            // Option B: the bar grows out of the score pill.
+            PillMorph.open(win, lp.x, lp.y);
         } catch (RuntimeException e) {
             return;
         }
@@ -2246,6 +2250,8 @@ final class LineupCard {
             lp.flags |= WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
             v.getContext().getSystemService(WindowManager.class).updateViewLayout(v, lp);
         } catch (RuntimeException ignored) { }
+        // Option B: the bar folds back into the score pill.
+        if (wasBar && PillMorph.close(v, gone)) return;
         if (byBack) {
             PopupMotion.backOut(v, v.getWidth(), wasBar ? v.getHeight() / 2f : 0f, gone);
             return;
