@@ -24,21 +24,26 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
  * Previously on: before a series watched here goes on after a break (three weeks or more; Your shows opens it), or from
  * its panel. The last three episodes seen, with their stills and what happened (TMDB's synopses, nothing after the
- * last one seen), who's who in that season (faces and characters), and the next episode, with Play, the official recap
- * (YouTube's search) and Skip. Left and Right along the buttons, OK acts, Back closes.
+ * last one seen), who's who in the season coming (faces and characters, those back from the one seen marked), and the
+ * next episode, with Play, the official recap (YouTube's search) and Skip. Play on top, the other two under it: Up,
+ * Down, Left and Right between them, OK acts, Back closes.
  */
 final class Recap {
     private Recap() { }
 
-    private static final int GREEN = 0xFF3DDC84, NAVY = 0xFF10157E;
+    private static final int GREEN = 0xFF3DDC84, NAVY = MockKit.NAVY;
     private static final ExecutorService IO = Executors.newSingleThreadExecutor();
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
     static final long GAP_DAYS = 21;
@@ -46,7 +51,7 @@ final class Recap {
     private static Recap shown;
     private HomeV2 h;
     private FrameLayout overlay;
-    private final List<TextView> buttons = new ArrayList<>();
+    private final List<LinearLayout> buttons = new ArrayList<>();
     private final List<Runnable> acts = new ArrayList<>();
     private int at;
     private boolean waitUp;
@@ -88,7 +93,7 @@ final class Recap {
         r.h = h;
         shown = r;
         r.overlay = new FrameLayout(h.a);
-        r.overlay.setBackgroundColor(0xFF060928);
+        r.overlay.setBackground(new GradientDrawable(GradientDrawable.Orientation.TL_BR, new int[]{0xFF141C92, 0xFF1F29A6, 0xFF2A35B8}));
         r.overlay.setClickable(true);
         h.root.addView(r.overlay, new FrameLayout.LayoutParams(-1, -1));
         r.overlay.setAlpha(0f);
@@ -111,7 +116,10 @@ final class Recap {
 
     // ---- reading ------------------------------------------------------------------------------------------------
 
-    /** {details, backdrop, logo, seen [{label, name, overview, still}], who [{name, character, face}], next {label, name, still} or null}. */
+    /**
+     * {details, backdrop, logo, seen [{label, name, overview, still, finale}], who [{name, character, face, in the
+     * season before}], next {label, name, still, runtime} or null, the season the faces are from, the last season seen}.
+     */
     private static Object[] read(HomeV2 h, PagesV2.Title t, int s, int e, boolean finished) {
         Context c = h.a;
         String key = h.tmdbKey;
@@ -136,14 +144,17 @@ final class Recap {
         // The episodes seen: up to the last one finished (the one under way, when it was more than half done).
         int lastS = s, lastE = finished ? e : e - 1;
         List<JSONObject> eps = new ArrayList<>();
+        Map<Integer, Integer> lastOf = new HashMap<>();
         JSONArray here = season(key, t.id, lastS);
         if (lastE < 1 && lastS > 1) { here = season(key, t.id, --lastS); lastE = here == null ? 0 : here.length(); }
+        note(lastOf, here);
         for (int i = 0; here != null && i < here.length(); i++) {
             JSONObject ep = here.optJSONObject(i);
             if (ep.optInt("episode_number") <= lastE) eps.add(ep);
         }
         if (eps.size() < 3 && lastS > 1) {
             JSONArray before = season(key, t.id, lastS - 1);
+            note(lastOf, before);
             List<JSONObject> more = new ArrayList<>();
             for (int i = 0; before != null && i < before.length(); i++) more.add(before.optJSONObject(i));
             more.addAll(eps);
@@ -153,25 +164,11 @@ final class Recap {
         for (int i = Math.max(0, eps.size() - 3); i < eps.size(); i++) {
             JSONObject ep = eps.get(i);
             String still = ep.optString("still_path", "");
+            Integer end = lastOf.get(ep.optInt("season_number"));
             seen.add(new Object[]{"S" + ep.optInt("season_number") + " E" + ep.optInt("episode_number"), ep.optString("name"),
                     ep.optString("overview"), still.isEmpty() || "null".equals(still) ? null
-                    : ScoresTicker.cachedLogo(c, "https://image.tmdb.org/t/p/w780" + still, h.px(400))});
-        }
-        // Who's who in the last season seen.
-        List<Object[]> who = new ArrayList<>();
-        try {
-            JSONArray cast = new JSONObject(HomeV2.get("https://api.themoviedb.org/3/tv/" + t.id + "/season/" + lastS + "/aggregate_credits?api_key=" + key))
-                    .optJSONArray("cast");
-            for (int i = 0; cast != null && i < cast.length() && who.size() < 5; i++) {
-                JSONObject p = cast.optJSONObject(i);
-                JSONArray roles = p.optJSONArray("roles");
-                String character = roles != null && roles.length() > 0 ? roles.optJSONObject(0).optString("character") : "";
-                String photo = p.optString("profile_path", "");
-                who.add(new Object[]{p.optString("name"), character, photo.isEmpty() || "null".equals(photo) ? null
-                        : ScoresTicker.cachedLogo(c, "https://image.tmdb.org/t/p/w185" + photo, h.px(120))});
-            }
-        } catch (Exception ignored) {
-            // no who's who
+                    : ScoresTicker.cachedLogo(c, "https://image.tmdb.org/t/p/w780" + still, h.px(400)),
+                    end != null && end == ep.optInt("episode_number") && end > 1});
         }
         // The next one: the one under way, or the one after the last seen.
         int ns = s, ne = finished ? e + 1 : e;
@@ -189,7 +186,46 @@ final class Recap {
                     still.isEmpty() || "null".equals(still) ? null : ScoresTicker.cachedLogo(c, "https://image.tmdb.org/t/p/w780" + still, h.px(560)),
                     next.optInt("runtime")};
         }
-        return new Object[]{d, back, logo, seen, who, up};
+        // Who's who: in the new season when one is next (each face marked when they were in the one seen), else in
+        // the last season seen.
+        int whoS = next != null && next.optInt("season_number") > lastS ? next.optInt("season_number") : lastS;
+        Set<Integer> before = new HashSet<>();
+        if (whoS != lastS) {
+            JSONArray old = cast(key, t.id, lastS);
+            for (int i = 0; old != null && i < old.length(); i++) before.add(old.optJSONObject(i).optInt("id"));
+        }
+        List<Object[]> who = new ArrayList<>();
+        JSONArray cast = cast(key, t.id, whoS);
+        if (cast == null && whoS != lastS) { cast = cast(key, t.id, lastS); whoS = lastS; before.clear(); }
+        for (int i = 0; cast != null && i < cast.length() && who.size() < 5; i++) {
+            JSONObject p = cast.optJSONObject(i);
+            JSONArray roles = p.optJSONArray("roles");
+            String character = roles != null && roles.length() > 0 ? roles.optJSONObject(0).optString("character") : "";
+            String photo = p.optString("profile_path", "");
+            who.add(new Object[]{p.optString("name"), character, photo.isEmpty() || "null".equals(photo) ? null
+                    : ScoresTicker.cachedLogo(c, "https://image.tmdb.org/t/p/w185" + photo, h.px(120)), before.contains(p.optInt("id"))});
+        }
+        return new Object[]{d, back, logo, seen, who, up, whoS, lastS};
+    }
+
+    /** The highest episode number in each season listed. */
+    private static void note(Map<Integer, Integer> lastOf, JSONArray eps) {
+        for (int i = 0; eps != null && i < eps.length(); i++) {
+            JSONObject ep = eps.optJSONObject(i);
+            if (ep != null) lastOf.merge(ep.optInt("season_number"), ep.optInt("episode_number"), Math::max);
+        }
+    }
+
+    /** A season's cast (TMDB's aggregate credits), or null. */
+    private static JSONArray cast(String key, int id, int s) {
+        if (s < 1) return null;
+        try {
+            JSONArray a = new JSONObject(HomeV2.get("https://api.themoviedb.org/3/tv/" + id + "/season/" + s + "/aggregate_credits?api_key=" + key))
+                    .optJSONArray("cast");
+            return a == null || a.length() == 0 ? null : a;
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     private static JSONArray season(String key, int id, int s) {
@@ -203,16 +239,23 @@ final class Recap {
 
     // ---- showing ------------------------------------------------------------------------------------------------
 
+    /**
+     * As the mock-up: the series' picture darkened behind a deep blue that fades from the left; its logo; a green
+     * "SEASON 2 IS HERE" (or a yellow "WELCOME BACK") with when it was last watched and the app's logo; the three
+     * episodes seen, the last ringed in white; who's who as round faces (those back from the season seen marked); and
+     * on the right the next episode, ringed, over a white "OK Play season 2, episode 1" with Official recap and Skip.
+     */
     @SuppressWarnings("unchecked")
     private void build(PagesV2.Title t, WatchHistory.Entry e, Object[] got, Runnable play) {
         Context c = h.a;
         Typeface heavy = c.getResources().getFont(R.font.outfit_extrabold), semi = c.getResources().getFont(R.font.inter_semibold),
                 regular = c.getResources().getFont(R.font.inter_regular);
+        overlay.setBackground(new GradientDrawable(GradientDrawable.Orientation.TL_BR, new int[]{0xFF141C92, 0xFF1F29A6, 0xFF2A35B8}));
         if (got[1] != null) {
             ImageView bg = new ImageView(c);
             bg.setImageBitmap((Bitmap) got[1]);
             bg.setScaleType(ImageView.ScaleType.CENTER_CROP);
-            bg.setAlpha(0.5f);
+            bg.setColorFilter(new android.graphics.LightingColorFilter(0xFF8C8C8C, 0));   // brightness 55%
             overlay.addView(bg, new FrameLayout.LayoutParams(-1, -1));
         }
         View shade = new View(c);
@@ -223,41 +266,64 @@ final class Recap {
             l.setImageBitmap((Bitmap) got[2]);
             l.setAdjustViewBounds(true);
             l.setScaleType(ImageView.ScaleType.FIT_START);
-            l.setMaxWidth(h.px(460));
+            l.setMaxWidth(h.px(560));
             l.setMaxHeight(h.px(130));
-            place(l, 120, 70, 460, 130);
+            place(l, 120, 84, 560, 130);
         } else {
-            TextView n = h.text(48, heavy, Color.WHITE);
+            TextView n = h.text(56, heavy, Color.WHITE);
             n.setText(t.title);
-            place(n, 120, 80, 1000, 70);
+            n.setSingleLine(true);
+            place(n, 120, 110, 1100, 80);
         }
         int[] pos = YourShows.position(e);
-        long days = ChronoUnit.DAYS.between(Instant.ofEpochMilli(e.at).atZone(ZoneId.systemDefault()).toLocalDate(), LocalDate.now());
+        int whoS = (Integer) got[6], lastS = (Integer) got[7];
+        LocalDate when = Instant.ofEpochMilli(e.at).atZone(ZoneId.systemDefault()).toLocalDate();
+        long days = ChronoUnit.DAYS.between(when, LocalDate.now());
         LinearLayout line = new LinearLayout(c);
         line.setGravity(Gravity.CENTER_VERTICAL);
         Object[] up = (Object[]) got[5];
-        boolean newSeason = up != null && ((String) up[0]).endsWith(" E1") && !((String) up[0]).startsWith("S" + pos[0] + " ");
-        TextView chip = h.text(15, semi, newSeason ? 0xFF06331B : NAVY);
-        chip.setText(newSeason ? "SEASON " + ((String) up[0]).split(" ")[0].substring(1) + " IS HERE" : "WELCOME BACK");
-        chip.setLetterSpacing(0.12f);
+        int upS = up == null ? 0 : Integer.parseInt(((String) up[0]).split(" ")[0].substring(1));
+        boolean newSeason = up != null && ((String) up[0]).endsWith(" E1") && upS > pos[0];
+        TextView chip = h.text(15, heavy, newSeason ? 0xFF06331B : NAVY);
+        chip.setText(newSeason ? "SEASON " + upS + " IS HERE" : "WELCOME BACK");
+        chip.setLetterSpacing(0.13f);
         chip.setPadding(h.px(12), h.px(6), h.px(12), h.px(6));
         chip.setBackground(h.fill(6, newSeason ? GREEN : 0xFFFFD04D));
         line.addView(chip);
-        TextView when = h.text(22, regular, 0xE6FFFFFF);
-        when.setText("You last watched S" + pos[0] + " E" + pos[1] + " · " + ago(days));
+        String date = when.format(DateTimeFormatter.ofPattern("d MMMM yyyy", Locale.UK));
+        String ago = ago(days);
+        TextView said = h.text(22, regular, 0xE6FFFFFF);
+        said.setText((newSeason ? "You finished season " + pos[0] + " on " + date : "You last watched S" + pos[0] + " E" + pos[1] + " on " + date)
+                + (days < 1 ? "" : " · that's " + ago));
         LinearLayout.LayoutParams wl = new LinearLayout.LayoutParams(-2, -2);
-        wl.leftMargin = h.px(16);
-        line.addView(when, wl);
-        place(line, 120, 222, 1300, 44);
+        wl.leftMargin = h.px(14);
+        line.addView(said, wl);
+        // The app it was watched in, by its own logo (a cut-out one only: a banner card would be too big here).
+        Object[] mark = e.pkg == null ? null : AppLogos.logo(c, e.pkg);
+        if (mark != null && mark[0] != null && !Boolean.TRUE.equals(mark[1])) {
+            ImageView m = new ImageView(c);
+            m.setImageBitmap((Bitmap) mark[0]);
+            m.setAdjustViewBounds(true);
+            m.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            m.setMaxWidth(h.px(160));
+            LinearLayout.LayoutParams ml = new LinearLayout.LayoutParams(-2, h.px(30));
+            ml.leftMargin = h.px(14);
+            line.addView(m, ml);
+        }
+        place(line, 120, 238, 1500, 44);
         TextView head = h.text(46, heavy, Color.WHITE);
         head.setText("Previously on " + t.title);
-        place(head, 120, 290, 1100, 64);
-        TextView sub = h.text(20, regular, 0xBFFFFFFF);
-        sub.setText("The last episodes you saw, in two minutes. Nothing after S" + pos[0] + " E" + pos[1] + ".");
-        place(sub, 120, 360, 1100, 30);
+        head.setSingleLine(true);
+        head.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        place(head, 120, 300, 1100, 60);
         List<Object[]> seen = (List<Object[]>) got[3];
+        TextView sub = h.text(20, regular, 0xBFFFFFFF);
+        sub.setText("The last " + (seen.size() == 3 ? "three episodes" : seen.size() == 1 ? "episode" : "episodes") + " you saw, in two minutes. "
+                + (newSeason ? "Nothing from season " + upS + "." : "Nothing after S" + pos[0] + " E" + pos[1] + "."));
+        place(sub, 120, 362, 1100, 30);
         for (int i = 0; i < seen.size(); i++) {
             Object[] ep = seen.get(i);
+            boolean lastOne = i == seen.size() - 1;
             LinearLayout card = new LinearLayout(c);
             card.setOrientation(LinearLayout.VERTICAL);
             FrameLayout pic = new FrameLayout(c);
@@ -268,8 +334,8 @@ final class Recap {
             st.setScaleType(ImageView.ScaleType.CENTER_CROP);
             if (ep[3] != null) st.setImageBitmap((Bitmap) ep[3]);
             pic.addView(st, new FrameLayout.LayoutParams(-1, -1));
-            TextView lab = h.text(12, semi, Color.WHITE);
-            lab.setText(ep[0] + (i == seen.size() - 1 ? " · LAST SEEN" : ""));
+            TextView lab = h.text(12, heavy, Color.WHITE);
+            lab.setText(ep[0] + (Boolean.TRUE.equals(ep[4]) ? " · FINALE" : ""));
             lab.setLetterSpacing(0.08f);
             lab.setPadding(h.px(8), h.px(4), h.px(8), h.px(4));
             lab.setBackground(h.fill(5, 0xB3000000));
@@ -277,26 +343,31 @@ final class Recap {
             ll.leftMargin = h.px(10);
             ll.topMargin = h.px(10);
             pic.addView(lab, ll);
+            if (lastOne) MockKit.ring(h, pic, 16, 4, Color.WHITE);
             card.addView(pic, new LinearLayout.LayoutParams(h.px(352), h.px(198)));
             TextView nm = h.text(20, semi, Color.WHITE);
             nm.setText((String) ep[1]);
             nm.setSingleLine(true);
+            nm.setEllipsize(android.text.TextUtils.TruncateAt.END);
             LinearLayout.LayoutParams nl = new LinearLayout.LayoutParams(-1, -2);
             nl.topMargin = h.px(10);
             card.addView(nm, nl);
             TextView ov = h.text(16, regular, 0xD1FFFFFF);
             ov.setText((String) ep[2]);
             ov.setMaxLines(3);
-            ov.setLineSpacing(0, 1.12f);
-            card.addView(ov);
-            place(card, 120 + i * 372, 412, 352, 330);
+            ov.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            ov.setLineSpacing(0, 1.18f);
+            LinearLayout.LayoutParams ol = new LinearLayout.LayoutParams(-1, -2);
+            ol.topMargin = h.px(10);
+            card.addView(ov, ol);
+            place(card, 120 + i * 372, 414, 352, 340);
         }
         List<Object[]> who = (List<Object[]>) got[4];
         if (!who.isEmpty()) {
-            TextView wh = h.text(16, semi, 0xD9FFFFFF);
-            wh.setText("WHO'S WHO");
+            TextView wh = h.text(16, heavy, 0xD9FFFFFF);
+            wh.setText("WHO'S WHO IN SEASON " + whoS);
             wh.setLetterSpacing(0.16f);
-            place(wh, 120, 770, 400, 26);
+            place(wh, 120, 774, 600, 26);
             LinearLayout faces = new LinearLayout(c);
             for (Object[] p : who) {
                 LinearLayout one = new LinearLayout(c);
@@ -308,20 +379,36 @@ final class Recap {
                 f.setBackground(h.fill(52, 0xFF141A5C));
                 f.setClipToOutline(true);
                 f.setOutlineProvider(h.round(52));
+                MockKit.ring(h, f, 52, 3, 0xD9FFFFFF);
                 one.addView(f, new LinearLayout.LayoutParams(h.px(104), h.px(104)));
-                TextView ch = h.text(17, semi, Color.WHITE);
+                TextView ch = h.text(18, semi, Color.WHITE);
                 ch.setText((String) p[1]);
                 ch.setGravity(Gravity.CENTER);
                 ch.setMaxLines(2);
-                one.addView(ch, new LinearLayout.LayoutParams(h.px(150), -2));
-                TextView nm = h.text(13, regular, 0xB3FFFFFF);
+                ch.setEllipsize(android.text.TextUtils.TruncateAt.END);
+                LinearLayout.LayoutParams cl = new LinearLayout.LayoutParams(h.px(150), -2);
+                cl.topMargin = h.px(6);
+                one.addView(ch, cl);
+                TextView nm = h.text(14, regular, 0xB3FFFFFF);
                 nm.setText((String) p[0]);
                 nm.setGravity(Gravity.CENTER);
                 nm.setSingleLine(true);
-                one.addView(nm, new LinearLayout.LayoutParams(h.px(150), -2));
-                faces.addView(one, new LinearLayout.LayoutParams(h.px(170), -2));
+                nm.setEllipsize(android.text.TextUtils.TruncateAt.END);
+                LinearLayout.LayoutParams al = new LinearLayout.LayoutParams(h.px(150), -2);
+                al.topMargin = h.px(4);
+                one.addView(nm, al);
+                if (Boolean.TRUE.equals(p[3])) {
+                    TextView back = h.text(11, heavy, 0xFFFFD04D);
+                    back.setText("IN SEASON " + lastS);
+                    back.setLetterSpacing(0.09f);
+                    back.setGravity(Gravity.CENTER);
+                    LinearLayout.LayoutParams bl = new LinearLayout.LayoutParams(h.px(150), -2);
+                    bl.topMargin = h.px(5);
+                    one.addView(back, bl);
+                }
+                faces.addView(one, new LinearLayout.LayoutParams(h.px(168), -2));
             }
-            place(faces, 100, 804, 900, 220);
+            place(faces, 100, 808, 900, 240);
         }
         // Up next, and the buttons.
         LinearLayout right = new LinearLayout(c);
@@ -331,12 +418,13 @@ final class Recap {
             pic.setBackground(h.fill(22, 0xFF141A5C));
             pic.setClipToOutline(true);
             pic.setOutlineProvider(h.round(22));
+            pic.setElevation(h.px(18));
             ImageView st = new ImageView(c);
             st.setScaleType(ImageView.ScaleType.CENTER_CROP);
             if (up[2] != null) st.setImageBitmap((Bitmap) up[2]);
             pic.addView(st, new FrameLayout.LayoutParams(-1, -1));
             View sh = new View(c);
-            sh.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0x00000000, 0x00000000, 0xD9000000}));
+            sh.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0x00000000, 0x00000000, 0x33000000, 0xD9000000}));
             pic.addView(sh, new FrameLayout.LayoutParams(-1, -1));
             LinearLayout words = new LinearLayout(c);
             words.setOrientation(LinearLayout.VERTICAL);
@@ -346,37 +434,51 @@ final class Recap {
             TextView b = h.text(28, heavy, Color.WHITE);
             b.setText((String) up[1]);
             b.setSingleLine(true);
-            words.addView(b);
+            b.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            LinearLayout.LayoutParams bl = new LinearLayout.LayoutParams(-1, -2);
+            bl.topMargin = h.px(8);
+            words.addView(b, bl);
             FrameLayout.LayoutParams wl2 = new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM);
             wl2.leftMargin = h.px(20);
-            wl2.bottomMargin = h.px(16);
+            wl2.rightMargin = h.px(20);
+            wl2.bottomMargin = h.px(18);
             pic.addView(words, wl2);
+            MockKit.ring(h, pic, 22, 5, Color.WHITE);
             right.addView(pic, new LinearLayout.LayoutParams(h.px(560), h.px(315)));
         }
+        String playWords = up == null ? "Play" : "Play season " + upS + ", episode " + ((String) up[0]).split(" E")[1];
+        LinearLayout first = MockKit.pill(h, playWords, 22, semi, 70, true, null);
+        first.setGravity(Gravity.CENTER_VERTICAL | Gravity.START);
+        LinearLayout.LayoutParams fl = new LinearLayout.LayoutParams(-1, h.px(70));
+        fl.topMargin = h.px(16);
+        right.addView(first, fl);
+        buttons.add(first);
+        acts.add(() -> { hide(); play.run(); });
         LinearLayout row = new LinearLayout(c);
-        LinearLayout.LayoutParams rl = new LinearLayout.LayoutParams(-1, -2);
-        rl.topMargin = h.px(18);
+        LinearLayout.LayoutParams rl = new LinearLayout.LayoutParams(-1, h.px(58));
+        rl.topMargin = h.px(16);
         right.addView(row, rl);
-        button(row, up != null ? "▶  Play " + up[0] : "▶  Play", () -> { hide(); play.run(); }, semi);
-        button(row, "Official recap", () -> {
+        android.graphics.drawable.Drawable yt = null;
+        try {
+            yt = c.getPackageManager().getApplicationIcon("com.google.android.youtube.tv");
+        } catch (Exception ignored) {
+            // the words alone
+        }
+        button(row, "Official recap", yt, () -> {
             hide();
-            String q = t.title + " season " + pos[0] + " recap";
+            String q = t.title + " season " + lastS + " recap";
             h.searchTitle("com.google.android.youtube.tv", q, false, 0, null);
-        }, semi);
-        button(row, "Skip", () -> { hide(); play.run(); }, semi);
-        place(right, 1240, 412, 600, 460);
+        }, semi, true);
+        button(row, "Skip, I remember", null, () -> { hide(); play.run(); }, semi, false);
+        place(right, 1250, 414, 560, 560);
         at = 0;
         paint();
     }
 
-    private void button(LinearLayout row, String words, Runnable act, Typeface face) {
-        TextView b = h.text(19, face, Color.WHITE);
-        b.setText(words);
-        b.setGravity(Gravity.CENTER);
-        b.setSingleLine(true);
-        b.setPadding(h.px(22), 0, h.px(22), 0);
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, h.px(58));
-        lp.rightMargin = h.px(12);
+    private void button(LinearLayout row, String words, android.graphics.drawable.Drawable icon, Runnable act, Typeface face, boolean gap) {
+        LinearLayout b = MockKit.pill(h, words, 19, face, 58, false, icon);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, -1, 1f);
+        if (gap) lp.rightMargin = h.px(12);
         row.addView(b, lp);
         buttons.add(b);
         acts.add(act);
@@ -391,6 +493,7 @@ final class Recap {
         return y + (y == 1 ? " year ago" : " years ago");
     }
 
+    /** Play on its own row at the top; Official recap and Skip side by side under it. */
     private boolean onKey(KeyEvent e) {
         int code = e.getKeyCode();
         boolean ok = code == KeyEvent.KEYCODE_DPAD_CENTER || code == KeyEvent.KEYCODE_ENTER || code == KeyEvent.KEYCODE_NUMPAD_ENTER;
@@ -404,21 +507,18 @@ final class Recap {
             if (e.getAction() == KeyEvent.ACTION_UP && !e.isCanceled() && at < acts.size()) acts.get(at).run();
             return true;
         }
-        if (e.getAction() != KeyEvent.ACTION_DOWN) return true;
-        if (code == KeyEvent.KEYCODE_DPAD_LEFT && at > 0) at--;
+        if (e.getAction() != KeyEvent.ACTION_DOWN || buttons.isEmpty()) return true;
+        if (code == KeyEvent.KEYCODE_DPAD_UP) at = 0;
+        else if (code == KeyEvent.KEYCODE_DPAD_DOWN && at == 0) at = Math.min(1, buttons.size() - 1);
+        else if (code == KeyEvent.KEYCODE_DPAD_LEFT && at == 2) at = 1;
         else if (code == KeyEvent.KEYCODE_DPAD_RIGHT && at < buttons.size() - 1) at++;
+        else if (code == KeyEvent.KEYCODE_DPAD_LEFT && at == 1) at = 0;
         paint();
         return true;
     }
 
     private void paint() {
-        for (int i = 0; i < buttons.size(); i++) {
-            boolean on = i == at;
-            GradientDrawable g = h.fill(29, on ? Color.WHITE : 0x1FFFFFFF);
-            if (!on) g.setStroke(Math.max(1, h.px(1.5f)), 0x73FFFFFF);
-            buttons.get(i).setBackground(g);
-            buttons.get(i).setTextColor(on ? NAVY : Color.WHITE);
-        }
+        for (int i = 0; i < buttons.size(); i++) MockKit.paint(h, buttons.get(i), i == at, i == 0 ? 70 : 58);
     }
 
     private void place(View v, int x, int y, int w, int hgt) {

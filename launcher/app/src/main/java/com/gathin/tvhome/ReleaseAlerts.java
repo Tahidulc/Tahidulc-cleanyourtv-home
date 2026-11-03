@@ -171,10 +171,18 @@ final class ReleaseAlerts {
             String name = o.optString("title");
             ScoreCard.Data card = base(c, key, id, tv);
             card.label = "FROM YOUR LIST";
-            card.headline = name + " is now on your apps";
+            // As the mock-up: "Superman is now on Netflix", and when it was kept.
+            String service = serviceOn(c, gb);
+            card.headline = name + " is now on " + (service != null ? service : "your apps");
             String back = o.optString("backdrop", null);
             card.picture = picture(c, back == null || "null".equals(back) ? null : back.replace("/w1280/", "/w300/"));
             debrid(c, card, name, tv, back);
+            long kept = o.optLong("added");
+            if (kept > 0) {
+                java.time.LocalDate when = java.time.Instant.ofEpochMilli(kept).atZone(java.time.ZoneId.systemDefault()).toLocalDate();
+                card.line = "Added to your list in " + when.getMonth().getDisplayName(java.time.format.TextStyle.FULL, java.util.Locale.UK)
+                        + (when.getYear() != LocalDate.now().getYear() ? " " + when.getYear() : "");
+            }
             out.add(card);
             added++;
         }
@@ -309,6 +317,17 @@ final class ReleaseAlerts {
             if (app != null && installed(c, app)) return true;
         }
         return false;
+    }
+
+    /** The name of the first of the TV's own streaming apps that carries it (TMDB's provider name), or null. */
+    private static String serviceOn(Context c, JSONObject gb) {
+        JSONArray flat = gb == null ? null : gb.optJSONArray("flatrate");
+        for (int i = 0; flat != null && i < flat.length(); i++) {
+            JSONObject p = flat.optJSONObject(i);
+            String app = p == null ? null : HomeV2.serviceApp(String.valueOf(p.optInt("provider_id")));
+            if (app != null && installed(c, app) && !p.optString("provider_name").isEmpty()) return p.optString("provider_name");
+        }
+        return null;
     }
 
     private static String store(Context c, JSONObject gb) {

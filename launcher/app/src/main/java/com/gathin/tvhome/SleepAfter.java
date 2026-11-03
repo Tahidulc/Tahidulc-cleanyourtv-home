@@ -69,11 +69,15 @@ final class SleepAfter {
         d.band = 0xFF141519;
         d.bandDeep = 0xFF000000;
         d.labelColour = 0xFF6E7BFF;
-        d.label = "BEDTIME";
-        d.headline = "Sleep after this episode? " + (name == null ? "" : name + " ") + episode.replaceAll("S(\\d+)E(\\d+)", "S$1 E$2")
-                + " ends at " + String.format(Locale.UK, "%02d:%02d", at.getHour(), at.getMinute());
-        d.line = label(c, app) + " stops before the next one, then the TV goes off";
-        d.okWords = "for yes";
+        // As the mock-up: the time and why it asks, the question, then what happens and when the TV goes off.
+        LocalTime now = LocalTime.now();
+        LocalTime off = at.plusMinutes(1);
+        d.label = String.format(Locale.UK, "%02d:%02d", now.getHour(), now.getMinute()) + " · PAST YOUR BEDTIME";
+        d.headline = "Sleep after this episode?";
+        d.line = (name == null ? "" : name + " ") + episode.replaceAll("S(\\d+)E(\\d+)", "S$1 E$2") + " ends "
+                + String.format(Locale.UK, "%02d:%02d", at.getHour(), at.getMinute()) + " · " + label(c, app)
+                + " stops, TV off " + String.format(Locale.UK, "%02d:%02d", off.getHour(), off.getMinute());
+        d.okWords = "yes, after this one";
         d.channel = "Sleep after it";
         d.watch = () -> arm(c, app, t, u, left);
         MAIN.post(() -> ScoreCard.show(c, d));

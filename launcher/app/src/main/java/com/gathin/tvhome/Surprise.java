@@ -28,8 +28,8 @@ import java.util.concurrent.Executors;
  * Surprise me: Movies' tab of moods (Cosy, Edge of my seat, Mind-bending …), each opening a spin that picks one film
  * on the TV's own streaming apps for that mood, not yet watched here, for who is watching (just me, two of us, the
  * family: rated PG at most) and, when asked, done before bed. The reel of posters spins and stops on the pick; Play
- * opens it (as the panels do), Roll Again picks another. Up and Down between the moods, who and the buttons; Left and
- * Right along them; OK chooses; Back closes.
+ * opens it (as the panels do), Roll Again picks another, Trailer looks it up on YouTube. Up and Down between the moods,
+ * who and the buttons; Left and Right along them; OK chooses; Back closes.
  */
 final class Surprise {
     private Surprise() { }
@@ -44,7 +44,7 @@ final class Surprise {
             {"Epic", "Big adventures, history and war", "12|14|36|10752", "16"},
             {"Scary", "Horror", "27", "16,10751"}};
     private static final String[] WHO = {"Just me", "Two of us", "Family"};
-    private static final int NAVY = 0xFF10157E, YELLOW = 0xFFFFD04D;
+    private static final int NAVY = MockKit.NAVY, YELLOW = 0xFFFFD04D, GROUND = 0xFF080A32;
     private static final ExecutorService IO = Executors.newSingleThreadExecutor();
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
     private static Surprise shown;
@@ -52,8 +52,12 @@ final class Surprise {
     private HomeV2 h;
     private Context c;
     private FrameLayout overlay;
-    private final List<TextView> moodViews = new ArrayList<>(), whoViews = new ArrayList<>(), buttons = new ArrayList<>();
+    private final List<TextView> moodViews = new ArrayList<>(), whoViews = new ArrayList<>();
+    private final List<LinearLayout> buttons = new ArrayList<>();
     private TextView timeView, name, line, why, about;
+    /** The pick's own picture, blurred, behind everything. */
+    private ImageView back;
+    private Typeface semi, regular;
     /** After "on" in the line of details: Debrid Stream's mark, then the services that carry the film (DiceRoll.marks). */
     private LinearLayout marks;
     /** The reel thrown like dice. */
@@ -137,50 +141,70 @@ final class Surprise {
         h.paint();
     }
 
+    /**
+     * As the mock-up: the pick's own picture, blurred and dark, behind a deep-blue glow; MOVIES and Surprise me over the
+     * moods; who's watching and the time; the reel of posters fanned in perspective (outer ones turned further and
+     * fainter, fading into the page at the sides), the pick large in a white ring; then the film and its details on
+     * one line, why it suits in yellow, what it's about, and the pills: OK Play, Roll Again, Trailer.
+     */
     private void build() {
         Typeface heavy = c.getResources().getFont(R.font.outfit_extrabold), semi = c.getResources().getFont(R.font.inter_semibold),
                 regular = c.getResources().getFont(R.font.inter_regular);
+        this.semi = semi;
+        this.regular = regular;
         overlay = new FrameLayout(c);
-        overlay.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0xFF0A0E4A, 0xFF080A32, 0xFF04061C}));
+        overlay.setBackgroundColor(GROUND);
         overlay.setClickable(true);
         h.root.addView(overlay, new FrameLayout.LayoutParams(-1, -1));
         overlay.setAlpha(0f);
         overlay.animate().alpha(1f).setDuration(220).start();
-        TextView crumb = h.text(16, semi, 0xFFFF4FA3);
+        back = new ImageView(c);
+        back.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        back.setColorFilter(new android.graphics.LightingColorFilter(0xFF737373, 0));   // brightness 45%
+        back.setScaleX(1.06f);
+        back.setScaleY(1.06f);
+        back.setAlpha(0f);
+        overlay.addView(back, new FrameLayout.LayoutParams(-1, -1));
+        View glow = new View(c);
+        GradientDrawable gg = new GradientDrawable();
+        gg.setGradientType(GradientDrawable.RADIAL_GRADIENT);
+        gg.setGradientCenter(0.5f, 0.55f);
+        gg.setGradientRadius(h.px(1000));
+        gg.setColors(new int[]{0x33141C92, 0xE6080A32});
+        glow.setBackground(gg);
+        overlay.addView(glow, new FrameLayout.LayoutParams(-1, -1));
+        TextView crumb = h.text(16, heavy, 0xFFFF4FA3);
         crumb.setText("MOVIES");
-        crumb.setLetterSpacing(0.3f);
+        crumb.setLetterSpacing(0.25f);
         crumb.setGravity(Gravity.CENTER);
-        place(crumb, 0, 52, 1920, 26);
-        TextView head = h.text(54, heavy, Color.WHITE);
+        place(crumb, 0, 70, 1920, 22);
+        TextView head = h.text(58, heavy, Color.WHITE);
         head.setText("Surprise me");
         head.setGravity(Gravity.CENTER);
-        place(head, 0, 80, 1920, 74);
+        place(head, 0, 100, 1920, 76);
         LinearLayout moods = new LinearLayout(c);
         moods.setGravity(Gravity.CENTER);
-        for (String[] m : MOODS) moodViews.add(chip(moods, m[0], 20, 50, semi));
-        place(moods, 0, 174, 1920, 54);
+        for (String[] m : MOODS) moodViews.add(chip(moods, m[0], 20, 50, regular));
+        place(moods, 0, 196, 1920, 50);
         LinearLayout whoRow = new LinearLayout(c);
         whoRow.setGravity(Gravity.CENTER_VERTICAL | Gravity.CENTER_HORIZONTAL);
-        TextView wl = h.text(14, semi, 0xB3FFFFFF);
-        wl.setText("WHO'S WATCHING   ");
-        wl.setLetterSpacing(0.16f);
-        whoRow.addView(wl);
-        for (String w : WHO) whoViews.add(chip(whoRow, w, 17, 44, semi));
-        TextView tl = h.text(14, semi, 0xB3FFFFFF);
-        tl.setText("      TIME   ");
-        tl.setLetterSpacing(0.16f);
-        whoRow.addView(tl);
-        timeView = chip(whoRow, "", 17, 44, semi);
-        place(whoRow, 0, 242, 1920, 50);
-        int[][] at = {{256, 392, 200, 300}, {550, 387, 210, 315}, {810, 316, 300, 450}, {1160, 387, 210, 315}, {1464, 392, 200, 300}};
+        whoRow.addView(caption("WHO'S WATCHING", heavy, 0));
+        for (String w : WHO) whoViews.add(chip(whoRow, w, 17, 44, regular));
+        whoRow.addView(caption("TIME", heavy, 30));
+        timeView = chip(whoRow, "", 17, 44, regular);
+        place(whoRow, 0, 262, 1920, 44);
+        // The fan: as the mock-up's perspective, the outer posters turned 36 degrees, the next 18.
+        int[][] at = {{256, 412, 200, 300}, {550, 412, 200, 300}, {810, 336, 300, 450}, {1170, 412, 200, 300}, {1464, 412, 200, 300}};
+        float[] turn = {36, 18, 0, -18, -36}, alpha = {0.35f, 0.6f, 1f, 0.6f, 0.35f};
         for (int i = 0; i < 5; i++) {
             ImageView v = new ImageView(c);
             v.setScaleType(ImageView.ScaleType.CENTER_CROP);
             v.setBackground(h.fill(i == 2 ? 20 : 14, 0xFF141A5C));
             v.setClipToOutline(true);
             v.setOutlineProvider(h.round(i == 2 ? 20 : 14));
-            v.setAlpha(i == 2 ? 1f : i == 1 || i == 3 ? 0.6f : 0.3f);
-            if (i != 2) v.setRotationY(i < 2 ? 16 : -16);
+            v.setAlpha(alpha[i]);
+            v.setRotationY(turn[i]);
+            if (i == 2) v.setElevation(h.px(30));
             reel[i] = v;
             place(v, at[i][0], at[i][1], at[i][2], at[i][3]);
         }
@@ -189,36 +213,61 @@ final class Surprise {
         rg.setCornerRadius(h.px(20));
         rg.setStroke(h.px(6), Color.WHITE);
         ring.setBackground(rg);
-        place(ring, 810, 316, 300, 450);
+        ring.setElevation(h.px(31));
+        place(ring, 810, 336, 300, 450);
         dice = new DiceRoll(h, overlay, reel, ring);
-        // Under the reel, as the TV shows' spin: the film, why it suits (yellow), its details with where Play opens it,
-        // and what it is about.
-        name = h.text(30, semi, Color.WHITE);
-        name.setGravity(Gravity.CENTER);
-        place(name, 0, 778, 1920, 44);
-        why = h.text(21, semi, YELLOW);
-        why.setGravity(Gravity.CENTER);
-        place(why, 0, 822, 1920, 34);
+        // The row fades into the page at both ends, as the mock-up's.
+        place(MockKit.sideFade(c, GROUND, 0.26f), 0, 330, 1920, 470);
+        // Under the reel: the film with its details (and where Play opens it) on one line, why it suits in yellow, what
+        // it is about, then the pills.
         LinearLayout meta = new LinearLayout(c);
         meta.setGravity(Gravity.CENTER);
-        line = h.text(18, regular, 0xD9FFFFFF);
-        meta.addView(line);
+        name = h.text(30, heavy, Color.WHITE);
+        name.setSingleLine(true);
+        meta.addView(name);
+        line = h.text(20, regular, 0xD9FFFFFF);
+        LinearLayout.LayoutParams ll = new LinearLayout.LayoutParams(-2, -2);
+        ll.leftMargin = h.px(14);
+        meta.addView(line, ll);
         marks = new LinearLayout(c);
         marks.setGravity(Gravity.CENTER_VERTICAL);
         marks.setVisibility(View.GONE);
         meta.addView(marks, new LinearLayout.LayoutParams(-2, h.px(42)));
-        place(meta, 0, 856, 1920, 42);
+        place(meta, 0, 806, 1920, 44);
+        why = h.text(19, semi, YELLOW);
+        why.setGravity(Gravity.CENTER);
+        place(why, 0, 856, 1920, 30);
         about = h.text(17, regular, 0xB3FFFFFF);
         about.setGravity(Gravity.CENTER);
         about.setMaxLines(2);
         about.setEllipsize(android.text.TextUtils.TruncateAt.END);
-        place(about, 360, 900, 1200, 50);
+        place(about, 360, 892, 1200, 46);
         LinearLayout bar = new LinearLayout(c);
         bar.setGravity(Gravity.CENTER);
-        buttons.add(chip(bar, "▶  Play", 21, 62, semi));
-        buttons.add(chip(bar, "🎲  Roll Again", 21, 62, semi));
-        place(bar, 0, 956, 1920, 66);
+        buttons.add(pill(bar, "Play", true));
+        buttons.add(pill(bar, "🎲  Roll Again", false));
+        buttons.add(pill(bar, "▲  Trailer", false));
+        place(bar, 0, 950, 1920, 64);
         paint();
+    }
+
+    private TextView caption(String words, Typeface face, int before) {
+        TextView t = h.text(15, face, 0xB3FFFFFF);
+        t.setText(words);
+        t.setLetterSpacing(0.13f);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, -2);
+        lp.leftMargin = h.px(before);
+        lp.rightMargin = h.px(10);
+        t.setLayoutParams(lp);
+        return t;
+    }
+
+    private LinearLayout pill(LinearLayout into, String words, boolean main) {
+        LinearLayout p = MockKit.pill(h, words, 21, semi, 64, main, null);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, h.px(64));
+        lp.leftMargin = lp.rightMargin = h.px(7);
+        into.addView(p, lp);
+        return p;
     }
 
     private TextView chip(LinearLayout into, String words, int sp, int tall, Typeface face) {
@@ -226,9 +275,9 @@ final class Surprise {
         t.setText(words);
         t.setGravity(Gravity.CENTER);
         t.setSingleLine(true);
-        t.setPadding(h.px(22), 0, h.px(22), 0);
+        t.setPadding(h.px(sp >= 20 ? 22 : 18), 0, h.px(sp >= 20 ? 22 : 18), 0);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, h.px(tall));
-        lp.leftMargin = lp.rightMargin = h.px(6);
+        lp.leftMargin = lp.rightMargin = h.px(sp >= 20 ? 6 : 5);
         into.addView(t, lp);
         return t;
     }
@@ -242,6 +291,7 @@ final class Surprise {
         about.setText("");
         marks.setVisibility(View.GONE);
         why.setText("Rolling the dice…");
+        back.animate().alpha(0.35f).setDuration(300).start();
         dice.start(new ArrayList<>(pics));
         int m = mood, w = who;
         boolean bed = byBed;
@@ -284,6 +334,10 @@ final class Surprise {
                     // Debrid Stream's mark alone
                 }
             }
+            // The pick's picture, blurred, for behind it all.
+            String art = five.isEmpty() ? null : five.get(0).backdrop;
+            Bitmap soft = art == null || !art.startsWith("http") ? null
+                    : MockKit.soft(ScoresTicker.cachedLogo(c, art.replace("/w1280/", "/w300/"), h.px(300)), 48);
             int rt = runtime;
             org.json.JSONObject gb = where;
             MAIN.post(() -> {
@@ -291,7 +345,7 @@ final class Surprise {
                 pool = new ArrayList<>(five);
                 pics.clear();
                 pics.addAll(bitmaps);
-                land(my, rt, gb);
+                land(my, rt, gb, soft);
             });
         });
     }
@@ -302,7 +356,7 @@ final class Surprise {
     }
 
     /** The dice land: the pick (the first) on the middle card, the others round it; then its details. */
-    private void land(int my, int runtime, org.json.JSONObject gb) {
+    private void land(int my, int runtime, org.json.JSONObject gb, Bitmap soft) {
         if (my != gen || shown != this) return;
         Bitmap[] last = new Bitmap[5];
         int n = pics.size();
@@ -324,6 +378,12 @@ final class Surprise {
                     on ? "on" : "")));
             why.setText((runtime > 0 ? FitsTonight.heroLine(c, runtime) + " · " : "") + MOODS[mood][0] + " · not watched on this TV yet");
             about.setText(pick.overview == null ? "" : pick.overview);
+            if (soft != null) {
+                back.animate().cancel();
+                back.setImageBitmap(soft);
+                back.setAlpha(0f);
+                back.animate().alpha(1f).setDuration(600).start();
+            }
             for (View v : new View[]{name, why, line, marks, about}) {
                 v.setAlpha(0f);
                 v.setTranslationY(h.px(10));
@@ -364,25 +424,34 @@ final class Surprise {
         else if (row == 1 && col < WHO.length) { who = col; spin(); }
         else if (row == 1) { byBed = !byBed; spin(); }
         else if (col == 0) { if (pick != null && !spinning) { PagesV2.Title t = pick; hide(); h.openTitle(t); } }
+        else if (col == 2) {
+            // The trailer: YouTube's search for it.
+            if (pick != null && !spinning) {
+                String q = pick.title + (pick.year == null || pick.year.isEmpty() ? "" : " " + pick.year) + " official trailer";
+                hide();
+                h.searchTitle("com.google.android.youtube.tv", q, false, 0, null);
+            }
+        }
         else spin();
-        paint();
+        if (shown == this) paint();
     }
 
     private void paint() {
-        for (int i = 0; i < moodViews.size(); i++) style(moodViews.get(i), i == mood, row == 0 && i == col);
-        for (int i = 0; i < whoViews.size(); i++) style(whoViews.get(i), i == who, row == 1 && i == col);
+        for (int i = 0; i < moodViews.size(); i++) style(moodViews.get(i), i == mood, row == 0 && i == col, 25);
+        for (int i = 0; i < whoViews.size(); i++) style(whoViews.get(i), i == who, row == 1 && i == col, 22);
         timeView.setText(byBed ? "Done by " + String.format(Locale.UK, "%02d:%02d", FitsTonight.bedMinutes(c) / 60 % 24, FitsTonight.bedMinutes(c) % 60) : "Any length");
-        style(timeView, byBed, row == 1 && col == WHO.length);
-        for (int i = 0; i < buttons.size(); i++) style(buttons.get(i), false, row == 2 && i == col);
+        style(timeView, byBed, row == 1 && col == WHO.length, 22);
+        for (int i = 0; i < buttons.size(); i++) MockKit.paint(h, buttons.get(i), row == 2 && i == col, 64);
     }
 
-    /** chosen: filled white; focused: a white ring (filled bright when also chosen). */
-    private void style(TextView t, boolean chosen, boolean focused) {
-        GradientDrawable g = h.fill(28, focused ? Color.WHITE : chosen ? 0xE6FFFFFF : 0x14FFFFFF);
-        if (!focused && !chosen) g.setStroke(Math.max(1, h.px(1.5f)), 0x73FFFFFF);
-        if (focused && !chosen && row != 2) g.setStroke(h.px(3), YELLOW);
+    /** chosen: white, in bold navy; not chosen: an outline; focused: a yellow ring round it as well. */
+    private void style(TextView t, boolean chosen, boolean focused, float radius) {
+        GradientDrawable g = h.fill(radius, chosen ? 0xFFFFFFFF : focused ? 0x33FFFFFF : 0x00FFFFFF);
+        if (focused) g.setStroke(h.px(3), YELLOW);
+        else if (!chosen) g.setStroke(Math.max(1, h.px(1.5f)), 0x73FFFFFF);
         t.setBackground(g);
-        t.setTextColor(focused || chosen ? NAVY : Color.WHITE);
+        t.setTextColor(chosen ? NAVY : Color.WHITE);
+        t.setTypeface(chosen ? semi : regular);
     }
 
     private void place(View v, int x, int y, int w, int hgt) {
