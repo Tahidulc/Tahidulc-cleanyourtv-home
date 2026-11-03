@@ -82,6 +82,13 @@ final class ControlCentre {
         return open;
     }
 
+    /** The card: as big and as placed as the weather card (WeatherPanel), so everything is in sight at once. */
+    private static final int CARD_X = 200, CARD_Y = 110, CARD_W = 1520, CARD_H = 860;
+
+    /**
+     * The Control Centre as a card in the middle of the screen, the size of the weather card: on the left the cameras,
+     * what is live and today's prayer times; on the right the controls three across and the other TV.
+     */
     void show() {
         if (open) return;
         open = true;
@@ -90,37 +97,57 @@ final class ControlCentre {
         at.clear();
         overlay = new FrameLayout(c);
         overlay.setClickable(true);
-        // Home dimmed a little behind it, as on Apple TV.
-        overlay.setBackgroundColor(0x59000014);
-        LinearLayout panel = new LinearLayout(c);
-        panel.setOrientation(LinearLayout.VERTICAL);
-        panel.setPadding(px(30), px(26), px(30), px(30));
-        GradientDrawable g = new GradientDrawable(GradientDrawable.Orientation.TL_BR, new int[]{0xF51A2296, 0xF5121980, 0xF50B0F5A});
-        g.setCornerRadius(px(40));
-        g.setStroke(Math.max(1, px(1.5f)), 0x40FFFFFF);
-        panel.setBackground(g);
-        panel.setClipToOutline(true);
-        panel.setOutlineProvider(round(40));
-        // A focused tile grows a little: into the panel's margin, not cut off at it.
-        panel.setClipToPadding(false);
-        panel.setClipChildren(false);
+        overlay.setBackgroundColor(0xB3050816);
+        FrameLayout card = new FrameLayout(c);
+        GradientDrawable g = new GradientDrawable(GradientDrawable.Orientation.TL_BR, new int[]{0xFF1A2296, 0xFF121980, 0xFF0B0F5A});
+        g.setCornerRadius(h.px(44));
+        g.setStroke(Math.max(1, h.px(1.5f)), 0x40FFFFFF);
+        card.setBackground(g);
+        card.setClipToOutline(true);
+        card.setOutlineProvider(h.round(44));
+        card.setClipChildren(false);
 
-        TextView title = text(36, heavy, Color.WHITE);
+        TextView title = text(40, heavy, Color.WHITE);
         title.setText("Control Centre");
-        panel.addView(title);
-        int row = 0;
+        FrameLayout.LayoutParams tl = new FrameLayout.LayoutParams(-2, -2);
+        tl.leftMargin = px(56);
+        tl.topMargin = px(36);
+        card.addView(title, tl);
+        TextView hint = text(17, regular, 0x99FFFFFF);
+        hint.setText("OK to open  ·  Back to close");
+        FrameLayout.LayoutParams hl = new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.END);
+        hl.rightMargin = px(56);
+        hl.topMargin = px(50);
+        card.addView(hint, hl);
+
+        LinearLayout cols = new LinearLayout(c);
+        cols.setClipChildren(false);
+        LinearLayout left = new LinearLayout(c), right = new LinearLayout(c);
+        left.setOrientation(LinearLayout.VERTICAL);
+        right.setOrientation(LinearLayout.VERTICAL);
+        left.setClipChildren(false);
+        right.setClipChildren(false);
+        cols.addView(left, new LinearLayout.LayoutParams(px(560), -2));
+        LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(0, -2, 1f);
+        rp.leftMargin = px(48);
+        cols.addView(right, rp);
+        FrameLayout.LayoutParams cl = new FrameLayout.LayoutParams(-1, -2);
+        cl.leftMargin = px(56);
+        cl.rightMargin = px(56);
+        cl.topMargin = px(96);
+        card.addView(cols, cl);
+
+        // Left: the cameras (the doorbell beside the camera), what is live, today's prayer times.
         boolean cam = camera != null && openCamera != null;
         boolean bell = openDoorbell != null && DoorbellAlert.installed(c);
         int camTiles = 0;
         if (cam || bell) {
-            // The camera and the doorbell side by side (either alone across the panel).
-            panel.addView(heading("CAMERAS"), headParams());
+            left.addView(heading("CAMERAS"), headParams());
             LinearLayout camRow = new LinearLayout(c);
             camRow.setClipChildren(false);
             if (cam) {
                 camRow.addView(cameraTile(), new LinearLayout.LayoutParams(0, -1, 1f));
                 acts.add(() -> { hide(); openCamera.run(); });
-                at.add(new int[]{row, 0, bell ? 1 : 2});
                 camTiles++;
             }
             if (bell) {
@@ -128,13 +155,16 @@ final class ControlCentre {
                 if (cam) bp.leftMargin = px(14);
                 camRow.addView(doorbellTile(), bp);
                 acts.add(() -> { hide(); openDoorbell.run(); });
-                at.add(new int[]{row, cam ? 1 : 0, cam ? 1 : 2});
                 camTiles++;
             }
-            panel.addView(camRow, new LinearLayout.LayoutParams(-1, px(cam && bell ? 190 : 220)));
-            row++;
+            // Smaller when much is live, so the prayer times still fit under it.
+            int live = liveLines().size();
+            left.addView(camRow, new LinearLayout.LayoutParams(-1, px(live >= 2 ? 180 : cam && bell ? 200 : 290)));
         }
-        // The controls, then each section of its own under its heading (the other TV), two across.
+        liveSection(left);
+        prayerSection(left);
+
+        // Right: the controls, then each section of its own under its heading (the other TV), three across.
         List<String> sections = new ArrayList<>();
         sections.add(null);
         for (Item it : items) if (it.section != null && !sections.contains(it.section)) sections.add(it.section);
@@ -142,56 +172,47 @@ final class ControlCentre {
             List<Item> group = new ArrayList<>();
             for (Item it : items) if (java.util.Objects.equals(it.section, sec)) group.add(it);
             if (group.isEmpty()) continue;
-            panel.addView(heading(sec == null ? "CONTROLS" : sec), headParams());
+            right.addView(heading(sec == null ? "CONTROLS" : sec), headParams());
             LinearLayout line = null;
             for (int i = 0; i < group.size(); i++) {
                 Item it = group.get(i);
-                if (i % 2 == 0) {
+                if (i % ACROSS == 0) {
                     line = new LinearLayout(c);
                     line.setClipChildren(false);
-                    LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, px(86));
-                    if (i > 0) lp.topMargin = px(14);
-                    panel.addView(line, lp);
+                    LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, px(96));
+                    if (i > 0) lp.topMargin = px(16);
+                    right.addView(line, lp);
                 }
                 View t = tile(it);
                 LinearLayout.LayoutParams tp = new LinearLayout.LayoutParams(0, -1, 1f);
-                if (i % 2 == 1) tp.leftMargin = px(14);
+                if (i % ACROSS > 0) tp.leftMargin = px(16);
                 line.addView(t, tp);
                 tiles.add(t);
                 acts.add(() -> { hide(); it.ok.run(); });
-                at.add(new int[]{row + i / 2, i % 2, 1});
             }
-            if (group.size() % 2 == 1 && line != null) line.addView(new View(c), new LinearLayout.LayoutParams(0, -1, 1f));
-            row += (group.size() + 1) / 2;
+            for (int k = group.size() % ACROSS; k > 0 && k < ACROSS && line != null; k++) {
+                LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(0, -1, 1f);
+                sp.leftMargin = px(16);
+                line.addView(new View(c), sp);
+            }
         }
-        liveSection(panel);
-        prayerSection(panel);
 
-        FrameLayout box = new FrameLayout(c);
-        box.addView(panel, new FrameLayout.LayoutParams(-1, -2));
-        box.setClipChildren(true);
-        FrameLayout.LayoutParams bl = new FrameLayout.LayoutParams(px(640), -2, Gravity.TOP | Gravity.END);
-        bl.topMargin = h.px(172);
-        bl.rightMargin = h.px(96);
-        overlay.addView(box, bl);
+        FrameLayout.LayoutParams bl = new FrameLayout.LayoutParams(h.px(CARD_W), h.px(CARD_H));
+        bl.leftMargin = h.px(CARD_X);
+        bl.topMargin = h.px(CARD_Y);
+        overlay.addView(card, bl);
         h.root.addView(overlay, new FrameLayout.LayoutParams(-1, -1));
-        // Taller than the room under the top bar (many controls, the cameras and prayer times): up just enough.
-        box.post(() -> {
-            int over = box.getBottom() - (overlay.getHeight() - h.px(24));
-            if (over <= 0) return;
-            bl.topMargin = Math.max(h.px(24), bl.topMargin - over);
-            box.setLayoutParams(bl);
-        });
-        box.setAlpha(0f);
-        box.setTranslationY(-px(16));
-        box.setScaleX(0.97f);
-        box.setScaleY(0.97f);
-        box.setPivotX(px(640));
-        box.setPivotY(0);
-        box.animate().alpha(1f).translationY(0).scaleX(1f).scaleY(1f).setDuration(220).setInterpolator(HomeV2.SKY).start();
-        focus = camTiles;
+        overlay.setAlpha(0f);
+        overlay.animate().alpha(1f).setDuration(200).start();
+        card.setScaleX(0.96f);
+        card.setScaleY(0.96f);
+        card.animate().scaleX(1f).scaleY(1f).setDuration(240).setInterpolator(HomeV2.SKY).start();
+        focus = Math.min(camTiles, Math.max(0, tiles.size() - 1));
         paint();
     }
+
+    /** The controls three across. */
+    private static final int ACROSS = 3;
 
     void hide() {
         if (!open) return;
@@ -207,6 +228,13 @@ final class ControlCentre {
      * them; DeliveryLink brings them). Only when there is something; words only.
      */
     private void liveSection(LinearLayout panel) {
+        List<String[]> lines = liveLines();
+        if (lines.isEmpty()) return;
+        liveRows(panel, lines);
+    }
+
+    /** What is live now: {icon, first line, second line} for the order, the drive home and the car. */
+    private List<String[]> liveLines() {
         List<String[]> lines = new ArrayList<>();
         long now = System.currentTimeMillis();
         org.json.JSONObject d = SmartPanel.delivery;
@@ -228,7 +256,10 @@ final class ControlCentre {
             String title = car.optString("title", "Tesla").trim(), status = car.optString("status", "").trim();
             lines.add(new String[]{"🔋", (title.isEmpty() ? "Tesla" : title) + (battery >= 0 ? " · " + battery + "%" : ""), status});
         }
-        if (lines.isEmpty()) return;
+        return lines;
+    }
+
+    private void liveRows(LinearLayout panel, List<String[]> lines) {
         panel.addView(heading("LIVE NOW"), headParams());
         for (int i = 0; i < lines.size(); i++) {
             String[] l = lines.get(i);
@@ -276,22 +307,38 @@ final class ControlCentre {
         for (String[] p : Prayer.today(c)) {
             if ("Sunrise".equals(p[0])) continue;
             boolean lit = next != null && p[0].equals(next[0]) && p[1].equals(next[1]);
+            // Each prayer in a box of its own: its name, its time large, and under the next one how long to go
+            // (the others keep the line empty, so the times stand level).
             LinearLayout box = new LinearLayout(c);
             box.setOrientation(LinearLayout.VERTICAL);
             box.setGravity(Gravity.CENTER);
-            box.setBackground(fill(18, lit ? 0xFFFFFFFF : 0x1FFFFFFF));
-            TextView name = text(15, semi, lit ? 0xCC10157E : 0xB3FFFFFF);
+            box.setBackground(fill(20, lit ? 0xFFFFFFFF : 0x1FFFFFFF));
+            TextView name = text(16, semi, lit ? 0xFF10157E : 0xCCFFFFFF);
             name.setText(p[0]);
+            name.setIncludeFontPadding(false);
+            name.setSingleLine(true);
             box.addView(name);
-            TextView time = text(24, heavy, lit ? 0xFF10157E : Color.WHITE);
+            TextView time = text(30, heavy, lit ? 0xFF10157E : Color.WHITE);
             time.setText(p[1]);
-            box.addView(time);
+            time.setIncludeFontPadding(false);
+            time.setSingleLine(true);
+            time.setFontFeatureSettings("tnum");
+            LinearLayout.LayoutParams tl = new LinearLayout.LayoutParams(-2, -2);
+            tl.topMargin = px(6);
+            box.addView(time, tl);
+            TextView until = text(13, semi, lit ? 0xB310157E : 0x00FFFFFF);
+            until.setText(lit ? "in " + Prayer.until((Long) next[2]) : " ");
+            until.setIncludeFontPadding(false);
+            until.setSingleLine(true);
+            LinearLayout.LayoutParams ul = new LinearLayout.LayoutParams(-2, -2);
+            ul.topMargin = px(6);
+            box.addView(until, ul);
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, -1, 1f);
             if (!first) lp.leftMargin = px(10);
             first = false;
             row.addView(box, lp);
         }
-        panel.addView(row, new LinearLayout.LayoutParams(-1, px(80)));
+        panel.addView(row, new LinearLayout.LayoutParams(-1, px(116)));
     }
 
     private TextView heading(String s) {
@@ -405,16 +452,18 @@ final class ControlCentre {
         t.addView(i, new LinearLayout.LayoutParams(px(32), px(32)));
         LinearLayout words = new LinearLayout(c);
         words.setOrientation(LinearLayout.VERTICAL);
-        TextView n = text(19, semi, Color.WHITE);
+        TextView n = text(20, semi, Color.WHITE);
         n.setText(it.name);
         n.setSingleLine(true);
+        n.setEllipsize(android.text.TextUtils.TruncateAt.END);
         n.setTag("name");
         words.addView(n);
         String st = it.state == null ? null : it.state.get();
         if (st != null && !st.isEmpty()) {
-            TextView s = text(14, regular, 0xB3FFFFFF);
+            TextView s = text(15, regular, 0xB3FFFFFF);
             s.setText(st);
             s.setSingleLine(true);
+            s.setEllipsize(android.text.TextUtils.TruncateAt.END);
             s.setTag("state");
             words.addView(s);
         }
@@ -426,7 +475,7 @@ final class ControlCentre {
     }
 
     /** The panel a size down from Home's own measures, so it ends well clear of the foot of the screen. */
-    private static final float K = 0.8f;
+    private static final float K = 1f;
 
     private int px(float v) {
         return h.px(v * K);
@@ -456,26 +505,39 @@ final class ControlCentre {
             return true;
         }
         if (e.getAction() != KeyEvent.ACTION_DOWN) return true;
-        int[] here = at.get(focus);
-        int to = -1;
-        if (code == KeyEvent.KEYCODE_DPAD_LEFT) to = find(here[0], here[1] - 1);
-        else if (code == KeyEvent.KEYCODE_DPAD_RIGHT) to = find(here[0], here[1] + here[2]);
-        else if (code == KeyEvent.KEYCODE_DPAD_UP) to = find(here[0] - 1, here[1]);
-        else if (code == KeyEvent.KEYCODE_DPAD_DOWN) to = find(here[0] + 1, here[1]);
+        int dx = code == KeyEvent.KEYCODE_DPAD_LEFT ? -1 : code == KeyEvent.KEYCODE_DPAD_RIGHT ? 1 : 0;
+        int dy = code == KeyEvent.KEYCODE_DPAD_UP ? -1 : code == KeyEvent.KEYCODE_DPAD_DOWN ? 1 : 0;
+        if (dx == 0 && dy == 0) return true;
+        int to = nearest(dx, dy);
         if (to >= 0) { focus = to; paint(); }
         return true;
     }
 
-    /** The tile covering {row, column} (a wide one covers both columns), or -1. */
-    private int find(int row, int col) {
-        if (col < 0 || col > 1) return -1;
-        for (int i = 0; i < at.size(); i++) {
-            int[] p = at.get(i);
-            if (p[0] == row && col >= p[1] && col < p[1] + p[2]) return i;
+    /**
+     * The tile the arrow points to: of those whose middle lies that way, the nearest, a sideways offset counting
+     * double (so Down goes to the tile under this one, and Right from the cameras to the controls beside them).
+     */
+    private int nearest(int dx, int dy) {
+        if (focus >= tiles.size()) return -1;
+        float[] here = middle(tiles.get(focus));
+        int best = -1;
+        float bestScore = Float.MAX_VALUE;
+        for (int i = 0; i < tiles.size(); i++) {
+            if (i == focus) continue;
+            float[] m = middle(tiles.get(i));
+            float along = dx != 0 ? (m[0] - here[0]) * dx : (m[1] - here[1]) * dy;
+            float across = dx != 0 ? Math.abs(m[1] - here[1]) : Math.abs(m[0] - here[0]);
+            if (along <= px(8)) continue;
+            float score = along + 2f * across;
+            if (score < bestScore) { bestScore = score; best = i; }
         }
-        // Down onto a row with one tile: that one.
-        for (int i = 0; i < at.size(); i++) if (at.get(i)[0] == row) return i;
-        return -1;
+        return best;
+    }
+
+    private static float[] middle(View v) {
+        int[] xy = new int[2];
+        v.getLocationOnScreen(xy);
+        return new float[]{xy[0] + v.getWidth() / 2f, xy[1] + v.getHeight() / 2f};
     }
 
     private void paint() {
