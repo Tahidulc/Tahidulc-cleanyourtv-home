@@ -25,12 +25,20 @@ import java.util.List;
  * Match predictions (the theme's predictions, the players its predict_players): before kick-off, Match Day's
  * Predict button on Home opens a card where each player picks a score (OK adds a goal, the remote's digits type it,
  * the arrows move between them); at full time a card says who was closest, and the family leaderboard keeps the
- * points: 3 for the exact score, 1 for the right result. Kept in the app's settings on this TV.
+ * points: 3 for the exact score, 1 for the right result.
+ *
+ * <p>One leaderboard for the house: every TV keeps the same games (each pick with the time it was made, each game's
+ * final score once it is over) and the points are worked out from them, never added up, so the TVs can swap them in
+ * any order without counting a game twice. A change goes to the other TVs over their delivery link (/predictions);
+ * opening the card, and a full time, first take in theirs (/predictions/get). Each pick's newest version wins.
  */
 final class Predictions {
     private Predictions() { }
 
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
+    private static final java.util.concurrent.ExecutorService IO = java.util.concurrent.Executors.newSingleThreadExecutor();
+    /** Games kept: a few seasons of a family's predictions. */
+    private static final int KEEP = 600;
 
     static boolean on(Context c) {
         return Config.themeFlag(c, "predictions", false);
@@ -45,7 +53,11 @@ final class Predictions {
         return c.getSharedPreferences("predictions", Context.MODE_PRIVATE);
     }
 
-    private static synchronized JSONObject games(Context c) {
+    /**
+     * Every game: {id: {h, a (the sides' short names), k (kick-off), p: {player: [home, away, when picked]}, f: [home,
+     * away] once over}}. A pick taken back is [-1, -1, when], so the other TVs take it back too.
+     */
+    static synchronized JSONObject games(Context c) {
         try {
             return new JSONObject(prefs(c).getString("games", "{}"));
         } catch (Exception e) {
@@ -54,25 +66,138 @@ final class Predictions {
     }
 
     private static synchronized void saveGames(Context c, JSONObject g) {
-        // The last 30 games are plenty.
-        if (g.length() > 30) {
+        if (g.length() > KEEP) {
             List<String> keys = new ArrayList<>();
             for (Iterator<String> it = g.keys(); it.hasNext(); ) keys.add(it.next());
             keys.sort((a, b) -> Long.compare(g.optJSONObject(a).optLong("k"), g.optJSONObject(b).optLong("k")));
-            for (int i = 0; i < keys.size() - 30; i++) g.remove(keys.get(i));
+            for (int i = 0; i < keys.size() - KEEP; i++) g.remove(keys.get(i));
         }
         prefs(c).edit().putString("games", g.toString()).apply();
     }
 
-    static synchronized JSONObject points(Context c) {
+    /**
+     * Another TV's games taken in: a game new here as it is; for one both have, each player's newer pick, and the final
+     * score where only theirs has it. True when anything changed.
+     */
+    static synchronized boolean merge(Context c, JSONObject theirs) {
+        if (theirs == null) return false;
+        JSONObject mine = games(c);
+        boolean changed = false;
         try {
-            return new JSONObject(prefs(c).getString("points", "{}"));
+            for (Iterator<String> it = theirs.keys(); it.hasNext(); ) {
+                String id = it.next();
+                JSONObject o = theirs.optJSONObject(id);
+                if (o == null || id.length() > 40) continue;
+                JSONObject m = mine.optJSONObject(id);
+                if (m == null) {
+                    JSONObject copy = new JSONObject().put("h", o.optString("h")).put("a", o.optString("a")).put("k", o.optLong("k"))
+                            .put("p", new JSONObject());
+                    mine.put(id, m = copy);
+                    changed = true;
+                }
+                JSONObject op = o.optJSONObject("p"), mp = m.optJSONObject("p");
+                if (mp == null) m.put("p", mp = new JSONObject());
+                for (Iterator<String> pi = op == null ? null : op.keys(); pi != null && pi.hasNext(); ) {
+                    String who = pi.next();
+                    JSONArray a = op.optJSONArray(who), b = mp.optJSONArray(who);
+                    if (a == null || a.length() < 3 || who.length() > 40) continue;
+                    if (b == null || a.optLong(2) > b.optLong(2)) {
+                        mp.put(who, new JSONArray().put(a.optInt(0, -1)).put(a.optInt(1, -1)).put(a.optLong(2)));
+                        changed = true;
+                    }
+                }
+                JSONArray of = o.optJSONArray("f");
+                if (!m.has("f") && of != null && of.length() == 2) {
+                    m.put("f", new JSONArray().put(of.optInt(0)).put(of.optInt(1)));
+                    changed = true;
+                }
+            }
         } catch (Exception e) {
-            return new JSONObject();
+            return false;
         }
+        if (changed) saveGames(c, mine);
+        return changed;
     }
 
-    /** "Dad 7 · Mum 5 · Ayaan 3", the leader first. */
+    // ---- the other TVs ------------------------------------------------------------------------------------------
+
+    private static final Runnable[] PUSH = new Runnable[1];
+
+    /** This TV's games to every other TV, a moment after the last change (off the main thread). */
+    static void share(Context c) {
+        Context app = c.getApplicationContext();
+        if (PUSH[0] != null) MAIN.removeCallbacks(PUSH[0]);
+        PUSH[0] = () -> IO.execute(() -> {
+            try {
+                String body = new JSONObject().put("games", games(app)).toString();
+                send(app, "/predictions", body);
+            } catch (Exception ignored) {
+                // tried again with the next change
+            }
+        });
+        MAIN.postDelayed(PUSH[0], 1_500L);
+    }
+
+    /** The other TVs' games taken in now (off the main thread): true when any changed something here. */
+    static boolean fetch(Context c) {
+        boolean changed = false;
+        for (String[] r : send(c, "/predictions/get", "{}")) {
+            try {
+                changed |= merge(c, new JSONObject(r[1]).optJSONObject("games"));
+            } catch (Exception ignored) {
+                // that TV's answer could not be read
+            }
+        }
+        return changed;
+    }
+
+    /**
+     * To every other TV found before; when none answers (an address changed), the home network is looked through again
+     * and they are asked once more. The answers that came back.
+     */
+    private static List<String[]> send(Context c, String path, String body) {
+        List<String[]> got = new ArrayList<>();
+        List<String[]> peers = TvLink.known(c);
+        boolean looked = false;
+        if (peers.isEmpty()) { peers = TvLink.find(c); looked = true; }
+        for (int round = 0; round < 2; round++) {
+            for (String[] p : peers) {
+                String[] r = TvLink.http(p[1], "POST", path, body, 1500, 4000);
+                if (r != null && "200".equals(r[0])) got.add(r);
+            }
+            if (!got.isEmpty() || looked || peers.isEmpty() && round > 0) break;
+            peers = TvLink.find(c);
+            looked = true;
+        }
+        return got;
+    }
+
+    // ---- the points ---------------------------------------------------------------------------------------------
+
+    /** Each player's points from every finished game: worked out afresh, the same on every TV. */
+    static synchronized JSONObject points(Context c) {
+        JSONObject pts = new JSONObject();
+        JSONObject all = games(c);
+        try {
+            for (Iterator<String> it = all.keys(); it.hasNext(); ) {
+                JSONObject one = all.optJSONObject(it.next());
+                JSONArray f = one == null ? null : one.optJSONArray("f");
+                JSONObject picks = one == null ? null : one.optJSONObject("p");
+                if (f == null || picks == null) continue;
+                for (Iterator<String> pi = picks.keys(); pi.hasNext(); ) {
+                    String who = pi.next();
+                    JSONArray p = picks.optJSONArray(who);
+                    if (p == null || p.optInt(0, -1) < 0) continue;
+                    pts.put(who, pts.optInt(who) + score(p.optInt(0), p.optInt(1), f.optInt(0), f.optInt(1)));
+                }
+            }
+        } catch (Exception ignored) {
+            // what could be counted
+        }
+        return pts;
+    }
+
+    /** "Tahidul 7 · Nadia 5 · Emadul 3", the leader first. */
     static String leaderboard(Context c) {
         JSONObject p = points(c);
         List<String> names = new ArrayList<>(players(c));
@@ -82,33 +207,53 @@ final class Predictions {
         return s.toString();
     }
 
+    private static long fetchedAt;
+
+    /** Home came up: the other TVs' games taken in, at most every ten minutes (off the main thread). */
+    static void sync(Context c) {
+        if (!on(c) || android.os.SystemClock.elapsedRealtime() - fetchedAt < 10 * 60_000L && fetchedAt != 0) return;
+        fetchedAt = android.os.SystemClock.elapsedRealtime();
+        Context app = c.getApplicationContext();
+        IO.execute(() -> fetch(app));
+    }
+
+    private static int count(JSONObject picks) {
+        int n = 0;
+        for (Iterator<String> it = picks == null ? null : picks.keys(); it != null && it.hasNext(); ) {
+            JSONArray p = picks.optJSONArray(it.next());
+            if (p != null && p.optInt(0, -1) >= 0) n++;
+        }
+        return n;
+    }
+
     /** Match Day's button: "Predict the score", or how many have picked. */
     static String label(Context c, ScoresTicker.Game g) {
         JSONObject one = games(c).optJSONObject(g.id);
-        JSONObject picks = one == null ? null : one.optJSONObject("p");
-        int n = picks == null ? 0 : picks.length();
+        int n = count(one == null ? null : one.optJSONObject("p"));
         if (g.state != 1) return "Predictions";
         return n == 0 ? "Predict the score" : "Predictions (" + n + ")";
     }
 
     static boolean has(Context c, String id) {
         JSONObject one = games(c).optJSONObject(id);
-        return one != null && one.optJSONObject("p") != null && one.optJSONObject("p").length() > 0;
+        return one != null && count(one.optJSONObject("p")) > 0;
     }
 
     private static void pick(Context c, ScoresTicker.Game g, String player, int home, int away) {
-        JSONObject all = games(c);
-        try {
-            JSONObject one = all.optJSONObject(g.id);
-            if (one == null) all.put(g.id, one = new JSONObject().put("h", g.home).put("a", g.away).put("k", g.kickoff).put("p", new JSONObject()));
-            JSONObject picks = one.optJSONObject("p");
-            if (picks == null) one.put("p", picks = new JSONObject());
-            if (home < 0 && away < 0) picks.remove(player);
-            else picks.put(player, new JSONArray().put(home).put(away));
-            saveGames(c, all);
-        } catch (Exception ignored) {
-            // not kept
+        synchronized (Predictions.class) {
+            JSONObject all = games(c);
+            try {
+                JSONObject one = all.optJSONObject(g.id);
+                if (one == null) all.put(g.id, one = new JSONObject().put("h", g.home).put("a", g.away).put("k", g.kickoff).put("p", new JSONObject()));
+                JSONObject picks = one.optJSONObject("p");
+                if (picks == null) one.put("p", picks = new JSONObject());
+                picks.put(player, new JSONArray().put(home).put(away).put(System.currentTimeMillis()));
+                saveGames(c, all);
+            } catch (Exception ignored) {
+                return;
+            }
         }
+        share(c);
     }
 
     private static int[] picked(Context c, String id, String player) {
@@ -128,14 +273,15 @@ final class Predictions {
     }
 
     /**
-     * A finished game (the alert service, each read): the picks for it settled once: the points added, and a card
-     * saying who was closest and the leaderboard. On the main thread.
+     * A finished game (the alert service, each read; on the main thread): the other TVs' picks taken in first, its final
+     * score kept (shared with them), and once on this TV a card saying who was closest, with the leaderboard.
      */
     static void settle(Context c, ScoresTicker.Game g) {
         if (g == null || g.state != 2 || g.id == null) return;
-        JSONObject all = games(c);
-        JSONObject one = all.optJSONObject(g.id);
-        if (one == null || one.optBoolean("done") || one.optJSONObject("p") == null || one.optJSONObject("p").length() == 0) return;
+        SharedPreferences pr = prefs(c);
+        if (pr.getBoolean("shown:" + g.id, false)) return;
+        // Only for a game with picks here (the other TVs' come here as they are made, while this one is on).
+        if (games(c).optJSONObject(g.id) == null) return;
         int h, a;
         try {
             h = Integer.parseInt(g.homeScore);
@@ -143,27 +289,40 @@ final class Predictions {
         } catch (Exception e) {
             return;
         }
+        pr.edit().putBoolean("shown:" + g.id, true).apply();
+        Context app = c.getApplicationContext();
+        IO.execute(() -> {
+            fetch(app);
+            JSONObject one;
+            synchronized (Predictions.class) {
+                JSONObject all = games(app);
+                one = all.optJSONObject(g.id);
+                if (one == null || count(one.optJSONObject("p")) == 0) return;
+                try {
+                    if (!one.has("f")) { one.put("f", new JSONArray().put(h).put(a)); saveGames(app, all); }
+                } catch (Exception e) {
+                    return;
+                }
+            }
+            share(app);
+            MAIN.post(() -> card(app, g, one, h, a));
+        });
+    }
+
+    private static void card(Context c, ScoresTicker.Game g, JSONObject one, int h, int a) {
         JSONObject picks = one.optJSONObject("p");
-        JSONObject pts = points(c);
         String best = null;
         int bestPts = -1, bestErr = Integer.MAX_VALUE;
         List<String> exact = new ArrayList<>();
-        try {
-            for (Iterator<String> it = picks.keys(); it.hasNext(); ) {
-                String who = it.next();
-                JSONArray p = picks.optJSONArray(who);
-                if (p == null) continue;
-                int ph = p.optInt(0), pa = p.optInt(1), s = score(ph, pa, h, a), err = Math.abs(ph - h) + Math.abs(pa - a);
-                pts.put(who, pts.optInt(who) + s);
-                if (s == 3) exact.add(who);
-                if (s > bestPts || s == bestPts && err < bestErr) { best = who; bestPts = s; bestErr = err; }
-            }
-            one.put("done", true);
-            saveGames(c, all);
-            prefs(c).edit().putString("points", pts.toString()).apply();
-        } catch (Exception e) {
-            return;
+        for (Iterator<String> it = picks.keys(); it.hasNext(); ) {
+            String who = it.next();
+            JSONArray p = picks.optJSONArray(who);
+            if (p == null || p.optInt(0, -1) < 0) continue;
+            int ph = p.optInt(0), pa = p.optInt(1), s = score(ph, pa, h, a), err = Math.abs(ph - h) + Math.abs(pa - a);
+            if (s == 3) exact.add(who);
+            if (s > bestPts || s == bestPts && err < bestErr) { best = who; bestPts = s; bestErr = err; }
         }
+        if (best == null) return;
         JSONArray bp = picks.optJSONArray(best);
         ScoreCard.Data d = new ScoreCard.Data();
         d.dark = true;
@@ -178,7 +337,7 @@ final class Predictions {
                 : best + " was closest (" + (bp == null ? "" : bp.optInt(0) + "–" + bp.optInt(1)) + ")  ·  FT " + ft;
         d.line = "Leaderboard: " + leaderboard(c);
         AlertLog.note(c, "predictions settled: " + ft + ", " + d.headline);
-        MAIN.post(() -> ScoreCard.show(c, d));
+        ScoreCard.show(c, d);
     }
 
     // ---- the card on Home -------------------------------------------------------------------------------------------
@@ -210,6 +369,7 @@ final class Predictions {
         final int[][] values;
         final TextView[][] cells;
         final boolean locked;
+        TextView board;
         int row, col;
 
         Panel(HomeV2 h, ScoresTicker.Game g) {
@@ -271,7 +431,7 @@ final class Predictions {
             LinearLayout.LayoutParams hl = new LinearLayout.LayoutParams(-1, -2);
             hl.topMargin = h.px(16);
             box.addView(hint, hl);
-            TextView board = h.text(21, semi, 0xFFFFE27A);
+            board = h.text(21, semi, 0xFFFFE27A);
             board.setText("Leaderboard:  " + leaderboard(c));
             LinearLayout.LayoutParams bl = new LinearLayout.LayoutParams(-1, -2);
             bl.topMargin = h.px(10);
@@ -280,6 +440,16 @@ final class Predictions {
             h.root.addView(overlay, new FrameLayout.LayoutParams(-1, -1));
             overlay.setAlpha(0f);
             overlay.animate().alpha(1f).setDuration(200).start();
+            paint();
+            // The other TVs' picks and points taken in, and shown as soon as they are here.
+            IO.execute(() -> {
+                if (fetch(c)) MAIN.post(() -> { if (panel == this) refresh(); });
+            });
+        }
+
+        void refresh() {
+            for (int i = 0; i < who.size(); i++) values[i] = picked(h.a, g.id, who.get(i));
+            board.setText("Leaderboard:  " + leaderboard(h.a));
             paint();
         }
 

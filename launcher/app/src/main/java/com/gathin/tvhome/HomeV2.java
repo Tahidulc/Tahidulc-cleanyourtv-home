@@ -936,6 +936,8 @@ final class HomeV2 {
         if (Config.themeFlag(a, "alerts_everywhere", false)) GoalWatchService.startEverywhere(a);
         // Prayer times for the Control Centre's section: today's and tomorrow's timetable, read when not yet kept.
         if (Prayer.on(a)) io.execute(() -> Prayer.refresh(a));
+        // Predictions: the other TVs' picks and points, so the leaderboard is the same on each.
+        Predictions.sync(a);
         // A child's birthday: the party greets them the first time Home comes up that day (Birthday).
         main.postDelayed(() -> Birthday.maybeGreet(this), 1_200L);
         // What was watched while Home was away, matched to TMDB for Continue Watching.

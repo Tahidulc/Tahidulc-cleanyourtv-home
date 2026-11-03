@@ -209,6 +209,16 @@ final class DeliveryLink {
                 reply(s, 200, "{\"ok\":true}");
                 return;
             }
+            case "/predictions": {
+                // The other TV's predictions (Predictions: one leaderboard for the house), taken in.
+                Predictions.merge(context, json.optJSONObject("games"));
+                reply(s, 200, "{\"ok\":true}");
+                return;
+            }
+            case "/predictions/get": {
+                reply(s, 200, new JSONObject().put("games", Predictions.games(context)).toString());
+                return;
+            }
             case "/unpair": {
                 // A phone forgetting this TV: its token stops working.
                 Set<String> tokens = new HashSet<>(prefs.getStringSet("tokens", new HashSet<>()));
