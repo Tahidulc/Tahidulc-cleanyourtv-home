@@ -130,6 +130,10 @@ final class PagesV2 {
         String foot;
         /** Fits tonight: its running time in minutes; the poster says when it would end if started now. 0: not shown. */
         int runtime;
+        /** Your shows: how far through the season (0 to 1), a yellow bar along the foot; -1: the watched bar as usual. */
+        float season = -1;
+        /** The streaming service's logo on the poster's top corner (Fits tonight); 0: none. */
+        int mark;
         /** What OK does instead of the page's own (Your shows, a series on none of the TV's apps). */
         Runnable ok;
     }
@@ -246,6 +250,12 @@ final class PagesV2 {
         /** What to say when the row has nothing in it (Continue Watching before anything is started); null: say nothing. */
         String empty;
         boolean numbered;
+        /**
+         * A panel of the tab's own over the hero's picture (Your shows' week, Fits tonight's evening), made on the main
+         * thread for the title in focus (null when the tab has none): a screen-sized layer, the panel placed inside it.
+         * The same view back for another title is left as it is.
+         */
+        java.util.function.BiFunction<HomeV2, Title, View> side;
         List<Title> items = new ArrayList<>();
         TextView label;
         FrameLayout view;
@@ -504,6 +514,8 @@ final class PagesV2 {
                         Row g = i < got.size() ? got.get(i) : new Row();
                         r.items = g.items;
                         r.numbered = g.numbered;
+                        r.side = g.side;
+                        if (i == 0 && g.items.isEmpty()) side(r, null);
                         String name = title(g.name);
                         r.label.setText(name == null ? "" : name);
                         if (g.note != null && name != null) {
@@ -531,6 +543,20 @@ final class PagesV2 {
 
         /** Up (or OK) from the boxes: straight onto the first poster, not the tabs above them. */
         private boolean intoPosters;
+
+        /** The tab's own panel over the hero's picture now (Row.side), or null. */
+        private View sideView;
+
+        /** The row's panel for the title in focus, in place of the one before (under the rows and tabs). */
+        private void side(Row r, Title t) {
+            View v = r == null || r.side == null ? null : r.side.apply(h, t);
+            if (v == sideView) return;
+            if (sideView != null && sideView.getParent() instanceof ViewGroup) ((ViewGroup) sideView.getParent()).removeView(sideView);
+            sideView = v;
+            if (v == null) return;
+            if (v.getParent() instanceof ViewGroup) ((ViewGroup) v.getParent()).removeView(v);
+            layer.addView(v, 0, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        }
 
         @Override void entered() {
             if (onTabs && !rows.isEmpty() && !rows.get(0).items.isEmpty()) {
@@ -570,13 +596,14 @@ final class PagesV2 {
                 wide.setAlpha(0f);
                 f.addView(wide, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
                 // Started and not finished (in any app): how far in, as a bar along the poster's foot.
-                Float done = watched.get(t.id);
+                // Your shows: how far through the season instead, in yellow on a light track.
+                Float done = t.season >= 0 ? Float.valueOf(t.season) : watched.get(t.id);
                 if (done != null) {
                     FrameLayout bar = new FrameLayout(h.a);
                     bar.setTag("progress");
-                    bar.setBackgroundColor(0x80000000);
+                    bar.setBackgroundColor(t.season >= 0 ? 0x4DFFFFFF : 0x80000000);
                     View fill = new View(h.a);
-                    fill.setBackgroundColor(0xFFE50914);
+                    fill.setBackgroundColor(t.season >= 0 ? 0xFFFFD04D : 0xFFE50914);
                     bar.addView(fill, new FrameLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT));
                     // Inset from the poster's edges, its ends rounded, so the focus outline never covers it.
                     bar.setClipToOutline(true);
@@ -596,26 +623,45 @@ final class PagesV2 {
                 }
                 // Fits tonight and Your shows: a line along the foot (when it would end; where the series is up to),
                 // on a shade, faded out while the poster is widened (its logo goes there).
-                String foot = t.runtime > 0 ? FitsTonight.ends(t.runtime) : t.foot;
+                CharSequence foot = t.runtime > 0 ? FitsTonight.foot(h, t.runtime) : t.foot;
                 if (foot != null) {
-                    TextView line = h.text(t.runtime > 0 ? 18 : 15, h.semi, Color.WHITE);
+                    TextView line = h.text(t.runtime > 0 ? 18 : 14, h.semi, Color.WHITE);
                     line.setTag("foot");
                     line.setText(foot);
-                    line.setSingleLine(true);
+                    // Fits tonight's two lines: when it ends, then how long and the time to spare.
+                    if (t.runtime > 0) { line.setMaxLines(2); line.setLineSpacing(px(2), 1f); } else line.setSingleLine(true);
                     line.setGravity(Gravity.BOTTOM);
-                    line.setPadding(px(10), px(34), px(10), px(done != null ? 24 : 12));
-                    line.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0x00000000, 0xD9000000}));
+                    line.setShadowLayer(px(4), 0, px(1), 0xCC000000);
+                    line.setPadding(px(10), px(t.runtime > 0 ? 44 : 34), px(10), px(done != null ? 24 : t.runtime > 0 ? 11 : 12));
+                    line.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0x00000000, 0xE6000000}));
                     f.addView(line, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM));
                     // The bar stays on top of the shade.
                     View bar = f.findViewWithTag("progress");
                     if (bar != null) bar.bringToFront();
                 }
+                // The service's logo in the top corner (Fits tonight), on a faint shade so a light poster leaves it readable.
+                if (t.mark != 0) {
+                    View shade = new View(h.a);
+                    shade.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0x73000000, 0x00000000}));
+                    f.addView(shade, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, px(54), Gravity.TOP));
+                    ImageView m = new ImageView(h.a);
+                    m.setImageResource(t.mark);
+                    m.setAdjustViewBounds(true);
+                    m.setScaleType(ImageView.ScaleType.FIT_START);
+                    m.setMaxWidth(px(80));
+                    FrameLayout.LayoutParams ml = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, px(16), Gravity.TOP | Gravity.START);
+                    ml.leftMargin = px(10);
+                    ml.topMargin = px(10);
+                    f.addView(m, ml);
+                }
                 if (t.badge != null) {
-                    TextView b = h.text(13, h.semi, t.badgeFg);
+                    // As heavy as the labels on the mock-ups: Inter's semibold made bold.
+                    TextView b = h.text(13, android.graphics.Typeface.create(h.semi, android.graphics.Typeface.BOLD), t.badgeFg);
                     b.setText(t.badge);
-                    b.setLetterSpacing(0.06f);
+                    b.setLetterSpacing(0.05f);
                     b.setSingleLine(true);
-                    b.setPadding(px(8), px(4), px(8), px(4));
+                    b.setEllipsize(android.text.TextUtils.TruncateAt.END);
+                    b.setPadding(px(8), px(5), px(8), px(5));
                     b.setBackground(h.fill(6, t.badgeBg));
                     b.setMaxWidth(px(NARROW - 16));
                     FrameLayout.LayoutParams bl = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -794,6 +840,7 @@ final class PagesV2 {
             }
             if (row >= rows.size() || rows.get(row).items.isEmpty()) return;
             Title t = rows.get(row).items.get(Math.min(idx, rows.get(row).items.size() - 1));
+            side(rows.get(row), t);
             HomeV2.Tile tile = new HomeV2.Tile();
             tile.title = t.title;
             tile.heroTitle = t.title;
