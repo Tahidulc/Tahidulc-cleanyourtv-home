@@ -47,6 +47,8 @@ final class PagesV2 {
         /** How wide it is drawn, in pixels; -1: all of it. */
         float vis = -1;
         View dim;
+        /** Its picture's fetch, held back until the slider brings it near the screen (null: fetched). */
+        Runnable load;
         private final float radius;
 
         Tile(android.content.Context c, float radius) {
@@ -295,6 +297,31 @@ final class PagesV2 {
         return new ArrayList<>(got);
     }
 
+    /** The most posters a row of the poster pages takes: two of TMDB's pages, so the row runs on well past the screen. */
+    static final int LIST_MAX = 40;
+
+    /**
+     * A row's TMDB list: its first two pages (each kept as tmdb() keeps it), the second asked for at the same moment as
+     * the first so the row waits no longer for twice the posters, anything on both once, up to LIST_MAX.
+     */
+    static List<Title> tmdbRow(String key, String path, boolean tv) {
+        String next = path + (path.contains("?") ? "&" : "?") + "page=2";
+        java.util.concurrent.CompletableFuture<List<Title>> second =
+                java.util.concurrent.CompletableFuture.supplyAsync(() -> tmdb(key, next, tv));
+        List<Title> first = tmdb(key, path, tv), more;
+        try {
+            more = first.isEmpty() ? new ArrayList<>() : second.get(12, java.util.concurrent.TimeUnit.SECONDS);
+        } catch (Exception e) {
+            more = new ArrayList<>();
+        }
+        List<Title> out = new ArrayList<>();
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        for (List<Title> l : Arrays.asList(first, more)) {
+            for (Title t : l) if (out.size() < LIST_MAX && seen.add((t.tv ? "tv" : "mv") + t.id)) out.add(t);
+        }
+        return out;
+    }
+
     private static List<Title> readList(String key, String path, boolean tv) {
         List<Title> out = new ArrayList<>();
         if (key.isEmpty()) return out;
@@ -328,10 +355,10 @@ final class PagesV2 {
         return out;
     }
 
-    /** Films and series taken in turn from two lists. */
+    /** Films and series taken in turn from two lists (up to LIST_MAX). */
     static List<Title> mix(List<Title> a, List<Title> b) {
         List<Title> out = new ArrayList<>();
-        for (int i = 0; i < Math.max(a.size(), b.size()) && out.size() < 20; i++) {
+        for (int i = 0; i < Math.max(a.size(), b.size()) && out.size() < LIST_MAX; i++) {
             if (i < a.size()) out.add(a.get(i));
             if (i < b.size()) out.add(b.get(i));
         }
@@ -418,7 +445,7 @@ final class PagesV2 {
             big = grow;
             for (Row r : rows) {
                 r.view.setPivotX(0f);
-                r.view.setPivotY(0f);
+                r.view.setPivotY(bigPivot());
                 r.view.animate().scaleX(grow ? big() : 1f).scaleY(grow ? big() : 1f).setDuration(grow ? 300 : 230)
                         .setInterpolator(HomeV2.SKY)
                         // The slider's glow follows the row as it grows or shrinks.
@@ -433,7 +460,18 @@ final class PagesV2 {
          * room the page moved up by (its foot stays clear of the dock's chip).
          */
         private float big() {
-            return slider() && h.corners ? BIG + (float) HomeV2.PAGE_LIFT / (TALL + 24) : BIG;
+            return slider() && h.corners ? BIG + (float) HomeV2.PAGE_LIFT / (TALL + 24) + SLIDER_MORE : BIG;
+        }
+
+        /**
+         * The slider under option B's top bar grows a little more again (bigger posters), from a line 24 down its box
+         * rather than its top: it grows up into the room under the tabs as well as down, its posters' foot still above
+         * the dock's chip (at 990).
+         */
+        static final float SLIDER_MORE = 0.08f;
+
+        private float bigPivot() {
+            return slider() && h.corners ? px(24) : 0f;
         }
 
         PosterPage startOn(int t) {
@@ -758,8 +796,10 @@ final class PagesV2 {
                 poster.setTag("poster");
                 poster.setScaleType(ImageView.ScaleType.CENTER_CROP);
                 f.addView(poster, new FrameLayout.LayoutParams(part, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.START));
-                // As wide as it is drawn on lite_home (twice that elsewhere).
-                h.image(poster, posterUrl(h, t), posterWidth(h));
+                // As wide as it is drawn on lite_home (twice that elsewhere). The slider's first dozen at once, the
+                // rest (a row now runs to forty) as the row comes to them.
+                if (asSlider && i >= 12) f.load = () -> h.image(poster, posterUrl(h, t), posterWidth(h));
+                else h.image(poster, posterUrl(h, t), posterWidth(h));
                 ImageView wide = new ImageView(h.a);
                 wide.setTag("wide");   // found by name: the trailer slides in under it, so it moves along
                 wide.setScaleType(ImageView.ScaleType.CENTER_CROP);
@@ -1071,8 +1111,14 @@ final class PagesV2 {
         }
 
         static final long SLIDER_MS = 360, WIDEN_MS = 300, LAND_PAUSE_MS = 2500, SLIDER_TRAILER_MS = SLIDER_MS + LAND_PAUSE_MS + WIDEN_MS + 150;
-        private static final float[] SCALE = {1f, 0.84f, 0.76f, 0.7f, 0.66f, 0.62f, 0.6f};
-        private static final float[] SHADE = {0f, 0.4f, 0.55f, 0.66f, 0.74f, 0.82f, 0.9f};
+        /**
+         * How big each poster is, and how deep its shade, by how far it is from the focus: the queue stays large and
+         * clear (it went down to 0.6 and 90% shade, small dim posters with wide gaps round them).
+         */
+        private static final float[] SCALE = {1f, 0.9f, 0.84f, 0.8f, 0.77f, 0.75f, 0.74f, 0.73f};
+        private static final float[] SHADE = {0f, 0.3f, 0.42f, 0.5f, 0.56f, 0.6f, 0.64f, 0.68f};
+        /** The room between the slider's posters, in design pixels: close together, one row (it was 20). */
+        static final int SLIDE_GAP = 12;
         /** Where the row is (the focus, as a fraction while sliding), which poster is widened and how far, which landed. */
         private float focusF, wideAmt;
         private int wideIdx = -1, landed = -1;
@@ -1091,7 +1137,7 @@ final class PagesV2 {
 
         /** The focused poster's place: one poster (at its shrunk size) and a gap in from the row's left. */
         private float focusX() {
-            return px(NARROW) * SCALE[1] + px(GAP) + px(6);
+            return px(NARROW) * SCALE[1] + px(SLIDE_GAP) + px(6);
         }
 
         /**
@@ -1103,15 +1149,41 @@ final class PagesV2 {
             return px(6) + (focusX() - px(6)) * t;
         }
 
-        /** Each poster's left on screen with the focus on poster k (whole), given the posters' widths. */
-        private float[] lefts(int k, float[] w, int n) {
+        /**
+         * Each poster's left on screen with the focus on poster k (whole), given the posters' widths. Near the end of
+         * the list the row stops with its last poster at right (the screen's edge, as far in as the first poster is
+         * from the left), the focus moving on along it, so no gap opens after the last; never so far that one opens
+         * before the first (a list that fits on the screen stays at the left).
+         */
+        private float[] lefts(int k, float[] w, int n, float right) {
             float[] x = new float[n];
             if (n == 0) return x;
             int kk = Math.max(0, Math.min(n - 1, k));
             x[kk] = anchorAt(kk);
-            for (int i = kk + 1; i < n; i++) x[i] = x[i - 1] + w[i - 1] * table(SCALE, i - 1 - kk) + px(GAP);
-            for (int i = kk - 1; i >= 0; i--) x[i] = x[i + 1] - px(GAP) - w[i] * table(SCALE, i - kk);
+            float gap = px(SLIDE_GAP);
+            for (int i = kk + 1; i < n; i++) x[i] = x[i - 1] + w[i - 1] * table(SCALE, i - 1 - kk) + gap;
+            for (int i = kk - 1; i >= 0; i--) x[i] = x[i + 1] - gap - w[i] * table(SCALE, i - kk);
+            float end = x[n - 1] + w[n - 1] * table(SCALE, n - 1 - kk);
+            float shift = Math.min(right - end, px(6) - x[0]);
+            if (shift > 0) for (int i = 0; i < n; i++) x[i] += shift;
             return x;
+        }
+
+        /**
+         * The row's edges in the strip's own pixels: {where the last poster stops (in from the screen's right edge as
+         * far as the first poster is from its left), where the screen ends (posters past it are not drawn)}.
+         */
+        private float[] sliderEdges(Row r) {
+            float sx = Math.max(0.01f, r.view.getScaleX());
+            float left = 0;
+            for (View v = r.view; v != null; v = v.getParent() instanceof View ? (View) v.getParent() : null) left += v.getLeft();
+            float screen = h.a.getResources().getDisplayMetrics().widthPixels;
+            float stripLeft = r.strip.getLeft();
+            float margin = left + (stripLeft + px(6)) * sx;
+            // Not laid out yet: nothing held back (the next frame places it properly).
+            float clip = r.view.getWidth() > 0 ? r.view.getWidth() - stripLeft : Float.MAX_VALUE / 4;
+            float shown = Math.min(clip, (screen - left) / sx - stripLeft);
+            return new float[]{Math.min(shown, (screen - margin - left) / sx - stripLeft), shown};
         }
 
         /** Every poster placed for the focus at f (a fraction while sliding); the glow behind the focused one. */
@@ -1131,8 +1203,10 @@ final class PagesV2 {
             }
             int k = (int) Math.floor(f);
             float frac = f - k;
-            float[] a = lefts(k, w, n), b = lefts(k + 1, w, n);
+            float[] edges = sliderEdges(r);
+            float[] a = lefts(k, w, n, edges[0]), b = lefts(k + 1, w, n, edges[0]);
             float shadeFocus = onTabs ? 0.3f : 0f;
+            int lastShown = -1;
             for (int i = 0; i < n; i++) {
                 View c = r.strip.getChildAt(i);
                 float d = i - f;
@@ -1143,21 +1217,34 @@ final class PagesV2 {
                 c.setScaleX(s);
                 c.setScaleY(s);
                 c.setTranslationX(x - natural[i] - (1 - s) * w[i] / 2f);
-                c.setAlpha(Math.abs(d) > 6.5f ? 0f : 1f);
+                // Drawn while any of it is on the screen: the row runs on to the screen's edge, never stopping short.
+                boolean on = x + w[i] * s > -r.strip.getLeft() && x < edges[1];
+                c.setAlpha(on ? 1f : 0f);
+                if (on) lastShown = i;
                 View shade = c instanceof Tile ? ((Tile) c).dim : c.findViewWithTag("dim");
                 if (shade != null) shade.setAlpha(Math.max(table(SHADE, d), Math.abs(d) < 0.5f ? shadeFocus * (1 - Math.abs(d) * 2) : 0f));
+            }
+            // The pictures of what is on the screen, and the next few, fetched (the rest wait for the row to reach them).
+            for (int i = 0; i < n && i <= lastShown + 4; i++) {
+                View c = r.strip.getChildAt(i);
+                if (c instanceof Tile && ((Tile) c).load != null) {
+                    Runnable go = ((Tile) c).load;
+                    ((Tile) c).load = null;
+                    go.run();
+                }
             }
             if (glow != null) {
                 glow.setAlpha(onTabs ? 0.45f : 1f);
                 // Centred on the focused poster, wherever the row is (it grows with the row when the dock is away).
                 int fi = Math.max(0, Math.min(n - 1, Math.round(f)));
                 float fw = w[fi] * table(SCALE, fi - f);
-                float cx = r.strip.getLeft() + anchorAt(f) + fw / 2f, cy = r.strip.getTop() + px(TALL) / 2f;
-                float sx = r.view.getScaleX();
+                float fx = a[fi] + (b[fi] - a[fi]) * frac;
+                float cx = r.strip.getLeft() + fx + fw / 2f, cy = r.strip.getTop() + px(TALL) / 2f;
+                float sx = r.view.getScaleX(), py = r.view.getPivotY();
                 glow.setScaleX(sx);
                 glow.setScaleY(sx);
                 glow.setX(r.view.getX() + cx * sx - glow.getWidth() / 2f);
-                glow.setY(r.view.getY() + cy * sx - glow.getHeight() / 2f);
+                glow.setY(r.view.getY() + py + (cy - py) * sx - glow.getHeight() / 2f);
             }
         }
 
@@ -1511,14 +1598,14 @@ final class PagesV2 {
             if (t == 0) return Arrays.asList(resumeRow(h, null));
             if (t == 1) return Arrays.asList(myListRow(h));
             if (t == 2) {
-                items = mix(tmdb(k, "discover/movie?region=GB&with_release_type=4|5&release_date.gte=" + today.minusWeeks(6)
+                items = mix(tmdbRow(k, "discover/movie?region=GB&with_release_type=4|5&release_date.gte=" + today.minusWeeks(6)
                                 + "&release_date.lte=" + today + "&sort_by=popularity.desc", false),
-                        tmdb(k, "discover/tv?first_air_date.gte=" + today.minusMonths(2) + "&sort_by=popularity.desc&with_original_language=en", true));
+                        tmdbRow(k, "discover/tv?first_air_date.gte=" + today.minusMonths(2) + "&sort_by=popularity.desc&with_original_language=en", true));
             } else if (t == 3) {
-                items = tmdb(k, "trending/all/day", false);
+                items = tmdbRow(k, "trending/all/day", false);
             } else {
                 String w = "&watch_region=GB&with_watch_providers=" + providers[t] + "&sort_by=popularity.desc";
-                items = mix(tmdb(k, "discover/tv?without_genres=10763,10764,10767" + w, true), tmdb(k, "discover/movie?" + w.substring(1), false));
+                items = mix(tmdbRow(k, "discover/tv?without_genres=10763,10764,10767" + w, true), tmdbRow(k, "discover/movie?" + w.substring(1), false));
             }
             return Arrays.asList(row(null, null, false, items));
         }).startOn(resumeEmpty(h, null) ? (MyList.all(h.a).isEmpty() ? 2 : 1) : 0);
@@ -1836,7 +1923,9 @@ final class PagesV2 {
                 : "@newepisodes".equals(spec[t - 1][1]) ? Arrays.asList(YourShows.fresh(h))
                 : "@surprise".equals(spec[t - 1][1]) ? Arrays.asList(Surprise.row(h))
                 : "@dice".equals(spec[t - 1][1]) ? Arrays.asList(EpisodeDice.row(h))
-                : Arrays.asList(row(null, null, "n".equals(spec[t - 1][2]), tmdb(k, spec[t - 1][1], tv))));
+                // A Top 10 stays one page (it is numbered); every other tab runs to two.
+                : Arrays.asList(row(null, null, "n".equals(spec[t - 1][2]),
+                        "n".equals(spec[t - 1][2]) ? tmdb(k, spec[t - 1][1], tv) : tmdbRow(k, spec[t - 1][1], tv))));
         // Nothing to continue: the tab after it, past Your shows too when no series has been watched yet.
         if (!resumeEmpty(h, tv)) return p.startOn(0);
         return p.startOn("@yourshows".equals(spec[0][1]) && !YourShows.any(h.a) ? 2 : 1);
