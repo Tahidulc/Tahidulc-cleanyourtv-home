@@ -1347,34 +1347,27 @@ final class ScoresTicker {
 
     /**
      * A Sky box's ground: frosted glass over the screen. The blurred cut of what lies behind it (cross-faded while it
-     * changes), a dark wash as the picture needs, a light white wash, a sheen over its upper half, a hairline rim
-     * brighter along the top than the foot and a fine specular line just inside the top edge. Drawn for where its box
+     * changes), a dark wash as the picture needs, a light white wash and an even hairline rim all round (no sheen or
+     * shine along the top: it read as a white streak across the box's head). Drawn for where its box
      * is now in the bar, so the picture stays put on the screen while the games slide over it. The box clips it to its
      * square corners. Its shaders made when its size changes, never per frame.
      */
     private final class Frost extends android.graphics.drawable.Drawable {
         private final Paint pic = new Paint(Paint.FILTER_BITMAP_FLAG | Paint.DITHER_FLAG), fill = new Paint(),
-                sheen = new Paint(Paint.ANTI_ALIAS_FLAG), rim = new Paint(Paint.ANTI_ALIAS_FLAG), spec = new Paint(Paint.ANTI_ALIAS_FLAG);
+                rim = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final float radius, line;
-        private final android.graphics.RectF edge = new android.graphics.RectF(), top = new android.graphics.RectF(), dst = new android.graphics.RectF();
+        private final android.graphics.RectF edge = new android.graphics.RectF(), dst = new android.graphics.RectF();
 
         Frost(float radius, float line) {
             this.radius = radius;
             this.line = Math.max(1f, line);
             rim.setStyle(Paint.Style.STROKE);
             rim.setStrokeWidth(this.line);
-            spec.setStyle(Paint.Style.STROKE);
-            spec.setStrokeWidth(this.line);
+            rim.setColor(0x47FFFFFF);
         }
 
         @Override protected void onBoundsChange(android.graphics.Rect b) {
-            float h = Math.max(1, b.height());
-            sheen.setShader(new android.graphics.LinearGradient(0, b.top, 0, b.top + h * 0.55f, 0x26FFFFFF, 0x00FFFFFF, android.graphics.Shader.TileMode.CLAMP));
-            rim.setShader(new android.graphics.LinearGradient(0, b.top, 0, b.bottom, 0xB3FFFFFF, 0x38FFFFFF, android.graphics.Shader.TileMode.CLAMP));
-            spec.setShader(new android.graphics.LinearGradient(b.left, 0, b.right, 0, new int[]{0x00FFFFFF, 0xD9FFFFFF, 0xD9FFFFFF, 0x00FFFFFF},
-                    new float[]{0f, 0.25f, 0.75f, 1f}, android.graphics.Shader.TileMode.CLAMP));
             edge.set(b.left + line / 2f, b.top + line / 2f, b.right - line / 2f, b.bottom - line / 2f);
-            top.set(b.left, b.top, b.right, b.top + h * 0.55f);
         }
 
         @Override public void draw(android.graphics.Canvas c) {
@@ -1418,13 +1411,7 @@ final class ScoresTicker {
                 fill.setColor(0x21FFFFFF);
                 c.drawRect(b, fill);
             }
-            c.save();
-            c.clipRect(top);
-            c.drawRoundRect(edge, radius, radius, sheen);
-            c.restore();
             c.drawRoundRect(edge, radius, radius, rim);
-            float y = edge.top + line * 1.5f;
-            c.drawLine(edge.left + radius, y, edge.right - radius, y, spec);
         }
 
         @Override public void setAlpha(int a) { }
