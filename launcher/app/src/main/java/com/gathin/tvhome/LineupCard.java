@@ -323,7 +323,8 @@ final class LineupCard {
      */
     private static void showBar(Context c, Data d) {
         k = c.getResources().getDisplayMetrics().widthPixels / 1920f;
-        int w = px(1728), h = px(80), bandW = px(130);
+        // Option B's top bar: in the lane from the score pill leftwards, the clock left in sight.
+        int w = ScoresTicker.corner() ? ScoresTicker.laneRight - ScoresTicker.laneLeft : px(1728), h = px(80), bandW = px(130);
         float r = h / 2f;
         FrameLayout win = new FrameLayout(c);
         FrameLayout box = new FrameLayout(c);
@@ -364,8 +365,7 @@ final class LineupCard {
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
                         | WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
                 PixelFormat.TRANSLUCENT);
-        lp.gravity = Gravity.TOP | Gravity.CENTER_HORIZONTAL;
-        lp.y = px(12);
+        ScoresTicker.placeBar(c, lp, h, px(12), false);
         lp.setTitle("LineupCard");
         try {
             c.getSystemService(WindowManager.class).addView(win, lp);
@@ -1151,7 +1151,7 @@ final class LineupCard {
 
     private static void f1Bar(Context c, F1 f, Data carrier) {
         k = c.getResources().getDisplayMetrics().widthPixels / 1920f;
-        int w = px(1728), h = px(80), bandW = px(150);
+        int w = ScoresTicker.corner() ? ScoresTicker.laneRight - ScoresTicker.laneLeft : px(1728), h = px(80), bandW = px(150);
         float r = h / 2f;
         FrameLayout win = new FrameLayout(c);
         FrameLayout box = new FrameLayout(c);
@@ -1201,8 +1201,7 @@ final class LineupCard {
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
                         | WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
                 PixelFormat.TRANSLUCENT);
-        lp.gravity = Gravity.TOP | Gravity.CENTER_HORIZONTAL;
-        lp.y = px(12);
+        ScoresTicker.placeBar(c, lp, h, px(12), false);
         lp.setTitle("LineupCard");
         try {
             c.getSystemService(WindowManager.class).addView(win, lp);

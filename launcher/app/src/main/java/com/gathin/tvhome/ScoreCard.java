@@ -295,7 +295,10 @@ final class ScoreCard {
     // ---- on Home: the bar in the score bar's place ---------------------------------------------------------------
 
     private static void bar(Context c, Data d) {
-        int h = px(52), w = px(1728);
+        // Option B's top bar: the lane from the score pill leftwards (narrower: the clubs' names beside the score go, the
+        // crests stay); else across the score bar's place.
+        boolean corner = ScoresTicker.corner();
+        int h = px(52), w = corner ? ScoresTicker.laneRight - ScoresTicker.laneLeft : px(1728);
         LinearLayout bar = new LinearLayout(c);
         bar.setOrientation(LinearLayout.HORIZONTAL);
         bar.setGravity(Gravity.CENTER_VERTICAL);
@@ -343,11 +346,12 @@ final class ScoreCard {
                     : (d.first.isEmpty() ? "" : d.first + " ") + (d.f1 ? d.last : titleCase(d.last));
             String after = ko ? kickoffIn(d) : ft ? join(d.first, d.line) : d.others.isEmpty() ? d.line : "";
             TextView bigText = text(c, big, d.headline != null ? 19 : 22, d.dark ? 0xFFFFFFFF : INK, d.headline != null ? outfit(c, 800) : outfit(c, 600));
-            if (d.headline != null) bigText.setMaxWidth(px(1000));
+            if (d.headline != null) bigText.setMaxWidth(px(corner ? 560 : 1000));
+            else if (corner && ko) bigText.setMaxWidth(px(520));
             name.addView(bigText);
             if (!after.isEmpty()) {
                 TextView after2 = text(c, after, ko ? 18 : 16, d.dark ? 0xCCFFFFFF : INK_SOFT, outfit(c, ko ? 600 : 500));
-                if (ft) after2.setMaxWidth(px(820));
+                if (ft) after2.setMaxWidth(px(corner ? 420 : 820));
                 LinearLayout.LayoutParams sl = new LinearLayout.LayoutParams(-2, -2);
                 sl.leftMargin = px(ko ? 16 : 10);
                 name.addView(after2, sl);
@@ -396,9 +400,9 @@ final class ScoreCard {
         View spacer = new View(c);
         bar.addView(spacer, ko ? new LinearLayout.LayoutParams(px(22), 1) : new LinearLayout.LayoutParams(0, 1, 1f));
         if (d.score != null) {
-            if (d.homeName != null && !ko) bar.addView(text(c, d.homeName, 20, INK, outfit(c, 800)), sideName(true));
+            if (d.homeName != null && !ko && !corner) bar.addView(text(c, d.homeName, 20, INK, outfit(c, 800)), sideName(true));
             bar.addView(scoreBlock(c, d, h, ko ? 40 : 38, 25), new LinearLayout.LayoutParams(-2, h));
-            if (d.awayName != null && !ko) bar.addView(text(c, d.awayName, 20, INK, outfit(c, 800)), sideName(false));
+            if (d.awayName != null && !ko && !corner) bar.addView(text(c, d.awayName, 20, INK, outfit(c, 800)), sideName(false));
         } else if (d.method != null) {
             bar.addView(scoreBlock(c, d, h, 28, 25), new LinearLayout.LayoutParams(-2, h));
         }
@@ -423,8 +427,7 @@ final class ScoreCard {
                 WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
                         | WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED, PixelFormat.TRANSLUCENT);
-        lp.gravity = Gravity.TOP | Gravity.CENTER_HORIZONTAL;
-        lp.y = px(14);
+        ScoresTicker.placeBar(c, lp, h, px(14), ko);
         lp.setTitle("ScoreCard");
         if (!add(c, win, lp, d)) return;
         lane(true);

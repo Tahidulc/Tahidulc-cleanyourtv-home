@@ -124,6 +124,26 @@ final class ScoresTicker {
      */
     static volatile int laneLeft = -1, laneRight, laneCentre;
 
+    /** Option B on Home (not pop-up mode, which keeps its own bar): a bar across the top stands in the lane's place. */
+    static boolean corner() {
+        return laneLeft >= 0 && !PopupFrame.isShowing();
+    }
+
+    /**
+     * A Home bar's window (h high) put in its place: under option B in the lane, from its left (or, for one only as long
+     * as it needs, right-aligned to the lane's end), centred on the pill's line; else across the top, centred, at y.
+     */
+    static void placeBar(Context c, android.view.WindowManager.LayoutParams lp, int h, int y, boolean wrap) {
+        if (corner()) {
+            lp.gravity = Gravity.TOP | (wrap ? Gravity.END : Gravity.START);
+            lp.x = wrap ? c.getResources().getDisplayMetrics().widthPixels - laneRight : laneLeft;
+            lp.y = Math.max(0, laneCentre - h / 2);
+        } else {
+            lp.gravity = Gravity.TOP | Gravity.CENTER_HORIZONTAL;
+            lp.y = y;
+        }
+    }
+
     static void lane(int left, int right, int centreY) {
         laneLeft = left;
         laneRight = right;
