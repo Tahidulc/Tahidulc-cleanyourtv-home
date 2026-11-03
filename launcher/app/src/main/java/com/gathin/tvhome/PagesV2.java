@@ -2742,6 +2742,7 @@ final class PagesV2 {
             List<String> order = new ArrayList<>();
             for (String l : leagues) order.add(l.split("\\|", 2)[0].trim());
             java.util.Set<String> clubs = new java.util.HashSet<>(Arrays.asList(h.a.getResources().getStringArray(R.array.goal_alert_teams)));
+            clubs.add(MatchDay.MAN_UNITED);   // Home's own club (Match Day's first), starred too
             java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(Math.min(3, days.size()));
             List<java.util.concurrent.Future<List<ScoresTicker.Game>>> reads = new ArrayList<>();
             for (LocalDate d : days) reads.add(pool.submit(() -> ScoresTicker.load(leagues, d)));
@@ -2944,6 +2945,7 @@ final class PagesV2 {
             } else {
                 ScoresTicker.Game gm = w.game;
                 java.util.Set<String> clubs = new java.util.HashSet<>(Arrays.asList(h.a.getResources().getStringArray(R.array.goal_alert_teams)));
+                clubs.add(MatchDay.MAN_UNITED);   // Home's own club (Match Day's first), starred too
                 for (int k = 0; k < 2; k++) {
                     LinearLayout line = new LinearLayout(h.a);
                     line.setGravity(Gravity.CENTER_VERTICAL);

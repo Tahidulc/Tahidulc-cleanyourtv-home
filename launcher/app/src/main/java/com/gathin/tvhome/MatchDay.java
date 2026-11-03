@@ -46,7 +46,8 @@ import java.util.concurrent.Executors;
  * until three hours after its kick-off; with several, the one live now, else the next to start.
  */
 final class MatchDay {
-    private static final String MAN_UNITED = "360", ENGLAND = "448";
+    static final String MAN_UNITED = "360";
+    private static final String ENGLAND = "448";
     private static final Set<String> CLUBS = new HashSet<>(Arrays.asList("83", "86", "132", "160", "103", "110", "111"));
     private static final String[] MAJOR = {"eng.1|PL", "uefa.champions|UCL", "eng.league_cup|EFL CUP", "eng.fa|FA CUP"};
     private static final Set<String> MAJOR_SLUGS = new HashSet<>(Arrays.asList("eng.1", "uefa.champions", "eng.league_cup", "eng.fa"));
