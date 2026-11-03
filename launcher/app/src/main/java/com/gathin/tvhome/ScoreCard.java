@@ -438,9 +438,10 @@ final class ScoreCard {
                 bar.addView(e, el);
             }
         }
-        // The rest at the right end; a kick-off's bar is only as long as it needs (crests and channel after its line).
+        // The rest at the right end: a kick-off's bar as long as the full time's and the red card's (it was only as
+        // long as it needed, and stopped short of the others' end), its crests and channel at the end as theirs are.
         View spacer = new View(c);
-        bar.addView(spacer, ko ? new LinearLayout.LayoutParams(px(22), 1) : new LinearLayout.LayoutParams(0, 1, 1f));
+        bar.addView(spacer, new LinearLayout.LayoutParams(0, 1, 1f));
         if (d.score != null) {
             if (d.homeName != null && !ko && !tight) bar.addView(text(c, d.homeName, 20, INK, outfit(c, 800)), sideName(true));
             bar.addView(scoreBlock(c, d, h, ko ? 40 : 38, 25), new LinearLayout.LayoutParams(-2, h));
@@ -461,7 +462,7 @@ final class ScoreCard {
         box.setClipToOutline(true);
         box.setBackground(stageFill(d, px(50), px(30)));
         if (!d.dark) box.addView(drifting(c, d, px(50), px(30), h), driftParams(px(50), px(30), h));
-        int bw = ko ? ViewGroup.LayoutParams.WRAP_CONTENT : w;
+        int bw = w;
         box.addView(bar, new FrameLayout.LayoutParams(bw, h));
         FrameLayout win = new FrameLayout(c);
         win.addView(box, new FrameLayout.LayoutParams(bw, h));
