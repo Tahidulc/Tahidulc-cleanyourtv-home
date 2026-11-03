@@ -398,11 +398,11 @@ final class AmbientScene {
                 DateTimeFormatter hm = DateTimeFormatter.ofPattern("HH:mm");
                 for (ScoresTicker.Game g : day) {
                     // Each game with both clubs' crests either side (fetched once, kept on disk).
-                    if (g.state == 2 && results.size() < 4)
+                    if (g.state == 2 && results.size() < 9)
                         results.add(new Object[]{g.home + "  " + g.homeScore + "–" + g.awayScore + "  " + g.away, crest(g.homeLogo), crest(g.awayLogo), "FT"});
-                    if (g.state == 0 && onNow.size() < 3)
+                    if (g.state == 0 && onNow.size() < 9)
                         onNow.add(new Object[]{g.home + "  " + g.homeScore + "–" + g.awayScore + "  " + g.away, crest(g.homeLogo), crest(g.awayLogo), ScoresTicker.liveClock(g)});
-                    if (g.state == 1 && g.kickoff > now && later.size() < 4)
+                    if (g.state == 1 && g.kickoff > now && later.size() < 9)
                         later.add(new Object[]{g.home + "  v  " + g.away, crest(g.homeLogo), crest(g.awayLogo),
                                 Instant.ofEpochMilli(g.kickoff).atZone(zone).format(hm), channelLogo(g)});
                 }
@@ -472,7 +472,7 @@ final class AmbientScene {
             }
         }
         if (added) later.sort((a, b) -> String.valueOf(a[3]).compareTo(String.valueOf(b[3])));
-        while (later.size() > 5) later.remove(later.size() - 1);
+        while (later.size() > 9) later.remove(later.size() - 1);
     }
 
     /** The prayers' path shown, and moved on, when prayer times are on and known; gone otherwise. */
@@ -809,11 +809,7 @@ final class AmbientScene {
      */
     private List<Strip> strips(Object[] wx, List<Object[]> onNow, List<Object[]> later, List<Object[]> results, List<String[]> news) {
         List<Strip> out = new ArrayList<>();
-        if (!onNow.isEmpty()) {
-            Strip p = new Strip("LIVE");
-            p.items.addAll(onNow);
-            out.add(p);
-        }
+        paged(out, "LIVE", onNow);
         if (wx != null && wx.length > 3 && wx[3] instanceof List && !((List<?>) wx[3]).isEmpty()) {
             Strip p = new Strip("NEXT HOURS");
             for (Object o : (List<?>) wx[3]) {
@@ -847,16 +843,8 @@ final class AmbientScene {
             }
             out.add(p);
         }
-        if (!later.isEmpty()) {
-            Strip p = new Strip("LATER TODAY");
-            p.items.addAll(later);
-            out.add(p);
-        }
-        if (!results.isEmpty()) {
-            Strip p = new Strip("TODAY'S RESULTS");
-            p.items.addAll(results);
-            out.add(p);
-        }
+        paged(out, "LATER TODAY", later);
+        paged(out, "TODAY'S RESULTS", results);
         for (int i = 0; i < Math.min(3, news.size()); i++) {
             String[] st = news.get(i);
             Strip p = new Strip(st.length > 3 && st[3] != null ? st[3] : "NEWS");
@@ -872,6 +860,18 @@ final class AmbientScene {
     /** Whether the bar is showing a fact now, and when the last one came up. */
     private boolean onFact;
     private long factShownAt = Long.MIN_VALUE / 2;
+
+    /** Games on the bar a few to a page (three fit its width with their crests and channel logos), "LATER TODAY 1/2". */
+    private static final int PER_PAGE = 3;
+
+    private static void paged(List<Strip> out, String label, List<Object[]> items) {
+        int pages = (items.size() + PER_PAGE - 1) / PER_PAGE;
+        for (int i = 0; i < pages; i++) {
+            Strip p = new Strip(pages > 1 ? label + "  " + (i + 1) + "/" + pages : label);
+            p.items.addAll(items.subList(i * PER_PAGE, Math.min(items.size(), (i + 1) * PER_PAGE)));
+            out.add(p);
+        }
+    }
 
     private void showStrip(List<Strip> made) {
         String was = !onFact && pageAt >= 0 && pageAt < pages.size() ? pages.get(pageAt).label : null;
@@ -939,7 +939,7 @@ final class AmbientScene {
         g.setCornerRadius(px(8));
         boolean bd = "BANGLADESH".equals(p.label);
         boolean prayer = "PRAYER TIMES".equals(p.label) || p.label.startsWith("RAMADAN");
-        g.setColor("LIVE".equals(p.label) ? 0xFFE8112D : bd ? 0xFF006A4E : prayer ? 0xFF0F6B4F : "DID YOU KNOW?".equals(p.label) ? 0xFF5B3FC4 : 0x1FFFFFFF);
+        g.setColor(p.label.startsWith("LIVE") ? 0xFFE8112D : bd ? 0xFF006A4E : prayer ? 0xFF0F6B4F : "DID YOU KNOW?".equals(p.label) ? 0xFF5B3FC4 : 0x1FFFFFFF);
         chip.setBackground(g);
         if (bd) {
             // The flag's red disc before its name.

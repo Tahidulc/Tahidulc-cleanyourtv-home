@@ -55,6 +55,10 @@ final class ScoresTicker {
         /** OK on a game's box: g is that game. */
         void onScoresOpen(Game g);
         void onScoresDown();
+
+        /** Left past the first game (right false) or Right past the last (right true): out to the top row's neighbour. */
+        default void onScoresEdge(boolean right) {
+        }
     }
 
     private static final long LIVE_MS = 60_000L;
@@ -789,6 +793,19 @@ final class ScoresTicker {
         return shownRow.getChildAt(0).requestFocus();
     }
 
+    /** Focus the last game (coming in from the right): the last page's last box; false when none is on screen. */
+    boolean focusLast() {
+        if (shownRow == null || box.getVisibility() != View.VISIBLE || pages.isEmpty()) return false;
+        if (page != pages.size() - 1) {
+            page = pages.size() - 1;
+            box.removeView(shownRow);
+            shownRow = row(pages.get(page));
+            box.addView(shownRow, 0);
+            pageShown();
+        }
+        return shownRow.getChildCount() > 0 && shownRow.getChildAt(shownRow.getChildCount() - 1).requestFocus();
+    }
+
     private int focusedIndex() {
         if (shownRow == null) return -1;
         for (int i = 0; i < shownRow.getChildCount(); i++) if (shownRow.getChildAt(i).hasFocus()) return i;
@@ -808,6 +825,30 @@ final class ScoresTicker {
         box.addView(shownRow, 0);
         focusBox(forward ? 0 : shownRow.getChildCount() - 1);
         pageShown();
+    }
+
+    /**
+     * The next or previous game slid in by hand (the Sky ticker): the one showing glides out to the side and fades as
+     * the next glides in from the other, inside the bar's own edges; the focus goes onto it.
+     */
+    private void slidePage(boolean forward) {
+        if (pages.size() < 2 || shownRow == null) return;
+        page = (page + (forward ? 1 : pages.size() - 1)) % pages.size();
+        LinearLayout out = shownRow;
+        LinearLayout in = row(pages.get(page));
+        float w = box.getWidth() > 0 ? box.getWidth() : dp(200);
+        android.view.animation.PathInterpolator ease = new android.view.animation.PathInterpolator(0.2f, 0f, 0f, 1f);
+        in.setTranslationX(forward ? w * 0.7f : -w * 0.7f);
+        in.setAlpha(0f);
+        box.addView(in, 0);
+        shownRow = in;
+        focusBox(forward ? 0 : in.getChildCount() - 1);
+        out.animate().cancel();
+        out.animate().translationX(forward ? -w * 0.7f : w * 0.7f).alpha(0f).setDuration(240).setInterpolator(ease)
+                .withEndAction(() -> box.removeView(out)).start();
+        in.animate().translationX(0f).alpha(1f).setDuration(340).setInterpolator(ease).start();
+        pageShown();
+        schedulePage();
     }
 
     private void schedulePage() {
@@ -955,16 +996,24 @@ final class ScoresTicker {
             v.animate().scaleX(has ? 1.04f : 1f).scaleY(has ? 1.04f : 1f).setDuration(150).start();
         });
         b.setOnClickListener(v -> host.onScoresOpen(g));
+        // Left and Right slide through the games one by one; past the first or the last, out to the top row's
+        // neighbour (the Control Centre to the left, the weather to the right). Up and Down back to the top row.
         b.setOnKeyListener((v, keyCode, event) -> {
             if (event.getAction() != android.view.KeyEvent.ACTION_DOWN) return false;
             switch (keyCode) {
-                case android.view.KeyEvent.KEYCODE_DPAD_DOWN: host.onScoresDown(); return true;
-                case android.view.KeyEvent.KEYCODE_DPAD_UP: return true;
+                case android.view.KeyEvent.KEYCODE_DPAD_DOWN:
+                case android.view.KeyEvent.KEYCODE_DPAD_UP:
+                    host.onScoresDown();
+                    return true;
                 case android.view.KeyEvent.KEYCODE_DPAD_LEFT:
-                    if (index == 0) turnPage(false); else focusBox(index - 1);
+                    if (index > 0) focusBox(index - 1);
+                    else if (page > 0) slidePage(false);
+                    else host.onScoresEdge(false);
                     return true;
                 case android.view.KeyEvent.KEYCODE_DPAD_RIGHT:
-                    if (index == count - 1) turnPage(true); else focusBox(index + 1);
+                    if (index < count - 1) focusBox(index + 1);
+                    else if (page < pages.size() - 1) slidePage(true);
+                    else host.onScoresEdge(true);
                     return true;
                 default: return false;
             }

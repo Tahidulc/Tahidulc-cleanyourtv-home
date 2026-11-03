@@ -353,6 +353,16 @@ final class HomeV2 {
                     zone = Z_TOP;
                     paint();
                 }
+
+                @Override public void onScoresEdge(boolean right) {
+                    // Out of the score bar sideways: onto the weather (right) or the Control Centre (left).
+                    View f = a.getCurrentFocus();
+                    if (f != null) f.clearFocus();
+                    zone = Z_TOP;
+                    int to = topViews.indexOf(right ? weatherView : ccButton);
+                    if (to >= 0) topIdx = to;
+                    paint();
+                }
             });
             scores.setTypeface(a.getResources().getFont(R.font.inter_ui));
             scores.equalWidths(true);
@@ -1528,6 +1538,11 @@ final class HomeV2 {
                 // Over an open section, Down goes back into it where the focus was.
                 if (code == KeyEvent.KEYCODE_DPAD_DOWN && parked && page != null) { parked = false; zone = Z_CATS; page.entered(); break; }
                 if (code == KeyEvent.KEYCODE_DPAD_UP && scores != null && scores.focus()) zone = Z_SCORES;
+                // The top bar's one line (option B): the Control Centre, Right into the score bar, then the weather.
+                else if (corners && code == KeyEvent.KEYCODE_DPAD_RIGHT && topIdx < topViews.size() && topViews.get(topIdx) == ccButton
+                        && scores != null && scores.focus()) zone = Z_SCORES;
+                else if (corners && code == KeyEvent.KEYCODE_DPAD_LEFT && topIdx < topViews.size() && topViews.get(topIdx) == weatherView
+                        && scores != null && scores.focusLast()) zone = Z_SCORES;
                 else if (code == KeyEvent.KEYCODE_DPAD_LEFT && topIdx > 0) topIdx--;
                 else if (code == KeyEvent.KEYCODE_DPAD_RIGHT && topIdx < topViews.size() - 1) topIdx++;
                 else if (code == KeyEvent.KEYCODE_DPAD_DOWN && match.active() && page == null) { zone = Z_MATCH; matchIdx = 0; }
