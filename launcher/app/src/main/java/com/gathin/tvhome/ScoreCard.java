@@ -903,6 +903,7 @@ final class ScoreCard {
         try {
             c.getSystemService(WindowManager.class).addView(win, lp);
         } catch (RuntimeException e) {
+            AlertLog.note(c, "a score card's window could not open: " + e);
             for (android.animation.Animator a : moving) a.cancel();
             moving.clear();
             main.post(() -> next(c));

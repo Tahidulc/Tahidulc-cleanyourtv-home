@@ -616,6 +616,8 @@ final class LineupCard {
         String channel;
         Bitmap channelLogo;
         Runnable watch;
+        /** Times it has waited for another pop-up to go. */
+        int waited;
     }
 
     /** Sky Sports F1's colours: F1's red, and a plain black ground (nothing on it moves). */
@@ -627,7 +629,9 @@ final class LineupCard {
     static void showF1(Context ctx, F1 f) {
         Context c = ctx.getApplicationContext();
         // One at a time: after a score card, a camera alarm or an older alert (news, weather) has gone.
-        if (CameraAlert.isShowing() || ScoreCard.busy() || GoalWatchService.alertShowing()) {
+        if ((CameraAlert.isShowing() || ScoreCard.busy() || GoalWatchService.alertShowing()) && f.waited < 45) {
+            // Waits its turn, two seconds at a time, at most a minute and a half: then it shows all the same.
+            f.waited++;
             retry.postDelayed(() -> showF1(c, f), 2_000L);
             return;
         }

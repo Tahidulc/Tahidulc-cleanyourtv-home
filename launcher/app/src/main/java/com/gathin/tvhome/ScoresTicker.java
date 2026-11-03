@@ -336,7 +336,13 @@ final class ScoresTicker {
                 String leagueLogo = leagueLogo(board);
                 JSONArray events = board.optJSONArray("events");
                 for (int i = 0; events != null && i < events.length(); i++) {
-                    Game g = parse(events.getJSONObject(i), tag, zone);
+                    // One game ESPN sends half-written does not hide the rest of its league.
+                    Game g;
+                    try {
+                        g = parse(events.getJSONObject(i), tag, zone);
+                    } catch (Exception oneGame) {
+                        continue;
+                    }
                     if (g == null) continue;
                     g.leagueLogo = leagueLogo;
                     g.slug = slug;
