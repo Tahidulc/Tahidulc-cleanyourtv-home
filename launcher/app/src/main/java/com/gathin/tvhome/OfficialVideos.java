@@ -21,6 +21,8 @@ final class OfficialVideos {
     static final class Video {
         String youtube, mp4, title, thumb;
         long published;
+        /** A YouTube Short (its feed link goes to /shorts/): no use as a highlight on a TV. */
+        boolean shorts;
     }
 
     private static final String SKY_PL = "UCNAf1k0yIjyGu3k9BwAg3lg", SKY_FOOTBALL = "UCZ7wY7MRDSygp63HIEfdQZA",
@@ -100,6 +102,7 @@ final class OfficialVideos {
                 v.youtube = tag(e, "yt:videoId");
                 v.title = unescape(tag(e, "title"));
                 v.thumb = attr(e, "media:thumbnail", "url");
+                v.shorts = e.contains("/shorts/");
                 try { v.published = java.time.OffsetDateTime.parse(tag(e, "published")).toInstant().toEpochMilli(); } catch (Exception ignored) { }
                 if (v.youtube != null && !v.youtube.isEmpty()) out.add(v);
             }

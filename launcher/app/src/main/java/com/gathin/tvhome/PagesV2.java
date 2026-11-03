@@ -1835,6 +1835,150 @@ final class PagesV2 {
             super(h);
         }
 
+        /** The rows before the highlights: Continue Watching and the two of live sport (holding OK sets a reminder there). */
+        private static final int LIVE_ROWS = 3;
+        private final java.util.concurrent.ExecutorService highlightsIo = java.util.concurrent.Executors.newSingleThreadExecutor();
+
+        /** A row of 16:9 tiles under its name, the next one down the page (300 apart); its index. */
+        private int addRow(String name) {
+            int i = strips.size();
+            TextView l = h.text(18, h.semi, 0xBFFFFFFF);
+            l.setLetterSpacing(0.11f);
+            l.setText(name);
+            addTo(fixtures, l, 216, 236 + i * 300, 1500, 30);
+            rowViews.add(l);
+            FrameLayout view = new FrameLayout(h.a);
+            view.setOutlineProvider(ViewOutlineProvider.BOUNDS);
+            view.setClipToOutline(true);
+            view.setClipChildren(false);
+            LinearLayout strip = new LinearLayout(h.a);
+            strip.setOrientation(LinearLayout.HORIZONTAL);
+            // The strip is no wider than the row, but its tiles run on past it and slide in as the row scrolls:
+            // not cut off at its own edge (the row's frame does the cutting), or those further along stay blank.
+            strip.setClipChildren(false);
+            strip.setClipToPadding(false);
+            FrameLayout.LayoutParams sl = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, px(216));
+            sl.leftMargin = px(24);
+            sl.topMargin = px(24);
+            view.addView(strip, sl);
+            addTo(fixtures, view, 192, 262 + i * 300, 1656, 268);
+            rowViews.add(view);
+            strips.add(strip);
+            lists.add(new ArrayList<>());
+            return i;
+        }
+
+        /**
+         * Highlights, a row for each sport under the live sport (SportsHighlights): read off the main thread, a sport at
+         * a time, each row added (in the sports' order) once its videos are in; a sport with none gets no row.
+         */
+        private void loadHighlights() {
+            highlightsIo.execute(() -> {
+                for (SportsHighlights.Sport sp : SportsHighlights.SPORTS) {
+                    if (!alive) return;
+                    List<SportsHighlights.Clip> got = SportsHighlights.load(sp);
+                    if (got.isEmpty()) continue;
+                    h.main.post(() -> { if (alive) addHighlights(sp, got); });
+                }
+            });
+        }
+
+        private void addHighlights(SportsHighlights.Sport sp, List<SportsHighlights.Clip> clips) {
+            int r = addRow("HIGHLIGHTS  ·  " + sp.name);
+            for (SportsHighlights.Clip c : clips) {
+                HomeV2.Tile t = new HomeV2.Tile();
+                t.title = c.title;
+                String id = c.id;
+                t.ok = () -> playYouTube(id);
+                lists.get(r).add(t);
+                strips.get(r).addView(highlight(c));
+            }
+            paint();
+        }
+
+        /** A video in YouTube on the TV (its own app; any app that plays YouTube links when it has none). */
+        private void playYouTube(String id) {
+            android.content.Intent i = new android.content.Intent(android.content.Intent.ACTION_VIEW,
+                    android.net.Uri.parse("https://www.youtube.com/watch?v=" + id)).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
+            try {
+                h.a.startActivity(new android.content.Intent(i).setPackage("com.google.android.youtube.tv"));
+            } catch (RuntimeException e) {
+                try {
+                    h.a.startActivity(i);
+                } catch (RuntimeException ignored) {
+                    // nothing here plays YouTube
+                }
+            }
+        }
+
+        /**
+         * A highlight's tile: the video's own widescreen picture, what it is (HIGHLIGHTS, FULL FIGHT, EXTENDED…) top
+         * left, the sport's mark top right, and under its title the channel and how long ago it went up.
+         */
+        private View highlight(SportsHighlights.Clip c) {
+            FrameLayout f = new FrameLayout(h.a);
+            f.setClipToOutline(true);
+            f.setOutlineProvider(h.round(16));
+            f.setBackground(h.fill(16, 0xFF15182E));
+            ImageView pic = new ImageView(h.a);
+            pic.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            f.addView(pic, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+            // "#yt": the widescreen picture where the video has one, else the usual one cut free of its black bars.
+            h.image(pic, "https://i.ytimg.com/vi/" + c.id + "/hqdefault.jpg#yt", px(384));
+            View shade = new View(h.a);
+            shade.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0x59000000, 0x00000000, 0x33000000, 0xF0000000}));
+            f.addView(shade, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+            String kind = SportsHighlights.kind(c);
+            if (kind != null) {
+                TextView k = h.text(14, h.semi, Color.WHITE);
+                k.setText(kind);
+                k.setLetterSpacing(0.08f);
+                k.setPadding(px(10), px(3), px(10), px(3));
+                k.setBackground(h.fill(8, 0xCC000000));
+                FrameLayout.LayoutParams kl = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP | Gravity.START);
+                kl.leftMargin = px(12);
+                kl.topMargin = px(12);
+                f.addView(k, kl);
+            }
+            TextView mark = h.text(13, h.semi, Color.WHITE);
+            mark.setText(c.mark);
+            mark.setLetterSpacing(0.1f);
+            mark.setPadding(px(9), px(3), px(9), px(3));
+            GradientDrawable mg = h.fill(8, 0x33FFFFFF);
+            mg.setStroke(Math.max(1, px(1)), 0x66FFFFFF);
+            mark.setBackground(mg);
+            FrameLayout.LayoutParams ml = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP | Gravity.END);
+            ml.rightMargin = px(12);
+            ml.topMargin = px(12);
+            f.addView(mark, ml);
+            LinearLayout cap = new LinearLayout(h.a);
+            cap.setOrientation(LinearLayout.VERTICAL);
+            TextView n = h.text(19, h.semi, Color.WHITE);
+            n.setText(c.title);
+            n.setMaxLines(2);
+            n.setEllipsize(TextUtils.TruncateAt.END);
+            n.setLineSpacing(0, 1.05f);
+            cap.addView(n);
+            TextView from = h.text(15, h.regular, 0xCCFFFFFF);
+            String age = SportsHighlights.age(c.published);
+            from.setText(c.channel + (age.isEmpty() ? "" : "  ·  " + age));
+            from.setSingleLine(true);
+            from.setEllipsize(TextUtils.TruncateAt.END);
+            LinearLayout.LayoutParams fl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            fl.topMargin = px(4);
+            cap.addView(from, fl);
+            FrameLayout.LayoutParams capl = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM);
+            capl.leftMargin = px(16);
+            capl.rightMargin = px(14);
+            capl.bottomMargin = px(12);
+            f.addView(cap, capl);
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(px(384), px(216));
+            lp.rightMargin = px(24);
+            f.setLayoutParams(lp);
+            f.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+            return f;
+        }
+
         @Override void open() {
             super.open();
             cards = new FrameLayout(h.a);
@@ -1845,31 +1989,7 @@ final class PagesV2 {
             add(fixtures, 0, 0, 1920, 1080);
             fixtures.setTranslationY(px(660));
             String[] names = {"CONTINUE WATCHING", "LIVE FOOTBALL · THIS WEEK", "MORE LIVE SPORT"};
-            for (int i = 0; i < names.length; i++) {
-                TextView l = h.text(18, h.semi, 0xBFFFFFFF);
-                l.setLetterSpacing(0.11f);
-                l.setText(names[i]);
-                addTo(fixtures, l, 216, 236 + i * 300, 1500, 30);
-                rowViews.add(l);
-                FrameLayout view = new FrameLayout(h.a);
-                view.setOutlineProvider(ViewOutlineProvider.BOUNDS);
-                view.setClipToOutline(true);
-                view.setClipChildren(false);
-                LinearLayout strip = new LinearLayout(h.a);
-                strip.setOrientation(LinearLayout.HORIZONTAL);
-                // The strip is no wider than the row, but its tiles run on past it and slide in as the row scrolls:
-                // not cut off at its own edge (the row's frame does the cutting), or those further along stay blank.
-                strip.setClipChildren(false);
-                strip.setClipToPadding(false);
-                FrameLayout.LayoutParams sl = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, px(216));
-                sl.leftMargin = px(24);
-                sl.topMargin = px(24);
-                view.addView(strip, sl);
-                addTo(fixtures, view, 192, 262 + i * 300, 1656, 268);
-                rowViews.add(view);
-                strips.add(strip);
-                lists.add(new ArrayList<>());
-            }
+            for (String name : names) addRow(name);
             // Continue Watching: matches, highlights and races part-watched in any app (Sky Sports, TNT Sports, DAZN,
             // F1 TV, Debrid Stream…), each with how far in; OK opens the app it was in.
             resumeNone = h.text(22, h.regular, 0x99FFFFFF);
@@ -1885,6 +2005,7 @@ final class PagesV2 {
                 strips.get(0).addView(resumeTile(e));
             }
             resumeNone.setVisibility(resume.isEmpty() ? View.VISIBLE : View.GONE);
+            loadHighlights();
             buildMatch();
             buildTable();
             buildF1();
@@ -1931,6 +2052,7 @@ final class PagesV2 {
             h.main.removeCallbacks(scoreTick);
             h.main.removeCallbacks(liveTick);
             playsIo.shutdownNow();
+            highlightsIo.shutdownNow();
             super.close();
         }
 
@@ -3253,9 +3375,9 @@ final class PagesV2 {
             tablePage.setTextColor(onTable ? Color.WHITE : 0x73FFFFFF);
             // The way down past the table: the "What's on in sport" button, lit on the card with the focus.
             int liveNow = 0;
-            for (int r = 1; r < lists.size(); r++) for (HomeV2.Tile t : lists.get(r)) if ("LIVE NOW".equals(t.chip)) liveNow++;
+            for (int r = 1; r < Math.min(LIVE_ROWS, lists.size()); r++) for (HomeV2.Tile t : lists.get(r)) if ("LIVE NOW".equals(t.chip)) liveNow++;
             int coming = 0;
-            for (int r = 1; r < lists.size(); r++) coming += lists.get(r).size();
+            for (int r = 1; r < Math.min(LIVE_ROWS, lists.size()); r++) coming += lists.get(r).size();
             for (Jump j : jumps) {
                 if (f1TimingOn && j.box == f1Jump) continue;   // the F1 timing's own line stays
                 j.live.setText(liveNow > 0 ? liveNow + " live now · " + coming + " this week" : coming > 0 ? coming + " games and events this week" : "Live football and more");
@@ -3283,7 +3405,7 @@ final class PagesV2 {
             int code = e.getKeyCode();
             if (ok(code)) {
                 // Held on a fixture: a reminder for it (held again: taken off). A plain press watches it.
-                if (e.getAction() == KeyEvent.ACTION_DOWN && e.getRepeatCount() == 1 && zone >= 1 && idx < lists.get(zone).size()) {
+                if (e.getAction() == KeyEvent.ACTION_DOWN && e.getRepeatCount() == 1 && zone >= 1 && zone < LIVE_ROWS && idx < lists.get(zone).size()) {
                     held = true;
                     remind(lists.get(zone).get(idx));
                     return true;
