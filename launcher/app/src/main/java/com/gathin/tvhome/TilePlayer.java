@@ -139,12 +139,15 @@ final class TilePlayer {
                 + "</head><body><div id=p></div><script src='https://www.youtube.com/iframe_api'></script><script>"
                 + "var pl;function onYouTubeIframeAPIReady(){pl=new YT.Player('p',{width:'100%',height:'100%',"
                 + "playerVars:{autoplay:1,controls:0,rel:0,playsinline:1,modestbranding:1,iv_load_policy:3,disablekb:1,fs:0,cc_load_policy:0,showinfo:0,"
-                + "origin:'https://" + pkg + "'},"
-                + "events:{onReady:function(){Home.ready();},"
+                + "hl:'en',cc_lang_pref:'en',origin:'https://" + pkg + "'},"
+                // No subtitles: YouTube turns a video's captions on by itself (its own choice for the video, or the
+                // language), loading them once it plays; they are taken off each time they load and as it starts.
+                + "events:{onReady:function(){Home.ready();},onApiChange:function(){nocc();},"
                 + "onError:function(e){Home.refused(cur,e.data);if(!full)next();},"
-                + "onStateChange:function(e){Home.state(e.data);if(e.data==1)Home.playing();else if(e.data==3||e.data==2||e.data==-1||e.data==5)Home.waiting();if(e.data==2&&!full)e.target.playVideo();if(e.data==0)Home.ended();}}});}"
+                + "onStateChange:function(e){if(e.data==1||e.data==3)nocc();Home.state(e.data);if(e.data==1)Home.playing();else if(e.data==3||e.data==2||e.data==-1||e.data==5)Home.waiting();if(e.data==2&&!full)e.target.playVideo();if(e.data==0)Home.ended();}}});}"
                 // Several trailers, comma-separated: YouTube refuses some in an embedded player (their owner turned
                 // that off, or not in this country): on to the next.
+                + "function nocc(){try{pl.setOption('captions','track',{});}catch(x){}try{pl.unloadModule('captions');}catch(x){}try{pl.unloadModule('cc');}catch(x){}}"
                 + "var q=[],cur='';function play(ids){q=ids.split(',');next();}"
                 + "function next(){cur=q.shift()||'';if(!cur)return;try{pl.unloadModule('captions');}catch(x){}pl.setVolume(80);pl.loadVideoById({videoId:cur,startSeconds:6});}"
                 // A whole video (film): from its start, uncut, louder, paused and played on asking, its time told each second.
