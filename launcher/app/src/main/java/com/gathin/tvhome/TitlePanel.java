@@ -264,8 +264,10 @@ final class TitlePanel {
             LinearLayout box = new LinearLayout(c);
             box.setOrientation(LinearLayout.VERTICAL);
             box.setPadding(h.px(22), h.px(14), h.px(22), h.px(14));
-            GradientDrawable bg = h.fill(18, 0x8C0A0E50);
-            bg.setStroke(Math.max(1, h.px(1)), 0x38FFFFFF);
+            // See-through: a faint white wash and a hairline rim, no colour of its own, so it takes on whatever
+            // picture is behind it (it was a navy box, out of place on the content's own colours).
+            GradientDrawable bg = h.fill(18, 0x14FFFFFF);
+            bg.setStroke(Math.max(1, h.px(1.5f)), 0x33FFFFFF);
             box.setBackground(bg);
             LinearLayout head = new LinearLayout(c);
             head.setGravity(Gravity.CENTER_VERTICAL);
@@ -297,7 +299,7 @@ final class TitlePanel {
                 ImageView pic = new ImageView(c);
                 pic.setScaleType(ImageView.ScaleType.CENTER_CROP);
                 if (p[1] != null) pic.setImageBitmap((Bitmap) p[1]);
-                pic.setBackground(h.fill(9, 0xFF1A1F6B));
+                pic.setBackground(h.fill(9, 0x24FFFFFF));
                 pic.setClipToOutline(true);
                 pic.setOutlineProvider(h.round(9));
                 boolean coming = p[2] == null && ft.id != t.id && status(ft, null, (String) p[3], t).startsWith("Out");
@@ -387,7 +389,7 @@ final class TitlePanel {
         f.setScaleType(ImageView.ScaleType.CENTER_CROP);
         if (p[2] != null) f.setImageBitmap((Bitmap) p[2]);
         int ringSize = compact ? 116 : 132;
-        f.setBackground(h.fill(ringSize / 2f, 0xFF1A1F6B));
+        f.setBackground(h.fill(ringSize / 2f, 0x24FFFFFF));
         f.setClipToOutline(true);
         f.setOutlineProvider(h.round(ringSize / 2f));
         MockKit.ring(h, f, ringSize / 2f, 3, 0xCCFFFFFF);
