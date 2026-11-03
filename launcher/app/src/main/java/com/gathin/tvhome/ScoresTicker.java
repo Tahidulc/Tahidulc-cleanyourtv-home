@@ -904,12 +904,15 @@ final class ScoresTicker {
      */
     private void slideRows(LinearLayout out, LinearLayout in, boolean forward) {
         float w = box.getWidth() > 0 ? box.getWidth() : dp(200);
-        // Option F: the next game's wedges charge in from the ends over the last one sliding a little aside and going.
+        // A ticker's slide: the game showing slides out to one side as the next slides in from the other, the two
+        // edge to edge, inside the bar's own edges.
+        in.setTranslationX(forward ? w : -w);
+        in.setAlpha(1f);
         box.addView(in);
         out.animate().cancel();
-        out.animate().translationX(forward ? -w * 0.18f : w * 0.18f).alpha(0f).setDuration(SLIDE_OUT_MS / 2 + 60).setInterpolator(SLIDE)
+        out.animate().translationX(forward ? -w : w).setDuration(SLIDE_IN_MS).setInterpolator(SLIDE)
                 .withEndAction(() -> box.removeView(out)).start();
-        charge(in);
+        in.animate().translationX(0f).setDuration(SLIDE_IN_MS).setInterpolator(SLIDE).start();
     }
 
     private void schedulePage() {
@@ -1158,29 +1161,25 @@ final class ScoresTicker {
             shown.awayGroup = end;
             return b;
         }
-        // The home tile: its crest, then its code, navy on white.
+        // The home tile: its crest alone, large, on the white (no code: the crest says who it is).
         LinearLayout home = new LinearLayout(context);
-        home.setGravity(Gravity.CENTER_VERTICAL);
+        home.setGravity(Gravity.CENTER);
         home.setBackground(bugWhite());
-        home.setPadding(sk(10), 0, sk(8), 0);
-        home.addView(glassCrest(g.homeLogo), new LinearLayout.LayoutParams(sk(32), sk(32)));
-        TextView hc = skyText(g.home, 19, BUG_INK, 800);
-        hc.setGravity(Gravity.CENTER);
-        home.addView(hc, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        ImageView hcrest = glassCrest(g.homeLogo);
+        hcrest.setContentDescription(g.homeName != null ? g.homeName : g.home);
+        home.addView(hcrest, new LinearLayout.LayoutParams(sk(BUG_CREST), sk(BUG_CREST)));
         FrameLayout.LayoutParams hl = new FrameLayout.LayoutParams(sk(BUG_TILE), ViewGroup.LayoutParams.MATCH_PARENT);
         hl.leftMargin = sk(BUG_COMP);
         b.addView(home, hl);
         shown.homeWedge = home;
         shown.homeGroup = home;
-        // The away tile: its code, then its crest, to the box's end.
+        // The away tile: its crest alone, large, to the box's end.
         LinearLayout away = new LinearLayout(context);
-        away.setGravity(Gravity.CENTER_VERTICAL);
+        away.setGravity(Gravity.CENTER);
         away.setBackground(bugWhite());
-        away.setPadding(sk(8), 0, sk(10), 0);
-        TextView ac = skyText(g.away, 19, BUG_INK, 800);
-        ac.setGravity(Gravity.CENTER);
-        away.addView(ac, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        away.addView(glassCrest(g.awayLogo), new LinearLayout.LayoutParams(sk(32), sk(32)));
+        ImageView acrest = glassCrest(g.awayLogo);
+        acrest.setContentDescription(g.awayName != null ? g.awayName : g.away);
+        away.addView(acrest, new LinearLayout.LayoutParams(sk(BUG_CREST), sk(BUG_CREST)));
         FrameLayout.LayoutParams al = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
         al.leftMargin = sk(BUG_COMP + BUG_TILE + BUG_MID);
         b.addView(away, al);
@@ -1189,17 +1188,17 @@ final class ScoresTicker {
         // The middle: the score large (the kick-off time before), the clock (or FT, or the day) small under it.
         LinearLayout mid = bugMiddle();
         mid.setOrientation(LinearLayout.VERTICAL);
-        TextView plate = skyText(g.state == 1 ? detail(g) : plateText(g), g.state == 1 ? 20 : 23, 0xFFFFFFFF, 900);
+        TextView plate = skyText(g.state == 1 ? detail(g) : plateText(g), g.state == 1 ? 20 : 22, 0xFFFFFFFF, 900);
         plate.setGravity(Gravity.CENTER);
         plate.setFontFeatureSettings("tnum");
         mid.addView(plate, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         boolean live = g.state == 0;
-        TextView when = skyText(g.state == 1 ? "KICK-OFF" : g.state == 2 ? "FT" : detail(g), g.state == 1 ? 10 : 12.5f, 0xEBFFFFFF, 700);
+        TextView when = skyText(g.state == 1 ? "KICK-OFF" : g.state == 2 ? "FT" : detail(g), g.state == 1 ? 10 : 12f, 0xEBFFFFFF, 700);
         when.setGravity(Gravity.CENTER);
         when.setFontFeatureSettings("tnum");
         if (g.state == 1) when.setLetterSpacing(0.1f);
         LinearLayout.LayoutParams wl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        wl.topMargin = sk(1);
+        wl.bottomMargin = sk(2);
         mid.addView(when, wl);
         FrameLayout.LayoutParams pl = new FrameLayout.LayoutParams(sk(BUG_MID), ViewGroup.LayoutParams.MATCH_PARENT);
         pl.leftMargin = sk(BUG_COMP + BUG_TILE);
@@ -1215,8 +1214,11 @@ final class ScoresTicker {
         return b;
     }
 
-    /** The score graphic's widths on the 1920 design: the competition's block, each white tile, the blue middle. */
-    private static final int BUG_COMP = 48, BUG_TILE = 134, BUG_MID = 98;
+    /**
+     * The score graphic's widths on the 1920 design: the competition's block, each white tile, the blue middle; and
+     * the crests' size on their tiles (large, the box being 50 high).
+     */
+    private static final int BUG_COMP = 52, BUG_TILE = 110, BUG_MID = 142, BUG_CREST = 40;
     /** Its navy (the competition's block and the focus rim), its ink on the white, and the white's foot. */
     private static final int BUG_NAVY = 0xFF0B1150, BUG_INK = 0xFF0B1150, BUG_WHITE_FOOT = 0xFFE4E7F1;
 
@@ -1251,38 +1253,6 @@ final class ScoresTicker {
         if (android.os.Build.VERSION.SDK_INT >= 28) t.setTypeface(Typeface.create(base, weight, true));
         else t.setTypeface(base, Typeface.ITALIC);
         return t;
-    }
-
-    /**
-     * A new game's box arriving: its two tiles slide in from the ends, their words come up on them and the middle's
-     * score flips in. Cheap: the views' own moves, no picture made.
-     */
-    private void charge(LinearLayout row) {
-        float w = sk(260);
-        for (int i = 0; i < row.getChildCount(); i++) {
-            Object t = row.getChildAt(i).getTag();
-            if (!(t instanceof Shown)) continue;
-            Shown sh = (Shown) t;
-            if (sh.homeWedge != null) {
-                sh.homeWedge.setTranslationX(-w);
-                sh.homeWedge.animate().translationX(0f).setDuration(SLIDE_IN_MS).setInterpolator(SLIDE).start();
-            }
-            if (sh.awayWedge != null) {
-                sh.awayWedge.setTranslationX(w);
-                sh.awayWedge.animate().translationX(0f).setDuration(SLIDE_IN_MS).setInterpolator(SLIDE).start();
-            }
-            for (View v : new View[]{sh.homeGroup, sh.awayGroup, sh.when}) {
-                if (v == null) continue;
-                v.setAlpha(0f);
-                v.animate().alpha(1f).setStartDelay(130).setDuration(200).start();
-            }
-            if (sh.plate != null) {
-                sh.plate.setCameraDistance(sk(2400));
-                sh.plate.setRotationX(90f);
-                sh.plate.setAlpha(0f);
-                sh.plate.animate().rotationX(0f).alpha(1f).setStartDelay(150).setDuration(240).setInterpolator(SLIDE).start();
-            }
-        }
     }
 
     /** A goal: the scorer's tile pulses towards the middle and back, under a quick flash of light. */

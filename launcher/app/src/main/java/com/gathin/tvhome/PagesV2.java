@@ -1049,8 +1049,9 @@ final class PagesV2 {
                             wide.setScaleY(1f);
                         } else if (h.lite) {
                             // lite_home (the TCL): the picture still, a touch in (six seconds of a big picture redrawn
-                            // at a new size every frame, under the trailer loading, made the next slide stutter).
-                            wide.animate().cancel();
+                            // at a new size every frame, under the trailer loading, made the next slide stutter). Its
+                            // fade in just started is left running: cancelled here (3.63 to 3.68), the wide picture
+                            // never showed and an opened poster was its narrow picture beside an empty space.
                             wide.setScaleX(1.06f);
                             wide.setScaleY(1.06f);
                         } else {
