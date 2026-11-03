@@ -99,8 +99,12 @@ public class GoalWatchService extends Service {
         for (int i = 0; i < raw.length; i++) soundIds.put(names[i], sounds.load(this, raw[i], 1));
     }
 
+    /** Until when test alerts stay silent (test_quiet). */
+    private static long quietUntil;
+
     private void play(String sound) {
         if (replaying) return;   // an alert moved to its new place has already sounded
+        if (android.os.SystemClock.elapsedRealtime() < quietUntil) return;
         // A message from the other TV or the phone: its own three notes, always (asked for even with alerts silent).
         if ("message".equals(sound)) { DoorbellAlert.tones(this, TvLink.TONE, 0.16f); return; }
         Integer id = sound == null || sounds == null ? null : soundIds.get(sound);
@@ -1525,6 +1529,8 @@ public class GoalWatchService extends Service {
                 }
             });
         }
+        // adb only: the test alerts of the next minute come up without their sound (a check of the look, not the TV's room).
+        if (intent != null && intent.getBooleanExtra("test_quiet", false)) quietUntil = android.os.SystemClock.elapsedRealtime() + 60_000L;
         if (intent != null && intent.hasExtra("test_goal")) {
             // adb only (the service needs DUMP from outside): one sample alert now, to check the look over an app.
             ScoresTicker.Game g = new ScoresTicker.Game();
@@ -3030,7 +3036,15 @@ public class GoalWatchService extends Service {
         lp.x = Math.round(32 * d);
         // Above the screensaver's clock and caption while it runs.
         lp.y = Math.round((dreaming ? 92 : 30) * d);
-        if (onLane()) {
+        // (Pop-up mode keeps its own full-width score bar, so its alerts stay across it.)
+        if (onLane() && ScoresTicker.laneLeft >= 0 && !PopupFrame.isShowing()) {
+            // v2's Home under option B's top bar: grown out of the one score pill leftwards, as far as the clock's
+            // column, centred on the pill's line; the time, date and weather stay in sight.
+            lp.width = ScoresTicker.laneRight - ScoresTicker.laneLeft;
+            lp.gravity = Gravity.TOP | Gravity.START;
+            lp.x = ScoresTicker.laneLeft;
+            lp.y = Math.round(ScoresTicker.laneCentre - PILL_DP / 2f * d);
+        } else if (onLane()) {
             // v2's Home: over the score bar, its width (1728 of 1920), with the bar's top edge.
             int sw = getResources().getDisplayMetrics().widthPixels;
             lp.width = Math.round(sw * 1728f / 1920f);

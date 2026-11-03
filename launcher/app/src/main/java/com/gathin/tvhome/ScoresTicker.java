@@ -111,6 +111,25 @@ final class ScoresTicker {
 
     private boolean equal;
 
+    /** Told which page of games shows and how many there are (option B's dots under its one pill). */
+    java.util.function.BiConsumer<Integer, Integer> pageListener;
+
+    private void pageShown() {
+        if (pageListener != null) pageListener.accept(page, box.getVisibility() == View.VISIBLE ? pages.size() : 0);
+    }
+
+    /**
+     * Where an alert on v2's Home stands, in screen pixels: from left to right, centred on the line at centreY (option
+     * B: grown out of the one pill leftwards, the clock left in sight). left -1: over the score bar, as before.
+     */
+    static volatile int laneLeft = -1, laneRight, laneCentre;
+
+    static void lane(int left, int right, int centreY) {
+        laneLeft = left;
+        laneRight = right;
+        laneCentre = centreY;
+    }
+
     /** Every pill the same width (launcher v2): the F1 one no wider than the games beside it. */
     void equalWidths(boolean on) {
         equal = on;
@@ -680,6 +699,7 @@ final class ScoresTicker {
             box.removeAllViews();
             shownRow = null;
             alertView = null;
+            pageShown();
             return;
         }
         int gap = dp(10);
@@ -703,6 +723,7 @@ final class ScoresTicker {
         shownRow = row(pages.get(page));
         box.addView(shownRow, 0);   // under a goal alert, if one is showing
         if (focused >= 0) focusBox(Math.min(focused, shownRow.getChildCount() - 1));
+        pageShown();
     }
 
     /** Whether one of the game boxes has Android's focus. */
@@ -734,6 +755,7 @@ final class ScoresTicker {
         shownRow = row(pages.get(page));
         box.addView(shownRow, 0);
         focusBox(forward ? 0 : shownRow.getChildCount() - 1);
+        pageShown();
     }
 
     private void schedulePage() {
@@ -756,6 +778,7 @@ final class ScoresTicker {
                     .withEndAction(() -> box.removeView(out)).start();
             in.animate().translationY(0f).alpha(1f).setDuration(FLIP_MS).start();
             shownRow = in;
+            pageShown();
         }
         schedulePage();
     }

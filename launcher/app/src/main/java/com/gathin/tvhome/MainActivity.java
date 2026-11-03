@@ -121,8 +121,11 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     private final android.os.Handler ambientTimer = new android.os.Handler(android.os.Looper.getMainLooper());
     private long ambientMs;
     private final Runnable showAmbient = () -> {
-        if (ambientNow()) startActivity(new Intent(this, AmbientActivity.class));
-        else restartAmbient();
+        if (ambientNow()) {
+            startActivity(new Intent(this, AmbientActivity.class));
+            // Faded in over Home, which stays underneath until it has.
+            overridePendingTransition(R.anim.ambient_in, R.anim.ambient_hold);
+        } else restartAmbient();
     };
     private String liveTvAction;
     private String liveTvInputId;

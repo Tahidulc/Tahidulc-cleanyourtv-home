@@ -211,6 +211,21 @@ final class HomeV2 {
     private final List<View> topViews = new ArrayList<>();
     private TextView wifi;
     private View vpn;
+    /**
+     * The top bar as option B ("Corners", theme "top_corners", on in the dock layout): the time with the date and the
+     * weather under it at the top left; at the top right one score pill that cycles through the games (a dot for each)
+     * beside a round Control Centre button. A section's page moves up PAGE_LIFT into the room it frees.
+     */
+    boolean corners;
+    static final int PAGE_LIFT = 50;
+    /** Option B's round Control Centre button and the score pill's dots. */
+    private ImageView ccButton;
+    private LinearLayout pageDots;
+
+    /** How far a section's page sits higher than it was laid out (option B's room at the top; 0 on Home). */
+    int pageLift() {
+        return corners && page != null ? PAGE_LIFT : 0;
+    }
     ScoresTicker scores;
     private WeatherLine weatherLine;
     private GuideV2 guide;
@@ -259,6 +274,7 @@ final class HomeV2 {
         lite = Config.themeFlag(a, "lite_home", false);
         dockMode = Config.themeFlag(a, "home_dock", true);
         if (dockMode) { TILE_W = 448; TILE_H = 300; }
+        corners = dockMode && Config.themeFlag(a, "top_corners", true);
         players = new TilePlayer(a);
         players.useOverlay(lite);
         if (!tmdbKey.isEmpty()) players.warm();
@@ -340,8 +356,17 @@ final class HomeV2 {
             scores.showF1(Config.themeFlag(a, "f1_scores_bar", false));
             scores.showAlerts(!Config.themeFlag(a, "alerts_everywhere", false));
             float dp = a.getResources().getDisplayMetrics().density;
-            // place() takes the bar's right edge: 96 in from each side, so the pills sit centred.
-            root.post(() -> scores.place(px(96), Math.round(23 * dp), root.getWidth() - px(96)));
+            if (corners) {
+                // Option B: one pill at the top right, beside the Control Centre button, cycling through the games.
+                scores.pageListener = this::showPageDots;
+                root.post(() -> scores.place(px(CORNER_PILL_X), px(CORNER_Y), px(CORNER_PILL_R)));
+                // An alert grows out of the pill to the left, as far as the clock's column (the time stays in sight).
+                ScoresTicker.lane(px(600), px(1864), px(CORNER_Y));
+            } else {
+                // place() takes the bar's right edge: 96 in from each side, so the pills sit centred.
+                root.post(() -> scores.place(px(96), Math.round(23 * dp), root.getWidth() - px(96)));
+                ScoresTicker.lane(-1, 0, 0);
+            }
         }
         guide = new GuideV2(a, root, s, regular, semi, channels, this::refocus);
         if (lite) cache();
@@ -382,6 +407,7 @@ final class HomeV2 {
     }
 
     private void buildClock() {
+        if (corners) { buildCorners(); return; }
         LinearLayout clock = new LinearLayout(a);
         clock.setOrientation(LinearLayout.HORIZONTAL);
         clock.setBaselineAligned(false);
@@ -448,6 +474,82 @@ final class HomeV2 {
         weatherView = weather;
         weather.setTag((Runnable) () -> weatherPanel.show());
         topViews.add(weather);
+    }
+
+    /**
+     * Option B's top left: the time, and under it the date and the weather (a small glass pill, still a button: OK
+     * opens the weather card). Nothing else up there, so the space under it is free.
+     */
+    private void buildCorners() {
+        LinearLayout col = new LinearLayout(a);
+        col.setOrientation(LinearLayout.VERTICAL);
+        TextClock time = new TextClock(a);
+        time.setFormat24Hour("HH:mm");
+        time.setFormat12Hour("HH:mm");
+        style(time, 56, a.getResources().getFont(R.font.inter_display_light), Color.WHITE);
+        time.setLetterSpacing(-0.02f);
+        time.setIncludeFontPadding(false);
+        time.setFontFeatureSettings("tnum");
+        col.addView(time);
+        LinearLayout line = new LinearLayout(a);
+        line.setOrientation(LinearLayout.HORIZONTAL);
+        line.setGravity(Gravity.CENTER_VERTICAL);
+        TextClock date = new TextClock(a);
+        date.setFormat24Hour("EEE d MMM");
+        date.setFormat12Hour("EEE d MMM");
+        style(date, 19, regular, 0xD9FFFFFF);
+        date.setSingleLine(true);
+        date.setLetterSpacing(0.02f);
+        line.addView(date);
+        TextView weather = text(18, regular, Color.WHITE);
+        weather.setLetterSpacing(0.04f);
+        weather.setGravity(Gravity.CENTER_VERTICAL);
+        weather.setSingleLine(true);
+        weather.setPadding(px(14), 0, px(18), 0);
+        weather.setBackground(glass(19, false));
+        LinearLayout.LayoutParams wlp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, px(38));
+        wlp.leftMargin = px(14);
+        line.addView(weather, wlp);
+        LinearLayout.LayoutParams llp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        llp.topMargin = px(6);
+        col.addView(line, llp);
+        add(col, 56, 16, 900, 130);
+        weatherLine = new WeatherLine(weather, a.getString(R.string.weather_latitude), a.getString(R.string.weather_longitude),
+                a.getString(R.string.weather_place));
+        weatherPanel = new WeatherPanel(this, a.getString(R.string.weather_latitude), a.getString(R.string.weather_longitude),
+                a.getString(R.string.weather_place));
+        weatherView = weather;
+        weather.setTag((Runnable) () -> weatherPanel.show());
+        topViews.add(weather);
+    }
+
+    /** Option B: the score pill's place (right of it, the Control Centre button) and its line's centre, in design pixels. */
+    static final int CORNER_PILL_X = 1376, CORNER_PILL_R = 1790, CORNER_Y = 50, CORNER_CC = 56;
+
+    /** Option B's dots under the score pill: one for each game, the one showing long and white. */
+    private void showPageDots(int at, int of) {
+        if (pageDots == null) return;
+        pageDots.removeAllViews();
+        if (of < 2) return;
+        int shown = Math.min(of, 12);
+        for (int i = 0; i < shown; i++) {
+            View d = new View(a);
+            boolean on = i == Math.min(at, shown - 1);
+            d.setBackground(fill(3, on ? Color.WHITE : 0x66FFFFFF));
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(px(on ? 18 : 6), px(6));
+            if (i > 0) lp.leftMargin = px(6);
+            pageDots.addView(d, lp);
+        }
+    }
+
+    /** An alert in the score pill's place (option B): the pill, its dots and the Control Centre button make way. */
+    private void coverCorner(boolean on) {
+        if (scores != null) scores.cover(on);
+        for (View v : new View[]{ccButton, pageDots}) {
+            if (v == null) continue;
+            v.animate().cancel();
+            v.animate().alpha(on ? 0f : 1f).setDuration(on ? 160 : 320).setStartDelay(on ? 0 : 120).start();
+        }
     }
 
     private WeatherPanel weatherPanel;
@@ -592,6 +694,26 @@ final class HomeV2 {
         List<String> cams = CameraAlert.cameras(a);
         String cam = smartPanel == null || !installed(CameraAlert.TUYA) ? null : cams.isEmpty() ? "Cameras" : cams.get(0);
         controlCentre = new ControlCentre(this, items, cam, cam == null ? null : () -> smartPanel.show(), () -> DoorbellAlert.open(a));
+        if (corners) {
+            // Option B: a round button with the controls icon only (the network's name is in the Control Centre).
+            ccButton = new ImageView(a);
+            ccButton.setImageResource(R.drawable.ic_controls);
+            ccButton.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+            int p = px(14);
+            ccButton.setPadding(p, p, p, p);
+            ccButton.setColorFilter(Color.WHITE);
+            ccButton.setBackground(glass(CORNER_CC / 2f, false));
+            ccButton.setTag((Runnable) () -> controlCentre.show());
+            ccButton.setContentDescription("Control Centre");
+            vpn = ccButton;
+            add(ccButton, 1920 - 56 - CORNER_CC, CORNER_Y - CORNER_CC / 2, CORNER_CC, CORNER_CC);
+            topViews.add(ccButton);
+            pageDots = new LinearLayout(a);
+            pageDots.setOrientation(LinearLayout.HORIZONTAL);
+            pageDots.setGravity(Gravity.CENTER);
+            add(pageDots, CORNER_PILL_X, CORNER_Y + 32, CORNER_PILL_R - CORNER_PILL_X, 10);
+            return;
+        }
         topButton(bar, wifi, ViewGroup.LayoutParams.WRAP_CONTENT, () -> controlCentre.show());
         FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(px(1000), px(66), Gravity.TOP | Gravity.END);
         lp.topMargin = px(112);
@@ -1047,8 +1169,13 @@ final class HomeV2 {
         if (match.active() && zone == Z_ROW && page == null && !guide.isOpen()) { zone = Z_MATCH; matchIdx = 0; matchFirst = false; paint(); }
         // An alert on Home takes the score bar's place: the pills fade out under it and back once it has gone.
         if (scores != null) {
-            scores.cover(false);
-            GoalWatchService.laneListener = scores::cover;
+            if (corners) {
+                coverCorner(false);
+                GoalWatchService.laneListener = this::coverCorner;
+            } else {
+                scores.cover(false);
+                GoalWatchService.laneListener = scores::cover;
+            }
         }
         // An alert that came up over an app or the screensaver moves into the score bar's place.
         GoalWatchService.relane();
@@ -1614,6 +1741,8 @@ final class HomeV2 {
         for (View v : away) if (v != null) v.animate().alpha(0f).setDuration(180).withEndAction(() -> v.setVisibility(View.INVISIBLE)).start();
         hidden = away;
         page.open();
+        // Option B: the hero's words go up with the page, into the room the top bar left.
+        htext.setTranslationY(-px(pageLift()));
         if (hover || keepsBoxes(which)) clipAboveBoxes();
         paint();
     }
@@ -1629,7 +1758,8 @@ final class HomeV2 {
         if (dockAway) return;
         View first = catViews.get(0);
         int top = first.getTop() > 0 ? first.getTop() : px(CAT_Y);
-        page.layer.setClipBounds(new android.graphics.Rect(0, 0, Math.max(1, root.getWidth()), top - px(10)));
+        // In the page's own place: a page moved up (option B) is cut at the same line on the screen.
+        page.layer.setClipBounds(new android.graphics.Rect(0, 0, Math.max(1, root.getWidth()), top - px(10) + px(pageLift())));
     }
 
     private List<View> hidden = new ArrayList<>();
@@ -1703,6 +1833,7 @@ final class HomeV2 {
         main.removeCallbacks(previewNow);
         page.close();
         page = null;
+        htext.setTranslationY(0);
         heroTopColour(0xFFC9A7FF);
         for (View v : hidden) {
             if (v == null) continue;
@@ -1871,7 +2002,8 @@ final class HomeV2 {
             boolean on = zone == Z_TOP && i == topIdx;
             boolean vpnOn = v == vpn && vpnUp;
             if (!restyle(v, (on ? 1 : 0) | (vpnOn ? 2 : 0))) continue;
-            GradientDrawable b = fill(v == weatherView ? 25 : 33, on ? 0xEBFFFFFF : vpnOn ? 0x3D9B5CFF : GLASS);
+            GradientDrawable b = fill(v == weatherView ? (corners ? 19 : 25) : v == ccButton ? CORNER_CC / 2f : 33,
+                    on ? 0xEBFFFFFF : vpnOn ? 0x3D9B5CFF : GLASS);
             b.setStroke(px(1.5f), on ? Color.WHITE : vpnOn ? 0xB3C4A8FF : GLASS_LINE);
             v.setBackground(b);
             int ink = on ? 0xFF1A1D24 : Color.WHITE;

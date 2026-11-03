@@ -55,6 +55,8 @@ final class PagesV2 {
 
         void open() {
             h.root.addView(layer, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+            // Option B's top bar leaves room at the top: the whole page sits that much higher.
+            layer.setTranslationY(-px(h.pageLift()));
             layer.setAlpha(0f);
             layer.animate().alpha(1f).setDuration(250).setInterpolator(HomeV2.SKY).start();
         }
@@ -336,13 +338,21 @@ final class PagesV2 {
             for (Row r : rows) {
                 r.view.setPivotX(0f);
                 r.view.setPivotY(0f);
-                r.view.animate().scaleX(grow ? BIG : 1f).scaleY(grow ? BIG : 1f).setDuration(grow ? 420 : 300)
+                r.view.animate().scaleX(grow ? big() : 1f).scaleY(grow ? big() : 1f).setDuration(grow ? 420 : 300)
                         .setInterpolator(HomeV2.SKY)
                         // The slider's glow follows the row as it grows or shrinks.
                         .setUpdateListener(slider() ? an -> slide(r, focusF, wideIdx, wideAmt) : null).start();
             }
             if (emptyView != null) emptyView.animate().translationY(grow ? px(40) : 0).setDuration(300).start();
             paint();
+        }
+
+        /**
+         * How much the rows grow when the dock tucks away: the slider's one row more under option B's top bar, into the
+         * room the page moved up by (its foot stays clear of the dock's chip).
+         */
+        private float big() {
+            return slider() && h.corners ? BIG + 50f / (TALL + 24) : BIG;
         }
 
         PosterPage startOn(int t) {
@@ -403,6 +413,7 @@ final class PagesV2 {
             if (play != null) play.stop();
             trailerTile = null;
             if (trailerSoon != null) h.main.removeCallbacks(trailerSoon);
+            cancelLand();
             player.stop();   // Home's own player: kept, with its page loaded, for Home and the next page
             super.close();
         }
@@ -753,6 +764,7 @@ final class PagesV2 {
                 // A new tab: the slider starts again at its first poster, nothing widened.
                 if (slideAnim != null) slideAnim.cancel();
                 if (wideAnim != null) wideAnim.cancel();
+                cancelLand();
                 focusF = 0;
                 wideIdx = -1;
                 wideAmt = 0;
@@ -910,9 +922,11 @@ final class PagesV2 {
 
         /**
          * The slider (one row of posters, the dock layout; theme "poster_slider", on): the focused poster stays in one
-         * place, second from the left, at full size; the others shrink and darken the further they are from it, and
+         * place, second from the left, at full size (the first poster at the row's own left, so a tab never opens with
+         * a gap before its first poster); the others shrink and darken the further they are from it, and
          * the whole row slides under it as the focus moves (520 ms, slow in, fast, slow out), the poster left behind
-         * folding back from 16:9 as it goes. Landed, the poster opens sideways to 16:9 (420 ms), its picture fading in
+         * folding back from 16:9 as it goes. Landed, the poster takes the ring, and after a short pause (LAND_PAUSE_MS)
+         * opens sideways to 16:9 (420 ms), its picture fading in
          * over the poster with its logo at the foot and the ring round it, the posters to its right moving along to
          * make room, and its trailer starts across it a moment later. Behind it, a soft glow in its own colour.
          */
@@ -920,7 +934,7 @@ final class PagesV2 {
             return h.dockMode && rowY.length == 1 && Config.themeFlag(h.a, "poster_slider", true);
         }
 
-        static final long SLIDER_MS = 520, WIDEN_MS = 420, SLIDER_TRAILER_MS = 1050;
+        static final long SLIDER_MS = 520, WIDEN_MS = 420, LAND_PAUSE_MS = 550, SLIDER_TRAILER_MS = 1650;
         private static final float[] SCALE = {1f, 0.84f, 0.76f, 0.7f, 0.66f, 0.62f, 0.6f};
         private static final float[] SHADE = {0f, 0.4f, 0.55f, 0.66f, 0.74f, 0.82f, 0.9f};
         /** Where the row is (the focus, as a fraction while sliding), which poster is widened and how far, which landed. */
@@ -944,12 +958,21 @@ final class PagesV2 {
             return px(NARROW) * SCALE[1] + px(GAP) + px(6);
         }
 
+        /**
+         * Where the focused poster sits with the focus at f: the first poster at the row's own left (nothing before it,
+         * so no gap), from the second on in its place second from the left; in between, on the way.
+         */
+        private float anchorAt(float f) {
+            float t = Math.max(0f, Math.min(1f, f));
+            return px(6) + (focusX() - px(6)) * t;
+        }
+
         /** Each poster's left on screen with the focus on poster k (whole), given the posters' widths. */
         private float[] lefts(int k, float[] w, int n) {
             float[] x = new float[n];
             if (n == 0) return x;
             int kk = Math.max(0, Math.min(n - 1, k));
-            x[kk] = focusX();
+            x[kk] = anchorAt(kk);
             for (int i = kk + 1; i < n; i++) x[i] = x[i - 1] + w[i - 1] * table(SCALE, i - 1 - kk) + px(GAP);
             for (int i = kk - 1; i >= 0; i--) x[i] = x[i + 1] - px(GAP) - w[i] * table(SCALE, i - kk);
             return x;
@@ -994,7 +1017,7 @@ final class PagesV2 {
                 // Centred on the focused poster, wherever the row is (it grows with the row when the dock is away).
                 int fi = Math.max(0, Math.min(n - 1, Math.round(f)));
                 float fw = w[fi] * table(SCALE, fi - f);
-                float cx = r.strip.getLeft() + focusX() + fw / 2f, cy = r.strip.getTop() + px(TALL) / 2f;
+                float cx = r.strip.getLeft() + anchorAt(f) + fw / 2f, cy = r.strip.getTop() + px(TALL) / 2f;
                 float sx = r.view.getScaleX();
                 glow.setScaleX(sx);
                 glow.setScaleY(sx);
@@ -1011,14 +1034,19 @@ final class PagesV2 {
             // Every poster not landed-on back to its resting look (the one left behind folds back as it goes).
             for (int i = 0; i < n && i < r.items.size(); i++) {
                 if (i == landed && i == target && !onTabs) continue;
-                style((FrameLayout) r.strip.getChildAt(i), r.items.get(i), false);
+                if (i == arrived && i == target && !onTabs) continue;
+                FrameLayout f = (FrameLayout) r.strip.getChildAt(i);
+                style(f, r.items.get(i), false);
+                // The ring a poster took while it waited to open.
+                if (i == arrived) f.setForeground(null);
             }
-            if (Math.abs(focusF - target) < 0.001f && (onTabs ? wideAmt == 0f : landed == target)) {
+            if (Math.abs(focusF - target) < 0.001f && (onTabs ? wideAmt == 0f : landed == target || arrived == target)) {
                 slide(r, focusF, wideIdx, wideAmt);
                 return;
             }
             if (slideAnim != null) slideAnim.cancel();
             if (wideAnim != null) wideAnim.cancel();
+            cancelLand();
             float from = focusF, wideFrom = wideAmt;
             int oldWide = wideIdx;
             landed = -1;
@@ -1044,10 +1072,40 @@ final class PagesV2 {
                     wideAmt = 0;
                     wideIdx = -1;
                     slide(r, focusF, -1, 0);
-                    if (!onTabs && idx == target) land(r, target);
+                    if (!onTabs && idx == target) arrive(r, target);
                 }
             });
             va.start();
+        }
+
+        /** The poster that took the ring and is waiting to open (-1: none), and its opening, posted. */
+        private int arrived = -1;
+        private Runnable landSoon;
+
+        private void cancelLand() {
+            if (landSoon != null) h.main.removeCallbacks(landSoon);
+            landSoon = null;
+            arrived = -1;
+        }
+
+        /**
+         * Arrived on poster i: it takes the ring and its colour goes to the glow at once; it opens out only after a short
+         * pause, so a poster passed on the way along stays a poster.
+         */
+        private void arrive(Row r, int i) {
+            if (i >= r.strip.getChildCount() || i >= r.items.size()) return;
+            cancelLand();
+            arrived = i;
+            FrameLayout f = (FrameLayout) r.strip.getChildAt(i);
+            f.setForeground(h.ring(14));
+            glowTo(colourOf(f));
+            landSoon = () -> {
+                landSoon = null;
+                if (onTabs || idx != i || arrived != i) return;
+                arrived = -1;
+                land(r, i);
+            };
+            h.main.postDelayed(landSoon, LAND_PAUSE_MS);
         }
 
         /** Landed on poster i: its focused look, then it opens sideways to 16:9, the glow taking its colour. */

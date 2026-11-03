@@ -224,7 +224,8 @@ final class TitlePanel {
         faces.clear();
         cards.clear();
         people.clear();
-        int x0 = left(), y = TOP;
+        // Under the hero's words wherever they are (higher on a page under option B's top bar).
+        int x0 = left(), y = TOP - h.pageLift();
 
         // Play, My list (and Previously on): the mock-ups' round pills, Play with the remote's OK.
         LinearLayout bar = new LinearLayout(c);

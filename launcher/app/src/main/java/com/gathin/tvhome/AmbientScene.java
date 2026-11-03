@@ -34,8 +34,10 @@ import java.util.concurrent.Executors;
  * Formula 1 session, the camera's last motion, and the car: on the way home, how far away it is and when it gets
  * back (the phone's own estimate), else its latest news and charge (the Tesla app's notifications, passed on by the
  * phone). Along the foot, a bar that stays put and turns its page every few seconds: the games on now, the next
- * hours' weather, the rest of today's games, today's results and the news. The clock and cards drift a little every
- * minute, the bar's words change, and everything dims late at night, so nothing burns in; it never keeps the screen on by itself, so the TV still goes
+ * hours' weather, the rest of today's games, today's results and the news. The clock and the cards stay in one place
+ * (a theme's "ambient_drift" moves them a little every minute and swaps their sides every five, for a screen that
+ * can burn in); the bar's words change, and everything dims late at night. It fades in when it starts, the clock
+ * first, then the cards and the bar. It never keeps the screen on by itself, so the TV still goes
  * to sleep on its own timer. Shared by AmbientActivity (Home left idle) and AmbientDream (the system screensaver).
  *
  * Laid out on a 1920 x 1080 design, scaled to the screen, as the mock-up was drawn.
@@ -67,6 +69,8 @@ final class AmbientScene {
     private final ExecutorService io = Executors.newSingleThreadExecutor();
     private final Random random = new Random();
     private boolean running;
+    /** The theme's "ambient_drift": the clock and cards move about (off: they stay where they are). */
+    private final boolean drift;
     /** The cards from the last read (the game, F1, the camera); the car's is made fresh each time they are shown. */
     private final List<Card> others = new ArrayList<>();
     /** The scene on screen now, told at once when the car's news comes in. */
@@ -75,6 +79,7 @@ final class AmbientScene {
     AmbientScene(Context context) {
         c = context;
         k = c.getResources().getDisplayMetrics().widthPixels / 1920f;
+        drift = Config.themeFlag(c, "ambient_drift", false);
         root = new FrameLayout(c);
         GradientDrawable ground = new GradientDrawable();
         ground.setGradientType(GradientDrawable.RADIAL_GRADIENT);
@@ -153,11 +158,35 @@ final class AmbientScene {
         startedAt = System.currentTimeMillis();
         tick.run();
         refresh.run();
-        main.postDelayed(flip, FLIP_MS);
+        if (drift) main.postDelayed(flip, FLIP_MS);
         main.postDelayed(turn, PAGE_MS);
+        intro();
         hint.setAlpha(1f);
         // The way out is shown for the first minute only: no words left standing on the screen.
         main.postDelayed(() -> { if (hint != null) hint.animate().alpha(0f).setDuration(1_500).start(); }, 60_000L);
+    }
+
+    private boolean introDone;
+
+    /**
+     * Coming in: the scene fades up from dark, the clock and the weather rising a little into place first, then the
+     * cards on the right, then the bar along the foot.
+     */
+    private void intro() {
+        introDone = false;
+        android.view.animation.Interpolator ease = new android.view.animation.PathInterpolator(0.2f, 0f, 0f, 1f);
+        root.setAlpha(0f);
+        root.animate().alpha(1f).setStartDelay(0).setDuration(900).setInterpolator(ease).start();
+        View[] parts = {left, cards, strip};
+        long[] delay = {250, 650, 1000};
+        for (int i = 0; i < parts.length; i++) {
+            View v = parts[i];
+            boolean last = i == parts.length - 1;
+            v.setAlpha(0f);
+            v.setTranslationY(px(i == 2 ? 20 : 34));
+            v.animate().alpha(last ? dim() : 1f).translationY(0).setStartDelay(delay[i]).setDuration(1_200).setInterpolator(ease)
+                    .withEndAction(last ? () -> introDone = true : null).start();
+        }
     }
 
     void stop() {
@@ -179,9 +208,10 @@ final class AmbientScene {
             ZonedDateTime now = ZonedDateTime.now();
             clock.setText(now.format(DateTimeFormatter.ofPattern("HH:mm")));
             date.setText(now.format(DateTimeFormatter.ofPattern("EEEE d MMMM", Locale.UK)));
-            stage.animate().translationX((random.nextFloat() * 80 - 40) * k).translationY((random.nextFloat() * 50 - 25) * k)
+            if (drift) stage.animate().translationX((random.nextFloat() * 80 - 40) * k).translationY((random.nextFloat() * 50 - 25) * k)
                     .alpha(dim()).setDuration(4_000).start();
-            strip.animate().alpha(dim()).setDuration(4_000).start();
+            else stage.animate().alpha(dim()).setDuration(4_000).start();
+            if (introDone) strip.animate().alpha(dim()).setDuration(4_000).start();
             // The sun (or the moon) moves along the prayers' path.
             showArc();
             // On the way home, the minutes left and the time home move on each minute.
