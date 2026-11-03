@@ -6,10 +6,14 @@ import android.animation.ObjectAnimator;
 import android.animation.ValueAnimator;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
+import android.graphics.ColorFilter;
+import android.graphics.PixelFormat;
+import android.graphics.Rect;
 import android.graphics.LinearGradient;
 import android.graphics.Paint;
 import android.graphics.RadialGradient;
 import android.graphics.Shader;
+import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.view.View;
 import android.view.animation.DecelerateInterpolator;
@@ -32,7 +36,8 @@ import java.util.Random;
  * over end), a hop with each turn and a new face each time it is edge on: a poster, or a die's face with its spots.
  * They roll on for as long as the pick takes to find, then slow, the outer ones landing first and the middle one last,
  * on the pick, with a squash as it lands, the ring popping round it and a few sparks. A shadow under the middle card
- * shrinks as it hops.
+ * shrinks as it hops. Landed, the pick is held up to the light (a 3D tilt card with a moving glow): it leans slowly
+ * this way and that, as if a hand passed over it, a soft light gliding across it, the ring leaning with it.
  */
 final class DiceRoll {
     private final HomeV2 h;
@@ -53,6 +58,8 @@ final class DiceRoll {
     private long startedAt;
     /** The six faces of a die, drawn once. */
     private static Bitmap[] dice;
+    /** The light gliding over the pick once it has landed. */
+    private final Glare glare = new Glare();
     /** Turns to the landing, by card: the outer ones soonest, the middle one last. */
     private static final int[] LANDING = {2, 3, 5, 3, 2};
 
@@ -68,6 +75,7 @@ final class DiceRoll {
             baseRot[i] = cards[i].getRotationY();
             cards[i].setCameraDistance(camera);
         }
+        ring.setCameraDistance(camera);
         // The middle card's shadow on the "table", behind the cards.
         FrameLayout.LayoutParams mid = (FrameLayout.LayoutParams) cards[2].getLayoutParams();
         shadow = new View(h.a);
@@ -95,6 +103,12 @@ final class DiceRoll {
         if (showing != null) for (Bitmap b : showing) if (b != null) faces.add(b);
         ring.animate().cancel();
         ring.animate().alpha(0f).setStartDelay(0).setDuration(140).start();
+        // The last pick's tilt and light stopped (stopAll cancelled its loop): flat again for the throw.
+        ring.setRotationX(0);
+        ring.setRotationY(baseRot[2]);
+        ring.setScaleX(1f);
+        ring.setScaleY(1f);
+        cards[2].setForeground(null);
         for (int i = 0; i < 5; i++) {
             ImageView v = cards[i];
             int k = i;
@@ -238,6 +252,7 @@ final class DiceRoll {
                         .setInterpolator(new OvershootInterpolator(3.2f)).withEndAction(() -> {
                             v.setPivotY(v.getHeight() / 2f);
                             v.setLayerType(View.LAYER_TYPE_NONE, null);
+                            if (i == 2) tilt(my);
                         }).start()).start();
         if (i != 2) return;
         shadow.animate().scaleX(1f).alpha(1f).translationX(0).setDuration(200).start();
@@ -249,6 +264,79 @@ final class DiceRoll {
         Runnable r = done;
         done = null;
         if (r != null && my == gen) r.run();
+    }
+
+    /**
+     * The pick held up to the light: a slow, endless sway, as if a hand moved over it, the card leaning towards the
+     * hand (up to 9 degrees across, 7 up and down) and a little larger, a soft light where the hand is; the ring leans
+     * with it. Eases in over the first second; the next throw or the page closing stops it.
+     */
+    private void tilt(int my) {
+        if (my != gen) return;
+        ImageView v = cards[2];
+        v.setPivotX(v.getWidth() / 2f);
+        v.setPivotY(v.getHeight() / 2f);
+        ring.setPivotX(ring.getWidth() / 2f);
+        ring.setPivotY(ring.getHeight() / 2f);
+        glare.set(0.5f, 0.5f, 0f);
+        v.setForeground(glare);
+        float base = baseRot[2];
+        long from = System.currentTimeMillis();
+        ValueAnimator a = ValueAnimator.ofFloat(0f, 1f);
+        a.setDuration(7200);
+        a.setRepeatCount(ValueAnimator.INFINITE);
+        a.setInterpolator(new LinearInterpolator());
+        a.addUpdateListener(an -> {
+            if (my != gen) { an.cancel(); return; }
+            double turn = 2 * Math.PI * (float) an.getAnimatedValue();
+            float in = Math.min(1f, (System.currentTimeMillis() - from) / 1200f);
+            in = in * in * (3 - 2 * in);
+            // Where the "hand" is over the card: round and across, a figure of eight up and down.
+            float x = (float) (0.5 + 0.38 * Math.cos(turn)), y = (float) (0.5 + 0.3 * Math.sin(2 * turn));
+            float ry = (x - 0.5f) * 18f * in, rx = -(y - 0.5f) * 14f * in, grow = 1f + 0.035f * in;
+            for (View w : new View[]{v, ring}) {
+                w.setRotationY(base + ry);
+                w.setRotationX(rx);
+                w.setScaleX(grow);
+                w.setScaleY(grow);
+            }
+            glare.set(x, y, in);
+        });
+        keep(a);
+        a.start();
+    }
+
+    /** The light on the pick: a soft white spot where the hand is, fading out to nothing; it turns with the card. */
+    private static final class Glare extends Drawable {
+        private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private float x = 0.5f, y = 0.5f, strength;
+
+        void set(float x, float y, float strength) {
+            this.x = x;
+            this.y = y;
+            this.strength = strength;
+            invalidateSelf();
+        }
+
+        @Override public void draw(Canvas c) {
+            Rect b = getBounds();
+            if (strength <= 0.01f || b.isEmpty()) return;
+            float cx = b.left + x * b.width(), cy = b.top + y * b.height(), r = Math.max(b.width(), b.height()) * 0.8f;
+            int a0 = Math.round(105 * strength), a1 = Math.round(34 * strength);
+            paint.setShader(new RadialGradient(cx, cy, r, new int[]{a0 << 24 | 0xFFFFFF, a1 << 24 | 0xFFFFFF, 0x00FFFFFF},
+                    new float[]{0f, 0.38f, 1f}, Shader.TileMode.CLAMP));
+            c.drawRect(b, paint);
+        }
+
+        @Override public void setAlpha(int alpha) {
+        }
+
+        @Override public void setColorFilter(ColorFilter cf) {
+        }
+
+        @Override public int getOpacity() {
+            return PixelFormat.TRANSLUCENT;
+        }
     }
 
     /** A few sparks thrown out from the middle card's foot as it lands. */

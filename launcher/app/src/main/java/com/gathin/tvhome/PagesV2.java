@@ -308,9 +308,9 @@ final class PagesV2 {
         private int actShown = -1;
         private TextView emptyView;
 
-        /** The dock away: the row a third as big again, reaching down into the dock's room (BIG times its size). */
+        /** The dock away: the row a fifth as big again, down into the dock's room, ending above the dock's arrow. */
         private boolean big;
-        static final float BIG = 1.3f;
+        static final float BIG = 1.2f;
 
         @Override boolean growsDown() {
             return h.dockMode && rowY.length == 1;

@@ -196,7 +196,8 @@ final class HomeV2 {
     private FrameLayout dockLayer;
     /** The dock tucked away (theme "dock_tuck", on unless turned off); the chip at the foot that says where it went. */
     private boolean dockAway;
-    private ImageView dockHandle;
+    private LinearLayout dockHandle;
+    private ImageView dockHandleIcon, dockHandleArrow;
     /** The dock: its top and height; the sections' width. */
     private static final int DOCK_Y = 944, DOCK_H = 100, DOCK_APP = 64, DOCK_SEC = 112, DOCK_GAP = 14;
     /** How far a dock app's icon rises under the focus (as the sections do), and the glass's margin round it. */
@@ -783,20 +784,28 @@ final class HomeV2 {
             markView.setBackground(fill(3, Color.WHITE));
             addDock(markView, 0, DOCK_Y + DOCK_H - 11, 6, 6);
         }
-        // Where the dock went: just an arrow in a small glass pill at the foot while it is away (Down past the last row
-        // brings it back).
-        dockHandle = new ImageView(a);
-        dockHandle.setImageResource(R.drawable.ic_chevron_down);
-        dockHandle.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        dockHandle.setPadding(px(18), px(4), px(18), px(4));
-        dockHandle.setImageAlpha(230);
+        // Where the dock went: a small glass pill with the section's own icon in its colour and a down arrow, inside
+        // the part of the picture every TV shows (its foot 54 above the screen's edge: at the very edge, a TV that
+        // trims its picture cut it off), centred under the posters.
+        dockHandle = new LinearLayout(a);
+        dockHandle.setGravity(Gravity.CENTER);
         dockHandle.setContentDescription("Dock below: press Down");
-        GradientDrawable hg = fill(15, 0x26FFFFFF);
-        hg.setStroke(px(1.5f), 0x40FFFFFF);
+        dockHandleIcon = new ImageView(a);
+        dockHandleIcon.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        dockHandle.addView(dockHandleIcon, new LinearLayout.LayoutParams(px(22), px(22)));
+        dockHandleArrow = new ImageView(a);
+        dockHandleArrow.setImageResource(R.drawable.ic_chevron_down);
+        dockHandleArrow.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        dockHandleArrow.setImageAlpha(235);
+        LinearLayout.LayoutParams arl = new LinearLayout.LayoutParams(px(22), px(22));
+        arl.leftMargin = px(8);
+        dockHandle.addView(dockHandleArrow, arl);
+        GradientDrawable hg = fill(18, 0x2EFFFFFF);
+        hg.setStroke(px(1.5f), 0x47FFFFFF);
         dockHandle.setBackground(hg);
         dockHandle.setAlpha(0f);
         dockHandle.setVisibility(View.INVISIBLE);
-        add(dockHandle, 928, 1038, 64, 30);
+        add(dockHandle, 912, 990, 96, 36);
     }
 
     private void addDock(View v, int x, int y, int w, int h) {
@@ -823,10 +832,24 @@ final class HomeV2 {
             dockLayer.animate().translationY(px(170)).alpha(0f).setDuration(300)
                     .setInterpolator(new android.view.animation.AccelerateInterpolator(1.5f))
                     .withEndAction(() -> { if (dockAway) dockLayer.setVisibility(View.INVISIBLE); }).start();
+            if (pageWhich >= 0 && pageWhich < CAT_ICONS.length) {
+                dockHandleIcon.setImageResource(CAT_ICONS[pageWhich]);
+                dockHandleIcon.setColorFilter(CAT_COLOURS[pageWhich]);
+            }
             dockHandle.setVisibility(View.VISIBLE);
             dockHandle.setTranslationY(px(20));
             dockHandle.animate().alpha(1f).translationY(0).setStartDelay(260).setDuration(320).setInterpolator(SKY)
-                    .withEndAction(() -> { if (dockAway) dockHandle.animate().alpha(0.45f).setStartDelay(2500).setDuration(800).start(); }).start();
+                    .withEndAction(() -> {
+                        if (!dockAway) return;
+                        // The arrow nods down three times, to say where the dock went, then the pill dims and rests.
+                        android.animation.ObjectAnimator nod = android.animation.ObjectAnimator.ofFloat(dockHandleArrow,
+                                View.TRANSLATION_Y, 0f, px(5), 0f);
+                        nod.setDuration(520);
+                        nod.setRepeatCount(2);
+                        nod.setInterpolator(SKY);
+                        nod.start();
+                        dockHandle.animate().alpha(0.55f).setStartDelay(2600).setDuration(800).start();
+                    }).start();
             if (page != null) page.layer.setClipBounds(null);
         } else {
             dockLayer.setVisibility(View.VISIBLE);
