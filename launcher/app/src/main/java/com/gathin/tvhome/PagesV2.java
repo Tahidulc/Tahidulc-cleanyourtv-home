@@ -337,7 +337,9 @@ final class PagesV2 {
                 r.view.setPivotX(0f);
                 r.view.setPivotY(0f);
                 r.view.animate().scaleX(grow ? BIG : 1f).scaleY(grow ? BIG : 1f).setDuration(grow ? 420 : 300)
-                        .setInterpolator(HomeV2.SKY).start();
+                        .setInterpolator(HomeV2.SKY)
+                        // The slider's glow follows the row as it grows or shrinks.
+                        .setUpdateListener(slider() ? an -> slide(r, focusF, wideIdx, wideAmt) : null).start();
             }
             if (emptyView != null) emptyView.animate().translationY(grow ? px(40) : 0).setDuration(300).start();
             paint();
@@ -394,7 +396,7 @@ final class PagesV2 {
                     });
                 });
             };
-            h.main.postDelayed(trailerSoon, TRAILER_DELAY_MS);
+            h.main.postDelayed(trailerSoon, slider() ? SLIDER_TRAILER_MS : TRAILER_DELAY_MS);
         }
 
         @Override void close() {
@@ -496,6 +498,17 @@ final class PagesV2 {
                 // A row's name sits just over its posters (Discover's one row leaves room under its tabs).
                 addRow(r.view, 204, rowY[i] + (tabs != null && rowY.length == 1 ? 62 : 40) - 6, 1632, TALL + 24);
                 rows.add(r);
+                if (slider() && glow == null) {
+                    // The slider's glow: a soft light in the focused poster's own colour, behind the row.
+                    glow = new View(h.a);
+                    glowPaint = new GradientDrawable();
+                    glowPaint.setGradientType(GradientDrawable.RADIAL_GRADIENT);
+                    glowPaint.setGradientRadius(px(WIDE) * 0.72f);
+                    glowPaint.setColors(new int[]{0x00000000, 0x00000000});
+                    glow.setBackground(glowPaint);
+                    // Square, twice the gradient's radius, so it fades out evenly before any edge.
+                    layer.addView(glow, layer.indexOfChild(r.view), new FrameLayout.LayoutParams(px(WIDE * 1.44f), px(WIDE * 1.44f)));
+                }
             }
             // Where a row has nothing (Continue Watching before anything is started): a line saying so.
             emptyView = h.text(24, h.regular, 0xB3FFFFFF);
@@ -718,6 +731,12 @@ final class PagesV2 {
                     bl.topMargin = px(8);
                     f.addView(b, bl);
                 }
+                // The slider: a shade over the posters away from the focus, deeper the further they are.
+                View dim = new View(h.a);
+                dim.setTag("dim");
+                dim.setBackgroundColor(0xFF0B0E33);
+                dim.setAlpha(0f);
+                f.addView(dim, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
                 // Otherwise just the poster (and its trailer): no words over it.
                 LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(px(NARROW), px(TALL));
                 lp.rightMargin = px(GAP);
@@ -730,6 +749,16 @@ final class PagesV2 {
             ViewGroup.LayoutParams sl = r.strip.getLayoutParams();
             sl.width = px(r.items.size() * (NARROW + GAP) + (WIDE - NARROW) + 40);
             r.strip.setLayoutParams(sl);
+            if (slider()) {
+                // A new tab: the slider starts again at its first poster, nothing widened.
+                if (slideAnim != null) slideAnim.cancel();
+                if (wideAnim != null) wideAnim.cancel();
+                focusF = 0;
+                wideIdx = -1;
+                wideAmt = 0;
+                landed = -1;
+                r.strip.post(() -> slide(r, focusF, wideIdx, wideAmt));
+            }
         }
 
         /** What the lens and the tab names last showed: the tab, and whether in glass (focus on the tabs). */
@@ -793,6 +822,7 @@ final class PagesV2 {
         private void paint() {
             for (int ri = 0; ri < rows.size(); ri++) {
                 Row r = rows.get(ri);
+                if (slider()) { sliderPaint(r); continue; }
                 for (int i = 0; i < r.strip.getChildCount(); i++) {
                     FrameLayout f = (FrameLayout) r.strip.getChildAt(i);
                     boolean on = !onTabs && ri == row && i == idx;
@@ -806,10 +836,19 @@ final class PagesV2 {
                         va.addUpdateListener(an -> { lp.width = (int) an.getAnimatedValue(); f.setLayoutParams(lp); });
                         va.start();
                     }
-                    // Only the posters whose focus changed are touched (two a key press, not the whole row).
-                    if (!HomeV2.restyle(f, on ? 1 : 0)) continue;
+                    style(f, r.items.get(i), on);
+                }
+                // Bigger (the dock away), one poster fewer before the focused one, so it stays on the screen.
+                int first = !onTabs && ri == row ? Math.max(0, idx - (big ? 3 : 4)) : 0;
+                r.strip.animate().translationX(-first * px(NARROW + GAP)).setDuration(300).setInterpolator(HomeV2.SKY).start();
+            }
+            paintRest();
+        }
+
+        /** A poster's focused look (widened: its picture, logo and ring) or its resting one; only when it changes. */
+        private void style(FrameLayout f, Title t, boolean on) {
+                    if (!HomeV2.restyle(f, on ? 1 : 0)) return;
                     ImageView wide = (ImageView) f.findViewWithTag("wide");
-                    Title t = r.items.get(i);
                     // Widened: the title's own logo at its foot (fetched the first time), over the picture and trailer.
                     View footLine = f.findViewWithTag("foot");
                     if (footLine != null) footLine.animate().alpha(on ? 0f : 1f).setDuration(on ? 120 : 250).start();
@@ -835,11 +874,9 @@ final class PagesV2 {
                         wide.animate().alpha(0f).setDuration(200).start();
                     }
                     f.setForeground(on ? h.ring(14) : null);
-                }
-                // Bigger (the dock away), one poster fewer before the focused one, so it stays on the screen.
-                int first = !onTabs && ri == row ? Math.max(0, idx - (big ? 3 : 4)) : 0;
-                r.strip.animate().translationX(-first * px(NARROW + GAP)).setDuration(300).setInterpolator(HomeV2.SKY).start();
-            }
+        }
+
+        private void paintRest() {
             Row focused = onTabs || row >= rows.size() ? null : rows.get(row);
             boolean has = focused != null && idx < focused.strip.getChildCount() && idx < focused.items.size();
             // The next few along: their logos and wide pictures fetched now, so each shows at once when reached.
@@ -867,6 +904,211 @@ final class PagesV2 {
             if (tabBar != null) moveLens();
             // The description's lines: as many as fit above the tabs.
             h.heroLines(tabs == null ? 2 : rowY.length > 2 ? 2 : 1);
+        }
+
+        // ---- the poster slider -------------------------------------------------------------------------------------
+
+        /**
+         * The slider (one row of posters, the dock layout; theme "poster_slider", on): the focused poster stays in one
+         * place, second from the left, at full size; the others shrink and darken the further they are from it, and
+         * the whole row slides under it as the focus moves (520 ms, slow in, fast, slow out), the poster left behind
+         * folding back from 16:9 as it goes. Landed, the poster opens sideways to 16:9 (420 ms), its picture fading in
+         * over the poster with its logo at the foot and the ring round it, the posters to its right moving along to
+         * make room, and its trailer starts across it a moment later. Behind it, a soft glow in its own colour.
+         */
+        private boolean slider() {
+            return h.dockMode && rowY.length == 1 && Config.themeFlag(h.a, "poster_slider", true);
+        }
+
+        static final long SLIDER_MS = 520, WIDEN_MS = 420, SLIDER_TRAILER_MS = 1050;
+        private static final float[] SCALE = {1f, 0.84f, 0.76f, 0.7f, 0.66f, 0.62f, 0.6f};
+        private static final float[] SHADE = {0f, 0.4f, 0.55f, 0.66f, 0.74f, 0.82f, 0.9f};
+        /** Where the row is (the focus, as a fraction while sliding), which poster is widened and how far, which landed. */
+        private float focusF, wideAmt;
+        private int wideIdx = -1, landed = -1;
+        private ValueAnimator slideAnim, wideAnim, glowAnim;
+        private View glow;
+        private GradientDrawable glowPaint;
+        private int glowColour;
+
+        private static float table(float[] t, float d) {
+            float a = Math.abs(d);
+            int i = (int) Math.floor(a);
+            if (i >= t.length - 1) return t[t.length - 1];
+            float f = a - i;
+            return t[i] + (t[i + 1] - t[i]) * f;
+        }
+
+        /** The focused poster's place: one poster (at its shrunk size) and a gap in from the row's left. */
+        private float focusX() {
+            return px(NARROW) * SCALE[1] + px(GAP) + px(6);
+        }
+
+        /** Each poster's left on screen with the focus on poster k (whole), given the posters' widths. */
+        private float[] lefts(int k, float[] w, int n) {
+            float[] x = new float[n];
+            if (n == 0) return x;
+            int kk = Math.max(0, Math.min(n - 1, k));
+            x[kk] = focusX();
+            for (int i = kk + 1; i < n; i++) x[i] = x[i - 1] + w[i - 1] * table(SCALE, i - 1 - kk) + px(GAP);
+            for (int i = kk - 1; i >= 0; i--) x[i] = x[i + 1] - px(GAP) - w[i] * table(SCALE, i - kk);
+            return x;
+        }
+
+        /** Every poster placed for the focus at f (a fraction while sliding); the glow behind the focused one. */
+        private void slide(Row r, float f, int wIdx, float wAmt) {
+            int n = r.strip.getChildCount();
+            if (n == 0) return;
+            r.strip.setTranslationX(0);
+            float[] w = new float[n], natural = new float[n];
+            float acc = 0, gap = px(GAP);
+            for (int i = 0; i < n; i++) {
+                View c = r.strip.getChildAt(i);
+                LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) c.getLayoutParams();
+                int want = i == wIdx ? Math.round(px(NARROW) + (px(WIDE) - px(NARROW)) * wAmt) : px(NARROW);
+                if (lp.width != want) { lp.width = want; c.setLayoutParams(lp); }
+                w[i] = want;
+                natural[i] = acc;
+                acc += want + gap;
+            }
+            int k = (int) Math.floor(f);
+            float frac = f - k;
+            float[] a = lefts(k, w, n), b = lefts(k + 1, w, n);
+            float shadeFocus = onTabs ? 0.3f : 0f;
+            for (int i = 0; i < n; i++) {
+                View c = r.strip.getChildAt(i);
+                float d = i - f;
+                float s = table(SCALE, i - k) + (table(SCALE, i - k - 1) - table(SCALE, i - k)) * frac;
+                float x = a[i] + (b[i] - a[i]) * frac;
+                c.setPivotX(w[i] / 2f);
+                c.setPivotY(px(TALL) / 2f);
+                c.setScaleX(s);
+                c.setScaleY(s);
+                c.setTranslationX(x - natural[i] - (1 - s) * w[i] / 2f);
+                c.setAlpha(Math.abs(d) > 6.5f ? 0f : 1f);
+                View shade = c.findViewWithTag("dim");
+                if (shade != null) shade.setAlpha(Math.max(table(SHADE, d), Math.abs(d) < 0.5f ? shadeFocus * (1 - Math.abs(d) * 2) : 0f));
+            }
+            if (glow != null) {
+                glow.setAlpha(onTabs ? 0.45f : 1f);
+                // Centred on the focused poster, wherever the row is (it grows with the row when the dock is away).
+                int fi = Math.max(0, Math.min(n - 1, Math.round(f)));
+                float fw = w[fi] * table(SCALE, fi - f);
+                float cx = r.strip.getLeft() + focusX() + fw / 2f, cy = r.strip.getTop() + px(TALL) / 2f;
+                float sx = r.view.getScaleX();
+                glow.setScaleX(sx);
+                glow.setScaleY(sx);
+                glow.setX(r.view.getX() + cx * sx - glow.getWidth() / 2f);
+                glow.setY(r.view.getY() + cy * sx - glow.getHeight() / 2f);
+            }
+        }
+
+        /** The focus changed (or the tabs took it): the row slides to it, and the poster opens once it has landed. */
+        private void sliderPaint(Row r) {
+            int n = r.strip.getChildCount();
+            if (n == 0 || r.items.isEmpty()) return;
+            int target = Math.max(0, Math.min(idx, n - 1));
+            // Every poster not landed-on back to its resting look (the one left behind folds back as it goes).
+            for (int i = 0; i < n && i < r.items.size(); i++) {
+                if (i == landed && i == target && !onTabs) continue;
+                style((FrameLayout) r.strip.getChildAt(i), r.items.get(i), false);
+            }
+            if (Math.abs(focusF - target) < 0.001f && (onTabs ? wideAmt == 0f : landed == target)) {
+                slide(r, focusF, wideIdx, wideAmt);
+                return;
+            }
+            if (slideAnim != null) slideAnim.cancel();
+            if (wideAnim != null) wideAnim.cancel();
+            float from = focusF, wideFrom = wideAmt;
+            int oldWide = wideIdx;
+            landed = -1;
+            ValueAnimator va = ValueAnimator.ofFloat(0f, 1f);
+            slideAnim = va;
+            // Already there (back down from the tabs): straight to opening; a widened one narrowing first (up to the tabs).
+            va.setDuration(Math.abs(from - target) < 0.001f ? (wideFrom > 0 ? 220 : 1) : SLIDER_MS);
+            va.setInterpolator(new android.view.animation.PathInterpolator(0.65f, 0f, 0.35f, 1f));
+            final boolean[] cancelled = {false};
+            va.addUpdateListener(an -> {
+                float t = (float) an.getAnimatedValue();
+                focusF = from + (target - from) * t;
+                wideAmt = wideFrom * (1 - t);
+                slide(r, focusF, oldWide, wideAmt);
+            });
+            va.addListener(new android.animation.AnimatorListenerAdapter() {
+                @Override public void onAnimationCancel(android.animation.Animator animation) {
+                    cancelled[0] = true;
+                }
+                @Override public void onAnimationEnd(android.animation.Animator animation) {
+                    if (cancelled[0]) return;
+                    focusF = target;
+                    wideAmt = 0;
+                    wideIdx = -1;
+                    slide(r, focusF, -1, 0);
+                    if (!onTabs && idx == target) land(r, target);
+                }
+            });
+            va.start();
+        }
+
+        /** Landed on poster i: its focused look, then it opens sideways to 16:9, the glow taking its colour. */
+        private void land(Row r, int i) {
+            if (i >= r.strip.getChildCount() || i >= r.items.size()) return;
+            landed = i;
+            wideIdx = i;
+            FrameLayout f = (FrameLayout) r.strip.getChildAt(i);
+            style(f, r.items.get(i), true);
+            glowTo(colourOf(f));
+            ValueAnimator va = ValueAnimator.ofFloat(wideAmt, 1f);
+            wideAnim = va;
+            va.setDuration(WIDEN_MS);
+            va.setInterpolator(new android.view.animation.DecelerateInterpolator(1.6f));
+            va.addUpdateListener(an -> {
+                wideAmt = (float) an.getAnimatedValue();
+                slide(r, focusF, wideIdx, wideAmt);
+            });
+            va.start();
+        }
+
+        /** The poster's own colour, for the glow: its vivid colours averaged, at a steady brightness. */
+        private int colourOf(FrameLayout f) {
+            ImageView p = f.findViewWithTag("poster");
+            android.graphics.drawable.Drawable d = p == null ? null : p.getDrawable();
+            if (!(d instanceof android.graphics.drawable.BitmapDrawable)) return 0xFF3A4CC0;
+            android.graphics.Bitmap b = ((android.graphics.drawable.BitmapDrawable) d).getBitmap();
+            if (b == null || b.isRecycled()) return 0xFF3A4CC0;
+            try {
+                android.graphics.Bitmap small = android.graphics.Bitmap.createScaledBitmap(b, 10, 15, true);
+                float[] hsv = new float[3];
+                double r = 0, g = 0, bl = 0, wsum = 0;
+                for (int y = 0; y < 15; y++) for (int x = 0; x < 10; x++) {
+                    int c = small.getPixel(x, y);
+                    Color.colorToHSV(c, hsv);
+                    double wgt = hsv[1] * hsv[1] * (hsv[2] > 0.2f && hsv[2] < 0.95f ? 1 : 0.1) + 0.001;
+                    r += Color.red(c) * wgt; g += Color.green(c) * wgt; bl += Color.blue(c) * wgt; wsum += wgt;
+                }
+                if (small != b) small.recycle();
+                Color.colorToHSV(Color.rgb((int) (r / wsum), (int) (g / wsum), (int) (bl / wsum)), hsv);
+                hsv[1] = Math.max(0.55f, Math.min(0.85f, hsv[1]));
+                hsv[2] = 0.68f;
+                return Color.HSVToColor(hsv);
+            } catch (RuntimeException e) {
+                return 0xFF3A4CC0;
+            }
+        }
+
+        private void glowTo(int colour) {
+            if (glowPaint == null) return;
+            int from = glowColour;
+            if (glowAnim != null) glowAnim.cancel();
+            ValueAnimator va = ValueAnimator.ofObject(new android.animation.ArgbEvaluator(), from, colour);
+            glowAnim = va;
+            va.setDuration(520);
+            va.addUpdateListener(an -> {
+                int c = (Integer) an.getAnimatedValue();
+                glowColour = c;
+                glowPaint.setColors(new int[]{(0xA6 << 24) | (c & 0xFFFFFF), (0x33 << 24) | (c & 0xFFFFFF), c & 0xFFFFFF});
+            });
+            va.start();
         }
 
         /** Each title's marks from the store, once looked up (empty: the store had none). */
