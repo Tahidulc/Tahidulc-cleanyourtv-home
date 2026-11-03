@@ -304,7 +304,22 @@ final class HomeV2 {
         root.setDefaultFocusHighlightEnabled(false);
         // The background, its glow and the shades that keep the words readable, drawn once into one picture: the
         // graphics chip then fills the screen once a frame instead of four times.
-        root.setBackground(new android.graphics.drawable.BitmapDrawable(a.getResources(), background(w, h)));
+        // The background (theme "background"): "mesh", soft plum, teal and amber light over midnight, gently shifting
+        // while Home shows (still on lite_home); "navy" the old radial blue.
+        mesh = !"navy".equals(Config.themeString(a, "background", "mesh"));
+        if (mesh) {
+            Drawable m0 = new android.graphics.drawable.BitmapDrawable(a.getResources(), meshBackground(w, h, 0));
+            if (lite) {
+                root.setBackground(m0);
+            } else {
+                meshShift = new android.graphics.drawable.TransitionDrawable(new Drawable[]{m0,
+                        new android.graphics.drawable.BitmapDrawable(a.getResources(), meshBackground(w, h, 1))});
+                meshShift.setCrossFadeEnabled(true);
+                root.setBackground(meshShift);
+            }
+        } else {
+            root.setBackground(new android.graphics.drawable.BitmapDrawable(a.getResources(), background(w, h)));
+        }
         a.setContentView(root);
         a.getWindow().setBackgroundDrawable(null);
 
@@ -1218,6 +1233,8 @@ final class HomeV2 {
 
     void resume() {
         GoalWatchService.laneHome = true;
+        main.removeCallbacks(shiftMesh);
+        if (meshShift != null) main.postDelayed(shiftMesh, MESH_EVERY_MS / 3);
         matchFirst = true;
         match.start();
         main.removeCallbacks(matchBack);
@@ -1294,6 +1311,7 @@ final class HomeV2 {
 
     void stop() {
         main.removeCallbacks(warmPages);
+        main.removeCallbacks(shiftMesh);
         main.removeCallbacks(matchBack);
         if (match != null) match.stop();
         if (players != null) players.stop();
@@ -3872,6 +3890,53 @@ final class HomeV2 {
     }
 
     /** Home's background in one bitmap: the blue gradient, the glow at the top right and the shades from the left and top. */
+    /** The mesh background, and its second arrangement it drifts to and back (null on lite_home). */
+    private boolean mesh;
+    private android.graphics.drawable.TransitionDrawable meshShift;
+    private boolean meshForward;
+    private static final int MESH_FADE_MS = 12_000;
+    private static final long MESH_EVERY_MS = 75_000L;
+
+    /** Every so often while Home shows: the light drifts to its other arrangement (a long cross-fade), then back. */
+    private final Runnable shiftMesh = new Runnable() {
+        @Override public void run() {
+            if (meshShift == null) return;
+            if (meshForward) meshShift.reverseTransition(MESH_FADE_MS); else meshShift.startTransition(MESH_FADE_MS);
+            meshForward = !meshForward;
+            main.postDelayed(this, MESH_EVERY_MS);
+        }
+    };
+
+    /**
+     * The mesh background (variant 0 or 1, its blobs a little apart): midnight, with large soft blobs of plum light
+     * (top left), teal (bottom right), amber (top right) and violet (along the foot), and the shades that keep the
+     * words readable, in midnight. Drawn at half the screen's size (it is all soft light) and scaled up.
+     */
+    private Bitmap meshBackground(int w, int h, int variant) {
+        int sw = Math.max(w, h), sh = Math.min(w, h);
+        int bw = Math.max(2, sw / 2), bh = Math.max(2, sh / 2);
+        Bitmap b = Bitmap.createBitmap(bw, bh, Bitmap.Config.ARGB_8888);
+        android.graphics.Canvas c = new android.graphics.Canvas(b);
+        android.graphics.Paint p = new android.graphics.Paint(android.graphics.Paint.DITHER_FLAG | android.graphics.Paint.ANTI_ALIAS_FLAG);
+        p.setShader(new android.graphics.LinearGradient(0, 0, bw, bh, 0xFF0B0C21, 0xFF15163A, android.graphics.Shader.TileMode.CLAMP));
+        c.drawRect(0, 0, bw, bh, p);
+        boolean v = variant == 1;
+        // {x, y, radius (of the width), colour}: plum, teal, amber, violet.
+        float[][] at = v
+                ? new float[][]{{0.25f, 0.32f, 0.68f}, {0.72f, 0.66f, 0.62f}, {0.95f, 0.22f, 0.36f}, {0.38f, 0.94f, 0.55f}}
+                : new float[][]{{0.15f, 0.20f, 0.70f}, {0.82f, 0.78f, 0.60f}, {0.86f, 0.10f, 0.38f}, {0.48f, 1.00f, 0.55f}};
+        int[] colours = {0x8C6B2C8F, 0x730E7C86, 0x4DD98A3A, 0x593B2A9A};
+        for (int i = 0; i < at.length; i++) {
+            int col = colours[i];
+            p.setShader(new android.graphics.RadialGradient(at[i][0] * bw, at[i][1] * bh, at[i][2] * bw,
+                    new int[]{col, (col & 0xFFFFFF) | ((col >>> 24) / 3 << 24), col & 0xFFFFFF}, new float[]{0f, 0.45f, 1f},
+                    android.graphics.Shader.TileMode.CLAMP));
+            c.drawRect(0, 0, bw, bh, p);
+        }
+        shades(c, p, 0, 0, bw / (float) sw);
+        return b;
+    }
+
     private Bitmap background(int w, int h) {
         int sw = Math.max(w, h), sh = Math.min(w, h);
         Bitmap b = Bitmap.createBitmap(sw, sh, Bitmap.Config.ARGB_8888);
@@ -3891,10 +3956,11 @@ final class HomeV2 {
      */
     private void shades(android.graphics.Canvas c, android.graphics.Paint p, float x0, float y0, float scale) {
         float k = s * scale;
-        p.setShader(new android.graphics.LinearGradient(-x0 * k, 0, (1300 - x0) * k, 0, new int[]{0xCC111548, 0x80111548, 0x00111548},
-                null, android.graphics.Shader.TileMode.CLAMP));
+        int shade = mesh ? 0x0B0C21 : 0x111548, top = mesh ? 0x0A0B1E : 0x0A0C32;
+        p.setShader(new android.graphics.LinearGradient(-x0 * k, 0, (1300 - x0) * k, 0,
+                new int[]{0xCC000000 | shade, 0x80000000 | shade, shade}, null, android.graphics.Shader.TileMode.CLAMP));
         c.drawRect(-x0 * k, -y0 * k, (1300 - x0) * k, (1080 - y0) * k, p);
-        p.setShader(new android.graphics.LinearGradient(0, -y0 * k, 0, (240 - y0) * k, 0x8C0A0C32, 0x000A0C32, android.graphics.Shader.TileMode.CLAMP));
+        p.setShader(new android.graphics.LinearGradient(0, -y0 * k, 0, (240 - y0) * k, 0x8C000000 | top, top, android.graphics.Shader.TileMode.CLAMP));
         c.drawRect(-x0 * k, -y0 * k, (1920 - x0) * k, (240 - y0) * k, p);
     }
 
