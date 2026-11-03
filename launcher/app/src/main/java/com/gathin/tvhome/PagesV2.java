@@ -37,6 +37,69 @@ import java.util.Map;
 final class PagesV2 {
     private PagesV2() { }
 
+    /**
+     * A poster in the slider: laid out once at its widest (16:9) and drawn as wide as it is now (vis) through its
+     * rounded outline, so opening out or folding back changes only the outline and its focus ring, never the layout
+     * (a width changed every frame made the whole screen lay itself out again on every frame, and the slider stuttered).
+     * Its shade is kept to hand, not looked up each frame.
+     */
+    static final class Tile extends FrameLayout {
+        /** How wide it is drawn, in pixels; -1: all of it. */
+        float vis = -1;
+        View dim;
+        private final float radius;
+
+        Tile(android.content.Context c, float radius) {
+            super(c);
+            this.radius = radius;
+            setOutlineProvider(new ViewOutlineProvider() {
+                @Override public void getOutline(View v, android.graphics.Outline o) {
+                    int w = vis < 0 ? v.getWidth() : Math.min(v.getWidth(), Math.round(vis));
+                    o.setRoundRect(0, 0, Math.max(1, w), v.getHeight(), Tile.this.radius);
+                }
+            });
+            setClipToOutline(true);
+        }
+
+        void vis(float w) {
+            if (Math.abs(w - vis) < 0.5f) return;
+            vis = w;
+            invalidateOutline();
+            if (getForeground() != null) invalidate();
+        }
+
+        /** The focus ring drawn round what shows (its drawn width), not the whole laid-out box. */
+        @Override public void setForeground(android.graphics.drawable.Drawable d) {
+            super.setForeground(d == null || d instanceof VisRing ? d : new VisRing(d, this));
+        }
+
+        @Override public boolean hasOverlappingRendering() {
+            return false;
+        }
+    }
+
+    /** A drawable drawn over a Tile only as wide as the tile shows. */
+    static final class VisRing extends android.graphics.drawable.Drawable {
+        private final android.graphics.drawable.Drawable inner;
+        private final Tile tile;
+
+        VisRing(android.graphics.drawable.Drawable inner, Tile tile) {
+            this.inner = inner;
+            this.tile = tile;
+        }
+
+        @Override public void draw(android.graphics.Canvas c) {
+            android.graphics.Rect b = getBounds();
+            int w = tile.vis < 0 ? b.width() : Math.min(b.width(), Math.round(tile.vis));
+            inner.setBounds(b.left, b.top, b.left + w, b.bottom);
+            inner.draw(c);
+        }
+
+        @Override public void setAlpha(int a) { inner.setAlpha(a); }
+        @Override public void setColorFilter(android.graphics.ColorFilter f) { inner.setColorFilter(f); }
+        @Override public int getOpacity() { return android.graphics.PixelFormat.TRANSLUCENT; }
+    }
+
     abstract static class Page {
         final HomeV2 h;
         final FrameLayout layer;
@@ -56,13 +119,29 @@ final class PagesV2 {
         void open() {
             h.root.addView(layer, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
             // Option B's top bar leaves room at the top: the whole page sits that much higher.
-            layer.setTranslationY(-px(h.pageLift()));
+            float base = -px(h.pageLift());
+            // In as an iPhone's screen: rising a little into place on a spring as it fades up (and, but on the lighter
+            // TVs, growing the last few per cent), drawn into a layer while it moves.
+            layer.setTranslationY(base + px(36));
             layer.setAlpha(0f);
-            layer.animate().alpha(1f).setDuration(250).setInterpolator(HomeV2.SKY).start();
+            Fluid.layered(layer, 480);
+            layer.animate().alpha(1f).setDuration(240).setInterpolator(Fluid.EASE).start();
+            Fluid.spring(layer, androidx.dynamicanimation.animation.DynamicAnimation.TRANSLATION_Y, base);
+            if (!h.lite) {
+                layer.setPivotX(h.root.getWidth() / 2f);
+                layer.setPivotY(h.root.getHeight() * 0.7f);
+                layer.setScaleX(0.985f);
+                layer.setScaleY(0.985f);
+                Fluid.spring(layer, androidx.dynamicanimation.animation.DynamicAnimation.SCALE_X, 1f);
+                Fluid.spring(layer, androidx.dynamicanimation.animation.DynamicAnimation.SCALE_Y, 1f);
+            }
         }
 
         void close() {
-            layer.animate().alpha(0f).setDuration(180).withEndAction(() -> h.root.removeView(layer)).start();
+            // Out the same way backwards, quicker.
+            Fluid.layered(layer, 260);
+            layer.animate().alpha(0f).translationY(layer.getTranslationY() + px(20)).setDuration(200).setInterpolator(Fluid.EASE_IN)
+                    .withEndAction(() -> h.root.removeView(layer)).start();
         }
 
         /** True when the page used the key; Back is handled by Home. */
@@ -511,12 +590,25 @@ final class PagesV2 {
                 rows.add(r);
                 if (slider() && glow == null) {
                     // The slider's glow: a soft light in the focused poster's own colour, behind the row.
-                    glow = new View(h.a);
-                    glowPaint = new GradientDrawable();
-                    glowPaint.setGradientType(GradientDrawable.RADIAL_GRADIENT);
-                    glowPaint.setGradientRadius(px(WIDE) * 0.72f);
-                    glowPaint.setColors(new int[]{0x00000000, 0x00000000});
-                    glow.setBackground(glowPaint);
+                    // Two lights, one over the other: a new colour fades in on the one not showing (each drawn once
+                    // in its colour), not a gradient made again on every frame of the change.
+                    FrameLayout g = new FrameLayout(h.a) {
+                        @Override public boolean hasOverlappingRendering() {
+                            return false;
+                        }
+                    };
+                    for (int gi = 0; gi < 2; gi++) {
+                        View one = new View(h.a);
+                        GradientDrawable gd = new GradientDrawable();
+                        gd.setGradientType(GradientDrawable.RADIAL_GRADIENT);
+                        gd.setGradientRadius(px(WIDE) * 0.72f);
+                        gd.setColors(new int[]{0x00000000, 0x00000000});
+                        one.setBackground(gd);
+                        one.setAlpha(0f);
+                        g.addView(one, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+                    }
+                    glow = g;
+                    glowPaint = (GradientDrawable) g.getChildAt(0).getBackground();
                     // Square, twice the gradient's radius, so it fades out evenly before any edge.
                     layer.addView(glow, layer.indexOfChild(r.view), new FrameLayout.LayoutParams(px(WIDE * 1.44f), px(WIDE * 1.44f)));
                 }
@@ -648,18 +740,21 @@ final class PagesV2 {
             watched = WatchHistory.progress(h.a);
             r.strip.removeAllViews();
             r.strip.setTranslationX(0);
+            boolean asSlider = slider();
+            // The slider's posters laid out at their widest once, drawn narrower (Tile): the parts that belong to the
+            // poster itself are as wide as the poster.
+            int part = asSlider ? px(NARROW) : ViewGroup.LayoutParams.MATCH_PARENT;
             for (int i = 0; i < r.items.size(); i++) {
                 Title t = r.items.get(i);
-                FrameLayout f = new FrameLayout(h.a);
+                Tile f = new Tile(h.a, px(14));
+                if (asSlider) f.vis = px(NARROW);
                 // Not kept as a finished picture on lite_home: a poster widens and narrows, and a picture that changes
                 // size every frame is made again every frame.
-                f.setClipToOutline(true);
-                f.setOutlineProvider(h.round(14));
                 f.setBackground(h.fill(14, 0xFF222433));
                 ImageView poster = new ImageView(h.a);
                 poster.setTag("poster");
                 poster.setScaleType(ImageView.ScaleType.CENTER_CROP);
-                f.addView(poster, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+                f.addView(poster, new FrameLayout.LayoutParams(part, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.START));
                 // As wide as it is drawn on lite_home (twice that elsewhere).
                 h.image(poster, posterUrl(h, t), posterWidth(h));
                 ImageView wide = new ImageView(h.a);
@@ -680,7 +775,8 @@ final class PagesV2 {
                     // Inset from the poster's edges, its ends rounded, so the focus outline never covers it.
                     bar.setClipToOutline(true);
                     bar.setOutlineProvider(h.round(3));
-                    FrameLayout.LayoutParams bl = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, px(6), Gravity.BOTTOM);
+                    FrameLayout.LayoutParams bl = new FrameLayout.LayoutParams(asSlider ? px(NARROW - 20) : ViewGroup.LayoutParams.MATCH_PARENT, px(6),
+                            Gravity.BOTTOM | Gravity.START);
                     bl.leftMargin = px(10);
                     bl.rightMargin = px(10);
                     bl.bottomMargin = px(10);
@@ -706,7 +802,7 @@ final class PagesV2 {
                     line.setShadowLayer(px(4), 0, px(1), 0xCC000000);
                     line.setPadding(px(10), px(t.runtime > 0 ? 44 : 34), px(10), px(done != null ? 24 : t.runtime > 0 ? 11 : 12));
                     line.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0x00000000, 0xE6000000}));
-                    f.addView(line, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM));
+                    f.addView(line, new FrameLayout.LayoutParams(part, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM | Gravity.START));
                     // The bar stays on top of the shade.
                     View bar = f.findViewWithTag("progress");
                     if (bar != null) bar.bringToFront();
@@ -715,7 +811,7 @@ final class PagesV2 {
                 if (t.mark != 0) {
                     View shade = new View(h.a);
                     shade.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0x73000000, 0x00000000}));
-                    f.addView(shade, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, px(54), Gravity.TOP));
+                    f.addView(shade, new FrameLayout.LayoutParams(part, px(54), Gravity.TOP | Gravity.START));
                     ImageView m = new ImageView(h.a);
                     m.setImageResource(t.mark);
                     m.setAdjustViewBounds(true);
@@ -747,9 +843,10 @@ final class PagesV2 {
                 dim.setTag("dim");
                 dim.setBackgroundColor(0xFF0B0E33);
                 dim.setAlpha(0f);
+                f.dim = dim;
                 f.addView(dim, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
                 // Otherwise just the poster (and its trailer): no words over it.
-                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(px(NARROW), px(TALL));
+                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(px(asSlider ? WIDE : NARROW), px(TALL));
                 lp.rightMargin = px(GAP);
                 r.strip.addView(f, lp);
             }
@@ -758,7 +855,7 @@ final class PagesV2 {
             // The strip as wide as all its posters (and the focused one widened): left to wrap its content, it was
             // held to the screen's width and the posters past it were never drawn.
             ViewGroup.LayoutParams sl = r.strip.getLayoutParams();
-            sl.width = px(r.items.size() * (NARROW + GAP) + (WIDE - NARROW) + 40);
+            sl.width = slider() ? px(r.items.size() * (WIDE + GAP) + 40) : px(r.items.size() * (NARROW + GAP) + (WIDE - NARROW) + 40);
             r.strip.setLayoutParams(sl);
             if (slider()) {
                 // A new tab: the slider starts again at its first poster, nothing widened.
@@ -777,6 +874,7 @@ final class PagesV2 {
         private int lensTab = -1;
         private int lensGlass = -1;
         private ValueAnimator lensAnim;
+        private androidx.dynamicanimation.animation.SpringAnimation lensSpring;
 
         private void moveLens() {
             if (tabBar == null || tab >= tabBar.getChildCount()) return;
@@ -788,24 +886,40 @@ final class PagesV2 {
                 else if (t.getLeft() - margin < at) tabScroll.smoothScrollTo(Math.max(0, t.getLeft() - margin), 0);
             }
             ViewGroup.LayoutParams lp = lens.getLayoutParams();
-            int from = lp.width;
-            float fromX = lens.getTranslationX();
+            // Where it shows now (its edges, mid-spring or laid out), not where its layout last put it.
+            int from = lens.getWidth() > 0 ? lens.getWidth() : lp.width;
+            float fromX = lens.getLeft() + lens.getTranslationX();
             // Each key press calls this: in the posters the lens stays where it is, so nothing is laid out or redrawn.
             boolean moves = from != t.getWidth() || fromX != t.getLeft();
             int glassy = onTabs ? 1 : 0;
             if (lensTab == tab && lensGlass == glassy && !moves) return;
             if (lensAnim != null) lensAnim.cancel();
-            ValueAnimator va = ValueAnimator.ofFloat(0, 1);
-            lensAnim = va;
-            va.setDuration(250);
-            va.setInterpolator(HomeV2.SKY);
-            va.addUpdateListener(an -> {
-                float f = (float) an.getAnimatedValue();
-                lp.width = Math.round(from + (t.getWidth() - from) * f);
-                lens.setLayoutParams(lp);
-                lens.setTranslationX(fromX + (t.getLeft() - fromX) * f);
-            });
-            if (moves) va.start();
+            if (lensSpring != null) lensSpring.cancel();
+            if (moves) {
+                // On a spring, like liquid glass: its edges moved straight (setLeft/setRight), nothing laid out on the
+                // way (its width through the layout made the whole page lay out again on every frame); laid out once
+                // in its new place at the end.
+                int toW = t.getWidth(), toX = t.getLeft();
+                float fromL = fromX, fromR = fromX + from;
+                androidx.dynamicanimation.animation.FloatValueHolder p = new androidx.dynamicanimation.animation.FloatValueHolder(0f);
+                androidx.dynamicanimation.animation.SpringAnimation sp = new androidx.dynamicanimation.animation.SpringAnimation(p);
+                sp.setSpring(new androidx.dynamicanimation.animation.SpringForce(1f).setStiffness(520f).setDampingRatio(0.78f));
+                sp.setMinimumVisibleChange(0.002f);
+                sp.addUpdateListener((an, v, vel) -> {
+                    float l = fromL + (toX - fromL) * v, r = fromR + (toX + toW - fromR) * v;
+                    lens.setTranslationX(0);
+                    lens.setLeft(Math.round(l));
+                    lens.setRight(Math.round(Math.max(l + 1, r)));
+                });
+                sp.addEndListener((an, cancelled, v, vel) -> {
+                    if (cancelled) return;
+                    lp.width = toW;
+                    lens.setLayoutParams(lp);
+                    lens.setTranslationX(toX);
+                });
+                lensSpring = sp;
+                sp.start();
+            }
             if (lensTab != tab) {
                 for (int i = 0; i < tabBar.getChildCount(); i++) {
                     TextView v = (TextView) tabBar.getChildAt(i);
@@ -885,7 +999,26 @@ final class PagesV2 {
                     } else {
                         wide.animate().alpha(0f).setDuration(200).start();
                     }
-                    f.setForeground(on ? h.ring(14) : null);
+                    focusLook(f, on);
+        }
+
+        /**
+         * The focused poster lifted off the page: raised towards the viewer on a spring with a soft long shadow (its
+         * outline's), nudged up, a light sheen along its top under the white ring; the others lie flat.
+         */
+        private void focusLook(FrameLayout f, boolean on) {
+            f.setForeground(on ? liftedRing() : null);
+            Fluid.lift(f, on, px(28), px(slider() ? 8 : 4));
+        }
+
+        private android.graphics.drawable.Drawable liftedRing() {
+            GradientDrawable sheen = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0x33FFFFFF, 0x00FFFFFF});
+            float r = px(14);
+            sheen.setCornerRadii(new float[]{r, r, r, r, 0, 0, 0, 0});
+            android.graphics.drawable.LayerDrawable ld = new android.graphics.drawable.LayerDrawable(
+                    new android.graphics.drawable.Drawable[]{sheen, h.ring(14)});
+            ld.setLayerInset(0, px(2), px(2), px(2), px(TALL * 0.55f));
+            return ld;
         }
 
         private void paintRest() {
@@ -984,15 +1117,14 @@ final class PagesV2 {
             if (n == 0) return;
             r.strip.setTranslationX(0);
             float[] w = new float[n], natural = new float[n];
-            float acc = 0, gap = px(GAP);
+            float gap = px(GAP), narrow = px(NARROW), wide = px(WIDE);
+            // Each laid out at its widest (Tile), one after another: only how wide each is drawn changes.
             for (int i = 0; i < n; i++) {
                 View c = r.strip.getChildAt(i);
-                LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) c.getLayoutParams();
-                int want = i == wIdx ? Math.round(px(NARROW) + (px(WIDE) - px(NARROW)) * wAmt) : px(NARROW);
-                if (lp.width != want) { lp.width = want; c.setLayoutParams(lp); }
+                float want = i == wIdx ? narrow + (wide - narrow) * wAmt : narrow;
+                if (c instanceof Tile) ((Tile) c).vis(want);
                 w[i] = want;
-                natural[i] = acc;
-                acc += want + gap;
+                natural[i] = i * (wide + gap);
             }
             int k = (int) Math.floor(f);
             float frac = f - k;
@@ -1009,7 +1141,7 @@ final class PagesV2 {
                 c.setScaleY(s);
                 c.setTranslationX(x - natural[i] - (1 - s) * w[i] / 2f);
                 c.setAlpha(Math.abs(d) > 6.5f ? 0f : 1f);
-                View shade = c.findViewWithTag("dim");
+                View shade = c instanceof Tile ? ((Tile) c).dim : c.findViewWithTag("dim");
                 if (shade != null) shade.setAlpha(Math.max(table(SHADE, d), Math.abs(d) < 0.5f ? shadeFocus * (1 - Math.abs(d) * 2) : 0f));
             }
             if (glow != null) {
@@ -1037,8 +1169,8 @@ final class PagesV2 {
                 if (i == arrived && i == target && !onTabs) continue;
                 FrameLayout f = (FrameLayout) r.strip.getChildAt(i);
                 style(f, r.items.get(i), false);
-                // The ring a poster took while it waited to open.
-                if (i == arrived) f.setForeground(null);
+                // The ring (and the lift) a poster took while it waited to open.
+                if (i == arrived) focusLook(f, false);
             }
             // Up to the tabs before it opened: it does not open, and opens afresh on the way back down.
             if (onTabs && arrived >= 0) cancelLand();
@@ -1099,7 +1231,7 @@ final class PagesV2 {
             cancelLand();
             arrived = i;
             FrameLayout f = (FrameLayout) r.strip.getChildAt(i);
-            f.setForeground(h.ring(14));
+            focusLook(f, true);
             glowTo(colourOf(f));
             landSoon = () -> {
                 landSoon = null;
@@ -1156,19 +1288,21 @@ final class PagesV2 {
             }
         }
 
+        /** Which of the two lights shows now. */
+        private int glowFront;
+
         private void glowTo(int colour) {
-            if (glowPaint == null) return;
-            int from = glowColour;
-            if (glowAnim != null) glowAnim.cancel();
-            ValueAnimator va = ValueAnimator.ofObject(new android.animation.ArgbEvaluator(), from, colour);
-            glowAnim = va;
-            va.setDuration(520);
-            va.addUpdateListener(an -> {
-                int c = (Integer) an.getAnimatedValue();
-                glowColour = c;
-                glowPaint.setColors(new int[]{(0xA6 << 24) | (c & 0xFFFFFF), (0x33 << 24) | (c & 0xFFFFFF), c & 0xFFFFFF});
-            });
-            va.start();
+            if (!(glow instanceof ViewGroup) || ((ViewGroup) glow).getChildCount() < 2 || colour == glowColour) return;
+            glowColour = colour;
+            ViewGroup g = (ViewGroup) glow;
+            View out = g.getChildAt(glowFront), in = g.getChildAt(1 - glowFront);
+            glowFront = 1 - glowFront;
+            // The light coming in takes the new colour once, then the two cross-fade (their alpha only).
+            ((GradientDrawable) in.getBackground()).setColors(new int[]{(0xA6 << 24) | (colour & 0xFFFFFF), (0x33 << 24) | (colour & 0xFFFFFF), colour & 0xFFFFFF});
+            in.animate().cancel();
+            out.animate().cancel();
+            in.animate().alpha(1f).setDuration(520).setInterpolator(HomeV2.SKY).start();
+            out.animate().alpha(0f).setDuration(520).setInterpolator(HomeV2.SKY).start();
         }
 
         /** Each title's marks from the store, once looked up (empty: the store had none). */
@@ -1825,9 +1959,11 @@ final class PagesV2 {
             for (int i = 0; i < tiles.size(); i++) {
                 boolean on = !h.preview && i == idx;
                 FrameLayout f = tiles.get(i);
-                f.animate().scaleX(on ? 1.07f : 1f).scaleY(on ? 1.07f : 1f).setDuration(150).setInterpolator(HomeV2.SKY).start();
+                Fluid.spring(f, androidx.dynamicanimation.animation.DynamicAnimation.SCALE_X, on ? 1.07f : 1f, Fluid.STIFF_SMALL, Fluid.DAMP_SMALL);
+                Fluid.spring(f, androidx.dynamicanimation.animation.DynamicAnimation.SCALE_Y, on ? 1.07f : 1f, Fluid.STIFF_SMALL, Fluid.DAMP_SMALL);
                 f.setForeground(on ? h.ring(14) : null);
-                f.setElevation(on ? px(8) : 0);
+                // Lifted off the page when focused (a spring, a soft long shadow).
+                Fluid.lift(f, on, px(22), 0);
             }
             int firstRow = Math.max(0, idx / COLS - (SHOWN - 1));
             grid.animate().translationY(-px(firstRow * (TH + GAP))).setDuration(260).setInterpolator(HomeV2.SKY).start();

@@ -214,9 +214,9 @@ final class WeatherPanel {
         running.clear();
         FrameLayout o = overlay;
         overlay = null;
-        dim.animate().alpha(0f).setDuration(260).start();
-        card.animate().alpha(0f).scaleX(0.94f).scaleY(0.94f).translationY(h.px(24)).setDuration(260)
-                .setInterpolator(HomeV2.SKY).withEndAction(() -> h.root.removeView(o)).start();
+        dim.animate().alpha(0f).setDuration(240).setInterpolator(Fluid.EASE_IN).start();
+        // Back into the weather it came out of.
+        Fluid.out(card, h.weatherButton(), () -> h.root.removeView(o));
     }
 
     /** Back, OK: closed. Left, Right: the hours slide along. Up, Down: the other page. Every other key stays here. */
@@ -321,13 +321,9 @@ final class WeatherPanel {
         running.add(nudge);
 
         // In: the dim, then the card rising and growing a little, then each piece in turn.
-        dim.animate().alpha(1f).setDuration(300).start();
-        card.setAlpha(0f);
-        card.setScaleX(0.9f);
-        card.setScaleY(0.9f);
-        card.setTranslationY(h.px(40));
-        card.animate().alpha(1f).scaleX(1f).scaleY(1f).translationY(0f).setDuration(480)
-                .setInterpolator(new android.view.animation.OvershootInterpolator(0.7f)).start();
+        dim.animate().alpha(1f).setDuration(300).setInterpolator(Fluid.EASE).start();
+        // Out of the weather on the top bar, on a spring, as an iPhone's widget opening.
+        Fluid.in(card, h.weatherButton());
         for (int i = 0; i < enter.size(); i++) {
             View v = enter.get(i);
             v.setAlpha(0f);

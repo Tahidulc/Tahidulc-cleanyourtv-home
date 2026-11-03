@@ -571,8 +571,10 @@ final class TvLink {
             FrameLayout.LayoutParams blp = new FrameLayout.LayoutParams(h.px(820), -2, Gravity.CENTER);
             overlay.addView(box, blp);
             h.root.addView(overlay, new FrameLayout.LayoutParams(-1, -1));
+            // The box springs up out of the middle, the dim fading in under it.
             overlay.setAlpha(0f);
-            overlay.animate().alpha(1f).setDuration(200).start();
+            overlay.animate().alpha(1f).setDuration(200).setInterpolator(Fluid.EASE).start();
+            Fluid.in(box, h.controlButton());
             setPeers(known(c), false);
             IO.execute(() -> {
                 List<String[]> found = find(c);
@@ -829,7 +831,8 @@ final class TvLink {
 
         void hide() {
             if (panel == this) panel = null;
-            overlay.animate().alpha(0f).setDuration(160).withEndAction(() -> h.root.removeView(overlay)).start();
+            View o = overlay;
+            o.animate().alpha(0f).setDuration(200).setInterpolator(Fluid.EASE_IN).withEndAction(() -> h.root.removeView(o)).start();
             h.paint();
         }
 

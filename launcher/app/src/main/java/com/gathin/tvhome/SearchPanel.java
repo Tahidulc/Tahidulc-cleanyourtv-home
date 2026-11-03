@@ -147,8 +147,8 @@ final class SearchPanel {
         status.setSingleLine(true);
         place(overlay, status, RX + PAD, 74, RW - MARGIN - PAD, 34);
         h.root.addView(overlay, new FrameLayout.LayoutParams(-1, -1));
-        overlay.setAlpha(0f);
-        overlay.animate().alpha(1f).setDuration(220).start();
+        // Opening as an iPhone's app does: out of the button it came from, on a spring.
+        Fluid.in(overlay, h.controlButton());
         kr = 1;
         kc = 0;
         inResults = false;
@@ -164,7 +164,7 @@ final class SearchPanel {
         gen++;
         View o = overlay;
         overlay = null;
-        o.animate().alpha(0f).setDuration(180).withEndAction(() -> h.root.removeView(o)).start();
+        Fluid.out(o, h.controlButton(), () -> h.root.removeView(o));
         h.paint();
     }
 
@@ -1189,7 +1189,8 @@ final class SearchPanel {
                 // The same few pixels' grow for every card (4% of the top result was 22 a side, past its row's edge).
                 int w = v.getLayoutParams().width;
                 float grow = w > 0 ? Math.min(1.05f, 1f + h.px(14) / (float) w) : 1.03f;
-                v.animate().scaleX(lit ? grow : 1f).scaleY(lit ? grow : 1f).setDuration(140).start();
+                Fluid.spring(v, androidx.dynamicanimation.animation.DynamicAnimation.SCALE_X, lit ? grow : 1f, Fluid.STIFF_SMALL, Fluid.DAMP_SMALL);
+                Fluid.spring(v, androidx.dynamicanimation.animation.DynamicAnimation.SCALE_Y, lit ? grow : 1f, Fluid.STIFF_SMALL, Fluid.DAMP_SMALL);
             }
         }
         if (inResults && sec < sections.size()) {
@@ -1200,15 +1201,16 @@ final class SearchPanel {
             float to = now;
             if (right - now > shown) to = right - shown;
             if (left - now < h.px(PAD)) to = Math.max(0, left - h.px(PAD));
-            sc.row.animate().translationX(-to).setDuration(200).start();
+            // Along and down on springs (they carry on smoothly when the remote is held).
+            Fluid.spring(sc.row, androidx.dynamicanimation.animation.DynamicAnimation.TRANSLATION_X, -to, 520f, 0.9f);
             // Down the page only as far as it takes to show the whole row (the rows above stay while there is room).
             float top = sc.block.getTop(), bottom = sc.block.getBottom(), view = list.getHeight(), at = -results.getTranslationY();
             float y = at;
             if (bottom - y > view - h.px(16)) y = bottom - view + h.px(16);
             if (top - y < 0) y = top;
-            results.animate().translationY(-Math.max(0, y)).setDuration(220).start();
+            Fluid.spring(results, androidx.dynamicanimation.animation.DynamicAnimation.TRANSLATION_Y, -Math.max(0, y), 520f, 0.9f);
         } else if (!inResults) {
-            results.animate().translationY(0).setDuration(220).start();
+            Fluid.spring(results, androidx.dynamicanimation.animation.DynamicAnimation.TRANSLATION_Y, 0f, 520f, 0.9f);
         }
     }
 }

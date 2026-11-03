@@ -1074,15 +1074,18 @@ final class MatchDay {
         // from the right by For You's heading, its Up key nudging once, to say where it went and how to bring it back.
         if (on && !panelShown) {
             panel.setAlpha(0f);
-            panel.setTranslationY(-h.px(14));
-            panel.animate().alpha(1f).translationY(0).setDuration(320).setInterpolator(HomeV2.SKY).start();
+            panel.setTranslationY(-h.px(22));
+            panel.animate().alpha(1f).setDuration(260).setInterpolator(Fluid.EASE).start();
+            // Down into place on a spring.
+            Fluid.spring(panel, androidx.dynamicanimation.animation.DynamicAnimation.TRANSLATION_Y, 0f);
             backdrop.setAlpha(0f);
             backdrop.animate().alpha(1f).setDuration(420).start();
         }
         if (chipOn && !chipShown) {
             chip.setAlpha(0f);
-            chip.setTranslationX(h.px(30));
-            chip.animate().alpha(1f).translationX(0).setDuration(320).setInterpolator(HomeV2.SKY).start();
+            chip.setTranslationX(h.px(40));
+            chip.animate().alpha(1f).setDuration(240).setInterpolator(Fluid.EASE).start();
+            Fluid.spring(chip, androidx.dynamicanimation.animation.DynamicAnimation.TRANSLATION_X, 0f);
             chipKey.setScaleX(1f);
             chipKey.setScaleY(1f);
             chipKey.animate().scaleX(1.25f).scaleY(1.25f).setStartDelay(360).setDuration(160)

@@ -152,8 +152,8 @@ final class AlertToday {
         loading.setText("Reading today's games…");
         t.place(loading, 96, 130, 1200, 40);
         h.root.addView(t.overlay, new FrameLayout.LayoutParams(-1, -1));
-        t.overlay.setAlpha(0f);
-        t.overlay.animate().alpha(1f).setDuration(220).start();
+        // Out of the Control Centre's button, on a spring.
+        Fluid.in(t.overlay, h.controlButton());
         Context c = h.a;
         IO.execute(() -> {
             List<ScoresTicker.Game> games = GoalWatchService.today(c);
@@ -175,7 +175,7 @@ final class AlertToday {
     private void hide() {
         if (shown == this) shown = null;
         View o = overlay;
-        o.animate().alpha(0f).setDuration(180).withEndAction(() -> h.root.removeView(o)).start();
+        Fluid.out(o, h.controlButton(), () -> h.root.removeView(o));
         h.paint();
     }
 

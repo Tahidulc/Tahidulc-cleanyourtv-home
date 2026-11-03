@@ -8,6 +8,7 @@ import android.graphics.drawable.GradientDrawable;
 import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
+import android.view.ViewGroup;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
@@ -205,10 +206,11 @@ final class ControlCentre {
         overlay.addView(card, bl);
         h.root.addView(overlay, new FrameLayout.LayoutParams(-1, -1));
         overlay.setAlpha(0f);
-        overlay.animate().alpha(1f).setDuration(200).start();
-        card.setScaleX(0.96f);
-        card.setScaleY(0.96f);
-        card.animate().scaleX(1f).scaleY(1f).setDuration(240).setInterpolator(HomeV2.SKY).start();
+        overlay.animate().alpha(1f).setDuration(220).setInterpolator(Fluid.EASE).start();
+        // Out of the top bar's button, as an iPhone's Control Centre: the card grows from it on a spring, its two halves
+        // arriving a moment after one another.
+        Fluid.in(card, h.controlButton());
+        if (card instanceof ViewGroup) Fluid.cascade((ViewGroup) card, 90, 45, h.px(18));
         focus = Math.min(camTiles, Math.max(0, tiles.size() - 1));
         paint();
     }
@@ -221,7 +223,9 @@ final class ControlCentre {
         open = false;
         View o = overlay;
         overlay = null;
-        o.animate().alpha(0f).setDuration(160).withEndAction(() -> h.root.removeView(o)).start();
+        // Back into the button it came out of.
+        if (o instanceof ViewGroup && ((ViewGroup) o).getChildCount() > 0) Fluid.out(((ViewGroup) o).getChildAt(((ViewGroup) o).getChildCount() - 1), h.controlButton(), null);
+        o.animate().alpha(0f).setDuration(220).setInterpolator(Fluid.EASE_IN).withEndAction(() -> h.root.removeView(o)).start();
         h.paint();
     }
 
@@ -533,7 +537,8 @@ final class ControlCentre {
             ((TextView) t.findViewWithTag("name")).setTextColor(ink);
             View s = t.findViewWithTag("state");
             if (s != null) ((TextView) s).setTextColor(on ? 0xB310157E : lit ? 0xFFD9C4FF : 0xB3FFFFFF);
-            t.animate().scaleX(on ? 1.04f : 1f).scaleY(on ? 1.04f : 1f).setDuration(140).start();
+            Fluid.spring(t, androidx.dynamicanimation.animation.DynamicAnimation.SCALE_X, on ? 1.05f : 1f, Fluid.STIFF_SMALL, 0.8f);
+            Fluid.spring(t, androidx.dynamicanimation.animation.DynamicAnimation.SCALE_Y, on ? 1.05f : 1f, Fluid.STIFF_SMALL, 0.8f);
         }
     }
 }

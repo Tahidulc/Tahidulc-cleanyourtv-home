@@ -222,6 +222,16 @@ final class HomeV2 {
     private ImageView ccButton;
     private LinearLayout pageDots;
 
+    /** Where the Control Centre and its panels grow out of: the top bar's button (null when there is none on screen). */
+    View controlButton() {
+        return ccButton != null ? ccButton : wifi;
+    }
+
+    /** Where the weather card grows out of. */
+    View weatherButton() {
+        return weatherView;
+    }
+
     /** How far a section's page sits higher than it was laid out (option B's room at the top; 0 on Home). */
     int pageLift() {
         return corners && page != null ? PAGE_LIFT : 0;
@@ -1020,6 +1030,7 @@ final class HomeV2 {
         if (away == dockAway) return;
         dockAway = away;
         dockLayer.animate().cancel();
+        Fluid.stop(dockLayer, androidx.dynamicanimation.animation.DynamicAnimation.TRANSLATION_Y);
         dockHandle.animate().cancel();
         if (away) {
             dockLayer.animate().translationY(px(170)).alpha(0f).setDuration(300)
@@ -1046,8 +1057,9 @@ final class HomeV2 {
             if (page != null) page.layer.setClipBounds(null);
         } else {
             dockLayer.setVisibility(View.VISIBLE);
-            dockLayer.animate().translationY(0).alpha(1f).setDuration(440)
-                    .setInterpolator(new android.view.animation.OvershootInterpolator(1.2f)).start();
+            // Back up on a spring, as an iPhone's dock.
+            dockLayer.animate().alpha(1f).setDuration(200).setInterpolator(Fluid.EASE).start();
+            Fluid.spring(dockLayer, androidx.dynamicanimation.animation.DynamicAnimation.TRANSLATION_Y, 0f, 420f, 0.78f);
             dockHandle.animate().alpha(0f).translationY(px(20)).setStartDelay(0).setDuration(160)
                     .withEndAction(() -> { if (!dockAway) dockHandle.setVisibility(View.INVISIBLE); }).start();
             if (page != null && keepsBoxes(pageWhich)) clipAboveBoxes();
@@ -2031,6 +2043,8 @@ final class HomeV2 {
             // A little less than the sections' 1.07: the tiles fill the row edge to edge, and the fourth stays inside it.
             // No start delay left over from a page turn's wave: the focus grows at once.
             t.animate().scaleX(on ? 1.05f : 1f).scaleY(on ? 1.05f : 1f).setStartDelay(0).setDuration(150).setInterpolator(SKY).start();
+            // Lifted off the page when focused: raised on a spring, a soft long shadow under it.
+            Fluid.lift(t, on, px(22), 0);
             // The dock layout's ring is the liquid glass, drawn over the row.
             ((FrameLayout) t).setForeground(on && !dockMode ? ring(16) : null);
         }

@@ -109,7 +109,18 @@ final class TitlePanel {
         gen++;
         View o = overlay;
         overlay = null;
-        if (fade) o.animate().alpha(0f).setDuration(160).withEndAction(() -> h.root.removeView(o)).start();
+        if (fade && o instanceof android.view.ViewGroup) {
+            // Out the same way backwards, quicker: each part sinks a little and fades, the last first.
+            android.view.ViewGroup g = (android.view.ViewGroup) o;
+            int n = g.getChildCount();
+            for (int i = 0; i < n; i++) {
+                View ch = g.getChildAt(i);
+                ch.animate().cancel();
+                ch.animate().alpha(0f).translationY(h.px(16)).setStartDelay((n - 1 - i) * 25L).setDuration(170)
+                        .setInterpolator(Fluid.EASE_IN).withLayer().start();
+            }
+            o.animate().alpha(0f).setStartDelay(90).setDuration(200).withEndAction(() -> h.root.removeView(o)).start();
+        } else if (fade) o.animate().alpha(0f).setDuration(160).withEndAction(() -> h.root.removeView(o)).start();
         else h.root.removeView(o);
         if (fade) {
             h.heroMakeWay(false);
@@ -360,6 +371,8 @@ final class TitlePanel {
         row = BUTTONS;
         col = 0;
         paint();
+        // In as an iPhone's sheet: the buttons, the saga and the cast arriving one after another from a little below.
+        Fluid.cascade(overlay, 30, 55, h.px(28));
     }
 
     /** A cast member at rest: the ring, the badge, the name, the part and where they were seen. */
@@ -592,11 +605,14 @@ final class TitlePanel {
             if (on && card.getVisibility() != View.VISIBLE) {
                 card.setVisibility(View.VISIBLE);
                 card.setAlpha(0f);
-                card.setScaleX(0.92f);
-                card.setScaleY(0.92f);
+                card.setScaleX(0.4f);
+                card.setScaleY(0.4f);
                 card.setPivotX(h.px(66));
                 card.setPivotY(h.px(66));
-                card.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(220).setInterpolator(HomeV2.SKY).start();
+                // Out of the ring on a spring, as an iPhone's card from its icon.
+                card.animate().alpha(1f).setDuration(160).setInterpolator(Fluid.EASE).start();
+                Fluid.spring(card, androidx.dynamicanimation.animation.DynamicAnimation.SCALE_X, 1f, Fluid.STIFF_SMALL * 0.6f, 0.8f);
+                Fluid.spring(card, androidx.dynamicanimation.animation.DynamicAnimation.SCALE_Y, 1f, Fluid.STIFF_SMALL * 0.6f, 0.8f);
                 card.post(() -> fit(card));
             } else if (!on) {
                 card.animate().cancel();

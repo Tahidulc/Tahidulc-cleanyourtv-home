@@ -102,8 +102,8 @@ final class ViewingPanel {
         body = new FrameLayout(c);
         place(overlay, body, 0, 0, 1920, 1080);
         h.root.addView(overlay, new FrameLayout.LayoutParams(-1, -1));
-        overlay.setAlpha(0f);
-        overlay.animate().alpha(1f).setDuration(220).start();
+        // Out of the Control Centre's button, on a spring.
+        Fluid.in(overlay, h.controlButton());
         load(Math.max(0, Math.min(first, tabs.length - 1)));
     }
 
@@ -114,7 +114,7 @@ final class ViewingPanel {
         gen++;
         View o = overlay;
         overlay = null;
-        o.animate().alpha(0f).setDuration(180).withEndAction(() -> h.root.removeView(o)).start();
+        Fluid.out(o, h.controlButton(), () -> h.root.removeView(o));
         h.paint();
     }
 

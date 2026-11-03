@@ -122,14 +122,9 @@ final class SmartPanel {
         overlay.addView(card, cl);
         h.root.addView(overlay, new FrameLayout.LayoutParams(-1, -1));
         build();
-        dim.animate().alpha(1f).setDuration(260).start();
-        card.setAlpha(0f);
-        card.setScaleX(0.96f);
-        card.setScaleY(0.96f);
-        card.setTranslationY(-h.px(18));
-        card.setPivotX(h.px(560));
-        card.setPivotY(0);
-        card.animate().alpha(1f).scaleX(1f).scaleY(1f).translationY(0).setDuration(320).setInterpolator(HomeV2.SKY).start();
+        dim.animate().alpha(1f).setDuration(260).setInterpolator(Fluid.EASE).start();
+        // Out of the Control Centre's button on a spring, its rows arriving one after another.
+        Fluid.in(card, h.controlButton());
         readTuya();
     }
 
@@ -152,9 +147,8 @@ final class SmartPanel {
         if (slider != null) slider.flush();
         FrameLayout o = overlay;
         overlay = null;
-        dim.animate().alpha(0f).setDuration(220).start();
-        card.animate().alpha(0f).scaleX(0.96f).scaleY(0.96f).translationY(-h.px(14)).setDuration(220)
-                .setInterpolator(HomeV2.SKY).withEndAction(() -> h.root.removeView(o)).start();
+        dim.animate().alpha(0f).setDuration(220).setInterpolator(Fluid.EASE_IN).start();
+        Fluid.out(card, h.controlButton(), () -> h.root.removeView(o));
     }
 
     // ---- the card -------------------------------------------------------------------------------------------------
