@@ -657,7 +657,7 @@ final class PlaylistSport {
     }
 
     /** A club's crest from ESPN's search (its football team first), remembered. */
-    private static String crest(String club) {
+    static String crest(String club) {
         String k = plain(club);
         synchronized (CRESTS) {
             if (CRESTS.containsKey(k)) return CRESTS.get(k);

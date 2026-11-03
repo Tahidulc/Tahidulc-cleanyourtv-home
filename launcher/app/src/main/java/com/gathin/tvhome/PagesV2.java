@@ -1868,8 +1868,23 @@ final class PagesV2 {
 
     // ---- Sport -----------------------------------------------------------------------------------------------------
 
+    /**
+     * Sports, as the Match Centre (option 1): a big stage for the match of the day (its crests, the kick-off or the
+     * score, and its buttons: Watch on its channel, Live Centre, Remind me; the Live Centre itself while games are on,
+     * F1 timing on a race weekend), beside it one tables panel (the 8 leagues, then F1's drivers and teams, as tabs),
+     * under them Tonight: this week's live football as slim cards; then, down, the rows (Continue Watching, more live
+     * sport, the highlights). The dock tucks away while the page has the focus.
+     */
     static final class SportPage extends Page {
         private FrameLayout cards, fixtures;
+        /** Where the stage and the tables panel start, in the page's own place (under the top bar on screen). */
+        private int top;
+        /** The live football of the week, as slim cards under the stage (row 1, not one of the rows below). */
+        private static final int TONIGHT = 1;
+        /** Each row's place among the rows below Tonight (-1 for Tonight itself), and how many there are. */
+        private final List<Integer> slotOf = new ArrayList<>();
+        private int slots;
+        private TextView tonightCounts, tonightNone;
         private final List<LinearLayout> strips = new ArrayList<>();
         private final List<List<HomeV2.Tile>> lists = new ArrayList<>();
         private int zone = -1, idx;   // -1: the cards; 0: Continue Watching; 1 and 2: the fixture rows
@@ -1895,17 +1910,82 @@ final class PagesV2 {
             super(h);
         }
 
+        /** The dock tucks away while the page has the focus (the chip at the foot brings it back), as on the posters' pages. */
+        @Override boolean growsDown() {
+            return h.dockMode;
+        }
+
+        /**
+         * At (x, y) w by hgt in the dock layout's own places (48 to 1872 across); beside the rail, the same span drawn
+         * into 216 to 1824.
+         */
+        private void addExact(FrameLayout parent, View v, int x, int y, int w, int hgt) {
+            int lx = h.dockMode ? x : Math.round(216 + (x - 48) / SPAN), lw = h.dockMode || w < 0 ? w : Math.round(w / SPAN);
+            FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(lw < 0 ? lw : px(lw), hgt < 0 ? hgt : px(hgt));
+            lp.leftMargin = px(lx);
+            lp.topMargin = px(y);
+            parent.addView(v, lp);
+        }
+
+        /** The order Down goes through: Tonight, then the rows below as they are on the page. */
+        private List<Integer> order() {
+            List<Integer> o = new ArrayList<>();
+            o.add(TONIGHT);
+            for (int r = 0; r < lists.size(); r++) if (r != TONIGHT) o.add(r);
+            return o;
+        }
+
+        /** The next row down with anything in it after zone z (-1: the stage and the tables); -2 when none. */
+        private int nextZone(int z) {
+            List<Integer> o = order();
+            int at = z < 0 ? -1 : o.indexOf(z);
+            for (int k = at + 1; k < o.size(); k++) if (o.get(k) < lists.size() && !lists.get(o.get(k)).isEmpty()) return o.get(k);
+            return -2;
+        }
+
+        /** The row above z with anything in it; -1 (the stage and the tables) at the top. */
+        private int prevZone(int z) {
+            List<Integer> o = order();
+            for (int k = o.indexOf(z) - 1; k >= 0; k--) if (!lists.get(o.get(k)).isEmpty()) return o.get(k);
+            return -1;
+        }
+
         /** The rows before the highlights: Continue Watching and the two of live sport (holding OK sets a reminder there). */
         private static final int LIVE_ROWS = 3;
         private final java.util.concurrent.ExecutorService highlightsIo = java.util.concurrent.Executors.newSingleThreadExecutor();
 
-        /** A row of 16:9 tiles under its name, the next one down the page (300 apart); its index. */
+        /**
+         * A row of 16:9 tiles under its name, the next one down the page (300 apart); its index. Row 1 (this week's live
+         * football) is Tonight instead: slim cards under the stage, its name and counts over them (buildTonight).
+         */
         private int addRow(String name) {
             int i = strips.size();
+            if (i == TONIGHT) {
+                slotOf.add(-1);
+                FrameLayout view = new FrameLayout(h.a);
+                view.setOutlineProvider(ViewOutlineProvider.BOUNDS);
+                view.setClipToOutline(true);
+                view.setClipChildren(false);
+                LinearLayout strip = new LinearLayout(h.a);
+                strip.setOrientation(LinearLayout.HORIZONTAL);
+                strip.setClipChildren(false);
+                strip.setClipToPadding(false);
+                // Room round the cards for the focused one to grow and show its whole ring.
+                FrameLayout.LayoutParams sl = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, px(SLIM_H));
+                sl.leftMargin = px(12);
+                sl.topMargin = px(12);
+                view.addView(strip, sl);
+                addExact(cards, view, 36, top + 562, 1848, SLIM_H + 24);
+                strips.add(strip);
+                lists.add(new ArrayList<>());
+                return i;
+            }
+            int slot = slots++;
+            slotOf.add(slot);
             TextView l = h.text(18, h.semi, 0xBFFFFFFF);
             l.setLetterSpacing(0.11f);
             l.setText(name);
-            addTo(fixtures, l, 216, 236 + i * 300, 1500, 30);
+            addTo(fixtures, l, 216, 236 + slot * 300, 1500, 30);
             rowViews.add(l);
             FrameLayout view = new FrameLayout(h.a);
             view.setOutlineProvider(ViewOutlineProvider.BOUNDS);
@@ -1921,7 +2001,7 @@ final class PagesV2 {
             sl.leftMargin = px(24);
             sl.topMargin = px(24);
             view.addView(strip, sl);
-            addTo(fixtures, view, 192, 262 + i * 300, 1656, 268);
+            addTo(fixtures, view, 192, 262 + slot * 300, 1656, 268);
             rowViews.add(view);
             strips.add(strip);
             lists.add(new ArrayList<>());
@@ -2071,15 +2151,18 @@ final class PagesV2 {
 
         @Override void open() {
             super.open();
+            // Under option B's one-line top bar the page sits PAGE_LIFT higher: the stage then starts 140 down the screen.
+            top = h.corners ? 140 + h.pageLift() : 206;
             cards = new FrameLayout(h.a);
             cards.setClipChildren(false);
             add(cards, 0, 0, 1920, 1080);
             fixtures = new FrameLayout(h.a);
             fixtures.setClipChildren(false);
             add(fixtures, 0, 0, 1920, 1080);
-            fixtures.setTranslationY(px(660));
+            fixtures.setTranslationY(px(restY()));
             String[] names = {"CONTINUE WATCHING", "LIVE FOOTBALL · THIS WEEK", "MORE LIVE SPORT"};
             for (String name : names) addRow(name);
+            buildTonight();
             // Continue Watching: matches, highlights and races part-watched in any app (Sky Sports, TNT Sports, DAZN,
             // F1 TV, Debrid Stream…), each with how far in; OK opens the app it was in.
             resumeNone = h.text(22, h.regular, 0x99FFFFFF);
@@ -2120,6 +2203,139 @@ final class PagesV2 {
             paint();
         }
 
+        /** Tonight's cards: 288 by 132, 18 apart. */
+        private static final int SLIM_W = 288, SLIM_H = 132, SLIM_GAP = 18;
+
+        /** Where the rows below sit while the stage has the focus: their first name just under Tonight. */
+        private int restY() {
+            return top + 506;
+        }
+
+        /** Tonight's name over its cards, and on the right the counts: how many are on now and this week. */
+        private void buildTonight() {
+            TextView name = h.text(18, h.semi, 0xCCFFFFFF);
+            name.setLetterSpacing(0.11f);
+            name.setText("TONIGHT  ·  LIVE FOOTBALL THIS WEEK");
+            name.setSingleLine(true);
+            addExact(cards, name, 48, top + 528, 1000, 30);
+            tonightCounts = h.text(16, h.regular, 0xBFFFFFFF);
+            tonightCounts.setGravity(Gravity.END);
+            tonightCounts.setSingleLine(true);
+            addExact(cards, tonightCounts, 1000, top + 530, 872, 28);
+            tonightNone = h.text(20, h.regular, 0x99FFFFFF);
+            tonightNone.setText("Finding this week's live football…");
+            addExact(cards, tonightNone, 48, top + 620, 1500, 34);
+        }
+
+        /** The competition's short name from its ESPN logo (the leagues the tables know); null for another. */
+        private static String compName(String logo) {
+            if (logo == null) return null;
+            java.util.regex.Matcher m = java.util.regex.Pattern.compile("/(\\d+)\\.png").matcher(logo);
+            if (!m.find()) return null;
+            for (Object[] l : LEAGUES) if (m.group(1).equals(l[3])) return ((String) l[1]).toUpperCase(Locale.UK);
+            return null;
+        }
+
+        /**
+         * One of Tonight's games as a slim card: the competition and the channel's logo along the top, then each club
+         * with its crest beside it, and after the whole fixture the kick-off (LIVE while it is on).
+         */
+        private View slim(HomeV2.Tile t) {
+            FrameLayout f = new FrameLayout(h.a);
+            f.setClipToOutline(true);
+            f.setOutlineProvider(h.round(20));
+            GradientDrawable g = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0x26FFFFFF, 0x0FFFFFFF});
+            g.setCornerRadius(px(20));
+            g.setStroke(px(1.5f), 0x38FFFFFF);
+            f.setBackground(g);
+            LinearLayout col = new LinearLayout(h.a);
+            col.setOrientation(LinearLayout.VERTICAL);
+            col.setPadding(px(18), px(14), px(16), px(12));
+            f.addView(col, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+            LinearLayout l1 = new LinearLayout(h.a);
+            l1.setGravity(Gravity.CENTER_VERTICAL);
+            if (t.compLogo != null) {
+                ImageView cl = new ImageView(h.a);
+                cl.setScaleType(ImageView.ScaleType.FIT_CENTER);
+                LinearLayout.LayoutParams cll = new LinearLayout.LayoutParams(px(20), px(20));
+                cll.rightMargin = px(8);
+                l1.addView(cl, cll);
+                h.image(cl, t.compLogo, px(40));
+            }
+            TextView cn = h.text(13, h.semi, 0xB3FFFFFF);
+            String comp = compName(t.compLogo);
+            cn.setText(comp != null ? comp : "FOOTBALL");
+            cn.setLetterSpacing(0.1f);
+            cn.setSingleLine(true);
+            cn.setEllipsize(TextUtils.TruncateAt.END);
+            l1.addView(cn, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+            if (t.badge != null) {
+                ImageView ch = new ImageView(h.a);
+                ch.setAdjustViewBounds(true);
+                ch.setMaxHeight(px(18));
+                ch.setMaxWidth(px(104));
+                LinearLayout.LayoutParams chl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, px(18));
+                chl.leftMargin = px(8);
+                l1.addView(ch, chl);
+                h.image(ch, t.badge, px(104));
+            } else if (t.channel != null) {
+                TextView ch = h.text(13, h.regular, 0xB3FFFFFF);
+                ch.setText(t.channel);
+                ch.setSingleLine(true);
+                ch.setMaxWidth(px(120));
+                ch.setEllipsize(TextUtils.TruncateAt.END);
+                l1.addView(ch);
+            }
+            col.addView(l1);
+            String[] clubs = t.title == null ? new String[]{"", ""} : t.title.split(" v ", 2);
+            ImageView c1 = crest(), c2 = crest();
+            for (int k = 0; k < 2; k++) {
+                LinearLayout line = new LinearLayout(h.a);
+                line.setGravity(Gravity.CENTER_VERTICAL);
+                line.addView(k == 0 ? c1 : c2, new LinearLayout.LayoutParams(px(24), px(24)));
+                TextView n = h.text(19, h.semi, Color.WHITE);
+                n.setText(short_(k < clubs.length ? clubs[k].trim() : ""));
+                n.setSingleLine(true);
+                n.setEllipsize(TextUtils.TruncateAt.END);
+                LinearLayout.LayoutParams nl = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+                nl.leftMargin = px(10);
+                line.addView(n, nl);
+                if (k == 1) {
+                    // After the whole fixture: the kick-off (today's time; another day's with its day), or LIVE.
+                    boolean live = "LIVE NOW".equals(t.chip);
+                    TextView when = h.text(15, h.semi, live ? 0xFFFF3B4A : 0xFFFFD04D);
+                    String at = t.start <= 0 ? t.chip : DateTimeFormatter.ofPattern(
+                            Instant.ofEpochMilli(t.start).atZone(ZoneId.systemDefault()).toLocalDate().equals(java.time.LocalDate.now()) ? "HH:mm" : "EEE HH:mm",
+                            Locale.UK).withZone(ZoneId.systemDefault()).format(Instant.ofEpochMilli(t.start));
+                    when.setText(live ? "●  LIVE" : at);
+                    LinearLayout.LayoutParams wl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                    wl.leftMargin = px(8);
+                    line.addView(when, wl);
+                }
+                LinearLayout.LayoutParams ll = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                ll.topMargin = px(k == 0 ? 12 : 8);
+                col.addView(line, ll);
+            }
+            // The crests: from the game's own picture ("crest:home|away"), else looked up by the clubs' names.
+            if (t.image != null && t.image.startsWith("crest:")) {
+                String[] urls = t.image.substring(6).split("\\|", 2);
+                if (urls.length == 2) { h.image(c1, urls[0], px(48)); h.image(c2, urls[1], px(48)); }
+            } else if (clubs.length == 2) {
+                h.io.execute(() -> {
+                    String u1 = PlaylistSport.crest(clubs[0].trim()), u2 = PlaylistSport.crest(clubs[1].trim());
+                    h.main.post(() -> {
+                        if (!alive) return;
+                        if (u1 != null) h.image(c1, u1, px(48));
+                        if (u2 != null) h.image(c2, u2, px(48));
+                    });
+                });
+            }
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(px(SLIM_W), px(SLIM_H));
+            lp.rightMargin = px(SLIM_GAP);
+            f.setLayoutParams(lp);
+            return f;
+        }
+
         private void showFixtures(List<HomeV2.Tile> all) {
             List<HomeV2.Tile> foot = new ArrayList<>(), other = new ArrayList<>();
             for (HomeV2.Tile t : all) ("football".equals(t.group) ? foot : other).add(t);
@@ -2128,7 +2344,11 @@ final class PagesV2 {
             lists.set(2, other);
             for (int i = 1; i < 3; i++) {
                 strips.get(i).removeAllViews();
-                for (HomeV2.Tile t : lists.get(i)) strips.get(i).addView(fixture(t));
+                for (HomeV2.Tile t : lists.get(i)) strips.get(i).addView(i == TONIGHT ? slim(t) : fixture(t));
+            }
+            if (tonightNone != null) {
+                tonightNone.setText("No live football on in the next few days.");
+                tonightNone.setVisibility(foot.isEmpty() ? View.VISIBLE : View.GONE);
             }
             if (zone >= 1 && zone < lists.size()) idx = Math.min(idx, Math.max(0, lists.get(zone).size() - 1));
             paint();
@@ -2223,97 +2443,218 @@ final class PagesV2 {
             parent.addView(v, lp);
         }
 
-        /** Static cards (the table, the F1 standings) and fixture tiles are drawn once into a GPU layer, then reused each frame. */
-        private LinearLayout card(int x, int w) {
-            LinearLayout c = new LinearLayout(h.a);
-            c.setOrientation(LinearLayout.VERTICAL);
-            c.setPadding(px(28), px(24), px(28), px(24));
-            GradientDrawable g = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0x21FFFFFF, 0x0DFFFFFF});
-            g.setCornerRadius(px(26));
-            g.setStroke(px(1.5f), 0x3DFFFFFF);
-            c.setBackground(g);
-            addTo(cards, c, x, 206, w, 640);
-            return c;
+        /** The stage: its ground (the clubs' colours either side), its buttons along the foot and which has the focus. */
+        private LinearLayout stage, stageButtons;
+        private GradientDrawable stageBg;
+        private TextView liveBtn, remindBtn, timingBtn, stageHint;
+        private final List<TextView> stageBtns = new ArrayList<>();
+        private int stageIdx;
+        /** The match of the day, for Remind me: its name, kick-off, state (1 to come), channel and its logo. */
+        private String matchTitle, matchChannel, matchLogo;
+        private long matchStart;
+        private int matchState = -1;
+
+        /** The stage's ground: the home side's colour on the left, the away side's on the right, the night between. */
+        private void stageGround(int home, int away) {
+            int hc = home != 0 ? (home & 0xFFFFFF) | 0x8C000000 : 0x40243A9A;
+            int ac = away != 0 ? (away & 0xFFFFFF) | 0x73000000 : 0x40243A9A;
+            stageBg = new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, new int[]{hc, 0x4D171A5C, 0x4D171A5C, ac});
+            stageBg.setCornerRadius(px(30));
+            stageBg.setStroke(px(1.5f), 0x3DFFFFFF);
+            stage.setBackground(stageBg);
         }
 
-        private TextView kicker(LinearLayout c, String s) {
-            TextView k = h.text(15, h.semi, 0xA6FFFFFF);
-            k.setLetterSpacing(0.2f);
-            k.setText(s);
-            c.addView(k);
-            return k;
+        /** One of the stage's round buttons along its foot. */
+        private TextView stageButton(String label) {
+            TextView b = h.text(19, h.regular, Color.WHITE);
+            b.setText(label);
+            b.setGravity(Gravity.CENTER);
+            b.setSingleLine(true);
+            b.setPadding(px(26), 0, px(26), 0);
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT);
+            if (!stageBtns.isEmpty()) lp.leftMargin = px(14);
+            stageButtons.addView(b, lp);
+            stageBtns.add(b);
+            return b;
         }
 
-        private ImageView headLogo;
+        /** The stage's buttons that show, in order (Left and Right go through these). */
+        private List<TextView> shownButtons() {
+            List<TextView> out = new ArrayList<>();
+            for (TextView b : stageBtns) if (b.getVisibility() == View.VISIBLE) out.add(b);
+            return out;
+        }
 
-        /** The competition's name in its own lettering, after its logo (logo may be null, or set later through headLogo). */
-        private TextView heading(LinearLayout c, String s, int font, String logo) {
-            LinearLayout line = new LinearLayout(h.a);
-            line.setOrientation(LinearLayout.HORIZONTAL);
-            line.setGravity(Gravity.CENTER_VERTICAL);
-            headLogo = new ImageView(h.a);
-            headLogo.setAdjustViewBounds(true);
-            headLogo.setMaxHeight(px(40));
-            headLogo.setMaxWidth(px(90));
-            LinearLayout.LayoutParams il = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, px(40));
-            il.rightMargin = px(12);
-            line.addView(headLogo, il);
-            if (logo != null) h.image(headLogo, logo, px(90));
-            TextView t = h.text(26, h.a.getResources().getFont(font), Color.WHITE);
-            t.setText(s);
-            line.addView(t);
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            lp.topMargin = px(8);
-            lp.bottomMargin = px(10);
-            c.addView(line, lp);
+        /** A club on the stage: its crest large, its name under it. */
+        private LinearLayout bigTeam(ImageView crest, TextView name, int size) {
+            LinearLayout t = new LinearLayout(h.a);
+            t.setOrientation(LinearLayout.VERTICAL);
+            t.setGravity(Gravity.CENTER_HORIZONTAL);
+            t.addView(crest, new LinearLayout.LayoutParams(px(size), px(size)));
+            name.setGravity(Gravity.CENTER);
+            name.setSingleLine(true);
+            name.setEllipsize(TextUtils.TruncateAt.END);
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(px(320), ViewGroup.LayoutParams.WRAP_CONTENT);
+            lp.topMargin = px(14);
+            t.addView(name, lp);
             return t;
+        }
+
+        /** "Kick-off in 25 min" (within three hours), else "Kick-off Wed 20:00". */
+        private static String kickoffIn(long at) {
+            long mins = (at - System.currentTimeMillis()) / 60_000L;
+            if (mins <= 0) return "Kick-off now";
+            if (mins < 60) return "Kick-off in " + mins + " min";
+            if (mins < 180) return "Kick-off in " + (mins / 60) + "h " + (mins % 60) + "m";
+            return "Kick-off " + DateTimeFormatter.ofPattern("EEE HH:mm", Locale.UK).withZone(ZoneId.systemDefault()).format(Instant.ofEpochMilli(at));
+        }
+
+        /** Each side's scorers on its own side under the stage's clubs ("Barry 49'"): the home side's left, the away's right. */
+        private void scorers(LinearLayout events, ScoresTicker.Game g) {
+            events.removeAllViews();
+            StringBuilder home = new StringBuilder(), away = new StringBuilder();
+            for (String[] goal : g.goals) {
+                StringBuilder to = "home".equals(goal[3]) ? home : away;
+                if (to.length() > 0) to.append("   ");
+                to.append(goal[1]).append(' ').append(goal[2]).append("pen".equals(goal[4]) ? " (pen)" : "og".equals(goal[4]) ? " (og)" : "");
+            }
+            if (home.length() == 0 && away.length() == 0) return;
+            LinearLayout line = new LinearLayout(h.a);
+            TextView a = h.text(18, h.regular, 0xD9FFFFFF), b = h.text(18, h.regular, 0xD9FFFFFF);
+            a.setText(home.length() > 0 ? "⚽  " + home : "");
+            b.setText(away.length() > 0 ? away + "  ⚽" : "");
+            b.setGravity(Gravity.END);
+            for (TextView t : new TextView[]{a, b}) { t.setMaxLines(2); t.setEllipsize(TextUtils.TruncateAt.END); }
+            line.addView(a, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+            line.addView(b, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+            events.addView(line);
+        }
+
+        /** Remind me on the stage: a reminder for the match of the day before it starts (pressed again, taken off). */
+        private void remindMatch() {
+            if (matchTitle == null) return;
+            String msg;
+            if (matchState != 1 || matchStart <= System.currentTimeMillis()) msg = matchState == 2 ? "Full time · " + matchTitle : "Already on: press OK to watch";
+            else {
+                boolean on = Reminders.toggle(h.a, matchTitle, matchStart, matchChannel, matchLogo);
+                remindBtn.setText(on ? "✓  Reminder set" : "Remind me");
+                String when = DateTimeFormatter.ofPattern("EEE HH:mm", Locale.UK).withZone(ZoneId.systemDefault()).format(Instant.ofEpochMilli(matchStart));
+                msg = on ? "🔔  Reminder set · " + matchTitle + " · " + when : "Reminder off · " + matchTitle;
+            }
+            android.widget.Toast.makeText(h.a, msg, android.widget.Toast.LENGTH_SHORT).show();
+        }
+
+        /** OK on one of the stage's buttons. */
+        private void pressStage() {
+            List<TextView> shown = shownButtons();
+            if (shown.isEmpty()) return;
+            TextView b = shown.get(Math.max(0, Math.min(stageIdx, shown.size() - 1)));
+            if (b == watch) { if (watchOk != null) watchOk.run(); }
+            else if (b == liveBtn) LiveCentre.open(h.a, null);
+            else if (b == remindBtn) remindMatch();
+            else if (b == timingBtn) F1Tower.open(h.a, true);
         }
 
         /** The last match of the day shown, with its crests: shown at once when Sport opens again. */
         private static volatile Object[] lastMatch;
 
-        // The match of the day: live first, else the latest result, else the next kick-off.
+        /**
+         * The stage, the match of the day: live first, else the latest result, else the next kick-off. Along its top the
+         * competition and how long until kick-off (the minute while live); the two clubs large, each with its crest, the
+         * kick-off (or the score) between them; along its foot Watch on (the channel's logo, OK), Live Centre, Remind me.
+         */
         private void buildMatch() {
-            LinearLayout c = card(216, 592);
-            TextView k = kicker(c, "MATCH OF THE DAY");
-            TextView comp = heading(c, "Loading…", R.font.brand_plain, null);
-            ImageView compLogo = headLogo;
+            LinearLayout c = new LinearLayout(h.a);
+            c.setOrientation(LinearLayout.VERTICAL);
+            c.setPadding(px(40), px(28), px(40), px(26));
+            stage = c;
+            stageGround(0, 0);
+            addExact(cards, c, 48, top, 1200, 500);
+            LinearLayout head = new LinearLayout(h.a);
+            head.setGravity(Gravity.CENTER_VERTICAL);
+            ImageView compLogo = new ImageView(h.a);
+            compLogo.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            LinearLayout.LayoutParams cll = new LinearLayout.LayoutParams(px(32), px(32));
+            cll.rightMargin = px(12);
+            head.addView(compLogo, cll);
+            TextView comp = h.text(16, h.semi, 0xD9FFFFFF);
+            comp.setLetterSpacing(0.16f);
+            comp.setSingleLine(true);
+            comp.setEllipsize(TextUtils.TruncateAt.END);
+            comp.setText("MATCH OF THE DAY");
+            head.addView(comp, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+            TextView k = h.text(16, h.semi, Color.WHITE);
+            k.setPadding(px(14), px(6), px(14), px(6));
+            k.setBackground(h.fill(14, 0x59000000));
+            k.setSingleLine(true);
+            k.setVisibility(View.INVISIBLE);
+            head.addView(k);
+            c.addView(head, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
             LinearLayout score = new LinearLayout(h.a);
             score.setOrientation(LinearLayout.HORIZONTAL);
             score.setGravity(Gravity.CENTER);
             LinearLayout.LayoutParams sl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            sl.topMargin = px(14);
+            sl.topMargin = px(22);
             c.addView(score, sl);
             ImageView hc = crest(), ac = crest();
-            TextView hn = h.text(24, h.regular, 0xCCFFFFFF), an = h.text(24, h.regular, 0xCCFFFFFF);
-            TextView n = h.text(84, h.semi, Color.WHITE);
+            android.graphics.Typeface outfit = h.a.getResources().getFont(R.font.outfit_bold);
+            TextView hn = h.text(36, outfit, Color.WHITE), an = h.text(36, outfit, Color.WHITE);
+            TextView n = h.text(88, h.a.getResources().getFont(R.font.outfit_extrabold), Color.WHITE);
             n.setLetterSpacing(-0.02f);
-            score.addView(team(hc, hn));
-            LinearLayout.LayoutParams nl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            nl.leftMargin = px(28);
-            nl.rightMargin = px(28);
-            score.addView(n, nl);
-            score.addView(team(ac, an));
-            TextView res = h.text(21, h.semi, 0xFF3DDC84);
+            n.setIncludeFontPadding(false);
+            n.setText("v");
+            LinearLayout home = bigTeam(hc, hn, 160), away = bigTeam(ac, an, 160);
+            score.addView(home);
+            LinearLayout mid = new LinearLayout(h.a);
+            mid.setOrientation(LinearLayout.VERTICAL);
+            mid.setGravity(Gravity.CENTER_HORIZONTAL);
+            mid.addView(n);
+            // Under the kick-off (or the score): the day and the ground, or how it ended.
+            TextView res = h.text(18, h.regular, 0xBFFFFFFF);
             res.setGravity(Gravity.CENTER);
-            LinearLayout.LayoutParams rl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            res.setSingleLine(true);
+            res.setEllipsize(TextUtils.TruncateAt.END);
+            LinearLayout.LayoutParams rl = new LinearLayout.LayoutParams(px(360), ViewGroup.LayoutParams.WRAP_CONTENT);
             rl.topMargin = px(8);
-            c.addView(res, rl);
+            mid.addView(res, rl);
+            LinearLayout.LayoutParams ml = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            ml.leftMargin = px(20);
+            ml.rightMargin = px(20);
+            score.addView(mid, ml);
+            score.addView(away);
+            // Under the clubs: possession and the scorers (the pitch and the plays while it is live).
+            LinearLayout info = new LinearLayout(h.a);
+            info.setOrientation(LinearLayout.VERTICAL);
+            info.setGravity(Gravity.CENTER_VERTICAL);
+            LinearLayout.LayoutParams il = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f);
+            il.topMargin = px(10);
+            c.addView(info, il);
             LinearLayout poss = new LinearLayout(h.a);
             poss.setOrientation(LinearLayout.VERTICAL);
-            LinearLayout.LayoutParams pl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            pl.topMargin = px(20);
-            c.addView(poss, pl);
+            info.addView(poss, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
             LinearLayout events = new LinearLayout(h.a);
             events.setOrientation(LinearLayout.VERTICAL);
-            LinearLayout.LayoutParams el = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f);
-            el.topMargin = px(16);
-            c.addView(events, el);
-            watch = h.text(20, h.regular, Color.WHITE);
-            watch.setGravity(Gravity.CENTER);
-            watch.setBackground(h.fill(30, 0x1FFFFFFF));
-            c.addView(watch, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, px(60)));
-            watch.setText("Finding the channel…");
+            LinearLayout.LayoutParams el = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            el.topMargin = px(8);
+            info.addView(events, el);
+            stageButtons = new LinearLayout(h.a);
+            stageButtons.setOrientation(LinearLayout.HORIZONTAL);
+            stageButtons.setGravity(Gravity.CENTER_VERTICAL);
+            c.addView(stageButtons, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, px(60)));
+            watch = stageButton("Finding the channel…");
+            watch.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, px(20));
+            liveBtn = stageButton("Live Centre");
+            remindBtn = stageButton("Remind me");
+            timingBtn = stageButton("F1 timing");
+            timingBtn.setVisibility(View.GONE);
+            stageHint = h.text(16, h.regular, 0xBFFFFFFF);
+            stageHint.setText("While games are on, this turns into Live Centre: the pitch, the plays, every score");
+            stageHint.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
+            stageHint.setMaxLines(2);
+            stageHint.setEllipsize(TextUtils.TruncateAt.END);
+            LinearLayout.LayoutParams hl = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+            hl.leftMargin = px(20);
+            stageButtons.addView(stageHint, hl);
 
             String[] leagues = h.a.getResources().getStringArray(R.array.score_leagues);
             String[] footballTv = h.a.getResources().getStringArray(R.array.football_tv_channels);
@@ -2321,18 +2662,21 @@ final class PagesV2 {
             // ahead of the possession, the channel and the rest, which take longer to read.
             java.util.function.Consumer<Object[]> early = m -> {
                 ScoresTicker.Game g = (ScoresTicker.Game) m[0];
-                comp.setText(ScoresTicker.competition(g));
+                comp.setText((ScoresTicker.competition(g) + "  ·  MATCH OF THE DAY").toUpperCase(Locale.UK));
                 if (m[1] != null) hc.setImageBitmap((android.graphics.Bitmap) m[1]);
                 if (m[2] != null) ac.setImageBitmap((android.graphics.Bitmap) m[2]);
                 if (m[3] != null) compLogo.setImageBitmap((android.graphics.Bitmap) m[3]);
                 hn.setText(g.homeName != null ? short_(g.homeName) : g.home);
                 an.setText(g.awayName != null ? short_(g.awayName) : g.away);
-                n.setText(g.state == 1 ? "v" : g.homeScore + " – " + g.awayScore);
+                n.setText(g.state == 1 ? DateTimeFormatter.ofPattern("HH:mm", Locale.UK).withZone(ZoneId.systemDefault()).format(Instant.ofEpochMilli(g.kickoff))
+                        : g.homeScore + " – " + g.awayScore);
+                stageGround(g.homeColor, g.awayColor);
+                paint();
             };
             if (lastMatch != null) early.accept(lastMatch);
             h.io.execute(() -> {
                 // Games under way in the Premier League, the Championship or Europe's top leagues: the Live Centre
-                // card in place of the match of the day.
+                // on the stage in place of the match of the day.
                 List<ScoresTicker.Game> live = liveGames();
                 if (!live.isEmpty()) {
                     h.main.post(() -> buildLive(c, live));
@@ -2340,7 +2684,6 @@ final class PagesV2 {
                 }
                 List<ScoresTicker.Game> games = ScoresTicker.load(leagues);
                 ScoresTicker.Game best = null;
-                long now = System.currentTimeMillis();
                 for (ScoresTicker.Game g : games) {
                     if (g.drivers != null || g.text != null || g.home == null) continue;
                     if (best == null) { best = g; continue; }
@@ -2348,14 +2691,21 @@ final class PagesV2 {
                     if (rank < br || rank == br && (rank == 1 ? g.kickoff > best.kickoff : g.kickoff < best.kickoff)) best = g;
                 }
                 if (best == null) {
-                    h.main.post(() -> { comp.setText("No games today"); watch.setText(""); });
+                    h.main.post(() -> {
+                        comp.setText("MATCH OF THE DAY");
+                        n.setText("–");
+                        res.setText("No games today");
+                        watch.setText("Nothing on today");
+                        remindBtn.setVisibility(View.GONE);
+                        paint();
+                    });
                     return;
                 }
                 ScoresTicker.Game g = best;
                 // The crests from the logo cache on disk, straight away (not queued behind the fixtures' pictures).
-                Object[] m = {g, g.homeLogo == null ? null : ScoresTicker.cachedLogo(h.a, g.homeLogo, px(172)),
-                        g.awayLogo == null ? null : ScoresTicker.cachedLogo(h.a, g.awayLogo, px(172)),
-                        g.leagueLogo == null ? null : ScoresTicker.cachedLogo(h.a, g.leagueLogo, px(90))};
+                Object[] m = {g, g.homeLogo == null ? null : ScoresTicker.cachedLogo(h.a, g.homeLogo, px(320)),
+                        g.awayLogo == null ? null : ScoresTicker.cachedLogo(h.a, g.awayLogo, px(320)),
+                        g.leagueLogo == null ? null : ScoresTicker.cachedLogo(h.a, g.leagueLogo, px(64))};
                 lastMatch = m;
                 h.main.post(() -> early.accept(m));
                 String[] summary = summary(g);   // {home possession, away possession, shootout home, shootout away}
@@ -2364,81 +2714,102 @@ final class PagesV2 {
                 String art = g.homeLogo != null && g.awayLogo != null ? "crest:" + g.homeLogo + "|" + g.awayLogo : null;
                 PlaylistSport.Where other = ch == null && g.state != 2 ? PlaylistSport.where(h, g.homeName, g.awayName, g.slug, art) : null;
                 h.main.post(() -> {
-                    String when = g.state == 0 ? "LIVE" : g.state == 2 ? "FULL TIME" : "KICK-OFF " +
-                            DateTimeFormatter.ofPattern("EEE HH:mm", Locale.UK).withZone(ZoneId.systemDefault()).format(Instant.ofEpochMilli(g.kickoff)).toUpperCase(Locale.UK);
-                    k.setText(when);
-                    if (g.state == 0) k.setTextColor(0xFFFF3B4A);
-                    comp.setText(ScoresTicker.competition(g));
-                    if (g.leagueLogo != null && m[3] == null) h.image(compLogo, g.leagueLogo, px(90));
-                    if (m[1] == null) h.image(hc, g.homeLogo, px(172));
-                    if (m[2] == null) h.image(ac, g.awayLogo, px(172));
+                    if (!alive) return;
+                    k.setVisibility(View.VISIBLE);
+                    k.setText(g.state == 0 ? "●  LIVE" : g.state == 2 ? "FULL TIME" : kickoffIn(g.kickoff));
+                    k.setBackground(h.fill(14, g.state == 0 ? 0xE6E0263A : 0x59000000));
+                    comp.setText((ScoresTicker.competition(g) + "  ·  MATCH OF THE DAY").toUpperCase(Locale.UK));
+                    if (g.leagueLogo != null && m[3] == null) h.image(compLogo, g.leagueLogo, px(64));
+                    if (m[1] == null) h.image(hc, g.homeLogo, px(320));
+                    if (m[2] == null) h.image(ac, g.awayLogo, px(320));
                     hn.setText(g.homeName != null ? short_(g.homeName) : g.home);
                     an.setText(g.awayName != null ? short_(g.awayName) : g.away);
-                    n.setText(g.state == 1 ? "v" : g.homeScore + " – " + g.awayScore);
-                    String r = g.detail == null ? "" : g.detail;
-                    if (summary[2] != null) {
-                        int sh = Integer.parseInt(summary[2]), sa = Integer.parseInt(summary[3]);
-                        r = "Full time · " + (sh > sa ? short_(g.homeName) : short_(g.awayName)) + " win " + Math.max(sh, sa) + "–" + Math.min(sh, sa) + " on penalties";
+                    String day = DateTimeFormatter.ofPattern("EEEE", Locale.UK).withZone(ZoneId.systemDefault()).format(Instant.ofEpochMilli(g.kickoff));
+                    if (g.state == 1) {
+                        n.setText(DateTimeFormatter.ofPattern("HH:mm", Locale.UK).withZone(ZoneId.systemDefault()).format(Instant.ofEpochMilli(g.kickoff)));
+                        res.setText(day + (g.venue == null || g.venue.isEmpty() ? "" : "  ·  " + g.venue));
+                    } else {
+                        n.setText(g.homeScore + " – " + g.awayScore);
+                        String r = g.detail == null ? "" : g.detail;
+                        if (summary[2] != null) {
+                            int sh = Integer.parseInt(summary[2]), sa = Integer.parseInt(summary[3]);
+                            r = (sh > sa ? short_(g.homeName) : short_(g.awayName)) + " win " + Math.max(sh, sa) + "–" + Math.min(sh, sa) + " on penalties";
+                        }
+                        res.setText(r);
                     }
-                    res.setText(r);
                     if (summary[0] != null) possession(poss, summary[0], summary[1], g.homeColor, g.awayColor);
+                    stageGround(g.homeColor, g.awayColor);
                     kickerView = k;
                     scoreView = n;
                     eventsView = events;
+                    matchTitle = (g.homeName != null ? short_(g.homeName) : g.home) + " v " + (g.awayName != null ? short_(g.awayName) : g.away);
+                    matchStart = g.kickoff;
+                    matchState = g.state;
+                    if (g.state != 1) remindBtn.setVisibility(View.GONE);
                     if (g.state == 0) {
-                        // Live: v1's pitch, the ball moving through ESPN's play-by-play, the latest touch under it.
+                        // Live: v1's pitch, the ball moving through ESPN's play-by-play, the latest touch beside it.
                         liveGame = g;
                         pitch = new LivePitch(h.a, h.a.getResources().getDisplayMetrics().density);
                         pitch.setColors(g.homeColor != 0 ? 0xFF000000 | g.homeColor : Color.WHITE, g.awayColor != 0 ? 0xFF000000 | g.awayColor : 0xFFFFD54F);
-                        playLabel = h.text(17, h.regular, 0xCCFFFFFF);
-                        playLabel.setSingleLine(true);
+                        playLabel = h.text(18, h.regular, 0xD9FFFFFF);
+                        playLabel.setMaxLines(2);
                         playLabel.setEllipsize(TextUtils.TruncateAt.END);
                         pitch.setListener(play -> playLabel.setText(play.label));
-                        int at = c.indexOfChild(events);
-                        // Room for the pitch: the minute is on the clock above, and the crests come in a little.
-                        res.setVisibility(View.GONE);
+                        // Room for the pitch: the crests a little smaller, the score a little less tall.
                         for (ImageView cr : new ImageView[]{hc, ac}) {
                             ViewGroup.LayoutParams cl = cr.getLayoutParams();
-                            cl.width = px(64);
-                            cl.height = px(64);
+                            cl.width = px(110);
+                            cl.height = px(110);
                             cr.setLayoutParams(cl);
                         }
-                        n.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, px(72));
-                        LinearLayout.LayoutParams pitchLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, px(150));
-                        pitchLp.topMargin = px(14);
-                        c.addView(pitch, at, pitchLp);
-                        LinearLayout.LayoutParams ll = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-                        ll.topMargin = px(6);
-                        c.addView(playLabel, at + 1, ll);
-                        ((LinearLayout.LayoutParams) events.getLayoutParams()).topMargin = px(8);
+                        n.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, px(76));
+                        LinearLayout pitchRow = new LinearLayout(h.a);
+                        pitchRow.setGravity(Gravity.CENTER_VERTICAL);
+                        pitchRow.addView(pitch, new LinearLayout.LayoutParams(px(440), px(140)));
+                        LinearLayout side = new LinearLayout(h.a);
+                        side.setOrientation(LinearLayout.VERTICAL);
+                        side.addView(playLabel);
+                        info.removeView(events);
+                        LinearLayout.LayoutParams evl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                        evl.topMargin = px(10);
+                        side.addView(events, evl);
+                        LinearLayout.LayoutParams sdl = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+                        sdl.leftMargin = px(24);
+                        pitchRow.addView(side, sdl);
+                        info.addView(pitchRow);
                         goals(events, g, 1);
                         readPlays();
                         tickClock();
                         h.main.postDelayed(scoreTick, 30_000L);
                     } else {
-                        goals(events, g, 4);
+                        scorers(events, g);
                     }
                     if (ch != null) {
                         android.text.SpannableStringBuilder b = new android.text.SpannableStringBuilder();
-                        b.append(g.state == 0 ? "LIVE on  " : g.state == 1 ? "On  " : "Was on  ");
+                        b.append(g.state == 0 ? "Watch live on  " : g.state == 1 ? "Watch on  " : "Was on  ");
                         int at = b.length();
                         b.append("  ");
                         pressOk(b);
                         watch.setText(b);
                         loadSpan(watch, b, at, ch.logo);
                         watchOk = () -> h.tune(ch.name, ch.logo);
+                        matchChannel = ch.name;
+                        matchLogo = ch.logo;
                     } else if (other != null) {
                         android.text.SpannableStringBuilder b = new android.text.SpannableStringBuilder();
-                        b.append(g.state == 0 ? "LIVE on  " : "On  ");
+                        b.append(g.state == 0 ? "Watch live on  " : "Watch on  ");
                         int at = b.length();
                         b.append(other.logo != null ? "  " : other.name);
                         pressOk(b);
                         watch.setText(b);
                         if (other.logo != null) loadSpan(watch, b, at, other.logo);
                         watchOk = other.ok;
+                        matchChannel = other.name;
+                        matchLogo = other.logo;
                     } else {
                         watch.setText(g.state == 2 ? "Full time" : "Not on UK TV");
                     }
+                    paint();
                 });
             });
         }
@@ -2461,18 +2832,37 @@ final class PagesV2 {
         private final Runnable liveTick = this::readLive;
 
         /**
-         * The Live Centre card: LIVE NOW and how many games, every one under way with its competition's logo, the
-         * score and the minute (read again every 30 seconds), and the bar along the foot: Open Live Centre, OK.
+         * The Live Centre on the stage: LIVE NOW and how many games, every one under way (in two columns) with its
+         * competition's logo, the score and the minute (read again every 30 seconds), and along the foot Press OK for
+         * Live Centre (and F1 timing on a race weekend).
          */
         private void buildLive(LinearLayout c, List<ScoresTicker.Game> live) {
             if (!alive) return;
             c.removeAllViews();
-            liveKicker = kicker(c, "");
-            liveKicker.setTextColor(0xFFFF3B4A);
-            heading(c, "Live Centre", R.font.brand_plain, null);
+            stageGround(0xE0263A, 0x243A9A);
+            LinearLayout head = new LinearLayout(h.a);
+            head.setGravity(Gravity.CENTER_VERTICAL);
+            liveKicker = h.text(16, h.semi, 0xFFFF6B76);
+            liveKicker.setLetterSpacing(0.16f);
+            head.addView(liveKicker, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+            c.addView(head);
+            TextView title = h.text(36, h.a.getResources().getFont(R.font.outfit_bold), Color.WHITE);
+            title.setText("Live Centre");
+            LinearLayout.LayoutParams tl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            tl.topMargin = px(6);
+            c.addView(title, tl);
             liveRows = new LinearLayout(h.a);
-            liveRows.setOrientation(LinearLayout.VERTICAL);
-            c.addView(liveRows, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+            liveRows.setOrientation(LinearLayout.HORIZONTAL);
+            for (int k = 0; k < 2; k++) {
+                LinearLayout col = new LinearLayout(h.a);
+                col.setOrientation(LinearLayout.VERTICAL);
+                LinearLayout.LayoutParams cl = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+                if (k == 1) cl.leftMargin = px(48);
+                liveRows.addView(col, cl);
+            }
+            LinearLayout.LayoutParams rl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f);
+            rl.topMargin = px(8);
+            c.addView(liveRows, rl);
             // "Press [OK] for [LIVE|CENTRE]": this remote's OK button and the Live Centre's own stamp, no words for them.
             android.text.SpannableStringBuilder b = new android.text.SpannableStringBuilder("Press  ");
             int at = b.length();
@@ -2490,28 +2880,35 @@ final class PagesV2 {
             stamp.setBounds(0, 0, stampBm.getWidth(), stampBm.getHeight());
             b.setSpan(new MidSpan(stamp), st, st + 2, 0);
             watch.setText(b);
-            LinearLayout.LayoutParams wl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, px(60));
-            wl.topMargin = px(10);
-            c.addView(watch, wl);
+            // Its buttons: the Live Centre itself (the watch button now opens it), F1 timing when it shows.
+            liveBtn.setVisibility(View.GONE);
+            remindBtn.setVisibility(View.GONE);
+            stageHint.setText("Every game under way, the score and the minute");
+            c.addView(stageButtons, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, px(60)));
+            stageIdx = 0;
             watchOk = () -> LiveCentre.open(h.a, null);
             fillLive(live);
             h.main.postDelayed(liveTick, 30_000L);
+            paint();
         }
 
         private void fillLive(List<ScoresTicker.Game> live) {
             int n = 0;
             for (ScoresTicker.Game g : live) if (g.state == 0) n++;
             liveKicker.setText("●  LIVE NOW · " + (LiveCentre.testCard && n == 0 ? live.size() : n) + (n == 1 ? " GAME" : " GAMES"));
-            liveRows.removeAllViews();
+            LinearLayout[] cols = {(LinearLayout) liveRows.getChildAt(0), (LinearLayout) liveRows.getChildAt(1)};
+            for (LinearLayout col : cols) col.removeAllViews();
             int shown = 0;
             String slug = null;
             for (ScoresTicker.Game g : live) {
                 if (shown >= 8) break;
+                LinearLayout col = cols[shown < 4 ? 0 : 1];
+                if (shown == 4) slug = null;
                 LinearLayout r = new LinearLayout(h.a);
                 r.setOrientation(LinearLayout.HORIZONTAL);
                 r.setGravity(Gravity.CENTER_VERTICAL);
-                r.setPadding(0, px(9), 0, px(9));
-                if (shown > 0 && !java.util.Objects.equals(g.slug, slug)) r.setPadding(0, px(17), 0, px(9));
+                r.setPadding(0, px(10), 0, px(10));
+                if (col.getChildCount() > 0 && !java.util.Objects.equals(g.slug, slug)) r.setPadding(0, px(16), 0, px(10));
                 slug = g.slug;
                 ImageView logo = new ImageView(h.a);
                 logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
@@ -2519,12 +2916,12 @@ final class PagesV2 {
                 LinearLayout.LayoutParams ll = new LinearLayout.LayoutParams(px(28), px(28));
                 ll.rightMargin = px(14);
                 r.addView(logo, ll);
-                TextView names = h.text(20, h.regular, Color.WHITE);
+                TextView names = h.text(21, h.regular, Color.WHITE);
                 names.setText(short_(g.homeName != null ? g.homeName : g.home) + "  v  " + short_(g.awayName != null ? g.awayName : g.away));
                 names.setSingleLine(true);
                 names.setEllipsize(TextUtils.TruncateAt.END);
                 r.addView(names, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-                TextView score = h.text(22, h.semi, Color.WHITE);
+                TextView score = h.text(23, h.semi, Color.WHITE);
                 score.setText(g.state == 1 ? "v" : g.homeScore + "–" + g.awayScore);
                 score.setGravity(Gravity.CENTER);
                 r.addView(score, new LinearLayout.LayoutParams(px(76), ViewGroup.LayoutParams.WRAP_CONTENT));
@@ -2533,10 +2930,10 @@ final class PagesV2 {
                         .withZone(ZoneId.systemDefault()).format(Instant.ofEpochMilli(g.kickoff)) : g.halftime ? "HT" : g.detail == null ? "" : g.detail);
                 min.setGravity(Gravity.END);
                 r.addView(min, new LinearLayout.LayoutParams(px(70), ViewGroup.LayoutParams.WRAP_CONTENT));
-                liveRows.addView(r);
+                col.addView(r);
                 View rule = new View(h.a);
                 rule.setBackgroundColor(0x14FFFFFF);
-                liveRows.addView(rule, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Math.max(1, px(1))));
+                col.addView(rule, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Math.max(1, px(1))));
                 shown++;
             }
         }
@@ -2697,19 +3094,6 @@ final class PagesV2 {
             return v;
         }
 
-        private LinearLayout team(ImageView crest, TextView name) {
-            LinearLayout t = new LinearLayout(h.a);
-            t.setOrientation(LinearLayout.VERTICAL);
-            t.setGravity(Gravity.CENTER_HORIZONTAL);
-            t.addView(crest, new LinearLayout.LayoutParams(px(86), px(86)));
-            name.setGravity(Gravity.CENTER);
-            name.setSingleLine(true);
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(px(150), ViewGroup.LayoutParams.WRAP_CONTENT);
-            lp.topMargin = px(6);
-            t.addView(name, lp);
-            return t;
-        }
-
         private void possession(LinearLayout into, String home, String away, int hc, int ac) {
             LinearLayout line = new LinearLayout(h.a);
             line.setOrientation(LinearLayout.HORIZONTAL);
@@ -2782,9 +3166,15 @@ final class PagesV2 {
                 {"ger.1", "Bundesliga", R.font.brand_bundesliga, "10"}, {"fra.1", "Ligue 1", R.font.brand_ligue1, "9"},
                 {"sco.1", "Scottish Premiership", R.font.brand_plain, "45"}, {"uefa.champions", "Champions League", R.font.brand_uefa, "2"}};
         private final Map<String, List<String[]>> tables = new HashMap<>();
-        private LinearLayout tableCard, tableList, driverCard;
-        private TextView tableName, tablePage, tableKey;
-        private ImageView tableLogo;
+        /** The tables panel beside the stage: its tabs (the league, F1 drivers, F1 teams), which shows, its key line. */
+        private LinearLayout panel, panelTabs, tableList;
+        private GradientDrawable panelBg;
+        private final TextView[] tabs = new TextView[3];
+        private int panelTab;
+        private TextView tableKey;
+        private CharSequence tableKeyText = "";
+        /** F1's standings after which round ("After Round 19 of 23"), for the head of its tabs. */
+        private String f1Round = "";
         private int league, cardIdx;
         private LinearLayout tableHead;
         private android.widget.ScrollView tableView, driverView;
@@ -2841,47 +3231,100 @@ final class PagesV2 {
             return to;
         }
 
+        /**
+         * The tables panel beside the stage: tabs along its top (the league, with Left and Right through the 8 of them;
+         * then F1's drivers and teams), under them the table (Down scrolls all 20), and the key to its colours.
+         */
         private void buildTable() {
-            LinearLayout c = card(832, 518);
-            c.setLayerType(View.LAYER_TYPE_HARDWARE, null);
-            tableCard = c;
-            LinearLayout top = new LinearLayout(h.a);
-            top.setOrientation(LinearLayout.HORIZONTAL);
-            top.setGravity(Gravity.CENTER_VERTICAL);
-            TextView k = h.text(15, h.semi, 0xA6FFFFFF);
-            k.setLetterSpacing(0.2f);
-            k.setText("LIVE TABLE");
-            top.addView(k, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-            tablePage = h.text(15, h.semi, 0xA6FFFFFF);
-            top.addView(tablePage);
-            c.addView(top);
-            tableName = heading(c, "", R.font.brand_premier, null);
-            tableLogo = headLogo;
+            LinearLayout c = new LinearLayout(h.a);
+            c.setOrientation(LinearLayout.VERTICAL);
+            c.setPadding(px(22), px(20), px(22), px(16));
+            panelBg = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0x21FFFFFF, 0x0DFFFFFF});
+            panelBg.setCornerRadius(px(30));
+            panelBg.setStroke(px(1.5f), 0x3DFFFFFF);
+            c.setBackground(panelBg);
+            panel = c;
+            addExact(cards, c, 1280, top, 592, 500);
+            panelTabs = new LinearLayout(h.a);
+            panelTabs.setOrientation(LinearLayout.HORIZONTAL);
+            panelTabs.setGravity(Gravity.CENTER_VERTICAL);
+            panelTabs.setPadding(px(4), px(4), px(4), px(4));
+            panelTabs.setBackground(h.fill(23, 0x40000000));
+            for (int i = 0; i < 3; i++) {
+                TextView t = h.text(16, h.regular, 0xBFFFFFFF);
+                t.setGravity(Gravity.CENTER);
+                t.setSingleLine(true);
+                t.setEllipsize(TextUtils.TruncateAt.END);
+                t.setPadding(px(10), 0, px(10), 0);
+                t.setText(i == 1 ? "F1 drivers" : i == 2 ? "F1 teams" : "");
+                LinearLayout.LayoutParams tl = new LinearLayout.LayoutParams(0, px(38), i == 0 ? 1.5f : 1f);
+                if (i > 0) tl.leftMargin = px(4);
+                panelTabs.addView(t, tl);
+                tabs[i] = t;
+            }
+            c.addView(panelTabs, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, px(46)));
             tableHead = new LinearLayout(h.a);
             tableHead.setOrientation(LinearLayout.VERTICAL);
-            c.addView(tableHead);
-            // The whole table, every club: it scrolls inside the card (Down and Up while the card has the focus).
+            LinearLayout.LayoutParams hl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            hl.topMargin = px(10);
+            c.addView(tableHead, hl);
+            // The whole table, every club, and F1's standings in the same place: each scrolls (Down and Up) in the panel.
+            FrameLayout lists = new FrameLayout(h.a);
+            c.addView(lists, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
             tableView = scroller();
             tableList = new LinearLayout(h.a);
             tableList.setOrientation(LinearLayout.VERTICAL);
             tableView.addView(tableList, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-            c.addView(tableView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
-            tableKey = h.text(14, h.regular, 0xBFFFFFFF);
-            tableKey.setLineSpacing(px(4), 1f);
+            lists.addView(tableView, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+            driverView = scroller();
+            driverList = new LinearLayout(h.a);
+            driverList.setOrientation(LinearLayout.VERTICAL);
+            driverView.addView(driverList, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+            driverView.setVisibility(View.GONE);
+            lists.addView(driverView, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+            tableKey = h.text(13, h.regular, 0xBFFFFFFF);
+            tableKey.setSingleLine(true);
+            tableKey.setEllipsize(TextUtils.TruncateAt.END);
             LinearLayout.LayoutParams kl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            kl.topMargin = px(10);
+            kl.topMargin = px(8);
             c.addView(tableKey, kl);
-            tableJump = jumpPill(c);
             showTable(0);
+        }
+
+        /** The panel's tab: 0 the league's table, 1 F1's drivers, 2 F1's teams. */
+        private void showPanel(int tab) {
+            panelTab = tab;
+            boolean f1 = tab > 0;
+            tableView.setVisibility(f1 ? View.GONE : View.VISIBLE);
+            driverView.setVisibility(f1 ? View.VISIBLE : View.GONE);
+            tableHead.removeAllViews();
+            if (f1) {
+                LinearLayout r = new LinearLayout(h.a);
+                r.setGravity(Gravity.CENTER_VERTICAL);
+                r.setPadding(px(6), px(4), px(6), px(2));
+                TextView a = h.text(13, h.semi, 0x8CFFFFFF);
+                a.setLetterSpacing(0.14f);
+                a.setText((tab == 1 ? "DRIVERS" : "TEAMS") + (f1Round.isEmpty() ? "" : "  ·  " + f1Round.toUpperCase(Locale.UK)));
+                r.addView(a, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+                TextView b = h.text(13, h.semi, 0x8CFFFFFF);
+                b.setLetterSpacing(0.14f);
+                b.setText("PTS");
+                r.addView(b);
+                tableHead.addView(r);
+                showF1(tab - 1);
+                tableKey.setText("Down scrolls  ·  Left and Right: the 8 leagues, then F1");
+            } else {
+                tableHead.addView(tableRow(null, "", "CLUB", "P", "GD", "PTS", true, null));
+                tableKey.setText(tableKeyText);
+            }
+            paint();
         }
 
         private void showTable(int i) {
             league = i;
             Object[] l = LEAGUES[i];
-            tableName.setText((String) l[1]);
-            tableName.setTypeface(h.a.getResources().getFont((Integer) l[2]));
-            h.image(tableLogo, "https://a.espncdn.com/i/leaguelogos/soccer/500-dark/" + l[3] + ".png", px(90));
-            tablePage.setText("◀  " + (i + 1) + " / " + LEAGUES.length + "  ▶");
+            tabs[0].setText(l[1] + "   " + (i + 1) + "/" + LEAGUES.length);
+            if (panelTab != 0) showPanel(0);
             List<String[]> have = tables.get((String) l[0]);
             if (have != null) { fillTable(have); return; }
             tableList.animate().alpha(0.3f).setDuration(120).start();
@@ -2917,8 +3360,10 @@ final class PagesV2 {
         }
 
         private void fillTable(List<String[]> rows) {
-            tableHead.removeAllViews();
-            tableHead.addView(tableRow(null, "", "CLUB", "P", "GD", "PTS", true, null));
+            if (panelTab == 0) {
+                tableHead.removeAllViews();
+                tableHead.addView(tableRow(null, "", "CLUB", "P", "GD", "PTS", true, null));
+            }
             tableList.removeAllViews();
             tableTop = 0;
             tableView.scrollTo(0, 0);
@@ -2939,8 +3384,8 @@ final class PagesV2 {
                 key.setSpan(new android.text.style.ForegroundColorSpan(colour), at, key.length(), 0);
                 key.append(" ").append(zoneName(zone));
             }
-            tableKey.setText(key);
-            tableKey.setVisibility(key.length() == 0 ? View.GONE : View.VISIBLE);
+            tableKeyText = key;
+            if (panelTab == 0) tableKey.setText(key);
             tableList.animate().alpha(1f).setDuration(160).start();
         }
 
@@ -2985,21 +3430,21 @@ final class PagesV2 {
             int colour = head ? 0 : zoneColour(zone);
             View bar = new View(h.a);
             if (colour != 0) bar.setBackground(h.fill(2, colour));
-            LinearLayout.LayoutParams bl = new LinearLayout.LayoutParams(px(4), px(head ? 14 : 24));
+            LinearLayout.LayoutParams bl = new LinearLayout.LayoutParams(px(4), px(head ? 12 : 20));
             bl.rightMargin = px(8);
             r.addView(bar, bl);
-            int size = head ? 14 : 20;
+            int size = head ? 13 : 17;
             int col = head ? 0x8CFFFFFF : 0xBFFFFFFF;
             TextView a = h.text(size, h.regular, 0x99FFFFFF);
             a.setText(pos);
-            r.addView(a, new LinearLayout.LayoutParams(px(34), ViewGroup.LayoutParams.WRAP_CONTENT));
+            r.addView(a, new LinearLayout.LayoutParams(px(30), ViewGroup.LayoutParams.WRAP_CONTENT));
             if (!head) {
                 ImageView l = new ImageView(h.a);
                 l.setScaleType(ImageView.ScaleType.FIT_CENTER);
-                LinearLayout.LayoutParams ll = new LinearLayout.LayoutParams(px(26), px(26));
+                LinearLayout.LayoutParams ll = new LinearLayout.LayoutParams(px(22), px(22));
                 ll.rightMargin = px(10);
                 r.addView(l, ll);
-                if (logo != null) h.image(l, logo, px(52));
+                if (logo != null) h.image(l, logo, px(44));
             }
             TextView name = h.text(size, h.regular, head ? col : Color.WHITE);
             name.setText(club);
@@ -3011,9 +3456,9 @@ final class PagesV2 {
                 TextView t = h.text(size, v == pts && !head ? h.semi : h.regular, v == pts && !head ? Color.WHITE : col);
                 t.setText(!head && v == gd && !gd.startsWith("-") && !gd.equals("0") ? "+" + gd.replace("+", "") : v);
                 t.setGravity(Gravity.END);
-                r.addView(t, new LinearLayout.LayoutParams(px(52), ViewGroup.LayoutParams.WRAP_CONTENT));
+                r.addView(t, new LinearLayout.LayoutParams(px(48), ViewGroup.LayoutParams.WRAP_CONTENT));
             }
-            r.setPadding(px(6), px(head ? 4 : 7), px(6), px(head ? 2 : 7));
+            r.setPadding(px(6), px(head ? 4 : 5), px(6), px(head ? 2 : 5));
             if (!head) {
                 GradientDrawable g = new GradientDrawable();
                 // A wash of the place's colour across the row, so the zones read at a glance.
@@ -3024,29 +3469,8 @@ final class PagesV2 {
             return r;
         }
 
+        /** F1's drivers' and teams' standings, for the panel's F1 tabs (and the timing button on a race weekend). */
         private void buildF1() {
-            LinearLayout c = card(1374, 450);
-            c.setLayerType(View.LAYER_TYPE_HARDWARE, null);
-            // As the table card: Left and Right between the drivers' and the constructors' standings, Down scrolls.
-            LinearLayout top = new LinearLayout(h.a);
-            top.setOrientation(LinearLayout.HORIZONTAL);
-            top.setGravity(Gravity.CENTER_VERTICAL);
-            f1Kicker = h.text(15, h.semi, 0xA6FFFFFF);
-            f1Kicker.setLetterSpacing(0.2f);
-            f1Kicker.setText("DRIVERS' STANDINGS");
-            top.addView(f1Kicker, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-            f1PageView = h.text(15, h.semi, 0xA6FFFFFF);
-            top.addView(f1PageView);
-            c.addView(top);
-            TextView head = heading(c, "Formula 1", R.font.brand_f1, "https://a.espncdn.com/i/teamlogos/leagues/500-dark/f1.png");
-            LinearLayout list = new LinearLayout(h.a);
-            list.setOrientation(LinearLayout.VERTICAL);
-            driverCard = c;
-            driverList = list;
-            driverView = scroller();
-            driverView.addView(list, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-            c.addView(driverView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
-            f1Jump = jumpPill(c);
             h.io.execute(() -> {
                 List<String[]> rows = new ArrayList<>(), teams = new ArrayList<>();
                 String round = "", rounds = "";
@@ -3084,16 +3508,16 @@ final class PagesV2 {
                 String r = round, of = rounds;
                 String[] timing = f1Timing();
                 h.main.post(() -> {
+                    if (!alive) return;
                     if (timing != null) timingBar(timing);
-                    if (!r.isEmpty()) head.setText("After Round " + r + (of.isEmpty() || "0".equals(of) ? "" : " of " + of));
+                    if (!r.isEmpty()) f1Round = "After Round " + r + (of.isEmpty() || "0".equals(of) ? "" : " of " + of);
                     f1Drivers = rows;
                     f1Teams = teams;
-                    showF1(f1Page);
+                    if (panelTab > 0) showPanel(panelTab);
                 });
             });
         }
 
-        private TextView f1Kicker, f1PageView;
         /** On a race weekend, from first practice to two hours after the race: OK on the F1 card opens the timing. */
         private boolean f1TimingOn;
 
@@ -3118,120 +3542,17 @@ final class PagesV2 {
             return new String[]{"F1 timing", "Final classification · over any app"};
         }
 
-        /** The F1 card's bar becomes the timing's: the F1 red along its top, OK opening the tower over Sky Sports F1. */
+        /** A race weekend: the stage's F1 timing button shows (OK opens the timing tower over Sky Sports F1). */
         private void timingBar(String[] t) {
-            for (Jump j : jumps) {
-                if (j.box != f1Jump) continue;
-                f1TimingOn = true;
-                j.label.setText(t[0].charAt(0) + t[0].substring(1).toLowerCase(Locale.UK).replace("f1", "F1"));
-                j.live.setText(t[1]);
-                j.dot.setVisibility(t[0].endsWith("LIVE") ? View.VISIBLE : View.GONE);
-                j.arrow.setText("›");
-                j.accent = 0xFFE10600;
-                View strip = j.box.getChildAt(0);
-                if (strip != null) strip.setBackgroundColor(0xFFE10600);
-                style(j, j.on);
-            }
+            f1TimingOn = true;
+            boolean live = t[0].endsWith("LIVE");
+            String label = t[0].charAt(0) + t[0].substring(1).toLowerCase(Locale.UK).replace("f1", "F1");
+            timingBtn.setText((live ? "●  " : "") + label);
+            timingBtn.setVisibility(View.VISIBLE);
+            paint();
         }
-        /**
-         * The way down past the table and the standings: a "What's on in Sport" bar across each card's foot, OK on the
-         * card pressing it. Styled as the launcher's own category boxes: dark glass with a hairline rim and Sports'
-         * green along the top at rest; white with dark words on the card with the focus, a little larger. This TV's
-         * own remote's OK button at the start, and a red dot beside how many things are on now.
-         */
-        private View tableJump, f1Jump;
-        private final List<Jump> jumps = new ArrayList<>();
+
         private static final int SPORT_GREEN = 0xFF3DDC84;
-
-        private static final class Jump {
-            FrameLayout box;
-            TextView label, live, arrow;
-            View dot;
-            boolean on;
-            int accent = SPORT_GREEN;
-        }
-
-        private View jumpPill(LinearLayout card) {
-            Jump j = new Jump();
-            FrameLayout box = new FrameLayout(h.a);
-            box.setClipToOutline(true);
-            box.setOutlineProvider(h.round(16));
-            View strip = new View(h.a);
-            strip.setBackgroundColor(SPORT_GREEN);
-            box.addView(strip, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, px(3)));
-            LinearLayout b = new LinearLayout(h.a);
-            b.setOrientation(LinearLayout.HORIZONTAL);
-            b.setGravity(Gravity.CENTER_VERTICAL);
-            b.setPadding(px(12), px(2), px(10), 0);
-            box.addView(b, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-            ImageView ok = new ImageView(h.a);
-            ok.setImageBitmap(okKey(Config.themeString(h.a, "ok_button", "tcl"), px(30)));
-            b.addView(ok, new LinearLayout.LayoutParams(px(30), px(30)));
-            LinearLayout words = new LinearLayout(h.a);
-            words.setOrientation(LinearLayout.VERTICAL);
-            TextView label = h.text(18, h.semi, Color.WHITE);
-            label.setText("What's on in Sport");
-            label.setSingleLine(true);
-            words.addView(label);
-            LinearLayout sub = new LinearLayout(h.a);
-            sub.setOrientation(LinearLayout.HORIZONTAL);
-            sub.setGravity(Gravity.CENTER_VERTICAL);
-            View dot = new View(h.a);
-            dot.setBackground(h.fill(4, 0xFFFF3B4A));
-            sub.addView(dot, new LinearLayout.LayoutParams(px(8), px(8)));
-            TextView live = h.text(13, h.regular, 0xB3FFFFFF);
-            LinearLayout.LayoutParams lv = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            lv.leftMargin = px(6);
-            sub.addView(live, lv);
-            words.addView(sub);
-            LinearLayout.LayoutParams wl = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
-            wl.leftMargin = px(12);
-            b.addView(words, wl);
-            // Down, in a circle of its own: faint glass at rest, Sports' green when lit.
-            TextView arrow = h.text(18, h.semi, Color.WHITE);
-            arrow.setText("↓");
-            arrow.setGravity(Gravity.CENTER);
-            b.addView(arrow, new LinearLayout.LayoutParams(px(34), px(34)));
-            android.animation.ObjectAnimator beat = android.animation.ObjectAnimator.ofFloat(dot, View.ALPHA, 1f, 0.25f);
-            beat.setDuration(650);
-            beat.setRepeatCount(android.animation.ValueAnimator.INFINITE);
-            beat.setRepeatMode(android.animation.ValueAnimator.REVERSE);
-            beat.start();
-            j.box = box; j.label = label; j.live = live; j.dot = dot; j.arrow = arrow;
-            jumps.add(j);
-            style(j, false);
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, px(58));
-            lp.topMargin = px(10);
-            card.addView(box, lp);
-            return box;
-        }
-
-        /** The bar at rest (the category boxes' glass) or lit (white, dark words), as the category boxes are. */
-        private void style(Jump j, boolean on) {
-            j.on = on;
-            GradientDrawable bg = h.fill(16, on ? 0xEBFFFFFF : 0x14FFFFFF);
-            bg.setStroke(Math.max(1, px(1)), on ? Color.WHITE : 0x24FFFFFF);
-            j.box.setBackground(bg);
-            int ink = on ? 0xFF1A1D24 : Color.WHITE;
-            j.label.setTextColor(ink);
-            j.live.setTextColor(on ? 0xB31A1D24 : 0xB3FFFFFF);
-            j.arrow.setTextColor(ink);
-            j.arrow.setBackground(h.fill(17, on ? j.accent : 0x1FFFFFFF));
-        }
-
-        private void lightJump(View b, boolean on) {
-            for (Jump j : jumps) {
-                if (j.box != b) continue;
-                style(j, on);
-                b.animate().scaleX(on ? 1.03f : 1f).scaleY(on ? 1.03f : 1f).setDuration(150).setInterpolator(HomeV2.SKY).start();
-            }
-        }
-
-        /** The first row below the cards with anything in it (Live Football this week, as a rule); -1 when none has. */
-        private int firstRow() {
-            for (int r = 1; r < lists.size(); r++) if (!lists.get(r).isEmpty()) return r;
-            return lists.isEmpty() || lists.get(0).isEmpty() ? -1 : 0;
-        }
 
         private List<String[]> f1Drivers = new ArrayList<>(), f1Teams = new ArrayList<>();
         /** 0 the drivers' standings, 1 the constructors'. */
@@ -3239,8 +3560,6 @@ final class PagesV2 {
 
         private void showF1(int p) {
             f1Page = p;
-            f1Kicker.setText(p == 0 ? "DRIVERS' STANDINGS" : "CONSTRUCTORS' STANDINGS");
-            f1PageView.setText(f1Teams.isEmpty() ? "" : "◀  " + (p + 1) + " / 2  ▶");
             driverList.removeAllViews();
             for (String[] x : p == 0 ? f1Drivers : f1Teams) driverList.addView(driver(x));
             driverView.scrollTo(0, 0);
@@ -3268,27 +3587,28 @@ final class PagesV2 {
             LinearLayout r = new LinearLayout(h.a);
             r.setOrientation(LinearLayout.HORIZONTAL);
             r.setGravity(Gravity.CENTER_VERTICAL);
-            r.setPadding(px(4), px(7), px(4), px(7));
-            TextView p = h.text(20, h.regular, 0x99FFFFFF);
+            r.setPadding(px(6), px(5), px(6), px(5));
+            TextView p = h.text(17, h.regular, 0x99FFFFFF);
             p.setText(x[0]);
-            r.addView(p, new LinearLayout.LayoutParams(px(34), ViewGroup.LayoutParams.WRAP_CONTENT));
+            r.addView(p, new LinearLayout.LayoutParams(px(30), ViewGroup.LayoutParams.WRAP_CONTENT));
             View bar = new View(h.a);
             bar.setBackground(h.fill(3, teamColour(x[3])));
-            LinearLayout.LayoutParams bl = new LinearLayout.LayoutParams(px(5), px(22));
+            LinearLayout.LayoutParams bl = new LinearLayout.LayoutParams(px(5), px(20));
             bl.rightMargin = px(12);
             r.addView(bar, bl);
             ImageView team = new ImageView(h.a);
             team.setScaleType(ImageView.ScaleType.FIT_CENTER);
-            LinearLayout.LayoutParams tl = new LinearLayout.LayoutParams(px(28), px(28));
+            LinearLayout.LayoutParams tl = new LinearLayout.LayoutParams(px(24), px(24));
             tl.rightMargin = px(12);
             r.addView(team, tl);
             String logo = F1Results.logo(x[3]);
             if (logo != null) h.image(team, logo, px(56));
-            TextView n = h.text(20, h.regular, Color.WHITE);
+            TextView n = h.text(17, h.regular, Color.WHITE);
             n.setText(x[1]);
             n.setSingleLine(true);
+            n.setEllipsize(TextUtils.TruncateAt.END);
             r.addView(n, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-            TextView pts = h.text(20, h.semi, Color.WHITE);
+            TextView pts = h.text(17, h.semi, Color.WHITE);
             pts.setText(x[2]);
             r.addView(pts);
             return r;
@@ -3440,56 +3760,82 @@ final class PagesV2 {
         }
 
         private void paint() {
-            boolean down = zone >= 0;
-            cards.animate().alpha(down ? 0f : 1f).translationY(down ? -px(80) : 0).setDuration(260).setInterpolator(HomeV2.SKY).withLayer().start();
-            // Down the rows: two in sight at once, the ones above sliding up and out.
-            int top = Math.max(0, zone - 1);
-            fixtures.animate().translationY(down ? -px(300) * top : px(660)).setDuration(300).setInterpolator(HomeV2.SKY).start();
+            if (stage == null || panel == null || cards == null) return;
+            // Down in the rows below Tonight: the stage, the tables and Tonight go up and out, the rows come up.
+            boolean rows = zone >= 0 && zone != TONIGHT;
+            cards.animate().alpha(rows ? 0f : 1f).translationY(rows ? -px(80) : 0).setDuration(260).setInterpolator(HomeV2.SKY).withLayer().start();
+            int slot = rows && zone < slotOf.size() ? Math.max(0, slotOf.get(zone)) : 0;
+            // Two rows in sight at once: the focused one second from the top (the first at the top), those above gone.
+            int above = rows ? Math.max(0, slot - 1) : 0;
+            fixtures.animate().translationY(rows ? px(top - 236) - px(300) * above : px(restY())).setDuration(300).setInterpolator(HomeV2.SKY).start();
             for (int i = 0; i < rowViews.size(); i++) {
-                rowViews.get(i).animate().alpha(down && i / 2 < top ? 0f : 1f).setDuration(200).start();
+                rowViews.get(i).animate().alpha(rows && i / 2 < above ? 0f : 1f).setDuration(200).start();
             }
-            resumeNone.animate().alpha(down && top > 0 ? 0f : 1f).setDuration(200).start();
-            boolean onWatch = zone == -1 && cardIdx == 0, onTable = zone == -1 && cardIdx == 1;
-            GradientDrawable wb = h.fill(30, onWatch ? 0xEBFFFFFF : 0x1FFFFFFF);
-            wb.setStroke(px(1.5f), onWatch ? Color.WHITE : 0x4DFFFFFF);
-            watch.setBackground(wb);
-            watch.setTextColor(onWatch ? 0xFF1A1D24 : Color.WHITE);
-            GradientDrawable tb = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, onTable ? new int[]{0x33FFFFFF, 0x14FFFFFF} : new int[]{0x21FFFFFF, 0x0DFFFFFF});
-            tb.setCornerRadius(px(26));
-            tb.setStroke(px(onTable ? 3 : 1.5f), onTable ? Color.WHITE : 0x3DFFFFFF);
-            tableCard.setBackground(tb);
-            boolean onDrivers = zone == -1 && cardIdx == 2;
-            GradientDrawable db = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, onDrivers ? new int[]{0x33FFFFFF, 0x14FFFFFF} : new int[]{0x21FFFFFF, 0x0DFFFFFF});
-            db.setCornerRadius(px(26));
-            db.setStroke(px(onDrivers ? 3 : 1.5f), onDrivers ? Color.WHITE : 0x3DFFFFFF);
-            if (driverCard != null) driverCard.setBackground(db);
-            tablePage.setTextColor(onTable ? Color.WHITE : 0x73FFFFFF);
-            // The way down past the table: the "What's on in sport" button, lit on the card with the focus.
-            int liveNow = 0;
-            for (int r = 1; r < Math.min(LIVE_ROWS, lists.size()); r++) for (HomeV2.Tile t : lists.get(r)) if ("LIVE NOW".equals(t.chip)) liveNow++;
-            int coming = 0;
-            for (int r = 1; r < Math.min(LIVE_ROWS, lists.size()); r++) coming += lists.get(r).size();
-            for (Jump j : jumps) {
-                if (f1TimingOn && j.box == f1Jump) continue;   // the F1 timing's own line stays
-                j.live.setText(liveNow > 0 ? liveNow + " live now · " + coming + " this week" : coming > 0 ? coming + " games and events this week" : "Live football and more");
-                j.dot.setVisibility(liveNow > 0 ? View.VISIBLE : View.GONE);
+            resumeNone.animate().alpha(rows && above > 0 ? 0f : 1f).setDuration(200).start();
+            // The stage: a white rim with the focus on it, the focused button white with dark words.
+            boolean onStage = zone == -1 && cardIdx == 0, onPanel = zone == -1 && cardIdx == 1;
+            if (stageBg != null) {
+                stageBg.setStroke(px(onStage ? 3 : 1.5f), onStage ? Color.WHITE : 0x3DFFFFFF);
+                stage.invalidate();
             }
-            if (tableJump != null && tableJump.getTag() != (Boolean) onTable) { tableJump.setTag(onTable); lightJump(tableJump, onTable); }
-            if (f1Jump != null && f1Jump.getTag() != (Boolean) onDrivers) { f1Jump.setTag(onDrivers); lightJump(f1Jump, onDrivers); }
-            if (f1PageView != null) f1PageView.setTextColor(onDrivers ? Color.WHITE : 0x73FFFFFF);
+            List<TextView> shown = shownButtons();
+            stageIdx = Math.max(0, Math.min(stageIdx, shown.size() - 1));
+            for (TextView b : stageBtns) {
+                boolean on = onStage && !shown.isEmpty() && shown.get(stageIdx) == b;
+                boolean main = b == watch;
+                GradientDrawable g = h.fill(30, on ? 0xEBFFFFFF : main ? 0x33FFFFFF : 0x40000000);
+                g.setStroke(px(1.5f), on ? Color.WHITE : b == timingBtn ? 0xCCE10600 : main ? 0x80FFFFFF : 0x73FFFFFF);
+                b.setBackground(g);
+                b.setTextColor(on ? 0xFF1A1D24 : Color.WHITE);
+                b.animate().scaleX(on ? 1.04f : 1f).scaleY(on ? 1.04f : 1f).setDuration(150).setInterpolator(HomeV2.SKY).start();
+            }
+            // The tables panel: its rim white with the focus, the tab showing lit (white with the focus on the panel).
+            panelBg.setStroke(px(onPanel ? 3 : 1.5f), onPanel ? Color.WHITE : 0x3DFFFFFF);
+            panel.invalidate();
+            for (int i = 0; i < tabs.length; i++) {
+                boolean shownTab = i == panelTab;
+                tabs[i].setBackground(shownTab ? h.fill(19, onPanel ? 0xEBFFFFFF : 0x2EFFFFFF) : null);
+                tabs[i].setTextColor(shownTab ? onPanel ? 0xFF1A1D24 : Color.WHITE : 0xBFFFFFFF);
+                tabs[i].setTypeface(shownTab ? h.semi : h.regular);
+            }
+            // Tonight's counts: how many games and events are on now and this week (the two rows of live sport).
+            int liveNow = 0, coming = 0;
+            for (int r = 1; r < Math.min(LIVE_ROWS, lists.size()); r++) {
+                for (HomeV2.Tile t : lists.get(r)) if ("LIVE NOW".equals(t.chip)) liveNow++;
+                coming += lists.get(r).size();
+            }
+            if (tonightCounts != null) {
+                android.text.SpannableStringBuilder cb = new android.text.SpannableStringBuilder();
+                if (liveNow > 0) {
+                    cb.append("●");
+                    cb.setSpan(new android.text.style.ForegroundColorSpan(0xFFFF3B4A), 0, 1, 0);
+                    cb.append("  ").append(String.valueOf(liveNow)).append(" live now  ·  ");
+                }
+                cb.append(coming > 0 ? coming + " this week  ·  hold OK for a reminder" : "Live football and more");
+                tonightCounts.setText(cb);
+            }
+            if (tonightNone != null && !lists.get(TONIGHT).isEmpty()) tonightNone.setVisibility(View.GONE);
             for (int r = 0; r < strips.size(); r++) {
                 LinearLayout s = strips.get(r);
+                boolean slim = r == TONIGHT;
                 for (int i = 0; i < s.getChildCount(); i++) {
                     FrameLayout f = (FrameLayout) s.getChildAt(i);
                     boolean on = zone == r && i == idx;
-                    f.animate().scaleX(on ? 1.07f : 1f).scaleY(on ? 1.07f : 1f).setDuration(150).setInterpolator(HomeV2.SKY).start();
-                    f.setForeground(on ? h.ring(16) : null);
+                    float grow = slim ? 1.05f : 1.07f;
+                    f.animate().scaleX(on ? grow : 1f).scaleY(on ? grow : 1f).setDuration(150).setInterpolator(HomeV2.SKY).start();
+                    f.setForeground(on ? h.ring(slim ? 20 : 16) : null);
                     f.setElevation(on ? px(8) : 0);
                 }
-                int first = zone == r ? Math.max(0, idx - 3) : 0;
+                // Tonight shows six at once, a row of tiles four: the strip slides along under the focus.
+                int first = zone == r ? Math.max(0, idx - (slim ? 4 : 3)) : 0;
                 HomeV2.window(s, first);
-                s.animate().translationX(-first * px(408)).setDuration(300).setInterpolator(HomeV2.SKY).start();
+                s.animate().translationX(-first * px(slim ? SLIM_W + SLIM_GAP : 408)).setDuration(300).setInterpolator(HomeV2.SKY).start();
             }
+        }
+
+        /** Down or Up on the tables panel scrolls the table (or F1's standings) shown; false at its end. */
+        private boolean scrollPanel(int dir) {
+            return panelTab == 0 ? scrollTable(dir) : scrollDrivers(dir);
         }
 
         @Override boolean key(KeyEvent e) {
@@ -3497,7 +3843,7 @@ final class PagesV2 {
             if (player != null && player.isShowing()) return player.key(e);
             int code = e.getKeyCode();
             if (ok(code)) {
-                // Held on a fixture: a reminder for it (held again: taken off). A plain press watches it.
+                // Held on one of this week's games: a reminder for it (held again: taken off). A plain press watches it.
                 if (e.getAction() == KeyEvent.ACTION_DOWN && e.getRepeatCount() == 1 && zone >= 1 && zone < LIVE_ROWS && idx < lists.get(zone).size()) {
                     held = true;
                     remind(lists.get(zone).get(idx));
@@ -3506,9 +3852,9 @@ final class PagesV2 {
                 if (e.getAction() == KeyEvent.ACTION_UP) {
                     if (held) { held = false; return true; }
                     if (zone == -1) {
-                        if (cardIdx == 0) { if (watchOk != null) watchOk.run(); }
-                        else if (cardIdx == 2 && f1TimingOn) F1Tower.open(h.a, true);
-                        else { int r = firstRow(); if (r >= 0) { zone = r; idx = 0; paint(); } }
+                        if (cardIdx == 0) pressStage();
+                        else if (panelTab > 0 && f1TimingOn) F1Tower.open(h.a, true);
+                        else { int r = nextZone(-1); if (r >= 0) { zone = r; idx = 0; paint(); } }
                     }
                     else if (idx < lists.get(zone).size() && lists.get(zone).get(idx).ok != null) lists.get(zone).get(idx).ok.run();
                 }
@@ -3516,35 +3862,39 @@ final class PagesV2 {
             }
             if (e.getAction() != KeyEvent.ACTION_DOWN) return code != KeyEvent.KEYCODE_BACK;
             switch (code) {
-                // At an edge the key is Home's (false): on to the rail, the top buttons or the boxes, no Back needed.
-                case KeyEvent.KEYCODE_DPAD_DOWN:
-                    // On the table or the standings Down scrolls them, a page at a time; at the end, on down.
-                    if (zone == -1 && (cardIdx == 1 && scrollTable(1) || cardIdx == 2 && scrollDrivers(1))) return true;
-                    // On down the rows, past any with nothing in them; from the last, on to Home's boxes.
-                    int next = zone + 1;
-                    while (next < lists.size() && lists.get(next).isEmpty()) next++;
-                    if (next >= lists.size()) return false;
-                    zone = next; idx = 0;
+                // At an edge the key is Home's (false): on to the top bar or the dock, no Back needed.
+                case KeyEvent.KEYCODE_DPAD_DOWN: {
+                    // On the tables panel Down scrolls the table, a page at a time; at its end, on down.
+                    if (zone == -1 && cardIdx == 1 && scrollPanel(1)) return true;
+                    // Down: Tonight, then the rows, past any with nothing in them; from the last, on to the dock.
+                    int next = nextZone(zone);
+                    if (next < 0) return false;
+                    zone = next;
+                    idx = 0;
                     break;
+                }
                 case KeyEvent.KEYCODE_DPAD_UP:
-                    if (zone == -1 && (cardIdx == 1 && scrollTable(-1) || cardIdx == 2 && scrollDrivers(-1))) return true;
+                    if (zone == -1 && cardIdx == 1 && scrollPanel(-1)) return true;
                     if (zone < 0) return false;
-                    zone--; idx = 0;
-                    while (zone >= 0 && lists.get(zone).isEmpty()) zone--;
+                    zone = prevZone(zone);
+                    idx = 0;
                     break;
                 case KeyEvent.KEYCODE_DPAD_LEFT:
                     if (zone >= 0) { if (idx > 0) idx--; else return false; }
-                    // On the table card Left and Right page through the leagues; Left from the first goes back to the match.
-                    else if (cardIdx == 2) { if (f1Page > 0) showF1(f1Page - 1); else cardIdx = 1; }
-                    else if (cardIdx == 1) { if (league > 0) showTable(league - 1); else cardIdx = 0; }
-                    else return false;
+                    else if (cardIdx == 0) { if (stageIdx > 0) stageIdx--; else return false; }
+                    // On the panel: back through F1's teams and drivers to the leagues, back through them, then to the stage.
+                    else if (panelTab == 2) showPanel(1);
+                    else if (panelTab == 1) showPanel(0);
+                    else if (league > 0) showTable(league - 1);
+                    else { cardIdx = 0; stageIdx = Math.max(0, shownButtons().size() - 1); }
                     break;
                 case KeyEvent.KEYCODE_DPAD_RIGHT:
                     if (zone >= 0) { if (idx < lists.get(zone).size() - 1) idx++; }
-                    else if (cardIdx == 0) cardIdx = 1;
-                    // Past the last league, on to the F1 standings.
-                    else if (cardIdx == 1) { if (league < LEAGUES.length - 1) showTable(league + 1); else cardIdx = 2; }
-                    else if (cardIdx == 2 && f1Page == 0 && !f1Teams.isEmpty()) showF1(1);
+                    // Along the stage's buttons, then into the tables panel.
+                    else if (cardIdx == 0) { if (stageIdx < shownButtons().size() - 1) stageIdx++; else cardIdx = 1; }
+                    // On the panel: on through the 8 leagues, then F1's drivers and teams.
+                    else if (panelTab == 0) { if (league < LEAGUES.length - 1) showTable(league + 1); else showPanel(1); }
+                    else if (panelTab == 1 && !f1Teams.isEmpty()) showPanel(2);
                     break;
                 default:
                     return false;
