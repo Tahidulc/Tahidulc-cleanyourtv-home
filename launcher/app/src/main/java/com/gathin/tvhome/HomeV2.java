@@ -275,6 +275,7 @@ final class HomeV2 {
         dockMode = Config.themeFlag(a, "home_dock", true);
         if (dockMode) { TILE_W = 448; TILE_H = 300; }
         corners = dockMode && Config.themeFlag(a, "top_corners", true);
+        ScoresTicker.frost = corners && Config.themeFlag(a, "frosted_pills", true);
         players = new TilePlayer(a);
         players.useOverlay(lite);
         if (!tmdbKey.isEmpty()) players.warm();
@@ -539,6 +540,15 @@ final class HomeV2 {
             if (i > 0) lp.leftMargin = px(6);
             pageDots.addView(d, lp);
         }
+    }
+
+    /** Option B's frosted glass for the weather pill and the Control Centre button (as the score pill's glass_frost). */
+    private Drawable frost(float radius, boolean vpnOn) {
+        GradientDrawable body = fill(radius, vpnOn ? 0xA63A1F7A : 0x99151B52);
+        GradientDrawable sheen = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0x38FFFFFF, 0x14FFFFFF});
+        sheen.setCornerRadius(px(radius));
+        sheen.setStroke(px(1.5f), vpnOn ? 0xB3C4A8FF : 0x61FFFFFF);
+        return new android.graphics.drawable.LayerDrawable(new Drawable[]{body, sheen});
     }
 
     /** An alert in the score pill's place (option B): the pill, its dots and the Control Centre button make way. */
@@ -2001,10 +2011,11 @@ final class HomeV2 {
             boolean on = zone == Z_TOP && i == topIdx;
             boolean vpnOn = v == vpn && vpnUp;
             if (!restyle(v, (on ? 1 : 0) | (vpnOn ? 2 : 0))) continue;
-            GradientDrawable b = fill(v == weatherView ? (corners ? 19 : 25) : v == ccButton ? CORNER_CC / 2f : 33,
-                    on ? 0xEBFFFFFF : vpnOn ? 0x3D9B5CFF : GLASS);
+            float rad = v == weatherView ? (corners ? 19 : 25) : v == ccButton ? CORNER_CC / 2f : 33;
+            GradientDrawable b = fill(rad, on ? 0xEBFFFFFF : vpnOn ? 0x3D9B5CFF : GLASS);
             b.setStroke(px(1.5f), on ? Color.WHITE : vpnOn ? 0xB3C4A8FF : GLASS_LINE);
-            v.setBackground(b);
+            // Option B's pills frosted, as the score pill: a tinted body under the glass, the words clear on any picture.
+            v.setBackground(!on && ScoresTicker.frost ? frost(rad, vpnOn) : b);
             int ink = on ? 0xFF1A1D24 : Color.WHITE;
             if (v instanceof ImageView) {
                 if (v == vpn) ((ImageView) v).setColorFilter(on ? 0xFF1A1D24 : vpnOn ? 0xFFC9A2FF : Color.WHITE);

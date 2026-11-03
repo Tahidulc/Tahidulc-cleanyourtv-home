@@ -213,8 +213,12 @@ final class ScoresTicker {
         measure.setTypeface(Typeface.DEFAULT_BOLD);   // measure as if all bold: the widest case
     }
 
+    /** Option B's frosted pills (theme "frosted_pills", on with it): a tinted body, so the words read over a bright picture. */
+    static volatile boolean frost;
+
     /** The pills' glass, which an alert on v2's Home takes too, so it reads as one of them. */
     static int glassRes() {
+        if (frost && !LightUi.on()) return R.drawable.glass_frost;
         return LightUi.on() ? R.drawable.glass_light : LightUi.glass() ? R.drawable.glass_dark : R.drawable.glass_box;
     }
 
