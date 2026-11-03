@@ -12,14 +12,15 @@ import java.util.regex.Pattern;
  * TV is (each channel's public list of uploads, its feed; no key needed): highlights, extended highlights, full fights,
  * every goal or touchdown, condensed matches and the like first, newest first; the channel's other full-length
  * videos after them when there are few; never Shorts, live streams or anything older than three weeks. Each sport is
- * read again at most every 15 minutes, off the main thread. OK on one plays it in YouTube.
+ * read again at most every 15 minutes, off the main thread. OK on one plays it in a big pop-up on Home (HighlightPlayer),
+ * with the event's details beside it; in YouTube when it cannot play there.
  */
 final class SportsHighlights {
     private SportsHighlights() { }
 
-    /** One video: its YouTube id, title, the channel's name, the sport's mark and when it went up. */
+    /** One video: its YouTube id, title, the channel's name, the sport's mark and row, what it says, when it went up. */
     static final class Clip {
-        String id, title, channel, mark;
+        String id, title, channel, mark, sport, description;
         long published;
         boolean highlight;
     }
@@ -88,6 +89,8 @@ final class SportsHighlights {
                 c.title = v.title.trim();
                 c.channel = ch[1];
                 c.mark = s.mark;
+                c.sport = s.name;
+                c.description = v.description;
                 c.published = v.published;
                 c.highlight = HIGHLIGHT.matcher(c.title).find();
                 (c.highlight ? high : other).add(c);

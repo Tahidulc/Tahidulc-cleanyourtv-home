@@ -20,6 +20,8 @@ final class OfficialVideos {
     /** One video: a YouTube video's id, or a clip's address (ESPN's), its title, picture and when it went up. */
     static final class Video {
         String youtube, mp4, title, thumb;
+        /** What the channel wrote under it (its feed's media:description); null when it says nothing. */
+        String description;
         long published;
         /** A YouTube Short (its feed link goes to /shorts/): no use as a highlight on a TV. */
         boolean shorts;
@@ -102,6 +104,7 @@ final class OfficialVideos {
                 v.youtube = tag(e, "yt:videoId");
                 v.title = unescape(tag(e, "title"));
                 v.thumb = attr(e, "media:thumbnail", "url");
+                v.description = unescape(tag(e, "media:description"));
                 v.shorts = e.contains("/shorts/");
                 try { v.published = java.time.OffsetDateTime.parse(tag(e, "published")).toInstant().toEpochMilli(); } catch (Exception ignored) { }
                 if (v.youtube != null && !v.youtube.isEmpty()) out.add(v);

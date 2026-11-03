@@ -25,6 +25,22 @@ final class TilePlayer {
     private android.webkit.WebView web;
     private boolean ready;
     private String pending;
+    /** The pending one is a whole video (film), not a trailer. */
+    private boolean pendingFilm;
+
+    /**
+     * A whole video played large (the highlights' pop-up, HighlightPlayer): told how it is going, its time, when YouTube
+     * refuses it, and when it was taken away (Home went into the background, another player took the page).
+     */
+    interface Film {
+        /** YouTube's player state: -1 unstarted, 0 ended, 1 playing, 2 paused, 3 buffering, 5 cued. */
+        void state(int s);
+        void time(double at, double length);
+        void failed(int code);
+        void gone();
+    }
+
+    private Film film;
     private FrameLayout tile;
     private View video;
     /**
@@ -88,20 +104,33 @@ final class TilePlayer {
         web.setHorizontalScrollBarEnabled(false);
         web.addJavascriptInterface(new Object() {
             @android.webkit.JavascriptInterface public void ready() {
-                main.post(() -> { ready = true; if (pending != null) { String id = pending; pending = null; cue(id); } });
+                main.post(() -> {
+                    ready = true;
+                    if (pending == null) return;
+                    String id = pending;
+                    pending = null;
+                    if (pendingFilm) { pendingFilm = false; cueFilm(id); } else cue(id);
+                });
             }
             @android.webkit.JavascriptInterface public void playing() {
-                main.post(() -> { main.removeCallbacks(reveal); main.postDelayed(reveal, TITLE_MS); });
+                main.post(() -> { if (film != null) return; main.removeCallbacks(reveal); main.postDelayed(reveal, TITLE_MS); });
             }
             @android.webkit.JavascriptInterface public void waiting() {
                 // Loading or paused: YouTube draws its logo and spinner over the picture, so the trailer hides again.
-                main.post(TilePlayer.this::covered);
+                main.post(() -> { if (film == null) covered(); });
+            }
+            @android.webkit.JavascriptInterface public void state(int s) {
+                main.post(() -> { if (film != null) film.state(s); });
+            }
+            @android.webkit.JavascriptInterface public void time(double at, double length) {
+                main.post(() -> { if (film != null) film.time(at, length); });
             }
             @android.webkit.JavascriptInterface public void refused(String id, int code) {
-                android.util.Log.i("TilePlayer", "trailer " + id + " refused by YouTube (" + code + "), trying the next");
+                android.util.Log.i("TilePlayer", "video " + id + " refused by YouTube (" + code + ")");
+                main.post(() -> { if (film != null) film.failed(code); });
             }
             @android.webkit.JavascriptInterface public void ended() {
-                main.post(TilePlayer.this::stop);
+                main.post(() -> { if (film == null) stop(); });
             }
         }, "Home");
         String pkg = c.getPackageName();
@@ -112,13 +141,19 @@ final class TilePlayer {
                 + "playerVars:{autoplay:1,controls:0,rel:0,playsinline:1,modestbranding:1,iv_load_policy:3,disablekb:1,fs:0,cc_load_policy:0,showinfo:0,"
                 + "origin:'https://" + pkg + "'},"
                 + "events:{onReady:function(){Home.ready();},"
-                + "onError:function(e){Home.refused(cur,e.data);next();},"
-                + "onStateChange:function(e){if(e.data==1)Home.playing();else if(e.data==3||e.data==2||e.data==-1||e.data==5)Home.waiting();if(e.data==2)e.target.playVideo();if(e.data==0)Home.ended();}}});}"
+                + "onError:function(e){Home.refused(cur,e.data);if(!full)next();},"
+                + "onStateChange:function(e){Home.state(e.data);if(e.data==1)Home.playing();else if(e.data==3||e.data==2||e.data==-1||e.data==5)Home.waiting();if(e.data==2&&!full)e.target.playVideo();if(e.data==0)Home.ended();}}});}"
                 // Several trailers, comma-separated: YouTube refuses some in an embedded player (their owner turned
                 // that off, or not in this country): on to the next.
                 + "var q=[],cur='';function play(ids){q=ids.split(',');next();}"
                 + "function next(){cur=q.shift()||'';if(!cur)return;try{pl.unloadModule('captions');}catch(x){}pl.setVolume(80);pl.loadVideoById({videoId:cur,startSeconds:6});}"
-                + "function stop(){try{pl.stopVideo();}catch(x){}}"
+                // A whole video (film): from its start, uncut, louder, paused and played on asking, its time told each second.
+                + "var full=false,tick=null;function film(id){full=true;q=[];cur=id;var f=document.getElementById('p');if(f)f.style.transform='none';"
+                + "try{pl.unloadModule('captions');}catch(x){}pl.setVolume(100);pl.loadVideoById({videoId:id,startSeconds:0});"
+                + "if(!tick)tick=setInterval(function(){try{if(full&&pl.getPlayerState()==1)Home.time(pl.getCurrentTime(),pl.getDuration());}catch(x){}},1000);}"
+                + "function toggle(){try{if(pl.getPlayerState()==1)pl.pauseVideo();else pl.playVideo();}catch(x){}}"
+                + "function seek(s){try{pl.seekTo(Math.max(0,pl.getCurrentTime()+s),true);}catch(x){}}"
+                + "function stop(){full=false;var f=document.getElementById('p');if(f)f.style.transform='scale(1.75)';try{pl.stopVideo();}catch(x){}}"
                 + "</script></body></html>";
         web.loadDataWithBaseURL("https://" + pkg, html, "text/html", "utf-8", null);
     }
@@ -145,6 +180,42 @@ final class TilePlayer {
 
     private void cue(String id) {
         if (web != null && web.getParent() != null) web.evaluateJavascript("play('" + id.replace("'", "") + "')", null);
+    }
+
+    /**
+     * A whole video (a YouTube id) played large into 'into', under its other views (the caller's picture over it until
+     * it is really playing), told to f as it goes. The one before it, if any, is replaced without a word to it.
+     */
+    void film(FrameLayout into, String id, Film f) {
+        film = null;
+        stop();
+        warm();
+        if (web == null) { f.failed(-1); return; }
+        tile = into;
+        film = f;
+        web.setAlpha(1f);
+        into.addView(web, 0, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        if (ready) cueFilm(id); else { pending = id; pendingFilm = true; }
+    }
+
+    private void cueFilm(String id) {
+        if (web != null && web.getParent() != null && film != null) web.evaluateJavascript("film('" + id.replace("'", "") + "')", null);
+    }
+
+    /** The whole video paused, or played on. */
+    void toggle() {
+        if (film != null && web != null) web.evaluateJavascript("toggle()", null);
+    }
+
+    /** The whole video on (or back) by some seconds. */
+    void seek(int seconds) {
+        if (film != null && web != null) web.evaluateJavascript("seek(" + seconds + ")", null);
+    }
+
+    /** The whole video stopped by the one who started it (no word back to it). */
+    void filmOff() {
+        film = null;
+        stop();
     }
 
     /** A channel live across the tile, with sound: the playlist's stream (base without extension), HLS as the fallback. */
@@ -243,6 +314,11 @@ final class TilePlayer {
 
     /** Off the tile: the trailer silenced (its page kept for the next), the channel's player let go. */
     void stop() {
+        // A whole video taken away by someone else (Home going, a trailer): its player is told, and closes.
+        Film gone = film;
+        film = null;
+        pendingFilm = false;
+        if (gone != null) main.post(gone::gone);
         main.removeCallbacks(reveal);
         // Moving on: the first picture (the poster, a tile's own) comes back at once; the rest belong to the page.
         if (revealed && covers.length > 0 && covers[0] != null) { covers[0].animate().cancel(); covers[0].setAlpha(1f); }

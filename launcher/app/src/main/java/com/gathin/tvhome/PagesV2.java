@@ -1945,15 +1945,45 @@ final class PagesV2 {
 
         private void addHighlights(SportsHighlights.Sport sp, List<SportsHighlights.Clip> clips) {
             int r = addRow("HIGHLIGHTS  ·  " + sp.name);
-            for (SportsHighlights.Clip c : clips) {
+            for (int i = 0; i < clips.size(); i++) {
+                SportsHighlights.Clip c = clips.get(i);
                 HomeV2.Tile t = new HomeV2.Tile();
                 t.title = c.title;
-                String id = c.id;
-                t.ok = () -> playYouTube(id);
+                int at = i;
+                // OK: the video big on Home, the event's details beside it (HighlightPlayer).
+                t.ok = () -> watch(r, clips, at);
                 lists.get(r).add(t);
                 strips.get(r).addView(highlight(c));
             }
             paint();
+        }
+
+        /** The highlight playing large over the page, or null. */
+        private HighlightPlayer player;
+
+        private void watch(int row, List<SportsHighlights.Clip> clips, int at) {
+            if (player != null && player.isShowing()) return;
+            View card = row < strips.size() ? strips.get(row).getChildAt(at) : null;
+            player = new HighlightPlayer(h, new HighlightPlayer.Host() {
+                @Override public View card(int i) {
+                    return row < strips.size() ? strips.get(row).getChildAt(i) : null;
+                }
+                @Override public void focus(int i) {
+                    if (row >= lists.size() || i >= lists.get(row).size()) return;
+                    zone = row;
+                    idx = i;
+                    paint();
+                }
+                @Override public void openInYouTube(String id) {
+                    playYouTube(id);
+                }
+            }, clips, at);
+            player.open(card);
+        }
+
+        @Override boolean back() {
+            if (player != null && player.isShowing()) { player.close(); return true; }
+            return false;
         }
 
         /** A video in YouTube on the TV (its own app; any app that plays YouTube links when it has none). */
@@ -2106,6 +2136,7 @@ final class PagesV2 {
 
         @Override void close() {
             alive = false;
+            if (player != null) player.removeNow();
             h.sportEarly = null;
             h.main.removeCallbacks(playsTick);
             h.main.removeCallbacks(clockTick);
@@ -3462,6 +3493,8 @@ final class PagesV2 {
         }
 
         @Override boolean key(KeyEvent e) {
+            // A highlight playing large takes every key.
+            if (player != null && player.isShowing()) return player.key(e);
             int code = e.getKeyCode();
             if (ok(code)) {
                 // Held on a fixture: a reminder for it (held again: taken off). A plain press watches it.
