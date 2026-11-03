@@ -1104,7 +1104,9 @@ public class GoalWatchService extends Service {
             SmartPanel.trip = u;
             SmartPanel.tripAt = System.currentTimeMillis();
             AmbientScene.carNews();
-            if (Config.themeFlag(this, "home_eta", false)) {
+            // The drive home's own pop-up: on unless the theme turns it off (it was off unless asked for, so it never
+            // came up, only Ambient mode's car card showed the trip).
+            if (Config.themeFlag(this, "home_eta", true)) {
                 queue.addFirst(new Object[]{DeliveryCard.homeEta(this, u, glass(CORNER_DP * getResources().getDisplayMetrics().density)), "reminder"});
                 showNext();
             }

@@ -551,8 +551,10 @@ final class HomeV2 {
             items.add(new ControlCentre.Item("Lights & home", R.drawable.ic_bulb, () -> "Lights, cameras, the car", null, () -> smartPanel.show()));
         }
         // The other TV: a message popped up there (with a chime), or what is playing here sent over to it.
-        items.add(new ControlCentre.Item("Message", R.drawable.ic_message, () -> "Pop up on the other TV", null, () -> TvLink.open(this, false)));
-        items.add(new ControlCentre.Item("Send to other TV", R.drawable.ic_cast, () -> TvLink.describe(a), null, () -> TvLink.open(this, true)));
+        items.add(new ControlCentre.Item("Message", R.drawable.ic_message, () -> "Type it, or a quick one", null,
+                () -> TvLink.open(this, false, true)).in("THE OTHER TV"));
+        items.add(new ControlCentre.Item("Send what's on", R.drawable.ic_cast, () -> TvLink.describe(a), null,
+                () -> TvLink.open(this, true, false)).in("THE OTHER TV"));
         // Today's alerts: every goal, red card and full time today, what came up and what was missed, OK showing it again.
         items.add(new ControlCentre.Item("Today's alerts", R.drawable.ic_bell, AlertToday::summary, null, () -> AlertToday.open(this)));
         viewing = new ViewingPanel(this);

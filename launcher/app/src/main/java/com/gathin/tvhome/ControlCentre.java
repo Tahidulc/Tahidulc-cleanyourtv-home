@@ -31,6 +31,8 @@ final class ControlCentre {
         final Supplier<String> state;
         final Supplier<Boolean> lit;
         final Runnable ok;
+        /** The section it is in, under its own heading after the controls ("THE OTHER TV"); null: the controls. */
+        String section;
 
         Item(String name, int icon, Supplier<String> state, Supplier<Boolean> lit, Runnable ok) {
             this.name = name;
@@ -38,6 +40,11 @@ final class ControlCentre {
             this.state = state;
             this.lit = lit;
             this.ok = ok;
+        }
+
+        Item in(String heading) {
+            section = heading;
+            return this;
         }
     }
 
@@ -127,26 +134,37 @@ final class ControlCentre {
             panel.addView(camRow, new LinearLayout.LayoutParams(-1, px(cam && bell ? 190 : 220)));
             row++;
         }
-        panel.addView(heading("CONTROLS"), headParams());
-        LinearLayout line = null;
-        for (int i = 0; i < items.size(); i++) {
-            Item it = items.get(i);
-            if (i % 2 == 0) {
-                line = new LinearLayout(c);
-                line.setClipChildren(false);
-                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, px(86));
-                if (i > 0) lp.topMargin = px(14);
-                panel.addView(line, lp);
+        // The controls, then each section of its own under its heading (the other TV), two across.
+        List<String> sections = new ArrayList<>();
+        sections.add(null);
+        for (Item it : items) if (it.section != null && !sections.contains(it.section)) sections.add(it.section);
+        for (String sec : sections) {
+            List<Item> group = new ArrayList<>();
+            for (Item it : items) if (java.util.Objects.equals(it.section, sec)) group.add(it);
+            if (group.isEmpty()) continue;
+            panel.addView(heading(sec == null ? "CONTROLS" : sec), headParams());
+            LinearLayout line = null;
+            for (int i = 0; i < group.size(); i++) {
+                Item it = group.get(i);
+                if (i % 2 == 0) {
+                    line = new LinearLayout(c);
+                    line.setClipChildren(false);
+                    LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, px(86));
+                    if (i > 0) lp.topMargin = px(14);
+                    panel.addView(line, lp);
+                }
+                View t = tile(it);
+                LinearLayout.LayoutParams tp = new LinearLayout.LayoutParams(0, -1, 1f);
+                if (i % 2 == 1) tp.leftMargin = px(14);
+                line.addView(t, tp);
+                tiles.add(t);
+                acts.add(() -> { hide(); it.ok.run(); });
+                at.add(new int[]{row + i / 2, i % 2, 1});
             }
-            View t = tile(it);
-            LinearLayout.LayoutParams tp = new LinearLayout.LayoutParams(0, -1, 1f);
-            if (i % 2 == 1) tp.leftMargin = px(14);
-            line.addView(t, tp);
-            tiles.add(t);
-            acts.add(() -> { hide(); it.ok.run(); });
-            at.add(new int[]{row + i / 2, i % 2, 1});
+            if (group.size() % 2 == 1 && line != null) line.addView(new View(c), new LinearLayout.LayoutParams(0, -1, 1f));
+            row += (group.size() + 1) / 2;
         }
-        if (items.size() % 2 == 1 && line != null) line.addView(new View(c), new LinearLayout.LayoutParams(0, -1, 1f));
+        liveSection(panel);
         prayerSection(panel);
 
         FrameLayout box = new FrameLayout(c);
@@ -182,6 +200,66 @@ final class ControlCentre {
         overlay = null;
         o.animate().alpha(0f).setDuration(160).withEndAction(() -> h.root.removeView(o)).start();
         h.paint();
+    }
+
+    /**
+     * Live now: an order on its way, the drive home and the car, as the phone passed them on lately (SmartPanel keeps
+     * them; DeliveryLink brings them). Only when there is something; words only.
+     */
+    private void liveSection(LinearLayout panel) {
+        List<String[]> lines = new ArrayList<>();
+        long now = System.currentTimeMillis();
+        org.json.JSONObject d = SmartPanel.delivery;
+        if (d != null && now - SmartPanel.deliveryAt < 3 * 3_600_000L && d.optInt("stage", 0) < 4) {
+            String from = d.optString("from", "").trim(), status = d.optString("status", "").trim(), eta = d.optString("eta", "").trim();
+            String app = d.optString("app", "Delivery").trim();
+            lines.add(new String[]{"🛵", app + (from.isEmpty() ? "" : " · " + from),
+                    status + (eta.isEmpty() ? "" : (status.isEmpty() ? "" : " · ") + "arriving " + eta)});
+        }
+        org.json.JSONObject t = SmartPanel.trip;
+        if (t != null && now - SmartPanel.tripAt < 90 * 60_000L && t.optInt("minutes", -1) >= 0) {
+            int m = t.optInt("minutes");
+            String home = new java.text.SimpleDateFormat("HH:mm", java.util.Locale.UK).format(new java.util.Date(SmartPanel.tripAt + m * 60_000L));
+            lines.add(new String[]{"🚗", "On the way home", m + " min · home about " + home});
+        }
+        org.json.JSONObject car = SmartPanel.car;
+        if (car != null && now - SmartPanel.carAt < 12 * 3_600_000L) {
+            int battery = car.optInt("battery", -1);
+            String title = car.optString("title", "Tesla").trim(), status = car.optString("status", "").trim();
+            lines.add(new String[]{"🔋", (title.isEmpty() ? "Tesla" : title) + (battery >= 0 ? " · " + battery + "%" : ""), status});
+        }
+        if (lines.isEmpty()) return;
+        panel.addView(heading("LIVE NOW"), headParams());
+        for (int i = 0; i < lines.size(); i++) {
+            String[] l = lines.get(i);
+            LinearLayout row = new LinearLayout(c);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            row.setPadding(px(18), px(10), px(18), px(10));
+            row.setBackground(fill(18, 0x1FFFFFFF));
+            TextView icon = text(26, regular, Color.WHITE);
+            icon.setText(l[0]);
+            row.addView(icon);
+            LinearLayout words = new LinearLayout(c);
+            words.setOrientation(LinearLayout.VERTICAL);
+            TextView a = text(19, semi, Color.WHITE);
+            a.setText(l[1]);
+            a.setSingleLine(true);
+            a.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            words.addView(a);
+            if (!l[2].isEmpty()) {
+                TextView b = text(16, regular, 0xFFC9CEF2);
+                b.setText(l[2]);
+                b.setSingleLine(true);
+                b.setEllipsize(android.text.TextUtils.TruncateAt.END);
+                words.addView(b);
+            }
+            LinearLayout.LayoutParams wl = new LinearLayout.LayoutParams(0, -2, 1f);
+            wl.leftMargin = px(14);
+            row.addView(words, wl);
+            LinearLayout.LayoutParams rl = new LinearLayout.LayoutParams(-1, -2);
+            if (i > 0) rl.topMargin = px(10);
+            panel.addView(row, rl);
+        }
     }
 
     /**

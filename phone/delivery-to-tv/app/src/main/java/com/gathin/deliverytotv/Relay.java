@@ -278,6 +278,9 @@ final class Relay {
                     }
                     if (!p.getString(key, "").contains("home_eta")) continue;
                     post(host, port, "/delivery", update, tv.getString("token"));
+                } catch (java.io.IOException unreachable) {
+                    // At another address now: found again by its name for the next update of the drive.
+                    relocate(app, tv);
                 } catch (Exception ignored) {
                     // that TV is off or away
                 }
@@ -294,11 +297,86 @@ final class Relay {
             for (JSONObject tv : tvs(app)) {
                 try {
                     post(tv.getString("host"), tv.getInt("port"), "/delivery", update, tv.getString("token"));
+                } catch (java.io.IOException unreachable) {
+                    // Not at its old address (the router gave it another): found again by its name, then sent there.
+                    String moved = relocate(app, tv);
+                    if (moved == null) continue;
+                    try {
+                        post(moved, tv.optInt("port", 47820), "/delivery", update, tv.optString("token"));
+                    } catch (Exception ignored) {
+                        // off or away after all: the next update tries again
+                    }
                 } catch (Exception ignored) {
-                    // that TV is off or away: the next update tries again
+                    // that TV is off or away, or refused: the next update tries again
                 }
             }
         });
+    }
+
+    private static final java.util.Map<String, Long> LOOKED = new java.util.HashMap<>();
+
+    /**
+     * A paired TV that did not answer at its address, looked for on the phone's Wi-Fi by its name (every address asked
+     * "which TV are you?", as the app does when pairing), at most every ten minutes for each TV. Its new address,
+     * kept for next time; null when it is not there (off, or the phone not at home).
+     */
+    static synchronized String relocate(Context c, JSONObject tv) {
+        String name = tv.optString("name"), old = tv.optString("host");
+        int port = tv.optInt("port", 47820);
+        Long last = LOOKED.get(name);
+        if (name.isEmpty() || last != null && System.currentTimeMillis() - last < 10 * 60_000L) return null;
+        LOOKED.put(name, System.currentTimeMillis());
+        String base = null;
+        try {
+            android.net.ConnectivityManager cm = c.getSystemService(android.net.ConnectivityManager.class);
+            for (android.net.Network n : cm.getAllNetworks()) {
+                android.net.NetworkCapabilities caps = cm.getNetworkCapabilities(n);
+                if (caps == null || !caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI)) continue;
+                android.net.LinkProperties lp = cm.getLinkProperties(n);
+                for (android.net.LinkAddress a : lp == null ? new java.util.ArrayList<android.net.LinkAddress>() : lp.getLinkAddresses()) {
+                    if (a.getAddress() instanceof java.net.Inet4Address) {
+                        String ip = a.getAddress().getHostAddress();
+                        base = ip.substring(0, ip.lastIndexOf('.') + 1);
+                    }
+                }
+            }
+        } catch (Exception ignored) {
+            return null;
+        }
+        if (base == null) return null;
+        String[] found = {null};
+        java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(32);
+        for (int i = 1; i < 255; i++) {
+            String host = base + i;
+            if (host.equals(old)) continue;
+            pool.execute(() -> {
+                try (java.net.Socket s = new java.net.Socket()) {
+                    s.connect(new java.net.InetSocketAddress(host, port), 400);
+                } catch (Exception e) {
+                    return;
+                }
+                try {
+                    if (name.equals(post(host, port, "/hello", new JSONObject(), null).optString("tv"))) {
+                        synchronized (found) { found[0] = host; }
+                    }
+                } catch (Exception ignored) {
+                    // not one of the TVs
+                }
+            });
+        }
+        pool.shutdown();
+        try { pool.awaitTermination(8, java.util.concurrent.TimeUnit.SECONDS); } catch (InterruptedException ignored) { }
+        String host;
+        synchronized (found) { host = found[0]; }
+        if (host == null) return null;
+        List<JSONObject> all = tvs(c);
+        for (JSONObject t : all) {
+            if (name.equals(t.optString("name"))) {
+                try { t.put("host", host); } catch (Exception ignored) { }
+            }
+        }
+        saveTvs(c, all);
+        return host;
     }
 
     /** A POST to a TV: its JSON reply. */

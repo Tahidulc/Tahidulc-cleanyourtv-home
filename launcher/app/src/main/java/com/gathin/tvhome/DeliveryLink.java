@@ -157,6 +157,7 @@ final class DeliveryLink {
                 return;
             }
             case "/pair/confirm": {
+                AlertLog.note(context, "a phone is pairing (code typed in)");
                 boolean live = code != null && System.currentTimeMillis() - codeAt < CODE_MS && attempts++ < 5;
                 if (!live || !code.equals(json.optString("code"))) { reply(s, 403, "{\"error\":\"wrong code\"}"); return; }
                 code = null;
@@ -173,9 +174,14 @@ final class DeliveryLink {
             }
             case "/delivery": {
                 if (token == null || !prefs.getStringSet("tokens", new HashSet<>()).contains(token)) {
+                    // A phone this TV does not know (paired with it before a reset, or never): it must pair again.
+                    AlertLog.note(context, "live update refused, the phone is not paired with this TV: " + json.optString("kind", "delivery")
+                            + " " + json.optString("app"));
                     reply(s, 401, "{\"error\":\"not paired\"}");
                     return;
                 }
+                AlertLog.note(context, "live update from the phone: " + json.optString("kind", "delivery") + " " + json.optString("app")
+                        + (json.has("stage") ? " stage " + json.optInt("stage") : "") + (json.has("minutes") ? " " + json.optInt("minutes") + " min" : ""));
                 sink.delivery(json);
                 reply(s, 200, "{\"ok\":true}");
                 return;

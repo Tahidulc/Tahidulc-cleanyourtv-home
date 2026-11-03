@@ -464,8 +464,14 @@ final class TvLink {
 
     /** The panel: which TV (Left and Right), then the quick messages, or for sending, Send. */
     static void open(HomeV2 h, boolean sending) {
+        open(h, sending, false);
+    }
+
+    /** typing: straight to the keyboard (Back from it to the quick messages). */
+    static void open(HomeV2 h, boolean sending, boolean typing) {
         close();
         panel = new Panel(h, sending);
+        if (typing && !sending) panel.startTyping();
     }
 
     private static final class Panel {
