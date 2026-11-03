@@ -39,6 +39,10 @@ final class DiceRoll {
     private final FrameLayout stage;
     private final ImageView[] cards;
     private final View ring, shadow;
+    /** The page's frosted backdrop (the pick's poster, blurred and dimmed, over the whole screen) and its glass pane. */
+    private final ImageView backdrop;
+    /** The posters leaning gently left and right once landed (and the ring with the middle one). */
+    private final List<Animator> swaying = new ArrayList<>();
     /** One design pixel (the layout's 1920 wide) on this screen. */
     private final float unit;
     private final float[] baseAlpha = new float[5], baseRot = new float[5];
@@ -82,11 +86,97 @@ final class DiceRoll {
         sp.topMargin = mid.topMargin + mid.height - sh / 2;
         shadow.setScaleY(0.5f);
         stage.addView(shadow, stage.indexOfChild(cards[0]), sp);
+
+        // Frosted glass: the pick's own colours, blurred, behind everything; a pane of glass behind the posters.
+        backdrop = new ImageView(h.a);
+        backdrop.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        backdrop.setAlpha(0f);
+        stage.addView(backdrop, 0, new FrameLayout.LayoutParams(-1, -1));
+        View scrim = new View(h.a);
+        scrim.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0x99060A3A, 0x80050830, 0xCC03051C}));
+        stage.addView(scrim, 1, new FrameLayout.LayoutParams(-1, -1));
+        FrameLayout.LayoutParams first = (FrameLayout.LayoutParams) cards[0].getLayoutParams(),
+                lastCard = (FrameLayout.LayoutParams) cards[4].getLayoutParams();
+        View pane = new View(h.a);
+        GradientDrawable glass = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0x2EFFFFFF, 0x14FFFFFF, 0x0FFFFFFF});
+        glass.setCornerRadius(h.px(44));
+        glass.setStroke(Math.max(1, h.px(1.5f)), 0x40FFFFFF);
+        pane.setBackground(glass);
+        int pl = first.leftMargin - h.px(64), pt = mid.topMargin - h.px(20);
+        FrameLayout.LayoutParams pp = new FrameLayout.LayoutParams(lastCard.leftMargin + lastCard.width + h.px(64) - pl,
+                mid.height + h.px(40));
+        pp.leftMargin = pl;
+        pp.topMargin = pt;
+        stage.addView(pane, stage.indexOfChild(shadow), pp);
+    }
+
+    /**
+     * A poster softened to a blur of its colours (shrunk to a few pixels and drawn large again, smoothly), cheap enough
+     * for any TV and nothing redrawn each frame.
+     */
+    private static Bitmap frosted(Bitmap src) {
+        if (src == null || src.getWidth() < 2 || src.getHeight() < 2) return null;
+        try {
+            int w = 18, hgt = Math.max(2, Math.round(18f * src.getHeight() / src.getWidth()));
+            Bitmap tiny = Bitmap.createScaledBitmap(src, w, hgt, true);
+            Bitmap mid = Bitmap.createScaledBitmap(tiny, w * 6, hgt * 6, true);
+            return Bitmap.createScaledBitmap(mid, w * 24, hgt * 24, true);
+        } catch (RuntimeException | OutOfMemoryError e) {
+            return null;
+        }
+    }
+
+    /** The backdrop to the pick's colours, faded across. */
+    private void backdropTo(Bitmap poster) {
+        Bitmap b = frosted(poster);
+        if (b == null) return;
+        backdrop.animate().cancel();
+        backdrop.animate().alpha(0f).setDuration(160).withEndAction(() -> {
+            backdrop.setImageBitmap(b);
+            backdrop.animate().alpha(0.85f).setDuration(700).start();
+        }).start();
+    }
+
+    /**
+     * Landed: each poster leans gently left and right from its foot, a couple of degrees, each at its own pace (the
+     * middle one less, the ring with it); only the middle one on a slower TV.
+     */
+    private void sway() {
+        stopSway();
+        for (int i = 0; i < 5; i++) {
+            if (h.lite && i != 2) continue;
+            ImageView v = cards[i];
+            float a = i == 2 ? 1.5f : 2.2f;
+            long d = 3000 + i * 260L;
+            List<View> together = new ArrayList<>();
+            together.add(v);
+            if (i == 2) together.add(ring);
+            for (View t : together) {
+                t.setPivotX(t.getWidth() / 2f);
+                t.setPivotY(t.getHeight());
+                ObjectAnimator o = ObjectAnimator.ofFloat(t, View.ROTATION, -a * (i % 2 == 0 ? 1 : -1), a * (i % 2 == 0 ? 1 : -1));
+                o.setDuration(d);
+                o.setRepeatCount(ValueAnimator.INFINITE);
+                o.setRepeatMode(ValueAnimator.REVERSE);
+                o.setInterpolator(new android.view.animation.AccelerateDecelerateInterpolator());
+                o.setStartDelay(i * 180L);
+                swaying.add(o);
+                o.start();
+            }
+        }
+    }
+
+    private void stopSway() {
+        for (Animator a : swaying) a.cancel();
+        swaying.clear();
+        ring.setRotation(0f);
+        ring.setPivotY(ring.getHeight() / 2f);
     }
 
     /** The throw: the cards swept off, then tumbling in and on, showing these posters and dice until land(). */
     void start(List<Bitmap> showing) {
         int my = ++gen;
+        stopSway();
         stopAll();
         startedAt = System.currentTimeMillis();
         finals = null;
@@ -156,6 +246,7 @@ final class DiceRoll {
     /** Stops everything (the page closing). */
     void stop() {
         gen++;
+        stopSway();
         stopAll();
     }
 
@@ -246,6 +337,9 @@ final class DiceRoll {
         ring.animate().alpha(1f).scaleX(1f).scaleY(1f).setStartDelay(60).setDuration(380)
                 .setInterpolator(new OvershootInterpolator(2.4f)).start();
         sparks(v);
+        // The page takes the pick's colours, frosted, and the posters begin to lean once the ring has popped.
+        if (finals != null && finals.length > 2) backdropTo(finals[2]);
+        stage.postDelayed(() -> { if (my == gen) sway(); }, 520L);
         Runnable r = done;
         done = null;
         if (r != null && my == gen) r.run();
