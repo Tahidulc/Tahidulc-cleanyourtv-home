@@ -318,15 +318,11 @@ final class HomeV2 {
         // while Home shows (still on lite_home); "navy" the old radial blue.
         mesh = !"navy".equals(Config.themeString(a, "background", "mesh"));
         if (mesh) {
-            Drawable m0 = new android.graphics.drawable.BitmapDrawable(a.getResources(), meshBackground(w, h, 0));
-            if (lite) {
-                root.setBackground(m0);
-            } else {
-                meshShift = new android.graphics.drawable.TransitionDrawable(new Drawable[]{m0,
-                        new android.graphics.drawable.BitmapDrawable(a.getResources(), meshBackground(w, h, 1))});
-                meshShift.setCrossFadeEnabled(true);
-                root.setBackground(meshShift);
-            }
+            screenW = w;
+            screenH = h;
+            meshPair[0] = meshBackground(w, h, 0, MESH_DEFAULT);
+            meshPair[1] = lite ? null : meshBackground(w, h, 1, MESH_DEFAULT);
+            fadeMesh(meshPair[0], 0);
         } else {
             root.setBackground(new android.graphics.drawable.BitmapDrawable(a.getResources(), background(w, h)));
         }
@@ -1276,7 +1272,7 @@ final class HomeV2 {
     void resume() {
         GoalWatchService.laneHome = true;
         main.removeCallbacks(shiftMesh);
-        if (meshShift != null) main.postDelayed(shiftMesh, MESH_EVERY_MS / 3);
+        if (mesh && !lite) main.postDelayed(shiftMesh, MESH_EVERY_MS / 3);
         matchFirst = true;
         match.start();
         main.removeCallbacks(matchBack);
@@ -2015,6 +2011,8 @@ final class HomeV2 {
     }
 
     void paint() {
+        // The background's light in Match Day's clubs' colours while it has the focus.
+        if (mesh && zone == Z_MATCH && page == null && match != null && match.active()) adaptMeshClubs(match.shownHome, match.shownAway);
         dockRoom();
         // A score pill keeps Android's focus (and its light) after OK took the viewer to the game; once Home's own
         // focus is elsewhere, the pill lets it go, so only one thing is ever lit.
@@ -3918,6 +3916,7 @@ final class HomeV2 {
         Bitmap hit = cache.get(key);
         if (hit != null) {
             v.setImageBitmap(hit);
+            if (zone != Z_MATCH || page != null) adaptMeshFrom(hit);
             then.run();
             return;
         }
@@ -3930,49 +3929,169 @@ final class HomeV2 {
             main.post(() -> {
                 if (!key.equals(v.getTag(R.id.v2_url))) return;
                 v.setImageBitmap(m);
+                if (zone != Z_MATCH || page != null) adaptMeshFrom(m);
                 then.run();
             });
         });
     }
 
     /** Home's background in one bitmap: the blue gradient, the glow at the top right and the shades from the left and top. */
-    /** The mesh background, and its second arrangement it drifts to and back (null on lite_home). */
+    /**
+     * The mesh background, adaptive: its light takes its colours from what is on the screen (the hero's picture, Match
+     * Day's two clubs), cross-fading to them once the focus settles; while Home shows it also drifts between two
+     * arrangements of the same light (not on lite_home). The two arrangements of the colours now, the one showing.
+     */
     private boolean mesh;
-    private android.graphics.drawable.TransitionDrawable meshShift;
-    private boolean meshForward;
-    private static final int MESH_FADE_MS = 12_000;
-    private static final long MESH_EVERY_MS = 75_000L;
+    private final Bitmap[] meshPair = new Bitmap[2];
+    private int meshVariant;
+    private Drawable meshShown;
+    private int screenW, screenH;
+    /** The blobs' colours (with their strength): plum top left, teal bottom right, amber top right, violet at the foot. */
+    private static final int[] MESH_DEFAULT = {0x8C6B2C8F, 0x730E7C86, 0x4DD98A3A, 0x593B2A9A};
+    private int[] meshColours = MESH_DEFAULT, meshWanted;
+    private final ExecutorService meshIo = Executors.newSingleThreadExecutor();
+    private static final int MESH_FADE_MS = 12_000, MESH_ADAPT_MS = 1_100;
+    private static final long MESH_EVERY_MS = 75_000L, MESH_SETTLE_MS = 650L;
+
+    /** The background cross-fades to this picture of the light over ms (at once for 0). */
+    private void fadeMesh(Bitmap next, int ms) {
+        if (next == null) return;
+        Drawable to = new android.graphics.drawable.BitmapDrawable(a.getResources(), next);
+        if (meshShown == null || ms <= 0) {
+            root.setBackground(to);
+        } else {
+            android.graphics.drawable.TransitionDrawable t = new android.graphics.drawable.TransitionDrawable(new Drawable[]{meshShown, to});
+            t.setCrossFadeEnabled(true);
+            root.setBackground(t);
+            t.startTransition(ms);
+        }
+        meshShown = to;
+    }
 
     /** Every so often while Home shows: the light drifts to its other arrangement (a long cross-fade), then back. */
     private final Runnable shiftMesh = new Runnable() {
         @Override public void run() {
-            if (meshShift == null) return;
-            if (meshForward) meshShift.reverseTransition(MESH_FADE_MS); else meshShift.startTransition(MESH_FADE_MS);
-            meshForward = !meshForward;
+            if (!mesh || lite) return;
+            if (meshPair[meshVariant ^ 1] != null) {
+                meshVariant ^= 1;
+                fadeMesh(meshPair[meshVariant], MESH_FADE_MS);
+            }
             main.postDelayed(this, MESH_EVERY_MS);
         }
     };
 
+    /** The light to take these colours (four, with their strength), once the focus has settled on them. */
+    void adaptMesh(int[] colours) {
+        if (!mesh || colours == null || Arrays.equals(colours, meshWanted)) return;
+        meshWanted = colours;
+        main.removeCallbacks(adaptNow);
+        main.postDelayed(adaptNow, MESH_SETTLE_MS);
+    }
+
+    private final Runnable adaptNow = () -> {
+        int[] want = meshWanted;
+        if (want == null || Arrays.equals(want, meshColours)) return;
+        int v = meshVariant;
+        boolean two = !lite;
+        meshIo.execute(() -> {
+            Bitmap b0 = meshBackground(screenW, screenH, v, want);
+            Bitmap b1 = two ? meshBackground(screenW, screenH, v ^ 1, want) : null;
+            main.post(() -> {
+                if (want != meshWanted) return;   // something newer was asked for meanwhile
+                meshColours = want;
+                meshPair[v] = b0;
+                meshPair[v ^ 1] = b1;
+                meshVariant = v;
+                fadeMesh(b0, MESH_ADAPT_MS);
+            });
+        });
+    };
+
+    /** The light in a picture's colours: its left, middle and right thirds and its strongest colour (see palette). */
+    void adaptMeshFrom(Bitmap pic) {
+        if (!mesh || pic == null || pic.isRecycled()) return;
+        int[] c = palette(pic);
+        if (c != null) adaptMesh(c);
+    }
+
+    /** The light in two clubs' colours (Match Day): the home side's at the left and the foot, the away side's at the right. */
+    void adaptMeshClubs(int home, int away) {
+        if (home == 0 && away == 0) return;
+        int h = soft(home != 0 ? home : away), w = soft(away != 0 ? away : home);
+        adaptMesh(new int[]{0x8C000000 | (h & 0xFFFFFF), 0x73000000 | (w & 0xFFFFFF), 0x55000000 | (w & 0xFFFFFF), 0x59000000 | (h & 0xFFFFFF)});
+    }
+
+    /** A colour toned for the light behind the words: saturated but never loud, mid dark. */
+    private static int soft(int c) {
+        float[] hsv = new float[3];
+        Color.colorToHSV(c, hsv);
+        hsv[1] = Math.max(0.45f, Math.min(0.85f, hsv[1] * 1.1f));
+        hsv[2] = Math.max(0.42f, Math.min(0.62f, hsv[2]));
+        return Color.HSVToColor(hsv) & 0xFFFFFF;
+    }
+
     /**
-     * The mesh background (variant 0 or 1, its blobs a little apart): midnight, with large soft blobs of plum light
-     * (top left), teal (bottom right), amber (top right) and violet (along the foot), and the shades that keep the
-     * words readable, in midnight. Drawn at half the screen's size (it is all soft light) and scaled up.
+     * Four colours from a picture for the light (with their strengths): the left third's, the right third's, the most
+     * vivid, and the middle's; each the average of its pixels weighted by how vivid they are (see-through and grey
+     * ones count for little), then toned with soft(). Null for a picture with nothing to go on.
      */
-    private Bitmap meshBackground(int w, int h, int variant) {
+    private static int[] palette(Bitmap pic) {
+        Bitmap small;
+        try {
+            small = Bitmap.createScaledBitmap(pic, 32, 18, true);
+        } catch (RuntimeException e) {
+            return null;
+        }
+        double[][] sum = new double[3][4];
+        float[] hsv = new float[3];
+        int vivid = 0;
+        double best = -1;
+        for (int y = 0; y < 18; y++) for (int x = 0; x < 32; x++) {
+            int c = small.getPixel(x, y);
+            if ((c >>> 24) < 160) continue;
+            Color.colorToHSV(c, hsv);
+            double wgt = hsv[1] * hsv[1] * (hsv[2] > 0.15f && hsv[2] < 0.97f ? 1 : 0.1) + 0.002;
+            int band = Math.min(2, x * 3 / 32);
+            sum[band][0] += Color.red(c) * wgt;
+            sum[band][1] += Color.green(c) * wgt;
+            sum[band][2] += Color.blue(c) * wgt;
+            sum[band][3] += wgt;
+            double score = hsv[1] * hsv[2];
+            if (score > best) { best = score; vivid = c; }
+        }
+        if (small != pic) small.recycle();
+        int[] avg = new int[3];
+        int got = 0;
+        for (int i = 0; i < 3; i++) {
+            if (sum[i][3] <= 0.01) continue;
+            avg[i] = Color.rgb((int) (sum[i][0] / sum[i][3]), (int) (sum[i][1] / sum[i][3]), (int) (sum[i][2] / sum[i][3]));
+            got++;
+        }
+        if (got == 0) return null;
+        for (int i = 0; i < 3; i++) if (avg[i] == 0) avg[i] = avg[1] != 0 ? avg[1] : avg[2] != 0 ? avg[2] : avg[0];
+        if (vivid == 0) vivid = avg[2];
+        return new int[]{0x8C000000 | soft(avg[0]), 0x73000000 | soft(avg[2]), 0x55000000 | soft(vivid), 0x59000000 | soft(avg[1])};
+    }
+
+    /**
+     * The mesh background (variant 0 or 1, its blobs a little apart) in these colours: midnight, with large soft
+     * blobs (top left, bottom right, top right, along the foot) and the shades that keep the words readable, in
+     * midnight. Drawn at a third of the screen's size (it is all soft light) and scaled up; off the main thread too.
+     */
+    private Bitmap meshBackground(int w, int h, int variant, int[] colours) {
         int sw = Math.max(w, h), sh = Math.min(w, h);
-        int bw = Math.max(2, sw / 2), bh = Math.max(2, sh / 2);
+        int bw = Math.max(2, sw / 3), bh = Math.max(2, sh / 3);
         Bitmap b = Bitmap.createBitmap(bw, bh, Bitmap.Config.ARGB_8888);
         android.graphics.Canvas c = new android.graphics.Canvas(b);
         android.graphics.Paint p = new android.graphics.Paint(android.graphics.Paint.DITHER_FLAG | android.graphics.Paint.ANTI_ALIAS_FLAG);
         p.setShader(new android.graphics.LinearGradient(0, 0, bw, bh, 0xFF0B0C21, 0xFF15163A, android.graphics.Shader.TileMode.CLAMP));
         c.drawRect(0, 0, bw, bh, p);
         boolean v = variant == 1;
-        // {x, y, radius (of the width), colour}: plum, teal, amber, violet.
+        // {x, y, radius (of the width)} for each blob in its colour.
         float[][] at = v
                 ? new float[][]{{0.25f, 0.32f, 0.68f}, {0.72f, 0.66f, 0.62f}, {0.95f, 0.22f, 0.36f}, {0.38f, 0.94f, 0.55f}}
                 : new float[][]{{0.15f, 0.20f, 0.70f}, {0.82f, 0.78f, 0.60f}, {0.86f, 0.10f, 0.38f}, {0.48f, 1.00f, 0.55f}};
-        int[] colours = {0x8C6B2C8F, 0x730E7C86, 0x4DD98A3A, 0x593B2A9A};
-        for (int i = 0; i < at.length; i++) {
+        for (int i = 0; i < at.length && i < colours.length; i++) {
             int col = colours[i];
             p.setShader(new android.graphics.RadialGradient(at[i][0] * bw, at[i][1] * bh, at[i][2] * bw,
                     new int[]{col, (col & 0xFFFFFF) | ((col >>> 24) / 3 << 24), col & 0xFFFFFF}, new float[]{0f, 0.45f, 1f},

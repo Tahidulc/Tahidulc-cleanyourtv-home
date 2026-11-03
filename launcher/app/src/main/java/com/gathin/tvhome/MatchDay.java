@@ -718,6 +718,8 @@ final class MatchDay {
         channelText.setText(said == null ? "" : said);
         channelText.setVisibility(said != null ? View.VISIBLE : View.GONE);
         backdrop.colours(g.homeColor, g.awayColor, g.awayAlt);
+        shownHome = g.homeColor;
+        shownAway = g.awayColor;
         backdrop.players(p.homePlayer, p.awayPlayer);
         DateTimeFormatter hm = DateTimeFormatter.ofPattern("HH:mm");
         String ko = Instant.ofEpochMilli(g.kickoff).atZone(ZoneId.systemDefault()).format(hm);
@@ -886,6 +888,9 @@ final class MatchDay {
 
     /** Where the buttons' row sits in the panel, and its height: Home keeps the row's heading clear under it. */
     static final int BUTTONS_Y = 274, BUTTONS_H = 56;
+
+    /** The two clubs' colours of the game showing (Home's background light takes them while Match Day has the focus). */
+    int shownHome, shownAway;
 
     /** The one gap between Match Day's buttons. */
     private static final int GAP = 18;
