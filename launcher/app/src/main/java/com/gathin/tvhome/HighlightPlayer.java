@@ -723,15 +723,22 @@ final class HighlightPlayer implements TilePlayer.Film {
         headline.removeAllViews();
         String sport = c.sport == null ? "" : c.sport;
         String[] fx = fixture(c.title);
-        if (in != null && (in.kind == Info.FOOTBALL || in.kind == Info.GAME) && in.home != null) {
+        if (in != null && (in.kind == Info.FOOTBALL || in.kind == Info.GAME || in.kind == Info.RUGBY) && in.home != null) {
             fixtureLine(in.home[2], in.home[0], in.home[3], in.away[3], in.away[0], in.away[2], in.status);
+        } else if (in != null && in.kind == Info.CRICKET && in.home != null) {
+            // Cricket's innings are too long for the headline: the two sides, their logos; the scores in the panel.
+            vsLine(in.home[2], in.home[0], in.away[0], in.away[2]);
+        } else if (in != null && in.kind == Info.FACTS && in.a != null && in.b != null) {
+            if (in.score != null) fixtureLine(in.aPic, in.a[0], in.score[0], in.score[1], in.b[0], in.bPic, null);
+            else vsLine(in.aPic, in.a[0], in.b[0], in.bPic);
         } else if (in != null && (in.kind == Info.FIGHT || in.kind == Info.TENNIS) && in.a != null) {
             twoSides(in.a[0], in.aPic, in.aFlag, in.b[0], in.bPic, in.bFlag, in.kind == Info.TENNIS);
         } else if (sport.startsWith("FOOTBALL") && fx != null) {
             String[] cr = preCrestsFor == c && preCrests != null ? preCrests : new String[2];
             fixtureLine(cr[0], fx[0], fx[1], fx[2], fx[3], cr[1], null);
         } else {
-            String name = in != null && in.eventName != null && in.kind == Info.F1 ? in.eventName : sport.startsWith("FORMULA") ? grandPrix(c.title) : null;
+            String name = in != null && in.eventName != null && (in.kind == Info.F1 || in.kind == Info.FACTS) ? in.eventName
+                    : sport.startsWith("FORMULA") ? grandPrix(c.title) : null;
             titleView.setText(name != null ? name : cleanTitle(c.title));
             headline.addView(titleView, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         }
@@ -802,6 +809,37 @@ final class HighlightPlayer implements TilePlayer.Film {
             LinearLayout.LayoutParams stl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
             stl.leftMargin = px(16);
             headline.addView(st, stl);
+        }
+    }
+
+    /** "[logo] England  v  India [logo]": two sides without a score, each logo beside its own (none: just the names). */
+    private void vsLine(String aLogo, String a, String b, String bLogo) {
+        int size = px(48);
+        if (aLogo != null) headline.addView(crest(aLogo, size), new LinearLayout.LayoutParams(size, size));
+        TextView an = h.text(28, outfitBold, Color.WHITE);
+        an.setText(a);
+        an.setSingleLine(true);
+        an.setEllipsize(TextUtils.TruncateAt.END);
+        an.setMaxWidth(px(380));
+        LinearLayout.LayoutParams al = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        al.leftMargin = px(aLogo != null ? 12 : 0);
+        headline.addView(an, al);
+        TextView v = h.text(24, outfitBold, lighter(accent));
+        v.setText("v");
+        LinearLayout.LayoutParams vl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        vl.leftMargin = px(18);
+        vl.rightMargin = px(18);
+        headline.addView(v, vl);
+        TextView bn = h.text(28, outfitBold, Color.WHITE);
+        bn.setText(b);
+        bn.setSingleLine(true);
+        bn.setEllipsize(TextUtils.TruncateAt.END);
+        bn.setMaxWidth(px(380));
+        headline.addView(bn);
+        if (bLogo != null) {
+            LinearLayout.LayoutParams bl = new LinearLayout.LayoutParams(size, size);
+            bl.leftMargin = px(12);
+            headline.addView(crest(bLogo, size), bl);
         }
     }
 
@@ -976,7 +1014,8 @@ final class HighlightPlayer implements TilePlayer.Film {
                     found.teams.add(team);
                 }
             }
-            Info got = found != null ? found : new Info();
+            // Nothing found (or the lookup failed): the event's own facts, never the video's description.
+            Info got = found != null ? found : safeFacts(c);
             got.clip = c;
             h.main.post(() -> {
                 if (!showing || gen != generation) return;
@@ -993,7 +1032,7 @@ final class HighlightPlayer implements TilePlayer.Film {
 
     /** What was found about the clip's event; kind NONE: the video's own details. */
     static final class Info {
-        static final int NONE = 0, FOOTBALL = 1, F1 = 2, FIGHT = 3, TENNIS = 4, GAME = 5;
+        static final int NONE = 0, FOOTBALL = 1, F1 = 2, FIGHT = 3, TENNIS = 4, GAME = 5, RUGBY = 6, CRICKET = 7, FACTS = 8;
         int kind = NONE;
         SportsHighlights.Clip clip;
         String competition, status, method;
@@ -1020,6 +1059,12 @@ final class HighlightPlayer implements TilePlayer.Film {
         final List<Bitmap> pics = new ArrayList<>(), teams = new ArrayList<>();
         /** A fight or a tennis match: each side's headshot and flag (addresses). */
         String aPic, bPic, aFlag, bFlag;
+        /** Cricket: the result in words ("Tasmania won by an inns & 81 runs") and the match ("8th Match · First-class"). */
+        String result, description;
+        /** Cricket: the player of the match {name, what, headshot}; null when not named. */
+        String[] potm;
+        /** The facts alone: the score the title gives ({home, away}), null when it gives none. */
+        String[] score;
     }
 
     private static final DateTimeFormatter DAY = DateTimeFormatter.ofPattern("EEE d MMM", Locale.UK).withZone(ZoneId.systemDefault());
@@ -1038,7 +1083,9 @@ final class HighlightPlayer implements TilePlayer.Film {
             case Info.FIGHT: fight(in); break;
             case Info.TENNIS: tennis(in); break;
             case Info.GAME: game(in); break;
-            default: about(in.clip); break;
+            case Info.RUGBY: rugby(in); break;
+            case Info.CRICKET: cricket(in); break;
+            default: facts(in); break;
         }
     }
 
@@ -1094,6 +1141,22 @@ final class HighlightPlayer implements TilePlayer.Film {
 
     private void football(Info in) {
         // The competition: its logo and name over the result.
+        compHead(in);
+        addGap(16);
+        panelBody.addView(scoreLine(in.home, in.away, in.status, true));
+        // The goals and red cards, each under its own side, its club's crest beside it.
+        events(in, 7);
+        if (!in.stats.isEmpty()) {
+            rule();
+            panelBody.addView(heading("MATCH STATS"));
+            int hc = colour(in.home[4], 0xFFFFFFFF), ac = colour(in.away[4], 0xFF7FA7FF);
+            if (close(hc, ac)) ac = 0xFF7FA7FF;
+            for (String[] st : in.stats) statRow(st, hc, ac);
+        }
+    }
+
+    /** The competition's logo and name over a result, with its state ("FULL TIME") first. */
+    private void compHead(Info in) {
         SportsHighlights.Brand b = in.brand != null ? in.brand : SportsHighlights.brand(in.clip);
         String logo = in.compLogo != null ? in.compLogo : b.logo;
         LinearLayout top = new LinearLayout(h.a);
@@ -1102,27 +1165,32 @@ final class HighlightPlayer implements TilePlayer.Film {
             ImageView l = crest(logo, px(34));
             top.addView(l, new LinearLayout.LayoutParams(px(34), px(34)));
         }
-        TextView hd = heading(("FT".equals(in.status) ? "FULL TIME" : in.status == null ? "RESULT" : in.status.toUpperCase(Locale.UK))
-                + (in.competition == null ? "" : "  ·  " + in.competition.toUpperCase(Locale.UK)));
+        String comp = in.competition != null ? in.competition : b.name;
+        TextView hd = heading(("FT".equals(in.status) ? "FULL TIME" : in.status == null || in.status.isEmpty() ? "RESULT" : in.status.toUpperCase(Locale.UK))
+                + (comp == null ? "" : "  ·  " + comp.toUpperCase(Locale.UK)));
         LinearLayout.LayoutParams hl = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
         hl.leftMargin = px(logo != null ? 12 : 0);
         top.addView(hd, hl);
         panelBody.addView(top);
-        addGap(16);
-        panelBody.addView(scoreLine(in.home, in.away, in.status, true));
-        // The goals and red cards, each under its own side, its club's crest beside it.
+    }
+
+    /**
+     * The goals, tries and cards, each under its own side with its crest beside it: {home|away, goal|pen|og|try|
+     * yellow|red, who, minute}; at most max of them.
+     */
+    private void events(Info in, int max) {
         if (!in.events.isEmpty()) {
             addGap(10);
             int shown = 0;
             for (String[] ev : in.events) {
-                if (shown++ >= 7) break;
+                if (shown++ >= max) break;
                 boolean home = "home".equals(ev[0]);
-                boolean red = "red".equals(ev[1]);
+                boolean red = "red".equals(ev[1]), yellow = "yellow".equals(ev[1]);
                 String what = ev[2] + ("pen".equals(ev[1]) ? " (pen)" : "og".equals(ev[1]) ? " (og)" : "") + "  " + ev[3];
                 LinearLayout row = new LinearLayout(h.a);
                 row.setGravity(Gravity.CENTER_VERTICAL | (home ? Gravity.START : Gravity.END));
                 ImageView cr = crest((home ? in.home : in.away)[2], px(24));
-                View mark = red ? redCard() : null;
+                View mark = red ? redCard() : yellow ? yellowCard() : null;
                 TextView t = h.text(17, h.regular, 0xE6FFFFFF);
                 t.setText(what);
                 t.setSingleLine(true);
@@ -1145,19 +1213,19 @@ final class HighlightPlayer implements TilePlayer.Film {
                 panelBody.addView(row, lp);
             }
         }
-        if (!in.stats.isEmpty()) {
-            rule();
-            panelBody.addView(heading("MATCH STATS"));
-            int hc = colour(in.home[4], 0xFFFFFFFF), ac = colour(in.away[4], 0xFF7FA7FF);
-            if (close(hc, ac)) ac = 0xFF7FA7FF;
-            for (String[] st : in.stats) statRow(st, hc, ac);
-        }
     }
 
     /** A red card: a small red upright card. */
     private View redCard() {
         View v = new View(h.a);
         v.setBackground(h.fill(2, 0xFFE8112D));
+        return v;
+    }
+
+    /** A yellow card: a small yellow upright card. */
+    private View yellowCard() {
+        View v = new View(h.a);
+        v.setBackground(h.fill(2, 0xFFFFD000));
         return v;
     }
 
@@ -1235,9 +1303,9 @@ final class HighlightPlayer implements TilePlayer.Film {
         top.addView(hd, hl);
         panelBody.addView(top);
         addGap(6);
-        int n = 0;
+        int n = 0, most = in.lines.isEmpty() ? 10 : 9;
         for (F1Results.Row r : in.board.rows) {
-            if (n >= 10) break;
+            if (n >= most) break;
             Bitmap face = n < in.pics.size() ? in.pics.get(n) : null, team = n < in.teams.size() ? in.teams.get(n) : null;
             n++;
             LinearLayout row = new LinearLayout(h.a);
@@ -1273,12 +1341,17 @@ final class HighlightPlayer implements TilePlayer.Film {
                 row.addView(tl, tll);
             }
             TextView gap = h.text(16, h.regular, 0xB3FFFFFF);
-            gap.setText(n == 1 && r.gap.contains(":") ? r.gap : r.gap.isEmpty() ? r.status : r.gap.startsWith("+") || r.gap.contains("lap") || "DNF".equals(r.gap) ? r.gap : "+" + r.gap);
+            // A race's gap to the winner ("+5.123"); qualifying's lap times and the championship's points as they are.
+            boolean asIs = "QUALIFYING".equals(in.status) || "CHAMPIONSHIP".equals(in.status);
+            gap.setText(asIs ? (r.gap.isEmpty() ? r.status : r.gap)
+                    : n == 1 && r.gap.contains(":") ? r.gap : r.gap.isEmpty() ? r.status : r.gap.startsWith("+") || r.gap.contains("lap") || "DNF".equals(r.gap) ? r.gap : "+" + r.gap);
             gap.setGravity(Gravity.END);
             row.addView(gap, new LinearLayout.LayoutParams(px(96), ViewGroup.LayoutParams.WRAP_CONTENT));
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, px(54));
             panelBody.addView(row, lp);
         }
+        // Under the board: the fastest lap (a race's, a sprint's), as a fact.
+        for (String[] l : in.lines) factRow(l[0], l[1]);
     }
 
     private void fight(Info in) {
@@ -1460,47 +1533,168 @@ final class HighlightPlayer implements TilePlayer.Film {
         }
     }
 
-    /** No event found (or a sport without one: boxing, cricket, rugby): the video's own details. */
-    private void about(SportsHighlights.Clip c) {
-        panelBody.addView(heading("ABOUT THIS VIDEO"));
-        addGap(14);
-        TextView ch = h.text(22, outfitBold, Color.WHITE);
-        ch.setText(c.channel);
-        panelBody.addView(ch);
-        if (c.published > 0) {
-            TextView w = h.text(17, h.regular, 0xB3FFFFFF);
-            w.setText("Published " + DateTimeFormatter.ofPattern("EEEE d MMMM, HH:mm", Locale.UK).withZone(ZoneId.systemDefault())
-                    .format(Instant.ofEpochMilli(c.published)));
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            lp.topMargin = px(6);
-            panelBody.addView(w, lp);
-        }
-        String d = describe(c.description);
-        if (!d.isEmpty()) {
+    /** Rugby: the result with each side's crest, the tries and cards under their own side, then the scoring by type. */
+    private void rugby(Info in) {
+        compHead(in);
+        addGap(16);
+        panelBody.addView(scoreLine(in.home, in.away, in.status, true));
+        events(in, in.stats.isEmpty() ? 9 : 5);
+        if (!in.stats.isEmpty()) {
             rule();
-            TextView t = h.text(18, h.regular, 0xE6FFFFFF);
-            t.setText(d);
-            t.setMaxLines(16);
-            t.setEllipsize(TextUtils.TruncateAt.END);
-            panelBody.addView(t);
+            panelBody.addView(heading("MATCH STATS"));
+            int hc = colour(in.home[4], 0xFFFFFFFF), ac = colour(in.away[4], 0xFF7FA7FF);
+            if (close(hc, ac)) ac = 0xFF7FA7FF;
+            for (String[] st : in.stats) statRow(st, hc, ac);
         }
     }
 
-    /** The channel's words without links, hashtags and "subscribe" lines; at most about 600 letters. */
-    static String describe(String s) {
-        if (s == null) return "";
-        StringBuilder out = new StringBuilder();
-        for (String line : s.split("\n")) {
-            String l = line.trim();
-            String low = l.toLowerCase(Locale.ROOT);
-            if (l.isEmpty() || low.contains("http") || low.startsWith("#") || low.contains("subscribe") || low.contains("follow us")
-                    || low.contains("www.") || low.startsWith("►") || low.startsWith("▶")) continue;
-            if (out.length() > 0) out.append("\n\n");
-            out.append(l);
-            if (out.length() > 600) break;
+    /** Cricket: each side with its logo and its innings, the result in words, the player of the match. */
+    private void cricket(Info in) {
+        SportsHighlights.Brand b = in.brand != null ? in.brand : SportsHighlights.brand(in.clip);
+        String comp = in.competition != null ? in.competition : b.name;
+        panelBody.addView(heading((in.status == null || in.status.isEmpty() ? "RESULT" : in.status.toUpperCase(Locale.UK))
+                + (comp == null ? "" : "  ·  " + comp.toUpperCase(Locale.UK))));
+        if (in.description != null && !in.description.isEmpty()) {
+            TextView d = h.text(16, h.regular, 0xB3FFFFFF);
+            d.setText(in.description);
+            LinearLayout.LayoutParams dl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            dl.topMargin = px(6);
+            panelBody.addView(d, dl);
         }
-        String r = out.toString();
-        return r.length() > 620 ? r.substring(0, 600).trim() + "…" : r;
+        addGap(10);
+        for (String[] side : new String[][]{in.home, in.away}) {
+            LinearLayout row = new LinearLayout(h.a);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            row.addView(crest(side[2], px(52)), new LinearLayout.LayoutParams(px(52), px(52)));
+            LinearLayout words = new LinearLayout(h.a);
+            words.setOrientation(LinearLayout.VERTICAL);
+            TextView n = h.text(19, h.semi, 0xD9FFFFFF);
+            n.setText(side[0]);
+            n.setSingleLine(true);
+            n.setEllipsize(TextUtils.TruncateAt.END);
+            words.addView(n);
+            TextView sc = h.text(26, outfitHeavy, Color.WHITE);
+            sc.setText(side[3] == null || side[3].isEmpty() ? "–" : side[3]);
+            sc.setSingleLine(true);
+            sc.setEllipsize(TextUtils.TruncateAt.END);
+            words.addView(sc);
+            LinearLayout.LayoutParams wl = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+            wl.leftMargin = px(14);
+            row.addView(words, wl);
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            lp.topMargin = px(14);
+            panelBody.addView(row, lp);
+        }
+        if (in.result != null && !in.result.isEmpty()) {
+            rule();
+            TextView r = h.text(22, outfitBold, 0xFFFFD04D);
+            r.setText(in.result);
+            r.setMaxLines(2);
+            r.setEllipsize(TextUtils.TruncateAt.END);
+            panelBody.addView(r);
+        }
+        if (in.potm != null) {
+            rule();
+            panelBody.addView(heading("PLAYER OF THE MATCH"));
+            lineRow(in.potm);
+        }
+    }
+
+    /**
+     * Nothing more found about the event: what is known of it, set out as its facts. The two sides (each crest beside
+     * its own club where there is one, the score from the title between), then the competition, the day, the round,
+     * where, the coverage and the kind of video. Never the video's description.
+     */
+    private void facts(Info in) {
+        SportsHighlights.Clip c = in.clip;
+        SportsHighlights.Brand b = in.brand != null ? in.brand : SportsHighlights.brand(c);
+        String logo = in.compLogo != null ? in.compLogo : b.logo;
+        LinearLayout top = new LinearLayout(h.a);
+        top.setGravity(Gravity.CENTER_VERTICAL);
+        if (logo != null) top.addView(crest(logo, px(34)), new LinearLayout.LayoutParams(px(34), px(34)));
+        TextView hd = heading("THE EVENT  ·  " + (in.competition != null ? in.competition : b.name).toUpperCase(Locale.UK));
+        LinearLayout.LayoutParams hl = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        hl.leftMargin = px(logo != null ? 12 : 0);
+        top.addView(hd, hl);
+        panelBody.addView(top);
+        if (in.a != null && in.b != null) {
+            addGap(12);
+            String[][] sides = {{in.a[0], in.aPic, in.score == null ? null : in.score[0]}, {in.b[0], in.bPic, in.score == null ? null : in.score[1]}};
+            for (String[] sd : sides) {
+                LinearLayout row = new LinearLayout(h.a);
+                row.setGravity(Gravity.CENTER_VERTICAL);
+                // The club's crest where it has one; otherwise a soft disc with the side's first letter.
+                if (sd[1] != null) {
+                    row.addView(crest(sd[1], px(52)), new LinearLayout.LayoutParams(px(52), px(52)));
+                } else {
+                    TextView disc = h.text(22, outfitBold, Color.WHITE);
+                    disc.setText(sd[0].isEmpty() ? "" : sd[0].substring(0, 1).toUpperCase(Locale.UK));
+                    disc.setGravity(Gravity.CENTER);
+                    GradientDrawable g = new GradientDrawable();
+                    g.setShape(GradientDrawable.OVAL);
+                    g.setColor((accent & 0xFFFFFF) | 0x40000000);
+                    disc.setBackground(g);
+                    row.addView(disc, new LinearLayout.LayoutParams(px(52), px(52)));
+                }
+                TextView n = h.text(24, outfitBold, Color.WHITE);
+                n.setText(sd[0]);
+                n.setSingleLine(true);
+                n.setEllipsize(TextUtils.TruncateAt.END);
+                LinearLayout.LayoutParams nl = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+                nl.leftMargin = px(14);
+                row.addView(n, nl);
+                if (sd[2] != null) {
+                    TextView sc = h.text(34, outfitHeavy, Color.WHITE);
+                    sc.setText(sd[2]);
+                    row.addView(sc);
+                }
+                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                lp.topMargin = px(12);
+                panelBody.addView(row, lp);
+            }
+        }
+        rule();
+        if (b.name != null && !b.name.equalsIgnoreCase(c.sport)) factRow("Competition", in.competition != null ? in.competition : b.name);
+        factRow("Sport", sportName(c.sport));
+        String when = in.when != null ? in.when : c.published > 0 ? DAY.format(Instant.ofEpochMilli(c.published)) : null;
+        if (when != null) factRow("Date", when);
+        if (in.round != null) factRow("Round", in.round);
+        if (in.venue != null && !in.venue.isEmpty()) factRow("Venue", in.venue);
+        if (c.channel != null && !c.channel.isEmpty()) factRow("Coverage", c.channel);
+        factRow("Video", titleCase(kindWords(c)));
+    }
+
+    /** A fact: its name at the left, what it is at the right. */
+    private void factRow(String label, String value) {
+        if (value == null || value.isEmpty()) return;
+        LinearLayout row = new LinearLayout(h.a);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        TextView l = h.text(16, h.regular, 0xB3FFFFFF);
+        l.setText(label);
+        row.addView(l, new LinearLayout.LayoutParams(px(150), ViewGroup.LayoutParams.WRAP_CONTENT));
+        TextView v = h.text(18, h.semi, Color.WHITE);
+        v.setText(value);
+        v.setGravity(Gravity.END);
+        v.setSingleLine(true);
+        v.setEllipsize(TextUtils.TruncateAt.END);
+        row.addView(v, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.topMargin = px(12);
+        panelBody.addView(row, lp);
+    }
+
+    /** A sport's row name in words for a fact ("MMA · UFC" → "MMA · UFC", "FORMULA 1" → "Formula 1"). */
+    private static String sportName(String sport) {
+        if (sport == null || sport.isEmpty()) return null;
+        if (sport.equals("NFL") || sport.equals("NBA") || sport.contains("UFC")) return sport;
+        return titleCase(sport);
+    }
+
+    /** "EXTENDED HIGHLIGHTS" as "Extended highlights". */
+    private static String titleCase(String s) {
+        if (s == null || s.isEmpty()) return s;
+        String low = s.toLowerCase(Locale.UK);
+        return Character.toUpperCase(low.charAt(0)) + low.substring(1);
     }
 
     // ---- finding the event (off the main thread) -------------------------------------------------------------------
@@ -1510,14 +1704,19 @@ final class HighlightPlayer implements TilePlayer.Film {
 
     /** A scoreboard (ESPN's, a sport path and a day), kept ten minutes. */
     private static JSONObject board(String path, String day) {
-        String key = path + "@" + day;
+        return board(path, "/scoreboard" + (day == null ? "" : "?dates=" + day), day);
+    }
+
+    /** ESPN's answer for a sport path and what is asked of it ("/scoreboard?dates=…"), kept ten minutes. */
+    private static JSONObject board(String path, String what, String day) {
+        String key = path + what + "@" + day;
         synchronized (boards) {
             Object[] k = boards.get(key);
             if (k != null && System.currentTimeMillis() - (long) k[0] < 600_000L) return (JSONObject) k[1];
         }
         JSONObject j = null;
         try {
-            j = new JSONObject(ScoresTicker.get(ESPN + path + "/scoreboard" + (day == null ? "" : "?dates=" + day)));
+            j = new JSONObject(ScoresTicker.get(ESPN + path + what));
         } catch (Exception ignored) {
         }
         synchronized (boards) {
@@ -1538,17 +1737,95 @@ final class HighlightPlayer implements TilePlayer.Film {
         return out;
     }
 
+    /**
+     * The event a video is of, with its stats: football's game (any competition ESPN covers, by the fixture in the
+     * title, with or without its score, else both clubs named, else the one club's latest game), F1's session (the
+     * Grand Prix's race, sprint or qualifying; the championship for a practice), UFC's fight, tennis's match, rugby's
+     * and cricket's game, NFL's and NBA's; when none can be found, the event's own facts (never null).
+     */
     static Info find(SportsHighlights.Clip c, String[] leagues) {
         String sport = c.sport == null ? "" : c.sport;
-        if (sport.startsWith("FOOTBALL")) {
-            Info in = footballAll(c);
-            return in != null ? in : football(c, leagues);
+        Info in = null;
+        try {
+            if (sport.startsWith("FOOTBALL")) {
+                in = footballAll(c);
+                if (in == null) in = football(c, leagues);
+                if (in == null) in = footballOne(c);
+            } else if (sport.startsWith("FORMULA")) {
+                in = f1(c);
+            } else if (sport.contains("UFC")) {
+                in = ufc(c);
+            } else if (sport.startsWith("TENNIS")) {
+                in = tennis(c);
+            } else if (sport.equals("NFL")) {
+                in = game(c, "football/nfl", "NFL");
+            } else if (sport.equals("NBA")) {
+                in = game(c, "basketball/nba", "NBA");
+            } else if (sport.startsWith("RUGBY")) {
+                in = teamSport(c, "rugby", Info.RUGBY);
+            } else if (sport.startsWith("CRICKET")) {
+                in = teamSport(c, "cricket", Info.CRICKET);
+            }
+        } catch (Exception e) {
+            in = null;
         }
-        if (sport.startsWith("FORMULA")) return f1(c);
-        if (sport.contains("UFC")) return ufc(c);
-        if (sport.startsWith("TENNIS")) return tennis(c);
-        if (sport.equals("NFL")) return game(c, "football/nfl", "NFL");
-        if (sport.equals("NBA")) return game(c, "basketball/nba", "NBA");
+        return in != null ? in : facts(c);
+    }
+
+    /** The facts, and should even reading them fail, the bare facts the clip itself gives. */
+    private static Info safeFacts(SportsHighlights.Clip c) {
+        try {
+            return facts(c);
+        } catch (Exception e) {
+            Info in = new Info();
+            in.kind = Info.FACTS;
+            in.clip = c;
+            return in;
+        }
+    }
+
+    /**
+     * What is known of an event without its result: the two sides the title names ("A v B", "A 2-1 B"; football's
+     * crests looked up), the score the title gives, when the video went up.
+     */
+    static Info facts(SportsHighlights.Clip c) {
+        Info in = new Info();
+        in.kind = Info.FACTS;
+        in.clip = c;
+        String[] fx = fixture(c.title);
+        String[] v = fx != null ? new String[]{fx[0], fx[3]} : vsFixture(c.title);
+        if (v != null) {
+            in.a = new String[]{v[0], "", ""};
+            in.b = new String[]{v[1], "", ""};
+            if (fx != null) in.score = new String[]{fx[1], fx[2]};
+            if (c.sport != null && c.sport.startsWith("FOOTBALL")) {
+                try {
+                    in.aPic = PlaylistSport.crest(v[0]);
+                    in.bPic = PlaylistSport.crest(v[1]);
+                } catch (Exception ignored) {
+                    // no crests: the discs with the first letters
+                }
+            }
+        }
+        if (c.sport != null && c.sport.startsWith("FORMULA")) in.eventName = grandPrix(c.title);
+        return in;
+    }
+
+    private static final java.util.regex.Pattern VS = java.util.regex.Pattern.compile(
+            "^(.*?\\S)\\s+(?:v|vs|vs\\.|versus)\\s+(\\S.*)$", java.util.regex.Pattern.CASE_INSENSITIVE);
+
+    /** "Arsenal v Chelsea", "Usyk vs Fury" anywhere in a title (each part between "|" tried): {first, second}; null without. */
+    static String[] vsFixture(String title) {
+        if (title == null) return null;
+        for (String part : title.split("[|•]")) {
+            String seg = part.replaceAll("[\\p{So}\\p{Cn}\\x{1F000}-\\x{1FFFF}]", " ").replaceAll("#\\S+", " ").trim();
+            java.util.regex.Matcher m = VS.matcher(seg);
+            if (!m.find()) continue;
+            String a = tidyClub(m.group(1), true), b = tidyClub(m.group(2), false)
+                    .replaceAll("(?i)\\s+(full fight|fight|extended|knockout|ko|press conference|weigh.?in|preview)\\b.*$", "").trim();
+            if (a.length() < 2 || b.length() < 2 || a.length() > 32 || b.length() > 32) continue;
+            return new String[]{a, b};
+        }
         return null;
     }
 
@@ -1651,7 +1928,12 @@ final class HighlightPlayer implements TilePlayer.Film {
      */
     private static Info footballAll(SportsHighlights.Clip c) {
         String[] fx = fixture(c.title);
-        if (fx == null) return null;
+        // "Arsenal v Chelsea | Highlights": the two clubs without the score (the game nearest the upload, then).
+        if (fx == null) {
+            String[] v = vsFixture(c.title);
+            if (v == null) return null;
+            fx = new String[]{v[0], "", "", v[1]};
+        }
         long p = c.published > 0 ? c.published : System.currentTimeMillis();
         DateTimeFormatter f = DateTimeFormatter.BASIC_ISO_DATE.withZone(java.time.ZoneOffset.UTC);
         List<String> days = new ArrayList<>();
@@ -1684,7 +1966,11 @@ final class HighlightPlayer implements TilePlayer.Film {
             }
             if (best != null && bestExact) break;
         }
-        if (best == null) return null;
+        return best == null ? null : fromAllGame(best);
+    }
+
+    /** A game off ESPN's every-competition board, with its goals, its competition (logo, colours), stats and venue. */
+    private static Info fromAllGame(JSONObject best) {
         JSONObject comp = best.optJSONArray("competitions").optJSONObject(0);
         JSONObject home = null, away = null;
         JSONArray cs = comp.optJSONArray("competitors");
@@ -1868,6 +2154,43 @@ final class HighlightPlayer implements TilePlayer.Film {
         return null;
     }
 
+    /**
+     * A highlights video that names one club only ("Haaland's hat-trick | Man City highlights"): that club's latest
+     * finished game, on the day it went up or the two before, from ESPN's board of every competition.
+     */
+    private static Info footballOne(SportsHighlights.Clip c) {
+        String low = c.title == null ? "" : c.title.toLowerCase(Locale.UK);
+        if (!c.highlight && !low.contains("highlight") && !low.contains("goals") && !low.contains("extended")) return null;
+        String t = " " + OfficialVideos.plain(c.title) + " ";
+        long p = c.published > 0 ? c.published : System.currentTimeMillis();
+        DateTimeFormatter f = DateTimeFormatter.BASIC_ISO_DATE.withZone(java.time.ZoneOffset.UTC);
+        for (int d = 0; d <= 2; d++) {
+            JSONArray ev = allGames(f.format(Instant.ofEpochMilli(p - d * 86_400_000L)));
+            JSONObject latest = null;
+            long latestAt = 0;
+            for (int i = 0; ev != null && i < ev.length(); i++) {
+                JSONObject e = ev.optJSONObject(i);
+                JSONObject comp = e == null || e.optJSONArray("competitions") == null ? null : e.optJSONArray("competitions").optJSONObject(0);
+                JSONObject st = comp == null ? null : comp.optJSONObject("status");
+                if (st == null || st.optJSONObject("type") == null || !"post".equals(st.optJSONObject("type").optString("state"))) continue;
+                long at = espnTime(e.optString("date"));
+                if (at > p) continue;
+                JSONArray cs = comp.optJSONArray("competitors");
+                boolean named = false;
+                for (int k = 0; cs != null && k < cs.length() && !named; k++) {
+                    JSONObject team = cs.optJSONObject(k).optJSONObject("team");
+                    if (team == null) continue;
+                    // Its whole name, or its short one when that is distinctive (four letters and more).
+                    String full = OfficialVideos.plain(team.optString("displayName")), sh = OfficialVideos.plain(team.optString("shortDisplayName"));
+                    named = full.length() >= 4 && t.contains(" " + full + " ") || sh.length() >= 4 && t.contains(" " + sh + " ");
+                }
+                if (named && at > latestAt) { latest = e; latestAt = at; }
+            }
+            if (latest != null) return fromAllGame(latest);
+        }
+        return null;
+    }
+
     /** ESPN's "2026-11-02T20:00Z" (no seconds) or a full instant, in milliseconds; 0 when unreadable. */
     private static long espnTime(String s) {
         try {
@@ -1936,27 +2259,338 @@ final class HighlightPlayer implements TilePlayer.Film {
         try { return Float.parseFloat(s.replace("%", "").trim()); } catch (Exception e) { return 0f; }
     }
 
-    /** Formula 1: the last race's top ten (the sprint's for a sprint), Jolpica's, with the teams' colours. */
+    /** The season's Grand Prix weekends (Jolpica's schedule), kept an hour. */
+    private static JSONArray f1Season;
+    private static long f1SeasonAt;
+
+    private static synchronized JSONArray f1Schedule() {
+        if (f1Season != null && System.currentTimeMillis() - f1SeasonAt < 3_600_000L) return f1Season;
+        try {
+            f1Season = new JSONObject(ScoresTicker.get("https://api.jolpi.ca/ergast/f1/current.json"))
+                    .getJSONObject("MRData").getJSONObject("RaceTable").getJSONArray("Races");
+            f1SeasonAt = System.currentTimeMillis();
+        } catch (Exception ignored) {
+            // asked again next time
+        }
+        return f1Season;
+    }
+
+    /** A weekend's day as millis (its date at noon UTC); 0 when unreadable. */
+    private static long f1Day(JSONObject o) {
+        if (o == null) return 0;
+        try {
+            return java.time.LocalDate.parse(o.optString("date")).atTime(12, 0).toInstant(java.time.ZoneOffset.UTC).toEpochMilli();
+        } catch (Exception e) {
+            return 0;
+        }
+    }
+
+    /**
+     * The weekend a video is of: the Grand Prix its title names ("Mexico City Grand Prix", or the place: "Mexico",
+     * "Brazil", "Las Vegas"), else the latest whose first practice came before the video went up.
+     */
+    private static JSONObject f1Weekend(SportsHighlights.Clip c) {
+        JSONArray races = f1Schedule();
+        if (races == null) return null;
+        String gp = grandPrix(c.title), t = " " + OfficialVideos.plain(c.title) + " ";
+        long up = c.published > 0 ? c.published : System.currentTimeMillis();
+        JSONObject named = null, latest = null;
+        for (int i = 0; i < races.length(); i++) {
+            JSONObject r = races.optJSONObject(i);
+            if (r == null) continue;
+            String name = r.optString("raceName");
+            JSONObject loc = r.optJSONObject("Circuit") == null ? null : r.optJSONObject("Circuit").optJSONObject("Location");
+            String place = OfficialVideos.plain(name.replace("Grand Prix", ""));
+            boolean says = gp != null && F1Results.sameGrandPrix(gp, name) || place.length() >= 4 && t.contains(" " + place + " ")
+                    || loc != null && (t.contains(" " + OfficialVideos.plain(loc.optString("country")) + " ") && OfficialVideos.plain(loc.optString("country")).length() >= 4
+                    || t.contains(" " + OfficialVideos.plain(loc.optString("locality")) + " ") && OfficialVideos.plain(loc.optString("locality")).length() >= 4);
+            long start = f1Day(r.optJSONObject("FirstPractice"));
+            if (start == 0) start = f1Day(r) - 2 * 86_400_000L;
+            // Named and already under way when the video went up (a season can visit a country twice).
+            if (says && start <= up + 86_400_000L) named = r;
+            if (start <= up + 86_400_000L) latest = r;
+        }
+        return named != null ? named : latest;
+    }
+
+    /** A session's classification for a round (results, sprint, qualifying), top to bottom; null when not run yet. */
+    private static F1Results.Board f1Board(String round, String kind, List<String[]> fastest) {
+        try {
+            JSONObject root = new JSONObject(ScoresTicker.get("https://api.jolpi.ca/ergast/f1/current/" + round + "/" + kind + ".json"));
+            JSONArray races = root.getJSONObject("MRData").getJSONObject("RaceTable").getJSONArray("Races");
+            if (races.length() == 0) return null;
+            JSONObject race = races.getJSONObject(0);
+            F1Results.Board b = new F1Results.Board();
+            b.name = race.optString("raceName");
+            b.round = race.optString("round");
+            boolean quali = kind.equals("qualifying");
+            JSONArray results = race.getJSONArray(quali ? "QualifyingResults" : kind.equals("sprint") ? "SprintResults" : "Results");
+            String fastName = null, fastTime = null, fastLap = null;
+            for (int i = 0; i < results.length(); i++) {
+                JSONObject x = results.getJSONObject(i);
+                F1Results.Row r = F1Results.driver(x);
+                r.pos = i + 1;
+                if (quali) {
+                    r.gap = x.optString("Q3", x.optString("Q2", x.optString("Q1", "")));
+                    r.status = x.has("Q3") ? "Q3" : x.has("Q2") ? "Q2" : "Q1";
+                } else {
+                    r.status = x.optString("status");
+                    try { r.points = (int) Math.round(Double.parseDouble(x.optString("points", ""))); } catch (NumberFormatException ignored) { }
+                    JSONObject time = x.optJSONObject("Time");
+                    if (time != null) r.gap = time.optString("time");
+                    else if (r.status.startsWith("+")) r.gap = r.status.replace(" Laps", " laps").replace(" Lap", " lap");
+                    else if (!"Finished".equals(r.status) && !r.status.contains("Lap")) r.gap = "DNF";
+                    JSONObject fl = x.optJSONObject("FastestLap");
+                    if (fl != null && "1".equals(fl.optString("rank"))) {
+                        fastName = (r.first.isEmpty() ? "" : r.first.charAt(0) + ". ") + r.last;
+                        fastTime = fl.optJSONObject("Time") == null ? "" : fl.optJSONObject("Time").optString("time");
+                        fastLap = fl.optString("lap");
+                    }
+                }
+                b.rows.add(r);
+            }
+            if (fastName != null && fastest != null) {
+                fastest.add(new String[]{"Fastest lap", fastName + "  ·  " + fastTime + (fastLap == null || fastLap.isEmpty() ? "" : "  (lap " + fastLap + ")")});
+            }
+            return b.rows.isEmpty() ? null : b;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /**
+     * Formula 1: the session the video is of, for its own Grand Prix: the race's classification (the sprint's, or
+     * qualifying's), with the fastest lap; a practice, or a session not run yet, the championship as it stands. The
+     * round, the day it was run and the circuit with it.
+     */
     private static Info f1(SportsHighlights.Clip c) {
-        String t = c.title.toLowerCase(Locale.ROOT);
-        boolean sprint = t.contains("sprint") && !t.contains("sprint qualifying");
-        F1Results.Board b = F1Results.jolpicaResult(null, sprint);
-        if (b == null && sprint) b = F1Results.jolpicaResult(null, false);
-        if (b == null || b.rows.isEmpty()) return null;
+        String t = c.title == null ? "" : c.title.toLowerCase(Locale.ROOT);
+        boolean sprintQuali = t.contains("sprint qualifying") || t.contains("sprint shootout");
+        boolean quali = !sprintQuali && t.contains("qualifying");
+        boolean sprint = !sprintQuali && t.contains("sprint");
+        boolean practice = t.matches("(?s).*\\b(fp1|fp2|fp3|practice)\\b.*");
+        JSONObject w = f1Weekend(c);
+        if (w == null) {
+            // No schedule to go by: the last race, as before.
+            F1Results.Board b = F1Results.jolpicaResult(null, sprint);
+            if (b == null && sprint) b = F1Results.jolpicaResult(null, false);
+            if (b == null || b.rows.isEmpty()) return null;
+            Info in = new Info();
+            in.kind = Info.F1;
+            in.board = b;
+            in.competition = F1Results.shortName(b.name);
+            in.status = sprint ? "SPRINT RESULT" : "RACE RESULT";
+            in.eventName = F1Results.shortName(b.name);
+            if (b.round != null && !b.round.isEmpty()) in.round = "Round " + b.round;
+            return in;
+        }
+        String round = w.optString("round");
         Info in = new Info();
         in.kind = Info.F1;
+        F1Results.Board b = null;
+        JSONObject session = w;
+        if (!practice && !sprintQuali) {
+            if (quali) {
+                b = f1Board(round, "qualifying", null);
+                in.status = "QUALIFYING";
+                session = w.optJSONObject("Qualifying");
+            } else if (sprint) {
+                b = f1Board(round, "sprint", in.lines);
+                in.status = "SPRINT RESULT";
+                session = w.optJSONObject("Sprint");
+            } else {
+                b = f1Board(round, "results", in.lines);
+                in.status = "RACE RESULT";
+            }
+        }
+        if (b == null) {
+            // A practice, or a session still to come: the drivers' championship as it stands, its points.
+            List<F1Results.Row> st = F1Results.standings(null);
+            if (st.isEmpty()) return null;
+            b = new F1Results.Board();
+            b.name = w.optString("raceName");
+            b.round = round;
+            for (int i = 0; i < Math.min(10, st.size()); i++) {
+                F1Results.Row r = st.get(i);
+                r.pos = i + 1;
+                b.rows.add(r);
+            }
+            in.lines.clear();
+            in.status = "CHAMPIONSHIP";
+            session = null;
+        }
         in.board = b;
-        in.competition = F1Results.shortName(b.name);
-        boolean thisRace = F1Results.sameGrandPrix(c.title, b.name) || t.contains(F1Results.key(F1Results.shortName(b.name)).replace(" grand prix", ""));
-        in.status = sprint ? "SPRINT RESULT" : thisRace ? "RACE RESULT" : "LATEST RACE";
-        in.eventName = F1Results.shortName(b.name);
-        if (b.round != null && !b.round.isEmpty()) in.round = "Round " + b.round;
-        // The day it was run: the Sunday (a sprint's Saturday) on or before the day the video went up.
-        java.time.LocalDate up = Instant.ofEpochMilli(c.published > 0 ? c.published : System.currentTimeMillis()).atZone(ZoneId.systemDefault()).toLocalDate();
-        java.time.DayOfWeek race = sprint ? java.time.DayOfWeek.SATURDAY : java.time.DayOfWeek.SUNDAY;
-        while (up.getDayOfWeek() != race) up = up.minusDays(1);
-        if (thisRace) in.when = DateTimeFormatter.ofPattern("EEE d MMM", Locale.UK).format(up);
+        in.competition = F1Results.shortName(w.optString("raceName"));
+        in.eventName = in.competition;
+        if (!round.isEmpty()) in.round = "Round " + round;
+        long day = f1Day(session != null ? session : w);
+        if (day > 0) in.when = DAY.format(Instant.ofEpochMilli(day));
+        JSONObject circuit = w.optJSONObject("Circuit");
+        if (circuit != null) {
+            JSONObject loc = circuit.optJSONObject("Location");
+            in.venue = circuit.optString("circuitName") + (loc == null ? "" : ", " + loc.optString("locality"));
+        }
         return in;
+    }
+
+    /** ESPN's scorepanel (every competition of a sport, for a day), kept ten minutes. */
+    private static JSONObject panelBoard(String sport, String day) {
+        return board(sport, "/scorepanel?dates=" + day, day);
+    }
+
+    /**
+     * Rugby and cricket: the game of the two sides in the title ("England v New Zealand", either way round), else
+     * both named in it, from ESPN's every-competition board for the days the video may be of. Rugby: the score, the
+     * tries and cards under their own side, and the scoring by type; cricket: each side's innings, the result, the
+     * player of the match.
+     */
+    private static Info teamSport(SportsHighlights.Clip c, String sport, int kind) {
+        String[] fx = fixture(c.title);
+        String[] v = fx != null ? new String[]{fx[0], fx[3]} : vsFixture(c.title);
+        String t = " " + OfficialVideos.plain(c.title) + " ";
+        long latest = (c.published > 0 ? c.published : System.currentTimeMillis()) + 3_600_000L;
+        for (String day : days(c.published)) {
+            Object[] loose = null;
+            JSONObject b = panelBoard(sport, day);
+            JSONArray groups = b == null ? null : b.optJSONArray("scores");
+            for (int g = 0; groups != null && g < groups.length(); g++) {
+                JSONObject grp = groups.optJSONObject(g);
+                JSONArray events = grp == null ? null : grp.optJSONArray("events");
+                JSONArray lgs = grp == null ? null : grp.optJSONArray("leagues");
+                JSONObject league = lgs == null ? null : lgs.optJSONObject(0);
+                for (int i = 0; events != null && i < events.length(); i++) {
+                    JSONObject e = events.optJSONObject(i);
+                    JSONObject comp = e == null || e.optJSONArray("competitions") == null ? null : e.optJSONArray("competitions").optJSONObject(0);
+                    JSONArray cs = comp == null ? null : comp.optJSONArray("competitors");
+                    if (cs == null || cs.length() < 2) continue;
+                    JSONObject home = null, away = null;
+                    for (int k = 0; k < cs.length(); k++) {
+                        JSONObject x = cs.optJSONObject(k);
+                        if ("home".equals(x.optString("homeAway")) && home == null) home = x; else away = x;
+                    }
+                    if (home == null || away == null) continue;
+                    if (espnTime(e.optString("date")) > latest) continue;
+                    boolean match = v != null
+                            ? sameClub(v[0], home) && sameClub(v[1], away) || sameClub(v[0], away) && sameClub(v[1], home)
+                            : home.optJSONObject("team") != null && away.optJSONObject("team") != null
+                            && OfficialVideos.named(t, home.optJSONObject("team").optString("displayName"))
+                            && OfficialVideos.named(t, away.optJSONObject("team").optString("displayName"));
+                    if (!match) continue;
+                    // Both sides by their very names first ("England", not "England Women" or "England A").
+                    boolean exact = v != null && (exactClub(v[0], home) && exactClub(v[1], away) || exactClub(v[0], away) && exactClub(v[1], home));
+                    Object[] found = {e, comp, home, away, league};
+                    if (exact || v == null) return teamGame(kind, found);
+                    if (loose == null) loose = found;
+                }
+            }
+            if (loose != null) return teamGame(kind, loose);
+        }
+        return null;
+    }
+
+    private static Info teamGame(int kind, Object[] f) {
+        JSONObject e = (JSONObject) f[0], comp = (JSONObject) f[1], home = (JSONObject) f[2], away = (JSONObject) f[3], league = (JSONObject) f[4];
+        return kind == Info.CRICKET ? cricketGame(e, comp, home, away, league) : rugbyGame(e, comp, home, away, league);
+    }
+
+    /** Whether a name from a title is exactly this side's (its display or short name, or its abbreviation). */
+    private static boolean exactClub(String fromTitle, JSONObject competitor) {
+        JSONObject t = competitor == null ? null : competitor.optJSONObject("team");
+        if (t == null) return false;
+        String want = clubKey(fromTitle);
+        if (fromTitle.trim().equalsIgnoreCase(t.optString("abbreviation"))) return true;
+        return !want.isEmpty() && (want.equals(clubKey(t.optString("displayName"))) || want.equals(clubKey(t.optString("shortDisplayName"))));
+    }
+
+    private static Info rugbyGame(JSONObject e, JSONObject comp, JSONObject home, JSONObject away, JSONObject league) {
+        Info in = new Info();
+        in.kind = Info.RUGBY;
+        in.home = side(home);
+        in.away = side(away);
+        in.competition = league == null ? null : league.optString("name", null);
+        in.compLogo = leagueLogoOf(league);
+        JSONObject st = comp.optJSONObject("status");
+        String state = st == null || st.optJSONObject("type") == null ? "" : st.optJSONObject("type").optString("state");
+        in.status = "post".equals(state) ? "FT" : st == null || st.optJSONObject("type") == null ? null : st.optJSONObject("type").optString("shortDetail");
+        in.when = day(e.optString("date"));
+        JSONObject vn = comp.optJSONObject("venue");
+        if (vn != null) in.venue = vn.optString("fullName", null);
+        String homeId = home.optJSONObject("team") == null ? "" : home.optJSONObject("team").optString("id");
+        // The scoring by type, and the tries and cards each under its own side.
+        String[] kinds = {"try", "conversion", "penalty goal", "drop goal", "yellow card", "red card"};
+        String[] names = {"Tries", "Conversions", "Penalty goals", "Drop goals", "Yellow cards", "Red cards"};
+        int[] hc = new int[kinds.length], ac = new int[kinds.length];
+        JSONArray det = comp.optJSONArray("details");
+        for (int k = 0; det != null && k < det.length(); k++) {
+            JSONObject d = det.optJSONObject(k);
+            if (d == null || d.optJSONObject("type") == null) continue;
+            String what = d.optJSONObject("type").optString("text").toLowerCase(Locale.ROOT);
+            if (what.equals("penalty try")) what = "try";
+            int idx = java.util.Arrays.asList(kinds).indexOf(what);
+            if (idx < 0) continue;
+            boolean isHome = d.optJSONObject("team") != null && homeId.equals(d.optJSONObject("team").optString("id"));
+            if (isHome) hc[idx]++; else ac[idx]++;
+            if (idx == 0 || idx >= 4) {
+                JSONArray who = d.optJSONArray("athletesInvolved");
+                JSONObject pl = who == null ? null : who.optJSONObject(0);
+                String name = pl == null ? "Penalty try" : pl.optString("shortName", pl.optString("displayName"));
+                String min = d.optJSONObject("clock") == null ? "" : d.optJSONObject("clock").optString("displayValue");
+                in.events.add(new String[]{isHome ? "home" : "away", idx == 0 ? "try" : idx == 4 ? "yellow" : "red", (idx == 0 ? "Try  " : "") + name, min});
+            }
+        }
+        for (int k = 0; k < kinds.length; k++) {
+            if (hc[k] + ac[k] == 0 && k >= 3) continue;   // no drop goals or cards: not listed
+            in.stats.add(new String[]{names[k], String.valueOf(hc[k]), String.valueOf(ac[k]),
+                    hc[k] + ac[k] > 0 ? String.valueOf(hc[k] / (float) (hc[k] + ac[k])) : "0.5"});
+        }
+        return in;
+    }
+
+    private static Info cricketGame(JSONObject e, JSONObject comp, JSONObject home, JSONObject away, JSONObject league) {
+        Info in = new Info();
+        in.kind = Info.CRICKET;
+        in.home = side(home);
+        in.away = side(away);
+        in.competition = league == null ? null : league.optString("name", null);
+        in.compLogo = leagueLogoOf(league);
+        JSONObject st = comp.optJSONObject("status");
+        in.status = st == null || st.optJSONObject("type") == null ? null : st.optJSONObject("type").optString("shortDetail");
+        String sum = st == null ? null : st.optString("summary", null);
+        if (sum != null) in.result = android.text.Html.fromHtml(sum, android.text.Html.FROM_HTML_MODE_LEGACY).toString().trim();
+        String desc = comp.optString("description", "");
+        JSONObject cls = comp.optJSONObject("class");
+        String card = cls == null ? "" : cls.optString("generalClassCard", "");
+        in.description = desc + (desc.isEmpty() || card.isEmpty() ? "" : "  ·  ") + card;
+        JSONArray fa = st == null ? null : st.optJSONArray("featuredAthletes");
+        for (int k = 0; fa != null && k < fa.length(); k++) {
+            JSONObject x = fa.optJSONObject(k);
+            if (x == null || !"POTM".equals(x.optString("abbreviation"))) continue;
+            JSONObject a = x.optJSONObject("athlete");
+            if (a == null) continue;
+            String pic = a.optString("headshot", null);
+            if (pic != null && pic.contains("default")) pic = null;
+            in.potm = new String[]{a.optString("displayName"), x.optString("displayName", "Player of the match"), pic};
+            break;
+        }
+        in.when = day(e.optString("date"));
+        JSONObject vn = comp.optJSONObject("venue");
+        if (vn != null) in.venue = vn.optString("fullName", null);
+        return in;
+    }
+
+    /** A competition's own logo from a board's league (ESPN's, for a dark ground where it has one); null without. */
+    private static String leagueLogoOf(JSONObject l) {
+        JSONArray logos = l == null ? null : l.optJSONArray("logos");
+        String any = null;
+        for (int i = 0; logos != null && i < logos.length(); i++) {
+            JSONObject x = logos.optJSONObject(i);
+            String href = x == null ? null : x.optString("href", null);
+            if (href == null) continue;
+            if (any == null) any = href;
+            JSONArray rel = x.optJSONArray("rel");
+            if (rel != null && rel.toString().contains("dark")) return href;
+        }
+        return any;
     }
 
     /** Words of a name worth matching in a title: its last word, accents and case aside ("Pereira", "Alcaraz"). */

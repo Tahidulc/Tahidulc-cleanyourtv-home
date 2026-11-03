@@ -355,7 +355,8 @@ final class F1Results {
         return out;
     }
 
-    private static Row driver(JSONObject x) throws org.json.JSONException {
+    /** One driver's line from a Jolpica result (his names, code and team), for HighlightPlayer's boards too. */
+    static Row driver(JSONObject x) throws org.json.JSONException {
         Row r = new Row();
         JSONObject d = x.getJSONObject("Driver");
         r.first = d.optString("givenName");
