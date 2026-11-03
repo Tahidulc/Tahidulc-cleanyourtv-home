@@ -214,10 +214,10 @@ final class HomeV2 {
     /**
      * The top bar as option B ("Corners", theme "top_corners", on in the dock layout): the time with the date and the
      * weather under it at the top left; at the top right one score pill that cycles through the games (a dot for each)
-     * beside a round Control Centre button. A section's page moves up PAGE_LIFT into the room it frees.
+     * beside a round Control Centre button, all on one line. A section's page moves up PAGE_LIFT into the room it frees.
      */
     boolean corners;
-    static final int PAGE_LIFT = 50;
+    static final int PAGE_LIFT = 90;
     /** Option B's round Control Centre button and the score pill's dots. */
     private ImageView ccButton;
     private LinearLayout pageDots;
@@ -477,30 +477,32 @@ final class HomeV2 {
     }
 
     /**
-     * Option B's top left: the time, and under it the date and the weather (a small glass pill, still a button: OK
-     * opens the weather card). Nothing else up there, so the space under it is free.
+     * Option B's top left, on one line with the score pill and the Control Centre button across the screen: the time,
+     * the date and the weather (a small glass pill, still a button: OK opens the weather card). One line, so the most
+     * room is left under it.
      */
     private void buildCorners() {
-        LinearLayout col = new LinearLayout(a);
-        col.setOrientation(LinearLayout.VERTICAL);
-        TextClock time = new TextClock(a);
-        time.setFormat24Hour("HH:mm");
-        time.setFormat12Hour("HH:mm");
-        style(time, 56, a.getResources().getFont(R.font.inter_display_light), Color.WHITE);
-        time.setLetterSpacing(-0.02f);
-        time.setIncludeFontPadding(false);
-        time.setFontFeatureSettings("tnum");
-        col.addView(time);
         LinearLayout line = new LinearLayout(a);
         line.setOrientation(LinearLayout.HORIZONTAL);
         line.setGravity(Gravity.CENTER_VERTICAL);
+        line.setBaselineAligned(false);
+        TextClock time = new TextClock(a);
+        time.setFormat24Hour("HH:mm");
+        time.setFormat12Hour("HH:mm");
+        style(time, 46, a.getResources().getFont(R.font.inter_display_light), Color.WHITE);
+        time.setLetterSpacing(-0.02f);
+        time.setIncludeFontPadding(false);
+        time.setFontFeatureSettings("tnum");
+        line.addView(time);
         TextClock date = new TextClock(a);
         date.setFormat24Hour("EEE d MMM");
         date.setFormat12Hour("EEE d MMM");
         style(date, 19, regular, 0xD9FFFFFF);
         date.setSingleLine(true);
         date.setLetterSpacing(0.02f);
-        line.addView(date);
+        LinearLayout.LayoutParams dlp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        dlp.leftMargin = px(18);
+        line.addView(date, dlp);
         TextView weather = text(18, regular, Color.WHITE);
         weather.setLetterSpacing(0.04f);
         weather.setGravity(Gravity.CENTER_VERTICAL);
@@ -510,10 +512,7 @@ final class HomeV2 {
         LinearLayout.LayoutParams wlp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, px(38));
         wlp.leftMargin = px(14);
         line.addView(weather, wlp);
-        LinearLayout.LayoutParams llp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        llp.topMargin = px(6);
-        col.addView(line, llp);
-        add(col, 56, 16, 900, 130);
+        add(line, 56, CORNER_Y - 32, 900, 64);
         weatherLine = new WeatherLine(weather, a.getString(R.string.weather_latitude), a.getString(R.string.weather_longitude),
                 a.getString(R.string.weather_place));
         weatherPanel = new WeatherPanel(this, a.getString(R.string.weather_latitude), a.getString(R.string.weather_longitude),
@@ -524,7 +523,7 @@ final class HomeV2 {
     }
 
     /** Option B: the score pill's place (right of it, the Control Centre button) and its line's centre, in design pixels. */
-    static final int CORNER_PILL_X = 1376, CORNER_PILL_R = 1790, CORNER_Y = 50, CORNER_CC = 56;
+    static final int CORNER_PILL_X = 1376, CORNER_PILL_R = 1790, CORNER_Y = 46, CORNER_CC = 56;
 
     /** Option B's dots under the score pill: one for each game, the one showing long and white. */
     private void showPageDots(int at, int of) {

@@ -352,7 +352,7 @@ final class PagesV2 {
          * room the page moved up by (its foot stays clear of the dock's chip).
          */
         private float big() {
-            return slider() && h.corners ? BIG + 50f / (TALL + 24) : BIG;
+            return slider() && h.corners ? BIG + (float) HomeV2.PAGE_LIFT / (TALL + 24) : BIG;
         }
 
         PosterPage startOn(int t) {

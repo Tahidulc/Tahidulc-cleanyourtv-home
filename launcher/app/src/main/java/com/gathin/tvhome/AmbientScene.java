@@ -53,7 +53,6 @@ final class AmbientScene {
     /** Today's prayers on the sun's path, under the weather (when the theme asks for prayer times). */
     private final PrayerArc prayerArc;
     private final LinearLayout cards, strip, left, page;
-    private TextView hint;
     /** The bar's pages ({label, items}), the one showing, and how long each stays. */
     private final List<Strip> pages = new ArrayList<>();
     private int pageAt = -1;
@@ -140,9 +139,6 @@ final class AmbientScene {
         page = new LinearLayout(c);
         page.setGravity(Gravity.CENTER_VERTICAL);
         strip.addView(page, new LinearLayout.LayoutParams(0, -1, 1f));
-        hint = text(20, "sans-serif", 0x8CFFFFFF);
-        hint.setText("Any button wakes Home");
-        strip.addView(hint, margins(40, 0, 0, 0));
         // Facts at once, before the games, weather and news are read.
         showStrip(new ArrayList<>());
     }
@@ -161,9 +157,6 @@ final class AmbientScene {
         if (drift) main.postDelayed(flip, FLIP_MS);
         main.postDelayed(turn, PAGE_MS);
         intro();
-        hint.setAlpha(1f);
-        // The way out is shown for the first minute only: no words left standing on the screen.
-        main.postDelayed(() -> { if (hint != null) hint.animate().alpha(0f).setDuration(1_500).start(); }, 60_000L);
     }
 
     private boolean introDone;
@@ -402,7 +395,7 @@ final class AmbientScene {
                         onNow.add(new Object[]{g.home + "  " + g.homeScore + "–" + g.awayScore + "  " + g.away, crest(g.homeLogo), crest(g.awayLogo), ScoresTicker.liveClock(g)});
                     if (g.state == 1 && g.kickoff > now && later.size() < 4)
                         later.add(new Object[]{g.home + "  v  " + g.away, crest(g.homeLogo), crest(g.awayLogo),
-                                Instant.ofEpochMilli(g.kickoff).atZone(zone).format(hm)});
+                                Instant.ofEpochMilli(g.kickoff).atZone(zone).format(hm), channelLogo(g)});
                 }
                 for (ScoresTicker.Game g : day) if (g.state == 0) return gameCard(g, true);
             }
@@ -416,6 +409,27 @@ final class AmbientScene {
             return gameCard(next.get(0), false);
         }
         return null;
+    }
+
+    /** The channel a game is on, as its logo (from the guide); null when no guide lists it. */
+    private Bitmap channelLogo(ScoresTicker.Game g) {
+        try {
+            Object[] w = GoalWatchService.watchForGame(c, g);
+            return w != null && w.length > 1 && w[1] instanceof Bitmap ? (Bitmap) w[1] : null;
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
+    /** A channel's logo at this height, as wide as it needs (up to five times the height). */
+    private ImageView logoView(Bitmap b, int heightPx) {
+        ImageView v = new ImageView(c);
+        v.setImageBitmap(b);
+        v.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        v.setAdjustViewBounds(true);
+        v.setMaxHeight(px(heightPx));
+        v.setMaxWidth(px(heightPx * 5));
+        return v;
     }
 
     private Bitmap crest(String url) {
@@ -474,6 +488,11 @@ final class AmbientScene {
         String channel = null;
         if (watch != null && watch[0] instanceof List && !((List<?>) watch[0]).isEmpty()) channel = String.valueOf(((List<?>) watch[0]).get(0));
         card.hasChannel = channel != null;
+        // The channel's logo instead of its name, where the guide has one.
+        if (watch != null && watch.length > 1 && watch[1] instanceof Bitmap) {
+            card.channelLogo = (Bitmap) watch[1];
+            channel = null;
+        }
         card.label = live ? "ON NOW · " + ScoresTicker.competition(g) : "NEXT MATCH · " + ScoresTicker.competition(g);
         card.title = live ? g.home + "  " + g.homeScore + "–" + g.awayScore + "  " + g.away : g.home + " v " + g.away;
         String when = live ? ScoresTicker.liveClock(g) : day(g.kickoff);
@@ -503,7 +522,14 @@ final class AmbientScene {
                 Card card = new Card();
                 card.label = "FORMULA 1 · " + race.name.toUpperCase(Locale.UK);
                 card.title = s.name;
-                card.note = (on ? "On now" : day(s.start.toEpochMilli())) + "  ·  Sky Sports F1";
+                Object[] w = null;
+                try {
+                    w = GoalWatchService.f1Watch(c);
+                } catch (RuntimeException ignored) {
+                    // no guide: the name instead
+                }
+                card.channelLogo = w != null && w.length > 1 && w[1] instanceof Bitmap ? (Bitmap) w[1] : null;
+                card.note = (on ? "On now" : day(s.start.toEpochMilli())) + (card.channelLogo != null ? "" : "  ·  Sky Sports F1");
                 card.tint = 0xFFE10600;
                 card.badge = "F1";
                 return card;
@@ -637,6 +663,8 @@ final class AmbientScene {
         /** A game's two crests, either side of its title. */
         Bitmap homeCrest, awayCrest;
         boolean hasChannel;
+        /** The channel it is on, as its logo (after the note, in place of its name). */
+        Bitmap channelLogo;
         /** A brand mark drawn on the tint (the Tesla "T"), in place of a picture or a badge. */
         int icon;
         /** A bar under the words (the trip so far, the car's charge), 0 to 1; -1 for none. */
@@ -711,7 +739,16 @@ final class AmbientScene {
             n.setText(note);
             n.setSingleLine(true);
             n.setEllipsize(android.text.TextUtils.TruncateAt.END);
-            words.addView(n, margins(0, 6, 0, 0));
+            if (channelLogo != null) {
+                // The time, then the channel's own logo (no name).
+                LinearLayout noteLine = new LinearLayout(c);
+                noteLine.setGravity(Gravity.CENTER_VERTICAL);
+                noteLine.addView(n);
+                noteLine.addView(logoView(channelLogo, 26), margins(14, 0, 0, 0));
+                words.addView(noteLine, margins(0, 6, 0, 0));
+            } else {
+                words.addView(n, margins(0, 6, 0, 0));
+            }
             if (progress >= 0) {
                 FrameLayout track = new FrameLayout(c);
                 GradientDrawable tg = new GradientDrawable();
@@ -821,39 +858,51 @@ final class AmbientScene {
         return out;
     }
 
+    /** A fact comes round once every five minutes; the news, games and weather between, each page for PAGE_MS. */
+    private static final long FACT_MS = 5 * 60_000L;
+    /** Whether the bar is showing a fact now, and when the last one came up. */
+    private boolean onFact;
+    private long factShownAt = Long.MIN_VALUE / 2;
+
     private void showStrip(List<Strip> made) {
+        String was = !onFact && pageAt >= 0 && pageAt < pages.size() ? pages.get(pageAt).label : null;
         pages.clear();
-        // A fact after each page of news, games and weather (only facts when there is none of those yet).
-        for (Strip p : made) {
-            pages.add(p);
-            Strip f = new Strip("");
-            f.fact = true;
-            f.wide = true;
-            pages.add(f);
-        }
-        if (made.isEmpty()) {
-            Strip f = new Strip("");
-            f.fact = true;
-            f.wide = true;
-            pages.add(f);
-            Strip g = new Strip("");
-            g.fact = true;
-            g.wide = true;
-            pages.add(g);
-        }
-        if (pageAt < 0 || pageAt >= pages.size()) pageAt = 0;
+        pages.addAll(made);
+        // Read again: the same page where it is still there, so its words stay put.
+        int keep = -1;
+        for (int i = 0; was != null && i < pages.size(); i++) if (was.equals(pages.get(i).label)) { keep = i; break; }
+        pageAt = keep >= 0 ? keep : Math.max(0, Math.min(pageAt, pages.size() - 1));
+        // Nothing read yet: a fact meanwhile.
+        if (pages.isEmpty() && !onFact) { onFact = true; factShownAt = android.os.SystemClock.uptimeMillis(); }
         fillPage();
     }
 
-    /** Every few seconds, the bar's next page, through a fade (the bar itself stays where it is). */
+    /**
+     * Every PAGE_MS (12 s, long enough to read), the bar's next page through a fade, the bar itself staying where it
+     * is; once every five minutes a fact in between. With nothing else to show, a fact stays until the next one is due.
+     */
     private final Runnable turn = new Runnable() {
         @Override public void run() {
             if (!running) return;
             main.postDelayed(this, PAGE_MS);
-            if (pages.size() < 2) return;
+            long now = android.os.SystemClock.uptimeMillis();
+            boolean factDue = now - factShownAt >= FACT_MS && !facts.isEmpty();
+            boolean change = pages.isEmpty() ? factDue : onFact || factDue || pages.size() > 1;
+            if (!change) return;
             page.animate().cancel();
             page.animate().alpha(0f).setDuration(450).withEndAction(() -> {
-                pageAt = (pageAt + 1) % pages.size();
+                if (pages.isEmpty()) {
+                    onFact = true;
+                    factShownAt = now;
+                } else if (onFact) {
+                    onFact = false;
+                    pageAt = (pageAt + 1) % pages.size();
+                } else if (factDue) {
+                    onFact = true;
+                    factShownAt = now;
+                } else {
+                    pageAt = (pageAt + 1) % pages.size();
+                }
                 fillPage();
                 page.animate().alpha(1f).setDuration(550).start();
             }).start();
@@ -862,8 +911,9 @@ final class AmbientScene {
 
     private void fillPage() {
         page.removeAllViews();
-        if (pages.isEmpty()) return;
-        Strip p = pages.get(Math.max(0, Math.min(pageAt, pages.size() - 1)));
+        if (pages.isEmpty() && !onFact) return;
+        Strip p = onFact || pages.isEmpty() ? new Strip("") : pages.get(Math.max(0, Math.min(pageAt, pages.size() - 1)));
+        if (onFact) p.fact = true;
         if (p.fact && !facts.isEmpty()) {
             // The next fact: its chip (Bangladesh's in its flag's green, with the red disc) and its words.
             String[] f = facts.get(factAt++ % facts.size());
@@ -933,6 +983,8 @@ final class AmbientScene {
                 time.setSingleLine(true);
                 one.addView(time, margins(14, 0, 0, 0));
             }
+            // The channel it is on, as its logo, after the time.
+            if (item.length > 4 && item[4] instanceof Bitmap) one.addView(logoView((Bitmap) item[4], 24), margins(12, 0, 0, 0));
             LinearLayout.LayoutParams lp = p.wide ? new LinearLayout.LayoutParams(0, -2, 1f) : new LinearLayout.LayoutParams(-2, -2);
             lp.leftMargin = px(p.wide ? 28 : 40);
             page.addView(one, lp);
