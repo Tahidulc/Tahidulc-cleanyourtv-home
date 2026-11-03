@@ -692,7 +692,8 @@ final class PagesV2 {
                         r.strip.animate().alpha(1f).setDuration(200).start();
                         if (i == 0) {
                             boolean none = g.items.isEmpty() && g.empty != null;
-                            emptyView.setText(none ? g.empty : "");
+                            // "Hold OK…": the remote's key itself, not the word.
+                            Keys.set(emptyView, none ? g.empty : "");
                             emptyView.setVisibility(none ? View.VISIBLE : View.GONE);
                         }
                     }

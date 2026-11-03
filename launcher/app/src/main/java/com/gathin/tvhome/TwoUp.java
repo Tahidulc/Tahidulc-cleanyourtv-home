@@ -580,7 +580,8 @@ final class TwoUp {
             TextView how = text(19, semi(), 0xB3FFFFFF, "");
             how.setSingleLine(false);
             how.setEllipsize(null);
-            how.setText(asking ? "If a box asks \"Allow USB debugging?\", choose Always allow, then Allow. Back stops."
+            // "Back stops.": the remote's Back key itself, not the word.
+            Keys.set(how, asking ? "If a box asks \"Allow USB debugging?\", choose Always allow, then Allow. Back stops."
                     : "Back stops.");
             card.addView(how);
             return;
