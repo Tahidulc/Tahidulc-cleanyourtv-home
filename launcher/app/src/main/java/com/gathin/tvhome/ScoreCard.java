@@ -251,10 +251,14 @@ final class ScoreCard {
         band.setOrientation(LinearLayout.VERTICAL);
         band.setGravity(Gravity.CENTER);
         band.setBackground(bandGround(d, false));
+        // The competition's logo alone in the band (no club crest under it): large, filling the band (it was the
+        // small size it has above a crest, lost on its own); with a crest under it, as before.
+        boolean alone = d.crest == null || d.f1;
         if (d.leagueLogo != null) {
             ImageView l = image(c, d.leagueLogo);
-            band.addView(l, new LinearLayout.LayoutParams(d.bigMark ? px(150) : d.wideMark ? px(68) : px(26),
-                    d.bigMark ? px(44) : d.wideMark ? px(30) : px(26)));
+            int lw = d.bigMark ? px(150) : d.wideMark ? px(68) : alone ? px(48) : px(26);
+            int lh = d.bigMark ? px(44) : d.wideMark ? px(30) : alone ? px(48) : px(26);
+            band.addView(l, new LinearLayout.LayoutParams(lw, lh));
         }
         if (d.crest != null && !d.f1) {
             // The club's crest as large as the band allows, so it reads clearly.
