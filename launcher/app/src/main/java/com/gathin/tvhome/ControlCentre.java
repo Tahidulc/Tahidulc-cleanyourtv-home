@@ -114,7 +114,7 @@ final class ControlCentre {
         tl.topMargin = px(36);
         card.addView(title, tl);
         TextView hint = text(17, regular, 0x99FFFFFF);
-        hint.setText("OK to open  ·  Back to close");
+        Keys.set(hint, "OK to open  ·  Back to close");
         FrameLayout.LayoutParams hl = new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.END);
         hl.rightMargin = px(56);
         hl.topMargin = px(50);

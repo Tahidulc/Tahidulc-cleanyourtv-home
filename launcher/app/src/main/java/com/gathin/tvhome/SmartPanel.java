@@ -168,7 +168,7 @@ final class SmartPanel {
         title.setText("Home");
         head.addView(title, new LinearLayout.LayoutParams(0, -2, 1f));
         TextView close = h.text(18, h.regular, 0xFFAEB5E8);
-        close.setText("Back closes");
+        Keys.set(close, "Back closes");
         head.addView(close);
         body.addView(head);
 
@@ -209,7 +209,7 @@ final class SmartPanel {
         info();
 
         TextView hint = h.text(15, h.regular, 0x8CFFFFFF);
-        hint.setText("OK switches a light on or off  ·  ◀ ▶ on the bar dims it");
+        Keys.set(hint, "OK switches a light on or off  ·  ◀ ▶ on the bar dims it");
         LinearLayout.LayoutParams hl = new LinearLayout.LayoutParams(-2, -2);
         hl.topMargin = h.px(20);
         body.addView(hint, hl);
@@ -699,7 +699,7 @@ final class SmartPanel {
         else if (!l.known) s = "Press OK";
         else if (!l.on) s = "Off";
         else s = l.level > 0 ? "On · " + l.level + "%" : "On";
-        l.state.setText(s);
+        Keys.set(l.state, s);
         l.toggle.set(l.on && l.online, low);
         l.tile.setAlpha(l.online ? 1f : 0.55f);
     }

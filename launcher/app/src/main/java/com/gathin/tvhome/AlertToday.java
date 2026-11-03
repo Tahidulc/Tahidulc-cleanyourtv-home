@@ -297,7 +297,7 @@ final class AlertToday {
         summary = missed > 0 ? missed + " missed today" : goals + fts > 0 ? (goals + reds + fts) + " today" : "Goals, red cards, full time";
         place(scroll, 96, 240, 1240, 740);
         TextView hint = h.text(20, regular, 0x99FFFFFF);
-        hint.setText(events.isEmpty() ? "Back closes" : "OK shows the score card again  ·  Back closes");
+        Keys.set(hint, events.isEmpty() ? "Back closes" : "OK shows the score card again  ·  Back closes");
         place(hint, 96, 1000, 1200, 32);
         at = 0;
         paint();

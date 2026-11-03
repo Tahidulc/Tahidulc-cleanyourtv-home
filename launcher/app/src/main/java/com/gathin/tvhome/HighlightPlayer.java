@@ -304,7 +304,7 @@ final class HighlightPlayer implements TilePlayer.Film {
         subView.setSingleLine(true);
         right.addView(subView);
         TextView keys = h.text(13, h.regular, 0x80FFFFFF);
-        keys.setText("OK pause  ·  ◀ ▶ 10 s  ·  ▼ up next  ·  BACK close");
+        Keys.set(keys, "OK pause  ·  ◀ ▶ 10 s  ·  ▼ up next  ·  BACK close");
         keys.setSingleLine(true);
         LinearLayout.LayoutParams kl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         kl.topMargin = px(4);
@@ -532,7 +532,7 @@ final class HighlightPlayer implements TilePlayer.Film {
             // Finished: on to the next one along, if there is one.
             if (at + 1 < clips.size()) { at++; nextIdx = at; play(true); showTexts(); paintFocus(); }
             else {
-                coverWords.setText("Finished  ·  OK to watch again");
+                Keys.set(coverWords, "Finished  ·  OK to watch again");
                 coverShown().animate().alpha(1f).setDuration(220).start();
             }
         }

@@ -247,7 +247,7 @@ final class GuideV2 {
         grid.setClipChildren(true);
         add(grid, GRID_X, 546, GRID_W, ROWS * 60);
         TextView hint = text(18, regular, 0xB3FFFFFF);
-        hint.setText("OK  Watch   ·   ◀ ▶  Earlier / later   ·   ▲ ▼  Channels   ·   BACK  Home");
+        Keys.set(hint, "OK  Watch   ·   ◀ ▶  Earlier / later   ·   ▲ ▼  Channels   ·   BACK  Home");
         hint.setGravity(Gravity.CENTER);
         add(hint, 0, 1040, 1920, 30);
         root.setVisibility(View.GONE);
@@ -366,7 +366,7 @@ final class GuideV2 {
         ll.topMargin = px(16);
         pip.addView(live, ll);
         TextView hint = text(17, regular, Color.WHITE);
-        hint.setText("OK  Full screen");
+        Keys.set(hint, "OK  Full screen");
         hint.setPadding(px(14), px(5), px(14), px(4));
         hint.setBackground(fill(18, 0x8C000000));
         FrameLayout.LayoutParams hl = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP | Gravity.END);

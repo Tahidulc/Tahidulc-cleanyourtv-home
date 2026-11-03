@@ -745,7 +745,8 @@ final class AmbientScene {
                 words.addView(t, margins(0, 6, 0, 0));
             }
             TextView n = text(18, "sans-serif", 0xB3FFFFFF);
-            n.setText(note);
+            // The remote's OK and Back as their keys, not the words.
+            n.setText(Keys.icons(c, note, n.getTextSize(), true));
             n.setSingleLine(true);
             n.setEllipsize(android.text.TextUtils.TruncateAt.END);
             if (channelLogo != null) {

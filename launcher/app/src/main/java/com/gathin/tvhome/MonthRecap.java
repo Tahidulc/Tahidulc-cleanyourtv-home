@@ -723,7 +723,7 @@ final class MonthRecap {
 
     private TextView line(FrameLayout p, String s, int y, int size, int colour) {
         TextView t = h.text(size, semi, colour);
-        t.setText(s);
+        Keys.set(t, s);
         t.setGravity(Gravity.CENTER);
         FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(-1, -2, Gravity.TOP);
         lp.topMargin = h.px(y);

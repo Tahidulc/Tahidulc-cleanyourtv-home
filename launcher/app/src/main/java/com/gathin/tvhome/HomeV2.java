@@ -2479,7 +2479,8 @@ final class HomeV2 {
             hMeta.setVisibility(t.heroMeta == null ? View.GONE : View.VISIBLE);
             heroTile = t;
             specs(t);
-            hText.setText(t.heroText);
+            // "Press OK to open": the remote's OK key, not the word.
+            hText.setText(t.heroText == null ? null : Keys.icons(a, t.heroText, hText.getTextSize(), true));
             hText.setVisibility(t.heroText == null || t.heroText.isEmpty() ? View.GONE : View.VISIBLE);
             htext.animate().alpha(1f).setDuration(140).withLayer().start();
         }).start();

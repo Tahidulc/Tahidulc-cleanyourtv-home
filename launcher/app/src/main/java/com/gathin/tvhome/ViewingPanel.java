@@ -588,7 +588,7 @@ final class ViewingPanel {
         }
 
         TextView foot = h.text(14, regular, 0x99FFFFFF);
-        foot.setText((detailApps.size() > 1 ? "◀ ▶  other apps (" + (detailAt + 1) + " of " + detailApps.size() + ")   ·   " : "") + "Back to close");
+        Keys.set(foot, (detailApps.size() > 1 ? "◀ ▶  other apps (" + (detailAt + 1) + " of " + detailApps.size() + ")   ·   " : "") + "Back to close");
         foot.setGravity(Gravity.END);
         box.addView(foot, under(16));
         return box;

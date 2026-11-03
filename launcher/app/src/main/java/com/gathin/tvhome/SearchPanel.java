@@ -918,7 +918,7 @@ final class SearchPanel {
         col.addView(sub, sp);
         i.whenView = sub;
         TextView act = h.text(18, semi, NAVY);
-        act.setText("OK  " + (i.okWord == null ? "Open" : i.okWord));
+        Keys.set(act, "OK  " + (i.okWord == null ? "Open" : i.okWord));
         act.setPadding(h.px(18), h.px(8), h.px(20), h.px(8));
         act.setBackground(h.fill(22, Color.WHITE));
         LinearLayout.LayoutParams ap = new LinearLayout.LayoutParams(-2, -2);

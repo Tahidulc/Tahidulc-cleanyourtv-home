@@ -427,7 +427,7 @@ final class Predictions {
                 box.addView(r, rl);
             }
             TextView hint = h.text(19, regular, 0xB3FFFFFF);
-            hint.setText(locked ? (g.state == 0 ? "Kicked off: the picks are in" : "Full time") : "OK adds a goal  ·  the number keys type it  ·  Back when done");
+            Keys.set(hint, locked ? (g.state == 0 ? "Kicked off: the picks are in" : "Full time") : "OK adds a goal  ·  the number keys type it  ·  Back when done");
             LinearLayout.LayoutParams hl = new LinearLayout.LayoutParams(-1, -2);
             hl.topMargin = h.px(16);
             box.addView(hint, hl);
