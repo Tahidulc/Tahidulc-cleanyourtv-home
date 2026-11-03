@@ -1084,7 +1084,7 @@ final class MatchDay {
             // Down into place on a spring.
             Fluid.spring(panel, androidx.dynamicanimation.animation.DynamicAnimation.TRANSLATION_Y, 0f);
             backdrop.setAlpha(0f);
-            backdrop.animate().alpha(1f).setDuration(420).start();
+            backdrop.animate().alpha(1f).setDuration(300).start();
         }
         if (chipOn && !chipShown) {
             chip.setAlpha(0f);

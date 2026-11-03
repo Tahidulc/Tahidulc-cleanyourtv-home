@@ -243,8 +243,8 @@ final class WeatherPanel {
         int span = h.px(CARD_H);
         pageOne.setLayerType(View.LAYER_TYPE_NONE, null);
         pageTwo.setLayerType(View.LAYER_TYPE_NONE, null);
-        pageOne.animate().translationY(p == 0 ? 0 : -span).alpha(p == 0 ? 1f : 0f).setDuration(520).setInterpolator(HomeV2.SKY).start();
-        pageTwo.animate().translationY(p == 1 ? 0 : span).alpha(p == 1 ? 1f : 0f).setDuration(520).setInterpolator(HomeV2.SKY)
+        pageOne.animate().translationY(p == 0 ? 0 : -span).alpha(p == 0 ? 1f : 0f).setDuration(340).setInterpolator(HomeV2.SKY).start();
+        pageTwo.animate().translationY(p == 1 ? 0 : span).alpha(p == 1 ? 1f : 0f).setDuration(340).setInterpolator(HomeV2.SKY)
                 .withEndAction(() -> { if (h.lite && open) (pageAt == 0 ? pageOne : pageTwo).setLayerType(View.LAYER_TYPE_HARDWARE, null); })
                 .start();
         if (p == 1 && !twoShown) { twoShown = true; enterTwo(); }
@@ -619,7 +619,7 @@ final class WeatherPanel {
             v.setTranslationY(h.px(24));
             v.setScaleX(0.94f);
             v.setScaleY(0.94f);
-            v.animate().alpha(1f).translationY(0f).scaleX(1f).scaleY(1f).setStartDelay(200 + i * 35L).setDuration(420)
+            v.animate().alpha(1f).translationY(0f).scaleX(1f).scaleY(1f).setStartDelay(120 + i * 25L).setDuration(300)
                     .setInterpolator(new android.view.animation.OvershootInterpolator(1.2f)).start();
         }
         for (int i = 0; i < twoGrow.size(); i++) twoGrow.get(i).grow(450 + i * 90L, 1100);

@@ -1034,7 +1034,7 @@ final class HomeV2 {
         Fluid.stop(dockLayer, androidx.dynamicanimation.animation.DynamicAnimation.TRANSLATION_Y);
         dockHandle.animate().cancel();
         if (away) {
-            dockLayer.animate().translationY(px(170)).alpha(0f).setDuration(300)
+            dockLayer.animate().translationY(px(170)).alpha(0f).setDuration(220)
                     .setInterpolator(new android.view.animation.AccelerateInterpolator(1.5f))
                     .withEndAction(() -> { if (dockAway) dockLayer.setVisibility(View.INVISIBLE); }).start();
             if (pageWhich >= 0 && pageWhich < CAT_ICONS.length) {
@@ -1201,7 +1201,7 @@ final class HomeV2 {
             float size = zone == Z_ROW && first + k == rowIdx ? 1.05f : 1f;
             t.setTranslationX(dir * px(70 + 45 * n));
             t.setAlpha(0.55f);
-            t.animate().translationX(0).alpha(1f).scaleX(size).scaleY(size).setStartDelay(40L * n).setDuration(420).setInterpolator(SKY).start();
+            t.animate().translationX(0).alpha(1f).scaleX(size).scaleY(size).setStartDelay(25L * n).setDuration(300).setInterpolator(SKY).start();
         }
     }
 
@@ -3955,8 +3955,9 @@ final class HomeV2 {
     private static final int[] MESH_DEFAULT = {0x8C6B2C8F, 0x730E7C86, 0x4DD98A3A, 0x593B2A9A};
     private int[] meshColours = MESH_DEFAULT, meshWanted;
     private final ExecutorService meshIo = Executors.newSingleThreadExecutor();
-    private static final int MESH_FADE_MS = 12_000, MESH_ADAPT_MS = 1_100;
-    private static final long MESH_EVERY_MS = 75_000L, MESH_SETTLE_MS = 650L;
+    // Quick to follow what is on screen: drawn a quarter of a second after the focus stops, in under half a second.
+    private static final int MESH_FADE_MS = 12_000, MESH_ADAPT_MS = 450;
+    private static final long MESH_EVERY_MS = 75_000L, MESH_SETTLE_MS = 220L;
 
     /** The background cross-fades to this picture of the light over ms (at once for 0). */
     private void fadeMesh(Bitmap next, int ms) {
@@ -4094,7 +4095,8 @@ final class HomeV2 {
      */
     private Bitmap meshBackground(int w, int h, int variant, int[] colours) {
         int sw = Math.max(w, h), sh = Math.min(w, h);
-        int bw = Math.max(2, sw / 3), bh = Math.max(2, sh / 3);
+        // A quarter of the screen's size: soft light, scaled up; small enough to draw in a few milliseconds.
+        int bw = Math.max(2, sw / 4), bh = Math.max(2, sh / 4);
         Bitmap b = Bitmap.createBitmap(bw, bh, Bitmap.Config.ARGB_8888);
         android.graphics.Canvas c = new android.graphics.Canvas(b);
         android.graphics.Paint p = new android.graphics.Paint(android.graphics.Paint.DITHER_FLAG | android.graphics.Paint.ANTI_ALIAS_FLAG);

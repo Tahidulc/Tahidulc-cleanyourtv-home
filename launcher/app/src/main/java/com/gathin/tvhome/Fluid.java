@@ -21,7 +21,9 @@ final class Fluid {
     }
 
     /** iOS's default spring (response about 0.35 s, a whisper of overshoot), and a firmer one for small things. */
-    static final float STIFF = 380f, DAMP = 0.86f, STIFF_SMALL = 700f, DAMP_SMALL = 0.9f;
+    // Snappy, as Apple's: panels settle in about a quarter of a second with a touch of give, small things quicker
+    // and without overshoot (were 380 / 700, half a second and floaty).
+    static final float STIFF = 720f, DAMP = 0.88f, STIFF_SMALL = 1300f, DAMP_SMALL = 0.94f;
     /** For the timed parts (fades): quick out of the blocks, long gentle settle. */
     static final PathInterpolator EASE = new PathInterpolator(0.2f, 0.9f, 0.1f, 1f);
     static final PathInterpolator EASE_IN = new PathInterpolator(0.4f, 0f, 0.8f, 0.4f);
@@ -128,7 +130,7 @@ final class Fluid {
             if (c.getVisibility() != View.VISIBLE) continue;
             c.setAlpha(0f);
             c.setTranslationY(rise);
-            c.animate().alpha(1f).translationY(0).setStartDelay(startDelay + i * step).setDuration(420)
+            c.animate().alpha(1f).translationY(0).setStartDelay(startDelay + Math.min(i, 6) * Math.min(step, 35)).setDuration(280)
                     .setInterpolator(EASE).withLayer().start();
         }
     }

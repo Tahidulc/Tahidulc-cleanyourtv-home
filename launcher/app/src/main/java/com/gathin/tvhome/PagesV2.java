@@ -419,7 +419,7 @@ final class PagesV2 {
             for (Row r : rows) {
                 r.view.setPivotX(0f);
                 r.view.setPivotY(0f);
-                r.view.animate().scaleX(grow ? big() : 1f).scaleY(grow ? big() : 1f).setDuration(grow ? 420 : 300)
+                r.view.animate().scaleX(grow ? big() : 1f).scaleY(grow ? big() : 1f).setDuration(grow ? 300 : 230)
                         .setInterpolator(HomeV2.SKY)
                         // The slider's glow follows the row as it grows or shrinks.
                         .setUpdateListener(slider() ? an -> slide(r, focusF, wideIdx, wideAmt) : null).start();
@@ -1070,7 +1070,7 @@ final class PagesV2 {
             return h.dockMode && rowY.length == 1 && Config.themeFlag(h.a, "poster_slider", true);
         }
 
-        static final long SLIDER_MS = 520, WIDEN_MS = 420, LAND_PAUSE_MS = 2500, SLIDER_TRAILER_MS = SLIDER_MS + LAND_PAUSE_MS + WIDEN_MS + 150;
+        static final long SLIDER_MS = 360, WIDEN_MS = 300, LAND_PAUSE_MS = 2500, SLIDER_TRAILER_MS = SLIDER_MS + LAND_PAUSE_MS + WIDEN_MS + 150;
         private static final float[] SCALE = {1f, 0.84f, 0.76f, 0.7f, 0.66f, 0.62f, 0.6f};
         private static final float[] SHADE = {0f, 0.4f, 0.55f, 0.66f, 0.74f, 0.82f, 0.9f};
         /** Where the row is (the focus, as a fraction while sliding), which poster is widened and how far, which landed. */
@@ -1304,8 +1304,8 @@ final class PagesV2 {
             ((GradientDrawable) in.getBackground()).setColors(new int[]{(0xA6 << 24) | (colour & 0xFFFFFF), (0x33 << 24) | (colour & 0xFFFFFF), colour & 0xFFFFFF});
             in.animate().cancel();
             out.animate().cancel();
-            in.animate().alpha(1f).setDuration(520).setInterpolator(HomeV2.SKY).start();
-            out.animate().alpha(0f).setDuration(520).setInterpolator(HomeV2.SKY).start();
+            in.animate().alpha(1f).setDuration(320).setInterpolator(HomeV2.SKY).start();
+            out.animate().alpha(0f).setDuration(320).setInterpolator(HomeV2.SKY).start();
         }
 
         /** Each title's marks from the store, once looked up (empty: the store had none). */

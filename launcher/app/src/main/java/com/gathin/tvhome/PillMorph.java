@@ -35,7 +35,7 @@ final class PillMorph {
         return pillLeft >= 0 && pillRight > pillLeft && ScoresTicker.corner();
     }
 
-    private static final long OPEN_MS = 460, WORDS_MS = 240, CLOSE_MS = 340;
+    private static final long OPEN_MS = 360, WORDS_MS = 200, CLOSE_MS = 260;
 
     /** The corner, h high: square-edged under the Sky top bar (as the cards over the apps), else round-ended. */
     static volatile float squareCorner = -1;
