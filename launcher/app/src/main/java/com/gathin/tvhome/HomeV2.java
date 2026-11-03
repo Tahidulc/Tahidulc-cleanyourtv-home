@@ -4015,9 +4015,18 @@ final class HomeV2 {
     /** The light in a picture's colours: its left, middle and right thirds and its strongest colour (see palette). */
     void adaptMeshFrom(Bitmap pic) {
         if (!mesh || pic == null || pic.isRecycled()) return;
-        int[] c = palette(pic);
-        if (c != null) adaptMesh(c);
+        // Sampled off the main thread (scaling a 1400-wide picture down cost a frame on each move), the latest only.
+        final int asked = ++meshSampleAt;
+        main.removeCallbacks(adaptNow);
+        meshIo.execute(() -> {
+            if (asked != meshSampleAt || pic.isRecycled()) return;
+            int[] c = palette(pic);
+            if (c != null) main.post(() -> { if (asked == meshSampleAt) adaptMesh(c); });
+        });
     }
+
+    /** The latest picture asked to colour the light (an older one still being sampled is dropped). */
+    private volatile int meshSampleAt;
 
     /** The light in two clubs' colours (Match Day): the home side's at the left and the foot, the away side's at the right. */
     void adaptMeshClubs(int home, int away) {
