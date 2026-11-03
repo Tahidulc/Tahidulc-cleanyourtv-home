@@ -130,7 +130,9 @@ final class TilePlayer {
                 main.post(() -> { if (film != null) film.failed(code); });
             }
             @android.webkit.JavascriptInterface public void ended() {
-                main.post(() -> { if (film == null) stop(); });
+                // A trailer run to its end: every picture it covered back (the widened poster's wide picture too, not
+                // only the narrow one: left hidden, the open poster showed just its narrow picture at its left).
+                main.post(() -> { if (film == null) { giveBack(); stop(); } });
             }
         }, "Home");
         String pkg = c.getPackageName();
@@ -330,6 +332,17 @@ final class TilePlayer {
             try { player.stop(); } catch (Exception ignored) { }
             player.release();
             player = null;
+        }
+    }
+
+    /** The pictures the trailer covered, all of them, faded back (a trailer that ended on the tile it played on). */
+    private void giveBack() {
+        if (!revealed) return;
+        for (int i = 1; i < covers.length; i++) {
+            View c = covers[i];
+            if (c == null) continue;
+            c.animate().cancel();
+            c.animate().alpha(1f).setDuration(250).start();
         }
     }
 

@@ -590,7 +590,8 @@ final class PagesV2 {
                 // Cut off at its own edges, the tabs going out of sight fade away.
                 tabScroll.setOutlineProvider(ViewOutlineProvider.BOUNDS);
                 tabScroll.setClipToOutline(true);
-                tabScroll.setHorizontalFadingEdgeEnabled(true);
+                // lite_home (the TCL): no faded edges (each is drawn through an extra layer of the bar, every frame).
+                tabScroll.setHorizontalFadingEdgeEnabled(!h.lite);
                 tabScroll.setFadingEdgeLength(px(70));
                 tabScroll.addView(track, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, px(50)));
                 add(tabScroll, 216, 516, 1608, 50);
@@ -630,7 +631,9 @@ final class PagesV2 {
                 // A row's name sits just over its posters (Discover's one row leaves room under its tabs).
                 addRow(r.view, 204, rowY[i] + (tabs != null && rowY.length == 1 ? 62 : 40) - 6, 1632, TALL + 24);
                 rows.add(r);
-                if (slider() && glow == null) {
+                // lite_home (the TCL): no glow (two lights over a thousand pixels across, blended on every frame of a
+                // slide, were more than its graphics chip could keep up with).
+                if (slider() && glow == null && !h.lite) {
                     // The slider's glow: a soft light in the focused poster's own colour, behind the row.
                     // Two lights, one over the other: a new colour fades in on the one not showing (each drawn once
                     // in its colour), not a gradient made again on every frame of the change.
@@ -1031,6 +1034,12 @@ final class PagesV2 {
                     if (on && logo != null && ((FrameLayout) logo).getChildAt(1) instanceof ImageView
                             && ((ImageView) ((FrameLayout) logo).getChildAt(1)).getDrawable() != null) logo.animate().alpha(1f).setDuration(250).start();
                     if (on && t.backdrop != null) {
+                        // Until its own wide picture comes (or if it never does), the poster's picture fills the wide
+                        // space, so an opened poster is never its narrow picture beside an empty space.
+                        if (wide.getDrawable() == null) {
+                            View pv = f.findViewWithTag("poster");
+                            if (pv instanceof ImageView && ((ImageView) pv).getDrawable() != null) wide.setImageDrawable(((ImageView) pv).getDrawable());
+                        }
                         // lite_home: its width on screen at the end of its slow zoom (1.12), no more.
                         h.image(wide, t.backdrop.replace("/w1280/", "/w780/"), px(h.lite ? Math.round(WIDE * 1.12f) : WIDE * 2));
                         wide.animate().alpha(1f).setDuration(350).start();
@@ -1120,7 +1129,7 @@ final class PagesV2 {
             return h.dockMode && rowY.length == 1 && Config.themeFlag(h.a, "poster_slider", true);
         }
 
-        static final long SLIDER_MS = 360, WIDEN_MS = 300, LAND_PAUSE_MS = 2500, SLIDER_TRAILER_MS = SLIDER_MS + LAND_PAUSE_MS + WIDEN_MS + 150;
+        static final long SLIDER_MS = 280, WIDEN_MS = 240, LAND_PAUSE_MS = 2500, SLIDER_TRAILER_MS = SLIDER_MS + LAND_PAUSE_MS + WIDEN_MS + 150;
         /**
          * How big each poster is, and how deep its shade, by how far it is from the focus: the queue stays large and
          * clear (it went down to 0.6 and 90% shade, small dim posters with wide gaps round them).
@@ -1304,7 +1313,7 @@ final class PagesV2 {
             if (flatAnim != null) flatAnim.cancel();
             ValueAnimator va = ValueAnimator.ofFloat(flat, to);
             flatAnim = va;
-            va.setDuration(down ? 260 : 340);
+            va.setDuration(down ? 220 : 280);
             va.setInterpolator(HomeV2.SKY);
             va.addUpdateListener(an -> {
                 flat = (float) an.getAnimatedValue();
@@ -1403,6 +1412,8 @@ final class PagesV2 {
         private void land(Row r, int i) {
             if (i >= r.strip.getChildCount() || i >= r.items.size()) return;
             landed = i;
+            // Nothing wide to show (no wide picture for it): it stays its poster, focused, not opened onto an empty space.
+            if (r.items.get(i).backdrop == null) return;
             wideIdx = i;
             FrameLayout f = (FrameLayout) r.strip.getChildAt(i);
             style(f, r.items.get(i), true);
