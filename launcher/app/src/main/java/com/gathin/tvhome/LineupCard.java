@@ -598,6 +598,241 @@ final class LineupCard {
         return col;
     }
 
+    // ---- half time: the score at the break, the first half's scorers, possession and shots ------------------------
+
+    /** Half time in a followed game (MoreAlerts): the card in the corner over an app; on Home, Home's bar instead. */
+    static final class Half {
+        Bitmap leagueLogo, homeCrest, awayCrest;
+        String homeName = "", awayName = "", score = "", competition = "", key;
+        /** The first half's scorers under each side ("Salah 23'"), in the order they scored. */
+        final List<String> homeGoals = new ArrayList<>(), awayGoals = new ArrayList<>();
+        /** Possession in percent and shots, each side's (-1 where ESPN gave none), and the sides' colours for the bars. */
+        int homePoss = -1, awayPoss = -1, homeShots = -1, awayShots = -1, homeColour, awayColour;
+        /** Run instead when Home is in front as its turn comes (Home's bar, ScoreCard). */
+        Runnable onHome;
+        /** Times it has waited for another pop-up to go. */
+        int waited;
+    }
+
+    private static final long HALF_MS = 13_000L;
+
+    /** Opens the half-time card (on the main thread), after any other pop-up has gone; nothing to watch, no OK. */
+    static void showHalfTime(Context ctx, Half f) {
+        Context c = ctx.getApplicationContext();
+        if (GoalWatchService.laneHome && GoalWatchService.homeInFront || PopupFrame.isShowing()) {
+            if (f.onHome != null) f.onHome.run();
+            return;
+        }
+        // One at a time, as the F1 boards: two seconds at a time, at most a minute and a half, then it shows all the same.
+        if ((CameraAlert.isShowing() || ScoreCard.busy() || GoalWatchService.alertShowing() || isShowing()) && f.waited < 45) {
+            f.waited++;
+            retry.postDelayed(() -> showHalfTime(c, f), 2_000L);
+            return;
+        }
+        close(false);
+        wipeBody = 0xFF151A63;
+        wipeEdge = 0xFF3D4BD6;
+        k = c.getResources().getDisplayMetrics().widthPixels / 1920f * SCALE;
+        int w = px(W), h = px(H), margin = px(10);
+        FrameLayout win = new FrameLayout(c);
+        FrameLayout card = new FrameLayout(c);
+        float r = px(14);
+        card.setOutlineProvider(new ViewOutlineProvider() {
+            @Override public void getOutline(View v, Outline o) { o.setRoundRect(0, 0, v.getWidth(), v.getHeight(), r); }
+        });
+        card.setClipToOutline(true);
+        card.setBackgroundColor(0xFF0D1360);
+        FrameLayout band = new FrameLayout(c);
+        band.setBackground(new Streaks(0xFF1B2591, 0xFF0D1360, 0x12FFFFFF, px(21), px(3)));
+        card.addView(band, new FrameLayout.LayoutParams(px(BAND), h));
+        FrameLayout stage = new FrameLayout(c);
+        FrameLayout.LayoutParams sl = new FrameLayout.LayoutParams(w - px(BAND), h);
+        sl.leftMargin = px(BAND);
+        card.addView(stage, sl);
+        FrameLayout.LayoutParams cl = new FrameLayout.LayoutParams(w, h);
+        cl.setMargins(margin, margin, margin, margin);
+        win.addView(card, cl);
+        ImageView back = new ImageView(c);
+        back.setImageBitmap(GoalWatchService.backButton(Config.themeString(c, "ok_button", "tcl"), 2 * margin));
+        back.setTag(PopupMotion.BACK_KEY);
+        win.addView(back, new FrameLayout.LayoutParams(2 * margin, 2 * margin, Gravity.TOP | Gravity.END));
+        WindowManager.LayoutParams lp = new WindowManager.LayoutParams(w + 2 * margin, h + 2 * margin,
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
+                        | WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
+                PixelFormat.TRANSLUCENT);
+        lp.gravity = Gravity.BOTTOM | Gravity.START;
+        lp.x = px(34);
+        lp.y = px(AmbientScene.showing() ? AmbientScene.ALERT_FOOT : 34);
+        lp.setTitle("LineupCard");
+        try {
+            c.getSystemService(WindowManager.class).addView(win, lp);
+        } catch (RuntimeException e) {
+            AlertLog.note(c, "the half-time card's window could not open: " + e);
+            return;
+        }
+        // Nothing to watch: Back closes it, and on a TV without the key helper any key does (after its first moments).
+        Data carrier = new Data();
+        host = win;
+        showing = carrier;
+        shownAt = android.os.SystemClock.uptimeMillis();
+        bar = false;
+        if (f.key != null) AlertToday.shown(c, f.key);
+        AlertLog.note(c, "half-time card shown over the app (" + AlertLog.front(c) + "): " + f.homeName + " " + f.score + " "
+                + f.awayName + ", " + f.homeGoals + " " + f.awayGoals + ", possession " + f.homePoss + "–" + f.awayPoss
+                + ", shots " + f.homeShots + "–" + f.awayShots);
+        halfBand(c, band, f);
+        stage.addView(halfPage(c, f), full());
+        card.setAlpha(0f);
+        card.setTranslationX(-px(40));
+        card.animate().alpha(1f).translationX(0f).setDuration(340).setInterpolator(new DecelerateInterpolator(2f)).withLayer().start();
+        if (!InputKeyService.running) offerWatch(win, carrier);
+        main.postDelayed(() -> { if (host == win) close(true); }, HALF_MS);
+    }
+
+    /** The band: the competition's mark, HALF TIME under it. */
+    private static void halfBand(Context c, FrameLayout band, Half f) {
+        band.removeAllViews();
+        LinearLayout col = new LinearLayout(c);
+        col.setOrientation(LinearLayout.VERTICAL);
+        col.setGravity(Gravity.CENTER_HORIZONTAL);
+        if (f.leagueLogo != null) {
+            ImageView mark = new ImageView(c);
+            mark.setImageBitmap(sharp(f.leagueLogo));
+            mark.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            col.addView(mark, new LinearLayout.LayoutParams(px(46), px(46)));
+        }
+        TextView cap = text(c, "HALF\nTIME", 13.5f, 0xFFFFFFFF, Typeface.create("sans-serif-condensed", Typeface.BOLD));
+        cap.setLetterSpacing(0.1f);
+        cap.setSingleLine(false);
+        cap.setMaxLines(2);
+        cap.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams cpl = new LinearLayout.LayoutParams(px(BAND) - px(6), -2);
+        cpl.topMargin = px(f.leagueLogo != null ? 12 : 0);
+        col.addView(cap, cpl);
+        band.addView(col, new FrameLayout.LayoutParams(-1, -2, Gravity.CENTER));
+    }
+
+    /** Both clubs with their scorers under them, the score between, possession and shots as thin bars along the foot. */
+    private static View halfPage(Context c, Half f) {
+        FrameLayout page = new FrameLayout(c);
+        page.setBackground(new Streaks(0xFF2A35B8, 0xFF080B3A, 0x0EFFFFFF, px(60), px(4)));
+        LinearLayout col = new LinearLayout(c);
+        col.setOrientation(LinearLayout.VERTICAL);
+        col.setPadding(px(16), px(14), px(16), px(14));
+        LinearLayout top = new LinearLayout(c);
+        top.setGravity(Gravity.TOP);
+        View home = halfSide(c, f.homeCrest, f.homeName, f.homeGoals);
+        View away = halfSide(c, f.awayCrest, f.awayName, f.awayGoals);
+        top.addView(home, new LinearLayout.LayoutParams(0, -2, 1f));
+        LinearLayout mid = new LinearLayout(c);
+        mid.setOrientation(LinearLayout.VERTICAL);
+        mid.setGravity(Gravity.CENTER_HORIZONTAL);
+        TextView score = text(c, f.score, 46, 0xFFFFFFFF, inter(c, R.font.inter_display_semibold));
+        score.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams scl = new LinearLayout.LayoutParams(-1, -2);
+        scl.topMargin = px(6);
+        mid.addView(score, scl);
+        TextView ht = text(c, "HALF TIME", 11, 0xC7FFFFFF, Typeface.create("sans-serif-condensed", Typeface.BOLD));
+        ht.setLetterSpacing(0.18f);
+        ht.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams hl = new LinearLayout.LayoutParams(-1, -2);
+        hl.topMargin = px(5);
+        mid.addView(ht, hl);
+        if (!f.competition.isEmpty()) {
+            TextView comp = text(c, f.competition, 11.5f, 0x99FFFFFF, inter(c, R.font.inter_regular));
+            comp.setGravity(Gravity.CENTER);
+            LinearLayout.LayoutParams cpl = new LinearLayout.LayoutParams(-1, -2);
+            cpl.topMargin = px(4);
+            mid.addView(comp, cpl);
+        }
+        top.addView(mid, new LinearLayout.LayoutParams(px(176), -2));
+        top.addView(away, new LinearLayout.LayoutParams(0, -2, 1f));
+        col.addView(top, new LinearLayout.LayoutParams(-1, -2));
+        col.addView(new View(c), new LinearLayout.LayoutParams(-1, 0, 1f));
+        // The bars in the clubs' colours where those read on the navy (white, and a pale blue, where they do not).
+        int hc = readable(f.homeColour) ? f.homeColour : 0xFFFFFFFF;
+        int ac = readable(f.awayColour) && distance(f.awayColour, hc) >= 120 ? f.awayColour : hc == 0xFFFFFFFF ? 0xFF8C9BFF : 0xFFFFFFFF;
+        boolean any = false;
+        if (f.homePoss >= 0 && f.awayPoss >= 0) {
+            col.addView(statRow(c, f.homePoss + "%", "POSSESSION", f.awayPoss + "%", f.homePoss, f.awayPoss, hc, ac), new LinearLayout.LayoutParams(-1, -2));
+            any = true;
+        }
+        if (f.homeShots >= 0 && f.awayShots >= 0) {
+            LinearLayout.LayoutParams rl = new LinearLayout.LayoutParams(-1, -2);
+            rl.topMargin = px(any ? 9 : 0);
+            col.addView(statRow(c, String.valueOf(f.homeShots), "SHOTS", String.valueOf(f.awayShots), f.homeShots, f.awayShots, hc, ac), rl);
+        }
+        page.addView(col, full());
+        // The clubs come in from either side, then the score between them, as the line-ups' fixture page.
+        home.setTranslationX(-px(50)); away.setTranslationX(px(50));
+        home.setAlpha(0f); away.setAlpha(0f); mid.setAlpha(0f);
+        mid.setScaleX(0.9f); mid.setScaleY(0.9f);
+        home.animate().translationX(0).alpha(1f).setStartDelay(250).setDuration(520).setInterpolator(new DecelerateInterpolator(2.2f)).withLayer().start();
+        away.animate().translationX(0).alpha(1f).setStartDelay(250).setDuration(520).setInterpolator(new DecelerateInterpolator(2.2f)).withLayer().start();
+        mid.animate().alpha(1f).scaleX(1f).scaleY(1f).setStartDelay(520).setDuration(420).setInterpolator(new DecelerateInterpolator(2f)).withLayer().start();
+        return page;
+    }
+
+    /** A club at half time: its crest, its name, and who scored for it in the first half (two lines at most). */
+    private static View halfSide(Context c, Bitmap crest, String name, List<String> goals) {
+        LinearLayout v = new LinearLayout(c);
+        v.setOrientation(LinearLayout.VERTICAL);
+        v.setGravity(Gravity.CENTER_HORIZONTAL);
+        v.addView(crest(c, crest), new LinearLayout.LayoutParams(px(58), px(58)));
+        TextView n = text(c, name, 14, 0xFFFFFFFF, inter(c, R.font.inter_semibold));
+        n.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams nl = new LinearLayout.LayoutParams(-1, -2);
+        nl.topMargin = px(6);
+        v.addView(n, nl);
+        if (!goals.isEmpty()) {
+            TextView g = text(c, String.join("  ·  ", goals), 11.5f, 0xD9FFFFFF, inter(c, R.font.inter_regular));
+            g.setGravity(Gravity.CENTER);
+            g.setSingleLine(false);
+            g.setMaxLines(2);
+            g.setLineSpacing(0, 1.1f);
+            LinearLayout.LayoutParams gl = new LinearLayout.LayoutParams(-1, -2);
+            gl.topMargin = px(4);
+            v.addView(g, gl);
+        }
+        return v;
+    }
+
+    /** "56%  POSSESSION  44%" and under it a thin bar, each side's share in its colour. */
+    private static View statRow(Context c, String left, String caption, String right, int a, int b, int ac, int bc) {
+        LinearLayout v = new LinearLayout(c);
+        v.setOrientation(LinearLayout.VERTICAL);
+        FrameLayout words = new FrameLayout(c);
+        words.addView(text(c, left, 13, 0xFFFFFFFF, inter(c, R.font.inter_semibold)), new FrameLayout.LayoutParams(-2, -2, Gravity.START | Gravity.CENTER_VERTICAL));
+        TextView cap = text(c, caption, 10, 0xB3FFFFFF, Typeface.create("sans-serif-condensed", Typeface.BOLD));
+        cap.setLetterSpacing(0.16f);
+        words.addView(cap, new FrameLayout.LayoutParams(-2, -2, Gravity.CENTER));
+        words.addView(text(c, right, 13, 0xFFFFFFFF, inter(c, R.font.inter_semibold)), new FrameLayout.LayoutParams(-2, -2, Gravity.END | Gravity.CENTER_VERTICAL));
+        v.addView(words, new LinearLayout.LayoutParams(-1, -2));
+        float share = a + b <= 0 ? 0.5f : a / (float) (a + b);
+        int gap = px(3);
+        View bars = new View(c) {
+            private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+
+            @Override protected void onDraw(Canvas cv) {
+                float w = getWidth(), h = getHeight(), rr = h / 2f, split = Math.max(h, Math.min(w - h, w * share));
+                paint.setColor(ac);
+                cv.drawRoundRect(0, 0, split - gap / 2f, h, rr, rr, paint);
+                paint.setColor(bc);
+                cv.drawRoundRect(split + gap / 2f, 0, w, h, rr, rr, paint);
+            }
+        };
+        LinearLayout.LayoutParams bl = new LinearLayout.LayoutParams(-1, px(5));
+        bl.topMargin = px(4);
+        v.addView(bars, bl);
+        return v;
+    }
+
+    /** A club colour that shows on the navy: not too dark, and not too near the navy itself. */
+    private static boolean readable(int colour) {
+        return colour != 0 && lum(colour) >= 0.22 && distance(colour, NAVY) >= 110;
+    }
+
     // ---- F1: a race's full result, and the starting grid before it -------------------------------------------------
 
     /** An F1 board: a race's (or sprint's) full result, or its starting grid before lights out. */

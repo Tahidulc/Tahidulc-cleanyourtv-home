@@ -157,7 +157,7 @@ public class GoalWatchService extends Service {
      * The same, for the event with this key (Today's alerts marks it shown when it comes up), and at the score it made
      * (home, away; null: the game's score now), for a goal shown again from Today's alerts.
      */
-    private void skyFootball(ScoresTicker.Game g, String type, String who, String minute, String side, String kind, String key, int[] at) {
+    void skyFootball(ScoresTicker.Game g, String type, String who, String minute, String side, String kind, String key, int[] at) {
         cardRun(() -> {
             try {
                 skyFootballNow(g, type, who, minute, side, kind, key, at);
@@ -217,6 +217,8 @@ public class GoalWatchService extends Service {
                     boolean forHome = home != "og".equals(kind);
                     d.scoreBefore = (forHome ? Math.max(0, hs - 1) : hs) + "–" + (forHome ? as : Math.max(0, as - 1));
                 }
+                // An equaliser or winner from 85', or a side back level or ahead from two down: its own colours.
+                if (!red) MoreAlerts.drama(g, d, who, minute, side, kind, key, at);
             }
             AlertLog.note(this, "card queued: " + type + " " + AlertLog.game(g) + (who != null && !who.isEmpty() ? ", " + who + " " + minute : ""));
             main.post(() -> ScoreCard.show(this, d));
@@ -226,6 +228,8 @@ public class GoalWatchService extends Service {
     /** A penalty missed or saved, or a VAR decision, as a score card. */
     private void skyIncident(ScoresTicker.Game g, String[] inc) {
         if (homeOnly(g) && !homeInFront) return;
+        // A VAR check under way, or its decision (PENALTY GIVEN, NO GOAL and the rest): MoreAlerts.
+        if (MoreAlerts.var(this, g, inc)) return;
         cardRun(() -> {
             ScoreCard.Data d = footballData(g);
             String what = inc[1].replaceAll("^[^A-Za-z]+", "").trim();
@@ -253,8 +257,14 @@ public class GoalWatchService extends Service {
         });
     }
 
+    /** As footballData, from the running service (null when it is not running); off the main thread. */
+    static ScoreCard.Data footballCard(ScoresTicker.Game g) {
+        GoalWatchService s = self;
+        return s == null ? null : s.footballData(g);
+    }
+
     /** What every football card has: the competition, both crests and names, the score, and where to watch it. */
-    private ScoreCard.Data footballData(ScoresTicker.Game g) {
+    ScoreCard.Data footballData(ScoresTicker.Game g) {
         ScoreCard.Data d = new ScoreCard.Data();
         int px = Math.round(96 * getResources().getDisplayMetrics().density);
         d.leagueLogo = bandLogo(g.leagueLogo != null ? g.leagueLogo : leagueLogoFor(g), px);
@@ -1804,6 +1814,7 @@ public class GoalWatchService extends Service {
                 WatchHistory.test(this, "com.bskyb.skysports", "Arsenal v Liverpool · Premier League highlights", "", 0.3f, 22 * 60_000L);
             }
         }
+        if (intent != null) MoreAlerts.test(this, intent);
         if (intent != null && intent.hasExtra("test_red")) {
             ScoresTicker.Game g = new ScoresTicker.Game();
             g.league = "UCL"; g.home = "ARS"; g.away = "PSG"; g.homeScore = "1"; g.awayScore = "1";
@@ -1908,7 +1919,7 @@ public class GoalWatchService extends Service {
             Map<String, List<String[]>> incidents = new HashMap<>();
             // A Home-only game's incidents are read only while Home is up (no need to ask otherwise).
             if (incidentsNow) for (ScoresTicker.Game g : games) {
-                if (g.state == 0 && (homeInFront || !homeOnly(g))) incidents.put(g.id, ScoresTicker.incidents(g));
+                if (g.state == 0 && (homeInFront || !homeOnly(g))) incidents.put(g.id, ScoresTicker.incidents(g, skyAlerts));
             }
             List<MoreSports.Result> tennis = tennisNow ? MoreSports.tennis() : null;
             List<MoreSports.Result> ufc = ufcNow ? MoreSports.ufc() : null;
@@ -1962,6 +1973,13 @@ public class GoalWatchService extends Service {
                     live |= g.state == 0;
                     // A finished game with the family's predictions: who was closest, once (Predictions).
                     if (g.state == 2) Predictions.settle(this, g);
+                    // Half time: the first half's scorers, possession and shots, once a game (MoreAlerts).
+                    if (skyAlerts && g.state == 0 && g.halftime && g.id != null && seen.add("HT|" + g.id)) {
+                        if (primed && !catchUp) {
+                            AlertLog.note(this, "half time seen: " + AlertLog.game(g) + " (card in a minute)");
+                            main.postDelayed(() -> MoreAlerts.halfTime(this, g), DELAY_MS);
+                        }
+                    }
                     Integer before = g.id == null ? null : lastState.put(g.id, g.state);
                     if (primed && before != null && before == 0 && g.state == 2) {
                         if (catchUp) {
@@ -2506,7 +2524,7 @@ public class GoalWatchService extends Service {
     }
 
     /** A game this service announces everywhere: its competition is a goal_alert_leagues one, or a club is followed. */
-    private static boolean followsAnywhere(Context c, ScoresTicker.Game g) {
+    static boolean followsAnywhere(Context c, ScoresTicker.Game g) {
         for (String l : c.getResources().getStringArray(R.array.goal_alert_leagues)) {
             String tag = l.contains("|") ? l.split("\\|", 2)[1].trim() : l.trim();
             if (tag.equals(g.league)) return true;
@@ -4043,7 +4061,7 @@ public class GoalWatchService extends Service {
     }
 
     /** On the cards' thread (pictures, the TV guide), so a slow picture never holds up the next read of the scores. */
-    private void cardRun(Runnable r) {
+    void cardRun(Runnable r) {
         if (destroyed) return;
         try {
             cards.execute(r);

@@ -77,6 +77,12 @@ final class ScoreCard {
         /** The label's words, a small line under them (or null), and its colour. */
         String label, labelSmall;
         int labelColour;
+        /**
+         * A dot in this colour before the label's words, pulsing while the card is up (a VAR check under way); 0 for
+         * none. A small picture before them instead (the prediction's gold trophy); null for none.
+         */
+        int pulse;
+        Drawable labelIcon;
         Bitmap leagueLogo, crest;
         /** A kick-off's time (for "Kick-off in 5 mins" on Home's bar); 0 otherwise. */
         long kickoffAt;
@@ -142,6 +148,11 @@ final class ScoreCard {
     static void closeIf(Data d) {
         queue.remove(d);
         if (host != null && showing == d) close(true);
+    }
+
+    /** Whether this card is the one on screen now (a VAR decision takes its check's place). */
+    static boolean showingNow(Data d) {
+        return host != null && showing == d;
     }
 
     /** As show, ahead of the cards waiting (a message, an order's news: now or never). */
@@ -376,7 +387,7 @@ final class ScoreCard {
             name.setGravity(Gravity.CENTER_VERTICAL);
             // Full time: the result big ("Chelsea win"), the scorers and any red cards after it, small, as on the card
             // (its first line is the scorers, not a first name).
-            boolean ft = "ft".equals(d.kind);
+            boolean ft = "ft".equals(d.kind) || "ht".equals(d.kind);
             // A kick-off: "Tottenham Hotspur v Crystal Palace", then "Kick-off in 5 mins", then the crests (no names
             // again beside them). A surname ("SALAH") is title-cased; a result or a kick-off reads as it is.
             String big = d.headline != null ? d.headline : ko ? d.homeName + " v " + d.awayName : ft ? d.last
@@ -508,6 +519,35 @@ final class ScoreCard {
             LinearLayout.LayoutParams rl = new LinearLayout.LayoutParams(px(size * 0.6f), px(size * 0.85f));
             rl.rightMargin = px(10);
             row.addView(card, rl);
+            row.addView(text(c, d.label, size, 0xFFFFFFFF, outfit(c, 900)));
+            v.addView(row, wrap());
+        } else if (d.pulse != 0 || d.labelIcon != null) {
+            // A VAR check's dot beating while it is under way, or the prediction's trophy, before the words.
+            LinearLayout row = new LinearLayout(c);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            if (d.labelIcon != null) {
+                ImageView icon = new ImageView(c);
+                icon.setImageDrawable(d.labelIcon);
+                LinearLayout.LayoutParams il = new LinearLayout.LayoutParams(px(size * 1.05f), px(size * 1.05f));
+                il.rightMargin = px(9);
+                row.addView(icon, il);
+            }
+            if (d.pulse != 0) {
+                View dot = new View(c);
+                GradientDrawable dd = new GradientDrawable();
+                dd.setShape(GradientDrawable.OVAL);
+                dd.setColor(d.pulse);
+                dot.setBackground(dd);
+                LinearLayout.LayoutParams dl = new LinearLayout.LayoutParams(px(size * 0.5f), px(size * 0.5f));
+                dl.rightMargin = px(10);
+                row.addView(dot, dl);
+                android.animation.ObjectAnimator beat = android.animation.ObjectAnimator.ofFloat(dot, View.ALPHA, 1f, 0.25f);
+                beat.setDuration(620);
+                beat.setRepeatCount(android.animation.ValueAnimator.INFINITE);
+                beat.setRepeatMode(android.animation.ValueAnimator.REVERSE);
+                beat.start();
+                moving.add(beat);
+            }
             row.addView(text(c, d.label, size, 0xFFFFFFFF, outfit(c, 900)));
             v.addView(row, wrap());
         } else {

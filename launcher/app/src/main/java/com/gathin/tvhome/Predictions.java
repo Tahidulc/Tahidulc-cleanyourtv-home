@@ -267,7 +267,7 @@ final class Predictions {
     }
 
     /** The points for a pick: 3 exact, 1 the right result, 0 otherwise. */
-    private static int score(int ph, int pa, int h, int a) {
+    static int score(int ph, int pa, int h, int a) {
         if (ph == h && pa == a) return 3;
         return sign(ph - pa) == sign(h - a) ? 1 : 0;
     }
@@ -305,8 +305,34 @@ final class Predictions {
                 }
             }
             share(app);
-            MAIN.post(() -> card(app, g, one, h, a));
+            // A game announced only on Home (its competition on Home's score pills alone): its card only there.
+            if (MoreAlerts.homeOnly(app, g) && !GoalWatchService.homeInFront) {
+                AlertLog.note(app, "not shown (a Home-only game, Home not in front): predictions " + AlertLog.game(g));
+                return;
+            }
+            // YOU CALLED IT or SO CLOSE for the best pick (its crests read here, off the main thread); else the leaderboard.
+            ScoreCard.Data d = MoreAlerts.prediction(app, g, one, h, a);
+            if (d != null) MAIN.post(() -> ScoreCard.show(app, d));
+            else MAIN.post(() -> card(app, g, one, h, a));
         });
+    }
+
+    /** How many of this player's picks this week (since Monday) got the result right, the exact score included. */
+    static synchronized int correctThisWeek(Context c, String player) {
+        long since = java.time.LocalDate.now().with(java.time.DayOfWeek.MONDAY).atStartOfDay(java.time.ZoneId.systemDefault())
+                .toInstant().toEpochMilli();
+        int n = 0;
+        JSONObject all = games(c);
+        for (Iterator<String> it = all.keys(); it.hasNext(); ) {
+            JSONObject one = all.optJSONObject(it.next());
+            if (one == null || one.optLong("k") < since) continue;
+            JSONArray f = one.optJSONArray("f");
+            JSONObject picks = one.optJSONObject("p");
+            JSONArray p = picks == null ? null : picks.optJSONArray(player);
+            if (f == null || p == null || p.optInt(0, -1) < 0) continue;
+            if (score(p.optInt(0), p.optInt(1), f.optInt(0), f.optInt(1)) > 0) n++;
+        }
+        return n;
     }
 
     private static void card(Context c, ScoresTicker.Game g, JSONObject one, int h, int a) {

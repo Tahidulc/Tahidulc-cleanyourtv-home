@@ -524,6 +524,14 @@ final class ScoresTicker {
      * out (goals and red cards come from the scoreboard). {unique key, what, player, minute}.
      */
     static List<String[]> incidents(Game g) {
+        return incidents(g, false);
+    }
+
+    /**
+     * As incidents(g); with var, also the VAR checks and decisions ESPN writes in its commentary ("VAR Decision: Penalty
+     * Chelsea."), each {key, "📺  VAR", player, minute, its words}, for MoreAlerts.
+     */
+    static List<String[]> incidents(Game g, boolean var) {
         List<String[]> out = new ArrayList<>();
         if (g.slug == null || g.id == null) return out;
         try {
@@ -541,6 +549,7 @@ final class ScoresTicker {
                 out.add(new String[]{"I|" + g.id + "|" + k.optString("id", type + minute), what,
                         athlete == null ? "" : athlete.optString("displayName"), minute});
             }
+            if (var) out.addAll(MoreAlerts.varLines(g, summary, out));
         } catch (Exception ignored) {
         }
         return out;
