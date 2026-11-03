@@ -200,7 +200,8 @@ final class LineupCard {
                 PixelFormat.TRANSLUCENT);
         lp.gravity = Gravity.BOTTOM | Gravity.START;
         lp.x = px(34);
-        lp.y = px(34);
+        // Over Ambient mode: above its bar along the foot, not on it.
+        lp.y = px(AmbientScene.showing() ? AmbientScene.ALERT_FOOT : 34);
         lp.setTitle("LineupCard");
         try {
             c.getSystemService(WindowManager.class).addView(win, lp);
@@ -720,7 +721,8 @@ final class LineupCard {
                 PixelFormat.TRANSLUCENT);
         lp.gravity = Gravity.BOTTOM | Gravity.START;
         lp.x = px(34);
-        lp.y = px(34);
+        // Over Ambient mode: above its bar along the foot, not on it.
+        lp.y = px(AmbientScene.showing() ? AmbientScene.ALERT_FOOT : 34);
         lp.setTitle("LineupCard");
         try {
             c.getSystemService(WindowManager.class).addView(win, lp);

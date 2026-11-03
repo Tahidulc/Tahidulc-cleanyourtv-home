@@ -72,6 +72,15 @@ final class AmbientScene {
     private final boolean drift;
     /** The cards from the last read (the game, F1, the camera); the car's is made fresh each time they are shown. */
     private final List<Card> others = new ArrayList<>();
+    /** Ambient mode is on screen (Home left idle, or the screensaver): the alerts stand above its bar, not on it. */
+    static boolean showing() {
+        java.lang.ref.WeakReference<AmbientScene> l = live;
+        return l != null && l.get() != null;
+    }
+
+    /** How high off the foot an alert's card stands while Ambient mode shows: clear of its bar (36 + 84), in design px. */
+    static final int ALERT_FOOT = 140;
+
     /** The scene on screen now, told at once when the car's news comes in. */
     private static volatile java.lang.ref.WeakReference<AmbientScene> live;
 

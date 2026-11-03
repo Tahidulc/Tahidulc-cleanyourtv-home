@@ -3036,6 +3036,8 @@ public class GoalWatchService extends Service {
         lp.x = Math.round(32 * d);
         // Above the screensaver's clock and caption while it runs.
         lp.y = Math.round((dreaming ? 92 : 30) * d);
+        // Over Ambient mode (Home idle or the screensaver): above its bar along the foot, not on it.
+        if (AmbientScene.showing()) lp.y = Math.round(AmbientScene.ALERT_FOOT * getResources().getDisplayMetrics().widthPixels / 1920f);
         // (Pop-up mode keeps its own full-width score bar, so its alerts stay across it.)
         if (onLane() && ScoresTicker.laneLeft >= 0 && !PopupFrame.isShowing()) {
             // v2's Home under option B's top bar: grown out of the one score pill leftwards, as far as the clock's

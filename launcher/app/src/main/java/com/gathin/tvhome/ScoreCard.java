@@ -284,7 +284,8 @@ final class ScoreCard {
                         | WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED, PixelFormat.TRANSLUCENT);
         lp.gravity = Gravity.BOTTOM | Gravity.START;
         lp.x = px(34);
-        lp.y = px(34);
+        // Over Ambient mode: above its bar along the foot, not on it.
+        lp.y = px(AmbientScene.showing() ? AmbientScene.ALERT_FOOT : 34);
         lp.setTitle("ScoreCard");
         if (!add(c, win, lp, d)) return;
         enter(box, -px(36), 0);
