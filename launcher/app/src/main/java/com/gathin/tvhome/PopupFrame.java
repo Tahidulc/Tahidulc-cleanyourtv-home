@@ -161,7 +161,7 @@ final class PopupFrame {
         dockApps = apps.size();
         firstFocus = dockApps;   // the TV guide, as the boxes started on
         int sections = HomeV2.CAT_NAMES.length;
-        int width = 40 + dockApps * DOCK_APP + (dockApps - 1) * DOCK_GAP + DOCK_GAP + 2 + DOCK_GAP + sections * DOCK_SEC + (sections - 1) * DOCK_GAP;
+        int width = HomeV2.DOCK_EDGE + dockApps * DOCK_APP + (dockApps - 1) * DOCK_GAP + HomeV2.DOCK_EDGE + 2 + DOCK_GAP + sections * DOCK_SEC + (sections - 1) * DOCK_GAP + 20;
         int x0 = (1920 - width) / 2;
         FrameLayout pane = new FrameLayout(c);
         pane.setClipChildren(false);
@@ -174,7 +174,7 @@ final class PopupFrame {
         place(pane, bg, x0, 0, width, DOCK_H);
         lens = new GlassLens(c, k);
         pane.addView(lens, new FrameLayout.LayoutParams(-1, -1));
-        int x = x0 + 20;
+        int x = x0 + HomeV2.DOCK_EDGE;
         for (int i = 0; i < dockApps; i++) {
             String p = apps.get(i);
             FrameLayout f = new FrameLayout(c);
@@ -201,6 +201,7 @@ final class PopupFrame {
             place(pane, f, x, (DOCK_H - DOCK_APP) / 2, DOCK_APP, DOCK_APP);
             x += DOCK_APP + DOCK_GAP;
         }
+        x += HomeV2.DOCK_EDGE - DOCK_GAP;
         View rule = new View(c);
         rule.setBackgroundColor(0x47FFFFFF);
         place(pane, rule, x, 20, 2, DOCK_H - 40);
@@ -269,7 +270,9 @@ final class PopupFrame {
             int d = at < 0 ? 9 : Math.abs(i - at);
             float sw = d == 0 ? 1.2f : d == 1 ? 1.07f : 1f;
             boolean on = d == 0;
-            v.animate().scaleX(sw).scaleY(sw).translationY(on ? -px(i < dockApps ? HomeV2.APP_LIFT : 4) : 0).setDuration(260).setInterpolator(HomeV2.SKY).start();
+            // The apps either side of the focused one move aside, so its glass touches none of them (as on Home).
+            float aside = px(HomeV2.dockShift(i, at, dockApps));
+            v.animate().scaleX(sw).scaleY(sw).translationX(aside).translationY(on ? -px(i < dockApps ? HomeV2.APP_LIFT : 4) : 0).setDuration(260).setInterpolator(HomeV2.SKY).start();
             if (i >= dockApps && v instanceof FrameLayout && ((FrameLayout) v).getChildAt(0) instanceof LinearLayout) {
                 LinearLayout in = (LinearLayout) ((FrameLayout) v).getChildAt(0);
                 ((ImageView) in.getChildAt(0)).setColorFilter(on ? Color.WHITE : HomeV2.CAT_COLOURS[HomeV2.DOCK_ORDER[i - dockApps]]);

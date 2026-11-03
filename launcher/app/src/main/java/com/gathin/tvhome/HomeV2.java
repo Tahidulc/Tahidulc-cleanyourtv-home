@@ -730,7 +730,7 @@ final class HomeV2 {
      */
     private void layoutDock() {
         int n = railViews.size(), sections = catViews.size();
-        int width = 40 + n * DOCK_APP + (n - 1) * DOCK_GAP + DOCK_GAP + 2 + DOCK_GAP + sections * DOCK_SEC + (sections - 1) * DOCK_GAP;
+        int width = DOCK_EDGE + n * DOCK_APP + (n - 1) * DOCK_GAP + DOCK_EDGE + 2 + DOCK_GAP + sections * DOCK_SEC + (sections - 1) * DOCK_GAP + 20;
         int x0 = (1920 - width) / 2;
         dockBg = new View(a);
         GradientDrawable g = fill(30, 0x1FFFFFFF);
@@ -739,11 +739,12 @@ final class HomeV2 {
         add(dockBg, x0, DOCK_Y, width, DOCK_H);
         lens = new GlassLens(a, s);
         root.addView(lens, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-        int x = x0 + 20;
+        int x = x0 + DOCK_EDGE;
         for (FrameLayout f : railViews) {
             add(f, x, DOCK_Y + (DOCK_H - DOCK_APP) / 2, DOCK_APP, DOCK_APP);
             x += DOCK_APP + DOCK_GAP;
         }
+        x += DOCK_EDGE - DOCK_GAP;
         dockSep = new View(a);
         dockSep.setBackgroundColor(0x47FFFFFF);
         add(dockSep, x, DOCK_Y + 20, 2, DOCK_H - 40);
@@ -766,6 +767,19 @@ final class HomeV2 {
     }
 
     /** The dock swells under the focus: the item itself most, its neighbours a little. */
+    /**
+     * How far an app's icon moves aside (design px) while app `at` has the focus: its glass reaches 13.5 past the
+     * swollen icon's edge, more than the gap to the next, so the neighbours slide out of its way (10, those beyond 12)
+     * and the glass keeps 8 clear of every icon. Nothing moves while the focus is elsewhere.
+     */
+    static float dockShift(int i, int at, int apps) {
+        if (at < 0 || at >= apps || i >= apps || i == at) return 0f;
+        return Math.signum(i - at) * (Math.abs(i - at) == 1 ? 10f : 12f);
+    }
+
+    /** Room at the dock's left end and before its rule, for the end apps to move aside into. */
+    static final int DOCK_EDGE = 28;
+
     private float swell(int at) {
         int f = dockFocus();
         if (f < 0) return 1f;
@@ -1667,7 +1681,8 @@ final class HomeV2 {
             f.getChildAt(1).setAlpha(app ? 0f : 0.9f);
             f.setForeground(null);
             if (!app) f.setBackground(fill(18, GLASS));
-            f.animate().scaleX(sw).scaleY(sw).translationY(on ? -px(APP_LIFT) : 0).setDuration(260).setInterpolator(SKY).start();
+            float aside = px(dockShift(i, zone == Z_RAIL ? railIdx : -1, railViews.size()));
+            f.animate().scaleX(sw).scaleY(sw).translationX(aside).translationY(on ? -px(APP_LIFT) : 0).setDuration(260).setInterpolator(SKY).start();
         }
         for (int i = 0; !dockMode && i < railViews.size(); i++) {
             FrameLayout f = railViews.get(i);
