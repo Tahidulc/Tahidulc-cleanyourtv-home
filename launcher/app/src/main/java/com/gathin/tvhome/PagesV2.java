@@ -2025,6 +2025,20 @@ final class PagesV2 {
 
         private void addHighlights(SportsHighlights.Sport sp, List<SportsHighlights.Clip> clips) {
             int r = addRow("HIGHLIGHTS  ·  " + sp.name);
+            // Under the cards, the focused one's title, channel and age (nothing written over the pictures).
+            View rowFrame = rowViews.isEmpty() ? null : rowViews.get(rowViews.size() - 1);
+            if (rowFrame instanceof FrameLayout) {
+                TextView cap = h.text(15, h.regular, Color.WHITE);
+                cap.setSingleLine(true);
+                cap.setEllipsize(TextUtils.TruncateAt.END);
+                cap.setGravity(Gravity.CENTER_VERTICAL);
+                FrameLayout.LayoutParams cl = new FrameLayout.LayoutParams(px(1560), px(20), Gravity.TOP | Gravity.START);
+                cl.leftMargin = px(26);
+                cl.topMargin = px(24 + 216 + 8);
+                ((FrameLayout) rowFrame).addView(cap, cl);
+                captions.put(r, cap);
+                rowClips.put(r, clips);
+            }
             for (int i = 0; i < clips.size(); i++) {
                 SportsHighlights.Clip c = clips.get(i);
                 HomeV2.Tile t = new HomeV2.Tile();
@@ -2082,71 +2096,39 @@ final class PagesV2 {
         }
 
         /**
-         * A highlight's tile: the video's own widescreen picture, what it is (HIGHLIGHTS, FULL FIGHT, EXTENDED…) top
-         * left, the sport's mark top right, and under its title the channel and how long ago it went up.
+         * A highlight's tile, clean (SportsHighlights.card): the video's own widescreen picture with only what it is
+         * (HIGHLIGHTS, FULL FIGHT…) and the competition's own logo over it; its title goes under the row (captions).
          */
         private View highlight(SportsHighlights.Clip c) {
-            FrameLayout f = new FrameLayout(h.a);
-            f.setClipToOutline(true);
-            f.setOutlineProvider(h.round(16));
-            f.setBackground(h.fill(16, 0xFF15182E));
-            ImageView pic = new ImageView(h.a);
-            pic.setScaleType(ImageView.ScaleType.CENTER_CROP);
-            f.addView(pic, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-            // "#yt": the widescreen picture where the video has one, else the usual one cut free of its black bars.
-            h.image(pic, "https://i.ytimg.com/vi/" + c.id + "/hqdefault.jpg#yt", px(384));
-            View shade = new View(h.a);
-            shade.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0x59000000, 0x00000000, 0x33000000, 0xF0000000}));
-            f.addView(shade, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-            String kind = SportsHighlights.kind(c);
-            if (kind != null) {
-                TextView k = h.text(14, h.semi, Color.WHITE);
-                k.setText(kind);
-                k.setLetterSpacing(0.08f);
-                k.setPadding(px(10), px(3), px(10), px(3));
-                k.setBackground(h.fill(8, 0xCC000000));
-                FrameLayout.LayoutParams kl = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP | Gravity.START);
-                kl.leftMargin = px(12);
-                kl.topMargin = px(12);
-                f.addView(k, kl);
-            }
-            TextView mark = h.text(13, h.semi, Color.WHITE);
-            mark.setText(c.mark);
-            mark.setLetterSpacing(0.1f);
-            mark.setPadding(px(9), px(3), px(9), px(3));
-            GradientDrawable mg = h.fill(8, 0x33FFFFFF);
-            mg.setStroke(Math.max(1, px(1)), 0x66FFFFFF);
-            mark.setBackground(mg);
-            FrameLayout.LayoutParams ml = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP | Gravity.END);
-            ml.rightMargin = px(12);
-            ml.topMargin = px(12);
-            f.addView(mark, ml);
-            LinearLayout cap = new LinearLayout(h.a);
-            cap.setOrientation(LinearLayout.VERTICAL);
-            TextView n = h.text(19, h.semi, Color.WHITE);
-            n.setText(c.title);
-            n.setMaxLines(2);
-            n.setEllipsize(TextUtils.TruncateAt.END);
-            n.setLineSpacing(0, 1.05f);
-            cap.addView(n);
-            TextView from = h.text(15, h.regular, 0xCCFFFFFF);
-            String age = SportsHighlights.age(c.published);
-            from.setText(c.channel + (age.isEmpty() ? "" : "  ·  " + age));
-            from.setSingleLine(true);
-            from.setEllipsize(TextUtils.TruncateAt.END);
-            LinearLayout.LayoutParams fl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            fl.topMargin = px(4);
-            cap.addView(from, fl);
-            FrameLayout.LayoutParams capl = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM);
-            capl.leftMargin = px(16);
-            capl.rightMargin = px(14);
-            capl.bottomMargin = px(12);
-            f.addView(cap, capl);
+            FrameLayout f = SportsHighlights.card(h, c, 384, 216, false);
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(px(384), px(216));
             lp.rightMargin = px(24);
             f.setLayoutParams(lp);
             f.setLayerType(View.LAYER_TYPE_HARDWARE, null);
             return f;
+        }
+
+        /** Each highlights row's caption under its cards, the clips it shows, and the one it last had the focus on. */
+        private final Map<Integer, TextView> captions = new HashMap<>();
+        private final Map<Integer, List<SportsHighlights.Clip>> rowClips = new HashMap<>();
+        private final Map<Integer, Integer> captionAt = new HashMap<>();
+
+        /** The focused highlight's title, channel and age under its row; another row's under it stays on the last one. */
+        private void captions() {
+            for (Map.Entry<Integer, TextView> e : captions.entrySet()) {
+                int r = e.getKey();
+                List<SportsHighlights.Clip> cl = rowClips.get(r);
+                if (cl == null || cl.isEmpty()) continue;
+                if (zone == r) captionAt.put(r, Math.max(0, Math.min(idx, cl.size() - 1)));
+                Integer at = captionAt.get(r);
+                SportsHighlights.Clip c = cl.get(at == null ? 0 : Math.min(at, cl.size() - 1));
+                TextView t = e.getValue();
+                if (t.getTag() != c) {
+                    t.setTag(c);
+                    t.setText(SportsHighlights.caption(c));
+                }
+                t.animate().alpha(zone == r ? 1f : 0.55f).setDuration(160).start();
+            }
         }
 
         @Override void open() {
@@ -3815,6 +3797,7 @@ final class PagesV2 {
                 tonightCounts.setText(cb);
             }
             if (tonightNone != null && !lists.get(TONIGHT).isEmpty()) tonightNone.setVisibility(View.GONE);
+            captions();
             for (int r = 0; r < strips.size(); r++) {
                 LinearLayout s = strips.get(r);
                 boolean slim = r == TONIGHT;
@@ -3827,7 +3810,10 @@ final class PagesV2 {
                     f.setElevation(on ? px(8) : 0);
                 }
                 // Tonight shows six at once, a row of tiles four: the strip slides along under the focus.
-                int first = zone == r ? Math.max(0, idx - (slim ? 4 : 3)) : 0;
+                // A row of highlights keeps the focused card whole with one either side where there is one, the last
+                // ones inside at the row's end (never cut at its edge); the other rows as before.
+                int first = zone != r ? 0 : captions.containsKey(r) ? Math.max(0, Math.min(idx - 2, s.getChildCount() - 4))
+                        : Math.max(0, idx - (slim ? 4 : 3));
                 HomeV2.window(s, first);
                 s.animate().translationX(-first * px(slim ? SLIM_W + SLIM_GAP : 408)).setDuration(300).setInterpolator(HomeV2.SKY).start();
             }

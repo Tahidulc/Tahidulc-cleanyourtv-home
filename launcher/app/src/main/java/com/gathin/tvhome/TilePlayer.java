@@ -152,7 +152,9 @@ final class TilePlayer {
                 + "function next(){cur=q.shift()||'';if(!cur)return;try{pl.unloadModule('captions');}catch(x){}pl.setVolume(80);pl.loadVideoById({videoId:cur,startSeconds:6});}"
                 // A whole video (film): from its start, uncut, louder, paused and played on asking, its time told each second.
                 + "var full=false,tick=null;function film(id){full=true;q=[];cur=id;var f=document.getElementById('p');if(f)f.style.transform='none';"
-                + "try{pl.unloadModule('captions');}catch(x){}pl.setVolume(100);pl.loadVideoById({videoId:id,startSeconds:0});"
+                + "try{pl.unloadModule('captions');}catch(x){}pl.setVolume(100);pl.loadVideoById({videoId:id,startSeconds:0,suggestedQuality:'hd720'});"
+                // 720p asked for (a hint YouTube may follow): a box decodes it smoothly where 1080p and up stutter.
+                + "try{pl.setPlaybackQuality('hd720');}catch(x){}"
                 + "if(!tick)tick=setInterval(function(){try{if(full&&pl.getPlayerState()==1)Home.time(pl.getCurrentTime(),pl.getDuration());}catch(x){}},1000);}"
                 + "function toggle(){try{if(pl.getPlayerState()==1)pl.pauseVideo();else pl.playVideo();}catch(x){}}"
                 + "function seek(s){try{pl.seekTo(Math.max(0,pl.getCurrentTime()+s),true);}catch(x){}}"
@@ -197,7 +199,23 @@ final class TilePlayer {
         tile = into;
         film = f;
         web.setAlpha(1f);
-        into.addView(web, 0, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        // No bigger than 1280 pixels across on the screen: YouTube picks its quality from the player's size, and on a 4K
+        // screen the frame (2560 across) had it play 1440p, more than the box decodes smoothly. Larger frames get the
+        // player at 1280 across, scaled up to fill them.
+        ViewGroup.LayoutParams want = into.getLayoutParams();
+        int fw = want == null ? -1 : want.width, fh = want == null ? -1 : want.height;
+        if (fw > 1280 && fh > 0) {
+            float k = fw / 1280f;
+            web.setPivotX(0f);
+            web.setPivotY(0f);
+            web.setScaleX(k);
+            web.setScaleY(k);
+            into.addView(web, 0, new FrameLayout.LayoutParams(1280, Math.round(fh / k)));
+        } else {
+            web.setScaleX(1f);
+            web.setScaleY(1f);
+            into.addView(web, 0, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        }
         if (ready) cueFilm(id); else { pending = id; pendingFilm = true; }
     }
 
@@ -336,6 +354,8 @@ final class TilePlayer {
             web.animate().cancel();
             ((ViewGroup) web.getParent()).removeView(web);
         }
+        // A whole video's scaling (a large frame) not carried into the next tile.
+        if (web != null) { web.setScaleX(1f); web.setScaleY(1f); }
         release();
         if (video != null && video.getParent() instanceof ViewGroup) ((ViewGroup) video.getParent()).removeView(video);
         video = null;
