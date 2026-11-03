@@ -41,6 +41,11 @@ public class DeliveryListener extends NotificationListenerService {
 
     @Override public void onListenerDisconnected() {
         try { unregisterReceiver(carLink); } catch (Exception ignored) { }
+        // Disconnected (the phone saving battery): asked to be connected again at once.
+        try {
+            requestRebind(new android.content.ComponentName(this, DeliveryListener.class));
+        } catch (Exception ignored) {
+        }
     }
 
     @Override public void onNotificationPosted(StatusBarNotification sbn) {

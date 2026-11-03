@@ -316,15 +316,59 @@ final class Relay {
     private static final java.util.Map<String, Long> LOOKED = new java.util.HashMap<>();
 
     /**
+     * Every paired TV tried now (off the main thread), with a check the TV shows as a small pop-up: {TV, what was
+     * found}: connected; connected after finding it at a new address; not paired any more (pair again); not answering.
+     */
+    static List<String[]> check(Context c) {
+        List<String[]> out = new ArrayList<>();
+        JSONObject ping;
+        try {
+            ping = new JSONObject().put("kind", "check").put("app", "Delivery to TV");
+        } catch (Exception e) {
+            return out;
+        }
+        for (JSONObject tv : tvs(c)) {
+            String name = tv.optString("name", tv.optString("host"));
+            try {
+                post(tv.getString("host"), tv.getInt("port"), "/delivery", ping, tv.getString("token"));
+                out.add(new String[]{name, "✓  Connected. A check pop-up is on its screen now (if the TV is on)."});
+            } catch (java.io.IOException unreachable) {
+                String moved = relocate(c, tv, true);
+                if (moved == null) {
+                    out.add(new String[]{name, "✗  Not answering. Is it switched on, and is this phone on the home Wi-Fi?"});
+                    continue;
+                }
+                try {
+                    post(moved, tv.optInt("port", 47820), "/delivery", ping, tv.optString("token"));
+                    out.add(new String[]{name, "✓  Connected. It had moved to a new address on the Wi-Fi, now kept."});
+                } catch (Exception e) {
+                    out.add(new String[]{name, "✗  Found at a new address, but it did not take the update: " + e.getMessage()});
+                }
+            } catch (Exception refused) {
+                String why = String.valueOf(refused.getMessage());
+                out.add(new String[]{name, why.contains("not paired")
+                        ? "✗  Not paired any more (the TV was reset or its launcher reinstalled). Tap Find TVs and pair it again."
+                        : "✗  It answered but refused: " + why});
+            }
+        }
+        return out;
+    }
+
+    /**
      * A paired TV that did not answer at its address, looked for on the phone's Wi-Fi by its name (every address asked
      * "which TV are you?", as the app does when pairing), at most every ten minutes for each TV. Its new address,
      * kept for next time; null when it is not there (off, or the phone not at home).
      */
     static synchronized String relocate(Context c, JSONObject tv) {
+        return relocate(c, tv, false);
+    }
+
+    /** now: looked for at once (the Check button), not waiting out the ten minutes. */
+    static synchronized String relocate(Context c, JSONObject tv, boolean now) {
         String name = tv.optString("name"), old = tv.optString("host");
         int port = tv.optInt("port", 47820);
         Long last = LOOKED.get(name);
-        if (name.isEmpty() || last != null && System.currentTimeMillis() - last < 10 * 60_000L) return null;
+        if (name.isEmpty() || !now && last != null && System.currentTimeMillis() - last < 10 * 60_000L) return null;
         LOOKED.put(name, System.currentTimeMillis());
         String base = null;
         try {

@@ -14,6 +14,9 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- To ask once to run in the background (Keep it running). -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <!-- The apps that can be chosen: those with a launcher icon. -->
     <queries>
@@ -39,6 +42,11 @@
             </intent-filter>
         </activity>
 
+        <!-- Every quarter of an hour: the notification listener connected again if the phone has stopped it. -->
+        <service
+            android:name=".Rebind"
+            android:exported="false"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
         <service
             android:name=".DeliveryListener"
             android:exported="true"

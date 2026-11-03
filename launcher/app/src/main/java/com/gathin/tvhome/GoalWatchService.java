@@ -1124,6 +1124,15 @@ public class GoalWatchService extends Service {
             }
             return;
         }
+        if ("check".equals(kind)) {
+            // Delivery to TV's Check the TVs: a small pop-up to say this TV hears the phone.
+            List<Object> parts = new ArrayList<>();
+            parts.add(bold("📱  DELIVERY TO TV"));
+            parts.add(12);
+            parts.add("Your phone is connected to this TV");
+            enqueueParts(parts, "reminder");
+            return;
+        }
         if (!kind.isEmpty() && !"delivery".equals(kind)) return;   // something newer than this TV knows
         float d = getResources().getDisplayMetrics().density;
         // Ahead of the sports alerts waiting: an order's news is now or never.

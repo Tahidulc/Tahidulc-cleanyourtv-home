@@ -86,7 +86,12 @@ public class MainActivity extends Activity {
                 + "you're back. The phone works it out from where it is; it only looks while it is connected to the car.");
         trip = section();
 
+        heading("Keep it running");
+        note("The phone must let Delivery to TV run in the background, or it stops passing updates on after a while.");
+        running = section();
+
         heading("Try it");
+        root.addView(button("Check the TVs", v -> checkTvs()));
         root.addView(button("Send a test to the TVs", v -> test()));
         root.addView(button("Send a Tesla test", v -> testCar()));
         note("On Honor phones: Settings › Battery › App launch › Delivery to TV › Manage manually, with all three "
@@ -95,6 +100,13 @@ public class MainActivity extends Activity {
 
     @Override protected void onResume() {
         super.onResume();
+        // The phone may have stopped the listener (Honor's battery saving does): asked to connect it again.
+        try {
+            android.service.notification.NotificationListenerService.requestRebind(new ComponentName(this, DeliveryListener.class));
+        } catch (Exception ignored) {
+        }
+        Rebind.schedule(this);
+        showRunning();
         showAccess();
         showPaired();
         showReader();
@@ -468,6 +480,46 @@ public class MainActivity extends Activity {
             });
             root.addView(box);
         }
+    }
+
+    // ---- keep it running ----------------------------------------------------------------------------
+
+    private LinearLayout running;
+
+    private void showRunning() {
+        running.removeAllViews();
+        android.os.PowerManager pm = getSystemService(android.os.PowerManager.class);
+        boolean free = pm != null && pm.isIgnoringBatteryOptimizations(getPackageName());
+        TextView t = note(free ? "✓  Allowed to run in the background." : "Not yet: the phone may stop it to save battery.");
+        root.removeView(t);
+        running.addView(t);
+        if (!free) running.addView(button("Let it run in the background", v -> {
+            try {
+                startActivity(new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                        android.net.Uri.parse("package:" + getPackageName())));
+            } catch (Exception e) {
+                startActivity(new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS));
+            }
+        }));
+        TextView honor = note("On Honor phones also: Settings › Battery › App launch › Delivery to TV › Manage manually, "
+                + "with all three switches on.");
+        root.removeView(honor);
+        running.addView(honor);
+    }
+
+    /** Each paired TV tried now, and what was found, in a box. */
+    private void checkTvs() {
+        if (Relay.tvs(this).isEmpty()) { toast("Pair a TV first"); return; }
+        toast("Checking the TVs…");
+        new Thread(() -> {
+            java.util.List<String[]> found = Relay.check(this);
+            StringBuilder s = new StringBuilder();
+            for (String[] f : found) s.append(f[0]).append('\n').append(f[1]).append("\n\n");
+            main.post(() -> {
+                showPaired();
+                problem("The TVs", s.toString().trim());
+            });
+        }, "check-tvs").start();
     }
 
     // ---- test ------------------------------------------------------------------------------------
