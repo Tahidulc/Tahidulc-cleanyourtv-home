@@ -642,18 +642,22 @@ final class RichAlerts {
         words.addView(text(c, t.line, 14, INK_SOFT, 600), sl);
         card.addView(words, new LinearLayout.LayoutParams(-1, -2));
         card.addView(rows(c, t, w, true), new LinearLayout.LayoutParams(-1, -2));
-        topRight(c, card, w, margin, TABLE_MS);
+        cornerCard(c, card, w, margin, TABLE_MS);
     }
 
-    /** A card in the top right corner, its Back key on its corner, for ms. */
-    private static void topRight(Context c, View card, int w, int margin, long ms) {
+    /**
+     * A card in the bottom left corner, where every pop-up over the apps sits (the goal's, the red card's, the
+     * line-ups'; Goal Rush alone keeps the middle of the foot), its Back key on its corner, for ms. Over Ambient mode,
+     * above its bar along the foot.
+     */
+    private static void cornerCard(Context c, View card, int w, int margin, long ms) {
         FrameLayout win = new FrameLayout(c);
         FrameLayout.LayoutParams cl = new FrameLayout.LayoutParams(w, -2);
         cl.setMargins(margin, margin, margin, margin);
         win.addView(card, cl);
         win.addView(backKey(c, 2 * margin), new FrameLayout.LayoutParams(2 * margin, 2 * margin, Gravity.TOP | Gravity.END));
-        WindowManager.LayoutParams lp = overlay(w + 2 * margin, WindowManager.LayoutParams.WRAP_CONTENT, Gravity.TOP | Gravity.END,
-                px(24), px(24), "RichAlertsCard");
+        WindowManager.LayoutParams lp = overlay(w + 2 * margin, WindowManager.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM | Gravity.START,
+                px(24), px(AmbientScene.showing() ? AmbientScene.ALERT_FOOT : 24), "RichAlertsCard");
         showHost(c, win, card, lp, false, ms);
     }
 
@@ -965,7 +969,7 @@ final class RichAlerts {
         wl.rightMargin = px(16);
         card.addView(words, wl);
         card.setMinimumHeight(h);
-        topRight(c, card, w, margin, MILESTONE_MS);
+        cornerCard(c, card, w, margin, MILESTONE_MS);
     }
 
     // ---- the real triggers: a goal seen (GoalWatchService's poll, on the main thread) -------------------------------
