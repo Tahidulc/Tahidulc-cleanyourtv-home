@@ -1282,6 +1282,12 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
         if (v2 != null) {
+            // A message said aloud for the other TV (TvLink's keyboard).
+            if (requestCode == TvLink.REQ_VOICE && resultCode == RESULT_OK && data != null) {
+                ArrayList<String> said = data.getStringArrayListExtra(android.speech.RecognizerIntent.EXTRA_RESULTS);
+                if (said != null && !said.isEmpty()) TvLink.heard(said.get(0));
+                return;
+            }
             if (requestCode == SearchPanel.REQ_VOICE && resultCode == RESULT_OK && data != null) {
                 ArrayList<String> said = data.getStringArrayListExtra(android.speech.RecognizerIntent.EXTRA_RESULTS);
                 if (said != null && !said.isEmpty()) v2.heard(said.get(0));

@@ -442,6 +442,14 @@ final class TvLink {
 
     private static TvLink.Panel panel;
 
+    /** startActivityForResult's code for a message said aloud (MainActivity hands the words to heard). */
+    static final int REQ_VOICE = 4712;
+
+    /** A message said aloud: typed into the keyboard's box. */
+    static void heard(String words) {
+        if (panel != null && panel.typing && words != null) panel.type((panel.text.length() > 0 && !panel.text.toString().endsWith(" ") ? " " : "") + words);
+    }
+
     static boolean isOpen() {
         return panel != null;
     }
@@ -472,6 +480,15 @@ final class TvLink {
         final Typeface heavy, semi, regular;
         int at = 0, tv = 0;
         boolean busy;
+        /** The quick messages and the hint (hidden while typing), and the keyboard for one's own words. */
+        LinearLayout list, keyboard;
+        TextView field;
+        boolean typing, shift;
+        final StringBuilder text = new StringBuilder();
+        final List<List<TextView>> keys = new ArrayList<>();
+        final List<List<Runnable>> keyActs = new ArrayList<>();
+        /** The key in focus: its row (-1: the TVs along the top) and place in the row. */
+        int kr = 1, kc = 0;
 
         Panel(HomeV2 h, boolean sending) {
             this.h = h;
@@ -513,7 +530,15 @@ final class TvLink {
             status = h.text(20, regular, 0xCCFFFFFF);
             status.setText("Looking for the other TVs…");
             box.addView(status, new LinearLayout.LayoutParams(-1, h.px(34)));
-            String[] options = sending ? new String[]{"Send it over (it pauses here)"} : PRESETS;
+            list = new LinearLayout(c);
+            list.setOrientation(LinearLayout.VERTICAL);
+            box.addView(list, new LinearLayout.LayoutParams(-1, -2));
+            List<String> options = new ArrayList<>();
+            if (sending) options.add("Send it over (it pauses here)");
+            else {
+                options.add("✎  Type your own message…");
+                options.addAll(java.util.Arrays.asList(PRESETS));
+            }
             for (String o : options) {
                 TextView line = h.text(sending ? 26 : 24, semi, Color.WHITE);
                 line.setText(o);
@@ -521,19 +546,21 @@ final class TvLink {
                 line.setPadding(h.px(20), 0, h.px(20), 0);
                 LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, h.px(sending ? 64 : 52));
                 lp.topMargin = h.px(4);
-                box.addView(line, lp);
+                list.addView(line, lp);
                 lines.add(line);
             }
             if (!sending) {
+                lines.get(0).setTag("type");
                 TextView hint = h.text(18, regular, 0x99FFFFFF);
-                hint.setText("Your own words: open http://" + "the-tv" + ":" + DeliveryLink.PORT + " on your phone");
+                hint.setText("Or from your phone: open http://" + "the-tv" + ":" + DeliveryLink.PORT);
                 LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
                 lp.topMargin = h.px(12);
-                box.addView(hint, lp);
+                list.addView(hint, lp);
                 IO.execute(() -> {
                     String ip = ownAddress(c);
-                    if (ip != null) MAIN.post(() -> hint.setText("Your own words: open http://" + ip + ":" + DeliveryLink.PORT + " on your phone"));
+                    if (ip != null) MAIN.post(() -> hint.setText("Or from your phone: open http://" + ip + ":" + DeliveryLink.PORT));
                 });
+                buildKeyboard();
             }
             FrameLayout.LayoutParams blp = new FrameLayout.LayoutParams(h.px(820), -2, Gravity.CENTER);
             overlay.addView(box, blp);
@@ -588,6 +615,210 @@ final class TvLink {
                 if (i == at) g.setStroke(h.px(2), 0x99FFFFFF);
                 lines.get(i).setBackground(g);
             }
+            if (!typing) return;
+            boolean upper = upperNext();
+            for (int r = 0; r < keys.size(); r++) {
+                for (int k = 0; k < keys.get(r).size(); k++) {
+                    TextView key = keys.get(r).get(k);
+                    String label = String.valueOf(key.getTag());
+                    if (label.length() == 1 && Character.isLetter(label.charAt(0))) key.setText(upper ? label.toUpperCase(java.util.Locale.UK) : label);
+                    if ("shift".equals(label)) key.setText(shift ? "⇧ ABC" : "⇧ abc");
+                    boolean on = r == kr && k == kc;
+                    GradientDrawable g = new GradientDrawable();
+                    g.setCornerRadius(h.px(12));
+                    g.setColor(on ? 0xFFFFFFFF : "send".equals(label) ? 0xFF3DDC84 : 0x22FFFFFF);
+                    key.setBackground(g);
+                    key.setTextColor(on ? 0xFF10157E : "send".equals(label) ? 0xFF06301A : Color.WHITE);
+                }
+            }
+            // The TVs along the top, a ring round the one chosen while the focus is up there.
+            for (int i = 0; i < tvChips.size(); i++) {
+                GradientDrawable g = new GradientDrawable();
+                g.setCornerRadius(h.px(23));
+                g.setColor(i == tv ? (kr < 0 ? 0xFFFFFFFF : 0xCCFFFFFF) : 0x22FFFFFF);
+                if (i == tv && kr < 0) g.setStroke(h.px(3), 0xFFFFD04D);
+                tvChips.get(i).setBackground(g);
+            }
+            field.setText(text.length() == 0 ? "" : text + "▏");
+        }
+
+        // ---- typing one's own words with the remote ----------------------------------------------------------
+
+        /** The keyboard: digits, three rows of letters and stops, a row of emoji, then Say it, ⇧, Space, ⌫ and Send. */
+        void buildKeyboard() {
+            Context c = h.a;
+            keyboard = new LinearLayout(c);
+            keyboard.setOrientation(LinearLayout.VERTICAL);
+            keyboard.setVisibility(View.GONE);
+            field = h.text(30, semi, 0xFF10157E);
+            field.setHint("Type your message");
+            field.setHintTextColor(0x8010157E);
+            field.setMaxLines(2);
+            field.setGravity(Gravity.CENTER_VERTICAL);
+            field.setPadding(h.px(22), h.px(10), h.px(22), h.px(10));
+            GradientDrawable fb = new GradientDrawable();
+            fb.setCornerRadius(h.px(18));
+            fb.setColor(Color.WHITE);
+            field.setBackground(fb);
+            field.setMinHeight(h.px(76));
+            LinearLayout.LayoutParams fl = new LinearLayout.LayoutParams(-1, -2);
+            fl.bottomMargin = h.px(14);
+            keyboard.addView(field, fl);
+            String[] rows = {"1234567890", "qwertyuiop", "asdfghjkl'", "zxcvbnm,.?"};
+            for (String row : rows) {
+                List<String> labels = new ArrayList<>();
+                for (char ch : row.toCharArray()) labels.add(String.valueOf(ch));
+                keyRow(labels, null);
+            }
+            keyRow(java.util.Arrays.asList("!", "😊", "❤️", "👍", "😂", "🍛", "🕌", "⚽", "🎉", "🌙"), null);
+            keyRow(java.util.Arrays.asList("mic", "shift", "space", "delete", "send"), new float[]{1.6f, 1.6f, 3.4f, 1.4f, 2f});
+            box.addView(keyboard, new LinearLayout.LayoutParams(-1, -2));
+        }
+
+        private void keyRow(List<String> labels, float[] weights) {
+            LinearLayout row = new LinearLayout(h.a);
+            List<TextView> views = new ArrayList<>();
+            List<Runnable> acts = new ArrayList<>();
+            for (int i = 0; i < labels.size(); i++) {
+                String l = labels.get(i);
+                TextView key = h.text(l.length() == 1 ? 26 : 22, semi, Color.WHITE);
+                key.setTag(l);
+                key.setGravity(Gravity.CENTER);
+                key.setText("mic".equals(l) ? "🎤 Say it" : "space".equals(l) ? "Space" : "delete".equals(l) ? "⌫" : "send".equals(l) ? "Send ➤" : l);
+                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, h.px(56), weights == null ? 1f : weights[i]);
+                if (i > 0) lp.leftMargin = h.px(6);
+                row.addView(key, lp);
+                views.add(key);
+                acts.add("mic".equals(l) ? this::voice : "shift".equals(l) ? () -> shift = !shift : "space".equals(l) ? () -> type(" ")
+                        : "delete".equals(l) ? this::delete : "send".equals(l) ? this::sendTyped : () -> type(l));
+            }
+            LinearLayout.LayoutParams rl = new LinearLayout.LayoutParams(-1, -2);
+            rl.topMargin = h.px(6);
+            keyboard.addView(row, rl);
+            keys.add(views);
+            keyActs.add(acts);
+        }
+
+        /** A capital next: at the start, after a full stop, ! or ?, or with ⇧ on. */
+        boolean upperNext() {
+            if (shift) return true;
+            String t = text.toString();
+            return t.trim().isEmpty() || t.matches("(?s).*[.!?]\\s+$");
+        }
+
+        void type(String s) {
+            if (s == null || s.isEmpty()) return;
+            if (s.length() == 1 && Character.isLetter(s.charAt(0)) && upperNext()) s = s.toUpperCase(java.util.Locale.UK);
+            if (text.length() + s.length() > MAX_TEXT) { status.setText("That's as long as a message goes"); return; }
+            text.append(s);
+            if (s.length() == 1 && Character.isLetter(s.charAt(0))) shift = false;
+            status.setText("");
+            paint();
+        }
+
+        void delete() {
+            if (text.length() == 0) return;
+            // An emoji is two characters or more (❤️ is the heart and a variation sign): taken off whole.
+            int end = text.length();
+            while (end > 0 && text.charAt(end - 1) == '\uFE0F') end--;
+            text.setLength(end > 0 ? text.offsetByCodePoints(end, -1) : 0);
+            paint();
+        }
+
+        void voice() {
+            android.content.Intent i = new android.content.Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+                    .putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL, android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                    .putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE, "en-GB")
+                    .putExtra(android.speech.RecognizerIntent.EXTRA_PROMPT, "Say your message");
+            try {
+                h.a.startActivityForResult(i, REQ_VOICE);
+            } catch (RuntimeException e) {
+                status.setText("Speaking a message isn't available on this TV");
+            }
+        }
+
+        void sendTyped() {
+            if (text.toString().trim().isEmpty()) { status.setText("Type a message first"); return; }
+            go(text.toString());
+        }
+
+        void startTyping() {
+            typing = true;
+            list.setVisibility(View.GONE);
+            keyboard.setVisibility(View.VISIBLE);
+            kr = 1;
+            kc = 0;
+            status.setText(peers.size() > 1 ? "Up to the TVs to choose which" : "");
+            paint();
+        }
+
+        void stopTyping() {
+            typing = false;
+            keyboard.setVisibility(View.GONE);
+            list.setVisibility(View.VISIBLE);
+            status.setText(peers.size() > 1 ? "Left and Right choose the TV" : "");
+            paint();
+        }
+
+        /** The keyboard's keys: the arrows across and between rows (keeping roughly the same place), OK presses. */
+        boolean typingKey(KeyEvent e) {
+            int code = e.getKeyCode();
+            if (code == KeyEvent.KEYCODE_BACK || code == KeyEvent.KEYCODE_ESCAPE) {
+                if (e.getAction() == KeyEvent.ACTION_UP) stopTyping();
+                return true;
+            }
+            boolean ok = code == KeyEvent.KEYCODE_DPAD_CENTER || code == KeyEvent.KEYCODE_ENTER || code == KeyEvent.KEYCODE_NUMPAD_ENTER;
+            if (ok) {
+                if (e.getAction() == KeyEvent.ACTION_UP && !e.isCanceled()) {
+                    if (kr < 0) { kr = 0; paint(); return true; }
+                    keyActs.get(kr).get(kc).run();
+                    paint();
+                }
+                return true;
+            }
+            if (e.getAction() != KeyEvent.ACTION_DOWN) return true;
+            // A keyboard remote, or the remote's own digits: typed straight in.
+            if (code == KeyEvent.KEYCODE_DEL) { delete(); return true; }
+            if (code == KeyEvent.KEYCODE_SPACE) { type(" "); return true; }
+            int ch = e.getUnicodeChar();
+            if (ch > 0 && !Character.isISOControl(ch) && code != KeyEvent.KEYCODE_DPAD_LEFT && code != KeyEvent.KEYCODE_DPAD_RIGHT
+                    && code != KeyEvent.KEYCODE_DPAD_UP && code != KeyEvent.KEYCODE_DPAD_DOWN) {
+                type(new String(Character.toChars(ch)));
+                return true;
+            }
+            if (kr < 0) {
+                if (code == KeyEvent.KEYCODE_DPAD_LEFT && tv > 0) tv--;
+                else if (code == KeyEvent.KEYCODE_DPAD_RIGHT && tv < peers.size() - 1) tv++;
+                else if (code == KeyEvent.KEYCODE_DPAD_DOWN) kr = 0;
+                paint();
+                return true;
+            }
+            int cols = keys.get(kr).size();
+            if (code == KeyEvent.KEYCODE_DPAD_LEFT && kc > 0) kc--;
+            else if (code == KeyEvent.KEYCODE_DPAD_RIGHT && kc < cols - 1) kc++;
+            else if (code == KeyEvent.KEYCODE_DPAD_UP) {
+                if (kr == 0) { if (peers.size() > 1) kr = -1; }
+                else { kc = place(kr, kc, kr - 1); kr--; }
+            } else if (code == KeyEvent.KEYCODE_DPAD_DOWN && kr < keys.size() - 1) {
+                kc = place(kr, kc, kr + 1);
+                kr++;
+            }
+            paint();
+            return true;
+        }
+
+        /** The key in row to under the middle of key col in row from. */
+        private int place(int from, int col, int to) {
+            TextView k = keys.get(from).get(col);
+            float mid = k.getLeft() + k.getWidth() / 2f;
+            List<TextView> row = keys.get(to);
+            int best = 0;
+            float bestD = Float.MAX_VALUE;
+            for (int i = 0; i < row.size(); i++) {
+                float d = Math.abs(row.get(i).getLeft() + row.get(i).getWidth() / 2f - mid);
+                if (d < bestD) { bestD = d; best = i; }
+            }
+            return best;
         }
 
         void hide() {
@@ -597,6 +828,7 @@ final class TvLink {
         }
 
         boolean onKey(KeyEvent e) {
+            if (typing) return typingKey(e);
             int code = e.getKeyCode();
             if (code == KeyEvent.KEYCODE_BACK || code == KeyEvent.KEYCODE_ESCAPE) {
                 if (e.getAction() == KeyEvent.ACTION_UP) hide();
@@ -617,7 +849,13 @@ final class TvLink {
         }
 
         void go() {
-            if (busy || peers.isEmpty()) return;
+            if (!sending && "type".equals(lines.get(at).getTag())) { startTyping(); return; }
+            go(lines.get(at).getText().toString());
+        }
+
+        void go(String text) {
+            if (busy) return;
+            if (peers.isEmpty()) { status.setText("No other TV found on the home network"); return; }
             String[] peer = peers.get(tv);
             Context c = h.a;
             if (sending) {
@@ -626,7 +864,6 @@ final class TvLink {
                 return;
             }
             busy = true;
-            String text = lines.get(at).getText().toString();
             List<String[]> to = new ArrayList<>();
             if ("*".equals(peer[1])) { for (String[] p : peers) if (!"*".equals(p[1])) to.add(p); } else to.add(peer);
             status.setText("Sending…");
