@@ -663,6 +663,8 @@ final class PagesV2 {
             // A page with tabs opens on its first tab (or the one after an empty Continue Watching); Down goes into the
             // posters.
             onTabs = tabs != null;
+            // Opened on its tabs: the row lies flat until Down goes onto it.
+            flat = flatTo = onTabs ? 1f : 0f;
             load(startTab);
             if (play != null) {
                 // Over the picture at the top, down to the line just above the tabs (feet on it); the description on the
@@ -1129,6 +1131,13 @@ final class PagesV2 {
         static final int SLIDE_GAP = 12;
         /** Where the row is (the focus, as a fraction while sliding), which poster is widened and how far, which landed. */
         private float focusF, wideAmt;
+        /**
+         * How flat the row lies, 0 to 1: with the focus up on the tabs (the dock showing) the posters lie flat, an even
+         * row all one size with no shade, glow or lift; Down onto them, they stand up into the slider (the focused one
+         * big, the queue behind it, the 3D look). flatTo is where it is going.
+         */
+        private float flat = 1f, flatTo = 1f;
+        private ValueAnimator flatAnim;
         private int wideIdx = -1, landed = -1;
         private ValueAnimator slideAnim, wideAnim, glowAnim;
         private View glow;
@@ -1213,13 +1222,23 @@ final class PagesV2 {
             float frac = f - k;
             float[] edges = sliderEdges(r);
             float[] a = lefts(k, w, n, edges[0]), b = lefts(k + 1, w, n, edges[0]);
+            float[] fa = flat > 0f ? flatLefts(k, n, edges[0]) : null, fb = flat > 0f ? flatLefts(k + 1, n, edges[0]) : null;
             float shadeFocus = onTabs ? 0.3f : 0f;
             int lastShown = -1;
+            float[] xs = new float[n], ss = new float[n];
             for (int i = 0; i < n; i++) {
                 View c = r.strip.getChildAt(i);
                 float d = i - f;
                 float s = table(SCALE, i - k) + (table(SCALE, i - k - 1) - table(SCALE, i - k)) * frac;
                 float x = a[i] + (b[i] - a[i]) * frac;
+                if (fa != null) {
+                    // Flat: every poster its full size, one after another (blended in as the row lies down or stands up).
+                    float xf = fa[i] + (fb[i] - fa[i]) * frac;
+                    x += (xf - x) * flat;
+                    s += (1f - s) * flat;
+                }
+                xs[i] = x;
+                ss[i] = s;
                 // Off the screen on the last frame and on this one: nothing to set (a row runs to forty posters, and
                 // setting every one of them each frame of a slide cost the TCL frames).
                 boolean on = x + w[i] * s > -r.strip.getLeft() && x < edges[1];
@@ -1234,7 +1253,7 @@ final class PagesV2 {
                 c.setAlpha(on ? 1f : 0f);
                 if (on) lastShown = i;
                 View shade = c instanceof Tile ? ((Tile) c).dim : c.findViewWithTag("dim");
-                if (shade != null) shade.setAlpha(Math.max(table(SHADE, d), Math.abs(d) < 0.5f ? shadeFocus * (1 - Math.abs(d) * 2) : 0f));
+                if (shade != null) shade.setAlpha((1f - flat) * Math.max(table(SHADE, d), Math.abs(d) < 0.5f ? shadeFocus * (1 - Math.abs(d) * 2) : 0f));
             }
             // The pictures of what is on the screen, and the next few, fetched (the rest wait for the row to reach them).
             for (int i = 0; i < n && i <= lastShown + 4; i++) {
@@ -1246,11 +1265,12 @@ final class PagesV2 {
                 }
             }
             if (glow != null) {
-                glow.setAlpha(onTabs ? 0.45f : 1f);
+                // Only with the row stood up (none while it lies flat under the tabs).
+                glow.setAlpha((onTabs ? 0.45f : 1f) * (1f - flat));
                 // Centred on the focused poster, wherever the row is (it grows with the row when the dock is away).
                 int fi = Math.max(0, Math.min(n - 1, Math.round(f)));
-                float fw = w[fi] * table(SCALE, fi - f);
-                float fx = a[fi] + (b[fi] - a[fi]) * frac;
+                float fw = w[fi] * ss[fi];
+                float fx = xs[fi];
                 float cx = r.strip.getLeft() + fx + fw / 2f, cy = r.strip.getTop() + px(TALL) / 2f;
                 float sx = r.view.getScaleX(), py = r.view.getPivotY();
                 glow.setScaleX(sx);
@@ -1260,10 +1280,45 @@ final class PagesV2 {
             }
         }
 
+        /**
+         * The flat row from the focus on poster k: each poster its full narrow size, the first at the row's left (the
+         * focused one second from the left once past the first), the last never short of the right edge.
+         */
+        private float[] flatLefts(int k, int n, float right) {
+            float[] x = new float[n];
+            if (n == 0) return x;
+            int kk = Math.max(0, Math.min(n - 1, k));
+            float step = px(NARROW) + px(SLIDE_GAP), anchor = px(6) + Math.min(kk, 1) * step;
+            for (int i = 0; i < n; i++) x[i] = anchor + (i - kk) * step;
+            float end = x[n - 1] + px(NARROW);
+            float shift = Math.min(right - end, px(6) - x[0]);
+            if (shift > 0) for (int i = 0; i < n; i++) x[i] += shift;
+            return x;
+        }
+
+        /** The row lies down (up to the tabs) or stands up (down onto the posters), in step with the row's growing. */
+        private void flatten(Row r, boolean down) {
+            float to = down ? 1f : 0f;
+            if (to == flatTo) return;
+            flatTo = to;
+            if (flatAnim != null) flatAnim.cancel();
+            ValueAnimator va = ValueAnimator.ofFloat(flat, to);
+            flatAnim = va;
+            va.setDuration(down ? 260 : 340);
+            va.setInterpolator(HomeV2.SKY);
+            va.addUpdateListener(an -> {
+                flat = (float) an.getAnimatedValue();
+                // The slide (or the row's growing) places the posters itself on its frames; otherwise this does.
+                if (slideAnim == null || !slideAnim.isRunning()) slide(r, focusF, wideIdx, wideAmt);
+            });
+            va.start();
+        }
+
         /** The focus changed (or the tabs took it): the row slides to it, and the poster opens once it has landed. */
         private void sliderPaint(Row r) {
             int n = r.strip.getChildCount();
             if (n == 0 || r.items.isEmpty()) return;
+            flatten(r, onTabs);
             int target = Math.max(0, Math.min(idx, n - 1));
             // Every poster not landed-on back to its resting look (the one left behind folds back as it goes).
             for (int i = 0; i < n && i < r.items.size(); i++) {
