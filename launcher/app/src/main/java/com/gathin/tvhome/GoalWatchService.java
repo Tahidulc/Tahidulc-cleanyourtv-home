@@ -319,7 +319,7 @@ public class GoalWatchService extends Service {
     }
 
     /** A player's head and shoulders: his cut-out, else the blank figure in his side's colour. */
-    private android.graphics.Bitmap playerPhoto(String who, String team, int kit) {
+    android.graphics.Bitmap playerPhoto(String who, String team, int kit) {
         if (who == null || who.isEmpty()) return null;
         PlayerPhotos.Cutout cut = premierLeague(who, team);
         if (cut == null) cut = PlayerPhotos.cutout(this, who, team);
@@ -1823,6 +1823,7 @@ public class GoalWatchService extends Service {
             g.awayLogo = "https://a.espncdn.com/i/teamlogos/soccer/500/160.png";
             enqueue(g, new String[]{"test-red", "Declan Rice", "81'", "home", ""}, true);
         }
+        if (intent != null) RichAlerts.test(this, intent);
         if (startedAt == 0) {
             startedAt = System.currentTimeMillis();
             AlertLog.note(this, "alert service started" + (intent == null ? " (again by Android, after the app had stopped)" : ""));
@@ -2000,6 +2001,7 @@ public class GoalWatchService extends Service {
                         } else if (primed) {
                             AlertLog.note(this, "goal seen: " + AlertLog.game(g) + ", " + goal[1] + " " + goal[2] + " (card in a minute)");
                             main.postDelayed(() -> enqueue(g, goal, false), DELAY_MS);
+                            if (skyAlerts) RichAlerts.goalSeen(this, g, goal, games);
                         } else if (g.state == 0) {
                             AlertLog.note(this, "goal already in on the first read, not announced: " + AlertLog.game(g) + ", " + goal[1] + " " + goal[2]);
                             AlertToday.why(this, goal[0], "before the TV was on");

@@ -106,6 +106,8 @@ final class ScoreCard {
          * order's stages, the car's charge, the drive home), 0 to 1 in progressColour; -1 for none.
          */
         Runnable onShown;
+        /** Runs as the card goes (the live table under Home's bar folds up with it). */
+        Runnable onClosed;
         long showMs;
         float progress = -1f;
         int progressColour = 0xFFFFFFFF;
@@ -1071,7 +1073,9 @@ final class ScoreCard {
         moving.clear();
         FrameLayout v = host;
         host = null;
+        Data was = showing;
         showing = null;
+        if (was != null && was.onClosed != null) main.post(was.onClosed);
         if (v == null) return;
         Context c = v.getContext().getApplicationContext();
         boolean wasHome = onHome;
