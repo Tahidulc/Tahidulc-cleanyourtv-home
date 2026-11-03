@@ -994,9 +994,10 @@ final class ScoresTicker {
     }
 
     /**
-     * One game as a Sky-style ticker bar: the competition's mark on the navy band (F1's red for F1), each crest beside
-     * its own club and the names in navy on the pale stage, the time, minute or FT in the navy end block after the
-     * whole fixture. Focused: a white rim and a little bigger; OK and the keys as on the pills.
+     * One game as a box of liquid glass with square corners (SkyStyle.Glass): the competition's mark, a hairline, each
+     * crest beside its own club with the names (and the score) in white, another hairline, then the time, the live
+     * minute (a red dot before it) or FT after the whole fixture. Focused: lit, with a white rim inside its own edge
+     * (it stays its size, so nothing is cut off). OK and the keys as on the pills.
      */
     private LinearLayout skyBox(Game g, int index, int count) {
         int h = barH();
@@ -1005,7 +1006,7 @@ final class ScoresTicker {
         LinearLayout b = new LinearLayout(context);
         b.setOrientation(LinearLayout.HORIZONTAL);
         b.setGravity(Gravity.CENTER_VERTICAL);
-        b.setBackground(SkyStyle.stage(sk(50), sk(30)));
+        b.setBackground(new SkyStyle.Glass(r, sk(1.5f)));
         b.setOutlineProvider(new android.view.ViewOutlineProvider() {
             @Override public void getOutline(View v, android.graphics.Outline o) {
                 o.setRoundRect(0, 0, v.getWidth(), v.getHeight(), r);
@@ -1013,16 +1014,12 @@ final class ScoresTicker {
         });
         b.setClipToOutline(true);
         b.setFocusable(true);
-        android.graphics.drawable.GradientDrawable outer = new android.graphics.drawable.GradientDrawable();
-        outer.setCornerRadius(r);
-        outer.setStroke(sk(3), 0xFFFFFFFF);
-        android.graphics.drawable.GradientDrawable inner = new android.graphics.drawable.GradientDrawable();
-        inner.setCornerRadius(r - sk(3));
-        inner.setStroke(sk(2), SkyStyle.INK);
-        android.graphics.drawable.LayerDrawable ring = new android.graphics.drawable.LayerDrawable(
-                new android.graphics.drawable.Drawable[]{outer, inner});
-        ring.setLayerInset(1, sk(3), sk(3), sk(3), sk(3));
-        // Focused: the white rim drawn inside its own edge (it stays its size: grown, the rim was cut off by the bar's box).
+        android.graphics.drawable.GradientDrawable ring = new android.graphics.drawable.GradientDrawable();
+        ring.setCornerRadius(r);
+        ring.setColor(0x24FFFFFF);
+        ring.setStroke(sk(2.5f), 0xF2FFFFFF);
+        // Focused: the glass lit and a white rim drawn inside its own edge (it stays its size: grown, the rim was cut
+        // off by the bar's box).
         b.setOnFocusChangeListener((v, has) -> v.setForeground(has ? ring : null));
         b.setOnClickListener(v -> host.onScoresOpen(g));
         // Left and Right slide through the games one by one; past the first or the last, out to the top row's
@@ -1048,64 +1045,71 @@ final class ScoresTicker {
             }
         });
         boolean f1 = g.drivers != null || g.text != null;
-        // The band: the competition's mark on the navy (F1's red), its fine stripes.
-        FrameLayout band = new FrameLayout(context);
-        band.setBackground(SkyStyle.band(f1 ? SkyStyle.F1_RED : SkyStyle.NAVY, f1 ? SkyStyle.F1_DEEP : SkyStyle.NAVY_DEEP, sk(14), sk(3)));
+        b.setPadding(sk(16), 0, sk(16), 0);
+        // The competition's mark (its short name when it has none), then a hairline.
         if (g.leagueLogo != null) {
             ImageView lv = new ImageView(context);
             lv.setScaleType(ImageView.ScaleType.FIT_CENTER);
             loadLogo(g.leagueLogo, lv);
-            band.addView(lv, new FrameLayout.LayoutParams(sk(f1 ? 44 : 34), sk(34), Gravity.CENTER));
+            b.addView(lv, new LinearLayout.LayoutParams(sk(f1 ? 40 : 30), sk(30)));
         } else {
-            TextView t = skyText(league(g), 13, 0xFFFFFFFF, 800);
-            band.addView(t, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER));
+            b.addView(skyText(league(g), 13, 0xE6FFFFFF, 800));
         }
-        b.addView(band, new LinearLayout.LayoutParams(sk(f1 ? 84 : 72), h));
-        // The stage: the fixture (or the session and its top three).
+        b.addView(hairline(), hairlineLp());
+        // The fixture (or the session and its top three), white on the glass.
         LinearLayout mid = new LinearLayout(context);
         mid.setGravity(Gravity.CENTER);
         if (f1) {
-            mid.addView(skyText(g.home, 17, SkyStyle.INK, 800));
+            mid.addView(skyText(g.home, 17, 0xFFFFFFFF, 800));
             if (g.drivers != null) {
                 for (String[] d : g.drivers) {
                     ImageView tl = new ImageView(context);
                     tl.setScaleType(ImageView.ScaleType.FIT_CENTER);
-                    loadLogo("light:" + d[1], tl);
+                    loadLogo(d[1], tl);
                     LinearLayout.LayoutParams ll = new LinearLayout.LayoutParams(sk(22), sk(22));
                     ll.leftMargin = sk(10);
                     mid.addView(tl, ll);
                     LinearLayout.LayoutParams nl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
                     nl.leftMargin = sk(4);
-                    mid.addView(skyText(d[0], 16, SkyStyle.INK_SOFT, 700), nl);
+                    mid.addView(skyText(d[0], 16, 0xD9FFFFFF, 700), nl);
                 }
             } else {
-                TextView name = skyText(g.text, 16, SkyStyle.INK_SOFT, 600);
+                TextView name = skyText(g.text, 16, 0xCCFFFFFF, 600);
                 name.setEllipsize(android.text.TextUtils.TruncateAt.END);
                 LinearLayout.LayoutParams nl = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
                 nl.leftMargin = sk(10);
                 mid.addView(name, nl);
             }
         } else {
-            mid.addView(skyCrest(g.homeLogo), new LinearLayout.LayoutParams(sk(30), sk(30)));
+            mid.addView(glassCrest(g.homeLogo), new LinearLayout.LayoutParams(sk(30), sk(30)));
             LinearLayout.LayoutParams tl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
             tl.leftMargin = sk(10);
             tl.rightMargin = sk(10);
-            mid.addView(skyText(teams(g), 19, SkyStyle.INK, 800), tl);
-            mid.addView(skyCrest(g.awayLogo), new LinearLayout.LayoutParams(sk(30), sk(30)));
+            mid.addView(skyText(teams(g), 19, 0xFFFFFFFF, 800), tl);
+            mid.addView(glassCrest(g.awayLogo), new LinearLayout.LayoutParams(sk(30), sk(30)));
         }
-        LinearLayout.LayoutParams ml = new LinearLayout.LayoutParams(0, h, 1f);
-        ml.leftMargin = sk(8);
-        ml.rightMargin = sk(8);
-        b.addView(mid, ml);
-        // The end block: the time, the live minute or FT, after the whole fixture.
-        TextView when = skyText(detail(g), 18, 0xFFFFFFFF, 800);
+        b.addView(mid, new LinearLayout.LayoutParams(0, h, 1f));
+        b.addView(hairline(), hairlineLp());
+        // The time, the live minute or FT, after the whole fixture: live, a red dot before the minute.
+        LinearLayout end = new LinearLayout(context);
+        end.setGravity(Gravity.CENTER_VERTICAL);
+        if (g.state == 0 && !f1) {
+            View dot = new View(context);
+            android.graphics.drawable.GradientDrawable dg = new android.graphics.drawable.GradientDrawable();
+            dg.setShape(android.graphics.drawable.GradientDrawable.OVAL);
+            dg.setColor(0xFFFF3B47);
+            dot.setBackground(dg);
+            LinearLayout.LayoutParams dl = new LinearLayout.LayoutParams(sk(8), sk(8));
+            dl.rightMargin = sk(8);
+            end.addView(dot, dl);
+        }
+        TextView when = skyText(detail(g), 18, 0xFFFFFFFF, 700);
         when.setTag("skyclock");
-        // Same-width digits: the live clock ticking each second never moves the block's edge.
+        // Same-width digits: the live clock ticking each second never moves the box's edge.
         when.setFontFeatureSettings("tnum");
         when.setGravity(Gravity.CENTER);
-        when.setPadding(sk(24), 0, sk(22), 0);
-        when.setBackground(new ScoreCard.Slant(f1 ? SkyStyle.F1_DEEP : g.state == 0 ? 0xFFD3122F : SkyStyle.END, sk(14), true));
-        b.addView(when, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, h));
+        end.addView(when);
+        b.addView(end, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, h));
         if (g.state == 0 && !f1) {
             clocks.add(new Object[]{when, g});
             main.removeCallbacks(clockTick);
@@ -1125,11 +1129,26 @@ final class ScoresTicker {
         return t;
     }
 
-    private ImageView skyCrest(String url) {
+    /** A club's crest on the glass, as the club draws it (no light-ground version: the glass is dark). */
+    private ImageView glassCrest(String url) {
         ImageView v = new ImageView(context);
         v.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        if (url != null) loadLogo("light:" + url, v);
+        if (url != null) loadLogo(url, v);
         return v;
+    }
+
+    /** A fine upright line between the glass box's parts. */
+    private View hairline() {
+        View v = new View(context);
+        v.setBackgroundColor(0x38FFFFFF);
+        return v;
+    }
+
+    private LinearLayout.LayoutParams hairlineLp() {
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(Math.max(1, sk(1.5f)), sk(24));
+        lp.leftMargin = sk(14);
+        lp.rightMargin = sk(14);
+        return lp;
     }
 
     private TextView label(CharSequence text) {
