@@ -49,6 +49,8 @@ final class PagesV2 {
         View dim;
         /** Its picture's fetch, held back until the slider brings it near the screen (null: fetched). */
         Runnable load;
+        /** Whether the slider drew it on the last frame: one off the screen then and now is left alone. */
+        boolean shown = true;
         private final float radius;
 
         Tile(android.content.Context c, float radius) {
@@ -1034,6 +1036,12 @@ final class PagesV2 {
                             // Surprise me's mood cards hold still: the slow zoom took their name and "Spin" past the card's edge.
                             wide.setScaleX(1f);
                             wide.setScaleY(1f);
+                        } else if (h.lite) {
+                            // lite_home (the TCL): the picture still, a touch in (six seconds of a big picture redrawn
+                            // at a new size every frame, under the trailer loading, made the next slide stutter).
+                            wide.animate().cancel();
+                            wide.setScaleX(1.06f);
+                            wide.setScaleY(1.06f);
                         } else {
                             wide.setScaleX(1.02f);
                             wide.setScaleY(1.02f);
@@ -1212,13 +1220,17 @@ final class PagesV2 {
                 float d = i - f;
                 float s = table(SCALE, i - k) + (table(SCALE, i - k - 1) - table(SCALE, i - k)) * frac;
                 float x = a[i] + (b[i] - a[i]) * frac;
+                // Off the screen on the last frame and on this one: nothing to set (a row runs to forty posters, and
+                // setting every one of them each frame of a slide cost the TCL frames).
+                boolean on = x + w[i] * s > -r.strip.getLeft() && x < edges[1];
+                if (!on && c instanceof Tile && !((Tile) c).shown) continue;
+                if (c instanceof Tile) ((Tile) c).shown = on;
                 c.setPivotX(w[i] / 2f);
                 c.setPivotY(px(TALL) / 2f);
                 c.setScaleX(s);
                 c.setScaleY(s);
                 c.setTranslationX(x - natural[i] - (1 - s) * w[i] / 2f);
                 // Drawn while any of it is on the screen: the row runs on to the screen's edge, never stopping short.
-                boolean on = x + w[i] * s > -r.strip.getLeft() && x < edges[1];
                 c.setAlpha(on ? 1f : 0f);
                 if (on) lastShown = i;
                 View shade = c instanceof Tile ? ((Tile) c).dim : c.findViewWithTag("dim");

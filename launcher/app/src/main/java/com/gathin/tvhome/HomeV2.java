@@ -3998,7 +3998,15 @@ final class HomeV2 {
         if (!mesh || colours == null || Arrays.equals(colours, meshWanted)) return;
         meshWanted = colours;
         main.removeCallbacks(adaptNow);
-        main.postDelayed(adaptNow, MESH_SETTLE_MS);
+        main.postDelayed(adaptNow, settleMs());
+    }
+
+    /**
+     * How long the focus must rest before the background changes: on lite_home (the TCL) long enough that a run of
+     * presses along a row changes it once, at the end, not a whole-screen cross-fade under every step of the slide.
+     */
+    private long settleMs() {
+        return lite ? 650L : MESH_SETTLE_MS;
     }
 
     private final Runnable adaptNow = () -> {
@@ -4032,7 +4040,7 @@ final class HomeV2 {
             // The picture itself, blurred: once the focus has stopped on it.
             blurPic = pic;
             blurAsked = asked;
-            main.postDelayed(blurNow, MESH_SETTLE_MS);
+            main.postDelayed(blurNow, settleMs());
             return;
         }
         meshIo.execute(() -> {

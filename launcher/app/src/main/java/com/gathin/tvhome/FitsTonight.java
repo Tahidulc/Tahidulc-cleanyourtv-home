@@ -81,6 +81,11 @@ final class FitsTonight {
         return spare < 0 || spare > 6 * 60 ? null : spare;
     }
 
+    /** "1 min", "22 mins", "2h 05m" (an hour or more). */
+    private static String spareWords(int minutes) {
+        return minutes >= 60 ? length(minutes) : minutes + (minutes == 1 ? " min" : " mins");
+    }
+
     /** "1h 46m", "52m". */
     static String length(int minutes) {
         return minutes >= 60 ? minutes / 60 + "h " + String.format(Locale.UK, "%02d", minutes % 60) + "m" : minutes + "m";
@@ -182,7 +187,8 @@ final class FitsTonight {
     /**
      * Over the hero's picture, the evening as the mock-up draws it: a bar from now to bed with the film in focus
      * along it in pink ("ANIMALS · ENDS 22:38"), bed a yellow mark at its end, now and the time to spare under it.
-     * Left out in the day (bed more than six hours off) and once bed has passed.
+     * Every title in the tab has it: one that runs past bed fills the bar and says by how much, and in the day (bed
+     * more than six hours off) the spare time is in hours (it was left out in both, so some posters had no box).
      */
     private static java.util.function.BiFunction<HomeV2, PagesV2.Title, View> evening() {
         View[] made = new View[1];
@@ -190,8 +196,8 @@ final class FitsTonight {
         View[] fill = new View[1];
         return (h, t) -> {
             if (t == null || t.runtime <= 0) return null;
-            Integer spare = spare(h.a, t.runtime);
-            if (spare == null) return null;
+            // Minutes left before bed when it ends (below 0: past bed).
+            int spare = bedMinutes(h.a) - (nowMinutes() + t.runtime);
             if (made[0] == null) {
                 Typeface heavy = h.a.getResources().getFont(R.font.outfit_extrabold), bold = Typeface.create(h.semi, Typeface.BOLD);
                 FrameLayout layer = new FrameLayout(h.a);
@@ -255,8 +261,11 @@ final class FitsTonight {
             int nm = LocalTime.now().toSecondOfDay() / 60;
             words[1].setText(String.format(Locale.UK, "Now %02d:%02d", nm / 60, nm % 60));
             int bed = to % (24 * 60);
-            words[2].setText((spare == 0 ? "Right on bedtime" : spare + (spare == 1 ? " min" : " mins") + " to spare")
-                    + String.format(Locale.UK, " · bed %02d:%02d", bed / 60, bed % 60));
+            String left = spare == 0 ? "Right on bedtime"
+                    : spare < 0 ? spareWords(-spare) + " past bedtime"
+                    : spareWords(spare) + " to spare";
+            words[2].setText(left + String.format(Locale.UK, " · bed %02d:%02d", bed / 60, bed % 60));
+            words[2].setTextColor(spare < 0 ? PINK_LIGHT : YELLOW);
             View bar = fill[0];
             View track = (View) bar.getParent();
             Runnable size = () -> {
