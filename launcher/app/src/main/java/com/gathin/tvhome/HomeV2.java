@@ -4069,8 +4069,9 @@ final class HomeV2 {
 
     /**
      * The background as the content's own picture: shrunk small and blurred hard (three box passes, as a Gaussian),
-     * drawn up to a quarter of the screen's size and smoothed again, a little less saturated, then darkened towards
-     * midnight with a soft vignette at the edges and the shades that keep the words readable. Off the main thread.
+     * drawn up to a quarter of the screen's size and smoothed again, its colours a little richer, then darkened a
+     * third of the way towards midnight, with a light vignette only at the far edges and the shades that keep the
+     * words readable (the canvas's option B, "Vivid"). Off the main thread.
      */
     private Bitmap blurredBackground(Bitmap pic) {
         try {
@@ -4096,7 +4097,7 @@ final class HomeV2 {
             android.graphics.Canvas c = new android.graphics.Canvas(out);
             android.graphics.Paint p = new android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG | android.graphics.Paint.DITHER_FLAG);
             android.graphics.ColorMatrix cm = new android.graphics.ColorMatrix();
-            cm.setSaturation(0.85f);
+            cm.setSaturation(1.1f);
             p.setColorFilter(new android.graphics.ColorMatrixColorFilter(cm));
             c.drawBitmap(tiny, null, new android.graphics.Rect(0, 0, bw, bh), p);
             tiny.recycle();
@@ -4105,10 +4106,10 @@ final class HomeV2 {
             boxBlur(big, bw, bh, 6, 2);
             out.setPixels(big, 0, bw, 0, 0, bw, bh);
             android.graphics.Paint q = new android.graphics.Paint(android.graphics.Paint.DITHER_FLAG);
-            // Darkened towards midnight, deeper at the edges (the vignette), as the cards and words sit on it.
-            c.drawColor(0x8C07081A);
-            q.setShader(new android.graphics.RadialGradient(bw * 0.62f, bh * 0.36f, bw * 0.78f,
-                    new int[]{0x00000000, 0x22000000, 0x99000000}, new float[]{0f, 0.55f, 1f}, android.graphics.Shader.TileMode.CLAMP));
+            // Darkened 35% towards midnight, a little deeper at the far edges (the vignette), as the cards sit on it.
+            c.drawColor(0x5907081A);
+            q.setShader(new android.graphics.RadialGradient(bw * 0.62f, bh * 0.36f, bw * 0.94f,
+                    new int[]{0x00000000, 0x00000000, 0x6B000000}, new float[]{0f, 0.6f, 1f}, android.graphics.Shader.TileMode.CLAMP));
             c.drawRect(0, 0, bw, bh, q);
             shades(c, q, 0, 0, bw / (float) sw);
             return out;
