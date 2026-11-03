@@ -269,18 +269,12 @@ final class YourShows {
         t.badge = (yours ? "NEW · " : "") + "S" + se + " E" + ep;
         t.badgeBg = yours ? RED : WHITE;
         t.badgeFg = yours ? WHITE : NAVY;
-        String app = null;
         JSONObject gb = gb(d);
-        JSONArray flat = gb == null ? null : gb.optJSONArray("flatrate");
-        for (int i = 0; flat != null && i < flat.length() && app == null; i++) {
-            JSONObject pr = flat.optJSONObject(i);
-            String a = pr == null ? null : HomeV2.serviceApp(String.valueOf(pr.optInt("provider_id")));
-            if (a != null && ReleaseAlerts.installed(h.a, a)) app = pr.optString("provider_name", null);
-        }
         t.foot = "Out " + (ChronoUnit.DAYS.between(out, today) == 0 ? "Today" : ChronoUnit.DAYS.between(out, today) == 1 ? "Yesterday"
                 : out.format(DateTimeFormatter.ofPattern("EEEE", Locale.UK)));
-        t.what = (premiere ? "Season " + se + " starts: " : "New episode: ") + "S" + se + " E" + ep + named(last) + ", out " + when(out, today)
-                + (app != null ? " · on " + app : "");
+        // "New episode: S2 E5 "Name", out today": not which app it is on, nor "Series" after it (the poster says so).
+        t.what = (premiere ? "Season " + se + " starts: " : "New episode: ") + "S" + se + " E" + ep + named(last) + ", out " + when(out, today);
+        t.noKind = true;
         t.overview = !last.optString("overview").isEmpty() ? last.optString("overview") : d.optString("overview", "");
         if (HomeV2.onYourApps(h, gb) == null) {
             String store = HomeV2.storeFor(h, gb);

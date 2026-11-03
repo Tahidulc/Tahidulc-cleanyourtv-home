@@ -25,10 +25,10 @@ final class SkyStyle {
     static final int F1_RED = 0xFFE10600, F1_DEEP = 0xFF8E0400;
 
     /**
-     * The corner of the top bar's ticker and of the bars on Home under it, on the 1920 design: square-edged like the
-     * cards over the apps (12), not pill-shaped.
+     * The corner of the top bar's ticker and of the bars on Home under it, on the 1920 design: square-edged, a corner
+     * only just softened (6), not pill-shaped.
      */
-    static final float CORNER = 12f;
+    static final float CORNER = 6f;
 
     /** CORNER in pixels on this screen. */
     static float corner(android.content.Context c) {

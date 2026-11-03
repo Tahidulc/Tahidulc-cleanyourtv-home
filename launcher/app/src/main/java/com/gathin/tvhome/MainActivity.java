@@ -1141,6 +1141,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                 String[] two = String.valueOf(intent.getStringExtra("two_up")).split(",");
                 if (two.length == 2) TwoUp.start(v2, two[0].trim(), two[1].trim());
             }
+            // adb only (--ez test_live_ticker true): a live game in the top bar's ticker, its clock ticking.
+            else if (intent != null && intent.getBooleanExtra("test_live_ticker", false)) v2.testLiveTicker();
             // adb only (--es test_birthday "Name|5"): the birthday greeting, now.
             else if (intent != null && intent.hasExtra("test_birthday")) {
                 String[] b = (String.valueOf(intent.getStringExtra("test_birthday")) + "|").split("\\|");

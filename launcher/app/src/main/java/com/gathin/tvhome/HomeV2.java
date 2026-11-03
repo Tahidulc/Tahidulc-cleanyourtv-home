@@ -232,6 +232,11 @@ final class HomeV2 {
         return weatherView;
     }
 
+    /** adb only (test_live_ticker): a live game in the top bar's ticker, its clock ticking. */
+    void testLiveTicker() {
+        if (scores != null) scores.testLive();
+    }
+
     /** How far a section's page sits higher than it was laid out (option B's room at the top; 0 on Home). */
     int pageLift() {
         return corners && page != null ? PAGE_LIFT : 0;

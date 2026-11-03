@@ -210,6 +210,8 @@ final class PagesV2 {
 
     static final class Title {
         String title, poster, backdrop, year, overview, what;
+        /** Its hero line without "Series"/"Film" (a new episode's line already says what it is). */
+        boolean noKind;
         double vote;
         int id;
         boolean tv;
@@ -1338,7 +1340,8 @@ final class PagesV2 {
             // Fits tonight: when it would end, first.
             String fit = t.runtime > 0 ? FitsTonight.heroLine(h.a, t.runtime) : null;
             // An app's card (YouTube Kids) is neither a series nor a film.
-            tile.heroMeta = TextUtils.join(" · ", nonEmpty(fit, t.year, t.what, t.poster != null && t.poster.startsWith("ytkids:") ? null : t.tv ? "Series" : "Film")) + vote;
+            tile.heroMeta = TextUtils.join(" · ", nonEmpty(fit, t.year, t.what,
+                    t.noKind || t.poster != null && t.poster.startsWith("ytkids:") ? null : t.tv ? "Series" : "Film")) + vote;
             tile.heroText = t.overview;
             // The running time and the streaming service (TMDB, looked up by Home's hero), and the store's marks.
             tile.tmdbId = t.id;

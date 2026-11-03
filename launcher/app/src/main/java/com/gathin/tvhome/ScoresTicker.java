@@ -330,7 +330,8 @@ final class ScoresTicker {
             TextView v = (TextView) c[0];
             // A page that was turned away and dropped takes its boxes with it.
             if (!v.isAttachedToWindow()) { it.remove(); continue; }
-            v.setText(detail((Game) c[1]));
+            // The Sky ticker's block: the minute in white on its red (not the pills' green).
+            v.setText("skyclock".equals(v.getTag()) ? liveClock((Game) c[1]) : detail((Game) c[1]));
         }
         if (running && !clocks.isEmpty()) main.postDelayed(clockTick, 1000L);
     }
@@ -793,6 +794,35 @@ final class ScoresTicker {
         return shownRow.getChildAt(0).requestFocus();
     }
 
+    /**
+     * adb only (MainActivity test_live_ticker): a live game first in the bar, its clock ticking from 67:12, to see how a
+     * live game looks (Liverpool 2–1 Brighton in the Premier League).
+     */
+    void testLive() {
+        Game g = new Game();
+        g.league = "PL";
+        g.slug = "eng.1";
+        g.leagueLogo = "https://a.espncdn.com/i/leaguelogos/soccer/500-dark/23.png";
+        g.home = "LIV";
+        g.away = "BHA";
+        g.homeName = "Liverpool";
+        g.awayName = "Brighton & Hove Albion";
+        g.homeLogo = "https://a.espncdn.com/i/teamlogos/soccer/500/364.png";
+        g.awayLogo = "https://a.espncdn.com/i/teamlogos/soccer/500/331.png";
+        g.homeScore = "2";
+        g.awayScore = "1";
+        g.state = 0;
+        g.detail = "67'";
+        g.clockSec = 67 * 60 + 12;
+        g.clockAt = System.currentTimeMillis();
+        List<Game> with = new ArrayList<>(games);
+        with.add(0, g);
+        games = with;
+        page = 0;
+        paginate();
+        tickClocks();
+    }
+
     /** Focus the last game (coming in from the right): the last page's last box; false when none is on screen. */
     boolean focusLast() {
         if (shownRow == null || box.getVisibility() != View.VISIBLE || pages.isEmpty()) return false;
@@ -992,10 +1022,8 @@ final class ScoresTicker {
         android.graphics.drawable.LayerDrawable ring = new android.graphics.drawable.LayerDrawable(
                 new android.graphics.drawable.Drawable[]{outer, inner});
         ring.setLayerInset(1, sk(3), sk(3), sk(3), sk(3));
-        b.setOnFocusChangeListener((v, has) -> {
-            v.setForeground(has ? ring : null);
-            v.animate().scaleX(has ? 1.04f : 1f).scaleY(has ? 1.04f : 1f).setDuration(150).start();
-        });
+        // Focused: the white rim drawn inside its own edge (it stays its size: grown, the rim was cut off by the bar's box).
+        b.setOnFocusChangeListener((v, has) -> v.setForeground(has ? ring : null));
         b.setOnClickListener(v -> host.onScoresOpen(g));
         // Left and Right slide through the games one by one; past the first or the last, out to the top row's
         // neighbour (the Control Centre to the left, the weather to the right). Up and Down back to the top row.
@@ -1071,6 +1099,9 @@ final class ScoresTicker {
         b.addView(mid, ml);
         // The end block: the time, the live minute or FT, after the whole fixture.
         TextView when = skyText(detail(g), 18, 0xFFFFFFFF, 800);
+        when.setTag("skyclock");
+        // Same-width digits: the live clock ticking each second never moves the block's edge.
+        when.setFontFeatureSettings("tnum");
         when.setGravity(Gravity.CENTER);
         when.setPadding(sk(24), 0, sk(22), 0);
         when.setBackground(new ScoreCard.Slant(f1 ? SkyStyle.F1_DEEP : g.state == 0 ? 0xFFD3122F : SkyStyle.END, sk(14), true));
