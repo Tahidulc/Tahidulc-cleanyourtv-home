@@ -1329,6 +1329,9 @@ final class PagesV2 {
             if (n == 0 || r.items.isEmpty()) return;
             flatten(r, onTabs);
             int target = Math.max(0, Math.min(idx, n - 1));
+            // Off the poster with the trailer (along, or up to the tabs): the trailer stopped first, so the pictures it
+            // covered come back and then fade out as the poster closes (stopped after, they came back over it).
+            if (trailerTile != null && (onTabs || target >= n || r.strip.getChildAt(target) != trailerTile)) player.stop();
             // Every poster not landed-on back to its resting look (the one left behind folds back as it goes).
             for (int i = 0; i < n && i < r.items.size(); i++) {
                 if (i == landed && i == target && !onTabs) continue;

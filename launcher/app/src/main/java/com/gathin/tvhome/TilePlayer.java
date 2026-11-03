@@ -132,7 +132,7 @@ final class TilePlayer {
             @android.webkit.JavascriptInterface public void ended() {
                 // A trailer run to its end: every picture it covered back (the widened poster's wide picture too, not
                 // only the narrow one: left hidden, the open poster showed just its narrow picture at its left).
-                main.post(() -> { if (film == null) { giveBack(); stop(); } });
+                main.post(() -> { if (film == null) stop(); });
             }
         }, "Home");
         String pkg = c.getPackageName();
@@ -335,17 +335,6 @@ final class TilePlayer {
         }
     }
 
-    /** The pictures the trailer covered, all of them, faded back (a trailer that ended on the tile it played on). */
-    private void giveBack() {
-        if (!revealed) return;
-        for (int i = 1; i < covers.length; i++) {
-            View c = covers[i];
-            if (c == null) continue;
-            c.animate().cancel();
-            c.animate().alpha(1f).setDuration(250).start();
-        }
-    }
-
     /** Off the tile: the trailer silenced (its page kept for the next), the channel's player let go. */
     void stop() {
         // A whole video taken away by someone else (Home going, a trailer): its player is told, and closes.
@@ -354,8 +343,11 @@ final class TilePlayer {
         pendingFilm = false;
         if (gone != null) main.post(gone::gone);
         main.removeCallbacks(reveal);
-        // Moving on: the first picture (the poster, a tile's own) comes back at once; the rest belong to the page.
-        if (revealed && covers.length > 0 && covers[0] != null) { covers[0].animate().cancel(); covers[0].setAlpha(1f); }
+        // Every picture the trailer covered comes back at once, whatever stopped it (its end, Home going to Ambient
+        // or another app, a channel tuning): only the first came back before, and an opened poster then showed its
+        // narrow picture beside an empty space. A page moving on stops the trailer before it restyles the tile, so
+        // the pictures that should go fade out from here.
+        if (revealed) for (View c : covers) if (c != null) { c.animate().cancel(); c.setAlpha(1f); }
         revealed = false;
         covers = new View[0];
         pending = null;

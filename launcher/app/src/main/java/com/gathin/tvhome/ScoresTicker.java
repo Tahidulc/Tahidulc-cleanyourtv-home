@@ -339,8 +339,12 @@ final class ScoresTicker {
             TextView v = (TextView) c[0];
             // A page that was turned away and dropped takes its boxes with it.
             if (!v.isAttachedToWindow()) { it.remove(); continue; }
-            // The Sky ticker's block: the minute in white on its red (not the pills' green).
+            // The Sky bar's box: the minute ticking in green, its dot blinking with it.
             v.setText("skyclock".equals(v.getTag()) ? liveClock((Game) c[1]) : detail((Game) c[1]));
+            if ("skyclock".equals(v.getTag()) && v.getParent() instanceof View) {
+                View dot = ((View) v.getParent()).findViewWithTag("skydot");
+                if (dot != null) dot.setAlpha(dot.getAlpha() > 0.7f ? 0.35f : 1f);
+            }
         }
         if (running && !clocks.isEmpty()) main.postDelayed(clockTick, 1000L);
     }
@@ -900,14 +904,12 @@ final class ScoresTicker {
      */
     private void slideRows(LinearLayout out, LinearLayout in, boolean forward) {
         float w = box.getWidth() > 0 ? box.getWidth() : dp(200);
-        in.setTranslationX(forward ? w * 0.7f : -w * 0.7f);
-        in.setAlpha(0f);
-        box.addView(in, 0);
+        // Option F: the next game's wedges charge in from the ends over the last one sliding a little aside and going.
+        box.addView(in);
         out.animate().cancel();
-        android.animation.ValueAnimator.AnimatorUpdateListener follow = skyBar() ? a -> { frostMoved(out); frostMoved(in); } : null;
-        out.animate().translationX(forward ? -w * 0.7f : w * 0.7f).alpha(0f).setDuration(SLIDE_OUT_MS).setInterpolator(SLIDE)
-                .setUpdateListener(follow).withEndAction(() -> box.removeView(out)).start();
-        in.animate().translationX(0f).alpha(1f).setDuration(SLIDE_IN_MS).setInterpolator(SLIDE).setUpdateListener(follow).start();
+        out.animate().translationX(forward ? -w * 0.18f : w * 0.18f).alpha(0f).setDuration(SLIDE_OUT_MS / 2 + 60).setInterpolator(SLIDE)
+                .withEndAction(() -> box.removeView(out)).start();
+        charge(in);
     }
 
     private void schedulePage() {
@@ -1033,23 +1035,33 @@ final class ScoresTicker {
     }
 
     /**
-     * One game as a box of frosted glass with square corners (Frost: the screen behind it, blurred): the competition's mark, a hairline, each
-     * crest beside its own club with the names (and the score) in white, another hairline, then the time, the live
-     * minute (a red dot before it) or FT after the whole fixture. Focused: lit, with a white rim inside its own edge
-     * (it stays its size, so nothing is cut off). OK and the keys as on the pills.
+     * One game as option F, "Wedges": on a dark ground with square corners, a slanted wedge in each club's own colour
+     * from either end (the competition's mark, the home crest and code on the left one; the away code and crest on the
+     * right), the score on the dark plate between them in bold italic, then after the whole fixture the time, FT, or the
+     * live minute in green with a green dot that blinks as it ticks. Changing games, the wedges charge in from the ends
+     * and the plate flips in (charge); a goal, the scorer's wedge lunges across with a flash as the score rolls up
+     * (lunge). Focused: a white rim inside its own edge (it stays its size, so nothing is cut off). F1: its red wedge
+     * with the session, then the leaders with their team logos.
      */
-    private LinearLayout skyBox(Game g, int index, int count) {
-        int h = barH();
+    private FrameLayout skyBox(Game g, int index, int count) {
         // Square-edged, as the notifications over the apps (not a pill).
         float r = SkyStyle.corner(context);
-        LinearLayout b = new LinearLayout(context);
-        b.setOrientation(LinearLayout.HORIZONTAL);
-        b.setGravity(Gravity.CENTER_VERTICAL);
-        b.setBackground(new Frost(r, sk(1.5f)));
+        FrameLayout b = new FrameLayout(context) {
+            @Override public boolean hasOverlappingRendering() {
+                return false;
+            }
+        };
+        android.graphics.drawable.GradientDrawable ground = new android.graphics.drawable.GradientDrawable();
+        ground.setColor(0xFF0C0D1D);
+        ground.setCornerRadius(r);
+        ground.setStroke(Math.max(1, sk(1)), 0x1FFFFFFF);
+        b.setBackground(ground);
         Shown shown = new Shown();
         shown.key = key(g);
         shown.state = g.state;
         shown.f1 = g.drivers != null || g.text != null;
+        shown.hs = g.homeScore;
+        shown.as = g.awayScore;
         b.setTag(shown);
         b.setOutlineProvider(new android.view.ViewOutlineProvider() {
             @Override public void getOutline(View v, android.graphics.Outline o) {
@@ -1060,9 +1072,9 @@ final class ScoresTicker {
         b.setFocusable(true);
         android.graphics.drawable.GradientDrawable ring = new android.graphics.drawable.GradientDrawable();
         ring.setCornerRadius(r);
-        ring.setColor(0x24FFFFFF);
+        ring.setColor(0x1FFFFFFF);
         ring.setStroke(sk(2.5f), 0xF2FFFFFF);
-        // Focused: the glass lit and a white rim drawn inside its own edge (it stays its size: grown, the rim was cut
+        // Focused: the box lit and a white rim drawn inside its own edge (it stays its size: grown, the rim was cut
         // off by the bar's box).
         b.setOnFocusChangeListener((v, has) -> v.setForeground(has ? ring : null));
         b.setOnClickListener(v -> host.onScoresOpen(g));
@@ -1088,80 +1100,262 @@ final class ScoresTicker {
                 default: return false;
             }
         });
-        boolean f1 = g.drivers != null || g.text != null;
-        b.setPadding(sk(16), 0, sk(16), 0);
-        // The competition's mark (its short name when it has none), then a hairline.
+        boolean f1 = shown.f1;
+        int homeCol = f1 ? SkyStyle.F1_RED : wedgeColour(g.homeColor, 0xFF3A4CC0);
+        int awayCol = wedgeColour(g.awayColor == g.homeColor ? (g.awayAlt != 0 ? g.awayAlt : 0) : g.awayColor, 0xFF6B7280);
+        int homeInk = lightGround(homeCol) ? 0xFF0C0D1D : 0xFFFFFFFF, awayInk = lightGround(awayCol) ? 0xFF0C0D1D : 0xFFFFFFFF;
+        // The wedges, under everything else.
+        View hw = new View(context);
+        hw.setBackground(new Wedge(homeCol, 0f, 1f, 0.85f, 0f));
+        FrameLayout.LayoutParams hl = new FrameLayout.LayoutParams(sk(f1 ? 150 : 158), ViewGroup.LayoutParams.MATCH_PARENT);
+        b.addView(hw, hl);
+        shown.homeWedge = hw;
+        if (!f1) {
+            View aw = new View(context);
+            aw.setBackground(new Wedge(awayCol, 0.16f, 1f, 0.84f, 0f));
+            FrameLayout.LayoutParams al = new FrameLayout.LayoutParams(sk(148), ViewGroup.LayoutParams.MATCH_PARENT);
+            al.leftMargin = sk(208);
+            b.addView(aw, al);
+            shown.awayWedge = aw;
+        }
+        // On the home wedge: the competition's mark, then the crest and code (or F1's session).
+        LinearLayout left = new LinearLayout(context);
+        left.setGravity(Gravity.CENTER_VERTICAL);
         if (g.leagueLogo != null) {
             ImageView lv = new ImageView(context);
             lv.setScaleType(ImageView.ScaleType.FIT_CENTER);
             loadLogo(g.leagueLogo, lv);
-            b.addView(lv, new LinearLayout.LayoutParams(sk(f1 ? 40 : 30), sk(30)));
+            left.addView(lv, new LinearLayout.LayoutParams(sk(f1 ? 30 : 18), sk(20)));
         } else {
-            b.addView(skyText(league(g), 13, 0xE6FFFFFF, 800));
+            left.addView(wedgeText(league(g), 11, homeInk, 800));
         }
-        b.addView(hairline(), hairlineLp());
-        // The fixture (or the session and its top three), white on the glass.
-        LinearLayout mid = new LinearLayout(context);
-        mid.setGravity(Gravity.CENTER);
         if (f1) {
-            mid.addView(skyText(g.home, 17, 0xFFFFFFFF, 800));
+            LinearLayout.LayoutParams sl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            sl.leftMargin = sk(8);
+            left.addView(wedgeText(g.home, 16, homeInk, 900), sl);
+        } else {
+            LinearLayout.LayoutParams cl = new LinearLayout.LayoutParams(sk(24), sk(24));
+            cl.leftMargin = sk(7);
+            left.addView(glassCrest(g.homeLogo), cl);
+            LinearLayout.LayoutParams tl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            tl.leftMargin = sk(7);
+            left.addView(wedgeText(g.home, 18, homeInk, 900), tl);
+        }
+        FrameLayout.LayoutParams ll = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT);
+        ll.leftMargin = sk(9);
+        b.addView(left, ll);
+        shown.homeGroup = left;
+        if (f1) {
+            // F1: the leaders with their team logos (or the Grand Prix's name before it starts), on the dark ground.
+            LinearLayout mid = new LinearLayout(context);
+            mid.setGravity(Gravity.CENTER_VERTICAL);
             if (g.drivers != null) {
                 for (String[] d : g.drivers) {
                     ImageView tl = new ImageView(context);
                     tl.setScaleType(ImageView.ScaleType.FIT_CENTER);
                     loadLogo(d[1], tl);
-                    LinearLayout.LayoutParams ll = new LinearLayout.LayoutParams(sk(22), sk(22));
-                    ll.leftMargin = sk(10);
-                    mid.addView(tl, ll);
+                    LinearLayout.LayoutParams il = new LinearLayout.LayoutParams(sk(18), sk(18));
+                    il.leftMargin = mid.getChildCount() == 0 ? 0 : sk(9);
+                    mid.addView(tl, il);
                     LinearLayout.LayoutParams nl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
                     nl.leftMargin = sk(4);
-                    mid.addView(skyText(d[0], 16, 0xD9FFFFFF, 700), nl);
+                    mid.addView(wedgeText(d[0], 15, 0xFFFFFFFF, 800), nl);
                 }
             } else {
-                TextView name = skyText(g.text, 16, 0xCCFFFFFF, 600);
+                TextView name = wedgeText(g.text, 15, 0xE6FFFFFF, 700);
                 name.setEllipsize(android.text.TextUtils.TruncateAt.END);
-                LinearLayout.LayoutParams nl = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
-                nl.leftMargin = sk(10);
-                mid.addView(name, nl);
+                mid.addView(name, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
             }
+            FrameLayout.LayoutParams ml = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
+            ml.leftMargin = sk(162);
+            ml.rightMargin = sk(70);
+            b.addView(mid, ml);
+            shown.awayGroup = mid;
         } else {
-            mid.addView(glassCrest(g.homeLogo), new LinearLayout.LayoutParams(sk(30), sk(30)));
-            LinearLayout.LayoutParams tl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            tl.leftMargin = sk(10);
-            tl.rightMargin = sk(10);
-            shown.teams = skyText(teams(g), 19, 0xFFFFFFFF, 800);
-            mid.addView(shown.teams, tl);
-            mid.addView(glassCrest(g.awayLogo), new LinearLayout.LayoutParams(sk(30), sk(30)));
+            // The score (or "v" before kick-off) on the dark plate between the wedges.
+            TextView plate = wedgeText(plateText(g), g.state == 1 ? 18 : 25, g.state == 1 ? 0xCCFFFFFF : 0xFFFFFFFF, 900);
+            plate.setGravity(Gravity.CENTER);
+            FrameLayout.LayoutParams pl = new FrameLayout.LayoutParams(sk(90), ViewGroup.LayoutParams.MATCH_PARENT);
+            pl.leftMargin = sk(138);
+            b.addView(plate, pl);
+            shown.plate = plate;
+            // On the away wedge: its code, then its crest.
+            LinearLayout right = new LinearLayout(context);
+            right.setGravity(Gravity.CENTER_VERTICAL);
+            right.addView(wedgeText(g.away, 18, awayInk, 900));
+            LinearLayout.LayoutParams cl = new LinearLayout.LayoutParams(sk(24), sk(24));
+            cl.leftMargin = sk(7);
+            right.addView(glassCrest(g.awayLogo), cl);
+            FrameLayout.LayoutParams rl = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT);
+            rl.leftMargin = sk(236);
+            b.addView(right, rl);
+            shown.awayGroup = right;
         }
-        b.addView(mid, new LinearLayout.LayoutParams(0, h, 1f));
-        b.addView(hairline(), hairlineLp());
-        // The time, the live minute or FT, after the whole fixture: live, a red dot before the minute.
+        // After the whole fixture: the time, FT, or live the minute in green with a dot that blinks as it ticks.
+        boolean live = g.state == 0 && !f1;
         LinearLayout end = new LinearLayout(context);
-        end.setGravity(Gravity.CENTER_VERTICAL);
-        if (g.state == 0 && !f1) {
+        end.setGravity(Gravity.CENTER);
+        if (live) {
             View dot = new View(context);
+            dot.setTag("skydot");
             android.graphics.drawable.GradientDrawable dg = new android.graphics.drawable.GradientDrawable();
             dg.setShape(android.graphics.drawable.GradientDrawable.OVAL);
-            dg.setColor(0xFFFF3B47);
+            dg.setColor(LIVE_GREEN);
             dot.setBackground(dg);
-            LinearLayout.LayoutParams dl = new LinearLayout.LayoutParams(sk(8), sk(8));
-            dl.rightMargin = sk(8);
+            LinearLayout.LayoutParams dl = new LinearLayout.LayoutParams(sk(6), sk(6));
+            dl.rightMargin = sk(4);
             end.addView(dot, dl);
         }
-        TextView when = skyText(detail(g), 18, 0xFFFFFFFF, 700);
+        TextView when = wedgeText(detail(g), 15, live ? LIVE_GREEN : 0xE6FFFFFF, 800);
         when.setTag("skyclock");
         shown.when = when;
         // Same-width digits: the live clock ticking each second never moves the box's edge.
         when.setFontFeatureSettings("tnum");
-        when.setGravity(Gravity.CENTER);
         end.addView(when);
-        b.addView(end, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, h));
-        if (g.state == 0 && !f1) {
+        b.addView(end, new FrameLayout.LayoutParams(sk(66), ViewGroup.LayoutParams.MATCH_PARENT, Gravity.END));
+        if (live) {
             clocks.add(new Object[]{when, g});
             main.removeCallbacks(clockTick);
             main.postDelayed(clockTick, 1000L);
         }
         return b;
+    }
+
+    /** The live minute's green (the clock ticking), and its dot's. */
+    private static final int LIVE_GREEN = 0xFF4ADE80;
+
+    /** The plate's words: the score once it has started ("2–1"), "v" before kick-off. */
+    private static String plateText(Game g) {
+        return g.state == 1 ? "v" : g.homeScore + "–" + g.awayScore;
+    }
+
+    /** Bold italic words on the wedges and the plate (Outfit, as the notifications). */
+    private TextView wedgeText(CharSequence text, float designPx, int colour, int weight) {
+        TextView t = skyText(text, designPx, colour, weight);
+        Typeface base = ScoreCard.outfit(context, weight);
+        if (android.os.Build.VERSION.SDK_INT >= 28) t.setTypeface(Typeface.create(base, weight, true));
+        else t.setTypeface(base, Typeface.ITALIC);
+        return t;
+    }
+
+    /** A club's colour made fit for a wedge carrying its words: near black lifted, a white kit a slate grey. */
+    private static int wedgeColour(int c, int fallback) {
+        if (c == 0) c = fallback;
+        float[] hsv = new float[3];
+        android.graphics.Color.colorToHSV(c | 0xFF000000, hsv);
+        if (hsv[2] < 0.3f) hsv[2] = 0.36f;
+        if (hsv[1] < 0.12f && hsv[2] > 0.8f) hsv[2] = 0.42f;
+        return android.graphics.Color.HSVToColor(hsv);
+    }
+
+    /** Whether a wedge's colour is light enough (a bright yellow) that its words go dark. */
+    private static boolean lightGround(int c) {
+        double l = (0.2126 * android.graphics.Color.red(c) + 0.7152 * android.graphics.Color.green(c) + 0.0722 * android.graphics.Color.blue(c)) / 255.0;
+        return l > 0.62;
+    }
+
+    /**
+     * A slanted wedge in a club's colour, a little lighter at its top than its foot; its four corners as shares of
+     * its width (top-left, top-right, bottom-right, bottom-left). Its path and shader made when its size changes.
+     */
+    private static final class Wedge extends android.graphics.drawable.Drawable {
+        private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final android.graphics.Path path = new android.graphics.Path();
+        private final int colour;
+        private final float tl, tr, br, bl;
+
+        Wedge(int colour, float tl, float tr, float br, float bl) {
+            this.colour = colour;
+            this.tl = tl;
+            this.tr = tr;
+            this.br = br;
+            this.bl = bl;
+        }
+
+        @Override protected void onBoundsChange(android.graphics.Rect b) {
+            float[] hsv = new float[3];
+            android.graphics.Color.colorToHSV(colour, hsv);
+            float v = hsv[2];
+            hsv[2] = Math.min(1f, v * 1.12f);
+            int top = android.graphics.Color.HSVToColor(hsv);
+            hsv[2] = v * 0.7f;
+            int foot = android.graphics.Color.HSVToColor(hsv);
+            fill.setShader(new android.graphics.LinearGradient(0, b.top, 0, b.bottom, top, foot, android.graphics.Shader.TileMode.CLAMP));
+            float w = b.width();
+            path.reset();
+            path.moveTo(b.left + tl * w, b.top);
+            path.lineTo(b.left + tr * w, b.top);
+            path.lineTo(b.left + br * w, b.bottom);
+            path.lineTo(b.left + bl * w, b.bottom);
+            path.close();
+        }
+
+        @Override public void draw(android.graphics.Canvas c) {
+            c.drawPath(path, fill);
+        }
+
+        @Override public void setAlpha(int a) { }
+        @Override public void setColorFilter(android.graphics.ColorFilter f) { }
+        @Override public int getOpacity() { return android.graphics.PixelFormat.TRANSLUCENT; }
+    }
+
+    /**
+     * A new game's box arriving (option F): its wedges charge in from the two ends, its words come up on them and its
+     * score plate flips in. Cheap: the views' own moves, no picture made.
+     */
+    private void charge(LinearLayout row) {
+        float w = sk(260);
+        for (int i = 0; i < row.getChildCount(); i++) {
+            Object t = row.getChildAt(i).getTag();
+            if (!(t instanceof Shown)) continue;
+            Shown sh = (Shown) t;
+            if (sh.homeWedge != null) {
+                sh.homeWedge.setTranslationX(-w);
+                sh.homeWedge.animate().translationX(0f).setDuration(SLIDE_IN_MS).setInterpolator(SLIDE).start();
+            }
+            if (sh.awayWedge != null) {
+                sh.awayWedge.setTranslationX(w);
+                sh.awayWedge.animate().translationX(0f).setDuration(SLIDE_IN_MS).setInterpolator(SLIDE).start();
+            }
+            for (View v : new View[]{sh.homeGroup, sh.awayGroup, sh.when}) {
+                if (v == null) continue;
+                v.setAlpha(0f);
+                v.animate().alpha(1f).setStartDelay(130).setDuration(200).start();
+            }
+            if (sh.plate != null) {
+                sh.plate.setCameraDistance(sk(2400));
+                sh.plate.setRotationX(90f);
+                sh.plate.setAlpha(0f);
+                sh.plate.animate().rotationX(0f).alpha(1f).setStartDelay(150).setDuration(240).setInterpolator(SLIDE).start();
+            }
+        }
+    }
+
+    /** A goal (option F): the scorer's wedge lunges across towards the plate and back, under a quick flash of light. */
+    private void lunge(FrameLayout box, View wedge, boolean home) {
+        if (wedge == null) return;
+        if (covered) { heldRolls.add(() -> lunge(box, wedge, home)); return; }
+        wedge.setPivotX(home ? 0f : wedge.getWidth());
+        wedge.animate().cancel();
+        wedge.animate().scaleX(1.28f).setDuration(150).setInterpolator(SLIDE).withEndAction(() ->
+                wedge.animate().scaleX(1f).setDuration(320).setInterpolator(SLIDE).withEndAction(null).start()).start();
+        View flash = new View(context);
+        flash.setBackgroundColor(0xFFFFFFFF);
+        flash.setAlpha(0f);
+        box.addView(flash, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        flash.animate().alpha(0.35f).setDuration(90).withEndAction(() ->
+                flash.animate().alpha(0f).setDuration(260).withEndAction(() -> box.removeView(flash)).start()).start();
+    }
+
+    /** Which side's score went up between two readings (1 home, 2 away, 0 neither). */
+    private static int scored(String hsWas, String asWas, Game g) {
+        try {
+            if (g.homeScore != null && hsWas != null && Integer.parseInt(g.homeScore.trim()) > Integer.parseInt(hsWas.trim())) return 1;
+            if (g.awayScore != null && asWas != null && Integer.parseInt(g.awayScore.trim()) > Integer.parseInt(asWas.trim())) return 2;
+        } catch (NumberFormatException ignored) {
+            // not numbers yet
+        }
+        return 0;
     }
 
     // ---- the Sky bar's refresh in place -------------------------------------------------------------------------
@@ -1171,7 +1365,10 @@ final class ScoresTicker {
         String key;
         int state;
         boolean f1;
-        TextView teams, when;
+        TextView plate, when;
+        /** Option F's moving parts: the wedges, the words on them, and the score as last shown. */
+        View homeWedge, awayWedge, homeGroup, awayGroup;
+        String hs, as;
     }
 
     /** A game told apart from the others on refresh: ESPN's id, else its league and clubs. */
@@ -1199,9 +1396,16 @@ final class ScoresTicker {
             Shown sh = (Shown) b.getTag();
             Game g = list.get(i);
             b.setOnClickListener(v -> host.onScoresOpen(g));
-            if (sh.teams != null) {
-                String t = teams(g).toString();
-                if (!t.contentEquals(sh.teams.getText())) roll(sh.teams, t);
+            if (sh.plate != null) {
+                String t = plateText(g);
+                if (!t.contentEquals(sh.plate.getText())) {
+                    roll(sh.plate, t);
+                    // A goal: the scorer's wedge lunges across with a flash as the score rolls up.
+                    int side = scored(sh.hs, sh.as, g);
+                    if (side != 0 && b instanceof FrameLayout) lunge((FrameLayout) b, side == 1 ? sh.homeWedge : sh.awayWedge, side == 1);
+                }
+                sh.hs = g.homeScore;
+                sh.as = g.awayScore;
             }
             if (g.state == 0) {
                 // The clock reads the fresh game from now on (its minute as ESPN last read it), ticking as before.
