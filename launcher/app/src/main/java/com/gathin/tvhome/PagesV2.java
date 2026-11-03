@@ -1163,6 +1163,7 @@ final class PagesV2 {
         String apps = mine.isEmpty() ? "8|9|337" : mine;
         String[][] spec = {
                 {"Top picks", "@top"},
+                {"Continue Watching", "@continue"},
                 {"YouTube", "@youtube"},
                 {"Bangla", "@bangla"},
                 {"Kids TV", "discover/tv?with_genres=10762&with_original_language=en&watch_region=GB&sort_by=popularity.desc"},
@@ -1179,6 +1180,12 @@ final class PagesV2 {
         PosterPage p = new PosterPage(h, "KIDS", HomeV2.CAT_COLOURS[HomeV2.KIDS], tabs, new int[]{584 - 62}, t -> {
             String what = spec[t][1];
             List<Title> items = new ArrayList<>();
+            if ("@continue".equals(what)) {
+                Row r = row(null, null, false, kidsResume(h));
+                r.empty = "Nothing to pick up yet. Children's series and films started in Netflix, Disney+, Prime Video, "
+                        + "Debrid Stream and the rest show here, with how far they got.";
+                return Arrays.asList(r);
+            }
             if ("@youtube".equals(what)) {
                 for (int n = 1; n < KidsArt.BANGLA; n++) items.add(youTubeCard(h, n));
             } else if ("@bangla".equals(what)) {
@@ -1186,6 +1193,9 @@ final class PagesV2 {
             } else if ("@top".equals(what)) {
                 items.add(youTubeCard(h, 0));
                 items.add(youTubeCard(h, KidsArt.BANGLA));
+                // What the children were part way through, first after YouTube (the whole list on Continue Watching).
+                List<Title> going = kidsResume(h);
+                items.addAll(going.subList(0, Math.min(4, going.size())));
                 items.addAll(mix(tmdb(k, kidsTv(apps), true), tmdb(k, FAMILY + onApps(apps), false)));
             } else if (what.startsWith("@")) {
                 String app = what.substring(1);
@@ -1201,6 +1211,40 @@ final class PagesV2 {
         List<java.io.File> scenes = h.dockMode ? KidsPlay.scenes(h.a) : new ArrayList<>();
         if (!cast.isEmpty() || !scenes.isEmpty()) p.play = new KidsPlay(h, cast, scenes, p::heroNow);
         return p.startOn(0);
+    }
+
+    /**
+     * Continue Watching for the Kids page: the films and series started and not finished (WatchHistory), only the
+     * children's: a series TMDB files under Kids, or Animation and Family together; a film under Family or Animation.
+     * Each title's answer is kept, so TMDB is asked once for it. Off the main thread.
+     */
+    static List<Title> kidsResume(HomeV2 h) {
+        List<Title> out = new ArrayList<>();
+        android.content.SharedPreferences p = h.a.getSharedPreferences("kids_titles", android.content.Context.MODE_PRIVATE);
+        for (Title t : WatchHistory.titles(h.a, null)) {
+            String key = (t.tv ? "tv:" : "mv:") + t.id;
+            Boolean kid = p.contains(key) ? Boolean.valueOf(p.getBoolean(key, false)) : null;
+            if (kid == null) {
+                kid = childrens(h.tmdbKey, t.id, t.tv);
+                if (kid != null) p.edit().putBoolean(key, kid).apply();
+            }
+            if (Boolean.TRUE.equals(kid)) out.add(t);
+        }
+        return out;
+    }
+
+    /** Whether TMDB files the title as children's (null: it could not be asked). */
+    private static Boolean childrens(String key, int id, boolean tv) {
+        if (key == null || key.isEmpty() || id <= 0) return null;
+        try {
+            JSONObject d = new JSONObject(HomeV2.get("https://api.themoviedb.org/3/" + (tv ? "tv/" : "movie/") + id + "?api_key=" + key));
+            JSONArray g = d.optJSONArray("genres");
+            java.util.Set<Integer> ids = new java.util.HashSet<>();
+            for (int i = 0; g != null && i < g.length(); i++) ids.add(g.getJSONObject(i).optInt("id"));
+            return tv ? ids.contains(10762) || ids.contains(16) && ids.contains(10751) : ids.contains(10751) || ids.contains(16);
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     /** The BBFC's U and PG family films, the most popular first. */
