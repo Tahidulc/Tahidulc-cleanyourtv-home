@@ -189,6 +189,14 @@ final class HomeV2 {
     private GlassLens lens;
     /** The dock's glass and the rule between its apps and its sections. */
     private View dockBg, dockSep;
+    /**
+     * The dock's own layer (its glass, the focus glass, the apps, the rule and the sections), so the whole dock can
+     * tuck away under the foot of the screen while a section's posters have the focus, and pop back up.
+     */
+    private FrameLayout dockLayer;
+    /** The dock tucked away (theme "dock_tuck", on unless turned off); the chip at the foot that says where it went. */
+    private boolean dockAway;
+    private TextView dockHandle;
     /** The dock: its top and height; the sections' width. */
     private static final int DOCK_Y = 944, DOCK_H = 100, DOCK_APP = 64, DOCK_SEC = 112, DOCK_GAP = 14;
     /** How far a dock app's icon rises under the focus (as the sections do), and the glass's margin round it. */
@@ -452,10 +460,25 @@ final class HomeV2 {
     /** A title's panel: OK held on a poster. */
     private TitlePanel titlePanel;
 
-    /** A title's panel (the cast, the films so far, My list); play is what OK on its poster does. */
+    /** A title's details under the hero (the cast, the saga so far, My list); play is what OK on its poster does. */
     void showTitle(PagesV2.Title t, Runnable play) {
+        showTitle(t, play, true);
+    }
+
+    void showTitle(PagesV2.Title t, Runnable play, boolean held) {
         if (titlePanel == null) titlePanel = new TitlePanel(this);
-        titlePanel.show(t, play);
+        titlePanel.show(t, play, held);
+    }
+
+    /** The details open under the hero: its description and the page's tabs and posters make way (and come back). */
+    void heroMakeWay(boolean away) {
+        if (hText != null) hText.animate().alpha(away ? 0f : 1f).setDuration(away ? 160 : 260).start();
+        if (page != null) page.makeWay(away);
+    }
+
+    /** Up past the top of a page (from its details): on to the top bar, the page staying where it is. */
+    void upFromPage() {
+        if (page != null && !preview) leavePage(KeyEvent.KEYCODE_DPAD_UP);
     }
 
     /**
@@ -732,31 +755,84 @@ final class HomeV2 {
         int n = railViews.size(), sections = catViews.size();
         int width = DOCK_EDGE + n * DOCK_APP + (n - 1) * DOCK_GAP + DOCK_EDGE + 2 + DOCK_GAP + sections * DOCK_SEC + (sections - 1) * DOCK_GAP + 20;
         int x0 = (1920 - width) / 2;
+        dockLayer = new FrameLayout(a);
+        dockLayer.setClipChildren(false);
+        root.addView(dockLayer, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         dockBg = new View(a);
         GradientDrawable g = fill(30, 0x1FFFFFFF);
         g.setStroke(px(1.5f), 0x3DFFFFFF);
         dockBg.setBackground(g);
-        add(dockBg, x0, DOCK_Y, width, DOCK_H);
+        addDock(dockBg, x0, DOCK_Y, width, DOCK_H);
         lens = new GlassLens(a, s);
-        root.addView(lens, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        dockLayer.addView(lens, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         int x = x0 + DOCK_EDGE;
         for (FrameLayout f : railViews) {
-            add(f, x, DOCK_Y + (DOCK_H - DOCK_APP) / 2, DOCK_APP, DOCK_APP);
+            addDock(f, x, DOCK_Y + (DOCK_H - DOCK_APP) / 2, DOCK_APP, DOCK_APP);
             x += DOCK_APP + DOCK_GAP;
         }
         x += DOCK_EDGE - DOCK_GAP;
         dockSep = new View(a);
         dockSep.setBackgroundColor(0x47FFFFFF);
-        add(dockSep, x, DOCK_Y + 20, 2, DOCK_H - 40);
+        addDock(dockSep, x, DOCK_Y + 20, 2, DOCK_H - 40);
         x += 2 + DOCK_GAP;
         for (int k = 0; k < catViews.size(); k++) {
-            add(catViews.get(sectionAt(k)), x, DOCK_Y + 10, DOCK_SEC, DOCK_H - 20);
+            addDock(catViews.get(sectionAt(k)), x, DOCK_Y + 10, DOCK_SEC, DOCK_H - 20);
             x += DOCK_SEC + DOCK_GAP;
         }
         if (markView != null) {
             markView.setBackground(fill(3, Color.WHITE));
-            add(markView, 0, DOCK_Y + DOCK_H - 11, 6, 6);
+            addDock(markView, 0, DOCK_Y + DOCK_H - 11, 6, 6);
         }
+        // Where the dock went: a small glass chip at the foot while it is away (Down past the last row brings it back).
+        dockHandle = text(17, semi, 0xE6FFFFFF);
+        dockHandle.setText("\u25BE  Dock");
+        dockHandle.setGravity(Gravity.CENTER);
+        GradientDrawable hg = fill(19, 0x26FFFFFF);
+        hg.setStroke(px(1.5f), 0x40FFFFFF);
+        dockHandle.setBackground(hg);
+        dockHandle.setAlpha(0f);
+        dockHandle.setVisibility(View.INVISIBLE);
+        add(dockHandle, 900, 1030, 120, 38);
+    }
+
+    private void addDock(View v, int x, int y, int w, int h) {
+        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(px(w), px(h));
+        lp.leftMargin = px(x);
+        lp.topMargin = px(y);
+        dockLayer.addView(v, lp);
+    }
+
+    /**
+     * The dock away while a section's posters have the focus: it drops under the screen's foot and fades (quickly, out
+     * of the way), the posters grow into the room, and a small chip at the foot says where it went. Down past the last
+     * row, Back, or anything that puts the focus on the dock brings it back, popping up with a little overshoot.
+     */
+    private void dockRoom() {
+        if (!dockMode || dockLayer == null) return;
+        boolean away = page != null && !preview && zone != Z_RAIL && page.growsDown()
+                && Config.themeFlag(a, "dock_tuck", true);
+        if (away == dockAway) return;
+        dockAway = away;
+        dockLayer.animate().cancel();
+        dockHandle.animate().cancel();
+        if (away) {
+            dockLayer.animate().translationY(px(170)).alpha(0f).setDuration(300)
+                    .setInterpolator(new android.view.animation.AccelerateInterpolator(1.5f))
+                    .withEndAction(() -> { if (dockAway) dockLayer.setVisibility(View.INVISIBLE); }).start();
+            dockHandle.setVisibility(View.VISIBLE);
+            dockHandle.setTranslationY(px(20));
+            dockHandle.animate().alpha(1f).translationY(0).setStartDelay(260).setDuration(320).setInterpolator(SKY)
+                    .withEndAction(() -> { if (dockAway) dockHandle.animate().alpha(0.45f).setStartDelay(2500).setDuration(800).start(); }).start();
+            if (page != null) page.layer.setClipBounds(null);
+        } else {
+            dockLayer.setVisibility(View.VISIBLE);
+            dockLayer.animate().translationY(0).alpha(1f).setDuration(440)
+                    .setInterpolator(new android.view.animation.OvershootInterpolator(1.2f)).start();
+            dockHandle.animate().alpha(0f).translationY(px(20)).setStartDelay(0).setDuration(160)
+                    .withEndAction(() -> { if (!dockAway) dockHandle.setVisibility(View.INVISIBLE); }).start();
+            if (page != null && keepsBoxes(pageWhich)) clipAboveBoxes();
+        }
+        if (page != null) page.room(away);
     }
 
     /** A dock item's place in the dock (apps first, then the sections); -1 when the focus is not in the dock. */
@@ -1523,6 +1599,7 @@ final class HomeV2 {
 
     /** A section showing while the boxes keep the focus is cut off just above them. */
     private void clipAboveBoxes() {
+        if (dockAway) return;
         View first = catViews.get(0);
         int top = first.getTop() > 0 ? first.getTop() : px(CAT_Y);
         page.layer.setClipBounds(new android.graphics.Rect(0, 0, Math.max(1, root.getWidth()), top - px(10)));
@@ -1657,6 +1734,7 @@ final class HomeV2 {
     }
 
     void paint() {
+        dockRoom();
         // A score pill keeps Android's focus (and its light) after OK took the viewer to the game; once Home's own
         // focus is elsewhere, the pill lets it go, so only one thing is ever lit.
         if (zone != Z_SCORES && scores != null && scores.hasFocus()) root.requestFocus();

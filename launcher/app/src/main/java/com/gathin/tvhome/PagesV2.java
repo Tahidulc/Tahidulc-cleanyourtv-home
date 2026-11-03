@@ -70,6 +70,19 @@ final class PagesV2 {
         void entered() {
         }
 
+        /** Whether the page grows into the dock's room when the dock tucks away (the pages of posters). */
+        boolean growsDown() {
+            return false;
+        }
+
+        /** The dock has tucked away (true) or come back: the page grows into the room, or goes back. */
+        void room(boolean big) {
+        }
+
+        /** A title's details open under the hero: the page's own rows make way (true), or come back. */
+        void makeWay(boolean away) {
+        }
+
         /** Back pressed in the page: true when the page used it (else Home closes the page). */
         boolean back() {
             return false;
@@ -294,6 +307,41 @@ final class PagesV2 {
         /** The show at the top now (-1: a title's picture is there). */
         private int actShown = -1;
         private TextView emptyView;
+
+        /** The dock away: the row a third as big again, reaching down into the dock's room (BIG times its size). */
+        private boolean big;
+        static final float BIG = 1.3f;
+
+        @Override boolean growsDown() {
+            return h.dockMode && rowY.length == 1;
+        }
+
+        @Override void makeWay(boolean away) {
+            List<View> all = new ArrayList<>();
+            if (tabScroll != null) all.add(tabScroll);
+            for (Row r : rows) { all.add(r.view); all.add(r.label); }
+            if (emptyView != null) all.add(emptyView);
+            for (View v : all) v.animate().alpha(away ? 0f : 1f).translationY(away ? px(30) : 0).setDuration(away ? 180 : 280).start();
+        }
+
+        /** The title the hero shows (the one focused in the row, or last focused before going up to the tabs). */
+        private Title heroTitle() {
+            if (row >= rows.size() || rows.get(row).items.isEmpty()) return null;
+            return rows.get(row).items.get(Math.min(idx, rows.get(row).items.size() - 1));
+        }
+
+        @Override void room(boolean grow) {
+            if (big == grow || rows.isEmpty()) return;
+            big = grow;
+            for (Row r : rows) {
+                r.view.setPivotX(0f);
+                r.view.setPivotY(0f);
+                r.view.animate().scaleX(grow ? BIG : 1f).scaleY(grow ? BIG : 1f).setDuration(grow ? 420 : 300)
+                        .setInterpolator(HomeV2.SKY).start();
+            }
+            if (emptyView != null) emptyView.animate().translationY(grow ? px(40) : 0).setDuration(300).start();
+            paint();
+        }
 
         PosterPage startOn(int t) {
             startTab = tabs == null ? 0 : Math.max(0, Math.min(t, tabs.length - 1));
@@ -788,7 +836,8 @@ final class PagesV2 {
                     }
                     f.setForeground(on ? h.ring(14) : null);
                 }
-                int first = !onTabs && ri == row ? Math.max(0, idx - 4) : 0;
+                // Bigger (the dock away), one poster fewer before the focused one, so it stays on the screen.
+                int first = !onTabs && ri == row ? Math.max(0, idx - (big ? 3 : 4)) : 0;
                 r.strip.animate().translationX(-first * px(NARROW + GAP)).setDuration(300).setInterpolator(HomeV2.SKY).start();
             }
             Row focused = onTabs || row >= rows.size() ? null : rows.get(row);
@@ -952,7 +1001,14 @@ final class PagesV2 {
                     else if (idx < n - 1) idx++;
                     break;
                 case KeyEvent.KEYCODE_DPAD_UP:
-                    if (onTabs) return false;
+                    if (onTabs) {
+                        // Up on the hero: the title's details open under it, on this page (the saga so far, the cast);
+                        // Up again goes on to the top bar. A page with its own scene up there (Kids) goes straight on.
+                        Title ht = heroTitle();
+                        if (ht == null || ht.id <= 0 || play != null || h.tmdbKey.isEmpty()) return false;
+                        h.showTitle(ht, () -> play(ht), false);
+                        return true;
+                    }
                     if (row > 0) { row--; idx = Math.min(idx, Math.max(0, rows.get(row).items.size() - 1)); }
                     else if (tabs != null) onTabs = true;
                     else return false;

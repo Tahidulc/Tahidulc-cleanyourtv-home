@@ -48,6 +48,8 @@ final class AmbientScene {
     private final FrameLayout root, stage;
     private final TextView clock, date, weather, tomorrow;
     private final ImageView weatherIcon;
+    /** Today's prayers on the sun's path, under the weather (when the theme asks for prayer times). */
+    private final PrayerArc prayerArc;
     private final LinearLayout cards, strip, left, page;
     private TextView hint;
     /** The bar's pages ({label, items}), the one showing, and how long each stays. */
@@ -103,6 +105,12 @@ final class AmbientScene {
         left.addView(wx, margins(10, 30, 0, 0));
         tomorrow = text(22, "sans-serif", 0xA6FFFFFF);
         left.addView(tomorrow, margins(10, 10, 0, 0));
+        prayerArc = new PrayerArc(c, k, true, c.getResources().getFont(R.font.outfit_extrabold),
+                c.getResources().getFont(R.font.inter_semibold), c.getResources().getFont(R.font.inter_regular));
+        LinearLayout.LayoutParams pa = new LinearLayout.LayoutParams(px(640), px(180));
+        pa.setMargins(px(10), px(36), 0, 0);
+        left.addView(prayerArc, pa);
+        showArc();
         FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(-2, -2);
         lp.leftMargin = px(140);
         lp.topMargin = px(150);
@@ -174,6 +182,8 @@ final class AmbientScene {
             stage.animate().translationX((random.nextFloat() * 80 - 40) * k).translationY((random.nextFloat() * 50 - 25) * k)
                     .alpha(dim()).setDuration(4_000).start();
             strip.animate().alpha(dim()).setDuration(4_000).start();
+            // The sun (or the moon) moves along the prayers' path.
+            showArc();
             // On the way home, the minutes left and the time home move on each minute.
             if (tripActive()) showCards();
             long toNext = 60_000L - (System.currentTimeMillis() % 60_000L) + 50;
@@ -228,8 +238,9 @@ final class AmbientScene {
     private void load() {
         Object[] wx = weather();
         List<Card> found = new ArrayList<>();
-        List<String> results = new ArrayList<>(), onNow = new ArrayList<>(), later = new ArrayList<>();
+        List<Object[]> results = new ArrayList<>(), onNow = new ArrayList<>(), later = new ArrayList<>();
         Card match = match(results, onNow, later);
+        f1Later(later);
         if (match != null) found.add(match);
         Card f1 = f1();
         if (f1 != null) found.add(f1);
@@ -251,6 +262,7 @@ final class AmbientScene {
                 weatherIcon.setImageResource((Integer) wx[1]);
                 tomorrow.setText((String) wx[2]);
             }
+            showArc();
             others.clear();
             others.addAll(found);
             showCards();
@@ -342,7 +354,7 @@ final class AmbientScene {
      * The game on now in the followed competitions, else the next one in the coming week (one with a British
      * channel first); today's finished ones go into results.
      */
-    private Card match(List<String> results, List<String> onNow, List<String> later) {
+    private Card match(List<Object[]> results, List<Object[]> onNow, List<Object[]> later) {
         String[] leagues = c.getResources().getStringArray(R.array.goal_alert_leagues);
         ZoneId zone = ZoneId.systemDefault();
         LocalDate today = LocalDate.now(zone);
@@ -353,10 +365,14 @@ final class AmbientScene {
             if (i == 0) {
                 DateTimeFormatter hm = DateTimeFormatter.ofPattern("HH:mm");
                 for (ScoresTicker.Game g : day) {
-                    if (g.state == 2 && results.size() < 4) results.add(g.home + " " + g.homeScore + "–" + g.awayScore + " " + g.away);
-                    if (g.state == 0 && onNow.size() < 3) onNow.add(ScoresTicker.liveClock(g) + "   " + g.home + " " + g.homeScore + "–" + g.awayScore + " " + g.away);
+                    // Each game with both clubs' crests either side (fetched once, kept on disk).
+                    if (g.state == 2 && results.size() < 4)
+                        results.add(new Object[]{g.home + "  " + g.homeScore + "–" + g.awayScore + "  " + g.away, crest(g.homeLogo), crest(g.awayLogo), "FT"});
+                    if (g.state == 0 && onNow.size() < 3)
+                        onNow.add(new Object[]{g.home + "  " + g.homeScore + "–" + g.awayScore + "  " + g.away, crest(g.homeLogo), crest(g.awayLogo), ScoresTicker.liveClock(g)});
                     if (g.state == 1 && g.kickoff > now && later.size() < 4)
-                        later.add(Instant.ofEpochMilli(g.kickoff).atZone(zone).format(hm) + "   " + g.home + " v " + g.away);
+                        later.add(new Object[]{g.home + "  v  " + g.away, crest(g.homeLogo), crest(g.awayLogo),
+                                Instant.ofEpochMilli(g.kickoff).atZone(zone).format(hm)});
                 }
                 for (ScoresTicker.Game g : day) if (g.state == 0) return gameCard(g, true);
             }
@@ -370,6 +386,51 @@ final class AmbientScene {
             return gameCard(next.get(0), false);
         }
         return null;
+    }
+
+    private Bitmap crest(String url) {
+        try {
+            return url == null ? null : ScoresTicker.cachedLogo(c, url, px(34));
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
+    /** The F1 sessions still to come today, with the F1 logo, among the games in time order. */
+    private void f1Later(List<Object[]> later) {
+        List<RaceWeekend.Race> calendar;
+        try {
+            calendar = Config.load(c).raceCalendar;
+        } catch (RuntimeException e) {
+            return;
+        }
+        ZoneId zone = ZoneId.systemDefault();
+        LocalDate today = LocalDate.now(zone);
+        Instant now = Instant.now();
+        DateTimeFormatter hm = DateTimeFormatter.ofPattern("HH:mm");
+        Bitmap logo = null;
+        boolean added = false;
+        for (RaceWeekend.Race race : calendar) {
+            for (RaceWeekend.Session s : race.sessions) {
+                if (!s.start.isAfter(now) || !s.start.atZone(zone).toLocalDate().equals(today)) continue;
+                if (logo == null) logo = crest(F1Results.F1_LOGO);
+                later.add(new Object[]{s.name + "  ·  " + race.name, logo, null, s.start.atZone(zone).format(hm)});
+                added = true;
+            }
+        }
+        if (added) later.sort((a, b) -> String.valueOf(a[3]).compareTo(String.valueOf(b[3])));
+        while (later.size() > 5) later.remove(later.size() - 1);
+    }
+
+    /** The prayers' path shown, and moved on, when prayer times are on and known; gone otherwise. */
+    private void showArc() {
+        if (prayerArc == null) return;
+        boolean show = Prayer.on(c);
+        if (show) {
+            prayerArc.update();
+            show = !prayerArc.empty();
+        }
+        prayerArc.setVisibility(show ? View.VISIBLE : View.GONE);
     }
 
     private Card gameCard(ScoresTicker.Game g, boolean live) {
@@ -644,11 +705,11 @@ final class AmbientScene {
      * The bar's pages, in the order they come round: the games on now, the next hours' weather (and sunset), the rest
      * of today's games, today's results, then up to three headlines (local news first), one to a page.
      */
-    private List<Strip> strips(Object[] wx, List<String> onNow, List<String> later, List<String> results, List<String[]> news) {
+    private List<Strip> strips(Object[] wx, List<Object[]> onNow, List<Object[]> later, List<Object[]> results, List<String[]> news) {
         List<Strip> out = new ArrayList<>();
         if (!onNow.isEmpty()) {
             Strip p = new Strip("LIVE");
-            for (String s : onNow) p.items.add(new Object[]{s, 0});
+            p.items.addAll(onNow);
             out.add(p);
         }
         if (wx != null && wx.length > 3 && wx[3] instanceof List && !((List<?>) wx[3]).isEmpty()) {
@@ -673,22 +734,25 @@ final class AmbientScene {
         }
         if (Prayer.on(c) && !Prayer.today(c).isEmpty()) {
             Strip p = new Strip("PRAYER TIMES");
-            Object[] next = Prayer.next(c);
+            Prayer.Slot next = Prayer.next(c);
+            boolean nextToday = next != null && next.begins.toLocalDate().equals(LocalDate.now());
             for (String[] x : Prayer.today(c)) {
                 if ("Sunrise".equals(x[0])) continue;
-                boolean isNext = next != null && x[0].equals(next[0]) && x[1].equals(next[1]);
-                p.items.add(new Object[]{x[0] + "  " + x[1] + (isNext ? "  ‹ next" : ""), 0});
+                // The time it begins, then the mosque's jamā'ah when it differs (Maghrib's is the same).
+                boolean isNext = nextToday && x[0].equals(next.label());
+                String j = x[2].isEmpty() || x[2].equals(x[1]) ? "" : " · " + x[2];
+                p.items.add(new Object[]{x[0] + "  " + x[1] + j + (isNext ? "  ‹ next" : ""), 0});
             }
             out.add(p);
         }
         if (!later.isEmpty()) {
             Strip p = new Strip("LATER TODAY");
-            for (String s : later) p.items.add(new Object[]{s, 0});
+            p.items.addAll(later);
             out.add(p);
         }
         if (!results.isEmpty()) {
             Strip p = new Strip("TODAY'S RESULTS");
-            for (String s : results) p.items.add(new Object[]{"FT  " + s, 0});
+            p.items.addAll(results);
             out.add(p);
         }
         for (int i = 0; i < Math.min(3, news.size()); i++) {
@@ -775,17 +839,35 @@ final class AmbientScene {
         for (Object[] item : p.items) {
             LinearLayout one = new LinearLayout(c);
             one.setGravity(Gravity.CENTER_VERTICAL);
+            // A time or minute first ("19:45", "67'", "FT"), then a crest or logo, the words, and a second crest.
+            if (item.length > 3 && item[3] != null) {
+                TextView pre = text(20, "sans-serif-medium", 0xFFFFFFFF);
+                pre.setText(String.valueOf(item[3]));
+                pre.setSingleLine(true);
+                one.addView(pre, margins(0, 0, 14, 0));
+            }
             int icon = item[1] instanceof Integer ? (Integer) item[1] : 0;
-            if (icon != 0) {
+            if (icon != 0 || item[1] instanceof Bitmap) {
                 ImageView iv = new ImageView(c);
-                iv.setImageResource(icon);
+                if (item[1] instanceof Bitmap) iv.setImageBitmap((Bitmap) item[1]);
+                else iv.setImageResource(icon);
+                iv.setScaleType(ImageView.ScaleType.FIT_CENTER);
                 one.addView(iv, new LinearLayout.LayoutParams(px(30), px(30)));
+                icon = 1;
             }
             TextView t = text(20, "sans-serif", 0xD9FFFFFF);
             t.setText((String) item[0]);
             t.setSingleLine(true);
             t.setEllipsize(android.text.TextUtils.TruncateAt.END);
             one.addView(t, icon != 0 ? margins(10, 0, 0, 0) : new LinearLayout.LayoutParams(p.wide ? -1 : -2, -2));
+            if (item.length > 2 && item[2] instanceof Bitmap) {
+                ImageView iv = new ImageView(c);
+                iv.setImageBitmap((Bitmap) item[2]);
+                iv.setScaleType(ImageView.ScaleType.FIT_CENTER);
+                LinearLayout.LayoutParams il = new LinearLayout.LayoutParams(px(30), px(30));
+                il.leftMargin = px(10);
+                one.addView(iv, il);
+            }
             LinearLayout.LayoutParams lp = p.wide ? new LinearLayout.LayoutParams(0, -2, 1f) : new LinearLayout.LayoutParams(-2, -2);
             lp.leftMargin = px(p.wide ? 28 : 40);
             page.addView(one, lp);

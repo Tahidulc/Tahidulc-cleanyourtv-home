@@ -29,10 +29,13 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * A title's panel (hold OK on a poster in Discover, Movies or TV shows): its picture and logo, Play, My list and, for a
- * series watched before, Previously on; for a film in a series of films, the films so far with the ones watched on
- * this TV ticked; and the cast, each with the films and series they are in that were watched on this TV ("where you've
- * seen them"). Up and Down between the rows, Left and Right along them, OK acts, Back closes.
+ * A title's details, opened on the page itself under its hero (Up from the tabs, "up on the hero", or OK held on a
+ * poster in Discover, Movies or TV shows): the hero keeps its picture, logo and line, its description and the page's
+ * tabs and posters make way, and under the hero come Play, My list and, for a series watched before, Previously on;
+ * for a film in a series of films, the saga so far in a box (how many seen, the films with the ones watched on this
+ * TV ticked); and the cast in rings, each with how many things of theirs were watched here, the one focused opening
+ * into a white card with their picture and where you've seen them. Up and Down between the rows (Up past the buttons
+ * to the top bar, Down past the cast back to the page), Left and Right along them, OK acts, Back closes.
  */
 final class TitlePanel {
     private static final int YELLOW = 0xFFFFD04D, GREEN = 0xFF3DDC84, NAVY = 0xFF10157E;
@@ -52,8 +55,8 @@ final class TitlePanel {
     private final List<Runnable> buttonActs = new ArrayList<>();
     private final List<PagesV2.Title> sagaTitles = new ArrayList<>();
     private final List<Object[]> people = new ArrayList<>();
-    private FrameLayout castCard;
-    private TextView listButton;
+    private final List<View> faces = new ArrayList<>(), cards = new ArrayList<>();
+    private LinearLayout listButton;
 
     TitlePanel(HomeV2 home) {
         h = home;
@@ -69,21 +72,24 @@ final class TitlePanel {
 
     /** Opens on a title; play does what OK on its poster does. */
     void show(PagesV2.Title t, Runnable play) {
+        show(t, play, true);
+    }
+
+    /** held: opened by holding OK, so that OK's release is not a press (Up on the hero opens it with no OK to wait for). */
+    void show(PagesV2.Title t, Runnable play, boolean held) {
         if (open) close(false);
         open = true;
-        waitUp = true;
+        waitUp = held;
         title = t;
         this.play = play;
         int my = ++gen;
+        // On the page, under its hero: no screen of its own. The description and the posters make way.
         overlay = new FrameLayout(c);
-        overlay.setBackgroundColor(0xFF0A0E4A);
-        overlay.setClickable(true);
+        overlay.setClipChildren(false);
         h.root.addView(overlay, new FrameLayout.LayoutParams(-1, -1));
         overlay.setAlpha(0f);
-        overlay.animate().alpha(1f).setDuration(220).start();
-        TextView wait = h.text(22, regular, 0xB3FFFFFF);
-        wait.setText(t.title);
-        place(overlay, wait, 120, 120, 1200, 40);
+        overlay.animate().alpha(1f).setDuration(260).setStartDelay(120).start();
+        h.heroMakeWay(true);
         io.execute(() -> {
             Object[] got = read(t);
             main.post(() -> { if (my == gen && open) build(t, got); });
@@ -100,9 +106,12 @@ final class TitlePanel {
         gen++;
         View o = overlay;
         overlay = null;
-        if (fade) o.animate().alpha(0f).setDuration(180).withEndAction(() -> h.root.removeView(o)).start();
+        if (fade) o.animate().alpha(0f).setDuration(160).withEndAction(() -> h.root.removeView(o)).start();
         else h.root.removeView(o);
-        if (fade) h.paint();
+        if (fade) {
+            h.heroMakeWay(false);
+            h.paint();
+        }
     }
 
     // ---- reading ------------------------------------------------------------------------------------------------
@@ -117,18 +126,8 @@ final class TitlePanel {
         } catch (Exception ignored) {
             // the panel shows what the poster had
         }
+        // The hero above already shows its picture and logo.
         Bitmap back = null, logo = null;
-        String b = t.backdrop;
-        if (d != null && !d.optString("backdrop_path").isEmpty() && !"null".equals(d.optString("backdrop_path"))) b = "https://image.tmdb.org/t/p/w1280" + d.optString("backdrop_path");
-        if (b != null) back = ScoresTicker.cachedLogo(c, b, h.px(1400));
-        JSONArray logos = d == null || d.optJSONObject("images") == null ? null : d.optJSONObject("images").optJSONArray("logos");
-        for (int i = 0; logos != null && i < logos.length(); i++) {
-            JSONObject l = logos.optJSONObject(i);
-            if (!"en".equals(l.optString("iso_639_1")) || !l.optString("file_path").endsWith(".png")) continue;
-            logo = ScoresTicker.cachedLogo(c, "https://image.tmdb.org/t/p/w500" + l.optString("file_path"), h.px(560));
-            if (logo != null) logo = HomeV2.trim(logo);
-            break;
-        }
         Map<String, LocalDate> seen = ViewingLog.watched(c);
         // The cast: each with what of theirs was watched here.
         List<Object[]> who = new ArrayList<>();
@@ -204,6 +203,13 @@ final class TitlePanel {
 
     // ---- building -----------------------------------------------------------------------------------------------
 
+    /** Where the details start under the hero (its line ends about here), and their left edge. */
+    private static final int TOP = 468;
+
+    private int left() {
+        return h.dockMode ? 56 : 216;
+    }
+
     @SuppressWarnings("unchecked")
     private void build(PagesV2.Title t, Object[] got) {
         overlay.removeAllViews();
@@ -212,153 +218,133 @@ final class TitlePanel {
         saga.clear();
         sagaTitles.clear();
         cast.clear();
+        faces.clear();
+        cards.clear();
         people.clear();
-        JSONObject d = (JSONObject) got[0];
-        Bitmap back = (Bitmap) got[1], logo = (Bitmap) got[2];
-        if (back != null) {
-            ImageView bg = new ImageView(c);
-            bg.setImageBitmap(back);
-            bg.setScaleType(ImageView.ScaleType.CENTER_CROP);
-            place(overlay, bg, 620, 0, 1300, 731);
-        }
-        View shade = new View(c);
-        shade.setBackground(new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, new int[]{0xFF0A0E4A, 0xF20A0E4A, 0x660A0E4A, 0x000A0E4A}));
-        place(overlay, shade, 600, 0, 1000, 731);
-        View foot = new View(c);
-        foot.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0x000A0E4A, 0xFF0A0E4A}));
-        place(overlay, foot, 600, 430, 1320, 302);
+        int x0 = left(), y = TOP;
 
-        if (logo != null) {
-            ImageView l = new ImageView(c);
-            l.setImageBitmap(logo);
-            l.setAdjustViewBounds(true);
-            l.setScaleType(ImageView.ScaleType.FIT_START);
-            l.setMaxWidth(h.px(560));
-            l.setMaxHeight(h.px(140));
-            place(overlay, l, 120, 96, 560, 140);
-        } else {
-            TextView n = h.text(54, heavy, Color.WHITE);
-            n.setText(t.title);
-            n.setMaxLines(2);
-            place(overlay, n, 120, 96, 900, 140);
-        }
-        TextView meta = h.text(20, regular, 0xE6FFFFFF);
-        meta.setText(meta(t, d));
-        place(overlay, meta, 120, 252, 1100, 32);
-        TextView over = h.text(20, regular, 0xD9FFFFFF);
-        String ov = d != null && !d.optString("overview").isEmpty() ? d.optString("overview") : t.overview;
-        over.setText(ov == null ? "" : ov);
-        over.setMaxLines(3);
-        over.setLineSpacing(0, 1.15f);
-        place(overlay, over, 120, 292, 880, 100);
-
-        // Play, My list (and Previously on).
+        // Play, My list (and Previously on): the mock-ups' round pills, Play with the remote's OK.
         LinearLayout bar = new LinearLayout(c);
-        place(overlay, bar, 120, 410, 1100, 64);
-        addButton(bar, "▶  Play", () -> { hide(); if (play != null) play.run(); });
+        bar.setGravity(Gravity.CENTER_VERTICAL);
+        place(overlay, bar, x0, y, 1400, 56);
+        addButton(bar, "Play", true, () -> { hide(); if (play != null) play.run(); });
         boolean listed = MyList.has(c, t.id, t.tv);
-        listButton = addButton(bar, listed ? "✓  On My list" : "＋  My list", () -> {
+        listButton = addButton(bar, listed ? "\u2713  On My list" : "+  My list", false, () -> {
             boolean now = MyList.toggle(c, title, HomeV2.onYourApps(h, (JSONObject) got[6]) != null);
-            listButton.setText(now ? "✓  On My list" : "＋  My list");
+            MockKit.setWords(listButton, now ? "\u2713  On My list" : "+  My list");
         });
-        if (t.tv && Recap.can(c, t.id)) addButton(bar, "↺  Previously on", () -> { hide(); Recap.open(h, t, play); });
+        if (t.tv && Recap.can(c, t.id)) addButton(bar, "\u21BA  Previously on", false, () -> { hide(); Recap.open(h, t, play); });
+        y += 78;
 
-        int y = 500;
-        // The films so far.
+        // The saga so far: a box with how many are seen, a bar for it, and the films.
         List<Object[]> parts = (List<Object[]>) got[4];
         if (parts.size() > 1) {
             int watched = 0;
             for (Object[] p : parts) if (p[2] != null) watched++;
-            TextView head = h.text(15, semi, Color.WHITE);
-            head.setText(((String) got[5]).toUpperCase(Locale.UK) + "   ·   " + watched + " of " + parts.size() + " seen on this TV");
-            head.setLetterSpacing(0.12f);
-            place(overlay, head, 120, y, 1300, 26);
+            LinearLayout box = new LinearLayout(c);
+            box.setOrientation(LinearLayout.VERTICAL);
+            box.setPadding(h.px(22), h.px(16), h.px(22), h.px(16));
+            GradientDrawable bg = h.fill(18, 0x8C0A0E50);
+            bg.setStroke(Math.max(1, h.px(1)), 0x38FFFFFF);
+            box.setBackground(bg);
+            LinearLayout head = new LinearLayout(c);
+            head.setGravity(Gravity.CENTER_VERTICAL);
+            TextView name = h.text(14, semi, Color.WHITE);
+            name.setText(((String) got[5]).toUpperCase(Locale.UK));
+            name.setLetterSpacing(0.14f);
+            head.addView(name);
+            TextView count = h.text(14, regular, 0xBFFFFFFF);
+            count.setText(watched + " of " + parts.size() + " seen");
+            LinearLayout.LayoutParams cl = new LinearLayout.LayoutParams(-2, -2);
+            cl.leftMargin = h.px(14);
+            head.addView(count, cl);
+            box.addView(head);
+            FrameLayout track = new FrameLayout(c);
+            track.setBackground(h.fill(3, 0x33FFFFFF));
+            View done = new View(c);
+            done.setBackground(h.fill(3, GREEN));
+            track.addView(done, new FrameLayout.LayoutParams(Math.round(h.px(736) * watched / (float) parts.size()), -1));
+            LinearLayout.LayoutParams tl = new LinearLayout.LayoutParams(h.px(736), h.px(6));
+            tl.topMargin = h.px(10);
+            tl.bottomMargin = h.px(12);
+            box.addView(track, tl);
             LinearLayout strip = new LinearLayout(c);
-            place(overlay, strip, 110, y + 32, 1700, 180);
             for (Object[] p : parts) {
                 PagesV2.Title ft = (PagesV2.Title) p[0];
                 LinearLayout one = new LinearLayout(c);
                 one.setGravity(Gravity.CENTER_VERTICAL);
-                one.setPadding(h.px(10), h.px(10), h.px(16), h.px(10));
+                one.setPadding(h.px(6), h.px(6), h.px(12), h.px(6));
                 ImageView pic = new ImageView(c);
                 pic.setScaleType(ImageView.ScaleType.CENTER_CROP);
                 if (p[1] != null) pic.setImageBitmap((Bitmap) p[1]);
-                pic.setBackground(h.fill(8, 0xFF1A1F6B));
+                pic.setBackground(h.fill(9, 0xFF1A1F6B));
                 pic.setClipToOutline(true);
-                pic.setOutlineProvider(h.round(8));
-                pic.setAlpha(p[2] != null || ft.id == t.id ? 1f : 0.6f);
-                one.addView(pic, new LinearLayout.LayoutParams(h.px(86), h.px(129)));
+                pic.setOutlineProvider(h.round(9));
+                boolean coming = p[2] == null && ft.id != t.id && status(ft, null, (String) p[3], t).startsWith("Out");
+                pic.setAlpha(p[2] != null || ft.id == t.id ? 1f : 0.55f);
+                if (coming) {
+                    GradientDrawable dash = new GradientDrawable();
+                    dash.setCornerRadius(h.px(9));
+                    dash.setStroke(Math.max(1, h.px(2)), 0xB3FFFFFF, h.px(6), h.px(4));
+                    pic.setForeground(dash);
+                }
+                one.addView(pic, new LinearLayout.LayoutParams(h.px(74), h.px(110)));
                 LinearLayout words = new LinearLayout(c);
                 words.setOrientation(LinearLayout.VERTICAL);
-                TextView st = h.text(14, semi, p[2] != null ? GREEN : YELLOW);
+                TextView st = h.text(15, semi, p[2] != null ? GREEN : YELLOW);
                 st.setText(status(ft, (LocalDate) p[2], (String) p[3], t));
+                st.setSingleLine(true);
                 words.addView(st);
                 TextView nm = h.text(16, semi, Color.WHITE);
                 nm.setText(ft.title);
                 nm.setMaxLines(2);
                 words.addView(nm);
+                if (ft.year != null && !ft.year.isEmpty()) {
+                    TextView yr = h.text(13, regular, 0xBFFFFFFF);
+                    yr.setText(ft.year);
+                    words.addView(yr);
+                }
                 LinearLayout.LayoutParams wl = new LinearLayout.LayoutParams(h.px(150), -2);
                 wl.leftMargin = h.px(12);
                 one.addView(words, wl);
-                strip.addView(one, new LinearLayout.LayoutParams(-2, -2));
+                LinearLayout.LayoutParams ol = new LinearLayout.LayoutParams(-2, -2);
+                ol.rightMargin = h.px(8);
+                strip.addView(one, ol);
                 saga.add(one);
                 sagaTitles.add(ft);
             }
-            y += 230;
+            box.addView(strip);
+            FrameLayout.LayoutParams bl = new FrameLayout.LayoutParams(-2, -2);
+            bl.leftMargin = h.px(x0);
+            bl.topMargin = h.px(y);
+            overlay.addView(box, bl);
+            y += 214;
         }
 
-        // The cast.
+        // The cast in rings: how many of theirs were watched here on a green badge; the one focused opens into a card.
         List<Object[]> who = (List<Object[]>) got[3];
         if (!who.isEmpty()) {
             TextView head = h.text(24, semi, Color.WHITE);
             head.setText("Cast");
-            place(overlay, head, 120, y, 200, 34);
+            place(overlay, head, x0, y, 90, 34);
             TextView note = h.text(17, regular, 0xBFFFFFFF);
-            note.setText("· where you've seen them, from what's been watched on this TV");
-            place(overlay, note, 200, y + 6, 1000, 28);
+            note.setText("\u00B7  where you've seen them, from what you've watched on this TV");
+            place(overlay, note, x0 + 80, y + 6, 1100, 28);
             LinearLayout strip = new LinearLayout(c);
-            place(overlay, strip, 110, y + 44, 1720, 280);
+            strip.setClipChildren(false);
+            place(overlay, strip, x0 - 6, y + 44, 1880 - x0, 320);
             for (Object[] p : who) {
-                LinearLayout one = new LinearLayout(c);
-                one.setOrientation(LinearLayout.VERTICAL);
-                one.setGravity(Gravity.CENTER_HORIZONTAL);
-                one.setPadding(h.px(6), h.px(6), h.px(6), h.px(6));
-                FrameLayout face = new FrameLayout(c);
-                ImageView f = new ImageView(c);
-                f.setScaleType(ImageView.ScaleType.CENTER_CROP);
-                if (p[2] != null) f.setImageBitmap((Bitmap) p[2]);
-                f.setBackground(h.fill(64, 0xFF1A1F6B));
-                f.setClipToOutline(true);
-                f.setOutlineProvider(h.round(64));
-                face.addView(f, new FrameLayout.LayoutParams(h.px(128), h.px(128)));
-                List<String> names = (List<String>) p[4];
-                if (!names.isEmpty()) {
-                    TextView n = h.text(14, semi, 0xFF06331B);
-                    n.setText(String.valueOf(names.size()));
-                    n.setGravity(Gravity.CENTER);
-                    n.setBackground(h.fill(17, GREEN));
-                    face.addView(n, new FrameLayout.LayoutParams(h.px(34), h.px(34), Gravity.BOTTOM | Gravity.END));
-                }
-                one.addView(face, new LinearLayout.LayoutParams(h.px(128), h.px(128)));
-                TextView nm = h.text(16, semi, Color.WHITE);
-                nm.setText((String) p[0]);
-                nm.setGravity(Gravity.CENTER);
-                nm.setMaxLines(2);
-                one.addView(nm, new LinearLayout.LayoutParams(h.px(170), -2));
-                TextView ch = h.text(13, regular, 0xB3FFFFFF);
-                ch.setText((String) p[1]);
-                ch.setGravity(Gravity.CENTER);
-                ch.setSingleLine(true);
-                one.addView(ch, new LinearLayout.LayoutParams(h.px(170), -2));
-                if (!names.isEmpty()) {
-                    TextView s = h.text(13, semi, 0xFF9FE7C0);
-                    s.setText(String.join(", ", names.subList(0, Math.min(2, names.size()))) + (names.size() > 2 ? " +" + (names.size() - 2) : ""));
-                    s.setGravity(Gravity.CENTER);
-                    s.setMaxLines(2);
-                    one.addView(s, new LinearLayout.LayoutParams(h.px(170), -2));
-                }
-                strip.addView(one, new LinearLayout.LayoutParams(h.px(196), -2));
-                cast.add(one);
+                FrameLayout slot = new FrameLayout(c);
+                slot.setClipChildren(false);
+                View face = face(p);
+                View card = card(p);
+                card.setVisibility(View.GONE);
+                slot.addView(face, new FrameLayout.LayoutParams(h.px(178), -2));
+                slot.addView(card, new FrameLayout.LayoutParams(h.px(430), h.px(300)));
+                strip.addView(slot, new LinearLayout.LayoutParams(-2, -2));
+                cast.add(slot);
+                faces.add(face);
+                cards.add(card);
                 people.add(p);
             }
         }
@@ -367,12 +353,127 @@ final class TitlePanel {
         paint();
     }
 
-    private TextView addButton(LinearLayout bar, String words, Runnable act) {
-        TextView b = h.text(21, semi, Color.WHITE);
-        b.setText(words);
-        b.setGravity(Gravity.CENTER);
-        b.setPadding(h.px(28), 0, h.px(28), 0);
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, h.px(60));
+    /** A cast member at rest: the ring, the badge, the name, the part and where they were seen. */
+    @SuppressWarnings("unchecked")
+    private View face(Object[] p) {
+        LinearLayout one = new LinearLayout(c);
+        one.setOrientation(LinearLayout.VERTICAL);
+        one.setGravity(Gravity.CENTER_HORIZONTAL);
+        one.setPadding(h.px(4), h.px(4), h.px(4), h.px(4));
+        FrameLayout ring = new FrameLayout(c);
+        ImageView f = new ImageView(c);
+        f.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        if (p[2] != null) f.setImageBitmap((Bitmap) p[2]);
+        f.setBackground(h.fill(66, 0xFF1A1F6B));
+        f.setClipToOutline(true);
+        f.setOutlineProvider(h.round(66));
+        MockKit.ring(h, f, 66, 3, 0xCCFFFFFF);
+        ring.addView(f, new FrameLayout.LayoutParams(h.px(132), h.px(132)));
+        List<String> names = (List<String>) p[4];
+        if (!names.isEmpty()) {
+            TextView n = h.text(14, semi, 0xFF06331B);
+            n.setText(String.valueOf(names.size()));
+            n.setGravity(Gravity.CENTER);
+            GradientDrawable g = h.fill(17, GREEN);
+            g.setStroke(Math.max(1, h.px(2.5f)), 0xFF0A0E4A);
+            n.setBackground(g);
+            FrameLayout.LayoutParams nl = new FrameLayout.LayoutParams(h.px(34), h.px(34), Gravity.BOTTOM | Gravity.END);
+            ring.addView(n, nl);
+        }
+        one.addView(ring, new LinearLayout.LayoutParams(h.px(132), h.px(132)));
+        TextView nm = h.text(17, semi, Color.WHITE);
+        nm.setText((String) p[0]);
+        nm.setGravity(Gravity.CENTER);
+        nm.setMaxLines(2);
+        LinearLayout.LayoutParams nl = new LinearLayout.LayoutParams(h.px(170), -2);
+        nl.topMargin = h.px(8);
+        one.addView(nm, nl);
+        TextView ch = h.text(14, regular, 0xB3FFFFFF);
+        ch.setText((String) p[1]);
+        ch.setGravity(Gravity.CENTER);
+        ch.setSingleLine(true);
+        ch.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        one.addView(ch, new LinearLayout.LayoutParams(h.px(170), -2));
+        if (!names.isEmpty()) {
+            TextView s = h.text(13, semi, 0xFF9FE7C0);
+            s.setText(String.join(", ", names.subList(0, Math.min(2, names.size()))) + (names.size() > 2 ? " +" + (names.size() - 2) : ""));
+            s.setGravity(Gravity.CENTER);
+            s.setMaxLines(2);
+            one.addView(s, new LinearLayout.LayoutParams(h.px(170), -2));
+        }
+        return one;
+    }
+
+    /** The focused cast member: a white card, their picture tall at the left, and where you've seen them. */
+    @SuppressWarnings("unchecked")
+    private View card(Object[] p) {
+        LinearLayout card = new LinearLayout(c);
+        card.setPadding(h.px(16), h.px(16), h.px(18), h.px(16));
+        card.setBackground(h.fill(20, Color.WHITE));
+        card.setElevation(h.px(10));
+        ImageView pic = new ImageView(c);
+        pic.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        if (p[2] != null) pic.setImageBitmap((Bitmap) p[2]);
+        pic.setBackground(h.fill(14, 0xFFDDE0F5));
+        pic.setClipToOutline(true);
+        pic.setOutlineProvider(h.round(14));
+        card.addView(pic, new LinearLayout.LayoutParams(h.px(150), -1));
+        LinearLayout words = new LinearLayout(c);
+        words.setOrientation(LinearLayout.VERTICAL);
+        TextView nm = h.text(22, heavy, NAVY);
+        nm.setText((String) p[0]);
+        nm.setMaxLines(2);
+        words.addView(nm);
+        if (!((String) p[1]).isEmpty()) {
+            TextView ch = h.text(15, regular, 0xBF10157E);
+            ch.setText("as " + p[1]);
+            ch.setSingleLine(true);
+            ch.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            words.addView(ch);
+        }
+        List<Object[]> shown = (List<Object[]>) p[3];
+        TextView head = h.text(13, semi, 0xCC10157E);
+        head.setText(shown.isEmpty() ? "NOTHING ELSE OF THEIRS WATCHED HERE YET"
+                : "WHERE YOU'VE SEEN " + ((String) p[0]).split(" ")[0].toUpperCase(Locale.UK));
+        head.setLetterSpacing(0.1f);
+        LinearLayout.LayoutParams hl = new LinearLayout.LayoutParams(-2, -2);
+        hl.topMargin = h.px(12);
+        words.addView(head, hl);
+        for (Object[] w : shown) {
+            LinearLayout r = new LinearLayout(c);
+            r.setGravity(Gravity.CENTER_VERTICAL);
+            ImageView poster = new ImageView(c);
+            poster.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            if (w[1] != null) poster.setImageBitmap((Bitmap) w[1]);
+            poster.setBackground(h.fill(6, 0xFFDDE0F5));
+            poster.setClipToOutline(true);
+            poster.setOutlineProvider(h.round(6));
+            r.addView(poster, new LinearLayout.LayoutParams(h.px(52), h.px(78)));
+            LinearLayout ww = new LinearLayout(c);
+            ww.setOrientation(LinearLayout.VERTICAL);
+            TextView n = h.text(15, semi, NAVY);
+            n.setText((String) w[0]);
+            n.setMaxLines(2);
+            ww.addView(n);
+            TextView when = h.text(12, regular, 0xB310157E);
+            when.setText("Watched " + ((LocalDate) w[2]).format(DateTimeFormatter.ofPattern("MMM yyyy", Locale.UK)));
+            ww.addView(when);
+            LinearLayout.LayoutParams wl = new LinearLayout.LayoutParams(-1, -2);
+            wl.leftMargin = h.px(10);
+            r.addView(ww, wl);
+            LinearLayout.LayoutParams rl = new LinearLayout.LayoutParams(-1, -2);
+            rl.topMargin = h.px(8);
+            words.addView(r, rl);
+        }
+        LinearLayout.LayoutParams wl = new LinearLayout.LayoutParams(0, -1, 1f);
+        wl.leftMargin = h.px(16);
+        card.addView(words, wl);
+        return card;
+    }
+
+    private LinearLayout addButton(LinearLayout bar, String words, boolean main, Runnable act) {
+        LinearLayout b = MockKit.pill(h, words, 20, semi, 56, main, null);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, h.px(56));
         lp.rightMargin = h.px(14);
         bar.addView(b, lp);
         buttons.add(b);
@@ -426,19 +527,25 @@ final class TitlePanel {
         List<View> here = list(row);
         if (code == KeyEvent.KEYCODE_DPAD_LEFT && col > 0) col--;
         else if (code == KeyEvent.KEYCODE_DPAD_RIGHT && col < here.size() - 1) col++;
-        else if (code == KeyEvent.KEYCODE_DPAD_DOWN) move(1);
-        else if (code == KeyEvent.KEYCODE_DPAD_UP) move(-1);
+        else if (code == KeyEvent.KEYCODE_DPAD_DOWN) {
+            // Down past the last row: back to the page's tabs and posters.
+            if (!move(1)) { hide(); return true; }
+        } else if (code == KeyEvent.KEYCODE_DPAD_UP) {
+            // Up past the buttons: on to the top bar, as Up from the page's tabs did.
+            if (!move(-1)) { hide(); h.upFromPage(); return true; }
+        }
         paint();
         return true;
     }
 
-    private void move(int by) {
+    private boolean move(int by) {
         for (int r = row + by; r >= BUTTONS && r <= CAST; r += by) {
             if (list(r).isEmpty()) continue;
             row = r;
             col = Math.min(col, list(r).size() - 1);
-            return;
+            return true;
         }
+        return false;
     }
 
     private List<View> list(int r) {
@@ -450,95 +557,41 @@ final class TitlePanel {
         else if (row == SAGA && col < sagaTitles.size()) {
             PagesV2.Title ft = sagaTitles.get(col);
             if (ft.id == title.id) return;
-            show(ft, () -> h.openTitle(ft));
+            // Another film of the saga: opened where it can be watched (its streaming app, else Debrid Stream's page).
+            hide();
+            h.openTitle(ft);
         }
     }
 
     private void paint() {
-        for (int i = 0; i < buttons.size(); i++) {
-            boolean on = row == BUTTONS && i == col;
-            TextView b = (TextView) buttons.get(i);
-            GradientDrawable g = h.fill(30, on ? Color.WHITE : 0x24FFFFFF);
-            if (!on) g.setStroke(Math.max(1, h.px(1.5f)), 0x59FFFFFF);
-            b.setBackground(g);
-            b.setTextColor(on ? NAVY : Color.WHITE);
-        }
+        for (int i = 0; i < buttons.size(); i++) MockKit.paint(h, (LinearLayout) buttons.get(i), row == BUTTONS && i == col, 56);
         for (int i = 0; i < saga.size(); i++) {
             boolean on = row == SAGA && i == col;
-            GradientDrawable g = h.fill(16, on ? 0x33FFFFFF : 0);
+            GradientDrawable g = h.fill(14, on ? 0x33FFFFFF : 0);
             if (on) g.setStroke(h.px(3), Color.WHITE);
             saga.get(i).setBackground(g);
         }
         for (int i = 0; i < cast.size(); i++) {
             boolean on = row == CAST && i == col;
-            GradientDrawable g = h.fill(18, on ? 0x33FFFFFF : 0);
-            if (on) g.setStroke(h.px(3), Color.WHITE);
-            cast.get(i).setBackground(g);
+            faces.get(i).setVisibility(on ? View.INVISIBLE : View.VISIBLE);
+            View card = cards.get(i);
+            // The card takes the place of the ring, so those after it move along to make room.
+            ((FrameLayout.LayoutParams) faces.get(i).getLayoutParams()).width = h.px(178);
+            cast.get(i).getLayoutParams().width = on ? h.px(442) : h.px(178);
+            cast.get(i).requestLayout();
+            if (on && card.getVisibility() != View.VISIBLE) {
+                card.setVisibility(View.VISIBLE);
+                card.setAlpha(0f);
+                card.setScaleX(0.92f);
+                card.setScaleY(0.92f);
+                card.setPivotX(h.px(66));
+                card.setPivotY(h.px(66));
+                card.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(220).setInterpolator(HomeV2.SKY).start();
+            } else if (!on) {
+                card.animate().cancel();
+                card.setVisibility(View.GONE);
+            }
         }
-        showCastCard();
-    }
-
-    /** The focused cast member's card: where you've seen them, with the posters. */
-    @SuppressWarnings("unchecked")
-    private void showCastCard() {
-        if (castCard != null) { overlay.removeView(castCard); castCard = null; }
-        if (row != CAST || col >= people.size()) return;
-        Object[] p = people.get(col);
-        List<Object[]> shown = (List<Object[]>) p[3];
-        if (shown.isEmpty()) return;
-        castCard = new FrameLayout(c);
-        LinearLayout box = new LinearLayout(c);
-        box.setOrientation(LinearLayout.VERTICAL);
-        box.setPadding(h.px(22), h.px(18), h.px(22), h.px(18));
-        box.setBackground(h.fill(20, 0xFAFFFFFF));
-        TextView head = h.text(14, semi, NAVY);
-        head.setText("WHERE YOU'VE SEEN " + ((String) p[0]).split(" ")[0].toUpperCase(Locale.UK));
-        head.setLetterSpacing(0.12f);
-        box.addView(head);
-        for (Object[] w : shown) {
-            LinearLayout r = new LinearLayout(c);
-            r.setGravity(Gravity.CENTER_VERTICAL);
-            ImageView pic = new ImageView(c);
-            pic.setScaleType(ImageView.ScaleType.CENTER_CROP);
-            if (w[1] != null) pic.setImageBitmap((Bitmap) w[1]);
-            pic.setBackground(h.fill(6, 0xFFDDE0F5));
-            pic.setClipToOutline(true);
-            pic.setOutlineProvider(h.round(6));
-            r.addView(pic, new LinearLayout.LayoutParams(h.px(52), h.px(78)));
-            LinearLayout words = new LinearLayout(c);
-            words.setOrientation(LinearLayout.VERTICAL);
-            TextView n = h.text(16, semi, NAVY);
-            n.setText((String) w[0]);
-            n.setMaxLines(2);
-            words.addView(n);
-            TextView when = h.text(13, regular, 0xB310157E);
-            when.setText("Watched " + ((LocalDate) w[2]).format(DateTimeFormatter.ofPattern("MMM yyyy", Locale.UK)));
-            words.addView(when);
-            LinearLayout.LayoutParams wl = new LinearLayout.LayoutParams(h.px(250), -2);
-            wl.leftMargin = h.px(12);
-            r.addView(words, wl);
-            LinearLayout.LayoutParams rl = new LinearLayout.LayoutParams(-2, -2);
-            rl.topMargin = h.px(10);
-            box.addView(r, rl);
-        }
-        castCard.addView(box, new FrameLayout.LayoutParams(h.px(380), -2));
-        View focused = cast.get(col);
-        int[] at = new int[2], base = new int[2];
-        focused.getLocationOnScreen(at);
-        overlay.getLocationOnScreen(base);
-        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(h.px(380), -2);
-        int x = at[0] - base[0], y = at[1] - base[1];
-        if (y + focused.getHeight() + h.px(12 + 260) <= h.px(1070)) {
-            // Under the cast, clear of the story and the buttons.
-            lp.leftMargin = Math.min(x, h.px(1920 - 420));
-            lp.topMargin = y + focused.getHeight() + h.px(12);
-        } else {
-            // No room under it (a film with its series above): beside the one focused.
-            boolean right = x + focused.getWidth() + h.px(400) <= h.px(1900);
-            lp.leftMargin = right ? x + focused.getWidth() + h.px(10) : x - h.px(390);
-            lp.topMargin = Math.min(y, h.px(1070 - 260));
-        }
-        overlay.addView(castCard, lp);
     }
 
     private void place(FrameLayout parent, View v, int x, int y, int w, int hgt) {

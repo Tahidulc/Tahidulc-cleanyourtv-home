@@ -159,7 +159,9 @@ final class ControlCentre {
             }
             // Smaller when much is live, so the prayer times still fit under it.
             int live = liveLines().size();
-            left.addView(camRow, new LinearLayout.LayoutParams(-1, px(live >= 2 ? 180 : cam && bell ? 200 : 290)));
+            boolean prayer = Prayer.heading(c) != null;
+            int camH = live >= 2 ? (prayer ? 150 : 180) : prayer ? 190 : cam && bell ? 200 : 290;
+            left.addView(camRow, new LinearLayout.LayoutParams(-1, px(camH)));
         }
         liveSection(left);
         prayerSection(left);
@@ -294,51 +296,17 @@ final class ControlCentre {
     }
 
     /**
-     * Prayer times (Prayer, when the theme asks): today's five in a row, the next one lit, and in the heading how long
-     * until it (in Ramadan, iftar or sehri). Words only: the remote passes over it.
+     * Prayer times (Prayer, when the theme asks): the mosque and the Islamic date as the heading, then the day on the
+     * sun's path (PrayerArc) with the next prayer over it and the five jamā'ah times under it. Words only: the remote
+     * passes over it.
      */
     private void prayerSection(LinearLayout panel) {
         String head = Prayer.heading(c);
         if (head == null) return;
+        PrayerArc arc = new PrayerArc(c, px(100) / 100f, false, heavy, semi, regular);
+        if (arc.empty()) return;
         panel.addView(heading(head), headParams());
-        Object[] next = Prayer.next(c);
-        LinearLayout row = new LinearLayout(c);
-        boolean first = true;
-        for (String[] p : Prayer.today(c)) {
-            if ("Sunrise".equals(p[0])) continue;
-            boolean lit = next != null && p[0].equals(next[0]) && p[1].equals(next[1]);
-            // Each prayer in a box of its own: its name, its time large, and under the next one how long to go
-            // (the others keep the line empty, so the times stand level).
-            LinearLayout box = new LinearLayout(c);
-            box.setOrientation(LinearLayout.VERTICAL);
-            box.setGravity(Gravity.CENTER);
-            box.setBackground(fill(20, lit ? 0xFFFFFFFF : 0x1FFFFFFF));
-            TextView name = text(16, semi, lit ? 0xFF10157E : 0xCCFFFFFF);
-            name.setText(p[0]);
-            name.setIncludeFontPadding(false);
-            name.setSingleLine(true);
-            box.addView(name);
-            TextView time = text(30, heavy, lit ? 0xFF10157E : Color.WHITE);
-            time.setText(p[1]);
-            time.setIncludeFontPadding(false);
-            time.setSingleLine(true);
-            time.setFontFeatureSettings("tnum");
-            LinearLayout.LayoutParams tl = new LinearLayout.LayoutParams(-2, -2);
-            tl.topMargin = px(6);
-            box.addView(time, tl);
-            TextView until = text(13, semi, lit ? 0xB310157E : 0x00FFFFFF);
-            until.setText(lit ? "in " + Prayer.until((Long) next[2]) : " ");
-            until.setIncludeFontPadding(false);
-            until.setSingleLine(true);
-            LinearLayout.LayoutParams ul = new LinearLayout.LayoutParams(-2, -2);
-            ul.topMargin = px(6);
-            box.addView(until, ul);
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, -1, 1f);
-            if (!first) lp.leftMargin = px(10);
-            first = false;
-            row.addView(box, lp);
-        }
-        panel.addView(row, new LinearLayout.LayoutParams(-1, px(116)));
+        panel.addView(arc, new LinearLayout.LayoutParams(-1, px(258)));
     }
 
     private TextView heading(String s) {
