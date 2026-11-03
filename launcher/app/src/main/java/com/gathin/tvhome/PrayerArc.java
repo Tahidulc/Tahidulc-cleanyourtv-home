@@ -92,7 +92,9 @@ final class PrayerArc extends View {
         }
 
         float pad = 28 * u;
-        float top = compact ? 66 * u : 60 * u, horizon = compact ? 138 * u : 132 * u, below = compact ? 18 * u : 20 * u;
+        // Ambient's (compact) curve lower, so the time over the top of the arc (Zuhr's) is well clear of the line with
+        // the countdown ("in 1h 20m") above it.
+        float top = compact ? 96 * u : 60 * u, horizon = compact ? 166 * u : 132 * u, below = compact ? 18 * u : 20 * u;
         LocalDateTime t0 = slots.get(0).begins.minusMinutes(30), t1 = slots.get(4).begins.plusMinutes(30);
         LocalDateTime sunset = slots.get(3).begins;
         double span = Math.max(1, Duration.between(t0, t1).toMinutes());

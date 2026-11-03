@@ -107,7 +107,7 @@ final class AmbientScene {
         left.addView(tomorrow, margins(10, 10, 0, 0));
         prayerArc = new PrayerArc(c, k, true, c.getResources().getFont(R.font.outfit_extrabold),
                 c.getResources().getFont(R.font.inter_semibold), c.getResources().getFont(R.font.inter_regular));
-        LinearLayout.LayoutParams pa = new LinearLayout.LayoutParams(px(640), px(180));
+        LinearLayout.LayoutParams pa = new LinearLayout.LayoutParams(px(640), px(210));
         pa.setMargins(px(10), px(36), 0, 0);
         left.addView(prayerArc, pa);
         showArc();
@@ -450,8 +450,10 @@ final class AmbientScene {
         card.note = when + (channel != null ? "  ·  " + channel : "");
         card.tint = live ? 0xFFE8112D : 0xFF2B3CC9;
         card.badge = live ? "LIVE" : "NEXT";
-        String crest = g.homeLogo != null ? g.homeLogo : g.leagueLogo;
-        if (crest != null) card.picture = ScoresTicker.cachedLogo(c, crest, px(64));
+        // Both clubs' crests, each beside its own name on the title line; the competition's logo where the one crest was.
+        if (g.homeLogo != null) card.homeCrest = ScoresTicker.cachedLogo(c, g.homeLogo, px(40));
+        if (g.awayLogo != null) card.awayCrest = ScoresTicker.cachedLogo(c, g.awayLogo, px(40));
+        if (g.leagueLogo != null) card.picture = ScoresTicker.cachedLogo(c, g.leagueLogo, px(64));
         return card;
     }
 
@@ -602,6 +604,8 @@ final class AmbientScene {
         String label, title, note, badge;
         int tint;
         Bitmap picture;
+        /** A game's two crests, either side of its title. */
+        Bitmap homeCrest, awayCrest;
         boolean hasChannel;
         /** A brand mark drawn on the tint (the Tesla "T"), in place of a picture or a badge. */
         int icon;
@@ -657,7 +661,22 @@ final class AmbientScene {
             t.setText(title);
             t.setSingleLine(true);
             t.setEllipsize(android.text.TextUtils.TruncateAt.END);
-            words.addView(t, margins(0, 6, 0, 0));
+            if (homeCrest != null || awayCrest != null) {
+                // A game: home crest, the title, away crest (each crest beside its own club).
+                LinearLayout line = new LinearLayout(c);
+                line.setGravity(Gravity.CENTER_VERTICAL);
+                if (homeCrest != null) line.addView(crestView(homeCrest), new LinearLayout.LayoutParams(px(36), px(36)));
+                // As wide as the words, at most what leaves room for the away crest beside them.
+                t.setMaxWidth(px(360));
+                LinearLayout.LayoutParams tl = new LinearLayout.LayoutParams(-2, -2);
+                tl.leftMargin = homeCrest != null ? px(12) : 0;
+                tl.rightMargin = awayCrest != null ? px(12) : 0;
+                line.addView(t, tl);
+                if (awayCrest != null) line.addView(crestView(awayCrest), new LinearLayout.LayoutParams(px(36), px(36)));
+                words.addView(line, margins(0, 6, 0, 0));
+            } else {
+                words.addView(t, margins(0, 6, 0, 0));
+            }
             TextView n = text(18, "sans-serif", 0xB3FFFFFF);
             n.setText(note);
             n.setSingleLine(true);
@@ -684,6 +703,13 @@ final class AmbientScene {
             row.addView(words, wp);
             return row;
         }
+    }
+
+    private ImageView crestView(Bitmap b) {
+        ImageView v = new ImageView(c);
+        v.setImageBitmap(b);
+        v.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        return v;
     }
 
     /** The foot: today's results (when there are any) and how to leave. */
@@ -835,7 +861,15 @@ final class AmbientScene {
             chip.setCompoundDrawablesRelativeWithIntrinsicBounds(disc, null, null, null);
             chip.setCompoundDrawablePadding(px(8));
         }
-        page.addView(chip);
+        String bbc = Badges.bbcSection(p.label);
+        if (bbc != null) {
+            // BBC News or BBC Sport, on brand: their blocks on their colour.
+            ImageView mark = new ImageView(c);
+            mark.setImageDrawable(Badges.bbcChip(k * 1.6f, bbc));
+            mark.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            mark.setAdjustViewBounds(true);
+            page.addView(mark, new LinearLayout.LayoutParams(-2, px(38)));
+        } else page.addView(chip);
         for (Object[] item : p.items) {
             LinearLayout one = new LinearLayout(c);
             one.setGravity(Gravity.CENTER_VERTICAL);

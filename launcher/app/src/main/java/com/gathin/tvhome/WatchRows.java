@@ -403,8 +403,15 @@ final class WatchRows {
             l.setTypeface(context.getResources().getFont(R.font.outfit_regular));
             l.setSingleLine(true);
             l.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            String bbc = NewsPanel.isTag(line.toString()) ? Badges.bbcSection(line.toString()) : null;
+            if (bbc != null) {
+                // BBC News or BBC Sport on brand: the chip, no words.
+                l.setText("");
+                l.setCompoundDrawablesWithIntrinsicBounds(Badges.bbcChip(context.getResources().getDisplayMetrics().density * 0.8f, bbc), null, null, null);
+            }
             LinearLayout.LayoutParams llp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
             llp.leftMargin = dp(2);
+            llp.topMargin = bbc != null ? dp(3) : 0;
             tile.addView(l, llp);
         }
         tile.setOnFocusChangeListener((v, focused) -> focusLook(v, focused, ring));

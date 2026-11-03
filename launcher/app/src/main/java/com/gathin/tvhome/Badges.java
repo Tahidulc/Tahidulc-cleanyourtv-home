@@ -18,6 +18,52 @@ final class Badges {
         return new Mark(d, new String[]{"B", "B", "C"}, 0xFF111318, 0xFFFFFFFF, section, color, false);
     }
 
+    /**
+     * The BBC as its sections brand themselves, as a chip: BBC News (and the regions, BBC Manchester) white blocks
+     * with red letters and the section in white on BBC red; BBC Sport black blocks with yellow letters and SPORT in
+     * black on BBC Sport's yellow. section: "NEWS", "SPORT", "MANCHESTER"; d: one dp on this screen.
+     */
+    static Drawable bbcChip(float d, String section) {
+        boolean sport = "SPORT".equals(section);
+        int red = 0xFFB80000, yellow = 0xFFFFD230, black = 0xFF111318;
+        Mark m = new Mark(d, new String[]{"B", "B", "C"}, sport ? black : 0xFFFFFFFF, sport ? yellow : red, section,
+                sport ? black : 0xFFFFFFFF, false);
+        return new Chip(m, sport ? yellow : red, d);
+    }
+
+    /** The section of a BBC tag ("BBC SPORT" to "SPORT"); null when it is not the BBC's. */
+    static String bbcSection(String tag) {
+        return tag != null && tag.startsWith("BBC ") ? tag.substring(4).trim() : null;
+    }
+
+    /** A mark on a rounded tile of colour, padded round. */
+    private static final class Chip extends Drawable {
+        private final Mark mark;
+        private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final float padX, padY, radius;
+
+        Chip(Mark mark, int colour, float d) {
+            this.mark = mark;
+            paint.setColor(colour);
+            padX = 7 * d;
+            padY = 4 * d;
+            radius = 4 * d;
+        }
+
+        @Override public void draw(Canvas c) {
+            android.graphics.Rect b = getBounds();
+            c.drawRoundRect(new RectF(b), radius, radius, paint);
+            mark.setBounds(Math.round(b.left + padX), Math.round(b.top + padY), Math.round(b.right - padX), Math.round(b.bottom - padY));
+            mark.draw(c);
+        }
+
+        @Override public int getIntrinsicWidth() { return Math.round(mark.getIntrinsicWidth() + 2 * padX); }
+        @Override public int getIntrinsicHeight() { return Math.round(mark.getIntrinsicHeight() + 2 * padY); }
+        @Override public void setAlpha(int alpha) { paint.setAlpha(alpha); mark.setAlpha(alpha); }
+        @Override public void setColorFilter(ColorFilter cf) { }
+        @Override public int getOpacity() { return PixelFormat.TRANSLUCENT; }
+    }
+
     /** A wordmark on one rounded tile: "ATP" white on navy, "WTA" white on purple. */
     static Drawable tile(float d, String text, int bg, int fg) {
         return new Mark(d, new String[]{text}, bg, fg, null, 0, true);

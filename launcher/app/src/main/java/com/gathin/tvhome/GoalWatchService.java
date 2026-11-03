@@ -903,7 +903,7 @@ public class GoalWatchService extends Service {
             d.leagueLogo = emoji("🥊", 120);
             d.label = "BOXING";
             d.labelSmall = "BBC SPORT";
-            d.labelColour = 0xFFB8892B;
+            d.labelColour = 0xFFFFD230;
             d.headline = item[1];
             String pic = item.length > 4 ? item[4] : null;
             if (pic != null) d.picture = ScoresTicker.cachedLogo(this, pic.replace("/standard/800/", "/standard/240/"), 240);
@@ -2092,7 +2092,8 @@ public class GoalWatchService extends Service {
         List<Object> parts = new ArrayList<>();
         boolean sport = item[0].contains("SPORT") || "BOXING".equals(item[0]);
         parts.add(new Tint(sport ? 0xFFFFC21A : 0xFFD42020));
-        parts.add(Badges.bbc(d, sport ? "SPORT" : item[0].replace("BBC ", ""), sport ? 0xFF8A6100 : 0xFFB80000));
+        // On brand: BBC News's blocks on its red, BBC Sport's on its yellow.
+        parts.add(Badges.bbcChip(d, sport ? "SPORT" : item[0].replace("BBC ", "")));
         if ("BOXING".equals(item[0])) { parts.add(8); parts.add(bold("🥊  BOXING")); }
         parts.add(8);
         parts.add(item[1]);

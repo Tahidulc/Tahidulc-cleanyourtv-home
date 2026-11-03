@@ -109,13 +109,12 @@ final class NewsPanel {
         int pad = Math.round(16 * density);
         panel.setPadding(pad, Math.round(12 * density), pad, Math.round(12 * density));
         panel.setFocusable(false);
-        TextView head = new TextView(ctx);
-        head.setText("BBC NEWS");
-        head.setTextColor(0xFFFF4D4D);
-        head.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f);
-        head.setTypeface(Typeface.DEFAULT_BOLD);
-        head.setLetterSpacing(0.16f);
-        panel.addView(head);
+        // BBC News on brand: its blocks on BBC red.
+        android.widget.ImageView head = new android.widget.ImageView(ctx);
+        head.setImageDrawable(Badges.bbcChip(density, "NEWS"));
+        head.setScaleType(android.widget.ImageView.ScaleType.FIT_START);
+        head.setAdjustViewBounds(true);
+        panel.addView(head, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, Math.round(22 * density)));
         int headH = Math.round(24 * density), gap = Math.round(10 * density);
         int rowH = Math.max(Math.round(40 * density), (height - 2 * Math.round(12 * density) - headH - gap * (STORIES - 1)) / STORIES);
         for (int i = 0; i < stories.size(); i++) {
