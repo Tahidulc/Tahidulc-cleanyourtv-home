@@ -1099,6 +1099,27 @@ public class GoalWatchService extends Service {
 
     /** The code a phone asks to pair with, for the person to type there: ahead of any other alert waiting. */
     private void showPairing(String phone, String code) {
+        if (skyAlerts) {
+            // sky_alerts: the code as a Sky-style card, up until it is typed in (or five minutes), ahead of the rest.
+            if (pairingClose != null) pairingClose.run();
+            ScoreCard.Data p = new ScoreCard.Data();
+            p.kind = "notice";
+            p.leagueLogo = iconBitmap(R.drawable.ic_cast, Math.round(30 * getResources().getDisplayMetrics().density));
+            p.labelColour = 0xFF7B5CFF;
+            p.label = "PAIR " + phone.toUpperCase(java.util.Locale.ROOT);
+            p.headline = "Code  " + code.replace("", " ").trim();
+            p.line = "Type it on your phone";
+            p.showMs = 5 * 60_000L;
+            p.onShown = () -> play("reminder");
+            Runnable[] close = new Runnable[1];
+            close[0] = () -> {
+                ScoreCard.closeIf(p);
+                if (pairingClose == close[0]) pairingClose = null;
+            };
+            pairingClose = close[0];
+            ScoreCard.showFirst(this, p);
+            return;
+        }
         float d = getResources().getDisplayMetrics().density;
         queue.removeIf(e -> e.length == 2 && e[0] instanceof DeliveryCard.Card && ((DeliveryCard.Card) e[0]).pairing);
         queue.removeIf(e -> e.length == 2 && e[0] instanceof DeliveryCard.Card && ((DeliveryCard.Card) e[0]).pairing);
@@ -1123,6 +1144,7 @@ public class GoalWatchService extends Service {
             // The drive home's own pop-up: on unless the theme turns it off (it was off unless asked for, so it never
             // came up, only Ambient mode's car card showed the trip).
             if (Config.themeFlag(this, "home_eta", true)) {
+                if (skyAlerts) { skyCar(u, true); return; }
                 queue.addFirst(new Object[]{DeliveryCard.homeEta(this, u, glass(CORNER_DP * getResources().getDisplayMetrics().density)), "reminder"});
                 showNext();
             }
@@ -1138,6 +1160,7 @@ public class GoalWatchService extends Service {
             return;
         }
         if (!kind.isEmpty() && !"delivery".equals(kind)) return;   // something newer than this TV knows
+        if (skyAlerts) { skyDelivery(u); return; }
         float d = getResources().getDisplayMetrics().density;
         // Ahead of the sports alerts waiting: an order's news is now or never.
         queue.addFirst(new Object[]{DeliveryCard.food(this, u, glass(CORNER_DP * d)), u.optInt("stage") == 4 ? "fulltime" : "reminder"});
@@ -1154,6 +1177,7 @@ public class GoalWatchService extends Service {
         SmartPanel.car = u;
         SmartPanel.carAt = System.currentTimeMillis();
         AmbientScene.carNews();
+        if (skyAlerts) { skyCar(u, false); return; }
         float d = getResources().getDisplayMetrics().density;
         queue.addFirst(new Object[]{DeliveryCard.car(this, u, glass(CORNER_DP * d)), "reminder"});
         showNext();
@@ -2269,9 +2293,9 @@ public class GoalWatchService extends Service {
             if (!primedYet || before == null || before.equals(r.state)) continue;
             boolean card = skyAlerts && "UFC".equals(r.tour);
             if ("post".equals(r.state)) {
-                if (card) skyFight(r, false); else enqueueParts(resultLine(r), otherSound(r), false, otherChannel(r));
+                if (card) skyFight(r, false); else if (skyAlerts) skyMore(r, false); else enqueueParts(resultLine(r), otherSound(r), false, otherChannel(r));
             } else if ("pre".equals(before) && "in".equals(r.state) && (r.mainEvent || "Final".equals(r.round))) {
-                if (card) skyFight(r, true); else enqueueParts(startLine(r), otherSound(r), false, otherChannel(r));
+                if (card) skyFight(r, true); else if (skyAlerts) skyMore(r, true); else enqueueParts(startLine(r), otherSound(r), false, otherChannel(r));
             }
         }
     }
@@ -2423,7 +2447,7 @@ public class GoalWatchService extends Service {
                 // No final or main event in ESPN's feeds this week: made-up ones, to see the look.
                 if (final1 == null && (all || "tennis".equals(what))) final1 = sample("ATP", "Djokovic", "srb", "Humbert", "fra", "4-6 6-3 6-4", "Final", "Paris Masters");
                 if (main1 == null && (all || "ufc".equals(what))) main1 = sample("UFC", "Moicano", "bra", "Nolan", "irl", "KO/TKO · R2 3:12", "Main card", "UFC Fight Night");
-                if (final1 != null) enqueueParts(resultLine(final1), otherSound(final1), false, otherChannel(final1));
+                if (final1 != null) { if (skyAlerts) skyMore(final1, false); else enqueueParts(resultLine(final1), otherSound(final1), false, otherChannel(final1)); }
                 if (main1 != null && skyAlerts) { skyFight(main1, true); skyFight(main1, false); }
                 else if (main1 != null) { enqueueParts(startLine(main1), otherSound(main1), false, otherChannel(main1)); enqueueParts(resultLine(main1), otherSound(main1), false, otherChannel(main1)); }
                 if (!boxing.isEmpty() && skyAlerts) skyBoxing(boxing.get(0));
@@ -2854,6 +2878,279 @@ public class GoalWatchService extends Service {
         enqueueParts(parts, sound, false);
     }
 
+    // ---- sky_alerts: the rest of the alerts in the score cards' style -----------------------------------------------
+
+    /**
+     * An alert's line (its parts, pictures fetched) as a Sky-style card (ScoreCard): the band in its brand's colours
+     * with its mark (the BBC's blocks on BBC red or BBC Sport's yellow, the weather on blue, a message's speech bubble
+     * on the launcher's navy), its first capitals as the slanted label ("BREAKING", "FROM MUM", "YELLOW WIND
+     * WARNING"), the rest as the headline, and the small words at its end as the line after it; where it is on, the
+     * channel's logo and OK. Its sound plays as it comes up.
+     */
+    private ScoreCard.Data skyFromParts(List<Object> parts, String sound, Object[] watching) {
+        float dd = getResources().getDisplayMetrics().density;
+        ScoreCard.Data d = new ScoreCard.Data();
+        d.kind = "notice";
+        Integer tint = null;
+        android.graphics.Bitmap mark = null;
+        boolean markWide = false;
+        String label = null;
+        int labelColour = 0;
+        List<String> words = new ArrayList<>();
+        List<Boolean> small = new ArrayList<>();
+        for (Object o : parts) {
+            if (o == null || o instanceof Integer || o instanceof ChipImg || o instanceof Face) continue;
+            if (o instanceof Tint) { tint = ((Tint) o).colour; continue; }
+            if (o instanceof android.graphics.drawable.Drawable) {
+                if (mark == null) {
+                    mark = bitmapOf((android.graphics.drawable.Drawable) o, Math.round(40 * dd));
+                    markWide = mark != null && mark.getWidth() > mark.getHeight() * 1.3f;
+                }
+                continue;
+            }
+            if (o instanceof Img) {
+                Img im = (Img) o;
+                if (mark == null && im.bitmap != null) {
+                    mark = im.bitmap;
+                    markWide = im.wide || im.bitmap.getWidth() > im.bitmap.getHeight() * 1.3f;
+                }
+                continue;
+            }
+            if (o instanceof android.graphics.Bitmap) { if (mark == null) mark = (android.graphics.Bitmap) o; continue; }
+            if (o instanceof Score) { Score sc = (Score) o; words.add(sc.home + "–" + sc.away); small.add(false); continue; }
+            if (o instanceof Small) { words.add(String.valueOf(((Small) o).text)); small.add(true); continue; }
+            if (!(o instanceof CharSequence)) continue;
+            CharSequence cs = (CharSequence) o;
+            String plain = cs.toString().replaceAll("^[^\\p{L}\\p{N}]+", "").trim();
+            if (plain.isEmpty()) continue;
+            boolean bold = cs instanceof Spanned && ((Spanned) cs).getSpans(0, cs.length(), StyleSpan.class).length > 0;
+            if (label == null && bold && words.isEmpty() && capitals(plain)) {
+                label = plain;
+                ForegroundColorSpan[] fc = cs instanceof Spanned ? ((Spanned) cs).getSpans(0, cs.length(), ForegroundColorSpan.class) : null;
+                if (fc != null && fc.length > 0) labelColour = fc[0].getForegroundColor();
+                continue;
+            }
+            words.add(plain);
+            small.add(false);
+        }
+        // The small words at the end are the line after the headline; any in the middle stay in it ("beats", "v").
+        int last = -1;
+        for (int i = 0; i < words.size(); i++) if (!small.get(i)) last = i;
+        StringBuilder head = new StringBuilder(), line = new StringBuilder();
+        for (int i = 0; i < words.size(); i++) {
+            String w = words.get(i).trim();
+            if (w.isEmpty()) continue;
+            if (i > last) {
+                if (line.length() > 0) line.append("  ·  ");
+                line.append(w);
+            } else {
+                if (head.length() > 0) head.append(small.get(i) || (i > 0 && small.get(i - 1)) ? " " : "  ·  ");
+                head.append(w);
+            }
+        }
+        if (tint != null) {
+            // The BBC, on brand: BBC News's blocks on BBC red, BBC Sport's on its yellow.
+            boolean sport = tint == 0xFFFFC21A;
+            d.band = sport ? 0xFFFFD230 : 0xFFB80000;
+            d.bandDeep = sport ? 0xFFE3B400 : 0xFF6E0000;
+            d.labelColour = sport ? 0xFF111111 : 0xFFBB1919;
+            if (label == null) label = "LATEST";
+            markWide = true;
+        } else if ("message".equals(sound)) {
+            d.labelColour = 0xFF7B5CFF;
+            if (mark == null) mark = iconBitmap(R.drawable.ic_message, Math.round(30 * dd));
+            if (label == null) label = "MESSAGE";
+        } else if ("weather".equals(sound)) {
+            d.band = 0xFF0E5AA7;
+            d.bandDeep = 0xFF073A6E;
+            d.labelColour = labelColour != 0 ? labelColour : 0xFF1F7AE0;
+            if (label == null) label = "WEATHER";
+        } else if ("f1".equals(sound)) {
+            d.f1 = true;
+            d.labelColour = 0xFFE10600;
+            if (label == null) label = "F1";
+        } else if ("fight".equals(sound)) {
+            d.dark = true;
+            d.band = 0xFF1C1C1F;
+            d.bandDeep = 0xFF000000;
+            d.labelColour = 0xFFD20A11;
+            if (label == null) label = "FIGHT";
+        } else {
+            d.labelColour = labelColour != 0 ? labelColour : 0xFF2B3CC9;
+            if (label == null) label = "tennis".equals(sound) ? "TENNIS" : "reminder".equals(sound) ? "REMINDER" : "UPDATE";
+        }
+        d.label = label;
+        d.headline = head.length() > 0 ? head.toString() : label;
+        d.line = line.toString();
+        d.leagueLogo = mark;
+        d.wideMark = markWide;
+        skyWatch(d, watching);
+        d.onShown = () -> play(sound);
+        return d;
+    }
+
+    /** Where it is on ({names, logo} or {names, logo, OK}): its logo on the card and what OK does. */
+    private void skyWatch(ScoreCard.Data d, Object[] w) {
+        if (w == null || !(w[0] instanceof List)) return;
+        @SuppressWarnings("unchecked") List<String> names = (List<String>) w[0];
+        android.graphics.Bitmap logo = w.length > 1 ? (android.graphics.Bitmap) w[1] : null;
+        d.channelLogo = logo;
+        d.channel = names.isEmpty() ? null : names.get(0);
+        d.watch = w.length > 2 && w[2] instanceof Runnable ? (Runnable) w[2]
+                : () -> AppSearchService.tune(this, getString(R.string.scores_open_package), names, logo);
+    }
+
+    /** A label's words: in capitals (a few lower-case letters allowed). */
+    private static boolean capitals(String s) {
+        int upper = 0, lower = 0;
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (Character.isUpperCase(c)) upper++;
+            else if (Character.isLowerCase(c)) lower++;
+        }
+        return upper >= 2 && lower <= upper / 5;
+    }
+
+    /** A drawable drawn into a picture this high, as wide as its own shape. */
+    private static android.graphics.Bitmap bitmapOf(android.graphics.drawable.Drawable dr, int height) {
+        if (dr == null || height <= 0) return null;
+        int iw = dr.getIntrinsicWidth(), ih = dr.getIntrinsicHeight();
+        if (iw <= 0 || ih <= 0) { iw = height; ih = height; }
+        int w = Math.max(1, Math.round(height * iw / (float) ih));
+        android.graphics.Bitmap b = android.graphics.Bitmap.createBitmap(w, height, android.graphics.Bitmap.Config.ARGB_8888);
+        android.graphics.Rect old = dr.copyBounds();
+        dr.setBounds(0, 0, w, height);
+        dr.draw(new android.graphics.Canvas(b));
+        dr.setBounds(old);
+        return b;
+    }
+
+    /** One of the launcher's icons in white, as a picture this size. */
+    private android.graphics.Bitmap iconBitmap(int res, int size) {
+        android.graphics.drawable.Drawable dr = getDrawable(res);
+        if (dr == null) return null;
+        dr = dr.mutate();
+        dr.setTint(0xFFFFFFFF);
+        return bitmapOf(dr, size);
+    }
+
+    /** Tennis's result or its final starting, as a Sky-style card: ATP's navy or the WTA's purple, the tour's mark. */
+    private void skyMore(MoreSports.Result r, boolean starting) {
+        float dd = getResources().getDisplayMetrics().density;
+        cardRun(() -> {
+            ScoreCard.Data d = new ScoreCard.Data();
+            d.kind = "notice";
+            boolean wta = "WTA".equals(r.tour);
+            d.band = wta ? 0xFF4B2683 : 0xFF0B2A5B;
+            d.bandDeep = wta ? 0xFF2A1450 : 0xFF061633;
+            d.leagueLogo = bitmapOf(wta ? Badges.tile(dd, "WTA", 0xFF4B2683, 0xFFFFFFFF) : Badges.tile(dd, "ATP", 0xFF0B2A5B, 0xFFFFFFFF), Math.round(30 * dd));
+            d.wideMark = true;
+            d.labelColour = 0xFF2E8B57;
+            d.label = starting ? "FINAL" : "RESULT";
+            d.labelSmall = starting ? "UNDER WAY" : null;
+            d.headline = starting ? r.winner + " v " + r.loser : r.winner + " beats " + r.loser + "  " + r.score;
+            d.line = starting ? r.event : roundTag(r.round) + " · " + r.event;
+            skyWatch(d, watchOn(otherChannel(r)));
+            d.onShown = () -> play(otherSound(r));
+            main.post(() -> ScoreCard.show(this, d));
+        });
+    }
+
+    /** A delivery app's update as a Sky-style card: its colours and logo, the stage, where from, when, how far along. */
+    private void skyDelivery(JSONObject u) {
+        int stage = Math.max(0, Math.min(4, u.optInt("stage", 0)));
+        String pkg = u.optString("package", "");
+        android.graphics.Bitmap icon = DeliveryCard.decode(u.optString("icon", ""));
+        int brand = DeliveryCard.brand(pkg, icon);
+        String app = u.optString("app", "Delivery"), from = u.optString("from", "").trim();
+        String status = u.optString("status", "").trim(), eta = u.optString("eta", "").trim();
+        String[] heads = {"ORDER PLACED", "BEING PREPARED", "ON THE WAY", "ALMOST THERE", "DELIVERED"};
+        ScoreCard.Data d = new ScoreCard.Data();
+        d.kind = "notice";
+        d.band = deeper(brand, 0.82f);
+        d.bandDeep = deeper(brand, 0.5f);
+        d.leagueLogo = icon;
+        d.labelColour = brand;
+        d.label = heads[stage];
+        d.headline = from.isEmpty() ? app : from;
+        StringBuilder line = new StringBuilder();
+        if (!status.isEmpty() && !status.equalsIgnoreCase(from) && !status.equalsIgnoreCase(heads[stage])) line.append(status);
+        if (!eta.isEmpty() && stage < 4) line.append(line.length() > 0 ? " · " : "").append("arriving ").append(eta);
+        org.json.JSONArray items = u.optJSONArray("items");
+        if (items != null) {
+            for (int i = 0; i < Math.min(3, items.length()); i++) line.append(line.length() > 0 ? " · " : "").append(items.optString(i));
+        }
+        d.line = line.toString();
+        d.progress = (stage + 1) / 5f;
+        d.progressColour = brand;
+        d.showMs = 14_000L;
+        String sound = stage == 4 ? "fulltime" : "reminder";
+        d.onShown = () -> play(sound);
+        AlertLog.note(this, "card queued: delivery " + d.label + " · " + d.headline);
+        ScoreCard.showFirst(this, d);
+    }
+
+    /** The car's news (Tesla's notifications from the phone), or the drive home, as a Sky-style card in Tesla red. */
+    private void skyCar(JSONObject u, boolean trip) {
+        float dd = getResources().getDisplayMetrics().density;
+        String name = Config.themeString(this, "tesla_name", Config.themeString(this, "tesla_model", "Model X"));
+        ScoreCard.Data d = new ScoreCard.Data();
+        d.kind = "notice";
+        d.band = 0xFFE82127;
+        d.bandDeep = 0xFF8E1116;
+        d.leagueLogo = iconBitmap(R.drawable.tesla_t, Math.round(30 * dd));
+        d.labelColour = 0xFF171A20;
+        d.picture = DeliveryCard.carArt(this);
+        d.headline = name;
+        if (trip) {
+            int minutes = u.optInt("minutes", -1);
+            double miles = u.optDouble("miles", -1);
+            boolean arriving = u.optBoolean("arriving");
+            d.label = arriving ? "ALMOST HOME" : "HEADING HOME";
+            String left = arriving ? "pulling in now"
+                    : (minutes >= 0 ? minutes + " min" : "") + (miles >= 0 ? (minutes >= 0 ? " · " : "")
+                    + String.format(java.util.Locale.UK, miles < 10 ? "%.1f mi" : "%.0f mi", miles) : "");
+            if (minutes >= 0 && !arriving) left += " · home by " + java.time.LocalTime.now().plusMinutes(minutes)
+                    .format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"));
+            d.line = left;
+            d.progress = (float) Math.max(0, Math.min(1, u.optDouble("progress", 0)));
+            d.progressColour = 0xFFE82127;
+        } else {
+            String title = u.optString("title", "").trim(), status = u.optString("status", "").trim();
+            int battery = u.optInt("battery", -1), miles = u.optInt("miles", -1);
+            if (battery >= 0 && miles < 0) {
+                int full;
+                try { full = Integer.parseInt(Config.themeString(this, "tesla_range_miles", "330").trim()); } catch (NumberFormatException e) { full = 330; }
+                miles = Math.round(full * battery / 100f);
+            }
+            String all = (title + " " + status).toLowerCase(java.util.Locale.ROOT);
+            boolean charging = all.contains("charging") && !all.contains("complete") && !all.contains("stopped")
+                    && !all.contains("interrupted") && !all.contains("finished");
+            d.label = charging ? "CHARGING" : "TESLA";
+            if (!title.isEmpty()) d.headline = name + " · " + title;
+            StringBuilder line = new StringBuilder();
+            if (battery >= 0) line.append(battery).append("%").append(miles >= 0 ? " · " + miles + " mi" : "");
+            if (!status.isEmpty() && !status.equalsIgnoreCase(title)) line.append(line.length() > 0 ? " · " : "").append(status);
+            d.line = line.toString();
+            if (battery >= 0) {
+                d.progress = battery / 100f;
+                d.progressColour = charging ? 0xFF3FB950 : 0xFFE82127;
+            }
+        }
+        d.showMs = 12_000L;
+        d.onShown = () -> play("reminder");
+        AlertLog.note(this, "card queued: car " + d.label + " · " + d.headline);
+        ScoreCard.showFirst(this, d);
+    }
+
+    /** The colour darker (its brightness times f). */
+    private static int deeper(int colour, float f) {
+        float[] hsv = new float[3];
+        android.graphics.Color.colorToHSV(colour, hsv);
+        hsv[2] *= f;
+        return android.graphics.Color.HSVToColor(hsv);
+    }
+
     /** As enqueueParts; f1Live adds the "Watch on" step (Sky Sports F1 and the rest) after the line. */
     private void enqueueParts(List<Object> parts, String sound, boolean f1Live) {
         enqueueParts(parts, sound, f1Live, null);
@@ -2877,6 +3174,15 @@ public class GoalWatchService extends Service {
                     ready.add(new Img(picture(pic, px), pic.wide));
                 }
                 else ready.add(o);
+            }
+            if (skyAlerts) {
+                // sky_alerts: every alert in the score cards' style (ScoreCard), branded by what it is.
+                ScoreCard.Data card = skyFromParts(ready, sound, watching);
+                main.post(() -> {
+                    AlertLog.note(this, "card queued: " + sound + " " + card.label + " · " + card.headline);
+                    if ("message".equals(sound)) ScoreCard.showFirst(this, card); else ScoreCard.show(this, card);
+                });
+                return;
             }
             main.post(() -> {
                 queue.add(watching == null ? new Object[]{ready, sound} : new Object[]{ready, sound, watching});

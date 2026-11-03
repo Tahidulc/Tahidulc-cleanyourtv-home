@@ -92,6 +92,15 @@ final class ScoreCard {
         float channelLogoScale = 1f;
         String channel;
         Runnable watch;
+        /**
+         * The rest of the alerts in this style (the news, messages, weather, deliveries, the car, tennis): what runs as
+         * it comes up (its sound), how long it stays (0: the usual), and a slim bar of progress after its words (an
+         * order's stages, the car's charge, the drive home), 0 to 1 in progressColour; -1 for none.
+         */
+        Runnable onShown;
+        long showMs;
+        float progress = -1f;
+        int progressColour = 0xFFFFFFFF;
     }
 
     private static final int NAVY = 0xFF151A63;
@@ -124,6 +133,18 @@ final class ScoreCard {
     /** Queues a card; shown when none is showing (and the line-up card is not). On the main thread. */
     static void show(Context ctx, Data d) {
         queue.add(d);
+        next(ctx.getApplicationContext());
+    }
+
+    /** This card away (fading) if it is the one showing; taken out of the queue if it is still waiting. */
+    static void closeIf(Data d) {
+        queue.remove(d);
+        if (host != null && showing == d) close(true);
+    }
+
+    /** As show, ahead of the cards waiting (a message, an order's news: now or never). */
+    static void showFirst(Context ctx, Data d) {
+        queue.addFirst(d);
         next(ctx.getApplicationContext());
     }
 
@@ -165,6 +186,13 @@ final class ScoreCard {
                 + ": " + d.label + (d.labelSmall != null ? " " + d.labelSmall : "") + " " + d.first + " " + d.last + " " + d.line);
         if (d.key != null) AlertToday.shown(c, d.key);
         if (onHome) bar(c, d); else card(c, d);
+        if (host != null && d.onShown != null) {
+            try {
+                d.onShown.run();
+            } catch (RuntimeException ignored) {
+                // its sound only
+            }
+        }
     }
 
     /** OK (the channel) and Back (closes) while one shows; true when it took the key. */
@@ -366,6 +394,11 @@ final class ScoreCard {
                 }
             }
             for (Object[] o : d.others) name.addView(driver(c, o, 16, 22), driverParams(14));
+            if (d.progress >= 0) {
+                LinearLayout.LayoutParams pl = new LinearLayout.LayoutParams(px(120), px(8));
+                pl.leftMargin = px(14);
+                name.addView(progress(c, d), pl);
+            }
             LinearLayout.LayoutParams nl = new LinearLayout.LayoutParams(-2, -2);
             nl.leftMargin = px(10);
             bar.addView(name, nl);
@@ -640,6 +673,11 @@ final class ScoreCard {
                 ll.topMargin = px(5);
                 v.addView(text(c, d.line, 12, d.dark ? 0xB3FFFFFF : INK_SOFT, outfit(c, 600)), ll);
             }
+            if (d.progress >= 0) {
+                LinearLayout.LayoutParams pl = new LinearLayout.LayoutParams(px(160), px(7));
+                pl.topMargin = px(7);
+                v.addView(progress(c, d), pl);
+            }
             return v;
         }
         if (!d.first.isEmpty()) v.addView(text(c, d.first, small + 1, d.dark ? 0xFFFFFFFF : INK_SOFT, outfit(c, 500)), wrap());
@@ -659,6 +697,23 @@ final class ScoreCard {
             v.addView(l, ll);
         }
         return v;
+    }
+
+    /** A slim rounded bar: its track, and the part done (Data.progress) in Data.progressColour. */
+    private static View progress(Context c, Data d) {
+        float done = Math.max(0f, Math.min(1f, d.progress));
+        int track = d.dark ? 0x33FFFFFF : 0x2E0A0D33;
+        return new View(c) {
+            private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+
+            @Override protected void onDraw(Canvas canvas) {
+                float w = getWidth(), h = getHeight(), r = h / 2f;
+                paint.setColor(track);
+                canvas.drawRoundRect(0, 0, w, h, r, r, paint);
+                paint.setColor(d.progressColour);
+                canvas.drawRoundRect(0, 0, Math.max(h, w * done), h, r, r, paint);
+            }
+        };
     }
 
     private static LinearLayout.LayoutParams whoParams(boolean noPhoto) {
@@ -953,7 +1008,7 @@ final class ScoreCard {
 
     private static void schedule(Data d) {
         FrameLayout win = host;
-        main.postDelayed(() -> { if (host == win) close(true); }, d.watch != null ? WATCH_MS : SHOW_MS);
+        main.postDelayed(() -> { if (host == win) close(true); }, d.showMs > 0 ? d.showMs : d.watch != null ? WATCH_MS : SHOW_MS);
     }
 
     /** The card away (faded, or at once), the score bar back on Home, and the next waiting one. */
