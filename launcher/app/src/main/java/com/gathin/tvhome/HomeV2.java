@@ -1042,9 +1042,9 @@ final class HomeV2 {
             }
             dockHandle.setVisibility(View.VISIBLE);
             dockHandle.setTranslationY(px(20));
-            dockHandle.animate().alpha(1f).translationY(0).setStartDelay(260).setDuration(320).setInterpolator(SKY)
+            dockHandle.animate().alpha(handleHeld ? 0f : 1f).translationY(0).setStartDelay(260).setDuration(320).setInterpolator(SKY)
                     .withEndAction(() -> {
-                        if (!dockAway) return;
+                        if (!dockAway || handleHeld) return;
                         // The arrow nods down three times, to say where the dock went, then the pill dims and rests.
                         android.animation.ObjectAnimator nod = android.animation.ObjectAnimator.ofFloat(dockHandleArrow,
                                 View.TRANSLATION_Y, 0f, px(5), 0f);
@@ -1065,6 +1065,36 @@ final class HomeV2 {
             if (page != null && keepsBoxes(pageWhich)) clipAboveBoxes();
         }
         if (page != null) page.room(away);
+    }
+
+    /** The dock's chip held out of the way by the page (its rows scrolling past the foot, Sports). */
+    private boolean handleHeld;
+
+    /**
+     * A page that scrolls rows past the foot (Sports) keeps the dock's chip out of its thumbnails' way: show false
+     * while the focus is in the rows, true where Down brings the dock (the last row) or the page's top part has it.
+     * Back in sight it nods once to say where the dock is.
+     */
+    void dockHandleHint(boolean show) {
+        if (dockHandle == null) return;
+        boolean held = !show;
+        if (held == handleHeld) return;
+        handleHeld = held;
+        if (!dockAway) return;
+        dockHandle.animate().cancel();
+        if (held) {
+            dockHandle.animate().alpha(0f).translationY(px(16)).setStartDelay(0).setDuration(180).setInterpolator(SKY).start();
+            return;
+        }
+        dockHandle.setVisibility(View.VISIBLE);
+        dockHandle.animate().alpha(1f).translationY(0).setStartDelay(0).setDuration(260).setInterpolator(SKY).withEndAction(() -> {
+            if (!dockAway || handleHeld) return;
+            android.animation.ObjectAnimator nod = android.animation.ObjectAnimator.ofFloat(dockHandleArrow, View.TRANSLATION_Y, 0f, px(5), 0f);
+            nod.setDuration(520);
+            nod.setInterpolator(SKY);
+            nod.start();
+            dockHandle.animate().alpha(0.55f).setStartDelay(2600).setDuration(800).start();
+        }).start();
     }
 
     /** A dock item's place in the dock (apps first, then the sections); -1 when the focus is not in the dock. */
@@ -1918,6 +1948,8 @@ final class HomeV2 {
 
     private void closePage() {
         if (page == null) return;
+        // A page's hold on the dock's chip ends with it.
+        handleHeld = false;
         preview = false;
         parked = false;
         appsFromRail = false;

@@ -2264,8 +2264,9 @@ final class PagesV2 {
                     t.setTag(c);
                     t.setText(SportsHighlights.caption(c));
                 }
-                t.animate().alpha(zone == r ? 1f : 0.55f).setDuration(160).start();
+                if (paintedCaptionZone != zone) t.animate().alpha(zone == r ? 1f : 0.55f).setDuration(160).start();
             }
+            paintedCaptionZone = zone;
         }
 
         @Override void open() {
@@ -2367,27 +2368,34 @@ final class PagesV2 {
             g.setCornerRadius(px(20));
             g.setStroke(px(1.5f), 0x38FFFFFF);
             f.setBackground(g);
+            // Focused, a solid ground of its own: the see-through glass let the lifted card's shadow show through it as
+            // a dark patch with a bright edge (the odd "shine" inside the box). Solid, the shadow stays outside, round
+            // the card, and the white ring follows its corners.
+            GradientDrawable on = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0xFF323E92, 0xFF1F2766});
+            on.setCornerRadius(px(20));
+            slimGrounds.put(f, new android.graphics.drawable.Drawable[]{g, on});
             LinearLayout col = new LinearLayout(h.a);
             col.setOrientation(LinearLayout.VERTICAL);
             col.setPadding(px(18), px(14), px(16), px(12));
             f.addView(col, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
             LinearLayout l1 = new LinearLayout(h.a);
             l1.setGravity(Gravity.CENTER_VERTICAL);
-            if (t.compLogo != null) {
-                ImageView cl = new ImageView(h.a);
-                cl.setScaleType(ImageView.ScaleType.FIT_CENTER);
-                LinearLayout.LayoutParams cll = new LinearLayout.LayoutParams(px(20), px(20));
-                cll.rightMargin = px(8);
-                l1.addView(cl, cll);
-                h.image(cl, t.compLogo, px(40));
-            }
-            TextView cn = h.text(13, h.semi, 0xB3FFFFFF);
             String comp = compName(t.compLogo);
-            cn.setText(comp != null ? comp : "FOOTBALL");
-            cn.setLetterSpacing(0.1f);
-            cn.setSingleLine(true);
-            cn.setEllipsize(TextUtils.TruncateAt.END);
-            l1.addView(cn, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+            if (t.compLogo != null) {
+                // The competition by its logo alone (its name for the screen reader), large enough to read.
+                ImageView cl = new ImageView(h.a);
+                cl.setScaleType(ImageView.ScaleType.FIT_START);
+                cl.setContentDescription(comp != null ? comp : "Football");
+                l1.addView(cl, new LinearLayout.LayoutParams(0, px(28), 1f));
+                h.image(cl, t.compLogo, px(56));
+            } else {
+                TextView cn = h.text(13, h.semi, 0xB3FFFFFF);
+                cn.setText(comp != null ? comp : "FOOTBALL");
+                cn.setLetterSpacing(0.1f);
+                cn.setSingleLine(true);
+                cn.setEllipsize(TextUtils.TruncateAt.END);
+                l1.addView(cn, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+            }
             if (t.badge != null) {
                 ImageView ch = new ImageView(h.a);
                 ch.setAdjustViewBounds(true);
@@ -2583,6 +2591,19 @@ final class PagesV2 {
             stage.setBackground(stageBg);
         }
 
+        /** before, the Live Centre's stamp (heightPx design pixels high, in line with the words), then after. */
+        private CharSequence withStamp(String before, String after, int heightPx) {
+            android.text.SpannableStringBuilder b = new android.text.SpannableStringBuilder(before);
+            int at = b.length();
+            b.append("  ");
+            android.graphics.Bitmap bm = LiveCentre.stampPicture(h.a, px(heightPx));
+            android.graphics.drawable.BitmapDrawable d = new android.graphics.drawable.BitmapDrawable(h.a.getResources(), bm);
+            d.setBounds(0, 0, bm.getWidth(), bm.getHeight());
+            b.setSpan(new MidSpan(d), at, at + 2, 0);
+            b.append(after);
+            return b;
+        }
+
         /** One of the stage's round buttons along its foot. */
         private TextView stageButton(String label) {
             TextView b = h.text(19, h.regular, Color.WHITE);
@@ -2653,7 +2674,8 @@ final class PagesV2 {
         private void remindMatch() {
             if (matchTitle == null) return;
             String msg;
-            if (matchState != 1 || matchStart <= System.currentTimeMillis()) msg = matchState == 2 ? "Full time · " + matchTitle : "Already on: press OK to watch";
+            // (A toast shows words only: the key is not named in it.)
+            if (matchState != 1 || matchStart <= System.currentTimeMillis()) msg = matchState == 2 ? "Full time · " + matchTitle : "Already on: watch it now";
             else {
                 boolean on = Reminders.toggle(h.a, matchTitle, matchStart, matchChannel, matchLogo);
                 remindBtn.setText(on ? "✓  Reminder set" : "Remind me");
@@ -2762,12 +2784,15 @@ final class PagesV2 {
             c.addView(stageButtons, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, px(60)));
             watch = stageButton("Finding the channel…");
             watch.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, px(20));
-            liveBtn = stageButton("Live Centre");
+            // The Live Centre named by its own stamp (LIVE on the green, CENTRE on white), never in words.
+            liveBtn = stageButton("");
+            liveBtn.setText(withStamp("", "", 30));
+            liveBtn.setContentDescription("Live Centre");
             remindBtn = stageButton("Remind me");
             timingBtn = stageButton("F1 timing");
             timingBtn.setVisibility(View.GONE);
             stageHint = h.text(16, h.regular, 0xBFFFFFFF);
-            stageHint.setText("While games are on, this turns into Live Centre: the pitch, the plays, every score");
+            stageHint.setText(withStamp("While games are on, this turns into ", ": the pitch, the plays, every score", 24));
             stageHint.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
             stageHint.setMaxLines(2);
             stageHint.setEllipsize(TextUtils.TruncateAt.END);
@@ -2965,10 +2990,14 @@ final class PagesV2 {
             liveKicker.setLetterSpacing(0.16f);
             head.addView(liveKicker, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
             c.addView(head);
-            TextView title = h.text(36, h.a.getResources().getFont(R.font.outfit_bold), Color.WHITE);
-            title.setText("Live Centre");
-            LinearLayout.LayoutParams tl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            tl.topMargin = px(6);
+            // Its name as its own stamp, large: LIVE on the green, CENTRE on white.
+            ImageView title = new ImageView(h.a);
+            title.setImageBitmap(LiveCentre.stampPicture(h.a, px(52)));
+            title.setScaleType(ImageView.ScaleType.FIT_START);
+            title.setAdjustViewBounds(true);
+            title.setContentDescription("Live Centre");
+            LinearLayout.LayoutParams tl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, px(52));
+            tl.topMargin = px(8);
             c.addView(title, tl);
             liveRows = new LinearLayout(h.a);
             liveRows.setOrientation(LinearLayout.HORIZONTAL);
@@ -3301,6 +3330,40 @@ final class PagesV2 {
         /** How far the table (standings) has been scrolled, in pixels: where the last press sent it. */
         private int tableTop, driverTop;
 
+        /** The competitions' logos for the panel's tabs, by address, cut to their shape. */
+        private final Map<String, android.graphics.Bitmap> compLogos = new HashMap<>();
+
+        /**
+         * A tab as a competition's logo (and after it the words given, "‹ 1/8 ›", "Drivers"): its name only as what the
+         * screen reader says, and in words just until the logo has come (read off the main thread, kept on disk).
+         */
+        private void logoTab(TextView t, String url, String name, String after) {
+            t.setTag(url);
+            t.setContentDescription(after.isEmpty() ? name : name + ", " + after.replace("‹", "").replace("›", "").trim());
+            android.graphics.Bitmap bm = compLogos.get(url);
+            if (bm == null) {
+                t.setText(after.isEmpty() ? name : name + "  " + after);
+                h.io.execute(() -> {
+                    android.graphics.Bitmap b = ScoresTicker.cachedLogo(h.a, url, px(96));
+                    if (b == null) return;
+                    android.graphics.Bitmap cut = HomeV2.trim(b);
+                    h.main.post(() -> {
+                        compLogos.put(url, cut);
+                        if (url.equals(t.getTag())) logoTab(t, url, name, after);
+                    });
+                });
+                return;
+            }
+            android.text.SpannableStringBuilder sb = new android.text.SpannableStringBuilder("  ");
+            android.graphics.drawable.BitmapDrawable d = new android.graphics.drawable.BitmapDrawable(h.a.getResources(), bm);
+            int hgt = px(26), w = Math.min(px(120), Math.round(hgt * bm.getWidth() / (float) Math.max(1, bm.getHeight())));
+            if (w == px(120)) hgt = Math.round(w * bm.getHeight() / (float) Math.max(1, bm.getWidth()));
+            d.setBounds(0, 0, w, hgt);
+            sb.setSpan(new MidSpan(d), 0, 2, 0);
+            if (!after.isEmpty()) sb.append("  ").append(after);
+            t.setText(sb);
+        }
+
         /** A list's window inside its card: scrolled from the keys only, no bar. */
         private android.widget.ScrollView scroller() {
             android.widget.ScrollView v = new android.widget.ScrollView(h.a);
@@ -3375,7 +3438,8 @@ final class PagesV2 {
                 t.setSingleLine(true);
                 t.setEllipsize(TextUtils.TruncateAt.END);
                 t.setPadding(px(10), 0, px(10), 0);
-                t.setText(i == 1 ? "F1 drivers" : i == 2 ? "F1 teams" : "");
+                // The competitions by their own logos: F1's on its two tabs, the league's on the first (showTable).
+                if (i > 0) logoTab(t, F1Results.F1_LOGO, "F1", i == 1 ? "Drivers" : "Teams");
                 LinearLayout.LayoutParams tl = new LinearLayout.LayoutParams(0, px(38), i == 0 ? 1.5f : 1f);
                 if (i > 0) tl.leftMargin = px(4);
                 panelTabs.addView(t, tl);
@@ -3442,7 +3506,9 @@ final class PagesV2 {
         private void showTable(int i) {
             league = i;
             Object[] l = LEAGUES[i];
-            tabs[0].setText(l[1] + "   " + (i + 1) + "/" + LEAGUES.length);
+            // The league by its logo (its name only for the screen reader, or until the logo has come), then which of the 8.
+            logoTab(tabs[0], "https://a.espncdn.com/i/leaguelogos/soccer/500-dark/" + l[3] + ".png", (String) l[1],
+                    "‹  " + (i + 1) + "/" + LEAGUES.length + "  ›");
             if (panelTab != 0) showPanel(0);
             List<String[]> have = tables.get((String) l[0]);
             if (have != null) { fillTable(have); return; }
@@ -3868,7 +3934,7 @@ final class PagesV2 {
 
         private void remind(HomeV2.Tile t) {
             String msg;
-            if (t.start <= System.currentTimeMillis()) msg = "Already on: press OK to watch";
+            if (t.start <= System.currentTimeMillis()) msg = "Already on: watch it now";
             else {
                 boolean on = Reminders.toggle(h.a, t.title, t.start, t.channel, t.badge);
                 String when = java.time.format.DateTimeFormatter.ofPattern("EEE HH:mm", java.util.Locale.UK)
@@ -3878,19 +3944,50 @@ final class PagesV2 {
             android.widget.Toast.makeText(h.a, msg, android.widget.Toast.LENGTH_SHORT).show();
         }
 
+        /**
+         * What the last paint left on screen, so a key press changes only what it moves: before, every press restarted
+         * an animation on every tile of every row (well over a hundred), the counts' text and a screen-sized layer for
+         * the stage, and the scroll stuttered.
+         */
+        /** Tonight's cards' grounds: {resting glass, focused solid}. */
+        private final Map<View, android.graphics.drawable.Drawable[]> slimGrounds = new java.util.WeakHashMap<>();
+        private Boolean paintedRows;
+        private float paintedFy = Float.NaN;
+        private int paintedAbove = -1, paintedRowCount = -1, paintedCaptionZone = Integer.MIN_VALUE, paintedTabs = -1;
+        private View paintedTile;
+        private final Map<LinearLayout, int[]> paintedStrip = new HashMap<>();
+        private String paintedCounts;
+
         private void paint() {
             if (stage == null || panel == null || cards == null) return;
             // Down in the rows below Tonight: the stage, the tables and Tonight go up and out, the rows come up.
             boolean rows = zone >= 0 && zone != TONIGHT;
-            cards.animate().alpha(rows ? 0f : 1f).translationY(rows ? -px(80) : 0).setDuration(260).setInterpolator(HomeV2.SKY).withLayer().start();
+            if (paintedRows == null || paintedRows != rows) {
+                paintedRows = rows;
+                cards.animate().alpha(rows ? 0f : 1f).translationY(rows ? -px(80) : 0).setDuration(260).setInterpolator(HomeV2.SKY).withLayer().start();
+            }
             int slot = rows && zone < slotOf.size() ? Math.max(0, slotOf.get(zone)) : 0;
             // Two rows in sight at once: the focused one second from the top (the first at the top), those above gone.
             int above = rows ? Math.max(0, slot - 1) : 0;
-            fixtures.animate().translationY(rows ? px(top - 236) - px(300) * above : px(restY())).setDuration(300).setInterpolator(HomeV2.SKY).start();
-            for (int i = 0; i < rowViews.size(); i++) {
-                rowViews.get(i).animate().alpha(rows && i / 2 < above ? 0f : 1f).setDuration(200).start();
+            float fy = rows ? px(top - 236) - px(300) * above : px(restY());
+            if (fy != paintedFy) {
+                paintedFy = fy;
+                // Only the rows' frame moves (a translation: nothing is laid out again), drawn as it is.
+                fixtures.animate().translationY(fy).setDuration(300).setInterpolator(HomeV2.SKY).start();
             }
-            resumeNone.animate().alpha(rows && above > 0 ? 0f : 1f).setDuration(200).start();
+            if (above != paintedAbove || rowViews.size() != paintedRowCount) {
+                paintedAbove = above;
+                paintedRowCount = rowViews.size();
+                for (int i = 0; i < rowViews.size(); i++) {
+                    float a = rows && i / 2 < above ? 0f : 1f;
+                    if (rowViews.get(i).getAlpha() != a) rowViews.get(i).animate().alpha(a).setDuration(200).start();
+                }
+                float ra = rows && above > 0 ? 0f : 1f;
+                if (resumeNone.getAlpha() != ra) resumeNone.animate().alpha(ra).setDuration(200).start();
+            }
+            // The dock's chip at the foot keeps out of the thumbnails' way while the focus is in the rows; it comes back
+            // on the last row (where Down brings the dock) and with the stage, the tables or Tonight.
+            h.dockHandleHint(!rows || nextZone(zone) < 0);
             // The stage: a white rim with the focus on it, the focused button white with dark words.
             boolean onStage = zone == -1 && cardIdx == 0, onPanel = zone == -1 && cardIdx == 1;
             if (stageBg != null) {
@@ -3908,14 +4005,22 @@ final class PagesV2 {
                 b.setTextColor(on ? 0xFF1A1D24 : Color.WHITE);
                 b.animate().scaleX(on ? 1.04f : 1f).scaleY(on ? 1.04f : 1f).setDuration(150).setInterpolator(HomeV2.SKY).start();
             }
-            // The tables panel: its rim white with the focus, the tab showing lit (white with the focus on the panel).
-            panelBg.setStroke(px(onPanel ? 3 : 1.5f), onPanel ? Color.WHITE : 0x3DFFFFFF);
-            panel.invalidate();
-            for (int i = 0; i < tabs.length; i++) {
-                boolean shownTab = i == panelTab;
-                tabs[i].setBackground(shownTab ? h.fill(19, onPanel ? 0xEBFFFFFF : 0x2EFFFFFF) : null);
-                tabs[i].setTextColor(shownTab ? onPanel ? 0xFF1A1D24 : Color.WHITE : 0xBFFFFFFF);
-                tabs[i].setTypeface(shownTab ? h.semi : h.regular);
+            // The tables panel: its rim white with the focus, the tab showing lit (a white rim with the focus on the panel:
+            // the competitions' logos are for dark grounds, so the tab stays dark under them).
+            int tabsState = panelTab * 2 + (onPanel ? 1 : 0);
+            if (tabsState != paintedTabs) {
+                paintedTabs = tabsState;
+                panelBg.setStroke(px(onPanel ? 3 : 1.5f), onPanel ? Color.WHITE : 0x3DFFFFFF);
+                panel.invalidate();
+                for (int i = 0; i < tabs.length; i++) {
+                    boolean shownTab = i == panelTab;
+                    GradientDrawable tg = shownTab ? h.fill(19, onPanel ? 0x47FFFFFF : 0x2EFFFFFF) : null;
+                    if (tg != null && onPanel) tg.setStroke(px(2), Color.WHITE);
+                    tabs[i].setBackground(tg);
+                    tabs[i].setTextColor(shownTab ? Color.WHITE : 0xBFFFFFFF);
+                    tabs[i].setTypeface(shownTab ? h.semi : h.regular);
+                    tabs[i].setAlpha(shownTab ? 1f : 0.7f);
+                }
             }
             // Tonight's counts: how many games and events are on now and this week (the two rows of live sport).
             int liveNow = 0, coming = 0;
@@ -3931,28 +4036,51 @@ final class PagesV2 {
                     cb.append("  ").append(String.valueOf(liveNow)).append(" live now  ·  ");
                 }
                 cb.append(coming > 0 ? coming + " this week  ·  hold OK for a reminder" : "Live football and more");
-                tonightCounts.setText(cb);
+                // Set only when the counts change: a new text is a new layout of the page. OK as the remote's own key.
+                if (!cb.toString().equals(paintedCounts)) {
+                    paintedCounts = cb.toString();
+                    tonightCounts.setText(Keys.icons(h.a, cb, tonightCounts.getTextSize(), true));
+                }
             }
             if (tonightNone != null && !lists.get(TONIGHT).isEmpty()) tonightNone.setVisibility(View.GONE);
             captions();
+            // The focus: only the tile that has it now and the one that had it change their look.
+            View now = zone >= 0 && zone < strips.size() && idx < strips.get(zone).getChildCount() ? strips.get(zone).getChildAt(idx) : null;
+            if (now != paintedTile) {
+                if (paintedTile != null) {
+                    paintedTile.animate().scaleX(1f).scaleY(1f).setDuration(150).setInterpolator(HomeV2.SKY).start();
+                    paintedTile.setForeground(null);
+                    paintedTile.setElevation(0);
+                    android.graphics.drawable.Drawable[] gr = slimGrounds.get(paintedTile);
+                    if (gr != null) paintedTile.setBackground(gr[0]);
+                }
+                if (now != null) {
+                    boolean slim = zone == TONIGHT;
+                    float grow = slim ? 1.05f : 1.07f;
+                    now.animate().scaleX(grow).scaleY(grow).setDuration(150).setInterpolator(HomeV2.SKY).start();
+                    // Tonight's card: its solid focused ground under the ring, so its lifted shadow stays round it.
+                    android.graphics.drawable.Drawable[] gr = slimGrounds.get(now);
+                    if (gr != null) now.setBackground(gr[1]);
+                    now.setForeground(h.ring(slim ? 20 : 16));
+                    now.setElevation(px(slim ? 10 : 8));
+                }
+                paintedTile = now;
+            }
             for (int r = 0; r < strips.size(); r++) {
                 LinearLayout s = strips.get(r);
                 boolean slim = r == TONIGHT;
-                for (int i = 0; i < s.getChildCount(); i++) {
-                    FrameLayout f = (FrameLayout) s.getChildAt(i);
-                    boolean on = zone == r && i == idx;
-                    float grow = slim ? 1.05f : 1.07f;
-                    f.animate().scaleX(on ? grow : 1f).scaleY(on ? grow : 1f).setDuration(150).setInterpolator(HomeV2.SKY).start();
-                    f.setForeground(on ? h.ring(slim ? 20 : 16) : null);
-                    f.setElevation(on ? px(8) : 0);
-                }
                 // Tonight shows six at once, a row of tiles four: the strip slides along under the focus.
                 // A row of highlights keeps the focused card whole with one either side where there is one, the last
                 // ones inside at the row's end (never cut at its edge); the other rows as before.
                 int first = zone != r ? 0 : captions.containsKey(r) ? Math.max(0, Math.min(idx - 2, s.getChildCount() - 4))
                         : Math.max(0, idx - (slim ? 4 : 3));
-                HomeV2.window(s, first);
-                s.animate().translationX(-first * px(slim ? SLIM_W + SLIM_GAP : 408)).setDuration(300).setInterpolator(HomeV2.SKY).start();
+                // A strip slides (and shows its tiles near the window) only when its place changes or it was filled again.
+                int[] was = paintedStrip.get(s);
+                if (was == null || was[0] != first || was[1] != s.getChildCount()) {
+                    paintedStrip.put(s, new int[]{first, s.getChildCount()});
+                    HomeV2.window(s, first);
+                    s.animate().translationX(-first * px(slim ? SLIM_W + SLIM_GAP : 408)).setDuration(300).setInterpolator(HomeV2.SKY).start();
+                }
             }
         }
 
