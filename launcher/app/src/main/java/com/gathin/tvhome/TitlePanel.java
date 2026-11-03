@@ -48,6 +48,9 @@ final class TitlePanel {
     private final Typeface heavy, semi, regular;
     private FrameLayout overlay;
     private boolean open, waitUp;
+    /** The saga box is shown as well: a tighter layout, and the cast's card this tall, so it ends above the foot. */
+    private boolean compact;
+    private int CARD_H = 300;
     private int gen, row, col;
     private PagesV2.Title title;
     private Runnable play;
@@ -234,7 +237,12 @@ final class TitlePanel {
             MockKit.setWords(listButton, now ? "\u2713  On My list" : "+  My list");
         });
         if (t.tv && Recap.can(c, t.id)) addButton(bar, "\u21BA  Previously on", false, () -> { hide(); Recap.open(h, t, play); });
-        y += 78;
+        // With the saga box as well, everything a little tighter, so the cast's card ends above the screen's foot
+        // (it ran 40 past it): the box's posters smaller, the cast's rings and card shorter.
+        List<Object[]> sagaParts = (List<Object[]>) got[4];
+        compact = sagaParts.size() > 1;
+        CARD_H = compact ? 276 : 300;
+        y += compact ? 70 : 78;
 
         // The saga so far: a box with how many are seen, a bar for it, and the films.
         List<Object[]> parts = (List<Object[]>) got[4];
@@ -243,7 +251,7 @@ final class TitlePanel {
             for (Object[] p : parts) if (p[2] != null) watched++;
             LinearLayout box = new LinearLayout(c);
             box.setOrientation(LinearLayout.VERTICAL);
-            box.setPadding(h.px(22), h.px(16), h.px(22), h.px(16));
+            box.setPadding(h.px(22), h.px(14), h.px(22), h.px(14));
             GradientDrawable bg = h.fill(18, 0x8C0A0E50);
             bg.setStroke(Math.max(1, h.px(1)), 0x38FFFFFF);
             box.setBackground(bg);
@@ -265,15 +273,15 @@ final class TitlePanel {
             done.setBackground(h.fill(3, GREEN));
             track.addView(done, new FrameLayout.LayoutParams(Math.round(h.px(736) * watched / (float) parts.size()), -1));
             LinearLayout.LayoutParams tl = new LinearLayout.LayoutParams(h.px(736), h.px(6));
-            tl.topMargin = h.px(10);
-            tl.bottomMargin = h.px(12);
+            tl.topMargin = h.px(8);
+            tl.bottomMargin = h.px(10);
             box.addView(track, tl);
             LinearLayout strip = new LinearLayout(c);
             for (Object[] p : parts) {
                 PagesV2.Title ft = (PagesV2.Title) p[0];
                 LinearLayout one = new LinearLayout(c);
                 one.setGravity(Gravity.CENTER_VERTICAL);
-                one.setPadding(h.px(6), h.px(6), h.px(12), h.px(6));
+                one.setPadding(h.px(4), h.px(4), h.px(12), h.px(4));
                 ImageView pic = new ImageView(c);
                 pic.setScaleType(ImageView.ScaleType.CENTER_CROP);
                 if (p[1] != null) pic.setImageBitmap((Bitmap) p[1]);
@@ -288,7 +296,7 @@ final class TitlePanel {
                     dash.setStroke(Math.max(1, h.px(2)), 0xB3FFFFFF, h.px(6), h.px(4));
                     pic.setForeground(dash);
                 }
-                one.addView(pic, new LinearLayout.LayoutParams(h.px(74), h.px(110)));
+                one.addView(pic, new LinearLayout.LayoutParams(h.px(64), h.px(96)));
                 LinearLayout words = new LinearLayout(c);
                 words.setOrientation(LinearLayout.VERTICAL);
                 TextView st = h.text(15, semi, p[2] != null ? GREEN : YELLOW);
@@ -318,7 +326,7 @@ final class TitlePanel {
             bl.leftMargin = h.px(x0);
             bl.topMargin = h.px(y);
             overlay.addView(box, bl);
-            y += 214;
+            y += 188;
         }
 
         // The cast in rings: how many of theirs were watched here on a green badge; the one focused opens into a card.
@@ -332,7 +340,7 @@ final class TitlePanel {
             place(overlay, note, x0 + 80, y + 6, 1100, 28);
             LinearLayout strip = new LinearLayout(c);
             strip.setClipChildren(false);
-            place(overlay, strip, x0 - 6, y + 44, 1880 - x0, 320);
+            place(overlay, strip, x0 - 6, y + 40, 1880 - x0, CARD_H + 20);
             for (Object[] p : who) {
                 FrameLayout slot = new FrameLayout(c);
                 slot.setClipChildren(false);
@@ -340,7 +348,7 @@ final class TitlePanel {
                 View card = card(p);
                 card.setVisibility(View.GONE);
                 slot.addView(face, new FrameLayout.LayoutParams(h.px(178), -2));
-                slot.addView(card, new FrameLayout.LayoutParams(h.px(430), h.px(300)));
+                slot.addView(card, new FrameLayout.LayoutParams(h.px(430), h.px(CARD_H)));
                 strip.addView(slot, new LinearLayout.LayoutParams(-2, -2));
                 cast.add(slot);
                 faces.add(face);
@@ -364,11 +372,12 @@ final class TitlePanel {
         ImageView f = new ImageView(c);
         f.setScaleType(ImageView.ScaleType.CENTER_CROP);
         if (p[2] != null) f.setImageBitmap((Bitmap) p[2]);
-        f.setBackground(h.fill(66, 0xFF1A1F6B));
+        int ringSize = compact ? 116 : 132;
+        f.setBackground(h.fill(ringSize / 2f, 0xFF1A1F6B));
         f.setClipToOutline(true);
-        f.setOutlineProvider(h.round(66));
-        MockKit.ring(h, f, 66, 3, 0xCCFFFFFF);
-        ring.addView(f, new FrameLayout.LayoutParams(h.px(132), h.px(132)));
+        f.setOutlineProvider(h.round(ringSize / 2f));
+        MockKit.ring(h, f, ringSize / 2f, 3, 0xCCFFFFFF);
+        ring.addView(f, new FrameLayout.LayoutParams(h.px(ringSize), h.px(ringSize)));
         List<String> names = (List<String>) p[4];
         if (!names.isEmpty()) {
             TextView n = h.text(14, semi, 0xFF06331B);
@@ -380,7 +389,7 @@ final class TitlePanel {
             FrameLayout.LayoutParams nl = new FrameLayout.LayoutParams(h.px(34), h.px(34), Gravity.BOTTOM | Gravity.END);
             ring.addView(n, nl);
         }
-        one.addView(ring, new LinearLayout.LayoutParams(h.px(132), h.px(132)));
+        one.addView(ring, new LinearLayout.LayoutParams(h.px(ringSize), h.px(ringSize)));
         TextView nm = h.text(17, semi, Color.WHITE);
         nm.setText((String) p[0]);
         nm.setGravity(Gravity.CENTER);
@@ -417,7 +426,7 @@ final class TitlePanel {
         pic.setBackground(h.fill(14, 0xFFDDE0F5));
         pic.setClipToOutline(true);
         pic.setOutlineProvider(h.round(14));
-        card.addView(pic, new LinearLayout.LayoutParams(h.px(150), -1));
+        card.addView(pic, new LinearLayout.LayoutParams(h.px(compact ? 136 : 150), -1));
         LinearLayout words = new LinearLayout(c);
         words.setOrientation(LinearLayout.VERTICAL);
         TextView nm = h.text(22, heavy, NAVY);
@@ -587,11 +596,23 @@ final class TitlePanel {
                 card.setPivotX(h.px(66));
                 card.setPivotY(h.px(66));
                 card.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(220).setInterpolator(HomeV2.SKY).start();
+                card.post(() -> fit(card));
             } else if (!on) {
                 card.animate().cancel();
                 card.setVisibility(View.GONE);
             }
         }
+        // Off the cast: back where it was, if it had lifted.
+        if (row != CAST && overlay != null && overlay.getTranslationY() != 0) overlay.animate().translationY(0).setDuration(200).start();
+    }
+
+    /** Should a card still run past the screen's foot (a long name, a bigger font), the details lift just enough. */
+    private void fit(View card) {
+        if (overlay == null || card.getVisibility() != View.VISIBLE) return;
+        int[] at = new int[2];
+        card.getLocationOnScreen(at);
+        float over = at[1] - overlay.getTranslationY() + card.getHeight() - h.px(1064);
+        overlay.animate().translationY(over > 0 ? -over : 0).setDuration(200).start();
     }
 
     private void place(FrameLayout parent, View v, int x, int y, int w, int hgt) {
