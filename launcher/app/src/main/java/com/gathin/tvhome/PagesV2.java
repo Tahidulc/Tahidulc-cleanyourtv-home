@@ -1040,6 +1040,8 @@ final class PagesV2 {
                 // The ring a poster took while it waited to open.
                 if (i == arrived) f.setForeground(null);
             }
+            // Up to the tabs before it opened: it does not open, and opens afresh on the way back down.
+            if (onTabs && arrived >= 0) cancelLand();
             if (Math.abs(focusF - target) < 0.001f && (onTabs ? wideAmt == 0f : landed == target || arrived == target)) {
                 slide(r, focusF, wideIdx, wideAmt);
                 return;
