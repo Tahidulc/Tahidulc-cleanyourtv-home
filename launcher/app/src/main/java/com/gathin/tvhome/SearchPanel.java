@@ -57,6 +57,13 @@ final class SearchPanel {
     private static final String YOUTUBE = "com.google.android.youtube.tv", IPLAYER = "bbc.iplayer.android";
     private static final int TOP = 0, TV = 1, GAMES = 2, TITLES = 3, PLAYER = 4, WEB = 5;
     private static final int NAVY = 0xFF10157E, YELLOW = 0xFFFFD04D;
+    /**
+     * The screen in two: the field, keyboard and last searches from LX, LW wide; the results from RX to the screen's
+     * right edge (the rows run on off it), from RY to its foot. A row's cards are fully in view up to SHOWN from its
+     * left; PAD inside the row's edges leaves room for a focused card's grow and ring, so neither is cut.
+     */
+    private static final int LX = 80, LW = 620, RX = 740, RY = 112, PAD = 18, MARGIN = 64;
+    private static final int RW = 1920 - RX, SHOWN = RW - MARGIN, FULL = SHOWN - PAD;
 
     private final HomeV2 h;
     private final Context c;
@@ -72,7 +79,6 @@ final class SearchPanel {
     /** The keyboard's rows (row 0 the microphone, then the letters and digits, the space row, the last searches). */
     private final List<List<View>> keyRows = new ArrayList<>();
     private final List<List<Runnable>> keyActs = new ArrayList<>();
-    private LinearLayout recentRow;
     private int kr = 1, kc = 0;
     private boolean inResults;
     private int sec, item;
@@ -124,23 +130,29 @@ final class SearchPanel {
         overlay.setBackground(bg);
         overlay.setClickable(true);
         buildLeft();
-        list = new FrameLayout(c);
+        // The results measured at their full height (they scroll up inside the window): measured to the window's
+        // height, the rows past its foot were squashed, and a row of posters came out cut off half way.
+        list = new FrameLayout(c) {
+            @Override protected void measureChildWithMargins(View child, int wSpec, int wUsed, int hSpec, int hUsed) {
+                super.measureChildWithMargins(child, wSpec, wUsed, View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED), hUsed);
+            }
+        };
         list.setClipChildren(true);
         results = new LinearLayout(c);
         results.setOrientation(LinearLayout.VERTICAL);
         results.setClipChildren(false);
         list.addView(results, new FrameLayout.LayoutParams(-1, -2));
-        place(overlay, list, 720, 134, 1140, 926);
+        place(overlay, list, RX, RY, RW, 1080 - RY);
         status = h.text(22, regular, 0xB3FFFFFF);
-        status.setText("Type a programme, a team, a film or a series");
-        place(overlay, status, 726, 92, 1100, 34);
+        status.setSingleLine(true);
+        place(overlay, status, RX + PAD, 74, RW - MARGIN - PAD, 34);
         h.root.addView(overlay, new FrameLayout.LayoutParams(-1, -1));
         overlay.setAlpha(0f);
         overlay.animate().alpha(1f).setDuration(220).start();
         kr = 1;
         kc = 0;
         inResults = false;
-        paint();
+        idle();
         // Sky's guide read ahead, so the first search finds the TV at once.
         io.execute(() -> guideEvents());
     }
@@ -173,7 +185,7 @@ final class SearchPanel {
         LinearLayout box = new LinearLayout(c);
         box.setGravity(Gravity.CENTER_VERTICAL);
         box.setPadding(h.px(26), 0, h.px(12), 0);
-        box.setBackground(h.fill(39, Color.WHITE));
+        box.setBackground(h.fill(42, Color.WHITE));
         ImageView glass = new ImageView(c);
         glass.setImageResource(R.drawable.ic_search);
         glass.setColorFilter(NAVY);
@@ -192,18 +204,20 @@ final class SearchPanel {
         mic.setPadding(h.px(14), 0, 0, 0);
         mic.setContentDescription("Search by voice");
         box.addView(mic, new LinearLayout.LayoutParams(h.px(56), h.px(56)));
-        place(overlay, box, 96, 74, 560, 78);
+        place(overlay, box, LX, 56, LW, 84);
         keyRows.add(Collections.singletonList(mic));
         keyActs.add(Collections.singletonList(this::voice));
 
-        String keys = "abcdefghijklmnopqrstuvwxyz1234567890";
+        // Six by six: a to z and 0 to 9 fill the grid exactly (seven across left a lone 0 on a row of its own).
+        String keys = "abcdefghijklmnopqrstuvwxyz0123456789";
+        int kw = (LW - 5 * 10) / 6, kh = 74;
         for (int r = 0; r < 6; r++) {
             List<View> row = new ArrayList<>();
             List<Runnable> acts = new ArrayList<>();
-            for (int k = 0; k < 7 && r * 7 + k < keys.length(); k++) {
-                char ch = keys.charAt(r * 7 + k);
-                TextView key = keyView(String.valueOf(ch), 26);
-                place(overlay, key, 96 + k * 80, 180 + r * 68, 70, 58);
+            for (int k = 0; k < 6; k++) {
+                char ch = keys.charAt(r * 6 + k);
+                TextView key = keyView(String.valueOf(ch), 28);
+                place(overlay, key, LX + k * (kw + 10), 166 + r * (kh + 10), kw, kh);
                 row.add(key);
                 acts.add(() -> type(String.valueOf(ch)));
             }
@@ -214,36 +228,39 @@ final class SearchPanel {
         Runnable[] doWhat = {() -> type(" "), this::delete, this::clear};
         List<View> srow = new ArrayList<>();
         List<Runnable> sacts = new ArrayList<>();
+        int sw = (LW - 2 * 10) / 3;
         for (int k = 0; k < 3; k++) {
-            TextView key = keyView(words[k], 20);
-            place(overlay, key, 96 + k * 190, 594, 180, 58);
+            TextView key = keyView(words[k], 21);
+            place(overlay, key, LX + k * (sw + 10), 674, sw, kh);
             srow.add(key);
             sacts.add(doWhat[k]);
         }
         keyRows.add(srow);
         keyActs.add(sacts);
 
+        // The last searches, two to a row (each row a row of the keyboard for the remote); none, no heading.
+        List<String> recent = recents();
+        if (recent.isEmpty()) return;
         TextView rl = h.text(15, semi, 0xB3FFFFFF);
-        rl.setText("RECENT");
+        rl.setText("RECENT SEARCHES");
         rl.setLetterSpacing(0.14f);
-        place(overlay, rl, 96, 680, 560, 24);
-        recentRow = new LinearLayout(c);
-        recentRow.setOrientation(LinearLayout.VERTICAL);
-        place(overlay, recentRow, 96, 712, 560, 320);
-        List<View> rrow = new ArrayList<>();
-        List<Runnable> racts = new ArrayList<>();
-        for (String r : recents()) {
-            TextView chip = h.text(19, regular, Color.WHITE);
-            chip.setText(r);
-            chip.setSingleLine(true);
-            chip.setPadding(h.px(18), h.px(9), h.px(18), h.px(9));
-            LinearLayout.LayoutParams cp = new LinearLayout.LayoutParams(-2, -2);
-            cp.bottomMargin = h.px(10);
-            recentRow.addView(chip, cp);
-            rrow.add(chip);
-            racts.add(() -> setQuery(r));
-        }
-        if (!rrow.isEmpty()) {
+        place(overlay, rl, LX, 786, LW, 24);
+        int cw = (LW - 12) / 2;
+        for (int r = 0; r * 2 < recent.size() && r < 3; r++) {
+            List<View> rrow = new ArrayList<>();
+            List<Runnable> racts = new ArrayList<>();
+            for (int k = 0; k < 2 && r * 2 + k < recent.size(); k++) {
+                String q = recent.get(r * 2 + k);
+                TextView chip = h.text(20, regular, Color.WHITE);
+                chip.setText(q);
+                chip.setSingleLine(true);
+                chip.setEllipsize(android.text.TextUtils.TruncateAt.END);
+                chip.setGravity(Gravity.CENTER_VERTICAL);
+                chip.setPadding(h.px(20), 0, h.px(16), 0);
+                place(overlay, chip, LX + k * (cw + 12), 818 + r * 62, cw, 52);
+                rrow.add(chip);
+                racts.add(() -> setQuery(q));
+            }
             keyRows.add(rrow);
             keyActs.add(racts);
         }
@@ -290,11 +307,38 @@ final class SearchPanel {
         field.setText(query);
         main.removeCallbacks(search);
         if (query.toString().trim().length() >= 2) main.postDelayed(search, 600);
-        else {
-            gen++;
-            showSections(new ArrayList<>());
-            status.setText("Type a programme, a team, a film or a series");
-        }
+        else idle();
+    }
+
+    /**
+     * Nothing typed yet: what is trending today (TMDB), as posters to search for with OK, so the right of the screen
+     * has something to it before the first letter.
+     */
+    private void idle() {
+        int my = ++gen;
+        showSections(new ArrayList<>());
+        status.setText("Type a programme, a team, a film or a series");
+        String key = h.tmdbKey;
+        if (key == null || key.isEmpty()) return;
+        io.execute(() -> {
+            List<Item> items = new ArrayList<>();
+            for (PagesV2.Title t : PagesV2.tmdb(key, "trending/all/day", false)) {
+                if (items.size() >= 15 || t.title == null || t.title.isEmpty()) continue;
+                Item it = new Item();
+                it.title = t.title;
+                it.image = t.poster;
+                it.poster = true;
+                it.okWord = "Search";
+                it.leaves = false;
+                String q = t.title.toLowerCase(Locale.UK);
+                it.ok = () -> setQuery(q);
+                items.add(it);
+            }
+            main.post(() -> {
+                if (my != gen || !open || items.isEmpty() || query.toString().trim().length() >= 2) return;
+                showSections(Collections.singletonList(section("TRENDING TODAY  ·  OK TO SEARCH", TITLES, items)));
+            });
+        });
     }
 
     private void voice() {
@@ -475,12 +519,23 @@ final class SearchPanel {
         });
         List<Item> out = new ArrayList<>();
         Set<String> seen = new HashSet<>();
+        // The same programme again later on the same channel (a highlights show's repeats): one card, the later times
+        // on its line ("also 12:30"), instead of a row of the same card.
+        Map<String, Item> showing = new HashMap<>();
+        Map<String, Integer> again = new HashMap<>();
         DateTimeFormatter hm = DateTimeFormatter.ofPattern("HH:mm");
         for (Object[] hit : hits) {
             Object[] e = (Object[]) hit[0];
             String title = (String) e[1];
             long st = (Long) e[3], en = (Long) e[4];
             if (!seen.add(norm(title) + "|" + (st / 60_000L))) continue;
+            String rep = norm(title) + "|" + e[0];
+            Item first = showing.get(rep);
+            if (first != null) {
+                int n = again.merge(rep, 1, Integer::sum);
+                if (n <= 2 && !first.live) first.when += (n == 1 ? " · also " : ", ") + Instant.ofEpochMilli(st).atZone(ZoneId.systemDefault()).format(hm);
+                continue;
+            }
             String[] ch = chans.get((String) e[0]);
             Item i = new Item();
             i.title = title;
@@ -504,6 +559,7 @@ final class SearchPanel {
                 };
             }
             out.add(i);
+            showing.put(rep, i);
             if (out.size() >= 8) break;
         }
         return out;
@@ -773,12 +829,14 @@ final class SearchPanel {
             TextView head = h.text(16, semi, Color.WHITE);
             head.setText(s.head);
             head.setLetterSpacing(0.14f);
+            head.setPadding(h.px(PAD), 0, 0, 0);
             block.addView(head);
             FrameLayout clip = new FrameLayout(c);
             clip.setClipChildren(true);
             s.row = new LinearLayout(c);
             s.row.setClipChildren(false);
-            s.row.setPadding(h.px(6), h.px(10), h.px(6), h.px(10));
+            // Room all round inside the row's own clip for a focused card to grow into with its ring.
+            s.row.setPadding(h.px(PAD), h.px(12), h.px(PAD), h.px(14));
             for (Item i : s.items) {
                 View card = card(s.type, i);
                 LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) card.getLayoutParams();
@@ -789,7 +847,7 @@ final class SearchPanel {
             clip.addView(s.row, new FrameLayout.LayoutParams(-2, -2));
             block.addView(clip, new LinearLayout.LayoutParams(-1, -2));
             LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(-1, -2);
-            bp.bottomMargin = h.px(18);
+            bp.bottomMargin = h.px(14);
             results.addView(block, bp);
             s.block = block;
             sections.add(s);
@@ -804,7 +862,7 @@ final class SearchPanel {
         switch (type) {
             case TOP: return topCard(i);
             case TITLES: return posterCard(i);
-            case PLAYER: return wideCard(i, 320, 180);
+            case PLAYER: return wideCard(i, 355, 200);
             case WEB: return webCard(i);
             default: return rowCard(i, type == GAMES);
         }
@@ -867,7 +925,7 @@ final class SearchPanel {
         ap.topMargin = h.px(14);
         col.addView(act, ap);
         f.addView(col, new FrameLayout.LayoutParams(-1, -1));
-        f.setLayoutParams(new LinearLayout.LayoutParams(h.px(1110), h.px(250)));
+        f.setLayoutParams(new LinearLayout.LayoutParams(h.px(FULL), h.px(250)));
         return f;
     }
 
@@ -926,7 +984,8 @@ final class SearchPanel {
         i.whenView = when;
         if (game) addLogo(col, i, 18, 0);
         f.addView(col, new LinearLayout.LayoutParams(-1, -1));
-        f.setLayoutParams(new LinearLayout.LayoutParams(h.px(game ? 420 : 540), h.px(game ? 150 : 136)));
+        // Two programmes or three games across the view, the next one peeking past it.
+        f.setLayoutParams(new LinearLayout.LayoutParams(h.px(game ? 355 : 540), h.px(game ? 150 : 136)));
         return f;
     }
 
@@ -957,7 +1016,7 @@ final class SearchPanel {
         title.setPadding(h.px(10), h.px(30), h.px(10), h.px(10));
         title.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0x00000000, 0xD9000000}));
         f.addView(title, new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM));
-        f.setLayoutParams(new LinearLayout.LayoutParams(h.px(190), h.px(285)));
+        f.setLayoutParams(new LinearLayout.LayoutParams(h.px(206), h.px(309)));
         return f;
     }
 
@@ -1127,20 +1186,27 @@ final class SearchPanel {
                 boolean lit = inResults && s == sec && k == item;
                 if (v instanceof FrameLayout) ((FrameLayout) v).setForeground(lit ? h.ring(sc.type == TOP ? 24 : 16) : null);
                 else v.setForeground(lit ? h.ring(18) : null);
-                v.animate().scaleX(lit ? 1.04f : 1f).scaleY(lit ? 1.04f : 1f).setDuration(140).start();
+                // The same few pixels' grow for every card (4% of the top result was 22 a side, past its row's edge).
+                int w = v.getLayoutParams().width;
+                float grow = w > 0 ? Math.min(1.05f, 1f + h.px(14) / (float) w) : 1.03f;
+                v.animate().scaleX(lit ? grow : 1f).scaleY(lit ? grow : 1f).setDuration(140).start();
             }
         }
         if (inResults && sec < sections.size()) {
             Section sc = sections.get(sec);
             // Along the row: the card in view; down the page: the row near the top.
             View v = sc.views.get(item);
-            float left = v.getLeft(), right = v.getRight(), shown = h.px(1120), now = -sc.row.getTranslationX();
+            float left = v.getLeft(), right = v.getRight(), shown = h.px(SHOWN), now = -sc.row.getTranslationX();
             float to = now;
-            if (right - now > shown) to = right - shown + h.px(12);
-            if (left - now < 0) to = Math.max(0, left - h.px(6));
+            if (right - now > shown) to = right - shown;
+            if (left - now < h.px(PAD)) to = Math.max(0, left - h.px(PAD));
             sc.row.animate().translationX(-to).setDuration(200).start();
-            float top = sc.block.getTop();
-            results.animate().translationY(-Math.max(0, top - h.px(20))).setDuration(220).start();
+            // Down the page only as far as it takes to show the whole row (the rows above stay while there is room).
+            float top = sc.block.getTop(), bottom = sc.block.getBottom(), view = list.getHeight(), at = -results.getTranslationY();
+            float y = at;
+            if (bottom - y > view - h.px(16)) y = bottom - view + h.px(16);
+            if (top - y < 0) y = top;
+            results.animate().translationY(-Math.max(0, y)).setDuration(220).start();
         } else if (!inResults) {
             results.animate().translationY(0).setDuration(220).start();
         }
