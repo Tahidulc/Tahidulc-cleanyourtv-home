@@ -86,7 +86,7 @@ final class MatchDay {
     final FrameLayout panel;
     /** Match Day tucked away by For You's heading while the focus is elsewhere: Up (or a minute idle) brings it back. */
     final LinearLayout chip;
-    private TextView chipKey, chipText;
+    private TextView chipKey, chipText, chipTime;
     private ImageView chipHome, chipAway;
     private View chipLive;
     /** Called when the game kicks off: Home brings Match Day back up if it is tucked away. */
@@ -261,6 +261,12 @@ final class MatchDay {
         chipAway = new ImageView(c);
         chipAway.setScaleType(ImageView.ScaleType.FIT_CENTER);
         chip.addView(chipAway, new LinearLayout.LayoutParams(h.px(26), h.px(26)));
+        // The time (or the minute) after the whole game: each crest stays beside its own club's name.
+        chipTime = h.text(17, semi, 0xE6FFFFFF);
+        chipTime.setSingleLine(true);
+        LinearLayout.LayoutParams ttl = new LinearLayout.LayoutParams(-2, -2);
+        ttl.leftMargin = h.px(12);
+        chip.addView(chipTime, ttl);
         chip.setVisibility(View.GONE);
     }
 
@@ -727,8 +733,10 @@ final class MatchDay {
         buttons(p);
         // The buttons were made again: their pills (and the lit one) back at once, not only when the focus next moves.
         if (painted) paint(lastFocused, lastIdx, lastChip);
-        chipText.setText(g.home + (live || done ? "  " + g.homeScore + "–" + g.awayScore + "  " : "  v  ") + g.away
-                + (g.state == 1 ? "   " + ko : live ? "   " + ScoresTicker.liveClock(g) : ""));
+        chipText.setText(g.home + (live || done ? "  " + g.homeScore + "–" + g.awayScore + "  " : "  v  ") + g.away);
+        String when = g.state == 1 ? ko : live ? ScoresTicker.liveClock(g) : "";
+        chipTime.setText(when);
+        chipTime.setVisibility(when.isEmpty() ? View.GONE : View.VISIBLE);
         chipHome.setImageBitmap(p.home);
         chipAway.setImageBitmap(p.away);
         chipHome.setVisibility(p.home != null ? View.VISIBLE : View.GONE);

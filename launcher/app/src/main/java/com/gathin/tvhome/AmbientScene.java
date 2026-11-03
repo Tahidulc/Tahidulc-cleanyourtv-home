@@ -839,13 +839,8 @@ final class AmbientScene {
         for (Object[] item : p.items) {
             LinearLayout one = new LinearLayout(c);
             one.setGravity(Gravity.CENTER_VERTICAL);
-            // A time or minute first ("19:45", "67'", "FT"), then a crest or logo, the words, and a second crest.
-            if (item.length > 3 && item[3] != null) {
-                TextView pre = text(20, "sans-serif-medium", 0xFFFFFFFF);
-                pre.setText(String.valueOf(item[3]));
-                pre.setSingleLine(true);
-                one.addView(pre, margins(0, 0, 14, 0));
-            }
+            // A crest or logo, the words, the second crest, then the time or minute ("19:45", "67'", "FT"): each crest
+            // beside its own club, the time after the whole game.
             int icon = item[1] instanceof Integer ? (Integer) item[1] : 0;
             if (icon != 0 || item[1] instanceof Bitmap) {
                 ImageView iv = new ImageView(c);
@@ -867,6 +862,12 @@ final class AmbientScene {
                 LinearLayout.LayoutParams il = new LinearLayout.LayoutParams(px(30), px(30));
                 il.leftMargin = px(10);
                 one.addView(iv, il);
+            }
+            if (item.length > 3 && item[3] != null) {
+                TextView time = text(20, "sans-serif-medium", 0xFFFFFFFF);
+                time.setText(String.valueOf(item[3]));
+                time.setSingleLine(true);
+                one.addView(time, margins(14, 0, 0, 0));
             }
             LinearLayout.LayoutParams lp = p.wide ? new LinearLayout.LayoutParams(0, -2, 1f) : new LinearLayout.LayoutParams(-2, -2);
             lp.leftMargin = px(p.wide ? 28 : 40);
