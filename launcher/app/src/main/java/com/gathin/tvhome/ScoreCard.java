@@ -51,6 +51,8 @@ final class ScoreCard {
         /** The band's two colours (0: the navy, or F1's red), and whether its logo is a wide wordmark (F1, UFC). */
         int band, bandDeep;
         boolean wideMark;
+        /** A wordmark that must read big (the BBC's blocks and NEWS/SPORT): a wider band, the mark filling it. */
+        boolean bigMark;
         /** The end block's colour (0: the navy, or F1's red). */
         int block;
         /** A fight's result in the end block: how it was won ("KO/TKO"), and when ("R2 3:12"). */
@@ -238,7 +240,8 @@ final class ScoreCard {
         band.setBackground(bandGround(d, false));
         if (d.leagueLogo != null) {
             ImageView l = image(c, d.leagueLogo);
-            band.addView(l, new LinearLayout.LayoutParams(d.wideMark ? px(68) : px(26), d.wideMark ? px(30) : px(26)));
+            band.addView(l, new LinearLayout.LayoutParams(d.bigMark ? px(150) : d.wideMark ? px(68) : px(26),
+                    d.bigMark ? px(44) : d.wideMark ? px(30) : px(26)));
         }
         if (d.crest != null && !d.f1) {
             // The club's crest as large as the band allows, so it reads clearly.
@@ -246,7 +249,7 @@ final class ScoreCard {
             cl.topMargin = px(4);
             band.addView(image(c, d.crest), cl);
         }
-        int bandW = d.wideMark ? px(86) : px(62);
+        int bandW = d.bigMark ? px(176) : d.wideMark ? px(86) : px(62);
         FrameLayout bandBox = new FrameLayout(c);
         bandBox.setBackground(band.getBackground());
         band.setBackground(null);
@@ -343,9 +346,11 @@ final class ScoreCard {
         boolean ko = "kickoff".equals(d.kind);
         FrameLayout band = new FrameLayout(c);
         band.setBackground(bandGround(d, false));
-        if (!plainBlack(d)) band.addView(stripes(c, d), new FrameLayout.LayoutParams((d.wideMark ? px(150) : px(120)) + STRIPE_PERIOD_PX(), h));
-        if (d.leagueLogo != null) band.addView(image(c, d.leagueLogo), new FrameLayout.LayoutParams(d.wideMark ? px(124) : px(40), px(40), Gravity.CENTER));
-        bar.addView(band, new LinearLayout.LayoutParams(d.wideMark ? px(150) : px(120), h));
+        int bandW = d.bigMark ? px(230) : d.wideMark ? px(150) : px(120);
+        if (!plainBlack(d)) band.addView(stripes(c, d), new FrameLayout.LayoutParams(bandW + STRIPE_PERIOD_PX(), h));
+        if (d.leagueLogo != null) band.addView(image(c, d.leagueLogo), new FrameLayout.LayoutParams(
+                d.bigMark ? px(200) : d.wideMark ? px(124) : px(40), d.bigMark ? px(40) : px(40), Gravity.CENTER));
+        bar.addView(band, new LinearLayout.LayoutParams(bandW, h));
         // A kick-off's label is KICK-OFF alone: how long until it is said once, after the clubs.
         String small = d.labelSmall;
         if (ko) d.labelSmall = null;

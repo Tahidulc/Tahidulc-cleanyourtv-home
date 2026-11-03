@@ -2956,6 +2956,8 @@ public class GoalWatchService extends Service {
             d.labelColour = sport ? 0xFF111111 : 0xFFBB1919;
             if (label == null) label = "LATEST";
             markWide = true;
+            // Its blocks and NEWS/SPORT big enough to read from the sofa.
+            d.bigMark = true;
         } else if ("message".equals(sound)) {
             d.labelColour = 0xFF7B5CFF;
             if (mark == null) mark = iconBitmap(R.drawable.ic_message, Math.round(30 * dd));
