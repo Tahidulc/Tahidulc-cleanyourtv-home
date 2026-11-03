@@ -209,6 +209,13 @@ final class DeliveryLink {
                 reply(s, 200, "{\"ok\":true}");
                 return;
             }
+            case "/peers": {
+                // The phone's page: the other TVs on the home network, looked for now (a couple of seconds).
+                org.json.JSONArray tvs = new org.json.JSONArray();
+                for (String[] p : TvLink.find(context)) tvs.put(p[0]);
+                reply(s, 200, new JSONObject().put("tvs", tvs).toString());
+                return;
+            }
             case "/predictions": {
                 // The other TV's predictions (Predictions: one leaderboard for the house), taken in.
                 Predictions.merge(context, json.optJSONObject("games"));

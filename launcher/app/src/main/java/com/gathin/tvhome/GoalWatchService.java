@@ -1016,6 +1016,9 @@ public class GoalWatchService extends Service {
             @Override public void send(JSONObject s) { main.post(() -> TvLink.openSent(GoalWatchService.this, s)); }
         });
         deliveries.start();
+        // The other TVs on the home network, looked for once now, so Messages, Send to other TV and the predictions
+        // know where they are before anyone asks.
+        new Thread(() -> TvLink.find(this), "tv-link-find").start();
         relane = () -> main.postDelayed(this::replace, 250);
     }
 
