@@ -321,7 +321,10 @@ final class HomeV2 {
         // graphics chip then fills the screen once a frame instead of four times.
         // The background (theme "background"): "mesh", soft plum, teal and amber light over midnight, gently shifting
         // while Home shows (still on lite_home); "navy" the old radial blue.
-        mesh = !"navy".equals(Config.themeString(a, "background", "mesh"));
+        String bgStyle = Config.themeString(a, "background", "blur");
+        mesh = !"navy".equals(bgStyle);
+        // "blur": the focused content's own picture, heavily blurred and darkened, as the whole background.
+        blurBg = "blur".equals(bgStyle);
         if (mesh) {
             screenW = w;
             screenH = h;
@@ -3921,20 +3924,24 @@ final class HomeV2 {
         Bitmap hit = cache.get(key);
         if (hit != null) {
             v.setImageBitmap(hit);
-            if (zone != Z_MATCH || page != null) adaptMeshFrom(hit);
+            Bitmap raw = blurSource.get(key);
+            if (zone != Z_MATCH || page != null) adaptMeshFrom(raw != null ? raw : hit);
             then.run();
             return;
         }
         pics.execute(() -> {
             Bitmap b = fetch(url, px(1400));
             if (b == null) return;
+            // A small copy of the whole picture (before its fades) for the background's blur.
+            Bitmap raw = blurBg ? Bitmap.createScaledBitmap(b, BLUR_W, BLUR_H, true) : null;
+            if (raw != null) blurSource.put(key, raw);
             Bitmap m = fade(b);
             m.prepareToDraw();
             cache.put(key, m);
             main.post(() -> {
                 if (!key.equals(v.getTag(R.id.v2_url))) return;
                 v.setImageBitmap(m);
-                if (zone != Z_MATCH || page != null) adaptMeshFrom(m);
+                if (zone != Z_MATCH || page != null) adaptMeshFrom(raw != null ? raw : m);
                 then.run();
             });
         });
@@ -3978,7 +3985,7 @@ final class HomeV2 {
     private final Runnable shiftMesh = new Runnable() {
         @Override public void run() {
             if (!mesh || lite) return;
-            if (meshPair[meshVariant ^ 1] != null) {
+            if (!showingPicture && meshPair[meshVariant ^ 1] != null) {
                 meshVariant ^= 1;
                 fadeMesh(meshPair[meshVariant], MESH_FADE_MS);
             }
@@ -3996,7 +4003,7 @@ final class HomeV2 {
 
     private final Runnable adaptNow = () -> {
         int[] want = meshWanted;
-        if (want == null || Arrays.equals(want, meshColours)) return;
+        if (want == null || (!this.showingPicture && Arrays.equals(want, meshColours))) return;
         int v = meshVariant;
         boolean two = !lite;
         meshIo.execute(() -> {
@@ -4005,6 +4012,7 @@ final class HomeV2 {
             main.post(() -> {
                 if (want != meshWanted) return;   // something newer was asked for meanwhile
                 meshColours = want;
+                showingPicture = false;
                 meshPair[v] = b0;
                 meshPair[v ^ 1] = b1;
                 meshVariant = v;
@@ -4019,11 +4027,126 @@ final class HomeV2 {
         // Sampled off the main thread (scaling a 1400-wide picture down cost a frame on each move), the latest only.
         final int asked = ++meshSampleAt;
         main.removeCallbacks(adaptNow);
+        main.removeCallbacks(blurNow);
+        if (blurBg) {
+            // The picture itself, blurred: once the focus has stopped on it.
+            blurPic = pic;
+            blurAsked = asked;
+            main.postDelayed(blurNow, MESH_SETTLE_MS);
+            return;
+        }
         meshIo.execute(() -> {
             if (asked != meshSampleAt || pic.isRecycled()) return;
             int[] c = palette(pic);
             if (c != null) main.post(() -> { if (asked == meshSampleAt) adaptMesh(c); });
         });
+    }
+
+    /** "blur": the content's picture as the background; the small copies kept for it, and the one asked for now. */
+    private boolean blurBg, showingPicture;
+    private static final int BLUR_W = 128, BLUR_H = 72;
+    private final android.util.LruCache<String, Bitmap> blurSource = new android.util.LruCache<>(48);
+    private Bitmap blurPic;
+    private int blurAsked;
+
+    private final Runnable blurNow = () -> {
+        Bitmap pic = blurPic;
+        int asked = blurAsked;
+        if (pic == null) return;
+        meshIo.execute(() -> {
+            if (asked != this.meshSampleAt || pic.isRecycled()) return;
+            Bitmap bg = blurredBackground(pic);
+            if (bg == null) return;
+            main.post(() -> {
+                if (asked != this.meshSampleAt) return;
+                meshWanted = null;
+                meshColours = null;
+                showingPicture = true;
+                fadeMesh(bg, MESH_ADAPT_MS);
+            });
+        });
+    };
+
+    /**
+     * The background as the content's own picture: shrunk small and blurred hard (three box passes, as a Gaussian),
+     * drawn up to a quarter of the screen's size and smoothed again, a little less saturated, then darkened towards
+     * midnight with a soft vignette at the edges and the shades that keep the words readable. Off the main thread.
+     */
+    private Bitmap blurredBackground(Bitmap pic) {
+        try {
+            int sw = Math.max(screenW, screenH), sh = Math.min(screenW, screenH);
+            int bw = Math.max(2, sw / 4), bh = Math.max(2, sh / 4);
+            int tw = 72, th = 40;
+            Bitmap tiny = Bitmap.createBitmap(tw, th, Bitmap.Config.ARGB_8888);
+            android.graphics.Canvas tc = new android.graphics.Canvas(tiny);
+            tc.drawColor(0xFF0B0C21);
+            // The picture over the whole screen, cropped to fill it.
+            int pw = pic.getWidth(), ph = pic.getHeight();
+            float want = tw / (float) th, have = pw / (float) ph;
+            android.graphics.Rect src = have > want
+                    ? new android.graphics.Rect(Math.round((pw - ph * want) / 2f), 0, Math.round((pw + ph * want) / 2f), ph)
+                    : new android.graphics.Rect(0, Math.round((ph - pw / want) / 2f), pw, Math.round((ph + pw / want) / 2f));
+            android.graphics.Paint fp = new android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG);
+            tc.drawBitmap(pic, src, new android.graphics.Rect(0, 0, tw, th), fp);
+            int[] px = new int[tw * th];
+            tiny.getPixels(px, 0, tw, 0, 0, tw, th);
+            boxBlur(px, tw, th, 4, 3);
+            tiny.setPixels(px, 0, tw, 0, 0, tw, th);
+            Bitmap out = Bitmap.createBitmap(bw, bh, Bitmap.Config.ARGB_8888);
+            android.graphics.Canvas c = new android.graphics.Canvas(out);
+            android.graphics.Paint p = new android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG | android.graphics.Paint.DITHER_FLAG);
+            android.graphics.ColorMatrix cm = new android.graphics.ColorMatrix();
+            cm.setSaturation(0.85f);
+            p.setColorFilter(new android.graphics.ColorMatrixColorFilter(cm));
+            c.drawBitmap(tiny, null, new android.graphics.Rect(0, 0, bw, bh), p);
+            tiny.recycle();
+            int[] big = new int[bw * bh];
+            out.getPixels(big, 0, bw, 0, 0, bw, bh);
+            boxBlur(big, bw, bh, 6, 2);
+            out.setPixels(big, 0, bw, 0, 0, bw, bh);
+            android.graphics.Paint q = new android.graphics.Paint(android.graphics.Paint.DITHER_FLAG);
+            // Darkened towards midnight, deeper at the edges (the vignette), as the cards and words sit on it.
+            c.drawColor(0x8C07081A);
+            q.setShader(new android.graphics.RadialGradient(bw * 0.62f, bh * 0.36f, bw * 0.78f,
+                    new int[]{0x00000000, 0x22000000, 0x99000000}, new float[]{0f, 0.55f, 1f}, android.graphics.Shader.TileMode.CLAMP));
+            c.drawRect(0, 0, bw, bh, q);
+            shades(c, q, 0, 0, bw / (float) sw);
+            return out;
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
+    /** A box blur of r, passes times (three passes come close to a Gaussian), in place, edges held. */
+    private static void boxBlur(int[] px, int w, int h, int r, int passes) {
+        int[] tmp = new int[px.length];
+        for (int n = 0; n < passes; n++) {
+            blurLine(px, tmp, w, h, r, true);
+            blurLine(tmp, px, w, h, r, false);
+        }
+    }
+
+    private static void blurLine(int[] in, int[] out, int w, int h, int r, boolean across) {
+        int lines = across ? h : w, len = across ? w : h, div = 2 * r + 1;
+        for (int l = 0; l < lines; l++) {
+            int ra = 0, ga = 0, ba = 0;
+            for (int i = -r; i <= r; i++) {
+                int c = in[index(l, Math.max(0, Math.min(len - 1, i)), w, across)];
+                ra += (c >> 16) & 0xFF; ga += (c >> 8) & 0xFF; ba += c & 0xFF;
+            }
+            for (int i = 0; i < len; i++) {
+                out[index(l, i, w, across)] = 0xFF000000 | ((ra / div) << 16) | ((ga / div) << 8) | (ba / div);
+                int add = in[index(l, Math.min(len - 1, i + r + 1), w, across)];
+                int sub = in[index(l, Math.max(0, i - r), w, across)];
+                ra += ((add >> 16) & 0xFF) - ((sub >> 16) & 0xFF);
+                ga += ((add >> 8) & 0xFF) - ((sub >> 8) & 0xFF);
+                ba += (add & 0xFF) - (sub & 0xFF);
+            }
+        }
+    }
+
+    private static int index(int line, int i, int w, boolean across) {
+        return across ? line * w + i : i * w + line;
     }
 
     /** The latest picture asked to colour the light (an older one still being sampled is dropped). */
