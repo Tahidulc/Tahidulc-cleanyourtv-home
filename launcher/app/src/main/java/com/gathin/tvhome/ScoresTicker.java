@@ -250,6 +250,13 @@ final class ScoresTicker {
 
     /** Steps aside while an alert stands in the bar's place (launcher v2's Home), and comes back after. */
     void cover(boolean on) {
+        covered = on;
+        if (!on && !heldRolls.isEmpty()) {
+            // The bar back: the score changes that came while it was covered slide into place now, once it shows.
+            List<Runnable> go = new ArrayList<>(heldRolls);
+            heldRolls.clear();
+            main.postDelayed(() -> { for (Runnable r : go) r.run(); }, 380);
+        }
         box.animate().cancel();
         // Home's pill under option B: the bar has just folded back into it, so it shows again at once.
         if (isHomePill && !on) { box.animate().alpha(1f).setDuration(180).setStartDelay(0).start(); return; }
@@ -290,6 +297,8 @@ final class ScoresTicker {
         lp.leftMargin = x;
         lp.topMargin = centreY - lp.height / 2;
         box.setLayoutParams(lp);
+        // The frosted ground cut again for the box's new place.
+        if (backdropSource != null) frostFrom(backdropSource, 0);
         paginate();
     }
 
@@ -774,6 +783,13 @@ final class ScoresTicker {
         }
         if (!current.isEmpty()) pages.add(current);
         if (page >= pages.size()) page = 0;
+        // A refresh of the same games (the Sky bar): their numbers changed where they stand, a new score or time
+        // sliding up into place; nothing built or laid out again (a new game, a kick-off or a final whistle rebuilds).
+        if (skyBar() && shownRow != null && box.getVisibility() == View.VISIBLE && samePage(shownRow, pages.get(page))) {
+            update(shownRow, pages.get(page));
+            pageShown();
+            return;
+        }
         int focused = focusedIndex();
         box.setVisibility(View.VISIBLE);
         if (shownRow != null) box.removeView(shownRow);
@@ -866,19 +882,32 @@ final class ScoresTicker {
         page = (page + (forward ? 1 : pages.size() - 1)) % pages.size();
         LinearLayout out = shownRow;
         LinearLayout in = row(pages.get(page));
+        slideRows(out, in, forward);
+        shownRow = in;
+        focusBox(forward ? 0 : in.getChildCount() - 1);
+        pageShown();
+        schedulePage();
+    }
+
+    /** The slides' timing and ease: the next game in over 340 ms, the last out over 260 (quick out, long settle). */
+    private static final long SLIDE_IN_MS = 340, SLIDE_OUT_MS = 260;
+    private static final android.view.animation.PathInterpolator SLIDE = new android.view.animation.PathInterpolator(0.2f, 0f, 0f, 1f);
+
+    /**
+     * One row of games slid out to the side and faded as the next slides in from the other (forward: out to the left,
+     * in from the right), inside the bar's own edges. The frosted ground stays where it is on the screen while the
+     * games move across it (each box's ground is drawn for where it is now, so it is redrawn as they go).
+     */
+    private void slideRows(LinearLayout out, LinearLayout in, boolean forward) {
         float w = box.getWidth() > 0 ? box.getWidth() : dp(200);
-        android.view.animation.PathInterpolator ease = new android.view.animation.PathInterpolator(0.2f, 0f, 0f, 1f);
         in.setTranslationX(forward ? w * 0.7f : -w * 0.7f);
         in.setAlpha(0f);
         box.addView(in, 0);
-        shownRow = in;
-        focusBox(forward ? 0 : in.getChildCount() - 1);
         out.animate().cancel();
-        out.animate().translationX(forward ? -w * 0.7f : w * 0.7f).alpha(0f).setDuration(240).setInterpolator(ease)
-                .withEndAction(() -> box.removeView(out)).start();
-        in.animate().translationX(0f).alpha(1f).setDuration(340).setInterpolator(ease).start();
-        pageShown();
-        schedulePage();
+        android.animation.ValueAnimator.AnimatorUpdateListener follow = skyBar() ? a -> { frostMoved(out); frostMoved(in); } : null;
+        out.animate().translationX(forward ? -w * 0.7f : w * 0.7f).alpha(0f).setDuration(SLIDE_OUT_MS).setInterpolator(SLIDE)
+                .setUpdateListener(follow).withEndAction(() -> box.removeView(out)).start();
+        in.animate().translationX(0f).alpha(1f).setDuration(SLIDE_IN_MS).setInterpolator(SLIDE).setUpdateListener(follow).start();
     }
 
     private void schedulePage() {
@@ -886,13 +915,23 @@ final class ScoresTicker {
         if (running) main.postDelayed(flip, PAGE_MS);
     }
 
-    /** The current page slides up and out while the next one rises in from below. */
+    /**
+     * The next page of games: under the Sky bar it slides in from the right as the one showing slides out to the left
+     * (as Right by hand does); the pills' page slides up and out while the next one rises in from below.
+     */
     private void nextPage() {
         // Never flip the page out from under a box the viewer is on.
         if (running && pages.size() > 1 && shownRow != null && !box.hasFocus() && alertView == null) {
             page = (page + 1) % pages.size();
             LinearLayout out = shownRow;
             LinearLayout in = row(pages.get(page));
+            if (skyBar()) {
+                slideRows(out, in, true);
+                shownRow = in;
+                pageShown();
+                schedulePage();
+                return;
+            }
             int h = box.getHeight() > 0 ? box.getHeight() : dp(30);
             in.setTranslationY(h);
             in.setAlpha(0f);
@@ -994,7 +1033,7 @@ final class ScoresTicker {
     }
 
     /**
-     * One game as a box of liquid glass with square corners (SkyStyle.Glass): the competition's mark, a hairline, each
+     * One game as a box of frosted glass with square corners (Frost: the screen behind it, blurred): the competition's mark, a hairline, each
      * crest beside its own club with the names (and the score) in white, another hairline, then the time, the live
      * minute (a red dot before it) or FT after the whole fixture. Focused: lit, with a white rim inside its own edge
      * (it stays its size, so nothing is cut off). OK and the keys as on the pills.
@@ -1006,7 +1045,12 @@ final class ScoresTicker {
         LinearLayout b = new LinearLayout(context);
         b.setOrientation(LinearLayout.HORIZONTAL);
         b.setGravity(Gravity.CENTER_VERTICAL);
-        b.setBackground(new SkyStyle.Glass(r, sk(1.5f)));
+        b.setBackground(new Frost(r, sk(1.5f)));
+        Shown shown = new Shown();
+        shown.key = key(g);
+        shown.state = g.state;
+        shown.f1 = g.drivers != null || g.text != null;
+        b.setTag(shown);
         b.setOutlineProvider(new android.view.ViewOutlineProvider() {
             @Override public void getOutline(View v, android.graphics.Outline o) {
                 o.setRoundRect(0, 0, v.getWidth(), v.getHeight(), r);
@@ -1085,7 +1129,8 @@ final class ScoresTicker {
             LinearLayout.LayoutParams tl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
             tl.leftMargin = sk(10);
             tl.rightMargin = sk(10);
-            mid.addView(skyText(teams(g), 19, 0xFFFFFFFF, 800), tl);
+            shown.teams = skyText(teams(g), 19, 0xFFFFFFFF, 800);
+            mid.addView(shown.teams, tl);
             mid.addView(glassCrest(g.awayLogo), new LinearLayout.LayoutParams(sk(30), sk(30)));
         }
         b.addView(mid, new LinearLayout.LayoutParams(0, h, 1f));
@@ -1105,6 +1150,7 @@ final class ScoresTicker {
         }
         TextView when = skyText(detail(g), 18, 0xFFFFFFFF, 700);
         when.setTag("skyclock");
+        shown.when = when;
         // Same-width digits: the live clock ticking each second never moves the box's edge.
         when.setFontFeatureSettings("tnum");
         when.setGravity(Gravity.CENTER);
@@ -1116,6 +1162,274 @@ final class ScoresTicker {
             main.postDelayed(clockTick, 1000L);
         }
         return b;
+    }
+
+    // ---- the Sky bar's refresh in place -------------------------------------------------------------------------
+
+    /** What a Sky box shows (its tag): which game, in what state, and its score and time words. */
+    private static final class Shown {
+        String key;
+        int state;
+        boolean f1;
+        TextView teams, when;
+    }
+
+    /** A game told apart from the others on refresh: ESPN's id, else its league and clubs. */
+    private static String key(Game g) {
+        return g.id != null ? g.id : g.league + "|" + g.home + "|" + g.away + "|" + g.text;
+    }
+
+    /** Whether the row already shows these games, in this order and each in the same state (football only). */
+    private boolean samePage(LinearLayout row, List<Game> list) {
+        if (row.getChildCount() != list.size()) return false;
+        for (int i = 0; i < list.size(); i++) {
+            Object tag = row.getChildAt(i).getTag();
+            Game g = list.get(i);
+            if (!(tag instanceof Shown)) return false;
+            Shown sh = (Shown) tag;
+            if (sh.f1 || g.drivers != null || g.text != null || sh.state != g.state || !sh.key.equals(key(g))) return false;
+        }
+        return true;
+    }
+
+    /** The row's games refreshed where they stand: a changed score or time slides up into place; the live clock just ticks. */
+    private void update(LinearLayout row, List<Game> list) {
+        for (int i = 0; i < list.size(); i++) {
+            View b = row.getChildAt(i);
+            Shown sh = (Shown) b.getTag();
+            Game g = list.get(i);
+            b.setOnClickListener(v -> host.onScoresOpen(g));
+            if (sh.teams != null) {
+                String t = teams(g).toString();
+                if (!t.contentEquals(sh.teams.getText())) roll(sh.teams, t);
+            }
+            if (g.state == 0) {
+                // The clock reads the fresh game from now on (its minute as ESPN last read it), ticking as before.
+                for (Object[] c : clocks) if (c[0] == sh.when) c[1] = g;
+            } else if (sh.when != null) {
+                String d = detail(g).toString();
+                if (!d.contentEquals(sh.when.getText())) roll(sh.when, d);
+            }
+        }
+    }
+
+    /** While an alert stands over the bar (cover): the bar's changes wait for it to show again. */
+    private boolean covered;
+    private final List<Runnable> heldRolls = new ArrayList<>();
+
+    /** New words slid up into place: the old out upward and faded, the new in from below (about a quarter second). */
+    private void roll(TextView v, String text) {
+        if (covered) {
+            // Seen once the bar is back (the words set now, so a later refresh compares with them).
+            CharSequence was = v.getText();
+            v.setText(text);
+            heldRolls.add(() -> { v.setText(was); roll(v, text); });
+            return;
+        }
+        float d = barH() * 0.7f;
+        v.animate().cancel();
+        v.animate().translationY(-d).alpha(0f).setDuration(110).setInterpolator(new android.view.animation.PathInterpolator(0.4f, 0f, 1f, 1f))
+                .setUpdateListener(null).withEndAction(() -> {
+                    v.setText(text);
+                    v.setTranslationY(d);
+                    v.animate().translationY(0f).alpha(1f).setDuration(160).setInterpolator(SLIDE).withEndAction(null).start();
+                }).start();
+    }
+
+    // ---- the Sky bar's ground: the screen behind it, blurred -----------------------------------------------------
+
+    /**
+     * The frosted ground behind the Sky boxes: the part of Home's background under the bar (from the picture Home
+     * has just made of it, a quarter of the screen's size), blurred a little more, its colours lifted and a touch
+     * brighter, kept small (a quarter of the bar's own size) and drawn up under the boxes; the one before it kept
+     * while the new one fades in, in step with Home's own background. Where each sits, in the bar's own pixels, and
+     * how dark a wash the words need on it (more on a bright picture).
+     */
+    private Bitmap frostNow, frostWas, backdropSource;
+    private final android.graphics.RectF frostAt = new android.graphics.RectF(), frostWasAt = new android.graphics.RectF();
+    private float frostDark, frostWasDark, frostFade = 1f;
+    private android.animation.ValueAnimator frostAnim;
+
+    /**
+     * Home's background has changed to bg (fading over ms, at once for 0): the bar's ground follows, cut from it.
+     * Called on the main thread; the cut is a few thousand pixels, so it costs next to nothing.
+     */
+    void backdrop(Bitmap bg, int ms) {
+        backdropSource = bg;
+        // Only the Sky bar is frosted (the pills elsewhere keep their own glass).
+        if (skyBar()) frostFrom(bg, ms);
+    }
+
+    private void frostFrom(Bitmap bg, int ms) {
+        if (bg == null || bg.isRecycled()) return;
+        FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) box.getLayoutParams();
+        if (lp.width <= 0 || lp.height <= 0) return;
+        View parent = (View) box.getParent();
+        android.util.DisplayMetrics dm = context.getResources().getDisplayMetrics();
+        int rootW = parent != null && parent.getWidth() > 0 ? parent.getWidth() : dm.widthPixels;
+        int rootH = parent != null && parent.getHeight() > 0 ? parent.getHeight() : dm.heightPixels;
+        float s = bg.getWidth() / (float) rootW;
+        // The bar's place on the screen with a margin for the blur, clamped to the screen; cut at a quarter size.
+        int pad = sk(16);
+        int l = Math.max(0, lp.leftMargin - pad), t = Math.max(0, lp.topMargin - pad);
+        int r = Math.min(rootW, lp.leftMargin + lp.width + pad), btm = Math.min(rootH, lp.topMargin + lp.height + pad);
+        int w = Math.max(2, (r - l) / 4), h = Math.max(2, (btm - t) / 4);
+        if (r <= l || btm <= t) return;
+        Bitmap out;
+        int[] px = new int[w * h];
+        try {
+            out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
+            android.graphics.Canvas c = new android.graphics.Canvas(out);
+            Paint p = new Paint(Paint.FILTER_BITMAP_FLAG);
+            android.graphics.ColorMatrix cm = new android.graphics.ColorMatrix();
+            cm.setSaturation(1.3f);
+            cm.postConcat(new android.graphics.ColorMatrix(new float[]{
+                    1.08f, 0, 0, 0, 10, 0, 1.08f, 0, 0, 10, 0, 0, 1.08f, 0, 10, 0, 0, 0, 1, 0}));
+            p.setColorFilter(new android.graphics.ColorMatrixColorFilter(cm));
+            c.drawBitmap(bg, new android.graphics.Rect(Math.round(l * s), Math.round(t * s), Math.round(r * s), Math.round(btm * s)),
+                    new android.graphics.Rect(0, 0, w, h), p);
+            out.getPixels(px, 0, w, 0, 0, w, h);
+        } catch (RuntimeException e) {
+            return;
+        }
+        HomeV2.boxBlur(px, w, h, 2, 2);
+        long lum = 0;
+        for (int v : px) lum += ((v >> 16 & 0xFF) * 299 + (v >> 8 & 0xFF) * 587 + (v & 0xFF) * 114) / 1000;
+        float bright = lum / (float) px.length / 255f;
+        out.setPixels(px, 0, w, 0, 0, w, h);
+        out.prepareToDraw();
+        // White words read on it: a dark wash only as the picture under the bar gets bright, none on a dark one.
+        float dark = Math.max(0f, Math.min(0.45f, (bright - 0.4f) * 1.4f));
+        if (frostAnim != null) frostAnim.cancel();
+        if (frostNow == null || ms <= 0) {
+            frostWas = null;
+            frostFade = 1f;
+        } else {
+            frostWas = frostNow;
+            frostWasAt.set(frostAt);
+            frostWasDark = frostDark;
+            frostFade = 0f;
+        }
+        frostNow = out;
+        frostAt.set(l - lp.leftMargin, t - lp.topMargin, r - lp.leftMargin, btm - lp.topMargin);
+        frostDark = dark;
+        if (frostWas != null) {
+            android.animation.ValueAnimator va = android.animation.ValueAnimator.ofFloat(0f, 1f);
+            va.setDuration(ms);
+            va.setInterpolator(new android.view.animation.LinearInterpolator());   // as Home's own cross-fade
+            va.addUpdateListener(a -> { frostFade = (float) a.getAnimatedValue(); frostMoved(null); });
+            va.addListener(new android.animation.AnimatorListenerAdapter() {
+                @Override public void onAnimationEnd(android.animation.Animator a) {
+                    frostFade = 1f;
+                    frostWas = null;
+                    frostMoved(null);
+                }
+            });
+            frostAnim = va;
+            va.start();
+        }
+        frostMoved(null);
+    }
+
+    /** The boxes' grounds drawn again (of one row, or of every row in the bar): the ground has moved or changed. */
+    private void frostMoved(LinearLayout only) {
+        for (int i = 0; i < box.getChildCount(); i++) {
+            View row = box.getChildAt(i);
+            if (only != null && row != only) continue;
+            if (!(row instanceof ViewGroup)) continue;
+            ViewGroup g = (ViewGroup) row;
+            for (int k = 0; k < g.getChildCount(); k++) {
+                android.graphics.drawable.Drawable d = g.getChildAt(k).getBackground();
+                if (d instanceof Frost) d.invalidateSelf();
+            }
+        }
+    }
+
+    /**
+     * A Sky box's ground: frosted glass over the screen. The blurred cut of what lies behind it (cross-faded while it
+     * changes), a dark wash as the picture needs, a light white wash, a sheen over its upper half, a hairline rim
+     * brighter along the top than the foot and a fine specular line just inside the top edge. Drawn for where its box
+     * is now in the bar, so the picture stays put on the screen while the games slide over it. The box clips it to its
+     * square corners. Its shaders made when its size changes, never per frame.
+     */
+    private final class Frost extends android.graphics.drawable.Drawable {
+        private final Paint pic = new Paint(Paint.FILTER_BITMAP_FLAG | Paint.DITHER_FLAG), fill = new Paint(),
+                sheen = new Paint(Paint.ANTI_ALIAS_FLAG), rim = new Paint(Paint.ANTI_ALIAS_FLAG), spec = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final float radius, line;
+        private final android.graphics.RectF edge = new android.graphics.RectF(), top = new android.graphics.RectF(), dst = new android.graphics.RectF();
+
+        Frost(float radius, float line) {
+            this.radius = radius;
+            this.line = Math.max(1f, line);
+            rim.setStyle(Paint.Style.STROKE);
+            rim.setStrokeWidth(this.line);
+            spec.setStyle(Paint.Style.STROKE);
+            spec.setStrokeWidth(this.line);
+        }
+
+        @Override protected void onBoundsChange(android.graphics.Rect b) {
+            float h = Math.max(1, b.height());
+            sheen.setShader(new android.graphics.LinearGradient(0, b.top, 0, b.top + h * 0.55f, 0x26FFFFFF, 0x00FFFFFF, android.graphics.Shader.TileMode.CLAMP));
+            rim.setShader(new android.graphics.LinearGradient(0, b.top, 0, b.bottom, 0xB3FFFFFF, 0x38FFFFFF, android.graphics.Shader.TileMode.CLAMP));
+            spec.setShader(new android.graphics.LinearGradient(b.left, 0, b.right, 0, new int[]{0x00FFFFFF, 0xD9FFFFFF, 0xD9FFFFFF, 0x00FFFFFF},
+                    new float[]{0f, 0.25f, 0.75f, 1f}, android.graphics.Shader.TileMode.CLAMP));
+            edge.set(b.left + line / 2f, b.top + line / 2f, b.right - line / 2f, b.bottom - line / 2f);
+            top.set(b.left, b.top, b.right, b.top + h * 0.55f);
+        }
+
+        @Override public void draw(android.graphics.Canvas c) {
+            android.graphics.Rect b = getBounds();
+            // Where the box is in the bar now (its row may be sliding).
+            float ox = 0, oy = 0;
+            if (getCallback() instanceof View) {
+                View v = (View) getCallback();
+                ox = v.getLeft() + v.getTranslationX();
+                oy = v.getTop() + v.getTranslationY();
+                if (v.getParent() instanceof View && v.getParent() != box) {
+                    View row = (View) v.getParent();
+                    ox += row.getLeft() + row.getTranslationX();
+                    oy += row.getTop() + row.getTranslationY();
+                }
+            }
+            Bitmap now = frostNow, was = frostWas;
+            if (now == null) {
+                // No picture of the background yet (or the plain navy one): plain light frosted glass.
+                fill.setColor(0x33000000);
+                c.drawRect(b, fill);
+                fill.setColor(0x29FFFFFF);
+                c.drawRect(b, fill);
+            } else {
+                float fade = was == null ? 1f : frostFade;
+                if (was != null) {
+                    dst.set(frostWasAt);
+                    dst.offset(-ox, -oy);
+                    pic.setAlpha(255);
+                    c.drawBitmap(was, null, dst, pic);
+                }
+                dst.set(frostAt);
+                dst.offset(-ox, -oy);
+                pic.setAlpha(Math.round(255 * fade));
+                c.drawBitmap(now, null, dst, pic);
+                float dark = was == null ? frostDark : frostWasDark + (frostDark - frostWasDark) * fade;
+                if (dark > 0.01f) {
+                    fill.setColor(Math.round(dark * 255) << 24);
+                    c.drawRect(b, fill);
+                }
+                fill.setColor(0x21FFFFFF);
+                c.drawRect(b, fill);
+            }
+            c.save();
+            c.clipRect(top);
+            c.drawRoundRect(edge, radius, radius, sheen);
+            c.restore();
+            c.drawRoundRect(edge, radius, radius, rim);
+            float y = edge.top + line * 1.5f;
+            c.drawLine(edge.left + radius, y, edge.right - radius, y, spec);
+        }
+
+        @Override public void setAlpha(int a) { }
+        @Override public void setColorFilter(android.graphics.ColorFilter f) { }
+        @Override public int getOpacity() { return android.graphics.PixelFormat.TRANSLUCENT; }
     }
 
     private TextView skyText(CharSequence text, float designPx, int colour, int weight) {

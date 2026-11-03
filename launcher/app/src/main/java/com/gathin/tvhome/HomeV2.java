@@ -332,7 +332,8 @@ final class HomeV2 {
             meshPair[1] = lite ? null : meshBackground(w, h, 1, MESH_DEFAULT);
             fadeMesh(meshPair[0], 0);
         } else {
-            root.setBackground(new android.graphics.drawable.BitmapDrawable(a.getResources(), background(w, h)));
+            bgShown = background(w, h);
+            root.setBackground(new android.graphics.drawable.BitmapDrawable(a.getResources(), bgShown));
         }
         a.setContentView(root);
         a.getWindow().setBackgroundDrawable(null);
@@ -420,7 +421,11 @@ final class HomeV2 {
             if (corners) {
                 // Option B: one pill at the top right, beside the Control Centre button, cycling through the games.
                 scores.pageListener = this::showPageDots;
-                root.post(() -> scores.place(px(CORNER_PILL_X), px(CORNER_Y), px(CORNER_PILL_R)));
+                root.post(() -> {
+                    scores.place(px(CORNER_PILL_X), px(CORNER_Y), px(CORNER_PILL_R));
+                    // Its frosted glass: the background as it is now (made before the bar was).
+                    scores.backdrop(bgShown, 0);
+                });
                 // An alert grows out of the pill to the right, as far as the weather, date and time (they stay in sight).
                 ScoresTicker.lane(px(CORNER_PILL_X), px(CORNER_LANE_R), px(CORNER_Y));
                 scores.isHomePill = true;
@@ -3966,9 +3971,15 @@ final class HomeV2 {
     private static final int MESH_FADE_MS = 12_000, MESH_ADAPT_MS = 450;
     private static final long MESH_EVERY_MS = 75_000L, MESH_SETTLE_MS = 220L;
 
+    /** The background's picture now (the score bar's frosted glass is cut from it). */
+    private Bitmap bgShown;
+
     /** The background cross-fades to this picture of the light over ms (at once for 0). */
     private void fadeMesh(Bitmap next, int ms) {
         if (next == null) return;
+        bgShown = next;
+        // The score bar's glass shows the same picture behind it, blurred, changing with it.
+        if (scores != null) scores.backdrop(next, ms);
         Drawable to = new android.graphics.drawable.BitmapDrawable(a.getResources(), next);
         if (meshShown == null || ms <= 0) {
             root.setBackground(to);
@@ -4127,7 +4138,7 @@ final class HomeV2 {
     }
 
     /** A box blur of r, passes times (three passes come close to a Gaussian), in place, edges held. */
-    private static void boxBlur(int[] px, int w, int h, int r, int passes) {
+    static void boxBlur(int[] px, int w, int h, int r, int passes) {
         int[] tmp = new int[px.length];
         for (int n = 0; n < passes; n++) {
             blurLine(px, tmp, w, h, r, true);

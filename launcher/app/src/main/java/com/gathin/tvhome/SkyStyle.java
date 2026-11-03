@@ -45,54 +45,6 @@ final class SkyStyle {
         return new Streaks(STAGE, STAGE_DEEP, 0x40FFFFFF, gap, width);
     }
 
-    /**
-     * Liquid glass with square corners (the top bar's scores): a smoked, see-through body lit from the top (a soft
-     * sheen over its upper half), a hairline rim brighter along the top than the foot, and a fine specular line just
-     * inside the top edge that fades out towards the ends. The shaders are made when its size changes, never per frame.
-     */
-    static final class Glass extends Drawable {
-        private final Paint body = new Paint(Paint.ANTI_ALIAS_FLAG), sheen = new Paint(Paint.ANTI_ALIAS_FLAG),
-                rim = new Paint(Paint.ANTI_ALIAS_FLAG), spec = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final float radius, line;
-        private final android.graphics.RectF box = new android.graphics.RectF(), top = new android.graphics.RectF();
-
-        /** radius: the corner (CORNER, in pixels); line: a hairline's width in pixels. */
-        Glass(float radius, float line) {
-            this.radius = radius;
-            this.line = Math.max(1f, line);
-            rim.setStyle(Paint.Style.STROKE);
-            rim.setStrokeWidth(this.line);
-            spec.setStyle(Paint.Style.STROKE);
-            spec.setStrokeWidth(this.line);
-        }
-
-        @Override protected void onBoundsChange(Rect b) {
-            float h = Math.max(1, b.height());
-            body.setShader(new LinearGradient(0, b.top, 0, b.bottom, 0x80222740, 0x99101226, Shader.TileMode.CLAMP));
-            sheen.setShader(new LinearGradient(0, b.top, 0, b.top + h * 0.55f, 0x2EFFFFFF, 0x00FFFFFF, Shader.TileMode.CLAMP));
-            rim.setShader(new LinearGradient(0, b.top, 0, b.bottom, 0x8CFFFFFF, 0x1FFFFFFF, Shader.TileMode.CLAMP));
-            spec.setShader(new LinearGradient(b.left, 0, b.right, 0, new int[]{0x00FFFFFF, 0xB3FFFFFF, 0xB3FFFFFF, 0x00FFFFFF},
-                    new float[]{0f, 0.25f, 0.75f, 1f}, Shader.TileMode.CLAMP));
-            box.set(b.left + line / 2f, b.top + line / 2f, b.right - line / 2f, b.bottom - line / 2f);
-            top.set(b.left, b.top, b.right, b.top + h * 0.55f);
-        }
-
-        @Override public void draw(Canvas c) {
-            c.drawRoundRect(box, radius, radius, body);
-            c.save();
-            c.clipRect(top);
-            c.drawRoundRect(box, radius, radius, sheen);
-            c.restore();
-            c.drawRoundRect(box, radius, radius, rim);
-            float y = box.top + line * 1.5f;
-            c.drawLine(box.left + radius, y, box.right - radius, y, spec);
-        }
-
-        @Override public void setAlpha(int a) { }
-        @Override public void setColorFilter(ColorFilter f) { }
-        @Override public int getOpacity() { return PixelFormat.TRANSLUCENT; }
-    }
-
     /** A vertical gradient with diagonal bands (as ScoreCard's and the line-up card's grounds). */
     static final class Streaks extends Drawable {
         private final Paint fill = new Paint(), band = new Paint(Paint.ANTI_ALIAS_FLAG);
