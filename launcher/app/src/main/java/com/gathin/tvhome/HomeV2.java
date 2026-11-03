@@ -196,7 +196,7 @@ final class HomeV2 {
     private FrameLayout dockLayer;
     /** The dock tucked away (theme "dock_tuck", on unless turned off); the chip at the foot that says where it went. */
     private boolean dockAway;
-    private TextView dockHandle;
+    private ImageView dockHandle;
     /** The dock: its top and height; the sections' width. */
     private static final int DOCK_Y = 944, DOCK_H = 100, DOCK_APP = 64, DOCK_SEC = 112, DOCK_GAP = 14;
     /** How far a dock app's icon rises under the focus (as the sections do), and the glass's margin round it. */
@@ -783,16 +783,20 @@ final class HomeV2 {
             markView.setBackground(fill(3, Color.WHITE));
             addDock(markView, 0, DOCK_Y + DOCK_H - 11, 6, 6);
         }
-        // Where the dock went: a small glass chip at the foot while it is away (Down past the last row brings it back).
-        dockHandle = text(17, semi, 0xE6FFFFFF);
-        dockHandle.setText("\u25BE  Dock");
-        dockHandle.setGravity(Gravity.CENTER);
-        GradientDrawable hg = fill(19, 0x26FFFFFF);
+        // Where the dock went: just an arrow in a small glass pill at the foot while it is away (Down past the last row
+        // brings it back).
+        dockHandle = new ImageView(a);
+        dockHandle.setImageResource(R.drawable.ic_chevron_down);
+        dockHandle.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        dockHandle.setPadding(px(18), px(4), px(18), px(4));
+        dockHandle.setImageAlpha(230);
+        dockHandle.setContentDescription("Dock below: press Down");
+        GradientDrawable hg = fill(15, 0x26FFFFFF);
         hg.setStroke(px(1.5f), 0x40FFFFFF);
         dockHandle.setBackground(hg);
         dockHandle.setAlpha(0f);
         dockHandle.setVisibility(View.INVISIBLE);
-        add(dockHandle, 900, 1030, 120, 38);
+        add(dockHandle, 928, 1038, 64, 30);
     }
 
     private void addDock(View v, int x, int y, int w, int h) {
