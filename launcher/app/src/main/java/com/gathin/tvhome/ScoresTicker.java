@@ -970,7 +970,8 @@ final class ScoresTicker {
      */
     private LinearLayout skyBox(Game g, int index, int count) {
         int h = barH();
-        float r = h / 2f;
+        // Square-edged, as the notifications over the apps (not a pill).
+        float r = SkyStyle.corner(context);
         LinearLayout b = new LinearLayout(context);
         b.setOrientation(LinearLayout.HORIZONTAL);
         b.setGravity(Gravity.CENTER_VERTICAL);

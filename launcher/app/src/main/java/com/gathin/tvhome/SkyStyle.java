@@ -24,6 +24,17 @@ final class SkyStyle {
     static final int INK = 0xFF0A0D33, INK_SOFT = 0xFF2B3170;
     static final int F1_RED = 0xFFE10600, F1_DEEP = 0xFF8E0400;
 
+    /**
+     * The corner of the top bar's ticker and of the bars on Home under it, on the 1920 design: square-edged like the
+     * cards over the apps (12), not pill-shaped.
+     */
+    static final float CORNER = 12f;
+
+    /** CORNER in pixels on this screen. */
+    static float corner(android.content.Context c) {
+        return CORNER * c.getResources().getDisplayMetrics().widthPixels / 1920f;
+    }
+
     /** The band's ground: its two colours and light stripes (gap and width in pixels). */
     static Drawable band(int top, int bottom, int gap, int width) {
         return new Streaks(top, bottom, 0x1AFFFFFF, gap, width);

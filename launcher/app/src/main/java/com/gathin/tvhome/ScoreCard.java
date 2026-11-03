@@ -333,7 +333,8 @@ final class ScoreCard {
         LinearLayout bar = new LinearLayout(c);
         bar.setOrientation(LinearLayout.HORIZONTAL);
         bar.setGravity(Gravity.CENTER_VERTICAL);
-        float r = h / 2f;
+        // Square-edged as the cards over the apps when it opens out of the Sky top bar; else round-ended.
+        float r = ScoresTicker.sky && ScoresTicker.corner() ? SkyStyle.corner(c) : h / 2f;
         bar.setOutlineProvider(new ViewOutlineProvider() {
             @Override public void getOutline(View v, Outline o) { o.setRoundRect(0, 0, v.getWidth(), v.getHeight(), r); }
         });

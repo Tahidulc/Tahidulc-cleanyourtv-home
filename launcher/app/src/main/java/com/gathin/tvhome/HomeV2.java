@@ -226,6 +226,17 @@ final class HomeV2 {
     int pageLift() {
         return corners && page != null ? PAGE_LIFT : 0;
     }
+
+    /**
+     * On Home under the one-line top bar: Match Day and the hero's words sit this much higher, into the room the old
+     * clock left, and Match Day a little larger (HOME_GROW); the row under them stays where it is.
+     */
+    static final int HOME_LIFT = 72;
+    static final float HOME_GROW = 1.12f;
+
+    int homeLift() {
+        return corners ? HOME_LIFT : 0;
+    }
     ScoresTicker scores;
     private WeatherLine weatherLine;
     private GuideV2 guide;
@@ -278,6 +289,7 @@ final class HomeV2 {
         // The top bar in the notifications' own Sky-style look (theme "sky_top"): no pills; else the frosted ones.
         ScoresTicker.sky = corners && Config.themeFlag(a, "sky_top", true);
         ScoresTicker.frost = corners && !ScoresTicker.sky && Config.themeFlag(a, "frosted_pills", true);
+        PillMorph.squareCorner = ScoresTicker.sky ? SkyStyle.corner(a) : -1;
         players = new TilePlayer(a);
         players.useOverlay(lite);
         if (!tmdbKey.isEmpty()) players.warm();
@@ -315,7 +327,14 @@ final class HomeV2 {
         FrameLayout.LayoutParams blp = new FrameLayout.LayoutParams(px(1160), px(652));
         blp.leftMargin = px(760);
         root.addView(match.backdrop, root.indexOfChild(heroB) + 1, blp);
-        add(match.panel, dockMode ? 56 : 216, MATCH_Y, 1320, 342);
+        add(match.panel, dockMode ? 56 : 216, MATCH_Y - homeLift(), 1320, 342);
+        if (corners) {
+            // Larger in the room the top bar left (it still ends above the row's heading).
+            match.panel.setPivotX(0);
+            match.panel.setPivotY(0);
+            match.panel.setScaleX(HOME_GROW);
+            match.panel.setScaleY(HOME_GROW);
+        }
         FrameLayout chipBox = new FrameLayout(a);
         chipBox.addView(match.chip, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.END));
         add(chipBox, dockMode ? 1176 : 1120, headY - (dockMode ? 4 : 8), 700, 40);
@@ -824,7 +843,7 @@ final class HomeV2 {
         hText.setShadowLayer(px(10), 0, px(2), 0x73000000);
         // The description in a narrower column than the title: a long one wraps before it reaches the picture.
         htext.addView(hText, new LinearLayout.LayoutParams(px(760), ViewGroup.LayoutParams.WRAP_CONTENT));
-        add(htext, dockMode ? 56 : 216, 226, 1060, 340);
+        add(htext, dockMode ? 56 : 216, 226 - homeLift(), 1060, 340);
         // A slower TV: the hero's words kept as a finished picture, made again only when they change. Drawn live, the
         // description's soft shadow was worked out again on every frame Home drew, and while a trailer or channel plays
         // in a tile that is every frame, leaving the TCL's graphics chip little room for the glass and the row's slide.
@@ -1784,7 +1803,7 @@ final class HomeV2 {
         hidden = away;
         page.open();
         // Option B: the hero's words go up with the page, into the room the top bar left.
-        htext.setTranslationY(-px(pageLift()));
+        htext.setTranslationY(-px(Math.max(0, pageLift() - homeLift())));
         if (hover || keepsBoxes(which)) clipAboveBoxes();
         paint();
     }

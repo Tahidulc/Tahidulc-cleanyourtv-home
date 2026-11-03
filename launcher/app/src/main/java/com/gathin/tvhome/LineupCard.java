@@ -326,7 +326,8 @@ final class LineupCard {
         k = c.getResources().getDisplayMetrics().widthPixels / 1920f;
         // Option B's top bar: in the lane from the score pill leftwards, the clock left in sight.
         int w = ScoresTicker.corner() ? ScoresTicker.laneRight - ScoresTicker.laneLeft : px(1728), h = px(80), bandW = px(130);
-        float r = h / 2f;
+        // Square-edged as the cards over the apps when it opens out of the Sky top bar; else round-ended.
+        float r = ScoresTicker.sky && ScoresTicker.corner() ? SkyStyle.corner(c) : h / 2f;
         FrameLayout win = new FrameLayout(c);
         FrameLayout box = new FrameLayout(c);
         box.setOutlineProvider(new ViewOutlineProvider() {
@@ -1156,7 +1157,8 @@ final class LineupCard {
     private static void f1Bar(Context c, F1 f, Data carrier) {
         k = c.getResources().getDisplayMetrics().widthPixels / 1920f;
         int w = ScoresTicker.corner() ? ScoresTicker.laneRight - ScoresTicker.laneLeft : px(1728), h = px(80), bandW = px(150);
-        float r = h / 2f;
+        // Square-edged as the cards over the apps when it opens out of the Sky top bar; else round-ended.
+        float r = ScoresTicker.sky && ScoresTicker.corner() ? SkyStyle.corner(c) : h / 2f;
         FrameLayout win = new FrameLayout(c);
         FrameLayout box = new FrameLayout(c);
         box.setOutlineProvider(new ViewOutlineProvider() {

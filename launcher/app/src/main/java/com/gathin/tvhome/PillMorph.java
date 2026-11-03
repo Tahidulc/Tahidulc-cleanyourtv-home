@@ -36,6 +36,13 @@ final class PillMorph {
     }
 
     private static final long OPEN_MS = 460, WORDS_MS = 240, CLOSE_MS = 340;
+
+    /** The corner, h high: square-edged under the Sky top bar (as the cards over the apps), else round-ended. */
+    static volatile float squareCorner = -1;
+
+    private static float radius(int h) {
+        return squareCorner >= 0 ? squareCorner : h / 2f;
+    }
     private static final PathInterpolator EASE = new PathInterpolator(0.2f, 0f, 0f, 1f);
     private static final PathInterpolator EASE_IN = new PathInterpolator(0.4f, 0f, 0.7f, 0.2f);
 
@@ -72,7 +79,7 @@ final class PillMorph {
         into[1] = pillTop - y;
         into[2] = pillRight - x;
         into[3] = pillBottom - y;
-        into[4] = (pillBottom - pillTop) / 2f;
+        into[4] = radius(pillBottom - pillTop);
     }
 
     /**
@@ -94,7 +101,7 @@ final class PillMorph {
                 s.to[1] = 0;
                 s.to[2] = w;
                 s.to[3] = h;
-                s.to[4] = h / 2f;
+                s.to[4] = radius(h);
                 win.setOutlineProvider(s);
                 win.setClipToOutline(true);
                 win.setAlpha(1f);
@@ -139,7 +146,7 @@ final class PillMorph {
         s.from[1] = 0;
         s.from[2] = win.getWidth();
         s.from[3] = win.getHeight();
-        s.from[4] = win.getHeight() / 2f;
+        s.from[4] = radius(win.getHeight());
         pillIn(s.to, at[0], at[1]);
         win.animate().cancel();
         win.setAlpha(1f);
