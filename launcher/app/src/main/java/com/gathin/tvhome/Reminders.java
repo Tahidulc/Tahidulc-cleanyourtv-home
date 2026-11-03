@@ -39,6 +39,12 @@ final class Reminders {
         return true;
     }
 
+    /** Whether a reminder is set for this event (its title and start, as toggle keeps them). */
+    static synchronized boolean has(Context c, String title, long start) {
+        for (JSONObject o : read(c)) if (o.optString("t").equals(title) && o.optLong("s") == start) return true;
+        return false;
+    }
+
     /** The reminders now due (and drops them, and any long past). */
     static synchronized List<JSONObject> due(Context c, long now) {
         List<JSONObject> all = read(c), due = new ArrayList<>(), keep = new ArrayList<>();

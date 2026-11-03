@@ -2456,6 +2456,9 @@ final class PagesV2 {
             fixtures.setTranslationY(px(restY()));
             String[] names = {"CONTINUE WATCHING", "LIVE FOOTBALL · THIS WEEK", "MORE LIVE SPORT"};
             for (String name : names) addRow(name);
+            // This weekend's fixtures, under the live sport and over the highlights.
+            weekRow = addRow(weekendTitle(LocalDate.now()));
+            buildWeekend();
             buildTonight();
             // Continue Watching: matches, highlights and races part-watched in any app (Sky Sports, TNT Sports, DAZN,
             // F1 TV, Debrid Stream…), each with how far in; OK opens the app it was in.
@@ -2653,6 +2656,371 @@ final class PagesV2 {
             }
             if (zone >= 1 && zone < lists.size()) idx = Math.min(idx, Math.max(0, lists.get(zone).size() - 1));
             paint();
+        }
+
+        // ---- This weekend: the coming weekend's fixtures, by day, with where they are on and a reminder bell ----------
+
+        /** The weekend row's index (-1 until built), its line while it reads or when there is nothing, its cards' parts. */
+        private int weekRow = -1;
+        private TextView weekNone;
+        private final Map<View, ImageView> weekBells = new java.util.WeakHashMap<>();
+        private final Map<View, TextView> weekWhere = new java.util.WeakHashMap<>();
+        /** The weekend's cards: 296 by 216, 18 apart (five across the row). */
+        private static final int WEEK_W = 296, WEEK_GAP = 18;
+        /** At most this many games a day: the user's clubs first, then the competitions in the scores line's order. */
+        private static final int WEEK_PER_DAY = 14;
+        /** The weekend as last read, kept half an hour, so the page opened again shows it at once. */
+        private static List<WeekGame> weekCache;
+        private static long weekAt;
+        private static LocalDate weekFor;
+
+        /** One card of the weekend: a game (or an F1 session), whether a followed club plays, and where it is on. */
+        static final class WeekGame {
+            ScoresTicker.Game game;
+            F1Results.Session session;
+            String gp;
+            boolean star;
+            long start;
+            LocalDate day;
+            volatile String channel, channelLogo;
+        }
+
+        /** The days the planner covers: the coming Friday to Sunday; on a weekend day, today and the days left of it. */
+        static List<LocalDate> weekendDays(LocalDate today) {
+            List<LocalDate> out = new ArrayList<>();
+            java.time.DayOfWeek d = today.getDayOfWeek();
+            LocalDate from = d == java.time.DayOfWeek.FRIDAY || d == java.time.DayOfWeek.SATURDAY || d == java.time.DayOfWeek.SUNDAY
+                    ? today : today.with(java.time.temporal.TemporalAdjusters.next(java.time.DayOfWeek.FRIDAY));
+            for (LocalDate x = from; !x.isAfter(from.with(java.time.temporal.TemporalAdjusters.nextOrSame(java.time.DayOfWeek.SUNDAY))); x = x.plusDays(1)) out.add(x);
+            return out;
+        }
+
+        /** "THIS WEEKEND  ·  FRI 6 – SUN 8 NOV" (today's name for today on a weekend day). */
+        static String weekendTitle(LocalDate today) {
+            List<LocalDate> days = weekendDays(today);
+            LocalDate a = days.get(0), b = days.get(days.size() - 1);
+            DateTimeFormatter dm = DateTimeFormatter.ofPattern("EEE d", Locale.UK), dmm = DateTimeFormatter.ofPattern("EEE d MMM", Locale.UK);
+            String from = a.equals(today) ? "TODAY" : (a.getMonth() == b.getMonth() ? a.format(dm) : a.format(dmm));
+            String span = a.equals(b) ? from : from + " – " + b.format(dmm);
+            return ("THIS WEEKEND  ·  " + span).toUpperCase(Locale.UK);
+        }
+
+        /** The row's line while the weekend is read, then its cards (from the last read at once if it is fresh). */
+        private void buildWeekend() {
+            View frame = rowViews.isEmpty() ? null : rowViews.get(rowViews.size() - 1);
+            weekNone = h.text(20, h.regular, 0x99FFFFFF);
+            weekNone.setText("Finding this weekend's fixtures…");
+            if (frame instanceof FrameLayout) {
+                FrameLayout.LayoutParams nl = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                nl.leftMargin = px(28);
+                nl.topMargin = px(110);
+                ((FrameLayout) frame).addView(weekNone, nl);
+            }
+            LocalDate today = LocalDate.now();
+            if (weekCache != null && today.equals(weekFor) && System.currentTimeMillis() - weekAt < 30 * 60_000L) {
+                showWeekend(weekCache);
+                return;
+            }
+            new Thread(() -> {
+                List<WeekGame> got = readWeekend(today);
+                weekCache = got;
+                weekAt = System.currentTimeMillis();
+                weekFor = today;
+                h.main.post(() -> { if (alive) showWeekend(got); });
+            }, "weekend").start();
+        }
+
+        /**
+         * The weekend's games from ESPN's scoreboards (the scores line's competitions, a day at a time, the days read
+         * side by side), each day's capped at WEEK_PER_DAY: the followed clubs' first (starred), then by competition and
+         * kick-off; and F1's sessions on a race weekend. Where each is on comes after (fillWeekendChannels). Off the
+         * main thread.
+         */
+        private List<WeekGame> readWeekend(LocalDate today) {
+            List<LocalDate> days = weekendDays(today);
+            String[] leagues = h.a.getResources().getStringArray(R.array.score_leagues);
+            List<String> order = new ArrayList<>();
+            for (String l : leagues) order.add(l.split("\\|", 2)[0].trim());
+            java.util.Set<String> clubs = new java.util.HashSet<>(Arrays.asList(h.a.getResources().getStringArray(R.array.goal_alert_teams)));
+            java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(Math.min(3, days.size()));
+            List<java.util.concurrent.Future<List<ScoresTicker.Game>>> reads = new ArrayList<>();
+            for (LocalDate d : days) reads.add(pool.submit(() -> ScoresTicker.load(leagues, d)));
+            List<WeekGame> out = new ArrayList<>();
+            ZoneId zone = ZoneId.systemDefault();
+            java.util.Set<String> seen = new java.util.HashSet<>();
+            for (int k = 0; k < days.size(); k++) {
+                LocalDate d = days.get(k);
+                List<ScoresTicker.Game> games;
+                try {
+                    games = reads.get(k).get(60, java.util.concurrent.TimeUnit.SECONDS);
+                } catch (Exception e) {
+                    games = new ArrayList<>();
+                }
+                List<WeekGame> day = new ArrayList<>();
+                for (ScoresTicker.Game g : games) {
+                    if (g.kickoff <= 0 || g.home == null || g.away == null) continue;
+                    // ESPN's day is not ours near midnight: each game on the day it kicks off here, and once.
+                    if (!Instant.ofEpochMilli(g.kickoff).atZone(zone).toLocalDate().equals(d)) continue;
+                    if (!seen.add(g.id != null ? g.id : g.home + g.away + g.kickoff)) continue;
+                    WeekGame w = new WeekGame();
+                    w.game = g;
+                    w.star = clubs.contains(g.homeId) || clubs.contains(g.awayId);
+                    w.start = g.kickoff;
+                    w.day = d;
+                    day.add(w);
+                }
+                // Kept: the starred, then the competitions in the scores line's order, then the earlier.
+                day.sort((a, b) -> {
+                    if (a.star != b.star) return a.star ? -1 : 1;
+                    int oa = order.indexOf(a.game.slug), ob = order.indexOf(b.game.slug);
+                    if (oa != ob) return Integer.compare(oa < 0 ? 99 : oa, ob < 0 ? 99 : ob);
+                    return Long.compare(a.start, b.start);
+                });
+                if (day.size() > WEEK_PER_DAY) day = new ArrayList<>(day.subList(0, WEEK_PER_DAY));
+                // Shown: the starred first, then by kick-off.
+                day.sort((a, b) -> a.star != b.star ? (a.star ? -1 : 1) : Long.compare(a.start, b.start));
+                out.addAll(day);
+            }
+            pool.shutdown();
+            // A race weekend: its qualifying, sprint and race, each on its day among the football.
+            try {
+                F1Results.Weekend w = F1Results.weekend(null);
+                if (w != null) {
+                    for (F1Results.Session s : w.sessions) {
+                        if (!s.counts() || s.start <= 0) continue;
+                        LocalDate d = Instant.ofEpochMilli(s.start).atZone(zone).toLocalDate();
+                        if (!days.contains(d)) continue;
+                        WeekGame g = new WeekGame();
+                        g.session = s;
+                        g.gp = w.name;
+                        g.start = s.start;
+                        g.day = d;
+                        g.channel = "Sky Sports F1";
+                        int at = 0;
+                        while (at < out.size() && (out.get(at).day.isBefore(d) || out.get(at).day.equals(d) && (out.get(at).star || out.get(at).start <= s.start))) at++;
+                        out.add(at, g);
+                    }
+                }
+            } catch (RuntimeException ignored) {
+                // no F1 this weekend
+            }
+            return out;
+        }
+
+        /** The weekend's cards in the row (the day groups one after another, each day's first card marked). */
+        private void showWeekend(List<WeekGame> games) {
+            if (weekRow < 0 || weekRow >= strips.size()) return;
+            LinearLayout strip = strips.get(weekRow);
+            strip.removeAllViews();
+            List<HomeV2.Tile> list = new ArrayList<>();
+            LocalDate last = null;
+            for (WeekGame w : games) {
+                HomeV2.Tile t = new HomeV2.Tile();
+                t.title = weekTitle(w);
+                t.start = w.start;
+                t.channel = w.channel;
+                t.badge = w.channelLogo;
+                View card = weekCard(w, !w.day.equals(last));
+                last = w.day;
+                // OK: the reminder on or off (the bell lights), as holding OK does on the live rows.
+                t.ok = () -> {
+                    t.channel = w.channel;
+                    t.badge = w.channelLogo;
+                    remind(t);
+                    paintBell(card, Reminders.has(h.a, t.title, t.start));
+                };
+                list.add(t);
+                strip.addView(card);
+            }
+            lists.set(weekRow, list);
+            if (weekNone != null) {
+                weekNone.setText("No fixtures found for this weekend yet.");
+                weekNone.setVisibility(list.isEmpty() ? View.VISIBLE : View.GONE);
+            }
+            if (zone == weekRow) idx = Math.min(idx, Math.max(0, list.size() - 1));
+            paintedStrip.remove(strip);
+            paint();
+            fillWeekendChannels(games);
+        }
+
+        /**
+         * Where each game is on, filled in on its card once known: the British TV guide's channel, else the playlist's
+         * or the league's own (as the live rows name them). Off the main thread, a game at a time.
+         */
+        private void fillWeekendChannels(List<WeekGame> games) {
+            String[] tv = h.a.getResources().getStringArray(R.array.football_tv_channels);
+            new Thread(() -> {
+                for (WeekGame w : games) {
+                    if (!alive) return;
+                    if (w.game == null || w.channel != null) continue;
+                    ScoresTicker.Game g = w.game;
+                    try {
+                        TvGuide.Channel c = TvGuide.find(tv, g.homeName, g.awayName, g.kickoff);
+                        if (c != null) {
+                            w.channel = c.name;
+                            w.channelLogo = c.logo;
+                        } else {
+                            String art = g.homeLogo != null && g.awayLogo != null ? "crest:" + g.homeLogo + "|" + g.awayLogo : null;
+                            PlaylistSport.Where p = PlaylistSport.where(h, g.homeName, g.awayName, g.slug, art);
+                            w.channel = p != null && p.name != null ? p.name : "";
+                            if (p != null) w.channelLogo = p.logo;
+                        }
+                    } catch (RuntimeException e) {
+                        w.channel = "";
+                    }
+                    h.main.post(() -> {
+                        if (!alive || weekRow < 0) return;
+                        LinearLayout strip = strips.get(weekRow);
+                        for (int i = 0; i < strip.getChildCount(); i++) {
+                            View card = strip.getChildAt(i);
+                            if (card.getTag() != w) continue;
+                            TextView where = weekWhere.get(card);
+                            if (where != null) where.setText(w.channel == null || w.channel.isEmpty() ? "Not on TV here" : w.channel);
+                        }
+                    });
+                }
+            }, "weekend-tv").start();
+        }
+
+        /**
+         * A weekend card, in the Tonight cards' glass: the competition's logo and the reminder bell along the top, each
+         * club with its crest (the followed clubs' with a gold star), and along the foot the day and kick-off then where
+         * it is on. The first card of each day has its day in full.
+         */
+        private View weekCard(WeekGame w, boolean firstOfDay) {
+            FrameLayout f = new FrameLayout(h.a);
+            f.setTag(w);
+            f.setClipToOutline(true);
+            f.setOutlineProvider(h.round(18));
+            GradientDrawable g = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{firstOfDay ? 0x33FFFFFF : 0x26FFFFFF, 0x0FFFFFFF});
+            g.setCornerRadius(px(18));
+            g.setStroke(px(1.5f), firstOfDay ? 0x59FFD04D : 0x38FFFFFF);
+            f.setBackground(g);
+            GradientDrawable on = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0xFF323E92, 0xFF1F2766});
+            on.setCornerRadius(px(18));
+            slimGrounds.put(f, new android.graphics.drawable.Drawable[]{g, on});
+            LinearLayout col = new LinearLayout(h.a);
+            col.setOrientation(LinearLayout.VERTICAL);
+            col.setPadding(px(18), px(14), px(14), px(12));
+            f.addView(col, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+            // The top: the competition (its logo; F1 by name), the bell at the end.
+            LinearLayout l1 = new LinearLayout(h.a);
+            l1.setGravity(Gravity.CENTER_VERTICAL);
+            String compLogo = w.game != null ? w.game.leagueLogo : null;
+            if (compLogo != null) {
+                ImageView cl = new ImageView(h.a);
+                cl.setScaleType(ImageView.ScaleType.FIT_START);
+                String comp = compName(compLogo);
+                cl.setContentDescription(comp != null ? comp : w.game.league);
+                l1.addView(cl, new LinearLayout.LayoutParams(0, px(28), 1f));
+                h.image(cl, compLogo, px(56));
+            } else {
+                TextView cn = h.text(14, h.semi, w.session != null ? 0xFFFF5A4F : 0xB3FFFFFF);
+                cn.setText(w.session != null ? "FORMULA 1" : w.game.league);
+                cn.setLetterSpacing(0.1f);
+                cn.setSingleLine(true);
+                l1.addView(cn, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+            }
+            ImageView bell = new ImageView(h.a);
+            bell.setImageResource(R.drawable.ic_bell);
+            bell.setScaleType(ImageView.ScaleType.CENTER);
+            bell.setContentDescription("Reminder");
+            l1.addView(bell, new LinearLayout.LayoutParams(px(34), px(34)));
+            weekBells.put(f, bell);
+            col.addView(l1);
+            if (w.session != null) {
+                TextView gp = h.text(19, h.semi, Color.WHITE);
+                gp.setText(w.gp == null ? "Grand Prix" : w.gp);
+                gp.setSingleLine(true);
+                gp.setEllipsize(TextUtils.TruncateAt.END);
+                LinearLayout.LayoutParams gl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                gl.topMargin = px(14);
+                col.addView(gp, gl);
+                TextView ses = h.text(17, h.regular, 0xD9FFFFFF);
+                ses.setText(w.session.label != null ? w.session.label : F1Results.label(w.session.abbr));
+                LinearLayout.LayoutParams sl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                sl.topMargin = px(6);
+                col.addView(ses, sl);
+            } else {
+                ScoresTicker.Game gm = w.game;
+                java.util.Set<String> clubs = new java.util.HashSet<>(Arrays.asList(h.a.getResources().getStringArray(R.array.goal_alert_teams)));
+                for (int k = 0; k < 2; k++) {
+                    LinearLayout line = new LinearLayout(h.a);
+                    line.setGravity(Gravity.CENTER_VERTICAL);
+                    ImageView c = crest();
+                    line.addView(c, new LinearLayout.LayoutParams(px(28), px(28)));
+                    String logo = k == 0 ? gm.homeLogo : gm.awayLogo;
+                    if (logo != null) h.image(c, logo, px(56));
+                    TextView n = h.text(19, h.semi, Color.WHITE);
+                    String name = k == 0 ? (gm.homeName != null ? gm.homeName : gm.home) : (gm.awayName != null ? gm.awayName : gm.away);
+                    n.setText(short_(name));
+                    n.setSingleLine(true);
+                    n.setEllipsize(TextUtils.TruncateAt.END);
+                    LinearLayout.LayoutParams nl = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+                    nl.leftMargin = px(10);
+                    line.addView(n, nl);
+                    if (clubs.contains(k == 0 ? gm.homeId : gm.awayId)) {
+                        TextView star = h.text(17, h.semi, 0xFFFFD04D);
+                        star.setText("\u2605");
+                        star.setContentDescription("Your club");
+                        LinearLayout.LayoutParams stl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                        stl.leftMargin = px(6);
+                        line.addView(star, stl);
+                    }
+                    LinearLayout.LayoutParams ll = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                    ll.topMargin = px(k == 0 ? 12 : 8);
+                    col.addView(line, ll);
+                }
+            }
+            // The foot: the day and kick-off (live or the score once under way), then where it is on.
+            View spacer = new View(h.a);
+            col.addView(spacer, new LinearLayout.LayoutParams(1, 0, 1f));
+            LinearLayout foot = new LinearLayout(h.a);
+            foot.setGravity(Gravity.CENTER_VERTICAL);
+            TextView when = h.text(15, h.semi, 0xFFFFD04D);
+            String time = DateTimeFormatter.ofPattern("HH:mm", Locale.UK).withZone(ZoneId.systemDefault()).format(Instant.ofEpochMilli(w.start));
+            String day = w.day.equals(LocalDate.now()) ? "TODAY" : w.day.format(DateTimeFormatter.ofPattern(firstOfDay ? "EEEE" : "EEE", Locale.UK)).toUpperCase(Locale.UK);
+            if (w.game != null && w.game.state == 0) {
+                when.setTextColor(0xFFFF3B4A);
+                when.setText("\u25CF  LIVE  " + w.game.homeScore + "–" + w.game.awayScore);
+            } else if (w.game != null && w.game.state == 2) {
+                when.setTextColor(0xD9FFFFFF);
+                when.setText("FT  " + w.game.homeScore + "–" + w.game.awayScore);
+            } else {
+                when.setText(day + "  " + time);
+            }
+            foot.addView(when);
+            TextView where = h.text(14, h.regular, 0xB3FFFFFF);
+            where.setText(w.channel == null ? "Finding the channel…" : w.channel.isEmpty() ? "Not on TV here" : w.channel);
+            where.setSingleLine(true);
+            where.setEllipsize(TextUtils.TruncateAt.END);
+            LinearLayout.LayoutParams wl = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+            wl.leftMargin = px(10);
+            foot.addView(where, wl);
+            weekWhere.put(f, where);
+            col.addView(foot);
+            paintBell(f, Reminders.has(h.a, weekTitle(w), w.start));
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(px(WEEK_W), px(216));
+            lp.rightMargin = px(WEEK_GAP);
+            f.setLayoutParams(lp);
+            if (h.lite) f.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+            return f;
+        }
+
+        /** A weekend card's name for its reminder: "Liverpool v Brighton", or the Grand Prix and the session. */
+        private static String weekTitle(WeekGame w) {
+            if (w.session != null) return (w.gp == null ? "Grand Prix" : w.gp) + " " + (w.session.label != null ? w.session.label : F1Results.label(w.session.abbr));
+            ScoresTicker.Game g = w.game;
+            return (g.homeName != null ? g.homeName : g.home) + " v " + (g.awayName != null ? g.awayName : g.away);
+        }
+
+        /** A card's bell: lit gold on a soft gold disc when its reminder is set, a quiet outline of one when not. */
+        private void paintBell(View card, boolean set) {
+            ImageView b = weekBells.get(card);
+            if (b == null) return;
+            b.setColorFilter(set ? 0xFF1A1D24 : 0x99FFFFFF, android.graphics.PorterDuff.Mode.SRC_IN);
+            b.setBackground(set ? h.fill(17, 0xFFFFD04D) : null);
+            b.setContentDescription(set ? "Reminder set" : "Set a reminder");
         }
 
         @Override void close() {
@@ -4242,7 +4610,7 @@ final class PagesV2 {
                     if (gr != null) paintedTile.setBackground(gr[0]);
                 }
                 if (now != null) {
-                    boolean slim = zone == TONIGHT;
+                    boolean slim = zone == TONIGHT || zone == weekRow;
                     float grow = slim ? 1.05f : 1.07f;
                     now.animate().scaleX(grow).scaleY(grow).setDuration(150).setInterpolator(HomeV2.SKY).start();
                     // Tonight's card: its solid focused ground under the ring.
@@ -4250,7 +4618,7 @@ final class PagesV2 {
                     if (gr != null) now.setBackground(gr[1]);
                     // No raised shadow under it (it showed through the glass cards and was cut at the strip's edge
                     // as the row slid along): the ring and the grow are the focus.
-                    now.setForeground(h.ring(slim ? 20 : 16));
+                    now.setForeground(h.ring(zone == weekRow ? 18 : slim ? 20 : 16));
                 }
                 paintedTile = now;
             }
@@ -4267,7 +4635,8 @@ final class PagesV2 {
                 if (was == null || was[0] != first || was[1] != s.getChildCount()) {
                     paintedStrip.put(s, new int[]{first, s.getChildCount()});
                     HomeV2.window(s, first);
-                    s.animate().translationX(-first * px(slim ? SLIM_W + SLIM_GAP : 408)).setDuration(300).setInterpolator(HomeV2.SKY).start();
+                    s.animate().translationX(-first * px(slim ? SLIM_W + SLIM_GAP : r == weekRow ? WEEK_W + WEEK_GAP : 408))
+                            .setDuration(300).setInterpolator(HomeV2.SKY).start();
                 }
             }
         }
