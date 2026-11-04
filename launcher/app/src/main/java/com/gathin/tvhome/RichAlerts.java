@@ -423,10 +423,9 @@ final class RichAlerts {
         }
     }
 
-    /** The side the goal counts for (an own goal: the other side). */
+    /** The side the goal counts for: ESPN gives an own goal the side it counted for too. */
     private static boolean forHome(String[] goal) {
-        boolean home = !"away".equals(goal[3]);
-        return home != "og".equals(goal[4]);
+        return !"away".equals(goal[3]);
     }
 
     /** What the table alert shows. */

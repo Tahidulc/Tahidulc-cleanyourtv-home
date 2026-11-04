@@ -214,7 +214,8 @@ public class GoalWatchService extends Service {
                 // A goal: the score before it, to turn over to the new one.
                 int hs = at != null ? at[0] : parse(g.homeScore), as = at != null ? at[1] : parse(g.awayScore);
                 if (!red && hs >= 0 && as >= 0) {
-                    boolean forHome = home != "og".equals(kind);
+                    // ESPN gives an own goal the side it counted for.
+                    boolean forHome = home;
                     d.scoreBefore = (forHome ? Math.max(0, hs - 1) : hs) + "–" + (forHome ? as : Math.max(0, as - 1));
                 }
                 // An equaliser or winner from 85', or a side back level or ahead from two down: its own colours.

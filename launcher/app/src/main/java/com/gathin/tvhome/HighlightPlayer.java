@@ -2076,8 +2076,7 @@ final class HighlightPlayer implements TilePlayer.Film {
             JSONObject team = d.optJSONObject("team");
             String side = team != null && homeId.equals(team.optString("id")) ? "home" : "away";
             boolean og = d.optBoolean("ownGoal");
-            // An own goal is credited to the side it counted for.
-            if (og) side = "home".equals(side) ? "away" : "home";
+            // ESPN already gives an own goal the side it counted for.
             JSONArray who = d.optJSONArray("athletesInvolved");
             JSONObject pl = who == null ? null : who.optJSONObject(0);
             String name = pl == null ? "" : pl.optString("shortName", pl.optString("displayName"));

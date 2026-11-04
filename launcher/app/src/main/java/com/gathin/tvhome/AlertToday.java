@@ -218,7 +218,7 @@ final class AlertToday {
                     e.at = new int[]{hs, as};
                 } else {
                     e.type = "goal";
-                    boolean forHome = "home".equals(x[3]) != "og".equals(x[4]);
+                    boolean forHome = "home".equals(x[3]);
                     if (forHome) hs++; else as++;
                     e.at = new int[]{hs, as};
                 }

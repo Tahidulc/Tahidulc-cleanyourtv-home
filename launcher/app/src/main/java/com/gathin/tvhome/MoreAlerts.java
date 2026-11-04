@@ -303,7 +303,7 @@ final class MoreAlerts {
         int hg = 0, ag = 0;
         for (String[] goal : sorted(g)) {
             if (base(goal[2]) > 45) continue;
-            boolean forHome = "home".equals(goal[3]) != "og".equals(goal[4]);
+            boolean forHome = "home".equals(goal[3]);
             String words = GoalWatchService.surname(goal[1]) + " " + goal[2] + ("pen".equals(goal[4]) ? " (pen)" : "og".equals(goal[4]) ? " (og)" : "");
             (forHome ? st.homeGoals : st.awayGoals).add(words);
             st.inOrder.add(words);
@@ -642,7 +642,7 @@ final class MoreAlerts {
         String worstHomeAt = "", worstAwayAt = "";
         for (int i = 0; i <= found; i++) {
             String[] x = goals.get(i);
-            boolean forHome = "home".equals(x[3]) != "og".equals(x[4]);
+            boolean forHome = "home".equals(x[3]);
             if (i == found) {
                 Moment m = new Moment();
                 m.forHome = forHome;
