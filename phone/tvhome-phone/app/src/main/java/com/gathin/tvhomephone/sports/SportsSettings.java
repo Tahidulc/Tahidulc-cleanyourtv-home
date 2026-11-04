@@ -158,6 +158,26 @@ public final class SportsSettings {
             col.addView(r);
         }
 
+        // When a game's moments come: at once, or held back as the TV holds its cards back (a minute by default).
+        col.addView(Ui.heading(c, c.getString(R.string.sports_timing), c.getColor(R.color.text_soft)));
+        col.addView(Ui.text(c, c.getString(R.string.sports_timing_line), 13, c.getColor(R.color.text_dim), false));
+        android.widget.RadioGroup timing = new android.widget.RadioGroup(c);
+        long chosen = Kinds.delayMs(c);
+        for (int i = 0; i < Kinds.DELAYS.length; i++) {
+            com.google.android.material.radiobutton.MaterialRadioButton b = new com.google.android.material.radiobutton.MaterialRadioButton(c);
+            b.setId(View.generateViewId());
+            b.setText(Kinds.DELAY_NAMES[i]);
+            b.setTextColor(c.getColor(R.color.text));
+            b.setTextSize(16);
+            long ms = Kinds.DELAYS[i];
+            b.setChecked(ms == chosen);
+            b.setOnCheckedChangeListener((v, on) -> {
+                if (on) Kinds.setDelay(c, ms);
+            });
+            timing.addView(b);
+        }
+        col.addView(timing, Ui.matchWrap());
+
         Map<String, List<String[]>> groups = new LinkedHashMap<>();
         for (String g : Kinds.GROUPS) groups.put(g, new ArrayList<>());
         for (String[] k : Kinds.ALL) groups.get(k[3]).add(k);

@@ -1,5 +1,7 @@
 package com.gathin.tvhomephone.sports;
 
+import com.gathin.tvhomephone.App;
+
 import android.app.AlarmManager;
 import android.app.PendingIntent;
 import android.content.Context;
@@ -69,8 +71,24 @@ public final class Watcher {
         return out;
     }
 
-    /** One poll: the followed games now, what changed sent, the state for the service. Off the main thread. */
-    public static synchronized State poll(Context c) {
+    /** One poll from the 15-minute check: what changed is sent at once (it is late enough already). */
+    public static State poll(Context c) {
+        return poll(c, false);
+    }
+
+    /** Alerts held back (Kinds.delayMs) and not sent yet: the live watcher stays on until they have gone. */
+    private static final java.util.concurrent.atomic.AtomicInteger HELD = new java.util.concurrent.atomic.AtomicInteger();
+
+    public static boolean holding() {
+        return HELD.get() > 0;
+    }
+
+    /**
+     * One poll: the followed games now, what changed sent, the state for the service. live: from the live watcher,
+     * which holds a game's moments back as long as the settings say (as the TV does), so the phone doesn't tell of a
+     * goal before the picture shows it. Off the main thread.
+     */
+    public static synchronized State poll(Context c, boolean live) {
         State s = new State();
         Set<String> teams = Clubs.starred(c);
         long now = System.currentTimeMillis();
@@ -87,7 +105,7 @@ public final class Watcher {
                     continue;
                 }
                 s.followed.add(g);
-                handle(c, g, all, now);
+                handle(c, g, all, now, live);
                 if (g.state == Game.LIVE) {
                     s.live = true;
                     if (s.ongoing.length() > 0) s.ongoing += "   ";
@@ -102,7 +120,7 @@ public final class Watcher {
         return s;
     }
 
-    private static void handle(Context c, Game g, List<Game> league, long now) {
+    private static void handle(Context c, Game g, List<Game> league, long now, boolean live) {
         Game prev = snapshot(c, g.id);
         List<Events.Alert> alerts = Events.diff(prev, g);
         if (g.state == Game.PRE && g.kickoff - now <= 65 * 60_000L && g.kickoff - now > -5 * 60_000L
@@ -127,7 +145,22 @@ public final class Watcher {
                 }
             }
         }
-        for (Events.Alert a : alerts) Notifier.post(c, a);
+        long wait = live ? Kinds.delayMs(c) : 0;
+        Context app = c.getApplicationContext();
+        for (Events.Alert a : alerts) {
+            if (wait > 0 && Kinds.waits(a.kind)) {
+                HELD.incrementAndGet();
+                App.main.postDelayed(() -> App.io.execute(() -> {
+                    try {
+                        Notifier.post(app, a);
+                    } finally {
+                        HELD.decrementAndGet();
+                    }
+                }), wait);
+            } else {
+                Notifier.post(c, a);
+            }
+        }
         save(c, g);
     }
 

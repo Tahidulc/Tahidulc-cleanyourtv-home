@@ -79,4 +79,14 @@ public class OnAirTest {
         assertEquals("WWDLW", Espn.form("LWWDLW"));
         assertEquals("", Espn.form(null));
     }
+
+    @Test public void heldBackLikeTheTv() {
+        assertTrue(Kinds.waits("goal"));
+        assertTrue(Kinds.waits("ft"));
+        assertTrue(Kinds.waits("var"));
+        assertFalse(Kinds.waits("kickoff"));
+        assertFalse(Kinds.waits("reminder"));
+        assertFalse(Kinds.waits("f1live"));
+        assertEquals(60_000L, Kinds.TV_DELAY_MS);
+    }
 }

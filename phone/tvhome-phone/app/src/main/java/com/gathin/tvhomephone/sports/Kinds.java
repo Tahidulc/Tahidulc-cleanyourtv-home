@@ -38,6 +38,37 @@ public final class Kinds {
         return c.getApplicationContext().getSharedPreferences("sports_kinds", Context.MODE_PRIVATE);
     }
 
+    /** When a game's moments are sent: as soon as they're seen, or held back as the TV holds its cards back. */
+    public static final long[] DELAYS = {0, 30_000L, 60_000L};
+    public static final String[] DELAY_NAMES = {"As it happens", "30 seconds later", "1 minute later, as the TV"};
+    /** The TV's own wait before its goal and result cards (GoalWatchService's DELAY_MS): the phone's default. */
+    public static final long TV_DELAY_MS = 60_000L;
+
+    /** How long a game's moments wait before they are sent (one of DELAYS). */
+    public static long delayMs(Context c) {
+        long d = prefs(c).getLong("delay_ms", TV_DELAY_MS);
+        for (long x : DELAYS) if (x == d) return d;
+        return TV_DELAY_MS;
+    }
+
+    public static void setDelay(Context c, long ms) {
+        prefs(c).edit().putLong("delay_ms", ms).apply();
+    }
+
+    /**
+     * Whether a kind is held back with the delay: what happens in a game, which the TV's picture shows a little later
+     * (goals, cards, VAR, drama, half and full time, the live table, milestones). Kick-off and line-ups, F1, the
+     * weather and reminders come at once. Pure.
+     */
+    public static boolean waits(String kind) {
+        switch (kind == null ? "" : kind) {
+            case "goal": case "red": case "var": case "drama": case "ht": case "ft": case "table": case "milestone":
+                return true;
+            default:
+                return false;
+        }
+    }
+
     public static boolean on(Context c, String kind) {
         return prefs(c).getBoolean(kind, true);
     }

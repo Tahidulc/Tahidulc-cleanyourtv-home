@@ -26,7 +26,7 @@ public class AlertService extends Service {
             App.io.execute(() -> {
                 Watcher.State s;
                 try {
-                    s = Watcher.poll(AlertService.this);
+                    s = Watcher.poll(AlertService.this, true);
                 } catch (RuntimeException e) {
                     s = new Watcher.State();
                 }
@@ -35,7 +35,8 @@ public class AlertService extends Service {
                     if (!running) return;
                     long now = System.currentTimeMillis();
                     boolean near = got.nextKickoff > 0 && got.nextKickoff - now < NEAR_MS;
-                    if (!got.live && !near) {
+                    // Not before the alerts held back (the TV's minute) have gone: a full time seen as it ends.
+                    if (!got.live && !near && !Watcher.holding()) {
                         finish(got);
                         return;
                     }

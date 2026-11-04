@@ -20,4 +20,6 @@
     <string name="sports_exact_allow">Allow</string>
     <string name="sports_competitions">Competitions</string>
     <string name="sports_competitions_line">Alerts from each competition\'s games, your clubs\' included, and from F1. Reminders you set always come.</string>
+    <string name="sports_timing">When goals come</string>
+    <string name="sports_timing_line">The TV waits a minute before its goal and result cards, so they don\'t come before the picture shows the goal. The phone can wait the same.</string>
 </resources>
