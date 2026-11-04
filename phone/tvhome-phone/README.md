@@ -12,8 +12,10 @@ form or the game so far), Cinematic for a film, Card for a series' episode and G
 the channel's logo, and facts in turn while a game is on (its numbers, the table, each side's run, earlier meetings,
 top scorers). The player's options can set one style for everything, or the guide panel as before.
 
-The scores box is a broadcaster's scoreboard: the competition's logo on a slanted block at the left, the clubs in
-capitals with the score on a red plate, and the clock under them in minutes and seconds (45:00 and +2 in added time).
+The scores box is the broadcasters' bar: each club's code on a slanted wedge in its own colour, the scores either side
+of the competition's logo in the dark middle, and the clock in a tab under it in minutes and seconds (45:00 and +2 in
+added time). A goal plays out in the scoring side's colours: its wedge sweeps across with a flash, GOAL and its code
+race in over moving stripes, then the new number rolls up.
 Full screen, the picture goes into a small window as you leave the app (from the guide too; the player's options turn
 that off), and a phone on its side stretches the picture to the screen. Upright, the info tile stays in the room under
 the picture. A game's tile and its page have "Also showing on": every channel with the same game, with its logo.
