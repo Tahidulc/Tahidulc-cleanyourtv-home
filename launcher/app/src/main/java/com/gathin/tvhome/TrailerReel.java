@@ -783,7 +783,9 @@ final class TrailerReel implements TilePlayer.Film {
         PagesV2.Title t = it.t;
         String app = it.where[0];
         hide(false);
-        h.searchTitle(app, t.title, t.tv, t.id, t.backdrop != null ? t.backdrop : t.poster);
+        // On one of the TV's streaming apps: through Debrid Stream as the posters do; else (a store) straight there.
+        if (it.where[1] != null) h.openOnYourApps(t, app);
+        else h.searchTitle(app, t.title, t.tv, t.id, t.backdrop != null ? t.backdrop : t.poster);
     }
 
     /** The sound's mark: a speaker and two waves, in white, in a ring. */

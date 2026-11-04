@@ -259,13 +259,31 @@ final class HomeV2 {
         }, 2_500L);
     }
 
+    /**
+     * A title that is on one of the TV's streaming apps (app: that app): through Debrid Stream's page and on to its Play,
+     * as the posters do, when Debrid Stream is on this TV (it hands the title to that service, as the Netflix test
+     * showed); else straight in that app. A title on none of the apps never goes to Debrid Stream (the callers give a
+     * store or a note).
+     */
+    void openOnYourApps(PagesV2.Title t, String app) {
+        String pkg = debridPackage();
+        String art = t.backdrop != null ? t.backdrop : t.poster;
+        if (pkg != null && app != null) {
+            AppSearchService.wantPlay(t.title, Boolean.TRUE);
+            searchTitle(pkg, t.title, t.tv, t.id, art);
+            return;
+        }
+        if (app != null) searchTitle(app, t.title, t.tv, t.id, art);
+    }
+
     /** A film or series opened only in the streaming app on this TV that carries it in the UK, or the store that sells it. */
     void openTitleLicensed(PagesV2.Title t) {
         io.execute(() -> {
             JSONObject gb = PagesV2.providersGb(tmdbKey, t.id, t.tv);
             String[] w = FilmNight.where(this, gb);
             main.post(() -> {
-                if (w != null) searchTitle(w[0], t.title, t.tv, t.id, t.backdrop != null ? t.backdrop : t.poster);
+                if (w != null && w[1] != null) openOnYourApps(t, w[0]);
+                else if (w != null) searchTitle(w[0], t.title, t.tv, t.id, t.backdrop != null ? t.backdrop : t.poster);
                 else android.widget.Toast.makeText(a, t.title + " isn't on your streaming apps yet", android.widget.Toast.LENGTH_SHORT).show();
             });
         });
@@ -775,9 +793,9 @@ final class HomeV2 {
     }
 
     /**
-     * A title opened where it may be watched: the licensed streaming app on this TV that carries it in the UK (its own
-     * search for the title), else the store on this TV that rents or sells it, else a note. Never Debrid Stream, Kleva TV,
-     * TiviMate or any IPTV app (the Episode map and Coming up open titles this way).
+     * A title opened where it may be watched: on one of the TV's streaming apps, through Debrid Stream as the posters do
+     * (openOnYourApps), else the store on this TV that rents or sells it, else a note; never Debrid Stream for a title on
+     * none of the apps, and never Kleva TV, TiviMate or an IPTV app (the Episode map, Coming up and Play on TV).
      */
     void openLicensed(PagesV2.Title t) {
         io.execute(() -> {
@@ -785,7 +803,8 @@ final class HomeV2 {
             main.post(() -> {
                 String art = t.backdrop != null ? t.backdrop : t.poster;
                 String app = onYourApps(this, gb);
-                if (app == null) app = storeFor(this, gb);
+                if (app != null) { openOnYourApps(t, app); return; }
+                app = storeFor(this, gb);
                 if (app != null) { searchTitle(app, t.title, t.tv, t.id, art); return; }
                 android.widget.Toast.makeText(a, t.title + " isn't on your streaming apps yet", android.widget.Toast.LENGTH_SHORT).show();
             });

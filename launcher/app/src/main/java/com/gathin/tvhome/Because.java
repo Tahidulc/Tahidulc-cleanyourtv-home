@@ -164,7 +164,8 @@ final class Because {
             if (t.foot.isEmpty()) t.foot = null;
             t.mark = HomeV2.serviceLogo(provider);
             t.because = words;
-            t.ok = () -> h.searchTitle(app, t.title, t.tv, t.id, t.backdrop != null ? t.backdrop : t.poster);
+            // On the TV's apps (every title here is): through Debrid Stream as the posters do, else that app.
+            t.ok = () -> h.openOnYourApps(t, app);
             items.add(t);
         }
         return r;

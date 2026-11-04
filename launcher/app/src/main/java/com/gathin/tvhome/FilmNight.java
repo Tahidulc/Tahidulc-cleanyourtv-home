@@ -233,9 +233,19 @@ final class FilmNight {
         return d;
     }
 
-    /** The film in its app: the streaming app on this TV (or the store), through its search, as the panels open them. */
+    /**
+     * The film started: on one of the TV's streaming apps (a provider), through Debrid Stream's page and on to its Play
+     * as the posters do, when Debrid Stream is on this TV; else in that app, or the store, through its search.
+     */
     static void start(Context c, Plan p, Bitmap art) {
         if (p.app == null) return;
+        String debrid = "com.debridstream.tv";
+        if (p.provider != null && ReleaseAlerts.installed(c, debrid)) {
+            AppSearchService.wantPlay(p.title, Boolean.TRUE);
+            AppSearchService.search(c, debrid, p.title, false, art, null);
+            GoalWatchService.onAppOpened(c, debrid);
+            return;
+        }
         AppSearchService.search(c, p.app, p.title, false, art, null);
         GoalWatchService.onAppOpened(c, p.app);
     }
