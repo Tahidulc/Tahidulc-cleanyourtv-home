@@ -1150,6 +1150,12 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                 String[] b = (String.valueOf(intent.getStringExtra("test_birthday")) + "|").split("\\|");
                 Birthday.greet(v2, b[0], b.length > 1 ? b[1] : "");
             }
+            // adb only (--ez test_because true, false to stop): Because you watched's tabs from sample titles (Lupin
+            // watched, Wildwood loved), whatever this TV has watched, then Discover opened on them.
+            else if (intent != null && intent.hasExtra("test_because")) {
+                Because.test = intent.getBooleanExtra("test_because", true);
+                v2.openBox(intent.getIntExtra("open_box", 1));
+            }
             // A box chosen in pop-up mode's frame (PopupFrame): Home on that box's section.
             else if (intent != null && intent.hasExtra("open_box")) v2.openBox(intent.getIntExtra("open_box", -1));
             // The card on the 1st of the month (ReleaseAlerts): Your viewing on last month.

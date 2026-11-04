@@ -236,6 +236,8 @@ final class PagesV2 {
         int mark;
         /** What OK does instead of the page's own (Your shows, a series on none of the TV's apps). */
         Runnable ok;
+        /** Because you watched's tabs: the hero's pill ("Because you watched Lupin"); null for any other. */
+        String because;
     }
 
     /**
@@ -1517,6 +1519,8 @@ final class PagesV2 {
             tile.tv = t.tv;
             List<String> known = MARKS.get(t.id);
             if (known != null) tile.specs.addAll(known);
+            // Because you watched: its lilac pill on the line of marks (HomeV2.mark).
+            if (t.because != null) tile.specs.add(HomeV2.BECAUSE + t.because);
             h.heroTopColour(crumbColour);
             h.hero(tile);
             // A tile that is not a film or series (Surprise me's moods): nothing more to look up.
@@ -1539,6 +1543,7 @@ final class PagesV2 {
                     if (now != t) return;
                     tile.specs.clear();
                     tile.specs.addAll(m);
+                    if (t.because != null) tile.specs.add(HomeV2.BECAUSE + t.because);
                     h.hero(tile);
                 });
             });
@@ -1672,13 +1677,21 @@ final class PagesV2 {
 
     static PosterPage discover(HomeV2 h) {
         String k = h.tmdbKey;
-        String[] tabs = {"Continue Watching", "My list", "New releases", "Trending", "Netflix", "Disney+", "Prime Video", "Apple TV+"};
+        // Because you watched: up to three tabs after My list, from what played most here and what was loved (Because).
+        List<Because.Source> because = Because.sources(h.a);
+        int nb = because.size();
+        List<String> names = new ArrayList<>(Arrays.asList("Continue Watching", "My list"));
+        for (Because.Source b : because) names.add(Because.words(b));
+        names.addAll(Arrays.asList("New releases", "Trending", "Netflix", "Disney+", "Prime Video", "Apple TV+"));
+        String[] tabs = names.toArray(new String[0]);
         int[] providers = {0, 0, 0, 0, 8, 337, 9, 350};
-        return new PosterPage(h, "DISCOVER", 0xFFC9A7FF, tabs, new int[]{584 - 62}, t -> {
+        return new PosterPage(h, "DISCOVER", 0xFFC9A7FF, tabs, new int[]{584 - 62}, tab -> {
             List<Title> items;
             LocalDate today = LocalDate.now();
-            if (t == 0) return Arrays.asList(resumeRow(h, null));
-            if (t == 1) return Arrays.asList(myListRow(h));
+            if (tab == 0) return Arrays.asList(resumeRow(h, null));
+            if (tab == 1) return Arrays.asList(myListRow(h));
+            if (tab < 2 + nb) return Arrays.asList(Because.row(h, because.get(tab - 2)));
+            int t = tab - nb;
             if (t == 2) {
                 items = mix(tmdbRow(k, "discover/movie?region=GB&with_release_type=4|5&release_date.gte=" + today.minusWeeks(6)
                                 + "&release_date.lte=" + today + "&sort_by=popularity.desc", false),
@@ -1690,7 +1703,7 @@ final class PagesV2 {
                 items = mix(tmdbRow(k, "discover/tv?without_genres=10763,10764,10767" + w, true), tmdbRow(k, "discover/movie?" + w.substring(1), false));
             }
             return Arrays.asList(row(null, null, false, items));
-        }).startOn(resumeEmpty(h, null) ? (MyList.all(h.a).isEmpty() ? 2 : 1) : 0);
+        }).startOn(Because.test && nb > 0 ? 2 : resumeEmpty(h, null) ? (MyList.all(h.a).isEmpty() ? 2 + nb : 1) : 0);
     }
 
     /** Each title's UK providers (TMDB), kept an hour: My list's posters say which are not on the TV's apps yet. */

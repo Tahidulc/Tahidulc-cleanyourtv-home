@@ -20,8 +20,9 @@ final class NotifyKinds {
     /** The id for pop-ups that are not notifications but questions or codes (the sleep prompt, a pairing code). */
     static final String ALWAYS = "always";
 
-    static final String FOOTBALL = "FOOTBALL", SPORT = "F1 AND OTHER SPORT", NEWS = "NEWS AND WEATHER", HOME = "HOME AND FAMILY";
-    static final List<String> GROUPS = Collections.unmodifiableList(Arrays.asList(FOOTBALL, SPORT, NEWS, HOME));
+    static final String FOOTBALL = "FOOTBALL", SPORT = "F1 AND OTHER SPORT", NEWS = "NEWS AND WEATHER", FILMS = "FILMS AND TV",
+            HOME = "HOME AND FAMILY";
+    static final List<String> GROUPS = Collections.unmodifiableList(Arrays.asList(FOOTBALL, SPORT, NEWS, FILMS, HOME));
 
     /** One kind: its id, the mark before its name, its name, one line on what it is, its group and its theme switch. */
     static final class Kind {
@@ -76,7 +77,9 @@ final class NotifyKinds {
             k("tennis", "🎾", "Tennis", "A final under way, and its result", SPORT, "tennis_alerts", false),
             k("news", "📰", "Breaking news", "BBC News and BBC Sport", NEWS, "news_alerts", false),
             k("weather", "⛈\uFE0F", "Weather", "Warnings and rain on the way", NEWS, "weather_alerts", false),
-            k("releases", "🎬", "New episodes and films", "Out today, from what you watch", HOME, "release_alerts", true),
+            k("releases", "🎬", "New episodes and films", "Out today, from what you watch", FILMS, "release_alerts", true),
+            k("howwasit", "⭐", "How was it?", "Rate a film as its credits roll, or a season as it ends", FILMS, "how_was_it", true),
+            k("pausecard", "⏸\uFE0F", "Pause card", "When it ends if you carry on, as you pause", FILMS, "pause_card", true),
             k("recap", "📈", "Your month on TV", "The month's viewing, on the 1st", HOME, "release_alerts", true),
             k("reminders", "⏰", "Reminders", "Shows and games you asked to be told about", HOME),
             k("messages", "💬", "Messages", "From the other TV or a phone", HOME),

@@ -298,13 +298,23 @@ final class Surprise {
         IO.execute(() -> {
             List<PagesV2.Title> got = new ArrayList<>();
             Map<String, java.time.LocalDate> seen = ViewingLog.watched(c);
+            // How was it?'s Not for me: that film never, others of its main genre after the rest.
+            java.util.Set<String> nfm = Ratings.notForMe(c), nfmGenres = Ratings.notForMeGenres(c);
             for (int page : new int[]{1 + random.nextInt(3), 1}) {
                 for (PagesV2.Title t : PagesV2.tmdb(h.tmdbKey, query(c, m, w, bed, page), false)) {
-                    if (!seen.containsKey("mv:" + t.id) && !contains(got, t.id)) got.add(t);
+                    if (!seen.containsKey("mv:" + t.id) && !nfm.contains("mv:" + t.id) && !contains(got, t.id)) got.add(t);
                 }
                 if (got.size() >= 6) break;
             }
             Collections.shuffle(got, random);
+            if (!nfmGenres.isEmpty()) {
+                List<PagesV2.Title> later = new ArrayList<>();
+                for (PagesV2.Title t : got) {
+                    for (String g : t.what == null ? new String[0] : t.what.split(" · ")) if (nfmGenres.contains(g)) { later.add(t); break; }
+                }
+                got.removeAll(later);
+                got.addAll(later);
+            }
             // The pick: the first whose real length fits (TMDB's own filter lets some longer ones through).
             int runtime = 0, window = FitsTonight.window(c);
             for (int i = 0; i < Math.min(6, got.size()); i++) {

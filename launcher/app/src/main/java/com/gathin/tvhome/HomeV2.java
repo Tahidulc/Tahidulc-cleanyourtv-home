@@ -2850,6 +2850,8 @@ final class HomeV2 {
      */
     /** The marks' boxes: one height for the worded ones (4K UHD, 5.1) and the logos (HDR10, Dolby Vision) alike. */
     private static final int MARK_H = 28;
+    /** A mark that is Because you watched's lilac pill ("because:Because you watched Lupin"), not a format. */
+    static final String BECAUSE = "because:";
 
     private View mark(String m) {
         // The formats with logos of their own (Dolby's, HDR10's): the logo in white, inside the same outlined box as
@@ -2875,6 +2877,25 @@ final class HomeV2 {
             v.setMaxHeight(px(inner));
             box.addView(v, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, px(inner), Gravity.CENTER));
             return box;
+        }
+        if (m.startsWith(BECAUSE)) {
+            // Because you watched: why it is here, in the page's lilac, a round-again arrow before the words.
+            TextView v = text(16, semi, 0xFFEFE4FF);
+            v.setText(m.substring(BECAUSE.length()));
+            v.setGravity(Gravity.CENTER_VERTICAL);
+            v.setSingleLine(true);
+            v.setPadding(px(12), 0, px(14), 0);
+            v.setHeight(px(MARK_H + 4));
+            Drawable icon = WatchCards.PathIcon.again(0xFFEFE4FF);
+            icon.setBounds(0, 0, px(16), px(16));
+            v.setCompoundDrawables(icon, null, null, null);
+            v.setCompoundDrawablePadding(px(8));
+            GradientDrawable g = new GradientDrawable();
+            g.setCornerRadius(px((MARK_H + 4) / 2f));
+            g.setColor(0x38C9A7FF);
+            g.setStroke(Math.max(1, px(1.5f)), 0xB3C9A7FF);
+            v.setBackground(g);
+            return v;
         }
         boolean age = m.startsWith("age:");
         String label = age ? m.substring(4) : m;

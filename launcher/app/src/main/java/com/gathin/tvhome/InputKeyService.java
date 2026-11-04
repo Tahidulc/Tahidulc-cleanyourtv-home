@@ -74,6 +74,8 @@ public class InputKeyService extends AccessibilityService {
         if (LiveCentre.key(event)) return true;
         if (F1Tower.key(event)) return true;
         if (LineupCard.key(event)) return true;
+        // How was it? (Left, Right, OK and Back) and the pause card (Back).
+        if (WatchCards.key(event)) return true;
         if (RichAlerts.key(event)) return true;
         // OK (watch) and Back (close) on a score card; Back while any other alert shows closes it.
         if (ScoreCard.key(event)) return true;

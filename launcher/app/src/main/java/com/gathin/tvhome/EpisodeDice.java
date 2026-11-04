@@ -289,15 +289,24 @@ final class EpisodeDice {
             Collections.addAll(shows, MOODS[m][2].split(";"));
             Collections.shuffle(shows, random);
             java.util.Map<String, LocalDate> seen = ViewingLog.watched(c);
-            List<JSONObject> onApps = new ArrayList<>();
+            // How was it?'s Not for me: that series never, others of its main genre only when nothing else will do.
+            java.util.Set<String> nfm = Ratings.notForMe(c), nfmGenres = Ratings.notForMeGenres(c);
+            List<JSONObject> onApps = new ArrayList<>(), later = new ArrayList<>();
             Object[] got = null;
             for (String show : shows) {
                 int id = id(h, show);
+                if (nfm.contains("tv:" + id)) continue;
                 JSONObject d = id > 0 ? YourShows.details(h.tmdbKey, id) : null;
                 if (d == null || HomeV2.onYourApps(h, YourShows.gb(d)) == null) continue;
                 onApps.add(d);
-                if (got == null && !(w == 2 && seen.containsKey("tv:" + id))) got = episode(d, w, q);
+                boolean lower = nfmGenres.contains(mainGenre(d));
+                if (got == null && lower) later.add(d);
+                else if (got == null && !(w == 2 && seen.containsKey("tv:" + id))) got = episode(d, w, q);
                 if (got != null && onApps.size() >= 5) break;
+            }
+            for (JSONObject d : later) {
+                if (got != null) break;
+                if (!(w == 2 && seen.containsKey("tv:" + d.optInt("id")))) got = episode(d, w, q);
             }
             // The reel: the picked show in the middle, the others round it.
             List<JSONObject> faces = new ArrayList<>(onApps);
@@ -315,6 +324,13 @@ final class EpisodeDice {
                 land(my, result);
             });
         });
+    }
+
+    /** A series' first genre in TMDB's details ("" when none). */
+    private static String mainGenre(JSONObject d) {
+        JSONArray g = d.optJSONArray("genres");
+        JSONObject first = g == null ? null : g.optJSONObject(0);
+        return first == null ? "" : first.optString("name", "");
     }
 
     /** {the show, its title for Play, "S5 E12 “Homer at the Bat”", the line, what happens} for one show; null if none fits. */

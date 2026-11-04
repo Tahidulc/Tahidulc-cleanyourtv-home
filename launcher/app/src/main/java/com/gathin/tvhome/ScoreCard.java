@@ -183,11 +183,14 @@ final class ScoreCard {
 
     private static void next(Context c) {
         if (host != null || queue.isEmpty()) return;
-        if (LineupCard.isShowing() || GoalWatchService.alertShowing() || CameraAlert.isShowing()) {
+        // The pause card makes way at once; How was it? is waited for (WatchCards.holds).
+        boolean watchCard = WatchCards.holds();
+        if (LineupCard.isShowing() || GoalWatchService.alertShowing() || CameraAlert.isShowing() || watchCard) {
             long now = android.os.SystemClock.uptimeMillis();
             if (waitingSince == 0) {
                 waitingSince = now;
-                AlertLog.note(c, "card waiting: " + (LineupCard.isShowing() ? "the line-up card" : GoalWatchService.alertShowing() ? "an alert" : "the camera card") + " is up");
+                AlertLog.note(c, "card waiting: " + (LineupCard.isShowing() ? "the line-up card" : GoalWatchService.alertShowing() ? "an alert"
+                        : watchCard ? "How was it?" : "the camera card") + " is up");
             }
             // One left up too long (or never taken down) is not waited for for ever: a goal is not lost behind it.
             if (now - waitingSince < GoalWatchService.WAIT_MAX_MS) {

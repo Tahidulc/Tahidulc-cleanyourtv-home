@@ -1831,6 +1831,8 @@ public class GoalWatchService extends Service {
             }
         }
         if (intent != null) MoreAlerts.test(this, intent);
+        // adb only: How was it? (test_howwasit) and the pause card (test_pause), with sample films.
+        if (intent != null) WatchCards.test(this, intent);
         if (intent != null && intent.hasExtra("test_red")) {
             ScoresTicker.Game g = new ScoresTicker.Game();
             g.league = "UCL"; g.home = "ARS"; g.away = "PSG"; g.homeScore = "1"; g.awayScore = "1";

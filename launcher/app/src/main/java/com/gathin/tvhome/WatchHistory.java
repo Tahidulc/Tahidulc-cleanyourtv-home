@@ -55,6 +55,12 @@ public class WatchHistory extends NotificationListenerService {
         controllers = list == null ? new ArrayList<>() : list;
         // Cinema mode: each session watched for a film starting, pausing or reaching its credits.
         Cinema.sessions(this, controllers);
+        // How was it? and the pause card, the same way.
+        try {
+            WatchCards.sessions(this, controllers);
+        } catch (RuntimeException ignored) {
+            // the cards only
+        }
     };
     private final Runnable tick = this::tick;
 
@@ -65,6 +71,7 @@ public class WatchHistory extends NotificationListenerService {
             sessions.addOnActiveSessionsChangedListener(changed, me, main);
             controllers = sessions.getActiveSessions(me);
             Cinema.sessions(this, controllers);
+            WatchCards.sessions(this, controllers);
         } catch (SecurityException e) {
             return;   // not allowed as a listener yet
         }
@@ -128,6 +135,10 @@ public class WatchHistory extends NotificationListenerService {
         }
         try {
             Cinema.tick(this, controllers);
+        } catch (Exception ignored) {
+        }
+        try {
+            WatchCards.tick(this, controllers);
         } catch (Exception ignored) {
         }
         main.postDelayed(tick, TICK_MS);

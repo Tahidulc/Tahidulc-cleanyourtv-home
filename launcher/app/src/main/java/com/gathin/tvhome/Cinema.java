@@ -33,6 +33,8 @@ final class Cinema {
     private static final List<Object[]> saved = new ArrayList<>();
     private static boolean dimmed, wantDim;
     private static Context app;
+    /** When the lights last came back up (paused, stopped or the credits): the pause card says so. 0: not yet. */
+    static volatile long raisedAt;
 
     static boolean on(Context c) {
         return Config.themeFlag(c, "cinema_mode", false) && TuyaCloud.configured(c);
@@ -167,6 +169,9 @@ final class Cinema {
             }
             saved.clear();
         }
-        if (n > 0) AlertLog.note(c, "cinema mode: paused or the credits, " + n + " light(s) back up");
+        if (n > 0) {
+            raisedAt = System.currentTimeMillis();
+            AlertLog.note(c, "cinema mode: paused or the credits, " + n + " light(s) back up");
+        }
     }
 }
