@@ -3472,6 +3472,8 @@ public class GoalWatchService extends Service {
         }
         try {
             getSystemService(WindowManager.class).addView(host, lp);
+            // OK held on it: quiet for an hour (QuietHold), the alert away as Back takes it.
+            QuietHold.shown(this, host, this::dismiss);
             laneShown(onLane());
             // Over an app the alerts have no opening movement of their own: the window rises a little and fades in.
             if (calm()) PopupMotion.in(host, 10 * d);
@@ -3491,7 +3493,7 @@ public class GoalWatchService extends Service {
      * of its own, and the app keeps its hardware composition. Android picks software drawing for a window with no
      * parent from the application's hardware-acceleration flag, read through the root view's context: this one says no.
      */
-    private static final class SoftwareWindow extends android.content.ContextWrapper {
+    static final class SoftwareWindow extends android.content.ContextWrapper {
         private final android.content.pm.ApplicationInfo info;
 
         SoftwareWindow(android.content.Context base) {

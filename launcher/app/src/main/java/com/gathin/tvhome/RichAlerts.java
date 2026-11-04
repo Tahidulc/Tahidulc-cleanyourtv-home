@@ -182,6 +182,7 @@ final class RichAlerts {
         closeHost(false);
         if (!add(c, win, lp)) return;
         host = win;
+        QuietHold.shown(c, win, () -> closeHost(false));
         win.setTag(strip ? "strip" : "card");
         shownAt = android.os.SystemClock.uptimeMillis();
         if (strip) {

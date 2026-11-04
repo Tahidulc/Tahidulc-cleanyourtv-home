@@ -1067,6 +1067,7 @@ final class ScoreCard {
             return false;
         }
         host = win;
+        QuietHold.shown(c, win, () -> close(true));
         showing = d;
         shownAt = android.os.SystemClock.uptimeMillis();
         // The remote's keys taken only after its first moments: a press already on its way was meant for the app.

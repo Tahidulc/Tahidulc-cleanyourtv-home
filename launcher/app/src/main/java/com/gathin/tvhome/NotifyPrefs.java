@@ -69,6 +69,22 @@ final class NotifyPrefs {
     }
 
     /**
+     * OK held on a pop-up (QuietHold): Do not disturb for an hour, unless it is already on for longer. {until, 1 when
+     * this turned it on or made it longer, 0 when it was already on for longer}.
+     */
+    static long[] dndHeld(Context c) {
+        SharedPreferences p = prefs(c);
+        long now = System.currentTimeMillis();
+        int saved = p.getInt("dnd.mode", DoNotDisturb.OFF);
+        long until = p.getLong("dnd.until", 0);
+        long[] next = DoNotDisturb.held(saved, until, now);
+        boolean changed = next[0] != DoNotDisturb.mode(saved, until, now) || next[1] != until;
+        if (changed) p.edit().putInt("dnd.mode", (int) next[0]).putLong("dnd.until", next[1]).commit();
+        AlertLog.note(c, "Do not disturb (OK held on a pop-up): " + dndWords(c));
+        return new long[]{next[1], changed ? 1 : 0};
+    }
+
+    /**
      * Whether Do not disturb keeps this kind back now: everything but the doorbell (someone at the door is never kept
      * waiting) and the TV's own questions and codes (ALWAYS).
      */

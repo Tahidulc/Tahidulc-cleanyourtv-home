@@ -222,6 +222,7 @@ final class LineupCard {
             return;
         }
         host = win;
+        QuietHold.shown(c, win, () -> close(true));
         showing = d;
         shownAt = android.os.SystemClock.uptimeMillis();
 
@@ -392,6 +393,7 @@ final class LineupCard {
             return;
         }
         host = win;
+        QuietHold.shown(c, win, () -> close(true));
         showing = d;
         shownAt = android.os.SystemClock.uptimeMillis();
         bar = true;
@@ -712,6 +714,7 @@ final class LineupCard {
         // Nothing to watch: Back closes it, and on a TV without the key helper any key does (after its first moments).
         Data carrier = new Data();
         host = win;
+        QuietHold.shown(c, win, () -> close(true));
         showing = carrier;
         shownAt = android.os.SystemClock.uptimeMillis();
         bar = false;
@@ -1014,6 +1017,7 @@ final class LineupCard {
             return;
         }
         host = win;
+        QuietHold.shown(c, win, () -> close(true));
         showing = carrier;
         shownAt = android.os.SystemClock.uptimeMillis();
         bar = false;
@@ -1498,6 +1502,7 @@ final class LineupCard {
             return;
         }
         host = win;
+        QuietHold.shown(c, win, () -> close(true));
         showing = carrier;
         shownAt = android.os.SystemClock.uptimeMillis();
         bar = true;

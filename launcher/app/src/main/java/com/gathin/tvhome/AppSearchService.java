@@ -891,8 +891,9 @@ public class AppSearchService extends AccessibilityService {
 
     /**
      * On a TV without the key helper (the TCL): this helper takes the remote's keys while pop-up mode, the Live Centre
-     * or the F1 timing is open ("popup", "live", "f1"), and gives them up once none is, as filtering keys costs the
-     * TCL's remote its auto-repeat. Its other work is not changed.
+     * or the F1 timing is open ("popup", "live", "f1"), or an alert card is up for OK held to quiet ("card",
+     * QuietHold), and gives them up once none is, as filtering keys costs the TCL's remote its auto-repeat. Its other
+     * work is not changed.
      */
     private static final java.util.Set<String> keysWanted = new java.util.HashSet<>();
 
@@ -917,13 +918,15 @@ public class AppSearchService extends AccessibilityService {
     @Override
     protected boolean onKeyEvent(android.view.KeyEvent event) {
         if (InputKeyService.running || keysWanted.isEmpty()) return false;
+        // OK held on a pop-up: quiet for an hour (QuietHold, which has the keys taken here while a card is up).
+        return QuietHold.key(this, event, this::keys);
+    }
+
+    private boolean keys(android.view.KeyEvent event) {
         if (LiveCentre.key(event) || F1Tower.key(event)) return true;
         if (PopupFrame.isShowing() && PopupFrame.key(event)) return true;
         return okOn(event);
     }
-
-    /** When this helper last pressed OK itself, so that press goes by untouched should it come through here. */
-    private long okSentAt;
 
     /**
      * OK for the app (or the frame) while this helper takes the keys: in pop-up mode on the TCL, OK handed back from
@@ -936,10 +939,11 @@ public class AppSearchService extends AccessibilityService {
         if (code != android.view.KeyEvent.KEYCODE_DPAD_CENTER && code != android.view.KeyEvent.KEYCODE_ENTER
                 && code != android.view.KeyEvent.KEYCODE_NUMPAD_ENTER) return false;
         if (android.os.Build.VERSION.SDK_INT < 33) return false;
-        if (android.os.SystemClock.uptimeMillis() - okSentAt < 400L) return false;
+        // This helper's own OK (or QuietHold's) goes by untouched should it come through here.
+        if (android.os.SystemClock.uptimeMillis() - QuietHold.okSentAt < 400L) return false;
         if (e.getAction() == android.view.KeyEvent.ACTION_UP && !e.isCanceled()) {
             main.post(() -> {
-                okSentAt = android.os.SystemClock.uptimeMillis();
+                QuietHold.okSentAt = android.os.SystemClock.uptimeMillis();
                 if (!performGlobalAction(GLOBAL_ACTION_DPAD_CENTER)) Log.i(TAG, "OK not sent");
             });
         }

@@ -445,6 +445,7 @@ final class WatchCards {
             return false;
         }
         host = win;
+        QuietHold.shown(c, win, () -> closeHost(false));
         asking = ask;
         shownAt = SystemClock.uptimeMillis();
         card.setTranslationX(-px(36));

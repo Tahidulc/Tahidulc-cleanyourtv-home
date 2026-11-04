@@ -63,4 +63,41 @@ public class DoNotDisturbTest {
         assertEquals("Off", DoNotDisturb.words(DoNotDisturb.HOUR, hour, hour + 1, LONDON));
         assertEquals(0, DoNotDisturb.until(DoNotDisturb.OFF, now, LONDON));
     }
+
+    @Test public void okHeldOnAPopUpIsQuietForAnHour() {
+        long now = at(2026, 11, 4, 21, 45);
+        long[] dnd = DoNotDisturb.held(DoNotDisturb.OFF, 0, now);
+        assertEquals(DoNotDisturb.HOUR, dnd[0]);
+        assertEquals(now + 3_600_000L, dnd[1]);
+        String[] words = DoNotDisturb.heldWords(true, dnd[1], LONDON);
+        assertEquals("Quiet for 1 hour", words[0]);
+        assertEquals("Do not disturb until 22:45 · the Control Centre turns it off", words[1]);
+    }
+
+    @Test public void okHeldAgainStartsTheHourAgain() {
+        long now = at(2026, 11, 4, 21, 45);
+        long[] dnd = DoNotDisturb.held(DoNotDisturb.HOUR, now + 20 * 60_000L, now);
+        assertEquals(DoNotDisturb.HOUR, dnd[0]);
+        assertEquals(now + 3_600_000L, dnd[1]);
+    }
+
+    @Test public void okHeldKeepsALongerQuiet() {
+        long now = at(2026, 11, 4, 21, 45);
+        long morning = at(2026, 11, 5, 7, 0);
+        long[] dnd = DoNotDisturb.held(DoNotDisturb.MORNING, morning, now);
+        assertEquals(DoNotDisturb.MORNING, dnd[0]);
+        assertEquals(morning, dnd[1]);
+        assertEquals("Already quiet", DoNotDisturb.heldWords(false, morning, LONDON)[0]);
+        assertEquals("Do not disturb until 7:00", DoNotDisturb.heldWords(false, morning, LONDON)[1]);
+        long[] always = DoNotDisturb.held(DoNotDisturb.ALWAYS, Long.MAX_VALUE, now);
+        assertEquals(Long.MAX_VALUE, always[1]);
+        assertEquals("Do not disturb until you turn it off", DoNotDisturb.heldWords(false, Long.MAX_VALUE, LONDON)[1]);
+    }
+
+    @Test public void anEndedQuietIsTreatedAsOff() {
+        long now = at(2026, 11, 4, 21, 45);
+        long[] dnd = DoNotDisturb.held(DoNotDisturb.MORNING, now - 1, now);
+        assertEquals(DoNotDisturb.HOUR, dnd[0]);
+        assertEquals(now + 3_600_000L, dnd[1]);
+    }
 }

@@ -362,6 +362,7 @@ final class CameraAlert {
             return;
         }
         host = win;
+        QuietHold.shown(c, win, () -> close(true));
         win.setFocusable(true);
         win.setFocusableInTouchMode(true);
         win.requestFocus();

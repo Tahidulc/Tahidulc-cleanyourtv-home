@@ -66,6 +66,11 @@ public class InputKeyService extends AccessibilityService {
 
     @Override
     protected boolean onKeyEvent(KeyEvent event) {
+        // OK held on a pop-up: quiet for an hour (QuietHold); a short OK comes back through keys as it was pressed.
+        return QuietHold.key(this, event, this::keys);
+    }
+
+    private boolean keys(KeyEvent event) {
         // Back on Tuya Smart's camera, opened from the launcher: back to what was on, the camera kept ready.
         if (event.getKeyCode() == KeyEvent.KEYCODE_BACK && AppSearchService.cameraBack(this, event)) return true;
         // OK while the line-up card shows: the game's channel.

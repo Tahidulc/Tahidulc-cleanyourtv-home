@@ -52,6 +52,34 @@ final class DoNotDisturb {
         return saved != OFF && on(until, now) ? saved : OFF;
     }
 
+    /**
+     * OK held on a pop-up (QuietHold): Do not disturb for an hour from now, or the choice already on when it ends
+     * later than that. {mode, until}.
+     */
+    static long[] held(int saved, long until, long now) {
+        int m = mode(saved, until, now);
+        if (m != OFF && until >= now + 3_600_000L) return new long[]{m, until};
+        return new long[]{HOUR, now + 3_600_000L};
+    }
+
+    /**
+     * The pill after a held OK: {"Quiet for 1 hour", "Do not disturb until 21:45 · …"}, or, when a longer one was
+     * already on (extended false), "Already quiet" with its end.
+     */
+    static String[] heldWords(boolean extended, long until, TimeZone tz) {
+        String end;
+        if (until == Long.MAX_VALUE) {
+            end = "Do not disturb until you turn it off";
+        } else {
+            Calendar c = Calendar.getInstance(tz, Locale.UK);
+            c.setTimeInMillis(until);
+            end = String.format(Locale.UK, "Do not disturb until %d:%02d", c.get(Calendar.HOUR_OF_DAY), c.get(Calendar.MINUTE));
+        }
+        return extended
+                ? new String[]{"Quiet for 1 hour", end + " · the Control Centre turns it off"}
+                : new String[]{"Already quiet", end};
+    }
+
     /** The tile's line: "Off", "On until 21:45", "On until 7:00", "On until you turn it off". */
     static String words(int saved, long until, long now, TimeZone tz) {
         int m = mode(saved, until, now);
