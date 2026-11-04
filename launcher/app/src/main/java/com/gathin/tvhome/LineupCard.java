@@ -48,6 +48,8 @@ import java.util.List;
 final class LineupCard {
     /** Everything it shows, fetched before it opens (GoalWatchService, off the main thread). */
     static final class Data {
+        /** Times it has waited for Settings to close (OverlayGuard). */
+        int hiddenWaits;
         Bitmap leagueLogo;
         Team home, away;
         String kickoff, channel, venue, competition;
@@ -156,6 +158,8 @@ final class LineupCard {
             NotifyPrefs.held(c, "kickoff", home, null, "line-up card " + (d.competition == null ? "" : d.competition), d.slug);
             return;
         }
+        if (renderTo == null && !(GoalWatchService.laneHome && GoalWatchService.homeInFront || PopupFrame.isShowing())
+                && OverlayGuard.hiding(c) != null && hiddenWait(c, "line-up card", d.hiddenWaits++, () -> show(c, d))) return;
         AlertLog.note(c, "line-up card shown" + (CameraAlert.isShowing() ? " (after the camera card)" : ""));
         if (CameraAlert.isShowing()) {
             main.postDelayed(() -> show(c, d), 2_000L);
@@ -621,11 +625,27 @@ final class LineupCard {
         int homePoss = -1, awayPoss = -1, homeShots = -1, awayShots = -1, homeColour, awayColour;
         /** Run instead when Home is in front as its turn comes (Home's bar, ScoreCard). */
         Runnable onHome;
-        /** Times it has waited for another pop-up to go. */
-        int waited;
+        /** Times it has waited for another pop-up to go, and for Settings to close. */
+        int waited, hiddenWaits;
     }
 
     private static final long HALF_MS = 13_000L;
+
+    /**
+     * Over Settings or a permission screen (OverlayGuard), where Android hides every app's pop-ups: waits two seconds at a
+     * time, ten minutes at most, then shows all the same. True when it waits (again runs later). Main thread.
+     */
+    private static boolean hiddenWait(Context c, String what, int times, Runnable again) {
+        String hiding = OverlayGuard.hiding(c);
+        if (hiding == null) return false;
+        if (times * 2_000L >= OverlayGuard.MAX_MS) {
+            AlertLog.note(c, what + " waited 10 min for " + OverlayGuard.name(hiding) + " to close: shown all the same");
+            return false;
+        }
+        if (times == 0) AlertLog.note(c, what + " waiting: " + OverlayGuard.name(hiding) + " is open (Android hides pop-ups over it)");
+        retry.postDelayed(again, 2_000L);
+        return true;
+    }
 
     /** Opens the half-time card (on the main thread), after any other pop-up has gone; nothing to watch, no OK. */
     static void showHalfTime(Context ctx, Half f) {
@@ -639,6 +659,8 @@ final class LineupCard {
             if (f.onHome != null) f.onHome.run();
             return;
         }
+        // Over Settings Android hides every app's pop-ups: it waits until Settings is closed (ten minutes at most).
+        if (OverlayGuard.hiding(c) != null && hiddenWait(c, "half-time card", f.hiddenWaits++, () -> showHalfTime(c, f))) return;
         // One at a time, as the F1 boards: two seconds at a time, at most a minute and a half, then it shows all the same.
         if ((CameraAlert.isShowing() || ScoreCard.busy() || GoalWatchService.alertShowing() || isShowing()) && f.waited < 45) {
             f.waited++;
@@ -871,8 +893,8 @@ final class LineupCard {
         String channel;
         Bitmap channelLogo;
         Runnable watch;
-        /** Times it has waited for another pop-up to go. */
-        int waited;
+        /** Times it has waited for another pop-up to go, and for Settings to close. */
+        int waited, hiddenWaits;
     }
 
     /** Sky Sports F1's colours: F1's red, and a plain black ground (nothing on it moves). */
@@ -889,6 +911,8 @@ final class LineupCard {
             NotifyPrefs.held(c, kind, home, null, "F1 board " + f.gp + " " + f.session);
             return;
         }
+        if (!(GoalWatchService.laneHome && GoalWatchService.homeInFront || PopupFrame.isShowing())
+                && OverlayGuard.hiding(c) != null && hiddenWait(c, "F1 board", f.hiddenWaits++, () -> showF1(c, f))) return;
         // One at a time: after a score card, a camera alarm or an older alert (news, weather) has gone.
         if ((CameraAlert.isShowing() || ScoreCard.busy() || GoalWatchService.alertShowing()) && f.waited < 45) {
             // Waits its turn, two seconds at a time, at most a minute and a half: then it shows all the same.

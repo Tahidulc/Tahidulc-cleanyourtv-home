@@ -187,6 +187,8 @@ final class ScoreCard {
 
     /** Since when the next card has waited for another pop-up to go (not past GoalWatchService.WAIT_MAX_MS). */
     private static long waitingSince;
+    /** Since when it has waited for Settings (or a permission screen) to close (OverlayGuard). */
+    private static long hiddenSince;
 
     private static void next(Context c) {
         if (host != null || queue.isEmpty()) return;
@@ -207,6 +209,22 @@ final class ScoreCard {
             AlertLog.note(c, "card waited 90 s for another pop-up to go: shown all the same");
         }
         waitingSince = 0;
+        // Over Settings (and the permission screens) Android hides every app's pop-ups: the card waits until it closes.
+        boolean homeNow = GoalWatchService.laneHome && GoalWatchService.homeInFront || PopupFrame.isShowing();
+        String hiding = homeNow ? null : OverlayGuard.hiding(c);
+        if (hiding != null) {
+            long now = android.os.SystemClock.uptimeMillis();
+            if (hiddenSince == 0) {
+                hiddenSince = now;
+                AlertLog.note(c, "card waiting: " + OverlayGuard.name(hiding) + " is open (Android hides pop-ups over it)");
+            }
+            if (now - hiddenSince < OverlayGuard.MAX_MS) {
+                main.postDelayed(() -> next(c), 2_000L);
+                return;
+            }
+            AlertLog.note(c, "card waited 10 min for " + OverlayGuard.name(hiding) + " to close: shown all the same");
+        }
+        hiddenSince = 0;
         Data d = queue.poll();
         // Switched off in the Control Centre's Notifications (where it would show, its kind, or its game's competition):
         // not shown, the next one.

@@ -161,6 +161,24 @@ final class RichAlerts {
 
     /** The card or strip shown as host for ms, coming in its own way (strip: up from below; card: in from the right). */
     private static void showHost(Context c, FrameLayout win, View content, WindowManager.LayoutParams lp, boolean strip, long ms) {
+        showHost(c, win, content, lp, strip, ms, 0);
+    }
+
+    /**
+     * As above; over Settings or a permission screen, where Android hides every app's pop-ups, it waits two seconds at a
+     * time for it to close, two minutes at most (a follow-up to a goal), then is left out.
+     */
+    private static void showHost(Context c, FrameLayout win, View content, WindowManager.LayoutParams lp, boolean strip, long ms, int waits) {
+        String hiding = onHome() ? null : OverlayGuard.hiding(c);
+        if (hiding != null) {
+            if (waits * 2_000L >= OverlayGuard.FOLLOW_UP_MS) {
+                AlertLog.note(c, "not shown: " + OverlayGuard.name(hiding) + " stayed open (Android hides pop-ups over it)");
+                return;
+            }
+            if (waits == 0) AlertLog.note(c, "waiting: " + OverlayGuard.name(hiding) + " is open (Android hides pop-ups over it)");
+            main.postDelayed(() -> showHost(c, win, content, lp, strip, ms, waits + 1), 2_000L);
+            return;
+        }
         closeHost(false);
         if (!add(c, win, lp)) return;
         host = win;
