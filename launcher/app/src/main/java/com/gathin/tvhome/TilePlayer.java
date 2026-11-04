@@ -371,6 +371,11 @@ final class TilePlayer {
         return tile == t;
     }
 
+    /** Whether the trailer is showing on this tile now (its pictures lifted off it). */
+    boolean revealedOn(View t) {
+        return tile == t && revealed;
+    }
+
     void destroy() {
         stop();
         if (web != null) { web.destroy(); web = null; ready = false; }

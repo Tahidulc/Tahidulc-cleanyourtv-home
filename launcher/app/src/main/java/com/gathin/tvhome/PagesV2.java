@@ -51,6 +51,8 @@ final class PagesV2 {
         Runnable load;
         /** Whether the slider drew it on the last frame: one off the screen then and now is left alone. */
         boolean shown = true;
+        /** Its narrow poster picture and its wide (16:9) picture over it (null outside the poster rows). */
+        ImageView posterPic, widePic;
         private final float radius;
         /**
          * lite_home (the TCL): no rounded clip. Its pictures draw their own rounded corners (RoundPic), its shades are
@@ -1071,13 +1073,18 @@ final class PagesV2 {
                 f.addView(poster, new FrameLayout.LayoutParams(part, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.START));
                 // As wide as it is drawn on lite_home (twice that elsewhere). The slider's first dozen at once, the
                 // rest (a row now runs to forty) as the row comes to them.
-                if (asSlider && i >= 12) f.load = () -> h.image(poster, posterUrl(h, t), posterWidth(h));
-                else h.image(poster, posterUrl(h, t), posterWidth(h));
                 ImageView wide = cheap ? new RoundImage(h.a, px(14)) : new ImageView(h.a);
                 wide.setTag("wide");   // found by name: the trailer slides in under it, so it moves along
                 wide.setScaleType(ImageView.ScaleType.CENTER_CROP);
                 wide.setAlpha(0f);
                 f.addView(wide, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+                f.posterPic = poster;
+                f.widePic = wide;
+                // The poster's picture, once it comes, also stands in for a wide picture still missing (one opened
+                // before either had loaded showed nothing in its wide space).
+                Runnable standIn = () -> standIn(f);
+                if (asSlider && i >= 12) f.load = () -> h.image(poster, posterUrl(h, t), posterWidth(h), standIn);
+                else h.image(poster, posterUrl(h, t), posterWidth(h), standIn);
                 // Started and not finished (in any app): how far in, as a bar along the poster's foot.
                 // Your shows: how far through the season instead, in yellow on a light track.
                 Float done = t.season >= 0 ? Float.valueOf(t.season) : watched.get(t.id);
@@ -1336,15 +1343,10 @@ final class PagesV2 {
                     if (on && logo != null && ((FrameLayout) logo).getChildAt(1) instanceof ImageView
                             && ((ImageView) ((FrameLayout) logo).getChildAt(1)).getDrawable() != null) logo.animate().alpha(1f).setDuration(250).start();
                     if (on && t.backdrop != null) {
-                        // Until its own wide picture comes (or if it never does), the poster's picture fills the wide
-                        // space, so an opened poster is never its narrow picture beside an empty space.
-                        if (wide.getDrawable() == null) {
-                            View pv = f.findViewWithTag("poster");
-                            if (pv instanceof ImageView && ((ImageView) pv).getDrawable() != null) wide.setImageDrawable(((ImageView) pv).getDrawable());
-                        }
-                        // lite_home: its width on screen at the end of its slow zoom (1.12), no more.
-                        h.image(wide, t.backdrop.replace("/w1280/", "/w780/"), px(h.lite ? Math.round(WIDE * 1.12f) : WIDE * 2));
-                        wide.animate().alpha(1f).setDuration(350).start();
+                        openWide(f, t);
+                        // The slider sets how much of it shows on every frame of the opening (slide, wideFor): only
+                        // the other rows fade it in here.
+                        if (!slider()) wide.animate().alpha(1f).setDuration(350).start();
                         if (t.backdrop.startsWith("mood:")) {
                             // Surprise me's mood cards hold still: the slow zoom took their name and "Spin" past the card's edge.
                             wide.setScaleX(1f);
@@ -1369,10 +1371,57 @@ final class PagesV2 {
                             wide.setScaleY(1.02f);
                             wide.animate().scaleX(1.12f).scaleY(1.12f).setDuration(6000).setInterpolator(new android.view.animation.LinearInterpolator()).start();
                         }
-                    } else {
+                    } else if (!slider()) {
                         wide.animate().alpha(0f).setDuration(200).start();
                     }
                     focusLook(f, on);
+        }
+
+        /**
+         * A poster opening: its wide picture asked for, and until it comes (or if it never does) the poster's own
+         * picture standing in for it, so an opened poster is never its narrow picture beside an empty space. Done on
+         * every opening, whatever the poster's look was last set to (style() leaves a look already set alone).
+         */
+        private void openWide(FrameLayout f, Title t) {
+            if (t.backdrop == null) return;
+            ImageView wide = (ImageView) f.findViewWithTag("wide");
+            if (wide == null) return;
+            if (f instanceof Tile) standIn((Tile) f);
+            String url = t.backdrop.replace("/w1280/", "/w780/");
+            // lite_home: its width on screen at the end of its slow zoom (1.12), no more.
+            int width = px(h.lite ? Math.round(WIDE * 1.12f) : WIDE * 2);
+            // Asked for again only when it is not already the picture shown or on its way.
+            if (!(url + "@" + width).equals(wide.getTag(R.id.v2_url))) h.image(wide, url, width);
+        }
+
+        /**
+         * The poster's picture into the wide space while that has none of its own: a drawable of its own (one drawable
+         * has one set of bounds, and two views drawing the same one fought over them).
+         */
+        private void standIn(Tile f) {
+            ImageView wide = f.widePic, poster = f.posterPic;
+            if (wide == null || poster == null || wide.getDrawable() != null) return;
+            android.graphics.Bitmap b = bitmapOf(poster.getDrawable());
+            if (b == null || b.isRecycled()) return;
+            wide.setImageDrawable(new android.graphics.drawable.BitmapDrawable(h.a.getResources(), b));
+        }
+
+        /**
+         * How much of a poster's wide picture shows, from how far the poster is open (0 shut, 1 open), set on every
+         * frame of the slider from the slider's own state: no fade cut short, look already set or trailer stopped can
+         * leave an open poster's wide space empty any more. A trailer showing on it keeps its pictures lifted off.
+         */
+        private void wideFor(Tile f, float open) {
+            ImageView wide = f.widePic;
+            if (wide == null || player.revealedOn(f)) return;
+            if (open > 0f && wide.getDrawable() == null) standIn(f);
+            float a = wideAlpha(open);
+            if (wide.getAlpha() != a) wide.setAlpha(a);
+        }
+
+        /** The wide picture's opacity for a poster this far open: all there by 60% of the way, so it never lags the width. */
+        static float wideAlpha(float open) {
+            return Math.max(0f, Math.min(1f, open / 0.6f));
         }
 
         /**
@@ -1573,6 +1622,8 @@ final class PagesV2 {
                 // Drawn while any of it is on the screen: the row runs on to the screen's edge, never stopping short.
                 c.setAlpha(on ? 1f : 0f);
                 if (on) lastShown = i;
+                // Its wide picture as open as it is drawn wide.
+                if (c instanceof Tile) wideFor((Tile) c, i == wIdx ? wAmt : 0f);
                 View shade = c instanceof Tile ? ((Tile) c).dim : c.findViewWithTag("dim");
                 if (shade != null) shade.setAlpha((1f - flat) * Math.max(table(SHADE, d), Math.abs(d) < 0.5f ? shadeFocus * (1 - Math.abs(d) * 2) : 0f));
             }
@@ -1760,6 +1811,9 @@ final class PagesV2 {
             wideIdx = i;
             FrameLayout f = (FrameLayout) r.strip.getChildAt(i);
             style(f, r.items.get(i), true);
+            // Its wide picture asked for, the poster's standing in, on every opening: style() leaves a poster whose
+            // look was already the opened one alone, and that left some opened onto an empty space.
+            openWide(f, r.items.get(i));
             glowTo(colourOf(f));
             ValueAnimator va = ValueAnimator.ofFloat(wideAmt, 1f);
             wideAnim = va;
@@ -1768,6 +1822,17 @@ final class PagesV2 {
             va.addUpdateListener(an -> {
                 wideAmt = (float) an.getAnimatedValue();
                 slide(r, focusF, wideIdx, wideAmt);
+            });
+            final boolean[] cut = {false};
+            va.addListener(new android.animation.AnimatorListenerAdapter() {
+                @Override public void onAnimationCancel(android.animation.Animator animation) {
+                    cut[0] = true;
+                }
+
+                @Override public void onAnimationEnd(android.animation.Animator animation) {
+                    // Open all the way: placed once more as it now stands, its wide picture all there.
+                    if (!cut[0] && wideIdx == i) slide(r, focusF, wideIdx, wideAmt);
+                }
             });
             va.start();
         }
