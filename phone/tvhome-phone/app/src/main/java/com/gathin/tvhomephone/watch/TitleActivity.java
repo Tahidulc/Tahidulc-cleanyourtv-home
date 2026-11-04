@@ -198,7 +198,12 @@ public class TitleActivity extends AppCompatActivity {
             return;
         }
         Providers.Choice ch = Providers.choose(this, gb, t.title, t.id, t.tv);
-        String how = ch.kind.equals("debrid") ? "Opening in Debrid Stream" : ch.kind.equals("stream") ? (ch.pkg != null ? "Opening in " : "Opening ") + ch.name
+        if (ch.kind.equals("stream") && ch.pkg != null) {
+            // On one of this phone's apps but Debrid Stream isn't here: asks (Play on TV goes through Debrid Stream).
+            Providers.play(this, ch, Tvs.paired(this) ? this::playOnTv : null);
+            return;
+        }
+        String how = ch.kind.equals("debrid") ? "Opening in Debrid Stream" : ch.kind.equals("stream") ? "Opening " + ch.name
                 : ch.kind.equals("store") ? "Not streaming: to rent or buy on " + ch.name : "Where to watch it";
         Toast.makeText(this, how, Toast.LENGTH_SHORT).show();
         Providers.open(this, ch);

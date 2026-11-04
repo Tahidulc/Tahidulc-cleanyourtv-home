@@ -213,7 +213,7 @@ final class EpisodeMap {
         MaterialAlertDialogBuilder b = new MaterialAlertDialogBuilder(a).setTitle(title).setMessage(body.isEmpty() ? " " : body);
         if (aired) b.setPositiveButton("Play", (d, w) -> {
             Providers.Choice ch = Providers.choose(a, Tmdb.providersGb(details), t.title, t.id, true);
-            Providers.open(a, ch);
+            Providers.play(a, ch, null);
         });
         b.setNegativeButton("Close", null).show();
     }

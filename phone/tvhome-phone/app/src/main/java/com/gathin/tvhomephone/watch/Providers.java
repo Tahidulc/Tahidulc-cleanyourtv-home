@@ -110,15 +110,45 @@ public final class Providers {
         return new Choice(debridPkg, title == null ? "" : title, "Debrid Stream", "debrid");
     }
 
-    /** Debrid Stream's package on this phone (any launcher app whose package names it), or null. */
+    /** Debrid Stream's own package (the TVs' app, which also runs on a phone). */
+    public static final String DEBRID = "com.debridstream.tv";
+
+    /** Debrid Stream's package on this phone (its own name, else any launcher app whose package names it), or null. */
     public static String debridPackage(Context c) {
+        PackageManager pm = c.getPackageManager();
+        try {
+            pm.getPackageInfo(DEBRID, 0);
+            return DEBRID;
+        } catch (PackageManager.NameNotFoundException ignored) {
+            // another build of it, by name below
+        }
         Intent main = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER);
-        List<android.content.pm.ResolveInfo> apps = c.getPackageManager().queryIntentActivities(main, 0);
+        List<android.content.pm.ResolveInfo> apps = pm.queryIntentActivities(main, 0);
         for (android.content.pm.ResolveInfo r : apps) {
             String p = r.activityInfo == null ? null : r.activityInfo.packageName;
             if (p != null && p.toLowerCase(java.util.Locale.ROOT).contains("debrid")) return p;
         }
         return null;
+    }
+
+    /**
+     * Play: through Debrid Stream as the rule says. When the title is on one of this phone's streaming apps but Debrid
+     * Stream isn't on the phone, it asks instead of opening that app straight away: Play on TV (through Debrid Stream
+     * there; onTv null: not offered), the service's own app, or nothing.
+     */
+    public static void play(android.app.Activity a, Choice ch, Runnable onTv) {
+        if (!"stream".equals(ch.kind) || ch.pkg == null) {
+            open(a, ch);
+            return;
+        }
+        com.google.android.material.dialog.MaterialAlertDialogBuilder b = new com.google.android.material.dialog.MaterialAlertDialogBuilder(a)
+                .setTitle("Debrid Stream isn't on this phone")
+                .setMessage("Install Debrid Stream on this phone and Play opens titles in it, as on the TVs."
+                        + (onTv != null ? " For now, play it on a TV through Debrid Stream, or open " + ch.name + " here." : ""))
+                .setNeutralButton("Open " + ch.name, (d, w) -> open(a, ch))
+                .setNegativeButton("Cancel", null);
+        if (onTv != null) b.setPositiveButton("Play on TV", (d, w) -> onTv.run());
+        b.show();
     }
 
     /** "On Netflix", "Rent or buy on Apple TV", "Not streaming in the UK yet": the title page's line. */
@@ -161,10 +191,11 @@ public final class Providers {
                 }
             }
             Intent launch = c.getPackageManager().getLaunchIntentForPackage(ch.pkg);
+            if (launch == null) launch = c.getPackageManager().getLeanbackLaunchIntentForPackage(ch.pkg);
             if (launch != null) {
                 ClipboardManager cb = c.getSystemService(ClipboardManager.class);
                 if (cb != null) cb.setPrimaryClip(ClipData.newPlainText("title", ch.url));
-                android.widget.Toast.makeText(c, "Search for " + ch.url, android.widget.Toast.LENGTH_LONG).show();
+                android.widget.Toast.makeText(c, "In Debrid Stream: search for " + ch.url + " (copied, paste it in)", android.widget.Toast.LENGTH_LONG).show();
                 c.startActivity(launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
             }
             return;

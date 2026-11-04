@@ -19,6 +19,8 @@
 
     <!-- The streaming apps a title can be opened in (Watch: the licensed app on the phone that carries it, or its store). -->
     <queries>
+        <!-- Debrid Stream, which Play hands a title to (the agreed rule), seen by its own name too. -->
+        <package android:name="com.debridstream.tv" />
         <intent>
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LAUNCHER" />
