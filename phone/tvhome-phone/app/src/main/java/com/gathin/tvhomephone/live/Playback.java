@@ -9,6 +9,7 @@ import android.os.Looper;
 import androidx.annotation.NonNull;
 import androidx.annotation.OptIn;
 import androidx.media3.common.AudioAttributes;
+import androidx.media3.exoplayer.DefaultRenderersFactory;
 import androidx.media3.common.C;
 import androidx.media3.common.PlaybackException;
 import androidx.media3.common.Player;
@@ -210,7 +211,12 @@ final class Playback {
 
     private void ensure() {
         if (player != null) return;
-        player = new ExoPlayer.Builder(app).build();
+        // The phone's own decoders first; FFmpeg for the sound they can't play (AC-3, E-AC-3, MP2, DTS), which UK
+        // channels often carry: without it those channels played with no sound at all.
+        DefaultRenderersFactory renderers = new DefaultRenderersFactory(app)
+                .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
+                .setEnableDecoderFallback(true);
+        player = new ExoPlayer.Builder(app, renderers).build();
         player.setAudioAttributes(new AudioAttributes.Builder().setUsage(C.USAGE_MEDIA)
                 .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).build(), true);
         player.setHandleAudioBecomingNoisy(true);

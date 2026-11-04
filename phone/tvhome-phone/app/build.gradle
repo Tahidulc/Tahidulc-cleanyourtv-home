@@ -4,14 +4,14 @@ plugins {
 
 android {
     namespace 'com.gathin.tvhomephone'
-    compileSdk 34
+    compileSdk 35
 
     defaultConfig {
         applicationId 'com.gathin.tvhomephone'
         minSdk 26
         targetSdk 34
-        versionCode 5
-        versionName '1.4'
+        versionCode 6
+        versionName '1.5'
     }
 
     buildTypes {
@@ -44,9 +44,13 @@ dependencies {
     implementation 'androidx.swiperefreshlayout:swiperefreshlayout:1.1.0'
     implementation 'androidx.work:work-runtime:2.9.1'
     // Live TV: the player for the family's own M3U playlist or Xtream Codes login (HLS and MPEG-TS streams).
-    implementation 'androidx.media3:media3-exoplayer:1.4.1'
-    implementation 'androidx.media3:media3-exoplayer-hls:1.4.1'
-    implementation 'androidx.media3:media3-ui:1.4.1'
+    implementation 'androidx.media3:media3-exoplayer:1.5.0'
+    implementation 'androidx.media3:media3-exoplayer-hls:1.5.0'
+    implementation 'androidx.media3:media3-ui:1.5.0'
+    // Sound for the channels whose audio the phone can't decode itself: Dolby Digital (AC-3, E-AC-3), MPEG-1 Layer II
+    // (MP2) and DTS, as UK channels carry them. Jellyfin's build of Media3's FFmpeg extension (GPL-3.0), used only
+    // when the phone has no decoder of its own for the track.
+    implementation 'org.jellyfin.media3:media3-ffmpeg-decoder:1.5.0+1'
     // Posters, backdrops, crests and stills.
     implementation 'com.github.bumptech.glide:glide:4.16.0'
     testImplementation 'junit:junit:4.13.2'
