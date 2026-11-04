@@ -197,8 +197,8 @@ public class TitleActivity extends AppCompatActivity {
             Toast.makeText(this, "Pair with a TV in Settings first", Toast.LENGTH_SHORT).show();
             return;
         }
-        Providers.Choice ch = Providers.choose(gb, t.title, t.id, t.tv, Providers.installedOn(this));
-        String how = ch.kind.equals("stream") ? (ch.pkg != null ? "Opening in " : "Opening ") + ch.name
+        Providers.Choice ch = Providers.choose(this, gb, t.title, t.id, t.tv);
+        String how = ch.kind.equals("debrid") ? "Opening in Debrid Stream" : ch.kind.equals("stream") ? (ch.pkg != null ? "Opening in " : "Opening ") + ch.name
                 : ch.kind.equals("store") ? "Not streaming: to rent or buy on " + ch.name : "Where to watch it";
         Toast.makeText(this, how, Toast.LENGTH_SHORT).show();
         Providers.open(this, ch);

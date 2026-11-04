@@ -212,7 +212,7 @@ final class EpisodeMap {
         String body = aired ? e.optString("overview") : "Out " + (air == null ? "on a date to be announced" : Plan.date(air)) + ".";
         MaterialAlertDialogBuilder b = new MaterialAlertDialogBuilder(a).setTitle(title).setMessage(body.isEmpty() ? " " : body);
         if (aired) b.setPositiveButton("Play", (d, w) -> {
-            Providers.Choice ch = Providers.choose(Tmdb.providersGb(details), t.title, t.id, true, Providers.installedOn(a));
+            Providers.Choice ch = Providers.choose(a, Tmdb.providersGb(details), t.title, t.id, true);
             Providers.open(a, ch);
         });
         b.setNegativeButton("Close", null).show();

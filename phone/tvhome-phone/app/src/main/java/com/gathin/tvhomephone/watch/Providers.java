@@ -1,6 +1,9 @@
 package com.gathin.tvhomephone.watch;
 
+import android.app.SearchManager;
 import android.content.ActivityNotFoundException;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
@@ -11,12 +14,14 @@ import org.json.JSONObject;
 
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.function.Predicate;
 
 /**
- * Where a title is watched: the licensed streaming app on this phone that carries it in the UK (TMDB's GB providers,
- * as the TVs' Play does), opened at its own search for the title; else that service's website; else a store that rents
- * or sells it; else TMDB's where-to-watch page. Only these licensed services are ever chosen: no debrid, torrent or
+ * Where a title is watched, by the rule agreed for the TVs (after the Netflix test): a title on one of the streaming
+ * apps on this phone that carry it in the UK (TMDB's GB providers) opens through Debrid Stream when it is on the phone
+ * (it hands the title to that service), else in that app at its own search; a title on none of them never goes to
+ * Debrid Stream: that service's website, else a store that rents or sells it, else TMDB's where-to-watch page. Never an
  * IPTV app.
  */
 public final class Providers {
@@ -91,6 +96,31 @@ public final class Providers {
         return new Choice(null, "https://www.themoviedb.org/" + (tv ? "tv/" : "movie/") + id + "/watch?locale=GB", "TMDB", "web");
     }
 
+    /** The choice for a title on this phone: choose(), then through Debrid Stream when the rule says so. */
+    public static Choice choose(Context c, JSONObject gb, String title, int id, boolean tv) {
+        return viaDebrid(choose(gb, title, id, tv, installedOn(c)), title, debridPackage(c));
+    }
+
+    /**
+     * The agreed rule (pure, for the tests): only a title streaming on an app that is on this phone (kind "stream" with
+     * its package) goes through Debrid Stream, and only when Debrid Stream is here; anything else stays as it is.
+     */
+    public static Choice viaDebrid(Choice ch, String title, String debridPkg) {
+        if (debridPkg == null || ch == null || !"stream".equals(ch.kind) || ch.pkg == null) return ch;
+        return new Choice(debridPkg, title == null ? "" : title, "Debrid Stream", "debrid");
+    }
+
+    /** Debrid Stream's package on this phone (any launcher app whose package names it), or null. */
+    public static String debridPackage(Context c) {
+        Intent main = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER);
+        List<android.content.pm.ResolveInfo> apps = c.getPackageManager().queryIntentActivities(main, 0);
+        for (android.content.pm.ResolveInfo r : apps) {
+            String p = r.activityInfo == null ? null : r.activityInfo.packageName;
+            if (p != null && p.toLowerCase(java.util.Locale.ROOT).contains("debrid")) return p;
+        }
+        return null;
+    }
+
     /** "On Netflix", "Rent or buy on Apple TV", "Not streaming in the UK yet": the title page's line. */
     public static String where(JSONObject gb) {
         for (String kind : new String[]{"flatrate", "free", "ads"}) {
@@ -118,6 +148,27 @@ public final class Providers {
 
     /** Opens the choice: in its app when it takes the address, else the app itself, else the browser. */
     public static void open(Context c, Choice ch) {
+        if ("debrid".equals(ch.kind)) {
+            // Debrid Stream at its search for the title when it takes one; else the app, the title ready to paste.
+            Intent search = new Intent(Intent.ACTION_SEARCH).setPackage(ch.pkg).putExtra(SearchManager.QUERY, ch.url)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            if (search.resolveActivity(c.getPackageManager()) != null) {
+                try {
+                    c.startActivity(search);
+                    return;
+                } catch (ActivityNotFoundException | SecurityException ignored) {
+                    // the app itself below
+                }
+            }
+            Intent launch = c.getPackageManager().getLaunchIntentForPackage(ch.pkg);
+            if (launch != null) {
+                ClipboardManager cb = c.getSystemService(ClipboardManager.class);
+                if (cb != null) cb.setPrimaryClip(ClipData.newPlainText("title", ch.url));
+                android.widget.Toast.makeText(c, "Search for " + ch.url, android.widget.Toast.LENGTH_LONG).show();
+                c.startActivity(launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            }
+            return;
+        }
         Intent view = new Intent(Intent.ACTION_VIEW, Uri.parse(ch.url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         if (ch.pkg != null) {
             Intent inApp = new Intent(view).setPackage(ch.pkg);

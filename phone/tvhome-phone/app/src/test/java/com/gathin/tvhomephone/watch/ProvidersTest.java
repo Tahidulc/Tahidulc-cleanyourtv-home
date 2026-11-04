@@ -62,4 +62,29 @@ public class ProvidersTest {
         assertEquals("Rent or buy on Apple TV", Providers.where(gb("{\"buy\":[{\"provider_id\":2}]}")));
         assertEquals("Not streaming in the UK yet", Providers.where(null));
     }
+
+    @Test public void onYourAppsGoesThroughDebridStream() throws Exception {
+        Providers.Choice c = Providers.viaDebrid(Providers.choose(gb("{\"flatrate\":[{\"provider_id\":8}]}"), "Lupin", 1, true,
+                p -> p.equals("com.netflix.mediaclient")), "Lupin", "com.debridstream.tv");
+        assertEquals("debrid", c.kind);
+        assertEquals("com.debridstream.tv", c.pkg);
+    }
+
+    @Test public void withoutDebridStreamTheAppItself() throws Exception {
+        Providers.Choice c = Providers.viaDebrid(Providers.choose(gb("{\"flatrate\":[{\"provider_id\":8}]}"), "Lupin", 1, true,
+                p -> p.equals("com.netflix.mediaclient")), "Lupin", null);
+        assertEquals("com.netflix.mediaclient", c.pkg);
+    }
+
+    @Test public void onNoneOfYourAppsNeverDebrid() throws Exception {
+        // Streams on Disney+ but it isn't on the phone: the website, not Debrid Stream.
+        Providers.Choice web = Providers.viaDebrid(Providers.choose(gb("{\"flatrate\":[{\"provider_id\":337}]}"), "VisionQuest", 2, true,
+                p -> false), "VisionQuest", "com.debridstream.tv");
+        assertEquals("stream", web.kind);
+        assertEquals(null, web.pkg);
+        // Only to rent: the store.
+        Providers.Choice store = Providers.viaDebrid(Providers.choose(gb("{\"rent\":[{\"provider_id\":2}]}"), "Wildwood", 4, false,
+                p -> false), "Wildwood", "com.debridstream.tv");
+        assertEquals("store", store.kind);
+    }
 }
