@@ -109,11 +109,14 @@ final class RichAlerts {
         return true;
     }
 
-    /** Whether this kind may show now (the Control Centre's Notifications), logging it when not. */
-    private static boolean allowed(Context c, String kind, String what) {
+    /**
+     * Whether this kind may show now for a game in the competition with this slug (the Control Centre's Notifications:
+     * its kind's switch and its competition's), logging it when not.
+     */
+    private static boolean allowed(Context c, String kind, String slug, String what) {
         boolean home = NotifyPrefs.homeNow();
-        if (NotifyPrefs.allowed(c, kind, home)) return true;
-        NotifyPrefs.held(c, kind, home, null, what);
+        if (NotifyPrefs.allowed(c, kind, home, slug)) return true;
+        NotifyPrefs.held(c, kind, home, null, what, slug);
         return false;
     }
 
@@ -503,7 +506,7 @@ final class RichAlerts {
     private static void showTable(GoalWatchService s, Table t) {
         scale(s);
         whenClear(s, () -> {
-            if (!allowed(s, "table", "live table " + t.headline)) return;
+            if (!allowed(s, "table", t.g.slug, "live table " + t.headline)) return;
             AlertLog.note(s, "live table shown " + (onHome() ? "on Home" : "over the app") + ": " + t.headline);
             if (onHome()) tableBar(s, t); else tableCard(s, t);
         }, android.os.SystemClock.uptimeMillis());
@@ -682,10 +685,11 @@ final class RichAlerts {
         boolean scored;
     }
 
-    private static void showRush(GoalWatchService s, List<Chip> chips, int goals) {
+    /** The strip, for a goal in the competition with this slug (its switch in Notifications holds it). */
+    private static void showRush(GoalWatchService s, List<Chip> chips, int goals, String slug) {
         scale(s);
         whenClear(s, () -> {
-            if (!allowed(s, "goalrush", "goal rush, " + goals + " goals")) return;
+            if (!allowed(s, "goalrush", slug, "goal rush, " + goals + " goals")) return;
             AlertLog.note(s, "goal rush shown " + (onHome() ? "on Home" : "over the app") + ": " + chips.size() + " games, " + goals + " goals");
             rushStrip(s, chips, goals);
         }, android.os.SystemClock.uptimeMillis());
@@ -884,7 +888,7 @@ final class RichAlerts {
     private static void showMilestone(GoalWatchService s, Milestone m) {
         scale(s);
         whenClear(s, () -> {
-            if (!allowed(s, "milestone", "milestone " + m.label + " " + m.who)) return;
+            if (!allowed(s, "milestone", m.g.slug, "milestone " + m.label + " " + m.who)) return;
             AlertLog.note(s, "milestone shown " + (onHome() ? "on Home" : "over the app") + ": " + m.label + " " + m.who);
             if (onHome()) milestoneBar(s, m); else milestoneCard(s, m);
         }, android.os.SystemClock.uptimeMillis());
@@ -1001,7 +1005,10 @@ final class RichAlerts {
         }
         boolean anywhere = GoalWatchService.followsAnywhere(s, g);
         List<ScoresTicker.Game> live = new ArrayList<>();
-        for (ScoresTicker.Game x : games) if (x.state == 0 && GoalWatchService.followsAnywhere(s, x)) live.add(x);
+        // The live games of the competitions switched on in Notifications (the rest are not shown, so not counted).
+        for (ScoresTicker.Game x : games) {
+            if (x.state == 0 && GoalWatchService.followsAnywhere(s, x) && NotifyPrefs.competitionOn(s, x.slug)) live.add(x);
+        }
         List<ScoresTicker.Game> all = new ArrayList<>(games);
         main.postDelayed(() -> io.execute(() -> {
             // Over an app only for the games the goal alerts follow there; Home's own games only on Home.
@@ -1014,7 +1021,7 @@ final class RichAlerts {
             int goals = lately;
             main.postDelayed(() -> io.execute(() -> {
                 List<Chip> chips = chips(s, live, g);
-                main.post(() -> showRush(s, chips, goals));
+                main.post(() -> showRush(s, chips, goals, g.slug));
             }), AFTER_CARD_MS + 1_000L);
         }
         if (!"og".equals(goal[4]) && goalsBy(g, goal[1]).size() == 3) {
@@ -1089,7 +1096,8 @@ final class RichAlerts {
         if (scored != null && !shown.contains(scored)) shown.set(shown.size() - 1, scored);
         List<Chip> chips = chips(s, shown, scored);
         int n = Math.max(1, goals);
-        main.post(() -> showRush(s, chips, n));
+        String slug = scored == null ? null : scored.slug;
+        main.post(() -> showRush(s, chips, n, slug));
     }
 
     private static int minuteOf(String minute) {

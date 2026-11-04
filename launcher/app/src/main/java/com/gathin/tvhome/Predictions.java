@@ -354,6 +354,8 @@ final class Predictions {
         d.dark = true;
         d.kind = "release";
         d.notify = "prediction";
+        // Its game's competition, for that competition's switch in Notifications.
+        d.slug = g.slug;
         d.band = 0xFF10157E;
         d.bandDeep = 0xFF060928;
         d.labelColour = 0xFFFFD04D;

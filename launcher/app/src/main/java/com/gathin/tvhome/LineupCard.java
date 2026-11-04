@@ -51,6 +51,8 @@ final class LineupCard {
         Bitmap leagueLogo;
         Team home, away;
         String kickoff, channel, venue, competition;
+        /** The competition's slug ("eng.1"), for its switch in Notifications; null when not known. */
+        String slug;
         long kickoffAt;
         Bitmap channelLogo;
         /** OK: the game's channel opened (null without one). */
@@ -147,10 +149,11 @@ final class LineupCard {
     /** Opens the card (on the main thread), in place of one already showing; after the camera card, if that is up. */
     static void show(Context ctx, Data d) {
         Context c = ctx.getApplicationContext();
-        // Switched off in the Control Centre's Notifications (kick-off and line-ups, or where it would show).
+        // Switched off in the Control Centre's Notifications (kick-off and line-ups, the game's competition, or where
+        // it would show).
         boolean home = NotifyPrefs.homeNow();
-        if (renderTo == null && !NotifyPrefs.allowed(c, "kickoff", home)) {
-            NotifyPrefs.held(c, "kickoff", home, null, "line-up card");
+        if (renderTo == null && !NotifyPrefs.allowed(c, "kickoff", home, d.slug)) {
+            NotifyPrefs.held(c, "kickoff", home, null, "line-up card " + (d.competition == null ? "" : d.competition), d.slug);
             return;
         }
         AlertLog.note(c, "line-up card shown" + (CameraAlert.isShowing() ? " (after the camera card)" : ""));
@@ -610,6 +613,8 @@ final class LineupCard {
     static final class Half {
         Bitmap leagueLogo, homeCrest, awayCrest;
         String homeName = "", awayName = "", score = "", competition = "", key;
+        /** The competition's slug ("eng.1"), for its switch in Notifications; null when not known. */
+        String slug;
         /** The first half's scorers under each side ("Salah 23'"), in the order they scored. */
         final List<String> homeGoals = new ArrayList<>(), awayGoals = new ArrayList<>();
         /** Possession in percent and shots, each side's (-1 where ESPN gave none), and the sides' colours for the bars. */
@@ -626,8 +631,8 @@ final class LineupCard {
     static void showHalfTime(Context ctx, Half f) {
         Context c = ctx.getApplicationContext();
         boolean home = NotifyPrefs.homeNow();
-        if (!NotifyPrefs.allowed(c, "ht", home)) {
-            NotifyPrefs.held(c, "ht", home, f.key, "half time card");
+        if (!NotifyPrefs.allowed(c, "ht", home, f.slug)) {
+            NotifyPrefs.held(c, "ht", home, f.key, "half time card " + f.homeName + " v " + f.awayName, f.slug);
             return;
         }
         if (GoalWatchService.laneHome && GoalWatchService.homeInFront || PopupFrame.isShowing()) {

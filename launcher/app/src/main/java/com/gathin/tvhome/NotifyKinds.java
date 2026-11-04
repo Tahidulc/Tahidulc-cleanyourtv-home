@@ -10,7 +10,9 @@ import java.util.Map;
 /**
  * Every kind of notification the launcher shows, in one list: the Control Centre's Notifications page is drawn from it
  * (NotifyPanel) and every pop-up is checked against it as it comes up (NotifyPrefs). A new kind is one line here, its
- * id set on the card (ScoreCard.Data.notify) or passed to NotifyPrefs.allowed where it shows.
+ * id set on the card (ScoreCard.Data.notify) or passed to NotifyPrefs.allowed where it shows. The football
+ * competitions (COMPETITIONS) have a switch each too, which football's kinds pass as well (the game's slug on the
+ * card: ScoreCard.Data.slug).
  *
  * <p>Pure Java (no Android), so the unit tests can read it.
  */
@@ -104,6 +106,101 @@ final class NotifyKinds {
                 same.add(k);
             }
         }
+    }
+
+    // ---- the competitions: a switch each, under FOOTBALL ----------------------------------------------------------
+
+    /** The heading of the competitions' switches, after FOOTBALL's on the page (not a kind's group). */
+    static final String COMPETITION_GROUP = "COMPETITIONS";
+
+    /**
+     * One football competition the alerts can follow: its ESPN slug ("eng.1"), the mark before its name where it has
+     * no logo, its name, one line on what it is, and whether its alerts come until it is switched.
+     */
+    static final class Competition {
+        final String slug, icon, name, line;
+        final boolean onByDefault;
+
+        Competition(String slug, String icon, String name, String line, boolean onByDefault) {
+            this.slug = slug;
+            this.icon = icon;
+            this.name = name;
+            this.line = line;
+            this.onByDefault = onByDefault;
+        }
+    }
+
+    private static Competition comp(String slug, String icon, String name, String line) {
+        return new Competition(slug, icon, name, line, true);
+    }
+
+    /**
+     * Every competition the alerts' service can read (config.xml's goal_alert_leagues, score_leagues and
+     * team_alert_leagues, and its own line-up competitions), in the order the page lists them; the page lists those
+     * it reads now (GoalWatchService.alertSlugs). All on until switched off, but England's friendlies.
+     */
+    static final List<Competition> COMPETITIONS = Collections.unmodifiableList(Arrays.asList(
+            comp("eng.1", "⚽", "Premier League", "England"),
+            comp("eng.2", "⚽", "Championship", "England"),
+            comp("eng.fa", "🏆", "FA Cup", "England"),
+            comp("eng.league_cup", "🏆", "EFL Cup", "England"),
+            comp("uefa.champions", "🏆", "Champions League", "Europe"),
+            comp("uefa.europa", "🏆", "Europa League", "Europe"),
+            comp("uefa.europa.conf", "🏆", "Conference League", "Europe"),
+            comp("sco.1", "⚽", "Scottish Premiership", "Scotland"),
+            comp("esp.1", "⚽", "LaLiga", "Spain"),
+            comp("ita.1", "⚽", "Serie A", "Italy"),
+            comp("ger.1", "⚽", "Bundesliga", "Germany"),
+            comp("fra.1", "⚽", "Ligue 1", "France"),
+            comp("esp.copa_del_rey", "🏆", "Copa del Rey", "Spain"),
+            comp("esp.super_cup", "🏆", "Supercopa", "Spain"),
+            comp("ita.coppa_italia", "🏆", "Coppa Italia", "Italy"),
+            comp("ger.dfb_pokal", "🏆", "DFB-Pokal", "Germany"),
+            comp("fra.coupe_de_france", "🏆", "Coupe de France", "France"),
+            comp("fifa.world", "🏆", "World Cup", "England's games"),
+            comp("uefa.euro", "🏆", "Euros", "England's games"),
+            comp("fifa.worldq.uefa", "⚽", "World Cup qualifiers", "England's games"),
+            comp("uefa.euroq", "⚽", "Euro qualifiers", "England's games"),
+            comp("uefa.nations", "🏆", "Nations League", "England's games"),
+            new Competition("fifa.friendly", "⚽", "Friendlies", "England's friendlies", false)));
+
+    private static final Map<String, Competition> COMPETITION_BY_SLUG = new HashMap<>();
+
+    static {
+        for (Competition x : COMPETITIONS) COMPETITION_BY_SLUG.put(x.slug, x);
+    }
+
+    /** The competition with this slug; null for one not in the list. */
+    static Competition competition(String slug) {
+        return slug == null ? null : COMPETITION_BY_SLUG.get(slug);
+    }
+
+    /** Its name ("Premier League"); the slug itself for one not in the list. */
+    static String competitionName(String slug) {
+        Competition x = competition(slug);
+        return x != null ? x.name : slug == null ? "" : slug;
+    }
+
+    /**
+     * Whether a competition's alerts come: as switched (saved; null when never switched), else its default, on for one
+     * not in the list. Null (no competition known) is always on.
+     */
+    static boolean competitionOn(String slug, Boolean saved) {
+        if (slug == null) return true;
+        if (saved != null) return saved;
+        Competition x = competition(slug);
+        return x == null || x.onByDefault;
+    }
+
+    /**
+     * Whether a notification of kind id is held by its game's competition switch: football's kinds, and a card of no
+     * listed kind that has a game (the older alert lines' VAR); never F1, the other sports, a reminder the user set
+     * or ALWAYS.
+     */
+    static boolean byCompetition(String id) {
+        if (ALWAYS.equals(id)) return false;
+        Kind k = get(id);
+        return k == null || FOOTBALL.equals(k.group);
     }
 
     /** The kind with this id; null for ALWAYS or an id not in the list. */

@@ -10,8 +10,9 @@ import java.util.List;
 /**
  * The Control Centre's Notifications switches (NotifyPanel), and the one check every pop-up goes through as it comes
  * up: the main switch for where it would show (On Home: Home, Ambient mode and pop-up mode; Over apps: any other app)
- * and the switch of its own kind (NotifyKinds). What sets a notification off (the scores' poll, the news, a camera) is
- * not changed: it is only not shown, and Today's alerts says why.
+ * and the switch of its own kind (NotifyKinds); for football's kinds, the switch of the game's competition too
+ * (NotifyKinds.COMPETITIONS). What sets a notification off (the scores' poll, the news, a camera) is not changed: it
+ * is only not shown, and Today's alerts says why.
  *
  * <p>A kind the theme leaves off is not listed but offered under Add; adding it turns its theme switch on
  * (Config.themeFlag), so what sets it off starts too.
@@ -70,6 +71,27 @@ final class NotifyPrefs {
         return false;
     }
 
+    /** A competition's switch (by its slug, "eng.1"): its default (NotifyKinds.competitionOn) until switched. */
+    static boolean competitionOn(Context c, String slug) {
+        if (slug == null) return true;
+        SharedPreferences p = prefs(c);
+        String key = "comp." + slug;
+        return NotifyKinds.competitionOn(slug, p.contains(key) ? p.getBoolean(key, true) : null);
+    }
+
+    static void setCompetition(Context c, String slug, boolean on) {
+        prefs(c).edit().putBoolean("comp." + slug, on).apply();
+    }
+
+    /**
+     * The competition's part of the check: whether a notification of kind id, for a game in the competition with this
+     * slug, may show. True for a kind no competition holds (F1, the other sports, a reminder the user set) and where
+     * the competition is not known (null).
+     */
+    static boolean allowedCompetition(Context c, String id, String slug) {
+        return slug == null || !NotifyKinds.byCompetition(id) || competitionOn(c, slug);
+    }
+
     /** Whether the theme brings this kind (its switch on, or none); theme is Config.themeJson's, read once by the caller. */
     static boolean themed(NotifyKinds.Kind k, JSONObject theme) {
         return k.flag == null || (theme == null ? k.flagDefault : theme.optBoolean(k.flag, k.flagDefault));
@@ -96,6 +118,11 @@ final class NotifyPrefs {
         return plain(c, id, onHome);
     }
 
+    /** As allowed, for a game in the competition with this slug (null: none known): its switch is passed too. */
+    static boolean allowed(Context c, String id, boolean onHome, String slug) {
+        return allowed(c, id, onHome) && allowedCompetition(c, id, slug);
+    }
+
     /**
      * Whether a film night keeps this kind quiet now: all but its own reminder, the doorbell (someone at the door is
      * never kept waiting) and the questions and codes.
@@ -119,6 +146,8 @@ final class NotifyPrefs {
     static boolean allowed(Context c, ScoreCard.Data d, boolean onHome) {
         if (d.again) return true;
         String id = NotifyKinds.ofCard(d.notify, d.kind, !d.podium.isEmpty());
+        // Its game's competition switched off: not even a starred club's goal comes.
+        if (!allowedCompetition(c, id, d.slug)) return false;
         // A film night's quiet: a goal for one of the starred clubs still comes (with its usual switches).
         if (quietFor(c, id) && !(d.starred && ("goal".equals(id) || "drama".equals(id)))) return false;
         if ("drama".equals(id)) {
@@ -139,9 +168,15 @@ final class NotifyPrefs {
 
     /** Logs a notification held back (AlertLog), and says why in Today's alerts when it has a key there. */
     static void held(Context c, String id, boolean onHome, String key, String what) {
+        held(c, id, onHome, key, what, null);
+    }
+
+    /** As held, for a game in the competition with this slug (null: none known), which may be why. */
+    static void held(Context c, String id, boolean onHome, String key, String what, String slug) {
         NotifyKinds.Kind k = NotifyKinds.get(id);
         boolean quiet = quietFor(c, id);
         String why = !master(c, onHome) ? (onHome ? "On Home" : "Over apps") + " is off in Notifications"
+                : !allowedCompetition(c, id, slug) ? NotifyKinds.competitionName(slug) + " is off in Notifications"
                 : quiet && (k == null || kindOn(c, k)) ? FilmNight.quietWords(c)
                 : (k == null ? id : k.name) + " is off in Notifications";
         AlertLog.note(c, "not shown (" + why + "): " + what);

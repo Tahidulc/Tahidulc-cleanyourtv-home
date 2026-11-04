@@ -265,6 +265,7 @@ final class MoreAlerts {
                 f.awayName = away;
                 f.score = d.score;
                 f.competition = ScoresTicker.competition(g);
+                f.slug = g.slug;
                 f.homeGoals.addAll(st.homeGoals);
                 f.awayGoals.addAll(st.awayGoals);
                 f.homePoss = st.homePoss;
@@ -731,6 +732,7 @@ final class MoreAlerts {
             d = new ScoreCard.Data();
             d.homeName = g.homeName != null ? g.homeName : g.home;
             d.awayName = g.awayName != null ? g.awayName : g.away;
+            d.slug = g.slug;
         }
         d.kind = "prediction";
         d.score = h + "–" + a;

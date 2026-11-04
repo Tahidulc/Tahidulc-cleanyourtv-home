@@ -1,6 +1,7 @@
 package com.gathin.tvhome;
 
 import android.content.Context;
+import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
@@ -9,6 +10,7 @@ import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -17,14 +19,16 @@ import org.json.JSONObject;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.function.BooleanSupplier;
 
 /**
  * The Control Centre's Notifications (its tile opens it): a card the Control Centre's size and look. At the top the
  * two main switches, On Home (Home, Ambient mode, pop-up mode) and Over apps; under them every kind of notification
  * (NotifyKinds) with a switch of its own, under its group's heading, two across, the list scrolling with the focus;
- * last, Add, the kinds the theme leaves off, each with a switch that puts it on the list. OK switches, the arrows move,
- * Back goes back from Add and closes the card. What is switched is kept at once (NotifyPrefs).
+ * after football's kinds, COMPETITIONS: a switch for each competition the alerts follow, with its logo where ESPN has
+ * one; last, Add, the kinds the theme leaves off, each with a switch that puts it on the list. OK switches, the arrows
+ * move, Back goes back from Add and closes the card. What is switched is kept at once (NotifyPrefs).
  */
 final class NotifyPanel {
     private final HomeV2 h;
@@ -41,6 +45,8 @@ final class NotifyPanel {
     private static final class Row {
         View view;
         View track, knob;
+        /** The mark before its name (a competition's logo takes its place once read). */
+        View mark;
         BooleanSupplier on;
         Runnable ok;
         /** In the scrolling list (not the main switches at the top). */
@@ -174,6 +180,7 @@ final class NotifyPanel {
                 List<NotifyKinds.Kind> in = new ArrayList<>();
                 for (NotifyKinds.Kind k : NotifyKinds.ALL) if (group.equals(k.group) && NotifyPrefs.listed(c, k, theme)) in.add(k);
                 kinds(group, in, false);
+                if (NotifyKinds.FOOTBALL.equals(group)) competitions();
             }
             addRow(extra);
         } else if (extra.isEmpty()) {
@@ -204,6 +211,81 @@ final class NotifyPanel {
 
     /** A group's heading and its kinds two across; adding (on Add): each switch puts its kind on the list. */
     private void kinds(String group, List<NotifyKinds.Kind> in, boolean adding) {
+        List<Row> rows = new ArrayList<>();
+        for (NotifyKinds.Kind k : in) {
+            Row r = row(k.icon, k.name, k.line, 22, 15);
+            if (adding) {
+                r.on = () -> NotifyPrefs.added(c, k.id);
+                r.ok = () -> NotifyPrefs.add(c, k, !NotifyPrefs.added(c, k.id));
+            } else {
+                r.on = () -> NotifyPrefs.on(c, k.id);
+                r.ok = () -> NotifyPrefs.set(c, k, !NotifyPrefs.on(c, k.id));
+            }
+            rows.add(r);
+        }
+        group(group, rows);
+    }
+
+    /**
+     * COMPETITIONS: a switch for each competition the alerts' service reads now (GoalWatchService.alertSlugs), in
+     * NotifyKinds' order, any it reads that the list does not name after them; off, its games' football pop-ups are
+     * not shown. Each one's logo (the score cards' white one) is read off the main thread and takes its mark's place.
+     */
+    private void competitions() {
+        Set<String> read = GoalWatchService.alertSlugs(c);
+        List<NotifyKinds.Competition> in = new ArrayList<>();
+        for (NotifyKinds.Competition x : NotifyKinds.COMPETITIONS) if (read.contains(x.slug)) in.add(x);
+        for (String slug : read) {
+            if (NotifyKinds.competition(slug) != null) continue;
+            ScoresTicker.Game g = new ScoresTicker.Game();
+            g.slug = slug;
+            String name = ScoresTicker.competition(g);
+            in.add(new NotifyKinds.Competition(slug, "⚽", name.isEmpty() ? slug : name, "Football", true));
+        }
+        List<Row> rows = new ArrayList<>();
+        for (NotifyKinds.Competition x : in) {
+            Row r = row(x.icon, x.name, x.line, 22, 15);
+            r.on = () -> NotifyPrefs.competitionOn(c, x.slug);
+            r.ok = () -> NotifyPrefs.setCompetition(c, x.slug, !NotifyPrefs.competitionOn(c, x.slug));
+            rows.add(r);
+        }
+        group(NotifyKinds.COMPETITION_GROUP, rows);
+        if (rows.isEmpty()) return;
+        int size = h.px(44);
+        h.io.execute(() -> {
+            for (int i = 0; i < rows.size(); i++) {
+                Row r = rows.get(i);
+                Bitmap logo;
+                try {
+                    logo = GoalWatchService.competitionLogo(c, in.get(i).slug, size);
+                } catch (RuntimeException e) {
+                    logo = null;   // its mark stays
+                }
+                if (logo != null) {
+                    Bitmap b = logo;
+                    h.root.post(() -> logo(r, b));
+                }
+            }
+        });
+    }
+
+    /** A competition's logo in its mark's place, while its row is still on the page. */
+    private void logo(Row r, Bitmap b) {
+        if (!open || page != 0 || lineOf(r) == null || !(r.view instanceof ViewGroup) || r.mark == null) return;
+        ViewGroup t = (ViewGroup) r.view;
+        int at = t.indexOfChild(r.mark);
+        if (at < 0) return;
+        ImageView v = new ImageView(c);
+        v.setImageBitmap(b);
+        v.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        v.setAdjustViewBounds(false);
+        t.removeViewAt(at);
+        t.addView(v, at, new LinearLayout.LayoutParams(h.px(44), h.px(40)));
+        r.mark = v;
+    }
+
+    /** A heading and its rows two across under it (nothing for none). */
+    private void group(String group, List<Row> in) {
         if (in.isEmpty()) return;
         TextView head = h.text(15, semi, 0xB3FFFFFF);
         head.setText(group);
@@ -216,7 +298,7 @@ final class NotifyPanel {
         LinearLayout across = null;
         List<Row> two = null;
         for (int i = 0; i < in.size(); i++) {
-            NotifyKinds.Kind k = in.get(i);
+            Row r = in.get(i);
             if (i % 2 == 0) {
                 across = new LinearLayout(c);
                 across.setClipChildren(false);
@@ -226,15 +308,7 @@ final class NotifyPanel {
                 two = new ArrayList<>();
                 lines.add(two);
             }
-            Row r = row(k.icon, k.name, k.line, 22, 15);
             r.inList = true;
-            if (adding) {
-                r.on = () -> NotifyPrefs.added(c, k.id);
-                r.ok = () -> NotifyPrefs.add(c, k, !NotifyPrefs.added(c, k.id));
-            } else {
-                r.on = () -> NotifyPrefs.on(c, k.id);
-                r.ok = () -> NotifyPrefs.set(c, k, !NotifyPrefs.on(c, k.id));
-            }
             LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(0, -1, 1f);
             if (i % 2 == 1) rp.leftMargin = h.px(20);
             across.addView(r.view, rp);
@@ -273,6 +347,7 @@ final class NotifyPanel {
         mark.setText(icon);
         mark.setGravity(Gravity.CENTER);
         t.addView(mark, new LinearLayout.LayoutParams(h.px(44), -2));
+        r.mark = mark;
         LinearLayout words = new LinearLayout(c);
         words.setOrientation(LinearLayout.VERTICAL);
         TextView n = h.text(nameSize, semi, Color.WHITE);

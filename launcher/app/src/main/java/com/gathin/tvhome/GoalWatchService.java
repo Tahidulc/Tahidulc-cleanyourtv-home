@@ -268,7 +268,9 @@ public class GoalWatchService extends Service {
         ScoreCard.Data d = new ScoreCard.Data();
         int px = Math.round(96 * getResources().getDisplayMetrics().density);
         d.starred = starred(this, g);
-        d.leagueLogo = bandLogo(g.leagueLogo != null ? g.leagueLogo : leagueLogoFor(g), px);
+        // Its competition, for that competition's switch in Notifications.
+        d.slug = g.slug;
+        d.leagueLogo = bandLogo(this, g.leagueLogo != null ? g.leagueLogo : leagueLogoFor(g), px);
         d.homeCrest = g.homeLogo == null ? null : ScoreCard.onNavy(ScoresTicker.cachedLogo(this, g.homeLogo, px));
         d.awayCrest = g.awayLogo == null ? null : ScoreCard.onNavy(ScoresTicker.cachedLogo(this, g.awayLogo, px));
         d.homeName = g.homeName != null ? g.homeName : g.home;
@@ -295,14 +297,24 @@ public class GoalWatchService extends Service {
      * A competition's logo for the score card's navy band: the white version (the Premier League's lion in white,
      * ESPN's logos for dark grounds), so it shows on the navy; the logo as it is when there is no such version.
      */
-    private android.graphics.Bitmap bandLogo(String url, int px) {
+    private static android.graphics.Bitmap bandLogo(Context c, String url, int px) {
         if (url == null) return null;
         if (premier(url)) {
-            android.graphics.Bitmap full = ScoresTicker.cachedLogo(this, url.replace("/500-dark/", "/500/"), px * 2);
+            android.graphics.Bitmap full = ScoresTicker.cachedLogo(c, url.replace("/500-dark/", "/500/"), px * 2);
             return full == null ? null : lionOnly(full, true);
         }
-        android.graphics.Bitmap dark = url.contains("/500/") ? ScoresTicker.cachedLogo(this, url.replace("/500/", "/500-dark/"), px) : null;
-        return dark != null ? dark : ScoresTicker.cachedLogo(this, url, px);
+        android.graphics.Bitmap dark = url.contains("/500/") ? ScoresTicker.cachedLogo(c, url.replace("/500/", "/500-dark/"), px) : null;
+        return dark != null ? dark : ScoresTicker.cachedLogo(c, url, px);
+    }
+
+    /**
+     * A competition's logo by its slug as the score cards' band has it (white, for a dark ground), for its switch in
+     * Notifications; null for one ESPN has no logo for here (a cup abroad, the internationals). Off the main thread.
+     */
+    static android.graphics.Bitmap competitionLogo(Context c, String slug, int px) {
+        ScoresTicker.Game g = new ScoresTicker.Game();
+        g.slug = slug;
+        return bandLogo(c, leagueLogoFor(g), px);
     }
 
     /** The goal label in the scoring side's colour, navy where that is too pale for white letters. */
@@ -675,6 +687,8 @@ public class GoalWatchService extends Service {
             if (game != null) {
                 if (game.kickoff == 0) game.kickoff = start;
                 ScoreCard.Data k = kickoffCard(game);
+                // Asked for: it comes whatever its competition's switch in Notifications.
+                k.slug = null;
                 k.labelSmall = mins > 0 ? "IN " + mins + " MIN" : "NOW";
                 if (k.watch == null && !channel.isEmpty()) {
                     int px = Math.round(96 * getResources().getDisplayMetrics().density);
@@ -731,6 +745,21 @@ public class GoalWatchService extends Service {
         String[] p = t.split("\\s+(?:v|vs|V|VS)\\.?\\s+", 2);
         if (p.length != 2 || p[0].trim().isEmpty() || p[1].trim().isEmpty()) return null;
         return new String[]{p[0].trim(), p[1].trim()};
+    }
+
+    /**
+     * Every competition this service reads for its football alerts, by slug, as a poll reads them now (the Control
+     * Centre's Notifications lists a switch for each): goal_alert_leagues, the rest of Home's score pills, with
+     * team_alerts the starred clubs' leagues and cups, and with the kick-off reminders the line-up competitions.
+     */
+    static Set<String> alertSlugs(Context c) {
+        List<String> all = new ArrayList<>(Arrays.asList(c.getResources().getStringArray(R.array.goal_alert_leagues)));
+        all.addAll(Arrays.asList(homeLeagues(c)));
+        if (Config.themeFlag(c, "team_alerts", false)) all.addAll(Arrays.asList(c.getResources().getStringArray(R.array.team_alert_leagues)));
+        if (Config.themeFlag(c, "kickoff_reminders", false)) all.addAll(Arrays.asList(LINEUP_LEAGUES));
+        Set<String> out = new java.util.LinkedHashSet<>();
+        for (String l : all) out.add(l.split("\\|", 2)[0].trim());
+        return out;
     }
 
     /** Every league and cup the launcher follows: the Sport page's, the alert leagues and the line-up competitions. */
@@ -2707,6 +2736,11 @@ public class GoalWatchService extends Service {
                 pool.shutdownNow();
             }
             main.post(() -> {
+                // Its competition switched off in Notifications: not queued (the line carries no game to check later).
+                if (!NotifyPrefs.allowedCompetition(this, "kickoff", g.slug)) {
+                    NotifyPrefs.held(this, "kickoff", NotifyPrefs.homeNow(), null, "alert kick-off " + AlertLog.game(g), g.slug);
+                    return;
+                }
                 queue.add(new Object[]{ready, "reminder", sides, pictures, livePage});
                 showNext();
             });
@@ -2728,6 +2762,7 @@ public class GoalWatchService extends Service {
         d.kickoffAt = g.kickoff;
         d.venue = g.venue;
         d.competition = g.league == null && g.slug == null ? null : ScoresTicker.competition(g);
+        d.slug = g.slug;
         // Where it is on only where a guide lists the game (watchFor), never guessed; no channel at all otherwise.
         Object[] w = watchFor(g);
         if (w != null) {
@@ -3556,6 +3591,11 @@ public class GoalWatchService extends Service {
         return e.length >= 2 && e[1] instanceof String ? NotifyKinds.ofSound((String) e[1]) : null;
     }
 
+    /** A queued football line's competition ({headline, game, ...}: its game's slug); null for any other alert. */
+    private static String queuedSlug(Object[] e) {
+        return e.length == 8 && e[1] instanceof ScoresTicker.Game ? ((ScoresTicker.Game) e[1]).slug : null;
+    }
+
     private void showNext() {
         if (shown != null && !queue.isEmpty()) {
             // One up while others wait: looked at again every few seconds; one up far longer than any alert stays
@@ -3585,11 +3625,12 @@ public class GoalWatchService extends Service {
         }
         waitingSince = 0;
         Object[] polled = queue.poll();
-        // Switched off in the Control Centre's Notifications (its kind, or where it would show): the next one.
-        String kind = queuedKind(polled);
+        // Switched off in the Control Centre's Notifications (its kind, its game's competition, or where it would
+        // show): the next one.
+        String kind = queuedKind(polled), slug = queuedSlug(polled);
         boolean home = NotifyPrefs.homeNow();
-        if (!NotifyPrefs.allowed(this, kind, home)) {
-            NotifyPrefs.held(this, kind, home, null, "alert " + describe(polled));
+        if (!NotifyPrefs.allowed(this, kind, home, slug)) {
+            NotifyPrefs.held(this, kind, home, null, "alert " + describe(polled), slug);
             main.post(this::showNext);
             return;
         }

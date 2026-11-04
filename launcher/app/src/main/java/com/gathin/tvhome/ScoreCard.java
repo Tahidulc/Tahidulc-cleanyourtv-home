@@ -75,6 +75,11 @@ final class ScoreCard {
         String notify;
         /** The goal's, red card's or full time's key (ScoresTicker), for Today's alerts; null for anything else. */
         String key;
+        /**
+         * The game's competition, its ESPN slug ("eng.1"), for its switch in Notifications (GoalWatchService.footballData
+         * sets it); null for anything but a game's card, and for a reminder the user set (it always comes).
+         */
+        String slug;
         /** A game of one of the starred clubs (goal_alert_teams, Man Utd): its goals come through a film night's quiet. */
         boolean starred;
         /** Shown again from Today's alerts: always the full card (Home's bar would be under its panel). */
@@ -203,11 +208,12 @@ final class ScoreCard {
         }
         waitingSince = 0;
         Data d = queue.poll();
-        // Switched off in the Control Centre's Notifications (where it would show, or its kind): not shown, the next one.
+        // Switched off in the Control Centre's Notifications (where it would show, its kind, or its game's competition):
+        // not shown, the next one.
         boolean home = NotifyPrefs.homeNow();
         if (!NotifyPrefs.allowed(c, d, home)) {
             NotifyPrefs.held(c, NotifyKinds.ofCard(d.notify, d.kind, !d.podium.isEmpty()), home, d.key,
-                    "card " + d.label + (d.labelSmall != null ? " " + d.labelSmall : "") + " " + d.first + " " + d.last + " " + d.line);
+                    "card " + d.label + (d.labelSmall != null ? " " + d.labelSmall : "") + " " + d.first + " " + d.last + " " + d.line, d.slug);
             next(c);
             return;
         }
