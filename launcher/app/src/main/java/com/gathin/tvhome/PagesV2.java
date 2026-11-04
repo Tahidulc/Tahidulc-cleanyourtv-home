@@ -52,24 +52,67 @@ final class PagesV2 {
         /** Whether the slider drew it on the last frame: one off the screen then and now is left alone. */
         boolean shown = true;
         private final float radius;
+        /**
+         * lite_home (the TCL): no rounded clip. Its pictures draw their own rounded corners (RoundPic), its shades are
+         * rounded shapes, and only a plain rectangle cuts it to the width it shows (a scissor, nothing for the graphics
+         * chip to mask). A rounded clip over every poster's pictures and shades, on every frame of a slide, was a mask
+         * set up and drawn through per poster. A trailer playing in it gets the rounded clip back while it plays.
+         */
+        final boolean cheap;
+        private final android.graphics.Rect clip = new android.graphics.Rect();
 
         Tile(android.content.Context c, float radius) {
+            this(c, radius, false);
+        }
+
+        Tile(android.content.Context c, float radius, boolean cheap) {
             super(c);
             this.radius = radius;
+            this.cheap = cheap;
             setOutlineProvider(new ViewOutlineProvider() {
                 @Override public void getOutline(View v, android.graphics.Outline o) {
                     int w = vis < 0 ? v.getWidth() : Math.min(v.getWidth(), Math.round(vis));
                     o.setRoundRect(0, 0, Math.max(1, w), v.getHeight(), Tile.this.radius);
                 }
             });
-            setClipToOutline(true);
+            setClipToOutline(!cheap);
         }
 
         void vis(float w) {
             if (Math.abs(w - vis) < 0.5f) return;
             vis = w;
-            invalidateOutline();
-            if (getForeground() != null) invalidate();
+            if (cheap) cut(); else invalidateOutline();
+            if (getForeground() != null || cheap) invalidate();
+        }
+
+        /** lite_home: cut to the width it shows (all of it when vis is -1). */
+        private void cut() {
+            if (vis < 0 || getHeight() <= 0) { if (getClipBounds() != null) setClipBounds(null); return; }
+            clip.set(0, 0, Math.max(1, Math.min(getWidth(), Math.round(vis))), getHeight());
+            setClipBounds(clip);
+            if (getClipToOutline()) invalidateOutline();
+        }
+
+        @Override protected void onSizeChanged(int w, int h, int ow, int oh) {
+            super.onSizeChanged(w, h, ow, oh);
+            if (cheap) cut();
+        }
+
+        // A trailer (YouTube's page, a video surface) playing in it on lite_home: rounded while it plays.
+        @Override public void onViewAdded(View child) {
+            super.onViewAdded(child);
+            if (cheap && isVideo(child)) setClipToOutline(true);
+        }
+
+        @Override public void onViewRemoved(View child) {
+            super.onViewRemoved(child);
+            if (!cheap || !isVideo(child)) return;
+            for (int i = 0; i < getChildCount(); i++) if (isVideo(getChildAt(i))) return;
+            setClipToOutline(false);
+        }
+
+        private static boolean isVideo(View v) {
+            return v instanceof android.webkit.WebView || v instanceof android.view.SurfaceView || v instanceof android.view.TextureView;
         }
 
         /** The focus ring drawn round what shows (its drawn width), not the whole laid-out box. */
@@ -82,7 +125,7 @@ final class PagesV2 {
         }
     }
 
-    /** A drawable drawn over a Tile only as wide as the tile shows. */
+    /** A drawable drawn over (or under) a Tile only as wide as the tile shows. */
     static final class VisRing extends android.graphics.drawable.Drawable {
         private final android.graphics.drawable.Drawable inner;
         private final Tile tile;
@@ -102,6 +145,98 @@ final class PagesV2 {
         @Override public void setAlpha(int a) { inner.setAlpha(a); }
         @Override public void setColorFilter(android.graphics.ColorFilter f) { inner.setColorFilter(f); }
         @Override public int getOpacity() { return android.graphics.PixelFormat.TRANSLUCENT; }
+    }
+
+    /**
+     * A picture with rounded corners of its own, cropped to fill its bounds as CENTER_CROP does: one rounded rectangle
+     * drawn with the picture as its shader, so no clip is needed round it (lite_home's posters).
+     */
+    static final class RoundPic extends android.graphics.drawable.Drawable {
+        final android.graphics.Bitmap bitmap;
+        private final float radius;
+        /** How far into the picture it is drawn (1: cropped to fill, 1.06: a touch in), its rounded edges kept. */
+        private float zoom = 1f;
+        private final android.graphics.Paint paint = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG | android.graphics.Paint.FILTER_BITMAP_FLAG);
+        private final android.graphics.BitmapShader shader;
+        private final android.graphics.Matrix matrix = new android.graphics.Matrix();
+        private final android.graphics.RectF box = new android.graphics.RectF();
+
+        RoundPic(android.graphics.Bitmap b, float radius) {
+            bitmap = b;
+            this.radius = radius;
+            shader = new android.graphics.BitmapShader(b, android.graphics.Shader.TileMode.CLAMP, android.graphics.Shader.TileMode.CLAMP);
+            paint.setShader(shader);
+        }
+
+        @Override protected void onBoundsChange(android.graphics.Rect b) {
+            float[] m = BakedHero.centreCrop(bitmap.getWidth(), bitmap.getHeight(), b.width(), b.height());
+            matrix.setScale(m[0], m[0]);
+            matrix.postTranslate(b.left + m[1], b.top + m[2]);
+            if (zoom != 1f) matrix.postScale(zoom, zoom, b.exactCenterX(), b.exactCenterY());
+            shader.setLocalMatrix(matrix);
+            box.set(b);
+        }
+
+        void zoom(float z) {
+            if (z == zoom) return;
+            zoom = z;
+            onBoundsChange(getBounds());
+            invalidateSelf();
+        }
+
+        @Override public void draw(android.graphics.Canvas c) {
+            if (bitmap.isRecycled()) return;
+            c.drawRoundRect(box, radius, radius, paint);
+        }
+
+        @Override public void setAlpha(int a) { paint.setAlpha(a); invalidateSelf(); }
+        @Override public void setColorFilter(android.graphics.ColorFilter f) { paint.setColorFilter(f); invalidateSelf(); }
+        @Override public int getOpacity() { return android.graphics.PixelFormat.TRANSLUCENT; }
+        @Override public int getIntrinsicWidth() { return bitmap.getWidth(); }
+        @Override public int getIntrinsicHeight() { return bitmap.getHeight(); }
+    }
+
+    /** An ImageView whose pictures are drawn as RoundPic (lite_home's posters and their wide pictures). */
+    static final class RoundImage extends ImageView {
+        private final float radius;
+
+        RoundImage(android.content.Context c, float radius) {
+            super(c);
+            this.radius = radius;
+        }
+
+        @Override public void setImageDrawable(android.graphics.drawable.Drawable d) {
+            if (d instanceof android.graphics.drawable.BitmapDrawable && ((android.graphics.drawable.BitmapDrawable) d).getBitmap() != null) {
+                d = new RoundPic(((android.graphics.drawable.BitmapDrawable) d).getBitmap(), radius);
+            } else if (d instanceof RoundPic && d != getDrawable()) {
+                // Another view's (the poster's picture standing in for the wide one): a copy of its own, as a drawable
+                // has one set of bounds and is drawn by one view.
+                d = new RoundPic(((RoundPic) d).bitmap, radius);
+            }
+            if (d instanceof RoundPic) ((RoundPic) d).zoom(zoom);
+            // The picture crops itself: given the whole box.
+            setScaleType(d instanceof RoundPic ? ScaleType.FIT_XY : ScaleType.CENTER_CROP);
+            super.setImageDrawable(d);
+        }
+
+        private float zoom = 1f;
+
+        /** The picture drawn a touch in (inside its own rounded edges, not by scaling the view past the poster's). */
+        void zoom(float z) {
+            zoom = z;
+            if (getDrawable() instanceof RoundPic) ((RoundPic) getDrawable()).zoom(z);
+        }
+
+        @Override public void setImageBitmap(android.graphics.Bitmap b) {
+            setImageDrawable(b == null ? null : new android.graphics.drawable.BitmapDrawable(getResources(), b));
+        }
+    }
+
+    /** The picture under a poster's drawable, plain or rounded (null: none). */
+    static android.graphics.Bitmap bitmapOf(android.graphics.drawable.Drawable d) {
+        if (d instanceof android.graphics.drawable.BitmapDrawable) return ((android.graphics.drawable.BitmapDrawable) d).getBitmap();
+        if (d instanceof RoundPic) return ((RoundPic) d).bitmap;
+        return null;
     }
 
     abstract static class Page {
@@ -298,9 +433,73 @@ final class PagesV2 {
                 return new ArrayList<>(list);
             }
         }
+        // Not read since the launcher started: the copy on disk, drawn at once, and read again behind it.
+        ListCache.Entry disk = ListCache.read(LIST_DIR, k);
+        long now = System.currentTimeMillis();
+        if (disk != null && !disk.rows.isEmpty() && now - disk.at < DISK_MS) {
+            List<Title> kept = new ArrayList<>();
+            for (String[] f : disk.rows) kept.add(fromFields(f));
+            boolean stale = now - disk.at >= LIST_MS;
+            // Stale: held as fresh for a minute or two while it is read again, so it is not asked for twice meanwhile.
+            synchronized (LISTS) { LISTS.put(k, new Object[]{stale ? now - LIST_MS + 120_000L : disk.at, kept}); }
+            if (stale) {
+                List<String[]> was = disk.rows;
+                REFRESH.execute(() -> {
+                    List<Title> got = readList(key, path, tv);
+                    if (got.isEmpty()) return;
+                    keep(k, got);
+                    List<String[]> fresh = new ArrayList<>();
+                    for (Title t : got) fresh.add(fields(t));
+                    Runnable changed = listsChanged;
+                    if (changed != null && !ListCache.sameTitles(was, fresh)) new android.os.Handler(android.os.Looper.getMainLooper()).post(changed);
+                });
+            }
+            return new ArrayList<>(kept);
+        }
         List<Title> got = readList(key, path, tv);
-        if (!got.isEmpty()) synchronized (LISTS) { LISTS.put(k, new Object[]{System.currentTimeMillis(), got}); }
+        if (!got.isEmpty()) keep(k, got);
         return new ArrayList<>(got);
+    }
+
+    /** Where the lists are kept on disk (set when the first poster page is made; null: not kept). */
+    static volatile java.io.File LIST_DIR;
+    /** The open poster page's word that a list it may show came back changed (posted to the main thread). */
+    static volatile Runnable listsChanged;
+    /** On disk a list is drawn from for three days at most (read again behind it after half an hour, as in memory). */
+    private static final long DISK_MS = 3 * 24 * 3600_000L;
+    private static final java.util.concurrent.ExecutorService REFRESH = java.util.concurrent.Executors.newSingleThreadExecutor();
+
+    /** A list just read: in memory and on disk (now and then the lists no longer asked for are let go). */
+    private static void keep(String k, List<Title> got) {
+        long now = System.currentTimeMillis();
+        synchronized (LISTS) { LISTS.put(k, new Object[]{now, got}); }
+        java.io.File dir = LIST_DIR;
+        if (dir == null) return;
+        List<String[]> rows = new ArrayList<>();
+        for (Title t : got) rows.add(fields(t));
+        ListCache.write(dir, k, now, rows);
+        if (Math.random() < 0.05) ListCache.prune(dir, DISK_MS, now);
+    }
+
+    /** A title from a list, as ListCache keeps it (the fields readList fills). */
+    static String[] fields(Title t) {
+        return new String[]{t.tv ? "1" : "0", String.valueOf(t.id), t.title == null ? "" : t.title, t.overview == null ? "" : t.overview,
+                t.year == null ? "" : t.year, String.valueOf(t.vote), t.what == null ? "" : t.what, t.poster == null ? "" : t.poster,
+                t.backdrop == null ? "" : t.backdrop};
+    }
+
+    static Title fromFields(String[] f) {
+        Title t = new Title();
+        t.tv = "1".equals(f[0]);
+        try { t.id = Integer.parseInt(f[1]); } catch (NumberFormatException e) { t.id = 0; }
+        t.title = f[2];
+        t.overview = f[3];
+        t.year = f[4];
+        try { t.vote = Double.parseDouble(f[5]); } catch (NumberFormatException e) { t.vote = 0; }
+        t.what = f[6];
+        t.poster = f[7].isEmpty() ? null : f[7];
+        t.backdrop = f[8].isEmpty() ? null : f[8];
+        return t;
     }
 
     /** The most posters a row of the poster pages takes: two of TMDB's pages, so the row runs on well past the screen. */
@@ -412,7 +611,22 @@ final class PagesV2 {
         private int tab, row, idx;
         private boolean onTabs;
         private int generation;
-        private final Runnable heroLater = this::heroNow;
+        /** The hero's change once the focus rests: not while a key is held or the row still slides (it waits a beat more). */
+        private final Runnable heroLater = new Runnable() {
+            @Override public void run() {
+                if (layer.getParent() == null) return;   // the page has closed
+                if (keyHeld() || slideAnim != null && slideAnim.isRunning()) { h.main.postDelayed(this, 120); return; }
+                heroNow();
+            }
+        };
+        /** A direction key is down on the posters now (its press, or its last repeat, at keyDownAt). */
+        private boolean keyDown;
+        private long keyDownAt;
+
+        /** Down, and not long since its last press or repeat (a release that went elsewhere does not hold it for ever). */
+        private boolean keyHeld() {
+            return keyDown && android.os.SystemClock.uptimeMillis() - keyDownAt < 600L;
+        }
         /** The tab the page opens on; the words shown where a row's posters would be when it has none. */
         int startTab;
         /**
@@ -518,8 +732,12 @@ final class PagesV2 {
                 // On the pages' own pool: Home's single reader stays free for the hero's details and logos.
                 if (next.youtube == null) TRAILERS.execute(() -> { if (next.youtube == null) next.youtube = trailer(h.tmdbKey, next); });
             }
-            trailerSoon = () -> {
+            trailerSoon = new Runnable() {
+                @Override public void run() {
                 if (trailerTile != tile) return;
+                // Keys still coming (the row held still): the trailer waits until they stop.
+                long held = h.stillLeft();
+                if (held > 0) { h.main.postDelayed(this, held); return; }
                 if (t.youtube != null) { if (!t.youtube.isEmpty()) player.trailer(tile, 0, t.youtube, tile.findViewWithTag("poster"), tile.findViewWithTag("wide")); return; }
                 // On the trailers' own threads: behind Home's reader (the hero's pictures, logos and details) a slow
                 // TV often never reached it before the next poster was picked.
@@ -530,6 +748,7 @@ final class PagesV2 {
                         if (trailerTile == tile && !id.isEmpty()) player.trailer(tile, 0, id, tile.findViewWithTag("poster"), tile.findViewWithTag("wide"));
                     });
                 });
+                }
             };
             h.main.postDelayed(trailerSoon, slider() ? SLIDER_TRAILER_MS : TRAILER_DELAY_MS);
         }
@@ -538,6 +757,11 @@ final class PagesV2 {
             if (play != null) play.stop();
             trailerTile = null;
             if (trailerSoon != null) h.main.removeCallbacks(trailerSoon);
+            h.main.removeCallbacks(heroLater);
+            h.main.removeCallbacks(onLists);
+            if (listsChanged == listsHeard) listsChanged = null;
+            keyDown = false;
+            jumping = false;
             cancelLand();
             player.stop();   // Home's own player: kept, with its page loaded, for Home and the next page
             super.close();
@@ -555,6 +779,7 @@ final class PagesV2 {
             // Home's player, shared: a second YouTube page beside it never finished loading on the TCL, and the
             // trailers waited for it.
             player = h.players;
+            if (LIST_DIR == null) LIST_DIR = new java.io.File(h.a.getFilesDir(), "lists");
             this.crumb = crumb;
             this.crumbColour = crumbColour;
             this.tabs = tabs;
@@ -562,15 +787,50 @@ final class PagesV2 {
             this.source = source;
         }
 
+        /** A list read again behind the page came back changed: the tab in view read once more (quickly, from memory). */
+        private final Runnable onLists = this::refreshTab;
+        private final Runnable listsHeard = () -> {
+            h.main.removeCallbacks(onLists);
+            h.main.postDelayed(onLists, 400);
+        };
+
+        /**
+         * The tab in view again with the lists just read: shown in place of the kept ones only while the focus is still
+         * up on the tabs (not under a poster the viewer is on); the other tabs read again when next shown.
+         */
+        private void refreshTab() {
+            if (layer.getParent() == null) return;
+            int t = tab, gen = generation;
+            PAGES.execute(() -> {
+                List<Row> got = source.apply(t);
+                h.main.post(() -> {
+                    if (gen != generation || layer.getParent() == null) return;
+                    List<Row> had = loaded.get(t);
+                    loaded.clear();
+                    loaded.put(t, got);
+                    if (onTabs && !sameRows(had, got)) show(got, gen);
+                });
+            });
+        }
+
+        private static boolean sameRows(List<Row> a, List<Row> b) {
+            if (a == null || b == null || a.size() != b.size()) return false;
+            for (int i = 0; i < a.size(); i++) {
+                List<Title> x = a.get(i).items, y = b.get(i).items;
+                if (x.size() != y.size()) return false;
+                for (int n = 0; n < x.size(); n++) if (x.get(n).id != y.get(n).id || x.get(n).tv != y.get(n).tv) return false;
+            }
+            return true;
+        }
+
         @Override void open() {
             super.open();
+            listsChanged = listsHeard;
             player.warm();   // YouTube's player page loads now, so the first trailer starts at once
             if (tabs != null) {
                 FrameLayout track = new FrameLayout(h.a);
                 lens = new View(h.a);
-                GradientDrawable g = h.fill(25, 0x29FFFFFF);
-                g.setStroke(px(1.5f), 0x73FFFFFF);
-                lens.setBackground(g);
+                lens.setBackground(restingLens());
                 track.addView(lens, new FrameLayout.LayoutParams(0, px(50)));
                 tabBar = new LinearLayout(h.a);
                 // lite_home: the row of tab names as one finished picture; the lens slides over it.
@@ -798,12 +1058,14 @@ final class PagesV2 {
             int part = asSlider ? px(NARROW) : ViewGroup.LayoutParams.MATCH_PARENT;
             for (int i = 0; i < r.items.size(); i++) {
                 Title t = r.items.get(i);
-                Tile f = new Tile(h.a, px(14));
+                // lite_home: no rounded clip round it (Tile.cheap); its pictures and shades round their own corners.
+                boolean cheap = h.lite;
+                Tile f = new Tile(h.a, px(14), cheap);
                 if (asSlider) f.vis = px(NARROW);
                 // Not kept as a finished picture on lite_home: a poster widens and narrows, and a picture that changes
                 // size every frame is made again every frame.
-                f.setBackground(h.fill(14, 0xFF222433));
-                ImageView poster = new ImageView(h.a);
+                f.setBackground(cheap ? new VisRing(h.fill(14, 0xFF222433), f) : h.fill(14, 0xFF222433));
+                ImageView poster = cheap ? new RoundImage(h.a, px(14)) : new ImageView(h.a);
                 poster.setTag("poster");
                 poster.setScaleType(ImageView.ScaleType.CENTER_CROP);
                 f.addView(poster, new FrameLayout.LayoutParams(part, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.START));
@@ -811,7 +1073,7 @@ final class PagesV2 {
                 // rest (a row now runs to forty) as the row comes to them.
                 if (asSlider && i >= 12) f.load = () -> h.image(poster, posterUrl(h, t), posterWidth(h));
                 else h.image(poster, posterUrl(h, t), posterWidth(h));
-                ImageView wide = new ImageView(h.a);
+                ImageView wide = cheap ? new RoundImage(h.a, px(14)) : new ImageView(h.a);
                 wide.setTag("wide");   // found by name: the trailer slides in under it, so it moves along
                 wide.setScaleType(ImageView.ScaleType.CENTER_CROP);
                 wide.setAlpha(0f);
@@ -822,13 +1084,21 @@ final class PagesV2 {
                 if (done != null) {
                     FrameLayout bar = new FrameLayout(h.a);
                     bar.setTag("progress");
-                    bar.setBackgroundColor(t.season >= 0 ? 0x4DFFFFFF : 0x80000000);
                     View fill = new View(h.a);
-                    fill.setBackgroundColor(t.season >= 0 ? 0xFFFFD04D : 0xFFE50914);
+                    if (cheap) {
+                        // lite_home: the ends rounded by the shapes themselves, no clip.
+                        bar.setBackground(h.fill(3, t.season >= 0 ? 0x4DFFFFFF : 0x80000000));
+                        fill.setBackground(h.fill(3, t.season >= 0 ? 0xFFFFD04D : 0xFFE50914));
+                    } else {
+                        bar.setBackgroundColor(t.season >= 0 ? 0x4DFFFFFF : 0x80000000);
+                        fill.setBackgroundColor(t.season >= 0 ? 0xFFFFD04D : 0xFFE50914);
+                    }
                     bar.addView(fill, new FrameLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT));
                     // Inset from the poster's edges, its ends rounded, so the focus outline never covers it.
-                    bar.setClipToOutline(true);
-                    bar.setOutlineProvider(h.round(3));
+                    if (!cheap) {
+                        bar.setClipToOutline(true);
+                        bar.setOutlineProvider(h.round(3));
+                    }
                     FrameLayout.LayoutParams bl = new FrameLayout.LayoutParams(asSlider ? px(NARROW - 20) : ViewGroup.LayoutParams.MATCH_PARENT, px(6),
                             Gravity.BOTTOM | Gravity.START);
                     bl.leftMargin = px(10);
@@ -855,7 +1125,10 @@ final class PagesV2 {
                     line.setGravity(Gravity.BOTTOM);
                     line.setShadowLayer(px(4), 0, px(1), 0xCC000000);
                     line.setPadding(px(10), px(t.runtime > 0 ? 44 : 34), px(10), px(done != null ? 24 : t.runtime > 0 ? 11 : 12));
-                    line.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0x00000000, 0xE6000000}));
+                    GradientDrawable footShade = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0x00000000, 0xE6000000});
+                    // lite_home: the poster's own rounded foot (no clip cuts it there).
+                    if (cheap) footShade.setCornerRadii(new float[]{0, 0, 0, 0, px(14), px(14), px(14), px(14)});
+                    line.setBackground(footShade);
                     f.addView(line, new FrameLayout.LayoutParams(part, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM | Gravity.START));
                     // The bar stays on top of the shade.
                     View bar = f.findViewWithTag("progress");
@@ -864,7 +1137,9 @@ final class PagesV2 {
                 // The service's logo in the top corner (Fits tonight), on a faint shade so a light poster leaves it readable.
                 if (t.mark != 0) {
                     View shade = new View(h.a);
-                    shade.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0x73000000, 0x00000000}));
+                    GradientDrawable topShade = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0x73000000, 0x00000000});
+                    if (cheap) topShade.setCornerRadii(new float[]{px(14), px(14), px(14), px(14), 0, 0, 0, 0});
+                    shade.setBackground(topShade);
                     f.addView(shade, new FrameLayout.LayoutParams(part, px(54), Gravity.TOP | Gravity.START));
                     ImageView m = new ImageView(h.a);
                     m.setImageResource(t.mark);
@@ -896,7 +1171,9 @@ final class PagesV2 {
                 // The slider: a shade over the posters away from the focus, deeper the further they are.
                 View dim = new View(h.a);
                 dim.setTag("dim");
-                dim.setBackgroundColor(0xFF0B0E33);
+                // lite_home: a rounded shape as wide as the poster shows (no clip rounds it).
+                if (cheap) dim.setBackground(new VisRing(h.fill(14, 0xFF0B0E33), f));
+                else dim.setBackgroundColor(0xFF0B0E33);
                 dim.setAlpha(0f);
                 f.dim = dim;
                 f.addView(dim, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
@@ -921,7 +1198,16 @@ final class PagesV2 {
                 wideIdx = -1;
                 wideAmt = 0;
                 landed = -1;
+                ringed = -1;
                 r.strip.post(() -> slide(r, focusF, wideIdx, wideAmt));
+            }
+        }
+
+        private void prefetchNext(List<Title> items, int from) {
+            for (int n = from; n < Math.min(items.size(), from + 4); n++) {
+                Title nx = items.get(n);
+                h.prefetchLogo(nx.id, nx.tv, 220);
+                if (nx.backdrop != null) h.prefetch(nx.backdrop.replace("/w1280/", "/w780/"), px(h.lite ? Math.round(WIDE * 1.12f) : WIDE * 2));
             }
         }
 
@@ -985,7 +1271,13 @@ final class PagesV2 {
             }
             if (lensGlass == glassy) return;
             lensGlass = glassy;
-            if (onTabs) {
+            if (onTabs && h.lite) {
+                // lite_home: the same pill solid, in the colour the glass shows over the dark page, with a solid rim
+                // (nothing behind it to blend each frame the lens moves).
+                GradientDrawable g = h.fill(25, 0xFF33365A);
+                g.setStroke(px(1.5f), 0xFFA9ABC0);
+                lens.setBackground(g);
+            } else if (onTabs) {
                 // The focus on the tabs: the score pills' liquid glass, a brighter rim, the words staying white.
                 // Lighter than the pills' glass: the picture behind shows through it.
                 android.graphics.drawable.Drawable glass = h.a.getDrawable(ScoresTicker.glassRes()).mutate();
@@ -994,10 +1286,15 @@ final class PagesV2 {
                 rim.setStroke(px(1.5f), 0xA6FFFFFF);
                 lens.setBackground(new android.graphics.drawable.LayerDrawable(new android.graphics.drawable.Drawable[]{glass, rim}));
             } else {
-                GradientDrawable g = h.fill(25, 0x29FFFFFF);
-                g.setStroke(px(1.5f), 0x73FFFFFF);
-                lens.setBackground(g);
+                lens.setBackground(restingLens());
             }
+        }
+
+        /** The lens with the focus in the posters: faint glass, or on lite_home the same look solid. */
+        private GradientDrawable restingLens() {
+            GradientDrawable g = h.fill(25, h.lite ? 0xFF2B2E4F : 0x29FFFFFF);
+            g.setStroke(px(1.5f), h.lite ? 0xFF6E7090 : 0x73FFFFFF);
+            return g;
         }
 
         private void paint() {
@@ -1052,13 +1349,21 @@ final class PagesV2 {
                             // Surprise me's mood cards hold still: the slow zoom took their name and "Spin" past the card's edge.
                             wide.setScaleX(1f);
                             wide.setScaleY(1f);
+                            if (wide instanceof RoundImage) ((RoundImage) wide).zoom(1f);
                         } else if (h.lite) {
                             // lite_home (the TCL): the picture still, a touch in (six seconds of a big picture redrawn
                             // at a new size every frame, under the trailer loading, made the next slide stutter). Its
                             // fade in just started is left running: cancelled here (3.63 to 3.68), the wide picture
                             // never showed and an opened poster was its narrow picture beside an empty space.
-                            wide.setScaleX(1.06f);
-                            wide.setScaleY(1.06f);
+                            if (wide instanceof RoundImage) {
+                                // Its rounded corners stay inside the poster's (no clip rounds them on lite_home).
+                                wide.setScaleX(1f);
+                                wide.setScaleY(1f);
+                                ((RoundImage) wide).zoom(1.06f);
+                            } else {
+                                wide.setScaleX(1.06f);
+                                wide.setScaleY(1.06f);
+                            }
                         } else {
                             wide.setScaleX(1.02f);
                             wide.setScaleY(1.02f);
@@ -1092,14 +1397,9 @@ final class PagesV2 {
         private void paintRest() {
             Row focused = onTabs || row >= rows.size() ? null : rows.get(row);
             boolean has = focused != null && idx < focused.strip.getChildCount() && idx < focused.items.size();
-            // The next few along: their logos and wide pictures fetched now, so each shows at once when reached.
-            if (has) {
-                for (int n = idx; n < Math.min(focused.items.size(), idx + 4); n++) {
-                    Title nx = focused.items.get(n);
-                    h.prefetchLogo(nx.id, nx.tv, 220);
-                    if (nx.backdrop != null) h.prefetch(nx.backdrop.replace("/w1280/", "/w780/"), px(h.lite ? Math.round(WIDE * 1.12f) : WIDE * 2));
-                }
-            }
+            // The next few along: their logos and wide pictures fetched now, so each shows at once when reached. The
+            // slider does it once it has landed (arrive), not under every key of a slide.
+            if (has && !slider()) prefetchNext(focused.items, idx);
             trailerFor(has ? (FrameLayout) focused.strip.getChildAt(idx) : null, has ? focused.items.get(idx) : null,
                     has ? focused.items : null, idx);
             // More rows than the screen holds: they move up together, the focused one second from the top.
@@ -1135,7 +1435,13 @@ final class PagesV2 {
             return h.dockMode && rowY.length == 1 && Config.themeFlag(h.a, "poster_slider", true);
         }
 
-        static final long SLIDER_MS = 280, WIDEN_MS = 240, LAND_PAUSE_MS = 2500, SLIDER_TRAILER_MS = SLIDER_MS + LAND_PAUSE_MS + WIDEN_MS + 150;
+        /**
+         * The slide and the opening out: quick, starting at speed and settling (a fast-out curve, SLIDE_EASE), so the row
+         * answers the key on its first frame (it was 280 and 240, slow in and slow out). The pause before a poster opens
+         * out is the one asked for (LAND_PAUSE_MS), unchanged.
+         */
+        static final long SLIDER_MS = 200, WIDEN_MS = 180, LAND_PAUSE_MS = 2500, SLIDER_TRAILER_MS = SLIDER_MS + LAND_PAUSE_MS + WIDEN_MS + 150;
+        private static final android.view.animation.PathInterpolator SLIDE_EASE = new android.view.animation.PathInterpolator(0.2f, 0f, 0f, 1f);
         /**
          * How big each poster is, and how deep its shade, by how far it is from the focus: the queue stays large and
          * clear (it went down to 0.6 and 90% shade, small dim posters with wide gaps round them).
@@ -1356,14 +1662,26 @@ final class PagesV2 {
             if (slideAnim != null) slideAnim.cancel();
             if (wideAnim != null) wideAnim.cancel();
             cancelLand();
+            // The ring goes to the poster at once, on the key's first frame, and travels with it into place.
+            ringTo(r, onTabs ? -1 : target);
+            if (jumping && !onTabs) {
+                // A key held down (auto-repeat): straight to each poster, no slide, nothing opened; the row lands (and
+                // the poster opens) once the key is let go.
+                landed = -1;
+                focusF = target;
+                wideAmt = 0;
+                wideIdx = -1;
+                slide(r, focusF, -1, 0);
+                return;
+            }
             float from = focusF, wideFrom = wideAmt;
             int oldWide = wideIdx;
             landed = -1;
             ValueAnimator va = ValueAnimator.ofFloat(0f, 1f);
             slideAnim = va;
             // Already there (back down from the tabs): straight to opening; a widened one narrowing first (up to the tabs).
-            va.setDuration(Math.abs(from - target) < 0.001f ? (wideFrom > 0 ? 220 : 1) : SLIDER_MS);
-            va.setInterpolator(new android.view.animation.PathInterpolator(0.65f, 0f, 0.35f, 1f));
+            va.setDuration(Math.abs(from - target) < 0.001f ? (wideFrom > 0 ? 180 : 1) : SLIDER_MS);
+            va.setInterpolator(SLIDE_EASE);
             final boolean[] cancelled = {false};
             va.addUpdateListener(an -> {
                 float t = (float) an.getAnimatedValue();
@@ -1387,6 +1705,20 @@ final class PagesV2 {
             va.start();
         }
 
+        /** A direction key held down (auto-repeat): the slider jumps from poster to poster (sliderPaint). */
+        private boolean jumping;
+        /** The poster given the ring at the start of its slide (-1: none). */
+        private int ringed = -1;
+
+        /** The ring onto poster i (-1: none), off the one that had it, unless that one has landed or arrived. */
+        private void ringTo(Row r, int i) {
+            if (ringed == i) return;
+            int n = r.strip.getChildCount();
+            if (ringed >= 0 && ringed < n && ringed != landed && ringed != arrived) ((FrameLayout) r.strip.getChildAt(ringed)).setForeground(null);
+            ringed = i;
+            if (i >= 0 && i < n) ((FrameLayout) r.strip.getChildAt(i)).setForeground(liftedRing());
+        }
+
         /** The poster that took the ring and is waiting to open (-1: none), and its opening, posted. */
         private int arrived = -1;
         private Runnable landSoon;
@@ -1408,6 +1740,8 @@ final class PagesV2 {
             FrameLayout f = (FrameLayout) r.strip.getChildAt(i);
             focusLook(f, true);
             glowTo(colourOf(f));
+            // Landed: the next few along have their logos and wide pictures fetched now (not under every key of a slide).
+            prefetchNext(r.items, i);
             landSoon = () -> {
                 landSoon = null;
                 if (onTabs || idx != i || arrived != i) return;
@@ -1441,9 +1775,7 @@ final class PagesV2 {
         /** The poster's own colour, for the glow: its vivid colours averaged, at a steady brightness. */
         private int colourOf(FrameLayout f) {
             ImageView p = f.findViewWithTag("poster");
-            android.graphics.drawable.Drawable d = p == null ? null : p.getDrawable();
-            if (!(d instanceof android.graphics.drawable.BitmapDrawable)) return 0xFF3A4CC0;
-            android.graphics.Bitmap b = ((android.graphics.drawable.BitmapDrawable) d).getBitmap();
+            android.graphics.Bitmap b = p == null ? null : bitmapOf(p.getDrawable());
             if (b == null || b.isRecycled()) return 0xFF3A4CC0;
             try {
                 android.graphics.Bitmap small = android.graphics.Bitmap.createScaledBitmap(b, 10, 15, true);
@@ -1616,6 +1948,28 @@ final class PagesV2 {
         private boolean pageKey(KeyEvent e) {
             if (e.getAction() == KeyEvent.ACTION_DOWN) intoPosters = false;   // a key of their own first: left where it takes them
             int code = e.getKeyCode();
+            boolean arrow = code == KeyEvent.KEYCODE_DPAD_LEFT || code == KeyEvent.KEYCODE_DPAD_RIGHT
+                    || code == KeyEvent.KEYCODE_DPAD_UP || code == KeyEvent.KEYCODE_DPAD_DOWN;
+            if (arrow) {
+                // Nothing else moves while the row does: the score bar, trailers and the background wait a second.
+                if (e.getAction() == KeyEvent.ACTION_DOWN) {
+                    keyDown = true;
+                    keyDownAt = android.os.SystemClock.uptimeMillis();
+                    h.still(1000L);
+                    jumping = e.getRepeatCount() > 0 && (code == KeyEvent.KEYCODE_DPAD_LEFT || code == KeyEvent.KEYCODE_DPAD_RIGHT);
+                } else if (e.getAction() == KeyEvent.ACTION_UP) {
+                    keyDown = false;
+                    h.still(1000L);
+                    // Let go after jumping along: the row lands where it is now, and the poster opens as usual.
+                    if (jumping) {
+                        jumping = false;
+                        paint();
+                        h.main.removeCallbacks(heroLater);
+                        h.main.postDelayed(heroLater, h.lite ? 300 : 200);
+                    }
+                    return true;
+                }
+            }
             if (ok(code)) {
                 boolean has = !onTabs && row < rows.size() && idx < rows.get(row).items.size();
                 if (e.getAction() == KeyEvent.ACTION_DOWN && e.getRepeatCount() == 0) held = false;

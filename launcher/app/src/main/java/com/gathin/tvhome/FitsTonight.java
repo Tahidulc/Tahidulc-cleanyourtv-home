@@ -204,15 +204,17 @@ final class FitsTonight {
                 LinearLayout card = new LinearLayout(h.a);
                 card.setOrientation(LinearLayout.VERTICAL);
                 card.setPadding(h.px(20), h.px(16), h.px(20), h.px(14));
-                GradientDrawable g = h.fill(22, 0x9E0A0E50);
-                g.setStroke(Math.max(1, h.px(1)), 0x38FFFFFF);
+                // lite_home (the TCL): the same navy solid, rim and all, so the box is not blended over the picture
+                // on every frame of a slide.
+                GradientDrawable g = h.fill(22, h.lite ? 0xFF0D1047 : 0x9E0A0E50);
+                g.setStroke(Math.max(1, h.px(1)), h.lite ? 0xFF3E4170 : 0x38FFFFFF);
                 card.setBackground(g);
                 TextView head = h.text(15, bold, 0xCCFFFFFF);
                 head.setText("TONIGHT");
                 head.setLetterSpacing(0.16f);
                 card.addView(head);
                 FrameLayout track = new FrameLayout(h.a);
-                track.setBackground(h.fill(17, 0x24FFFFFF));
+                track.setBackground(h.fill(17, h.lite ? 0xFF2D3061 : 0x24FFFFFF));
                 View bar = new View(h.a);
                 bar.setBackground(new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, new int[]{PINK, PINK_LIGHT}));
                 bar.setClipToOutline(true);

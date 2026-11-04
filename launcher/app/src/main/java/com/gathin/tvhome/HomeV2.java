@@ -1927,6 +1927,8 @@ final class HomeV2 {
         for (View v : away) if (v != null) v.animate().alpha(0f).setDuration(180).withEndAction(() -> v.setVisibility(View.INVISIBLE)).start();
         hidden = away;
         page.open();
+        // lite_home: Discover, Movies and TV shows over one baked picture (the Kids page has its own scene up there).
+        bake(page instanceof PagesV2.PosterPage && which != KIDS);
         // Option B: the hero's words go up with the page, into the room the top bar left.
         htext.setTranslationY(-px(Math.max(0, pageLift() - homeLift())));
         if (hover || keepsBoxes(which)) clipAboveBoxes();
@@ -2021,6 +2023,7 @@ final class HomeV2 {
         main.removeCallbacks(previewNow);
         page.close();
         page = null;
+        bake(false);
         htext.setTranslationY(0);
         heroTopColour(0xFFC9A7FF);
         for (View v : hidden) {
@@ -2580,6 +2583,18 @@ final class HomeV2 {
             heroImage(in, img, () -> {
                 // A picture that arrives after the hero has moved on (a section's, back on the TV guide) stays hidden.
                 if (gen != heroGen) return;
+                if (baked) {
+                    // Baked (lite_home, a page of posters): the views wait hidden, up to date; the picture and the
+                    // background made from it go into one picture, with one cross-fade.
+                    in.animate().cancel();
+                    out.animate().cancel();
+                    in.setAlpha(1f);
+                    out.setAlpha(0f);
+                    Bitmap raw = blurSource.get(img + "#hero");
+                    Bitmap pic = bitmapOf(in);
+                    bakeWith(pic, raw != null ? raw : pic, 300);
+                    return;
+                }
                 in.animate().alpha(1f).setDuration(lite ? 200 : 320).setInterpolator(SKY).start();
                 out.animate().alpha(0f).setDuration(lite ? 200 : 320).setInterpolator(SKY).start();
             });
@@ -2588,6 +2603,10 @@ final class HomeV2 {
             heroShown = null;
             heroA.animate().alpha(0f).setDuration(300).start();
             heroB.animate().alpha(0f).setDuration(300).start();
+            if (baked) {
+                bakeHero = null;
+                rebake(300);
+            }
         }
     }
 
@@ -3844,6 +3863,9 @@ final class HomeV2 {
             while (o.outWidth / (sample * 2) >= width) sample *= 2;
             o = new BitmapFactory.Options();
             o.inSampleSize = sample;
+            // lite_home: TMDB's posters (photos, no see-through parts) in 16-bit colour, half the bytes to hand to the
+            // graphics chip and for it to read on every frame (logos and the wide pictures keep their full colour).
+            if (lite && posterPicture(url)) o.inPreferredConfig = Bitmap.Config.RGB_565;
             Bitmap b = BitmapFactory.decodeByteArray(data, 0, data.length, o);
             // lite_home: no wider than it is drawn. A picture twice its size on screen made the graphics chip read four
             // times its pixels every frame (ten posters at once), and took four times as long to hand over to it.
@@ -3855,6 +3877,12 @@ final class HomeV2 {
         } catch (Exception | OutOfMemoryError e) {
             return null;
         }
+    }
+
+    /** A poster from TMDB (w185 or w342, a JPEG): a photo with nothing see-through in it. */
+    static boolean posterPicture(String url) {
+        return url != null && url.startsWith("https://image.tmdb.org/t/p/") && (url.contains("/w185/") || url.contains("/w342/"))
+                && url.toLowerCase(java.util.Locale.ROOT).endsWith(".jpg");
     }
 
     /**
@@ -4007,7 +4035,7 @@ final class HomeV2 {
         if (hit != null) {
             v.setImageBitmap(hit);
             Bitmap raw = blurSource.get(key);
-            if (zone != Z_MATCH || page != null) adaptMeshFrom(raw != null ? raw : hit);
+            if (!baked && (zone != Z_MATCH || page != null)) adaptMeshFrom(raw != null ? raw : hit);
             then.run();
             return;
         }
@@ -4023,7 +4051,7 @@ final class HomeV2 {
             main.post(() -> {
                 if (!key.equals(v.getTag(R.id.v2_url))) return;
                 v.setImageBitmap(m);
-                if (zone != Z_MATCH || page != null) adaptMeshFrom(raw != null ? raw : m);
+                if (!baked && (zone != Z_MATCH || page != null)) adaptMeshFrom(raw != null ? raw : m);
                 then.run();
             });
         });
@@ -4058,6 +4086,11 @@ final class HomeV2 {
         // The score bar's glass shows the same picture behind it, blurred, changing with it.
         if (scores != null) scores.backdrop(next, ms);
         Drawable to = new android.graphics.drawable.BitmapDrawable(a.getResources(), next);
+        if (baked) {
+            meshShown = to;
+            rebake(ms);
+            return;
+        }
         if (meshShown == null || ms <= 0) {
             root.setBackground(to);
         } else {
@@ -4097,7 +4130,154 @@ final class HomeV2 {
         return lite ? 650L : MESH_SETTLE_MS;
     }
 
+    // ---- held still while the posters slide ------------------------------------------------------------------------
+
+    /** Nothing else moves until this time (uptime): see still(). */
+    private long stillUntil;
+
+    /**
+     * A key on the posters (each press and each repeat of a held key): for the next ms nothing else on the screen moves.
+     * The score bar's clock and its next page, a poster's trailer starting and the background's cross-fade wait until
+     * then, so the graphics chip has only the row to draw while it slides.
+     */
+    void still(long ms) {
+        stillUntil = Math.max(stillUntil, android.os.SystemClock.uptimeMillis() + ms);
+        ScoresTicker.hold(ms);
+    }
+
+    /** How long things are still held (0: free to move). */
+    long stillLeft() {
+        return Math.max(0L, stillUntil - android.os.SystemClock.uptimeMillis());
+    }
+
+    // ---- lite_home: the background and the hero's picture as one picture ---------------------------------------------
+
+    /**
+     * lite_home with Discover, Movies or TV shows open: the background and the hero's picture (its fades already in it)
+     * drawn into one opaque picture the size of the screen, off the main thread, each time either changes, and that one
+     * picture cross-faded in. The graphics chip then fills the screen once a frame; before, the hero's 1400 by 720
+     * picture was blended over the background on every frame. The two hero views wait hidden, kept up to date, so
+     * closing the page puts them back exactly as they were.
+     */
+    private boolean baked;
+    /** The hero's picture in the bake now (null: none); each bake's number (a late one for an older picture is dropped). */
+    private Bitmap bakeHero;
+    private int bakeGen;
+    private Drawable bakeShown;
+
+    void bake(boolean on) {
+        if (!lite || on == baked) return;
+        baked = on;
+        bakeGen++;
+        if (on) {
+            ImageView front = heroFrontA ? heroA : heroB;
+            bakeHero = heroShown != null && front.getAlpha() > 0.5f ? bitmapOf(front) : null;
+            // The views stay up until the first bake is ready (hidden on the same frame it shows).
+            rebake(0);
+        } else {
+            bakeShown = null;
+            if (meshShown != null) root.setBackground(meshShown);
+            else if (bgShown != null) root.setBackground(new android.graphics.drawable.BitmapDrawable(a.getResources(), bgShown));
+            heroA.setVisibility(View.VISIBLE);
+            heroB.setVisibility(View.VISIBLE);
+        }
+    }
+
+    private static Bitmap bitmapOf(ImageView v) {
+        Drawable d = v.getDrawable();
+        return d instanceof android.graphics.drawable.BitmapDrawable ? ((android.graphics.drawable.BitmapDrawable) d).getBitmap() : null;
+    }
+
+    /**
+     * A new hero picture while baked: the background made from it (the blur, as blurNow makes it) and the picture over
+     * it, in one go, so the screen changes once. raw is the picture's small copy for the blur.
+     */
+    private void bakeWith(Bitmap hero, Bitmap raw, int ms) {
+        bakeHero = hero;
+        final int asked = ++meshSampleAt;   // an older blur still on its way is dropped
+        main.removeCallbacks(blurNow);
+        main.removeCallbacks(adaptNow);
+        if (!blurBg || raw == null) {
+            if (raw != null) adaptMeshFrom(raw);   // the light's colours, as before (it bakes again when they change)
+            rebake(ms);
+            return;
+        }
+        meshIo.execute(() -> {
+            Bitmap bg = raw.isRecycled() ? null : blurredBackground(raw);
+            main.post(() -> {
+                if (asked != meshSampleAt || !baked) return;
+                if (bg != null) {
+                    meshWanted = null;
+                    meshColours = null;
+                    showingPicture = true;
+                    bgShown = bg;
+                    if (scores != null) scores.backdrop(bg, ms);
+                    meshShown = new android.graphics.drawable.BitmapDrawable(a.getResources(), bg);
+                }
+                rebake(ms);
+            });
+        });
+    }
+
+    /** The background and the hero's picture drawn into one picture, then cross-faded in over ms (at once for 0). */
+    private void rebake(int ms) {
+        if (!baked) return;
+        final int gen = ++bakeGen;
+        final Bitmap bg = bgShown, hero = bakeHero;
+        final int w = root.getWidth() > 0 ? root.getWidth() : screenW, hgt = root.getHeight() > 0 ? root.getHeight() : screenH;
+        // The hero views' box, as heroView() placed them.
+        final int hx = heroA.getLeft(), hy = heroA.getTop(), hw = heroA.getWidth(), hh = heroA.getHeight();
+        if (bg == null || w <= 0 || hgt <= 0) return;
+        meshIo.execute(() -> {
+            Bitmap out;
+            try {
+                out = Bitmap.createBitmap(w, hgt, Bitmap.Config.ARGB_8888);
+                android.graphics.Canvas c = new android.graphics.Canvas(out);
+                android.graphics.Paint p = new android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG | android.graphics.Paint.DITHER_FLAG);
+                c.drawBitmap(bg, null, new android.graphics.Rect(0, 0, w, hgt), p);
+                if (hero != null && !hero.isRecycled() && hw > 0 && hh > 0) {
+                    float[] m = BakedHero.centreCrop(hero.getWidth(), hero.getHeight(), hw, hh);
+                    c.save();
+                    c.clipRect(hx, hy, hx + hw, hy + hh);
+                    c.translate(hx + m[1], hy + m[2]);
+                    c.scale(m[0], m[0]);
+                    c.drawBitmap(hero, 0, 0, p);
+                    c.restore();
+                }
+                // Opaque: drawn without blending, nothing under it to read.
+                out.setHasAlpha(false);
+                out.prepareToDraw();
+            } catch (RuntimeException | OutOfMemoryError e) {
+                return;
+            }
+            main.post(new Runnable() {
+                @Override public void run() {
+                    if (gen != bakeGen || !baked) return;
+                    // Not under a slide: once the row has settled.
+                    long held = stillLeft();
+                    if (held > 0) { main.postDelayed(this, held); return; }
+                    Drawable to = new android.graphics.drawable.BitmapDrawable(a.getResources(), out);
+                    if (bakeShown == null || ms <= 0) {
+                        root.setBackground(to);
+                    } else {
+                        android.graphics.drawable.TransitionDrawable t = new android.graphics.drawable.TransitionDrawable(new Drawable[]{bakeShown, to});
+                        t.setCrossFadeEnabled(true);
+                        root.setBackground(t);
+                        t.startTransition(ms);
+                        // Faded in: the one picture alone again (the old one no longer drawn under it).
+                        main.postDelayed(() -> { if (bakeShown == to && baked) root.setBackground(to); }, ms + 32L);
+                    }
+                    bakeShown = to;
+                    heroA.setVisibility(View.INVISIBLE);
+                    heroB.setVisibility(View.INVISIBLE);
+                }
+            });
+        });
+    }
+
     private final Runnable adaptNow = () -> {
+        long held = stillLeft();
+        if (held > 0) { main.postDelayed(this.adaptNow, held); return; }
         int[] want = meshWanted;
         if (want == null || (!this.showingPicture && Arrays.equals(want, meshColours))) return;
         int v = meshVariant;
@@ -4146,6 +4326,8 @@ final class HomeV2 {
     private int blurAsked;
 
     private final Runnable blurNow = () -> {
+        long held = stillLeft();
+        if (held > 0) { main.postDelayed(this.blurNow, held); return; }
         Bitmap pic = blurPic;
         int asked = blurAsked;
         if (pic == null) return;

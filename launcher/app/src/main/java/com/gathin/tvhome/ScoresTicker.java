@@ -65,6 +65,23 @@ final class ScoresTicker {
     private static final long IDLE_MS = 10 * 60_000L;
     private static final long PAGE_MS = 8_000L;
     private static final long FLIP_MS = 450L;
+
+    /**
+     * Held still until this time (uptime): the posters are sliding, or a key was pressed on them a moment ago. The
+     * live clock's tick and the next page of games wait until then, so nothing else on the screen asks for a frame
+     * while the row moves (on the TCL every extra change on a frame of the slide cost it).
+     */
+    private static long stillUntil;
+
+    /** Nothing in the bar moves for the next ms (each key on the posters calls this again). */
+    static void hold(long ms) {
+        stillUntil = Math.max(stillUntil, android.os.SystemClock.uptimeMillis() + ms);
+    }
+
+    /** How long the bar is still held (0: free to move). */
+    static long heldFor() {
+        return Math.max(0L, stillUntil - android.os.SystemClock.uptimeMillis());
+    }
     private static final String FEED = "https://site.api.espn.com/apis/site/v2/sports/soccer/%s/scoreboard?dates=%s";
 
     /** One game, ready to draw. */
@@ -334,6 +351,12 @@ final class ScoresTicker {
 
     private void tickClocks() {
         main.removeCallbacks(clockTick);
+        // The posters sliding: the minute and its dot wait (one tick after the row has settled catches them up).
+        long held = heldFor();
+        if (held > 0) {
+            if (running && !clocks.isEmpty()) main.postDelayed(clockTick, held);
+            return;
+        }
         for (java.util.Iterator<Object[]> it = clocks.iterator(); it.hasNext(); ) {
             Object[] c = it.next();
             TextView v = (TextView) c[0];
@@ -934,6 +957,13 @@ final class ScoresTicker {
      * (as Right by hand does); the pills' page slides up and out while the next one rises in from below.
      */
     private void nextPage() {
+        // The posters sliding: the next game waits until the row has settled.
+        long held = heldFor();
+        if (held > 0) {
+            main.removeCallbacks(flip);
+            if (running) main.postDelayed(flip, held);
+            return;
+        }
         // Never flip the page out from under a box the viewer is on.
         if (running && pages.size() > 1 && shownRow != null && !box.hasFocus() && alertView == null) {
             page = (page + 1) % pages.size();
