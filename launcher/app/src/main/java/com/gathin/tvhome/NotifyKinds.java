@@ -82,6 +82,7 @@ final class NotifyKinds {
             k("releases", "🎬", "New episodes and films", "Out today, from what you watch", FILMS, "release_alerts", true),
             k("howwasit", "⭐", "How was it?", "Rate a film as its credits roll, or a season as it ends", FILMS, "how_was_it", true),
             k("pausecard", "⏸\uFE0F", "Pause card", "When it ends if you carry on, as you pause", FILMS, "pause_card", true),
+            k(FILM_NIGHT, "🍿", "Film night", "Ten minutes before a film night you planned", FILMS, "film_night", true),
             k("recap", "📈", "Your month on TV", "The month's viewing, on the 1st", HOME, "release_alerts", true),
             k("reminders", "⏰", "Reminders", "Shows and games you asked to be told about", HOME),
             k("messages", "💬", "Messages", "From the other TV or a phone", HOME),
@@ -89,8 +90,7 @@ final class NotifyKinds {
             k("car", "🚗", "The car and the drive home", "The car's news and when you'll be home", HOME),
             k("camera", "📷", "Cameras", "Motion at a camera", HOME),
             k("doorbell", "🔔", "Doorbell", "Someone at the door", HOME),
-            new Kind("birthday", "🎂", "Birthdays", "The birthday greeting on Home", HOME, null, false, true),
-            k(FILM_NIGHT, "🍿", "Film night", "Ten minutes before a film night you planned", HOME, "film_night", true)));
+            new Kind("birthday", "🎂", "Birthdays", "The birthday greeting on Home", HOME, null, false, true)));
 
     private static final Map<String, Kind> BY_ID = new HashMap<>();
     private static final Map<String, List<Kind>> BY_FLAG = new HashMap<>();
