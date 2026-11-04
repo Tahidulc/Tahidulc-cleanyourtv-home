@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The launcher's own colours: its navy ground, the sections' accents, the scores box's blue and the alerts' bands. -->
+<resources>
+    <color name="ground">#FF0D0F2C</color>
+    <color name="ground_deep">#FF0B0C21</color>
+    <color name="surface">#FF1A1F57</color>
+    <color name="surface_line">#33FFFFFF</color>
+    <color name="glass">#1FFFFFFF</color>
+    <color name="text">#FFFFFFFF</color>
+    <color name="text_soft">#CCE4E6F5</color>
+    <color name="text_dim">#99C9CBE0</color>
+    <color name="discover">#FFC9A7FF</color>
+    <color name="movies">#FFFF4FA3</color>
+    <color name="shows">#FF4F8BFF</color>
+    <color name="sports">#FF3DDC84</color>
+    <color name="kids">#FFFFC93C</color>
+    <color name="bug_blue_top">#FF2A4FD0</color>
+    <color name="bug_blue_bottom">#FF16308F</color>
+    <color name="bug_navy_top">#FF26316F</color>
+    <color name="bug_navy_bottom">#FF121A45</color>
+    <color name="band_silver_top">#FFF6F7FD</color>
+    <color name="band_silver_bottom">#FFD3D6F3</color>
+    <color name="band_ink">#FF0A0D33</color>
+    <color name="live_green">#FF3DDC84</color>
+    <color name="amber">#FFFFB238</color>
+</resources>

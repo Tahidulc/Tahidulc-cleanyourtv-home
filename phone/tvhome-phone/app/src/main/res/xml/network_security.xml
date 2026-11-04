@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Plain HTTP is allowed: the TVs' link (port 47820 on the home network or the tailnet) and a playlist's own streams,
+     which are often http. Everything else the app reads is HTTPS. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>
