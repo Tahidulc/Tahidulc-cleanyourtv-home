@@ -2034,7 +2034,7 @@ public class GoalWatchService extends Service {
                     if (found == null) continue;
                     boolean first = incidentGames.add(g.id);
                     for (String[] inc : found) {
-                        if (seen.add(inc[0]) && !first) main.postDelayed(() -> {
+                        if (seen.add(inc[0]) && !first && !catchUp) main.postDelayed(() -> {
                             if (skyAlerts) skyIncident(g, inc); else enqueueFootball(g, incidentHead(inc), "incident");
                         }, DELAY_MS);
                     }
@@ -2067,9 +2067,10 @@ public class GoalWatchService extends Service {
                     }
                     for (String[] goal : g.goals) {
                         if (!seen.add(goal[0])) continue;
-                        if (primed && catchUp && g.state != 0) {
-                            // A goal in a game that ended while the TV was off: missed, not shown late.
-                            AlertLog.note(this, "goal while the screen was off, game over, not announced: " + AlertLog.game(g) + ", " + goal[1] + " " + goal[2]);
+                        if (primed && catchUp) {
+                            // A goal while the TV was off (its game over or still on): missed, not shown late, one after
+                            // another as the TV comes on.
+                            AlertLog.note(this, "goal while the TV was off, not announced: " + AlertLog.game(g) + ", " + goal[1] + " " + goal[2]);
                             AlertToday.why(this, goal[0], "the TV was off");
                         } else if (primed) {
                             AlertLog.note(this, "goal seen: " + AlertLog.game(g) + ", " + goal[1] + " " + goal[2] + " (card in a minute)");
@@ -2082,7 +2083,7 @@ public class GoalWatchService extends Service {
                     }
                     for (String[] card : g.reds) {
                         if (!seen.add(card[0])) continue;
-                        if (primed && catchUp && g.state != 0) {
+                        if (primed && catchUp) {
                             AlertToday.why(this, card[0], "the TV was off");
                         } else if (primed) {
                             AlertLog.note(this, "red card seen: " + AlertLog.game(g) + ", " + card[1] + " " + card[2] + " (card in a minute)");
@@ -2090,8 +2091,11 @@ public class GoalWatchService extends Service {
                         }
                     }
                 }
-                if (!games.isEmpty()) primed = true;
-                catchUp = false;
+                // Caught up only once a read came back with games (not one made before the network was up).
+                if (!games.isEmpty()) {
+                    primed = true;
+                    catchUp = false;
+                }
                 saveState();
                 lastPollDone = System.currentTimeMillis();
                 main.removeCallbacks(poll);
@@ -4099,9 +4103,12 @@ public class GoalWatchService extends Service {
         removeHostNow();
     }
 
-    /** Set when the screen comes back on: the next read passes over what ended while it was off. */
+    /**
+     * Set when the screen comes back on, or the alerts start again after the TV was off: the next read passes over what
+     * happened meanwhile (goals, cards, VAR, full times), each kept in Today's alerts as missed.
+     */
     private boolean catchUp;
-    private static final long WATCHDOG_MS = 2 * 60_000L, STALLED_MS = 6 * 60_000L;
+    private static final long WATCHDOG_MS = 2 * 60_000L, STALLED_MS = 6 * 60_000L, CATCH_UP_MS = 4 * 60_000L;
 
     /**
      * Every two minutes: the scores still being read. A read stuck for six minutes (a connection that never answers)
@@ -4157,6 +4164,9 @@ public class GoalWatchService extends Service {
             }
             primed = !seen.isEmpty() || !lastState.isEmpty();
             if (primed) AlertLog.note(this, "picked up where it left off: " + seen.size() + " events already seen today");
+            // Off for more than a few minutes (switched off, not just the screen): what happened meanwhile is passed
+            // over on the first read, kept in Today's alerts as missed, instead of a run of late cards.
+            if (primed && System.currentTimeMillis() - o.optLong("at") > CATCH_UP_MS) catchUp = true;
         } catch (Exception ignored) {
             // a fresh start
         }

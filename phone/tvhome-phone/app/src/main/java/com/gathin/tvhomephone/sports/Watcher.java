@@ -120,16 +120,31 @@ public final class Watcher {
         return s;
     }
 
+    /** Longer than this since a game was last read (the phone off, or asleep for long): what happened is missed, not sent. */
+    static final long STALE_MS = 25 * 60_000L;
+
     private static void handle(Context c, Game g, List<Game> league, long now, boolean live) {
         Game prev = snapshot(c, g.id);
+        long readAt = prefs(c).getLong("t:" + g.id, 0);
         List<Events.Alert> alerts = Events.diff(prev, g);
+        if (prev != null && readAt > 0 && now - readAt > STALE_MS) {
+            // Back after a long gap: the goals, cards and full times meanwhile are kept as missed (in the app's alerts),
+            // not sent now one after another.
+            for (Events.Alert a : alerts) Notifier.missed(c, a);
+            alerts.clear();
+        }
         if (g.state == Game.PRE && g.kickoff - now <= 65 * 60_000L && g.kickoff - now > -5 * 60_000L
                 && Kinds.on(c, "kickoff") && !AlertLog.sent(c, "L|" + g.id)) {
             Events.Alert l = Events.lineups(g, Espn.summary(g.slug, g.id, 60_000L));
             if (l != null) alerts.add(0, l);
         }
         if (g.state == Game.LIVE && Kinds.on(c, "var")) {
-            alerts.addAll(Events.incidents(g, Espn.summary(g.slug, g.id, 25_000L), AlertLog.sentKeys(c)));
+            List<Events.Alert> inc = Events.incidents(g, Espn.summary(g.slug, g.id, 25_000L), AlertLog.sentKeys(c));
+            if (prev != null && readAt > 0 && now - readAt > STALE_MS) {
+                for (Events.Alert a : inc) Notifier.missed(c, a);
+            } else {
+                alerts.addAll(inc);
+            }
         }
         if (Kinds.on(c, "table") && isLeague(g.slug)) {
             for (Events.Alert a : new ArrayList<>(alerts)) {

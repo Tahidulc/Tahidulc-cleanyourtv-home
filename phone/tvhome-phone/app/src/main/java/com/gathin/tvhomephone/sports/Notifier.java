@@ -185,6 +185,18 @@ public final class Notifier {
         return true;
     }
 
+    /**
+     * An alert that happened while the phone was off or asleep for long: kept in the app's alerts, marked as missed,
+     * never posted late (so a phone coming back on does not bring a run of old goals).
+     */
+    public static void missed(Context c, Events.Alert a) {
+        if (!Kinds.on(c, a.kind) || !Competitions.allowed(Competitions.saved(c), a) || AlertLog.sent(c, a.key)) return;
+        AlertLog.markSent(c, a.key);
+        AlertLog.add(c, a);
+        android.content.SharedPreferences p = c.getApplicationContext().getSharedPreferences("sports_missed", Context.MODE_PRIVATE);
+        p.edit().putString(a.key, a.kind + "\t" + a.title + "\t" + (a.text == null ? "" : a.text) + "\t" + System.currentTimeMillis()).apply();
+    }
+
     /** The group's summary, so a game's alerts sit together. */
     private static void summary(Context c, Game g, String channel) {
         NotificationCompat.Builder s = new NotificationCompat.Builder(c, channel)
