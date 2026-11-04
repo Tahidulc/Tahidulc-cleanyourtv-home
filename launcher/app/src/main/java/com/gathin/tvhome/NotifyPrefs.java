@@ -76,25 +76,6 @@ final class NotifyPrefs {
         return !NotifyKinds.ALWAYS.equals(id) && !"doorbell".equals(id) && dndOn(c);
     }
 
-    // ---- Goal Rush's own tile in the Control Centre (the same switch as its line in Notifications) ----------------
-
-    static final String GOAL_RUSH = "goalrush";
-
-    /** Whether Goal Rush comes: in the list (the theme brings it, or it was added) and switched on. */
-    static boolean goalRushOn(Context c) {
-        NotifyKinds.Kind k = NotifyKinds.get(GOAL_RUSH);
-        return k != null && listed(c, k, Config.themeJson(c)) && on(c, k.id);
-    }
-
-    /** OK on the tile: Goal Rush off, or on again (added first when the theme leaves it off). */
-    static void goalRushSwitch(Context c) {
-        NotifyKinds.Kind k = NotifyKinds.get(GOAL_RUSH);
-        if (k == null) return;
-        if (!listed(c, k, Config.themeJson(c))) add(c, k, true);
-        else set(c, k, !on(c, k.id));
-        AlertLog.note(c, "Goal Rush " + (goalRushOn(c) ? "on" : "off") + " from the Control Centre");
-    }
-
     /** A kind's own switch: on unless switched off. */
     static boolean on(Context c, String id) {
         return prefs(c).getBoolean("on." + id, true);

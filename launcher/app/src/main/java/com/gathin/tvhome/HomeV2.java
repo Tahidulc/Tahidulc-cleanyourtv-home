@@ -868,12 +868,10 @@ final class HomeV2 {
             smartPanel = new SmartPanel(this);
             items.add(new ControlCentre.Item("Lights & home", R.drawable.ic_bulb, () -> "Lights, cameras, the car", null, () -> smartPanel.show()));
         }
-        // Notifications: Do not disturb (nothing pops up for a while but the doorbell), Goal Rush on or off, and the
-        // page with every switch (on Home and over apps on or off, and each kind: goals, the news, the doorbell).
+        // Notifications: Do not disturb (nothing pops up for a while but the doorbell), and the page with every switch
+        // (on Home and over apps on or off, and each kind: goals, Goal Rush and the live table among them, the news).
         items.add(new ControlCentre.Item("Do not disturb", R.drawable.ic_moon, () -> NotifyPrefs.dndWords(a), () -> NotifyPrefs.dndOn(a),
                 () -> { NotifyPrefs.dndNext(a); dndMark(); }).in("NOTIFICATIONS").stays());
-        items.add(new ControlCentre.Item("Goal Rush", R.drawable.ic_bolt, () -> NotifyPrefs.goalRushOn(a) ? "On · every live game at once" : "Off",
-                null, () -> NotifyPrefs.goalRushSwitch(a)).in("NOTIFICATIONS").stays());
         notifyPanel = new NotifyPanel(this);
         items.add(new ControlCentre.Item("Notifications", R.drawable.ic_bell, () -> NotifyPrefs.summary(a), null, () -> notifyPanel.show())
                 .in("NOTIFICATIONS"));
