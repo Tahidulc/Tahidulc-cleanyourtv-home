@@ -91,6 +91,22 @@ final class NotifyPrefs {
      */
     static boolean allowed(Context c, String id, boolean onHome) {
         if (NotifyKinds.ALWAYS.equals(id)) return true;
+        // A film night with quiet pop-ups (FilmNight): everything waits but its own reminder (and the doorbell).
+        if (quietFor(c, id)) return false;
+        return plain(c, id, onHome);
+    }
+
+    /**
+     * Whether a film night keeps this kind quiet now: all but its own reminder, the doorbell (someone at the door is
+     * never kept waiting) and the questions and codes.
+     */
+    private static boolean quietFor(Context c, String id) {
+        return !NotifyKinds.ALWAYS.equals(id) && !NotifyKinds.FILM_NIGHT.equals(id) && !"doorbell".equals(id) && FilmNight.quietNow(c);
+    }
+
+    /** allowed's switches alone, with no film night's quiet. */
+    private static boolean plain(Context c, String id, boolean onHome) {
+        if (NotifyKinds.ALWAYS.equals(id)) return true;
         if (!master(c, onHome)) return false;
         NotifyKinds.Kind k = NotifyKinds.get(id);
         return k == null || kindOn(c, k);
@@ -103,11 +119,13 @@ final class NotifyPrefs {
     static boolean allowed(Context c, ScoreCard.Data d, boolean onHome) {
         if (d.again) return true;
         String id = NotifyKinds.ofCard(d.notify, d.kind, !d.podium.isEmpty());
+        // A film night's quiet: a goal for one of the starred clubs still comes (with its usual switches).
+        if (quietFor(c, id) && !(d.starred && ("goal".equals(id) || "drama".equals(id)))) return false;
         if ("drama".equals(id)) {
             if (!master(c, onHome)) return false;
             return kindOn(c, NotifyKinds.get("drama")) || kindOn(c, NotifyKinds.get("goal"));
         }
-        return allowed(c, id, onHome);
+        return plain(c, id, onHome);
     }
 
     private static boolean kindOn(Context c, NotifyKinds.Kind k) {
@@ -122,7 +140,9 @@ final class NotifyPrefs {
     /** Logs a notification held back (AlertLog), and says why in Today's alerts when it has a key there. */
     static void held(Context c, String id, boolean onHome, String key, String what) {
         NotifyKinds.Kind k = NotifyKinds.get(id);
+        boolean quiet = quietFor(c, id);
         String why = !master(c, onHome) ? (onHome ? "On Home" : "Over apps") + " is off in Notifications"
+                : quiet && (k == null || kindOn(c, k)) ? FilmNight.quietWords(c)
                 : (k == null ? id : k.name) + " is off in Notifications";
         AlertLog.note(c, "not shown (" + why + "): " + what);
         if (key != null) AlertToday.why(c, key, why);

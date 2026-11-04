@@ -19,6 +19,8 @@ final class NotifyKinds {
 
     /** The id for pop-ups that are not notifications but questions or codes (the sleep prompt, a pairing code). */
     static final String ALWAYS = "always";
+    /** Film night's own reminder: it comes while its film night keeps the rest quiet. */
+    static final String FILM_NIGHT = "filmnight";
 
     static final String FOOTBALL = "FOOTBALL", SPORT = "F1 AND OTHER SPORT", NEWS = "NEWS AND WEATHER", FILMS = "FILMS AND TV",
             HOME = "HOME AND FAMILY";
@@ -87,7 +89,8 @@ final class NotifyKinds {
             k("car", "🚗", "The car and the drive home", "The car's news and when you'll be home", HOME),
             k("camera", "📷", "Cameras", "Motion at a camera", HOME),
             k("doorbell", "🔔", "Doorbell", "Someone at the door", HOME),
-            new Kind("birthday", "🎂", "Birthdays", "The birthday greeting on Home", HOME, null, false, true)));
+            new Kind("birthday", "🎂", "Birthdays", "The birthday greeting on Home", HOME, null, false, true),
+            k(FILM_NIGHT, "🍿", "Film night", "Ten minutes before a film night you planned", HOME, "film_night", true)));
 
     private static final Map<String, Kind> BY_ID = new HashMap<>();
     private static final Map<String, List<Kind>> BY_FLAG = new HashMap<>();

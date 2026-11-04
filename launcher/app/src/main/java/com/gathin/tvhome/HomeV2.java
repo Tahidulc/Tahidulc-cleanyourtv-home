@@ -237,6 +237,35 @@ final class HomeV2 {
         if (notifyPanel != null) notifyPanel.show();
     }
 
+    /**
+     * adb only (--ez test_filmnight_panel true): Movies opened, and the first film's panel with Film night's settings
+     * open, once the page has its posters.
+     */
+    void testFilmNightPanel() {
+        openBox(2);
+        main.postDelayed(new Runnable() {
+            int tries;
+            @Override public void run() {
+                PagesV2.Title t = page instanceof PagesV2.PosterPage ? ((PagesV2.PosterPage) page).focusedFilm() : null;
+                if (t == null) { if (++tries < 12) main.postDelayed(this, 1_000L); return; }
+                TitlePanel.nightNext = true;
+                showTitle(t, () -> openTitleLicensed(t), false);
+            }
+        }, 2_500L);
+    }
+
+    /** A film or series opened only in the streaming app on this TV that carries it in the UK, or the store that sells it. */
+    void openTitleLicensed(PagesV2.Title t) {
+        io.execute(() -> {
+            JSONObject gb = PagesV2.providersGb(tmdbKey, t.id, t.tv);
+            String[] w = FilmNight.where(this, gb);
+            main.post(() -> {
+                if (w != null) searchTitle(w[0], t.title, t.tv, t.id, t.backdrop != null ? t.backdrop : t.poster);
+                else android.widget.Toast.makeText(a, t.title + " isn't on your streaming apps yet", android.widget.Toast.LENGTH_SHORT).show();
+            });
+        });
+    }
+
     /** adb only (test_live_ticker): a live game in the top bar's ticker, its clock ticking. */
     void testLiveTicker() {
         if (scores != null) scores.testLive();
@@ -1357,6 +1386,9 @@ final class HomeV2 {
         // An alert that came up over an app or the screensaver moves into the score bar's place.
         GoalWatchService.relane();
         if (Config.themeFlag(a, "alerts_everywhere", false)) GoalWatchService.startEverywhere(a);
+        // Film night's reminder looked for each minute while Home is up too (the alerts' service may not run).
+        main.removeCallbacks(filmNight);
+        main.post(filmNight);
         // Prayer times for the Control Centre's section: today's and tomorrow's timetable, read when not yet kept.
         if (Prayer.on(a)) io.execute(() -> Prayer.refresh(a));
         // Predictions: the other TVs' picks and points, so the leaderboard is the same on each.
@@ -1413,7 +1445,16 @@ final class HomeV2 {
         return sportTiles != null && System.currentTimeMillis() - sportAt < 3 * 60_000L;
     }
 
+    /** Film night's reminder, looked for each minute while Home is in front (FilmNight; the service does it too). */
+    private final Runnable filmNight = new Runnable() {
+        @Override public void run() {
+            FilmNight.tick(a);
+            main.postDelayed(this, 60_000L);
+        }
+    };
+
     void stop() {
+        main.removeCallbacks(filmNight);
         main.removeCallbacks(warmPages);
         main.removeCallbacks(shiftMesh);
         main.removeCallbacks(matchBack);

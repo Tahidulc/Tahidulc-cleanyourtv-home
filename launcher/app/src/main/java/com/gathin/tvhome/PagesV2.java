@@ -1932,6 +1932,15 @@ final class PagesV2 {
             return false;
         }
 
+        /** The film in focus, else the first film in the focused row (adb's Film night test); null when there is none. */
+        Title focusedFilm() {
+            if (rows.isEmpty() || row >= rows.size()) return null;
+            List<Title> items = rows.get(row).items;
+            if (idx < items.size() && !items.get(idx).tv && items.get(idx).id > 0 && items.get(idx).ok == null) return items.get(idx);
+            for (Title t : items) if (!t.tv && t.id > 0 && t.ok == null) return t;
+            return null;
+        }
+
         /** OK on a poster: its own action, else the app it was being watched in, else Debrid Stream's page for it. */
         private void play(Title t) {
             // From the Kids page after bedtime: the gentle timer (KidsNight; KidsArt's own cards start it themselves).

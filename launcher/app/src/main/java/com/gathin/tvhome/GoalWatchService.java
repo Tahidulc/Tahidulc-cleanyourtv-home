@@ -267,6 +267,7 @@ public class GoalWatchService extends Service {
     ScoreCard.Data footballData(ScoresTicker.Game g) {
         ScoreCard.Data d = new ScoreCard.Data();
         int px = Math.round(96 * getResources().getDisplayMetrics().density);
+        d.starred = starred(this, g);
         d.leagueLogo = bandLogo(g.leagueLogo != null ? g.leagueLogo : leagueLogoFor(g), px);
         d.homeCrest = g.homeLogo == null ? null : ScoreCard.onNavy(ScoresTicker.cachedLogo(this, g.homeLogo, px));
         d.awayCrest = g.awayLogo == null ? null : ScoreCard.onNavy(ScoresTicker.cachedLogo(this, g.awayLogo, px));
@@ -1409,6 +1410,22 @@ public class GoalWatchService extends Service {
         ctx.stopService(new Intent(ctx, GoalWatchService.class));
     }
 
+    /** A game of one of the starred clubs: the goal_alert_teams clubs and Man Utd. */
+    static boolean starred(Context c, ScoresTicker.Game g) {
+        if (g == null) return false;
+        Set<String> clubs = new HashSet<>(Arrays.asList(c.getResources().getStringArray(R.array.goal_alert_teams)));
+        clubs.add(MatchDay.MAN_UNITED);
+        return clubs.contains(g.homeId) || clubs.contains(g.awayId);
+    }
+
+    /** Film night's reminder, looked for every minute (FilmNight). */
+    private final Runnable filmNight = new Runnable() {
+        @Override public void run() {
+            FilmNight.tick(GoalWatchService.this);
+            main.postDelayed(this, 60_000L);
+        }
+    };
+
     /** New episodes of the series watched here and new films on the TV's apps, every two hours (ReleaseAlerts). */
     private final Runnable releases = new Runnable() {
         @Override public void run() {
@@ -1460,6 +1477,8 @@ public class GoalWatchService extends Service {
             // New episodes and films (ReleaseAlerts): first a few minutes after the start, then every two hours.
             main.removeCallbacks(releases);
             main.postDelayed(releases, 3 * 60_000L);
+            main.removeCallbacks(filmNight);
+            main.postDelayed(filmNight, 20_000L);
         }
         if (intent != null && intent.hasExtra("test_release")) ioRun(() -> ReleaseAlerts.check(this, true));
         if (intent != null && intent.hasExtra("dump_ui")) AppSearchService.dump();
@@ -1833,6 +1852,7 @@ public class GoalWatchService extends Service {
         if (intent != null) MoreAlerts.test(this, intent);
         // adb only: How was it? (test_howwasit) and the pause card (test_pause), with sample films.
         if (intent != null) WatchCards.test(this, intent);
+        if (intent != null) FilmNight.test(this, intent);
         if (intent != null && intent.hasExtra("test_red")) {
             ScoresTicker.Game g = new ScoresTicker.Game();
             g.league = "UCL"; g.home = "ARS"; g.away = "PSG"; g.homeScore = "1"; g.awayScore = "1";

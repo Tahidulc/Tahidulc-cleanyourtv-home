@@ -69,6 +69,12 @@ final class TitlePanel {
     private final List<View> castParts = new ArrayList<>();
     /** adb's test_episode_map: the next series' panel opens with its map open (sample episodes when TMDB has none). */
     static boolean autoMap;
+    /** Film night's button (films only), its settings while they are open, and the saga and cast they take the place of. */
+    private LinearLayout nightButton;
+    private FilmNightPanel night;
+    private final List<View> below = new ArrayList<>();
+    /** adb only (test_filmnight_panel): the next film's panel opens with Film night's settings already open. */
+    static boolean nightNext;
 
     TitlePanel(HomeV2 home) {
         h = home;
@@ -117,6 +123,7 @@ final class TitlePanel {
     private void close(boolean fade) {
         if (!open) return;
         open = false;
+        night = null;
         gen++;
         View o = overlay;
         overlay = null;
@@ -240,6 +247,8 @@ final class TitlePanel {
         overlay.removeAllViews();
         buttons.clear();
         buttonActs.clear();
+        below.clear();
+        night = null;
         saga.clear();
         sagaTitles.clear();
         cast.clear();
@@ -271,6 +280,10 @@ final class TitlePanel {
             android.graphics.drawable.Drawable icon = c.getDrawable(R.drawable.ic_episode_map);
             addButton(bar, "Episode map", false, this::openMap, icon == null ? null : icon.mutate());
         }
+        // Film night: a start time tonight, a reminder, the lights and quiet pop-ups (FilmNightPanel).
+        if (!t.tv && t.id > 0 && FilmNight.on(c)) {
+            nightButton = addButton(bar, nightWords(FilmNight.forFilm(c, t.id)), false, () -> openNight(t, got));
+        } else nightButton = null;
         // With the saga box as well, everything a little tighter, so the cast's card ends above the screen's foot
         // (it ran 40 past it): the box's posters smaller, the cast's rings and card shorter.
         List<Object[]> sagaParts = (List<Object[]>) got[4];
@@ -363,6 +376,7 @@ final class TitlePanel {
             bl.leftMargin = h.px(x0);
             bl.topMargin = h.px(y);
             overlay.addView(box, bl);
+            below.add(box);
             y += 188;
         }
 
@@ -381,6 +395,9 @@ final class TitlePanel {
             castParts.add(head);
             castParts.add(note);
             castParts.add(strip);
+            below.add(head);
+            below.add(note);
+            below.add(strip);
             for (Object[] p : who) {
                 FrameLayout slot = new FrameLayout(c);
                 slot.setClipChildren(false);
@@ -406,6 +423,11 @@ final class TitlePanel {
             mapTest = true;
             int my = gen;
             main.postDelayed(() -> { if (open && my == gen && overlay != null) openMap(); }, 500);
+        }
+        if (nightNext && nightButton != null) {
+            nightNext = false;
+            col = buttons.indexOf(nightButton);
+            main.postDelayed(() -> { if (open && night == null && title == t) openNight(t, got); }, 700);
         }
     }
 
@@ -445,6 +467,32 @@ final class TitlePanel {
         row = BUTTONS;
         col = Math.max(0, mapButton);
         paint();
+    }
+
+    /** The button's words: "Film night ▾", or the night planned ("Film night 20:00 ✓"). */
+    private static String nightWords(FilmNight.Plan p) {
+        return p == null || p.end() < System.currentTimeMillis() ? "\u263E  Film night  \u25BE" : "\u263E  Film night " + FilmNight.clock(p.start) + "  \u2713";
+    }
+
+    /** Film night's settings in the place of the saga and the cast (they come back as it closes). */
+    private void openNight(PagesV2.Title t, Object[] got) {
+        if (overlay == null || night != null && night.isOpen()) return;
+        JSONObject d = (JSONObject) got[0];
+        int runtime = d == null ? 0 : d.optInt("runtime");
+        for (View v : below) v.animate().alpha(0f).setDuration(140).start();
+        FilmNightPanel p = new FilmNightPanel(h, t, runtime, (JSONObject) got[6], plan -> {
+            if (nightButton != null) MockKit.setWords(nightButton, nightWords(plan));
+        }, () -> {
+            for (View v : below) v.animate().alpha(1f).setDuration(220).start();
+            row = BUTTONS;
+            if (nightButton != null) col = buttons.indexOf(nightButton);
+            paint();
+        });
+        night = p;
+        // In the cards' row, so it never runs past the screen's foot.
+        p.show(overlay, left(), TOP - h.pageLift() + 78);
+        // The panel's buttons resting while its own rows have the focus.
+        for (int i = 0; i < buttons.size(); i++) MockKit.paint(h, (LinearLayout) buttons.get(i), false, 56);
     }
 
     /** A cast member at rest: the ring, the badge, the name, the part and where they were seen. */
@@ -631,6 +679,7 @@ final class TitlePanel {
                 return true;
             }
         }
+        if (night != null && night.isOpen()) return night.key(e);
         if (code == KeyEvent.KEYCODE_BACK || code == KeyEvent.KEYCODE_ESCAPE) {
             if (e.getAction() == KeyEvent.ACTION_UP) hide();
             return true;

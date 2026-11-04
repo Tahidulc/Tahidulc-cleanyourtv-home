@@ -75,6 +75,8 @@ final class ScoreCard {
         String notify;
         /** The goal's, red card's or full time's key (ScoresTicker), for Today's alerts; null for anything else. */
         String key;
+        /** A game of one of the starred clubs (goal_alert_teams, Man Utd): its goals come through a film night's quiet. */
+        boolean starred;
         /** Shown again from Today's alerts: always the full card (Home's bar would be under its panel). */
         boolean again;
         /** For a goal: the score before it, which turns over to the new one. */

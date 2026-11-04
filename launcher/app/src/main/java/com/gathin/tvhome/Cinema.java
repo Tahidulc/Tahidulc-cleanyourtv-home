@@ -37,7 +37,8 @@ final class Cinema {
     static volatile long raisedAt;
 
     static boolean on(Context c) {
-        return Config.themeFlag(c, "cinema_mode", false) && TuyaCloud.configured(c);
+        // Also for a film night that asked for the lights (FilmNight), around its film's time.
+        return (Config.themeFlag(c, "cinema_mode", false) || FilmNight.dimNow(c)) && TuyaCloud.configured(c);
     }
 
     /** The media sessions now (WatchHistory, each time they change): each one watched for playing and pausing. */
@@ -71,6 +72,8 @@ final class Cinema {
     static void tick(Context c, List<MediaController> list) {
         if (!on(c)) return;
         app = c.getApplicationContext();
+        // On since the sessions were last given (a film night's time come): watched from now.
+        if (watched.isEmpty() && list != null && !list.isEmpty()) { sessions(c, list); return; }
         check();
     }
 
@@ -88,7 +91,7 @@ final class Cinema {
     /** A film playing and not yet in its credits: the lights down; otherwise up (each after a moment). */
     private static void check() {
         if (app == null) return;
-        boolean film = false;
+        boolean film = false, inCredits = false;
         long toCredits = -1;
         for (MediaController mc : watched.keySet()) {
             String pkg = mc.getPackageName();
@@ -106,11 +109,13 @@ final class Cinema {
             if (dur < FILM_MS) continue;
             long credits = dur - Math.max(4 * 60_000L, (long) (dur * 0.06));
             long pos = position(st);
-            if (pos >= credits) continue;
+            if (pos >= credits) { inCredits = true; continue; }
             film = true;
             float speed = st.getPlaybackSpeed() > 0 ? st.getPlaybackSpeed() : 1f;
             toCredits = (long) ((credits - pos) / speed);
         }
+        // A film night's film in its credits: its quiet pop-ups end soon after (FilmNight).
+        if (inCredits && !film) FilmNight.credits(app);
         MAIN.removeCallbacks(CHECK);
         // Looked at again just as the credits start.
         if (toCredits > 0) MAIN.postDelayed(CHECK, Math.min(toCredits + 1_000L, 30 * 60_000L));
