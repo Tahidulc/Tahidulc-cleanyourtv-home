@@ -32,7 +32,7 @@ public final class Channels {
             {"4040", "TNT Sports 4"}, {"3940", "Sky Sports+"}, {"4090", "Sky Sports Mix"}, {"1289", "Premier Sports 1"},
             {"1290", "Premier Sports 2"}, {"3007", "BBC One"}, {"6504", "ITV1"}, {"4075", "Channel 4"}, {"4058", "5"}};
 
-    private static final String[][] ALIASES = {{"spurs", "tottenham"}, {"man utd", "manchester united"},
+    static final String[][] ALIASES = {{"spurs", "tottenham"}, {"man utd", "manchester united"},
             {"man united", "manchester united"}, {"man city", "manchester city"}, {"c. palace", "crystal palace"},
             {"b. munich", "bayern munich"}, {"b. dortmund", "borussia dortmund"}, {"nott'm forest", "nottingham forest"},
             {"forest", "nottingham forest"}, {"wolves", "wolverhampton"}, {"psg", "paris saint-germain"},

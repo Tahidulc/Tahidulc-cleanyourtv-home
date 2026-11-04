@@ -6,6 +6,11 @@ This weekend), alerts as phone notifications with the Control Centre's switches,
 playlist or Xtream Codes login. It pairs with the TVs as Delivery to TV does and keeps My list, ratings, the Film
 night plan, Coming up's mutes, reminders and starred clubs the same everywhere (SYNC.md).
 
+Full screen, a tap brings up an info tile that suits what's on (the Full-screen TV Info Tiles canvas): Match night for a
+game (the scores box with both crests and the competition's logo, the fixture, kick-off or the score, each club's
+form or the game so far), Cinematic for a film, Card for a series' episode and Glass ribbon for the rest, each with
+the channel's logo. The player's options can set one style for everything, or the guide panel as before.
+
 Titles open in the licensed streaming app that carries them in the UK (or its store), on the phone or, with Play on TV,
 on a TV. Live TV plays only the playlist you give it; the app ships with no channels or sources.
 

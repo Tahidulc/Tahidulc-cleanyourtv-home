@@ -121,6 +121,12 @@ public final class Espn {
         g.awayName = at.optString("shortDisplayName", at.optString("displayName", g.away));
         g.homeLogo = ht.optString("logo", null);
         g.awayLogo = at.optString("logo", null);
+        g.homeFull = ht.optString("displayName", "");
+        g.awayFull = at.optString("displayName", "");
+        g.homeForm = form(home.optString("form", ""));
+        g.awayForm = form(away.optString("form", ""));
+        g.homeColor = ht.optString("color", "");
+        g.awayColor = at.optString("color", "");
         JSONObject ground = c.optJSONObject("venue");
         if (ground != null && !ground.optString("fullName").isEmpty()) g.venue = ground.optString("fullName");
         JSONArray details = c.optJSONArray("details");
@@ -161,6 +167,12 @@ public final class Espn {
             if (!n.isEmpty() && !g.broadcasts.contains(n)) g.broadcasts.add(n);
         }
         return g;
+    }
+
+    /** ESPN's form ("DWLLW"), kept to its W, D and L letters, the last five at most. */
+    static String form(String f) {
+        String t = f == null ? "" : f.toUpperCase(Locale.ROOT).replaceAll("[^WDL]", "");
+        return t.length() > 5 ? t.substring(t.length() - 5) : t;
     }
 
     static int parseInt(String s) {

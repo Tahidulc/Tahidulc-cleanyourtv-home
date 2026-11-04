@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The full-screen player's info tiles (the Full-screen TV Info Tiles canvas: A, B, D and E) and their style option. -->
+<resources>
+    <string name="tile_style">Info tile</string>
+    <string name="tile_auto">Auto</string>
+    <string name="tile_ribbon">Glass ribbon</string>
+    <string name="tile_card">Card</string>
+    <string name="tile_match">Match night</string>
+    <string name="tile_cinema">Cinematic</string>
+    <string name="tile_panel">Guide panel</string>
+    <string name="tile_auto_note">Auto: Match night for a game, Cinematic for a film, Card for a series, Glass ribbon for the rest</string>
+    <string name="tile_live">LIVE</string>
+    <string name="tile_now">NOW</string>
+    <string name="tile_next_at">NEXT · %1$s</string>
+    <string name="tile_up_next_at">UP NEXT · %1$s</string>
+    <string name="tile_min_left">%1$d min left</string>
+    <string name="tile_ends">Ends</string>
+    <string name="tile_in_left">%1$s in · %2$d min left</string>
+    <string name="tile_film">Film</string>
+    <string name="tile_next_short">Next: %1$s %2$s</string>
+    <string name="tile_hint">Swipe up or down for channels · tap ⋯ for options</string>
+    <string name="tile_restart">↺ Restart</string>
+    <string name="tile_favourite">☆ Favourite</string>
+    <string name="tile_favourited">★ Favourite</string>
+    <string name="tile_similar">Similar channels</string>
+    <string name="tile_episode_info">Episode info</string>
+    <string name="tile_info">Programme info</string>
+    <string name="tile_match_centre">Match centre</string>
+    <string name="tile_remind">Remind me</string>
+    <string name="tile_reminded">Reminder set</string>
+    <string name="tile_form">FORM, LAST FIVE</string>
+    <string name="tile_so_far">THE GAME SO FAR</string>
+    <string name="tile_live_from">%1$s · LIVE FROM %2$s</string>
+    <string name="tile_live_now">%1$s · LIVE</string>
+    <string name="tile_full_time">%1$s · FULL TIME</string>
+    <string name="tile_kickoff_in">kick-off in %1$d min</string>
+    <string name="tile_kickoff_at">kick-off %1$s</string>
+    <string name="tile_on_until">on until %1$s</string>
+    <string name="tile_half_time">half time</string>
+    <string name="tile_lead">%1$s lead %2$s</string>
+    <string name="tile_level">level at %1$s</string>
+    <string name="tile_won">%1$s won %2$s</string>
+    <string name="tile_drew">a %1$s draw</string>
+    <string name="tile_previous">Previous channel</string>
+    <string name="tile_following">Next channel</string>
+    <string name="tile_sports">SPORT</string>
+</resources>

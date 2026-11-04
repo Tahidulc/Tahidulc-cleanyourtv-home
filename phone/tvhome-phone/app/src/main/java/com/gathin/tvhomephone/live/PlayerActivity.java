@@ -60,6 +60,8 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import com.bumptech.glide.Glide;
 import com.gathin.tvhomephone.R;
+import com.gathin.tvhomephone.sports.Game;
+import com.gathin.tvhomephone.sports.GameActivity;
 import com.google.android.material.bottomsheet.BottomSheetDialog;
 
 import java.util.ArrayList;
@@ -70,9 +72,12 @@ import java.util.Locale;
  * Live TV's player, full screen: one of the family's own channels (HLS or MPEG-TS), edge to edge and under the camera's
  * cutout, with the system bars hidden (a swipe from the edge brings them back for a moment). It follows the phone round:
  * on its side the picture fills the screen (unless Fit or another shape was picked for the channel); upright it is fitted
- * to the width, centred, with the guide panel at the foot. A tap brings up the guide panel (the channel's number, logo
- * and name, what is on now with its times and how far in, what's next, and the mini guide of the channels either side:
- * tap one to change channel); it goes after a few seconds. Its ⋯ opens the options: the picture's shape (remembered per
+ * to the width, centred, with the guide panel at the foot. A tap brings up the info tile (InfoTile: Match night for a
+ * game, Cinematic for a film, Card for a series' episode, Glass ribbon for the rest, or one style for everything as
+ * chosen in the options), and so do changing channel and a new programme starting; a swipe from the right brings the
+ * guide panel (the channel's number, logo and name, what is on now with its times and how far in, what's next, and
+ * the mini guide of the channels either side: tap one to change channel); they go after a few seconds. The ⋯ opens
+ * the options: the info tile's style, the picture's shape (remembered per
  * channel), audio, subtitles, quality, similar channels, the favourite, a sleep timer, picture in picture, restarting the
  * stream and the programme's details. Swipe up or down for the next or previous channel (hidden ones passed over), left
  * for the mini guide and right to put it away; double tap or pinch between Fit and Fill; slide on the left edge for
@@ -86,7 +91,7 @@ import java.util.Locale;
 public class PlayerActivity extends AppCompatActivity {
     static final String EXTRA_KEY = "live_key", EXTRA_GROUP = "live_group", EXTRA_GUIDE = "live_from_guide",
             EXTRA_AUTO = "live_auto";
-    private static final long OVERLAY_MS = 6000;
+    private static final long OVERLAY_MS = 6000, TILE_MS = 8000, TICK_MS = 30_000;
     private static final int[] SLEEP = {0, 15, 30, 60, 90};
 
     private final Handler h = new Handler(Looper.getMainLooper());
@@ -107,6 +112,12 @@ public class PlayerActivity extends AppCompatActivity {
     private TextView levelText;
     private ProgressBar levelBar;
     private View hint;
+    /** The info tile over the picture (the Full-screen TV Info Tiles canvas), its programme, and the style chosen. */
+    private FrameLayout tiles;
+    private TileData.Info info;
+    private TileKind.Style style = TileKind.Style.AUTO;
+    /** The programme last shown, so a new one starting brings its tile up. */
+    private String seen;
     private BottomSheetDialog sheet;
     private List<Channel> order = new ArrayList<>();
     private int pos;
@@ -119,6 +130,18 @@ public class PlayerActivity extends AppCompatActivity {
     private boolean fromGuide, auto, handBack, landscape;
     private Insets cut = Insets.NONE;
     private final Runnable hide = this::hideOverlay;
+    /** Every half a minute: a new programme on this channel brings its tile up, as the TV's banner does. */
+    private final Runnable tick = new Runnable() {
+        @Override public void run() {
+            h.removeCallbacks(this);
+            if (cur != null && !isInPictureInPictureMode() && style != TileKind.Style.PANEL) {
+                TileData.Info now = TileData.now(PlayerActivity.this, lib, cur);
+                if (now.onNow && seen != null && seen.startsWith(cur.key + "|") && !seen.equals(now.id()) && !overlayShown()
+                        && sheet == null) showOverlay();
+            }
+            h.postDelayed(this, TICK_MS);
+        }
+    };
     private final Runnable hideLevel = () -> fade(level, false);
     private final Runnable hideZoom = () -> fade(zoom, false);
     private final Runnable sleep = () -> {
@@ -177,6 +200,7 @@ public class PlayerActivity extends AppCompatActivity {
             return;
         }
         SharedPreferences p = prefs();
+        style = TileKind.Style.of(p.getString("tile_style", TileKind.Style.AUTO.name()));
         if (!p.getBoolean("hint_seen", false)) h.postDelayed(this::showHint, 700);
     }
 
@@ -225,10 +249,12 @@ public class PlayerActivity extends AppCompatActivity {
         watch(cur);
         // Its shape for the small window now (a stream taken over has told its size already).
         if (pipSupported()) setPictureInPictureParams(pipParams());
+        h.postDelayed(tick, TICK_MS);
     }
 
     @Override protected void onStop() {
         super.onStop();
+        h.removeCallbacks(tick);
         // Still playing in the small window.
         if (isInPictureInPictureMode()) return;
         // Back to the guide it came from: the stream plays on there. Otherwise (home, the screen off) it stops.
@@ -266,7 +292,8 @@ public class PlayerActivity extends AppCompatActivity {
             aspect = Aspect.get(store, cur.key, landscape);
             video.apply(aspect);
         }
-        if (overlayShown()) centreStrip();
+        if (panelShown()) centreStrip();
+        if (tilesShown()) drawTile(false);
     }
 
     // ---- playing ----------------------------------------------------------------------------------------------
@@ -425,8 +452,127 @@ public class PlayerActivity extends AppCompatActivity {
 
     // ---- the guide panel ------------------------------------------------------------------------------------------
 
+    /** What's on: the info tile in the style chosen (Auto picks by the programme), or the guide panel. */
     private void showOverlay() {
         if (cur == null || isInPictureInPictureMode()) return;
+        if (style == TileKind.Style.PANEL) showPanel();
+        else showTile();
+    }
+
+    /** The info tile for the programme on now; the game, the film's details and the posters follow as they are read. */
+    private void showTile() {
+        if (cur == null || isInPictureInPictureMode()) return;
+        if (panel.getVisibility() == View.VISIBLE) fade(panel, false);
+        TileData.Info fresh = TileData.now(this, lib, cur);
+        boolean same = info != null && info.enriched && info.id().equals(fresh.id());
+        boolean animate = !tilesShown();
+        if (!same) info = fresh;
+        marks(info);
+        seen = info.id();
+        drawTile(animate);
+        // Read again: always for another programme, and for a game (its score moves on).
+        if (!same || info.kind == TileKind.Kind.MATCH) {
+            TileData.Info asked = info;
+            TileData.enrich(this, asked, done -> {
+                if (isFinishing() || info == null || !done.id().equals(info.id())) return;
+                info = done;
+                marks(info);
+                if (tilesShown()) drawTile(false);
+            });
+        }
+        fade(tiles, true);
+        fade(top, true);
+        keepPanel();
+    }
+
+    /** The tile drawn again in its place (the style, the way the phone is held, what has been read). */
+    private void drawTile(boolean animate) {
+        if (info == null) return;
+        TileKind.Style s = style == TileKind.Style.AUTO ? TileKind.auto(info.kind) : style;
+        if (s == TileKind.Style.PANEL || s == TileKind.Style.AUTO) s = TileKind.Style.RIBBON;
+        tiles.removeAllViews();
+        tiles.addView(InfoTile.build(this, info, s, wideTile(), tileActions, animate), new FrameLayout.LayoutParams(-1, -1));
+    }
+
+    /** Across the picture on its side or on a tablet; stacked upright on a phone. */
+    private boolean wideTile() {
+        return landscape || getResources().getConfiguration().screenWidthDp >= 600;
+    }
+
+    /** The stream's own marks for the tile: HD from the picture's height, S when it carries subtitles. */
+    private void marks(TileData.Info i) {
+        ExoPlayer player = pb.player();
+        i.hd = player != null && player.getVideoSize().height >= 720;
+        i.subtitles = !tracks(C.TRACK_TYPE_TEXT).isEmpty();
+    }
+
+    private boolean tilesShown() {
+        return tiles != null && tiles.getVisibility() == View.VISIBLE && tiles.getAlpha() > 0.5f;
+    }
+
+    private boolean panelShown() {
+        return panel.getVisibility() == View.VISIBLE && panel.getAlpha() > 0.5f;
+    }
+
+    /** The tile's buttons. */
+    private final InfoTile.Actions tileActions = new InfoTile.Actions() {
+        @Override public void restart() {
+            PlayerActivity.this.restart();
+        }
+
+        @Override public void favourite() {
+            toggleFavourite();
+        }
+
+        @Override public boolean isFavourite() {
+            return cur != null && Picks.isFavourite(PlayerActivity.this, cur.key);
+        }
+
+        @Override public void similar() {
+            similarSheet();
+        }
+
+        @Override public void info() {
+            hideOverlay();
+            PlayerActivity.this.info();
+        }
+
+        @Override public boolean remind(TileData.Info i) {
+            if (i == null || i.nextTitle.isEmpty()) return false;
+            Context c = PlayerActivity.this;
+            boolean on = Reminders.toggle(c, i.ch, i.nextTitle, i.nextStart);
+            Toast.makeText(c, on ? getString(R.string.live_reminder_set, i.nextTitle, Ui.day(c, i.nextStart), Ui.clock(i.nextStart))
+                    : getString(R.string.live_reminder_removed), Toast.LENGTH_SHORT).show();
+            return on;
+        }
+
+        @Override public boolean reminded(TileData.Info i) {
+            return i != null && !i.nextTitle.isEmpty() && Reminders.has(PlayerActivity.this, i.ch, i.nextStart);
+        }
+
+        @Override public void step(int by) {
+            PlayerActivity.this.step(by);
+        }
+
+        @Override public String neighbour(int by) {
+            if (order == null || order.isEmpty()) return "";
+            int at = Hidden.step(order.size(), pos, by, i -> lib.isHidden(order.get(i)));
+            if (at < 0 || at == pos) return "";
+            Channel ch = order.get(at);
+            int n = lib.number(ch);
+            return n > 0 ? String.valueOf(n) : ch.name;
+        }
+
+        @Override public void matchCentre(Game g) {
+            hideOverlay();
+            startActivity(GameActivity.intent(PlayerActivity.this, g));
+        }
+    };
+
+    /** The guide panel: the channel, now and next, and the mini guide of the channels either side. */
+    private void showPanel() {
+        if (cur == null || isInPictureInPictureMode()) return;
+        if (tiles.getVisibility() == View.VISIBLE) fade(tiles, false);
         int n = lib.number(cur);
         number.setText(n > 0 ? String.valueOf(n) : "");
         number.setVisibility(n > 0 ? View.VISIBLE : View.GONE);
@@ -480,17 +626,18 @@ public class PlayerActivity extends AppCompatActivity {
 
     private void keepPanel() {
         h.removeCallbacks(hide);
-        h.postDelayed(hide, OVERLAY_MS);
+        h.postDelayed(hide, tiles.getVisibility() == View.VISIBLE ? TILE_MS : OVERLAY_MS);
     }
 
     private void hideOverlay() {
         h.removeCallbacks(hide);
         fade(panel, false);
+        fade(tiles, false);
         fade(top, false);
     }
 
     private boolean overlayShown() {
-        return panel.getVisibility() == View.VISIBLE && panel.getAlpha() > 0.5f;
+        return panelShown() || tilesShown();
     }
 
     private static void fade(View v, boolean in) {
@@ -701,6 +848,23 @@ public class PlayerActivity extends AppCompatActivity {
             addChip(shapeRow, t);
         }
 
+        // The info tile: Auto (by what's on) or one style for everything, the guide panel as before among them.
+        List<TextView> looks = new ArrayList<>();
+        LinearLayout lookRow = chipRow(c, box, R.string.tile_style);
+        for (TileKind.Style st : TileKind.Style.values()) {
+            TextView t = Ui.guideChip(c, getString(styleLabel(st)), st == style);
+            t.setOnClickListener(v -> {
+                style = st;
+                prefs().edit().putString("tile_style", st.name()).apply();
+                for (TextView x : looks) Ui.styleChip(c, x, x == v);
+            });
+            looks.add(t);
+            addChip(lookRow, t);
+        }
+        TextView note = Ui.text(c, getString(R.string.tile_auto_note), 12, Ui.DIM, false);
+        note.setPadding(0, Ui.dp(c, 6), 0, 0);
+        box.addView(note);
+
         TrackSelectionParameters params = player.getTrackSelectionParameters();
         List<Track> audio = tracks(C.TRACK_TYPE_AUDIO);
         if (audio.size() > 1) {
@@ -784,38 +948,7 @@ public class PlayerActivity extends AppCompatActivity {
         }
 
         // Similar channels.
-        List<Channel> similar = lib.similar(cur, 24);
-        if (!similar.isEmpty()) {
-            LinearLayout row = chipRow(c, box, R.string.live_similar);
-            for (Channel ch : similar) {
-                LinearLayout card = new LinearLayout(c);
-                card.setGravity(Gravity.CENTER_VERTICAL);
-                card.setPadding(Ui.dp(c, 8), 0, Ui.dp(c, 14), 0);
-                card.setBackground(Ui.touch(c, false, Ui.GLASS, 14));
-                FrameLayout lb = new FrameLayout(c);
-                TextView ini = Ui.text(c, ch.logo.isEmpty() ? Ui.initials(ch.name) : "", 10, Ui.SOFT, true);
-                ini.setGravity(Gravity.CENTER);
-                lb.addView(ini, new FrameLayout.LayoutParams(-1, -1));
-                ImageView img = new ImageView(c);
-                img.setScaleType(ImageView.ScaleType.FIT_CENTER);
-                if (!ch.logo.isEmpty()) Glide.with(img).load(ch.logo).into(img);
-                lb.addView(img, new FrameLayout.LayoutParams(-1, -1));
-                card.addView(lb, new LinearLayout.LayoutParams(Ui.dp(c, 40), Ui.dp(c, 28)));
-                TextView nm = Ui.text(c, ch.name, 13, Ui.TEXT, true);
-                nm.setSingleLine(true);
-                nm.setPadding(Ui.dp(c, 8), 0, 0, 0);
-                nm.setMaxWidth(Ui.dp(c, 200));
-                nm.setEllipsize(TextUtils.TruncateAt.END);
-                card.addView(nm);
-                card.setOnClickListener(v -> {
-                    if (sheet != null) sheet.dismiss();
-                    switchTo(ch);
-                });
-                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, Ui.dp(c, 48));
-                lp.rightMargin = Ui.dp(c, 8);
-                row.addView(card, lp);
-            }
-        }
+        addSimilar(c, box);
 
         // And the rest, one to a line.
         box.addView(new View(c), new LinearLayout.LayoutParams(-1, Ui.dp(c, 14)));
@@ -845,6 +978,75 @@ public class PlayerActivity extends AppCompatActivity {
         mine.setOnDismissListener(d -> {
             if (sheet == mine) sheet = null;
         });
+    }
+
+    /** Similar channels as a row of cards with their logos (tap one to change to it); false when there are none. */
+    private boolean addSimilar(Context c, LinearLayout box) {
+        List<Channel> similar = lib.similar(cur, 24);
+        if (!similar.isEmpty()) {
+            LinearLayout row = chipRow(c, box, R.string.live_similar);
+            for (Channel ch : similar) {
+                LinearLayout card = new LinearLayout(c);
+                card.setGravity(Gravity.CENTER_VERTICAL);
+                card.setPadding(Ui.dp(c, 8), 0, Ui.dp(c, 14), 0);
+                card.setBackground(Ui.touch(c, false, Ui.GLASS, 14));
+                FrameLayout lb = new FrameLayout(c);
+                // The playlist's logo, else Sky's guide logo by the channel's name.
+                String logo = !ch.logo.isEmpty() ? ch.logo : com.gathin.tvhomephone.sports.ChannelLogos.sky(ch.name);
+                TextView ini = Ui.text(c, logo == null ? Ui.initials(ch.name) : "", 10, Ui.SOFT, true);
+                ini.setGravity(Gravity.CENTER);
+                lb.addView(ini, new FrameLayout.LayoutParams(-1, -1));
+                ImageView img = new ImageView(c);
+                img.setScaleType(ImageView.ScaleType.FIT_CENTER);
+                if (logo != null) Glide.with(img).load(logo).into(img);
+                lb.addView(img, new FrameLayout.LayoutParams(-1, -1));
+                card.addView(lb, new LinearLayout.LayoutParams(Ui.dp(c, 40), Ui.dp(c, 28)));
+                TextView nm = Ui.text(c, ch.name, 13, Ui.TEXT, true);
+                nm.setSingleLine(true);
+                nm.setPadding(Ui.dp(c, 8), 0, 0, 0);
+                nm.setMaxWidth(Ui.dp(c, 200));
+                nm.setEllipsize(TextUtils.TruncateAt.END);
+                card.addView(nm);
+                card.setOnClickListener(v -> {
+                    if (sheet != null) sheet.dismiss();
+                    switchTo(ch);
+                });
+                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, Ui.dp(c, 48));
+                lp.rightMargin = Ui.dp(c, 8);
+                row.addView(card, lp);
+            }
+        }
+        return !similar.isEmpty();
+    }
+
+    /** The tile's Similar channels: the row alone in a sheet. */
+    private void similarSheet() {
+        if (cur == null) return;
+        hideOverlay();
+        Context c = this;
+        LinearLayout box = new LinearLayout(c);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(Ui.dp(c, 20), Ui.dp(c, 8), Ui.dp(c, 20), Ui.dp(c, 20));
+        if (!addSimilar(c, box)) {
+            Toast.makeText(c, R.string.live_similar_none, Toast.LENGTH_SHORT).show();
+            return;
+        }
+        BottomSheetDialog mine = Sheets.open(c, box, true);
+        sheet = mine;
+        mine.setOnDismissListener(d -> {
+            if (sheet == mine) sheet = null;
+        });
+    }
+
+    private int styleLabel(TileKind.Style st) {
+        switch (st) {
+            case RIBBON: return R.string.tile_ribbon;
+            case CARD: return R.string.tile_card;
+            case MATCH: return R.string.tile_match;
+            case CINEMA: return R.string.tile_cinema;
+            case PANEL: return R.string.tile_panel;
+            default: return R.string.tile_auto;
+        }
     }
 
     private LinearLayout chipRow(Context c, LinearLayout box, int label) {
@@ -1003,8 +1205,8 @@ public class PlayerActivity extends AppCompatActivity {
                 if (d == Gestures.UP) step(1);
                 else if (d == Gestures.DOWN) step(-1);
                 else if (d == Gestures.LEFT) {
-                    // The mini guide in from the side, and away again the other way.
-                    if (!overlayShown()) showOverlay();
+                    // The mini guide in from the side (whatever the tile), and away again the other way.
+                    if (!panelShown()) showPanel();
                 } else if (d == Gestures.RIGHT) {
                     if (overlayShown()) hideOverlay();
                 }
@@ -1120,10 +1322,21 @@ public class PlayerActivity extends AppCompatActivity {
 
         root.addView(buildPanel(), new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM));
 
+        // The info tile: only its cards take a touch; a tap anywhere else reaches the picture (and puts it away).
+        tiles = new FrameLayout(this) {
+            @Override public boolean dispatchTouchEvent(MotionEvent e) {
+                keepPanel();
+                return super.dispatchTouchEvent(e);
+            }
+        };
+        tiles.setVisibility(View.GONE);
+        root.addView(tiles, new FrameLayout.LayoutParams(-1, -1));
+
         // Picture in picture and close, top right.
         top = new LinearLayout(this);
         top.setOrientation(LinearLayout.HORIZONTAL);
         top.setPadding(Ui.dp(this, 12), Ui.dp(this, 12), Ui.dp(this, 12), Ui.dp(this, 12));
+        top.addView(button(R.drawable.live_ic_more, R.string.live_options, v -> options()));
         if (pipSupported()) top.addView(button(R.drawable.live_ic_pip, R.string.live_pip, v -> enterPip()));
         top.addView(button(R.drawable.live_ic_close, R.string.live_close, v -> close()));
         top.setVisibility(View.GONE);
@@ -1147,6 +1360,7 @@ public class PlayerActivity extends AppCompatActivity {
         tp.leftMargin = cut.left;
         top.setLayoutParams(tp);
         if (hint != null) hint.setPadding(cut.left, cut.top, cut.right, cut.bottom);
+        tiles.setPadding(cut.left, cut.top, cut.right, cut.bottom);
     }
 
     /** The guide panel along the foot: the channel, now and next, and the mini guide of the channels either side. */

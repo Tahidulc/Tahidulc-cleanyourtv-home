@@ -120,9 +120,9 @@
     <string name="live_volume">Volume</string>
     <string name="live_percent">%1$d%%</string>
     <string name="live_hint_title">Getting around</string>
-    <string name="live_hint_tap">Tap for the guide, with the channels either side</string>
+    <string name="live_hint_tap">Tap for what\'s on now and next, in a tile that suits it: a game, a film, a series</string>
     <string name="live_hint_swipe">Swipe up or down in the middle for the next or previous channel</string>
-    <string name="live_hint_sides">Swipe left for the mini guide, and right to put it away</string>
+    <string name="live_hint_sides">Swipe left for the guide with the channels either side, and right to put it away</string>
     <string name="live_hint_zoom">Double-tap or pinch to fill the screen, or fit the whole picture</string>
     <string name="live_hint_edges">Slide up or down on the left edge for brightness, on the right edge for volume</string>
     <string name="live_got_it">Got it</string>

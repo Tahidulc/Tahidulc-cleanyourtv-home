@@ -17,6 +17,10 @@ public final class Game {
 
     public String id, slug, league, leagueName, leagueLogo;
     public String homeId, awayId, home, away, homeName, awayName, homeLogo, awayLogo, venue;
+    /** The clubs' full names ("Manchester United"; homeName is ESPN's short one, "Man United"), "" when not given. */
+    public String homeFull = "", awayFull = "";
+    /** Each club's last five results, oldest first ("DWLLW"), and its colour ("ffff00"), "" when ESPN gives none. */
+    public String homeForm = "", awayForm = "", homeColor = "", awayColor = "";
     public int homeScore, awayScore;
     /** PRE, LIVE or POST. */
     public int state = PRE;
@@ -61,7 +65,8 @@ public final class Game {
             o.put("id", id).put("slug", slug).put("league", league).put("leagueName", leagueName).put("leagueLogo", leagueLogo)
                     .put("homeId", homeId).put("awayId", awayId).put("home", home).put("away", away)
                     .put("homeName", homeName).put("awayName", awayName).put("homeLogo", homeLogo).put("awayLogo", awayLogo)
-                    .put("venue", venue).put("homeScore", homeScore).put("awayScore", awayScore).put("state", state)
+                    .put("venue", venue).put("homeFull", homeFull).put("awayFull", awayFull).put("homeForm", homeForm)
+                    .put("awayForm", awayForm).put("homeColor", homeColor).put("awayColor", awayColor).put("homeScore", homeScore).put("awayScore", awayScore).put("state", state)
                     .put("detail", detail).put("halftime", halftime).put("kickoff", kickoff)
                     .put("broadcasts", new JSONArray(broadcasts)).put("goals", rows(goals)).put("reds", rows(reds));
         } catch (JSONException ignored) {
@@ -86,6 +91,12 @@ public final class Game {
         g.homeLogo = o.optString("homeLogo", null);
         g.awayLogo = o.optString("awayLogo", null);
         g.venue = o.optString("venue", null);
+        g.homeFull = o.optString("homeFull", "");
+        g.awayFull = o.optString("awayFull", "");
+        g.homeForm = o.optString("homeForm", "");
+        g.awayForm = o.optString("awayForm", "");
+        g.homeColor = o.optString("homeColor", "");
+        g.awayColor = o.optString("awayColor", "");
         g.homeScore = o.optInt("homeScore");
         g.awayScore = o.optInt("awayScore");
         g.state = o.optInt("state", PRE);
