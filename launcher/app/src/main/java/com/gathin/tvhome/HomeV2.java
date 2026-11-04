@@ -237,6 +237,11 @@ final class HomeV2 {
         if (notifyPanel != null) notifyPanel.show();
     }
 
+    /** adb only (--ez test_trailers true): the Trailer reel, every new trailer on this TV's apps. */
+    void testTrailers() {
+        TrailerReel.open(this, 0, 0);
+    }
+
     /**
      * adb only (--ez test_filmnight_panel true): Movies opened, and the first film's panel with Film night's settings
      * open, once the page has its posters.
@@ -1455,6 +1460,7 @@ final class HomeV2 {
 
     void stop() {
         main.removeCallbacks(filmNight);
+        TrailerReel.close();
         main.removeCallbacks(warmPages);
         main.removeCallbacks(shiftMesh);
         main.removeCallbacks(matchBack);
@@ -1510,6 +1516,7 @@ final class HomeV2 {
         if (TwoUp.home(this)) return;
         if (controlCentre != null) controlCentre.hide();
         if (notifyPanel != null) notifyPanel.hide();
+        TrailerReel.close();
         Surprise.close();
         EpisodeDice.close();
         Recap.close();
@@ -1551,7 +1558,7 @@ final class HomeV2 {
                 || (notifyPanel != null && notifyPanel.isOpen())
                 || (smartPanel != null && smartPanel.isOpen()) || (weatherPanel != null && weatherPanel.isOpen())
                 || (titlePanel != null && titlePanel.isOpen()) || (viewing != null && viewing.isOpen())
-                || (search != null && search.isOpen()) || Surprise.isOpen() || EpisodeDice.isOpen() || Recap.isOpen()
+                || (search != null && search.isOpen()) || Surprise.isOpen() || EpisodeDice.isOpen() || Recap.isOpen() || TrailerReel.isOpen()
                 || AlertToday.isOpen() || TvLink.isOpen() || Birthday.isOpen() || MonthRecap.isOpen()
                 || Predictions.isOpen();
         if (busy || (zone != Z_ROW && zone != Z_CATS)) {
@@ -1591,6 +1598,7 @@ final class HomeV2 {
         if (TwoUp.open()) return TwoUp.key(e);
         if (controlCentre != null && controlCentre.isOpen()) return controlCentre.key(e);
         if (notifyPanel != null && notifyPanel.isOpen()) return notifyPanel.key(e);
+        if (TrailerReel.isOpen()) return TrailerReel.key(e);
         if (Surprise.isOpen()) return Surprise.key(e);
         if (EpisodeDice.isOpen()) return EpisodeDice.key(e);
         if (Recap.isOpen()) return Recap.key(e);

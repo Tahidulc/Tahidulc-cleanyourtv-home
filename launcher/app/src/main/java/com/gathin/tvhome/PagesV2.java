@@ -734,7 +734,7 @@ final class PagesV2 {
             }
             trailerSoon = new Runnable() {
                 @Override public void run() {
-                if (trailerTile != tile) return;
+                if (trailerTile != tile || TrailerReel.isOpen()) return;
                 // Keys still coming (the row held still): the trailer waits until they stop.
                 long held = h.stillLeft();
                 if (held > 0) { h.main.postDelayed(this, held); return; }
@@ -745,7 +745,7 @@ final class PagesV2 {
                     String id = trailer(h.tmdbKey, t);
                     h.main.post(() -> {
                         t.youtube = id;
-                        if (trailerTile == tile && !id.isEmpty()) player.trailer(tile, 0, id, tile.findViewWithTag("poster"), tile.findViewWithTag("wide"));
+                        if (trailerTile == tile && !id.isEmpty() && !TrailerReel.isOpen()) player.trailer(tile, 0, id, tile.findViewWithTag("poster"), tile.findViewWithTag("wide"));
                     });
                 });
                 }
@@ -2077,11 +2077,15 @@ final class PagesV2 {
         // Because you watched: up to three tabs after My list, from what played most here and what was loved (Because).
         List<Because.Source> because = Because.sources(h.a);
         int nb = because.size();
+        // The Trailers tab (TrailerReel) after New releases, unless the theme turns the reel off.
+        boolean reel = TrailerReel.on(h.a);
         List<String> names = new ArrayList<>(Arrays.asList("Continue Watching", "My list"));
         for (Because.Source b : because) names.add(Because.words(b));
-        names.addAll(Arrays.asList("New releases", "Trending", "Netflix", "Disney+", "Prime Video", "Apple TV+"));
+        names.add("New releases");
+        if (reel) names.add("Trailers");
+        names.addAll(Arrays.asList("Trending", "Netflix", "Disney+", "Prime Video", "Apple TV+"));
         String[] tabs = names.toArray(new String[0]);
-        int[] providers = {0, 0, 0, 0, 8, 337, 9, 350};
+        int[] providers = {0, 0, 0, 0, 0, 8, 337, 9, 350};
         return new PosterPage(h, "DISCOVER", 0xFFC9A7FF, tabs, new int[]{584 - 62}, tab -> {
             List<Title> items;
             LocalDate today = LocalDate.now();
@@ -2089,11 +2093,16 @@ final class PagesV2 {
             if (tab == 1) return Arrays.asList(myListRow(h));
             if (tab < 2 + nb) return Arrays.asList(Because.row(h, because.get(tab - 2)));
             int t = tab - nb;
+            // As if the Trailers tab were there (the fourth after the Because tabs) when the theme turns it off.
+            if (!reel && t >= 3) t++;
             if (t == 2) {
                 items = mix(tmdbRow(k, "discover/movie?region=GB&with_release_type=4|5&release_date.gte=" + today.minusWeeks(6)
                                 + "&release_date.lte=" + today + "&sort_by=popularity.desc", false),
                         tmdbRow(k, "discover/tv?first_air_date.gte=" + today.minusMonths(2) + "&sort_by=popularity.desc&with_original_language=en", true));
             } else if (t == 3) {
+                // The Trailer reel: what's new on this TV's apps, OK on one playing the trailers from it.
+                return Arrays.asList(TrailerReel.row(h, TrailerReel.ALL));
+            } else if (t == 4) {
                 items = tmdbRow(k, "trending/all/day", false);
             } else {
                 String w = "&watch_region=GB&with_watch_providers=" + providers[t] + "&sort_by=popularity.desc";
@@ -2205,9 +2214,10 @@ final class PagesV2 {
 
     static PosterPage movies(HomeV2 h) {
         String m = "discover/movie?sort_by=popularity.desc&watch_region=GB";
-        return sections(h, "MOVIES", 0xFFFF4FA3, false, new String[][]{
+        return sections(h, "MOVIES", 0xFFFF4FA3, false, withoutReel(h, new String[][]{
                 {"Fits tonight", "@fits", ""},
                 {"Surprise me", "@surprise", ""},
+                {"Trailers", "@trailers", ""},
                 {"Popular", "movie/popular?region=GB", ""},
                 {"Top 10", "trending/movie/week", "n"},
                 {"New to stream", m + "&region=GB&with_release_type=4&release_date.gte=" + since(45) + "&release_date.lte=" + today(), ""},
@@ -2235,7 +2245,15 @@ final class PagesV2 {
                 {"Best of British", "discover/movie?with_origin_country=GB&sort_by=popularity.desc&vote_count.gte=200", ""},
                 {"90s classics", "discover/movie?primary_release_date.gte=1990-01-01&primary_release_date.lte=1999-12-31&sort_by=popularity.desc&vote_count.gte=1000", ""},
                 {"Korean cinema", "discover/movie?with_original_language=ko&sort_by=popularity.desc&vote_count.gte=150", ""},
-                {"Coming soon", "movie/upcoming?region=GB", ""}});
+                {"Coming soon", "movie/upcoming?region=GB", ""}}));
+    }
+
+    /** A page's tabs without the Trailers tab when the theme turns the reel off. */
+    private static String[][] withoutReel(HomeV2 h, String[][] spec) {
+        if (TrailerReel.on(h.a)) return spec;
+        List<String[]> out = new ArrayList<>();
+        for (String[] s : spec) if (!"@trailers".equals(s[1])) out.add(s);
+        return out.toArray(new String[0][]);
     }
 
     static PosterPage shows(HomeV2 h) {
@@ -2423,6 +2441,7 @@ final class PagesV2 {
                 : "@comingup".equals(spec[t - 1][1]) ? Arrays.asList(ComingUp.row(h))
                 : "@surprise".equals(spec[t - 1][1]) ? Arrays.asList(Surprise.row(h))
                 : "@dice".equals(spec[t - 1][1]) ? Arrays.asList(EpisodeDice.row(h))
+                : "@trailers".equals(spec[t - 1][1]) ? Arrays.asList(TrailerReel.row(h, tv ? TrailerReel.SERIES : TrailerReel.FILMS))
                 // A Top 10 stays one page (it is numbered); every other tab runs to two.
                 : Arrays.asList(row(null, null, "n".equals(spec[t - 1][2]),
                         "n".equals(spec[t - 1][2]) ? tmdb(k, spec[t - 1][1], tv) : tmdbRow(k, spec[t - 1][1], tv))));

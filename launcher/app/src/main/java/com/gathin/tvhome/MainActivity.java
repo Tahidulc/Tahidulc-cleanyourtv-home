@@ -1149,6 +1149,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             else if (intent != null && intent.getBooleanExtra("test_episode_map", false)) v2.testEpisodeMap();
             // adb only (--ez open_notifications true): the Control Centre's Notifications.
             else if (intent != null && intent.getBooleanExtra("open_notifications", false)) v2.openNotifications();
+            // adb only (--ez test_trailers true): the Trailer reel.
+            else if (intent != null && intent.getBooleanExtra("test_trailers", false)) v2.testTrailers();
             // adb only (--ez test_filmnight_panel true): Movies, the first film's panel, Film night's settings open.
             else if (intent != null && intent.getBooleanExtra("test_filmnight_panel", false)) v2.testFilmNightPanel();
             // adb only (--es test_birthday "Name|5"): the birthday greeting, now.
