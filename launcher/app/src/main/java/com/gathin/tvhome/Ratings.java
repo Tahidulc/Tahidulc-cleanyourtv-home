@@ -31,6 +31,36 @@ final class Ratings {
         if (id <= 0) return;
         prefs(c).edit().putString("r." + key(tv, id), WatchRules.encode(value, System.currentTimeMillis(), genre, name)).apply();
         AlertLog.note(c, "rated " + name + ": " + WatchRules.word(value));
+        SyncHub.changed(c);
+    }
+
+    /** Every rating as kept: its key ("mv:123", "tv:456:s2") to "value|when|genre|name" (SyncHub). */
+    static Map<String, String> records(Context c) {
+        Map<String, String> out = new java.util.LinkedHashMap<>();
+        for (Map.Entry<String, ?> e : prefs(c).getAll().entrySet()) {
+            if (e.getKey().startsWith("r.") && e.getValue() instanceof String) out.put(e.getKey().substring(2), (String) e.getValue());
+        }
+        return out;
+    }
+
+    /** The main genre kept with a rating, or "" (a rating from a phone keeps the one this TV knew). */
+    static String genre(Context c, String key) {
+        Object[] r = WatchRules.decode(prefs(c).getString("r." + key, null));
+        return r == null ? "" : (String) r[2];
+    }
+
+    /** A rating made on a phone or the other TV (SyncHub), as Ratings keeps it. */
+    static void putSynced(Context c, String key, String record) {
+        prefs(c).edit().putString("r." + key, record).apply();
+        SyncHub.changed(c);
+    }
+
+    /** A rating taken back elsewhere (SyncHub); false when there was none here. */
+    static boolean removeSynced(Context c, String key) {
+        if (!prefs(c).contains("r." + key)) return false;
+        prefs(c).edit().remove("r." + key).apply();
+        SyncHub.changed(c);
+        return true;
     }
 
     /** The rating of a title, or 0 when it has none. */

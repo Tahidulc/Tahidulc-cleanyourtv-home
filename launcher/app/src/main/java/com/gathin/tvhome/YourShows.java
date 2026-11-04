@@ -453,6 +453,14 @@ final class YourShows {
         return null;
     }
 
+    /** A series' details already read (no request): for the phone's /sync/watching. */
+    static JSONObject cached(int id) {
+        synchronized (DETAILS) {
+            Object[] had = DETAILS.get(id);
+            return had == null ? null : (JSONObject) had[1];
+        }
+    }
+
     static JSONObject details(String key, int id) {
         if (key == null || key.isEmpty()) return null;
         synchronized (DETAILS) {

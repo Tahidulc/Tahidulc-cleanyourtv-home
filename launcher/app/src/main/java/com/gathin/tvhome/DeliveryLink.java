@@ -50,6 +50,8 @@ final class DeliveryLink {
     private static final String TYPE = "_tvhome._tcp";
     private static final long CODE_MS = 5 * 60_000L;
     private static final int MAX_BODY = 192 * 1024;
+    /** A sync's items (SyncHub): My list, ratings and the rest, a few hundred at most. */
+    private static final int SYNC_BODY = 2 * 1024 * 1024;
 
     private final Context context;
     private final Sink sink;
@@ -126,7 +128,7 @@ final class DeliveryLink {
             if (name.equals("content-length")) length = Integer.parseInt(value);
             if (name.equals("x-token")) token = value;
         }
-        if (length < 0 || length > MAX_BODY) { reply(s, 413, "{\"error\":\"too big\"}"); return; }
+        if (length < 0 || length > (path.startsWith("/sync") ? SYNC_BODY : MAX_BODY)) { reply(s, 413, "{\"error\":\"too big\"}"); return; }
         byte[] body = new byte[length];
         for (int read = 0; read < length; ) {
             int n = in.read(body, read, length - read);
@@ -232,6 +234,39 @@ final class DeliveryLink {
                 reply(s, 200, new JSONObject().put("games", Predictions.games(context)).toString());
                 return;
             }
+            case "/sync": {
+                // The phone app (its token) or one of the house's TVs (no token, from an address known as one): its
+                // changes merged in, then every item that changed here after its "since" (this TV's clock).
+                boolean phone = paired(token);
+                if (!phone && !SyncHub.houseTv(context, s.getInetAddress().getHostAddress())) { reply(s, 401, "{\"error\":\"not paired\"}"); return; }
+                Set<String> got = SyncHub.merge(context, json.optJSONArray("items"));
+                long now = System.currentTimeMillis();
+                org.json.JSONArray out = SyncHub.changedSince(context, json.optLong("since"), got);
+                reply(s, 200, new JSONObject().put("now", now).put("items", out).toString());
+                return;
+            }
+            case "/sync/watching": {
+                if (!paired(token)) { reply(s, 401, "{\"error\":\"not paired\"}"); return; }
+                reply(s, 200, SyncHub.watching(context).toString());
+                return;
+            }
+            case "/play": {
+                // A title from the phone, opened here in the licensed app that streams it (SyncHub.play).
+                if (!paired(token)) { reply(s, 401, "{\"error\":\"not paired\"}"); return; }
+                android.os.PowerManager pm = context.getSystemService(android.os.PowerManager.class);
+                if (pm != null && !pm.isInteractive()) { reply(s, 409, "{\"error\":\"the TV is off\"}"); return; }
+                String title = json.optString("title").trim();
+                if (title.isEmpty()) { reply(s, 400, "{\"error\":\"no title\"}"); return; }
+                SyncHub.play(context, json.optInt("id"), json.optBoolean("tv"), title);
+                reply(s, 200, "{\"ok\":true}");
+                return;
+            }
+            case "/tmdb": {
+                // TMDB's key for a paired phone, read from the theme now (never logged).
+                if (!paired(token)) { reply(s, 401, "{\"error\":\"not paired\"}"); return; }
+                reply(s, 200, new JSONObject().put("key", Config.themeString(context, "tmdb_key", "").trim()).toString());
+                return;
+            }
             case "/unpair": {
                 // A phone forgetting this TV: its token stops working.
                 Set<String> tokens = new HashSet<>(prefs.getStringSet("tokens", new HashSet<>()));
@@ -242,6 +277,11 @@ final class DeliveryLink {
             default:
                 reply(s, 404, "{\"error\":\"unknown\"}");
         }
+    }
+
+    /** Whether a phone's token is one this TV gave out. */
+    private boolean paired(String token) {
+        return token != null && prefs.getStringSet("tokens", new HashSet<>()).contains(token);
     }
 
     /** One line of the request, or null at its end (or for one far too long). */

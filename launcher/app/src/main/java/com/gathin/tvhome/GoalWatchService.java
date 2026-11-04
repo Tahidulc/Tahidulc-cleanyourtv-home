@@ -1041,6 +1041,9 @@ public class GoalWatchService extends Service {
             @Override public void send(JSONObject s) { main.post(() -> TvLink.openSent(GoalWatchService.this, s)); }
         });
         deliveries.start();
+        // The sync with the house's other TVs (My list, ratings, Film night, mutes, reminders, starred clubs): now and
+        // every ten minutes, and ten seconds after a change here.
+        SyncHub.startPeers(this);
         // The other TVs on the home network, looked for once now, so Messages, Send to other TV and the predictions
         // know where they are before anyone asks.
         new Thread(() -> TvLink.find(this), "tv-link-find").start();
@@ -1413,7 +1416,7 @@ public class GoalWatchService extends Service {
     /** A game of one of the starred clubs: the goal_alert_teams clubs and Man Utd. */
     static boolean starred(Context c, ScoresTicker.Game g) {
         if (g == null) return false;
-        Set<String> clubs = new HashSet<>(Arrays.asList(c.getResources().getStringArray(R.array.goal_alert_teams)));
+        Set<String> clubs = new HashSet<>(Arrays.asList(SyncHub.starredClubs(c)));
         clubs.add(MatchDay.MAN_UNITED);
         return clubs.contains(g.homeId) || clubs.contains(g.awayId);
     }
@@ -1853,6 +1856,8 @@ public class GoalWatchService extends Service {
         // adb only: How was it? (test_howwasit) and the pause card (test_pause), with sample films.
         if (intent != null) WatchCards.test(this, intent);
         if (intent != null) FilmNight.test(this, intent);
+        // adb only: test_sync dump, the synced items' count by type in the alert log.
+        if (intent != null && "dump".equals(intent.getStringExtra("test_sync"))) SyncHub.dump(this);
         if (intent != null && intent.hasExtra("test_red")) {
             ScoresTicker.Game g = new ScoresTicker.Game();
             g.league = "UCL"; g.home = "ARS"; g.away = "PSG"; g.homeScore = "1"; g.awayScore = "1";
@@ -1918,7 +1923,7 @@ public class GoalWatchService extends Service {
         String[] alertLeagues = getResources().getStringArray(R.array.goal_alert_leagues);
         Set<String> alertTags = new HashSet<>();
         for (String l : alertLeagues) alertTags.add(l.contains("|") ? l.split("\\|", 2)[1].trim() : l.trim());
-        Set<String> clubs = new HashSet<>(Arrays.asList(getResources().getStringArray(R.array.goal_alert_teams)));
+        Set<String> clubs = new HashSet<>(Arrays.asList(SyncHub.starredClubs(this)));
         List<String> all = new ArrayList<>(Arrays.asList(alertLeagues));
         if (teamAlerts) all.addAll(Arrays.asList(getResources().getStringArray(R.array.team_alert_leagues)));
         // For the line-ups too: England's games and Real Madrid's and Barcelona's Supercopa.
@@ -2569,7 +2574,7 @@ public class GoalWatchService extends Service {
             String tag = l.contains("|") ? l.split("\\|", 2)[1].trim() : l.trim();
             if (tag.equals(g.league)) return true;
         }
-        Set<String> clubs = new HashSet<>(Arrays.asList(c.getResources().getStringArray(R.array.goal_alert_teams)));
+        Set<String> clubs = new HashSet<>(Arrays.asList(SyncHub.starredClubs(c)));
         clubs.addAll(LINEUP_TEAMS);
         return clubs.contains(g.homeId) || clubs.contains(g.awayId);
     }

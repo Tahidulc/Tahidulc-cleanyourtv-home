@@ -449,7 +449,7 @@ final class RichAlerts {
         }
         List<Club> a = sorted(after.values());
         sorted(before.values());
-        Set<String> followed = new HashSet<>(Arrays.asList(c.getResources().getStringArray(R.array.goal_alert_teams)));
+        Set<String> followed = new HashSet<>(Arrays.asList(SyncHub.starredClubs(c)));
         String scorer = home ? g.homeId : g.awayId, other = home ? g.awayId : g.homeId;
         String pick = null;
         for (String id : new String[]{scorer, other}) {

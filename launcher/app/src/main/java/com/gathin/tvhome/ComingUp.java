@@ -74,7 +74,22 @@ final class ComingUp {
         if (now) s.add(key(id, tv));
         prefs(c).edit().putStringSet("muted", s).apply();
         changes++;
+        SyncHub.changed(c);
         return now;
+    }
+
+    /** Every title whose release pop-up is off here ("tv:1399", "mv:550"), for SyncHub. */
+    static Set<String> mutedKeys(Context c) {
+        return new HashSet<>(prefs(c).getStringSet("muted", new HashSet<>()));
+    }
+
+    /** A title's pop-up turned off (or on again) on a phone or the other TV (SyncHub). */
+    static synchronized void setMuted(Context c, String key, boolean off) {
+        Set<String> s = new HashSet<>(prefs(c).getStringSet("muted", new HashSet<>()));
+        if (off ? !s.add(key) : !s.remove(key)) return;
+        prefs(c).edit().putStringSet("muted", s).apply();
+        changes++;
+        SyncHub.changed(c);
     }
 
     // ---- the sums (pure, unit tested) --------------------------------------------------------------------------------

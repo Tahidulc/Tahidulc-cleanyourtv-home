@@ -77,6 +77,47 @@ final class MyList {
         JSONArray a = new JSONArray();
         for (JSONObject o : list) a.put(o);
         prefs(c).edit().putString("list", a.toString()).apply();
+        SyncHub.changed(c);
+    }
+
+    /**
+     * One kept on a phone or the other TV (SyncHub): added in its place by when it was added, or brought up to date
+     * (its "apps" mark kept). True when it was new here.
+     */
+    static synchronized boolean putSynced(Context c, int id, boolean tv, String title, String poster, String backdrop, long added) {
+        List<JSONObject> list = all(c);
+        JSONObject had = null;
+        for (int i = 0; i < list.size(); i++) {
+            JSONObject o = list.get(i);
+            if (o.optInt("id") == id && o.optBoolean("tv") == tv) { had = o; list.remove(i); break; }
+        }
+        JSONObject o = new JSONObject();
+        try {
+            o.put("id", id).put("tv", tv).put("title", title).put("poster", poster).put("backdrop", backdrop).put("added", added)
+                    .put("apps", had != null && had.optBoolean("apps"));
+        } catch (Exception ignored) {
+            return false;
+        }
+        int at = 0;
+        while (at < list.size() && list.get(at).optLong("added") > added) at++;
+        list.add(at, o);
+        while (list.size() > 100) list.remove(list.size() - 1);
+        store(c, list);
+        return had == null;
+    }
+
+    /** One taken off on a phone or the other TV (SyncHub); false when it was not here. */
+    static synchronized boolean removeSynced(Context c, int id, boolean tv) {
+        List<JSONObject> list = all(c);
+        for (int i = 0; i < list.size(); i++) {
+            JSONObject o = list.get(i);
+            if (o.optInt("id") == id && o.optBoolean("tv") == tv) {
+                list.remove(i);
+                store(c, list);
+                return true;
+            }
+        }
+        return false;
     }
 
     /** The list as poster titles (Discover's My list tab). */

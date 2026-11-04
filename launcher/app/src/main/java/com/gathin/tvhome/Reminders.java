@@ -71,6 +71,39 @@ final class Reminders {
         JSONArray a = new JSONArray();
         for (JSONObject o : all) a.put(o);
         prefs(c).edit().putString(KEY, a.toString()).apply();
+        SyncHub.changed(c);
+    }
+
+    /** Every reminder set: {t title, s start, c channel, l logo, k its sync key when it came from elsewhere, kind}. */
+    static synchronized List<JSONObject> all(Context c) {
+        return read(c);
+    }
+
+    /** A reminder set on a phone or the other TV (SyncHub), under its key; one already set for it is replaced. */
+    static synchronized void putSynced(Context c, String key, String title, long start, String channel, String logo, String kind) {
+        List<JSONObject> all = read(c);
+        for (int i = all.size() - 1; i >= 0; i--) if (key.equals(syncKey(all.get(i)))) all.remove(i);
+        try {
+            JSONObject o = new JSONObject().put("t", title).put("s", start).put("c", channel == null ? "" : channel)
+                    .put("l", logo == null ? "" : logo).put("k", key);
+            if (kind != null && !kind.isEmpty()) o.put("kind", kind);
+            all.add(o);
+        } catch (Exception ignored) {
+        }
+        write(c, all);
+    }
+
+    /** A reminder taken off elsewhere (SyncHub); false when it was not set here. */
+    static synchronized boolean removeSynced(Context c, String key) {
+        List<JSONObject> all = read(c);
+        boolean any = false;
+        for (int i = all.size() - 1; i >= 0; i--) if (key.equals(syncKey(all.get(i)))) { all.remove(i); any = true; }
+        if (any) write(c, all);
+        return any;
+    }
+
+    private static String syncKey(JSONObject o) {
+        return SyncRules.reminderKey(o.optString("k", ""), o.optString("c"), o.optLong("s"), o.optString("t"));
     }
 
     private static SharedPreferences prefs(Context c) {

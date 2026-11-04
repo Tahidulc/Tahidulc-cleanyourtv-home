@@ -3178,7 +3178,7 @@ final class PagesV2 {
             String[] leagues = h.a.getResources().getStringArray(R.array.score_leagues);
             List<String> order = new ArrayList<>();
             for (String l : leagues) order.add(l.split("\\|", 2)[0].trim());
-            java.util.Set<String> clubs = new java.util.HashSet<>(Arrays.asList(h.a.getResources().getStringArray(R.array.goal_alert_teams)));
+            java.util.Set<String> clubs = new java.util.HashSet<>(Arrays.asList(SyncHub.starredClubs(h.a)));
             clubs.add(MatchDay.MAN_UNITED);   // Home's own club (Match Day's first), starred too
             java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(Math.min(3, days.size()));
             List<java.util.concurrent.Future<List<ScoresTicker.Game>>> reads = new ArrayList<>();
@@ -3381,7 +3381,7 @@ final class PagesV2 {
                 col.addView(ses, sl);
             } else {
                 ScoresTicker.Game gm = w.game;
-                java.util.Set<String> clubs = new java.util.HashSet<>(Arrays.asList(h.a.getResources().getStringArray(R.array.goal_alert_teams)));
+                java.util.Set<String> clubs = new java.util.HashSet<>(Arrays.asList(SyncHub.starredClubs(h.a)));
                 clubs.add(MatchDay.MAN_UNITED);   // Home's own club (Match Day's first), starred too
                 for (int k = 0; k < 2; k++) {
                     LinearLayout line = new LinearLayout(h.a);

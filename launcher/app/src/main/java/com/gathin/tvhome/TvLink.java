@@ -100,6 +100,14 @@ final class TvLink {
         return out;
     }
 
+    /** One more of the house's TVs, found when it synced with this one (SyncHub). */
+    static synchronized void add(Context c, String name, String host) {
+        List<String[]> peers = known(c);
+        for (int i = peers.size() - 1; i >= 0; i--) if (peers.get(i)[1].equals(host) || peers.get(i)[0].equals(name)) peers.remove(i);
+        peers.add(new String[]{name, host});
+        remember(c, peers);
+    }
+
     private static void remember(Context c, List<String[]> peers) {
         JSONArray a = new JSONArray();
         try {

@@ -126,6 +126,7 @@ final class FilmNight {
         else prefs(c).edit().putString("plan", p.json().toString()).apply();
         AlertLog.note(c, p == null ? "film night: cancelled" : "film night: " + p.title + " at " + clock(p.start)
                 + (p.dim ? ", lights" : "") + (p.remind ? ", reminder" : "") + (p.quiet ? ", quiet pop-ups" : ""));
+        SyncHub.changed(c);
     }
 
     static String clock(long ms) {

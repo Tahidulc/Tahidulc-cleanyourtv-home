@@ -221,7 +221,7 @@ final class SportsSection {
         for (String l : ctx.getResources().getStringArray(R.array.goal_alert_leagues)) {
             alertTags.add(l.contains("|") ? l.split("\\|", 2)[1].trim() : l.trim());
         }
-        Set<String> clubs = new HashSet<>(Arrays.asList(ctx.getResources().getStringArray(R.array.goal_alert_teams)));
+        Set<String> clubs = new HashSet<>(Arrays.asList(SyncHub.starredClubs(ctx)));
         // Each league once: a table league already on the scores line keeps that line's short name.
         List<String> all = new ArrayList<>(Arrays.asList(leagues));
         Set<String> slugs = new HashSet<>();
