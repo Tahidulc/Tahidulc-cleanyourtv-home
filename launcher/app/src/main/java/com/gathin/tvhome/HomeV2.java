@@ -1223,25 +1223,12 @@ final class HomeV2 {
         return -1;
     }
 
-    /** The dock swells under the focus: the item itself most, its neighbours a little. */
-    /**
-     * How far an app's icon moves aside (design px) while app `at` has the focus: its glass reaches 13.5 past the
-     * swollen icon's edge, more than the gap to the next, so the neighbours slide out of its way (10, those beyond 12)
-     * and the glass keeps 8 clear of every icon. Nothing moves while the focus is elsewhere.
-     */
-    static float dockShift(int i, int at, int apps) {
-        if (at < 0 || at >= apps || i >= apps || i == at) return 0f;
-        return Math.signum(i - at) * (Math.abs(i - at) == 1 ? 10f : 12f);
-    }
-
     /** Room at the dock's left end and before its rule, for the end apps to move aside into. */
     static final int DOCK_EDGE = 28;
 
+    /** The dock swells under the focus: the item itself most, its neighbours a little. */
     private float swell(int at) {
-        int f = dockFocus();
-        if (f < 0) return 1f;
-        int d = Math.abs(at - f);
-        return d == 0 ? 1.2f : d == 1 ? 1.07f : 1f;
+        return DockSwell.scale(at, dockFocus());
     }
 
     /** The glass to whatever has the focus: a ring round the tile, a pill behind the dock item; else away. */
@@ -2227,14 +2214,16 @@ final class HomeV2 {
             FrameLayout f = railViews.get(i);
             boolean on = zone == Z_RAIL && i == railIdx;
             float sw = swell(i);
-            if (!restyle(f, (on ? 1 : 0) | Math.round(sw * 100) << 2)) continue;
+            // How far it slides aside is part of its look: an app far from the focus keeps its swell as the focus
+            // jumps across it (Down from the row), but must slide back the other way.
+            float shift = DockSwell.aside(i, zone == Z_RAIL ? railIdx : -1, railViews.size());
+            if (!restyle(f, DockSwell.state(on, sw, shift))) continue;
             boolean app = f.getTag() != null;
             f.getChildAt(0).setAlpha(app ? 1f : 0f);
             f.getChildAt(1).setAlpha(app ? 0f : 0.9f);
             f.setForeground(null);
             if (!app) f.setBackground(fill(18, GLASS));
-            float aside = px(dockShift(i, zone == Z_RAIL ? railIdx : -1, railViews.size()));
-            f.animate().scaleX(sw).scaleY(sw).translationX(aside).translationY(on ? -px(APP_LIFT) : 0).setDuration(260).setInterpolator(SKY).start();
+            f.animate().scaleX(sw).scaleY(sw).translationX(px(shift)).translationY(on ? -px(APP_LIFT) : 0).setDuration(260).setInterpolator(SKY).start();
         }
         for (int i = 0; !dockMode && i < railViews.size(); i++) {
             FrameLayout f = railViews.get(i);

@@ -271,7 +271,7 @@ final class PopupFrame {
             float sw = d == 0 ? 1.2f : d == 1 ? 1.07f : 1f;
             boolean on = d == 0;
             // The apps either side of the focused one move aside, so its glass touches none of them (as on Home).
-            float aside = px(HomeV2.dockShift(i, at, dockApps));
+            float aside = px(DockSwell.aside(i, at, dockApps));
             v.animate().scaleX(sw).scaleY(sw).translationX(aside).translationY(on ? -px(i < dockApps ? HomeV2.APP_LIFT : 4) : 0).setDuration(260).setInterpolator(HomeV2.SKY).start();
             if (i >= dockApps && v instanceof FrameLayout && ((FrameLayout) v).getChildAt(0) instanceof LinearLayout) {
                 LinearLayout in = (LinearLayout) ((FrameLayout) v).getChildAt(0);
