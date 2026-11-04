@@ -21,6 +21,8 @@ public final class Game {
     public String homeFull = "", awayFull = "";
     /** Each club's last five results, oldest first ("DWLLW"), and its colour ("ffff00"), "" when ESPN gives none. */
     public String homeForm = "", awayForm = "", homeColor = "", awayColor = "";
+    /** Each club's second colour ("0a422d"), "" when ESPN gives none: the goal's chevron behind the crest. */
+    public String homeAlt = "", awayAlt = "";
     public int homeScore, awayScore;
     /** PRE, LIVE or POST. */
     public int state = PRE;
@@ -70,7 +72,7 @@ public final class Game {
                     .put("homeId", homeId).put("awayId", awayId).put("home", home).put("away", away)
                     .put("homeName", homeName).put("awayName", awayName).put("homeLogo", homeLogo).put("awayLogo", awayLogo)
                     .put("venue", venue).put("homeFull", homeFull).put("awayFull", awayFull).put("homeForm", homeForm)
-                    .put("awayForm", awayForm).put("homeColor", homeColor).put("awayColor", awayColor).put("homeScore", homeScore).put("awayScore", awayScore).put("state", state)
+                    .put("awayForm", awayForm).put("homeColor", homeColor).put("awayColor", awayColor).put("homeAlt", homeAlt).put("awayAlt", awayAlt).put("homeScore", homeScore).put("awayScore", awayScore).put("state", state)
                     .put("detail", detail).put("halftime", halftime).put("kickoff", kickoff)
                     .put("clock", clock).put("period", period).put("displayClock", displayClock)
                     .put("broadcasts", new JSONArray(broadcasts)).put("goals", rows(goals)).put("reds", rows(reds));
@@ -102,6 +104,8 @@ public final class Game {
         g.awayForm = o.optString("awayForm", "");
         g.homeColor = o.optString("homeColor", "");
         g.awayColor = o.optString("awayColor", "");
+        g.homeAlt = o.optString("homeAlt", "");
+        g.awayAlt = o.optString("awayAlt", "");
         g.homeScore = o.optInt("homeScore");
         g.awayScore = o.optInt("awayScore");
         g.state = o.optInt("state", PRE);

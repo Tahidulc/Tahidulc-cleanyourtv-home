@@ -21,24 +21,26 @@ import java.util.Map;
  * The scores box as the broadcasters' bar: each club's code on a slanted wedge in its own colour, the two scores
  * either side of the competition's logo in the dark middle, and under the middle a tab with the clock in minutes and
  * seconds going on between reads (GameClock; 45:00 and +2 in added time), HT, FT or the kick-off time. A goal plays
- * out in the scoring side's colours: its wedge sweeps across the whole bar with a flash, GOAL and its code race in over
- * moving stripes, then it pulls back and the new number rolls up. Drawn in code at any width.
+ * out as the broadcasters' bar does, in the scoring club's colours: its colour sweeps across from its end with a flash,
+ * its code at the left, its crest popping in on a chevron of its second colour where the competition's logo was, GOAL
+ * dropping in letter by letter at the right (its O a spinning ball), the clock carrying on under it; then it pulls
+ * back and the new number rolls up. Drawn in code at any width.
  */
 public final class ScoreBug extends FrameLayout {
     /** How many times as wide as high it is drawn (the clock's tab included). */
     public static final float RATIO = 5.4f;
-    private static final long GOAL_MS = 3000;
+    private static final long GOAL_MS = 3600, BACK_AT = 2700, ROLL_AT = 3100;
 
     /** The last score each game was shown with, to know a goal when it comes: {home, away}. */
     private static final Map<String, int[]> LAST = new HashMap<>();
 
-    private final ImageView comp;
+    private final ImageView comp, crest;
     private Game game;
     private String tag = "";
     private boolean logoShown;
     /** The competition's logo drawn by the box itself (a picture of it made off screen, for a notification). */
     private Bitmap logoBitmap;
-    private int homeKit = 0xFF2A4FD0, awayKit = 0xFFF4F5FA, homeInk = Color.WHITE, awayInk = 0xFF10142E;
+    private int homeKit = 0xFF2A4FD0, awayKit = 0xFFF4F5FA, homeInk = Color.WHITE, awayInk = 0xFF10142E, homeAlt, awayAlt;
     private String goalSide = "";
     private long goalAt;
     private int goalFrom;
@@ -64,6 +66,10 @@ public final class ScoreBug extends FrameLayout {
         comp = new ImageView(c);
         comp.setScaleType(ImageView.ScaleType.FIT_CENTER);
         addView(comp, new LayoutParams(0, 0));
+        // The scoring club's crest for a goal: loaded here, drawn by the box itself (never shown as a view).
+        crest = new ImageView(c);
+        crest.setVisibility(INVISIBLE);
+        addView(crest, new LayoutParams(0, 0));
         text.setTypeface(plain);
         text.setFontFeatureSettings("tnum");
     }
@@ -112,7 +118,16 @@ public final class ScoreBug extends FrameLayout {
         goalSide = side;
         goalFrom = from;
         goalAt = System.currentTimeMillis();
+        loadCrest(side);
         postInvalidateOnAnimation();
+    }
+
+    private void loadCrest(String side) {
+        if (game == null) return;
+        boolean home = "home".equals(side);
+        String url = home ? (game.homeLogo != null ? game.homeLogo : Espn.crest(game.homeId))
+                : (game.awayLogo != null ? game.awayLogo : Espn.crest(game.awayId));
+        Ui.load(crest, url);
     }
 
     /** For a still picture of the goal at a moment of it (ms since it began), as celebrate() plays it. */
@@ -120,6 +135,7 @@ public final class ScoreBug extends FrameLayout {
         goalSide = side;
         goalFrom = from;
         goalAt = System.currentTimeMillis() - since;
+        loadCrest(side);
     }
 
     private void kits(Game g) {
@@ -130,6 +146,15 @@ public final class ScoreBug extends FrameLayout {
         if (Glyphs.distance(homeKit, awayKit) < 0.5) awayKit = Glyphs.luminance(homeKit) > 0.5 ? 0xFF2A2F45 : 0xFFF2F3F7;
         homeInk = Glyphs.ink(homeKit);
         awayInk = Glyphs.ink(awayKit);
+        homeAlt = second(homeKit, g.homeAlt);
+        awayAlt = second(awayKit, g.awayAlt);
+    }
+
+    /** A club's second colour for the chevron behind its crest: ESPN's when it stands out, else its own made darker. */
+    private static int second(int kit, String alt) {
+        int a = Glyphs.color(alt, 0);
+        if (a != 0 && Glyphs.distance(a, kit) >= 0.45) return a;
+        return Color.rgb(Color.red(kit) * 55 / 100, Color.green(kit) * 55 / 100, Color.blue(kit) * 55 / 100);
     }
 
     private boolean running() {
@@ -187,8 +212,8 @@ public final class ScoreBug extends FrameLayout {
         float midL = w * 0.335f, midR = w * 0.665f;
         long since = goalSide.isEmpty() ? GOAL_MS : System.currentTimeMillis() - goalAt;
         boolean playing = since < GOAL_MS;
-        // How far the scoring side's wedge has swept across: out (0 to 0.35 s), held, back (2.2 to 2.6 s).
-        float sweep = !playing ? 0 : since < 350 ? ease(since / 350f) : since < 2200 ? 1 : 1 - ease((since - 2200) / 400f);
+        // How far the scoring side's colour has swept across: out (0 to 0.38 s), held, back (2.7 to 3.1 s).
+        float sweep = !playing ? 0 : since < 380 ? ease(since / 380f) : since < BACK_AT ? 1 : 1 - ease((since - BACK_AT) / 400f);
         boolean home = "home".equals(goalSide);
 
         // The shadow.
@@ -219,7 +244,37 @@ public final class ScoreBug extends FrameLayout {
             c.drawText(code(game.away, game.awayName), (midR + w) / 2f, baseline(mid), text);
         }
 
-        // The middle: dark, the two scores either side of the competition's logo, and the clock's tab under it.
+        // The clock's tab under the middle, there through a goal too.
+        float tabW = Math.max(64 * u, (midR - midL) * 0.55f);
+        r.set(w / 2f - tabW / 2, barB - 6 * u, w / 2f + tabW / 2, h - 1 * u);
+        p.setColor(Color.BLACK);
+        p.setShader(tabFill);
+        c.drawRoundRect(r, 6 * u, 6 * u, p);
+        p.setShader(null);
+        if (game != null) {
+            String[] clock = GameClock.show(game, System.currentTimeMillis());
+            text.setTypeface(plain);
+            text.setTextAlign(Paint.Align.CENTER);
+            text.setColor(Color.WHITE);
+            text.setTextSize(16 * u);
+            float tabMid = (barB + h) / 2f;
+            if (clock != null) {
+                c.drawText(clock[0], w / 2f, baseline(tabMid), text);
+                if (!clock[1].isEmpty()) {
+                    text.setTextSize(13 * u);
+                    float aw = text.measureText(clock[1]) + 10 * u, ax = w / 2f + tabW / 2 + 4 * u;
+                    r.set(ax, barB + 3 * u, ax + aw, h - 3 * u);
+                    p.setColor(0xFFC8102E);
+                    c.drawRoundRect(r, 5 * u, 5 * u, p);
+                    c.drawText(clock[1], r.centerX(), baseline(r.centerY()), text);
+                }
+            } else {
+                text.setTextSize(game.state == Game.PRE ? 14 * u : 16 * u);
+                c.drawText(under(game), w / 2f, baseline(tabMid), text);
+            }
+        }
+
+        // The middle: dark, the two scores either side of the competition's logo.
         boolean middleShown = sweep < 1;
         comp.setAlpha(middleShown && sweep < 0.6f ? 1f : 0f);
         if (middleShown) {
@@ -235,31 +290,7 @@ public final class ScoreBug extends FrameLayout {
             p.setShader(gloss);
             c.drawPath(path, p);
             p.setShader(null);
-            float tabW = Math.max(64 * u, (midR - midL) * 0.55f);
-            r.set(w / 2f - tabW / 2, barB - 6 * u, w / 2f + tabW / 2, h - 1 * u);
-            p.setColor(Color.BLACK);
-            p.setShader(tabFill);
-            c.drawRoundRect(r, 6 * u, 6 * u, p);
-            p.setShader(null);
             if (game != null) {
-                String[] clock = GameClock.show(game, System.currentTimeMillis());
-                text.setColor(Color.WHITE);
-                text.setTextSize(16 * u);
-                float tabMid = (barB + h) / 2f;
-                if (clock != null) {
-                    c.drawText(clock[0], w / 2f, baseline(tabMid), text);
-                    if (!clock[1].isEmpty()) {
-                        text.setTextSize(13 * u);
-                        float aw = text.measureText(clock[1]) + 10 * u, ax = w / 2f + tabW / 2 + 4 * u;
-                        r.set(ax, barB + 3 * u, ax + aw, h - 3 * u);
-                        p.setColor(0xFFC8102E);
-                        c.drawRoundRect(r, 5 * u, 5 * u, p);
-                        c.drawText(clock[1], r.centerX(), baseline(r.centerY()), text);
-                    }
-                } else {
-                    text.setTextSize(game.state == Game.PRE ? 14 * u : 16 * u);
-                    c.drawText(under(game), w / 2f, baseline(tabMid), text);
-                }
                 float hx = w / 2f - 30 * u, ax2 = w / 2f + 30 * u;
                 text.setColor(Color.WHITE);
                 if (game.state == Game.PRE) {
@@ -285,42 +316,84 @@ public final class ScoreBug extends FrameLayout {
             }
         }
 
-        // The goal itself: the flash, the stripes racing across, GOAL and the code.
+        // The goal itself, as the broadcasters' bar plays it: a flash, the scoring club's code at the left, its crest
+        // popping in on a chevron of its second colour where the competition's logo was, and GOAL dropping in letter by
+        // letter at the right, its O a football.
         if (playing && game != null) {
-            if (since < 260) {
-                p.setColor(((int) (150 * (1 - since / 260f)) << 24) | 0xFFFFFF);
+            if (since < 240) {
+                p.setColor(((int) (140 * (1 - since / 240f)) << 24) | 0xFFFFFF);
                 c.drawRect(0, barT, w, barB, p);
             }
-            if (sweep > 0.6f) {
-                int ink = home ? homeInk : awayInk;
+            if (sweep > 0.92f) {
+                int ink = home ? homeInk : awayInk, alt = home ? homeAlt : awayAlt;
+                float fade = since < BACK_AT ? 1 : sweep;
                 c.save();
                 c.clipRect(0, barT, w, barB);
-                p.setColor((ink & 0x00FFFFFF) | 0x24000000);
-                float run = (since % 900) / 900f * 60 * u;
-                for (float x = -60 * u + run; x < w + 60 * u; x += 30 * u) {
-                    path.reset();
-                    path.moveTo(x, barB);
-                    path.lineTo(x + 12 * u, barB);
-                    path.lineTo(x + 38 * u, barT);
-                    path.lineTo(x + 26 * u, barT);
-                    path.close();
-                    c.drawPath(path, p);
-                }
-                text.setTypeface(italic);
-                text.setTextAlign(Paint.Align.CENTER);
-                // GOAL comes in from the scoring side's end and the code from the other, each into its own half.
-                float goalTo = home ? w * 0.38f : w * 0.62f, codeTo = home ? w * 0.75f : w * 0.25f;
-                float from = home ? -w * 0.4f : w * 1.4f;
-                float in = ease((since - 300) / 380f);
-                text.setTextSize(31 * u);
-                text.setColor(ink);
-                c.drawText("GOAL", from + (goalTo - from) * in, baseline(mid), text);
-                float cin = ease((since - 520) / 380f), cFrom = home ? w * 1.3f : -w * 0.3f;
-                text.setTextSize(23 * u);
-                text.setColor((ink & 0x00FFFFFF) | 0xD9000000);
-                c.drawText(code(home ? game.home : game.away, home ? game.homeName : game.awayName), cFrom + (codeTo - cFrom) * cin,
-                        baseline(mid), text);
+                // The code.
                 text.setTypeface(plain);
+                text.setTextAlign(Paint.Align.CENTER);
+                text.setTextSize(23 * u);
+                text.setColor(ink);
+                text.setAlpha(Math.round(255 * fade));
+                c.drawText(code(home ? game.home : game.away, home ? game.homeName : game.awayName), midL / 2f, baseline(mid), text);
+                // The chevron sliding in, then the crest popping onto it.
+                float cin = ease((since - 300) / 300f), cx = w / 2f;
+                float shift = (1 - cin) * -50 * u;
+                path.reset();
+                path.moveTo(cx - 40 * u + shift, barT);
+                path.lineTo(cx + 8 * u + shift, barT);
+                path.lineTo(cx + 26 * u + shift, mid);
+                path.lineTo(cx + 8 * u + shift, barB);
+                path.lineTo(cx - 40 * u + shift, barB);
+                path.lineTo(cx - 22 * u + shift, mid);
+                path.close();
+                p.setColor(alt);
+                p.setAlpha(Math.round(255 * cin * fade));
+                c.drawPath(path, p);
+                p.setAlpha(255);
+                android.graphics.drawable.Drawable cd = crest.getDrawable();
+                float pin = (since - 420) / 330f;
+                if (cd != null && pin > 0) {
+                    float t = Math.min(1, pin);
+                    // Overshoots a little and settles, as a pop.
+                    float pop = t < 1 ? (float) (1 + 0.18 * Math.sin(Math.PI * t)) * ease(t) : 1;
+                    float half = 17 * u * pop;
+                    int iw = Math.max(1, cd.getIntrinsicWidth()), ih = Math.max(1, cd.getIntrinsicHeight());
+                    float k = Math.min(2 * half / iw, 2 * half / ih);
+                    cd.setBounds(Math.round(cx - iw * k / 2), Math.round(mid - ih * k / 2), Math.round(cx + iw * k / 2), Math.round(mid + ih * k / 2));
+                    cd.setAlpha(Math.round(255 * fade));
+                    cd.draw(c);
+                    cd.setAlpha(255);
+                }
+                // GOAL, a letter at a time, its O a ball.
+                text.setTextSize(25 * u);
+                String[] letters = {"G", "O", "A", "L"};
+                float[] widths = new float[4];
+                float total = 0, gap = 2 * u;
+                for (int k = 0; k < 4; k++) {
+                    widths[k] = k == 1 ? 21 * u : text.measureText(letters[k]);
+                    total += widths[k] + (k < 3 ? gap : 0);
+                }
+                float x = (midR + w) / 2f - total / 2f + 4 * u;
+                text.setTextAlign(Paint.Align.LEFT);
+                for (int k = 0; k < 4; k++) {
+                    float t = ease((since - 520 - k * 90) / 260f);
+                    if (t > 0) {
+                        float dy = (1 - t) * -18 * u;
+                        if (k == 1) {
+                            c.save();
+                            c.rotate((1 - t) * -200, x + widths[k] / 2, mid + dy);
+                            Glyphs.ball(c, x + widths[k] / 2, mid + dy, 9.5f * u, ink == Color.WHITE ? Color.WHITE : 0xFFF4F5FA, p);
+                            c.restore();
+                        } else {
+                            text.setColor(ink);
+                            text.setAlpha(Math.round(255 * t * fade));
+                            c.drawText(letters[k], x, baseline(mid) + dy, text);
+                        }
+                    }
+                    x += widths[k] + gap;
+                }
+                text.setAlpha(255);
                 c.restore();
             }
             if (isAttachedToWindow()) postInvalidateOnAnimation();
@@ -356,12 +429,12 @@ public final class ScoreBug extends FrameLayout {
 
     /** A score, its new number rolling up over the one before it in the last part of a goal. */
     private void number(Canvas c, String now, float x, float mid, boolean rolling, long since) {
-        if (!rolling || since < 2350 || since >= GOAL_MS) {
-            String shown = rolling && since < 2350 ? String.valueOf(goalFrom) : now;
+        if (!rolling || since < ROLL_AT || since >= GOAL_MS) {
+            String shown = rolling && since < ROLL_AT ? String.valueOf(goalFrom) : now;
             c.drawText(shown, x, baseline(mid), text);
             return;
         }
-        float t = ease((since - 2350) / 450f), off = 22 * u;
+        float t = ease((since - ROLL_AT) / 450f), off = 22 * u;
         c.save();
         c.clipRect(x - 20 * u, 1 * u, x + 20 * u, 41 * u);
         text.setAlpha(Math.round(255 * (1 - t)));

@@ -14,8 +14,10 @@ top scorers). The player's options can set one style for everything, or the guid
 
 The scores box is the broadcasters' bar: each club's code on a slanted wedge in its own colour, the scores either side
 of the competition's logo in the dark middle, and the clock in a tab under it in minutes and seconds (45:00 and +2 in
-added time). A goal plays out in the scoring side's colours: its wedge sweeps across with a flash, GOAL and its code
-race in over moving stripes, then the new number rolls up.
+added time). A goal plays out as the broadcasters' bar does, in the scoring club's colours: its colour sweeps across
+from its end with a flash, its code at the left, its crest popping in on a chevron of its second colour where the
+competition's logo was, GOAL dropping in letter by letter at the right (its O a spinning ball), the clock carrying on
+under it; then it pulls back and the new number rolls up.
 Full screen, the picture goes into a small window as you leave the app (from the guide too; the player's options turn
 that off), and a phone on its side stretches the picture to the screen. Upright, the info tile stays in the room under
 the picture. A game's tile and its page have "Also showing on": every channel with the same game, with its logo.

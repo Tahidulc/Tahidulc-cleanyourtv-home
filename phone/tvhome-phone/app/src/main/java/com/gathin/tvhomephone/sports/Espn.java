@@ -127,6 +127,8 @@ public final class Espn {
         g.awayForm = form(away.optString("form", ""));
         g.homeColor = ht.optString("color", "");
         g.awayColor = at.optString("color", "");
+        g.homeAlt = ht.optString("alternateColor", "");
+        g.awayAlt = at.optString("alternateColor", "");
         JSONObject ground = c.optJSONObject("venue");
         if (ground != null && !ground.optString("fullName").isEmpty()) g.venue = ground.optString("fullName");
         JSONArray details = c.optJSONArray("details");
