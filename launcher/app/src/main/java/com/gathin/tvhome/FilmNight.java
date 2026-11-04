@@ -219,7 +219,15 @@ final class FilmNight {
         if (p.app != null) {
             d.okWords = "to start now";
             d.channel = p.service != null ? p.service : "Start now";
-            int logo = HomeV2.serviceLogo(p.provider);
+            // On one of the TV's apps with Debrid Stream here: Start now goes through Debrid Stream (start()), so its
+            // mark comes first, as the release pop-ups show it; else the service's own logo.
+            Bitmap debrid = p.provider != null && ReleaseAlerts.installed(c, "com.debridstream.tv") ? ReleaseAlerts.debridLogo(c) : null;
+            int logo = debrid != null ? 0 : HomeV2.serviceLogo(p.provider);
+            if (debrid != null) {
+                d.channel = "Debrid Stream";
+                d.channelLogo = debrid;
+                d.channelLogoScale = 2.4f;
+            }
             if (logo != 0) {
                 try {
                     d.channelLogo = android.graphics.BitmapFactory.decodeResource(c.getResources(), logo);
