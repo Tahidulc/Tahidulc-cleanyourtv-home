@@ -43,8 +43,6 @@ import java.util.concurrent.Executors;
  * Launcher v2's TV guide: the TiviMate playlist's channels (the theme's "guide_channels", in the playlist's order and
  * groups) with what is on them from the public schedule behind Sky's online guide. Two hours across, seven channels
  * down; the selected programme's picture and details fill the top. OK puts TiviMate on the channel; Back closes.
- * In Sky's own guide's look: its blue with soft circles, flat rows and programmes split by thin lines, the selected
- * programme lighter, each channel's name with its number at the right, and times as Sky writes them ("7.00pm").
  */
 final class GuideV2 {
     private static final int ROWS = 7;
@@ -52,10 +50,6 @@ final class GuideV2 {
     private static final int GRID_X = 96, GRID_W = 1728, CH_W = 360, LINE_X = GRID_X + CH_W + 16;
     private static final int LINE_W = GRID_X + GRID_W - LINE_X;
     private static final String[] GROUPS = {"All channels", "Entertainment", "Sport", "News"};
-    /** Sky's guide: its blue (lighter top left, deeper bottom right), and that blue where the picture fades into it. */
-    private static final int SKY_TOP = 0xFF2A86E0, SKY_MID = 0xFF1564C6, SKY_DEEP = 0xFF0B47A3, SKY_PIC = 0xFF1A6FD2;
-    /** The lines between rows and programmes, a row's band, the selected programme, the menu's chosen item. */
-    private static final int LINE = 0x40FFFFFF, BAND = 0x1FFFFFFF, CHOSEN = 0x47FFFFFF, MENU = 0xFF0C3483;
 
     static final class Show {
         long start, end;
@@ -145,15 +139,15 @@ final class GuideV2 {
 
     private void build() {
         root = new FrameLayout(c);
-        root.setBackground(new SkyGround());
+        root.setBackgroundColor(0xFF0F1240);
         root.setClickable(true);
         parent.addView(root, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         picA = pic();
         picB = pic();
         picB.setAlpha(0f);
-        add(fade(GradientDrawable.Orientation.LEFT_RIGHT, new int[]{SKY_PIC, 0x001A6FD2}), 820, 0, 560, 600);
-        add(fade(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0x001A6FD2, SKY_MID}), 820, 380, 1100, 222);
-        TextView title = text(38, regular, Color.WHITE);
+        add(fade(GradientDrawable.Orientation.LEFT_RIGHT, new int[]{0xFF0F1240, 0x000F1240}), 820, 0, 560, 600);
+        add(fade(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0x000F1240, 0xFF0F1240}), 820, 380, 1100, 222);
+        TextView title = text(38, semi, Color.WHITE);
         title.setText("TV Guide");
         add(title, 96, 44, 300, 50);
         chips = new LinearLayout(c);
@@ -169,9 +163,8 @@ final class GuideV2 {
         }
         add(chips, 330, 42, 1100, 50);
         TextClock clock = new TextClock(c);
-        // As Sky's guide writes the time: 7.11pm.
-        clock.setFormat24Hour("h.mma");
-        clock.setFormat12Hour("h.mma");
+        clock.setFormat24Hour("HH:mm");
+        clock.setFormat12Hour("HH:mm");
         clock.setTextSize(TypedValue.COMPLEX_UNIT_PX, px(40));
         clock.setTypeface(regular);
         clock.setTextColor(Color.WHITE);
@@ -195,7 +188,7 @@ final class GuideV2 {
         icl.leftMargin = px(16);
         ch.addView(infoChannel, icl);
         info.addView(ch);
-        infoTitle = text(50, regular, Color.WHITE);
+        infoTitle = text(54, semi, Color.WHITE);
         infoTitle.setMaxLines(1);
         infoTitle.setEllipsize(TextUtils.TruncateAt.END);
         LinearLayout.LayoutParams itl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
@@ -230,34 +223,29 @@ final class GuideV2 {
         info.addView(infoText, xl);
         add(info, 96, 132, 960, 340);
 
-        // Sky's grid: a header band ("Today" and the half hours) over flat rows, everything split by thin lines.
-        View band = new View(c);
-        band.setBackgroundColor(BAND);
-        add(band, GRID_X, 490, GRID_W, 50);
-        View under = new View(c);
-        under.setBackgroundColor(LINE);
-        add(under, GRID_X, 540, GRID_W, 1);
-        View side = new View(c);
-        side.setBackgroundColor(LINE);
-        add(side, GRID_X + CH_W, 490, 1, 50 + ROWS * 60);
-        TextView today = text(22, semi, Color.WHITE);
+        FrameLayout panel = new FrameLayout(c);
+        GradientDrawable pb = fill(22, 0x2E0A0C32);
+        pb.setStroke(px(1.5f), 0x24FFFFFF);
+        panel.setBackground(pb);
+        add(panel, 80, 486, 1760, 548);
+        TextView today = text(20, semi, Color.WHITE);
         today.setText("Today");
-        add(today, GRID_X + 20, 503, 200, 30);
+        add(today, GRID_X + 24, 504, 200, 30);
         for (int i = 0; i < 4; i++) {
-            TextView hh = text(22, semi, Color.WHITE);
-            add(hh, LINE_X + i * LINE_W / 4 + 8, 503, 170, 30);
+            TextView hh = text(20, regular, 0xD9FFFFFF);
+            add(hh, LINE_X + i * LINE_W / 4 + 8, 504, 160, 30);
             View tick = new View(c);
-            tick.setBackgroundColor(LINE);
-            add(tick, LINE_X + i * LINE_W / 4, 490, 1, 50);
+            tick.setBackgroundColor(0x33FFFFFF);
+            add(tick, LINE_X + i * LINE_W / 4, 500, 1, 32);
             hours.add(hh);
         }
-        nowPill = text(16, semi, MENU);
+        nowPill = text(17, semi, 0xFF1A1D24);
         nowPill.setGravity(Gravity.CENTER);
-        nowPill.setBackground(fill(4, Color.WHITE));
-        add(nowPill, LINE_X, 494, 84, 26);
+        nowPill.setBackground(fill(16, Color.WHITE));
+        add(nowPill, LINE_X, 500, 64, 32);
         grid = new FrameLayout(c);
         grid.setClipChildren(true);
-        add(grid, GRID_X, 541, GRID_W, ROWS * 60);
+        add(grid, GRID_X, 546, GRID_W, ROWS * 60);
         TextView hint = text(18, regular, 0xB3FFFFFF);
         Keys.set(hint, "OK  Watch   ·   ◀ ▶  Earlier / later   ·   ▲ ▼  Channels   ·   BACK  Home");
         hint.setGravity(Gravity.CENTER);
@@ -585,37 +573,24 @@ final class GuideV2 {
 
     // ---- drawing ---------------------------------------------------------------------------------------------------
 
-    /** Times as Sky's guide writes them: 7.00pm, 12.30am. */
-    private static final DateTimeFormatter SKY_TIME = DateTimeFormatter.ofPattern("h.mma", Locale.UK)
-            .withZone(ZoneId.systemDefault());
-
-    private static String sky(long ms) {
-        return SKY_TIME.format(Instant.ofEpochMilli(ms)).toLowerCase(Locale.UK);
-    }
-
-    /** "30m", "1h 05m", as Sky gives a programme's length. */
-    private static String length(long ms) {
-        long m = Math.max(1, Math.round(ms / 60_000.0));
-        return m >= 60 ? m / 60 + "h " + (m % 60 < 10 ? "0" : "") + m % 60 + "m" : m + "m";
-    }
-
     private void draw() {
-        DateTimeFormatter hm = SKY_TIME;
+        DateTimeFormatter hm = DateTimeFormatter.ofPattern("HH:mm").withZone(ZoneId.systemDefault());
         for (int i = 0; i < chips.getChildCount(); i++) {
             TextView chip = (TextView) chips.getChildAt(i);
             boolean sel = i == group, focus = onChips && sel;
-            // As Sky's menu: plain words, the chosen one in a deep blue box lit along its top and bottom edges.
-            chip.setBackground(sel ? new MenuBox(focus) : null);
-            chip.setTextColor(sel || focus ? Color.WHITE : 0xE6FFFFFF);
+            GradientDrawable b = fill(23, focus ? Color.WHITE : sel ? 0x40FFFFFF : 0x14FFFFFF);
+            b.setStroke(px(1.5f), focus ? Color.WHITE : 0x40FFFFFF);
+            chip.setBackground(b);
+            chip.setTextColor(focus ? 0xFF1A1D24 : Color.WHITE);
             chip.setTypeface(sel ? semi : regular);
         }
-        for (int i = 0; i < hours.size(); i++) hours.get(i).setText(sky(windowStart + i * HALF_HOUR));
+        for (int i = 0; i < hours.size(); i++) hours.get(i).setText(hm.format(Instant.ofEpochMilli(windowStart + i * HALF_HOUR)));
         long now = System.currentTimeMillis();
         boolean nowIn = now >= windowStart && now < windowStart + WINDOW_MS;
         nowPill.setVisibility(nowIn ? View.VISIBLE : View.GONE);
-        nowPill.setText(sky(now));
+        nowPill.setText(hm.format(Instant.ofEpochMilli(now)));
         FrameLayout.LayoutParams np = (FrameLayout.LayoutParams) nowPill.getLayoutParams();
-        np.leftMargin = px(LINE_X + LINE_W * (now - windowStart) / (float) WINDOW_MS - 42);
+        np.leftMargin = px(LINE_X + LINE_W * (now - windowStart) / (float) WINDOW_MS - 32);
         nowPill.setLayoutParams(np);
 
         grid.removeAllViews();
@@ -625,54 +600,37 @@ final class GuideV2 {
             String[] ch = list.get(i);
             boolean selRow = i == chan && !onChips;
             int y = px(r * 60);
-            // The row: lighter across while it is the one chosen, a thin line under it.
-            if (selRow) {
-                View rowBand = new View(c);
-                rowBand.setBackgroundColor(0x14FFFFFF);
-                FrameLayout.LayoutParams bl = new FrameLayout.LayoutParams(px(GRID_W), px(60));
-                bl.topMargin = y;
-                grid.addView(rowBand, bl);
-            }
-            View rule = new View(c);
-            rule.setBackgroundColor(LINE);
-            FrameLayout.LayoutParams rl = new FrameLayout.LayoutParams(px(GRID_W), Math.max(1, px(1)));
-            rl.topMargin = y + px(59);
-            grid.addView(rule, rl);
-            // The channel: its logo and name, its number at the right (Sky's "ITV+1   203").
             FrameLayout name = new FrameLayout(c);
-            if (selRow) name.setBackgroundColor(0x1FFFFFFF);
+            name.setBackground(fill(12, selRow ? 0x33FFFFFF : 0x14FFFFFF));
             LinearLayout nl = new LinearLayout(c);
             nl.setOrientation(LinearLayout.HORIZONTAL);
             nl.setGravity(Gravity.CENTER_VERTICAL);
-            nl.setPadding(px(16), 0, px(18), 0);
+            nl.setPadding(px(14), 0, px(12), 0);
+            TextView num = text(17, regular, 0xB3FFFFFF);
+            num.setText(ch[3].isEmpty() ? String.valueOf(i + 1) : ch[3]);
+            nl.addView(num, new LinearLayout.LayoutParams(px(46), ViewGroup.LayoutParams.WRAP_CONTENT));
             ImageView logo = new ImageView(c);
             logo.setAdjustViewBounds(true);
             logo.setMaxHeight(px(26));
-            logo.setMaxWidth(px(80));
-            nl.addView(logo, new LinearLayout.LayoutParams(px(84), px(26)));
+            logo.setMaxWidth(px(92));
+            nl.addView(logo, new LinearLayout.LayoutParams(px(96), px(26)));
             image(logo, logoUrl(ch[0]), px(120));
-            TextView n = text(22, selRow ? semi : regular, Color.WHITE);
+            TextView n = text(19, selRow ? semi : regular, Color.WHITE);
             n.setText(ch[1]);
             n.setSingleLine(true);
             n.setEllipsize(TextUtils.TruncateAt.END);
             LinearLayout.LayoutParams nlp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
             nlp.leftMargin = px(10);
             nl.addView(n, nlp);
-            TextView num = text(22, selRow ? semi : regular, Color.WHITE);
-            num.setText(ch[3].isEmpty() ? String.valueOf(i + 1) : ch[3]);
-            num.setGravity(Gravity.END);
-            LinearLayout.LayoutParams numl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            numl.leftMargin = px(10);
-            nl.addView(num, numl);
             name.addView(nl, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-            FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(px(CH_W), px(59));
+            FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(px(CH_W), px(52));
             lp.topMargin = y;
             grid.addView(name, lp);
             List<Show> l = shows.get(ch[0]);
             if (l == null || l.isEmpty()) {
                 TextView none = cell("Loading…", false, false);
-                FrameLayout.LayoutParams cl = new FrameLayout.LayoutParams(px(LINE_W + 16), px(59));
-                cl.leftMargin = px(CH_W + 1);
+                FrameLayout.LayoutParams cl = new FrameLayout.LayoutParams(px(LINE_W), px(52));
+                cl.leftMargin = px(CH_W + 16);
                 cl.topMargin = y;
                 grid.addView(none, cl);
                 continue;
@@ -683,20 +641,10 @@ final class GuideV2 {
                 boolean sel = selRow && sh.start <= at && sh.end > at;
                 boolean live = sh.title.toLowerCase(Locale.ROOT).startsWith("live");
                 TextView cell = cell(sh.title.replaceFirst("^(?i)live:? ", ""), sel, live);
-                // Programmes side by side, a thin line between them (the first one from the channel's line).
-                int left = px(CH_W + 16) + Math.round((a - windowStart) * perMs);
-                if (a == windowStart) left = px(CH_W + 1);
-                int right = px(CH_W + 16) + Math.round((b - windowStart) * perMs);
-                FrameLayout.LayoutParams cl = new FrameLayout.LayoutParams(Math.max(px(6), right - left - Math.max(1, px(1))), px(59));
-                cl.leftMargin = left;
+                FrameLayout.LayoutParams cl = new FrameLayout.LayoutParams(Math.max(px(6), Math.round((b - a) * perMs) - px(6)), px(52));
+                cl.leftMargin = px(CH_W + 16) + Math.round((a - windowStart) * perMs);
                 cl.topMargin = y;
                 grid.addView(cell, cl);
-                View split = new View(c);
-                split.setBackgroundColor(LINE);
-                FrameLayout.LayoutParams sl = new FrameLayout.LayoutParams(Math.max(1, px(1)), px(59));
-                sl.leftMargin = right - Math.max(1, px(1));
-                sl.topMargin = y;
-                if (b < windowStart + WINDOW_MS) grid.addView(split, sl);
             }
         }
         Show cur = current();
@@ -707,7 +655,7 @@ final class GuideV2 {
         }
         if (cur != null) {
             infoTitle.setText(cur.title.replaceFirst("^(?i)live:? ", ""));
-            infoTimes.setText(length(cur.end - cur.start) + "   ·   " + (cur.start <= now ? "Started at " : "Starts at ") + sky(cur.start));
+            infoTimes.setText(hm.format(Instant.ofEpochMilli(cur.start)) + " – " + hm.format(Instant.ofEpochMilli(cur.end)));
             boolean on = cur.start <= now;
             infoBar.setVisibility(on ? View.VISIBLE : View.GONE);
             if (on) {
@@ -729,14 +677,16 @@ final class GuideV2 {
     }
 
     private TextView cell(String title, boolean sel, boolean live) {
-        TextView t = text(22, sel ? semi : regular, Color.WHITE);
+        TextView t = text(20, sel ? semi : regular, sel ? 0xFF1A1D24 : Color.WHITE);
         t.setText(live ? "● " + title : title);
         t.setSingleLine(true);
         t.setEllipsize(TextUtils.TruncateAt.END);
         t.setGravity(Gravity.CENTER_VERTICAL);
         t.setPadding(px(14), 0, px(10), 0);
-        // Flat as Sky's: the chosen programme lighter, with a white line along its foot.
-        if (sel) t.setBackground(new Chosen());
+        GradientDrawable b = fill(10, sel ? Color.WHITE : 0x1AFFFFFF);
+        if (sel) b.setStroke(px(2), Color.WHITE);
+        t.setBackground(b);
+        if (live && !sel) t.setTextColor(0xFFFFFFFF);
         return t;
     }
 
@@ -840,98 +790,5 @@ final class GuideV2 {
         g.setCornerRadius(px(radius));
         g.setColor(colour);
         return g;
-    }
-
-    // ---- Sky's look ------------------------------------------------------------------------------------------------
-
-    /** The guide's ground: Sky's blue, lighter top left, with large soft circles drifting low and to the right. */
-    private final class SkyGround extends android.graphics.drawable.Drawable {
-        private final android.graphics.Paint paint = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
-        private android.graphics.Shader shader;
-        private android.graphics.Rect laid;
-
-        @Override public void draw(@androidx.annotation.NonNull android.graphics.Canvas cv) {
-            android.graphics.Rect r = getBounds();
-            if (shader == null || !r.equals(laid)) {
-                laid = new android.graphics.Rect(r);
-                shader = new android.graphics.LinearGradient(r.left, r.top, r.right, r.bottom,
-                        new int[]{SKY_TOP, SKY_MID, SKY_DEEP}, new float[]{0f, 0.45f, 1f}, android.graphics.Shader.TileMode.CLAMP);
-            }
-            paint.setStyle(android.graphics.Paint.Style.FILL);
-            paint.setShader(shader);
-            cv.drawRect(r, paint);
-            paint.setShader(null);
-            float w = r.width(), h = r.height();
-            // Soft discs and rings, as behind Sky's guide.
-            paint.setColor(0x0FFFFFFF);
-            cv.drawCircle(w * 0.80f, h * 0.88f, h * 0.30f, paint);
-            paint.setColor(0x0AFFFFFF);
-            cv.drawCircle(w * 0.62f, h * 0.30f, h * 0.17f, paint);
-            cv.drawCircle(w * 0.08f, h * 0.95f, h * 0.20f, paint);
-            paint.setStyle(android.graphics.Paint.Style.STROKE);
-            paint.setStrokeWidth(px(2));
-            paint.setColor(0x14FFFFFF);
-            cv.drawCircle(w * 0.93f, h * 0.62f, h * 0.22f, paint);
-            cv.drawCircle(w * 0.47f, h * 0.12f, h * 0.09f, paint);
-        }
-
-        @Override public void setAlpha(int a) { }
-        @Override public void setColorFilter(android.graphics.ColorFilter f) { }
-        @Override public int getOpacity() { return android.graphics.PixelFormat.OPAQUE; }
-    }
-
-    /** The menu's chosen item: a deep blue box with a light line glowing along its top and bottom edges. */
-    private final class MenuBox extends android.graphics.drawable.Drawable {
-        private final boolean focus;
-        private final android.graphics.Paint paint = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
-        private final android.graphics.RectF box = new android.graphics.RectF();
-
-        MenuBox(boolean focus) {
-            this.focus = focus;
-        }
-
-        @Override public void draw(@androidx.annotation.NonNull android.graphics.Canvas cv) {
-            android.graphics.Rect r = getBounds();
-            float rad = px(6);
-            box.set(r);
-            paint.setShader(null);
-            paint.setStyle(android.graphics.Paint.Style.FILL);
-            paint.setColor(focus ? 0xFF103E9A : MENU);
-            cv.drawRoundRect(box, rad, rad, paint);
-            paint.setStyle(android.graphics.Paint.Style.STROKE);
-            paint.setStrokeWidth(px(1.5f));
-            paint.setColor(focus ? 0xCCFFFFFF : 0x66FFFFFF);
-            cv.drawRoundRect(box, rad, rad, paint);
-            // The glow: a short bright streak in the middle of the top and bottom edges, fading out to either side.
-            paint.setStyle(android.graphics.Paint.Style.FILL);
-            float cx = r.exactCenterX(), half = r.width() * 0.32f;
-            paint.setShader(new android.graphics.LinearGradient(cx - half, 0, cx + half, 0,
-                    new int[]{0x00FFFFFF, focus ? 0xFFFFFFFF : 0xB3FFFFFF, 0x00FFFFFF}, null, android.graphics.Shader.TileMode.CLAMP));
-            float t = Math.max(1, px(2));
-            cv.drawRect(cx - half, r.top, cx + half, r.top + t, paint);
-            cv.drawRect(cx - half, r.bottom - t, cx + half, r.bottom, paint);
-            paint.setShader(null);
-        }
-
-        @Override public void setAlpha(int a) { }
-        @Override public void setColorFilter(android.graphics.ColorFilter f) { }
-        @Override public int getOpacity() { return android.graphics.PixelFormat.TRANSLUCENT; }
-    }
-
-    /** The chosen programme: lighter blue over the row, a white line along its foot. */
-    private final class Chosen extends android.graphics.drawable.Drawable {
-        private final android.graphics.Paint paint = new android.graphics.Paint();
-
-        @Override public void draw(@androidx.annotation.NonNull android.graphics.Canvas cv) {
-            android.graphics.Rect r = getBounds();
-            paint.setColor(CHOSEN);
-            cv.drawRect(r, paint);
-            paint.setColor(Color.WHITE);
-            cv.drawRect(r.left, r.bottom - Math.max(2, px(3)), r.right, r.bottom, paint);
-        }
-
-        @Override public void setAlpha(int a) { }
-        @Override public void setColorFilter(android.graphics.ColorFilter f) { }
-        @Override public int getOpacity() { return android.graphics.PixelFormat.TRANSLUCENT; }
     }
 }
