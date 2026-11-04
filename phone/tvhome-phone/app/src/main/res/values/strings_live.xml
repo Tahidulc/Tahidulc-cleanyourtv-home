@@ -151,4 +151,5 @@
     <string name="live_unhide">Unhide</string>
     <string name="live_unhide_named">Unhide %1$s</string>
     <string name="live_unhide_all">Unhide all</string>
+    <string name="live_started_at">Started at %1$s</string>
 </resources>

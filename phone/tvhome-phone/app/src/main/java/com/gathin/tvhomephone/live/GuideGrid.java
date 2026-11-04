@@ -343,25 +343,30 @@ final class GuideGrid extends FrameLayout {
         String selKey;
         long selStart;
         final TimeZone tz = TimeZone.getDefault();
-        final Paint blockFill = fill(Ui.G_BLOCK), nowFill = fill(Ui.G_NOW), pastFill = fill(Ui.G_PAST), selFill = fill(Ui.G_SELECT),
-                nowLine = fill(Ui.RED), tick = fill(Ui.G_LINE);
+        final Paint blockFill = fill(Ui.G_BLOCK), nowFill = fill(Ui.G_NOW), pastFill = fill(Ui.G_PAST), selFill = fill(Ui.G_CHOSEN),
+                nowLine = fill(Ui.RED), tick = fill(Ui.G_LINE), underline = fill(Ui.TEXT);
         final Paint title, titleInk, time, timeInk, ruler, rulerDay, nowLabel;
         final RectF rect = new RectF();
-        final char[] buf = new char[16];
-        final float gap, radius, pad, minText, nowW, ellipsis, ellipsisInk;
+        final char[] buf = new char[24];
+        /** The length of the first time range() wrote (its start alone). */
+        int firstLen;
+        final float gap, radius, pad, minText, nowW, ellipsis, ellipsisInk, one, under;
 
         State(Context c, boolean wide) {
-            gap = Ui.dp(c, 1.5f);
-            radius = Ui.dp(c, 6);
+            // Sky's flat programmes: no gaps or rounding, thin lines between them, a white line under the chosen one.
+            gap = 0;
+            radius = 0;
+            one = Math.max(1, Ui.dp(c, 1));
+            under = Math.max(2, Ui.dp(c, 3));
             pad = Ui.dp(c, 10);
             minText = Ui.dp(c, 14);
             nowW = Ui.dp(c, 2);
             Typeface medium = Typeface.create("sans-serif-medium", Typeface.NORMAL);
             title = text(c, wide ? 16 : 14.5f, Ui.TEXT, medium);
-            titleInk = text(c, wide ? 16 : 14.5f, Ui.G_INK, Typeface.DEFAULT_BOLD);
+            titleInk = text(c, wide ? 16 : 14.5f, Ui.TEXT, Typeface.DEFAULT_BOLD);
             time = text(c, wide ? 13 : 12, Ui.G_TIME, Typeface.DEFAULT);
-            timeInk = text(c, wide ? 13 : 12, 0xCC04113A, Typeface.DEFAULT);
-            ruler = text(c, 13, Ui.SOFT, medium);
+            timeInk = text(c, wide ? 13 : 12, 0xF2FFFFFF, Typeface.DEFAULT);
+            ruler = text(c, 13, Ui.TEXT, medium);
             rulerDay = text(c, 13, Ui.G_SELECT, Typeface.DEFAULT_BOLD);
             nowLabel = text(c, 11, Ui.TEXT, Typeface.DEFAULT_BOLD);
             ellipsis = title.measureText("…");
@@ -382,21 +387,25 @@ final class GuideGrid extends FrameLayout {
             return p;
         }
 
-        /** "HH:mm" for t into buf at at; the index after it. No allocation (it runs while drawing). */
+        /** "7.00pm" for t into buf at at, as Sky writes it; the index after it. No allocation (it runs while drawing). */
         int clock(long t, int at) {
             long mins = Math.floorMod(Math.floorDiv(t + tz.getOffset(t), 60_000L), 1440L);
             int h = (int) (mins / 60), m = (int) (mins % 60);
-            buf[at] = (char) ('0' + h / 10);
-            buf[at + 1] = (char) ('0' + h % 10);
-            buf[at + 2] = ':';
-            buf[at + 3] = (char) ('0' + m / 10);
-            buf[at + 4] = (char) ('0' + m % 10);
-            return at + 5;
+            int h12 = h % 12 == 0 ? 12 : h % 12;
+            if (h12 >= 10) buf[at++] = '1';
+            buf[at++] = (char) ('0' + h12 % 10);
+            buf[at++] = '.';
+            buf[at++] = (char) ('0' + m / 10);
+            buf[at++] = (char) ('0' + m % 10);
+            buf[at++] = h >= 12 ? 'p' : 'a';
+            buf[at++] = 'm';
+            return at;
         }
 
-        /** "HH:mm – HH:mm" into buf; its length. */
+        /** "7.00pm – 8.00pm" into buf; its length (firstLen: the start's alone). */
         int range(long a, long b) {
             int at = clock(a, 0);
+            firstLen = at;
             buf[at++] = ' ';
             buf[at++] = '–';
             buf[at++] = ' ';
@@ -489,7 +498,7 @@ final class GuideGrid extends FrameLayout {
             Guide.Schedule s = schedule;
             if (s == null || s.start.length == 0) {
                 float l = Math.max(-off, -st.radius), r = Math.min(tl.width() - off, w + st.radius);
-                st.rect.set(l + st.gap, top, r - st.gap, bottom);
+                st.rect.set(l + st.gap, top, r - st.gap, bottom - st.one);
                 boolean sel = mine && st.selStart == 0;
                 cv.drawRoundRect(st.rect, st.radius, st.radius, sel ? st.selFill : st.blockFill);
                 float tx = Math.max(st.rect.left, 0) + st.pad;
@@ -502,6 +511,8 @@ final class GuideGrid extends FrameLayout {
                     block(cv, s, i, l, r, top, bottom, w, mine);
                 }
             }
+            // The thin line under the row, as between Sky's rows.
+            cv.drawRect(0, h - st.one, w, h, st.tick);
             float nx = tl.x(st.now) - off;
             if (nx >= -st.nowW && nx <= w + st.nowW) cv.drawRect(nx - st.nowW / 2, 0, nx + st.nowW / 2, h, st.nowLine);
         }
@@ -512,8 +523,11 @@ final class GuideGrid extends FrameLayout {
             long now = st.now;
             boolean on = s.start[i] <= now && now < s.stop[i];
             boolean sel = mine && s.start[i] == st.selStart;
-            st.rect.set(left, top, right, bottom);
+            st.rect.set(left, top, right, bottom - st.one);
             cv.drawRoundRect(st.rect, st.radius, st.radius, sel ? st.selFill : on ? st.nowFill : st.blockFill);
+            // A thin line where it ends; under the chosen one, a white line along its foot.
+            cv.drawRect(right - st.one, top, right, bottom - st.one, st.tick);
+            if (sel) cv.drawRect(left, bottom - st.one - st.under, right - st.one, bottom - st.one, st.underline);
             if (on && !sel) {
                 // What has been shown already, a shade darker.
                 float px = Math.min(st.tl.x(now) - st.offset, right);
@@ -532,7 +546,7 @@ final class GuideGrid extends FrameLayout {
             Paint tp = sel ? st.timeInk : st.time;
             int len = st.range(s.start[i], s.stop[i]);
             if (tp.measureText(st.buf, 0, len) <= max) cv.drawText(st.buf, 0, len, tx, timeY, tp);
-            else if (tp.measureText(st.buf, 0, 5) <= max) cv.drawText(st.buf, 0, 5, tx, timeY, tp);
+            else if (tp.measureText(st.buf, 0, st.firstLen) <= max) cv.drawText(st.buf, 0, st.firstLen, tx, timeY, tp);
         }
     }
 
@@ -701,7 +715,7 @@ final class GuideGrid extends FrameLayout {
             if (ch == null) return;
             Context c = itemView.getContext();
             boolean sel = ch.key.equals(st.selKey);
-            cell.setBackground(new InsetDrawable(Ui.touch(c, false, sel ? Ui.G_NOW : Ui.G_CELL, 0), 0, 0, 0, Ui.dp(c, 1)));
+            cell.setBackground(new InsetDrawable(Ui.touch(c, false, sel ? 0xFF2A70CC : Ui.G_CELL, 0), 0, 0, 0, Ui.dp(c, 1)));
             boolean fav = Picks.isFavourite(c, ch.key);
             star.setImageResource(fav ? R.drawable.live_ic_star : R.drawable.live_ic_star_outline);
             star.setImageTintList(ColorStateList.valueOf(fav ? Ui.STAR : 0x59FFFFFF));

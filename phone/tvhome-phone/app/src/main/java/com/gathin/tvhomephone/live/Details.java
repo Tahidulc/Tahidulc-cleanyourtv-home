@@ -211,8 +211,9 @@ final class Details extends LinearLayout {
         long a = s.start[i], b = s.stop[i];
         boolean on = a <= now && now < b, ahead = a > now;
         title.setText(s.title[i].isEmpty() ? ch.name : s.title[i]);
-        String w = Ui.day(c, a) + "  " + Ui.range(a, b);
-        if (on) w = c.getString(R.string.live_on_now_short) + "  " + Ui.range(a, b) + "  ·  "
+        // As Sky's guide gives it: the length, and when it started (or starts).
+        String w = Ui.day(c, a) + "  " + Ui.range(a, b) + "  ·  " + Ui.length(b - a);
+        if (on) w = Ui.length(b - a) + "  ·  " + c.getString(R.string.live_started_at, Ui.clock(a)) + "  ·  "
                 + c.getString(R.string.live_min_left, Math.max(1, (int) ((b - now + 59_999) / 60_000)));
         else if (!ahead) w = w + "  ·  " + c.getString(R.string.live_ended);
         if (compact) w = w + "  ·  " + chan;

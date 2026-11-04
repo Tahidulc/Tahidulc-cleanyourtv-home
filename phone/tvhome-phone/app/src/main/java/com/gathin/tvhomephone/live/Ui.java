@@ -28,11 +28,18 @@ final class Ui {
 
     static final int GROUND = 0xFF0D0F2C, DEEP = 0xFF0B0C21, GLASS = 0x1FFFFFFF, LINE = 0x33FFFFFF, TEXT = 0xFFFFFFFF,
             SOFT = 0xCCE4E6F5, DIM = 0x99C9CBE0, GREEN = 0xFF3DDC84, PINK = 0xFFFF4FA3, NAVY_INK = 0xFF0A0D33;
-    /** The guide: its ground (top to bottom), panels, the channel column, programme blocks, now, selection, the now line. */
-    static final int G_TOP = 0xFF050B2C, G_BOTTOM = 0xFF0B2766, G_PANEL = 0xF20A1A4C, G_CELL = 0xFF0A1846,
-            G_BLOCK = 0xFF132D6B, G_NOW = 0xFF1E4A9E, G_PAST = 0xFF183C86, G_SELECT = 0xFF9FD8FF, G_INK = 0xFF04113A,
-            G_TIME = 0xB8D2E2FF, G_LINE = 0x24FFFFFF, RED = 0xFFFF3B55, STAR = 0xFFFFC93C;
-    private static final DateTimeFormatter HM = DateTimeFormatter.ofPattern("HH:mm", Locale.UK);
+    /**
+     * Live TV in Sky's guide's look: its blue (lighter top left, deeper bottom right), panels, the channel column, the
+     * programmes (flat: no fill, split by thin lines), what's on now a shade lighter, the chosen programme lighter still,
+     * the accent (white) and the ink on it (Sky's deep blue), times, the lines, the now line, the favourite's star, and
+     * the menu's chosen box.
+     */
+    static final int G_TOP = 0xFF2A86E0, G_MID = 0xFF1564C6, G_BOTTOM = 0xFF0B47A3, G_PANEL = 0xF2125CBB,
+            G_CELL = 0xFF1460C2, G_BLOCK = 0x00000000, G_NOW = 0x1AFFFFFF, G_PAST = 0x12FFFFFF, G_CHOSEN = 0x52FFFFFF,
+            G_SELECT = 0xFFFFFFFF, G_INK = 0xFF0C3483, G_TIME = 0xD9FFFFFF, G_LINE = 0x40FFFFFF, RED = 0xFFFF3B55,
+            STAR = 0xFFFFC93C, G_MENU = 0xFF0C3483;
+    /** Times as Sky's guide writes them: 7.00pm. */
+    private static final DateTimeFormatter HM = DateTimeFormatter.ofPattern("h.mma", Locale.UK);
     private static final DateTimeFormatter DAY = DateTimeFormatter.ofPattern("EEE d MMM", Locale.UK);
 
     static int dp(Context c, float v) {
@@ -78,11 +85,18 @@ final class Ui {
         return t;
     }
 
+    /** "7.00pm", as Sky's guide writes it. */
     static String clock(long ms) {
-        return HM.format(Instant.ofEpochMilli(ms).atZone(ZoneId.systemDefault()));
+        return HM.format(Instant.ofEpochMilli(ms).atZone(ZoneId.systemDefault())).toLowerCase(Locale.UK);
     }
 
-    /** "19:00 – 20:00". */
+    /** "30m", "1h 05m": a programme's length as Sky gives it. */
+    static String length(long ms) {
+        long m = Math.max(1, Math.round(ms / 60_000.0));
+        return m >= 60 ? m / 60 + "h " + (m % 60 < 10 ? "0" : "") + m % 60 + "m" : m + "m";
+    }
+
+    /** "7.00pm – 8.00pm". */
     static String range(long a, long b) {
         return clock(a) + " – " + clock(b);
     }
@@ -97,9 +111,77 @@ final class Ui {
         return DAY.format(d);
     }
 
-    /** The guide's ground: dark navy at the top into deep blue. */
-    static GradientDrawable guideGround() {
-        return new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{G_TOP, G_BOTTOM});
+    /** The guide's ground: Sky's blue, lighter top left, deeper bottom right, with soft circles behind. */
+    static android.graphics.drawable.Drawable guideGround() {
+        return new SkyGround();
+    }
+
+    private static final class SkyGround extends android.graphics.drawable.Drawable {
+        private final android.graphics.Paint paint = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+        private android.graphics.Shader shader;
+        private final android.graphics.Rect laid = new android.graphics.Rect();
+
+        @Override public void draw(@androidx.annotation.NonNull android.graphics.Canvas cv) {
+            android.graphics.Rect r = getBounds();
+            if (shader == null || !r.equals(laid)) {
+                laid.set(r);
+                shader = new android.graphics.LinearGradient(r.left, r.top, r.right, r.bottom, new int[]{G_TOP, G_MID, G_BOTTOM},
+                        new float[]{0f, 0.45f, 1f}, android.graphics.Shader.TileMode.CLAMP);
+            }
+            paint.setStyle(android.graphics.Paint.Style.FILL);
+            paint.setShader(shader);
+            cv.drawRect(r, paint);
+            paint.setShader(null);
+            float w = r.width(), h = r.height(), u = Math.min(w, h);
+            paint.setColor(0x0FFFFFFF);
+            cv.drawCircle(w * 0.85f, h * 0.18f, u * 0.42f, paint);
+            paint.setColor(0x0AFFFFFF);
+            cv.drawCircle(w * 0.10f, h * 0.86f, u * 0.36f, paint);
+            paint.setStyle(android.graphics.Paint.Style.STROKE);
+            paint.setStrokeWidth(u * 0.006f + 1);
+            paint.setColor(0x14FFFFFF);
+            cv.drawCircle(w * 0.72f, h * 0.62f, u * 0.30f, paint);
+        }
+
+        @Override public void setAlpha(int a) { }
+        @Override public void setColorFilter(android.graphics.ColorFilter f) { }
+        @Override public int getOpacity() { return android.graphics.PixelFormat.OPAQUE; }
+    }
+
+    /** Sky's menu's chosen item: a deep blue box with a light line glowing along its top and bottom edges. */
+    private static final class MenuBox extends android.graphics.drawable.Drawable {
+        private final android.graphics.Paint paint = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+        private final android.graphics.RectF box = new android.graphics.RectF();
+        private final float radius, edge;
+
+        MenuBox(Context c) {
+            radius = dp(c, 8);
+            edge = Math.max(2, dp(c, 1.5f));
+        }
+
+        @Override public void draw(@androidx.annotation.NonNull android.graphics.Canvas cv) {
+            android.graphics.Rect r = getBounds();
+            box.set(r);
+            paint.setShader(null);
+            paint.setStyle(android.graphics.Paint.Style.FILL);
+            paint.setColor(G_MENU);
+            cv.drawRoundRect(box, radius, radius, paint);
+            paint.setStyle(android.graphics.Paint.Style.STROKE);
+            paint.setStrokeWidth(edge / 1.5f);
+            paint.setColor(0x73FFFFFF);
+            cv.drawRoundRect(box, radius, radius, paint);
+            paint.setStyle(android.graphics.Paint.Style.FILL);
+            float cx = r.exactCenterX(), half = r.width() * 0.34f;
+            paint.setShader(new android.graphics.LinearGradient(cx - half, 0, cx + half, 0,
+                    new int[]{0x00FFFFFF, 0xE6FFFFFF, 0x00FFFFFF}, null, android.graphics.Shader.TileMode.CLAMP));
+            cv.drawRect(cx - half, r.top, cx + half, r.top + edge, paint);
+            cv.drawRect(cx - half, r.bottom - edge, cx + half, r.bottom, paint);
+            paint.setShader(null);
+        }
+
+        @Override public void setAlpha(int a) { }
+        @Override public void setColorFilter(android.graphics.ColorFilter f) { }
+        @Override public int getOpacity() { return android.graphics.PixelFormat.TRANSLUCENT; }
     }
 
     /** A round 48dp icon button (white icon, a ripple), with its label for TalkBack and a long press. */
@@ -114,21 +196,24 @@ final class Ui {
         return b;
     }
 
-    /** The guide's chip: light blue with navy writing when chosen, glass otherwise; 48dp to touch, 36dp to see. */
+    /** The guide's chip: Sky's menu box when chosen, plain words on the blue otherwise; 48dp to touch, 36dp to see. */
     static TextView guideChip(Context c, String s, boolean on) {
-        TextView t = text(c, s, 14, on ? G_INK : TEXT, true);
+        TextView t = text(c, s, 14, TEXT, true);
         t.setGravity(Gravity.CENTER);
         t.setMinHeight(dp(c, 48));
-        t.setPadding(dp(c, 16), 0, dp(c, 16), 0);
-        t.setSingleLine(true);
+        t.setMaxLines(1);
         styleChip(c, t, on);
         return t;
     }
 
     static void styleChip(Context c, TextView t, boolean on) {
-        t.setTextColor(on ? G_INK : TEXT);
+        t.setTextColor(on ? TEXT : 0xE6FFFFFF);
         int inset = dp(c, 6);
-        t.setBackground(new InsetDrawable(touch(c, false, on ? G_SELECT : GLASS, 18), 0, inset, 0, inset));
+        android.graphics.drawable.Drawable look = on ? new MenuBox(c) : round(c, 0x14FFFFFF, 8);
+        t.setBackground(new InsetDrawable(new RippleDrawable(ColorStateList.valueOf(0x33FFFFFF), look, round(c, TEXT, 8)),
+                0, inset, 0, inset));
+        // After the background (an inset drawable sets the padding to its insets): room either side of the words.
+        t.setPadding(dp(c, 16), inset, dp(c, 16), inset);
         t.setSelected(on);
     }
 
