@@ -39,4 +39,13 @@ public final class LiveLinks {
         PlayerActivity.start(c, ch.key, Library.ALL);
         return true;
     }
+
+    /** The player on that channel, for a notification's Watch; null when the playlist has no such channel. */
+    public static android.content.Intent watch(Context c, String channelName) {
+        if (c == null || channelName == null) return null;
+        Library l = Library.get(c);
+        l.ensureNow();
+        Channel ch = l.match(channelName);
+        return ch == null ? null : PlayerActivity.intent(c, ch.key);
+    }
 }

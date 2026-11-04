@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A game's moment, folded: the competition's logo on its navy chip, what happened ("GOAL!  Man Utd 2–1 Roma") over
+     who and when, and the crest of the side it was for on a white disc at the end. Opened out, it is NotifCard's card
+     (sports_notif_card). Notifier fills it and hides a picture there is none of. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:gravity="center_vertical"
+    android:orientation="horizontal">
+
+    <ImageView
+        android:id="@+id/sports_notif_logo"
+        android:layout_width="26dp"
+        android:layout_height="26dp"
+        android:layout_marginEnd="10dp"
+        android:background="@drawable/sports_notif_chip"
+        android:padding="4dp"
+        android:scaleType="fitCenter"
+        tools:ignore="ContentDescription" />
+
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/sports_notif_title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textAppearance="@style/TextAppearance.Compat.Notification.Title"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/sports_notif_text"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textAppearance="@style/TextAppearance.Compat.Notification" />
+    </LinearLayout>
+
+    <ImageView
+        android:id="@+id/sports_notif_crest"
+        android:layout_width="38dp"
+        android:layout_height="38dp"
+        android:layout_marginStart="10dp"
+        android:background="@drawable/sports_notif_disc"
+        android:padding="6dp"
+        android:scaleType="fitCenter"
+        tools:ignore="ContentDescription" />
+</LinearLayout>

@@ -46,6 +46,8 @@ final class TileData {
         /** The game shown, and its numbers so far once it has started ({label, home, away}). */
         Game game;
         List<String[]> stats = new ArrayList<>();
+        /** Facts about the game, {tag, words} (Facts): the table, the runs, the meetings, its numbers once it is on. */
+        List<String[]> facts = new ArrayList<>();
         /** The stream's own marks: HD (720 lines or more) and subtitles; the player sets them. */
         boolean hd, subtitles;
         /** Whether the background reads have finished (the tile is drawn again then). */
@@ -58,7 +60,8 @@ final class TileData {
             o.start = start; o.stop = stop; o.onNow = onNow; o.nextTitle = nextTitle; o.nextStart = nextStart;
             o.nextStop = nextStop; o.kind = kind; o.year = year; o.genres = genres; o.rating = rating;
             o.certificate = certificate; o.overview = overview; o.still = still; o.poster = poster; o.nextPoster = nextPoster;
-            o.nextGenres = nextGenres; o.hd = hd; o.subtitles = subtitles; o.game = game; o.stats = new ArrayList<>(stats); o.enriched = enriched;
+            o.nextGenres = nextGenres; o.hd = hd; o.subtitles = subtitles; o.game = game; o.stats = new ArrayList<>(stats); o.facts = new ArrayList<>(facts);
+            o.enriched = enriched;
             return o;
         }
 
@@ -131,7 +134,11 @@ final class TileData {
         if (g == null) return false;
         i.game = g;
         i.kind = TileKind.Kind.MATCH;
-        if (g.state != Game.PRE && g.slug != null && g.id != null) i.stats = Espn.summary(g.slug, g.id, 30_000L).stats;
+        if (g.slug != null && g.id != null) {
+            Espn.Summary s = Espn.summary(g.slug, g.id, 30_000L);
+            if (g.state != Game.PRE) i.stats = s.stats;
+            i.facts = com.gathin.tvhomephone.sports.Facts.of(g, s);
+        }
         return true;
     }
 

@@ -9,7 +9,16 @@ night plan, Coming up's mutes, reminders and starred clubs the same everywhere (
 Full screen, a tap brings up an info tile that suits what's on (the Full-screen TV Info Tiles canvas): Match night for a
 game (the scores box with both crests and the competition's logo, the fixture, kick-off or the score, each club's
 form or the game so far), Cinematic for a film, Card for a series' episode and Glass ribbon for the rest, each with
-the channel's logo. The player's options can set one style for everything, or the guide panel as before.
+the channel's logo, and facts in turn while a game is on (its numbers, the table, each side's run, earlier meetings,
+top scorers). The player's options can set one style for everything, or the guide panel as before.
+
+A game's alerts come as cards: folded, what happened and who with the scoring side's crest; opened out, both crests on
+white discs, the score with the scoring side's number lit, the minute, and the 90 minutes with each goal on them. Under
+each: Watch (the channel in Live TV, when the playlist has it), Match and Mute game. "Following live" draws the live
+games as the scores box's rows. A game's page has the header card (crests, score or kick-off, the clock, the scorers,
+where it is on, Remind me), then Timeline (the game on a pitch, each shot, goal and card where it happened, the newest
+pulsing, then every moment by its minute), Line-ups (both elevens on one pitch by their formations, the substitutes
+under it) and Stats in each side's colours.
 
 Titles open in the licensed streaming app that carries them in the UK (or its store), on the phone or, with Play on TV,
 on a TV. Live TV plays only the playlist you give it; the app ships with no channels or sources.

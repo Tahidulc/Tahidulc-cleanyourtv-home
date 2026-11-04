@@ -289,6 +289,19 @@ public final class Library {
         });
     }
 
+    /** As ensure(), the phone's copy read now (off the main thread): for an alert's Watch while the app is closed. */
+    public void ensureNow() {
+        boolean was;
+        synchronized (this) {
+            was = read;
+            if (!read) {
+                readCache();
+                read = true;
+            }
+        }
+        if (!was) changed();
+    }
+
     private void maybeRefresh() {
         Source s = Source.load(app);
         if (s == null) return;

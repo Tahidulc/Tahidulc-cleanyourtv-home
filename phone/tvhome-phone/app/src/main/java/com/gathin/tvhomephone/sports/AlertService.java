@@ -31,6 +31,10 @@ public class AlertService extends Service {
                     s = new Watcher.State();
                 }
                 Watcher.State got = s;
+                String line = got.live ? got.ongoing : got.nextKickoff > 0 ? "Kick-off at " + java.time.Instant.ofEpochMilli(got.nextKickoff)
+                        .atZone(java.time.ZoneId.systemDefault()).format(java.time.format.DateTimeFormatter.ofPattern("HH:mm")) : "";
+                // The live games drawn here, off the main thread (their crests).
+                androidx.core.app.NotificationCompat.Builder card = Notifier.following(AlertService.this, got.followed, line);
                 App.main.post(() -> {
                     if (!running) return;
                     long now = System.currentTimeMillis();
@@ -40,14 +44,7 @@ public class AlertService extends Service {
                         finish(got);
                         return;
                     }
-                    String line = got.live ? got.ongoing : "Kick-off at " + java.time.Instant.ofEpochMilli(got.nextKickoff)
-                            .atZone(java.time.ZoneId.systemDefault()).format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"));
-                    Notifier.notify(AlertService.this, Notifier.ONGOING_ID,
-                            new androidx.core.app.NotificationCompat.Builder(AlertService.this, Notifier.LIVE)
-                                    .setSmallIcon(com.gathin.tvhomephone.R.drawable.sports_ic_ball)
-                                    .setContentTitle(getString(com.gathin.tvhomephone.R.string.sports_following))
-                                    .setContentText(line).setOngoing(true).setSilent(true).setOnlyAlertOnce(true)
-                                    .setContentIntent(Notifier.home(AlertService.this)));
+                    Notifier.notify(AlertService.this, Notifier.ONGOING_ID, card);
                     App.main.postDelayed(tick, TICK_MS);
                 });
             });

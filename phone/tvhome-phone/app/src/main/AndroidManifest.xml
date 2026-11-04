@@ -69,6 +69,7 @@
 
         <!-- Alerts (phone-sports): the kick-off alarm, and a game's own page. -->
         <receiver android:name=".sports.AlarmReceiver" android:exported="false" />
+        <receiver android:name=".sports.MuteReceiver" android:exported="false" />
         <activity android:name=".sports.GameActivity" android:exported="false" />
 
         <receiver android:name=".sports.BootReceiver" android:exported="false">

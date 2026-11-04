@@ -12,6 +12,10 @@
     <string name="sports_tab_weekend">This weekend</string>
     <string name="sports_remind_me">Remind me</string>
     <string name="sports_reminded">Reminder set</string>
+    <!-- An alert's buttons: watch the game on its channel in Live TV, open the match page, no more alerts from it. -->
+    <string name="sports_notif_watch">Watch on %1$s</string>
+    <string name="sports_notif_match">Match</string>
+    <string name="sports_notif_mute">Mute game</string>
     <string name="sports_clubs">Starred clubs</string>
     <string name="sports_search_hint">Search clubs</string>
     <string name="sports_alerts_title">Alerts</string>

@@ -45,7 +45,8 @@ import java.util.Locale;
  * Favourite, Similar channels, Episode info), and the channels either side on the right;</li>
  * <li>D, Match night: the scores box (competition, both crests, the score or kick-off) and the channel's logo at the
  * top; the competition, the fixture, kick-off or the score's story, the buttons, and each club's last five results
- * (before kick-off) or the game so far (goals, possession and shots) at the foot;</li>
+ * (before kick-off) or the game so far (goals, possession, shots and on target) at the foot, and the facts in turn
+ * under the story (the table, each side's run, earlier meetings, top scorers, the numbers of the game);</li>
  * <li>E, Cinematic: the film's title large over a warm fade, the year, genres, rating and certificate, its description,
  * when it ends, and an Up next card.</li>
  * </ul>
@@ -391,6 +392,7 @@ final class InfoTile {
         story.addView(fixture, k.margins(0, 6, 0, 0, -1, -2));
         String line = matchLine(c, i, System.currentTimeMillis());
         if (!line.isEmpty()) story.addView(k.text(line, 14, 0xFFD6DBF0, 400), k.margins(0, 4, 0, 0, -1, -2));
+        if (g != null && !i.facts.isEmpty()) story.addView(facts(k, g, i.facts), k.margins(0, 12, 0, 0, -1, -2));
         HorizontalScrollView hs = new HorizontalScrollView(c);
         hs.setHorizontalScrollBarEnabled(false);
         LinearLayout buttons = k.row();
@@ -512,6 +514,94 @@ final class InfoTile {
         return c.getString(over ? R.string.tile_won : R.string.tile_lead, who, score);
     }
 
+    /** Where the facts' turn had got to, so the tile drawn again (the score read again) carries on from there. */
+    private static String factsGame = "";
+    private static int factsAt;
+    private static final long FACT_MS = 6500;
+
+    /**
+     * The facts, one at a time in turn: its tag in its colour (STAT, FORM, TABLE, HEAD TO HEAD, PLAYER, FACT), the words
+     * beside it, and how many there are as dots; each slides up into the place of the one before.
+     */
+    private static View facts(Kit k, Game g, List<String[]> facts) {
+        if (!factsGame.equals(g.id)) {
+            factsGame = g.id == null ? "" : g.id;
+            factsAt = 0;
+        }
+        LinearLayout col = k.column();
+        LinearLayout row = k.row();
+        row.setGravity(Gravity.TOP);
+        TextView tag = k.text("", 10, WHITE, 800);
+        tag.setLetterSpacing(0.12f);
+        tag.setMaxLines(1);
+        tag.setPadding(k.dp(8), k.dp(3), k.dp(8), k.dp(3));
+        row.addView(tag, k.margins(0, 1, 10, 0, -2, -2));
+        TextView words = k.text("", 14, WHITE, 500);
+        words.setMaxLines(2);
+        words.setLineSpacing(0, 1.08f);
+        row.addView(words, new LinearLayout.LayoutParams(0, -2, 1f));
+        col.addView(row);
+        LinearLayout dots = k.row();
+        int n = Math.min(facts.size(), 12);
+        for (int d = 0; d < n && n > 1; d++) {
+            View dot = new View(k.c);
+            dots.addView(dot, k.margins(0, 0, 4, 0, 5, 5));
+        }
+        if (n > 1) col.addView(dots, k.margins(0, 8, 0, 0, -2, -2));
+        Runnable[] show = new Runnable[1];
+        show[0] = () -> {
+            String[] f = facts.get(factsAt % facts.size());
+            int color = factColour(f[0]);
+            tag.setText(f[0]);
+            tag.setTextColor(color);
+            tag.setBackground(k.fill((color & 0x00FFFFFF) | 0x2E000000, 8));
+            words.setText(f[1]);
+            col.setContentDescription(f[0] + ": " + f[1]);
+            for (int d = 0; d < dots.getChildCount(); d++) {
+                dots.getChildAt(d).setBackground(k.fill(d == factsAt % n ? WHITE : 0x4DFFFFFF, 3));
+            }
+        };
+        show[0].run();
+        if (facts.size() > 1) {
+            Runnable next = new Runnable() {
+                @Override public void run() {
+                    if (!col.isAttachedToWindow()) return;
+                    row.animate().alpha(0f).translationY(-k.dp(6)).setDuration(220).withEndAction(() -> {
+                        factsAt = (factsAt + 1) % facts.size();
+                        show[0].run();
+                        row.setTranslationY(k.dp(8));
+                        row.animate().alpha(1f).translationY(0).setDuration(320).start();
+                    }).start();
+                    col.postDelayed(this, FACT_MS);
+                }
+            };
+            col.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
+                @Override public void onViewAttachedToWindow(View v) {
+                    v.removeCallbacks(next);
+                    v.postDelayed(next, FACT_MS);
+                }
+
+                @Override public void onViewDetachedFromWindow(View v) { v.removeCallbacks(next); }
+            });
+            col.setOnClickListener(v -> {
+                v.removeCallbacks(next);
+                next.run();
+            });
+        }
+        return col;
+    }
+
+    private static int factColour(String tag) {
+        switch (tag) {
+            case "STAT": return 0xFF8FB2FF;
+            case "FORM": return 0xFF5CE19A;
+            case "TABLE": return 0xFFC9A7FF;
+            case "HEAD TO HEAD": return 0xFFFFC266;
+            case "PLAYER": return 0xFFFF9EC7;
+            default: return 0xFFB8C2EA;
+        }
+    }
+
     /** FORM, LAST FIVE: each club's crest, short name and its last five as W, D and L squares, oldest first. */
     private static View form(Kit k, Game g) {
         if (g.homeForm.isEmpty() && g.awayForm.isEmpty()) return null;
@@ -536,7 +626,7 @@ final class InfoTile {
         return row;
     }
 
-    /** THE GAME SO FAR: each side's scorers by its crest, then possession and shots as bars. */
+    /** THE GAME SO FAR: each side's scorers by its crest, then possession, shots and on target as bars. */
     private static View soFar(Kit k, Game g, List<String[]> stats) {
         LinearLayout col = k.column();
         col.addView(k.kicker(k.c.getString(R.string.tile_so_far), 0xFFB8C2EA));
@@ -544,8 +634,9 @@ final class InfoTile {
             String which = side == 0 ? "home" : "away";
             List<String> scorers = new ArrayList<>();
             for (String[] goal : g.goals) {
+                // ESPN gives each goal the side it counts for, an own goal too.
                 boolean og = goal.length > 4 && "og".equals(goal[4]);
-                if (which.equals(goal[3]) != og) continue;
+                if (!which.equals(goal[3])) continue;
                 scorers.add(surname(goal[1]) + " " + goal[2] + (goal.length > 4 && "pen".equals(goal[4]) ? " (pen)" : og ? " (og)" : ""));
             }
             LinearLayout row = k.row();
@@ -559,7 +650,7 @@ final class InfoTile {
         }
         int shown = 0;
         for (String[] s : stats) {
-            if (shown >= 2 || !("Possession".equals(s[0]) || "Shots".equals(s[0]))) continue;
+            if (shown >= 3 || !("Possession".equals(s[0]) || "Shots".equals(s[0]) || "On target".equals(s[0]))) continue;
             col.addView(statRow(k, s), k.margins(0, 10, 0, 0, -1, -2));
             shown++;
         }

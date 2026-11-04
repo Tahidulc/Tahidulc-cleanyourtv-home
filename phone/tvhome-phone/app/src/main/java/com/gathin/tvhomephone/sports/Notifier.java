@@ -50,6 +50,8 @@ public final class Notifier {
         if (!Kinds.on(c, a.kind) || !Competitions.allowed(Competitions.saved(c), a) || AlertLog.sent(c, a.key)) return;
         AlertLog.markSent(c, a.key);
         AlertLog.add(c, a);
+        // Muted from an earlier alert's "Mute game": kept in the log, not shown.
+        if (a.game != null && MuteReceiver.muted(c, a.game.id)) return;
         String channel = a.kind.startsWith("f1") ? F1 : "weather".equals(a.kind) ? WEATHER : "reminder".equals(a.kind) ? REMINDERS : ALERTS;
         NotificationCompat.Builder b = new NotificationCompat.Builder(c, channel)
                 .setSmallIcon(R.drawable.sports_ic_ball)
@@ -63,14 +65,79 @@ public final class Notifier {
         if (a.game != null) {
             b.setGroup("game:" + a.game.id);
             b.setContentIntent(open(c, a.game));
-            Bitmap crest = crest(c, a);
-            if (crest != null) b.setLargeIcon(crest);
         } else {
             b.setContentIntent(home(c));
         }
-        withLogos(c, a, b);
+        if (!(NotifCard.drawn(a) && carded(c, a, b))) {
+            if (a.game != null) {
+                Bitmap crest = crest(c, a);
+                if (crest != null) b.setLargeIcon(crest);
+            }
+            withLogos(c, a, b);
+        }
         notify(c, (a.key).hashCode(), b);
         if (a.game != null) summary(c, a.game, channel);
+    }
+
+    /**
+     * A game's moment as its card: folded, the competition's logo, what happened and who, and the crest of the side it
+     * was for; opened out, NotifCard's drawing. Watch (on the channel, when the playlist has it), Match and Mute game
+     * under it. False when the card could not be drawn.
+     */
+    private static boolean carded(Context c, Events.Alert a, NotificationCompat.Builder b) {
+        Game g = a.game;
+        String channel = a.channel;
+        if ((channel == null || channel.isEmpty()) && g.state != Game.POST) channel = Channels.best(c, g);
+        Bitmap chLogo = null;
+        if ("kickoff".equals(a.kind) && channel != null && !channel.isEmpty()) {
+            chLogo = NotifCard.logo(c, ChannelLogos.find(c, channel), Ui.dp(c, 110), Ui.dp(c, 18));
+        }
+        Bitmap card;
+        try {
+            card = NotifCard.match(c, a, chLogo);
+        } catch (RuntimeException e) {
+            card = null;
+        }
+        if (card == null) return false;
+        String title = NotifCard.title(a), line = NotifCard.line(a);
+        String side = NotifCard.side(a);
+        Bitmap comp = NotifCard.logo(c, Competitions.logo(g), Ui.dp(c, 24), Ui.dp(c, 24));
+        Bitmap crest = NotifCard.logo(c, "away".equals(side) ? g.awayLogo : g.homeLogo, Ui.dp(c, 30), Ui.dp(c, 30));
+        RemoteViews small = new RemoteViews(c.getPackageName(), R.layout.sports_notif_match);
+        small.setTextViewText(R.id.sports_notif_title, title);
+        small.setTextViewText(R.id.sports_notif_text, line);
+        if (comp != null) {
+            small.setImageViewBitmap(R.id.sports_notif_logo, comp);
+            small.setContentDescription(R.id.sports_notif_logo, g.leagueName);
+        } else {
+            small.setViewVisibility(R.id.sports_notif_logo, View.GONE);
+        }
+        if (crest != null) {
+            small.setImageViewBitmap(R.id.sports_notif_crest, crest);
+            small.setContentDescription(R.id.sports_notif_crest, "away".equals(side) ? g.awayName : g.homeName);
+        } else {
+            small.setViewVisibility(R.id.sports_notif_crest, View.GONE);
+        }
+        RemoteViews big = new RemoteViews(c.getPackageName(), R.layout.sports_notif_card);
+        big.setImageViewBitmap(R.id.sports_notif_card, card);
+        big.setContentDescription(R.id.sports_notif_card, title + ". " + line);
+        b.setContentTitle(title)
+                .setContentText(line)
+                .setStyle(new NotificationCompat.DecoratedCustomViewStyle())
+                .setCustomContentView(small)
+                .setCustomHeadsUpContentView(small)
+                .setCustomBigContentView(big);
+        if (g.state != Game.POST && channel != null && !channel.isEmpty()) {
+            Intent watch = com.gathin.tvhomephone.live.LiveLinks.watch(c, channel);
+            if (watch != null) {
+                b.addAction(R.drawable.live_ic_play, c.getString(R.string.sports_notif_watch, channel),
+                        PendingIntent.getActivity(c, ("watch:" + g.id).hashCode(), watch,
+                                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE));
+            }
+        }
+        b.addAction(R.drawable.sports_ic_ball, c.getString(R.string.sports_notif_match), open(c, g));
+        b.addAction(R.drawable.live_ic_bell, c.getString(R.string.sports_notif_mute), MuteReceiver.pending(c, g.id));
+        return true;
     }
 
     /** The group's summary, so a game's alerts sit together. */
@@ -88,6 +155,10 @@ public final class Notifier {
 
     /** The quiet ongoing notification while a followed game is live: its score and minute. */
     public static android.app.Notification ongoing(Context c, String text) {
+        return following(c, text).build();
+    }
+
+    private static NotificationCompat.Builder following(Context c, String text) {
         return new NotificationCompat.Builder(c, LIVE)
                 .setSmallIcon(R.drawable.sports_ic_ball)
                 .setContentTitle(c.getString(R.string.sports_following))
@@ -96,8 +167,33 @@ public final class Notifier {
                 .setOnlyAlertOnce(true)
                 .setSilent(true)
                 .setColor(c.getColor(R.color.sports))
-                .setContentIntent(home(c))
-                .build();
+                .setContentIntent(home(c));
+    }
+
+    /**
+     * "Following live" with the live games drawn as the scores box's rows: the first folded, all of them (four at
+     * most) opened out; tapping opens the game when there is one. Off the main thread (the crests).
+     */
+    public static NotificationCompat.Builder following(Context c, java.util.List<Game> followed, String text) {
+        NotificationCompat.Builder b = following(c, text);
+        java.util.List<Game> live = new java.util.ArrayList<>();
+        for (Game g : followed) if (g.state == Game.LIVE) live.add(g);
+        if (live.isEmpty()) return b;
+        try {
+            Bitmap one = NotifCard.live(c, live, 1), all = live.size() > 1 ? NotifCard.live(c, live, 4) : one;
+            if (one == null) return b;
+            RemoteViews small = new RemoteViews(c.getPackageName(), R.layout.sports_notif_card);
+            small.setImageViewBitmap(R.id.sports_notif_card, one);
+            small.setContentDescription(R.id.sports_notif_card, text);
+            RemoteViews big = new RemoteViews(c.getPackageName(), R.layout.sports_notif_card);
+            big.setImageViewBitmap(R.id.sports_notif_card, all);
+            big.setContentDescription(R.id.sports_notif_card, text);
+            b.setStyle(new NotificationCompat.DecoratedCustomViewStyle()).setCustomContentView(small).setCustomBigContentView(big);
+            if (live.size() == 1) b.setContentIntent(open(c, live.get(0)));
+        } catch (RuntimeException ignored) {
+            // the words alone
+        }
+        return b;
     }
 
     static void notify(Context c, int id, NotificationCompat.Builder b) {

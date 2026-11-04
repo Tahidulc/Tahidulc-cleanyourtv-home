@@ -166,6 +166,12 @@ public class PlayerActivity extends AppCompatActivity {
         c.startActivity(i);
     }
 
+    /** The player on one channel, from outside the app (an alert's Watch). */
+    static Intent intent(Context c, String key) {
+        return new Intent(c, PlayerActivity.class).putExtra(EXTRA_KEY, key).putExtra(EXTRA_GROUP, Library.ALL)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+    }
+
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
         lib = Library.get(this);

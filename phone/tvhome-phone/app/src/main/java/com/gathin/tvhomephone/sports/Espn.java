@@ -187,19 +187,69 @@ public final class Espn {
 
     /** A game's events, line-ups and stats (ESPN's summary). */
     public static final class Summary {
-        /** {minute, what ("Goal", "Yellow Card", "Substitution", "VAR"...), player, "home"/"away"/"", key}. */
+        /**
+         * {minute, what ("Goal", "Yellow Card", "Substitution", "VAR"...), player, "home"/"away"/"", key, the second
+         * player ("" when none: the one replaced for a substitution, the assist for a goal)}.
+         */
         public final List<String[]> events = new ArrayList<>();
-        /** Each side's starters and bench: {number, name, position, "1" starter / "0" bench}. */
+        /** How many of events came before half time; -1 when the break is not reached (or not told). */
+        public int halfTimeAt = -1;
+        /**
+         * Each side's starters and bench, as P_* indexes them: {number, name, position, "1" starter / "0" bench, place in
+         * the formation (1 the goalkeeper, "" or "0" for the bench), short name (the surname), minute on, minute off,
+         * goals, cards ("Y", "R" or "YR"), own goals}.
+         */
         public final List<String[]> homeLineup = new ArrayList<>(), awayLineup = new ArrayList<>();
         public String homeFormation = "", awayFormation = "";
+        /** The kits worn ("fcdd39"), "" when ESPN gives none: each side's shirt, then its second colour. */
+        public String homeKit = "", awayKit = "", homeKitAlt = "", awayKitAlt = "";
         /** {label, home value, away value}: possession, shots, on target, corners, fouls. */
         public final List<String[]> stats = new ArrayList<>();
+        /** Every number ESPN gives for each side ("saves", "passPct", "offsides"...): for the facts. */
+        public final Map<String, String> homeNumbers = new HashMap<>(), awayNumbers = new HashMap<>();
+        public String homeId = "", awayId = "";
+        /** The competition's table as it stood: {team id, name, rank, points, played}. */
+        public final List<String[]> table = new ArrayList<>();
+        /** Each side's last five, oldest first: {"W"/"D"/"L", goals for, goals against, opponent, "@" or "vs", competition}. */
+        public final List<String[]> homeLast = new ArrayList<>(), awayLast = new ArrayList<>();
+        /** Earlier meetings, newest first: {year, home name, home goals, away name, away goals}. */
+        public final List<String[]> meetings = new ArrayList<>();
+        /**
+         * ESPN's leaders for each side: {"home"/"away", what ("goalsLeaders", "totalShots", "saves"...), player, value as
+         * given ("Matches: 3, Goals: 4" for the competition before the game, "7" for this game once it is on)}.
+         */
+        public final List<String[]> leaders = new ArrayList<>();
+        public int attendance;
+        public String referee = "";
+        /**
+         * Where things happened, oldest first (M_*): each shot and goal from where it was struck to where it went, and
+         * each card where its foul was. Positions are 0 to 100 from the side's own point of view, attacking towards
+         * x = 100; y = 0 its right touchline.
+         */
+        public final List<String[]> plays = new ArrayList<>();
     }
 
+    /** Indexes into Summary.plays, and the kinds of play. */
+    public static final int M_MINUTE = 0, M_KIND = 1, M_SIDE = 2, M_X = 3, M_Y = 4, M_X2 = 5, M_Y2 = 6, M_PLAYER = 7;
+    public static final String GOAL = "goal", ON_TARGET = "on", OFF_TARGET = "off", BLOCKED = "blocked", YELLOW = "yellow", RED = "red";
+
+    /** Indexes into a line-up's rows. */
+    public static final int P_NUMBER = 0, P_NAME = 1, P_POSITION = 2, P_STARTER = 3, P_PLACE = 4, P_SHORT = 5, P_ON = 6,
+            P_OFF = 7, P_GOALS = 8, P_CARDS = 9, P_OWN = 10;
+
     public static Summary summary(String slug, String id, long freshMs) {
+        try {
+            return summary(new JSONObject(cached(SITE + slug + "/summary?event=" + id, freshMs)), id);
+        } catch (Exception ignored) {
+            // the summary is not out yet
+            return new Summary();
+        }
+    }
+
+    /** A summary from ESPN's answer (as summary(slug, id) reads it). */
+    static Summary summary(JSONObject root, String id) {
         Summary s = new Summary();
         try {
-            JSONObject root = new JSONObject(cached(SITE + slug + "/summary?event=" + id, freshMs));
             String homeId = "";
             JSONObject header = root.optJSONObject("header");
             JSONArray comps = header == null ? null : header.optJSONArray("competitions");
@@ -212,38 +262,61 @@ public final class Espn {
             for (int i = 0; key != null && i < key.length(); i++) {
                 JSONObject k = key.getJSONObject(i);
                 String what = k.optJSONObject("type") == null ? "" : k.getJSONObject("type").optString("text");
-                if (what.isEmpty() || what.equalsIgnoreCase("Kickoff") || what.toLowerCase(Locale.ROOT).startsWith("end ")
-                        || what.equalsIgnoreCase("Halftime") || what.equalsIgnoreCase("Start 2nd Half")) continue;
+                String low = what.toLowerCase(Locale.ROOT);
+                if (low.equals("halftime")) {
+                    if (s.halfTimeAt < 0) s.halfTimeAt = s.events.size();
+                    continue;
+                }
+                if (what.isEmpty() || low.equals("kickoff") || low.startsWith("end ") || low.startsWith("start ")
+                        || low.contains("delay")) continue;
                 JSONArray who = k.optJSONArray("participants");
                 JSONObject athlete = who != null && who.length() > 0 ? who.getJSONObject(0).optJSONObject("athlete") : null;
+                JSONObject second = who != null && who.length() > 1 ? who.getJSONObject(1).optJSONObject("athlete") : null;
                 String minute = k.optJSONObject("clock") == null ? "" : k.getJSONObject("clock").optString("displayValue");
                 JSONObject team = k.optJSONObject("team");
                 String side = team == null ? "" : homeId.equals(team.optString("id")) ? "home" : "away";
                 String player = athlete == null ? "" : athlete.optString("displayName");
                 if (player.isEmpty()) player = k.optString("shortText", k.optString("text", ""));
-                s.events.add(new String[]{minute, what, player, side, "E|" + id + "|" + k.optString("id", what + minute)});
+                s.events.add(new String[]{minute, what, player, side, "E|" + id + "|" + k.optString("id", what + minute),
+                        second == null ? "" : second.optString("displayName", "")});
             }
             JSONArray rosters = root.optJSONArray("rosters");
             for (int i = 0; rosters != null && i < rosters.length(); i++) {
                 JSONObject r = rosters.getJSONObject(i);
                 boolean isHome = "home".equals(r.optString("homeAway"));
                 List<String[]> into = isHome ? s.homeLineup : s.awayLineup;
-                if (isHome) s.homeFormation = r.optString("formation", ""); else s.awayFormation = r.optString("formation", "");
-                JSONArray players = r.optJSONArray("roster");
-                for (int p = 0; players != null && p < players.length(); p++) {
-                    JSONObject pl = players.getJSONObject(p);
-                    JSONObject a = pl.optJSONObject("athlete");
-                    JSONObject pos = pl.optJSONObject("position");
-                    into.add(new String[]{pl.optString("jersey", ""), a == null ? "" : a.optString("displayName"),
-                            pos == null ? "" : pos.optString("abbreviation", ""), pl.optBoolean("starter") ? "1" : "0"});
+                JSONObject uniform = r.optJSONObject("uniform"), team = r.optJSONObject("team");
+                String kit = uniform != null && !uniform.optString("color").isEmpty() ? uniform.optString("color")
+                        : team == null ? "" : team.optString("color", "");
+                String alt = uniform != null && !uniform.optString("alternateColor").isEmpty() ? uniform.optString("alternateColor")
+                        : team == null ? "" : team.optString("alternateColor", "");
+                if (isHome) {
+                    s.homeFormation = r.optString("formation", "");
+                    s.homeKit = kit;
+                    s.homeKitAlt = alt;
+                } else {
+                    s.awayFormation = r.optString("formation", "");
+                    s.awayKit = kit;
+                    s.awayKitAlt = alt;
                 }
+                JSONArray players = r.optJSONArray("roster");
+                for (int p = 0; players != null && p < players.length(); p++) into.add(player(players.getJSONObject(p)));
             }
+            s.homeId = homeId;
+            for (int i = 0; competitors != null && i < competitors.length(); i++) {
+                JSONObject t = competitors.getJSONObject(i);
+                if (!"home".equals(t.optString("homeAway"))) s.awayId = t.optString("id");
+            }
+            extras(root, s);
+            plays(root, s, competitors);
             JSONObject box = root.optJSONObject("boxscore");
             JSONArray bt = box == null ? null : box.optJSONArray("teams");
             if (bt != null && bt.length() == 2) {
                 JSONObject a = bt.getJSONObject(0), b = bt.getJSONObject(1);
                 boolean aHome = homeId.equals(a.optJSONObject("team") == null ? "" : a.getJSONObject("team").optString("id"));
                 JSONObject h = aHome ? a : b, w = aHome ? b : a;
+                numbers(h, s.homeNumbers);
+                numbers(w, s.awayNumbers);
                 String[][] want = {{"possessionPct", "Possession"}, {"totalShots", "Shots"}, {"shotsOnTarget", "On target"},
                         {"wonCorners", "Corners"}, {"foulsCommitted", "Fouls"}, {"yellowCards", "Yellow cards"}};
                 for (String[] wnt : want) {
@@ -254,9 +327,205 @@ public final class Espn {
                 }
             }
         } catch (Exception ignored) {
-            // the summary is not out yet
+            // what was read so far
         }
         return s;
+    }
+
+    private static void numbers(JSONObject team, Map<String, String> into) {
+        JSONArray st = team.optJSONArray("statistics");
+        for (int i = 0; st != null && i < st.length(); i++) {
+            JSONObject x = st.optJSONObject(i);
+            if (x != null && !x.optString("name").isEmpty()) into.put(x.optString("name"), x.optString("displayValue"));
+        }
+    }
+
+    /** The table, both sides' last five, earlier meetings, leaders, the crowd and the referee, for the facts. */
+    private static void extras(JSONObject root, Summary s) {
+        JSONObject st = root.optJSONObject("standings");
+        JSONArray groups = st == null ? null : st.optJSONArray("groups");
+        for (int gi = 0; groups != null && gi < groups.length(); gi++) {
+            JSONObject grp = groups.optJSONObject(gi);
+            JSONObject inner = grp == null ? null : grp.optJSONObject("standings");
+            JSONArray entries = inner == null ? null : inner.optJSONArray("entries");
+            for (int i = 0; entries != null && i < entries.length(); i++) {
+                JSONObject e = entries.optJSONObject(i);
+                if (e == null) continue;
+                Map<String, String> v = new HashMap<>();
+                JSONArray stats = e.optJSONArray("stats");
+                for (int k = 0; stats != null && k < stats.length(); k++) {
+                    JSONObject x = stats.optJSONObject(k);
+                    if (x != null) v.put(x.optString("name"), x.optString("displayValue"));
+                }
+                s.table.add(new String[]{e.optString("id"), e.optString("team"), v.getOrDefault("rank", String.valueOf(i + 1)),
+                        v.getOrDefault("points", ""), v.getOrDefault("gamesPlayed", "")});
+            }
+        }
+        JSONArray last = root.optJSONArray("lastFiveGames");
+        for (int i = 0; last != null && i < last.length(); i++) {
+            JSONObject t = last.optJSONObject(i);
+            JSONObject team = t == null ? null : t.optJSONObject("team");
+            if (team == null) continue;
+            List<String[]> into = team.optString("id").equals(s.homeId) ? s.homeLast : team.optString("id").equals(s.awayId) ? s.awayLast : null;
+            if (into == null) continue;
+            JSONArray events = t.optJSONArray("events");
+            for (int k = 0; events != null && k < events.length(); k++) {
+                JSONObject e = events.optJSONObject(k);
+                if (e == null || e.optString("gameResult").isEmpty()) continue;
+                boolean away = "@".equals(e.optString("atVs"));
+                String hs = e.optString("homeTeamScore"), as = e.optString("awayTeamScore");
+                JSONObject opp = e.optJSONObject("opponent");
+                into.add(new String[]{e.optString("gameResult"), away ? as : hs, away ? hs : as,
+                        opp == null ? "" : opp.optString("displayName"), away ? "@" : "vs", e.optString("leagueName")});
+            }
+        }
+        JSONArray series = root.optJSONArray("seasonseries");
+        for (int i = 0; series != null && i < series.length(); i++) {
+            JSONObject x = series.optJSONObject(i);
+            JSONArray events = x == null ? null : x.optJSONArray("events");
+            for (int k = 0; events != null && k < events.length(); k++) {
+                JSONObject e = events.optJSONObject(k);
+                if (e == null || !"post".equals(e.optJSONObject("statusType") == null ? "" : e.optJSONObject("statusType").optString("state"))) continue;
+                JSONArray cs = e.optJSONArray("competitors");
+                if (cs == null || cs.length() != 2) continue;
+                JSONObject h = cs.optJSONObject(0), w = cs.optJSONObject(1);
+                if (h == null || w == null) continue;
+                if ("away".equals(h.optString("homeAway"))) { JSONObject t = h; h = w; w = t; }
+                String date = e.optString("date");
+                s.meetings.add(new String[]{date.length() >= 4 ? date.substring(0, 4) : "", name(h), h.optString("score"), name(w),
+                        w.optString("score"), date});
+            }
+        }
+        s.meetings.sort((a, b) -> b[5].compareTo(a[5]));
+        JSONArray leaders = root.optJSONArray("leaders");
+        for (int i = 0; leaders != null && i < leaders.length(); i++) {
+            JSONObject t = leaders.optJSONObject(i);
+            JSONObject team = t == null ? null : t.optJSONObject("team");
+            if (team == null) continue;
+            String side = team.optString("id").equals(s.homeId) ? "home" : team.optString("id").equals(s.awayId) ? "away" : "";
+            JSONArray kinds = t.optJSONArray("leaders");
+            for (int k = 0; kinds != null && k < kinds.length(); k++) {
+                JSONObject kind = kinds.optJSONObject(k);
+                JSONArray who = kind == null ? null : kind.optJSONArray("leaders");
+                JSONObject first = who != null && who.length() > 0 ? who.optJSONObject(0) : null;
+                JSONObject athlete = first == null ? null : first.optJSONObject("athlete");
+                if (athlete == null || side.isEmpty()) continue;
+                s.leaders.add(new String[]{side, kind.optString("name"), athlete.optString("displayName"), first.optString("displayValue")});
+            }
+        }
+        JSONObject info = root.optJSONObject("gameInfo");
+        if (info != null) {
+            s.attendance = info.optInt("attendance", 0);
+            JSONArray officials = info.optJSONArray("officials");
+            JSONObject ref = officials != null && officials.length() > 0 ? officials.optJSONObject(0) : null;
+            if (ref != null) s.referee = ref.optString("displayName", ref.optString("fullName", ""));
+        }
+    }
+
+    /** The shots, goals and cards with their places on the pitch, from ESPN's commentary. */
+    private static void plays(JSONObject root, Summary s, JSONArray competitors) {
+        String homeName = "", awayName = "";
+        for (int i = 0; competitors != null && i < competitors.length(); i++) {
+            JSONObject t = competitors.optJSONObject(i);
+            JSONObject team = t == null ? null : t.optJSONObject("team");
+            if (team == null) continue;
+            if ("home".equals(t.optString("homeAway"))) homeName = team.optString("displayName"); else awayName = team.optString("displayName");
+        }
+        JSONArray com = root.optJSONArray("commentary");
+        List<JSONObject> list = new ArrayList<>();
+        for (int i = 0; com != null && i < com.length(); i++) {
+            JSONObject x = com.optJSONObject(i);
+            JSONObject p = x == null ? null : x.optJSONObject("play");
+            if (p != null) list.add(p);
+        }
+        for (int i = 0; i < list.size(); i++) {
+            JSONObject p = list.get(i);
+            JSONObject type = p.optJSONObject("type");
+            String what = type == null ? "" : type.optString("text").toLowerCase(Locale.ROOT);
+            String kind;
+            if (what.contains("own goal")) continue;
+            if (what.contains("goal") && !what.contains("kick") || what.contains("penalty - scored")) kind = GOAL;
+            else if (what.contains("shot on target") || what.contains("penalty - saved")) kind = ON_TARGET;
+            else if (what.contains("shot off target") || what.contains("woodwork") || what.contains("penalty - missed")) kind = OFF_TARGET;
+            else if (what.contains("shot blocked")) kind = BLOCKED;
+            else if (what.contains("yellow card")) kind = YELLOW;
+            else if (what.contains("red card")) kind = RED;
+            else continue;
+            JSONObject team = p.optJSONObject("team");
+            String teamName = team == null ? "" : team.optString("displayName");
+            String side = teamName.equals(homeName) ? "home" : teamName.equals(awayName) ? "away" : "";
+            if (side.isEmpty()) continue;
+            JSONArray who = p.optJSONArray("participants");
+            JSONObject a = who != null && who.length() > 0 ? who.optJSONObject(0) : null;
+            JSONObject athlete = a == null ? null : a.optJSONObject("athlete");
+            String player = athlete == null ? "" : athlete.optString("displayName");
+            JSONObject clock = p.optJSONObject("clock");
+            String minute = clock == null ? "" : clock.optString("displayValue");
+            JSONObject at = p;
+            if (!p.has("fieldPositionX")) {
+                // A card has no place of its own: its foul's, the same minute and player.
+                at = null;
+                for (int k = i - 1; k >= 0 && k >= i - 8 && at == null; k--) {
+                    JSONObject f = list.get(k);
+                    JSONObject ft = f.optJSONObject("type");
+                    JSONObject fc = f.optJSONObject("clock");
+                    JSONArray fw = f.optJSONArray("participants");
+                    JSONObject fa = fw != null && fw.length() > 0 && fw.optJSONObject(0) != null ? fw.optJSONObject(0).optJSONObject("athlete") : null;
+                    if (ft != null && "foul".equalsIgnoreCase(ft.optString("text")) && fc != null && minute.equals(fc.optString("displayValue"))
+                            && fa != null && player.equals(fa.optString("displayName")) && f.has("fieldPositionX")) at = f;
+                }
+                if (at == null) continue;
+            }
+            s.plays.add(new String[]{minute, kind, side, at.optString("fieldPositionX"), at.optString("fieldPositionY"),
+                    at.optString("fieldPosition2X", ""), at.optString("fieldPosition2Y", ""), player});
+        }
+    }
+
+    private static String name(JSONObject competitor) {
+        JSONObject t = competitor.optJSONObject("team");
+        return t == null ? "" : t.optString("shortDisplayName", t.optString("displayName", ""));
+    }
+
+    /** One player of a roster, as Summary's line-ups hold them (P_*). */
+    static String[] player(JSONObject pl) {
+        JSONObject a = pl.optJSONObject("athlete");
+        JSONObject pos = pl.optJSONObject("position");
+        String name = a == null ? "" : a.optString("displayName");
+        String last = a == null ? "" : a.optString("lastName", "");
+        String shortName = a == null ? "" : a.optString("shortName", "");
+        // "A. Koita" to "Koita"; "Zini" and "Vinícius Júnior" (no surname given) as they are.
+        if (last.isEmpty()) last = shortName.matches("^\\p{L}\\. .+") ? shortName.substring(3) : shortName.isEmpty() ? name : shortName;
+        boolean starter = pl.optBoolean("starter");
+        String on = "", off = "", cards = "";
+        int goals = 0, own = 0;
+        boolean cameOn = didSub(pl, "subbedIn"), wentOff = didSub(pl, "subbedOut");
+        JSONArray plays = pl.optJSONArray("plays");
+        for (int i = 0; plays != null && i < plays.length(); i++) {
+            JSONObject x = plays.optJSONObject(i);
+            if (x == null) continue;
+            JSONObject clk = x.optJSONObject("clock");
+            String clock = clk == null ? "" : clk.optString("displayValue", "");
+            if (x.optBoolean("substitution")) {
+                if (cameOn && on.isEmpty()) on = clock; else off = clock;
+            }
+            if (x.optBoolean("ownGoal")) own++;
+            else if (x.optBoolean("didScore")) goals++;
+            if (x.optBoolean("yellowCard") && !cards.contains("Y")) cards = "Y" + cards;
+            if (x.optBoolean("redCard") && !cards.contains("R")) cards = cards + "R";
+        }
+        if (cameOn && on.isEmpty()) on = "?";
+        if (wentOff && off.isEmpty()) off = "?";
+        String place = pl.optString("formationPlace", "");
+        return new String[]{pl.optString("jersey", ""), name, pos == null ? "" : pos.optString("abbreviation", ""),
+                starter ? "1" : "0", starter ? place : "", last, on, off, String.valueOf(goals), cards, String.valueOf(own)};
+    }
+
+    /** ESPN gives "subbedIn" as true or false, or as {"didSub": true}. */
+    private static boolean didSub(JSONObject pl, String name) {
+        Object v = pl.opt(name);
+        if (v instanceof Boolean) return (Boolean) v;
+        if (v instanceof JSONObject) return ((JSONObject) v).optBoolean("didSub");
+        return false;
     }
 
     private static String stat(JSONObject team, String name) {
