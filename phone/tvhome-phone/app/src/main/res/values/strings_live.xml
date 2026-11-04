@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="live_title">Live TV</string>
+    <string name="live_empty_title">Add your own playlist</string>
+    <string name="live_empty_body">Live TV plays your own M3U playlist or Xtream Codes login. The app comes with no channels or sources.</string>
+    <string name="live_empty_button">Set it up in Settings</string>
+    <string name="live_loading">Loading your channels…</string>
+    <string name="live_try_again">Try again</string>
+    <string name="live_search">Search channels</string>
+    <string name="live_all">All</string>
+    <string name="live_favourites">★ Favourites</string>
+    <string name="live_recent">Recent</string>
+    <string name="live_last_watched">LAST WATCHED</string>
+    <string name="live_all_channels">ALL CHANNELS</string>
+    <string name="live_now">NOW</string>
+    <string name="live_next">Next</string>
+    <string name="live_until">%1$s  ·  until %2$s</string>
+    <string name="live_no_guide">No guide for this channel</string>
+    <string name="live_watch">Watch</string>
+    <string name="live_refresh">Refresh channels</string>
+    <string name="live_favourite">Favourite</string>
+    <string name="live_pip">Picture in picture</string>
+    <string name="live_close">Close</string>
+    <string name="live_reconnecting">Reconnecting…</string>
+    <string name="live_not_playing">This channel isn\'t playing right now. Swipe up or down for another, or tap to try again.</string>
+    <string name="live_gone">That channel isn\'t in your playlist any more.</string>
+    <string name="live_count">%1$d channels</string>
+    <string name="live_nothing_found">No channels match</string>
+
+    <string name="live_settings_title">Live TV</string>
+    <string name="live_settings_body">Your own M3U playlist or Xtream Codes login. Kept only on this phone (never sent to the TVs); the app comes with no channels.</string>
+    <string name="live_kind_m3u">M3U playlist</string>
+    <string name="live_kind_xtream">Xtream Codes</string>
+    <string name="live_m3u_url">Playlist address (http…)</string>
+    <string name="live_guide_url">Guide address (XMLTV, optional)</string>
+    <string name="live_server">Server (http://host:port)</string>
+    <string name="live_user">Username</string>
+    <string name="live_pass">Password</string>
+    <string name="live_test_save">Test and save</string>
+    <string name="live_refresh_now">Refresh now</string>
+    <string name="live_remove">Remove</string>
+    <string name="live_remove_ask">Remove your playlist, its channels and your Live TV favourites from this phone?</string>
+    <string name="live_checking">Checking…</string>
+    <string name="live_none">No playlist yet: add your own.</string>
+    <string name="live_saved">%1$s · %2$d channels · guide for %3$d · updated %4$s</string>
+    <string name="live_cancel">Cancel</string>
+</resources>
