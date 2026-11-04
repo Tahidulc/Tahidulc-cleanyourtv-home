@@ -118,6 +118,8 @@ final class ReleaseAlerts {
         LocalDate today = LocalDate.now();
         for (WatchHistory.Entry e : WatchHistory.load(c)) {
             if (!e.tv || e.tmdbId <= 0 || e.at < since || !seen.add(e.tmdbId)) continue;
+            // Its pop-up turned off on TV shows' Coming up (OK held on it).
+            if (ComingUp.muted(c, e.tmdbId, true)) continue;
             JSONObject d = YourShows.details(key, e.tmdbId);
             JSONObject last = d == null ? null : d.optJSONObject("last_episode_to_air");
             if (last == null) continue;
@@ -166,6 +168,7 @@ final class ReleaseAlerts {
             if (o.optBoolean("apps") || added >= 2) continue;
             int id = o.optInt("id");
             boolean tv = o.optBoolean("tv");
+            if (ComingUp.muted(c, id, tv)) continue;
             JSONObject gb = PagesV2.providersGb(key, id, tv);
             if (!onApps(c, gb)) continue;
             MyList.arrived(c, id, tv);
@@ -203,6 +206,7 @@ final class ReleaseAlerts {
             JSONObject f = r.getJSONObject(i);
             if (f.optDouble("popularity") < 30 && !force) continue;
             int id = f.optInt("id");
+            if (ComingUp.muted(c, id, false)) continue;
             if (!told.add("film:" + id) && !force) continue;
             String name = f.optString("title");
             ScoreCard.Data card = base(c, key, id, false);

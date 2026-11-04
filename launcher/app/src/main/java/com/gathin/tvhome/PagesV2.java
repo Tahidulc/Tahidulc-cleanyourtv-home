@@ -238,6 +238,8 @@ final class PagesV2 {
         Runnable ok;
         /** Because you watched's tabs: the hero's pill ("Because you watched Lupin"); null for any other. */
         String because;
+        /** What holding OK does instead of opening the title's panel (Coming up: its release pop-up on or off); null: the panel. */
+        Runnable hold;
     }
 
     /**
@@ -877,6 +879,7 @@ final class PagesV2 {
                 if (t.badge != null) {
                     // As heavy as the labels on the mock-ups: Inter's semibold made bold.
                     TextView b = h.text(13, android.graphics.Typeface.create(h.semi, android.graphics.Typeface.BOLD), t.badgeFg);
+                    b.setTag("badge");   // found by name: Coming up's hold changes it in place
                     b.setText(t.badge);
                     b.setLetterSpacing(0.05f);
                     b.setSingleLine(true);
@@ -1567,6 +1570,18 @@ final class PagesV2 {
         /** OK held on a poster: its panel opened. */
         private boolean held;
 
+        /** A poster's badge redrawn as its title now has it (Coming up's hold), and the tab's panel over the hero with it. */
+        private void rebadge(Row r, int i, Title t) {
+            View tile = i < r.strip.getChildCount() ? r.strip.getChildAt(i) : null;
+            TextView b = tile == null ? null : tile.findViewWithTag("badge");
+            if (b != null && t.badge != null) {
+                b.setText(t.badge);
+                b.setTextColor(t.badgeFg);
+                b.setBackground(h.fill(6, t.badgeBg));
+            }
+            side(r, t);
+        }
+
         /** adb's test_episode_map: onto the first series in the row, its panel opened (the map then opens in it); false: none yet. */
         boolean openFirstSeries() {
             if (rows.isEmpty()) return false;
@@ -1609,7 +1624,8 @@ final class PagesV2 {
                     if (has && !held) {
                         held = true;
                         Title t = rows.get(row).items.get(idx);
-                        h.showTitle(t, () -> play(t));
+                        if (t.hold != null) { t.hold.run(); rebadge(rows.get(row), idx, t); }
+                        else h.showTitle(t, () -> play(t));
                     }
                     return true;
                 }
@@ -1860,9 +1876,11 @@ final class PagesV2 {
     }
 
     static PosterPage shows(HomeV2 h) {
-        return sections(h, "TV SHOWS", 0xFF4F8BFF, true, new String[][]{
+        List<String[]> spec = new ArrayList<>(Arrays.asList(new String[][]{
                 {"Your shows", "@yourshows", ""},
                 {"New episodes", "@newepisodes", ""},
+                // The week ahead, day by day (ComingUp; theme "coming_up", on unless set false).
+                {"Coming up", "@comingup", ""},
                 {"New series", "discover/tv?first_air_date.gte=" + since(60) + "&first_air_date.lte=" + today() + "&sort_by=popularity.desc&with_original_language=en", ""},
                 {"Surprise me", "@dice", ""},
                 {"Top 10", "trending/tv/week", "n"},
@@ -1889,7 +1907,12 @@ final class PagesV2 {
                 {"Critically acclaimed", "tv/top_rated", ""},
                 {"Hidden gems", "discover/tv?vote_average.gte=8&vote_count.gte=100&vote_count.lte=1200&sort_by=vote_average.desc", ""},
                 {"Anime", "discover/tv?with_genres=16&with_original_language=ja&sort_by=popularity.desc&vote_count.gte=100", ""},
-                {"Korean dramas", "discover/tv?with_original_language=ko&with_genres=18&sort_by=popularity.desc&vote_count.gte=50", ""}});
+                {"Korean dramas", "discover/tv?with_original_language=ko&with_genres=18&sort_by=popularity.desc&vote_count.gte=50", ""}}));
+        if (!ComingUp.on(h.a)) spec.remove(2);
+        PosterPage p = sections(h, "TV SHOWS", 0xFF4F8BFF, true, spec.toArray(new String[0][]));
+        // adb's test_coming_up: straight onto it (Continue Watching is tab 0, so the spec's third is tab 3).
+        if (ComingUp.test && ComingUp.on(h.a)) p.startOn(3);
+        return p;
     }
 
     // ---- Kids ---------------------------------------------------------------------------------------------------------
@@ -2034,6 +2057,7 @@ final class PagesV2 {
                 : "@fits".equals(spec[t - 1][1]) ? Arrays.asList(FitsTonight.row(h))
                 : "@yourshows".equals(spec[t - 1][1]) ? Arrays.asList(YourShows.row(h))
                 : "@newepisodes".equals(spec[t - 1][1]) ? Arrays.asList(YourShows.fresh(h))
+                : "@comingup".equals(spec[t - 1][1]) ? Arrays.asList(ComingUp.row(h))
                 : "@surprise".equals(spec[t - 1][1]) ? Arrays.asList(Surprise.row(h))
                 : "@dice".equals(spec[t - 1][1]) ? Arrays.asList(EpisodeDice.row(h))
                 // A Top 10 stays one page (it is numbered); every other tab runs to two.

@@ -242,6 +242,12 @@ final class HomeV2 {
         if (scores != null) scores.testLive();
     }
 
+    /** adb only (--ez test_coming_up true): TV shows on its Coming up tab (popular series' next episodes when yours have none). */
+    void testComingUp() {
+        ComingUp.test = true;
+        openBox(3);
+    }
+
     /**
      * adb only (--ez test_episode_map true): TV shows, the first series in its row focused and its panel opened with the
      * Episode map open (sample episodes when TMDB has none).

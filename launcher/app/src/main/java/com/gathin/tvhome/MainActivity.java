@@ -1143,6 +1143,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             }
             // adb only (--ez test_live_ticker true): a live game in the top bar's ticker, its clock ticking.
             else if (intent != null && intent.getBooleanExtra("test_live_ticker", false)) v2.testLiveTicker();
+            // adb only (--ez test_coming_up true): TV shows on its Coming up tab.
+            else if (intent != null && intent.getBooleanExtra("test_coming_up", false)) v2.testComingUp();
             // adb only (--ez test_episode_map true): a series' panel on TV shows, its Episode map open.
             else if (intent != null && intent.getBooleanExtra("test_episode_map", false)) v2.testEpisodeMap();
             // adb only (--ez open_notifications true): the Control Centre's Notifications.
