@@ -41,6 +41,12 @@ public class MainActivity extends AppCompatActivity {
         if (Build.VERSION.SDK_INT >= 33) requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"}, 1);
     }
 
+    /** Home or a swipe away while Live TV's guide plays: on in picture in picture (LiveLinks.leaving). */
+    @Override protected void onUserLeaveHint() {
+        super.onUserLeaveHint();
+        com.gathin.tvhomephone.live.LiveLinks.leaving(this);
+    }
+
     @Override protected void onSaveInstanceState(Bundle out) {
         super.onSaveInstanceState(out);
         out.putInt(TAB, tabs.getSelectedItemId());

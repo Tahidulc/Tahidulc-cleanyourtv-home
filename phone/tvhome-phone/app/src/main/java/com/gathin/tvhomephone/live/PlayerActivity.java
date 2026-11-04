@@ -90,7 +90,10 @@ import java.util.Locale;
 @OptIn(markerClass = UnstableApi.class)
 public class PlayerActivity extends AppCompatActivity {
     static final String EXTRA_KEY = "live_key", EXTRA_GROUP = "live_group", EXTRA_GUIDE = "live_from_guide",
-            EXTRA_AUTO = "live_auto";
+            EXTRA_AUTO = "live_auto", EXTRA_PIP = "live_pip";
+    /** The player's own switch: into picture in picture as the app is left while a channel plays (on unless turned off). */
+    static final String AUTO_PIP = "auto_pip";
+    private boolean pipNow;
     private static final long OVERLAY_MS = 6000, TILE_MS = 8000, TICK_MS = 30_000;
     private static final int[] SLEEP = {0, 15, 30, 60, 90};
 
@@ -222,6 +225,11 @@ public class PlayerActivity extends AppCompatActivity {
         super.onNewIntent(intent);
         setIntent(intent);
         if (take(intent) && pb.isFront(host)) watch(cur);
+        // Left from the Live TV guide while this was open behind it: into the small window.
+        if (pipNow && !isInPictureInPictureMode()) {
+            pipNow = false;
+            h.post(this::enterPip);
+        }
     }
 
     /** The channel and its list from the intent; false when the channel is gone from the playlist. */
@@ -233,6 +241,7 @@ public class PlayerActivity extends AppCompatActivity {
         }
         fromGuide = i.getBooleanExtra(EXTRA_GUIDE, false);
         auto = i.getBooleanExtra(EXTRA_AUTO, false);
+        pipNow = i.getBooleanExtra(EXTRA_PIP, false);
         String g = i.getStringExtra(EXTRA_GROUP);
         order = lib.list(g == null ? Library.ALL : g, "");
         if (!order.contains(c)) order = lib.list(Library.ALL, "");
@@ -256,6 +265,11 @@ public class PlayerActivity extends AppCompatActivity {
         // Its shape for the small window now (a stream taken over has told its size already).
         if (pipSupported()) setPictureInPictureParams(pipParams());
         h.postDelayed(tick, TICK_MS);
+        // Opened as the app was left from the Live TV guide: straight into the small window.
+        if (pipNow) {
+            pipNow = false;
+            h.post(this::enterPip);
+        }
     }
 
     @Override protected void onStop() {
@@ -419,23 +433,67 @@ public class PlayerActivity extends AppCompatActivity {
             }
         }
         PictureInPictureParams.Builder b = new PictureInPictureParams.Builder().setAspectRatio(r);
-        // Android 12 and later: into the small window on its own as the app is left.
-        if (Build.VERSION.SDK_INT >= 31) b.setAutoEnterEnabled(true);
+        // Android 12 and later: into the small window on its own as the app is left (unless turned off in the options).
+        if (Build.VERSION.SDK_INT >= 31) b.setAutoEnterEnabled(autoPip(this));
         return b.build();
+    }
+
+    /** Whether leaving the app while a channel plays takes it into picture in picture. */
+    static boolean autoPip(Context c) {
+        return !"0".equals(Aspect.prefs(c).get(AUTO_PIP));
+    }
+
+    /** Whether Android lets the app open a small window (a phone's settings can turn it off for an app). */
+    private boolean pipAllowed() {
+        if (!pipSupported()) return false;
+        try {
+            android.app.AppOpsManager ops = getSystemService(android.app.AppOpsManager.class);
+            if (ops == null) return true;
+            int mode = Build.VERSION.SDK_INT >= 29
+                    ? ops.unsafeCheckOpNoThrow(android.app.AppOpsManager.OPSTR_PICTURE_IN_PICTURE, android.os.Process.myUid(), getPackageName())
+                    : ops.checkOpNoThrow(android.app.AppOpsManager.OPSTR_PICTURE_IN_PICTURE, android.os.Process.myUid(), getPackageName());
+            return mode == android.app.AppOpsManager.MODE_ALLOWED || mode == android.app.AppOpsManager.MODE_DEFAULT;
+        } catch (RuntimeException e) {
+            return true;
+        }
     }
 
     private void enterPip() {
         if (!pipSupported() || pb.player() == null) return;
+        if (!pipAllowed()) {
+            pipOff();
+            return;
+        }
         try {
             enterPictureInPictureMode(pipParams());
         } catch (IllegalStateException e) {
             // Not allowed here (a TV, or turned off for the app): it just keeps playing full screen.
+            pipOff();
         }
+    }
+
+    /** Picture in picture is turned off for the app on this phone: says so, with the way to turn it on. */
+    private void pipOff() {
+        if (isFinishing()) return;
+        new android.app.AlertDialog.Builder(this)
+                .setTitle(R.string.live_pip_off_title)
+                .setMessage(R.string.live_pip_off)
+                .setPositiveButton(R.string.live_pip_settings, (d, w) -> {
+                    Intent i = new Intent("android.settings.PICTURE_IN_PICTURE_SETTINGS", android.net.Uri.parse("package:" + getPackageName()));
+                    try {
+                        startActivity(i);
+                    } catch (RuntimeException e) {
+                        startActivity(new Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                android.net.Uri.parse("package:" + getPackageName())));
+                    }
+                })
+                .setNegativeButton(android.R.string.cancel, null)
+                .show();
     }
 
     @Override protected void onUserLeaveHint() {
         super.onUserLeaveHint();
-        if (Build.VERSION.SDK_INT < 31 && pb.player() != null && pb.player().isPlaying()) enterPip();
+        if (Build.VERSION.SDK_INT < 31 && autoPip(this) && pipAllowed() && pb.player() != null && pb.player().isPlaying()) enterPip();
     }
 
     @Override public void onPictureInPictureModeChanged(boolean inPip, @NonNull Configuration cfg) {
@@ -572,6 +630,13 @@ public class PlayerActivity extends AppCompatActivity {
         @Override public void matchCentre(Game g) {
             hideOverlay();
             startActivity(GameActivity.intent(PlayerActivity.this, g));
+        }
+
+        @Override public void alsoShowing(Game g) {
+            hideOverlay();
+            AlsoShowing.open(PlayerActivity.this, g, cur, ch -> {
+                if (ch != cur) switchTo(ch);
+            });
         }
     };
 
@@ -968,6 +1033,15 @@ public class PlayerActivity extends AppCompatActivity {
             if (sheet != null) sheet.dismiss();
             enterPip();
         });
+        if (pipSupported()) {
+            boolean on = autoPip(c);
+            action(c, box, R.drawable.live_ic_pip, on ? R.string.live_auto_pip_on : R.string.live_auto_pip_off, () -> {
+                Aspect.prefs(c).put(AUTO_PIP, autoPip(c) ? "0" : "1");
+                setPictureInPictureParams(pipParams());
+                Toast.makeText(c, autoPip(c) ? R.string.live_auto_pip_now_on : R.string.live_auto_pip_now_off, Toast.LENGTH_SHORT).show();
+                if (sheet != null) sheet.dismiss();
+            });
+        }
         action(c, box, R.drawable.live_ic_replay, R.string.live_restart, () -> {
             if (sheet != null) sheet.dismiss();
             restart();
@@ -1192,7 +1266,7 @@ public class PlayerActivity extends AppCompatActivity {
             }
 
             @Override public void onDoubleTap() {
-                setAspect(aspect.toggled(), true);
+                setAspect(aspect.toggled(landscape), true);
             }
 
             @Override public void onPinch(float scale) {

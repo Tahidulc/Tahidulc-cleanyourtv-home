@@ -44,4 +44,11 @@
     <string name="tile_previous">Previous channel</string>
     <string name="tile_following">Next channel</string>
     <string name="tile_sports">SPORT</string>
+    <!-- "Also showing on": the other channels with the same game, with their logos. -->
+    <string name="tile_also_showing">Also showing on</string>
+    <string name="tile_also_none">No other channel is showing it</string>
+    <string name="tile_also_listed">Shows this game</string>
+    <string name="tile_also_not_in_list">Not in your channels</string>
+    <string name="tile_also_playing">Playing</string>
+    <string name="tile_also_watch">Watch</string>
 </resources>

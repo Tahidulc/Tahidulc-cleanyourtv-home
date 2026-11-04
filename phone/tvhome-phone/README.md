@@ -12,13 +12,20 @@ form or the game so far), Cinematic for a film, Card for a series' episode and G
 the channel's logo, and facts in turn while a game is on (its numbers, the table, each side's run, earlier meetings,
 top scorers). The player's options can set one style for everything, or the guide panel as before.
 
+The scores box is a broadcaster's scoreboard: the competition's logo on a slanted block at the left, the clubs in
+capitals with the score on a red plate, and the clock under them in minutes and seconds (45:00 and +2 in added time).
+Full screen, the picture goes into a small window as you leave the app (from the guide too; the player's options turn
+that off), and a phone on its side stretches the picture to the screen. Upright, the info tile stays in the room under
+the picture. A game's tile and its page have "Also showing on": every channel with the same game, with its logo.
+
 A game's alerts come as cards: folded, what happened and who with the scoring side's crest; opened out, both crests on
 white discs, the score with the scoring side's number lit, the minute, and the 90 minutes with each goal on them. Under
 each: Watch (the channel in Live TV, when the playlist has it), Match and Mute game. "Following live" draws the live
 games as the scores box's rows. A game's page has the header card (crests, score or kick-off, the clock, the scorers,
 where it is on, Remind me), then Timeline (the game on a pitch, each shot, goal and card where it happened, the newest
 pulsing, then every moment by its minute), Line-ups (both elevens on one pitch by their formations, the substitutes
-under it) and Stats in each side's colours.
+under it, with the players' photos) and Stats in each side's colours. The line-ups come as both elevens on a pitch,
+an F1 result as its podium, and "Following live" as the scoreboards with the first game's clock going on.
 
 Titles open in the licensed streaming app that carries them in the UK (or its store), on the phone or, with Play on TV,
 on a TV. Live TV plays only the playlist you give it; the app ships with no channels or sources.

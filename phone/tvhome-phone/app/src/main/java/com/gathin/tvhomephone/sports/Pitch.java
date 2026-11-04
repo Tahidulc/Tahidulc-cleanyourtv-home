@@ -14,8 +14,9 @@ import java.util.List;
 
 /**
  * Both line-ups on one pitch, as they stand: the home side at the top attacking down, the away side at the bottom
- * attacking up, each player a shirt in his side's colour with his number and his surname under it, and what he has
- * done so far on it (a ball for each goal, his cards, a red arrow when he has gone off).
+ * attacking up, each player a shirt in his side's colour with his number (or his photo, the number on a badge by it)
+ * and his surname under it, and what he has done so far on it (a ball for each goal, his cards, a red arrow when he
+ * has gone off).
  */
 public final class Pitch extends View {
     private static final class Side {
@@ -32,6 +33,11 @@ public final class Pitch extends View {
     }
 
     private Side home, away;
+    /** Players' photos by name, as they come (PlayerPhotos). */
+    private final java.util.Map<String, android.graphics.Bitmap> photos = new java.util.HashMap<>();
+    private final java.util.Map<String, android.graphics.BitmapShader> shaders = new java.util.HashMap<>();
+    private final android.graphics.Matrix matrix = new android.graphics.Matrix();
+    private final Paint photoPaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final TextPaint number = new TextPaint(Paint.ANTI_ALIAS_FLAG), name = new TextPaint(Paint.ANTI_ALIAS_FLAG);
     private final RectF rect = new RectF();
@@ -58,6 +64,14 @@ public final class Pitch extends View {
                      int awayKit) {
         home = new Side(homeLineup, homeFormation, homeKit);
         away = new Side(awayLineup, awayFormation, awayKit);
+        invalidate();
+    }
+
+    /** A player's photo has come: in his circle from now on. */
+    public void photo(String name, android.graphics.Bitmap b) {
+        if (name == null || b == null) return;
+        photos.put(name, b);
+        shaders.put(name, new android.graphics.BitmapShader(b, android.graphics.Shader.TileMode.CLAMP, android.graphics.Shader.TileMode.CLAMP));
         invalidate();
     }
 
@@ -148,21 +162,50 @@ public final class Pitch extends View {
     }
 
     private void drawPlayer(Canvas c, Side s, String[] p, float x, float y, float labelWidth) {
-        float r = 14 * d;
+        android.graphics.Bitmap photo = photos.get(p[Espn.P_NAME]);
+        float r = (photo != null ? 16 : 14) * d;
         paint.setStyle(Paint.Style.FILL);
         paint.setColor(0x59000000);
         c.drawCircle(x, y + 1.5f * d, r + 0.5f * d, paint);
         paint.setColor(s.kit);
         c.drawCircle(x, y, r, paint);
+        if (photo != null) {
+            // The cut-out's head and shoulders in the circle, on his kit's colour, his number on a badge by it.
+            float k = (2 * r * 1.1f) / photo.getWidth();
+            android.graphics.BitmapShader sh = shaders.get(p[Espn.P_NAME]);
+            matrix.setScale(k, k);
+            matrix.postTranslate(x - photo.getWidth() * k / 2f, y - r - r * 0.02f);
+            sh.setLocalMatrix(matrix);
+            photoPaint.setShader(sh);
+            c.drawCircle(x, y, r, photoPaint);
+            photoPaint.setShader(null);
+        }
         paint.setStyle(Paint.Style.STROKE);
         paint.setStrokeWidth(1.6f * d);
         paint.setColor(Glyphs.luminance(s.kit) > 0.6 ? 0x66000000 : 0xD9FFFFFF);
         c.drawCircle(x, y, r - 0.8f * d, paint);
         number.setColor(s.ink);
-        Paint.FontMetrics fm = number.getFontMetrics();
-        c.drawText(p[Espn.P_NUMBER], x, y - (fm.ascent + fm.descent) / 2f, number);
+        if (photo == null) {
+            Paint.FontMetrics fm = number.getFontMetrics();
+            c.drawText(p[Espn.P_NUMBER], x, y - (fm.ascent + fm.descent) / 2f, number);
+        } else {
+            float br = 7.5f * d, bx = x + r * 0.78f, by = y + r * 0.62f;
+            paint.setStyle(Paint.Style.FILL);
+            paint.setColor(s.kit);
+            c.drawCircle(bx, by, br, paint);
+            paint.setStyle(Paint.Style.STROKE);
+            paint.setStrokeWidth(1.2f * d);
+            paint.setColor(0xE6FFFFFF);
+            c.drawCircle(bx, by, br, paint);
+            float size = number.getTextSize();
+            number.setTextSize(size * 0.78f);
+            Paint.FontMetrics fm = number.getFontMetrics();
+            c.drawText(p[Espn.P_NUMBER], bx, by - (fm.ascent + fm.descent) / 2f, number);
+            number.setTextSize(size);
+        }
         String label = Glyphs.fit(p[Espn.P_SHORT], name, labelWidth);
         c.drawText(label, x, y + r + 12.5f * d, name);
+        paint.setStyle(Paint.Style.FILL);
         int goals = Espn.parseInt(p[Espn.P_GOALS]), own = Espn.parseInt(p[Espn.P_OWN]);
         float bx = x + r * 0.82f, by = y - r * 0.78f;
         for (int g = 0; g < Math.min(goals, 3); g++) {

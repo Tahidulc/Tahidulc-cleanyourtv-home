@@ -68,7 +68,7 @@ public final class Notifier {
         } else {
             b.setContentIntent(home(c));
         }
-        if (!(NotifCard.drawn(a) && carded(c, a, b))) {
+        if (!(NotifCard.drawn(a) && carded(c, a, b)) && !drawnOther(c, a, b)) {
             if (a.game != null) {
                 Bitmap crest = crest(c, a);
                 if (crest != null) b.setLargeIcon(crest);
@@ -77,6 +77,51 @@ public final class Notifier {
         }
         notify(c, (a.key).hashCode(), b);
         if (a.game != null) summary(c, a.game, channel);
+    }
+
+    /**
+     * The other drawn cards: the line-ups on a pitch, the F1 podium. Folded, the competition's (or F1's) logo with the
+     * words; opened out, the card. False when there is none to draw.
+     */
+    private static boolean drawnOther(Context c, Events.Alert a, NotificationCompat.Builder b) {
+        Bitmap card = null;
+        String title = a.title, line = a.text == null ? "" : a.text.replace('\n', ' ');
+        try {
+            if (a.key.startsWith("L|") && a.game != null && a.summary != null) {
+                card = NotifCard.lineups(c, a.game, a.summary);
+                title = "Line-ups · " + a.game.homeName + " v " + a.game.awayName;
+                line = (a.summary.homeFormation.isEmpty() ? "" : a.game.homeName + " " + a.summary.homeFormation + " · ")
+                        + (a.summary.awayFormation.isEmpty() ? "" : a.game.awayName + " " + a.summary.awayFormation);
+            } else if ("f1result".equals(a.kind)) {
+                card = NotifCard.podium(c, a);
+                title = a.title == null ? "" : a.title.replace("F1 RESULT · ", "Podium · ");
+            }
+        } catch (RuntimeException e) {
+            card = null;
+        }
+        if (card == null) return false;
+        String slug = a.kind.startsWith("f1") ? Competitions.F1 : a.game != null ? a.game.slug : a.slug;
+        String compUrl = a.game != null && !a.kind.startsWith("f1") ? Competitions.logo(a.game) : Competitions.logo(slug);
+        Bitmap comp = NotifCard.logo(c, compUrl, Ui.dp(c, 24), Ui.dp(c, 24));
+        RemoteViews small = new RemoteViews(c.getPackageName(), R.layout.sports_notif_match);
+        small.setTextViewText(R.id.sports_notif_title, title);
+        small.setTextViewText(R.id.sports_notif_text, line);
+        if (comp != null) small.setImageViewBitmap(R.id.sports_notif_logo, comp);
+        else small.setViewVisibility(R.id.sports_notif_logo, View.GONE);
+        small.setViewVisibility(R.id.sports_notif_crest, View.GONE);
+        RemoteViews big = new RemoteViews(c.getPackageName(), R.layout.sports_notif_card);
+        big.setImageViewBitmap(R.id.sports_notif_card, card);
+        big.setContentDescription(R.id.sports_notif_card, title + ". " + (a.text == null ? "" : a.text));
+        b.setContentTitle(title).setContentText(line)
+                .setStyle(new NotificationCompat.DecoratedCustomViewStyle())
+                .setCustomContentView(small)
+                .setCustomHeadsUpContentView(small)
+                .setCustomBigContentView(big);
+        if (a.game != null) {
+            b.addAction(R.drawable.sports_ic_ball, c.getString(R.string.sports_notif_match), open(c, a.game));
+            b.addAction(R.drawable.live_ic_bell, c.getString(R.string.sports_notif_mute), MuteReceiver.pending(c, a.game.id));
+        }
+        return true;
     }
 
     /**
@@ -190,6 +235,10 @@ public final class Notifier {
             big.setContentDescription(R.id.sports_notif_card, text);
             b.setStyle(new NotificationCompat.DecoratedCustomViewStyle()).setCustomContentView(small).setCustomBigContentView(big);
             if (live.size() == 1) b.setContentIntent(open(c, live.get(0)));
+            // The first game's clock going on in the notification's corner, minutes and seconds, as a scoreboard's.
+            long now = System.currentTimeMillis(), secs = GameClock.seconds(live.get(0), now);
+            if (secs >= 0) b.setUsesChronometer(true).setShowWhen(true).setWhen(now - secs * 1000L);
+            else b.setShowWhen(false);
         } catch (RuntimeException ignored) {
             // the words alone
         }

@@ -22,6 +22,8 @@ public final class Events {
         public final Game game;
         /** A reminder's competition and channel (its game is not read again): for the logos; null when none. */
         public String slug, channel;
+        /** The line-ups alert's summary, for its pitch (not kept); null for the others. */
+        public transient Espn.Summary summary;
 
         public Alert(String kind, String key, String title, String text, Game game) {
             this.kind = kind;
@@ -177,9 +179,11 @@ public final class Events {
         if (h.isEmpty() || a.isEmpty()) return null;
         String when = java.time.Instant.ofEpochMilli(g.kickoff).atZone(java.time.ZoneId.systemDefault())
                 .format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"));
-        return new Alert("kickoff", "L|" + g.id, "LINE-UPS · " + g.homeName + " v " + g.awayName + " · " + when,
+        Alert out = new Alert("kickoff", "L|" + g.id, "LINE-UPS · " + g.homeName + " v " + g.awayName + " · " + when,
                 g.homeName + (s.homeFormation.isEmpty() ? "" : " (" + s.homeFormation + ")") + ": " + h + "\n"
                         + g.awayName + (s.awayFormation.isEmpty() ? "" : " (" + s.awayFormation + ")") + ": " + a, g);
+        out.summary = s;
+        return out;
     }
 
     private static String starters(List<String[]> side) {

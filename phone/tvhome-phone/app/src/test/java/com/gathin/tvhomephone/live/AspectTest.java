@@ -22,22 +22,22 @@ public class AspectTest {
     }
 
     @Test public void onItsSideFillsUprightFits() {
-        assertEquals(Aspect.FILL, Aspect.defaultFor(true));
+        assertEquals(Aspect.STRETCH, Aspect.defaultFor(true));
         assertEquals(Aspect.FIT, Aspect.defaultFor(false));
         MapStore s = new MapStore();
-        assertEquals(Aspect.FILL, Aspect.get(s, "a", true));
+        assertEquals(Aspect.STRETCH, Aspect.get(s, "a", true));
         assertEquals(Aspect.FIT, Aspect.get(s, "a", false));
         assertTrue(s.m.isEmpty());
     }
 
     @Test public void aPickBeatsTheDefaultEachWayRound() {
         MapStore s = new MapStore();
-        // Fit picked on its side is kept (it isn't the default there); Fill there is the default, so forgotten.
+        // Fit picked on its side is kept (it isn't the default there); Stretch there is the default, so forgotten.
         Aspect.set(s, "a", true, Aspect.FIT);
         assertEquals(Aspect.FIT, Aspect.get(s, "a", true));
         assertEquals(Aspect.FIT, Aspect.get(s, "a", false));
-        Aspect.set(s, "a", true, Aspect.FILL);
-        assertEquals(Aspect.FILL, Aspect.get(s, "a", true));
+        Aspect.set(s, "a", true, Aspect.STRETCH);
+        assertEquals(Aspect.STRETCH, Aspect.get(s, "a", true));
         assertFalse(s.m.containsKey("aspect:a"));
         // Upright and on its side are remembered apart.
         Aspect.set(s, "b", false, Aspect.FILL);
@@ -45,7 +45,7 @@ public class AspectTest {
         assertEquals(Aspect.FILL, Aspect.get(s, "b", false));
         assertEquals(Aspect.FOUR_THREE, Aspect.get(s, "b", true));
         assertEquals(Aspect.FIT, Aspect.get(s, "c", false));
-        assertEquals(Aspect.FILL, Aspect.get(s, "c", true));
+        assertEquals(Aspect.STRETCH, Aspect.get(s, "c", true));
         Aspect.set(s, "b", false, Aspect.FIT);
         assertEquals(Aspect.FIT, Aspect.get(s, "b", false));
         assertFalse(s.m.containsKey("aspect-portrait:b"));
@@ -62,7 +62,7 @@ public class AspectTest {
     @Test public void oddValuesReadAsTheDefault() {
         MapStore s = new MapStore();
         s.put("aspect:x", "SOMETHING_ELSE");
-        assertEquals(Aspect.FILL, Aspect.get(s, "x", true));
+        assertEquals(Aspect.STRETCH, Aspect.get(s, "x", true));
         assertEquals(Aspect.FIT, Aspect.get(s, null, false));
         assertNull(Aspect.parse(null));
         Aspect.set(s, null, true, Aspect.FIT);
@@ -73,6 +73,11 @@ public class AspectTest {
         assertEquals(Aspect.FILL, Aspect.FIT.toggled());
         assertEquals(Aspect.FIT, Aspect.FILL.toggled());
         assertEquals(Aspect.FIT, Aspect.WIDE.toggled());
+        // On its side a double tap goes Stretch, Fit, Fill and round.
+        assertEquals(Aspect.FIT, Aspect.STRETCH.toggled(true));
+        assertEquals(Aspect.FILL, Aspect.FIT.toggled(true));
+        assertEquals(Aspect.STRETCH, Aspect.FILL.toggled(true));
+        assertEquals(Aspect.FILL, Aspect.FIT.toggled(false));
         assertEquals(Aspect.FILL, Aspect.FIT.pinched(1.3f));
         assertEquals(Aspect.FIT, Aspect.FILL.pinched(0.7f));
         assertEquals(Aspect.FILL, Aspect.FILL.pinched(1.02f));

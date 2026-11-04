@@ -79,6 +79,9 @@ final class InfoTile {
         String neighbour(int by);
 
         void matchCentre(Game g);
+
+        /** The other channels showing the game (AlsoShowing). */
+        void alsoShowing(Game g);
     }
 
     private static final int WHITE = 0xFFFFFFFF, INK = 0xFF10123A;
@@ -147,7 +150,7 @@ final class InfoTile {
         FrameLayout.LayoutParams rp = new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM);
         rp.leftMargin = rp.rightMargin = k.dp(12);
         rp.bottomMargin = k.dp(26);
-        root.addView(ribbon, rp);
+        root.addView(k.fitted(ribbon, 26), rp);
         TextView hint = k.text(c.getString(R.string.tile_hint), 11, 0xB3FFFFFF, 400);
         hint.setGravity(Gravity.CENTER);
         FrameLayout.LayoutParams tp = new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM);
@@ -293,7 +296,7 @@ final class InfoTile {
         cp.leftMargin = k.dp(14);
         cp.rightMargin = k.wide ? 0 : k.dp(14);
         cp.bottomMargin = k.dp(16);
-        root.addView(card, cp);
+        root.addView(k.fitted(card, 16), cp);
 
         // The channels either side, on the right (on its side only: upright, swiping is enough).
         if (k.wide) {
@@ -386,7 +389,7 @@ final class InfoTile {
         if (compLogo != null) kick.addView(k.image(compLogo, 0, ImageView.ScaleType.FIT_CENTER), k.margins(0, 0, 8, 0, 20, 20));
         kick.addView(k.kicker(kicker(c, i), 0xFF8FB2FF));
         story.addView(kick);
-        TextView fixture = k.text("", k.wide ? 26 : 24, WHITE, 800);
+        TextView fixture = k.text("", k.wide ? 26 : 20, WHITE, 800);
         fixture.setText(fixture(c, i, k.wide));
         fixture.setMaxLines(2);
         story.addView(fixture, k.margins(0, 6, 0, 0, -1, -2));
@@ -401,6 +404,11 @@ final class InfoTile {
             TextView centre = k.pill(c.getString(R.string.tile_match_centre), true, 40);
             centre.setOnClickListener(v -> a.matchCentre(g));
             buttons.addView(centre, k.margins(0, 0, 8, 0, -2, 40));
+            if (g.state != Game.POST) {
+                TextView also = k.pill(c.getString(R.string.tile_also_showing), false, 40);
+                also.setOnClickListener(v -> a.alsoShowing(g));
+                buttons.addView(also, k.margins(0, 0, 8, 0, -2, 40));
+            }
         }
         buttons.addView(favouriteButton(k, a), k.margins(0, 0, 8, 0, -2, 40));
         TextView restart = k.pill(c.getString(R.string.tile_restart), g == null, 40);
@@ -412,7 +420,7 @@ final class InfoTile {
         story.addView(hs, k.margins(0, 12, 0, 0, -1, -2));
         box.addView(story, k.wide ? new LinearLayout.LayoutParams(0, -2, 1f) : new LinearLayout.LayoutParams(-1, -2));
 
-        View side = g == null ? null : g.state == Game.PRE || (g.goals.isEmpty() && i.stats.isEmpty()) ? form(k, g) : soFar(k, g, i.stats);
+        View side = g == null ? null : g.state == Game.PRE || (g.goals.isEmpty() && i.stats.isEmpty()) ? form(k, g) : soFar(k, g, i.stats, k.wide ? 3 : 2);
         if (side != null) {
             box.addView(k.divider(k.wide), k.dividerParams(k.wide));
             if (k.wide) {
@@ -450,7 +458,7 @@ final class InfoTile {
         FrameLayout.LayoutParams fp = new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM);
         fp.leftMargin = fp.rightMargin = k.dp(12);
         fp.bottomMargin = k.dp(14);
-        root.addView(frame, fp);
+        root.addView(k.fitted(frame, 14), fp);
         if (animate) k.rise(frame);
         return root;
     }
@@ -627,7 +635,7 @@ final class InfoTile {
     }
 
     /** THE GAME SO FAR: each side's scorers by its crest, then possession, shots and on target as bars. */
-    private static View soFar(Kit k, Game g, List<String[]> stats) {
+    private static View soFar(Kit k, Game g, List<String[]> stats, int most) {
         LinearLayout col = k.column();
         col.addView(k.kicker(k.c.getString(R.string.tile_so_far), 0xFFB8C2EA));
         for (int side = 0; side < 2; side++) {
@@ -650,7 +658,7 @@ final class InfoTile {
         }
         int shown = 0;
         for (String[] s : stats) {
-            if (shown >= 3 || !("Possession".equals(s[0]) || "Shots".equals(s[0]) || "On target".equals(s[0]))) continue;
+            if (shown >= most || !("Possession".equals(s[0]) || "Shots".equals(s[0]) || "On target".equals(s[0]))) continue;
             col.addView(statRow(k, s), k.margins(0, 10, 0, 0, -1, -2));
             shown++;
         }
@@ -732,7 +740,7 @@ final class InfoTile {
             FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM);
             lp.leftMargin = lp.rightMargin = k.dp(20);
             lp.bottomMargin = k.dp(i.nextTitle.isEmpty() ? 24 : 120);
-            root.addView(col, lp);
+            root.addView(k.fitted(col, i.nextTitle.isEmpty() ? 24 : 120), lp);
         }
         if (!i.nextTitle.isEmpty()) {
             LinearLayout next = k.row();
@@ -843,6 +851,31 @@ final class InfoTile {
 
         int screenW() {
             return c.getResources().getDisplayMetrics().widthPixels;
+        }
+
+        /**
+         * Upright, a tile goes in the room under the picture (the picture across the width, 16:9, in the middle):
+         * held to that height less its margin below, scrolling inside when it is taller, so it never covers the
+         * picture or runs off the screen. On its side it is as it was.
+         */
+        View fitted(View tile, int bottomMarginDp) {
+            if (wide) return tile;
+            android.util.DisplayMetrics dm = c.getResources().getDisplayMetrics();
+            int picture = dm.widthPixels * 9 / 16;
+            int room = (dm.heightPixels - picture) / 2 - dp(bottomMarginDp) - dp(10);
+            int max = Math.max(dp(160), room);
+            android.widget.ScrollView sv = new android.widget.ScrollView(c) {
+                @Override protected void onMeasure(int w, int h) {
+                    super.onMeasure(w, MeasureSpec.makeMeasureSpec(max, MeasureSpec.AT_MOST));
+                }
+            };
+            sv.setVerticalScrollBarEnabled(false);
+            sv.setOverScrollMode(View.OVER_SCROLL_NEVER);
+            sv.setVerticalFadingEdgeEnabled(true);
+            sv.setFadingEdgeLength(dp(28));
+            sv.setClipToPadding(false);
+            sv.addView(tile, new FrameLayout.LayoutParams(-1, -2));
+            return sv;
         }
 
         /** How far down the chips at the top go: upright, under the player's own ⋯, picture in picture and ✕. */
@@ -1055,7 +1088,7 @@ final class InfoTile {
         }
 
         /**
-         * The scores box (ScoreBug) h high, its own proportions kept (414 by 50), no wider than maxWidth pixels (0: any),
+         * The scores box (ScoreBug) h high, its own proportions kept (ScoreBug.RATIO), no wider than maxWidth pixels (0: any),
          * with its LinearLayout params set (the caller adds margins to them).
          */
         View scoreBug(Game g, int hDp, int maxWidth) {
@@ -1064,7 +1097,7 @@ final class InfoTile {
             bug.show(g);
             float natural = 64 * ctx.getResources().getDisplayMetrics().density;
             float s = dp(hDp) / natural;
-            int w = Math.round(natural * 414f / 50f);
+            int w = Math.round(natural * ScoreBug.RATIO);
             if (maxWidth > 0 && w * s > maxWidth) s = maxWidth / (float) w;
             FrameLayout box = new FrameLayout(ctx);
             box.addView(bug, new FrameLayout.LayoutParams(w, Math.round(natural)));

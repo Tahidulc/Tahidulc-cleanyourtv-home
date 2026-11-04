@@ -148,6 +148,9 @@ public final class Espn {
         g.awayScore = parseInt(away.optString("score", "0"));
         ZonedDateTime when = OffsetDateTime.parse(e.getString("date")).toInstant().atZone(zone);
         g.kickoff = when.toInstant().toEpochMilli();
+        g.clock = status.optDouble("clock", 0);
+        g.period = status.optInt("period", 0);
+        g.displayClock = status.optString("displayClock", "");
         String state = type.optString("state");
         if ("in".equals(state)) {
             g.state = Game.LIVE;
@@ -197,7 +200,7 @@ public final class Espn {
         /**
          * Each side's starters and bench, as P_* indexes them: {number, name, position, "1" starter / "0" bench, place in
          * the formation (1 the goalkeeper, "" or "0" for the bench), short name (the surname), minute on, minute off,
-         * goals, cards ("Y", "R" or "YR"), own goals}.
+         * goals, cards ("Y", "R" or "YR"), own goals, ESPN's id for him}.
          */
         public final List<String[]> homeLineup = new ArrayList<>(), awayLineup = new ArrayList<>();
         public String homeFormation = "", awayFormation = "";
@@ -235,7 +238,7 @@ public final class Espn {
 
     /** Indexes into a line-up's rows. */
     public static final int P_NUMBER = 0, P_NAME = 1, P_POSITION = 2, P_STARTER = 3, P_PLACE = 4, P_SHORT = 5, P_ON = 6,
-            P_OFF = 7, P_GOALS = 8, P_CARDS = 9, P_OWN = 10;
+            P_OFF = 7, P_GOALS = 8, P_CARDS = 9, P_OWN = 10, P_ID = 11;
 
     public static Summary summary(String slug, String id, long freshMs) {
         try {
@@ -517,7 +520,8 @@ public final class Espn {
         if (wentOff && off.isEmpty()) off = "?";
         String place = pl.optString("formationPlace", "");
         return new String[]{pl.optString("jersey", ""), name, pos == null ? "" : pos.optString("abbreviation", ""),
-                starter ? "1" : "0", starter ? place : "", last, on, off, String.valueOf(goals), cards, String.valueOf(own)};
+                starter ? "1" : "0", starter ? place : "", last, on, off, String.valueOf(goals), cards, String.valueOf(own),
+                a == null ? "" : a.optString("id", "")};
     }
 
     /** ESPN gives "subbedIn" as true or false, or as {"didSub": true}. */

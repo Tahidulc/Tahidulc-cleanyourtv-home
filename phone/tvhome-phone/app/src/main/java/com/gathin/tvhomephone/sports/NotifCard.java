@@ -467,54 +467,214 @@ public final class NotifCard {
 
     // ---- the live games -----------------------------------------------------------------------------------------
 
-    /** The live games, a row each (four at most): crest, short name, score, short name, crest, the clock. */
+    /** The live games as the app's scoreboards, one under another (four at most). */
     public static Bitmap live(Context c, List<Game> games, int max) {
         int n = Math.min(max, games.size());
         if (n == 0) return null;
         float s = scale(c);
-        int w = Math.round(W * s), rowH = Math.round(ROW_H * s), h = rowH * n;
+        int w = Math.round(W * s), gap = Math.round(5 * s);
+        List<Bitmap> bugs = new java.util.ArrayList<>();
+        int h = 0;
+        for (int i = 0; i < n; i++) {
+            Game g = games.get(i);
+            Bitmap logo = logo(c, Competitions.logo(g), Math.round(36 * s), Math.round(36 * s));
+            Bitmap b = ScoreBug.picture(c, g, logo, w);
+            bugs.add(b);
+            h += b.getHeight() + (i > 0 ? gap : 0);
+        }
+        Bitmap out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
+        Canvas cv = new Canvas(out);
+        int y = 0;
+        for (Bitmap b : bugs) {
+            cv.drawBitmap(b, 0, y, null);
+            y += b.getHeight() + gap;
+        }
+        return out;
+    }
+
+    // ---- the line-ups ------------------------------------------------------------------------------------------
+
+    /**
+     * Both elevens on a pitch across the card, the home side attacking to the right and the away side to the left,
+     * each player a dot in his kit's colour with his number and his surname, the clubs and their formations above.
+     */
+    public static Bitmap lineups(Context c, Game g, Espn.Summary sum) {
+        if (g == null || sum == null) return null;
+        List<List<Integer>> hr = Formation.rows(sum.homeFormation, sum.homeLineup), ar = Formation.rows(sum.awayFormation, sum.awayLineup);
+        if (hr.isEmpty() || ar.isEmpty()) return null;
+        float s = scale(c);
+        int w = Math.round(W * s), h = Math.round(208 * s);
         Bitmap out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
         Canvas cv = new Canvas(out);
         Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
         TextPaint t = new TextPaint(Paint.ANTI_ALIAS_FLAG);
         Typeface bold = Typeface.create("sans-serif", Typeface.BOLD);
-        for (int i = 0; i < n; i++) {
-            Game g = games.get(i);
-            float top = i * rowH, cy = top + rowH / 2f;
-            RectF r = new RectF(0, top + 2 * s, w, top + rowH - 2 * s);
-            p.setShader(new LinearGradient(0, 0, w, 0, new int[]{0xFF1A2466, 0xFF141849}, null, Shader.TileMode.CLAMP));
-            cv.drawRoundRect(r, 12 * s, 12 * s, p);
+        p.setColor(0xFF141849);
+        cv.drawRoundRect(new RectF(0, 0, w, h), 18 * s, 18 * s, p);
+        Bitmap comp = logo(c, Competitions.logo(g), Math.round(18 * s), Math.round(18 * s));
+        float x = 14 * s;
+        if (comp != null) {
+            fit(cv, comp, new RectF(x, 9 * s, x + 18 * s, 27 * s));
+            x += 26 * s;
+        }
+        t.setTypeface(bold);
+        t.setTextSize(10.5f * s);
+        t.setLetterSpacing(0.1f);
+        t.setColor(0xD9E4E6F5);
+        String when = java.time.Instant.ofEpochMilli(g.kickoff).atZone(java.time.ZoneId.systemDefault())
+                .format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"));
+        cv.drawText(Glyphs.fit("LINE-UPS · KICK-OFF " + when, t, w - x - 14 * s), x, 22 * s, t);
+        t.setLetterSpacing(0);
+        int[] kits = Glyphs.kits(sum.homeKit, sum.homeKitAlt, g.homeColor, sum.awayKit, sum.awayKitAlt, g.awayColor);
+        t.setTextSize(12.5f * s);
+        t.setColor(Color.WHITE);
+        t.setTextAlign(Paint.Align.LEFT);
+        cv.drawText(Glyphs.fit(g.homeName + "  " + sum.homeFormation, t, w / 2f - 20 * s), 14 * s, 44 * s, t);
+        t.setTextAlign(Paint.Align.RIGHT);
+        cv.drawText(Glyphs.fit(sum.awayFormation + "  " + g.awayName, t, w / 2f - 20 * s), w - 14 * s, 44 * s, t);
+        // The pitch.
+        RectF pr = new RectF(10 * s, 52 * s, w - 10 * s, h - 10 * s);
+        p.setShader(new LinearGradient(pr.left, 0, pr.right, 0, new int[]{0xFF1C6A44, 0xFF175A3A, 0xFF1C6A44}, null, Shader.TileMode.CLAMP));
+        cv.drawRoundRect(pr, 12 * s, 12 * s, p);
+        p.setShader(null);
+        p.setStyle(Paint.Style.STROKE);
+        p.setStrokeWidth(1.1f * s);
+        p.setColor(0x47FFFFFF);
+        cv.drawLine(pr.centerX(), pr.top + 4 * s, pr.centerX(), pr.bottom - 4 * s, p);
+        cv.drawCircle(pr.centerX(), pr.centerY(), pr.height() * 0.17f, p);
+        float boxW = pr.height() * 0.58f, boxD = pr.width() * 0.13f;
+        cv.drawRect(pr.left, pr.centerY() - boxW / 2, pr.left + boxD, pr.centerY() + boxW / 2, p);
+        cv.drawRect(pr.right - boxD, pr.centerY() - boxW / 2, pr.right, pr.centerY() + boxW / 2, p);
+        p.setStyle(Paint.Style.FILL);
+        side(cv, p, t, sum.homeLineup, hr, kits[0], true, pr, s);
+        side(cv, p, t, sum.awayLineup, ar, kits[1], false, pr, s);
+        return out;
+    }
+
+    private static void side(Canvas cv, Paint p, TextPaint t, List<String[]> lineup, List<List<Integer>> rows, int kit, boolean home,
+                             RectF pr, float s) {
+        int n = rows.size();
+        float half = pr.width() / 2f, keeper = 14 * s, last = half - 18 * s;
+        float step = n > 1 ? (last - keeper) / (n - 1) : 0;
+        int ink = Glyphs.ink(kit);
+        Typeface bold = Typeface.create("sans-serif", Typeface.BOLD);
+        for (int r = 0; r < n; r++) {
+            List<Integer> row = rows.get(r);
+            float along = keeper + step * r;
+            float x = home ? pr.left + along : pr.right - along;
+            int k = row.size();
+            float gap = pr.height() / (k + 1);
+            for (int j = 0; j < k; j++) {
+                // The side's left to its right: for the side attacking right that is top to bottom.
+                int slot = home ? j : k - 1 - j;
+                float y = pr.top + gap * (slot + 1) - 4 * s;
+                String[] pl = lineup.get(row.get(j));
+                p.setColor(0x59000000);
+                cv.drawCircle(x, y + s, 8 * s, p);
+                p.setColor(kit);
+                cv.drawCircle(x, y, 7.5f * s, p);
+                t.setTypeface(bold);
+                t.setTextAlign(Paint.Align.CENTER);
+                t.setTextSize(7.5f * s);
+                t.setColor(ink);
+                cv.drawText(pl[Espn.P_NUMBER], x, y + 2.7f * s, t);
+                t.setTextSize(7.5f * s);
+                t.setColor(Color.WHITE);
+                t.setShadowLayer(2 * s, 0, s, 0xB0000000);
+                cv.drawText(Glyphs.fit(pl[Espn.P_SHORT], t, Math.min(step > 0 ? step + 6 * s : 60 * s, 54 * s)), x, y + 16 * s, t);
+                t.clearShadowLayer();
+            }
+        }
+    }
+
+    // ---- F1 ------------------------------------------------------------------------------------------------------
+
+    /** The podium: the top three on their steps in their teams' colours, each with his photo and name. */
+    public static Bitmap podium(Context c, Events.Alert a) {
+        String text = a.text == null ? "" : a.text;
+        String[] fam = new String[3];
+        for (String part : text.split(" · ")) {
+            String q = part.trim();
+            int sp = q.indexOf(' ');
+            if (sp <= 0) continue;
+            int pos = Espn.parseInt(q.substring(0, sp));
+            if (pos >= 1 && pos <= 3) fam[pos - 1] = q.substring(sp + 1);
+        }
+        if (fam[0] == null) return null;
+        List<F1.Standing> drivers = F1.drivers();
+        float s = scale(c);
+        int w = Math.round(W * s), h = Math.round(196 * s);
+        Bitmap out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
+        Canvas cv = new Canvas(out);
+        Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
+        TextPaint t = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+        Typeface bold = Typeface.create("sans-serif", Typeface.BOLD);
+        p.setShader(new LinearGradient(0, 0, 0, h, new int[]{0xFF1C1C26, 0xFF0D0D12}, null, Shader.TileMode.CLAMP));
+        cv.drawRoundRect(new RectF(0, 0, w, h), 18 * s, 18 * s, p);
+        p.setShader(null);
+        p.setColor(0xFFE10600);
+        cv.drawRoundRect(new RectF(14 * s, 12 * s, 46 * s, 30 * s), 4 * s, 4 * s, p);
+        t.setTypeface(Typeface.create("sans-serif", Typeface.BOLD_ITALIC));
+        t.setTextSize(12 * s);
+        t.setColor(Color.WHITE);
+        t.setTextAlign(Paint.Align.CENTER);
+        cv.drawText("F1", 30 * s, 25.5f * s, t);
+        t.setTypeface(bold);
+        t.setTextAlign(Paint.Align.LEFT);
+        t.setTextSize(10.5f * s);
+        t.setLetterSpacing(0.1f);
+        t.setColor(0xFFFF8A80);
+        cv.drawText("RACE RESULT", 54 * s, 20 * s, t);
+        t.setLetterSpacing(0);
+        t.setTextSize(13 * s);
+        t.setColor(Color.WHITE);
+        String race = a.title == null ? "" : a.title.replace("F1 RESULT · ", "");
+        cv.drawText(Glyphs.fit(race, t, w - 70 * s), 54 * s, 34 * s, t);
+        // The steps: second, first, third.
+        int[] order = {1, 0, 2};
+        float stepW = (w - 40 * s) / 3f, base = h - 12 * s;
+        float[] tall = {58 * s, 42 * s, 32 * s};
+        for (int k = 0; k < 3; k++) {
+            int place = order[k];
+            if (fam[place] == null) continue;
+            F1.Standing d = find(drivers, fam[place]);
+            int colour = d == null ? 0xFF8A8A99 : F1.colour(d.teamId);
+            float left = 20 * s + k * stepW, cx = left + stepW / 2f, top = base - tall[place];
+            RectF step = new RectF(left + 3 * s, top, left + stepW - 3 * s, base);
+            p.setShader(new LinearGradient(0, top, 0, base, new int[]{colour, mix(colour, 0xFF0D0D12, 0.55f)}, null, Shader.TileMode.CLAMP));
+            cv.drawRoundRect(step, 8 * s, 8 * s, p);
             p.setShader(null);
-            Bitmap hc = logo(c, g.homeLogo, Math.round(24 * s), Math.round(24 * s));
-            Bitmap ac = logo(c, g.awayLogo, Math.round(24 * s), Math.round(24 * s));
-            float mid = w * 0.47f;
-            disc(cv, p, t, hc, g.home, 24 * s, cy, 14 * s, s);
-            t.setTypeface(bold);
-            t.setTextSize(13 * s);
-            t.setColor(Color.WHITE);
-            t.setTextAlign(Paint.Align.RIGHT);
-            float nameW = mid - 34 * s - 48 * s;
-            cv.drawText(Glyphs.fit(g.homeName, t, nameW), mid - 34 * s, cy + 5 * s, t);
-            String sc = g.homeScore + " – " + g.awayScore;
+            t.setTypeface(Typeface.create("sans-serif", Typeface.BOLD_ITALIC));
             t.setTextAlign(Paint.Align.CENTER);
-            t.setTextSize(15 * s);
-            float sw = t.measureText(sc) + 16 * s;
-            p.setColor(0xFF2A4FD0);
-            cv.drawRoundRect(new RectF(mid - sw / 2, cy - 12 * s, mid + sw / 2, cy + 12 * s), 7 * s, 7 * s, p);
-            cv.drawText(sc, mid, cy + 5.5f * s, t);
-            t.setTextAlign(Paint.Align.LEFT);
-            t.setTextSize(13 * s);
-            float clockX = w - 54 * s;
-            float awayW = clockX - (mid + 34 * s) - 34 * s;
-            cv.drawText(Glyphs.fit(g.awayName, t, awayW), mid + 34 * s, cy + 5 * s, t);
-            disc(cv, p, t, ac, g.away, clockX - 18 * s, cy, 14 * s, s);
-            String clock = g.halftime ? "HT" : g.state == Game.POST ? "FT" : g.state == Game.PRE ? "KO" : g.detail;
+            t.setTextSize(22 * s);
+            t.setColor(Glyphs.ink(colour) == Color.WHITE ? 0xE6FFFFFF : 0xE610142E);
+            cv.drawText(String.valueOf(place + 1), cx, top + 25 * s, t);
+            float pr = 22 * s, py = top - pr - 16 * s;
+            p.setColor(colour);
+            cv.drawCircle(cx, py, pr + 2 * s, p);
+            p.setColor(0xFF22222C);
+            cv.drawCircle(cx, py, pr, p);
+            Bitmap photo = d == null || d.headshot == null ? null : logo(c, d.headshot, Math.round(64 * s), Math.round(64 * s));
+            if (photo != null) {
+                cv.save();
+                android.graphics.Path round = new android.graphics.Path();
+                round.addCircle(cx, py, pr, android.graphics.Path.Direction.CW);
+                cv.clipPath(round);
+                float k2 = Math.max(2 * pr / photo.getWidth(), 2 * pr / photo.getHeight());
+                float bw = photo.getWidth() * k2, bh = photo.getHeight() * k2;
+                cv.drawBitmap(photo, null, new RectF(cx - bw / 2, py - pr, cx + bw / 2, py - pr + bh), null);
+                cv.restore();
+            }
             t.setTypeface(bold);
             t.setTextSize(11.5f * s);
-            t.setColor(g.state == Game.LIVE && !g.halftime ? 0xFF5CF09E : 0xD9FFFFFF);
-            t.setTextAlign(Paint.Align.RIGHT);
-            cv.drawText(clock == null ? "" : clock, w - 10 * s, cy + 4 * s, t);
+            t.setColor(Color.WHITE);
+            cv.drawText(Glyphs.fit(fam[place].toUpperCase(Locale.UK), t, stepW - 6 * s), cx, top - 4 * s, t);
         }
         return out;
+    }
+
+    private static F1.Standing find(List<F1.Standing> drivers, String family) {
+        for (F1.Standing d : drivers) if (family.equalsIgnoreCase(d.family)) return d;
+        return null;
     }
 }

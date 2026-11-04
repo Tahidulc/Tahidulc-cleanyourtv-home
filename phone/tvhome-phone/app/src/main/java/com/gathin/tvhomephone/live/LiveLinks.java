@@ -48,4 +48,23 @@ public final class LiveLinks {
         Channel ch = l.match(channelName);
         return ch == null ? null : PlayerActivity.intent(c, ch.key);
     }
+
+    /**
+     * The app is being left (Home, or a swipe away) while the Live TV guide plays a channel: the full-screen player
+     * takes the same stream and goes straight into picture in picture. Nothing when nothing plays, it is paused, the
+     * full-screen player has it already, or the small window is turned off in the player's options.
+     */
+    public static void leaving(android.app.Activity a) {
+        if (a == null || android.os.Build.VERSION.SDK_INT < 26
+                || !a.getPackageManager().hasSystemFeature(android.content.pm.PackageManager.FEATURE_PICTURE_IN_PICTURE)) return;
+        Playback pb = Playback.get(a);
+        Channel ch = pb.channel();
+        if (ch == null || !pb.live() || pb.paused() || pb.fullScreen() || !PlayerActivity.autoPip(a)) return;
+        try {
+            a.startActivity(PlayerActivity.intent(a, ch.key).putExtra(PlayerActivity.EXTRA_PIP, true)
+                    .addFlags(android.content.Intent.FLAG_ACTIVITY_NO_ANIMATION));
+        } catch (RuntimeException ignored) {
+            // not now
+        }
+    }
 }

@@ -28,6 +28,10 @@ public final class Game {
     public String detail = "";
     public boolean halftime;
     public long kickoff;
+    /** ESPN's game clock in seconds (whole minutes as it gives them), its period (1, 2, then extra time) and its words ("45'+2'"). */
+    public double clock;
+    public int period;
+    public String displayClock = "";
     /** ESPN's own channel names for the game (mostly American), best first. */
     public List<String> broadcasts = new ArrayList<>();
     /** {key, player, minute, "home"/"away", kind ("pen", "og" or "")}, oldest first. */
@@ -68,6 +72,7 @@ public final class Game {
                     .put("venue", venue).put("homeFull", homeFull).put("awayFull", awayFull).put("homeForm", homeForm)
                     .put("awayForm", awayForm).put("homeColor", homeColor).put("awayColor", awayColor).put("homeScore", homeScore).put("awayScore", awayScore).put("state", state)
                     .put("detail", detail).put("halftime", halftime).put("kickoff", kickoff)
+                    .put("clock", clock).put("period", period).put("displayClock", displayClock)
                     .put("broadcasts", new JSONArray(broadcasts)).put("goals", rows(goals)).put("reds", rows(reds));
         } catch (JSONException ignored) {
             // plain fields
@@ -103,6 +108,9 @@ public final class Game {
         g.detail = o.optString("detail", "");
         g.halftime = o.optBoolean("halftime");
         g.kickoff = o.optLong("kickoff");
+        g.clock = o.optDouble("clock", 0);
+        g.period = o.optInt("period", 0);
+        g.displayClock = o.optString("displayClock", "");
         JSONArray b = o.optJSONArray("broadcasts");
         for (int i = 0; b != null && i < b.length(); i++) g.broadcasts.add(b.optString(i));
         g.goals = unrows(o.optJSONArray("goals"));

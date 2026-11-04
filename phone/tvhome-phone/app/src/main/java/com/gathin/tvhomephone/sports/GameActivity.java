@@ -50,6 +50,11 @@ public class GameActivity extends AppCompatActivity {
     private int tab = -1;
     private LinearLayout hero, tabs, body;
     private boolean open;
+    /** The players' photos found so far this visit, by name (PlayerPhotos), and those asked for. */
+    private final java.util.Map<String, android.graphics.Bitmap> photos = new java.util.concurrent.ConcurrentHashMap<>();
+    private final java.util.Set<String> asked = java.util.Collections.newSetFromMap(new java.util.concurrent.ConcurrentHashMap<>());
+    /** The pitch on the page now (a new one each time the line-ups are drawn again). */
+    private Pitch shownPitch;
 
     public static Intent intent(Context c, Game g) {
         return new Intent(c, GameActivity.class).putExtra(SLUG, g.slug).putExtra(ID, g.id).putExtra(GAME, g.json().toString())
@@ -179,6 +184,17 @@ public class GameActivity extends AppCompatActivity {
             on.setBackground(Ui.fill(this, 0x24FFFFFF, 18));
             on.setPadding(Ui.dp(this, 14), Ui.dp(this, 6), Ui.dp(this, 14), Ui.dp(this, 6));
             actions.addView(on, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        }
+        if (game.state != Game.POST && channelKnown) {
+            TextView also = Ui.text(this, getString(R.string.tile_also_showing) + "  ›", 13.5f, getColor(R.color.text), true);
+            also.setGravity(Gravity.CENTER);
+            also.setBackground(Ui.fill(this, 0x1FFFFFFF, 16));
+            also.setPadding(Ui.dp(this, 14), Ui.dp(this, 7), Ui.dp(this, 14), Ui.dp(this, 7));
+            also.setOnClickListener(v -> com.gathin.tvhomephone.live.AlsoShowing.open(this, game, null,
+                    ch -> com.gathin.tvhomephone.live.PlayerActivity.start(this, ch.key, com.gathin.tvhomephone.live.Library.ALL)));
+            LinearLayout.LayoutParams ap = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            ap.topMargin = Ui.dp(this, 8);
+            actions.addView(also, ap);
         }
         if (game.state == Game.PRE && channelKnown) {
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, Ui.dp(this, 42));
@@ -664,6 +680,7 @@ public class GameActivity extends AppCompatActivity {
         pitch.setContentDescription(describe(game.homeName, summary.homeFormation, summary.homeLineup) + " "
                 + describe(game.awayName, summary.awayFormation, summary.awayLineup));
         body.addView(pitch, Ui.matchWrap());
+        photos(pitch);
         body.addView(teamBar(false), Ui.margins(this, 0, 8, 0, 0));
         TextView subs = Ui.heading(this, "Substitutes", getColor(R.color.text_soft));
         subs.setPadding(0, Ui.dp(this, 22), 0, Ui.dp(this, 10));
@@ -675,6 +692,35 @@ public class GameActivity extends AppCompatActivity {
         two.addView(gap, new LinearLayout.LayoutParams(Ui.dp(this, 12), 1));
         two.addView(bench(summary.awayLineup, k[1]), Ui.weight(1));
         body.addView(two);
+    }
+
+    /** The starters' photos on the pitch: those found already at once, the rest as they come (one at a time). */
+    private void photos(Pitch pitch) {
+        shownPitch = pitch;
+        List<String[]> want = new ArrayList<>();
+        for (int side = 0; side < 2; side++) {
+            List<String[]> lineup = side == 0 ? summary.homeLineup : summary.awayLineup;
+            String club = side == 0 ? (game.homeFull.isEmpty() ? game.homeName : game.homeFull) : (game.awayFull.isEmpty() ? game.awayName : game.awayFull);
+            for (String[] p : lineup) {
+                if (!"1".equals(p[Espn.P_STARTER])) continue;
+                android.graphics.Bitmap b = photos.get(p[Espn.P_NAME]);
+                if (b != null) pitch.photo(p[Espn.P_NAME], b);
+                else if (asked.add(p[Espn.P_NAME])) want.add(new String[]{p[Espn.P_NAME], club, p.length > Espn.P_ID ? p[Espn.P_ID] : ""});
+            }
+        }
+        if (want.isEmpty()) return;
+        android.content.Context app = getApplicationContext();
+        App.io.execute(() -> {
+            for (String[] w : want) {
+                if (isFinishing()) return;
+                android.graphics.Bitmap b = PlayerPhotos.get(app, w[0], w[1], w[2]);
+                if (b == null) continue;
+                photos.put(w[0], b);
+                App.main.post(() -> {
+                    if (shownPitch != null) shownPitch.photo(w[0], b);
+                });
+            }
+        });
     }
 
     private String describe(String club, String formation, List<String[]> lineup) {

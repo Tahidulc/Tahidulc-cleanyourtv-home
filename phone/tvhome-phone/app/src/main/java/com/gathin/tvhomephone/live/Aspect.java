@@ -27,6 +27,12 @@ enum Aspect {
         return this == FIT ? FILL : FIT;
     }
 
+    /** Double tap this way round: upright Fit and Fill in turn; on its side Stretch, Fit and Fill in turn. */
+    Aspect toggled(boolean landscape) {
+        if (!landscape) return toggled();
+        return this == STRETCH ? FIT : this == FIT ? FILL : STRETCH;
+    }
+
     /** After a pinch that scaled by this much: spread out to Fill, pinched in to Fit, otherwise as it was. */
     Aspect pinched(float scale) {
         if (scale > 1.08f) return FILL;
@@ -34,9 +40,12 @@ enum Aspect {
         return this;
     }
 
-    /** Wider than tall (a screen on its side, the guide's picture): Fill; upright: Fit, the picture across the width. */
+    /**
+     * Wider than tall (a screen on its side, the guide's picture): Stretch, the picture filling the screen edge to edge
+     * with nothing cut off; upright: Fit, the picture across the width.
+     */
     static Aspect defaultFor(boolean landscape) {
-        return landscape ? FILL : FIT;
+        return landscape ? STRETCH : FIT;
     }
 
     /** A stored name, or null for none (or one this version doesn't know). */
