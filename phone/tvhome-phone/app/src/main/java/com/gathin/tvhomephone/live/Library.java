@@ -38,6 +38,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * Live TV's channels and guide from the family's own source: read from the provider off the main thread, kept on disk in
  * the app's private files (drawn at once next time), the channels again after a day and the guide after six hours. Holds
  * the index that finds a broadcaster's channel by name (LiveLinks), and the guide's search index (ProgrammeSearch).
+ * Channels hidden on this phone (Hidden) are left out of every list, search and Similar channels it gives.
  */
 public final class Library {
     public static final String ALL = "", FAVOURITES = "★", RECENT = "↺";
@@ -51,6 +52,10 @@ public final class Library {
     private volatile Map<String, Integer> byKey = Collections.emptyMap();
     private volatile Map<String, int[]> byName = Collections.emptyMap();
     private volatile Names.Info[] infos = new Names.Info[0];
+    /** Each channel's lasting key for Hidden, and whether it is hidden (both line up with channels). */
+    private volatile String[] hideKeys = new String[0];
+    private volatile boolean[] hidden = new boolean[0];
+    private volatile int visible;
     private volatile Map<String, Guide.Schedule> guide = Collections.emptyMap();
     private volatile ProgrammeSearch.Index programmes = ProgrammeSearch.Index.EMPTY;
     private volatile String fingerprint = "", guideUrl = "", status = "";
@@ -83,6 +88,8 @@ public final class Library {
     public String status() { return status; }
     public long loadedAt() { return loadedAt; }
     public int count() { return channels.size(); }
+    /** The channels not hidden. */
+    public int visibleCount() { return visible; }
     public int guideCount() { return guide.size(); }
     public List<String> groups() { return groups; }
 
@@ -93,6 +100,26 @@ public final class Library {
     }
 
     public Guide.Schedule schedule(String key) { return guide.get(key); }
+
+    /** Whether the channel is hidden on this phone. */
+    public boolean isHidden(Channel c) {
+        return c != null && hiddenAt(position(c.key));
+    }
+
+    /** The playlist's hidden channels, by their Hidden key. */
+    Map<String, Channel> hiddenChannels() {
+        List<Channel> ch = channels;
+        boolean[] m = hidden;
+        String[] k = hideKeys;
+        Map<String, Channel> out = new HashMap<>();
+        for (int i = 0; i < Math.min(ch.size(), Math.min(m.length, k.length)); i++) if (m[i]) out.put(k[i], ch.get(i));
+        return out;
+    }
+
+    private boolean hiddenAt(int i) {
+        boolean[] m = hidden;
+        return i >= 0 && i < m.length && m[i];
+    }
 
     /** The channel's place in the playlist (0 first), or -1. */
     public int position(String key) {
@@ -113,31 +140,37 @@ public final class Library {
         return new long[]{ix.from, ix.to};
     }
 
-    /** Programmes whose title (or description) has the search in it, best first. Call off the main thread. */
+    /** Programmes whose title (or description) has the search in it, best first (none on hidden channels). Off the main thread. */
     public List<ProgrammeSearch.Hit> searchProgrammes(String query, long now, int limit) {
-        return ProgrammeSearch.search(programmes, query, now, limit);
+        return ProgrammeSearch.search(programmes, query, now, limit, hidden);
     }
 
-    /** Channels like this one (its family, then its group) for the player's Similar channels. */
+    /** Channels like this one (its family, then its group) for Similar channels; none that are hidden. */
     public List<Channel> similar(Channel c, int limit) {
         List<Channel> ch = channels;
         List<Channel> out = new ArrayList<>();
         int self = position(c.key);
         if (self < 0 || self >= ch.size()) return out;
-        for (int i : Similar.pick(ch, infos, self, limit)) out.add(ch.get(i));
+        for (int i : Similar.pick(ch, infos, self, limit + 16)) {
+            if (hiddenAt(i)) continue;
+            out.add(ch.get(i));
+            if (out.size() >= limit) break;
+        }
         return out;
     }
 
-    /** A group's channels (ALL, FAVOURITES, RECENT or a group's name), narrowed by a search. */
+    /** A group's channels (ALL, FAVOURITES, RECENT or a group's name), narrowed by a search; hidden ones left out. */
     public List<Channel> list(String group, String query) {
         List<Channel> ch = channels;
         String[] low = lower;
+        boolean[] hid = hidden;
         String q = query == null ? "" : Names.plain(query).toLowerCase(Locale.ROOT).trim();
         List<Channel> out = new ArrayList<>();
         if (RECENT.equals(group)) {
             for (String k : Picks.recent(app)) {
                 Channel c = byKey(k);
-                if (c != null && (q.isEmpty() || Names.plain(c.name).toLowerCase(Locale.ROOT).contains(q))) out.add(c);
+                if (c == null || isHidden(c)) continue;
+                if (q.isEmpty() || Names.plain(c.name).toLowerCase(Locale.ROOT).contains(q)) out.add(c);
             }
             return out;
         }
@@ -152,12 +185,14 @@ public final class Library {
             }
             for (Channel c : ch) if (f.contains(c.key) && !seen.contains(c.key)) placed.add(c);
             for (Channel c : placed) {
+                if (isHidden(c)) continue;
                 if (q.isEmpty() || Names.plain(c.name).toLowerCase(Locale.ROOT).contains(q)) out.add(c);
             }
             return out;
         }
         for (int i = 0; i < ch.size(); i++) {
             Channel c = ch.get(i);
+            if (i < hid.length && hid[i]) continue;
             if (f != null && !f.contains(c.key)) continue;
             if (f == null && group != null && !group.isEmpty() && !group.equals(c.group)) continue;
             if (!q.isEmpty() && (i >= low.length || !low[i].contains(q))) continue;
@@ -185,17 +220,20 @@ public final class Library {
         return found < 0 ? null : channels.get(found);
     }
 
-    /** Of the channels sharing a name: a favourite, then one tagged British, then the best picture, then not a backup. */
+    /** Of the channels sharing a name: not hidden, a favourite, then tagged British, the best picture, not a backup. */
     private int best(int[] idx) {
         Set<String> f = favourites();
         Names.Info[] in = infos;
         List<Channel> ch = channels;
+        boolean[] hid = hidden;
         int best = idx[0];
-        for (int i : idx) if (better(i, best, f, in, ch)) best = i;
+        for (int i : idx) if (better(i, best, f, in, ch, hid)) best = i;
         return best;
     }
 
-    private static boolean better(int a, int b, Set<String> f, Names.Info[] in, List<Channel> ch) {
+    private static boolean better(int a, int b, Set<String> f, Names.Info[] in, List<Channel> ch, boolean[] hid) {
+        boolean ha = a < hid.length && hid[a], hb = b < hid.length && hid[b];
+        if (ha != hb) return !ha;
         boolean fa = f.contains(ch.get(a).key), fb = f.contains(ch.get(b).key);
         if (fa != fb) return fa;
         if (in[a].uk != in[b].uk) return in[a].uk;
@@ -214,6 +252,21 @@ public final class Library {
         fav = null;
         matches.clear();
         changed();
+    }
+
+    /** Channels were hidden or unhidden (Hidden): the lists again. */
+    void hiddenChanged() {
+        remask();
+        matches.clear();
+        changed();
+    }
+
+    private synchronized void remask() {
+        boolean[] m = Hidden.mask(hideKeys, Hidden.keys(app));
+        int n = 0;
+        for (boolean b : m) if (!b) n++;
+        hidden = m;
+        visible = n;
     }
 
     // ---- loading ----------------------------------------------------------------------------------------------
@@ -294,16 +347,21 @@ public final class Library {
         });
     }
 
-    /** Everything removed from this phone: the source, the channels, the guide, the favourites. */
+    /** Everything removed from this phone: the source, the channels, the guide, the favourites, the hidden channels. */
     public void clear() {
         Source.clear(app);
         Picks.clear(app);
+        Hidden.clear(app);
+        Playback.get(app).forget();
         channels = Collections.emptyList();
         lower = new String[0];
         groups = Collections.emptyList();
         byKey = Collections.emptyMap();
         byName = Collections.emptyMap();
         infos = new Names.Info[0];
+        hideKeys = new String[0];
+        hidden = new boolean[0];
+        visible = 0;
         guide = Collections.emptyMap();
         programmes = ProgrammeSearch.Index.EMPTY;
         fingerprint = "";
@@ -468,6 +526,7 @@ public final class Library {
     private synchronized void apply(List<Channel> list, String fp, String gUrl, long at) {
         List<Channel> ch = Collections.unmodifiableList(new ArrayList<>(list));
         String[] low = new String[ch.size()];
+        String[] hk = new String[ch.size()];
         Names.Info[] in = new Names.Info[ch.size()];
         Map<String, Integer> keys = new HashMap<>(ch.size() * 2);
         Map<String, List<Integer>> names = new HashMap<>(ch.size() * 2);
@@ -476,6 +535,7 @@ public final class Library {
             Channel c = ch.get(i);
             low[i] = Names.plain(c.name).toLowerCase(Locale.ROOT);
             in[i] = Names.info(c.name, c.group);
+            hk[i] = Hidden.key(c);
             keys.put(c.key, i);
             if (!in[i].key.isEmpty()) {
                 List<Integer> l = names.get(in[i].key);
@@ -492,6 +552,12 @@ public final class Library {
         }
         lower = low;
         infos = in;
+        hideKeys = hk;
+        boolean[] m = Hidden.mask(hk, Hidden.keys(app));
+        int vis = 0;
+        for (boolean b : m) if (!b) vis++;
+        hidden = m;
+        visible = vis;
         byKey = keys;
         byName = idx;
         groups = Collections.unmodifiableList(new ArrayList<>(gs.keySet()));

@@ -24,6 +24,7 @@
     <string name="live_not_playing">This channel isn\'t playing right now. Swipe up or down for another, or tap to try again.</string>
     <string name="live_gone">That channel isn\'t in your playlist any more.</string>
     <string name="live_count">%1$d channels</string>
+    <string name="live_count_hidden">%1$d channels · %2$d hidden</string>
     <string name="live_nothing_found">No channels match</string>
 
     <string name="live_settings_title">Live TV</string>
@@ -82,7 +83,6 @@
     <string name="live_manage_hint">Drag to put them in your order: they lead the guide and the Favourites chip.</string>
     <string name="live_drag">Drag to move</string>
     <string name="live_done">Done</string>
-    <string name="live_preview_unavailable">No preview</string>
 
     <!-- Search -->
     <string name="live_search_hint">Channels and programmes</string>
@@ -122,7 +122,33 @@
     <string name="live_hint_title">Getting around</string>
     <string name="live_hint_tap">Tap for the guide, with the channels either side</string>
     <string name="live_hint_swipe">Swipe up or down in the middle for the next or previous channel</string>
+    <string name="live_hint_sides">Swipe left for the mini guide, and right to put it away</string>
     <string name="live_hint_zoom">Double-tap or pinch to fill the screen, or fit the whole picture</string>
     <string name="live_hint_edges">Slide up or down on the left edge for brightness, on the right edge for volume</string>
     <string name="live_got_it">Got it</string>
+    <string name="live_paused">Paused · tap to play</string>
+
+    <!-- The guide's own picture -->
+    <string name="live_inline_picture">The live picture. Tap for its controls, swipe up for full screen, left or right for another channel</string>
+    <string name="live_play">Play</string>
+    <string name="live_play_named">Play %1$s</string>
+    <string name="live_fullscreen">Full screen</string>
+    <string name="live_close_player">Close the picture</string>
+    <string name="live_stop">Stop</string>
+    <string name="live_inline_failed">Not playing right now. Tap to try again.</string>
+    <string name="live_playing_full">Playing in the player · tap to watch here</string>
+
+    <!-- A channel's menu, and hidden channels -->
+    <string name="live_hide">Hide channel</string>
+    <string name="live_channel_info">Channel info</string>
+    <string name="live_similar_none">No similar channels in your playlist.</string>
+    <string name="live_hidden_one">%1$s hidden</string>
+    <string name="live_undo">Undo</string>
+    <string name="live_hidden_title">Hidden channels</string>
+    <string name="live_hidden_menu_count">Hidden channels (%1$d)</string>
+    <string name="live_hidden_hint">Left out of the guide, the lists, search and swipe-to-change on this phone.</string>
+    <string name="live_hidden_empty">No hidden channels. Long-press a channel in the guide to hide it.</string>
+    <string name="live_unhide">Unhide</string>
+    <string name="live_unhide_named">Unhide %1$s</string>
+    <string name="live_unhide_all">Unhide all</string>
 </resources>

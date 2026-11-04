@@ -2,6 +2,7 @@ package com.gathin.tvhomephone.live;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 import org.junit.Test;
@@ -20,26 +21,51 @@ public class AspectTest {
         @Override public void remove(String key) { m.remove(key); }
     }
 
-    @Test public void rememberedPerChannelWithFitNotStored() {
+    @Test public void onItsSideFillsUprightFits() {
+        assertEquals(Aspect.FILL, Aspect.defaultFor(true));
+        assertEquals(Aspect.FIT, Aspect.defaultFor(false));
         MapStore s = new MapStore();
-        assertEquals(Aspect.FIT, Aspect.get(s, "a"));
-        Aspect.set(s, "a", Aspect.FILL);
-        Aspect.set(s, "b", Aspect.FOUR_THREE);
-        assertEquals(Aspect.FILL, Aspect.get(s, "a"));
-        assertEquals(Aspect.FOUR_THREE, Aspect.get(s, "b"));
-        assertEquals(Aspect.FIT, Aspect.get(s, "c"));
-        Aspect.set(s, "a", Aspect.FIT);
-        assertEquals(Aspect.FIT, Aspect.get(s, "a"));
-        assertFalse(s.m.containsKey("aspect:a"));
-        assertTrue(s.m.containsKey("aspect:b"));
+        assertEquals(Aspect.FILL, Aspect.get(s, "a", true));
+        assertEquals(Aspect.FIT, Aspect.get(s, "a", false));
+        assertTrue(s.m.isEmpty());
     }
 
-    @Test public void oddValuesReadAsFit() {
+    @Test public void aPickBeatsTheDefaultEachWayRound() {
+        MapStore s = new MapStore();
+        // Fit picked on its side is kept (it isn't the default there); Fill there is the default, so forgotten.
+        Aspect.set(s, "a", true, Aspect.FIT);
+        assertEquals(Aspect.FIT, Aspect.get(s, "a", true));
+        assertEquals(Aspect.FIT, Aspect.get(s, "a", false));
+        Aspect.set(s, "a", true, Aspect.FILL);
+        assertEquals(Aspect.FILL, Aspect.get(s, "a", true));
+        assertFalse(s.m.containsKey("aspect:a"));
+        // Upright and on its side are remembered apart.
+        Aspect.set(s, "b", false, Aspect.FILL);
+        Aspect.set(s, "b", true, Aspect.FOUR_THREE);
+        assertEquals(Aspect.FILL, Aspect.get(s, "b", false));
+        assertEquals(Aspect.FOUR_THREE, Aspect.get(s, "b", true));
+        assertEquals(Aspect.FIT, Aspect.get(s, "c", false));
+        assertEquals(Aspect.FILL, Aspect.get(s, "c", true));
+        Aspect.set(s, "b", false, Aspect.FIT);
+        assertEquals(Aspect.FIT, Aspect.get(s, "b", false));
+        assertFalse(s.m.containsKey("aspect-portrait:b"));
+    }
+
+    @Test public void anOlderPickOnItsSideStillCounts() {
+        // Before this version the player was on its side only, and kept "aspect:<channel>".
+        MapStore s = new MapStore();
+        s.put("aspect:old", "STRETCH");
+        assertEquals(Aspect.STRETCH, Aspect.get(s, "old", true));
+        assertEquals(Aspect.FIT, Aspect.get(s, "old", false));
+    }
+
+    @Test public void oddValuesReadAsTheDefault() {
         MapStore s = new MapStore();
         s.put("aspect:x", "SOMETHING_ELSE");
-        assertEquals(Aspect.FIT, Aspect.get(s, "x"));
-        assertEquals(Aspect.FIT, Aspect.get(s, null));
-        Aspect.set(s, null, Aspect.FILL);
+        assertEquals(Aspect.FILL, Aspect.get(s, "x", true));
+        assertEquals(Aspect.FIT, Aspect.get(s, null, false));
+        assertNull(Aspect.parse(null));
+        Aspect.set(s, null, true, Aspect.FIT);
         assertTrue(s.m.keySet().stream().allMatch(k -> k.equals("aspect:x")));
     }
 

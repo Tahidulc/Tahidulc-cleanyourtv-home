@@ -10,6 +10,7 @@ import android.content.pm.ActivityInfo;
 import android.content.pm.PackageManager;
 import android.content.res.ColorStateList;
 import android.content.res.Configuration;
+import android.graphics.Color;
 import android.graphics.drawable.GradientDrawable;
 import android.media.AudioManager;
 import android.os.Build;
@@ -18,14 +19,10 @@ import android.os.Handler;
 import android.os.Looper;
 import android.provider.Settings;
 import android.text.TextUtils;
-import android.util.AttributeSet;
 import android.util.Rational;
-import android.view.GestureDetector;
 import android.view.Gravity;
 import android.view.MotionEvent;
-import android.view.ScaleGestureDetector;
 import android.view.View;
-import android.view.ViewConfiguration;
 import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.widget.FrameLayout;
@@ -37,27 +34,26 @@ import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.activity.OnBackPressedCallback;
 import androidx.annotation.NonNull;
 import androidx.annotation.OptIn;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.graphics.Insets;
+import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
 import androidx.core.widget.NestedScrollView;
 import androidx.lifecycle.Lifecycle;
-import androidx.media3.common.AudioAttributes;
 import androidx.media3.common.C;
 import androidx.media3.common.Format;
 import androidx.media3.common.MimeTypes;
-import androidx.media3.common.PlaybackException;
-import androidx.media3.common.Player;
 import androidx.media3.common.TrackSelectionOverride;
 import androidx.media3.common.TrackSelectionParameters;
 import androidx.media3.common.Tracks;
 import androidx.media3.common.VideoSize;
 import androidx.media3.common.util.UnstableApi;
 import androidx.media3.exoplayer.ExoPlayer;
-import androidx.media3.ui.AspectRatioFrameLayout;
 import androidx.media3.ui.PlayerView;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
@@ -71,27 +67,32 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * Live TV's player, full screen: one of the family's own channels (HLS or MPEG-TS). A tap brings up the guide panel at
- * the foot (the channel's number, logo and name, what is on now with its times and how far in, what's next, and the
- * channels either side with their now and next: swipe through them and tap one to change channel without leaving the
- * picture); it goes after a few seconds. Its ⋯ opens the options: the picture's shape (remembered per channel), audio,
- * subtitles, quality, similar channels, the favourite, a sleep timer, picture in picture, restarting the stream and the
- * programme's details. Swipe up or down for the next or previous channel; double tap or pinch between Fit and Fill;
- * slide on the left edge for brightness and on the right for volume. Picture in picture on leaving, the phone's audio
- * focus, the screen kept on, and a few retries when the stream drops. Landscape on phones; any way round on tablets.
- * The stream's address is never logged (it can hold the login).
+ * Live TV's player, full screen: one of the family's own channels (HLS or MPEG-TS), edge to edge and under the camera's
+ * cutout, with the system bars hidden (a swipe from the edge brings them back for a moment). It follows the phone round:
+ * on its side the picture fills the screen (unless Fit or another shape was picked for the channel); upright it is fitted
+ * to the width, centred, with the guide panel at the foot. A tap brings up the guide panel (the channel's number, logo
+ * and name, what is on now with its times and how far in, what's next, and the mini guide of the channels either side:
+ * tap one to change channel); it goes after a few seconds. Its ⋯ opens the options: the picture's shape (remembered per
+ * channel), audio, subtitles, quality, similar channels, the favourite, a sleep timer, picture in picture, restarting the
+ * stream and the programme's details. Swipe up or down for the next or previous channel (hidden ones passed over), left
+ * for the mini guide and right to put it away; double tap or pinch between Fit and Fill; slide on the left edge for
+ * brightness and on the right for volume. The panel and buttons keep clear of the cutout.
+ * It plays through the one shared player (Playback): opened from the guide's own picture it takes that stream over as
+ * it plays and hands it back on the way out (and, when turning the phone on its side opened it, turning it upright again
+ * goes back). Picture in picture on leaving, the phone's audio focus, the screen kept on, and a few retries when the
+ * stream drops. The stream's address is never logged (it can hold the login).
  */
 @OptIn(markerClass = UnstableApi.class)
 public class PlayerActivity extends AppCompatActivity {
-    static final String EXTRA_KEY = "live_key", EXTRA_GROUP = "live_group";
-    private static final int RETRIES = 5;
+    static final String EXTRA_KEY = "live_key", EXTRA_GROUP = "live_group", EXTRA_GUIDE = "live_from_guide",
+            EXTRA_AUTO = "live_auto";
     private static final long OVERLAY_MS = 6000;
     private static final int[] SLEEP = {0, 15, 30, 60, 90};
 
     private final Handler h = new Handler(Looper.getMainLooper());
     private Library lib;
+    private Playback pb;
     private Aspect.Store store;
-    private ExoPlayer player;
     private Video video;
     private LinearLayout panel, top;
     private FrameLayout root;
@@ -110,44 +111,67 @@ public class PlayerActivity extends AppCompatActivity {
     private List<Channel> order = new ArrayList<>();
     private int pos;
     private Channel cur;
-    private int retries;
-    private boolean asHls;
     private Aspect aspect = Aspect.FIT;
     private long sleepAt;
     private int sleepMinutes;
     private String centred;
+    /** Opened from the guide (its stream goes back there on the way out); opened by turning the phone on its side. */
+    private boolean fromGuide, auto, handBack, landscape;
+    private Insets cut = Insets.NONE;
     private final Runnable hide = this::hideOverlay;
-    private final Runnable retry = () -> play(false);
     private final Runnable hideLevel = () -> fade(level, false);
     private final Runnable hideZoom = () -> fade(zoom, false);
     private final Runnable sleep = () -> {
-        if (player != null) player.pause();
+        pb.stop();
         Toast.makeText(this, R.string.live_sleeping, Toast.LENGTH_LONG).show();
         finish();
     };
 
     /** Opens the player on a channel (by key), swiping through the given group's list (Library.ALL for all). */
     public static void start(Context c, String key, String group) {
-        Intent i = new Intent(c, PlayerActivity.class).putExtra(EXTRA_KEY, key).putExtra(EXTRA_GROUP, group == null ? Library.ALL : group);
+        start(c, key, group, false, false);
+    }
+
+    /**
+     * fromGuide: opened from the Live TV tab, which gets the stream back on the way out; auto: opened by turning the
+     * phone on its side, so turning it upright again goes back.
+     */
+    static void start(Context c, String key, String group, boolean fromGuide, boolean auto) {
+        Intent i = new Intent(c, PlayerActivity.class).putExtra(EXTRA_KEY, key).putExtra(EXTRA_GROUP, group == null ? Library.ALL : group)
+                .putExtra(EXTRA_GUIDE, fromGuide).putExtra(EXTRA_AUTO, auto);
         if (!(c instanceof Activity)) i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         c.startActivity(i);
     }
 
-    @SuppressLint("SourceLockedOrientationActivity")
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
         lib = Library.get(this);
+        pb = Playback.get(this);
         store = Aspect.prefs(this);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-        // Phones turn on their side; tablets play whichever way they are held.
-        if (getResources().getConfiguration().smallestScreenWidthDp < 600) {
-            setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
+        // Whichever way the phone is held, upright too.
+        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR);
+        // Under the camera's cutout as well, so the picture reaches the very edge.
+        if (Build.VERSION.SDK_INT >= 30) {
+            WindowManager.LayoutParams lp = getWindow().getAttributes();
+            lp.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS;
+            getWindow().setAttributes(lp);
+        } else if (Build.VERSION.SDK_INT >= 28) {
+            WindowManager.LayoutParams lp = getWindow().getAttributes();
+            lp.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
+            getWindow().setAttributes(lp);
         }
-        setContentView(build());
         WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
+        getWindow().setStatusBarColor(Color.TRANSPARENT);
+        getWindow().setNavigationBarColor(Color.TRANSPARENT);
+        setContentView(build());
         WindowInsetsControllerCompat bars = WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
         bars.hide(WindowInsetsCompat.Type.systemBars());
         bars.setSystemBarsBehavior(WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+        landscape = isLandscape(getResources().getConfiguration());
+        getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
+            @Override public void handleOnBackPressed() { close(); }
+        });
         if (!take(getIntent())) {
             finish();
             return;
@@ -160,10 +184,14 @@ public class PlayerActivity extends AppCompatActivity {
         return getApplicationContext().getSharedPreferences("live_player", Context.MODE_PRIVATE);
     }
 
+    private static boolean isLandscape(Configuration cfg) {
+        return cfg.orientation == Configuration.ORIENTATION_LANDSCAPE;
+    }
+
     @Override protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         setIntent(intent);
-        if (take(intent) && player != null) play(true);
+        if (take(intent) && pb.isFront(host)) watch(cur);
     }
 
     /** The channel and its list from the intent; false when the channel is gone from the playlist. */
@@ -173,9 +201,16 @@ public class PlayerActivity extends AppCompatActivity {
             Toast.makeText(this, R.string.live_gone, Toast.LENGTH_LONG).show();
             return false;
         }
+        fromGuide = i.getBooleanExtra(EXTRA_GUIDE, false);
+        auto = i.getBooleanExtra(EXTRA_AUTO, false);
         String g = i.getStringExtra(EXTRA_GROUP);
         order = lib.list(g == null ? Library.ALL : g, "");
         if (!order.contains(c)) order = lib.list(Library.ALL, "");
+        if (!order.contains(c)) {
+            // A hidden channel opened by name (from Sports): it plays, the others either side.
+            order = new ArrayList<>(order);
+            order.add(0, c);
+        }
         pos = Math.max(0, order.indexOf(c));
         cur = c;
         neighbours.notifyDataSetChangedSafe();
@@ -184,111 +219,110 @@ public class PlayerActivity extends AppCompatActivity {
 
     @Override protected void onStart() {
         super.onStart();
-        if (player == null && cur != null) {
-            player = new ExoPlayer.Builder(this).build();
-            player.setAudioAttributes(new AudioAttributes.Builder().setUsage(C.USAGE_MEDIA)
-                    .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).build(), true);
-            player.setHandleAudioBecomingNoisy(true);
-            player.addListener(listener);
-            video.setPlayer(player);
-            play(true);
-        }
+        if (cur == null) return;
+        // Takes the picture over (the same stream carries on when the guide was already playing this channel).
+        pb.take(host);
+        watch(cur);
+        // Its shape for the small window now (a stream taken over has told its size already).
+        if (pipSupported()) setPictureInPictureParams(pipParams());
     }
 
     @Override protected void onStop() {
         super.onStop();
-        if (!isInPictureInPictureMode()) release();
+        // Still playing in the small window.
+        if (isInPictureInPictureMode()) return;
+        // Back to the guide it came from: the stream plays on there. Otherwise (home, the screen off) it stops.
+        pb.leave(host, isFinishing() && handBack);
     }
 
     @Override protected void onDestroy() {
-        release();
+        pb.leave(host, handBack);
         if (sheet != null) sheet.dismiss();
         h.removeCallbacksAndMessages(null);
         super.onDestroy();
     }
 
-    private void release() {
-        h.removeCallbacks(retry);
-        if (player != null) {
-            player.removeListener(listener);
-            player.release();
-            player = null;
-            video.setPlayer(null);
+    /** Back, ✕ or turning upright again: to the guide, which keeps playing when it was playing before. */
+    private void close() {
+        handBack = fromGuide;
+        finish();
+    }
+
+    @Override public void onConfigurationChanged(@NonNull Configuration cfg) {
+        super.onConfigurationChanged(cfg);
+        if (isInPictureInPictureMode()) return;
+        turned(isLandscape(cfg));
+    }
+
+    /** Turned round: back to the guide when turning it on its side opened this; otherwise the picture's shape again. */
+    private void turned(boolean land) {
+        if (land == landscape) return;
+        landscape = land;
+        if (auto && !land) {
+            close();
+            return;
         }
+        if (cur != null) {
+            aspect = Aspect.get(store, cur.key, landscape);
+            video.apply(aspect);
+        }
+        if (overlayShown()) centreStrip();
     }
 
     // ---- playing ----------------------------------------------------------------------------------------------
 
-    /** Plays the current channel; fresh: a new channel (its retries, format guess, shape and tracks start again). */
-    private void play(boolean fresh) {
-        if (player == null || cur == null) return;
-        h.removeCallbacks(retry);
-        if (fresh) {
-            retries = 0;
-            asHls = Streams.looksHls(cur);
-            Picks.watched(this, cur.key);
-            aspect = Aspect.get(store, cur.key);
-            applyAspect();
-            // Another channel's audio, subtitle or quality choice means nothing here (subtitles off stays off).
-            player.setTrackSelectionParameters(player.getTrackSelectionParameters().buildUpon().clearOverrides().build());
-            showOverlay();
-        }
-        player.setMediaSource(Streams.source(cur, asHls));
-        player.prepare();
-        player.setPlayWhenReady(true);
-        message.setVisibility(View.GONE);
-        spinner.setVisibility(View.VISIBLE);
-    }
+    /** The shared player's host here: its state shown over the picture. */
+    private final Playback.Host host = new Playback.Host() {
+        @Override public PlayerView view() { return video; }
 
-    private final Player.Listener listener = new Player.Listener() {
-        @Override public void onPlaybackStateChanged(int s) {
-            if (s == Player.STATE_READY) {
-                retries = 0;
-                spinner.setVisibility(View.GONE);
-                message.setVisibility(View.GONE);
-            } else if (s == Player.STATE_BUFFERING) {
-                spinner.setVisibility(View.VISIBLE);
-            }
-        }
+        @Override public boolean full() { return true; }
 
-        @Override public void onPlayerError(@NonNull PlaybackException e) {
-            // Only the kind of error: the stream's address (with the login in it) is never written out.
-            android.util.Log.w("LiveTv", "playback: " + e.getErrorCodeName());
-            if (player == null) return;
-            if (e.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW) {
-                player.seekToDefaultPosition();
-                player.prepare();
-                return;
-            }
-            // An address with no extension that is really HLS: once more as HLS.
-            if (!asHls && (e.errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED
-                    || e.errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED)) {
-                asHls = true;
-                play(false);
-                return;
-            }
-            if (retries < RETRIES) {
-                retries++;
+        @Override public void onState(int state) {
+            spinner.setVisibility(state == Playback.LOADING || state == Playback.RECONNECTING ? View.VISIBLE : View.GONE);
+            if (state == Playback.RECONNECTING) {
                 message.setText(R.string.live_reconnecting);
                 message.setVisibility(View.VISIBLE);
-                h.postDelayed(retry, Math.min(8000, 1000L << (retries - 1)));
-            } else {
-                spinner.setVisibility(View.GONE);
+            } else if (state == Playback.FAILED) {
                 message.setText(R.string.live_not_playing);
                 message.setVisibility(View.VISIBLE);
+            } else if (pb.paused()) {
+                message.setText(R.string.live_paused);
+                message.setVisibility(View.VISIBLE);
+            } else {
+                message.setVisibility(View.GONE);
             }
         }
 
-        @Override public void onVideoSizeChanged(@NonNull VideoSize size) {
+        @Override public void onVideoSize(@NonNull VideoSize size) {
             if (pipSupported()) setPictureInPictureParams(pipParams());
+        }
+
+        @Override public void onTakenOver() {
+            // The guide plays something itself now (one stream at a time): this small window goes.
+            finish();
         }
     };
 
+    /** Plays a channel here (the same one already open carries on): its shape, the panel. */
+    private void watch(Channel ch) {
+        if (ch == null) return;
+        cur = ch;
+        boolean same = pb.live(ch);
+        pb.play(ch);
+        // Held (the audio went elsewhere for a while): full screen is for watching.
+        if (pb.paused()) pb.resume();
+        aspect = Aspect.get(store, ch.key, landscape);
+        video.apply(aspect);
+        if (!same || !overlayShown()) showOverlay();
+    }
+
     private void step(int by) {
         if (order == null || order.isEmpty()) return;
-        pos = ((pos + by) % order.size() + order.size()) % order.size();
-        cur = order.get(pos);
-        play(true);
+        // Hidden channels are passed over (one hidden from the guide while this played in the small window too).
+        int at = Hidden.step(order.size(), pos, by, i -> lib.isHidden(order.get(i)));
+        if (at < 0 || at == pos) return;
+        pos = at;
+        watch(order.get(pos));
     }
 
     /** Straight to a channel (from the mini guide or Similar channels). */
@@ -302,57 +336,21 @@ public class PlayerActivity extends AppCompatActivity {
         }
         if (i < 0) return;
         pos = i;
-        cur = ch;
-        play(true);
+        watch(ch);
     }
 
     /** The stream again from the start (after it stalls, or to catch up with live). */
     private void restart() {
-        retries = 0;
-        play(false);
+        pb.restart();
     }
 
     // ---- the picture's shape --------------------------------------------------------------------------------------
 
-    /** The player's view, with a shape it can be told (16:9 or 4:3) in place of the stream's own. */
-    static final class Video extends PlayerView {
-        private float forced, natural;
-
-        Video(Context c) {
-            super(c);
-        }
-
-        Video(Context c, AttributeSet a) {
-            super(c, a);
-        }
-
-        @Override protected void onContentAspectRatioChanged(AspectRatioFrameLayout frame, float ratio) {
-            natural = ratio;
-            super.onContentAspectRatioChanged(frame, forced > 0 ? forced : ratio);
-        }
-
-        void force(float ratio) {
-            forced = ratio;
-            AspectRatioFrameLayout f = findViewById(androidx.media3.ui.R.id.exo_content_frame);
-            float r = ratio > 0 ? ratio : natural;
-            if (f != null && r > 0) f.setAspectRatio(r);
-        }
-    }
-
-    private void applyAspect() {
-        switch (aspect) {
-            case FILL: video.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_ZOOM); break;
-            case STRETCH: video.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FILL); break;
-            default: video.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT); break;
-        }
-        video.force(aspect.ratio);
-    }
-
     private void setAspect(Aspect a, boolean announce) {
         if (cur == null) return;
         aspect = a;
-        Aspect.set(store, cur.key, a);
-        applyAspect();
+        Aspect.set(store, cur.key, landscape, a);
+        video.apply(a);
         if (announce) {
             zoom.setText(aspectLabel(a));
             fade(zoom, true);
@@ -379,6 +377,7 @@ public class PlayerActivity extends AppCompatActivity {
 
     private PictureInPictureParams pipParams() {
         Rational r = new Rational(16, 9);
+        ExoPlayer player = pb.player();
         if (player != null) {
             VideoSize v = player.getVideoSize();
             if (v.width > 0 && v.height > 0) {
@@ -393,7 +392,7 @@ public class PlayerActivity extends AppCompatActivity {
     }
 
     private void enterPip() {
-        if (!pipSupported() || player == null) return;
+        if (!pipSupported() || pb.player() == null) return;
         try {
             enterPictureInPictureMode(pipParams());
         } catch (IllegalStateException e) {
@@ -403,7 +402,7 @@ public class PlayerActivity extends AppCompatActivity {
 
     @Override protected void onUserLeaveHint() {
         super.onUserLeaveHint();
-        if (Build.VERSION.SDK_INT < 31 && player != null && player.isPlaying()) enterPip();
+        if (Build.VERSION.SDK_INT < 31 && pb.player() != null && pb.player().isPlaying()) enterPip();
     }
 
     @Override public void onPictureInPictureModeChanged(boolean inPip, @NonNull Configuration cfg) {
@@ -416,8 +415,11 @@ public class PlayerActivity extends AppCompatActivity {
             zoom.setVisibility(View.GONE);
             message.setVisibility(View.GONE);
         } else if (getLifecycle().getCurrentState() == Lifecycle.State.CREATED) {
-            // The small window was closed.
+            // The small window was closed: the stream stops with it.
             finish();
+        } else {
+            // Back to full screen, perhaps turned round meanwhile.
+            turned(isLandscape(getResources().getConfiguration()));
         }
     }
 
@@ -616,6 +618,7 @@ public class PlayerActivity extends AppCompatActivity {
 
     private List<Track> tracks(int type) {
         List<Track> out = new ArrayList<>();
+        ExoPlayer player = pb.player();
         if (player == null) return out;
         int n = 0;
         for (Tracks.Group g : player.getCurrentTracks().getGroups()) {
@@ -647,11 +650,14 @@ public class PlayerActivity extends AppCompatActivity {
     }
 
     private boolean overridden(Track t) {
+        ExoPlayer player = pb.player();
+        if (player == null) return false;
         TrackSelectionOverride o = player.getTrackSelectionParameters().overrides.get(t.group.getMediaTrackGroup());
         return o != null && o.trackIndices.contains(t.index);
     }
 
     private void choose(Track t) {
+        ExoPlayer player = pb.player();
         if (player == null) return;
         player.setTrackSelectionParameters(player.getTrackSelectionParameters().buildUpon()
                 .setOverrideForType(new TrackSelectionOverride(t.group.getMediaTrackGroup(), t.index))
@@ -660,6 +666,7 @@ public class PlayerActivity extends AppCompatActivity {
     }
 
     private void automatic(int type, boolean off) {
+        ExoPlayer player = pb.player();
         if (player == null) return;
         player.setTrackSelectionParameters(player.getTrackSelectionParameters().buildUpon()
                 .clearOverridesOfType(type)
@@ -669,6 +676,7 @@ public class PlayerActivity extends AppCompatActivity {
 
     /** The options sheet from the panel's ⋯. */
     private void options() {
+        ExoPlayer player = pb.player();
         if (cur == null || player == null) return;
         hideOverlay();
         Context c = this;
@@ -912,10 +920,6 @@ public class PlayerActivity extends AppCompatActivity {
 
     // ---- gestures ---------------------------------------------------------------------------------------------
 
-    private static final int MIDDLE = 0, LEFT = 1, RIGHT = 2;
-    private int zone;
-    private boolean edge, multi;
-    private float downX, downY, startLevel, pinch = 1f;
     private AudioManager audio;
 
     private float brightness() {
@@ -964,91 +968,61 @@ public class PlayerActivity extends AppCompatActivity {
     private View gestures() {
         View touch = new View(this);
         audio = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
-        int slop = ViewConfiguration.get(this).getScaledTouchSlop();
-        GestureDetector g = new GestureDetector(this, new GestureDetector.SimpleOnGestureListener() {
-            @Override public boolean onDown(@NonNull MotionEvent e) { return true; }
-
-            @Override public boolean onSingleTapConfirmed(@NonNull MotionEvent e) {
-                if (hint != null && hint.getVisibility() == View.VISIBLE) return true;
-                if (message.getVisibility() == View.VISIBLE && retries >= RETRIES) {
-                    play(true);
-                    return true;
+        touch.setOnTouchListener(new Gestures(this, new Gestures.Callback() {
+            @Override public void onTap() {
+                if (hint != null && hint.getVisibility() == View.VISIBLE) return;
+                if (pb.state() == Playback.FAILED) {
+                    pb.restart();
+                    return;
+                }
+                if (pb.paused()) {
+                    pb.resume();
+                    return;
                 }
                 if (overlayShown()) hideOverlay();
                 else showOverlay();
-                return true;
             }
 
-            @Override public boolean onDoubleTap(@NonNull MotionEvent e) {
+            @Override public void onDoubleTap() {
                 setAspect(aspect.toggled(), true);
-                return true;
             }
 
-            @Override public boolean onFling(MotionEvent a, @NonNull MotionEvent b, float vx, float vy) {
-                if (edge || multi || zone != MIDDLE) return false;
-                if (Math.abs(vy) > Math.abs(vx) * 1.3f && Math.abs(vy) > Ui.dp(PlayerActivity.this, 400)) {
-                    step(vy < 0 ? 1 : -1);
-                    return true;
-                }
-                return false;
-            }
-        });
-        ScaleGestureDetector scale = new ScaleGestureDetector(this, new ScaleGestureDetector.SimpleOnScaleGestureListener() {
-            @Override public boolean onScaleBegin(@NonNull ScaleGestureDetector d) {
-                pinch = 1f;
-                return true;
-            }
-
-            @Override public boolean onScale(@NonNull ScaleGestureDetector d) {
-                pinch *= d.getScaleFactor();
-                float s = Math.max(0.85f, Math.min(1.2f, pinch));
+            @Override public void onPinch(float scale) {
+                float s = Math.max(0.85f, Math.min(1.2f, scale));
                 video.setScaleX(s);
                 video.setScaleY(s);
-                return true;
             }
 
-            @Override public void onScaleEnd(@NonNull ScaleGestureDetector d) {
+            @Override public void onPinchEnd(float scale) {
                 video.animate().scaleX(1f).scaleY(1f).setDuration(150).start();
-                Aspect a = aspect.pinched(pinch);
+                Aspect a = aspect.pinched(scale);
                 if (a != aspect) setAspect(a, true);
             }
-        });
-        touch.setOnTouchListener((v, e) -> {
-            scale.onTouchEvent(e);
-            int action = e.getActionMasked();
-            if (action == MotionEvent.ACTION_DOWN) {
-                multi = false;
-                edge = false;
-                downX = e.getX();
-                downY = e.getY();
-                float w = v.getWidth();
-                zone = downX < w * 0.3f ? LEFT : downX > w * 0.7f ? RIGHT : MIDDLE;
-                startLevel = zone == LEFT ? brightness() : zone == RIGHT ? volume() : 0;
-            } else if (action == MotionEvent.ACTION_POINTER_DOWN && !multi) {
-                // Two fingers: a pinch, not a tap or a swipe.
-                multi = true;
-                MotionEvent cancel = MotionEvent.obtain(e);
-                cancel.setAction(MotionEvent.ACTION_CANCEL);
-                g.onTouchEvent(cancel);
-                cancel.recycle();
-            }
-            if (multi) return true;
-            if (action == MotionEvent.ACTION_MOVE && zone != MIDDLE) {
-                float dy = downY - e.getY(), dx = e.getX() - downX;
-                if (!edge && Math.abs(dy) > slop && Math.abs(dy) > Math.abs(dx)) edge = true;
-                if (edge) {
-                    float f = startLevel + dy / Math.max(1f, v.getHeight() * 0.8f);
-                    if (zone == LEFT) setBrightness(f);
-                    else setVolume(f);
+
+            @Override public void onSwipe(int d) {
+                if (d == Gestures.UP) step(1);
+                else if (d == Gestures.DOWN) step(-1);
+                else if (d == Gestures.LEFT) {
+                    // The mini guide in from the side, and away again the other way.
+                    if (!overlayShown()) showOverlay();
+                } else if (d == Gestures.RIGHT) {
+                    if (overlayShown()) hideOverlay();
                 }
             }
-            g.onTouchEvent(e);
-            if ((action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) && edge) {
-                edge = false;
+
+            @Override public float edgeLevel(int edge) {
+                return edge == Gestures.LEFT_EDGE ? brightness() : volume();
+            }
+
+            @Override public void onEdge(int edge, float level) {
+                if (edge == Gestures.LEFT_EDGE) setBrightness(level);
+                else setVolume(level);
+            }
+
+            @Override public void onEdgeEnd() {
                 h.postDelayed(hideLevel, 700);
             }
-            return true;
-        });
+        }, 48));
         return touch;
     }
 
@@ -1064,7 +1038,8 @@ public class PlayerActivity extends AppCompatActivity {
         card.setPadding(pad, pad, pad, Ui.dp(this, 14));
         card.setBackground(Ui.round(this, Ui.G_PANEL, 20));
         card.addView(Ui.text(this, getString(R.string.live_hint_title), 20, Ui.TEXT, true));
-        int[] lines = {R.string.live_hint_tap, R.string.live_hint_swipe, R.string.live_hint_zoom, R.string.live_hint_edges};
+        int[] lines = {R.string.live_hint_tap, R.string.live_hint_swipe, R.string.live_hint_sides, R.string.live_hint_zoom,
+                R.string.live_hint_edges};
         for (int l : lines) {
             TextView t = Ui.text(this, "•  " + getString(l), 15, Ui.SOFT, false);
             t.setPadding(0, Ui.dp(this, 10), 0, 0);
@@ -1078,7 +1053,8 @@ public class PlayerActivity extends AppCompatActivity {
         op.topMargin = Ui.dp(this, 18);
         op.gravity = Gravity.END;
         card.addView(ok, op);
-        FrameLayout.LayoutParams cp = new FrameLayout.LayoutParams(Math.min(Ui.dp(this, 460), getResources().getDisplayMetrics().widthPixels - Ui.dp(this, 32)), -2, Gravity.CENTER);
+        int width = getResources().getDisplayMetrics().widthPixels - Ui.dp(this, 32) - cut.left - cut.right;
+        FrameLayout.LayoutParams cp = new FrameLayout.LayoutParams(Math.min(Ui.dp(this, 460), width), -2, Gravity.CENTER);
         cover.addView(card, cp);
         View.OnClickListener done = v -> {
             prefs().edit().putBoolean("hint_seen", true).apply();
@@ -1088,6 +1064,7 @@ public class PlayerActivity extends AppCompatActivity {
         cover.setOnClickListener(done);
         root.addView(cover, new FrameLayout.LayoutParams(-1, -1));
         hint = cover;
+        cover.setPadding(cut.left, cut.top, cut.right, cut.bottom);
         h.postDelayed(() -> {
             if (cover.getVisibility() == View.VISIBLE) done.onClick(cover);
         }, 9000);
@@ -1100,10 +1077,6 @@ public class PlayerActivity extends AppCompatActivity {
         root = new FrameLayout(this);
         root.setBackgroundColor(0xFF000000);
         video = new Video(this);
-        video.setUseController(false);
-        video.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT);
-        video.setKeepContentOnPlayerReset(true);
-        video.setShutterBackgroundColor(0xFF000000);
         root.addView(video, new FrameLayout.LayoutParams(-1, -1));
         root.addView(gestures(), new FrameLayout.LayoutParams(-1, -1));
 
@@ -1152,10 +1125,28 @@ public class PlayerActivity extends AppCompatActivity {
         top.setOrientation(LinearLayout.HORIZONTAL);
         top.setPadding(Ui.dp(this, 12), Ui.dp(this, 12), Ui.dp(this, 12), Ui.dp(this, 12));
         if (pipSupported()) top.addView(button(R.drawable.live_ic_pip, R.string.live_pip, v -> enterPip()));
-        top.addView(button(R.drawable.live_ic_close, R.string.live_close, v -> finish()));
+        top.addView(button(R.drawable.live_ic_close, R.string.live_close, v -> close()));
         top.setVisibility(View.GONE);
         root.addView(top, new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.END));
+
+        // The panel and the buttons kept clear of the camera's cutout (the picture itself goes under it).
+        ViewCompat.setOnApplyWindowInsetsListener(root, (v, insets) -> {
+            cut = insets.getInsets(WindowInsetsCompat.Type.displayCutout());
+            clearCutout();
+            return insets;
+        });
         return root;
+    }
+
+    private void clearCutout() {
+        int side = Ui.dp(this, 20);
+        panel.setPadding(side + cut.left, Ui.dp(this, 36), side + cut.right, Ui.dp(this, 12) + cut.bottom);
+        FrameLayout.LayoutParams tp = (FrameLayout.LayoutParams) top.getLayoutParams();
+        tp.topMargin = cut.top;
+        tp.rightMargin = cut.right;
+        tp.leftMargin = cut.left;
+        top.setLayoutParams(tp);
+        if (hint != null) hint.setPadding(cut.left, cut.top, cut.right, cut.bottom);
     }
 
     /** The guide panel along the foot: the channel, now and next, and the mini guide of the channels either side. */

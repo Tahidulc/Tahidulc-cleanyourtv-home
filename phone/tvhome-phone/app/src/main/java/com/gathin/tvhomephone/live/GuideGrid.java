@@ -52,8 +52,11 @@ final class GuideGrid extends FrameLayout {
         /** The channel's own cell: play it. */
         void onChannel(Channel ch);
 
-        /** The star, or a long press on the channel or one of its programmes. */
+        /** The star beside the logo. */
         void onFavourite(Channel ch);
+
+        /** A long press on the channel or one of its programmes: the channel's menu. */
+        void onMenu(Channel ch);
 
         /** The day at the grid's left edge changed (for the day button's label). */
         void onDay(long leftTime);
@@ -443,7 +446,7 @@ final class GuideGrid extends FrameLayout {
                 @Override public void onLongPress(@NonNull MotionEvent e) {
                     if (ch != null && listener != null) {
                         performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
-                        listener.onFavourite(ch);
+                        listener.onMenu(ch);
                     }
                 }
             });
@@ -658,7 +661,7 @@ final class GuideGrid extends FrameLayout {
             cell.setOnLongClickListener(v -> {
                 if (ch != null && listener != null) {
                     v.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
-                    listener.onFavourite(ch);
+                    listener.onMenu(ch);
                 }
                 return true;
             });

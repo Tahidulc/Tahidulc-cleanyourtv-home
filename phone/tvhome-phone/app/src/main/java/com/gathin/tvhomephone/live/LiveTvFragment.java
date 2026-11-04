@@ -40,6 +40,7 @@ import com.gathin.tvhomephone.App;
 import com.gathin.tvhomephone.MainActivity;
 import com.gathin.tvhomephone.R;
 import com.google.android.material.button.MaterialButton;
+import com.google.android.material.snackbar.Snackbar;
 
 import java.time.ZoneId;
 import java.util.ArrayList;
@@ -50,22 +51,30 @@ import java.util.TimeZone;
 /**
  * Live TV as a TV guide: the family's own playlist as a grid of channels down and half hours across, with a red line at
  * now. Along the top: the title, Now (back to the current time), search (channels and programmes), the guide or list
- * view, and More (Manage favourites, Refresh); then "Your channels" (the favourites' logos: tap one to watch), then the
- * groups as chips (Favourites first, chosen when there are any, then All, Recent and the playlist's own groups). Above
- * the grid the chosen programme's details; tablets held upright show a small muted live picture beside them, and
- * anything on its side has the picture and the details in a pane to the right of the grid.
- * Tap a programme that is on to watch it, a later one for its details and Remind me; a long press or the star makes the
- * channel a favourite. The day button at the grid's corner picks the day. The list view is the Now and Next list.
+ * view, and More (Manage favourites, Hidden channels, Refresh); then "Your channels" (the favourites' logos: tap one to
+ * watch), then the groups as chips (Favourites first, chosen when there are any, then All, Recent and the playlist's own
+ * groups). Above the grid the chosen programme's details.
+ * Tap a channel (or a programme that is on) to watch it in the guide's own picture, with sound (Inline): on a phone held
+ * upright a 16:9 picture at the top with the guide still there under it, on a tablet held upright beside the details,
+ * and on a tablet on its side in the pane beside the grid. Tap it again, its full screen button or swipe up for full
+ * screen, which takes the same stream over and gives it back; turning the phone on its side while it plays goes full
+ * screen too, and upright again comes back. A phone on its side goes straight to full screen. The last channel is kept
+ * for coming back to the tab (paused until tapped). A later programme shows its details and Remind me; the star makes
+ * the channel a favourite; a long press opens the channel's menu (favourite, hide, similar channels, its info). The day
+ * button at the grid's corner picks the day. The list view is the Now and Next list.
  */
 public class LiveTvFragment extends Fragment {
-    private static final String S_GROUP = "group", S_KEY = "key", S_START = "start", S_LEFT = "left";
+    private static final String S_GROUP = "group", S_KEY = "key", S_START = "start", S_LEFT = "left", S_UPRIGHT = "upright";
     private static final int COMPACT = 0, TOP = 1, SIDE = 2;
     private static final int SEARCH_CHANNELS = 60, SEARCH_PROGRAMMES = 120;
 
     private final Handler h = new Handler(Looper.getMainLooper());
     private Library lib;
+    private Playback pb;
     private int mode;
     private boolean tablet, listView, searching;
+    /** Upright phones: the picture is open at the top; turned on its side while it played (so: full screen). */
+    private boolean inlineOpen, autoFull;
     private String group;
     private String selKey;
     private long selStart, restoreLeft = -1;
@@ -86,7 +95,7 @@ public class LiveTvFragment extends Fragment {
     private FrameLayout body;
     private GuideGrid grid;
     private Details details;
-    private Preview preview;
+    private Inline inline;
     private View state, favHint;
     private OnBackPressedCallback back;
 
@@ -100,6 +109,7 @@ public class LiveTvFragment extends Fragment {
                 if (tl != null && System.currentTimeMillis() + 3600_000L > tl.end) timeline(false);
             }
             if (details != null) details.refresh();
+            if (inline != null) inline.refresh();
             listAdapter.notifyItemRangeChanged(0, listAdapter.getItemCount());
             h.postDelayed(this, 60_000);
         }
@@ -108,16 +118,20 @@ public class LiveTvFragment extends Fragment {
     @Override public View onCreateView(@NonNull LayoutInflater inflater, ViewGroup parent, Bundle saved) {
         Context c = requireContext();
         lib = Library.get(c);
+        pb = Playback.get(c);
         Configuration cfg = getResources().getConfiguration();
         tablet = cfg.smallestScreenWidthDp >= 600;
         boolean land = cfg.screenWidthDp > cfg.screenHeightDp;
         mode = land ? SIDE : tablet ? TOP : COMPACT;
         listView = ui(c).getBoolean("list", false);
+        inlineOpen = ui(c).getBoolean("inline", false);
         if (saved != null) {
             group = saved.getString(S_GROUP);
             selKey = saved.getString(S_KEY);
             selStart = saved.getLong(S_START);
             restoreLeft = saved.getLong(S_LEFT, -1);
+            // A phone turned on its side while its picture played (no one showing it for the moment): full screen.
+            autoFull = saved.getBoolean(S_UPRIGHT, false) && mode == SIDE && !tablet && pb.unattended() && pb.live();
         }
 
         LinearLayout root = new LinearLayout(c);
@@ -125,6 +139,13 @@ public class LiveTvFragment extends Fragment {
         root.setBackground(Ui.guideGround());
 
         buildToolbar(c, root);
+        inline = new Inline(c, lib, mode == COMPACT);
+        inline.setListener(inlineListener());
+        if (mode == COMPACT) {
+            // Upright phones: the picture across the top, over the guide, when something has been played.
+            root.addView(inline, new LinearLayout.LayoutParams(-1, -2));
+            inline.setVisibility(View.GONE);
+        }
         buildStrip(c);
         if (mode == SIDE) {
             // On its side, Your channels sits in the top bar, leaving the height to the grid.
@@ -149,7 +170,6 @@ public class LiveTvFragment extends Fragment {
         content.addView(main, new LinearLayout.LayoutParams(0, -1, 1f));
         root.addView(content, new LinearLayout.LayoutParams(-1, 0, 1f));
 
-        if (mode != COMPACT) preview = new Preview(c);
         Details.Actions actions = actions();
         if (mode == COMPACT) {
             details = new Details(c, lib, true, 2);
@@ -158,7 +178,7 @@ public class LiveTvFragment extends Fragment {
             band = new LinearLayout(c);
             band.setBackgroundColor(Ui.G_PANEL);
             band.setPadding(Ui.dp(c, 16), Ui.dp(c, 14), 0, Ui.dp(c, 6));
-            band.addView(preview.view, new LinearLayout.LayoutParams(Ui.dp(c, 320), Ui.dp(c, 180)));
+            band.addView(inline, new LinearLayout.LayoutParams(Ui.dp(c, 320), Ui.dp(c, 180)));
             details = new Details(c, lib, false, 4);
             band.addView(details, new LinearLayout.LayoutParams(0, -2, 1f));
             main.addView(band, new LinearLayout.LayoutParams(-1, -2));
@@ -169,7 +189,7 @@ public class LiveTvFragment extends Fragment {
             int sw = Ui.dp(c, tablet ? 380 : 300);
             int pad = Ui.dp(c, 14);
             side.setPadding(pad, pad, pad, 0);
-            side.addView(preview.view, new LinearLayout.LayoutParams(-1, (sw - 2 * pad) * 9 / 16));
+            side.addView(inline, new LinearLayout.LayoutParams(-1, (sw - 2 * pad) * 9 / 16));
             ScrollView ds = new ScrollView(c);
             details = new Details(c, lib, false, tablet ? 8 : 5);
             details.setPadding(0, Ui.dp(c, 12), 0, Ui.dp(c, 16));
@@ -293,13 +313,17 @@ public class LiveTvFragment extends Fragment {
     }
 
     private void moreMenu(View anchor) {
-        PopupMenu m = new PopupMenu(requireContext(), anchor);
+        Context c = requireContext();
+        PopupMenu m = new PopupMenu(c, anchor);
         Menu menu = m.getMenu();
         menu.add(0, 1, 0, R.string.live_manage_favourites);
-        menu.add(0, 2, 1, listView ? R.string.live_view_grid : R.string.live_view_list);
-        menu.add(0, 3, 2, R.string.live_refresh);
+        int hidden = Hidden.keys(c).size();
+        menu.add(0, 4, 1, hidden > 0 ? getString(R.string.live_hidden_menu_count, hidden) : getString(R.string.live_hidden_title));
+        menu.add(0, 2, 2, listView ? R.string.live_view_grid : R.string.live_view_list);
+        menu.add(0, 3, 3, R.string.live_refresh);
         m.setOnMenuItemClickListener(item -> {
-            if (item.getItemId() == 1) Sheets.favourites(requireContext(), lib);
+            if (item.getItemId() == 1) Sheets.favourites(c, lib);
+            else if (item.getItemId() == 4) Sheets.hidden(c, lib);
             else if (item.getItemId() == 2) viewButton.performClick();
             else lib.refresh(null);
             return true;
@@ -382,7 +406,7 @@ public class LiveTvFragment extends Fragment {
             holder.itemView.setContentDescription(getString(R.string.live_watch_named, ch.name));
             holder.itemView.setOnClickListener(x -> play(ch));
             holder.itemView.setOnLongClickListener(x -> {
-                Sheets.favourites(c, lib);
+                menu(ch);
                 return true;
             });
         }
@@ -453,31 +477,24 @@ public class LiveTvFragment extends Fragment {
         super.onStart();
         lib.addListener(changed);
         lib.ensure();
+        // The picture is ours again: still playing (turned round, or back from full screen), or the last channel paused.
+        inline.start();
         refreshAll();
         h.postDelayed(tick, 60_000);
-    }
-
-    @Override public void onResume() {
-        super.onResume();
-        updatePreview();
-    }
-
-    @Override public void onPause() {
-        // The stream is let go at once: the player may be opening, and many providers allow one at a time.
-        if (preview != null) preview.setActive(false);
-        super.onPause();
+        if (autoFull) {
+            autoFull = false;
+            if (pb.live() && inline.live()) fullScreen(pb.channel(), true);
+        }
     }
 
     @Override public void onStop() {
         lib.removeListener(changed);
         h.removeCallbacks(tick);
         h.removeCallbacks(runSearch);
+        // Leaving the tab (or the app) stops the stream; turning round keeps it playing for the guide that comes next,
+        // and full screen has already taken it over.
+        inline.leave(requireActivity().isChangingConfigurations());
         super.onStop();
-    }
-
-    @Override public void onDestroyView() {
-        if (preview != null) preview.stop();
-        super.onDestroyView();
     }
 
     @Override public void onSaveInstanceState(@NonNull Bundle out) {
@@ -485,6 +502,7 @@ public class LiveTvFragment extends Fragment {
         out.putString(S_GROUP, group);
         out.putString(S_KEY, selKey);
         out.putLong(S_START, selStart);
+        out.putBoolean(S_UPRIGHT, mode == COMPACT);
         if (grid != null && grid.timeline() != null) out.putLong(S_LEFT, grid.leftTime());
     }
 
@@ -495,7 +513,9 @@ public class LiveTvFragment extends Fragment {
         if (getView() == null) return;
         Context c = requireContext();
         boolean source = lib.hasSource(), ready = lib.ready();
-        sub.setText(ready ? getString(R.string.live_count, lib.count()) + (lib.busy() ? " · " + getString(R.string.live_loading) : "") : "");
+        int shown = lib.visibleCount(), hid = lib.count() - shown;
+        String count = hid > 0 ? getString(R.string.live_count_hidden, shown, hid) : getString(R.string.live_count, lib.count());
+        sub.setText(ready ? count + (lib.busy() ? " · " + getString(R.string.live_loading) : "") : "");
         if (state != null) {
             body.removeView(state);
             state = null;
@@ -513,9 +533,15 @@ public class LiveTvFragment extends Fragment {
             details.setVisibility(View.GONE);
             if (band != null) band.setVisibility(View.GONE);
             if (side != null) side.setVisibility(View.GONE);
+            if (mode == COMPACT && !inline.live()) inline.setVisibility(View.GONE);
             shownGroups = null;
-            updatePreview();
             return;
+        }
+        inline.rebind();
+        if (inline.channel() == null) {
+            // The channel played last (paused until tapped).
+            Channel last = pb.last(lib);
+            if (last != null && !lib.isHidden(last)) inline.show(last);
         }
         List<Channel> favs = lib.list(Library.FAVOURITES, "");
         boolean hasRecent = !Picks.recent(c).isEmpty();
@@ -531,6 +557,7 @@ public class LiveTvFragment extends Fragment {
         Channel sel = lib.byKey(selKey);
         if (sel == null || !grid.channels().contains(sel)) selectDefault(grid.channels());
         else select(sel, selStart, false);
+        showInline();
         showBody();
         if (searching) searchNow();
     }
@@ -539,8 +566,28 @@ public class LiveTvFragment extends Fragment {
     private void setStrip(List<Channel> favs) {
         stripAdapter.favs = favs;
         stripAdapter.notifyDataSetChanged();
-        boolean show = !favs.isEmpty() && !searching;
+        // Upright phones with the picture open: the room goes to the guide (the Favourites chip has them).
+        boolean show = !favs.isEmpty() && !searching && !(mode == COMPACT && inlineShown());
         stripRow.setVisibility(show ? View.VISIBLE : mode == SIDE ? View.INVISIBLE : View.GONE);
+    }
+
+    /** Upright phones: whether the picture is open at the top. */
+    private boolean inlineShown() {
+        return mode == COMPACT && (inline.live() || inlineOpen && inline.channel() != null);
+    }
+
+    private void showInline() {
+        if (mode != COMPACT) return;
+        boolean on = inlineShown();
+        if (on == (inline.getVisibility() == View.VISIBLE)) return;
+        inline.setVisibility(on ? View.VISIBLE : View.GONE);
+        setStrip(stripAdapter.favs);
+    }
+
+    private void openInline(boolean open) {
+        if (inlineOpen == open) return;
+        inlineOpen = open;
+        ui(requireContext()).edit().putBoolean("inline", open).apply();
     }
 
     /** The rows for the chosen group, in the grid and the list. */
@@ -568,17 +615,11 @@ public class LiveTvFragment extends Fragment {
         viewButton.setTooltipText(label);
         // Phones held upright: the details only over the grid (the list has its own now and next).
         details.setVisibility(searching || (mode == COMPACT && listView) ? View.GONE : View.VISIBLE);
-        if (band != null) band.setVisibility(searching ? View.GONE : View.VISIBLE);
-        if (side != null) side.setVisibility(searching ? View.GONE : View.VISIBLE);
+        // The pane stays while a search runs when it is playing (to watch while looking).
+        boolean pane = !searching || inline.live();
+        if (band != null) band.setVisibility(pane ? View.VISIBLE : View.GONE);
+        if (side != null) side.setVisibility(pane ? View.VISIBLE : View.GONE);
         if (searching) favHint.setVisibility(View.GONE);
-        updatePreview();
-    }
-
-    private void updatePreview() {
-        if (preview == null) return;
-        boolean on = isResumed() && state == null && !searching && lib.ready()
-                && (band != null ? band.getVisibility() == View.VISIBLE : side != null && side.getVisibility() == View.VISIBLE);
-        preview.setActive(on);
     }
 
     /** The grid's time across, from the guide's span; first time, at now (or where it was before turning). */
@@ -649,17 +690,13 @@ public class LiveTvFragment extends Fragment {
             }
 
             @Override public void onChannel(Channel ch) {
-                // With a preview beside the guide the channel's cell picks it (to see it there); otherwise it plays.
-                if (mode != COMPACT && !ch.key.equals(selKey)) {
-                    Guide.Schedule s = lib.schedule(ch.key);
-                    int at = s == null ? -1 : s.at(System.currentTimeMillis());
-                    select(ch, at < 0 ? 0 : s.start[at], true);
-                } else {
-                    play(ch);
-                }
+                selectNow(ch);
+                play(ch);
             }
 
             @Override public void onFavourite(Channel ch) { favourite(ch); }
+
+            @Override public void onMenu(Channel ch) { menu(ch); }
 
             @Override public void onDay(long leftTime) {
                 if (isAdded()) grid.corner.setText(Ui.day(requireContext(), leftTime));
@@ -690,10 +727,12 @@ public class LiveTvFragment extends Fragment {
             selStart = 0;
             grid.select(null, 0);
             details.bind(null, -1);
-            if (preview != null) preview.show(null);
             return;
         }
+        // What plays in the guide's picture, when it is in the list; otherwise the first channel.
         Channel ch = rows.get(0);
+        Channel shown = inline.live() ? inline.channel() : null;
+        if (shown != null) for (Channel r : rows) if (r.key.equals(shown.key)) ch = r;
         Guide.Schedule s = lib.schedule(ch.key);
         int at = s == null ? -1 : s.at(System.currentTimeMillis());
         select(ch, at < 0 ? 0 : s.start[at], false);
@@ -706,13 +745,95 @@ public class LiveTvFragment extends Fragment {
         Guide.Schedule s = lib.schedule(ch.key);
         int i = s == null || start == 0 ? -1 : s.at(start);
         details.bind(ch, i);
-        if (preview != null) preview.show(ch);
+        // Stopped, the pane follows the choice (play to watch it), except to keep the last channel played on offer.
+        if (mode != COMPACT && !inline.live()) {
+            Channel shown = inline.channel(), last = pb.last(lib);
+            if (shown == null || last == null || !last.key.equals(shown.key)) inline.show(ch);
+        }
         if (touched && mode != COMPACT) listAdapter.notifyItemRangeChanged(0, listAdapter.getItemCount());
     }
 
+    /** The channel with what is on it now. */
+    private void selectNow(Channel ch) {
+        Guide.Schedule s = lib.schedule(ch.key);
+        int at = s == null ? -1 : s.at(System.currentTimeMillis());
+        select(ch, at < 0 ? 0 : s.start[at], true);
+    }
+
+    /**
+     * Watch a channel: in the guide's own picture (tapped again while it plays there: full screen); a phone on its
+     * side goes straight to full screen.
+     */
     private void play(Channel ch) {
-        if (preview != null) preview.stop();
-        PlayerActivity.start(requireContext(), ch.key, searching || group == null ? Library.ALL : group);
+        if (ch == null) return;
+        if (mode == SIDE && !tablet) {
+            fullScreen(ch, false);
+            return;
+        }
+        if (inline.playing(ch)) {
+            fullScreen(ch, false);
+            return;
+        }
+        watchHere(ch);
+    }
+
+    private void watchHere(Channel ch) {
+        if (mode == COMPACT) openInline(true);
+        inline.play(ch);
+        showInline();
+    }
+
+    /** Full screen on this channel; the guide gets the stream back after (auto: opened by turning on its side). */
+    private void fullScreen(Channel ch, boolean auto) {
+        if (ch == null || !isAdded()) return;
+        PlayerActivity.start(requireContext(), ch.key, searching || group == null ? Library.ALL : group, true, auto);
+    }
+
+    private Inline.Listener inlineListener() {
+        return new Inline.Listener() {
+            @Override public void onFullScreen() { fullScreen(inline.channel(), false); }
+
+            @Override public void onStep(int by) { stepInline(by); }
+
+            @Override public void onClose() {
+                inline.halt();
+                if (mode == COMPACT) {
+                    openInline(false);
+                    showInline();
+                }
+            }
+
+            @Override public void onShowing(Channel ch) {
+                if (lib.ready() && grid.channels().contains(ch)) selectNow(ch);
+            }
+        };
+    }
+
+    /** Swipe on the guide's picture: the next (or previous) channel in the list showing, hidden ones passed over. */
+    private void stepInline(int by) {
+        Channel at = inline.channel();
+        if (at == null || !lib.ready()) return;
+        List<Channel> rows = searching || group == null ? lib.list(Library.ALL, "") : grid.channels();
+        int i = indexOf(rows, at);
+        if (i < 0) {
+            rows = lib.list(Library.ALL, "");
+            i = indexOf(rows, at);
+        }
+        List<Channel> list = rows;
+        int j = Hidden.step(list.size(), i, by, k -> lib.isHidden(list.get(k)));
+        if (j < 0 || j == i) return;
+        Channel next = list.get(j);
+        watchHere(next);
+        int row = grid.channels().indexOf(next);
+        if (row >= 0) {
+            selectNow(next);
+            grid.rows.scrollToPosition(row);
+        }
+    }
+
+    private static int indexOf(List<Channel> rows, Channel ch) {
+        for (int i = 0; i < rows.size(); i++) if (rows.get(i).key.equals(ch.key)) return i;
+        return -1;
     }
 
     private void favourite(Channel ch) {
@@ -723,6 +844,40 @@ public class LiveTvFragment extends Fragment {
         details.refresh();
         listAdapter.notifyItemRangeChanged(0, listAdapter.getItemCount());
         resultsAdapter.notifyItemRangeChanged(0, resultsAdapter.getItemCount());
+    }
+
+    // ---- a channel's menu (a long press) --------------------------------------------------------------------
+
+    private void menu(Channel ch) {
+        if (ch == null || !isAdded()) return;
+        Context c = requireContext();
+        Sheets.channel(c, lib, ch, new Sheets.ChannelMenu() {
+            @Override public void favourite(Channel x) { LiveTvFragment.this.favourite(x); }
+
+            @Override public void hide(Channel x) { LiveTvFragment.this.hide(x); }
+
+            @Override public void similar(Channel x) {
+                Sheets.similar(c, lib, x, LiveTvFragment.this::play);
+            }
+
+            @Override public void info(Channel x) {
+                Guide.Schedule s = lib.schedule(x.key);
+                int at = s == null ? -1 : s.at(System.currentTimeMillis());
+                Sheets.programme(c, lib, x, at, actions());
+            }
+        });
+    }
+
+    /** Hidden on this phone (Undo brings it back; More, Hidden channels lists them all). */
+    private void hide(Channel ch) {
+        Context c = requireContext();
+        String key = Hidden.key(ch);
+        Hidden.hide(c, ch);
+        View v = getView();
+        if (v == null) return;
+        Snackbar.make(v, getString(R.string.live_hidden_one, ch.name), Snackbar.LENGTH_LONG)
+                .setAction(R.string.live_undo, x -> Hidden.unhide(c, key))
+                .show();
     }
 
     // ---- search -------------------------------------------------------------------------------------------------
@@ -896,16 +1051,11 @@ public class LiveTvFragment extends Fragment {
             view.addView(star, new LinearLayout.LayoutParams(Ui.dp(c, 48), Ui.dp(c, 48)));
             view.setOnClickListener(v -> {
                 if (ch == null) return;
-                if (mode != COMPACT && !searching && !ch.key.equals(selKey)) {
-                    Guide.Schedule s = lib.schedule(ch.key);
-                    int at = s == null ? -1 : s.at(System.currentTimeMillis());
-                    select(ch, at < 0 ? 0 : s.start[at], true);
-                } else {
-                    play(ch);
-                }
+                if (!searching) selectNow(ch);
+                play(ch);
             });
             view.setOnLongClickListener(v -> {
-                if (ch != null) favourite(ch);
+                if (ch != null) menu(ch);
                 return true;
             });
             star.setOnClickListener(v -> {
@@ -1002,6 +1152,10 @@ public class LiveTvFragment extends Fragment {
                 int i = hit.programme;
                 if (s.start[i] <= now && now < s.stop[i]) play(hit.channel);
                 else Sheets.programme(requireContext(), lib, hit.channel, i, actions());
+            });
+            view.setOnLongClickListener(v -> {
+                if (hit != null) menu(hit.channel);
+                return true;
             });
         }
 

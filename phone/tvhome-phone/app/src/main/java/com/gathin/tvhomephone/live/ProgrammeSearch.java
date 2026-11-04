@@ -128,12 +128,19 @@ final class ProgrammeSearch {
 
     /** The best limit programmes for a search (two letters or more), not yet ended at now, in ORDER. */
     static List<Hit> search(Index ix, String query, long now, int limit) {
+        return search(ix, query, now, limit, null);
+    }
+
+    /** As search, leaving out the channels skip marks (by their place in the index's channels: the hidden ones). */
+    static List<Hit> search(Index ix, String query, long now, int limit, boolean[] skip) {
         String q = fold(query);
         List<Hit> out = new ArrayList<>();
         if (q.length() < 2 || limit <= 0) return out;
         PriorityQueue<Hit> best = new PriorityQueue<>(limit + 1, Collections.reverseOrder(ORDER));
         for (int k = 0; k < ix.size(); k++) {
-            Guide.Schedule s = ix.schedules[ix.chan[k]];
+            int ci = ix.chan[k];
+            if (skip != null && ci < skip.length && skip[ci]) continue;
+            Guide.Schedule s = ix.schedules[ci];
             int i = ix.prog[k];
             if (s.stop[i] <= now) continue;
             int rank = titleRank(ix.low[k], q);
