@@ -142,9 +142,6 @@ A new key needs one there in the same pull request.
 | `ambient_glow` | bool | The glow behind the dock in the focused app's colour (`true` by default); `false` keeps only `background_color` or the wallpaper, e.g. for a calm photo background |
 | `app_glow` | bool | The focus highlight glows in the focused app's colour on every tile, as `cinematic_home` does for the dock (`false` by default) |
 | `fade_rows` | bool | The rows fade out as they scroll up under the clock instead of being cut off at a hard line; the wallpaper or sky shows through. The grid then draws into a hardware layer (about 6 MB of graphics memory at 1080p) (`false` by default) |
-| `how_was_it` | bool | How was it?: as a film's credits start in any app (70 minutes or more, watched here, not live TV or YouTube), or a season's last episode ends, a card in the bottom left corner asks Not for me, Liked it or Loved it; Loved titles lead Discover's Because you watched tabs, Not for me ones leave them and Surprise me (`true` by default) |
-| `pause_card` | bool | The pause card: a film or episode paused ten seconds in any app shows how far in it is, when it ends if carried on now and how that sits with `bedtime`, in the bottom left corner; Play or Back hides it (`true` by default) |
-| `because_tabs` | bool | Discover's Because you watched tabs after My list: up to three, from what was loved and what played most here in the last 30 days, filled with titles like it on the TV's own streaming apps (`true` by default) |
 
 ## Wallpapers
 
