@@ -59,7 +59,7 @@ final class Birthday {
     /** Home came up: on a birthday, the greeting the first time that day. */
     static void maybeGreet(HomeV2 h) {
         String[] b = today(h.a);
-        if (b == null || shown != null) return;
+        if (b == null || shown != null || !NotifyPrefs.allowed(h.a, "birthday", true)) return;
         SharedPreferences p = h.a.getSharedPreferences("birthday", Context.MODE_PRIVATE);
         String key = LocalDate.now() + "|" + b[0];
         if (p.getBoolean(key, false)) return;

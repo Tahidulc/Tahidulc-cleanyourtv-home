@@ -382,12 +382,26 @@ final class Config {
         return ctx.getExternalFilesDir(null);
     }
 
-    /** One switch from the theme's config.json, for the parts that run outside Home (GoalWatchService). */
+    /**
+     * One switch from the theme's config.json, for the parts that run outside Home (GoalWatchService). A kind of
+     * notification the theme leaves off but that was added in the Control Centre's Notifications (NotifyPrefs) has its
+     * switch on.
+     */
     static boolean themeFlag(Context ctx, String key, boolean fallback) {
+        return themeOnly(ctx, key, fallback) || NotifyPrefs.adds(ctx, key);
+    }
+
+    /** As themeFlag, the theme's own word only (not what Notifications added). */
+    static boolean themeOnly(Context ctx, String key, boolean fallback) {
+        JSONObject json = themeJson(ctx);
+        return json == null ? fallback : json.optBoolean(key, fallback);
+    }
+
+    /** The theme's config.json as themeFlag reads it; null without one. For reading several switches at once. */
+    static JSONObject themeJson(Context ctx) {
         File dir = dir(ctx);
         boolean mounted = Environment.MEDIA_MOUNTED.equals(Environment.getExternalStorageState());
-        JSONObject json = read(mounted && dir != null ? new File(dir, FILE_NAME) : new File(ctx.getFilesDir(), FILE_NAME));
-        return json == null ? fallback : json.optBoolean(key, fallback);
+        return read(mounted && dir != null ? new File(dir, FILE_NAME) : new File(ctx.getFilesDir(), FILE_NAME));
     }
 
     /** A string from the theme's config.json, for the parts that read it outside Config; the fallback without it. */

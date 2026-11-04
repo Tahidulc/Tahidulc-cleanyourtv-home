@@ -353,6 +353,7 @@ final class Predictions {
         ScoreCard.Data d = new ScoreCard.Data();
         d.dark = true;
         d.kind = "release";
+        d.notify = "prediction";
         d.band = 0xFF10157E;
         d.bandDeep = 0xFF060928;
         d.labelColour = 0xFFFFD04D;

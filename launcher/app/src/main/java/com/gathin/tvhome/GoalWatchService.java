@@ -915,6 +915,7 @@ public class GoalWatchService extends Service {
             d.wideMark = true;
             d.wideMark = false;
             d.leagueLogo = emoji("🥊", 120);
+            d.notify = "boxing";
             d.label = "BOXING";
             d.labelSmall = "BBC SPORT";
             d.labelColour = 0xFFFFD230;
@@ -1114,6 +1115,7 @@ public class GoalWatchService extends Service {
             if (pairingClose != null) pairingClose.run();
             ScoreCard.Data p = new ScoreCard.Data();
             p.kind = "notice";
+            p.notify = NotifyKinds.ALWAYS;   // a code to type, not a notification
             p.leagueLogo = iconBitmap(R.drawable.ic_cast, Math.round(30 * getResources().getDisplayMetrics().density));
             p.labelColour = 0xFF7B5CFF;
             p.label = "PAIR " + phone.toUpperCase(java.util.Locale.ROOT);
@@ -1415,6 +1417,27 @@ public class GoalWatchService extends Service {
         }
     };
 
+    /**
+     * The switches of the kinds of alert the Control Centre's Notifications can add (NotifyKinds' theme switches): read
+     * as the service starts, and again when one is added or switched there (flagsChanged).
+     */
+    private void readFlags() {
+        f1Live = Config.themeFlag(this, "f1_live_alerts", false);
+        newsAlerts = Config.themeFlag(this, "news_alerts", false);
+        incidentAlerts = Config.themeFlag(this, "incident_alerts", false);
+        kickoffReminders = Config.themeFlag(this, "kickoff_reminders", false);
+        tennisAlerts = Config.themeFlag(this, "tennis_alerts", false);
+        ufcAlerts = Config.themeFlag(this, "ufc_alerts", false);
+        boxingAlerts = Config.themeFlag(this, "boxing_alerts", false);
+        weatherAlerts = Config.themeFlag(this, "weather_alerts", false);
+    }
+
+    /** A kind added or switched in Notifications (NotifyPrefs): the running service reads its switches again. */
+    static void flagsChanged() {
+        GoalWatchService s = self;
+        if (s != null) s.main.post(() -> { if (s.startedAt != 0) s.readFlags(); });
+    }
+
     @Override public int onStartCommand(Intent intent, int flags, int startId) {
         NotificationManager nm = getSystemService(NotificationManager.class);
         if (Build.VERSION.SDK_INT >= 26 && nm != null && nm.getNotificationChannel(CHANNEL) == null) {
@@ -1425,21 +1448,14 @@ public class GoalWatchService extends Service {
         if (Build.VERSION.SDK_INT >= 34) startForeground(7, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
         else startForeground(7, n);
         if (startedAt == 0) {
-            f1Live = Config.themeFlag(this, "f1_live_alerts", false);
-            newsAlerts = Config.themeFlag(this, "news_alerts", false);
+            readFlags();
             frost = Config.themeFlag(this, "frost_alerts", false);
             stillOverApps = Config.themeFlag(this, "still_over_apps", false);
             animateOverApps = Config.themeFlag(this, "animate_over_apps", false);
             liteOverApps = Config.themeFlag(this, "lite_over_apps", false);
             teamAlerts = Config.themeFlag(this, "team_alerts", false);
-            incidentAlerts = Config.themeFlag(this, "incident_alerts", false);
-            kickoffReminders = Config.themeFlag(this, "kickoff_reminders", false);
-            tennisAlerts = Config.themeFlag(this, "tennis_alerts", false);
-            ufcAlerts = Config.themeFlag(this, "ufc_alerts", false);
-            boxingAlerts = Config.themeFlag(this, "boxing_alerts", false);
             everywhere = Config.themeFlag(this, "alerts_everywhere", false);
             skyAlerts = Config.themeFlag(this, "sky_alerts", false);
-            weatherAlerts = Config.themeFlag(this, "weather_alerts", false);
             if (Config.themeFlag(this, "alert_sounds", false)) loadSounds();
             // New episodes and films (ReleaseAlerts): first a few minutes after the start, then every two hours.
             main.removeCallbacks(releases);
@@ -2911,6 +2927,7 @@ public class GoalWatchService extends Service {
         float dd = getResources().getDisplayMetrics().density;
         ScoreCard.Data d = new ScoreCard.Data();
         d.kind = "notice";
+        d.notify = NotifyKinds.ofSound(sound);
         Integer tint = null;
         android.graphics.Bitmap mark = null;
         boolean markWide = false;
@@ -3062,6 +3079,7 @@ public class GoalWatchService extends Service {
         cardRun(() -> {
             ScoreCard.Data d = new ScoreCard.Data();
             d.kind = "notice";
+            d.notify = "tennis";
             boolean wta = "WTA".equals(r.tour);
             d.band = wta ? 0xFF4B2683 : 0xFF0B2A5B;
             d.bandDeep = wta ? 0xFF2A1450 : 0xFF061633;
@@ -3089,6 +3107,7 @@ public class GoalWatchService extends Service {
         String[] heads = {"ORDER PLACED", "BEING PREPARED", "ON THE WAY", "ALMOST THERE", "DELIVERED"};
         ScoreCard.Data d = new ScoreCard.Data();
         d.kind = "notice";
+        d.notify = "delivery";
         d.band = deeper(brand, 0.82f);
         d.bandDeep = deeper(brand, 0.5f);
         d.leagueLogo = icon;
@@ -3118,6 +3137,7 @@ public class GoalWatchService extends Service {
         String name = Config.themeString(this, "tesla_name", Config.themeString(this, "tesla_model", "Model X"));
         ScoreCard.Data d = new ScoreCard.Data();
         d.kind = "notice";
+        d.notify = "car";
         d.band = 0xFFE82127;
         d.bandDeep = 0xFF8E1116;
         d.leagueLogo = iconBitmap(R.drawable.tesla_t, Math.round(30 * dd));
@@ -3496,6 +3516,19 @@ public class GoalWatchService extends Service {
     static final long WAIT_MAX_MS = 90_000L;
 
     @SuppressWarnings("unchecked")
+    /** The kind (NotifyKinds) of one of the queue's alerts: by what it is, else by its sound; null when unknown. */
+    private static String queuedKind(Object[] e) {
+        if (e.length == 1 && e[0] instanceof F1Results.Race) return "f1result";
+        if (e.length == 2 && e[0] instanceof DeliveryCard.Card) {
+            return ((DeliveryCard.Card) e[0]).pairing ? NotifyKinds.ALWAYS : "delivery";
+        }
+        // A football line: {headline, game, home, away, league, sound, scorer, watch}.
+        if (e.length == 8 && e[5] instanceof String) return NotifyKinds.ofSound((String) e[5]);
+        // The kick-off with its line-ups: {line, "reminder", sides, pictures, live page}.
+        if (e.length == 5 && e[2] instanceof ScoresTicker.Side[]) return "kickoff";
+        return e.length >= 2 && e[1] instanceof String ? NotifyKinds.ofSound((String) e[1]) : null;
+    }
+
     private void showNext() {
         if (shown != null && !queue.isEmpty()) {
             // One up while others wait: looked at again every few seconds; one up far longer than any alert stays
@@ -3525,6 +3558,14 @@ public class GoalWatchService extends Service {
         }
         waitingSince = 0;
         Object[] polled = queue.poll();
+        // Switched off in the Control Centre's Notifications (its kind, or where it would show): the next one.
+        String kind = queuedKind(polled);
+        boolean home = NotifyPrefs.homeNow();
+        if (!NotifyPrefs.allowed(this, kind, home)) {
+            NotifyPrefs.held(this, kind, home, null, "alert " + describe(polled));
+            main.post(this::showNext);
+            return;
+        }
         AlertLog.note(this, "alert shown: " + describe(polled));
         current = polled;
         // A race result on v2's Home runs through the score bar's place as pills, a page at a time.

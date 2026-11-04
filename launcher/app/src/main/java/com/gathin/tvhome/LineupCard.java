@@ -147,6 +147,12 @@ final class LineupCard {
     /** Opens the card (on the main thread), in place of one already showing; after the camera card, if that is up. */
     static void show(Context ctx, Data d) {
         Context c = ctx.getApplicationContext();
+        // Switched off in the Control Centre's Notifications (kick-off and line-ups, or where it would show).
+        boolean home = NotifyPrefs.homeNow();
+        if (renderTo == null && !NotifyPrefs.allowed(c, "kickoff", home)) {
+            NotifyPrefs.held(c, "kickoff", home, null, "line-up card");
+            return;
+        }
         AlertLog.note(c, "line-up card shown" + (CameraAlert.isShowing() ? " (after the camera card)" : ""));
         if (CameraAlert.isShowing()) {
             main.postDelayed(() -> show(c, d), 2_000L);
@@ -619,6 +625,11 @@ final class LineupCard {
     /** Opens the half-time card (on the main thread), after any other pop-up has gone; nothing to watch, no OK. */
     static void showHalfTime(Context ctx, Half f) {
         Context c = ctx.getApplicationContext();
+        boolean home = NotifyPrefs.homeNow();
+        if (!NotifyPrefs.allowed(c, "ht", home)) {
+            NotifyPrefs.held(c, "ht", home, f.key, "half time card");
+            return;
+        }
         if (GoalWatchService.laneHome && GoalWatchService.homeInFront || PopupFrame.isShowing()) {
             if (f.onHome != null) f.onHome.run();
             return;
@@ -867,6 +878,12 @@ final class LineupCard {
     /** Opens an F1 board (on the main thread): the card in the corner over an app, or on Home the bar across the top. */
     static void showF1(Context ctx, F1 f) {
         Context c = ctx.getApplicationContext();
+        String kind = f.grid ? "f1grid" : "f1result";
+        boolean home = NotifyPrefs.homeNow();
+        if (!NotifyPrefs.allowed(c, kind, home)) {
+            NotifyPrefs.held(c, kind, home, null, "F1 board " + f.gp + " " + f.session);
+            return;
+        }
         // One at a time: after a score card, a camera alarm or an older alert (news, weather) has gone.
         if ((CameraAlert.isShowing() || ScoreCard.busy() || GoalWatchService.alertShowing()) && f.waited < 45) {
             // Waits its turn, two seconds at a time, at most a minute and a half: then it shows all the same.

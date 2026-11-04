@@ -680,6 +680,7 @@ final class MoreAlerts {
         String what = levels ? "equaliser" : leads && late ? "winner" : "go-ahead goal";
         String fixture = home + " " + m.h + "–" + m.a + " " + away;
         String down = m.worst >= 1 ? "from " + m.worstScore + " down" : "from behind";
+        d.notify = "drama";
         d.band = DRAMA;
         d.bandDeep = DRAMA_DEEP;
         d.labelColour = DRAMA_LABEL;

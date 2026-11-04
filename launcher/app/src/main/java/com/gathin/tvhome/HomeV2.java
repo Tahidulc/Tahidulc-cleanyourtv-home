@@ -232,6 +232,11 @@ final class HomeV2 {
         return weatherView;
     }
 
+    /** adb only (--ez open_notifications true): the Control Centre's Notifications, as its tile opens them. */
+    void openNotifications() {
+        if (notifyPanel != null) notifyPanel.show();
+    }
+
     /** adb only (test_live_ticker): a live game in the top bar's ticker, its clock ticking. */
     void testLiveTicker() {
         if (scores != null) scores.testLive();
@@ -649,6 +654,8 @@ final class HomeV2 {
     private ViewingPanel viewing;
     /** The Control Centre: the one button at the top right. */
     private ControlCentre controlCentre;
+    /** The Control Centre's Notifications: the main switches and one per kind (NotifyPanel). */
+    private NotifyPanel notifyPanel;
     /** A title's panel: OK held on a poster. */
     private TitlePanel titlePanel;
 
@@ -772,6 +779,9 @@ final class HomeV2 {
                 () -> TvLink.open(this, true, false)).in("THE OTHER TV"));
         // Today's alerts: every goal, red card and full time today, what came up and what was missed, OK showing it again.
         items.add(new ControlCentre.Item("Today's alerts", R.drawable.ic_bell, AlertToday::summary, null, () -> AlertToday.open(this)));
+        // Notifications: on Home and over apps on or off, and each kind (goals, the news, the doorbell) on or off.
+        notifyPanel = new NotifyPanel(this);
+        items.add(new ControlCentre.Item("Notifications", R.drawable.ic_bell, () -> NotifyPrefs.summary(a), null, () -> notifyPanel.show()));
         viewing = new ViewingPanel(this);
         items.add(new ControlCentre.Item("Your viewing", R.drawable.ic_chart, () -> "Your week on TV", null, () -> viewing.show()));
         search = new SearchPanel(this);
@@ -1415,6 +1425,7 @@ final class HomeV2 {
         // Home pressed while two apps are on screen together: their options, not Home.
         if (TwoUp.home(this)) return;
         if (controlCentre != null) controlCentre.hide();
+        if (notifyPanel != null) notifyPanel.hide();
         Surprise.close();
         EpisodeDice.close();
         Recap.close();
@@ -1453,6 +1464,7 @@ final class HomeV2 {
     private void bringBackMatch(boolean kickOff) {
         if (match == null || !match.active() || zone == Z_MATCH) return;
         boolean busy = page != null || guide.isOpen() || (controlCentre != null && controlCentre.isOpen())
+                || (notifyPanel != null && notifyPanel.isOpen())
                 || (smartPanel != null && smartPanel.isOpen()) || (weatherPanel != null && weatherPanel.isOpen())
                 || (titlePanel != null && titlePanel.isOpen()) || (viewing != null && viewing.isOpen())
                 || (search != null && search.isOpen()) || Surprise.isOpen() || EpisodeDice.isOpen() || Recap.isOpen()
@@ -1494,6 +1506,7 @@ final class HomeV2 {
         // Two at once: its options (Home pressed while both are up) or the apps to choose from.
         if (TwoUp.open()) return TwoUp.key(e);
         if (controlCentre != null && controlCentre.isOpen()) return controlCentre.key(e);
+        if (notifyPanel != null && notifyPanel.isOpen()) return notifyPanel.key(e);
         if (Surprise.isOpen()) return Surprise.key(e);
         if (EpisodeDice.isOpen()) return EpisodeDice.key(e);
         if (Recap.isOpen()) return Recap.key(e);

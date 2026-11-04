@@ -130,6 +130,12 @@ final class DoorbellAlert {
     // ---- the card ------------------------------------------------------------------------------------------------
 
     private static void show(Context c, String name, Bitmap pic, PendingIntent tap, long when) {
+        // Switched off in the Control Centre's Notifications (Doorbell, or where it would show).
+        boolean home = NotifyPrefs.homeNow();
+        if (!NotifyPrefs.allowed(c, "doorbell", home)) {
+            NotifyPrefs.held(c, "doorbell", home, null, "doorbell card " + name);
+            return;
+        }
         // Rung again while the card shows: the card afresh with the new picture, the ding-dong not again.
         boolean again = host != null && System.currentTimeMillis() - shownAt < 45_000L;
         close(false);

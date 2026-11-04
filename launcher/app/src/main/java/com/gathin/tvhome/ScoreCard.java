@@ -68,6 +68,11 @@ final class ScoreCard {
         final List<Object[]> others = new ArrayList<>();
         /** goal, red, var, pen, ft, f1 or fight: how it moves. */
         String kind = "";
+        /**
+         * Its kind in the Control Centre's Notifications (NotifyKinds: "tennis", "messages"; NotifyKinds.ALWAYS for a
+         * question or a code); null: worked out from kind.
+         */
+        String notify;
         /** The goal's, red card's or full time's key (ScoresTicker), for Today's alerts; null for anything else. */
         String key;
         /** Shown again from Today's alerts: always the full card (Home's bar would be under its panel). */
@@ -193,6 +198,14 @@ final class ScoreCard {
         }
         waitingSince = 0;
         Data d = queue.poll();
+        // Switched off in the Control Centre's Notifications (where it would show, or its kind): not shown, the next one.
+        boolean home = NotifyPrefs.homeNow();
+        if (!NotifyPrefs.allowed(c, d, home)) {
+            NotifyPrefs.held(c, NotifyKinds.ofCard(d.notify, d.kind, !d.podium.isEmpty()), home, d.key,
+                    "card " + d.label + (d.labelSmall != null ? " " + d.labelSmall : "") + " " + d.first + " " + d.last + " " + d.line);
+            next(c);
+            return;
+        }
         if (d.f1) { d.dark = true; d.wideMark = true; }
         onHome = !d.again && (GoalWatchService.laneHome && GoalWatchService.homeInFront || PopupFrame.isShowing());
         k = c.getResources().getDisplayMetrics().widthPixels / 1920f;

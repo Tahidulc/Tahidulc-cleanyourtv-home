@@ -179,6 +179,12 @@ final class CameraAlert {
      * snapshot, the camera in sonar rings on dark glass.
      */
     private static void show(Context c, String camera, String what, Bitmap pic, PendingIntent tap) {
+        // Switched off in the Control Centre's Notifications (Cameras, or where it would show).
+        boolean home = NotifyPrefs.homeNow();
+        if (!NotifyPrefs.allowed(c, "camera", home)) {
+            NotifyPrefs.held(c, "camera", home, null, "camera card " + camera + ": " + what);
+            return;
+        }
         // The same alarm again (Tuya updates its notification as the snapshot arrives): shown afresh, picture and all.
         close(false);
         float d = c.getResources().getDisplayMetrics().density * SIZE;

@@ -75,6 +75,7 @@ final class KidsNight {
         ScoreCard.Data d = new ScoreCard.Data();
         d.dark = true;
         d.kind = "release";
+        d.notify = NotifyKinds.ALWAYS;   // bedtime's own card, not a notification
         d.band = 0xFF141A4A;
         d.bandDeep = 0xFF060928;
         d.labelColour = 0xFF6E7BFF;

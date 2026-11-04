@@ -109,6 +109,14 @@ final class RichAlerts {
         return true;
     }
 
+    /** Whether this kind may show now (the Control Centre's Notifications), logging it when not. */
+    private static boolean allowed(Context c, String kind, String what) {
+        boolean home = NotifyPrefs.homeNow();
+        if (NotifyPrefs.allowed(c, kind, home)) return true;
+        NotifyPrefs.held(c, kind, home, null, what);
+        return false;
+    }
+
     /** Runs show once nothing else is up (the goal's card, a line-up, an older alert), at most a minute and a half on. */
     private static void whenClear(Context c, Runnable show, long since) {
         boolean busy = host != null || ScoreCard.busy() || LineupCard.isShowing() || GoalWatchService.alertShowing();
@@ -495,6 +503,7 @@ final class RichAlerts {
     private static void showTable(GoalWatchService s, Table t) {
         scale(s);
         whenClear(s, () -> {
+            if (!allowed(s, "table", "live table " + t.headline)) return;
             AlertLog.note(s, "live table shown " + (onHome() ? "on Home" : "over the app") + ": " + t.headline);
             if (onHome()) tableBar(s, t); else tableCard(s, t);
         }, android.os.SystemClock.uptimeMillis());
@@ -676,6 +685,7 @@ final class RichAlerts {
     private static void showRush(GoalWatchService s, List<Chip> chips, int goals) {
         scale(s);
         whenClear(s, () -> {
+            if (!allowed(s, "goalrush", "goal rush, " + goals + " goals")) return;
             AlertLog.note(s, "goal rush shown " + (onHome() ? "on Home" : "over the app") + ": " + chips.size() + " games, " + goals + " goals");
             rushStrip(s, chips, goals);
         }, android.os.SystemClock.uptimeMillis());
@@ -874,6 +884,7 @@ final class RichAlerts {
     private static void showMilestone(GoalWatchService s, Milestone m) {
         scale(s);
         whenClear(s, () -> {
+            if (!allowed(s, "milestone", "milestone " + m.label + " " + m.who)) return;
             AlertLog.note(s, "milestone shown " + (onHome() ? "on Home" : "over the app") + ": " + m.label + " " + m.who);
             if (onHome()) milestoneBar(s, m); else milestoneCard(s, m);
         }, android.os.SystemClock.uptimeMillis());

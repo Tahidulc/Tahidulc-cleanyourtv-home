@@ -96,6 +96,7 @@ final class ReleaseAlerts {
         ScoreCard.Data d = new ScoreCard.Data();
         d.dark = true;
         d.kind = "release";
+        d.notify = "recap";
         d.band = 0xFF141519;
         d.bandDeep = 0xFF000000;
         d.labelColour = 0xFFFFD04D;
