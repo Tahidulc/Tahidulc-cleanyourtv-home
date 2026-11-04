@@ -170,7 +170,7 @@ public class PlayerActivity extends AppCompatActivity {
     }
 
     /** The player on one channel, from outside the app (an alert's Watch). */
-    static Intent intent(Context c, String key) {
+    public static Intent intent(Context c, String key) {
         return new Intent(c, PlayerActivity.class).putExtra(EXTRA_KEY, key).putExtra(EXTRA_GROUP, Library.ALL)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
     }
@@ -697,8 +697,24 @@ public class PlayerActivity extends AppCompatActivity {
 
     private void keepPanel() {
         h.removeCallbacks(hide);
-        h.postDelayed(hide, tiles.getVisibility() == View.VISIBLE ? TILE_MS : OVERLAY_MS);
+        if (tiles.getVisibility() != View.VISIBLE) {
+            h.postDelayed(hide, OVERLAY_MS);
+            return;
+        }
+        // The info tile stays as long as chosen in the options, or until a swipe down takes it away (TILE_UNTIL_SWIPE).
+        long ms = tileMs();
+        if (ms > 0) h.postDelayed(hide, ms);
     }
+
+    /** How long the info tile stays: the seconds chosen in the options (8 at first), or 0 for until it is swiped down. */
+    private long tileMs() {
+        int s = prefs().getInt(TILE_SECONDS, (int) (TILE_MS / 1000));
+        return s <= 0 ? 0 : s * 1000L;
+    }
+
+    /** The info tile's time in the options: seconds, or 0 for until it is swiped down. */
+    static final String TILE_SECONDS = "tile_seconds";
+    static final int[] TILE_TIMES = {4, 8, 15, 30, 0};
 
     private void hideOverlay() {
         h.removeCallbacks(hide);
@@ -935,6 +951,36 @@ public class PlayerActivity extends AppCompatActivity {
         TextView note = Ui.text(c, getString(R.string.tile_auto_note), 12, Ui.DIM, false);
         note.setPadding(0, Ui.dp(c, 6), 0, 0);
         box.addView(note);
+
+        // The info tile's size (Small leaves the most of the picture) and how long it stays.
+        List<TextView> sizes = new ArrayList<>();
+        LinearLayout sizeRow = chipRow(c, box, R.string.tile_size);
+        String sizeNow = prefs().getString(InfoTile.SIZE, "SMALL");
+        int[] sizeLabels = {R.string.tile_size_small, R.string.tile_size_medium, R.string.tile_size_large};
+        for (int i = 0; i < InfoTile.SIZES.length; i++) {
+            String sz = InfoTile.SIZES[i];
+            TextView t = Ui.guideChip(c, getString(sizeLabels[i]), sz.equals(sizeNow));
+            t.setOnClickListener(v -> {
+                prefs().edit().putString(InfoTile.SIZE, sz).apply();
+                for (TextView x : sizes) Ui.styleChip(c, x, x == v);
+                if (tilesShown()) drawTile(false);
+            });
+            sizes.add(t);
+            addChip(sizeRow, t);
+        }
+        List<TextView> times = new ArrayList<>();
+        LinearLayout timeRow = chipRow(c, box, R.string.tile_time);
+        int timeNow = prefs().getInt(TILE_SECONDS, (int) (TILE_MS / 1000));
+        for (int secs : TILE_TIMES) {
+            TextView t = Ui.guideChip(c, secs > 0 ? getString(R.string.tile_time_seconds, secs) : getString(R.string.tile_time_swipe),
+                    secs == timeNow);
+            t.setOnClickListener(v -> {
+                prefs().edit().putInt(TILE_SECONDS, secs).apply();
+                for (TextView x : times) Ui.styleChip(c, x, x == v);
+            });
+            times.add(t);
+            addChip(timeRow, t);
+        }
 
         TrackSelectionParameters params = player.getTrackSelectionParameters();
         List<Track> audio = tracks(C.TRACK_TYPE_AUDIO);
@@ -1282,6 +1328,11 @@ public class PlayerActivity extends AppCompatActivity {
             }
 
             @Override public void onSwipe(int d) {
+                // Kept until swiped down (the options): a swipe down while it shows takes the tile away instead.
+                if (d == Gestures.DOWN && tilesShown() && tileMs() == 0) {
+                    hideOverlay();
+                    return;
+                }
                 if (d == Gestures.UP) step(1);
                 else if (d == Gestures.DOWN) step(-1);
                 else if (d == Gestures.LEFT) {

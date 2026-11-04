@@ -8,6 +8,13 @@
     <string name="tile_match">Match night</string>
     <string name="tile_cinema">Cinematic</string>
     <string name="tile_panel">Guide panel</string>
+    <string name="tile_size">Info tile size</string>
+    <string name="tile_size_small">Small</string>
+    <string name="tile_size_medium">Medium</string>
+    <string name="tile_size_large">Large</string>
+    <string name="tile_time">Info tile stays</string>
+    <string name="tile_time_seconds">%1$d s</string>
+    <string name="tile_time_swipe">Until I swipe down</string>
     <string name="tile_auto_note">Auto: Match night for a game, Cinematic for a film, Card for a series, Glass ribbon for the rest</string>
     <string name="tile_live">LIVE</string>
     <string name="tile_now">NOW</string>
@@ -48,6 +55,7 @@
     <string name="tile_also_showing">Also showing on</string>
     <string name="tile_also_none">No other channel is showing it</string>
     <string name="tile_also_listed">Shows this game</string>
+    <string name="tile_also_best">Best match</string>
     <string name="tile_also_uhd">Shows this game in 4K UHD</string>
     <string name="tile_also_not_in_list">Not in your channels</string>
     <string name="tile_also_playing">Playing</string>

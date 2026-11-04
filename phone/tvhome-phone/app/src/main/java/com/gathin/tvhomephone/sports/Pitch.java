@@ -39,6 +39,9 @@ public final class Pitch extends View {
     private final android.graphics.Matrix matrix = new android.graphics.Matrix();
     private final Paint photoPaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final android.graphics.RectF rr = new android.graphics.RectF();
+    /** The best rating on the pitch (both sides), for its star; "" when none yet. */
+    private String best = "";
     private final TextPaint number = new TextPaint(Paint.ANTI_ALIAS_FLAG), name = new TextPaint(Paint.ANTI_ALIAS_FLAG);
     private final RectF rect = new RectF();
     private LinearGradient grass;
@@ -64,7 +67,20 @@ public final class Pitch extends View {
                      int awayKit) {
         home = new Side(homeLineup, homeFormation, homeKit);
         away = new Side(awayLineup, awayFormation, awayKit);
+        best = best(homeLineup, best(awayLineup, ""));
         invalidate();
+    }
+
+    /** The higher of best and the best rating in this line-up. */
+    static String best(List<String[]> lineup, String best) {
+        double top = best.isEmpty() ? -1 : Double.parseDouble(best);
+        String out = best;
+        for (String[] p : lineup) {
+            if (p.length <= Espn.P_RATING || p[Espn.P_RATING].isEmpty()) continue;
+            double v = Double.parseDouble(p[Espn.P_RATING]);
+            if (v > top) { top = v; out = p[Espn.P_RATING]; }
+        }
+        return out;
     }
 
     /** A player's photo has come: in his circle from now on. */
@@ -203,8 +219,35 @@ public final class Pitch extends View {
             c.drawText(p[Espn.P_NUMBER], bx, by - (fm.ascent + fm.descent) / 2f, number);
             number.setTextSize(size);
         }
-        String label = Glyphs.fit(p[Espn.P_SHORT], name, labelWidth);
-        c.drawText(label, x, y + r + 12.5f * d, name);
+        // His name, and his live rating (Ratings) in its colour beside it, the pair centred under him; the best on the
+        // pitch with a star.
+        String rating = p.length > Espn.P_RATING ? p[Espn.P_RATING] : "";
+        float base = y + r + 12.5f * d;
+        if (rating.isEmpty()) {
+            c.drawText(Glyphs.fit(p[Espn.P_SHORT], name, labelWidth), x, base, name);
+        } else {
+            boolean top = rating.equals(best);
+            float rs = name.getTextSize() * 0.92f, size = name.getTextSize();
+            name.setTextSize(rs);
+            String shown = top ? "★" + rating : rating;
+            float pillW = name.measureText(shown) + 7 * d, gap = 3 * d;
+            name.setTextSize(size);
+            String label = Glyphs.fit(p[Espn.P_SHORT], name, Math.max(20 * d, labelWidth - pillW - gap));
+            float lw = name.measureText(label), startX = x - (lw + gap + pillW) / 2f;
+            c.drawText(label, startX + lw / 2f, base, name);
+            Paint.FontMetrics fm = name.getFontMetrics();
+            float top0 = base + fm.ascent * 0.92f - 1.5f * d, bottom0 = base + fm.descent * 0.92f + 1.5f * d;
+            paint.setStyle(Paint.Style.FILL);
+            paint.setColor(Ratings.colour(rating));
+            rr.set(startX + lw + gap, top0, startX + lw + gap + pillW, bottom0);
+            c.drawRoundRect(rr, 4 * d, 4 * d, paint);
+            name.setTextSize(rs);
+            int was = name.getColor();
+            name.setColor(0xFFFFFFFF);
+            c.drawText(shown, rr.centerX(), base, name);
+            name.setColor(was);
+            name.setTextSize(size);
+        }
         paint.setStyle(Paint.Style.FILL);
         int goals = Espn.parseInt(p[Espn.P_GOALS]), own = Espn.parseInt(p[Espn.P_OWN]);
         float bx = x + r * 0.82f, by = y - r * 0.78f;

@@ -22,10 +22,9 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * "Also showing on": every channel showing the same game, each with its logo: the playlist's channels whose guide has
- * the game on now, then the broadcasters it is on (the British channel, ESPN's, the competition's), those the playlist
- * has to tap and play (its 4K/UHD channel too, marked 4K, before its HD one), the others named so you know where else
- * it is.
+ * "Also showing on": the family's own playlist's channels for the same game, each with its logo, the likeliest first and
+ * the one to watch marked: those whose guide has the game, and the playlist's channels of the broadcasters it is on
+ * (its 4K/UHD channel too, marked 4K). Broadcasters the playlist has none of are named only when it has nothing.
  */
 public final class AlsoShowing {
     private AlsoShowing() {}
@@ -39,7 +38,9 @@ public final class AlsoShowing {
     static final class Row {
         Channel ch;
         String name, logo, under;
-        boolean now, uhd;
+        boolean now, uhd, best;
+        /** How sure it is to show the game: by the guide, by a broadcaster, a favourite, the better picture. */
+        int score;
     }
 
     /** Opens the list for a game, read off the main thread; a note when nothing else shows it. */
@@ -60,36 +61,46 @@ public final class AlsoShowing {
     }
 
     static List<Row> rows(Context c, Game g, Channel current) {
+        return rows(c, g, current, when(g, System.currentTimeMillis()));
+    }
+
+    /** When to look in the guides for a game: now once it has started, its kick-off (a minute in) before. */
+    static long when(Game g, long now) {
+        return g != null && g.state == Game.PRE && g.kickoff > now ? g.kickoff + 60_000L : now;
+    }
+
+    /**
+     * The channels for a game, from the family's own playlist: those whose guide has the game at that time (the best
+     * evidence), and the playlist's channels of the broadcasters it is on (ESPN's, the British channel, the
+     * competition's, its 4K/UHD one too), each once, the likeliest first: what plays now, then a channel both ways, then
+     * by the guide, then by the broadcaster, a favourite and the better picture ahead. The first playable is marked as
+     * the one to watch. Broadcasters the playlist has none of are named only when it has nothing at all for the game.
+     */
+    static List<Row> rows(Context c, Game g, Channel current, long when) {
         Library lib = Library.get(c);
         lib.ensureNow();
-        List<Row> out = new ArrayList<>();
-        List<String> keys = new ArrayList<>();
-        long now = System.currentTimeMillis();
+        java.util.Map<String, Row> byKey = new java.util.LinkedHashMap<>();
+        List<Row> elsewhere = new ArrayList<>();
         List<Game> one = new ArrayList<>();
         one.add(g);
-        // The playlist's channels with the game in their guide now.
+        java.util.Set<String> fav = lib.favourites();
+        // The playlist's channels with the game in their guide.
         for (Channel ch : lib.list(Library.ALL, "")) {
             Guide.Schedule s = lib.schedule(ch.key);
-            int at = s == null ? -1 : s.at(now);
+            int at = s == null ? -1 : s.at(when);
             if (at < 0) continue;
             String title = s.title[at], desc = s.desc[at];
             if (!OnAir.looksLikeFixture(title) && !OnAir.looksLikeFixture(desc) && !mentions(title + " " + desc, g)) continue;
             Game m = OnAir.match(title, desc, s.start[at], s.stop[at], one);
-            if (m == null || keys.contains(ch.key)) continue;
-            Row r = new Row();
-            r.ch = ch;
-            r.name = ch.name;
-            r.logo = Ui.logo(ch);
-            r.uhd = Names.uhd(ch.name);
+            if (m == null) continue;
+            Row r = row(ch, current, fav);
             r.under = title;
-            r.now = current != null && current.key.equals(ch.key);
-            keys.add(ch.key);
-            out.add(r);
-            if (out.size() >= 24) break;
+            r.score += 4;
+            byKey.put(ch.key, r);
+            if (byKey.size() >= 24) break;
         }
-        // The broadcasters it is on.
+        // The broadcasters it is on, as the playlist has them: its 4K/UHD channel and its HD one.
         for (String name : Channels.names(g)) {
-            // The playlist's 4K/UHD channel for it first, then its HD one; only named when the playlist has neither.
             Channel[] tier = lib.tiers(name);
             if (tier[0] == null && tier[1] == null) {
                 Row r = new Row();
@@ -97,32 +108,60 @@ public final class AlsoShowing {
                 String logo = ChannelLogos.find(c, name);
                 r.logo = logo != null ? logo : ChannelLogos.sky(name);
                 r.under = c.getString(R.string.tile_also_not_in_list);
-                out.add(r);
+                elsewhere.add(r);
                 continue;
             }
             for (int t = 1; t >= 0; t--) {
                 Channel ch = tier[t];
-                if (ch == null || keys.contains(ch.key)) continue;
-                Row r = new Row();
-                r.ch = ch;
-                r.name = ch.name;
-                r.uhd = t == 1;
-                String logo = !ch.logo.isEmpty() ? ch.logo : ChannelLogos.find(c, name);
-                if (logo == null) logo = ChannelLogos.sky(name);
-                r.logo = logo != null ? logo : ChannelLogos.sky(ch.name);
-                r.under = c.getString(r.uhd ? R.string.tile_also_uhd : R.string.tile_also_listed);
-                r.now = current != null && current.key.equals(ch.key);
-                keys.add(ch.key);
-                out.add(r);
+                if (ch == null) continue;
+                Row r = byKey.get(ch.key);
+                if (r == null) {
+                    r = row(ch, current, fav);
+                    r.under = c.getString(t == 1 ? R.string.tile_also_uhd : R.string.tile_also_listed);
+                    byKey.put(ch.key, r);
+                }
+                if (r.logo == null || r.logo.isEmpty()) {
+                    String logo = ChannelLogos.find(c, name);
+                    r.logo = logo != null ? logo : ChannelLogos.sky(name);
+                }
+                r.uhd |= t == 1;
+                r.score += 3;
             }
         }
-        // What plays now first, then what can be played, then the rest.
-        out.sort((a, b) -> Integer.compare(rank(a), rank(b)));
+        List<Row> out = new ArrayList<>(byKey.values());
+        out.sort((a, b) -> Integer.compare(rank(b), rank(a)));
+        for (Row r : out) {
+            if (r.ch != null && !r.now) {
+                r.best = true;
+                break;
+            }
+        }
+        if (out.isEmpty()) out.addAll(elsewhere);
         return out;
     }
 
+    /** A playlist channel's row, before what says it shows the game is added. */
+    private static Row row(Channel ch, Channel current, java.util.Set<String> fav) {
+        Row r = new Row();
+        r.ch = ch;
+        r.name = ch.name;
+        r.logo = Ui.logo(ch);
+        r.uhd = Names.uhd(ch.name);
+        r.now = current != null && current.key.equals(ch.key);
+        if (fav.contains(ch.key)) r.score += 2;
+        if (r.uhd) r.score += 1;
+        return r;
+    }
+
+    /** The playlist channel to watch a game on (the first of rows that can be played), or null. Off the main thread. */
+    public static Channel best(Context c, Game g) {
+        if (g == null) return null;
+        for (Row r : rows(c, g, null)) if (r.ch != null) return r.ch;
+        return null;
+    }
+
     private static int rank(Row r) {
-        return r.now ? 0 : r.ch != null ? 1 : 2;
+        return (r.now ? 1000 : 0) + (r.ch != null ? 100 : 0) + r.score;
     }
 
     /** Whether words name both clubs (a guide that says "Dortmund v Betis" without the word "Live"). */
@@ -191,7 +230,9 @@ public final class AlsoShowing {
             name.setMaxLines(1);
             name.setEllipsize(TextUtils.TruncateAt.END);
             words.addView(name);
-            TextView under = Ui.text(c, r.under == null ? "" : r.under, 12, Ui.SOFT, false);
+            String says = r.under == null ? "" : r.under;
+            if (r.best) says = c.getString(R.string.tile_also_best) + (says.isEmpty() ? "" : " · " + says);
+            TextView under = Ui.text(c, says, 12, r.best ? 0xFF8EF0B8 : Ui.SOFT, r.best);
             under.setMaxLines(1);
             under.setEllipsize(TextUtils.TruncateAt.END);
             words.addView(under);

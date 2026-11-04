@@ -68,6 +68,8 @@ public final class Notifier {
         } else {
             b.setContentIntent(home(c));
         }
+        // Watch match first: the game on the family's own playlist (AlsoShowing's best channel for it).
+        if (a.game != null && a.game.state != Game.POST && !a.kind.startsWith("f1")) watchMatch(c, a.game, b);
         if (!(NotifCard.drawn(a) && carded(c, a, b)) && !drawnOther(c, a, b)) {
             if (a.game != null) {
                 Bitmap crest = crest(c, a);
@@ -172,14 +174,6 @@ public final class Notifier {
                 .setCustomContentView(small)
                 .setCustomHeadsUpContentView(small)
                 .setCustomBigContentView(big);
-        if (g.state != Game.POST && channel != null && !channel.isEmpty()) {
-            Intent watch = com.gathin.tvhomephone.live.LiveLinks.watch(c, channel);
-            if (watch != null) {
-                b.addAction(R.drawable.live_ic_play, c.getString(R.string.sports_notif_watch, channel),
-                        PendingIntent.getActivity(c, ("watch:" + g.id).hashCode(), watch,
-                                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE));
-            }
-        }
         b.addAction(R.drawable.sports_ic_ball, c.getString(R.string.sports_notif_match), open(c, g));
         b.addAction(R.drawable.live_ic_bell, c.getString(R.string.sports_notif_mute), MuteReceiver.pending(c, g.id));
         return true;
@@ -334,6 +328,24 @@ public final class Notifier {
         } catch (Exception e) {
             return null;
         }
+    }
+
+    /**
+     * "Watch match": the game in the Live TV player, on the playlist channel most likely to have it (a guide that shows
+     * the game, or the broadcaster's channel, the better picture first); nothing when the playlist has none.
+     */
+    static void watchMatch(Context c, Game g, NotificationCompat.Builder b) {
+        com.gathin.tvhomephone.live.Channel ch;
+        try {
+            ch = com.gathin.tvhomephone.live.AlsoShowing.best(c, g);
+        } catch (RuntimeException e) {
+            ch = null;
+        }
+        if (ch == null) return;
+        Intent watch = com.gathin.tvhomephone.live.PlayerActivity.intent(c, ch.key);
+        b.addAction(R.drawable.live_ic_play, c.getString(R.string.sports_notif_watch_match),
+                PendingIntent.getActivity(c, ("watch:" + g.id).hashCode(), watch,
+                        PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE));
     }
 
     static PendingIntent open(Context c, Game g) {

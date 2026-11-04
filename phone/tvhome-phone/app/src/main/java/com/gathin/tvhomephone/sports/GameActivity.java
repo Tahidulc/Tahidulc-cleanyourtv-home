@@ -788,6 +788,16 @@ public class GameActivity extends AppCompatActivity {
         for (int g = 0; g < Math.min(goals, 3); g++) first.addView(glyph(Glyphs.GOAL));
         String cards = p[Espn.P_CARDS];
         if (!cards.isEmpty()) first.addView(glyph(cards.equals("YR") ? Glyphs.SECOND_YELLOW : cards.contains("R") ? Glyphs.RED : Glyphs.YELLOW));
+        // His live rating (Ratings), once he has been on.
+        String rating = p.length > Espn.P_RATING ? p[Espn.P_RATING] : "";
+        if (!rating.isEmpty()) {
+            TextView rt = Ui.text(this, rating, 11, 0xFFFFFFFF, true);
+            rt.setBackground(Ui.fill(this, Ratings.colour(rating), 4));
+            rt.setPadding(Ui.dp(this, 5), Ui.dp(this, 1), Ui.dp(this, 5), Ui.dp(this, 1));
+            LinearLayout.LayoutParams rl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            rl.leftMargin = Ui.dp(this, 5);
+            first.addView(rt, rl);
+        }
         words.addView(first);
         if (cameOn) {
             String forWho = replaced(p[Espn.P_NAME]);

@@ -87,6 +87,20 @@ final class InfoTile {
     private static final int WHITE = 0xFFFFFFFF, INK = 0xFF10123A;
 
     /** The tile for this style (never PANEL or AUTO: the caller picks), wide across the picture or stacked. */
+    /** The tile's size, chosen in the player's options: Small (the default, to see the picture), Medium or Large. */
+    static final String SIZE = "tile_size";
+    static final String[] SIZES = {"SMALL", "MEDIUM", "LARGE"};
+
+    /** How much of its full size the tile is drawn at, for the size chosen. */
+    static float size(Context c) {
+        String s = c.getApplicationContext().getSharedPreferences("live_player", Context.MODE_PRIVATE).getString(SIZE, "SMALL");
+        return sizeFactor(s);
+    }
+
+    static float sizeFactor(String size) {
+        return "LARGE".equals(size) ? 1f : "MEDIUM".equals(size) ? 0.84f : 0.68f;
+    }
+
     static View build(Context c, TileData.Info i, TileKind.Style style, boolean wide, Actions a, boolean animate) {
         Kit k = new Kit(c, wide);
         switch (style) {
@@ -147,7 +161,7 @@ final class InfoTile {
                 ribbon.addView(nextBlock(k, i, a, false));
             }
         }
-        FrameLayout.LayoutParams rp = new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM);
+        FrameLayout.LayoutParams rp = k.footParams();
         rp.leftMargin = rp.rightMargin = k.dp(12);
         rp.bottomMargin = k.dp(26);
         root.addView(k.fitted(ribbon, 26), rp);
@@ -455,7 +469,7 @@ final class InfoTile {
             });
         });
         k.clip(frame, 22);
-        FrameLayout.LayoutParams fp = new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM);
+        FrameLayout.LayoutParams fp = k.footParams();
         fp.leftMargin = fp.rightMargin = k.dp(12);
         fp.bottomMargin = k.dp(14);
         root.addView(k.fitted(frame, 14), fp);
@@ -606,6 +620,7 @@ final class InfoTile {
             case "TABLE": return 0xFFC9A7FF;
             case "HEAD TO HEAD": return 0xFFFFC266;
             case "PLAYER": return 0xFFFF9EC7;
+            case "RATINGS": return 0xFF7FE0A8;
             default: return 0xFFB8C2EA;
         }
     }
@@ -842,7 +857,7 @@ final class InfoTile {
             this.c = c;
             this.wide = wide;
             float sw = c.getResources().getConfiguration().smallestScreenWidthDp;
-            scale = sw >= 720 ? 1.25f : sw >= 600 ? 1.12f : 1f;
+            scale = (sw >= 720 ? 1.25f : sw >= 600 ? 1.12f : 1f) * size(c);
         }
 
         int dp(float v) {
@@ -851,6 +866,18 @@ final class InfoTile {
 
         int screenW() {
             return c.getResources().getDisplayMetrics().widthPixels;
+        }
+
+        /**
+         * A tile along the foot: on its side, all the width at Large, a little over half at Small and about three
+         * quarters at Medium, from the left, so the rest of the picture shows; upright, all the width (it sits under
+         * the picture).
+         */
+        FrameLayout.LayoutParams footParams() {
+            float f = size(c);
+            if (!wide || f >= 1f) return new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM);
+            int w = Math.round(screenW() * (f <= 0.7f ? 0.56f : 0.72f));
+            return new FrameLayout.LayoutParams(w, -2, Gravity.BOTTOM | Gravity.START);
         }
 
         /**

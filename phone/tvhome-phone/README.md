@@ -12,21 +12,28 @@ form or the game so far), Cinematic for a film, Card for a series' episode and G
 the channel's logo, and facts in turn while a game is on (its numbers, the table, each side's run, earlier meetings,
 top scorers). The player's options can set one style for everything, or the guide panel as before.
 
-The scores box is the broadcasters' bar: each club's code on a slanted wedge in its own colour, the scores either side
-of the competition's logo in the dark middle, and the clock in a tab under it in minutes and seconds (45:00 and +2 in
-added time). A goal plays out as the broadcasters' bar does, in the scoring club's colours: its colour sweeps across
-from its end with a flash, its code at the left, its crest popping in on a chevron of its second colour where the
-competition's logo was, GOAL dropping in letter by letter at the right (its O a spinning ball), the clock carrying on
-under it; then it pulls back and the new number rolls up.
+The scores box is a broadcaster's scoreboard: the competition's logo on its own slanted block at the left, a silver
+bar with both clubs and the score in a red plate between them, and under it a tab with the clock in minutes and seconds
+(45:00 and +2 in added time), HT, FT or the kick-off time.
 Full screen, the picture goes into a small window as you leave the app (from the guide too; the player's options turn
-that off), and a phone on its side stretches the picture to the screen. Upright, the info tile stays in the room under
-the picture. A game's tile and its page have "Also showing on": every channel with the same game, with its logo. A channel's 4K/UHD
-version in the playlist is listed too, before its HD one, with a "4K" mark on its logo; 4K channels in Live TV wear the
-same mark, and one with no logo of its own shows its channel's (Sky's, matched past "UK:" and "UHD" in its name).
+that off), and a phone on its side stretches the picture to the screen. The info tile is Small at first (on its side a
+card at the foot's left, a little over half the width, so the game shows; upright, in the room under the picture),
+Medium or Large in the player's options, which also set how long it stays (4, 8, 15 or 30 seconds, or until a swipe
+down takes it away). A game's tile and its page have "Also showing on", from the family's own playlist: the channels
+whose guide has the game and the playlist's channels of the broadcasters it is on, each with its logo, the likeliest
+first and marked Best match; a channel's 4K/UHD version is listed too, with a "4K" mark on its logo (4K channels in Live
+TV wear the same mark, and one with no logo of its own shows its channel's, Sky's, matched past "UK:" and "UHD").
+Broadcasters the playlist has none of are named only when it has nothing for the game.
+
+Players have live ratings out of ten (Ratings), worked out from ESPN's figures for them in the game: everyone on starts
+at 6.4, goals, assists, shots on target and fouls won lift it, fouls, offsides, cards and own goals bring it down, a
+keeper's saves and a clean sheet count, and the score moves it a touch. They show by each name on the line-ups pitch
+(the best with a star) and the substitutes, and the full-screen tile's facts name each side's top rated.
 
 A game's alerts come as cards: folded, what happened and who with the scoring side's crest; opened out, both crests on
 white discs, the score with the scoring side's number lit, the minute, and the 90 minutes with each goal on them. Under
-each: Watch (the channel in Live TV, when the playlist has it), Match and Mute game. "Following live" draws the live
+each, and under the kick-off and line-ups alerts too: Watch match (the game in Live TV, on the playlist channel that
+"Also showing on" puts first), Match and Mute game. "Following live" draws the live
 games as the scores box's rows. A game's page has the header card (crests, score or kick-off, the clock, the scorers,
 where it is on, Remind me), then Timeline (the game on a pitch, each shot, goal and card where it happened, the newest
 pulsing, then every moment by its minute), Line-ups (both elevens on one pitch by their formations, the substitutes

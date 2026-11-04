@@ -14,6 +14,7 @@
     <string name="sports_reminded">Reminder set</string>
     <!-- An alert's buttons: watch the game on its channel in Live TV, open the match page, no more alerts from it. -->
     <string name="sports_notif_watch">Watch on %1$s</string>
+    <string name="sports_notif_watch_match">Watch match</string>
     <string name="sports_notif_match">Match</string>
     <string name="sports_notif_mute">Mute game</string>
     <string name="sports_clubs">Starred clubs</string>

@@ -20,6 +20,11 @@ public final class Facts {
         String home = g.homeName, away = g.awayName;
         boolean on = g.state != Game.PRE;
         if (on) stats(g, s, live);
+        // The best player on each side so far, by the live ratings (Ratings).
+        if (on) {
+            String hb = topRated(s.homeLineup), ab = topRated(s.awayLineup);
+            if (!hb.isEmpty() || !ab.isEmpty()) live.add(new String[]{"RATINGS", "Top rated: " + hb + (hb.isEmpty() || ab.isEmpty() ? "" : " · ") + ab});
+        }
         // The table as it stood.
         String[] ht = row(s.table, s.homeId), at = row(s.table, s.awayId);
         String comp = g.leagueName == null || g.leagueName.isEmpty() ? "the table" : "the " + g.leagueName;
@@ -232,5 +237,17 @@ public final class Facts {
         } catch (NumberFormatException e) {
             return 0;
         }
+    }
+
+    /** A side's best rated player so far, "Saka 7.8"; "" when none is rated yet. */
+    static String topRated(List<String[]> lineup) {
+        String who = "", best = "";
+        double top = -1;
+        for (String[] p : lineup) {
+            if (p.length <= Espn.P_RATING || p[Espn.P_RATING].isEmpty()) continue;
+            double v = Double.parseDouble(p[Espn.P_RATING]);
+            if (v > top) { top = v; best = p[Espn.P_RATING]; who = p[Espn.P_SHORT]; }
+        }
+        return who.isEmpty() ? "" : who + " " + best;
     }
 }

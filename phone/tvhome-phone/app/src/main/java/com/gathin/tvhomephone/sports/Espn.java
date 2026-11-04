@@ -240,7 +240,7 @@ public final class Espn {
 
     /** Indexes into a line-up's rows. */
     public static final int P_NUMBER = 0, P_NAME = 1, P_POSITION = 2, P_STARTER = 3, P_PLACE = 4, P_SHORT = 5, P_ON = 6,
-            P_OFF = 7, P_GOALS = 8, P_CARDS = 9, P_OWN = 10, P_ID = 11;
+            P_OFF = 7, P_GOALS = 8, P_CARDS = 9, P_OWN = 10, P_ID = 11, P_RATING = 12;
 
     public static Summary summary(String slug, String id, long freshMs) {
         try {
@@ -259,10 +259,20 @@ public final class Espn {
             JSONObject header = root.optJSONObject("header");
             JSONArray comps = header == null ? null : header.optJSONArray("competitions");
             JSONArray competitors = comps != null && comps.length() > 0 ? comps.getJSONObject(0).optJSONArray("competitors") : null;
+            int homeScore = 0, awayScore = 0;
             for (int i = 0; competitors != null && i < competitors.length(); i++) {
                 JSONObject t = competitors.getJSONObject(i);
-                if ("home".equals(t.optString("homeAway"))) homeId = t.optString("id");
+                boolean home = "home".equals(t.optString("homeAway"));
+                if (home) homeId = t.optString("id");
+                int sc = number(t.optString("score", "0"));
+                if (home) homeScore = sc; else awayScore = sc;
             }
+            // How far through the game it is, for the clean sheets in the ratings: all of it once over.
+            JSONObject status = comps != null && comps.length() > 0 ? comps.getJSONObject(0).optJSONObject("status") : null;
+            JSONObject stType = status == null ? null : status.optJSONObject("type");
+            String state = stType == null ? "" : stType.optString("state", "");
+            float progress = "post".equals(state) ? 1f : status == null ? 0f
+                    : Math.max(0f, Math.min(1f, (float) status.optDouble("clock", 0) / 5400f));
             JSONArray key = root.optJSONArray("keyEvents");
             for (int i = 0; key != null && i < key.length(); i++) {
                 JSONObject k = key.getJSONObject(i);
@@ -305,7 +315,9 @@ public final class Espn {
                     s.awayKitAlt = alt;
                 }
                 JSONArray players = r.optJSONArray("roster");
-                for (int p = 0; players != null && p < players.length(); p++) into.add(player(players.getJSONObject(p)));
+                for (int p = 0; players != null && p < players.length(); p++) {
+                    into.add(player(players.getJSONObject(p), isHome ? homeScore : awayScore, isHome ? awayScore : homeScore, progress));
+                }
             }
             s.homeId = homeId;
             for (int i = 0; competitors != null && i < competitors.length(); i++) {
@@ -491,8 +503,24 @@ public final class Espn {
         return t == null ? "" : t.optString("shortDisplayName", t.optString("displayName", ""));
     }
 
-    /** One player of a roster, as Summary's line-ups hold them (P_*). */
     static String[] player(JSONObject pl) {
+        return player(pl, 0, 0, 0f);
+    }
+
+    /** "2" as 2; anything else as 0. */
+    private static int number(String v) {
+        try {
+            return Integer.parseInt(v.trim());
+        } catch (RuntimeException e) {
+            return 0;
+        }
+    }
+
+    /**
+     * One player of a roster, as Summary's line-ups hold them (P_*), with his live rating (Ratings) from his figures, his
+     * side's score so far (scored, let in) and how far through the game it is.
+     */
+    static String[] player(JSONObject pl, int scored, int letIn, float progress) {
         JSONObject a = pl.optJSONObject("athlete");
         JSONObject pos = pl.optJSONObject("position");
         String name = a == null ? "" : a.optString("displayName");
@@ -523,7 +551,25 @@ public final class Espn {
         String place = pl.optString("formationPlace", "");
         return new String[]{pl.optString("jersey", ""), name, pos == null ? "" : pos.optString("abbreviation", ""),
                 starter ? "1" : "0", starter ? place : "", last, on, off, String.valueOf(goals), cards, String.valueOf(own),
-                a == null ? "" : a.optString("id", "")};
+                a == null ? "" : a.optString("id", ""), Ratings.of(stats(pl), pos == null ? "" : pos.optString("abbreviation", ""),
+                scored, letIn, progress)};
+    }
+
+    /** A player's figures in the game (ESPN's "stats": goals, shots, saves…) by name; empty when not given. */
+    static java.util.Map<String, Integer> stats(JSONObject pl) {
+        java.util.Map<String, Integer> out = new java.util.HashMap<>();
+        JSONArray st = pl.optJSONArray("stats");
+        for (int i = 0; st != null && i < st.length(); i++) {
+            JSONObject x = st.optJSONObject(i);
+            if (x == null) continue;
+            String v = x.optString("value", x.optString("displayValue", ""));
+            try {
+                out.put(x.optString("name"), (int) Math.round(Double.parseDouble(v)));
+            } catch (RuntimeException ignored) {
+                // not a number
+            }
+        }
+        return out;
     }
 
     /** ESPN gives "subbedIn" as true or false, or as {"didSub": true}. */
