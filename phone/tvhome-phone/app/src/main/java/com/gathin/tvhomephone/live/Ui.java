@@ -228,4 +228,21 @@ final class Ui {
         }
         return b.length() == 0 ? "TV" : b.toString();
     }
+
+    /** The small "4K" mark on a 4K/UHD channel's logo: white on black in a white outline, as the TV's 4K UHD box. */
+    static TextView uhdBadge(Context c) {
+        TextView t = text(c, "4K", 9, TEXT, true);
+        t.setGravity(Gravity.CENTER);
+        t.setIncludeFontPadding(false);
+        t.setPadding(dp(c, 4), dp(c, 1), dp(c, 4), dp(c, 1));
+        t.setBackground(ring(c, 0xE6000000, TEXT, 1, 3));
+        t.setImportantForAccessibility(android.view.View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        return t;
+    }
+
+    /** A channel's logo: its playlist's own, else Sky's for its name (a 4K channel's is its channel's); null if none. */
+    static String logo(Channel ch) {
+        if (ch == null) return null;
+        return !ch.logo.isEmpty() ? ch.logo : com.gathin.tvhomephone.sports.ChannelLogos.sky(ch.name);
+    }
 }

@@ -991,7 +991,7 @@ public class LiveTvFragment extends Fragment {
     /** A channel with its logo, the guide's now (with how far in) and next, and the star. */
     private final class ChannelRow extends RecyclerView.ViewHolder {
         final LinearLayout view;
-        final TextView initials, name, nowTag, nowTitle, next;
+        final TextView initials, name, nowTag, nowTitle, next, uhd;
         final ImageView logo;
         final ProgressBar progress;
         final ImageButton star;
@@ -1016,6 +1016,11 @@ public class LiveTvFragment extends Fragment {
             int p = Ui.dp(c, 5);
             logo.setPadding(p, p, p, p);
             box.addView(logo, new FrameLayout.LayoutParams(-1, -1));
+            // A 4K/UHD channel's mark, at the logo's foot.
+            uhd = Ui.uhdBadge(c);
+            FrameLayout.LayoutParams ul = new FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM | Gravity.END);
+            ul.setMargins(0, 0, Ui.dp(c, 2), Ui.dp(c, 2));
+            box.addView(uhd, ul);
             view.addView(box, new LinearLayout.LayoutParams(Ui.dp(c, 52), Ui.dp(c, 52)));
             LinearLayout texts = new LinearLayout(c);
             texts.setOrientation(LinearLayout.VERTICAL);
@@ -1070,13 +1075,16 @@ public class LiveTvFragment extends Fragment {
             int n = lib.number(c);
             name.setText(n > 0 ? n + "  " + c.name : c.name);
             initials.setText(Ui.initials(c.name));
-            if (c.logo.isEmpty()) {
+            // Its playlist's logo, else Sky's for its name (a 4K channel with none of its own shows its channel's).
+            String pic = Ui.logo(c);
+            if (pic == null) {
                 Glide.with(logo).clear(logo);
                 initials.setVisibility(View.VISIBLE);
             } else {
                 initials.setVisibility(View.INVISIBLE);
-                Glide.with(logo).load(c.logo).into(logo);
+                Glide.with(logo).load(pic).into(logo);
             }
+            uhd.setVisibility(Names.uhd(c.name) ? View.VISIBLE : View.GONE);
             boolean fav = Picks.isFavourite(ctx, c.key);
             star.setImageResource(fav ? R.drawable.live_ic_star : R.drawable.live_ic_star_outline);
             star.setImageTintList(ColorStateList.valueOf(fav ? Ui.STAR : 0x80FFFFFF));

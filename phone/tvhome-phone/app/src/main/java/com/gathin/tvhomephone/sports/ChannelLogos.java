@@ -53,11 +53,17 @@ public final class ChannelLogos {
         for (String[] s : SERVICES) SERVICE.put(key(s[0]), s[1]);
     }
 
-    /** "Sky Sports Main Event HD", "sky sports main event" and "Sky Sports Main Event" alike. Pure. */
+    /**
+     * "Sky Sports Main Event HD", "UK: SKY SPORTS MAIN EVENT UHD", "|UK| Sky Sports Main Event 4K ᴴᴰ" and "Sky Sports Main
+     * Event" alike: a playlist's country tag at either end and its picture's words (HD, FHD, UHD, 4K, HDR, HEVC…) dropped
+     * wherever they are, so a 4K channel finds its channel's logo. Pure.
+     */
     static String key(String name) {
-        String n = Normalizer.normalize(name == null ? "" : name, Normalizer.Form.NFD).replaceAll("\\p{M}", "")
-                .toLowerCase(Locale.ROOT).replace("&", "and").trim();
-        n = n.replaceAll("\\s+(uhd|fhd|hd|sd|4k)$", "");
+        String n = Normalizer.normalize(name == null ? "" : name, Normalizer.Form.NFKD).replaceAll("\\p{M}", "")
+                .toLowerCase(Locale.ROOT).replace("&", " and ").replace("ᴴᴰ", " hd ").trim();
+        n = n.replaceAll("^[\\[(|]?\\s*(uk|gb|eng|ie)\\s*[\\])|:\\-]+\\s*", "");
+        n = n.replaceAll("\\s*[\\[(|:\\-]\\s*(uk|gb|eng|ie)\\s*[\\])|]?$", "");
+        n = n.replaceAll("(^|[^a-z0-9])(uhd|fhd|hd|sd|4k|8k|uhd4k|hdr|hdr10|hevc|h265|1080p|1080i|2160p|50fps|60fps)(?=$|[^a-z0-9])", "$1");
         return n.replaceAll("[^a-z0-9+]", "");
     }
 

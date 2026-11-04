@@ -24,7 +24,8 @@ import java.util.List;
 /**
  * "Also showing on": every channel showing the same game, each with its logo: the playlist's channels whose guide has
  * the game on now, then the broadcasters it is on (the British channel, ESPN's, the competition's), those the playlist
- * has to tap and play, the others named so you know where else it is.
+ * has to tap and play (its 4K/UHD channel too, marked 4K, before its HD one), the others named so you know where else
+ * it is.
  */
 public final class AlsoShowing {
     private AlsoShowing() {}
@@ -38,7 +39,7 @@ public final class AlsoShowing {
     static final class Row {
         Channel ch;
         String name, logo, under;
-        boolean now;
+        boolean now, uhd;
     }
 
     /** Opens the list for a game, read off the main thread; a note when nothing else shows it. */
@@ -78,7 +79,8 @@ public final class AlsoShowing {
             Row r = new Row();
             r.ch = ch;
             r.name = ch.name;
-            r.logo = !ch.logo.isEmpty() ? ch.logo : ChannelLogos.sky(ch.name);
+            r.logo = Ui.logo(ch);
+            r.uhd = Names.uhd(ch.name);
             r.under = title;
             r.now = current != null && current.key.equals(ch.key);
             keys.add(ch.key);
@@ -87,17 +89,32 @@ public final class AlsoShowing {
         }
         // The broadcasters it is on.
         for (String name : Channels.names(g)) {
-            Channel ch = lib.match(name);
-            if (ch != null && keys.contains(ch.key)) continue;
-            Row r = new Row();
-            r.ch = ch;
-            r.name = ch != null ? ch.name : name;
-            String logo = ch != null && !ch.logo.isEmpty() ? ch.logo : ChannelLogos.find(c, name);
-            r.logo = logo != null ? logo : ChannelLogos.sky(name);
-            r.under = ch != null ? c.getString(R.string.tile_also_listed) : c.getString(R.string.tile_also_not_in_list);
-            r.now = ch != null && current != null && current.key.equals(ch.key);
-            if (ch != null) keys.add(ch.key);
-            out.add(r);
+            // The playlist's 4K/UHD channel for it first, then its HD one; only named when the playlist has neither.
+            Channel[] tier = lib.tiers(name);
+            if (tier[0] == null && tier[1] == null) {
+                Row r = new Row();
+                r.name = name;
+                String logo = ChannelLogos.find(c, name);
+                r.logo = logo != null ? logo : ChannelLogos.sky(name);
+                r.under = c.getString(R.string.tile_also_not_in_list);
+                out.add(r);
+                continue;
+            }
+            for (int t = 1; t >= 0; t--) {
+                Channel ch = tier[t];
+                if (ch == null || keys.contains(ch.key)) continue;
+                Row r = new Row();
+                r.ch = ch;
+                r.name = ch.name;
+                r.uhd = t == 1;
+                String logo = !ch.logo.isEmpty() ? ch.logo : ChannelLogos.find(c, name);
+                if (logo == null) logo = ChannelLogos.sky(name);
+                r.logo = logo != null ? logo : ChannelLogos.sky(ch.name);
+                r.under = c.getString(r.uhd ? R.string.tile_also_uhd : R.string.tile_also_listed);
+                r.now = current != null && current.key.equals(ch.key);
+                keys.add(ch.key);
+                out.add(r);
+            }
         }
         // What plays now first, then what can be played, then the rest.
         out.sort((a, b) -> Integer.compare(rank(a), rank(b)));
@@ -123,6 +140,12 @@ public final class AlsoShowing {
     }
 
     private static void show(Context c, Game g, List<Row> rows, Pick pick) {
+        BottomSheetDialog[] mine = new BottomSheetDialog[1];
+        mine[0] = Sheets.open(c, sheet(c, g, rows, pick, mine), true);
+    }
+
+    /** The sheet's content: the heading, the fixture and a row for each channel. */
+    static LinearLayout sheet(Context c, Game g, List<Row> rows, Pick pick, BottomSheetDialog[] mine) {
         LinearLayout box = new LinearLayout(c);
         box.setOrientation(LinearLayout.VERTICAL);
         box.setPadding(Ui.dp(c, 20), Ui.dp(c, 8), Ui.dp(c, 20), Ui.dp(c, 20));
@@ -132,7 +155,6 @@ public final class AlsoShowing {
         TextView fixture = Ui.text(c, g.homeName + " v " + g.awayName, 18, Ui.TEXT, true);
         fixture.setPadding(0, Ui.dp(c, 4), 0, Ui.dp(c, 12));
         box.addView(fixture);
-        BottomSheetDialog[] mine = new BottomSheetDialog[1];
         for (Row r : rows) {
             LinearLayout row = new LinearLayout(c);
             row.setGravity(Gravity.CENTER_VERTICAL);
@@ -153,6 +175,13 @@ public final class AlsoShowing {
             if (r.logo != null && !r.logo.isEmpty()) {
                 initials.setVisibility(View.GONE);
                 com.gathin.tvhomephone.sports.Ui.load(logo, r.logo, null, () -> initials.setVisibility(View.VISIBLE));
+            }
+            if (r.uhd) {
+                FrameLayout.LayoutParams bl = new FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM | Gravity.END);
+                bl.setMargins(0, 0, -Ui.dp(c, 3), -Ui.dp(c, 3));
+                chip.addView(Ui.uhdBadge(c), bl);
+                chip.setClipChildren(false);
+                chip.setClipToPadding(false);
             }
             row.addView(chip, new LinearLayout.LayoutParams(Ui.dp(c, 76), Ui.dp(c, 42)));
             LinearLayout words = new LinearLayout(c);
@@ -186,7 +215,7 @@ public final class AlsoShowing {
             row.setContentDescription(r.name + ", " + (r.under == null ? "" : r.under));
             box.addView(row, new LinearLayout.LayoutParams(-1, -2));
         }
-        mine[0] = Sheets.open(c, box, true);
+        return box;
     }
 
     private static String initials(String name) {

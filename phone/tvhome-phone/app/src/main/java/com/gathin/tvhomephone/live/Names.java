@@ -87,6 +87,11 @@ public final class Names {
         return info(name, "").key;
     }
 
+    /** A 4K or UHD channel ("Sky Sports Main Event UHD", "UK: SKY SPORTS F1 4K"). */
+    public static boolean uhd(String name) {
+        return info(name, null).quality >= 4;
+    }
+
     public static Info info(String name, String group) {
         List<String> all = tokens(name);
         boolean uk = false, backup = false;

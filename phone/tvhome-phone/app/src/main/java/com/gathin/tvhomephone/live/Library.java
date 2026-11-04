@@ -220,6 +220,37 @@ public final class Library {
         return found < 0 ? null : channels.get(found);
     }
 
+    /**
+     * For a listing's broadcaster, the playlist's channel at HD or less and its 4K/UHD one, each the best of its kind
+     * (best()), either null: so "Also showing on" lists the 4K channel beside the HD one, not only one of them.
+     */
+    public Channel[] tiers(String listing) {
+        Channel[] out = new Channel[2];
+        if (listing == null || channels.isEmpty()) return out;
+        for (String part : Names.parts(listing)) {
+            if (Names.isService(part)) continue;
+            int[] idx = byName.get(Names.info(part, null).key);
+            if (idx == null || idx.length == 0) continue;
+            Names.Info[] in = infos;
+            boolean[] hid = hidden;
+            java.util.List<Integer> plain = new java.util.ArrayList<>(), uhd = new java.util.ArrayList<>();
+            for (int i : idx) {
+                if (i < hid.length && hid[i]) continue;
+                (i < in.length && in[i].quality >= 4 ? uhd : plain).add(i);
+            }
+            if (!plain.isEmpty()) out[0] = channels.get(best(toInts(plain)));
+            if (!uhd.isEmpty()) out[1] = channels.get(best(toInts(uhd)));
+            if (out[0] != null || out[1] != null) break;
+        }
+        return out;
+    }
+
+    private static int[] toInts(java.util.List<Integer> l) {
+        int[] a = new int[l.size()];
+        for (int i = 0; i < a.length; i++) a[i] = l.get(i);
+        return a;
+    }
+
     /** Of the channels sharing a name: not hidden, a favourite, then tagged British, the best picture, not a backup. */
     private int best(int[] idx) {
         Set<String> f = favourites();

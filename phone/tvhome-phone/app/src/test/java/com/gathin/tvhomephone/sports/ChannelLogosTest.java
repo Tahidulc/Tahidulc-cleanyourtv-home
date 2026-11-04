@@ -25,6 +25,14 @@ public class ChannelLogosTest {
         assertEquals(SKY + "6504.png", ChannelLogos.sky("ITV 1"));
         assertEquals(SKY + "4058.png", ChannelLogos.sky("5"));
         assertEquals(SKY + "4058.png", ChannelLogos.sky("Channel 5"));
+        // 4K and UHD channels, as playlists name them: their channel's logo.
+        assertEquals(SKY + "1301.png", ChannelLogos.sky("Sky Sports Main Event UHD"));
+        assertEquals(SKY + "1301.png", ChannelLogos.sky("UK: SKY SPORTS MAIN EVENT 4K"));
+        assertEquals(SKY + "3835.png", ChannelLogos.sky("|UK| Sky Sports F1 UHD HDR"));
+        assertEquals(SKY + "4010.png", ChannelLogos.sky("Sky Sports Premier League 4K UHD"));
+        assertEquals(SKY + "3625.png", ChannelLogos.sky("TNT Sports 1 ᴴᴰ"));
+        assertEquals(SKY + "3625.png", ChannelLogos.sky("TNT Sports 1 HEVC (UK)"));
+        assertEquals(SKY + "3007.png", ChannelLogos.sky("UK - BBC One FHD"));
         assertNull(ChannelLogos.sky("Sky Sports"));
         assertNull(ChannelLogos.sky("Amazon Prime Video"));
         assertNull(ChannelLogos.sky(null));

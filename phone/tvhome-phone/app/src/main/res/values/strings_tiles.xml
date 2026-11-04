@@ -48,6 +48,7 @@
     <string name="tile_also_showing">Also showing on</string>
     <string name="tile_also_none">No other channel is showing it</string>
     <string name="tile_also_listed">Shows this game</string>
+    <string name="tile_also_uhd">Shows this game in 4K UHD</string>
     <string name="tile_also_not_in_list">Not in your channels</string>
     <string name="tile_also_playing">Playing</string>
     <string name="tile_also_watch">Watch</string>

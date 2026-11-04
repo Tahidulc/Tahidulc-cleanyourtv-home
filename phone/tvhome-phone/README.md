@@ -20,7 +20,9 @@ competition's logo was, GOAL dropping in letter by letter at the right (its O a 
 under it; then it pulls back and the new number rolls up.
 Full screen, the picture goes into a small window as you leave the app (from the guide too; the player's options turn
 that off), and a phone on its side stretches the picture to the screen. Upright, the info tile stays in the room under
-the picture. A game's tile and its page have "Also showing on": every channel with the same game, with its logo.
+the picture. A game's tile and its page have "Also showing on": every channel with the same game, with its logo. A channel's 4K/UHD
+version in the playlist is listed too, before its HD one, with a "4K" mark on its logo; 4K channels in Live TV wear the
+same mark, and one with no logo of its own shows its channel's (Sky's, matched past "UK:" and "UHD" in its name).
 
 A game's alerts come as cards: folded, what happened and who with the scoring side's crest; opened out, both crests on
 white discs, the score with the scoring side's number lit, the minute, and the 90 minutes with each goal on them. Under

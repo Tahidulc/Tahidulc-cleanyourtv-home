@@ -64,4 +64,14 @@ public class NamesTest {
                 Names.parts("Sky Sports Main Event / Sky Sports Premier League"));
         assertEquals(Arrays.asList("TNT Sports 1", "discovery+"), Names.parts("TNT Sports 1, discovery+"));
     }
+
+    @Test public void fourKAndUhdChannelsAreTold() {
+        assertTrue(Names.uhd("Sky Sports Main Event UHD"));
+        assertTrue(Names.uhd("UK: SKY SPORTS F1 4K"));
+        assertTrue(Names.uhd("|UK| TNT Sports Ultimate 4K HDR"));
+        assertFalse(Names.uhd("Sky Sports Main Event HD"));
+        assertFalse(Names.uhd("UK: SKY SPORTS F1 FHD"));
+        // The 4K channel and the HD one are one channel, in two pictures.
+        assertEquals(Names.info("Sky Sports Main Event HD", null).key, Names.info("UK: Sky Sports Main Event UHD", null).key);
+    }
 }
