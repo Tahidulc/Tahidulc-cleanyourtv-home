@@ -868,6 +868,15 @@ final class HomeV2 {
             smartPanel = new SmartPanel(this);
             items.add(new ControlCentre.Item("Lights & home", R.drawable.ic_bulb, () -> "Lights, cameras, the car", null, () -> smartPanel.show()));
         }
+        // Notifications: Do not disturb (nothing pops up for a while but the doorbell), Goal Rush on or off, and the
+        // page with every switch (on Home and over apps on or off, and each kind: goals, the news, the doorbell).
+        items.add(new ControlCentre.Item("Do not disturb", R.drawable.ic_moon, () -> NotifyPrefs.dndWords(a), () -> NotifyPrefs.dndOn(a),
+                () -> { NotifyPrefs.dndNext(a); dndMark(); }).in("NOTIFICATIONS").stays());
+        items.add(new ControlCentre.Item("Goal Rush", R.drawable.ic_bolt, () -> NotifyPrefs.goalRushOn(a) ? "On · every live game at once" : "Off",
+                null, () -> NotifyPrefs.goalRushSwitch(a)).in("NOTIFICATIONS").stays());
+        notifyPanel = new NotifyPanel(this);
+        items.add(new ControlCentre.Item("Notifications", R.drawable.ic_bell, () -> NotifyPrefs.summary(a), null, () -> notifyPanel.show())
+                .in("NOTIFICATIONS"));
         // The other TV: a message popped up there (with a chime), or what is playing here sent over to it.
         items.add(new ControlCentre.Item("Message", R.drawable.ic_message, () -> "Type it, or a quick one", null,
                 () -> TvLink.open(this, false, true)).in("THE OTHER TV"));
@@ -875,9 +884,6 @@ final class HomeV2 {
                 () -> TvLink.open(this, true, false)).in("THE OTHER TV"));
         // Today's alerts: every goal, red card and full time today, what came up and what was missed, OK showing it again.
         items.add(new ControlCentre.Item("Today's alerts", R.drawable.ic_bell, AlertToday::summary, null, () -> AlertToday.open(this)));
-        // Notifications: on Home and over apps on or off, and each kind (goals, the news, the doorbell) on or off.
-        notifyPanel = new NotifyPanel(this);
-        items.add(new ControlCentre.Item("Notifications", R.drawable.ic_bell, () -> NotifyPrefs.summary(a), null, () -> notifyPanel.show()));
         viewing = new ViewingPanel(this);
         items.add(new ControlCentre.Item("Your viewing", R.drawable.ic_chart, () -> "Your week on TV", null, () -> viewing.show()));
         search = new SearchPanel(this);
@@ -1469,13 +1475,64 @@ final class HomeV2 {
         return sportTiles != null && System.currentTimeMillis() - sportAt < 3 * 60_000L;
     }
 
-    /** Film night's reminder, looked for each minute while Home is in front (FilmNight; the service does it too). */
+    /**
+     * Film night's reminder, looked for each minute while Home is in front (FilmNight; the service does it too); and
+     * Do not disturb's moon taken off the Control Centre's button once its time is up.
+     */
     private final Runnable filmNight = new Runnable() {
         @Override public void run() {
             FilmNight.tick(a);
+            dndMark();
             main.postDelayed(this, 60_000L);
         }
     };
+
+    /** Whether the Control Centre's button wears Do not disturb's moon now. */
+    private Boolean dndShown;
+
+    /** While Do not disturb is on, a small moon at the top right of the Control Centre's button. */
+    void dndMark() {
+        View b = controlButton();
+        if (b == null) return;
+        boolean on = NotifyPrefs.dndOn(a);
+        if (dndShown != null && dndShown == on) return;
+        dndShown = on;
+        b.setForeground(on ? new MoonBadge(px(12), px(1.5f)) : null);
+        b.setContentDescription(on ? "Control Centre, Do not disturb on" : "Control Centre");
+    }
+
+    /** Do not disturb's mark: a lilac disc with a white crescent, at the top right of whatever it is drawn on. */
+    private static final class MoonBadge extends Drawable {
+        private final int r;
+        private final float edge;
+        private final android.graphics.Paint p = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+
+        MoonBadge(int radius, float edge) {
+            r = radius;
+            this.edge = edge;
+        }
+
+        @Override public void draw(@androidx.annotation.NonNull android.graphics.Canvas c) {
+            android.graphics.Rect b = getBounds();
+            float cx = b.right - r - edge, cy = b.top + r + edge;
+            p.setStyle(android.graphics.Paint.Style.FILL);
+            p.setColor(0xFF10157E);
+            c.drawCircle(cx, cy, r + edge, p);
+            p.setColor(0xFF8B6CFF);
+            c.drawCircle(cx, cy, r, p);
+            p.setColor(Color.WHITE);
+            c.drawCircle(cx, cy, r * 0.56f, p);
+            p.setColor(0xFF8B6CFF);
+            c.drawCircle(cx + r * 0.3f, cy - r * 0.26f, r * 0.5f, p);
+        }
+
+        @Override public void setAlpha(int alpha) { p.setAlpha(alpha); }
+
+        @Override public void setColorFilter(android.graphics.ColorFilter cf) { p.setColorFilter(cf); }
+
+        @SuppressWarnings("deprecation")
+        @Override public int getOpacity() { return android.graphics.PixelFormat.TRANSLUCENT; }
+    }
 
     void stop() {
         main.removeCallbacks(filmNight);

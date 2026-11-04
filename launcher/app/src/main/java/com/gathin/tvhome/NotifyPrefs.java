@@ -12,7 +12,8 @@ import java.util.List;
  * up: the main switch for where it would show (On Home: Home, Ambient mode and pop-up mode; Over apps: any other app)
  * and the switch of its own kind (NotifyKinds); for football's kinds, the switch of the game's competition too
  * (NotifyKinds.COMPETITIONS). What sets a notification off (the scores' poll, the news, a camera) is not changed: it
- * is only not shown, and Today's alerts says why.
+ * is only not shown, and Today's alerts says why. Do not disturb (the Control Centre's tile, DoNotDisturb) keeps
+ * everything back for a while but the doorbell and the TV's own questions and codes.
  *
  * <p>A kind the theme leaves off is not listed but offered under Add; adding it turns its theme switch on
  * (Config.themeFlag), so what sets it off starts too.
@@ -36,6 +37,62 @@ final class NotifyPrefs {
 
     static void setMaster(Context c, boolean home, boolean on) {
         prefs(c).edit().putBoolean(home ? "home" : "apps", on).apply();
+    }
+
+    // ---- Do not disturb (DoNotDisturb): the Control Centre's tile ------------------------------------------------
+
+    /** Do not disturb's choice now (DoNotDisturb.OFF once its time has passed). */
+    static int dndMode(Context c) {
+        SharedPreferences p = prefs(c);
+        return DoNotDisturb.mode(p.getInt("dnd.mode", DoNotDisturb.OFF), p.getLong("dnd.until", 0), System.currentTimeMillis());
+    }
+
+    /** Whether Do not disturb is on now. */
+    static boolean dndOn(Context c) {
+        return dndMode(c) != DoNotDisturb.OFF;
+    }
+
+    /** The tile's line: "Off", "On until 21:45", "On until you turn it off". */
+    static String dndWords(Context c) {
+        SharedPreferences p = prefs(c);
+        return DoNotDisturb.words(p.getInt("dnd.mode", DoNotDisturb.OFF), p.getLong("dnd.until", 0), System.currentTimeMillis(),
+                java.util.TimeZone.getDefault());
+    }
+
+    /** OK on the tile: the next choice (Off, an hour, until the morning, until turned off), from now. */
+    static void dndNext(Context c) {
+        int mode = DoNotDisturb.next(dndMode(c));
+        long until = DoNotDisturb.until(mode, System.currentTimeMillis(), java.util.TimeZone.getDefault());
+        // commit: the choice is kept at once, through a restart of the TV.
+        prefs(c).edit().putInt("dnd.mode", mode).putLong("dnd.until", until).commit();
+        AlertLog.note(c, "Do not disturb: " + dndWords(c));
+    }
+
+    /**
+     * Whether Do not disturb keeps this kind back now: everything but the doorbell (someone at the door is never kept
+     * waiting) and the TV's own questions and codes (ALWAYS).
+     */
+    private static boolean dndFor(Context c, String id) {
+        return !NotifyKinds.ALWAYS.equals(id) && !"doorbell".equals(id) && dndOn(c);
+    }
+
+    // ---- Goal Rush's own tile in the Control Centre (the same switch as its line in Notifications) ----------------
+
+    static final String GOAL_RUSH = "goalrush";
+
+    /** Whether Goal Rush comes: in the list (the theme brings it, or it was added) and switched on. */
+    static boolean goalRushOn(Context c) {
+        NotifyKinds.Kind k = NotifyKinds.get(GOAL_RUSH);
+        return k != null && listed(c, k, Config.themeJson(c)) && on(c, k.id);
+    }
+
+    /** OK on the tile: Goal Rush off, or on again (added first when the theme leaves it off). */
+    static void goalRushSwitch(Context c) {
+        NotifyKinds.Kind k = NotifyKinds.get(GOAL_RUSH);
+        if (k == null) return;
+        if (!listed(c, k, Config.themeJson(c))) add(c, k, true);
+        else set(c, k, !on(c, k.id));
+        AlertLog.note(c, "Goal Rush " + (goalRushOn(c) ? "on" : "off") + " from the Control Centre");
     }
 
     /** A kind's own switch: on unless switched off. */
@@ -113,6 +170,8 @@ final class NotifyPrefs {
      */
     static boolean allowed(Context c, String id, boolean onHome) {
         if (NotifyKinds.ALWAYS.equals(id)) return true;
+        // Do not disturb: nothing but the doorbell.
+        if (dndFor(c, id)) return false;
         // A film night with quiet pop-ups (FilmNight): everything waits but its own reminder (and the doorbell).
         if (quietFor(c, id)) return false;
         return plain(c, id, onHome);
@@ -146,6 +205,8 @@ final class NotifyPrefs {
     static boolean allowed(Context c, ScoreCard.Data d, boolean onHome) {
         if (d.again) return true;
         String id = NotifyKinds.ofCard(d.notify, d.kind, !d.podium.isEmpty());
+        // Do not disturb: not even a starred club's goal comes (Today's alerts keeps it).
+        if (dndFor(c, id)) return false;
         // Its game's competition switched off: not even a starred club's goal comes.
         if (!allowedCompetition(c, id, d.slug)) return false;
         // A film night's quiet: a goal for one of the starred clubs still comes (with its usual switches).
@@ -175,7 +236,8 @@ final class NotifyPrefs {
     static void held(Context c, String id, boolean onHome, String key, String what, String slug) {
         NotifyKinds.Kind k = NotifyKinds.get(id);
         boolean quiet = quietFor(c, id);
-        String why = !master(c, onHome) ? (onHome ? "On Home" : "Over apps") + " is off in Notifications"
+        String why = dndFor(c, id) ? "Do not disturb is on"
+                : !master(c, onHome) ? (onHome ? "On Home" : "Over apps") + " is off in Notifications"
                 : !allowedCompetition(c, id, slug) ? NotifyKinds.competitionName(slug) + " is off in Notifications"
                 : quiet && (k == null || kindOn(c, k)) ? FilmNight.quietWords(c)
                 : (k == null ? id : k.name) + " is off in Notifications";
@@ -185,6 +247,7 @@ final class NotifyPrefs {
 
     /** The Control Centre tile's line: where notifications show now. */
     static String summary(Context c) {
+        if (dndOn(c)) return "Do not disturb is on";
         boolean home = master(c, true), apps = master(c, false);
         return home && apps ? "On Home and over apps" : home ? "On Home only" : apps ? "Over apps only" : "All off";
     }

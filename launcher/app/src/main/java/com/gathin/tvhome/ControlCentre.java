@@ -34,6 +34,8 @@ final class ControlCentre {
         final Runnable ok;
         /** The section it is in, under its own heading after the controls ("THE OTHER TV"); null: the controls. */
         String section;
+        /** A switch (Do not disturb, Goal Rush): OK changes it and the panel stays open, its line saying what it is now. */
+        boolean stays;
 
         Item(String name, int icon, Supplier<String> state, Supplier<Boolean> lit, Runnable ok) {
             this.name = name;
@@ -45,6 +47,11 @@ final class ControlCentre {
 
         Item in(String heading) {
             section = heading;
+            return this;
+        }
+
+        Item stays() {
+            stays = true;
             return this;
         }
     }
@@ -171,6 +178,14 @@ final class ControlCentre {
         List<String> sections = new ArrayList<>();
         sections.add(null);
         for (Item it : items) if (it.section != null && !sections.contains(it.section)) sections.add(it.section);
+        // Six rows or more (the controls, Notifications' own and the other TV): a little lower, so all fit the card.
+        int rows = 0;
+        for (String sec : sections) {
+            int n = 0;
+            for (Item it : items) if (java.util.Objects.equals(it.section, sec)) n++;
+            rows += (n + ACROSS - 1) / ACROSS;
+        }
+        int rowH = rows >= 6 ? 84 : 96;
         for (String sec : sections) {
             List<Item> group = new ArrayList<>();
             for (Item it : items) if (java.util.Objects.equals(it.section, sec)) group.add(it);
@@ -182,7 +197,7 @@ final class ControlCentre {
                 if (i % ACROSS == 0) {
                     line = new LinearLayout(c);
                     line.setClipChildren(false);
-                    LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, px(96));
+                    LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, px(rowH));
                     if (i > 0) lp.topMargin = px(16);
                     right.addView(line, lp);
                 }
@@ -191,7 +206,16 @@ final class ControlCentre {
                 if (i % ACROSS > 0) tp.leftMargin = px(16);
                 line.addView(t, tp);
                 tiles.add(t);
-                acts.add(() -> { hide(); it.ok.run(); });
+                if (it.stays) {
+                    acts.add(() -> {
+                        it.ok.run();
+                        restate(t, it);
+                        paint();
+                        h.paint();
+                    });
+                } else {
+                    acts.add(() -> { hide(); it.ok.run(); });
+                }
             }
             for (int k = group.size() % ACROSS; k > 0 && k < ACROSS && line != null; k++) {
                 LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(0, -1, 1f);
@@ -444,6 +468,14 @@ final class ControlCentre {
         t.addView(words, wl);
         t.setTag(it);
         return t;
+    }
+
+    /** A switch's line again, after OK changed it ("On until 21:45"). */
+    private void restate(View t, Item it) {
+        View s = t.findViewWithTag("state");
+        String st = it.state == null ? null : it.state.get();
+        if (s instanceof TextView && st != null) ((TextView) s).setText(st);
+        t.setContentDescription(it.name + (st == null ? "" : ", " + st));
     }
 
     /** The panel a size down from Home's own measures, so it ends well clear of the foot of the screen. */
