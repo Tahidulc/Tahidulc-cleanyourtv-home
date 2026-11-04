@@ -242,6 +242,25 @@ final class HomeV2 {
         if (scores != null) scores.testLive();
     }
 
+    /**
+     * adb only (--ez test_episode_map true): TV shows, the first series in its row focused and its panel opened with the
+     * Episode map open (sample episodes when TMDB has none).
+     */
+    void testEpisodeMap() {
+        TitlePanel.autoMap = true;
+        openBox(3);
+        tryEpisodeMap(8);
+    }
+
+    /** The page's first series' panel once its posters are in (tried every second and a half, tries times). */
+    private void tryEpisodeMap(int tries) {
+        main.postDelayed(() -> {
+            boolean done = page instanceof PagesV2.PosterPage && ((PagesV2.PosterPage) page).openFirstSeries();
+            if (!done && tries > 1) tryEpisodeMap(tries - 1);
+            else if (!done) TitlePanel.autoMap = false;
+        }, 1500);
+    }
+
     /** How far a section's page sits higher than it was laid out (option B's room at the top; 0 on Home). */
     int pageLift() {
         return corners && page != null ? PAGE_LIFT : 0;
@@ -712,6 +731,24 @@ final class HomeV2 {
         io.execute(() -> {
             boolean yes = onYourApps(this, PagesV2.providersGb(tmdbKey, t.id, t.tv)) != null;
             main.post(() -> AppSearchService.playDecided(t.title, yes));
+        });
+    }
+
+    /**
+     * A title opened where it may be watched: the licensed streaming app on this TV that carries it in the UK (its own
+     * search for the title), else the store on this TV that rents or sells it, else a note. Never Debrid Stream, Kleva TV,
+     * TiviMate or any IPTV app (the Episode map and Coming up open titles this way).
+     */
+    void openLicensed(PagesV2.Title t) {
+        io.execute(() -> {
+            JSONObject gb = t.id > 0 ? PagesV2.providersGb(tmdbKey, t.id, t.tv) : null;
+            main.post(() -> {
+                String art = t.backdrop != null ? t.backdrop : t.poster;
+                String app = onYourApps(this, gb);
+                if (app == null) app = storeFor(this, gb);
+                if (app != null) { searchTitle(app, t.title, t.tv, t.id, art); return; }
+                android.widget.Toast.makeText(a, t.title + " isn't on your streaming apps yet", android.widget.Toast.LENGTH_SHORT).show();
+            });
         });
     }
 

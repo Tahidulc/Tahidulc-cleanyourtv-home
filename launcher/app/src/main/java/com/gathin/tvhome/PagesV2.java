@@ -1567,6 +1567,24 @@ final class PagesV2 {
         /** OK held on a poster: its panel opened. */
         private boolean held;
 
+        /** adb's test_episode_map: onto the first series in the row, its panel opened (the map then opens in it); false: none yet. */
+        boolean openFirstSeries() {
+            if (rows.isEmpty()) return false;
+            List<Title> items = rows.get(0).items;
+            for (int i = 0; i < items.size(); i++) {
+                Title t = items.get(i);
+                if (!t.tv || t.id <= 0) continue;
+                onTabs = false;
+                row = 0;
+                idx = i;
+                paint();
+                heroNow();
+                h.showTitle(t, () -> play(t), false);
+                return true;
+            }
+            return false;
+        }
+
         /** OK on a poster: its own action, else the app it was being watched in, else Debrid Stream's page for it. */
         private void play(Title t) {
             // From the Kids page after bedtime: the gentle timer (KidsNight; KidsArt's own cards start it themselves).

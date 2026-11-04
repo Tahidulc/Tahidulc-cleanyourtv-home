@@ -60,6 +60,15 @@ final class TitlePanel {
     private final List<Object[]> people = new ArrayList<>();
     private final List<View> faces = new ArrayList<>(), cards = new ArrayList<>();
     private LinearLayout listButton;
+    /** A series' Episode map under the buttons while it is open (EpisodeMap); inMap: it has the focus. */
+    private EpisodeMap map;
+    private boolean inMap, mapTest;
+    private int mapButton = -1, mapY;
+    private Object[] gotNow;
+    /** The cast's heading, note and rings: put away while the map is open in their place. */
+    private final List<View> castParts = new ArrayList<>();
+    /** adb's test_episode_map: the next series' panel opens with its map open (sample episodes when TMDB has none). */
+    static boolean autoMap;
 
     TitlePanel(HomeV2 home) {
         h = home;
@@ -82,6 +91,8 @@ final class TitlePanel {
     void show(PagesV2.Title t, Runnable play, boolean held) {
         if (open) close(false);
         open = true;
+        map = null;
+        inMap = false;
         waitUp = held;
         title = t;
         this.play = play;
@@ -235,6 +246,11 @@ final class TitlePanel {
         faces.clear();
         cards.clear();
         people.clear();
+        castParts.clear();
+        map = null;
+        inMap = false;
+        mapButton = -1;
+        gotNow = got;
         // Under the hero's words wherever they are (higher on a page under option B's top bar).
         int x0 = left(), y = TOP - h.pageLift();
 
@@ -249,12 +265,19 @@ final class TitlePanel {
             MockKit.setWords(listButton, now ? "\u2713  On My list" : "+  My list");
         });
         if (t.tv && Recap.can(c, t.id)) addButton(bar, "\u21BA  Previously on", false, () -> { hide(); Recap.open(h, t, play); });
+        // A series: its Episode map (every episode by its rating, what's watched, a binge plan), opened under the buttons.
+        if (t.tv && EpisodeMap.on(c)) {
+            mapButton = buttons.size();
+            android.graphics.drawable.Drawable icon = c.getDrawable(R.drawable.ic_episode_map);
+            addButton(bar, "Episode map", false, this::openMap, icon == null ? null : icon.mutate());
+        }
         // With the saga box as well, everything a little tighter, so the cast's card ends above the screen's foot
         // (it ran 40 past it): the box's posters smaller, the cast's rings and card shorter.
         List<Object[]> sagaParts = (List<Object[]>) got[4];
         compact = sagaParts.size() > 1;
         CARD_H = compact ? 276 : 300;
         y += compact ? 70 : 78;
+        mapY = y;
 
         // The saga so far: a box with how many are seen, a bar for it, and the films.
         List<Object[]> parts = (List<Object[]>) got[4];
@@ -355,6 +378,9 @@ final class TitlePanel {
             LinearLayout strip = new LinearLayout(c);
             strip.setClipChildren(false);
             place(overlay, strip, x0 - 6, y + 40, 1880 - x0, CARD_H + 20);
+            castParts.add(head);
+            castParts.add(note);
+            castParts.add(strip);
             for (Object[] p : who) {
                 FrameLayout slot = new FrameLayout(c);
                 slot.setClipChildren(false);
@@ -375,6 +401,50 @@ final class TitlePanel {
         paint();
         // In as an iPhone's sheet: the buttons, the saga and the cast arriving one after another from a little below.
         Fluid.cascade(overlay, 30, 55, h.px(28));
+        if (autoMap && t.tv && mapButton >= 0) {
+            autoMap = false;
+            mapTest = true;
+            int my = gen;
+            main.postDelayed(() -> { if (open && my == gen && overlay != null) openMap(); }, 500);
+        }
+    }
+
+    // ---- the Episode map ---------------------------------------------------------------------------------------------
+
+    /** Opens the map under the buttons, in the cast's place (or goes into it, already open). */
+    private void openMap() {
+        if (overlay == null) return;
+        if (map != null) { focusMap(true); return; }
+        for (View v : castParts) v.setVisibility(View.GONE);
+        if (overlay.getTranslationY() != 0) overlay.animate().translationY(0).setDuration(200).start();
+        int x0 = left(), w = 1864 - x0, hgt = 1060 - mapY;
+        boolean test = mapTest;
+        mapTest = false;
+        PagesV2.Title t = title;
+        // OK on an episode: the series in its licensed app (the one on this TV that streams it in the UK, else its store).
+        map = new EpisodeMap(h, t, gotNow == null ? null : (JSONObject) gotNow[0], w, hgt, test, e -> { hide(); h.openLicensed(t); });
+        place(overlay, map.view, x0, mapY, w, hgt);
+        focusMap(true);
+    }
+
+    private void focusMap(boolean on) {
+        inMap = on;
+        row = BUTTONS;
+        if (!on) col = Math.max(0, mapButton);
+        if (map != null) map.focus(on);
+        paint();
+    }
+
+    /** Back with the map open: the map goes, the cast comes back, the focus on its button. */
+    private void closeMap() {
+        if (map == null) return;
+        if (overlay != null) overlay.removeView(map.view);
+        map = null;
+        inMap = false;
+        for (View v : castParts) v.setVisibility(View.VISIBLE);
+        row = BUTTONS;
+        col = Math.max(0, mapButton);
+        paint();
     }
 
     /** A cast member at rest: the ring, the badge, the name, the part and where they were seen. */
@@ -497,7 +567,11 @@ final class TitlePanel {
     }
 
     private LinearLayout addButton(LinearLayout bar, String words, boolean main, Runnable act) {
-        LinearLayout b = MockKit.pill(h, words, 20, semi, 56, main, null);
+        return addButton(bar, words, main, act, null);
+    }
+
+    private LinearLayout addButton(LinearLayout bar, String words, boolean main, Runnable act, android.graphics.drawable.Drawable icon) {
+        LinearLayout b = MockKit.pill(h, words, 20, semi, 56, main, icon);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, h.px(56));
         lp.rightMargin = h.px(14);
         bar.addView(b, lp);
@@ -540,6 +614,23 @@ final class TitlePanel {
         boolean ok = code == KeyEvent.KEYCODE_DPAD_CENTER || code == KeyEvent.KEYCODE_ENTER || code == KeyEvent.KEYCODE_NUMPAD_ENTER;
         // The OK held to open it: its own release is not a press.
         if (waitUp && ok) { if (e.getAction() == KeyEvent.ACTION_UP) waitUp = false; return true; }
+        // The Episode map open: Back closes it (not the panel); while it has the focus it takes the arrows and OK, Up
+        // from its first row back to the buttons; Down from the buttons into it.
+        if (map != null) {
+            if (code == KeyEvent.KEYCODE_BACK || code == KeyEvent.KEYCODE_ESCAPE) {
+                if (e.getAction() == KeyEvent.ACTION_UP) closeMap();
+                return true;
+            }
+            if (inMap) {
+                if (ok) { if (e.getAction() == KeyEvent.ACTION_UP && !e.isCanceled()) map.press(); return true; }
+                if (e.getAction() == KeyEvent.ACTION_DOWN && !map.key(code)) focusMap(false);
+                return true;
+            }
+            if (code == KeyEvent.KEYCODE_DPAD_DOWN) {
+                if (e.getAction() == KeyEvent.ACTION_DOWN) focusMap(true);
+                return true;
+            }
+        }
         if (code == KeyEvent.KEYCODE_BACK || code == KeyEvent.KEYCODE_ESCAPE) {
             if (e.getAction() == KeyEvent.ACTION_UP) hide();
             return true;
@@ -589,7 +680,7 @@ final class TitlePanel {
     }
 
     private void paint() {
-        for (int i = 0; i < buttons.size(); i++) MockKit.paint(h, (LinearLayout) buttons.get(i), row == BUTTONS && i == col, 56);
+        for (int i = 0; i < buttons.size(); i++) MockKit.paint(h, (LinearLayout) buttons.get(i), row == BUTTONS && i == col && !inMap, 56);
         for (int i = 0; i < saga.size(); i++) {
             boolean on = row == SAGA && i == col;
             GradientDrawable g = h.fill(14, on ? 0x33FFFFFF : 0);

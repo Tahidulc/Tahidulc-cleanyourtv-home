@@ -160,6 +160,28 @@ final class ViewingLog {
         return out;
     }
 
+    /** The episodes of a series seen on this TV, from every day logged, as "S2E3" (the Episode map's ticks). */
+    static synchronized java.util.Set<String> episodes(Context c, int tmdb) {
+        java.util.Set<String> out = new java.util.HashSet<>();
+        if (tmdb <= 0) return out;
+        JSONObject days = all(c);
+        for (Iterator<String> it = days.keys(); it.hasNext(); ) {
+            JSONObject day = days.optJSONObject(it.next());
+            JSONObject t = day == null ? null : day.optJSONObject("t");
+            for (Iterator<String> k = t == null ? null : t.keys(); k != null && k.hasNext(); ) {
+                String key = k.next();
+                JSONObject one = t.optJSONObject(key);
+                if (one == null || !("tv:" + tmdb).equals(key) && !(one.optInt("id") == tmdb && one.optBoolean("tv"))) continue;
+                JSONArray e = one.optJSONArray("e");
+                for (int i = 0; e != null && i < e.length(); i++) {
+                    String ep = e.optString(i).toUpperCase(java.util.Locale.ROOT).replace(" ", "");
+                    if (!ep.isEmpty()) out.add(ep);
+                }
+            }
+        }
+        return out;
+    }
+
     /** The first day logged on this TV, or null before anything has been. */
     static synchronized LocalDate firstDay(Context c) {
         LocalDate first = null;
