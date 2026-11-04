@@ -239,7 +239,9 @@ public final class Lists {
             JSONObject next = d.optJSONObject("next");
             LocalDate air = null;
             try {
-                if (next != null && next.optString("air_date").length() >= 10) air = LocalDate.parse(next.optString("air_date").substring(0, 10));
+                // The TVs' /sync/watching names it "date"; TMDB's own episodes "air_date".
+                String day = next == null ? "" : next.optString("date", next.optString("air_date"));
+                if (day.length() >= 10) air = LocalDate.parse(day.substring(0, 10));
             } catch (RuntimeException ignored) {
                 // no date
             }
