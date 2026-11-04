@@ -15,23 +15,29 @@ import java.util.TimeZone;
 
 /**
  * The guide (XMLTV, from the playlist's own address or the Xtream account's xmltv.php): what is on each channel now
- * and next. Read as a stream, keeping only the channels in the playlist and a window from an hour ago to twelve hours
- * ahead, so a large guide stays small in memory.
+ * and next, with each programme's description. Read as a stream, keeping only the channels in the playlist and a window
+ * from an hour ago to twelve hours ahead, so a large guide stays small in memory: repeated titles and descriptions are
+ * kept once, a description is cut to a few lines, and past a budget the rest of the guide keeps its titles only.
  */
 public final class Guide {
     private Guide() {}
 
     static final long BEHIND_MS = 3600_000L, AHEAD_MS = 12 * 3600_000L;
+    /** A description's most characters, and all descriptions' together (about 12 MB) before the rest are left out. */
+    static final int DESC_MAX = 360, DESC_BUDGET = 6_000_000;
 
     /** One channel's programmes in time order. */
     public static final class Schedule {
         public final long[] start, stop;
         public final String[] title;
+        /** Each programme's description ("" when the guide gives none). */
+        public final String[] desc;
 
-        Schedule(long[] start, long[] stop, String[] title) {
+        Schedule(long[] start, long[] stop, String[] title, String[] desc) {
             this.start = start;
             this.stop = stop;
             this.title = title;
+            this.desc = desc;
         }
 
         /** The programme on at t, or -1. */
@@ -54,11 +60,16 @@ public final class Guide {
     /** Collects programmes for one channel key, then makes its Schedule. */
     static final class Builder {
         final List<long[]> times = new ArrayList<>();
-        final List<String> titles = new ArrayList<>();
+        final List<String> titles = new ArrayList<>(), descs = new ArrayList<>();
 
         void add(long a, long b, String t) {
+            add(a, b, t, "");
+        }
+
+        void add(long a, long b, String t, String d) {
             times.add(new long[]{a, b});
-            titles.add(t);
+            titles.add(t == null ? "" : t);
+            descs.add(d == null ? "" : d);
         }
 
         Schedule build() {
@@ -66,14 +77,25 @@ public final class Guide {
             for (int i = 0; i < order.length; i++) order[i] = i;
             java.util.Arrays.sort(order, (x, y) -> Long.compare(times.get(x)[0], times.get(y)[0]));
             long[] s = new long[order.length], e = new long[order.length];
-            String[] t = new String[order.length];
+            String[] t = new String[order.length], d = new String[order.length];
             for (int i = 0; i < order.length; i++) {
                 s[i] = times.get(order[i])[0];
                 e[i] = times.get(order[i])[1];
                 t[i] = titles.get(order[i]);
+                d[i] = descs.get(order[i]);
             }
-            return new Schedule(s, e, t);
+            return new Schedule(s, e, t, d);
         }
+    }
+
+    /** A description cut to DESC_MAX characters at a word, with an ellipsis; spaces and line breaks made single. */
+    static String shortDesc(String d) {
+        if (d == null) return "";
+        String t = d.replaceAll("\\s+", " ").trim();
+        if (t.length() <= DESC_MAX) return t;
+        int cut = t.lastIndexOf(' ', DESC_MAX - 1);
+        if (cut < DESC_MAX / 2) cut = DESC_MAX - 1;
+        return t.substring(0, cut).trim() + "…";
     }
 
     /**
@@ -115,6 +137,8 @@ public final class Guide {
             throws IOException {
         Map<String, Builder> out = new HashMap<>();
         Map<String, List<String>> idKeys = new HashMap<>(byId);
+        Map<String, String> pool = new HashMap<>();
+        int[] budget = {DESC_BUDGET};
         try {
             XmlPullParser p = android.util.Xml.newPullParser();
             p.setFeature(XmlPullParser.FEATURE_PROCESS_NAMESPACES, false);
@@ -146,15 +170,24 @@ public final class Guide {
                         skip(p);
                         continue;
                     }
-                    String title = "";
+                    String title = "", desc = "";
                     int depth = p.getDepth();
                     while ((ev = p.next()) != XmlPullParser.END_DOCUMENT && !(ev == XmlPullParser.END_TAG && p.getDepth() == depth)) {
-                        if (ev == XmlPullParser.START_TAG && "title".equals(p.getName()) && title.isEmpty()) title = p.nextText().trim();
+                        if (ev != XmlPullParser.START_TAG) continue;
+                        String inner = p.getName();
+                        if ("title".equals(inner) && title.isEmpty()) title = p.nextText().trim();
+                        else if ("desc".equals(inner) && desc.isEmpty() && budget[0] > 0) desc = shortDesc(p.nextText());
+                    }
+                    title = once(pool, title);
+                    if (!desc.isEmpty()) {
+                        String had = pool.get(desc);
+                        if (had == null) budget[0] -= desc.length();
+                        desc = once(pool, desc);
                     }
                     for (String k : keys) {
                         Builder bl = out.get(k);
                         if (bl == null) out.put(k, bl = new Builder());
-                        bl.add(a, b, title);
+                        bl.add(a, b, title, desc);
                     }
                 }
             }
@@ -164,6 +197,14 @@ public final class Guide {
         Map<String, Schedule> done = new HashMap<>();
         for (Map.Entry<String, Builder> e : out.entrySet()) done.put(e.getKey(), e.getValue().build());
         return done;
+    }
+
+    /** The one copy of a string that is repeated through the guide (a series' title on every channel showing it). */
+    private static String once(Map<String, String> pool, String s) {
+        String had = pool.get(s);
+        if (had != null) return had;
+        pool.put(s, s);
+        return s;
     }
 
     private static void skip(XmlPullParser p) throws XmlPullParserException, IOException {

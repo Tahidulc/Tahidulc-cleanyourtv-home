@@ -10,7 +10,10 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
-/** Live TV's favourites and the channels watched last, on this phone only (by channel key). */
+/**
+ * Live TV's favourites ("Your channels", in the family's own order) and the channels watched last, on this phone only
+ * (by channel key).
+ */
 final class Picks {
     private Picks() {}
 
@@ -29,14 +32,39 @@ final class Picks {
         return prefs(c).getStringSet("fav", new HashSet<>()).contains(key);
     }
 
-    /** Turns a favourite on or off; true when it is now one. */
+    /** Turns a favourite on or off; true when it is now one. A new favourite goes to the end of the order. */
     static boolean toggle(Context c, String key) {
         Set<String> f = favourites(c);
         boolean on = !f.remove(key);
         if (on) f.add(key);
-        prefs(c).edit().putStringSet("fav", f).apply();
+        List<String> o = order(c);
+        o.remove(key);
+        if (on) o.add(key);
+        prefs(c).edit().putStringSet("fav", f).putString("fav_order", new JSONArray(o).toString()).apply();
         Library.get(c).picksChanged();
         return on;
+    }
+
+    /** The favourites in the order they were put in (or dragged to); any without a place yet are not in it. */
+    static List<String> order(Context c) {
+        Set<String> f = favourites(c);
+        List<String> out = new ArrayList<>();
+        try {
+            JSONArray a = new JSONArray(prefs(c).getString("fav_order", "[]"));
+            for (int i = 0; i < a.length(); i++) {
+                String k = a.getString(i);
+                if (f.contains(k) && !out.contains(k)) out.add(k);
+            }
+        } catch (org.json.JSONException ignored) {
+            // no order yet
+        }
+        return out;
+    }
+
+    /** The favourites' new order (from Manage favourites). */
+    static void setOrder(Context c, List<String> keys) {
+        prefs(c).edit().putString("fav_order", new JSONArray(keys).toString()).apply();
+        Library.get(c).picksChanged();
     }
 
     static List<String> recent(Context c) {

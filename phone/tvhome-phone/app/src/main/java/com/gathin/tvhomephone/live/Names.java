@@ -35,6 +35,9 @@ public final class Names {
             "uefatv", "fifaplus", "f1tv", "nbaleaguepass", "tntsportapp", "skygo"));
     private static final String[] SKY_SPORT = {"mainevent", "premierleague", "football", "cricket", "golf", "f1", "arena",
             "action", "racing", "tennis"};
+    /** First words that say little on their own ("Channel 4", "The Sun TV"): the family keeps the next word too. */
+    private static final Set<String> GENERIC_FIRST = new HashSet<>(Arrays.asList("channel", "the", "tv", "canal", "radio"));
+    private static final Map<String, String> FAMILY_ALIASES = new HashMap<>();
 
     static {
         WORDS.put("one", "1");
@@ -54,20 +57,28 @@ public final class Names {
         ALIASES.put("ch5", "channel5");
         ALIASES.put("five", "channel5");
         ALIASES.put("5", "channel5");
+        FAMILY_ALIASES.put("btsport", "tntsport");
+        FAMILY_ALIASES.put("skymovies", "skycinema");
+        FAMILY_ALIASES.put("skymovie", "skycinema");
     }
 
-    /** What a name says besides its words: tagged British, its quality (0 SD … 4 UHD), a backup feed, a +1. */
+    /**
+     * What a name says besides its words: tagged British, its quality (0 SD … 4 UHD), a backup feed, a +1, and its
+     * family (the brand it belongs to: "skysport" for every Sky Sports channel, "bbc" for BBC One and BBC Two).
+     */
     public static final class Info {
         public final String key;
         public final boolean uk;
         public final int quality;
         public final boolean backup;
+        public final String family;
 
-        Info(String key, boolean uk, int quality, boolean backup) {
+        Info(String key, boolean uk, int quality, boolean backup, String family) {
             this.key = key;
             this.uk = uk;
             this.quality = quality;
             this.backup = backup;
+            this.family = family;
         }
     }
 
@@ -116,7 +127,35 @@ public final class Names {
             String rest = k.substring(3);
             for (String s : SKY_SPORT) if (rest.equals(s)) { k = "skysport" + rest; break; }
         }
-        return new Info(k, uk, quality, backup);
+        return new Info(k, uk, quality, backup, family(tokens));
+    }
+
+    /** A name's family from its words (tags already set aside): the brand, with the kind for sports and films. */
+    static String family(List<String> tokens) {
+        if (tokens.isEmpty()) return "";
+        String a = word(tokens.get(0));
+        if (tokens.size() > 1) {
+            String b = word(tokens.get(1));
+            if (GENERIC_FIRST.contains(a)) return alias(a + b);
+            if (b.startsWith("sport")) return alias(a + "sport");
+            if (b.startsWith("cinema")) return alias(a + "cinema");
+            if (b.startsWith("movie")) return alias(a + "movies");
+            if (a.equals("sky")) for (String s : SKY_SPORT) if (b.equals(s)) return "skysport";
+        }
+        // "ITV2", "BBC1": the brand without its number (but "E4" stays itself).
+        int end = a.length();
+        while (end > 0 && Character.isDigit(a.charAt(end - 1))) end--;
+        return alias(end >= 2 ? a.substring(0, end) : a);
+    }
+
+    private static String word(String t) {
+        String w = WORDS.get(t);
+        return w != null ? w : t;
+    }
+
+    private static String alias(String family) {
+        String a = FAMILY_ALIASES.get(family);
+        return a != null ? a : family;
     }
 
     /** A streaming service rather than a channel (the listings say "Amazon Prime Video" for a game only there). */

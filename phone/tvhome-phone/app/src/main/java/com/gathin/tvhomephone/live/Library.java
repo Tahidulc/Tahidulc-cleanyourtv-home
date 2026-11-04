@@ -37,7 +37,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 /**
  * Live TV's channels and guide from the family's own source: read from the provider off the main thread, kept on disk in
  * the app's private files (drawn at once next time), the channels again after a day and the guide after six hours. Holds
- * the index that finds a broadcaster's channel by name (LiveLinks).
+ * the index that finds a broadcaster's channel by name (LiveLinks), and the guide's search index (ProgrammeSearch).
  */
 public final class Library {
     public static final String ALL = "", FAVOURITES = "★", RECENT = "↺";
@@ -52,6 +52,7 @@ public final class Library {
     private volatile Map<String, int[]> byName = Collections.emptyMap();
     private volatile Names.Info[] infos = new Names.Info[0];
     private volatile Map<String, Guide.Schedule> guide = Collections.emptyMap();
+    private volatile ProgrammeSearch.Index programmes = ProgrammeSearch.Index.EMPTY;
     private volatile String fingerprint = "", guideUrl = "", status = "";
     private volatile long loadedAt, guideAt;
     private volatile boolean read;
@@ -93,6 +94,40 @@ public final class Library {
 
     public Guide.Schedule schedule(String key) { return guide.get(key); }
 
+    /** The channel's place in the playlist (0 first), or -1. */
+    public int position(String key) {
+        Integer i = key == null ? null : byKey.get(key);
+        return i == null ? -1 : i;
+    }
+
+    /** The number shown for a channel: the playlist's own (tvg-chno, Xtream's num), else its place in the playlist. */
+    public int number(Channel c) {
+        if (c.number > 0) return c.number;
+        int p = position(c.key);
+        return p < 0 ? 0 : p + 1;
+    }
+
+    /** The earliest start and latest end the guide has, or {0, 0} with no guide. */
+    public long[] guideSpan() {
+        ProgrammeSearch.Index ix = programmes;
+        return new long[]{ix.from, ix.to};
+    }
+
+    /** Programmes whose title (or description) has the search in it, best first. Call off the main thread. */
+    public List<ProgrammeSearch.Hit> searchProgrammes(String query, long now, int limit) {
+        return ProgrammeSearch.search(programmes, query, now, limit);
+    }
+
+    /** Channels like this one (its family, then its group) for the player's Similar channels. */
+    public List<Channel> similar(Channel c, int limit) {
+        List<Channel> ch = channels;
+        List<Channel> out = new ArrayList<>();
+        int self = position(c.key);
+        if (self < 0 || self >= ch.size()) return out;
+        for (int i : Similar.pick(ch, infos, self, limit)) out.add(ch.get(i));
+        return out;
+    }
+
     /** A group's channels (ALL, FAVOURITES, RECENT or a group's name), narrowed by a search. */
     public List<Channel> list(String group, String query) {
         List<Channel> ch = channels;
@@ -107,6 +142,20 @@ public final class Library {
             return out;
         }
         Set<String> f = FAVOURITES.equals(group) ? favourites() : null;
+        if (f != null) {
+            // Your channels in their own order (any not placed yet after, in the playlist's order).
+            List<Channel> placed = new ArrayList<>();
+            java.util.HashSet<String> seen = new java.util.HashSet<>();
+            for (String k : Picks.order(app)) {
+                Channel c = byKey(k);
+                if (c != null && seen.add(k)) placed.add(c);
+            }
+            for (Channel c : ch) if (f.contains(c.key) && !seen.contains(c.key)) placed.add(c);
+            for (Channel c : placed) {
+                if (q.isEmpty() || Names.plain(c.name).toLowerCase(Locale.ROOT).contains(q)) out.add(c);
+            }
+            return out;
+        }
         for (int i = 0; i < ch.size(); i++) {
             Channel c = ch.get(i);
             if (f != null && !f.contains(c.key)) continue;
@@ -228,6 +277,7 @@ public final class Library {
                     clearGuide();
                 }
                 apply(l.channels, s.fingerprint(), l.guideUrl, System.currentTimeMillis());
+                reindex();
                 writeCache();
                 n = l.channels.size();
             } catch (IOException | RuntimeException e) {
@@ -255,6 +305,7 @@ public final class Library {
         byName = Collections.emptyMap();
         infos = new Names.Info[0];
         guide = Collections.emptyMap();
+        programmes = ProgrammeSearch.Index.EMPTY;
         fingerprint = "";
         guideUrl = "";
         status = "";
@@ -270,6 +321,7 @@ public final class Library {
 
     private void clearGuide() {
         guide = Collections.emptyMap();
+        programmes = ProgrammeSearch.Index.EMPTY;
         guideAt = 0;
         //noinspection ResultOfMethodCallIgnored
         file("guide.tsv").delete();
@@ -477,6 +529,7 @@ public final class Library {
                 }
                 guide = g;
                 guideAt = System.currentTimeMillis();
+                reindex();
                 writeGuide();
                 changed();
             } catch (IOException | RuntimeException e) {
@@ -521,11 +574,12 @@ public final class Library {
     private void writeGuide() {
         File f = file("guide.tsv"), tmp = file("guide.tsv.tmp");
         try (Writer w = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(tmp), StandardCharsets.UTF_8), 64 * 1024)) {
-            w.write("v1\t" + fingerprint + "\t" + guideAt + "\n");
+            w.write("v2\t" + fingerprint + "\t" + guideAt + "\n");
             for (Map.Entry<String, Guide.Schedule> e : guide.entrySet()) {
                 Guide.Schedule s = e.getValue();
                 for (int i = 0; i < s.start.length; i++) {
-                    w.write(cell(e.getKey()) + "\t" + s.start[i] + "\t" + s.stop[i] + "\t" + cell(s.title[i]) + "\n");
+                    w.write(cell(e.getKey()) + "\t" + s.start[i] + "\t" + s.stop[i] + "\t" + cell(s.title[i]) + "\t"
+                            + cell(s.desc[i]) + "\n");
                 }
             }
         } catch (IOException e) {
@@ -562,6 +616,7 @@ public final class Library {
         }
         apply(list, fp, gUrl, at);
         readGuide(fp);
+        reindex();
     }
 
     private void readGuide(String fp) {
@@ -573,16 +628,19 @@ public final class Library {
         try (BufferedReader r = new BufferedReader(new InputStreamReader(new FileInputStream(f), StandardCharsets.UTF_8), 64 * 1024)) {
             String head = r.readLine();
             String[] h = head == null ? new String[0] : head.split("\t", -1);
-            if (h.length < 3 || !"v1".equals(h[0]) || !fp.equals(h[1])) return;
+            // v1 had no descriptions.
+            boolean v2 = h.length >= 3 && "v2".equals(h[0]);
+            if (h.length < 3 || !(v2 || "v1".equals(h[0])) || !fp.equals(h[1])) return;
             at = Long.parseLong(h[2]);
+            Map<String, String> pool = new HashMap<>();
             for (String line; (line = r.readLine()) != null; ) {
-                String[] c = line.split("\t", 4);
+                String[] c = line.split("\t", v2 ? 5 : 4);
                 if (c.length < 4) continue;
                 long stop = Long.parseLong(c[2]);
                 if (stop < now - Guide.BEHIND_MS) continue;
                 Guide.Builder bl = b.get(c[0]);
                 if (bl == null) b.put(c[0], bl = new Guide.Builder());
-                bl.add(Long.parseLong(c[1]), stop, c[3]);
+                bl.add(Long.parseLong(c[1]), stop, shared(pool, c[3]), c.length > 4 ? shared(pool, c[4]) : "");
             }
         } catch (IOException | NumberFormatException e) {
             return;
@@ -591,6 +649,23 @@ public final class Library {
         for (Map.Entry<String, Guide.Builder> e : b.entrySet()) g.put(e.getKey(), e.getValue().build());
         guide = g;
         guideAt = at;
+    }
+
+    private static String shared(Map<String, String> pool, String s) {
+        if (s.isEmpty()) return "";
+        String had = pool.get(s);
+        if (had != null) return had;
+        pool.put(s, s);
+        return s;
+    }
+
+    /** The guide's search index for the channels as they are now (after either changes). */
+    private synchronized void reindex() {
+        List<Channel> ch = channels;
+        Map<String, Guide.Schedule> g = guide;
+        Guide.Schedule[] s = new Guide.Schedule[ch.size()];
+        if (!g.isEmpty()) for (int i = 0; i < s.length; i++) s[i] = g.get(ch.get(i).key);
+        programmes = new ProgrammeSearch.Index(ch, s);
     }
 
     // ---- listeners ------------------------------------------------------------------------------------------
