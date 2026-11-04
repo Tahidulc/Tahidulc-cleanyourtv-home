@@ -4491,7 +4491,7 @@ final class PagesV2 {
                 showF1(tab - 1);
                 tableKey.setText("Down scrolls  ·  Left and Right: the 8 leagues, then F1");
             } else {
-                tableHead.addView(tableRow(null, "", "CLUB", "P", "GD", "PTS", true, null));
+                tableHead.addView(tableRow(null, "", "CLUB", "P", "W", "D", "L", "GD", "PTS", true, null));
                 tableKey.setText(tableKeyText);
             }
             paint();
@@ -4526,7 +4526,8 @@ final class PagesV2 {
                         rows.add(new String[]{st.getOrDefault("rank", ""), team.optString("displayName"), st.getOrDefault("gamesPlayed", ""),
                                 st.getOrDefault("pointDifferential", ""), st.getOrDefault("points", ""),
                                 tl != null && tl.length() > 0 ? tl.getJSONObject(0).optString("href") : null,
-                                note == null ? null : note.optString("description", null)});
+                                note == null ? null : note.optString("description", null),
+                                st.getOrDefault("wins", ""), st.getOrDefault("ties", ""), st.getOrDefault("losses", "")});
                     }
                     rows.sort((x, y) -> Integer.compare(num(x[0]), num(y[0])));
                 } catch (Exception ignored) {
@@ -4541,14 +4542,15 @@ final class PagesV2 {
         private void fillTable(List<String[]> rows) {
             if (panelTab == 0) {
                 tableHead.removeAllViews();
-                tableHead.addView(tableRow(null, "", "CLUB", "P", "GD", "PTS", true, null));
+                tableHead.addView(tableRow(null, "", "CLUB", "P", "W", "D", "L", "GD", "PTS", true, null));
             }
             tableList.removeAllViews();
             tableTop = 0;
             tableView.scrollTo(0, 0);
             for (int n = 0; n < rows.size(); n++) {
                 String[] r = rows.get(n);
-                tableList.addView(tableRow(r[5], r[0], short_(r[1]), r[2], r[3], r[4], false, r.length > 6 ? r[6] : null));
+                tableList.addView(tableRow(r[5], r[0], short_(r[1]), r[2], r.length > 9 ? r[7] : "", r.length > 9 ? r[8] : "",
+                        r.length > 9 ? r[9] : "", r[3], r[4], false, r.length > 6 ? r[6] : null));
             }
             // The key to the colours, one entry for each kind of place the table has, in table order.
             android.text.SpannableStringBuilder key = new android.text.SpannableStringBuilder();
@@ -4601,7 +4603,9 @@ final class PagesV2 {
             return title(n.substring(0, 1).toUpperCase(Locale.ROOT) + n.substring(1).toLowerCase(Locale.ROOT));
         }
 
-        private View tableRow(String logo, String pos, String club, String p, String gd, String pts, boolean head, String zone) {
+        /** A table's row: the place, the crest, the club, then played, won, drawn, lost, goal difference and points. */
+        private View tableRow(String logo, String pos, String club, String p, String w, String d, String lost, String gd, String pts,
+                              boolean head, String zone) {
             LinearLayout r = new LinearLayout(h.a);
             r.setOrientation(LinearLayout.HORIZONTAL);
             r.setGravity(Gravity.CENTER_VERTICAL);
@@ -4631,11 +4635,15 @@ final class PagesV2 {
             name.setEllipsize(TextUtils.TruncateAt.END);
             if (head) name.setLetterSpacing(0.14f);
             r.addView(name, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-            for (String v : new String[]{p, gd, pts}) {
-                TextView t = h.text(size, v == pts && !head ? h.semi : h.regular, v == pts && !head ? Color.WHITE : col);
-                t.setText(!head && v == gd && !gd.startsWith("-") && !gd.equals("0") ? "+" + gd.replace("+", "") : v);
+            String[] cells = {p, w, d, lost, gd, pts};
+            for (int i = 0; i < cells.length; i++) {
+                String v = cells[i];
+                boolean isPts = i == 5, isGd = i == 4, wdl = i >= 1 && i <= 3;
+                TextView t = h.text(size, isPts && !head ? h.semi : h.regular, isPts && !head ? Color.WHITE : wdl && !head ? 0x99FFFFFF : col);
+                t.setText(!head && isGd && !v.startsWith("-") && !v.equals("0") ? "+" + v.replace("+", "") : v);
                 t.setGravity(Gravity.END);
-                r.addView(t, new LinearLayout.LayoutParams(px(48), ViewGroup.LayoutParams.WRAP_CONTENT));
+                // Won, drawn and lost a little narrower, so the club's name keeps its room.
+                r.addView(t, new LinearLayout.LayoutParams(px(wdl ? 38 : 48), ViewGroup.LayoutParams.WRAP_CONTENT));
             }
             r.setPadding(px(6), px(head ? 4 : 5), px(6), px(head ? 2 : 5));
             if (!head) {

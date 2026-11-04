@@ -204,10 +204,10 @@ final class LiveCentre {
 
     // ---- live tables ----------------------------------------------------------------------------------------------
 
-    /** A club's line in a table: ESPN's id, name, crest, played, goal difference, points, and its place. */
+    /** A club's line in a table: ESPN's id, name, crest, played, won, drawn, lost, goal difference, points, its place. */
     private static final class Club {
         String id, name, abbr, logo;
-        int played, gd, pts, rank;
+        int played, won, drawn, lost, gd, pts, rank;
     }
 
     private static final Map<String, List<Club>> tables = new java.util.concurrent.ConcurrentHashMap<>();
@@ -244,6 +244,9 @@ final class LiveCentre {
                 org.json.JSONArray logos = team.optJSONArray("logos");
                 c.logo = logos != null && logos.length() > 0 ? logos.getJSONObject(0).optString("href") : null;
                 c.played = intOf(st.get("gamesPlayed"));
+                c.won = intOf(st.get("wins"));
+                c.drawn = intOf(st.get("ties"));
+                c.lost = intOf(st.get("losses"));
                 c.gd = intOf(st.get("pointDifferential"));
                 c.pts = intOf(st.get("points"));
                 c.rank = intOf(st.get("rank"));
@@ -271,7 +274,7 @@ final class LiveCentre {
         for (Club c : base) {
             Club x = new Club();
             x.id = c.id; x.name = c.name; x.abbr = c.abbr; x.logo = c.logo;
-            x.played = c.played; x.gd = c.gd; x.pts = c.pts; x.rank = c.rank;
+            x.played = c.played; x.won = c.won; x.drawn = c.drawn; x.lost = c.lost; x.gd = c.gd; x.pts = c.pts; x.rank = c.rank;
             now.put(c.id, x);
         }
         Map<String, String> playing = new HashMap<>();
@@ -279,8 +282,8 @@ final class LiveCentre {
             if ((g.state != 0 && !(testCard && g.state == 1)) || !slug.equals(g.slug)) continue;
             Club h = now.get(g.homeId), a = now.get(g.awayId);
             int hs = intOf(g.homeScore), as = intOf(g.awayScore);
-            if (h != null) { h.played++; h.gd += hs - as; h.pts += hs > as ? 3 : hs == as ? 1 : 0; playing.put(h.id, hs + "–" + as); }
-            if (a != null) { a.played++; a.gd += as - hs; a.pts += as > hs ? 3 : hs == as ? 1 : 0; playing.put(a.id, as + "–" + hs); }
+            if (h != null) { h.played++; h.gd += hs - as; h.pts += hs > as ? 3 : hs == as ? 1 : 0; result(h, hs, as); playing.put(h.id, hs + "–" + as); }
+            if (a != null) { a.played++; a.gd += as - hs; a.pts += as > hs ? 3 : hs == as ? 1 : 0; result(a, as, hs); playing.put(a.id, as + "–" + hs); }
         }
         List<Club> sorted = new ArrayList<>(now.values());
         sorted.sort((x, y) -> x.pts != y.pts ? Integer.compare(y.pts, x.pts) : x.gd != y.gd ? Integer.compare(y.gd, x.gd)
@@ -288,6 +291,13 @@ final class LiveCentre {
         List<Object[]> out = new ArrayList<>();
         for (Club c : sorted) out.add(new Object[]{c, c.rank, playing.get(c.id)});
         return out;
+    }
+
+    /** A game under way counted as it stands: won, drawn or lost at its score. */
+    private static void result(Club c, int scored, int against) {
+        if (scored > against) c.won++;
+        else if (scored == against) c.drawn++;
+        else c.lost++;
     }
 
     private static int rank(ScoresTicker.Game g) {
@@ -2316,21 +2326,21 @@ final class LiveCentre {
         tag.setBackground(tb);
         head.addView(tag);
         leagueBox.addView(head);
-        leagueBox.addView(tableLine(c, null, "", "", "P", "GD", "PTS", null, 0, true), new LinearLayout.LayoutParams(-1, px(24)));
+        leagueBox.addView(tableLine(c, null, "", "", "P", "W", "D", "L", "GD", "PTS", null, 0, true), new LinearLayout.LayoutParams(-1, px(24)));
         int max = Math.min(rows.size(), 20);
         for (int i = 0; i < max; i++) {
             Object[] r = rows.get(i);
             Club club = (Club) r[0];
             int moved = (Integer) r[1] - (i + 1);
             leagueBox.addView(tableLine(c, club.logo, String.valueOf(i + 1), shortName(club.name, club.abbr), String.valueOf(club.played),
-                    (club.gd > 0 ? "+" : "") + club.gd, String.valueOf(club.pts), (String) r[2], moved, false),
+                    String.valueOf(club.won), String.valueOf(club.drawn), String.valueOf(club.lost), (club.gd > 0 ? "+" : "") + club.gd, String.valueOf(club.pts), (String) r[2], moved, false),
                     new LinearLayout.LayoutParams(-1, px(rows.size() > 18 ? 26 : 28)));
         }
         leagueBox.setAlpha(0f);
         leagueBox.animate().alpha(1f).setDuration(300).withLayer().start();
     }
 
-    private static View tableLine(Context c, String crest, String pos, String name, String p, String gd, String pts, String score,
+    private static View tableLine(Context c, String crest, String pos, String name, String p, String w, String d, String l, String gd, String pts, String score,
                                   int moved, boolean header) {
         LinearLayout r = new LinearLayout(c);
         r.setGravity(Gravity.CENTER_VERTICAL);
@@ -2363,7 +2373,8 @@ final class LiveCentre {
             sl.rightMargin = px(6);
             r.addView(sc, sl);
         }
-        for (String[] col : new String[][]{{p, "30"}, {gd, "40"}}) {
+        // Played, won, drawn and lost narrow, so the club's name keeps its room in the box.
+        for (String[] col : new String[][]{{p, "26"}, {w, "24"}, {d, "24"}, {l, "24"}, {gd, "38"}}) {
             TextView t = text(c, col[0], size, header ? muted : 0xFFC9CEF2, ScoreCard.outfit(c, 600));
             t.setGravity(Gravity.END);
             r.addView(t, new LinearLayout.LayoutParams(px(Integer.parseInt(col[1])), -2));
