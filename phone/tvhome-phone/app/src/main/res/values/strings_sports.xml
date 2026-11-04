@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="sports_channel_alerts">Goals and scores</string>
+    <string name="sports_channel_live">Live score</string>
+    <string name="sports_channel_f1">Formula 1</string>
+    <string name="sports_channel_weather">Weather</string>
+    <string name="sports_channel_reminders">Reminders</string>
+    <string name="sports_following">Following live</string>
+    <string name="sports_tab_centre">Match Centre</string>
+    <string name="sports_tab_tables">Tables</string>
+    <string name="sports_tab_f1">F1</string>
+    <string name="sports_tab_weekend">This weekend</string>
+    <string name="sports_remind_me">Remind me</string>
+    <string name="sports_reminded">Reminder set</string>
+    <string name="sports_clubs">Starred clubs</string>
+    <string name="sports_search_hint">Search clubs</string>
+    <string name="sports_alerts_title">Alerts</string>
+    <string name="sports_exact_title">Wake on time for kick-off</string>
+    <string name="sports_exact_line">Lets alerts start exactly as a followed game begins. Without it they may come up to 15 minutes late.</string>
+    <string name="sports_exact_allow">Allow</string>
+</resources>
