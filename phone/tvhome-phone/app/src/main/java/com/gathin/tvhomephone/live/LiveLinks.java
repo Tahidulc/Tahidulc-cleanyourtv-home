@@ -20,6 +20,15 @@ public final class LiveLinks {
         return l.match(channelName) != null;
     }
 
+    /** The playlist's own logo (tvg-logo) for this broadcaster's channel; null when it has no such channel or no logo. */
+    public static String logo(Context c, String channelName) {
+        if (c == null || channelName == null || channelName.trim().isEmpty()) return null;
+        Library l = Library.get(c);
+        l.ensure();
+        Channel ch = l.match(channelName);
+        return ch == null || ch.logo.isEmpty() ? null : ch.logo;
+    }
+
     /** Plays that channel in Live TV's player; false when there is none. */
     public static boolean open(Context c, String channelName) {
         if (c == null || channelName == null) return false;

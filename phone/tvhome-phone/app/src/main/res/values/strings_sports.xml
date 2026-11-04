@@ -18,4 +18,6 @@
     <string name="sports_exact_title">Wake on time for kick-off</string>
     <string name="sports_exact_line">Lets alerts start exactly as a followed game begins. Without it they may come up to 15 minutes late.</string>
     <string name="sports_exact_allow">Allow</string>
+    <string name="sports_competitions">Competitions</string>
+    <string name="sports_competitions_line">Alerts from each competition\'s games, your clubs\' included, and from F1. Reminders you set always come.</string>
 </resources>

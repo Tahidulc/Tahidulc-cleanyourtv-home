@@ -77,10 +77,10 @@ public final class Espn {
             String logo = null, leagueName = name(slug);
             JSONArray leagues = root.optJSONArray("leagues");
             if (leagues != null && leagues.length() > 0) {
-                JSONObject l = leagues.getJSONObject(0);
-                JSONArray logos = l.optJSONArray("logos");
-                if (logos != null && logos.length() > 0) logo = logos.getJSONObject(0).optString("href", null);
+                // The competition's logo for dark grounds (the TV's choice), else its default one.
+                logo = Competitions.learn(slug, leagues.getJSONObject(0).optJSONArray("logos"));
             }
+            if (logo == null) logo = Competitions.logo(slug);
             JSONArray events = root.optJSONArray("events");
             ZoneId zone = ZoneId.systemDefault();
             for (int i = 0; events != null && i < events.length(); i++) {
@@ -258,7 +258,10 @@ public final class Espn {
 
     // ---- tables and clubs ----------------------------------------------------------------------------------------
 
-    /** One row of a table: {rank, team id, name, logo, played, goal difference, points, group or ""}. */
+    /**
+     * One row of a table: {rank, team id, name, logo, played, goal difference, points, group or "", won, drawn, lost}
+     * (ESPN's stats "wins", "ties" and "losses"; "" when not given).
+     */
     public static List<String[]> table(String slug) {
         List<String[]> out = new ArrayList<>();
         try {
@@ -283,7 +286,8 @@ public final class Espn {
                     }
                     out.add(new String[]{v.getOrDefault("rank", String.valueOf(i + 1)), t.optString("id"),
                             t.optString("shortDisplayName", t.optString("displayName")), logo, v.getOrDefault("gamesPlayed", ""),
-                            v.getOrDefault("pointDifferential", ""), v.getOrDefault("points", ""), group});
+                            v.getOrDefault("pointDifferential", ""), v.getOrDefault("points", ""), group,
+                            v.getOrDefault("wins", ""), v.getOrDefault("ties", ""), v.getOrDefault("losses", "")});
                 }
             }
             out.sort((a, b) -> a[7].equals(b[7]) ? Integer.compare(parseInt(a[0]), parseInt(b[0])) : a[7].compareTo(b[7]));

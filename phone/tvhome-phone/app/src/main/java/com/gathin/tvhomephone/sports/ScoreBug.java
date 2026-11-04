@@ -11,9 +11,9 @@ import android.widget.TextView;
 import com.gathin.tvhomephone.R;
 
 /**
- * The TV's scores box as a broadcast bug, at phone width: the competition's block in navy, each club's crest on its
- * own white tile, and the blue middle with the score (or the kick-off time) large and the clock, HT, FT or KICK-OFF
- * under it. The same proportions as the TV's 414 by 50 box (52, 110, 142, 110).
+ * The TV's scores box as a broadcast bug, at phone width: the competition's logo on its navy block, each club's crest
+ * on its own white tile, and the blue middle with the score (or the kick-off time) large and the clock, HT, FT or
+ * KICK-OFF under it. The same proportions as the TV's 414 by 50 box (52, 110, 142, 110).
  */
 public final class ScoreBug extends LinearLayout {
     private final ImageView comp, homeCrest, awayCrest;
@@ -78,12 +78,16 @@ public final class ScoreBug extends LinearLayout {
     }
 
     public void show(Game g) {
-        if (g.leagueLogo != null) {
+        // The competition's logo for dark grounds (the scoreboard's, else ESPN's by its id); its tag when none loads.
+        String logo = Competitions.logo(g);
+        String tag = g.league == null ? "" : g.league;
+        comp.setContentDescription(g.leagueName == null || g.leagueName.isEmpty() ? tag : g.leagueName);
+        if (logo != null) {
             compTag.setText("");
-            Ui.load(comp, g.leagueLogo);
+            Ui.load(comp, logo, null, () -> compTag.setText(tag));
         } else {
-            comp.setImageDrawable(null);
-            compTag.setText(g.league);
+            Ui.clear(comp);
+            compTag.setText(tag);
         }
         Ui.load(homeCrest, g.homeLogo != null ? g.homeLogo : Espn.crest(g.homeId));
         Ui.load(awayCrest, g.awayLogo != null ? g.awayLogo : Espn.crest(g.awayId));

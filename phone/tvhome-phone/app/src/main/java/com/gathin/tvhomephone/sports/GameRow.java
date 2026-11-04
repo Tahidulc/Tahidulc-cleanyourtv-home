@@ -19,8 +19,14 @@ public final class GameRow {
     private GameRow() {}
 
     public static LinearLayout build(Context c, Game g, boolean starred) {
+        return build(c, g, starred, false);
+    }
+
+    /** As build, with the competition's logo and name above the clubs (for a list of several competitions' games). */
+    public static LinearLayout build(Context c, Game g, boolean starred, boolean competition) {
         LinearLayout card = Ui.card(c, v -> c.startActivity(GameActivity.intent(c, g)));
         if (starred) card.setBackground(Ui.fill(c, 0x2E4F8BFF, 14));
+        if (competition) card.addView(competition(c, g), Ui.margins(c, 0, 0, 0, 8));
         LinearLayout r = Ui.row(c);
         r.addView(Ui.image(c, g.homeLogo != null ? g.homeLogo : Espn.crest(g.homeId), 30));
         TextView h = Ui.text(c, g.homeName, 15, c.getColor(R.color.text), starred);
@@ -53,8 +59,31 @@ public final class GameRow {
         r.addView(a, Ui.weight(1));
         r.addView(Ui.image(c, g.awayLogo != null ? g.awayLogo : Espn.crest(g.awayId), 30));
         card.addView(r);
-        card.setContentDescription(g.homeName + " " + plate + " " + g.awayName + (under.isEmpty() ? "" : ", " + under));
+        card.setContentDescription((competition && g.leagueName != null && !g.leagueName.isEmpty() ? g.leagueName + ": " : "")
+                + g.homeName + " " + plate + " " + g.awayName + (under.isEmpty() ? "" : ", " + under));
         return card;
+    }
+
+    /** The competition's logo and name, small, as a game's card heads it. */
+    static LinearLayout competition(Context c, Game g) {
+        LinearLayout line = Ui.row(c);
+        String logo = Competitions.logo(g);
+        String name = g.leagueName != null && !g.leagueName.isEmpty() ? g.leagueName : Espn.name(g.slug == null ? "" : g.slug);
+        if (logo != null) {
+            android.widget.ImageView v = new android.widget.ImageView(c);
+            v.setScaleType(android.widget.ImageView.ScaleType.FIT_CENTER);
+            v.setImportantForAccessibility(android.view.View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(Ui.dp(c, 16), Ui.dp(c, 16));
+            lp.rightMargin = Ui.dp(c, 6);
+            line.addView(v, lp);
+            Ui.load(v, logo, null, () -> v.setVisibility(android.view.View.GONE));
+        }
+        TextView t = Ui.text(c, name.toUpperCase(java.util.Locale.ROOT), 11, c.getColor(R.color.text_dim), true);
+        t.setLetterSpacing(0.08f);
+        t.setMaxLines(1);
+        t.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        line.addView(t, Ui.weight(1));
+        return line;
     }
 
     /** Cards laid out one a row on a phone, two a row on a tablet. */

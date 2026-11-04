@@ -30,8 +30,8 @@ import java.util.Set;
 
 /**
  * Settings' alerts section: the starred clubs (shared with the TVs: add from a search of the competitions' clubs,
- * take one off), exact alarms (so alerts start on time for kick-off), and the notification switches, one per kind,
- * grouped as the TV's Control Centre groups them, kept on this phone.
+ * take one off), exact alarms (so alerts start on time for kick-off), a switch per competition (with its logo), and the
+ * notification switches, one per kind, grouped as the TV's Control Centre groups them; the switches kept on this phone.
  */
 public final class SportsSettings {
     private SportsSettings() {}
@@ -132,6 +132,30 @@ public final class SportsSettings {
             });
             card.addView(allow, new LinearLayout.LayoutParams(-2, -2));
             col.addView(card, Ui.margins(c, 0, 14, 0, 0));
+        }
+
+        // The competitions: one switch each, with its logo. Off holds back every alert from its games (the starred
+        // clubs' included), or F1's; the reminders set by hand still come.
+        col.addView(Ui.heading(c, c.getString(R.string.sports_competitions), c.getColor(R.color.text_soft)));
+        col.addView(Ui.text(c, c.getString(R.string.sports_competitions_line), 13, c.getColor(R.color.text_dim), false));
+        for (String[] comp : Competitions.all()) {
+            LinearLayout r = Ui.row(c);
+            r.setPadding(0, Ui.dp(c, 4), 0, Ui.dp(c, 4));
+            android.widget.ImageView logo = new android.widget.ImageView(c);
+            logo.setScaleType(android.widget.ImageView.ScaleType.FIT_CENTER);
+            logo.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(Ui.dp(c, 28), Ui.dp(c, 28));
+            lp.rightMargin = Ui.dp(c, 12);
+            r.addView(logo, lp);
+            Ui.load(logo, Competitions.logo(comp[0]), null, null);
+            r.addView(Ui.text(c, comp[1], 16, c.getColor(R.color.text), false), Ui.weight(1));
+            MaterialSwitch sw = new MaterialSwitch(c);
+            sw.setChecked(Competitions.on(c, comp[0]));
+            sw.setContentDescription(comp[1]);
+            sw.setOnCheckedChangeListener((b, on) -> Competitions.set(c, comp[0], on));
+            r.addView(sw);
+            r.setOnClickListener(v -> sw.toggle());
+            col.addView(r);
         }
 
         Map<String, List<String[]>> groups = new LinkedHashMap<>();

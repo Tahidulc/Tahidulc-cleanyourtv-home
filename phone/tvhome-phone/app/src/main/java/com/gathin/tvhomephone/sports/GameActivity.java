@@ -64,7 +64,8 @@ public class GameActivity extends AppCompatActivity {
         back.setOnClickListener(v -> finish());
         back.setContentDescription("Back");
         top.addView(back);
-        top.addView(Ui.heading(this, game.leagueName == null || game.leagueName.isEmpty() ? game.league : game.leagueName, getColor(R.color.sports)));
+        top.addView(Ui.compHeading(this, game.leagueName == null || game.leagueName.isEmpty() ? game.league : game.leagueName,
+                Competitions.logo(game), getColor(R.color.sports)), Ui.weight(1));
         col.addView(top);
         bug = new ScoreBug(this);
         col.addView(bug, Ui.margins(this, 0, 6, 0, 8));
@@ -126,7 +127,10 @@ public class GameActivity extends AppCompatActivity {
 
     private void showWatch(String channel) {
         watch.removeAllViews();
-        if (channel != null) watch.addView(Ui.liveOn(this, channel));
+        if (channel != null) {
+            watch.addView(Ui.liveOn(this, channel), new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT));
+        }
         if (game.state == Game.PRE) {
             String key = "game:" + game.id;
             Button b = new Button(this);

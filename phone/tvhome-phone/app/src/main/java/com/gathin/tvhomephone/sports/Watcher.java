@@ -23,8 +23,8 @@ import java.util.Set;
 /**
  * The alerts' work, for AlertService (every 30 s while a followed game is on) and AlertWorker (every 15 minutes): read
  * the followed clubs' games, send what changed (Events), the line-ups before kick-off, VAR checks, the live table,
- * reminders, F1 and the rain; then plan the next wake (an exact alarm fifteen minutes before the next kick-off, race
- * or reminder, where the phone allows exact alarms).
+ * reminders, F1 and the rain (nothing from a competition switched off, or from F1 when it is); then plan the next
+ * wake (an exact alarm fifteen minutes before the next kick-off, race or reminder, where the phone allows exact alarms).
  */
 public final class Watcher {
     private Watcher() {}
@@ -74,10 +74,18 @@ public final class Watcher {
         State s = new State();
         Set<String> teams = Clubs.starred(c);
         long now = System.currentTimeMillis();
+        Map<String, ?> switches = Competitions.saved(c);
         for (String slug : leagues(c, teams)) {
+            boolean allowed = Competitions.allowed(switches, slug);
             List<Game> all = Espn.scoreboard(slug, LocalDate.now(), LIVE_MS);
             for (Game g : all) {
                 if (!g.involves(teams)) continue;
+                if (!allowed) {
+                    // Its competition is switched off: nothing sent, and no live watching for it. The game is still
+                    // kept as it is now, so switching it back on later tells only what happens from then.
+                    save(c, g);
+                    continue;
+                }
                 s.followed.add(g);
                 handle(c, g, all, now);
                 if (g.state == Game.LIVE) {
@@ -134,14 +142,18 @@ public final class Watcher {
             String title = r.optString("title");
             if (at == 0 || title.isEmpty()) continue;
             if (now >= at - Schedule.LEAD_MS && now < at + 5 * 60_000L) {
-                Notifier.post(c, new Events.Alert("reminder", "RM|" + title + "|" + at, "STARTS SOON · " + title,
+                Events.Alert a = new Events.Alert("reminder", "RM|" + title + "|" + at, "STARTS SOON · " + title,
                         "At " + java.time.Instant.ofEpochMilli(at).atZone(java.time.ZoneId.systemDefault())
-                                .format(java.time.format.DateTimeFormatter.ofPattern("HH:mm")) + (r.optString("channel").isEmpty() ? "" : " on " + r.optString("channel")), null));
+                                .format(java.time.format.DateTimeFormatter.ofPattern("HH:mm")) + (r.optString("channel").isEmpty() ? "" : " on " + r.optString("channel")), null);
+                a.slug = r.optString("slug", "");
+                a.channel = r.optString("channel", "");
+                Notifier.post(c, a);
             }
         }
     }
 
     private static void f1(Context c, long now) {
+        if (!Competitions.on(c, Competitions.F1)) return;
         F1.Weekend w = F1.next();
         if (w != null && w.race > 0) {
             if (now >= w.race - Schedule.LEAD_MS && now < w.race && Kinds.on(c, "f1grid") && !AlertLog.sent(c, "F1G|" + w.round)) {
@@ -216,7 +228,7 @@ public final class Watcher {
             }
         }
         for (JSONObject r : SyncStore.list(c, "reminder")) if (r.optLong("at") > 0) out.add(r.optLong("at"));
-        F1.Weekend w = F1.next();
+        F1.Weekend w = Competitions.on(c, Competitions.F1) ? F1.next() : null;
         if (w != null && w.race > 0) {
             out.add(w.race);
             out.add(w.race + Schedule.LEAD_MS);

@@ -4,6 +4,7 @@ import android.content.Context;
 import android.os.Bundle;
 import android.view.Gravity;
 import android.view.LayoutInflater;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.LinearLayout;
@@ -22,6 +23,7 @@ import com.gathin.tvhomephone.R;
 import com.gathin.tvhomephone.sports.AlertLog;
 import com.gathin.tvhomephone.sports.Channels;
 import com.gathin.tvhomephone.sports.Clubs;
+import com.gathin.tvhomephone.sports.Competitions;
 import com.gathin.tvhomephone.sports.Espn;
 import com.gathin.tvhomephone.sports.Game;
 import com.gathin.tvhomephone.sports.GameActivity;
@@ -42,8 +44,10 @@ import java.util.Set;
 
 /**
  * Home, as the TV's top bar and Home have it: the date, the time and Manchester's weather; the scores box (the
- * broadcast bug) to swipe between today's games, your clubs and live ones first; your clubs' games today with where
- * they are on (a link into Live TV when the playlist has the channel); the latest alerts; then the watching cards.
+ * broadcast bug) to swipe between today's games, your clubs and live ones first, moving on by itself every 8 seconds
+ * as the TV's does (held while a finger is on it); your clubs' games today, each under its competition's logo, with
+ * where they are on (the channel's logo; a link into Live TV when the playlist has the channel); the latest alerts;
+ * then the watching cards.
  */
 public class HomeFragment extends Fragment {
     private TextView date, clock, weather, count;
@@ -51,8 +55,13 @@ public class HomeFragment extends Fragment {
     private final List<Game> shown = new ArrayList<>();
     private LinearLayout today, latest;
     private SwipeRefreshLayout swipe;
-    private boolean visible;
+    private boolean visible, touching;
     private int gen;
+    private Pager pager;
+    /** The scores box moves on to its next game every AUTO_MS, as the TV's does. */
+    private static final long AUTO_MS = 8_000L;
+    private static final int LOOPS = 1000;
+    private final Runnable auto = this::advance;
 
     private final Runnable tick = new Runnable() {
         @Override public void run() {
@@ -96,11 +105,31 @@ public class HomeFragment extends Fragment {
 
         bugs = new RecyclerView(c);
         bugs.setLayoutManager(new LinearLayoutManager(c, LinearLayoutManager.HORIZONTAL, false));
-        new PagerSnapHelper().attachToRecyclerView(bugs);
+        pager = new Pager();
+        pager.attachToRecyclerView(bugs);
         bugs.setAdapter(new Bugs());
         bugs.addOnScrollListener(new RecyclerView.OnScrollListener() {
             @Override public void onScrollStateChanged(@NonNull RecyclerView r, int s) {
-                if (s == RecyclerView.SCROLL_STATE_IDLE) counter();
+                if (s == RecyclerView.SCROLL_STATE_IDLE) {
+                    counter();
+                    autoLater();
+                } else if (s == RecyclerView.SCROLL_STATE_DRAGGING) {
+                    App.main.removeCallbacks(auto);
+                }
+            }
+        });
+        // A finger on the box holds it; it moves on again AUTO_MS after it is let go.
+        bugs.addOnItemTouchListener(new RecyclerView.SimpleOnItemTouchListener() {
+            @Override public boolean onInterceptTouchEvent(@NonNull RecyclerView r, @NonNull MotionEvent e) {
+                int a = e.getActionMasked();
+                if (a == MotionEvent.ACTION_DOWN) {
+                    touching = true;
+                    App.main.removeCallbacks(auto);
+                } else if (a == MotionEvent.ACTION_UP || a == MotionEvent.ACTION_CANCEL) {
+                    touching = false;
+                    autoLater();
+                }
+                return false;
             }
         });
         col.addView(bugs, Ui.margins(c, 0, 16, 0, 4));
@@ -122,15 +151,72 @@ public class HomeFragment extends Fragment {
     @Override public void onResume() {
         super.onResume();
         visible = true;
+        touching = false;
         App.main.post(tick);
         App.main.post(reread);
+        autoLater();
     }
 
     @Override public void onPause() {
         visible = false;
         App.main.removeCallbacks(tick);
         App.main.removeCallbacks(reread);
+        App.main.removeCallbacks(auto);
         super.onPause();
+    }
+
+    // ---- the scores box moving on by itself -----------------------------------------------------------------------
+
+    /** The next game in AUTO_MS, while Home shows, nobody holds the box and it has more than one game. */
+    private void autoLater() {
+        App.main.removeCallbacks(auto);
+        if (visible && !touching && shown.size() > 1) App.main.postDelayed(auto, AUTO_MS);
+    }
+
+    /** Slides the next game in from the right, as a swipe does (after the last, the first again). */
+    private void advance() {
+        if (!visible || touching || shown.size() < 2 || bugs == null || bugs.getScrollState() != RecyclerView.SCROLL_STATE_IDLE) {
+            autoLater();
+            return;
+        }
+        LinearLayoutManager lm = (LinearLayoutManager) bugs.getLayoutManager();
+        if (lm == null) return;
+        int at = at(lm);
+        RecyclerView.Adapter<?> a = bugs.getAdapter();
+        if (a == null || at + 1 >= a.getItemCount()) {
+            // The end of the long loop (some days in): back to the middle, then on.
+            bugs.scrollToPosition(middle(at % shown.size()));
+            autoLater();
+            return;
+        }
+        RecyclerView.SmoothScroller slide = pager.slide(lm);
+        if (slide == null) {
+            bugs.smoothScrollToPosition(at + 1);
+        } else {
+            slide.setTargetPosition(at + 1);
+            lm.startSmoothScroll(slide);
+        }
+        // The slide's end (idle) sets the next one; this one only if it never started.
+        autoLater();
+    }
+
+    /** The page the box is on (an adapter position: the game is it modulo shown.size()). */
+    private static int at(LinearLayoutManager lm) {
+        int at = lm.findFirstCompletelyVisibleItemPosition();
+        if (at < 0) at = lm.findFirstVisibleItemPosition();
+        return Math.max(0, at);
+    }
+
+    /** The position of game i in the middle round of the loop, so the box can go either way from it. */
+    private int middle(int i) {
+        return shown.size() < 2 ? Math.max(0, i) : (LOOPS / 2) * shown.size() + i;
+    }
+
+    /** PagerSnapHelper's own settling slide, as a fling ends with, for the box's moves by itself. */
+    private static final class Pager extends PagerSnapHelper {
+        RecyclerView.SmoothScroller slide(RecyclerView.LayoutManager lm) {
+            return createScroller(lm);
+        }
     }
 
     private void stamp() {
@@ -172,17 +258,24 @@ public class HomeFragment extends Fragment {
     private void show(List<Game> bugList, List<Game> mine, List<String> channels, Object[] w) {
         Context c = requireContext();
         if (w != null) weather.setText(w[0] + "°  " + w[1] + " · Manchester");
+        int was = shown.size();
+        LinearLayoutManager lm = (LinearLayoutManager) bugs.getLayoutManager();
+        int on = was == 0 || lm == null ? 0 : at(lm) % was;
         shown.clear();
         shown.addAll(bugList);
         bugs.getAdapter().notifyDataSetChanged();
+        // A new number of games: the same place in the list (or the first), in the loop's middle round.
+        if (shown.size() != was) bugs.scrollToPosition(middle(Math.min(on, Math.max(0, shown.size() - 1))));
         bugs.setVisibility(shown.isEmpty() ? View.GONE : View.VISIBLE);
         counter();
+        autoLater();
         today.removeAllViews();
         if (mine.isEmpty()) Ui.empty(today, "No games for your clubs today.");
         List<View> cards = new ArrayList<>();
         for (int i = 0; i < mine.size(); i++) {
             Game g = mine.get(i);
-            LinearLayout card = GameRow.build(c, g, true);
+            // Each with its competition's logo and name: the clubs' games today may be in several.
+            LinearLayout card = GameRow.build(c, g, true, true);
             String ch = channels.get(i);
             if (ch != null) card.addView(Ui.liveOn(c, ch));
             cards.add(card);
@@ -196,6 +289,18 @@ public class HomeFragment extends Fragment {
             if (a == null) continue;
             LinearLayout card = Ui.card(c, null);
             LinearLayout band = Ui.row(c);
+            // The competition's logo (its version for light grounds, on the silver band), F1's for an F1 alert.
+            String kind = a.optString("kind");
+            String logo = kind.startsWith("f1") ? Competitions.F1_LOGO : Competitions.lightLogo(a.optString("slug", null));
+            if (logo != null) {
+                android.widget.ImageView v = new android.widget.ImageView(c);
+                v.setScaleType(android.widget.ImageView.ScaleType.FIT_CENTER);
+                v.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(Ui.dp(c, 20), Ui.dp(c, 20));
+                lp.rightMargin = Ui.dp(c, 8);
+                band.addView(v, lp);
+                Ui.load(v, logo, null, () -> v.setVisibility(View.GONE));
+            }
             band.addView(Ui.text(c, a.optString("title"), 15, c.getColor(R.color.band_ink), true), Ui.weight(1));
             band.addView(Ui.text(c, java.time.Instant.ofEpochMilli(a.optLong("at")).atZone(java.time.ZoneId.systemDefault())
                     .format(DateTimeFormatter.ofPattern("HH:mm")), 12, 0xFF33386A, false));
@@ -214,11 +319,14 @@ public class HomeFragment extends Fragment {
     private void counter() {
         if (shown.size() < 2) { count.setText(""); return; }
         LinearLayoutManager lm = (LinearLayoutManager) bugs.getLayoutManager();
-        int at = lm == null ? 0 : Math.max(0, lm.findFirstCompletelyVisibleItemPosition());
+        int at = lm == null ? 0 : at(lm) % shown.size();
         count.setText((at + 1) + " of " + shown.size() + "  ·  swipe for more");
     }
 
-    /** The scores box, one game a page. */
+    /**
+     * The scores box, one game a page, round and round: with two games or more it holds LOOPS rounds of them (page p
+     * is game p modulo their number), so moving on from the last slides the first in from the right.
+     */
     private final class Bugs extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
         @NonNull @Override public RecyclerView.ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int type) {
             ScoreBug b = new ScoreBug(parent.getContext());
@@ -228,11 +336,11 @@ public class HomeFragment extends Fragment {
         }
 
         @Override public void onBindViewHolder(@NonNull RecyclerView.ViewHolder h, int pos) {
-            Game g = shown.get(pos);
+            Game g = shown.get(pos % shown.size());
             ((ScoreBug) h.itemView).show(g);
             h.itemView.setOnClickListener(v -> v.getContext().startActivity(GameActivity.intent(v.getContext(), g)));
         }
 
-        @Override public int getItemCount() { return shown.size(); }
+        @Override public int getItemCount() { return shown.size() < 2 ? shown.size() : shown.size() * LOOPS; }
     }
 }

@@ -20,6 +20,8 @@ public final class Events {
     public static final class Alert {
         public final String kind, key, title, text;
         public final Game game;
+        /** A reminder's competition and channel (its game is not read again): for the logos; null when none. */
+        public String slug, channel;
 
         public Alert(String kind, String key, String title, String text, Game game) {
             this.kind = kind;

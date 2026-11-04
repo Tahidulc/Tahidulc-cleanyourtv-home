@@ -31,6 +31,7 @@ public final class AlertLog {
             JSONObject o = new JSONObject().put("kind", a.kind).put("title", a.title).put("text", a.text)
                     .put("at", System.currentTimeMillis());
             if (a.game != null) o.put("slug", a.game.slug).put("id", a.game.id).put("home", a.game.homeLogo).put("away", a.game.awayLogo);
+            else if (a.slug != null && !a.slug.isEmpty()) o.put("slug", a.slug);
             out.put(o);
         } catch (JSONException ignored) {
             // plain fields

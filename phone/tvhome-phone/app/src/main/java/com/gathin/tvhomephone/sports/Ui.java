@@ -2,6 +2,7 @@ package com.gathin.tvhomephone.sports;
 
 import android.content.Context;
 import android.graphics.Typeface;
+import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.view.Gravity;
 import android.view.View;
@@ -10,7 +11,15 @@ import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
+import androidx.annotation.NonNull;
+
 import com.bumptech.glide.Glide;
+import com.bumptech.glide.RequestBuilder;
+import com.bumptech.glide.RequestManager;
+import com.bumptech.glide.load.DataSource;
+import com.bumptech.glide.load.engine.GlideException;
+import com.bumptech.glide.request.RequestListener;
+import com.bumptech.glide.request.target.Target;
 import com.gathin.tvhomephone.R;
 
 /** Small view helpers in the launcher's look, for Home and Sports: text, cards, crests and the glass rows. */
@@ -94,6 +103,79 @@ public final class Ui {
         }
     }
 
+    /** A picture from the first of these addresses that loads (then the next), telling which way it went. Main thread. */
+    public static void load(ImageView v, String[] urls, Runnable ready, Runnable failed) {
+        try {
+            RequestManager glide = Glide.with(v);
+            RequestBuilder<Drawable> chain = null;
+            for (int i = urls == null ? -1 : urls.length - 1; i >= 0; i--) {
+                if (urls[i] == null || urls[i].isEmpty()) continue;
+                RequestBuilder<Drawable> b = glide.load(urls[i]).listener(told(ready, chain == null ? failed : null));
+                chain = chain == null ? b : b.error(chain);
+            }
+            if (chain == null) {
+                glide.clear(v);
+                v.setImageDrawable(null);
+                if (failed != null) failed.run();
+                return;
+            }
+            chain.into(v);
+        } catch (RuntimeException ignored) {
+            // the screen went away
+        }
+    }
+
+    public static void load(ImageView v, String url, Runnable ready, Runnable failed) {
+        load(v, new String[]{url}, ready, failed);
+    }
+
+    private static RequestListener<Drawable> told(Runnable ready, Runnable failed) {
+        return new RequestListener<Drawable>() {
+            @Override public boolean onLoadFailed(GlideException e, Object model, @NonNull Target<Drawable> target, boolean first) {
+                if (failed != null) failed.run();
+                return false;
+            }
+
+            @Override public boolean onResourceReady(@NonNull Drawable d, @NonNull Object model, Target<Drawable> target,
+                                                     @NonNull DataSource source, boolean first) {
+                if (ready != null) ready.run();
+                return false;
+            }
+        };
+    }
+
+    /** No picture, and none still coming (a recycled row). */
+    public static void clear(ImageView v) {
+        try {
+            Glide.with(v).clear(v);
+        } catch (RuntimeException ignored) {
+            // the screen went away
+        }
+        v.setImageDrawable(null);
+    }
+
+    /**
+     * A competition's heading: its logo (for dark grounds), then its name in the section's small capitals. The logo
+     * goes when none loads.
+     */
+    public static LinearLayout compHeading(Context c, String name, String logo, int color) {
+        LinearLayout r = row(c);
+        r.setPadding(0, dp(c, 16), 0, dp(c, 8));
+        if (logo != null && !logo.isEmpty()) {
+            ImageView v = new ImageView(c);
+            v.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            v.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(dp(c, 22), dp(c, 22));
+            lp.rightMargin = dp(c, 9);
+            r.addView(v, lp);
+            load(v, logo, null, () -> v.setVisibility(View.GONE));
+        }
+        TextView t = heading(c, name, color);
+        t.setPadding(0, 0, 0, 0);
+        r.addView(t, weight(1));
+        return r;
+    }
+
     public static LinearLayout.LayoutParams weight(float w) {
         return new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, w);
     }
@@ -122,15 +204,51 @@ public final class Ui {
         return l;
     }
 
-    /** "Live on Sky Sports Main Event": a link in the Sports green when the playlist has that channel. */
-    public static TextView liveOn(Context c, String channel) {
+    /**
+     * "Live on" and the channel's logo (Sky's, the service's or the playlist's: ChannelLogos), its name written out when
+     * no logo is known or it does not load; a link in the Sports green when the playlist has that channel.
+     */
+    public static View liveOn(Context c, String channel) {
         boolean link = channel != null && com.gathin.tvhomephone.live.LiveLinks.has(c, channel);
-        TextView t = text(c, (link ? "▶  " : "") + "Live on " + channel, 14, link ? c.getColor(R.color.sports) : c.getColor(R.color.text_soft), link);
-        if (link) {
-            t.setPadding(0, dp(c, 6), 0, dp(c, 6));
-            t.setOnClickListener(v -> com.gathin.tvhomephone.live.LiveLinks.open(c, channel));
+        int ink = link ? c.getColor(R.color.sports) : c.getColor(R.color.text_soft);
+        LinearLayout r = row(c);
+        r.setPadding(0, dp(c, 6), 0, dp(c, 6));
+        r.addView(text(c, (link ? "▶  " : "") + "Live on", 14, ink, link));
+        TextView name = text(c, " " + channel, 14, ink, link);
+        name.setMaxLines(1);
+        name.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        r.addView(name, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        ImageView logo = new ImageView(c);
+        logo.setAdjustViewBounds(true);
+        logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        logo.setMaxWidth(dp(c, 150));
+        logo.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        logo.setVisibility(View.GONE);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(c, 20));
+        lp.leftMargin = dp(c, 8);
+        r.addView(logo, lp);
+        r.setContentDescription("Live on " + channel);
+        if (link) r.setOnClickListener(v -> com.gathin.tvhomephone.live.LiveLinks.open(c, channel));
+        String known = ChannelLogos.known(c, channel);
+        if (known != null) {
+            showLogo(logo, name, known);
+        } else if (ChannelLogos.isService(channel)) {
+            Context app = c.getApplicationContext();
+            com.gathin.tvhomephone.App.io.execute(() -> {
+                String found = ChannelLogos.find(app, channel);
+                if (found != null) com.gathin.tvhomephone.App.main.post(() -> showLogo(logo, name, found));
+            });
         }
-        return t;
+        return r;
+    }
+
+    private static void showLogo(ImageView logo, TextView name, String url) {
+        logo.setVisibility(View.VISIBLE);
+        name.setVisibility(View.GONE);
+        load(logo, url, null, () -> {
+            logo.setVisibility(View.GONE);
+            name.setVisibility(View.VISIBLE);
+        });
     }
 
     public static void empty(LinearLayout into, String words) {

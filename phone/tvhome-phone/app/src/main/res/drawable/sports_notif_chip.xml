@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The navy chip a competition's or a channel's logo sits on in an alert (the logos are drawn for dark grounds), as
+     the scores box's competition block. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="@color/bug_navy_bottom" />
+    <corners android:radius="5dp" />
+</shape>
