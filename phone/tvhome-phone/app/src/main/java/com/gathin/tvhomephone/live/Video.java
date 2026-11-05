@@ -45,6 +45,30 @@ final class Video extends PlayerView {
         return getVideoSurfaceView();
     }
 
+    /**
+     * Where the picture is in this view, into out: the content frame's bounds (within the view), or a 16:9 picture fitted
+     * in it when the frame fills a view of another shape (no picture's shape known yet).
+     */
+    void picture(android.graphics.RectF out) {
+        int w = getWidth(), h = getHeight();
+        out.set(0, 0, w, h);
+        android.view.View f = findViewById(androidx.media3.ui.R.id.exo_content_frame);
+        if (f != null && f.getWidth() > 0 && f.getHeight() > 0) {
+            float x = 0, y = 0;
+            for (android.view.View v = f; v != null && v != this; v = (android.view.View) v.getParent()) {
+                x += v.getLeft();
+                y += v.getTop();
+                if (!(v.getParent() instanceof android.view.View)) break;
+            }
+            out.set(Math.max(0, x), Math.max(0, y), Math.min(w, x + f.getWidth()), Math.min(h, y + f.getHeight()));
+        }
+        boolean whole = out.width() >= w - 1 && out.height() >= h - 1;
+        if (whole && w > 0 && h > 0 && Math.abs((float) w / h - 16f / 9f) > 0.25f) {
+            float pw = Math.min(w, h * 16f / 9f), ph = pw * 9f / 16f;
+            out.set((w - pw) / 2f, (h - ph) / 2f, (w + pw) / 2f, (h + ph) / 2f);
+        }
+    }
+
     /** Fits the picture as the shape says. */
     void apply(Aspect a) {
         switch (a) {

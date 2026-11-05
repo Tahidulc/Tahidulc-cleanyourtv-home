@@ -111,6 +111,22 @@ public final class ScoreBoard implements LiveAlerts.Listener {
 
     static void setBroadcast(Context c, boolean v) { prefs(c).edit().putBoolean("broadcast", v).apply(); }
 
+    /** What the break can show, {key, name}: each on until switched off in Settings. */
+    static final String[][] BREAK_KINDS = {{"tv", "Your TV"}, {"facts", "Fun facts"}, {"prayer", "Prayer times"}, {"quiz", "Quiz"},
+            {"reminders", "Reminders"}, {"games", "Other games"}, {"news", "Headlines"}, {"trailer", "Trailers"}, {"today", "Today & weather"}};
+
+    static boolean breakShows(Context c, String kind) {
+        return !prefs(c).getStringSet("break_off", java.util.Collections.emptySet()).contains(kind);
+    }
+
+    static void setBreakShows(Context c, String kind, boolean on) {
+        java.util.Set<String> off = new java.util.HashSet<>(prefs(c).getStringSet("break_off", java.util.Collections.emptySet()));
+        if (on) off.remove(kind);
+        else off.add(kind);
+        prefs(c).edit().putStringSet("break_off", off).apply();
+        BreakScreen.forget();
+    }
+
     /** How far behind the other apps' pictures run (their streams' delay), in seconds. */
     static int otherDelay(Context c) { return prefs(c).getInt("other_delay", 0); }
 

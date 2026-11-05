@@ -12,7 +12,7 @@ import org.json.JSONObject;
 public final class Weather {
     private Weather() {}
 
-    static final String LAT = "53.4808", LON = "-2.2426";
+    public static final String LAT = "53.4808", LON = "-2.2426";
     private static Object[] last;
 
     /** {temperature °C, words, rain chance per hour from now (first six hours)}; null when Open-Meteo does not answer. */

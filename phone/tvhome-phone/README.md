@@ -97,6 +97,13 @@ every kind. Overlays guard against burn-in: they move a little every minute and 
 own break (your reminders, news, what's on in each section, trailers) with the channel small in a corner, and goes
 back when the channel does. Swipe up on the Live TV panel to hide it and see more of the guide; swipe down for it.
 
+Broadcast mode's break, more of it (4.0): fun facts (Bangladesh first, two for every one of the world's or football's,
+fresh each break), a quiz question with its answer a few seconds on, today's prayer times from Darus Salam Mosque
+(each prayer's beginning and its jamā'ah, the Islamic date, the next one counting down; in Ramadan, iftar or sehri;
+worked out for Manchester when the mosque's page can't be read), and Today (the date, the Islamic date, the weather
+and sunset). Settings, What the break shows: a chip for each kind. The live window in the corner is the picture itself
+now, not the bars round it, so upright it no longer fills half the screen.
+
 Subtitles (CC in the film's player): the film's or episode's own, from your playlist's stream, come first, in the
 languages you choose (Settings, Subtitles, in order). When it has none, OpenSubtitles.com is looked in by the title's
 TMDB id (the series' with its season and episode), best first: your languages, the ones that fit the copy playing (its
