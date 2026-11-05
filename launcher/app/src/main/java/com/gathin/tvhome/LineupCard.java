@@ -128,6 +128,8 @@ final class LineupCard {
         // Its first moments: Back and OK go on to the app they were pressed for.
         if ((code == KeyEvent.KEYCODE_BACK || code == KeyEvent.KEYCODE_DPAD_CENTER || code == KeyEvent.KEYCODE_ENTER
                 || code == KeyEvent.KEYCODE_NUMPAD_ENTER || code == KeyEvent.KEYCODE_BUTTON_A) && PopupMotion.passOn(e, shownAt, passing)) return false;
+        // The half-time hop's card: Up and Down choose, OK hops.
+        if (hopping != null && code != KeyEvent.KEYCODE_BACK && hopKey(code, e)) return true;
         // Back: its key on the card dips as the button goes down, and the card shrinks away towards it as it comes up.
         if (code == KeyEvent.KEYCODE_BACK) {
             if (e.getAction() == KeyEvent.ACTION_DOWN && e.getRepeatCount() == 0) main.post(() -> PopupMotion.press(host));
@@ -875,6 +877,235 @@ final class LineupCard {
     /** A club colour that shows on the navy: not too dark, and not too near the navy itself. */
     private static boolean readable(int colour) {
         return colour != 0 && lum(colour) >= 0.22 && distance(colour, NAVY) >= 110;
+    }
+
+    // ---- the half-time hop: another game for the break, in the half-time card's look --------------------------------
+
+    /** The half-time hop's card (HalfTimeHop): the game at the break, and the games on now to hop to. */
+    static final class Hop {
+        Bitmap leagueLogo;
+        String home = "", away = "", score = "";
+        /** The games to hop to, then Stay as the last line; what OK on line i does (i == options.size(): stay). */
+        final List<HopOption> options = new ArrayList<>();
+        java.util.function.IntConsumer chosen;
+        int waited, hiddenWaits;
+    }
+
+    /** One game to hop to: both crests and names, its score and its minute. */
+    static final class HopOption {
+        Bitmap homeCrest, awayCrest;
+        String home = "", away = "", score = "", minute = "";
+    }
+
+    private static final long HOP_MS = 45_000L;
+    private static Hop hopping;
+    private static int hopAt;
+    private static final List<View> hopLines = new ArrayList<>();
+
+    /** Whether the hop's card is the one showing. */
+    static boolean hopShowing() {
+        return host != null && hopping != null;
+    }
+
+    /**
+     * Opens the hop's card (main thread), after any other pop-up has gone (the half-time card first): the band with
+     * the competition's mark and HALF TIME, the game at the break along the top, then a line for each game on now and
+     * Stay. Up and Down choose, OK hops (or stays), Back stays; it goes by itself after HOP_MS.
+     */
+    static void showHop(Context ctx, Hop hp) {
+        Context c = ctx.getApplicationContext();
+        if (OverlayGuard.hiding(c) != null && hiddenWait(c, "half-time hop", hp.hiddenWaits++, () -> showHop(c, hp))) return;
+        if ((CameraAlert.isShowing() || ScoreCard.busy() || GoalWatchService.alertShowing() || isShowing()) && hp.waited < 45) {
+            hp.waited++;
+            retry.postDelayed(() -> showHop(c, hp), 2_000L);
+            return;
+        }
+        close(false);
+        wipeBody = 0xFF151A63;
+        wipeEdge = 0xFF3D4BD6;
+        k = c.getResources().getDisplayMetrics().widthPixels / 1920f * SCALE;
+        int rows = hp.options.size() + 1;
+        int w = px(W), h = px(Math.max(H, 74 + rows * 44 + 14)), margin = px(10);
+        FrameLayout win = new FrameLayout(c);
+        FrameLayout card = new FrameLayout(c);
+        float r = px(14);
+        card.setOutlineProvider(new ViewOutlineProvider() {
+            @Override public void getOutline(View v, Outline o) { o.setRoundRect(0, 0, v.getWidth(), v.getHeight(), r); }
+        });
+        card.setClipToOutline(true);
+        card.setBackgroundColor(0xFF0D1360);
+        FrameLayout band = new FrameLayout(c);
+        band.setBackground(new Streaks(0xFF1B2591, 0xFF0D1360, 0x12FFFFFF, px(21), px(3)));
+        card.addView(band, new FrameLayout.LayoutParams(px(BAND), h));
+        FrameLayout stage = new FrameLayout(c);
+        FrameLayout.LayoutParams sl = new FrameLayout.LayoutParams(w - px(BAND), h);
+        sl.leftMargin = px(BAND);
+        card.addView(stage, sl);
+        FrameLayout.LayoutParams cl = new FrameLayout.LayoutParams(w, h);
+        cl.setMargins(margin, margin, margin, margin);
+        win.addView(card, cl);
+        ImageView back = new ImageView(c);
+        back.setImageBitmap(GoalWatchService.backButton(Config.themeString(c, "ok_button", "tcl"), 2 * margin));
+        back.setTag(PopupMotion.BACK_KEY);
+        win.addView(back, new FrameLayout.LayoutParams(2 * margin, 2 * margin, Gravity.TOP | Gravity.END));
+        WindowManager.LayoutParams lp = new WindowManager.LayoutParams(w + 2 * margin, h + 2 * margin,
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
+                        | WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
+                PixelFormat.TRANSLUCENT);
+        lp.gravity = Gravity.BOTTOM | Gravity.START;
+        lp.x = px(34);
+        lp.y = px(AmbientScene.showing() ? AmbientScene.ALERT_FOOT : 34);
+        lp.setTitle("LineupCard");
+        try {
+            c.getSystemService(WindowManager.class).addView(win, lp);
+        } catch (RuntimeException e) {
+            AlertLog.note(c, "the half-time hop's window could not open: " + e);
+            return;
+        }
+        Data carrier = new Data();
+        host = win;
+        QuietHold.shown(c, win, () -> close(true));
+        showing = carrier;
+        hopping = hp;
+        hopAt = 0;
+        shownAt = android.os.SystemClock.uptimeMillis();
+        bar = false;
+        AlertLog.note(c, "half-time hop offered over the app (" + AlertLog.front(c) + "): " + hp.home + " " + hp.score + " " + hp.away
+                + ", " + hp.options.size() + " games on");
+        halfBand(c, band, hopHalf(hp));
+        stage.addView(hopPage(c, hp), full());
+        paintHop();
+        card.setAlpha(0f);
+        card.setTranslationX(-px(40));
+        card.animate().alpha(1f).translationX(0f).setDuration(340).setInterpolator(new DecelerateInterpolator(2f)).withLayer().start();
+        if (!InputKeyService.running) offerHop(win);
+        main.postDelayed(() -> { if (host == win) close(true); }, HOP_MS);
+    }
+
+    /** The band's mark and words, as the half-time card's. */
+    private static Half hopHalf(Hop hp) {
+        Half f = new Half();
+        f.leagueLogo = hp.leagueLogo;
+        return f;
+    }
+
+    /** The game at the break along the top, then a line for each game on now and Stay. */
+    private static View hopPage(Context c, Hop hp) {
+        FrameLayout page = new FrameLayout(c);
+        page.setBackground(new Streaks(0xFF2A35B8, 0xFF080B3A, 0x0EFFFFFF, px(60), px(4)));
+        LinearLayout col = new LinearLayout(c);
+        col.setOrientation(LinearLayout.VERTICAL);
+        col.setPadding(px(16), px(14), px(16), px(12));
+        TextView ask = text(c, "Hop to another game for the break?", 19, 0xFFFFFFFF, inter(c, R.font.inter_semibold));
+        col.addView(ask, new LinearLayout.LayoutParams(-1, -2));
+        TextView sub = text(c, hp.home + " " + hp.score + " " + hp.away + "  ·  back for the second half on your screen", 12,
+                0xC7FFFFFF, inter(c, R.font.inter_regular));
+        LinearLayout.LayoutParams subl = new LinearLayout.LayoutParams(-1, -2);
+        subl.topMargin = px(5);
+        subl.bottomMargin = px(8);
+        col.addView(sub, subl);
+        hopLines.clear();
+        for (HopOption o : hp.options) {
+            LinearLayout line = new LinearLayout(c);
+            line.setGravity(Gravity.CENTER_VERTICAL);
+            line.setPadding(px(10), 0, px(12), 0);
+            line.addView(crest(c, o.homeCrest), new LinearLayout.LayoutParams(px(26), px(26)));
+            TextView hn = text(c, o.home, 14, 0xFFFFFFFF, inter(c, R.font.inter_semibold));
+            hn.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
+            LinearLayout.LayoutParams hl = new LinearLayout.LayoutParams(0, -2, 1f);
+            hl.leftMargin = px(8);
+            line.addView(hn, hl);
+            TextView sc = text(c, o.score, 16, 0xFFFFFFFF, inter(c, R.font.inter_display_semibold));
+            sc.setGravity(Gravity.CENTER);
+            line.addView(sc, new LinearLayout.LayoutParams(px(64), -2));
+            TextView an = text(c, o.away, 14, 0xFFFFFFFF, inter(c, R.font.inter_semibold));
+            line.addView(an, new LinearLayout.LayoutParams(0, -2, 1f));
+            LinearLayout.LayoutParams al = new LinearLayout.LayoutParams(px(26), px(26));
+            al.leftMargin = px(8);
+            line.addView(crest(c, o.awayCrest), al);
+            TextView min = text(c, o.minute, 12, 0xFF6EE7A8, Typeface.create("sans-serif-condensed", Typeface.BOLD));
+            min.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
+            line.addView(min, new LinearLayout.LayoutParams(px(58), -2));
+            LinearLayout.LayoutParams ll = new LinearLayout.LayoutParams(-1, px(38));
+            ll.topMargin = px(6);
+            col.addView(line, ll);
+            hopLines.add(line);
+        }
+        TextView stay = text(c, "Stay here", 14, 0xFFFFFFFF, inter(c, R.font.inter_semibold));
+        stay.setGravity(Gravity.CENTER_VERTICAL);
+        stay.setPadding(px(14), 0, px(12), 0);
+        LinearLayout.LayoutParams stl = new LinearLayout.LayoutParams(-1, px(38));
+        stl.topMargin = px(6);
+        col.addView(stay, stl);
+        hopLines.add(stay);
+        page.addView(col, full());
+        col.setAlpha(0f);
+        col.setTranslationX(px(30));
+        col.animate().alpha(1f).translationX(0f).setStartDelay(220).setDuration(420).setInterpolator(new DecelerateInterpolator(2f)).withLayer().start();
+        return page;
+    }
+
+    /** The line chosen ringed in white on a lighter ground, the rest faint. */
+    private static void paintHop() {
+        float rr = px(10);
+        for (int i = 0; i < hopLines.size(); i++) {
+            android.graphics.drawable.GradientDrawable g = new android.graphics.drawable.GradientDrawable();
+            g.setCornerRadius(rr);
+            boolean on = i == hopAt;
+            g.setColor(on ? 0x33FFFFFF : 0x14FFFFFF);
+            if (on) g.setStroke(Math.max(1, px(2)), 0xFFFFFFFF);
+            hopLines.get(i).setBackground(g);
+        }
+    }
+
+    /** Up, Down, OK and Back on the hop's card; true when it took the key. */
+    private static boolean hopKey(int code, KeyEvent e) {
+        Hop hp = hopping;
+        if (hp == null) return false;
+        if (code == KeyEvent.KEYCODE_DPAD_UP || code == KeyEvent.KEYCODE_DPAD_DOWN) {
+            if (e.getAction() == KeyEvent.ACTION_DOWN) main.post(() -> {
+                hopAt = Math.max(0, Math.min(hopLines.size() - 1, hopAt + (code == KeyEvent.KEYCODE_DPAD_UP ? -1 : 1)));
+                paintHop();
+            });
+            return true;
+        }
+        boolean ok = code == KeyEvent.KEYCODE_DPAD_CENTER || code == KeyEvent.KEYCODE_ENTER
+                || code == KeyEvent.KEYCODE_NUMPAD_ENTER || code == KeyEvent.KEYCODE_BUTTON_A;
+        if (!ok) return false;
+        if (e.getAction() == KeyEvent.ACTION_UP && !e.isCanceled()) main.post(() -> {
+            int at = hopAt;
+            close(true);
+            if (hp.chosen != null) hp.chosen.accept(at);
+        });
+        return true;
+    }
+
+    /** On a TV without the key helper: the card takes the remote itself once its first moments are over. */
+    private static void offerHop(FrameLayout win) {
+        long wait = PopupMotion.FRESH_MS - (android.os.SystemClock.uptimeMillis() - shownAt);
+        if (wait > 0) {
+            main.postDelayed(() -> { if (host == win) offerHop(win); }, wait);
+            return;
+        }
+        try {
+            WindowManager.LayoutParams lp = (WindowManager.LayoutParams) win.getLayoutParams();
+            lp.flags &= ~WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
+            win.getContext().getSystemService(WindowManager.class).updateViewLayout(win, lp);
+        } catch (RuntimeException e) {
+            return;
+        }
+        win.setFocusable(true);
+        win.setFocusableInTouchMode(true);
+        win.requestFocus();
+        win.setOnKeyListener((v, code, e) -> {
+            if (code == KeyEvent.KEYCODE_BACK) {
+                if (e.getAction() == KeyEvent.ACTION_UP && !e.isCanceled()) close(true, true);
+                return true;
+            }
+            hopKey(code, e);
+            return true;
+        });
     }
 
     // ---- F1: a race's full result, and the starting grid before it -------------------------------------------------
@@ -2528,6 +2759,7 @@ final class LineupCard {
         boolean wasBar = bar;
         host = null;
         showing = null;
+        hopping = null;
         bar = false;
         if (v == null) return;
         v.setOnKeyListener(null);
