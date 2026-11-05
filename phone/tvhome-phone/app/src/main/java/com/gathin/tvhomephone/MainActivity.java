@@ -16,6 +16,8 @@ import com.google.android.material.bottomnavigation.BottomNavigationView;
  */
 public class MainActivity extends AppCompatActivity {
     private static final String TAB = "tab";
+    /** An intent's extra: what to open (a notification's tap): OPEN_PLAYLISTS, Settings at Live TV's playlists. */
+    public static final String EXTRA_OPEN = "open", OPEN_PLAYLISTS = "playlists";
     private BottomNavigationView tabs;
 
     @Override protected void onCreate(Bundle state) {
@@ -37,8 +39,22 @@ public class MainActivity extends AppCompatActivity {
             return true;
         });
         int start = state != null ? state.getInt(TAB, R.id.tab_home) : R.id.tab_home;
+        if (state == null && OPEN_PLAYLISTS.equals(getIntent().getStringExtra(EXTRA_OPEN))) {
+            com.gathin.tvhomephone.settings.SettingsFragment.toPlaylists = true;
+            start = R.id.tab_settings;
+        }
         tabs.setSelectedItemId(start);
         if (Build.VERSION.SDK_INT >= 33) requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"}, 1);
+    }
+
+    /** A notification tapped while the app is open: its place shown (the playlists in Settings). */
+    @Override protected void onNewIntent(android.content.Intent intent) {
+        super.onNewIntent(intent);
+        if (OPEN_PLAYLISTS.equals(intent.getStringExtra(EXTRA_OPEN))) {
+            com.gathin.tvhomephone.settings.SettingsFragment.toPlaylists = true;
+            if (tabs.getSelectedItemId() == R.id.tab_settings) show(R.id.tab_settings);
+            else tabs.setSelectedItemId(R.id.tab_settings);
+        }
     }
 
     /** Home or a swipe away while Live TV's guide plays: on in picture in picture (LiveLinks.leaving). */

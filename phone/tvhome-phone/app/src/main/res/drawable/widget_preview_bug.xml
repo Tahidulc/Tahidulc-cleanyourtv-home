@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The scores box as the widget picker shows it: the competition's navy block, two white crest tiles, the blue middle. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="300dp" android:height="36dp" android:viewportWidth="414" android:viewportHeight="50">
+    <path android:fillColor="#FF1D2B6E" android:pathData="M6,0 H52 V50 H6 A6,6 0 0 1 0,44 V6 A6,6 0 0 1 6,0 Z" />
+    <path android:fillColor="#FFFFFFFF" android:pathData="M52,0 H162 V50 H52 Z" />
+    <path android:fillColor="#FF2A6FE0" android:pathData="M162,0 H304 V50 H162 Z" />
+    <path android:fillColor="#FFFFFFFF" android:pathData="M304,0 H408 A6,6 0 0 1 414,6 V44 A6,6 0 0 1 408,50 H304 Z" />
+    <path android:fillColor="#FF1B4DA0" android:pathData="M107,9 L123,14 V27 C123,37 116,43 107,45 C98,43 91,37 91,27 V14 Z" />
+    <path android:fillColor="#FFD7172F" android:pathData="M359,9 L375,14 V27 C375,37 368,43 359,45 C350,43 343,37 343,27 V14 Z" />
+    <path android:fillColor="#FFFFFFFF" android:pathData="M213,17 h14 v4 h-14 z M213,29 h14 v4 h-14 z M236,14 h4 v22 h-4 z" />
+</vector>

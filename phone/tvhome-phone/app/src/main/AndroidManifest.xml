@@ -79,6 +79,19 @@
         <receiver android:name=".sports.MuteReceiver" android:exported="false" />
         <activity android:name=".sports.GameActivity" android:exported="false" />
 
+        <!-- Kick-off in 2 minutes: its alarm, and its "Not now". -->
+        <receiver android:name=".sports.KickOffReceiver" android:exported="false" />
+
+        <!-- The "Your club" home-screen widget. -->
+        <receiver android:name=".sports.ClubWidget" android:exported="false" android:label="@string/f2_widget_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/club_widget_info" />
+        </receiver>
+
         <receiver android:name=".sports.BootReceiver" android:exported="false">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />

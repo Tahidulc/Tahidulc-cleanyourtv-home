@@ -143,6 +143,7 @@ public final class Sources {
         save(c, all);
         prefs(c).edit().remove("info." + id).apply();
         Vod.forget(c, id);
+        PlaylistHealth.forget(c, id);
         if (id.equals(active(c))) setActive(c, ALL);
     }
 

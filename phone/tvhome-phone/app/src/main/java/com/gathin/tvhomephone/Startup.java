@@ -2,7 +2,7 @@ package com.gathin.tvhomephone;
 
 import android.content.Context;
 
-/** What each part starts as the app starts: the sync with the TVs, and the alerts. */
+/** What each part starts as the app starts: the sync with the TVs, the alerts, and the playlists' daily care. */
 final class Startup {
     private Startup() {}
 
@@ -16,6 +16,11 @@ final class Startup {
             com.gathin.tvhomephone.sports.SportsStartup.start(c);
         } catch (RuntimeException e) {
             android.util.Log.w("TvHome", "alerts start", e);
+        }
+        try {
+            com.gathin.tvhomephone.live.PlaylistCare.start(c);
+        } catch (RuntimeException e) {
+            android.util.Log.w("TvHome", "playlists start", e);
         }
     }
 }

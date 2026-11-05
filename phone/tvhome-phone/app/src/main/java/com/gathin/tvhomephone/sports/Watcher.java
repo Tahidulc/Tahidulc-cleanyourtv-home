@@ -115,8 +115,11 @@ public final class Watcher {
                 }
             }
         }
+        // "Kick-off in 2 min" for a followed or reminded game, and the home-screen widget drawn again.
+        KickOff.check(c, s.followed, now);
         reminders(c, now);
         f1(c, now);
+        ClubWidget.update(c, s);
         return s;
     }
 
@@ -290,6 +293,7 @@ public final class Watcher {
      * phone allows it, which also lets the watcher start from the background) for the next one.
      */
     public static void plan(Context c, State s) {
+        KickOff.plan(c);
         long now = System.currentTimeMillis();
         if (s != null && Schedule.watchNow(s.followed, now)) {
             AlertService.start(c);

@@ -27,6 +27,9 @@ public final class Notifier {
 
     public static final String ALERTS = "sports_alerts", LIVE = "sports_live", F1 = "sports_f1", WEATHER = "sports_weather",
             REMINDERS = "sports_reminders";
+    /** Goals for a followed club, on their own channel with their own buzz: long, short, long. */
+    public static final String CLUB_GOALS = "sports_club_goals";
+    static final long[] CLUB_BUZZ = {0, 600, 180, 160, 180, 600};
     public static final int ONGOING_ID = 4100;
 
     public static void channels(Context c) {
@@ -40,6 +43,18 @@ public final class Notifier {
         m.createNotificationChannel(new NotificationChannel(F1, c.getString(R.string.sports_channel_f1), NotificationManager.IMPORTANCE_HIGH));
         m.createNotificationChannel(new NotificationChannel(WEATHER, c.getString(R.string.sports_channel_weather), NotificationManager.IMPORTANCE_DEFAULT));
         m.createNotificationChannel(new NotificationChannel(REMINDERS, c.getString(R.string.sports_channel_reminders), NotificationManager.IMPORTANCE_HIGH));
+        NotificationChannel club = new NotificationChannel(CLUB_GOALS, c.getString(R.string.f2_channel_club_goals), NotificationManager.IMPORTANCE_HIGH);
+        club.setDescription(c.getString(R.string.f2_channel_club_goals_about));
+        club.enableVibration(true);
+        club.setVibrationPattern(CLUB_BUZZ);
+        m.createNotificationChannel(club);
+    }
+
+    /** Whether an alert is a goal for one of the followed clubs (side: "home" or "away", as NotifCard reads it). Pure. */
+    static boolean clubGoal(String kind, String side, String homeId, String awayId, java.util.Set<String> followed) {
+        if (!"goal".equals(kind) || followed == null) return false;
+        String team = "home".equals(side) ? homeId : "away".equals(side) ? awayId : null;
+        return team != null && followed.contains(team);
     }
 
     /**
@@ -60,6 +75,7 @@ public final class Notifier {
     /** The alert's notification, built and sent (off the main thread). */
     private static void show(Context c, Events.Alert a) {
         String channel = a.kind.startsWith("f1") ? F1 : "weather".equals(a.kind) ? WEATHER : "reminder".equals(a.kind) ? REMINDERS : ALERTS;
+        if ("goal".equals(a.kind) && a.game != null && clubGoal(a.kind, NotifCard.side(a), a.game.homeId, a.game.awayId, Clubs.starred(c))) channel = CLUB_GOALS;
         NotificationCompat.Builder b = new NotificationCompat.Builder(c, channel)
                 .setSmallIcon(R.drawable.sports_ic_ball)
                 .setContentTitle(a.title)

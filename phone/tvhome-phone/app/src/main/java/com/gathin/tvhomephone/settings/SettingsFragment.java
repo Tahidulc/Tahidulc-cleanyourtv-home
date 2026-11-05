@@ -18,6 +18,9 @@ import com.gathin.tvhomephone.R;
  * then the version.
  */
 public class SettingsFragment extends Fragment {
+    /** Set before Settings opens from a playlist's notification: scrolled down to Live TV's playlists once. */
+    public static boolean toPlaylists;
+
     @Override public View onCreateView(LayoutInflater inflater, ViewGroup parent, Bundle state) {
         ScrollView scroll = new ScrollView(requireContext());
         LinearLayout col = new LinearLayout(requireContext());
@@ -27,7 +30,12 @@ public class SettingsFragment extends Fragment {
         scroll.addView(col);
         col.addView(com.gathin.tvhomephone.sync.SyncSettings.build(this, col));
         col.addView(com.gathin.tvhomephone.sports.SportsSettings.build(this, col));
-        col.addView(com.gathin.tvhomephone.live.LiveTvSettings.build(this, col));
+        android.view.View live = com.gathin.tvhomephone.live.LiveTvSettings.build(this, col);
+        col.addView(live);
+        if (toPlaylists) {
+            toPlaylists = false;
+            scroll.post(() -> scroll.smoothScrollTo(0, live.getTop()));
+        }
         TextView v = new TextView(requireContext());
         v.setText("TV Home " + BuildConfig.VERSION_NAME);
         v.setTextColor(requireContext().getColor(R.color.text_dim));

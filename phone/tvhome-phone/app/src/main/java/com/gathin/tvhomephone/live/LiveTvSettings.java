@@ -345,10 +345,15 @@ public final class LiveTvSettings {
             card.addView(m);
         }
 
+        // How it is doing (PlaylistHealth): checked about once a week, or now.
+        HealthRow health = new HealthRow(c, e);
+        card.addView(health.view);
+
         LinearLayout row = new LinearLayout(c);
         row.setPadding(0, Ui.dp(c, 4), 0, 0);
         row.addView(small(c, R.string.live_edit, edit));
         row.addView(small(c, R.string.live_remove, remove));
+        row.addView(small(c, R.string.f2_health_check, health::checkNow));
         card.addView(row);
         return card;
     }

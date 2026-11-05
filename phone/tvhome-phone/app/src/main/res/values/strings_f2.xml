@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Your playlists: expiry warnings and health -->
+    <string name="f2_channel_playlists">Your playlists</string>
+    <string name="f2_channel_playlists_about">When a playlist is about to run out, or is struggling</string>
+    <string name="f2_expiry_title">%1$s runs out %2$s</string>
+    <string name="f2_expiry_text">On %1$s. Renew it with your provider to keep it.</string>
+    <string name="f2_expiry_text_count">On %1$s. Renew it with your provider to keep its %2$d channels.</string>
+    <string name="f2_health_bad_title">%1$s is struggling</string>
+    <string name="f2_health_bad_text">%1$d of %2$d channels tried didn\'t play, the others took %3$s to start. Your other playlists step in where they have the channel.</string>
+    <string name="f2_health_bad_answer">It didn\'t answer when checked. Your other playlists step in where they have the channel.</string>
+    <string name="f2_health_check">Check now</string>
+    <string name="f2_health_checking">Checking… (a few channels, a couple of seconds each)</string>
+    <string name="f2_health_busy">Stop what\'s playing first, then check</string>
+    <string name="f2_health_never">Not checked yet: checked once a week on Wi-Fi</string>
+    <string name="f2_health_checked">checked %1$s</string>
+    <string name="f2_health_to_start">to start</string>
+    <string name="f2_health_failed">failed</string>
+    <string name="f2_health_not_tried">channels not tried (all connections in use)</string>
+    <string name="f2_health_to_answer">to answer</string>
+
+    <!-- Kick-off in 2 minutes -->
+    <string name="f2_kickoff_title">Kick-off in %1$d min</string>
+    <string name="f2_kickoff_on">%1$s · opening on %2$s</string>
+    <string name="f2_kickoff_watch">Watch now</string>
+    <string name="f2_kickoff_later">Not now</string>
+
+    <!-- Your club's goals -->
+    <string name="f2_channel_club_goals">Your club\'s goals</string>
+    <string name="f2_channel_club_goals_about">Goals for the clubs you follow, with their own buzz (long, short, long)</string>
+
+    <!-- The widget -->
+    <string name="f2_widget_name">Your club</string>
+    <string name="f2_widget_about">Your club\'s live game or the next one, with Watch</string>
+    <string name="f2_widget_header">YOUR CLUB</string>
+    <string name="f2_widget_live">LIVE</string>
+    <string name="f2_widget_watch">Watch</string>
+    <string name="f2_widget_next">Next: %1$s</string>
+    <string name="f2_widget_none">No games for your clubs this week</string>
+    <string name="f2_widget_pick">Follow a club in Settings</string>
+    <string name="f2_widget_preview_next">Next: Sat 15:00</string>
+</resources>
