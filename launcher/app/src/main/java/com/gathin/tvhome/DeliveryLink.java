@@ -261,6 +261,26 @@ final class DeliveryLink {
                 reply(s, 200, "{\"ok\":true}");
                 return;
             }
+            case "/tune": {
+                // A live channel from the phone ("Continue on TV"): put on in TiviMate, as the TV's own Watch on does.
+                if (!paired(token)) { reply(s, 401, "{\"error\":\"not paired\"}"); return; }
+                android.os.PowerManager pm = context.getSystemService(android.os.PowerManager.class);
+                if (pm != null && !pm.isInteractive()) { reply(s, 409, "{\"error\":\"the TV is off\"}"); return; }
+                org.json.JSONArray arr = json.optJSONArray("channels");
+                java.util.List<String> names = new java.util.ArrayList<>();
+                for (int i = 0; arr != null && i < arr.length() && names.size() < 4; i++) {
+                    String n = arr.optString(i, "").trim();
+                    if (!n.isEmpty() && n.length() <= 120) names.add(n);
+                }
+                if (names.isEmpty()) { reply(s, 400, "{\"error\":\"no channel\"}"); return; }
+                AlertLog.note(context, "channel from the phone: " + names.get(0));
+                new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
+                    GoalWatchService.onAppOpened(context, "ar.tvplayer.tv");
+                    AppSearchService.tune(context, "ar.tvplayer.tv", names, null);
+                });
+                reply(s, 200, "{\"ok\":true}");
+                return;
+            }
             case "/tmdb": {
                 // TMDB's key for a paired phone, read from the theme now (never logged).
                 if (!paired(token)) { reply(s, 401, "{\"error\":\"not paired\"}"); return; }
