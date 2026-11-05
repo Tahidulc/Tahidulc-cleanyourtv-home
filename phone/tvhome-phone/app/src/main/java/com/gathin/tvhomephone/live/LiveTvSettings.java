@@ -149,6 +149,7 @@ public final class LiveTvSettings {
         second.addView(removeAll);
         col.addView(second);
         col.addView(status);
+        playing(c, col);
 
         // The form opened for a new playlist (null) or to change one.
         java.util.function.Consumer<Sources.Entry> open = e -> {
@@ -350,6 +351,86 @@ public final class LiveTvSettings {
         row.addView(small(c, R.string.live_remove, remove));
         card.addView(row);
         return card;
+    }
+
+    /** How it plays: the picture's quality (adaptive or fixed), data saver, 4K on mobile data, the rewind, night sound. */
+    private static void playing(Context c, LinearLayout col) {
+        TextView head = Ui.text(c, c.getString(R.string.live3_playing), 18, Ui.TEXT, true);
+        head.setPadding(0, Ui.dp(c, 24), 0, Ui.dp(c, 4));
+        col.addView(head);
+        col.addView(label(c, c.getString(R.string.live3_quality)));
+        HorizontalScrollView qs = new HorizontalScrollView(c);
+        qs.setHorizontalScrollBarEnabled(false);
+        LinearLayout qRow = new LinearLayout(c);
+        qs.addView(qRow);
+        List<TextView> chips = new java.util.ArrayList<>();
+        int choice = Quality.choice(c);
+        for (int lv : Quality.CHOICES) {
+            TextView t = pill(c, Quality.label(lv), lv == choice);
+            t.setOnClickListener(v -> {
+                Quality.setChoice(c, lv);
+                for (TextView x : chips) restyle(c, x, x == v);
+                Playback.get(c).requality(false);
+            });
+            chips.add(t);
+            qRow.addView(t, chipParams(c));
+        }
+        col.addView(qs);
+        TextView note = Ui.text(c, c.getString(R.string.live3_quality_note), 13, Ui.DIM, false);
+        note.setPadding(0, Ui.dp(c, 6), 0, 0);
+        col.addView(note);
+        col.addView(toggle(c, c.getString(R.string.live3_data_saver), Quality.saver(c), on -> {
+            Quality.setSaver(c, on);
+            Playback.get(c).requality(false);
+        }));
+        col.addView(toggle(c, c.getString(R.string.live3_ask_4k), Quality.ask4k(c), on -> {
+            Quality.setAsk4k(c, on);
+            Playback.get(c).requality(false);
+        }));
+        col.addView(label(c, c.getString(R.string.live3_rewind)));
+        LinearLayout rRow = new LinearLayout(c);
+        List<TextView> rs = new java.util.ArrayList<>();
+        int mins = Timeshift.get(c).minutes();
+        for (int m : Timeshift.CHOICES) {
+            TextView t = pill(c, m == 0 ? c.getString(R.string.live3_off) : c.getString(R.string.live3_minutes, m), m == mins);
+            t.setOnClickListener(v -> {
+                Timeshift.get(c).setMinutes(m);
+                for (TextView x : rs) restyle(c, x, x == v);
+            });
+            rs.add(t);
+            rRow.addView(t, chipParams(c));
+        }
+        col.addView(rRow);
+        col.addView(toggle(c, c.getString(R.string.live3_hold), LiveAlerts.holding(c), on -> LiveAlerts.setHolding(c, on)));
+        if (NightSound.available()) col.addView(toggle(c, c.getString(R.string.live3_night), NightSound.on(c), on -> NightSound.set(c, on)));
+    }
+
+    private interface Flip {
+        void set(boolean on);
+    }
+
+    private static TextView label(Context c, String words) {
+        TextView t = Ui.text(c, words, 13, Ui.DIM, true);
+        t.setPadding(0, Ui.dp(c, 14), 0, Ui.dp(c, 6));
+        return t;
+    }
+
+    /** A line with its switch (On/Off chip). */
+    private static View toggle(Context c, String words, boolean on, Flip flip) {
+        LinearLayout row = new LinearLayout(c);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setMinimumHeight(Ui.dp(c, 52));
+        row.addView(Ui.text(c, words, 15, Ui.TEXT, false), new LinearLayout.LayoutParams(0, -2, 1));
+        boolean[] state = {on};
+        TextView chip = pill(c, c.getString(on ? R.string.live3_on : R.string.live3_off), on);
+        chip.setOnClickListener(v -> {
+            state[0] = !state[0];
+            chip.setText(state[0] ? R.string.live3_on : R.string.live3_off);
+            restyle(c, chip, state[0]);
+            flip.set(state[0]);
+        });
+        row.addView(chip);
+        return row;
     }
 
     /** Green while it has a fortnight or more, amber under that, pink once run out. */

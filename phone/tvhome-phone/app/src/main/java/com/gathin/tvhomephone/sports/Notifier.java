@@ -52,6 +52,13 @@ public final class Notifier {
         AlertLog.add(c, a);
         // Muted from an earlier alert's "Mute game": kept in the log, not shown.
         if (a.game != null && MuteReceiver.muted(c, a.game.id)) return;
+        // The game on the full screen: held until its stream shows the moment (LiveAlerts), then shown.
+        if (com.gathin.tvhomephone.live.LiveAlerts.hold(c, a, () -> com.gathin.tvhomephone.App.io.execute(() -> show(c, a)))) return;
+        show(c, a);
+    }
+
+    /** The alert's notification, built and sent (off the main thread). */
+    private static void show(Context c, Events.Alert a) {
         String channel = a.kind.startsWith("f1") ? F1 : "weather".equals(a.kind) ? WEATHER : "reminder".equals(a.kind) ? REMINDERS : ALERTS;
         NotificationCompat.Builder b = new NotificationCompat.Builder(c, channel)
                 .setSmallIcon(R.drawable.sports_ic_ball)
@@ -70,6 +77,7 @@ public final class Notifier {
         }
         // Watch match first: the game on the family's own playlist (AlsoShowing's best channel for it).
         if (a.game != null && a.game.state != Game.POST && !a.kind.startsWith("f1")) watchMatch(c, a.game, b);
+        com.gathin.tvhomephone.live.LiveAlerts.seeAgain(c, a, b);
         if (!(NotifCard.drawn(a) && carded(c, a, b)) && !drawnOther(c, a, b)) {
             if (a.game != null) {
                 Bitmap crest = crest(c, a);

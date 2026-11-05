@@ -26,6 +26,11 @@ final class Gestures implements View.OnTouchListener {
 
         void onDoubleTap();
 
+        /** A double tap in the left third (-1), the middle (0) or the right third (1); the plain double tap unless taken. */
+        default void onDoubleTapAt(int third) {
+            onDoubleTap();
+        }
+
         /** A pinch under way, scaled this much so far. */
         void onPinch(float scale);
 
@@ -54,6 +59,12 @@ final class Gestures implements View.OnTouchListener {
         return NONE;
     }
 
+    /** Pure: which third of a width x is in: -1 the left, 0 the middle, 1 the right. */
+    static int third(float x, float width) {
+        if (width <= 0) return 0;
+        return x < width / 3f ? -1 : x > width * 2f / 3f ? 1 : 0;
+    }
+
     /** Where a touch at x landed across a width: an edge (for its slides) or the middle. */
     static int zone(float x, float width) {
         if (width <= 0) return MIDDLE;
@@ -67,7 +78,7 @@ final class Gestures implements View.OnTouchListener {
     private final float minDistance, minVelocity;
     private int zone;
     private boolean edge, multi;
-    private float downX, downY, startLevel, pinch = 1f;
+    private float downX, downY, startLevel, pinch = 1f, width;
 
     Gestures(Context c, Callback cb, float minDistanceDp) {
         this.cb = cb;
@@ -83,7 +94,7 @@ final class Gestures implements View.OnTouchListener {
             }
 
             @Override public boolean onDoubleTap(@NonNull MotionEvent e) {
-                cb.onDoubleTap();
+                cb.onDoubleTapAt(third(e.getX(), width));
                 return true;
             }
 
@@ -124,6 +135,7 @@ final class Gestures implements View.OnTouchListener {
             edge = false;
             downX = e.getX();
             downY = e.getY();
+            width = v.getWidth();
             zone = zone(downX, v.getWidth());
             startLevel = zone == MIDDLE ? -1f : cb.edgeLevel(zone);
             // No edge slides here (the guide's picture): the whole width is the middle's.

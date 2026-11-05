@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Phone 3.0: the player's new parts -->
+    <string name="live3_see_again">See it again</string>
+    <string name="live3_playing">Playing</string>
+    <string name="live3_quality">Picture quality</string>
+    <string name="live3_quality_note">Adaptive steps down to the same channel in a lower quality when your connection can\'t keep up, and back up once it\'s steady. Fixed always plays the resolution you pick (the nearest under it when a channel has no such version).</string>
+    <string name="live3_play_4k">Play this in 4K</string>
+    <string name="live3_data_saver">Data saver (720p on mobile data)</string>
+    <string name="live3_ask_4k">4K on mobile data only when asked</string>
+    <string name="live3_alerts">Alerts match your stream</string>
+    <string name="live3_just_happened">It\'s just happened</string>
+    <string name="live3_just_happened_none">No goal, card or kick-off yet in this game: tap just after the next one.</string>
+    <string name="live3_hold">Hold this game\'s alerts</string>
+    <string name="live3_rewind">Rewind</string>
+    <string name="live3_rewind_back">Back 30 seconds</string>
+    <string name="live3_rewind_off">Rewind is off (Options, Rewind)</string>
+    <string name="live3_rewind_none">Nothing kept yet to go back to</string>
+    <string name="live3_back_to_live">Back to live</string>
+    <string name="live3_night">Night sound</string>
+    <string name="live3_night_none">Night sound needs Android 9 or later</string>
+    <string name="live3_lock">Touch lock</string>
+    <string name="live3_lock_hint">Hold the lock to unlock</string>
+    <string name="live3_unlocked">Unlocked</string>
+    <string name="live3_on_tv">Watch on TV</string>
+    <string name="live3_on_tv_which">Watch on which TV?</string>
+    <string name="live3_continue_phone">Continue on phone</string>
+    <string name="live3_switch">Switch</string>
+    <string name="live3_dismiss">Dismiss</string>
+    <string name="live3_not_in_playlist">That game isn\'t on your playlists</string>
+    <string name="live3_on">On</string>
+    <string name="live3_off">Off</string>
+    <string name="live3_minutes">%1$d min</string>
+</resources>

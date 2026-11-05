@@ -4,9 +4,13 @@ import androidx.annotation.OptIn;
 import androidx.media3.common.MediaItem;
 import androidx.media3.common.MimeTypes;
 import androidx.media3.common.util.UnstableApi;
+import androidx.media3.datasource.DataSink;
+import androidx.media3.datasource.DataSource;
 import androidx.media3.datasource.DefaultHttpDataSource;
+import androidx.media3.datasource.TeeDataSource;
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
 import androidx.media3.exoplayer.source.MediaSource;
+import androidx.media3.exoplayer.source.ProgressiveMediaSource;
 
 import java.util.HashMap;
 import java.util.Locale;
@@ -26,6 +30,11 @@ final class Streams {
     }
 
     static MediaSource source(Channel c, boolean asHls) {
+        return source(c, asHls, null);
+    }
+
+    /** As source, with what it reads copied into tee too (the rewind's recording; null for none). */
+    static MediaSource source(Channel c, boolean asHls, DataSink tee) {
         DefaultHttpDataSource.Factory http = new DefaultHttpDataSource.Factory()
                 .setAllowCrossProtocolRedirects(true)
                 .setConnectTimeoutMs(15_000)
@@ -38,6 +47,13 @@ final class Streams {
         }
         MediaItem.Builder item = new MediaItem.Builder().setUri(c.url);
         if (asHls) item.setMimeType(MimeTypes.APPLICATION_M3U8);
-        return new DefaultMediaSourceFactory(http).createMediaSource(item.build());
+        DataSource.Factory f = tee == null ? http : () -> new TeeDataSource(http.createDataSource(), tee);
+        return new DefaultMediaSourceFactory(f).createMediaSource(item.build());
+    }
+
+    /** The rewind's recording from a moment, played as one transport stream (Timeshift). */
+    static MediaSource replay(Timeshift.Snapshot s) {
+        return new ProgressiveMediaSource.Factory(Timeshift.reader(s))
+                .createMediaSource(new MediaItem.Builder().setUri("timeshift://replay/" + s.startWall + ".ts").build());
     }
 }

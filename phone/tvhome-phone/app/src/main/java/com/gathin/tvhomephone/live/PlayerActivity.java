@@ -90,7 +90,7 @@ import java.util.Locale;
 @OptIn(markerClass = UnstableApi.class)
 public class PlayerActivity extends AppCompatActivity {
     static final String EXTRA_KEY = "live_key", EXTRA_GROUP = "live_group", EXTRA_GUIDE = "live_from_guide",
-            EXTRA_AUTO = "live_auto", EXTRA_PIP = "live_pip";
+            EXTRA_AUTO = "live_auto", EXTRA_PIP = "live_pip", EXTRA_REPLAY = "live_replay";
     /** The player's own switch: into picture in picture as the app is left while a channel plays (on unless turned off). */
     static final String AUTO_PIP = "auto_pip";
     private boolean pipNow;
@@ -98,6 +98,8 @@ public class PlayerActivity extends AppCompatActivity {
     private static final int[] SLEEP = {0, 15, 30, 60, 90};
 
     private final Handler h = new Handler(Looper.getMainLooper());
+    /** The newer parts: the rewind's bar, the alert waiting, a goal elsewhere, the touch lock, on a TV (PlayerExtras). */
+    private PlayerExtras extras;
     private Library lib;
     private Playback pb;
     private Aspect.Store store;
@@ -169,6 +171,12 @@ public class PlayerActivity extends AppCompatActivity {
         c.startActivity(i);
     }
 
+    /** The player back to a moment the rewind holds (an alert's "See it again"), on the channel playing. */
+    static Intent replayIntent(Context c, long at) {
+        Channel ch = Playback.get(c).channel();
+        return intent(c, ch == null ? "" : ch.key).putExtra(EXTRA_REPLAY, at);
+    }
+
     /** The player on one channel, from outside the app (an alert's Watch). */
     public static Intent intent(Context c, String key) {
         return new Intent(c, PlayerActivity.class).putExtra(EXTRA_KEY, key).putExtra(EXTRA_GROUP, Library.ALL)
@@ -225,6 +233,7 @@ public class PlayerActivity extends AppCompatActivity {
         super.onNewIntent(intent);
         setIntent(intent);
         if (take(intent) && pb.isFront(host)) watch(cur);
+        replayFrom(intent);
         // Left from the Live TV guide while this was open behind it: into the small window.
         if (pipNow && !isInPictureInPictureMode()) {
             pipNow = false;
@@ -265,6 +274,8 @@ public class PlayerActivity extends AppCompatActivity {
         // Its shape for the small window now (a stream taken over has told its size already).
         if (pipSupported()) setPictureInPictureParams(pipParams());
         h.postDelayed(tick, TICK_MS);
+        extras.start();
+        replayFrom(getIntent());
         // Opened as the app was left from the Live TV guide: straight into the small window.
         if (pipNow) {
             pipNow = false;
@@ -272,9 +283,20 @@ public class PlayerActivity extends AppCompatActivity {
         }
     }
 
+    /** "See it again": back to the moment, once the stream is this channel's. */
+    private void replayFrom(Intent i) {
+        long at = i == null ? 0 : i.getLongExtra(EXTRA_REPLAY, 0);
+        if (at <= 0) return;
+        i.removeExtra(EXTRA_REPLAY);
+        h.postDelayed(() -> {
+            if (!pb.replay(at)) Toast.makeText(this, R.string.live3_rewind_none, Toast.LENGTH_SHORT).show();
+        }, 300);
+    }
+
     @Override protected void onStop() {
         super.onStop();
         h.removeCallbacks(tick);
+        if (!isInPictureInPictureMode()) extras.stop();
         // Still playing in the small window.
         if (isInPictureInPictureMode()) return;
         // Back to the guide it came from: the stream plays on there. Otherwise (home, the screen off) it stops.
@@ -282,6 +304,8 @@ public class PlayerActivity extends AppCompatActivity {
     }
 
     @Override protected void onDestroy() {
+        if (extras != null) extras.stop();
+        LiveAlerts.watching(null, null);
         pb.leave(host, handBack);
         if (sheet != null) sheet.dismiss();
         h.removeCallbacksAndMessages(null);
@@ -348,6 +372,14 @@ public class PlayerActivity extends AppCompatActivity {
             // The guide plays something itself now (one stream at a time): this small window goes.
             finish();
         }
+
+        @Override public void onNotice(String words) {
+            if (!isInPictureInPictureMode()) Toast.makeText(PlayerActivity.this, words, Toast.LENGTH_LONG).show();
+        }
+
+        @Override public void onReplay(boolean replaying) {
+            extras.onReplay(replaying);
+        }
     };
 
     /** Plays a channel here (the same one already open carries on): its shape, the panel. */
@@ -356,6 +388,7 @@ public class PlayerActivity extends AppCompatActivity {
         cur = ch;
         boolean same = pb.live(ch);
         pb.play(ch);
+        if (!same) extras.game(null);
         // Held (the audio went elsewhere for a while): full screen is for watching.
         if (pb.paused()) pb.resume();
         aspect = Aspect.get(store, ch.key, landscape);
@@ -498,6 +531,7 @@ public class PlayerActivity extends AppCompatActivity {
 
     @Override public void onPictureInPictureModeChanged(boolean inPip, @NonNull Configuration cfg) {
         super.onPictureInPictureModeChanged(inPip, cfg);
+        extras.pip(inPip);
         if (inPip) {
             hideOverlay();
             if (sheet != null) sheet.dismiss();
@@ -540,6 +574,7 @@ public class PlayerActivity extends AppCompatActivity {
             TileData.enrich(this, asked, done -> {
                 if (isFinishing() || info == null || !done.id().equals(info.id())) return;
                 info = done;
+                extras.game(info.game);
                 marks(info);
                 if (tilesShown()) drawTile(false);
             });
@@ -1088,6 +1123,7 @@ public class PlayerActivity extends AppCompatActivity {
                 if (sheet != null) sheet.dismiss();
             });
         }
+        extras.options(box);
         action(c, box, R.drawable.live_ic_replay, R.string.live_restart, () -> {
             if (sheet != null) sheet.dismiss();
             restart();
@@ -1315,6 +1351,21 @@ public class PlayerActivity extends AppCompatActivity {
                 setAspect(aspect.toggled(landscape), true);
             }
 
+            @Override public void onDoubleTapAt(int third) {
+                // Left: back 10 s (the rewind); right: on 10 s in a replay; the middle flips to the channel before.
+                if (third < 0 || (third > 0 && pb.replaying())) {
+                    extras.doubleTap(third < 0);
+                    return;
+                }
+                Channel before = third == 0 ? pb.previous() : null;
+                if (before != null && lib.byKey(before.key) != null) {
+                    switchTo(lib.byKey(before.key));
+                    Toast.makeText(PlayerActivity.this, before.name, Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                onDoubleTap();
+            }
+
             @Override public void onPinch(float scale) {
                 float s = Math.max(0.85f, Math.min(1.2f, scale));
                 video.setScaleX(s);
@@ -1474,9 +1525,22 @@ public class PlayerActivity extends AppCompatActivity {
         root.addView(top, new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.END));
 
         // The panel and the buttons kept clear of the camera's cutout (the picture itself goes under it).
+        extras = new PlayerExtras(this, root, pb, new PlayerExtras.Host() {
+            @Override public Channel current() { return cur; }
+
+            @Override public void play(Channel ch) { switchTo(ch); }
+
+            @Override public com.gathin.tvhomephone.sports.Game game() { return info == null ? null : info.game; }
+
+            @Override public void closeSheet() {
+                if (sheet != null) sheet.dismiss();
+            }
+        });
         ViewCompat.setOnApplyWindowInsetsListener(root, (v, insets) -> {
             cut = insets.getInsets(WindowInsetsCompat.Type.displayCutout());
             clearCutout();
+            Insets bars = insets.getInsets(WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout());
+            extras.inset(bars.left, bars.top, bars.right, bars.bottom);
             return insets;
         });
         return root;

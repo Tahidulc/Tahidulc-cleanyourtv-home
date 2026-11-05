@@ -245,6 +245,47 @@ public final class Library {
         return out;
     }
 
+    /**
+     * A channel's versions in each picture quality, best first (for adaptive and fixed quality): the channels with its
+     * name, its +1 and its backup tag, one for each quality (the chosen one for its own; otherwise not hidden and the
+     * best of the rest, best()). Always holds the channel itself.
+     */
+    public List<Channel> variants(Channel ch) {
+        List<Channel> out = new ArrayList<>();
+        if (ch == null) return out;
+        Names.Info mine = Names.info(ch.name, ch.group);
+        int[] idx = mine.key.isEmpty() ? null : byName.get(mine.key);
+        Names.Info[] in = infos;
+        boolean[] hid = hidden;
+        java.util.Map<Integer, java.util.List<Integer>> byQuality = new java.util.TreeMap<>(java.util.Collections.reverseOrder());
+        if (idx != null) {
+            for (int i : idx) {
+                if (i >= in.length || i >= channels.size()) continue;
+                Names.Info n = in[i];
+                if (n.backup != mine.backup || n.quality == mine.quality) continue;
+                if (i < hid.length && hid[i]) continue;
+                java.util.List<Integer> l = byQuality.get(n.quality);
+                if (l == null) byQuality.put(n.quality, l = new java.util.ArrayList<>(2));
+                l.add(i);
+            }
+        }
+        boolean placed = false;
+        for (java.util.Map.Entry<Integer, java.util.List<Integer>> e : byQuality.entrySet()) {
+            if (!placed && e.getKey() < mine.quality) {
+                out.add(ch);
+                placed = true;
+            }
+            out.add(channels.get(best(toInts(e.getValue()))));
+        }
+        if (!placed) out.add(ch);
+        return out;
+    }
+
+    /** A channel's picture quality as Names reads it (4 UHD … 0 SD). */
+    static int level(Channel ch) {
+        return ch == null ? 1 : Names.info(ch.name, ch.group).quality;
+    }
+
     private static int[] toInts(java.util.List<Integer> l) {
         int[] a = new int[l.size()];
         for (int i = 0; i < a.length; i++) a[i] = l.get(i);

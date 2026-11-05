@@ -128,6 +128,34 @@ public final class Tvs {
     }
 
     /**
+     * A live channel put on a TV (its player, by the channel's names, the first it has): the phone's own stream can then
+     * stop. 409 from the TV: it is off.
+     */
+    public static void tuneOnTv(Context c, String tvName, java.util.List<String> channels, Result<Boolean> cb) {
+        Context a = c.getApplicationContext();
+        App.io.execute(() -> {
+            JSONObject tv = find(a, tvName);
+            String err = null;
+            if (tv == null) err = "That TV isn't paired";
+            else {
+                try {
+                    org.json.JSONArray names = new org.json.JSONArray();
+                    for (String n : channels) names.put(n);
+                    Syncer.call(a, tv, "/tune", new JSONObject().put("channels", names), 8_000);
+                } catch (IOException e) {
+                    int s = Link.status(e);
+                    err = s == 409 ? tvName + " is off" : s == 401 ? "Pair with " + tvName + " again in Settings"
+                            : s == 404 ? tvName + " needs the TV Home update (3.91) for this" : "Couldn't reach " + tvName;
+                } catch (JSONException e) {
+                    err = "Couldn't send it";
+                }
+            }
+            String e = err;
+            App.main.post(() -> cb.done(e == null, e));
+        });
+    }
+
+    /**
      * What is being watched on the TVs (their /sync/watching merged: "shows" and "resume", each item once, the TV's
      * name in "on"); the last answer when none can be reached now (away from home), or empty lists.
      */
