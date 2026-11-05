@@ -56,5 +56,43 @@ its name, picture and +1), and a film, series or episode the same: the others ar
 goes on to the next one when a stream won't play. The first playlist keeps its favourites and hidden channels as they
 were. "Also Showing On" also finds a playlist's event channels named for the game ("EPL 03: Arsenal v Chelsea").
 
+Live TV's picture can be adaptive or fixed (Settings, Live TV, Playing, or the player's options). Adaptive plays the
+channel you picked and, when your connection can't keep up (three stalls in a minute, or one of five seconds), steps
+down to the same channel in a lower quality from your playlists (4K to 1080p to 720p to SD), saying so; after a few
+steady minutes it tries a step back up (waiting longer each time that fails). A stream with its own quality levels (HLS)
+adapts by itself as well. Fixed always plays the resolution you choose, or the nearest under it when a channel has no
+such version. Data saver keeps it to 720p on mobile data, 4K there waits until you ask for it, and channels start after
+a second of picture instead of two and a half. The playlist that has started fastest and stalled least on this phone
+(or its weekly check) is tried first for a channel that several have; the options say where it plays from.
+
+The player keeps the last 5 or 10 minutes of what you watch on the phone (up to about 1 GB, deleted on the next
+channel), so you can go back: double-tap the left of the picture for 10 seconds back (the right goes on again), drag
+along the replay bar, or Back to live; a goal or red card alert for the game you are watching has See it again. Alerts
+for that game wait until your stream shows the moment: tap "It's just happened" in the options as you see a goal, a card
+or the kick-off and the channel's delay is set (or nudge it by five seconds); a line on the picture says an alert is
+waiting. A goal in another game comes as a banner with Switch, a double-tap in the middle flips back to the channel
+before, the small window keeps the score on it, and the options have night sound (quiet commentary up, loud moments
+evened out; Android 9 and later), a touch lock (hold the lock to undo) and Watch on TV, which puts the channel on a
+paired TV (it needs TV Home 3.91) and stops the phone's stream, with Continue on phone to come back.
+
+Films and episodes from your playlist that you stop part-way come back on Watch, in a Continue from your playlist row
+above the posters (films on Movies, episodes on TV shows, both on Discover), with how far in you got: tap one to carry
+on, hold it to take it off. A series is there once, at its latest episode. When an episode ends, the next one is
+offered and plays after ten seconds unless you cancel it, and the player has a sleep timer (15, 30 or 60 minutes, or
+the end of this one). Live TV has a Sport choice beside Favourites, All and Recent: what is live or still to come today
+in the competitions the app reads, and the F1 weekend's sessions, each on the channel of yours most sure to show it
+(and how many more show it), grouped by competition, with Live now, Football and F1 to narrow it; tap one to watch it.
+The clubs you follow are marked Your club there and on Home's scores box.
+
+Your playlists are looked after: a notification a week and a day before one runs out (as its provider says), and a quiet
+health check about once a week on Wi-Fi while nothing is playing (how long the playlist answers, how long a few of its
+channels take to start, how many fail; never while the account's connections are all in use, one stream at a time, each
+closed after a couple of seconds). Each playlist's card in Settings shows Healthy, Slow or Struggling with those three
+numbers and a Check now; you're told only when one turns Struggling. Two minutes before a followed club's game (or one
+you set a reminder for) a heads-up says "Kick-off in 2 min" and which of your channels it will be on, with Watch now.
+Goals for the clubs you follow come on their own channel, "Your club's goals", with their own buzz (long, short, long).
+The "Your club" home-screen widget (4×2, resizable) shows the live game (or the next one) as the scores box, the game
+after it, and Watch while it is live.
+
 Build: JDK 17, Android SDK 34. `./gradlew assembleRelease testReleaseUnitTest lintRelease`; the APK is in
 `app/build/outputs/apk/release/`, signed with the debug key for sideloading.

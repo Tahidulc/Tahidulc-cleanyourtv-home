@@ -554,7 +554,11 @@ final class PlayerExtras implements LiveAlerts.Listener {
             if (d < 0) Toast.makeText(c, R.string.live3_just_happened_none, Toast.LENGTH_LONG).show();
             else value.setText(d + " s behind");
         });
-        addChip(al, just);
+        // On a line of its own: the one to find at a glance as the goal goes in.
+        LinearLayout justRow = new LinearLayout(c);
+        justRow.setPadding(0, Ui.dp(c, 8), 0, 0);
+        justRow.addView(just, new LinearLayout.LayoutParams(-2, -2));
+        box.addView(justRow);
         note(c, box, "Tap “It's just happened” as you see a goal, a card or the kick-off: this channel's alerts then wait until your stream shows them.");
         toggle(c, box, a.getString(R.string.live3_hold), LiveAlerts.holding(c), on -> LiveAlerts.setHolding(c, on));
 
