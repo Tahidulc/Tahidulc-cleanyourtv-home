@@ -176,6 +176,7 @@ public final class VodPlayerActivity extends AppCompatActivity {
         player.setAudioAttributes(new AudioAttributes.Builder().setUsage(C.USAGE_MEDIA)
                 .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).build(), true);
         player.setHandleAudioBecomingNoisy(true);
+        NightSound.follow(this, player);
         view.setPlayer(player);
         load(0);
         long at = prefs().getLong(resumeKey, 0);

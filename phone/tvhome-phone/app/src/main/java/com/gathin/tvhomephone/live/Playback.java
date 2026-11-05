@@ -386,7 +386,8 @@ final class Playback {
     private double score(String playlist) {
         SharedPreferences p = stats();
         float start = p.getFloat("start." + playlist, -1f);
-        if (start < 0) return -1;
+        // Not played here yet: the weekly check's verdict, when there is one (PlaylistHealth).
+        if (start < 0) return PlaylistHealth.score(app, playlist);
         return start + 3000.0 * p.getFloat("stalls." + playlist, 0f);
     }
 

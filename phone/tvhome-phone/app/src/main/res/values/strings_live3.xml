@@ -3,6 +3,7 @@
     <!-- Phone 3.0: the player's new parts -->
     <string name="live3_see_again">See it again</string>
     <string name="live3_playing">Playing</string>
+    <string name="live3_kickoff_tv">On the TV</string>
     <string name="live3_quality">Picture quality</string>
     <string name="live3_quality_note">Adaptive steps down to the same channel in a lower quality when your connection can\'t keep up, and back up once it\'s steady. Fixed always plays the resolution you pick (the nearest under it when a channel has no such version).</string>
     <string name="live3_play_4k">Play this in 4K</string>

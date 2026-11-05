@@ -109,6 +109,10 @@ public final class KickOff {
                     com.gathin.tvhomephone.live.PlayerActivity.intent(c, ch.key), PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
             b.setContentIntent(watch);
             b.addAction(R.drawable.live_ic_play, c.getString(R.string.f2_kickoff_watch), watch);
+            // On the TV: the first paired TV puts the channel on (Continue on TV's request).
+            if (com.gathin.tvhomephone.sync.Tvs.paired(c)) {
+                b.addAction(R.drawable.live_ic_tv, c.getString(R.string.live3_kickoff_tv), KickOffReceiver.onTv(c, g.id, ch.name));
+            }
         } else {
             b.setContentIntent(Notifier.open(c, g));
         }
