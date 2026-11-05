@@ -261,30 +261,28 @@ public final class Notifier {
                 .setContentIntent(home(c));
     }
 
-    /**
-     * "Following live" with the live games drawn as the scores box's rows: the first folded, all of them (four at
-     * most) opened out; tapping opens the game when there is one. Off the main thread (the crests).
-     */
+    /** "Following live" with the live games among followed drawn now, as below. Off the main thread (the crests). */
     public static NotificationCompat.Builder following(Context c, java.util.List<Game> followed, String text) {
+        return following(c, LiveCard.draw(c, followed), text, System.currentTimeMillis(), 0);
+    }
+
+    /**
+     * "Following live" with the live games as the scores box's rows (LiveCard, drawn already): the first folded, all of
+     * them (four at most) opened out, each clock in minutes and seconds as it stands at now; tapping opens the game when
+     * there is one. Quick, so AlertService sends it again each second while the screen is on. The clock is the card's
+     * alone (no time in the notification's corner to disagree with it), and the card's time stays since, when it first
+     * went up, so a new second never moves it among the other notifications.
+     */
+    static NotificationCompat.Builder following(Context c, LiveCard card, String text, long now, long since) {
         NotificationCompat.Builder b = following(c, text);
-        java.util.List<Game> live = new java.util.ArrayList<>();
-        for (Game g : followed) if (g.state == Game.LIVE) live.add(g);
-        if (live.isEmpty()) return b;
+        if (card == null) return b;
         try {
-            Bitmap one = NotifCard.live(c, live, 1), all = live.size() > 1 ? NotifCard.live(c, live, 4) : one;
-            if (one == null) return b;
-            RemoteViews small = new RemoteViews(c.getPackageName(), R.layout.sports_notif_card);
-            small.setImageViewBitmap(R.id.sports_notif_card, one);
-            small.setContentDescription(R.id.sports_notif_card, text);
-            RemoteViews big = new RemoteViews(c.getPackageName(), R.layout.sports_notif_card);
-            big.setImageViewBitmap(R.id.sports_notif_card, all);
-            big.setContentDescription(R.id.sports_notif_card, text);
-            b.setStyle(new NotificationCompat.DecoratedCustomViewStyle()).setCustomContentView(small).setCustomBigContentView(big);
-            if (live.size() == 1) b.setContentIntent(open(c, live.get(0)));
-            // The first game's clock going on in the notification's corner, minutes and seconds, as a scoreboard's.
-            long now = System.currentTimeMillis(), secs = GameClock.seconds(live.get(0), now);
-            if (chronometer(secs)) b.setUsesChronometer(true).setShowWhen(true).setWhen(now - secs * 1000L);
-            else b.setShowWhen(false);
+            b.setStyle(new NotificationCompat.DecoratedCustomViewStyle())
+                    .setCustomContentView(card.folded(c, now))
+                    .setCustomBigContentView(card.open(c, now))
+                    .setShowWhen(false);
+            if (since > 0) b.setWhen(since);
+            if (card.games.size() == 1) b.setContentIntent(open(c, card.games.get(0)));
         } catch (RuntimeException ignored) {
             // the words alone
         }
@@ -296,7 +294,8 @@ public final class Notifier {
 
     /**
      * Pure: whether Android's own ticking clock can show a game's clock of secs seconds until the next redraw: it counts
-     * in minutes and seconds only under the hour ("1:07:23" after it), so from 59:30 the card's own clock shows instead.
+     * in minutes and seconds only under the hour ("1:07:23" after it), so from 59:30 the drawn clock shows instead (the
+     * home-screen widget's, ClubWidget; the notification's clock is its own words, LiveCard).
      */
     public static boolean chronometer(long secs) {
         return secs >= 0 && secs * 1000L + REDRAWN_MS < 3_600_000L;

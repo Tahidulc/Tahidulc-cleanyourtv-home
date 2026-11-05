@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- A drawn card across the notification: a game's moment opened out, or the live games for "Following live"
-     (NotifCard). -->
+<!-- A drawn card across the notification: a game's moment opened out, the line-ups, the podium (NotifCard). The
+     live games for "Following live" are sports_notif_live_row's. -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"

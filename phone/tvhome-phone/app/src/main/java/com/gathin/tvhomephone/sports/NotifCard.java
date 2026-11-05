@@ -14,6 +14,7 @@ import android.text.TextPaint;
 import android.util.LruCache;
 
 import com.bumptech.glide.Glide;
+import com.gathin.tvhomephone.R;
 
 import java.util.List;
 import java.util.Locale;
@@ -467,29 +468,102 @@ public final class NotifCard {
 
     // ---- the live games -----------------------------------------------------------------------------------------
 
-    /** The live games as the app's scoreboards, one under another (four at most). */
-    public static Bitmap live(Context c, List<Game> games, int max) {
-        int n = Math.min(max, games.size());
-        if (n == 0) return null;
-        float s = scale(c);
-        int w = Math.round(W * s), gap = Math.round(5 * s);
-        List<Bitmap> bugs = new java.util.ArrayList<>();
-        int h = 0;
-        for (int i = 0; i < n; i++) {
-            Game g = games.get(i);
-            Bitmap logo = logo(c, Competitions.logo(g), Math.round(36 * s), Math.round(36 * s));
-            Bitmap b = ScoreBug.picture(c, g, logo, w);
-            bugs.add(b);
-            h += b.getHeight() + (i > 0 ? gap : 0);
+    /** The box's parts across, as the TV's (ScoreBug): the competition, the home crest, the score, the away crest. */
+    static final int[] PARTS = {52, 110, 142, 110};
+    /**
+     * The line under the score, as parts of the box's height, left empty in the drawing: the clock goes there as words
+     * (LiveCard). sports_notif_live_row's weights are these: 62 above it, 24 for it, 14 under it.
+     */
+    static final float CLOCK_TOP = 0.62f, CLOCK_BOTTOM = 0.86f;
+    /** The score's size and its baseline, as parts of the box's height (ScoreBug's 26 sp in its 64 dp). */
+    static final float SCORE_SIZE = 26 / 64f, SCORE_BASE = 0.525f;
+
+    /** Where the parts meet across a box w pixels wide: 0, then the end of each part, on whole pixels. Pure. */
+    static int[] edges(int w) {
+        int total = 0;
+        for (int part : PARTS) total += part;
+        int[] x = new int[PARTS.length + 1];
+        int at = 0;
+        for (int i = 0; i < PARTS.length; i++) {
+            at += PARTS[i];
+            x[i + 1] = Math.round(w * at / (float) total);
         }
+        return x;
+    }
+
+    /**
+     * A live game's box for the quiet "Following live" notification, as the app's scores box (ScoreBug) at the
+     * notification's width: the competition's logo on navy, the crests on white, the score on the blue middle, and the
+     * line under the score left empty. The clock goes there as words laid over the picture (LiveCard), so it can go on
+     * second by second without the picture being drawn or sent again. Loads the crests (off the main thread).
+     */
+    static Bitmap row(Context c, Game g) {
+        float s = scale(c);
+        int w = Math.round(W * s), h = Math.round(w / ScoreBug.RATIO);
+        int[] x = edges(w);
+        float pad = h * 9 / 64f;
+        Bitmap comp = logo(c, Competitions.logo(g), Math.round(x[1] - 2 * pad), Math.round(h - 2 * pad));
+        int crest = Math.round(h * 44 / 64f);
+        Bitmap home = logo(c, g.homeLogo != null ? g.homeLogo : Espn.crest(g.homeId), crest, crest);
+        Bitmap away = logo(c, g.awayLogo != null ? g.awayLogo : Espn.crest(g.awayId), crest, crest);
+        int[] colours = {c.getColor(R.color.bug_navy_top), c.getColor(R.color.bug_navy_bottom), c.getColor(R.color.bug_blue_top),
+                c.getColor(R.color.bug_blue_bottom)};
+        return row(g, w, h, colours, comp, home, away);
+    }
+
+    /** The drawing itself, the pictures given (for tests and previews): colours {navy top, navy bottom, blue top, blue bottom}. */
+    static Bitmap row(Game g, int w, int h, int[] colours, Bitmap comp, Bitmap home, Bitmap away) {
         Bitmap out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
         Canvas cv = new Canvas(out);
-        int y = 0;
-        for (Bitmap b : bugs) {
-            cv.drawBitmap(b, 0, y, null);
-            y += b.getHeight() + gap;
+        // The box's rounded corners.
+        android.graphics.Path round = new android.graphics.Path();
+        float r = h * 6 / 64f;
+        round.addRoundRect(new RectF(0, 0, w, h), r, r, android.graphics.Path.Direction.CW);
+        cv.clipPath(round);
+        int[] x = edges(w);
+        // The parts meet on whole pixels, unblended, so no seam shows between them.
+        Paint p = new Paint();
+        p.setShader(new LinearGradient(0, 0, 0, h, colours[0], colours[1], Shader.TileMode.CLAMP));
+        cv.drawRect(x[0], 0, x[1], h, p);
+        p.setShader(new LinearGradient(0, 0, 0, h, colours[2], colours[3], Shader.TileMode.CLAMP));
+        cv.drawRect(x[2], 0, x[3], h, p);
+        p.setShader(null);
+        p.setColor(Color.WHITE);
+        cv.drawRect(x[1], 0, x[2], h, p);
+        cv.drawRect(x[3], 0, x[4], h, p);
+        TextPaint t = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+        t.setTypeface(Typeface.create("sans-serif-medium", Typeface.BOLD));
+        t.setTextAlign(Paint.Align.CENTER);
+        // The competition's logo, or its tag when none loads.
+        float pad = h * 9 / 64f;
+        if (comp != null) {
+            fit(cv, comp, new RectF(x[0] + pad, pad, x[1] - pad, h - pad));
+        } else {
+            t.setTextSize(h * 10 / 64f);
+            t.setColor(Color.WHITE);
+            String tag = Glyphs.fit(g.league == null ? "" : g.league, t, x[1] - x[0] - pad);
+            cv.drawText(tag, (x[0] + x[1]) / 2f, h / 2f + t.getTextSize() * 0.35f, t);
         }
+        // The crests on their white tiles, each club's short name where a crest does not load.
+        float size = h * 44 / 64f;
+        tile(cv, t, home, g.home, (x[1] + x[2]) / 2f, h / 2f, size);
+        tile(cv, t, away, g.away, (x[3] + x[4]) / 2f, h / 2f, size);
+        // The score; the line under it is the clock's.
+        t.setTextSize(h * SCORE_SIZE);
+        t.setColor(Color.WHITE);
+        cv.drawText(g.score(), (x[2] + x[3]) / 2f, h * SCORE_BASE, t);
         return out;
+    }
+
+    /** A crest fitted in a size by size square about (cx, cy), or the club's short name in navy when there is none. */
+    private static void tile(Canvas cv, TextPaint t, Bitmap crest, String tag, float cx, float cy, float size) {
+        if (crest != null) {
+            fit(cv, crest, new RectF(cx - size / 2, cy - size / 2, cx + size / 2, cy + size / 2));
+            return;
+        }
+        t.setTextSize(size * 0.3f);
+        t.setColor(0xFF10164A);
+        cv.drawText(tag == null ? "" : tag, cx, cy + t.getTextSize() * 0.35f, t);
     }
 
     // ---- the line-ups ------------------------------------------------------------------------------------------

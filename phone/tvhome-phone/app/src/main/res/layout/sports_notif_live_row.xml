@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A live game in "Following live": its scores box drawn (NotifCard.row) with the line under the score left empty,
+     and the clock laid over that line as words (LiveCard), so the clock goes on second by second without the picture
+     being drawn or sent again. The words sit over the box whatever size the notification gives it (the frame is the
+     picture's size, the picture filling it): across, the box's parts (52 and 110, then the blue middle's 142, then 110
+     of 414); down, NotifCard's CLOCK_TOP and CLOCK_BOTTOM (62, 24 and 14 of 100), the words sized to fit that line.
+     Left to right whatever the language, as the picture is. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layoutDirection="ltr"
+    android:paddingTop="2dp"
+    android:paddingBottom="2dp">
+
+    <ImageView
+        android:id="@+id/sports_notif_row_card"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:adjustViewBounds="true"
+        android:scaleType="fitXY"
+        tools:ignore="ContentDescription" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:baselineAligned="false"
+        android:orientation="horizontal">
+
+        <FrameLayout
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="162"
+            tools:ignore="UselessLeaf" />
+
+        <!-- Weights within weights: a dozen views measured twice, once a second at most. -->
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="142"
+            android:orientation="vertical"
+            tools:ignore="NestedWeights">
+
+            <FrameLayout
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="62"
+                tools:ignore="UselessLeaf" />
+
+            <!-- Sized to fit the line (autoSize); 8sp is only where it starts, kept small so it never makes the row taller
+                 than the picture. -->
+            <TextView
+                android:id="@+id/sports_notif_row_clock"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="24"
+                android:autoSizeMaxTextSize="40sp"
+                android:autoSizeMinTextSize="4sp"
+                android:autoSizeStepGranularity="1px"
+                android:autoSizeTextType="uniform"
+                android:fontFamily="sans-serif-medium"
+                android:fontFeatureSettings="tnum"
+                android:gravity="center"
+                android:includeFontPadding="false"
+                android:letterSpacing="0.06"
+                android:maxLines="1"
+                android:textColor="#FFDFE5FF"
+                android:textSize="8sp"
+                android:textStyle="bold"
+                tools:ignore="SmallSp" />
+
+            <FrameLayout
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="14"
+                tools:ignore="UselessLeaf" />
+        </LinearLayout>
+
+        <FrameLayout
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="110"
+            tools:ignore="UselessLeaf" />
+    </LinearLayout>
+</FrameLayout>
