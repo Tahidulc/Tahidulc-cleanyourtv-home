@@ -55,6 +55,8 @@ public final class Library {
     /** Each channel's lasting key for Hidden, and whether it is hidden (both line up with channels). */
     private volatile String[] hideKeys = new String[0];
     private volatile boolean[] hidden = new boolean[0];
+    /** Hidden by the channel itself (Hidden), not by its category (Groups): for Favourites and the Hidden sheet. */
+    private volatile boolean[] ownHidden = new boolean[0];
     private volatile int visible;
     private volatile Map<String, Guide.Schedule> guide = Collections.emptyMap();
     private volatile ProgrammeSearch.Index programmes = ProgrammeSearch.Index.EMPTY;
@@ -109,7 +111,7 @@ public final class Library {
     /** The playlist's hidden channels, by their Hidden key. */
     Map<String, Channel> hiddenChannels() {
         List<Channel> ch = channels;
-        boolean[] m = hidden;
+        boolean[] m = ownHidden;
         String[] k = hideKeys;
         Map<String, Channel> out = new HashMap<>();
         for (int i = 0; i < Math.min(ch.size(), Math.min(m.length, k.length)); i++) if (m[i]) out.put(k[i], ch.get(i));
@@ -119,6 +121,20 @@ public final class Library {
     private boolean hiddenAt(int i) {
         boolean[] m = hidden;
         return i >= 0 && i < m.length && m[i];
+    }
+
+    /** Whether the channel itself is hidden (a channel in a hidden category isn't, for Favourites and Recent). */
+    private boolean ownHiddenAt(Channel c) {
+        int i = c == null ? -1 : position(c.key);
+        boolean[] m = ownHidden;
+        return i >= 0 && i < m.length && m[i];
+    }
+
+    /** How many channels a category has (all of them, hidden or not). */
+    public int groupSize(String group) {
+        int n = 0;
+        for (Channel c : channels) if (c.group.equals(group)) n++;
+        return n;
     }
 
     /** The channel's place in the playlist (0 first), or -1. */
@@ -169,7 +185,7 @@ public final class Library {
         if (RECENT.equals(group)) {
             for (String k : Picks.recent(app)) {
                 Channel c = byKey(k);
-                if (c == null || isHidden(c)) continue;
+                if (c == null || ownHiddenAt(c)) continue;
                 if (q.isEmpty() || Names.plain(c.name).toLowerCase(Locale.ROOT).contains(q)) out.add(c);
             }
             return out;
@@ -185,7 +201,7 @@ public final class Library {
             }
             for (Channel c : ch) if (f.contains(c.key) && !seen.contains(c.key)) placed.add(c);
             for (Channel c : placed) {
-                if (isHidden(c)) continue;
+                if (ownHiddenAt(c)) continue;
                 if (q.isEmpty() || Names.plain(c.name).toLowerCase(Locale.ROOT).contains(q)) out.add(c);
             }
             return out;
@@ -326,6 +342,13 @@ public final class Library {
         changed();
     }
 
+    /** Categories were hidden, shown or starred (Groups): the lists and the chips again. */
+    public void groupsChanged() {
+        remask();
+        matches.clear();
+        changed();
+    }
+
     /** Channels were hidden or unhidden (Hidden): the lists again. */
     void hiddenChanged() {
         remask();
@@ -334,11 +357,21 @@ public final class Library {
     }
 
     private synchronized void remask() {
-        boolean[] m = Hidden.mask(hideKeys, Hidden.keys(app));
+        boolean[] own = Hidden.mask(hideKeys, Hidden.keys(app));
+        boolean[] m = withGroups(own, channels, Groups.hidden(app));
         int n = 0;
         for (boolean b : m) if (!b) n++;
+        ownHidden = own;
         hidden = m;
         visible = n;
+    }
+
+    /** Pure: the hidden channels and, besides, those in a hidden category. */
+    static boolean[] withGroups(boolean[] own, List<Channel> ch, Set<String> hiddenGroups) {
+        boolean[] m = own.clone();
+        if (hiddenGroups.isEmpty()) return m;
+        for (int i = 0; i < Math.min(m.length, ch.size()); i++) if (hiddenGroups.contains(ch.get(i).group)) m[i] = true;
+        return m;
     }
 
     // ---- loading ----------------------------------------------------------------------------------------------
@@ -474,6 +507,7 @@ public final class Library {
         Vod.clear(app);
         Picks.clear(app);
         Hidden.clear(app);
+        Groups.clear(app);
         Playback.get(app).forget();
         channels = Collections.emptyList();
         perPlaylist = Collections.emptyMap();
@@ -484,6 +518,7 @@ public final class Library {
         infos = new Names.Info[0];
         hideKeys = new String[0];
         hidden = new boolean[0];
+        ownHidden = new boolean[0];
         visible = 0;
         guide = Collections.emptyMap();
         programmes = ProgrammeSearch.Index.EMPTY;
@@ -750,9 +785,11 @@ public final class Library {
         lower = low;
         infos = in;
         hideKeys = hk;
-        boolean[] m = Hidden.mask(hk, Hidden.keys(app));
+        boolean[] own = Hidden.mask(hk, Hidden.keys(app));
+        boolean[] m = withGroups(own, ch, Groups.hidden(app));
         int vis = 0;
         for (boolean b : m) if (!b) vis++;
+        ownHidden = own;
         hidden = m;
         visible = vis;
         byKey = keys;

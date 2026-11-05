@@ -1,4 +1,4 @@
-# TV Home for Android phones and tablets
+# Homefield: the TV Home app for Android phones and tablets
 
 The launcher's own parts on a phone: Home with the scores box and weather, Watch (Discover, Movies and TV shows, a
 title's page, the Episode map, Coming up, Because you watched, Film night, trailers), Sports (Match Centre, tables, F1,
@@ -106,6 +106,12 @@ Match centre: in the full-screen player, a panel up from the foot of the picture
 first, then the shot map), Line-ups (with live ratings), Stats (two across) and the table as it stands with the live
 score counted in and both clubs marked; read again every 30 seconds while it is on. Pull its handle down, or ✕, to
 close it. The player's top bar has Match centre while the channel shows a game, and its options have Two games at once.
+
+The app is called Homefield (it was TV Home; the TVs' launcher keeps its name), with a white house and a play button on
+violet to coral for its icon. Live TV's categories can be hidden or made favourites: hold a category's chip (or a
+channel, for its category), or open More, Categories. A favourite category comes first among the chips with a star; a
+hidden one leaves the guide, the lists and search with its channels (a favourite channel in it stays in Favourites), and
+Categories shows it again. Channels are made favourites with their star or by holding them, as before.
 
 Build: JDK 17, Android SDK 34. `./gradlew assembleRelease testReleaseUnitTest lintRelease`; the APK is in
 `app/build/outputs/apk/release/`, signed with the debug key for sideloading.

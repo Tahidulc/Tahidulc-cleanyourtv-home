@@ -1,27 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- The icon's ground. Stacked blocks: big "tv" on glossy navy over "home" on glossy red, split on a slant. -->
+<!-- The icon's ground. Home screen: a white house with a play button cut through it, on violet to coral. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:aapt="http://schemas.android.com/aapt"
     android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
     <path android:pathData="M0,0 H108 V108 H0 Z">
         <aapt:attr name="android:fillColor">
-            <gradient android:type="linear" android:startX="0" android:startY="0" android:endX="0" android:endY="60" android:startColor="#FF3A66D6" android:endColor="#FF0F2A7A" />
+            <gradient android:type="linear" android:startX="12" android:startY="8" android:endX="98" android:endY="100" android:startColor="#FF6D28F2" android:endColor="#FFFF6B6B" />
         </aapt:attr>
     </path>
-    <path android:pathData="M0,60 L108,50 V108 H0 Z">
+    <path android:pathData="M0,0 H108 V108 H0 Z">
         <aapt:attr name="android:fillColor">
-            <gradient android:type="linear" android:startX="0" android:startY="50" android:endX="0" android:endY="108" android:startColor="#FFF5464F" android:endColor="#FFB80B1C" />
+            <gradient android:type="radial" android:centerX="30" android:centerY="20" android:gradientRadius="60" android:startColor="#33FFFFFF" android:endColor="#00FFFFFF" />
         </aapt:attr>
     </path>
-    <path android:pathData="M0,0 H108 V26 C80,30 30,30 0,34 Z">
-        <aapt:attr name="android:fillColor">
-            <gradient android:type="linear" android:startX="0" android:startY="0" android:endX="0" android:endY="34" android:startColor="#40FFFFFF" android:endColor="#00FFFFFF" />
-        </aapt:attr>
-    </path>
-    <path android:pathData="M0,60 L108,50 V66 L0,76 Z">
-        <aapt:attr name="android:fillColor">
-            <gradient android:type="linear" android:startX="0" android:startY="52" android:endX="0" android:endY="72" android:startColor="#30FFFFFF" android:endColor="#00FFFFFF" />
-        </aapt:attr>
-    </path>
-    <path android:pathData="M0,59.3 L108,49.3 V50.7 L0,60.7 Z" android:fillColor="#E6FFFFFF" />
 </vector>

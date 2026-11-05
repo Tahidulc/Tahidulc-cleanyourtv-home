@@ -37,7 +37,7 @@ public class SettingsFragment extends Fragment {
             scroll.post(() -> scroll.smoothScrollTo(0, live.getTop()));
         }
         TextView v = new TextView(requireContext());
-        v.setText("TV Home " + BuildConfig.VERSION_NAME);
+        v.setText(getString(R.string.app_name) + " " + BuildConfig.VERSION_NAME);
         v.setTextColor(requireContext().getColor(R.color.text_dim));
         v.setPadding(0, pad, 0, 0);
         col.addView(v);

@@ -106,6 +106,20 @@ final class Sheets {
             d[0].dismiss();
             m.hide(ch);
         });
+        // Its whole category: hidden, or a favourite (first among the chips).
+        if (!ch.group.isEmpty()) {
+            boolean favGroup = Groups.isFavourite(c, ch.group);
+            action(c, box, favGroup ? R.drawable.live_ic_star : R.drawable.live_ic_star_outline,
+                    favGroup ? R.string.groups_unfavourite_named : R.string.groups_favourite_named, ch.group, () -> {
+                        d[0].dismiss();
+                        Groups.setFavourite(c, ch.group, !favGroup);
+                    });
+            action(c, box, R.drawable.live_ic_hide, R.string.groups_hide_named, ch.group, () -> {
+                d[0].dismiss();
+                Groups.setHidden(c, ch.group, true);
+                android.widget.Toast.makeText(c, c.getString(R.string.groups_hidden_toast, ch.group), android.widget.Toast.LENGTH_LONG).show();
+            });
+        }
         action(c, box, R.drawable.live_ic_similar, R.string.live_similar, () -> {
             d[0].dismiss();
             m.similar(ch);
@@ -158,7 +172,16 @@ final class Sheets {
     }
 
     /** One of a menu's lines: an icon and what it does. */
+    /** As action, the label a formatted string with one name in it ("Hide UK | Sports"). */
+    static void action(Context c, LinearLayout box, int icon, int label, String name, Runnable r) {
+        action(c, box, icon, c.getString(label, name), r);
+    }
+
     static void action(Context c, LinearLayout box, int icon, int label, Runnable r) {
+        action(c, box, icon, c.getString(label), r);
+    }
+
+    static void action(Context c, LinearLayout box, int icon, String label, Runnable r) {
         LinearLayout row = new LinearLayout(c);
         row.setGravity(Gravity.CENTER_VERTICAL);
         row.setPadding(Ui.dp(c, 4), 0, Ui.dp(c, 4), 0);
@@ -167,9 +190,11 @@ final class Sheets {
         i.setImageResource(icon);
         i.setImageTintList(ColorStateList.valueOf(Ui.G_SELECT));
         row.addView(i, new LinearLayout.LayoutParams(Ui.dp(c, 24), Ui.dp(c, 24)));
-        TextView t = Ui.text(c, c.getString(label), 16, Ui.TEXT, false);
+        TextView t = Ui.text(c, label, 16, Ui.TEXT, false);
         t.setPadding(Ui.dp(c, 16), 0, 0, 0);
-        row.addView(t);
+        t.setSingleLine(true);
+        t.setEllipsize(TextUtils.TruncateAt.END);
+        row.addView(t, new LinearLayout.LayoutParams(0, -2, 1f));
         row.setOnClickListener(v -> r.run());
         box.addView(row, new LinearLayout.LayoutParams(-1, Ui.dp(c, 52)));
     }
@@ -320,6 +345,113 @@ final class Sheets {
         BottomSheetDialog sheet = open(c, root, false);
         all.setOnClickListener(v -> {
             Hidden.unhideAll(c);
+            sheet.dismiss();
+        });
+    }
+
+    // ---- Categories ----------------------------------------------------------------------------------------------
+
+    /**
+     * The playlists' categories: a star puts one first among the chips (favourites in the order starred), Hide takes one
+     * out of Live TV (its channels out of the guide, the lists and search). Hidden ones stay listed here, dimmed, to show
+     * again; Show all brings every one back.
+     */
+    static void categories(Context c, Library lib) {
+        List<String> all = new ArrayList<>(lib.groups());
+        LinearLayout root = new LinearLayout(c);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setPadding(Ui.dp(c, 16), Ui.dp(c, 16), Ui.dp(c, 16), Ui.dp(c, 8));
+        LinearLayout head = new LinearLayout(c);
+        head.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout titles = new LinearLayout(c);
+        titles.setOrientation(LinearLayout.VERTICAL);
+        titles.addView(Ui.text(c, c.getString(R.string.groups_title), 20, Ui.TEXT, true));
+        titles.addView(Ui.text(c, c.getString(all.isEmpty() ? R.string.groups_empty : R.string.groups_hint), 13, Ui.DIM, false));
+        head.addView(titles, new LinearLayout.LayoutParams(0, -2, 1f));
+        MaterialButton showAll = new MaterialButton(c);
+        showAll.setText(R.string.groups_show_all);
+        showAll.setAllCaps(false);
+        showAll.setCornerRadius(Ui.dp(c, 24));
+        showAll.setTextColor(Ui.G_INK);
+        showAll.setBackgroundTintList(ColorStateList.valueOf(Ui.G_SELECT));
+        showAll.setVisibility(Groups.hidden(c).isEmpty() ? View.GONE : View.VISIBLE);
+        head.addView(showAll, new LinearLayout.LayoutParams(-2, Ui.dp(c, 48)));
+        root.addView(head);
+
+        RecyclerView rv = new RecyclerView(c);
+        rv.setLayoutManager(new LinearLayoutManager(c));
+        LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(-1, -2);
+        rp.topMargin = Ui.dp(c, 12);
+        root.addView(rv, rp);
+        RecyclerView.Adapter<RecyclerView.ViewHolder> adapter = new RecyclerView.Adapter<RecyclerView.ViewHolder>() {
+            @Override public int getItemCount() { return all.size(); }
+
+            @NonNull @Override public RecyclerView.ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int type) {
+                LinearLayout row = new LinearLayout(c);
+                row.setGravity(Gravity.CENTER_VERTICAL);
+                row.setLayoutParams(new RecyclerView.LayoutParams(-1, Ui.dp(c, 60)));
+                ImageButton star = new ImageButton(c);
+                star.setBackground(Ui.touch(c, false, 0, 24));
+                row.addView(star, new LinearLayout.LayoutParams(Ui.dp(c, 48), Ui.dp(c, 48)));
+                LinearLayout words = new LinearLayout(c);
+                words.setOrientation(LinearLayout.VERTICAL);
+                words.setPadding(Ui.dp(c, 8), 0, Ui.dp(c, 8), 0);
+                TextView name = Ui.text(c, "", 15, Ui.TEXT, true);
+                name.setSingleLine(true);
+                name.setEllipsize(TextUtils.TruncateAt.END);
+                words.addView(name);
+                TextView count = Ui.text(c, "", 12, Ui.DIM, false);
+                words.addView(count);
+                row.addView(words, new LinearLayout.LayoutParams(0, -2, 1f));
+                MaterialButton hide = new MaterialButton(c);
+                hide.setAllCaps(false);
+                hide.setCornerRadius(Ui.dp(c, 24));
+                hide.setTextColor(Ui.TEXT);
+                hide.setBackgroundTintList(ColorStateList.valueOf(0x29FFFFFF));
+                row.addView(hide, new LinearLayout.LayoutParams(-2, Ui.dp(c, 48)));
+                RecyclerView.ViewHolder vh = new RecyclerView.ViewHolder(row) {};
+                star.setOnClickListener(v -> {
+                    int at = vh.getBindingAdapterPosition();
+                    if (at < 0 || at >= all.size()) return;
+                    String g = all.get(at);
+                    boolean fav = !Groups.isFavourite(c, g);
+                    if (fav && Groups.hidden(c).contains(g)) Groups.setHidden(c, g, false);
+                    Groups.setFavourite(c, g, fav);
+                    notifyItemChanged(at);
+                });
+                hide.setOnClickListener(v -> {
+                    int at = vh.getBindingAdapterPosition();
+                    if (at < 0 || at >= all.size()) return;
+                    String g = all.get(at);
+                    Groups.setHidden(c, g, !Groups.hidden(c).contains(g));
+                    showAll.setVisibility(Groups.hidden(c).isEmpty() ? View.GONE : View.VISIBLE);
+                    notifyItemChanged(at);
+                });
+                row.setTag(new View[]{star, name, count, hide});
+                return vh;
+            }
+
+            @Override public void onBindViewHolder(@NonNull RecyclerView.ViewHolder h, int position) {
+                String g = all.get(position);
+                View[] v = (View[]) h.itemView.getTag();
+                boolean fav = Groups.isFavourite(c, g), gone = Groups.hidden(c).contains(g);
+                ImageButton star = (ImageButton) v[0];
+                star.setImageResource(fav ? R.drawable.live_ic_star : R.drawable.live_ic_star_outline);
+                star.setImageTintList(ColorStateList.valueOf(fav ? Ui.STAR : Ui.DIM));
+                star.setContentDescription(c.getString(fav ? R.string.groups_unfavourite : R.string.groups_favourite) + ": " + g);
+                ((TextView) v[1]).setText(g);
+                ((TextView) v[1]).setTextColor(gone ? Ui.DIM : Ui.TEXT);
+                int n = lib.groupSize(g);
+                ((TextView) v[2]).setText(c.getResources().getQuantityString(R.plurals.groups_channels, n, n)
+                        + (gone ? " · " + c.getString(R.string.groups_hidden_word) : fav ? " · " + c.getString(R.string.groups_favourite_word) : ""));
+                ((MaterialButton) v[3]).setText(gone ? R.string.groups_show : R.string.groups_hide_short);
+                v[3].setContentDescription(c.getString(gone ? R.string.groups_show : R.string.groups_hide_short) + ": " + g);
+            }
+        };
+        rv.setAdapter(adapter);
+        BottomSheetDialog sheet = open(c, root, false);
+        showAll.setOnClickListener(v -> {
+            Groups.showAll(c);
             sheet.dismiss();
         });
     }

@@ -170,7 +170,7 @@
     <string name="live_started_at">Started at %1$s</string>
     <!-- Picture in picture turned off for the app in the phone's settings, and the player's switch for going into it on leaving. -->
     <string name="live_pip_off_title">Picture in picture is off</string>
-    <string name="live_pip_off">This phone has picture in picture turned off for TV Home. Turn it on to keep a channel playing in a small window while you use other apps.</string>
+    <string name="live_pip_off">This phone has picture in picture turned off for Homefield. Turn it on to keep a channel playing in a small window while you use other apps.</string>
     <string name="live_pip_settings">Turn it on</string>
     <string name="live_auto_pip_on">Small window when I leave: on</string>
     <string name="live_auto_pip_off">Small window when I leave: off</string>

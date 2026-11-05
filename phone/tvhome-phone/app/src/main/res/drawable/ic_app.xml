@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- The app's icon: a big "tv" on glossy navy over "home" on glossy red, split on a slant, filling the icon at any size. -->
+<!-- Homefield's icon: a white house with a play button cut through it, on violet to coral. -->
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
     <background android:drawable="@drawable/ic_app_back" />
     <foreground android:drawable="@drawable/ic_app_front" />

@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Live TV's categories: hide them, or make them favourites (first among the chips) -->
+    <string name="groups_title">Categories</string>
+    <string name="groups_menu_count">Categories (%1$d hidden)</string>
+    <string name="groups_hint">Star a category to put it first. Hide the ones you never watch: their channels leave the guide, the lists and search (your favourite channels stay in Favourites).</string>
+    <string name="groups_empty">No categories yet: add a playlist first.</string>
+    <string name="groups_show_all">Show all</string>
+    <string name="groups_favourite">Favourite category</string>
+    <string name="groups_unfavourite">Not a favourite</string>
+    <string name="groups_hide">Hide this category</string>
+    <string name="groups_hide_short">Hide</string>
+    <string name="groups_show">Show</string>
+    <string name="groups_manage">All categories…</string>
+    <string name="groups_favourite_named">Favourite category: %1$s</string>
+    <string name="groups_unfavourite_named">Not a favourite: %1$s</string>
+    <string name="groups_hide_named">Hide category: %1$s</string>
+    <string name="groups_hidden_toast">%1$s hidden. Show it again from ⋮, Categories.</string>
+    <string name="groups_hidden_word">hidden</string>
+    <string name="groups_favourite_word">favourite</string>
+    <plurals name="groups_channels">
+        <item quantity="one">%1$d channel</item>
+        <item quantity="other">%1$d channels</item>
+    </plurals>
+</resources>

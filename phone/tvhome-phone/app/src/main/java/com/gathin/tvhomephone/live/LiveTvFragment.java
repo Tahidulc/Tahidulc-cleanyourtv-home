@@ -82,6 +82,8 @@ public class LiveTvFragment extends Fragment {
     private String query = "";
     private int searchSeq;
     private List<String> shownGroups;
+    /** The categories' hidden and favourite ones as last drawn (Groups.version). */
+    private int shownGroupsVersion = -1;
     private boolean shownFavs, shownRecent;
 
     private LinearLayout toolbar, searchBar, stripRow, band, side;
@@ -387,11 +389,14 @@ public class LiveTvFragment extends Fragment {
         menu.add(0, 1, 0, R.string.live_manage_favourites);
         int hidden = Hidden.keys(c).size();
         menu.add(0, 4, 1, hidden > 0 ? getString(R.string.live_hidden_menu_count, hidden) : getString(R.string.live_hidden_title));
-        menu.add(0, 2, 2, listView ? R.string.live_view_grid : R.string.live_view_list);
-        menu.add(0, 3, 3, R.string.live_refresh);
+        int hiddenGroups = Groups.hidden(c).size();
+        menu.add(0, 5, 2, hiddenGroups > 0 ? getString(R.string.groups_menu_count, hiddenGroups) : getString(R.string.groups_title));
+        menu.add(0, 2, 3, listView ? R.string.live_view_grid : R.string.live_view_list);
+        menu.add(0, 3, 4, R.string.live_refresh);
         m.setOnMenuItemClickListener(item -> {
             if (item.getItemId() == 1) Sheets.favourites(c, lib);
             else if (item.getItemId() == 4) Sheets.hidden(c, lib);
+            else if (item.getItemId() == 5) Sheets.categories(c, lib);
             else if (item.getItemId() == 2) viewButton.performClick();
             else lib.refresh(null);
             return true;
@@ -502,6 +507,12 @@ public class LiveTvFragment extends Fragment {
             t.setText(it[0]);
             Ui.styleChip(t.getContext(), t, it[1].equals(group));
             t.setOnClickListener(v -> pickGroup(it[1]));
+            // A playlist's own category: held for Favourite or Hide.
+            boolean own = it.length > 2;
+            t.setOnLongClickListener(own ? v -> {
+                groupMenu(v, it[1]);
+                return true;
+            } : null);
         }
     }
 
@@ -511,9 +522,36 @@ public class LiveTvFragment extends Fragment {
         chipsAdapter.items.add(new String[]{getString(R.string.live_all), Library.ALL});
         chipsAdapter.items.add(new String[]{getString(R.string.live_recent), Library.RECENT});
         chipsAdapter.items.add(new String[]{getString(R.string.f1_sport), SportGuide.GROUP});
-        for (String g : lib.groups()) chipsAdapter.items.add(new String[]{g, g});
+        Context c = requireContext();
+        java.util.Set<String> hiddenGroups = Groups.hidden(c);
+        List<String> favs = Groups.favourites(c);
+        // Favourite categories first (a star), the hidden ones left out.
+        for (String g : Groups.order(lib.groups(), hiddenGroups, favs)) {
+            chipsAdapter.items.add(new String[]{favs.contains(g) ? "★ " + g : g, g, "own"});
+        }
+        if (hiddenGroups.contains(group)) group = Library.ALL;
         shownGroups = lib.groups();
+        shownGroupsVersion = Groups.version;
         refreshChips();
+    }
+
+    /** A category held: make it a favourite (first among the chips) or not, hide it, or all the categories. */
+    private void groupMenu(View anchor, String g) {
+        Context c = requireContext();
+        PopupMenu m = new PopupMenu(c, anchor);
+        boolean fav = Groups.isFavourite(c, g);
+        m.getMenu().add(0, 1, 0, fav ? R.string.groups_unfavourite : R.string.groups_favourite);
+        m.getMenu().add(0, 2, 1, R.string.groups_hide);
+        m.getMenu().add(0, 3, 2, R.string.groups_manage);
+        m.setOnMenuItemClickListener(item -> {
+            if (item.getItemId() == 1) Groups.setFavourite(c, g, !fav);
+            else if (item.getItemId() == 2) {
+                Groups.setHidden(c, g, true);
+                Toast.makeText(c, getString(R.string.groups_hidden_toast, g), Toast.LENGTH_LONG).show();
+            } else Sheets.categories(c, lib);
+            return true;
+        });
+        m.show();
     }
 
     @SuppressLint("NotifyDataSetChanged")
@@ -619,7 +657,7 @@ public class LiveTvFragment extends Fragment {
         List<Channel> favs = lib.list(Library.FAVOURITES, "");
         boolean hasRecent = !Picks.recent(c).isEmpty();
         if (group == null) group = favs.isEmpty() ? Library.ALL : Library.FAVOURITES;
-        if (shownGroups != lib.groups()) buildChips();
+        if (shownGroups != lib.groups() || shownGroupsVersion != Groups.version) buildChips();
         else if (shownFavs != !favs.isEmpty() || shownRecent != hasRecent) refreshChips();
         shownFavs = !favs.isEmpty();
         shownRecent = hasRecent;
