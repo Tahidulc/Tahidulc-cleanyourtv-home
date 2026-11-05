@@ -109,6 +109,11 @@ stays full screen, either way round, until you go back or tap the cross. Lying d
 no longer turns it upright and drops you back in the guide. To have turning upright go back again, the player's
 Options has "Turn upright to leave full screen".
 
+Homefield in the corner, and the guide from full screen (4.2): the Live TV tab's top left has Homefield's mark and
+name (made smaller if it must, so it always fits beside the buttons) over the number of channels; the category
+chosen is the lit chip under the picture. In full screen, the information panel has "TV guide": it goes to the Live
+TV guide, the channel going on in the picture at its top, wherever full screen was opened from.
+
 Subtitles (CC in the film's player): the film's or episode's own, from your playlist's stream, come first, in the
 languages you choose (Settings, Subtitles, in order). When it has none, OpenSubtitles.com is looked in by the title's
 TMDB id (the series' with its season and episode), best first: your languages, the ones that fit the copy playing (its

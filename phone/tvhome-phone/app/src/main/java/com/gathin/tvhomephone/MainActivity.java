@@ -17,7 +17,7 @@ import com.google.android.material.bottomnavigation.BottomNavigationView;
 public class MainActivity extends AppCompatActivity {
     private static final String TAB = "tab";
     /** An intent's extra: what to open (a notification's tap): OPEN_PLAYLISTS, Settings at Live TV's playlists. */
-    public static final String EXTRA_OPEN = "open", OPEN_PLAYLISTS = "playlists";
+    public static final String EXTRA_OPEN = "open", OPEN_PLAYLISTS = "playlists", OPEN_LIVE = "live";
     private BottomNavigationView tabs;
 
     @Override protected void onCreate(Bundle state) {
@@ -43,6 +43,7 @@ public class MainActivity extends AppCompatActivity {
             com.gathin.tvhomephone.settings.SettingsFragment.toPlaylists = true;
             start = R.id.tab_settings;
         }
+        if (OPEN_LIVE.equals(getIntent().getStringExtra(EXTRA_OPEN))) start = R.id.tab_live;
         tabs.setSelectedItemId(start);
         if (Build.VERSION.SDK_INT >= 33) requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"}, 1);
     }
@@ -50,6 +51,11 @@ public class MainActivity extends AppCompatActivity {
     /** A notification tapped while the app is open: its place shown (the playlists in Settings). */
     @Override protected void onNewIntent(android.content.Intent intent) {
         super.onNewIntent(intent);
+        // The full screen's "TV guide": the Live TV tab, the channel going on in its picture.
+        if (OPEN_LIVE.equals(intent.getStringExtra(EXTRA_OPEN))) {
+            if (tabs.getSelectedItemId() != R.id.tab_live) tabs.setSelectedItemId(R.id.tab_live);
+            return;
+        }
         if (OPEN_PLAYLISTS.equals(intent.getStringExtra(EXTRA_OPEN))) {
             com.gathin.tvhomephone.settings.SettingsFragment.toPlaylists = true;
             if (tabs.getSelectedItemId() == R.id.tab_settings) show(R.id.tab_settings);

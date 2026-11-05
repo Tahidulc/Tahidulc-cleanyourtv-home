@@ -13,4 +13,5 @@
     <string name="live_upright_off">Turn upright to leave full screen: off</string>
     <string name="live_upright_now_on">Turning the phone upright goes back to the guide</string>
     <string name="live_upright_now_off">Full screen stays on its side until you go back</string>
+    <string name="live_count_short">%1$,d channels</string>
 </resources>

@@ -322,6 +322,20 @@ public class PlayerActivity extends AppCompatActivity {
         super.onDestroy();
     }
 
+    /**
+     * The information panel's "TV guide": the Live TV tab's guide, this channel going on in the picture at its top
+     * (handed back as from full screen), wherever the player was opened from.
+     */
+    private void openGuide() {
+        hideOverlay();
+        handBack = true;
+        Intent i = new Intent(this, com.gathin.tvhomephone.MainActivity.class)
+                .putExtra(com.gathin.tvhomephone.MainActivity.EXTRA_OPEN, com.gathin.tvhomephone.MainActivity.OPEN_LIVE)
+                .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        startActivity(i);
+        finish();
+    }
+
     /** Back, ✕ or turning upright again: to the guide, which keeps playing when it was playing before. */
     private void close() {
         handBack = fromGuide;
@@ -701,6 +715,10 @@ public class PlayerActivity extends AppCompatActivity {
         @Override public void matchCentre(Game g) {
             hideOverlay();
             startActivity(GameActivity.intent(PlayerActivity.this, g));
+        }
+
+        @Override public void guide() {
+            openGuide();
         }
 
         @Override public void alsoShowing(Game g) {

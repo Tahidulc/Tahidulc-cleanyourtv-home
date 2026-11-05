@@ -299,11 +299,31 @@ public class LiveTvFragment extends Fragment {
         toolbar.setPadding(Ui.dp(c, 16), Ui.dp(c, 6), Ui.dp(c, 4), 0);
         LinearLayout titles = new LinearLayout(c);
         titles.setOrientation(LinearLayout.VERTICAL);
-        // The category chosen as the title ("Favourites", "UK | Sports"), as the guide's own heading.
-        titleView = Ui.text(c, getString(R.string.live_title), 22, Ui.TEXT, true);
+        // Homefield's own mark and name in the corner (the category chosen is the lit chip under the picture), the name
+        // made smaller as it must to fit beside the buttons, never cut off.
+        LinearLayout brand = new LinearLayout(c);
+        brand.setGravity(Gravity.CENTER_VERTICAL);
+        android.widget.ImageView mark = new android.widget.ImageView(c);
+        mark.setImageResource(R.drawable.ic_app);
+        mark.setClipToOutline(true);
+        int markR = Ui.dp(c, 8);
+        mark.setOutlineProvider(new android.view.ViewOutlineProvider() {
+            @Override public void getOutline(View v, android.graphics.Outline o) {
+                o.setRoundRect(0, 0, v.getWidth(), v.getHeight(), markR);
+            }
+        });
+        mark.setContentDescription(getString(R.string.app_name));
+        brand.addView(mark, new LinearLayout.LayoutParams(Ui.dp(c, 30), Ui.dp(c, 30)));
+        titleView = Ui.text(c, getString(R.string.app_name), 21, Ui.TEXT, true);
         titleView.setSingleLine(true);
-        titleView.setEllipsize(android.text.TextUtils.TruncateAt.END);
-        titles.addView(titleView);
+        titleView.setMaxLines(1);
+        androidx.core.widget.TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(titleView, 13, 21, 1,
+                android.util.TypedValue.COMPLEX_UNIT_SP);
+        LinearLayout.LayoutParams tp = new LinearLayout.LayoutParams(0, Ui.dp(c, 30), 1f);
+        tp.leftMargin = Ui.dp(c, 9);
+        titleView.setGravity(Gravity.CENTER_VERTICAL);
+        brand.addView(titleView, tp);
+        titles.addView(brand, new LinearLayout.LayoutParams(-1, -2));
         LinearLayout under = new LinearLayout(c);
         under.setGravity(Gravity.CENTER_VERTICAL);
         // Which playlists: all together or one, switched here (shown only with two or more).
@@ -319,6 +339,7 @@ public class LiveTvFragment extends Fragment {
         under.addView(playlistPill, pp);
         sub = Ui.text(c, "", 12, Ui.DIM, false);
         sub.setSingleLine(true);
+        sub.setEllipsize(android.text.TextUtils.TruncateAt.END);
         under.addView(sub, new LinearLayout.LayoutParams(0, -2, 1f));
         titles.addView(under);
         toolbar.addView(titles, new LinearLayout.LayoutParams(0, -2, 1f));
@@ -630,12 +651,6 @@ public class LiveTvFragment extends Fragment {
     @SuppressLint("NotifyDataSetChanged")
     private void refreshChips() {
         chipsAdapter.notifyDataSetChanged();
-        // The category chosen as the title.
-        if (titleView != null) {
-            String t = getString(R.string.live_title);
-            for (String[] it : chipsAdapter.items) if (it[1].equals(group)) t = it[0].replaceFirst("^★\\s*", "");
-            titleView.setText(t);
-        }
     }
 
     /** A top-bar button as a dark circle, as the guide's own buttons. */
@@ -715,7 +730,8 @@ public class LiveTvFragment extends Fragment {
         Context c = requireContext();
         boolean source = lib.hasSource(), ready = lib.ready();
         int shown = lib.visibleCount(), hid = lib.count() - shown;
-        String count = hid > 0 ? getString(R.string.live_count_hidden, shown, hid) : getString(R.string.live_count, lib.count());
+        // Short enough to fit under the name: the channels shown (the hidden ones are in the categories' menu).
+        String count = getString(R.string.live_count_short, hid > 0 ? shown : lib.count());
         sub.setText(ready ? count + (lib.busy() ? " · " + getString(R.string.live_loading) : "") : "");
         showPlaylistPill(c);
         if (state != null) {

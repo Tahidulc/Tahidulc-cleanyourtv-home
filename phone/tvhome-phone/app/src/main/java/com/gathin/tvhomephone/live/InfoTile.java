@@ -83,6 +83,9 @@ final class InfoTile {
 
         /** The other channels showing the game (AlsoShowing). */
         void alsoShowing(Game g);
+
+        /** The Live TV guide, this channel going on in its picture. */
+        void guide();
     }
 
     private static final int WHITE = 0xFFFFFFFF, INK = 0xFF10123A;
@@ -294,6 +297,7 @@ final class InfoTile {
         hs.setHorizontalScrollBarEnabled(false);
         LinearLayout buttons = k.row();
         hs.addView(buttons);
+        buttons.addView(guideButton(k, a), k.margins(0, 0, 8, 0, -2, 40));
         TextView restart = k.pill(c.getString(R.string.tile_restart), true, 40);
         restart.setOnClickListener(v -> a.restart());
         buttons.addView(restart, k.margins(0, 0, 8, 0, -2, 40));
@@ -358,6 +362,13 @@ final class InfoTile {
         return box;
     }
 
+    /** "TV guide": the Live TV guide, the channel going on in its picture. */
+    private static TextView guideButton(Kit k, Actions a) {
+        TextView g = k.pill(k.c.getString(R.string.tile_guide), false, 40);
+        g.setOnClickListener(v -> a.guide());
+        return g;
+    }
+
     private static TextView favouriteButton(Kit k, Actions a) {
         TextView fav = k.pill(k.c.getString(a.isFavourite() ? R.string.tile_favourited : R.string.tile_favourite), false, 40);
         fav.setOnClickListener(v -> {
@@ -420,6 +431,7 @@ final class InfoTile {
         hs.setHorizontalScrollBarEnabled(false);
         LinearLayout buttons = k.row();
         hs.addView(buttons);
+        buttons.addView(guideButton(k, a), k.margins(0, 0, 8, 0, -2, 40));
         if (g != null) {
             TextView centre = k.pill(c.getString(R.string.tile_match_centre), true, 40);
             centre.setOnClickListener(v -> a.matchCentre(g));
