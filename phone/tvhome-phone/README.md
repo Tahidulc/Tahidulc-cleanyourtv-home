@@ -72,6 +72,13 @@ there or in Settings. It can sit over other apps too (Settings, or the player's 
 other apps" is asked for), dragged where it suits, tap for the next game, hold to stop, with how far behind that
 app's picture runs set in Settings.
 
+The scoreboard reads the channel's own scoreboard off the picture, on the phone (Google's offline text reader):
+its clock, so the board shows the same time to the second, and its score, so the board's changes as the channel's
+does (and the channel's delay is set from it, holding the alerts to the picture too). On an F1 channel it reads the
+timing tower's lap ("LAP 23/57") or time left. It has five looks to choose from (Classic, Glass, Light, Club colours,
+Minimal), and where the channel's logo is found on the picture it covers it with Homefield's own mark: Badge, Glass,
+Mark only or Wordmark, or leaves it (Settings and the player's Options). The Live TV tab's programme panel is black.
+
 Subtitles (CC in the film's player): the film's or episode's own, from your playlist's stream, come first, in the
 languages you choose (Settings, Subtitles, in order). When it has none, OpenSubtitles.com is looked in by the title's
 TMDB id (the series' with its season and episode), best first: your languages, the ones that fit the copy playing (its

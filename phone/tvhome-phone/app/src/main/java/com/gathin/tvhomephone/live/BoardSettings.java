@@ -25,6 +25,63 @@ public final class BoardSettings {
         col.addView(com.gathin.tvhomephone.sports.Ui.text(c, c.getString(R.string.live4_settings_line), 13, c.getColor(R.color.text_dim), false));
         row(c, col, c.getString(R.string.live4_board_on), ScoreBoard.on(c), on -> ScoreBoard.setOn(c, on));
         row(c, col, c.getString(R.string.live4_board_cover), ScoreBoard.cover(c), on -> ScoreBoard.setCover(c, on));
+        row(c, col, c.getString(R.string.live4_read), ScoreBoard.reads(c), on -> ScoreBoard.setReads(c, on));
+        col.addView(com.gathin.tvhomephone.sports.Ui.text(c, c.getString(R.string.live4_read_line), 13, c.getColor(R.color.text_dim), false));
+
+        // Its look: each drawn as it would be, tap one.
+        col.addView(sub(c, c.getString(R.string.live4_board_look)));
+        android.widget.HorizontalScrollView hs = new android.widget.HorizontalScrollView(c);
+        hs.setHorizontalScrollBarEnabled(false);
+        LinearLayout styles = new LinearLayout(c);
+        hs.addView(styles);
+        java.util.List<android.view.View> frames = new java.util.ArrayList<>();
+        for (OverlayBug.Style st : OverlayBug.Style.values()) {
+            LinearLayout one = choice(c, st.label, ScoreBoard.style(c) == st);
+            OverlayBug b = new OverlayBug(c);
+            b.style(st);
+            b.set(sample());
+            LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(-2, Ui.dp(c, 30));
+            one.addView(b, 0, bp);
+            one.setOnClickListener(v -> {
+                ScoreBoard.setStyle(c, st);
+                for (android.view.View f : frames) f.setSelected(f == v);
+            });
+            frames.add(one);
+            styles.addView(one, spaced(c));
+        }
+        col.addView(hs, new LinearLayout.LayoutParams(-1, -2));
+
+        // The channel's logo: Homefield's mark over it, each way drawn, tap one.
+        col.addView(sub(c, c.getString(R.string.live4_logo)));
+        col.addView(com.gathin.tvhomephone.sports.Ui.text(c, c.getString(R.string.live4_logo_line), 13, c.getColor(R.color.text_dim), false));
+        android.widget.HorizontalScrollView hl = new android.widget.HorizontalScrollView(c);
+        hl.setHorizontalScrollBarEnabled(false);
+        LinearLayout logos = new LinearLayout(c);
+        hl.addView(logos);
+        java.util.List<android.view.View> lframes = new java.util.ArrayList<>();
+        for (LogoCover.Look lk : LogoCover.Look.values()) {
+            LinearLayout one = choice(c, lk.label, ScoreBoard.logoCover(c) == lk);
+            android.view.View pic;
+            if (lk == LogoCover.Look.OFF) {
+                TextView t = Ui.text(c, "SPORTS", 13, 0xFFFFFFFF, true);
+                t.setGravity(android.view.Gravity.CENTER);
+                t.setLetterSpacing(0.1f);
+                t.setBackground(Ui.round(c, 0x33FFFFFF, 6));
+                pic = t;
+            } else {
+                LogoCover lc = new LogoCover(c);
+                lc.look(lk);
+                pic = lc;
+            }
+            one.addView(pic, 0, new LinearLayout.LayoutParams(Ui.dp(c, 104), Ui.dp(c, 36)));
+            one.setOnClickListener(v -> {
+                ScoreBoard.setLogoCover(c, lk);
+                for (android.view.View f : lframes) f.setSelected(f == v);
+            });
+            lframes.add(one);
+            logos.addView(one, spaced(c));
+        }
+        col.addView(hl, new LinearLayout.LayoutParams(-1, -2));
         row(c, col, c.getString(R.string.live4_alerts_football), ScoreBoard.shows(c, ScoreBoard.FOOTBALL), on -> ScoreBoard.setShows(c, ScoreBoard.FOOTBALL, on));
         row(c, col, c.getString(R.string.live4_alerts_sport), ScoreBoard.shows(c, ScoreBoard.SPORT), on -> ScoreBoard.setShows(c, ScoreBoard.SPORT, on));
         row(c, col, c.getString(R.string.live4_alerts_news), ScoreBoard.shows(c, ScoreBoard.NEWS), on -> ScoreBoard.setShows(c, ScoreBoard.NEWS, on));
@@ -60,6 +117,51 @@ public final class BoardSettings {
             delay.addView(t, lp);
         }
         col.addView(delay);
+    }
+
+    /** A made-up game for the looks' pictures. */
+    private static OverlayBug.Look sample() {
+        OverlayBug.Look l = new OverlayBug.Look();
+        l.home = "HOM";
+        l.away = "AWY";
+        l.score = "2–1";
+        l.clock = "67:23";
+        l.live = true;
+        l.tag = "LIVE";
+        l.homeColour = 0xFFE0213A;
+        l.awayColour = 0xFF3D8BFF;
+        return l;
+    }
+
+    private static TextView sub(Context c, String s) {
+        TextView t = Ui.text(c, s.toUpperCase(java.util.Locale.UK), 12, c.getColor(R.color.text_soft), true);
+        t.setLetterSpacing(0.1f);
+        t.setPadding(0, Ui.dp(c, 16), 0, Ui.dp(c, 6));
+        return t;
+    }
+
+    /** One choice: its picture (added first) over its name, ringed when chosen. */
+    private static LinearLayout choice(Context c, String name, boolean on) {
+        LinearLayout one = new LinearLayout(c);
+        one.setOrientation(LinearLayout.VERTICAL);
+        one.setGravity(android.view.Gravity.CENTER_HORIZONTAL);
+        one.setPadding(Ui.dp(c, 10), Ui.dp(c, 10), Ui.dp(c, 10), Ui.dp(c, 8));
+        android.graphics.drawable.StateListDrawable bg = new android.graphics.drawable.StateListDrawable();
+        bg.addState(new int[]{android.R.attr.state_selected}, Ui.ring(c, 0x1FFFFFFF, 0xFFFFFFFF, 2, 14));
+        bg.addState(new int[]{}, Ui.round(c, 0x14FFFFFF, 14));
+        one.setBackground(bg);
+        one.setSelected(on);
+        TextView t = Ui.text(c, name, 13, 0xFFFFFFFF, false);
+        t.setPadding(0, Ui.dp(c, 8), 0, 0);
+        one.addView(t);
+        one.setContentDescription(name);
+        return one;
+    }
+
+    private static LinearLayout.LayoutParams spaced(Context c) {
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, -2);
+        lp.rightMargin = Ui.dp(c, 10);
+        return lp;
     }
 
     private static MaterialSwitch row(Context c, LinearLayout col, String label, boolean on, Flip flip) {

@@ -88,6 +88,21 @@ public final class ScoreBoard implements LiveAlerts.Listener {
 
     static void setFloating(Context c, boolean v) { prefs(c).edit().putBoolean("float", v).apply(); }
 
+    /** Its look (OverlayBug.Style). */
+    static OverlayBug.Style style(Context c) { return OverlayBug.Style.of(prefs(c).getString("style", "CLASSIC")); }
+
+    static void setStyle(Context c, OverlayBug.Style s) { prefs(c).edit().putString("style", s.name()).apply(); }
+
+    /** The channel's logo covered with Homefield's, and how (LogoCover.Look; Badge until chosen). */
+    static LogoCover.Look logoCover(Context c) { return LogoCover.Look.of(prefs(c).getString("logo", "BADGE")); }
+
+    static void setLogoCover(Context c, LogoCover.Look l) { prefs(c).edit().putString("logo", l.name()).apply(); }
+
+    /** Whether the board reads the channel's own scoreboard to keep its time and score (on until switched off). */
+    static boolean reads(Context c) { return prefs(c).getBoolean("read", true); }
+
+    static void setReads(Context c, boolean v) { prefs(c).edit().putBoolean("read", v).apply(); }
+
     /** How far behind the other apps' pictures run (their streams' delay), in seconds. */
     static int otherDelay(Context c) { return prefs(c).getInt("other_delay", 0); }
 
@@ -153,6 +168,7 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         view = new LinearLayout(ctx);
         view.setOrientation(LinearLayout.VERTICAL);
         bug = new OverlayBug(ctx);
+        bug.style(style(ctx));
         bug.setVisibility(View.GONE);
         bug.setOnClickListener(v -> src.tapped());
         bug.setOnLongClickListener(v -> {
@@ -193,6 +209,7 @@ public final class ScoreBoard implements LiveAlerts.Listener {
     }
 
     void start() {
+        bug.style(style(c));
         if (running) return;
         running = true;
         LiveAlerts.addListener(this);
@@ -397,6 +414,17 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         return (n.length() > 3 ? n.substring(0, 3) : n).toUpperCase(Locale.ROOT);
     }
 
+    /** F1's tower read off the picture (ScoreOverlay): its lap and laps, or its time left, at the moment at. */
+    void f1Screen(int lap, int laps, int left, long at) {
+        f1Lap = lap;
+        f1Laps = laps;
+        f1Left = left;
+        f1At = at;
+    }
+
+    private int f1Lap = -1, f1Laps = -1, f1Left = -1;
+    private long f1At;
+
     private OverlayBug.Look f1Look(F1Live.Session s, long at) {
         OverlayBug.Look l = new OverlayBug.Look();
         l.f1 = true;
@@ -405,6 +433,17 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         String[] corner = F1Live.corner(s, at);
         l.cornerA = corner[0];
         l.cornerB = corner[1];
+        // What the tower itself shows, read within the last 20 seconds: its lap of its laps, its time left going down.
+        long now = System.currentTimeMillis();
+        if (now - f1At < 20_000L) {
+            if (f1Lap > 0 && s.race()) {
+                l.cornerA = "LAP";
+                l.cornerB = f1Lap + (f1Laps > 0 ? "/" + f1Laps : "");
+            } else if (f1Left >= 0 && !s.race()) {
+                long left = Math.max(0, f1Left * 1000L - (now - f1At));
+                l.cornerB = String.format(Locale.UK, "%02d:%02d", left / 60_000, left / 1000 % 60);
+            }
+        }
         for (int i = 0; i < Math.min(3, s.top.size()); i++) {
             String code = F1Live.code(s.top.get(i));
             l.codes.add(code);

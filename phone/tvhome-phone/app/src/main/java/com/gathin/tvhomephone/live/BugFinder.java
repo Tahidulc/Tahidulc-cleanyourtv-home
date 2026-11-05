@@ -152,6 +152,72 @@ final class BugFinder {
         return best;
     }
 
+    /**
+     * The channel's own logo: in a corner (top right first, then top left, then bottom right), the cluster of edges that
+     * stay in the same place frame after frame while the picture moves under them. A logo is often see-through, so its
+     * pixels need not be still, only its outline. Not the scoreboard (not), and not as wide as a line across the
+     * picture. Null when none is found.
+     */
+    Box logo(Box not) {
+        int pairs = frames - 1;
+        if (pairs < 8) return null;
+        int n = w * h;
+        boolean[] seed = new boolean[n];
+        for (int y = 0; y < h; y++) {
+            boolean top = y < h * 0.30f, foot = y >= h * 0.78f;
+            if (!top && !foot) continue;
+            for (int x = 0; x < w; x++) {
+                boolean right = x >= w * 0.62f, left = x < w * 0.38f;
+                if (!(top && (left || right)) && !(foot && right)) continue;
+                if (not != null && x >= (not.left - 0.01f) * w && x <= (not.right + 0.01f) * w
+                        && y >= (not.top - 0.01f) * h && y <= (not.bottom + 0.01f) * h) continue;
+                int i = y * w + x;
+                seed[i] = edges[i] >= frames * 0.7f;
+            }
+        }
+        boolean[] joined = dilate(seed, 2);
+        int[] label = new int[n], queue = new int[n];
+        Box best = null;
+        float bestScore = 0;
+        int next = 0;
+        for (int start = 0; start < n; start++) {
+            if (!joined[start] || label[start] != 0) continue;
+            next++;
+            int head = 0, tail = 0, x0 = w, y0 = h, x1 = -1, y1 = -1, seeds = 0;
+            queue[tail++] = start;
+            label[start] = next;
+            while (head < tail) {
+                int i = queue[head++], x = i % w, y = i / w;
+                x0 = Math.min(x0, x);
+                x1 = Math.max(x1, x);
+                y0 = Math.min(y0, y);
+                y1 = Math.max(y1, y);
+                if (seed[i]) seeds++;
+                if (x > 0) tail = visit(joined, label, queue, tail, i - 1, next);
+                if (x + 1 < w) tail = visit(joined, label, queue, tail, i + 1, next);
+                if (y > 0) tail = visit(joined, label, queue, tail, i - w, next);
+                if (y + 1 < h) tail = visit(joined, label, queue, tail, i + w, next);
+            }
+            // The dilation's own two pixels taken off again.
+            x0 = Math.min(w - 1, x0 + 2);
+            y0 = Math.min(h - 1, y0 + 2);
+            x1 = Math.max(x0, x1 - 2);
+            y1 = Math.max(y0, y1 - 2);
+            float bw = (x1 - x0 + 1) / (float) w, bh = (y1 - y0 + 1) / (float) h;
+            float aspect = (x1 - x0 + 1) / (float) (y1 - y0 + 1);
+            if (bw < 0.025f || bw > 0.24f || bh < 0.02f || bh > 0.15f || aspect < 0.5f || aspect > 7f) continue;
+            int area = (x1 - x0 + 1) * (y1 - y0 + 1);
+            if (seeds < area * 0.06f) continue;
+            boolean right = (x0 + x1) / 2f >= w / 2f, top = (y0 + y1) / 2f < h / 2f;
+            float score = seeds * (top && right ? 1.3f : top ? 1.0f : 0.9f);
+            if (score > bestScore) {
+                bestScore = score;
+                best = new Box(x0 / (float) w, y0 / (float) h, (x1 + 1) / (float) w, (y1 + 1) / (float) h, false);
+            }
+        }
+        return best;
+    }
+
     /** Whether the flipping pixels inside box b sit together as a clock's digits do: four or more, in a short run. */
     private boolean clock(boolean[] tick, int[] b) {
         int count = 0, cx0 = w, cx1 = -1, cy0 = h, cy1 = -1;

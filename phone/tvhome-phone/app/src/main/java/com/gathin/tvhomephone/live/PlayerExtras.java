@@ -635,6 +635,35 @@ final class PlayerExtras implements LiveAlerts.Listener {
                 });
                 addChip(drops, t);
             }
+            // Its look, and Homefield's mark over the channel's logo.
+            LinearLayout looks = chipRow(c, box, R.string.live4_board_look);
+            List<TextView> ls = new ArrayList<>();
+            for (OverlayBug.Style look : OverlayBug.Style.values()) {
+                TextView t = Ui.guideChip(c, look.label, ScoreBoard.style(c) == look);
+                t.setOnClickListener(v -> {
+                    ScoreBoard.setStyle(c, look);
+                    for (TextView x : ls) Ui.styleChip(c, x, x == v);
+                    overlay.restyle();
+                });
+                ls.add(t);
+                addChip(looks, t);
+            }
+            LinearLayout logos = chipRow(c, box, R.string.live4_logo);
+            List<TextView> lg = new ArrayList<>();
+            for (LogoCover.Look lk : LogoCover.Look.values()) {
+                TextView t = Ui.guideChip(c, lk.label, ScoreBoard.logoCover(c) == lk);
+                t.setOnClickListener(v -> {
+                    ScoreBoard.setLogoCover(c, lk);
+                    for (TextView x : lg) Ui.styleChip(c, x, x == v);
+                    overlay.restyle();
+                });
+                lg.add(t);
+                addChip(logos, t);
+            }
+            toggle(c, box, a.getString(R.string.live4_read), ScoreBoard.reads(c), on -> {
+                ScoreBoard.setReads(c, on);
+                overlay.game(host.game());
+            });
             overlay.options(c, box, host::closeSheet);
             action(c, box, R.drawable.live_ic_pip, a.getString(FloatService.on(c) ? R.string.live4_float_stop : R.string.live4_float_start), () -> {
                 host.closeSheet();

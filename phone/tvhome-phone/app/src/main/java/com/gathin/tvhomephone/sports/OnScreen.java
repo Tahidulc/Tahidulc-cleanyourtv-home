@@ -25,6 +25,8 @@ public final class OnScreen {
         }
     }
 
+    /** The picture's delay is measured over this long. */
+    private static final long MEASURE_MS = 5 * 60_000L;
     /** Reads kept this long past the delay; the delay itself is at most LiveAlerts' three minutes. */
     private static final long KEEP_MS = 4 * 60_000L;
     /** Seconds go on at most this far past a minute's first read, until the next read (ESPN gives whole minutes). */
@@ -34,15 +36,23 @@ public final class OnScreen {
 
     private final List<Read> reads = new ArrayList<>();
     private long behindMs;
-    /** The broadcaster's clock: at anchorAt (when it was seen) it read anchorSecs, in this period; 0 when not seen. */
+    /** The broadcaster's clock: at anchorAt (when it was seen) it read anchorMs, in this period; 0 when not seen. */
     private long anchorAt;
-    private long anchorSecs;
+    private long anchorMs;
     private int anchorPeriod;
+    /** A read shown before its time: the channel's own scoreboard was read showing its score. */
+    private Read forced;
+    private int lead;
+    /** How far the picture was measured behind the scores ({when, ms}), from its own clock read off it. */
+    private final java.util.ArrayDeque<long[]> measured = new java.util.ArrayDeque<>();
 
     /** Everything read forgotten (another channel). */
     public void clear() {
         reads.clear();
         anchorAt = 0;
+        forced = null;
+        lead = 0;
+        measured.clear();
     }
 
     /** The stream's delay behind the real game. */
@@ -59,8 +69,7 @@ public final class OnScreen {
         if (g == null) return;
         Read last = reads.isEmpty() ? null : reads.get(reads.size() - 1);
         if (last != null && last.g.id != null && !last.g.id.equals(g.id)) {
-            reads.clear();
-            anchorAt = 0;
+            clear();
             last = null;
         }
         double secs = clockOf(g);
@@ -109,9 +118,90 @@ public final class OnScreen {
         long minute = Math.round(ms / 60_000.0);
         if (Math.abs(ms - minute * 60_000L) > 25_000L) return false;
         anchorAt = at;
-        anchorSecs = minute * 60L;
+        anchorMs = minute * 60_000L;
         anchorPeriod = r.g.period;
         return true;
+    }
+
+    /**
+     * The channel's own clock read off the picture (ChannelReader): it showed secs at the moment at. The clock runs
+     * from it, pulled into the second it showed each time it is read (so it settles to within a fraction of one), and
+     * how far the picture runs behind the scores is measured from it. False when the reading can't be this game's.
+     */
+    public boolean screenClock(long secs, long at) {
+        Read r = at(at - behindMs);
+        if (r == null || r.g.state != Game.LIVE || secs < 0) return false;
+        long raw = rawMs(at);
+        if (raw >= 0) {
+            long behind = raw - secs * 1000L;
+            if (behind < -60_000L || behind > 300_000L) return false;
+            measured.addLast(new long[]{at, behind});
+            while (!measured.isEmpty() && measured.peekFirst()[0] < at - MEASURE_MS) measured.removeFirst();
+        }
+        int period = r.g.halftime ? r.g.period + 1 : r.g.period;
+        long lo = secs * 1000L, hi = lo + 999;
+        if (anchorAt > 0 && anchorPeriod == period) {
+            long predicted = anchorMs + (at - anchorAt);
+            if (predicted >= lo - 2000 && predicted <= hi + 2000) {
+                anchorMs = Math.max(lo, Math.min(hi, predicted));
+                anchorAt = at;
+                return true;
+            }
+        }
+        anchorAt = at;
+        anchorMs = lo + 500;
+        anchorPeriod = period;
+        return true;
+    }
+
+    /**
+     * How far the picture runs behind the scores, as its own clock says (the most of the last few minutes' readings:
+     * the scores' seconds are late by up to their read's interval, never early); -1 until read three times.
+     */
+    public long measuredBehind() {
+        if (measured.size() < 3) return -1;
+        long most = Long.MIN_VALUE;
+        for (long[] m : measured) most = Math.max(most, m[1]);
+        return Math.max(0, most);
+    }
+
+    /**
+     * The channel's own scoreboard read, shows tells whether it shows a score: a newer read's score it shows is shown
+     * from now (the score changes as the channel's does); one goal more than the scores have yet, seen twice, is shown
+     * too (the channel was quicker). True when the score shown changed.
+     */
+    public boolean screenScore(java.util.function.BiPredicate<Integer, Integer> shows, long now) {
+        Read cur = at(now - behindMs);
+        if (cur == null || cur.g.state == Game.PRE) return false;
+        int i = reads.indexOf(cur);
+        for (int k = reads.size() - 1; k > i; k--) {
+            Read r = reads.get(k);
+            boolean differs = r.g.homeScore != cur.g.homeScore || r.g.awayScore != cur.g.awayScore;
+            if (differs && shows.test(r.g.homeScore, r.g.awayScore)) {
+                forced = r;
+                lead = 0;
+                return true;
+            }
+        }
+        int h = cur.g.homeScore, a = cur.g.awayScore;
+        if (shows.test(h, a)) {
+            lead = 0;
+            return false;
+        }
+        for (int[] n : new int[][]{{h + 1, a}, {h, a + 1}}) {
+            if (!shows.test(n[0], n[1])) continue;
+            if (++lead < 2) return false;
+            Game copy = Game.from(cur.g.json());
+            copy.homeScore = n[0];
+            copy.awayScore = n[1];
+            Read r = new Read(copy, now, cur.minuteAt);
+            reads.add(r);
+            forced = r;
+            lead = 0;
+            return true;
+        }
+        lead = 0;
+        return false;
     }
 
     /** The screen's clock let go (a new channel, or it was wrong). */
@@ -129,7 +219,25 @@ public final class OnScreen {
             if (r.at <= screen) best = r;
             else break;
         }
+        // The channel's own scoreboard already shows a later read's score: that one, until the reads catch it up.
+        if (forced != null) {
+            int f = reads.indexOf(forced);
+            if (f > reads.indexOf(best)) return forced;
+            forced = null;
+        }
         return best;
+    }
+
+    /** The scores' clock in ms at at, as read (no delay); -1 when not running. */
+    private long rawMs(long at) {
+        if (reads.isEmpty()) return -1;
+        Read r = reads.get(0);
+        for (Read x : reads) {
+            if (x.at <= at) r = x;
+            else break;
+        }
+        if (r.g.state != Game.LIVE || r.g.halftime) return -1;
+        return (long) (r.secs * 1000) + Math.max(0, Math.min(RUN_ON_MS, at - r.minuteAt));
     }
 
     /** The clock in ms at now as the screen shows it: the broadcaster's when seen this period, else the scores'. */
@@ -137,7 +245,7 @@ public final class OnScreen {
         long scores = scoresMs(r, now);
         if (scores < 0) return -1;
         if (anchorAt > 0 && r.g.period == anchorPeriod) {
-            long seen = anchorSecs * 1000L + (now - anchorAt);
+            long seen = anchorMs + (now - anchorAt);
             if (Math.abs(seen - scores) <= TRUST_MS) return Math.max(start(r.g.period), seen);
             anchorAt = 0;
         }

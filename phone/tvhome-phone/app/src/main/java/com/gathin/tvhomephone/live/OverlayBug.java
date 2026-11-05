@@ -58,6 +58,8 @@ final class OverlayBug extends View {
     private final int blueTop, blueBottom;
     private final float dp;
     private Look look = new Look();
+    private Style style = Style.CLASSIC;
+    private Palette p;
     Bitmap homeCrest, awayCrest, comp;
     /** The goal's light: 1 to 0 over its seconds, on side 1 (home) or 2 (away). */
     private float flash;
@@ -72,6 +74,97 @@ final class OverlayBug extends View {
         text.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD));
         text.setFontFeatureSettings("tnum");
         setLayerType(LAYER_TYPE_HARDWARE, null);
+        p = palette(style, blueTop, blueBottom);
+    }
+
+    /** How it looks: the choices in Settings and the player's options. */
+    enum Style {
+        CLASSIC("Classic"), GLASS("Glass"), LIGHT("Light"), CLUB("Club colours"), MINIMAL("Minimal");
+
+        final String label;
+
+        Style(String label) {
+            this.label = label;
+        }
+
+        static Style of(String name) {
+            for (Style s : values()) if (s.name().equals(name)) return s;
+            return CLASSIC;
+        }
+    }
+
+    /** One look's colours. */
+    private static final class Palette {
+        int ground, comp, score0, score1, clock, ink, scoreInk, clockInk, dim;
+        boolean strips = true, clubFill;
+        /** The corners' radius as a share of the height (0.5: a pill). */
+        float round = 0.2f;
+    }
+
+    private static Palette palette(Style s, int blueTop, int blueBottom) {
+        Palette p = new Palette();
+        p.ink = p.scoreInk = p.clockInk = 0xFFFFFFFF;
+        p.dim = DIM;
+        switch (s) {
+            case GLASS:
+                // See-through smoked glass, a pill, the picture showing faintly behind.
+                p.ground = 0xB80B0F24;
+                p.comp = 0;
+                p.score0 = 0x40FFFFFF;
+                p.score1 = 0x24FFFFFF;
+                p.clock = 0x38000000;
+                p.dim = 0xCCDDE3FF;
+                p.round = 0.5f;
+                break;
+            case LIGHT:
+                // The competition's block stays navy: its logo is drawn for dark grounds.
+                p.ground = 0xFFF5F6FA;
+                p.comp = NAVY;
+                p.score0 = p.score1 = NAVY;
+                p.clock = 0xFFE4E7F0;
+                p.ink = p.clockInk = NAVY;
+                p.dim = 0xFF5A6280;
+                break;
+            case CLUB:
+                // Each side in its club's own colour, on black.
+                p.ground = 0xFF0E0E10;
+                p.comp = 0xFF000000;
+                p.score0 = 0xFF1A1A1C;
+                p.score1 = 0xFF000000;
+                p.clock = 0xFF000000;
+                p.dim = 0xFFB0B0B8;
+                p.strips = false;
+                p.clubFill = true;
+                break;
+            case MINIMAL:
+                p.ground = 0xD9000000;
+                p.comp = 0;
+                p.score0 = p.score1 = 0;
+                p.clock = 0;
+                p.clockInk = 0xFFDDE3FF;
+                p.round = 0.5f;
+                break;
+            default:
+                p.ground = NAVY;
+                p.comp = NAVY_DEEP;
+                p.score0 = blueTop;
+                p.score1 = blueBottom;
+                p.clock = CLOCK;
+        }
+        return p;
+    }
+
+    /** Its look changed (Settings, Options). */
+    void style(Style s) {
+        if (s == style) return;
+        style = s;
+        p = palette(s, blueTop, blueBottom);
+        requestLayout();
+        invalidate();
+    }
+
+    Style style() {
+        return style;
     }
 
     Look look() {
@@ -113,6 +206,7 @@ final class OverlayBug extends View {
     /** Its width on its own at height h. */
     int natural(int h) {
         text.setTextSize(h * 0.46f);
+        if (style == Style.MINIMAL) return Math.round(minimalWidth(h));
         if (look.f1) {
             float w = h * 1.3f + label(h) + corner(h) + h * 0.3f;
             for (String c : look.codes) w += h * 0.16f + measure(c, h * 0.44f) + h * 0.5f;
@@ -168,15 +262,17 @@ final class OverlayBug extends View {
         long now = System.currentTimeMillis();
         flash = now < flashUntil ? (flashUntil - now) / 4000f : 0f;
         clip.reset();
-        float rad = Math.min(h * 0.2f, 8 * dp);
+        float rad = p.round >= 0.5f ? h / 2f : Math.min(h * p.round, 8 * dp);
         r.set(0, 0, w, h);
         clip.addRoundRect(r, rad, rad, Path.Direction.CW);
         cv.save();
         cv.clipPath(clip);
         fill.setShader(null);
-        fill.setColor(NAVY);
+        fill.setColor(p.ground);
         cv.drawRect(r, fill);
-        if (look.f1) {
+        if (style == Style.MINIMAL) {
+            minimal(cv, w, h);
+        } else if (look.f1) {
             if (w / (float) h >= 3.6f) f1Row(cv, 0, 0, w, h); else f1Two(cv, w, h);
         } else if (w / (float) h >= 3.6f) {
             oneRow(cv, 0, 0, w, h, true);
@@ -195,6 +291,7 @@ final class OverlayBug extends View {
         // A pixel's grace: its own width is the sum rounded.
         float room = w + 1.5f;
         float need = h + 2 * (strip + crestW + codeW) + score + clock;
+        if (p.round >= 0.5f) need += h * 0.36f;
         if (need > room && crestW > 0) {
             crests = false;
             need -= 2 * crestW;
@@ -210,22 +307,30 @@ final class OverlayBug extends View {
         score *= k;
         clock *= k;
         float cx = x;
+        if (p.round >= 0.5f) cx += h * 0.18f;
         if (compBlock) {
-            fill.setColor(NAVY_DEEP);
-            cv.drawRect(cx, y, cx + h, y + h, fill);
+            if (p.comp != 0) {
+                fill.setColor(p.comp);
+                cv.drawRect(cx, y, cx + h, y + h, fill);
+            }
             if (comp != null) drawImage(cv, comp, cx + h * 0.16f, y + h * 0.16f, h * 0.68f);
-            else words(cv, look.tag, cx + h / 2, y, h, h * 0.3f, DIM);
+            else words(cv, look.tag, cx + h / 2, y, h, h * 0.3f, p.dim);
             cx += h;
         }
         cx = side(cv, cx, y, h, strip, crests ? crestW : 0, codeW, k, true);
-        // The score on the blue.
-        fill.setShader(new LinearGradient(0, y, 0, y + h, blueTop, blueBottom, Shader.TileMode.CLAMP));
-        cv.drawRect(cx, y, cx + score, y + h, fill);
-        fill.setShader(null);
-        words(cv, look.score, cx + score / 2, y, h, h * 0.56f * k, 0xFFFFFFFF);
+        // The score on its own block.
+        scoreBlock(cv, cx, y, score, h);
+        words(cv, look.score, cx + score / 2, y, h, h * 0.56f * k, p.scoreInk);
         cx += score;
         cx = side(cv, cx, y, h, strip, crests ? crestW : 0, codeW, k, false);
         if (withClock && clock > 0) clock(cv, cx, y, x + w - cx, h, k);
+    }
+
+    private void scoreBlock(Canvas cv, float x, float y, float w, float h) {
+        if (p.score0 == 0 && p.score1 == 0) return;
+        fill.setShader(new LinearGradient(0, y, 0, y + h, p.score0, p.score1, Shader.TileMode.CLAMP));
+        cv.drawRect(x, y, x + w, y + h, fill);
+        fill.setShader(null);
     }
 
     /** One club's part: (home) strip, crest, code; (away) code, crest, strip. Returns where it ends. */
@@ -240,31 +345,44 @@ final class OverlayBug extends View {
         }
         Bitmap crest = home ? homeCrest : awayCrest;
         String code = home ? look.home : look.away;
+        int ink = p.ink;
+        if (p.clubFill) {
+            // The whole side in the club's colour, its letters dark or light to suit.
+            fill.setColor(colour);
+            cv.drawRect(cx, y, cx + width, y + h, fill);
+            ink = ink(colour);
+        }
         if (home) {
-            fill.setColor(colour);
-            cv.drawRect(cx, y, cx + strip, y + h, fill);
+            if (p.strips) {
+                fill.setColor(colour);
+                cv.drawRect(cx, y, cx + strip, y + h, fill);
+            }
             if (crestW > 0 && crest != null) drawImage(cv, crest, cx + strip + crestW * 0.14f, y + (h - crestW * 0.72f) / 2, crestW * 0.72f);
-            words(cv, code, cx + strip + crestW + codeW / 2, y, h, h * 0.46f * k, 0xFFFFFFFF);
+            words(cv, code, cx + strip + crestW + codeW / 2, y, h, h * 0.46f * k, ink);
         } else {
-            words(cv, code, cx + codeW / 2, y, h, h * 0.46f * k, 0xFFFFFFFF);
+            words(cv, code, cx + codeW / 2, y, h, h * 0.46f * k, ink);
             if (crestW > 0 && crest != null) drawImage(cv, crest, cx + codeW + crestW * 0.14f, y + (h - crestW * 0.72f) / 2, crestW * 0.72f);
-            fill.setColor(colour);
-            cv.drawRect(cx + codeW + crestW, y, cx + width, y + h, fill);
+            if (p.strips) {
+                fill.setColor(colour);
+                cv.drawRect(cx + codeW + crestW, y, cx + width, y + h, fill);
+            }
         }
         return cx + width;
     }
 
     /** The clock's box: minutes and seconds, the minutes added on red; HT in amber; GOAL as one goes in. */
     private void clock(Canvas cv, float x, float y, float w, float h, float k) {
-        fill.setColor(CLOCK);
-        cv.drawRect(x, y, x + w, y + h, fill);
+        if (p.clock != 0) {
+            fill.setColor(p.clock);
+            cv.drawRect(x, y, x + w, y + h, fill);
+        }
         if (flash > 0) {
             fill.setColor(flashSide == 1 ? look.homeColour : look.awayColour);
             cv.drawRect(x, y, x + w, y + h, fill);
             words(cv, "GOAL", x + w / 2, y, h, h * 0.42f * k, ink(flashSide == 1 ? look.homeColour : look.awayColour));
             return;
         }
-        int colour = "HT".equals(look.clock) ? AMBER : look.live ? 0xFFFFFFFF : DIM;
+        int colour = "HT".equals(look.clock) ? AMBER : look.live ? p.clockInk : p.dim;
         if (look.added.isEmpty()) {
             words(cv, look.clock, x + w / 2, y, h, h * 0.44f * k, colour);
             return;
@@ -284,10 +402,10 @@ final class OverlayBug extends View {
         float top = h * 0.58f;
         clubsRow(cv, w, top);
         float y = top, bh = h - top;
-        fill.setColor(CLOCK);
+        fill.setColor(p.clock != 0 ? p.clock : p.ground);
         cv.drawRect(0, y, w, h, fill);
         if (comp != null) drawImage(cv, comp, bh * 0.18f, y + bh * 0.12f, bh * 0.76f);
-        else if (!look.tag.isEmpty()) words(cv, look.tag, bh * 1.1f, y, bh, bh * 0.42f, DIM);
+        else if (!look.tag.isEmpty()) words(cv, look.tag, bh * 1.1f, y, bh, bh * 0.42f, p.dim);
         clock(cv, w * 0.3f, y, w * 0.7f, bh, 1.25f);
     }
 
@@ -300,10 +418,8 @@ final class OverlayBug extends View {
         float k = need > w + 1.5f ? Math.max(0.6f, w / need) : 1f;
         float extra = Math.max(0, w - need * k);
         float cx = side(cv, 0, 0, h, strip * k, crests ? crestW : 0, codeW * k + extra / 2, k, true);
-        fill.setShader(new LinearGradient(0, 0, 0, h, blueTop, blueBottom, Shader.TileMode.CLAMP));
-        cv.drawRect(cx, 0, cx + score * k, h, fill);
-        fill.setShader(null);
-        words(cv, look.score, cx + score * k / 2, 0, h, h * 0.56f * k, 0xFFFFFFFF);
+        scoreBlock(cv, cx, 0, score * k, h);
+        words(cv, look.score, cx + score * k / 2, 0, h, h * 0.56f * k, p.scoreInk);
         side(cv, cx + score * k, 0, h, strip * k, crests ? crestW : 0, codeW * k + extra / 2, k, false);
     }
 
@@ -318,15 +434,17 @@ final class OverlayBug extends View {
         cx += h * 1.3f;
         float lw = label(Math.round(h));
         if (lw > 0) {
-            words(cv, look.label, cx + lw / 2, y, h, h * 0.36f, 0xFFFFFFFF);
+            words(cv, look.label, cx + lw / 2, y, h, h * 0.36f, p.ink);
             cx += lw;
         }
         float cw = corner(Math.round(h));
-        fill.setColor(CLOCK);
-        cv.drawRect(cx, y, cx + cw, y + h, fill);
+        if (p.clock != 0) {
+            fill.setColor(p.clock);
+            cv.drawRect(cx, y, cx + cw, y + h, fill);
+        }
         float aw = measure(look.cornerA, h * 0.32f);
-        words(cv, look.cornerA, cx + h * 0.35f + aw / 2, y, h, h * 0.32f, DIM);
-        words(cv, look.cornerB, cx + h * 0.55f + aw + measure(look.cornerB, h * 0.46f) / 2, y, h, h * 0.46f, 0xFFFFFFFF);
+        words(cv, look.cornerA, cx + h * 0.35f + aw / 2, y, h, h * 0.32f, p.dim);
+        words(cv, look.cornerB, cx + h * 0.55f + aw + measure(look.cornerB, h * 0.46f) / 2, y, h, h * 0.46f, p.clockInk);
         cx += cw + h * 0.15f;
         drivers(cv, cx, y, x + w - cx, h);
     }
@@ -334,7 +452,7 @@ final class OverlayBug extends View {
     private void f1Two(Canvas cv, int w, int h) {
         float top = h * 0.5f;
         f1Row(cv, 0, 0, w, top);
-        fill.setColor(NAVY_DEEP);
+        fill.setColor(p.comp != 0 ? p.comp : p.ground);
         cv.drawRect(0, top, w, h, fill);
         drivers(cv, h * 0.15f, top, w - h * 0.15f, h - top);
     }
@@ -344,11 +462,57 @@ final class OverlayBug extends View {
         for (int i = 0; i < look.codes.size(); i++) {
             float cw = h * 0.16f + measure(look.codes.get(i), h * 0.44f) + h * 0.5f;
             if (cx + cw > x + w + 1) break;
-            words(cv, String.valueOf(i + 1), cx + h * 0.12f, y, h, h * 0.3f, DIM);
+            words(cv, String.valueOf(i + 1), cx + h * 0.12f, y, h, h * 0.3f, p.dim);
             fill.setColor(i < look.colours.size() ? look.colours.get(i) : F1_RED);
             cv.drawRect(cx + h * 0.26f, y + h * 0.24f, cx + h * 0.26f + h * 0.08f, y + h * 0.76f, fill);
-            words(cv, look.codes.get(i), cx + h * 0.42f + measure(look.codes.get(i), h * 0.44f) / 2, y, h, h * 0.44f, 0xFFFFFFFF);
+            words(cv, look.codes.get(i), cx + h * 0.42f + measure(look.codes.get(i), h * 0.44f) / 2, y, h, h * 0.44f, p.ink);
             cx += cw;
+        }
+    }
+
+    /** Minimal: one line on a dark pill, "LIV 2–1 MUN   67:23" (F1: "F1  LAP 23   NOR VER LEC"). */
+    private String[] minimalParts() {
+        if (look.f1) {
+            StringBuilder d = new StringBuilder();
+            for (String c : look.codes) d.append(d.length() == 0 ? "" : " ").append(c);
+            return new String[]{"F1", (look.cornerA + " " + look.cornerB).trim(), d.toString()};
+        }
+        return new String[]{look.home + "  " + look.score + "  " + look.away, look.clock, look.added};
+    }
+
+    private float minimalWidth(int h) {
+        String[] m = minimalParts();
+        float w = h * 0.9f + measure(m[0], h * 0.48f) + measure(m[1], h * 0.44f) + h * 0.7f;
+        if (!m[2].isEmpty()) w += measure(m[2], h * 0.38f) + h * 0.5f;
+        return w;
+    }
+
+    private void minimal(Canvas cv, int w, int h) {
+        String[] m = minimalParts();
+        if (w / (float) h < 3.6f) {
+            // A squarer place: the clubs and score over the clock.
+            float top = h * 0.55f;
+            float k1 = Math.min(1f, w * 0.9f / Math.max(1f, measure(m[0], top * 0.62f)));
+            words(cv, m[0], w / 2f, h * 0.04f, top, top * 0.62f * k1, look.f1 ? F1_RED : p.ink);
+            String under = flash > 0 && !look.f1 ? "GOAL" : (m[1] + (m[2].isEmpty() ? "" : "  " + m[2])).trim();
+            float bh = h - top;
+            float k2 = Math.min(1f, w * 0.9f / Math.max(1f, measure(under, bh * 0.62f)));
+            int ink = "HT".equals(look.clock) ? AMBER : p.clockInk;
+            words(cv, under, w / 2f, top - h * 0.04f, bh, bh * 0.62f * k2, ink);
+            return;
+        }
+        float natural = minimalWidth(h), k = natural > w + 1.5f ? Math.max(0.4f, w / natural) : 1f;
+        float x = (w - natural * k) / 2 + h * 0.45f * k;
+        float a = measure(m[0], h * 0.48f * k);
+        words(cv, m[0], x + a / 2, 0, h, h * 0.48f * k, look.f1 ? F1_RED : p.ink);
+        x += a + h * 0.7f * k;
+        float b = measure(m[1], h * 0.44f * k);
+        int clockInk = "HT".equals(look.clock) ? AMBER : flash > 0 ? (flashSide == 1 ? look.homeColour : look.awayColour) : p.clockInk;
+        words(cv, flash > 0 && !look.f1 ? "GOAL" : m[1], x + b / 2, 0, h, h * 0.44f * k, clockInk);
+        x += b + h * 0.5f * k;
+        if (!m[2].isEmpty()) {
+            float c = measure(m[2], h * 0.38f * k);
+            words(cv, m[2], x + c / 2, 0, h, h * 0.38f * k, look.f1 ? p.dim : ADDED);
         }
     }
 

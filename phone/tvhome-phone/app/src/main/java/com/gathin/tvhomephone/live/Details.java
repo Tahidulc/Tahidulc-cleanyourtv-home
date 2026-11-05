@@ -118,7 +118,8 @@ final class Details extends LinearLayout {
             LinearLayout.LayoutParams dp = new LinearLayout.LayoutParams(-1, -2);
             dp.topMargin = Ui.dp(c, 4);
             addView(desc, dp);
-            setBackground(Ui.touch(c, false, Ui.G_PANEL, 0));
+            // Black, as the guide around it (the red progress line kept).
+            setBackground(Ui.touch(c, false, GuideLook.GROUND, 0));
             setOnClickListener(v -> {
                 if (ch != null && actions != null) actions.more(ch, i);
             });

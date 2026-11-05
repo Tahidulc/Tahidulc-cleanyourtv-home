@@ -177,4 +177,29 @@ public class BugFinderTest {
         assertEquals(1, turns);
         assertTrue("seen at " + turnedAt, turnedAt >= 35_000 && turnedAt < 35_400);
     }
+
+    @Test public void theChannelsLogoIsFoundTopRight() {
+        int w = 192, h = 108;
+        BugFinder b = new BugFinder(w, h);
+        Random r = new Random(9);
+        for (int i = 0; i < BugFinder.ENOUGH; i++) {
+            byte[] f = frame(w, h, i, 67 * 60 + 10, r, true);
+            // A see-through logo top right: its letters half over the moving picture, so only its edges stay put.
+            for (int y = 8; y < 15; y++) {
+                for (int x = 150; x < 178; x++) {
+                    boolean letter = (x - 150) % 5 < 2 || y == 8 || y == 14;
+                    if (!letter) continue;
+                    int under = f[y * w + x] & 0xFF;
+                    f[y * w + x] = (byte) Math.min(255, (int) (under * 0.25 + 240 * 0.75));
+                }
+            }
+            b.add(f);
+        }
+        BugFinder.Box board = b.find();
+        BugFinder.Box logo = b.logo(board);
+        assertNotNull(logo);
+        assertTrue("found " + logo, logo.left > 0.7f && logo.top < 0.2f);
+        // Not the scoreboard top left.
+        assertTrue(board == null || logo.left > board.right);
+    }
 }

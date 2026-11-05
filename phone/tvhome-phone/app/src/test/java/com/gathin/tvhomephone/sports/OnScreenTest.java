@@ -105,4 +105,47 @@ public class OnScreenTest {
         s.add(other, t + 1000);
         assertEquals("g2", s.game(t + 1000).id);
     }
+
+    @Test public void theChannelsClockReadSetsItToTheSecond() {
+        OnScreen s = new OnScreen();
+        s.behind(0);
+        long t = 9_000_000;
+        s.add(live(70, 0, 0, 2), t);
+        // Read 69:31 off the picture at t+10s: the scores make it 70:10, so the picture is 39 s behind.
+        assertTrue(s.screenClock(69 * 60 + 31, t + 10_000));
+        assertArrayEquals(new String[]{"69:36", ""}, s.clock(t + 15_000));
+        assertEquals(-1, s.measuredBehind());
+        s.screenClock(69 * 60 + 33, t + 12_000);
+        s.screenClock(69 * 60 + 35, t + 14_000);
+        assertEquals(39_000, s.measuredBehind(), 1000);
+    }
+
+    @Test public void aClockFarFromTheGamesIsNotTaken() {
+        OnScreen s = new OnScreen();
+        long t = 10_000_000;
+        s.add(live(70, 0, 0, 2), t);
+        assertFalse(s.screenClock(20 * 60, t));
+    }
+
+    @Test public void theScoreChangesAsTheChannelsScoreboardDoes() {
+        OnScreen s = new OnScreen();
+        s.behind(60_000);
+        long t = 11_000_000;
+        s.add(live(60, 0, 0, 2), t);
+        s.add(live(61, 1, 0, 2), t + 20_000);
+        // A minute's delay would hold the goal till t+80s; the channel's own scoreboard shows 1-0 at t+50s.
+        assertEquals(0, s.game(t + 50_000).homeScore);
+        assertTrue(s.screenScore((h, a) -> h == 1 && a == 0, t + 50_000));
+        assertEquals(1, s.game(t + 50_000).homeScore);
+    }
+
+    @Test public void theChannelQuickerThanTheScoresIsBelievedWhenSeenTwice() {
+        OnScreen s = new OnScreen();
+        s.behind(0);
+        long t = 12_000_000;
+        s.add(live(30, 0, 0, 1), t);
+        assertFalse(s.screenScore((h, a) -> h == 0 && a == 1, t + 1000));
+        assertTrue(s.screenScore((h, a) -> h == 0 && a == 1, t + 3000));
+        assertEquals(1, s.game(t + 3000).awayScore);
+    }
 }
