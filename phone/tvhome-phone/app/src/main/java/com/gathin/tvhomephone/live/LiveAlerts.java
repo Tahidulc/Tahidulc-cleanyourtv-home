@@ -34,7 +34,7 @@ public final class LiveAlerts {
     private static final long CALIBRATE_WITHIN = 5 * 60_000L;
     private static final int MAX_DELAY_S = 180;
 
-    /** The game on the full screen, and the stream it plays from ("" when nothing). Main thread writes. */
+    /** The game on the full screen, and the channel it plays on ("" when nothing). Main thread writes. */
     private static volatile String watchingGame = "", watchingStream = "";
     /** When each game's latest alert came, for "It's just happened". */
     private static final Map<String, Long> lastEvent = new ConcurrentHashMap<>();
@@ -87,7 +87,7 @@ public final class LiveAlerts {
         prefs(c).edit().putBoolean(HOLD, on).apply();
     }
 
-    /** A stream's delay behind the real game, in seconds (0 when not set). */
+    /** A channel's delay behind the real game, in seconds (0 when not set). */
     static int delay(Context c, String streamKey) {
         return streamKey == null || streamKey.isEmpty() ? 0 : prefs(c).getInt("d." + streamKey, 0);
     }

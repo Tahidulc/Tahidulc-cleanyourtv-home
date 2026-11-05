@@ -337,8 +337,8 @@ final class PlayerExtras implements LiveAlerts.Listener {
 
     /** The game shown now (from the tile): its alerts wait for this stream. */
     void game(Game g) {
-        Channel s = pb.stream();
-        LiveAlerts.watching(LiveAlerts.id(g), s == null ? null : s.key);
+        Channel ch = host.current();
+        LiveAlerts.watching(LiveAlerts.id(g), ch == null ? null : ch.key);
     }
 
     @Override public void onHeldChanged() {
@@ -533,7 +533,7 @@ final class PlayerExtras implements LiveAlerts.Listener {
 
         // Alerts as the stream shows the game.
         LinearLayout al = chipRow(c, box, R.string.live3_alerts);
-        Channel st = pb.stream();
+        Channel st = host.current();
         String key = st == null ? "" : st.key;
         TextView value = Ui.guideChip(c, LiveAlerts.delay(c, key) + " s behind", false);
         TextView minus = Ui.guideChip(c, "− 5 s", false), plus = Ui.guideChip(c, "+ 5 s", false);

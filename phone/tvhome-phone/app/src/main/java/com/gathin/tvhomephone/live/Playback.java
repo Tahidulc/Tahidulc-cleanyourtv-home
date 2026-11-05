@@ -330,7 +330,8 @@ final class Playback {
         bufferingSince = 0;
         Channel s = stream();
         Timeshift ts = Timeshift.get(app);
-        boolean keep = ts.begin(s.key);
+        // Kept by the channel chosen, so a step in quality starts a new stretch rather than losing what was kept.
+        boolean keep = ts.begin(cur.key);
         applyCaps();
         player.setMediaSource(Streams.source(s, asHls, keep ? ts.sink() : null));
         preparedAt = android.os.SystemClock.elapsedRealtime();
@@ -483,8 +484,7 @@ final class Playback {
 
     /** The earliest moment the rewind holds for what plays now (0: none). */
     long rewindFrom() {
-        Channel s = cur == null ? null : stream();
-        return s == null ? 0 : Timeshift.get(app).earliest(s.key);
+        return cur == null ? 0 : Timeshift.get(app).earliest(cur.key);
     }
 
     /** The replay's last moment (live's edge when it began). */
@@ -495,7 +495,6 @@ final class Playback {
     /** Back to a moment (wall clock) from the rewind; false when it doesn't hold it. */
     boolean replay(long at) {
         if (player == null || cur == null) return false;
-        Channel s = stream();
         if (replaying && replaySnap != null && at >= replayStart && at < replaySnap.endWall - 1500
                 && player.isCurrentMediaItemSeekable()) {
             player.seekTo(at - replayStart);
@@ -505,7 +504,7 @@ final class Playback {
             backToLive();
             return true;
         }
-        Timeshift.Snapshot snap = Timeshift.get(app).from(s.key, Math.max(at, Timeshift.get(app).earliest(s.key)));
+        Timeshift.Snapshot snap = Timeshift.get(app).from(cur.key, Math.max(at, Timeshift.get(app).earliest(cur.key)));
         if (snap == null || snap.length() <= 0) return false;
         h.removeCallbacks(retry);
         h.removeCallbacks(stallCheck);
