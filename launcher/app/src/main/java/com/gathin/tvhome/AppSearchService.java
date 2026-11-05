@@ -930,6 +930,7 @@ public class AppSearchService extends AccessibilityService {
     private boolean keys(android.view.KeyEvent event) {
         // OK at the kick-off on screen, while the card asking for it is up (InStepCard); the replay's bar.
         if (InStepCard.key(event) || Replay.key(event)) return true;
+        if (HalfTimeBreak.key(event)) return true;
         if (LiveCentre.key(event) || F1Tower.key(event)) return true;
         if (PopupFrame.isShowing() && PopupFrame.key(event)) return true;
         return okOn(event);

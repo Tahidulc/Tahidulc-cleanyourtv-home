@@ -78,6 +78,8 @@ public class InputKeyService extends AccessibilityService {
         // OK while the line-up card shows: the game's channel.
         if (DoorbellAlert.key(event)) return true;
         if (CameraAlert.key(event)) return true;
+        // The half-time break: OK or Back to the match, Left and Right through its cards (HalfTimeBreak).
+        if (HalfTimeBreak.key(event)) return true;
         if (LiveCentre.key(event)) return true;
         if (F1Tower.key(event)) return true;
         if (LineupCard.key(event)) return true;
