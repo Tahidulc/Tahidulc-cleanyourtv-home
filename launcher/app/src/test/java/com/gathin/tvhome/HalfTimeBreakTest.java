@@ -69,4 +69,12 @@ public class HalfTimeBreakTest {
         int n = AmbientFacts.BANGLADESH.length + AmbientFacts.WORLD.length + BreakFacts.SPORT.length;
         for (int i = 0; i < n / 3; i++) for (String[] f : BreakFacts.next(3)) assertTrue(fs.add(f[1]));
     }
+
+    @Test public void itFillsA1080pScreenAndA4kOneAlike() {
+        assertEquals(2f, HalfTimeBreak.unit(1920, 1080), 0.001f);
+        assertEquals(4f, HalfTimeBreak.unit(3840, 2160), 0.001f);
+        // Whichever way round the sizes come.
+        assertEquals(4f, HalfTimeBreak.unit(2160, 3840), 0.001f);
+        assertEquals(2f, HalfTimeBreak.unit(0, 0), 0.001f);
+    }
 }

@@ -332,7 +332,12 @@ final class HalfTimeBreak {
     private static final List<Runnable> onShow = new ArrayList<>();
     private static int at = -1;
     private static boolean mutedHere;
-    private static float d = 2f;
+    /**
+     * Pixels to the design's units: the screen's long side over 960, so the break fills a 1080p screen and a 4K one
+     * alike (whatever density the TV reports), and where the TV draws its screen in 4K the words and shapes are drawn
+     * at 4K's own sharpness (nothing in it is a picture to be stretched).
+     */
+    private static float d = 2f, fontScale = 1f;
     private static final Runnable turn = () -> step(1);
     private static final Runnable tick = new Runnable() {
         @Override public void run() {
@@ -361,7 +366,9 @@ final class HalfTimeBreak {
         ends = forTest ? now + TEST_MS : endsAt(htSeenAt, hold, secondSeenAt);
         if (now >= ends - 20_000L) return;
         Context sw = new GoalWatchService.SoftwareWindow(app);
-        d = app.getResources().getDisplayMetrics().density;
+        android.util.DisplayMetrics dm = app.getResources().getDisplayMetrics();
+        d = unit(dm.widthPixels, dm.heightPixels);
+        fontScale = Math.max(0.85f, Math.min(1.3f, app.getResources().getConfiguration().fontScale));
         FrameLayout win = new FrameLayout(sw);
         GradientDrawable ground = new GradientDrawable(GradientDrawable.Orientation.TL_BR, new int[]{0xFF070A1E, 0xFF15103A, 0xFF2A0F2E});
         win.setBackground(ground);
@@ -777,6 +784,12 @@ final class HalfTimeBreak {
 
     // ---- small things ---------------------------------------------------------------------------------------------
 
+    /** Pure: pixels per design unit for a screen this size: its long side over 960 (2 at 1080p, 4 at 4K). */
+    static float unit(int widthPx, int heightPx) {
+        int longSide = Math.max(widthPx, heightPx);
+        return longSide <= 0 ? 2f : longSide / 960f;
+    }
+
     private static int px(float v) {
         return Math.round(v * d);
     }
@@ -791,7 +804,7 @@ final class HalfTimeBreak {
     private static TextView text(Context c, String s, float sp, int colour, boolean bold) {
         TextView v = new TextView(c);
         v.setText(s);
-        v.setTextSize(TypedValue.COMPLEX_UNIT_SP, sp);
+        v.setTextSize(TypedValue.COMPLEX_UNIT_PX, sp * d * fontScale);
         v.setTextColor(colour);
         v.setTypeface(bold ? Typeface.DEFAULT_BOLD : Typeface.DEFAULT);
         v.setSingleLine(true);
