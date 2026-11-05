@@ -82,6 +82,7 @@ final class NotifyKinds {
             k("news", "📰", "Breaking news", "BBC News and BBC Sport", NEWS, "news_alerts", false),
             k("weather", "⛈\uFE0F", "Weather", "Warnings and rain on the way", NEWS, "weather_alerts", false),
             k("releases", "🎬", "New episodes and films", "Out today, from what you watch", FILMS, "release_alerts", true),
+            k("creditscover", "🎬", "Credits cover", "A full page as a film's credits roll or an episode ends", FILMS, "credits_cover", true),
             k("howwasit", "⭐", "How was it?", "Rate a film as its credits roll, or a season as it ends", FILMS, "how_was_it", true),
             k("pausecard", "⏸\uFE0F", "Pause card", "When it ends if you carry on, as you pause", FILMS, "pause_card", true),
             k(FILM_NIGHT, "🍿", "Film night", "Ten minutes before a film night you planned", FILMS, "film_night", true),

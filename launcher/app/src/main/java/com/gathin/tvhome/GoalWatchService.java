@@ -1543,6 +1543,8 @@ public class GoalWatchService extends Service {
             main.post(() -> AppSearchService.search(this, ReleaseAlerts.DEBRID, spec[0], true));
         }
         if (intent != null && intent.hasExtra("test_tune")) AppSearchService.testTune(this, intent.getStringExtra("test_tune"));
+        // adb only: the credits cover for a TMDB title ("--es test_credits film:438631", "tv:1399:2:7").
+        if (intent != null && intent.hasExtra("test_credits")) CreditsCover.test(this, intent.getStringExtra("test_credits"));
         if (intent != null && intent.hasExtra("test_ambient")) {
             startActivity(new Intent(this, AmbientActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
         }

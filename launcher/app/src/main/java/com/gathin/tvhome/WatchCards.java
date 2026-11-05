@@ -143,7 +143,7 @@ final class WatchCards {
         schedule();
     }
 
-    private static long position(PlaybackState st) {
+    static long position(PlaybackState st) {
         long pos = st.getPosition();
         if (st.getState() == PlaybackState.STATE_PLAYING && st.getLastPositionUpdateTime() > 0) {
             pos += (long) ((SystemClock.elapsedRealtime() - st.getLastPositionUpdateTime()) * st.getPlaybackSpeed());
@@ -151,13 +151,13 @@ final class WatchCards {
         return pos;
     }
 
-    private static String title(MediaMetadata md) {
+    static String title(MediaMetadata md) {
         String t = md.getString(MediaMetadata.METADATA_KEY_TITLE);
         if (t == null || t.trim().isEmpty()) t = md.getString(MediaMetadata.METADATA_KEY_DISPLAY_TITLE);
         return t == null ? "" : t.trim();
     }
 
-    private static String sub(MediaMetadata md) {
+    static String sub(MediaMetadata md) {
         String s = md.getString(MediaMetadata.METADATA_KEY_DISPLAY_SUBTITLE);
         if (s == null) s = md.getString(MediaMetadata.METADATA_KEY_ARTIST);
         return s == null ? "" : s.trim();
@@ -207,12 +207,17 @@ final class WatchCards {
             if (pauseFor == t) closeHost(false);
         }
         // How was it?: the credits (a film) or the end (an episode) reached, after watching it here.
-        if (!t.asked && t.firstSeen >= 0 && askOn(c)) {
+        if (!t.asked && t.firstSeen >= 0 && (askOn(c) || CreditsCover.on(c))) {
             if (WatchRules.filmFinished(dur, pos, t.firstSeen) || WatchRules.episodeFinished(dur, pos, t.firstSeen)) {
                 t.asked = true;
                 boolean film = dur >= WatchRules.FILM_MS;
                 long ended = System.currentTimeMillis();
-                IO.execute(() -> ask(c, pkg, title, sub, dur, film, ended));
+                MediaController mc = t.mc;
+                IO.execute(() -> {
+                    // The credits cover (a full page while they roll), else How was it? in the corner as before.
+                    if (CreditsCover.on(c) && CreditsCover.reached(c, mc, pkg, title, sub, dur, film)) return;
+                    if (askOn(c)) ask(c, pkg, title, sub, dur, film, ended);
+                });
             }
         }
         // The pause card: ten seconds paused, after playing here (a session left paused long ago gets none).
