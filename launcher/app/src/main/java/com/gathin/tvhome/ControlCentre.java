@@ -92,6 +92,36 @@ final class ControlCentre {
 
     /** The card: as big and as placed as the weather card (WeatherPanel), so everything is in sight at once. */
     private static final int CARD_X = 200, CARD_Y = 110, CARD_W = 1520, CARD_H = 860;
+    /** Where the two columns start in the card, the room kept under them, and the most the card may grow to. */
+    static final int COLS_Y = 96, FOOT = 26, MAX_H = 1032;
+    /** A heading's own height (15 px capitals), for the sums. */
+    private static final int HEAD = 20;
+
+    /** Pure: the right column's height, its headings and rows as given (design pixels). */
+    static int need(int sections, int rows, int rowH, int headTop, int headBottom, int gap) {
+        return sections * (headTop + HEAD + headBottom) + rows * rowH + Math.max(0, rows - sections) * gap;
+    }
+
+    /**
+     * Pure: the right column's measures so that every row fits in avail (design pixels), as {row height, space over a
+     * heading, under it, between rows}: the roomy spacing with the rows as tall as fit (96 down to 64); failing that
+     * the headings closer and the rows down to 56.
+     */
+    static int[] fitRows(int sections, int rows, int avail) {
+        for (int rowH = 96; rowH >= 64; rowH -= 2) {
+            if (need(sections, rows, rowH, 22, 12, 16) <= avail) return new int[]{rowH, 22, 12, 16};
+        }
+        for (int rowH = 96; rowH > 56; rowH -= 2) {
+            if (need(sections, rows, rowH, 12, 8, 10) <= avail) return new int[]{rowH, 12, 8, 10};
+        }
+        return new int[]{56, 12, 8, 10};
+    }
+
+    /** Pure: the card's height: as designed, taller (to most of the screen) only when its rows need it at their closest. */
+    static int cardHeight(int sections, int rows) {
+        int least = COLS_Y + need(sections, rows, 56, 12, 8, 10) + FOOT;
+        return Math.max(CARD_H, Math.min(MAX_H, least));
+    }
 
     /**
      * The Control Centre as a card in the middle of the screen, the size of the weather card: on the left the cameras,
@@ -142,7 +172,7 @@ final class ControlCentre {
         FrameLayout.LayoutParams cl = new FrameLayout.LayoutParams(-1, -2);
         cl.leftMargin = px(56);
         cl.rightMargin = px(56);
-        cl.topMargin = px(96);
+        cl.topMargin = px(COLS_Y);
         card.addView(cols, cl);
 
         // Left: the cameras (the doorbell beside the camera), what is live, today's prayer times.
@@ -165,10 +195,11 @@ final class ControlCentre {
                 acts.add(() -> { hide(); openDoorbell.run(); });
                 camTiles++;
             }
-            // Smaller when much is live, so the prayer times still fit under it.
+            // Smaller when much is live, so the prayer times still fit under it (all three live lines and the prayer
+            // times: 736 of the column's 738).
             int live = liveLines().size();
             boolean prayer = Prayer.heading(c) != null;
-            int camH = live >= 2 ? (prayer ? 150 : 180) : prayer ? 190 : cam && bell ? 200 : 290;
+            int camH = live >= 3 ? (prayer ? 104 : 180) : live >= 2 ? (prayer ? 150 : 180) : prayer ? 190 : cam && bell ? 200 : 290;
             left.addView(camRow, new LinearLayout.LayoutParams(-1, px(camH)));
         }
         liveSection(left);
@@ -178,19 +209,26 @@ final class ControlCentre {
         List<String> sections = new ArrayList<>();
         sections.add(null);
         for (Item it : items) if (it.section != null && !sections.contains(it.section)) sections.add(it.section);
-        // Six rows or more (the controls, Notifications' own and the other TV): a little lower, so all fit the card.
-        int rows = 0;
+        // Every tile inside the card: the rows as tall as fit under its title (the controls, Sport, Notifications and
+        // the other TV are eight rows), the headings closer when that is not enough, the card taller as a last resort.
+        int rows = 0, groups = 0;
         for (String sec : sections) {
             int n = 0;
             for (Item it : items) if (java.util.Objects.equals(it.section, sec)) n++;
             rows += (n + ACROSS - 1) / ACROSS;
+            if (n > 0) groups++;
         }
-        int rowH = rows >= 6 ? 84 : 96;
+        int cardH = cardHeight(groups, rows);
+        int[] fit = fitRows(groups, rows, cardH - COLS_Y - FOOT);
+        int rowH = fit[0], gap = fit[3];
         for (String sec : sections) {
             List<Item> group = new ArrayList<>();
             for (Item it : items) if (java.util.Objects.equals(it.section, sec)) group.add(it);
             if (group.isEmpty()) continue;
-            right.addView(heading(sec == null ? "CONTROLS" : sec), headParams());
+            LinearLayout.LayoutParams hp = headParams();
+            hp.topMargin = px(fit[1]);
+            hp.bottomMargin = px(fit[2]);
+            right.addView(heading(sec == null ? "CONTROLS" : sec), hp);
             LinearLayout line = null;
             for (int i = 0; i < group.size(); i++) {
                 Item it = group.get(i);
@@ -198,7 +236,7 @@ final class ControlCentre {
                     line = new LinearLayout(c);
                     line.setClipChildren(false);
                     LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, px(rowH));
-                    if (i > 0) lp.topMargin = px(16);
+                    if (i > 0) lp.topMargin = px(gap);
                     right.addView(line, lp);
                 }
                 View t = tile(it);
@@ -224,9 +262,9 @@ final class ControlCentre {
             }
         }
 
-        FrameLayout.LayoutParams bl = new FrameLayout.LayoutParams(h.px(CARD_W), h.px(CARD_H));
+        FrameLayout.LayoutParams bl = new FrameLayout.LayoutParams(h.px(CARD_W), h.px(cardH));
         bl.leftMargin = h.px(CARD_X);
-        bl.topMargin = h.px(CARD_Y);
+        bl.topMargin = h.px(cardH > CARD_H ? Math.max(24, (1080 - cardH) / 2) : CARD_Y);
         overlay.addView(card, bl);
         h.root.addView(overlay, new FrameLayout.LayoutParams(-1, -1));
         overlay.setAlpha(0f);
