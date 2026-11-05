@@ -41,7 +41,8 @@ import java.util.concurrent.Executors;
 
 /**
  * Goal alerts over another app (config.xml goal_watch_apps, TiviMate): started when Home opens one of those apps,
- * stopped when Home comes back. Reads the scores every POLL_MS and shows each new goal DELAY_MS after it was seen,
+ * stopped when Home comes back. Reads the scores every POLL_MS and shows each new goal DELAY_MS after it was seen (the
+ * game being watched: its channel's own wait, InStep),
  * as a small glass box in the bottom-left corner for SHOW_MS. The box never takes focus or keys. Needs "display over
  * other apps" (appops SYSTEM_ALERT_WINDOW); without it the service stops at once.
  * <p>
@@ -269,6 +270,7 @@ public class GoalWatchService extends Service {
         ScoreCard.Data d = new ScoreCard.Data();
         int px = Math.round(96 * getResources().getDisplayMetrics().density);
         d.starred = starred(this, g);
+        d.gameId = g.id;
         // Its competition, for that competition's switch in Notifications.
         d.slug = g.slug;
         d.leagueLogo = bandLogo(this, g.leagueLogo != null ? g.leagueLogo : leagueLogoFor(g), px);
@@ -2036,7 +2038,7 @@ public class GoalWatchService extends Service {
                     for (String[] inc : found) {
                         if (seen.add(inc[0]) && !first && !catchUp) main.postDelayed(() -> {
                             if (skyAlerts) skyIncident(g, inc); else enqueueFootball(g, incidentHead(inc), "incident");
-                        }, DELAY_MS);
+                        }, hold(g));
                     }
                 }
             });
@@ -2051,10 +2053,20 @@ public class GoalWatchService extends Service {
                     if (skyAlerts && g.state == 0 && g.halftime && g.id != null && seen.add("HT|" + g.id)) {
                         if (primed && !catchUp) {
                             AlertLog.note(this, "half time seen: " + AlertLog.game(g) + " (card in a minute)");
-                            main.postDelayed(() -> MoreAlerts.halfTime(this, g), DELAY_MS);
+                            main.postDelayed(() -> MoreAlerts.halfTime(this, g), hold(g));
                         }
                     }
+                    // Kick-off, half time and the second half: Match mode's lights, and lining the alerts up with the
+                    // channel (InStep), for the game being watched.
+                    boolean halfBefore = g.id != null && Boolean.TRUE.equals(wasHalf.put(g.id, g.halftime));
                     Integer before = g.id == null ? null : lastState.put(g.id, g.state);
+                    if (primed && !catchUp && g.id != null && g.state == 0) {
+                        if (before != null && before == 1) restart(g, false);
+                        else if (halfBefore && !g.halftime) restart(g, true);
+                        else if (!halfBefore && g.halftime && MatchMode.isGame(this, g.id)) {
+                            main.postDelayed(() -> MatchMode.event(this, g, "ht", null), hold(g));
+                        }
+                    }
                     if (primed && before != null && before == 0 && g.state == 2) {
                         if (catchUp) {
                             // Over while the TV was off: in Today's alerts as missed, not a card now ahead of the live ones.
@@ -2062,7 +2074,10 @@ public class GoalWatchService extends Service {
                             AlertToday.why(this, "FT|" + g.id, "the TV was off");
                         } else {
                             AlertLog.note(this, "full time seen: " + AlertLog.game(g) + " (card in a minute)");
-                            main.postDelayed(() -> enqueue(g, new String[]{"FT|" + g.id, "", "", "", "ft"}, false), DELAY_MS);
+                            main.postDelayed(() -> {
+                                MatchMode.event(this, g, "ft", null);
+                                enqueue(g, new String[]{"FT|" + g.id, "", "", "", "ft"}, false);
+                            }, hold(g));
                         }
                     }
                     for (String[] goal : g.goals) {
@@ -2074,7 +2089,10 @@ public class GoalWatchService extends Service {
                             AlertToday.why(this, goal[0], "the TV was off");
                         } else if (primed) {
                             AlertLog.note(this, "goal seen: " + AlertLog.game(g) + ", " + goal[1] + " " + goal[2] + " (card in a minute)");
-                            main.postDelayed(() -> enqueue(g, goal, false), DELAY_MS);
+                            main.postDelayed(() -> {
+                                MatchMode.event(this, g, "goal", goal[3]);
+                                enqueue(g, goal, false);
+                            }, hold(g));
                             if (skyAlerts) RichAlerts.goalSeen(this, g, goal, games);
                         } else if (g.state == 0) {
                             AlertLog.note(this, "goal already in on the first read, not announced: " + AlertLog.game(g) + ", " + goal[1] + " " + goal[2]);
@@ -2087,7 +2105,10 @@ public class GoalWatchService extends Service {
                             AlertToday.why(this, card[0], "the TV was off");
                         } else if (primed) {
                             AlertLog.note(this, "red card seen: " + AlertLog.game(g) + ", " + card[1] + " " + card[2] + " (card in a minute)");
-                            main.postDelayed(() -> enqueue(g, card, true), DELAY_MS);
+                            main.postDelayed(() -> {
+                                MatchMode.event(this, g, "red", card[3]);
+                                enqueue(g, card, true);
+                            }, hold(g));
                         }
                     }
                 }
@@ -2613,6 +2634,44 @@ public class GoalWatchService extends Service {
         return clubs.contains(g.homeId) || clubs.contains(g.awayId);
     }
 
+    /** Whether each game was at half time on the last read, to see its second half start. */
+    private final Map<String, Boolean> wasHalf = new HashMap<>();
+
+    /**
+     * How long a game's alert waits after the poll saw it: the watched channel's own wait for the game being watched
+     * (InStep, lined up at kick-off), DELAY_MS for the rest.
+     */
+    private long hold(ScoresTicker.Game g) {
+        return InStep.holdMs(this, watched(g));
+    }
+
+    /** The game being watched: Match mode's, or one on the channel last tuned from the TV. */
+    private boolean watched(ScoresTicker.Game g) {
+        if (g == null || g.id == null) return false;
+        if (MatchMode.isGame(this, g.id)) return true;
+        List<String> tuned = InStep.tunedNames(this);
+        if (tuned.isEmpty()) return false;
+        try {
+            TvGuide.Watch w = TvGuide.watch(getResources().getStringArray(R.array.football_tv_channels), g);
+            return w != null && InStep.onChannel(tuned, w.names);
+        } catch (RuntimeException e) {
+            return false;
+        }
+    }
+
+    /**
+     * The game being watched kicked off (or started its second half) by the scores: kept for lining up, Match mode's
+     * lights down as it shows on screen, and the card asking for OK at the kick-off on screen when the channel has no
+     * wait of its own yet (over an app only).
+     */
+    private void restart(ScoresTicker.Game g, boolean secondHalf) {
+        if (!watched(g)) return;
+        InStep.restarted(g.id, System.currentTimeMillis());
+        AlertLog.note(this, (secondHalf ? "second half" : "kick-off") + " seen for the game watched: " + AlertLog.game(g));
+        main.postDelayed(() -> MatchMode.event(this, g, secondHalf ? "2h" : "ko", null), hold(g));
+        if (!homeInFront && InStep.wantsLineUp(this) && !NotifyPrefs.dndOn(this)) InStepCard.show(this, g, secondHalf);
+    }
+
     private void enqueue(ScoresTicker.Game g, String[] goal, boolean red) {
         // A Championship or LaLiga game: only while Home is in front.
         if (homeOnly(g) && !homeInFront) {
@@ -2760,6 +2819,7 @@ public class GoalWatchService extends Service {
      */
     private LineupCard.Data lineupCard(ScoresTicker.Game g, ScoresTicker.Side[] sides, TvGuide.Channel tv, String[] channels) {
         LineupCard.Data d = new LineupCard.Data();
+        d.gameId = g.id;
         int logoPx = Math.round(48 * getResources().getDisplayMetrics().density);
         String leagueLogo = g.leagueLogo != null ? g.leagueLogo : leagueLogoFor(g);
         if (leagueLogo != null) d.leagueLogo = ScoresTicker.cachedLogo(this, leagueLogo, logoPx);
@@ -3603,6 +3663,11 @@ public class GoalWatchService extends Service {
         return e.length == 8 && e[1] instanceof ScoresTicker.Game ? ((ScoresTicker.Game) e[1]).slug : null;
     }
 
+    /** A queued game alert's game (Match mode's quiet lets its own game's through); null for anything else. */
+    private static String queuedGame(Object[] e) {
+        return e.length == 8 && e[1] instanceof ScoresTicker.Game ? ((ScoresTicker.Game) e[1]).id : null;
+    }
+
     private void showNext() {
         if (shown != null && !queue.isEmpty()) {
             // One up while others wait: looked at again every few seconds; one up far longer than any alert stays
@@ -3636,7 +3701,7 @@ public class GoalWatchService extends Service {
         // show): the next one.
         String kind = queuedKind(polled), slug = queuedSlug(polled);
         boolean home = NotifyPrefs.homeNow();
-        if (!NotifyPrefs.allowed(this, kind, home, slug)) {
+        if (!NotifyPrefs.allowed(this, kind, home, slug, queuedGame(polled))) {
             NotifyPrefs.held(this, kind, home, null, "alert " + describe(polled), slug);
             main.post(this::showNext);
             return;

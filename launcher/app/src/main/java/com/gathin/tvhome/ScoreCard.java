@@ -82,6 +82,8 @@ final class ScoreCard {
         String slug;
         /** A game of one of the starred clubs (goal_alert_teams, Man Utd): its goals come through a film night's quiet. */
         boolean starred;
+        /** The game's ESPN id (null for anything but a game's card): Match mode's quiet lets its own game's through. */
+        String gameId;
         /** Shown again from Today's alerts: always the full card (Home's bar would be under its panel). */
         boolean again;
         /** For a goal: the score before it, which turns over to the new one. */

@@ -166,9 +166,16 @@ final class NotifyPrefs {
      * in NotifyKinds has only the main switch.
      */
     static boolean allowed(Context c, String id, boolean onHome) {
+        return allowedFor(c, id, onHome, null);
+    }
+
+    /** As allowed, for a pop-up about this game (null: none): Match mode's quiet lets its own game's through. */
+    static boolean allowedFor(Context c, String id, boolean onHome, String gameId) {
         if (NotifyKinds.ALWAYS.equals(id)) return true;
         // Do not disturb: nothing but the doorbell.
         if (dndFor(c, id)) return false;
+        // Match mode's quiet: nothing but its game, the doorbell and the questions.
+        if (MatchMode.keepsBack(c, id, gameId)) return false;
         // A film night with quiet pop-ups (FilmNight): everything waits but its own reminder (and the doorbell).
         if (quietFor(c, id)) return false;
         return plain(c, id, onHome);
@@ -177,6 +184,11 @@ final class NotifyPrefs {
     /** As allowed, for a game in the competition with this slug (null: none known): its switch is passed too. */
     static boolean allowed(Context c, String id, boolean onHome, String slug) {
         return allowed(c, id, onHome) && allowedCompetition(c, id, slug);
+    }
+
+    /** As allowed with a competition, for a pop-up about this game (Match mode lets its own game's through). */
+    static boolean allowed(Context c, String id, boolean onHome, String slug, String gameId) {
+        return allowedFor(c, id, onHome, gameId) && allowedCompetition(c, id, slug);
     }
 
     /**
@@ -204,6 +216,8 @@ final class NotifyPrefs {
         String id = NotifyKinds.ofCard(d.notify, d.kind, !d.podium.isEmpty());
         // Do not disturb: not even a starred club's goal comes (Today's alerts keeps it).
         if (dndFor(c, id)) return false;
+        // Match mode's quiet: only its own game's cards.
+        if (MatchMode.keepsBack(c, id, d.gameId)) return false;
         // Its game's competition switched off: not even a starred club's goal comes.
         if (!allowedCompetition(c, id, d.slug)) return false;
         // A film night's quiet: a goal for one of the starred clubs still comes (with its usual switches).
@@ -234,6 +248,8 @@ final class NotifyPrefs {
         NotifyKinds.Kind k = NotifyKinds.get(id);
         boolean quiet = quietFor(c, id);
         String why = dndFor(c, id) ? "Do not disturb is on"
+                : MatchMode.active(c) && MatchMode.quiet(c) && !"doorbell".equals(id) && !NotifyKinds.ALWAYS.equals(id)
+                        ? "Match mode is on for " + MatchMode.label(c)
                 : !master(c, onHome) ? (onHome ? "On Home" : "Over apps") + " is off in Notifications"
                 : !allowedCompetition(c, id, slug) ? NotifyKinds.competitionName(slug) + " is off in Notifications"
                 : quiet && (k == null || kindOn(c, k)) ? FilmNight.quietWords(c)

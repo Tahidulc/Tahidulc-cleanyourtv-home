@@ -232,6 +232,11 @@ final class HomeV2 {
         return weatherView;
     }
 
+    /** adb only (--ez open_match_mode true): the Control Centre's Match mode, as its tile opens it. */
+    void openMatchMode() {
+        if (matchPanel != null) matchPanel.show();
+    }
+
     /** adb only (--ez open_notifications true): the Control Centre's Notifications, as its tile opens them. */
     void openNotifications() {
         if (notifyPanel != null) notifyPanel.show();
@@ -733,6 +738,8 @@ final class HomeV2 {
     private ControlCentre controlCentre;
     /** The Control Centre's Notifications: the main switches and one per kind (NotifyPanel). */
     private NotifyPanel notifyPanel;
+    /** Match mode: quiet but for one game, the lights with it, the alerts' timing (MatchPanel). */
+    private MatchPanel matchPanel;
     /** A title's panel: OK held on a poster. */
     private TitlePanel titlePanel;
 
@@ -868,6 +875,11 @@ final class HomeV2 {
             smartPanel = new SmartPanel(this);
             items.add(new ControlCentre.Item("Lights & home", R.drawable.ic_bulb, () -> "Lights, cameras, the car", null, () -> smartPanel.show()));
         }
+        // Match mode: one game, quiet but for it, the lights down at kick-off and flashing for its goals (with Tuya
+        // lights), and its alerts in step with the channel.
+        matchPanel = new MatchPanel(this);
+        items.add(new ControlCentre.Item("Match mode", R.drawable.ic_v2_sport, () -> MatchMode.words(a), () -> MatchMode.active(a),
+                () -> matchPanel.show()));
         // Notifications: Do not disturb (nothing pops up for a while but the doorbell), and the page with every switch
         // (on Home and over apps on or off, and each kind: goals, Goal Rush and the live table among them, the news).
         items.add(new ControlCentre.Item("Do not disturb", R.drawable.ic_moon, () -> NotifyPrefs.dndWords(a), () -> NotifyPrefs.dndOn(a),
@@ -1577,6 +1589,7 @@ final class HomeV2 {
         if (TwoUp.home(this)) return;
         if (controlCentre != null) controlCentre.hide();
         if (notifyPanel != null) notifyPanel.hide();
+        if (matchPanel != null) matchPanel.hide();
         TrailerReel.close();
         Surprise.close();
         EpisodeDice.close();
@@ -1616,7 +1629,7 @@ final class HomeV2 {
     private void bringBackMatch(boolean kickOff) {
         if (match == null || !match.active() || zone == Z_MATCH) return;
         boolean busy = page != null || guide.isOpen() || (controlCentre != null && controlCentre.isOpen())
-                || (notifyPanel != null && notifyPanel.isOpen())
+                || (notifyPanel != null && notifyPanel.isOpen()) || (matchPanel != null && matchPanel.isOpen())
                 || (smartPanel != null && smartPanel.isOpen()) || (weatherPanel != null && weatherPanel.isOpen())
                 || (titlePanel != null && titlePanel.isOpen()) || (viewing != null && viewing.isOpen())
                 || (search != null && search.isOpen()) || Surprise.isOpen() || EpisodeDice.isOpen() || Recap.isOpen() || TrailerReel.isOpen()
@@ -1659,6 +1672,7 @@ final class HomeV2 {
         if (TwoUp.open()) return TwoUp.key(e);
         if (controlCentre != null && controlCentre.isOpen()) return controlCentre.key(e);
         if (notifyPanel != null && notifyPanel.isOpen()) return notifyPanel.key(e);
+        if (matchPanel != null && matchPanel.isOpen()) return matchPanel.key(e);
         if (TrailerReel.isOpen()) return TrailerReel.key(e);
         if (Surprise.isOpen()) return Surprise.key(e);
         if (EpisodeDice.isOpen()) return EpisodeDice.key(e);

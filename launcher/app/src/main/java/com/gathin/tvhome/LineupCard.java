@@ -55,6 +55,8 @@ final class LineupCard {
         String kickoff, channel, venue, competition;
         /** The competition's slug ("eng.1"), for its switch in Notifications; null when not known. */
         String slug;
+        /** The game's ESPN id: Match mode's quiet lets its own game's line-ups through. */
+        String gameId;
         long kickoffAt;
         Bitmap channelLogo;
         /** OK: the game's channel opened (null without one). */
@@ -154,7 +156,7 @@ final class LineupCard {
         // Switched off in the Control Centre's Notifications (kick-off and line-ups, the game's competition, or where
         // it would show).
         boolean home = NotifyPrefs.homeNow();
-        if (renderTo == null && !NotifyPrefs.allowed(c, "kickoff", home, d.slug)) {
+        if (renderTo == null && !NotifyPrefs.allowed(c, "kickoff", home, d.slug, d.gameId)) {
             NotifyPrefs.held(c, "kickoff", home, null, "line-up card " + (d.competition == null ? "" : d.competition), d.slug);
             return;
         }
@@ -653,7 +655,8 @@ final class LineupCard {
     static void showHalfTime(Context ctx, Half f) {
         Context c = ctx.getApplicationContext();
         boolean home = NotifyPrefs.homeNow();
-        if (!NotifyPrefs.allowed(c, "ht", home, f.slug)) {
+        String game = f.key != null && f.key.startsWith("HT|") ? f.key.substring(3) : null;
+        if (!NotifyPrefs.allowed(c, "ht", home, f.slug, game)) {
             NotifyPrefs.held(c, "ht", home, f.key, "half time card " + f.homeName + " v " + f.awayName, f.slug);
             return;
         }

@@ -406,6 +406,8 @@ public class AppSearchService extends AccessibilityService {
     /** As tune, with a picture of what is on (the programme's still) behind the cover too. */
     static boolean tune(Context c, String pkg, java.util.List<String> channels, android.graphics.Bitmap logo, android.graphics.Bitmap art) {
         final java.util.List<String> all = tuneNames(c, channels);
+        // The channel watched from now: its game's alerts wait for it (InStep).
+        InStep.tuned(c, all);
         // The helper not connected (a TCL drops it now and then): without it TiviMate only opens, on the channel last
         // watched. Connected again first, then the tune.
         if (instance == null && !all.isEmpty() && ensure(c)) {
@@ -923,6 +925,8 @@ public class AppSearchService extends AccessibilityService {
     }
 
     private boolean keys(android.view.KeyEvent event) {
+        // OK at the kick-off on screen, while the card asking for it is up (InStepCard).
+        if (InStepCard.key(event)) return true;
         if (LiveCentre.key(event) || F1Tower.key(event)) return true;
         if (PopupFrame.isShowing() && PopupFrame.key(event)) return true;
         return okOn(event);

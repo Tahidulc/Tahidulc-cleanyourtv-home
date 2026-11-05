@@ -33,12 +33,18 @@ final class TuyaCloud {
     /** One light: a bulb, a strip or a dimmer. level is 1-100, or -1 for one that only switches. */
     static final class Light {
         String id, name, category, switchCode, brightCode;
+        /** A colour bulb's colour ("colour_data_v2", or "colour_data" on older ones) and mode ("work_mode"); null: white only. */
+        String colourCode, modeCode;
         boolean online = true, on;
         int level = -1, min = 10, max = 1000;
     }
 
     private static final String[] SWITCHES = {"switch_led", "switch_led_1", "switch_1", "switch"};
     private static final String[] BRIGHTS = {"bright_value_v2", "bright_value", "bright_value_1", "bright_value_v2_1"};
+    private static final String[] COLOURS = {"colour_data_v2", "colour_data"};
+    /** What a light's look is made of, kept before Match mode's goal lights and put back after (MatchLights). */
+    private static final String[] LOOK = {"work_mode", "bright_value_v2", "bright_value", "temp_value_v2", "temp_value",
+            "colour_data_v2", "colour_data"};
     /** Tuya's categories for lights: bulbs, strips, ceiling and ambience lights, dimmers and dimmer switches. */
     private static final String[] LIGHTS = {"dj", "dd", "dc", "xdd", "fwd", "tgq", "tgkg", "fsd", "gyd", "tyndj", "sxd"};
 
@@ -133,6 +139,82 @@ final class TuyaCloud {
         }
     }
 
+    /** Several commands to one light at once; false when Tuya refused or could not be reached. */
+    static boolean send(Context c, Light l, JSONArray cmds) {
+        if (cmds == null || cmds.length() == 0) return true;
+        try {
+            return call(c, "POST", "/v1.0/devices/" + l.id + "/commands", new JSONObject().put("commands", cmds).toString())
+                    .optBoolean("success");
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /** Pure: a colour as Tuya's colour value: hue 0-360, saturation and value 0-1000 (0-255 for "colour_data"). */
+    static JSONObject hsv(int rgb, String colourCode) {
+        float[] f = new float[3];
+        int r = (rgb >> 16) & 0xFF, g = (rgb >> 8) & 0xFF, b = rgb & 0xFF;
+        int max = Math.max(r, Math.max(g, b)), min = Math.min(r, Math.min(g, b));
+        float h = 0;
+        if (max != min) {
+            float d = max - min;
+            if (max == r) h = ((g - b) / d) % 6f;
+            else if (max == g) h = (b - r) / d + 2f;
+            else h = (r - g) / d + 4f;
+            h *= 60f;
+            if (h < 0) h += 360f;
+        }
+        f[0] = h;
+        f[1] = max == 0 ? 0 : (max - min) / (float) max;
+        f[2] = max / 255f;
+        int top = "colour_data".equals(colourCode) ? 255 : 1000;
+        JSONObject o = new JSONObject();
+        try {
+            o.put("h", Math.round(f[0]) % 360).put("s", Math.round(f[1] * top)).put("v", Math.max(1, Math.round(f[2] * top)));
+        } catch (Exception ignored) {
+            // all numbers
+        }
+        return o;
+    }
+
+    /** A colour bulb in this colour, full and on; a white-only light at full brightness. */
+    static boolean colour(Context c, Light l, int rgb) {
+        try {
+            JSONArray cmds = new JSONArray();
+            if (!l.on) cmds.put(new JSONObject().put("code", l.switchCode).put("value", true));
+            if (l.colourCode == null) {
+                if (l.brightCode != null) cmds.put(new JSONObject().put("code", l.brightCode).put("value", l.max));
+            } else {
+                if (l.modeCode != null) cmds.put(new JSONObject().put("code", l.modeCode).put("value", "colour"));
+                cmds.put(new JSONObject().put("code", l.colourCode).put("value", hsv(rgb, l.colourCode)));
+            }
+            return send(c, l, cmds);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /** A light's look now (its mode, brightness, warmth and colour) to put back later; empty when it can't be read. */
+    static JSONArray look(Context c, Light l) {
+        JSONArray out = new JSONArray();
+        try {
+            JSONArray st = status(c, l.id);
+            for (String code : LOOK) {
+                for (int i = 0; i < st.length(); i++) {
+                    JSONObject x = st.optJSONObject(i);
+                    if (x == null || !code.equals(x.optString("code"))) continue;
+                    Object v = x.opt("value");
+                    // A colour read back as text is sent as the object it is.
+                    if (v instanceof String && ((String) v).trim().startsWith("{")) v = new JSONObject((String) v);
+                    out.put(new JSONObject().put("code", code).put("value", v));
+                }
+            }
+        } catch (Exception ignored) {
+            // nothing kept: nothing put back
+        }
+        return out;
+    }
+
     // ---- the state ------------------------------------------------------------------------------------------------
 
     private static JSONArray status(Context c, String id) throws Exception {
@@ -147,6 +229,8 @@ final class TuyaCloud {
             if (x != null) v.put(x.optString("code"), x.opt("value"));
         }
         for (String s : SWITCHES) if (v.get(s) instanceof Boolean) { l.switchCode = s; l.on = (Boolean) v.get(s); break; }
+        for (String k : COLOURS) if (v.containsKey(k)) { l.colourCode = k; break; }
+        if (v.containsKey("work_mode")) l.modeCode = "work_mode";
         for (String b : BRIGHTS) {
             if (!(v.get(b) instanceof Number)) continue;
             l.brightCode = b;
