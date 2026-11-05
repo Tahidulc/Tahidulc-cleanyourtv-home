@@ -88,6 +88,7 @@ public class LiveTvFragment extends Fragment {
     private EditText search;
     private MaterialButton nowButton;
     private ImageButton viewButton;
+    private TextView playlistPill;
     private RecyclerView strip, chipsView, list, results;
     private final Strip stripAdapter = new Strip();
     private final Chips chipsAdapter = new Chips();
@@ -240,9 +241,23 @@ public class LiveTvFragment extends Fragment {
         LinearLayout titles = new LinearLayout(c);
         titles.setOrientation(LinearLayout.VERTICAL);
         titles.addView(Ui.text(c, getString(R.string.live_title), 22, Ui.TEXT, true));
+        LinearLayout under = new LinearLayout(c);
+        under.setGravity(Gravity.CENTER_VERTICAL);
+        // Which playlists: all together or one, switched here (shown only with two or more).
+        playlistPill = Ui.text(c, "", 12, Ui.TEXT, true);
+        playlistPill.setSingleLine(true);
+        playlistPill.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        playlistPill.setMaxWidth(Ui.dp(c, 140));
+        playlistPill.setBackground(Ui.touch(c, false, 0x26FFFFFF, 12));
+        playlistPill.setPadding(Ui.dp(c, 10), Ui.dp(c, 3), Ui.dp(c, 8), Ui.dp(c, 3));
+        playlistPill.setOnClickListener(this::playlistMenu);
+        LinearLayout.LayoutParams pp = new LinearLayout.LayoutParams(-2, -2);
+        pp.rightMargin = Ui.dp(c, 8);
+        under.addView(playlistPill, pp);
         sub = Ui.text(c, "", 12, Ui.DIM, false);
         sub.setSingleLine(true);
-        titles.addView(sub);
+        under.addView(sub, new LinearLayout.LayoutParams(0, -2, 1f));
+        titles.addView(under);
         toolbar.addView(titles, new LinearLayout.LayoutParams(0, -2, 1f));
         nowButton = new MaterialButton(c);
         nowButton.setText(R.string.live_now_button);
@@ -310,6 +325,47 @@ public class LiveTvFragment extends Fragment {
         searchBar.addView(search, new LinearLayout.LayoutParams(0, Ui.dp(c, 46), 1f));
         searchBar.setVisibility(View.GONE);
         root.addView(searchBar, new LinearLayout.LayoutParams(-1, -2));
+    }
+
+    /** All playlists, or just one: the choice kept, the channels read again for it. */
+    private void playlistMenu(View anchor) {
+        Context c = requireContext();
+        List<Sources.Entry> all = Sources.list(c);
+        PopupMenu m = new PopupMenu(c, anchor);
+        Menu menu = m.getMenu();
+        String active = Sources.active(c);
+        menu.add(0, 0, 0, R.string.live_all_playlists).setCheckable(true).setChecked(active.isEmpty());
+        for (int i = 0; i < all.size(); i++) {
+            Sources.Entry e = all.get(i);
+            int n = lib.countIn(e.id);
+            String label = e.name + (active.isEmpty() && n > 0 ? " · " + n : "");
+            menu.add(0, i + 1, i + 1, label).setCheckable(true).setChecked(e.id.equals(active));
+        }
+        menu.setGroupCheckable(0, true, true);
+        m.setOnMenuItemClickListener(item -> {
+            String id = item.getItemId() == 0 ? Sources.ALL : all.get(item.getItemId() - 1).id;
+            if (!id.equals(Sources.active(c))) {
+                Sources.setActive(c, id);
+                lib.switched();
+                refreshAll();
+            }
+            return true;
+        });
+        m.show();
+    }
+
+    /** The pill's words: "All playlists ▾" or the chosen one's name; gone with only one playlist. */
+    private void showPlaylistPill(Context c) {
+        List<Sources.Entry> all = Sources.list(c);
+        if (all.size() < 2) {
+            playlistPill.setVisibility(View.GONE);
+            return;
+        }
+        String active = Sources.active(c);
+        Sources.Entry e = active.isEmpty() ? null : Sources.get(c, active);
+        playlistPill.setText((e == null ? getString(R.string.live_all_playlists) : e.name) + "  ▾");
+        playlistPill.setContentDescription(getString(R.string.live_playlist_choose));
+        playlistPill.setVisibility(View.VISIBLE);
     }
 
     private void moreMenu(View anchor) {
@@ -516,6 +572,7 @@ public class LiveTvFragment extends Fragment {
         int shown = lib.visibleCount(), hid = lib.count() - shown;
         String count = hid > 0 ? getString(R.string.live_count_hidden, shown, hid) : getString(R.string.live_count, lib.count());
         sub.setText(ready ? count + (lib.busy() ? " · " + getString(R.string.live_loading) : "") : "");
+        showPlaylistPill(c);
         if (state != null) {
             body.removeView(state);
             state = null;

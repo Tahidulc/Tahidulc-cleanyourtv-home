@@ -15,6 +15,11 @@ public final class Channel {
     public final String userAgent;
     public final String referrer;
     public final int number;
+    /**
+     * The same channel in the family's other playlists (Sources), at the same picture: played when this one's stream
+     * drops (Playback). Empty with one playlist.
+     */
+    public final java.util.List<Channel> alternates = new java.util.ArrayList<>(0);
 
     public Channel(String key, String name, String group, String logo, String url, String tvgId, String userAgent,
                    String referrer, int number) {

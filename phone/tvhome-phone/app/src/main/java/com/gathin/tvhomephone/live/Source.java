@@ -6,6 +6,7 @@ import android.content.SharedPreferences;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.List;
 
 /**
  * The family's own playlist: an M3U address (and, if they have one, its guide's), or an Xtream Codes login. Kept in
@@ -74,17 +75,18 @@ public final class Source {
         return c.getApplicationContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE);
     }
 
-    /** The saved source, or null when none is set up. */
+    /** The first playlist in use (Sources), or null when none is set up. */
     public static Source load(Context c) {
+        List<Sources.Entry> in = Sources.inUse(c);
+        return in.isEmpty() ? null : in.get(0).source;
+    }
+
+    /** The one source saved before there could be several (Sources moves it into its list once). */
+    static Source loadOld(Context c) {
         SharedPreferences p = prefs(c);
         Source s = new Source(p.getString("type", ""), p.getString("m3u", ""), p.getString("guide", ""), p.getString("server", ""),
                 p.getString("user", ""), p.getString("pass", ""));
         return s.usable() ? s : null;
-    }
-
-    void save(Context c) {
-        prefs(c).edit().putString("type", type).putString("m3u", m3uUrl).putString("guide", guideUrl).putString("server", server)
-                .putString("user", user).putString("pass", pass).apply();
     }
 
     static void clear(Context c) {

@@ -39,7 +39,7 @@ import java.util.Set;
  * Sports, as the TV's Sports page: Match Centre (today's games under each competition's logo, your clubs and live ones
  * first, each opening its own page), the tables (# · club · P · W · D · L · GD · Pts, for the Premier League and the
  * competitions the TV shows), F1 (the next Grand Prix's sessions and both standings, with the drivers' photos, the teams'
- * logos and colours) and This weekend (the fixtures by competition with where they are on as the channel's logo, a
+ * logos and colours) and This Weekend (the fixtures by competition with where they are on as the channel's logo, a
  * link into Live TV when the playlist has the channel, and Remind me). Pull down to read again.
  */
 public class SportsFragment extends Fragment {
@@ -413,7 +413,7 @@ public class SportsFragment extends Fragment {
         return lum > 0.62 ? 0xFF0A0D33 : 0xFFFFFFFF;
     }
 
-    // ---- This weekend -------------------------------------------------------------------------------------------
+    // ---- This Weekend -------------------------------------------------------------------------------------------
 
     /** The days of the coming weekend (Friday to Monday; from today when it is already Friday, Saturday or Sunday). */
     static List<LocalDate> weekendDays(LocalDate today) {

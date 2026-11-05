@@ -60,6 +60,8 @@ final class Playback {
     private final Handler h = new Handler(Looper.getMainLooper());
     private ExoPlayer player;
     private Channel cur;
+    /** Which of the channel's streams plays: 0 its own, then its backups from the other playlists (Channel.alternates). */
+    private int alt;
     private int state = IDLE, retries;
     private boolean asHls, firstFrame;
     private Host front, standby;
@@ -174,6 +176,7 @@ final class Playback {
         if (ch == null || live(ch)) return;
         h.removeCallbacks(retry);
         cur = ch;
+        alt = 0;
         retries = 0;
         asHls = Streams.looksHls(ch);
         firstFrame = false;
@@ -189,6 +192,11 @@ final class Playback {
     void restart() {
         if (cur == null) return;
         h.removeCallbacks(retry);
+        // Tried again after it gave up: from its own stream, then its backups once more.
+        if (state == FAILED && alt > 0) {
+            alt = 0;
+            asHls = Streams.looksHls(cur);
+        }
         retries = 0;
         firstFrame = false;
         ensure();
@@ -226,7 +234,7 @@ final class Playback {
 
     private void prepare() {
         if (player == null || cur == null) return;
-        player.setMediaSource(Streams.source(cur, asHls));
+        player.setMediaSource(Streams.source(stream(), asHls));
         player.prepare();
         player.setPlayWhenReady(true);
         set(LOADING);
@@ -237,8 +245,25 @@ final class Playback {
         if (front != null) front.onState(s);
     }
 
-    /** Dropped: tried again a few times, a second, two, four, then eight apart; then given up (tap to try again). */
+    /** The stream playing: the channel's own, or one of its backups from another playlist. */
+    private Channel stream() {
+        return alt > 0 && alt <= cur.alternates.size() ? cur.alternates.get(alt - 1) : cur;
+    }
+
+    /**
+     * Dropped: on to the same channel in the next playlist when there is one (at once); then tried again a few times,
+     * a second, two, four, then eight apart; then given up (tap to try again).
+     */
     private void dropped() {
+        if (cur != null && alt < cur.alternates.size()) {
+            alt++;
+            retries = 0;
+            asHls = Streams.looksHls(stream());
+            set(RECONNECTING);
+            h.removeCallbacks(retry);
+            prepare();
+            return;
+        }
         if (retries < RETRIES) {
             retries++;
             set(RECONNECTING);

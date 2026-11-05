@@ -22,9 +22,10 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * "Also showing on": the family's own playlist's channels for the same game, each with its logo, the likeliest first and
- * the one to watch marked: those whose guide has the game, and the playlist's channels of the broadcasters it is on
- * (its 4K/UHD channel too, marked 4K). Broadcasters the playlist has none of are named only when it has nothing.
+ * "Also Showing On": the family's own playlists' channels for the same game, each with its logo, the likeliest first
+ * and the one to watch marked: an event channel named for the game ("EPL 03: Arsenal v Chelsea"), those whose guide
+ * has the game, and the playlists' channels of the broadcasters it is on (its 4K/UHD channel too, marked 4K).
+ * Broadcasters the playlists have none of are named only when they have nothing.
  */
 public final class AlsoShowing {
     private AlsoShowing() {}
@@ -84,8 +85,19 @@ public final class AlsoShowing {
         List<Game> one = new ArrayList<>();
         one.add(g);
         java.util.Set<String> fav = lib.favourites();
-        // The playlist's channels with the game in their guide.
-        for (Channel ch : lib.list(Library.ALL, "")) {
+        List<Channel> all = lib.list(Library.ALL, "");
+        // The playlists' event channels named for the game ("EPL 03: Arsenal v Chelsea 15:00"): the surest of all.
+        String[][] clubs = {clubNames(g.homeName, g.homeFull), clubNames(g.awayName, g.awayFull)};
+        for (Channel ch : all) {
+            if (!names(words(ch.name), clubs)) continue;
+            Row r = row(ch, current, fav);
+            r.under = c.getString(R.string.tile_also_event);
+            r.score += 5;
+            byKey.put(ch.key, r);
+            if (byKey.size() >= 12) break;
+        }
+        // The playlists' channels with the game in their guide.
+        for (Channel ch : all) {
             Guide.Schedule s = lib.schedule(ch.key);
             int at = s == null ? -1 : s.at(when);
             if (at < 0) continue;
@@ -93,10 +105,13 @@ public final class AlsoShowing {
             if (!OnAir.looksLikeFixture(title) && !OnAir.looksLikeFixture(desc) && !mentions(title + " " + desc, g)) continue;
             Game m = OnAir.match(title, desc, s.start[at], s.stop[at], one);
             if (m == null) continue;
-            Row r = row(ch, current, fav);
-            r.under = title;
+            Row r = byKey.get(ch.key);
+            if (r == null) {
+                r = row(ch, current, fav);
+                r.under = title;
+                byKey.put(ch.key, r);
+            }
             r.score += 4;
-            byKey.put(ch.key, r);
             if (byKey.size() >= 24) break;
         }
         // The broadcasters it is on, as the playlist has them: its 4K/UHD channel and its HD one.
@@ -166,17 +181,62 @@ public final class AlsoShowing {
 
     /** Whether words name both clubs (a guide that says "Dortmund v Betis" without the word "Live"). */
     private static boolean mentions(String words, Game g) {
-        String w = words.toLowerCase(java.util.Locale.ROOT);
-        return has(w, g.homeName) && has(w, g.awayName);
+        return names(words(words), new String[][]{clubNames(g.homeName, g.homeFull), clubNames(g.awayName, g.awayFull)});
     }
 
-    private static boolean has(String words, String club) {
-        if (club == null || club.isEmpty()) return false;
-        String c = club.toLowerCase(java.util.Locale.ROOT);
-        if (words.contains(c)) return true;
-        int sp = c.lastIndexOf(' ');
-        return sp > 0 && c.length() - sp > 4 && words.contains(c.substring(sp + 1));
+    /** Words made comparable (pure): lower case, accents and punctuation gone, a space either side. */
+    static String words(String s) {
+        String n = java.text.Normalizer.normalize(s == null ? "" : s, java.text.Normalizer.Form.NFKD).replaceAll("\\p{M}", "")
+                .toLowerCase(java.util.Locale.ROOT).replace("&", " and ");
+        return " " + n.replaceAll("[^a-z0-9]+", " ").trim() + " ";
     }
+
+    /** Whether words (as words() makes them) name both clubs, each by one of its names. Pure. */
+    static boolean names(String words, String[][] clubs) {
+        for (String[] club : clubs) {
+            boolean found = false;
+            for (String n : club) {
+                if (words.contains(" " + n + " ")) {
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) return false;
+        }
+        return clubs.length > 0;
+    }
+
+    /**
+     * The words a club goes by in a channel's name or a guide (pure): ESPN's short name and its full one ("Man United",
+     * "Manchester United"), United as Utd, without FC, and its own word when it has one ("Tottenham", "Wolverhampton";
+     * never a word two clubs share, as City, United or Manchester).
+     */
+    static String[] clubNames(String shortName, String full) {
+        java.util.LinkedHashSet<String> out = new java.util.LinkedHashSet<>();
+        for (String name : new String[]{shortName, full}) {
+            String w = words(name).trim();
+            if (w.isEmpty()) continue;
+            w = (" " + w + " ").replace(" fc ", " ").replace(" afc ", " ").replace(" cf ", " ").trim();
+            if (w.isEmpty()) continue;
+            out.add(w);
+            if ((" " + w + " ").contains(" united ")) out.add((" " + w + " ").replace(" united ", " utd ").trim());
+            for (String part : w.split(" ")) {
+                if (part.length() >= 5 && !SHARED.contains(part)) {
+                    out.add(part);
+                    break;
+                }
+            }
+        }
+        return out.toArray(new String[0]);
+    }
+
+    /** Words in more than one club's name, never enough on their own. */
+    private static final java.util.Set<String> SHARED = new java.util.HashSet<>(java.util.Arrays.asList(
+            "united", "city", "town", "county", "rovers", "athletic", "athletico", "atletico", "albion", "wanderers", "hotspur",
+            "manchester", "sheffield", "bristol", "nottingham", "birmingham", "borussia", "sporting", "olympique", "olympic",
+            "racing", "deportivo", "union", "dynamo", "dinamo", "inter", "internacional", "real", "royal", "young", "saint",
+            "queens", "rangers", "celtic", "academy", "women", "ladies", "reserves", "under", "north", "south", "east", "west",
+            "club", "football", "sport", "sports", "stade", "stadium"));
 
     private static void show(Context c, Game g, List<Row> rows, Pick pick) {
         BottomSheetDialog[] mine = new BottomSheetDialog[1];
@@ -188,7 +248,7 @@ public final class AlsoShowing {
         LinearLayout box = new LinearLayout(c);
         box.setOrientation(LinearLayout.VERTICAL);
         box.setPadding(Ui.dp(c, 20), Ui.dp(c, 8), Ui.dp(c, 20), Ui.dp(c, 20));
-        TextView head = Ui.text(c, c.getString(R.string.tile_also_showing).toUpperCase(java.util.Locale.UK), 12, Ui.G_SELECT, true);
+        TextView head = Ui.text(c, c.getString(R.string.tile_also_showing), 13, Ui.G_SELECT, true);
         head.setLetterSpacing(0.1f);
         box.addView(head);
         TextView fixture = Ui.text(c, g.homeName + " v " + g.awayName, 18, Ui.TEXT, true);

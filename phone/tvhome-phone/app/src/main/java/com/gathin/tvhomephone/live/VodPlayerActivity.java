@@ -28,16 +28,21 @@ import androidx.media3.ui.PlayerView;
 /**
  * A film or an episode from the family's own playlist (Vod), full screen on its side: the player's own controls (play,
  * pause, the bar to seek along), its name at the top while they show, the same sound as Live TV (FFmpeg for AC-3 and
- * the rest), and where it was left kept, so it carries on from there next time.
+ * the rest), and where it was left kept, so it carries on from there next time. When it won't play from one playlist,
+ * the same film or episode in the next one is tried, from where it had got to.
  */
 @OptIn(markerClass = UnstableApi.class)
 public final class VodPlayerActivity extends AppCompatActivity {
-    private static final String EXTRA_URL = "url", EXTRA_UA = "ua", EXTRA_REF = "ref", EXTRA_TITLE = "title";
+    private static final String EXTRA_URL = "url", EXTRA_UA = "ua", EXTRA_REF = "ref", EXTRA_TITLE = "title",
+            EXTRA_ALTS = "alts";
     /** Carried on from where it was left only after a minute in, and not in its last two minutes. */
     private static final long RESUME_AFTER = 60_000L, END_GAP = 120_000L;
 
     private ExoPlayer player;
     private String url, resumeKey;
+    /** Where it plays ({address as the index has it, user agent, referrer}), its backups after; which is playing. */
+    private final java.util.List<String[]> plays = new java.util.ArrayList<>();
+    private int playing;
 
     /** The player for a film or episode: its address as the index has it (an Xtream one made from the login here). */
     public static Intent intent(Context c, String url, String ua, String ref, String title) {
@@ -45,15 +50,36 @@ public final class VodPlayerActivity extends AppCompatActivity {
                 .putExtra(EXTRA_REF, ref == null ? "" : ref).putExtra(EXTRA_TITLE, title == null ? "" : title);
     }
 
+    /** The same, with where else it plays: {address, user agent, referrer}, its own first (Vod.Item.plays()). */
+    public static Intent intent(Context c, java.util.List<String[]> plays, String title) {
+        String[] first = plays.get(0);
+        Intent i = intent(c, first[0], first[1], first[2], title);
+        java.util.ArrayList<String> alts = new java.util.ArrayList<>();
+        for (int k = 1; k < plays.size(); k++) {
+            String[] p = plays.get(k);
+            alts.add(p[0] + "\u001f" + (p[1] == null ? "" : p[1]) + "\u001f" + (p[2] == null ? "" : p[2]));
+        }
+        return i.putStringArrayListExtra(EXTRA_ALTS, alts);
+    }
+
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
         String stored = getIntent().getStringExtra(EXTRA_URL);
-        url = Vod.address(this, stored);
-        if (url == null || url.isEmpty()) {
+        plays.add(new String[]{stored, getIntent().getStringExtra(EXTRA_UA), getIntent().getStringExtra(EXTRA_REF)});
+        java.util.ArrayList<String> alts = getIntent().getStringArrayListExtra(EXTRA_ALTS);
+        if (alts != null) for (String a : alts) plays.add(a.split("\u001f", -1));
+        // The first that is still in a playlist.
+        playing = -1;
+        for (int k = 0; k < plays.size() && playing < 0; k++) {
+            String u = Vod.address(this, plays.get(k)[0]);
+            if (u != null && !u.isEmpty()) playing = k;
+        }
+        if (stored == null || playing < 0) {
             Toast.makeText(this, "This one isn't in your playlist any more", Toast.LENGTH_SHORT).show();
             finish();
             return;
         }
+        url = Vod.address(this, plays.get(playing)[0]);
         resumeKey = Integer.toHexString(stored.hashCode());
         FrameLayout root = new FrameLayout(this);
         root.setBackgroundColor(0xFF000000);
@@ -82,9 +108,7 @@ public final class VodPlayerActivity extends AppCompatActivity {
                 .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).build(), true);
         player.setHandleAudioBecomingNoisy(true);
         view.setPlayer(player);
-        Channel as = new Channel("vod:" + resumeKey, getIntent().getStringExtra(EXTRA_TITLE), "", "", url, "",
-                getIntent().getStringExtra(EXTRA_UA), getIntent().getStringExtra(EXTRA_REF), 0);
-        player.setMediaSource(Streams.source(as, url.contains(".m3u8")));
+        load(0);
         long at = prefs().getLong(resumeKey, 0);
         if (at > RESUME_AFTER) {
             player.seekTo(at);
@@ -92,6 +116,10 @@ public final class VodPlayerActivity extends AppCompatActivity {
         }
         player.addListener(new Player.Listener() {
             @Override public void onPlayerError(@NonNull PlaybackException e) {
+                if (next()) {
+                    Toast.makeText(VodPlayerActivity.this, "Trying your other playlist", Toast.LENGTH_SHORT).show();
+                    return;
+                }
                 Toast.makeText(VodPlayerActivity.this, "It wouldn't play from your playlist", Toast.LENGTH_LONG).show();
             }
 
@@ -101,6 +129,30 @@ public final class VodPlayerActivity extends AppCompatActivity {
         });
         player.prepare();
         player.setPlayWhenReady(true);
+    }
+
+    /** The one playing now given to the player, from position (ms). */
+    private void load(long position) {
+        String[] p = plays.get(playing);
+        Channel as = new Channel("vod:" + resumeKey, getIntent().getStringExtra(EXTRA_TITLE), "", "", url, "", p[1], p[2], 0);
+        player.setMediaSource(Streams.source(as, url.contains(".m3u8")), position);
+    }
+
+    /** On to the next playlist that has it, from where it had got to; false when there is none left. */
+    private boolean next() {
+        if (player == null) return false;
+        long pos = Math.max(0, player.getCurrentPosition());
+        for (int k = playing + 1; k < plays.size(); k++) {
+            String u = Vod.address(this, plays.get(k)[0]);
+            if (u == null || u.isEmpty()) continue;
+            playing = k;
+            url = u;
+            load(pos);
+            player.prepare();
+            player.setPlayWhenReady(true);
+            return true;
+        }
+        return false;
     }
 
     @Override protected void onStop() {

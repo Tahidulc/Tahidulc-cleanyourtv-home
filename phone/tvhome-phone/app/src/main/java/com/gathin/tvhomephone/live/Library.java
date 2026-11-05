@@ -82,7 +82,7 @@ public final class Library {
 
     // ---- what the screens read ----------------------------------------------------------------------------------
 
-    public boolean hasSource() { return Source.load(app) != null; }
+    public boolean hasSource() { return !Sources.list(app).isEmpty(); }
     public boolean ready() { return !channels.isEmpty(); }
     public boolean busy() { return busy.get(); }
     public String status() { return status; }
@@ -222,7 +222,7 @@ public final class Library {
 
     /**
      * For a listing's broadcaster, the playlist's channel at HD or less and its 4K/UHD one, each the best of its kind
-     * (best()), either null: so "Also showing on" lists the 4K channel beside the HD one, not only one of them.
+     * (best()), either null: so "Also Showing On" lists the 4K channel beside the HD one, not only one of them.
      */
     public Channel[] tiers(String listing) {
         Channel[] out = new Channel[2];
@@ -334,29 +334,36 @@ public final class Library {
     }
 
     private void maybeRefresh() {
-        Source s = Source.load(app);
-        if (s == null) return;
+        if (Sources.inUse(app).isEmpty()) return;
         long now = System.currentTimeMillis();
-        if (channels.isEmpty() || now - loadedAt > REFRESH_MS || !s.fingerprint().equals(fingerprint)) refresh(null);
+        if (channels.isEmpty() || now - loadedAt > REFRESH_MS || !Sources.fingerprint(app).equals(fingerprint)) refresh(null);
         else if (!guideUrl.isEmpty() && now - guideAt > GUIDE_MS) refreshGuide();
     }
 
-    /** The channels read again from the provider now (then the guide). */
+    /** The channels of the playlists in use read again from their providers now (then the guides). */
     public void refresh(Callback cb) {
-        Source s = Source.load(app);
-        if (s == null) {
+        if (Sources.inUse(app).isEmpty()) {
             if (cb != null) App.main.post(() -> cb.done(0, "No playlist yet"));
             return;
         }
-        load(s, false, cb);
+        load(null, null, null, cb);
     }
 
-    /** A source tried out: saved and used only when it gives live channels. */
-    public void test(Source s, Callback cb) {
-        load(s, true, cb);
+    /**
+     * A playlist tried out (id null or empty: a new one): saved only when it gives live channels, then the playlists in
+     * use read again with it.
+     */
+    public void test(String id, String name, Source s, Callback cb) {
+        load(id == null ? "" : id, name, s, cb);
     }
 
-    private void load(Source s, boolean saveFirst, Callback cb) {
+    /** The playlists in use now changed (Live TV's chip, Settings): their channels read again. */
+    public void switched() {
+        matches.clear();
+        load(null, null, null, null);
+    }
+
+    private void load(String trialId, String trialName, Source trial, Callback cb) {
         if (!busy.compareAndSet(false, true)) {
             if (cb != null) App.main.post(() -> cb.done(0, "Already loading, a moment"));
             return;
@@ -367,16 +374,44 @@ public final class Library {
             int n = 0;
             String error = null;
             try {
-                Loaded l = fetch(s);
-                if (l.channels.isEmpty()) throw new IOException("No live channels in it");
-                if (saveFirst) {
-                    s.save(app);
-                    clearGuide();
+                String tried = null;
+                Loaded first = null;
+                if (trial != null) {
+                    // Checked on its own first: kept only when it gives live channels.
+                    String probeId = trialId.isEmpty() ? "new" : trialId;
+                    first = fetch(trial, probeId);
+                    if (first.channels.isEmpty()) throw new IOException("No live channels in it");
+                    tried = Sources.put(app, trialId, trialName, trial).id;
+                    if (trialId.isEmpty()) {
+                        Vod.moved(app, "new", tried);
+                        Sources.moved(app, "new", tried);
+                        // A playlist just added is in use at once: all of them together, when one alone was chosen.
+                        if (!Sources.active(app).isEmpty()) Sources.setActive(app, Sources.ALL);
+                    }
                 }
-                apply(l.channels, s.fingerprint(), l.guideUrl, System.currentTimeMillis());
+                List<Channel> all = new ArrayList<>();
+                List<String> guides = new ArrayList<>(), problems = new ArrayList<>();
+                List<Sources.Entry> in = Sources.inUse(app);
+                for (Sources.Entry e : in) {
+                    try {
+                        Loaded l = e.id.equals(tried) ? first : fetch(e.source, e.id);
+                        for (Channel c : l.channels) {
+                            all.add(e.prefix().isEmpty() ? c : new Channel(e.prefix() + c.key, c.name, c.group, c.logo, c.url, c.tvgId,
+                                    c.userAgent, c.referrer, c.number));
+                        }
+                        if (!l.guideUrl.isEmpty() && !guides.contains(l.guideUrl)) guides.add(l.guideUrl);
+                    } catch (IOException x) {
+                        problems.add(e.name + ": " + (x.getMessage() == null ? "didn't load" : x.getMessage()));
+                    }
+                }
+                if (all.isEmpty()) throw new IOException(problems.isEmpty() ? "No live channels in it" : String.join("; ", problems));
+                String fp = Sources.fingerprint(app);
+                if (!fp.equals(fingerprint)) clearGuide();
+                apply(all, fp, String.join(" ", guides), System.currentTimeMillis());
                 reindex();
                 writeCache();
-                n = l.channels.size();
+                n = channels.size();
+                if (!problems.isEmpty()) status = String.join("; ", problems);
             } catch (IOException | RuntimeException e) {
                 error = e instanceof IOException && e.getMessage() != null ? e.getMessage() : "That didn't work";
                 status = error;
@@ -394,10 +429,13 @@ public final class Library {
     /** Everything removed from this phone: the source, the channels, the guide, the favourites, the hidden channels. */
     public void clear() {
         Source.clear(app);
+        Sources.clear(app);
+        Vod.clear(app);
         Picks.clear(app);
         Hidden.clear(app);
         Playback.get(app).forget();
         channels = Collections.emptyList();
+        perPlaylist = Collections.emptyMap();
         lower = new String[0];
         groups = Collections.emptyList();
         byKey = Collections.emptyMap();
@@ -429,6 +467,56 @@ public final class Library {
         file("guide.tsv").delete();
     }
 
+    /** How many channels the playlists gave before the ones in several were made one. */
+    private volatile int rawCount;
+
+    /** Every stream the playlists gave, a channel in several of them counted once for each. */
+    public int streamCount() { return rawCount; }
+
+    /** How many channels each playlist in use gave, by its id. */
+    private volatile Map<String, Integer> perPlaylist = Collections.emptyMap();
+
+    /** How many channels a playlist gave (0 when it isn't in use, or hasn't loaded). */
+    public int countIn(String id) {
+        Integer n = perPlaylist.get(id);
+        return n == null ? 0 : n;
+    }
+
+    /**
+     * The same channel in several playlists made one (pure, for the tests): the first playlist's, the others' as its
+     * backups (Channel.alternates), matched by name, picture and +1 (Names). Two of one playlist's own stay apart, as
+     * that playlist lists them.
+     */
+    static List<Channel> merged(List<Channel> list) {
+        Map<String, Channel> first = new HashMap<>();
+        List<Channel> out = new ArrayList<>(list.size());
+        for (Channel c : list) {
+            Names.Info i = Names.info(c.name, c.group);
+            if (i.key.isEmpty()) {
+                out.add(c);
+                continue;
+            }
+            String k = i.key + "|" + i.quality + (i.backup ? "|b" : "");
+            Channel f = first.get(k);
+            if (f != null && !playlistOf(f.key).equals(playlistOf(c.key))) {
+                f.alternates.add(c);
+                continue;
+            }
+            if (f == null) first.put(k, c);
+            out.add(c);
+        }
+        return out;
+    }
+
+    /** Which playlist a channel's key is from: "p0" for the first (no prefix), else its prefix's id. */
+    static String playlistOf(String key) {
+        if (key != null && key.length() > 2 && key.charAt(0) == 'p') {
+            int colon = key.indexOf(':');
+            if (colon > 1 && key.substring(1, colon).matches("\\d+")) return key.substring(0, colon);
+        }
+        return "p0";
+    }
+
     private static final class Loaded {
         final List<Channel> channels;
         final String guideUrl;
@@ -439,20 +527,32 @@ public final class Library {
         }
     }
 
-    private Loaded fetch(Source s) throws IOException {
+    /** One playlist read (its id, for its films, series and account details to be kept under). */
+    private Loaded fetch(Source s, String id) throws IOException {
         if (Source.M3U.equals(s.type)) {
+            Loaded l;
             try (InputStream in = Fetch.open(s.m3uUrl, null); Reader r = new InputStreamReader(in, StandardCharsets.UTF_8)) {
                 M3u.Result res = M3u.parse(r);
                 // Its films and episodes kept for Watch (Vod), the channels for Live TV.
-                Vod.saveM3u(app, res.vod);
-                return new Loaded(res.channels, s.guideUrl.isEmpty() ? res.guideUrl : s.guideUrl);
+                Vod.saveM3u(app, id, res.vod);
+                l = new Loaded(res.channels, s.guideUrl.isEmpty() ? res.guideUrl : s.guideUrl);
             }
+            // An Xtream server's M3U address: its account's expiry date asked for too (no matter if it doesn't answer).
+            String[] x = Sources.xtreamOf(s.m3uUrl);
+            if (x != null) {
+                try {
+                    Sources.note(app, id, new JSONObject(text(Xtream.api(x[0], x[1], x[2], null))).optJSONObject("user_info"));
+                } catch (IOException | JSONException | RuntimeException ignored) {
+                    // no expiry date for it
+                }
+            }
+            return l;
         }
-        return xtream(s);
+        return xtream(s, id);
     }
 
-    /** An Xtream Codes account: the login checked, its live categories, then its live streams read as a stream. */
-    private Loaded xtream(Source s) throws IOException {
+    /** An Xtream Codes account: the login checked (its expiry date kept), its live categories, then its live streams. */
+    private Loaded xtream(Source s, String id) throws IOException {
         String base = Xtream.base(s.server);
         if (base.isEmpty()) throw new IOException("Add the server's address");
         String ext;
@@ -460,6 +560,7 @@ public final class Library {
             JSONObject acct = new JSONObject(text(Xtream.api(base, s.user, s.pass, null)));
             JSONObject ui = acct.optJSONObject("user_info");
             if (ui == null || !"1".equals(ui.optString("auth"))) throw new IOException("The login wasn't accepted");
+            Sources.note(app, id, ui);
             String st = ui.optString("status", "Active");
             if (!st.isEmpty() && !st.equalsIgnoreCase("Active")) throw new IOException("The account says it is " + st.toLowerCase(Locale.ROOT));
             List<String> formats = new ArrayList<>();
@@ -490,14 +591,14 @@ public final class Library {
                     jr.skipValue();
                     continue;
                 }
-                String id = "", name = "", icon = "", epg = "", cat = "", type = "live";
+                String sid = "", name = "", icon = "", epg = "", cat = "", type = "live";
                 int num = 0;
                 jr.beginObject();
                 while (jr.hasNext()) {
                     String k = jr.nextName();
                     String v = value(jr);
                     switch (k) {
-                        case "stream_id": id = v; break;
+                        case "stream_id": sid = v; break;
                         case "name": name = v; break;
                         case "stream_icon": icon = v; break;
                         case "epg_channel_id": epg = v; break;
@@ -508,9 +609,9 @@ public final class Library {
                     }
                 }
                 jr.endObject();
-                if (id.isEmpty() || (!type.isEmpty() && !type.equalsIgnoreCase("live") && !type.equalsIgnoreCase("created_live"))) continue;
+                if (sid.isEmpty() || (!type.isEmpty() && !type.equalsIgnoreCase("live") && !type.equalsIgnoreCase("created_live"))) continue;
                 String group = cats.get(cat);
-                out.add(new Channel("x:" + id, name, group, icon, Xtream.stream(base, s.user, s.pass, id, ext), epg, null, null, num));
+                out.add(new Channel("x:" + sid, name, group, icon, Xtream.stream(base, s.user, s.pass, sid, ext), epg, null, null, num));
             }
             jr.endArray();
         } catch (IllegalStateException | NumberFormatException e) {
@@ -569,7 +670,16 @@ public final class Library {
     }
 
     /** New channels in place: the groups in first-seen order, the key and name indexes built once. */
-    private synchronized void apply(List<Channel> list, String fp, String gUrl, long at) {
+    private synchronized void apply(List<Channel> raw, String fp, String gUrl, long at) {
+        rawCount = raw.size();
+        Map<String, Integer> per = new HashMap<>();
+        for (Channel c : raw) {
+            String id = playlistOf(c.key);
+            Integer n = per.get(id);
+            per.put(id, n == null ? 1 : n + 1);
+        }
+        perPlaylist = per;
+        List<Channel> list = merged(raw);
         List<Channel> ch = Collections.unmodifiableList(new ArrayList<>(list));
         String[] low = new String[ch.size()];
         String[] hk = new String[ch.size()];
@@ -616,29 +726,47 @@ public final class Library {
 
     /** The guide read again (in the background, after the channels): only the playlist's channels, a 13 hour window. */
     void refreshGuide() {
-        String url = guideUrl;
-        if (url.isEmpty() || channels.isEmpty() || !guideBusy.compareAndSet(false, true)) return;
+        String urls = guideUrl;
+        if (urls.isEmpty() || channels.isEmpty() || !guideBusy.compareAndSet(false, true)) return;
         App.io.execute(() -> {
             try {
                 Map<String, List<String>> ids = new HashMap<>(), names = new HashMap<>();
-                for (Channel c : channels) {
-                    if (!c.tvgId.isEmpty()) {
-                        String k = c.tvgId.toLowerCase(Locale.ROOT);
-                        List<String> l = ids.get(k);
-                        if (l == null) ids.put(k, l = new ArrayList<>(1));
-                        l.add(c.key);
-                    } else {
-                        String k = Names.key(c.name);
-                        if (k.isEmpty()) continue;
-                        List<String> l = names.get(k);
-                        if (l == null) names.put(k, l = new ArrayList<>(1));
-                        l.add(c.key);
+                for (Channel main : channels) {
+                    // A channel's guide by its own guide id, or one of its backups' (another playlist's guide may have it).
+                    List<Channel> all = new ArrayList<>(1 + main.alternates.size());
+                    all.add(main);
+                    all.addAll(main.alternates);
+                    boolean named = false;
+                    for (Channel c : all) {
+                        if (!c.tvgId.isEmpty()) {
+                            String k = c.tvgId.toLowerCase(Locale.ROOT);
+                            List<String> l = ids.get(k);
+                            if (l == null) ids.put(k, l = new ArrayList<>(1));
+                            if (!l.contains(main.key)) l.add(main.key);
+                        } else if (!named) {
+                            named = true;
+                            String k = Names.key(c.name);
+                            if (k.isEmpty()) continue;
+                            List<String> l = names.get(k);
+                            if (l == null) names.put(k, l = new ArrayList<>(1));
+                            if (!l.contains(main.key)) l.add(main.key);
+                        }
                     }
                 }
-                Map<String, Guide.Schedule> g;
-                try (InputStream in = Fetch.open(url, null)) {
-                    g = Guide.read(in, ids, names, System.currentTimeMillis());
+                // Each playlist's guide, the first to have a channel giving its programmes.
+                Map<String, Guide.Schedule> g = new HashMap<>();
+                IOException last = null;
+                for (String url : urls.split(" ")) {
+                    if (url.isEmpty()) continue;
+                    try (InputStream in = Fetch.open(url, null)) {
+                        for (Map.Entry<String, Guide.Schedule> e : Guide.read(in, ids, names, System.currentTimeMillis()).entrySet()) {
+                            if (!g.containsKey(e.getKey())) g.put(e.getKey(), e.getValue());
+                        }
+                    } catch (IOException e) {
+                        last = e;
+                    }
                 }
+                if (g.isEmpty() && last != null) throw last;
                 guide = g;
                 guideAt = System.currentTimeMillis();
                 reindex();
@@ -670,9 +798,15 @@ public final class Library {
         File f = file("channels.tsv"), tmp = file("channels.tsv.tmp");
         try (Writer w = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(tmp), StandardCharsets.UTF_8), 64 * 1024)) {
             w.write("v1\t" + fingerprint + "\t" + loadedAt + "\t" + cell(guideUrl) + "\n");
-            for (Channel c : channels) {
-                w.write(cell(c.key) + "\t" + cell(c.name) + "\t" + cell(c.group) + "\t" + cell(c.logo) + "\t" + cell(c.url) + "\t"
-                        + cell(c.tvgId) + "\t" + cell(c.userAgent) + "\t" + cell(c.referrer) + "\t" + c.number + "\n");
+            // Each channel with its backups after it: read back, they are made one again (merged).
+            for (Channel main : channels) {
+                List<Channel> rows = new ArrayList<>(1 + main.alternates.size());
+                rows.add(main);
+                rows.addAll(main.alternates);
+                for (Channel c : rows) {
+                    w.write(cell(c.key) + "\t" + cell(c.name) + "\t" + cell(c.group) + "\t" + cell(c.logo) + "\t" + cell(c.url) + "\t"
+                            + cell(c.tvgId) + "\t" + cell(c.userAgent) + "\t" + cell(c.referrer) + "\t" + c.number + "\n");
+                }
             }
         } catch (IOException e) {
             //noinspection ResultOfMethodCallIgnored
@@ -704,9 +838,8 @@ public final class Library {
     }
 
     private void readCache() {
-        Source s = Source.load(app);
-        if (s == null) return;
-        String fp = s.fingerprint();
+        if (Sources.inUse(app).isEmpty()) return;
+        String fp = Sources.fingerprint(app);
         File f = file("channels.tsv");
         if (!f.exists()) return;
         List<Channel> list = new ArrayList<>();
