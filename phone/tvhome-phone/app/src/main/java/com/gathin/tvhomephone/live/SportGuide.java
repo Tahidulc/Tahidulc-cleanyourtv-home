@@ -17,6 +17,7 @@ import com.gathin.tvhomephone.sports.Competitions;
 import com.gathin.tvhomephone.sports.Espn;
 import com.gathin.tvhomephone.sports.F1;
 import com.gathin.tvhomephone.sports.Game;
+import com.gathin.tvhomephone.sports.LiveClock;
 import com.gathin.tvhomephone.sports.OnAir;
 
 import java.time.Instant;
@@ -153,7 +154,8 @@ public final class SportGuide extends ScrollView {
             r.mine = g.involves(teams);
             r.when = g.kickoff;
             r.title = g.homeName + (g.state == Game.PRE ? " v " : " " + g.score() + " ") + g.awayName;
-            r.minute = r.live ? (g.detail == null || g.detail.isEmpty() ? "LIVE" : g.detail) : clock(g.kickoff);
+            String live = LiveClock.words(g, System.currentTimeMillis());
+            r.minute = r.live ? (live.isEmpty() ? "LIVE" : live) : clock(g.kickoff);
             r.under = channelLine(best.name, uhd, uhd ? more - 1 : more);
             out.add(r);
         }
@@ -338,6 +340,8 @@ public final class SportGuide extends ScrollView {
             if (!"LIVE".equals(r.minute)) {
                 TextView m = Ui.text(c, r.minute, 12, Ui.TEXT, true);
                 m.setFontFeatureSettings("tnum");
+                // The clock in minutes and seconds, going on while the row is on the screen.
+                if (r.game != null) LiveClock.bind(m, r.game, w -> w.isEmpty() ? r.minute : w);
                 m.setPadding(0, Ui.dp(c, 3), 0, 0);
                 when.addView(m, new LinearLayout.LayoutParams(-2, -2));
             }

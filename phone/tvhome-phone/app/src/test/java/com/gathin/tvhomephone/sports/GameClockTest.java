@@ -49,4 +49,11 @@ public class GameClockTest {
         g.state = Game.PRE;
         assertNull(GameClock.show(g, 0));
     }
+
+    @Test public void noPeriodGivenIsWorkedOutFromTheClock() {
+        org.junit.Assert.assertArrayEquals(new String[]{"63:00", ""}, GameClock.show(63 * 60, 0, ""));
+        org.junit.Assert.assertArrayEquals(new String[]{"45:00", "+2"}, GameClock.show(47 * 60, 0, "45'+2'"));
+        org.junit.Assert.assertArrayEquals(new String[]{"12:30", ""}, GameClock.show(12 * 60 + 30, 0, ""));
+        org.junit.Assert.assertArrayEquals(new String[]{"90:00", "+4"}, GameClock.show(94 * 60, 0, "90'+4'"));
+    }
 }

@@ -69,7 +69,8 @@ public class MatchPanelTest {
     }
 
     @Test public void theScoreLine() {
-        assertEquals("Home 2–1 Away · 63'", MatchPanel.line(withScore(live("a", 2, "b", 1))));
+        // The clock in minutes and seconds (LiveClock), as everywhere a live score is shown.
+        assertEquals("Home 2–1 Away · 63:00", MatchPanel.line(withScore(live("a", 2, "b", 1))));
         Game ht = live("a", 0, "b", 0);
         ht.halftime = true;
         assertEquals("Home 0–0 Away · HT", MatchPanel.line(ht));

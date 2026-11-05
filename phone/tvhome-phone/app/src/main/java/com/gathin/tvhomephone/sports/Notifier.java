@@ -74,6 +74,8 @@ public final class Notifier {
 
     /** The alert's notification, built and sent (off the main thread). */
     private static void show(Context c, Events.Alert a) {
+        // The scoreboard over the picture drops it too, while one is up.
+        com.gathin.tvhomephone.live.LiveAlerts.shown(a);
         String channel = a.kind.startsWith("f1") ? F1 : "weather".equals(a.kind) ? WEATHER : "reminder".equals(a.kind) ? REMINDERS : ALERTS;
         if ("goal".equals(a.kind) && a.game != null && clubGoal(a.kind, NotifCard.side(a), a.game.homeId, a.game.awayId, Clubs.starred(c))) channel = CLUB_GOALS;
         NotificationCompat.Builder b = new NotificationCompat.Builder(c, channel)
@@ -267,12 +269,23 @@ public final class Notifier {
             if (live.size() == 1) b.setContentIntent(open(c, live.get(0)));
             // The first game's clock going on in the notification's corner, minutes and seconds, as a scoreboard's.
             long now = System.currentTimeMillis(), secs = GameClock.seconds(live.get(0), now);
-            if (secs >= 0) b.setUsesChronometer(true).setShowWhen(true).setWhen(now - secs * 1000L);
+            if (chronometer(secs)) b.setUsesChronometer(true).setShowWhen(true).setWhen(now - secs * 1000L);
             else b.setShowWhen(false);
         } catch (RuntimeException ignored) {
             // the words alone
         }
         return b;
+    }
+
+    /** The notification is drawn again every this often while a game is on (AlertService's read). */
+    static final long REDRAWN_MS = 30_000L;
+
+    /**
+     * Pure: whether Android's own ticking clock can show a game's clock of secs seconds until the next redraw: it counts
+     * in minutes and seconds only under the hour ("1:07:23" after it), so from 59:30 the card's own clock shows instead.
+     */
+    public static boolean chronometer(long secs) {
+        return secs >= 0 && secs * 1000L + REDRAWN_MS < 3_600_000L;
     }
 
     static void notify(Context c, int id, NotificationCompat.Builder b) {

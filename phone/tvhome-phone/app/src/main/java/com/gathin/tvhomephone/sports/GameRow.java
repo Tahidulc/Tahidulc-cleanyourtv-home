@@ -41,11 +41,15 @@ public final class GameRow {
         TextView p = Ui.text(c, plate, 18, c.getColor(R.color.text), true);
         p.setGravity(Gravity.CENTER);
         mid.addView(p);
-        String under = g.state == Game.PRE ? "" : g.state == Game.POST ? "FT" : g.halftime ? "HT" : g.detail;
+        // The clock in minutes and seconds, going on while the row is on the screen (LiveClock).
+        String under = LiveClock.words(g, System.currentTimeMillis());
         if (!under.isEmpty()) {
-            TextView u = Ui.text(c, (g.state == Game.LIVE ? "● " : "") + under, 11,
-                    g.state == Game.LIVE ? c.getColor(R.color.live_green) : c.getColor(R.color.text_dim), true);
+            boolean live = g.state == Game.LIVE;
+            TextView u = Ui.text(c, "", 11, live ? c.getColor(R.color.live_green) : c.getColor(R.color.text_dim), true);
             u.setGravity(Gravity.CENTER);
+            u.setFontFeatureSettings("tnum");
+            u.setMaxLines(1);
+            LiveClock.bind(u, g, w -> (live && !w.contains("+") ? "● " : "") + w);
             mid.addView(u);
         }
         mid.setBackground(Ui.vertical(c.getColor(R.color.bug_blue_top), c.getColor(R.color.bug_blue_bottom)));

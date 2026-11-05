@@ -60,6 +60,15 @@ public final class LiveAlerts {
         void onGoalElsewhere(Events.Alert a);
 
         default void onHeldChanged() {}
+
+        /** An alert shown now (as its notification goes up, after any wait for the stream): the scoreboard's drop. */
+        default void onShown(Events.Alert a) {}
+    }
+
+    /** An alert shown now: told to the scoreboards up (ScoreBoard), on the main thread. */
+    public static void shown(Events.Alert a) {
+        if (a == null) return;
+        for (Listener l : listeners) main.post(() -> l.onShown(a));
     }
 
     private static SharedPreferences prefs(Context c) {

@@ -40,6 +40,11 @@ final class Video extends PlayerView {
         if (f != null && r > 0) f.setAspectRatio(r);
     }
 
+    /** The surface the video is drawn on (for its frames: ScoreOverlay's look at the channel's scoreboard). */
+    android.view.View surface() {
+        return getVideoSurfaceView();
+    }
+
     /** Fits the picture as the shape says. */
     void apply(Aspect a) {
         switch (a) {

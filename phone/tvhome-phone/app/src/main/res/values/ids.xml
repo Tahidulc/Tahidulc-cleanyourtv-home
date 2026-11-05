@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <item name="content_frame" type="id" />
+    <!-- LiveClock's ticker on a TextView. -->
+    <item name="live_clock" type="id" />
 </resources>

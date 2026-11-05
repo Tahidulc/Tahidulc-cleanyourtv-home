@@ -287,6 +287,11 @@ public class GameActivity extends AppCompatActivity {
         TextView t = Ui.text(this, pill, 11, ink, true);
         t.setLetterSpacing(0.08f);
         t.setMaxLines(1);
+        if (game.state == Game.LIVE && !game.halftime) {
+            // The clock in minutes and seconds, going on while the page is open.
+            t.setFontFeatureSettings("tnum");
+            LiveClock.bind(t, game, w -> "●  LIVE  " + w);
+        }
         t.setGravity(Gravity.CENTER);
         t.setBackground(Ui.fill(this, fill, 12));
         t.setPadding(Ui.dp(this, 10), Ui.dp(this, 4), Ui.dp(this, 10), Ui.dp(this, 4));

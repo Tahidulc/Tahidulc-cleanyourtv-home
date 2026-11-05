@@ -30,6 +30,7 @@ import com.gathin.tvhomephone.R;
 import com.gathin.tvhomephone.sports.Competitions;
 import com.gathin.tvhomephone.sports.Espn;
 import com.gathin.tvhomephone.sports.Game;
+import com.gathin.tvhomephone.sports.LiveClock;
 import com.gathin.tvhomephone.sports.ScoreBug;
 
 import java.util.ArrayList;
@@ -408,7 +409,12 @@ final class InfoTile {
         fixture.setMaxLines(2);
         story.addView(fixture, k.margins(0, 6, 0, 0, -1, -2));
         String line = matchLine(c, i, System.currentTimeMillis());
-        if (!line.isEmpty()) story.addView(k.text(line, 14, 0xFFD6DBF0, 400), k.margins(0, 4, 0, 0, -1, -2));
+        if (!line.isEmpty()) {
+            TextView ml = k.text(line, 14, 0xFFD6DBF0, 400);
+            // The game's clock in minutes and seconds, going on while the tile is up.
+            if (g != null && g.state == Game.LIVE) LiveClock.bind(ml, g, w -> matchLine(c, i, System.currentTimeMillis()));
+            story.addView(ml, k.margins(0, 4, 0, 0, -1, -2));
+        }
         if (g != null && !i.facts.isEmpty()) story.addView(facts(k, g, i.facts), k.margins(0, 12, 0, 0, -1, -2));
         HorizontalScrollView hs = new HorizontalScrollView(c);
         hs.setHorizontalScrollBarEnabled(false);
@@ -520,7 +526,7 @@ final class InfoTile {
             long mins = (g.kickoff - now + 59_999) / 60_000;
             parts.add(mins > 0 && mins <= 120 ? c.getString(R.string.tile_kickoff_in, (int) mins) : c.getString(R.string.tile_kickoff_at, Ui.clock(g.kickoff)));
         } else if (g.state == Game.LIVE) {
-            parts.add(g.halftime ? c.getString(R.string.tile_half_time) : g.detail);
+            parts.add(g.halftime ? c.getString(R.string.tile_half_time) : LiveClock.words(g, now));
             parts.add(story(c, g, false));
         } else {
             parts.add(story(c, g, true));

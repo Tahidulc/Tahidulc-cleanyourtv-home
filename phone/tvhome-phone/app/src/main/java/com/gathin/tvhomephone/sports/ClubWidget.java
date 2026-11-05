@@ -188,6 +188,7 @@ public class ClubWidget extends AppWidgetProvider {
         if (g == null) {
             v.setViewVisibility(R.id.widget_bug, View.GONE);
             v.setViewVisibility(R.id.widget_live, View.GONE);
+            v.setViewVisibility(R.id.widget_clock, View.GONE);
             v.setViewVisibility(R.id.widget_watch, View.GONE);
             v.setTextViewText(R.id.widget_next, c.getString(Clubs.starred(c).isEmpty() ? R.string.f2_widget_pick : R.string.f2_widget_none));
         } else {
@@ -200,6 +201,15 @@ public class ClubWidget extends AppWidgetProvider {
             }
             v.setContentDescription(R.id.widget_bug, g.homeName + " " + (g.state == Game.PRE ? "v" : g.score()) + " " + g.awayName);
             v.setViewVisibility(R.id.widget_live, g.state == Game.LIVE ? View.VISIBLE : View.GONE);
+            // Beside LIVE, the clock in minutes and seconds going on by itself (Android's own clock, under the hour).
+            long secs = GameClock.seconds(g, System.currentTimeMillis());
+            if (Notifier.chronometer(secs)) {
+                v.setChronometer(R.id.widget_clock, android.os.SystemClock.elapsedRealtime() - secs * 1000L, null, true);
+                v.setViewVisibility(R.id.widget_clock, View.VISIBLE);
+            } else {
+                v.setChronometer(R.id.widget_clock, android.os.SystemClock.elapsedRealtime(), null, false);
+                v.setViewVisibility(R.id.widget_clock, View.GONE);
+            }
             v.setTextViewText(R.id.widget_next, next.isEmpty()
                     ? (g.state == Game.PRE ? fixture(g, ZoneId.systemDefault()) : "")
                     : c.getString(R.string.f2_widget_next, next));

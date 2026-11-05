@@ -31,6 +31,7 @@ public final class Kinds {
             {"f1grid", "F1 starting grid", "The grid fifteen minutes before the race", SPORT},
             {"f1result", "F1 results", "The podium as the race ends", SPORT},
             {"weather", "Weather", "Rain on the way in Manchester, once a day at most", NEWS},
+            {"news", "Breaking news", "A new lead story on BBC News or BBC Sport, on the scoreboard while you watch", NEWS},
             {"reminder", "Your reminders", "Games and shows you asked about, 15 minutes before", REMINDERS},
     };
 

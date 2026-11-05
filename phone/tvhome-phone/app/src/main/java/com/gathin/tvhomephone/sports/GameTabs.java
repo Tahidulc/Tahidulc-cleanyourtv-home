@@ -137,7 +137,7 @@ public final class GameTabs {
         }
         if (game.state != Game.PRE && !compact) body.addView(map(), Ui.margins(c, 0, 12, 0, 6));
         if (game.state == Game.POST) body.addView(divider("FULL TIME", game.homeScore + "–" + game.awayScore));
-        else if (game.state == Game.LIVE) body.addView(divider(game.halftime ? "HALF TIME" : "LIVE · " + game.detail, game.homeScore + "–" + game.awayScore));
+        else if (game.state == Game.LIVE) body.addView(divider(game.halftime ? "HALF TIME" : "LIVE", game.homeScore + "–" + game.awayScore));
         if (ev.isEmpty() && game.state == Game.LIVE) {
             TextView none = Ui.text(c, "No goals or cards yet", 14, c.getColor(R.color.text_dim), false);
             none.setGravity(Gravity.CENTER);
@@ -272,6 +272,12 @@ public final class GameTabs {
         r.addView(l, new LinearLayout.LayoutParams(0, Ui.dp(c, 1), 1));
         TextView t = Ui.text(c, words + "   " + score, 11.5f, c.getColor(R.color.text_soft), true);
         t.setLetterSpacing(0.1f);
+        if ("LIVE".equals(words)) {
+            // "LIVE · 67:23   1–0", the clock going on in minutes and seconds.
+            t.setFontFeatureSettings("tnum");
+            Game g = game;
+            LiveClock.bind(t, g, w -> "LIVE · " + w + "   " + score);
+        }
         t.setBackground(Ui.fill(c, 0x14FFFFFF, 12));
         t.setPadding(Ui.dp(c, 12), Ui.dp(c, 4), Ui.dp(c, 12), Ui.dp(c, 4));
         LinearLayout.LayoutParams tp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);

@@ -54,6 +54,24 @@ cards: its logo on a tile in the logo's own colour, each programme a block in a 
 been shown a shade darker, and the channel's name with its picture's tag (HD, FHD, 4K, UHD) and each start time over
 the titles. Now opens just after the logos, with room for what has been shown.
 
+A live game's clock is in minutes and seconds wherever its score is shown (the lists, the game's page, the match
+centre, the TV guide's sport rows, the player's tile and small window), going on second by second; the notification
+and the widget tick it with Android's own clock under the hour, and show the drawn clock after it (Android's turns
+into hours there).
+
+The scoreboard while you watch (on in the player; Options, Scoreboard): the channel's game over the picture, read
+every 15 seconds and shown as the channel shows it. The channel's delay (the alerts' "It's just happened" or its
+chips) holds the score and the clock back, so the score changes as the goal goes in on the screen; once the channel's
+own clock has been seen turning a minute, it keeps time with that to the second. On a game it finds the channel's own
+scoreboard on the picture (still edges where the picture moves, its clock's digits flipping) and covers it at the
+same size: one row when it is wide, two when it is nearer square. On an F1 channel it shows the session in step the
+same way: the race's lap, practice's time left, qualifying's part with its time left, and the first three. On any
+other channel, or a film, it shows a followed club's game on now. Goals and the other football alerts, F1 and other
+sport, and breaking news (BBC News's and BBC Sport's new lead stories) drop from under it, each switched on or off
+there or in Settings. It can sit over other apps too (Settings, or the player's Options: Android's "Display over
+other apps" is asked for), dragged where it suits, tap for the next game, hold to stop, with how far behind that
+app's picture runs set in Settings.
+
 Subtitles (CC in the film's player): the film's or episode's own, from your playlist's stream, come first, in the
 languages you choose (Settings, Subtitles, in order). When it has none, OpenSubtitles.com is looked in by the title's
 TMDB id (the series' with its season and episode), best first: your languages, the ones that fit the copy playing (its

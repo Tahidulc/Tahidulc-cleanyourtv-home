@@ -40,8 +40,15 @@ public final class GameClock {
 
     /** The words for a clock of total seconds in a period (pure: for the tests). */
     static String[] show(double total, int period, String displayClock) {
-        int end = period <= 1 ? 45 : period == 2 ? 90 : period == 3 ? 105 : 120;
         int whole = (int) total;
+        // No period given: the one the clock is in, the minutes added taken off first ("45'+2'" is still the first half).
+        if (period <= 0) {
+            int plus = Math.max(0, added(displayClock)), base = whole - plus * 60;
+            // In added time the base is the period's end itself (45:00 in "45'+2'"); otherwise past it is the next.
+            int in = plus > 0 ? 1 : 0;
+            period = base < 45 * 60 + in ? 1 : base < 90 * 60 + in ? 2 : base < 105 * 60 + in ? 3 : 4;
+        }
+        int end = period <= 1 ? 45 : period == 2 ? 90 : period == 3 ? 105 : 120;
         if (whole >= end * 60) {
             int added = added(displayClock);
             if (added <= 0) added = Math.max(1, (whole - end * 60) / 60 + 1);

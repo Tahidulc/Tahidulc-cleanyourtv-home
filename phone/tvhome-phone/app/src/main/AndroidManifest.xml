@@ -12,6 +12,8 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- The scoreboard over other apps, when switched on (FloatService). -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <!-- Alerts (phone-sports): an exact alarm fifteen minutes before a followed kick-off, which also lets the live
          watcher start from the background on Android 12 and later. -->
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" android:maxSdkVersion="32" />
@@ -81,6 +83,11 @@
             android:exported="false"
             android:foregroundServiceType="dataSync" />
 
+        <!-- The scoreboard over other apps, while switched on: the live scores read every 15 seconds. -->
+        <service
+            android:name=".live.FloatService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
         <!-- Alerts (phone-sports): the kick-off alarm, and a game's own page. -->
         <receiver android:name=".sports.AlarmReceiver" android:exported="false" />
         <receiver android:name=".sports.MuteReceiver" android:exported="false" />

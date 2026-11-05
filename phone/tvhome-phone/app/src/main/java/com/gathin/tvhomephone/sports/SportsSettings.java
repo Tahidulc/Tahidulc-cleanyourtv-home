@@ -178,6 +178,9 @@ public final class SportsSettings {
         }
         col.addView(timing, Ui.matchWrap());
 
+        // The scoreboard while something is watched: over the player's picture and over other apps.
+        if (host.getActivity() != null) com.gathin.tvhomephone.live.BoardSettings.add(host.getActivity(), col);
+
         Map<String, List<String[]>> groups = new LinkedHashMap<>();
         for (String g : Kinds.GROUPS) groups.put(g, new ArrayList<>());
         for (String[] k : Kinds.ALL) groups.get(k[3]).add(k);

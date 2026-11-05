@@ -249,7 +249,8 @@ public final class MatchPanel extends LinearLayout {
     private void paint() {
         Context c = getContext();
         if (game == null) return;
-        score.setText(line(game));
+        Game shown = game;
+        LiveClock.bind(score, shown, w -> line(shown));
         List<Integer> have = available();
         if (!have.contains(tab)) tab = have.isEmpty() ? -1 : have.contains(GameTabs.STATS) && game.state == Game.LIVE
                 ? GameTabs.STATS : have.get(0);
@@ -303,7 +304,7 @@ public final class MatchPanel extends LinearLayout {
             return g.homeName + " v " + g.awayName + " · " + java.time.Instant.ofEpochMilli(g.kickoff).atZone(ZoneId.systemDefault())
                     .format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"));
         }
-        String when = g.state == Game.POST ? "FT" : g.halftime ? "HT" : g.detail == null ? "" : g.detail;
+        String when = LiveClock.words(g, System.currentTimeMillis());
         return g.homeName + " " + g.score() + " " + g.awayName + (when.isEmpty() ? "" : " · " + when);
     }
 

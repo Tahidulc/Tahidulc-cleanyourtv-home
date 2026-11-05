@@ -63,6 +63,8 @@ public final class VodPlayerActivity extends AppCompatActivity {
     private java.util.List<Vod.Episode> episodes = new java.util.ArrayList<>();
     private final android.os.Handler h = new android.os.Handler(android.os.Looper.getMainLooper());
     private FrameLayout root;
+    /** The scoreboard and its alerts over the film. */
+    private ScoreBoard board;
     private PlayerView view;
     private TextView sleepPill, sourcesPill, ccPill;
     /** Its subtitles: the stream's own, or a file from OpenSubtitles. */
@@ -212,9 +214,36 @@ public final class VodPlayerActivity extends AppCompatActivity {
         sp.rightMargin = sp.topMargin = Ui.dp(this, 16);
         root.addView(topRight, sp);
         showSleep();
+        // The followed clubs' game on now and the alerts, over the film (ScoreBoard), out of the controls' way.
+        board = new ScoreBoard(this, new ScoreBoard.Source() {
+            @Override public Channel channel() { return null; }
+
+            @Override public com.gathin.tvhomephone.sports.Game game() { return null; }
+
+            @Override public long behindMs(boolean channelGame) { return 0; }
+
+            @Override public void tapped() {
+                view.showController();
+            }
+
+            @Override public void held() {
+                ScoreBoard.setOn(VodPlayerActivity.this, false);
+                board.stop();
+                board.view.setVisibility(View.GONE);
+                android.widget.Toast.makeText(VodPlayerActivity.this, com.gathin.tvhomephone.R.string.live4_board_off, android.widget.Toast.LENGTH_LONG).show();
+            }
+
+            @Override public void alertTapped(com.gathin.tvhomephone.sports.Events.Alert a) {}
+        });
+        FrameLayout.LayoutParams bp = new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.START);
+        bp.leftMargin = Ui.dp(this, 22);
+        bp.topMargin = Ui.dp(this, 18);
+        root.addView(board.view, 1, bp);
+        board.view.setVisibility(ScoreBoard.on(this) ? View.VISIBLE : View.GONE);
         view.setControllerVisibilityListener((PlayerView.ControllerVisibilityListener) v -> {
             infoBar.setVisibility(v);
             topRight.setVisibility(v);
+            board.view.setVisibility(v == View.VISIBLE || !ScoreBoard.on(this) ? View.GONE : View.VISIBLE);
         });
         setRequestedOrientation(TURNS[Math.max(0, Math.min(TURNS.length - 1, look().getInt("turn", 0)))]);
         setContentView(root);
@@ -426,6 +455,7 @@ public final class VodPlayerActivity extends AppCompatActivity {
 
     @Override public void onPictureInPictureModeChanged(boolean inPip, @NonNull android.content.res.Configuration cfg) {
         super.onPictureInPictureModeChanged(inPip, cfg);
+        if (board != null) board.view.setVisibility(inPip || !ScoreBoard.on(this) ? View.GONE : View.VISIBLE);
         if (inPip) {
             view.hideController();
             view.setUseController(false);
@@ -465,8 +495,14 @@ public final class VodPlayerActivity extends AppCompatActivity {
         return false;
     }
 
+    @Override protected void onStart() {
+        super.onStart();
+        if (board != null && ScoreBoard.on(this)) board.start();
+    }
+
     @Override protected void onStop() {
         super.onStop();
+        if (board != null && !isInPictureInPictureMode()) board.stop();
         if (player == null || isInPictureInPictureMode()) return;
         // Where it was left: kept unless it was nearly over.
         long pos = player.getCurrentPosition(), dur = player.getDuration();

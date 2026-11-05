@@ -22,6 +22,7 @@ import com.gathin.tvhomephone.App;
 import com.gathin.tvhomephone.R;
 import com.gathin.tvhomephone.sports.Events;
 import com.gathin.tvhomephone.sports.Game;
+import com.gathin.tvhomephone.sports.LiveClock;
 import com.gathin.tvhomephone.sync.Tvs;
 
 import java.util.ArrayList;
@@ -84,11 +85,20 @@ final class PlayerExtras implements LiveAlerts.Listener {
     void start() {
         LiveAlerts.addListener(this);
         h.post(everySecond);
+        if (overlay != null) overlay.start();
     }
 
     void stop() {
         LiveAlerts.removeListener(this);
         h.removeCallbacksAndMessages(null);
+        if (overlay != null) overlay.stop();
+    }
+
+    /** The scoreboard over the picture, with its alerts (ScoreOverlay). */
+    private ScoreOverlay overlay;
+
+    void overlay(ScoreOverlay o) {
+        overlay = o;
     }
 
     /** The insets of the screen's cutout and bars, for the parts along its edges. */
@@ -98,6 +108,7 @@ final class PlayerExtras implements LiveAlerts.Listener {
         ((FrameLayout.LayoutParams) banner.getLayoutParams()).topMargin = Ui.dp(a, 12) + topInset;
         ((FrameLayout.LayoutParams) lockBox.getLayoutParams()).leftMargin = Ui.dp(a, 18) + left;
         ((FrameLayout.LayoutParams) lockBox.getLayoutParams()).bottomMargin = Ui.dp(a, 18) + bottom;
+        if (overlay != null) overlay.inset(left, topInset);
     }
 
     // ---- building ---------------------------------------------------------------------------------------------
@@ -339,6 +350,7 @@ final class PlayerExtras implements LiveAlerts.Listener {
     void game(Game g) {
         Channel ch = host.current();
         LiveAlerts.watching(LiveAlerts.id(g), ch == null ? null : ch.key);
+        if (overlay != null) overlay.game(g);
     }
 
     @Override public void onHeldChanged() {
@@ -357,7 +369,8 @@ final class PlayerExtras implements LiveAlerts.Listener {
     }
 
     @Override public void onGoalElsewhere(Events.Alert alert) {
-        if (inPip || a.isFinishing()) return;
+        // The scoreboard over the picture drops it instead (tap it to switch).
+        if (inPip || a.isFinishing() || (overlay != null && overlay.on())) return;
         bannerAlert = alert;
         bannerText.setText(alert.title + (alert.text == null || alert.text.isEmpty() ? "" : "\n" + alert.text.split("\n")[0]));
         fadeIn(banner);
@@ -384,6 +397,7 @@ final class PlayerExtras implements LiveAlerts.Listener {
 
     void pip(boolean in) {
         inPip = in;
+        if (overlay != null) overlay.pip(in);
         if (in) {
             if (match != null) {
                 root.removeView(match);
@@ -407,7 +421,8 @@ final class PlayerExtras implements LiveAlerts.Listener {
         }
         String home = g.home == null || g.home.isEmpty() ? g.homeName : g.home, away = g.away == null || g.away.isEmpty() ? g.awayName : g.away;
         String mid = g.state == Game.PRE ? "v" : g.score();
-        String clock = g.state == Game.POST ? "FT" : g.halftime ? "HT" : g.state == Game.LIVE ? g.detail : "";
+        // The clock in minutes and seconds (this is drawn again every second).
+        String clock = LiveClock.words(g, System.currentTimeMillis());
         pipText.setText(home + "  " + mid + "  " + away + (clock == null || clock.isEmpty() ? "" : "  · " + clock));
         pipBug.setVisibility(View.VISIBLE);
     }
@@ -575,10 +590,12 @@ final class PlayerExtras implements LiveAlerts.Listener {
         minus.setOnClickListener(v -> {
             LiveAlerts.setDelay(c, key, LiveAlerts.delay(c, key) - 5);
             value.setText(LiveAlerts.delay(c, key) + " s behind");
+            if (overlay != null) overlay.delayChanged();
         });
         plus.setOnClickListener(v -> {
             LiveAlerts.setDelay(c, key, LiveAlerts.delay(c, key) + 5);
             value.setText(LiveAlerts.delay(c, key) + " s behind");
+            if (overlay != null) overlay.delayChanged();
         });
         addChip(al, minus);
         addChip(al, value);
@@ -588,6 +605,7 @@ final class PlayerExtras implements LiveAlerts.Listener {
             int d = LiveAlerts.justHappened(c);
             if (d < 0) Toast.makeText(c, R.string.live3_just_happened_none, Toast.LENGTH_LONG).show();
             else value.setText(d + " s behind");
+            if (overlay != null) overlay.delayChanged();
         });
         // On a line of its own: the one to find at a glance as the goal goes in.
         LinearLayout justRow = new LinearLayout(c);
@@ -596,6 +614,34 @@ final class PlayerExtras implements LiveAlerts.Listener {
         box.addView(justRow);
         note(c, box, "Tap “It's just happened” as you see a goal, a card or the kick-off: this channel's alerts then wait until your stream shows them.");
         toggle(c, box, a.getString(R.string.live3_hold), LiveAlerts.holding(c), on -> LiveAlerts.setHolding(c, on));
+
+        // The scoreboard over the picture: on, over the channel's own, which alerts drop from it, over other apps.
+        if (overlay != null) {
+            chipRow(c, box, R.string.live4_board);
+            toggle(c, box, a.getString(R.string.live4_board_on), overlay.on(), overlay::set);
+            toggle(c, box, a.getString(R.string.live4_board_cover), ScoreBoard.cover(c), on -> {
+                ScoreBoard.setCover(c, on);
+                overlay.game(host.game());
+            });
+            LinearLayout drops = chipRow(c, box, R.string.live4_board_alerts);
+            String[][] groups = {{ScoreBoard.FOOTBALL, a.getString(R.string.live4_alerts_football)},
+                    {ScoreBoard.SPORT, a.getString(R.string.live4_alerts_sport)}, {ScoreBoard.NEWS, a.getString(R.string.live4_alerts_news)}};
+            for (String[] g : groups) {
+                TextView t = Ui.guideChip(c, g[1], ScoreBoard.shows(c, g[0]));
+                t.setOnClickListener(v -> {
+                    boolean now = !ScoreBoard.shows(c, g[0]);
+                    ScoreBoard.setShows(c, g[0], now);
+                    Ui.styleChip(c, t, now);
+                });
+                addChip(drops, t);
+            }
+            overlay.options(c, box, host::closeSheet);
+            action(c, box, R.drawable.live_ic_pip, a.getString(FloatService.on(c) ? R.string.live4_float_stop : R.string.live4_float_start), () -> {
+                host.closeSheet();
+                FloatService.toggle(a);
+            });
+            note(c, box, a.getString(R.string.live4_board_note));
+        }
 
         // The rewind.
         LinearLayout rw = chipRow(c, box, R.string.live3_rewind);

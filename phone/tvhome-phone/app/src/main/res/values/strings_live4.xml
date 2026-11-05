@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The scoreboard over the picture and over other apps (ScoreOverlay, ScoreBoard, FloatService). -->
+<resources>
+    <string name="live4_board">Scoreboard</string>
+    <string name="live4_board_on">Scoreboard on the picture</string>
+    <string name="live4_board_cover">Cover the channel\'s own scoreboard</string>
+    <string name="live4_board_alerts">Alerts on it</string>
+    <string name="live4_alerts_football">Goals and football</string>
+    <string name="live4_alerts_sport">F1 and other sport</string>
+    <string name="live4_alerts_news">Breaking news</string>
+    <string name="live4_board_note">Its score and clock follow this channel\'s picture: the delay above (or “It\'s just happened”) holds them back, and once the channel\'s own clock is seen turning a minute it keeps time with it to the second. Tap it for the match centre; hold it to put it away.</string>
+    <string name="live4_board_off">Scoreboard put away: Options (⋮) brings it back</string>
+    <string name="live4_board_state_off">The scoreboard is off.</string>
+    <string name="live4_board_state_matched">Keeping time with the channel\'s own clock, to the second.</string>
+    <string name="live4_board_state_found">Over the channel\'s own scoreboard; reading its clock to keep time with it.</string>
+    <string name="live4_board_state_delay">In step with the picture: %1$d s behind the live scores.</string>
+    <string name="live4_float_start">Scoreboard over other apps</string>
+    <string name="live4_float_stop">Stop the scoreboard over other apps</string>
+    <string name="live4_float_allow">Allow Homefield to display over other apps, then switch it on again</string>
+    <string name="live4_float_started">Scoreboard over your apps: drag it where you like, tap it for the next game, hold it to stop</string>
+    <string name="live4_float_stopped">Scoreboard over other apps stopped</string>
+    <string name="live4_float_title">Scoreboard over your apps</string>
+    <string name="live4_float_line">Goals, other sport and breaking news while you watch</string>
+    <string name="live4_float_stop_short">Stop</string>
+    <string name="live4_settings_title">Scoreboard while you watch</string>
+    <string name="live4_settings_line">A scoreboard over the picture in Homefield\'s player, in step with what the channel shows, and the alerts dropping from it. It can sit over other apps too.</string>
+    <string name="live4_other_delay">Other apps\' picture runs behind the live scores by</string>
+    <string name="live4_seconds">%1$d s</string>
+</resources>

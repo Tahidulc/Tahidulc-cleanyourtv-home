@@ -1553,6 +1553,16 @@ public class PlayerActivity extends AppCompatActivity {
                 if (sheet != null) sheet.dismiss();
             }
         });
+        // The scoreboard over the picture, under the tile and the buttons.
+        extras.overlay(new ScoreOverlay(this, root, video, new ScoreOverlay.Host() {
+            @Override public Channel current() { return cur; }
+
+            @Override public com.gathin.tvhomephone.sports.Game game() { return info == null ? null : info.game; }
+
+            @Override public void openMatch() { extras.openMatch(); }
+
+            @Override public void play(Channel ch) { switchTo(ch); }
+        }));
         ViewCompat.setOnApplyWindowInsetsListener(root, (v, insets) -> {
             cut = insets.getInsets(WindowInsetsCompat.Type.displayCutout());
             clearCutout();
