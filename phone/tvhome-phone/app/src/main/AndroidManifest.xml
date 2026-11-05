@@ -61,6 +61,13 @@
             android:screenOrientation="sensorLandscape"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden" />
 
+        <!-- Two games at once, on the phone on its side. -->
+        <activity
+            android:name=".live.TwoGamesActivity"
+            android:exported="false"
+            android:screenOrientation="sensorLandscape"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden" />
+
         <activity
             android:name=".live.PlayerActivity"
             android:exported="false"

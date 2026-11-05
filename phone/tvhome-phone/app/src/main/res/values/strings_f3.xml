@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Two games at once (TwoGamesActivity) -->
+    <string name="two_sound">Sound: %1$s</string>
+    <string name="two_swap">Swap sides</string>
+    <string name="two_big_small">Big + small</string>
+    <string name="two_side_by_side">Side by side</string>
+    <string name="two_change">Change</string>
+    <string name="two_one_game">One game</string>
+    <string name="two_pick_title">Pick the second game</string>
+    <string name="two_pick_also">Also showing this game</string>
+    <string name="two_pick_all">All channels</string>
+    <string name="two_pick_empty">Pick a second game</string>
+    <string name="two_not_playing">Not playing · tap to try again</string>
+    <string name="two_limit_alt">%1$s lets one stream play at a time. Watch %2$s from %3$s instead?</string>
+    <string name="two_limit_none">%1$s lets one stream play at a time, so a second one may stop the first.</string>
+    <string name="two_use">Use %1$s</string>
+    <string name="two_try_anyway">Try anyway</string>
+    <string name="two_cancel">Cancel</string>
+    <string name="two_note_each">One connection from each playlist</string>
+    <string name="two_note_same">Both from %1$s · uses %2$d of its %3$d connections</string>
+    <string name="two_note_same_unknown">Both from %1$s · two connections</string>
+    <string name="two_sound_here">Sound from this game</string>
+    <string name="two_muted">This game is muted</string>
+    <string name="two_watch_named">Watch %1$s beside it</string>
+</resources>

@@ -210,7 +210,7 @@ public class SportsFragment extends Fragment {
      * One line of a table: {rank, crest, club, P, W, D, L, GD, Pts}. Narrow number columns and the club's name cut short
      * to fit a phone upright; a little more room on a tablet.
      */
-    private static LinearLayout tableRow(Context c, String[] cells, boolean mine, boolean head) {
+    static LinearLayout tableRow(Context c, String[] cells, boolean mine, boolean head) {
         boolean wide = Ui.wide(c);
         int num = Ui.dp(c, wide ? 38 : 24), gdW = Ui.dp(c, wide ? 46 : 32), ptsW = Ui.dp(c, wide ? 48 : 34);
         float small = wide ? 14 : 13, big = wide ? 15 : 14;
