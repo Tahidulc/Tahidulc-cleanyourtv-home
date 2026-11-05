@@ -36,13 +36,18 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * A film's or series' page, as the TVs' title panel: its picture and logo, the line under it, where it streams in the
- * UK, what it's about, then Play (the licensed app on this phone that carries it), Play on TV, My list, How was it?,
- * the trailer, Film night (films) or the Episode map (series), and the cast.
+ * A film's or series' page, as the TVs' title panel: its picture and logo, the line under it, which of the family's
+ * playlists has it, what it's about, then Play (from those playlists only: nothing else is looked for and no other app
+ * is opened), My list, How was it?, the trailer, Film night (films) or the Episode map (series), and the cast.
  */
 public class TitleActivity extends AppCompatActivity {
     private Title t;
     private JSONObject details;
+    /** The line saying which playlists have it; what was found there (null: not looked yet, or none). */
+    private TextView where;
+    private com.gathin.tvhomephone.live.Vod.Item found;
+    private List<com.gathin.tvhomephone.live.Vod.Episode> foundEps;
+    private boolean looked, looking;
     private LinearLayout col, buttons;
     private MaterialButton listButton, rateButton, nightButton;
 
@@ -102,9 +107,10 @@ public class TitleActivity extends AppCompatActivity {
         TextView meta = Ui.text(this, "", 14, Ui.SOFT, false);
         meta.setPadding(0, Ui.dp(this, 6), 0, 0);
         info.addView(meta);
-        TextView where = Ui.text(this, "", 14, 0xFFFFFFFF, true);
+        where = Ui.text(this, "Looking in your playlists…", 14, 0xFFFFFFFF, true);
         where.setPadding(0, Ui.dp(this, 6), 0, 0);
         info.addView(where);
+        lookInPlaylists(null);
         TextView overview = Ui.text(this, "", 15, 0xEEFFFFFF, false);
         overview.setPadding(0, Ui.dp(this, 10), 0, Ui.dp(this, 4));
         overview.setLineSpacing(0, 1.15f);
@@ -147,7 +153,9 @@ public class TitleActivity extends AppCompatActivity {
                     if (t.title.isEmpty()) t.title = full.title;
                 }
                 meta.setText(metaLine(got));
-                where.setText(Providers.where(Tmdb.providersGb(got)));
+                // Its original title too (a foreign film's own name), when the first look found nothing.
+                String original = got.optString(t.tv ? "original_name" : "original_title", "");
+                if (looked && found == null && !original.isEmpty() && !original.equalsIgnoreCase(t.title)) lookInPlaylists(null);
                 overview.setText(got.optString("overview"));
                 String logoPath = logo(got);
                 if (logoPath != null) {
@@ -165,7 +173,6 @@ public class TitleActivity extends AppCompatActivity {
     private void addButtons() {
         buttons.removeAllViews();
         buttons.addView(Ui.pill(this, "▶  Play", true, v -> play()), Ui.margins(Ui.wrap(), this, 0, 0, 8, 0));
-        if (Tvs.paired(this)) buttons.addView(Ui.pill(this, "Play on TV", false, v -> playOnTv()), Ui.margins(Ui.wrap(), this, 0, 0, 8, 0));
         listButton = Ui.pill(this, "", false, v -> toggleList());
         buttons.addView(listButton, Ui.margins(Ui.wrap(), this, 0, 0, 8, 0));
         rateButton = Ui.pill(this, "", false, v -> rate());
@@ -192,41 +199,22 @@ public class TitleActivity extends AppCompatActivity {
         if (listButton != null) paintButtons();
     }
 
+    /** Play: from the family's own playlists only (a film at once, a series by season and episode); nothing else. */
     private void play() {
-        JSONObject gb = Tmdb.providersGb(details);
-        if (details == null && !Tmdb.ready(this)) {
-            Toast.makeText(this, "Pair with a TV in Settings first", Toast.LENGTH_SHORT).show();
+        if (looked && !looking) {
+            playFound(null);
             return;
         }
-        // On one of this phone's streaming apps (where Debrid Stream would open it): from the family's own playlist when
-        // it has it, played here; Debrid Stream (or the app) as before when it hasn't.
-        Providers.Choice onApps = Providers.choose(gb, t.title, t.id, t.tv, Providers.installedOn(this));
-        if ("stream".equals(onApps.kind) && onApps.pkg != null && !triedPlaylist) {
-            fromPlaylist(this::play);
-            return;
-        }
-        triedPlaylist = false;
-        Providers.Choice ch = Providers.choose(this, gb, t.title, t.id, t.tv);
-        if (ch.kind.equals("stream") && ch.pkg != null) {
-            // On one of this phone's apps but Debrid Stream isn't here: asks (Play on TV goes through Debrid Stream).
-            Providers.play(this, ch, Tvs.paired(this) ? this::playOnTv : null);
-            return;
-        }
-        String how = ch.kind.equals("debrid") ? "Opening in Debrid Stream" : ch.kind.equals("stream") ? "Opening " + ch.name
-                : ch.kind.equals("store") ? "Not streaming: to rent or buy on " + ch.name : "Where to watch it";
-        Toast.makeText(this, how, Toast.LENGTH_SHORT).show();
-        Providers.open(this, ch);
+        Toast.makeText(this, "Looking in your playlists…", Toast.LENGTH_SHORT).show();
+        lookInPlaylists(() -> playFound(null));
     }
 
-    /** Play already looked in the playlist for this title and found nothing: it goes on to Debrid Stream (or the app). */
-    private boolean triedPlaylist;
-
     /**
-     * The title from the family's own playlist (Vod): a film plays at once, a series asks which season and episode.
-     * notThere runs when the playlist has no playlist, or not this title.
+     * Looks for it in the family's own playlists (Vod: every playlist in use, every version), off the main thread; the
+     * line under the title says which have it; then (when given) runs.
      */
-    private void fromPlaylist(Runnable notThere) {
-        Toast.makeText(this, "Looking in your playlist…", Toast.LENGTH_SHORT).show();
+    private void lookInPlaylists(Runnable then) {
+        looking = true;
         String original = details == null ? "" : details.optString(t.tv ? "original_name" : "original_title", "");
         android.content.Context app = getApplicationContext();
         com.gathin.tvhomephone.App.io.execute(() -> {
@@ -235,19 +223,76 @@ public class TitleActivity extends AppCompatActivity {
                     ? com.gathin.tvhomephone.live.Vod.episodes(app, it) : null;
             runOnUiThread(() -> {
                 if (isFinishing()) return;
-                if (it == null || ("series".equals(it.kind) && (eps == null || eps.isEmpty()))) {
-                    triedPlaylist = true;
-                    notThere.run();
-                    return;
-                }
-                if (!"series".equals(it.kind)) {
-                    chooseSource(it.plays(), plays -> startActivity(com.gathin.tvhomephone.live.VodPlayerActivity.intent(this, plays, t.title,
-                            com.gathin.tvhomephone.live.VodPlayerActivity.meta(t.title, t.id, false, t.poster, 0, 0, ""), "")));
-                    return;
-                }
-                pickEpisode(eps);
+                boolean has = it != null && (!"series".equals(it.kind) || (eps != null && !eps.isEmpty()));
+                found = has ? it : null;
+                foundEps = has ? eps : null;
+                looked = true;
+                looking = false;
+                if (where != null) where.setText(whereWords());
+                if (then != null) then.run();
             });
         });
+    }
+
+    /** "In your playlists: Main · 4K, Backup · HD", the seasons for a series, or that none has it. */
+    private String whereWords() {
+        if (found == null) return "Not in your playlists";
+        List<String> names = new ArrayList<>();
+        for (String[] p : found.plays()) {
+            String l = p.length > 3 && p[3] != null ? p[3] : "";
+            if (!l.isEmpty() && !names.contains(l)) names.add(l);
+        }
+        String line = names.isEmpty() ? "In your playlist" : "In your playlists: " + String.join(", ", names);
+        if (foundEps != null && !foundEps.isEmpty()) {
+            java.util.Set<Integer> seasons = new java.util.TreeSet<>();
+            for (com.gathin.tvhomephone.live.Vod.Episode e : foundEps) seasons.add(e.season);
+            line += " · " + foundEps.size() + (foundEps.size() == 1 ? " episode" : " episodes")
+                    + (seasons.size() > 1 ? " in " + seasons.size() + " seasons" : "");
+        }
+        return line;
+    }
+
+    /** What was found played: a film (its source chosen when there are several), a series' season and episode. */
+    private void playFound(int[] episode) {
+        if (found == null) {
+            new MaterialAlertDialogBuilder(this).setTitle("Not in your playlists")
+                    .setMessage("Homefield only plays films and series from your own playlists, and none of them has "
+                            + t.title + ". Add a playlist that has it in Settings, Live TV.")
+                    .setPositiveButton("OK", null).show();
+            return;
+        }
+        if (!"series".equals(found.kind)) {
+            chooseSource(found.plays(), plays -> startActivity(com.gathin.tvhomephone.live.VodPlayerActivity.intent(this, plays, t.title,
+                    com.gathin.tvhomephone.live.VodPlayerActivity.meta(t.title, t.id, false, t.poster, 0, 0, ""), "")));
+            return;
+        }
+        if (episode != null) {
+            for (com.gathin.tvhomephone.live.Vod.Episode e : foundEps) {
+                if (e.season == episode[0] && e.number == episode[1]) {
+                    playEpisode(e, foundEps);
+                    return;
+                }
+            }
+            Toast.makeText(this, "S" + episode[0] + " E" + episode[1] + " isn't in your playlists", Toast.LENGTH_LONG).show();
+            return;
+        }
+        pickEpisode(foundEps);
+    }
+
+    /** One episode (from the Episode map), from the playlists only. */
+    void playEpisode(int season, int number) {
+        int[] ep = {season, number};
+        if (looked && !looking) playFound(ep);
+        else lookInPlaylists(() -> playFound(ep));
+    }
+
+    private void playEpisode(com.gathin.tvhomephone.live.Vod.Episode e, List<com.gathin.tvhomephone.live.Vod.Episode> eps) {
+        int season = e.season;
+        // With the whole series' episodes, for the next one to follow on.
+        chooseSource(e.plays(), plays -> startActivity(com.gathin.tvhomephone.live.VodPlayerActivity.intent(this, plays,
+                t.title + (season > 0 ? " · S" + season : "") + " E" + e.number,
+                com.gathin.tvhomephone.live.VodPlayerActivity.meta(t.title, t.id, true, t.poster, e.season, e.number, e.title),
+                com.gathin.tvhomephone.live.Vod.episodesJson(eps))));
     }
 
     /** A series from the playlist: its season, then its episode. */
@@ -274,14 +319,7 @@ public class TitleActivity extends AppCompatActivity {
             names[i] = "Episode " + e.number + (own.isEmpty() || own.equalsIgnoreCase(t.title) ? "" : " · " + own);
         }
         new MaterialAlertDialogBuilder(this).setTitle(season > 0 ? t.title + " · Season " + season : t.title)
-                .setItems(names, (d, w) -> {
-                    com.gathin.tvhomephone.live.Vod.Episode e = in.get(w);
-                    // With the whole series' episodes, for the next one to follow on.
-                    chooseSource(e.plays(), plays -> startActivity(com.gathin.tvhomephone.live.VodPlayerActivity.intent(this, plays,
-                            t.title + (season > 0 ? " · S" + season : "") + " E" + e.number,
-                            com.gathin.tvhomephone.live.VodPlayerActivity.meta(t.title, t.id, true, t.poster, e.season, e.number, e.title),
-                            com.gathin.tvhomephone.live.Vod.episodesJson(eps))));
-                }).show();
+                .setItems(names, (d, w) -> playEpisode(in.get(w), eps)).show();
     }
 
     private interface Chosen {
@@ -306,23 +344,6 @@ public class TitleActivity extends AppCompatActivity {
         new MaterialAlertDialogBuilder(this).setTitle("Choose a source")
                 .setItems(names, (d, w) -> chosen.play(com.gathin.tvhomephone.live.VodPlayerActivity.chosenFirst(plays, w)))
                 .show();
-    }
-
-    private void playOnTv() {
-        List<String> tvs = Tvs.names(this);
-        if (tvs.isEmpty()) return;
-        if (tvs.size() == 1) {
-            sendTo(tvs.get(0));
-            return;
-        }
-        new MaterialAlertDialogBuilder(this).setTitle("Play on which TV?")
-                .setItems(tvs.toArray(new String[0]), (d, w) -> sendTo(tvs.get(w))).show();
-    }
-
-    private void sendTo(String tv) {
-        Toast.makeText(this, "Opening on " + tv + "…", Toast.LENGTH_SHORT).show();
-        Tvs.playOnTv(this, tv, t.id, t.tv, t.title, (ok, err) ->
-                Toast.makeText(this, err != null ? err : "On " + tv + " now", Toast.LENGTH_SHORT).show());
     }
 
     private void toggleList() {

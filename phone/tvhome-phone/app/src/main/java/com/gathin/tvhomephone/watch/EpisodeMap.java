@@ -211,10 +211,11 @@ final class EpisodeMap {
         String title = "S" + season + " E" + e.optInt("episode_number") + " · " + e.optString("name");
         String body = aired ? e.optString("overview") : "Out " + (air == null ? "on a date to be announced" : Plan.date(air)) + ".";
         MaterialAlertDialogBuilder b = new MaterialAlertDialogBuilder(a).setTitle(title).setMessage(body.isEmpty() ? " " : body);
-        if (aired) b.setPositiveButton("Play", (d, w) -> {
-            Providers.Choice ch = Providers.choose(a, Tmdb.providersGb(details), t.title, t.id, true);
-            Providers.play(a, ch, null);
-        });
+        // From the family's own playlists only (the title page looks there).
+        if (aired && a instanceof TitleActivity) {
+            int number = e.optInt("episode_number");
+            b.setPositiveButton("Play", (d, w) -> ((TitleActivity) a).playEpisode(season, number));
+        }
         b.setNegativeButton("Close", null).show();
     }
 

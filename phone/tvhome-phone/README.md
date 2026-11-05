@@ -41,12 +41,12 @@ pulsing, then every moment by its minute), Line-ups (both elevens on one pitch b
 under it, with the players' photos) and Stats in each side's colours. The line-ups come as both elevens on a pitch,
 an F1 result as its podium, and "Following live" as the scoreboards with the first game's clock going on.
 
-Titles open in the licensed streaming app that carries them in the UK (or its store), on the phone or, with Play on TV,
-on a TV. A title on one of the phone's streaming apps plays from your own playlist when it has it (its films and
-series, Vod: matched by TMDB's id when the provider gives one, else by name and year; a series asks for its season
-and episode) in a full-screen player that remembers where you stopped, and only otherwise through Debrid Stream or the
-app. Live TV and those films and series play only the playlists you give it; the app ships with no channels or
-sources. The tabs are Home, Sports, Live TV, Watch and Settings.
+Films and series play only from your own playlists: Play looks in every playlist in use (its films and series, Vod:
+matched by TMDB's id when the provider gives one, else by name and year; a series asks for its season and episode) and
+plays it in the app; the line under the title says which playlists have it. Nothing else is looked for and no other
+app is opened: when none of your playlists has a title, it says so. Live TV and those films and series play only the
+playlists you give it; the app ships with no channels or sources. The tabs are Home, Sports, Live TV, Watch and
+Settings.
 
 You can add more than one playlist (Settings, Live TV: Add playlist, an M3U address or an Xtream Codes login, with a
 name). Each shows when it runs out, as its provider says (an Xtream account, or an M3U address from one: green, amber
