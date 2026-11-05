@@ -12,9 +12,10 @@ form or the game so far), Cinematic for a film, Card for a series' episode and G
 the channel's logo, and facts in turn while a game is on (its numbers, the table, each side's run, earlier meetings,
 top scorers). The player's options can set one style for everything, or the guide panel as before.
 
-The scores box is a broadcaster's scoreboard: the competition's logo on its own slanted block at the left, a silver
-bar with both clubs and the score in a red plate between them, and under it a tab with the clock in minutes and seconds
-(45:00 and +2 in added time), HT, FT or the kick-off time.
+The scores box is the TV's, as at first: the competition's logo on its navy block, each club's crest on its own white
+tile, and the blue middle with the score (or the kick-off time) and under it the clock live in minutes and seconds,
+going on second by second between ESPN's reads (67:23; 90:00 with +4 on a red chip in added time), or HT, FT or
+KICK-OFF.
 Full screen, the picture goes into a small window as you leave the app (from the guide too; the player's options turn
 that off), and a phone on its side stretches the picture to the screen. The info tile is Small at first (on its side a
 card at the foot's left, a little over half the width, so the game shows; upright, in the room under the picture),
