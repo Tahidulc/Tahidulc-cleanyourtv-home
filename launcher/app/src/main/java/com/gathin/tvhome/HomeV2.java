@@ -237,6 +237,12 @@ final class HomeV2 {
         if (matchPanel != null) matchPanel.show();
     }
 
+    /** adb only (--es open_sport players|season|planner): one of the Control Centre's sports cards. */
+    void openSport(String which) {
+        SportPanel p = "players".equals(which) ? playersPanel : "season".equals(which) ? seasonPanel : "planner".equals(which) ? plannerPanel : null;
+        if (p != null) p.show();
+    }
+
     /** adb only (--ez open_notifications true): the Control Centre's Notifications, as its tile opens them. */
     void openNotifications() {
         if (notifyPanel != null) notifyPanel.show();
@@ -740,6 +746,10 @@ final class HomeV2 {
     private NotifyPanel notifyPanel;
     /** Match mode: quiet but for one game, the lights with it, the alerts' timing (MatchPanel). */
     private MatchPanel matchPanel;
+    /** Sport's other cards: the players followed, the clubs' seasons, the weekend planner. */
+    private PlayersPanel playersPanel;
+    private SeasonPanel seasonPanel;
+    private PlannerPanel plannerPanel;
     /** A title's panel: OK held on a poster. */
     private TitlePanel titlePanel;
 
@@ -879,7 +889,17 @@ final class HomeV2 {
         // lights), and its alerts in step with the channel.
         matchPanel = new MatchPanel(this);
         items.add(new ControlCentre.Item("Match mode", R.drawable.ic_v2_sport, () -> MatchMode.words(a), () -> MatchMode.active(a),
-                () -> matchPanel.show()));
+                () -> matchPanel.show()).in("SPORT"));
+        // Players followed (their goals wherever they play), each club's season, and the weekend on both TVs.
+        playersPanel = new PlayersPanel(this);
+        items.add(new ControlCentre.Item("Follow players", R.drawable.ic_v2_sport, () -> PlayersPanel.describe(a), null,
+                () -> playersPanel.show()).in("SPORT"));
+        seasonPanel = new SeasonPanel(this);
+        items.add(new ControlCentre.Item("Your club's season", R.drawable.ic_chart, () -> SeasonPanel.describe(a), null,
+                () -> seasonPanel.show()).in("SPORT"));
+        plannerPanel = new PlannerPanel(this);
+        items.add(new ControlCentre.Item("Weekend planner", R.drawable.ic_v2_guide, () -> PlannerPanel.describe(a), null,
+                () -> plannerPanel.show()).in("SPORT"));
         // Notifications: Do not disturb (nothing pops up for a while but the doorbell), and the page with every switch
         // (on Home and over apps on or off, and each kind: goals, Goal Rush and the live table among them, the news).
         items.add(new ControlCentre.Item("Do not disturb", R.drawable.ic_moon, () -> NotifyPrefs.dndWords(a), () -> NotifyPrefs.dndOn(a),
@@ -1590,6 +1610,9 @@ final class HomeV2 {
         if (controlCentre != null) controlCentre.hide();
         if (notifyPanel != null) notifyPanel.hide();
         if (matchPanel != null) matchPanel.hide();
+        if (playersPanel != null) playersPanel.hide();
+        if (seasonPanel != null) seasonPanel.hide();
+        if (plannerPanel != null) plannerPanel.hide();
         TrailerReel.close();
         Surprise.close();
         EpisodeDice.close();
@@ -1630,6 +1653,8 @@ final class HomeV2 {
         if (match == null || !match.active() || zone == Z_MATCH) return;
         boolean busy = page != null || guide.isOpen() || (controlCentre != null && controlCentre.isOpen())
                 || (notifyPanel != null && notifyPanel.isOpen()) || (matchPanel != null && matchPanel.isOpen())
+                || (playersPanel != null && playersPanel.isOpen()) || (seasonPanel != null && seasonPanel.isOpen())
+                || (plannerPanel != null && plannerPanel.isOpen())
                 || (smartPanel != null && smartPanel.isOpen()) || (weatherPanel != null && weatherPanel.isOpen())
                 || (titlePanel != null && titlePanel.isOpen()) || (viewing != null && viewing.isOpen())
                 || (search != null && search.isOpen()) || Surprise.isOpen() || EpisodeDice.isOpen() || Recap.isOpen() || TrailerReel.isOpen()
@@ -1673,6 +1698,9 @@ final class HomeV2 {
         if (controlCentre != null && controlCentre.isOpen()) return controlCentre.key(e);
         if (notifyPanel != null && notifyPanel.isOpen()) return notifyPanel.key(e);
         if (matchPanel != null && matchPanel.isOpen()) return matchPanel.key(e);
+        if (playersPanel != null && playersPanel.isOpen()) return playersPanel.key(e);
+        if (seasonPanel != null && seasonPanel.isOpen()) return seasonPanel.key(e);
+        if (plannerPanel != null && plannerPanel.isOpen()) return plannerPanel.key(e);
         if (TrailerReel.isOpen()) return TrailerReel.key(e);
         if (Surprise.isOpen()) return Surprise.key(e);
         if (EpisodeDice.isOpen()) return EpisodeDice.key(e);

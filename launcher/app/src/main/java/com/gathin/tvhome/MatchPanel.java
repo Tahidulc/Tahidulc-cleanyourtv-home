@@ -245,6 +245,14 @@ final class MatchPanel {
         ask.words = () -> "A card asks for OK as the game kicks off on screen";
         ask.ok = () -> InStep.setAsking(c, !InStep.asking(c));
         add(list, 14, timing, ask);
+        Row hop = row("Half-time hop", true);
+        hop.on = () -> HalfTimeHop.on(c);
+        hop.words = () -> "Another game for the break, back for the second half";
+        hop.ok = () -> HalfTimeHop.setOn(c, !HalfTimeHop.on(c));
+        Row replay = row("See it again", false);
+        replay.words = () -> Replay.available(c) ? "On: OK on a goal's card goes back to it" : "Needs the TV's own debugging allowed once (the on-screen mouse)";
+        replay.ok = () -> { if (!Replay.available(c)) LocalAdb.check(c); };
+        add(list, 14, hop, replay);
         Row sooner = row("Pop-ups 5 s sooner", false);
         sooner.words = () -> "When the score shows before the picture does";
         sooner.ok = () -> InStep.nudge(c, -InStep.STEP_MS);

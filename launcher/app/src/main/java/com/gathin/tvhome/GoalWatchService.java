@@ -206,6 +206,16 @@ public class GoalWatchService extends Service {
                 d.first = name[0];
                 d.last = name[1];
                 d.line = minute + ("pen".equals(kind) ? " · penalty" : "og".equals(kind) ? " · own goal" : red ? " · sent off" : "");
+                // A player followed (Players): said under the name.
+                if (!red && !"og".equals(kind) && Players.scorer(this, g, new String[]{"", who, minute, side, kind}) != null) {
+                    d.line += " · a player you follow";
+                }
+                // The game watched, its goal come as it shows: OK goes back to see it again (Replay).
+                if (!red && g.state == 0 && Replay.available(this) && watched(g)) {
+                    long shownAt = System.currentTimeMillis();
+                    d.okWords = "to see it again";
+                    d.watch = () -> Replay.seeAgain(this, System.currentTimeMillis() - shownAt);
+                }
                 d.crest = home ? d.homeCrest : d.awayCrest;
                 try {
                     d.photo = playerPhoto(who, home ? g.homeName : g.awayName, kit);
@@ -1962,6 +1972,9 @@ public class GoalWatchService extends Service {
         if (kickoffReminders) all.addAll(Arrays.asList(LINEUP_LEAGUES));
         // Every other competition on Home's score pills, every game: announced on Home only (homeOnly()).
         all.addAll(Arrays.asList(homeLeagues(this)));
+        // The competitions of the players followed (their games are read for their goals only, Players).
+        all.addAll(Players.leagues(this));
+        Set<String> playerTeams = Players.teamIds(this);
         // Each competition read once a time round (LaLiga, Serie A and the rest were in two of the lists, read twice).
         Set<String> slugs = new HashSet<>();
         List<String> once = new ArrayList<>();
@@ -1983,10 +1996,16 @@ public class GoalWatchService extends Service {
         ioRun(() -> {
             // One entry per game: a club's Champions League game is in both lists.
             Map<String, ScoresTicker.Game> byId = new java.util.LinkedHashMap<>();
+            // Games read only for a followed player's goals (nothing else of them is announced).
+            Set<String> playerOnly = new HashSet<>();
             for (ScoresTicker.Game g : ScoresTicker.load(leagues)) {
                 boolean wanted = alertTags.contains(g.league) || clubs.contains(g.homeId) || clubs.contains(g.awayId)
                         || LINEUP_TEAMS.contains(g.homeId) || LINEUP_TEAMS.contains(g.awayId) || homeSlugs(this).contains(g.slug);
-                if (wanted && g.id != null && !byId.containsKey(g.id)) byId.put(g.id, g);
+                boolean forPlayers = playerTeams.contains(g.homeId) || playerTeams.contains(g.awayId);
+                if ((wanted || forPlayers) && g.id != null && !byId.containsKey(g.id)) {
+                    byId.put(g.id, g);
+                    if (!wanted) playerOnly.add(g.id);
+                }
             }
             List<ScoresTicker.Game> games = new ArrayList<>(byId.values());
             // The Premier League's clubs, for the Champions League games with line-ups (read here, off the main thread).
@@ -1995,7 +2014,7 @@ public class GoalWatchService extends Service {
             Map<String, List<String[]>> incidents = new HashMap<>();
             // A Home-only game's incidents are read only while Home is up (no need to ask otherwise).
             if (incidentsNow) for (ScoresTicker.Game g : games) {
-                if (g.state == 0 && (homeInFront || !homeOnly(g))) incidents.put(g.id, ScoresTicker.incidents(g, skyAlerts));
+                if (g.state == 0 && !playerOnly.contains(g.id) && (homeInFront || !homeOnly(g))) incidents.put(g.id, ScoresTicker.incidents(g, skyAlerts));
             }
             List<MoreSports.Result> tennis = tennisNow ? MoreSports.tennis() : null;
             List<MoreSports.Result> ufc = ufcNow ? MoreSports.ufc() : null;
@@ -2027,7 +2046,10 @@ public class GoalWatchService extends Service {
                     otherUpdates(ufc, ufcPrimed);
                     if (!ufc.isEmpty()) ufcPrimed = true;
                 }
+                // The weekend planner: a game planned for this TV kicking off now goes on (WeekendPlanner).
+                WeekendPlanner.due(this);
                 for (ScoresTicker.Game g : games) {
+                    if (playerOnly.contains(g.id)) continue;
                     if (kickoffReminders && lineupGame(g) && g.state == 1 && g.kickoff - now > 0
                             && g.kickoff - now <= REMIND_MS && reminded.add(g.id)) {
                         enqueueReminder(g);
@@ -2047,6 +2069,10 @@ public class GoalWatchService extends Service {
                 for (ScoresTicker.Game g : games) if (g.id != null) latest.put(g.id, g);
                 for (ScoresTicker.Game g : games) {
                     live |= g.state == 0;
+                    if (playerOnly.contains(g.id)) {
+                        playerGoals(g);
+                        continue;
+                    }
                     // A finished game with the family's predictions: who was closest, once (Predictions).
                     if (g.state == 2) Predictions.settle(this, g);
                     // Half time: the first half's scorers, possession and shots, once a game (MoreAlerts).
@@ -2062,9 +2088,16 @@ public class GoalWatchService extends Service {
                     Integer before = g.id == null ? null : lastState.put(g.id, g.state);
                     if (primed && !catchUp && g.id != null && g.state == 0) {
                         if (before != null && before == 1) restart(g, false);
-                        else if (halfBefore && !g.halftime) restart(g, true);
-                        else if (!halfBefore && g.halftime && MatchMode.isGame(this, g.id)) {
-                            main.postDelayed(() -> MatchMode.event(this, g, "ht", null), hold(g));
+                        else if (halfBefore && !g.halftime) {
+                            // Hopped away at half time: its channel back on for the second half (HalfTimeHop).
+                            if (HalfTimeHop.away(g.id)) HalfTimeHop.secondHalf(this, g);
+                            restart(g, true);
+                        } else if (!halfBefore && g.halftime) {
+                            if (MatchMode.isGame(this, g.id)) main.postDelayed(() -> MatchMode.event(this, g, "ht", null), hold(g));
+                            // Another game for the break, offered after the half-time card (HalfTimeHop).
+                            if (!homeInFront && watched(g) && HalfTimeHop.on(this)) {
+                                main.postDelayed(() -> HalfTimeHop.offer(this, g, new ArrayList<>(latest.values())), hold(g) + 15_000L);
+                            }
                         }
                     }
                     if (primed && before != null && before == 0 && g.state == 2) {
@@ -2670,6 +2703,20 @@ public class GoalWatchService extends Service {
         AlertLog.note(this, (secondHalf ? "second half" : "kick-off") + " seen for the game watched: " + AlertLog.game(g));
         main.postDelayed(() -> MatchMode.event(this, g, secondHalf ? "2h" : "ko", null), hold(g));
         if (!homeInFront && InStep.wantsLineUp(this) && !NotifyPrefs.dndOn(this)) InStepCard.show(this, g, secondHalf);
+    }
+
+    /** A game read only for the players followed: their goals, nothing else of it (Players). */
+    private void playerGoals(ScoresTicker.Game g) {
+        for (String[] goal : g.goals) {
+            if (!seen.add(goal[0]) || !primed || catchUp) continue;
+            Players.Followed f = Players.scorer(this, g, goal);
+            if (f == null) continue;
+            AlertLog.note(this, "a followed player scored: " + f.name + " " + goal[2] + ", " + AlertLog.game(g));
+            main.postDelayed(() -> {
+                if (skyAlerts) skyFootball(g, "goal", goal[1], goal[2], goal[3], goal[4], goal[0], null);
+                else enqueueFootball(g, headline(goal, false), "goal", goal[3]);
+            }, hold(g));
+        }
     }
 
     private void enqueue(ScoresTicker.Game g, String[] goal, boolean red) {

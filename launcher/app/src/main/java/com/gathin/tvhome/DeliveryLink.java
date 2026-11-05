@@ -230,6 +230,13 @@ final class DeliveryLink {
                 reply(s, 200, "{\"ok\":true}");
                 return;
             }
+            case "/plan": {
+                // The other TV's weekend plan (WeekendPlanner): from one of the house's TVs only.
+                if (!SyncHub.houseTv(context, s.getInetAddress().getHostAddress())) { reply(s, 401, "{\"error\":\"not a house TV\"}"); return; }
+                WeekendPlanner.merge(context, json);
+                reply(s, 200, "{\"ok\":true}");
+                return;
+            }
             case "/predictions/get": {
                 reply(s, 200, new JSONObject().put("games", Predictions.games(context)).toString());
                 return;
