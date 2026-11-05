@@ -241,8 +241,8 @@ public class TitleActivity extends AppCompatActivity {
                     return;
                 }
                 if (!"series".equals(it.kind)) {
-                    startActivity(com.gathin.tvhomephone.live.VodPlayerActivity.intent(this, it.plays(), t.title,
-                            com.gathin.tvhomephone.live.VodPlayerActivity.meta(t.title, t.id, false, t.poster, 0, 0, ""), ""));
+                    chooseSource(it.plays(), plays -> startActivity(com.gathin.tvhomephone.live.VodPlayerActivity.intent(this, plays, t.title,
+                            com.gathin.tvhomephone.live.VodPlayerActivity.meta(t.title, t.id, false, t.poster, 0, 0, ""), "")));
                     return;
                 }
                 pickEpisode(eps);
@@ -277,11 +277,35 @@ public class TitleActivity extends AppCompatActivity {
                 .setItems(names, (d, w) -> {
                     com.gathin.tvhomephone.live.Vod.Episode e = in.get(w);
                     // With the whole series' episodes, for the next one to follow on.
-                    startActivity(com.gathin.tvhomephone.live.VodPlayerActivity.intent(this, e.plays(),
+                    chooseSource(e.plays(), plays -> startActivity(com.gathin.tvhomephone.live.VodPlayerActivity.intent(this, plays,
                             t.title + (season > 0 ? " · S" + season : "") + " E" + e.number,
                             com.gathin.tvhomephone.live.VodPlayerActivity.meta(t.title, t.id, true, t.poster, e.season, e.number, e.title),
-                            com.gathin.tvhomephone.live.Vod.episodesJson(eps)));
+                            com.gathin.tvhomephone.live.Vod.episodesJson(eps))));
                 }).show();
+    }
+
+    private interface Chosen {
+        void play(List<String[]> plays);
+    }
+
+    /**
+     * More than one source (another playlist, another version: "Main · 4K · MKV", "Backup · HD"): which to play, the
+     * best match first; the others stay its backups. One source plays straight away.
+     */
+    private void chooseSource(List<String[]> plays, Chosen chosen) {
+        if (plays.size() < 2) {
+            chosen.play(plays);
+            return;
+        }
+        String[] names = new String[plays.size()];
+        for (int i = 0; i < names.length; i++) {
+            String[] p = plays.get(i);
+            String l = p.length > 3 && p[3] != null && !p[3].isEmpty() ? p[3] : "Source " + (i + 1);
+            names[i] = i == 0 ? l + "  ·  best match" : l;
+        }
+        new MaterialAlertDialogBuilder(this).setTitle("Choose a source")
+                .setItems(names, (d, w) -> chosen.play(com.gathin.tvhomephone.live.VodPlayerActivity.chosenFirst(plays, w)))
+                .show();
     }
 
     private void playOnTv() {

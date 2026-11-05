@@ -1070,11 +1070,18 @@ final class InfoTile {
             return p;
         }
 
-        /** HD and S (subtitles) in outlined boxes, as the TV marks them, from the stream itself; null for neither. */
+        /**
+         * The picture (4K, 1080p, 720p, SD; HD when it isn't read yet), HDR, the sound and S (subtitles) in outlined
+         * boxes, as the TV marks them, from the stream itself; null for none.
+         */
         View badges(TileData.Info i) {
-            if (!i.hd && !i.subtitles) return null;
+            String video = i.video == null || i.video.isEmpty() ? (i.hd ? "HD" : "") : i.video;
+            String hdr = i.hdr == null ? "" : i.hdr, audio = i.audio == null ? "" : i.audio;
+            if (video.isEmpty() && hdr.isEmpty() && audio.isEmpty() && !i.subtitles) return null;
             LinearLayout b = row();
-            if (i.hd) b.addView(mark("HD"), margins(0, 0, 6, 0, -2, -2));
+            if (!video.isEmpty()) b.addView(mark(video), margins(0, 0, 6, 0, -2, -2));
+            if (!hdr.isEmpty()) b.addView(mark(hdr), margins(0, 0, 6, 0, -2, -2));
+            if (!audio.isEmpty()) b.addView(mark(audio), margins(0, 0, 6, 0, -2, -2));
             if (i.subtitles) b.addView(mark("S"), margins(0, 0, 6, 0, -2, -2));
             return b;
         }

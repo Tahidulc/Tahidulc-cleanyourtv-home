@@ -609,11 +609,14 @@ public class PlayerActivity extends AppCompatActivity {
         return landscape || getResources().getConfiguration().screenWidthDp >= 600;
     }
 
-    /** The stream's own marks for the tile: HD from the picture's height, S when it carries subtitles. */
+    /** The stream's own marks for the tile: its picture (4K, 1080p…), HDR, its sound, S when it carries subtitles. */
     private void marks(TileData.Info i) {
         ExoPlayer player = pb.player();
         i.hd = player != null && player.getVideoSize().height >= 720;
         i.subtitles = !tracks(C.TRACK_TYPE_TEXT).isEmpty();
+        i.video = player == null ? "" : MediaTags.video(player.getVideoFormat());
+        i.hdr = player == null ? "" : MediaTags.hdr(player.getVideoFormat());
+        i.audio = player == null ? "" : MediaTags.audio(player.getAudioFormat());
     }
 
     private boolean tilesShown() {

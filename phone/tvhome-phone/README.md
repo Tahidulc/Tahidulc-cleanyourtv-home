@@ -113,5 +113,13 @@ channel, for its category), or open More, Categories. A favourite category comes
 hidden one leaves the guide, the lists and search with its channels (a favourite channel in it stays in Favourites), and
 Categories shows it again. Channels are made favourites with their star or by holding them, as before.
 
+A film or episode found in more than one place (another playlist, or another version in the same one: its 4K and its
+HD) asks which to play, each named by its playlist, the picture its name says and its file ("Main · 4K · MKV",
+"Backup · HD"), the best match first; the others stay its backups. In the full-screen player, Sources switches to another
+from the same moment. The player turns with the phone (or stays landscape or portrait: ⋮), has the picture's shapes (Fit,
+Fill, Fit width, Stretch), night sound and the small window (▣, or on leaving the app), and its information bar shows
+where it plays from and what the stream itself says of its picture and sound: 4K, 1080p, 720p or SD, Dolby Vision,
+HDR10 or HLG, and Dolby Atmos, Dolby Digital 5.1, AAC Stereo and the like. Live TV's info tile shows the same marks.
+
 Build: JDK 17, Android SDK 34. `./gradlew assembleRelease testReleaseUnitTest lintRelease`; the APK is in
 `app/build/outputs/apk/release/`, signed with the debug key for sideloading.

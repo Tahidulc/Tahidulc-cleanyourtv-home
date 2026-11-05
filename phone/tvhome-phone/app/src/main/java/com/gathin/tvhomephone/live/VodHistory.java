@@ -48,7 +48,8 @@ public final class VodHistory {
 
         JSONObject json() throws JSONException {
             JSONArray p = new JSONArray();
-            for (String[] s : plays) p.put(new JSONArray().put(s[0]).put(s.length > 1 && s[1] != null ? s[1] : "").put(s.length > 2 && s[2] != null ? s[2] : ""));
+            for (String[] s : plays) p.put(new JSONArray().put(s[0]).put(s.length > 1 && s[1] != null ? s[1] : "").put(s.length > 2 && s[2] != null ? s[2] : "")
+                    .put(s.length > 3 && s[3] != null ? s[3] : ""));
             return new JSONObject().put("key", key).put("title", title).put("name", name).put("poster", poster)
                     .put("ept", episodeTitle).put("tmdb", tmdb).put("s", season).put("e", episode).put("tv", tv)
                     .put("pos", position).put("dur", duration).put("at", at).put("plays", p).put("eps", episodes);
@@ -72,7 +73,7 @@ public final class VodHistory {
             JSONArray p = o.optJSONArray("plays");
             for (int i = 0; p != null && i < p.length(); i++) {
                 JSONArray s = p.optJSONArray(i);
-                if (s != null && !s.optString(0).isEmpty()) e.plays.add(new String[]{s.optString(0), s.optString(1), s.optString(2)});
+                if (s != null && !s.optString(0).isEmpty()) e.plays.add(new String[]{s.optString(0), s.optString(1), s.optString(2), s.optString(3)});
             }
             return e;
         }

@@ -37,7 +37,15 @@ import androidx.media3.ui.PlayerView;
 @OptIn(markerClass = UnstableApi.class)
 public final class VodPlayerActivity extends AppCompatActivity {
     private static final String EXTRA_URL = "url", EXTRA_UA = "ua", EXTRA_REF = "ref", EXTRA_TITLE = "title",
-            EXTRA_ALTS = "alts", EXTRA_META = "meta", EXTRA_EPS = "eps";
+            EXTRA_ALTS = "alts", EXTRA_META = "meta", EXTRA_EPS = "eps", EXTRA_LABEL = "label";
+    /** The picture's shapes (PlayerView's resize modes) and the ways round it may turn, as the options name them. */
+    private static final int[] SHAPES = {androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT,
+            androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM, androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIXED_WIDTH,
+            androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL};
+    private static final String[] SHAPE_NAMES = {"Fit", "Fill (crop)", "Fit width", "Stretch"};
+    private static final int[] TURNS = {android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR,
+            android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE, android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT};
+    private static final String[] TURN_NAMES = {"Turn with the phone", "Landscape", "Portrait"};
     /** The next episode plays after this many seconds unless stopped. */
     private static final int NEXT_IN = 10;
     /** Carried on from where it was left only after a minute in, and not in its last two minutes. */
@@ -54,7 +62,10 @@ public final class VodPlayerActivity extends AppCompatActivity {
     private java.util.List<Vod.Episode> episodes = new java.util.ArrayList<>();
     private final android.os.Handler h = new android.os.Handler(android.os.Looper.getMainLooper());
     private FrameLayout root;
-    private TextView sleepPill;
+    private PlayerView view;
+    private TextView sleepPill, sourcesPill;
+    /** The information bar: the name, then where it plays from and the picture's and sound's marks. */
+    private LinearLayout infoBar, tagRow, topRight;
     private View nextCard;
     /** The sleep timer: when it stops it (0: off), or at the end of this one. */
     private long sleepAt;
@@ -71,14 +82,22 @@ public final class VodPlayerActivity extends AppCompatActivity {
                 .putExtra(EXTRA_REF, ref == null ? "" : ref).putExtra(EXTRA_TITLE, title == null ? "" : title);
     }
 
+    /** The plays with the one chosen (by its place) first, the rest after it as its backups. */
+    public static java.util.List<String[]> chosenFirst(java.util.List<String[]> plays, int chosen) {
+        java.util.List<String[]> out = new java.util.ArrayList<>(plays);
+        if (chosen > 0 && chosen < out.size()) out.add(0, out.remove(chosen));
+        return out;
+    }
+
     /** The same, with where else it plays: {address, user agent, referrer}, its own first (Vod.Item.plays()). */
     public static Intent intent(Context c, java.util.List<String[]> plays, String title) {
         String[] first = plays.get(0);
-        Intent i = intent(c, first[0], first[1], first[2], title);
+        Intent i = intent(c, first[0], first[1], first[2], title).putExtra(EXTRA_LABEL, first.length > 3 && first[3] != null ? first[3] : "");
         java.util.ArrayList<String> alts = new java.util.ArrayList<>();
         for (int k = 1; k < plays.size(); k++) {
             String[] p = plays.get(k);
-            alts.add(p[0] + "\u001f" + (p[1] == null ? "" : p[1]) + "\u001f" + (p[2] == null ? "" : p[2]));
+            alts.add(p[0] + "\u001f" + (p[1] == null ? "" : p[1]) + "\u001f" + (p[2] == null ? "" : p[2])
+                    + "\u001f" + (p.length > 3 && p[3] != null ? p[3] : ""));
         }
         return i.putStringArrayListExtra(EXTRA_ALTS, alts);
     }
@@ -112,7 +131,8 @@ public final class VodPlayerActivity extends AppCompatActivity {
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
         String stored = getIntent().getStringExtra(EXTRA_URL);
-        plays.add(new String[]{stored, getIntent().getStringExtra(EXTRA_UA), getIntent().getStringExtra(EXTRA_REF)});
+        String firstLabel = getIntent().getStringExtra(EXTRA_LABEL);
+        plays.add(new String[]{stored, getIntent().getStringExtra(EXTRA_UA), getIntent().getStringExtra(EXTRA_REF), firstLabel == null ? "" : firstLabel});
         java.util.ArrayList<String> alts = getIntent().getStringArrayListExtra(EXTRA_ALTS);
         if (alts != null) for (String a : alts) plays.add(a.split("\u001f", -1));
         // The first that is still in a playlist.
@@ -138,31 +158,56 @@ public final class VodPlayerActivity extends AppCompatActivity {
         episodes = Vod.episodesFrom(episodesJson);
         root = new FrameLayout(this);
         root.setBackgroundColor(0xFF000000);
-        PlayerView view = new PlayerView(this);
+        view = new PlayerView(this);
         view.setShowNextButton(false);
         view.setShowPreviousButton(false);
         view.setKeepScreenOn(true);
+        view.setResizeMode(SHAPES[Math.max(0, Math.min(SHAPES.length - 1, look().getInt("shape", 0)))]);
         root.addView(view, new FrameLayout.LayoutParams(-1, -1));
+        // The information bar, top left: the name, then where it plays from and the picture's and sound's marks.
+        infoBar = new LinearLayout(this);
+        infoBar.setOrientation(LinearLayout.VERTICAL);
         TextView title = Ui.text(this, getIntent().getStringExtra(EXTRA_TITLE), 18, Ui.TEXT, true);
         title.setShadowLayer(Ui.dp(this, 4), 0, 0, 0xCC000000);
+        title.setMaxLines(2);
+        infoBar.addView(title);
+        tagRow = new LinearLayout(this);
+        tagRow.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout.LayoutParams trp = new LinearLayout.LayoutParams(-2, -2);
+        trp.topMargin = Ui.dp(this, 6);
+        infoBar.addView(tagRow, trp);
         FrameLayout.LayoutParams tp = new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.START);
         tp.leftMargin = tp.topMargin = Ui.dp(this, 22);
-        root.addView(title, tp);
-        // The sleep timer's button, top right, with the controls.
-        sleepPill = Ui.text(this, "", 14, Ui.TEXT, true);
-        sleepPill.setGravity(Gravity.CENTER);
-        sleepPill.setMinHeight(Ui.dp(this, 44));
-        sleepPill.setPadding(Ui.dp(this, 16), 0, Ui.dp(this, 16), 0);
-        sleepPill.setBackground(Ui.touch(this, false, 0x66000000, 22));
+        tp.rightMargin = Ui.dp(this, 200);
+        root.addView(infoBar, tp);
+        // Top right, with the controls: the sources (when there are several), the sleep timer, the small window, more.
+        topRight = new LinearLayout(this);
+        topRight.setGravity(Gravity.CENTER_VERTICAL);
+        sourcesPill = pill("");
+        sourcesPill.setOnClickListener(v -> sourcesMenu());
+        topRight.addView(sourcesPill, pillParams());
+        sleepPill = pill("");
         sleepPill.setOnClickListener(v -> sleepMenu());
+        topRight.addView(sleepPill, pillParams());
+        if (pipSupported()) {
+            TextView pip = pill("▣");
+            pip.setContentDescription("Small window");
+            pip.setOnClickListener(v -> enterPip());
+            topRight.addView(pip, pillParams());
+        }
+        TextView more = pill("⋮");
+        more.setContentDescription("Picture and turning");
+        more.setOnClickListener(v -> moreMenu());
+        topRight.addView(more, pillParams());
         FrameLayout.LayoutParams sp = new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.END);
         sp.rightMargin = sp.topMargin = Ui.dp(this, 16);
-        root.addView(sleepPill, sp);
+        root.addView(topRight, sp);
         showSleep();
         view.setControllerVisibilityListener((PlayerView.ControllerVisibilityListener) v -> {
-            title.setVisibility(v);
-            sleepPill.setVisibility(v);
+            infoBar.setVisibility(v);
+            topRight.setVisibility(v);
         });
+        setRequestedOrientation(TURNS[Math.max(0, Math.min(TURNS.length - 1, look().getInt("turn", 0)))]);
         setContentView(root);
         WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
         WindowInsetsControllerCompat bars = WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
@@ -193,6 +238,15 @@ public final class VodPlayerActivity extends AppCompatActivity {
                 Toast.makeText(VodPlayerActivity.this, "It wouldn't play from your playlist", Toast.LENGTH_LONG).show();
             }
 
+            @Override public void onTracksChanged(@NonNull androidx.media3.common.Tracks tracks) {
+                showTags();
+            }
+
+            @Override public void onVideoSizeChanged(@NonNull androidx.media3.common.VideoSize size) {
+                showTags();
+                if (pipSupported()) setPictureInPictureParams(pipParams());
+            }
+
             @Override public void onPlaybackStateChanged(int s) {
                 if (s != Player.STATE_ENDED) return;
                 prefs().edit().remove(resumeKey).apply();
@@ -206,6 +260,165 @@ public final class VodPlayerActivity extends AppCompatActivity {
         });
         player.prepare();
         player.setPlayWhenReady(true);
+        showSources();
+        showTags();
+        if (pipSupported()) setPictureInPictureParams(pipParams());
+    }
+
+    // ---- the sources --------------------------------------------------------------------------------------------
+
+    private static String labelOf(String[] p, int i) {
+        String l = p.length > 3 && p[3] != null ? p[3] : "";
+        return l.isEmpty() ? "Source " + (i + 1) : l;
+    }
+
+    private void showSources() {
+        sourcesPill.setVisibility(plays.size() > 1 ? View.VISIBLE : View.GONE);
+        sourcesPill.setText("Sources · " + plays.size());
+    }
+
+    /** Every source for it, the one playing ticked: another one picked carries on from the same moment. */
+    private void sourcesMenu() {
+        String[] names = new String[plays.size()];
+        for (int i = 0; i < names.length; i++) names[i] = labelOf(plays.get(i), i);
+        new androidx.appcompat.app.AlertDialog.Builder(this).setTitle("Play from")
+                .setSingleChoiceItems(names, playing, (d, w) -> {
+                    d.dismiss();
+                    if (w == playing || player == null) return;
+                    String u = Vod.address(this, plays.get(w)[0]);
+                    if (u == null || u.isEmpty()) {
+                        Toast.makeText(this, "That one isn't in your playlists any more", Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+                    long pos = Math.max(0, player.getCurrentPosition());
+                    playing = w;
+                    url = u;
+                    load(pos);
+                    player.prepare();
+                    player.setPlayWhenReady(true);
+                    showTags();
+                    Toast.makeText(this, "Playing from " + names[w], Toast.LENGTH_SHORT).show();
+                }).show();
+    }
+
+    // ---- the information bar ------------------------------------------------------------------------------------
+
+    /** Where it plays from, and the picture's and sound's marks as the stream itself says them. */
+    private void showTags() {
+        if (tagRow == null) return;
+        tagRow.removeAllViews();
+        if (plays.size() > 1 || !labelOf(plays.get(playing), playing).startsWith("Source ")) {
+            addTag(labelOf(plays.get(playing), playing), false);
+        }
+        if (player != null) {
+            String v = MediaTags.video(player.getVideoFormat()), hdr = MediaTags.hdr(player.getVideoFormat()),
+                    a = MediaTags.audio(player.getAudioFormat());
+            if (!v.isEmpty()) addTag(v, true);
+            if (!hdr.isEmpty()) addTag(hdr, true);
+            if (!a.isEmpty()) addTag(a, true);
+        }
+    }
+
+    private void addTag(String words, boolean boxed) {
+        TextView t = Ui.text(this, words, 12, Ui.TEXT, true);
+        t.setPadding(Ui.dp(this, 7), Ui.dp(this, 2), Ui.dp(this, 7), Ui.dp(this, 2));
+        t.setBackground(boxed ? Ui.ring(this, 0x33000000, 0xE6FFFFFF, 1, 4) : Ui.round(this, 0x99000000, 4));
+        t.setShadowLayer(boxed ? 0 : Ui.dp(this, 2), 0, 0, 0xCC000000);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, -2);
+        lp.rightMargin = Ui.dp(this, 6);
+        tagRow.addView(t, lp);
+    }
+
+    // ---- the picture's shape, which way round, the small window -------------------------------------------------
+
+    private SharedPreferences look() {
+        return getApplicationContext().getSharedPreferences("vod_look", Context.MODE_PRIVATE);
+    }
+
+    private TextView pill(String words) {
+        TextView t = Ui.text(this, words, 14, Ui.TEXT, true);
+        t.setGravity(Gravity.CENTER);
+        t.setMinHeight(Ui.dp(this, 44));
+        t.setMinWidth(Ui.dp(this, 44));
+        t.setPadding(Ui.dp(this, 14), 0, Ui.dp(this, 14), 0);
+        t.setBackground(Ui.touch(this, false, 0x66000000, 22));
+        return t;
+    }
+
+    private LinearLayout.LayoutParams pillParams() {
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, -2);
+        lp.leftMargin = Ui.dp(this, 8);
+        return lp;
+    }
+
+    /** The picture's shape and which way round it turns, kept for the next time. */
+    private void moreMenu() {
+        String[] items = new String[SHAPE_NAMES.length + TURN_NAMES.length + 1];
+        int shape = look().getInt("shape", 0), turn = look().getInt("turn", 0);
+        for (int i = 0; i < SHAPE_NAMES.length; i++) items[i] = (i == shape ? "✓  " : "     ") + "Picture: " + SHAPE_NAMES[i];
+        for (int i = 0; i < TURN_NAMES.length; i++) items[SHAPE_NAMES.length + i] = (i == turn ? "✓  " : "     ") + TURN_NAMES[i];
+        items[items.length - 1] = "     " + (NightSound.available() ? (NightSound.on(this) ? "Night sound: on" : "Night sound: off") : "Night sound (Android 9 and later)");
+        new androidx.appcompat.app.AlertDialog.Builder(this).setItems(items, (d, w) -> {
+            if (w < SHAPE_NAMES.length) {
+                look().edit().putInt("shape", w).apply();
+                view.setResizeMode(SHAPES[w]);
+            } else if (w < SHAPE_NAMES.length + TURN_NAMES.length) {
+                int t = w - SHAPE_NAMES.length;
+                look().edit().putInt("turn", t).apply();
+                setRequestedOrientation(TURNS[t]);
+            } else if (NightSound.available()) {
+                NightSound.set(this, !NightSound.on(this));
+            }
+        }).show();
+    }
+
+    private boolean pipSupported() {
+        return android.os.Build.VERSION.SDK_INT >= 26
+                && getPackageManager().hasSystemFeature(android.content.pm.PackageManager.FEATURE_PICTURE_IN_PICTURE);
+    }
+
+    private android.app.PictureInPictureParams pipParams() {
+        android.app.PictureInPictureParams.Builder b = new android.app.PictureInPictureParams.Builder();
+        androidx.media3.common.VideoSize vs = player == null ? null : player.getVideoSize();
+        if (vs != null && vs.width > 0 && vs.height > 0) {
+            float r = vs.width * vs.pixelWidthHeightRatio / vs.height;
+            r = Math.max(0.42f, Math.min(2.39f, r));
+            b.setAspectRatio(new android.util.Rational(Math.round(r * 1000), 1000));
+        }
+        if (android.os.Build.VERSION.SDK_INT >= 31) b.setAutoEnterEnabled(player != null && player.isPlaying());
+        return b.build();
+    }
+
+    /** The film on in a small window over other apps (it carries on playing there). */
+    private void enterPip() {
+        if (!pipSupported()) return;
+        try {
+            enterPictureInPictureMode(pipParams());
+        } catch (IllegalStateException e) {
+            Toast.makeText(this, "This phone has the small window turned off for Homefield", Toast.LENGTH_LONG).show();
+        }
+    }
+
+    @Override protected void onUserLeaveHint() {
+        super.onUserLeaveHint();
+        if (android.os.Build.VERSION.SDK_INT < 31 && pipSupported() && player != null && player.isPlaying()) enterPip();
+    }
+
+    @Override public void onPictureInPictureModeChanged(boolean inPip, @NonNull android.content.res.Configuration cfg) {
+        super.onPictureInPictureModeChanged(inPip, cfg);
+        if (inPip) {
+            view.hideController();
+            view.setUseController(false);
+            infoBar.setVisibility(View.GONE);
+            topRight.setVisibility(View.GONE);
+            if (nextCard != null) nextCard.setVisibility(View.GONE);
+        } else if (getLifecycle().getCurrentState() == androidx.lifecycle.Lifecycle.State.CREATED) {
+            // The small window was closed: so is the film (where it got to is kept).
+            finish();
+        } else {
+            view.setUseController(true);
+            if (nextCard != null) nextCard.setVisibility(View.VISIBLE);
+        }
     }
 
     /** The one playing now given to the player, from position (ms). */
@@ -234,7 +447,7 @@ public final class VodPlayerActivity extends AppCompatActivity {
 
     @Override protected void onStop() {
         super.onStop();
-        if (player == null) return;
+        if (player == null || isInPictureInPictureMode()) return;
         // Where it was left: kept unless it was nearly over.
         long pos = player.getCurrentPosition(), dur = player.getDuration();
         SharedPreferences.Editor e = prefs().edit();

@@ -42,7 +42,9 @@ public final class Vod {
     /** A film, or a series (its episodes read when it is chosen), in one playlist (source, its id). */
     public static final class Item {
         public final String kind, name, url, ua, ref, tmdb, year, seriesId, source;
-        /** The same title in the other playlists in use, to go on to. */
+        /** How the source picker names it: its playlist, its picture as its name says, its file ("Main · 4K · MKV"). */
+        public String label = "";
+        /** The same title elsewhere (another version in the same playlist, or the other playlists in use). */
         public final List<Item> alternates = new ArrayList<>(0);
 
         Item(String kind, String name, String url, String ua, String ref, String tmdb, String year, String seriesId, String source) {
@@ -57,11 +59,11 @@ public final class Vod {
             this.source = source;
         }
 
-        /** Where it plays: {address, user agent, referrer}, its own first, then its backups'. */
+        /** Where it plays: {address, user agent, referrer, label}, its own first, then its backups'. */
         public List<String[]> plays() {
             List<String[]> out = new ArrayList<>();
-            out.add(new String[]{url, ua, ref});
-            for (Item a : alternates) out.add(new String[]{a.url, a.ua, a.ref});
+            out.add(new String[]{url, ua, ref, label});
+            for (Item a : alternates) out.add(new String[]{a.url, a.ua, a.ref, a.label});
             return out;
         }
     }
@@ -70,7 +72,9 @@ public final class Vod {
     public static final class Episode {
         public final int season, number;
         public final String title, url, ua, ref;
-        /** The same episode in the other playlists in use. */
+        /** How the source picker names it ("Backup · HD"). */
+        public String label = "";
+        /** The same episode in the other playlists in use (or another version of the series). */
         public final List<Episode> alternates = new ArrayList<>(0);
 
         Episode(int season, int number, String title, String url, String ua, String ref) {
@@ -82,11 +86,11 @@ public final class Vod {
             this.ref = ref;
         }
 
-        /** Where it plays: {address, user agent, referrer}, its own first, then its backups'. */
+        /** Where it plays: {address, user agent, referrer, label}, its own first, then its backups'. */
         public List<String[]> plays() {
             List<String[]> out = new ArrayList<>();
-            out.add(new String[]{url, ua, ref});
-            for (Episode a : alternates) out.add(new String[]{a.url, a.ua, a.ref});
+            out.add(new String[]{url, ua, ref, label});
+            for (Episode a : alternates) out.add(new String[]{a.url, a.ua, a.ref, a.label});
             return out;
         }
     }
@@ -250,42 +254,91 @@ public final class Vod {
     public static Item find(Context c, String title, String altTitle, String year, int tmdbId, boolean tv) {
         Item main = null;
         for (Sources.Entry e : Sources.inUse(c)) {
-            Item it = findIn(c, e, title, altTitle, year, tmdbId, tv);
-            if (it == null) continue;
-            if (main == null) main = it;
-            else main.alternates.add(it);
+            for (Item it : findIn(c, e, title, altTitle, year, tmdbId, tv)) {
+                it.label = label(e.name, it.name, it.url);
+                if (main == null) main = it;
+                else main.alternates.add(it);
+            }
         }
         return main;
     }
 
-    private static Item findIn(Context c, Sources.Entry e, String title, String altTitle, String year, int tmdbId, boolean tv) {
+    /** At most this many versions of a title from one playlist (its 4K, its HD, …). */
+    private static final int VERSIONS = 4;
+
+    /**
+     * A playlist's versions of a title, the surest first: by TMDB's id, then by name with the year a year apart at most,
+     * then by name alone (each address once; a series' episodes once, under its name).
+     */
+    private static List<Item> findIn(Context c, Sources.Entry e, String title, String altTitle, String year, int tmdbId, boolean tv) {
+        List<Item> byId = new ArrayList<>(), byName = new ArrayList<>(), byNameNoYear = new ArrayList<>();
         File f = index(c, e);
-        if (!f.exists()) return null;
+        if (!f.exists()) return byId;
         String want = key(title), alt = altTitle == null ? "" : key(altTitle), id = tmdbId > 0 ? String.valueOf(tmdbId) : "";
-        Item byName = null, byNameNoYear = null;
+        java.util.Set<String> seen = new java.util.HashSet<>();
         try (BufferedReader r = new BufferedReader(new InputStreamReader(new FileInputStream(f), StandardCharsets.UTF_8))) {
             r.readLine();
             String line;
-            while ((line = r.readLine()) != null) {
+            while ((line = r.readLine()) != null && byId.size() + byName.size() + byNameNoYear.size() < VERSIONS * 3) {
                 String[] p = line.split("\t", -1);
                 if (p.length < 11) continue;
                 String kind = p[0];
                 boolean isSeries = kind.equals("series") || kind.equals("episode");
                 if (isSeries != tv) continue;
-                if (!id.isEmpty() && id.equals(p[8])) return item(kind, p, e.id);
+                // A series' episodes are one version (its name); a film's each address.
+                String once = kind.equals("episode") ? "s:" + key(p[1]) + "|" + p[1] : kind + ":" + p[5] + "|" + p[10];
+                if (!id.isEmpty() && id.equals(p[8])) {
+                    if (seen.add(once)) byId.add(item(kind, p, e.id));
+                    continue;
+                }
                 String k = key(p[1]);
                 if (k.isEmpty() || !(k.equals(want) || (!alt.isEmpty() && k.equals(alt)))) continue;
                 String y = p[9].isEmpty() ? year(p[1]) : p[9];
                 if (!y.isEmpty() && year != null && !year.isEmpty()) {
-                    if (Math.abs(parse(y) - parse(year)) <= 1 && byName == null) byName = item(kind, p, e.id);
-                } else if (byNameNoYear == null) {
-                    byNameNoYear = item(kind, p, e.id);
+                    if (Math.abs(parse(y) - parse(year)) <= 1 && seen.add(once)) byName.add(item(kind, p, e.id));
+                } else if (seen.add(once)) {
+                    byNameNoYear.add(item(kind, p, e.id));
                 }
             }
         } catch (IOException x) {
-            return null;
+            return new ArrayList<>();
         }
-        return byName != null ? byName : byNameNoYear;
+        List<Item> out = new ArrayList<>(byId);
+        out.addAll(byName);
+        if (out.isEmpty()) out.addAll(byNameNoYear);
+        return out.size() > VERSIONS ? new ArrayList<>(out.subList(0, VERSIONS)) : out;
+    }
+
+    /** Pure: how a source is named for picking: its playlist, the picture its name says, its file's kind. */
+    static String label(String playlist, String name, String url) {
+        StringBuilder b = new StringBuilder(playlist == null ? "" : playlist);
+        String q = quality(name);
+        if (!q.isEmpty()) b.append(b.length() > 0 ? " · " : "").append(q);
+        String ext = extension(url);
+        if (!ext.isEmpty()) b.append(b.length() > 0 ? " · " : "").append(ext);
+        return b.toString();
+    }
+
+    /** Pure: the picture a title's name says ("4K", "1080p", "HD", "SD"), or "". */
+    static String quality(String name) {
+        String n = " " + (name == null ? "" : name).toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]+", " ") + " ";
+        if (n.contains(" 4k ") || n.contains(" uhd ") || n.contains(" 2160p ")) return "4K";
+        if (n.contains(" 1080p ") || n.contains(" fhd ")) return "1080p";
+        if (n.contains(" 720p ") || n.contains(" hd ")) return "HD";
+        if (n.contains(" sd ") || n.contains(" 480p ")) return "SD";
+        return "";
+    }
+
+    /** Pure: an address's file kind ("MKV", "MP4"; "" for a stream or none). */
+    static String extension(String url) {
+        if (url == null) return "";
+        String u = url.toLowerCase(Locale.ROOT);
+        int q = u.indexOf('?');
+        if (q >= 0) u = u.substring(0, q);
+        int dot = u.lastIndexOf('.'), slash = u.lastIndexOf('/');
+        if (dot < 0 || dot < slash) return "";
+        String ext = u.substring(dot + 1);
+        return ext.matches("mkv|mp4|avi|ts|m4v|mov|webm") ? ext.toUpperCase(Locale.ROOT) : "";
     }
 
     /** An index row: {kind, name, season, episode, episode's name, address, user agent, referrer, TMDB id, year, series id}. */
@@ -316,6 +369,8 @@ public final class Vod {
         copies.addAll(series.alternates);
         for (Item copy : copies) {
             for (Episode e : episodesIn(c, copy)) {
+                Sources.Entry src = Sources.get(c, copy.source);
+                e.label = label(src == null ? "" : src.name, copy.name, e.url);
                 Episode first = at.get(e.season * 10000 + e.number);
                 if (first == null) {
                     at.put(e.season * 10000 + e.number, e);
@@ -414,7 +469,8 @@ public final class Vod {
         try {
             for (Episode e : eps) {
                 JSONArray p = new JSONArray();
-                for (String[] s : e.plays()) p.put(new JSONArray().put(s[0]).put(s[1] == null ? "" : s[1]).put(s[2] == null ? "" : s[2]));
+                for (String[] s : e.plays()) p.put(new JSONArray().put(s[0]).put(s[1] == null ? "" : s[1]).put(s[2] == null ? "" : s[2])
+                        .put(s.length > 3 && s[3] != null ? s[3] : ""));
                 a.put(new JSONObject().put("s", e.season).put("n", e.number).put("t", e.title == null ? "" : e.title).put("p", p));
             }
         } catch (org.json.JSONException ignored) {
@@ -436,9 +492,13 @@ public final class Vod {
                 JSONArray first = p.optJSONArray(0);
                 if (first == null) continue;
                 Episode e = new Episode(o.optInt("s"), o.optInt("n"), o.optString("t"), first.optString(0), first.optString(1), first.optString(2));
+                e.label = first.optString(3);
                 for (int k = 1; k < p.length(); k++) {
                     JSONArray b = p.optJSONArray(k);
-                    if (b != null) e.alternates.add(new Episode(e.season, e.number, e.title, b.optString(0), b.optString(1), b.optString(2)));
+                    if (b == null) continue;
+                    Episode alt = new Episode(e.season, e.number, e.title, b.optString(0), b.optString(1), b.optString(2));
+                    alt.label = b.optString(3);
+                    e.alternates.add(alt);
                 }
                 out.add(e);
             }

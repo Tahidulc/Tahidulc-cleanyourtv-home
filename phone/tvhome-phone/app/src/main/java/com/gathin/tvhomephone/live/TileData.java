@@ -50,6 +50,8 @@ final class TileData {
         List<String[]> facts = new ArrayList<>();
         /** The stream's own marks: HD (720 lines or more) and subtitles; the player sets them. */
         boolean hd, subtitles;
+        /** And what the stream says of its picture and sound (MediaTags): "1080p", "HDR10", "Dolby Digital 5.1". */
+        String video = "", hdr = "", audio = "";
         /** Whether the background reads have finished (the tile is drawn again then). */
         boolean enriched;
 
@@ -60,7 +62,7 @@ final class TileData {
             o.start = start; o.stop = stop; o.onNow = onNow; o.nextTitle = nextTitle; o.nextStart = nextStart;
             o.nextStop = nextStop; o.kind = kind; o.year = year; o.genres = genres; o.rating = rating;
             o.certificate = certificate; o.overview = overview; o.still = still; o.poster = poster; o.nextPoster = nextPoster;
-            o.nextGenres = nextGenres; o.hd = hd; o.subtitles = subtitles; o.game = game; o.stats = new ArrayList<>(stats); o.facts = new ArrayList<>(facts);
+            o.nextGenres = nextGenres; o.hd = hd; o.subtitles = subtitles; o.video = video; o.hdr = hdr; o.audio = audio; o.game = game; o.stats = new ArrayList<>(stats); o.facts = new ArrayList<>(facts);
             o.enriched = enriched;
             return o;
         }
