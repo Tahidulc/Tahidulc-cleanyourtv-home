@@ -104,6 +104,11 @@ worked out for Manchester when the mosque's page can't be read), and Today (the 
 and sunset). Settings, What the break shows: a chip for each kind. The live window in the corner is the picture itself
 now, not the bars round it, so upright it no longer fills half the screen.
 
+Full screen stays on its side (4.1): turning the phone on its side in Live TV opens the channel full screen, and now it
+stays full screen, either way round, until you go back or tap the cross. Lying down with the phone, or tilting it,
+no longer turns it upright and drops you back in the guide. To have turning upright go back again, the player's
+Options has "Turn upright to leave full screen".
+
 Subtitles (CC in the film's player): the film's or episode's own, from your playlist's stream, come first, in the
 languages you choose (Settings, Subtitles, in order). When it has none, OpenSubtitles.com is looked in by the title's
 TMDB id (the series' with its season and episode), best first: your languages, the ones that fit the copy playing (its

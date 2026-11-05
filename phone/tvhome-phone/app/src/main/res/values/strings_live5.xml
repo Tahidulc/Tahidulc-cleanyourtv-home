@@ -9,4 +9,8 @@
     <string name="live5_burn_line">The scoreboard, the mark over the channel\'s logo and the scoreboard over other apps move a pixel or two every minute, and dim a little after five minutes without a change, so they never burn into the screen.</string>
     <string name="live5_last_read">Last read off the channel\'s scoreboard %1$d s ago: %2$s</string>
     <string name="live5_not_read">The channel\'s scoreboard hasn\'t been read yet: it is being looked for along the top of the picture.</string>
+    <string name="live_upright_on">Turn upright to leave full screen: on</string>
+    <string name="live_upright_off">Turn upright to leave full screen: off</string>
+    <string name="live_upright_now_on">Turning the phone upright goes back to the guide</string>
+    <string name="live_upright_now_off">Full screen stays on its side until you go back</string>
 </resources>

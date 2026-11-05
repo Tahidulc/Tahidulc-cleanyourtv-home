@@ -93,6 +93,8 @@ public class PlayerActivity extends AppCompatActivity {
             EXTRA_AUTO = "live_auto", EXTRA_PIP = "live_pip", EXTRA_REPLAY = "live_replay";
     /** The player's own switch: into picture in picture as the app is left while a channel plays (on unless turned off). */
     static final String AUTO_PIP = "auto_pip";
+    /** Whether turning the phone upright leaves a full screen that turning it on its side opened ("1"; off unless set). */
+    static final String UPRIGHT_BACK = "upright_back";
     private boolean pipNow;
     private static final long OVERLAY_MS = 6000, TILE_MS = 8000, TICK_MS = 30_000;
     private static final int[] SLEEP = {0, 15, 30, 60, 90};
@@ -191,7 +193,7 @@ public class PlayerActivity extends AppCompatActivity {
         pb = Playback.get(this);
         store = Aspect.prefs(this);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-        // Whichever way the phone is held, upright too.
+        // Whichever way the phone is held, upright too (opened by turning it on its side: on its side it stays, orient()).
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR);
         // Under the camera's cutout as well, so the picture reaches the very edge.
         if (Build.VERSION.SDK_INT >= 30) {
@@ -222,6 +224,7 @@ public class PlayerActivity extends AppCompatActivity {
             finish();
             return;
         }
+        orient();
         SharedPreferences p = prefs();
         style = TileKind.Style.of(p.getString("tile_style", TileKind.Style.AUTO.name()));
         if (!p.getBoolean("hint_seen", false)) h.postDelayed(this::showHint, 700);
@@ -239,6 +242,7 @@ public class PlayerActivity extends AppCompatActivity {
         super.onNewIntent(intent);
         setIntent(intent);
         if (take(intent) && pb.isFront(host)) watch(cur);
+        orient();
         replayFrom(intent);
         // Left from the Live TV guide while this was open behind it: into the small window.
         if (pipNow && !isInPictureInPictureMode()) {
@@ -330,11 +334,26 @@ public class PlayerActivity extends AppCompatActivity {
         turned(isLandscape(cfg));
     }
 
-    /** Turned round: back to the guide when turning it on its side opened this; otherwise the picture's shape again. */
+    /** Whether turning upright again leaves the full screen that turning on its side opened (off unless switched on). */
+    static boolean uprightBack(Context c) {
+        return "1".equals(Aspect.prefs(c).get(UPRIGHT_BACK));
+    }
+
+    /**
+     * Opened by turning the phone on its side: it stays on its side (either way round) until left with back or the
+     * cross, so lying down with it, or tilting it, never turns it upright and out to the guide. Upright too otherwise,
+     * or when turning upright is to leave it (Options).
+     */
+    private void orient() {
+        setRequestedOrientation(auto && !uprightBack(this) ? ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                : ActivityInfo.SCREEN_ORIENTATION_SENSOR);
+    }
+
+    /** Turned round: back to the guide when turning it on its side opened this (and upright leaves); else the picture's shape. */
     private void turned(boolean land) {
         if (land == landscape) return;
         landscape = land;
-        if (auto && !land) {
+        if (auto && !land && uprightBack(this)) {
             close();
             return;
         }
@@ -1137,6 +1156,15 @@ public class PlayerActivity extends AppCompatActivity {
                 Aspect.prefs(c).put(AUTO_PIP, autoPip(c) ? "0" : "1");
                 setPictureInPictureParams(pipParams());
                 Toast.makeText(c, autoPip(c) ? R.string.live_auto_pip_now_on : R.string.live_auto_pip_now_off, Toast.LENGTH_SHORT).show();
+                if (sheet != null) sheet.dismiss();
+            });
+        }
+        if (auto) {
+            boolean up = uprightBack(c);
+            action(c, box, R.drawable.live_ic_fullscreen, up ? R.string.live_upright_on : R.string.live_upright_off, () -> {
+                Aspect.prefs(c).put(UPRIGHT_BACK, uprightBack(c) ? "0" : "1");
+                orient();
+                Toast.makeText(c, uprightBack(c) ? R.string.live_upright_now_on : R.string.live_upright_now_off, Toast.LENGTH_SHORT).show();
                 if (sheet != null) sheet.dismiss();
             });
         }
