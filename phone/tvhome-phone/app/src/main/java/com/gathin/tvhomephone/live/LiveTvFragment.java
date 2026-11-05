@@ -54,7 +54,9 @@ import java.util.TimeZone;
  * view, and More (Manage favourites, Hidden channels, Refresh); then "Your channels" (the favourites' logos: tap one to
  * watch), then the groups as chips (Favourites first, chosen when there are any, then All, Recent and the playlist's own
  * groups, and Sport: SportGuide, today's games on the family's channels in place of the grid). Above the grid the chosen
- * programme's details.
+ * programme's details. Held upright, all that sits between the top bar and the guide folds away (Fold): a swipe up
+ * gives the guide the whole height and a swipe down at its top brings it back; the picture plays on out of sight, and
+ * opens again when a channel is played. Folded, a later programme tapped shows its sheet in place of the details.
  * Tap a channel (or a programme that is on) to watch it in the guide's own picture, with sound (Inline): on a phone held
  * upright a 16:9 picture at the top with the guide still there under it, on a tablet held upright beside the details,
  * and on a tablet on its side in the pane beside the grid. Tap it again, its full screen button or swipe up for full
@@ -65,7 +67,8 @@ import java.util.TimeZone;
  * button at the grid's corner picks the day. The list view is the Now and Next list.
  */
 public class LiveTvFragment extends Fragment {
-    private static final String S_GROUP = "group", S_KEY = "key", S_START = "start", S_LEFT = "left", S_UPRIGHT = "upright";
+    private static final String S_GROUP = "group", S_KEY = "key", S_START = "start", S_LEFT = "left", S_UPRIGHT = "upright",
+            S_FOLDED = "folded";
     private static final int COMPACT = 0, TOP = 1, SIDE = 2;
     private static final int SEARCH_CHANNELS = 60, SEARCH_PROGRAMMES = 120;
 
@@ -76,6 +79,11 @@ public class LiveTvFragment extends Fragment {
     private boolean tablet, listView, searching;
     /** Upright phones: the picture is open at the top; turned on its side while it played (so: full screen). */
     private boolean inlineOpen, autoFull;
+    /**
+     * The header over the guide was folded away before the page was made again (turned round): kept only while the tab
+     * is open, carried through a turn on its side, where nothing folds.
+     */
+    private boolean startFolded;
     private String group;
     private String selKey;
     private long selStart, restoreLeft = -1;
@@ -99,6 +107,8 @@ public class LiveTvFragment extends Fragment {
     private final Chips chipsAdapter = new Chips();
     private final Rows listAdapter = new Rows(), resultsAdapter = new Rows();
     private FrameLayout body;
+    /** Upright: the picture, Your channels, the categories and the details over the guide, folding away (null on its side). */
+    private Fold fold;
     private GuideGrid grid;
     private Details details;
     private Inline inline;
@@ -139,6 +149,7 @@ public class LiveTvFragment extends Fragment {
             selKey = saved.getString(S_KEY);
             selStart = saved.getLong(S_START);
             restoreLeft = saved.getLong(S_LEFT, -1);
+            startFolded = saved.getBoolean(S_FOLDED, false);
             // A phone turned on its side while its picture played (no one showing it for the moment): full screen.
             autoFull = saved.getBoolean(S_UPRIGHT, false) && mode == SIDE && !tablet && pb.unattended() && pb.live();
         }
@@ -149,11 +160,18 @@ public class LiveTvFragment extends Fragment {
         root.setBackgroundColor(GuideLook.GROUND);
 
         buildToolbar(c, root);
+        // Held upright (phone or tablet), everything between the top bar and the guide folds away (Fold); on its side,
+        // the categories over the grid and the pane beside it stay.
+        LinearLayout head = null;
+        if (mode != SIDE) {
+            head = new LinearLayout(c);
+            head.setOrientation(LinearLayout.VERTICAL);
+        }
         inline = new Inline(c, lib, mode == COMPACT);
         inline.setListener(inlineListener());
         if (mode == COMPACT) {
             // Upright phones: the picture across the top, over the guide, when something has been played.
-            root.addView(inline, new LinearLayout.LayoutParams(-1, -2));
+            head.addView(inline, new LinearLayout.LayoutParams(-1, -2));
             inline.setVisibility(View.GONE);
         }
         buildStrip(c);
@@ -163,7 +181,7 @@ public class LiveTvFragment extends Fragment {
             ((LinearLayout.LayoutParams) toolbar.getChildAt(0).getLayoutParams()).weight = 0;
             toolbar.getChildAt(0).getLayoutParams().width = -2;
         } else {
-            root.addView(stripRow, new LinearLayout.LayoutParams(-1, Ui.dp(c, 60)));
+            head.addView(stripRow, new LinearLayout.LayoutParams(-1, Ui.dp(c, 60)));
         }
 
         chipsView = new RecyclerView(c);
@@ -172,18 +190,13 @@ public class LiveTvFragment extends Fragment {
         chipsView.setClipToPadding(false);
         chipsView.setPadding(Ui.dp(c, 12), 0, Ui.dp(c, 12), 0);
         chipsView.setItemAnimator(null);
-        root.addView(chipsView, new LinearLayout.LayoutParams(-1, Ui.dp(c, 52)));
+        (mode == SIDE ? root : head).addView(chipsView, new LinearLayout.LayoutParams(-1, Ui.dp(c, 52)));
 
-        LinearLayout content = new LinearLayout(c);
-        LinearLayout main = new LinearLayout(c);
-        main.setOrientation(LinearLayout.VERTICAL);
-        content.addView(main, new LinearLayout.LayoutParams(0, -1, 1f));
-        root.addView(content, new LinearLayout.LayoutParams(-1, 0, 1f));
-
+        body = new FrameLayout(c);
         Details.Actions actions = actions();
         if (mode == COMPACT) {
             details = new Details(c, lib, true, 2);
-            main.addView(details, new LinearLayout.LayoutParams(-1, -2));
+            head.addView(details, new LinearLayout.LayoutParams(-1, -2));
         } else if (mode == TOP) {
             band = new LinearLayout(c);
             band.setBackgroundColor(GuideLook.PANEL);
@@ -191,8 +204,13 @@ public class LiveTvFragment extends Fragment {
             band.addView(inline, new LinearLayout.LayoutParams(Ui.dp(c, 320), Ui.dp(c, 180)));
             details = new Details(c, lib, false, 4);
             band.addView(details, new LinearLayout.LayoutParams(0, -2, 1f));
-            main.addView(band, new LinearLayout.LayoutParams(-1, -2));
+            head.addView(band, new LinearLayout.LayoutParams(-1, -2));
         } else {
+            LinearLayout content = new LinearLayout(c);
+            LinearLayout main = new LinearLayout(c);
+            main.setOrientation(LinearLayout.VERTICAL);
+            main.addView(body, new LinearLayout.LayoutParams(-1, 0, 1f));
+            content.addView(main, new LinearLayout.LayoutParams(0, -1, 1f));
             side = new LinearLayout(c);
             side.setOrientation(LinearLayout.VERTICAL);
             side.setBackgroundColor(GuideLook.PANEL);
@@ -206,11 +224,20 @@ public class LiveTvFragment extends Fragment {
             ds.addView(details, new FrameLayout.LayoutParams(-1, -2));
             side.addView(ds, new LinearLayout.LayoutParams(-1, 0, 1f));
             content.addView(side, new LinearLayout.LayoutParams(sw, -1));
+            root.addView(content, new LinearLayout.LayoutParams(-1, 0, 1f));
         }
         details.setActions(actions);
+        if (head != null) {
+            fold = new Fold(c, head, body);
+            fold.setPicture(inline);
+            fold.setListener(shown -> {
+                centre(favHint);
+                centre(state);
+            });
+            if (startFolded) fold.setShut(true, false);
+            root.addView(fold, new LinearLayout.LayoutParams(-1, 0, 1f));
+        }
 
-        body = new FrameLayout(c);
-        main.addView(body, new LinearLayout.LayoutParams(-1, 0, 1f));
         grid = new GuideGrid(c, lib, tablet);
         grid.setListener(gridListener());
         grid.corner.setOnClickListener(this::pickDay);
@@ -224,9 +251,24 @@ public class LiveTvFragment extends Fragment {
         body.addView(favHint, new FrameLayout.LayoutParams(-1, -1));
         favHint.setVisibility(View.GONE);
         sport = new SportGuide(c, this::play);
+        // Its scrolling folds the header away as the guide's does.
+        sport.setNestedScrollingEnabled(fold != null);
         body.addView(sport, new FrameLayout.LayoutParams(-1, -1));
         sport.setVisibility(View.GONE);
         return root;
+    }
+
+    /**
+     * Something centred in the body (a hint, loading, an error): centred in what shows of it, as the body runs on under
+     * the screen's foot by as much of the header as shows.
+     */
+    private void centre(View v) {
+        if (v != null) v.setTranslationY(fold == null ? 0 : -fold.shown() / 2f);
+    }
+
+    /** The header folded away (so the programme's details aren't in sight). */
+    private boolean folded() {
+        return fold != null && fold.isShut();
     }
 
     /** Whether the Sport choice shows (in place of the guide). */
@@ -661,6 +703,7 @@ public class LiveTvFragment extends Fragment {
         out.putString(S_KEY, selKey);
         out.putLong(S_START, selStart);
         out.putBoolean(S_UPRIGHT, mode == COMPACT);
+        out.putBoolean(S_FOLDED, fold != null ? fold.isShut() : startFolded);
         if (grid != null && grid.timeline() != null) out.putLong(S_LEFT, grid.leftTime());
     }
 
@@ -682,6 +725,7 @@ public class LiveTvFragment extends Fragment {
         if (!source || !ready) {
             state = !source ? empty(c) : lib.busy() || lib.status().isEmpty() ? loading(c) : failed(c);
             body.addView(state, new FrameLayout.LayoutParams(-1, -1));
+            centre(state);
             grid.setVisibility(View.GONE);
             list.setVisibility(View.GONE);
             results.setVisibility(View.GONE);
@@ -852,6 +896,8 @@ public class LiveTvFragment extends Fragment {
                     play(ch);
                 } else {
                     select(ch, s.start[index], true);
+                    // The details are folded away: the programme's sheet (Remind me, Watch) in their place.
+                    if (folded()) Sheets.programme(requireContext(), lib, ch, index, actions());
                 }
             }
 
@@ -947,6 +993,8 @@ public class LiveTvFragment extends Fragment {
         if (mode == COMPACT) openInline(true);
         inline.play(ch);
         showInline();
+        // Folded away: it opens again to show the picture asked for.
+        if (fold != null) fold.setShut(false, true);
     }
 
     /** Full screen on this channel; the guide gets the stream back after (auto: opened by turning on its side). */
