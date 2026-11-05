@@ -61,8 +61,9 @@ import java.util.TimeZone;
  * upright a 16:9 picture at the top with the guide still there under it, on a tablet held upright beside the details,
  * and on a tablet on its side in the pane beside the grid. Tap it again, its full screen button or swipe up for full
  * screen, which takes the same stream over and gives it back; turning the phone on its side while it plays goes full
- * screen too, and upright again comes back. A phone on its side goes straight to full screen. The last channel is kept
- * for coming back to the tab (paused until tapped). A later programme shows its details and Remind me; the star makes
+ * screen too, and upright again comes back. A phone on its side goes straight to full screen. The tab opens again on the
+ * category chosen last, and the channel played last plays again in the guide's picture as it opens (LastWatch: only
+ * waiting, paused until tapped, when its picture was closed with ✕). A later programme shows its details and Remind me; the star makes
  * the channel a favourite; a long press opens the channel's menu (favourite, hide, similar channels, its info). The day
  * button at the grid's corner picks the day. The list view is the Now and Next list.
  */
@@ -84,6 +85,10 @@ public class LiveTvFragment extends Fragment {
      * is open, carried through a turn on its side, where nothing folds.
      */
     private boolean startFolded;
+    /** Made fresh (not turned round): the first start plays the last channel again. */
+    private boolean fresh;
+    /** The tab has just opened (or come back): the channel played last plays again once the playlist is ready. */
+    private boolean autoPlay, started;
     private String group;
     private String selKey;
     private long selStart, restoreLeft = -1;
@@ -144,6 +149,9 @@ public class LiveTvFragment extends Fragment {
         mode = land ? SIDE : tablet ? TOP : COMPACT;
         listView = ui(c).getBoolean("list", false);
         inlineOpen = ui(c).getBoolean("inline", false);
+        fresh = saved == null;
+        // A fresh visit (the tabs are made anew each time): the category chosen last time, checked once the playlist is in.
+        if (saved == null) group = ui(c).getString(LAST_GROUP, null);
         if (saved != null) {
             group = saved.getString(S_GROUP);
             selKey = saved.getString(S_KEY);
@@ -278,6 +286,13 @@ public class LiveTvFragment extends Fragment {
 
     private static SharedPreferences ui(Context c) {
         return c.getApplicationContext().getSharedPreferences("live_ui", Context.MODE_PRIVATE);
+    }
+
+    /** The category chosen last; the picture closed with ✕ (so the last channel waits instead of playing). */
+    private static final String LAST_GROUP = "last_group", STOPPED = "stopped";
+
+    private void stopped(boolean on) {
+        if (isAdded()) ui(requireContext()).edit().putBoolean(STOPPED, on).apply();
     }
 
     private RecyclerView rowsView(Context c, Rows adapter) {
@@ -713,6 +728,7 @@ public class LiveTvFragment extends Fragment {
     private void pickGroup(String g) {
         if (g.equals(group)) return;
         group = g;
+        ui(requireContext()).edit().putString(LAST_GROUP, g).apply();
         refreshChips();
         refreshRows();
         if (SportGuide.GROUP.equals(g)) sport.load();
@@ -739,6 +755,10 @@ public class LiveTvFragment extends Fragment {
         lib.ensure();
         // The picture is ours again: still playing (turned round, or back from full screen), or the last channel paused.
         inline.start();
+        // Opened (or back in the app): the channel played last plays again, unless its picture was closed with ✕. Not
+        // after a turn, which keeps whatever was playing.
+        autoPlay = (started || fresh) && !ui(requireContext()).getBoolean(STOPPED, false);
+        started = true;
         refreshAll();
         h.postDelayed(tick, 60_000);
         if (autoFull) {
@@ -803,13 +823,20 @@ public class LiveTvFragment extends Fragment {
             return;
         }
         inline.rebind();
-        if (inline.channel() == null) {
-            // The channel played last (paused until tapped).
+        boolean again = autoPlay;
+        autoPlay = false;
+        if (inline.channel() == null || again && !inline.live()) {
+            // The channel played last: playing again as the tab opens (LastWatch), else shown paused until tapped.
             Channel last = pb.last(lib);
-            if (last != null && !lib.isHidden(last)) inline.show(last);
+            if (last != null && !lib.isHidden(last)) {
+                if (again && !pb.live()) watchHere(last);
+                else if (inline.channel() == null) inline.show(last);
+            }
         }
         List<Channel> favs = lib.list(Library.FAVOURITES, "");
         boolean hasRecent = !Picks.recent(c).isEmpty();
+        // The category kept from last time, while the playlist still has it.
+        if (group != null && !LastWatch.known(group, lib.groups())) group = null;
         if (group == null) group = favs.isEmpty() ? Library.ALL : Library.FAVOURITES;
         if (shownGroups != lib.groups() || shownGroupsVersion != Groups.version) buildChips();
         else if (shownFavs != !favs.isEmpty() || shownRecent != hasRecent) refreshChips();
@@ -1051,6 +1078,7 @@ public class LiveTvFragment extends Fragment {
     }
 
     private void watchHere(Channel ch) {
+        stopped(false);
         if (mode == COMPACT) openInline(true);
         inline.play(ch);
         showInline();
@@ -1061,6 +1089,7 @@ public class LiveTvFragment extends Fragment {
     /** Full screen on this channel; the guide gets the stream back after (auto: opened by turning on its side). */
     private void fullScreen(Channel ch, boolean auto) {
         if (ch == null || !isAdded()) return;
+        stopped(false);
         PlayerActivity.start(requireContext(), ch.key, searching || group == null || SportGuide.GROUP.equals(group) ? Library.ALL : group,
                 true, auto);
     }
@@ -1073,6 +1102,7 @@ public class LiveTvFragment extends Fragment {
 
             @Override public void onClose() {
                 inline.halt();
+                stopped(true);
                 if (mode == COMPACT) {
                     openInline(false);
                     showInline();

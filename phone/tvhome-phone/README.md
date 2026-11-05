@@ -118,6 +118,11 @@ The name in the corner always fits (4.3): Homefield's name beside its mark, and 
 sized as the top bar is laid out, to the room left by the Now and other buttons: as large as fits (smaller with a
 larger display text), never cut off or under a button; where even a small name has no room, the mark stands alone.
 
+Live TV opens where you left it (4.4): the guide opens on the category you chose last (All, Favourites, Sport or
+one of the playlist's own, while the playlist still has it), and the channel you watched last plays again in the
+guide's picture as the tab opens, or as you come back to the app. Close the picture with ✕ and it waits instead,
+paused until tapped, until you next play something.
+
 Subtitles (CC in the film's player): the film's or episode's own, from your playlist's stream, come first, in the
 languages you choose (Settings, Subtitles, in order). When it has none, OpenSubtitles.com is looked in by the title's
 TMDB id (the series' with its season and episode), best first: your languages, the ones that fit the copy playing (its
