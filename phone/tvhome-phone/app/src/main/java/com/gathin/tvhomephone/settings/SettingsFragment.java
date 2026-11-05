@@ -14,8 +14,8 @@ import com.gathin.tvhomephone.BuildConfig;
 import com.gathin.tvhomephone.R;
 
 /**
- * Settings: one scrolling page of each part's own section (the TVs and sync, the alerts and clubs, Live TV's playlist),
- * then the version.
+ * Settings: one scrolling page of each part's own section (the TVs and sync, the alerts and clubs, Live TV's playlist,
+ * the films' subtitles), then the version.
  */
 public class SettingsFragment extends Fragment {
     /** Set before Settings opens from a playlist's notification: scrolled down to Live TV's playlists once. */
@@ -32,6 +32,7 @@ public class SettingsFragment extends Fragment {
         col.addView(com.gathin.tvhomephone.sports.SportsSettings.build(this, col));
         android.view.View live = com.gathin.tvhomephone.live.LiveTvSettings.build(this, col);
         col.addView(live);
+        col.addView(com.gathin.tvhomephone.live.SubtitleSettings.build(this, col));
         if (toPlaylists) {
             toPlaylists = false;
             scroll.post(() -> scroll.smoothScrollTo(0, live.getTop()));

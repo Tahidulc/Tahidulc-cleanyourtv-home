@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="subs_title">Subtitles</string>
+    <string name="subs_body">For films and series. Each one\'s own subtitles from your playlist come first; when it has none, OpenSubtitles.com is looked in. Tap CC in the player to choose, or to move them earlier or later.</string>
+    <string name="subs_on">On for every film and episode</string>
+    <string name="subs_auto">Find them on OpenSubtitles when a film has none</string>
+    <string name="subs_hi">Prefer subtitles for the deaf (SDH)</string>
+    <string name="subs_languages">Languages, in the order you want them</string>
+    <string name="subs_change">Change</string>
+    <string name="subs_size">Size</string>
+    <string name="subs_look">Look</string>
+    <string name="subs_os">OpenSubtitles</string>
+    <string name="subs_os_none">To look for subtitles there, add your own free API key: sign up at opensubtitles.com, then Profile, API consumers, New consumer. Sign in with that account below too for about 20 downloads a day.</string>
+    <string name="subs_os_key_saved">API key saved</string>
+    <string name="subs_os_signed_in">API key saved · signed in as %1$s</string>
+    <string name="subs_os_daily">%1$s · %2$d downloads a day</string>
+    <string name="subs_key">API key</string>
+    <string name="subs_user">Username (optional)</string>
+    <string name="subs_password">Password (optional)</string>
+    <string name="subs_save">Save and check</string>
+    <string name="subs_forget">Remove</string>
+    <string name="subs_checking">Checking…</string>
+    <string name="subs_pick_languages">Subtitle languages</string>
+    <string name="subs_done">Done</string>
+</resources>

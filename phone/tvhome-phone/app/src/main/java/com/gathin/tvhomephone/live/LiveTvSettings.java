@@ -410,18 +410,18 @@ public final class LiveTvSettings {
         if (NightSound.available()) col.addView(toggle(c, c.getString(R.string.live3_night), NightSound.on(c), on -> NightSound.set(c, on)));
     }
 
-    private interface Flip {
+    interface Flip {
         void set(boolean on);
     }
 
-    private static TextView label(Context c, String words) {
+    static TextView label(Context c, String words) {
         TextView t = Ui.text(c, words, 13, Ui.DIM, true);
         t.setPadding(0, Ui.dp(c, 14), 0, Ui.dp(c, 6));
         return t;
     }
 
     /** A line with its switch (On/Off chip). */
-    private static View toggle(Context c, String words, boolean on, Flip flip) {
+    static View toggle(Context c, String words, boolean on, Flip flip) {
         LinearLayout row = new LinearLayout(c);
         row.setGravity(Gravity.CENTER_VERTICAL);
         row.setMinimumHeight(Ui.dp(c, 52));
@@ -477,7 +477,7 @@ public final class LiveTvSettings {
      * A chip on one line that keeps its 40dp: Ui.chip's single-line mode sets its height to the line's, and in a
      * row that scrolls sideways it centres the words in an endless line, off the chip.
      */
-    private static TextView pill(Context c, String label, boolean on) {
+    static TextView pill(Context c, String label, boolean on) {
         TextView t = Ui.chip(c, label, on);
         t.setSingleLine(false);
         t.setMaxLines(1);
@@ -487,7 +487,7 @@ public final class LiveTvSettings {
         return t;
     }
 
-    private static LinearLayout.LayoutParams chipParams(Context c) {
+    static LinearLayout.LayoutParams chipParams(Context c) {
         LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(-2, -2);
         p.rightMargin = Ui.dp(c, 8);
         return p;
@@ -502,12 +502,12 @@ public final class LiveTvSettings {
         return t;
     }
 
-    private static void restyle(Context c, TextView chip, boolean on) {
+    static void restyle(Context c, TextView chip, boolean on) {
         chip.setTextColor(on ? Ui.NAVY_INK : Ui.TEXT);
         chip.setBackground(Ui.touch(c, false, on ? Ui.TEXT : Ui.GLASS, 20));
     }
 
-    private static EditText field(Context c, int hint, int type) {
+    static EditText field(Context c, int hint, int type) {
         EditText e = new EditText(c);
         e.setHint(hint);
         e.setHintTextColor(Ui.DIM);
@@ -522,7 +522,7 @@ public final class LiveTvSettings {
         return e;
     }
 
-    private static MaterialButton button(Context c, int label, boolean primary) {
+    static MaterialButton button(Context c, int label, boolean primary) {
         MaterialButton b = new MaterialButton(c);
         b.setText(label);
         b.setAllCaps(false);

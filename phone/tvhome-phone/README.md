@@ -48,6 +48,15 @@ app is opened: when none of your playlists has a title, it says so. Live TV and 
 playlists you give it; the app ships with no channels or sources. The tabs are Home, Sports, Live TV, Watch and
 Settings.
 
+Subtitles (CC in the film's player): the film's or episode's own, from your playlist's stream, come first, in the
+languages you choose (Settings, Subtitles, in order). When it has none, OpenSubtitles.com is looked in by the title's
+TMDB id (the series' with its season and episode), best first: your languages, the ones that fit the copy playing (its
+frame rate and quality), SDH if you want it, then the most downloaded. Downloads, and searching, need your own free
+OpenSubtitles API key, and signing in with that account gives more downloads a day; the key and account stay on the
+phone. A file found is kept for that film, drawn by the app over the picture, and can be moved earlier or later as it
+plays without the stream reloading. Size (four) and look (white outline, black box, yellow) are in the same menu. On
+or off is kept for every film; with it on, a film with none of its own finds one by itself.
+
 You can add more than one playlist (Settings, Live TV: Add playlist, an M3U address or an Xtream Codes login, with a
 name). Each shows when it runs out, as its provider says (an Xtream account, or an M3U address from one: green, amber
 under a fortnight, pink once run out), its connections and its channels. Use them all together or just one, from the

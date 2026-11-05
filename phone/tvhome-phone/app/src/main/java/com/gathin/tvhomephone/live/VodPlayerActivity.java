@@ -32,7 +32,8 @@ import androidx.media3.ui.PlayerView;
  * the rest), and where it was left kept, so it carries on from there next time (and on Watch's Continue watching row,
  * VodHistory). When it won't play from one playlist, the same film or episode in the next one is tried, from where it
  * had got to. An episode that ends offers the next one, playing it after ten seconds unless stopped; a sleep timer
- * stops it after 15, 30 or 60 minutes, or at the end of this one.
+ * stops it after 15, 30 or 60 minutes, or at the end of this one. CC: its subtitles, the stream's own or OpenSubtitles'
+ * (VodSubtitles).
  */
 @OptIn(markerClass = UnstableApi.class)
 public final class VodPlayerActivity extends AppCompatActivity {
@@ -63,7 +64,9 @@ public final class VodPlayerActivity extends AppCompatActivity {
     private final android.os.Handler h = new android.os.Handler(android.os.Looper.getMainLooper());
     private FrameLayout root;
     private PlayerView view;
-    private TextView sleepPill, sourcesPill;
+    private TextView sleepPill, sourcesPill, ccPill;
+    /** Its subtitles: the stream's own, or a file from OpenSubtitles. */
+    private VodSubtitles subs;
     /** The information bar: the name, then where it plays from and the picture's and sound's marks. */
     private LinearLayout infoBar, tagRow, topRight;
     private View nextCard;
@@ -183,6 +186,12 @@ public final class VodPlayerActivity extends AppCompatActivity {
         // Top right, with the controls: the sources (when there are several), the sleep timer, the small window, more.
         topRight = new LinearLayout(this);
         topRight.setGravity(Gravity.CENTER_VERTICAL);
+        ccPill = pill("CC");
+        ccPill.setContentDescription("Subtitles");
+        ccPill.setOnClickListener(v -> {
+            if (subs != null) subs.menu();
+        });
+        topRight.addView(ccPill, pillParams());
         sourcesPill = pill("");
         sourcesPill.setOnClickListener(v -> sourcesMenu());
         topRight.addView(sourcesPill, pillParams());
@@ -223,6 +232,9 @@ public final class VodPlayerActivity extends AppCompatActivity {
         player.setHandleAudioBecomingNoisy(true);
         NightSound.follow(this, player);
         view.setPlayer(player);
+        subs = new VodSubtitles(this, player, view, resumeKey, meta, getIntent().getStringExtra(EXTRA_TITLE), this::subsChanged);
+        subs.start();
+        subsChanged();
         load(0);
         long at = prefs().getLong(resumeKey, 0);
         if (at > RESUME_AFTER) {
@@ -317,6 +329,14 @@ public final class VodPlayerActivity extends AppCompatActivity {
             if (!hdr.isEmpty()) addTag(hdr, true);
             if (!a.isEmpty()) addTag(a, true);
         }
+        if (subs != null && subs.hasOwn()) addTag("CC", true);
+    }
+
+    /** The CC button lit while subtitles are on, and the information bar's marks again. */
+    private void subsChanged() {
+        if (ccPill == null || subs == null) return;
+        ccPill.setBackground(Ui.touch(this, subs.isOn(), 0x66000000, 22));
+        showTags();
     }
 
     private void addTag(String words, boolean boxed) {
@@ -581,6 +601,7 @@ public final class VodPlayerActivity extends AppCompatActivity {
 
     @Override protected void onDestroy() {
         h.removeCallbacksAndMessages(null);
+        if (subs != null) subs.release();
         if (player != null) {
             player.release();
             player = null;
