@@ -94,5 +94,18 @@ Goals for the clubs you follow come on their own channel, "Your club's goals", w
 The "Your club" home-screen widget (4×2, resizable) shows the live game (or the next one) as the scores box, the game
 after it, and Watch while it is live.
 
+Two games at once: from the player's options, two of your channels play together on the phone on its side, side by
+side or one big with the other small in its corner. Each shows its game's scores box (from its guide programme, or an
+event channel's own name) and which channel and playlist it is; the one with the sound is outlined in white, and a tap
+on the other gives it the sound. Swap sides, Big + small (or Side by side), Change (the channels showing the same game
+first, then every channel with search) and One game (back to the player on the game with the sound). Before a second
+stream from the same playlist starts, its account's connections are checked: one at a time (or all in use) offers the
+same channel from your other playlist instead. Each stream goes on to its backup copy when it drops.
+
+Match centre: in the full-screen player, a panel up from the foot of the picture with the game's Timeline (its moments
+first, then the shot map), Line-ups (with live ratings), Stats (two across) and the table as it stands with the live
+score counted in and both clubs marked; read again every 30 seconds while it is on. Pull its handle down, or ✕, to
+close it. The player's top bar has Match centre while the channel shows a game, and its options have Two games at once.
+
 Build: JDK 17, Android SDK 34. `./gradlew assembleRelease testReleaseUnitTest lintRelease`; the APK is in
 `app/build/outputs/apk/release/`, signed with the debug key for sideloading.

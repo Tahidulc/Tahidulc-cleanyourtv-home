@@ -100,6 +100,8 @@ public class PlayerActivity extends AppCompatActivity {
     private final Handler h = new Handler(Looper.getMainLooper());
     /** The newer parts: the rewind's bar, the alert waiting, a goal elsewhere, the touch lock, on a TV (PlayerExtras). */
     private PlayerExtras extras;
+    /** The match centre's button on the top bar, while the channel shows a game. */
+    private ImageButton matchButton;
     private Library lib;
     private Playback pb;
     private Aspect.Store store;
@@ -210,7 +212,11 @@ public class PlayerActivity extends AppCompatActivity {
         bars.setSystemBarsBehavior(WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
         landscape = isLandscape(getResources().getConfiguration());
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
-            @Override public void handleOnBackPressed() { close(); }
+            @Override public void handleOnBackPressed() {
+                // The match centre first, then the touch lock holds, then out.
+                if (extras.matchShown()) extras.closeMatch();
+                else if (!extras.locked()) close();
+            }
         });
         if (!take(getIntent())) {
             finish();
@@ -388,7 +394,11 @@ public class PlayerActivity extends AppCompatActivity {
         cur = ch;
         boolean same = pb.live(ch);
         pb.play(ch);
-        if (!same) extras.game(null);
+        if (!same) {
+            extras.game(null);
+            if (matchButton != null) matchButton.setVisibility(View.GONE);
+            extras.closeMatch();
+        }
         // Held (the audio went elsewhere for a while): full screen is for watching.
         if (pb.paused()) pb.resume();
         aspect = Aspect.get(store, ch.key, landscape);
@@ -575,6 +585,7 @@ public class PlayerActivity extends AppCompatActivity {
                 if (isFinishing() || info == null || !done.id().equals(info.id())) return;
                 info = done;
                 extras.game(info.game);
+                matchButton.setVisibility(info.game != null ? View.VISIBLE : View.GONE);
                 marks(info);
                 if (tilesShown()) drawTile(false);
             });
@@ -1518,6 +1529,9 @@ public class PlayerActivity extends AppCompatActivity {
         top = new LinearLayout(this);
         top.setOrientation(LinearLayout.HORIZONTAL);
         top.setPadding(Ui.dp(this, 12), Ui.dp(this, 12), Ui.dp(this, 12), Ui.dp(this, 12));
+        matchButton = button(R.drawable.live_ic_stats, R.string.live3_match_centre, v -> extras.openMatch());
+        matchButton.setVisibility(View.GONE);
+        top.addView(matchButton);
         top.addView(button(R.drawable.live_ic_more, R.string.live_options, v -> options()));
         if (pipSupported()) top.addView(button(R.drawable.live_ic_pip, R.string.live_pip, v -> enterPip()));
         top.addView(button(R.drawable.live_ic_close, R.string.live_close, v -> close()));

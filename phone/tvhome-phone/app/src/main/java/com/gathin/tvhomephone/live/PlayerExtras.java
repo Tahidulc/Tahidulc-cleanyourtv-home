@@ -385,6 +385,10 @@ final class PlayerExtras implements LiveAlerts.Listener {
     void pip(boolean in) {
         inPip = in;
         if (in) {
+            if (match != null) {
+                root.removeView(match);
+                match = null;
+            }
             heldLine.setVisibility(View.GONE);
             banner.setVisibility(View.GONE);
             ripple.setVisibility(View.GONE);
@@ -419,6 +423,37 @@ final class PlayerExtras implements LiveAlerts.Listener {
         lockCover.setVisibility(on ? View.VISIBLE : View.GONE);
         if (on) lockCover.bringToFront();
         refreshHeld();
+    }
+
+    // ---- the match centre -------------------------------------------------------------------------------------
+
+    private com.gathin.tvhomephone.sports.MatchPanel match;
+
+    /** The game's Timeline, Line-ups, Stats and Table over the lower half of the picture (slide it down to close). */
+    void openMatch() {
+        Game g = host.game();
+        if (g == null || inPip) return;
+        if (match != null) {
+            match.close();
+            return;
+        }
+        com.gathin.tvhomephone.sports.MatchPanel p = new com.gathin.tvhomephone.sports.MatchPanel(a);
+        root.addView(p, com.gathin.tvhomephone.sports.MatchPanel.layoutParams(a));
+        p.setOnClose(() -> {
+            root.removeView(p);
+            if (match == p) match = null;
+        });
+        match = p;
+        p.show(g);
+        p.slideIn();
+    }
+
+    boolean matchShown() {
+        return match != null;
+    }
+
+    void closeMatch() {
+        if (match != null) match.close();
     }
 
     // ---- on a TV -----------------------------------------------------------------------------------------------
@@ -582,6 +617,22 @@ final class PlayerExtras implements LiveAlerts.Listener {
         });
         addChip(rw, back);
         note(c, box, "Keeps the last minutes of what you watch on this phone (about 1 GB at most), so you can go back; double-tap the left or right of the picture for 10 seconds.");
+
+        // The game's match centre over the picture, two games at once.
+        if (host.game() != null) {
+            action(c, box, R.drawable.live_ic_stats, a.getString(R.string.live3_match_centre), () -> {
+                host.closeSheet();
+                openMatch();
+            });
+        }
+        Channel now = host.current();
+        if (now != null) {
+            action(c, box, R.drawable.live_ic_two, a.getString(R.string.live3_two_games),
+                    () -> {
+                        host.closeSheet();
+                        a.startActivity(TwoGamesActivity.intent(a, now.key, null));
+                    });
+        }
 
         // Night sound, the touch lock, on a TV.
         if (NightSound.available()) {
