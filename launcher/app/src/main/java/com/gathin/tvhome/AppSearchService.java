@@ -920,6 +920,9 @@ public class AppSearchService extends AccessibilityService {
     @Override
     protected boolean onKeyEvent(android.view.KeyEvent event) {
         if (InputKeyService.running || keysWanted.isEmpty()) return false;
+        // Quick reply open while keys are taken here (a card still going, pop-up mode): its keyboard has them first. With
+        // none taken here they go straight to its window, which has the focus.
+        if (QuickReply.key(event)) return true;
         // OK held on a pop-up: quiet for an hour (QuietHold, which has the keys taken here while a card is up).
         return QuietHold.key(this, event, this::keys);
     }

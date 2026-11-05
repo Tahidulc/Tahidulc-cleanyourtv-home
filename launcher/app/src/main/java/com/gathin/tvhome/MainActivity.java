@@ -1212,6 +1212,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     @Override
     protected void onResume() {
         super.onResume();
+        // Home pressed with Quick reply open over an app: it belonged to that app, and goes (unsent).
+        QuickReply.close();
         if (v2 != null) {
             GoalWatchService.homeInFront = true;
             AppSearchService.cancel();

@@ -50,7 +50,8 @@ import java.util.concurrent.TimeUnit;
  *
  * <ul>
  *   <li>Messages: a few words ("Dinner's ready") from Home's Control Centre, or from a phone's browser on the TV's own
- *   page (http://the-tv:47820/), pop up on the other TV (or every TV) with three soft rising notes.</li>
+ *   page (http://the-tv:47820/), pop up on the other TV (or every TV) with three soft rising notes. OK on one answers
+ *   it (QuickReply): back on the TV that sent it, or under what was sent on the phone's page.</li>
  *   <li>Send to the other TV: what is playing here goes on there (a YouTube video at the same moment, a title on a
  *   streaming app found in that app, TiviMate opened for its channel to be picked) and pauses here.</li>
  * </ul>
@@ -225,10 +226,11 @@ final class TvLink {
     }
 
     /**
-     * From the phone's page: the message shown here, and sent on to the other TVs it names ("all": every one found).
-     * Off the main thread.
+     * From the phone's page: the message shown here, and sent on to the other TVs it names ("all": every one found),
+     * with the phone's address (phone), so a quick reply there comes back through this TV to the phone's page
+     * (QuickReply). Off the main thread.
      */
-    static void forward(Context c, JSONObject m) {
+    static void forward(Context c, JSONObject m, String phone) {
         JSONArray to = m.optJSONArray("to");
         if (to == null || to.length() == 0) return;
         boolean all = false;
@@ -242,14 +244,18 @@ final class TvLink {
         if (peers.isEmpty()) return;
         String from = m.optString("from", "Phone");
         try {
-            String body = new JSONObject().put("text", clean(m.optString("text"))).put("from", from).toString();
+            String body = new JSONObject().put("text", clean(m.optString("text"))).put("from", from).put("phone", phone).toString();
             for (String[] p : peers) http(p[1], "POST", "/message", body, 1500, 4000);
         } catch (Exception ignored) {
             // a message lost is not worth more than that
         }
     }
 
-    /** The page a phone's browser opens on the TV (http://the-tv:47820/): a box, the quick messages, the TVs to send to. */
+    /**
+     * The page a phone's browser opens on the TV (http://the-tv:47820/): a box, the quick messages, the TVs to send to.
+     * Under them, what was sent and the TVs' quick replies to it (QuickReply), as chat bubbles: the page asks for them
+     * every three seconds while it is open (DeliveryLink's /message/replies), from ten minutes before it opened.
+     */
     static String page(Context c) {
         StringBuilder tvs = new StringBuilder();
         String me = myName(c);
@@ -270,12 +276,27 @@ final class TvLink {
                 + ".row{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}label{background:var(--card);padding:8px 12px;border-radius:12px}"
                 + "button{font:inherit;border:0;border-radius:12px;padding:10px 14px;background:var(--card);color:var(--ink)}"
                 + "#send{width:100%;background:var(--accent);color:var(--bg);font-weight:700;padding:14px;margin-top:6px}"
-                + "#note{color:var(--soft);min-height:22px;margin-top:10px}</style></head><body><main>"
+                + "#note{color:var(--soft);min-height:22px;margin-top:10px}"
+                + "#chat{display:flex;flex-direction:column;gap:8px;margin-top:12px}#chat:empty{display:none}"
+                + ".b{max-width:82%;align-self:flex-start;background:var(--card);padding:9px 13px;border-radius:18px 18px 18px 6px;overflow-wrap:anywhere}"
+                + ".b.me{align-self:flex-end;background:var(--accent);color:var(--bg);border-radius:18px 18px 6px 18px}"
+                + ".b small{display:block;font-size:12px;opacity:.7;margin-top:2px}</style></head><body><main>"
                 + "<h1>Message the TV</h1><textarea id=t maxlength=" + MAX_TEXT + " placeholder=\"Dinner's ready\"></textarea>"
-                + "<div class=row id=tvs>" + tvs + "</div><button id=send>Send</button><div id=note></div>"
+                + "<div class=row id=tvs>" + tvs + "</div><button id=send>Send</button><div id=note></div><div id=chat></div>"
                 + "<h1 style=\"font-size:17px;margin-top:22px\">Quick messages</h1><div class=row>" + quick + "</div>"
                 + "<script>"
                 + "const t=document.getElementById('t'),note=document.getElementById('note'),tvs=document.getElementById('tvs');"
+                // The TVs' replies: from ten minutes before the page opened (the TV's clock), each one once.
+                + "const chat=document.getElementById('chat');let last=" + (System.currentTimeMillis() - 10 * 60_000L) + ",asking=false;"
+                + "function hm(ms){const d=new Date(ms);return ('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2)}"
+                + "function bubble(text,meta,mine){const b=document.createElement('div');b.className=mine?'b me':'b';"
+                + "const w=document.createElement('div');w.textContent=text;const m=document.createElement('small');m.textContent=meta;"
+                + "b.appendChild(w);b.appendChild(m);chat.appendChild(b);b.scrollIntoView({block:'nearest',behavior:'smooth'})}"
+                + "async function replies(){if(asking||document.hidden)return;asking=true;"
+                + "try{const r=await fetch('/message/replies',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({after:last})});"
+                + "const j=await r.json();(j.replies||[]).forEach(x=>{if(x.at<=last)return;last=x.at;bubble(x.text,x.from+' · '+hm(x.at),false)})}"
+                + "catch(e){}asking=false}"
+                + "setInterval(replies,3000);replies();document.addEventListener('visibilitychange',replies);"
                 // The other TVs looked for afresh as the page opens (the TV may not have looked yet): each one found added.
                 + "function esc(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML}"
                 + "note.textContent='Looking for the other TVs…';"
@@ -290,7 +311,8 @@ final class TvLink {
                 + "note.textContent='Sending…';"
                 + "try{const r=await fetch('/message',{method:'POST',headers:{'Content-Type':'application/json'},"
                 + "body:JSON.stringify({text:text,from:'Phone',here:to.includes('here'),to:to.filter(x=>x!=='here')})});"
-                + "note.textContent=r.ok?'Sent':'Not sent (wait a moment and try again)'}catch(e){note.textContent='The TV did not answer'}}"
+                + "if(r.ok){note.textContent='Sent';bubble(text,'You · '+hm(Date.now()),true);if(text===t.value)t.value=''}"
+                + "else note.textContent='Not sent (wait a moment and try again)'}catch(e){note.textContent='The TV did not answer'}}"
                 + "document.getElementById('send').onclick=()=>send(t.value);"
                 + "document.querySelectorAll('.q').forEach(b=>b.onclick=()=>send(b.textContent));"
                 + "</script></main></body></html>";
@@ -455,7 +477,9 @@ final class TvLink {
 
     /** A message said aloud: typed into the keyboard's box. */
     static void heard(String words) {
-        if (panel != null && panel.typing && words != null) panel.type((panel.text.length() > 0 && !panel.text.toString().endsWith(" ") ? " " : "") + words);
+        if (panel == null || !panel.typing || words == null) return;
+        StringBuilder t = panel.kb.text;
+        panel.kb.type((t.length() > 0 && !t.toString().endsWith(" ") ? " " : "") + words);
     }
 
     static boolean isOpen() {
@@ -494,15 +518,10 @@ final class TvLink {
         final Typeface heavy, semi, regular;
         int at = 0, tv = 0;
         boolean busy;
-        /** The quick messages and the hint (hidden while typing), and the keyboard for one's own words. */
-        LinearLayout list, keyboard;
-        TextView field;
-        boolean typing, shift;
-        final StringBuilder text = new StringBuilder();
-        final List<List<TextView>> keys = new ArrayList<>();
-        final List<List<Runnable>> keyActs = new ArrayList<>();
-        /** The key in focus: its row (-1: the TVs along the top) and place in the row. */
-        int kr = 1, kc = 0;
+        /** The quick messages and the hint (hidden while typing), and the keyboard for one's own words (the TVs above it). */
+        LinearLayout list;
+        RemoteKeyboard kb;
+        boolean typing;
 
         Panel(HomeV2 h, boolean sending) {
             this.h = h;
@@ -632,113 +651,38 @@ final class TvLink {
                 lines.get(i).setBackground(g);
             }
             if (!typing) return;
-            boolean upper = upperNext();
-            for (int r = 0; r < keys.size(); r++) {
-                for (int k = 0; k < keys.get(r).size(); k++) {
-                    TextView key = keys.get(r).get(k);
-                    String label = String.valueOf(key.getTag());
-                    if (label.length() == 1 && Character.isLetter(label.charAt(0))) key.setText(upper ? label.toUpperCase(java.util.Locale.UK) : label);
-                    if ("shift".equals(label)) key.setText(shift ? "⇧ ABC" : "⇧ abc");
-                    boolean on = r == kr && k == kc;
-                    GradientDrawable g = new GradientDrawable();
-                    g.setCornerRadius(h.px(12));
-                    g.setColor(on ? 0xFFFFFFFF : "send".equals(label) ? 0xFF3DDC84 : 0x22FFFFFF);
-                    key.setBackground(g);
-                    key.setTextColor(on ? 0xFF10157E : "send".equals(label) ? 0xFF06301A : Color.WHITE);
-                }
-            }
+            kb.paint();
             // The TVs along the top, a ring round the one chosen while the focus is up there.
+            boolean up = kb.row < 0;
             for (int i = 0; i < tvChips.size(); i++) {
                 GradientDrawable g = new GradientDrawable();
                 g.setCornerRadius(h.px(23));
-                g.setColor(i == tv ? (kr < 0 ? 0xFFFFFFFF : 0xCCFFFFFF) : 0x22FFFFFF);
-                if (i == tv && kr < 0) g.setStroke(h.px(3), 0xFFFFD04D);
+                g.setColor(i == tv ? (up ? 0xFFFFFFFF : 0xCCFFFFFF) : 0x22FFFFFF);
+                if (i == tv && up) g.setStroke(h.px(3), 0xFFFFD04D);
                 tvChips.get(i).setBackground(g);
             }
-            field.setText(text.length() == 0 ? "" : text + "▏");
         }
 
         // ---- typing one's own words with the remote ----------------------------------------------------------
 
-        /** The keyboard: digits, three rows of letters and stops, a row of emoji, then Say it, ⇧, Space, ⌫ and Send. */
+        /** The keyboard (RemoteKeyboard): digits, letters and stops, emoji, then Say it, ⇧, Space, ⌫ and Send. */
         void buildKeyboard() {
-            Context c = h.a;
-            keyboard = new LinearLayout(c);
-            keyboard.setOrientation(LinearLayout.VERTICAL);
-            keyboard.setVisibility(View.GONE);
-            field = h.text(30, semi, 0xFF10157E);
-            field.setHint("Type your message");
-            field.setHintTextColor(0x8010157E);
-            field.setMaxLines(2);
-            field.setGravity(Gravity.CENTER_VERTICAL);
-            field.setPadding(h.px(22), h.px(10), h.px(22), h.px(10));
-            GradientDrawable fb = new GradientDrawable();
-            fb.setCornerRadius(h.px(18));
-            fb.setColor(Color.WHITE);
-            field.setBackground(fb);
-            field.setMinHeight(h.px(76));
-            LinearLayout.LayoutParams fl = new LinearLayout.LayoutParams(-1, -2);
-            fl.bottomMargin = h.px(14);
-            keyboard.addView(field, fl);
-            String[] rows = {"1234567890", "qwertyuiop", "asdfghjkl'", "zxcvbnm,.?"};
-            for (String row : rows) {
-                List<String> labels = new ArrayList<>();
-                for (char ch : row.toCharArray()) labels.add(String.valueOf(ch));
-                keyRow(labels, null);
-            }
-            keyRow(java.util.Arrays.asList("!", "😊", "❤️", "👍", "😂", "🍛", "🕌", "⚽", "🎉", "🌙"), null);
-            keyRow(java.util.Arrays.asList("mic", "shift", "space", "delete", "send"), new float[]{1.6f, 1.6f, 3.4f, 1.4f, 2f});
-            box.addView(keyboard, new LinearLayout.LayoutParams(-1, -2));
-        }
-
-        private void keyRow(List<String> labels, float[] weights) {
-            LinearLayout row = new LinearLayout(h.a);
-            List<TextView> views = new ArrayList<>();
-            List<Runnable> acts = new ArrayList<>();
-            for (int i = 0; i < labels.size(); i++) {
-                String l = labels.get(i);
-                TextView key = h.text(l.length() == 1 ? 26 : 22, semi, Color.WHITE);
-                key.setTag(l);
-                key.setGravity(Gravity.CENTER);
-                key.setText("mic".equals(l) ? "🎤 Say it" : "space".equals(l) ? "Space" : "delete".equals(l) ? "⌫" : "send".equals(l) ? "Send ➤" : l);
-                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, h.px(56), weights == null ? 1f : weights[i]);
-                if (i > 0) lp.leftMargin = h.px(6);
-                row.addView(key, lp);
-                views.add(key);
-                acts.add("mic".equals(l) ? this::voice : "shift".equals(l) ? () -> shift = !shift : "space".equals(l) ? () -> type(" ")
-                        : "delete".equals(l) ? this::delete : "send".equals(l) ? this::sendTyped : () -> type(l));
-            }
-            LinearLayout.LayoutParams rl = new LinearLayout.LayoutParams(-1, -2);
-            rl.topMargin = h.px(6);
-            keyboard.addView(row, rl);
-            keys.add(views);
-            keyActs.add(acts);
-        }
-
-        /** A capital next: at the start, after a full stop, ! or ?, or with ⇧ on. */
-        boolean upperNext() {
-            if (shift) return true;
-            String t = text.toString();
-            return t.trim().isEmpty() || t.matches("(?s).*[.!?]\\s+$");
-        }
-
-        void type(String s) {
-            if (s == null || s.isEmpty()) return;
-            if (s.length() == 1 && Character.isLetter(s.charAt(0)) && upperNext()) s = s.toUpperCase(java.util.Locale.UK);
-            if (text.length() + s.length() > MAX_TEXT) { status.setText("That's as long as a message goes"); return; }
-            text.append(s);
-            if (s.length() == 1 && Character.isLetter(s.charAt(0))) shift = false;
-            status.setText("");
-            paint();
-        }
-
-        void delete() {
-            if (text.length() == 0) return;
-            // An emoji is two characters or more (❤️ is the heart and a variation sign): taken off whole.
-            int end = text.length();
-            while (end > 0 && text.charAt(end - 1) == '\uFE0F') end--;
-            text.setLength(end > 0 ? text.offsetByCodePoints(end, -1) : 0);
-            paint();
+            kb = new RemoteKeyboard(h.a, new RemoteKeyboard.Look() {
+                @Override public int px(float design) { return h.px(design); }
+                @Override public TextView text(float size, Typeface face, int colour) { return h.text(size, face, colour); }
+            }, "Type your message", true, MAX_TEXT);
+            kb.view.setVisibility(View.GONE);
+            kb.onSend = this::sendTyped;
+            kb.onVoice = this::voice;
+            kb.onChange = this::paint;
+            kb.onStatus = status::setText;
+            // Up from the keys: the TVs along the top (when there is a choice), Left and Right choosing, OK back down.
+            kb.above = new RemoteKeyboard.Above() {
+                @Override public boolean any() { return peers.size() > 1; }
+                @Override public void move(int by) { if (tv + by >= 0 && tv + by < peers.size()) tv += by; }
+                @Override public boolean ok() { return false; }
+            };
+            box.addView(kb.view, new LinearLayout.LayoutParams(-1, -2));
         }
 
         void voice() {
@@ -754,87 +698,36 @@ final class TvLink {
         }
 
         void sendTyped() {
-            if (text.toString().trim().isEmpty()) { status.setText("Type a message first"); return; }
-            go(text.toString());
+            if (kb.text.toString().trim().isEmpty()) { status.setText("Type a message first"); return; }
+            go(kb.text.toString());
         }
 
         void startTyping() {
             typing = true;
             list.setVisibility(View.GONE);
-            keyboard.setVisibility(View.VISIBLE);
-            kr = 1;
-            kc = 0;
+            kb.view.setVisibility(View.VISIBLE);
+            kb.row = 1;
+            kb.col = 0;
             status.setText(peers.size() > 1 ? "Up to the TVs to choose which" : "");
             paint();
         }
 
         void stopTyping() {
             typing = false;
-            keyboard.setVisibility(View.GONE);
+            kb.view.setVisibility(View.GONE);
             list.setVisibility(View.VISIBLE);
             status.setText(peers.size() > 1 ? "Left and Right choose the TV" : "");
             paint();
         }
 
-        /** The keyboard's keys: the arrows across and between rows (keeping roughly the same place), OK presses. */
+        /** The keyboard's keys (RemoteKeyboard.key); Back goes back to the quick messages. */
         boolean typingKey(KeyEvent e) {
             int code = e.getKeyCode();
             if (code == KeyEvent.KEYCODE_BACK || code == KeyEvent.KEYCODE_ESCAPE) {
                 if (e.getAction() == KeyEvent.ACTION_UP) stopTyping();
                 return true;
             }
-            boolean ok = code == KeyEvent.KEYCODE_DPAD_CENTER || code == KeyEvent.KEYCODE_ENTER || code == KeyEvent.KEYCODE_NUMPAD_ENTER;
-            if (ok) {
-                if (e.getAction() == KeyEvent.ACTION_UP && !e.isCanceled()) {
-                    if (kr < 0) { kr = 0; paint(); return true; }
-                    keyActs.get(kr).get(kc).run();
-                    paint();
-                }
-                return true;
-            }
-            if (e.getAction() != KeyEvent.ACTION_DOWN) return true;
-            // A keyboard remote, or the remote's own digits: typed straight in.
-            if (code == KeyEvent.KEYCODE_DEL) { delete(); return true; }
-            if (code == KeyEvent.KEYCODE_SPACE) { type(" "); return true; }
-            int ch = e.getUnicodeChar();
-            if (ch > 0 && !Character.isISOControl(ch) && code != KeyEvent.KEYCODE_DPAD_LEFT && code != KeyEvent.KEYCODE_DPAD_RIGHT
-                    && code != KeyEvent.KEYCODE_DPAD_UP && code != KeyEvent.KEYCODE_DPAD_DOWN) {
-                type(new String(Character.toChars(ch)));
-                return true;
-            }
-            if (kr < 0) {
-                if (code == KeyEvent.KEYCODE_DPAD_LEFT && tv > 0) tv--;
-                else if (code == KeyEvent.KEYCODE_DPAD_RIGHT && tv < peers.size() - 1) tv++;
-                else if (code == KeyEvent.KEYCODE_DPAD_DOWN) kr = 0;
-                paint();
-                return true;
-            }
-            int cols = keys.get(kr).size();
-            if (code == KeyEvent.KEYCODE_DPAD_LEFT && kc > 0) kc--;
-            else if (code == KeyEvent.KEYCODE_DPAD_RIGHT && kc < cols - 1) kc++;
-            else if (code == KeyEvent.KEYCODE_DPAD_UP) {
-                if (kr == 0) { if (peers.size() > 1) kr = -1; }
-                else { kc = place(kr, kc, kr - 1); kr--; }
-            } else if (code == KeyEvent.KEYCODE_DPAD_DOWN && kr < keys.size() - 1) {
-                kc = place(kr, kc, kr + 1);
-                kr++;
-            }
-            paint();
-            return true;
-        }
-
-        /** The key in row to under the middle of key col in row from. */
-        private int place(int from, int col, int to) {
-            TextView k = keys.get(from).get(col);
-            float mid = k.getLeft() + k.getWidth() / 2f;
-            List<TextView> row = keys.get(to);
-            int best = 0;
-            float bestD = Float.MAX_VALUE;
-            for (int i = 0; i < row.size(); i++) {
-                float d = Math.abs(row.get(i).getLeft() + row.get(i).getWidth() / 2f - mid);
-                if (d < bestD) { bestD = d; best = i; }
-            }
-            return best;
+            return kb.key(e);
         }
 
         void hide() {

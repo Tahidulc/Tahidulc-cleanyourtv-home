@@ -362,9 +362,10 @@ final class WatchCards {
         return host != null && asking;
     }
 
-    /** Another pop-up up in this corner, or one of the others that show over the apps. */
+    /** Another pop-up up in this corner, or one of the others that show over the apps (Quick reply among them). */
     private static boolean othersUp() {
-        return ScoreCard.busy() || RichAlerts.isShowing() || LineupCard.isShowing() || GoalWatchService.alertShowing() || CameraAlert.isShowing();
+        return ScoreCard.busy() || RichAlerts.isShowing() || LineupCard.isShowing() || GoalWatchService.alertShowing() || CameraAlert.isShowing()
+                || QuickReply.isOpen();
     }
 
     private static boolean allowed(Context c, String kind, String what) {

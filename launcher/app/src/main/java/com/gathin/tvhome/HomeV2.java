@@ -1724,6 +1724,8 @@ final class HomeV2 {
         if (smartPanel != null && smartPanel.isOpen()) return smartPanel.key(e);
         if (weatherPanel != null && weatherPanel.isOpen()) return weatherPanel.key(e);
         if (guide.isOpen()) return guide.key(e);
+        // A message's bar up on Home: OK opens Quick reply, now that none of the panels above has the remote.
+        if (ScoreCard.homeKey(e)) return true;
         if (page != null && !preview && !parked) {
             if (e.getKeyCode() == KeyEvent.KEYCODE_BACK) {
                 if (e.getAction() == KeyEvent.ACTION_UP && !page.back()) closePage();

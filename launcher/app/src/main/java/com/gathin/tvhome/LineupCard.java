@@ -669,7 +669,8 @@ final class LineupCard {
         // Over Settings Android hides every app's pop-ups: it waits until Settings is closed (ten minutes at most).
         if (OverlayGuard.hiding(c) != null && hiddenWait(c, "half-time card", f.hiddenWaits++, () -> showHalfTime(c, f))) return;
         // One at a time, as the F1 boards: two seconds at a time, at most a minute and a half, then it shows all the same.
-        if ((CameraAlert.isShowing() || ScoreCard.busy() || GoalWatchService.alertShowing() || isShowing()) && f.waited < 45) {
+        if ((CameraAlert.isShowing() || ScoreCard.busy() || GoalWatchService.alertShowing() || isShowing() || QuickReply.isOpen())
+                && f.waited < 45) {
             f.waited++;
             retry.postDelayed(() -> showHalfTime(c, f), 2_000L);
             return;
@@ -915,7 +916,8 @@ final class LineupCard {
     static void showHop(Context ctx, Hop hp) {
         Context c = ctx.getApplicationContext();
         if (OverlayGuard.hiding(c) != null && hiddenWait(c, "half-time hop", hp.hiddenWaits++, () -> showHop(c, hp))) return;
-        if ((CameraAlert.isShowing() || ScoreCard.busy() || GoalWatchService.alertShowing() || isShowing()) && hp.waited < 45) {
+        if ((CameraAlert.isShowing() || ScoreCard.busy() || GoalWatchService.alertShowing() || isShowing() || QuickReply.isOpen())
+                && hp.waited < 45) {
             hp.waited++;
             retry.postDelayed(() -> showHop(c, hp), 2_000L);
             return;
@@ -1150,8 +1152,8 @@ final class LineupCard {
         }
         if (!(GoalWatchService.laneHome && GoalWatchService.homeInFront || PopupFrame.isShowing())
                 && OverlayGuard.hiding(c) != null && hiddenWait(c, "F1 board", f.hiddenWaits++, () -> showF1(c, f))) return;
-        // One at a time: after a score card, a camera alarm or an older alert (news, weather) has gone.
-        if ((CameraAlert.isShowing() || ScoreCard.busy() || GoalWatchService.alertShowing()) && f.waited < 45) {
+        // One at a time: after a score card, a camera alarm, an older alert (news, weather) or Quick reply has gone.
+        if ((CameraAlert.isShowing() || ScoreCard.busy() || GoalWatchService.alertShowing() || QuickReply.isOpen()) && f.waited < 45) {
             // Waits its turn, two seconds at a time, at most a minute and a half: then it shows all the same.
             f.waited++;
             retry.postDelayed(() -> showF1(c, f), 2_000L);

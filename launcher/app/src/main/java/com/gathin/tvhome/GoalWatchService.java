@@ -1142,7 +1142,9 @@ public class GoalWatchService extends Service {
 
     /**
      * A message from the other TV or a phone ("Dinner's ready"): who it is from and the words, over whatever is on,
-     * ahead of the alerts waiting, with its three soft notes (always, even with the alerts' sounds off).
+     * ahead of the alerts waiting, with its three soft notes (always, even with the alerts' sounds off). Where its
+     * sender is known (DeliveryLink, MessageReplies), "OK to reply" ends it, it stays REPLY_MS, and OK opens Quick
+     * reply (QuickReply).
      */
     private void showMessage(JSONObject m) {
         String from = m.optString("from", "").trim();
@@ -1150,9 +1152,16 @@ public class GoalWatchService extends Service {
         List<Object> parts = new ArrayList<>();
         parts.add(bold("💬  " + (from.isEmpty() ? "MESSAGE" : "FROM " + from.toUpperCase(java.util.Locale.ROOT))));
         parts.add(14);
-        parts.add(m.optString("text"));
-        enqueueParts(parts, "message");
+        String text = m.optString("text");
+        parts.add(text);
+        MessageReplies.Sender who = MessageReplies.ALL.sender(m.optLong("reply"));
+        Object[] reply = who == null ? null
+                : new Object[]{java.util.Collections.<String>emptyList(), null, (Runnable) () -> QuickReply.open(this, who, text), "to reply"};
+        enqueueParts(parts, "message", false, null, reply);
     }
+
+    /** How long a message that can be answered stays up, "OK to reply" on it. */
+    private static final long REPLY_MS = 20_000L;
 
     /** The code a phone asks to pair with, for the person to type there: ahead of any other alert waiting. */
     private void showPairing(String phone, String code) {
@@ -3198,11 +3207,19 @@ public class GoalWatchService extends Service {
         d.leagueLogo = mark;
         d.wideMark = markWide;
         skyWatch(d, watching);
+        if ("message".equals(sound) && d.watch != null) {
+            // A message that can be answered: up longer, "Press OK to reply", and OK answers it on Home's bar too.
+            d.showMs = REPLY_MS;
+            d.okOnHome = true;
+        }
         d.onShown = () -> play(sound);
         return d;
     }
 
-    /** Where it is on ({names, logo} or {names, logo, OK}): its logo on the card and what OK does. */
+    /**
+     * Where it is on ({names, logo} or {names, logo, OK}): its logo on the card and what OK does. With no names and no
+     * logo, OK alone, its words after it ({..., OK, "to reply"}).
+     */
     private void skyWatch(ScoreCard.Data d, Object[] w) {
         if (w == null || !(w[0] instanceof List)) return;
         @SuppressWarnings("unchecked") List<String> names = (List<String>) w[0];
@@ -3211,6 +3228,7 @@ public class GoalWatchService extends Service {
         d.channel = names.isEmpty() ? null : names.get(0);
         d.watch = w.length > 2 && w[2] instanceof Runnable ? (Runnable) w[2]
                 : () -> AppSearchService.tune(this, getString(R.string.scores_open_package), names, logo);
+        if (w.length > 3 && w[3] instanceof String) d.okWords = (String) w[3];
     }
 
     /** A label's words: in capitals (a few lower-case letters allowed). */
@@ -3374,9 +3392,17 @@ public class GoalWatchService extends Service {
 
     /** As enqueueParts, with the channel it is on (on), whose logo and OK close the line. */
     private void enqueueParts(List<Object> parts, String sound, boolean f1Live, TvGuide.Watch on) {
+        enqueueParts(parts, sound, f1Live, on, null);
+    }
+
+    /**
+     * As enqueueParts; ok, when given, is what OK does with no channel: {no names, no logo, what OK runs, the words
+     * after OK} (a message's "OK to reply").
+     */
+    private void enqueueParts(List<Object> parts, String sound, boolean f1Live, TvGuide.Watch on, Object[] ok) {
         int px = Math.round(LOGO_DP * getResources().getDisplayMetrics().density);
         cardRun(() -> {
-            Object[] watch = on != null ? watchOn(on) : null;
+            Object[] watch = on != null ? watchOn(on) : ok;
             if (f1Live) {
                 ScoresTicker.Game f1 = new ScoresTicker.Game();
                 f1.leagueLogo = F1Results.F1_LOGO;
@@ -3733,11 +3759,13 @@ public class GoalWatchService extends Service {
         }
         blockedSince = 0;
         if (shown != null || queue.isEmpty()) return;
-        if (ScoreCard.busy() || LineupCard.isShowing()) {
+        // Quick reply open: the next alert waits for it (it would take the remote's keys from the keyboard).
+        if (ScoreCard.busy() || LineupCard.isShowing() || QuickReply.isOpen()) {
             long now = android.os.SystemClock.uptimeMillis();
             if (waitingSince == 0) {
                 waitingSince = now;
-                AlertLog.note(this, "alert waiting: " + (ScoreCard.busy() ? "a score card" : "the line-up card") + " is up");
+                AlertLog.note(this, "alert waiting: " + (ScoreCard.busy() ? "a score card" : LineupCard.isShowing() ? "the line-up card"
+                        : "quick reply") + " is up");
             }
             if (now - waitingSince < WAIT_MAX_MS) { main.postDelayed(this::showNext, 1_500L); return; }
             AlertLog.note(this, "alert waited 90 s for a card to go: shown all the same");
@@ -3836,8 +3864,12 @@ public class GoalWatchService extends Service {
             wide = false;
             if (next.length > 7) watch = (Object[]) next[7];
         }
-        // Where to watch it closes the line itself: the channel's logo and the remote's OK, which opens it.
-        Object[] inline = watch != null && sides == null && livePage == null && !stillOnly() ? watch : null;
+        // Where to watch it closes the line itself: the channel's logo and the remote's OK, which opens it. A message's
+        // "OK to reply" even over a playing video (still_over_apps), as it is one still pill all the same; but not on
+        // Home while Message the other TV is open there, whose keyboard keeps the remote.
+        boolean message = "message".equals(sound);
+        boolean offer = message ? !(onLane() && TvLink.isOpen()) : !stillOnly();
+        Object[] inline = watch != null && sides == null && livePage == null && offer ? watch : null;
         if (inline != null) {
             parts = new ArrayList<>(parts);
             parts.addAll(watchParts(inline));
@@ -3927,7 +3959,7 @@ public class GoalWatchService extends Service {
             return;
         }
         if (inline != null) {
-            offerWatch(box, h, inline);
+            offerWatch(box, h, inline, message ? REPLY_MS : SHOW_MS + 4_000);
             return;
         }
         main.postDelayed(() -> closePill(box, h, visible), SHOW_MS + 1_400);
@@ -3948,28 +3980,36 @@ public class GoalWatchService extends Service {
         List<Object> parts = new ArrayList<>();
         parts.add(14);
         boolean ink = !onLane() && !darkGlass;
-        parts.add(logo != null ? new ChipImg(ink ? inked(logo) : logo) : bold(names.get(0)));
-        parts.add(10);
+        // No channel (a message): the OK button alone, then its words ("to reply").
+        boolean channel = logo != null || !names.isEmpty();
+        if (channel) {
+            parts.add(logo != null ? new ChipImg(ink ? inked(logo) : logo) : bold(names.get(0)));
+            parts.add(10);
+        }
         String remote = Config.themeString(this, "ok_button", "");
         parts.add(new android.graphics.drawable.BitmapDrawable(getResources(),
                 okButton(remote.isEmpty() ? "tcl" : remote, getResources().getDisplayMetrics().density, darkGlass)));
+        if (w.length > 3 && w[3] instanceof String) {
+            parts.add(6);
+            parts.add(new Small((String) w[3]));
+        }
         return parts;
     }
 
     /**
      * While a line with a channel shows, OK on the remote opens TiviMate on that channel (the first of w's names the
-     * playlist has), the steps hidden under the helper's cover; any other key closes the alert. The window takes the
-     * keys only while it shows.
+     * playlist has), the steps hidden under the helper's cover (or, for a message, opens Quick reply); any other key
+     * closes the alert. The window takes the keys only while it shows, for ms.
      */
     @SuppressWarnings("unchecked")
-    private void offerWatch(LinearLayout box, int h, Object[] w) {
+    private void offerWatch(LinearLayout box, int h, Object[] w, long ms) {
         List<String> names = (List<String>) w[0];
         android.graphics.Bitmap logo = (android.graphics.Bitmap) w[1];
         // The remote's keys taken after a moment: a press already on its way when the alert came was meant for the app.
         View was = host;
         main.postDelayed(() -> { if (host == was && host != null) watchKeys(box, h, w, names, logo); }, PopupMotion.FRESH_MS);
         watchClose = () -> endWatch(box, h);
-        main.postDelayed(watchClose, SHOW_MS + 4_000);
+        main.postDelayed(watchClose, ms);
     }
 
     private void watchKeys(LinearLayout box, int h, Object[] w, List<String> names, android.graphics.Bitmap logo) {

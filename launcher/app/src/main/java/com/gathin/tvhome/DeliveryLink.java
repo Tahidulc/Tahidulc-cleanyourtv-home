@@ -39,7 +39,10 @@ final class DeliveryLink {
         /** The code was typed in: the phone is paired. Main thread not guaranteed. */
         void paired();
 
-        /** A message from the other TV or a phone's browser: {text, from}. Main thread not guaranteed. */
+        /**
+         * A message from the other TV or a phone's browser: {text, from, reply (its sender's id in MessageReplies, for
+         * QuickReply)}. Main thread not guaranteed.
+         */
         default void message(JSONObject m) { }
 
         /** What was playing on the other TV, to put on here (TvLink.openSent). Main thread not guaranteed. */
@@ -204,9 +207,46 @@ final class DeliveryLink {
                 // the other TVs it names).
                 if (!TvLink.accept(json)) { reply(s, 429, "{\"error\":\"wait a moment\"}"); return; }
                 json.put("text", TvLink.clean(json.optString("text")));
-                if (json.optBoolean("here", true)) sink.message(json);
-                if (json.has("to")) new Thread(() -> TvLink.forward(context, json), "tv-link-forward").start();
+                String sender = s.getInetAddress().getHostAddress();
+                if (json.optBoolean("here", true)) {
+                    // Who sent it and from where (and the phone behind a TV that passed it on), so a quick reply finds
+                    // its way back (QuickReply): its id goes with it to the pop-up.
+                    String phone = json.optString("phone", "").trim();
+                    json.put("reply", MessageReplies.ALL.received(sender, json.optString("from", "").trim(),
+                            phone.length() <= 64 ? phone : null, System.currentTimeMillis()));
+                    sink.message(json);
+                }
+                if (json.has("to")) new Thread(() -> TvLink.forward(context, json, sender), "tv-link-forward").start();
                 reply(s, 200, "{\"ok\":true}");
+                return;
+            }
+            case "/message/reply": {
+                // A quick reply on another of the house's TVs to a phone's message this TV passed on to it: kept here for
+                // that phone's page, which asks for it (/message/replies). Its words are not logged.
+                String sender = s.getInetAddress().getHostAddress();
+                if (!SyncHub.houseTv(context, sender)) { reply(s, 401, "{\"error\":\"not a house TV\"}"); return; }
+                String to = json.optString("to", "").trim();
+                if (to.isEmpty() || to.length() > 64) { reply(s, 400, "{\"error\":\"no phone\"}"); return; }
+                if (!TvLink.accept(json)) { reply(s, 429, "{\"error\":\"wait a moment\"}"); return; }
+                String from = json.optString("from", "").trim();
+                if (from.isEmpty()) from = "TV";
+                if (from.length() > 60) from = from.substring(0, 60);
+                MessageReplies.ALL.replied(System.currentTimeMillis(), from, TvLink.clean(json.optString("text")), to);
+                AlertLog.note(context, "a reply from " + from + " kept for the phone's message page");
+                reply(s, 200, "{\"ok\":true}");
+                return;
+            }
+            case "/message/replies": {
+                // The phone's message page, every few seconds while it is open: the TVs' replies to it after "after"
+                // (the TV's clock), for this address only.
+                String who = s.getInetAddress().getHostAddress();
+                long now = System.currentTimeMillis();
+                MessageReplies.ALL.looked(who, now);
+                org.json.JSONArray out = new org.json.JSONArray();
+                for (MessageReplies.Reply r : MessageReplies.ALL.since(json.optLong("after"), who)) {
+                    out.put(new JSONObject().put("at", r.at).put("from", r.from).put("text", r.text));
+                }
+                reply(s, 200, new JSONObject().put("now", now).put("replies", out).toString());
                 return;
             }
             case "/send": {

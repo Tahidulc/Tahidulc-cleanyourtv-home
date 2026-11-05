@@ -120,9 +120,13 @@ final class RichAlerts {
         return false;
     }
 
-    /** Runs show once nothing else is up (the goal's card, a line-up, an older alert), at most a minute and a half on. */
+    /**
+     * Runs show once nothing else is up (the goal's card, a line-up, an older alert, Quick reply), at most a minute and
+     * a half on.
+     */
     private static void whenClear(Context c, Runnable show, long since) {
-        boolean busy = host != null || ScoreCard.busy() || LineupCard.isShowing() || GoalWatchService.alertShowing() || WatchCards.holds();
+        boolean busy = host != null || ScoreCard.busy() || LineupCard.isShowing() || GoalWatchService.alertShowing() || WatchCards.holds()
+                || QuickReply.isOpen();
         if (busy && android.os.SystemClock.uptimeMillis() - since < 90_000L) {
             main.postDelayed(() -> whenClear(c, show, since), 1_500L);
             return;

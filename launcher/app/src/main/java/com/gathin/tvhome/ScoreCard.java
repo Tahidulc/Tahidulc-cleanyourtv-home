@@ -115,6 +115,11 @@ final class ScoreCard {
         String channel;
         Runnable watch;
         /**
+         * OK on Home's bar goes to Home first, and runs watch once none of Home's panels has the remote, with or
+         * without the key helper (homeKey): a message's Quick reply.
+         */
+        boolean okOnHome;
+        /**
          * The rest of the alerts in this style (the news, messages, weather, deliveries, the car, tennis): what runs as
          * it comes up (its sound), how long it stays (0: the usual), and a slim bar of progress after its words (an
          * order's stages, the car's charge, the drive home), 0 to 1 in progressColour; -1 for none.
@@ -196,12 +201,14 @@ final class ScoreCard {
         if (host != null || queue.isEmpty()) return;
         // The pause card makes way at once; How was it? is waited for (WatchCards.holds).
         boolean watchCard = WatchCards.holds();
-        if (LineupCard.isShowing() || GoalWatchService.alertShowing() || CameraAlert.isShowing() || watchCard) {
+        // Quick reply open: the card waits for it (it would take the remote's keys from the keyboard).
+        boolean replying = QuickReply.isOpen();
+        if (LineupCard.isShowing() || GoalWatchService.alertShowing() || CameraAlert.isShowing() || watchCard || replying) {
             long now = android.os.SystemClock.uptimeMillis();
             if (waitingSince == 0) {
                 waitingSince = now;
                 AlertLog.note(c, "card waiting: " + (LineupCard.isShowing() ? "the line-up card" : GoalWatchService.alertShowing() ? "an alert"
-                        : watchCard ? "How was it?" : "the camera card") + " is up");
+                        : watchCard ? "How was it?" : replying ? "quick reply" : "the camera card") + " is up");
             }
             // One left up too long (or never taken down) is not waited for for ever: a goal is not lost behind it.
             if (now - waitingSince < GoalWatchService.WAIT_MAX_MS) {
@@ -263,6 +270,9 @@ final class ScoreCard {
         boolean ok = code == KeyEvent.KEYCODE_DPAD_CENTER || code == KeyEvent.KEYCODE_ENTER
                 || code == KeyEvent.KEYCODE_NUMPAD_ENTER || code == KeyEvent.KEYCODE_BUTTON_A;
         if (!back && !(ok && d.watch != null)) return false;
+        // A message's bar on Home: its OK goes on to Home, which hands it back once none of its panels (the keyboard of
+        // Message the other TV among them) has the remote (homeKey).
+        if (ok && homeHasOk(d)) return false;
         // Its first moments: Back and OK go on to the app they were pressed for.
         if (PopupMotion.passOn(e, shownAt, passing)) return false;
         if (back) {
@@ -271,6 +281,30 @@ final class ScoreCard {
             else if (e.getAction() == KeyEvent.ACTION_UP && !e.isCanceled()) main.post(() -> close(true, true));
             return true;
         }
+        if (e.getAction() == KeyEvent.ACTION_UP && !e.isCanceled()) main.post(() -> {
+            close(true);
+            d.watch.run();
+        });
+        return true;
+    }
+
+    /** A bar on Home itself (not pop-up mode's frame) whose OK Home hands back (okOnHome: a message's Quick reply). */
+    private static boolean homeHasOk(Data d) {
+        return d.okOnHome && d.watch != null && onHome && GoalWatchService.homeInFront && !PopupFrame.isShowing();
+    }
+
+    /**
+     * Home's keys, once none of its panels has them (HomeV2.key), with or without the key helper: OK on a bar that
+     * answers it on Home (a message's Quick reply) runs it as key() would over an app; every other key stays Home's.
+     * True when it took the key.
+     */
+    static boolean homeKey(KeyEvent e) {
+        Data d = showing;
+        if (host == null || d == null || !homeHasOk(d)) return false;
+        int code = e.getKeyCode();
+        if (code != KeyEvent.KEYCODE_DPAD_CENTER && code != KeyEvent.KEYCODE_ENTER && code != KeyEvent.KEYCODE_NUMPAD_ENTER) return false;
+        // Its first moments: OK goes on to Home, where it was pressed.
+        if (PopupMotion.passOn(e, shownAt, passing)) return false;
         if (e.getAction() == KeyEvent.ACTION_UP && !e.isCanceled()) main.post(() -> {
             close(true);
             d.watch.run();
