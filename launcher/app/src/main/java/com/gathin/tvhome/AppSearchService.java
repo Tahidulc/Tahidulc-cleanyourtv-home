@@ -27,7 +27,7 @@ public class AppSearchService extends AccessibilityService {
      * A channel tune gives up after TUNE_MS in all (it was minutes, with the cover up the whole time and TiviMate on
      * the last channel, or its search, once it lifted).
      */
-    private static final long SEARCH_MS = 15_000L, TUNE_MS = 30_000L, STEP_MS = 220L;
+    private static final long SEARCH_MS = 25_000L, TUNE_MS = 30_000L, STEP_MS = 220L;
     private static AppSearchService instance;
 
     private final Handler main = new Handler(Looper.getMainLooper());
@@ -866,6 +866,8 @@ public class AppSearchService extends AccessibilityService {
         lastBack = 0;
         lastSearch = 0;
         searches = 0;
+        searchAt = 0;
+        profileAt = 0;
         startedAt = System.currentTimeMillis();
         hideDelay = 0;
         candidates = java.util.Collections.singletonList(q);
@@ -1158,6 +1160,13 @@ public class AppSearchService extends AccessibilityService {
         }
     }
 
+    /** When the search button and the profile were last pressed (never twice within a moment). */
+    private long searchAt, profileAt;
+
+    private static long now() {
+        return System.currentTimeMillis();
+    }
+
     /** One look at the screen and one move towards the search: true to look again. */
     private boolean advance() {
         AccessibilityNodeInfo root = getRootInActiveWindow();
@@ -1190,7 +1199,11 @@ public class AppSearchService extends AccessibilityService {
                 Bundle text = new Bundle();
                 text.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,
                         spelling < spellings.size() ? spellings.get(spelling) : query);
-                if (box.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, text)) typedAt = System.currentTimeMillis();
+                if (box.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, text)) {
+                    typedAt = System.currentTimeMillis();
+                    deadline = Math.max(deadline, typedAt + 12_000L);
+                    trace("debrid: typed " + (spelling < spellings.size() ? spellings.get(spelling) : query));
+                }
                 return true;
             }
             // The app shows results as the text goes in, but its field brings up the keyboard over them: one Back
@@ -1198,7 +1211,13 @@ public class AppSearchService extends AccessibilityService {
             if (keyboardShown()) { performGlobalAction(GLOBAL_ACTION_BACK); return true; }
             // Then the film or series of that name, so its page opens; without one, the results stay on screen.
             AccessibilityNodeInfo hit = result(root);
-            if (hit != null) { click(hit); opened = true; return true; }
+            if (hit != null) {
+                click(hit);
+                opened = true;
+                deadline = Math.max(deadline, now() + 8_000L);
+                trace("debrid: picked " + hit.getText());
+                return true;
+            }
             // Nothing of that name after a few seconds: the next way of typing it, with the time to find it.
             long waited = System.currentTimeMillis() - typedAt;
             if (waited > 3_500L && spelling + 1 < spellings.size()) {
@@ -1210,11 +1229,28 @@ public class AppSearchService extends AccessibilityService {
             return waited < 8_000L;
         }
         AccessibilityNodeInfo search = find(root, Kind.SEARCH);
-        if (search != null) { click(search); return true; }
-        if (find(root, Kind.PROFILE) != null) {
-            // The profile picker: the profile it highlights is the one last used.
+        if (search != null && now() - searchAt > 1_200L) {
+            click(search);
+            searchAt = now();
+            trace("debrid: search opened");
+            // Its search screen and keyboard to come: the time for them.
+            deadline = Math.max(deadline, now() + 12_000L);
+            return true;
+        }
+        if (find(root, Kind.PROFILE) != null && now() - profileAt > 1_000L) {
+            // The profile picker (each time the app starts afresh): the profile it highlights is the one last used,
+            // chosen with the remote's OK. Time then for the app's home to load.
             AccessibilityNodeInfo focused = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT);
-            if (focused != null) click(focused);
+            profileAt = now();
+            if (focused != null) {
+                press(focused);
+            } else if (android.os.Build.VERSION.SDK_INT >= 33 && now() - startedAt > 1_500L) {
+                // No focus reported yet: OK goes to whatever the app has focused, which on its picker is a profile.
+                QuietHold.okSentAt = android.os.SystemClock.uptimeMillis();
+                performGlobalAction(GLOBAL_ACTION_DPAD_CENTER);
+            }
+            trace("debrid: profile picked (focus " + (focused != null) + ")");
+            deadline = Math.max(deadline, now() + 15_000L);
         }
         return true;
     }
@@ -2152,12 +2188,22 @@ public class AppSearchService extends AccessibilityService {
         return null;
     }
 
-    /** TiviMate's menu entry for its search: by its id, else the first entry of the menu down the left. */
+    /**
+     * TiviMate's menu entry for its search: by its name ("Search", as the menu reads it out), as its ids are scrambled
+     * afresh in each version (5.4 no longer has the one this looked for first); then that old id, else the first
+     * entry of the menu down the left.
+     */
     private static AccessibilityNodeInfo menuSearch(AccessibilityNodeInfo root) {
-        java.util.List<AccessibilityNodeInfo> byId = root.findAccessibilityNodeInfosByViewId("ar.tvplayer.tv:id/416");
-        if (!byId.isEmpty()) return byId.get(0);
         java.util.List<AccessibilityNodeInfo> all = new java.util.ArrayList<>();
         collect(root, all, 0);
+        for (AccessibilityNodeInfo n : all) {
+            if (n.isEditable()) continue;
+            String id = n.getViewIdResourceName() == null ? "" : n.getViewIdResourceName().toLowerCase(Locale.ROOT);
+            if (!isSearch(plain(n.getText()), plain(n.getContentDescription()), id)) continue;
+            for (AccessibilityNodeInfo at = n; at != null; at = at.getParent()) if (at.isClickable()) return at;
+        }
+        java.util.List<AccessibilityNodeInfo> byId = root.findAccessibilityNodeInfosByViewId("ar.tvplayer.tv:id/416");
+        if (!byId.isEmpty()) return byId.get(0);
         AccessibilityNodeInfo best = null;
         int bestTop = Integer.MAX_VALUE;
         android.graphics.Rect r = new android.graphics.Rect();
@@ -2305,18 +2351,17 @@ public class AppSearchService extends AccessibilityService {
      */
     private static AccessibilityNodeInfo find(AccessibilityNodeInfo n, Kind kind, int depth) {
         if (n == null || depth > 40) return null;
-        String text = n.getText() == null ? "" : n.getText().toString().toLowerCase(Locale.ROOT);
-        String desc = n.getContentDescription() == null ? "" : n.getContentDescription().toString().toLowerCase(Locale.ROOT);
+        String text = plain(n.getText()), desc = plain(n.getContentDescription());
         String id = n.getViewIdResourceName() == null ? "" : n.getViewIdResourceName().toLowerCase(Locale.ROOT);
         switch (kind) {
             case EDIT:
                 if (n.isEditable()) return n;
                 break;
             case SEARCH:
-                if (desc.equals("search") || text.equals("search") || id.endsWith("search")) return n;
+                if (isSearch(text, desc, id)) return n;
                 break;
             case PROFILE:
-                if (text.contains("choose a profile") || text.contains("who's watching")) return n;
+                if (isProfilePage(text) || isProfilePage(desc)) return n;
                 break;
         }
         for (int i = 0; i < n.getChildCount(); i++) {
@@ -2324,6 +2369,42 @@ public class AppSearchService extends AccessibilityService {
             if (hit != null) return hit;
         }
         return null;
+    }
+
+    /** A node's words in lower case, curly apostrophes made straight ("Who’s watching?" as "who's watching?"). */
+    static String plain(CharSequence cs) {
+        return cs == null ? "" : cs.toString().replace('\u2019', '\'').replace('\u2018', '\'').trim().toLowerCase(Locale.ROOT);
+    }
+
+    /**
+     * Pure: what is named or labelled search: "Search", or "Search movies & shows" and the like (the app's own
+     * search button, in its menu or along its top), by name or by id; never the voice search's "Speak to search".
+     */
+    static boolean isSearch(String text, String desc, String id) {
+        if (text.startsWith("speak") || desc.startsWith("speak") || id.contains("voice") || id.contains("mic")) return false;
+        return text.equals("search") || desc.equals("search") || text.startsWith("search ") || desc.startsWith("search ")
+                || id.endsWith("search") || id.endsWith("search_button") || id.endsWith("btn_search") || id.endsWith("search_icon");
+    }
+
+    /** Pure: the heading of a profile picker, however the app words it. */
+    static boolean isProfilePage(String t) {
+        if (t.isEmpty()) return false;
+        return t.contains("choose a profile") || t.contains("choose profile") || t.contains("select a profile")
+                || t.contains("select profile") || t.contains("pick a profile") || t.contains("switch profile")
+                || t.contains("who's watching") || t.contains("who is watching") || t.contains("whos watching")
+                || t.equals("profiles") || t.contains("manage profiles");
+    }
+
+    /**
+     * The remote's OK on what has the focus (Android 13 on, the same as a press of the remote, which every TV app
+     * takes), else a click on the node or the nearest ancestor that takes one.
+     */
+    private void press(AccessibilityNodeInfo n) {
+        if (android.os.Build.VERSION.SDK_INT >= 33 && n != null && n.isFocused()) {
+            QuietHold.okSentAt = android.os.SystemClock.uptimeMillis();
+            if (performGlobalAction(GLOBAL_ACTION_DPAD_CENTER)) return;
+        }
+        if (n != null) click(n);
     }
 
     /** Clicks the node, or the nearest ancestor that takes a click. */
