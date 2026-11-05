@@ -52,6 +52,8 @@ import java.util.Set;
 public class HomeFragment extends Fragment {
     private TextView date, clock, weather, count;
     private RecyclerView bugs;
+    /** The games of the clubs the family follows, marked Your club on the scores box. */
+    private final java.util.Set<String> mineIds = new java.util.HashSet<>();
     private final List<Game> shown = new ArrayList<>();
     private LinearLayout today, latest;
     private SwipeRefreshLayout swipe;
@@ -263,6 +265,8 @@ public class HomeFragment extends Fragment {
         int on = was == 0 || lm == null ? 0 : at(lm) % was;
         shown.clear();
         shown.addAll(bugList);
+        mineIds.clear();
+        for (Game g : mine) if (g.id != null) mineIds.add(g.id);
         bugs.getAdapter().notifyDataSetChanged();
         // A new number of games: the same place in the list (or the first), in the loop's middle round.
         if (shown.size() != was) bugs.scrollToPosition(middle(Math.min(on, Math.max(0, shown.size() - 1))));
@@ -329,15 +333,33 @@ public class HomeFragment extends Fragment {
      */
     private final class Bugs extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
         @NonNull @Override public RecyclerView.ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int type) {
-            ScoreBug b = new ScoreBug(parent.getContext());
-            b.setLayoutParams(new RecyclerView.LayoutParams(parent.getWidth() > 0 ? parent.getWidth() : ViewGroup.LayoutParams.MATCH_PARENT,
+            Context c = parent.getContext();
+            android.widget.FrameLayout box = new android.widget.FrameLayout(c);
+            box.setLayoutParams(new RecyclerView.LayoutParams(parent.getWidth() > 0 ? parent.getWidth() : ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT));
-            return new RecyclerView.ViewHolder(b) {};
+            ScoreBug b = new ScoreBug(c);
+            box.addView(b, new android.widget.FrameLayout.LayoutParams(-1, -2));
+            // A family's club's game: a small Your club tag on its top right corner.
+            TextView tag = Ui.text(c, getString(R.string.f1_your_club).toUpperCase(java.util.Locale.UK), 9, 0xFF0A0D33, true);
+            tag.setLetterSpacing(0.06f);
+            android.graphics.drawable.GradientDrawable bg = new android.graphics.drawable.GradientDrawable();
+            bg.setColor(0xFFFFC93C);
+            bg.setCornerRadii(new float[]{0, 0, Ui.dp(c, 6), Ui.dp(c, 6), 0, 0, Ui.dp(c, 6), Ui.dp(c, 6)});
+            tag.setBackground(bg);
+            tag.setPadding(Ui.dp(c, 6), Ui.dp(c, 1), Ui.dp(c, 6), Ui.dp(c, 2));
+            tag.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+            box.addView(tag, new android.widget.FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.END));
+            return new RecyclerView.ViewHolder(box) {};
         }
 
         @Override public void onBindViewHolder(@NonNull RecyclerView.ViewHolder h, int pos) {
             Game g = shown.get(pos % shown.size());
-            ((ScoreBug) h.itemView).show(g);
+            android.widget.FrameLayout box = (android.widget.FrameLayout) h.itemView;
+            ScoreBug b = (ScoreBug) box.getChildAt(0);
+            b.show(g);
+            boolean mine = g.id != null && mineIds.contains(g.id);
+            box.getChildAt(1).setVisibility(mine ? View.VISIBLE : View.GONE);
+            if (mine) b.setContentDescription(b.getContentDescription() + ", " + getString(R.string.f1_your_club));
             h.itemView.setOnClickListener(v -> v.getContext().startActivity(GameActivity.intent(v.getContext(), g)));
         }
 

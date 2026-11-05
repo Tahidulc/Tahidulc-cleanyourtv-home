@@ -53,7 +53,8 @@ import java.util.TimeZone;
  * now. Along the top: the title, Now (back to the current time), search (channels and programmes), the guide or list
  * view, and More (Manage favourites, Hidden channels, Refresh); then "Your channels" (the favourites' logos: tap one to
  * watch), then the groups as chips (Favourites first, chosen when there are any, then All, Recent and the playlist's own
- * groups). Above the grid the chosen programme's details.
+ * groups, and Sport: SportGuide, today's games on the family's channels in place of the grid). Above the grid the chosen
+ * programme's details.
  * Tap a channel (or a programme that is on) to watch it in the guide's own picture, with sound (Inline): on a phone held
  * upright a 16:9 picture at the top with the guide still there under it, on a tablet held upright beside the details,
  * and on a tablet on its side in the pane beside the grid. Tap it again, its full screen button or swipe up for full
@@ -98,6 +99,8 @@ public class LiveTvFragment extends Fragment {
     private Details details;
     private Inline inline;
     private View state, favHint;
+    /** The Sport choice: today's games on the family's channels, in place of the guide while it is chosen. */
+    private SportGuide sport;
     private OnBackPressedCallback back;
 
     private final Runnable changed = this::refreshAll;
@@ -111,6 +114,7 @@ public class LiveTvFragment extends Fragment {
             }
             if (details != null) details.refresh();
             if (inline != null) inline.refresh();
+            if (sport != null && sport.getVisibility() == View.VISIBLE) sport.load();
             listAdapter.notifyItemRangeChanged(0, listAdapter.getItemCount());
             h.postDelayed(this, 60_000);
         }
@@ -214,7 +218,15 @@ public class LiveTvFragment extends Fragment {
         favHint = favouritesHint(c);
         body.addView(favHint, new FrameLayout.LayoutParams(-1, -1));
         favHint.setVisibility(View.GONE);
+        sport = new SportGuide(c, this::play);
+        body.addView(sport, new FrameLayout.LayoutParams(-1, -1));
+        sport.setVisibility(View.GONE);
         return root;
+    }
+
+    /** Whether the Sport choice shows (in place of the guide). */
+    private boolean sportShown() {
+        return SportGuide.GROUP.equals(group) && !searching;
     }
 
     private static SharedPreferences ui(Context c) {
@@ -498,6 +510,7 @@ public class LiveTvFragment extends Fragment {
         chipsAdapter.items.add(new String[]{getString(R.string.live_favourites), Library.FAVOURITES});
         chipsAdapter.items.add(new String[]{getString(R.string.live_all), Library.ALL});
         chipsAdapter.items.add(new String[]{getString(R.string.live_recent), Library.RECENT});
+        chipsAdapter.items.add(new String[]{getString(R.string.f1_sport), SportGuide.GROUP});
         for (String g : lib.groups()) chipsAdapter.items.add(new String[]{g, g});
         shownGroups = lib.groups();
         refreshChips();
@@ -513,6 +526,8 @@ public class LiveTvFragment extends Fragment {
         group = g;
         refreshChips();
         refreshRows();
+        if (SportGuide.GROUP.equals(g)) sport.load();
+        showBody();
         grid.rows.scrollToPosition(0);
         list.scrollToPosition(0);
         List<Channel> rows = grid.channels();
@@ -584,6 +599,7 @@ public class LiveTvFragment extends Fragment {
             list.setVisibility(View.GONE);
             results.setVisibility(View.GONE);
             favHint.setVisibility(View.GONE);
+            sport.setVisibility(View.GONE);
             stripRow.setVisibility(mode == SIDE ? View.INVISIBLE : View.GONE);
             chipsView.setVisibility(View.GONE);
             nowButton.setVisibility(View.GONE);
@@ -650,7 +666,8 @@ public class LiveTvFragment extends Fragment {
     /** The rows for the chosen group, in the grid and the list. */
     private void refreshRows() {
         if (!lib.ready() || group == null) return;
-        List<Channel> rows = lib.list(group, "");
+        // Sport: the guide behind it keeps every channel (for the picture's swipes and the selection).
+        List<Channel> rows = lib.list(SportGuide.GROUP.equals(group) ? Library.ALL : group, "");
         grid.setChannels(rows);
         List<Object> items = new ArrayList<>(rows);
         if (rows.isEmpty() && !Library.FAVOURITES.equals(group)) items.add(R.string.live_nothing_found);
@@ -661,17 +678,20 @@ public class LiveTvFragment extends Fragment {
     /** Which of the grid, the list and the search's results is showing, and what goes with each. */
     private void showBody() {
         if (state != null) return;
-        grid.setVisibility(!searching && !listView ? View.VISIBLE : View.GONE);
-        list.setVisibility(!searching && listView ? View.VISIBLE : View.GONE);
+        boolean sp = sportShown();
+        if (sp && sport.getVisibility() != View.VISIBLE) sport.load();
+        sport.setVisibility(sp ? View.VISIBLE : View.GONE);
+        grid.setVisibility(!searching && !listView && !sp ? View.VISIBLE : View.GONE);
+        list.setVisibility(!searching && listView && !sp ? View.VISIBLE : View.GONE);
         results.setVisibility(searching ? View.VISIBLE : View.GONE);
         chipsView.setVisibility(searching ? View.GONE : View.VISIBLE);
-        nowButton.setVisibility(!searching && !listView ? View.VISIBLE : View.GONE);
+        nowButton.setVisibility(!searching && !listView && !sp ? View.VISIBLE : View.GONE);
         viewButton.setImageResource(listView ? R.drawable.live_ic_guide : R.drawable.live_ic_list);
         String label = getString(listView ? R.string.live_view_grid : R.string.live_view_list);
         viewButton.setContentDescription(label);
         viewButton.setTooltipText(label);
         // Phones held upright: the details only over the grid (the list has its own now and next).
-        details.setVisibility(searching || (mode == COMPACT && listView) ? View.GONE : View.VISIBLE);
+        details.setVisibility(searching || sp || (mode == COMPACT && listView) ? View.GONE : View.VISIBLE);
         // The pane stays while a search runs when it is playing (to watch while looking).
         boolean pane = !searching || inline.live();
         if (band != null) band.setVisibility(pane ? View.VISIBLE : View.GONE);
@@ -843,7 +863,8 @@ public class LiveTvFragment extends Fragment {
     /** Full screen on this channel; the guide gets the stream back after (auto: opened by turning on its side). */
     private void fullScreen(Channel ch, boolean auto) {
         if (ch == null || !isAdded()) return;
-        PlayerActivity.start(requireContext(), ch.key, searching || group == null ? Library.ALL : group, true, auto);
+        PlayerActivity.start(requireContext(), ch.key, searching || group == null || SportGuide.GROUP.equals(group) ? Library.ALL : group,
+                true, auto);
     }
 
     private Inline.Listener inlineListener() {

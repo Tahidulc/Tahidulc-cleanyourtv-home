@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Watch: what was left part-way from the family's own playlist -->
+    <string name="f1_resume_title">Continue from your playlist</string>
+    <string name="f1_resume_left">%1$d min left</string>
+    <string name="f1_resume_carry_on">Carry on</string>
+    <string name="f1_resume_removed">Taken off Continue: %1$s</string>
+
+    <!-- Live TV: the Sport choice -->
+    <string name="f1_sport">Sport</string>
+    <string name="f1_sport_all">All sport</string>
+    <string name="f1_sport_live">Live now · %1$d</string>
+    <string name="f1_sport_football">Football</string>
+    <string name="f1_sport_f1">F1</string>
+    <string name="f1_sport_loading">Finding today\'s games on your channels…</string>
+    <string name="f1_sport_none">Nothing live or still to come today on your channels.</string>
+    <plurals name="f1_sport_missing">
+        <item quantity="one">%1$d more game today isn\'t on your channels.</item>
+        <item quantity="other">%1$d more games today aren\'t on your channels.</item>
+    </plurals>
+    <string name="f1_your_club">Your club</string>
+</resources>

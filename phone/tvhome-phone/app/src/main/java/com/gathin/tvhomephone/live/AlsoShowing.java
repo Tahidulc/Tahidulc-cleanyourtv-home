@@ -89,7 +89,7 @@ public final class AlsoShowing {
         // The playlists' event channels named for the game ("EPL 03: Arsenal v Chelsea 15:00"): the surest of all.
         String[][] clubs = {clubNames(g.homeName, g.homeFull), clubNames(g.awayName, g.awayFull)};
         for (Channel ch : all) {
-            if (!names(words(ch.name), clubs)) continue;
+            if (!names(channelWords(ch.name), clubs)) continue;
             Row r = row(ch, current, fav);
             r.under = c.getString(R.string.tile_also_event);
             r.score += 5;
@@ -182,6 +182,20 @@ public final class AlsoShowing {
     /** Whether words name both clubs (a guide that says "Dortmund v Betis" without the word "Live"). */
     private static boolean mentions(String words, Game g) {
         return names(words(words), new String[][]{clubNames(g.homeName, g.homeFull), clubNames(g.awayName, g.awayFull)});
+    }
+
+    /** Channels' names as words() makes them, kept: the Sport guide asks for every game of the day in turn. */
+    private static final java.util.Map<String, String> CHANNEL_WORDS = new java.util.concurrent.ConcurrentHashMap<>();
+
+    private static String channelWords(String name) {
+        String n = name == null ? "" : name;
+        String w = CHANNEL_WORDS.get(n);
+        if (w == null) {
+            if (CHANNEL_WORDS.size() > 200_000) CHANNEL_WORDS.clear();
+            w = words(n);
+            CHANNEL_WORDS.put(n, w);
+        }
+        return w;
     }
 
     /** Words made comparable (pure): lower case, accents and punctuation gone, a space either side. */
