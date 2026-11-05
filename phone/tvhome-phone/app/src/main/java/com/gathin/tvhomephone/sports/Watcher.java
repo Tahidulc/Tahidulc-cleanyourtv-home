@@ -117,6 +117,8 @@ public final class Watcher {
         }
         // "Kick-off in 2 min" for a followed or reminded game, and the home-screen widget drawn again.
         KickOff.check(c, s.followed, now);
+        // Breaking news, every few minutes at most (its alert pops up like the rest).
+        com.gathin.tvhomephone.live.BreakingNews.check(c);
         reminders(c, now);
         f1(c, now);
         ClubWidget.update(c, s);

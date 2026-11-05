@@ -181,6 +181,9 @@ public final class SportsSettings {
         // The scoreboard while something is watched: over the player's picture and over other apps.
         if (host.getActivity() != null) com.gathin.tvhomephone.live.BoardSettings.add(host.getActivity(), col);
 
+        // The TV's pop-ups over apps, on the phone: on or off, which kinds, Android's permission, one to try.
+        popups(c, col);
+
         Map<String, List<String[]>> groups = new LinkedHashMap<>();
         for (String g : Kinds.GROUPS) groups.put(g, new ArrayList<>());
         for (String[] k : Kinds.ALL) groups.get(k[3]).add(k);
@@ -203,6 +206,87 @@ public final class SportsSettings {
             }
         }
         return col;
+    }
+
+    /** Settings' "Pop-ups over apps". */
+    private static void popups(Context c, LinearLayout col) {
+        col.addView(Ui.heading(c, c.getString(R.string.pop_title), c.getColor(R.color.text_soft)));
+        col.addView(Ui.text(c, c.getString(R.string.pop_line), 13, c.getColor(R.color.text_dim), false));
+        LinearLayout r = Ui.row(c);
+        r.setPadding(0, Ui.dp(c, 6), 0, Ui.dp(c, 6));
+        r.addView(Ui.text(c, c.getString(R.string.pop_on), 16, c.getColor(R.color.text), false), Ui.weight(1));
+        MaterialSwitch sw = new MaterialSwitch(c);
+        sw.setChecked(Popups.on(c));
+        sw.setContentDescription(c.getString(R.string.pop_on));
+        sw.setOnCheckedChangeListener((b, on) -> {
+            Popups.setOn(c, on);
+            if (on && !Popups.allowed(c)) open(c, Popups.permission(c));
+        });
+        r.addView(sw);
+        r.setOnClickListener(v -> sw.toggle());
+        col.addView(r);
+        if (!Popups.allowed(c)) {
+            LinearLayout card = Ui.card(c, null);
+            card.addView(Ui.text(c, c.getString(R.string.pop_allow), 14, c.getColor(R.color.text), false));
+            Button allow = new Button(c);
+            allow.setText(R.string.pop_allow_button);
+            allow.setOnClickListener(v -> open(c, Popups.permission(c)));
+            card.addView(allow, new LinearLayout.LayoutParams(-2, -2));
+            col.addView(card, Ui.margins(c, 0, 8, 0, 4));
+        }
+        // Which kinds pop up: a chip each, by the groups the notifications use.
+        col.addView(Ui.text(c, c.getString(R.string.pop_which), 15, c.getColor(R.color.text), true), Ui.margins(c, 0, 10, 0, 0));
+        col.addView(Ui.text(c, c.getString(R.string.pop_which_line), 13, c.getColor(R.color.text_dim), false));
+        for (String group : Kinds.GROUPS) {
+            TextView g = Ui.text(c, group.toUpperCase(Locale.UK), 11, c.getColor(R.color.text_soft), true);
+            g.setLetterSpacing(0.1f);
+            g.setPadding(0, Ui.dp(c, 10), 0, Ui.dp(c, 4));
+            col.addView(g);
+            android.widget.HorizontalScrollView hs = new android.widget.HorizontalScrollView(c);
+            hs.setHorizontalScrollBarEnabled(false);
+            LinearLayout chips = Ui.row(c);
+            hs.addView(chips);
+            for (String[] k : Kinds.ALL) {
+                if (!group.equals(k[3])) continue;
+                TextView chip = Ui.text(c, k[1], 14, 0, true);
+                chip.setPadding(Ui.dp(c, 14), Ui.dp(c, 8), Ui.dp(c, 14), Ui.dp(c, 8));
+                Runnable paint = () -> {
+                    boolean on = Popups.kind(c, k[0]);
+                    chip.setBackground(Ui.fill(c, on ? 0xFFFFFFFF : 0x1FFFFFFF, 18));
+                    chip.setTextColor(on ? 0xFF0A0D33 : c.getColor(R.color.text_dim));
+                    chip.setContentDescription(k[1] + (on ? ", pops up" : ", does not pop up"));
+                };
+                paint.run();
+                chip.setOnClickListener(v -> {
+                    Popups.setKind(c, k[0], !Popups.kind(c, k[0]));
+                    paint.run();
+                });
+                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, -2);
+                lp.rightMargin = Ui.dp(c, 8);
+                chips.addView(chip, lp);
+            }
+            col.addView(hs, Ui.matchWrap());
+        }
+        Button tryOne = new Button(c);
+        tryOne.setText(R.string.pop_try);
+        tryOne.setOnClickListener(v -> {
+            if (!Popups.allowed(c)) {
+                open(c, Popups.permission(c));
+                return;
+            }
+            Events.Alert demo = new Events.Alert("news", "demo", "This is a pop-up", "Swipe it away left, right or up, or tap it.", null);
+            demo.channel = "Homefield";
+            App.io.execute(() -> Popups.show(c, demo));
+        });
+        col.addView(tryOne, Ui.margins(c, 0, 12, 0, 0));
+    }
+
+    private static void open(Context c, Intent i) {
+        try {
+            c.startActivity(i);
+        } catch (RuntimeException ignored) {
+            // no such screen on this phone
+        }
     }
 
     /** Clubs whose names have the words searched, from the competitions' club lists (read once, then kept). */

@@ -132,7 +132,7 @@ public final class ScoreBoard implements LiveAlerts.Listener {
     private final OnScreen screen = new OnScreen();
     /** F1 reads as they came: {when, session}. */
     private final ArrayDeque<Object[]> f1Reads = new ArrayDeque<>();
-    private final BreakingNews news = new BreakingNews();
+    private final BreakingNews news = BreakingNews.shared();
     private final ArrayDeque<Drop> drops = new ArrayDeque<>();
     private final Map<String, String> f1Teams = new HashMap<>();
     private boolean running, dropping, channelGame;
@@ -275,7 +275,7 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         Channel ch = src.channel();
         Game own = src.game();
         boolean f1 = own == null && f1Channel(ch);
-        boolean news = shows(c, NEWS) && Kinds.on(c, "news") && this.news.due(System.currentTimeMillis());
+        boolean news = Kinds.on(c, "news") && this.news.due(System.currentTimeMillis());
         int px = Math.round(28 * c.getResources().getDisplayMetrics().density * 2);
         String had = crestsFor, was = lastId;
         boolean next = cycle;
@@ -337,7 +337,8 @@ public final class ScoreBoard implements LiveAlerts.Listener {
                 } else if (own == null) {
                     mode = NONE;
                 }
-                if (stories != null) for (String[] st : stories) drop(newsDrop(st));
+                // A breaking story: an alert like the rest (its notification, its pop-up, its drop here, once).
+                if (stories != null) BreakingNews.post(c, stories);
                 draw(now);
                 h.postDelayed(read, READ_MS);
             });
@@ -460,6 +461,8 @@ public final class ScoreBoard implements LiveAlerts.Listener {
 
     @Override public void onShown(Events.Alert a) {
         if (!running || a == null || !shows(c, group(a.kind))) return;
+        // Over a film or another app, the alert pops up instead (Popups); only the live player's board drops it.
+        if (!(src instanceof ScoreOverlay) && com.gathin.tvhomephone.sports.Popups.wants(c, a)) return;
         drop(drop(a));
     }
 
@@ -476,16 +479,12 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         return d;
     }
 
-    private static Drop newsDrop(String[] st) {
-        Drop d = new Drop();
-        d.chip = "BREAKING · " + st[0].toUpperCase(Locale.ROOT);
-        d.colour = 0xFFFFC21A;
-        d.title = st[1];
-        d.line = st[2];
-        return d;
+    /** Whether Homefield's own player has its scoreboard up (it drops the alerts itself). */
+    public static boolean playerUp() {
+        return ScoreOverlay.up;
     }
 
-    static String chip(String kind) {
+    public static String chip(String kind) {
         switch (kind == null ? "" : kind) {
             case "goal": return "GOAL";
             case "red": return "RED CARD";
@@ -501,12 +500,14 @@ public final class ScoreBoard implements LiveAlerts.Listener {
             case "f1result": return "F1 · RESULT";
             case "weather": return "WEATHER";
             case "reminder": return "STARTS SOON";
+            case "news": return "BREAKING NEWS";
             default: return kind == null ? "" : kind.toUpperCase(Locale.ROOT);
         }
     }
 
-    static int colour(String kind) {
+    public static int colour(String kind) {
         switch (kind == null ? "" : kind) {
+            case "news": return 0xFFFFC21A;
             case "goal": return 0xFF3DDC84;
             case "red": return 0xFFFF5A5F;
             case "var": case "drama": return 0xFFFFB547;

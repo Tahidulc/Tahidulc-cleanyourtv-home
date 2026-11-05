@@ -15,7 +15,7 @@ import java.util.regex.Pattern;
  * read every few minutes while the scoreboard is up; a new lead story published in the last 45 minutes that is news,
  * not a feature (a quiz, a video, "in pictures"), drops from the scoreboard. The first read only learns what is there.
  */
-final class BreakingNews {
+public final class BreakingNews {
     /** {feed, its name on the alert}. */
     static final String[][] FEEDS = {
             {"https://feeds.bbci.co.uk/news/rss.xml", "BBC News"},
@@ -40,14 +40,45 @@ final class BreakingNews {
     private final Set<String> seen = new HashSet<>();
     private boolean primed;
     private long readAt;
+    private static final BreakingNews SHARED = new BreakingNews();
+
+    /** The one reader for the whole app (the scoreboard's and the alerts' watcher share what was seen). */
+    static BreakingNews shared() {
+        return SHARED;
+    }
+
+    /** From the alerts' watcher (off the main thread): the feeds read when due, each new breaking story sent. */
+    public static void check(android.content.Context c) {
+        if (!com.gathin.tvhomephone.sports.Kinds.on(c, "news")) return;
+        BreakingNews n = SHARED;
+        long now = System.currentTimeMillis();
+        List<String[]> stories;
+        synchronized (n) {
+            if (!n.due(now)) return;
+            stories = n.read(now);
+        }
+        post(c, stories);
+    }
+
+    /** Each story as an alert ({source, headline, line, link}): sent once, by its link. Off the main thread. */
+    static void post(android.content.Context c, List<String[]> stories) {
+        if (stories == null) return;
+        for (String[] st : stories) {
+            com.gathin.tvhomephone.sports.Events.Alert a = new com.gathin.tvhomephone.sports.Events.Alert("news",
+                    "N|" + (st.length > 3 && !st[3].isEmpty() ? st[3] : st[1]), st[1], st[2], null);
+            a.channel = st[0];
+            a.slug = st.length > 3 ? st[3] : null;
+            com.gathin.tvhomephone.App.io.execute(() -> com.gathin.tvhomephone.sports.Notifier.post(c, a));
+        }
+    }
 
     /** Whether it is time to read again. */
-    boolean due(long now) {
+    synchronized boolean due(long now) {
         return now - readAt >= EVERY_MS;
     }
 
-    /** The feeds read (off the main thread): each new breaking lead story, as {source, headline, line}. */
-    List<String[]> read(long now) {
+    /** The feeds read (off the main thread): each new breaking lead story, as {source, headline, line, link}. */
+    synchronized List<String[]> read(long now) {
         readAt = now;
         List<String[]> out = new ArrayList<>();
         for (String[] f : FEEDS) {
@@ -56,7 +87,7 @@ final class BreakingNews {
                 if (stories.isEmpty()) continue;
                 Story lead = stories.get(0);
                 if (seen.add(lead.link.isEmpty() ? lead.title : lead.link) && primed && breaking(lead, now)) {
-                    out.add(new String[]{f[1], lead.title, lead.line});
+                    out.add(new String[]{f[1], lead.title, lead.line, lead.link});
                 }
             } catch (Exception ignored) {
                 // that feed another time

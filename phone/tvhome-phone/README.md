@@ -79,6 +79,13 @@ timing tower's lap ("LAP 23/57") or time left. It has five looks to choose from 
 Minimal), and where the channel's logo is found on the picture it covers it with Homefield's own mark: Badge, Glass,
 Mark only or Wordmark, or leaves it (Settings and the player's Options). The Live TV tab's programme panel is black.
 
+Pop-ups over apps, as the TV's: an alert drops in at the top of the screen over whatever app is open, a black card
+with its coloured label, the competition, the drawn card (the goal's, the line-ups, F1's podium) or its words, and
+Watch, Match or Read. Swipe it away left, right or up, or tap it for the game; it goes by itself after a few seconds.
+Settings, Pop-ups over apps: on or off (Android's "Display over other apps" is asked for), which kinds pop up (a chip
+each), and one to try. Its notification still comes, with its sound but no banner over the pop-up. Breaking news is
+an alert like the rest now (Settings, News and weather).
+
 Subtitles (CC in the film's player): the film's or episode's own, from your playlist's stream, come first, in the
 languages you choose (Settings, Subtitles, in order). When it has none, OpenSubtitles.com is looked in by the title's
 TMDB id (the series' with its season and episode), best first: your languages, the ones that fit the copy playing (its

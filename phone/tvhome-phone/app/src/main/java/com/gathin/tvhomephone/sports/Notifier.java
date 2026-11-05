@@ -29,6 +29,8 @@ public final class Notifier {
             REMINDERS = "sports_reminders";
     /** Goals for a followed club, on their own channel with their own buzz: long, short, long. */
     public static final String CLUB_GOALS = "sports_club_goals";
+    /** Alerts shown as pop-ups over the apps (Popups): their sound, without Android's own banner over the pop-up. */
+    public static final String POPUPS = "sports_popups";
     static final long[] CLUB_BUZZ = {0, 600, 180, 160, 180, 600};
     public static final int ONGOING_ID = 4100;
 
@@ -48,6 +50,9 @@ public final class Notifier {
         club.enableVibration(true);
         club.setVibrationPattern(CLUB_BUZZ);
         m.createNotificationChannel(club);
+        NotificationChannel pops = new NotificationChannel(POPUPS, c.getString(R.string.pop_channel), NotificationManager.IMPORTANCE_DEFAULT);
+        pops.setDescription(c.getString(R.string.pop_channel_about));
+        m.createNotificationChannel(pops);
     }
 
     /** Whether an alert is a goal for one of the followed clubs (side: "home" or "away", as NotifCard reads it). Pure. */
@@ -78,6 +83,9 @@ public final class Notifier {
         com.gathin.tvhomephone.live.LiveAlerts.shown(a);
         String channel = a.kind.startsWith("f1") ? F1 : "weather".equals(a.kind) ? WEATHER : "reminder".equals(a.kind) ? REMINDERS : ALERTS;
         if ("goal".equals(a.kind) && a.game != null && clubGoal(a.kind, NotifCard.side(a), a.game.homeId, a.game.awayId, Clubs.starred(c))) channel = CLUB_GOALS;
+        // It pops up over the apps: the notification then sounds without its own banner covering the pop-up.
+        boolean popup = Popups.wants(c, a);
+        if (popup) channel = POPUPS;
         NotificationCompat.Builder b = new NotificationCompat.Builder(c, channel)
                 .setSmallIcon(R.drawable.sports_ic_ball)
                 .setContentTitle(a.title)
@@ -105,6 +113,7 @@ public final class Notifier {
         }
         notify(c, (a.key).hashCode(), b);
         if (a.game != null) summary(c, a.game, channel);
+        if (popup) Popups.show(c, a);
     }
 
     /**

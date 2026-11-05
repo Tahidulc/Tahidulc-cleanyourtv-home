@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The TV's pop-ups over apps, for the phone (sports/Popups). -->
+<resources>
+    <string name="pop_channel">Alerts shown as pop-ups</string>
+    <string name="pop_channel_about">The alerts that pop up over your apps: their sound, without a second banner over the pop-up.</string>
+    <string name="pop_title">Pop-ups over apps</string>
+    <string name="pop_line">The TV\'s pop-ups on the phone: an alert drops in at the top over whatever app is open, with its drawn card and Watch. Swipe it away left, right or up, or tap it for the game.</string>
+    <string name="pop_on">Pop-ups over apps</string>
+    <string name="pop_allow">Allow Homefield to display over other apps for pop-ups</string>
+    <string name="pop_allow_button">Allow</string>
+    <string name="pop_which">Which pop up</string>
+    <string name="pop_which_line">Tap one to stop it popping up (it still comes as a notification); tap again to bring it back.</string>
+    <string name="pop_try">Show me one</string>
+</resources>
