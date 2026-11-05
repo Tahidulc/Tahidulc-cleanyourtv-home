@@ -86,6 +86,17 @@ Settings, Pop-ups over apps: on or off (Android's "Display over other apps" is a
 each), and one to try. Its notification still comes, with its sound but no banner over the pop-up. Breaking news is
 an alert like the rest now (Settings, News and weather).
 
+One scoreboard, in step with the picture, everywhere (3.9): the player's board shows what the channel's own scoreboard
+shows. It finds it by reading the top of the picture for this game's clock (not a time of day), then copies it every
+few seconds: the clock to the second (46:12 in added time, stopped when the channel's stops, its "+4"), the score once
+it has read it twice, and HT and FT, so it is never ahead of the picture. Options says what it last read. Portrait,
+picture-in-picture and the channel's tile show the same board and time, the tile's stats in step with it. The "Following
+live" notification counts in minutes and seconds. In the full-screen player, the menu (⋮) has a test notification for
+every kind. Overlays guard against burn-in: they move a little every minute and dim after five. Broadcast mode
+(Settings): when the channel goes to its adverts before kick-off, at half time or after the game, Homefield shows its
+own break (your reminders, news, what's on in each section, trailers) with the channel small in a corner, and goes
+back when the channel does. Swipe up on the Live TV panel to hide it and see more of the guide; swipe down for it.
+
 Subtitles (CC in the film's player): the film's or episode's own, from your playlist's stream, come first, in the
 languages you choose (Settings, Subtitles, in order). When it has none, OpenSubtitles.com is looked in by the title's
 TMDB id (the series' with its season and episode), best first: your languages, the ones that fit the copy playing (its
