@@ -48,6 +48,12 @@ app is opened: when none of your playlists has a title, it says so. Live TV and 
 playlists you give it; the app ships with no channels or sources. The tabs are Home, Sports, Live TV, Watch and
 Settings.
 
+The TV guide is dark: the chosen category as the title with round buttons, the categories as dark pills (a flag
+where one names a country), "Today" with the times across and a white mark at now, and each channel a row of rounded
+cards: its logo on a tile in the logo's own colour, each programme a block in a deep colour of its own with what has
+been shown a shade darker, and the channel's name with its picture's tag (HD, FHD, 4K, UHD) and each start time over
+the titles. Now opens just after the logos, with room for what has been shown.
+
 Subtitles (CC in the film's player): the film's or episode's own, from your playlist's stream, come first, in the
 languages you choose (Settings, Subtitles, in order). When it has none, OpenSubtitles.com is looked in by the title's
 TMDB id (the series' with its season and episode), best first: your languages, the ones that fit the copy playing (its

@@ -88,6 +88,8 @@ public class LiveTvFragment extends Fragment {
 
     private LinearLayout toolbar, searchBar, stripRow, band, side;
     private TextView sub;
+    /** The top bar's title: the category chosen. */
+    private TextView titleView;
     private EditText search;
     private MaterialButton nowButton;
     private ImageButton viewButton;
@@ -143,7 +145,8 @@ public class LiveTvFragment extends Fragment {
 
         LinearLayout root = new LinearLayout(c);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackground(Ui.guideGround());
+        // The guide's dark look (GuideLook): black, the panels a near-black grey.
+        root.setBackgroundColor(GuideLook.GROUND);
 
         buildToolbar(c, root);
         inline = new Inline(c, lib, mode == COMPACT);
@@ -183,7 +186,7 @@ public class LiveTvFragment extends Fragment {
             main.addView(details, new LinearLayout.LayoutParams(-1, -2));
         } else if (mode == TOP) {
             band = new LinearLayout(c);
-            band.setBackgroundColor(Ui.G_PANEL);
+            band.setBackgroundColor(GuideLook.PANEL);
             band.setPadding(Ui.dp(c, 16), Ui.dp(c, 14), 0, Ui.dp(c, 6));
             band.addView(inline, new LinearLayout.LayoutParams(Ui.dp(c, 320), Ui.dp(c, 180)));
             details = new Details(c, lib, false, 4);
@@ -192,7 +195,7 @@ public class LiveTvFragment extends Fragment {
         } else {
             side = new LinearLayout(c);
             side.setOrientation(LinearLayout.VERTICAL);
-            side.setBackgroundColor(Ui.G_PANEL);
+            side.setBackgroundColor(GuideLook.PANEL);
             int sw = Ui.dp(c, tablet ? 380 : 300);
             int pad = Ui.dp(c, 14);
             side.setPadding(pad, pad, pad, 0);
@@ -254,7 +257,11 @@ public class LiveTvFragment extends Fragment {
         toolbar.setPadding(Ui.dp(c, 16), Ui.dp(c, 6), Ui.dp(c, 4), 0);
         LinearLayout titles = new LinearLayout(c);
         titles.setOrientation(LinearLayout.VERTICAL);
-        titles.addView(Ui.text(c, getString(R.string.live_title), 22, Ui.TEXT, true));
+        // The category chosen as the title ("Favourites", "UK | Sports"), as the guide's own heading.
+        titleView = Ui.text(c, getString(R.string.live_title), 22, Ui.TEXT, true);
+        titleView.setSingleLine(true);
+        titleView.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        titles.addView(titleView);
         LinearLayout under = new LinearLayout(c);
         under.setGravity(Gravity.CENTER_VERTICAL);
         // Which playlists: all together or one, switched here (shown only with two or more).
@@ -279,9 +286,11 @@ public class LiveTvFragment extends Fragment {
         nowButton.setIconResource(R.drawable.live_ic_now);
         nowButton.setIconSize(Ui.dp(c, 18));
         nowButton.setIconPadding(Ui.dp(c, 6));
-        nowButton.setIconTint(ColorStateList.valueOf(Ui.G_INK));
-        nowButton.setTextColor(Ui.G_INK);
-        nowButton.setBackgroundTintList(ColorStateList.valueOf(Ui.G_SELECT));
+        nowButton.setIconTint(ColorStateList.valueOf(Ui.TEXT));
+        nowButton.setTextColor(Ui.TEXT);
+        nowButton.setBackgroundTintList(ColorStateList.valueOf(GuideLook.PILL));
+        nowButton.setStrokeColor(ColorStateList.valueOf(GuideLook.PILL_RIM));
+        nowButton.setStrokeWidth(Ui.dp(c, 1));
         nowButton.setCornerRadius(Ui.dp(c, 20));
         nowButton.setInsetTop(Ui.dp(c, 4));
         nowButton.setInsetBottom(Ui.dp(c, 4));
@@ -293,7 +302,7 @@ public class LiveTvFragment extends Fragment {
         toolbar.addView(nowButton, new LinearLayout.LayoutParams(-2, Ui.dp(c, 48)));
         ImageButton find = Ui.icon(c, R.drawable.live_ic_search, R.string.live_search);
         find.setOnClickListener(v -> openSearch());
-        toolbar.addView(find, new LinearLayout.LayoutParams(Ui.dp(c, 48), Ui.dp(c, 48)));
+        toolbar.addView(round(c, find), roundParams(c));
         viewButton = Ui.icon(c, R.drawable.live_ic_list, R.string.live_view_list);
         viewButton.setOnClickListener(v -> {
             listView = !listView;
@@ -301,10 +310,10 @@ public class LiveTvFragment extends Fragment {
             showBody();
             refreshRows();
         });
-        toolbar.addView(viewButton, new LinearLayout.LayoutParams(Ui.dp(c, 48), Ui.dp(c, 48)));
-        ImageButton more = Ui.icon(c, R.drawable.live_ic_more_vert, R.string.live_more);
+        toolbar.addView(round(c, viewButton), roundParams(c));
+        ImageButton more = Ui.icon(c, R.drawable.live_ic_more, R.string.live_more);
         more.setOnClickListener(this::moreMenu);
-        toolbar.addView(more, new LinearLayout.LayoutParams(Ui.dp(c, 48), Ui.dp(c, 48)));
+        toolbar.addView(round(c, more), roundParams(c));
         root.addView(toolbar, new LinearLayout.LayoutParams(-1, -2));
 
         searchBar = new LinearLayout(c);
@@ -494,7 +503,7 @@ public class LiveTvFragment extends Fragment {
 
         @NonNull @Override public RecyclerView.ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int type) {
             Context c = parent.getContext();
-            TextView t = Ui.guideChip(c, "", false);
+            TextView t = darkChip(c);
             RecyclerView.LayoutParams lp = new RecyclerView.LayoutParams(-2, -1);
             lp.rightMargin = Ui.dp(c, 8);
             t.setLayoutParams(lp);
@@ -504,8 +513,9 @@ public class LiveTvFragment extends Fragment {
         @Override public void onBindViewHolder(@NonNull RecyclerView.ViewHolder holder, int position) {
             String[] it = items.get(position);
             TextView t = (TextView) holder.itemView;
-            t.setText(it[0]);
-            Ui.styleChip(t.getContext(), t, it[1].equals(group));
+            // A playlist's own category with its country's flag where it names one.
+            t.setText(it.length > 2 ? GuideLook.chip(it[1], it[0]) : it[0]);
+            styleDark(t.getContext(), t, it[1].equals(group));
             t.setOnClickListener(v -> pickGroup(it[1]));
             // A playlist's own category: held for Favourite or Hide.
             boolean own = it.length > 2;
@@ -514,6 +524,27 @@ public class LiveTvFragment extends Fragment {
                 return true;
             } : null);
         }
+    }
+
+    /** A category as a dark pill, as in the guide's look: 40dp tall to see, 48dp to touch. */
+    static TextView darkChip(Context c) {
+        TextView t = Ui.text(c, "", 15, Ui.TEXT, false);
+        t.setGravity(Gravity.CENTER);
+        t.setMinHeight(Ui.dp(c, 48));
+        // One line without setSingleLine: in a row that scrolls sideways that centres the words off the pill.
+        t.setMaxLines(1);
+        return t;
+    }
+
+    static void styleDark(Context c, TextView t, boolean on) {
+        int inset = Ui.dp(c, 4);
+        android.graphics.drawable.GradientDrawable g = Ui.ring(c, on ? GuideLook.PILL_ON : GuideLook.PILL,
+                on ? Ui.TEXT : GuideLook.PILL_RIM, on ? 1.5f : 1, 20);
+        t.setBackground(new android.graphics.drawable.InsetDrawable(new android.graphics.drawable.RippleDrawable(
+                ColorStateList.valueOf(0x33FFFFFF), g, Ui.round(c, Ui.TEXT, 20)), 0, inset, 0, inset));
+        t.setPadding(Ui.dp(c, 16), inset, Ui.dp(c, 16), inset);
+        t.setTypeface(on ? android.graphics.Typeface.DEFAULT_BOLD : android.graphics.Typeface.DEFAULT);
+        t.setSelected(on);
     }
 
     private void buildChips() {
@@ -557,6 +588,24 @@ public class LiveTvFragment extends Fragment {
     @SuppressLint("NotifyDataSetChanged")
     private void refreshChips() {
         chipsAdapter.notifyDataSetChanged();
+        // The category chosen as the title.
+        if (titleView != null) {
+            String t = getString(R.string.live_title);
+            for (String[] it : chipsAdapter.items) if (it[1].equals(group)) t = it[0].replaceFirst("^★\\s*", "");
+            titleView.setText(t);
+        }
+    }
+
+    /** A top-bar button as a dark circle, as the guide's own buttons. */
+    private static ImageButton round(Context c, ImageButton b) {
+        b.setBackground(Ui.touch(c, false, GuideLook.PILL, 22));
+        return b;
+    }
+
+    private static LinearLayout.LayoutParams roundParams(Context c) {
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(Ui.dp(c, 44), Ui.dp(c, 44));
+        lp.leftMargin = Ui.dp(c, 6);
+        return lp;
     }
 
     private void pickGroup(String g) {
@@ -749,15 +798,17 @@ public class LiveTvFragment extends Fragment {
         if (onlyIfChanged && old != null && old.origin == tl.origin && old.end == tl.end) return;
         grid.setTimeline(tl);
         if (old == null) {
-            long left = restoreLeft > 0 ? restoreLeft : Timeline.floorHalfHour(now, TimeZone.getDefault());
+            // Now just after the logos' column (GuideGrid.scrollToNow), or where it was left.
+            long left = restoreLeft;
             restoreLeft = -1;
-            grid.scrollToTime(left, false);
-            grid.corner.setText(Ui.day(requireContext(), left));
+            if (left > 0) grid.scrollToTime(left, false);
+            else grid.scrollToNow(false);
+            grid.corner.setText(Ui.day(requireContext(), left > 0 ? left : now));
         }
     }
 
     private void backToNow(boolean animate) {
-        grid.scrollToTime(Timeline.floorHalfHour(System.currentTimeMillis(), TimeZone.getDefault()), animate);
+        grid.scrollToNow(animate);
         Channel sel = lib.byKey(selKey);
         if (sel != null) {
             Guide.Schedule s = lib.schedule(sel.key);
@@ -776,8 +827,8 @@ public class LiveTvFragment extends Fragment {
         m.setOnMenuItemClickListener(item -> {
             long now = System.currentTimeMillis();
             long t = tl.dayTarget(days.get(item.getItemId()), now);
-            if (t == now) t = Timeline.floorHalfHour(now, TimeZone.getDefault());
-            grid.scrollToTime(t, true);
+            if (t == now) grid.scrollToNow(true);
+            else grid.scrollToTime(t, true);
             return true;
         });
         m.show();

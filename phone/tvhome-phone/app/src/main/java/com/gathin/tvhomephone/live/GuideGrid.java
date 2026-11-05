@@ -7,8 +7,6 @@ import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.RectF;
 import android.graphics.Typeface;
-import android.graphics.drawable.InsetDrawable;
-import android.text.TextUtils;
 import android.util.TypedValue;
 import android.view.GestureDetector;
 import android.view.Gravity;
@@ -36,11 +34,14 @@ import java.util.List;
 import java.util.TimeZone;
 
 /**
- * The TV guide's grid: the channels down the left (number, logo, name, a star on favourites), the half hours across the
- * top with a red line at now, and each channel's programmes as blocks along its row. One RecyclerView of rows, each row
- * one view that draws its blocks from a shared horizontal offset, so twenty thousand channels and a day of guide stay
- * smooth: no view per programme. A sideways drag or fling moves every row and the ruler together; up and down is the
- * RecyclerView's own scrolling.
+ * The TV guide's grid, dark (GuideLook): the day big at the top left and the times across with a white mark at now;
+ * each channel a row of rounded cards, its logo on a tile in the logo's own colour over the row's start (a star on a
+ * favourite), and its programmes as rounded blocks each in a deep colour of its own, what has been shown a shade
+ * darker, the channel's name with its picture's tag and each start time over the titles. One RecyclerView of rows,
+ * each row one view that draws its blocks from a shared horizontal offset, so twenty thousand channels and a day of
+ * guide stay smooth: no view per programme. A sideways drag or fling moves every row and the ruler together; up and
+ * down is the RecyclerView's own scrolling. A tap on a logo plays the channel; a long press on it, or on a programme,
+ * opens the channel's menu (favourites among it).
  */
 @SuppressLint("ViewConstructor")
 final class GuideGrid extends FrameLayout {
@@ -71,7 +72,7 @@ final class GuideGrid extends FrameLayout {
     private final Ruler ruler;
     private final Rows adapter = new Rows();
     private final OverScroller scroller;
-    private final int slop, minFling, maxFling, colW, rowH;
+    private final int slop, minFling, maxFling, colW, rowH, margin;
     private final boolean wide;
     private VelocityTracker tracker;
     private float downX, downY, lastX;
@@ -93,29 +94,31 @@ final class GuideGrid extends FrameLayout {
         this.lib = lib;
         this.wide = wide;
         st = new State(c, wide);
-        colW = Ui.dp(c, wide ? 184 : 124);
-        rowH = Ui.dp(c, wide ? 72 : 64);
+        margin = Ui.dp(c, 12);
+        colW = Ui.dp(c, wide ? 120 : 88);
+        st.tileW = colW;
+        rowH = Ui.dp(c, wide ? 70 : 62);
         ViewConfiguration vc = ViewConfiguration.get(c);
         slop = vc.getScaledTouchSlop();
         minFling = vc.getScaledMinimumFlingVelocity();
         maxFling = vc.getScaledMaximumFlingVelocity();
         scroller = new OverScroller(c);
+        setBackgroundColor(GuideLook.GROUND);
 
         LinearLayout col = new LinearLayout(c);
         col.setOrientation(LinearLayout.VERTICAL);
-        LinearLayout head = new LinearLayout(c);
-        corner = Ui.text(c, "", 14, Ui.TEXT, true);
+        // The head: the day ("Today") big at the left, the times across with a white mark at now.
+        FrameLayout head = new FrameLayout(c);
+        ruler = new Ruler(c);
+        head.addView(ruler, new FrameLayout.LayoutParams(-1, -1));
+        corner = Ui.text(c, "", wide ? 26 : 24, Ui.TEXT, true);
         corner.setGravity(Gravity.CENTER_VERTICAL);
-        corner.setPadding(Ui.dp(c, 14), 0, Ui.dp(c, 8), 0);
-        corner.setCompoundDrawablesRelativeWithIntrinsicBounds(0, 0, R.drawable.live_ic_down, 0);
-        androidx.core.widget.TextViewCompat.setCompoundDrawableTintList(corner, ColorStateList.valueOf(Ui.G_SELECT));
-        corner.setBackground(Ui.touch(c, false, Ui.G_CELL, 0));
+        corner.setPadding(margin, 0, Ui.dp(c, 8), 0);
+        corner.setBackground(Ui.touch(c, false, 0, 12));
         corner.setContentDescription(c.getString(R.string.live_pick_day));
         corner.setSingleLine(true);
-        head.addView(corner, new LinearLayout.LayoutParams(colW, Ui.dp(c, 48)));
-        ruler = new Ruler(c);
-        head.addView(ruler, new LinearLayout.LayoutParams(0, Ui.dp(c, 48), 1f));
-        col.addView(head, new LinearLayout.LayoutParams(-1, -2));
+        head.addView(corner, new FrameLayout.LayoutParams(colW + margin + Ui.dp(c, 30), -1));
+        col.addView(head, new LinearLayout.LayoutParams(-1, Ui.dp(c, 52)));
 
         rows = new RecyclerView(c);
         rows.setLayoutManager(new LinearLayoutManager(c));
@@ -123,7 +126,7 @@ final class GuideGrid extends FrameLayout {
         rows.setItemAnimator(null);
         rows.setAdapter(adapter);
         rows.setClipToPadding(false);
-        rows.setPadding(0, 0, 0, Ui.dp(c, 12));
+        rows.setPadding(0, Ui.dp(c, 2), 0, Ui.dp(c, 16));
         col.addView(rows, new LinearLayout.LayoutParams(-1, 0, 1f));
         addView(col, new LayoutParams(-1, -1));
     }
@@ -175,6 +178,18 @@ final class GuideGrid extends FrameLayout {
         }
     }
 
+    /** Pure: the time at the left edge that puts now just after the logos' column (into, px from the edge). */
+    static long leftForNow(long now, float pxPerMs, float into) {
+        return now - (long) (into / Math.max(1e-9f, pxPerMs));
+    }
+
+    /** Now just after the logos' column, with room before it for what has been shown of each programme. */
+    void scrollToNow(boolean animate) {
+        if (st.tl == null) return;
+        float perMs = (st.tl.x(st.now + 3_600_000L) - st.tl.x(st.now)) / 3_600_000f;
+        scrollToTime(leftForNow(System.currentTimeMillis(), perMs, colW + Ui.dp(getContext(), 64)), animate);
+    }
+
     /** The programme picked out in light blue (start 0: the channel only). */
     void select(String key, long start) {
         boolean channelChanged = key == null ? st.selKey != null : !key.equals(st.selKey);
@@ -194,8 +209,9 @@ final class GuideGrid extends FrameLayout {
         adapter.notifyItemRangeChanged(0, adapter.getItemCount(), SELECTION);
     }
 
+    /** The width the time runs across: the whole row (the logo's tile lies over its start). */
     private float viewport() {
-        return getWidth() - colW;
+        return getWidth() - 2f * margin;
     }
 
     private void setOffset(float o) {
@@ -342,35 +358,39 @@ final class GuideGrid extends FrameLayout {
         long now = System.currentTimeMillis();
         String selKey;
         long selStart;
+        /** The logo's tile over each row's start: the writing starts after it. */
+        float tileW;
         final TimeZone tz = TimeZone.getDefault();
-        final Paint blockFill = fill(Ui.G_BLOCK), nowFill = fill(Ui.G_NOW), pastFill = fill(Ui.G_PAST), selFill = fill(Ui.G_CHOSEN),
-                nowLine = fill(Ui.RED), tick = fill(Ui.G_LINE), underline = fill(Ui.TEXT);
-        final Paint title, titleInk, time, timeInk, ruler, rulerDay, nowLabel;
-        final RectF rect = new RectF();
+        final Paint block = fill(0), past = fill(GuideLook.PAST), chosen = fill(0x2EFFFFFF), ring = fill(Ui.TEXT),
+                badge = fill(GuideLook.SMALL), nowMark = fill(Ui.TEXT);
+        final Paint title, titleInk, small, smallName, badgeText, ruler, rulerNow;
+        final RectF rect = new RectF(), tag = new RectF();
+        final android.graphics.Path tri = new android.graphics.Path();
         final char[] buf = new char[24];
-        /** The length of the first time range() wrote (its start alone). */
-        int firstLen;
-        final float gap, radius, pad, minText, nowW, ellipsis, ellipsisInk, one, under;
+        final float gap, radius, pad, minText, one, ringW, badgePad, badgeR;
 
         State(Context c, boolean wide) {
-            // Sky's flat programmes: no gaps or rounding, thin lines between them, a white line under the chosen one.
-            gap = 0;
-            radius = 0;
+            // Rounded blocks a little apart, each in a deep colour of its own, as cards in a row.
+            gap = Ui.dp(c, 3);
+            radius = Ui.dp(c, 11);
             one = Math.max(1, Ui.dp(c, 1));
-            under = Math.max(2, Ui.dp(c, 3));
-            pad = Ui.dp(c, 10);
-            minText = Ui.dp(c, 14);
-            nowW = Ui.dp(c, 2);
+            ringW = Ui.dp(c, 2);
+            pad = Ui.dp(c, 12);
+            minText = Ui.dp(c, 18);
+            badgePad = Ui.dp(c, 4);
+            badgeR = Ui.dp(c, 4);
             Typeface medium = Typeface.create("sans-serif-medium", Typeface.NORMAL);
-            title = text(c, wide ? 16 : 14.5f, Ui.TEXT, medium);
-            titleInk = text(c, wide ? 16 : 14.5f, Ui.TEXT, Typeface.DEFAULT_BOLD);
-            time = text(c, wide ? 13 : 12, Ui.G_TIME, Typeface.DEFAULT);
-            timeInk = text(c, wide ? 13 : 12, 0xF2FFFFFF, Typeface.DEFAULT);
-            ruler = text(c, 13, Ui.TEXT, medium);
-            rulerDay = text(c, 13, Ui.G_SELECT, Typeface.DEFAULT_BOLD);
-            nowLabel = text(c, 11, Ui.TEXT, Typeface.DEFAULT_BOLD);
-            ellipsis = title.measureText("…");
-            ellipsisInk = titleInk.measureText("…");
+            title = text(c, wide ? 18 : 17, Ui.TEXT, Typeface.DEFAULT);
+            titleInk = text(c, wide ? 18 : 17, Ui.TEXT, medium);
+            small = text(c, wide ? 14 : 13, GuideLook.SMALL, Typeface.DEFAULT);
+            smallName = text(c, wide ? 14 : 13, GuideLook.SMALL, medium);
+            badgeText = text(c, wide ? 10 : 9.5f, GuideLook.SMALL, medium);
+            ruler = text(c, wide ? 18 : 17, GuideLook.RULER, Typeface.DEFAULT);
+            rulerNow = text(c, wide ? 18 : 17, Ui.TEXT, Typeface.DEFAULT);
+            ring.setStyle(Paint.Style.STROKE);
+            ring.setStrokeWidth(ringW);
+            badge.setStyle(Paint.Style.STROKE);
+            badge.setStrokeWidth(one);
         }
 
         private static Paint fill(int color) {
@@ -387,48 +407,38 @@ final class GuideGrid extends FrameLayout {
             return p;
         }
 
-        /** "7.00pm" for t into buf at at, as Sky writes it; the index after it. No allocation (it runs while drawing). */
+        /** "09:30" for t into buf at at (the 24-hour clock); the index after it. No allocation (it runs while drawing). */
         int clock(long t, int at) {
             long mins = Math.floorMod(Math.floorDiv(t + tz.getOffset(t), 60_000L), 1440L);
             int h = (int) (mins / 60), m = (int) (mins % 60);
-            int h12 = h % 12 == 0 ? 12 : h % 12;
-            if (h12 >= 10) buf[at++] = '1';
-            buf[at++] = (char) ('0' + h12 % 10);
-            buf[at++] = '.';
+            buf[at++] = (char) ('0' + h / 10);
+            buf[at++] = (char) ('0' + h % 10);
+            buf[at++] = ':';
             buf[at++] = (char) ('0' + m / 10);
             buf[at++] = (char) ('0' + m % 10);
-            buf[at++] = h >= 12 ? 'p' : 'a';
-            buf[at++] = 'm';
             return at;
         }
 
-        /** "7.00pm – 8.00pm" into buf; its length (firstLen: the start's alone). */
-        int range(long a, long b) {
-            int at = clock(a, 0);
-            firstLen = at;
-            buf[at++] = ' ';
-            buf[at++] = '–';
-            buf[at++] = ' ';
-            return clock(b, at);
-        }
-
-        /** Writes s from x on the baseline y, cut with an ellipsis to fit max. */
-        void fit(Canvas cv, String s, float x, float y, float max, Paint p, float ell) {
+        /** Writes s from x on the baseline y, cut with an ellipsis to fit max; the width written. */
+        float fit(Canvas cv, String s, float x, float y, float max, Paint p) {
             int n = s.length();
-            if (n == 0 || max <= 0) return;
+            if (n == 0 || max <= 0) return 0;
             int fits = p.breakText(s, true, max, null);
             if (fits >= n) {
                 cv.drawText(s, x, y, p);
-                return;
+                return p.measureText(s);
             }
+            float ell = p.measureText("…");
             int cut = p.breakText(s, true, Math.max(0, max - ell), null);
-            if (cut <= 0) return;
+            if (cut <= 0) return 0;
             cv.drawText(s, 0, cut, x, y, p);
-            cv.drawText("…", x + p.measureText(s, 0, cut), y, p);
+            float w = p.measureText(s, 0, cut);
+            cv.drawText("…", x + w, y, p);
+            return w + ell;
         }
     }
 
-    /** One channel's programmes along its row. */
+    /** One channel's programmes along its row, the logo's tile lying over its start. */
     @SuppressLint("ViewConstructor")
     static final class Blocks extends View {
         private final State st;
@@ -436,9 +446,11 @@ final class GuideGrid extends FrameLayout {
         Guide.Schedule schedule;
         String key = "";
         String noGuide = "";
+        /** The channel's name as written over the first title, and its picture's tag (HD, 4K…). */
+        String name = "", quality = "";
         Channel ch;
         Listener listener;
-        private float titleY, timeY, tapX = -1;
+        private float topY, titleY, tapX = -1;
 
         Blocks(Context c, State st) {
             super(c);
@@ -463,8 +475,8 @@ final class GuideGrid extends FrameLayout {
 
         @Override protected void onSizeChanged(int w, int h, int ow, int oh) {
             super.onSizeChanged(w, h, ow, oh);
-            titleY = h * 0.45f;
-            timeY = h * 0.76f;
+            topY = h * 0.40f;
+            titleY = h * 0.78f;
         }
 
         private void tapAt(float x) {
@@ -492,107 +504,139 @@ final class GuideGrid extends FrameLayout {
             Timeline tl = st.tl;
             if (tl == null || Float.isNaN(st.offset)) return;
             float w = getWidth(), h = getHeight(), off = st.offset;
-            float top = st.gap, bottom = h - st.gap;
             long tL = tl.time(off), tR = tl.time(off + w);
             boolean mine = key.equals(st.selKey);
             Guide.Schedule s = schedule;
+            named = false;
             if (s == null || s.start.length == 0) {
-                float l = Math.max(-off, -st.radius), r = Math.min(tl.width() - off, w + st.radius);
-                st.rect.set(l + st.gap, top, r - st.gap, bottom - st.one);
-                boolean sel = mine && st.selStart == 0;
-                cv.drawRoundRect(st.rect, st.radius, st.radius, sel ? st.selFill : st.blockFill);
-                float tx = Math.max(st.rect.left, 0) + st.pad;
-                st.fit(cv, noGuide, tx, h * 0.58f, w - tx - st.pad, sel ? st.timeInk : st.time, st.ellipsis);
-            } else {
-                int n = s.start.length;
-                for (int i = Timeline.first(s, tL); i < n && s.start[i] < tR; i++) {
-                    float l = tl.x(s.start[i]) - off, r = tl.x(s.stop[i]) - off;
-                    if (r <= 0) continue;
-                    block(cv, s, i, l, r, top, bottom, w, mine);
+                st.rect.set(0, 0, w, h);
+                st.block.setColor(GuideLook.blockColour(name));
+                cv.drawRoundRect(st.rect, st.radius, st.radius, st.block);
+                if (mine && st.selStart == 0) {
+                    cv.drawRoundRect(st.rect, st.radius, st.radius, st.chosen);
+                    inset(st.rect);
+                    cv.drawRoundRect(st.rect, st.radius, st.radius, st.ring);
                 }
+                writing(cv, st.tileW + st.pad, w - st.pad, -1, noGuide, 0);
+                return;
             }
-            // The thin line under the row, as between Sky's rows.
-            cv.drawRect(0, h - st.one, w, h, st.tick);
-            float nx = tl.x(st.now) - off;
-            if (nx >= -st.nowW && nx <= w + st.nowW) cv.drawRect(nx - st.nowW / 2, 0, nx + st.nowW / 2, h, st.nowLine);
+            int n = s.start.length;
+            for (int i = Timeline.first(s, tL); i < n && s.start[i] < tR; i++) {
+                float l = tl.x(s.start[i]) - off, r = tl.x(s.stop[i]) - off;
+                if (r <= 0) continue;
+                block(cv, s, i, l, r, h, w, mine);
+            }
         }
 
-        private void block(Canvas cv, Guide.Schedule s, int i, float l, float r, float top, float bottom, float w, boolean mine) {
-            float left = Math.max(l + st.gap, -st.radius), right = Math.min(r - st.gap, w + st.radius);
-            if (right - left < 1) return;
+        /** Whether this row's name has been written yet (over its first title in sight). */
+        private boolean named;
+
+        private void inset(RectF r) {
+            float k = st.ringW / 2;
+            r.inset(k, k);
+        }
+
+        private void block(Canvas cv, Guide.Schedule s, int i, float l, float r, float h, float w, boolean mine) {
+            float left = l + st.gap, right = r - st.gap;
+            if (right - left < 1 || right < 0 || left > w) return;
             long now = st.now;
             boolean on = s.start[i] <= now && now < s.stop[i];
             boolean sel = mine && s.start[i] == st.selStart;
-            st.rect.set(left, top, right, bottom - st.one);
-            cv.drawRoundRect(st.rect, st.radius, st.radius, sel ? st.selFill : on ? st.nowFill : st.blockFill);
-            // A thin line where it ends; under the chosen one, a white line along its foot.
-            cv.drawRect(right - st.one, top, right, bottom - st.one, st.tick);
-            if (sel) cv.drawRect(left, bottom - st.one - st.under, right - st.one, bottom - st.one, st.underline);
-            if (on && !sel) {
+            st.rect.set(left, 0, right, h);
+            st.block.setColor(GuideLook.blockColour(s.title[i]));
+            cv.drawRoundRect(st.rect, st.radius, st.radius, st.block);
+            if (on) {
                 // What has been shown already, a shade darker.
                 float px = Math.min(st.tl.x(now) - st.offset, right);
                 if (px > left) {
                     cv.save();
-                    cv.clipRect(left, top, px, bottom);
-                    cv.drawRoundRect(st.rect, st.radius, st.radius, st.pastFill);
+                    cv.clipRect(left, 0, px, h);
+                    cv.drawRoundRect(st.rect, st.radius, st.radius, st.past);
                     cv.restore();
                 }
             }
-            // The writing stays in view at the left edge while the block runs on under it.
-            float tx = Math.max(left, 0) + st.pad, max = right - st.pad - tx;
+            if (sel) {
+                cv.drawRoundRect(st.rect, st.radius, st.radius, st.chosen);
+                inset(st.rect);
+                cv.drawRoundRect(st.rect, st.radius, st.radius, st.ring);
+            }
+            // The writing starts after the logo's tile and stays in sight while the block runs on under it.
+            float tx = Math.max(left, st.tileW) + st.pad, end = right - st.pad;
+            if (end - tx < st.minText) return;
+            writing(cv, tx, end, s.start[i], s.title[i].isEmpty() ? "—" : s.title[i], sel ? 1 : 0);
+        }
+
+        /**
+         * The block's two lines: over the title the channel's name with its tag (the first block in sight only) and
+         * the start time (start below 0: none), the title under them.
+         */
+        private void writing(Canvas cv, float tx, float end, long start, String title, int ink) {
+            float x = tx, max = end - tx;
             if (max < st.minText) return;
-            String t = s.title[i].isEmpty() ? "—" : s.title[i];
-            st.fit(cv, t, tx, titleY, max, sel ? st.titleInk : st.title, sel ? st.ellipsisInk : st.ellipsis);
-            Paint tp = sel ? st.timeInk : st.time;
-            int len = st.range(s.start[i], s.stop[i]);
-            if (tp.measureText(st.buf, 0, len) <= max) cv.drawText(st.buf, 0, len, tx, timeY, tp);
-            else if (tp.measureText(st.buf, 0, st.firstLen) <= max) cv.drawText(st.buf, 0, st.firstLen, tx, timeY, tp);
+            if (!named) {
+                named = true;
+                float wn = st.fit(cv, name, x, topY, max * 0.7f, st.smallName);
+                x += wn;
+                if (!quality.isEmpty() && wn > 0) {
+                    float tw = st.badgeText.measureText(quality), bw = tw + 2 * st.badgePad;
+                    float bx = x + st.badgePad * 1.5f;
+                    if (bx + bw < end) {
+                        float th = st.badgeText.getTextSize();
+                        st.tag.set(bx, topY - th - st.badgePad * 0.6f, bx + bw, topY + st.badgePad * 0.6f);
+                        cv.drawRoundRect(st.tag, st.badgeR, st.badgeR, st.badge);
+                        cv.drawText(quality, bx + st.badgePad, topY - st.badgePad * 0.2f, st.badgeText);
+                        x = bx + bw;
+                    }
+                }
+                x += st.pad * 0.8f;
+            }
+            if (start >= 0) {
+                int len = st.clock(start, 0);
+                if (x + st.small.measureText(st.buf, 0, len) <= end) cv.drawText(st.buf, 0, len, x, topY, st.small);
+            }
+            st.fit(cv, title, tx, titleY, max, ink == 1 ? st.titleInk : st.title);
         }
     }
 
-    /** The half hours across the top, the day's name at midnight, and now in red. */
+    /** The times across the top in grey, and now as a white mark and its time. */
     private final class Ruler extends View {
-        private final float tickH, labelX, nowPad, nowH, one, back;
+        private final float markW, markH, gapAfter, room;
 
         Ruler(Context c) {
             super(c);
-            setBackgroundColor(Ui.G_CELL);
-            tickH = Ui.dp(c, 10);
-            labelX = Ui.dp(c, 6);
-            nowPad = Ui.dp(c, 6);
-            nowH = Ui.dp(c, 18);
-            one = Ui.dp(c, 1);
-            back = Ui.dp(c, 60);
+            markW = Ui.dp(c, 9);
+            markH = Ui.dp(c, 7);
+            gapAfter = Ui.dp(c, 3);
+            room = Ui.dp(c, 64);
             setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
         }
 
         @Override protected void onDraw(@NonNull Canvas cv) {
             Timeline tl = st.tl;
             if (tl == null || Float.isNaN(st.offset)) return;
-            float w = getWidth(), h = getHeight(), off = st.offset;
-            long tL = tl.time(off - back), tR = tl.time(off + w);
-            float base = h * 0.62f;
+            float w = getWidth(), h = getHeight(), off = st.offset, base = h * 0.66f;
+            // Nothing under the day's name: the times start after the logos' column.
+            float from = margin + colW + Ui.dp(getContext(), 24);
+            float nx = margin + tl.x(st.now) - off;
+            boolean nowSeen = nx >= from - markW && nx <= w;
+            long tL = tl.time(off - room), tR = tl.time(off + w);
             for (long t = Timeline.ceilHalfHour(tL, st.tz); t <= tR; t += Timeline.HALF_HOUR) {
-                float x = tl.x(t) - off;
-                cv.drawRect(x, h - tickH, x + one, h, st.tick);
-                long local = Math.floorMod(t + st.tz.getOffset(t), Timeline.DAY);
-                if (local == 0) {
-                    cv.drawText(Ui.day(getContext(), t), x + labelX, base, st.rulerDay);
-                } else {
-                    int len = st.clock(t, 0);
-                    cv.drawText(st.buf, 0, len, x + labelX, base, st.ruler);
-                }
+                float x = margin + tl.x(t) - off;
+                if (x < from) continue;
+                if (nowSeen && Math.abs(x - nx) < room * 1.2f) continue;
+                int len = st.clock(t, 0);
+                cv.drawText(st.buf, 0, len, x, base, st.ruler);
             }
-            cv.drawRect(0, h - 1, w, h, st.tick);
-            float nx = tl.x(st.now) - off;
-            if (nx >= -st.nowW && nx <= w + st.nowW) {
+            if (nowSeen) {
+                float mx = Math.max(from - markW, nx - markW / 2);
+                st.tri.reset();
+                st.tri.moveTo(mx, base - st.rulerNow.getTextSize() * 0.62f);
+                st.tri.lineTo(mx + markW, base - st.rulerNow.getTextSize() * 0.62f);
+                st.tri.lineTo(mx + markW / 2, base - st.rulerNow.getTextSize() * 0.62f + markH);
+                st.tri.close();
+                cv.drawPath(st.tri, st.nowMark);
                 int len = st.clock(st.now, 0);
-                float tw = st.nowLabel.measureText(st.buf, 0, len) + 2 * nowPad;
-                float left = Math.max(0, Math.min(w - tw, nx - tw / 2));
-                st.rect.set(left, h - tickH - nowH - 2 * one, left + tw, h - tickH - 2 * one);
-                cv.drawRoundRect(st.rect, nowH / 2, nowH / 2, st.nowLine);
-                cv.drawText(st.buf, 0, len, left + nowPad, st.rect.bottom - nowH * 0.28f, st.nowLabel);
-                cv.drawRect(nx - st.nowW / 2, h - tickH - 2 * one, nx + st.nowW / 2, h, st.nowLine);
+                cv.drawText(st.buf, 0, len, mx + markW + gapAfter, base, st.rulerNow);
             }
         }
     }
@@ -616,73 +660,61 @@ final class GuideGrid extends FrameLayout {
         }
     }
 
+    /** Each logo's tile colour once worked out, by the logo's address. */
+    private static final android.util.LruCache<String, Integer> tiles = new android.util.LruCache<>(600);
+
     private final class Row extends RecyclerView.ViewHolder {
-        final LinearLayout cell;
-        final TextView number, name, initials;
+        final FrameLayout tile;
+        final TextView initials;
         final ImageView logo, star;
         final Blocks blocks;
-        View sideCol;
+        final android.graphics.drawable.GradientDrawable ground;
         Channel ch;
 
         Row(Context c) {
-            super(new LinearLayout(c));
-            LinearLayout item = (LinearLayout) itemView;
+            super(new FrameLayout(c));
+            FrameLayout item = (FrameLayout) itemView;
             item.setLayoutParams(new RecyclerView.LayoutParams(-1, rowH));
-            cell = new LinearLayout(c);
-            cell.setGravity(Gravity.CENTER_VERTICAL);
-            LinearLayout side = new LinearLayout(c);
-            side.setOrientation(LinearLayout.VERTICAL);
-            side.setGravity(Gravity.CENTER_HORIZONTAL);
-            number = Ui.text(c, "", 12, Ui.G_TIME, true);
-            number.setGravity(Gravity.CENTER);
-            number.setSingleLine(true);
-            side.addView(number, new LinearLayout.LayoutParams(-1, 0, 1f));
-            star = new ImageView(c);
-            star.setScaleType(ImageView.ScaleType.CENTER);
-            star.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-            side.addView(star, new LinearLayout.LayoutParams(-1, 0, 1.3f));
-            // The whole column beside the logo is the star's to touch (the row's full height).
-            side.setBackground(Ui.touch(c, false, 0, 0));
-            side.setContentDescription(c.getString(R.string.live_favourite));
-            side.setOnClickListener(v -> {
-                if (ch != null && listener != null) listener.onFavourite(ch);
-            });
-            sideCol = side;
-            cell.addView(side, new LinearLayout.LayoutParams(Ui.dp(c, 40), -1));
-            LinearLayout id = new LinearLayout(c);
-            id.setOrientation(LinearLayout.VERTICAL);
-            id.setGravity(Gravity.CENTER_VERTICAL);
-            id.setPadding(0, 0, Ui.dp(c, 8), 0);
-            FrameLayout box = new FrameLayout(c);
-            initials = Ui.text(c, "", 13, Ui.SOFT, true);
+            item.setPadding(margin, 0, margin, Ui.dp(c, 8));
+            blocks = new Blocks(c, st);
+            blocks.noGuide = c.getString(R.string.live_no_guide_info);
+            item.addView(blocks, new FrameLayout.LayoutParams(-1, -1));
+            // The logo's tile over the row's start, in the logo's colour.
+            tile = new FrameLayout(c);
+            ground = new android.graphics.drawable.GradientDrawable();
+            ground.setCornerRadius(st.radius);
+            tile.setBackground(new android.graphics.drawable.RippleDrawable(ColorStateList.valueOf(0x33FFFFFF), ground, null));
+            tile.setClipToOutline(true);
+            initials = Ui.text(c, "", wide ? 18 : 16, Ui.TEXT, true);
             initials.setGravity(Gravity.CENTER);
-            initials.setBackground(Ui.round(c, Ui.GLASS, 8));
-            box.addView(initials, new FrameLayout.LayoutParams(-1, -1));
+            tile.addView(initials, new FrameLayout.LayoutParams(-1, -1));
             logo = new ImageView(c);
             logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
-            box.addView(logo, new FrameLayout.LayoutParams(-1, -1));
-            id.addView(box, new LinearLayout.LayoutParams(-1, Ui.dp(c, wide ? 34 : 28)));
-            name = Ui.text(c, "", wide ? 13 : 11, Ui.SOFT, false);
-            name.setSingleLine(true);
-            name.setEllipsize(TextUtils.TruncateAt.END);
-            LinearLayout.LayoutParams np = new LinearLayout.LayoutParams(-1, -2);
-            np.topMargin = Ui.dp(c, 3);
-            id.addView(name, np);
-            cell.addView(id, new LinearLayout.LayoutParams(0, -1, 1f));
-            cell.setOnClickListener(v -> {
+            int lp = Ui.dp(c, 8);
+            logo.setPadding(lp, lp, lp, lp);
+            tile.addView(logo, new FrameLayout.LayoutParams(-1, -1));
+            // A favourite: a small star at the tile's top right.
+            star = new ImageView(c);
+            star.setImageResource(R.drawable.live_ic_star);
+            star.setImageTintList(ColorStateList.valueOf(Ui.STAR));
+            star.setBackground(Ui.round(c, 0x99000000, 10));
+            int sp = Ui.dp(c, 3);
+            star.setPadding(sp, sp, sp, sp);
+            star.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+            FrameLayout.LayoutParams stp = new FrameLayout.LayoutParams(Ui.dp(c, 20), Ui.dp(c, 20), Gravity.TOP | Gravity.END);
+            stp.topMargin = stp.rightMargin = Ui.dp(c, 4);
+            tile.addView(star, stp);
+            tile.setOnClickListener(v -> {
                 if (ch != null && listener != null) listener.onChannel(ch);
             });
-            cell.setOnLongClickListener(v -> {
+            tile.setOnLongClickListener(v -> {
                 if (ch != null && listener != null) {
                     v.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
                     listener.onMenu(ch);
                 }
                 return true;
             });
-            item.addView(cell, new LinearLayout.LayoutParams(colW, -1));
-            blocks = new Blocks(c, st);
-            blocks.noGuide = c.getString(R.string.live_no_guide_info);
-            item.addView(blocks, new LinearLayout.LayoutParams(0, -1, 1f));
+            item.addView(tile, new FrameLayout.LayoutParams(colW, -1));
         }
 
         void bind(Channel c) {
@@ -691,36 +723,71 @@ final class GuideGrid extends FrameLayout {
             blocks.key = c.key;
             blocks.listener = listener;
             blocks.schedule = lib.schedule(c.key);
-            int n = lib.number(c);
-            number.setText(n > 0 ? String.valueOf(n) : "");
-            name.setText(c.name);
+            blocks.name = GuideLook.shortName(c.name);
+            blocks.quality = GuideLook.quality(c.name);
             initials.setText(Ui.initials(c.name));
-            if (c.logo.isEmpty()) {
+            String url = c.logo;
+            Integer known = url.isEmpty() ? null : tiles.get(url);
+            ground.setColor(known != null ? known : url.isEmpty() ? GuideLook.nameColour(c.name) : GuideLook.PILL_ON);
+            if (url.isEmpty()) {
                 Glide.with(logo).clear(logo);
                 initials.setVisibility(View.VISIBLE);
             } else {
                 initials.setVisibility(View.INVISIBLE);
-                Glide.with(logo).load(c.logo).into(logo);
+                Glide.with(logo).load(url).listener(new com.bumptech.glide.request.RequestListener<android.graphics.drawable.Drawable>() {
+                    @Override public boolean onLoadFailed(com.bumptech.glide.load.engine.GlideException e, Object model,
+                                                          @NonNull com.bumptech.glide.request.target.Target<android.graphics.drawable.Drawable> target, boolean first) {
+                        if (ch == c) {
+                            initials.setVisibility(View.VISIBLE);
+                            ground.setColor(GuideLook.nameColour(c.name));
+                        }
+                        return false;
+                    }
+
+                    @Override public boolean onResourceReady(@NonNull android.graphics.drawable.Drawable d, @NonNull Object model,
+                                                             com.bumptech.glide.request.target.Target<android.graphics.drawable.Drawable> target,
+                                                             @NonNull com.bumptech.glide.load.DataSource source, boolean first) {
+                        if (ch == c && tiles.get(url) == null) {
+                            int colour = tileOf(d);
+                            tiles.put(url, colour);
+                            ground.setColor(colour);
+                        }
+                        return false;
+                    }
+                }).into(logo);
             }
             marks();
             Guide.Schedule s = blocks.schedule;
             int at = s == null ? -1 : s.at(st.now);
-            cell.setContentDescription(c.name + (at >= 0 ? ", " + s.title[at] : ""));
+            tile.setContentDescription(c.name + (at >= 0 ? ", " + s.title[at] : ""));
             blocks.setContentDescription(at >= 0 ? s.title[at] + ", " + Ui.range(s.start[at], s.stop[at]) : blocks.noGuide);
             blocks.invalidate();
         }
 
-        /** The selection's lighter cell and the favourite's star. */
+        /** The favourite's star, and the selection drawn again. */
         void marks() {
             if (ch == null) return;
-            Context c = itemView.getContext();
-            boolean sel = ch.key.equals(st.selKey);
-            cell.setBackground(new InsetDrawable(Ui.touch(c, false, sel ? 0xFF2A70CC : Ui.G_CELL, 0), 0, 0, 0, Ui.dp(c, 1)));
-            boolean fav = Picks.isFavourite(c, ch.key);
-            star.setImageResource(fav ? R.drawable.live_ic_star : R.drawable.live_ic_star_outline);
-            star.setImageTintList(ColorStateList.valueOf(fav ? Ui.STAR : 0x59FFFFFF));
-            sideCol.setContentDescription(c.getString(fav ? R.string.live_fav_remove : R.string.live_fav_add));
+            star.setVisibility(Picks.isFavourite(itemView.getContext(), ch.key) ? View.VISIBLE : View.GONE);
             blocks.invalidate();
+        }
+    }
+
+    /** The tile's colour for a logo as loaded: from a small copy of its pixels (GuideLook.tile). */
+    private static int tileOf(android.graphics.drawable.Drawable d) {
+        try {
+            int s = 24;
+            android.graphics.Bitmap b = android.graphics.Bitmap.createBitmap(s, s, android.graphics.Bitmap.Config.ARGB_8888);
+            Canvas cv = new Canvas(b);
+            android.graphics.Rect was = new android.graphics.Rect(d.getBounds());
+            d.setBounds(0, 0, s, s);
+            d.draw(cv);
+            d.setBounds(was);
+            int[] px = new int[s * s];
+            b.getPixels(px, 0, s, 0, 0, s, s);
+            b.recycle();
+            return GuideLook.tile(px, s, s);
+        } catch (RuntimeException e) {
+            return GuideLook.LIGHT_GREY;
         }
     }
 }
