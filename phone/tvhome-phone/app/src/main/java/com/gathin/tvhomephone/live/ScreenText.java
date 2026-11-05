@@ -26,6 +26,33 @@ final class ScreenText {
     private static final Pattern ADDED = Pattern.compile("\\+\\s?(\\d{1,2})(?!\\d)");
     private static final Pattern LAP = Pattern.compile("(?i)\\bLAP\\s*(\\d{1,2})\\s*(?:/|OF)\\s*(\\d{1,2})");
     private static final Pattern NUMBER = Pattern.compile("(?<!\\d)(\\d{1,2})(?!\\d)");
+    private static final Pattern SCORE = Pattern.compile("(?<![\\d:.])(\\d{1,2})\\s*[-\u2013\u2014]\\s*(\\d{1,2})(?![\\d:])");
+    private static final Pattern HT = Pattern.compile("(?i)\\bHT\\b|HALF[ -]?TIME"), FT = Pattern.compile("(?i)\\bFT\\b|FULL[ -]?TIME");
+
+    /**
+     * The score the scoreboard shows, {home, away}: "2-1" (or "2 – 1") on a line, else the two numbers on it when there
+     * are just two besides the clock (in boxes of their own); null when it can't be told.
+     */
+    static int[] score(List<String> lines) {
+        for (String raw : lines) {
+            String s = CLOCK.matcher(fix(raw)).replaceAll(" ");
+            Matcher m = SCORE.matcher(s);
+            if (m.find()) return new int[]{Integer.parseInt(m.group(1)), Integer.parseInt(m.group(2))};
+        }
+        List<Integer> n = numbers(lines);
+        if (n.size() == 2 && n.get(0) <= 20 && n.get(1) <= 20) return new int[]{n.get(0), n.get(1)};
+        return null;
+    }
+
+    /** "HT" or "FT" when the scoreboard says half time or full time; null otherwise. */
+    static String state(List<String> lines) {
+        for (String s : lines) {
+            if (s == null) continue;
+            if (FT.matcher(s).find()) return "FT";
+            if (HT.matcher(s).find()) return "HT";
+        }
+        return null;
+    }
 
     /** A football scoreboard's clock and minutes added, from its lines. */
     static Reading football(List<String> lines) {

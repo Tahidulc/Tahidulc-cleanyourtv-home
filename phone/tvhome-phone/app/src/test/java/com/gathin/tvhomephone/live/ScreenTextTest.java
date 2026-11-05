@@ -1,7 +1,9 @@
 package com.gathin.tvhomephone.live;
 
+import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 import org.junit.Test;
@@ -47,5 +49,23 @@ public class ScreenTextTest {
         ScreenText.Reading q = ScreenText.f1(Arrays.asList("Q2", "08:31"));
         assertEquals(8 * 60 + 31, q.left);
         assertEquals(-1, ScreenText.f1(Collections.singletonList("LAP 60/57")).lap);
+    }
+
+    @Test public void theScoreTheChannelShowsIsRead() {
+        assertArrayEquals(new int[]{2, 1}, ScreenText.score(Arrays.asList("LIV 2-1 MUN", "67:23")));
+        assertArrayEquals(new int[]{0, 0}, ScreenText.score(Collections.singletonList("ARS 0 \u2013 0 CHE 12:04")));
+        // In boxes of their own, the clock and the minutes added left out.
+        assertArrayEquals(new int[]{3, 1}, ScreenText.score(Arrays.asList("LIV", "3", "1", "MUN", "90:00", "+4")));
+        // The clock's digits are never the score, and too many numbers can't be told apart.
+        assertNull(ScreenText.score(Collections.singletonList("LIV MUN 23:45")));
+        assertNull(ScreenText.score(Arrays.asList("1", "2", "3")));
+    }
+
+    @Test public void halfTimeAndFullTimeAreRead() {
+        assertEquals("HT", ScreenText.state(Arrays.asList("LIV 1-1 MUN", "HT")));
+        assertEquals("HT", ScreenText.state(Collections.singletonList("Half-time")));
+        assertEquals("FT", ScreenText.state(Arrays.asList("LIV 2-1 MUN", "FT")));
+        assertEquals("FT", ScreenText.state(Collections.singletonList("FULL TIME")));
+        assertNull(ScreenText.state(Arrays.asList("LIV 2-1 MUN", "67:23")));
     }
 }

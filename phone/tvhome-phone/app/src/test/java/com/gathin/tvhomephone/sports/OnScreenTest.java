@@ -112,31 +112,85 @@ public class OnScreenTest {
         long t = 9_000_000;
         s.add(live(70, 0, 0, 2), t);
         // Read 69:31 off the picture at t+10s: the scores make it 70:10, so the picture is 39 s behind.
-        assertTrue(s.screenClock(69 * 60 + 31, t + 10_000));
+        assertTrue(s.screenClock(69 * 60 + 31, -1, t + 10_000));
         assertArrayEquals(new String[]{"69:36", ""}, s.clock(t + 15_000));
         assertEquals(-1, s.measuredBehind());
-        s.screenClock(69 * 60 + 33, t + 12_000);
-        s.screenClock(69 * 60 + 35, t + 14_000);
+        s.screenClock(69 * 60 + 33, -1, t + 12_000);
+        s.screenClock(69 * 60 + 35, -1, t + 14_000);
         assertEquals(39_000, s.measuredBehind(), 1000);
     }
 
-    @Test public void aClockFarFromTheGamesIsNotTaken() {
+    @Test public void theChannelsClockIsShownHoweverFarFromTheScores() {
         OnScreen s = new OnScreen();
+        s.behind(0);
         long t = 10_000_000;
-        s.add(live(70, 0, 0, 2), t);
-        assertFalse(s.screenClock(20 * 60, t));
+        // The scores say 45' in the first half; the channel runs on into added time and shows 46:12 +3.
+        s.add(live(45, 0, 0, 1), t);
+        assertTrue(s.screenClock(46 * 60 + 12, 3, t + 1000));
+        assertArrayEquals(new String[]{"46:12", "+3"}, s.clock(t + 1000));
+        assertArrayEquals(new String[]{"46:17", "+3"}, s.clock(t + 6000));
+        // And one far behind them (a long delay): 20:00 is what the picture shows, so 20:00 it is.
+        OnScreen o = new OnScreen();
+        o.add(live(70, 0, 0, 2), t);
+        assertTrue(o.screenClock(20 * 60, -1, t));
+        assertArrayEquals(new String[]{"20:00", ""}, o.clock(t + 400));
+        assertFalse(o.screenClock(200 * 60, -1, t + 1000));
     }
 
-    @Test public void theScoreChangesAsTheChannelsScoreboardDoes() {
+    @Test public void theClockStopsWhenTheChannelsDoes() {
         OnScreen s = new OnScreen();
-        s.behind(60_000);
+        s.behind(0);
+        long t = 10_500_000;
+        s.add(live(45, 0, 0, 1), t);
+        s.screenClock(45 * 60, 2, t);
+        s.screenClock(45 * 60, 2, t + 4000);
+        // Read the same 45:00 four seconds on: the channel's clock stands still, and so does the board's.
+        assertArrayEquals(new String[]{"45:00", "+2"}, s.clock(t + 20_000));
+        // And goes on with it.
+        s.screenClock(45 * 60 + 1, 2, t + 30_000);
+        assertArrayEquals(new String[]{"45:03", "+2"}, s.clock(t + 32_000));
+    }
+
+    @Test public void theClockSettlesIntoTheChannelsSecond() {
+        OnScreen s = new OnScreen();
+        s.behind(0);
+        long t = 10_700_000;
+        s.add(live(60, 0, 0, 2), t);
+        // First read at t: 60:10 (somewhere in that second). At t+1300 it already shows 60:12, so the second began
+        // by then: the board moves on to it rather than lagging behind.
+        s.screenClock(60 * 60 + 10, -1, t);
+        s.screenClock(60 * 60 + 12, -1, t + 1300);
+        assertEquals(60 * 60 + 12, s.seconds(t + 1300));
+        assertEquals(60 * 60 + 13, s.seconds(t + 2300));
+    }
+
+    @Test public void withoutAReadingTheScoresAreFollowedAgain() {
+        OnScreen s = new OnScreen();
+        s.behind(0);
+        long t = 10_900_000;
+        s.add(live(30, 0, 0, 1), t);
+        s.screenClock(10 * 60, -1, t);
+        assertArrayEquals(new String[]{"10:00", ""}, s.clock(t));
+        // No reading for a minute (a replay, the camera on the crowd): back to the scores' clock.
+        s.add(live(31, 0, 0, 1), t + 60_000);
+        assertArrayEquals(new String[]{"31:00", ""}, s.clock(t + 60_000));
+    }
+
+    @Test public void aGoalTheChannelHasNotShownIsHeldBack() {
+        OnScreen s = new OnScreen();
+        s.behind(0);
         long t = 11_000_000;
         s.add(live(60, 0, 0, 2), t);
         s.add(live(61, 1, 0, 2), t + 20_000);
-        // A minute's delay would hold the goal till t+80s; the channel's own scoreboard shows 1-0 at t+50s.
+        // The scores have 1-0, with no delay set; the channel's own scoreboard still shows 0-0, so 0-0 it is.
+        s.screenScore(0, 0, t + 21_000);
+        s.screenScore(0, 0, t + 22_000);
+        assertEquals(0, s.game(t + 22_000).homeScore);
+        // The channel shows the goal: so does the board.
+        s.screenScore(1, 0, t + 50_000);
         assertEquals(0, s.game(t + 50_000).homeScore);
-        assertTrue(s.screenScore((h, a) -> h == 1 && a == 0, t + 50_000));
-        assertEquals(1, s.game(t + 50_000).homeScore);
+        s.screenScore(1, 0, t + 51_000);
+        assertEquals(1, s.game(t + 51_000).homeScore);
     }
 
     @Test public void theChannelQuickerThanTheScoresIsBelievedWhenSeenTwice() {
@@ -144,8 +198,85 @@ public class OnScreenTest {
         s.behind(0);
         long t = 12_000_000;
         s.add(live(30, 0, 0, 1), t);
-        assertFalse(s.screenScore((h, a) -> h == 0 && a == 1, t + 1000));
-        assertTrue(s.screenScore((h, a) -> h == 0 && a == 1, t + 3000));
+        s.screenScore(0, 1, t + 1000);
+        assertEquals(0, s.game(t + 1000).awayScore);
+        s.screenScore(0, 1, t + 3000);
         assertEquals(1, s.game(t + 3000).awayScore);
+        // Its clock and the rest are the scores' read, a copy: the read itself is left alone.
+        assertEquals(30 * 60, s.game(t + 3000).clock, 0.5);
+    }
+
+    @Test public void halfTimeAndFullTimeAreTheChannels() {
+        OnScreen s = new OnScreen();
+        s.behind(0);
+        long t = 13_000_000;
+        s.add(live(46, 1, 1, 1), t);
+        s.screenState("HT", t + 1000);
+        assertTrue(s.game(t + 1000).halftime);
+        assertNull(s.clock(t + 1000));
+        Game end = live(90, 2, 1, 2);
+        end.state = Game.POST;
+        OnScreen f = new OnScreen();
+        f.add(live(92, 2, 1, 2), t);
+        f.screenState("FT", t + 1000);
+        assertEquals(Game.POST, f.game(t + 1000).state);
+        // The scores say it's over, but the channel's clock still runs (the picture is behind): it's still on.
+        OnScreen r = new OnScreen();
+        r.add(end, t);
+        r.screenClock(93 * 60 + 10, 4, t + 1000);
+        assertEquals(Game.LIVE, r.game(t + 1000).state);
+        assertArrayEquals(new String[]{"93:10", "+4"}, r.clock(t + 1000));
+    }
+
+    @Test public void whatTheChannelShowsFitsTheGameOrNot() {
+        OnScreen s = new OnScreen();
+        s.behind(0);
+        long t = 14_000_000;
+        s.add(live(60, 1, 0, 2), t);
+        assertTrue(s.fits(new int[]{1, 0}, -1, t));
+        assertTrue(s.fits(null, 58 * 60, t));
+        // Another game on the channel: 3-2 at 12:00.
+        assertFalse(s.fits(new int[]{3, 2}, 12 * 60, t));
+    }
+
+    @Test public void aMisreadIsNotShown() {
+        OnScreen s = new OnScreen();
+        s.behind(0);
+        long t = 15_000_000;
+        s.add(live(67, 0, 0, 2), t);
+        s.screenClock(67 * 60 + 20, -1, t);
+        s.screenClock(67 * 60 + 22, -1, t + 2000);
+        // "67:24" read as "07:24" once: the board stays at the channel's 67 minutes.
+        s.screenClock(7 * 60 + 24, -1, t + 4000);
+        assertArrayEquals(new String[]{"67:24", ""}, s.clock(t + 4000));
+        s.screenClock(67 * 60 + 26, -1, t + 6000);
+        assertArrayEquals(new String[]{"67:26", ""}, s.clock(t + 6000));
+        // The channel puts its clock right (68:40, then 68:42): read twice, it is taken.
+        s.screenClock(68 * 60 + 40, -1, t + 8000);
+        assertArrayEquals(new String[]{"67:28", ""}, s.clock(t + 8000));
+        s.screenClock(68 * 60 + 42, -1, t + 10_000);
+        assertArrayEquals(new String[]{"68:42", ""}, s.clock(t + 10_000));
+    }
+
+    @Test public void theScoreboardIsToldFromATimeOfDay() {
+        OnScreen s = new OnScreen();
+        s.behind(0);
+        long t = 16_000_000;
+        s.add(live(30, 0, 0, 1), t);
+        assertTrue(s.plausible(29 * 60 + 15, t));
+        // 19:45, the time of day in a corner: not this game's clock.
+        assertFalse(s.plausible(19 * 60 + 45, t));
+        Game ht = live(45, 1, 0, 1);
+        ht.halftime = true;
+        OnScreen h = new OnScreen();
+        h.add(ht, t);
+        assertTrue(h.plausible(45 * 60, t));
+        assertFalse(h.plausible(19 * 60 + 45, t));
+        Game pre = live(0, 0, 0, 0);
+        pre.state = Game.PRE;
+        OnScreen p = new OnScreen();
+        p.add(pre, t);
+        assertTrue(p.plausible(40, t));
+        assertFalse(p.plausible(19 * 60 + 45, t));
     }
 }

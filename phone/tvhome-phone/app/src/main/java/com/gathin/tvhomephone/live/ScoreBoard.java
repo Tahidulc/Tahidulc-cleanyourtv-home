@@ -254,6 +254,7 @@ public final class ScoreBoard implements LiveAlerts.Listener {
 
     /** The channel or its game changed: everything read again at once. */
     void changed() {
+        confirmedId = "";
         ScreenTime.clear(screen);
         screen.clear();
         f1Reads.clear();
@@ -272,6 +273,24 @@ public final class ScoreBoard implements LiveAlerts.Listener {
     }
 
     private boolean cycle;
+
+    /** Whether a football game is on the board (the channel's own or a followed club's). */
+    boolean football() {
+        return mode == FOOTBALL_MODE;
+    }
+
+    /**
+     * The game on the board is the one the channel shows (its scoreboard read off the picture fits it): from now it is
+     * shown as the channel shows it, with the channel's delay, until another game or channel.
+     */
+    void confirm() {
+        confirmedId = lastId;
+        channelGame = true;
+        screen.behind(src.behindMs(true));
+        if (src instanceof ScoreOverlay) ScreenTime.set(screen, lastId);
+    }
+
+    private String confirmedId = "";
 
     /** Whether it shows a scoreboard now (not only alerts). */
     boolean showing() {
@@ -345,14 +364,16 @@ public final class ScoreBoard implements LiveAlerts.Listener {
                 if (!running) return;
                 long now = System.currentTimeMillis();
                 if (got != null) {
-                    channelGame = channel;
-                    screen.behind(src.behindMs(channel));
+                    // The channel's own game: its tile's, or a followed one its scoreboard was read showing.
+                    boolean mineNow = channel || (got.id != null && got.id.equals(confirmedId));
+                    channelGame = mineNow;
+                    screen.behind(src.behindMs(mineNow));
                     screen.add(got, now);
                     mode = FOOTBALL_MODE;
                     lastId = got.id == null ? "" : got.id;
                     // The player's board on the channel's own game: the tile and the small window read the same time.
                     if (src instanceof ScoreOverlay) {
-                        if (channel) ScreenTime.set(screen, lastId);
+                        if (mineNow) ScreenTime.set(screen, lastId);
                         else ScreenTime.clear(screen);
                     }
                     if (pics != null) {

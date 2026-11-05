@@ -69,7 +69,7 @@ final class ScoreOverlay implements ScoreBoard.Source {
     private final ChannelReader ocr = new ChannelReader();
     private Bitmap ocrFrame;
     private long ocrOkAt;
-    private int ocrMisses, finds;
+    private int ocrMisses;
 
     /** Broadcast mode: the channel's logo watched for its adverts, and the break up while they run. */
     private BreakWatch breaks;
@@ -137,6 +137,8 @@ final class ScoreOverlay implements ScoreBoard.Source {
         if (id.equals(gameId) && g != null) return;
         gameId = id;
         box = null;
+        readBox = null;
+        lastRead = "";
         logo = null;
         breaks = null;
         endBreak(true);
@@ -144,7 +146,6 @@ final class ScoreOverlay implements ScoreBoard.Source {
         reader = null;
         ocrOkAt = 0;
         ocrMisses = 0;
-        finds = 0;
         board.changed();
         place();
         h.removeCallbacks(look);
@@ -345,11 +346,12 @@ final class ScoreOverlay implements ScoreBoard.Source {
     /** A few seconds of small frames for BugFinder, then the scoreboard placed; looked at again now and then. */
     private void look() {
         h.removeCallbacks(look);
-        boolean scoreboard = ScoreBoard.cover(a) && board.channelGame(),
-                logos = ScoreBoard.logoCover(a) != LogoCover.Look.OFF || (ScoreBoard.broadcast(a) && board.channelGame());
+        boolean scoreboard = board.football(),
+                logos = ScoreBoard.logoCover(a) != LogoCover.Look.OFF || (ScoreBoard.broadcast(a) && board.football());
         if (!started || inPip || sampler == null) return;
         // F1's tower read for its lap, on an F1 channel.
-        if (ScoreBoard.reads(a) && host.game() == null && ScoreBoard.f1Channel(host.current()) && !screenLoop()) readSoon(1000);
+        // The channel's scoreboard (or F1's tower) read: the reads keep themselves going once started.
+        if (ScoreBoard.reads(a) && !screenLoop()) readSoon(1000);
         if (!scoreboard && !logos) {
             h.postDelayed(look, RETRY_MS);
             return;
@@ -385,7 +387,6 @@ final class ScoreOverlay implements ScoreBoard.Source {
                         h.postDelayed(checkBreak, 2000);
                     }
                 }
-                if (scoreboard && found == null && ++finds >= 2 && box == null) locate();
                 if (found != null) {
                     boolean moved = box == null || Math.abs(found.left - box.left) > 0.02f || Math.abs(found.top - box.top) > 0.02f
                             || Math.abs(found.width() - box.width()) > 0.03f;
@@ -394,6 +395,8 @@ final class ScoreOverlay implements ScoreBoard.Source {
                         reader = null;
                         place();
                     }
+                    // Read there first (if nothing is read there, the reader looks along the top itself).
+                    if (readBox == null) readBox = found;
                     // Its clock read: its digits read off it, else seen turning a minute.
                     if (reader == null) startReading();
                     if (ScoreBoard.reads(a) && !screenLoop()) readSoon(500);
@@ -454,12 +457,12 @@ final class ScoreOverlay implements ScoreBoard.Source {
 
     // ---- reading the channel's scoreboard ----------------------------------------------------------------------------
 
-    /**
-     * Every two seconds: the channel's scoreboard read (ChannelReader). Its clock sets the board's to the second and
-     * measures how far the picture runs behind the scores, which the channel's delay is then set to (so the score and
-     * the alerts change as the picture does); a newer score it shows is shown at once. On an F1 channel, the tower's
-     * corner for the lap or the time left.
-     */
+    /** Where on the picture the channel's scoreboard is read (fractions of it); null while it is looked for. */
+    private BugFinder.Box readBox;
+    /** What was last read off it, and when: Options shows it. */
+    private String lastRead = "";
+    private long lastReadAt;
+
     /** The next read in ms (only ever one waiting). */
     private void readSoon(long ms) {
         h.removeCallbacks(readScreen);
@@ -473,22 +476,33 @@ final class ScoreOverlay implements ScoreBoard.Source {
 
     private long screenAt;
 
+    /**
+     * Every two seconds while a game is on the board: the channel's scoreboard read off the picture (ChannelReader).
+     * While it isn't found yet, the top third of the picture is read for a line with a game's clock in it: that is the
+     * scoreboard, and what is round it is read with it. Found, that part alone is read, and what it says is what the
+     * board shows (OnScreen): the clock as the channel has it, the score it shows, HT and FT. Six reads running with
+     * neither a clock nor HT or FT, and it is looked for again. On an F1 channel, the tower's corner for its lap.
+     */
     private void readScreen() {
         h.removeCallbacks(readScreen);
         screenAt = System.currentTimeMillis();
         if (!started || inPip || sampler == null || !ScoreBoard.reads(a)) return;
         boolean f1 = host.game() == null && ScoreBoard.f1Channel(host.current());
-        BugFinder.Box b = box;
-        if (!f1 && (b == null || !board.channelGame())) return;
+        if (!f1 && !board.football()) {
+            readSoon(5000);
+            return;
+        }
+        BugFinder.Box rb = readBox;
         if (ocrFrame == null) ocrFrame = Bitmap.createBitmap(OCR_W, OCR_H, Bitmap.Config.ARGB_8888);
         boolean asked = sampler.copy(video.surface(), ocrFrame, (frame, at) -> {
-            Bitmap crop = frame == null ? null : f1 ? crop(frame, 0f, 0f, 0.34f, 0.24f, 0) : crop(frame, b.left, b.top, b.right, b.bottom, 0.15f);
+            Cut cut = frame == null ? null : f1 ? Cut.of(frame, 0f, 0f, 0.34f, 0.24f)
+                    : rb != null ? Cut.of(frame, rb.left, rb.top, rb.right, rb.bottom) : Cut.of(frame, 0f, 0f, 1f, 0.34f);
             h.post(() -> {
-                if (!started || crop == null) {
+                if (!started || cut == null) {
                     readSoon(OCR_MS);
                     return;
                 }
-                boolean reading = ocr.read(crop, (lines, boxes) -> {
+                boolean reading = ocr.read(cut.b, (lines, boxes) -> {
                     if (!started) return;
                     if (f1) {
                         ScreenText.Reading r = ScreenText.f1(lines);
@@ -496,7 +510,8 @@ final class ScoreOverlay implements ScoreBoard.Source {
                         readSoon(F1_OCR_MS);
                         return;
                     }
-                    football(lines, at);
+                    if (rb == null) found(lines, boxes, cut, at);
+                    else football(lines, at);
                     readSoon(OCR_MS);
                 });
                 if (!reading) readSoon(OCR_MS);
@@ -505,75 +520,123 @@ final class ScoreOverlay implements ScoreBoard.Source {
         if (!asked) readSoon(1000);
     }
 
-    /** What the channel's scoreboard said at the moment at. */
+    /**
+     * The top of the picture read: the line with a game's clock in it is the scoreboard's. The part round it (names and
+     * score sit beside the clock, or just over or under it) is read from now on, and what it says now is taken.
+     */
+    private void found(java.util.List<String> lines, java.util.List<android.graphics.Rect> boxes, Cut cut, long at) {
+        lastRead = lines.isEmpty() ? "" : "looking: " + android.text.TextUtils.join(" · ", lines);
+        lastReadAt = System.currentTimeMillis();
+        for (int i = 0; i < lines.size(); i++) {
+            // A game's clock, and this game's (not a time of day or a countdown elsewhere on the picture).
+            int clock = ScreenText.football(java.util.Collections.singletonList(lines.get(i))).clock;
+            if (clock < 0 || !board.screen().plausible(clock, at)) continue;
+            android.graphics.Rect rr = boxes.get(i);
+            if (rr.isEmpty()) continue;
+            float l = cut.fx(rr.left), t = cut.fy(rr.top), r = cut.fx(rr.right), b = cut.fy(rr.bottom);
+            float lh = b - t, across = lh * OCR_H / OCR_W;
+            BugFinder.Box area = new BugFinder.Box(Math.max(0, l - across * 9), Math.max(0, t - lh * 1.8f),
+                    Math.min(1, r + across * 9), Math.min(0.5f, b + lh * 1.8f), true);
+            // What is in that part now, and the box the lines in it make (to cover, when nothing better is known).
+            java.util.List<String> near = new java.util.ArrayList<>();
+            float ul = l, ut = t, ur = r, ub = b;
+            for (int k = 0; k < lines.size(); k++) {
+                android.graphics.Rect q = boxes.get(k);
+                float ql = cut.fx(q.left), qt = cut.fy(q.top), qr = cut.fx(q.right), qb = cut.fy(q.bottom);
+                if (qr < area.left || ql > area.right || qb < area.top || qt > area.bottom) continue;
+                near.add(lines.get(k));
+                ul = Math.min(ul, ql);
+                ut = Math.min(ut, qt);
+                ur = Math.max(ur, qr);
+                ub = Math.max(ub, qb);
+            }
+            readBox = area;
+            if (box == null) {
+                float pad = lh * 0.45f;
+                box = new BugFinder.Box(Math.max(0, ul - pad * OCR_H / OCR_W), Math.max(0, ut - pad),
+                        Math.min(1, ur + pad * OCR_H / OCR_W), Math.min(0.5f, ub + pad), true);
+            }
+            football(near, at);
+            place();
+            return;
+        }
+    }
+
+    /** What the channel's scoreboard said at the moment at: what the board shows from now. */
     private void football(java.util.List<String> lines, long at) {
         ScreenText.Reading r = ScreenText.football(lines);
-        if (r.clock >= 0 && board.screen().screenClock(r.clock, at)) {
-            ocrOkAt = System.currentTimeMillis();
-            ocrMisses = 0;
-            long behind = board.screen().measuredBehind();
-            Channel ch = host.current();
-            if (behind >= 0 && ch != null) {
-                int s = Math.round(behind / 1000f);
-                // The channel's delay from its own clock: the score and the alerts then wait just that long.
-                if (Math.abs(s - LiveAlerts.delay(a, ch.key)) >= 3) {
-                    LiveAlerts.setDelay(a, ch.key, s);
-                    board.behind();
-                }
-            }
-        } else if (++ocrMisses >= 15) {
-            // Nothing read for half a minute (a replay, an advert): looked for again.
-            ocrMisses = 0;
+        int[] score = ScreenText.score(lines);
+        String state = ScreenText.state(lines);
+        long now = System.currentTimeMillis();
+        if (!lines.isEmpty()) {
+            lastRead = android.text.TextUtils.join(" · ", lines);
+            lastReadAt = now;
         }
-        board.screen().screenScore((home, away) -> ScreenText.shows(lines, home, away), System.currentTimeMillis());
+        if (r.clock < 0 && state == null) {
+            // Nothing there (an advert, a replay, the wrong part): six times running, it is looked for again.
+            if (++ocrMisses >= 6) {
+                ocrMisses = 0;
+                readBox = null;
+            }
+            return;
+        }
+        ocrMisses = 0;
+        com.gathin.tvhomephone.sports.OnScreen s = board.screen();
+        // A followed club's game on the board (the channel's own game not known): taken as the channel's when what the
+        // channel shows fits it (its score, or its clock within a few minutes).
+        if (!board.channelGame()) {
+            if (!s.fits(score, r.clock, at)) return;
+            board.confirm();
+        }
+        if (r.clock >= 0) s.screenClock(r.clock, r.added, at);
+        if (score != null) s.screenScore(score[0], score[1], at);
+        if (state != null) s.screenState(state, at);
+        ocrOkAt = now;
+        long behind = s.measuredBehind();
+        Channel ch = host.current();
+        if (behind >= 0 && ch != null) {
+            int secs = Math.round(behind / 1000f);
+            // The channel's delay from its own clock: its alerts (and the board, between reads) wait just that long.
+            if (Math.abs(secs - LiveAlerts.delay(a, ch.key)) >= 3) {
+                LiveAlerts.setDelay(a, ch.key, secs);
+                board.behind();
+            }
+        }
     }
 
-    /**
-     * BugFinder found nothing twice: the top of the picture read instead, for a line with a game's clock in it, which
-     * is the scoreboard's (its box widened to the scoreboard's ground round the words).
-     */
-    private void locate() {
-        if (!ScoreBoard.reads(a) || sampler == null) return;
-        if (ocrFrame == null) ocrFrame = Bitmap.createBitmap(OCR_W, OCR_H, Bitmap.Config.ARGB_8888);
-        sampler.copy(video.surface(), ocrFrame, (frame, at) -> {
-            Bitmap band = frame == null ? null : crop(frame, 0f, 0f, 1f, 0.32f, 0);
-            h.post(() -> {
-                if (!started || band == null) return;
-                float sx = band.getWidth() / (float) OCR_W, sy = band.getHeight() / (float) (OCR_H * 0.32f);
-                ocr.read(band, (lines, boxes) -> {
-                    for (int i = 0; i < lines.size(); i++) {
-                        if (ScreenText.football(java.util.Collections.singletonList(lines.get(i))).clock < 0) continue;
-                        android.graphics.Rect rr = boxes.get(i);
-                        if (rr.isEmpty() || box != null) return;
-                        float hh = rr.height() / sy / OCR_H, pad = hh * 0.6f;
-                        float l = rr.left / sx / OCR_W - pad, t = rr.top / sy / OCR_H - pad * 0.6f;
-                        float r = rr.right / sx / OCR_W + pad, bt = rr.bottom / sy / OCR_H + pad * 0.6f;
-                        box = new BugFinder.Box(Math.max(0, l), Math.max(0, t), Math.min(1, r), Math.min(0.4f, bt), true);
-                        place();
-                        if (!screenLoop()) readSoon(0);
-                        return;
-                    }
-                });
-            });
-        });
-    }
+    /** Part of a frame (fractions of it), made big enough to read (its lines about 40 px high), and the way back. */
+    private static final class Cut {
+        final Bitmap b;
+        final float x0, y0, sx, sy;
 
-    /**
-     * Part of a frame (fractions of it), padded by pad of its height each way, made big enough to read: its words at
-     * least about 40 pixels high. Null when it can't be cut.
-     */
-    private static Bitmap crop(Bitmap frame, float l, float t, float r, float b, float pad) {
-        int fw = frame.getWidth(), fh = frame.getHeight();
-        float ph = (b - t) * pad;
-        int x0 = Math.max(0, Math.round((l - ph * fh / fw) * fw)), y0 = Math.max(0, Math.round((t - ph) * fh));
-        int x1 = Math.min(fw, Math.round((r + ph * fh / fw) * fw)), y1 = Math.min(fh, Math.round((b + ph) * fh));
-        if (x1 - x0 < 8 || y1 - y0 < 6) return null;
-        try {
-            Bitmap c = Bitmap.createBitmap(frame, x0, y0, x1 - x0, y1 - y0);
-            float k = Math.max(1f, Math.min(4f, 90f / (y1 - y0)));
-            return k > 1.05f ? Bitmap.createScaledBitmap(c, Math.round((x1 - x0) * k), Math.round((y1 - y0) * k), true) : c.copy(Bitmap.Config.ARGB_8888, false);
-        } catch (RuntimeException e) {
-            return null;
+        private Cut(Bitmap b, float x0, float y0, float sx, float sy) {
+            this.b = b;
+            this.x0 = x0;
+            this.y0 = y0;
+            this.sx = sx;
+            this.sy = sy;
+        }
+
+        /** A pixel x (y) in the cut as a fraction of the frame. */
+        float fx(int x) { return x0 + x * sx; }
+
+        float fy(int y) { return y0 + y * sy; }
+
+        static Cut of(Bitmap frame, float l, float t, float r, float bt) {
+            int fw = frame.getWidth(), fh = frame.getHeight();
+            int x0 = Math.max(0, Math.round(l * fw)), y0 = Math.max(0, Math.round(t * fh));
+            int x1 = Math.min(fw, Math.round(r * fw)), y1 = Math.min(fh, Math.round(bt * fh));
+            if (x1 - x0 < 8 || y1 - y0 < 6) return null;
+            try {
+                Bitmap c = Bitmap.createBitmap(frame, x0, y0, x1 - x0, y1 - y0);
+                // A thin strip is made bigger (the reader wants its words tall); a wide band only a little.
+                float k = Math.max(1f, Math.min(4f, (y1 - y0) < 140 ? 120f / (y1 - y0) : 1.5f));
+                Bitmap big = k > 1.05f ? Bitmap.createScaledBitmap(c, Math.round((x1 - x0) * k), Math.round((y1 - y0) * k), true)
+                        : c.copy(Bitmap.Config.ARGB_8888, false);
+                return new Cut(big, x0 / (float) fw, y0 / (float) fh, 1f / (k * fw), 1f / (k * fh));
+            } catch (RuntimeException e) {
+                return null;
+            }
         }
     }
 
@@ -662,6 +725,12 @@ final class ScoreOverlay implements ScoreBoard.Source {
                 : matched() ? c.getString(R.string.live4_board_state_matched)
                 : found() ? c.getString(R.string.live4_board_state_found)
                 : c.getString(R.string.live4_board_state_delay, channel() == null ? 0 : LiveAlerts.delay(c, channel().key));
+        long ago = (System.currentTimeMillis() - lastReadAt) / 1000;
+        if (lastReadAt > 0 && !lastRead.isEmpty()) {
+            state += "\n" + c.getString(R.string.live5_last_read, ago, lastRead.length() > 90 ? lastRead.substring(0, 90) + "…" : lastRead);
+        } else if (ScoreBoard.reads(c) && board.football()) {
+            state += "\n" + c.getString(R.string.live5_not_read);
+        }
         TextView t = Ui.text(c, state, 12, Ui.DIM, false);
         t.setPadding(0, Ui.dp(c, 4), 0, 0);
         box.addView(t);
