@@ -73,7 +73,7 @@ final class PagesV2 {
             this.cheap = cheap;
             setOutlineProvider(new ViewOutlineProvider() {
                 @Override public void getOutline(View v, android.graphics.Outline o) {
-                    int w = vis < 0 ? v.getWidth() : Math.min(v.getWidth(), Math.round(vis));
+                    int w = outlineWidth(vis, v.getWidth());
                     o.setRoundRect(0, 0, Math.max(1, w), v.getHeight(), Tile.this.radius);
                 }
             });
@@ -87,12 +87,18 @@ final class PagesV2 {
             if (getForeground() != null || cheap) invalidate();
         }
 
+        /** The width its outline is made at (what shows: vis, or all of it), for the outline and the tests. */
+        static int outlineWidth(float vis, int width) {
+            return vis < 0 ? width : Math.min(width, Math.round(vis));
+        }
+
         /** lite_home: cut to the width it shows (all of it when vis is -1). */
         private void cut() {
-            if (vis < 0 || getHeight() <= 0) { if (getClipBounds() != null) setClipBounds(null); return; }
-            clip.set(0, 0, Math.max(1, Math.min(getWidth(), Math.round(vis))), getHeight());
-            setClipBounds(clip);
+            // The outline too, whenever a trailer has it clip: it follows the width every time, not just the cut.
             if (getClipToOutline()) invalidateOutline();
+            if (vis < 0 || getHeight() <= 0) { if (getClipBounds() != null) setClipBounds(null); return; }
+            clip.set(0, 0, Math.max(1, outlineWidth(vis, getWidth())), getHeight());
+            setClipBounds(clip);
         }
 
         @Override protected void onSizeChanged(int w, int h, int ow, int oh) {
@@ -100,10 +106,16 @@ final class PagesV2 {
             if (cheap) cut();
         }
 
-        // A trailer (YouTube's page, a video surface) playing in it on lite_home: rounded while it plays.
+        // A trailer (YouTube's page, a video surface) playing in it on lite_home: rounded while it plays. Its outline is
+        // made again now, at the width the tile shows: lite_home doesn't remake it as the tile widens (no outline clip
+        // then), so the one kept was from when it was a narrow poster, and an opened poster with its trailer playing was
+        // cut back to its narrow width, ring and all, beside the room the row had made for it (the see-through gap).
         @Override public void onViewAdded(View child) {
             super.onViewAdded(child);
-            if (cheap && isVideo(child)) setClipToOutline(true);
+            if (cheap && isVideo(child)) {
+                setClipToOutline(true);
+                invalidateOutline();
+            }
         }
 
         @Override public void onViewRemoved(View child) {
