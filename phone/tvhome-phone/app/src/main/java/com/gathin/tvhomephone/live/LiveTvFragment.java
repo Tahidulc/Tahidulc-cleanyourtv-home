@@ -314,11 +314,14 @@ public class LiveTvFragment extends Fragment {
         });
         mark.setContentDescription(getString(R.string.app_name));
         brand.addView(mark, new LinearLayout.LayoutParams(Ui.dp(c, 30), Ui.dp(c, 30)));
-        titleView = Ui.text(c, getString(R.string.app_name), 21, Ui.TEXT, true);
-        titleView.setSingleLine(true);
+        // Sized to the room it is given as it is measured (FitName): smaller as it must, never cut off or under the
+        // buttons, and the mark alone where even a small name has no room.
+        titleView = new FitName(c, Ui.sp(c, NAME_SP), Ui.sp(c, MIN_NAME_SP));
+        titleView.setText(R.string.app_name);
+        titleView.setTextColor(Ui.TEXT);
+        titleView.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
         titleView.setMaxLines(1);
-        androidx.core.widget.TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(titleView, 13, 21, 1,
-                android.util.TypedValue.COMPLEX_UNIT_SP);
+        titleView.setIncludeFontPadding(false);
         LinearLayout.LayoutParams tp = new LinearLayout.LayoutParams(0, Ui.dp(c, 30), 1f);
         tp.leftMargin = Ui.dp(c, 9);
         titleView.setGravity(Gravity.CENTER_VERTICAL);
@@ -337,9 +340,10 @@ public class LiveTvFragment extends Fragment {
         LinearLayout.LayoutParams pp = new LinearLayout.LayoutParams(-2, -2);
         pp.rightMargin = Ui.dp(c, 8);
         under.addView(playlistPill, pp);
-        sub = Ui.text(c, "", 12, Ui.DIM, false);
-        sub.setSingleLine(true);
-        sub.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        // The channels' count as the name is: a little smaller if it must, else not drawn (never cut off).
+        sub = new FitName(c, Ui.sp(c, 12), Ui.sp(c, 10));
+        sub.setTextColor(Ui.DIM);
+        sub.setMaxLines(1);
         under.addView(sub, new LinearLayout.LayoutParams(0, -2, 1f));
         titles.addView(under);
         toolbar.addView(titles, new LinearLayout.LayoutParams(0, -2, 1f));
@@ -651,6 +655,47 @@ public class LiveTvFragment extends Fragment {
     @SuppressLint("NotifyDataSetChanged")
     private void refreshChips() {
         chipsAdapter.notifyDataSetChanged();
+    }
+
+    /** The name's size beside the mark: at most NAME_SP, and not shown at all when even MIN_NAME_SP is too big. */
+    private static final float NAME_SP = 21f, MIN_NAME_SP = 14f;
+
+    /**
+     * Homefield's name beside its mark: as large as fits in the width it is given (at most max px), worked out as it is
+     * measured, so the first frame already has it right: never cut off, never under the Now button. With no room for
+     * it even at min px (a narrow phone, large display text), it is not drawn, and the mark stands alone.
+     */
+    static final class FitName extends androidx.appcompat.widget.AppCompatTextView {
+        private final float max, min;
+
+        FitName(android.content.Context c, float max, float min) {
+            super(c);
+            this.max = max;
+            this.min = min;
+            setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, max);
+        }
+
+        @Override protected void onMeasure(int widthSpec, int heightSpec) {
+            int room = MeasureSpec.getSize(widthSpec) - getPaddingLeft() - getPaddingRight();
+            if (MeasureSpec.getMode(widthSpec) != MeasureSpec.UNSPECIFIED && room > 0) {
+                float px = fitSize(room, getPaint(), String.valueOf(getText()), max);
+                boolean show = px >= min;
+                float use = show ? px : min;
+                if (Math.abs(getTextSize() - use) > 0.5f) setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, use);
+                setAlpha(show ? 1f : 0f);
+            }
+            super.onMeasure(widthSpec, heightSpec);
+        }
+    }
+
+    /** Pure: the text size (px) at which words fit in room px, at most max px (sizes scale the width in step). */
+    static float fitSize(int room, android.graphics.Paint paint, String words, float max) {
+        android.text.TextPaint p = new android.text.TextPaint(paint);
+        p.setTextSize(max);
+        float w = p.measureText(words);
+        if (w <= 0 || w <= room) return max;
+        // A hair under, so rounding never leaves the last letter clipped.
+        return max * (room / w) * 0.98f;
     }
 
     /** A top-bar button as a dark circle, as the guide's own buttons. */

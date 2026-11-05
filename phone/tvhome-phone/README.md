@@ -114,6 +114,10 @@ name (made smaller if it must, so it always fits beside the buttons) over the nu
 chosen is the lit chip under the picture. In full screen, the information panel has "TV guide": it goes to the Live
 TV guide, the channel going on in the picture at its top, wherever full screen was opened from.
 
+The name in the corner always fits (4.3): Homefield's name beside its mark, and the channel count under it, are
+sized as the top bar is laid out, to the room left by the Now and other buttons: as large as fits (smaller with a
+larger display text), never cut off or under a button; where even a small name has no room, the mark stands alone.
+
 Subtitles (CC in the film's player): the film's or episode's own, from your playlist's stream, come first, in the
 languages you choose (Settings, Subtitles, in order). When it has none, OpenSubtitles.com is looked in by the title's
 TMDB id (the series' with its season and episode), best first: your languages, the ones that fit the copy playing (its

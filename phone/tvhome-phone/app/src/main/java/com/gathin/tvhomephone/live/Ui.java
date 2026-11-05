@@ -42,6 +42,11 @@ final class Ui {
     private static final DateTimeFormatter HM = DateTimeFormatter.ofPattern("h.mma", Locale.UK);
     private static final DateTimeFormatter DAY = DateTimeFormatter.ofPattern("EEE d MMM", Locale.UK);
 
+    /** sp in pixels (the phone's text size setting included). */
+    static float sp(Context c, float v) {
+        return TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, v, c.getResources().getDisplayMetrics());
+    }
+
     static int dp(Context c, float v) {
         return Math.round(TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v, c.getResources().getDisplayMetrics()));
     }
