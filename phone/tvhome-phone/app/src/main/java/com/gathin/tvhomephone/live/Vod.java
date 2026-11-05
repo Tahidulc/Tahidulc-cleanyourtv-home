@@ -402,6 +402,66 @@ public final class Vod {
         return b.toByteArray();
     }
 
+    // ---- one episode after another -------------------------------------------------------------------------------
+
+    /**
+     * A series' episodes for the player to go on with (season, number, name and where each plays, its backups too),
+     * as a small JSON array: [{"s":1,"n":2,"t":"…","p":[[address, user agent, referrer], …]}, …].
+     */
+    public static String episodesJson(List<Episode> eps) {
+        JSONArray a = new JSONArray();
+        if (eps == null) return "";
+        try {
+            for (Episode e : eps) {
+                JSONArray p = new JSONArray();
+                for (String[] s : e.plays()) p.put(new JSONArray().put(s[0]).put(s[1] == null ? "" : s[1]).put(s[2] == null ? "" : s[2]));
+                a.put(new JSONObject().put("s", e.season).put("n", e.number).put("t", e.title == null ? "" : e.title).put("p", p));
+            }
+        } catch (org.json.JSONException ignored) {
+            // what was made so far
+        }
+        return a.toString();
+    }
+
+    /** The episodes back from episodesJson, by season then number (none for "" or anything else). */
+    public static List<Episode> episodesFrom(String json) {
+        List<Episode> out = new ArrayList<>();
+        if (json == null || json.isEmpty()) return out;
+        try {
+            JSONArray a = new JSONArray(json);
+            for (int i = 0; i < a.length(); i++) {
+                JSONObject o = a.optJSONObject(i);
+                JSONArray p = o == null ? null : o.optJSONArray("p");
+                if (p == null || p.length() == 0) continue;
+                JSONArray first = p.optJSONArray(0);
+                if (first == null) continue;
+                Episode e = new Episode(o.optInt("s"), o.optInt("n"), o.optString("t"), first.optString(0), first.optString(1), first.optString(2));
+                for (int k = 1; k < p.length(); k++) {
+                    JSONArray b = p.optJSONArray(k);
+                    if (b != null) e.alternates.add(new Episode(e.season, e.number, e.title, b.optString(0), b.optString(1), b.optString(2)));
+                }
+                out.add(e);
+            }
+        } catch (org.json.JSONException ignored) {
+            // none to go on with
+        }
+        Collections.sort(out, (x, y) -> x.season != y.season ? Integer.compare(x.season, y.season) : Integer.compare(x.number, y.number));
+        return out;
+    }
+
+    /**
+     * The episode after season s, episode n among a series' episodes (sorted by season then number): the next in that
+     * season, else the next season's first; -1 at the end. Pure.
+     */
+    public static int nextIndex(List<Episode> eps, int season, int number) {
+        if (eps == null) return -1;
+        for (int i = 0; i < eps.size(); i++) {
+            Episode e = eps.get(i);
+            if (e.season > season || (e.season == season && e.number > number)) return i;
+        }
+        return -1;
+    }
+
     // ---- names --------------------------------------------------------------------------------------------------
 
     /** The tags providers put before a title: languages and countries, services, the picture and the like. */

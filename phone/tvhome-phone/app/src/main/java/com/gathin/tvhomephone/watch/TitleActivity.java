@@ -241,7 +241,8 @@ public class TitleActivity extends AppCompatActivity {
                     return;
                 }
                 if (!"series".equals(it.kind)) {
-                    startActivity(com.gathin.tvhomephone.live.VodPlayerActivity.intent(this, it.plays(), t.title));
+                    startActivity(com.gathin.tvhomephone.live.VodPlayerActivity.intent(this, it.plays(), t.title,
+                            com.gathin.tvhomephone.live.VodPlayerActivity.meta(t.title, t.id, false, t.poster, 0, 0, ""), ""));
                     return;
                 }
                 pickEpisode(eps);
@@ -275,8 +276,11 @@ public class TitleActivity extends AppCompatActivity {
         new MaterialAlertDialogBuilder(this).setTitle(season > 0 ? t.title + " · Season " + season : t.title)
                 .setItems(names, (d, w) -> {
                     com.gathin.tvhomephone.live.Vod.Episode e = in.get(w);
+                    // With the whole series' episodes, for the next one to follow on.
                     startActivity(com.gathin.tvhomephone.live.VodPlayerActivity.intent(this, e.plays(),
-                            t.title + (season > 0 ? " · S" + season : "") + " E" + e.number));
+                            t.title + (season > 0 ? " · S" + season : "") + " E" + e.number,
+                            com.gathin.tvhomephone.live.VodPlayerActivity.meta(t.title, t.id, true, t.poster, e.season, e.number, e.title),
+                            com.gathin.tvhomephone.live.Vod.episodesJson(eps)));
                 }).show();
     }
 

@@ -28,6 +28,7 @@ import com.gathin.tvhomephone.App;
 import com.gathin.tvhomephone.MainActivity;
 import com.gathin.tvhomephone.R;
 import com.gathin.tvhomephone.SyncStore;
+import com.gathin.tvhomephone.live.VodHistory;
 import com.gathin.tvhomephone.sync.Tvs;
 import com.google.android.material.chip.Chip;
 import com.google.android.material.chip.ChipGroup;
@@ -39,13 +40,15 @@ import java.util.List;
 /**
  * Watch: the TVs' three pages, Discover, Movies and TV shows, as tabs along the top, each page's own lists as chips
  * under them, and the list's posters in a grid (three across on a phone, more on a tablet). Search at the top.
- * Pull down to sync with the TVs and read the list again.
+ * Pull down to sync with the TVs and read the list again. Above the grid, what was left part-way from the family's own
+ * playlist (VodHistory): tap to carry on, hold to take it off (films on Movies, episodes on TV shows, both on Discover).
  */
 public class WatchFragment extends Fragment {
     private static int section, chosen;
     private TabLayout sections;
     private ChipGroup chips;
     private HorizontalScrollView chipScroll;
+    private LinearLayout resumeBox, resumeRow;
     private RecyclerView grid;
     private PosterAdapter adapter;
     private SwipeRefreshLayout refresh;
@@ -84,7 +87,10 @@ public class WatchFragment extends Fragment {
             @Override public void beforeTextChanged(CharSequence s, int a, int b, int d) { }
             @Override public void onTextChanged(CharSequence s, int a, int b, int d) { }
             @Override public void afterTextChanged(Editable s) {
-                if (s.length() == 0 && shown != null && shown.name.equals("Search")) showList(chosen);
+                if (s.length() == 0 && shown != null && shown.name.equals("Search")) {
+                    showList(chosen);
+                    showResume();
+                }
             }
         });
         root.addView(search, Ui.margins(Ui.fill(), c, 16, 14, 16, 4));
@@ -105,6 +111,19 @@ public class WatchFragment extends Fragment {
         chips.setPadding(Ui.dp(c, 12), Ui.dp(c, 6), Ui.dp(c, 12), Ui.dp(c, 2));
         chipScroll.addView(chips);
         root.addView(chipScroll, Ui.fill());
+
+        resumeBox = Ui.column(c);
+        TextView resumeHead = Ui.text(c, getString(R.string.f1_resume_title), 13, Ui.SOFT, true);
+        resumeHead.setLetterSpacing(0.04f);
+        resumeBox.addView(resumeHead, Ui.margins(Ui.wrap(), c, 16, 8, 16, 6));
+        HorizontalScrollView resumeScroll = new HorizontalScrollView(c);
+        resumeScroll.setHorizontalScrollBarEnabled(false);
+        resumeRow = Ui.row(c);
+        resumeRow.setPadding(Ui.dp(c, 12), 0, Ui.dp(c, 12), 0);
+        resumeScroll.addView(resumeRow);
+        resumeBox.addView(resumeScroll, Ui.fill());
+        resumeBox.setVisibility(View.GONE);
+        root.addView(resumeBox, Ui.fill());
 
         body = new FrameLayout(c);
         refresh = new SwipeRefreshLayout(c);
@@ -147,6 +166,70 @@ public class WatchFragment extends Fragment {
         super.onStart();
         Tvs.addListener(onSync);
         SyncStore.addListener(onSync);
+        showResume();
+    }
+
+    /** What was left part-way from the playlist, for this section (none while a search shows). */
+    private void showResume() {
+        if (!isAdded() || resumeRow == null) return;
+        Context c = requireContext();
+        List<VodHistory.Entry> all = VodHistory.list(c);
+        resumeRow.removeAllViews();
+        boolean searching = shown != null && shown.name.equals("Search");
+        for (VodHistory.Entry e : all) {
+            if (section == 1 && e.tv || section == 2 && !e.tv) continue;
+            resumeRow.addView(resumeCard(c, e));
+        }
+        resumeBox.setVisibility(resumeRow.getChildCount() > 0 && !searching ? View.VISIBLE : View.GONE);
+    }
+
+    private View resumeCard(Context c, VodHistory.Entry e) {
+        LinearLayout card = Ui.row(c);
+        card.setGravity(Gravity.CENTER_VERTICAL);
+        card.setBackground(Ui.glass(c));
+        card.setPadding(Ui.dp(c, 6), Ui.dp(c, 6), Ui.dp(c, 12), Ui.dp(c, 6));
+        android.widget.ImageView poster = new android.widget.ImageView(c);
+        poster.setScaleType(android.widget.ImageView.ScaleType.CENTER_CROP);
+        poster.setBackground(Ui.round(0x33FFFFFF, 8, c));
+        poster.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        if (e.poster != null && !e.poster.isEmpty()) {
+            com.bumptech.glide.Glide.with(poster).load(e.poster)
+                    .transform(new com.bumptech.glide.load.resource.bitmap.CenterCrop(),
+                            new com.bumptech.glide.load.resource.bitmap.RoundedCorners(Ui.dp(c, 8))).into(poster);
+        }
+        card.addView(poster, new LinearLayout.LayoutParams(Ui.dp(c, 44), Ui.dp(c, 64)));
+        LinearLayout words = Ui.column(c);
+        TextView name = Ui.text(c, e.name.isEmpty() ? e.title : e.name, 14, 0xFFFFFFFF, true);
+        name.setSingleLine(true);
+        name.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        words.addView(name);
+        int left = e.minutesLeft();
+        String where = e.tv && e.episode > 0 ? (e.season > 0 ? "S" + e.season + " " : "") + "E" + e.episode : "";
+        String rest = left > 0 ? getString(R.string.f1_resume_left, left) : getString(R.string.f1_resume_carry_on);
+        TextView sub = Ui.text(c, where.isEmpty() ? rest : where + " · " + rest, 12, Ui.SOFT, false);
+        sub.setSingleLine(true);
+        words.addView(sub, Ui.margins(Ui.wrap(), c, 0, 2, 0, 6));
+        android.widget.ProgressBar bar = new android.widget.ProgressBar(c, null, android.R.attr.progressBarStyleHorizontal);
+        bar.setMax(1000);
+        bar.setProgress(Math.round(e.progress() * 1000));
+        bar.setProgressTintList(ColorStateList.valueOf(Ui.accent(e.tv ? 2 : 1)));
+        bar.setProgressBackgroundTintList(ColorStateList.valueOf(0x33FFFFFF));
+        words.addView(bar, new LinearLayout.LayoutParams(-1, Ui.dp(c, 4)));
+        LinearLayout.LayoutParams wp = new LinearLayout.LayoutParams(Ui.dp(c, 160), -2);
+        wp.leftMargin = Ui.dp(c, 10);
+        card.addView(words, wp);
+        card.setContentDescription((e.name.isEmpty() ? e.title : e.name) + (where.isEmpty() ? "" : ", " + where) + ", " + rest);
+        card.setOnClickListener(v -> startActivity(com.gathin.tvhomephone.live.VodPlayerActivity.intent(requireContext(), e)));
+        card.setOnLongClickListener(v -> {
+            VodHistory.remove(requireContext(), e.key);
+            Toast.makeText(requireContext(), getString(R.string.f1_resume_removed, e.name.isEmpty() ? e.title : e.name), Toast.LENGTH_SHORT).show();
+            showResume();
+            return true;
+        });
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, -2);
+        lp.rightMargin = Ui.dp(c, 8);
+        card.setLayoutParams(lp);
+        return card;
     }
 
     @Override public void onStop() {
@@ -176,6 +259,7 @@ public class WatchFragment extends Fragment {
         sections.setSelectedTabIndicatorColor(accent);
         specs = Lists.section(c, section);
         if (chosen >= specs.size()) chosen = 0;
+        showResume();
         chips.removeAllViews();
         for (int i = 0; i < specs.size(); i++) {
             Chip chip = new Chip(c);
@@ -211,6 +295,7 @@ public class WatchFragment extends Fragment {
         if (im != null) im.hideSoftInputFromWindow(search.getWindowToken(), 0);
         if (q.isEmpty()) showList(chosen);
         else load(Lists.search(q));
+        showResume();
     }
 
     private void load(Lists.Spec s) {
