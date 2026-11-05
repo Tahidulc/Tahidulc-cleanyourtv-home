@@ -28,6 +28,9 @@
     <string name="live4_read">Read the channel\'s own clock and score</string>
     <string name="live4_read_line">Reads the clock and score off the channel\'s scoreboard, on the phone, so the board shows the same time to the second and its score changes as the channel\'s does; the channel\'s delay is set from it too.</string>
     <string name="live4_logo_line">Homefield\'s mark over the channel\'s own logo, where one is found on the picture.</string>
+    <string name="live4_tests">Test notifications</string>
+    <string name="live4_tests_all">All of them</string>
+    <string name="live4_tests_note">Each kind as it really comes, a few seconds apart: its notification, its pop-up and its drop from the scoreboard, on this game (or a made-up one from your clubs).</string>
     <string name="live4_settings_title">Scoreboard while you watch</string>
     <string name="live4_settings_line">A scoreboard over the picture in Homefield\'s player, in step with what the channel shows, and the alerts dropping from it. It can sit over other apps too.</string>
     <string name="live4_other_delay">Other apps\' picture runs behind the live scores by</string>

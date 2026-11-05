@@ -31,7 +31,7 @@ import com.gathin.tvhomephone.sports.Competitions;
 import com.gathin.tvhomephone.sports.Espn;
 import com.gathin.tvhomephone.sports.Game;
 import com.gathin.tvhomephone.sports.LiveClock;
-import com.gathin.tvhomephone.sports.ScoreBug;
+import com.gathin.tvhomephone.sports.LiveGames;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -504,7 +504,9 @@ final class InfoTile {
         String home = wide && !g.homeFull.isEmpty() ? g.homeFull : g.homeName, away = wide && !g.awayFull.isEmpty() ? g.awayFull : g.awayName;
         SpannableStringBuilder s = new SpannableStringBuilder(home);
         int at = s.length();
-        s.append(g.state == Game.PRE ? "  v  " : "  " + g.homeScore + "–" + g.awayScore + "  ");
+        // The score as the picture shows it (ScreenTime), not ahead of it.
+        Game shown = ScreenTime.game(g, System.currentTimeMillis());
+        s.append(g.state == Game.PRE ? "  v  " : "  " + shown.homeScore + "–" + shown.awayScore + "  ");
         s.setSpan(new ForegroundColorSpan(g.state == Game.PRE ? 0xFFB8C2EA : 0xFFFFFFFF), at, s.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
         s.append(away);
         return s;
@@ -526,7 +528,7 @@ final class InfoTile {
             long mins = (g.kickoff - now + 59_999) / 60_000;
             parts.add(mins > 0 && mins <= 120 ? c.getString(R.string.tile_kickoff_in, (int) mins) : c.getString(R.string.tile_kickoff_at, Ui.clock(g.kickoff)));
         } else if (g.state == Game.LIVE) {
-            parts.add(g.halftime ? c.getString(R.string.tile_half_time) : LiveClock.words(g, now));
+            parts.add(g.halftime ? c.getString(R.string.tile_half_time) : ScreenTime.words(g, now));
             parts.add(story(c, g, false));
         } else {
             parts.add(story(c, g, true));
@@ -1128,27 +1130,28 @@ final class InfoTile {
         }
 
         /**
-         * The scores box (ScoreBug) h high, its own proportions kept (ScoreBug.RATIO), no wider than maxWidth pixels (0: any),
+         * The scores box (the board's OverlayBug) h high, no wider than maxWidth pixels (0: any),
          * with its LinearLayout params set (the caller adds margins to them).
          */
         View scoreBug(Game g, int hDp, int maxWidth) {
+            // The board over the picture, in its chosen look, its score and clock as the picture shows them
+            // (ScreenTime): the same everywhere in the player. As high as asked, or lower to fit the width in one row.
             Context ctx = c;
-            ScoreBug bug = new ScoreBug(ctx);
-            bug.show(g);
-            float natural = 64 * ctx.getResources().getDisplayMetrics().density;
-            float s = dp(hDp) / natural;
-            int w = Math.round(natural * ScoreBug.RATIO);
-            if (maxWidth > 0 && w * s > maxWidth) s = maxWidth / (float) w;
-            FrameLayout box = new FrameLayout(ctx);
-            box.addView(bug, new FrameLayout.LayoutParams(w, Math.round(natural)));
-            bug.setPivotX(0);
-            bug.setPivotY(0);
-            bug.setScaleX(s);
-            bug.setScaleY(s);
-            box.setLayoutParams(new LinearLayout.LayoutParams(Math.round(w * s), Math.round(natural * s)));
-            box.setElevation(dp(6));
-            box.setClipChildren(true);
-            return box;
+            OverlayBug bug = new OverlayBug(ctx);
+            bug.style(ScoreBoard.style(ctx));
+            int h = dp(hDp);
+            if (maxWidth > 0) h = Math.min(h, Math.round(maxWidth / 9.4f));
+            ScreenTime.bind(bug, g);
+            int px = Math.max(48, h * 2);
+            com.gathin.tvhomephone.App.io.execute(() -> {
+                android.graphics.Bitmap hc = LiveGames.picture(ctx, LiveGames.homeCrest(g), px),
+                        ac = LiveGames.picture(ctx, LiveGames.awayCrest(g), px),
+                        comp = LiveGames.picture(ctx, Competitions.logo(g), px);
+                com.gathin.tvhomephone.App.main.post(() -> bug.crests(hc, ac, comp));
+            });
+            bug.setLayoutParams(new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, h));
+            bug.setElevation(dp(6));
+            return bug;
         }
 
         /** The card rises into place as it comes. */

@@ -199,7 +199,7 @@ public final class Lists {
         return out;
     }
 
-    static List<Title> myList(Context c) {
+    public static List<Title> myList(Context c) {
         List<Title> out = new ArrayList<>();
         for (JSONObject d : SyncStore.list(c, "mylist")) {
             Title t = Title.fromItem(d);
@@ -209,7 +209,7 @@ public final class Lists {
     }
 
     /** Continue watching, from the TVs (what is part-way through on them, the TV's name in the corner). */
-    static List<Title> resume(Context c) {
+    public static List<Title> resume(Context c) {
         List<Title> out = new ArrayList<>();
         JSONArray a = Tvs.watchingCached(c).optJSONArray("resume");
         for (int i = 0; a != null && i < a.length(); i++) {
@@ -227,7 +227,7 @@ public final class Lists {
     }
 
     /** Your shows (and New episodes: only those with one out this past week), from the TVs, as the TV badges them. */
-    static List<Title> yourShows(Context c, boolean newOnly) {
+    public static List<Title> yourShows(Context c, boolean newOnly) {
         List<Title> out = new ArrayList<>();
         JSONArray a = Tvs.watchingCached(c).optJSONArray("shows");
         LocalDate today = LocalDate.now();

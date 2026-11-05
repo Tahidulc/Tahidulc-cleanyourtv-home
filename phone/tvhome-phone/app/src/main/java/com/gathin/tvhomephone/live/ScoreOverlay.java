@@ -34,6 +34,9 @@ final class ScoreOverlay implements ScoreBoard.Source {
         void openMatch();
 
         void play(Channel ch);
+
+        /** The channel's sound off (a Homefield break) or back. */
+        void mute(boolean on);
     }
 
     /** Whether the player's scoreboard is up (the one over other apps keeps out of its way). */
@@ -68,6 +71,14 @@ final class ScoreOverlay implements ScoreBoard.Source {
     private long ocrOkAt;
     private int ocrMisses, finds;
 
+    /** Broadcast mode: the channel's logo watched for its adverts, and the break up while they run. */
+    private BreakWatch breaks;
+    private BreakScreen breakScreen;
+    private boolean manualBreak;
+    private final Runnable checkBreak = this::checkBreak;
+    /** Burn-in: the board and the mark over the logo moved now and then, dimmed when nothing happens. */
+    private final BurnGuard guard;
+
     private final Runnable look = this::look;
     private final Runnable readClock = this::readClock;
     private final Runnable readScreen = this::readScreen;
@@ -83,6 +94,8 @@ final class ScoreOverlay implements ScoreBoard.Source {
         // Just over the picture and its touch layer: the tile, the buttons and the sheets stay over them.
         root.addView(cover, Math.min(2, root.getChildCount()), new FrameLayout.LayoutParams(0, 0, Gravity.TOP | Gravity.START));
         root.addView(board.view, Math.min(3, root.getChildCount()), new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.START));
+        guard = new BurnGuard(a, 2f, new View[]{board.view, cover}, new BurnGuard.Dims[]{board.bug, cover});
+        board.changed = guard::poke;
         root.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
             if (r - l != or - ol || b - t != ob - ot) h.post(this::place);
         });
@@ -98,6 +111,7 @@ final class ScoreOverlay implements ScoreBoard.Source {
         up = true;
         board.view.setVisibility(inPip ? View.GONE : View.VISIBLE);
         board.start();
+        guard.start();
         if (sampler == null) sampler = new FrameSampler();
         h.postDelayed(look, 4000);
         place();
@@ -106,6 +120,8 @@ final class ScoreOverlay implements ScoreBoard.Source {
     void stop() {
         started = false;
         up = false;
+        endBreak(true);
+        guard.stop();
         board.stop();
         h.removeCallbacksAndMessages(null);
         if (sampler != null) {
@@ -122,6 +138,8 @@ final class ScoreOverlay implements ScoreBoard.Source {
         gameId = id;
         box = null;
         logo = null;
+        breaks = null;
+        endBreak(true);
         finder = null;
         reader = null;
         ocrOkAt = 0;
@@ -141,7 +159,9 @@ final class ScoreOverlay implements ScoreBoard.Source {
 
     void pip(boolean in) {
         inPip = in;
-        board.view.setVisibility(in || !ScoreBoard.on(a) ? View.GONE : View.VISIBLE);
+        // In the small window the board stays, small, in the same look, its clock going on: no drops, no covers.
+        board.small(in);
+        board.view.setVisibility(!ScoreBoard.on(a) ? View.GONE : View.VISIBLE);
         place();
         // Back from the small window: the channel's scoreboard looked for, and its clock read, again.
         if (!in && started) {
@@ -178,6 +198,11 @@ final class ScoreOverlay implements ScoreBoard.Source {
     /** Whether its clock runs from the channel's own (seen turning a minute, or read). */
     boolean matched() {
         return board.screen().matched();
+    }
+
+    /** Whether the board shows in the small window (the old text line there is then not needed). */
+    boolean inSmallWindow() {
+        return started && inPip && ScoreBoard.on(a) && board.showing();
     }
 
     /** Whether the channel's clock was read off its scoreboard lately. */
@@ -258,7 +283,7 @@ final class ScoreOverlay implements ScoreBoard.Source {
             fw = frame.getWidth() * video.getScaleX();
             fh = frame.getHeight() * video.getScaleY();
         }
-        boolean over = box != null && ScoreBoard.cover(a) && board.channelGame();
+        boolean over = box != null && ScoreBoard.cover(a) && board.channelGame() && !inPip;
         int left, top;
         if (over) {
             // A little over each edge, so none of the channel's shows round it.
@@ -275,7 +300,13 @@ final class ScoreOverlay implements ScoreBoard.Source {
         } else {
             left = top = 0;
         }
-        if (!over) {
+        if (inPip) {
+            // The small window: a sixth of its height, in its top corner.
+            bp.width = LinearLayout.LayoutParams.WRAP_CONTENT;
+            bp.height = Math.max(Math.round(11 * d), Math.round(root.getHeight() * 0.16f));
+            left = Math.round(4 * d);
+            top = Math.round(4 * d);
+        } else if (!over) {
             boolean upright = root.getHeight() > root.getWidth();
             bp.width = LinearLayout.LayoutParams.WRAP_CONTENT;
             bp.height = Math.round((upright ? 24 : 30) * d);
@@ -314,7 +345,8 @@ final class ScoreOverlay implements ScoreBoard.Source {
     /** A few seconds of small frames for BugFinder, then the scoreboard placed; looked at again now and then. */
     private void look() {
         h.removeCallbacks(look);
-        boolean scoreboard = ScoreBoard.cover(a) && board.channelGame(), logos = ScoreBoard.logoCover(a) != LogoCover.Look.OFF;
+        boolean scoreboard = ScoreBoard.cover(a) && board.channelGame(),
+                logos = ScoreBoard.logoCover(a) != LogoCover.Look.OFF || (ScoreBoard.broadcast(a) && board.channelGame());
         if (!started || inPip || sampler == null) return;
         // F1's tower read for its lap, on an F1 channel.
         if (ScoreBoard.reads(a) && host.game() == null && ScoreBoard.f1Channel(host.current()) && !screenLoop()) readSoon(1000);
@@ -331,7 +363,8 @@ final class ScoreOverlay implements ScoreBoard.Source {
             BugFinder f = finder;
             boolean done = f != null && f.frames() >= BugFinder.ENOUGH;
             BugFinder.Box found = done && scoreboard ? f.find() : null;
-            BugFinder.Box mark = done && logos ? f.logo(found) : null;
+            BugFinder.Box mark = done && (logos || ScoreBoard.broadcast(a)) ? f.logo(found) : null;
+            boolean[] outline = mark != null && ScoreBoard.broadcast(a) ? f.logoMask(mark) : null;
             h.post(() -> {
                 if (!started || f != finder) return;
                 if (!done) {
@@ -342,6 +375,15 @@ final class ScoreOverlay implements ScoreBoard.Source {
                 if (mark != null || logo != null) {
                     logo = mark;
                     place();
+                }
+                // Broadcast mode: the logo's outline learnt, then watched for the adverts.
+                if (mark != null && outline != null) {
+                    BreakWatch w = new BreakWatch(outline, FIND_W, FIND_H);
+                    if (w.usable() && (breaks == null || !breaks.onBreak())) {
+                        breaks = w;
+                        h.removeCallbacks(checkBreak);
+                        h.postDelayed(checkBreak, 2000);
+                    }
                 }
                 if (scoreboard && found == null && ++finds >= 2 && box == null) locate();
                 if (found != null) {
@@ -533,6 +575,82 @@ final class ScoreOverlay implements ScoreBoard.Source {
         } catch (RuntimeException e) {
             return null;
         }
+    }
+
+    // ---- broadcast mode ---------------------------------------------------------------------------------------------
+
+    /**
+     * Every two seconds while the channel's logo is known: is it still on the picture? Gone for about eight seconds
+     * before kick-off, at half time or after the game (never in play: football has no adverts then), the channel has
+     * gone to its adverts: Homefield's break instead. Back for a few seconds: the channel again.
+     */
+    private void checkBreak() {
+        h.removeCallbacks(checkBreak);
+        BreakWatch w = breaks;
+        if (!started || w == null || sampler == null || !ScoreBoard.broadcast(a)) return;
+        if (inPip) {
+            h.postDelayed(checkBreak, 2000);
+            return;
+        }
+        if (small == null) small = Bitmap.createBitmap(FIND_W, FIND_H, Bitmap.Config.ARGB_8888);
+        boolean asked = sampler.copy(video.surface(), small, (b, at) -> {
+            float p = b == null ? -1 : w.present(FrameSampler.grey(b, 0, 0, FIND_W, FIND_H));
+            h.post(() -> {
+                if (!started || w != breaks) return;
+                if (p >= 0) {
+                    boolean on = w.add(p);
+                    Game g = ScreenTime.game(host.game(), System.currentTimeMillis());
+                    if (on && breakScreen == null && BreakWatch.allowed(g)) startBreak(false);
+                    else if (!on && breakScreen != null && !manualBreak) endBreak(false);
+                }
+                h.postDelayed(checkBreak, 2000);
+            });
+        });
+        if (!asked) h.postDelayed(checkBreak, 1000);
+    }
+
+    /** Homefield's break up (manual: from Options, to see it; it ends with Back to the channel or after a minute). */
+    void startBreak(boolean manual) {
+        if (breakScreen != null || !started) return;
+        manualBreak = manual;
+        Context app = a.getApplicationContext();
+        Game watching = host.game();
+        BreakScreen screen = new BreakScreen(a, video, new BreakScreen.Host() {
+            @Override public void mute(boolean on) {
+                host.mute(on);
+            }
+
+            @Override public void back() {
+                endBreak(true);
+            }
+        });
+        breakScreen = screen;
+        root.addView(screen, Math.min(4, root.getChildCount()), new FrameLayout.LayoutParams(-1, -1));
+        App.io.execute(() -> {
+            BreakScreen.Content k = BreakScreen.load(app, watching);
+            App.main.post(() -> {
+                if (breakScreen != screen) return;
+                screen.post(() -> screen.show(k));
+            });
+        });
+        if (manual) h.postDelayed(() -> {
+            if (breakScreen == screen) endBreak(true);
+        }, 60_000L);
+    }
+
+    /** The break over: the channel back (now: at once, without waiting for its logo). */
+    void endBreak(boolean now) {
+        BreakScreen s = breakScreen;
+        if (s == null) return;
+        breakScreen = null;
+        manualBreak = false;
+        s.end(() -> root.removeView(s));
+        // The logo was gone a while: it is learnt again on the next look.
+        if (now && breaks != null && breaks.onBreak()) breaks = null;
+    }
+
+    boolean onBreak() {
+        return breakScreen != null;
     }
 
     // ---- the options -------------------------------------------------------------------------------------------------

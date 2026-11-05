@@ -19,7 +19,7 @@ import com.gathin.tvhomephone.R;
  * wide as the logo was), or Wordmark (HOMEFIELD in letters, a coral line under it). Each ground is all but solid, so
  * none of the channel's logo shows through it.
  */
-final class LogoCover extends View {
+final class LogoCover extends View implements BurnGuard.Dims {
     /** The looks, as Settings names them. */
     enum Look {
         OFF("Leave the channel's"), BADGE("Badge"), GLASS("Glass"), MARK("Mark only"), WORD("Wordmark");
@@ -49,6 +49,11 @@ final class LogoCover extends View {
         words.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD));
         words.setColor(0xFFFFFFFF);
         setContentDescription("Homefield");
+    }
+
+    /** Dimmed against burn-in (BurnGuard): solid, a little darker, so none of the channel's logo shows. */
+    @Override public void dim(boolean on) {
+        BurnGuard.dimLayer(this, on);
     }
 
     void look(Look l) {

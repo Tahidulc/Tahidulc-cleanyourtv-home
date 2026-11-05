@@ -48,9 +48,10 @@ public final class FloatService extends Service implements ScoreBoard.Source {
     private FrameLayout win;
     private WindowManager.LayoutParams lp;
     private ScoreBoard board;
+    private BurnGuard guard;
 
     /** Every second: out of the way while Homefield's own player has its scoreboard up. */
-    private final Runnable guard = new Runnable() {
+    private final Runnable keepClear = new Runnable() {
         @Override public void run() {
             h.removeCallbacks(this);
             if (win == null) return;
@@ -142,7 +143,12 @@ public final class FloatService extends Service implements ScoreBoard.Source {
         float d = getResources().getDisplayMetrics().density;
         board = new ScoreBoard(this, this);
         win = new FrameLayout(this);
+        // Room round it for the burn-in guard's moves.
+        int pad = Math.round(3 * d);
+        win.setPadding(pad, pad, pad, pad);
         win.addView(board.view, new FrameLayout.LayoutParams(-2, -2));
+        guard = new BurnGuard(this, 2f, new View[]{board.view}, new BurnGuard.Dims[]{board.bug});
+        board.changed = guard::poke;
         lp = new WindowManager.LayoutParams(WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT,
                 WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
@@ -201,11 +207,13 @@ public final class FloatService extends Service implements ScoreBoard.Source {
             return;
         }
         board.start();
-        h.post(guard);
+        guard.start();
+        h.post(keepClear);
     }
 
     @Override public void onDestroy() {
         h.removeCallbacksAndMessages(null);
+        if (guard != null) guard.stop();
         if (board != null) board.stop();
         if (win != null) {
             try {

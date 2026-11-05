@@ -218,6 +218,24 @@ final class BugFinder {
         return best;
     }
 
+    /**
+     * The logo's outline in box b: its pixels whose edges stayed put in most frames (the same test as logo()), on this
+     * finder's frame size, for BreakWatch to look for.
+     */
+    boolean[] logoMask(Box b) {
+        boolean[] m = new boolean[w * h];
+        if (b == null || frames < 2) return m;
+        int x0 = Math.max(0, (int) (b.left * w)), x1 = Math.min(w - 1, (int) Math.ceil(b.right * w));
+        int y0 = Math.max(0, (int) (b.top * h)), y1 = Math.min(h - 1, (int) Math.ceil(b.bottom * h));
+        for (int y = y0; y <= y1; y++) {
+            for (int x = x0; x <= x1; x++) {
+                int i = y * w + x;
+                m[i] = edges[i] >= frames * 0.7f;
+            }
+        }
+        return m;
+    }
+
     /** Whether the flipping pixels inside box b sit together as a clock's digits do: four or more, in a short run. */
     private boolean clock(boolean[] tick, int[] b) {
         int count = 0, cx0 = w, cx1 = -1, cy0 = h, cy1 = -1;

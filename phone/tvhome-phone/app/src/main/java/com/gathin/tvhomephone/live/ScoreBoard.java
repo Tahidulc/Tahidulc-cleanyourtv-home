@@ -103,6 +103,14 @@ public final class ScoreBoard implements LiveAlerts.Listener {
 
     static void setReads(Context c, boolean v) { prefs(c).edit().putBoolean("read", v).apply(); }
 
+    /**
+     * Broadcast mode: when the channel goes to its adverts before kick-off, at half time or after the game (its logo
+     * gone), Homefield's own break instead (BreakScreen). On until switched off.
+     */
+    static boolean broadcast(Context c) { return prefs(c).getBoolean("broadcast", true); }
+
+    static void setBroadcast(Context c, boolean v) { prefs(c).edit().putBoolean("broadcast", v).apply(); }
+
     /** How far behind the other apps' pictures run (their streams' delay), in seconds. */
     static int otherDelay(Context c) { return prefs(c).getInt("other_delay", 0); }
 
@@ -136,6 +144,8 @@ public final class ScoreBoard implements LiveAlerts.Listener {
     private final ArrayDeque<Drop> drops = new ArrayDeque<>();
     private final Map<String, String> f1Teams = new HashMap<>();
     private boolean running, dropping, channelGame;
+    /** Something new on it (a goal shown, an alert dropped): the burn-in guard brightens it again. */
+    Runnable changed;
     private int mode;
     private static final int NONE = 0, FOOTBALL_MODE = 1, F1_MODE = 2;
     private String crestsFor = "";
@@ -219,6 +229,7 @@ public final class ScoreBoard implements LiveAlerts.Listener {
 
     void stop() {
         running = false;
+        ScreenTime.clear(screen);
         LiveAlerts.removeListener(this);
         h.removeCallbacksAndMessages(null);
         drops.clear();
@@ -228,8 +239,22 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         dropping = false;
     }
 
+    /** The small window: the board alone, no drops (they'd cover the picture). */
+    void small(boolean on) {
+        small = on;
+        if (on) {
+            drops.clear();
+            card.animate().cancel();
+            card.setVisibility(View.GONE);
+            dropping = false;
+        }
+    }
+
+    private boolean small;
+
     /** The channel or its game changed: everything read again at once. */
     void changed() {
+        ScreenTime.clear(screen);
         screen.clear();
         f1Reads.clear();
         mode = NONE;
@@ -325,6 +350,11 @@ public final class ScoreBoard implements LiveAlerts.Listener {
                     screen.add(got, now);
                     mode = FOOTBALL_MODE;
                     lastId = got.id == null ? "" : got.id;
+                    // The player's board on the channel's own game: the tile and the small window read the same time.
+                    if (src instanceof ScoreOverlay) {
+                        if (channel) ScreenTime.set(screen, lastId);
+                        else ScreenTime.clear(screen);
+                    }
                     if (pics != null) {
                         crestsFor = lastId;
                         bug.crests(pics[0], pics[1], pics[2]);
@@ -355,8 +385,13 @@ public final class ScoreBoard implements LiveAlerts.Listener {
                 l = look(g, screen.clock(now));
                 // A goal as the screen shows it: that side lit.
                 if (g.id != null && g.id.equals(lastShownId)) {
-                    if (g.homeScore > lastHome && lastHome >= 0) bug.goal(1);
-                    else if (g.awayScore > lastAway && lastAway >= 0) bug.goal(2);
+                    if (g.homeScore > lastHome && lastHome >= 0) {
+                        bug.goal(1);
+                        if (changed != null) changed.run();
+                    } else if (g.awayScore > lastAway && lastAway >= 0) {
+                        bug.goal(2);
+                        if (changed != null) changed.run();
+                    }
                 }
                 lastShownId = g.id;
                 lastHome = g.homeScore;
@@ -517,6 +552,7 @@ public final class ScoreBoard implements LiveAlerts.Listener {
     }
 
     private void drop(Drop d) {
+        if (small) return;
         drops.addLast(d);
         while (drops.size() > 4) drops.removeFirst();
         if (!dropping) next();
@@ -529,6 +565,7 @@ public final class ScoreBoard implements LiveAlerts.Listener {
             return;
         }
         dropping = true;
+        if (changed != null) changed.run();
         card.setTag(d);
         chip.setText(d.chip);
         chip.setTextColor(OverlayBug.ink(d.colour));

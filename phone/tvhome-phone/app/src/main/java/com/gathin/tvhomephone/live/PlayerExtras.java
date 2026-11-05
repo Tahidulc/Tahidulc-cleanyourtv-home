@@ -415,14 +415,15 @@ final class PlayerExtras implements LiveAlerts.Listener {
 
     private void refreshPip() {
         Game g = inPip ? host.game() : null;
-        if (g == null) {
+        // The board itself is in the small window, in its own look: the line isn't needed.
+        if (g == null || (overlay != null && overlay.inSmallWindow())) {
             pipBug.setVisibility(View.GONE);
             return;
         }
         String home = g.home == null || g.home.isEmpty() ? g.homeName : g.home, away = g.away == null || g.away.isEmpty() ? g.awayName : g.away;
         String mid = g.state == Game.PRE ? "v" : g.score();
-        // The clock in minutes and seconds (this is drawn again every second).
-        String clock = LiveClock.words(g, System.currentTimeMillis());
+        // The clock in minutes and seconds as the picture shows it (this is drawn again every second).
+        String clock = ScreenTime.words(g, System.currentTimeMillis());
         pipText.setText(home + "  " + mid + "  " + away + (clock == null || clock.isEmpty() ? "" : "  · " + clock));
         pipBug.setVisibility(View.VISIBLE);
     }
@@ -660,6 +661,13 @@ final class PlayerExtras implements LiveAlerts.Listener {
                 lg.add(t);
                 addChip(logos, t);
             }
+            // Broadcast mode: Homefield's break over the channel's adverts; one to see now.
+            toggle(c, box, a.getString(R.string.live5_broadcast), ScoreBoard.broadcast(c), on -> ScoreBoard.setBroadcast(c, on));
+            action(c, box, R.drawable.live_ic_play, a.getString(R.string.live5_broadcast_try), () -> {
+                host.closeSheet();
+                overlay.startBreak(true);
+            });
+            toggle(c, box, a.getString(R.string.live5_burn), BurnGuard.on(c), on -> BurnGuard.setOn(c, on));
             toggle(c, box, a.getString(R.string.live4_read), ScoreBoard.reads(c), on -> {
                 ScoreBoard.setReads(c, on);
                 overlay.game(host.game());
@@ -708,6 +716,24 @@ final class PlayerExtras implements LiveAlerts.Listener {
                         a.startActivity(TwoGamesActivity.intent(a, now.key, null));
                     });
         }
+
+        // Test notifications: every kind, or one, on this game (or a made-up one), as they really come.
+        LinearLayout tests = chipRow(c, box, R.string.live4_tests);
+        TextView all = Ui.guideChip(c, a.getString(R.string.live4_tests_all), true);
+        all.setOnClickListener(v -> {
+            host.closeSheet();
+            com.gathin.tvhomephone.sports.TestAlerts.play(a, host.game(), null);
+        });
+        addChip(tests, all);
+        for (String[] k : com.gathin.tvhomephone.sports.TestAlerts.kinds()) {
+            TextView t = Ui.guideChip(c, k[1], false);
+            t.setOnClickListener(v -> {
+                host.closeSheet();
+                com.gathin.tvhomephone.sports.TestAlerts.play(a, host.game(), k[0]);
+            });
+            addChip(tests, t);
+        }
+        note(c, box, a.getString(R.string.live4_tests_note));
 
         // Night sound, the touch lock, on a TV.
         if (NightSound.available()) {

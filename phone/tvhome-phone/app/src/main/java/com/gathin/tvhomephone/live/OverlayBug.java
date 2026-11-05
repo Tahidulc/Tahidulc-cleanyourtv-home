@@ -24,7 +24,7 @@ import java.util.Objects;
  * clubs and score over the clock). F1: F1's red block, the session, the lap or the time left, and the first three with
  * their teams' colours. A goal lights the scoring club's side in its colour for a few seconds.
  */
-final class OverlayBug extends View {
+final class OverlayBug extends View implements BurnGuard.Dims {
     /** What it shows. */
     static final class Look {
         boolean f1, live;
@@ -182,6 +182,11 @@ final class OverlayBug extends View {
                 : l.home + " " + l.score + " " + l.away + (l.clock.isEmpty() ? "" : ", " + l.clock + " " + l.added));
         if (size) requestLayout();
         invalidate();
+    }
+
+    /** Dimmed against burn-in (BurnGuard): solid, a little darker. */
+    @Override public void dim(boolean on) {
+        BurnGuard.dimLayer(this, on);
     }
 
     /** A goal for side 1 (home) or 2 (away): its half lit in its colour for four seconds. */

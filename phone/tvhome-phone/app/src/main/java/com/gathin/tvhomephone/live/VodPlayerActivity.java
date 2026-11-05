@@ -65,6 +65,7 @@ public final class VodPlayerActivity extends AppCompatActivity {
     private FrameLayout root;
     /** The scoreboard and its alerts over the film. */
     private ScoreBoard board;
+    private BurnGuard guard;
     private PlayerView view;
     private TextView sleepPill, sourcesPill, ccPill;
     /** Its subtitles: the stream's own, or a file from OpenSubtitles. */
@@ -239,6 +240,8 @@ public final class VodPlayerActivity extends AppCompatActivity {
         bp.leftMargin = Ui.dp(this, 22);
         bp.topMargin = Ui.dp(this, 18);
         root.addView(board.view, 1, bp);
+        guard = new BurnGuard(this, 2f, new View[]{board.view}, new BurnGuard.Dims[]{board.bug});
+        board.changed = guard::poke;
         board.view.setVisibility(ScoreBoard.on(this) ? View.VISIBLE : View.GONE);
         view.setControllerVisibilityListener((PlayerView.ControllerVisibilityListener) v -> {
             infoBar.setVisibility(v);
@@ -497,12 +500,18 @@ public final class VodPlayerActivity extends AppCompatActivity {
 
     @Override protected void onStart() {
         super.onStart();
-        if (board != null && ScoreBoard.on(this)) board.start();
+        if (board != null && ScoreBoard.on(this)) {
+            board.start();
+            guard.start();
+        }
     }
 
     @Override protected void onStop() {
         super.onStop();
-        if (board != null && !isInPictureInPictureMode()) board.stop();
+        if (board != null && !isInPictureInPictureMode()) {
+            board.stop();
+            guard.stop();
+        }
         if (player == null || isInPictureInPictureMode()) return;
         // Where it was left: kept unless it was nearly over.
         long pos = player.getCurrentPosition(), dur = player.getDuration();

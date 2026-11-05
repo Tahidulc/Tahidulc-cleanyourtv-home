@@ -77,6 +77,11 @@ public final class Notifier {
         show(c, a);
     }
 
+    /** A test alert (TestAlerts) shown as a real one would be, past the switches, the log and the waits. Off the main thread. */
+    static void test(Context c, Events.Alert a) {
+        show(c, a);
+    }
+
     /** The alert's notification, built and sent (off the main thread). */
     private static void show(Context c, Events.Alert a) {
         // The scoreboard over the picture drops it too, while one is up.

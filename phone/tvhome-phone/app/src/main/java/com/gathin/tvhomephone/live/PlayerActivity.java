@@ -581,14 +581,17 @@ public class PlayerActivity extends AppCompatActivity {
         // Read again: always for another programme, and for a game (its score moves on).
         if (!same || info.kind == TileKind.Kind.MATCH) {
             TileData.Info asked = info;
-            TileData.enrich(this, asked, done -> {
+            // A game's tile read again: its new score and stats wait as long as the picture runs behind (ScreenTime),
+            // so the tile never tells what the screen hasn't shown yet.
+            long wait = same && asked.enriched ? ScreenTime.behindMs() : 0;
+            TileData.enrich(this, asked, done -> h.postDelayed(() -> {
                 if (isFinishing() || info == null || !done.id().equals(info.id())) return;
                 info = done;
                 extras.game(info.game);
                 matchButton.setVisibility(info.game != null ? View.VISIBLE : View.GONE);
                 marks(info);
                 if (tilesShown()) drawTile(false);
-            });
+            }, wait));
         }
         fade(tiles, true);
         fade(top, true);
@@ -1562,6 +1565,11 @@ public class PlayerActivity extends AppCompatActivity {
             @Override public void openMatch() { extras.openMatch(); }
 
             @Override public void play(Channel ch) { switchTo(ch); }
+
+            @Override public void mute(boolean on) {
+                ExoPlayer p = pb.player();
+                if (p != null) p.setVolume(on ? 0f : 1f);
+            }
         }));
         ViewCompat.setOnApplyWindowInsetsListener(root, (v, insets) -> {
             cut = insets.getInsets(WindowInsetsCompat.Type.displayCutout());

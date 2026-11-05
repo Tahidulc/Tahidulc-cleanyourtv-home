@@ -26,6 +26,10 @@ public final class BoardSettings {
         row(c, col, c.getString(R.string.live4_board_on), ScoreBoard.on(c), on -> ScoreBoard.setOn(c, on));
         row(c, col, c.getString(R.string.live4_board_cover), ScoreBoard.cover(c), on -> ScoreBoard.setCover(c, on));
         row(c, col, c.getString(R.string.live4_read), ScoreBoard.reads(c), on -> ScoreBoard.setReads(c, on));
+        row(c, col, c.getString(R.string.live5_broadcast), ScoreBoard.broadcast(c), on -> ScoreBoard.setBroadcast(c, on));
+        col.addView(com.gathin.tvhomephone.sports.Ui.text(c, c.getString(R.string.live5_broadcast_line), 13, c.getColor(R.color.text_dim), false));
+        row(c, col, c.getString(R.string.live5_burn), BurnGuard.on(c), on -> BurnGuard.setOn(c, on));
+        col.addView(com.gathin.tvhomephone.sports.Ui.text(c, c.getString(R.string.live5_burn_line), 13, c.getColor(R.color.text_dim), false));
         col.addView(com.gathin.tvhomephone.sports.Ui.text(c, c.getString(R.string.live4_read_line), 13, c.getColor(R.color.text_dim), false));
 
         // Its look: each drawn as it would be, tap one.
