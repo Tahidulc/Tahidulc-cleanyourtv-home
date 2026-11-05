@@ -11,7 +11,7 @@ import androidx.fragment.app.Fragment;
 import com.google.android.material.bottomnavigation.BottomNavigationView;
 
 /**
- * The app's one window: five tabs along the foot (Home, Watch, Sports, Live TV, Settings), each a fragment of its own
+ * The app's one window: five tabs along the foot (Home, Sports, Live TV, Watch, Settings), each a fragment of its own
  * part. A phone gets the bar at the foot; a tablet the same, with wider content inside each tab.
  */
 public class MainActivity extends AppCompatActivity {

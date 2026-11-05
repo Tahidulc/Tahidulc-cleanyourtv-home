@@ -31,6 +31,7 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
@@ -197,6 +198,14 @@ public class TitleActivity extends AppCompatActivity {
             Toast.makeText(this, "Pair with a TV in Settings first", Toast.LENGTH_SHORT).show();
             return;
         }
+        // On one of this phone's streaming apps (where Debrid Stream would open it): from the family's own playlist when
+        // it has it, played here; Debrid Stream (or the app) as before when it hasn't.
+        Providers.Choice onApps = Providers.choose(gb, t.title, t.id, t.tv, Providers.installedOn(this));
+        if ("stream".equals(onApps.kind) && onApps.pkg != null && !triedPlaylist) {
+            fromPlaylist(this::play);
+            return;
+        }
+        triedPlaylist = false;
         Providers.Choice ch = Providers.choose(this, gb, t.title, t.id, t.tv);
         if (ch.kind.equals("stream") && ch.pkg != null) {
             // On one of this phone's apps but Debrid Stream isn't here: asks (Play on TV goes through Debrid Stream).
@@ -207,6 +216,68 @@ public class TitleActivity extends AppCompatActivity {
                 : ch.kind.equals("store") ? "Not streaming: to rent or buy on " + ch.name : "Where to watch it";
         Toast.makeText(this, how, Toast.LENGTH_SHORT).show();
         Providers.open(this, ch);
+    }
+
+    /** Play already looked in the playlist for this title and found nothing: it goes on to Debrid Stream (or the app). */
+    private boolean triedPlaylist;
+
+    /**
+     * The title from the family's own playlist (Vod): a film plays at once, a series asks which season and episode.
+     * notThere runs when the playlist has no playlist, or not this title.
+     */
+    private void fromPlaylist(Runnable notThere) {
+        Toast.makeText(this, "Looking in your playlist…", Toast.LENGTH_SHORT).show();
+        String original = details == null ? "" : details.optString(t.tv ? "original_name" : "original_title", "");
+        android.content.Context app = getApplicationContext();
+        com.gathin.tvhomephone.App.io.execute(() -> {
+            com.gathin.tvhomephone.live.Vod.Item it = com.gathin.tvhomephone.live.Vod.find(app, t.title, original, t.year, t.id, t.tv);
+            List<com.gathin.tvhomephone.live.Vod.Episode> eps = it != null && "series".equals(it.kind)
+                    ? com.gathin.tvhomephone.live.Vod.episodes(app, it) : null;
+            runOnUiThread(() -> {
+                if (isFinishing()) return;
+                if (it == null || ("series".equals(it.kind) && (eps == null || eps.isEmpty()))) {
+                    triedPlaylist = true;
+                    notThere.run();
+                    return;
+                }
+                if (!"series".equals(it.kind)) {
+                    startActivity(com.gathin.tvhomephone.live.VodPlayerActivity.intent(this, it.url, it.ua, it.ref, t.title));
+                    return;
+                }
+                pickEpisode(eps);
+            });
+        });
+    }
+
+    /** A series from the playlist: its season, then its episode. */
+    private void pickEpisode(List<com.gathin.tvhomephone.live.Vod.Episode> eps) {
+        List<Integer> seasons = new ArrayList<>();
+        for (com.gathin.tvhomephone.live.Vod.Episode e : eps) if (!seasons.contains(e.season)) seasons.add(e.season);
+        if (seasons.size() == 1) {
+            pickIn(eps, seasons.get(0));
+            return;
+        }
+        String[] names = new String[seasons.size()];
+        for (int i = 0; i < names.length; i++) names[i] = seasons.get(i) > 0 ? "Season " + seasons.get(i) : "Episodes";
+        new MaterialAlertDialogBuilder(this).setTitle(t.title + " · from your playlist")
+                .setItems(names, (d, w) -> pickIn(eps, seasons.get(w))).show();
+    }
+
+    private void pickIn(List<com.gathin.tvhomephone.live.Vod.Episode> eps, int season) {
+        List<com.gathin.tvhomephone.live.Vod.Episode> in = new ArrayList<>();
+        for (com.gathin.tvhomephone.live.Vod.Episode e : eps) if (e.season == season) in.add(e);
+        String[] names = new String[in.size()];
+        for (int i = 0; i < names.length; i++) {
+            com.gathin.tvhomephone.live.Vod.Episode e = in.get(i);
+            String own = e.title == null ? "" : e.title.trim();
+            names[i] = "Episode " + e.number + (own.isEmpty() || own.equalsIgnoreCase(t.title) ? "" : " · " + own);
+        }
+        new MaterialAlertDialogBuilder(this).setTitle(season > 0 ? t.title + " · Season " + season : t.title)
+                .setItems(names, (d, w) -> {
+                    com.gathin.tvhomephone.live.Vod.Episode e = in.get(w);
+                    startActivity(com.gathin.tvhomephone.live.VodPlayerActivity.intent(this, e.url, e.ua, e.ref,
+                            t.title + (season > 0 ? " · S" + season : "") + " E" + e.number));
+                }).show();
     }
 
     private void playOnTv() {

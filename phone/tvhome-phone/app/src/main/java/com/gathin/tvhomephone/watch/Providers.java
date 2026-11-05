@@ -19,10 +19,11 @@ import java.util.function.Predicate;
 
 /**
  * Where a title is watched, by the rule agreed for the TVs (after the Netflix test): a title on one of the streaming
- * apps on this phone that carry it in the UK (TMDB's GB providers) opens through Debrid Stream when it is on the phone
- * (it hands the title to that service), else in that app at its own search; a title on none of them never goes to
- * Debrid Stream: that service's website, else a store that rents or sells it, else TMDB's where-to-watch page. Never an
- * IPTV app.
+ * apps on this phone that carry it in the UK (TMDB's GB providers) plays from the family's own IPTV playlist when the
+ * playlist has it (its films and series, in the app: TitleActivity and Vod), else through Debrid Stream when it is on
+ * the phone (it hands the title to that service), else in that app at its own search; a title on none of them never
+ * goes to the playlist or Debrid Stream: that service's website, else a store that rents or sells it, else TMDB's
+ * where-to-watch page.
  */
 public final class Providers {
     private Providers() {}

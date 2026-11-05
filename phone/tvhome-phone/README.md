@@ -42,7 +42,11 @@ under it, with the players' photos) and Stats in each side's colours. The line-u
 an F1 result as its podium, and "Following live" as the scoreboards with the first game's clock going on.
 
 Titles open in the licensed streaming app that carries them in the UK (or its store), on the phone or, with Play on TV,
-on a TV. Live TV plays only the playlist you give it; the app ships with no channels or sources.
+on a TV. A title on one of the phone's streaming apps plays from your own playlist when it has it (its films and
+series, Vod: matched by TMDB's id when the provider gives one, else by name and year; a series asks for its season
+and episode) in a full-screen player that remembers where you stopped, and only otherwise through Debrid Stream or the
+app. Live TV and those films and series play only the playlist you give it; the app ships with no channels or
+sources. The tabs are Home, Sports, Live TV, Watch and Settings.
 
 Build: JDK 17, Android SDK 34. `./gradlew assembleRelease testReleaseUnitTest lintRelease`; the APK is in
 `app/build/outputs/apk/release/`, signed with the debug key for sideloading.

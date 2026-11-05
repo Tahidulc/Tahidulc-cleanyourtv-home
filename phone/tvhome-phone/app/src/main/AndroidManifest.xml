@@ -54,6 +54,13 @@
         <!-- Watch (phone-watch): a film's or series' page. -->
         <activity android:name=".watch.TitleActivity" android:exported="false" />
         <!-- Live TV (phone-sports): the player, full screen. -->
+        <!-- Watch: a film or episode from the family's own playlist (Vod), full screen on its side. -->
+        <activity
+            android:name=".live.VodPlayerActivity"
+            android:exported="false"
+            android:screenOrientation="sensorLandscape"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden" />
+
         <activity
             android:name=".live.PlayerActivity"
             android:exported="false"

@@ -443,6 +443,8 @@ public final class Library {
         if (Source.M3U.equals(s.type)) {
             try (InputStream in = Fetch.open(s.m3uUrl, null); Reader r = new InputStreamReader(in, StandardCharsets.UTF_8)) {
                 M3u.Result res = M3u.parse(r);
+                // Its films and episodes kept for Watch (Vod), the channels for Live TV.
+                Vod.saveM3u(app, res.vod);
                 return new Loaded(res.channels, s.guideUrl.isEmpty() ? res.guideUrl : s.guideUrl);
             }
         }

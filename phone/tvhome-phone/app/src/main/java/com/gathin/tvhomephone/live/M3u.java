@@ -13,8 +13,8 @@ import java.util.Map;
  * An M3U or M3U8 playlist read line by line (large lists of tens of thousands of entries stay quick): #EXTM3U's guide
  * address (url-tvg, x-tvg-url or tvg-url), each #EXTINF's attributes in any order (tvg-id, tvg-name, tvg-logo,
  * group-title, tvg-chno) and its title after the first comma outside quotes, #EXTGRP, and #EXTVLCOPT's user agent and
- * referrer. Only live channels are kept: entries that are films or series (a /movie/ or /series/ path, a video file, or
- * tvg-type other than live) are left out.
+ * referrer. Only live channels are kept as channels: entries that are films or series (a /movie/ or /series/ path, a
+ * video file, or tvg-type other than live) are kept apart, for Watch (Vod).
  */
 public final class M3u {
     private M3u() {}
@@ -25,6 +25,8 @@ public final class M3u {
         public String guideUrl = "";
         /** Entries left out as films or series. */
         public int skipped;
+        /** Those films and episodes, for Watch (Vod): {name, address, group, user agent, referrer, tvg-type}. */
+        public final List<String[]> vod = new ArrayList<>();
     }
 
     public static Result parse(Reader in) throws IOException {
@@ -79,6 +81,8 @@ public final class M3u {
             if (g == null || g.isEmpty()) g = group;
             if (isVod(url, a.get("tvg-type"))) {
                 r.skipped++;
+                r.vod.add(new String[]{name.trim(), url, g == null ? "" : g.trim(), ua != null ? ua : a.get("user-agent"), ref,
+                        a.get("tvg-type")});
             } else {
                 String id = a.get("tvg-id") == null ? "" : a.get("tvg-id").trim();
                 String key = id + "|" + name.trim();
