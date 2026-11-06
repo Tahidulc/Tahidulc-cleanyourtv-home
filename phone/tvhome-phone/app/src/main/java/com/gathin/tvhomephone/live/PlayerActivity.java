@@ -90,7 +90,7 @@ import java.util.Locale;
 @OptIn(markerClass = UnstableApi.class)
 public class PlayerActivity extends AppCompatActivity {
     static final String EXTRA_KEY = "live_key", EXTRA_GROUP = "live_group", EXTRA_GUIDE = "live_from_guide",
-            EXTRA_AUTO = "live_auto", EXTRA_PIP = "live_pip", EXTRA_REPLAY = "live_replay";
+            EXTRA_AUTO = "live_auto", EXTRA_PIP = "live_pip", EXTRA_REPLAY = "live_replay", EXTRA_UPRIGHT = "live_upright";
     /** The player's own switch: into picture in picture as the app is left while a channel plays (on unless turned off). */
     static final String AUTO_PIP = "auto_pip";
     /** Whether turning the phone upright leaves a full screen that turning it on its side opened ("1"; off unless set). */
@@ -137,6 +137,17 @@ public class PlayerActivity extends AppCompatActivity {
     private String centred;
     /** Opened from the guide (its stream goes back there on the way out); opened by turning the phone on its side. */
     private boolean fromGuide, auto, handBack, landscape;
+    /**
+     * Opened with the guide's full screen button, the phone upright: full screen starts upright, and goes on its side
+     * (and back) only when the phone is turned (Turn), whichever way the phone's own rotation is set.
+     */
+    private boolean upright, turnedSideways;
+    private final Turn turn = new Turn();
+    private android.view.OrientationEventListener turner;
+    /** On its side: a button to go into the small window at once, for a few seconds after turning and with the controls. */
+    private View pipQuick;
+    private static final long PIP_QUICK_MS = 8000;
+    private final Runnable hidePipQuick = () -> fade(pipQuick, false);
     private Insets cut = Insets.NONE;
     private final Runnable hide = this::hideOverlay;
     /** Every half a minute: a new programme on this channel brings its tile up, as the TV's banner does. */
@@ -169,8 +180,13 @@ public class PlayerActivity extends AppCompatActivity {
      * phone on its side, so turning it upright again goes back.
      */
     static void start(Context c, String key, String group, boolean fromGuide, boolean auto) {
+        start(c, key, group, fromGuide, auto, false);
+    }
+
+    /** upright: the guide's full screen button with the phone upright, so full screen starts upright. */
+    static void start(Context c, String key, String group, boolean fromGuide, boolean auto, boolean upright) {
         Intent i = new Intent(c, PlayerActivity.class).putExtra(EXTRA_KEY, key).putExtra(EXTRA_GROUP, group == null ? Library.ALL : group)
-                .putExtra(EXTRA_GUIDE, fromGuide).putExtra(EXTRA_AUTO, auto);
+                .putExtra(EXTRA_GUIDE, fromGuide).putExtra(EXTRA_AUTO, auto).putExtra(EXTRA_UPRIGHT, upright && !auto);
         if (!(c instanceof Activity)) i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         c.startActivity(i);
     }
@@ -260,6 +276,9 @@ public class PlayerActivity extends AppCompatActivity {
         }
         fromGuide = i.getBooleanExtra(EXTRA_GUIDE, false);
         auto = i.getBooleanExtra(EXTRA_AUTO, false);
+        boolean wasUpright = upright;
+        upright = !auto && i.getBooleanExtra(EXTRA_UPRIGHT, false);
+        if (upright && !wasUpright) turnedSideways = false;
         pipNow = i.getBooleanExtra(EXTRA_PIP, false);
         String g = i.getStringExtra(EXTRA_GROUP);
         order = lib.list(g == null ? Library.ALL : g, "");
@@ -286,6 +305,7 @@ public class PlayerActivity extends AppCompatActivity {
         h.postDelayed(tick, TICK_MS);
         extras.start();
         replayFrom(getIntent());
+        if (landscape) showPipQuick();
         // Opened as the app was left from the Live TV guide: straight into the small window.
         if (pipNow) {
             pipNow = false;
@@ -301,6 +321,17 @@ public class PlayerActivity extends AppCompatActivity {
         h.postDelayed(() -> {
             if (!pb.replay(at)) Toast.makeText(this, R.string.live3_rewind_none, Toast.LENGTH_SHORT).show();
         }, 300);
+    }
+
+    @Override protected void onResume() {
+        super.onResume();
+        watchTurns(true);
+    }
+
+    @Override protected void onPause() {
+        // Also as it goes into the small window: no turning round there.
+        watchTurns(false);
+        super.onPause();
     }
 
     @Override protected void onStop() {
@@ -356,11 +387,41 @@ public class PlayerActivity extends AppCompatActivity {
     /**
      * Opened by turning the phone on its side: it stays on its side (either way round) until left with back or the
      * cross, so lying down with it, or tilting it, never turns it upright and out to the guide. Upright too otherwise,
-     * or when turning upright is to leave it (Options).
+     * or when turning upright is to leave it (Options). Opened with the guide's full screen button, upright: it starts
+     * upright and goes on its side when the phone is turned (and back when it is turned upright again). From anywhere
+     * else it follows the phone.
      */
     private void orient() {
-        setRequestedOrientation(auto && !uprightBack(this) ? ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-                : ActivityInfo.SCREEN_ORIENTATION_SENSOR);
+        if (auto) {
+            setRequestedOrientation(uprightBack(this) ? ActivityInfo.SCREEN_ORIENTATION_SENSOR
+                    : ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
+        } else if (upright) {
+            setRequestedOrientation(turnedSideways ? ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                    : ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
+        } else {
+            setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR);
+        }
+    }
+
+    /** Full screen opened upright: watching for the phone being turned on its side, and upright again. */
+    private void watchTurns(boolean on) {
+        if (!on || !upright) {
+            if (turner != null) turner.disable();
+            return;
+        }
+        if (turner == null) {
+            turner = new android.view.OrientationEventListener(this, android.hardware.SensorManager.SENSOR_DELAY_UI) {
+                @Override public void onOrientationChanged(int angle) {
+                    int now = turn.feed(angle, android.os.SystemClock.elapsedRealtime());
+                    if (now == Turn.NONE || !upright || isInPictureInPictureMode()) return;
+                    boolean side = now == Turn.SIDEWAYS;
+                    if (side == turnedSideways) return;
+                    turnedSideways = side;
+                    orient();
+                }
+            };
+        }
+        if (turner.canDetectOrientation()) turner.enable();
     }
 
     /** Turned round: back to the guide when turning it on its side opened this (and upright leaves); else the picture's shape. */
@@ -377,6 +438,16 @@ public class PlayerActivity extends AppCompatActivity {
         }
         if (panelShown()) centreStrip();
         if (tilesShown()) drawTile(false);
+        if (land) showPipQuick();
+        else fade(pipQuick, false);
+    }
+
+    /** The small window's button, for a few seconds: on its side only, while there is a small window to go into. */
+    private void showPipQuick() {
+        if (pipQuick == null || !landscape || !pipSupported() || isInPictureInPictureMode()) return;
+        fade(pipQuick, true);
+        h.removeCallbacks(hidePipQuick);
+        h.postDelayed(hidePipQuick, PIP_QUICK_MS);
     }
 
     // ---- playing ----------------------------------------------------------------------------------------------
@@ -598,6 +669,7 @@ public class PlayerActivity extends AppCompatActivity {
         if (cur == null || isInPictureInPictureMode()) return;
         if (style == TileKind.Style.PANEL) showPanel();
         else showTile();
+        showPipQuick();
     }
 
     /** The info tile for the programme on now; the game, the film's details and the posters follow as they are read. */
@@ -810,6 +882,8 @@ public class PlayerActivity extends AppCompatActivity {
         fade(panel, false);
         fade(tiles, false);
         fade(top, false);
+        h.removeCallbacks(hidePipQuick);
+        fade(pipQuick, false);
     }
 
     private boolean overlayShown() {
@@ -1590,6 +1664,13 @@ public class PlayerActivity extends AppCompatActivity {
         top.setVisibility(View.GONE);
         root.addView(top, new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.END));
 
+        // On its side: the small window a tap away, under the buttons at the top right.
+        pipQuick = pipQuickButton(this, v -> enterPip());
+        FrameLayout.LayoutParams qp = new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.END);
+        qp.topMargin = Ui.dp(this, 76);
+        qp.rightMargin = Ui.dp(this, 20);
+        root.addView(pipQuick, qp);
+
         // The panel and the buttons kept clear of the camera's cutout (the picture itself goes under it).
         extras = new PlayerExtras(this, root, pb, new PlayerExtras.Host() {
             @Override public Channel current() { return cur; }
@@ -1635,6 +1716,12 @@ public class PlayerActivity extends AppCompatActivity {
         tp.rightMargin = cut.right;
         tp.leftMargin = cut.left;
         top.setLayoutParams(tp);
+        if (pipQuick != null) {
+            FrameLayout.LayoutParams qp = (FrameLayout.LayoutParams) pipQuick.getLayoutParams();
+            qp.topMargin = cut.top + Ui.dp(this, 76);
+            qp.rightMargin = cut.right + Ui.dp(this, 20);
+            pipQuick.setLayoutParams(qp);
+        }
         if (hint != null) hint.setPadding(cut.left, cut.top, cut.right, cut.bottom);
         tiles.setPadding(cut.left, cut.top, cut.right, cut.bottom);
     }
@@ -1740,6 +1827,34 @@ public class PlayerActivity extends AppCompatActivity {
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(Ui.dp(this, 48), Ui.dp(this, 48));
         lp.leftMargin = Ui.dp(this, 8);
         b.setLayoutParams(lp);
+        return b;
+    }
+
+    /** "Picture in picture" as a pill with its icon: into the small window at once. */
+    static View pipQuickButton(Context c, View.OnClickListener tap) {
+        LinearLayout b = new LinearLayout(c);
+        b.setOrientation(LinearLayout.HORIZONTAL);
+        b.setGravity(Gravity.CENTER_VERTICAL);
+        b.setPadding(Ui.dp(c, 14), 0, Ui.dp(c, 18), 0);
+        b.setMinimumHeight(Ui.dp(c, 48));
+        android.graphics.drawable.GradientDrawable g = new android.graphics.drawable.GradientDrawable();
+        g.setColor(0xD90B0C21);
+        g.setCornerRadius(Ui.dp(c, 24));
+        g.setStroke(Math.max(1, Ui.dp(c, 1)), 0x59FFFFFF);
+        b.setBackground(new android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf(0x33FFFFFF), g, null));
+        ImageView icon = new ImageView(c);
+        icon.setImageResource(R.drawable.live_ic_pip);
+        icon.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        b.addView(icon, new LinearLayout.LayoutParams(Ui.dp(c, 22), Ui.dp(c, 22)));
+        TextView t = Ui.text(c, c.getString(R.string.live_pip), 14, Ui.TEXT, true);
+        t.setPadding(Ui.dp(c, 10), 0, 0, 0);
+        t.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        b.addView(t);
+        b.setContentDescription(c.getString(R.string.live_pip));
+        b.setClickable(true);
+        b.setFocusable(true);
+        b.setOnClickListener(tap);
+        b.setVisibility(View.GONE);
         return b;
     }
 }

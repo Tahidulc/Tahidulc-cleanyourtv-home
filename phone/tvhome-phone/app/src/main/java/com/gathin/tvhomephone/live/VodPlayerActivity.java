@@ -71,7 +71,9 @@ public final class VodPlayerActivity extends AppCompatActivity {
     /** Its subtitles: the stream's own, or a file from OpenSubtitles. */
     private VodSubtitles subs;
     /** The information bar: the name, then where it plays from and the picture's and sound's marks. */
-    private LinearLayout infoBar, tagRow, topRight;
+    private LinearLayout infoBar, topRight;
+    /** Where it plays from, then the picture's and sound's marks (Marks), on to a second line when they don't fit. */
+    private Marks.Flow tagRow;
     private View nextCard;
     /** The sleep timer: when it stops it (0: off), or at the end of this one. */
     private long sleepAt;
@@ -177,8 +179,7 @@ public final class VodPlayerActivity extends AppCompatActivity {
         title.setShadowLayer(Ui.dp(this, 4), 0, 0, 0xCC000000);
         title.setMaxLines(2);
         infoBar.addView(title);
-        tagRow = new LinearLayout(this);
-        tagRow.setGravity(Gravity.CENTER_VERTICAL);
+        tagRow = new Marks.Flow(this, Ui.dp(this, 6), Ui.dp(this, 5));
         LinearLayout.LayoutParams trp = new LinearLayout.LayoutParams(-2, -2);
         trp.topMargin = Ui.dp(this, 6);
         infoBar.addView(tagRow, trp);
@@ -352,16 +353,17 @@ public final class VodPlayerActivity extends AppCompatActivity {
         if (tagRow == null) return;
         tagRow.removeAllViews();
         if (plays.size() > 1 || !labelOf(plays.get(playing), playing).startsWith("Source ")) {
-            addTag(labelOf(plays.get(playing), playing), false);
+            addTag(labelOf(plays.get(playing), playing));
         }
+        java.util.List<Marks.Mark> marks = new java.util.ArrayList<>();
         if (player != null) {
-            String v = MediaTags.video(player.getVideoFormat()), hdr = MediaTags.hdr(player.getVideoFormat()),
-                    a = MediaTags.audio(player.getAudioFormat());
-            if (!v.isEmpty()) addTag(v, true);
-            if (!hdr.isEmpty()) addTag(hdr, true);
-            if (!a.isEmpty()) addTag(a, true);
+            marks.addAll(Marks.of(MediaTags.video(player.getVideoFormat()), false, MediaTags.hdr(player.getVideoFormat()),
+                    MediaTags.audio(player.getAudioFormat()), false));
         }
-        if (subs != null && subs.hasOwn()) addTag("CC", true);
+        if (subs != null && subs.hasOwn()) marks.add(new Marks.Mark(0, "CC", "Subtitles"));
+        // The same marks as Live TV's, with the logos of the formats that have them (4K UHD, Dolby Vision, Dolby Atmos…).
+        for (Marks.Mark m : marks) tagRow.addView(Marks.box(this, m, Ui.dp(this, 24), 12f));
+        tagRow.setContentDescription(Marks.spoken(marks));
     }
 
     /** The CC button lit while subtitles are on, and the information bar's marks again. */
@@ -371,14 +373,15 @@ public final class VodPlayerActivity extends AppCompatActivity {
         showTags();
     }
 
-    private void addTag(String words, boolean boxed) {
+    /** Where it plays from ("Backup · HD"), on a dark tag before the marks. */
+    private void addTag(String words) {
         TextView t = Ui.text(this, words, 12, Ui.TEXT, true);
         t.setPadding(Ui.dp(this, 7), Ui.dp(this, 2), Ui.dp(this, 7), Ui.dp(this, 2));
-        t.setBackground(boxed ? Ui.ring(this, 0x33000000, 0xE6FFFFFF, 1, 4) : Ui.round(this, 0x99000000, 4));
-        t.setShadowLayer(boxed ? 0 : Ui.dp(this, 2), 0, 0, 0xCC000000);
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, -2);
-        lp.rightMargin = Ui.dp(this, 6);
-        tagRow.addView(t, lp);
+        t.setBackground(Ui.round(this, 0x99000000, 4));
+        t.setShadowLayer(Ui.dp(this, 2), 0, 0, 0xCC000000);
+        t.setMinHeight(Ui.dp(this, 24));
+        t.setGravity(Gravity.CENTER_VERTICAL);
+        tagRow.addView(t);
     }
 
     // ---- the picture's shape, which way round, the small window -------------------------------------------------

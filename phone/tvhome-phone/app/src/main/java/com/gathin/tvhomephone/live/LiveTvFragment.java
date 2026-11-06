@@ -80,6 +80,9 @@ public class LiveTvFragment extends Fragment {
     private boolean tablet, listView, searching;
     /** Upright phones: the picture is open at the top; turned on its side while it played (so: full screen). */
     private boolean inlineOpen, autoFull;
+    /** The phone turned on its side with its rotation locked (watchTurns). */
+    private final Turn turn = new Turn();
+    private android.view.OrientationEventListener turner;
     /**
      * The header over the guide was folded away before the page was made again (turned round): kept only while the tab
      * is open, carried through a turn on its side, where nothing folds.
@@ -767,6 +770,16 @@ public class LiveTvFragment extends Fragment {
         }
     }
 
+    @Override public void onResume() {
+        super.onResume();
+        watchTurns(true);
+    }
+
+    @Override public void onPause() {
+        watchTurns(false);
+        super.onPause();
+    }
+
     @Override public void onStop() {
         lib.removeListener(changed);
         h.removeCallbacks(tick);
@@ -1086,12 +1099,50 @@ public class LiveTvFragment extends Fragment {
         if (fold != null) fold.setShut(false, true);
     }
 
-    /** Full screen on this channel; the guide gets the stream back after (auto: opened by turning on its side). */
+    /**
+     * Full screen on this channel; the guide gets the stream back after. auto: opened by turning the phone on its side,
+     * so it opens on its side; otherwise, from a phone held upright, it opens upright.
+     */
     private void fullScreen(Channel ch, boolean auto) {
         if (ch == null || !isAdded()) return;
         stopped(false);
         PlayerActivity.start(requireContext(), ch.key, searching || group == null || SportGuide.GROUP.equals(group) ? Library.ALL : group,
-                true, auto);
+                true, auto, !auto && mode == COMPACT && !tablet);
+    }
+
+    // ---- turning the phone on its side ----------------------------------------------------------------------------
+
+    /**
+     * With the phone's rotation locked the page doesn't turn round, so turning the phone on its side while a channel
+     * plays in the guide's picture is watched for here (Turn) and goes full screen on its side, as it does when the
+     * page turns round with rotation on.
+     */
+    private void watchTurns(boolean on) {
+        if (!on || tablet) {
+            if (turner != null) turner.disable();
+            return;
+        }
+        Context c = requireContext();
+        if (turner == null) {
+            turner = new android.view.OrientationEventListener(c, android.hardware.SensorManager.SENSOR_DELAY_UI) {
+                @Override public void onOrientationChanged(int angle) {
+                    if (turn.feed(angle, android.os.SystemClock.elapsedRealtime()) != Turn.SIDEWAYS) return;
+                    if (!isResumed() || mode != COMPACT || rotationOn()) return;
+                    if (pb.live() && inline.live() && !pb.paused()) fullScreen(inline.channel(), true);
+                }
+            };
+        }
+        if (turner.canDetectOrientation()) turner.enable();
+    }
+
+    /** Whether the phone turns the screen round by itself (its auto-rotate is on). */
+    private boolean rotationOn() {
+        try {
+            return android.provider.Settings.System.getInt(requireContext().getContentResolver(),
+                    android.provider.Settings.System.ACCELEROMETER_ROTATION, 0) == 1;
+        } catch (RuntimeException e) {
+            return true;
+        }
     }
 
     private Inline.Listener inlineListener() {

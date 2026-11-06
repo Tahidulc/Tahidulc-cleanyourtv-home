@@ -132,6 +132,17 @@ flicking past doesn't add it. Tap plays it again from where it was left, or goes
 has finished opens its match page. Hold one to take it off. It is kept on this phone only, and goes when the
 playlists are removed.
 
+Full screen upright or on its side, the small window a tap away, and the marks with their logos (4.6): the guide's
+full screen button (or tapping the picture again, or swiping it up) opens full screen upright, with the picture
+across the width. Turn the phone on its side there and it goes on its side, and back upright again. Turning the
+phone on its side on the guide while a channel plays goes full screen on its side, even with the phone's rotation
+locked. On its side, a "Picture in picture" button comes up under the buttons at the top right for a few seconds
+(and again with a tap): one press and the channel goes into the small window. The information panel's picture and
+sound marks now sit under the programme's title, where they fit, and on to a second line rather than out of the box:
+4K UHD, 1080p HD and the rest in words, Dolby Vision, HDR10, HDR10+, Dolby Atmos and Dolby as their logos (the TVs'),
+the channels (5.1) beside Dolby's, and S for subtitles. They show on the film and series panels too, upright as
+well as on its side, and the same marks are on the film and episode player's information bar.
+
 Subtitles (CC in the film's player): the film's or episode's own, from your playlist's stream, come first, in the
 languages you choose (Settings, Subtitles, in order). When it has none, OpenSubtitles.com is looked in by the title's
 TMDB id (the series' with its season and episode), best first: your languages, the ones that fit the copy playing (its

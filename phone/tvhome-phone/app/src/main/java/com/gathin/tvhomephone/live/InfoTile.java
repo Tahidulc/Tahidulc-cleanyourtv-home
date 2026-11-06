@@ -147,8 +147,6 @@ final class InfoTile {
             first.setGravity(Gravity.CENTER_VERTICAL);
             if (i.number > 0) first.addView(k.text(String.valueOf(i.number), 28, WHITE, 800));
             first.addView(k.logo(i, 64, 30), k.margins(0, 4, 0, 0, 64, 30));
-            View marks = k.badges(i);
-            if (marks != null) first.addView(marks, k.margins(0, 6, 0, 0, -2, -2));
             ribbon.addView(first, new LinearLayout.LayoutParams(k.dp(86), -1));
             ribbon.addView(k.divider(true), k.dividerParams(true));
             ribbon.addView(nowBlock(k, i, now), new LinearLayout.LayoutParams(0, -2, 1f));
@@ -193,6 +191,9 @@ final class InfoTile {
             m.setMaxLines(1);
             col.addView(m, k.margins(0, 3, 0, 0, -1, -2));
         }
+        // The picture and the sound (4K UHD, Dolby Vision, Dolby Atmos, S…), with the room to fit.
+        View marks = k.badges(i);
+        if (marks != null) col.addView(marks, k.margins(0, 8, 0, 0, -1, -2));
         if (i.onNow && i.stop > i.start) {
             LinearLayout line = k.row();
             line.addView(k.text(Ui.clock(i.start), 12, 0xFFCFD3EC, 600));
@@ -293,6 +294,8 @@ final class InfoTile {
             m.setMaxLines(1);
             card.addView(m, k.margins(0, 10, 0, 0, -1, -2));
         }
+        View marks = k.badges(i);
+        if (marks != null) card.addView(marks, k.margins(0, meta.isEmpty() ? 10 : 8, 0, 0, -1, -2));
         HorizontalScrollView hs = new HorizontalScrollView(c);
         hs.setHorizontalScrollBarEnabled(false);
         LinearLayout buttons = k.row();
@@ -743,6 +746,8 @@ final class InfoTile {
         String meta = join(i.year, i.genres, i.rating, i.certificate);
         if (meta.isEmpty()) meta = c.getString(R.string.tile_film);
         col.addView(k.text(meta, 14, 0xFFE9DDCB, 500), k.margins(0, 8, 0, 0, -1, -2));
+        View marks = k.badges(i);
+        if (marks != null) col.addView(marks, k.margins(0, 10, 0, 0, -1, -2));
         String words = !i.desc.isEmpty() ? i.desc : i.overview;
         if (!words.isEmpty()) {
             TextView d = k.text(words, k.wide ? 15 : 14, 0xFFF3ECDF, 400);
@@ -1091,28 +1096,12 @@ final class InfoTile {
         }
 
         /**
-         * The picture (4K, 1080p, 720p, SD; HD when it isn't read yet), HDR, the sound and S (subtitles) in outlined
-         * boxes, as the TV marks them, from the stream itself; null for none.
+         * The picture (4K UHD, 1080p HD, 720p HD, SD; HD when it isn't read yet), HDR, the sound and S (subtitles) in
+         * outlined boxes of one height, as the TV marks them, with the logos of the formats that have them (Marks),
+         * from the stream itself; on to a second line rather than out of the box; null for none.
          */
         View badges(TileData.Info i) {
-            String video = i.video == null || i.video.isEmpty() ? (i.hd ? "HD" : "") : i.video;
-            String hdr = i.hdr == null ? "" : i.hdr, audio = i.audio == null ? "" : i.audio;
-            if (video.isEmpty() && hdr.isEmpty() && audio.isEmpty() && !i.subtitles) return null;
-            LinearLayout b = row();
-            if (!video.isEmpty()) b.addView(mark(video), margins(0, 0, 6, 0, -2, -2));
-            if (!hdr.isEmpty()) b.addView(mark(hdr), margins(0, 0, 6, 0, -2, -2));
-            if (!audio.isEmpty()) b.addView(mark(audio), margins(0, 0, 6, 0, -2, -2));
-            if (i.subtitles) b.addView(mark("S"), margins(0, 0, 6, 0, -2, -2));
-            return b;
-        }
-
-        private TextView mark(String s) {
-            TextView t = text(s, 10, WHITE, 800);
-            t.setPadding(dp(5), dp(1), dp(5), dp(1));
-            GradientDrawable g = fill(0, 4);
-            g.setStroke(Math.max(1, Math.round(dp(1.5f))), 0xBFFFFFFF);
-            t.setBackground(g);
-            return t;
+            return Marks.row(c, Marks.of(i.video, i.hd, i.hdr, i.audio, i.subtitles), dp(22), 11f * scale, dp(6));
         }
 
         TextView pill(String s, boolean primary, int heightDp) {
