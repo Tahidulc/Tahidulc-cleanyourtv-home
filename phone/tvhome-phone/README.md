@@ -123,6 +123,15 @@ one of the playlist's own, while the playlist still has it), and the channel you
 guide's picture as the tab opens, or as you come back to the app. Close the picture with ✕ and it waits instead,
 paused until tapped, until you next play something.
 
+Recently watched on Home (4.5): under the scores box, your clubs' games and the latest alerts, which stay at the
+top and show at once, comes everything watched on this phone, newest first and all kinds together: films and
+episodes from your playlists (the poster, how far in, or the next episode after one watched to its end), the games
+watched on Live TV (both crests and the score as it is now or as it ended, LIVE while it is on) and other
+programmes (the channel's logo, the programme, News, Film or TV). A channel counts once it has played a minute, so
+flicking past doesn't add it. Tap plays it again from where it was left, or goes back to the channel; a game that
+has finished opens its match page. Hold one to take it off. It is kept on this phone only, and goes when the
+playlists are removed.
+
 Subtitles (CC in the film's player): the film's or episode's own, from your playlist's stream, come first, in the
 languages you choose (Settings, Subtitles, in order). When it has none, OpenSubtitles.com is looked in by the title's
 TMDB id (the series' with its season and episode), best first: your languages, the ones that fit the copy playing (its

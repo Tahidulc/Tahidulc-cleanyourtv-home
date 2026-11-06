@@ -91,6 +91,13 @@ final class Playback {
     private boolean asHls, firstFrame;
     private Host front, standby;
     private final Runnable retry = this::prepare;
+    /**
+     * Home's Recently watched: a channel counts once it has played WATCHED_AFTER (zapping past doesn't), then the
+     * programme on it is looked at again every WATCHED_EVERY while it plays on (Watched keeps each programme once).
+     */
+    private static final long WATCHED_AFTER = 60_000L, WATCHED_EVERY = 60_000L;
+    private boolean watchPosted;
+    private final Runnable watchTick = this::watchTick;
     private final Runnable orphan = () -> {
         if (front == null) stop();
     };
@@ -213,6 +220,8 @@ final class Playback {
         player.setTrackSelectionParameters(player.getTrackSelectionParameters().buildUpon().clearOverrides().build());
         remember(ch);
         Picks.watched(app, ch.key);
+        h.removeCallbacks(watchTick);
+        watchPosted = false;
         prepare();
     }
 
@@ -289,6 +298,8 @@ final class Playback {
     void stop() {
         h.removeCallbacks(retry);
         h.removeCallbacks(orphan);
+        h.removeCallbacks(watchTick);
+        watchPosted = false;
         h.removeCallbacks(stallCheck);
         h.removeCallbacks(upCheck);
         Timeshift.get(app).pause();
@@ -353,7 +364,26 @@ final class Playback {
 
     private void set(int s) {
         state = s;
+        if (s == PLAYING && !watchPosted) {
+            watchPosted = true;
+            h.postDelayed(watchTick, WATCHED_AFTER);
+        }
         if (front != null) front.onState(s);
+    }
+
+    /** The channel has played a while: its programme kept for Home's Recently watched, then again while it plays on. */
+    private void watchTick() {
+        watchPosted = false;
+        if (player == null || cur == null || !(state == PLAYING || state == LOADING || state == RECONNECTING)) return;
+        if (state == PLAYING && player.getPlayWhenReady() && !replaying) {
+            try {
+                Watched.live(app, cur);
+            } catch (RuntimeException ignored) {
+                // not kept this time
+            }
+        }
+        watchPosted = true;
+        h.postDelayed(watchTick, WATCHED_EVERY);
     }
 
     /** The version of the channel at the quality playing (the channel itself when it has no other). */

@@ -47,7 +47,8 @@ import java.util.Set;
  * broadcast bug) to swipe between today's games, your clubs and live ones first, moving on by itself every 8 seconds
  * as the TV's does (held while a finger is on it); your clubs' games today, each under its competition's logo, with
  * where they are on (the channel's logo; a link into Live TV when the playlist has the channel); the latest alerts;
- * then the watching cards.
+ * Recently watched (films, episodes, games and programmes watched on this phone, all together, newest first); then the
+ * watching cards from the TVs.
  */
 public class HomeFragment extends Fragment {
     private TextView date, clock, weather, count;
@@ -56,6 +57,8 @@ public class HomeFragment extends Fragment {
     private final java.util.Set<String> mineIds = new java.util.HashSet<>();
     private final List<Game> shown = new ArrayList<>();
     private LinearLayout today, latest;
+    /** Recently watched, under the alerts. */
+    private RecentRow recent;
     private SwipeRefreshLayout swipe;
     private boolean visible, touching;
     private int gen;
@@ -88,6 +91,8 @@ public class HomeFragment extends Fragment {
         LinearLayout col = Ui.column(c);
         int pad = Ui.dp(c, 18);
         col.setPadding(pad, pad, pad, pad);
+        // Recently watched runs out past the sides to the screen's edges.
+        col.setClipToPadding(false);
         scroll.addView(col);
         swipe.addView(scroll);
         swipe.setOnRefreshListener(this::load);
@@ -145,6 +150,9 @@ public class HomeFragment extends Fragment {
         col.addView(Ui.heading(c, "Latest alerts", c.getColor(R.color.sports)));
         latest = Ui.column(c);
         col.addView(latest, Ui.matchWrap());
+        recent = new RecentRow(this);
+        col.addView(recent.view(), RecentRow.layoutParams(c));
+        recent.refresh();
         col.addView(com.gathin.tvhomephone.watch.HomeWatch.build(this, col));
         stamp();
         return swipe;
@@ -154,6 +162,9 @@ public class HomeFragment extends Fragment {
         super.onResume();
         visible = true;
         touching = false;
+        // The alerts at once, and back from watching something it is first in Recently watched.
+        alerts(requireContext());
+        if (recent != null) recent.refresh();
         App.main.post(tick);
         App.main.post(reread);
         autoLater();
@@ -249,10 +260,17 @@ public class HomeFragment extends Fragment {
             List<String> channels = new ArrayList<>();
             for (Game g : mine) channels.add(g.state == Game.POST ? null : Channels.best(app, g));
             Object[] w = Weather.now();
+            // The games in Recently watched, their scores as they are now (or as they ended).
+            try {
+                com.gathin.tvhomephone.live.Watched.refreshGames(app, all);
+            } catch (RuntimeException ignored) {
+                // as they were
+            }
             App.main.post(() -> {
                 if (my != gen || !isAdded()) return;
                 swipe.setRefreshing(false);
                 show(bugList, mine, channels, w);
+                recent.refresh();
             });
         });
     }
@@ -285,6 +303,15 @@ public class HomeFragment extends Fragment {
             cards.add(card);
         }
         GameRow.addAll(today, cards);
+        alerts(c);
+    }
+
+    /**
+     * The latest alerts, at the top under the clubs' games: from this phone's own log, so straight away (before the
+     * scores are read) and again with every read.
+     */
+    private void alerts(Context c) {
+        if (latest == null) return;
         latest.removeAllViews();
         JSONArray log = AlertLog.list(c);
         if (log.length() == 0) Ui.empty(latest, "Goals, cards and results for your clubs come here and to your notifications.");

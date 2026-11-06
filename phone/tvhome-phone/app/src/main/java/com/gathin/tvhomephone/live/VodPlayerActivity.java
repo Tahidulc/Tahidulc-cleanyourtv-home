@@ -519,7 +519,12 @@ public final class VodPlayerActivity extends AppCompatActivity {
         if (pos > RESUME_AFTER && (dur <= 0 || dur - pos > END_GAP)) e.putLong(resumeKey, pos);
         else if (dur > 0 && dur - pos <= END_GAP) e.remove(resumeKey);
         e.apply();
-        if (pos > RESUME_AFTER || (dur > 0 && dur - pos <= END_GAP)) VodHistory.record(this, entry(pos, dur));
+        if (pos > RESUME_AFTER || (dur > 0 && dur - pos <= END_GAP)) {
+            VodHistory.Entry v = entry(pos, dur);
+            VodHistory.record(this, v);
+            // And Home's Recently watched, played to its end or not.
+            Watched.vod(this, v, dur > 0 && dur - pos <= END_GAP);
+        }
         player.pause();
     }
 

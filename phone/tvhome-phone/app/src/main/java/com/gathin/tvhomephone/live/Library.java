@@ -500,12 +500,16 @@ public final class Library {
         });
     }
 
-    /** Everything removed from this phone: the source, the channels, the guide, the favourites, the hidden channels. */
+    /**
+     * Everything removed from this phone: the source, the channels, the guide, the favourites, the hidden channels and
+     * Home's Recently watched.
+     */
     public void clear() {
         Source.clear(app);
         Sources.clear(app);
         Vod.clear(app);
         Picks.clear(app);
+        Watched.clear(app);
         Hidden.clear(app);
         Groups.clear(app);
         Playback.get(app).forget();
