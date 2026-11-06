@@ -18,9 +18,10 @@ import java.util.List;
 
 /**
  * The picture's and sound's marks, as the TVs draw them: each in an outlined box of one height, side by side, and on
- * to a second line when the room runs out rather than off the edge. The formats with logos of their own show the logo,
- * in white, in the box: Dolby Vision, HDR10, HDR10+, Dolby Atmos, and Dolby for Dolby's other sound with its channels
- * beside it. The rest are worded: 4K UHD, 1080p HD, 720p HD, SD, HLG, AAC Stereo, DTS 5.1, and S for subtitles.
+ * to a second line when the room runs out rather than off the edge. Each shows its logo, in white, in the box: the
+ * picture's own (4K Ultra HD, HD 1080p, HD 720p, HD, SD: a chip with its letters cut out, then its words), HDR's
+ * (Dolby Vision, HDR10, HDR10+, HDR HLG), and the sound's (Dolby Atmos, and Dolby for Dolby's other sound with its
+ * channels beside it). The rest are worded: AAC Stereo, DTS 5.1, 5.1, and S for subtitles.
  */
 final class Marks {
     private Marks() {}
@@ -44,8 +45,8 @@ final class Marks {
     /** The marks for a stream, in order: the picture, its HDR, the sound, subtitles. Pure. */
     static List<Mark> of(String video, boolean hd, String hdr, String audio, boolean subtitles) {
         List<Mark> out = new ArrayList<>();
-        String p = picture(video, hd);
-        if (!p.isEmpty()) out.add(new Mark(0, p, p.replace("UHD", "Ultra HD")));
+        Mark p = pictureMark(video, hd);
+        if (p != null) out.add(p);
         Mark h = hdr(hdr);
         if (h != null) out.add(h);
         out.addAll(sound(audio));
@@ -65,13 +66,28 @@ final class Marks {
         }
     }
 
-    /** The HDR's mark: Dolby Vision's, HDR10's and HDR10+'s logos, HLG in words; null for none. Pure. */
+    /** The picture's mark: its logo (4K Ultra HD, HD 1080p, HD 720p, HD, SD), its words otherwise; null when not known. Pure. */
+    static Mark pictureMark(String video, boolean hd) {
+        String words = picture(video, hd);
+        switch (words) {
+            case "": return null;
+            case "4K UHD": return new Mark(R.drawable.fmt_4k, words, "4K Ultra HD");
+            case "1080p HD": return new Mark(R.drawable.fmt_1080, words, "HD 1080p");
+            case "720p HD": return new Mark(R.drawable.fmt_720, words, "HD 720p");
+            case "HD": return new Mark(R.drawable.fmt_hd, words, "HD");
+            case "SD": return new Mark(R.drawable.fmt_sd, words, "Standard definition");
+            default: return new Mark(0, words, words);
+        }
+    }
+
+    /** The HDR's mark: Dolby Vision's, HDR10's, HDR10+'s and HLG's logos; null for none. Pure. */
     static Mark hdr(String hdr) {
         String h = hdr == null ? "" : hdr.trim();
         if (h.isEmpty()) return null;
         if (h.equals("Dolby Vision")) return new Mark(R.drawable.fmt_dolby_vision, h, h);
         if (h.equals("HDR10+")) return new Mark(R.drawable.fmt_hdr10plus, h, "HDR10 plus");
         if (h.equals("HDR10")) return new Mark(R.drawable.fmt_hdr10, h, h);
+        if (h.equals("HLG")) return new Mark(R.drawable.fmt_hlg, h, "HDR HLG");
         return new Mark(0, h, h);
     }
 
@@ -146,9 +162,9 @@ final class Marks {
         b.setBackground(g);
         b.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
         if (m.logo != 0) {
-            // Dolby's logos are long and low: a little lower in the box than HDR10's, which carry their small "10".
-            boolean dolby = m.logo != R.drawable.fmt_hdr10 && m.logo != R.drawable.fmt_hdr10plus;
-            int logoPx = Math.round(boxPx * (dolby ? 0.6f : 0.8f));
+            // Dolby's logos are long and low; the picture's chips a little taller, so their words read as large as
+            // Dolby's; HDR10's tallest, to carry their small "10".
+            int logoPx = Math.round(boxPx * logoHeight(m.logo));
             b.setPadding(Math.round(boxPx * 0.3f), 0, Math.round(boxPx * 0.3f), 0);
             ImageView v = new ImageView(c);
             v.setImageResource(m.logo);
@@ -170,6 +186,13 @@ final class Marks {
             b.addView(t, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         }
         return b;
+    }
+
+    /** How much of the box's height a logo takes. */
+    private static float logoHeight(int logo) {
+        if (logo == R.drawable.fmt_hdr10 || logo == R.drawable.fmt_hdr10plus) return 0.8f;
+        if (logo == R.drawable.fmt_dolby || logo == R.drawable.fmt_dolby_atmos || logo == R.drawable.fmt_dolby_vision) return 0.6f;
+        return 0.7f;
     }
 
     /** Its children side by side, gapX apart, on to the next line (gapY below) when the next doesn't fit. */

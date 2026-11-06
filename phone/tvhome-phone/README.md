@@ -143,6 +143,11 @@ sound marks now sit under the programme's title, where they fit, and on to a sec
 the channels (5.1) beside Dolby's, and S for subtitles. They show on the film and series panels too, upright as
 well as on its side, and the same marks are on the film and episode player's information bar.
 
+The picture's quality as icons too (4.7): the information panel's and the film player's picture mark is an icon
+now, as Dolby's and HDR10's are: 4K Ultra HD, HD 1080p, HD 720p, HD (before the stream has said which) and SD, each a
+white chip with its letters cut out and its words beside it, and HDR HLG the same way. They sit in the same outlined
+boxes as the rest, one height for all.
+
 Subtitles (CC in the film's player): the film's or episode's own, from your playlist's stream, come first, in the
 languages you choose (Settings, Subtitles, in order). When it has none, OpenSubtitles.com is looked in by the title's
 TMDB id (the series' with its season and episode), best first: your languages, the ones that fit the copy playing (its

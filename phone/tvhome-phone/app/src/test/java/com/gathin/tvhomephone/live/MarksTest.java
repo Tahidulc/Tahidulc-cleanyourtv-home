@@ -25,11 +25,22 @@ public class MarksTest {
         assertEquals("", Marks.picture(null, false));
     }
 
+    @Test public void thePicturesQualityIsItsIcon() {
+        assertEquals("[4K Ultra HD]", Marks.pictureMark("4K", true).toString());
+        assertEquals("[HD 1080p]", Marks.pictureMark("1080p", true).toString());
+        assertEquals("[HD 720p]", Marks.pictureMark("720p", true).toString());
+        assertEquals("[Standard definition]", Marks.pictureMark("SD", false).toString());
+        assertEquals("[HD]", Marks.pictureMark("", true).toString());
+        assertNull(Marks.pictureMark("", false));
+        // Anything else the stream might say, in words.
+        assertEquals("8K", Marks.pictureMark("8K", true).toString());
+    }
+
     @Test public void hdrFormatsWithLogosShowThem() {
         assertEquals("[Dolby Vision]", Marks.hdr("Dolby Vision").toString());
         assertEquals("[HDR10]", Marks.hdr("HDR10").toString());
         assertEquals("[HDR10 plus]", Marks.hdr("HDR10+").toString());
-        assertEquals("HLG", Marks.hdr("HLG").toString());
+        assertEquals("[HDR HLG]", Marks.hdr("HLG").toString());
         assertNull(Marks.hdr(""));
         assertNull(Marks.hdr(null));
     }
@@ -56,10 +67,10 @@ public class MarksTest {
 
     @Test public void aStreamsMarksComeInTheTvsOrder() {
         List<Marks.Mark> m = Marks.of("4K", true, "Dolby Vision", "Dolby Atmos", true);
-        assertEquals("4K UHD [Dolby Vision] [Dolby Atmos] S", words(m));
+        assertEquals("[4K Ultra HD] [Dolby Vision] [Dolby Atmos] S", words(m));
         assertEquals("4K Ultra HD, Dolby Vision, Dolby Atmos, Subtitles", Marks.spoken(m));
-        assertEquals("1080p HD [Dolby Digital 5.1] 5.1", words(Marks.of("1080p", true, "", "Dolby Digital 5.1", false)));
-        assertEquals("HD", words(Marks.of("", true, null, null, false)));
+        assertEquals("[HD 1080p] [Dolby Digital 5.1] 5.1", words(Marks.of("1080p", true, "", "Dolby Digital 5.1", false)));
+        assertEquals("[HD]", words(Marks.of("", true, null, null, false)));
         assertEquals("", words(Marks.of("", false, "", "", false)));
     }
 }
