@@ -44,12 +44,14 @@ final class FrameSampler {
         if (busy || surface == null || into == null) return false;
         long at = System.currentTimeMillis();
         if (surface instanceof TextureView) {
-            Bitmap b = ((TextureView) surface).getBitmap(into);
+            Bitmap b;
+            try {
+                b = ((TextureView) surface).getBitmap(into);
+            } catch (RuntimeException e) {
+                return false;
+            }
             busy = true;
-            worker.post(() -> {
-                got.frame(b, at);
-                busy = false;
-            });
+            worker.post(() -> hand(got, b, at));
             return true;
         }
         if (!(surface instanceof SurfaceView)) return false;
@@ -57,14 +59,26 @@ final class FrameSampler {
         if (sv.getHolder().getSurface() == null || !sv.getHolder().getSurface().isValid()) return false;
         busy = true;
         try {
-            PixelCopy.request(sv, into, result -> {
-                got.frame(result == PixelCopy.SUCCESS ? into : null, at);
-                busy = false;
-            }, worker);
+            PixelCopy.request(sv, into, result -> hand(got, result == PixelCopy.SUCCESS ? into : null, at), worker);
             return true;
         } catch (RuntimeException e) {
             busy = false;
             return false;
+        }
+    }
+
+    /**
+     * The copy handed over, on the sampler's thread. Whatever goes wrong in reading it (a frame of another size, the
+     * reader's own trouble) stays here: that frame is let go and the next is taken, and the stream plays on.
+     */
+    private void hand(Got got, Bitmap b, long at) {
+        try {
+            got.frame(b, at);
+        } catch (Throwable e) {
+            // Only the kind of error (never its words).
+            android.util.Log.w("LiveTv", "frame: " + e.getClass().getSimpleName());
+        } finally {
+            busy = false;
         }
     }
 

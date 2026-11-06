@@ -16,6 +16,8 @@ public class App extends Application {
     @Override public void onCreate() {
         super.onCreate();
         app = this;
+        // An unexpected close noted (its kind and where, never its words), to be passed on (CrashNote).
+        CrashNote.install(this);
         // Each part's start-up (the sync client, the alerts), set up in their own packages.
         Startup.run(this);
     }

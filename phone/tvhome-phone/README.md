@@ -153,6 +153,13 @@ Picture in picture takes you off the app (4.8): the picture in picture button at
 screen, so the picture shows over other apps without a swipe away. The film and episode player's button does the
 same. The separate Picture in picture button that came up on its side in 4.6 has gone.
 
+The scoreboard over the channel's no longer closes the stream (4.9): the work that finds the channel's own
+scoreboard, reads its clock and covers it keeps any trouble it meets to itself (a frame it can't read is let go and
+the next one taken), so the picture plays on whatever happens there. One case could end the player: a frame still
+being read when the game was found (or the small window opened) was added to a finder already let go. If the app
+ever does close unexpectedly now, the next time it opens it says so once, with Copy details: the kind of error and
+where in the app it happened (never its words, which could hold a stream's address), to send on.
+
 Subtitles (CC in the film's player): the film's or episode's own, from your playlist's stream, come first, in the
 languages you choose (Settings, Subtitles, in order). When it has none, OpenSubtitles.com is looked in by the title's
 TMDB id (the series' with its season and episode), best first: your languages, the ones that fit the copy playing (its

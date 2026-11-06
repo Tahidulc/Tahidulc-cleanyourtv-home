@@ -28,7 +28,7 @@ final class ChannelReader {
 
     /** Reads the bitmap; false when a read is already under way (got is not called then). */
     boolean read(Bitmap b, Got got) {
-        if (busy || b == null) return false;
+        if (busy || b == null || broken) return false;
         try {
             if (reader == null) reader = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS);
             busy = true;
@@ -53,8 +53,17 @@ final class ChannelReader {
         } catch (RuntimeException e) {
             busy = false;
             return false;
+        } catch (Throwable e) {
+            // The phone can't run the reader at all (its own library, or no memory for it): not tried again this time,
+            // and the board keeps its own time instead. Never the app's end.
+            broken = true;
+            busy = false;
+            return false;
         }
     }
+
+    /** The reader couldn't run on this phone this time (see read). */
+    private static volatile boolean broken;
 
     void close() {
         if (reader != null) {

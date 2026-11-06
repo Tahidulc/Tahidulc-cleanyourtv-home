@@ -270,6 +270,10 @@ final class ScoreOverlay implements ScoreBoard.Source {
 
     /** Over the channel's scoreboard at its size when found; else top left of the picture, 30 dp high. */
     private void place() {
+        safely(this::placeNow, null);
+    }
+
+    private void placeNow() {
         float d = a.getResources().getDisplayMetrics().density;
         View frame = video.findViewById(androidx.media3.ui.R.id.exo_content_frame);
         FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) board.view.getLayoutParams();
@@ -360,14 +364,16 @@ final class ScoreOverlay implements ScoreBoard.Source {
             finder = new BugFinder(FIND_W, FIND_H);
             if (small == null) small = Bitmap.createBitmap(FIND_W, FIND_H, Bitmap.Config.ARGB_8888);
         }
+        // The finder this look adds to, held here: the game changing meanwhile (or the small window) lets it go, and
+        // this frame then counts for nothing instead of being added to no finder at all.
+        BugFinder f = finder;
         boolean asked = sampler.copy(video.surface(), small, (b, at) -> {
-            if (b != null) finder.add(FrameSampler.grey(b, 0, 0, FIND_W, FIND_H));
-            BugFinder f = finder;
-            boolean done = f != null && f.frames() >= BugFinder.ENOUGH;
+            if (b != null) f.add(FrameSampler.grey(b, 0, 0, FIND_W, FIND_H));
+            boolean done = f.frames() >= BugFinder.ENOUGH;
             BugFinder.Box found = done && scoreboard ? f.find() : null;
             BugFinder.Box mark = done && (logos || ScoreBoard.broadcast(a)) ? f.logo(found) : null;
             boolean[] outline = mark != null && ScoreBoard.broadcast(a) ? f.logoMask(mark) : null;
-            h.post(() -> {
+            h.post(() -> safely(() -> {
                 if (!started || f != finder) return;
                 if (!done) {
                     h.postDelayed(look, SAMPLE_MS);
@@ -402,10 +408,23 @@ final class ScoreOverlay implements ScoreBoard.Source {
                     if (ScoreBoard.reads(a) && !screenLoop()) readSoon(500);
                 }
                 h.postDelayed(look, found != null || box != null ? LOOK_AGAIN_MS : RETRY_MS);
-            });
+            }, () -> h.postDelayed(look, RETRY_MS)));
         });
         // No picture to copy yet: a moment later.
         if (!asked) h.postDelayed(look, 1000);
+    }
+
+    /**
+     * What came back from a frame, dealt with on the main thread; anything that goes wrong in it is left there (then
+     * again: the next try), so the scoreboard's reading never stops the stream.
+     */
+    private void safely(Runnable r, Runnable then) {
+        try {
+            r.run();
+        } catch (RuntimeException e) {
+            android.util.Log.w("LiveTv", "board: " + e.getClass().getSimpleName());
+            if (then != null && started) then.run();
+        }
     }
 
     // ---- reading the channel's clock -----------------------------------------------------------------------------
@@ -442,7 +461,7 @@ final class ScoreOverlay implements ScoreBoard.Source {
         int x = cropX, y = cropY, w = cropW, ht = cropH;
         boolean asked = sampler.copy(video.surface(), big, (b, at) -> {
             boolean turned = b != null && r.add(FrameSampler.grey(b, x, y, w, ht));
-            h.post(() -> {
+            h.post(() -> safely(() -> {
                 if (!started || r != reader) return;
                 if (turned && board.screen().minuteTurned(at)) {
                     // Matched to the second: looked at again in a few minutes, to stay so.
@@ -450,7 +469,7 @@ final class ScoreOverlay implements ScoreBoard.Source {
                     return;
                 }
                 h.postDelayed(readClock, SAMPLE_MS);
-            });
+            }, () -> h.postDelayed(this::startReading, READ_AGAIN_MS)));
         });
         if (!asked) h.postDelayed(readClock, 1000);
     }
@@ -497,12 +516,12 @@ final class ScoreOverlay implements ScoreBoard.Source {
         boolean asked = sampler.copy(video.surface(), ocrFrame, (frame, at) -> {
             Cut cut = frame == null ? null : f1 ? Cut.of(frame, 0f, 0f, 0.34f, 0.24f)
                     : rb != null ? Cut.of(frame, rb.left, rb.top, rb.right, rb.bottom) : Cut.of(frame, 0f, 0f, 1f, 0.34f);
-            h.post(() -> {
+            h.post(() -> safely(() -> {
                 if (!started || cut == null) {
                     readSoon(OCR_MS);
                     return;
                 }
-                boolean reading = ocr.read(cut.b, (lines, boxes) -> {
+                boolean reading = ocr.read(cut.b, (lines, boxes) -> safely(() -> {
                     if (!started) return;
                     if (f1) {
                         ScreenText.Reading r = ScreenText.f1(lines);
@@ -513,9 +532,9 @@ final class ScoreOverlay implements ScoreBoard.Source {
                     if (rb == null) found(lines, boxes, cut, at);
                     else football(lines, at);
                     readSoon(OCR_MS);
-                });
+                }, () -> readSoon(OCR_MS)));
                 if (!reading) readSoon(OCR_MS);
-            });
+            }, () -> readSoon(OCR_MS)));
         });
         if (!asked) readSoon(1000);
     }
@@ -527,7 +546,7 @@ final class ScoreOverlay implements ScoreBoard.Source {
     private void found(java.util.List<String> lines, java.util.List<android.graphics.Rect> boxes, Cut cut, long at) {
         lastRead = lines.isEmpty() ? "" : "looking: " + android.text.TextUtils.join(" · ", lines);
         lastReadAt = System.currentTimeMillis();
-        for (int i = 0; i < lines.size(); i++) {
+        for (int i = 0; i < Math.min(lines.size(), boxes.size()); i++) {
             // A game's clock, and this game's (not a time of day or a countdown elsewhere on the picture).
             int clock = ScreenText.football(java.util.Collections.singletonList(lines.get(i))).clock;
             if (clock < 0 || !board.screen().plausible(clock, at)) continue;
@@ -540,7 +559,7 @@ final class ScoreOverlay implements ScoreBoard.Source {
             // What is in that part now, and the box the lines in it make (to cover, when nothing better is known).
             java.util.List<String> near = new java.util.ArrayList<>();
             float ul = l, ut = t, ur = r, ub = b;
-            for (int k = 0; k < lines.size(); k++) {
+            for (int k = 0; k < Math.min(lines.size(), boxes.size()); k++) {
                 android.graphics.Rect q = boxes.get(k);
                 float ql = cut.fx(q.left), qt = cut.fy(q.top), qr = cut.fx(q.right), qb = cut.fy(q.bottom);
                 if (qr < area.left || ql > area.right || qb < area.top || qt > area.bottom) continue;
@@ -658,7 +677,7 @@ final class ScoreOverlay implements ScoreBoard.Source {
         if (small == null) small = Bitmap.createBitmap(FIND_W, FIND_H, Bitmap.Config.ARGB_8888);
         boolean asked = sampler.copy(video.surface(), small, (b, at) -> {
             float p = b == null ? -1 : w.present(FrameSampler.grey(b, 0, 0, FIND_W, FIND_H));
-            h.post(() -> {
+            h.post(() -> safely(() -> {
                 if (!started || w != breaks) return;
                 if (p >= 0) {
                     boolean on = w.add(p);
@@ -667,7 +686,7 @@ final class ScoreOverlay implements ScoreBoard.Source {
                     else if (!on && breakScreen != null && !manualBreak) endBreak(false);
                 }
                 h.postDelayed(checkBreak, 2000);
-            });
+            }, () -> h.postDelayed(checkBreak, 2000)));
         });
         if (!asked) h.postDelayed(checkBreak, 1000);
     }

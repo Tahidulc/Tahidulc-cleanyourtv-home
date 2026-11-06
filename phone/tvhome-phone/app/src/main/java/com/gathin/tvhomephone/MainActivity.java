@@ -34,6 +34,8 @@ public class MainActivity extends AppCompatActivity {
         tabs.setLabelVisibilityMode(BottomNavigationView.LABEL_VISIBILITY_LABELED);
         root.addView(tabs, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
         setContentView(root);
+        // Closed unexpectedly last time: said once, the details to copy.
+        CrashNote.offer(this);
         tabs.setOnItemSelectedListener(item -> {
             show(item.getItemId());
             return true;
