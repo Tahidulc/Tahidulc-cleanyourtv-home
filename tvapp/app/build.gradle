@@ -1,0 +1,60 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.gathin.homefieldtv'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'com.gathin.homefieldtv'
+        minSdk 26
+        targetSdk 34
+        versionCode 1
+        versionName '1.0'
+        // TVs: the ARM builds of the sound decoder only.
+        ndk {
+            abiFilters 'arm64-v8a', 'armeabi-v7a'
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            // Sideloaded onto the family's own TVs, never published: the debug key, as the phone app.
+            signingConfig signingConfigs.debug
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    testOptions {
+        unitTests.returnDefaultValues = true
+        unitTests.includeAndroidResources = true
+        unitTests.all {
+            systemProperty 'robolectric.dependency.repo.url', 'https://maven-central.storage-download.googleapis.com/maven2/'
+            // The screens' previews (PreviewTest) run only when PREVIEW_OUT names a folder for them.
+            systemProperty 'preview.out', System.getenv('PREVIEW_OUT') ?: ''
+            systemProperty 'preview.pics', System.getenv('PREVIEW_PICS') ?: ''
+            maxHeapSize = '2g'
+        }
+    }
+}
+
+dependencies {
+    implementation 'androidx.core:core:1.13.1'
+    // The player for the family's own M3U playlist or Xtream Codes login: live channels (HLS and MPEG-TS), films and
+    // episodes.
+    implementation 'androidx.media3:media3-exoplayer:1.5.0'
+    implementation 'androidx.media3:media3-exoplayer-hls:1.5.0'
+    // Sound for the channels the TV can't decode itself: Dolby Digital (AC-3, E-AC-3), MPEG-1 Layer II (MP2) and
+    // DTS. Jellyfin's build of Media3's FFmpeg extension (GPL-3.0), used only when the TV has no decoder of its own.
+    implementation 'org.jellyfin.media3:media3-ffmpeg-decoder:1.5.0+1'
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.json:json:20240303'
+    testImplementation 'org.robolectric:robolectric:4.14.1'
+}

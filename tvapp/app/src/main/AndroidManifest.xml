@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!-- A TV app only: Android TV's launcher row, the remote, no touch screen. -->
+    <uses-feature android:name="android.software.leanback" android:required="true" />
+    <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
+
+    <application
+        android:label="@string/app_name"
+        android:icon="@drawable/ic_app"
+        android:banner="@drawable/banner"
+        android:theme="@style/Theme.Homefield"
+        android:networkSecurityConfig="@xml/network_security"
+        android:allowBackup="false"
+        android:supportsRtl="true">
+
+        <activity
+            android:name=".TvActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:screenOrientation="landscape"
+            android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenSize|screenLayout|smallestScreenSize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- A film or an episode from the family's own playlist, full screen. -->
+        <activity
+            android:name=".VodActivity"
+            android:exported="false"
+            android:screenOrientation="landscape"
+            android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenSize|screenLayout|smallestScreenSize" />
+
+        <!-- A playlist added from a computer over adb, so a long login need not be typed on the remote:
+             content insert - -uri content://com.gathin.homefieldtv.setup/xtream - -bind server:s:… (see Setup). Only the
+             adb shell holds WRITE_SECURE_SETTINGS; ordinary apps cannot get it. -->
+        <provider
+            android:name=".engine.Setup"
+            android:authorities="${applicationId}.setup"
+            android:exported="true"
+            android:permission="android.permission.WRITE_SECURE_SETTINGS" />
+    </application>
+</manifest>
