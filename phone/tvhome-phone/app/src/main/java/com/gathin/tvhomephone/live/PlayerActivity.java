@@ -144,10 +144,11 @@ public class PlayerActivity extends AppCompatActivity {
     private boolean upright, turnedSideways;
     private final Turn turn = new Turn();
     private android.view.OrientationEventListener turner;
-    /** On its side: a button to go into the small window at once, for a few seconds after turning and with the controls. */
-    private View pipQuick;
-    private static final long PIP_QUICK_MS = 8000;
-    private final Runnable hidePipQuick = () -> fade(pipQuick, false);
+    /**
+     * The small window asked for with its button (not as the app is left): once the picture is in the small window the
+     * app goes to the phone's home screen, so the picture shows over other apps without a swipe away.
+     */
+    private boolean leaveOnPip;
     private Insets cut = Insets.NONE;
     private final Runnable hide = this::hideOverlay;
     /** Every half a minute: a new programme on this channel brings its tile up, as the TV's banner does. */
@@ -305,7 +306,6 @@ public class PlayerActivity extends AppCompatActivity {
         h.postDelayed(tick, TICK_MS);
         extras.start();
         replayFrom(getIntent());
-        if (landscape) showPipQuick();
         // Opened as the app was left from the Live TV guide: straight into the small window.
         if (pipNow) {
             pipNow = false;
@@ -438,16 +438,6 @@ public class PlayerActivity extends AppCompatActivity {
         }
         if (panelShown()) centreStrip();
         if (tilesShown()) drawTile(false);
-        if (land) showPipQuick();
-        else fade(pipQuick, false);
-    }
-
-    /** The small window's button, for a few seconds: on its side only, while there is a small window to go into. */
-    private void showPipQuick() {
-        if (pipQuick == null || !landscape || !pipSupported() || isInPictureInPictureMode()) return;
-        fade(pipQuick, true);
-        h.removeCallbacks(hidePipQuick);
-        h.postDelayed(hidePipQuick, PIP_QUICK_MS);
     }
 
     // ---- playing ----------------------------------------------------------------------------------------------
@@ -605,17 +595,35 @@ public class PlayerActivity extends AppCompatActivity {
         }
     }
 
-    private void enterPip() {
-        if (!pipSupported() || pb.player() == null) return;
+    /** Into the small window; false when it can't go (no small windows here, or turned off for the app). */
+    private boolean enterPip() {
+        if (!pipSupported() || pb.player() == null) return false;
         if (!pipAllowed()) {
             pipOff();
-            return;
+            return false;
         }
         try {
-            enterPictureInPictureMode(pipParams());
+            return enterPictureInPictureMode(pipParams());
         } catch (IllegalStateException e) {
             // Not allowed here (a TV, or turned off for the app): it just keeps playing full screen.
             pipOff();
+            return false;
+        }
+    }
+
+    /** The picture in picture button: into the small window, and off the app to the home screen, the picture over it. */
+    private void pipAndLeave() {
+        leaveOnPip = true;
+        if (!enterPip()) leaveOnPip = false;
+    }
+
+    /** The phone's home screen, with the small window over it. */
+    private void goHome() {
+        if (!isInPictureInPictureMode()) return;
+        try {
+            startActivity(new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        } catch (RuntimeException ignored) {
+            // no home screen to go to: the app stays behind the small window
         }
     }
 
@@ -648,6 +656,11 @@ public class PlayerActivity extends AppCompatActivity {
         extras.pip(inPip);
         if (inPip) {
             hideOverlay();
+            // Asked for with the button: off the app, so the picture is over the home screen and other apps.
+            if (leaveOnPip) {
+                leaveOnPip = false;
+                h.postDelayed(this::goHome, 150);
+            }
             if (sheet != null) sheet.dismiss();
             if (hint != null) hint.setVisibility(View.GONE);
             level.setVisibility(View.GONE);
@@ -669,7 +682,6 @@ public class PlayerActivity extends AppCompatActivity {
         if (cur == null || isInPictureInPictureMode()) return;
         if (style == TileKind.Style.PANEL) showPanel();
         else showTile();
-        showPipQuick();
     }
 
     /** The info tile for the programme on now; the game, the film's details and the posters follow as they are read. */
@@ -882,8 +894,6 @@ public class PlayerActivity extends AppCompatActivity {
         fade(panel, false);
         fade(tiles, false);
         fade(top, false);
-        h.removeCallbacks(hidePipQuick);
-        fade(pipQuick, false);
     }
 
     private boolean overlayShown() {
@@ -1240,7 +1250,7 @@ public class PlayerActivity extends AppCompatActivity {
                 });
         if (pipSupported()) action(c, box, R.drawable.live_ic_pip, R.string.live_pip, () -> {
             if (sheet != null) sheet.dismiss();
-            enterPip();
+            pipAndLeave();
         });
         if (pipSupported()) {
             boolean on = autoPip(c);
@@ -1659,17 +1669,10 @@ public class PlayerActivity extends AppCompatActivity {
         matchButton.setVisibility(View.GONE);
         top.addView(matchButton);
         top.addView(button(R.drawable.live_ic_more, R.string.live_options, v -> options()));
-        if (pipSupported()) top.addView(button(R.drawable.live_ic_pip, R.string.live_pip, v -> enterPip()));
+        if (pipSupported()) top.addView(button(R.drawable.live_ic_pip, R.string.live_pip, v -> pipAndLeave()));
         top.addView(button(R.drawable.live_ic_close, R.string.live_close, v -> close()));
         top.setVisibility(View.GONE);
         root.addView(top, new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.END));
-
-        // On its side: the small window a tap away, under the buttons at the top right.
-        pipQuick = pipQuickButton(this, v -> enterPip());
-        FrameLayout.LayoutParams qp = new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.END);
-        qp.topMargin = Ui.dp(this, 76);
-        qp.rightMargin = Ui.dp(this, 20);
-        root.addView(pipQuick, qp);
 
         // The panel and the buttons kept clear of the camera's cutout (the picture itself goes under it).
         extras = new PlayerExtras(this, root, pb, new PlayerExtras.Host() {
@@ -1716,12 +1719,6 @@ public class PlayerActivity extends AppCompatActivity {
         tp.rightMargin = cut.right;
         tp.leftMargin = cut.left;
         top.setLayoutParams(tp);
-        if (pipQuick != null) {
-            FrameLayout.LayoutParams qp = (FrameLayout.LayoutParams) pipQuick.getLayoutParams();
-            qp.topMargin = cut.top + Ui.dp(this, 76);
-            qp.rightMargin = cut.right + Ui.dp(this, 20);
-            pipQuick.setLayoutParams(qp);
-        }
         if (hint != null) hint.setPadding(cut.left, cut.top, cut.right, cut.bottom);
         tiles.setPadding(cut.left, cut.top, cut.right, cut.bottom);
     }
@@ -1827,34 +1824,6 @@ public class PlayerActivity extends AppCompatActivity {
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(Ui.dp(this, 48), Ui.dp(this, 48));
         lp.leftMargin = Ui.dp(this, 8);
         b.setLayoutParams(lp);
-        return b;
-    }
-
-    /** "Picture in picture" as a pill with its icon: into the small window at once. */
-    static View pipQuickButton(Context c, View.OnClickListener tap) {
-        LinearLayout b = new LinearLayout(c);
-        b.setOrientation(LinearLayout.HORIZONTAL);
-        b.setGravity(Gravity.CENTER_VERTICAL);
-        b.setPadding(Ui.dp(c, 14), 0, Ui.dp(c, 18), 0);
-        b.setMinimumHeight(Ui.dp(c, 48));
-        android.graphics.drawable.GradientDrawable g = new android.graphics.drawable.GradientDrawable();
-        g.setColor(0xD90B0C21);
-        g.setCornerRadius(Ui.dp(c, 24));
-        g.setStroke(Math.max(1, Ui.dp(c, 1)), 0x59FFFFFF);
-        b.setBackground(new android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf(0x33FFFFFF), g, null));
-        ImageView icon = new ImageView(c);
-        icon.setImageResource(R.drawable.live_ic_pip);
-        icon.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-        b.addView(icon, new LinearLayout.LayoutParams(Ui.dp(c, 22), Ui.dp(c, 22)));
-        TextView t = Ui.text(c, c.getString(R.string.live_pip), 14, Ui.TEXT, true);
-        t.setPadding(Ui.dp(c, 10), 0, 0, 0);
-        t.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-        b.addView(t);
-        b.setContentDescription(c.getString(R.string.live_pip));
-        b.setClickable(true);
-        b.setFocusable(true);
-        b.setOnClickListener(tap);
-        b.setVisibility(View.GONE);
         return b;
     }
 }

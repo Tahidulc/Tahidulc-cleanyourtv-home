@@ -205,7 +205,7 @@ public final class VodPlayerActivity extends AppCompatActivity {
         if (pipSupported()) {
             TextView pip = pill("▣");
             pip.setContentDescription("Small window");
-            pip.setOnClickListener(v -> enterPip());
+            pip.setOnClickListener(v -> pipAndLeave());
             topRight.addView(pip, pillParams());
         }
         TextView more = pill("⋮");
@@ -444,13 +444,32 @@ public final class VodPlayerActivity extends AppCompatActivity {
         return b.build();
     }
 
-    /** The film on in a small window over other apps (it carries on playing there). */
-    private void enterPip() {
-        if (!pipSupported()) return;
+    /** The film on in a small window over other apps (it carries on playing there); false when it can't go. */
+    private boolean enterPip() {
+        if (!pipSupported()) return false;
         try {
-            enterPictureInPictureMode(pipParams());
+            return enterPictureInPictureMode(pipParams());
         } catch (IllegalStateException e) {
             Toast.makeText(this, "This phone has the small window turned off for Homefield", Toast.LENGTH_LONG).show();
+            return false;
+        }
+    }
+
+    /** The small window asked for with its button: once the film is in it, the app goes to the home screen. */
+    private boolean leaveOnPip;
+
+    private void pipAndLeave() {
+        leaveOnPip = true;
+        if (!enterPip()) leaveOnPip = false;
+    }
+
+    /** The phone's home screen, with the small window over it. */
+    private void goHome() {
+        if (!isInPictureInPictureMode()) return;
+        try {
+            startActivity(new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        } catch (RuntimeException ignored) {
+            // no home screen to go to: the app stays behind the small window
         }
     }
 
@@ -463,6 +482,10 @@ public final class VodPlayerActivity extends AppCompatActivity {
         super.onPictureInPictureModeChanged(inPip, cfg);
         if (board != null) board.view.setVisibility(inPip || !ScoreBoard.on(this) ? View.GONE : View.VISIBLE);
         if (inPip) {
+            if (leaveOnPip) {
+                leaveOnPip = false;
+                view.postDelayed(this::goHome, 150);
+            }
             view.hideController();
             view.setUseController(false);
             infoBar.setVisibility(View.GONE);

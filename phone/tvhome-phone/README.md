@@ -148,6 +148,11 @@ now, as Dolby's and HDR10's are: 4K Ultra HD, HD 1080p, HD 720p, HD (before the 
 white chip with its letters cut out and its words beside it, and HDR HLG the same way. They sit in the same outlined
 boxes as the rest, one height for all.
 
+Picture in picture takes you off the app (4.8): the picture in picture button at the top right of full screen
+(and Picture in picture in the options) puts the channel in the small window and goes straight to the phone's home
+screen, so the picture shows over other apps without a swipe away. The film and episode player's button does the
+same. The separate Picture in picture button that came up on its side in 4.6 has gone.
+
 Subtitles (CC in the film's player): the film's or episode's own, from your playlist's stream, come first, in the
 languages you choose (Settings, Subtitles, in order). When it has none, OpenSubtitles.com is looked in by the title's
 TMDB id (the series' with its season and episode), best first: your languages, the ones that fit the copy playing (its
