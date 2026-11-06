@@ -148,6 +148,14 @@ final class HomeV2 {
     private static final int Z_TOP = 0, Z_RAIL = 1, Z_ROW = 2, Z_CATS = 3, Z_SCORES = 4, Z_MATCH = 5;
 
     final MainActivity a;
+    /**
+     * The Home style over this screen (HomeStyle: SWIPTV's or UHF's look), or null for launcher v2's own. It draws its own
+     * screen on top, with this one's rows, panels and actions; this one is hidden under it, not drawn.
+     */
+    Skin skin;
+    private String skinStyle = HomeStyle.HOME;
+    /** Home is on screen (between resume and stop): a style chosen now reads its rows at once. */
+    private boolean onScreen;
     final Handler main = new Handler(Looper.getMainLooper());
     final ExecutorService io = Executors.newFixedThreadPool(3);
     private final ExecutorService pics = Executors.newFixedThreadPool(6);
@@ -405,7 +413,28 @@ final class HomeV2 {
         // Two at once left mid-way (the launcher restarted): its windows full size and every app's sound back.
         TwoUp.recover(a);
         channels = guideChannels(a);
-        root = new FrameLayout(a);
+        root = new FrameLayout(a) {
+            /**
+             * Under a Home style (HomeStyle) Home's own views are not drawn at all: everything below the style's layer is
+             * skipped, whatever it is doing, and the panels opened over the style (added after it) are drawn as ever.
+             */
+            @Override protected boolean drawChild(android.graphics.Canvas canvas, View child, long drawingTime) {
+                Skin st = skin;
+                if (st != null && st.layer != null && child != st.layer && st.layer.getParent() == this
+                        && indexOfChild(child) < indexOfChild(st.layer)) return false;
+                return super.drawChild(canvas, child, drawingTime);
+            }
+
+            /** Nor Home's own background (the light, the blurred picture) under a style: only the views over it. */
+            @Override public void draw(android.graphics.Canvas canvas) {
+                Skin st = skin;
+                if (st != null && st.layer != null && st.layer.getParent() == this) {
+                    dispatchDraw(canvas);
+                    return;
+                }
+                super.draw(canvas);
+            }
+        };
         root.setClipChildren(false);
         // Holds Android's focus when nothing on Home should show it (the score pills let go to it).
         root.setFocusable(true);
@@ -532,6 +561,75 @@ final class HomeV2 {
         if (lite) cache();
         load("foryou");
         paint();
+        // The Home style chosen on this TV (HomeStyle): SWIPTV's or UHF's screen over this one.
+        applyStyle(HomeStyle.chosen(a));
+    }
+
+    /**
+     * Home in a style (HomeStyle), at once: launcher v2's own screen, or a Skin drawn over it with the same rows, panels
+     * and alerts. Home's own views stay as they are under a style but are not drawn (root's drawChild), so they are back
+     * exactly as they were when it goes.
+     */
+    void applyStyle(String style) {
+        String want = HomeStyle.of(style);
+        if (want.equals(skinStyle)) return;
+        if (skin != null) {
+            skin.destroy();
+            root.removeView(skin.layer);
+            skin = null;
+            root.invalidate();
+            GoalWatchService.laneHome = true;
+        }
+        skinStyle = want;
+        if (HomeStyle.HOME.equals(want)) {
+            home();
+            return;
+        }
+        main.removeCallbacks(playNow);
+        if (players != null) players.stop();
+        playingTile = null;
+        guide.hide();
+        closePage();
+        Skin st = HomeStyle.SWIPTV.equals(want) ? new SkinSwip(new SkinFeeds(this)) : new SkinUhf(new SkinFeeds(this));
+        FrameLayout layer = new FrameLayout(a);
+        layer.addView(st.build(), new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        st.layer = layer;
+        root.addView(layer, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        skin = st;
+        // Alerts on Home come up as they do over an app, not into the score bar's place (it is hidden under the style).
+        GoalWatchService.laneHome = false;
+        if (onScreen) st.resume();
+    }
+
+    /** One of Home's rows, read now (a style's rows): off the main thread. Nothing when it could not be read. */
+    List<Tile> tiles(String m) {
+        try {
+            return read(m);
+        } catch (Exception e) {
+            return new ArrayList<>();
+        }
+    }
+
+    /** The dock's apps, in its order. */
+    List<String> dockApps() {
+        return new ArrayList<>(dock);
+    }
+
+    void openControlCentre() {
+        if (controlCentre != null) controlCentre.show();
+    }
+
+    void openSearch() {
+        if (search != null) search.show();
+    }
+
+    void openWeather() {
+        if (weatherPanel != null) weatherPanel.show();
+    }
+
+    /** The weather as the top bar says it ("9°  ·  Manchester"); "" before it is known. */
+    String weatherWords() {
+        return weatherView == null ? "" : weatherView.getText().toString().trim();
     }
 
     /**
@@ -861,6 +959,9 @@ final class HomeV2 {
         wifi.setText("Wi-Fi");
         vpn = wifi;
         List<ControlCentre.Item> items = new ArrayList<>();
+        // The launcher's look (HomeStyle): Home, SWIPTV style or UHF style, changed at once from its picker.
+        items.add(new ControlCentre.Item("Launcher style", R.drawable.ic_style, () -> HomeStyle.name(HomeStyle.chosen(a)), null,
+                () -> HomeStyle.pick(this)));
         items.add(new ControlCentre.Item("Wi-Fi", R.drawable.ic_wifi, () -> wifi.getText().toString(), null,
                 () -> open(new Intent(android.provider.Settings.ACTION_WIFI_SETTINGS))));
         items.add(new ControlCentre.Item("Inputs", R.drawable.ic_input, () -> "HDMI and sources", null, () -> showInputs(wifi)));
@@ -1412,7 +1513,8 @@ final class HomeV2 {
     }
 
     void resume() {
-        GoalWatchService.laneHome = true;
+        onScreen = true;
+        GoalWatchService.laneHome = skin == null;
         main.removeCallbacks(shiftMesh);
         if (mesh && !lite) main.postDelayed(shiftMesh, MESH_EVERY_MS / 3);
         matchFirst = true;
@@ -1430,8 +1532,9 @@ final class HomeV2 {
                 GoalWatchService.laneListener = scores::cover;
             }
         }
-        // An alert that came up over an app or the screensaver moves into the score bar's place.
-        GoalWatchService.relane();
+        // An alert that came up over an app or the screensaver moves into the score bar's place (not under a style).
+        if (skin == null) GoalWatchService.relane();
+        else skin.resume();
         if (Config.themeFlag(a, "alerts_everywhere", false)) GoalWatchService.startEverywhere(a);
         // Film night's reminder looked for each minute while Home is up too (the alerts' service may not run).
         main.removeCallbacks(filmNight);
@@ -1447,8 +1550,9 @@ final class HomeV2 {
         // Discover, Movies and TV shows read ahead once Home has settled (only what has gone stale is read again).
         main.removeCallbacks(warmPages);
         main.postDelayed(warmPages, lite ? 6000 : 3000);
-        // Rows age: what is on now and the apps' own rows are read again when Home comes back after a while.
-        Long at = rowsAt.get(mode);
+        // Rows age: what is on now and the apps' own rows are read again when Home comes back after a while (not under
+        // a style, which reads its own; Home's row is read again when Home's own screen is chosen).
+        Long at = skin == null ? rowsAt.get(mode) : null;
         if (at != null && System.currentTimeMillis() - at > 5 * 60_000L) {
             rowsAt.remove(mode);
             rows.remove(mode);
@@ -1552,6 +1656,8 @@ final class HomeV2 {
     }
 
     void stop() {
+        onScreen = false;
+        if (skin != null) skin.stop();
         main.removeCallbacks(filmNight);
         TrailerReel.close();
         main.removeCallbacks(warmPages);
@@ -1570,6 +1676,7 @@ final class HomeV2 {
     }
 
     void destroy() {
+        if (skin != null) skin.destroy();
         io.shutdownNow();
         sportIo.shutdownNow();
         pics.shutdownNow();
@@ -1626,8 +1733,13 @@ final class HomeV2 {
         if (viewing != null) viewing.hide();
         if (search != null) search.hide();
         if (smartPanel != null) smartPanel.hide();
+        HomeStyle.close();
         guide.hide();
         closePage();
+        if (skin != null) {
+            skin.home();
+            return;
+        }
         railSel = -1;
         zone = Z_ROW;
         rowIdx = 0;
@@ -1695,6 +1807,7 @@ final class HomeV2 {
         }
         // Two at once: its options (Home pressed while both are up) or the apps to choose from.
         if (TwoUp.open()) return TwoUp.key(e);
+        if (HomeStyle.isOpen()) return HomeStyle.key(e);
         if (controlCentre != null && controlCentre.isOpen()) return controlCentre.key(e);
         if (notifyPanel != null && notifyPanel.isOpen()) return notifyPanel.key(e);
         if (matchPanel != null && matchPanel.isOpen()) return matchPanel.key(e);
@@ -1726,6 +1839,11 @@ final class HomeV2 {
         if (guide.isOpen()) return guide.key(e);
         // A message's bar up on Home: OK opens Quick reply, now that none of the panels above has the remote.
         if (ScoreCard.homeKey(e)) return true;
+        // The remote's Menu key on Home, in any style: the launcher style picker (Home, SWIPTV, UHF).
+        if (e.getKeyCode() == KeyEvent.KEYCODE_MENU && page == null) {
+            if (e.getAction() == KeyEvent.ACTION_UP && !e.isCanceled()) HomeStyle.pick(this);
+            return true;
+        }
         if (page != null && !preview && !parked) {
             if (e.getKeyCode() == KeyEvent.KEYCODE_BACK) {
                 if (e.getAction() == KeyEvent.ACTION_UP && !page.back()) closePage();
@@ -1735,6 +1853,8 @@ final class HomeV2 {
             if (!page.key(e) && e.getAction() == KeyEvent.ACTION_DOWN) leavePage(edge);
             return true;
         }
+        // A Home style's own screen (HomeStyle): its keys, once no panel over it has them.
+        if (skin != null) return skin.key(e);
         int code = e.getKeyCode();
         // On the score pills their own keys apply (as on v1): Left and Right along them, OK opens the game, Down back.
         if (zone == Z_SCORES && code != KeyEvent.KEYCODE_BACK) return false;
@@ -2385,6 +2505,12 @@ final class HomeV2 {
     private final Runnable playNow = this::playNow;
 
     private void playSoon() {
+        if (skin != null) {
+            main.removeCallbacks(playNow);
+            players.stop();
+            playingTile = null;
+            return;
+        }
         View t = zone == Z_ROW && page == null && rowIdx < row.getChildCount() ? row.getChildAt(rowIdx) : null;
         if (t == playingTile) return;
         playingTile = t;
@@ -4261,7 +4387,7 @@ final class HomeV2 {
     /** Every so often while Home shows: the light drifts to its other arrangement (a long cross-fade), then back. */
     private final Runnable shiftMesh = new Runnable() {
         @Override public void run() {
-            if (!mesh || lite) return;
+            if (!mesh || lite || skin != null) return;
             if (!showingPicture && meshPair[meshVariant ^ 1] != null) {
                 meshVariant ^= 1;
                 fadeMesh(meshPair[meshVariant], MESH_FADE_MS);

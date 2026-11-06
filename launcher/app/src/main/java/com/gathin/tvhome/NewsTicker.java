@@ -126,6 +126,11 @@ final class NewsTicker {
 
     /** The first MAX_HEADLINES item titles of the feed; empty on any failure. */
     private List<String> read() {
+        return headlines(feedUrl, MAX_HEADLINES);
+    }
+
+    /** An RSS or Atom feed's headlines, the newest first, at most `most`; none when it could not be read. */
+    static List<String> headlines(String feedUrl, int most) {
         List<String> out = new ArrayList<>();
         HttpURLConnection conn = null;
         try {
@@ -136,7 +141,7 @@ final class NewsTicker {
                 XmlPullParser p = Xml.newPullParser();
                 p.setInput(in, null);
                 boolean inItem = false;
-                for (int e = p.getEventType(); e != XmlPullParser.END_DOCUMENT && out.size() < MAX_HEADLINES; e = p.next()) {
+                for (int e = p.getEventType(); e != XmlPullParser.END_DOCUMENT && out.size() < most; e = p.next()) {
                     if (e == XmlPullParser.START_TAG) {
                         if ("item".equals(p.getName()) || "entry".equals(p.getName())) inItem = true;
                         else if (inItem && "title".equals(p.getName())) {

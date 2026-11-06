@@ -277,44 +277,54 @@ final class GuideV2 {
         io.execute(() -> {
             long now = System.currentTimeMillis();
             for (int from = 0; from < want.size(); from += 20) {
-                StringBuilder ids = new StringBuilder();
-                for (int i = from; i < Math.min(want.size(), from + 20); i++) {
-                    if (ids.length() > 0) ids.append(',');
-                    ids.append(want.get(i)[0]);
-                }
-                Map<String, List<Show>> got = new HashMap<>();
-                for (int day = 0; day < 2; day++) {
-                    String date = Instant.ofEpochMilli(now).plusSeconds(day * 86_400L).atZone(ZoneOffset.UTC).toLocalDate()
-                            .format(DateTimeFormatter.BASIC_ISO_DATE);
-                    try {
-                        JSONArray sch = new JSONObject(HomeV2.get("https://awk.epgsky.com/hawk/linear/schedule/" + date + "/" + ids)).optJSONArray("schedule");
-                        for (int i = 0; sch != null && i < sch.length(); i++) {
-                            JSONObject one = sch.getJSONObject(i);
-                            List<Show> l = got.computeIfAbsent(one.optString("sid"), k -> new ArrayList<>());
-                            JSONArray ev = one.optJSONArray("events");
-                            for (int k = 0; ev != null && k < ev.length(); k++) {
-                                JSONObject e = ev.getJSONObject(k);
-                                Show sh = new Show();
-                                sh.start = e.optLong("st") * 1000L;
-                                sh.end = sh.start + e.optLong("d") * 1000L;
-                                if (sh.end < now - HALF_HOUR) continue;
-                                sh.title = e.optString("t");
-                                sh.text = e.optString("sy", "");
-                                String uuid = e.optString("programmeuuid", "");
-                                sh.picture = uuid.isEmpty() ? null : "https://images.metadata.sky.com/pd-image/" + uuid + "/16-9/1280";
-                                l.add(sh);
-                            }
-                        }
-                    } catch (Exception ignored) {
-                    }
-                }
-                for (List<Show> l : got.values()) l.sort((x, y) -> Long.compare(x.start, y.start));
+                Map<String, List<Show>> got = schedules(want.subList(from, Math.min(want.size(), from + 20)), now);
                 main.post(() -> {
                     shows.putAll(got);
                     if (isOpen()) draw();
                 });
             }
         });
+    }
+
+    /**
+     * What is on these channels ({sid, ...}, at most 20: Sky's guide answers for 20 at a time), today's and tomorrow's
+     * schedule from half an hour before `now` on, by sid, each list in time order. Off the main thread.
+     */
+    static Map<String, List<Show>> schedules(List<String[]> want, long now) {
+        StringBuilder ids = new StringBuilder();
+        for (String[] ch : want) {
+            if (ids.length() > 0) ids.append(',');
+            ids.append(ch[0]);
+        }
+        Map<String, List<Show>> got = new HashMap<>();
+        if (ids.length() == 0) return got;
+        for (int day = 0; day < 2; day++) {
+            String date = Instant.ofEpochMilli(now).plusSeconds(day * 86_400L).atZone(ZoneOffset.UTC).toLocalDate()
+                    .format(DateTimeFormatter.BASIC_ISO_DATE);
+            try {
+                JSONArray sch = new JSONObject(HomeV2.get("https://awk.epgsky.com/hawk/linear/schedule/" + date + "/" + ids)).optJSONArray("schedule");
+                for (int i = 0; sch != null && i < sch.length(); i++) {
+                    JSONObject one = sch.getJSONObject(i);
+                    List<Show> l = got.computeIfAbsent(one.optString("sid"), k -> new ArrayList<>());
+                    JSONArray ev = one.optJSONArray("events");
+                    for (int k = 0; ev != null && k < ev.length(); k++) {
+                        JSONObject e = ev.getJSONObject(k);
+                        Show sh = new Show();
+                        sh.start = e.optLong("st") * 1000L;
+                        sh.end = sh.start + e.optLong("d") * 1000L;
+                        if (sh.end < now - HALF_HOUR) continue;
+                        sh.title = e.optString("t");
+                        sh.text = e.optString("sy", "");
+                        String uuid = e.optString("programmeuuid", "");
+                        sh.picture = uuid.isEmpty() ? null : "https://images.metadata.sky.com/pd-image/" + uuid + "/16-9/1280";
+                        l.add(sh);
+                    }
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        for (List<Show> l : got.values()) l.sort((x, y) -> Long.compare(x.start, y.start));
+        return got;
     }
 
     private Show current() {
@@ -704,7 +714,7 @@ final class GuideV2 {
     /** The guide's channels that are UHD in the playlist: their logos say UHD. */
     private static final java.util.Set<String> UHD = new java.util.HashSet<>();
 
-    private static String logoUrl(String sid) {
+    static String logoUrl(String sid) {
         return ScoresTicker.skyLogo(sid, UHD.contains(sid) ? "UHD" : null);
     }
 

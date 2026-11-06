@@ -801,6 +801,16 @@ final class PagesV2 {
             this.source = source;
         }
 
+        /** The page's tabs, for a Home style's library (its categories). */
+        String[] tabNames() {
+            return tabs;
+        }
+
+        /** A tab's rows, read now (a Home style's library): off the main thread. */
+        List<Row> rowsOf(int tab) {
+            return source.apply(tab);
+        }
+
         /** A list read again behind the page came back changed: the tab in view read once more (quickly, from memory). */
         private final Runnable onLists = this::refreshTab;
         private final Runnable listsHeard = () -> {
