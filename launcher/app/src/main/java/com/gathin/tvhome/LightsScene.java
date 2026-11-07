@@ -19,7 +19,8 @@ import android.widget.FrameLayout;
 import java.util.Locale;
 
 /**
- * The living room in 3D, as it is: the long wall with the TV on its dark panel and the grey sideboard under it, the
+ * The living room in 3D, as it is: the long white wall with the 98-inch TV on it, the grey sideboard under it and a
+ * glazed oak door past it, the
  * ceiling's edge lit by the LED strip along that wall and on across the far wall over its doors (two glazed oak, then a
  * wide clear glass one in white edging), the oak slatted wall across from the TV with its own strip along its top, the
  * grey velvet corner sofa in front of it (its cushions, two mustard and two grey), the long dark coffee table on its
@@ -449,14 +450,16 @@ final class LightsScene extends View {
         wash(cv, sc, gs * 0.55f, 0.02f, H - bh, D - 0.6f, 0.02f, H - bh, D, 0, 0, 0);
 
         // The far wall's three glazed oak doors.
-        door(cv, 0.45f, 0.86f, lit, glow, sc);
-        door(cv, 1.36f, 0.86f, lit, glow, sc);
-        clearDoor(cv, 2.55f, 1.35f, lit, glow, sc);
+        door(cv, 0.3f, 0.82f, lit, glow, sc);
+        door(cv, 1.17f, 0.82f, lit, glow, sc);
+        clearDoor(cv, 2.12f, 1.12f, lit, glow, sc);
+        // The single glazed oak door in the TV's wall, past the TV.
+        sideDoor(cv, 4.75f, 0.82f, lit, glow, sc);
 
         // The TV's dark panel, the TV on it, the sideboard under them.
-        float tz0 = 1.3f, tz1 = 3.5f;
-        paint(cv, mix(0xFF15171C, 0xFF5E6066, lit * 0.6f), 0.01f, 0.62f, tz0 - 0.32f, 0.01f, 0.62f, tz1 + 0.32f, 0.01f, 2.25f, tz1 + 0.32f, 0.01f, 2.25f, tz0 - 0.32f);
-        box(cv, 0.02f, 0.09f, 0.8f, 2.05f, tz0, tz1, 0xFF0B0C0F, 0xFF16181D, true, sc, glow);
+        // The TV, a 98-inch: 2.17 m across, 1.22 m high, on the bare white wall.
+        float tz0 = 1.25f, tz1 = tz0 + 2.17f;
+        box(cv, 0.02f, 0.07f, 0.72f, 0.72f + 1.22f, tz0, tz1, 0xFF0B0C0F, 0xFF16181D, true, sc, glow);
         box(cv, 0.0f, 0.48f, 0.0f, 0.52f, 0.45f, 4.15f, mix(0xFF2B2D31, 0xFF6C6E73, lit), mix(0xFF1E2024, 0xFF55575C, lit), false, sc, 0f);
 
         // The far side: the oak slatted wall, its own strip along its top, the corner sofa, the coffee table on the rug.
@@ -521,7 +524,7 @@ final class LightsScene extends View {
 
     /** The slatted oak wall behind the sofa, from z 0 to 3.7 on the room's right-hand wall, dark between its slats. */
     private void slats(Canvas cv, float lit, float glow, int colour) {
-        float x = W - 0.02f, z0 = 0.05f, z1 = 3.7f, top = H - 0.02f;
+        float x = W - 0.02f, z0 = 0.05f, z1 = D - 0.2f, top = H - 0.02f;
         paint(cv, mix(0xFF0C0A08, 0xFF2A211A, lit), x, 0, z0, x, 0, z1, x, top, z1, x, top, z0);
         int oak = mix(0xFF3B2516, 0xFFB57A4C, 0.2f + lit * 0.8f);
         oak = mix(oak, colour, glow * 0.12f);
@@ -555,19 +558,21 @@ final class LightsScene extends View {
         int mustard = mix(0xFF4A3A0E, 0xFFC9A030, L), grey = mix(0xFF26282C, 0xFF6C6F76, L);
         int concrete = mix(0xFF1E1F21, 0xFF55575A, L), black = 0xFF0E0F11;
         // The rug, light and mottled.
-        paint(cv, mix(0xFF4A4B4E, 0xFFD9D8D3, L), W - 3.25f, 0.003f, 0.55f, W - 0.85f, 0.003f, 0.55f, W - 0.85f, 0.003f, 3.75f, W - 3.25f, 0.003f, 3.75f);
+        paint(cv, mix(0xFF4A4B4E, 0xFFD9D8D3, L), W - 3.25f, 0.003f, 0.55f, W - 0.85f, 0.003f, 0.55f, W - 0.85f, 0.003f, D - 0.45f, W - 3.25f, 0.003f, D - 0.45f);
         blocks.clear();
         float bx = W - 0.08f, depth = 0.98f, seat = 0.44f, back = 0.92f, bt = 0.24f;
         // The long section along the slats, its arm at the far end; the corner and the chaise along the near side.
-        float za = 0.15f, zb = 3.35f, xc = W - 2.75f;
+        // The long section runs all the way to the clear door at the far end.
+        float za = 0.15f, zb = D - 0.32f, xc = W - 2.75f;
         blocks.add(new Block(bx - depth, bx, 0.08f, seat - 0.14f, za, zb, velvetDark, 0f));
         blocks.add(new Block(bx - bt, bx, 0.08f, back - 0.18f, za, zb, velvetDark, 0f));
         blocks.add(new Block(bx - depth, bx, 0.08f, 0.64f, zb, zb + 0.24f, velvet, 0.1f));
         blocks.add(new Block(xc, bx - depth, 0.08f, seat - 0.14f, za, za + depth, velvetDark, 0f));
         blocks.add(new Block(xc, bx - depth, 0.08f, back - 0.18f, za, za + bt, velvetDark, 0f));
         // Seat cushions: three along, two on the chaise.
-        float seg = (zb - za - depth) / 3f;
-        for (int i = 0; i < 3; i++) {
+        int seats = Math.max(3, Math.round((zb - za - depth) / 0.8f));
+        float seg = (zb - za - depth) / seats;
+        for (int i = 0; i < seats; i++) {
             float s0 = za + depth + i * seg;
             blocks.add(new Block(bx - depth + 0.02f, bx - bt, seat - 0.15f, seat, s0 + 0.01f, s0 + seg - 0.01f, velvet, 0.06f));
             blocks.add(new Block(bx - bt - 0.16f, bx - bt + 0.02f, seat, back - 0.02f, s0 + 0.02f, s0 + seg - 0.02f, velvet, 0.08f));
@@ -586,7 +591,7 @@ final class LightsScene extends View {
         blocks.add(new Block(bx - bt - 0.3f, bx - bt - 0.12f, seat + 0.02f, seat + 0.46f, za + bt + 0.08f, za + bt + 0.52f, grey, 0.12f));
         blocks.add(new Block(xc + 0.3f, xc + 0.74f, seat + 0.02f, seat + 0.46f, za + bt + 0.14f, za + bt + 0.32f, grey, 0.12f));
         // The long coffee table, concrete-dark on black legs, along the sofa.
-        float tx0 = W - 2.05f, tx1 = W - 1.45f, tz0 = 1.35f, tz1 = 2.95f, ty = 0.44f;
+        float tx0 = W - 2.05f, tx1 = W - 1.45f, tz0 = 1.35f, tz1 = D - 0.75f, ty = 0.44f;
         blocks.add(new Block(tx0, tx1, ty - 0.04f, ty, tz0, tz1, concrete, 0f));
         for (float[] leg : new float[][]{{tx0 + 0.04f, tz0 + 0.04f}, {tx1 - 0.09f, tz0 + 0.04f}, {tx0 + 0.04f, tz1 - 0.09f}, {tx1 - 0.09f, tz1 - 0.09f}})
             blocks.add(new Block(leg[0], leg[0] + 0.05f, 0f, ty - 0.04f, leg[1], leg[1] + 0.05f, black, 0f));
@@ -632,6 +637,22 @@ final class LightsScene extends View {
             for (int j = 0; j < rowsN; j++) {
                 float px = x + m + i * (pw + gap), py = m + j * (ph + gap);
                 paint(cv, glass, px, py, z2, px + pw, py, z2, px + pw, py + ph, z2, px, py + ph, z2);
+            }
+    }
+
+    /** A glazed oak door in the TV's wall from z, wd wide: its frame and its dark panes, as the far wall's. */
+    private void sideDoor(Canvas cv, float z, float wd, float lit, float glow, int colour) {
+        float x = 0.012f, hgt = 2.05f;
+        int oak = mix(0xFF3A2414, 0xFFB7793D, 0.25f + lit * 0.75f);
+        paint(cv, oak, x, 0, z, x, 0, z + wd, x, hgt, z + wd, x, hgt, z);
+        int glass = mix(mix(0xFF07080A, 0xFF3A3F47, lit * 0.6f), colour, glow * 0.12f);
+        int cols = 2, rowsN = 5;
+        float m = 0.09f, gap = 0.035f, pw = (wd - 2 * m - (cols - 1) * gap) / cols, ph = (hgt - 2 * m - (rowsN - 1) * gap) / rowsN;
+        float x2 = x + 0.004f;
+        for (int i = 0; i < cols; i++)
+            for (int j = 0; j < rowsN; j++) {
+                float pz = z + m + i * (pw + gap), py = m + j * (ph + gap);
+                paint(cv, glass, x2, py, pz, x2, py, pz + pw, x2, py + ph, pz + pw, x2, py + ph, pz);
             }
     }
 
