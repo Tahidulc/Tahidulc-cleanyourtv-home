@@ -84,9 +84,22 @@ public class ScoreBoardTest {
         assertEquals(OverlayBug.Style.STACKED, OverlayBug.Style.of("STACKED"));
         assertEquals(OverlayBug.Style.CLASSIC, OverlayBug.Style.of("nonsense"));
         assertEquals("Crests and time", OverlayBug.Style.CRESTS.label);
-        // Stacked is drawn taller in its own corner (its clubs one above the other); the rest as they were.
+        // Stacked is drawn taller in its own corner (its clubs one above the other), Card too (its big crests); the rest as they were.
         assertTrue(OverlayBug.Style.STACKED.tall > 1.5f);
-        for (OverlayBug.Style st : OverlayBug.Style.values()) if (st != OverlayBug.Style.STACKED) assertEquals(1f, st.tall, 0f);
+        assertTrue(OverlayBug.Style.CARD.tall > 1.5f);
+        for (OverlayBug.Style st : OverlayBug.Style.values())
+            if (st != OverlayBug.Style.STACKED && st != OverlayBug.Style.CARD) assertEquals(1f, st.tall, 0f);
+    }
+
+    @Test
+    public void theCardLookIsTheLastAndLightsOnItsWhite() {
+        OverlayBug.Style[] all = OverlayBug.Style.values();
+        assertEquals(OverlayBug.Style.CARD, all[all.length - 1]);
+        assertEquals(OverlayBug.Style.CARD, OverlayBug.Style.of("CARD"));
+        assertEquals("Card", OverlayBug.Style.CARD.label);
+        // Its white over its blue: a light blend stays light, the club's colour laid fully over is the club's.
+        assertEquals(0xFF000000 | OverlayBug.CARD_TOP, OverlayBug.blend(OverlayBug.CARD_TOP, 0xFFE0213A, 0f));
+        assertEquals(0xFFE0213A, OverlayBug.blend(OverlayBug.CARD_TOP, 0xFFE0213A, 1f));
     }
 
     @Test public void itComesInAsABroadcastersDoes() {

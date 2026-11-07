@@ -219,6 +219,12 @@ Moving the scoreboard by hand (4.16): hold it and it lifts (a buzz and a dashed 
 where you let go, kept for that channel; the mark over the logo the same. Tap it twice for Move and resize (its size,
 height, look, timing and switches). A single tap still opens the game's match centre.
 
+A results card for the scoreboard (4.17): Card, the eighth look, set as the clubs' own results cards are: each club's
+crest large on a white panel with its colour down the board's end, and between them a blue block with the score big
+over the clock (Half-Time and Full-Time in words, the minutes added on red beside it). It is a little taller than the
+others, a goal lights the scorers' panel in their colour, and the alerts and stats that fold out of it come white with
+navy words and its blue for their chips.
+
 Subtitles (CC in the film's player): the film's or episode's own, from your playlist's stream, come first, in the
 languages you choose (Settings, Subtitles, in order). When it has none, OpenSubtitles.com is looked in by the title's
 TMDB id (the series' with its season and episode), best first: your languages, the ones that fit the copy playing (its
