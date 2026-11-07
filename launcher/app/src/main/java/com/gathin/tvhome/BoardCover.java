@@ -1128,6 +1128,9 @@ final class BoardCover {
     private static int boardH = 48, sideMax = 600, tuck = 6, sideGap, boardAt, head;
     /** The game's crests as the board has them, for its own goal captions. */
     private static Bitmap homeCrest, awayCrest;
+    /** The game's competition logo and short name, for the logo cover's Competition look. */
+    private static Bitmap compImage;
+    private static String compTag = "";
     /** What slides out comes out on the board's left (a board nearer the screen's right). */
     private static boolean sideLeft;
     /** How long before kick-off it is up (the kick-off and the line-ups slide out of it), and how long into half time. */
@@ -1438,6 +1441,7 @@ final class BoardCover {
         if (logoOn(c)) {
             mark = new LogoMark(c);
             mark.look(logoLook(c));
+            mark.competition(compImage, compTag);
             mark.inset(edge);
             logoWin = frame(c, mark);
             if (!addWindow(c, logoWin)) {
@@ -2018,7 +2022,10 @@ final class BoardCover {
                 if (!id.equals(imagesFor)) return;
                 homeCrest = h;
                 awayCrest = w;
+                compImage = l;
+                compTag = g.league == null ? "" : g.league;
                 if (bug != null) bug.images(h, w, l);
+                if (mark != null) mark.competition(l, compTag);
             });
         });
     }

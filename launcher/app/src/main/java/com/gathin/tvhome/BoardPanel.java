@@ -191,7 +191,7 @@ final class BoardPanel extends SportPanel {
         for (LogoMark.Look l : LogoMark.Look.values()) (l.channel() ? channels : others).add(markTile(l));
         addLine(150, 4, channels.subList(0, 4));
         addLine(150, 4, channels.subList(4, channels.size()));
-        heading("LOGO COVER LOOK: GLASS AND BROADCAST");
+        heading("LOGO COVER LOOK: THE COMPETITION'S, GLASS AND BROADCAST");
         addLine(132, 3, others.subList(0, 3));
         addLine(150, 3, others.subList(3, others.size()));
         heading("PICTURE TAG ON THE LOGO COVER");
@@ -264,7 +264,7 @@ final class BoardPanel extends SportPanel {
         BoardBug colours = new BoardBug(c);
         colours.style(BoardCover.style(c));
         m.boardLook(colours.stripLook());
-        stage.addView(m, look.channel() ? new FrameLayout.LayoutParams(h.px(190), h.px(90), Gravity.CENTER)
+        stage.addView(m, look.channel() || look == LogoMark.Look.COMPETITION ? new FrameLayout.LayoutParams(h.px(190), h.px(90), Gravity.CENTER)
                 : look.broadcast() ? new FrameLayout.LayoutParams(h.px(170), h.px(96), Gravity.CENTER)
                 : new FrameLayout.LayoutParams(h.px(150), h.px(52), Gravity.CENTER));
         t.addView(stage, new LinearLayout.LayoutParams(-1, 0, 1f));
@@ -321,6 +321,7 @@ final class BoardPanel extends SportPanel {
                 p.images(b[0], b[1], b[2]);
                 p.requestLayout();
             }
+            for (LogoMark m : markPreviews) m.competition(b[2], g.league);
         });
     }
 }

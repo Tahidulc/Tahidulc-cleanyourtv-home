@@ -588,6 +588,14 @@ final class F1Tower {
         m.inset(edge);
         m.tag(BoardCover.logoTag(c).on(channel));
         m.sport("f1");
+        // The Competition look: F1's own logo, in white.
+        m.competition(null, "F1");
+        Context app = c.getApplicationContext();
+        new Thread(() -> {
+            Bitmap f1 = ScoresTicker.cachedLogo(app, F1Results.F1_LOGO, 200);
+            Bitmap white = f1 == null ? null : GoalWatchService.white(HomeV2.trim(f1));
+            if (white != null) m.post(() -> m.competition(white, "F1"));
+        }, "f1-cover-logo").start();
         m.live(true);
         BoardBug colours = new BoardBug(c);
         colours.style(BoardCover.style(c));

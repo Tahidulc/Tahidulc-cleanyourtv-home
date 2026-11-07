@@ -656,6 +656,10 @@ public class BoardCoverTest {
         assertEquals(LogoMark.Look.GLASS, LogoMark.Look.of(""));
         assertEquals("GRAND PRIX", ChannelMark.channelFor("f1"));
         assertEquals("MATCHDAY", ChannelMark.channelFor(""));
+        // The competition's own logo is a look of its own, neither a channel look nor Broadcast.
+        assertEquals(LogoMark.Look.COMPETITION, LogoMark.Look.of("COMPETITION"));
+        assertFalse(LogoMark.Look.COMPETITION.channel());
+        assertFalse(LogoMark.Look.COMPETITION.broadcast());
     }
 
     // ---- 4.13: out sideways, a few stats moments a game ----------------------------------------------------------------

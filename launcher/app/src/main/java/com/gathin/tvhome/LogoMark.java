@@ -25,7 +25,7 @@ final class LogoMark extends View {
     /** Its looks, as the Scoreboard card names them. */
     enum Look {
         SIGNATURE("Signature"), MATCHDAY("Matchday"), ROOFLINE("Roofline"), VELOCITY("Velocity"), ROUNDEL("Roundel"),
-        BLOCK("Solid block"), SMOKED("Smoked glass"),
+        BLOCK("Solid block"), SMOKED("Smoked glass"), COMPETITION("The competition's logo"),
         GLASS("Glass, with the mark"), MARK("Mark only"), PLAIN("Plain"), BROADCAST("Broadcast, see-through"),
         BROADCAST_BOARD("Broadcast, scoreboard colours");
 
@@ -72,6 +72,10 @@ final class LogoMark extends View {
     /** The channel looks, drawn when one is chosen; the sport ("f1", else football) for their channel's name. */
     private ChannelMark channel;
     private String sport = "";
+    /** The competition's logo for its look (white, for a dark ground) and its short name when there is no logo. */
+    private android.graphics.Bitmap comp;
+    private String compName = "";
+    private final Paint picture = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
     /** The ring's dashes, made once for a width of line. */
     private float dashFor = -1;
 
@@ -121,6 +125,13 @@ final class LogoMark extends View {
         if (look.broadcast() || look.channel()) invalidate();
     }
 
+    /** The competition being watched: its logo (light, for a dark ground; null for none) and its short name. */
+    void competition(android.graphics.Bitmap logo, String name) {
+        comp = logo;
+        compName = name == null ? "" : name.trim();
+        if (look == Look.COMPETITION) invalidate();
+    }
+
     /** What is on: "f1" for Formula 1, else football (Matchday's channel name). */
     void sport(String s) {
         String n = s == null ? "" : s;
@@ -158,6 +169,11 @@ final class LogoMark extends View {
     @Override protected void onDraw(Canvas cv) {
         float w = getWidth(), h = getHeight();
         if (w <= 0 || h <= 0) return;
+        if (look == Look.COMPETITION) {
+            competitionLook(cv, w, h);
+            ring(cv, w, h, Math.min(w, h) * 0.15f);
+            return;
+        }
         if (look.channel()) {
             // Whitebrook Road's own channel: its ground over the whole box, the edge the burn-in guard moves in too.
             if (channel == null) channel = new ChannelMark(getContext());
@@ -189,6 +205,39 @@ final class LogoMark extends View {
             }
         }
         ring(cv, w, h, rad);
+    }
+
+    /**
+     * The competition's own logo over the channel's: a dark block, the logo as large as it fits in the middle (its name
+     * in its place while the logo is read, or when it has none), LIVE's red dot in the corner while the game is.
+     */
+    private void competitionLook(Canvas cv, float w, float h) {
+        float rad = Math.min(w, h) * 0.16f;
+        r.set(0, 0, w, h);
+        fill.setShader(new android.graphics.LinearGradient(0, 0, 0, h, 0xFF1B1F31, 0xFF07090F, android.graphics.Shader.TileMode.CLAMP));
+        cv.drawRoundRect(r, rad, rad, fill);
+        fill.setShader(null);
+        edge.setPathEffect(null);
+        float pad = Math.min(w, h) * 0.14f;
+        if (comp != null && comp.getWidth() > 0 && comp.getHeight() > 0) {
+            float bw = w - 2 * pad, bh = h - 2 * pad, k = Math.min(bw / comp.getWidth(), bh / comp.getHeight());
+            float dw = comp.getWidth() * k, dh = comp.getHeight() * k;
+            r.set((w - dw) / 2f, (h - dh) / 2f, (w + dw) / 2f, (h + dh) / 2f);
+            cv.drawBitmap(comp, null, r, picture);
+        } else {
+            String n = compName.isEmpty() ? "LIVE" : compName.toUpperCase(java.util.Locale.ROOT);
+            float size = Math.min(h * 0.42f, fit(n, w - 2 * pad, h * 0.42f));
+            words.setTextSize(size);
+            words.setTextAlign(Paint.Align.CENTER);
+            Paint.FontMetrics fm = words.getFontMetrics();
+            cv.drawText(n, w / 2f, h / 2f - (fm.ascent + fm.descent) / 2f, words);
+            words.setTextAlign(Paint.Align.LEFT);
+        }
+        if (live) {
+            float dot = Math.max(2f, h * 0.045f);
+            fill.setColor(0xFFFF3B4E);
+            cv.drawCircle(w - pad * 0.7f, pad * 0.7f, dot, fill);
+        }
     }
 
     /** Ringed while Move and resize has it. */
