@@ -181,6 +181,20 @@ only while a crest has not come), and Stacked, the two clubs one above the other
 letters and goals, the competition's logo before them and the clock beside, drawn taller in its own corner for its two
 rows. The TVs' launcher has the same two.
 
+The scoreboard in step with the channel's own (4.13). Its clock ran a minute ahead: ESPN's clock is the minute being
+played ("46'" from the moment the second half kicks off at 45:00, watched on a live game), and every clock in the app
+counted on from it; each minute now starts a minute lower, so the board, the tiles and the notifications show what the
+broadcasters show. It also reads the channel's scoreboard off the picture every two seconds again (4.10 stopped doing
+so: that read is what closed the app), and from the first read its clock is the channel's, to the second, and its
+score is the channel's: a goal shows on it at the same read the channel's scoreboard
+changes (a score the scores already have is taken at once; a goal taken back, or a score not had yet, read twice to be
+sure). The delay it measures is kept for the channel, so before the first read, or where a channel's scoreboard
+cannot be read, the scores wait just as long. Move and resize has the scoreboard and the mark over the logo each with
+its own switch (one off, the other stays), a Height for each besides Size (the scoreboard keeps its width and fills
+the taller or flatter box, two rows when nearer square; the mark keeps its width), and Timing: whether the board is
+matched to the channel's clock, or how long it is held behind the live scores, with buttons to put it a second or five
+later or sooner by hand.
+
 Subtitles (CC in the film's player): the film's or episode's own, from your playlist's stream, come first, in the
 languages you choose (Settings, Subtitles, in order). When it has none, OpenSubtitles.com is looked in by the title's
 TMDB id (the series' with its season and episode), best first: your languages, the ones that fit the copy playing (its

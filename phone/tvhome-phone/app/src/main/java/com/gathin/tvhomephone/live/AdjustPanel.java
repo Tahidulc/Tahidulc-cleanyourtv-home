@@ -13,20 +13,32 @@ import java.util.List;
 
 /**
  * The player's "Move and resize" panel, along the foot while the scoreboard and Homefield's mark over the channel's
- * logo are dragged into place: each one's size (smaller and bigger), the scoreboard's look and the mark's, keeping
- * them still, and Reset (back to where Homefield puts them) or Done.
+ * logo are dragged into place: each one on or off, its size (smaller and bigger) and its height alone, its look; the
+ * board's timing against the channel (read off the channel's own clock, or put later or sooner by hand); keeping them
+ * still, and Reset (back to where Homefield puts them) or Done.
  */
 final class AdjustPanel {
     private AdjustPanel() {}
 
     interface Actions {
+        void boardShown(boolean on);
+
         void boardSize(float k);
+
+        void boardHeight(float k);
 
         void boardStyle(OverlayBug.Style s);
 
+        void logoShown(boolean on);
+
         void logoSize(float k);
 
+        void logoHeight(float k);
+
         void logoLook(LogoCover.Look l);
+
+        /** The board's clock and score put later (seconds above 0) or sooner; the timing line as it is now. */
+        String later(int seconds);
 
         void still(boolean on);
 
@@ -38,7 +50,8 @@ final class AdjustPanel {
     /** How much each tap on − or + changes a size. */
     static final float STEP = 1.12f;
 
-    static View build(Context c, Actions a, OverlayBug.Style style, LogoCover.Look look, boolean still) {
+    static View build(Context c, Actions a, OverlayBug.Style style, LogoCover.Look look, boolean still, boolean boardOn,
+            String timing) {
         LinearLayout card = new LinearLayout(c);
         card.setOrientation(LinearLayout.VERTICAL);
         int pad = Ui.dp(c, 14);
@@ -57,10 +70,15 @@ final class AdjustPanel {
         line.setPadding(0, Ui.dp(c, 2), 0, Ui.dp(c, 4));
         card.addView(line);
 
-        // The scoreboard: its size, then its look.
+        // The scoreboard: on or off, its size, its height alone, then its look.
         LinearLayout board = row(c, card, "Scoreboard");
+        board.addView(onOff(c, "Scoreboard", boardOn, a::boardShown));
+        board.addView(label(c, "Size"));
         board.addView(step(c, "−", "Scoreboard smaller", () -> a.boardSize(1 / STEP)));
         board.addView(step(c, "+", "Scoreboard bigger", () -> a.boardSize(STEP)));
+        board.addView(label(c, "Height"));
+        board.addView(step(c, "−", "Scoreboard shorter", () -> a.boardHeight(1 / STEP)));
+        board.addView(step(c, "+", "Scoreboard taller", () -> a.boardHeight(STEP)));
         List<TextView> styles = new ArrayList<>();
         for (OverlayBug.Style s : OverlayBug.Style.values()) {
             TextView t = Ui.guideChip(c, s.label, s == style);
@@ -72,19 +90,42 @@ final class AdjustPanel {
             chip(board, t);
         }
 
-        // The mark over the channel's logo: its size, then its look.
+        // The mark over the channel's logo: on or off, its size, its height alone, then its look.
         LinearLayout logo = row(c, card, "Logo");
+        TextView logoSwitch = onOff(c, "Logo cover", look != LogoCover.Look.OFF, a::logoShown);
+        logo.addView(logoSwitch);
+        logo.addView(label(c, "Size"));
         logo.addView(step(c, "−", "Logo smaller", () -> a.logoSize(1 / STEP)));
         logo.addView(step(c, "+", "Logo bigger", () -> a.logoSize(STEP)));
+        logo.addView(label(c, "Height"));
+        logo.addView(step(c, "−", "Logo shorter", () -> a.logoHeight(1 / STEP)));
+        logo.addView(step(c, "+", "Logo taller", () -> a.logoHeight(STEP)));
         List<TextView> looks = new ArrayList<>();
         for (LogoCover.Look l : LogoCover.Look.values()) {
+            // Off is the switch's.
+            if (l == LogoCover.Look.OFF) continue;
             TextView t = Ui.guideChip(c, l.label, l == look);
             t.setOnClickListener(v -> {
                 for (TextView x : looks) Ui.styleChip(c, x, x == v);
                 a.logoLook(l);
+                // A look chosen while the cover is off: on, in it.
+                if (!"✓ On".contentEquals(logoSwitch.getText())) logoSwitch.performClick();
             });
             looks.add(t);
             chip(logo, t);
+        }
+
+        // The board's timing against the channel's own scoreboard.
+        LinearLayout time = row(c, card, "Timing");
+        TextView said = Ui.text(c, timing, 12, Ui.DIM, false);
+        said.setPadding(0, 0, Ui.dp(c, 10), 0);
+        time.addView(said);
+        for (int secs : new int[]{-5, -1, 1, 5}) {
+            String words = (secs > 0 ? "+" : "−") + Math.abs(secs) + " s";
+            TextView t = Ui.guideChip(c, words, false);
+            t.setContentDescription(secs > 0 ? "Clock and score " + secs + " seconds later" : "Clock and score " + -secs + " seconds sooner");
+            t.setOnClickListener(v -> said.setText(a.later(secs)));
+            chip(time, t);
         }
 
         // Keep them still; Reset; Done.
@@ -131,6 +172,34 @@ final class AdjustPanel {
         lp.topMargin = Ui.dp(c, 8);
         card.addView(line, lp);
         return holds;
+    }
+
+    /** A switch chip: "✓ On" or "Off", tapped to change. */
+    private static TextView onOff(Context c, String what, boolean on, java.util.function.Consumer<Boolean> to) {
+        TextView t = Ui.guideChip(c, on ? "✓ On" : "Off", on);
+        boolean[] now = {on};
+        t.setContentDescription(what + (on ? " on" : " off"));
+        t.setOnClickListener(v -> {
+            now[0] = !now[0];
+            t.setText(now[0] ? "✓ On" : "Off");
+            t.setContentDescription(what + (now[0] ? " on" : " off"));
+            Ui.styleChip(c, t, now[0]);
+            to.accept(now[0]);
+        });
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, -2);
+        lp.rightMargin = Ui.dp(c, 10);
+        t.setLayoutParams(lp);
+        return t;
+    }
+
+    /** A small word before the buttons it names ("Size", "Height"). */
+    private static TextView label(Context c, String words) {
+        TextView t = Ui.text(c, words, 12, Ui.DIM, false);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, -2);
+        lp.rightMargin = Ui.dp(c, 6);
+        lp.leftMargin = Ui.dp(c, 4);
+        t.setLayoutParams(lp);
+        return t;
     }
 
     private static TextView step(Context c, String glyph, String label, Runnable r) {

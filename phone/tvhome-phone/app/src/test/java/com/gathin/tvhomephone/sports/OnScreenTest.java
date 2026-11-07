@@ -186,11 +186,29 @@ public class OnScreenTest {
         s.screenScore(0, 0, t + 21_000);
         s.screenScore(0, 0, t + 22_000);
         assertEquals(0, s.game(t + 22_000).homeScore);
-        // The channel shows the goal: so does the board.
+        // The channel shows the goal: so does the board, at the same read (a score the scores have had).
         s.screenScore(1, 0, t + 50_000);
-        assertEquals(0, s.game(t + 50_000).homeScore);
-        s.screenScore(1, 0, t + 51_000);
-        assertEquals(1, s.game(t + 51_000).homeScore);
+        assertEquals(1, s.game(t + 50_000).homeScore);
+    }
+
+    @Test public void aGoalTakenBackOrAScoreTheScoresHaveNotHadIsReadTwice() {
+        OnScreen s = new OnScreen();
+        s.behind(0);
+        long t = 11_500_000;
+        s.add(live(60, 0, 0, 2), t);
+        s.add(live(61, 1, 0, 2), t + 20_000);
+        s.screenScore(1, 0, t + 21_000);
+        assertEquals(1, s.game(t + 21_000).homeScore);
+        // Read as 0-0 once (a goal ruled out, or a misread): the board waits for a second read to agree.
+        s.screenScore(0, 0, t + 23_000);
+        assertEquals(1, s.game(t + 23_000).homeScore);
+        s.screenScore(0, 0, t + 25_000);
+        assertEquals(0, s.game(t + 25_000).homeScore);
+        // 2-0, which the scores haven't had: twice too.
+        s.screenScore(2, 0, t + 27_000);
+        assertEquals(0, s.game(t + 27_000).homeScore);
+        s.screenScore(2, 0, t + 29_000);
+        assertEquals(2, s.game(t + 29_000).homeScore);
     }
 
     @Test public void theChannelQuickerThanTheScoresIsBelievedWhenSeenTwice() {

@@ -180,15 +180,28 @@ public final class OnScreen {
         return secs <= 5 * 60;
     }
 
-    /** The score read off the channel's scoreboard at at: shown once it is read the same twice running. */
+    /**
+     * The score read off the channel's scoreboard at at: shown at once when it is a score the scores have had and no
+     * fewer goals than the channel showed (a goal going in: the board changes with the channel's, a read later at
+     * most), else once it is read the same twice running (a score the scores haven't got yet, a goal taken back, a
+     * misread).
+     */
     public void screenScore(int home, int away, long at) {
         if (home < 0 || away < 0 || home > 30 || away > 30) return;
         int[] s = {home, away};
-        if (pending != null && pending[0] == home && pending[1] == away) {
+        boolean twice = pending != null && pending[0] == home && pending[1] == away;
+        boolean onwards = said == null || (home >= said[0] && away >= said[1]);
+        if (twice || (onwards && known(home, away))) {
             said = s;
             saidAt = at;
         }
         pending = s;
+    }
+
+    /** Whether the scores have had this score. */
+    private boolean known(int home, int away) {
+        for (Read r : reads) if (r.g.homeScore == home && r.g.awayScore == away) return true;
+        return false;
     }
 
     /** "HT" or "FT" read off the channel's scoreboard at at. */
@@ -386,6 +399,6 @@ public final class OnScreen {
     }
 
     private static double clockOf(Game g) {
-        return g.clock > 0 ? g.clock : Game.minute(g.detail) * 60.0;
+        return g.clock > 0 ? g.clock : GameClock.fromWords(g);
     }
 }

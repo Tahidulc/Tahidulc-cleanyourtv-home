@@ -150,9 +150,10 @@ public final class Espn {
         g.awayScore = parseInt(away.optString("score", "0"));
         ZonedDateTime when = OffsetDateTime.parse(e.getString("date")).toInstant().atZone(zone);
         g.kickoff = when.toInstant().toEpochMilli();
-        g.clock = status.optDouble("clock", 0);
         g.period = status.optInt("period", 0);
         g.displayClock = status.optString("displayClock", "");
+        // The minute's start, not ESPN's minute being played (a minute ahead of the broadcasters' clocks).
+        g.clock = GameClock.minuteStart(status.optDouble("clock", 0), g.displayClock);
         String state = type.optString("state");
         if ("in".equals(state)) {
             g.state = Game.LIVE;

@@ -130,6 +130,8 @@ final class ScoreOverlay implements ScoreBoard.Source {
         up = true;
         board.view.setVisibility(inPip ? View.GONE : View.VISIBLE);
         board.start();
+        // Switched off in Move and resize: its clock and score go on, unseen, and the mark over the logo is its own.
+        board.hidden(!ScoreBoard.boardShown(a));
         guard.start();
         if (sampler == null) sampler = new FrameSampler();
         h.postDelayed(look, 4000);
@@ -321,10 +323,11 @@ final class ScoreOverlay implements ScoreBoard.Source {
         boolean over = !placed && box != null && ScoreBoard.cover(a) && board.channelGame() && !inPip;
         int left, top;
         if (placed) {
-            // Where the family put it, the height they chose, its own width; kept on the screen.
-            bp.width = LinearLayout.LayoutParams.WRAP_CONTENT;
+            // Where the family put it, the height they chose, its own width (or the width kept when its height was set
+            // apart from it: it then draws to fill that box); kept on the screen.
+            bp.width = own.bw > 0 ? Math.max(Math.round(20 * d), Math.round(own.bw * fw)) : LinearLayout.LayoutParams.WRAP_CONTENT;
             bp.height = Math.max(Math.round(12 * d), Math.round(own.bh * fh));
-            int w = board.bug.getWidth() > 0 ? board.bug.getWidth() : Math.round(bp.height * 5f);
+            int w = bp.width > 0 ? bp.width : board.bug.getWidth() > 0 ? board.bug.getWidth() : Math.round(bp.height * 5f);
             left = Math.max(0, Math.min(Math.round(fx + own.bx * fw), root.getWidth() - Math.min(w, root.getWidth())));
             top = Math.max(0, Math.min(Math.round(fy + own.by * fh), root.getHeight() - Math.min(bp.height, root.getHeight())));
         } else if (over) {
@@ -452,10 +455,48 @@ final class ScoreOverlay implements ScoreBoard.Source {
         root.addView(shield, Math.max(0, root.indexOfChild(cover)), new FrameLayout.LayoutParams(-1, -1));
         boolean wide = root.getWidth() > root.getHeight();
         panel = AdjustPanel.build(a, new AdjustPanel.Actions() {
+            @Override public void boardShown(boolean on) {
+                ScoreBoard.setBoardShown(a, on);
+                board.hidden(!on);
+                place();
+            }
+
             @Override public void boardSize(float k) {
                 mine.sizeBoard(k);
                 board.bug.post(ScoreOverlay.this::place);
                 place();
+            }
+
+            @Override public void boardHeight(float k) {
+                mine.heightBoard(k, pfw > 0 && board.bug.getWidth() > 0 ? board.bug.getWidth() / pfw : 0.3f);
+                board.bug.post(ScoreOverlay.this::place);
+                place();
+            }
+
+            @Override public void logoShown(boolean on) {
+                ScoreBoard.setLogoCover(a, on ? ScoreBoard.lastLogo(a) : LogoCover.Look.OFF);
+                if (on && !mine.logo()) {
+                    mine.lw = 0.13f;
+                    mine.lh = 0.075f;
+                    mine.lx = 0;
+                    mine.moveLogo(1 - 0.035f - mine.lw, 0.05f);
+                }
+                restyle();
+                outline(true);
+            }
+
+            @Override public void logoHeight(float k) {
+                if (mine.logo()) mine.heightLogo(k);
+                place();
+            }
+
+            @Override public String later(int seconds) {
+                Channel ch = host.current();
+                if (ch != null) {
+                    LiveAlerts.setDelay(a, ch.key, LiveAlerts.delay(a, ch.key) + seconds);
+                    board.behind();
+                }
+                return timingWords();
             }
 
             @Override public void boardStyle(OverlayBug.Style st) {
@@ -494,7 +535,7 @@ final class ScoreOverlay implements ScoreBoard.Source {
             @Override public void done() {
                 endAdjust(true);
             }
-        }, ScoreBoard.style(a), ScoreBoard.logoCover(a), ScoreBoard.still(a));
+        }, ScoreBoard.style(a), ScoreBoard.logoCover(a), ScoreBoard.still(a), ScoreBoard.boardShown(a), timingWords());
         int side = Math.round(12 * d);
         FrameLayout.LayoutParams pp = new FrameLayout.LayoutParams(wide ? Math.min(Math.round(600 * d), Math.round(root.getWidth() * 0.72f)) : -1, -2,
                 Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
@@ -504,6 +545,18 @@ final class ScoreOverlay implements ScoreBoard.Source {
         outline(true);
         guard.poke();
         place();
+    }
+
+    /**
+     * Move and resize's timing line: read off the channel's own clock (the board then has its clock and score to the
+     * second, whatever is set by hand), or seen turning a minute, else how long it is held back behind the scores.
+     */
+    private String timingWords() {
+        Channel ch = host.current();
+        int held = ch == null ? 0 : LiveAlerts.delay(a, ch.key);
+        if (reading()) return "Matched to the channel's clock";
+        if (board.screen().matched()) return "Matched to the channel's minute · held " + held + " s";
+        return "Held back " + held + " s behind the live scores";
     }
 
     /** Move and resize closed: kept for this channel (save), or as they were. */

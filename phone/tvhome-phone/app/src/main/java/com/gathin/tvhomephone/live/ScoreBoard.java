@@ -113,7 +113,26 @@ public final class ScoreBoard implements LiveAlerts.Listener {
     /** The channel's logo covered with Homefield's, and how (LogoCover.Look; Badge until chosen). */
     static LogoCover.Look logoCover(Context c) { return LogoCover.Look.of(prefs(c).getString("logo", "BADGE")); }
 
-    static void setLogoCover(Context c, LogoCover.Look l) { prefs(c).edit().putString("logo", l.name()).apply(); }
+    static void setLogoCover(Context c, LogoCover.Look l) {
+        SharedPreferences.Editor e = prefs(c).edit().putString("logo", l.name());
+        // Its look kept, so switching it back on (Move and resize) puts the same one back.
+        if (l != LogoCover.Look.OFF) e.putString("logo_last", l.name());
+        e.apply();
+    }
+
+    /** The mark over the channel's logo as it was before it was switched off. */
+    static LogoCover.Look lastLogo(Context c) {
+        LogoCover.Look l = LogoCover.Look.of(prefs(c).getString("logo_last", "BADGE"));
+        return l == LogoCover.Look.OFF ? LogoCover.Look.BADGE : l;
+    }
+
+    /**
+     * The scoreboard itself over the picture (Move and resize's switch): off, it is hidden while its clock and score
+     * still run and the mark over the logo stays as it is.
+     */
+    static boolean boardShown(Context c) { return prefs(c).getBoolean("board_shown", true); }
+
+    static void setBoardShown(Context c, boolean v) { prefs(c).edit().putBoolean("board_shown", v).apply(); }
 
     /** Whether the board reads the channel's own scoreboard to keep its time and score (on until switched off). */
     static boolean reads(Context c) { return prefs(c).getBoolean("read", true); }
@@ -458,7 +477,7 @@ public final class ScoreBoard implements LiveAlerts.Listener {
             l = f1Look((F1Live.Session) pick[1], at);
         }
         if (l == null && preview) l = sample();
-        if (l == null) {
+        if (l == null || hidden) {
             bug.setVisibility(View.GONE);
             return;
         }
@@ -470,6 +489,13 @@ public final class ScoreBoard implements LiveAlerts.Listener {
 
     /** Being moved and sized with no game on: a made-up game shows, to place. */
     private boolean preview;
+    /** Switched off by hand (boardShown): drawn no more, its clock and score going on underneath. */
+    private boolean hidden;
+
+    void hidden(boolean on) {
+        hidden = on;
+        draw(System.currentTimeMillis());
+    }
 
     void preview(boolean on) {
         preview = on;

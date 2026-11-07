@@ -15,6 +15,11 @@ import org.json.JSONObject;
 final class BoardPlace {
     /** The scoreboard: its left, top and height; bx below 0 while it isn't placed. */
     float bx = -1, by, bh;
+    /**
+     * The scoreboard's width, once its height has been set apart from it (Height in Move and resize); 0 while it keeps
+     * its own width for its height.
+     */
+    float bw;
     /** The mark over the logo: its left, top, width and height; lx below 0 while it isn't placed. */
     float lx = -1, ly, lw, lh;
 
@@ -22,6 +27,8 @@ final class BoardPlace {
     static final float MIN_H = 0.035f, MAX_H = 0.3f;
     /** The smallest and largest a mark's width may be. */
     static final float MIN_W = 0.04f, MAX_W = 0.45f;
+    /** The smallest and largest a scoreboard's own width may be, and a mark's height. */
+    static final float MIN_BW = 0.08f, MAX_BW = 0.9f, MIN_LH = 0.025f, MAX_LH = 0.5f;
 
     boolean board() {
         return bx >= 0;
@@ -43,10 +50,30 @@ final class BoardPlace {
         ly = clamp(y, 0, Math.max(0, 1 - lh));
     }
 
-    /** The scoreboard's height times k, between MIN_H and MAX_H, its top kept on the picture. Pure. */
+    /** The scoreboard's height times k, between MIN_H and MAX_H (its own width with it), its top kept on the picture. Pure. */
     void sizeBoard(float k) {
+        float was = bh;
+        bh = clamp(bh * k, MIN_H, MAX_H);
+        if (bw > 0 && was > 0) bw = clamp(bw * bh / was, MIN_BW, MAX_BW);
+        by = clamp(by, 0, Math.max(0, 1 - bh));
+    }
+
+    /**
+     * The scoreboard taller or shorter by k, its width kept (w: its width now, a share of the picture's): it draws to
+     * fill the box, its two rows when nearer square. Pure.
+     */
+    void heightBoard(float k, float w) {
+        if (bw <= 0) bw = clamp(w, MIN_BW, MAX_BW);
         bh = clamp(bh * k, MIN_H, MAX_H);
         by = clamp(by, 0, Math.max(0, 1 - bh));
+    }
+
+    /** The mark taller or shorter by k about its middle, its width kept, kept on the picture. Pure. */
+    void heightLogo(float k) {
+        float h = clamp(lh * k, MIN_LH, MAX_LH);
+        float cy = ly + lh / 2;
+        lh = h;
+        ly = clamp(cy - h / 2, 0, Math.max(0, 1 - h));
     }
 
     /** The mark's size times k about its middle, its shape kept, kept on the picture. Pure. */
@@ -66,8 +93,8 @@ final class BoardPlace {
 
     String json() {
         try {
-            return new JSONObject().put("bx", bx).put("by", by).put("bh", bh).put("lx", lx).put("ly", ly).put("lw", lw)
-                    .put("lh", lh).toString();
+            return new JSONObject().put("bx", bx).put("by", by).put("bh", bh).put("bw", bw).put("lx", lx).put("ly", ly)
+                    .put("lw", lw).put("lh", lh).toString();
         } catch (JSONException e) {
             return "{}";
         }
@@ -81,6 +108,7 @@ final class BoardPlace {
             p.bx = (float) o.optDouble("bx", -1);
             p.by = (float) o.optDouble("by", 0);
             p.bh = (float) o.optDouble("bh", 0);
+            p.bw = (float) o.optDouble("bw", 0);
             p.lx = (float) o.optDouble("lx", -1);
             p.ly = (float) o.optDouble("ly", 0);
             p.lw = (float) o.optDouble("lw", 0);

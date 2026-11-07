@@ -15,10 +15,38 @@ public final class GameClock {
     /** Each game's clock as last read and when that value was first seen: {seconds, ms}. */
     private static final Map<String, double[]> SEEN = new HashMap<>();
 
+    /**
+     * Pure: ESPN's football clock as the clock on the screen has it. ESPN gives the minute being played, in whole minutes
+     * ("46'" is 2760 from the moment the second half kicks off at 45:00, watched against a live game), so each minute's
+     * clock starts a minute lower; in added time ("45'+2'") at the period's end at least, the minutes added beside it.
+     * A hair above nothing in the first minute, so it still reads as a clock. 0 when ESPN gives none.
+     */
+    public static double minuteStart(double clock, String displayClock) {
+        if (clock <= 0) return 0;
+        double c = clock;
+        if (c >= 60 && Math.abs(c - Math.rint(c / 60) * 60) < 0.001) c -= 60;
+        if (added(displayClock) > 0) c = Math.max(c, firstMinute(displayClock) * 60.0);
+        return Math.max(0.001, c);
+    }
+
+    /** The minute before any minutes added ("45'+2'": 45); 0 when none. */
+    static int firstMinute(String displayClock) {
+        if (displayClock == null) return 0;
+        int n = 0;
+        for (int i = 0; i < displayClock.length() && Character.isDigit(displayClock.charAt(i)); i++) n = n * 10 + (displayClock.charAt(i) - '0');
+        return n;
+    }
+
+    /** The clock in seconds at the start of the minute a game's words give, when ESPN gave no clock ("67'": 66:00). */
+    public static double fromWords(Game g) {
+        int m = Game.minute(g.detail);
+        return m <= 0 ? 0 : (m - 1) * 60.0;
+    }
+
     /** {"67:23", ""} or {"45:00", "+2"}; null when the game is not running (before, at half time, after). */
     public static synchronized String[] show(Game g, long now) {
         if (g == null || g.state != Game.LIVE || g.halftime) return null;
-        double secs = g.clock > 0 ? g.clock : Game.minute(g.detail) * 60.0;
+        double secs = g.clock > 0 ? g.clock : fromWords(g);
         String key = g.id == null ? "" : g.id;
         double[] seen = SEEN.get(key);
         if (seen == null || seen[0] != secs) {
@@ -32,7 +60,7 @@ public final class GameClock {
     /** The clock in seconds as it stands now (going on from ESPN's last minute); -1 when the game is not running. */
     public static synchronized long seconds(Game g, long now) {
         if (g == null || g.state != Game.LIVE || g.halftime) return -1;
-        double secs = g.clock > 0 ? g.clock : Game.minute(g.detail) * 60.0;
+        double secs = g.clock > 0 ? g.clock : fromWords(g);
         double[] seen = SEEN.get(g.id == null ? "" : g.id);
         long elapsed = seen != null && seen[0] == secs ? Math.max(0, Math.min(59, (now - (long) seen[1]) / 1000)) : 0;
         return (long) secs + elapsed;

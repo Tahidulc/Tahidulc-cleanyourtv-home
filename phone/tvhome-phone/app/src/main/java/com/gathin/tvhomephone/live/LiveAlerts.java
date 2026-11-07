@@ -96,14 +96,20 @@ public final class LiveAlerts {
         prefs(c).edit().putBoolean(HOLD, on).apply();
     }
 
-    /** A channel's delay behind the real game, in seconds (0 when not set). */
+    /**
+     * A channel's delay behind the real game, in seconds: its own (set by hand, or measured off its scoreboard), else
+     * the last set or measured on any channel (one provider's channels run behind by much the same), else 0.
+     */
     static int delay(Context c, String streamKey) {
-        return streamKey == null || streamKey.isEmpty() ? 0 : prefs(c).getInt("d." + streamKey, 0);
+        if (streamKey == null || streamKey.isEmpty()) return 0;
+        android.content.SharedPreferences p = prefs(c);
+        return p.getInt("d." + streamKey, p.getInt("d.last", 0));
     }
 
     static void setDelay(Context c, String streamKey, int seconds) {
         if (streamKey == null || streamKey.isEmpty()) return;
-        prefs(c).edit().putInt("d." + streamKey, clamp(seconds)).apply();
+        int s = clamp(seconds);
+        prefs(c).edit().putInt("d." + streamKey, s).putInt("d.last", s).apply();
     }
 
     static int clamp(int s) {

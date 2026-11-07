@@ -97,4 +97,59 @@ public class BoardPlaceTest {
         assertTrue(s.board());
         assertFalse(s.logo());
     }
+
+    @Test public void theScoreboardsHeightAloneKeepsItsWidth() {
+        BoardPlace p = new BoardPlace();
+        p.bx = 0.05f;
+        p.by = 0.05f;
+        p.bh = 0.08f;
+        // Its own width for its height until then: 0.3 of the picture now.
+        p.heightBoard(2f, 0.3f);
+        assertEquals(0.16f, p.bh, E);
+        assertEquals(0.3f, p.bw, E);
+        p.heightBoard(0.5f, 0.9f);
+        assertEquals(0.08f, p.bh, E);
+        assertEquals(0.3f, p.bw, E);
+        // Size then takes both, the shape kept.
+        p.sizeBoard(1.5f);
+        assertEquals(0.12f, p.bh, E);
+        assertEquals(0.45f, p.bw, E);
+        // Within bounds, and kept on the picture.
+        for (int i = 0; i < 40; i++) p.heightBoard(1.12f, 0);
+        assertEquals(BoardPlace.MAX_H, p.bh, E);
+        assertTrue(p.by + p.bh <= 1f + E);
+        for (int i = 0; i < 80; i++) p.heightBoard(1 / 1.12f, 0);
+        assertEquals(BoardPlace.MIN_H, p.bh, E);
+    }
+
+    @Test public void theLogosHeightAloneKeepsItsWidthAndMiddle() {
+        BoardPlace p = new BoardPlace();
+        p.lx = 0.8f;
+        p.ly = 0.05f;
+        p.lw = 0.13f;
+        p.lh = 0.08f;
+        float mid = p.ly + p.lh / 2;
+        p.heightLogo(1.5f);
+        assertEquals(0.12f, p.lh, E);
+        assertEquals(0.13f, p.lw, E);
+        assertEquals(mid, p.ly + p.lh / 2, E);
+        for (int i = 0; i < 60; i++) p.heightLogo(1.12f);
+        assertEquals(BoardPlace.MAX_LH, p.lh, E);
+        assertTrue(p.ly >= 0 && p.ly + p.lh <= 1f + E);
+        for (int i = 0; i < 80; i++) p.heightLogo(1 / 1.12f);
+        assertEquals(BoardPlace.MIN_LH, p.lh, E);
+    }
+
+    @Test public void theScoreboardsOwnWidthIsKeptAsWritten() {
+        BoardPlace p = new BoardPlace();
+        p.bx = 0.1f;
+        p.by = 0.1f;
+        p.bh = 0.1f;
+        p.heightBoard(1.2f, 0.35f);
+        BoardPlace q = BoardPlace.from(p.json());
+        assertEquals(0.35f, q.bw, E);
+        assertEquals(0.12f, q.bh, E);
+        // Places written before there was one: no width of its own.
+        assertEquals(0f, BoardPlace.from("{\"bx\":0.1,\"by\":0.1,\"bh\":0.1}").bw, E);
+    }
 }
