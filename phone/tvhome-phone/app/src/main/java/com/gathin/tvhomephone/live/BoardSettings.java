@@ -104,9 +104,14 @@ public final class BoardSettings {
             } else {
                 LogoCover lc = new LogoCover(c);
                 lc.look(lk);
+                // The channel and Broadcast looks with the picture tag chosen (a UHD channel's on Auto) and LIVE.
+                ChannelMark.Tag tg = ScoreBoard.logoTag(c);
+                lc.tag(tg == ChannelMark.Tag.AUTO ? "UHD" : tg.shown);
+                lc.live(true);
                 pic = lc;
             }
-            one.addView(pic, 0, new LinearLayout.LayoutParams(Ui.dp(c, 104), Ui.dp(c, 36)));
+            boolean tall = lk.channel() || lk.broadcast();
+            one.addView(pic, 0, new LinearLayout.LayoutParams(Ui.dp(c, tall ? 112 : 104), Ui.dp(c, tall ? 52 : 36)));
             one.setOnClickListener(v -> {
                 ScoreBoard.setLogoCover(c, lk);
                 for (android.view.View f : lframes) f.setSelected(f == v);
@@ -115,6 +120,24 @@ public final class BoardSettings {
             logos.addView(one, spaced(c));
         }
         col.addView(hl, new LinearLayout.LayoutParams(-1, -2));
+        // The picture tag on it: Auto (from the channel's name), none, or one set.
+        col.addView(sub(c, c.getString(R.string.live20_logo_tag)));
+        col.addView(com.gathin.tvhomephone.sports.Ui.text(c, c.getString(R.string.live20_logo_tag_line), 13, c.getColor(R.color.text_dim), false));
+        android.widget.HorizontalScrollView ht = new android.widget.HorizontalScrollView(c);
+        ht.setHorizontalScrollBarEnabled(false);
+        LinearLayout tagRow = new LinearLayout(c);
+        ht.addView(tagRow);
+        java.util.List<android.view.View> tframes = new java.util.ArrayList<>();
+        for (ChannelMark.Tag tg : ChannelMark.Tag.values()) {
+            LinearLayout one = choice(c, tg == ChannelMark.Tag.AUTO ? "Auto" : tg.label, ScoreBoard.logoTag(c) == tg);
+            one.setOnClickListener(v -> {
+                ScoreBoard.setLogoTag(c, tg);
+                for (android.view.View f : tframes) f.setSelected(f == v);
+            });
+            tframes.add(one);
+            tagRow.addView(one, spaced(c));
+        }
+        col.addView(ht, new LinearLayout.LayoutParams(-1, -2));
         row(c, col, c.getString(R.string.live4_alerts_football), ScoreBoard.shows(c, ScoreBoard.FOOTBALL), on -> ScoreBoard.setShows(c, ScoreBoard.FOOTBALL, on));
         row(c, col, c.getString(R.string.live4_alerts_sport), ScoreBoard.shows(c, ScoreBoard.SPORT), on -> ScoreBoard.setShows(c, ScoreBoard.SPORT, on));
         row(c, col, c.getString(R.string.live4_alerts_news), ScoreBoard.shows(c, ScoreBoard.NEWS), on -> ScoreBoard.setShows(c, ScoreBoard.NEWS, on));

@@ -398,7 +398,8 @@ final class ScoreOverlay implements ScoreBoard.Source {
                 cover.setLayoutParams(cp);
                 // Broadcast: the channel's picture tag, LIVE while the game is, the scoreboard's colours.
                 Channel ch = host.current();
-                cover.tag(LogoCover.tagOf(ch == null ? null : ch.name));
+                cover.tag(ScoreBoard.logoTag(a).on(ch == null ? null : ch.name));
+                cover.sport(board.f1() ? "f1" : "");
                 cover.live(board.live());
                 cover.boardLook(board.bug.stripLook());
             }

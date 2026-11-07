@@ -132,6 +132,15 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         e.apply();
     }
 
+    /** The picture tag on the logo's cover: Auto (from the channel's name), none, or one set (HD, UHD, 4K, with HDR or not). */
+    static ChannelMark.Tag logoTag(Context c) {
+        return ChannelMark.Tag.of(prefs(c).getString("logo_tag", ""));
+    }
+
+    static void setLogoTag(Context c, ChannelMark.Tag t) {
+        prefs(c).edit().putString("logo_tag", t.name()).apply();
+    }
+
     /** The mark over the channel's logo as it was before it was switched off. */
     static LogoCover.Look lastLogo(Context c) {
         LogoCover.Look l = LogoCover.Look.of(prefs(c).getString("logo_last", "BADGE"));
@@ -485,6 +494,11 @@ public final class ScoreBoard implements LiveAlerts.Listener {
     /** Whether a football game is on the board (the channel's own or a followed club's). */
     boolean football() {
         return mode == FOOTBALL_MODE;
+    }
+
+    /** Whether a Formula 1 session is on the board (the channel looks' Matchday says GRAND PRIX). */
+    boolean f1() {
+        return mode == F1_MODE;
     }
 
     /**

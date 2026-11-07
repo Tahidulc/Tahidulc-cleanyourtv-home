@@ -251,6 +251,15 @@ stats beside the board never overlap, at any size the board is made: in a short 
 way first, then the whole stat is drawn smaller; an alert whose first row is too long for its room is drawn smaller
 rather than cut off; and the scoreboard's own numbers shrink to fit a narrow box rather than run into each other.
 
+Whitebrook Road Sports on the logo's cover (4.20): seven new looks for the mark over the channel's logo, drawn as the TV
+launcher's 4.19 draws them, as a sports channel draws its own, each with the app's house-and-play mark in its violet to
+coral: Signature (the mark in its tile, WHITEBROOK over ROAD SPORTS), Matchday (the name over a channel bar saying
+MATCHDAY, or GRAND PRIX over an F1 session), Roofline (the house as a badge with WR in it, SPORTS large), Velocity
+(leaning forward), Roundel (the mark in a ring), Solid block, and Smoked glass (see-through, as channels' own sit on the
+picture), each laid out for the logo's box. The picture tag on them (and on the Broadcast looks) is a choice of its own,
+in Settings and in the player's menu: Auto (from the channel's name: 4K or UHD, with HDR when it says HDR, HD, or none),
+None, HD, UHD, 4K, UHD HDR or 4K HDR. The letters are the TV's own (Outfit), now in the app.
+
 Subtitles (CC in the film's player): the film's or episode's own, from your playlist's stream, come first, in the
 languages you choose (Settings, Subtitles, in order). When it has none, OpenSubtitles.com is looked in by the title's
 TMDB id (the series' with its season and episode), best first: your languages, the ones that fit the copy playing (its

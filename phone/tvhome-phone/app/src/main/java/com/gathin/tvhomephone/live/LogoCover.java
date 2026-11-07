@@ -27,12 +27,18 @@ import com.gathin.tvhomephone.R;
 final class LogoCover extends View implements BurnGuard.Dims {
     /** The looks, as Settings names them. */
     enum Look {
-        OFF("Leave the channel's"), BADGE("Badge"), GLASS("Glass"), MARK("Mark only"), WORD("Wordmark"),
-        BROADCAST("Broadcast, see-through"), BROADCAST_BOARD("Broadcast, scoreboard colours");
+        OFF("Leave the channel's"), SIGNATURE("Signature"), MATCHDAY("Matchday"), ROOFLINE("Roofline"), VELOCITY("Velocity"),
+        ROUNDEL("Roundel"), BLOCK("Solid block"), SMOKED("Smoked glass"), BADGE("Badge"), GLASS("Glass"), MARK("Mark only"),
+        WORD("Wordmark"), BROADCAST("Broadcast, see-through"), BROADCAST_BOARD("Broadcast, scoreboard colours");
 
         /** Laid out as a sports channel's own logo, one solid block. */
         boolean broadcast() {
             return this == BROADCAST || this == BROADCAST_BOARD;
+        }
+
+        /** Whitebrook Road's own channel looks (ChannelMark draws them, as the TV does). */
+        boolean channel() {
+            return ordinal() >= SIGNATURE.ordinal() && ordinal() <= SMOKED.ordinal();
         }
 
         final String label;
@@ -60,6 +66,9 @@ final class LogoCover extends View implements BurnGuard.Dims {
     private OverlayBug.StripLook board;
     private final Paint boxes = new Paint(Paint.ANTI_ALIAS_FLAG), letters = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Path clipBlock = new Path();
+    /** The channel looks, drawn when one is chosen; the sport ("f1", else football) for Matchday's channel name. */
+    private ChannelMark channel;
+    private String sport = "";
 
     LogoCover(Context c) {
         super(c);
@@ -86,14 +95,22 @@ final class LogoCover extends View implements BurnGuard.Dims {
         String n = t == null ? "" : t;
         if (n.equals(tag)) return;
         tag = n;
-        if (look.broadcast()) invalidate();
+        if (look.broadcast() || look.channel()) invalidate();
+    }
+
+    /** What is on: "f1" for Formula 1, else football (Matchday's channel name). */
+    void sport(String s) {
+        String n = s == null ? "" : s;
+        if (n.equals(sport)) return;
+        sport = n;
+        if (look.channel()) invalidate();
     }
 
     /** Whether the game is live (Broadcast's LIVE). */
     void live(boolean on) {
         if (on == live) return;
         live = on;
-        if (look.broadcast()) invalidate();
+        if (look.broadcast() || look.channel()) invalidate();
     }
 
     /** The scoreboard's look, for Broadcast in its colours. */
@@ -103,17 +120,19 @@ final class LogoCover extends View implements BurnGuard.Dims {
         if (look == Look.BROADCAST_BOARD) invalidate();
     }
 
-    /** Pure: a channel's picture tag from its name: "UHD" for UHD or 4K, "HD" for HD or FHD, else none. */
+    /** Pure: a channel's picture tag from its name (ChannelMark.tagOf): "4K" or "UHD", with " HDR" or not, "HD", or none. */
     static String tagOf(String channel) {
-        String n = channel == null ? "" : " " + channel.toUpperCase(java.util.Locale.ROOT).replaceAll("[^A-Z0-9]+", " ") + " ";
-        if (n.contains(" UHD ") || n.contains(" 4K ")) return "UHD";
-        if (n.contains(" HD ") || n.contains(" FHD ")) return "HD";
-        return "";
+        return ChannelMark.tagOf(channel);
     }
 
     @Override protected void onDraw(Canvas cv) {
         float w = getWidth(), h = getHeight();
         if (w <= 0 || h <= 0 || look == Look.OFF) return;
+        if (look.channel()) {
+            if (channel == null) channel = new ChannelMark(getContext());
+            channel.draw(cv, look, 0, 0, w, h, tag, live, sport);
+            return;
+        }
         if (look.broadcast()) {
             broadcast(cv, w, h, look == Look.BROADCAST || board == null);
             return;

@@ -687,6 +687,19 @@ final class PlayerExtras implements LiveAlerts.Listener {
                 lg.add(t);
                 addChip(logos, t);
             }
+            // The picture tag on the logo's cover.
+            LinearLayout tags = chipRow(c, box, R.string.live20_logo_tag);
+            List<TextView> tg = new ArrayList<>();
+            for (ChannelMark.Tag tag : ChannelMark.Tag.values()) {
+                TextView t = Ui.guideChip(c, tag == ChannelMark.Tag.AUTO ? "Auto" : tag.label, ScoreBoard.logoTag(c) == tag);
+                t.setOnClickListener(v -> {
+                    ScoreBoard.setLogoTag(c, tag);
+                    for (TextView x : tg) Ui.styleChip(c, x, x == v);
+                    overlay.restyle();
+                });
+                tg.add(t);
+                addChip(tags, t);
+            }
             // Broadcast mode: Homefield's break over the channel's adverts; one to see now.
             toggle(c, box, a.getString(R.string.live5_broadcast), ScoreBoard.broadcast(c), on -> ScoreBoard.setBroadcast(c, on));
             action(c, box, R.drawable.live_ic_play, a.getString(R.string.live5_broadcast_try), () -> {
