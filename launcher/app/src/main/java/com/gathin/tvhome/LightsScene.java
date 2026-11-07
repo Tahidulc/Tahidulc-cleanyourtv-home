@@ -457,9 +457,10 @@ final class LightsScene extends View {
         sideDoor(cv, 4.75f, 0.82f, lit, glow, sc);
 
         // The TV's dark panel, the TV on it, the sideboard under them.
-        // The TV, a 98-inch: 2.17 m across, 1.22 m high, on the bare white wall.
-        float tz0 = 1.25f, tz1 = tz0 + 2.17f;
-        box(cv, 0.02f, 0.07f, 0.72f, 0.72f + 1.22f, tz0, tz1, 0xFF0B0C0F, 0xFF16181D, true, sc, glow);
+        // The TV, the 98-inch, on the bare white wall: drawn a little larger than life (2.75 m by 1.55 m) so it reads as
+        // big as it is in the room.
+        float tz0 = 0.95f, tz1 = tz0 + 2.75f;
+        box(cv, 0.02f, 0.07f, 0.62f, 0.62f + 1.55f, tz0, tz1, 0xFF0B0C0F, 0xFF16181D, true, sc, glow);
         box(cv, 0.0f, 0.48f, 0.0f, 0.52f, 0.45f, 4.15f, mix(0xFF2B2D31, 0xFF6C6E73, lit), mix(0xFF1E2024, 0xFF55575C, lit), false, sc, 0f);
 
         // The far side: the oak slatted wall, its own strip along its top, the corner sofa, the coffee table on the rug.
