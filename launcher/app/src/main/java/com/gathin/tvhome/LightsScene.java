@@ -20,7 +20,8 @@ import java.util.Locale;
 
 /**
  * The living room in 3D, as it is: the long wall with the TV on its dark panel and the grey sideboard under it, the
- * ceiling's edge lit by the LED strip along that wall and on across the far wall over the three glazed oak doors, the
+ * ceiling's edge lit by the LED strip along that wall and on across the far wall over its doors (two glazed oak, then a
+ * wide clear glass one in white edging), the
  * lit slot in the ceiling beside it, the row of downlights, the oak floor. It comes up when a light is switched on or
  * off, given a colour or dimmed (SmartPanel), and shows what the lights are doing: the strip lighting along its length
  * as it comes on (and going out back along it), a new colour washing along it, its glow on the walls and the ceiling
@@ -445,9 +446,9 @@ final class LightsScene extends View {
         wash(cv, sc, gs * 0.55f, 0.02f, H - bh, D - 0.6f, 0.02f, H - bh, D, 0, 0, 0);
 
         // The far wall's three glazed oak doors.
-        door(cv, 0.55f, 1.0f, lit, glow, sc);
-        door(cv, 1.62f, 1.0f, lit, glow, sc);
-        door(cv, 2.95f, 0.86f, lit, glow, sc);
+        door(cv, 0.45f, 0.86f, lit, glow, sc);
+        door(cv, 1.36f, 0.86f, lit, glow, sc);
+        clearDoor(cv, 2.55f, 1.35f, lit, glow, sc);
 
         // The TV's dark panel, the TV on it, the sideboard under them.
         float tz0 = 1.3f, tz1 = 3.5f;
@@ -524,6 +525,36 @@ final class LightsScene extends View {
                 float px = x + m + i * (pw + gap), py = m + j * (ph + gap);
                 paint(cv, glass, px, py, z2, px + pw, py, z2, px + pw, py + ph, z2, px, py + ph, z2);
             }
+    }
+
+    /** The far wall's third door from x, wd wide: one wide pane of clear glass in a white frame, the room beyond through it. */
+    private void clearDoor(Canvas cv, float x, float wd, float lit, float glow, int colour) {
+        float z = D - 0.012f, hgt = 2.1f, edge = 0.075f;
+        // Its white edging round the opening, a little proud of the wall.
+        int white = mix(0xFF4A4C50, 0xFFF4F4F2, 0.3f + lit * 0.7f);
+        paint(cv, white, x - edge, 0, z, x + wd + edge, 0, z, x + wd + edge, hgt + edge, z, x - edge, hgt + edge, z);
+        // The glass: the dim hall beyond, a pale sheen across it, the strip's colour caught in it.
+        float z2 = z - 0.004f;
+        int beyond = mix(0xFF101318, 0xFF6B6A66, lit * 0.55f);
+        beyond = mix(beyond, colour, glow * 0.1f);
+        if (!face(path, x, 0, z2, x + wd, 0, z2, x + wd, hgt, z2, x, hgt, z2)) return;
+        fill.setColor(beyond);
+        cv.drawPath(path, fill);
+        if (point(x, hgt, z2)) {
+            float ax = p3[0], ay = p3[1];
+            if (point(x + wd, 0, z2)) {
+                fill.setShader(new LinearGradient(ax, ay, p3[0], p3[1], new int[]{0x2EFFFFFF, 0x00FFFFFF, 0x1AFFFFFF, 0x00FFFFFF},
+                        new float[]{0f, 0.35f, 0.55f, 1f}, Shader.TileMode.CLAMP));
+                cv.drawPath(path, fill);
+                fill.setShader(null);
+            }
+        }
+        // Its thin white frame and the handle.
+        float f = 0.035f, z3 = z2 - 0.002f;
+        paint(cv, white, x, 0, z3, x + f, 0, z3, x + f, hgt, z3, x, hgt, z3);
+        paint(cv, white, x + wd - f, 0, z3, x + wd, 0, z3, x + wd, hgt, z3, x + wd - f, hgt, z3);
+        paint(cv, white, x, hgt - f, z3, x + wd, hgt - f, z3, x + wd, hgt, z3, x, hgt, z3);
+        paint(cv, mix(0xFF6F737A, 0xFFDADDE2, lit), x + 0.08f, 1.0f, z3 - 0.002f, x + 0.12f, 1.0f, z3 - 0.002f, x + 0.12f, 1.12f, z3 - 0.002f, x + 0.08f, 1.12f, z3 - 0.002f);
     }
 
     /** A downlight at (x, z) in the ceiling: its lit disc, a soft cone and its pool of light on the floor. */
