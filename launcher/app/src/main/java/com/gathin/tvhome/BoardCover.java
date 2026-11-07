@@ -639,6 +639,10 @@ final class BoardCover {
         o.awayColour = awayColour;
         int scored = "goal".equals(d.kind) ? goalSide(d.scoreBefore, d.score) : 0;
         o.side = scored > 0 ? scored : d.crest == null ? 0 : d.crest == d.homeCrest ? 1 : d.crest == d.awayCrest ? 2 : 0;
+        // As the card has them: the player's picture, both crests.
+        o.photo = d.photo;
+        o.homeCrest = d.homeCrest;
+        o.awayCrest = d.awayCrest;
         o.what = (o.chip + " " + o.title + " " + o.line).trim();
         return o;
     }
@@ -658,6 +662,11 @@ final class BoardCover {
 
     /** Pure: a football pop-up's line ("⚽  Salah  67'") as it folds out from under the board. */
     static BoardDrop.Drop dropOfLine(String head, ScoresTicker.Game g, String sound, String scoredBy) {
+        return dropOfLine(head, g, sound, scoredBy, null, null);
+    }
+
+    /** The same, with both clubs' crests as the pop-up had them. */
+    static BoardDrop.Drop dropOfLine(String head, ScoresTicker.Game g, String sound, String scoredBy, Bitmap homeCrest, Bitmap awayCrest) {
         BoardDrop.Drop o = new BoardDrop.Drop();
         o.gameId = g.id;
         o.chip = chipOf(sound);
@@ -668,12 +677,19 @@ final class BoardCover {
         o.homeColour = BoardBug.colour(g.homeColor, g.homeAlt);
         o.awayColour = BoardBug.colour(g.awayColor, g.awayAlt);
         o.side = "home".equals(scoredBy) ? 1 : "away".equals(scoredBy) ? 2 : 0;
+        o.homeCrest = homeCrest == null ? null : ScoreCard.onNavy(homeCrest);
+        o.awayCrest = awayCrest == null ? null : ScoreCard.onNavy(awayCrest);
         o.what = (o.chip + " " + o.title + " " + o.line).trim();
         return o;
     }
 
     /** Pure: both starting elevens as they fold out: each club's name and shape, then its players' surnames. */
     static BoardDrop.Drop lineupsDrop(ScoresTicker.Game g, ScoresTicker.Side[] sides) {
+        return lineupsDrop(g, sides, null, null);
+    }
+
+    /** The same, each club's crest before its eleven. */
+    static BoardDrop.Drop lineupsDrop(ScoresTicker.Game g, ScoresTicker.Side[] sides, Bitmap homeCrest, Bitmap awayCrest) {
         BoardDrop.Drop o = new BoardDrop.Drop();
         o.gameId = g.id;
         o.chip = "LINE-UPS";
@@ -686,6 +702,8 @@ final class BoardCover {
         o.line2 = eleven(sides[1], away);
         o.homeColour = BoardBug.colour(g.homeColor, g.homeAlt);
         o.awayColour = BoardBug.colour(g.awayColor, g.awayAlt);
+        o.homeCrest = homeCrest;
+        o.awayCrest = awayCrest;
         o.what = "line-ups " + o.title;
         return o;
     }
@@ -716,17 +734,17 @@ final class BoardCover {
     }
 
     /** A football pop-up's line while the board is up: folded out from under it instead; true when taken (main thread). */
-    static boolean takeLine(Context c, CharSequence head, ScoresTicker.Game g, String sound, String scoredBy) {
+    static boolean takeLine(Context c, CharSequence head, ScoresTicker.Game g, String sound, String scoredBy, Bitmap home, Bitmap away) {
         if (g == null || g.id == null || !up(c)) return false;
-        drop(c, dropOfLine(head == null ? "" : head.toString(), g, sound, scoredBy));
+        drop(c, dropOfLine(head == null ? "" : head.toString(), g, sound, scoredBy, home, away));
         return true;
     }
 
     /** The kick-off's line-ups while the board is up: both elevens folded out from under it; true when taken (main thread). */
-    static boolean takeLineups(Context c, ScoresTicker.Game g, ScoresTicker.Side[] sides) {
+    static boolean takeLineups(Context c, ScoresTicker.Game g, ScoresTicker.Side[] sides, Bitmap home, Bitmap away) {
         if (g == null || g.id == null || sides == null || sides.length < 2 || sides[0] == null || sides[1] == null || !up(c)) return false;
         if (!NotifyPrefs.allowed(c, "kickoff", false, g.slug, g.id)) return false;
-        drop(c, lineupsDrop(g, sides));
+        drop(c, lineupsDrop(g, sides, home, away));
         return true;
     }
 

@@ -2864,7 +2864,8 @@ public class GoalWatchService extends Service {
                 LineupCard.Data card = lineupCard(g, sides, tv, channels);
                 // The scoreboard over the channel up: both elevens fold out from under it instead.
                 main.post(() -> {
-                    if (!BoardCover.takeLineups(this, g, sides)) LineupCard.show(this, card);
+                    if (!BoardCover.takeLineups(this, g, sides, card.home == null ? null : card.home.crest,
+                            card.away == null ? null : card.away.crest)) LineupCard.show(this, card);
                 });
                 return;
             }
@@ -2872,7 +2873,7 @@ public class GoalWatchService extends Service {
             if (skyAlerts) {
                 ScoreCard.Data d = kickoffCard(g);
                 main.post(() -> {
-                    if (sides == null || !BoardCover.takeLineups(this, g, sides)) ScoreCard.show(this, d);
+                    if (sides == null || !BoardCover.takeLineups(this, g, sides, d.homeCrest, d.awayCrest)) ScoreCard.show(this, d);
                 });
                 return;
             }
@@ -2913,7 +2914,9 @@ public class GoalWatchService extends Service {
                     NotifyPrefs.held(this, "kickoff", NotifyPrefs.homeNow(), null, "alert kick-off " + AlertLog.game(g), g.slug);
                     return;
                 }
-                if (sides != null && BoardCover.takeLineups(this, g, sides)) return;
+                if (sides != null && BoardCover.takeLineups(this, g, sides,
+                        sides[0].crest == null ? null : ScoreCard.onNavy(pictures.get(sides[0].crest)),
+                        sides[1].crest == null ? null : ScoreCard.onNavy(pictures.get(sides[1].crest)))) return;
                 queue.add(new Object[]{ready, "reminder", sides, pictures, livePage});
                 showNext();
             });
@@ -3836,7 +3839,9 @@ public class GoalWatchService extends Service {
         }
         // The scoreboard over the channel is up: a game's line folds out from under it instead, in its look.
         if (!onLane() && polled.length == 8 && polled[1] instanceof ScoresTicker.Game && polled[5] instanceof String
-                && BoardCover.takeLine(this, (CharSequence) polled[0], (ScoresTicker.Game) polled[1], (String) polled[5], (String) polled[6])) {
+                && BoardCover.takeLine(this, (CharSequence) polled[0], (ScoresTicker.Game) polled[1], (String) polled[5], (String) polled[6],
+                        polled[2] instanceof android.graphics.Bitmap ? (android.graphics.Bitmap) polled[2] : null,
+                        polled[3] instanceof android.graphics.Bitmap ? (android.graphics.Bitmap) polled[3] : null)) {
             play((String) polled[5]);
             main.post(this::showNext);
             return;

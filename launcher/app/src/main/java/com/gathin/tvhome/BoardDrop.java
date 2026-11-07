@@ -4,6 +4,7 @@ import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.animation.ValueAnimator;
 import android.content.Context;
+import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.Path;
@@ -17,6 +18,7 @@ import android.text.style.ForegroundColorSpan;
 import android.text.style.StyleSpan;
 import android.util.TypedValue;
 import android.view.Gravity;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
@@ -25,9 +27,11 @@ import android.widget.TextView;
  * alerts and broadcasters' captions come out of their score bug, in the board's own look (BoardBug's StripLook): as
  * wide as the board at least, on its ground in its words, square where it meets the board and round at its foot (under
  * the Glass pill, a pill of its own a little apart); the kind's chip, the title and its line, and down its edge the
- * colours of the clubs it is about (the scorers' alone for a goal, the club's for a red card). The line-ups: each
- * club's eleven, led by its name and shape in its colour, that colour down the edge beside it. It folds back up under
- * the board when it is done. Sized from the board's height, so it reads from the sofa at any size the board is.
+ * colours of the clubs it is about (the scorers' alone for a goal, the club's for a red card). As the cards over the
+ * apps have them: the player's picture (head and shoulders) at its start for a goal, a red card or a penalty, and both
+ * clubs' crests either side of the score. The line-ups: each club's eleven, led by its crest and its name and shape in
+ * its colour, that colour down the edge beside it. It folds back up under the board when it is done. Sized from the
+ * board's height, so it reads from the sofa at any size the board is.
  */
 final class BoardDrop extends LinearLayout {
     /** One alert as it drops: its chip, title, line (and the away side's eleven), and the game's clubs it is about. */
@@ -41,6 +45,8 @@ final class BoardDrop extends LinearLayout {
         boolean lineups;
         /** The game it is about (null: none), what Today's alerts and the log call it. */
         String gameId, what = "";
+        /** The player's picture (a cut-out, head and shoulders), and both clubs' crests (for a dark ground); each may be null. */
+        Bitmap photo, homeCrest, awayCrest;
     }
 
     /** The colour of the kinds with none of their own (half time, kick-off, the line-ups): the board's block instead. */
@@ -48,7 +54,8 @@ final class BoardDrop extends LinearLayout {
     private static final long FOLD_MS = 340L;
 
     private final TextView chip, title, line, line2;
-    private final LinearLayout head;
+    private final LinearLayout head, words, row1, row2;
+    private final ImageView photo, homeCrest, awayCrest, crest1, crest2;
     private final GradientDrawable chipGround = new GradientDrawable();
     private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Path ground = new Path();
@@ -68,8 +75,13 @@ final class BoardDrop extends LinearLayout {
 
     BoardDrop(Context c) {
         super(c);
-        setOrientation(VERTICAL);
+        setOrientation(HORIZONTAL);
         setWillNotDraw(false);
+        // The player's picture at its start, standing on its foot.
+        photo = picture(c);
+        addView(photo, new LayoutParams(1, 1));
+        words = new LinearLayout(c);
+        words.setOrientation(VERTICAL);
         head = new LinearLayout(c);
         head.setOrientation(HORIZONTAL);
         head.setGravity(Gravity.CENTER_VERTICAL);
@@ -77,14 +89,58 @@ final class BoardDrop extends LinearLayout {
         chip.setLetterSpacing(0.08f);
         chip.setBackground(chipGround);
         head.addView(chip, new LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT));
+        // Both crests either side of the score.
+        homeCrest = picture(c);
+        head.addView(homeCrest, new LayoutParams(1, 1));
         title = words(c, ScoreCard.outfit(c, 700), 2);
-        head.addView(title, new LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f));
-        addView(head, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
+        head.addView(title, new LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT, 0f));
+        awayCrest = picture(c);
+        head.addView(awayCrest, new LayoutParams(1, 1));
+        words.addView(head, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
+        // Each line with a crest before it (the line-ups' clubs).
+        crest1 = picture(c);
         line = words(c, ScoreCard.outfit(c, 500), 2);
-        addView(line, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
+        row1 = lineRow(c, crest1, line);
+        crest2 = picture(c);
         line2 = words(c, ScoreCard.outfit(c, 500), 2);
-        addView(line2, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
+        row2 = lineRow(c, crest2, line2);
+        words.addView(row1, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
+        words.addView(row2, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
+        addView(words, new LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f));
         setVisibility(GONE);
+    }
+
+    private static ImageView picture(Context c) {
+        ImageView v = new ImageView(c);
+        v.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        v.setVisibility(GONE);
+        return v;
+    }
+
+    private static LinearLayout lineRow(Context c, ImageView crest, TextView t) {
+        LinearLayout r = new LinearLayout(c);
+        r.setOrientation(HORIZONTAL);
+        r.setGravity(Gravity.TOP);
+        r.addView(crest, new LayoutParams(1, 1));
+        r.addView(t, new LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f));
+        return r;
+    }
+
+    /** A picture shown at size (w x h, with a gap after it), or none. */
+    private static void show(ImageView v, Bitmap b, int w, int h, int gapRight, int top) {
+        if (b == null) {
+            v.setImageDrawable(null);
+            v.setVisibility(GONE);
+            return;
+        }
+        v.setImageBitmap(b);
+        v.setVisibility(VISIBLE);
+        LayoutParams lp = (LayoutParams) v.getLayoutParams();
+        lp.width = w;
+        lp.height = h;
+        lp.rightMargin = gapRight;
+        lp.topMargin = top;
+        v.setLayoutParams(lp);
     }
 
     private static TextView words(Context c, Typeface face, int lines) {
@@ -150,7 +206,33 @@ final class BoardDrop extends LinearLayout {
         chip.setTextSize(TypedValue.COMPLEX_UNIT_PX, unit * 0.3f);
         chip.setPadding(Math.round(unit * 0.14f), Math.round(unit * 0.06f), Math.round(unit * 0.14f), Math.round(unit * 0.05f));
         title.setTextSize(TypedValue.COMPLEX_UNIT_PX, unit * 0.44f);
-        ((LayoutParams) title.getLayoutParams()).leftMargin = Math.round(unit * 0.2f);
+        LayoutParams tl = (LayoutParams) title.getLayoutParams();
+        // Either side of the score: the crests, else room after the chip.
+        int crestPx = Math.round(unit * 0.6f), gap = Math.round(unit * 0.16f);
+        tl.leftMargin = d.homeCrest != null ? 0 : Math.round(unit * 0.2f);
+        tl.weight = d.awayCrest != null ? 0f : 1f;
+        tl.width = d.awayCrest != null ? LayoutParams.WRAP_CONTENT : 0;
+        title.setLayoutParams(tl);
+        show(homeCrest, d.homeCrest, crestPx, crestPx, gap, 0);
+        ((LayoutParams) homeCrest.getLayoutParams()).leftMargin = Math.round(unit * 0.2f);
+        show(awayCrest, d.awayCrest, crestPx, crestPx, 0, 0);
+        ((LayoutParams) awayCrest.getLayoutParams()).leftMargin = gap;
+        // The player, head and shoulders, at its start and standing on its foot (as on the cards over the apps).
+        show(photo, d.lineups ? null : d.photo, Math.round(unit * 1.55f), Math.round(unit * 1.9f), Math.round(unit * 0.22f), 0);
+        // The line-ups' crests before each club's eleven.
+        int small = Math.round(unit * 0.46f);
+        show(crest1, d.lineups ? d.homeCrest : null, small, small, Math.round(unit * 0.14f), Math.round(unit * 0.08f));
+        show(crest2, d.lineups ? d.awayCrest : null, small, small, Math.round(unit * 0.14f), Math.round(unit * 0.08f));
+        if (d.lineups) {
+            homeCrest.setVisibility(GONE);
+            awayCrest.setVisibility(GONE);
+            tl.leftMargin = Math.round(unit * 0.2f);
+            tl.weight = 1f;
+            tl.width = 0;
+            title.setLayoutParams(tl);
+        }
+        setGravity(Gravity.BOTTOM);
+        words.setPadding(0, 0, 0, photo.getVisibility() == VISIBLE ? Math.round(unit * 0.04f) : 0);
         // The kind's own colour (a goal's green, a red card's red), else the board's block.
         chipColour = d.colour == PLAIN ? s.block : d.colour;
         chipGround.setColor(chipColour);
@@ -169,8 +251,11 @@ final class BoardDrop extends LinearLayout {
         }
         line.setText(d.lineups ? team(d.line, d.homeColour, s.light) : d.line);
         line2.setText(d.lineups ? team(d.line2, d.awayColour, s.light) : d.line2);
-        line.setVisibility(d.line.isEmpty() ? GONE : VISIBLE);
-        line2.setVisibility(d.line2.isEmpty() ? GONE : VISIBLE);
+        row1.setVisibility(d.line.isEmpty() ? GONE : VISIBLE);
+        row2.setVisibility(d.line2.isEmpty() ? GONE : VISIBLE);
+        // A picture standing on its foot: no room under it.
+        setPadding(Math.round(unit * 0.38f), Math.round(unit * 0.2f), Math.round(unit * 0.3f),
+                photo.getVisibility() == VISIBLE ? 0 : Math.round(unit * 0.24f));
         setContentDescription(d.chip + ". " + d.title + (d.line.isEmpty() ? "" : ". " + d.line) + (d.line2.isEmpty() ? "" : ". " + d.line2));
         requestLayout();
         invalidate();
@@ -267,7 +352,7 @@ final class BoardDrop extends LinearLayout {
             cv.drawRect(0, 0, sw, h, fill);
         } else {
             // Both clubs: the home side's colour over the away side's (the line-ups: each beside its eleven).
-            float split = drop.lineups && line2.getVisibility() == VISIBLE ? line2.getTop() : h / 2f;
+            float split = drop.lineups && row2.getVisibility() == VISIBLE ? words.getTop() + row2.getTop() : h / 2f;
             fill.setColor(drop.homeColour);
             cv.drawRect(0, 0, sw, split, fill);
             fill.setColor(drop.awayColour);

@@ -415,6 +415,9 @@ public class BoardCoverTest {
         assertEquals(1, o.side);
         assertEquals(BoardCover.kindColour("goal"), o.colour);
         assertEquals("g1", o.gameId);
+        // The card's pictures go with it (none here).
+        assertNull(o.photo);
+        assertNull(o.homeCrest);
         // Its away side's goal: the stripe in their colour.
         d.scoreBefore = "2–0";
         assertEquals(2, BoardCover.dropOf(d, 1, 2).side);
