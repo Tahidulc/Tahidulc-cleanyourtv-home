@@ -75,10 +75,12 @@ final class LogoCover extends View implements BurnGuard.Dims {
     private final Paint picture = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
     /** The competition's logo beside every look (on unless switched off in Settings). */
     private boolean compOn = true;
-    /** LIVE's red bar along the foot while the game is live (on unless switched off in Settings). */
+    /** LIVE along the cover's foot while the game is live (on unless switched off in Settings). */
     private boolean liveBar = true;
     /** How much further the look's ground runs than its own width (the competition's logo's room). */
     private float ext;
+    /** How much further down the look's ground runs than its own height (LIVE's foot). */
+    private float down;
 
     LogoCover(Context c) {
         super(c);
@@ -161,7 +163,7 @@ final class LogoCover extends View implements BurnGuard.Dims {
     /** The competition's own logo over the channel's: a dark block, the logo as large as it fits, a red dot while live. */
     private void competitionLook(Canvas cv, float w, float h) {
         float rad = Math.min(w, h) * 0.18f;
-        r.set(0, 0, w, h);
+        r.set(0, 0, w, h + down);
         fill.setShader(new LinearGradient(0, 0, 0, h, 0xFA1B1F31, 0xFA07090F, Shader.TileMode.CLAMP));
         cv.drawRoundRect(r, rad, rad, fill);
         fill.setShader(null);
@@ -194,8 +196,8 @@ final class LogoCover extends View implements BurnGuard.Dims {
         if (full <= 0 || whole <= 0 || look == Look.OFF) return;
         // While the game is live: a red LIVE bar along the foot of the whole cover, the look above it (its own LIVE left
         // to the bar).
-        float foot = live && liveBar ? Math.max(8f, whole * 0.25f) : 0f, h = whole - foot;
-        if (foot > 0f) liveBar(cv, full, whole, foot);
+        float foot = live && liveBar ? Math.max(8f, whole * 0.22f) : 0f, h = whole - foot;
+        down = foot;
         boolean wasLive = live;
         if (foot > 0f) live = false;
         // The competition's logo at the end of the look's own block, when it is on and known: one block, the look's
@@ -204,32 +206,45 @@ final class LogoCover extends View implements BurnGuard.Dims {
         ext = side;
         drawLook(cv, full - side, h);
         if (side > 0f) compMark(cv, full - side, full, h);
+        if (foot > 0f) liveBar(cv, full, whole, foot);
         live = wasLive;
-        if (foot > 0f) postInvalidateDelayed(90);
     }
 
-    /** LIVE's bar along the cover's foot: red, its corners round with the cover's, a white dot pulsing beside LIVE. */
+    /**
+     * LIVE along the cover's foot, part of the one block: the look's own ground runs on down under it (drawn by the look),
+     * a fine light line across, LIVE spaced out between two short rules in the look's own colours (the Whitebrook Road
+     * looks' violet to coral, white on the others, the scoreboard's ink on Broadcast in its colours); no dot.
+     */
     private void liveBar(Canvas cv, float w, float h, float foot) {
-        float rad = Math.min(w, h) * 0.18f;
-        boolean clear = look == Look.SMOKED || look == Look.BROADCAST;
-        r.set(0, clear ? h - foot : h - foot - rad * 2f, w, h);
-        fill.setShader(new LinearGradient(0, h - foot, 0, h, 0xFFF0213A, 0xFFB80F25, Shader.TileMode.CLAMP));
-        cv.drawRoundRect(r, rad, rad, fill);
+        int ink = 0xF2FFFFFF;
+        Shader inkShader = null;
+        if (look == Look.BROADCAST_BOARD && board != null) ink = board.ink;
         fill.setShader(null);
+        float line = Math.max(1f, h * 0.008f), in = Math.min(w, h) * 0.1f;
+        fill.setColor(0x26FFFFFF);
+        cv.drawRect(in, h - foot, w - in, h - foot + line, fill);
         words.setTypeface(ChannelMark.outfit(getContext(), 800));
-        words.setColor(0xFFFFFFFF);
-        words.setTextSize(foot * 0.56f);
-        words.setLetterSpacing(0.28f);
-        float tw = words.measureText("LIVE"), dot = foot * 0.16f, gap = foot * 0.32f;
-        float x = (w - tw - dot * 2f - gap) / 2f, cy = h - foot / 2f;
-        double t = (android.os.SystemClock.uptimeMillis() % 1400L) / 1400.0;
-        int a = (int) Math.round(255 * (0.45 + 0.55 * (0.5 + 0.5 * Math.cos(t * 2 * Math.PI))));
-        fill.setColor((a << 24) | 0xFFFFFF);
-        cv.drawCircle(x + dot, cy, dot, fill);
+        words.setTextSize(foot * 0.5f);
+        words.setLetterSpacing(0.42f);
+        float tw = words.measureText("LIVE"), cx = w / 2f, cy = h - foot / 2f + line / 2f;
+        if (look.channel() && look != Look.SMOKED) {
+            inkShader = new LinearGradient(cx - tw / 2f, 0, cx + tw / 2f, 0, ChannelMark.LILAC, ChannelMark.PEACH, Shader.TileMode.CLAMP);
+        }
+        float gap = foot * 0.4f, rule = Math.min(foot * 1.2f, (w - tw) / 2f - gap - in);
+        if (rule > foot * 0.3f) {
+            fill.setColor((ink & 0x00FFFFFF) | 0x59000000);
+            cv.drawRect(cx - tw / 2f - gap - rule, cy - line / 2f, cx - tw / 2f - gap, cy + line / 2f, fill);
+            cv.drawRect(cx + tw / 2f + gap, cy - line / 2f, cx + tw / 2f + gap + rule, cy + line / 2f, fill);
+        }
+        words.setColor(ink);
+        words.setShader(inkShader);
+        words.setTextAlign(Paint.Align.CENTER);
         Paint.FontMetrics fm = words.getFontMetrics();
+        cv.drawText("LIVE", cx + words.getTextSize() * 0.21f, cy - (fm.ascent + fm.descent) / 2f, words);
+        words.setShader(null);
         words.setTextAlign(Paint.Align.LEFT);
-        cv.drawText("LIVE", x + dot * 2f + gap, cy - (fm.ascent + fm.descent) / 2f, words);
         words.setLetterSpacing(0f);
+        words.setColor(0xFFFFFFFF);
         words.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD));
     }
 
@@ -257,7 +272,7 @@ final class LogoCover extends View implements BurnGuard.Dims {
         }
         if (look.channel()) {
             if (channel == null) channel = new ChannelMark(getContext());
-            channel.draw(cv, look, 0, 0, w, h, tag, live, sport, ext);
+            channel.draw(cv, look, 0, 0, w, h, tag, live, sport, ext, down);
             return;
         }
         if (look.broadcast()) {
@@ -265,7 +280,7 @@ final class LogoCover extends View implements BurnGuard.Dims {
             return;
         }
         float rad = Math.min(w, h) * 0.22f;
-        r.set(0, 0, w + ext, h);
+        r.set(0, 0, w + ext, h + down);
         switch (look) {
             case GLASS:
                 fill.setShader(null);
@@ -349,7 +364,7 @@ final class LogoCover extends View implements BurnGuard.Dims {
         }
         int liveInk = seeThrough ? 0xE6FFFFFF : ink;
         float rad = Math.min(w, h) * 0.1f;
-        r.set(0, 0, w + ext, h);
+        r.set(0, 0, w + ext, h + down);
         boxes.setColor(ground);
         cv.drawRoundRect(r, rad, rad, boxes);
         cv.save();

@@ -132,7 +132,7 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         e.apply();
     }
 
-    /** LIVE's red bar along the logo cover's foot while the game is live (on unless switched off). */
+    /** LIVE along the logo cover's foot while the game is live (on unless switched off). */
     static boolean logoLive(Context c) {
         return prefs(c).getBoolean("logo_live", true);
     }

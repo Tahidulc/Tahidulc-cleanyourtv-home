@@ -277,6 +277,9 @@ LIVE on the logo's cover (4.24): while the game is live, a red bar along the cov
 beside a pulsing white dot, every look above it, as the TV launcher's 4.29 has it. On by default; "LIVE bar on the logo
 cover" in Settings and the player's menu turns it off.
 
+LIVE as part of the one tile (4.25): no red bar and no dot; each look's own ground runs on down under LIVE, a fine light
+line across, LIVE spaced out between two short rules in the look's own colours, as the TV launcher's 4.30 has it.
+
 Subtitles (CC in the film's player): the film's or episode's own, from your playlist's stream, come first, in the
 languages you choose (Settings, Subtitles, in order). When it has none, OpenSubtitles.com is looked in by the title's
 TMDB id (the series' with its season and episode), best first: your languages, the ones that fit the copy playing (its
