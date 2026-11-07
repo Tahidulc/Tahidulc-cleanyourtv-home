@@ -759,4 +759,31 @@ public class BoardCoverTest {
         g.id = id;
         return g;
     }
+
+    // ---- 4.17: Card in red, moving; one stat at a time --------------------------------------------------------------------
+
+    @Test
+    public void cardsRedMovesSlowlyAndItsShinePassesNowAndThen() {
+        assertEquals(0f, BoardBug.drift(0), 0.0001f);
+        assertEquals(0.5f, BoardBug.drift(BoardBug.SLANT_MS / 2), 0.0001f);
+        // Round again, seamlessly.
+        assertEquals(BoardBug.drift(250), BoardBug.drift(BoardBug.SLANT_MS + 250), 0.0001f);
+        // The shine crosses in SHINE_MS, then rests until the next.
+        assertTrue(BoardBug.shineAt(0) >= 0f);
+        assertTrue(BoardBug.shineAt(BoardBug.SHINE_MS / 2) > 0.3f);
+        assertEquals(-1f, BoardBug.shineAt(BoardBug.SHINE_MS + 100), 0f);
+        assertTrue(BoardBug.shineAt(BoardBug.SHINE_EVERY + 10) >= 0f);
+        assertEquals(0xFFD7192F, BoardBug.CARD_RED);
+    }
+
+    @Test
+    public void statsTurnOneAtATimeNeverOverEachOther() {
+        for (float t = 0f; t <= 1f; t += 0.05f) {
+            float[] o = BoardStats.turnParts(t);
+            // Never both showing at once.
+            assertTrue("at " + t, o[1] == 0f || o[3] == 0f);
+        }
+        assertArrayEquals(new float[]{1f, 0f, 0f, 1f}, BoardStats.turnParts(1f), 0.0001f);
+        assertEquals(1f, BoardStats.turnParts(0f)[1], 0.0001f);
+    }
 }

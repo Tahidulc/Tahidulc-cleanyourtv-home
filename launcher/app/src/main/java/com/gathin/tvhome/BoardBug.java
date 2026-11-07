@@ -23,8 +23,8 @@ import java.util.Objects;
  * minutes added beside it, along one row, or in two in a box nearer square (its height set apart from its width). The
  * phone's eight looks: Classic (the launcher's navy, the score on blue), Glass (smoked glass, a pill), Light, Club
  * colours (each side in its club's colour), Minimal (one line of words), Crests and time, Stacked (the clubs one
- * above the other) and Card (each crest on white, the score over the clock on blue between them, as the clubs' own
- * results cards are set).
+ * above the other) and Card (each crest on white, the score over the clock on red between them, its light slants drifting
+ * across the red and a shine passing now and then, the minutes added in a tab of their own beside it).
  *
  * <p>It comes and goes as broadcasters' do (its first block opening out of a thin line, the rest wiping out of it
  * behind a bright edge), and a goal is shown as theirs are: a white hit, the scorers' colour sweeping across it from
@@ -87,9 +87,11 @@ final class BoardBug extends View {
     private static final int NAVY = 0xFF0B1640, NAVY_DEEP = 0xFF070C26, CLOCK = 0xFF050816, ADDED = 0xFFC81E34,
             AMBER = 0xFFE8A33D, SCORE_TOP = 0xFF2443B4, SCORE_BOTTOM = 0xFF142A78, MINIMAL_GROUND = 0xFF070912,
             CRESTS_GROUND = 0xFF0A1238, STACKED_GROUND = 0xFF0E1330, GOALS = 0xFF1E2A66;
-    /** Card's white (a soft one, shaded to a light grey at its foot: it stays up all game) and its blue. */
-    static final int CARD_TOP = 0xFFF1F3F7, CARD_FOOT = 0xFFD3D8E1, CARD_BLUE = 0xFF2A3DC9, CARD_BLUE_FOOT = 0xFF0F1B7E,
-            CARD_SOFT = 0xFFC3CBF4;
+    /** Card's white (a soft one, shaded to a light grey at its foot: it stays up all game) and its red. */
+    static final int CARD_TOP = 0xFFF1F3F7, CARD_FOOT = 0xFFD3D8E1, CARD_RED = 0xFFD7192F, CARD_RED_FOOT = 0xFF8E0B1D,
+            CARD_SOFT = 0xFFF6C9CF;
+    /** Card's red moving: its slants drift across it once in SLANT_MS; a shine passes every SHINE_EVERY for SHINE_MS. */
+    static final long SLANT_MS = 6_000L, SHINE_EVERY = 9_000L, SHINE_MS = 1_200L, TAB_IN_MS = 400L;
 
     /** One look's colours. */
     private static final class Palette {
@@ -153,8 +155,8 @@ final class BoardBug extends View {
                 // Each crest on white, the score over the clock on blue between them, each club's colour at its end.
                 p.ground = CARD_TOP;
                 p.comp = 0;
-                p.score0 = CARD_BLUE;
-                p.score1 = CARD_BLUE_FOOT;
+                p.score0 = CARD_RED;
+                p.score1 = CARD_RED_FOOT;
                 p.clock = 0;
                 p.ink = NAVY;
                 p.dim = 0xFF4E5778;
@@ -429,7 +431,7 @@ final class BoardBug extends View {
         s.light = style == Style.LIGHT || style == Style.CARD;
         s.apart = p.round >= 0.5f;
         s.round = p.round;
-        s.block = style == Style.CLUB ? INK : style == Style.LIGHT ? NAVY : style == Style.CARD ? CARD_BLUE
+        s.block = style == Style.CLUB ? INK : style == Style.LIGHT ? NAVY : style == Style.CARD ? CARD_RED
                 : p.score0 != 0 && (p.score0 >>> 24) == 0xFF ? p.score0 : 0x40FFFFFF;
         return s;
     }
@@ -441,7 +443,7 @@ final class BoardBug extends View {
         if (style == Style.MINIMAL) return Math.round(minimalWidth(h));
         if (style == Style.CRESTS) return Math.round(h * 0.4f + crestCell(h, true) + scoreW(h) + crestCell(h, false) + clockW(h));
         if (style == Style.STACKED) return Math.round(h * 0.9f + stackedRowsW(h / 2f) + stackedClockW(h));
-        if (style == Style.CARD) return Math.round(cardWidth(h));
+        if (style == Style.CARD) return Math.round(cardWidth(h) + cardTab(h));
         float pill = p.round >= 0.5f ? h * 0.36f : 0f;
         return Math.round(h + 2 * (h * 0.1f + crestW(h) + code(h)) + scoreW(h) + clockW(h) + pill);
     }
@@ -491,8 +493,10 @@ final class BoardBug extends View {
         flash = goalOn ? glow(gt) : 0f;
         // The new score pops up big as the band goes, and settles.
         scoreZoom = 1f + 0.38f * flash * flash;
-        float rad = p.round >= 0.5f ? h / 2f : h * p.round;
-        r.set(0, 0, w, h);
+        float rad = cornerOf(w, h);
+        // Card's minutes added stand in a tab of their own beside it: the board itself the rest.
+        int tab = style == Style.CARD && cardTabbed(cw, ch) ? Math.round(cardTab(ch)) : 0, body = Math.max(1, w - tab);
+        r.set(0, 0, body, h);
         clip.reset();
         clip.addRoundRect(r, rad, rad, Path.Direction.CW);
         cv.save();
@@ -507,14 +511,21 @@ final class BoardBug extends View {
             else if (style == Style.CRESTS) {
                 if (cw / (float) ch >= 3.2f) crestsRow(cv, cw, ch);
                 else crestsTwo(cv, cw, ch);
-            } else if (style == Style.STACKED) stacked(cv, cw, ch);
-            else if (style == Style.CARD) card(cv, cw, ch);
+            } else if (style == Style.STACKED) {
+                if (cw / (float) ch >= 1.6f) stacked(cv, cw, ch);
+                else stackedTall(cv, cw, ch);
+            }
+            else if (style == Style.CARD) {
+                if ((cw - tab) / (float) ch >= 2.0f) card(cv, cw - tab, ch, now);
+                else cardTall(cv, cw, ch, now);
+            }
             else if (cw / (float) ch >= 3.6f) oneRow(cv, 0, 0, cw, ch);
             else twoRows(cv, cw, ch);
         }
         cv.translate(-inset, -inset);
-        if (goalOn) goalMoment(cv, w, h, gt);
+        if (goalOn) goalMoment(cv, body, h, gt);
         cv.restore();
+        if (tab > 0) cardTabDraw(cv, body, inset, ch, tab, now);
         if (part) {
             cv.restore();
             // The wipe's leading edge, a bright line fading as it lands.
@@ -538,6 +549,14 @@ final class BoardBug extends View {
             cv.drawRoundRect(r, rad, rad, edge);
         }
         if (goalOn && goalFrozen < 0) postInvalidateOnAnimation();
+        // Card's red moving (a few frames a second is enough for a slow drift), while it is all there.
+        else if (style == Style.CARD && !part && animFrozen < 0) postInvalidateDelayed(33);
+    }
+
+    /** Its corners' radius: a pill's half its height while it is long, else its look's own (Glass nearer square: round corners). */
+    private float cornerOf(float w, float h) {
+        if (p.round < 0.5f) return h * p.round;
+        return w / h >= 2.4f ? h / 2f : Math.min(h * 0.22f, w * 0.12f);
     }
 
     /** Glass's sheen: lighter across its top, fading by its middle. */
@@ -623,7 +642,7 @@ final class BoardBug extends View {
             compBlock = false;
             need -= h;
         }
-        float k = need > room ? Math.max(0.6f, w / need) : 1f;
+        float k = need > room ? w / need : 1f;
         float extra = Math.max(0, w - need * k);
         codeW = codeW * k + extra / 2;
         strip *= k;
@@ -709,17 +728,30 @@ final class BoardBug extends View {
         }
         int colour = "HT".equals(look.clock) ? AMBER : look.live ? p.clockInk : p.dim;
         if (look.added.isEmpty()) {
-            words(cv, look.clock, x + w / 2, y, h, h * 0.44f * k, colour);
+            float size = h * 0.44f * k;
+            words(cv, look.clock, x + w / 2, y, h, size * fitIn(look.clock, size, w * 0.9f), colour);
             return;
         }
-        float cw = measure(look.clock, h * 0.44f * k), aw = measure(look.added, h * 0.34f * k) + h * 0.3f;
-        float start = x + (w - cw - aw - h * 0.15f) / 2;
-        words(cv, look.clock, start + cw / 2, y, h, h * 0.44f * k, colour);
-        float ax = start + cw + h * 0.15f;
+        float cs = h * 0.44f * k, as = h * 0.34f * k, pad = h * 0.3f * k, gap = h * 0.15f * k;
+        float cw = measure(look.clock, cs), aw = measure(look.added, as) + pad;
+        // Too wide for its box (a board kept narrow): both smaller together, never over each other or off it.
+        float f = Math.min(1f, w * 0.92f / Math.max(1f, cw + gap + aw));
+        cw *= f;
+        aw *= f;
+        gap *= f;
+        float start = x + (w - cw - aw - gap) / 2;
+        words(cv, look.clock, start + cw / 2, y, h, cs * f, colour);
+        float ax = start + cw + gap;
         fill.setColor(ADDED);
         r.set(ax, y + h * 0.24f, ax + aw, y + h * 0.76f);
         cv.drawRoundRect(r, h * 0.08f, h * 0.08f, fill);
-        words(cv, look.added, ax + aw / 2, y, h, h * 0.34f * k, INK);
+        words(cv, look.added, ax + aw / 2, y, h, as * f, INK);
+    }
+
+    /** How much smaller words at size must be to fit in room (1: they fit). */
+    private float fitIn(String s, float size, float room) {
+        float wd = measure(s, size);
+        return wd <= room || wd <= 0 ? 1f : room / wd;
     }
 
     /** Nearer square: the clubs and the score above, the competition and the clock below. */
@@ -729,9 +761,11 @@ final class BoardBug extends View {
         float y = top, bh = h - top;
         fill.setColor(p.clock != 0 ? p.clock : p.ground);
         cv.drawRect(0, y, w, h, fill);
-        if (comp != null) drawImage(cv, comp, bh * 0.18f, y + bh * 0.12f, bh * 0.76f);
-        else if (!look.tag.isEmpty()) words(cv, look.tag, bh * 1.1f, y, bh, bh * 0.42f, p.dim);
-        clock(cv, w * 0.3f, y, w * 0.7f, bh, 1.25f);
+        // The competition beside the clock only where there is room for both, else the clock across it all.
+        boolean mark = bh * 1.05f <= w * 0.3f;
+        if (mark && comp != null) drawImage(cv, comp, bh * 0.18f, y + bh * 0.12f, bh * 0.76f);
+        else if (mark && !look.tag.isEmpty()) words(cv, look.tag, w * 0.15f, y, bh, Math.min(bh * 0.42f, w * 0.1f), p.dim);
+        clock(cv, mark ? w * 0.3f : 0f, y, mark ? w * 0.7f : w, bh, 1.25f);
     }
 
     private void clubsRow(Canvas cv, int w, float h) {
@@ -740,7 +774,7 @@ final class BoardBug extends View {
         float need = 2 * (strip + crestW + codeW) + score;
         boolean withCrests = need <= w + 1.5f;
         if (!withCrests) need -= 2 * crestW;
-        float k = need > w + 1.5f ? Math.max(0.6f, w / need) : 1f;
+        float k = need > w + 1.5f ? w / need : 1f;
         float extra = Math.max(0, w - need * k);
         float cx = side(cv, 0, 0, h, strip * k, withCrests ? crestW : 0, codeW * k + extra / 2, k, true);
         scoreBlock(cv, cx, 0, score * k, h);
@@ -760,7 +794,7 @@ final class BoardBug extends View {
     private void crestsRow(Canvas cv, int w, int h) {
         float pad = h * 0.2f, hc = crestCell(h, true), ac = crestCell(h, false), score = scoreW(h), clock = clockW(h);
         float need = 2 * pad + hc + score + ac + clock;
-        float k = need > w + 1.5f ? Math.max(0.6f, w / need) : 1f;
+        float k = need > w + 1.5f ? w / need : 1f;
         float extra = Math.max(0, w - need * k);
         pad *= k;
         hc *= k;
@@ -782,7 +816,7 @@ final class BoardBug extends View {
     /** Nearer square: the crests and the score above, the clock across the foot. */
     private void crestsTwo(Canvas cv, int w, int h) {
         float top = h * 0.62f, hc = crestCell(top, true), ac = crestCell(top, false), score = scoreW(Math.round(top));
-        float need = hc + score + ac, k = need > w + 1.5f ? Math.max(0.6f, w / need) : 1f;
+        float need = hc + score + ac, k = need > w + 1.5f ? w / need : 1f;
         float cx = Math.max(0, w - need * k) / 2;
         crestSide(cv, cx, 0, hc * k, top, true);
         cx += hc * k;
@@ -833,6 +867,26 @@ final class BoardBug extends View {
     }
 
     /** Stacked: the competition, the two clubs one above the other (colour, crest, letters, goals), the clock beside. */
+    /**
+     * Stacked in a box nearer square (kept narrow): the two clubs one above the other across it, the clock (and the
+     * minutes added) along its foot, so nothing is squeezed past reading.
+     */
+    private void stackedTall(Canvas cv, int w, int h) {
+        float rows = h * 0.64f, r = rows / 2f, strip = r * 0.12f, crest = crests ? r * 0.95f : 0, goalsW = r * 1.15f;
+        float codeW = code(Math.round(r));
+        float need = strip + crest + codeW + goalsW, k = need > w + 1.5f ? w / need : 1f;
+        String[] g = goals();
+        stackedRow(cv, 0, 0, w, r, strip * k, crest * k, goalsW * k, true, g[0], k);
+        stackedRow(cv, 0, r, w, r, strip * k, crest * k, goalsW * k, false, g[1], k);
+        fill.setColor(0x26FFFFFF);
+        float line = Math.max(1f, h * 0.008f);
+        cv.drawRect(strip * k, r - line, w, r + line, fill);
+        float fy = rows, fh = h - rows;
+        fill.setColor(p.clock != 0 ? p.clock : p.ground);
+        cv.drawRect(0, fy, w, h, fill);
+        if (!look.clock.isEmpty()) clock(cv, 0, fy, w, fh, 1.2f);
+    }
+
     private void stacked(Canvas cv, int w, int h) {
         float r = h / 2f, comp = h * 0.9f, strip = r * 0.12f, crest = crests ? r * 0.95f : 0, codeW = code(Math.round(r));
         float goalsW = r * 1.15f, clock = stackedClockW(h);
@@ -842,7 +896,7 @@ final class BoardBug extends View {
             compBlock = false;
             need -= comp;
         }
-        float k = need > w + 1.5f ? Math.max(0.6f, w / need) : 1f;
+        float k = need > w + 1.5f ? w / need : 1f;
         float extra = Math.max(0, w - need * k);
         strip *= k;
         crest *= k;
@@ -895,12 +949,14 @@ final class BoardBug extends View {
         fill.setColor(p.clock != 0 ? p.clock : p.ground);
         cv.drawRect(x, 0, x + w, h, fill);
         int colour = "HT".equals(look.clock) ? AMBER : look.live ? p.clockInk : p.dim;
+        float cs = h * 0.3f * k;
+        cs *= fitIn(look.clock, cs, w * 0.88f);
         if (look.added.isEmpty()) {
-            words(cv, look.clock, x + w / 2, 0, h, h * 0.3f * k, colour);
+            words(cv, look.clock, x + w / 2, 0, h, cs, colour);
             return;
         }
-        words(cv, look.clock, x + w / 2, h * 0.08f, h * 0.5f, h * 0.3f * k, colour);
-        float aw = measure(look.added, h * 0.22f * k) + h * 0.3f;
+        words(cv, look.clock, x + w / 2, h * 0.08f, h * 0.5f, cs, colour);
+        float aw = Math.min(w * 0.88f, measure(look.added, h * 0.22f * k) + h * 0.3f * k);
         fill.setColor(ADDED);
         r.set(x + (w - aw) / 2, h * 0.6f, x + (w + aw) / 2, h * 0.86f);
         cv.drawRoundRect(r, h * 0.05f, h * 0.05f, fill);
@@ -909,9 +965,21 @@ final class BoardBug extends View {
 
     // ---- Card ------------------------------------------------------------------------------------------------------
 
-    private LinearGradient cardShade;
-    private float cardShadeH = -1;
+    private LinearGradient cardShade, shineShade;
+    private float cardShadeH = -1, shineH = -1;
     private final Path slant = new Path();
+    private final Matrix shineMove = new Matrix();
+    /** Previews: Card's red drawn this far into its movement (-1: as the time goes). */
+    private long animFrozen = -1;
+    /** When the minutes added first showed (its tab comes in), and what they were. */
+    private long tabAt;
+    private String tabFor = "";
+
+    /** Previews and tests: Card's red drawn t ms into its movement (-1: as the time goes). */
+    void animAt(long t) {
+        animFrozen = t;
+        invalidate();
+    }
 
     /** "2 - 1", spaced as the results cards set it ("v" before kick-off). */
     private String cardScore() {
@@ -933,10 +1001,7 @@ final class BoardBug extends View {
 
     private float cardClockW(int h) {
         String c = cardClock();
-        if (c.isEmpty()) return 0;
-        float w = measure(c, cardClockSize(h));
-        if (!look.added.isEmpty()) w += h * 0.1f + measure(look.added, h * 0.24f) + h * 0.22f;
-        return w;
+        return c.isEmpty() ? 0 : measure(c, cardClockSize(h));
     }
 
     /** The middle: as wide as the score or the clock needs, never narrower than a crest's panel. */
@@ -948,14 +1013,25 @@ final class BoardBug extends View {
         return 2 * (h * 0.09f + h * 1.2f) + cardMid(h);
     }
 
+    /** Whether the minutes added stand beside the board: there are some, and the board keeps room for itself beside them. */
+    private boolean cardTabbed(int w, int h) {
+        return !look.added.isEmpty() && w - cardTab(h) >= h * 2.6f;
+    }
+
+    /** The room the minutes added take beside the board ("+4" in a tab of their own, a little apart); none without them. */
+    private float cardTab(int h) {
+        if (look.added.isEmpty()) return 0;
+        return h * 0.06f + Math.max(h * 0.62f, measure(look.added, h * 0.3f) + h * 0.3f);
+    }
+
     /**
-     * Card: each club's crest on a white panel with its colour down the board's end, and between them a blue block with
-     * the score over the clock (lighter slants across it), as the clubs' own results cards are set.
+     * Card: each club's crest on a white panel with its colour down the board's end, and between them a red block with
+     * the score over the clock, its light slants drifting across it and a shine passing now and then.
      */
-    private void card(Canvas cv, int w, int h) {
+    private void card(Canvas cv, int w, int h, long now) {
         float strip = h * 0.09f, panel = h * 1.2f, mid = cardMid(h);
         float need = 2 * (strip + panel) + mid;
-        float k = need > w + 1.5f ? Math.max(0.5f, w / need) : 1f;
+        float k = need > w + 1.5f ? w / need : 1f;
         float extra = Math.max(0, w - need * k);
         strip *= k;
         panel = panel * k + extra / 4f;
@@ -971,13 +1047,52 @@ final class BoardBug extends View {
         cardSide(cv, w - strip - panel, strip, panel, h, false);
         float mx = strip + panel;
         scoreBlock(cv, mx, 0, mid, h);
-        slants(cv, mx, mid, h);
-        // The score, popping up big after a goal but never past the blue.
+        long t = animFrozen >= 0 ? animFrozen : now;
+        slants(cv, mx, 0, mid, h, t);
+        // The score, popping up big after a goal but never past the red.
         String sc = cardScore();
         float ss = h * 0.46f * k * scoreZoom, sw = measure(sc, ss);
         if (sw > mid * 0.94f) ss *= mid * 0.94f / sw;
         words(cv, sc, mx + mid / 2f, h * 0.04f, h * 0.5f, ss, p.scoreInk);
-        cardClockLine(cv, mx, mid, h, k);
+        cardClockLine(cv, mx, h * 0.5f, mid, h * 0.44f, cardClockSize(h) * k, h * 0.24f * k);
+    }
+
+    /**
+     * Card in a box nearer square (kept narrow): both crests on the white across its top, each club's colour along its
+     * foot, and the score over the clock on the red below, so nothing is squeezed past reading.
+     */
+    private void cardTall(Canvas cv, int w, int h, long now) {
+        float top = h * 0.46f, half = w / 2f, line = Math.max(2f, h * 0.035f);
+        fill.setShader(null);
+        fill.setColor(CARD_TOP);
+        cv.drawRect(0, 0, w, top, fill);
+        for (int i = 0; i < 2; i++) {
+            boolean home = i == 0;
+            int own = home ? look.homeOwn : look.awayOwn, colour = own != 0 ? own : home ? look.homeColour : look.awayColour;
+            float x = home ? 0 : half;
+            boolean lit = flash > 0 && flashSide == (home ? 1 : 2);
+            if (lit) {
+                fill.setColor(colour);
+                fill.setAlpha(Math.round(200 * flash));
+                cv.drawRect(x, 0, x + half, top, fill);
+                fill.setAlpha(255);
+            }
+            fill.setColor(colour);
+            cv.drawRect(x, top - line, x + half, top, fill);
+            Bitmap crest = home ? homeCrest : awayCrest;
+            float size = Math.min(top * 0.74f, half * 0.78f);
+            if (crest != null) drawImage(cv, crest, x + (half - size) / 2f, (top - line - size) / 2f, size);
+            else words(cv, home ? look.home : look.away, x + half / 2f, 0, top - line, Math.min(top * 0.4f, half * 0.28f), NAVY);
+        }
+        float rh = h - top;
+        scoreBlock(cv, 0, top, w, rh);
+        slants(cv, 0, top, w, Math.round(rh), animFrozen >= 0 ? animFrozen : now);
+        String sc = cardScore();
+        float ss = rh * 0.5f * scoreZoom;
+        ss *= Math.min(1f, w * 0.9f / Math.max(1f, measure(sc, ss)));
+        words(cv, sc, w / 2f, top, rh * 0.56f, ss, p.scoreInk);
+        float cs = rh * (cardClock().length() > 6 ? 0.28f : 0.34f);
+        cardClockLine(cv, 0, top + rh * 0.52f, w, rh * 0.44f, cs, rh * 0.24f);
     }
 
     /** One club's end (x: where its part starts): its colour down the board's edge, its crest on the white (its letters until the crest comes); lit as it scores. */
@@ -1000,49 +1115,103 @@ final class BoardBug extends View {
                 lit ? ink(blend(CARD_TOP, colour, 200 * flash / 255f)) : NAVY);
     }
 
-    /** Lighter slants across Card's blue. */
-    private void slants(Canvas cv, float x, float w, int h) {
+    /** Pure: how far the slants have drifted t ms in, as a share of their spacing (0 to 1, round again). */
+    static float drift(long t) {
+        return (((t % SLANT_MS) + SLANT_MS) % SLANT_MS) / (float) SLANT_MS;
+    }
+
+    /** Pure: where the shine is t ms in, 0 to 1 across the red while it passes; -1 between its passes. */
+    static float shineAt(long t) {
+        long in = ((t % SHINE_EVERY) + SHINE_EVERY) % SHINE_EVERY;
+        return in >= SHINE_MS ? -1f : ease(in / (float) SHINE_MS);
+    }
+
+    /** Card's red moving (x, y: where the red starts): its lighter slants drifting across it, and now and then a shine. */
+    private void slants(Canvas cv, float x, float y, float w, int h, long t) {
         cv.save();
-        cv.clipRect(x, 0, x + w, h);
-        fill.setColor(0x16FFFFFF);
+        cv.clipRect(x, y, x + w, y + h);
+        cv.translate(0, y);
+        float spacing = Math.max(h * 0.9f, w * 0.62f), band = spacing * 0.42f, lean = h * 0.7f;
+        float shift = drift(t) * spacing;
+        fill.setShader(null);
+        fill.setColor(0x22FFFFFF);
         slant.reset();
-        slant.moveTo(x + w * 0.5f, 0);
-        slant.lineTo(x + w * 0.78f, 0);
-        slant.lineTo(x + w * 0.78f - h * 0.7f, h);
-        slant.lineTo(x + w * 0.5f - h * 0.7f, h);
-        slant.close();
-        slant.moveTo(x + w * 0.9f, 0);
-        slant.lineTo(x + w + h, 0);
-        slant.lineTo(x + w, h);
-        slant.lineTo(x + w * 0.9f - h * 0.7f, h);
-        slant.close();
+        for (float x0 = x - spacing + shift; x0 < x + w + lean; x0 += spacing) {
+            slant.moveTo(x0 + lean, 0);
+            slant.lineTo(x0 + lean + band, 0);
+            slant.lineTo(x0 + band, h);
+            slant.lineTo(x0, h);
+            slant.close();
+        }
         cv.drawPath(slant, fill);
+        float s = shineAt(t);
+        if (s >= 0f) {
+            float sw = h * 0.6f;
+            if (shineShade == null || shineH != sw) {
+                shineShade = new LinearGradient(0, 0, sw, 0, new int[]{0x00FFFFFF, 0x4CFFFFFF, 0x00FFFFFF}, null, Shader.TileMode.CLAMP);
+                shineH = sw;
+            }
+            shineMove.setSkew(-0.45f, 0f);
+            shineMove.postTranslate(x - sw + (w + sw + lean) * s, 0f);
+            shineShade.setLocalMatrix(shineMove);
+            fill.setShader(shineShade);
+            cv.drawRect(x, 0, x + w, h, fill);
+            fill.setShader(null);
+        }
         cv.restore();
     }
 
-    /** The clock under the score: white while the game runs (Half-Time and Full-Time too), the minutes added on red beside it. */
-    private void cardClockLine(Canvas cv, float x, float w, int h, float k) {
+    /**
+     * The clock in its line (x, y, w, lh) at size: white while the game runs (Half-Time and Full-Time too); the minutes
+     * added stand beside the board, or, a board kept too narrow for that, beside the clock at addedSize, both fitting.
+     */
+    private void cardClockLine(Canvas cv, float x, float y, float w, float lh, float size, float addedSize) {
         String c = cardClock();
         if (c.isEmpty()) return;
-        float y = h * 0.5f, lh = h * 0.44f, size = cardClockSize(h) * k;
-        int colour = "HT".equals(look.clock) ? AMBER : look.live || "FT".equals(look.clock) ? p.clockInk : CARD_SOFT;
-        if (look.added.isEmpty()) {
+        // White on the red while the game runs, at half time and at full time (amber would not read on red).
+        int colour = look.live || "HT".equals(look.clock) || "FT".equals(look.clock) ? p.clockInk : CARD_SOFT;
+        if (look.added.isEmpty() || cardTabbed(getWidth() - 2 * inset, getHeight() - 2 * inset)) {
             float s = Math.min(1f, w * 0.9f / Math.max(1f, measure(c, size)));
             words(cv, c, x + w / 2f, y, lh, size * s, colour);
             return;
         }
-        float as = h * 0.24f * k, cw = measure(c, size), aw = measure(look.added, as) + h * 0.22f * k, gap = h * 0.1f * k;
-        float s = Math.min(1f, w * 0.92f / Math.max(1f, cw + gap + aw));
-        cw *= s;
-        aw *= s;
-        gap *= s;
+        float as = addedSize, cw = measure(c, size), aw = measure(look.added, as) + as * 0.9f, gap = as * 0.33f;
+        float f = Math.min(1f, w * 0.9f / Math.max(1f, cw + gap + aw));
+        cw *= f;
+        aw *= f;
+        gap *= f;
         float start = x + (w - cw - gap - aw) / 2f;
-        words(cv, c, start + cw / 2f, y, lh, size * s, colour);
+        words(cv, c, start + cw / 2f, y, lh, size * f, colour);
         float ax = start + cw + gap;
-        fill.setColor(ADDED);
-        r.set(ax, y + lh * 0.2f, ax + aw, y + lh * 0.8f);
-        cv.drawRoundRect(r, h * 0.05f, h * 0.05f, fill);
-        words(cv, look.added, ax + aw / 2f, y, lh, as * s, INK);
+        fill.setShader(null);
+        fill.setColor(0xFFFFFFFF);
+        r.set(ax, y + lh * 0.22f, ax + aw, y + lh * 0.78f);
+        cv.drawRoundRect(r, lh * 0.12f, lh * 0.12f, fill);
+        words(cv, look.added, ax + aw / 2f, y, lh, as * f, CARD_RED);
+    }
+
+    /**
+     * The minutes added in a tab of their own beside the board, level with its foot: the red, "+4" in white, coming in
+     * as they first show (body: where the board ends; ch: the board's height inside its edge).
+     */
+    private void cardTabDraw(Canvas cv, int body, int edgePx, int ch, int tab, long now) {
+        if (!look.added.equals(tabFor)) {
+            tabFor = look.added;
+            tabAt = now;
+        }
+        float in = animFrozen >= 0 ? 1f : Math.min(1f, (now - tabAt) / (float) TAB_IN_MS);
+        float gap = ch * 0.06f, tw = tab - gap, th = ch * 0.5f;
+        float left = body + gap - (1f - ease(in)) * tw * 0.5f, top = edgePx + ch - th;
+        int a = Math.round(255 * Math.min(1f, in * 1.5f));
+        fill.setShader(null);
+        fill.setColor(CARD_RED);
+        fill.setAlpha(a);
+        r.set(left, top, left + tw, top + th);
+        cv.drawRoundRect(r, th * 0.12f, th * 0.12f, fill);
+        fill.setAlpha(255);
+        text.setAlpha(255);
+        words(cv, look.added, left + tw / 2f, top, th, Math.min(ch * 0.3f, th * 0.62f), (a << 24) | (INK & 0xFFFFFF));
+        if (in < 1f) postInvalidateOnAnimation();
     }
 
     // ---- Minimal ---------------------------------------------------------------------------------------------------
@@ -1073,7 +1242,7 @@ final class BoardBug extends View {
             words(cv, under, w / 2f, top - h * 0.04f, bh, bh * 0.62f * k2, clockInk);
             return;
         }
-        float natural = minimalWidth(h), k = natural > w + 1.5f ? Math.max(0.4f, w / natural) : 1f;
+        float natural = minimalWidth(h), k = natural > w + 1.5f ? w / natural : 1f;
         float x = (w - natural * k) / 2 + h * 0.45f * k;
         float a = measure(m[0], h * 0.48f * k);
         words(cv, m[0], x + a / 2, 0, h, h * 0.48f * k, p.ink);

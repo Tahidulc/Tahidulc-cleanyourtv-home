@@ -35,6 +35,21 @@ final class BoardStats extends BoardSide {
     private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG), text = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final RectF r = new RectF();
     private final Runnable nextOne = this::next;
+    /** Checks only: where each word, bar and square was drawn (null: not kept). */
+    private java.util.List<RectF> drawn;
+
+    /** Checks only: where one stat's parts are drawn in a strip w by h, each as a box (to see that none overlap). */
+    java.util.List<RectF> partsOf(String[] s, int w, int h) {
+        drawn = new java.util.ArrayList<>();
+        float pad = look.apart ? h * 0.42f : unit * 0.3f;
+        start = leftOf ? pad : tuck + pad;
+        end = leftOf ? w - tuck - pad : w - pad;
+        android.graphics.Bitmap b = android.graphics.Bitmap.createBitmap(Math.max(1, w), Math.max(1, h), android.graphics.Bitmap.Config.ARGB_8888);
+        item(new Canvas(b), s, h, 0f, 1f);
+        java.util.List<RectF> out = drawn;
+        drawn = null;
+        return out;
+    }
 
     BoardStats(Context c) {
         super(c);
@@ -206,8 +221,24 @@ final class BoardStats extends BoardSide {
     @Override protected void content(Canvas cv, int w, int h) {
         if (items.isEmpty()) return;
         int i = Math.min(at, items.size() - 1);
-        if (turn < 1f && i > 0) item(cv, items.get(i - 1), h, -h * 0.6f * turn, 1f - turn);
-        item(cv, items.get(i), h, h * 0.6f * (1f - turn), turn);
+        // One at a time, never two over each other: the last goes up and out, then this one comes up into its place.
+        float[] o = turnParts(turn);
+        if (o[1] > 0f && i > 0) item(cv, items.get(i - 1), h, -h * 0.5f * o[0], o[1]);
+        if (o[3] > 0f) item(cv, items.get(i), h, h * 0.5f * o[2], o[3]);
+    }
+
+    /**
+     * Pure: a turn from one stat (or page) to the next, t from 0 to 1, as {the last one's way up (0 to 1), its strength,
+     * this one's way still to come (1 to 0), its strength}: the last gone before this one shows, so the two never overlap.
+     */
+    static float[] turnParts(float t) {
+        if (t >= 1f) return new float[]{1f, 0f, 0f, 1f};
+        if (t < 0.5f) {
+            float p = t / 0.5f;
+            return new float[]{p, 1f - p, 1f, 0f};
+        }
+        float p = (t - 0.5f) / 0.5f;
+        return new float[]{1f, 0f, 1f - p, p};
     }
 
     /** One stat at height offset dy, faded to alpha: its name, then its figures (its name over them beside a taller board). */
@@ -272,6 +303,7 @@ final class BoardStats extends BoardSide {
         fill.setAlpha(a);
         r.set(left, mid - br, Math.max(left + br * 2, split - gap), mid + br);
         cv.drawRoundRect(r, br, br, fill);
+        if (drawn != null) drawn.add(new RectF(left, mid - br, right, mid + br));
         fill.setColor(barColour(false));
         fill.setAlpha(a);
         r.set(Math.min(right - br * 2, split + gap), mid - br, right, mid + br);
@@ -289,6 +321,7 @@ final class BoardStats extends BoardSide {
             fill.setAlpha(a);
             r.set(x, top, x + s, top + s);
             cv.drawRoundRect(r, rad, rad, fill);
+            if (drawn != null) drawn.add(new RectF(r));
             words(cv, String.valueOf(ch), x + s / 2f, top, s, s * 0.6f, 0f, 0xFFFFFFFF, a, Paint.Align.CENTER);
             x += s + gap;
         }
@@ -305,7 +338,12 @@ final class BoardStats extends BoardSide {
         text.setAlpha(Math.round(a * ((colour >>> 24) / 255f)));
         text.setTextAlign(align);
         Paint.FontMetrics fm = text.getFontMetrics();
-        cv.drawText(s, x, y + rowH / 2f - (fm.ascent + fm.descent) / 2f, text);
+        float base = y + rowH / 2f - (fm.ascent + fm.descent) / 2f;
+        cv.drawText(s, x, base, text);
+        if (drawn != null && s.length() > 1) {
+            float tw = text.measureText(s), x0 = align == Paint.Align.CENTER ? x - tw / 2f : align == Paint.Align.RIGHT ? x - tw : x;
+            drawn.add(new RectF(x0, base + fm.ascent * 0.72f, x0 + tw, base));
+        }
         text.setLetterSpacing(0f);
     }
 }

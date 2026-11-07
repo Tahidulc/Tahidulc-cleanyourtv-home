@@ -252,8 +252,10 @@ final class BoardDrop extends BoardSide {
     @Override protected void content(Canvas cv, int w, int h) {
         if (drop == null) return;
         float room = end - start;
-        if (turn < 1f && page > 0) lay(cv, part(page - 1), start, h, -h * 0.6f * turn, Math.round(255 * (1f - turn)), room, 0);
-        lay(cv, part(page), start, h, h * 0.6f * (1f - turn), Math.round(255 * turn), room, run);
+        // One page at a time, never two over each other (BoardStats.turnParts).
+        float[] o = BoardStats.turnParts(turn);
+        if (o[1] > 0f && page > 0) lay(cv, part(page - 1), start, h, -h * 0.5f * o[0], Math.round(255 * o[1]), room, 0);
+        if (o[3] > 0f) lay(cv, part(page), start, h, h * 0.5f * o[2], Math.round(255 * o[3]), room, run);
     }
 
     private boolean twoRows(int h, Part o) {
