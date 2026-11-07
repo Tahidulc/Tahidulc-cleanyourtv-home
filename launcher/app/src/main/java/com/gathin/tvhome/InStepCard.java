@@ -21,7 +21,9 @@ import android.widget.TextView;
  * second half) by the scores and its channel has no wait of its own yet, a small card at the top right asks for OK as
  * the kick-off happens on screen. OK then sets the channel's wait (how far the picture is behind the scores) and the
  * card says so for a few seconds; Back, or four minutes with no OK, takes it away with nothing changed. It says nothing
- * of the game's score: the kick-off's time is no secret.
+ * of the game's score: the kick-off's time is no secret. While the scoreboard over the channel (BoardCover) is on for
+ * the game it comes at every kick-off, lined up or not, and asks to set the board's clock: OK then also counts the
+ * board's clock from that moment (0:00, or 45:00 for the second half), exactly the channel's.
  */
 final class InStepCard {
     private InStepCard() { }
@@ -33,16 +35,23 @@ final class InStepCard {
     private static FrameLayout card;
     private static TextView title, under;
     private static String game;
-    private static boolean done;
+    private static boolean done, forBoard, second;
     private static Context app;
     private static final Runnable away = InStepCard::close;
 
     /** Asks for OK at this game's kick-off (secondHalf: its second half) on screen (main thread). */
     static void show(Context c, ScoresTicker.Game g, boolean secondHalf) {
+        show(c, g, secondHalf, false);
+    }
+
+    /** The same; board: the scoreboard is on for this game, and OK sets its clock with the channel's too. */
+    static void show(Context c, ScoresTicker.Game g, boolean secondHalf, boolean board) {
         close();
         app = c.getApplicationContext();
         game = g.id;
         done = false;
+        forBoard = board;
+        second = secondHalf;
         Context sw = new GoalWatchService.SoftwareWindow(app);
         float d = app.getResources().getDisplayMetrics().density;
         FrameLayout win = new FrameLayout(sw);
@@ -68,7 +77,7 @@ final class InStepCard {
 
         LinearLayout lines = new LinearLayout(sw);
         lines.setOrientation(LinearLayout.VERTICAL);
-        title = line(sw, "Line up alerts with your channel", 20, 0xFFFFFFFF, true);
+        title = line(sw, board ? "Set the scoreboard's clock with your channel's" : "Line up alerts with your channel", 20, 0xFFFFFFFF, true);
         lines.addView(title);
         under = line(sw, "Press OK as the " + (secondHalf ? "second half starts" : "game kicks off") + " on your screen · "
                 + names(g), 15, 0xD0FFFFFF, false);
@@ -125,8 +134,14 @@ final class InStepCard {
     private static void ok() {
         if (card == null || done || app == null) return;
         done = true;
-        long h = InStep.lineUp(app, game, System.currentTimeMillis());
-        if (h >= 0) {
+        long pressed = System.currentTimeMillis();
+        long h = InStep.lineUp(app, game, pressed);
+        if (forBoard) {
+            // The kick-off is on the screen now: the board's clock counted from this moment, the channel's own.
+            BoardCover.anchor(app, game, second ? 45 * 60 : 0, pressed);
+            title.setText("Clock set");
+            under.setText("The scoreboard's clock is your channel's from here" + (h >= 0 ? " · pop-ups wait " + InStep.words(h) : ""));
+        } else if (h >= 0) {
             title.setText("Lined up");
             String ch = InStep.channel(app);
             under.setText("Pop-ups for this game now wait " + InStep.words(h) + (ch.isEmpty() ? "" : " on " + ch));

@@ -2752,11 +2752,13 @@ public class GoalWatchService extends Service {
      * wait of its own yet (over an app only).
      */
     private void restart(ScoresTicker.Game g, boolean secondHalf) {
-        if (!watched(g)) return;
+        // The scoreboard over the channel on for this game: it is the one watched, and each kick-off sets its clock.
+        boolean board = g != null && g.id != null && g.id.equals(BoardCover.game(this)) && BoardCover.asksAtKickoff(this);
+        if (!watched(g) && !board) return;
         InStep.restarted(g.id, System.currentTimeMillis());
         AlertLog.note(this, (secondHalf ? "second half" : "kick-off") + " seen for the game watched: " + AlertLog.game(g));
         main.postDelayed(() -> MatchMode.event(this, g, secondHalf ? "2h" : "ko", null), hold(g));
-        if (!homeInFront && InStep.wantsLineUp(this) && !NotifyPrefs.dndOn(this)) InStepCard.show(this, g, secondHalf);
+        if (!homeInFront && !NotifyPrefs.dndOn(this) && (board || InStep.wantsLineUp(this))) InStepCard.show(this, g, secondHalf, board);
     }
 
     /** A game read only for the players followed: their goals, nothing else of it (Players). */
@@ -2860,13 +2862,18 @@ public class GoalWatchService extends Service {
             // The line-ups out, and the theme asks for it ("lineup_card"): the line-up card in place of the pill.
             if (sides != null && Config.themeFlag(this, "lineup_card", false)) {
                 LineupCard.Data card = lineupCard(g, sides, tv, channels);
-                main.post(() -> LineupCard.show(this, card));
+                // The scoreboard over the channel up: both elevens fold out from under it instead.
+                main.post(() -> {
+                    if (!BoardCover.takeLineups(this, g, sides)) LineupCard.show(this, card);
+                });
                 return;
             }
             // No line-ups yet (or no line-up card): the kick-off as a score card.
             if (skyAlerts) {
                 ScoreCard.Data d = kickoffCard(g);
-                main.post(() -> ScoreCard.show(this, d));
+                main.post(() -> {
+                    if (sides == null || !BoardCover.takeLineups(this, g, sides)) ScoreCard.show(this, d);
+                });
                 return;
             }
             List<Object> ready = resolve(parts, px);
@@ -2906,6 +2913,7 @@ public class GoalWatchService extends Service {
                     NotifyPrefs.held(this, "kickoff", NotifyPrefs.homeNow(), null, "alert kick-off " + AlertLog.game(g), g.slug);
                     return;
                 }
+                if (sides != null && BoardCover.takeLineups(this, g, sides)) return;
                 queue.add(new Object[]{ready, "reminder", sides, pictures, livePage});
                 showNext();
             });
@@ -3823,6 +3831,13 @@ public class GoalWatchService extends Service {
         boolean home = NotifyPrefs.homeNow();
         if (!NotifyPrefs.allowed(this, kind, home, slug, queuedGame(polled))) {
             NotifyPrefs.held(this, kind, home, null, "alert " + describe(polled), slug);
+            main.post(this::showNext);
+            return;
+        }
+        // The scoreboard over the channel is up: a game's line folds out from under it instead, in its look.
+        if (!onLane() && polled.length == 8 && polled[1] instanceof ScoresTicker.Game && polled[5] instanceof String
+                && BoardCover.takeLine(this, (CharSequence) polled[0], (ScoresTicker.Game) polled[1], (String) polled[5], (String) polled[6])) {
+            play((String) polled[5]);
             main.post(this::showNext);
             return;
         }

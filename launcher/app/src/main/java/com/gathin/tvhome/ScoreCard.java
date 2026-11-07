@@ -246,6 +246,19 @@ final class ScoreCard {
         }
         if (d.f1) { d.dark = true; d.wideMark = true; }
         onHome = !d.again && (GoalWatchService.laneHome && GoalWatchService.homeInFront || PopupFrame.isShowing());
+        // The scoreboard over the channel is up (BoardCover): a game's card folds out from under it instead, in its look.
+        if (!onHome && !d.again && BoardCover.take(c, d)) {
+            if (d.key != null) AlertToday.shown(c, d.key);
+            if (d.onShown != null) {
+                try {
+                    d.onShown.run();
+                } catch (RuntimeException ignored) {
+                    // its sound only
+                }
+            }
+            next(c);
+            return;
+        }
         k = c.getResources().getDisplayMetrics().widthPixels / 1920f;
         AlertLog.note(c, "card shown " + (onHome ? "on Home (in the score bar's place)" : PopupFrame.isShowing() ? "in pop-up mode's frame"
                 : "over the app (" + AlertLog.front(c) + ")")

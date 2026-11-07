@@ -11,9 +11,10 @@ import java.util.Locale;
 
 /**
  * The Control Centre's Scoreboard card (BoardCover): the scoreboard over the channel on or off for the game chosen
- * (OK steps through today's games of the followed clubs and competitions, live ones first), the cover over the
- * channel's logo on or off, Move and resize over the channel, the board's look and the cover's, and the standard places
- * back; then what it does to be kind to the screen. The Control Centre's Scoreboard tile is the quick switch beside it.
+ * (OK steps through today's games of the followed clubs and competitions, live ones first), the board itself and the
+ * cover over the channel's logo each on or off, the alerts and stats that fold out from under it, its clock set at
+ * kick-off, Move and resize over the channel, the board's look and the cover's, and the standard places back; then what
+ * it does to be kind to the screen. The Control Centre's Scoreboard tile is the quick switch beside it.
  */
 final class BoardPanel extends SportPanel {
     private final List<ScoresTicker.Game> games = new ArrayList<>();
@@ -109,18 +110,37 @@ final class BoardPanel extends SportPanel {
         add(on, which);
 
         heading("OVER THE CHANNEL");
+        Row board = row("The scoreboard itself", true);
+        board.on = () -> BoardCover.boardShown(c);
+        board.words = () -> BoardCover.boardShown(c) ? "Shown over the channel's own" : "Hidden · the logo's cover only";
+        board.ok = () -> BoardCover.setBoardShown(c, !BoardCover.boardShown(c));
         Row logo = row("Cover the channel's logo", true);
         logo.on = () -> BoardCover.logoOn(c);
         logo.words = () -> "Homefield's mark over the logo, top right";
         logo.ok = () -> BoardCover.setLogoOn(c, !BoardCover.logoOn(c));
+        add(board, logo);
+        Row drops = row("Alerts from the scoreboard", true);
+        drops.on = () -> BoardCover.dropsOn(c);
+        drops.words = () -> BoardCover.dropsOn(c) ? "Goals, cards, line-ups fold out from under it" : "Off · the usual cards";
+        drops.ok = () -> BoardCover.setDropsOn(c, !BoardCover.dropsOn(c));
+        Row stats = row("Stats under the scoreboard", true);
+        stats.on = () -> BoardCover.statsOn(c);
+        stats.words = () -> BoardCover.statsOn(c) ? "Three every four minutes, all at half time" : "Off";
+        stats.ok = () -> BoardCover.setStatsOn(c, !BoardCover.statsOn(c));
+        add(drops, stats);
+        Row clock = row("Clock with the channel's", true);
+        clock.on = () -> BoardCover.asksAtKickoff(c);
+        clock.words = () -> BoardCover.asksAtKickoff(c) ? "OK at each kick-off when asked sets it to the second"
+                : "Off · from the scores, as the pop-ups are held";
+        clock.ok = () -> BoardCover.setAsksAtKickoff(c, !BoardCover.asksAtKickoff(c));
         Row move = row("Move and resize", false);
         String channel = InStep.channel(c);
-        move.words = () -> (channel.isEmpty() ? "Over the channel" : "Over " + channel) + ": the arrows move, OK sizes";
+        move.words = () -> (channel.isEmpty() ? "Over the channel" : "Over " + channel) + ": move, size, height, timing";
         move.ok = () -> {
             hide();
             BoardCover.adjust(c);
         };
-        add(logo, move);
+        add(clock, move);
         Row look = row("Scoreboard look", false);
         look.words = () -> BoardCover.style(c).label + " · OK for the next";
         look.ok = () -> BoardCover.nextStyle(c);
@@ -138,7 +158,7 @@ final class BoardPanel extends SportPanel {
 
         heading("KIND TO THE SCREEN");
         words("Never on by itself: only for the game you turn it on for, and off ten minutes after its full time. It keeps "
-                + "to dark colours, moves a pixel or two each minute, dims a little after five minutes without a goal, and "
-                + "rests at half time.", 17, 0xCCFFFFFF);
+                + "to soft colours (Light a soft grey, not white), moves a pixel or two each minute, dims a little after five "
+                + "minutes without a goal, and rests at half time once the half's stats are done.", 17, 0xCCFFFFFF);
     }
 }

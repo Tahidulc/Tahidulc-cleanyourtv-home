@@ -11,16 +11,17 @@ import java.util.Locale;
  * height (its width follows from its height, as its letters and crests need it); the cover by its left, top, width
  * and height. Kept a channel at a time in "board_places", set by Move and resize: a channel with no places of its own
  * takes the last ones set on any channel (one broadcaster's channels share a layout), else the standard ones, where
- * most broadcasters put theirs: the scoreboard top left, the channel's logo top right. The sums are pure, for the tests.
+ * most broadcasters put theirs: the scoreboard top left, the channel's logo top right. The scoreboard's width can be
+ * kept apart from its height (Move and resize's Height): it then fills that box. The sums are pure, for the tests.
  */
 final class BoardPlace {
-    /** The scoreboard: its left, top and height. */
-    float bx, by, bh;
+    /** The scoreboard: its left, top and height, and its width when kept apart from its height (0: as its words need). */
+    float bx, by, bh, bw;
     /** The cover over the logo: its left, top, width and height. */
     float lx, ly, lw, lh;
 
-    /** The smallest and largest scoreboard, by its height as a share of the screen's. */
-    static final float MIN_H = 0.03f, MAX_H = 0.12f;
+    /** The smallest and largest scoreboard, by its height as a share of the screen's, and by its width kept. */
+    static final float MIN_H = 0.03f, MAX_H = 0.12f, MIN_BW = 0.06f, MAX_BW = 0.6f;
     /** The smallest and largest cover over the logo, by its width and by its height. */
     static final float MIN_W = 0.03f, MAX_W = 0.3f, MIN_LH = 0.02f, MAX_LH = 0.2f;
 
@@ -42,6 +43,7 @@ final class BoardPlace {
         p.bx = bx;
         p.by = by;
         p.bh = bh;
+        p.bw = bw;
         p.lx = lx;
         p.ly = ly;
         p.lw = lw;
@@ -60,8 +62,20 @@ final class BoardPlace {
 
     /** The scoreboard's height (and so its width) times k, its top left corner kept, kept on the screen. Pure. */
     void sizeBoard(float k, float aspect) {
+        float was = bh;
         bh = clamp(bh * k, MIN_H, MAX_H);
-        moveBoard(0, 0, aspect);
+        if (bw > 0) bw = clamp(bw * bh / was, MIN_BW, MAX_BW);
+        moveBoard(0, 0, bw > 0 ? bw / bh : aspect);
+    }
+
+    /**
+     * Move and resize's Height: the scoreboard's height times k, its width kept as it is (width, a share of the
+     * screen's, when it had none of its own yet), so it is drawn taller or flatter to fill that box. Pure.
+     */
+    void heightBoard(float k, float width) {
+        if (bw <= 0) bw = clamp(width > 0 ? width : bh * 9f * 1080f / 1920f, MIN_BW, MAX_BW);
+        bh = clamp(bh * k, MIN_H, MAX_H);
+        moveBoard(0, 0, bw / bh);
     }
 
     /** The cover moved by (dx, dy), kept on the screen. Pure. */
@@ -85,19 +99,19 @@ final class BoardPlace {
         return Math.max(lo, Math.min(hi, v));
     }
 
-    /** "bx,by,bh,lx,ly,lw,lh". Pure. */
+    /** "bx,by,bh,lx,ly,lw,lh,bw". Pure. */
     String encode() {
-        return String.format(Locale.ROOT, "%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f", bx, by, bh, lx, ly, lw, lh);
+        return String.format(Locale.ROOT, "%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f", bx, by, bh, lx, ly, lw, lh, bw);
     }
 
-    /** The places written by encode; null when s is not seven numbers between 0 and 1. Pure. */
+    /** The places written by encode (seven numbers before the board's width was kept, eight since), each between 0 and 1; else null. Pure. */
     static BoardPlace decode(String s) {
         if (s == null) return null;
         String[] f = s.split(",");
-        if (f.length != 7) return null;
-        float[] v = new float[7];
+        if (f.length != 7 && f.length != 8) return null;
+        float[] v = new float[f.length];
         try {
-            for (int i = 0; i < 7; i++) v[i] = Float.parseFloat(f[i].trim());
+            for (int i = 0; i < f.length; i++) v[i] = Float.parseFloat(f[i].trim());
         } catch (NumberFormatException e) {
             return null;
         }
@@ -110,6 +124,7 @@ final class BoardPlace {
         p.ly = v[4];
         p.lw = clamp(v[5], MIN_W, MAX_W);
         p.lh = clamp(v[6], MIN_LH, MAX_LH);
+        p.bw = v.length > 7 && v[7] > 0 ? clamp(v[7], MIN_BW, MAX_BW) : 0;
         return p;
     }
 

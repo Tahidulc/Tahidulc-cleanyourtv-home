@@ -212,9 +212,13 @@ public class BoardCoverTest {
     @Test
     public void theHintSaysWhatTheArrowsDo() {
         assertTrue(BoardCover.hintFor(0, true).startsWith("Moving the scoreboard"));
-        assertTrue(BoardCover.hintFor(1, true).contains("the logo's cover"));
-        assertTrue(BoardCover.hintFor(1, false).contains("OK: move it"));
-        assertTrue(BoardCover.hintFor(3, true).contains("its width"));
+        assertTrue(BoardCover.hintFor(1, true).contains("OK: its height"));
+        assertTrue(BoardCover.hintFor(2, true).contains("its width kept"));
+        // Timing comes after the height, then the logo's cover (or back to moving the board without one).
+        assertTrue(BoardCover.hintFor(3, true).contains("the logo's cover"));
+        assertTrue(BoardCover.hintFor(3, false).contains("OK: move it"));
+        assertTrue(BoardCover.hintFor(3, true).contains("a second later"));
+        assertTrue(BoardCover.hintFor(5, true).contains("its width"));
     }
 
     // ---- the places --------------------------------------------------------------------------------------------------
@@ -281,5 +285,251 @@ public class BoardCoverTest {
         b.bx = 0.5f;
         assertSame(a.getClass(), b.getClass());
         assertEquals(0.045f, a.bx, 0f);
+    }
+
+    // ---- 4.08: the phone's scoreboard on the TV ----------------------------------------------------------------------
+
+    @Test
+    public void theLooksAreThePhonesSeven() {
+        assertEquals(7, BoardBug.Style.values().length);
+        assertEquals(BoardBug.Style.GLASS, BoardBug.Style.of("GLASS"));
+        assertEquals(BoardBug.Style.LIGHT, BoardBug.Style.of("LIGHT"));
+        assertEquals("Club colours", BoardBug.Style.of("CLUB").label);
+        // The looks kept from before still read as they were.
+        assertEquals(BoardBug.Style.MINIMAL, BoardBug.Style.of("MINIMAL"));
+        assertEquals(BoardBug.Style.STACKED, BoardBug.Style.of("STACKED"));
+    }
+
+    @Test
+    public void itComesInAsABroadcastersDoes() {
+        float w = 400, h = 40, cap = 40;
+        assertEquals(0f, BoardBug.shownPart(0f, w, h, cap)[2], 0.01f);
+        float[] opening = BoardBug.shownPart(0.1f, w, h, cap);
+        assertEquals(cap, opening[2], 0.01f);
+        assertTrue(opening[1] > 0 && opening[3] < h);
+        float[] block = BoardBug.shownPart(BoardBug.OPEN_AT, w, h, cap);
+        assertEquals(0f, block[1], 0.01f);
+        assertEquals(cap, block[2], 0.01f);
+        assertEquals(w, BoardBug.shownPart(1f, w, h, cap)[2], 0.01f);
+        float last = -1;
+        for (int i = 0; i <= 20; i++) {
+            float[] p = BoardBug.shownPart(i / 20f, w, h, cap);
+            float area = (p[2] - p[0]) * (p[3] - p[1]);
+            assertTrue(area >= last);
+            last = area;
+        }
+    }
+
+    @Test
+    public void aGoalSweepsAcrossFromTheScorersSideAndOnOut() {
+        float[] before = BoardBug.goalBand(BoardBug.BAND_IN - 1, true);
+        assertEquals(0f, before[1] - before[0], 0f);
+        float[] coming = BoardBug.goalBand(BoardBug.BAND_IN + BoardBug.BAND_MS / 3, true);
+        assertEquals(0f, coming[0], 0.001f);
+        assertTrue(coming[1] > 0f && coming[1] < 1f);
+        float[] held = BoardBug.goalBand(2000, true);
+        assertEquals(0f, held[0], 0.001f);
+        assertEquals(1f, held[1], 0.001f);
+        float[] going = BoardBug.goalBand(BoardBug.BAND_OUT + BoardBug.BAND_MS / 3, true);
+        assertTrue(going[0] > 0f && going[0] < 1f);
+        // The away side's from the right, out to the left.
+        float[] away = BoardBug.goalBand(BoardBug.BAND_IN + BoardBug.BAND_MS / 3, false);
+        assertEquals(1f, away[1], 0.001f);
+        assertTrue(away[0] > 0f && away[0] < 1f);
+        float[] gone = BoardBug.goalBand(BoardBug.BAND_OUT + BoardBug.BAND_MS, false);
+        assertEquals(0f, gone[1] - gone[0], 0f);
+        // Then the new score's glow, 1 down to 0, the moment over at GOAL_MS.
+        long from = BoardBug.BAND_OUT + BoardBug.BAND_MS;
+        assertEquals(0f, BoardBug.glow(from - 1), 0f);
+        assertEquals(1f, BoardBug.glow(from), 0.001f);
+        assertEquals(0f, BoardBug.glow(BoardBug.GOAL_MS), 0f);
+        assertEquals(BoardBug.GOAL_MS, from + BoardBug.GLOW_MS);
+    }
+
+    @Test
+    public void aClubsColourOnALitSideStaysReadable() {
+        // White over navy at full glow: near white, so its letters go dark.
+        int lit = BoardBug.blend(0xFF0B1640, 0xFFFFFFFF, 200 / 255f);
+        assertEquals(0xFF0A0D33, BoardBug.ink(lit));
+        assertEquals(0xFF0B1640, BoardBug.blend(0xFF0B1640, 0xFFFFFFFF, 0f));
+    }
+
+    @Test
+    public void theClockSetAtKickOffCountsFromThatMomentInItsHalf() {
+        long at = 1_000_000L;
+        long[] a = BoardCover.anchorOf("g1|0|" + at, "g1");
+        assertNotNull(a);
+        assertNull(BoardCover.anchorOf("g1|0|" + at, "g2"));
+        assertNull(BoardCover.anchorOf("rubbish", "g1"));
+        assertNull(BoardCover.anchorOf(null, "g1"));
+        // 23 min 7 s after the OK at kick-off: 23:07, whatever ESPN's minute says.
+        assertArrayEquals(new String[]{"23:07", ""}, BoardCover.anchored(a, at + (23 * 60 + 7) * 1000L, "22'"));
+        // Into added time: 45:00 with the minutes added beside it.
+        assertArrayEquals(new String[]{"45:00", "+2"}, BoardCover.anchored(a, at + (46 * 60) * 1000L, "45'+2'"));
+        // The second half on the screen: the first half's moment no longer counts.
+        assertNull(BoardCover.anchored(a, at + 3_600_000L, "47'"));
+        // Set at the second half's kick-off: from 45:00.
+        long[] b = BoardCover.anchorOf("g1|2700|" + at, "g1");
+        assertArrayEquals(new String[]{"46:30", ""}, BoardCover.anchored(b, at + 90_000L, "47'"));
+        assertNull(BoardCover.anchored(b, at - 1, "47'"));
+        assertEquals(1, BoardCover.periodOfSecs(0));
+        assertEquals(2, BoardCover.periodOfSecs(2700));
+        assertEquals(3, BoardCover.periodOfSecs(5400));
+    }
+
+    @Test
+    public void beforeKickOffItShowsTheKickOffsTime() {
+        ScoresTicker.Game g = new ScoresTicker.Game();
+        g.home = "LEE";
+        g.away = "TOT";
+        g.kickoff = java.time.ZonedDateTime.of(2026, 11, 7, 15, 0, 0, 0, java.time.ZoneId.systemDefault()).toInstant().toEpochMilli();
+        BoardBug.Look l = BoardCover.preLook(g);
+        assertEquals("v", l.score);
+        assertEquals("15:00", l.clock);
+        assertFalse(l.live);
+    }
+
+    private static ScoreCard.Data card(String kind, String label, String small) {
+        ScoreCard.Data d = new ScoreCard.Data();
+        d.kind = kind;
+        d.label = label;
+        d.labelSmall = small;
+        d.gameId = "g1";
+        d.homeName = "Leeds";
+        d.awayName = "Tottenham";
+        d.score = "2–1";
+        return d;
+    }
+
+    @Test
+    public void aGoalsCardFoldsOutWithItsScorerAndSide() {
+        ScoreCard.Data d = card("goal", "GOAL", null);
+        d.first = "Dominic";
+        d.last = "Calvert-Lewin";
+        d.line = "67'";
+        d.scoreBefore = "1–1";
+        BoardDrop.Drop o = BoardCover.dropOf(d, 0xFF1D428A, 0xFFC9CEDD);
+        assertEquals("GOAL", o.chip);
+        assertEquals("Leeds 2–1 Tottenham", o.title);
+        assertEquals("Dominic Calvert-Lewin 67'", o.line);
+        assertEquals(1, o.side);
+        assertEquals(BoardCover.kindColour("goal"), o.colour);
+        assertEquals("g1", o.gameId);
+        // Its away side's goal: the stripe in their colour.
+        d.scoreBefore = "2–0";
+        assertEquals(2, BoardCover.dropOf(d, 1, 2).side);
+    }
+
+    @Test
+    public void fullTimeAndKickOffFoldOutInTheirOwnWords() {
+        ScoreCard.Data ft = card("ft", "FULL", "TIME");
+        ft.last = "Leeds win";
+        ft.first = "Calvert-Lewin 12' · Son 38'";
+        ft.line = "";
+        BoardDrop.Drop o = BoardCover.dropOf(ft, 1, 2);
+        assertEquals("FULL TIME", o.chip);
+        assertEquals("Leeds win · Calvert-Lewin 12' · Son 38'", o.line);
+        assertEquals(0, o.side);
+        assertEquals(BoardDrop.PLAIN, o.colour);
+        ScoreCard.Data ko = card("kickoff", "KICK-OFF", "IN 15 MIN");
+        ko.first = "Premier League";
+        ko.line = "Elland Road · Kick-off 15:00";
+        BoardDrop.Drop k = BoardCover.dropOf(ko, 1, 2);
+        assertEquals("KICK-OFF IN 15 MIN", k.chip);
+        assertEquals("Leeds v Tottenham", k.title);
+        assertEquals("Premier League · Elland Road · Kick-off 15:00", k.line);
+    }
+
+    @Test
+    public void aPopUpsLineFoldsOutWithoutItsIcon() {
+        ScoresTicker.Game g = new ScoresTicker.Game();
+        g.id = "g1";
+        g.homeName = "Leeds";
+        g.awayName = "Tottenham";
+        g.homeScore = "2";
+        g.awayScore = "1";
+        BoardDrop.Drop o = BoardCover.dropOfLine("⚽  Calvert-Lewin  67'", g, "goal", "home");
+        assertEquals("GOAL", o.chip);
+        assertEquals("Leeds 2–1 Tottenham", o.title);
+        assertEquals("Calvert-Lewin 67'", o.line);
+        assertEquals(1, o.side);
+        assertEquals("RED CARD", BoardCover.chipOf("red"));
+        assertEquals("FULL TIME", BoardCover.chipOf("fulltime"));
+    }
+
+    @Test
+    public void theLineUpsFoldOutWithBothElevens() {
+        ScoresTicker.Game g = new ScoresTicker.Game();
+        g.id = "g1";
+        g.homeName = "Leeds";
+        g.awayName = "Tottenham";
+        ScoresTicker.Side home = new ScoresTicker.Side(), away = new ScoresTicker.Side();
+        home.formation = "4-3-3";
+        home.players.add(new String[]{"Meslier"});
+        home.players.add(new String[]{"Bogle"});
+        away.players.add(new String[]{"Vicario"});
+        BoardDrop.Drop o = BoardCover.lineupsDrop(g, new ScoresTicker.Side[]{home, away});
+        assertTrue(o.lineups);
+        assertEquals("LINE-UPS", o.chip);
+        assertTrue(o.title.startsWith("Leeds v Tottenham"));
+        assertEquals("Leeds (4-3-3): Meslier, Bogle", o.line);
+        assertEquals("Tottenham: Vicario", o.line2);
+    }
+
+    @Test
+    public void theStatsAreTheBroadcastersInTheirOrder() {
+        java.util.Map<String, String> h = new java.util.HashMap<>(), a = new java.util.HashMap<>();
+        h.put("possessionPct", "58.3");
+        a.put("possessionPct", "41.7");
+        h.put("totalShots", "9");
+        a.put("totalShots", "4");
+        h.put("wonCorners", "5");
+        a.put("wonCorners", "2");
+        // A stat one side lacks is left out.
+        h.put("saves", "2");
+        java.util.List<String[]> s = BoardCover.statsList(h, a);
+        assertEquals(3, s.size());
+        assertArrayEquals(new String[]{"Possession", "58%", "42%"}, s.get(0));
+        assertArrayEquals(new String[]{"Shots", "9", "4"}, s.get(1));
+        assertEquals(0.58f, BoardStats.share("58%", "42%"), 0.001f);
+        assertEquals(0.5f, BoardStats.share("0", "0"), 0.001f);
+    }
+
+    @Test
+    public void clubColoursStayReadableOnTheStrips() {
+        int navy = BoardDrop.legible(0xFF132257, false);
+        assertTrue(((navy >> 8) & 0xFF) > 0x80);
+        int white = BoardDrop.legible(0xFFFFFFFF, true);
+        assertTrue((white & 0xFF) < 0x90);
+        assertEquals(0xFFE5333B, BoardDrop.legible(0xFFE5333B, false));
+        assertEquals(0xFFE5333B, BoardStats.visible(0xFFE5333B));
+        assertTrue(BoardStats.visible(0xFF000000) != 0xFF000000);
+    }
+
+    @Test
+    public void theBoardsWidthCanBeKeptApartFromItsHeight() {
+        BoardPlace p = BoardPlace.standard();
+        assertEquals(0f, p.bw, 0f);
+        float h = p.bh;
+        p.heightBoard(1.2f, 0.25f);
+        assertEquals(0.25f, p.bw, 1e-5);
+        assertEquals(h * 1.2f, p.bh, 1e-5);
+        // Its size step scales both.
+        p.sizeBoard(1.04f, 1f);
+        assertEquals(0.25f * 1.04f, p.bw, 1e-4);
+        // Kept as eight numbers; seven (before the width was kept) still read, with no width of its own.
+        BoardPlace back = BoardPlace.decode(p.encode());
+        assertNotNull(back);
+        assertEquals(p.bw, back.bw, 1e-4);
+        BoardPlace old = BoardPlace.decode("0.045,0.045,0.045,0.855,0.045,0.1,0.065");
+        assertNotNull(old);
+        assertEquals(0f, old.bw, 0f);
+        assertNull(BoardPlace.decode("0.1,0.1,0.05,0.8,0.05,0.1,0.06,0.2,0.3"));
+    }
+
+    @Test
+    public void partsAreJoinedWithoutGaps() {
+        assertEquals("a · b", BoardCover.join("a", "", null, " b "));
+        assertEquals("", BoardCover.join());
     }
 }
