@@ -30,6 +30,8 @@ final class BoardPanel extends SportPanel {
     private static final DateTimeFormatter HM = DateTimeFormatter.ofPattern("H:mm", Locale.UK);
     /** The pickers' boards, given the chosen game's crests once they are read. */
     private final List<BoardBug> previews = new ArrayList<>();
+    /** The logo cover's picker in the scoreboard's colours (it follows the board's look chosen). */
+    private final List<LogoMark> boardColoured = new ArrayList<>();
     private Bitmap[] crests;
     private String crestsFor;
 
@@ -170,6 +172,7 @@ final class BoardPanel extends SportPanel {
         // Each look drawn as it is, the game chosen above in it: the arrows go along, OK chooses.
         heading("SCOREBOARD LOOK");
         previews.clear();
+        boardColoured.clear();
         List<Row> looks = new ArrayList<>();
         for (BoardBug.Style st : BoardBug.Style.values()) looks.add(lookTile(st));
         addLine(132, 4, looks.subList(0, 4));
@@ -177,7 +180,8 @@ final class BoardPanel extends SportPanel {
         heading("LOGO COVER LOOK");
         List<Row> marks = new ArrayList<>();
         for (LogoMark.Look l : LogoMark.Look.values()) marks.add(markTile(l));
-        addLine(120, 4, marks);
+        addLine(132, 3, marks.subList(0, 3));
+        addLine(150, 3, marks.subList(3, marks.size()));
         loadCrests();
 
         heading("KIND TO THE SCREEN");
@@ -213,7 +217,13 @@ final class BoardPanel extends SportPanel {
         r.view = t;
         r.sub = name;
         r.words = () -> (BoardCover.style(c) == style ? "✓  " : "") + style.label;
-        r.ok = () -> BoardCover.setStyle(c, style);
+        r.ok = () -> {
+            BoardCover.setStyle(c, style);
+            // The cover in the scoreboard's colours follows the look chosen.
+            BoardBug colours = new BoardBug(c);
+            colours.style(style);
+            for (LogoMark m : boardColoured) m.boardLook(colours.stripLook());
+        };
         return r;
     }
 
@@ -229,7 +239,14 @@ final class BoardPanel extends SportPanel {
         LogoMark m = new LogoMark(c);
         m.look(look);
         m.inset(1);
-        stage.addView(m, new FrameLayout.LayoutParams(h.px(150), h.px(52), Gravity.CENTER));
+        // Broadcast: the picture's tag, LIVE, and the scoreboard look chosen for its colours.
+        m.tag("HD");
+        m.live(true);
+        BoardBug colours = new BoardBug(c);
+        colours.style(BoardCover.style(c));
+        m.boardLook(colours.stripLook());
+        stage.addView(m, look.broadcast() ? new FrameLayout.LayoutParams(h.px(170), h.px(96), Gravity.CENTER)
+                : new FrameLayout.LayoutParams(h.px(150), h.px(52), Gravity.CENTER));
         t.addView(stage, new LinearLayout.LayoutParams(-1, 0, 1f));
         TextView name = h.text(17, semi, 0xE6FFFFFF);
         name.setGravity(Gravity.CENTER);
@@ -241,6 +258,7 @@ final class BoardPanel extends SportPanel {
         r.sub = name;
         r.words = () -> (BoardCover.logoLook(c) == look ? "✓  " : "") + look.label;
         r.ok = () -> BoardCover.setLogoLook(c, look);
+        if (look == LogoMark.Look.BROADCAST_BOARD) boardColoured.add(m);
         return r;
     }
 

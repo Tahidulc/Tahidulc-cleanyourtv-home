@@ -550,4 +550,20 @@ public class BoardCoverTest {
         assertEquals("Show the scoreboard", off[1]);
         assertEquals("Show the logo's cover", off[2]);
     }
+
+    @Test
+    public void theBroadcastLogosTagIsTheChannelsPicture() {
+        assertEquals("HD", LogoMark.tagOf("UK: Sky Sports Main Event HD"));
+        assertEquals("UHD", LogoMark.tagOf("UK: Sky Sports Premier League UHD"));
+        assertEquals("UHD", LogoMark.tagOf("TNT Sports 1 4K"));
+        assertEquals("HD", LogoMark.tagOf("BBC One FHD"));
+        assertEquals("", LogoMark.tagOf("Sky Sports Football"));
+        assertEquals("", LogoMark.tagOf(null));
+        // "HD" inside a word is no tag.
+        assertEquals("", LogoMark.tagOf("Shdtv Sports"));
+        assertTrue(LogoMark.Look.BROADCAST.broadcast());
+        assertTrue(LogoMark.Look.BROADCAST_BOARD.broadcast());
+        assertFalse(LogoMark.Look.GLASS.broadcast());
+        assertEquals(LogoMark.Look.BROADCAST_BOARD, LogoMark.Look.of("BROADCAST_BOARD"));
+    }
 }

@@ -1058,6 +1058,12 @@ final class BoardCover {
         }
         fresh = false;
         stats.look(bug.stripLook(), l.homeColour, l.awayColour);
+        // The logo's cover in Broadcast: the picture's tag, LIVE while the game is, the scoreboard's colours.
+        if (mark != null) {
+            mark.tag(LogoMark.tagOf(InStep.channel(c)));
+            mark.live(l.live);
+            mark.boardLook(bug.stripLook());
+        }
         layout(c);
         guard(now);
         if (pre == null && g != null && r != null && board && !adjusting && testUntil <= now) {
