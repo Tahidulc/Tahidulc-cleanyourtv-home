@@ -195,6 +195,16 @@ the taller or flatter box, two rows when nearer square; the mark keeps its width
 matched to the channel's clock, or how long it is held behind the live scores, with buttons to put it a second or five
 later or sooner by hand.
 
+The scoreboard comes and goes as a broadcaster's (4.14): its first block (the competition's, Crests' home crest)
+opens out of a thin line, then the rest wipes out of it to the right behind a bright edge; going, the same backwards.
+And the game's stats fold down out from under it, as broadcasters show them: a strip as wide as the board, each stat in
+turn for a few seconds (its name in the middle, each side's number at its end, a bar split in the clubs' colours), three
+of them every four minutes while the game runs (the next three each time: possession, shots, on target, corners,
+fouls, yellow cards), all of them once at half time. Never while an alert drops from it (the alert first), just after a
+goal, in the small window, or while the scores have a goal the picture hasn't shown yet (its shot on target would give
+it away). The alerts that drop from it (goals elsewhere, the other football alerts, F1 and other sport, breaking news)
+are as they were.
+
 Subtitles (CC in the film's player): the film's or episode's own, from your playlist's stream, come first, in the
 languages you choose (Settings, Subtitles, in order). When it has none, OpenSubtitles.com is looked in by the title's
 TMDB id (the series' with its season and episode), best first: your languages, the ones that fit the copy playing (its

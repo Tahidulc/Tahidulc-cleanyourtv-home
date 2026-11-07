@@ -1,5 +1,8 @@
 package com.gathin.tvhomephone.live;
 
+import android.animation.Animator;
+import android.animation.AnimatorListenerAdapter;
+import android.animation.ValueAnimator;
 import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
@@ -288,9 +291,100 @@ final class OverlayBug extends View implements BurnGuard.Dims {
 
     // ---- drawing ---------------------------------------------------------------------------------------------------
 
+    // ---- coming and going, as a broadcaster's ---------------------------------------------------------------------
+
+    /** How far it is shown: 0 gone, 1 all there. Up to OPEN_AT its first block opens out of a line; then the rest wipes out of it. */
+    private float shown = 1f;
+    private static final float OPEN_AT = 0.3f;
+    private ValueAnimator showing;
+    private boolean closing;
+    private final Paint edge = new Paint(Paint.ANTI_ALIAS_FLAG);
+
+    /** In as the broadcasters' come in: its first block opens out of a thin line, then the rest wipes out to the right. */
+    void open() {
+        closing = false;
+        to(1f, 720, null);
+    }
+
+    /** Out the same way, backwards: the rest wipes back into the first block, which closes to a line; after() once gone. */
+    void close(Runnable after) {
+        if (closing) return;
+        closing = true;
+        to(0f, 460, after);
+    }
+
+    boolean closing() {
+        return closing;
+    }
+
+    /** Previews and tests: shown this far at once. */
+    void shownAt(float f) {
+        if (showing != null) showing.cancel();
+        shown = Math.max(0f, Math.min(1f, f));
+        invalidate();
+    }
+
+    private void to(float target, long ms, Runnable after) {
+        if (showing != null) showing.cancel();
+        float from = shown;
+        if (from == target) {
+            if (after != null) after.run();
+            return;
+        }
+        ValueAnimator va = ValueAnimator.ofFloat(from, target);
+        va.setDuration(Math.max(1, Math.round(ms * Math.abs(target - from))));
+        va.addUpdateListener(a -> {
+            shown = (float) a.getAnimatedValue();
+            invalidate();
+        });
+        va.addListener(new AnimatorListenerAdapter() {
+            private boolean cancelled;
+
+            @Override public void onAnimationCancel(Animator a) {
+                cancelled = true;
+            }
+
+            @Override public void onAnimationEnd(Animator a) {
+                if (cancelled) return;
+                if (target <= 0f) closing = false;
+                if (after != null) after.run();
+            }
+        });
+        showing = va;
+        va.start();
+    }
+
+    /** Pure: the part shown at f of the way in, {left, top, right, bottom}, for a board w by h whose first block is cap wide. */
+    static float[] shownPart(float f, float w, float h, float cap) {
+        if (f >= 1f) return new float[]{0, 0, w, h};
+        if (f <= 0f) return new float[]{0, 0, 0, 0};
+        if (f < OPEN_AT) {
+            float e = ease(f / OPEN_AT), half = h / 2f * e;
+            return new float[]{0, h / 2f - half, cap, h / 2f + half};
+        }
+        float e = ease((f - OPEN_AT) / (1f - OPEN_AT));
+        return new float[]{0, 0, cap + (w - cap) * e, h};
+    }
+
+    /** Fast out, settling in: a cubic. */
+    private static float ease(float t) {
+        float u = 1f - Math.max(0f, Math.min(1f, t));
+        return 1f - u * u * u;
+    }
+
     @Override protected void onDraw(Canvas cv) {
         int w = getWidth(), h = getHeight();
-        if (w <= 0 || h <= 0) return;
+        if (w <= 0 || h <= 0 || shown <= 0f) return;
+        boolean part = shown < 1f;
+        float[] in = null;
+        if (part) {
+            // Its first block (the competition's square, Crests' home crest, F1's red), never more than a third of it.
+            float first = look.f1 ? h * 1.3f : style == Style.CRESTS ? h * 1.25f : style == Style.STACKED ? h * 0.9f
+                    : style == Style.MINIMAL ? h * 1.2f : h;
+            in = shownPart(shown, w, h, Math.min(first, w / 3f));
+            cv.save();
+            cv.clipRect(in[0], in[1], in[2], in[3]);
+        }
         long now = System.currentTimeMillis();
         flash = now < flashUntil ? (flashUntil - now) / 4000f : 0f;
         clip.reset();
@@ -316,6 +410,16 @@ final class OverlayBug extends View implements BurnGuard.Dims {
             twoRows(cv, w, h);
         }
         cv.restore();
+        if (part) {
+            cv.restore();
+            // The wipe's leading edge, a bright line fading as it lands.
+            if (shown > OPEN_AT && in[2] < w - 1) {
+                float lw = Math.max(2f, 2 * dp), a = 1f - (shown - OPEN_AT) / (1f - OPEN_AT);
+                edge.setColor(0xFFFFFFFF);
+                edge.setAlpha(Math.round(230 * Math.max(0.25f, a)));
+                cv.drawRect(in[2] - lw, 0, in[2], h, edge);
+            }
+        }
         if (flash > 0) postInvalidateOnAnimation();
     }
 

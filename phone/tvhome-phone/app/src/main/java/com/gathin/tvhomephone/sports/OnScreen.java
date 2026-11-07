@@ -233,6 +233,16 @@ public final class OnScreen {
         return Math.max(0, most);
     }
 
+    /**
+     * Whether the scores have a score the screen hasn't shown yet (a goal on its way down the stream): what would give
+     * it away (the stats' shots on target) waits.
+     */
+    public boolean ahead(long now) {
+        if (reads.isEmpty()) return false;
+        Game shown = game(now), latest = reads.get(reads.size() - 1).g;
+        return shown != null && (latest.homeScore != shown.homeScore || latest.awayScore != shown.awayScore);
+    }
+
     // ---- what is shown ---------------------------------------------------------------------------------------------
 
     /** The game as the screen shows it at now (the first read when the screen is not there yet); null when none. */

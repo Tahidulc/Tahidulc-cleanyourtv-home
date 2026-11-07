@@ -15,6 +15,7 @@ import com.gathin.tvhomephone.App;
 import com.gathin.tvhomephone.sports.Events;
 import com.gathin.tvhomephone.sports.F1;
 import com.gathin.tvhomephone.sports.F1Live;
+import com.gathin.tvhomephone.sports.Espn;
 import com.gathin.tvhomephone.sports.Game;
 import com.gathin.tvhomephone.sports.Kinds;
 import com.gathin.tvhomephone.sports.LiveClock;
@@ -189,6 +190,15 @@ public final class ScoreBoard implements LiveAlerts.Listener {
     final OverlayBug bug;
     private final LinearLayout card;
     private final TextView chip, title, line;
+    /** The game's stats under it, folding out now and then: their latest read, for which game, and when each was. */
+    final BoardStats stats;
+    private List<String[]> statList = new ArrayList<>();
+    private String statsFor = "", htStatsFor = "";
+    private long statsReadAt, statsShownAt, goalShownAt;
+    private int statsFrom;
+    /** How often the stats fold out while the game runs, and how many each time. */
+    private static final long STATS_EVERY_MS = 4 * 60_000L, STATS_READ_MS = 120_000L;
+    private static final int STATS_EACH_TIME = 3;
     private final OnScreen screen = new OnScreen();
     /** F1 reads as they came: {when, session}. */
     private final ArrayDeque<Object[]> f1Reads = new ArrayDeque<>();
@@ -238,6 +248,9 @@ public final class ScoreBoard implements LiveAlerts.Listener {
             return true;
         });
         view.addView(bug, new LinearLayout.LayoutParams(-2, Math.round(30 * d)));
+        // The game's stats, folding down out from under it now and then (BoardStats).
+        stats = new BoardStats(ctx);
+        view.addView(stats, new LinearLayout.LayoutParams(Math.round(260 * d), Math.round(26 * d)));
 
         card = new LinearLayout(ctx);
         card.setOrientation(LinearLayout.VERTICAL);
@@ -289,6 +302,8 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         card.setVisibility(View.GONE);
         card.setTag(null);
         dropping = false;
+        stats.fold();
+        stats.setVisibility(View.GONE);
     }
 
     /** The small window: the board alone, no drops (they'd cover the picture). */
@@ -299,6 +314,7 @@ public final class ScoreBoard implements LiveAlerts.Listener {
             card.animate().cancel();
             card.setVisibility(View.GONE);
             dropping = false;
+            stats.fold();
         }
     }
 
@@ -421,6 +437,7 @@ public final class ScoreBoard implements LiveAlerts.Listener {
                     channelGame = mineNow;
                     screen.behind(src.behindMs(mineNow));
                     screen.add(got, now);
+                    readStats(got, now);
                     mode = FOOTBALL_MODE;
                     lastId = got.id == null ? "" : got.id;
                     // The player's board on the channel's own game: the tile and the small window read the same time.
@@ -460,9 +477,11 @@ public final class ScoreBoard implements LiveAlerts.Listener {
                 if (g.id != null && g.id.equals(lastShownId)) {
                     if (g.homeScore > lastHome && lastHome >= 0) {
                         bug.goal(1);
+                        goalShownAt = now;
                         if (changed != null) changed.run();
                     } else if (g.awayScore > lastAway && lastAway >= 0) {
                         bug.goal(2);
+                        goalShownAt = now;
                         if (changed != null) changed.run();
                     }
                 }
@@ -478,11 +497,78 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         }
         if (l == null && preview) l = sample();
         if (l == null || hidden) {
-            bug.setVisibility(View.GONE);
+            // Away as a broadcaster's goes: wiped back into its first block, closed to a line.
+            if (bug.getVisibility() == View.VISIBLE && !bug.closing()) {
+                stats.fold();
+                bug.close(() -> bug.setVisibility(View.GONE));
+            }
             return;
         }
         bug.set(l);
-        bug.setVisibility(View.VISIBLE);
+        if (bug.getVisibility() != View.VISIBLE || bug.closing()) {
+            boolean fresh = bug.getVisibility() != View.VISIBLE;
+            // From nothing when it was away (a new channel, switched back on); from where it was if it was going.
+            if (fresh) bug.shownAt(0f);
+            bug.setVisibility(View.VISIBLE);
+            bug.open();
+            // The stats' first fold-out a minute after it comes, then every few minutes.
+            if (fresh) statsShownAt = now - STATS_EVERY_MS + 60_000L;
+        }
+        stats.colours(l.homeColour, l.awayColour, bug.style() == OverlayBug.Style.LIGHT);
+        if (mode == FOOTBALL_MODE) maybeStats(now);
+    }
+
+    /**
+     * The game's stats folding out from under it, as broadcasters do: three every few minutes while the game runs (the
+     * next three each time), all of them once at half time. Never while an alert drops, just after a goal, in the small
+     * window or while it is placed by hand; and never while the scores have a goal the picture hasn't shown yet (its
+     * shot on target would give it away).
+     */
+    private void maybeStats(long now) {
+        if (small || preview || hidden || dropping || stats.isOut() || bug.closing() || bug.getVisibility() != View.VISIBLE) return;
+        if (statList.size() < 2 || !lastId.equals(statsFor) || bug.getWidth() <= 0) return;
+        Game g = screen.game(now);
+        if (g == null || screen.ahead(now)) return;
+        List<String[]> pick = new ArrayList<>();
+        if (g.halftime) {
+            if (lastId.equals(htStatsFor)) return;
+            htStatsFor = lastId;
+            for (String[] s : statList) pick.add(new String[]{"Half-time · " + s[0], s[1], s[2]});
+        } else {
+            if (g.state != Game.LIVE || now - statsShownAt < STATS_EVERY_MS || now - goalShownAt < 90_000L) return;
+            for (int i = 0; i < Math.min(STATS_EACH_TIME, statList.size()); i++) pick.add(statList.get((statsFrom + i) % statList.size()));
+            statsFrom = (statsFrom + STATS_EACH_TIME) % statList.size();
+        }
+        statsShownAt = now;
+        // As wide as the board, a little less high.
+        float d = c.getResources().getDisplayMetrics().density;
+        LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) stats.getLayoutParams();
+        lp.width = Math.max(bug.getWidth(), Math.round(200 * d));
+        lp.height = Math.max(Math.round(24 * d), Math.round(bug.getHeight() * 0.82f));
+        stats.setLayoutParams(lp);
+        if (changed != null) changed.run();
+        stats.show(pick, null);
+    }
+
+    /** The game's stats read again now and then (off the main thread), for the next fold-out. */
+    private void readStats(Game g, long now) {
+        if (g == null || g.id == null || g.slug == null || g.state == Game.PRE) return;
+        if (g.id.equals(statsFor) && now - statsReadAt < STATS_READ_MS) return;
+        statsReadAt = now;
+        String id = g.id, slug = g.slug;
+        App.io.execute(() -> {
+            List<String[]> got;
+            try {
+                got = new ArrayList<>(Espn.summary(slug, id, 60_000L).stats);
+            } catch (RuntimeException e) {
+                return;
+            }
+            App.main.post(() -> {
+                if (got.isEmpty()) return;
+                statList = got;
+                statsFor = id;
+            });
+        });
     }
 
     private String lastShownId;
@@ -667,6 +753,7 @@ public final class ScoreBoard implements LiveAlerts.Listener {
             return;
         }
         dropping = true;
+        stats.fold();
         if (changed != null) changed.run();
         card.setTag(d);
         chip.setText(d.chip);

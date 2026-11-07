@@ -88,4 +88,37 @@ public class ScoreBoardTest {
         assertTrue(OverlayBug.Style.STACKED.tall > 1.5f);
         for (OverlayBug.Style st : OverlayBug.Style.values()) if (st != OverlayBug.Style.STACKED) assertEquals(1f, st.tall, 0f);
     }
+
+    @Test public void itComesInAsABroadcastersDoes() {
+        float w = 300, h = 30, cap = 30;
+        // Nothing at first; its first block opening out of a line across its middle.
+        assertEquals(0f, OverlayBug.shownPart(0f, w, h, cap)[2], 0.01f);
+        float[] opening = OverlayBug.shownPart(0.1f, w, h, cap);
+        assertEquals(cap, opening[2], 0.01f);
+        assertTrue(opening[1] > 0 && opening[3] < h && opening[1] < h / 2 && opening[3] > h / 2);
+        // The block open, then the rest wiping out of it to the right, all there at the end.
+        float[] block = OverlayBug.shownPart(0.3f, w, h, cap);
+        assertEquals(0f, block[1], 0.01f);
+        assertEquals(h, block[3], 0.01f);
+        assertEquals(cap, block[2], 0.01f);
+        float half = OverlayBug.shownPart(0.65f, w, h, cap)[2];
+        assertTrue(half > cap && half < w);
+        assertEquals(w, OverlayBug.shownPart(1f, w, h, cap)[2], 0.01f);
+        // Always more as it goes on.
+        float last = -1;
+        for (int i = 0; i <= 20; i++) {
+            float[] p = OverlayBug.shownPart(i / 20f, w, h, cap);
+            float area = (p[2] - p[0]) * (p[3] - p[1]);
+            assertTrue(area >= last);
+            last = area;
+        }
+    }
+
+    @Test public void eachSidesShareOfAStatFillsItsBar() {
+        assertEquals(0.58f, BoardStats.share("58%", "42%"), 0.001f);
+        assertEquals(0.7f, BoardStats.share("7", "3"), 0.001f);
+        assertEquals(0.5f, BoardStats.share("0", "0"), 0.001f);
+        assertEquals(0.5f, BoardStats.share("", null), 0.001f);
+        assertEquals(1f, BoardStats.share("2", "0"), 0.001f);
+    }
 }

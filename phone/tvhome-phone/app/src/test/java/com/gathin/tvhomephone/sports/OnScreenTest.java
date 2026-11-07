@@ -297,4 +297,17 @@ public class OnScreenTest {
         assertTrue(p.plausible(40, t));
         assertFalse(p.plausible(19 * 60 + 45, t));
     }
+
+    @Test public void aGoalOnItsWayDownTheStreamIsKnown() {
+        OnScreen s = new OnScreen();
+        s.behind(40_000);
+        long t = 20_000_000;
+        s.add(live(60, 0, 0, 2), t);
+        assertFalse(s.ahead(t + 1000));
+        // The scores have 1-0; the picture, 40 s behind, hasn't shown it yet.
+        s.add(live(61, 1, 0, 2), t + 20_000);
+        assertTrue(s.ahead(t + 30_000));
+        // Once it has, nothing is ahead.
+        assertFalse(s.ahead(t + 61_000));
+    }
 }
