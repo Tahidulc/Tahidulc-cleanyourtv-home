@@ -76,6 +76,8 @@ final class LogoMark extends View {
     private android.graphics.Bitmap comp;
     private String compName = "";
     private final Paint picture = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+    /** The competition's logo beside every look (on unless switched off on the Scoreboard card). */
+    private boolean compOn = true;
     /** The ring's dashes, made once for a width of line. */
     private float dashFor = -1;
 
@@ -129,7 +131,14 @@ final class LogoMark extends View {
     void competition(android.graphics.Bitmap logo, String name) {
         comp = logo;
         compName = name == null ? "" : name.trim();
-        if (look == Look.COMPETITION) invalidate();
+        invalidate();
+    }
+
+    /** The competition's logo beside the look, or not. */
+    void compOn(boolean on) {
+        if (on == compOn) return;
+        compOn = on;
+        invalidate();
     }
 
     /** What is on: "f1" for Formula 1, else football (Matchday's channel name). */
@@ -167,23 +176,52 @@ final class LogoMark extends View {
     }
 
     @Override protected void onDraw(Canvas cv) {
-        float w = getWidth(), h = getHeight();
-        if (w <= 0 || h <= 0) return;
+        float full = getWidth(), h = getHeight();
+        if (full <= 0 || h <= 0) return;
+        // The competition's logo beside the look, in a block of its own at its end, when it is on and known.
+        float side = compShown() ? Math.min(h * 0.92f, full * 0.3f) : 0f;
+        if (side > 0f) compPanel(cv, full - side, full, h);
+        drawLook(cv, full - side, h);
+        ring(cv, full, h, Math.min(full, h) * 0.15f);
+    }
+
+    /** Whether the competition's logo stands beside the look: switched on, read, and the look is not the logo itself. */
+    private boolean compShown() {
+        return compOn && comp != null && look != Look.COMPETITION;
+    }
+
+    /** The competition's block from x0 to x1: its dark ground reaching under the look's end, a fine line, the logo. */
+    private void compPanel(Canvas cv, float x0, float x1, float h) {
+        float rad = Math.min(x1 - x0, h) * 0.2f;
+        // Under a solid look's rounded end; beside a see-through one (Smoked glass, Broadcast see-through), not under it.
+        boolean clear = look == Look.SMOKED || look == Look.BROADCAST;
+        r.set(clear ? x0 : x0 - rad * 2f, 0, x1, h);
+        fill.setShader(new android.graphics.LinearGradient(0, 0, 0, h, 0xFF1B1F31, 0xFF07090F, android.graphics.Shader.TileMode.CLAMP));
+        cv.drawRoundRect(r, rad, rad, fill);
+        fill.setShader(null);
+        fill.setColor(0x33FFFFFF);
+        cv.drawRect(x0, h * 0.18f, x0 + Math.max(1f, h * 0.012f), h * 0.82f, fill);
+        float pad = Math.min(x1 - x0, h) * 0.17f, bw = x1 - x0 - 2 * pad, bh = h - 2 * pad;
+        float k = Math.min(bw / comp.getWidth(), bh / comp.getHeight()), dw = comp.getWidth() * k, dh = comp.getHeight() * k;
+        float cx = (x0 + x1) / 2f + Math.max(1f, h * 0.006f);
+        r.set(cx - dw / 2f, (h - dh) / 2f, cx + dw / 2f, (h + dh) / 2f);
+        cv.drawBitmap(comp, null, r, picture);
+    }
+
+    /** The look itself in the box w wide (the whole box, or short of the competition's block). */
+    private void drawLook(Canvas cv, float w, float h) {
         if (look == Look.COMPETITION) {
             competitionLook(cv, w, h);
-            ring(cv, w, h, Math.min(w, h) * 0.15f);
             return;
         }
         if (look.channel()) {
             // Whitebrook Road's own channel: its ground over the whole box, the edge the burn-in guard moves in too.
             if (channel == null) channel = new ChannelMark(getContext());
             channel.draw(cv, look, 0, 0, w, h, tag, live, sport);
-            ring(cv, w, h, Math.min(w, h) * 0.15f);
             return;
         }
         if (look.broadcast()) {
             broadcast(cv, w, h, look == Look.BROADCAST || board == null);
-            ring(cv, w, h, Math.min(w, h) * 0.1f);
             return;
         }
         float rad = Math.min(w, h) * 0.18f;
@@ -204,7 +242,6 @@ final class LogoMark extends View {
                 cv.drawText(NAME, left, inset + ch / 2 - (fm.ascent + fm.descent) / 2, words);
             }
         }
-        ring(cv, w, h, rad);
     }
 
     /**

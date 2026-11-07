@@ -258,6 +258,16 @@ final class BoardCover {
         setLogoLook(c, all[((logoLook(c).ordinal() + step) % all.length + all.length) % all.length]);
     }
 
+    /** The competition's logo beside the logo cover's look (on unless switched off). */
+    static boolean logoComp(Context c) {
+        return prefs(c).getBoolean("comp_on", true);
+    }
+
+    static void setLogoComp(Context c, boolean on) {
+        prefs(c).edit().putBoolean("comp_on", on).apply();
+        if (mark != null) mark.compOn(on);
+    }
+
     /** The picture tag on the logo cover: Auto (from the channel's name), none, or one set (HD, UHD, 4K, with HDR or not). */
     static ChannelMark.Tag logoTag(Context c) {
         return ChannelMark.Tag.of(prefs(c).getString("tag", ""));
@@ -1442,6 +1452,7 @@ final class BoardCover {
             mark = new LogoMark(c);
             mark.look(logoLook(c));
             mark.competition(compImage, compTag);
+            mark.compOn(logoComp(c));
             mark.inset(edge);
             logoWin = frame(c, mark);
             if (!addWindow(c, logoWin)) {

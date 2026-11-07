@@ -175,7 +175,14 @@ final class BoardPanel extends SportPanel {
         ask.on = () -> OverlayPrompt.on(c);
         ask.words = () -> OverlayPrompt.on(c) ? "A match or F1 on: hold OK on the button for the overlays" : "Off";
         ask.ok = () -> OverlayPrompt.setOn(c, !OverlayPrompt.on(c));
-        add(ask);
+        Row comp = row("Competition logo on the logo cover", true);
+        comp.on = () -> BoardCover.logoComp(c);
+        comp.words = () -> BoardCover.logoComp(c) ? "Beside every look: the Premier League's, the Champions League's, F1's" : "Off";
+        comp.ok = () -> {
+            BoardCover.setLogoComp(c, !BoardCover.logoComp(c));
+            for (LogoMark m : markPreviews) m.compOn(BoardCover.logoComp(c));
+        };
+        add(ask, comp);
 
         // Each look drawn as it is, the game chosen above in it: the arrows go along, OK chooses.
         heading("SCOREBOARD LOOK");
@@ -260,6 +267,8 @@ final class BoardPanel extends SportPanel {
         // Broadcast and the channel looks: the picture's tag chosen, LIVE, the scoreboard look chosen for its colours.
         m.tag(previewTag());
         m.live(true);
+        m.compOn(BoardCover.logoComp(c));
+        if (crests != null) m.competition(crests[2], game() == null ? "" : game().league);
         markPreviews.add(m);
         BoardBug colours = new BoardBug(c);
         colours.style(BoardCover.style(c));
