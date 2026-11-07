@@ -95,10 +95,18 @@ final class KidsArt {
             cv.drawCircle(x, y, rad, p);
         }
         p.setStyle(Paint.Style.FILL);
+        if (bare) {
+            // The picture at the top of the page has the tabs across its lower part: a shade there keeps their names
+            // readable on the card's bright colours.
+            p.setShader(new LinearGradient(0, h * 0.38f, 0, h * 0.7f, 0x00000000, 0x99000000, Shader.TileMode.CLAMP));
+            cv.drawRect(0, h * 0.38f, w, h, p);
+            p.setShader(null);
+        }
         float unit = Math.min(w, h);
-        // YouTube's own icon from the TV (a white badge with a red play sign if it cannot be read).
-        float badge = unit * (poster ? 0.38f : bare ? 0.38f : 0.32f);
-        float bx = (w - badge) / 2f, by = poster ? h * 0.22f : bare ? (h - badge) / 2f : h * 0.14f;
+        // YouTube's own icon from the TV (a white badge with a red play sign if it cannot be read). At the top of the
+        // page it sits higher and a little smaller, clear of the tabs (in the middle it covered two of their names).
+        float badge = unit * (poster ? 0.38f : bare ? 0.3f : 0.32f);
+        float bx = (w - badge) / 2f, by = poster ? h * 0.22f : bare ? h * 0.17f : h * 0.14f;
         RectF box = new RectF(bx, by, bx + badge, by + badge);
         p.setColor(0x33000000);
         cv.drawRoundRect(new RectF(box.left, box.top + unit * 0.02f, box.right, box.bottom + unit * 0.02f), badge * 0.24f, badge * 0.24f, p);

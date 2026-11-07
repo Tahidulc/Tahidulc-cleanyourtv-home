@@ -1059,6 +1059,9 @@ final class PagesV2 {
         }
 
         @Override void entered() {
+            // The Kids page with its show stays on its tabs, where the show plays ("Down for cartoons, films and
+            // YouTube"): going straight into the posters, as the other pages do, kept its shows from ever coming up.
+            if (play != null) return;
             if (onTabs && !rows.isEmpty() && !rows.get(0).items.isEmpty()) {
                 onTabs = false;
                 row = 0;
