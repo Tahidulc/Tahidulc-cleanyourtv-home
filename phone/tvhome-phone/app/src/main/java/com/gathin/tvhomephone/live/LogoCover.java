@@ -28,7 +28,7 @@ final class LogoCover extends View implements BurnGuard.Dims {
     /** The looks, as Settings names them. */
     enum Look {
         OFF("Leave the channel's"), SIGNATURE("Signature"), MATCHDAY("Matchday"), ROOFLINE("Roofline"), VELOCITY("Velocity"),
-        ROUNDEL("Roundel"), BLOCK("Solid block"), SMOKED("Smoked glass"), BADGE("Badge"), GLASS("Glass"), MARK("Mark only"),
+        ROUNDEL("Roundel"), BLOCK("Solid block"), SMOKED("Smoked glass"), COMPETITION("The competition's logo"), BADGE("Badge"), GLASS("Glass"), MARK("Mark only"),
         WORD("Wordmark"), BROADCAST("Broadcast, see-through"), BROADCAST_BOARD("Broadcast, scoreboard colours");
 
         /** Laid out as a sports channel's own logo, one solid block. */
@@ -69,6 +69,10 @@ final class LogoCover extends View implements BurnGuard.Dims {
     /** The channel looks, drawn when one is chosen; the sport ("f1", else football) for Matchday's channel name. */
     private ChannelMark channel;
     private String sport = "";
+    /** The competition being watched: its logo and its name (shown while there is no logo). */
+    private android.graphics.Bitmap comp;
+    private String compName = "";
+    private final Paint picture = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
 
     LogoCover(Context c) {
         super(c);
@@ -98,6 +102,15 @@ final class LogoCover extends View implements BurnGuard.Dims {
         if (look.broadcast() || look.channel()) invalidate();
     }
 
+    /** The competition on the board: its logo (null for none yet) and its name. */
+    void competition(android.graphics.Bitmap logo, String name) {
+        String n = name == null ? "" : name.trim();
+        if (logo == comp && n.equals(compName)) return;
+        comp = logo;
+        compName = n;
+        if (look == Look.COMPETITION) invalidate();
+    }
+
     /** What is on: "f1" for Formula 1, else football (Matchday's channel name). */
     void sport(String s) {
         String n = s == null ? "" : s;
@@ -125,9 +138,44 @@ final class LogoCover extends View implements BurnGuard.Dims {
         return ChannelMark.tagOf(channel);
     }
 
+    /** The competition's own logo over the channel's: a dark block, the logo as large as it fits, a red dot while live. */
+    private void competitionLook(Canvas cv, float w, float h) {
+        float rad = Math.min(w, h) * 0.18f;
+        r.set(0, 0, w, h);
+        fill.setShader(new LinearGradient(0, 0, 0, h, 0xFA1B1F31, 0xFA07090F, Shader.TileMode.CLAMP));
+        cv.drawRoundRect(r, rad, rad, fill);
+        fill.setShader(null);
+        float pad = Math.min(w, h) * 0.14f;
+        if (comp != null && comp.getWidth() > 0 && comp.getHeight() > 0) {
+            float k = Math.min((w - 2 * pad) / comp.getWidth(), (h - 2 * pad) / comp.getHeight());
+            float dw = comp.getWidth() * k, dh = comp.getHeight() * k;
+            r.set((w - dw) / 2f, (h - dh) / 2f, (w + dw) / 2f, (h + dh) / 2f);
+            cv.drawBitmap(comp, null, r, picture);
+        } else {
+            String n = compName.isEmpty() ? "LIVE" : compName.toUpperCase(java.util.Locale.ROOT);
+            words.setTypeface(ChannelMark.outfit(getContext(), 800));
+            words.setTextSize(h * 0.36f);
+            float wd = words.measureText(n);
+            if (wd > w - 2 * pad) words.setTextSize(h * 0.36f * (w - 2 * pad) / wd);
+            words.setTextAlign(Paint.Align.CENTER);
+            Paint.FontMetrics fm = words.getFontMetrics();
+            cv.drawText(n, w / 2f, h / 2f - (fm.ascent + fm.descent) / 2f, words);
+            words.setTextAlign(Paint.Align.LEFT);
+            words.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD));
+        }
+        if (live) {
+            fill.setColor(0xFFFF3B4E);
+            cv.drawCircle(w - pad * 0.7f, pad * 0.7f, Math.max(2f, h * 0.045f), fill);
+        }
+    }
+
     @Override protected void onDraw(Canvas cv) {
         float w = getWidth(), h = getHeight();
         if (w <= 0 || h <= 0 || look == Look.OFF) return;
+        if (look == Look.COMPETITION) {
+            competitionLook(cv, w, h);
+            return;
+        }
         if (look.channel()) {
             if (channel == null) channel = new ChannelMark(getContext());
             channel.draw(cv, look, 0, 0, w, h, tag, live, sport);

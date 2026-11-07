@@ -110,7 +110,8 @@ public final class BoardSettings {
                 lc.live(true);
                 pic = lc;
             }
-            boolean tall = lk.channel() || lk.broadcast();
+            boolean tall = lk.channel() || lk.broadcast() || lk == LogoCover.Look.COMPETITION;
+            if (lk == LogoCover.Look.COMPETITION && pic instanceof LogoCover) ((LogoCover) pic).competition(null, "Premier League");
             one.addView(pic, 0, new LinearLayout.LayoutParams(Ui.dp(c, tall ? 112 : 104), Ui.dp(c, tall ? 52 : 36)));
             one.setOnClickListener(v -> {
                 ScoreBoard.setLogoCover(c, lk);

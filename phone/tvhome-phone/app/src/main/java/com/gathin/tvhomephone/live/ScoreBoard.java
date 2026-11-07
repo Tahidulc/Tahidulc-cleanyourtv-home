@@ -496,6 +496,18 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         return mode == FOOTBALL_MODE;
     }
 
+    /** The competition on the board: its logo (null while read, or none) and its name, for the logo cover's Competition look. */
+    private Bitmap compPic;
+    private String compName = "";
+
+    Bitmap compPic() {
+        return compPic;
+    }
+
+    String compName() {
+        return compName;
+    }
+
     /** Whether a Formula 1 session is on the board (the channel looks' Matchday says GRAND PRIX). */
     boolean f1() {
         return mode == F1_MODE;
@@ -602,12 +614,16 @@ public final class ScoreBoard implements LiveAlerts.Listener {
                     if (pics != null) {
                         crestsFor = lastId;
                         bug.crests(pics[0], pics[1], pics[2]);
+                        compPic = pics[2];
                     }
+                    compName = got.leagueName == null ? "" : got.leagueName;
                 } else if (session != null) {
                     channelGame = false;
                     f1Reads.addLast(new Object[]{now, session});
                     while (f1Reads.size() > 40) f1Reads.removeFirst();
                     mode = F1_MODE;
+                    compPic = null;
+                    compName = "F1";
                 } else if (own == null) {
                     mode = NONE;
                 }

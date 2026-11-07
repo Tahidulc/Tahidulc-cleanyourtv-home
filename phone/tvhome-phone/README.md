@@ -260,6 +260,11 @@ picture), each laid out for the logo's box. The picture tag on them (and on the 
 in Settings and in the player's menu: Auto (from the channel's name: 4K or UHD, with HDR when it says HDR, HD, or none),
 None, HD, UHD, 4K, UHD HDR or 4K HDR. The letters are the TV's own (Outfit), now in the app.
 
+The competition's logo on the logo's cover (4.21): a look of its own for the mark over the channel's logo, The
+competition's logo, as the TV launcher's 4.26 has it: the logo of what is on (the competition ESPN gives for the game on
+the board) on a dark block, as large as it fits, a red dot in its corner while the game is live; its name while the logo
+is read, or F1 over a Formula 1 session. In Settings and the player's menu with the other looks.
+
 Subtitles (CC in the film's player): the film's or episode's own, from your playlist's stream, come first, in the
 languages you choose (Settings, Subtitles, in order). When it has none, OpenSubtitles.com is looked in by the title's
 TMDB id (the series' with its season and episode), best first: your languages, the ones that fit the copy playing (its

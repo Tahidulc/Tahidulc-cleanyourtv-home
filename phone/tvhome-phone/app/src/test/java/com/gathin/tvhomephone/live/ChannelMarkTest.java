@@ -49,5 +49,7 @@ public class ChannelMarkTest {
         assertEquals(LogoCover.Look.BADGE, LogoCover.Look.of(""));
         assertEquals("GRAND PRIX", ChannelMark.channelFor("f1"));
         assertEquals("MATCHDAY", ChannelMark.channelFor(null));
+        assertFalse(LogoCover.Look.COMPETITION.channel());
+        assertEquals(LogoCover.Look.COMPETITION, LogoCover.Look.of("COMPETITION"));
     }
 }
