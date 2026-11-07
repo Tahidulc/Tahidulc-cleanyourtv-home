@@ -205,6 +205,16 @@ goal, in the small window, or while the scores have a goal the picture hasn't sh
 it away). The alerts that drop from it (goals elsewhere, the other football alerts, F1 and other sport, breaking news)
 are as they were.
 
+A goal on the scoreboard (4.15), as broadcasters show one: the board flashes white, the scorers' colour sweeps across
+it from their side with their crest and GOAL, a shine runs over it, then it carries on out the far side and the new
+score pops up big and settles while that side glows in its colour. And every alert that drops from it (goals, the
+line-ups, red cards, VAR, half and full time, F1 and other sport, breaking news) now folds down out from under the
+board in the board's own look: its ground, words and corners, square where it meets the board (under a Glass or
+Minimal pill, a pill of its own just below), the kind's chip (a goal's green, a red card's red, else the board's own
+block), and down its edge the colours of the clubs it is about, the scorers' alone for a goal. The line-ups show both
+elevens, each led by its club and shape in its colour, for twelve seconds. A goal's alert waits for the sweep to
+finish, and the stats fold away before an alert comes down in their place; they too take the board's look.
+
 Subtitles (CC in the film's player): the film's or episode's own, from your playlist's stream, come first, in the
 languages you choose (Settings, Subtitles, in order). When it has none, OpenSubtitles.com is looked in by the title's
 TMDB id (the series' with its season and episode), best first: your languages, the ones that fit the copy playing (its

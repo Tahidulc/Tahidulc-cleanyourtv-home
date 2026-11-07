@@ -5,11 +5,8 @@ import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.os.Handler;
 import android.os.Looper;
-import android.text.TextUtils;
-import android.view.Gravity;
 import android.view.View;
 import android.widget.LinearLayout;
-import android.widget.TextView;
 
 import com.gathin.tvhomephone.App;
 import com.gathin.tvhomephone.sports.Events;
@@ -35,8 +32,8 @@ import java.util.regex.Pattern;
  * (ScoreOverlay) and over other apps (FloatService). It shows the channel's own game when it has one, read every 15
  * seconds and shown as the stream shows it (OnScreen: the score changes as the goal goes in on the screen, the clock is
  * the screen's); on an F1 channel, the session (F1Live), in step the same way; otherwise the first followed club's game
- * on now. Goals and the other football alerts, F1 and the other sport, and breaking news drop from under it, each as
- * switched on here.
+ * on now. Goals and the other football alerts, the line-ups, F1 and the other sport, and breaking news fold out from
+ * under it in its own look (BoardDrop), each as switched on here; a goal on it is shown first, as broadcasters do.
  */
 public final class ScoreBoard implements LiveAlerts.Listener {
     /** What it is shown over. */
@@ -60,7 +57,7 @@ public final class ScoreBoard implements LiveAlerts.Listener {
     }
 
     static final String FOOTBALL = "football", SPORT = "sport", NEWS = "news";
-    private static final long READ_MS = 15_000L, DROP_MS = 7_000L;
+    private static final long READ_MS = 15_000L, DROP_MS = 7_000L, LINEUPS_MS = 12_000L;
     private static final Pattern F1_CHANNEL = Pattern.compile("(?i)\\bf1\\b|formula ?(1|one)");
 
     // ---- the switches -------------------------------------------------------------------------------------------
@@ -188,8 +185,8 @@ public final class ScoreBoard implements LiveAlerts.Listener {
     /** The scoreboard and, under it, the alert's drop. */
     final LinearLayout view;
     final OverlayBug bug;
-    private final LinearLayout card;
-    private final TextView chip, title, line;
+    /** The alert folding out from under it, in its look. */
+    final BoardDrop strip;
     /** The game's stats under it, folding out now and then: their latest read, for which game, and when each was. */
     final BoardStats stats;
     private List<String[]> statList = new ArrayList<>();
@@ -216,8 +213,12 @@ public final class ScoreBoard implements LiveAlerts.Listener {
 
     /** One alert's drop. */
     static final class Drop {
-        String chip = "", title = "", line = "";
+        String chip = "", title = "", line = "", line2 = "";
         int colour;
+        /** The game's clubs' colours (0 when it is no game's), and the side it is about: 1 home, 2 away, 0 both or neither. */
+        int homeColour, awayColour, side;
+        /** Both starting elevens, the home side's in line and the away side's in line2, each led by its club and shape. */
+        boolean lineups;
         Events.Alert alert;
     }
 
@@ -232,6 +233,7 @@ public final class ScoreBoard implements LiveAlerts.Listener {
 
     private final Runnable read = this::read;
     private final Runnable hide = this::hideDrop;
+    private final Runnable nextDrop = this::next;
 
     ScoreBoard(Context ctx, Source src) {
         this.c = ctx;
@@ -252,35 +254,14 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         stats = new BoardStats(ctx);
         view.addView(stats, new LinearLayout.LayoutParams(Math.round(260 * d), Math.round(26 * d)));
 
-        card = new LinearLayout(ctx);
-        card.setOrientation(LinearLayout.VERTICAL);
-        card.setPadding(Math.round(12 * d), Math.round(9 * d), Math.round(12 * d), Math.round(10 * d));
-        card.setBackground(Ui.round(ctx, 0xF20B1033, 12));
-        card.setElevation(6 * d);
-        chip = Ui.text(ctx, "", 10, 0xFF0A0D33, true);
-        chip.setLetterSpacing(0.08f);
-        chip.setPadding(Math.round(6 * d), Math.round(1 * d), Math.round(6 * d), Math.round(1 * d));
-        LinearLayout.LayoutParams cp = new LinearLayout.LayoutParams(-2, -2);
-        card.addView(chip, cp);
-        title = Ui.text(ctx, "", 14, 0xFFFFFFFF, true);
-        title.setMaxLines(2);
-        title.setEllipsize(TextUtils.TruncateAt.END);
-        title.setPadding(0, Math.round(5 * d), 0, 0);
-        card.addView(title);
-        line = Ui.text(ctx, "", 12, 0xFFC9CFEA, false);
-        line.setMaxLines(2);
-        line.setEllipsize(TextUtils.TruncateAt.END);
-        line.setPadding(0, Math.round(2 * d), 0, 0);
-        card.addView(line);
-        card.setVisibility(View.GONE);
-        card.setOnClickListener(v -> {
-            Drop now = (Drop) card.getTag();
+        // The alerts, folding down out from under it in its look.
+        strip = new BoardDrop(ctx);
+        strip.setOnClickListener(v -> {
+            Drop now = strip.drop();
             hideDrop();
             if (now != null && now.alert != null) src.alertTapped(now.alert);
         });
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(Math.round(280 * d), -2);
-        lp.topMargin = Math.round(6 * d);
-        view.addView(card, lp);
+        view.addView(strip, new LinearLayout.LayoutParams(Math.round(280 * d), -2));
     }
 
     void start() {
@@ -298,9 +279,7 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         LiveAlerts.removeListener(this);
         h.removeCallbacksAndMessages(null);
         drops.clear();
-        card.animate().cancel();
-        card.setVisibility(View.GONE);
-        card.setTag(null);
+        strip.gone();
         dropping = false;
         stats.fold();
         stats.setVisibility(View.GONE);
@@ -311,8 +290,9 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         small = on;
         if (on) {
             drops.clear();
-            card.animate().cancel();
-            card.setVisibility(View.GONE);
+            h.removeCallbacks(hide);
+            h.removeCallbacks(nextDrop);
+            strip.gone();
             dropping = false;
             stats.fold();
         }
@@ -500,6 +480,7 @@ public final class ScoreBoard implements LiveAlerts.Listener {
             // Away as a broadcaster's goes: wiped back into its first block, closed to a line.
             if (bug.getVisibility() == View.VISIBLE && !bug.closing()) {
                 stats.fold();
+                strip.alone();
                 bug.close(() -> bug.setVisibility(View.GONE));
             }
             return;
@@ -514,7 +495,7 @@ public final class ScoreBoard implements LiveAlerts.Listener {
             // The stats' first fold-out a minute after it comes, then every few minutes.
             if (fresh) statsShownAt = now - STATS_EVERY_MS + 60_000L;
         }
-        stats.colours(l.homeColour, l.awayColour, bug.style() == OverlayBug.Style.LIGHT);
+        stats.look(bug.stripLook(), l.homeColour, l.awayColour);
         if (mode == FOOTBALL_MODE) maybeStats(now);
     }
 
@@ -545,6 +526,8 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) stats.getLayoutParams();
         lp.width = Math.max(bug.getWidth(), Math.round(200 * d));
         lp.height = Math.max(Math.round(24 * d), Math.round(bug.getHeight() * 0.82f));
+        // Under a pill board, a pill of its own a little apart.
+        lp.topMargin = bug.stripLook().apart ? Math.round(3 * d) : 0;
         stats.setLayoutParams(lp);
         if (changed != null) changed.run();
         stats.show(pick, null);
@@ -689,7 +672,10 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         drop(drop(a));
     }
 
-    /** Pure: an alert as its drop: the kind's chip, the title without its "GOAL · " head, the first line. */
+    /**
+     * Pure: an alert as its drop: the kind's chip, the title without its "GOAL · " head, the first line (the line-ups:
+     * both, one for each club), and the game's clubs' colours with the side it is about.
+     */
     static Drop drop(Events.Alert a) {
         Drop d = new Drop();
         d.alert = a;
@@ -698,8 +684,30 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         String t = a.title == null ? "" : a.title;
         int dot = t.indexOf(" · ");
         d.title = dot > 0 && dot < 24 && t.substring(0, dot).equals(t.substring(0, dot).toUpperCase(Locale.ROOT)) ? t.substring(dot + 3) : t;
-        d.line = a.text == null ? "" : a.text.split("\n")[0];
+        String[] lines = a.text == null ? new String[]{""} : a.text.split("\n");
+        d.line = lines.length > 0 ? lines[0] : "";
+        d.lineups = a.key != null && a.key.startsWith("L|");
+        if (d.lineups) {
+            d.chip = "LINE-UPS";
+            d.line2 = lines.length > 1 ? lines[1] : "";
+        }
+        Game g = a.game;
+        if (g != null) {
+            d.homeColour = OverlayBug.colour(g.homeColor, g.homeAlt);
+            d.awayColour = OverlayBug.colour(g.awayColor, g.awayAlt);
+            d.side = side(a, g);
+        }
         return d;
+    }
+
+    /** Pure: the side an alert is about: a goal's scorers ("… for Everton"), a red card's club; 0 for both or neither. */
+    static int side(Events.Alert a, Game g) {
+        String about = "goal".equals(a.kind) && a.text != null ? a.text.split("\n")[0] : "red".equals(a.kind) ? a.title : null;
+        if (about == null) return 0;
+        String lead = "goal".equals(a.kind) ? " for " : "· ";
+        if (g.homeName != null && !g.homeName.isEmpty() && about.endsWith(lead + g.homeName)) return 1;
+        if (g.awayName != null && !g.awayName.isEmpty() && about.endsWith(lead + g.awayName)) return 2;
+        return 0;
     }
 
     /** Whether Homefield's own player has its scoreboard up (it drops the alerts itself). */
@@ -735,9 +743,12 @@ public final class ScoreBoard implements LiveAlerts.Listener {
             case "red": return 0xFFFF5A5F;
             case "var": case "drama": return 0xFFFFB547;
             case "weather": return 0xFF8FC3FF;
-            default: return kind != null && kind.startsWith("f1") ? 0xFFE10600 : 0xFFDDE3FF;
+            default: return kind != null && kind.startsWith("f1") ? 0xFFE10600 : PLAIN;
         }
     }
+
+    /** The colour of the kinds with none of their own (half time, the line-ups, the table…): the board's block instead. */
+    public static final int PLAIN = 0xFFDDE3FF;
 
     private void drop(Drop d) {
         if (small) return;
@@ -747,47 +758,51 @@ public final class ScoreBoard implements LiveAlerts.Listener {
     }
 
     private void next() {
-        Drop d = drops.pollFirst();
-        if (d == null) {
+        h.removeCallbacks(nextDrop);
+        if (small || drops.isEmpty()) {
+            drops.clear();
             dropping = false;
             return;
         }
         dropping = true;
-        stats.fold();
+        // The stats back up under the board first, the alert folding out in their place.
+        if (stats.isOut()) {
+            stats.fold(() -> h.post(nextDrop));
+            return;
+        }
+        // A goal on the board: the alert once its band has gone, as broadcasters caption a goal after showing it.
+        long wait = bug.getVisibility() == View.VISIBLE ? bug.bandLeft(System.currentTimeMillis()) : 0;
+        if (wait > 0) {
+            h.postDelayed(nextDrop, wait);
+            return;
+        }
+        Drop d = drops.pollFirst();
         if (changed != null) changed.run();
-        card.setTag(d);
-        chip.setText(d.chip);
-        chip.setTextColor(OverlayBug.ink(d.colour));
-        chip.setBackground(Ui.round(c, d.colour, 4));
-        title.setText(d.title);
-        line.setText(d.line);
-        line.setVisibility(d.line.isEmpty() ? View.GONE : View.VISIBLE);
-        card.setGravity(Gravity.START);
-        // As wide as the board, and never narrower than a short headline needs.
+        boolean onBoard = bug.getVisibility() == View.VISIBLE && !bug.closing() && bug.getWidth() > 0;
+        OverlayBug.StripLook look = bug.stripLook();
         float dp = c.getResources().getDisplayMetrics().density;
-        int w = Math.max(bug.getVisibility() == View.VISIBLE ? bug.getWidth() : 0, Math.round(260 * dp));
-        LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) card.getLayoutParams();
-        lp.width = Math.min(w, Math.round(380 * dp));
-        card.setLayoutParams(lp);
-        card.setAlpha(0f);
-        card.setTranslationY(-10 * dp);
-        card.setVisibility(View.VISIBLE);
-        card.animate().alpha(1f).translationY(0).setDuration(220).start();
-        h.postDelayed(hide, DROP_MS);
+        int boardW = onBoard ? bug.getWidth() : 0;
+        // As wide as the board, never narrower than a short headline needs, nor past the screen's edge.
+        int w = Math.min(Math.max(boardW, Math.round(240 * dp)), Math.round((d.lineups ? 440 : 400) * dp));
+        int[] at = new int[2];
+        view.getLocationOnScreen(at);
+        int room = c.getResources().getDisplayMetrics().widthPixels - Math.max(0, at[0]) - Math.round(4 * dp);
+        if (room > 160 * dp) w = Math.min(w, room);
+        LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) strip.getLayoutParams();
+        lp.width = w;
+        lp.topMargin = onBoard && look.apart ? Math.round(3 * dp) : 0;
+        strip.setLayoutParams(lp);
+        strip.show(d, look, onBoard, w <= boardW + 1);
+        h.postDelayed(hide, d.lineups ? LINEUPS_MS : DROP_MS);
     }
 
     private void hideDrop() {
         h.removeCallbacks(hide);
-        if (card.getVisibility() != View.VISIBLE) {
+        if (!strip.isOut()) {
             next();
             return;
         }
-        float dp = c.getResources().getDisplayMetrics().density;
-        card.animate().alpha(0f).translationY(-10 * dp).setDuration(180).withEndAction(() -> {
-            card.setVisibility(View.GONE);
-            card.setTag(null);
-            next();
-        }).start();
+        strip.fold(this::next);
     }
 
     /** For the tests and the previews: an alert dropped now. */

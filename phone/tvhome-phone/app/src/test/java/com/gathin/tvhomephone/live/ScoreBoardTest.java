@@ -114,6 +114,103 @@ public class ScoreBoardTest {
         }
     }
 
+    @Test public void aGoalSweepsAcrossFromTheScorersSideAndOnOut() {
+        // Nothing before the band; in from the left for the home side, held across it all, then on out to the right.
+        float[] before = OverlayBug.goalBand(OverlayBug.BAND_IN - 1, true);
+        assertEquals(0f, before[1] - before[0], 0f);
+        float[] coming = OverlayBug.goalBand(OverlayBug.BAND_IN + OverlayBug.BAND_MS / 3, true);
+        assertEquals(0f, coming[0], 0.001f);
+        assertTrue(coming[1] > 0f && coming[1] < 1f);
+        float[] held = OverlayBug.goalBand(2000, true);
+        assertEquals(0f, held[0], 0.001f);
+        assertEquals(1f, held[1], 0.001f);
+        float[] going = OverlayBug.goalBand(OverlayBug.BAND_OUT + OverlayBug.BAND_MS / 3, true);
+        assertTrue(going[0] > 0f && going[0] < 1f);
+        assertEquals(1f, going[1], 0.001f);
+        float[] gone = OverlayBug.goalBand(OverlayBug.BAND_OUT + OverlayBug.BAND_MS, true);
+        assertEquals(0f, gone[1] - gone[0], 0f);
+        // The away side's from the right, out to the left.
+        float[] away = OverlayBug.goalBand(OverlayBug.BAND_IN + OverlayBug.BAND_MS / 3, false);
+        assertEquals(1f, away[1], 0.001f);
+        assertTrue(away[0] > 0f && away[0] < 1f);
+        float[] awayGoing = OverlayBug.goalBand(OverlayBug.BAND_OUT + OverlayBug.BAND_MS / 3, false);
+        assertEquals(0f, awayGoing[0], 0.001f);
+        assertTrue(awayGoing[1] > 0f && awayGoing[1] < 1f);
+        // Always more of it coming in, less going out.
+        float last = -1;
+        for (long t = OverlayBug.BAND_IN; t <= OverlayBug.BAND_IN + OverlayBug.BAND_MS; t += 25) {
+            float[] b = OverlayBug.goalBand(t, true);
+            assertTrue(b[1] - b[0] >= last);
+            last = b[1] - b[0];
+        }
+    }
+
+    @Test public void theNewScoreGlowsOnceTheBandHasGone() {
+        long from = OverlayBug.BAND_OUT + OverlayBug.BAND_MS;
+        assertEquals(0f, OverlayBug.glow(from - 1), 0f);
+        assertEquals(1f, OverlayBug.glow(from), 0.001f);
+        assertTrue(OverlayBug.glow(from + OverlayBug.GLOW_MS / 2) < 1f);
+        assertEquals(0f, OverlayBug.glow(OverlayBug.GOAL_MS), 0f);
+        assertEquals(OverlayBug.GOAL_MS, from + OverlayBug.GLOW_MS);
+    }
+
+    private static Game leedsSpurs() {
+        Game g = new Game();
+        g.homeName = "Leeds";
+        g.awayName = "Tottenham";
+        g.homeColor = "1d428a";
+        g.awayColor = "132257";
+        g.awayAlt = "ffffff";
+        return g;
+    }
+
+    @Test public void theLineUpsDropWithBothElevens() {
+        Events.Alert a = new Events.Alert("kickoff", "L|1", "LINE-UPS · Leeds v Tottenham · 15:00",
+                "Leeds (4-3-3): Meslier, Bogle, Rodon\nTottenham (4-2-3-1): Vicario, Porro, Romero", leedsSpurs());
+        ScoreBoard.Drop d = ScoreBoard.drop(a);
+        assertTrue(d.lineups);
+        assertEquals("LINE-UPS", d.chip);
+        assertEquals("Leeds v Tottenham · 15:00", d.title);
+        assertEquals("Leeds (4-3-3): Meslier, Bogle, Rodon", d.line);
+        assertEquals("Tottenham (4-2-3-1): Vicario, Porro, Romero", d.line2);
+        assertEquals(0, d.side);
+        assertEquals(0xFF1D428A, d.homeColour);
+        // Kick-off itself is no line-up.
+        ScoreBoard.Drop k = ScoreBoard.drop(new Events.Alert("kickoff", "K|1", "KICK-OFF · Leeds v Tottenham", "Premier League", leedsSpurs()));
+        assertFalse(k.lineups);
+        assertEquals("KICK-OFF", k.chip);
+        assertEquals("", k.line2);
+    }
+
+    @Test public void aDropKnowsWhichSideItIsAbout() {
+        Game g = leedsSpurs();
+        assertEquals(1, ScoreBoard.drop(new Events.Alert("goal", "g1", "GOAL · Leeds 1–0 Tottenham", "Calvert-Lewin 23' for Leeds", g)).side);
+        assertEquals(2, ScoreBoard.drop(new Events.Alert("goal", "g2", "GOAL · Leeds 1–1 Tottenham", "Son 51' (pen) for Tottenham\nAssist: x", g)).side);
+        assertEquals(2, ScoreBoard.drop(new Events.Alert("red", "r1", "RED CARD · Tottenham", "Romero 70' · Leeds 1–1 Tottenham", g)).side);
+        assertEquals(0, ScoreBoard.drop(new Events.Alert("ht", "H|1", "HALF TIME · Leeds 1–1 Tottenham", "", g)).side);
+        // No game: no clubs' colours down its edge, the kind's instead.
+        ScoreBoard.Drop news = ScoreBoard.drop(new Events.Alert("news", "n1", "BREAKING NEWS · Something", "", null));
+        assertEquals(0, news.homeColour);
+        assertEquals(0, news.awayColour);
+        // The kinds with no colour of their own take the board's.
+        assertEquals(ScoreBoard.PLAIN, ScoreBoard.colour("ht"));
+        assertTrue(ScoreBoard.colour("goal") != ScoreBoard.PLAIN);
+    }
+
+    @Test public void clubColoursStayReadableOnTheStrip() {
+        // Spurs' navy on a dark strip: lightened; white on Light's: darkened; a bright red either way: as it is.
+        int navy = BoardDrop.legible(0xFF132257, false);
+        assertTrue(lum(navy) > lum(0xFF132257) + 60);
+        int white = BoardDrop.legible(0xFFFFFFFF, true);
+        assertTrue(lum(white) < 150);
+        assertEquals(0xFFE5333B, BoardDrop.legible(0xFFE5333B, false));
+        assertEquals(0xFFE5333B, BoardDrop.legible(0xFFE5333B, true));
+    }
+
+    private static int lum(int c) {
+        return (((c >> 16) & 0xFF) * 299 + ((c >> 8) & 0xFF) * 587 + (c & 0xFF) * 114) / 1000;
+    }
+
     @Test public void eachSidesShareOfAStatFillsItsBar() {
         assertEquals(0.58f, BoardStats.share("58%", "42%"), 0.001f);
         assertEquals(0.7f, BoardStats.share("7", "3"), 0.001f);

@@ -19,7 +19,8 @@ import java.util.Locale;
  * The game's stats folding down out from under the scoreboard, as broadcasters show them: a strip as wide as the board,
  * one stat at a time (its name in the middle, each side's number at its end, and a bar under them split in the clubs'
  * colours by their share), each for a few seconds, the next sliding up into its place, then the strip folding back up
- * under the board.
+ * under the board. In the board's own look (OverlayBug.StripLook): its ground and words, and under a pill board a pill
+ * of its own, a little apart.
  */
 final class BoardStats extends View {
     /** How long each stat shows. */
@@ -31,7 +32,7 @@ final class BoardStats extends View {
     /** 0 folded up under the board, 1 all the way down; the page turning (0 the last stat, 1 this one). */
     private float down, turn = 1f;
     private int homeColour = 0xFFE5333B, awayColour = 0xFF4F8BFF;
-    private boolean light;
+    private OverlayBug.StripLook look = new OverlayBug.StripLook();
     private ValueAnimator folding, turning;
     private Runnable after;
     private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG), text = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -50,12 +51,14 @@ final class BoardStats extends View {
         setVisibility(GONE);
     }
 
-    /** The clubs' colours for the bar (a very dark one lightened, to show on the dark strip), and whether the board is light. */
-    void colours(int home, int away, boolean onLight) {
-        homeColour = onLight ? home : visible(home);
-        awayColour = onLight ? away : visible(away);
-        light = onLight;
-        invalidate();
+    /** The board's look, and the clubs' colours for the bar (a very dark one lightened, to show on a dark ground). */
+    void look(OverlayBug.StripLook s, int home, int away) {
+        int h = s.light ? home : visible(home), a = s.light ? away : visible(away);
+        if (h == homeColour && a == awayColour && s.ground == look.ground && s.ink == look.ink && s.apart == look.apart) return;
+        look = s;
+        homeColour = h;
+        awayColour = a;
+        if (isOut()) invalidate();
     }
 
     /** Pure: a colour too dark for the navy strip mixed a third of the way to white; any other as it is. */
@@ -85,6 +88,21 @@ final class BoardStats extends View {
         setVisibility(VISIBLE);
         fold(1f, null);
         postDelayed(nextOne, FOLD_MS + EACH_MS);
+    }
+
+    /** Back up under the board now (the board going); then() once it is away, at once if it is. */
+    void fold(Runnable then) {
+        if (!isOut()) {
+            removeCallbacks(nextOne);
+            if (then != null) then.run();
+            return;
+        }
+        Runnable was = after;
+        after = then == null ? was : was == null ? then : () -> {
+            was.run();
+            then.run();
+        };
+        fold();
     }
 
     /** Back up under the board now (an alert dropping, the board going). */
@@ -185,15 +203,18 @@ final class BoardStats extends View {
         cv.clipRect(0, 0, w, seen);
         // Down out from under the board: its foot first.
         cv.translate(0, seen - h);
-        float rad = Math.min(8 * dp, h * 0.3f);
+        // Square where it meets the board, round at its foot; under a pill, a pill of its own.
+        float rad = look.apart ? h / 2f : Math.min(8 * dp, h * 0.3f);
         ground.reset();
         r.set(0, 0, w, h);
-        for (int i = 0; i < 8; i++) corners[i] = i < 4 ? 0 : rad;
+        for (int i = 0; i < 8; i++) corners[i] = i < 4 && !look.apart ? 0 : rad;
         ground.addRoundRect(r, corners, Path.Direction.CW);
-        fill.setColor(light ? 0xF2F5F6FA : 0xF20B1033);
+        fill.setColor(look.ground);
         cv.drawPath(ground, fill);
-        fill.setColor(light ? 0x220B1640 : 0x26FFFFFF);
-        cv.drawRect(0, 0, w, Math.max(1, dp), fill);
+        if (!look.apart) {
+            fill.setColor(look.light ? 0x220B1640 : 0x26FFFFFF);
+            cv.drawRect(0, 0, w, Math.max(1, dp), fill);
+        }
         cv.save();
         cv.clipPath(ground);
         if (turn < 1f && at > 0) item(cv, items.get(at - 1), w, h, -h * 0.55f * turn, 1f - turn);
@@ -205,8 +226,8 @@ final class BoardStats extends View {
     /** One stat at height offset dy, faded to alpha: its name, each side's number at its end, the bar of shares. */
     private void item(Canvas cv, String[] s, int w, int h, float dy, float alpha) {
         int a = Math.round(255 * Math.max(0f, Math.min(1f, alpha)));
-        int ink = light ? 0xFF0B1640 : 0xFFFFFFFF, dim = light ? 0xFF5A6280 : 0xFFB9C1E6;
-        float side = Math.max(10 * dp, w * 0.05f);
+        int ink = look.ink, dim = look.dim;
+        float side = Math.max(look.apart ? h * 0.6f : 10 * dp, w * 0.05f);
         // The name, small and spaced, in the middle.
         text.setTextAlign(Paint.Align.CENTER);
         text.setLetterSpacing(0.1f);
