@@ -77,4 +77,15 @@ public class ScoreBoardTest {
         assertFalse(BreakingNews.breaking(s.get(0), at + 60 * 60_000L));
         assertFalse(BreakingNews.breaking(new BreakingNews.Story("Quiz of the week", "", "", at), at));
     }
+
+    @Test
+    public void theLooksIncludeCrestsAndTimeAndStacked() {
+        assertEquals(OverlayBug.Style.CRESTS, OverlayBug.Style.of("CRESTS"));
+        assertEquals(OverlayBug.Style.STACKED, OverlayBug.Style.of("STACKED"));
+        assertEquals(OverlayBug.Style.CLASSIC, OverlayBug.Style.of("nonsense"));
+        assertEquals("Crests and time", OverlayBug.Style.CRESTS.label);
+        // Stacked is drawn taller in its own corner (its clubs one above the other); the rest as they were.
+        assertTrue(OverlayBug.Style.STACKED.tall > 1.5f);
+        for (OverlayBug.Style st : OverlayBug.Style.values()) if (st != OverlayBug.Style.STACKED) assertEquals(1f, st.tall, 0f);
+    }
 }

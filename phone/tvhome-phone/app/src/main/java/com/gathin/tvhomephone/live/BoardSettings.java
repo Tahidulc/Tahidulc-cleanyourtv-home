@@ -73,7 +73,7 @@ public final class BoardSettings {
             OverlayBug b = new OverlayBug(c);
             b.style(st);
             b.set(sample());
-            LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(-2, Ui.dp(c, 30));
+            LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(-2, Ui.dp(c, Math.round(30 * st.tall)));
             one.addView(b, 0, bp);
             one.setOnClickListener(v -> {
                 ScoreBoard.setStyle(c, st);

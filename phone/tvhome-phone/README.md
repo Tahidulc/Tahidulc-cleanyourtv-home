@@ -175,6 +175,12 @@ and score), one of the patterns it reads them with failed to start on the phone,
 strictly than a computer does, and the app stopped. It now starts on any phone, and the app's tests read every pattern
 in it for that mistake, so it cannot come back.
 
+Two more scoreboard looks (4.12), in Settings, the player's options and Move and resize: Crests and time, each club's
+crest either side of the score with its colour as a line under the crest and the clock after it (the three letters
+only while a crest has not come), and Stacked, the two clubs one above the other, each with its colour, crest,
+letters and goals, the competition's logo before them and the clock beside, drawn taller in its own corner for its two
+rows. The TVs' launcher has the same two.
+
 Subtitles (CC in the film's player): the film's or episode's own, from your playlist's stream, come first, in the
 languages you choose (Settings, Subtitles, in order). When it has none, OpenSubtitles.com is looked in by the title's
 TMDB id (the series' with its season and episode), best first: your languages, the ones that fit the copy playing (its

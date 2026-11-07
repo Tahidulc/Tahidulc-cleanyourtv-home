@@ -79,12 +79,20 @@ final class OverlayBug extends View implements BurnGuard.Dims {
 
     /** How it looks: the choices in Settings and the player's options. */
     enum Style {
-        CLASSIC("Classic"), GLASS("Glass"), LIGHT("Light"), CLUB("Club colours"), MINIMAL("Minimal");
+        CLASSIC("Classic"), GLASS("Glass"), LIGHT("Light"), CLUB("Club colours"), MINIMAL("Minimal"),
+        CRESTS("Crests and time"), STACKED("Stacked", 1.7f);
 
         final String label;
+        /** How much taller than the others it is drawn in its own corner (Stacked: the clubs one above the other). */
+        final float tall;
 
         Style(String label) {
+            this(label, 1f);
+        }
+
+        Style(String label, float tall) {
             this.label = label;
+            this.tall = tall;
         }
 
         static Style of(String name) {
@@ -143,6 +151,23 @@ final class OverlayBug extends View implements BurnGuard.Dims {
                 p.clock = 0;
                 p.clockInk = 0xFFDDE3FF;
                 p.round = 0.5f;
+                break;
+            case CRESTS:
+                // The two crests either side of the score on deep navy, the clock in its own dark box.
+                p.ground = 0xFF0A1238;
+                p.comp = NAVY_DEEP;
+                p.score0 = 0xFF1F3AA8;
+                p.score1 = 0xFF12246E;
+                p.clock = CLOCK;
+                p.round = 0.3f;
+                break;
+            case STACKED:
+                // The clubs one above the other, each with its goals in a box of its own.
+                p.ground = 0xFF0E1330;
+                p.comp = NAVY_DEEP;
+                p.score0 = p.score1 = 0xFF1E2A66;
+                p.clock = CLOCK;
+                p.round = 0.16f;
                 break;
             default:
                 p.ground = NAVY;
@@ -217,6 +242,8 @@ final class OverlayBug extends View implements BurnGuard.Dims {
             for (String c : look.codes) w += h * 0.16f + measure(c, h * 0.44f) + h * 0.5f;
             return Math.round(w);
         }
+        if (style == Style.CRESTS) return Math.round(crestsWidth(h));
+        if (style == Style.STACKED) return Math.round(stackedWidth(h));
         return Math.round(h + 2 * (h * 0.1f + crestW(h) + code(h)) + scoreW(h) + clockW(h));
     }
 
@@ -279,6 +306,10 @@ final class OverlayBug extends View implements BurnGuard.Dims {
             minimal(cv, w, h);
         } else if (look.f1) {
             if (w / (float) h >= 3.6f) f1Row(cv, 0, 0, w, h); else f1Two(cv, w, h);
+        } else if (style == Style.CRESTS) {
+            if (w / (float) h >= 3.2f) crestsRow(cv, w, h); else crestsTwo(cv, w, h);
+        } else if (style == Style.STACKED) {
+            stacked(cv, w, h);
         } else if (w / (float) h >= 3.6f) {
             oneRow(cv, 0, 0, w, h, true);
         } else {
@@ -521,7 +552,189 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         }
     }
 
+    // ---- Crests and time --------------------------------------------------------------------------------------------
+
+    /** One club's cell: its crest, or its three letters while the crest has not come. */
+    private float crestCell(float h, boolean home) {
+        if ((home ? homeCrest : awayCrest) != null) return h * 1.05f;
+        return Math.max(h * 1.05f, measure(home ? look.home : look.away, h * 0.42f) + h * 0.4f);
+    }
+
+    private float crestsWidth(int h) {
+        return h * 0.2f + crestCell(h, true) + scoreW(h) + crestCell(h, false) + h * 0.2f + clockW(h);
+    }
+
+    /** Crests and time along one row: each club's crest either side of the score, its colour at the crest's foot, the clock after. */
+    private void crestsRow(Canvas cv, int w, int h) {
+        float pad = h * 0.2f, hc = crestCell(h, true), ac = crestCell(h, false), score = scoreW(h), clock = clockW(h);
+        float need = pad + hc + score + ac + pad + clock;
+        float k = need > w + 1.5f ? Math.max(0.6f, w / need) : 1f;
+        float extra = Math.max(0, w - need * k);
+        pad *= k;
+        hc *= k;
+        ac *= k;
+        clock *= k;
+        // Any room over goes to the score.
+        score = score * k + extra;
+        float cx = pad;
+        crestSide(cv, cx, 0, hc, h, true);
+        cx += hc;
+        scoreBlock(cv, cx, 0, score, h);
+        words(cv, look.score, cx + score / 2, 0, h, h * 0.56f * k, p.scoreInk);
+        cx += score;
+        crestSide(cv, cx, 0, ac, h, false);
+        cx += ac + pad;
+        if (clock > 0) clock(cv, cx, 0, w - cx, h, k);
+    }
+
+    /** Nearer square: the crests and the score above, the clock across the foot. */
+    private void crestsTwo(Canvas cv, int w, int h) {
+        float top = h * 0.62f, hc = crestCell(top, true), ac = crestCell(top, false), score = scoreW(Math.round(top));
+        float need = hc + score + ac, k = need > w + 1.5f ? Math.max(0.6f, w / need) : 1f;
+        float cx = Math.max(0, w - need * k) / 2;
+        crestSide(cv, cx, 0, hc * k, top, true);
+        cx += hc * k;
+        scoreBlock(cv, cx, 0, score * k, top);
+        words(cv, look.score, cx + score * k / 2, 0, top, top * 0.56f * k, p.scoreInk);
+        cx += score * k;
+        crestSide(cv, cx, 0, ac * k, top, false);
+        fill.setColor(p.clock != 0 ? p.clock : p.ground);
+        cv.drawRect(0, top, w, h, fill);
+        if (!look.clock.isEmpty()) clock(cv, 0, top, w, h - top, 1.25f);
+    }
+
+    /** One club's crest (its letters until the crest comes) with its colour as a line at the foot; lit as it scores. */
+    private void crestSide(Canvas cv, float x, float y, float w, float h, boolean home) {
+        int colour = home ? look.homeColour : look.awayColour;
+        if (flash > 0 && flashSide == (home ? 1 : 2)) {
+            fill.setColor(colour);
+            fill.setAlpha(Math.round(200 * flash));
+            cv.drawRect(x, y, x + w, y + h, fill);
+            fill.setAlpha(255);
+        }
+        Bitmap crest = home ? homeCrest : awayCrest;
+        float size = Math.min(w, h) * 0.7f;
+        if (crest != null) drawImage(cv, crest, x + (w - size) / 2, y + h * 0.1f, size);
+        else words(cv, home ? look.home : look.away, x + w / 2, y - h * 0.04f, h, h * 0.42f, p.ink);
+        fill.setColor(colour);
+        cv.drawRect(x + w * 0.2f, y + h * 0.86f, x + w * 0.8f, y + h * 0.93f, fill);
+    }
+
+    // ---- Stacked ---------------------------------------------------------------------------------------------------
+
+    /** The clock's column beside the two clubs: minutes and seconds over the minutes added. */
+    private float stackedClockW(int h) {
+        if (look.clock.isEmpty()) return 0;
+        float c = measure("88:88".length() >= look.clock.length() ? "88:88" : look.clock, h * 0.3f);
+        float a = look.added.isEmpty() ? 0 : measure(look.added, h * 0.22f) + h * 0.3f;
+        return Math.max(c, a) + h * 0.5f;
+    }
+
+    private float stackedRowsW(float r) {
+        return r * 0.12f + (crestW(r) > 0 ? r * 0.95f : 0) + code(Math.round(r)) + r * 1.15f;
+    }
+
+    private float stackedWidth(int h) {
+        return h * 0.9f + stackedRowsW(h / 2f) + stackedClockW(h);
+    }
+
+    /** "2–1" as {"2", "1"}; none when it is not a score (before kick-off). */
+    private String[] goals() {
+        String[] g = look.score.split("\\s*[–-]\\s*");
+        return g.length == 2 ? g : new String[]{"", ""};
+    }
+
+    /** Stacked: the competition, the two clubs one above the other (colour, crest, letters, goals), the clock beside. */
+    private void stacked(Canvas cv, int w, int h) {
+        float r = h / 2f, comp = h * 0.9f, strip = r * 0.12f, crest = crestW(r) > 0 ? r * 0.95f : 0, codeW = code(Math.round(r));
+        float goalsW = r * 1.15f, clock = stackedClockW(h);
+        float need = comp + strip + crest + codeW + goalsW + clock;
+        boolean compBlock = true;
+        if (need > w + 1.5f) {
+            compBlock = false;
+            need -= comp;
+        }
+        float k = need > w + 1.5f ? Math.max(0.6f, w / need) : 1f;
+        float extra = Math.max(0, w - need * k);
+        strip *= k;
+        crest *= k;
+        goalsW *= k;
+        clock *= k;
+        codeW = codeW * k + extra;
+        float cx = 0;
+        if (compBlock) {
+            float cw = comp * k;
+            fill.setColor(p.comp != 0 ? p.comp : p.ground);
+            cv.drawRect(0, 0, cw, h, fill);
+            if (this.comp != null) drawImage(cv, this.comp, cw * 0.14f, (h - cw * 0.72f) / 2, cw * 0.72f);
+            else words(cv, look.tag, cw / 2, 0, h, h * 0.22f, p.dim);
+            cx = cw;
+        }
+        float rw = strip + crest + codeW + goalsW;
+        String[] g = goals();
+        stackedRow(cv, cx, 0, rw, r, strip, crest, goalsW, true, g[0], k);
+        stackedRow(cv, cx, r, rw, h - r, strip, crest, goalsW, false, g[1], k);
+        fill.setColor(0x26FFFFFF);
+        cv.drawRect(cx + strip, r - Math.max(1f, h * 0.008f), cx + rw, r + Math.max(1f, h * 0.008f), fill);
+        cx += rw;
+        if (clock > 0) stackedClock(cv, cx, w - cx, h, k);
+    }
+
+    private void stackedRow(Canvas cv, float x, float y, float w, float r, float strip, float crestW, float goalsW,
+            boolean home, String goals, float k) {
+        int colour = home ? look.homeColour : look.awayColour;
+        if (flash > 0 && flashSide == (home ? 1 : 2)) {
+            fill.setColor(colour);
+            fill.setAlpha(Math.round(200 * flash));
+            cv.drawRect(x, y, x + w, y + r, fill);
+            fill.setAlpha(255);
+        }
+        fill.setColor(colour);
+        cv.drawRect(x, y, x + strip, y + r, fill);
+        Bitmap crest = home ? homeCrest : awayCrest;
+        if (crestW > 0 && crest != null) drawImage(cv, crest, x + strip + crestW * 0.12f, y + (r - crestW * 0.76f) / 2, crestW * 0.76f);
+        wordsFrom(cv, home ? look.home : look.away, x + strip + crestW + r * 0.22f, y, r, r * 0.5f * k, p.ink);
+        float gx = x + w - goalsW;
+        fill.setColor(p.score0 != 0 ? p.score0 : p.ground);
+        cv.drawRect(gx, y, x + w, y + r, fill);
+        words(cv, goals, gx + goalsW / 2, y, r, r * 0.62f * k, p.scoreInk);
+    }
+
+    /** The clock's column: minutes and seconds, the minutes added on red under them; GOAL as one goes in. */
+    private void stackedClock(Canvas cv, float x, float w, float h, float k) {
+        fill.setColor(p.clock != 0 ? p.clock : p.ground);
+        cv.drawRect(x, 0, x + w, h, fill);
+        if (flash > 0) {
+            int colour = flashSide == 1 ? look.homeColour : look.awayColour;
+            fill.setColor(colour);
+            cv.drawRect(x, 0, x + w, h, fill);
+            words(cv, "GOAL", x + w / 2, 0, h, h * 0.28f * k, ink(colour));
+            return;
+        }
+        int colour = "HT".equals(look.clock) ? AMBER : look.live ? p.clockInk : p.dim;
+        if (look.added.isEmpty()) {
+            words(cv, look.clock, x + w / 2, 0, h, h * 0.3f * k, colour);
+            return;
+        }
+        words(cv, look.clock, x + w / 2, h * 0.08f, h * 0.5f, h * 0.3f * k, colour);
+        float aw = measure(look.added, h * 0.22f * k) + h * 0.3f;
+        fill.setColor(ADDED);
+        r.set(x + (w - aw) / 2, h * 0.6f, x + (w + aw) / 2, h * 0.86f);
+        cv.drawRoundRect(r, h * 0.05f, h * 0.05f, fill);
+        words(cv, look.added, x + w / 2, h * 0.6f, h * 0.26f, h * 0.22f * k, 0xFFFFFFFF);
+    }
+
     // ---- helpers ---------------------------------------------------------------------------------------------------
+
+    /** Words from x along, in the middle of (y, h). */
+    private void wordsFrom(Canvas cv, String s, float x, float y, float h, float size, int colour) {
+        if (s == null || s.isEmpty()) return;
+        text.setTextSize(size);
+        text.setColor(colour);
+        text.setTextAlign(Paint.Align.LEFT);
+        Paint.FontMetrics fm = text.getFontMetrics();
+        cv.drawText(s, x, y + h / 2 - (fm.ascent + fm.descent) / 2, text);
+    }
 
     /** Words centred on cx, in the middle of (y, h). */
     private void words(Canvas cv, String s, float cx, float y, float h, float size, int colour) {
