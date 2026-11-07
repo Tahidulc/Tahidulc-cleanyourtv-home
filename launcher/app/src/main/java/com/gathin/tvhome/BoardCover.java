@@ -743,8 +743,10 @@ final class BoardCover {
         if (boardWin == null || bug == null) return;
         BoardPlace p = adjusting && editing != null ? editing : place;
         if (p == null) p = BoardPlace.standard();
-        int bh = Math.max(8, Math.round(p.bh * sh)), bw = Math.min(Math.round(sw * 0.5f), bug.natural(bh));
-        position(c, boardWin, bug, Math.round(p.bx * sw), Math.round(p.by * sh), bw, bh);
+        // Stacked is drawn taller than the height set (its clubs one above the other), and kept on the screen.
+        int bh = Math.max(8, Math.round(p.bh * sh * bug.style().tall)), bw = Math.min(Math.round(sw * 0.5f), bug.natural(bh));
+        int bx = Math.min(Math.round(p.bx * sw), sw - bw), by = Math.min(Math.round(p.by * sh), sh - bh);
+        position(c, boardWin, bug, Math.max(0, bx), Math.max(0, by), bw, bh);
         if (logoWin != null && mark != null) {
             position(c, logoWin, mark, Math.round(p.lx * sw), Math.round(p.ly * sh), Math.round(p.lw * sw), Math.round(p.lh * sh));
         }
@@ -1084,11 +1086,12 @@ final class BoardCover {
         layout(app);
     }
 
-    /** The board's width for its height, as shares of the screen's. */
+    /** The board's width as a share of the screen's, for each share of its height set (Stacked drawn taller). */
     private static float aspect() {
-        int h = Math.max(1, Math.round(editing.bh * sh));
+        float tall = bug == null ? 1f : bug.style().tall;
+        int h = Math.max(1, Math.round(editing.bh * sh * tall));
         float ratio = bug == null ? 9f : bug.natural(h) / (float) h;
-        return ratio * sh / (float) sw;
+        return ratio * tall * sh / (float) sw;
     }
 
     /** Move and resize closed: the places kept for the channel (save), the windows as the game has them again. */

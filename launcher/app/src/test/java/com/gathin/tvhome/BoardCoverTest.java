@@ -129,8 +129,8 @@ public class BoardCoverTest {
         assertEquals("67:10", l.clock);
         assertEquals("PL", l.tag);
         assertTrue(l.live);
-        // A black kit on the navy: its second colour.
-        assertEquals(0xFFFFFFFF, l.awayColour);
+        // A black kit on the navy: its second colour (white, toned down a little for the screen).
+        assertEquals(BoardBug.softer(0xFFFFFFFF), l.awayColour);
         assertEquals("HT", BoardCover.look(g, new BoardCover.Reading(1L, "1", "1", 0, true, 2700, "HT"), 2L).clock);
         assertEquals("FT", BoardCover.look(g, new BoardCover.Reading(1L, "1", "1", 2, false, 5400, "FT"), 2L).clock);
     }
@@ -177,6 +177,29 @@ public class BoardCoverTest {
         assertTrue((BoardBug.INK & 0xFFFFFF) != 0xFFFFFF);
         assertEquals(0xFF0A0D33, BoardBug.ink(0xFFFFEE00));
         assertEquals(BoardBug.INK, BoardBug.ink(0xFF003399));
+    }
+
+    @Test
+    public void theLooksIncludeCrestsAndTimeAndStacked() {
+        assertEquals(BoardBug.Style.CRESTS, BoardBug.Style.of("CRESTS"));
+        assertEquals(BoardBug.Style.STACKED, BoardBug.Style.of("STACKED"));
+        assertEquals(BoardBug.Style.CLASSIC, BoardBug.Style.of("nonsense"));
+        assertEquals("Crests and time", BoardBug.Style.CRESTS.label);
+        // Stacked is drawn taller (its clubs one above the other); the rest at the height set.
+        assertTrue(BoardBug.Style.STACKED.tall > 1.5f);
+        assertEquals(1f, BoardBug.Style.CRESTS.tall, 0f);
+        assertEquals(1f, BoardBug.Style.CLASSIC.tall, 0f);
+    }
+
+    @Test
+    public void veryLightClubColoursAreToneDownForTheScreen() {
+        // White (Spurs' second colour) and a bright yellow come down a little; a red stays as it is.
+        assertTrue((BoardBug.softer(0xFFFFFFFF) & 0xFF) < 0xFF);
+        assertTrue(((BoardBug.softer(0xFFFFEE00) >> 8) & 0xFF) < 0xEE);
+        assertEquals(0xFFDA291C, BoardBug.softer(0xFFDA291C));
+        assertEquals(0xFFDA291C, BoardBug.colour(0xFFDA291C, 0));
+        // Spurs' navy is too dark for the navy board: its white, toned down.
+        assertEquals(BoardBug.softer(0xFFFFFFFF), BoardBug.colour(0xFF132257, 0xFFFFFFFF));
     }
 
     @Test

@@ -37,7 +37,9 @@ final class LogoMark extends View {
     private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG), ink = new Paint(Paint.ANTI_ALIAS_FLAG),
             words = new Paint(Paint.ANTI_ALIAS_FLAG), edge = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final RectF r = new RectF();
-    private final Path house = new Path(), drawn = new Path();
+    private final Path house = new Path(), play = new Path(), drawn = new Path();
+    /** The play button's colour: the cover's own ground, painted (never a hole, so the logo under it never shows). */
+    private final Paint button = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Matrix m = new Matrix();
     private Look look = Look.GLASS;
     private int inset;
@@ -47,21 +49,22 @@ final class LogoMark extends View {
 
     LogoMark(Context c) {
         super(c);
-        // The phone's mark (its 108-unit icon): a house with a play button cut through it, drawn with round corners.
+        // The phone's mark (its 108-unit icon): a house with a play button in it, drawn with round corners.
         house.moveTo(31, 75);
         house.lineTo(31, 50);
         house.lineTo(54, 31);
         house.lineTo(77, 50);
         house.lineTo(77, 75);
         house.close();
-        house.moveTo(49, 53);
-        house.lineTo(49, 69);
-        house.lineTo(63, 61);
-        house.close();
-        house.setFillType(Path.FillType.EVEN_ODD);
+        play.moveTo(48, 51);
+        play.lineTo(48, 71);
+        play.lineTo(65, 61);
+        play.close();
         ink.setColor(MARK_INK);
         ink.setStyle(Paint.Style.FILL_AND_STROKE);
         ink.setStrokeJoin(Paint.Join.ROUND);
+        button.setStyle(Paint.Style.FILL_AND_STROKE);
+        button.setStrokeJoin(Paint.Join.ROUND);
         words.setTypeface(ScoreCard.outfit(c, 700));
         words.setColor(MARK_INK);
         edge.setStyle(Paint.Style.STROKE);
@@ -102,7 +105,7 @@ final class LogoMark extends View {
             float x = name ? inset + ch * 0.14f : inset + (cw - s) / 2;
             mark(cv, x, inset + (ch - s) / 2, s);
             if (name) {
-                float left = x + s * 1.02f, room = inset + cw - left - ch * 0.2f;
+                float left = x + s * 1.14f, room = inset + cw - left - ch * 0.2f;
                 float size = fit("Homefield", room, ch * 0.44f);
                 words.setTextSize(size);
                 Paint.FontMetrics fm = words.getFontMetrics();
@@ -130,6 +133,10 @@ final class LogoMark extends View {
         house.transform(m, drawn);
         ink.setStrokeWidth(5 * k);
         cv.drawPath(drawn, ink);
+        play.transform(m, drawn);
+        button.setColor(GROUND | 0xFF000000);
+        button.setStrokeWidth(2 * k);
+        cv.drawPath(drawn, button);
     }
 
     /** The biggest text size up to most at which the words fit in room. */
