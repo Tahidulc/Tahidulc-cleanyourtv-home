@@ -273,6 +273,10 @@ One block with the competition's logo (4.23): the look's own ground (its bands a
 the competition's logo stands at that end of it, a fine line between, rather than in a second tile; below the band on
 Solid block and Broadcast.
 
+LIVE on the logo's cover (4.24): while the game is live, a red bar along the cover's whole foot, "LIVE" spaced out in white
+beside a pulsing white dot, every look above it, as the TV launcher's 4.29 has it. On by default; "LIVE bar on the logo
+cover" in Settings and the player's menu turns it off.
+
 Subtitles (CC in the film's player): the film's or episode's own, from your playlist's stream, come first, in the
 languages you choose (Settings, Subtitles, in order). When it has none, OpenSubtitles.com is looked in by the title's
 TMDB id (the series' with its season and episode), best first: your languages, the ones that fit the copy playing (its

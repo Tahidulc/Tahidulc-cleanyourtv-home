@@ -75,6 +75,8 @@ final class LogoCover extends View implements BurnGuard.Dims {
     private final Paint picture = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
     /** The competition's logo beside every look (on unless switched off in Settings). */
     private boolean compOn = true;
+    /** LIVE's red bar along the foot while the game is live (on unless switched off in Settings). */
+    private boolean liveBar = true;
     /** How much further the look's ground runs than its own width (the competition's logo's room). */
     private float ext;
 
@@ -112,6 +114,13 @@ final class LogoCover extends View implements BurnGuard.Dims {
         if (logo == comp && n.equals(compName)) return;
         comp = logo;
         compName = n;
+        invalidate();
+    }
+
+    /** LIVE's bar along the foot while the game is live, or not. */
+    void liveBar(boolean on) {
+        if (on == liveBar) return;
+        liveBar = on;
         invalidate();
     }
 
@@ -181,14 +190,47 @@ final class LogoCover extends View implements BurnGuard.Dims {
     }
 
     @Override protected void onDraw(Canvas cv) {
-        float full = getWidth(), h = getHeight();
-        if (full <= 0 || h <= 0 || look == Look.OFF) return;
+        float full = getWidth(), whole = getHeight();
+        if (full <= 0 || whole <= 0 || look == Look.OFF) return;
+        // While the game is live: a red LIVE bar along the foot of the whole cover, the look above it (its own LIVE left
+        // to the bar).
+        float foot = live && liveBar ? Math.max(8f, whole * 0.25f) : 0f, h = whole - foot;
+        if (foot > 0f) liveBar(cv, full, whole, foot);
+        boolean wasLive = live;
+        if (foot > 0f) live = false;
         // The competition's logo at the end of the look's own block, when it is on and known: one block, the look's
         // ground running on under it, a fine line between.
         float side = compOn && comp != null && look != Look.COMPETITION ? Math.min(h * 0.86f, full * 0.28f) : 0f;
         ext = side;
         drawLook(cv, full - side, h);
         if (side > 0f) compMark(cv, full - side, full, h);
+        live = wasLive;
+        if (foot > 0f) postInvalidateDelayed(90);
+    }
+
+    /** LIVE's bar along the cover's foot: red, its corners round with the cover's, a white dot pulsing beside LIVE. */
+    private void liveBar(Canvas cv, float w, float h, float foot) {
+        float rad = Math.min(w, h) * 0.18f;
+        boolean clear = look == Look.SMOKED || look == Look.BROADCAST;
+        r.set(0, clear ? h - foot : h - foot - rad * 2f, w, h);
+        fill.setShader(new LinearGradient(0, h - foot, 0, h, 0xFFF0213A, 0xFFB80F25, Shader.TileMode.CLAMP));
+        cv.drawRoundRect(r, rad, rad, fill);
+        fill.setShader(null);
+        words.setTypeface(ChannelMark.outfit(getContext(), 800));
+        words.setColor(0xFFFFFFFF);
+        words.setTextSize(foot * 0.56f);
+        words.setLetterSpacing(0.28f);
+        float tw = words.measureText("LIVE"), dot = foot * 0.16f, gap = foot * 0.32f;
+        float x = (w - tw - dot * 2f - gap) / 2f, cy = h - foot / 2f;
+        double t = (android.os.SystemClock.uptimeMillis() % 1400L) / 1400.0;
+        int a = (int) Math.round(255 * (0.45 + 0.55 * (0.5 + 0.5 * Math.cos(t * 2 * Math.PI))));
+        fill.setColor((a << 24) | 0xFFFFFF);
+        cv.drawCircle(x + dot, cy, dot, fill);
+        Paint.FontMetrics fm = words.getFontMetrics();
+        words.setTextAlign(Paint.Align.LEFT);
+        cv.drawText("LIVE", x + dot * 2f + gap, cy - (fm.ascent + fm.descent) / 2f, words);
+        words.setLetterSpacing(0f);
+        words.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD));
     }
 
     /** The competition's logo from x0 to x1 on the look's ground: a fine line before it, the logo (below a top band). */

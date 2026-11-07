@@ -140,6 +140,7 @@ public final class BoardSettings {
         }
         col.addView(ht, new LinearLayout.LayoutParams(-1, -2));
         row(c, col, c.getString(R.string.live21_logo_comp), ScoreBoard.logoComp(c), on -> ScoreBoard.setLogoComp(c, on));
+        row(c, col, c.getString(R.string.live24_logo_live), ScoreBoard.logoLive(c), on -> ScoreBoard.setLogoLive(c, on));
         row(c, col, c.getString(R.string.live4_alerts_football), ScoreBoard.shows(c, ScoreBoard.FOOTBALL), on -> ScoreBoard.setShows(c, ScoreBoard.FOOTBALL, on));
         row(c, col, c.getString(R.string.live4_alerts_sport), ScoreBoard.shows(c, ScoreBoard.SPORT), on -> ScoreBoard.setShows(c, ScoreBoard.SPORT, on));
         row(c, col, c.getString(R.string.live4_alerts_news), ScoreBoard.shows(c, ScoreBoard.NEWS), on -> ScoreBoard.setShows(c, ScoreBoard.NEWS, on));

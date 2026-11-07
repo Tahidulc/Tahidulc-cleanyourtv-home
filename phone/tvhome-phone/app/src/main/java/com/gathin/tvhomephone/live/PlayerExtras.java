@@ -700,6 +700,10 @@ final class PlayerExtras implements LiveAlerts.Listener {
                 tg.add(t);
                 addChip(tags, t);
             }
+            toggle(c, box, a.getString(R.string.live24_logo_live), ScoreBoard.logoLive(c), on -> {
+                ScoreBoard.setLogoLive(c, on);
+                overlay.restyle();
+            });
             toggle(c, box, a.getString(R.string.live21_logo_comp), ScoreBoard.logoComp(c), on -> {
                 ScoreBoard.setLogoComp(c, on);
                 overlay.restyle();

@@ -404,6 +404,7 @@ final class ScoreOverlay implements ScoreBoard.Source {
                 cover.boardLook(board.bug.stripLook());
                 cover.competition(board.compPic(), board.compName());
                 cover.compOn(ScoreBoard.logoComp(a));
+                cover.liveBar(ScoreBoard.logoLive(a));
             }
         }
         cover.setVisibility(show ? View.VISIBLE : View.GONE);
