@@ -3591,7 +3591,7 @@ final class PagesV2 {
             if (g.halftime) {
                 kickerView.setText("●  HALF-TIME");
             } else {
-                long secs = (long) g.clockSec + (System.currentTimeMillis() - g.clockAt) / 1000L;
+                long secs = ScoresTicker.secsNow(g, System.currentTimeMillis());
                 kickerView.setText(String.format(Locale.ROOT, "●  LIVE  %d:%02d", secs / 60, secs % 60));
             }
             h.main.postDelayed(clockTick, 1000L);

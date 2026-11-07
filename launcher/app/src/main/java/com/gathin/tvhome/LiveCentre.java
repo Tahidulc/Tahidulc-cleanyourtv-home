@@ -1263,7 +1263,7 @@ final class LiveCentre {
         else if (g.state == 1) t = minute(g);
         else if (g.halftime) t = "HT";
         else if (g.clockAt > 0 && g.clockSec > 0) {
-            long secs = (long) g.clockSec + (System.currentTimeMillis() - g.clockAt) / 1000L;
+            long secs = ScoresTicker.secsNow(g, System.currentTimeMillis());
             t = String.format(Locale.ROOT, "%02d:%02d", secs / 60, secs % 60);
         } else {
             // Only the minute ("67'", "90'+3'"): counted on from the start of that minute, as a stadium clock runs,

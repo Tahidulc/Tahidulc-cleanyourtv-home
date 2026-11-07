@@ -345,8 +345,26 @@ final class ScoresTicker {
     static String liveClock(Game g) {
         if (g.halftime) return "HT";
         if (g.clockAt == 0 || g.clockSec <= 0) return g.detail;
-        long secs = (long) g.clockSec + (System.currentTimeMillis() - g.clockAt) / 1000L;
+        long secs = secsNow(g, System.currentTimeMillis());
         return String.format(java.util.Locale.ROOT, "%d:%02d", secs / 60, secs % 60);
+    }
+
+    /** A live game's clock in seconds at now (MatchClock): the minute's start counted on from when it was first seen. */
+    static long secsNow(Game g, long now) {
+        return MatchClock.secsNow(g.clockSec, g.clockAt, now);
+    }
+
+    /** When each live game's clock was first seen at its value: {value, ms}, by game. */
+    private static final java.util.Map<String, double[]> clockSeen = new java.util.concurrent.ConcurrentHashMap<>();
+
+    /** When this clock value of this game was first seen (now, when it is new), so a clock counted on never jumps back. */
+    private static long firstSeen(String id, double clock, long now) {
+        if (id == null) return now;
+        double[] was = clockSeen.get(id);
+        if (was != null && was[0] == clock) return (long) was[1];
+        if (clockSeen.size() > 300) clockSeen.clear();
+        clockSeen.put(id, new double[]{clock, now});
+        return now;
     }
 
     private void tickClocks() {
@@ -527,10 +545,13 @@ final class ScoresTicker {
         if ("in".equals(state)) {
             g.state = 0;
             g.detail = type.optString("shortDetail", "LIVE");
-            g.clockSec = c.getJSONObject("status").optDouble("clock", 0);
+            // The minute's start, not ESPN's minute being played (a minute ahead of the broadcasters' clocks), counted
+            // on from when it was first seen (a read 20 s later giving the same minute no longer puts it back).
+            JSONObject status = c.getJSONObject("status");
+            g.clockSec = MatchClock.minuteStart(status.optDouble("clock", 0), status.optString("displayClock", g.detail));
             g.abroad = abroad(c);
             g.broadcasts = broadcasts(c);
-            g.clockAt = System.currentTimeMillis();
+            g.clockAt = firstSeen(g.id, g.clockSec, System.currentTimeMillis());
             g.halftime = type.optString("name").contains("HALFTIME");
         } else if ("pre".equals(state)) {
             g.state = 1;
