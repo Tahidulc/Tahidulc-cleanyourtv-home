@@ -231,4 +231,155 @@ public class ScoreBoardTest {
         assertEquals(0.5f, BoardStats.share("", null), 0.001f);
         assertEquals(1f, BoardStats.share("2", "0"), 0.001f);
     }
+
+    // ---- 4.18: out sideways, a few stats moments, the clock to full time, the scorer, Whitebrook Road ----------------
+
+    @Test public void theStatsComeAFewTimesAGame() {
+        assertEquals("pre", ScoreBoard.statsSlot(true, 8 * 60_000L, Game.PRE, false, -1));
+        assertEquals(null, ScoreBoard.statsSlot(true, 15 * 60_000L, Game.PRE, false, -1));
+        assertEquals(null, ScoreBoard.statsSlot(false, 0, Game.LIVE, false, 10));
+        assertEquals("h1", ScoreBoard.statsSlot(false, 0, Game.LIVE, false, 30));
+        assertEquals("ht", ScoreBoard.statsSlot(false, 0, Game.LIVE, true, 45));
+        assertEquals("h2", ScoreBoard.statsSlot(false, 0, Game.LIVE, false, 70));
+        assertEquals(null, ScoreBoard.statsSlot(false, 0, Game.LIVE, false, 88));
+        assertEquals("ft", ScoreBoard.statsSlot(false, 0, Game.POST, false, -1));
+        java.util.Map<String, String[]> by = new java.util.HashMap<>();
+        by.put("Possession", new String[]{"Possession", "58%", "42%"});
+        by.put("Shots", new String[]{"Shots", "9", "4"});
+        by.put("Corners", new String[]{"Corners", "5", "2"});
+        java.util.List<String[]> h1 = ScoreBoard.statsFor("h1", by);
+        assertEquals(3, h1.size());
+        assertEquals("Corners", h1.get(2)[0]);
+        by.put("Player of the match", new String[]{"Player of the match", "Saka (ARS) · 2 goals", "", "one"});
+        assertEquals("Player of the match", ScoreBoard.statsFor("h2", by).get(1)[0]);
+        assertTrue(ScoreBoard.statsFor("pre", new java.util.HashMap<>()).isEmpty());
+        assertEquals(67, ScoreBoard.minuteOfClock("67:23"));
+        assertEquals(-1, ScoreBoard.minuteOfClock("HT"));
+    }
+
+    @Test public void theSummaryIsReadOftenNearTheEndsOfHalves() {
+        assertEquals(ScoreBoard.ENDS_READ_MS, ScoreBoard.readEvery(44));
+        assertEquals(ScoreBoard.ENDS_READ_MS, ScoreBoard.readEvery(93));
+        assertEquals(ScoreBoard.STATS_READ_MS, ScoreBoard.readEvery(60));
+        assertEquals(ScoreBoard.STATS_READ_MS, ScoreBoard.readEvery(-1));
+    }
+
+    @Test public void theAddedTimeShowsFromTheHalfsLastMinuteOnceKnown() {
+        int[] put = {2, 5, -1, -1};
+        assertEquals("", ScoreBoard.addedBox(1, 43, put, ""));
+        assertEquals("+2", ScoreBoard.addedBox(1, 44, put, ""));
+        assertEquals("+5", ScoreBoard.addedBox(2, 91, put, ""));
+        // Not put up yet: no box; the channel's own shown as it has it.
+        assertEquals("", ScoreBoard.addedBox(2, 91, new int[]{-1, -1, -1, -1}, ""));
+        assertEquals("+4", ScoreBoard.addedBox(2, 90, put, "+4"));
+    }
+
+    @Test public void fullTimeShowsALittleUnderAMinute() {
+        assertTrue(!ScoreBoard.ftGone(40_000L, false));
+        assertTrue(ScoreBoard.ftGone(51_000L, false));
+        // An alert still out: it waits, but never past a minute.
+        assertTrue(!ScoreBoard.ftGone(51_000L, true));
+        assertTrue(ScoreBoard.ftGone(61_000L, true));
+    }
+
+    @Test public void eachGoalIsCaptionedOnceWithItsScorer() {
+        Game g = leedsSpurs();
+        g.homeScore = 1;
+        g.goals.add(new String[]{"G|1|23'|Dan James", "Dan James", "23'", "home", ""});
+        g.goals.add(new String[]{"G|1|67'|Joel Piroe", "Joel Piroe", "67'", "home", "pen"});
+        String[] last = ScoreBoard.lastGoal(g, 1);
+        assertEquals("Joel Piroe", last[1]);
+        assertEquals(null, ScoreBoard.lastGoal(g, 2));
+        ScoreBoard.Drop d = ScoreBoard.goalDrop(g, last);
+        assertEquals("GOAL", d.chip);
+        assertEquals("Joel Piroe 67' (pen)", d.line);
+        assertEquals("G|1|67'|Joel Piroe", d.key);
+        assertTrue(d.own);
+        assertEquals(1, d.side);
+        // The goal's alert is about the same goal: its key the goal's own.
+        Events.Alert a = new Events.Alert("goal", "G|1|67'|Joel Piroe", "GOAL · Leeds 1–0 Tottenham", "Joel Piroe 67' (pen) for Leeds", g);
+        assertEquals("Joel Piroe", ScoreBoard.player(a)[1]);
+        assertEquals(" (og)", ScoreBoard.kindWords("og"));
+    }
+
+    @Test public void whatSlidesOutGoesWhereThereIsRoom() {
+        assertTrue(!ScoreBoard.outLeft(500, 900, 30));
+        assertTrue(ScoreBoard.outLeft(900, 100, 30));
+        assertTrue(!ScoreBoard.outLeft(80, 100, 30));
+        assertEquals(2 * BoardSide.SLIDE_MS + 3 * BoardStats.EACH_MS + 2 * BoardStats.TURN_MS, BoardStats.showFor(3));
+    }
+
+    @Test public void theStatsAndFactsComeFromTheSummary() {
+        com.gathin.tvhomephone.sports.Espn.Summary s = new com.gathin.tvhomephone.sports.Espn.Summary();
+        s.homeId = "359";
+        s.awayId = "368";
+        s.stats.add(new String[]{"Possession", "58.3%", "41.7%"});
+        s.stats.add(new String[]{"Shots", "9", "4"});
+        s.homeNumbers.put("accuratePasses", "420");
+        s.homeNumbers.put("totalPasses", "500");
+        s.awayNumbers.put("accuratePasses", "300");
+        s.awayNumbers.put("totalPasses", "400");
+        s.homeLast.add(new String[]{"W"});
+        s.homeLast.add(new String[]{"D"});
+        s.awayLast.add(new String[]{"L"});
+        s.table.add(new String[]{"359", "Arsenal", "2", "61", "29"});
+        s.table.add(new String[]{"368", "Everton", "15", "30", "29"});
+        s.winHome = "64%";
+        s.winAway = "13%";
+        java.util.Map<String, String[]> by = ScoreBoard.statsOf(s, Game.LIVE, "ARS", "EVE");
+        assertEquals("58%", by.get("Possession")[1]);
+        assertEquals("84%", by.get("Pass accuracy")[1]);
+        assertEquals("WD", by.get("Form")[1]);
+        assertEquals("2nd · 61 pts", by.get("League table")[1]);
+        assertEquals("15th · 30 pts", by.get("League table")[2]);
+        assertEquals("64%", by.get("Win chance")[1]);
+        // Before kick-off: only the facts.
+        java.util.Map<String, String[]> pre = ScoreBoard.statsOf(s, Game.PRE, "ARS", "EVE");
+        assertEquals(null, pre.get("Possession"));
+        assertTrue(pre.containsKey("Form"));
+        assertEquals("21st", ScoreBoard.ordinal(21));
+        assertEquals("12th", ScoreBoard.ordinal(12));
+    }
+
+    @Test public void theLogoCoverSaysWhitebrookRoad() {
+        assertEquals("Whitebrook Road", LogoCover.NAME);
+        assertTrue(LogoCover.Look.BROADCAST.broadcast());
+        assertTrue(LogoCover.Look.BROADCAST_BOARD.broadcast());
+        assertTrue(!LogoCover.Look.GLASS.broadcast());
+        assertEquals("UHD", LogoCover.tagOf("UK: Sky Sports Premier League UHD"));
+        assertEquals("HD", LogoCover.tagOf("Sky Sports Main Event HD"));
+        assertEquals("", LogoCover.tagOf("Shdtv Sports"));
+    }
+
+    @Test public void theLineUpsCardHasEachSidesLinesThenThePitch() {
+        java.util.List<String[]> lineup = new java.util.ArrayList<>();
+        String[][] who = {{"1", "David Raya", "G", "Raya"}, {"4", "Ben White", "RB", "White"}, {"2", "William Saliba", "CD-R", "Saliba"},
+                {"6", "Gabriel Magalhães", "CD-L", "Gabriel"}, {"33", "Riccardo Calafiori", "LB", "Calafiori"},
+                {"8", "Martin Ødegaard", "AM", "Ødegaard"}, {"41", "Declan Rice", "CM-R", "Rice"}, {"23", "Mikel Merino", "CM-L", "Merino"},
+                {"7", "Bukayo Saka", "RW", "Saka"}, {"29", "Kai Havertz", "CF", "Havertz"}, {"11", "Gabriel Martinelli", "LW", "Martinelli"}};
+        for (int i = 0; i < who.length; i++) {
+            String[] row = new String[13];
+            java.util.Arrays.fill(row, "");
+            row[com.gathin.tvhomephone.sports.Espn.P_NUMBER] = who[i][0];
+            row[com.gathin.tvhomephone.sports.Espn.P_NAME] = who[i][1];
+            row[com.gathin.tvhomephone.sports.Espn.P_POSITION] = who[i][2];
+            row[com.gathin.tvhomephone.sports.Espn.P_STARTER] = "1";
+            row[com.gathin.tvhomephone.sports.Espn.P_PLACE] = String.valueOf(i + 1);
+            row[com.gathin.tvhomephone.sports.Espn.P_SHORT] = who[i][3];
+            lineup.add(row);
+        }
+        java.util.List<java.util.List<BoardLineups.Player>> rows = BoardLineups.rows("4-3-3", lineup);
+        assertTrue(rows.size() >= 3);
+        assertEquals("Raya", rows.get(0).get(0).last);
+        assertEquals("David", rows.get(0).get(0).first);
+        int all = 0;
+        for (java.util.List<BoardLineups.Player> r : rows) all += r.size();
+        assertEquals(11, all);
+        BoardLineups.Data d = new BoardLineups.Data();
+        d.home.rows.addAll(rows);
+        d.away.rows.addAll(rows);
+        // Each side's keeper and defence, its midfield and attack, then the pitch: a little under half a minute.
+        long ms = BoardLineups.showFor(d);
+        assertTrue(ms > 15_000L && ms < 40_000L);
+    }
 }

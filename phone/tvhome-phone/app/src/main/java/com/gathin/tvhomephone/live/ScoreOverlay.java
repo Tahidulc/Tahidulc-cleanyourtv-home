@@ -307,7 +307,7 @@ final class ScoreOverlay implements ScoreBoard.Source {
         float d = a.getResources().getDisplayMetrics().density;
         View frame = video.findViewById(androidx.media3.ui.R.id.exo_content_frame);
         FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) board.view.getLayoutParams();
-        LinearLayout.LayoutParams bp = (LinearLayout.LayoutParams) board.bug.getLayoutParams();
+        android.view.ViewGroup.LayoutParams bp = board.bug.getLayoutParams();
         float fx = 0, fy = 0, fw = root.getWidth(), fh = root.getHeight();
         if (frame != null && frame.getWidth() > 0) {
             int[] f = new int[2], r = new int[2];
@@ -368,11 +368,7 @@ final class ScoreOverlay implements ScoreBoard.Source {
             if (box != null && board.channelGame() && box.left < 0.5f) top = Math.round(fy + box.bottom * fh + 6 * d);
         }
         board.bug.setLayoutParams(bp);
-        if (lp.leftMargin != left || lp.topMargin != top) {
-            lp.leftMargin = left;
-            lp.topMargin = top;
-            board.view.setLayoutParams(lp);
-        }
+        int boardLeft = left, boardTop = top;
         // Homefield's mark over the channel's logo: where the family put it, else over the logo found, its size and
         // a little over.
         LogoCover.Look look = ScoreBoard.logoCover(a);
@@ -396,9 +392,33 @@ final class ScoreOverlay implements ScoreBoard.Source {
             if (show) {
                 cover.look(look);
                 cover.setLayoutParams(cp);
+                // Broadcast: the channel's picture tag, LIVE while the game is, the scoreboard's colours.
+                Channel ch = host.current();
+                cover.tag(LogoCover.tagOf(ch == null ? null : ch.name));
+                cover.live(board.live());
+                cover.boardLook(board.bug.stripLook());
             }
         }
         cover.setVisibility(show ? View.VISIBLE : View.GONE);
+        // The room round the board for what slides out of it: to the screen's edges, short of the logo's mark where
+        // it is level with the board; the board's place kept as what is beside it moves the view.
+        int bh = bp.height > 0 ? bp.height : Math.round(30 * d);
+        int bw = bp.width > 0 ? bp.width : board.bug.getWidth() > 0 ? board.bug.getWidth() : board.bug.natural(bh);
+        int margin = Math.round(4 * d);
+        int roomL = boardLeft - margin, roomR = root.getWidth() - margin - (boardLeft + bw), roomDown = root.getHeight() - (boardTop + bh);
+        if (show) {
+            FrameLayout.LayoutParams cp = (FrameLayout.LayoutParams) cover.getLayoutParams();
+            boolean level = cp.topMargin < boardTop + bh && cp.topMargin + cp.height > boardTop;
+            if (level && cp.leftMargin >= boardLeft + bw) roomR = Math.min(roomR, cp.leftMargin - margin - (boardLeft + bw));
+            if (level && cp.leftMargin + cp.width <= boardLeft) roomL = Math.min(roomL, boardLeft - (cp.leftMargin + cp.width) - margin);
+        }
+        board.room(inPip ? 0 : roomL, inPip ? 0 : roomR, inPip ? 0 : boardTop, inPip ? 0 : roomDown);
+        int vl = boardLeft - board.boardDx(), vt = boardTop - board.boardDy();
+        if (lp.leftMargin != vl || lp.topMargin != vt) {
+            lp.leftMargin = vl;
+            lp.topMargin = vt;
+            board.view.setLayoutParams(lp);
+        }
     }
 
     /** This channel's own places (loaded as the channel changes; held as they are while being set). */
@@ -566,13 +586,13 @@ final class ScoreOverlay implements ScoreBoard.Source {
         if (mine.board()) return;
         float d = a.getResources().getDisplayMetrics().density;
         FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) board.view.getLayoutParams();
-        LinearLayout.LayoutParams bp = (LinearLayout.LayoutParams) board.bug.getLayoutParams();
+        android.view.ViewGroup.LayoutParams bp = board.bug.getLayoutParams();
         int h = board.bug.getHeight() > 0 ? board.bug.getHeight() : Math.round(30 * d);
         mine.bh = BoardPlace.clamp(h / pfh, BoardPlace.MIN_H, BoardPlace.MAX_H);
         // Over the channel's own, at that box's width: kept, so it doesn't change size as it is picked up.
         if (bp.width > 0 && board.bug.getWidth() > 0) mine.bw = BoardPlace.clamp(board.bug.getWidth() / pfw, BoardPlace.MIN_BW, BoardPlace.MAX_BW);
         mine.bx = 0;
-        mine.moveBoard((lp.leftMargin - pfx) / pfw, (lp.topMargin - pfy) / pfh, board.bug.getWidth() / pfw);
+        mine.moveBoard((lp.leftMargin + board.boardDx() - pfx) / pfw, (lp.topMargin + board.boardDy() - pfy) / pfh, board.bug.getWidth() / pfw);
     }
 
     /** The mark's own place (none yet: over the logo where it is, else the top right, where most channels have theirs). */

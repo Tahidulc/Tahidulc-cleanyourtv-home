@@ -4,6 +4,7 @@ import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.LinearGradient;
 import android.graphics.Paint;
+import android.graphics.Path;
 import android.graphics.RectF;
 import android.graphics.Shader;
 import android.graphics.Typeface;
@@ -13,16 +14,26 @@ import android.view.View;
 import com.gathin.tvhomephone.R;
 
 /**
- * Homefield's own mark over the channel's logo (found on the picture by BugFinder), filling the logo's place, in the
- * look chosen in Settings: Badge (the app's violet-to-coral tile with its house and play mark, the name beside it when
- * there is room), Glass (dark smoked glass with the white mark and the name), Mark (the tile alone, on a dark ground as
- * wide as the logo was), or Wordmark (HOMEFIELD in letters, a coral line under it). Each ground is all but solid, so
- * none of the channel's logo shows through it.
+ * The family's own mark over the channel's logo (found on the picture by BugFinder), filling the logo's place, in the
+ * look chosen in Settings: Badge (the app's violet-to-coral tile with its house and play mark, the family's name,
+ * Whitebrook Road, beside it when there is room), Glass (dark smoked glass with the white mark and the name), Mark (the
+ * tile alone, on a dark ground as wide as the logo was), Wordmark (WHITEBROOK ROAD in letters, a coral line under it), or
+ * laid out as a sports channel's own logo is (Broadcast), as one solid block: "Whitebrook Road" across its top band with
+ * the picture's tag (HD, UHD) at its end, "sports" large under it, LIVE at its foot while the game is live (in a wide,
+ * low cover, in a small box beside "sports"): see-through smoked glass with white letters, or in the scoreboard's own
+ * colours. The family's own words, never a channel's name or logo. Each other ground is all but solid, so none of the
+ * channel's logo shows through it.
  */
 final class LogoCover extends View implements BurnGuard.Dims {
     /** The looks, as Settings names them. */
     enum Look {
-        OFF("Leave the channel's"), BADGE("Badge"), GLASS("Glass"), MARK("Mark only"), WORD("Wordmark");
+        OFF("Leave the channel's"), BADGE("Badge"), GLASS("Glass"), MARK("Mark only"), WORD("Wordmark"),
+        BROADCAST("Broadcast, see-through"), BROADCAST_BOARD("Broadcast, scoreboard colours");
+
+        /** Laid out as a sports channel's own logo, one solid block. */
+        boolean broadcast() {
+            return this == BROADCAST || this == BROADCAST_BOARD;
+        }
 
         final String label;
 
@@ -37,10 +48,18 @@ final class LogoCover extends View implements BurnGuard.Dims {
     }
 
     private static final int VIOLET = 0xFF6D28F2, CORAL = 0xFFFF6B6B;
+    /** What the covers say: the family's own name (Broadcast over "sports"). */
+    static final String NAME = "Whitebrook Road", WORD_MARK = "WHITEBROOK ROAD", SPORTS = "sports";
     private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG), words = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final RectF r = new RectF();
     private final Drawable mark, markOnly;
     private Look look = Look.BADGE;
+    /** Broadcast's parts: the picture's tag ("HD", "UHD", "" for none), whether the game is live, the scoreboard's look. */
+    private String tag = "HD";
+    private boolean live;
+    private OverlayBug.StripLook board;
+    private final Paint boxes = new Paint(Paint.ANTI_ALIAS_FLAG), letters = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Path clipBlock = new Path();
 
     LogoCover(Context c) {
         super(c);
@@ -48,7 +67,8 @@ final class LogoCover extends View implements BurnGuard.Dims {
         markOnly = c.getDrawable(R.drawable.ic_app_mono);
         words.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD));
         words.setColor(0xFFFFFFFF);
-        setContentDescription("Homefield");
+        letters.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD));
+        setContentDescription(NAME);
     }
 
     /** Dimmed against burn-in (BurnGuard): solid, a little darker, so none of the channel's logo shows. */
@@ -61,9 +81,43 @@ final class LogoCover extends View implements BurnGuard.Dims {
         invalidate();
     }
 
+    /** The channel's picture tag for Broadcast's box ("HD", "UHD"; "" for none). */
+    void tag(String t) {
+        String n = t == null ? "" : t;
+        if (n.equals(tag)) return;
+        tag = n;
+        if (look.broadcast()) invalidate();
+    }
+
+    /** Whether the game is live (Broadcast's LIVE). */
+    void live(boolean on) {
+        if (on == live) return;
+        live = on;
+        if (look.broadcast()) invalidate();
+    }
+
+    /** The scoreboard's look, for Broadcast in its colours. */
+    void boardLook(OverlayBug.StripLook s) {
+        if (s == board) return;
+        board = s;
+        if (look == Look.BROADCAST_BOARD) invalidate();
+    }
+
+    /** Pure: a channel's picture tag from its name: "UHD" for UHD or 4K, "HD" for HD or FHD, else none. */
+    static String tagOf(String channel) {
+        String n = channel == null ? "" : " " + channel.toUpperCase(java.util.Locale.ROOT).replaceAll("[^A-Z0-9]+", " ") + " ";
+        if (n.contains(" UHD ") || n.contains(" 4K ")) return "UHD";
+        if (n.contains(" HD ") || n.contains(" FHD ")) return "HD";
+        return "";
+    }
+
     @Override protected void onDraw(Canvas cv) {
         float w = getWidth(), h = getHeight();
         if (w <= 0 || h <= 0 || look == Look.OFF) return;
+        if (look.broadcast()) {
+            broadcast(cv, w, h, look == Look.BROADCAST || board == null);
+            return;
+        }
         float rad = Math.min(w, h) * 0.22f;
         r.set(0, 0, w, h);
         switch (look) {
@@ -84,15 +138,15 @@ final class LogoCover extends View implements BurnGuard.Dims {
                 fill.setShader(null);
                 fill.setColor(0xFA000000);
                 cv.drawRoundRect(r, rad, rad, fill);
-                float size = fit("HOMEFIELD", w * 0.84f, h * 0.42f, 0.12f);
+                float size = fit(WORD_MARK, w * 0.84f, h * 0.42f, 0.12f);
                 words.setTextSize(size);
                 words.setLetterSpacing(0.12f);
                 words.setTextAlign(Paint.Align.CENTER);
                 Paint.FontMetrics fm = words.getFontMetrics();
                 float base = h / 2 - (fm.ascent + fm.descent) / 2 - h * 0.06f;
-                cv.drawText("HOMEFIELD", w / 2, base, words);
+                cv.drawText(WORD_MARK, w / 2, base, words);
                 words.setLetterSpacing(0);
-                float lw = words.measureText("HOMEFIELD") * 0.5f;
+                float lw = words.measureText(WORD_MARK) * 0.5f;
                 fill.setShader(new LinearGradient(w / 2 - lw / 2, 0, w / 2 + lw / 2, 0, VIOLET, CORAL, Shader.TileMode.CLAMP));
                 cv.drawRoundRect(w / 2 - lw / 2, base + h * 0.1f, w / 2 + lw / 2, base + h * 0.1f + Math.max(2, h * 0.07f), h * 0.04f, h * 0.04f, fill);
                 fill.setShader(null);
@@ -114,13 +168,101 @@ final class LogoCover extends View implements BurnGuard.Dims {
         drawMark(cv, onTile ? mark : markOnly, x, (h - s) / 2, s, onTile ? 0 : ink);
         if (!name) return;
         float left = x + s * 0.92f, room = w - left - h * 0.22f;
-        float size = fit("Homefield", room, h * 0.46f, 0f);
+        float size = fit(NAME, room, h * 0.46f, 0f);
         words.setTextSize(size);
         words.setLetterSpacing(0);
         words.setTextAlign(Paint.Align.LEFT);
         words.setColor(ink);
         Paint.FontMetrics fm = words.getFontMetrics();
-        cv.drawText("Homefield", left, h / 2 - (fm.ascent + fm.descent) / 2, words);
+        cv.drawText(NAME, left, h / 2 - (fm.ascent + fm.descent) / 2, words);
+    }
+
+    /**
+     * Broadcast: laid out as a sports channel's own logo, as one solid block filling the box: the name across its top
+     * band with the picture's tag at the band's end, "sports" large under it, LIVE in its foot while the game is live (a
+     * wide, low box keeps LIVE in a small box beside "sports"). See-through (smoked glass, white letters, the band a
+     * lighter grey), or the scoreboard's colours (its ground, the band in its block).
+     */
+    private void broadcast(Canvas cv, float w, float h, boolean seeThrough) {
+        int ground, band, bandInk, tagBox, tagInk, ink;
+        if (seeThrough) {
+            ground = 0xC20E1014;
+            band = 0x40FFFFFF;
+            bandInk = 0xF7FFFFFF;
+            tagBox = 0x33FFFFFF;
+            tagInk = 0xFFFFFFFF;
+            ink = 0xFFFFFFFF;
+        } else {
+            OverlayBug.StripLook s = board;
+            ground = 0xFF000000 | s.ground;
+            band = (s.block >>> 24) == 0xFF ? s.block : OverlayBug.blend(ground, 0xFFFFFFFF, 0.22f);
+            bandInk = OverlayBug.ink(band);
+            tagBox = s.light ? 0x1A0B1640 : 0x33FFFFFF;
+            tagInk = s.light ? bandInk : 0xFFFFFFFF;
+            ink = s.ink;
+        }
+        int liveInk = seeThrough ? 0xE6FFFFFF : ink;
+        float rad = Math.min(w, h) * 0.1f;
+        r.set(0, 0, w, h);
+        boxes.setColor(ground);
+        cv.drawRoundRect(r, rad, rad, boxes);
+        cv.save();
+        clipBlock.reset();
+        clipBlock.addRoundRect(r, rad, rad, Path.Direction.CW);
+        cv.clipPath(clipBlock);
+        boolean wide = w / h >= 2.3f;
+        float band1 = h * (wide ? 0.36f : 0.3f), pad = Math.min(w, h) * 0.08f;
+        boxes.setColor(band);
+        cv.drawRect(0, 0, w, band1, boxes);
+        float tagW = 0;
+        if (!tag.isEmpty()) {
+            float ts = band1 * 0.5f;
+            tagW = sizeOf(tag, ts, 0.06f) + band1 * 0.5f;
+            boxes.setColor(tagBox);
+            r.set(w - pad - tagW, band1 * 0.16f, w - pad, band1 * 0.84f);
+            cv.drawRoundRect(r, band1 * 0.12f, band1 * 0.12f, boxes);
+            line(cv, tag, r.centerX(), 0, band1, ts, 0.06f, tagInk, true);
+        }
+        float nameRoom = w - 2 * pad - (tagW > 0 ? tagW + pad * 0.6f : 0);
+        line(cv, NAME, pad, 0, band1, fitSize(NAME, nameRoom, band1 * 0.58f, 0.02f), 0.02f, bandInk, false);
+        if (wide) {
+            float mid = h - band1, ls = mid * 0.28f, liveW = live ? sizeOf("LIVE", ls, 0.2f) + mid * 0.36f : 0f;
+            float ms = fitSize(SPORTS, w - 2 * pad - (liveW > 0 ? liveW + pad : 0f), mid * 0.7f, 0f);
+            line(cv, SPORTS, pad, band1, mid, ms, 0f, ink, false);
+            if (live) {
+                boxes.setColor(tagBox);
+                r.set(w - pad - liveW, band1 + mid * 0.27f, w - pad, band1 + mid * 0.73f);
+                cv.drawRoundRect(r, mid * 0.08f, mid * 0.08f, boxes);
+                line(cv, "LIVE", r.centerX(), band1, mid, ls, 0.2f, liveInk, true);
+            }
+        } else {
+            float foot = h * 0.24f, mid = h - band1 - foot;
+            line(cv, SPORTS, w / 2f, band1, mid, fitSize(SPORTS, w - 2 * pad, mid * 0.72f, 0f), 0f, ink, true);
+            if (live) line(cv, "LIVE", w / 2f, band1 + mid, foot * 0.9f, Math.min(foot * 0.62f, fitSize("LIVE", w - 2 * pad, foot * 0.62f, 0.35f)), 0.35f, liveInk, true);
+        }
+        cv.restore();
+    }
+
+    /** The biggest size up to most at which s (spaced so) fits in room. */
+    private float fitSize(String s, float room, float most, float spacing) {
+        float wd = sizeOf(s, most, spacing);
+        return wd <= room ? most : Math.max(5f, most * room / Math.max(1f, wd));
+    }
+
+    private float sizeOf(String s, float size, float spacing) {
+        letters.setTextSize(size);
+        letters.setLetterSpacing(spacing);
+        return letters.measureText(s);
+    }
+
+    /** Words in the middle of a row (y, h): centred on x, or from x along. */
+    private void line(Canvas cv, String s, float x, float y, float h, float size, float spacing, int colour, boolean centred) {
+        letters.setTextSize(size);
+        letters.setLetterSpacing(spacing);
+        letters.setColor(colour);
+        letters.setTextAlign(centred ? Paint.Align.CENTER : Paint.Align.LEFT);
+        Paint.FontMetrics fm = letters.getFontMetrics();
+        cv.drawText(s, x, y + h / 2 - (fm.ascent + fm.descent) / 2, letters);
     }
 
     /** The app's own tile: violet to coral, rounded, the house and play mark on it. */

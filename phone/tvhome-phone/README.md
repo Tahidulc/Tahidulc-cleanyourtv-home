@@ -225,6 +225,19 @@ over the clock (Half-Time and Full-Time in words, the minutes added on red besid
 others, a goal lights the scorers' panel in their colour, and the alerts and stats that fold out of it come white with
 navy words and its blue for their chips.
 
+The scoreboard's alerts, stats and clock (4.18): what comes out of the scoreboard over the player comes out sideways, in
+line with it and as high as it, rather than dropping under it: out to its right (to its left when it is near the
+screen's right, never over the mark on the channel's logo), its near end tucked under the board. A goal in the game on
+the board is captioned with its scorer standing up out of the caption, head and shoulders, and who and when (from the
+scores themselves when no alert comes for it); another game's has both crests and the score. The stats come a few times
+a game instead of every few minutes: the chances, each side's last five and their places in the table before kick-off,
+a few of each half's (the player of the match in the second), five at half time and three at full time. The clock
+always counts on, through added time too (92:15 rather than 90:00), the added time put up beside it from the half's last
+minute once it is known; full time shows a little under a minute, then the board goes. The line-ups come as the TV's
+line-up card beside the board, top to top: the club's crest and shape down a navy band, its players a page at a time,
+head and shoulders, then both elevens on one pitch. The mark over the channel's logo says Whitebrook Road, and has the
+TV's two Broadcast looks, one solid block each: see-through, or in the scoreboard's colours.
+
 Subtitles (CC in the film's player): the film's or episode's own, from your playlist's stream, come first, in the
 languages you choose (Settings, Subtitles, in order). When it has none, OpenSubtitles.com is looked in by the title's
 TMDB id (the series' with its season and episode), best first: your languages, the ones that fit the copy playing (its

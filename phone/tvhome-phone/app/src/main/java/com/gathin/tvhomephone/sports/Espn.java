@@ -233,6 +233,10 @@ public final class Espn {
          * x = 100; y = 0 its right touchline.
          */
         public final List<String[]> plays = new ArrayList<>();
+        /** The added time put up in each half (and each half of extra time), in minutes; -1 until it is. */
+        public final int[] added = {-1, -1, -1, -1};
+        /** Each side's chance of winning as the prices before kick-off put them ("48%"); "" without prices. */
+        public String winHome = "", winAway = "";
     }
 
     /** Indexes into Summary.plays, and the kinds of play. */
@@ -327,6 +331,8 @@ public final class Espn {
             }
             extras(root, s);
             plays(root, s, competitors);
+            addedTime(root.optJSONArray("commentary"), s.added);
+            winChance(root.optJSONArray("odds"), s);
             JSONObject box = root.optJSONObject("boxscore");
             JSONArray bt = box == null ? null : box.optJSONArray("teams");
             if (bt != null && bt.length() == 2) {
@@ -438,6 +444,56 @@ public final class Espn {
             JSONObject ref = officials != null && officials.length() > 0 ? officials.optJSONObject(0) : null;
             if (ref != null) s.referee = ref.optString("displayName", ref.optString("fullName", ""));
         }
+    }
+
+    private static final java.util.regex.Pattern ADDED = java.util.regex.Pattern.compile(
+            "(?i)(\\d+)\\s+(?:additional\\s+)?minutes?\\s+of\\s+(?:added|additional|stoppage)\\s+time");
+
+    /** Pure: the minutes of added time a line of commentary says were put up ("…announced 4 minutes of added time."); -1 for none. */
+    public static int addedIn(String text) {
+        if (text == null) return -1;
+        java.util.regex.Matcher m = ADDED.matcher(text);
+        return m.find() ? number(m.group(1)) : -1;
+    }
+
+    /** Pure: the half a minute of the game is in ("45'": 1, "90'": 2, "105'": 3, "120'": 4); 0 for none. */
+    public static int halfOf(String minute) {
+        int m = Game.minute(minute == null ? "" : minute.replaceAll("\\+.*", ""));
+        return m <= 0 ? 0 : m <= 45 ? 1 : m <= 90 ? 2 : m <= 105 ? 3 : 4;
+    }
+
+    /** The added time put up in each half, from ESPN's commentary ("Fourth official has announced 4 minutes of added time."). */
+    static void addedTime(JSONArray commentary, int[] into) {
+        for (int i = 0; commentary != null && i < commentary.length(); i++) {
+            JSONObject x = commentary.optJSONObject(i);
+            if (x == null) continue;
+            int n = addedIn(x.optString("text", ""));
+            if (n <= 0) continue;
+            JSONObject t = x.optJSONObject("time");
+            int half = halfOf(t == null ? "" : t.optString("displayValue", ""));
+            if (half >= 1 && half <= into.length) into[half - 1] = n;
+        }
+    }
+
+    /** Each side's chance of winning, and the draw's, from the prices before kick-off (each as a chance, the three made 100). */
+    static void winChance(JSONArray odds, Summary s) {
+        JSONObject o = odds == null || odds.length() == 0 ? null : odds.optJSONObject(0);
+        if (o == null) return;
+        double h = chance(o.optJSONObject("homeTeamOdds")), a = chance(o.optJSONObject("awayTeamOdds")), d = chance(o.optJSONObject("drawOdds"));
+        if (h <= 0 || a <= 0 || d <= 0) return;
+        double all = h + a + d;
+        s.winHome = Math.round(100 * h / all) + "%";
+        s.winAway = Math.round(100 * a / all) + "%";
+    }
+
+    private static double chance(JSONObject x) {
+        return x == null || !x.has("moneyLine") ? 0 : chance(x.optDouble("moneyLine", 0));
+    }
+
+    /** Pure: a price in American odds (+260, -500) as the chance it stands for (0 to 1); 0 for none. */
+    public static double chance(double moneyLine) {
+        if (moneyLine == 0 || Double.isNaN(moneyLine)) return 0;
+        return moneyLine > 0 ? 100 / (moneyLine + 100) : -moneyLine / (-moneyLine + 100);
     }
 
     /** The shots, goals and cards with their places on the pitch, from ESPN's commentary. */

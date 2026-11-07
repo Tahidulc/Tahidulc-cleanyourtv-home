@@ -39,6 +39,8 @@ public final class OnScreen {
     private static final long READING_MS = 45_000L, SAID_MS = 180_000L, STATE_MS = 40_000L;
     /** The channel's clock seen to turn a minute: let go if the scores disagree with it by more than this. */
     private static final long TRUST_MS = 150_000L;
+    /** The board's clock is put back only when what it is told is this far behind where it was counting (a real correction). */
+    static final long CORRECT_MS = 30_000L;
 
     private final List<Read> reads = new ArrayList<>();
     private long behindMs;
@@ -79,6 +81,8 @@ public final class OnScreen {
         shownFrom = null;
         anchorAt = 0;
         measured.clear();
+        runKey = null;
+        runMs = -1;
     }
 
     /** The stream's delay behind the real game (used when the channel's scoreboard can't be read). */
@@ -310,6 +314,85 @@ public final class OnScreen {
         long ms = ms(r, now);
         if (ms < 0) return null;
         return GameClock.show(ms / 1000.0, r.g.period, r.g.displayClock);
+    }
+
+    /** The board's running clock: what it showed last (ms) and when, and for which game and half. */
+    private String runKey;
+    private long runMs = -1, runAt;
+
+    /**
+     * The board's clock at now: always counting on, a second a second, until half time or full time shows: never frozen
+     * at the period's end (in added time it runs on, "92:15"), nor held at a minute's end waiting for the scores' next
+     * read, nor stepping back by a little: the later of where it was counting and what the channel (read off it) or the
+     * scores say, unless they say it is more than 30 s behind (a real correction). {"92:15", "+4"} with the minutes added
+     * the channel shows, else ""; null when the game is not running there.
+     */
+    public String[] boardClock(long now) {
+        Game g = game(now);
+        if (g == null || g.state != Game.LIVE || g.halftime) {
+            runKey = null;
+            runMs = -1;
+            return null;
+        }
+        long src = sourceMs(now);
+        if (src < 0) return null;
+        int half = g.period > 0 ? g.period : src < 45 * 60_000L ? 1 : src < 90 * 60_000L ? 2 : src < 105 * 60_000L ? 3 : 4;
+        long ms = running((g.id == null ? "" : g.id) + "|" + half, src, now);
+        long s = ms / 1000;
+        return new String[]{String.format(Locale.UK, "%02d:%02d", s / 60, s % 60), reading(now) && added > 0 ? "+" + added : ""};
+    }
+
+    /** The running clock for a game and half: on from where it was shown at least; what it is told when later, or far behind. */
+    long running(String key, long src, long now) {
+        if (!key.equals(runKey) || runMs < 0) {
+            runKey = key;
+            runMs = src;
+            runAt = now;
+            return src;
+        }
+        long counted = runMs + Math.max(0, now - runAt);
+        long ms = src < counted - CORRECT_MS ? src : Math.max(counted, src);
+        runMs = ms;
+        runAt = now;
+        return ms;
+    }
+
+    /**
+     * What the channel (its clock read off it, standing still or going) or the scores say the clock is at now, in ms,
+     * counted on from their last read without a cap: ESPN's clock, or its words' minute when that is later (ESPN may
+     * stand its clock still in added time while its words go on, "90'+3'"), or the channel's minute seen turning. -1
+     * when the game is not running there.
+     */
+    private long sourceMs(long now) {
+        if (reading(now)) return frozen ? clockMs : clockMs + (now - clockAt);
+        Read r = at(now - behindMs);
+        if (r == null || r.g.state != Game.LIVE || r.g.halftime) return -1;
+        long screen = now - behindMs;
+        long ms = (long) (r.secs * 1000) + Math.max(0, screen - r.minuteAt);
+        int minute = Game.minute(words(r.g));
+        if (minute > 0) ms = Math.max(ms, (minute - 1) * 60_000L + Math.max(0, screen - wordsAt(r)));
+        if (anchorAt > 0 && r.g.period == anchorPeriod) {
+            long seen = anchorMs + (now - anchorAt);
+            if (Math.abs(seen - ms) <= TRUST_MS) ms = seen;
+        }
+        return Math.max(start(r.g.period), ms);
+    }
+
+    private static String words(Game g) {
+        return g.displayClock != null && !g.displayClock.isEmpty() ? g.displayClock : g.detail == null ? "" : g.detail;
+    }
+
+    /** When the minute ESPN's words give for read r was first read: the earliest read running up to it with the same words. */
+    private long wordsAt(Read r) {
+        int i = reads.indexOf(r);
+        long at = r.at;
+        String w = words(r.g);
+        for (int j = i; j >= 0; j--) {
+            Read x = reads.get(j);
+            if (x.g.period != r.g.period || !w.equals(words(x.g))) break;
+            at = x.at;
+        }
+        return at;
     }
 
     /** The clock on the screen at now in whole seconds; -1 when the game is not running there. */

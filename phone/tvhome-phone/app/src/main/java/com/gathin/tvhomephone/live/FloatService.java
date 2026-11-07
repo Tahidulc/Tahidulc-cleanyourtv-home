@@ -192,6 +192,7 @@ public final class FloatService extends Service implements ScoreBoard.Source {
                     if (moving[0]) {
                         place().edit().putInt("x", lp.x).putInt("y", lp.y).apply();
                         moving[0] = false;
+                        roomNow();
                         return true;
                     }
                     return false;
@@ -209,6 +210,22 @@ public final class FloatService extends Service implements ScoreBoard.Source {
         board.start();
         guard.start();
         h.post(keepClear);
+        roomNow();
+        board.bug.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
+            if (r - l != or - ol) h.post(this::roomNow);
+        });
+    }
+
+    /**
+     * The room on the board's right for what slides out of it, over the other apps: always out to its right (the window
+     * grows that way and stays put), nothing above it, as far as the screen's edge.
+     */
+    private void roomNow() {
+        if (board == null || lp == null) return;
+        android.util.DisplayMetrics dm = getResources().getDisplayMetrics();
+        int bw = board.bug.getWidth() > 0 ? board.bug.getWidth() : board.bug.natural(Math.round(30 * dm.density));
+        int pad = win == null ? 0 : win.getPaddingLeft() + win.getPaddingRight();
+        board.room(0, Math.max(0, dm.widthPixels - lp.x - bw - pad), 0, Math.max(0, dm.heightPixels - lp.y));
     }
 
     @Override public void onDestroy() {
