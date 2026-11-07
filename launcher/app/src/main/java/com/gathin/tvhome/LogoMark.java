@@ -78,11 +78,13 @@ final class LogoMark extends View {
     private final Paint picture = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
     /** The competition's logo beside every look (on unless switched off on the Scoreboard card). */
     private boolean compOn = true;
-    /** LIVE's red bar along the foot while the game is live (on unless switched off on the Scoreboard card). */
+    /** LIVE along the cover's foot while the game is live (on unless switched off on the Scoreboard card). */
     private boolean liveBar = true;
     private android.graphics.Typeface liveFace;
     /** How much further the look's ground runs than its own width (the competition's logo's room). */
     private float ext;
+    /** How much further down the look's ground runs than its own height (LIVE's foot). */
+    private float down;
     /** The ring's dashes, made once for a width of line. */
     private float dashFor = -1;
 
@@ -190,10 +192,10 @@ final class LogoMark extends View {
     @Override protected void onDraw(Canvas cv) {
         float full = getWidth(), whole = getHeight();
         if (full <= 0 || whole <= 0) return;
-        // While the game is live: a red LIVE bar along the foot of the whole cover, the look above it (its own LIVE left
-        // to the bar).
-        float foot = live && liveBar ? Math.max(10f, whole * 0.25f) : 0f, h = whole - foot;
-        if (foot > 0f) liveBar(cv, full, whole, foot);
+        // While the game is live: LIVE along the foot of the whole cover, part of the same block, the look above it (its
+        // own LIVE left to the foot).
+        float foot = live && liveBar ? Math.max(10f, whole * 0.22f) : 0f, h = whole - foot;
+        down = foot;
         boolean wasLive = live;
         if (foot > 0f) live = false;
         // The competition's logo at the end of the look's own block, when it is on and known: one block, the look's
@@ -202,34 +204,50 @@ final class LogoMark extends View {
         ext = side;
         drawLook(cv, full - side, h);
         if (side > 0f) compMark(cv, full - side, full, h);
+        if (foot > 0f) liveBar(cv, full, whole, foot);
         live = wasLive;
         ring(cv, full, whole, Math.min(full, whole) * 0.15f);
-        if (foot > 0f) postInvalidateDelayed(90);
     }
 
-    /** LIVE's bar along the cover's foot: red, its corners round with the cover's, a white dot pulsing beside LIVE. */
+    /**
+     * LIVE along the cover's foot, as part of the one block: the look's own ground runs on down under it (drawn by the
+     * look), a fine light line across, and LIVE spaced out between two short rules,
+     * in the look's own colours (the Whitebrook Road looks' violet to coral, white on the glass and the competition's,
+     * the scoreboard's ink on Broadcast in its colours).
+     */
     private void liveBar(Canvas cv, float w, float h, float foot) {
-        float rad = Math.min(w, h) * 0.15f;
-        // Under a solid look's rounded foot; below a see-through one (Smoked glass, Broadcast see-through), not under it.
-        boolean clear = look == Look.SMOKED || look == Look.BROADCAST;
-        r.set(0, clear ? h - foot : h - foot - rad * 2f, w, h);
-        fill.setShader(new android.graphics.LinearGradient(0, h - foot, 0, h, 0xFFF0213A, 0xFFB80F25, android.graphics.Shader.TileMode.CLAMP));
-        cv.drawRoundRect(r, rad, rad, fill);
+        int ink = 0xF2FFFFFF;
+        android.graphics.Shader inkShader = null;
+        if (look == Look.BROADCAST_BOARD && board != null) ink = board.ink;
         fill.setShader(null);
+        // The fine line between the look and its foot.
+        float line = Math.max(1f, h * 0.008f), in = Math.min(w, h) * 0.1f;
+        fill.setColor(0x26FFFFFF);
+        cv.drawRect(in, h - foot, w - in, h - foot + line, fill);
         if (liveFace == null) liveFace = ScoreCard.outfit(getContext(), 800);
         words.setTypeface(liveFace);
-        words.setColor(0xFFFFFFFF);
-        words.setTextSize(foot * 0.56f);
-        words.setLetterSpacing(0.28f);
-        float tw = words.measureText("LIVE"), dot = foot * 0.16f, gap = foot * 0.32f;
-        float x = (w - tw - dot * 2f - gap) / 2f, cy = h - foot / 2f;
-        double t = (android.os.SystemClock.uptimeMillis() % 1400L) / 1400.0;
-        int a = (int) Math.round(255 * (0.45 + 0.55 * (0.5 + 0.5 * Math.cos(t * 2 * Math.PI))));
-        fill.setColor((a << 24) | 0xFFFFFF);
-        cv.drawCircle(x + dot, cy, dot, fill);
+        words.setTextSize(foot * 0.5f);
+        words.setLetterSpacing(0.42f);
+        float tw = words.measureText("LIVE"), cx = w / 2f, cy = h - foot / 2f + line / 2f;
+        if (look.channel() && look != Look.SMOKED) {
+            inkShader = new android.graphics.LinearGradient(cx - tw / 2f, 0, cx + tw / 2f, 0, ChannelMark.LILAC, ChannelMark.PEACH,
+                    android.graphics.Shader.TileMode.CLAMP);
+        }
+        // Two short rules either side of it.
+        float gap = foot * 0.4f, rule = Math.min(foot * 1.2f, (w - tw) / 2f - gap - in);
+        if (rule > foot * 0.3f) {
+            fill.setColor((ink & 0x00FFFFFF) | 0x59000000);
+            cv.drawRect(cx - tw / 2f - gap - rule, cy - line / 2f, cx - tw / 2f - gap, cy + line / 2f, fill);
+            cv.drawRect(cx + tw / 2f + gap, cy - line / 2f, cx + tw / 2f + gap + rule, cy + line / 2f, fill);
+        }
+        words.setColor(ink);
+        words.setShader(inkShader);
+        words.setTextAlign(Paint.Align.CENTER);
         Paint.FontMetrics fm = words.getFontMetrics();
+        // Letter spacing leaves half a space after the last letter: centred on the letters themselves.
+        cv.drawText("LIVE", cx + words.getTextSize() * 0.21f, cy - (fm.ascent + fm.descent) / 2f, words);
+        words.setShader(null);
         words.setTextAlign(Paint.Align.LEFT);
-        cv.drawText("LIVE", x + dot * 2f + gap, cy - (fm.ascent + fm.descent) / 2f, words);
         words.setLetterSpacing(0f);
         words.setTypeface(ScoreCard.outfit(getContext(), 700));
         words.setColor(MARK_INK);
@@ -266,7 +284,7 @@ final class LogoMark extends View {
         if (look.channel()) {
             // Whitebrook Road's own channel: its ground over the whole box, the edge the burn-in guard moves in too.
             if (channel == null) channel = new ChannelMark(getContext());
-            channel.draw(cv, look, 0, 0, w, h, tag, live, sport, ext);
+            channel.draw(cv, look, 0, 0, w, h, tag, live, sport, ext, down);
             return;
         }
         if (look.broadcast()) {
@@ -274,7 +292,7 @@ final class LogoMark extends View {
             return;
         }
         float rad = Math.min(w, h) * 0.18f;
-        r.set(0, 0, w + ext, h);
+        r.set(0, 0, w + ext, h + down);
         fill.setColor(look == Look.PLAIN ? PLAIN_GROUND : GROUND);
         cv.drawRoundRect(r, rad, rad, fill);
         float cw = w - 2 * inset, ch = h - 2 * inset;
@@ -299,7 +317,7 @@ final class LogoMark extends View {
      */
     private void competitionLook(Canvas cv, float w, float h) {
         float rad = Math.min(w, h) * 0.16f;
-        r.set(0, 0, w, h);
+        r.set(0, 0, w, h + down);
         fill.setShader(new android.graphics.LinearGradient(0, 0, 0, h, 0xFF1B1F31, 0xFF07090F, android.graphics.Shader.TileMode.CLAMP));
         cv.drawRoundRect(r, rad, rad, fill);
         fill.setShader(null);
@@ -372,7 +390,7 @@ final class LogoMark extends View {
         }
         float rad = Math.min(cw, ch) * 0.1f;
         // The one block, filling the box.
-        r.set(inset, inset, inset + cw + ext, inset + ch);
+        r.set(inset, inset, inset + cw + ext, inset + ch + down);
         boxes.setColor(ground);
         cv.drawRoundRect(r, rad, rad, boxes);
         cv.save();
