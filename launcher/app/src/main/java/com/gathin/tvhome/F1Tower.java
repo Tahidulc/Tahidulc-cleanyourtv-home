@@ -591,6 +591,7 @@ final class F1Tower {
         // The Competition look: F1's own logo, in white.
         m.competition(null, "F1");
         m.compOn(BoardCover.logoComp(c));
+        m.liveBar(BoardCover.logoLive(c));
         Context app = c.getApplicationContext();
         new Thread(() -> {
             Bitmap f1 = ScoresTicker.cachedLogo(app, F1Results.F1_LOGO, 200);

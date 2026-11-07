@@ -182,7 +182,15 @@ final class BoardPanel extends SportPanel {
             BoardCover.setLogoComp(c, !BoardCover.logoComp(c));
             for (LogoMark m : markPreviews) m.compOn(BoardCover.logoComp(c));
         };
+        Row liveRow = row("LIVE on the logo cover", true);
+        liveRow.on = () -> BoardCover.logoLive(c);
+        liveRow.words = () -> BoardCover.logoLive(c) ? "A red LIVE bar along its foot while the game is live" : "Off";
+        liveRow.ok = () -> {
+            BoardCover.setLogoLive(c, !BoardCover.logoLive(c));
+            for (LogoMark m : markPreviews) m.liveBar(BoardCover.logoLive(c));
+        };
         add(ask, comp);
+        add(liveRow);
 
         // Each look drawn as it is, the game chosen above in it: the arrows go along, OK chooses.
         heading("SCOREBOARD LOOK");
@@ -268,6 +276,7 @@ final class BoardPanel extends SportPanel {
         m.tag(previewTag());
         m.live(true);
         m.compOn(BoardCover.logoComp(c));
+        m.liveBar(BoardCover.logoLive(c));
         if (crests != null) m.competition(crests[2], game() == null ? "" : game().league);
         markPreviews.add(m);
         BoardBug colours = new BoardBug(c);

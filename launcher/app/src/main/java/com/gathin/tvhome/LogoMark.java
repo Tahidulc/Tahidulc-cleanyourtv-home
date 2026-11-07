@@ -78,6 +78,9 @@ final class LogoMark extends View {
     private final Paint picture = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
     /** The competition's logo beside every look (on unless switched off on the Scoreboard card). */
     private boolean compOn = true;
+    /** LIVE's red bar along the foot while the game is live (on unless switched off on the Scoreboard card). */
+    private boolean liveBar = true;
+    private android.graphics.Typeface liveFace;
     /** How much further the look's ground runs than its own width (the competition's logo's room). */
     private float ext;
     /** The ring's dashes, made once for a width of line. */
@@ -136,6 +139,13 @@ final class LogoMark extends View {
         invalidate();
     }
 
+    /** LIVE's bar along the foot while the game is live, or not. */
+    void liveBar(boolean on) {
+        if (on == liveBar) return;
+        liveBar = on;
+        invalidate();
+    }
+
     /** The competition's logo beside the look, or not. */
     void compOn(boolean on) {
         if (on == compOn) return;
@@ -178,15 +188,51 @@ final class LogoMark extends View {
     }
 
     @Override protected void onDraw(Canvas cv) {
-        float full = getWidth(), h = getHeight();
-        if (full <= 0 || h <= 0) return;
+        float full = getWidth(), whole = getHeight();
+        if (full <= 0 || whole <= 0) return;
+        // While the game is live: a red LIVE bar along the foot of the whole cover, the look above it (its own LIVE left
+        // to the bar).
+        float foot = live && liveBar ? Math.max(10f, whole * 0.25f) : 0f, h = whole - foot;
+        if (foot > 0f) liveBar(cv, full, whole, foot);
+        boolean wasLive = live;
+        if (foot > 0f) live = false;
         // The competition's logo at the end of the look's own block, when it is on and known: one block, the look's
         // ground running on under it, a fine line between.
         float side = compShown() ? Math.min(h * 0.86f, full * 0.28f) : 0f;
         ext = side;
         drawLook(cv, full - side, h);
         if (side > 0f) compMark(cv, full - side, full, h);
-        ring(cv, full, h, Math.min(full, h) * 0.15f);
+        live = wasLive;
+        ring(cv, full, whole, Math.min(full, whole) * 0.15f);
+        if (foot > 0f) postInvalidateDelayed(90);
+    }
+
+    /** LIVE's bar along the cover's foot: red, its corners round with the cover's, a white dot pulsing beside LIVE. */
+    private void liveBar(Canvas cv, float w, float h, float foot) {
+        float rad = Math.min(w, h) * 0.15f;
+        // Under a solid look's rounded foot; below a see-through one (Smoked glass, Broadcast see-through), not under it.
+        boolean clear = look == Look.SMOKED || look == Look.BROADCAST;
+        r.set(0, clear ? h - foot : h - foot - rad * 2f, w, h);
+        fill.setShader(new android.graphics.LinearGradient(0, h - foot, 0, h, 0xFFF0213A, 0xFFB80F25, android.graphics.Shader.TileMode.CLAMP));
+        cv.drawRoundRect(r, rad, rad, fill);
+        fill.setShader(null);
+        if (liveFace == null) liveFace = ScoreCard.outfit(getContext(), 800);
+        words.setTypeface(liveFace);
+        words.setColor(0xFFFFFFFF);
+        words.setTextSize(foot * 0.56f);
+        words.setLetterSpacing(0.28f);
+        float tw = words.measureText("LIVE"), dot = foot * 0.16f, gap = foot * 0.32f;
+        float x = (w - tw - dot * 2f - gap) / 2f, cy = h - foot / 2f;
+        double t = (android.os.SystemClock.uptimeMillis() % 1400L) / 1400.0;
+        int a = (int) Math.round(255 * (0.45 + 0.55 * (0.5 + 0.5 * Math.cos(t * 2 * Math.PI))));
+        fill.setColor((a << 24) | 0xFFFFFF);
+        cv.drawCircle(x + dot, cy, dot, fill);
+        Paint.FontMetrics fm = words.getFontMetrics();
+        words.setTextAlign(Paint.Align.LEFT);
+        cv.drawText("LIVE", x + dot * 2f + gap, cy - (fm.ascent + fm.descent) / 2f, words);
+        words.setLetterSpacing(0f);
+        words.setTypeface(ScoreCard.outfit(getContext(), 700));
+        words.setColor(MARK_INK);
     }
 
     /** Whether the competition's logo stands beside the look: switched on, read, and the look is not the logo itself. */

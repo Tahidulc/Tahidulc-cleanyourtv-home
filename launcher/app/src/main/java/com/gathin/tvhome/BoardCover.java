@@ -258,6 +258,16 @@ final class BoardCover {
         setLogoLook(c, all[((logoLook(c).ordinal() + step) % all.length + all.length) % all.length]);
     }
 
+    /** LIVE's red bar along the logo cover's foot while the game is live (on unless switched off). */
+    static boolean logoLive(Context c) {
+        return prefs(c).getBoolean("live_bar", true);
+    }
+
+    static void setLogoLive(Context c, boolean on) {
+        prefs(c).edit().putBoolean("live_bar", on).apply();
+        if (mark != null) mark.liveBar(on);
+    }
+
     /** The competition's logo beside the logo cover's look (on unless switched off). */
     static boolean logoComp(Context c) {
         return prefs(c).getBoolean("comp_on", true);
@@ -1453,6 +1463,7 @@ final class BoardCover {
             mark.look(logoLook(c));
             mark.competition(compImage, compTag);
             mark.compOn(logoComp(c));
+            mark.liveBar(logoLive(c));
             mark.inset(edge);
             logoWin = frame(c, mark);
             if (!addWindow(c, logoWin)) {
