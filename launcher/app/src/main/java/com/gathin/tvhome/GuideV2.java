@@ -288,7 +288,9 @@ final class GuideV2 {
 
     /**
      * What is on these channels ({sid, ...}, at most 20: Sky's guide answers for 20 at a time), today's and tomorrow's
-     * schedule from half an hour before `now` on, by sid, each list in time order. Off the main thread.
+     * schedule from an hour before `now` on, by sid, each list in time order: the UHF style's guide starts its grid
+     * up to an hour back, so anything that ended later than that is kept (else its rows began with a gap). Each guide
+     * leaves out what ends before its own grid. Off the main thread.
      */
     static Map<String, List<Show>> schedules(List<String[]> want, long now) {
         StringBuilder ids = new StringBuilder();
@@ -312,7 +314,7 @@ final class GuideV2 {
                         Show sh = new Show();
                         sh.start = e.optLong("st") * 1000L;
                         sh.end = sh.start + e.optLong("d") * 1000L;
-                        if (sh.end < now - HALF_HOUR) continue;
+                        if (sh.end < now - 2 * HALF_HOUR) continue;
                         sh.title = e.optString("t");
                         sh.text = e.optString("sy", "");
                         String uuid = e.optString("programmeuuid", "");

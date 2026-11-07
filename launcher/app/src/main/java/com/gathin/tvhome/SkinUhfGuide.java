@@ -434,7 +434,13 @@ final class SkinUhfGuide {
         b.line = s.text(15, host.regular(), 0x8CFFFFFF);
         b.title = s.text(21, host.regular(), SkinUhf.TEXT);
         String[] ch = list.get(row);
-        if (sh != null) {
+        // A programme that shows only a sliver (one nearly over at the grid's left edge, under the channel's tile, or a
+        // five-minute filler) keeps its block but no words, which would only be cut to a letter and dots ("C…"); the
+        // top of the guide names it when it is picked.
+        boolean words = x1 - textX - 14 >= 64;
+        if (sh != null && !words) {
+            v.addView(b.title);
+        } else if (sh != null) {
             if (first) {
                 String q = quality(ch[1]);
                 android.text.SpannableStringBuilder line = new android.text.SpannableStringBuilder(bare(ch[1]).toUpperCase(Locale.ROOT));

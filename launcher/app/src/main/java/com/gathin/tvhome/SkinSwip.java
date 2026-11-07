@@ -857,7 +857,9 @@ final class SkinSwip extends Skin {
             if (Item.VIDEO.equals(it.kind)) cl.card.addView(tag("YOUTUBE", RED), corner(14, 12, Gravity.TOP | Gravity.START));
         }
         if (it.vote > 0 && tall) cl.card.addView(rating(it.vote), corner(10, 10, Gravity.TOP | Gravity.START));
-        if (it.rank > 0) {
+        // Its place in a Top 10, but not in Featured for you: that row takes the top TV shows and the top film, so it
+        // would read 1, 2, 3, 1 with nothing to say which chart; the Top 10 rows below carry the numbers.
+        if (it.rank > 0 && cl.kind != FEAT) {
             TextView rk = text(20, host.display(), 0xFFFFFFFF);
             rk.setGravity(Gravity.CENTER);
             rk.setText(String.valueOf(it.rank));

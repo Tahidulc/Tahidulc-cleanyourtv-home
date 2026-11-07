@@ -392,7 +392,17 @@ final class SkinSwipGuide {
         if (pipBar != null) { pipBox.removeView(pipBar); pipBar = null; }
         long now = System.currentTimeMillis();
         if (sh != null && sh.picture != null) {
-            host.image(pip, sh.picture, s.px(480));
+            // The channel's panel until this programme's picture comes (at once when it is cached), not the last
+            // programme's picture under the new label; it stays if the picture never comes.
+            pip.setImageBitmap(null);
+            View panel = s.channelPanel(ch[1], 18, 90, false);
+            pipPanel = panel;
+            pipBox.addView(panel, 1, new FrameLayout.LayoutParams(-1, -1));
+            host.image(pip, sh.picture, s.px(480), () -> {
+                if (pipPanel != panel) return;
+                pipBox.removeView(panel);
+                pipPanel = null;
+            });
         } else {
             pip.setImageBitmap(null);
             pipPanel = s.channelPanel(ch[1], 18, 90, false);

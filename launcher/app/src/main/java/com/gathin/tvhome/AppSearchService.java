@@ -1216,7 +1216,8 @@ public class AppSearchService extends AccessibilityService {
                 click(hit);
                 opened = true;
                 deadline = Math.max(deadline, now() + 8_000L);
-                trace("debrid: picked " + hit.getText());
+                // A poster has no words of its own, only its description: that names what was picked.
+                trace("debrid: picked " + (hit.getText() != null ? hit.getText() : hit.getContentDescription()));
                 return true;
             }
             // Nothing of that name after a few seconds: the next way of typing it, with the time to find it.
