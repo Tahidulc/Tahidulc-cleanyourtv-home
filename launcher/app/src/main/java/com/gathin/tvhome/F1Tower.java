@@ -555,11 +555,19 @@ final class F1Tower {
 
     /** The cover over the channel's logo while the tower is up: where the scoreboard's goes for this channel, in its look. */
     private static FrameLayout logoWin;
+    private static LogoMark logoMark;
+
+    /** The picture tag chosen anew on the Scoreboard card or its menu: the cover over the race's logo follows. */
+    static void retag(Context c) {
+        LogoMark m = logoMark;
+        if (m != null && c != null) m.tag(BoardCover.logoTag(c).on(InStep.channel(c)));
+    }
 
     private static void logoCover(Context c, boolean on) {
         if (!on) {
             FrameLayout f = logoWin;
             logoWin = null;
+            logoMark = null;
             if (f != null) {
                 try {
                     f.getContext().getSystemService(WindowManager.class).removeView(f);
@@ -578,7 +586,8 @@ final class F1Tower {
         LogoMark m = new LogoMark(c);
         m.look(BoardCover.logoLook(c));
         m.inset(edge);
-        m.tag(LogoMark.tagOf(channel));
+        m.tag(BoardCover.logoTag(c).on(channel));
+        m.sport("f1");
         m.live(true);
         BoardBug colours = new BoardBug(c);
         colours.style(BoardCover.style(c));
@@ -597,6 +606,7 @@ final class F1Tower {
         try {
             c.getSystemService(WindowManager.class).addView(f, lp);
             logoWin = f;
+            logoMark = m;
         } catch (RuntimeException ignored) {
             // the tower without it
         }

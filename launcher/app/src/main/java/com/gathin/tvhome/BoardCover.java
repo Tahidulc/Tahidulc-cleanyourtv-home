@@ -258,6 +258,22 @@ final class BoardCover {
         setLogoLook(c, all[((logoLook(c).ordinal() + step) % all.length + all.length) % all.length]);
     }
 
+    /** The picture tag on the logo cover: Auto (from the channel's name), none, or one set (HD, UHD, 4K, with HDR or not). */
+    static ChannelMark.Tag logoTag(Context c) {
+        return ChannelMark.Tag.of(prefs(c).getString("tag", ""));
+    }
+
+    static void setLogoTag(Context c, ChannelMark.Tag t) {
+        prefs(c).edit().putString("tag", t.name()).apply();
+        if (mark != null) mark.tag(t.on(InStep.channel(c)));
+        F1Tower.retag(c);
+    }
+
+    static void stepLogoTag(Context c, int step) {
+        ChannelMark.Tag[] all = ChannelMark.Tag.values();
+        setLogoTag(c, all[((logoTag(c).ordinal() + step) % all.length + all.length) % all.length]);
+    }
+
     /** OK held over the match while the board is up: its menu (move it, hide it, the looks, off). */
     static boolean holdMenuOn(Context c) {
         return prefs(c).getBoolean("hold_menu", true);
@@ -1318,7 +1334,7 @@ final class BoardCover {
         stats.colours(l.homeColour, l.awayColour, l.homeOwn, l.awayOwn);
         // The logo's cover in Broadcast: the picture's tag, LIVE while the game is, the scoreboard's colours.
         if (mark != null) {
-            mark.tag(LogoMark.tagOf(InStep.channel(c)));
+            mark.tag(logoTag(c).on(InStep.channel(c)));
             mark.live(l.live);
             mark.boardLook(bug.stripLook());
         }
@@ -2380,10 +2396,10 @@ final class BoardCover {
     }
 
     /** Pure: the menu's lines, as the switches stand. */
-    static String[] menuLines(boolean boardShown, boolean logoOn, String look, String logoLook) {
+    static String[] menuLines(boolean boardShown, boolean logoOn, String look, String logoLook, String tag) {
         return new String[]{"Move and resize", boardShown ? "Hide the scoreboard" : "Show the scoreboard",
                 logoOn ? "Hide the logo's cover" : "Show the logo's cover", "Scoreboard look:  ‹  " + look + "  ›",
-                "Logo cover look:  ‹  " + logoLook + "  ›", "Turn the scoreboard off"};
+                "Logo cover look:  ‹  " + logoLook + "  ›", "Picture tag:  ‹  " + tag + "  ›", "Turn the scoreboard off"};
     }
 
     private static void openMenu() {
@@ -2408,7 +2424,7 @@ final class BoardCover {
         box.addView(head);
         menuRows = new LinearLayout(soft);
         menuRows.setOrientation(LinearLayout.VERTICAL);
-        for (int i = 0; i < 6; i++) {
+        for (int i = 0; i < MENU_LINES; i++) {
             TextView t = new TextView(soft);
             t.setTextColor(0xFFFFFFFF);
             t.setTextSize(TypedValue.COMPLEX_UNIT_PX, 26f * u);
@@ -2444,7 +2460,7 @@ final class BoardCover {
         Context c = app;
         if (menuRows == null || c == null) return;
         float u = sw / 1920f;
-        String[] lines = menuLines(boardShown(c), logoOn(c), style(c).label, logoLook(c).label);
+        String[] lines = menuLines(boardShown(c), logoOn(c), style(c).label, logoLook(c).label, logoTag(c).label);
         for (int i = 0; i < menuRows.getChildCount(); i++) {
             TextView t = (TextView) menuRows.getChildAt(i);
             t.setText(lines[i]);
@@ -2481,7 +2497,7 @@ final class BoardCover {
         }
         if (code == KeyEvent.KEYCODE_DPAD_UP || code == KeyEvent.KEYCODE_DPAD_DOWN) {
             if (down) main().post(() -> {
-                menuAt = Math.max(0, Math.min(5, menuAt + (code == KeyEvent.KEYCODE_DPAD_DOWN ? 1 : -1)));
+                menuAt = Math.max(0, Math.min(MENU_LINES - 1, menuAt + (code == KeyEvent.KEYCODE_DPAD_DOWN ? 1 : -1)));
                 paintMenu();
             });
             return true;
@@ -2493,6 +2509,7 @@ final class BoardCover {
                 if (c == null) return;
                 if (menuAt == 3) stepStyle(c, step);
                 else if (menuAt == 4) stepLogoLook(c, step);
+                else if (menuAt == 5) stepLogoTag(c, step);
                 paintMenu();
             });
             return true;
@@ -2521,6 +2538,9 @@ final class BoardCover {
             case 4:
                 stepLogoLook(c, 1);
                 break;
+            case 5:
+                stepLogoTag(c, 1);
+                break;
             default:
                 closeMenu();
                 stop(c, "switched off over the match");
@@ -2528,6 +2548,9 @@ final class BoardCover {
         }
         paintMenu();
     }
+
+    /** The menu's lines: move, the board, the logo's cover, the two looks, the picture tag, off. */
+    private static final int MENU_LINES = 7;
 
     static boolean menuShowing() {
         return menuWin != null;

@@ -24,12 +24,19 @@ import android.view.View;
 final class LogoMark extends View {
     /** Its looks, as the Scoreboard card names them. */
     enum Look {
+        SIGNATURE("Signature"), MATCHDAY("Matchday"), ROOFLINE("Roofline"), VELOCITY("Velocity"), ROUNDEL("Roundel"),
+        BLOCK("Solid block"), SMOKED("Smoked glass"),
         GLASS("Glass, with the mark"), MARK("Mark only"), PLAIN("Plain"), BROADCAST("Broadcast, see-through"),
         BROADCAST_BOARD("Broadcast, scoreboard colours");
 
         /** Laid out as a channel's own logo: three rows, taller than the others. */
         boolean broadcast() {
             return this == BROADCAST || this == BROADCAST_BOARD;
+        }
+
+        /** Whitebrook Road's own channel looks (ChannelMark draws them). */
+        boolean channel() {
+            return ordinal() <= SMOKED.ordinal();
         }
 
         final String label;
@@ -62,6 +69,9 @@ final class LogoMark extends View {
     private final Path clipBlock = new Path();
     private int inset;
     private boolean outlined;
+    /** The channel looks, drawn when one is chosen; the sport ("f1", else football) for their channel's name. */
+    private ChannelMark channel;
+    private String sport = "";
     /** The ring's dashes, made once for a width of line. */
     private float dashFor = -1;
 
@@ -108,14 +118,22 @@ final class LogoMark extends View {
         String n = t == null ? "" : t;
         if (n.equals(tag)) return;
         tag = n;
-        if (look.broadcast()) invalidate();
+        if (look.broadcast() || look.channel()) invalidate();
+    }
+
+    /** What is on: "f1" for Formula 1, else football (Matchday's channel name). */
+    void sport(String s) {
+        String n = s == null ? "" : s;
+        if (n.equals(sport)) return;
+        sport = n;
+        if (look.channel()) invalidate();
     }
 
     /** Whether the game is live (Broadcast's LIVE). */
     void live(boolean on) {
         if (on == live) return;
         live = on;
-        if (look.broadcast()) invalidate();
+        if (look.broadcast() || look.channel()) invalidate();
     }
 
     /** The scoreboard's look, for Broadcast in its colours. */
@@ -125,12 +143,9 @@ final class LogoMark extends View {
         if (look == Look.BROADCAST_BOARD) invalidate();
     }
 
-    /** Pure: a channel's picture tag from its name: "UHD" for UHD or 4K, "HD" for HD or FHD, else none. */
+    /** Pure: a channel's picture tag from its name (ChannelMark.tagOf): "4K" or "UHD", with " HDR" or not, "HD", or none. */
     static String tagOf(String channel) {
-        String n = channel == null ? "" : " " + channel.toUpperCase(java.util.Locale.ROOT).replaceAll("[^A-Z0-9]+", " ") + " ";
-        if (n.contains(" UHD ") || n.contains(" 4K ")) return "UHD";
-        if (n.contains(" HD ") || n.contains(" FHD ")) return "HD";
-        return "";
+        return ChannelMark.tagOf(channel);
     }
 
     /** Ringed while Move and resize has it. */
@@ -143,6 +158,13 @@ final class LogoMark extends View {
     @Override protected void onDraw(Canvas cv) {
         float w = getWidth(), h = getHeight();
         if (w <= 0 || h <= 0) return;
+        if (look.channel()) {
+            // Whitebrook Road's own channel: its ground over the whole box, the edge the burn-in guard moves in too.
+            if (channel == null) channel = new ChannelMark(getContext());
+            channel.draw(cv, look, 0, 0, w, h, tag, live, sport);
+            ring(cv, w, h, Math.min(w, h) * 0.15f);
+            return;
+        }
         if (look.broadcast()) {
             broadcast(cv, w, h, look == Look.BROADCAST || board == null);
             ring(cv, w, h, Math.min(w, h) * 0.1f);

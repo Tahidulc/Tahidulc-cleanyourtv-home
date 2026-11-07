@@ -32,6 +32,8 @@ final class BoardPanel extends SportPanel {
     private final List<BoardBug> previews = new ArrayList<>();
     /** The logo cover's picker in the scoreboard's colours (it follows the board's look chosen). */
     private final List<LogoMark> boardColoured = new ArrayList<>();
+    /** The logo cover's picker tiles, which show the picture tag chosen. */
+    private final List<LogoMark> markPreviews = new ArrayList<>();
     private Bitmap[] crests;
     private String crestsFor;
 
@@ -183,11 +185,21 @@ final class BoardPanel extends SportPanel {
         for (BoardBug.Style st : BoardBug.Style.values()) looks.add(lookTile(st));
         addLine(132, 4, looks.subList(0, 4));
         addLine(132, 4, looks.subList(4, looks.size()));
-        heading("LOGO COVER LOOK");
-        List<Row> marks = new ArrayList<>();
-        for (LogoMark.Look l : LogoMark.Look.values()) marks.add(markTile(l));
-        addLine(132, 3, marks.subList(0, 3));
-        addLine(150, 3, marks.subList(3, marks.size()));
+        heading("LOGO COVER LOOK: WHITEBROOK ROAD SPORTS");
+        markPreviews.clear();
+        List<Row> channels = new ArrayList<>(), others = new ArrayList<>();
+        for (LogoMark.Look l : LogoMark.Look.values()) (l.channel() ? channels : others).add(markTile(l));
+        addLine(150, 4, channels.subList(0, 4));
+        addLine(150, 4, channels.subList(4, channels.size()));
+        heading("LOGO COVER LOOK: GLASS AND BROADCAST");
+        addLine(132, 3, others.subList(0, 3));
+        addLine(150, 3, others.subList(3, others.size()));
+        heading("PICTURE TAG ON THE LOGO COVER");
+        List<Row> tags = new ArrayList<>();
+        for (ChannelMark.Tag t : ChannelMark.Tag.values()) tags.add(tagTile(t));
+        addLine(84, 7, tags);
+        words("Auto reads it from the channel's name: 4K or UHD (with HDR when it says so), HD, or none. On the Whitebrook Road "
+                + "and Broadcast looks.", 16, 0xB3FFFFFF);
         loadCrests();
 
         heading("KIND TO THE SCREEN");
@@ -245,13 +257,15 @@ final class BoardPanel extends SportPanel {
         LogoMark m = new LogoMark(c);
         m.look(look);
         m.inset(1);
-        // Broadcast: the picture's tag, LIVE, and the scoreboard look chosen for its colours.
-        m.tag("HD");
+        // Broadcast and the channel looks: the picture's tag chosen, LIVE, the scoreboard look chosen for its colours.
+        m.tag(previewTag());
         m.live(true);
+        markPreviews.add(m);
         BoardBug colours = new BoardBug(c);
         colours.style(BoardCover.style(c));
         m.boardLook(colours.stripLook());
-        stage.addView(m, look.broadcast() ? new FrameLayout.LayoutParams(h.px(170), h.px(96), Gravity.CENTER)
+        stage.addView(m, look.channel() ? new FrameLayout.LayoutParams(h.px(190), h.px(90), Gravity.CENTER)
+                : look.broadcast() ? new FrameLayout.LayoutParams(h.px(170), h.px(96), Gravity.CENTER)
                 : new FrameLayout.LayoutParams(h.px(150), h.px(52), Gravity.CENTER));
         t.addView(stage, new LinearLayout.LayoutParams(-1, 0, 1f));
         TextView name = h.text(17, semi, 0xE6FFFFFF);
@@ -265,6 +279,32 @@ final class BoardPanel extends SportPanel {
         r.words = () -> (BoardCover.logoLook(c) == look ? "✓  " : "") + look.label;
         r.ok = () -> BoardCover.setLogoLook(c, look);
         if (look == LogoMark.Look.BROADCAST_BOARD) boardColoured.add(m);
+        return r;
+    }
+
+    /** The tag the pickers show: the one chosen, or on Auto what a UHD channel would show. */
+    private String previewTag() {
+        ChannelMark.Tag t = BoardCover.logoTag(c);
+        return t == ChannelMark.Tag.AUTO ? "UHD" : t.shown;
+    }
+
+    /** One of the picture tags: its name (a tick on the one chosen); OK chooses it, and the looks above show it. */
+    private Row tagTile(ChannelMark.Tag tag) {
+        Row r = new Row();
+        LinearLayout t = new LinearLayout(c);
+        t.setGravity(Gravity.CENTER);
+        TextView name = h.text(18, semi, 0xE6FFFFFF);
+        name.setGravity(Gravity.CENTER);
+        name.setSingleLine(true);
+        t.addView(name, new LinearLayout.LayoutParams(-1, -2));
+        r.view = t;
+        r.sub = name;
+        String label = tag == ChannelMark.Tag.AUTO ? "Auto" : tag.label;
+        r.words = () -> (BoardCover.logoTag(c) == tag ? "✓ " : "") + label;
+        r.ok = () -> {
+            BoardCover.setLogoTag(c, tag);
+            for (LogoMark m : markPreviews) m.tag(previewTag());
+        };
         return r;
     }
 

@@ -583,15 +583,16 @@ public class BoardCoverTest {
 
     @Test
     public void theMenuOverTheMatchSaysWhatEachLineWillDo() {
-        String[] on = BoardCover.menuLines(true, true, "Classic", "Plain");
-        assertEquals(6, on.length);
+        String[] on = BoardCover.menuLines(true, true, "Classic", "Plain", "Auto, from the channel");
+        assertEquals(7, on.length);
         assertEquals("Move and resize", on[0]);
         assertEquals("Hide the scoreboard", on[1]);
         assertEquals("Hide the logo's cover", on[2]);
         assertTrue(on[3].contains("Classic"));
         assertTrue(on[4].contains("Plain"));
-        assertEquals("Turn the scoreboard off", on[5]);
-        String[] off = BoardCover.menuLines(false, false, "Glass", "Mark only");
+        assertTrue(on[5].startsWith("Picture tag") && on[5].contains("Auto"));
+        assertEquals("Turn the scoreboard off", on[6]);
+        String[] off = BoardCover.menuLines(false, false, "Glass", "Mark only", "UHD HDR");
         assertEquals("Show the scoreboard", off[1]);
         assertEquals("Show the logo's cover", off[2]);
     }
@@ -600,7 +601,7 @@ public class BoardCoverTest {
     public void theBroadcastLogosTagIsTheChannelsPicture() {
         assertEquals("HD", LogoMark.tagOf("UK: Sky Sports Main Event HD"));
         assertEquals("UHD", LogoMark.tagOf("UK: Sky Sports Premier League UHD"));
-        assertEquals("UHD", LogoMark.tagOf("TNT Sports 1 4K"));
+        assertEquals("4K", LogoMark.tagOf("TNT Sports 1 4K"));
         assertEquals("HD", LogoMark.tagOf("BBC One FHD"));
         assertEquals("", LogoMark.tagOf("Sky Sports Football"));
         assertEquals("", LogoMark.tagOf(null));
@@ -610,6 +611,51 @@ public class BoardCoverTest {
         assertTrue(LogoMark.Look.BROADCAST_BOARD.broadcast());
         assertFalse(LogoMark.Look.GLASS.broadcast());
         assertEquals(LogoMark.Look.BROADCAST_BOARD, LogoMark.Look.of("BROADCAST_BOARD"));
+    }
+
+    // ---- 4.19: Whitebrook Road's own channel looks, the picture tag ---------------------------------------------------
+
+    @Test
+    public void thePictureTagReadsUhd4kAndHdrFromTheChannel() {
+        assertEquals("UHD HDR", ChannelMark.tagOf("UK: Sky Sports Main Event UHD HDR"));
+        assertEquals("4K HDR", ChannelMark.tagOf("TNT Sports 1 4K HDR"));
+        assertEquals("4K HDR", ChannelMark.tagOf("Sports 4K Dolby Vision"));
+        assertEquals("4K", ChannelMark.tagOf("DAZN 1 2160p"));
+        assertEquals("UHD", ChannelMark.tagOf("Sky Sports F1 UHD"));
+        assertEquals("HD", ChannelMark.tagOf("Sky Sports F1 1080p"));
+        // HDR on an HD channel, or alone, is no picture tag of its own.
+        assertEquals("HD", ChannelMark.tagOf("Sports HD HDR"));
+        assertEquals("", ChannelMark.tagOf("Sports HDR"));
+        assertEquals("", ChannelMark.tagOf(""));
+    }
+
+    @Test
+    public void thePictureTagChosenWinsOverTheChannelsName() {
+        assertEquals("UHD", ChannelMark.Tag.AUTO.on("Sky Sports Football UHD"));
+        assertEquals("", ChannelMark.Tag.NONE.on("Sky Sports Football UHD"));
+        assertEquals("4K HDR", ChannelMark.Tag.K4_HDR.on("Sky Sports Football"));
+        assertEquals("HD", ChannelMark.Tag.HD.on(null));
+        assertEquals(ChannelMark.Tag.AUTO, ChannelMark.Tag.of(""));
+        assertEquals(ChannelMark.Tag.UHD_HDR, ChannelMark.Tag.of("UHD_HDR"));
+        assertEquals(7, ChannelMark.Tag.values().length);
+    }
+
+    @Test
+    public void theChannelLooksAreTheirOwn() {
+        int channel = 0;
+        for (LogoMark.Look l : LogoMark.Look.values()) {
+            if (l.channel()) channel++;
+            assertFalse(l.channel() && l.broadcast());
+            assertEquals(l, LogoMark.Look.of(l.name()));
+        }
+        assertEquals(7, channel);
+        assertTrue(LogoMark.Look.SIGNATURE.channel());
+        assertTrue(LogoMark.Look.SMOKED.channel());
+        assertFalse(LogoMark.Look.GLASS.channel());
+        // An old choice still reads as it was; nothing chosen is Glass, as before.
+        assertEquals(LogoMark.Look.GLASS, LogoMark.Look.of(""));
+        assertEquals("GRAND PRIX", ChannelMark.channelFor("f1"));
+        assertEquals("MATCHDAY", ChannelMark.channelFor(""));
     }
 
     // ---- 4.13: out sideways, a few stats moments a game ----------------------------------------------------------------
