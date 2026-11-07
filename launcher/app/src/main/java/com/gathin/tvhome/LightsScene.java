@@ -21,7 +21,9 @@ import java.util.Locale;
 /**
  * The living room in 3D, as it is: the long wall with the TV on its dark panel and the grey sideboard under it, the
  * ceiling's edge lit by the LED strip along that wall and on across the far wall over its doors (two glazed oak, then a
- * wide clear glass one in white edging), the
+ * wide clear glass one in white edging), the oak slatted wall across from the TV with its own strip along its top, the
+ * grey velvet corner sofa in front of it (its cushions, two mustard and two grey), the long dark coffee table on its
+ * light rug, the
  * lit slot in the ceiling beside it, the row of downlights, the oak floor. It comes up when a light is switched on or
  * off, given a colour or dimmed (SmartPanel), and shows what the lights are doing: the strip lighting along its length
  * as it comes on (and going out back along it), a new colour washing along it, its glow on the walls and the ceiling
@@ -220,13 +222,14 @@ final class LightsScene extends View {
     private final float[] p3 = new float[3];
 
     private void camera(float t) {
-        // From near the room's end, by the sideboard's end, looking down the room; turning a little as it shows.
+        // Turning a little as it shows.
         float sway = (float) Math.sin(t / 2600.0) * 0.07f, dolly = Math.min(1f, t / 1800f);
-        cx = 3.1f - 0.15f * dolly;
-        cy = 1.62f;
-        cz = -0.7f + 0.35f * (dolly * dolly * (3 - 2 * dolly));
-        yaw = 0.36f + sway;
-        pitch = -0.04f;
+        // Up in the corner behind the sofa, looking down the room over it to the TV wall and the doors.
+        cx = 3.75f - 0.12f * dolly;
+        cy = 2.05f;
+        cz = -1.25f + 0.3f * (dolly * dolly * (3 - 2 * dolly));
+        yaw = 0.42f + sway;
+        pitch = -0.2f;
         sinY = (float) Math.sin(yaw);
         cosY = (float) Math.cos(yaw);
         sinP = (float) Math.sin(pitch);
@@ -456,6 +459,10 @@ final class LightsScene extends View {
         box(cv, 0.02f, 0.09f, 0.8f, 2.05f, tz0, tz1, 0xFF0B0C0F, 0xFF16181D, true, sc, glow);
         box(cv, 0.0f, 0.48f, 0.0f, 0.52f, 0.45f, 4.15f, mix(0xFF2B2D31, 0xFF6C6E73, lit), mix(0xFF1E2024, 0xFF55575C, lit), false, sc, 0f);
 
+        // The far side: the oak slatted wall, its own strip along its top, the corner sofa, the coffee table on the rug.
+        slats(cv, lit, glow, sc);
+        furniture(cv, lit, glow, sc, h);
+
         // The strip itself, lit along its length (a new colour running along it); the slot; the downlights.
         float sl = strip.on ? strip.level : 0f;
         float len1 = D + 3f, len2 = W, total = len1 + len2;
@@ -508,6 +515,107 @@ final class LightsScene extends View {
                 }
             }
         }
+    }
+
+    // ---- the sofa side (from the family's photos) -----------------------------------------------------------------
+
+    /** The slatted oak wall behind the sofa, from z 0 to 3.7 on the room's right-hand wall, dark between its slats. */
+    private void slats(Canvas cv, float lit, float glow, int colour) {
+        float x = W - 0.02f, z0 = 0.05f, z1 = 3.7f, top = H - 0.02f;
+        paint(cv, mix(0xFF0C0A08, 0xFF2A211A, lit), x, 0, z0, x, 0, z1, x, top, z1, x, top, z0);
+        int oak = mix(0xFF3B2516, 0xFFB57A4C, 0.2f + lit * 0.8f);
+        oak = mix(oak, colour, glow * 0.12f);
+        for (float z = z0 + 0.02f; z < z1 - 0.03f; z += 0.08f)
+            paint(cv, oak, x - 0.025f, 0, z, x - 0.025f, 0, z + 0.045f, x - 0.025f, top, z + 0.045f, x - 0.025f, top, z);
+        // Its strip's glow down the top of the slats.
+        wash(cv, colour, Math.min(1f, glow * 1.1f), x - 0.03f, top, z0, x - 0.03f, top, z1, 0, -0.9f, 0);
+        tube(cv, colour, glow, 1f, x - 0.04f, top - 0.02f, z0, x - 0.04f, top - 0.02f, z1);
+    }
+
+    /** One soft box, its faces shaded (top lightest): what the sofa, its cushions and the table are made of. */
+    private static final class Block {
+        float x0, x1, y0, y1, z0, z1;
+        int colour;
+        float round;
+
+        Block(float x0, float x1, float y0, float y1, float z0, float z1, int colour, float round) {
+            this.x0 = x0; this.x1 = x1; this.y0 = y0; this.y1 = y1; this.z0 = z0; this.z1 = z1;
+            this.colour = colour;
+            this.round = round;
+        }
+    }
+
+    private final java.util.ArrayList<Block> blocks = new java.util.ArrayList<>();
+
+    /** The corner sofa (grey velvet), its cushions (two mustard, two grey), the long coffee table and the rug under them. */
+    private void furniture(Canvas cv, float lit, float glow, int colour, int h) {
+        float L = 0.18f + lit * 0.82f;
+        int velvet = mix(mix(0xFF2C2E33, 0xFF8E9096, L), colour, glow * 0.1f);
+        int velvetTop = mix(velvet, 0xFFFFFFFF, 0.12f), velvetDark = mix(velvet, 0xFF000000, 0.25f);
+        int mustard = mix(0xFF4A3A0E, 0xFFC9A030, L), grey = mix(0xFF26282C, 0xFF6C6F76, L);
+        int concrete = mix(0xFF1E1F21, 0xFF55575A, L), black = 0xFF0E0F11;
+        // The rug, light and mottled.
+        paint(cv, mix(0xFF4A4B4E, 0xFFD9D8D3, L), W - 3.25f, 0.003f, 0.55f, W - 0.85f, 0.003f, 0.55f, W - 0.85f, 0.003f, 3.75f, W - 3.25f, 0.003f, 3.75f);
+        blocks.clear();
+        float bx = W - 0.08f, depth = 0.98f, seat = 0.44f, back = 0.92f, bt = 0.24f;
+        // The long section along the slats, its arm at the far end; the corner and the chaise along the near side.
+        float za = 0.15f, zb = 3.35f, xc = W - 2.75f;
+        blocks.add(new Block(bx - depth, bx, 0.08f, seat - 0.14f, za, zb, velvetDark, 0f));
+        blocks.add(new Block(bx - bt, bx, 0.08f, back - 0.18f, za, zb, velvetDark, 0f));
+        blocks.add(new Block(bx - depth, bx, 0.08f, 0.64f, zb, zb + 0.24f, velvet, 0.1f));
+        blocks.add(new Block(xc, bx - depth, 0.08f, seat - 0.14f, za, za + depth, velvetDark, 0f));
+        blocks.add(new Block(xc, bx - depth, 0.08f, back - 0.18f, za, za + bt, velvetDark, 0f));
+        // Seat cushions: three along, two on the chaise.
+        float seg = (zb - za - depth) / 3f;
+        for (int i = 0; i < 3; i++) {
+            float s0 = za + depth + i * seg;
+            blocks.add(new Block(bx - depth + 0.02f, bx - bt, seat - 0.15f, seat, s0 + 0.01f, s0 + seg - 0.01f, velvet, 0.06f));
+            blocks.add(new Block(bx - bt - 0.16f, bx - bt + 0.02f, seat, back - 0.02f, s0 + 0.02f, s0 + seg - 0.02f, velvet, 0.08f));
+        }
+        float cseg = (bx - depth - xc) / 2f;
+        for (int i = 0; i < 2; i++) {
+            float s0 = xc + i * cseg;
+            blocks.add(new Block(s0 + 0.01f, s0 + cseg - 0.01f, seat - 0.15f, seat, za + bt, za + depth, velvet, 0.06f));
+            blocks.add(new Block(s0 + 0.02f, s0 + cseg - 0.02f, seat, back - 0.02f, za + bt - 0.02f, za + bt + 0.16f, velvet, 0.08f));
+        }
+        // The corner seat.
+        blocks.add(new Block(bx - depth + 0.02f, bx - bt, seat - 0.15f, seat, za + bt, za + depth, velvet, 0.06f));
+        // The cushions: mustard on the long section, grey in the corner.
+        blocks.add(new Block(bx - bt - 0.28f, bx - bt - 0.1f, seat + 0.02f, seat + 0.44f, za + depth + 0.2f, za + depth + 0.62f, mustard, 0.12f));
+        blocks.add(new Block(bx - bt - 0.28f, bx - bt - 0.1f, seat + 0.02f, seat + 0.44f, zb - 0.55f, zb - 0.13f, mustard, 0.12f));
+        blocks.add(new Block(bx - bt - 0.3f, bx - bt - 0.12f, seat + 0.02f, seat + 0.46f, za + bt + 0.08f, za + bt + 0.52f, grey, 0.12f));
+        blocks.add(new Block(xc + 0.3f, xc + 0.74f, seat + 0.02f, seat + 0.46f, za + bt + 0.14f, za + bt + 0.32f, grey, 0.12f));
+        // The long coffee table, concrete-dark on black legs, along the sofa.
+        float tx0 = W - 2.05f, tx1 = W - 1.45f, tz0 = 1.35f, tz1 = 2.95f, ty = 0.44f;
+        blocks.add(new Block(tx0, tx1, ty - 0.04f, ty, tz0, tz1, concrete, 0f));
+        for (float[] leg : new float[][]{{tx0 + 0.04f, tz0 + 0.04f}, {tx1 - 0.09f, tz0 + 0.04f}, {tx0 + 0.04f, tz1 - 0.09f}, {tx1 - 0.09f, tz1 - 0.09f}})
+            blocks.add(new Block(leg[0], leg[0] + 0.05f, 0f, ty - 0.04f, leg[1], leg[1] + 0.05f, black, 0f));
+        // Farthest first.
+        blocks.sort((a, b) -> Float.compare(far(b), far(a)));
+        for (Block k : blocks) block(cv, k);
+    }
+
+    private float far(Block k) {
+        float x = Math.max(k.x0, Math.min(cx, k.x1)), y = Math.max(k.y0, Math.min(cy, k.y1)), z = Math.max(k.z0, Math.min(cz, k.z1));
+        float mx = (k.x0 + k.x1) / 2f, my = (k.y0 + k.y1) / 2f, mz = (k.z0 + k.z1) / 2f;
+        float dx = (x + mx) / 2f - cx, dy = (y + my) / 2f - cy, dz = (z + mz) / 2f - cz;
+        return dx * dx + dy * dy + dz * dz;
+    }
+
+    /** A block's faces the camera sees: its sides darker, its top lighter, soft-edged where it is a cushion. */
+    private void block(Canvas cv, Block k) {
+        int c = k.colour, side = mix(c, 0xFF000000, 0.22f), end = mix(c, 0xFF000000, 0.35f), top = mix(c, 0xFFFFFFFF, 0.1f);
+        fill.setPathEffect(k.round > 0 ? new android.graphics.CornerPathEffect(Math.max(1f, focal * k.round / Math.max(1f, dist(k)))) : null);
+        if (cz < k.z0) paint(cv, end, k.x0, k.y0, k.z0, k.x1, k.y0, k.z0, k.x1, k.y1, k.z0, k.x0, k.y1, k.z0);
+        if (cz > k.z1) paint(cv, end, k.x0, k.y0, k.z1, k.x1, k.y0, k.z1, k.x1, k.y1, k.z1, k.x0, k.y1, k.z1);
+        if (cx < k.x0) paint(cv, side, k.x0, k.y0, k.z0, k.x0, k.y0, k.z1, k.x0, k.y1, k.z1, k.x0, k.y1, k.z0);
+        if (cx > k.x1) paint(cv, side, k.x1, k.y0, k.z0, k.x1, k.y0, k.z1, k.x1, k.y1, k.z1, k.x1, k.y1, k.z0);
+        if (cy > k.y1) paint(cv, top, k.x0, k.y1, k.z0, k.x1, k.y1, k.z0, k.x1, k.y1, k.z1, k.x0, k.y1, k.z1);
+        fill.setPathEffect(null);
+    }
+
+    private float dist(Block k) {
+        return (float) Math.sqrt(far(k));
     }
 
     /** A glazed oak door in the far wall from x, wide wd: its frame and its dark panes. */
