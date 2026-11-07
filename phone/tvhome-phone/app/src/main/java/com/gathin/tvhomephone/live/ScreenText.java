@@ -22,7 +22,10 @@ final class ScreenText {
         }
     }
 
-    private static final Pattern CLOCK = Pattern.compile("(?<![\\d:.])(\\d{1,3})\\s?[:.]\\s?([0-5]\\d)(?![\\d:])");
+    // "[.:]", never "[:.]": on a phone (ICU's regular expressions) a class opening "[:" with a ":]" later in the
+    // pattern, as "(?![\\d:])" has, is read as a named class ("[:alpha:]") and the pattern fails to compile, which
+    // stopped the app the first time the channel's scoreboard was read (4.10). Desktop Java takes either.
+    private static final Pattern CLOCK = Pattern.compile("(?<![\\d:.])(\\d{1,3})\\s?[.:]\\s?([0-5]\\d)(?![\\d:])");
     private static final Pattern ADDED = Pattern.compile("\\+\\s?(\\d{1,2})(?!\\d)");
     private static final Pattern LAP = Pattern.compile("(?i)\\bLAP\\s*(\\d{1,2})\\s*(?:/|OF)\\s*(\\d{1,2})");
     private static final Pattern NUMBER = Pattern.compile("(?<!\\d)(\\d{1,2})(?!\\d)");

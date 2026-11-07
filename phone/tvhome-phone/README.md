@@ -170,6 +170,11 @@ scoreboard's size in its own corner (Small, Medium, Large, Extra large). Keep th
 first, in the options and in Settings): they no longer move a pixel or two against burn-in (they still dim after five
 minutes without a change), and once over the channel's own scoreboard and logo they stay there while the game is on.
 
+The scoreboard no longer closes the app (4.11): the first time the player read the channel's own scoreboard (its clock
+and score), one of the patterns it reads them with failed to start on the phone, as a phone reads such patterns more
+strictly than a computer does, and the app stopped. It now starts on any phone, and the app's tests read every pattern
+in it for that mistake, so it cannot come back.
+
 Subtitles (CC in the film's player): the film's or episode's own, from your playlist's stream, come first, in the
 languages you choose (Settings, Subtitles, in order). When it has none, OpenSubtitles.com is looked in by the title's
 TMDB id (the series' with its season and episode), best first: your languages, the ones that fit the copy playing (its
