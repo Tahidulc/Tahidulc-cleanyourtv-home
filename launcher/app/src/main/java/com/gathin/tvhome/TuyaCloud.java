@@ -37,6 +37,8 @@ final class TuyaCloud {
         String colourCode, modeCode;
         boolean online = true, on;
         int level = -1, min = 10, max = 1000;
+        /** Its colour now (0xRRGGBB with full alpha) when it is in colour ("work_mode" colour); 0 when white or unknown. */
+        int rgb;
     }
 
     private static final String[] SWITCHES = {"switch_led", "switch_led_1", "switch_1", "switch"};
@@ -177,6 +179,27 @@ final class TuyaCloud {
         return o;
     }
 
+    /** Pure: Tuya's colour value ({"h":0-360,"s":..,"v":..}; 0-1000, or 0-255 for "colour_data") as RGB; 0 if unreadable. */
+    static int rgbOf(String value, String colourCode) {
+        try {
+            JSONObject o = new JSONObject(value);
+            float top = "colour_data".equals(colourCode) ? 255f : 1000f;
+            return rgbOf((float) o.optDouble("h", 0), (float) (o.optDouble("s", 0) / top));
+        } catch (Exception e) {
+            return 0;
+        }
+    }
+
+    /** Pure: a hue (0-360) and saturation (0-1) as RGB at full value (its brightness is the light's level, apart). */
+    static int rgbOf(float hue, float sat) {
+        hue = ((hue % 360f) + 360f) % 360f;
+        float c = Math.max(0f, Math.min(1f, sat)), x = c * (1 - Math.abs((hue / 60f) % 2 - 1)), m = 1 - c;
+        float r, g, b;
+        if (hue < 60) { r = c; g = x; b = 0; } else if (hue < 120) { r = x; g = c; b = 0; } else if (hue < 180) { r = 0; g = c; b = x; }
+        else if (hue < 240) { r = 0; g = x; b = c; } else if (hue < 300) { r = x; g = 0; b = c; } else { r = c; g = 0; b = x; }
+        return 0xFF000000 | (Math.round((r + m) * 255) << 16) | (Math.round((g + m) * 255) << 8) | Math.round((b + m) * 255);
+    }
+
     /** A colour bulb in this colour, full and on; a white-only light at full brightness. */
     static boolean colour(Context c, Light l, int rgb) {
         try {
@@ -231,6 +254,10 @@ final class TuyaCloud {
         for (String s : SWITCHES) if (v.get(s) instanceof Boolean) { l.switchCode = s; l.on = (Boolean) v.get(s); break; }
         for (String k : COLOURS) if (v.containsKey(k)) { l.colourCode = k; break; }
         if (v.containsKey("work_mode")) l.modeCode = "work_mode";
+        l.rgb = 0;
+        if (l.colourCode != null && (l.modeCode == null || "colour".equals(String.valueOf(v.get("work_mode"))))) {
+            l.rgb = rgbOf(String.valueOf(v.get(l.colourCode)), l.colourCode);
+        }
         for (String b : BRIGHTS) {
             if (!(v.get(b) instanceof Number)) continue;
             l.brightCode = b;

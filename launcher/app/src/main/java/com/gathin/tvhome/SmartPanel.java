@@ -62,6 +62,10 @@ final class SmartPanel {
     private LinearLayout lightBox, body;
     private TextView source, levelName, levelValue;
     private Slider slider;
+    /** The colours a colour light can be given, in a row under the brightness. */
+    private LinearLayout swatches;
+    private final List<View> swatchViews = new ArrayList<>();
+    static final int[] COLOURS = {0xFFFFD9A8, 0xFFFF2A2A, 0xFFFF8A1E, 0xFFFFD21E, 0xFF2ED158, 0xFF1ED6E6, 0xFF2E6BFF, 0xFF9B3DFF, 0xFFFF4FB8};
     private boolean open;
     private final List<Light> lights = new ArrayList<>();
     private static List<TuyaCloud.Light> lastTuya;
@@ -200,10 +204,30 @@ final class SmartPanel {
         sl.topMargin = h.px(6);
         body.addView(slider, sl);
 
+        // The colour of the light picked (a colour light's): a swatch each, OK gives it.
+        swatches = new LinearLayout(h.a);
+        swatches.setClipChildren(false);
+        swatchViews.clear();
+        for (int i = 0; i < COLOURS.length; i++) {
+            int rgb = COLOURS[i];
+            FrameLayout sw = new FrameLayout(h.a);
+            View dot = new View(h.a);
+            dot.setBackground(h.fill(19, rgb));
+            sw.addView(dot, new FrameLayout.LayoutParams(h.px(38), h.px(38), Gravity.CENTER));
+            sw.setTag((Runnable) () -> setColour(rgb));
+            LinearLayout.LayoutParams wl = new LinearLayout.LayoutParams(0, h.px(52), 1f);
+            if (i > 0) wl.leftMargin = h.px(6);
+            swatches.addView(sw, wl);
+            swatchViews.add(sw);
+        }
+        LinearLayout.LayoutParams cwl = new LinearLayout.LayoutParams(-1, -2);
+        cwl.topMargin = h.px(12);
+        body.addView(swatches, cwl);
+
         info();
 
         TextView hint = h.text(15, h.regular, 0x8CFFFFFF);
-        Keys.set(hint, "OK switches a light on or off  ·  ◀ ▶ on the bar dims it");
+        Keys.set(hint, "OK switches a light on or off  ·  ◀ ▶ on the bar dims it  ·  a colour under it");
         LinearLayout.LayoutParams hl = new LinearLayout.LayoutParams(-2, -2);
         hl.topMargin = h.px(20);
         body.addView(hint, hl);
@@ -624,6 +648,7 @@ final class SmartPanel {
         List<View> sliderRow = new ArrayList<>();
         sliderRow.add(slider);
         rows.add(sliderRow);
+        rows.add(new ArrayList<>(swatchViews));
         if (picked == null || !lights.contains(picked)) picked = lights.isEmpty() ? null : lights.get(0);
         showLevel();
     }
@@ -712,13 +737,67 @@ final class SmartPanel {
         slider.set(lv, dims);
     }
 
+    // ---- the room in 3D (LightsScene) -------------------------------------------------------------------------------
+
+    /** The lights as the 3D room shows them: the strip, the slot and the downlights, from the lights by their names. */
+    private LightsScene.Glow[] glows() {
+        LightsScene.Glow[] g = {new LightsScene.Glow(), new LightsScene.Glow(), new LightsScene.Glow()};
+        g[LightsScene.STRIP].colour = 0xFF2E6BFF;
+        g[LightsScene.SLOT].colour = 0xFF4FA8FF;
+        for (Light l : lights) {
+            boolean colour = l.t != null && l.t.colourCode != null;
+            int k = LightsScene.groupOf(l.t != null ? l.name : "downlights", colour);
+            LightsScene.Glow x = g[k];
+            if (l.t != null && l.t.rgb != 0) x.colour = l.t.rgb;
+            else if (!colour && k == LightsScene.DOWN) x.colour = LightsScene.WARM;
+            if (l.known && l.on) {
+                float lv = l.level > 0 ? l.level / 100f : 1f;
+                x.level = x.on ? Math.max(x.level, lv) : lv;
+                x.on = true;
+            }
+        }
+        return g;
+    }
+
+    /** The room, the light's change in it: title what was done, line its colour and brightness. */
+    private void scene(LightsScene.Glow[] before, Light l, String title) {
+        if (l.t == null || !LightsScene.wanted(h.a)) return;
+        String colour = l.t.rgb != 0 ? LightsScene.colourName(l.t.rgb) : l.t.colourCode != null ? "White" : "";
+        String line = !l.on ? "Off" : (colour.isEmpty() ? "" : colour + " · ") + (l.level > 0 ? l.level + "%" : "On");
+        LightsScene.show(h.root, before, glows(), title, line);
+    }
+
+    /** A colour on a swatch: the light picked given it, shown at once (and in the room), then sent. */
+    private void setColour(int rgb) {
+        Light l = picked;
+        if (l == null || !l.online) return;
+        if (l.t == null || l.t.colourCode == null) {
+            source.setText(l.name + " is white only");
+            return;
+        }
+        LightsScene.Glow[] before = glows();
+        l.t.rgb = rgb;
+        l.on = true;
+        l.known = true;
+        look(l);
+        showLevel();
+        scene(before, l, l.name + " · " + LightsScene.colourName(rgb));
+        h.io.execute(() -> {
+            boolean ok = TuyaCloud.colour(h.a, l.t, rgb);
+            if (ok) settle(l);
+            else h.main.post(() -> source.setText("Tuya didn't take that"));
+        });
+    }
+
     /** OK on a tile: the light switched the other way, shown at once, then sent (and Tuya's answer shown). */
     private void toggle(Light l) {
         if (!l.online) return;
+        LightsScene.Glow[] before = glows();
         boolean to = !(l.known && l.on);
         l.on = to;
         l.known = true;
         look(l);
+        scene(before, l, l.name + (to ? " on" : " off"));
         picked = l;
         showLevel();
         if (l.t != null) {
@@ -737,11 +816,14 @@ final class SmartPanel {
     private void setLevel(int level) {
         Light l = picked;
         if (l == null || !l.online) return;
+        LightsScene.Glow[] before = glows();
+        int was = l.known && l.on ? l.level : 0;
         l.level = level;
         l.on = true;
         l.known = true;
         look(l);
         showLevel();
+        scene(before, l, l.name + " " + level + "%" + (level > was ? "  ▲" : level < was ? "  ▼" : ""));
         if (l.t != null) {
             h.io.execute(() -> {
                 boolean ok = TuyaCloud.level(h.a, l.t, level);
@@ -835,7 +917,7 @@ final class SmartPanel {
         return r.get(col);
     }
 
-    /** The focus: a white ring on the tile, a little larger; the bar draws its own. */
+    /** The focus: a white ring on the tile, a little larger; the bar draws its own. A swatch's ring is round. */
     private void paint() {
         View on = current();
         for (List<View> r : rows) {
