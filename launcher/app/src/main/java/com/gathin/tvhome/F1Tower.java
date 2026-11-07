@@ -413,6 +413,7 @@ final class F1Tower {
             return;
         }
         host = win;
+        logoCover(c, true);
         if (!InputKeyService.running && !takeKeys) AppSearchService.keysFor("f1", true);
         if (takeKeys) {
             // Without the key helper (the TCL) the tower takes the remote's keys itself while it shows.
@@ -540,6 +541,7 @@ final class F1Tower {
 
     static void close() {
         main.removeCallbacks(reread);
+        logoCover(app, false);
         if (host != null && !InputKeyService.running) AppSearchService.keysFor("f1", false);
         FrameLayout v = host;
         host = null;
@@ -549,6 +551,55 @@ final class F1Tower {
         card.animate().translationX(-px(380)).setDuration(260).withLayer().withEndAction(() -> {
             try { v.getContext().getSystemService(WindowManager.class).removeView(v); } catch (RuntimeException ignored) { }
         }).start();
+    }
+
+    /** The cover over the channel's logo while the tower is up: where the scoreboard's goes for this channel, in its look. */
+    private static FrameLayout logoWin;
+
+    private static void logoCover(Context c, boolean on) {
+        if (!on) {
+            FrameLayout f = logoWin;
+            logoWin = null;
+            if (f != null) {
+                try {
+                    f.getContext().getSystemService(WindowManager.class).removeView(f);
+                } catch (RuntimeException ignored) {
+                    // gone already
+                }
+            }
+            return;
+        }
+        if (c == null || logoWin != null || !BoardCover.logoOn(c)) return;
+        android.util.DisplayMetrics dm = c.getResources().getDisplayMetrics();
+        int sw = Math.max(dm.widthPixels, dm.heightPixels), sh = Math.min(dm.widthPixels, dm.heightPixels);
+        String channel = InStep.channel(c);
+        BoardPlace p = BoardPlace.get(c, channel);
+        int edge = Math.max(2, Math.round(2f * sw / 1920f));
+        LogoMark m = new LogoMark(c);
+        m.look(BoardCover.logoLook(c));
+        m.inset(edge);
+        m.tag(LogoMark.tagOf(channel));
+        m.live(true);
+        BoardBug colours = new BoardBug(c);
+        colours.style(BoardCover.style(c));
+        m.boardLook(colours.stripLook());
+        int w = Math.round(p.lw * sw) + 2 * edge, h = Math.round(p.lh * sh) + 2 * edge;
+        FrameLayout f = new FrameLayout(c);
+        f.addView(m, new FrameLayout.LayoutParams(w, h));
+        WindowManager.LayoutParams lp = new WindowManager.LayoutParams(w, h, WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
+                        | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN | WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
+                PixelFormat.TRANSLUCENT);
+        lp.gravity = Gravity.TOP | Gravity.START;
+        lp.x = Math.round(p.lx * sw) - edge;
+        lp.y = Math.round(p.ly * sh) - edge;
+        lp.setTitle("F1Tower logo");
+        try {
+            c.getSystemService(WindowManager.class).addView(f, lp);
+            logoWin = f;
+        } catch (RuntimeException ignored) {
+            // the tower without it
+        }
     }
 
     // ---- small helpers --------------------------------------------------------------------------------------------

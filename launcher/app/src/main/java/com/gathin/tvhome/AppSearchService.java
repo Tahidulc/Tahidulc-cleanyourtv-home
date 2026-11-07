@@ -968,6 +968,8 @@ public class AppSearchService extends AccessibilityService {
     }
 
     private boolean keys(android.view.KeyEvent event) {
+        // The overlays button over a match: OK held turns them on (OverlayPrompt).
+        if (OverlayPrompt.key(event)) return true;
         // OK at the kick-off on screen, while the card asking for it is up (InStepCard); the replay's bar.
         if (InStepCard.key(event) || Replay.key(event)) return true;
         if (HalfTimeBreak.key(event)) return true;
@@ -2573,6 +2575,22 @@ public class AppSearchService extends AccessibilityService {
     @Override public void onAccessibilityEvent(AccessibilityEvent event) {
         if (target != null || System.currentTimeMillis() - lastLook < 300) return;
         lastLook = System.currentTimeMillis();
+        CharSequence from = event == null ? null : event.getPackageName();
+        if (from != null && getString(R.string.scores_open_package).contentEquals(from)) {
+            // The player's screen: its channel banner, read for the channel watched (OverlayPrompt), at most every second.
+            if (lastLook - lastPlayerLook < 1_000L) return;
+            lastPlayerLook = lastLook;
+            try {
+                AccessibilityNodeInfo top = getRootInActiveWindow();
+                if (top == null) return;
+                java.util.List<String> texts = new java.util.ArrayList<>();
+                texts(top, 0, texts);
+                OverlayPrompt.seen(this, texts);
+            } catch (RuntimeException ignored) {
+                // read again at its next change
+            }
+            return;
+        }
         AccessibilityNodeInfo root = getRootInActiveWindow();
         if (root == null || root.getPackageName() == null || !"com.debridstream.tv".contentEquals(root.getPackageName())) return;
         String title = highlighted(root, 0);
@@ -2595,6 +2613,20 @@ public class AppSearchService extends AccessibilityService {
         org.json.JSONArray titles = new org.json.JSONArray(seen);
         getSharedPreferences(CONTINUE, MODE_PRIVATE).edit().putString("titles", titles.toString())
                 .putLong("at", System.currentTimeMillis()).apply();
+    }
+
+    /** When the player's screen was last read for its channel. */
+    private long lastPlayerLook;
+
+    /** The words on a screen, at most 60 of them, each short (a banner's channel, its programme, its times). */
+    private static void texts(AccessibilityNodeInfo n, int depth, java.util.List<String> out) {
+        if (n == null || depth > 14 || out.size() >= 60) return;
+        CharSequence t = n.getText();
+        if (t != null) {
+            String s = t.toString().trim();
+            if (!s.isEmpty() && s.length() <= 80) out.add(s);
+        }
+        for (int i = 0; i < n.getChildCount() && out.size() < 60; i++) texts(n.getChild(i), depth + 1, out);
     }
 
     private void loadSeen() {

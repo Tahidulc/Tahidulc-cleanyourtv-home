@@ -162,12 +162,18 @@ final class BoardPanel extends SportPanel {
                 : "Off · a held key repeats in the app as usual";
         hold.ok = () -> BoardCover.setHoldMenuOn(c, !BoardCover.holdMenuOn(c));
         Row reset = row("Standard places", false);
-        reset.words = () -> "Scoreboard top left, logo's cover top right" + (channel.isEmpty() ? "" : ", for " + channel);
+        reset.words = () -> (BoardPlace.preset(BoardPlace.broadcaster(channel)) != null ? "Where the channel's own are"
+                : "Scoreboard top left, logo's cover top right") + (channel.isEmpty() ? "" : ", for " + channel);
         reset.ok = () -> {
             BoardPlace.reset(c, channel);
             android.widget.Toast.makeText(c, "Back to the standard places", android.widget.Toast.LENGTH_SHORT).show();
         };
         add(hold, reset);
+        Row ask = row("Ask over a match", true);
+        ask.on = () -> OverlayPrompt.on(c);
+        ask.words = () -> OverlayPrompt.on(c) ? "A match or F1 on: hold OK on the button for the overlays" : "Off";
+        ask.ok = () -> OverlayPrompt.setOn(c, !OverlayPrompt.on(c));
+        add(ask);
 
         // Each look drawn as it is, the game chosen above in it: the arrows go along, OK chooses.
         heading("SCOREBOARD LOOK");

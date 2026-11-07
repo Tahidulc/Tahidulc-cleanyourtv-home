@@ -1321,6 +1321,11 @@ final class BoardCover {
     }
 
     /** Whether the channel app has the screen to itself: not Home, the screensaver, another of the launcher's frames. */
+    /** Whether the player has the screen with nothing else of the launcher's up over it (the overlays button asks then). */
+    static boolean playerUp(Context c) {
+        return canShow(c);
+    }
+
     private static boolean canShow(Context c) {
         if (GoalWatchService.homeInFront || GoalWatchService.dreamingNow()) return false;
         PowerManager pm = c.getSystemService(PowerManager.class);

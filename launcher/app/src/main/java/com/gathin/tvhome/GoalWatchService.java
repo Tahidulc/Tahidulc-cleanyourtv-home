@@ -2092,6 +2092,8 @@ public class GoalWatchService extends Service {
                 for (ScoresTicker.Game g : games) if (g.id != null) latest.put(g.id, g);
                 // The scoreboard over the channel (on by hand for one game): each reading kept with when it was seen.
                 BoardCover.read(this, games);
+                // A match or F1 being watched with its overlays off: the button that turns them on (OK held).
+                OverlayPrompt.check(this, games, live);
                 for (ScoresTicker.Game g : games) {
                     live |= g.state == 0;
                     if (playerOnly.contains(g.id)) {

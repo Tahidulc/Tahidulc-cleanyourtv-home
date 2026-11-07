@@ -9,10 +9,12 @@ import java.util.Locale;
  * Where the scoreboard over the channel's own (BoardCover) and the cover over the channel's logo sit, and how big:
  * each as fractions of the screen, so a place holds whatever the TV's resolution. The scoreboard by its left, top and
  * height (its width follows from its height, as its letters and crests need it); the cover by its left, top, width
- * and height. Kept a channel at a time in "board_places", set by Move and resize: a channel with no places of its own
- * takes the last ones set on any channel (one broadcaster's channels share a layout), else the standard ones, where
- * most broadcasters put theirs: the scoreboard top left, the channel's logo top right. The scoreboard's width can be
- * kept apart from its height (Move and resize's Height): it then fills that box. The sums are pure, for the tests.
+ * and height. Kept a channel at a time in "board_places", set by Move and resize, and for its broadcaster too (one
+ * broadcaster's channels share a layout): a channel with no places of its own takes its broadcaster's as last set, else
+ * where that broadcaster is known to put its own (preset: the TV cannot see the picture under TiviMate to find them),
+ * else the last set on any channel, else the standard ones, where most broadcasters put theirs: the scoreboard top
+ * left, the channel's logo top right. The scoreboard's width can be kept apart from its height (Move and resize's
+ * Height): it then fills that box. The sums are pure, for the tests.
  */
 final class BoardPlace {
     /** The scoreboard: its left, top and height, and its width when kept apart from its height (0: as its words need). */
@@ -137,23 +139,87 @@ final class BoardPlace {
         return "c." + InStep.base(channel);
     }
 
-    /** The channel's own places, else the last set on any channel, else the standard ones. */
+    /**
+     * Pure: the broadcaster a channel is from, by its name ("sky", "tnt", "prime", "premier", "dazn", "bein", "espn");
+     * "" for one not known.
+     */
+    static String broadcaster(String channel) {
+        String n = channel == null ? "" : channel.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]+", " ");
+        if (n.contains("sky sports") || n.contains("skysports") || n.contains("sky sport ")) return "sky";
+        if (n.contains("tnt sport") || n.contains("bt sport")) return "tnt";
+        if (n.contains("amazon") || n.contains("prime video")) return "prime";
+        if (n.contains("premier sports")) return "premier";
+        if (n.contains("dazn")) return "dazn";
+        if (n.contains("bein")) return "bein";
+        if (n.contains("espn")) return "espn";
+        return "";
+    }
+
+    /**
+     * Pure: where a broadcaster puts its own scoreboard and logo, as best known (null when not known): Sky Sports' score
+     * bar top left and its logo (with LIVE under it) top right; TNT Sports' and Amazon's alike, a little narrower.
+     */
+    static BoardPlace preset(String broadcaster) {
+        BoardPlace p = standard();
+        switch (broadcaster == null ? "" : broadcaster) {
+            case "sky":
+                p.bx = 0.04f;
+                p.by = 0.043f;
+                p.bh = 0.047f;
+                p.lx = 0.85f;
+                p.ly = 0.038f;
+                p.lw = 0.115f;
+                p.lh = 0.095f;
+                return p;
+            case "tnt":
+            case "prime":
+            case "premier":
+            case "dazn":
+            case "bein":
+            case "espn":
+                p.bx = 0.042f;
+                p.by = 0.045f;
+                p.bh = 0.044f;
+                p.lx = 0.86f;
+                p.ly = 0.042f;
+                p.lw = 0.1f;
+                p.lh = 0.065f;
+                return p;
+            default:
+                return null;
+        }
+    }
+
+    /**
+     * The channel's own places, else its broadcaster's as last set, else where its broadcaster is known to put its own,
+     * else the last set on any channel, else the standard ones.
+     */
     static BoardPlace get(Context c, String channel) {
         SharedPreferences p = prefs(c);
         BoardPlace own = decode(p.getString(key(channel), null));
         if (own != null) return own;
+        String b = broadcaster(channel);
+        if (!b.isEmpty()) {
+            BoardPlace theirs = decode(p.getString("b." + b, null));
+            if (theirs != null) return theirs;
+            BoardPlace known = preset(b);
+            if (known != null) return known;
+        }
         BoardPlace last = decode(p.getString("last", null));
         return last != null ? last : standard();
     }
 
-    /** Kept for the channel, and for every channel with no places of its own. */
+    /** Kept for the channel, for its broadcaster's other channels, and for every channel with no places of its own. */
     static void put(Context c, String channel, BoardPlace b) {
-        String s = b.encode();
-        prefs(c).edit().putString(key(channel), s).putString("last", s).apply();
+        String s = b.encode(), by = broadcaster(channel);
+        SharedPreferences.Editor e = prefs(c).edit().putString(key(channel), s).putString("last", s);
+        if (!by.isEmpty()) e.putString("b." + by, s);
+        e.apply();
     }
 
-    /** The channel (and every channel with no places of its own) back to the standard places. */
+    /** The channel (its broadcaster's, and every channel with no places of its own) back to where its broadcaster puts its own, else the standard places. */
     static void reset(Context c, String channel) {
-        put(c, channel, standard());
+        BoardPlace known = preset(broadcaster(channel));
+        put(c, channel, known != null ? known : standard());
     }
 }

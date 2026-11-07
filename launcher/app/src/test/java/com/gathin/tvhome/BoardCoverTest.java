@@ -715,4 +715,48 @@ public class BoardCoverTest {
         assertEquals("Bukayo Saka 23'", BoardCover.scorerLine(goals.get(0)));
         assertEquals("", BoardCover.scorerLine(null));
     }
+
+    // ---- 4.16: the overlays button, places by broadcaster ---------------------------------------------------------------
+
+    @Test
+    public void aChannelsBroadcasterIsKnownByItsName() {
+        assertEquals("sky", BoardPlace.broadcaster("UK: Sky Sports Main Event HD"));
+        assertEquals("sky", BoardPlace.broadcaster("Sky Sports F1 UHD"));
+        assertEquals("tnt", BoardPlace.broadcaster("TNT Sports 1 HD"));
+        assertEquals("tnt", BoardPlace.broadcaster("BT Sport 2"));
+        assertEquals("prime", BoardPlace.broadcaster("Amazon Prime Video PL 1"));
+        assertEquals("", BoardPlace.broadcaster("BBC One HD"));
+        assertEquals("", BoardPlace.broadcaster(null));
+        // Sky's own places: the score bar top left, its logo (with LIVE under it) top right, within the screen.
+        BoardPlace sky = BoardPlace.preset("sky");
+        assertNotNull(sky);
+        assertTrue(sky.bx < 0.1f && sky.by < 0.1f);
+        assertTrue(sky.lx > 0.8f && sky.lx + sky.lw <= 1f && sky.ly + sky.lh < 0.2f);
+        assertNotNull(BoardPlace.preset("tnt"));
+        assertNull(BoardPlace.preset(""));
+    }
+
+    @Test
+    public void thePlayersBannerNamesTheChannelWatched() {
+        java.util.Map<String, java.util.List<String>> on = new java.util.HashMap<>();
+        on.put("game:1", java.util.Arrays.asList("Sky Sports Main Event", "Sky Sports Premier League"));
+        on.put("game:2", java.util.Arrays.asList("TNT Sports 1"));
+        // The banner as the channel changes: the channel, its programme, its times.
+        String[] hit = OverlayPrompt.among(java.util.Arrays.asList("UK: Sky Sports Main Event HD", "Arsenal v Everton", "17:30 - 19:30"), on);
+        assertNotNull(hit);
+        assertEquals("game:1", hit[0]);
+        assertEquals("UK: Sky Sports Main Event HD", hit[1]);
+        // A guide or a list naming both: nothing to say.
+        assertNull(OverlayPrompt.among(java.util.Arrays.asList("Sky Sports Premier League HD", "TNT Sports 1 HD"), on));
+        assertNull(OverlayPrompt.among(java.util.Arrays.asList("BBC One HD", "Pointless"), on));
+        // Asked once a game, F1 once a day.
+        assertEquals("g|401", OverlayPrompt.askKey("football", gameWithId("401"), 0L));
+        assertTrue(OverlayPrompt.askKey("f1", null, 1_762_500_000_000L).startsWith("f1|2025"));
+    }
+
+    private static ScoresTicker.Game gameWithId(String id) {
+        ScoresTicker.Game g = new ScoresTicker.Game();
+        g.id = id;
+        return g;
+    }
 }
