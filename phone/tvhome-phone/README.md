@@ -269,6 +269,10 @@ The competition's logo beside every logo cover look (4.22): the logo of what is 
 cover's end, a fine line between, beside the Whitebrook Road looks, Badge, Glass and Broadcast alike, once the logo is
 read. On by default; "Competition logo beside the logo cover" in Settings and the player's menu turns it off.
 
+One block with the competition's logo (4.23): the look's own ground (its bands and bars too) runs on to the cover's end and
+the competition's logo stands at that end of it, a fine line between, rather than in a second tile; below the band on
+Solid block and Broadcast.
+
 Subtitles (CC in the film's player): the film's or episode's own, from your playlist's stream, come first, in the
 languages you choose (Settings, Subtitles, in order). When it has none, OpenSubtitles.com is looked in by the title's
 TMDB id (the series' with its season and episode), best first: your languages, the ones that fit the copy playing (its

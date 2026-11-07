@@ -75,6 +75,8 @@ final class LogoCover extends View implements BurnGuard.Dims {
     private final Paint picture = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
     /** The competition's logo beside every look (on unless switched off in Settings). */
     private boolean compOn = true;
+    /** How much further the look's ground runs than its own width (the competition's logo's room). */
+    private float ext;
 
     LogoCover(Context c) {
         super(c);
@@ -181,26 +183,27 @@ final class LogoCover extends View implements BurnGuard.Dims {
     @Override protected void onDraw(Canvas cv) {
         float full = getWidth(), h = getHeight();
         if (full <= 0 || h <= 0 || look == Look.OFF) return;
-        // The competition's logo beside the look, in a block of its own at its end, when it is on and known.
-        float side = compOn && comp != null && look != Look.COMPETITION ? Math.min(h * 0.92f, full * 0.3f) : 0f;
-        if (side > 0f) compPanel(cv, full - side, full, h);
+        // The competition's logo at the end of the look's own block, when it is on and known: one block, the look's
+        // ground running on under it, a fine line between.
+        float side = compOn && comp != null && look != Look.COMPETITION ? Math.min(h * 0.86f, full * 0.28f) : 0f;
+        ext = side;
         drawLook(cv, full - side, h);
+        if (side > 0f) compMark(cv, full - side, full, h);
     }
 
-    /** The competition's block from x0 to x1: its dark ground (under a solid look's end), a fine line, the logo. */
-    private void compPanel(Canvas cv, float x0, float x1, float h) {
-        float rad = Math.min(x1 - x0, h) * 0.22f;
-        boolean clear = look == Look.SMOKED || look == Look.BROADCAST;
-        r.set(clear ? x0 : x0 - rad * 2f, 0, x1, h);
-        fill.setShader(new LinearGradient(0, 0, 0, h, 0xFA1B1F31, 0xFA07090F, Shader.TileMode.CLAMP));
-        cv.drawRoundRect(r, rad, rad, fill);
+    /** The competition's logo from x0 to x1 on the look's ground: a fine line before it, the logo (below a top band). */
+    private void compMark(Canvas cv, float x0, float x1, float h) {
+        float top = 0f;
+        if (look == Look.BLOCK) top = h * (x0 / h >= 2.4f ? 0.4f : 0.32f);
+        else if (look.broadcast()) top = h * (x0 / h >= 2.3f ? 0.36f : 0.3f);
+        float bodyH = h - top;
         fill.setShader(null);
-        fill.setColor(0x33FFFFFF);
-        cv.drawRect(x0, h * 0.18f, x0 + Math.max(1f, h * 0.012f), h * 0.82f, fill);
-        float pad = Math.min(x1 - x0, h) * 0.17f, bw = x1 - x0 - 2 * pad, bh = h - 2 * pad;
+        fill.setColor(0x40FFFFFF);
+        cv.drawRect(x0, top + bodyH * 0.2f, x0 + Math.max(1f, h * 0.012f), top + bodyH * 0.8f, fill);
+        float pad = Math.min(x1 - x0, bodyH) * 0.2f, bw = x1 - x0 - 2 * pad, bh = bodyH - 2 * pad;
         float k = Math.min(bw / comp.getWidth(), bh / comp.getHeight()), dw = comp.getWidth() * k, dh = comp.getHeight() * k;
-        float cx = (x0 + x1) / 2f;
-        r.set(cx - dw / 2f, (h - dh) / 2f, cx + dw / 2f, (h + dh) / 2f);
+        float cx = (x0 + x1) / 2f - (x1 - x0) * 0.04f, cy = top + bodyH / 2f;
+        r.set(cx - dw / 2f, cy - dh / 2f, cx + dw / 2f, cy + dh / 2f);
         cv.drawBitmap(comp, null, r, picture);
     }
 
@@ -212,7 +215,7 @@ final class LogoCover extends View implements BurnGuard.Dims {
         }
         if (look.channel()) {
             if (channel == null) channel = new ChannelMark(getContext());
-            channel.draw(cv, look, 0, 0, w, h, tag, live, sport);
+            channel.draw(cv, look, 0, 0, w, h, tag, live, sport, ext);
             return;
         }
         if (look.broadcast()) {
@@ -220,7 +223,7 @@ final class LogoCover extends View implements BurnGuard.Dims {
             return;
         }
         float rad = Math.min(w, h) * 0.22f;
-        r.set(0, 0, w, h);
+        r.set(0, 0, w + ext, h);
         switch (look) {
             case GLASS:
                 fill.setShader(null);
@@ -304,7 +307,7 @@ final class LogoCover extends View implements BurnGuard.Dims {
         }
         int liveInk = seeThrough ? 0xE6FFFFFF : ink;
         float rad = Math.min(w, h) * 0.1f;
-        r.set(0, 0, w, h);
+        r.set(0, 0, w + ext, h);
         boxes.setColor(ground);
         cv.drawRoundRect(r, rad, rad, boxes);
         cv.save();
@@ -314,7 +317,7 @@ final class LogoCover extends View implements BurnGuard.Dims {
         boolean wide = w / h >= 2.3f;
         float band1 = h * (wide ? 0.36f : 0.3f), pad = Math.min(w, h) * 0.08f;
         boxes.setColor(band);
-        cv.drawRect(0, 0, w, band1, boxes);
+        cv.drawRect(0, 0, w + ext, band1, boxes);
         float tagW = 0;
         if (!tag.isEmpty()) {
             float ts = band1 * 0.5f;
