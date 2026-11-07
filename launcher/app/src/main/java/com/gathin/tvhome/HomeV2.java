@@ -408,7 +408,10 @@ final class HomeV2 {
         PillMorph.squareCorner = ScoresTicker.sky ? SkyStyle.corner(a) : -1;
         players = new TilePlayer(a);
         players.useOverlay(lite);
-        if (!tmdbKey.isEmpty()) players.warm();
+        // YouTube's player page loaded ahead, so the first trailer starts at once; not on a slower TV (lite_home),
+        // where its web process (some 130 MB) left the apps opened from Home short of memory: there it loads with
+        // the first trailer, and goes when Home does (stop).
+        if (!tmdbKey.isEmpty() && !lite) players.warm();
         dock = new ArrayList<>(Config.load(a).dockApps);
         // Two at once left mid-way (the launcher restarted): its windows full size and every app's sound back.
         TwoUp.recover(a);
@@ -1664,7 +1667,10 @@ final class HomeV2 {
         main.removeCallbacks(shiftMesh);
         main.removeCallbacks(matchBack);
         if (match != null) match.stop();
-        if (players != null) players.stop();
+        // A slower TV (lite_home) lets the trailer player's web process go with Home, so the app opened from it (TiviMate,
+        // Debrid Stream) has the memory: on a TCL with 2.4 GB they were closed for it again and again, and the launcher
+        // with them, taking its helper down.
+        if (players != null) { if (lite) players.destroy(); else players.stop(); }
         playingTile = null;
         GoalWatchService.laneHome = false;
         // Pop-up mode's frame has its own pills for the alerts to stand in for: left to it.
