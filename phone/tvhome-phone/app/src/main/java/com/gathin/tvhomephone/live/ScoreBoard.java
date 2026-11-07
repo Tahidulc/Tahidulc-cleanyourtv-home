@@ -78,6 +78,23 @@ public final class ScoreBoard implements LiveAlerts.Listener {
 
     static void setCover(Context c, boolean v) { prefs(c).edit().putBoolean("cover", v).apply(); }
 
+    /**
+     * Kept still: the scoreboard and the mark over the logo stay where they are put (no burn-in drifting, and once
+     * over the channel's own they aren't moved when it is looked for again). On until switched off.
+     */
+    static boolean still(Context c) { return prefs(c).getBoolean("still", true); }
+
+    static void setStill(Context c, boolean v) { prefs(c).edit().putBoolean("still", v).apply(); }
+
+    /** The scoreboard's size in its own corner (not over the channel's, nor placed by hand): 1 as it was. */
+    static float size(Context c) { return prefs(c).getFloat("size", 1f); }
+
+    static void setSize(Context c, float v) { prefs(c).edit().putFloat("size", v).apply(); }
+
+    /** The sizes offered, with their names. */
+    static final float[] SIZES = {0.8f, 1f, 1.25f, 1.5f};
+    static final String[] SIZE_NAMES = {"Small", "Medium", "Large", "Extra large"};
+
     /** Which alerts drop from it: FOOTBALL, SPORT (F1 and the rest), NEWS (breaking news, the weather). */
     static boolean shows(Context c, String group) { return prefs(c).getBoolean("a." + group, true); }
 
@@ -440,6 +457,7 @@ public final class ScoreBoard implements LiveAlerts.Listener {
             for (Object[] r : f1Reads) if ((Long) r[0] <= at) pick = r;
             l = f1Look((F1Live.Session) pick[1], at);
         }
+        if (l == null && preview) l = sample();
         if (l == null) {
             bug.setVisibility(View.GONE);
             return;
@@ -449,6 +467,27 @@ public final class ScoreBoard implements LiveAlerts.Listener {
     }
 
     private String lastShownId;
+
+    /** Being moved and sized with no game on: a made-up game shows, to place. */
+    private boolean preview;
+
+    void preview(boolean on) {
+        preview = on;
+        draw(System.currentTimeMillis());
+    }
+
+    private static OverlayBug.Look sample() {
+        OverlayBug.Look l = new OverlayBug.Look();
+        l.home = "HOM";
+        l.away = "AWY";
+        l.score = "1–0";
+        l.clock = "45:00";
+        l.live = true;
+        l.tag = "PL";
+        l.homeColour = 0xFFE5333B;
+        l.awayColour = 0xFF4F8BFF;
+        return l;
+    }
 
     /** The board's look for a game as the screen shows it; clock as OnScreen gives it (null: not running). */
     static OverlayBug.Look look(Game g, String[] clock) {

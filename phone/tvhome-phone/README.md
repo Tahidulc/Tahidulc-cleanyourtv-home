@@ -160,6 +160,16 @@ being read when the game was found (or the small window opened) was added to a f
 ever does close unexpectedly now, the next time it opens it says so once, with Copy details: the kind of error and
 where in the app it happened (never its words, which could hold a stream's address), to send on.
 
+The scoreboard and the logo where you want them, kept still (4.10): hold the scoreboard (or Homefield's mark over
+the channel's logo), or choose "Move and resize the scoreboard and logo" in the player's options, and both are
+outlined to drag with a finger. The panel along the foot makes each smaller or bigger, picks the scoreboard's look
+(Classic, Glass, Light, Club colours, Minimal) and the logo's (Badge, Glass, Mark only, Wordmark, or the channel's
+own), and has Keep them still, Reset (back to where Homefield puts them) and Done. The places are kept for that
+channel, upright and on its side alike; with no game on, a made-up one shows to place. The options also have the
+scoreboard's size in its own corner (Small, Medium, Large, Extra large). Keep the scoreboard and logo still (on at
+first, in the options and in Settings): they no longer move a pixel or two against burn-in (they still dim after five
+minutes without a change), and once over the channel's own scoreboard and logo they stay there while the game is on.
+
 Subtitles (CC in the film's player): the film's or episode's own, from your playlist's stream, come first, in the
 languages you choose (Settings, Subtitles, in order). When it has none, OpenSubtitles.com is looked in by the title's
 TMDB id (the series' with its season and episode), best first: your languages, the ones that fit the copy playing (its

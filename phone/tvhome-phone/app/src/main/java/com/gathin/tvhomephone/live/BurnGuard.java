@@ -61,7 +61,8 @@ final class BurnGuard {
                 reset();
             } else {
                 step++;
-                int[] o = orbit(step);
+                // Kept still (the family's choice): it only dims, never moves.
+                int[] o = ScoreBoard.still(c) ? new int[]{0, 0} : orbit(step);
                 for (View v : moved) if (v != null) v.animate().translationX(o[0] * radius).translationY(o[1] * radius).setDuration(1500).start();
                 setDim(dimmed(changedAt, System.currentTimeMillis()));
             }

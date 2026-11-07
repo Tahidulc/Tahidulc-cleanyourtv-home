@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="live6_adjust">Move and resize the scoreboard and logo</string>
+    <string name="live6_size">Scoreboard size</string>
+    <string name="live6_still">Keep the scoreboard and logo still</string>
+    <string name="live6_still_line">They stay where they are put: no moving a pixel or two against burn-in (they still dim a little after five minutes without a change), and once over the channel\'s own scoreboard and logo they aren\'t moved again while the game is on.</string>
+</resources>

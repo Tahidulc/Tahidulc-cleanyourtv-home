@@ -1,7 +1,10 @@
 package com.gathin.tvhomephone.live;
 
 import android.app.Activity;
+import android.annotation.SuppressLint;
 import android.content.Context;
+import android.view.MotionEvent;
+import android.graphics.drawable.GradientDrawable;
 import android.graphics.Bitmap;
 import android.os.Handler;
 import android.os.Looper;
@@ -22,7 +25,8 @@ import com.gathin.tvhomephone.sports.Game;
  * scoreboard where one is found (BugFinder on the picture's frames, FrameSampler), at its size; elsewhere it sits top
  * left of the picture. Its clock is the screen's: the channel's delay (LiveAlerts, set by "It's just happened" or
  * its chips) and, once the channel's own clock has been seen to turn a minute, that moment to the second. Tap it for
- * the match centre; hold it to put it away (Options brings it back).
+ * the match centre; hold it (or the mark over the logo) to move and size them by hand (Move and resize: kept for the
+ * channel, BoardPlace).
  */
 final class ScoreOverlay implements ScoreBoard.Source {
     /** What the player tells it. */
@@ -37,6 +41,9 @@ final class ScoreOverlay implements ScoreBoard.Source {
 
         /** The channel's sound off (a Homefield break) or back. */
         void mute(boolean on);
+
+        /** Move and resize is opening: the player's own tile and buttons out of the way. */
+        default void hideControls() {}
     }
 
     /** Whether the player's scoreboard is up (the one over other apps keeps out of its way). */
@@ -65,6 +72,13 @@ final class ScoreOverlay implements ScoreBoard.Source {
     /** The channel's own logo, and Homefield's over it. */
     private BugFinder.Box logo;
     private final LogoCover cover;
+    /** The family's own places on this channel (Move and resize), and which channel they are for. */
+    private BoardPlace mine = new BoardPlace();
+    private String mineKey;
+    /** Move and resize is open: the shield over the picture and its panel; the picture's place as last laid out. */
+    private boolean editing;
+    private View shield, panel;
+    private float pfx, pfy, pfw = 1, pfh = 1;
     /** The channel's scoreboard read off the picture: the reader, its frame, when it last read a clock, misses. */
     private final ChannelReader ocr = new ChannelReader();
     private Bitmap ocrFrame;
@@ -91,6 +105,11 @@ final class ScoreOverlay implements ScoreBoard.Source {
         board = new ScoreBoard(a, this);
         cover = new LogoCover(a);
         cover.setVisibility(View.GONE);
+        // Hold the mark (or the scoreboard) to move and size them.
+        cover.setOnLongClickListener(v -> {
+            adjust();
+            return true;
+        });
         // Just over the picture and its touch layer: the tile, the buttons and the sheets stay over them.
         root.addView(cover, Math.min(2, root.getChildCount()), new FrameLayout.LayoutParams(0, 0, Gravity.TOP | Gravity.START));
         root.addView(board.view, Math.min(3, root.getChildCount()), new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.START));
@@ -118,6 +137,7 @@ final class ScoreOverlay implements ScoreBoard.Source {
     }
 
     void stop() {
+        if (editing) endAdjust(true);
         started = false;
         up = false;
         endBreak(true);
@@ -135,6 +155,8 @@ final class ScoreOverlay implements ScoreBoard.Source {
     void game(Game g) {
         String id = g == null || g.id == null ? "" : g.id;
         if (id.equals(gameId) && g != null) return;
+        // Another channel (or game) while places were being set: those are kept for the one they were set on.
+        if (editing) endAdjust(true);
         gameId = id;
         box = null;
         readBox = null;
@@ -159,6 +181,7 @@ final class ScoreOverlay implements ScoreBoard.Source {
     }
 
     void pip(boolean in) {
+        if (in && editing) endAdjust(true);
         inPip = in;
         // In the small window the board stays, small, in the same look, its clock going on: no drops, no covers.
         board.small(in);
@@ -248,8 +271,7 @@ final class ScoreOverlay implements ScoreBoard.Source {
     }
 
     @Override public void held() {
-        set(false);
-        Toast.makeText(a, R.string.live4_board_off, Toast.LENGTH_LONG).show();
+        adjust();
     }
 
     @Override public void alertTapped(Events.Alert alert) {
@@ -288,9 +310,24 @@ final class ScoreOverlay implements ScoreBoard.Source {
             fw = frame.getWidth() * video.getScaleX();
             fh = frame.getHeight() * video.getScaleY();
         }
-        boolean over = box != null && ScoreBoard.cover(a) && board.channelGame() && !inPip;
+        if (fw > 0 && fh > 0) {
+            pfx = fx;
+            pfy = fy;
+            pfw = fw;
+            pfh = fh;
+        }
+        BoardPlace own = mine();
+        boolean placed = own.board() && !inPip && fw > 0 && fh > 0;
+        boolean over = !placed && box != null && ScoreBoard.cover(a) && board.channelGame() && !inPip;
         int left, top;
-        if (over) {
+        if (placed) {
+            // Where the family put it, the height they chose, its own width; kept on the screen.
+            bp.width = LinearLayout.LayoutParams.WRAP_CONTENT;
+            bp.height = Math.max(Math.round(12 * d), Math.round(own.bh * fh));
+            int w = board.bug.getWidth() > 0 ? board.bug.getWidth() : Math.round(bp.height * 5f);
+            left = Math.max(0, Math.min(Math.round(fx + own.bx * fw), root.getWidth() - Math.min(w, root.getWidth())));
+            top = Math.max(0, Math.min(Math.round(fy + own.by * fh), root.getHeight() - Math.min(bp.height, root.getHeight())));
+        } else if (over) {
             // A little over each edge, so none of the channel's shows round it.
             float pad = Math.max(2 * d, box.height() * fh * 0.08f);
             left = Math.round(fx + box.left * fw - pad);
@@ -311,10 +348,11 @@ final class ScoreOverlay implements ScoreBoard.Source {
             bp.height = Math.max(Math.round(11 * d), Math.round(root.getHeight() * 0.16f));
             left = Math.round(4 * d);
             top = Math.round(4 * d);
-        } else if (!over) {
+        } else if (!over && !placed) {
             boolean upright = root.getHeight() > root.getWidth();
             bp.width = LinearLayout.LayoutParams.WRAP_CONTENT;
-            bp.height = Math.round((upright ? 24 : 30) * d);
+            // Its own corner, at the size chosen (Medium as it was).
+            bp.height = Math.round((upright ? 24 : 30) * d * ScoreBoard.size(a));
             left = Math.round(Math.max(fx, 0) + 14 * d) + (fx <= insetLeft ? insetLeft : 0);
             top = Math.round(Math.max(fy, 0) + 12 * d) + (fy <= insetTop ? insetTop : 0);
             // The channel's own scoreboard found and not covered: just under it.
@@ -326,23 +364,218 @@ final class ScoreOverlay implements ScoreBoard.Source {
             lp.topMargin = top;
             board.view.setLayoutParams(lp);
         }
-        // Homefield's mark over the channel's logo, its size and a little over.
+        // Homefield's mark over the channel's logo: where the family put it, else over the logo found, its size and
+        // a little over.
         LogoCover.Look look = ScoreBoard.logoCover(a);
-        boolean show = logo != null && look != LogoCover.Look.OFF && started && !inPip && ScoreBoard.on(a);
+        boolean base = look != LogoCover.Look.OFF && started && !inPip && ScoreBoard.on(a);
+        boolean show = base && (own.logo() || logo != null);
         if (show) {
-            float pad = Math.max(2 * d, logo.height() * fh * 0.12f);
             FrameLayout.LayoutParams cp = (FrameLayout.LayoutParams) cover.getLayoutParams();
-            cp.leftMargin = Math.round(fx + logo.left * fw - pad);
-            cp.topMargin = Math.round(fy + logo.top * fh - pad);
-            cp.width = Math.round(logo.width() * fw + 2 * pad);
-            cp.height = Math.round(logo.height() * fh + 2 * pad);
-            show = cp.leftMargin >= 0 && cp.topMargin >= 0 && cp.leftMargin + cp.width <= root.getWidth() && cp.topMargin + cp.height <= root.getHeight();
+            if (own.logo()) {
+                cp.width = Math.max(Math.round(12 * d), Math.round(own.lw * fw));
+                cp.height = Math.max(Math.round(8 * d), Math.round(own.lh * fh));
+                cp.leftMargin = Math.max(0, Math.min(Math.round(fx + own.lx * fw), root.getWidth() - cp.width));
+                cp.topMargin = Math.max(0, Math.min(Math.round(fy + own.ly * fh), root.getHeight() - cp.height));
+            } else {
+                float pad = Math.max(2 * d, logo.height() * fh * 0.12f);
+                cp.leftMargin = Math.round(fx + logo.left * fw - pad);
+                cp.topMargin = Math.round(fy + logo.top * fh - pad);
+                cp.width = Math.round(logo.width() * fw + 2 * pad);
+                cp.height = Math.round(logo.height() * fh + 2 * pad);
+                show = cp.leftMargin >= 0 && cp.topMargin >= 0 && cp.leftMargin + cp.width <= root.getWidth() && cp.topMargin + cp.height <= root.getHeight();
+            }
             if (show) {
                 cover.look(look);
                 cover.setLayoutParams(cp);
             }
         }
         cover.setVisibility(show ? View.VISIBLE : View.GONE);
+    }
+
+    /** This channel's own places (loaded as the channel changes; held as they are while being set). */
+    private BoardPlace mine() {
+        Channel ch = host.current();
+        String key = ch == null ? null : ch.key;
+        if (!editing && (key == null ? mineKey != null : !key.equals(mineKey))) {
+            mineKey = key;
+            mine = BoardPlace.get(a, key);
+        }
+        return mine;
+    }
+
+    // ---- moving and sizing by hand ----------------------------------------------------------------------------------
+
+    boolean editing() {
+        return editing;
+    }
+
+    /**
+     * Move and resize: the scoreboard and the mark over the logo picked up where they are (a made-up game shows when
+     * none is on), outlined, to drag; the panel along the foot for their sizes and looks. The picture under them
+     * takes no swipes meanwhile.
+     */
+    void adjust() {
+        if (editing || !started || inPip || !ScoreBoard.on(a)) return;
+        Channel ch = host.current();
+        if (ch == null) return;
+        host.hideControls();
+        mine();
+        editing = true;
+        board.preview(true);
+        float d = a.getResources().getDisplayMetrics().density;
+        // Started from where they are now.
+        if (!mine.board()) {
+            FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) board.view.getLayoutParams();
+            int h = board.bug.getHeight() > 0 ? board.bug.getHeight() : Math.round(30 * d);
+            mine.bh = BoardPlace.clamp(h / pfh, BoardPlace.MIN_H, BoardPlace.MAX_H);
+            mine.bx = 0;
+            mine.moveBoard((lp.leftMargin - pfx) / pfw, (lp.topMargin - pfy) / pfh, board.bug.getWidth() / pfw);
+        }
+        if (!mine.logo() && ScoreBoard.logoCover(a) != LogoCover.Look.OFF) {
+            if (cover.getVisibility() == View.VISIBLE && cover.getWidth() > 0) {
+                FrameLayout.LayoutParams cp = (FrameLayout.LayoutParams) cover.getLayoutParams();
+                mine.lw = cover.getWidth() / pfw;
+                mine.lh = cover.getHeight() / pfh;
+                mine.lx = 0;
+                mine.moveLogo((cp.leftMargin - pfx) / pfw, (cp.topMargin - pfy) / pfh);
+            } else {
+                // No logo found yet: the top right, where most channels have theirs.
+                mine.lw = 0.13f;
+                mine.lh = 0.075f;
+                mine.lx = 0;
+                mine.moveLogo(1 - 0.035f - mine.lw, 0.05f);
+            }
+        }
+        shield = new View(a);
+        shield.setBackgroundColor(0x40000000);
+        shield.setClickable(true);
+        root.addView(shield, Math.max(0, root.indexOfChild(cover)), new FrameLayout.LayoutParams(-1, -1));
+        boolean wide = root.getWidth() > root.getHeight();
+        panel = AdjustPanel.build(a, new AdjustPanel.Actions() {
+            @Override public void boardSize(float k) {
+                mine.sizeBoard(k);
+                board.bug.post(ScoreOverlay.this::place);
+                place();
+            }
+
+            @Override public void boardStyle(OverlayBug.Style st) {
+                ScoreBoard.setStyle(a, st);
+                restyle();
+            }
+
+            @Override public void logoSize(float k) {
+                if (mine.logo()) mine.sizeLogo(k);
+                place();
+            }
+
+            @Override public void logoLook(LogoCover.Look l) {
+                ScoreBoard.setLogoCover(a, l);
+                if (l != LogoCover.Look.OFF && !mine.logo()) {
+                    mine.lw = 0.13f;
+                    mine.lh = 0.075f;
+                    mine.lx = 0;
+                    mine.moveLogo(1 - 0.035f - mine.lw, 0.05f);
+                }
+                restyle();
+                outline(true);
+            }
+
+            @Override public void still(boolean on) {
+                ScoreBoard.setStill(a, on);
+            }
+
+            @Override public void reset() {
+                mine = new BoardPlace();
+                BoardPlace.put(a, mineKey, mine);
+                endAdjust(false);
+                Toast.makeText(a, "Back to where Homefield puts them", Toast.LENGTH_SHORT).show();
+            }
+
+            @Override public void done() {
+                endAdjust(true);
+            }
+        }, ScoreBoard.style(a), ScoreBoard.logoCover(a), ScoreBoard.still(a));
+        int side = Math.round(12 * d);
+        FrameLayout.LayoutParams pp = new FrameLayout.LayoutParams(wide ? Math.min(Math.round(600 * d), Math.round(root.getWidth() * 0.72f)) : -1, -2,
+                Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
+        pp.setMargins(side, 0, side, side + insetTop / 4);
+        root.addView(panel, pp);
+        dragAll();
+        outline(true);
+        guard.poke();
+        place();
+    }
+
+    /** Move and resize closed: kept for this channel (save), or as they were. */
+    void endAdjust(boolean save) {
+        if (!editing) return;
+        editing = false;
+        if (save) BoardPlace.put(a, mineKey, mine);
+        if (shield != null) root.removeView(shield);
+        if (panel != null) root.removeView(panel);
+        shield = null;
+        panel = null;
+        board.bug.setOnTouchListener(null);
+        cover.setOnTouchListener(null);
+        outline(false);
+        board.preview(false);
+        place();
+    }
+
+    /** A dashed white edge round each one while it can be moved. */
+    private void outline(boolean on) {
+        float d = a.getResources().getDisplayMetrics().density;
+        for (View v : new View[]{board.bug, cover}) {
+            if (!on) {
+                v.setForeground(null);
+                continue;
+            }
+            GradientDrawable g = new GradientDrawable();
+            g.setColor(0);
+            g.setCornerRadius(4 * d);
+            g.setStroke(Math.max(1, Math.round(2 * d)), 0xFFFFFFFF, 6 * d, 4 * d);
+            v.setForeground(g);
+        }
+    }
+
+    /** Both made draggable (a drag isn't a click: the screen reader moves them with the panel's buttons). */
+    @SuppressLint("ClickableViewAccessibility")
+    private void dragAll() {
+        drag(board.bug, true);
+        drag(cover, false);
+    }
+
+    /** Dragged by a finger while Move and resize is open: its place follows, kept on the picture and the screen. */
+    @SuppressLint("ClickableViewAccessibility")
+    private void drag(View v, boolean isBoard) {
+        float[] start = new float[4];
+        v.setOnTouchListener((view, e) -> {
+            switch (e.getActionMasked()) {
+                case MotionEvent.ACTION_DOWN:
+                    start[0] = e.getRawX();
+                    start[1] = e.getRawY();
+                    start[2] = isBoard ? mine.bx : mine.lx;
+                    start[3] = isBoard ? mine.by : mine.ly;
+                    view.getParent().requestDisallowInterceptTouchEvent(true);
+                    return true;
+                case MotionEvent.ACTION_MOVE: {
+                    float x = start[2] + (e.getRawX() - start[0]) / pfw, y = start[3] + (e.getRawY() - start[1]) / pfh;
+                    // Kept where it can be seen: on the picture, and on the screen when the picture is zoomed past it.
+                    float minX = Math.max(0, -pfx / pfw), minY = Math.max(0, -pfy / pfh);
+                    float maxX = Math.min(1, (root.getWidth() - pfx) / pfw), maxY = Math.min(1, (root.getHeight() - pfy) / pfh);
+                    if (isBoard) {
+                        float w = board.bug.getWidth() / pfw;
+                        mine.moveBoard(BoardPlace.clamp(x, minX, Math.max(minX, maxX - w)), BoardPlace.clamp(y, minY, Math.max(minY, maxY - mine.bh)), w);
+                    } else {
+                        mine.moveLogo(BoardPlace.clamp(x, minX, Math.max(minX, maxX - mine.lw)), BoardPlace.clamp(y, minY, Math.max(minY, maxY - mine.lh)));
+                    }
+                    place();
+                    return true;
+                }
+                default:
+                    return true;
+            }
+        });
     }
 
     // ---- finding the channel's scoreboard --------------------------------------------------------------------------
@@ -380,7 +613,8 @@ final class ScoreOverlay implements ScoreBoard.Source {
                     return;
                 }
                 finder = null;
-                if (mark != null || logo != null) {
+                // Kept still: the mark stays over the logo where it was first found.
+                if ((mark != null || logo != null) && !(ScoreBoard.still(a) && logo != null)) {
                     logo = mark;
                     place();
                 }
@@ -396,7 +630,8 @@ final class ScoreOverlay implements ScoreBoard.Source {
                 if (found != null) {
                     boolean moved = box == null || Math.abs(found.left - box.left) > 0.02f || Math.abs(found.top - box.top) > 0.02f
                             || Math.abs(found.width() - box.width()) > 0.03f;
-                    if (moved) {
+                    // Kept still: once over the channel's own, it stays where it was put.
+                    if (moved && !(ScoreBoard.still(a) && box != null)) {
                         box = found;
                         reader = null;
                         place();

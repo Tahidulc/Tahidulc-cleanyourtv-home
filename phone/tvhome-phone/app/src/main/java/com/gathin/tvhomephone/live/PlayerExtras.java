@@ -468,6 +468,13 @@ final class PlayerExtras implements LiveAlerts.Listener {
         return match != null;
     }
 
+    /** Move and resize closed if it was open (kept as placed); whether it was. */
+    boolean endAdjust() {
+        if (overlay == null || !overlay.editing()) return false;
+        overlay.endAdjust(true);
+        return true;
+    }
+
     void closeMatch() {
         if (match != null) match.close();
     }
@@ -620,6 +627,25 @@ final class PlayerExtras implements LiveAlerts.Listener {
         if (overlay != null) {
             chipRow(c, box, R.string.live4_board);
             toggle(c, box, a.getString(R.string.live4_board_on), overlay.on(), overlay::set);
+            // Moved and sized by hand: the scoreboard and the mark over the logo, dragged into place on the picture.
+            action(c, box, R.drawable.live_ic_fullscreen, a.getString(R.string.live6_adjust), () -> {
+                host.closeSheet();
+                overlay.adjust();
+            });
+            LinearLayout sizes = chipRow(c, box, R.string.live6_size);
+            List<TextView> ss = new ArrayList<>();
+            for (int i = 0; i < ScoreBoard.SIZES.length; i++) {
+                float k = ScoreBoard.SIZES[i];
+                TextView t = Ui.guideChip(c, ScoreBoard.SIZE_NAMES[i], Math.abs(ScoreBoard.size(c) - k) < 0.01f);
+                t.setOnClickListener(v -> {
+                    ScoreBoard.setSize(c, k);
+                    for (TextView x : ss) Ui.styleChip(c, x, x == v);
+                    overlay.restyle();
+                });
+                ss.add(t);
+                addChip(sizes, t);
+            }
+            toggle(c, box, a.getString(R.string.live6_still), ScoreBoard.still(c), on -> ScoreBoard.setStill(c, on));
             toggle(c, box, a.getString(R.string.live4_board_cover), ScoreBoard.cover(c), on -> {
                 ScoreBoard.setCover(c, on);
                 overlay.game(host.game());

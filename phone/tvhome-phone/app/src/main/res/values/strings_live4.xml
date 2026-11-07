@@ -8,7 +8,7 @@
     <string name="live4_alerts_football">Goals and football</string>
     <string name="live4_alerts_sport">F1 and other sport</string>
     <string name="live4_alerts_news">Breaking news</string>
-    <string name="live4_board_note">Its score and clock follow this channel\'s picture: the delay above (or “It\'s just happened”) holds them back, and once the channel\'s own clock is seen turning a minute it keeps time with it to the second. Tap it for the match centre; hold it to put it away.</string>
+    <string name="live4_board_note">Its score and clock follow this channel\'s picture: the delay above (or “It\'s just happened”) holds them back, and once the channel\'s own clock is seen turning a minute it keeps time with it to the second. Tap it for the match centre; hold it (or the logo) to move and resize them.</string>
     <string name="live4_board_off">Scoreboard put away: Options (⋮) brings it back</string>
     <string name="live4_board_state_off">The scoreboard is off.</string>
     <string name="live4_board_state_reading">Reading the channel\'s own clock and score: the same time to the second, the score changing as the channel\'s does.</string>

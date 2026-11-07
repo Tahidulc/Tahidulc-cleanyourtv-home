@@ -233,6 +233,9 @@ public class PlayerActivity extends AppCompatActivity {
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
             @Override public void handleOnBackPressed() {
                 // The match centre first, then the touch lock holds, then out.
+                // Moving the scoreboard first (Back keeps where it was put), then the match centre, then the touch
+                // lock holds, then out.
+                if (extras.endAdjust()) return;
                 if (extras.matchShown()) extras.closeMatch();
                 else if (!extras.locked()) close();
             }
@@ -1699,6 +1702,10 @@ public class PlayerActivity extends AppCompatActivity {
             @Override public void mute(boolean on) {
                 ExoPlayer p = pb.player();
                 if (p != null) p.setVolume(on ? 0f : 1f);
+            }
+
+            @Override public void hideControls() {
+                hideOverlay();
             }
         }));
         ViewCompat.setOnApplyWindowInsetsListener(root, (v, insets) -> {
