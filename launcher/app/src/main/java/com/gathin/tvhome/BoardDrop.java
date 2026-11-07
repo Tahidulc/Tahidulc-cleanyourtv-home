@@ -12,7 +12,8 @@ import android.graphics.RectF;
  * (BoardSide), as broadcasters' captions come out of their score bug, in the board's own look (BoardBug's StripLook):
  * the kind's chip, the crests and the words, the colour of the club it is about at its far end (the scorers' alone for
  * a goal, the club's for a red card), and as the cards over the apps have it, the player's picture (head and
- * shoulders, standing on its foot) by the board for a goal, a red card or a penalty. For the board's own game the
+ * shoulders, standing on its foot and rising above its top where there is room) by the board for a goal, a red card or
+ * a penalty. For the board's own game the
  * board beside it already shows the clubs and the score, so the alert says the rest (the scorer's crest, who and
  * when); another game's has both clubs and the score between their crests. The line-ups: each club's eleven in turn,
  * led by its crest and its name and shape in its colour. Words too long for their room run along to their end. Beside a
@@ -33,6 +34,8 @@ final class BoardDrop extends BoardSide {
         boolean own;
         /** The game it is about (null: none), what Today's alerts and the log call it. */
         String gameId, what = "";
+        /** A goal's "game|score": it is captioned once, from its card or from the scores (null: not a goal). */
+        String key;
         /** The player's picture (a cut-out, head and shoulders), and both clubs' crests (for a dark ground); each may be null. */
         Bitmap photo, homeCrest, awayCrest;
     }
@@ -257,10 +260,23 @@ final class BoardDrop extends BoardSide {
         return h >= unit * 1.45f && !o.line.isEmpty() && (!drop.chip.isEmpty() || o.crestA != null || !o.head.isEmpty());
     }
 
+    /** The player's picture's height: the strip's, and as far above it as there is room for, up to a little over half. */
+    private float photoH(int h) {
+        return h + Math.min(head, h * 0.6f);
+    }
+
     private float photoW(int h) {
         Bitmap b = drop.photo;
         if (b == null || drop.lineups || b.getHeight() <= 0) return 0;
-        return Math.min(h * 0.9f, h * b.getWidth() / (float) b.getHeight());
+        float ph = photoH(h);
+        return Math.min(ph * 0.82f, ph * b.getWidth() / (float) b.getHeight());
+    }
+
+    /** The player, head and shoulders, standing on the strip's foot by the board and rising above its top. */
+    @Override protected void over(Canvas cv, int w, int h) {
+        if (drop == null || turn < 1f) return;
+        float pw = photoW(h);
+        if (pw > 0) photo(cv, drop.photo, start, 0, pw, h, 255);
     }
 
     /**
@@ -270,12 +286,9 @@ final class BoardDrop extends BoardSide {
     private float[] lay(Canvas cv, Part o, float x0, int h, float dy, int a, float room, float runBy) {
         boolean two = twoRows(h, o);
         float x = x0;
-        // The player, head and shoulders, by the board and standing on its foot.
+        // Room for the player, head and shoulders, by the board (drawn over it all: over()).
         float pw = photoW(h);
-        if (pw > 0) {
-            if (cv != null) photo(cv, drop.photo, x, dy, pw, h, a);
-            x += pw + unit * 0.14f;
-        }
+        if (pw > 0) x += pw + unit * 0.14f;
         float rowY = two ? h * 0.08f : 0f, rowH = two ? h * 0.42f : h;
         float rx = x, headSize = unit * (two ? 0.42f : 0.44f), cs = unit * 0.62f;
         if (!drop.chip.isEmpty()) {
@@ -362,9 +375,9 @@ final class BoardDrop extends BoardSide {
         cv.drawBitmap(b, null, r, image);
     }
 
-    /** The player's picture pw wide, standing on the strip's foot. */
+    /** The player's picture pw wide, standing on the strip's foot, as tall as photoH. */
     private void photo(Canvas cv, Bitmap b, float x, float dy, float pw, int h, int a) {
-        float s = Math.min(pw / b.getWidth(), h * 0.98f / b.getHeight());
+        float s = Math.min(pw / b.getWidth(), photoH(h) * 0.98f / b.getHeight());
         float bw = b.getWidth() * s, bh = b.getHeight() * s;
         r.set(x + (pw - bw) / 2f, dy + h - bh, x + (pw + bw) / 2f, dy + h);
         image.setAlpha(a);

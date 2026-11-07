@@ -31,13 +31,35 @@ public class BoardCoverTest {
     }
 
     @Test
-    public void addedTimeStaysAtThePeriodsEndWithTheMinutesBeside() {
-        // 46:30 by ESPN's clock in "45'+2'" is the first half's added time, not the second half.
-        assertArrayEquals(new String[]{"45:00", "+2"}, BoardCover.clockWords(2790, "45'+2'"));
-        assertArrayEquals(new String[]{"90:00", "+4"}, BoardCover.clockWords(5580, "90'+4'"));
-        // No minutes added in ESPN's words: counted from the clock.
-        assertArrayEquals(new String[]{"90:00", "+1"}, BoardCover.clockWords(5410, "90'"));
-        assertArrayEquals(new String[]{"105:00", "+1"}, BoardCover.clockWords(105 * 60 + 20, "105'+1'"));
+    public void addedTimeRunsOnWithTheTimePutUpBeside() {
+        // 4.14: the clock runs on through the minutes added, never stopping at the period's end.
+        assertArrayEquals(new String[]{"46:30", ""}, BoardCover.clockWords(2790, "45'+2'"));
+        assertArrayEquals(new String[]{"93:00", ""}, BoardCover.clockWords(5580, "90'+4'"));
+        assertArrayEquals(new String[]{"105:20", ""}, BoardCover.clockWords(105 * 60 + 20, "105'+1'"));
+        // Beside it, the added time the fourth official put up for that half, once known; nothing before the half's end.
+        int[] put = {3, 4, 0, 0};
+        assertEquals("+4", BoardCover.addedWords("93:00", "90'+4'", put));
+        assertEquals("+4", BoardCover.addedWords("90:05", "88'", put));
+        assertEquals("+3", BoardCover.addedWords("46:30", "45'+2'", put));
+        assertEquals("", BoardCover.addedWords("88:10", "88'", put));
+        assertEquals("", BoardCover.addedWords("93:00", "90'+4'", null));
+        assertEquals("", BoardCover.addedWords("106:00", "105'+1'", put));
+        assertEquals("", BoardCover.addedWords("HT", "HT", put));
+        assertEquals(4, BoardCover.addedIn("Fourth official has announced 4 minutes of added time."));
+        assertEquals(1, BoardCover.addedIn("Fourth official has announced 1 minute of added time."));
+        assertEquals(0, BoardCover.addedIn("Corner, Arsenal. Conceded by Jarrad Branthwaite."));
+        assertEquals(0, BoardCover.addedIn(null));
+    }
+
+    @Test
+    public void theClockNeverSticksWhenEspnsStandsStillInAddedTime() {
+        // ESPN's clock at 90:00 while its minute says the 93rd: from the 93rd minute's start, on from there.
+        BoardCover.Reading r = live(1_000L, "2", "1", 5400, "90'+3'");
+        r.since = 1_000L;
+        assertArrayEquals(new String[]{"92:30", ""}, BoardCover.clock(r, 31_000L));
+        // Full time on the board under a minute after it shows, whatever is out by then.
+        assertTrue(BoardCover.FT_SHOWN_MS < 60_000L);
+        assertTrue(BoardCover.FT_GONE_MS <= 60_000L && BoardCover.FT_GONE_MS >= BoardCover.FT_SHOWN_MS);
     }
 
     @Test
@@ -368,8 +390,8 @@ public class BoardCoverTest {
         assertNull(BoardCover.anchorOf(null, "g1"));
         // 23 min 7 s after the OK at kick-off: 23:07, whatever ESPN's minute says.
         assertArrayEquals(new String[]{"23:07", ""}, BoardCover.anchored(a, at + (23 * 60 + 7) * 1000L, "22'"));
-        // Into added time: 45:00 with the minutes added beside it.
-        assertArrayEquals(new String[]{"45:00", "+2"}, BoardCover.anchored(a, at + (46 * 60) * 1000L, "45'+2'"));
+        // Into added time: running on.
+        assertArrayEquals(new String[]{"46:00", ""}, BoardCover.anchored(a, at + (46 * 60) * 1000L, "45'+2'"));
         // The second half on the screen: the first half's moment no longer counts.
         assertNull(BoardCover.anchored(a, at + 3_600_000L, "47'"));
         // Set at the second half's kick-off: from 45:00.
@@ -419,6 +441,8 @@ public class BoardCoverTest {
         assertEquals(1, o.side);
         assertEquals(BoardCover.kindColour("goal"), o.colour);
         assertEquals("g1", o.gameId);
+        // 4.14: a goal is captioned once, by its game and new score.
+        assertEquals("g1|2–1", o.key);
         // The card's pictures go with it (none here).
         assertNull(o.photo);
         assertNull(o.homeCrest);
@@ -652,5 +676,26 @@ public class BoardCoverTest {
     public void theBroadcastLogoSaysTheFamilysName() {
         assertEquals("Whitebrook Road", LogoMark.NAME);
         assertEquals("sports", LogoMark.WORD);
+    }
+
+    // ---- 4.14: the scorer's caption -------------------------------------------------------------------------------------
+
+    @Test
+    public void theBoardFindsTheScorerOfTheGoalItShows() {
+        java.util.List<String[]> goals = new java.util.ArrayList<>();
+        goals.add(new String[]{"a", "Bukayo Saka", "23'", "home", ""});
+        goals.add(new String[]{"b", "Beto", "30'", "away", ""});
+        goals.add(new String[]{"c", "Kai Havertz", "41'", "home", "pen"});
+        assertEquals(2, BoardCover.goalsOf("2–1", 1));
+        assertEquals(1, BoardCover.goalsOf("2–1", 2));
+        assertEquals(-1, BoardCover.goalsOf("v", 1));
+        assertEquals("Kai Havertz", BoardCover.scorerOf(goals, "home", 2)[1]);
+        assertEquals("Beto", BoardCover.scorerOf(goals, "away", 1)[1]);
+        // The scores not caught up yet: none.
+        assertNull(BoardCover.scorerOf(goals, "away", 2));
+        assertNull(BoardCover.scorerOf(null, "home", 1));
+        assertEquals("Kai Havertz 41' · penalty", BoardCover.scorerLine(goals.get(2)));
+        assertEquals("Bukayo Saka 23'", BoardCover.scorerLine(goals.get(0)));
+        assertEquals("", BoardCover.scorerLine(null));
     }
 }

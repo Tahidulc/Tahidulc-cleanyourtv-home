@@ -15,7 +15,8 @@ import android.view.View;
  * broadcasters' captions come out of their score bug: the stats (BoardStats) and the alerts (BoardDrop). In the board's
  * own look (BoardBug's StripLook): its ground, square at its near end, which tucks under the board, and round at its far
  * end; beside the Glass pill, a pill of its own a little apart. Out to the board's right, or to its left when the board
- * is nearer the screen's right. Out from under the board far end first, and back in the same way.
+ * is nearer the screen's right. Out from under the board far end first, and back in the same way. What stands out of it
+ * (the scorer's picture, over) may rise above its top into the room kept there (head).
  */
 abstract class BoardSide extends View {
     static final long SLIDE_MS = 420L;
@@ -31,6 +32,8 @@ abstract class BoardSide extends View {
     protected float out;
     /** Where its words go, from start to end, in pixels (set as it is drawn). */
     protected float start, end;
+    /** The room over its top, in pixels, for what stands out of it (the strip is the rest of its height, at its foot). */
+    protected int head;
     private ValueAnimator sliding;
     private Runnable after;
     private final Paint ground = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -46,10 +49,16 @@ abstract class BoardSide extends View {
 
     /** Set for a board unit pixels high in this look, its near end tucked so far under it, on the board's left or right. */
     void place(BoardBug.StripLook s, float unit, int tuck, boolean leftOf) {
+        place(s, unit, tuck, leftOf, 0);
+    }
+
+    /** The same, with head pixels of room over its top for what stands out of it. */
+    void place(BoardBug.StripLook s, float unit, int tuck, boolean leftOf, int head) {
         look = s;
         this.unit = Math.max(16f, unit);
         this.tuck = s.apart ? 0 : Math.max(0, tuck);
         this.leftOf = leftOf;
+        this.head = Math.max(0, head);
         if (isOut()) invalidate();
     }
 
@@ -165,13 +174,17 @@ abstract class BoardSide extends View {
     /** What it shows, between start and end, h high. */
     protected abstract void content(Canvas cv, int w, int h);
 
+    /** What stands out of it, drawn unclipped by its ground (above its top, up to head): the strip h high from 0. */
+    protected void over(Canvas cv, int w, int h) {
+    }
+
     @Override protected void onDraw(Canvas cv) {
-        int w = getWidth(), h = getHeight();
+        int w = getWidth(), h = getHeight() - head;
         if (w <= 0 || h <= 0 || out <= 0f) return;
-        float seen = w * BoardBug.ease(out);
+        float seen = w * BoardBug.ease(out), tx = leftOf ? w - seen : seen - w;
         cv.save();
         // Out from under the board, its far end first.
-        cv.translate(leftOf ? w - seen : seen - w, 0);
+        cv.translate(tx, head);
         float rad = look.apart ? h / 2f : Math.max(3f, h * look.round);
         float near = look.apart ? rad : 0f, left = leftOf ? rad : near, right = leftOf ? near : rad;
         corners[0] = corners[1] = corners[6] = corners[7] = left;
@@ -199,6 +212,12 @@ abstract class BoardSide extends View {
         end = leftOf ? w - tuck - pad : w - sw - pad;
         content(cv, w, h);
         cv.restore();
+        cv.restore();
+        // What stands out of it, only where it is out from under the board.
+        cv.save();
+        cv.clipRect(leftOf ? 0 : tuck, 0, leftOf ? w - tuck : w, h + head);
+        cv.translate(tx, head);
+        over(cv, w, h);
         cv.restore();
     }
 }

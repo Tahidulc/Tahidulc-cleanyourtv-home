@@ -219,6 +219,16 @@ final class LineupCard {
         lp.x = px(34);
         // Over Ambient mode: above its bar along the foot, not on it.
         lp.y = px(AmbientScene.showing() ? AmbientScene.ALERT_FOOT : 34);
+        // The scoreboard up over the channel: beside it, in line with it (its top level with the board's).
+        int[] beside = BoardCover.besideBoard(w, h);
+        boolean fromRight = false;
+        if (beside != null) {
+            lp.gravity = Gravity.TOP | Gravity.START;
+            lp.x = beside[0] - margin;
+            lp.y = beside[1] - margin;
+            fromRight = beside[0] < BoardCover.boardLeft();
+            AlertLog.note(c, "line-up card beside the scoreboard");
+        }
         lp.setTitle("LineupCard");
         try {
             c.getSystemService(WindowManager.class).addView(win, lp);
@@ -273,7 +283,7 @@ final class LineupCard {
             }
         };
         card.setAlpha(0f);
-        card.setTranslationX(-px(40));
+        card.setTranslationX(fromRight ? px(40) : -px(40));
         card.animate().alpha(1f).translationX(0f).setDuration(340).setInterpolator(new DecelerateInterpolator(2f)).withLayer().start();
         step.run();
     }

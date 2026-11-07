@@ -344,6 +344,16 @@ public class GoalWatchService extends Service {
         return sp > 0 ? new String[]{f.substring(0, sp), f.substring(sp + 1)} : new String[]{"", f};
     }
 
+    /** A scorer's head and shoulders for the scoreboard's own caption (off the main thread); null without the service. */
+    static android.graphics.Bitmap photoFor(String who, String team, int kit) {
+        GoalWatchService s = self;
+        try {
+            return s == null ? null : s.playerPhoto(who, team, kit);
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
     /** A player's head and shoulders: his cut-out, else the blank figure in his side's colour. */
     android.graphics.Bitmap playerPhoto(String who, String team, int kit) {
         if (who == null || who.isEmpty()) return null;
@@ -2859,14 +2869,11 @@ public class GoalWatchService extends Service {
                 live.add(new Pic(g.awayLogo)); live.add(4); live.add(bold(g.away)); live.add(14);
                 live.add(bold("📺  LIVE ON")); live.add(8); live.add(new Chip(tv.logo, tv.name));
             }
-            // The line-ups out, and the theme asks for it ("lineup_card"): the line-up card in place of the pill.
-            if (sides != null && Config.themeFlag(this, "lineup_card", false)) {
+            // The line-ups out, and the theme asks for it ("lineup_card"), or the scoreboard is up over the channel: the
+            // line-up card in place of the pill (beside the scoreboard, in line with it, while that is up).
+            if (sides != null && (Config.themeFlag(this, "lineup_card", false) || BoardCover.up(this))) {
                 LineupCard.Data card = lineupCard(g, sides, tv, channels);
-                // The scoreboard over the channel up: both elevens fold out from under it instead.
-                main.post(() -> {
-                    if (!BoardCover.takeLineups(this, g, sides, card.home == null ? null : card.home.crest,
-                            card.away == null ? null : card.away.crest)) LineupCard.show(this, card);
-                });
+                main.post(() -> LineupCard.show(this, card));
                 return;
             }
             // No line-ups yet (or no line-up card): the kick-off as a score card.

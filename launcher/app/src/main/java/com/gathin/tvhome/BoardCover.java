@@ -70,7 +70,11 @@ final class BoardCover {
     private BoardCover() { }
 
     /** How long it stays on at most, how long after full time on the screen, and how long full time shows. */
-    static final long MAX_MS = 4 * 3_600_000L, AFTER_FT_MS = 10 * 60_000L, FT_SHOWN_MS = 2 * 60_000L;
+    /**
+     * The longest it stays on, how long after full time it switches off, and how long full time stays on the board
+     * (its alert and its stats inside that; gone by FT_GONE_MS whatever is out).
+     */
+    static final long MAX_MS = 4 * 3_600_000L, AFTER_FT_MS = 10 * 60_000L, FT_SHOWN_MS = 50_000L, FT_GONE_MS = 60_000L;
     /** Burn-in: a step round the circle each minute; dimmer after five minutes without a change. */
     static final long STEP_MS = 60_000L, DIM_AFTER_MS = 5 * 60_000L;
     /** How dim: the colours at this share of their brightness, never see-through. */
@@ -384,8 +388,9 @@ final class BoardCover {
     /** Pure: the clock the screen shows for r at screenNow: {"67:23", ""} or {"45:00", "+2"}; null when not running. */
     static String[] clock(Reading r, long screenNow) {
         if (r == null || r.state != 0 || r.halftime) return null;
-        // Only the minute ("67'"): the minute began a minute before.
-        double secs = r.clockSec > 0 ? r.clockSec : (minuteOf(r.detail) - 1) * 60.0;
+        // Only the minute ("67'"): the minute began a minute before. In added time ESPN's clock can stand at the period's
+        // end while its minute goes on ("90'+3'"): the later of the two, so the clock never sticks there.
+        double secs = Math.max(r.clockSec, (minuteOf(r.detail) - 1) * 60.0);
         if (secs <= 0) return null;
         // ESPN's clock in whole minutes counts on to the minute's end at most; a finer one a little further.
         long most = r.clockSec > 0 && r.clockSec % 60 != 0 ? 119 : 59;
@@ -394,26 +399,58 @@ final class BoardCover {
     }
 
     /**
-     * Pure: a clock of total seconds as broadcasters show it: "67:23"; in added time the period's end with the minutes
-     * added beside it ("45:00", "+2"). The period is ESPN's minute's ("45'+2'" is still the first half, "90'" the
-     * second however far the clock has run), else the clock's own.
+     * Pure: a clock of total seconds as broadcasters show it, "67:23", running on through the minutes added ("92:15")
+     * until half time or full time is on the screen. The box beside it (the second word) is the added time put up, which
+     * addedWords gives; none here.
      */
     static String[] clockWords(double total, String detail) {
-        int whole = (int) total;
-        int plus = Math.max(0, added(detail)), first = firstMinute(detail), period;
-        if (first > 0) {
-            period = first <= 45 ? 1 : first <= 90 ? 2 : first <= 105 ? 3 : 4;
-        } else {
-            int base = whole - plus * 60, in = plus > 0 ? 1 : 0;
-            period = base < 45 * 60 + in ? 1 : base < 90 * 60 + in ? 2 : base < 105 * 60 + in ? 3 : 4;
-        }
-        int end = period == 1 ? 45 : period == 2 ? 90 : period == 3 ? 105 : 120;
-        if (whole >= end * 60) {
-            int a = plus > 0 ? plus : Math.max(1, (whole - end * 60) / 60 + 1);
-            return new String[]{String.format(Locale.UK, "%02d:00", end), "+" + a};
-        }
+        int whole = Math.max(0, (int) total);
         return new String[]{String.format(Locale.UK, "%02d:%02d", whole / 60, whole % 60), ""};
     }
+
+    /**
+     * Pure: the box beside the clock in added time: the minutes the fourth official put up for that half ("+4"), once
+     * known (announced: {first half, second half, extra time's two}); none before the half's end or when not known.
+     */
+    static String addedWords(String clock, String detail, int[] announced) {
+        int m = minuteOfClock(clock);
+        if (m < 0 || announced == null) return "";
+        int first = firstMinute(detail);
+        int period = first > 0 ? (first <= 45 ? 1 : first <= 90 ? 2 : first <= 105 ? 3 : 4)
+                : m < 45 ? 1 : m < 90 ? 2 : m < 105 ? 3 : 4;
+        int end = period == 1 ? 45 : period == 2 ? 90 : period == 3 ? 105 : 120;
+        if (m < end || period > announced.length) return "";
+        int n = announced[period - 1];
+        return n > 0 ? "+" + n : "";
+    }
+
+    private static final Pattern ADDED_TIME = Pattern.compile("(\\d+)\\s+minutes?\\s+of\\s+(?:added|stoppage|injury)\\s+time",
+            Pattern.CASE_INSENSITIVE);
+
+    /** Pure: the minutes of added time a line of commentary puts up ("Fourth official has announced 4 minutes of added time."); 0 for none. */
+    static int addedIn(String text) {
+        Matcher m = ADDED_TIME.matcher(text == null ? "" : text);
+        return m.find() ? Integer.parseInt(m.group(1)) : 0;
+    }
+
+    /** The added time put up in each half from the match summary's commentary: {first, second, extra time's two}. */
+    private static int[] announcedOf(org.json.JSONObject summary) {
+        int[] out = new int[4];
+        org.json.JSONArray com = summary.optJSONArray("commentary");
+        for (int i = 0; com != null && i < com.length(); i++) {
+            org.json.JSONObject x = com.optJSONObject(i);
+            int n = x == null ? 0 : addedIn(x.optString("text"));
+            if (n <= 0) continue;
+            org.json.JSONObject t = x.optJSONObject("time");
+            int first = t == null ? 0 : firstMinute(t.optString("displayValue"));
+            if (first <= 0) continue;
+            out[(first <= 45 ? 1 : first <= 90 ? 2 : first <= 105 ? 3 : 4) - 1] = n;
+        }
+        return out;
+    }
+
+    /** Each game's added time put up so far, read with its stats. */
+    private static final Map<String, int[]> announced = new java.util.concurrent.ConcurrentHashMap<>();
 
     private static final Pattern MINUTE = Pattern.compile("(\\d+)'?\\s*(?:\\+\\s*(\\d+))?");
 
@@ -643,6 +680,7 @@ final class BoardCover {
         o.homeColour = homeColour;
         o.awayColour = awayColour;
         int scored = "goal".equals(d.kind) ? goalSide(d.scoreBefore, d.score) : 0;
+        if ("goal".equals(d.kind) && d.gameId != null && !nz(d.score).isEmpty()) o.key = d.gameId + "|" + nz(d.score);
         o.side = scored > 0 ? scored : d.crest == null ? 0 : d.crest == d.homeCrest ? 1 : d.crest == d.awayCrest ? 2 : 0;
         // As the card has them: the player's picture, both crests.
         o.photo = d.photo;
@@ -682,6 +720,7 @@ final class BoardCover {
         o.homeColour = BoardBug.colour(g.homeColor, g.homeAlt);
         o.awayColour = BoardBug.colour(g.awayColor, g.awayAlt);
         o.side = "home".equals(scoredBy) ? 1 : "away".equals(scoredBy) ? 2 : 0;
+        if ("goal".equals(sound) && g.id != null) o.key = g.id + "|" + score(g.homeScore) + "–" + score(g.awayScore);
         o.homeCrest = homeCrest == null ? null : ScoreCard.onNavy(homeCrest);
         o.awayCrest = awayCrest == null ? null : ScoreCard.onNavy(awayCrest);
         o.what = (o.chip + " " + o.title + " " + o.line).trim();
@@ -1013,7 +1052,9 @@ final class BoardCover {
      * The board's height set; the widest what slides out beside it may be, how far its near end tucks under the board
      * (beside a pill: the gap between them instead), and where the board sits along its window's row, in pixels.
      */
-    private static int boardH = 48, sideMax = 600, tuck = 6, sideGap, boardAt;
+    private static int boardH = 48, sideMax = 600, tuck = 6, sideGap, boardAt, head;
+    /** The game's crests as the board has them, for its own goal captions. */
+    private static Bitmap homeCrest, awayCrest;
     /** What slides out comes out on the board's left (a board nearer the screen's right). */
     private static boolean sideLeft;
     /** How long before kick-off it is up (the kick-off and the line-ups slide out of it), and how long into half time. */
@@ -1123,7 +1164,7 @@ final class BoardCover {
             return 1_000L;
         }
         if (r.state == 2) {
-            // Full time on the screen: shown two minutes (its alert first), off ten minutes after.
+            // Full time on the screen: shown under a minute (its alert and its stats first), off ten minutes after.
             long ft = prefs(c).getLong("ft", 0);
             if (ft == 0) {
                 ft = now;
@@ -1134,7 +1175,7 @@ final class BoardCover {
                 stop(c, "full time");
                 return 0;
             }
-            if (now - ft > FT_SHOWN_MS && !dropping) {
+            if (now - ft > FT_SHOWN_MS && (!dropping || now - ft > FT_GONE_MS)) {
                 closeAll();
                 return 5_000L;
             }
@@ -1172,10 +1213,9 @@ final class BoardCover {
             // Set at the kick-off on the screen (OK when asked): the clock counted from that moment, the channel's own.
             if (l.live) {
                 String[] set = anchored(anchorOf(prefs(c).getString("anchor", null), id), now, r.detail);
-                if (set != null) {
-                    l.clock = set[0];
-                    l.added = set[1];
-                }
+                if (set != null) l.clock = set[0];
+                // Running on through the minutes added, the time put up beside it once it is known.
+                l.added = addedWords(l.clock, r.detail, announced.get(id));
             }
         } else if (orSample) {
             l = sample();
@@ -1195,6 +1235,7 @@ final class BoardCover {
             if (side > 0) {
                 bug.goal(side);
                 goalShownAt = now;
+                expectScorer(c, g, l.score, side);
             }
             poke();
         }
@@ -1479,6 +1520,9 @@ final class BoardCover {
      */
     private static void positionBoard(Context c, int x, int y, int w, int h) {
         int vw = w + 2 * edge, vh = h + 2 * edge, unit = boardH;
+        // Room over the board for the scorer's picture to rise above an alert (what there is, up to over half its height).
+        head = Math.max(0, Math.min(Math.round(vh * 0.6f), y - 2 * edge));
+        boardRect.set(x - edge, y - edge, x + w + edge, y + h + edge);
         BoardBug.StripLook look = bug.stripLook();
         tuck = look.apart ? 0 : Math.max(2, Math.round(vh * look.round)) + 1;
         sideGap = look.apart ? Math.max(2, Math.round(unit * 0.1f)) : 0;
@@ -1495,11 +1539,12 @@ final class BoardCover {
         int room = Math.max(unit * 3, Math.min(Math.round(unit * STRIP_W), sideLeft ? roomL : roomR) - sideGap);
         sideMax = room + tuck;
         boardAt = sideLeft ? room + sideGap : 0;
-        sizeAt(bug, vw, vh, boardAt);
+        sizeAt(bug, vw, vh, boardAt, head);
         if (stats.isOut()) beside(stats, stats.getLayoutParams().width);
         if (drop.isOut()) beside(drop, drop.getLayoutParams().width);
         WindowManager.LayoutParams lp = (WindowManager.LayoutParams) boardWin.getLayoutParams();
-        int wx = x - 2 * edge - boardAt, wy = y - 2 * edge, ww = boardAt + vw + (sideLeft ? 0 : sideGap + room) + 2 * edge, wh = vh + 2 * edge;
+        int wx = x - 2 * edge - boardAt, wy = y - 2 * edge - head, ww = boardAt + vw + (sideLeft ? 0 : sideGap + room) + 2 * edge,
+                wh = head + vh + 2 * edge;
         if (lp == null || (lp.x == wx && lp.y == wy && lp.width == ww && lp.height == wh)) return;
         lp.x = wx;
         lp.y = wy;
@@ -1512,20 +1557,54 @@ final class BoardCover {
         }
     }
 
-    private static void sizeAt(View v, int w, int h, int left) {
+    private static void sizeAt(View v, int w, int h, int left, int top) {
         FrameLayout.LayoutParams l = (FrameLayout.LayoutParams) v.getLayoutParams();
-        if (l.width == w && l.height == h && l.leftMargin == left) return;
+        if (l.width == w && l.height == h && l.leftMargin == left && l.topMargin == top) return;
         l.width = w;
         l.height = h;
         l.leftMargin = left;
+        l.topMargin = top;
         v.setLayoutParams(l);
     }
 
-    /** What slides out (the stats, an alert) w wide, as high as the board and beside it, its near end tucked under it. */
+    /**
+     * What slides out (the stats, an alert) w wide, as high as the board and beside it, its near end tucked under it; an
+     * alert with the room over the board as well, for the scorer's picture to rise into.
+     */
     private static void beside(View v, int w) {
         FrameLayout.LayoutParams b = (FrameLayout.LayoutParams) bug.getLayoutParams();
         int left = sideLeft ? boardAt + tuck - sideGap - w : boardAt + b.width - tuck + sideGap;
-        sizeAt(v, w, b.height, left);
+        if (v == drop) sizeAt(v, w, b.height + head, left, 0);
+        else sizeAt(v, w, b.height, left, head);
+    }
+
+    /**
+     * Where a card w by h stands beside the board, in line with it (its top level with the board's), on the side with
+     * room, short of the logo's cover, else under the board: {left, top} on the screen; null when the board is not up.
+     */
+    static int[] besideBoard(int w, int h) {
+        if (boardWin == null || bug == null || column == null || column.getVisibility() != View.VISIBLE || bug.closing()) return null;
+        int gap = Math.max(4, Math.round(boardH * 0.2f)), margin = Math.round(sw * 0.02f);
+        int right = sw - margin, left = margin;
+        BoardPlace p = adjusting && editing != null ? editing : place;
+        if (logoWin != null && p != null) {
+            int lx = Math.round(p.lx * sw), ly = Math.round(p.ly * sh), lw = Math.round(p.lw * sw), lh = Math.round(p.lh * sh);
+            boolean level = ly < boardRect.top + h && ly + lh > boardRect.top;
+            if (level && lx >= boardRect.right) right = Math.min(right, lx - margin / 2);
+            if (level && lx + lw <= boardRect.left) left = Math.max(left, lx + lw + margin / 2);
+        }
+        int top = Math.max(0, Math.min(boardRect.top, sh - h));
+        if (boardRect.right + gap + w <= right) return new int[]{boardRect.right + gap, top};
+        if (boardRect.left - gap - w >= left) return new int[]{boardRect.left - gap - w, top};
+        return new int[]{Math.max(margin, Math.min(boardRect.left, sw - margin - w)), Math.min(boardRect.bottom + gap, sh - h)};
+    }
+
+    /** The board's place on the screen, its edge round it (for a card beside it). */
+    private static final android.graphics.Rect boardRect = new android.graphics.Rect();
+
+    /** The board's left on the screen (a card to its left comes in from the right). */
+    static int boardLeft() {
+        return boardRect.left;
     }
 
     // ---- what slides out beside it: the alerts --------------------------------------------------------------------------
@@ -1535,6 +1614,9 @@ final class BoardCover {
     private static final Runnable nextDropRun = BoardCover::nextDrop, hideDropRun = BoardCover::hideDrop;
 
     private static void drop(Context c, BoardDrop.Drop d) {
+        // A goal is captioned once: from its card, or (no card come) from the scores.
+        if (d.key != null && !captioned.add(d.key)) return;
+        if (captioned.size() > 200) captioned.clear();
         // The board's own game: the board beside it says the clubs and the score already.
         d.own = d.gameId != null && d.gameId.equals(game(c));
         drops.addLast(d);
@@ -1560,6 +1642,11 @@ final class BoardCover {
             stats.fold(() -> main().post(nextDropRun));
             return;
         }
+        // The line-up card beside the board: the alert waits for it.
+        if (LineupCard.isShowing()) {
+            main().postDelayed(nextDropRun, 1_500L);
+            return;
+        }
         long wait = bug.bandLeft(System.currentTimeMillis());
         if (wait > 0) {
             main().postDelayed(nextDropRun, wait);
@@ -1567,7 +1654,7 @@ final class BoardCover {
         }
         BoardDrop.Drop d = drops.pollFirst();
         poke();
-        drop.place(bug.stripLook(), boardH, tuck, sideLeft);
+        drop.place(bug.stripLook(), boardH, tuck, sideLeft, head);
         beside(drop, drop.widthFor(d, bug.getLayoutParams().height, sideMax));
         drop.show(d);
         main().postDelayed(hideDropRun, drop.showFor(DROP_MS));
@@ -1582,6 +1669,103 @@ final class BoardCover {
         drop.fold(BoardCover::nextDrop);
     }
 
+    // ---- a goal's scorer, captioned beside it --------------------------------------------------------------------------
+
+    /** The goals captioned beside the board, "game|score": each once, from its card or else from the scores. */
+    private static final java.util.Set<String> captioned = new java.util.HashSet<>();
+    /** The goal on the board waiting for its caption ("game|score"), its side, and its scorer's picture once found. */
+    private static String scorerFor;
+    private static int scorerSide, scorerTries;
+    private static Bitmap scorerPhoto;
+    private static final Runnable ownScorerRun = BoardCover::ownScorer;
+
+    /**
+     * A goal on the board (main thread): its caption comes with its card (the scorer's picture, who and when); should no
+     * card come by just after the goal's sweep (a game the alerts don't follow), the board captions it itself from the
+     * scores, the scorer's picture looked up meanwhile.
+     */
+    private static void expectScorer(Context c, ScoresTicker.Game g, String score, int side) {
+        scorerFor = g.id + "|" + score;
+        scorerSide = side;
+        scorerTries = 0;
+        scorerPhoto = null;
+        main().removeCallbacks(ownScorerRun);
+        main().postDelayed(ownScorerRun, BoardBug.BAND_OUT + BoardBug.BAND_MS + 2_000L);
+        String[] who = scorerOf(g.goals, side == 1 ? "home" : "away", goalsOf(score, side));
+        if (who == null || who[1].isEmpty()) return;
+        String key = scorerFor, team = side == 1 ? g.homeName : g.awayName;
+        int kit = side == 1 ? g.homeColor : g.awayColor;
+        Context a = c.getApplicationContext();
+        io.execute(() -> {
+            Bitmap b = GoalWatchService.photoFor(who[1], team, kit);
+            main().post(() -> {
+                if (key.equals(scorerFor)) scorerPhoto = b;
+            });
+        });
+    }
+
+    /** Pure: a side's goals in a score ("2–1", side 1: 2); -1 when it is not a score. */
+    static int goalsOf(String score, int side) {
+        String[] g = score == null ? new String[0] : score.split("\\s*[–-]\\s*");
+        if (g.length != 2) return -1;
+        try {
+            return Integer.parseInt(g[side == 1 ? 0 : 1].trim());
+        } catch (NumberFormatException e) {
+            return -1;
+        }
+    }
+
+    /**
+     * Pure: the scores' entry for a side's n-th goal ({key, scorer, minute, side, kind}, ESPN listing an own goal for the
+     * side it counted for), null when the scores do not have it yet.
+     */
+    static String[] scorerOf(List<String[]> goals, String side, int n) {
+        if (goals == null || n <= 0) return null;
+        int seen = 0;
+        for (String[] x : goals) {
+            if (x == null || x.length < 5 || !side.equals(x[3])) continue;
+            if (++seen == n) return x;
+        }
+        return null;
+    }
+
+    /** Pure: a scorer's line as the cards have it: "Bukayo Saka 67'", "… 52' · penalty", "… 30' · own goal". */
+    static String scorerLine(String[] goal) {
+        if (goal == null) return "";
+        return (goal[1] + " " + goal[2]).trim() + ("pen".equals(goal[4]) ? " · penalty" : "og".equals(goal[4]) ? " · own goal" : "");
+    }
+
+    /** No card came for the goal on the board: its caption from the scores (asked again a few times while they lag). */
+    private static void ownScorer() {
+        Context c = app;
+        String key = scorerFor;
+        if (c == null || key == null || captioned.contains(key) || bug == null) return;
+        String id = key.substring(0, key.indexOf('|')), score = key.substring(key.indexOf('|') + 1);
+        ScoresTicker.Game g = GoalWatchService.latestGame(id);
+        if (g == null || !id.equals(game(c))) return;
+        String[] goal = scorerOf(g.goals, scorerSide == 1 ? "home" : "away", goalsOf(score, scorerSide));
+        if (goal == null && ++scorerTries < 4) {
+            main().postDelayed(ownScorerRun, 3_000L);
+            return;
+        }
+        BoardDrop.Drop d = new BoardDrop.Drop();
+        d.gameId = id;
+        d.key = key;
+        d.chip = "GOAL";
+        d.colour = kindColour("goal");
+        String home = g.homeName != null ? g.homeName : nz(g.home), away = g.awayName != null ? g.awayName : nz(g.away);
+        d.title = home + " " + score + " " + away;
+        d.line = scorerLine(goal);
+        d.homeColour = BoardBug.colour(g.homeColor, g.homeAlt);
+        d.awayColour = BoardBug.colour(g.awayColor, g.awayAlt);
+        d.side = scorerSide;
+        d.photo = scorerPhoto;
+        d.homeCrest = homeCrest;
+        d.awayCrest = awayCrest;
+        d.what = ("GOAL " + d.title + " " + d.line).trim();
+        drop(c, d);
+    }
+
     // ---- what slides out beside it: the stats --------------------------------------------------------------------------
 
     /** The game's stats and facts read last, by their names ("Possession", "Form"…), each {name, home, away[, kind]}. */
@@ -1592,9 +1776,12 @@ final class BoardCover {
     /** The stats moments shown, "game|moment": each once a game. */
     private static final java.util.Set<String> statsShown = new java.util.HashSet<>();
 
-    /** The game's stats and facts read again every two minutes while the board is up (off the main thread). */
+    /**
+     * The game's match summary read again every two minutes while the board is up (off the main thread): its stats and
+     * facts, and the added time put up in each half.
+     */
     private static void readStats(Context c, ScoresTicker.Game g, long now) {
-        if (!statsOn(c) || statsReading || g.slug == null || g.id == null) return;
+        if (statsReading || g.slug == null || g.id == null) return;
         if (g.id.equals(statsFor) && now - statsReadAt < STATS_READ_MS) return;
         statsReading = true;
         statsReadAt = now;
@@ -1602,8 +1789,10 @@ final class BoardCover {
         io.execute(() -> {
             Map<String, String[]> got = null;
             try {
-                got = statsOf(new org.json.JSONObject(ScoresTicker.get("https://site.api.espn.com/apis/site/v2/sports/soccer/"
-                        + slug + "/summary?event=" + id)), g);
+                org.json.JSONObject summary = new org.json.JSONObject(ScoresTicker.get("https://site.api.espn.com/apis/site/v2/sports/soccer/"
+                        + slug + "/summary?event=" + id));
+                announced.put(id, announcedOf(summary));
+                got = statsOf(summary, g);
             } catch (Exception ignored) {
                 // read again in two minutes
             }
@@ -1686,7 +1875,8 @@ final class BoardCover {
      * away).
      */
     private static void maybeStats(Context c, ScoresTicker.Game g, Reading r, long now, boolean pre) {
-        if (!statsOn(c) || dropping || stats == null || stats.isOut() || bug == null || bug.closing() || bug.getWidth() <= 0) return;
+        if (!statsOn(c) || dropping || stats == null || stats.isOut() || bug == null || bug.closing() || bug.getWidth() <= 0
+                || LineupCard.isShowing()) return;
         if (!g.id.equals(statsFor) || statsBy.isEmpty() || now - goalShownAt < 90_000L) return;
         if (!pre && (r == null || ahead(g.id, r))) return;
         int minute = minuteOfClock(bug.look().clock);
@@ -1734,7 +1924,10 @@ final class BoardCover {
         io.execute(() -> {
             Bitmap h = crest(a, home), w = crest(a, away), l = compLogo(a, league);
             main().post(() -> {
-                if (bug != null && id.equals(imagesFor)) bug.images(h, w, l);
+                if (!id.equals(imagesFor)) return;
+                homeCrest = h;
+                awayCrest = w;
+                if (bug != null) bug.images(h, w, l);
             });
         });
     }
