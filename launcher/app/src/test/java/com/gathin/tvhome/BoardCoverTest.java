@@ -786,4 +786,19 @@ public class BoardCoverTest {
         assertArrayEquals(new float[]{1f, 0f, 0f, 1f}, BoardStats.turnParts(1f), 0.0001f);
         assertEquals(1f, BoardStats.turnParts(0f)[1], 0.0001f);
     }
+
+    // ---- 4.18: every look moves in added time --------------------------------------------------------------------------
+
+    @Test
+    public void addedTimeIsKnownByTheHalfOnTheScreen() {
+        assertTrue(BoardCover.inAddedTime("92:15", "90'+3'"));
+        assertTrue(BoardCover.inAddedTime("90:00", "90'"));
+        assertFalse(BoardCover.inAddedTime("89:59", "90'"));
+        // 46:30 in the first half's added time, but not in the second half's normal time.
+        assertTrue(BoardCover.inAddedTime("46:30", "45'+2'"));
+        assertFalse(BoardCover.inAddedTime("46:30", "47'"));
+        assertTrue(BoardCover.inAddedTime("106:00", "105'+1'"));
+        assertFalse(BoardCover.inAddedTime("HT", "HT"));
+        assertFalse(BoardCover.inAddedTime(null, null));
+    }
 }

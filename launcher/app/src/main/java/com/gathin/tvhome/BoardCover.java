@@ -462,6 +462,15 @@ final class BoardCover {
         return n > 0 ? "+" + n : "";
     }
 
+    /** Pure: whether a clock is in its half's added time: its minute at or past the half's end (the half by ESPN's minute). */
+    static boolean inAddedTime(String clock, String detail) {
+        int m = minuteOfClock(clock);
+        if (m < 0) return false;
+        int first = firstMinute(detail);
+        int period = first > 0 ? (first <= 45 ? 1 : first <= 90 ? 2 : first <= 105 ? 3 : 4) : m < 45 ? 1 : m < 90 ? 2 : m < 105 ? 3 : 4;
+        return m >= (period == 1 ? 45 : period == 2 ? 90 : period == 3 ? 105 : 120);
+    }
+
     private static final Pattern ADDED_TIME = Pattern.compile("(\\d+)\\s+minutes?\\s+of\\s+(?:added|stoppage|injury)\\s+time",
             Pattern.CASE_INSENSITIVE);
 
@@ -1267,6 +1276,8 @@ final class BoardCover {
                 if (secs >= 0) l.clock = clockWords(steady(id, r.detail, secs, now), r.detail)[0];
                 // From the half's last minute, the added time put up beside it once it is known.
                 l.added = addedWords(l.clock, r.detail, announced.get(id));
+                // In its half's added time: every look moves, the minutes added beside it.
+                l.stoppage = inAddedTime(l.clock, r.detail);
             }
         } else if (orSample) {
             l = sample();
