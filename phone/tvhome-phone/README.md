@@ -238,6 +238,19 @@ line-up card beside the board, top to top: the club's crest and shape down a nav
 head and shoulders, then both elevens on one pitch. The mark over the channel's logo says Whitebrook Road, and has the
 TV's two Broadcast looks, one solid block each: see-through, or in the scoreboard's colours.
 
+Card in red, added time alive on every look (4.19): the Card scoreboard's middle, the score over the clock, is red now
+(darker at its foot), and alive: its lighter slants drift slowly across it and a soft shine sweeps over it every few
+seconds, while it shows. In added time (the clock past the half's 45th or 90th minute, or extra time's 105th or 120th,
+the half as ESPN gives it) every other look's score comes alive the same way, over its own colours (Stacked's two goals
+boxes each; Minimal, with no box, has the shine across it all), the first shine sweeping across as added time begins;
+before then, and at half time, they stay still. The minutes added stand beside the board in a red tab of their own, for
+every look (a pill beside Glass; half the board's height, on its foot, beside Stacked and Card), sliding out from behind
+it lit white as they are put up, rather than squeezed in by the clock; what slides out of the board starts after the
+tab. A board kept too narrow for the tab (over a squarish channel scoreboard) has them beside the clock, as before. The
+stats beside the board never overlap, at any size the board is made: in a short room the bar between the figures gives
+way first, then the whole stat is drawn smaller; an alert whose first row is too long for its room is drawn smaller
+rather than cut off; and the scoreboard's own numbers shrink to fit a narrow box rather than run into each other.
+
 Subtitles (CC in the film's player): the film's or episode's own, from your playlist's stream, come first, in the
 languages you choose (Settings, Subtitles, in order). When it has none, OpenSubtitles.com is looked in by the title's
 TMDB id (the series' with its season and episode), best first: your languages, the ones that fit the copy playing (its

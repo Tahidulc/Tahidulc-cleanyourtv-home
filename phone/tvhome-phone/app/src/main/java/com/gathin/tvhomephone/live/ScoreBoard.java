@@ -380,12 +380,28 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         if (strip.isOut()) beside(strip, strip.getLayoutParams().width, strip.head > 0);
     }
 
+    /**
+     * How far what slides out tucks under the board, and the gap beside it: on its right with the added time in a tab
+     * beside it, none and a little gap, so it starts after the tab; else as laid out.
+     */
+    private int nearTuck() {
+        return tabOut() ? 0 : tuck;
+    }
+
+    private int nearGap() {
+        return tabOut() ? Math.round(boardH() * 0.06f) : sideGap;
+    }
+
+    private boolean tabOut() {
+        return !sideLeft && bug.tabIn(boardW(), boardH()) > 0;
+    }
+
     /** What slides out (the stats, an alert) w wide, as high as the board and beside it, its near end tucked under it. */
     private void beside(View v, int w, boolean withHead) {
         int bh = boardH(), bw = boardW();
         boolean onBoard = boardUp();
         FrameLayout.LayoutParams l = (FrameLayout.LayoutParams) v.getLayoutParams();
-        int left = !onBoard ? boardAt : sideLeft ? boardAt + tuck - sideGap - w : boardAt + bw - tuck + sideGap;
+        int left = !onBoard ? boardAt : sideLeft ? boardAt + tuck - sideGap - w : boardAt + bw - nearTuck() + nearGap();
         int height = bh + (withHead ? head : 0), top = withHead ? 0 : head;
         if (l.width == w && l.height == height && l.leftMargin == left && l.topMargin == top) return;
         l.width = w;
@@ -600,7 +616,7 @@ public final class ScoreBoard implements LiveAlerts.Listener {
                 shown = g;
                 l = look(g, screen.boardClock(now));
                 // From the half's last minute, the added time put up beside the clock (the channel's own when it shows it).
-                if (l.live) l.added = addedBox(half(g, l.clock), minuteOfClock(l.clock), addedUp, l.added);
+                if (l.live) l.added = addedBox(period(g, l.clock), minuteOfClock(l.clock), addedUp, l.added);
                 // A goal as the screen shows it: that side lit, then its scorer captioned.
                 if (g.id != null && g.id.equals(lastShownId)) {
                     int side = g.homeScore > lastHome && lastHome >= 0 ? 1 : g.awayScore > lastAway && lastAway >= 0 ? 2 : 0;
@@ -663,11 +679,41 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         return sinceFt > FT_MOST_MS || (sinceFt > FT_SHOWN_MS && !busy);
     }
 
-    /** The half a clock is in: the game's own, else the clock's. */
-    private static int half(Game g, String clock) {
-        if (g.period > 0) return g.period;
+    /**
+     * Pure: the period a clock is in (1, 2; 3 and 4 in extra time): the game's own as ESPN gives it; else its minute's
+     * first number ("90'+3'": the second half's, not the 93rd minute's); else, knowing neither, the clock's own minute.
+     */
+    static int period(Game g, String clock) {
+        if (g.period >= 1 && g.period <= 4) return g.period;
+        int n = firstNumber(g.displayClock);
+        if (n <= 0) n = firstNumber(g.detail);
+        if (n > 0) return n <= 45 ? 1 : n <= 90 ? 2 : n <= 105 ? 3 : 4;
         int m = minuteOfClock(clock);
-        return m < 0 ? 1 : m < 45 ? 1 : m < 90 ? 2 : m < 105 ? 3 : 4;
+        return m < 45 ? 1 : m < 90 ? 2 : m < 105 ? 3 : 4;
+    }
+
+    /** Pure: the minute a period ends at: 45, 90; 105 and 120 in extra time. */
+    static int periodEnd(int period) {
+        return period <= 1 ? 45 : period == 2 ? 90 : period == 3 ? 105 : 120;
+    }
+
+    /**
+     * Pure: whether the board is in added time: the game running (not at half time, nor in a shoot-out) and its clock
+     * past its period's end ("45:47" in the first half, "92:15" in the second; not "45:30" as the second begins).
+     */
+    static boolean stoppage(Game g, String clock) {
+        if (g == null || g.state != Game.LIVE || g.halftime || g.period >= 5) return false;
+        int m = minuteOfClock(clock);
+        return m >= 0 && m >= periodEnd(period(g, clock));
+    }
+
+    /** "90'+3'" as 90: its first run of digits; 0 when it has none. */
+    private static int firstNumber(String s) {
+        if (s == null) return 0;
+        int n = 0, i = 0;
+        while (i < s.length() && !Character.isDigit(s.charAt(i))) i++;
+        for (; i < s.length() && Character.isDigit(s.charAt(i)) && n < 1000; i++) n = n * 10 + (s.charAt(i) - '0');
+        return n;
     }
 
     /**
@@ -770,7 +816,7 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         if (statsShown.size() > 60) statsShown.clear();
         statsShown.add(key);
         if (changed != null) changed.run();
-        stats.place(bug.stripLook(), unit(), tuck, sideLeft, 0);
+        stats.place(bug.stripLook(), unit(), nearTuck(), sideLeft, 0);
         stats.alone(false);
         beside(stats, stats.widthFor(pick, boardH(), sideMax), false);
         stats.show(pick);
@@ -972,6 +1018,8 @@ public final class ScoreBoard implements LiveAlerts.Listener {
             l.live = true;
             l.clock = LiveClock.words(g, System.currentTimeMillis());
         }
+        // In added time every look's score comes alive (decided here, where the clock's words are made).
+        l.stoppage = stoppage(g, l.clock);
         return l;
     }
 
@@ -1380,7 +1428,7 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         boolean onBoard = boardUp();
         int bh = boardH();
         // On its own (no board up): where the board would be, round at both ends.
-        strip.place(bug.stripLook(), unit(), onBoard ? tuck : 0, onBoard && sideLeft, d.photo != null ? head : 0);
+        strip.place(bug.stripLook(), unit(), onBoard ? nearTuck() : 0, onBoard && sideLeft, d.photo != null ? head : 0);
         strip.alone(!onBoard);
         int w = strip.widthFor(d, bh, onBoard ? sideMax : Math.max(Math.round(unit() * 6), sideMax - tuck));
         beside(strip, w, true);

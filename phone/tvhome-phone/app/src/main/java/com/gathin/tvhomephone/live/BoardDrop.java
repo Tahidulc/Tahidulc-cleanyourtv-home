@@ -142,6 +142,7 @@ final class BoardDrop extends BoardSide {
     private float runMax(int p) {
         if (drop == null || givenW <= 0) return 0;
         float room = givenW - ends(look, unit, givenH, tuck, true);
+        room /= fit(part(p), givenH, room);
         float[] m = lay(null, part(p), 0, givenH, 0, 255, room, 0);
         return Math.max(0, m[1] + m[2] - room);
     }
@@ -238,14 +239,33 @@ final class BoardDrop extends BoardSide {
     @Override protected void content(Canvas cv, int w, int h) {
         if (drop == null) return;
         float room = end - start;
-        if (turn < 1f && page > 0) lay(cv, part(page - 1), start, h, -h * 0.6f * turn, Math.round(255 * (1f - turn)), room, 0);
-        lay(cv, part(page), start, h, h * 0.6f * (1f - turn), Math.round(255 * turn), room, run);
+        // Its first row longer than its room (a narrow screen's edge): all of it drawn smaller, never cut or overlapping.
+        fitK = fit(part(page), h, room);
+        cv.save();
+        if (fitK < 1f) cv.scale(fitK, fitK, start, h / 2f);
+        float inRoom = room / fitK;
+        if (turn < 1f && page > 0) lay(cv, part(page - 1), start, h, -h * 0.6f * turn, Math.round(255 * (1f - turn)), inRoom, 0);
+        lay(cv, part(page), start, h, h * 0.6f * (1f - turn), Math.round(255 * turn), inRoom, run);
+        cv.restore();
+    }
+
+    /** How much smaller it is drawn to fit its first row in its room (1: as sized). */
+    private float fitK = 1f;
+    /** Where the first row's parts ended, from the start, as last laid out. */
+    private float firstEndAt;
+
+    /** Pure in effect: the scale page o's first row needs to fit room at height h (1 when it fits). */
+    private float fit(Part o, int h, float room) {
+        lay(null, o, 0, h, 0, 255, 1e6f, 0);
+        return firstEndAt > room && firstEndAt > 0 ? Math.max(0.3f, room / firstEndAt) : 1f;
     }
 
     /** The scorer, standing by the board on the strip's foot and up into the room above it. */
     @Override protected void over(Canvas cv, int w, int h) {
         if (drop == null || photoX < 0 || drop.photo == null || drop.lineups) return;
         Bitmap b = drop.photo;
+        // Drawn smaller with the rest when its first row is short of room, still standing on the strip's foot.
+        if (fitK < 1f) cv.scale(fitK, fitK, start, h);
         float tall = h + Math.min(head, h * 0.55f) * 0.96f;
         float s = Math.min(photoW / b.getWidth(), tall / b.getHeight());
         float bw = b.getWidth() * s, bh = b.getHeight() * s;
@@ -307,6 +327,7 @@ final class BoardDrop extends BoardSide {
         // Where the first row's parts end (no gap left after a chip or crest that ends it).
         float firstEnd = rx > x && o.head.isEmpty() && o.crestB == null
                 ? rx - (o.crestA != null ? unit * 0.16f : unit * 0.22f) : rx;
+        firstEndAt = firstEnd - x0;
         if (o.line.isEmpty()) return new float[]{firstEnd - x0, firstEnd - x0, 0};
         float lx = two ? x : firstEnd + (firstEnd > x ? unit * 0.3f : 0f);
         float lineY = two ? h * 0.5f : 0f, lineH = two ? h * 0.42f : h;

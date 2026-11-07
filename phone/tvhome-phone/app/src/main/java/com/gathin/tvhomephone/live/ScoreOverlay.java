@@ -333,7 +333,8 @@ final class ScoreOverlay implements ScoreBoard.Source {
             // apart from it: it then draws to fill that box); kept on the screen.
             bp.width = own.bw > 0 ? Math.max(Math.round(20 * d), Math.round(own.bw * fw)) : LinearLayout.LayoutParams.WRAP_CONTENT;
             bp.height = Math.max(Math.round(12 * d), Math.round(own.bh * fh));
-            int w = bp.width > 0 ? bp.width : board.bug.getWidth() > 0 ? board.bug.getWidth() : Math.round(bp.height * 5f);
+            int w = bp.width > 0 ? bp.width + board.bug.tabFor(bp.width, bp.height)
+                    : board.bug.getWidth() > 0 ? board.bug.getWidth() : Math.round(bp.height * 5f);
             left = Math.max(0, Math.min(Math.round(fx + own.bx * fw), root.getWidth() - Math.min(w, root.getWidth())));
             top = Math.max(0, Math.min(Math.round(fy + own.by * fh), root.getHeight() - Math.min(bp.height, root.getHeight())));
         } else if (over) {
@@ -367,6 +368,9 @@ final class ScoreOverlay implements ScoreBoard.Source {
             // The channel's own scoreboard found and not covered: just under it.
             if (box != null && board.channelGame() && box.left < 0.5f) top = Math.round(fy + box.bottom * fh + 6 * d);
         }
+        // The added time in a tab of its own beside it: a board of a set width grown by the tab, its own part as set
+        // (too narrow for the tab: the minutes inside, beside the clock).
+        bp.width = board.bug.withTab(bp.width, bp.height);
         board.bug.setLayoutParams(bp);
         int boardLeft = left, boardTop = top;
         // Homefield's mark over the channel's logo: where the family put it, else over the logo found, its size and
@@ -474,7 +478,7 @@ final class ScoreOverlay implements ScoreBoard.Source {
             }
 
             @Override public void boardHeight(float k) {
-                mine.heightBoard(k, pfw > 0 && board.bug.getWidth() > 0 ? board.bug.getWidth() / pfw : 0.3f);
+                mine.heightBoard(k, pfw > 0 && board.bug.getWidth() > 0 ? board.bug.ownWidth() / pfw : 0.3f);
                 board.bug.post(ScoreOverlay.this::place);
                 place();
             }
@@ -590,7 +594,7 @@ final class ScoreOverlay implements ScoreBoard.Source {
         int h = board.bug.getHeight() > 0 ? board.bug.getHeight() : Math.round(30 * d);
         mine.bh = BoardPlace.clamp(h / pfh, BoardPlace.MIN_H, BoardPlace.MAX_H);
         // Over the channel's own, at that box's width: kept, so it doesn't change size as it is picked up.
-        if (bp.width > 0 && board.bug.getWidth() > 0) mine.bw = BoardPlace.clamp(board.bug.getWidth() / pfw, BoardPlace.MIN_BW, BoardPlace.MAX_BW);
+        if (bp.width > 0 && board.bug.getWidth() > 0) mine.bw = BoardPlace.clamp(board.bug.ownWidth() / pfw, BoardPlace.MIN_BW, BoardPlace.MAX_BW);
         mine.bx = 0;
         mine.moveBoard((lp.leftMargin + board.boardDx() - pfx) / pfw, (lp.topMargin + board.boardDy() - pfy) / pfh, board.bug.getWidth() / pfw);
     }

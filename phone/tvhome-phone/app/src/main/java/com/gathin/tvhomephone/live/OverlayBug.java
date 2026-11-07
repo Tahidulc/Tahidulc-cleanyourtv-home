@@ -29,12 +29,17 @@ import java.util.Objects;
  * their teams' colours. A goal is shown as broadcasters show one: a white hit, the scorers' colour sweeping across it
  * from their side with their crest and GOAL, then on out the far side, the new score popping up and settling.
  * What folds out under it (the stats, the alerts) takes its look (StripLook). Card sets it as the clubs' own results
- * cards are: each crest on white with the club's colour down the board's end, the score over the clock on blue between.
+ * cards are: each crest on white with the club's colour down the board's end, the score over the clock on red between,
+ * lighter slants drifting across the red and a shine sweeping over it now and then. In added time every look's score
+ * comes alive the same way (Minimal, with no block, has the shine across it all), and the minutes added stand in a red
+ * tab of their own beside the board, sliding out from behind it; back beside the clock when the board is kept too narrow.
  */
 final class OverlayBug extends View implements BurnGuard.Dims {
     /** What it shows. */
     static final class Look {
         boolean f1, live;
+        /** In added time: the clock past its period's end, as the board's controller (ScoreBoard) decides it. */
+        boolean stoppage;
         String home = "", away = "", score = "", clock = "", added = "", tag = "";
         int homeColour = 0xFFFFFFFF, awayColour = 0xFFFFFFFF;
         /** F1: the session, the corner ({"LAP", "23"}, {"Q2", "08:31"}), the first drivers' codes and colours. */
@@ -45,7 +50,8 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         @Override public boolean equals(Object o) {
             if (!(o instanceof Look)) return false;
             Look l = (Look) o;
-            return f1 == l.f1 && live == l.live && home.equals(l.home) && away.equals(l.away) && score.equals(l.score)
+            return f1 == l.f1 && live == l.live && stoppage == l.stoppage && home.equals(l.home) && away.equals(l.away)
+                    && score.equals(l.score)
                     && clock.equals(l.clock) && added.equals(l.added) && tag.equals(l.tag) && homeColour == l.homeColour
                     && awayColour == l.awayColour && label.equals(l.label) && cornerA.equals(l.cornerA)
                     && cornerB.equals(l.cornerB) && codes.equals(l.codes) && colours.equals(l.colours);
@@ -58,9 +64,20 @@ final class OverlayBug extends View implements BurnGuard.Dims {
 
     private static final int NAVY = 0xFF0B1640, NAVY_DEEP = 0xFF070C26, CLOCK = 0xFF050816, ADDED = 0xFFE0213A,
             AMBER = 0xFFFFB547, F1_RED = 0xFFE10600, DIM = 0xFFB9C1E6;
-    /** Card's white (a soft one, shaded to a light grey at its foot: it stays up all game) and its blue. */
-    static final int CARD_TOP = 0xFFF1F3F7, CARD_FOOT = 0xFFD3D8E1, CARD_BLUE = 0xFF2A3DC9, CARD_BLUE_FOOT = 0xFF0F1B7E,
-            CARD_SOFT = 0xFFC3CBF4;
+    /**
+     * Card's white (a soft one, shaded to a light grey at its foot: it stays up all game), its red middle (darker at its
+     * foot), the kick-off's time on the red before kick-off, and Half-Time on it.
+     */
+    static final int CARD_TOP = 0xFFF1F3F7, CARD_FOOT = 0xFFD3D8E1, CARD_RED = 0xFFD7192F, CARD_RED_FOOT = 0xFF8E0B1D,
+            CARD_SOFT = 0xFFF6D3D8, CARD_HT = 0xFFFFE7A3;
+    /**
+     * Card's red, and every look's score in added time, alive: its slants drift a slant's period every DRIFT_MS; a shine
+     * sweeps it over SHINE_MS every SHINE_EVERY_MS (in added time the first as it begins).
+     */
+    static final long DRIFT_MS = 6_000L, SHINE_MS = 1_200L, SHINE_EVERY_MS = 9_000L;
+    /** The added time's tab beside the board (Card's in its own red): out over TAB_IN_MS, lit white at first over TAB_FLASH_MS. */
+    static final int TAB_RED = 0xFFC81E34;
+    static final long TAB_IN_MS = 400L, TAB_FLASH_MS = 600L;
     private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG), text = new Paint(Paint.ANTI_ALIAS_FLAG),
             image = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
     private final RectF r = new RectF();
@@ -185,11 +202,11 @@ final class OverlayBug extends View implements BurnGuard.Dims {
                 p.round = 0.3f;
                 break;
             case CARD:
-                // Each crest on white, the score over the clock on blue between them, each club's colour at its end.
+                // Each crest on white, the score over the clock on red between them, each club's colour at its end.
                 p.ground = CARD_TOP;
                 p.comp = 0;
-                p.score0 = CARD_BLUE;
-                p.score1 = CARD_BLUE_FOOT;
+                p.score0 = CARD_RED;
+                p.score1 = CARD_RED_FOOT;
                 p.clock = 0;
                 p.ink = NAVY;
                 p.dim = 0xFF4E5778;
@@ -233,9 +250,22 @@ final class OverlayBug extends View implements BurnGuard.Dims {
     /** What to show; drawn again only when it changed. */
     void set(Look l) {
         if (l.equals(look)) return;
-        int h = getHeight() > 0 ? getHeight() : Math.round(30 * dp);
+        android.view.ViewGroup.LayoutParams lp = getLayoutParams();
+        int h = lp != null && lp.height > 0 ? lp.height : getHeight() > 0 ? getHeight() : Math.round(30 * dp);
         int before = natural(h);
+        long now = android.os.SystemClock.uptimeMillis();
+        if (look.added.isEmpty() && !l.added.isEmpty()) tabAt = now;
+        if (!look.stoppage && l.stoppage) stoppageAt = now;
         look = l;
+        // A board of a width set (over the channel's own, or as the family sized it): grown by the tab beside it while
+        // there is one, its own part as it was.
+        if (lp != null && lp.width > 0) {
+            int w = withTab(Math.max(1, lp.width - lpTab), h);
+            if (w != lp.width) {
+                lp.width = w;
+                setLayoutParams(lp);
+            }
+        }
         boolean size = natural(h) != before;
         setContentDescription(l.f1 ? "F1 " + l.label + " " + l.cornerA + " " + l.cornerB
                 : l.home + " " + l.score + " " + l.away + (l.clock.isEmpty() ? "" : ", " + l.clock + " " + l.added));
@@ -320,7 +350,7 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         s.light = style == Style.LIGHT || style == Style.CARD;
         s.apart = p.round >= 0.5f;
         s.round = p.round;
-        s.block = style == Style.CLUB ? 0xFFFFFFFF : style == Style.LIGHT ? NAVY : style == Style.CARD ? CARD_BLUE
+        s.block = style == Style.CLUB ? 0xFFFFFFFF : style == Style.LIGHT ? NAVY : style == Style.CARD ? CARD_RED
                 : p.score0 != 0 && (p.score0 >>> 24) == 0xFF ? p.score0 : 0x40FFFFFF;
         return s;
     }
@@ -337,8 +367,19 @@ final class OverlayBug extends View implements BurnGuard.Dims {
 
     // ---- size ------------------------------------------------------------------------------------------------------
 
-    /** Its width on its own at height h. */
+    /** Its width on its own at height h: its own part, and the added time's tab beside it while there is one. */
     int natural(int h) {
+        boolean in = addedIn;
+        addedIn = false;
+        try {
+            return ownNatural(h) + tabRoom(h);
+        } finally {
+            addedIn = in;
+        }
+    }
+
+    /** Its own part's width at height h, the minutes added inside beside the clock only when addedIn. */
+    private int ownNatural(int h) {
         text.setTextSize(h * 0.46f);
         if (style == Style.MINIMAL) return Math.round(minimalWidth(h));
         if (look.f1) {
@@ -380,7 +421,14 @@ final class OverlayBug extends View implements BurnGuard.Dims {
     private float clockW(int h) {
         if (look.clock.isEmpty()) return 0;
         return measure("88:88".length() >= look.clock.length() ? "88:88" : look.clock, h * 0.44f) + h * 0.6f
-                + (look.added.isEmpty() ? 0 : measure(look.added, h * 0.34f) + h * 0.45f);
+                + (addedInside() ? measure(look.added, h * 0.34f) + h * 0.45f : 0);
+    }
+
+    /** The minutes added drawn inside beside the clock: only when the board is too narrow for their tab beside it. */
+    private boolean addedIn;
+
+    private boolean addedInside() {
+        return addedIn && !look.added.isEmpty();
     }
 
     private float label(int h) {
@@ -496,6 +544,11 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         scoreZoom = 1f + 0.38f * flash * flash;
         clip.reset();
         float rad = p.round >= 0.5f ? h / 2f : Math.min(h * p.round, 8 * dp);
+        // The added time stands beside it in a tab of its own: the board's ground, its corners and a goal's band are
+        // its own part's alone, the gap between see-through. Too narrow for it: the minutes back beside the clock.
+        int full = w, tab = tabIn(w, h);
+        addedIn = tab == 0 && tabRoom(h) > 0;
+        w -= tab;
         r.set(0, 0, w, h);
         clip.addRoundRect(r, rad, rad, Path.Direction.CW);
         cv.save();
@@ -520,10 +573,11 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         }
         if (goalOn && !look.f1) goalMoment(cv, w, h, gt);
         cv.restore();
+        if (tab > 0) addedTab(cv, w, full, h);
         if (part) {
             cv.restore();
             // The wipe's leading edge, a bright line fading as it lands.
-            if (shown > OPEN_AT && in[2] < w - 1) {
+            if (shown > OPEN_AT && in[2] < full - 1) {
                 float lw = Math.max(2f, 2 * dp), a = 1f - (shown - OPEN_AT) / (1f - OPEN_AT);
                 edge.setColor(0xFFFFFFFF);
                 edge.setAlpha(Math.round(230 * Math.max(0.25f, a)));
@@ -531,6 +585,27 @@ final class OverlayBug extends View implements BurnGuard.Dims {
             }
         }
         if (goalOn && goalFrozen < 0) postInvalidateOnAnimation();
+        // Alive (Card's red always, every look's score in added time): drawn again about 30 times a second while it
+        // shows (Minimal, with only its shine, as that comes), not while a goal's band is over it; else not at all.
+        else if (aliveNow() && !part && animFrozen < 0 && isShown()) {
+            removeCallbacks(tick);
+            postDelayed(tick, nextFrame());
+        }
+    }
+
+    /** The next frame while alive: one at a time, however often it is drawn in between. */
+    private final Runnable tick = this::invalidate;
+
+    /** Whether its score is alive now: Card's red always, every look in added time; never F1. */
+    private boolean aliveNow() {
+        return !look.f1 && (style == Style.CARD || look.stoppage);
+    }
+
+    /** When to draw it again while alive: about 30 times a second; Minimal (its shine alone) not till the next shine. */
+    private long nextFrame() {
+        if (style != Style.MINIMAL) return 33;
+        long st = shineTime(animTime()), in = ((st % SHINE_EVERY_MS) + SHINE_EVERY_MS) % SHINE_EVERY_MS;
+        return in < SHINE_MS ? 33 : Math.max(33, SHINE_EVERY_MS - in);
     }
 
     /** The goal's hit and band over the board, t ms in: the scorers' colour, their crest and GOAL, a shine across it. */
@@ -604,7 +679,7 @@ final class OverlayBug extends View implements BurnGuard.Dims {
             compBlock = false;
             need -= h;
         }
-        float k = need > room ? Math.max(0.6f, w / need) : 1f;
+        float k = need > room ? Math.max(0.05f, w / need) : 1f;
         float extra = Math.max(0, w - need * k);
         codeW = codeW * k + extra / 2;
         strip *= k;
@@ -630,6 +705,7 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         if (withClock && clock > 0) clock(cv, cx, y, x + w - cx, h, k);
     }
 
+    /** The score's block in the look's colours (none in Minimal's), alive in added time (Card's always). */
     private void scoreBlock(Canvas cv, float x, float y, float w, float h) {
         if (p.score0 == 0 && p.score1 == 0) return;
         if (scoreShade == null || shadeY != y || shadeH != h || shadeA != p.score0 || shadeB != p.score1) {
@@ -642,6 +718,7 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         fill.setShader(scoreShade);
         cv.drawRect(x, y, x + w, y + h, fill);
         fill.setShader(null);
+        alive(cv, x, y, w, h);
     }
 
     private LinearGradient scoreShade, bandShade;
@@ -703,7 +780,7 @@ final class OverlayBug extends View implements BurnGuard.Dims {
             cv.drawRect(x, y, x + w, y + h, fill);
         }
         int colour = "HT".equals(look.clock) ? AMBER : look.live ? p.clockInk : p.dim;
-        if (look.added.isEmpty()) {
+        if (!addedInside()) {
             words(cv, look.clock, x + w / 2, y, h, h * 0.44f * k, colour);
             return;
         }
@@ -735,7 +812,7 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         float need = 2 * (strip + crestW + codeW) + score;
         boolean crests = need <= w + 1.5f;
         if (!crests) need -= 2 * crestW;
-        float k = need > w + 1.5f ? Math.max(0.6f, w / need) : 1f;
+        float k = need > w + 1.5f ? Math.max(0.05f, w / need) : 1f;
         float extra = Math.max(0, w - need * k);
         float cx = side(cv, 0, 0, h, strip * k, crests ? crestW : 0, codeW * k + extra / 2, k, true);
         scoreBlock(cv, cx, 0, score * k, h);
@@ -797,7 +874,7 @@ final class OverlayBug extends View implements BurnGuard.Dims {
             for (String c : look.codes) d.append(d.length() == 0 ? "" : " ").append(c);
             return new String[]{"F1", (look.cornerA + " " + look.cornerB).trim(), d.toString()};
         }
-        return new String[]{look.home + "  " + look.score + "  " + look.away, look.clock, look.added};
+        return new String[]{look.home + "  " + look.score + "  " + look.away, look.clock, addedInside() ? look.added : ""};
     }
 
     private float minimalWidth(int h) {
@@ -809,6 +886,8 @@ final class OverlayBug extends View implements BurnGuard.Dims {
 
     private void minimal(Canvas cv, int w, int h) {
         String[] m = minimalParts();
+        // No block of its own: in added time its shine sweeps across it all, under the words.
+        if (aliveNow()) aliveShine(cv, 0, 0, w, h, shineTime(animTime()));
         if (w / (float) h < 3.6f) {
             // A squarer place: the clubs and score over the clock.
             float top = h * 0.55f;
@@ -821,7 +900,7 @@ final class OverlayBug extends View implements BurnGuard.Dims {
             words(cv, under, w / 2f, top - h * 0.04f, bh, bh * 0.62f * k2, ink);
             return;
         }
-        float natural = minimalWidth(h), k = natural > w + 1.5f ? Math.max(0.4f, w / natural) : 1f;
+        float natural = minimalWidth(h), k = natural > w + 1.5f ? Math.max(0.05f, w / natural) : 1f;
         float x = (w - natural * k) / 2 + h * 0.45f * k;
         float a = measure(m[0], h * 0.48f * k);
         words(cv, m[0], x + a / 2, 0, h, h * 0.48f * k, look.f1 ? F1_RED : p.ink);
@@ -852,7 +931,7 @@ final class OverlayBug extends View implements BurnGuard.Dims {
     private void crestsRow(Canvas cv, int w, int h) {
         float pad = h * 0.2f, hc = crestCell(h, true), ac = crestCell(h, false), score = scoreW(h), clock = clockW(h);
         float need = pad + hc + score + ac + pad + clock;
-        float k = need > w + 1.5f ? Math.max(0.6f, w / need) : 1f;
+        float k = need > w + 1.5f ? Math.max(0.05f, w / need) : 1f;
         float extra = Math.max(0, w - need * k);
         pad *= k;
         hc *= k;
@@ -874,7 +953,7 @@ final class OverlayBug extends View implements BurnGuard.Dims {
     /** Nearer square: the crests and the score above, the clock across the foot. */
     private void crestsTwo(Canvas cv, int w, int h) {
         float top = h * 0.62f, hc = crestCell(top, true), ac = crestCell(top, false), score = scoreW(Math.round(top));
-        float need = hc + score + ac, k = need > w + 1.5f ? Math.max(0.6f, w / need) : 1f;
+        float need = hc + score + ac, k = need > w + 1.5f ? Math.max(0.05f, w / need) : 1f;
         float cx = Math.max(0, w - need * k) / 2;
         crestSide(cv, cx, 0, hc * k, top, true);
         cx += hc * k;
@@ -910,7 +989,7 @@ final class OverlayBug extends View implements BurnGuard.Dims {
     private float stackedClockW(int h) {
         if (look.clock.isEmpty()) return 0;
         float c = measure("88:88".length() >= look.clock.length() ? "88:88" : look.clock, h * 0.3f);
-        float a = look.added.isEmpty() ? 0 : measure(look.added, h * 0.22f) + h * 0.3f;
+        float a = addedInside() ? measure(look.added, h * 0.22f) + h * 0.3f : 0;
         return Math.max(c, a) + h * 0.5f;
     }
 
@@ -938,7 +1017,7 @@ final class OverlayBug extends View implements BurnGuard.Dims {
             compBlock = false;
             need -= comp;
         }
-        float k = need > w + 1.5f ? Math.max(0.6f, w / need) : 1f;
+        float k = need > w + 1.5f ? Math.max(0.05f, w / need) : 1f;
         float extra = Math.max(0, w - need * k);
         strip *= k;
         crest *= k;
@@ -982,6 +1061,7 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         float gx = x + w - goalsW;
         fill.setColor(p.score0 != 0 ? p.score0 : p.ground);
         cv.drawRect(gx, y, x + w, y + r, fill);
+        alive(cv, gx, y, goalsW, r);
         words(cv, goals, gx + goalsW / 2, y, r, r * 0.62f * k * (scored ? scoreZoom : 1f), p.scoreInk);
     }
 
@@ -990,7 +1070,7 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         fill.setColor(p.clock != 0 ? p.clock : p.ground);
         cv.drawRect(x, 0, x + w, h, fill);
         int colour = "HT".equals(look.clock) ? AMBER : look.live ? p.clockInk : p.dim;
-        if (look.added.isEmpty()) {
+        if (!addedInside()) {
             words(cv, look.clock, x + w / 2, 0, h, h * 0.3f * k, colour);
             return;
         }
@@ -1030,7 +1110,7 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         String c = cardClock();
         if (c.isEmpty()) return 0;
         float w = measure(c, cardClockSize(h));
-        if (!look.added.isEmpty()) w += h * 0.1f + measure(look.added, h * 0.24f) + h * 0.22f;
+        if (addedInside()) w += h * 0.1f + measure(look.added, h * 0.24f) + h * 0.22f;
         return w;
     }
 
@@ -1043,14 +1123,111 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         return 2 * (h * 0.09f + h * 1.2f) + cardMid(h);
     }
 
+    // ---- added time: its tab beside the board, the score alive ----------------------------------------------------
+
+    /** The room the added time's tab takes beside the board at height h: the gap and the tab (0 when there is none, or F1). */
+    int tabRoom(int h) {
+        if (h <= 0 || look.f1 || look.added.isEmpty()) return 0;
+        return Math.round(h * 0.06f + tabW(h));
+    }
+
+    /** The tab's room beside a board w wide in all, h high: none when its own part would be narrower than twice its height. */
+    int tabIn(int w, int h) {
+        int room = tabRoom(h);
+        return outside(w - room, room, h) ? room : 0;
+    }
+
+    /** The tab's room beside a board whose own part is own wide: none when that is too narrow for it. */
+    int tabFor(int own, int h) {
+        int room = tabRoom(h);
+        return outside(own, room, h) ? room : 0;
+    }
+
+    /** Pure: the minutes added go beside the board (not inside, by the clock) when its own part is at least twice its height. */
+    static boolean outside(int own, int room, int h) {
+        return room > 0 && own >= 2 * h;
+    }
+
     /**
-     * Card: each club's crest on a white panel with its colour down the board's end, and between them a blue block with
-     * the score over the clock (lighter slants across it), as the clubs' own results cards are set.
+     * A board of a width set to own (over the channel's own, or as the family sized it), as wide again as the tab beside
+     * it needs; that width remembered, so the board keeps its own part as the tab comes and goes.
+     */
+    int withTab(int own, int h) {
+        lpTab = own > 0 ? tabFor(own, h) : 0;
+        return own > 0 ? own + lpTab : own;
+    }
+
+    /** What withTab added to the width set. */
+    private int lpTab;
+
+    /** Its own part's width as drawn now, the added time's tab beside it aside. */
+    int ownWidth() {
+        return getWidth() - tabIn(getWidth(), getHeight());
+    }
+
+    /** One-row looks have a tab 0.8 of the board's height, in its middle; the taller (Stacked, Card) half, on its foot. */
+    private boolean tallTab() {
+        return style == Style.STACKED || style == Style.CARD;
+    }
+
+    private float tabH(int h) {
+        return h * (tallTab() ? 0.5f : 0.8f);
+    }
+
+    private float tabW(int h) {
+        float th = tabH(h);
+        return tabWidth(th, measure(look.added, th * 0.6f));
+    }
+
+    /** Pure: the tab's width for its height th and its words' width: wide enough for "+10" with room round it. */
+    static float tabWidth(float th, float textW) {
+        return Math.max(th * 1.15f, textW + th * 0.5f);
+    }
+
+    /**
+     * When the added time's tab came (it slides out from behind the board), when added time began (its first shine), and
+     * for previews the animation's time and the tab's frozen (-1: as the time goes).
+     */
+    private long tabAt, stoppageAt, animFrozen = -1, tabFrozen = -1;
+
+    /** Previews and tests: the score's life drawn t ms into its animation (in added time t ms after it began), the tab all there. */
+    void animAt(long t) {
+        animFrozen = t;
+        invalidate();
+    }
+
+    /** Previews: the tab drawn t ms after it came (sliding out, lit white at first). */
+    void tabNow(long t) {
+        tabFrozen = t;
+        invalidate();
+    }
+
+    private long animTime() {
+        return animFrozen >= 0 ? animFrozen : android.os.SystemClock.uptimeMillis();
+    }
+
+    /** The shine's time: in added time from when it began, so the first sweeps across as it does; Card's from any time. */
+    private long shineTime(long t) {
+        return animFrozen < 0 && look.stoppage && stoppageAt > 0 ? t - stoppageAt : t;
+    }
+
+    /** A score block (x, y, w, h) alive: lighter slants drifting across it, a shine sweeping it now and then. */
+    private void alive(Canvas cv, float x, float y, float w, float h) {
+        if (!aliveNow() || w < 1f || h < 1f) return;
+        long t = animTime();
+        slants(cv, x, y, w, h, t);
+        aliveShine(cv, x, y, w, h, shineTime(t));
+    }
+
+    /**
+     * Card: each club's crest on a white panel with its colour down the board's end, and between them a red block with
+     * the score over the clock (lighter slants drifting across it, a shine sweeping over it now and then), as the clubs'
+     * own results cards are set.
      */
     private void card(Canvas cv, int w, int h) {
         float strip = h * 0.09f, panel = h * 1.2f, mid = cardMid(h);
         float need = 2 * (strip + panel) + mid;
-        float k = need > w + 1.5f ? Math.max(0.5f, w / need) : 1f;
+        float k = need > w + 1.5f ? Math.max(0.05f, w / need) : 1f;
         float extra = Math.max(0, w - need * k);
         strip *= k;
         panel = panel * k + extra / 4f;
@@ -1065,8 +1242,8 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         cardSide(cv, 0, strip, panel, h, true);
         cardSide(cv, w - strip - panel, strip, panel, h, false);
         float mx = strip + panel;
+        // The red, alive (scoreBlock): its slants drifting, a shine now and then.
         scoreBlock(cv, mx, 0, mid, h);
-        slants(cv, mx, mid, h);
         // The score, popping up big after a goal but never past its block.
         String sc = cardScore();
         float ss = h * 0.46f * k * scoreZoom, sw = measure(sc, ss);
@@ -1095,33 +1272,76 @@ final class OverlayBug extends View implements BurnGuard.Dims {
                 lit ? ink(blend(CARD_TOP, colour, 200 * flash / 255f)) : NAVY);
     }
 
-    /** Lighter slants across Card's blue. */
-    private void slants(Canvas cv, float x, float w, int h) {
+    /** Pure: how far the slants have drifted along their period t ms in, 0 to 1 (a period every DRIFT_MS, round again). */
+    static float drift(long t) {
+        return (((t % DRIFT_MS) + DRIFT_MS) % DRIFT_MS) / (float) DRIFT_MS;
+    }
+
+    /** Pure: where the shine is across a score t ms in, 0 to 1 while it sweeps (SHINE_MS every SHINE_EVERY_MS); -1 between. */
+    static float shineAt(long t) {
+        long in = ((t % SHINE_EVERY_MS) + SHINE_EVERY_MS) % SHINE_EVERY_MS;
+        return in < SHINE_MS ? in / (float) SHINE_MS : -1f;
+    }
+
+    /** Lighter slants across a score block (x, y, w, h), drifting slowly to the right, a period (its width) every DRIFT_MS, seamless. */
+    private void slants(Canvas cv, float x, float y, float w, float h, long t) {
         cv.save();
-        cv.clipRect(x, 0, x + w, h);
-        fill.setColor(0x16FFFFFF);
+        cv.clipRect(x, y, x + w, y + h);
+        fill.setShader(null);
+        fill.setColor(0x22FFFFFF);
+        float o = drift(t) * w, lean = h * 0.7f;
+        // Enough copies a period apart to cover it however far they lean across it.
+        int last = (int) Math.ceil(lean / w + 0.5f);
         slant.reset();
-        slant.moveTo(x + w * 0.5f, 0);
-        slant.lineTo(x + w * 0.78f, 0);
-        slant.lineTo(x + w * 0.78f - h * 0.7f, h);
-        slant.lineTo(x + w * 0.5f - h * 0.7f, h);
-        slant.close();
-        slant.moveTo(x + w * 0.9f, 0);
-        slant.lineTo(x + w + h, 0);
-        slant.lineTo(x + w, h);
-        slant.lineTo(x + w * 0.9f - h * 0.7f, h);
-        slant.close();
+        for (int i = -2; i <= last; i++) {
+            float bx = x + o + i * w;
+            slant.moveTo(bx + w * 0.5f, y);
+            slant.lineTo(bx + w * 0.78f, y);
+            slant.lineTo(bx + w * 0.78f - lean, y + h);
+            slant.lineTo(bx + w * 0.5f - lean, y + h);
+            slant.close();
+            slant.moveTo(bx + w * 0.9f, y);
+            slant.lineTo(bx + w * 1.1f, y);
+            slant.lineTo(bx + w * 1.1f - lean, y + h);
+            slant.lineTo(bx + w * 0.9f - lean, y + h);
+            slant.close();
+        }
         cv.drawPath(slant, fill);
         cv.restore();
     }
 
-    /** The clock under the score: white while the game runs (Half-Time and Full-Time too), the minutes added on red beside it. */
+    private final Paint alivePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final LinearGradient aliveShader = new LinearGradient(0, 0, 1, 0,
+            new int[]{0x00FFFFFF, 0x4CFFFFFF, 0x00FFFFFF}, null, Shader.TileMode.CLAMP);
+    private final Matrix aliveMatrix = new Matrix();
+
+    /** A soft white shine sweeping across (x, y, w, h) from left to right, now and then (t: the shine's time). */
+    private void aliveShine(Canvas cv, float x, float y, float w, float h, long t) {
+        float s = shineAt(t);
+        if (s < 0f) return;
+        // Leaning as the slants do: from wholly before its left edge to wholly past its right.
+        float sw = h * 0.6f, from = x - sw - h * 0.5f, to = x + w + h * 0.5f;
+        cv.save();
+        cv.clipRect(x, y, x + w, y + h);
+        aliveMatrix.setScale(sw, 1f);
+        aliveMatrix.postSkew(-0.5f, 0f, 0f, y);
+        aliveMatrix.postTranslate(from + (to - from) * s, 0f);
+        aliveShader.setLocalMatrix(aliveMatrix);
+        alivePaint.setShader(aliveShader);
+        cv.drawRect(x, y, x + w, y + h, alivePaint);
+        cv.restore();
+    }
+
+    /**
+     * The clock under the score: white while the game runs (Half-Time and Full-Time too); its added time in the tab
+     * beside the board, or, the board too narrow for that, on white beside the clock.
+     */
     private void cardClockLine(Canvas cv, float x, float w, int h, float k) {
         String c = cardClock();
         if (c.isEmpty()) return;
         float y = h * 0.5f, lh = h * 0.44f, size = cardClockSize(h) * k;
-        int colour = "HT".equals(look.clock) ? AMBER : look.live || "FT".equals(look.clock) ? p.clockInk : CARD_SOFT;
-        if (look.added.isEmpty()) {
+        int colour = "HT".equals(look.clock) ? CARD_HT : look.live || "FT".equals(look.clock) ? p.clockInk : CARD_SOFT;
+        if (!addedInside()) {
             float s = Math.min(1f, w * 0.9f / Math.max(1f, measure(c, size)));
             words(cv, c, x + w / 2f, y, lh, size * s, colour);
             return;
@@ -1134,10 +1354,46 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         float start = x + (w - cw - gap - aw) / 2f;
         words(cv, c, start + cw / 2f, y, lh, size * s, colour);
         float ax = start + cw + gap;
-        fill.setColor(ADDED);
+        fill.setShader(null);
+        fill.setColor(0xFFFFFFFF);
         r.set(ax, y + lh * 0.2f, ax + aw, y + lh * 0.8f);
         cv.drawRoundRect(r, h * 0.05f, h * 0.05f, fill);
-        words(cv, look.added, ax + aw / 2f, y, lh, as * s, 0xFFFFFFFF);
+        words(cv, look.added, ax + aw / 2f, y, lh, as * s, CARD_RED);
+    }
+
+    /**
+     * The minutes added in a red tab of their own beside the board (bodyW: where its own part ends, full: the view's
+     * width): 0.8 of its height in its middle (Stacked and Card: half of it, on its foot), a pill beside Glass; sliding
+     * out from behind its right edge when they first come, lit white and fading to red.
+     */
+    private void addedTab(Canvas cv, int bodyW, int full, int h) {
+        float gap = h * 0.06f, th = tabH(h), tw = Math.min(tabW(h), full - bodyW - gap);
+        if (tw <= 0 || th <= 0) return;
+        long since = tabFrozen >= 0 ? tabFrozen : animFrozen >= 0 || tabAt == 0 ? Long.MAX_VALUE / 2
+                : android.os.SystemClock.uptimeMillis() - tabAt;
+        float f = Math.min(1f, since / (float) TAB_IN_MS), lit = since < TAB_FLASH_MS ? 1f - since / (float) TAB_FLASH_MS : 0f;
+        float x = bodyW + gap - (1f - ease(f)) * (tw + gap), y = tallTab() ? h - th : (h - th) / 2f;
+        cv.save();
+        // Behind the board until it has slid out.
+        cv.clipRect(bodyW, 0, full, h);
+        int red = style == Style.CARD ? CARD_RED : TAB_RED;
+        fill.setShader(null);
+        fill.setColor(red);
+        r.set(x, y, x + tw, y + th);
+        float rad = style == Style.GLASS ? th / 2f : th * 0.12f;
+        cv.drawRoundRect(r, rad, rad, fill);
+        float white = 0.92f * lit * lit;
+        if (white > 0f) {
+            fill.setColor(0xFFFFFFFF);
+            fill.setAlpha(Math.round(255 * white));
+            cv.drawRoundRect(r, rad, rad, fill);
+            fill.setAlpha(255);
+        }
+        // Its words white on the red; red while it is lit white.
+        float most = th * 0.6f, ts = Math.min(most, (tw - th * 0.3f) * most / Math.max(1f, measure(look.added, most)));
+        words(cv, look.added, x + tw / 2f, y, th, ts, blend(0xFFFFFFFF, red, white));
+        cv.restore();
+        if (tabFrozen < 0 && (f < 1f || lit > 0f)) postInvalidateOnAnimation();
     }
 
     /** Pure: b laid over a at this share. */
