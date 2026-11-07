@@ -42,6 +42,10 @@ public class BoardCoverTest {
         assertEquals("+4", BoardCover.addedWords("90:05", "88'", put));
         assertEquals("+3", BoardCover.addedWords("46:30", "45'+2'", put));
         assertEquals("", BoardCover.addedWords("88:10", "88'", put));
+        // 4.15: from the half's last minute (the 90th, the 45th) once it is known.
+        assertEquals("+4", BoardCover.addedWords("89:20", "89'", put));
+        assertEquals("+3", BoardCover.addedWords("44:05", "44'", put));
+        assertEquals("", BoardCover.addedWords("43:59", "44'", put));
         assertEquals("", BoardCover.addedWords("93:00", "90'+4'", null));
         assertEquals("", BoardCover.addedWords("106:00", "105'+1'", put));
         assertEquals("", BoardCover.addedWords("HT", "HT", put));
@@ -57,6 +61,19 @@ public class BoardCoverTest {
         BoardCover.Reading r = live(1_000L, "2", "1", 5400, "90'+3'");
         r.since = 1_000L;
         assertArrayEquals(new String[]{"92:30", ""}, BoardCover.clock(r, 31_000L));
+        // 4.15: and on, however long the next reading takes to come (it never stops at a minute's end).
+        assertArrayEquals(new String[]{"94:00", ""}, BoardCover.clock(r, 121_000L));
+        // Never stepping back by a little; a real correction (half a minute or more) taken as it is.
+        assertEquals(5530, BoardCover.steadied(5525, 5530), 0.001);
+        assertEquals(5531, BoardCover.steadied(5531, 5530), 0.001);
+        assertEquals(5480, BoardCover.steadied(5480, 5530), 0.001);
+        assertEquals(5525, BoardCover.steadied(5525, -1), 0.001);
+        // The summary read every half a minute near a half's end, for the added time put up.
+        assertTrue(BoardCover.nearHalfsEnd(44));
+        assertTrue(BoardCover.nearHalfsEnd(89));
+        assertTrue(BoardCover.nearHalfsEnd(96));
+        assertFalse(BoardCover.nearHalfsEnd(67));
+        assertFalse(BoardCover.nearHalfsEnd(-1));
         // Full time on the board under a minute after it shows, whatever is out by then.
         assertTrue(BoardCover.FT_SHOWN_MS < 60_000L);
         assertTrue(BoardCover.FT_GONE_MS <= 60_000L && BoardCover.FT_GONE_MS >= BoardCover.FT_SHOWN_MS);
@@ -73,12 +90,12 @@ public class BoardCoverTest {
     }
 
     @Test
-    public void theClockCountsOnFromWhenItWasSeenNeverPastTheMinute() {
+    public void theClockCountsOnFromWhenItWasSeenAndNeverStops() {
         BoardCover.Reading r = live(1_000_000L, "1", "0", 4020, "68'");
         assertArrayEquals(new String[]{"67:00", ""}, BoardCover.clock(r, 1_000_000L));
         assertArrayEquals(new String[]{"67:25", ""}, BoardCover.clock(r, 1_025_000L));
-        // ESPN's next minute not in yet: held at the minute's end.
-        assertArrayEquals(new String[]{"67:59", ""}, BoardCover.clock(r, 1_090_000L));
+        // 4.15: ESPN's next minute not in yet: it counts on all the same (the clock never stops).
+        assertArrayEquals(new String[]{"68:30", ""}, BoardCover.clock(r, 1_090_000L));
         // Only the minute known: it began a minute before.
         assertArrayEquals(new String[]{"66:00", ""}, BoardCover.clock(live(1_000_000L, "1", "0", 0, "67'"), 1_000_000L));
         // Not running: no clock.

@@ -387,15 +387,51 @@ final class BoardCover {
 
     /** Pure: the clock the screen shows for r at screenNow: {"67:23", ""} or {"45:00", "+2"}; null when not running. */
     static String[] clock(Reading r, long screenNow) {
-        if (r == null || r.state != 0 || r.halftime) return null;
-        // Only the minute ("67'"): the minute began a minute before. In added time ESPN's clock can stand at the period's
-        // end while its minute goes on ("90'+3'"): the later of the two, so the clock never sticks there.
+        double secs = clockSecs(r, screenNow);
+        return secs < 0 ? null : clockWords(secs, r.detail);
+    }
+
+    /**
+     * Pure: the clock's seconds from a reading at screenNow (-1: none), counted on from when it was first seen for as long
+     * as the next reading takes to come, so it never stops. Only the minute ("67'"): the minute began a minute before. In
+     * added time ESPN's clock can stand at the period's end while its minute goes on ("90'+3'"): the later of the two.
+     */
+    static double clockSecs(Reading r, long screenNow) {
+        if (r == null || r.state != 0 || r.halftime) return -1;
         double secs = Math.max(r.clockSec, (minuteOf(r.detail) - 1) * 60.0);
-        if (secs <= 0) return null;
-        // ESPN's clock in whole minutes counts on to the minute's end at most; a finer one a little further.
-        long most = r.clockSec > 0 && r.clockSec % 60 != 0 ? 119 : 59;
-        long elapsed = Math.max(0, Math.min(most, (screenNow - r.since) / 1000));
-        return clockWords(secs + elapsed, r.detail);
+        if (secs <= 0) return -1;
+        return secs + Math.max(0, (screenNow - r.since) / 1000);
+    }
+
+    /** The clock as last shown: its game and half, its seconds and when, so it counts on from there. */
+    private static String steadyKey;
+    private static double steadySecs;
+    private static long steadyAt;
+
+    /**
+     * The clock to show (main thread): what the scores (or the kick-off's OK) say, but never stopping or stepping back by
+     * a little: counted on from the one shown last in the same game and half, unless that one is half a minute or more
+     * ahead of what they say now (a real correction).
+     */
+    private static double steady(String id, String detail, double said, long now) {
+        int first = firstMinute(detail);
+        int period = first > 0 ? (first <= 45 ? 1 : first <= 90 ? 2 : first <= 105 ? 3 : 4) : periodOfSecs((long) said);
+        String key = id + "|" + period;
+        double running = key.equals(steadyKey) ? steadySecs + (now - steadyAt) / 1000.0 : -1;
+        double shown = steadied(said, running);
+        steadyKey = key;
+        steadySecs = shown;
+        steadyAt = now;
+        return shown;
+    }
+
+    /**
+     * Pure: the clock to show from what is said now and the one running on from the last shown (-1: none): the later of
+     * the two, unless the running one is half a minute or more ahead.
+     */
+    static double steadied(double said, double running) {
+        if (running < 0 || said >= running || running - said >= 30) return said;
+        return running;
     }
 
     /**
@@ -409,8 +445,9 @@ final class BoardCover {
     }
 
     /**
-     * Pure: the box beside the clock in added time: the minutes the fourth official put up for that half ("+4"), once
-     * known (announced: {first half, second half, extra time's two}); none before the half's end or when not known.
+     * Pure: the box beside the clock from the half's last minute (the 45th, the 90th) on: the minutes the fourth official
+     * put up for that half ("+4"), once known (announced: {first half, second half, extra time's two}); none before, or
+     * when not known.
      */
     static String addedWords(String clock, String detail, int[] announced) {
         int m = minuteOfClock(clock);
@@ -419,7 +456,8 @@ final class BoardCover {
         int period = first > 0 ? (first <= 45 ? 1 : first <= 90 ? 2 : first <= 105 ? 3 : 4)
                 : m < 45 ? 1 : m < 90 ? 2 : m < 105 ? 3 : 4;
         int end = period == 1 ? 45 : period == 2 ? 90 : period == 3 ? 105 : 120;
-        if (m < end || period > announced.length) return "";
+        // The half's last minute (the 45th, the 90th: from 44:00, 89:00) on.
+        if (m < end - 1 || period > announced.length) return "";
         int n = announced[period - 1];
         return n > 0 ? "+" + n : "";
     }
@@ -583,6 +621,8 @@ final class BoardCover {
     static void anchor(Context c, String gameId, int base, long at) {
         if (gameId == null || gameId.isEmpty()) return;
         prefs(c).edit().putString("anchor", gameId + "|" + base + "|" + at).apply();
+        // Counted from this moment now, not on from the one shown before.
+        steadyKey = null;
         AlertLog.note(c, "scoreboard clock set with the channel's: " + (base / 60) + ":00 at the OK");
         poke();
         resume(c);
@@ -610,16 +650,24 @@ final class BoardCover {
      * when the period on the screen (ESPN's minute) is another than the one it was set in, or there is none.
      */
     static String[] anchored(long[] a, long now, String detail) {
-        if (a == null || now < a[1]) return null;
+        double secs = anchoredSecs(a, now, detail);
+        return secs < 0 ? null : clockWords(secs, detail);
+    }
+
+    /** Pure: the same as seconds (-1: none). */
+    static double anchoredSecs(long[] a, long now, String detail) {
+        if (a == null || now < a[1]) return -1;
         int period = periodOfSecs(a[0]), first = firstMinute(detail);
-        if (first > 0 && (first <= 45 ? 1 : first <= 90 ? 2 : first <= 105 ? 3 : 4) != period) return null;
-        return clockWords(a[0] + (now - a[1]) / 1000.0, detail);
+        if (first > 0 && (first <= 45 ? 1 : first <= 90 ? 2 : first <= 105 ? 3 : 4) != period) return -1;
+        return a[0] + (now - a[1]) / 1000.0;
     }
 
     /** Move and resize's Timing: the board (its clock, its score and the alerts) delta ms later, or sooner when negative. */
     static void timing(Context c, long delta) {
         if (delta == 0) return;
         InStep.nudge(c, delta);
+        // A second later or sooner, as asked: not held to the clock shown before.
+        steadyKey = null;
         String id = game(c);
         long[] a = anchorOf(prefs(c).getString("anchor", null), id);
         if (a != null) prefs(c).edit().putString("anchor", id + "|" + a[0] + "|" + (a[1] + delta)).apply();
@@ -1209,12 +1257,15 @@ final class BoardCover {
         if (pre != null) {
             l = pre;
         } else if (g != null && r != null && r.state != 1) {
-            l = look(g, r, now - InStep.holdMs(c, true));
-            // Set at the kick-off on the screen (OK when asked): the clock counted from that moment, the channel's own.
+            long screenNow = now - InStep.holdMs(c, true);
+            l = look(g, r, screenNow);
             if (l.live) {
-                String[] set = anchored(anchorOf(prefs(c).getString("anchor", null), id), now, r.detail);
-                if (set != null) l.clock = set[0];
-                // Running on through the minutes added, the time put up beside it once it is known.
+                // The clock: counted from the kick-off on the screen (OK when asked), the channel's own; else the scores'.
+                // Always counting on, through the minutes added too, never stopping or stepping back by a little.
+                double secs = anchoredSecs(anchorOf(prefs(c).getString("anchor", null), id), now, r.detail);
+                if (secs < 0) secs = clockSecs(r, screenNow);
+                if (secs >= 0) l.clock = clockWords(steady(id, r.detail, secs, now), r.detail)[0];
+                // From the half's last minute, the added time put up beside it once it is known.
                 l.added = addedWords(l.clock, r.detail, announced.get(id));
             }
         } else if (orSample) {
@@ -1782,7 +1833,9 @@ final class BoardCover {
      */
     private static void readStats(Context c, ScoresTicker.Game g, long now) {
         if (statsReading || g.slug == null || g.id == null) return;
-        if (g.id.equals(statsFor) && now - statsReadAt < STATS_READ_MS) return;
+        // Near a half's end, every half a minute: the added time put up comes on the board soon after.
+        long every = nearHalfsEnd(minuteOfClock(bug == null ? null : bug.look().clock)) ? 30_000L : STATS_READ_MS;
+        if (g.id.equals(statsFor) && now - statsReadAt < every) return;
         statsReading = true;
         statsReadAt = now;
         String id = g.id, slug = g.slug;
@@ -1856,6 +1909,12 @@ final class BoardCover {
             if (s != null && out.size() < most) out.add(s);
         }
         return out.size() >= least ? out : new ArrayList<>();
+    }
+
+    /** Pure: whether a clock's minute is near a half's end, when the added time is put up (42 to 52, 87 to 100, extra time's). */
+    static boolean nearHalfsEnd(int minute) {
+        return minute >= 42 && minute <= 52 || minute >= 87 && minute <= 100 || minute >= 102 && minute <= 110
+                || minute >= 117 && minute <= 126;
     }
 
     /** Pure: the minute a clock shows ("67:23": 67); -1 when it shows none ("HT", ""). */
