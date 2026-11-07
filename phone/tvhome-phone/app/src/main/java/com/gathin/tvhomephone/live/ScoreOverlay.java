@@ -3,6 +3,8 @@ package com.gathin.tvhomephone.live;
 import android.app.Activity;
 import android.annotation.SuppressLint;
 import android.content.Context;
+import android.view.GestureDetector;
+import android.view.HapticFeedbackConstants;
 import android.view.MotionEvent;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.Bitmap;
@@ -77,6 +79,8 @@ final class ScoreOverlay implements ScoreBoard.Source {
     private String mineKey;
     /** Move and resize is open: the shield over the picture and its panel; the picture's place as last laid out. */
     private boolean editing;
+    /** The board or the mark held and being dragged (outside Move and resize). */
+    private boolean carrying;
     private View shield, panel;
     private float pfx, pfy, pfw = 1, pfh = 1;
     /** The channel's scoreboard read off the picture: the reader, its frame, when it last read a clock, misses. */
@@ -105,7 +109,7 @@ final class ScoreOverlay implements ScoreBoard.Source {
         board = new ScoreBoard(a, this);
         cover = new LogoCover(a);
         cover.setVisibility(View.GONE);
-        // Hold the mark (or the scoreboard) to move and size them.
+        // Held: dragged where the finger goes. Tapped twice: Move and resize. (The screen reader's long press: the same.)
         cover.setOnLongClickListener(v -> {
             adjust();
             return true;
@@ -115,6 +119,8 @@ final class ScoreOverlay implements ScoreBoard.Source {
         root.addView(board.view, Math.min(3, root.getChildCount()), new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.START));
         guard = new BurnGuard(a, 2f, new View[]{board.view, cover}, new BurnGuard.Dims[]{board.bug, cover});
         board.changed = guard::poke;
+        handles(board.bug, true);
+        handles(cover, false);
         root.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
             if (r - l != or - ol || b - t != ob - ot) h.post(this::place);
         });
@@ -399,7 +405,7 @@ final class ScoreOverlay implements ScoreBoard.Source {
     private BoardPlace mine() {
         Channel ch = host.current();
         String key = ch == null ? null : ch.key;
-        if (!editing && (key == null ? mineKey != null : !key.equals(mineKey))) {
+        if (!editing && !carrying && (key == null ? mineKey != null : !key.equals(mineKey))) {
             mineKey = key;
             mine = BoardPlace.get(a, key);
         }
@@ -427,28 +433,8 @@ final class ScoreOverlay implements ScoreBoard.Source {
         board.preview(true);
         float d = a.getResources().getDisplayMetrics().density;
         // Started from where they are now.
-        if (!mine.board()) {
-            FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) board.view.getLayoutParams();
-            int h = board.bug.getHeight() > 0 ? board.bug.getHeight() : Math.round(30 * d);
-            mine.bh = BoardPlace.clamp(h / pfh, BoardPlace.MIN_H, BoardPlace.MAX_H);
-            mine.bx = 0;
-            mine.moveBoard((lp.leftMargin - pfx) / pfw, (lp.topMargin - pfy) / pfh, board.bug.getWidth() / pfw);
-        }
-        if (!mine.logo() && ScoreBoard.logoCover(a) != LogoCover.Look.OFF) {
-            if (cover.getVisibility() == View.VISIBLE && cover.getWidth() > 0) {
-                FrameLayout.LayoutParams cp = (FrameLayout.LayoutParams) cover.getLayoutParams();
-                mine.lw = cover.getWidth() / pfw;
-                mine.lh = cover.getHeight() / pfh;
-                mine.lx = 0;
-                mine.moveLogo((cp.leftMargin - pfx) / pfw, (cp.topMargin - pfy) / pfh);
-            } else {
-                // No logo found yet: the top right, where most channels have theirs.
-                mine.lw = 0.13f;
-                mine.lh = 0.075f;
-                mine.lx = 0;
-                mine.moveLogo(1 - 0.035f - mine.lw, 0.05f);
-            }
-        }
+        boardFromHere();
+        if (!mine.logo() && ScoreBoard.logoCover(a) != LogoCover.Look.OFF) logoFromHere();
         shield = new View(a);
         shield.setBackgroundColor(0x40000000);
         shield.setClickable(true);
@@ -568,27 +554,139 @@ final class ScoreOverlay implements ScoreBoard.Source {
         if (panel != null) root.removeView(panel);
         shield = null;
         panel = null;
-        board.bug.setOnTouchListener(null);
-        cover.setOnTouchListener(null);
+        handles(board.bug, true);
+        handles(cover, false);
         outline(false);
         board.preview(false);
         place();
     }
 
+    /** The board's own place (none yet: where it is now, at its size there, the width it covers kept). */
+    private void boardFromHere() {
+        if (mine.board()) return;
+        float d = a.getResources().getDisplayMetrics().density;
+        FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) board.view.getLayoutParams();
+        LinearLayout.LayoutParams bp = (LinearLayout.LayoutParams) board.bug.getLayoutParams();
+        int h = board.bug.getHeight() > 0 ? board.bug.getHeight() : Math.round(30 * d);
+        mine.bh = BoardPlace.clamp(h / pfh, BoardPlace.MIN_H, BoardPlace.MAX_H);
+        // Over the channel's own, at that box's width: kept, so it doesn't change size as it is picked up.
+        if (bp.width > 0 && board.bug.getWidth() > 0) mine.bw = BoardPlace.clamp(board.bug.getWidth() / pfw, BoardPlace.MIN_BW, BoardPlace.MAX_BW);
+        mine.bx = 0;
+        mine.moveBoard((lp.leftMargin - pfx) / pfw, (lp.topMargin - pfy) / pfh, board.bug.getWidth() / pfw);
+    }
+
+    /** The mark's own place (none yet: over the logo where it is, else the top right, where most channels have theirs). */
+    private void logoFromHere() {
+        if (mine.logo()) return;
+        if (cover.getVisibility() == View.VISIBLE && cover.getWidth() > 0) {
+            FrameLayout.LayoutParams cp = (FrameLayout.LayoutParams) cover.getLayoutParams();
+            mine.lw = cover.getWidth() / pfw;
+            mine.lh = cover.getHeight() / pfh;
+            mine.lx = 0;
+            mine.moveLogo((cp.leftMargin - pfx) / pfw, (cp.topMargin - pfy) / pfh);
+        } else {
+            mine.lw = 0.13f;
+            mine.lh = 0.075f;
+            mine.lx = 0;
+            mine.moveLogo(1 - 0.035f - mine.lw, 0.05f);
+        }
+    }
+
+    /**
+     * Outside Move and resize, the board's (and the mark's) touches: held, it is picked up and follows the finger
+     * until let go, then kept there for this channel; tapped twice, Move and resize opens for its size, height, look
+     * and timing; tapped once, the board's tap (its game's match centre).
+     */
+    @SuppressLint("ClickableViewAccessibility")
+    private void handles(View v, boolean isBoard) {
+        float[] start = new float[4];
+        boolean[] held = {false};
+        GestureDetector g = new GestureDetector(a, new GestureDetector.SimpleOnGestureListener() {
+            @Override public boolean onDown(MotionEvent e) {
+                return true;
+            }
+
+            @Override public boolean onSingleTapConfirmed(MotionEvent e) {
+                if (isBoard) v.performClick();
+                return true;
+            }
+
+            @Override public boolean onDoubleTap(MotionEvent e) {
+                safely(ScoreOverlay.this::adjust, null);
+                return true;
+            }
+
+            @Override public void onLongPress(MotionEvent e) {
+                if (editing || inPip || !started || host.current() == null) return;
+                mine();
+                carrying = true;
+                if (isBoard) boardFromHere();
+                else logoFromHere();
+                start[0] = e.getRawX();
+                start[1] = e.getRawY();
+                start[2] = isBoard ? mine.bx : mine.lx;
+                start[3] = isBoard ? mine.by : mine.ly;
+                held[0] = true;
+                v.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
+                if (v.getParent() != null) v.getParent().requestDisallowInterceptTouchEvent(true);
+                outlineOne(v, true);
+                guard.poke();
+                place();
+            }
+        });
+        v.setOnTouchListener((view, e) -> {
+            g.onTouchEvent(e);
+            if (!held[0]) return true;
+            switch (e.getActionMasked()) {
+                case MotionEvent.ACTION_MOVE:
+                    follow(isBoard, start, e);
+                    return true;
+                case MotionEvent.ACTION_UP:
+                case MotionEvent.ACTION_CANCEL:
+                    held[0] = false;
+                    carrying = false;
+                    if (mineKey != null) BoardPlace.put(a, mineKey, mine);
+                    outlineOne(v, false);
+                    place();
+                    return true;
+                default:
+                    return true;
+            }
+        });
+    }
+
+    /** The one dragged where the finger has gone from where it was (start: the finger's and the place's), kept in sight. */
+    private void follow(boolean isBoard, float[] start, MotionEvent e) {
+        float x = start[2] + (e.getRawX() - start[0]) / pfw, y = start[3] + (e.getRawY() - start[1]) / pfh;
+        // Kept where it can be seen: on the picture, and on the screen when the picture is zoomed past it.
+        float minX = Math.max(0, -pfx / pfw), minY = Math.max(0, -pfy / pfh);
+        float maxX = Math.min(1, (root.getWidth() - pfx) / pfw), maxY = Math.min(1, (root.getHeight() - pfy) / pfh);
+        if (isBoard) {
+            float w = board.bug.getWidth() / pfw;
+            mine.moveBoard(BoardPlace.clamp(x, minX, Math.max(minX, maxX - w)), BoardPlace.clamp(y, minY, Math.max(minY, maxY - mine.bh)), w);
+        } else {
+            mine.moveLogo(BoardPlace.clamp(x, minX, Math.max(minX, maxX - mine.lw)), BoardPlace.clamp(y, minY, Math.max(minY, maxY - mine.lh)));
+        }
+        place();
+    }
+
     /** A dashed white edge round each one while it can be moved. */
     private void outline(boolean on) {
-        float d = a.getResources().getDisplayMetrics().density;
-        for (View v : new View[]{board.bug, cover}) {
-            if (!on) {
-                v.setForeground(null);
-                continue;
-            }
-            GradientDrawable g = new GradientDrawable();
-            g.setColor(0);
-            g.setCornerRadius(4 * d);
-            g.setStroke(Math.max(1, Math.round(2 * d)), 0xFFFFFFFF, 6 * d, 4 * d);
-            v.setForeground(g);
+        outlineOne(board.bug, on);
+        outlineOne(cover, on);
+    }
+
+    private void outlineOne(View v, boolean on) {
+        if (!on) {
+            v.setForeground(null);
+            return;
         }
+        float d = a.getResources().getDisplayMetrics().density;
+        GradientDrawable g = new GradientDrawable();
+        g.setColor(0);
+        g.setCornerRadius(4 * d);
+        g.setStroke(Math.max(1, Math.round(2 * d)), 0xFFFFFFFF, 6 * d, 4 * d);
+        v.setForeground(g);
     }
 
     /** Both made draggable (a drag isn't a click: the screen reader moves them with the panel's buttons). */
@@ -611,20 +709,9 @@ final class ScoreOverlay implements ScoreBoard.Source {
                     start[3] = isBoard ? mine.by : mine.ly;
                     view.getParent().requestDisallowInterceptTouchEvent(true);
                     return true;
-                case MotionEvent.ACTION_MOVE: {
-                    float x = start[2] + (e.getRawX() - start[0]) / pfw, y = start[3] + (e.getRawY() - start[1]) / pfh;
-                    // Kept where it can be seen: on the picture, and on the screen when the picture is zoomed past it.
-                    float minX = Math.max(0, -pfx / pfw), minY = Math.max(0, -pfy / pfh);
-                    float maxX = Math.min(1, (root.getWidth() - pfx) / pfw), maxY = Math.min(1, (root.getHeight() - pfy) / pfh);
-                    if (isBoard) {
-                        float w = board.bug.getWidth() / pfw;
-                        mine.moveBoard(BoardPlace.clamp(x, minX, Math.max(minX, maxX - w)), BoardPlace.clamp(y, minY, Math.max(minY, maxY - mine.bh)), w);
-                    } else {
-                        mine.moveLogo(BoardPlace.clamp(x, minX, Math.max(minX, maxX - mine.lw)), BoardPlace.clamp(y, minY, Math.max(minY, maxY - mine.lh)));
-                    }
-                    place();
+                case MotionEvent.ACTION_MOVE:
+                    follow(isBoard, start, e);
                     return true;
-                }
                 default:
                     return true;
             }

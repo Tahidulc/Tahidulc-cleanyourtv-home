@@ -215,6 +215,10 @@ block), and down its edge the colours of the clubs it is about, the scorers' alo
 elevens, each led by its club and shape in its colour, for twelve seconds. A goal's alert waits for the sweep to
 finish, and the stats fold away before an alert comes down in their place; they too take the board's look.
 
+Moving the scoreboard by hand (4.16): hold it and it lifts (a buzz and a dashed edge), follows your finger, and stays
+where you let go, kept for that channel; the mark over the logo the same. Tap it twice for Move and resize (its size,
+height, look, timing and switches). A single tap still opens the game's match centre.
+
 Subtitles (CC in the film's player): the film's or episode's own, from your playlist's stream, come first, in the
 languages you choose (Settings, Subtitles, in order). When it has none, OpenSubtitles.com is looked in by the title's
 TMDB id (the series' with its season and episode), best first: your languages, the ones that fit the copy playing (its
