@@ -96,9 +96,9 @@ final class BoardBug extends View {
         Palette p = new Palette();
         switch (s) {
             case GLASS:
-                // Smoked glass: dark enough that the channel's own scoreboard under it never shows, a sheen across
-                // its top, the score and the clock in lighter and darker glass, a pill.
-                p.ground = 0xF7151B36;
+                // Smoked glass in look only: solid, so the channel's own scoreboard under it never shows; a sheen
+                // across its top, the score and the clock in lighter and darker glass, a pill.
+                p.ground = 0xFF151B36;
                 p.comp = 0;
                 p.score0 = 0x40FFFFFF;
                 p.score1 = 0x1CFFFFFF;

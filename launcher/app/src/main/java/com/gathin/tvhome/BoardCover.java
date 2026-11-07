@@ -1103,8 +1103,11 @@ final class BoardCover {
     }
 
     private static WindowManager.LayoutParams params(int w, int h, boolean focus) {
+        // Not FLAG_NOT_TOUCHABLE: Android 12 and later turn such an overlay down to 80% (it is meant to let touches
+        // through), and the channel's own scoreboard then showed through the board. A TV has no touch screen, and not
+        // focusable keeps every key with the app, as the alerts do.
         WindowManager.LayoutParams lp = new WindowManager.LayoutParams(w, h, WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-                (focus ? 0 : WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE) | WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+                (focus ? 0 : WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE) | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
                         | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
                         | WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
                 PixelFormat.TRANSLUCENT);
