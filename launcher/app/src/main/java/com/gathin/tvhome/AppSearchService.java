@@ -80,6 +80,20 @@ public class AppSearchService extends AccessibilityService {
         Intent open = c.getPackageManager().getLeanbackLaunchIntentForPackage(pkg);
         if (open == null) open = c.getPackageManager().getLaunchIntentForPackage(pkg);
         if (open == null) return false;
+        // The helper not connected (a TCL drops it now and then): without it the app only opens, on its home screen,
+        // with nothing searched. Connected again first, as a channel's tune is, then the search.
+        if (instance == null && query != null && !query.isEmpty() && ensure(c)) {
+            waiting(c, pkg);
+            Intent go = open;
+            whenReady(() -> openFor(c, pkg, go, query, tv, art, logo), 0);
+            return true;
+        }
+        return openFor(c, pkg, open, query, tv, art, logo);
+    }
+
+    /** search's opening of pkg, the helper connected or not. */
+    private static boolean openFor(Context c, String pkg, Intent open, String query, boolean tv, android.graphics.Bitmap art,
+                                   android.graphics.Bitmap logo) {
         boolean helper = instance != null && query != null && !query.isEmpty();
         // With the helper on, the app starts afresh from its home screen, where its search is: left on a title's own
         // page, it would come back there, with no search to open.
@@ -411,6 +425,7 @@ public class AppSearchService extends AccessibilityService {
         // The helper not connected (a TCL drops it now and then): without it TiviMate only opens, on the channel last
         // watched. Connected again first, then the tune.
         if (instance == null && !all.isEmpty() && ensure(c)) {
+            waiting(c, pkg);
             whenReady(() -> pick(c, pkg, all, logo, art), 0);
             return c.getPackageManager().getLaunchIntentForPackage(pkg) != null;
         }
@@ -460,10 +475,24 @@ public class AppSearchService extends AccessibilityService {
         return names;
     }
 
-    /** r once the helper is connected, or after about three seconds without it. */
+    /**
+     * r once the helper is connected, or after about five seconds without it: a TCL binds it again more slowly than
+     * the three seconds this once waited, and the tune then went ahead without it (TiviMate only opened).
+     */
     private static void whenReady(Runnable r, int tries) {
-        if (instance != null || tries >= 15) { r.run(); return; }
+        if (instance != null || tries >= 25) { r.run(); return; }
         new Handler(Looper.getMainLooper()).postDelayed(() -> whenReady(r, tries + 1), 200);
+    }
+
+    /** While the helper is switched back on (a few seconds at most): "Opening TiviMate…", so the wait shows. */
+    private static void waiting(Context c, String pkg) {
+        try {
+            android.content.pm.PackageManager pm = c.getPackageManager();
+            CharSequence name = pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0));
+            android.widget.Toast.makeText(c.getApplicationContext(), "Opening " + name + "…", android.widget.Toast.LENGTH_SHORT).show();
+        } catch (Exception ignored) {
+            // No name to show: the wait goes on without a word, as before.
+        }
     }
 
     /**
