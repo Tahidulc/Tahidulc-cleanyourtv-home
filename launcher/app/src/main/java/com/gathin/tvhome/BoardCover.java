@@ -52,9 +52,10 @@ import java.util.regex.Pattern;
  * minutes before kick-off with the kick-off's time; at half time a little longer for its alert and the half's stats,
  * then it rests (gone); full time shows for two minutes.
  *
- * <p>Out from under it, in its look, as on the phone: the game's stats now and then (BoardStats), and while it is up the
- * football alerts (goals, cards, VAR, half and full time, the kick-off and both line-ups) fold down out of it (BoardDrop)
- * in place of the usual cards; each can be switched off on the Scoreboard card.
+ * <p>Out beside it, in line with it and in its look: the game's stats and facts a few times a game (BoardStats: the
+ * chances, form and table before kick-off, a few of each half's, the player of the match), and while it is up the
+ * football alerts (goals, cards, VAR, half and full time, the kick-off and both line-ups) slide out of it sideways
+ * (BoardDrop) in place of the usual cards; each can be switched off on the Scoreboard card.
  *
  * <p>Where it sits: the TV cannot see the picture under TiviMate (its video is on a plane of its own), so it takes the
  * standard places (the scoreboard top left, the logo's cover top right) until Move and resize sets a channel's own
@@ -297,7 +298,7 @@ final class BoardCover {
         restyle();
     }
 
-    /** The football alerts folding out from under it while it is up (off: the usual cards). */
+    /** The football alerts sliding out beside it while it is up (off: the usual cards). */
     static boolean dropsOn(Context c) {
         return prefs(c).getBoolean("drops", true);
     }
@@ -306,7 +307,7 @@ final class BoardCover {
         prefs(c).edit().putBoolean("drops", on).apply();
     }
 
-    /** The game's stats folding out from under it now and then. */
+    /** The game's stats sliding out beside it now and then. */
     static boolean statsOn(Context c) {
         return prefs(c).getBoolean("stats", true);
     }
@@ -482,6 +483,8 @@ final class BoardCover {
         l.tag = tag(g.league);
         l.homeColour = BoardBug.colour(g.homeColor, g.homeAlt);
         l.awayColour = BoardBug.colour(g.awayColor, g.awayAlt);
+        l.homeOwn = BoardBug.onWhite(g.homeColor, g.homeAlt);
+        l.awayOwn = BoardBug.onWhite(g.awayColor, g.awayAlt);
         l.score = r.home + "–" + r.away;
         if (r.state == 2) {
             l.clock = "FT";
@@ -526,6 +529,8 @@ final class BoardCover {
         l.tag = tag(g.league);
         l.homeColour = BoardBug.colour(g.homeColor, g.homeAlt);
         l.awayColour = BoardBug.colour(g.awayColor, g.awayAlt);
+        l.homeOwn = BoardBug.onWhite(g.homeColor, g.homeAlt);
+        l.awayOwn = BoardBug.onWhite(g.awayColor, g.awayAlt);
         l.score = "v";
         l.clock = g.kickoff > 0 ? java.time.Instant.ofEpochMilli(g.kickoff).atZone(java.time.ZoneId.systemDefault())
                 .format(java.time.format.DateTimeFormatter.ofPattern("HH:mm")) : "";
@@ -590,7 +595,7 @@ final class BoardCover {
         return "Held " + InStep.words(InStep.holdMs(c, true)) + " behind the scores" + (set ? ", its clock set at kick-off" : "");
     }
 
-    // ---- the alerts, as they fold out from under it -------------------------------------------------------------------
+    // ---- the alerts, as they slide out beside it -------------------------------------------------------------------
 
     /** Pure: an alert kind's colour for its chip (a goal's green, a red card's red, VAR's amber); PLAIN for the rest. */
     static int kindColour(String kind) {
@@ -618,7 +623,7 @@ final class BoardCover {
     }
 
     /**
-     * Pure: a game's card (ScoreCard) as it folds out from under the board: its label as the chip ("GOAL", "RED CARD",
+     * Pure: a game's card (ScoreCard) as it slides out beside the board: its label as the chip ("GOAL", "RED CARD",
      * "FULL TIME"), the score as the title, who and when as the line; the clubs' colours down its edge, the scorers'
      * alone for a goal.
      */
@@ -660,7 +665,7 @@ final class BoardCover {
         }
     }
 
-    /** Pure: a football pop-up's line ("⚽  Salah  67'") as it folds out from under the board. */
+    /** Pure: a football pop-up's line ("⚽  Salah  67'") as it slides out beside the board. */
     static BoardDrop.Drop dropOfLine(String head, ScoresTicker.Game g, String sound, String scoredBy) {
         return dropOfLine(head, g, sound, scoredBy, null, null);
     }
@@ -683,7 +688,7 @@ final class BoardCover {
         return o;
     }
 
-    /** Pure: both starting elevens as they fold out: each club's name and shape, then its players' surnames. */
+    /** Pure: both starting elevens as they slide out: each club's name and shape, then its players' surnames. */
     static BoardDrop.Drop lineupsDrop(ScoresTicker.Game g, ScoresTicker.Side[] sides) {
         return lineupsDrop(g, sides, null, null);
     }
@@ -725,7 +730,7 @@ final class BoardCover {
                 && !adjusting && testUntil <= System.currentTimeMillis() && dropsOn(c);
     }
 
-    /** A game's card while the board is up: folded out from under it instead, in its look; true when taken (main thread). */
+    /** A game's card while the board is up: slid out beside it instead, in its look; true when taken (main thread). */
     static boolean take(Context c, ScoreCard.Data d) {
         if (d == null || d.f1 || d.gameId == null || d.homeName == null || !up(c)) return false;
         ScoresTicker.Game g = GoalWatchService.latestGame(d.gameId);
@@ -733,14 +738,14 @@ final class BoardCover {
         return true;
     }
 
-    /** A football pop-up's line while the board is up: folded out from under it instead; true when taken (main thread). */
+    /** A football pop-up's line while the board is up: slid out beside it instead; true when taken (main thread). */
     static boolean takeLine(Context c, CharSequence head, ScoresTicker.Game g, String sound, String scoredBy, Bitmap home, Bitmap away) {
         if (g == null || g.id == null || !up(c)) return false;
         drop(c, dropOfLine(head == null ? "" : head.toString(), g, sound, scoredBy, home, away));
         return true;
     }
 
-    /** The kick-off's line-ups while the board is up: both elevens folded out from under it; true when taken (main thread). */
+    /** The kick-off's line-ups while the board is up: both elevens slid out beside it; true when taken (main thread). */
     static boolean takeLineups(Context c, ScoresTicker.Game g, ScoresTicker.Side[] sides, Bitmap home, Bitmap away) {
         if (g == null || g.id == null || sides == null || sides.length < 2 || sides[0] == null || sides[1] == null || !up(c)) return false;
         if (!NotifyPrefs.allowed(c, "kickoff", false, g.slug, g.id)) return false;
@@ -765,7 +770,15 @@ final class BoardCover {
             }
             out.add(new String[]{w[1], x.trim(), y.trim()});
         }
+        String ph = passes(h), pa = passes(a);
+        if (!ph.isEmpty() && !pa.isEmpty()) out.add(new String[]{"Pass accuracy", ph, pa});
         return out;
+    }
+
+    /** Pure: the share of a side's passes that found a team-mate ("84%"); "" without its figures. */
+    static String passes(Map<String, String> m) {
+        int ok = number(m.get("accuratePasses")), all = number(m.get("totalPasses"));
+        return all > 0 ? Math.round(ok * 100f / all) + "%" : "";
     }
 
     private static String pct(String s) {
@@ -776,8 +789,12 @@ final class BoardCover {
         }
     }
 
-    /** The stats from ESPN's match summary, each side's by its team's id (else the first is the home side's). */
-    private static List<String[]> statsOf(org.json.JSONObject summary, String homeId) {
+    /**
+     * The stats and facts from ESPN's match summary, by name: the match's (each side's by its team's id, else the first
+     * is the home side's), the pass accuracy, each side's form (its last five), its place in the table, the chances
+     * before kick-off and the player of the match so far.
+     */
+    private static Map<String, String[]> statsOf(org.json.JSONObject summary, ScoresTicker.Game g) {
         Map<String, String> h = new HashMap<>(), a = new HashMap<>();
         org.json.JSONObject box = summary.optJSONObject("boxscore");
         org.json.JSONArray teams = box == null ? null : box.optJSONArray("teams");
@@ -786,7 +803,7 @@ final class BoardCover {
             if (t == null) continue;
             org.json.JSONObject team = t.optJSONObject("team");
             String tid = team == null ? "" : team.optString("id");
-            boolean home = homeId != null && !homeId.isEmpty() && !tid.isEmpty() ? tid.equals(homeId) : i == 0;
+            boolean home = g.homeId != null && !g.homeId.isEmpty() && !tid.isEmpty() ? tid.equals(g.homeId) : i == 0;
             Map<String, String> m = home ? h : a;
             org.json.JSONArray st = t.optJSONArray("statistics");
             for (int k = 0; st != null && k < st.length(); k++) {
@@ -794,7 +811,145 @@ final class BoardCover {
                 if (s != null) m.put(s.optString("name"), s.optString("displayValue"));
             }
         }
-        return statsList(h, a);
+        Map<String, String[]> by = new HashMap<>();
+        if (g.state != 1) for (String[] s : statsList(h, a)) by.put(s[0], s);
+        String[] f = form(summary.optJSONArray("lastFiveGames"), g);
+        if (f != null) by.put(f[0], f);
+        String[] t = table(summary.optJSONObject("standings"), g);
+        if (t != null) by.put(t[0], t);
+        String[] w = winChance(summary.optJSONArray("odds"));
+        if (w != null) by.put(w[0], w);
+        if (g.state != 1) {
+            String[] p = star(summary.optJSONArray("rosters"), g);
+            if (p != null) by.put(p[0], p);
+        }
+        return by;
+    }
+
+    /** Each side's last five results ("WWDLW"), as ESPN lists them; null without both. */
+    private static String[] form(org.json.JSONArray five, ScoresTicker.Game g) {
+        String fh = null, fa = null;
+        for (int i = 0; five != null && i < five.length(); i++) {
+            org.json.JSONObject x = five.optJSONObject(i);
+            if (x == null) continue;
+            String id = x.optJSONObject("team") == null ? "" : x.optJSONObject("team").optString("id");
+            StringBuilder r = new StringBuilder();
+            org.json.JSONArray ev = x.optJSONArray("events");
+            for (int k = 0; ev != null && k < ev.length() && r.length() < 5; k++) {
+                org.json.JSONObject e = ev.optJSONObject(k);
+                String res = e == null ? "" : e.optString("gameResult", "");
+                if (!res.isEmpty()) r.append(Character.toUpperCase(res.charAt(0)));
+            }
+            if (r.length() == 0) continue;
+            if (id.equals(g.homeId)) fh = r.toString();
+            else if (id.equals(g.awayId)) fa = r.toString();
+        }
+        return fh != null && fa != null ? new String[]{"Form", fh, fa, "form"} : null;
+    }
+
+    /** Each side's place in its league's table and its points ("3rd · 64 pts"); null without both. */
+    private static String[] table(org.json.JSONObject standings, ScoresTicker.Game g) {
+        org.json.JSONArray groups = standings == null ? null : standings.optJSONArray("groups");
+        String ph = null, pa = null;
+        for (int gi = 0; groups != null && gi < groups.length(); gi++) {
+            org.json.JSONObject grp = groups.optJSONObject(gi);
+            org.json.JSONObject st = grp == null ? null : grp.optJSONObject("standings");
+            org.json.JSONArray entries = st == null ? null : st.optJSONArray("entries");
+            for (int i = 0; entries != null && i < entries.length(); i++) {
+                org.json.JSONObject e = entries.optJSONObject(i);
+                if (e == null) continue;
+                Map<String, String> v = new HashMap<>();
+                org.json.JSONArray es = e.optJSONArray("stats");
+                for (int k = 0; es != null && k < es.length(); k++) {
+                    org.json.JSONObject x = es.optJSONObject(k);
+                    if (x != null) v.put(x.optString("name"), x.optString("displayValue"));
+                }
+                int rank = number(v.get("rank"));
+                if (rank <= 0) continue;
+                String place = ordinal(rank) + " · " + v.getOrDefault("points", "0") + " pts";
+                String id = e.optString("id");
+                if (id.equals(g.homeId)) ph = place;
+                if (id.equals(g.awayId)) pa = place;
+            }
+        }
+        return ph != null && pa != null ? new String[]{"League table", ph, pa, "text"} : null;
+    }
+
+    /** Each side's chance of winning as the prices before kick-off put them (with the draw's, the three make 100); null without. */
+    private static String[] winChance(org.json.JSONArray odds) {
+        org.json.JSONObject o = odds == null || odds.length() == 0 ? null : odds.optJSONObject(0);
+        if (o == null) return null;
+        double h = chance(o.optJSONObject("homeTeamOdds")), a = chance(o.optJSONObject("awayTeamOdds")), d = chance(o.optJSONObject("drawOdds"));
+        if (h <= 0 || a <= 0 || d <= 0) return null;
+        double all = h + a + d;
+        return new String[]{"Win chance", Math.round(100 * h / all) + "%", Math.round(100 * a / all) + "%"};
+    }
+
+    /** A price (American odds, +260 or -500) as the chance it stands for. */
+    private static double chance(org.json.JSONObject x) {
+        if (x == null || !x.has("moneyLine")) return 0;
+        double m = x.optDouble("moneyLine", 0);
+        if (m == 0 || Double.isNaN(m)) return 0;
+        return m > 0 ? 100 / (m + 100) : -m / (-m + 100);
+    }
+
+    /**
+     * The player of the match so far from both line-ups' own figures (goals count most, then assists, shots on target,
+     * saves, less cards and own goals): "Saka (ARS) · 2 goals · 1 assist". Null until someone has done enough.
+     */
+    private static String[] star(org.json.JSONArray rosters, ScoresTicker.Game g) {
+        double best = 3.99;
+        String pick = null;
+        for (int r = 0; rosters != null && r < rosters.length(); r++) {
+            org.json.JSONObject side = rosters.optJSONObject(r);
+            if (side == null) continue;
+            boolean home = "home".equals(side.optString("homeAway"));
+            org.json.JSONArray players = side.optJSONArray("roster");
+            for (int i = 0; players != null && i < players.length(); i++) {
+                org.json.JSONObject pl = players.optJSONObject(i);
+                if (pl == null) continue;
+                Map<String, Double> v = new HashMap<>();
+                org.json.JSONArray st = pl.optJSONArray("stats");
+                for (int k = 0; st != null && k < st.length(); k++) {
+                    org.json.JSONObject x = st.optJSONObject(k);
+                    if (x != null) v.put(x.optString("name"), x.optDouble("value", 0));
+                }
+                double goals = v.getOrDefault("totalGoals", 0d), assists = v.getOrDefault("goalAssists", 0d);
+                double onTarget = v.getOrDefault("shotsOnTarget", 0d), shots = v.getOrDefault("totalShots", 0d), saves = v.getOrDefault("saves", 0d);
+                double score = 10 * goals + 6 * assists + 2 * onTarget + 0.5 * Math.max(0, shots - onTarget) + 1.5 * saves
+                        - 2 * v.getOrDefault("yellowCards", 0d) - 6 * v.getOrDefault("redCards", 0d) - 6 * v.getOrDefault("ownGoals", 0d);
+                org.json.JSONObject who = pl.optJSONObject("athlete");
+                if (score <= best || who == null) continue;
+                List<String> did = new ArrayList<>();
+                if (goals > 0) did.add(count((int) goals, "goal"));
+                if (assists > 0) did.add(count((int) assists, "assist"));
+                if (goals == 0 && onTarget > 0) did.add(count((int) onTarget, "shot") + " on target");
+                if (saves > 0) did.add(count((int) saves, "save"));
+                best = score;
+                pick = GoalWatchService.surname(who.optString("displayName")) + " ("
+                        + (home ? code(g.home, g.homeName) : code(g.away, g.awayName)) + ") · " + android.text.TextUtils.join(" · ", did);
+            }
+        }
+        return pick == null ? null : new String[]{"Player of the match", pick, "", "one"};
+    }
+
+    private static String count(int n, String what) {
+        return n + " " + what + (n == 1 ? "" : "s");
+    }
+
+    private static int number(String s) {
+        try {
+            return s == null ? 0 : Integer.parseInt(s.trim());
+        } catch (NumberFormatException e) {
+            return 0;
+        }
+    }
+
+    /** Pure: 1st, 2nd, 3rd, 4th, 11th, 21st. */
+    static String ordinal(int n) {
+        int t = n % 100;
+        String s = t >= 11 && t <= 13 ? "th" : n % 10 == 1 ? "st" : n % 10 == 2 ? "nd" : n % 10 == 3 ? "rd" : "th";
+        return n + s;
     }
 
     /**
@@ -846,25 +1001,29 @@ final class BoardCover {
     // ---- showing it ------------------------------------------------------------------------------------------------
 
     private static FrameLayout boardWin, logoWin, hintWin;
-    /** The board and, under it, what folds out of it: the stats, an alert. */
-    private static LinearLayout column;
+    /** The board and, beside it in line with it, what slides out of it (the stats, an alert), drawn over their tucked ends. */
+    private static FrameLayout column;
     private static BoardBug bug;
     private static BoardStats stats;
     private static BoardDrop drop;
     private static LogoMark mark;
     /** The windows just made: the board comes in as a broadcaster's does at its first showing. */
     private static boolean fresh;
-    /** The board's height set, and the widest the strips under it may be, in pixels. */
-    private static int boardH = 48, stripMax = 600;
-    /** How long before kick-off it is up (the kick-off and the line-ups fold out of it), and how long into half time. */
+    /**
+     * The board's height set; the widest what slides out beside it may be, how far its near end tucks under the board
+     * (beside a pill: the gap between them instead), and where the board sits along its window's row, in pixels.
+     */
+    private static int boardH = 48, sideMax = 600, tuck = 6, sideGap, boardAt;
+    /** What slides out comes out on the board's left (a board nearer the screen's right). */
+    private static boolean sideLeft;
+    /** How long before kick-off it is up (the kick-off and the line-ups slide out of it), and how long into half time. */
     static final long PRE_MS = 20 * 60_000L, HT_SHOWN_MS = 20_000L;
-    /** The stats: how often they fold out while the game runs, how often they are read, and how many each time. */
-    static final long STATS_EVERY_MS = 4 * 60_000L, STATS_READ_MS = 120_000L;
-    static final int STATS_EACH_TIME = 3;
-    /** How long an alert stays down (the line-ups longer). */
-    static final long DROP_MS = 8_000L, LINEUPS_MS = 14_000L;
-    /** The room under the board for what folds out, in board heights: as wide as an alert can be, as tall as the line-ups. */
-    static final float STRIP_W = 15f, STRIP_ROOM = 5.6f;
+    /** The stats: how often they are read, and how long before kick-off their first moment may come. */
+    static final long STATS_READ_MS = 120_000L, PRE_STATS_MS = 10 * 60_000L;
+    /** How long an alert stays out at least (a longer one longer, for its words to run to their end). */
+    static final long DROP_MS = 8_000L;
+    /** The widest what slides out beside the board may be, in board heights. */
+    static final float STRIP_W = 15f;
     private static TextView hint;
     /** This channel's places, and which channel they are for. */
     private static BoardPlace place;
@@ -954,7 +1113,7 @@ final class BoardCover {
         Reading r = screen(c, id, now);
         if (r == null || r.state == 1) {
             // Before kick-off: up in its last minutes with the kick-off's time on its clock (the kick-off and the
-            // line-ups fold out of it).
+            // line-ups slide out of it).
             ScoresTicker.Game g = GoalWatchService.latestGame(id);
             if (g != null && g.state == 1 && g.kickoff > now && g.kickoff - now <= PRE_MS) {
                 if (ensureWindows(c)) showGame(c, now, false, preLook(g));
@@ -1049,15 +1208,11 @@ final class BoardCover {
         column.setVisibility(board ? View.VISIBLE : View.INVISIBLE);
         if (board && (fresh || bug.closing())) {
             // In as a broadcaster's comes in: just up, its first block opening out of a line; going, back again.
-            if (fresh) {
-                bug.shownAt(0f);
-                // The stats' first time a minute after it comes, then every few minutes.
-                statsShownAt = now - STATS_EVERY_MS + 60_000L;
-            }
+            if (fresh) bug.shownAt(0f);
             bug.open();
         }
         fresh = false;
-        stats.look(bug.stripLook(), l.homeColour, l.awayColour);
+        stats.colours(l.homeColour, l.awayColour, l.homeOwn, l.awayOwn);
         // The logo's cover in Broadcast: the picture's tag, LIVE while the game is, the scoreboard's colours.
         if (mark != null) {
             mark.tag(LogoMark.tagOf(InStep.channel(c)));
@@ -1066,9 +1221,10 @@ final class BoardCover {
         }
         layout(c);
         guard(now);
-        if (pre == null && g != null && r != null && board && !adjusting && testUntil <= now) {
+        if (g != null && board && !adjusting && testUntil <= now) {
             readStats(c, g, now);
-            maybeStats(c, g, r, now);
+            if (pre != null) maybeStats(c, g, null, now, true);
+            else if (r != null) maybeStats(c, g, r, now, false);
         }
     }
 
@@ -1137,12 +1293,11 @@ final class BoardCover {
         bug.inset(edge);
         stats = new BoardStats(c);
         drop = new BoardDrop(c);
-        // The board, and under it what folds out of it.
-        column = new LinearLayout(c);
-        column.setOrientation(LinearLayout.VERTICAL);
-        column.addView(bug, new LinearLayout.LayoutParams(1, 1));
-        column.addView(stats, new LinearLayout.LayoutParams(1, 1));
-        column.addView(drop, new LinearLayout.LayoutParams(1, LinearLayout.LayoutParams.WRAP_CONTENT));
+        // The board, and beside it what slides out of it, drawn under the board where their near ends tuck in.
+        column = new FrameLayout(c);
+        column.addView(stats, new FrameLayout.LayoutParams(1, 1));
+        column.addView(drop, new FrameLayout.LayoutParams(1, 1));
+        column.addView(bug, new FrameLayout.LayoutParams(1, 1));
         boardWin = new FrameLayout(c);
         FrameLayout.LayoutParams cl = new FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT);
         cl.leftMargin = edge;
@@ -1224,7 +1379,7 @@ final class BoardCover {
         }
     }
 
-    /** Both away at once (Home, another app, switched off): what was folding out of it with them. */
+    /** Both away at once (Home, another app, switched off): what was out beside it with them. */
     private static void hideAll() {
         Context c = app;
         if (main != null) {
@@ -1252,7 +1407,7 @@ final class BoardCover {
     }
 
     /**
-     * Away as a broadcaster's goes (before kick-off, half time, full time shown): what is out under it folded, the
+     * Away as a broadcaster's goes (before kick-off, half time, full time shown): what is out beside it back in, the
      * board wiped back into its first block and closed to a line, then both windows gone.
      */
     private static void closeAll() {
@@ -1316,19 +1471,35 @@ final class BoardCover {
     }
 
     /**
-     * The board at (x, y, w, h) with its edge round it, in a window with room besides for the burn-in step and, under
-     * the board, for what folds out of it (as wide as an alert may be, as tall as the line-ups): a size that holds while
-     * the game goes on, so the window over the playing picture is not made again for each alert.
+     * The board at (x, y, w, h) with its edge round it, in a window with room besides for the burn-in step and, beside the
+     * board and in line with it, for what slides out of it: out to its right, or to its left when there is more room there
+     * (a board nearer the screen's right), short of the logo's cover where it is level with the board, and no wider than
+     * STRIP_W of its heights. A size that holds while the game goes on, so the window over the playing picture is not
+     * made again for each alert.
      */
     private static void positionBoard(Context c, int x, int y, int w, int h) {
         int vw = w + 2 * edge, vh = h + 2 * edge, unit = boardH;
-        size(bug, vw, vh, 0);
-        // The stats as wide as the board, a little less high; under a pill, a pill of their own a little apart.
-        int gap = bug.stripLook().apart ? Math.max(2, Math.round(unit * 0.08f)) : 0;
-        size(stats, vw, Math.max(12, Math.round(unit * 0.82f)), gap);
-        stripMax = Math.max(vw, Math.min(Math.round(unit * STRIP_W), sw - x));
+        BoardBug.StripLook look = bug.stripLook();
+        tuck = look.apart ? 0 : Math.max(2, Math.round(vh * look.round)) + 1;
+        sideGap = look.apart ? Math.max(2, Math.round(unit * 0.1f)) : 0;
+        int margin = Math.round(sw * 0.02f), left = x - edge, right = x + w + edge;
+        int roomR = sw - margin - right, roomL = left - margin;
+        BoardPlace p = adjusting && editing != null ? editing : place;
+        if (logoWin != null && p != null) {
+            int lx = Math.round(p.lx * sw), ly = Math.round(p.ly * sh), lw = Math.round(p.lw * sw), lh = Math.round(p.lh * sh);
+            boolean level = ly < y + h && ly + lh > y;
+            if (level && lx >= right) roomR = Math.min(roomR, lx - margin / 2 - right);
+            if (level && lx + lw <= left) roomL = Math.min(roomL, left - lx - lw - margin / 2);
+        }
+        sideLeft = roomR < unit * 6 && roomL > roomR;
+        int room = Math.max(unit * 3, Math.min(Math.round(unit * STRIP_W), sideLeft ? roomL : roomR) - sideGap);
+        sideMax = room + tuck;
+        boardAt = sideLeft ? room + sideGap : 0;
+        sizeAt(bug, vw, vh, boardAt);
+        if (stats.isOut()) beside(stats, stats.getLayoutParams().width);
+        if (drop.isOut()) beside(drop, drop.getLayoutParams().width);
         WindowManager.LayoutParams lp = (WindowManager.LayoutParams) boardWin.getLayoutParams();
-        int wx = x - 2 * edge, wy = y - 2 * edge, ww = stripMax + 2 * edge, wh = vh + gap + Math.round(unit * STRIP_ROOM) + 2 * edge;
+        int wx = x - 2 * edge - boardAt, wy = y - 2 * edge, ww = boardAt + vw + (sideLeft ? 0 : sideGap + room) + 2 * edge, wh = vh + 2 * edge;
         if (lp == null || (lp.x == wx && lp.y == wy && lp.width == ww && lp.height == wh)) return;
         lp.x = wx;
         lp.y = wy;
@@ -1341,22 +1512,31 @@ final class BoardCover {
         }
     }
 
-    private static void size(View v, int w, int h, int top) {
-        LinearLayout.LayoutParams l = (LinearLayout.LayoutParams) v.getLayoutParams();
-        if (l.width == w && l.height == h && l.topMargin == top) return;
+    private static void sizeAt(View v, int w, int h, int left) {
+        FrameLayout.LayoutParams l = (FrameLayout.LayoutParams) v.getLayoutParams();
+        if (l.width == w && l.height == h && l.leftMargin == left) return;
         l.width = w;
         l.height = h;
-        l.topMargin = top;
+        l.leftMargin = left;
         v.setLayoutParams(l);
     }
 
-    // ---- what folds out under it: the alerts ---------------------------------------------------------------------------
+    /** What slides out (the stats, an alert) w wide, as high as the board and beside it, its near end tucked under it. */
+    private static void beside(View v, int w) {
+        FrameLayout.LayoutParams b = (FrameLayout.LayoutParams) bug.getLayoutParams();
+        int left = sideLeft ? boardAt + tuck - sideGap - w : boardAt + b.width - tuck + sideGap;
+        sizeAt(v, w, b.height, left);
+    }
+
+    // ---- what slides out beside it: the alerts --------------------------------------------------------------------------
 
     private static final ArrayDeque<BoardDrop.Drop> drops = new ArrayDeque<>();
     private static boolean dropping;
     private static final Runnable nextDropRun = BoardCover::nextDrop, hideDropRun = BoardCover::hideDrop;
 
     private static void drop(Context c, BoardDrop.Drop d) {
+        // The board's own game: the board beside it says the clubs and the score already.
+        d.own = d.gameId != null && d.gameId.equals(game(c));
         drops.addLast(d);
         while (drops.size() > 4) drops.removeFirst();
         AlertLog.note(c, "alert from the scoreboard: " + d.what);
@@ -1365,8 +1545,8 @@ final class BoardCover {
     }
 
     /**
-     * The next alert down from under the board: the stats folded first (it comes in their place), and after a goal's
-     * sweep on the board (as broadcasters caption a goal once they have shown it).
+     * The next alert out from beside the board: the stats in first (it comes in their place), and after a goal's sweep on
+     * the board (as broadcasters caption a goal once they have shown it).
      */
     private static void nextDrop() {
         main().removeCallbacks(nextDropRun);
@@ -1387,12 +1567,10 @@ final class BoardCover {
         }
         BoardDrop.Drop d = drops.pollFirst();
         poke();
-        int bw = bug.getWidth() > 0 ? bug.getWidth() : Math.round(boardH * 10f);
-        int w = Math.min(stripMax, Math.max(bw, Math.round(boardH * (d.lineups ? STRIP_W : 11f))));
-        boolean apart = bug.stripLook().apart;
-        size(drop, w, LinearLayout.LayoutParams.WRAP_CONTENT, apart ? Math.max(2, Math.round(boardH * 0.08f)) : 0);
-        drop.show(d, bug.stripLook(), boardH, true, w <= bw + 1);
-        main().postDelayed(hideDropRun, d.lineups ? LINEUPS_MS : DROP_MS);
+        drop.place(bug.stripLook(), boardH, tuck, sideLeft);
+        beside(drop, drop.widthFor(d, bug.getLayoutParams().height, sideMax));
+        drop.show(d);
+        main().postDelayed(hideDropRun, drop.showFor(DROP_MS));
     }
 
     private static void hideDrop() {
@@ -1404,59 +1582,124 @@ final class BoardCover {
         drop.fold(BoardCover::nextDrop);
     }
 
-    // ---- what folds out under it: the stats ----------------------------------------------------------------------------
+    // ---- what slides out beside it: the stats --------------------------------------------------------------------------
 
-    private static List<String[]> statList = new ArrayList<>();
-    private static String statsFor = "", htStatsFor = "";
-    private static long statsReadAt, statsShownAt, goalShownAt;
-    private static int statsFrom;
+    /** The game's stats and facts read last, by their names ("Possession", "Form"…), each {name, home, away[, kind]}. */
+    private static Map<String, String[]> statsBy = new HashMap<>();
+    private static String statsFor = "";
+    private static long statsReadAt, goalShownAt;
     private static boolean statsReading;
+    /** The stats moments shown, "game|moment": each once a game. */
+    private static final java.util.Set<String> statsShown = new java.util.HashSet<>();
 
-    /** The game's stats read again every two minutes while it is on (off the main thread), for the next fold-out. */
+    /** The game's stats and facts read again every two minutes while the board is up (off the main thread). */
     private static void readStats(Context c, ScoresTicker.Game g, long now) {
-        if (!statsOn(c) || statsReading || g.slug == null || g.id == null || g.state == 1) return;
+        if (!statsOn(c) || statsReading || g.slug == null || g.id == null) return;
         if (g.id.equals(statsFor) && now - statsReadAt < STATS_READ_MS) return;
         statsReading = true;
         statsReadAt = now;
-        String id = g.id, slug = g.slug, homeId = g.homeId;
+        String id = g.id, slug = g.slug;
         io.execute(() -> {
-            List<String[]> got = null;
+            Map<String, String[]> got = null;
             try {
                 got = statsOf(new org.json.JSONObject(ScoresTicker.get("https://site.api.espn.com/apis/site/v2/sports/soccer/"
-                        + slug + "/summary?event=" + id)), homeId);
+                        + slug + "/summary?event=" + id)), g);
             } catch (Exception ignored) {
                 // read again in two minutes
             }
-            List<String[]> list = got;
+            Map<String, String[]> by = got;
             main().post(() -> {
                 statsReading = false;
-                if (list == null || list.isEmpty()) return;
-                statList = list;
+                if (by == null || by.isEmpty()) return;
+                statsBy = by;
                 statsFor = id;
             });
         });
     }
 
     /**
-     * The game's stats folding out from under it, as broadcasters do: three every four minutes while the game runs (the
-     * next three each time), all of them once at half time. Never while an alert is down, just after a goal, or while
-     * the scores have a goal the picture hasn't shown yet (its shot on target would give it away).
+     * Pure: which of the game's few stats moments it is (null: none): its last ten minutes before kick-off ("pre"), the
+     * middle of the first half ("h1", minutes 25 to 41), half time ("ht"), the middle of the second half ("h2", 64 to
+     * 82) and full time ("ft"). Each comes once a game: enough to tell its story, never so often it is in the way.
      */
-    private static void maybeStats(Context c, ScoresTicker.Game g, Reading r, long now) {
-        if (!statsOn(c) || dropping || stats == null || stats.isOut() || bug == null || bug.closing()) return;
-        if (statList.size() < 2 || !g.id.equals(statsFor) || bug.getWidth() <= 0 || ahead(g.id, r)) return;
-        List<String[]> pick = new ArrayList<>();
-        if (r.halftime) {
-            if (g.id.equals(htStatsFor)) return;
-            htStatsFor = g.id;
-            for (String[] s : statList) pick.add(new String[]{"Half-time · " + s[0], s[1], s[2]});
-        } else {
-            if (r.state != 0 || now - statsShownAt < STATS_EVERY_MS || now - goalShownAt < 90_000L) return;
-            for (int i = 0; i < Math.min(STATS_EACH_TIME, statList.size()); i++) pick.add(statList.get((statsFrom + i) % statList.size()));
-            statsFrom = (statsFrom + STATS_EACH_TIME) % statList.size();
+    static String statsSlot(boolean pre, long toKickoff, int state, boolean halftime, int minute) {
+        if (pre) return toKickoff > 60_000L && toKickoff <= PRE_STATS_MS ? "pre" : null;
+        if (state == 2) return "ft";
+        if (halftime) return "ht";
+        if (state != 0) return null;
+        if (minute >= 25 && minute <= 41) return "h1";
+        if (minute >= 64 && minute <= 82) return "h2";
+        return null;
+    }
+
+    /**
+     * Pure: what a stats moment shows, from the stats and facts there are, by name: before kick-off the chances, the
+     * form and the table; in the first half the possession and the shots; at half time five of the half's; in the second
+     * half the player of the match so far; at full time the game's in short. Empty when too few are there yet.
+     */
+    static List<String[]> statsFor(String slot, Map<String, String[]> by) {
+        String[] want;
+        int most = 3, least = 2;
+        switch (slot == null ? "" : slot) {
+            case "pre":
+                want = new String[]{"Win chance", "Form", "League table"};
+                least = 1;
+                break;
+            case "h1":
+                want = new String[]{"Possession", "Shots", "On target", "Corners"};
+                break;
+            case "ht":
+                want = new String[]{"Possession", "Shots", "On target", "Corners", "Pass accuracy", "Fouls"};
+                most = 5;
+                break;
+            case "h2":
+                want = new String[]{"Possession", "Player of the match", "Corners", "On target", "Shots"};
+                break;
+            case "ft":
+                want = new String[]{"Possession", "Shots", "Player of the match", "Pass accuracy", "On target"};
+                break;
+            default:
+                return new ArrayList<>();
         }
-        statsShownAt = now;
+        List<String[]> out = new ArrayList<>();
+        for (String w : want) {
+            String[] s = by.get(w);
+            if (s != null && out.size() < most) out.add(s);
+        }
+        return out.size() >= least ? out : new ArrayList<>();
+    }
+
+    /** Pure: the minute a clock shows ("67:23": 67); -1 when it shows none ("HT", ""). */
+    static int minuteOfClock(String clock) {
+        int colon = clock == null ? -1 : clock.indexOf(':');
+        if (colon <= 0) return -1;
+        try {
+            return Integer.parseInt(clock.substring(0, colon).trim());
+        } catch (NumberFormatException e) {
+            return -1;
+        }
+    }
+
+    /**
+     * The game's stats sliding out from beside it at one of its few moments (statsSlot). Never while an alert is out,
+     * just after a goal, or while the scores have a goal the picture hasn't shown yet (its shot on target would give it
+     * away).
+     */
+    private static void maybeStats(Context c, ScoresTicker.Game g, Reading r, long now, boolean pre) {
+        if (!statsOn(c) || dropping || stats == null || stats.isOut() || bug == null || bug.closing() || bug.getWidth() <= 0) return;
+        if (!g.id.equals(statsFor) || statsBy.isEmpty() || now - goalShownAt < 90_000L) return;
+        if (!pre && (r == null || ahead(g.id, r))) return;
+        int minute = minuteOfClock(bug.look().clock);
+        if (minute < 0 && r != null) minute = minuteOf(r.detail);
+        String slot = statsSlot(pre, g.kickoff - now, r == null ? 1 : r.state, r != null && r.halftime, minute);
+        if (slot == null || statsShown.contains(g.id + "|" + slot)) return;
+        List<String[]> pick = statsFor(slot, statsBy);
+        if (pick.isEmpty()) return;
+        if (statsShown.size() > 60) statsShown.clear();
+        statsShown.add(g.id + "|" + slot);
         poke();
+        stats.place(bug.stripLook(), boardH, tuck, sideLeft);
+        beside(stats, stats.widthFor(pick, bug.getLayoutParams().height, sideMax));
         stats.show(pick);
     }
 

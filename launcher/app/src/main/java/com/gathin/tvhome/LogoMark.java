@@ -11,12 +11,13 @@ import android.view.View;
 
 /**
  * The cover BoardCover puts over the channel's logo, as the phone's player has it (Homefield's LogoCover): dark smoked
- * glass, solid so none of the logo shows through, in one of three looks: Glass (the Homefield house and play
- * mark with the name beside it when there is room), Mark (the mark alone) or Plain (the glass alone). Or as a sports
- * channel's own logo is laid out (Broadcast): "homefield" over a box with the picture's tag (HD, UHD), "sports" large in
- * the box under it, LIVE spaced out under that while the game is live; see-through, in light grey and smoked boxes as
- * channels' own are, or in the scoreboard's own colours (its look's StripLook). Homefield's words, never a channel's
- * name or logo. Kind to the panel:
+ * glass, solid so none of the logo shows through, in one of three looks: Glass (the house and play mark with the
+ * family's name, Whitebrook Road, beside it when there is room), Mark (the mark alone) or Plain (the glass alone). Or as a sports
+ * channel's own logo is laid out (Broadcast), as one solid block: "Whitebrook Road" across its top with the picture's tag
+ * (HD, UHD) at its end, "sports" large under it, LIVE spaced out at its foot while the game is live (in a wide, low box,
+ * in a small box beside "sports"); see-through smoked
+ * glass with white letters, as channels' own are, or in the scoreboard's own colours (its look's StripLook). The
+ * family's own words, never a channel's name or logo. Kind to the panel:
  * only dark grounds and a soft white mark, never the phone's bright violet-to-coral tile, and an edge of its ground
  * (inset) round everything, so the pixel or two it moves against burn-in never uncovers the logo.
  */
@@ -58,6 +59,7 @@ final class LogoMark extends View {
     private boolean live;
     private BoardBug.StripLook board;
     private final Paint boxes = new Paint(Paint.ANTI_ALIAS_FLAG), letters = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Path clipBlock = new Path();
     private int inset;
     private boolean outlined;
     /** The ring's dashes, made once for a width of line. */
@@ -86,7 +88,7 @@ final class LogoMark extends View {
         words.setColor(MARK_INK);
         edge.setStyle(Paint.Style.STROKE);
         edge.setColor(BoardBug.INK);
-        setContentDescription("Homefield");
+        setContentDescription(NAME);
         setLayerType(LAYER_TYPE_HARDWARE, null);
     }
 
@@ -143,7 +145,7 @@ final class LogoMark extends View {
         if (w <= 0 || h <= 0) return;
         if (look.broadcast()) {
             broadcast(cv, w, h, look == Look.BROADCAST || board == null);
-            ring(cv, w, h, Math.min(w, h) * 0.06f);
+            ring(cv, w, h, Math.min(w, h) * 0.1f);
             return;
         }
         float rad = Math.min(w, h) * 0.18f;
@@ -158,10 +160,10 @@ final class LogoMark extends View {
             mark(cv, x, inset + (ch - s) / 2, s);
             if (name) {
                 float left = x + s * 1.14f, room = inset + cw - left - ch * 0.2f;
-                float size = fit("Homefield", room, ch * 0.44f);
+                float size = fit(NAME, room, ch * 0.44f);
                 words.setTextSize(size);
                 Paint.FontMetrics fm = words.getFontMetrics();
-                cv.drawText("Homefield", left, inset + ch / 2 - (fm.ascent + fm.descent) / 2, words);
+                cv.drawText(NAME, left, inset + ch / 2 - (fm.ascent + fm.descent) / 2, words);
             }
         }
         ring(cv, w, h, rad);
@@ -180,81 +182,88 @@ final class LogoMark extends View {
         cv.drawRoundRect(r, rad, rad, edge);
     }
 
+    /** What Broadcast says: the family's own name over "sports". */
+    static final String NAME = "Whitebrook Road", WORD = "sports";
+
     /**
-     * Broadcast: laid out as a sports channel's own logo, filling the box as far as it can at its own proportions and
-     * centred in it: "homefield" in a box with the tag's box beside it, "sports" large in the box under them, LIVE
-     * spaced out under that while the game is live. See-through (light grey and smoked boxes, white letters), or the
-     * scoreboard's colours.
+     * Broadcast: laid out as a sports channel's own logo, as one solid block filling the box: the name across its top
+     * band with the picture's tag at the band's end, "sports" large in the middle, LIVE spaced out in its foot while
+     * the game is live. See-through (smoked glass, white letters, the top band a lighter grey), or the scoreboard's
+     * colours (its ground, the top band in its block).
      */
     private void broadcast(Canvas cv, float w, float h, boolean seeThrough) {
         float cw = w - 2 * inset, ch = h - 2 * inset;
         if (cw <= 0 || ch <= 0) return;
-        int topBox, topInk, tagBox, tagInk, midBox, midInk, liveBox, liveInk;
+        int ground, band, bandInk, tagBox, tagInk, ink, liveInk;
         if (seeThrough) {
-            topBox = 0xA35C6068;
-            topInk = 0xF7FFFFFF;
-            tagBox = 0xA35C6068;
-            tagInk = 0xF7FFFFFF;
-            midBox = 0xD90E0F12;
-            midInk = 0xFFFFFFFF;
-            liveBox = 0x8C000000;
-            liveInk = 0xF2FFFFFF;
+            ground = 0xC20E1014;
+            band = 0x40FFFFFF;
+            bandInk = 0xF7FFFFFF;
+            tagBox = 0x33FFFFFF;
+            tagInk = 0xFFFFFFFF;
+            ink = 0xFFFFFFFF;
+            liveInk = 0xE6FFFFFF;
         } else {
             BoardBug.StripLook s = board;
-            int ground = 0xFF000000 | s.ground;
-            int block = (s.block >>> 24) == 0xFF ? s.block : BoardBug.blend(ground, 0xFFFFFFFF, 0.22f);
-            topBox = block;
-            topInk = BoardBug.ink(block);
-            tagBox = ground;
-            tagInk = s.ink;
-            midBox = ground;
-            midInk = s.ink;
-            liveBox = ground;
+            ground = 0xFF000000 | s.ground;
+            band = (s.block >>> 24) == 0xFF ? s.block : BoardBug.blend(ground, 0xFFFFFFFF, 0.22f);
+            bandInk = BoardBug.ink(band);
+            tagBox = s.light ? 0x1A0B1640 : 0x33FFFFFF;
+            tagInk = s.light ? bandInk : 0xFFFFFFFF;
+            ink = s.ink;
             liveInk = s.ink;
         }
-        // Its proportions at a unit of the box's height, then made smaller should that be too wide for the box.
-        String top = "homefield", mid = "sports", live = "LIVE";
-        float u = ch;
-        float[] wd = widths(u, top, mid);
-        float need = Math.max(wd[0], wd[1]);
-        if (need > cw) u = u * cw / need;
-        wd = widths(u, top, mid);
-        float width = Math.max(wd[0], wd[1]);
-        float x = inset + (cw - width) / 2f, y = inset + (ch - u * 0.98f) / 2f, rad = u * 0.04f;
-        // The first row: "homefield" in its box, the tag in a box of its own at the row's end.
-        float r1 = u * 0.28f, gap = u * 0.03f, tagW = tag.isEmpty() ? 0 : sizeOf(tag, u * 0.17f, 0.06f) + u * 0.22f;
-        boxes.setColor(topBox);
-        r.set(x, y, x + width - (tagW > 0 ? tagW + gap : 0), y + r1);
+        float rad = Math.min(cw, ch) * 0.1f;
+        // The one block, filling the box.
+        r.set(inset, inset, inset + cw, inset + ch);
+        boxes.setColor(ground);
         cv.drawRoundRect(r, rad, rad, boxes);
-        line(cv, top, r.left + u * 0.14f, r.top, r1, u * 0.2f, 0f, topInk, false);
-        if (tagW > 0) {
+        cv.save();
+        clipBlock.reset();
+        clipBlock.addRoundRect(r, rad, rad, Path.Direction.CW);
+        cv.clipPath(clipBlock);
+        // Its top band: the name, the tag at its end. A wide, low box keeps LIVE beside "sports" rather than under it.
+        boolean wide = cw / ch >= 2.3f;
+        float band1 = ch * (wide ? 0.36f : 0.3f), pad = Math.min(cw, ch) * 0.08f;
+        boxes.setColor(band);
+        cv.drawRect(inset, inset, inset + cw, inset + band1, boxes);
+        float tagW = 0;
+        if (!tag.isEmpty()) {
+            float ts = band1 * 0.5f;
+            tagW = sizeOf(tag, ts, 0.06f) + band1 * 0.5f;
             boxes.setColor(tagBox);
-            r.set(x + width - tagW, y, x + width, y + r1);
-            cv.drawRoundRect(r, rad, rad, boxes);
-            line(cv, tag, r.centerX(), r.top, r1, u * 0.17f, 0.06f, tagInk, true);
+            r.set(inset + cw - pad - tagW, inset + band1 * 0.16f, inset + cw - pad, inset + band1 * 0.84f);
+            cv.drawRoundRect(r, band1 * 0.12f, band1 * 0.12f, boxes);
+            line(cv, tag, r.centerX(), inset, band1, ts, 0.06f, tagInk, true);
         }
-        // The second: "sports" large in its smoked box.
-        float r2 = u * 0.42f, y2 = y + r1 + gap;
-        boxes.setColor(midBox);
-        r.set(x, y2, x + width, y2 + r2);
-        cv.drawRoundRect(r, rad, rad, boxes);
-        line(cv, mid, x + width / 2f, y2, r2, u * 0.32f, 0f, midInk, true);
-        // LIVE, spaced out under it, while the game is live.
-        if (this.live) {
-            float r3 = u * 0.22f, y3 = y2 + r2 + gap, lw = sizeOf(live, u * 0.15f, 0.35f) + u * 0.3f;
-            if (liveBox != 0) {
-                boxes.setColor(liveBox);
-                r.set(x + (width - lw) / 2f, y3, x + (width + lw) / 2f, y3 + r3);
-                cv.drawRoundRect(r, rad, rad, boxes);
+        float nameRoom = cw - 2 * pad - (tagW > 0 ? tagW + pad * 0.6f : 0);
+        float ns = fitSize(NAME, nameRoom, band1 * 0.58f, 0.02f);
+        line(cv, NAME, inset + pad, inset, band1, ns, 0.02f, bandInk, false);
+        if (wide) {
+            // "sports" large from the left, LIVE in a small box at the row's end.
+            float mid = ch - band1, ls = mid * 0.28f, liveW = live ? sizeOf("LIVE", ls, 0.2f) + mid * 0.36f : 0f;
+            float ms = fitSize(WORD, cw - 2 * pad - (liveW > 0 ? liveW + pad : 0f), mid * 0.7f, 0f);
+            line(cv, WORD, inset + pad, inset + band1, mid, ms, 0f, ink, false);
+            if (live) {
+                boxes.setColor(tagBox);
+                r.set(inset + cw - pad - liveW, inset + band1 + mid * 0.27f, inset + cw - pad, inset + band1 + mid * 0.73f);
+                cv.drawRoundRect(r, mid * 0.08f, mid * 0.08f, boxes);
+                line(cv, "LIVE", r.centerX(), inset + band1, mid, ls, 0.2f, liveInk, true);
             }
-            line(cv, live, x + width / 2f, y3, r3, u * 0.15f, 0.35f, liveInk, true);
+        } else {
+            // "sports" large in the middle; LIVE spaced out in the foot.
+            float foot = ch * 0.24f, mid = ch - band1 - foot;
+            float ms = fitSize(WORD, cw - 2 * pad, mid * 0.72f, 0f);
+            line(cv, WORD, inset + cw / 2f, inset + band1, mid, ms, 0f, ink, true);
+            if (live) line(cv, "LIVE", inset + cw / 2f, inset + band1 + mid, foot * 0.9f, Math.min(foot * 0.62f, fitSize("LIVE", cw - 2 * pad, foot * 0.62f, 0.35f)), 0.35f, liveInk, true);
         }
+        cv.restore();
     }
 
-    /** Broadcast's two rows' widths at unit u: {the first row with its tag, the second}. */
-    private float[] widths(float u, String top, String mid) {
-        float tagW = tag.isEmpty() ? 0 : sizeOf(tag, u * 0.17f, 0.06f) + u * 0.22f + u * 0.03f;
-        return new float[]{sizeOf(top, u * 0.2f, 0f) + u * 0.28f + tagW, sizeOf(mid, u * 0.32f, 0f) + u * 0.5f};
+    /** The biggest size up to most at which s (spaced so) fits in room. */
+    private float fitSize(String s, float room, float most, float spacing) {
+        float wd = sizeOf(s, most, spacing);
+        return wd <= room ? most : Math.max(5f, most * room / Math.max(1f, wd));
     }
 
     private float sizeOf(String s, float size, float spacing) {

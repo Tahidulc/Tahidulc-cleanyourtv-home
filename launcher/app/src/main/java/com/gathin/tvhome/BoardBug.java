@@ -21,9 +21,10 @@ import java.util.Objects;
  * The scoreboard BoardCover puts over the channel's own, as the phone's player draws it (Homefield's OverlayBug): the
  * competition, each club's colour, crest and three letters, the score, and the clock in minutes and seconds with the
  * minutes added beside it, along one row, or in two in a box nearer square (its height set apart from its width). The
- * phone's seven looks: Classic (the launcher's navy, the score on blue), Glass (smoked glass, a pill), Light, Club
- * colours (each side in its club's colour), Minimal (one line of words), Crests and time, and Stacked (the clubs one
- * above the other).
+ * phone's eight looks: Classic (the launcher's navy, the score on blue), Glass (smoked glass, a pill), Light, Club
+ * colours (each side in its club's colour), Minimal (one line of words), Crests and time, Stacked (the clubs one
+ * above the other) and Card (each crest on white, the score over the clock on blue between them, as the clubs' own
+ * results cards are set).
  *
  * <p>It comes and goes as broadcasters' do (its first block opening out of a thin line, the rest wiping out of it
  * behind a bright edge), and a goal is shown as theirs are: a white hit, the scorers' colour sweeping across it from
@@ -40,13 +41,16 @@ final class BoardBug extends View {
     static final class Look {
         String home = "", away = "", score = "", clock = "", added = "", tag = "";
         int homeColour = INK, awayColour = INK;
+        /** Each club's own colour as it shows on white (Card's ends); 0 when not known (its colour above instead). */
+        int homeOwn, awayOwn;
         boolean live;
 
         @Override public boolean equals(Object o) {
             if (!(o instanceof Look)) return false;
             Look l = (Look) o;
             return live == l.live && home.equals(l.home) && away.equals(l.away) && score.equals(l.score) && clock.equals(l.clock)
-                    && added.equals(l.added) && tag.equals(l.tag) && homeColour == l.homeColour && awayColour == l.awayColour;
+                    && added.equals(l.added) && tag.equals(l.tag) && homeColour == l.homeColour && awayColour == l.awayColour
+                    && homeOwn == l.homeOwn && awayOwn == l.awayOwn;
         }
 
         @Override public int hashCode() {
@@ -57,10 +61,10 @@ final class BoardBug extends View {
     /** Its looks, as the Scoreboard card names them (the phone's, in the phone's order). */
     enum Style {
         CLASSIC("Classic"), GLASS("Glass"), LIGHT("Light"), CLUB("Club colours"), MINIMAL("Minimal"),
-        CRESTS("Crests and time"), STACKED("Stacked", 1.7f);
+        CRESTS("Crests and time"), STACKED("Stacked", 1.7f), CARD("Card", 1.6f);
 
         final String label;
-        /** How much taller than the others it is drawn (Stacked: the clubs one above the other). */
+        /** How much taller than the others it is drawn (Stacked: the clubs one above the other; Card: big crests). */
         final float tall;
 
         Style(String label) {
@@ -83,6 +87,9 @@ final class BoardBug extends View {
     private static final int NAVY = 0xFF0B1640, NAVY_DEEP = 0xFF070C26, CLOCK = 0xFF050816, ADDED = 0xFFC81E34,
             AMBER = 0xFFE8A33D, SCORE_TOP = 0xFF2443B4, SCORE_BOTTOM = 0xFF142A78, MINIMAL_GROUND = 0xFF070912,
             CRESTS_GROUND = 0xFF0A1238, STACKED_GROUND = 0xFF0E1330, GOALS = 0xFF1E2A66;
+    /** Card's white (a soft one, shaded to a light grey at its foot: it stays up all game) and its blue. */
+    static final int CARD_TOP = 0xFFF1F3F7, CARD_FOOT = 0xFFD3D8E1, CARD_BLUE = 0xFF2A3DC9, CARD_BLUE_FOOT = 0xFF0F1B7E,
+            CARD_SOFT = 0xFFC3CBF4;
 
     /** One look's colours. */
     private static final class Palette {
@@ -141,6 +148,17 @@ final class BoardBug extends View {
                 p.score0 = SCORE_TOP;
                 p.score1 = SCORE_BOTTOM;
                 p.clock = CLOCK;
+                break;
+            case CARD:
+                // Each crest on white, the score over the clock on blue between them, each club's colour at its end.
+                p.ground = CARD_TOP;
+                p.comp = 0;
+                p.score0 = CARD_BLUE;
+                p.score1 = CARD_BLUE_FOOT;
+                p.clock = 0;
+                p.ink = NAVY;
+                p.dim = 0xFF4E5778;
+                p.round = 0.08f;
                 break;
             case STACKED:
                 p.ground = STACKED_GROUND;
@@ -408,10 +426,10 @@ final class BoardBug extends View {
         s.ground = 0xFF000000 | p.ground;
         s.ink = p.ink;
         s.dim = p.dim;
-        s.light = style == Style.LIGHT;
+        s.light = style == Style.LIGHT || style == Style.CARD;
         s.apart = p.round >= 0.5f;
         s.round = p.round;
-        s.block = style == Style.CLUB ? INK : style == Style.LIGHT ? NAVY
+        s.block = style == Style.CLUB ? INK : style == Style.LIGHT ? NAVY : style == Style.CARD ? CARD_BLUE
                 : p.score0 != 0 && (p.score0 >>> 24) == 0xFF ? p.score0 : 0x40FFFFFF;
         return s;
     }
@@ -423,6 +441,7 @@ final class BoardBug extends View {
         if (style == Style.MINIMAL) return Math.round(minimalWidth(h));
         if (style == Style.CRESTS) return Math.round(h * 0.4f + crestCell(h, true) + scoreW(h) + crestCell(h, false) + clockW(h));
         if (style == Style.STACKED) return Math.round(h * 0.9f + stackedRowsW(h / 2f) + stackedClockW(h));
+        if (style == Style.CARD) return Math.round(cardWidth(h));
         float pill = p.round >= 0.5f ? h * 0.36f : 0f;
         return Math.round(h + 2 * (h * 0.1f + crestW(h) + code(h)) + scoreW(h) + clockW(h) + pill);
     }
@@ -460,7 +479,7 @@ final class BoardBug extends View {
         float[] in = null;
         if (part) {
             // Its first block (the competition's square, Crests' first crest), never more than a third of it.
-            float first = style == Style.CRESTS ? ch * 1.25f : style == Style.STACKED ? ch * 0.9f
+            float first = style == Style.CRESTS ? ch * 1.25f : style == Style.STACKED ? ch * 0.9f : style == Style.CARD ? ch * 1.29f
                     : style == Style.MINIMAL ? ch * 1.2f : ch;
             in = shownPart(shown, w, h, Math.min(first + inset, w / 3f));
             cv.save();
@@ -489,6 +508,7 @@ final class BoardBug extends View {
                 if (cw / (float) ch >= 3.2f) crestsRow(cv, cw, ch);
                 else crestsTwo(cv, cw, ch);
             } else if (style == Style.STACKED) stacked(cv, cw, ch);
+            else if (style == Style.CARD) card(cv, cw, ch);
             else if (cw / (float) ch >= 3.6f) oneRow(cv, 0, 0, cw, ch);
             else twoRows(cv, cw, ch);
         }
@@ -887,6 +907,144 @@ final class BoardBug extends View {
         words(cv, look.added, x + w / 2, h * 0.6f, h * 0.26f, h * 0.22f * k, INK);
     }
 
+    // ---- Card ------------------------------------------------------------------------------------------------------
+
+    private LinearGradient cardShade;
+    private float cardShadeH = -1;
+    private final Path slant = new Path();
+
+    /** "2 - 1", spaced as the results cards set it ("v" before kick-off). */
+    private String cardScore() {
+        String[] g = goals();
+        return g[0].isEmpty() ? look.score : g[0] + " - " + g[1];
+    }
+
+    /** The clock under the score: minutes and seconds, Half-Time and Full-Time in words, the kick-off's time before it. */
+    private String cardClock() {
+        if ("HT".equals(look.clock)) return "Half-Time";
+        if ("FT".equals(look.clock)) return "Full-Time";
+        return look.clock;
+    }
+
+    /** The clock's size: words a little smaller than figures. */
+    private float cardClockSize(int h) {
+        return cardClock().length() > 6 ? h * 0.27f : h * 0.36f;
+    }
+
+    private float cardClockW(int h) {
+        String c = cardClock();
+        if (c.isEmpty()) return 0;
+        float w = measure(c, cardClockSize(h));
+        if (!look.added.isEmpty()) w += h * 0.1f + measure(look.added, h * 0.24f) + h * 0.22f;
+        return w;
+    }
+
+    /** The middle: as wide as the score or the clock needs, never narrower than a crest's panel. */
+    private float cardMid(int h) {
+        return Math.max(h * 1.35f, Math.max(measure(cardScore(), h * 0.46f), cardClockW(h)) + h * 0.42f);
+    }
+
+    private float cardWidth(int h) {
+        return 2 * (h * 0.09f + h * 1.2f) + cardMid(h);
+    }
+
+    /**
+     * Card: each club's crest on a white panel with its colour down the board's end, and between them a blue block with
+     * the score over the clock (lighter slants across it), as the clubs' own results cards are set.
+     */
+    private void card(Canvas cv, int w, int h) {
+        float strip = h * 0.09f, panel = h * 1.2f, mid = cardMid(h);
+        float need = 2 * (strip + panel) + mid;
+        float k = need > w + 1.5f ? Math.max(0.5f, w / need) : 1f;
+        float extra = Math.max(0, w - need * k);
+        strip *= k;
+        panel = panel * k + extra / 4f;
+        mid = mid * k + extra / 2f;
+        if (cardShade == null || cardShadeH != h) {
+            cardShade = new LinearGradient(0, 0, 0, h, CARD_TOP, CARD_FOOT, Shader.TileMode.CLAMP);
+            cardShadeH = h;
+        }
+        fill.setShader(cardShade);
+        cv.drawRect(0, 0, w, h, fill);
+        fill.setShader(null);
+        cardSide(cv, 0, strip, panel, h, true);
+        cardSide(cv, w - strip - panel, strip, panel, h, false);
+        float mx = strip + panel;
+        scoreBlock(cv, mx, 0, mid, h);
+        slants(cv, mx, mid, h);
+        // The score, popping up big after a goal but never past the blue.
+        String sc = cardScore();
+        float ss = h * 0.46f * k * scoreZoom, sw = measure(sc, ss);
+        if (sw > mid * 0.94f) ss *= mid * 0.94f / sw;
+        words(cv, sc, mx + mid / 2f, h * 0.04f, h * 0.5f, ss, p.scoreInk);
+        cardClockLine(cv, mx, mid, h, k);
+    }
+
+    /** One club's end (x: where its part starts): its colour down the board's edge, its crest on the white (its letters until the crest comes); lit as it scores. */
+    private void cardSide(Canvas cv, float x, float strip, float panel, int h, boolean home) {
+        int own = home ? look.homeOwn : look.awayOwn, colour = own != 0 ? own : home ? look.homeColour : look.awayColour;
+        float px = home ? x + strip : x, sx = home ? x : x + panel;
+        boolean lit = flash > 0 && flashSide == (home ? 1 : 2);
+        if (lit) {
+            fill.setColor(colour);
+            fill.setAlpha(Math.round(200 * flash));
+            cv.drawRect(px, 0, px + panel, h, fill);
+            fill.setAlpha(255);
+        }
+        fill.setColor(colour);
+        cv.drawRect(sx, 0, sx + strip, h, fill);
+        Bitmap crest = home ? homeCrest : awayCrest;
+        float size = Math.min(panel * 0.8f, h * 0.76f);
+        if (crest != null) drawImage(cv, crest, px + (panel - size) / 2f, (h - size) / 2f, size);
+        else words(cv, home ? look.home : look.away, px + panel / 2f, 0, h, Math.min(h * 0.42f, panel * 0.3f),
+                lit ? ink(blend(CARD_TOP, colour, 200 * flash / 255f)) : NAVY);
+    }
+
+    /** Lighter slants across Card's blue. */
+    private void slants(Canvas cv, float x, float w, int h) {
+        cv.save();
+        cv.clipRect(x, 0, x + w, h);
+        fill.setColor(0x16FFFFFF);
+        slant.reset();
+        slant.moveTo(x + w * 0.5f, 0);
+        slant.lineTo(x + w * 0.78f, 0);
+        slant.lineTo(x + w * 0.78f - h * 0.7f, h);
+        slant.lineTo(x + w * 0.5f - h * 0.7f, h);
+        slant.close();
+        slant.moveTo(x + w * 0.9f, 0);
+        slant.lineTo(x + w + h, 0);
+        slant.lineTo(x + w, h);
+        slant.lineTo(x + w * 0.9f - h * 0.7f, h);
+        slant.close();
+        cv.drawPath(slant, fill);
+        cv.restore();
+    }
+
+    /** The clock under the score: white while the game runs (Half-Time and Full-Time too), the minutes added on red beside it. */
+    private void cardClockLine(Canvas cv, float x, float w, int h, float k) {
+        String c = cardClock();
+        if (c.isEmpty()) return;
+        float y = h * 0.5f, lh = h * 0.44f, size = cardClockSize(h) * k;
+        int colour = "HT".equals(look.clock) ? AMBER : look.live || "FT".equals(look.clock) ? p.clockInk : CARD_SOFT;
+        if (look.added.isEmpty()) {
+            float s = Math.min(1f, w * 0.9f / Math.max(1f, measure(c, size)));
+            words(cv, c, x + w / 2f, y, lh, size * s, colour);
+            return;
+        }
+        float as = h * 0.24f * k, cw = measure(c, size), aw = measure(look.added, as) + h * 0.22f * k, gap = h * 0.1f * k;
+        float s = Math.min(1f, w * 0.92f / Math.max(1f, cw + gap + aw));
+        cw *= s;
+        aw *= s;
+        gap *= s;
+        float start = x + (w - cw - gap - aw) / 2f;
+        words(cv, c, start + cw / 2f, y, lh, size * s, colour);
+        float ax = start + cw + gap;
+        fill.setColor(ADDED);
+        r.set(ax, y + lh * 0.2f, ax + aw, y + lh * 0.8f);
+        cv.drawRoundRect(r, h * 0.05f, h * 0.05f, fill);
+        words(cv, look.added, ax + aw / 2f, y, lh, as * s, INK);
+    }
+
     // ---- Minimal ---------------------------------------------------------------------------------------------------
 
     /** Minimal: one line, "LIV  2–1  MUN   67:23 +2". */
@@ -1002,6 +1160,23 @@ final class BoardBug extends View {
             if (a != 0 && !dark(a)) return softer(a);
         }
         return c == 0 ? INK : dark(c) ? 0xFFC9CEDD : softer(c);
+    }
+
+    /**
+     * Pure: a club's colour that shows on white (Card's ends, the white strips): its own, else its second when the first
+     * is too light, else a grey. 0 when it has none.
+     */
+    static int onWhite(int first, int second) {
+        if (first == 0 && second == 0) return 0;
+        int c = 0xFF000000 | first, a = 0xFF000000 | second;
+        if (first != 0 && !light(c)) return c;
+        if (second != 0 && !light(a)) return a;
+        return 0xFF8A93A8;
+    }
+
+    private static boolean light(int c) {
+        int rr = (c >> 16) & 0xFF, g = (c >> 8) & 0xFF, b = c & 0xFF;
+        return (rr * 299 + g * 587 + b * 114) / 1000 > 200;
     }
 
     /** Pure: a colour brighter than the words' white brought down to about their brightness. */

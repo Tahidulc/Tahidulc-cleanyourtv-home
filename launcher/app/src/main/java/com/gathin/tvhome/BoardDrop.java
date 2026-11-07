@@ -1,40 +1,26 @@
 package com.gathin.tvhome;
 
-import android.animation.Animator;
-import android.animation.AnimatorListenerAdapter;
 import android.animation.ValueAnimator;
 import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Paint;
-import android.graphics.Path;
 import android.graphics.RectF;
-import android.graphics.Typeface;
-import android.graphics.drawable.GradientDrawable;
-import android.text.SpannableString;
-import android.text.Spanned;
-import android.text.TextUtils;
-import android.text.style.ForegroundColorSpan;
-import android.text.style.StyleSpan;
-import android.util.TypedValue;
-import android.view.Gravity;
-import android.widget.ImageView;
-import android.widget.LinearLayout;
-import android.widget.TextView;
 
 /**
- * An alert folding down out from under the scoreboard over the channel (BoardCover), as the phone's player drops its
- * alerts and broadcasters' captions come out of their score bug, in the board's own look (BoardBug's StripLook): as
- * wide as the board at least, on its ground in its words, square where it meets the board and round at its foot (under
- * the Glass pill, a pill of its own a little apart); the kind's chip, the title and its line, and down its edge the
- * colours of the clubs it is about (the scorers' alone for a goal, the club's for a red card). As the cards over the
- * apps have them: the player's picture (head and shoulders) at its start for a goal, a red card or a penalty, and both
- * clubs' crests either side of the score. The line-ups: each club's eleven, led by its crest and its name and shape in
- * its colour, that colour down the edge beside it. It folds back up under the board when it is done. Sized from the
- * board's height, so it reads from the sofa at any size the board is.
+ * An alert sliding out sideways from the scoreboard over the channel (BoardCover), in line with it and as high as it
+ * (BoardSide), as broadcasters' captions come out of their score bug, in the board's own look (BoardBug's StripLook):
+ * the kind's chip, the crests and the words, the colour of the club it is about at its far end (the scorers' alone for
+ * a goal, the club's for a red card), and as the cards over the apps have it, the player's picture (head and
+ * shoulders, standing on its foot) by the board for a goal, a red card or a penalty. For the board's own game the
+ * board beside it already shows the clubs and the score, so the alert says the rest (the scorer's crest, who and
+ * when); another game's has both clubs and the score between their crests. The line-ups: each club's eleven in turn,
+ * led by its crest and its name and shape in its colour. Words too long for their room run along to their end. Beside a
+ * taller board (Stacked, Card) the words sit in two rows. Sized from the board's height, so it reads from the sofa at
+ * any size the board is.
  */
-final class BoardDrop extends LinearLayout {
-    /** One alert as it drops: its chip, title, line (and the away side's eleven), and the game's clubs it is about. */
+final class BoardDrop extends BoardSide {
+    /** One alert as it comes out: its chip, title, line (and the away side's eleven), and the game's clubs it is about. */
     static final class Drop {
         String chip = "", title = "", line = "", line2 = "";
         /** The kind's colour (PLAIN: none of its own, the board's block). */
@@ -43,6 +29,8 @@ final class BoardDrop extends LinearLayout {
         int homeColour, awayColour, side;
         /** Both starting elevens, the home side's in line and the away side's in line2, each led by its club and shape. */
         boolean lineups;
+        /** The board's own game: the board beside it already shows the clubs and the score. */
+        boolean own;
         /** The game it is about (null: none), what Today's alerts and the log call it. */
         String gameId, what = "";
         /** The player's picture (a cut-out, head and shoulders), and both clubs' crests (for a dark ground); each may be null. */
@@ -51,224 +39,40 @@ final class BoardDrop extends LinearLayout {
 
     /** The colour of the kinds with none of their own (half time, kick-off, the line-ups): the board's block instead. */
     static final int PLAIN = 0xFFDDE3FF;
-    private static final long FOLD_MS = 340L;
+    private static final long TURN_MS = 320L, RUN_WAIT_MS = 1400L, RUN_END_MS = 1800L, PAGE_MS = 6000L;
+    /** Words too long for their room run along at this many board heights a second. */
+    private static final float RUN_SPEED = 1.7f;
 
-    private final TextView chip, title, line, line2;
-    private final LinearLayout head, words, row1, row2;
-    private final ImageView photo, homeCrest, awayCrest, crest1, crest2;
-    private final GradientDrawable chipGround = new GradientDrawable();
-    private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private final Path ground = new Path();
-    private final RectF r = new RectF();
-    /** Its corners, each {x, y}: top left, top right, bottom right, bottom left. */
-    private final float[] corners = new float[8];
-    private BoardBug.StripLook look = new BoardBug.StripLook();
+    /** One page's words: the bold ones (with a crest before them, and after them for another game's score), the line. */
+    private static final class Part {
+        Bitmap crestA, crestB;
+        String head = "", line = "";
+        int headColour, lineColour;
+        boolean lineBold;
+    }
+
     private Drop drop;
     private int chipColour;
-    /** The board's height in pixels: what its words and room are sized from. */
-    private float unit = 48f;
-    /** Under the board (square where it meets it), and no wider than it (square on the right too). */
-    private boolean under, flush;
-    /** 0 folded up under the board, 1 all the way down. */
-    private float down;
-    private ValueAnimator folding;
+    /** The line-ups: whose eleven it shows (0 home, 1 away), and the turn to it (0 the last, 1 this one). */
+    private int page;
+    private float turn = 1f;
+    /** How far the line has run along, in pixels. */
+    private float run;
+    /** The size BoardCover gave it, for the runs' lengths before it is laid out. */
+    private int givenW, givenH;
+    private ValueAnimator turning, running;
+    private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG), chipText = new Paint(Paint.ANTI_ALIAS_FLAG),
+            bold = new Paint(Paint.ANTI_ALIAS_FLAG), plain = new Paint(Paint.ANTI_ALIAS_FLAG),
+            image = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+    private final RectF r = new RectF();
+    private final Runnable nextPage = this::nextPage, startRun = this::startRun;
 
     BoardDrop(Context c) {
         super(c);
-        setOrientation(HORIZONTAL);
-        setWillNotDraw(false);
-        // The player's picture at its start, standing on its foot.
-        photo = picture(c);
-        addView(photo, new LayoutParams(1, 1));
-        words = new LinearLayout(c);
-        words.setOrientation(VERTICAL);
-        head = new LinearLayout(c);
-        head.setOrientation(HORIZONTAL);
-        head.setGravity(Gravity.CENTER_VERTICAL);
-        chip = words(c, ScoreCard.outfit(c, 800), 1);
-        chip.setLetterSpacing(0.08f);
-        chip.setBackground(chipGround);
-        head.addView(chip, new LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT));
-        // Both crests either side of the score.
-        homeCrest = picture(c);
-        head.addView(homeCrest, new LayoutParams(1, 1));
-        title = words(c, ScoreCard.outfit(c, 700), 2);
-        head.addView(title, new LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT, 0f));
-        awayCrest = picture(c);
-        head.addView(awayCrest, new LayoutParams(1, 1));
-        words.addView(head, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
-        // Each line with a crest before it (the line-ups' clubs).
-        crest1 = picture(c);
-        line = words(c, ScoreCard.outfit(c, 500), 2);
-        row1 = lineRow(c, crest1, line);
-        crest2 = picture(c);
-        line2 = words(c, ScoreCard.outfit(c, 500), 2);
-        row2 = lineRow(c, crest2, line2);
-        words.addView(row1, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
-        words.addView(row2, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
-        addView(words, new LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f));
-        setVisibility(GONE);
-    }
-
-    private static ImageView picture(Context c) {
-        ImageView v = new ImageView(c);
-        v.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        v.setVisibility(GONE);
-        return v;
-    }
-
-    private static LinearLayout lineRow(Context c, ImageView crest, TextView t) {
-        LinearLayout r = new LinearLayout(c);
-        r.setOrientation(HORIZONTAL);
-        r.setGravity(Gravity.TOP);
-        r.addView(crest, new LayoutParams(1, 1));
-        r.addView(t, new LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f));
-        return r;
-    }
-
-    /** A picture shown at size (w x h, with a gap after it), or none. */
-    private static void show(ImageView v, Bitmap b, int w, int h, int gapRight, int top) {
-        if (b == null) {
-            v.setImageDrawable(null);
-            v.setVisibility(GONE);
-            return;
-        }
-        v.setImageBitmap(b);
-        v.setVisibility(VISIBLE);
-        LayoutParams lp = (LayoutParams) v.getLayoutParams();
-        lp.width = w;
-        lp.height = h;
-        lp.rightMargin = gapRight;
-        lp.topMargin = top;
-        v.setLayoutParams(lp);
-    }
-
-    private static TextView words(Context c, Typeface face, int lines) {
-        TextView t = new TextView(c);
-        t.setTypeface(face);
-        t.setIncludeFontPadding(false);
-        t.setMaxLines(lines);
-        t.setEllipsize(TextUtils.TruncateAt.END);
-        if (lines == 1) t.setSingleLine(true);
-        return t;
-    }
-
-    /** Down with this alert in the board's look, sized for a board unit pixels high: under it (flush: no wider), or alone. */
-    void show(Drop d, BoardBug.StripLook s, float unit, boolean underBoard, boolean flushRight) {
-        set(d, s, unit, underBoard, flushRight);
-        if (getVisibility() != VISIBLE) down = 0f;
-        setVisibility(VISIBLE);
-        fold(1f, null);
-    }
-
-    /** Back up under the board; then() once it is away (at once if it is). */
-    void fold(Runnable then) {
-        if (getVisibility() != VISIBLE) {
-            if (then != null) then.run();
-            return;
-        }
-        fold(0f, () -> {
-            setVisibility(GONE);
-            drop = null;
-            if (then != null) then.run();
-        });
-    }
-
-    /** Away at once (the board's window going). */
-    void gone() {
-        if (folding != null) folding.cancel();
-        down = 0f;
-        drop = null;
-        setVisibility(GONE);
-    }
-
-    boolean isOut() {
-        return getVisibility() == VISIBLE;
-    }
-
-    /** Previews: shown at once, this far down. */
-    void showNow(Drop d, BoardBug.StripLook s, float unit, boolean underBoard, boolean flushRight, float howFar) {
-        if (folding != null) folding.cancel();
-        set(d, s, unit, underBoard, flushRight);
-        down = howFar;
-        setVisibility(VISIBLE);
-        invalidate();
-    }
-
-    private void set(Drop d, BoardBug.StripLook s, float u, boolean underBoard, boolean flushRight) {
-        drop = d;
-        look = s;
-        unit = Math.max(16f, u);
-        under = underBoard;
-        flush = flushRight;
-        // Room down the left for the clubs' colours; the words sized from the board's height.
-        setPadding(Math.round(unit * 0.38f), Math.round(unit * 0.2f), Math.round(unit * 0.3f), Math.round(unit * 0.24f));
-        chip.setTextSize(TypedValue.COMPLEX_UNIT_PX, unit * 0.3f);
-        chip.setPadding(Math.round(unit * 0.14f), Math.round(unit * 0.06f), Math.round(unit * 0.14f), Math.round(unit * 0.05f));
-        title.setTextSize(TypedValue.COMPLEX_UNIT_PX, unit * 0.44f);
-        LayoutParams tl = (LayoutParams) title.getLayoutParams();
-        // Either side of the score: the crests, else room after the chip.
-        int crestPx = Math.round(unit * 0.6f), gap = Math.round(unit * 0.16f);
-        tl.leftMargin = d.homeCrest != null ? 0 : Math.round(unit * 0.2f);
-        tl.weight = d.awayCrest != null ? 0f : 1f;
-        tl.width = d.awayCrest != null ? LayoutParams.WRAP_CONTENT : 0;
-        title.setLayoutParams(tl);
-        show(homeCrest, d.homeCrest, crestPx, crestPx, gap, 0);
-        ((LayoutParams) homeCrest.getLayoutParams()).leftMargin = Math.round(unit * 0.2f);
-        show(awayCrest, d.awayCrest, crestPx, crestPx, 0, 0);
-        ((LayoutParams) awayCrest.getLayoutParams()).leftMargin = gap;
-        // The player, head and shoulders, at its start and standing on its foot (as on the cards over the apps).
-        show(photo, d.lineups ? null : d.photo, Math.round(unit * 1.55f), Math.round(unit * 1.9f), Math.round(unit * 0.22f), 0);
-        // The line-ups' crests before each club's eleven.
-        int small = Math.round(unit * 0.46f);
-        show(crest1, d.lineups ? d.homeCrest : null, small, small, Math.round(unit * 0.14f), Math.round(unit * 0.08f));
-        show(crest2, d.lineups ? d.awayCrest : null, small, small, Math.round(unit * 0.14f), Math.round(unit * 0.08f));
-        if (d.lineups) {
-            homeCrest.setVisibility(GONE);
-            awayCrest.setVisibility(GONE);
-            tl.leftMargin = Math.round(unit * 0.2f);
-            tl.weight = 1f;
-            tl.width = 0;
-            title.setLayoutParams(tl);
-        }
-        setGravity(Gravity.BOTTOM);
-        words.setPadding(0, 0, 0, photo.getVisibility() == VISIBLE ? Math.round(unit * 0.04f) : 0);
-        // The kind's own colour (a goal's green, a red card's red), else the board's block.
-        chipColour = d.colour == PLAIN ? s.block : d.colour;
-        chipGround.setColor(chipColour);
-        chipGround.setCornerRadius(s.apart ? unit : Math.max(2f, unit * 0.34f * s.round * 2f));
-        chip.setTextColor((chipColour >>> 24) < 0xC0 ? s.ink : BoardBug.ink(chipColour));
-        chip.setText(d.chip);
-        chip.setVisibility(d.chip.isEmpty() ? GONE : VISIBLE);
-        title.setTextColor(s.ink);
-        title.setText(d.title);
-        int most = d.lineups ? 3 : 2;
-        for (TextView t : new TextView[]{line, line2}) {
-            t.setTextSize(TypedValue.COMPLEX_UNIT_PX, unit * 0.36f);
-            t.setTextColor(s.dim);
-            t.setMaxLines(most);
-            t.setPadding(0, Math.round(unit * 0.1f), 0, 0);
-        }
-        line.setText(d.lineups ? team(d.line, d.homeColour, s.light) : d.line);
-        line2.setText(d.lineups ? team(d.line2, d.awayColour, s.light) : d.line2);
-        row1.setVisibility(d.line.isEmpty() ? GONE : VISIBLE);
-        row2.setVisibility(d.line2.isEmpty() ? GONE : VISIBLE);
-        // A picture standing on its foot: no room under it.
-        setPadding(Math.round(unit * 0.38f), Math.round(unit * 0.2f), Math.round(unit * 0.3f),
-                photo.getVisibility() == VISIBLE ? 0 : Math.round(unit * 0.24f));
-        setContentDescription(d.chip + ". " + d.title + (d.line.isEmpty() ? "" : ". " + d.line) + (d.line2.isEmpty() ? "" : ". " + d.line2));
-        requestLayout();
-        invalidate();
-    }
-
-    /** A club's eleven, "Leeds (4-3-3): Meslier, …": its name and shape in its colour, bold. */
-    private static CharSequence team(String s, int colour, boolean light) {
-        int colon = s.indexOf(": ");
-        if (colon <= 0) return s;
-        SpannableString out = new SpannableString(s);
-        out.setSpan(new ForegroundColorSpan(legible(colour == 0 ? BoardBug.INK : colour, light)), 0, colon + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-        out.setSpan(new StyleSpan(Typeface.BOLD), 0, colon + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-        return out;
+        chipText.setTypeface(ScoreCard.outfit(c, 800));
+        chipText.setLetterSpacing(0.08f);
+        bold.setTypeface(ScoreCard.outfit(c, 700));
+        plain.setTypeface(ScoreCard.outfit(c, 500));
     }
 
     /** Pure: a club's colour as words on the strip: one too dark for a dark ground lightened, too light for a light one darkened. */
@@ -286,80 +90,284 @@ final class BoardDrop extends LinearLayout {
         return 0xFF000000 | r << 16 | g << 8 | b;
     }
 
-    private void fold(float target, Runnable then) {
-        if (folding != null) folding.cancel();
-        ValueAnimator va = ValueAnimator.ofFloat(down, target);
-        va.setDuration(Math.max(1, Math.round(FOLD_MS * Math.abs(target - down))));
+    /** Its width for this alert at height h (after place()): what its words need, up to room. Kept for its runs. */
+    int widthFor(Drop d, int h, int room) {
+        Drop was = drop;
+        drop = d;
+        float most = 0;
+        for (int p = 0; p < (d.lineups ? 2 : 1); p++) most = Math.max(most, lay(null, part(p), 0, h, 0, 255, 1e6f, 0)[0]);
+        drop = was;
+        givenH = h;
+        givenW = Math.round(Math.min(room, most + ends(look, unit, h, tuck, true)));
+        return givenW;
+    }
+
+    /** Out with this alert (after widthFor() and its size set): the line-ups' second eleven turning up after the first. */
+    void show(Drop d) {
+        onFolding();
+        drop = d;
+        chipColour = d.colour == PLAIN ? look.block : d.colour;
+        page = 0;
+        turn = 1f;
+        run = 0f;
+        slideOut();
+        postDelayed(startRun, SLIDE_MS + RUN_WAIT_MS);
+        if (d.lineups) postDelayed(nextPage, SLIDE_MS + pageFor(0));
+    }
+
+    /** How long it stays out: at least least, long enough for a long line to run to its end, each eleven its page. */
+    long showFor(long least) {
+        if (drop == null) return least;
+        if (!drop.lineups) return Math.max(least, SLIDE_MS + RUN_WAIT_MS + runTime(0) + RUN_END_MS);
+        return SLIDE_MS + pageFor(0) + TURN_MS + pageFor(1);
+    }
+
+    /** Previews: shown at once, this far out, on this page, its line this far along. */
+    void showNow(Drop d, int pg, float along, float howFar) {
+        onFolding();
+        drop = d;
+        chipColour = d.colour == PLAIN ? look.block : d.colour;
+        page = d.lineups ? Math.max(0, Math.min(1, pg)) : 0;
+        turn = 1f;
+        run = along;
+        outNow(howFar);
+    }
+
+    @Override protected void onFolding() {
+        removeCallbacks(nextPage);
+        removeCallbacks(startRun);
+        if (turning != null) turning.cancel();
+        if (running != null) running.cancel();
+        turn = 1f;
+    }
+
+    @Override protected void onGone() {
+        drop = null;
+    }
+
+    private long pageFor(int p) {
+        return Math.max(PAGE_MS, RUN_WAIT_MS + runTime(p) + RUN_END_MS);
+    }
+
+    /** How far page p's line has to run to show its end, in pixels (0: it fits). */
+    private float runMax(int p) {
+        if (drop == null || givenW <= 0) return 0;
+        float room = givenW - ends(look, unit, givenH, tuck, true);
+        float[] m = lay(null, part(p), 0, givenH, 0, 255, room, 0);
+        return Math.max(0, m[1] + m[2] - room);
+    }
+
+    private long runTime(int p) {
+        float m = runMax(p);
+        return m <= 0 ? 0 : Math.round(m * 1000f / (RUN_SPEED * unit));
+    }
+
+    private void startRun() {
+        if (!isOut() || drop == null) return;
+        float to = runMax(page);
+        if (to <= 0) return;
+        if (running != null) running.cancel();
+        ValueAnimator va = ValueAnimator.ofFloat(0f, to);
+        va.setDuration(Math.max(1, Math.round(to * 1000f / (RUN_SPEED * unit))));
+        va.setInterpolator(null);
         va.addUpdateListener(a -> {
-            down = (float) a.getAnimatedValue();
+            run = (float) a.getAnimatedValue();
             invalidate();
         });
-        va.addListener(new AnimatorListenerAdapter() {
-            private boolean cancelled;
-
-            @Override public void onAnimationCancel(Animator a) {
-                cancelled = true;
-            }
-
-            @Override public void onAnimationEnd(Animator a) {
-                if (!cancelled && then != null) then.run();
-            }
-        });
-        folding = va;
+        running = va;
         va.start();
     }
 
-    @Override protected void onDetachedFromWindow() {
-        super.onDetachedFromWindow();
-        if (folding != null) folding.cancel();
+    private void nextPage() {
+        if (!isOut() || drop == null || !drop.lineups || page >= 1) return;
+        if (running != null) running.cancel();
+        page = 1;
+        run = 0f;
+        if (turning != null) turning.cancel();
+        ValueAnimator va = ValueAnimator.ofFloat(0f, 1f);
+        va.setDuration(TURN_MS);
+        va.addUpdateListener(a -> {
+            turn = (float) a.getAnimatedValue();
+            invalidate();
+        });
+        turning = va;
+        va.start();
+        postDelayed(startRun, TURN_MS + RUN_WAIT_MS);
     }
 
-    // ---- drawing -----------------------------------------------------------------------------------------------------
+    // ---- what it says --------------------------------------------------------------------------------------------------
 
-    @Override protected void dispatchDraw(Canvas cv) {
-        int w = getWidth(), h = getHeight();
-        if (w <= 0 || h <= 0 || down <= 0f || drop == null) return;
-        float e = 1f - (1f - down) * (1f - down) * (1f - down);
-        float seen = h * e;
-        cv.save();
-        cv.clipRect(0, 0, w, seen);
-        // Down out from under the board: its foot first.
-        cv.translate(0, seen - h);
-        // The board's corners, square where it meets the board; under a pill, round all round.
-        float rad = look.apart ? Math.min(h / 2f, unit * 0.5f) : Math.max(3f, unit * look.round);
-        boolean square = under && !look.apart;
-        corners[0] = corners[1] = square ? 0 : rad;
-        corners[2] = corners[3] = square && flush ? 0 : rad;
-        for (int i = 4; i < 8; i++) corners[i] = rad;
-        ground.reset();
-        r.set(0, 0, w, h);
-        ground.addRoundRect(r, corners, Path.Direction.CW);
-        fill.setColor(look.ground);
-        cv.drawPath(ground, fill);
-        cv.save();
-        cv.clipPath(ground);
-        if (square) {
-            fill.setColor(look.light ? 0x220B1640 : 0x26FFFFFF);
-            cv.drawRect(0, 0, w, Math.max(1f, unit * 0.03f), fill);
-        }
-        // Down its edge, as the board's strips: the clubs it is about, else the kind's colour.
-        float sw = Math.max(3f, unit * 0.09f);
-        if (drop.homeColour == 0 && drop.awayColour == 0) {
-            fill.setColor(chipColour);
-            cv.drawRect(0, 0, sw, h, fill);
-        } else if (drop.side == 1 || drop.side == 2) {
-            fill.setColor(drop.side == 1 ? drop.homeColour : drop.awayColour);
-            cv.drawRect(0, 0, sw, h, fill);
+    /** Page p's words: an eleven; the board's own game's who and when; another game's score and what happened. */
+    private Part part(int p) {
+        Drop d = drop;
+        Part o = new Part();
+        o.headColour = look.ink;
+        o.lineColour = look.dim;
+        if (d.lineups) {
+            String s = p == 0 ? d.line : d.line2;
+            int colon = s.indexOf(": "), club = p == 0 ? d.homeColour : d.awayColour;
+            o.crestA = p == 0 ? d.homeCrest : d.awayCrest;
+            o.head = colon > 0 ? s.substring(0, colon) : "";
+            o.headColour = legible(club == 0 ? look.ink : club, look.light);
+            o.line = colon > 0 ? s.substring(colon + 2) : s;
+        } else if (d.own) {
+            o.crestA = d.side == 1 ? d.homeCrest : d.side == 2 ? d.awayCrest : null;
+            if (d.line.isEmpty()) {
+                o.head = d.title;
+            } else {
+                o.line = d.line;
+                o.lineColour = look.ink;
+                o.lineBold = true;
+            }
         } else {
-            // Both clubs: the home side's colour over the away side's (the line-ups: each beside its eleven).
-            float split = drop.lineups && row2.getVisibility() == VISIBLE ? words.getTop() + row2.getTop() : h / 2f;
-            fill.setColor(drop.homeColour);
-            cv.drawRect(0, 0, sw, split, fill);
-            fill.setColor(drop.awayColour);
-            cv.drawRect(0, split, sw, h, fill);
+            o.crestA = d.homeCrest;
+            o.head = d.title;
+            o.crestB = d.awayCrest;
+            o.line = d.line;
         }
-        super.dispatchDraw(cv);
-        cv.restore();
-        cv.restore();
+        return o;
+    }
+
+    @Override protected int stripe() {
+        if (drop == null) return 0;
+        if (drop.lineups) return club(page == 0 ? drop.homeColour : drop.awayColour);
+        if (drop.homeColour == 0 && drop.awayColour == 0) return chipColour;
+        if (drop.side == 1 || drop.side == 2) return club(drop.side == 1 ? drop.homeColour : drop.awayColour);
+        return club(drop.homeColour);
+    }
+
+    @Override protected int stripeLow() {
+        if (drop == null || drop.lineups || drop.side == 1 || drop.side == 2 || (drop.homeColour == 0 && drop.awayColour == 0)) return 0;
+        return club(drop.awayColour);
+    }
+
+    /** A club's colour at the far end: on a light ground, one too light to show there darkened. */
+    private int club(int c) {
+        return look.light ? legible(0xFF000000 | c, true) : 0xFF000000 | c;
+    }
+
+    @Override protected void content(Canvas cv, int w, int h) {
+        if (drop == null) return;
+        float room = end - start;
+        if (turn < 1f && page > 0) lay(cv, part(page - 1), start, h, -h * 0.6f * turn, Math.round(255 * (1f - turn)), room, 0);
+        lay(cv, part(page), start, h, h * 0.6f * (1f - turn), Math.round(255 * turn), room, run);
+    }
+
+    private boolean twoRows(int h, Part o) {
+        return h >= unit * 1.45f && !o.line.isEmpty() && (!drop.chip.isEmpty() || o.crestA != null || !o.head.isEmpty());
+    }
+
+    private float photoW(int h) {
+        Bitmap b = drop.photo;
+        if (b == null || drop.lineups || b.getHeight() <= 0) return 0;
+        return Math.min(h * 0.9f, h * b.getWidth() / (float) b.getHeight());
+    }
+
+    /**
+     * Page o laid out from x0 in room (drawn when cv is not null, at height offset dy and alpha a, its line run along by
+     * runBy): returns {its width, where its line starts from x0, the line's width}.
+     */
+    private float[] lay(Canvas cv, Part o, float x0, int h, float dy, int a, float room, float runBy) {
+        boolean two = twoRows(h, o);
+        float x = x0;
+        // The player, head and shoulders, by the board and standing on its foot.
+        float pw = photoW(h);
+        if (pw > 0) {
+            if (cv != null) photo(cv, drop.photo, x, dy, pw, h, a);
+            x += pw + unit * 0.14f;
+        }
+        float rowY = two ? h * 0.08f : 0f, rowH = two ? h * 0.42f : h;
+        float rx = x, headSize = unit * (two ? 0.42f : 0.44f), cs = unit * 0.62f;
+        if (!drop.chip.isEmpty()) {
+            float cw = chipW();
+            if (cv != null) chip(cv, rx, dy + rowY, rowH, cw, a);
+            rx += cw + unit * 0.22f;
+        }
+        if (o.crestA != null) {
+            if (cv != null) image(cv, o.crestA, rx, dy + rowY + (rowH - cs) / 2f, cs, a);
+            rx += cs + unit * 0.16f;
+        }
+        if (!o.head.isEmpty()) {
+            if (cv != null) words(cv, bold, o.head, rx, dy + rowY, rowH, headSize, o.headColour, a);
+            rx += measure(bold, o.head, headSize);
+        }
+        if (o.crestB != null) {
+            rx += unit * 0.16f;
+            if (cv != null) image(cv, o.crestB, rx, dy + rowY + (rowH - cs) / 2f, cs, a);
+            rx += cs;
+        }
+        // Where the first row's parts end (no gap left after a chip or crest that ends it).
+        float firstEnd = rx > x && o.head.isEmpty() && o.crestB == null
+                ? rx - (o.crestA != null ? unit * 0.16f : unit * 0.22f) : rx;
+        if (o.line.isEmpty()) return new float[]{firstEnd - x0, firstEnd - x0, 0};
+        float lx = two ? x : firstEnd + (firstEnd > x ? unit * 0.3f : 0f);
+        float lineY = two ? h * 0.5f : 0f, lineH = two ? h * 0.42f : h;
+        Paint p = o.lineBold ? bold : plain;
+        float ls = two ? unit * 0.4f : o.lineBold ? headSize : unit * 0.38f;
+        float lw = measure(p, o.line, ls);
+        if (cv != null) {
+            cv.save();
+            cv.clipRect(lx, dy + lineY, x0 + room, dy + lineY + lineH);
+            words(cv, p, o.line, lx - runBy, dy + lineY, lineH, ls, o.lineColour, a);
+            cv.restore();
+        }
+        float total = two ? Math.max(firstEnd, lx + lw) : lx + lw;
+        return new float[]{total - x0, lx - x0, lw};
+    }
+
+    private float chipW() {
+        chipText.setTextSize(unit * 0.28f);
+        return chipText.measureText(drop.chip) + unit * 0.3f;
+    }
+
+    /** The kind's chip: its own colour (a goal's green, a red card's red), else the board's block. */
+    private void chip(Canvas cv, float x, float y, float rowH, float cw, int a) {
+        float ch = Math.min(rowH * 0.72f, unit * 0.56f), top = y + (rowH - ch) / 2f;
+        fill.setColor(chipColour);
+        fill.setAlpha(Math.round(a * ((chipColour >>> 24) / 255f)));
+        r.set(x, top, x + cw, top + ch);
+        float rad = look.apart ? ch / 2f : ch * 0.22f;
+        cv.drawRoundRect(r, rad, rad, fill);
+        fill.setAlpha(255);
+        chipText.setTextSize(unit * 0.28f);
+        chipText.setColor((chipColour >>> 24) < 0xC0 ? look.ink : BoardBug.ink(chipColour));
+        chipText.setAlpha(a);
+        chipText.setTextAlign(Paint.Align.CENTER);
+        Paint.FontMetrics fm = chipText.getFontMetrics();
+        cv.drawText(drop.chip, x + cw / 2f, top + ch / 2f - (fm.ascent + fm.descent) / 2f, chipText);
+    }
+
+    private static float measure(Paint p, String s, float size) {
+        p.setTextSize(size);
+        return p.measureText(s == null ? "" : s);
+    }
+
+    /** Words from x along, in the middle of (y, rowH). */
+    private static void words(Canvas cv, Paint p, String s, float x, float y, float rowH, float size, int colour, int a) {
+        if (s == null || s.isEmpty()) return;
+        p.setTextSize(size);
+        p.setColor(colour);
+        p.setAlpha(Math.round(a * ((colour >>> 24) / 255f)));
+        p.setTextAlign(Paint.Align.LEFT);
+        Paint.FontMetrics fm = p.getFontMetrics();
+        cv.drawText(s, x, y + rowH / 2f - (fm.ascent + fm.descent) / 2f, p);
+    }
+
+    /** A crest filling a square of side size at (x, y). */
+    private void image(Canvas cv, Bitmap b, float x, float y, float size, int a) {
+        float s = size / Math.max(b.getWidth(), b.getHeight());
+        float bw = b.getWidth() * s, bh = b.getHeight() * s;
+        r.set(x + (size - bw) / 2f, y + (size - bh) / 2f, x + (size + bw) / 2f, y + (size + bh) / 2f);
+        image.setAlpha(a);
+        cv.drawBitmap(b, null, r, image);
+    }
+
+    /** The player's picture pw wide, standing on the strip's foot. */
+    private void photo(Canvas cv, Bitmap b, float x, float dy, float pw, int h, int a) {
+        float s = Math.min(pw / b.getWidth(), h * 0.98f / b.getHeight());
+        float bw = b.getWidth() * s, bh = b.getHeight() * s;
+        r.set(x + (pw - bw) / 2f, dy + h - bh, x + (pw + bw) / 2f, dy + h);
+        image.setAlpha(a);
+        cv.drawBitmap(b, null, r, image);
     }
 }

@@ -18,7 +18,7 @@ import java.util.Locale;
 /**
  * The Control Centre's Scoreboard card (BoardCover): the scoreboard over the channel on or off for the game chosen
  * (OK steps through today's games of the followed clubs and competitions, live ones first), the board itself and the
- * cover over the channel's logo each on or off, the alerts and stats that fold out from under it, its clock set at
+ * cover over the channel's logo each on or off, the alerts and stats that slide out beside it, its clock set at
  * kick-off, OK held over the match for its menu, Move and resize over the channel, the board's look and the cover's
  * (each drawn as it looks, the game chosen in it, to pick from), and the standard places back; then what it does to be
  * kind to the screen. The Control Centre's Scoreboard tile is the quick switch beside it.
@@ -131,16 +131,16 @@ final class BoardPanel extends SportPanel {
         board.ok = () -> BoardCover.setBoardShown(c, !BoardCover.boardShown(c));
         Row logo = row("Cover the channel's logo", true);
         logo.on = () -> BoardCover.logoOn(c);
-        logo.words = () -> "Homefield's mark over the logo, top right";
+        logo.words = () -> "Whitebrook Road over the logo, top right";
         logo.ok = () -> BoardCover.setLogoOn(c, !BoardCover.logoOn(c));
         add(board, logo);
         Row drops = row("Alerts from the scoreboard", true);
         drops.on = () -> BoardCover.dropsOn(c);
-        drops.words = () -> BoardCover.dropsOn(c) ? "Goals, cards, line-ups fold out from under it" : "Off · the usual cards";
+        drops.words = () -> BoardCover.dropsOn(c) ? "Goals, cards, line-ups slide out beside it" : "Off · the usual cards";
         drops.ok = () -> BoardCover.setDropsOn(c, !BoardCover.dropsOn(c));
-        Row stats = row("Stats under the scoreboard", true);
+        Row stats = row("Stats beside the scoreboard", true);
         stats.on = () -> BoardCover.statsOn(c);
-        stats.words = () -> BoardCover.statsOn(c) ? "Three every four minutes, all at half time" : "Off";
+        stats.words = () -> BoardCover.statsOn(c) ? "A few times a game: before kick-off, each half, half and full time" : "Off";
         stats.ok = () -> BoardCover.setStatsOn(c, !BoardCover.statsOn(c));
         add(drops, stats);
         Row clock = row("Clock with the channel's", true);

@@ -290,8 +290,12 @@ public class BoardCoverTest {
     // ---- 4.08: the phone's scoreboard on the TV ----------------------------------------------------------------------
 
     @Test
-    public void theLooksAreThePhonesSeven() {
-        assertEquals(7, BoardBug.Style.values().length);
+    public void theLooksAreThePhonesEight() {
+        assertEquals(8, BoardBug.Style.values().length);
+        // 4.13: Card, the results card, a little taller than the others.
+        assertEquals(BoardBug.Style.CARD, BoardBug.Style.of("CARD"));
+        assertEquals("Card", BoardBug.Style.CARD.label);
+        assertTrue(BoardBug.Style.CARD.tall > 1.2f && BoardBug.Style.CARD.tall < BoardBug.Style.STACKED.tall);
         assertEquals(BoardBug.Style.GLASS, BoardBug.Style.of("GLASS"));
         assertEquals(BoardBug.Style.LIGHT, BoardBug.Style.of("LIGHT"));
         assertEquals("Club colours", BoardBug.Style.of("CLUB").label);
@@ -565,5 +569,88 @@ public class BoardCoverTest {
         assertTrue(LogoMark.Look.BROADCAST_BOARD.broadcast());
         assertFalse(LogoMark.Look.GLASS.broadcast());
         assertEquals(LogoMark.Look.BROADCAST_BOARD, LogoMark.Look.of("BROADCAST_BOARD"));
+    }
+
+    // ---- 4.13: out sideways, a few stats moments a game ----------------------------------------------------------------
+
+    @Test
+    public void theStatsComeAFewTimesAGame() {
+        // Before kick-off: in its last ten minutes (not its last one).
+        assertEquals("pre", BoardCover.statsSlot(true, 8 * 60_000L, 1, false, -1));
+        assertNull(BoardCover.statsSlot(true, 15 * 60_000L, 1, false, -1));
+        assertNull(BoardCover.statsSlot(true, 30_000L, 1, false, -1));
+        // The first half's middle, half time, the second half's middle, full time; nothing in between.
+        assertNull(BoardCover.statsSlot(false, 0, 0, false, 10));
+        assertEquals("h1", BoardCover.statsSlot(false, 0, 0, false, 25));
+        assertEquals("h1", BoardCover.statsSlot(false, 0, 0, false, 41));
+        assertNull(BoardCover.statsSlot(false, 0, 0, false, 50));
+        assertEquals("ht", BoardCover.statsSlot(false, 0, 0, true, 45));
+        assertEquals("h2", BoardCover.statsSlot(false, 0, 0, false, 70));
+        assertNull(BoardCover.statsSlot(false, 0, 0, false, 88));
+        assertEquals("ft", BoardCover.statsSlot(false, 0, 2, false, -1));
+        assertEquals(67, BoardCover.minuteOfClock("67:23"));
+        assertEquals(-1, BoardCover.minuteOfClock("HT"));
+        assertEquals(-1, BoardCover.minuteOfClock(null));
+    }
+
+    @Test
+    public void eachMomentShowsItsOwnFewStats() {
+        java.util.Map<String, String[]> by = new java.util.HashMap<>();
+        by.put("Possession", new String[]{"Possession", "58%", "42%"});
+        by.put("Shots", new String[]{"Shots", "9", "4"});
+        by.put("Corners", new String[]{"Corners", "5", "2"});
+        by.put("Form", new String[]{"Form", "WWDLW", "LDWWL", "form"});
+        // The first half: possession and shots; corners make up the third when on target is not there.
+        java.util.List<String[]> h1 = BoardCover.statsFor("h1", by);
+        assertEquals(3, h1.size());
+        assertEquals("Possession", h1.get(0)[0]);
+        assertEquals("Corners", h1.get(2)[0]);
+        // The second half: the player of the match so far once there is one.
+        by.put("Player of the match", new String[]{"Player of the match", "Saka (ARS) · 2 goals", "", "one"});
+        assertEquals("Player of the match", BoardCover.statsFor("h2", by).get(1)[0]);
+        // Before kick-off one fact is enough; in the game two at least.
+        assertEquals(1, BoardCover.statsFor("pre", by).size());
+        java.util.Map<String, String[]> one = new java.util.HashMap<>();
+        one.put("Possession", by.get("Possession"));
+        assertTrue(BoardCover.statsFor("h1", one).isEmpty());
+        assertTrue(BoardCover.statsFor("nonsense", by).isEmpty());
+        assertTrue(BoardCover.statsFor("ht", by).size() <= 5);
+    }
+
+    @Test
+    public void passAccuracyAndPlacesReadAsBroadcastersSayThem() {
+        java.util.Map<String, String> h = new java.util.HashMap<>(), a = new java.util.HashMap<>();
+        h.put("accuratePasses", "420");
+        h.put("totalPasses", "500");
+        a.put("accuratePasses", "300");
+        a.put("totalPasses", "400");
+        java.util.List<String[]> s = BoardCover.statsList(h, a);
+        assertArrayEquals(new String[]{"Pass accuracy", "84%", "75%"}, s.get(s.size() - 1));
+        assertEquals("", BoardCover.passes(new java.util.HashMap<>()));
+        assertEquals("1st", BoardCover.ordinal(1));
+        assertEquals("2nd", BoardCover.ordinal(2));
+        assertEquals("3rd", BoardCover.ordinal(3));
+        assertEquals("11th", BoardCover.ordinal(11));
+        assertEquals("12th", BoardCover.ordinal(12));
+        assertEquals("21st", BoardCover.ordinal(21));
+        // Each stat four seconds, sliding out and back in around them.
+        assertEquals(2 * BoardSide.SLIDE_MS + 3 * BoardStats.EACH_MS + 2 * 300L, BoardStats.showFor(3));
+    }
+
+    @Test
+    public void whatSlidesOutKeepsRoomForItsEnds() {
+        BoardBug.StripLook s = new BoardBug.StripLook();
+        float square = BoardSide.ends(s, 48f, 52f, 7, true);
+        // Its pads, the tucked end and the colour at its far end.
+        assertEquals(2 * 48f * 0.3f + 7 + BoardSide.stripeW(48f), square, 0.01f);
+        // Beside a pill it stands apart: no tucked end, rounder pads.
+        s.apart = true;
+        assertEquals(2 * 52f * 0.42f + BoardSide.stripeW(48f), BoardSide.ends(s, 48f, 52f, 7, true), 0.01f);
+    }
+
+    @Test
+    public void theBroadcastLogoSaysTheFamilysName() {
+        assertEquals("Whitebrook Road", LogoMark.NAME);
+        assertEquals("sports", LogoMark.WORD);
     }
 }
