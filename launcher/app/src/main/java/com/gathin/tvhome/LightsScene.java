@@ -22,8 +22,8 @@ import java.util.Locale;
  * The living room in 3D, as it is: the long white wall with the 98-inch TV on it, the grey sideboard under it and a
  * glazed oak door past it, the
  * ceiling's edge lit by the LED strip along that wall and on across the far wall over its doors (two glazed oak, then a
- * wide clear glass one in white edging), the oak slatted wall across from the TV with its own strip along its top, the
- * grey velvet corner sofa in front of it (its cushions, two mustard and two grey), the long dark coffee table on its
+ * wide clear glass one in white edging), the plain white wall across from the TV with the strip along its top and the
+ * big open metal clock on it, the grey velvet corner sofa along it (its cushions, two mustard and two grey), the long dark coffee table on its
  * light rug, the
  * lit slot in the ceiling beside it, the row of downlights, the oak floor. It comes up when a light is switched on or
  * off, given a colour or dimmed (SmartPanel), and shows what the lights are doing: the strip lighting along its length
@@ -434,7 +434,7 @@ final class LightsScene extends View {
         // The ceiling, the far wall, the right-hand wall, the TV's wall.
         paint(cv, ceiling, 0, H, -3, W, H, -3, W, H, D, 0, H, D);
         paint(cv, wall, 0, 0, D, W, 0, D, W, H, D, 0, H, D);
-        paint(cv, wallDark, W, 0, -3, W, 0, D, W, H, D, W, H, -3);
+        paint(cv, mix(wall, wallDark, 0.35f), W, 0, -3, W, 0, D, W, H, D, W, H, -3);
         paint(cv, wall, 0, 0, -3, 0, 0, D, 0, H, D, 0, H, -3);
         // The bulkhead along the TV's wall: the ceiling stepped down where the strip hides, its face along the room.
         float bh = 0.16f, bw = 0.42f;
@@ -463,7 +463,7 @@ final class LightsScene extends View {
         box(cv, 0.0f, 0.48f, 0.0f, 0.52f, 0.45f, 4.15f, mix(0xFF2B2D31, 0xFF6C6E73, lit), mix(0xFF1E2024, 0xFF55575C, lit), false, sc, 0f);
 
         // The far side: the oak slatted wall, its own strip along its top, the corner sofa, the coffee table on the rug.
-        slats(cv, lit, glow, sc);
+        rightWall(cv, lit, glow, sc);
         furniture(cv, lit, glow, sc, h);
 
         // The strip itself, lit along its length (a new colour running along it); the slot; the downlights.
@@ -522,17 +522,71 @@ final class LightsScene extends View {
 
     // ---- the sofa side (from the family's photos) -----------------------------------------------------------------
 
-    /** The slatted oak wall behind the sofa, from z 0 to 3.7 on the room's right-hand wall, dark between its slats. */
-    private void slats(Canvas cv, float lit, float glow, int colour) {
-        float x = W - 0.02f, z0 = 0.05f, z1 = D - 0.2f, top = H - 0.02f;
-        paint(cv, mix(0xFF0C0A08, 0xFF2A211A, lit), x, 0, z0, x, 0, z1, x, top, z1, x, top, z0);
-        int oak = mix(0xFF3B2516, 0xFFB57A4C, 0.2f + lit * 0.8f);
-        oak = mix(oak, colour, glow * 0.12f);
-        for (float z = z0 + 0.02f; z < z1 - 0.03f; z += 0.08f)
-            paint(cv, oak, x - 0.025f, 0, z, x - 0.025f, 0, z + 0.045f, x - 0.025f, top, z + 0.045f, x - 0.025f, top, z);
-        // Its strip's glow down the top of the slats.
-        wash(cv, colour, Math.min(1f, glow * 1.1f), x - 0.03f, top, z0, x - 0.03f, top, z1, 0, -0.9f, 0);
-        tube(cv, colour, glow, 1f, x - 0.04f, top - 0.02f, z0, x - 0.04f, top - 0.02f, z1);
+    /** The plain white wall across from the TV: its strip along its top, and the big open metal clock over the sofa. */
+    private void rightWall(Canvas cv, float lit, float glow, int colour) {
+        float x = W - 0.02f, top = H - 0.02f;
+        wash(cv, colour, Math.min(1f, glow * 1.1f), x, top, -3, x, top, D, 0, -0.9f, 0);
+        tube(cv, colour, glow, 1f, x - 0.04f, top - 0.02f, -3, x - 0.04f, top - 0.02f, D);
+        clock(cv, x - 0.01f, 1.68f, 3.4f, 0.48f, lit);
+    }
+
+    /**
+     * The skeleton clock on the wall at (x, cy, cz), radius r: its outer ring and inner ring in dark bronze, the Roman
+     * numerals as bars between them, its hands at the time it is.
+     */
+    private void clock(Canvas cv, float x, float cy0, float cz0, float r, float lit) {
+        int metal = mix(0xFF141210, 0xFF3A332C, lit), bronze = mix(0xFF2A241C, 0xFF9C8664, lit);
+        if (!point(x, cy0, cz0)) return;
+        float d = p3[2], line = Math.max(1f, focal * 0.014f / d);
+        stroke.setStrokeCap(Paint.Cap.BUTT);
+        ring(cv, x, cy0, cz0, r, metal, line * 1.4f);
+        ring(cv, x, cy0, cz0, r * 0.93f, metal, line * 0.7f);
+        ring(cv, x, cy0, cz0, r * 0.6f, metal, line * 1.1f);
+        // The numerals: a few bars each, between the rings, I to XII.
+        int[] bars = {2, 1, 2, 3, 3, 2, 1, 2, 3, 3, 2, 2};
+        for (int k = 0; k < 12; k++) {
+            double a = Math.PI / 2 - k * Math.PI / 6;
+            int n = bars[k];
+            for (int b = 0; b < n; b++) {
+                double off = (b - (n - 1) / 2.0) * 0.07;
+                seg(cv, x, cy0, cz0, r * 0.64f, r * 0.9f, a + off, bronze, line * 0.9f);
+            }
+        }
+        // The hands, at the time it is now.
+        java.util.Calendar now = java.util.Calendar.getInstance();
+        float mins = now.get(java.util.Calendar.MINUTE) + now.get(java.util.Calendar.SECOND) / 60f;
+        float hrs = (now.get(java.util.Calendar.HOUR) + mins / 60f);
+        seg(cv, x, cy0, cz0, 0f, r * 0.5f, Math.PI / 2 - hrs * Math.PI / 6, metal, line * 1.6f);
+        seg(cv, x, cy0, cz0, 0f, r * 0.78f, Math.PI / 2 - mins * Math.PI / 30, metal, line * 1.1f);
+        stroke.setStrokeCap(Paint.Cap.ROUND);
+    }
+
+    /** A ring on the wall (the plane at x), as many short lines. */
+    private void ring(Canvas cv, float x, float cy0, float cz0, float r, int colour, float width) {
+        path.reset();
+        boolean first = true;
+        for (int i = 0; i <= 48; i++) {
+            double a = i * Math.PI * 2 / 48;
+            if (!point(x, cy0 + (float) Math.sin(a) * r, cz0 - (float) Math.cos(a) * r)) { first = true; continue; }
+            if (first) path.moveTo(p3[0], p3[1]);
+            else path.lineTo(p3[0], p3[1]);
+            first = false;
+        }
+        stroke.setColor(colour);
+        stroke.setStrokeWidth(width);
+        cv.drawPath(path, stroke);
+    }
+
+    /** A straight piece on the wall from radius r0 to r1 at angle a (from 3 o'clock, counter-clockwise; 12 is up). */
+    private void seg(Canvas cv, float x, float cy0, float cz0, float r0, float r1, double a, int colour, float width) {
+        // Seen from the room, clockwise runs towards the far end: z falls as the hand goes right.
+        float c = (float) Math.cos(a), sn = (float) Math.sin(a);
+        if (!point(x, cy0 + sn * r0, cz0 - c * r0)) return;
+        float x0 = p3[0], y0 = p3[1];
+        if (!point(x, cy0 + sn * r1, cz0 - c * r1)) return;
+        stroke.setColor(colour);
+        stroke.setStrokeWidth(width);
+        cv.drawLine(x0, y0, p3[0], p3[1], stroke);
     }
 
     /** One soft box, its faces shaded (top lightest): what the sofa, its cushions and the table are made of. */
@@ -561,7 +615,7 @@ final class LightsScene extends View {
         paint(cv, mix(0xFF4A4B4E, 0xFFD9D8D3, L), W - 3.25f, 0.003f, 0.55f, W - 0.85f, 0.003f, 0.55f, W - 0.85f, 0.003f, D - 0.45f, W - 3.25f, 0.003f, D - 0.45f);
         blocks.clear();
         float bx = W - 0.08f, depth = 0.98f, seat = 0.44f, back = 0.92f, bt = 0.24f;
-        // The long section along the slats, its arm at the far end; the corner and the chaise along the near side.
+        // The long section along the clock's wall, its arm at the far end; the corner and the chaise along the near side.
         // The long section runs all the way to the clear door at the far end.
         float za = 0.15f, zb = D - 0.32f, xc = W - 2.75f;
         blocks.add(new Block(bx - depth, bx, 0.08f, seat - 0.14f, za, zb, velvetDark, 0f));
