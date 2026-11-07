@@ -214,8 +214,24 @@ final class BoardCover {
 
     static void nextStyle(Context c) {
         BoardBug.Style[] all = BoardBug.Style.values();
-        prefs(c).edit().putString("style", all[(style(c).ordinal() + 1) % all.length].name()).apply();
-        restyle();
+        setStyle(c, all[(style(c).ordinal() + 1) % all.length]);
+    }
+
+    /** A look chosen: the board drawn in it at once where it is up (no coming in again). */
+    static void setStyle(Context c, BoardBug.Style s) {
+        prefs(c).edit().putString("style", s.name()).apply();
+        if (bug != null && !adjusting) {
+            bug.style(s);
+            layout(c);
+        } else {
+            restyle();
+        }
+    }
+
+    /** The look step looks along: on (step 1) or back (-1). */
+    static void stepStyle(Context c, int step) {
+        BoardBug.Style[] all = BoardBug.Style.values();
+        setStyle(c, all[((style(c).ordinal() + step) % all.length + all.length) % all.length]);
     }
 
     static LogoMark.Look logoLook(Context c) {
@@ -223,9 +239,49 @@ final class BoardCover {
     }
 
     static void nextLogoLook(Context c) {
+        stepLogoLook(c, 1);
+    }
+
+    static void setLogoLook(Context c, LogoMark.Look l) {
+        prefs(c).edit().putString("look", l.name()).apply();
+        if (mark != null) mark.look(l);
+        else restyle();
+    }
+
+    static void stepLogoLook(Context c, int step) {
         LogoMark.Look[] all = LogoMark.Look.values();
-        prefs(c).edit().putString("look", all[(logoLook(c).ordinal() + 1) % all.length].name()).apply();
-        restyle();
+        setLogoLook(c, all[((logoLook(c).ordinal() + step) % all.length + all.length) % all.length]);
+    }
+
+    /** OK held over the match while the board is up: its menu (move it, hide it, the looks, off). */
+    static boolean holdMenuOn(Context c) {
+        return prefs(c).getBoolean("hold_menu", true);
+    }
+
+    static void setHoldMenuOn(Context c, boolean on) {
+        prefs(c).edit().putBoolean("hold_menu", on).apply();
+        holdKeys(boardWin != null && on);
+    }
+
+    /** The board's look for the card's pickers: the game chosen there (its clubs, colours, score), else a made-up one. */
+    static BoardBug.Look previewLook(ScoresTicker.Game g) {
+        if (g == null) return sample();
+        BoardBug.Look l = preLook(g);
+        l.score = g.state == 1 ? "1–0" : score(g.homeScore) + "–" + score(g.awayScore);
+        l.clock = "67:23";
+        l.live = true;
+        return l;
+    }
+
+    /** The game's crests and competition logo for the card's pickers, read off the main thread: {home, away, competition}. */
+    static void previewImages(Context c, ScoresTicker.Game g, java.util.function.Consumer<Bitmap[]> got) {
+        if (g == null) return;
+        String home = g.homeLogo, away = g.awayLogo, league = g.leagueLogo != null ? g.leagueLogo : GoalWatchService.leagueLogoFor(g);
+        Context a = c.getApplicationContext();
+        io.execute(() -> {
+            Bitmap[] b = {crest(a, home), crest(a, away), compLogo(a, league)};
+            main().post(() -> got.accept(b));
+        });
     }
 
     /**
@@ -1093,7 +1149,16 @@ final class BoardCover {
         dimmed = false;
         fresh = true;
         outline();
+        holdKeys(holdMenuOn(c));
         return true;
+    }
+
+    /**
+     * The keys for OK held over the match, while the board's windows are up: the key helper's (the Streamer) has them
+     * anyway; the channel helper takes them on the TCL, which costs a held key its repeat over the app meanwhile.
+     */
+    private static void holdKeys(boolean on) {
+        if (!InputKeyService.running) AppSearchService.keysFor("board", on);
     }
 
     private static FrameLayout frame(Context c, View v) {
@@ -1146,6 +1211,9 @@ final class BoardCover {
         dropping = false;
         if (stats != null) stats.gone();
         if (drop != null) drop.gone();
+        holdKeys(false);
+        if (main != null) main.removeCallbacks(menuOnHold);
+        okDown = -1;
         removeWindow(c, boardWin);
         removeWindow(c, logoWin);
         boardWin = null;
@@ -1638,7 +1706,8 @@ final class BoardCover {
      * arrows move or size, OK the next part, Back keeps the places; the rest (the volume) go on to the TV.
      */
     static boolean key(KeyEvent e) {
-        if (!adjusting) return false;
+        if (menuWin != null) return menuKey(e);
+        if (!adjusting) return holdOk(e);
         int code = e.getKeyCode();
         boolean down = e.getAction() == KeyEvent.ACTION_DOWN, up = e.getAction() == KeyEvent.ACTION_UP && !e.isCanceled();
         if (code == KeyEvent.KEYCODE_BACK || code == KeyEvent.KEYCODE_ESCAPE) {
@@ -1727,5 +1796,214 @@ final class BoardCover {
         keysTaken = false;
         hideAll();
         if (c != null) resume(c);
+    }
+
+    // ---- its menu over the match: OK held -----------------------------------------------------------------------------
+
+    private static FrameLayout menuWin;
+    private static LinearLayout menuRows;
+    private static int menuAt;
+    /** The OK being watched for a hold (its press's time), and whether the hold opened the menu. */
+    private static long okDown = -1, menuOkDown = -1;
+    private static boolean okFired;
+    private static final long MENU_MS = 15_000L;
+    private static final Runnable menuOnHold = () -> {
+        if (okDown < 0) return;
+        okFired = true;
+        menuOkDown = okDown;
+        openMenu();
+    };
+    private static final Runnable menuAway = BoardCover::closeMenu;
+
+    /**
+     * OK while the board is up over the match: held, its menu; a short press goes on to the app as it was meant (on
+     * its release). Not while a card or another of the launcher's frames has the remote.
+     */
+    private static boolean holdOk(KeyEvent e) {
+        if (!QuietHold.isOk(e.getKeyCode()) || android.os.Build.VERSION.SDK_INT < 33 || boardWin == null || app == null
+                || !holdMenuOn(app) || QuietHold.up() || InStepCard.isShowing() || LiveCentre.isShowing() || F1Tower.isShowing()
+                || HalfTimeBreak.isShowing() || CreditsCover.isShowing() || ScoreCard.busy() || LineupCard.isShowing()) {
+            return false;
+        }
+        if (SystemClock.uptimeMillis() - QuietHold.okSentAt < 400L) return false;
+        if (e.getAction() == KeyEvent.ACTION_DOWN) {
+            if (e.getDownTime() == okDown) return true;
+            okDown = e.getDownTime();
+            okFired = false;
+            main().removeCallbacks(menuOnHold);
+            main().postDelayed(menuOnHold, QuietHold.HOLD_MS);
+            return true;
+        }
+        if (e.getAction() == KeyEvent.ACTION_UP && e.getDownTime() == okDown) {
+            main().removeCallbacks(menuOnHold);
+            okDown = -1;
+            if (okFired || e.isCanceled()) return true;
+            main().post(AppSearchService::ok);
+            return true;
+        }
+        return false;
+    }
+
+    /** Pure: the menu's lines, as the switches stand. */
+    static String[] menuLines(boolean boardShown, boolean logoOn, String look, String logoLook) {
+        return new String[]{"Move and resize", boardShown ? "Hide the scoreboard" : "Show the scoreboard",
+                logoOn ? "Hide the logo's cover" : "Show the logo's cover", "Scoreboard look:  ‹  " + look + "  ›",
+                "Logo cover look:  ‹  " + logoLook + "  ›", "Turn the scoreboard off"};
+    }
+
+    private static void openMenu() {
+        Context c = app;
+        if (c == null || menuWin != null) return;
+        float u = sw / 1920f;
+        Context soft = new GoalWatchService.SoftwareWindow(c);
+        FrameLayout win = new FrameLayout(soft);
+        LinearLayout box = new LinearLayout(soft);
+        box.setOrientation(LinearLayout.VERTICAL);
+        int pad = Math.round(22 * u);
+        box.setPadding(pad, pad, pad, pad);
+        GradientDrawable bg = new GradientDrawable(GradientDrawable.Orientation.TL_BR, new int[]{0xFF141B3A, 0xFF0A0E22});
+        bg.setCornerRadius(28 * u);
+        bg.setStroke(Math.max(1, Math.round(u)), 0x40FFFFFF);
+        box.setBackground(bg);
+        TextView head = new TextView(soft);
+        head.setText("Scoreboard  ·  Up and Down, OK  ·  Back to close");
+        head.setTextColor(0xB3FFFFFF);
+        head.setTextSize(TypedValue.COMPLEX_UNIT_PX, 19f * u);
+        head.setPadding(Math.round(10 * u), 0, Math.round(10 * u), Math.round(12 * u));
+        box.addView(head);
+        menuRows = new LinearLayout(soft);
+        menuRows.setOrientation(LinearLayout.VERTICAL);
+        for (int i = 0; i < 6; i++) {
+            TextView t = new TextView(soft);
+            t.setTextColor(0xFFFFFFFF);
+            t.setTextSize(TypedValue.COMPLEX_UNIT_PX, 26f * u);
+            t.setTypeface(c.getResources().getFont(R.font.inter_semibold));
+            t.setPadding(Math.round(22 * u), Math.round(12 * u), Math.round(40 * u), Math.round(12 * u));
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
+            lp.topMargin = Math.round(4 * u);
+            menuRows.addView(t, lp);
+        }
+        box.addView(menuRows, new LinearLayout.LayoutParams(-2, -2));
+        win.addView(box, new FrameLayout.LayoutParams(-2, -2));
+        WindowManager.LayoutParams lp = params(WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT, false);
+        lp.gravity = Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL;
+        lp.y = Math.round(sh * 0.08f);
+        lp.setTitle("BoardMenu");
+        try {
+            c.getSystemService(WindowManager.class).addView(win, lp);
+        } catch (RuntimeException e) {
+            AlertLog.note(c, "the scoreboard's menu could not open: " + e);
+            return;
+        }
+        menuWin = win;
+        menuAt = 0;
+        if (!InputKeyService.running) AppSearchService.keysFor("boardmenu", true);
+        paintMenu();
+        poke();
+        main().removeCallbacks(menuAway);
+        main().postDelayed(menuAway, MENU_MS);
+        AlertLog.note(c, "scoreboard menu opened over the match");
+    }
+
+    private static void paintMenu() {
+        Context c = app;
+        if (menuRows == null || c == null) return;
+        float u = sw / 1920f;
+        String[] lines = menuLines(boardShown(c), logoOn(c), style(c).label, logoLook(c).label);
+        for (int i = 0; i < menuRows.getChildCount(); i++) {
+            TextView t = (TextView) menuRows.getChildAt(i);
+            t.setText(lines[i]);
+            boolean on = i == menuAt;
+            GradientDrawable g = new GradientDrawable();
+            g.setCornerRadius(16 * u);
+            g.setColor(on ? 0x33FFFFFF : 0x00000000);
+            if (on) g.setStroke(Math.max(2, Math.round(3 * u)), 0xFFFFFFFF);
+            t.setBackground(g);
+            t.setTextColor(on ? 0xFFFFFFFF : 0xCCFFFFFF);
+        }
+    }
+
+    private static boolean menuKey(KeyEvent e) {
+        int code = e.getKeyCode();
+        boolean down = e.getAction() == KeyEvent.ACTION_DOWN, up = e.getAction() == KeyEvent.ACTION_UP && !e.isCanceled();
+        // The release (and repeats) of the OK whose hold opened it.
+        if (QuietHold.isOk(code) && e.getDownTime() == menuOkDown) {
+            if (e.getAction() == KeyEvent.ACTION_UP) {
+                menuOkDown = -1;
+                okDown = -1;
+            }
+            return true;
+        }
+        main().removeCallbacks(menuAway);
+        main().postDelayed(menuAway, MENU_MS);
+        if (code == KeyEvent.KEYCODE_BACK || code == KeyEvent.KEYCODE_ESCAPE) {
+            if (up) main().post(BoardCover::closeMenu);
+            return true;
+        }
+        if (QuietHold.isOk(code)) {
+            if (up) main().post(BoardCover::menuOk);
+            return true;
+        }
+        if (code == KeyEvent.KEYCODE_DPAD_UP || code == KeyEvent.KEYCODE_DPAD_DOWN) {
+            if (down) main().post(() -> {
+                menuAt = Math.max(0, Math.min(5, menuAt + (code == KeyEvent.KEYCODE_DPAD_DOWN ? 1 : -1)));
+                paintMenu();
+            });
+            return true;
+        }
+        if (code == KeyEvent.KEYCODE_DPAD_LEFT || code == KeyEvent.KEYCODE_DPAD_RIGHT) {
+            int step = code == KeyEvent.KEYCODE_DPAD_RIGHT ? 1 : -1;
+            if (down) main().post(() -> {
+                Context c = app;
+                if (c == null) return;
+                if (menuAt == 3) stepStyle(c, step);
+                else if (menuAt == 4) stepLogoLook(c, step);
+                paintMenu();
+            });
+            return true;
+        }
+        // The rest (the volume) on to the TV.
+        return false;
+    }
+
+    private static void menuOk() {
+        Context c = app;
+        if (c == null || menuWin == null) return;
+        switch (menuAt) {
+            case 0:
+                closeMenu();
+                beginAdjust();
+                return;
+            case 1:
+                setBoardShown(c, !boardShown(c));
+                break;
+            case 2:
+                setLogoOn(c, !logoOn(c));
+                break;
+            case 3:
+                stepStyle(c, 1);
+                break;
+            case 4:
+                stepLogoLook(c, 1);
+                break;
+            default:
+                closeMenu();
+                stop(c, "switched off over the match");
+                return;
+        }
+        paintMenu();
+    }
+
+    static boolean menuShowing() {
+        return menuWin != null;
+    }
+
+    private static void closeMenu() {
+        main().removeCallbacks(menuAway);
+        FrameLayout w = menuWin;
+        menuWin = null;
+        menuRows = null;
+        if (!InputKeyService.running) AppSearchService.keysFor("boardmenu", false);
+        removeWindow(app, w);
     }
 }

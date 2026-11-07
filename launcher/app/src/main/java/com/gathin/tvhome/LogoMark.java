@@ -11,7 +11,7 @@ import android.view.View;
 
 /**
  * The cover BoardCover puts over the channel's logo, as the phone's player has it (Homefield's LogoCover): dark smoked
- * glass, all but solid so none of the logo shows through, in one of three looks: Glass (the Homefield house and play
+ * glass, solid so none of the logo shows through, in one of three looks: Glass (the Homefield house and play
  * mark with the name beside it when there is room), Mark (the mark alone) or Plain (the glass alone). Kind to the panel:
  * only dark grounds and a soft white mark, never the phone's bright violet-to-coral tile, and an edge of its ground
  * (inset) round everything, so the pixel or two it moves against burn-in never uncovers the logo.
@@ -33,7 +33,8 @@ final class LogoMark extends View {
         }
     }
 
-    private static final int GROUND = 0xFA0B0F24, PLAIN_GROUND = 0xFC07080F, MARK_INK = 0xFFD5DAEA;
+    /** Solid grounds: none of the channel's logo shows through. */
+    private static final int GROUND = 0xFF0B0F24, PLAIN_GROUND = 0xFF07080F, MARK_INK = 0xFFD5DAEA;
     private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG), ink = new Paint(Paint.ANTI_ALIAS_FLAG),
             words = new Paint(Paint.ANTI_ALIAS_FLAG), edge = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final RectF r = new RectF();

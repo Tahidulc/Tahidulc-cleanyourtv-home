@@ -1,5 +1,11 @@
 package com.gathin.tvhome;
 
+import android.graphics.Bitmap;
+import android.view.Gravity;
+import android.widget.FrameLayout;
+import android.widget.LinearLayout;
+import android.widget.TextView;
+
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -13,14 +19,19 @@ import java.util.Locale;
  * The Control Centre's Scoreboard card (BoardCover): the scoreboard over the channel on or off for the game chosen
  * (OK steps through today's games of the followed clubs and competitions, live ones first), the board itself and the
  * cover over the channel's logo each on or off, the alerts and stats that fold out from under it, its clock set at
- * kick-off, Move and resize over the channel, the board's look and the cover's, and the standard places back; then what
- * it does to be kind to the screen. The Control Centre's Scoreboard tile is the quick switch beside it.
+ * kick-off, OK held over the match for its menu, Move and resize over the channel, the board's look and the cover's
+ * (each drawn as it looks, the game chosen in it, to pick from), and the standard places back; then what it does to be
+ * kind to the screen. The Control Centre's Scoreboard tile is the quick switch beside it.
  */
 final class BoardPanel extends SportPanel {
     private final List<ScoresTicker.Game> games = new ArrayList<>();
     private int chosen;
     private boolean loading;
     private static final DateTimeFormatter HM = DateTimeFormatter.ofPattern("H:mm", Locale.UK);
+    /** The pickers' boards, given the chosen game's crests once they are read. */
+    private final List<BoardBug> previews = new ArrayList<>();
+    private Bitmap[] crests;
+    private String crestsFor;
 
     BoardPanel(HomeV2 home) {
         super(home);
@@ -106,6 +117,8 @@ final class BoardPanel extends SportPanel {
             chosen = (chosen + 1) % games.size();
             // On already: on for the game chosen now.
             if (BoardCover.active(c)) BoardCover.start(c, game());
+            // The looks below drawn with this game.
+            redraw();
         };
         add(on, which);
 
@@ -141,24 +154,109 @@ final class BoardPanel extends SportPanel {
             BoardCover.adjust(c);
         };
         add(clock, move);
-        Row look = row("Scoreboard look", false);
-        look.words = () -> BoardCover.style(c).label + " · OK for the next";
-        look.ok = () -> BoardCover.nextStyle(c);
-        Row mark = row("Logo cover look", false);
-        mark.words = () -> BoardCover.logoLook(c).label + " · OK for the next";
-        mark.ok = () -> BoardCover.nextLogoLook(c);
-        add(look, mark);
+        Row hold = row("Hold OK over the match", true);
+        hold.on = () -> BoardCover.holdMenuOn(c);
+        hold.words = () -> BoardCover.holdMenuOn(c) ? "Its menu: move it, hide it or the logo's cover, the looks"
+                : "Off · a held key repeats in the app as usual";
+        hold.ok = () -> BoardCover.setHoldMenuOn(c, !BoardCover.holdMenuOn(c));
         Row reset = row("Standard places", false);
         reset.words = () -> "Scoreboard top left, logo's cover top right" + (channel.isEmpty() ? "" : ", for " + channel);
         reset.ok = () -> {
             BoardPlace.reset(c, channel);
             android.widget.Toast.makeText(c, "Back to the standard places", android.widget.Toast.LENGTH_SHORT).show();
         };
-        add(reset);
+        add(hold, reset);
+
+        // Each look drawn as it is, the game chosen above in it: the arrows go along, OK chooses.
+        heading("SCOREBOARD LOOK");
+        previews.clear();
+        List<Row> looks = new ArrayList<>();
+        for (BoardBug.Style st : BoardBug.Style.values()) looks.add(lookTile(st));
+        addLine(132, 4, looks.subList(0, 4));
+        addLine(132, 4, looks.subList(4, looks.size()));
+        heading("LOGO COVER LOOK");
+        List<Row> marks = new ArrayList<>();
+        for (LogoMark.Look l : LogoMark.Look.values()) marks.add(markTile(l));
+        addLine(120, 4, marks);
+        loadCrests();
 
         heading("KIND TO THE SCREEN");
         words("Never on by itself: only for the game you turn it on for, and off ten minutes after its full time. It keeps "
                 + "to soft colours (Light a soft grey, not white), moves a pixel or two each minute, dims a little after five "
                 + "minutes without a goal, and rests at half time once the half's stats are done.", 17, 0xCCFFFFFF);
+    }
+
+    /** One of the board's looks, drawn with the game chosen, its name under it (a tick on the one chosen). */
+    private Row lookTile(BoardBug.Style style) {
+        Row r = new Row();
+        LinearLayout t = new LinearLayout(c);
+        t.setOrientation(LinearLayout.VERTICAL);
+        t.setGravity(Gravity.CENTER_HORIZONTAL);
+        t.setPadding(h.px(16), h.px(16), h.px(16), h.px(10));
+        FrameLayout stage = new FrameLayout(c);
+        BoardBug b = new BoardBug(c);
+        b.style(style);
+        b.inset(1);
+        b.crests(crests != null);
+        b.set(BoardCover.previewLook(game()));
+        if (crests != null) b.images(crests[0], crests[1], crests[2]);
+        previews.add(b);
+        int bh = Math.round(h.px(36) * style.tall);
+        stage.addView(b, new FrameLayout.LayoutParams(-1, bh, Gravity.CENTER));
+        t.addView(stage, new LinearLayout.LayoutParams(-1, 0, 1f));
+        TextView name = h.text(17, semi, 0xE6FFFFFF);
+        name.setGravity(Gravity.CENTER);
+        name.setSingleLine(true);
+        LinearLayout.LayoutParams nl = new LinearLayout.LayoutParams(-1, -2);
+        nl.topMargin = h.px(8);
+        t.addView(name, nl);
+        r.view = t;
+        r.sub = name;
+        r.words = () -> (BoardCover.style(c) == style ? "✓  " : "") + style.label;
+        r.ok = () -> BoardCover.setStyle(c, style);
+        return r;
+    }
+
+    /** One of the logo cover's looks, drawn on a stand-in channel picture, its name under it. */
+    private Row markTile(LogoMark.Look look) {
+        Row r = new Row();
+        LinearLayout t = new LinearLayout(c);
+        t.setOrientation(LinearLayout.VERTICAL);
+        t.setGravity(Gravity.CENTER_HORIZONTAL);
+        t.setPadding(h.px(16), h.px(14), h.px(16), h.px(10));
+        FrameLayout stage = new FrameLayout(c);
+        stage.setBackground(h.fill(12, 0xFF2F7D36));
+        LogoMark m = new LogoMark(c);
+        m.look(look);
+        m.inset(1);
+        stage.addView(m, new FrameLayout.LayoutParams(h.px(150), h.px(52), Gravity.CENTER));
+        t.addView(stage, new LinearLayout.LayoutParams(-1, 0, 1f));
+        TextView name = h.text(17, semi, 0xE6FFFFFF);
+        name.setGravity(Gravity.CENTER);
+        name.setSingleLine(true);
+        LinearLayout.LayoutParams nl = new LinearLayout.LayoutParams(-1, -2);
+        nl.topMargin = h.px(8);
+        t.addView(name, nl);
+        r.view = t;
+        r.sub = name;
+        r.words = () -> (BoardCover.logoLook(c) == look ? "✓  " : "") + look.label;
+        r.ok = () -> BoardCover.setLogoLook(c, look);
+        return r;
+    }
+
+    /** The chosen game's crests for the pickers' boards (read once a game). */
+    private void loadCrests() {
+        ScoresTicker.Game g = game();
+        if (g == null || g.id == null || g.id.equals(crestsFor)) return;
+        crestsFor = g.id;
+        BoardCover.previewImages(c, g, b -> {
+            if (!g.id.equals(crestsFor)) return;
+            crests = b;
+            for (BoardBug p : previews) {
+                p.crests(true);
+                p.images(b[0], b[1], b[2]);
+                p.requestLayout();
+            }
+        });
     }
 }

@@ -943,6 +943,14 @@ public class AppSearchService extends AccessibilityService {
         if (info.flags != was) s.setServiceInfo(info);
     }
 
+    /** OK sent on to the app in front, as Android's own D-pad OK (a short OK kept back to see whether it was held). */
+    static void ok() {
+        AppSearchService s = instance;
+        if (s == null || android.os.Build.VERSION.SDK_INT < 33) return;
+        QuietHold.okSentAt = android.os.SystemClock.uptimeMillis();
+        s.performGlobalAction(GLOBAL_ACTION_DPAD_CENTER);
+    }
+
     /** Back sent to the app in front, as a press of the remote's Back (pop-up mode's short Back, held back first). */
     static void globalBack() {
         AppSearchService s = instance;

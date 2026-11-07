@@ -532,4 +532,19 @@ public class BoardCoverTest {
         assertEquals("a · b", BoardCover.join("a", "", null, " b "));
         assertEquals("", BoardCover.join());
     }
+
+    @Test
+    public void theMenuOverTheMatchSaysWhatEachLineWillDo() {
+        String[] on = BoardCover.menuLines(true, true, "Classic", "Plain");
+        assertEquals(6, on.length);
+        assertEquals("Move and resize", on[0]);
+        assertEquals("Hide the scoreboard", on[1]);
+        assertEquals("Hide the logo's cover", on[2]);
+        assertTrue(on[3].contains("Classic"));
+        assertTrue(on[4].contains("Plain"));
+        assertEquals("Turn the scoreboard off", on[5]);
+        String[] off = BoardCover.menuLines(false, false, "Glass", "Mark only");
+        assertEquals("Show the scoreboard", off[1]);
+        assertEquals("Show the logo's cover", off[2]);
+    }
 }

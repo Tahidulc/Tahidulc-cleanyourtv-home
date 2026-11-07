@@ -212,6 +212,27 @@ abstract class SportPanel {
         lines.add(mine);
     }
 
+    /** A line of up to across rows (a picker's tiles), height tall, the rest of the line left empty so tiles keep one width. */
+    protected void addLine(int height, int across, List<Row> rows) {
+        LinearLayout line = new LinearLayout(c);
+        line.setClipChildren(false);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, h.px(height));
+        if (!lines.isEmpty()) lp.topMargin = h.px(14);
+        list.addView(line, lp);
+        List<Row> mine = new ArrayList<>();
+        for (int i = 0; i < across; i++) {
+            LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(0, -1, 1f);
+            if (i > 0) rp.leftMargin = h.px(16);
+            if (i < rows.size()) {
+                line.addView(rows.get(i).view, rp);
+                mine.add(rows.get(i));
+            } else {
+                line.addView(new View(c), rp);
+            }
+        }
+        lines.add(mine);
+    }
+
     /** Rows two across, as many lines as they take. */
     protected void addAll(List<Row> rows) {
         for (int i = 0; i < rows.size(); i += 2) {
