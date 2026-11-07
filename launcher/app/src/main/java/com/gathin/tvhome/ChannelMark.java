@@ -82,6 +82,8 @@ final class ChannelMark {
     private final Map<Typeface, Float> caps = new HashMap<>();
     private String tag = "";
     private boolean live;
+    /** How much further than the look's own width its ground runs (the competition's logo's room); 0 for none. */
+    private float ext;
     private String sport = "";
 
     ChannelMark(Context c) {
@@ -108,6 +110,15 @@ final class ChannelMark {
 
     /** One look in the box (x, y, w, h): the tag ("" for none), live or not, the sport ("f1", else football). */
     void draw(Canvas cv, LogoMark.Look look, float x, float y, float w, float h, String tag, boolean live, String sport) {
+        draw(cv, look, x, y, w, h, tag, live, sport, 0f);
+    }
+
+    /**
+     * The same, its ground (and its bands and bars) running on extend further to the right than its words and mark, for
+     * the competition's logo to stand in at the end of the one block.
+     */
+    void draw(Canvas cv, LogoMark.Look look, float x, float y, float w, float h, String tag, boolean live, String sport, float extend) {
+        ext = Math.max(0f, extend);
         if (w <= 0 || h <= 0) return;
         this.tag = tag == null ? "" : tag.trim();
         this.live = live;
@@ -192,15 +203,15 @@ final class ChannelMark {
         float barH = h * 0.46f, rowH = h - barH;
         cv.save();
         clip.reset();
-        r.set(x, y, x + w, y + h);
+        r.set(x, y, x + w + ext, y + h);
         clip.addRoundRect(r, rad, rad, Path.Direction.CW);
         cv.clipPath(clip);
-        fill.setShader(grad(x, 0, x + w, 0, VIOLET, CORAL));
-        cv.drawRect(x, y + rowH, x + w, y + h, fill);
+        fill.setShader(grad(x, 0, x + w + ext, 0, VIOLET, CORAL));
+        cv.drawRect(x, y + rowH, x + w + ext, y + h, fill);
         fill.setShader(null);
         // A line of light where the bar meets the row, as a studio set's edge.
         fill.setColor(0x33FFFFFF);
-        cv.drawRect(x, y + rowH, x + w, y + rowH + Math.max(1f, h * 0.015f), fill);
+        cv.drawRect(x, y + rowH, x + w + ext, y + rowH + Math.max(1f, h * 0.015f), fill);
         cv.restore();
         float pad = Math.min(rowH * 0.3f, w * 0.06f);
         // The row: the mark, the name, LIVE at its end while the game is.
@@ -266,7 +277,7 @@ final class ChannelMark {
         float bladeW = Math.min(h * 0.6f, w * 0.21f), top = h * lean;
         cv.save();
         clip.reset();
-        r.set(x, y, x + w, y + h);
+        r.set(x, y, x + w + ext, y + h);
         clip.addRoundRect(r, rad, rad, Path.Direction.CW);
         cv.clipPath(clip);
         Shader blade = grad(x, y, x + bladeW + top, y + h, VIOLET, CORAL);
@@ -341,11 +352,11 @@ final class ChannelMark {
         float band = h * (wide ? 0.4f : 0.32f), pad = Math.min(w, h) * 0.09f;
         cv.save();
         clip.reset();
-        r.set(x, y, x + w, y + h);
+        r.set(x, y, x + w + ext, y + h);
         clip.addRoundRect(r, rad, rad, Path.Direction.CW);
         cv.clipPath(clip);
-        fill.setShader(grad(x, y, x + w, y + band, VIOLET, CORAL));
-        cv.drawRect(x, y, x + w, y + band, fill);
+        fill.setShader(grad(x, y, x + w + ext, y + band, VIOLET, CORAL));
+        cv.drawRect(x, y, x + w + ext, y + band, fill);
         fill.setShader(null);
         cv.restore();
         float mw = band * 0.56f, mh = mw * 49f / 51f;
@@ -383,7 +394,7 @@ final class ChannelMark {
     /** Smoked glass, as channels' own logos sit on the picture: the mark, the name in two white lines, the tag lined. */
     private void smoked(Canvas cv, float x, float y, float w, float h) {
         float rad = Math.min(w, h) * 0.18f;
-        r.set(x, y, x + w, y + h);
+        r.set(x, y, x + w + ext, y + h);
         fill.setShader(grad(0, y, 0, y + h, 0xC8262A36, 0xC40D0F16));
         cv.drawRoundRect(r, rad, rad, fill);
         fill.setShader(null);
@@ -404,7 +415,7 @@ final class ChannelMark {
 
     /** The block's ground: a soft fall of light from its top, and a fine light edge. */
     private void ground(Canvas cv, float x, float y, float w, float h, float rad, int top, int bottom) {
-        r.set(x, y, x + w, y + h);
+        r.set(x, y, x + w + ext, y + h);
         fill.setShader(grad(0, y, 0, y + h, top, bottom));
         cv.drawRoundRect(r, rad, rad, fill);
         fill.setShader(null);
