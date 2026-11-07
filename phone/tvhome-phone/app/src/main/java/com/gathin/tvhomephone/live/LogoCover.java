@@ -73,6 +73,8 @@ final class LogoCover extends View implements BurnGuard.Dims {
     private android.graphics.Bitmap comp;
     private String compName = "";
     private final Paint picture = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+    /** The competition's logo beside every look (on unless switched off in Settings). */
+    private boolean compOn = true;
 
     LogoCover(Context c) {
         super(c);
@@ -108,7 +110,14 @@ final class LogoCover extends View implements BurnGuard.Dims {
         if (logo == comp && n.equals(compName)) return;
         comp = logo;
         compName = n;
-        if (look == Look.COMPETITION) invalidate();
+        invalidate();
+    }
+
+    /** The competition's logo beside the look, or not. */
+    void compOn(boolean on) {
+        if (on == compOn) return;
+        compOn = on;
+        invalidate();
     }
 
     /** What is on: "f1" for Formula 1, else football (Matchday's channel name). */
@@ -170,8 +179,33 @@ final class LogoCover extends View implements BurnGuard.Dims {
     }
 
     @Override protected void onDraw(Canvas cv) {
-        float w = getWidth(), h = getHeight();
-        if (w <= 0 || h <= 0 || look == Look.OFF) return;
+        float full = getWidth(), h = getHeight();
+        if (full <= 0 || h <= 0 || look == Look.OFF) return;
+        // The competition's logo beside the look, in a block of its own at its end, when it is on and known.
+        float side = compOn && comp != null && look != Look.COMPETITION ? Math.min(h * 0.92f, full * 0.3f) : 0f;
+        if (side > 0f) compPanel(cv, full - side, full, h);
+        drawLook(cv, full - side, h);
+    }
+
+    /** The competition's block from x0 to x1: its dark ground (under a solid look's end), a fine line, the logo. */
+    private void compPanel(Canvas cv, float x0, float x1, float h) {
+        float rad = Math.min(x1 - x0, h) * 0.22f;
+        boolean clear = look == Look.SMOKED || look == Look.BROADCAST;
+        r.set(clear ? x0 : x0 - rad * 2f, 0, x1, h);
+        fill.setShader(new LinearGradient(0, 0, 0, h, 0xFA1B1F31, 0xFA07090F, Shader.TileMode.CLAMP));
+        cv.drawRoundRect(r, rad, rad, fill);
+        fill.setShader(null);
+        fill.setColor(0x33FFFFFF);
+        cv.drawRect(x0, h * 0.18f, x0 + Math.max(1f, h * 0.012f), h * 0.82f, fill);
+        float pad = Math.min(x1 - x0, h) * 0.17f, bw = x1 - x0 - 2 * pad, bh = h - 2 * pad;
+        float k = Math.min(bw / comp.getWidth(), bh / comp.getHeight()), dw = comp.getWidth() * k, dh = comp.getHeight() * k;
+        float cx = (x0 + x1) / 2f;
+        r.set(cx - dw / 2f, (h - dh) / 2f, cx + dw / 2f, (h + dh) / 2f);
+        cv.drawBitmap(comp, null, r, picture);
+    }
+
+    /** The look itself in the box w wide (the whole box, or short of the competition's block). */
+    private void drawLook(Canvas cv, float w, float h) {
         if (look == Look.COMPETITION) {
             competitionLook(cv, w, h);
             return;

@@ -265,6 +265,10 @@ competition's logo, as the TV launcher's 4.26 has it: the logo of what is on (th
 the board) on a dark block, as large as it fits, a red dot in its corner while the game is live; its name while the logo
 is read, or F1 over a Formula 1 session. In Settings and the player's menu with the other looks.
 
+The competition's logo beside every logo cover look (4.22): the logo of what is on in a dark block of its own at the
+cover's end, a fine line between, beside the Whitebrook Road looks, Badge, Glass and Broadcast alike, once the logo is
+read. On by default; "Competition logo beside the logo cover" in Settings and the player's menu turns it off.
+
 Subtitles (CC in the film's player): the film's or episode's own, from your playlist's stream, come first, in the
 languages you choose (Settings, Subtitles, in order). When it has none, OpenSubtitles.com is looked in by the title's
 TMDB id (the series' with its season and episode), best first: your languages, the ones that fit the copy playing (its

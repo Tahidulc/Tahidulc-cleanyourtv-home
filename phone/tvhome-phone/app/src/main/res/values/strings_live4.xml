@@ -27,6 +27,7 @@
     <string name="live4_logo">The channel\'s logo</string>
     <string name="live4_read">Read the channel\'s own clock and score</string>
     <string name="live4_read_line">Reads the clock and score off the channel\'s scoreboard, on the phone, so the board shows the same time to the second and its score changes as the channel\'s does; the channel\'s delay is set from it too.</string>
+    <string name="live21_logo_comp">Competition logo beside the logo cover</string>
     <string name="live20_logo_tag">Picture tag on the logo</string>
     <string name="live20_logo_tag_line">Auto reads it from the channel\'s name: 4K or UHD (with HDR when it says so), HD, or none. On the Whitebrook Road and Broadcast looks.</string>
     <string name="live4_logo_line">Homefield\'s mark over the channel\'s own logo, where one is found on the picture.</string>

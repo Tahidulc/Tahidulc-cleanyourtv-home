@@ -132,6 +132,15 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         e.apply();
     }
 
+    /** The competition's logo beside the logo cover's look (on unless switched off). */
+    static boolean logoComp(Context c) {
+        return prefs(c).getBoolean("logo_comp", true);
+    }
+
+    static void setLogoComp(Context c, boolean on) {
+        prefs(c).edit().putBoolean("logo_comp", on).apply();
+    }
+
     /** The picture tag on the logo's cover: Auto (from the channel's name), none, or one set (HD, UHD, 4K, with HDR or not). */
     static ChannelMark.Tag logoTag(Context c) {
         return ChannelMark.Tag.of(prefs(c).getString("logo_tag", ""));

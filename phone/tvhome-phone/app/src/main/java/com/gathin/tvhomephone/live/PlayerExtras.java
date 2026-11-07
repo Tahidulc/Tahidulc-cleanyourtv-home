@@ -700,6 +700,10 @@ final class PlayerExtras implements LiveAlerts.Listener {
                 tg.add(t);
                 addChip(tags, t);
             }
+            toggle(c, box, a.getString(R.string.live21_logo_comp), ScoreBoard.logoComp(c), on -> {
+                ScoreBoard.setLogoComp(c, on);
+                overlay.restyle();
+            });
             // Broadcast mode: Homefield's break over the channel's adverts; one to see now.
             toggle(c, box, a.getString(R.string.live5_broadcast), ScoreBoard.broadcast(c), on -> ScoreBoard.setBroadcast(c, on));
             action(c, box, R.drawable.live_ic_play, a.getString(R.string.live5_broadcast_try), () -> {
