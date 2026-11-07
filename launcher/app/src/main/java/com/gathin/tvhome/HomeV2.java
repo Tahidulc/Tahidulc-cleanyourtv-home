@@ -245,9 +245,10 @@ final class HomeV2 {
         if (matchPanel != null) matchPanel.show();
     }
 
-    /** adb only (--es open_sport players|season|planner): one of the Control Centre's sports cards. */
+    /** adb only (--es open_sport players|season|planner|board): one of the Control Centre's sports cards. */
     void openSport(String which) {
-        SportPanel p = "players".equals(which) ? playersPanel : "season".equals(which) ? seasonPanel : "planner".equals(which) ? plannerPanel : null;
+        SportPanel p = "players".equals(which) ? playersPanel : "season".equals(which) ? seasonPanel : "planner".equals(which) ? plannerPanel
+                : "board".equals(which) ? boardPanel : null;
         if (p != null) p.show();
     }
 
@@ -851,6 +852,8 @@ final class HomeV2 {
     private PlayersPanel playersPanel;
     private SeasonPanel seasonPanel;
     private PlannerPanel plannerPanel;
+    /** The scoreboard over the channel and the cover over its logo: its card (BoardPanel; the tile beside is its switch). */
+    private BoardPanel boardPanel;
     /** A title's panel: OK held on a poster. */
     private TitlePanel titlePanel;
 
@@ -1004,6 +1007,14 @@ final class HomeV2 {
         plannerPanel = new PlannerPanel(this);
         items.add(new ControlCentre.Item("Weekend planner", R.drawable.ic_v2_guide, () -> PlannerPanel.describe(a), null,
                 () -> plannerPanel.show()).in("SPORT"));
+        // The phone's scoreboard and its cover over the channel's logo, over TiviMate (BoardCover): never on by itself.
+        // OK on the tile turns it on for the game on now (or the next one put on) and off again; it goes off by itself
+        // after that game. Its card has the game to choose, Move and resize, and the looks.
+        items.add(new ControlCentre.Item("Scoreboard", R.drawable.ic_scoreboard, () -> BoardCover.words(a), () -> BoardCover.active(a),
+                () -> BoardCover.toggle(a)).in("SPORT").stays());
+        boardPanel = new BoardPanel(this);
+        items.add(new ControlCentre.Item("Scoreboard & logo", R.drawable.ic_scoreboard, () -> "Move, size and look", null,
+                () -> boardPanel.show()).in("SPORT"));
         // Notifications: Do not disturb (nothing pops up for a while but the doorbell), and the page with every switch
         // (on Home and over apps on or off, and each kind: goals, Goal Rush and the live table among them, the news).
         items.add(new ControlCentre.Item("Do not disturb", R.drawable.ic_moon, () -> NotifyPrefs.dndWords(a), () -> NotifyPrefs.dndOn(a),
@@ -1726,6 +1737,7 @@ final class HomeV2 {
         if (playersPanel != null) playersPanel.hide();
         if (seasonPanel != null) seasonPanel.hide();
         if (plannerPanel != null) plannerPanel.hide();
+        if (boardPanel != null) boardPanel.hide();
         TrailerReel.close();
         Surprise.close();
         EpisodeDice.close();
@@ -1772,7 +1784,7 @@ final class HomeV2 {
         boolean busy = page != null || guide.isOpen() || (controlCentre != null && controlCentre.isOpen())
                 || (notifyPanel != null && notifyPanel.isOpen()) || (matchPanel != null && matchPanel.isOpen())
                 || (playersPanel != null && playersPanel.isOpen()) || (seasonPanel != null && seasonPanel.isOpen())
-                || (plannerPanel != null && plannerPanel.isOpen())
+                || (plannerPanel != null && plannerPanel.isOpen()) || (boardPanel != null && boardPanel.isOpen())
                 || (smartPanel != null && smartPanel.isOpen()) || (weatherPanel != null && weatherPanel.isOpen())
                 || (titlePanel != null && titlePanel.isOpen()) || (viewing != null && viewing.isOpen())
                 || (search != null && search.isOpen()) || Surprise.isOpen() || EpisodeDice.isOpen() || Recap.isOpen() || TrailerReel.isOpen()
@@ -1820,6 +1832,7 @@ final class HomeV2 {
         if (playersPanel != null && playersPanel.isOpen()) return playersPanel.key(e);
         if (seasonPanel != null && seasonPanel.isOpen()) return seasonPanel.key(e);
         if (plannerPanel != null && plannerPanel.isOpen()) return plannerPanel.key(e);
+        if (boardPanel != null && boardPanel.isOpen()) return boardPanel.key(e);
         if (TrailerReel.isOpen()) return TrailerReel.key(e);
         if (Surprise.isOpen()) return Surprise.key(e);
         if (EpisodeDice.isOpen()) return EpisodeDice.key(e);

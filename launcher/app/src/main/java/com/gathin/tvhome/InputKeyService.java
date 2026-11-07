@@ -82,6 +82,8 @@ public class InputKeyService extends AccessibilityService {
         if (HalfTimeBreak.key(event)) return true;
         // The credits cover: arrows, OK, and Back to the credits (CreditsCover).
         if (CreditsCover.key(event)) return true;
+        // The scoreboard's Move and resize: the arrows move and size, OK the next part, Back keeps it (BoardCover).
+        if (BoardCover.key(event)) return true;
         if (LiveCentre.key(event)) return true;
         if (F1Tower.key(event)) return true;
         if (LineupCard.key(event)) return true;

@@ -923,8 +923,9 @@ public class AppSearchService extends AccessibilityService {
     }
 
     /**
-     * On a TV without the key helper (the TCL): this helper takes the remote's keys while pop-up mode, the Live Centre
-     * or the F1 timing is open ("popup", "live", "f1"), or an alert card is up for OK held to quiet ("card",
+     * On a TV without the key helper (the TCL): this helper takes the remote's keys while pop-up mode, the Live Centre,
+     * the F1 timing or the scoreboard's Move and resize is open ("popup", "live", "f1", "cover"), or an alert card is up
+     * for OK held to quiet ("card",
      * QuietHold), and gives them up once none is, as filtering keys costs the TCL's remote its auto-repeat. Its other
      * work is not changed.
      */
@@ -963,6 +964,7 @@ public class AppSearchService extends AccessibilityService {
         if (InStepCard.key(event) || Replay.key(event)) return true;
         if (HalfTimeBreak.key(event)) return true;
         if (CreditsCover.key(event)) return true;
+        if (BoardCover.key(event)) return true;
         if (LiveCentre.key(event) || F1Tower.key(event)) return true;
         if (PopupFrame.isShowing() && PopupFrame.key(event)) return true;
         return okOn(event);

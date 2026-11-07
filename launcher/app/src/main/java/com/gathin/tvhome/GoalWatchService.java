@@ -1090,6 +1090,8 @@ public class GoalWatchService extends Service {
         // know where they are before anyone asks.
         new Thread(() -> TvLink.find(this), "tv-link-find").start();
         relane = () -> main.postDelayed(this::replace, 250);
+        // The scoreboard over the channel, when it was on for a game as the launcher last stopped.
+        BoardCover.resume(this);
     }
 
     // ---- Home in front or not: the alert on screen moves to its place there -----------------------------------
@@ -2078,6 +2080,8 @@ public class GoalWatchService extends Service {
             main.post(() -> {
                 boolean live = racing;
                 for (ScoresTicker.Game g : games) if (g.id != null) latest.put(g.id, g);
+                // The scoreboard over the channel (on by hand for one game): each reading kept with when it was seen.
+                BoardCover.read(this, games);
                 for (ScoresTicker.Game g : games) {
                     live |= g.state == 0;
                     if (playerOnly.contains(g.id)) {
@@ -2691,6 +2695,41 @@ public class GoalWatchService extends Service {
      */
     private long hold(ScoresTicker.Game g) {
         return InStep.holdMs(this, watched(g));
+    }
+
+    /** The latest read of a game (main thread); null when it was not read, or the service is not running. */
+    static ScoresTicker.Game latestGame(String id) {
+        GoalWatchService s = self;
+        return s == null || id == null ? null : s.latest.get(id);
+    }
+
+    /** The latest reads, copied (main thread); none when the service is not running. */
+    static List<ScoresTicker.Game> latestGames() {
+        GoalWatchService s = self;
+        return s == null ? new ArrayList<>() : new ArrayList<>(s.latest.values());
+    }
+
+    /**
+     * The game being watched among these, live or about to start (Match mode's, else one on the channel last tuned),
+     * live before to come; null when there is none or the service is not running. Off the main thread: finding the
+     * channel's game can read the TV guide.
+     */
+    static ScoresTicker.Game watchedAmong(java.util.Collection<ScoresTicker.Game> games) {
+        GoalWatchService s = self;
+        if (s == null || games == null) return null;
+        long now = System.currentTimeMillis();
+        ScoresTicker.Game best = null;
+        for (ScoresTicker.Game g : games) {
+            if (g == null || g.state == 2 || (g.state == 1 && g.kickoff - now > 3 * 3_600_000L) || !s.watched(g)) continue;
+            if (best == null || (g.state == 0 && best.state != 0) || (g.state == best.state && g.kickoff < best.kickoff)) best = g;
+        }
+        return best;
+    }
+
+    /** Whether the screensaver is on. */
+    static boolean dreamingNow() {
+        GoalWatchService s = self;
+        return s != null && s.dreaming;
     }
 
     /** The game being watched: Match mode's, or one on the channel last tuned from the TV. */
