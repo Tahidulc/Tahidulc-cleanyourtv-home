@@ -46,13 +46,15 @@ final class BoardBug extends View {
         boolean live;
         /** In its half's added time (BoardCover knows the half): every look moves then, its minutes added beside it. */
         boolean stoppage;
+        /** The last minutes of a close game (one goal or level, from the 85th): its clock beats red. */
+        boolean late;
 
         @Override public boolean equals(Object o) {
             if (!(o instanceof Look)) return false;
             Look l = (Look) o;
             return live == l.live && home.equals(l.home) && away.equals(l.away) && score.equals(l.score) && clock.equals(l.clock)
                     && added.equals(l.added) && tag.equals(l.tag) && homeColour == l.homeColour && awayColour == l.awayColour
-                    && homeOwn == l.homeOwn && awayOwn == l.awayOwn && stoppage == l.stoppage;
+                    && homeOwn == l.homeOwn && awayOwn == l.awayOwn && stoppage == l.stoppage && late == l.late;
         }
 
         @Override public int hashCode() {
@@ -63,7 +65,7 @@ final class BoardBug extends View {
     /** Its looks, as the Scoreboard card names them (the phone's, in the phone's order). */
     enum Style {
         CLASSIC("Classic"), GLASS("Glass"), LIGHT("Light"), CLUB("Club colours"), MINIMAL("Minimal"),
-        CRESTS("Crests and time"), STACKED("Stacked", 1.7f), CARD("Card", 1.6f);
+        CRESTS("Crests and time"), STACKED("Stacked", 1.7f), CARD("Card", 1.6f), FROSTED("Frosted glass");
 
         final String label;
         /** How much taller than the others it is drawn (Stacked: the clubs one above the other; Card: big crests). */
@@ -99,6 +101,9 @@ final class BoardBug extends View {
     private static final class Palette {
         int ground, comp, score0, score1, clock, ink = INK, scoreInk = INK, clockInk = INK, dim = SOFT;
         boolean strips = true, clubFill, sheen;
+        /** Its ground falling to this colour at its foot (0: one colour); a fine light edge round it (Frosted glass). */
+        int groundFoot;
+        boolean edgeLine;
         /** The corners' radius as a share of the height (0.5: a pill). */
         float round = 0.14f;
     }
@@ -163,6 +168,21 @@ final class BoardBug extends View {
                 p.ink = NAVY;
                 p.dim = 0xFF4E5778;
                 p.round = 0.08f;
+                break;
+            case FROSTED:
+                // Frosted glass in look: solid (the channel's own scoreboard under it never shows), a silvery frost
+                // falling darker to its foot, a sheen across its top, a fine light edge; the crests, the score in
+                // lighter frost, the clock: no names.
+                p.ground = 0xFF9AA5BA;
+                p.groundFoot = 0xFF5D677D;
+                p.comp = 0;
+                p.score0 = 0x3DFFFFFF;
+                p.score1 = 0x1FFFFFFF;
+                p.clock = 0x24000000;
+                p.dim = 0xFFE3E8F2;
+                p.round = 0.3f;
+                p.sheen = true;
+                p.edgeLine = true;
                 break;
             case STACKED:
                 p.ground = STACKED_GROUND;
@@ -253,6 +273,9 @@ final class BoardBug extends View {
     void set(Look l) {
         if (l.equals(look)) return;
         if (l.stoppage && !look.stoppage) stoppageAt = System.currentTimeMillis();
+        // Half time and full time as they come: the board turns over, FULL TIME is stamped on it.
+        if ("HT".equals(l.clock) && !"HT".equals(look.clock) && !look.clock.isEmpty()) htAt = System.currentTimeMillis();
+        if ("FT".equals(l.clock) && !"FT".equals(look.clock) && !look.clock.isEmpty()) ftAt = System.currentTimeMillis();
         look = l;
         setContentDescription(l.home + " " + l.score + " " + l.away + (l.clock.isEmpty() ? "" : ", " + l.clock + " " + l.added));
         invalidate();
@@ -282,6 +305,95 @@ final class BoardBug extends View {
         goalAt = System.currentTimeMillis();
         goalFrozen = -1;
         postInvalidateOnAnimation();
+    }
+
+    /** The net's shiver after the band (from RIPPLE_AT, over RIPPLE_MS); half time turning over; FULL TIME stamped. */
+    static final long RIPPLE_AT = BAND_OUT + BAND_MS - 150, RIPPLE_MS = 900, HT_MS = 700, FT_MS = 2600;
+    private long htAt, ftAt, varUntil;
+
+    /** VAR is checking: a white line scans back and forth across the board for ms. */
+    void varCheck(long ms) {
+        varUntil = System.currentTimeMillis() + Math.max(0, ms);
+        postInvalidateOnAnimation();
+    }
+
+    /** Previews: half time this far into its turn, FULL TIME this far into its stamp, VAR scanning (-1: none). */
+    void momentsNow(long ht, long ft, boolean var) {
+        long now = System.currentTimeMillis();
+        htAt = ht < 0 ? 0 : now - ht;
+        ftAt = ft < 0 ? 0 : now - ft;
+        varUntil = var ? now + 60_000L : 0;
+        invalidate();
+    }
+
+    /** Pure: a heartbeat's strength at a moment, 0 to 1: two quick beats a second, as a pulse is. */
+    static float heartbeat(long t) {
+        float x = (t % 1000L) / 1000f;
+        float a = (float) Math.exp(-Math.pow((x - 0.12f) / 0.06f, 2)), b = 0.7f * (float) Math.exp(-Math.pow((x - 0.34f) / 0.07f, 2));
+        return Math.min(1f, a + b);
+    }
+
+    /** The net shivering across the board, t ms in: white mesh lines that bulge and fade, as the ball hits the net. */
+    private void netRipple(Canvas cv, int w, int h, long t) {
+        // Rings running out from the scorer's end of the board, as the net's shiver after the ball goes in: light, thin,
+        // fading as they spread, the score always readable through them.
+        float x = Math.max(0f, Math.min(1f, t / (float) RIPPLE_MS));
+        float cx = flashSide == 2 ? w * 0.62f : w * 0.16f, cy = h / 2f, far = w * 0.75f;
+        edge.setPathEffect(null);
+        edge.setColor(0xFFFFFF);
+        for (int k = 0; k < 3; k++) {
+            float p = x - k * 0.16f;
+            if (p <= 0f || p >= 1f) continue;
+            float e = 1f - (1f - p) * (1f - p);
+            edge.setStrokeWidth(Math.max(1f, h * (0.05f - 0.03f * e)));
+            edge.setAlpha(Math.round(110 * (1f - p) * (k == 0 ? 1f : 0.6f)));
+            cv.drawCircle(cx, cy, h * 0.3f + far * e, edge);
+        }
+        edge.setAlpha(255);
+        edge.setColor(INK);
+        dashFor = -1;
+    }
+
+    /** VAR checking: a bright white line sweeping back and forth across the board, a soft glow either side. */
+    private void varScan(Canvas cv, int w, int h, long now) {
+        float x = (float) ((now % 1600L) / 1600.0), along = x < 0.5f ? x * 2f : 2f - x * 2f;
+        float lx = along * w, lw = Math.max(2f, h * 0.06f);
+        fill.setShader(new LinearGradient(lx - h * 0.6f, 0, lx + h * 0.6f, 0, new int[]{0x00FFFFFF, 0x55FFFFFF, 0x00FFFFFF}, null,
+                Shader.TileMode.CLAMP));
+        cv.drawRect(lx - h * 0.6f, 0, lx + h * 0.6f, h, fill);
+        fill.setShader(null);
+        fill.setColor(0xFFFFFFFF);
+        cv.drawRect(lx - lw / 2f, 0, lx + lw / 2f, h, fill);
+    }
+
+    /** FULL TIME stamped on the board, t ms in: it lands big and settles, holds, then lifts to show the final score. */
+    private void fullTimeStamp(Canvas cv, int w, int h, long t) {
+        float in = Math.min(1f, t / 260f), out = t > FT_MS - 400 ? (FT_MS - t) / 400f : 1f;
+        float scale = 1f + 1.2f * (1f - in) * (1f - in), a = in * Math.max(0f, out);
+        fill.setShader(null);
+        fill.setColor(0x000000);
+        fill.setAlpha(Math.round(170 * a));
+        cv.drawRect(0, 0, w, h, fill);
+        fill.setAlpha(255);
+        cv.save();
+        cv.scale(scale, scale, w / 2f, h / 2f);
+        text.setLetterSpacing(0.18f);
+        String s = "FULL TIME";
+        float size = Math.min(h * 0.5f, w * 0.8f / Math.max(1f, measure(s, 1f) * 1.2f));
+        float sw = measure(s, size), pad = h * 0.18f;
+        edge.setPathEffect(null);
+        edge.setStrokeWidth(Math.max(1.5f, h * 0.05f));
+        edge.setColor(0xFFFFFF);
+        edge.setAlpha(Math.round(255 * a));
+        r.set(w / 2f - sw / 2f - pad, h * 0.16f, w / 2f + sw / 2f + pad, h * 0.84f);
+        cv.drawRoundRect(r, h * 0.1f, h * 0.1f, edge);
+        edge.setAlpha(255);
+        edge.setColor(INK);
+        dashFor = -1;
+        text.setAlpha(255);
+        words(cv, s, w / 2f, 0, h, size, (Math.round(255 * a) << 24) | 0xFFFFFF);
+        text.setLetterSpacing(0f);
+        cv.restore();
     }
 
     /** Previews and tests: drawn t ms into a goal for this side (-1: no goal). */
@@ -448,7 +560,7 @@ final class BoardBug extends View {
         addedOutside = !look.added.isEmpty();
         float tab = addedTab(h), w;
         if (style == Style.MINIMAL) w = minimalWidth(h);
-        else if (style == Style.CRESTS) w = h * 0.4f + crestCell(h, true) + scoreW(h) + crestCell(h, false) + clockW(h);
+        else if (style == Style.CRESTS || style == Style.FROSTED) w = h * 0.4f + crestCell(h, true) + scoreW(h) + crestCell(h, false) + clockW(h);
         else if (style == Style.STACKED) w = h * 0.9f + stackedRowsW(h / 2f) + stackedClockW(h);
         else if (style == Style.CARD) w = cardWidth(h);
         else w = h + 2 * (h * 0.1f + crestW(h) + code(h)) + scoreW(h) + clockW(h) + (p.round >= 0.5f ? h * 0.36f : 0f);
@@ -488,7 +600,7 @@ final class BoardBug extends View {
         float[] in = null;
         if (part) {
             // Its first block (the competition's square, Crests' first crest), never more than a third of it.
-            float first = style == Style.CRESTS ? ch * 1.25f : style == Style.STACKED ? ch * 0.9f : style == Style.CARD ? ch * 1.29f
+            float first = style == Style.CRESTS || style == Style.FROSTED ? ch * 1.25f : style == Style.STACKED ? ch * 0.9f : style == Style.CARD ? ch * 1.29f
                     : style == Style.MINIMAL ? ch * 1.2f : ch;
             in = shownPart(shown, w, h, Math.min(first + inset, w / 3f));
             cv.save();
@@ -512,13 +624,22 @@ final class BoardBug extends View {
         cv.clipPath(clip);
         fill.setShader(null);
         fill.setColor(p.ground);
+        if (p.groundFoot != 0) fill.setShader(new LinearGradient(0, 0, 0, h, p.ground, p.groundFoot, Shader.TileMode.CLAMP));
         cv.drawRect(r, fill);
+        fill.setShader(null);
         if (p.sheen) sheen(cv, w, h);
+        // Half time comes in as the board turns over, a card shown its other face (HT_MS).
+        long ht = htAt > 0 ? now - htAt : -1;
+        boolean turning = ht >= 0 && ht < HT_MS;
+        if (turning) {
+            float f = Math.abs((float) Math.cos(Math.PI * ht / HT_MS));
+            cv.scale(1f, Math.max(0.04f, f), 0, h / 2f);
+        }
         cv.translate(inset, inset);
         int bw = cw - tab;
         if (bw > 0 && ch > 0) {
             if (style == Style.MINIMAL) minimal(cv, bw, ch);
-            else if (style == Style.CRESTS) {
+            else if (style == Style.CRESTS || style == Style.FROSTED) {
                 if (bw / (float) ch >= 3.2f) crestsRow(cv, bw, ch);
                 else crestsTwo(cv, bw, ch);
             } else if (style == Style.STACKED) {
@@ -536,7 +657,26 @@ final class BoardBug extends View {
         }
         cv.translate(-inset, -inset);
         if (goalOn) goalMoment(cv, body, h, gt);
+        // The net shivering across it as the ball goes in, once the scorers' band has gone.
+        if (gt >= RIPPLE_AT && gt < RIPPLE_AT + RIPPLE_MS) netRipple(cv, body, h, gt - RIPPLE_AT);
+        if (varUntil > now) varScan(cv, body, h, now);
+        long ft = ftAt > 0 ? now - ftAt : -1;
+        if (ft >= 0 && ft < FT_MS) fullTimeStamp(cv, body, h, ft);
+        if (p.edgeLine) {
+            float e = Math.max(1f, h * 0.025f);
+            edge.setPathEffect(null);
+            edge.setStrokeWidth(e);
+            edge.setColor(0x8CFFFFFF);
+            r.set(e / 2, e / 2, body - e / 2, h - e / 2);
+            cv.drawRoundRect(r, rad, rad, edge);
+            edge.setColor(INK);
+            dashFor = -1;
+        }
         cv.restore();
+        boolean moving = turning || (gt >= RIPPLE_AT && gt < RIPPLE_AT + RIPPLE_MS) || varUntil > now || (ft >= 0 && ft < FT_MS);
+        if (moving && !part) postInvalidateOnAnimation();
+        // The clock's heartbeat late on: 25 frames a second is smooth enough for it, and light on a TV's 1 GB.
+        else if (look.late && look.live && !part) postInvalidateDelayed(40);
         if (tab > 0) addedTabDraw(cv, body, inset, ch, tab, now);
         if (part) {
             cv.restore();
@@ -744,6 +884,14 @@ final class BoardBug extends View {
         if (p.clock != 0) {
             fill.setColor(p.clock);
             cv.drawRect(x, y, x + w, y + h, fill);
+        }
+        if (look.late && look.live) {
+            // The last minutes of a close game: the clock's box beats red, about once a second.
+            float beat = heartbeat(drawNow);
+            fill.setColor(0xE3061B);
+            fill.setAlpha(Math.round(60 + 150 * beat));
+            cv.drawRect(x, y, x + w, y + h, fill);
+            fill.setAlpha(255);
         }
         int colour = "HT".equals(look.clock) ? AMBER : look.live ? p.clockInk : p.dim;
         if (look.added.isEmpty() || addedOutside) {

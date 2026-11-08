@@ -357,6 +357,24 @@ final class BoardCover {
         if (!on && stats != null) stats.fold(null);
     }
 
+    /** FotMob's figures added to the stats (expected goals, big chances, ratings, momentum) and its players' pictures. */
+    static boolean fotmobOn(Context c) {
+        return prefs(c).getBoolean("fotmob", true);
+    }
+
+    static void setFotmobOn(Context c, boolean on) {
+        prefs(c).edit().putBoolean("fotmob", on).apply();
+    }
+
+    /** Each substitution slides out beside the board, with the picture of who comes on. */
+    static boolean subsOn(Context c) {
+        return prefs(c).getBoolean("subs", true);
+    }
+
+    static void setSubsOn(Context c, boolean on) {
+        prefs(c).edit().putBoolean("subs", on).apply();
+    }
+
     /** Whether each kick-off of its game asks for OK as it shows, to set its clock with the channel's (InStepCard). */
     static boolean asksAtKickoff(Context c) {
         return prefs(c).getBoolean("ask_clock", true);
@@ -619,8 +637,19 @@ final class BoardCover {
             } else {
                 l.clock = r.detail;
             }
+            l.late = late(l.clock, r.home, r.away);
         }
         return l;
+    }
+
+    /**
+     * Pure: the last minutes of a close game (the 85th on, a goal or none between them): the board's clock beats then.
+     */
+    static boolean late(String clock, String home, String away) {
+        int m = minuteOfClock(clock);
+        if (m < 85 || m > 130) return false;
+        int h = goalsOf(score(home) + "–" + score(away), 1), a = goalsOf(score(home) + "–" + score(away), 2);
+        return h >= 0 && a >= 0 && Math.abs(h - a) <= 1;
     }
 
     /** A made-up game, to place it by with no game on (Move and resize, the adb test). */
@@ -733,6 +762,7 @@ final class BoardCover {
             case "goal": return 0xFF3DDC84;
             case "red": return 0xFFFF5A5F;
             case "var": case "pen": case "drama": case "incident": return 0xFFFFB547;
+            case "sub": return 0xFF5CC8FF;
             default: return BoardDrop.PLAIN;
         }
     }
@@ -1730,6 +1760,7 @@ final class BoardCover {
         d.own = d.gameId != null && d.gameId.equals(game(c));
         drops.addLast(d);
         while (drops.size() > 4) drops.removeFirst();
+        if (d.own && bug != null && "VAR".equals(d.chip)) bug.varCheck(8_000L);
         AlertLog.note(c, "alert from the scoreboard: " + d.what);
         if (d.gameId != null && d.gameId.equals(game(c))) poke();
         if (!dropping) nextDrop();
@@ -1897,6 +1928,7 @@ final class BoardCover {
         statsReading = true;
         statsReadAt = now;
         String id = g.id, slug = g.slug;
+        boolean fotmob = fotmobOn(c);
         io.execute(() -> {
             Map<String, String[]> got = null;
             try {
@@ -1907,14 +1939,92 @@ final class BoardCover {
             } catch (Exception ignored) {
                 // read again in two minutes
             }
+            // FotMob's figures on top: expected goals, big chances, ratings, who is on top, its player of the match.
+            FotMob.Match fm = null;
+            if (fotmob) {
+                try {
+                    int fid = FotMob.find(id, g.homeName, g.awayName, g.kickoff);
+                    fm = fid > 0 ? FotMob.details(fid) : null;
+                } catch (RuntimeException ignored) {
+                    fm = null;
+                }
+                if (fm != null) {
+                    if (got == null) got = new HashMap<>();
+                    got.putAll(FotMob.statsOf(fm, code(g.home, g.homeName), code(g.away, g.awayName)));
+                }
+            }
             Map<String, String[]> by = got;
+            FotMob.Match read = fm;
             main().post(() -> {
                 statsReading = false;
+                if (read != null) fotmobRead(c, g, read);
                 if (by == null || by.isEmpty()) return;
                 statsBy = by;
                 statsFor = id;
             });
         });
+    }
+
+    /** The substitutions seen, "game|minute|who came on": each slides out once, those before the board came up never. */
+    private static final java.util.Set<String> subsSeen = new java.util.HashSet<>();
+    private static final java.util.Set<String> subsGames = new java.util.HashSet<>();
+
+    /** FotMob's game read (main thread): its VAR check on the board, and each new substitution beside it. */
+    private static void fotmobRead(Context c, ScoresTicker.Game g, FotMob.Match m) {
+        boolean own = g.id.equals(game(c));
+        if (own && m.varPending && bug != null) bug.varCheck(8_000L);
+        boolean first = subsGames.add(g.id);
+        if (subsGames.size() > 40) subsGames.clear();
+        for (String[] e : m.events) {
+            if (!"Substitution".equals(e[0])) continue;
+            String key = g.id + "|" + e[1] + "|" + e[4];
+            if (!subsSeen.add(key) || first) continue;
+            if (subsSeen.size() > 400) subsSeen.clear();
+            if (!own || !dropsOn(c) || !subsOn(c)) continue;
+            boolean home = "1".equals(e[2]);
+            String team = home ? g.homeName : g.awayName;
+            int kit = home ? g.homeColor : g.awayColor;
+            BoardDrop.Drop d = subDrop(g, e);
+            Context a = c.getApplicationContext();
+            io.execute(() -> {
+                Bitmap b = GoalWatchService.photoFor(e[3], team, kit);
+                if (b == null) b = fotmobPhoto(a, e[4]);
+                Bitmap photo = b;
+                main().post(() -> {
+                    d.photo = photo;
+                    d.homeCrest = homeCrest;
+                    d.awayCrest = awayCrest;
+                    drop(a, d);
+                });
+            });
+        }
+    }
+
+    /** Pure: a substitution's alert ({type, minute, home, on, on id, off, off id}): who came on, who went off, when. */
+    static BoardDrop.Drop subDrop(ScoresTicker.Game g, String[] e) {
+        BoardDrop.Drop d = new BoardDrop.Drop();
+        boolean home = "1".equals(e[2]);
+        d.gameId = g.id;
+        d.chip = "SUBSTITUTION";
+        d.colour = kindColour("sub");
+        String team = home ? (g.homeName != null ? g.homeName : nz(g.home)) : (g.awayName != null ? g.awayName : nz(g.away));
+        d.title = team;
+        d.line = join("On " + nz(e[3]), "off " + nz(e[5]), nz(e[1]).isEmpty() ? "" : e[1] + "'");
+        d.homeColour = BoardBug.colour(g.homeColor, g.homeAlt);
+        d.awayColour = BoardBug.colour(g.awayColor, g.awayAlt);
+        d.side = home ? 1 : 2;
+        d.what = ("SUBSTITUTION " + team + " " + d.line).trim();
+        return d;
+    }
+
+    /** A player's FotMob picture by its id (off the main thread); null when there is none. */
+    static Bitmap fotmobPhoto(Context c, String id) {
+        try {
+            int n = Integer.parseInt(id == null ? "" : id.trim());
+            return n > 0 ? ScoresTicker.cachedLogo(c, FotMob.photoUrl(n), 350) : null;
+        } catch (RuntimeException e) {
+            return null;
+        }
     }
 
     /**
@@ -1946,17 +2056,23 @@ final class BoardCover {
                 least = 1;
                 break;
             case "h1":
-                want = new String[]{"Possession", "Shots", "On target", "Corners"};
+                want = new String[]{"Possession", "Expected goals", "Shots", "On target", "Momentum", "Corners"};
+                most = 4;
                 break;
             case "ht":
-                want = new String[]{"Possession", "Shots", "On target", "Corners", "Pass accuracy", "Fouls"};
+                want = new String[]{"Possession", "Expected goals", "Shots", "Big chances", "On target", "Top rated", "Corners",
+                        "Pass accuracy", "Fouls"};
                 most = 5;
                 break;
             case "h2":
-                want = new String[]{"Possession", "Player of the match", "Corners", "On target", "Shots"};
+                want = new String[]{"Expected goals", "Momentum", "Possession", "Touches in box", "Player of the match", "Corners",
+                        "On target", "Shots"};
+                most = 4;
                 break;
             case "ft":
-                want = new String[]{"Possession", "Shots", "Player of the match", "Pass accuracy", "On target"};
+                want = new String[]{"Expected goals", "Possession", "Shots", "Big chances", "Player of the match", "Distance run",
+                        "Insight", "Pass accuracy", "On target"};
+                most = 5;
                 break;
             default:
                 return new ArrayList<>();

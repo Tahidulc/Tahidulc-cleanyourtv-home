@@ -25,7 +25,7 @@ final class LogoMark extends View {
     /** Its looks, as the Scoreboard card names them. */
     enum Look {
         SIGNATURE("Signature"), MATCHDAY("Matchday"), ROOFLINE("Roofline"), VELOCITY("Velocity"), ROUNDEL("Roundel"),
-        BLOCK("Solid block"), SMOKED("Smoked glass"), COMPETITION("The competition's logo"),
+        BLOCK("Solid block"), FROSTED("Frosted glass"), SMOKED("Smoked glass"), COMPETITION("The competition's logo"),
         GLASS("Glass, with the mark"), MARK("Mark only"), PLAIN("Plain"), BROADCAST("Broadcast, see-through"),
         BROADCAST_BOARD("Broadcast, scoreboard colours");
 
@@ -229,7 +229,7 @@ final class LogoMark extends View {
         words.setTextSize(foot * 0.5f);
         words.setLetterSpacing(0.42f);
         float tw = words.measureText("LIVE"), cx = w / 2f, cy = h - foot / 2f + line / 2f;
-        if (look.channel() && look != Look.SMOKED) {
+        if (look.channel() && look != Look.SMOKED && look != Look.FROSTED) {
             inkShader = new android.graphics.LinearGradient(cx - tw / 2f, 0, cx + tw / 2f, 0, ChannelMark.LILAC, ChannelMark.PEACH,
                     android.graphics.Shader.TileMode.CLAMP);
         }

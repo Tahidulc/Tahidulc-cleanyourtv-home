@@ -354,7 +354,7 @@ public class GoalWatchService extends Service {
         }
     }
 
-    /** A player's head and shoulders: his cut-out, else the blank figure in his side's colour. */
+    /** A player's head and shoulders: his cut-out, else his FotMob picture, else the blank figure in his side's colour. */
     android.graphics.Bitmap playerPhoto(String who, String team, int kit) {
         if (who == null || who.isEmpty()) return null;
         PlayerPhotos.Cutout cut = premierLeague(who, team);
@@ -364,6 +364,11 @@ public class GoalWatchService extends Service {
             if (older != null) cut = older;
         }
         android.graphics.Bitmap b = PlayerPhotos.photo(this, cut);
+        // No cut-out: his picture at FotMob, when the game read there has him in its line-ups.
+        if (b == null && BoardCover.fotmobOn(this)) {
+            int id = FotMob.playerId(who);
+            if (id > 0) b = ScoresTicker.cachedLogo(this, FotMob.photoUrl(id), 350);
+        }
         return b != null ? b : LineupCard.avatar(kit, kit, "");
     }
 

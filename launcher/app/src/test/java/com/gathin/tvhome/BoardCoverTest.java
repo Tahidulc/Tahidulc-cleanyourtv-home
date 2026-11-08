@@ -330,7 +330,9 @@ public class BoardCoverTest {
 
     @Test
     public void theLooksAreThePhonesEight() {
-        assertEquals(8, BoardBug.Style.values().length);
+        assertEquals(9, BoardBug.Style.values().length);
+        // 4.31: Frosted glass, crests and time only.
+        assertEquals(BoardBug.Style.FROSTED, BoardBug.Style.of("FROSTED"));
         // 4.13: Card, the results card, a little taller than the others.
         assertEquals(BoardBug.Style.CARD, BoardBug.Style.of("CARD"));
         assertEquals("Card", BoardBug.Style.CARD.label);
@@ -648,7 +650,8 @@ public class BoardCoverTest {
             assertFalse(l.channel() && l.broadcast());
             assertEquals(l, LogoMark.Look.of(l.name()));
         }
-        assertEquals(7, channel);
+        assertEquals(8, channel);
+        assertTrue(LogoMark.Look.FROSTED.channel());
         assertTrue(LogoMark.Look.SIGNATURE.channel());
         assertTrue(LogoMark.Look.SMOKED.channel());
         assertFalse(LogoMark.Look.GLASS.channel());
@@ -850,5 +853,100 @@ public class BoardCoverTest {
         assertTrue(BoardCover.inAddedTime("106:00", "105'+1'"));
         assertFalse(BoardCover.inAddedTime("HT", "HT"));
         assertFalse(BoardCover.inAddedTime(null, null));
+    }
+
+    // ---- 4.31: frosted glass, the new moments, FotMob ----------------------------------------------------------------
+
+    @Test
+    public void theClockBeatsOnlyInACloseGamesLastMinutes() {
+        assertTrue(BoardCover.late("88:10", "1", "1"));
+        assertTrue(BoardCover.late("90:00", "2", "1"));
+        assertTrue(BoardCover.late("94:30", "0", "0"));
+        assertFalse(BoardCover.late("88:10", "3", "1"));
+        assertFalse(BoardCover.late("70:00", "1", "1"));
+        assertFalse(BoardCover.late("HT", "1", "1"));
+        assertFalse(BoardCover.late(null, "1", "1"));
+    }
+
+    @Test
+    public void theHeartbeatIsTwoPulsesASecond() {
+        float most = 0f, least = 1f;
+        for (long t = 0; t < 1000; t += 10) {
+            float v = BoardBug.heartbeat(t);
+            assertTrue(v >= 0f && v <= 1f);
+            most = Math.max(most, v);
+            least = Math.min(least, v);
+            assertEquals(v, BoardBug.heartbeat(t + 1000), 1e-4f);
+        }
+        assertTrue(most > 0.8f);
+        assertTrue(least < 0.1f);
+    }
+
+    @Test
+    public void fotMobsClubsAreMatchedByName() {
+        assertTrue(FotMob.sameClub("Tottenham Hotspur", "Tottenham"));
+        assertTrue(FotMob.sameClub("Man City", "Manchester City"));
+        assertTrue(FotMob.sameClub("Manchester United", "Man Utd"));
+        assertFalse(FotMob.sameClub("Manchester City", "Manchester United"));
+        assertTrue(FotMob.sameClub("Brighton & Hove Albion", "Brighton"));
+        assertFalse(FotMob.sameClub("Arsenal", "Aston Villa"));
+        assertFalse(FotMob.sameClub("", "Arsenal"));
+    }
+
+    @Test
+    public void whoIsOnTopIsTheLastTenMinutesMomentum() {
+        java.util.List<int[]> m = new java.util.ArrayList<>();
+        for (int i = 1; i <= 30; i++) m.add(new int[]{i, i > 20 ? 40 : -30});
+        assertEquals("home", FotMob.onTop(m)[0]);
+        m.clear();
+        for (int i = 1; i <= 30; i++) m.add(new int[]{i, i % 2 == 0 ? 10 : -10});
+        assertEquals("", FotMob.onTop(m)[0]);
+        assertEquals("", FotMob.onTop(new java.util.ArrayList<>())[0]);
+    }
+
+    @Test
+    public void fotMobsFiguresComeAsTheBoardsStats() {
+        FotMob.Match m = new FotMob.Match();
+        m.stats.put("expected_goals", new String[]{"1.84", "0.62"});
+        m.stats.put("big_chance", new String[]{"3", "1"});
+        m.stats.put("physical_metrics_distance_covered", new String[]{"108345", "105120"});
+        m.homeTop = new String[]{"Bukayo Saka", "8.4", "1"};
+        m.awayTop = new String[]{"Cole Palmer", "7.6", "2"};
+        for (int i = 1; i <= 20; i++) m.momentum.add(new int[]{i, -50});
+        m.homeTeamId = 9825;
+        m.insights.add(new String[]{"Have scored 8 goals in their last 5 matches", "9825", ""});
+        java.util.Map<String, String[]> by = FotMob.statsOf(m, "ARS", "CHE");
+        assertEquals("1.84", by.get("Expected goals")[1]);
+        assertEquals("bar", by.get("Expected goals")[3]);
+        assertEquals("108.3 km", by.get("Distance run")[1]);
+        assertEquals("Saka 8.4", by.get("Top rated")[1]);
+        assertEquals("text", by.get("Top rated")[3]);
+        assertEquals("CHE on top", by.get("Momentum")[1]);
+        assertEquals("one", by.get("Insight")[3]);
+        assertEquals("ARS have scored 8 goals in their last 5 matches", by.get("Insight")[1]);
+        assertNull(FotMob.insight(new String[]{"Haven't kept a clean sheet in 7 matches", "1", ""}, m, "ARS", "CHE"));
+        assertEquals("Arsenal haven't lost to Hull City in their last 10 meetings (8W, 2D)",
+                FotMob.insight(new String[]{"Arsenal haven't lost to Hull City in their last 10 meetings (8W, 2D).", "9825", ""}, m, "ARS", "HUL"));
+        assertNull(by.get("Player of the match"));
+        assertEquals("10.4", FotMob.km("10.4"));
+        assertNull(FotMob.km("n/a"));
+        // The half-time stats lead with expected goals once FotMob has them.
+        by.put("Possession", new String[]{"Possession", "58%", "42%"});
+        assertEquals("Possession", BoardCover.statsFor("ht", by).get(0)[0]);
+        assertEquals("Expected goals", BoardCover.statsFor("ht", by).get(1)[0]);
+        assertEquals("Expected goals", BoardCover.statsFor("ft", by).get(0)[0]);
+    }
+
+    @Test
+    public void aSubstitutionSaysWhoCameOnAndWhoWentOff() {
+        ScoresTicker.Game g = new ScoresTicker.Game();
+        g.id = "1";
+        g.homeName = "Arsenal";
+        g.awayName = "Chelsea";
+        BoardDrop.Drop d = BoardCover.subDrop(g, new String[]{"Substitution", "67", "1", "Gabriel Martinelli", "9", "Leandro Trossard", "8"});
+        assertEquals("SUBSTITUTION", d.chip);
+        assertEquals("Arsenal", d.title);
+        assertEquals("On Gabriel Martinelli · off Leandro Trossard · 67'", d.line);
+        assertEquals(1, d.side);
     }
 }

@@ -145,6 +145,16 @@ final class BoardPanel extends SportPanel {
         stats.words = () -> BoardCover.statsOn(c) ? "A few times a game: before kick-off, each half, half and full time" : "Off";
         stats.ok = () -> BoardCover.setStatsOn(c, !BoardCover.statsOn(c));
         add(drops, stats);
+        Row fot = row("FotMob's stats and pictures", true);
+        fot.on = () -> BoardCover.fotmobOn(c);
+        fot.words = () -> BoardCover.fotmobOn(c) ? "Expected goals, big chances, ratings, who is on top, players' pictures"
+                : "Off · ESPN's stats only";
+        fot.ok = () -> BoardCover.setFotmobOn(c, !BoardCover.fotmobOn(c));
+        Row subs = row("Substitutions from the scoreboard", true);
+        subs.on = () -> BoardCover.subsOn(c);
+        subs.words = () -> BoardCover.subsOn(c) ? "Who comes on, with his picture, and who goes off" : "Off";
+        subs.ok = () -> BoardCover.setSubsOn(c, !BoardCover.subsOn(c));
+        add(fot, subs);
         Row clock = row("Clock with the channel's", true);
         clock.on = () -> BoardCover.asksAtKickoff(c);
         clock.words = () -> BoardCover.asksAtKickoff(c) ? "OK at each kick-off when asked sets it to the second"
@@ -198,8 +208,7 @@ final class BoardPanel extends SportPanel {
         boardColoured.clear();
         List<Row> looks = new ArrayList<>();
         for (BoardBug.Style st : BoardBug.Style.values()) looks.add(lookTile(st));
-        addLine(132, 4, looks.subList(0, 4));
-        addLine(132, 4, looks.subList(4, looks.size()));
+        for (int i = 0; i < looks.size(); i += 3) addLine(132, 3, looks.subList(i, Math.min(looks.size(), i + 3)));
         heading("LOGO COVER LOOK: WHITEBROOK ROAD SPORTS");
         markPreviews.clear();
         List<Row> channels = new ArrayList<>(), others = new ArrayList<>();
