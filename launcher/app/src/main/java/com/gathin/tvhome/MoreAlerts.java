@@ -736,6 +736,61 @@ final class MoreAlerts {
         return d;
     }
 
+    /**
+     * The predictions' results board at full time (Predictions.settle; off the main thread): every pick with what it
+     * earned, best first, and the season's table; YOU CALLED IT with the gold cup when someone had it spot on. Slid out
+     * beside the scoreboard when it is up (its pages: one a player, then the table), else the card. Null with no picks.
+     */
+    static ScoreCard.Data predictionBoard(Context c, ScoresTicker.Game g, JSONObject one, int h, int a) {
+        JSONObject picks = one == null ? null : one.optJSONObject("p");
+        if (picks == null) return null;
+        List<Object[]> all = new ArrayList<>();
+        for (Iterator<String> it = picks.keys(); it.hasNext(); ) {
+            String who = it.next();
+            JSONArray p = picks.optJSONArray(who);
+            if (p != null) all.add(new Object[]{who, p.optInt(0, -1), p.optInt(1, -1)});
+        }
+        List<String[]> rows = PredictionBoard.results(all, h, a);
+        if (rows.isEmpty()) return null;
+        ScoreCard.Data d = GoalWatchService.footballCard(g);
+        if (d == null) {
+            d = new ScoreCard.Data();
+            d.gameId = g.id;
+            d.homeName = g.homeName != null ? g.homeName : g.home;
+            d.awayName = g.awayName != null ? g.awayName : g.away;
+            d.slug = g.slug;
+        }
+        d.kind = "prediction";
+        d.key = "P|" + g.id;
+        d.score = h + "–" + a;
+        d.minute = "FT";
+        d.watch = null;
+        d.channel = null;
+        d.channelLogo = null;
+        boolean spotOn = rows.get(0)[2].startsWith("Spot on");
+        if (spotOn) {
+            d.label = "YOU CALLED IT";
+            d.labelColour = GOLD;
+            d.labelIcon = new Trophy();
+        } else {
+            d.label = "PREDICTIONS";
+            d.labelSmall = "FULL TIME";
+            d.labelColour = CLOSE;
+        }
+        StringBuilder head = new StringBuilder();
+        for (String[] r : rows) {
+            if (head.length() > 0) head.append("  ·  ");
+            head.append(r[0]).append(' ').append(r[1]).append(' ').append(r[2].replace("Spot on · ", "✓ ").replace("Right result · ", "").replace("No points", "0"));
+        }
+        d.headline = head.toString();
+        String table = Predictions.leaderboard(c);
+        d.line = "Season: " + table;
+        d.boardPages = PredictionBoard.boardPages(rows, table);
+        d.showMs = 14_000L;
+        AlertLog.note(c, "predictions board: " + AlertLog.game(g) + ", " + d.headline + " · " + d.line);
+        return d;
+    }
+
     /** YOU CALLED IT with the gold trophy ("Spot on 2–1 · +3 points · 4 correct this week"), or SO CLOSE ("You said 2–0"). */
     private static ScoreCard.Data predictionCard(Context c, ScoresTicker.Game g, List<String> exact, String close, int[] closePick,
                                                  int h, int a, int week, boolean many) {

@@ -93,6 +93,8 @@ final class ScoresTicker {
         int homeColor, awayColor;
         /** The ground, as ESPN names it ("Anfield"); null when it does not say. */
         String venue;
+        /** The ground's town and country as ESPN gives them ("Falmer", "England"), for its weather; null when not given. */
+        String venueCity, venueCountry;
         /** Their second colours (ESPN's alternateColor), for the away side's kit when the first colours clash. */
         int homeAlt, awayAlt;
         /** The clubs' full names ("Tottenham Hotspur"), for finding the game in a TV guide. */
@@ -515,6 +517,11 @@ final class ScoresTicker {
         g.league = tag;
         JSONObject ground = c.optJSONObject("venue");
         if (ground != null && !ground.optString("fullName").isEmpty()) g.venue = ground.optString("fullName");
+        JSONObject address = ground == null ? null : ground.optJSONObject("address");
+        if (address != null && !address.optString("city").isEmpty()) {
+            g.venueCity = address.optString("city");
+            g.venueCountry = address.optString("country", "");
+        }
         g.homeId = homeId;
         g.awayId = away.getJSONObject("team").optString("id");
         g.home = home.getJSONObject("team").optString("abbreviation");

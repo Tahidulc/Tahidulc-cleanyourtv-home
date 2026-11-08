@@ -51,6 +51,24 @@ final class FotMob {
         final List<String[]> events = new ArrayList<>();
         boolean varPending;
         int homeTeamId, awayTeamId;
+        /** Every player FotMob has rated, best first: {name, rating ("8.5"), id, home ("1"/"0")}. */
+        final List<String[]> ratings = new ArrayList<>();
+    }
+
+    /** Pure: the n best rated (fewer when fewer are rated), each {name, rating, id, home}. */
+    static List<String[]> topRated(Match m, int n) {
+        List<String[]> out = new ArrayList<>();
+        if (m == null) return out;
+        for (String[] r : m.ratings) {
+            if (out.size() >= n) break;
+            out.add(r);
+        }
+        return out;
+    }
+
+    /** Pure: a rating as FotMob shows it, to one place ("8.5", "7.0"); "" when there is none. */
+    static String rating(double r) {
+        return r <= 0 ? "" : String.format(Locale.UK, "%.1f", r);
     }
 
     /** Each game read lately, by ESPN's id: {the Match (or null when not found), when}. Shared by every scoreboard. */
@@ -272,6 +290,12 @@ final class FotMob {
                         JSONObject pl = ps.optJSONObject(i);
                         if (pl == null || pl.optInt("id") <= 0) continue;
                         String n = plain(pl.optString("name"));
+                        JSONObject perf = pl.optJSONObject("performance");
+                        double r = perf == null ? 0 : perf.optDouble("rating", 0);
+                        if (r > 0) {
+                            m.ratings.add(new String[]{pl.optString("name"), rating(r), String.valueOf(pl.optInt("id")),
+                                    "homeTeam".equals(side) ? "1" : "0"});
+                        }
                         players.put(n, pl.optInt("id"));
                         players.put(surname(n), pl.optInt("id"));
                         if ("starters".equals(list)) starters.add(String.valueOf(pl.optInt("id")));
@@ -279,6 +303,7 @@ final class FotMob {
                 }
             }
         }
+        m.ratings.sort((x, y) -> Double.compare(Double.parseDouble(y[1]), Double.parseDouble(x[1])));
         // FotMob lists a substitution's two players in either order: the one who started (or came on before) went off.
         for (String[] e : m.events) {
             if (!"Substitution".equals(e[0])) continue;

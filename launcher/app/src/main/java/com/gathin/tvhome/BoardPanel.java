@@ -155,6 +155,24 @@ final class BoardPanel extends SportPanel {
         subs.words = () -> BoardCover.subsOn(c) ? "Who comes on, with his picture, and who goes off" : "Off";
         subs.ok = () -> BoardCover.setSubsOn(c, !BoardCover.subsOn(c));
         add(fot, subs);
+        Row backup = row("Backup channel when the picture stops", true);
+        backup.on = () -> ChannelWatch.backupOn(c);
+        backup.words = () -> ChannelWatch.backupOn(c) ? "Frozen for 10 seconds: the same match on another channel, OK to switch" : "Off";
+        backup.ok = () -> ChannelWatch.setBackupOn(c, !ChannelWatch.backupOn(c));
+        Row fourK = row("Also in 4K", true);
+        fourK.on = () -> ChannelWatch.fourKOn(c);
+        fourK.words = () -> ChannelWatch.fourKOn(c) ? "When the playlist has the channel in 4K: a chip on the logo's cover, OK to switch" : "Off";
+        fourK.ok = () -> ChannelWatch.setFourKOn(c, !ChannelWatch.fourKOn(c));
+        add(backup, fourK);
+        Row ratings = row("Player ratings at full time", true);
+        ratings.on = () -> MatchExtras.ratingsOn(c);
+        ratings.words = () -> MatchExtras.ratingsOn(c) ? "FotMob's three best with their pictures, beside the board or as a card" : "Off";
+        ratings.ok = () -> MatchExtras.setRatingsOn(c, !MatchExtras.ratingsOn(c));
+        Row weather = row("Weather at the ground", true);
+        weather.on = () -> MatchExtras.weatherOn(c);
+        weather.words = () -> MatchExtras.weatherOn(c) ? "At kick-off and half time: temperature, wind, rain by full time" : "Off";
+        weather.ok = () -> MatchExtras.setWeatherOn(c, !MatchExtras.weatherOn(c));
+        add(ratings, weather);
         Row clock = row("Clock with the channel's", true);
         clock.on = () -> BoardCover.asksAtKickoff(c);
         clock.words = () -> BoardCover.asksAtKickoff(c) ? "OK at each kick-off when asked sets it to the second"

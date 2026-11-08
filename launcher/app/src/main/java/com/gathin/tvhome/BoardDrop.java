@@ -38,6 +38,19 @@ final class BoardDrop extends BoardSide {
         String key;
         /** The player's picture (a cut-out, head and shoulders), and both clubs' crests (for a dark ground); each may be null. */
         Bitmap photo, homeCrest, awayCrest;
+        /**
+         * Pages turned one after another ({bold words, line}), each with its own picture (photos, by page; null for
+         * none): the ratings' three best, the weather, the predictions' table. Null for one page as before.
+         */
+        String[][] pages;
+        Bitmap[] photos;
+    }
+
+    /** Pure: how many pages an alert turns through (the line-ups' two, its own pages, else one). */
+    static int pageCount(Drop d) {
+        if (d == null) return 1;
+        if (d.lineups) return 2;
+        return d.pages != null && d.pages.length > 0 ? d.pages.length : 1;
     }
 
     /** The colour of the kinds with none of their own (half time, kick-off, the line-ups): the board's block instead. */
@@ -98,7 +111,7 @@ final class BoardDrop extends BoardSide {
         Drop was = drop;
         drop = d;
         float most = 0;
-        for (int p = 0; p < (d.lineups ? 2 : 1); p++) most = Math.max(most, lay(null, part(p), 0, h, 0, 255, 1e6f, 0)[0]);
+        for (int p = 0; p < pageCount(d); p++) most = Math.max(most, lay(null, part(p), 0, h, 0, 255, 1e6f, 0)[0]);
         drop = was;
         givenH = h;
         givenW = Math.round(Math.min(room, most + ends(look, unit, h, tuck, true)));
@@ -115,14 +128,17 @@ final class BoardDrop extends BoardSide {
         run = 0f;
         slideOut();
         postDelayed(startRun, SLIDE_MS + RUN_WAIT_MS);
-        if (d.lineups) postDelayed(nextPage, SLIDE_MS + pageFor(0));
+        if (pageCount(d) > 1) postDelayed(nextPage, SLIDE_MS + pageFor(0));
     }
 
     /** How long it stays out: at least least, long enough for a long line to run to its end, each eleven its page. */
     long showFor(long least) {
         if (drop == null) return least;
-        if (!drop.lineups) return Math.max(least, SLIDE_MS + RUN_WAIT_MS + runTime(0) + RUN_END_MS);
-        return SLIDE_MS + pageFor(0) + TURN_MS + pageFor(1);
+        int n = pageCount(drop);
+        if (n == 1) return Math.max(least, SLIDE_MS + RUN_WAIT_MS + runTime(0) + RUN_END_MS);
+        long all = SLIDE_MS;
+        for (int p = 0; p < n; p++) all += pageFor(p) + (p > 0 ? TURN_MS : 0);
+        return all;
     }
 
     /** Previews: shown at once, this far out, on this page, its line this far along. */
@@ -130,7 +146,7 @@ final class BoardDrop extends BoardSide {
         onFolding();
         drop = d;
         chipColour = d.colour == PLAIN ? look.block : d.colour;
-        page = d.lineups ? Math.max(0, Math.min(1, pg)) : 0;
+        page = Math.max(0, Math.min(pageCount(d) - 1, pg));
         turn = 1f;
         run = along;
         outNow(howFar);
@@ -182,9 +198,9 @@ final class BoardDrop extends BoardSide {
     }
 
     private void nextPage() {
-        if (!isOut() || drop == null || !drop.lineups || page >= 1) return;
+        if (!isOut() || drop == null || page >= pageCount(drop) - 1) return;
         if (running != null) running.cancel();
-        page = 1;
+        page++;
         run = 0f;
         if (turning != null) turning.cancel();
         ValueAnimator va = ValueAnimator.ofFloat(0f, 1f);
@@ -196,6 +212,7 @@ final class BoardDrop extends BoardSide {
         turning = va;
         va.start();
         postDelayed(startRun, TURN_MS + RUN_WAIT_MS);
+        if (page < pageCount(drop) - 1) postDelayed(nextPage, TURN_MS + pageFor(page));
     }
 
     // ---- what it says --------------------------------------------------------------------------------------------------
@@ -206,6 +223,15 @@ final class BoardDrop extends BoardSide {
         Part o = new Part();
         o.headColour = look.ink;
         o.lineColour = look.dim;
+        if (!d.lineups && d.pages != null && d.pages.length > 0) {
+            String[] pg = d.pages[Math.max(0, Math.min(d.pages.length - 1, p))];
+            o.head = pg.length > 0 && pg[0] != null ? pg[0] : "";
+            o.line = pg.length > 1 && pg[1] != null ? pg[1] : "";
+            o.lineColour = look.ink;
+            o.crestA = d.own ? null : d.homeCrest;
+            o.crestB = d.own ? null : d.awayCrest;
+            return o;
+        }
         if (d.lineups) {
             String s = p == 0 ? d.line : d.line2;
             int colon = s.indexOf(": "), club = p == 0 ? d.homeColour : d.awayColour;
@@ -268,17 +294,29 @@ final class BoardDrop extends BoardSide {
     }
 
     private float photoW(int h) {
-        Bitmap b = drop.photo;
-        if (b == null || drop.lineups || b.getHeight() <= 0) return 0;
-        float ph = photoH(h);
-        return Math.min(ph * 0.82f, ph * b.getWidth() / (float) b.getHeight());
+        if (drop.lineups) return 0;
+        float ph = photoH(h), w = 0;
+        // Room for the widest picture its pages have, so the words stay where they are as the pages turn.
+        Bitmap[] all = drop.photos != null ? drop.photos : new Bitmap[]{drop.photo};
+        for (Bitmap b : all) {
+            if (b == null || b.getHeight() <= 0) continue;
+            w = Math.max(w, Math.min(ph * 0.82f, ph * b.getWidth() / (float) b.getHeight()));
+        }
+        return w;
+    }
+
+    /** The picture standing by the board on this page: its page's own, else the alert's. */
+    private Bitmap photoNow() {
+        if (drop.photos != null) return page < drop.photos.length ? drop.photos[page] : null;
+        return drop.photo;
     }
 
     /** The player, head and shoulders, standing on the strip's foot by the board and rising above its top. */
     @Override protected void over(Canvas cv, int w, int h) {
         if (drop == null || turn < 1f) return;
         float pw = photoW(h);
-        if (pw > 0) photo(cv, drop.photo, start, 0, pw, h, 255);
+        Bitmap now = photoNow();
+        if (pw > 0 && now != null) photo(cv, now, start, 0, pw, h, 255);
     }
 
     /**

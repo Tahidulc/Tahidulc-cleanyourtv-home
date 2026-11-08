@@ -2119,7 +2119,11 @@ public class GoalWatchService extends Service {
                     boolean halfBefore = g.id != null && Boolean.TRUE.equals(wasHalf.put(g.id, g.halftime));
                     Integer before = g.id == null ? null : lastState.put(g.id, g.state);
                     if (primed && !catchUp && g.id != null && g.state == 0) {
-                        if (before != null && before == 1) restart(g, false);
+                        if (before != null && before == 1) {
+                            restart(g, false);
+                            // The weather at the ground, after the kick-off's card and line-ups, for the game watched.
+                            if (watched(g)) main.postDelayed(() -> cardRun(() -> MatchExtras.weather(this, g, "kickoff")), hold(g) + 40_000L);
+                        }
                         else if (halfBefore && !g.halftime) {
                             // Hopped away at half time: its channel back on for the second half (HalfTimeHop).
                             if (HalfTimeHop.away(g.id)) HalfTimeHop.secondHalf(this, g);
@@ -2128,6 +2132,8 @@ public class GoalWatchService extends Service {
                             restart(g, true);
                         } else if (!halfBefore && g.halftime) {
                             if (MatchMode.isGame(this, g.id)) main.postDelayed(() -> MatchMode.event(this, g, "ht", null), hold(g));
+                            // The weather at the ground again, after the half-time card, for the game watched.
+                            if (watched(g)) main.postDelayed(() -> cardRun(() -> MatchExtras.weather(this, g, "ht")), hold(g) + 35_000L);
                             // Another game for the break, offered after the half-time card (HalfTimeHop).
                             if (!homeInFront && watched(g) && HalfTimeHop.on(this)) {
                                 main.postDelayed(() -> HalfTimeHop.offer(this, g, new ArrayList<>(latest.values())), hold(g) + 15_000L);
@@ -2147,6 +2153,11 @@ public class GoalWatchService extends Service {
                                 MatchMode.event(this, g, "ft", null);
                                 enqueue(g, new String[]{"FT|" + g.id, "", "", "", "ft"}, false);
                             }, hold(g));
+                            // FotMob's ratings just after the full-time card: beside the board when it is up, else a card
+                            // (MatchExtras), for the game watched and the starred clubs' games.
+                            if (watched(g) || starred(this, g)) {
+                                main.postDelayed(() -> cardRun(() -> MatchExtras.ratings(this, g)), hold(g) + 8_000L);
+                            }
                         }
                     }
                     for (String[] goal : g.goals) {

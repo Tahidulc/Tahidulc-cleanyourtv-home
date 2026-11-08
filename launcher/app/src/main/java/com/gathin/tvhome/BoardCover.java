@@ -805,6 +805,12 @@ final class BoardCover {
         int scored = "goal".equals(d.kind) ? goalSide(d.scoreBefore, d.score) : 0;
         if ("goal".equals(d.kind) && d.gameId != null && !nz(d.score).isEmpty()) o.key = d.gameId + "|" + nz(d.score);
         o.side = scored > 0 ? scored : d.crest == null ? 0 : d.crest == d.homeCrest ? 1 : d.crest == d.awayCrest ? 2 : 0;
+        // The ground's weather, the ratings, the predictions: what the card says, its pages turned beside the board.
+        if (d.boardPages != null) {
+            o.pages = d.boardPages;
+            o.photos = d.boardPhotos;
+            o.line = d.boardPages.length > 0 && d.boardPages[0].length > 1 ? nz(d.boardPages[0][1]) : o.line;
+        }
         // As the card has them: the player's picture, both crests.
         o.photo = d.photo;
         o.homeCrest = d.homeCrest;
@@ -895,6 +901,9 @@ final class BoardCover {
     /** A game's card while the board is up: slid out beside it instead, in its look; true when taken (main thread). */
     static boolean take(Context c, ScoreCard.Data d) {
         if (d == null || d.f1 || d.gameId == null || d.homeName == null || !up(c)) return false;
+        // Full time on the board and too little of its minute left for a long card (the ratings' pages): a card instead.
+        long ft = prefs(c).getLong("ft", 0);
+        if (d.boardPages != null && ft > 0 && System.currentTimeMillis() - ft > FT_GONE_MS - 35_000L) return false;
         ScoresTicker.Game g = GoalWatchService.latestGame(d.gameId);
         drop(c, dropOf(d, g == null ? 0 : BoardBug.colour(g.homeColor, g.homeAlt), g == null ? 0 : BoardBug.colour(g.awayColor, g.awayAlt)));
         return true;
@@ -1319,7 +1328,85 @@ final class BoardCover {
         }
         if (!ensureWindows(c)) return 5_000L;
         showGame(c, now, false, null);
+        // The match playing in TiviMate: its picture frozen (the backup channel), its 4K form in the playlist (the chip).
+        if (r.state == 0 && !r.halftime) {
+            ScoresTicker.Game g = GoalWatchService.latestGame(id);
+            if (g != null) {
+                String fourK = ChannelWatch.tick(c, g);
+                if (fourK != null) showFourK(c, fourK);
+            }
+        }
         return 1_000L;
+    }
+
+    // ---- Also in 4K: a chip under the logo's cover, OK to switch -------------------------------------------------------
+
+    private static FrameLayout chipWin;
+    private static String chipFor;
+    private static final long CHIP_MS = 10_000L;
+    private static final Runnable chipGone = BoardCover::hideFourK;
+
+    /** The chip for name (the playlist's 4K form of the channel on), under the logo's cover (else under the board). */
+    private static void showFourK(Context c, String name) {
+        hideFourK();
+        if (!Settings.canDrawOverlays(c)) return;
+        BoardPlace p = place != null ? place : BoardPlace.standard();
+        float k = sh / 1080f;
+        TextView t = new TextView(c);
+        t.setText("Also in 4K   OK");
+        t.setTextColor(0xFFFFFFFF);
+        t.setTextSize(TypedValue.COMPLEX_UNIT_PX, 22 * k);
+        t.setTypeface(ScoreCard.outfit(c, 700));
+        t.setLetterSpacing(0.04f);
+        t.setGravity(Gravity.CENTER);
+        int padH = Math.round(16 * k), padV = Math.round(7 * k);
+        t.setPadding(padH, padV, padH, padV);
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(0xF00B0E16);
+        bg.setCornerRadius(10 * k);
+        bg.setStroke(Math.max(1, Math.round(1.5f * k)), 0x66FFFFFF);
+        t.setBackground(bg);
+        chipWin = new FrameLayout(c);
+        chipWin.addView(t, new FrameLayout.LayoutParams(-2, -2));
+        t.measure(View.MeasureSpec.UNSPECIFIED, View.MeasureSpec.UNSPECIFIED);
+        int w = t.getMeasuredWidth(), h = t.getMeasuredHeight();
+        WindowManager.LayoutParams lp = params(w, h, false);
+        boolean underLogo = logoWin != null && mark != null;
+        int right = underLogo ? Math.round((p.lx + p.lw) * sw) : Math.round(p.bx * sw) + w;
+        lp.x = Math.max(0, right - w);
+        lp.y = Math.min(sh - h, Math.round((underLogo ? p.ly + p.lh : p.by + p.bh) * sh) + Math.round(10 * k));
+        try {
+            c.getSystemService(WindowManager.class).addView(chipWin, lp);
+        } catch (RuntimeException e) {
+            chipWin = null;
+            return;
+        }
+        chipFor = name;
+        if (!InputKeyService.running) AppSearchService.keysFor("chip4k", true);
+        main().postDelayed(chipGone, CHIP_MS);
+        AlertLog.note(c, "Also in 4K: " + name + " offered on the logo's cover");
+    }
+
+    private static void hideFourK() {
+        main().removeCallbacks(chipGone);
+        if (chipWin != null) removeWindow(app, chipWin);
+        chipWin = null;
+        chipFor = null;
+        if (!InputKeyService.running) AppSearchService.keysFor("chip4k", false);
+    }
+
+    /** OK while the chip shows: its 4K channel; true when the key was the chip's. */
+    private static boolean fourKKey(KeyEvent e) {
+        if (chipFor == null || !QuietHold.isOk(e.getKeyCode())) return false;
+        if (e.getAction() == KeyEvent.ACTION_UP && !e.isCanceled()) {
+            String name = chipFor;
+            Context c = app;
+            main().post(() -> {
+                hideFourK();
+                if (c != null) ChannelWatch.toFourK(c, name);
+            });
+        }
+        return true;
     }
 
     /** The game whose half time is on the screen, and since when. */
@@ -1573,6 +1660,7 @@ final class BoardCover {
         holdKeys(false);
         if (main != null) main.removeCallbacks(menuOnHold);
         okDown = -1;
+        if (chipWin != null || chipFor != null) hideFourK();
         removeWindow(c, boardWin);
         removeWindow(c, logoWin);
         boardWin = null;
@@ -2398,6 +2486,7 @@ final class BoardCover {
      */
     static boolean key(KeyEvent e) {
         if (menuWin != null) return menuKey(e);
+        if (!adjusting && fourKKey(e)) return true;
         if (!adjusting) return holdOk(e);
         int code = e.getKeyCode();
         boolean down = e.getAction() == KeyEvent.ACTION_DOWN, up = e.getAction() == KeyEvent.ACTION_UP && !e.isCanceled();

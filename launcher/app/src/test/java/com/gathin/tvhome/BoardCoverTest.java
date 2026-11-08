@@ -967,4 +967,105 @@ public class BoardCoverTest {
         assertEquals(126, FotMob.hundredths("1.26"));
         assertEquals(0, FotMob.hundredths("n/a"));
     }
+
+    // ---- 4.33: the backup channel, Also in 4K, ratings, the ground's weather, the predictions board -------------------
+
+    private static java.util.List<String[]> guide(String... names) {
+        java.util.List<String[]> g = new java.util.ArrayList<>();
+        for (String n : names) g.add(new String[]{"0", n, "Sport"});
+        return g;
+    }
+
+    @Test
+    public void aFrozenPictureIsTenSecondsOfSilenceAfterPlaying() {
+        assertTrue(ChannelWatch.frozen(60_000L, 10_000L));
+        assertFalse(ChannelWatch.frozen(60_000L, 9_000L));
+        // A channel just tuned is still loading: not frozen.
+        assertFalse(ChannelWatch.frozen(5_000L, 30_000L));
+    }
+
+    @Test
+    public void theBackupIsTheSameChannelsOtherFormFirstThenTheMatchsOthers() {
+        java.util.List<String[]> g = guide("Sky Sports Main Event UHD", "Sky Sports Main Event HD", "Sky Sports Premier League HD",
+                "BBC One HD", "TNT Sports 1 HD");
+        java.util.List<String> alt = ChannelWatch.alternatives("Sky Sports Main Event UHD",
+                java.util.Arrays.asList("Sky Sports Main Event", "Sky Sports Premier League"), g);
+        assertEquals(java.util.Arrays.asList("Sky Sports Main Event HD", "Sky Sports Premier League HD"), alt);
+        // Without the playlist's list: the match's channels by name, the one on left out.
+        assertEquals(java.util.Collections.singletonList("Sky Sports Premier League"), ChannelWatch.alternatives("Sky Sports Main Event",
+                java.util.Arrays.asList("Sky Sports Main Event", "Sky Sports Premier League"), new java.util.ArrayList<>()));
+    }
+
+    @Test
+    public void alsoIn4kOnlyWhenThePlaylistHasIt() {
+        java.util.List<String[]> g = guide("Sky Sports Main Event HD", "Sky Sports Main Event UHD", "TNT Sports 1 HD");
+        assertEquals("Sky Sports Main Event UHD", ChannelWatch.uhdFor("Sky Sports Main Event HD", g));
+        assertNull(ChannelWatch.uhdFor("Sky Sports Main Event UHD", g));
+        assertNull(ChannelWatch.uhdFor("TNT Sports 1 HD", g));
+        assertNull(ChannelWatch.uhdFor("", g));
+        assertTrue(ChannelWatch.fourK("UK: TNT Sports 4K"));
+        assertFalse(ChannelWatch.fourK("Sky Sports Mix HD"));
+    }
+
+    @Test
+    public void theRatingsPagesAreTheThreeBestThenTheRest() {
+        java.util.List<String[]> top = new java.util.ArrayList<>();
+        String[][] r = {{"Martin Ødegaard", "8.5", "1", "1"}, {"David Raya", "8.2", "2", "1"}, {"Konstantinos Tzolakis", "8.0", "3", "0"},
+                {"Semi Ajayi", "8.0", "4", "0"}, {"Jurriën Timber", "7.9", "5", "1"}};
+        for (String[] x : r) top.add(x);
+        String[][] pages = MatchExtras.ratingPages(top, "Martin Ødegaard");
+        assertEquals(4, pages.length);
+        assertEquals("1  Ødegaard", pages[0][0]);
+        assertEquals("8.5 · Player of the match", pages[0][1]);
+        assertEquals("8.2", pages[1][1]);
+        assertEquals("Ajayi 8.0 · Timber 7.9", pages[3][1]);
+        assertEquals("Ødegaard 8.5 · Player of the match", MatchExtras.ratingsHeadline(top, "Martin Ødegaard"));
+        assertEquals("Ødegaard 8.5 · best rated", MatchExtras.ratingsHeadline(top, "Someone Else"));
+        assertEquals("8.5", FotMob.rating(8.49));
+        assertEquals("", FotMob.rating(0));
+    }
+
+    @Test
+    public void theGroundsWeatherReadsAsAForecaster() {
+        assertEquals("9° · Light rain at Emirates Stadium", MatchExtras.weatherHeadline(9.4, "Light rain", "Emirates Stadium"));
+        assertEquals("Wind 14 mph SW · Rain 80% by full time · 6° at full time", MatchExtras.weatherLine(13.6, "SW", 80, 6.2, false));
+        assertEquals("Wind 5 mph · Dry to full time", MatchExtras.weatherLine(5, "", 10, Double.NaN, true));
+        assertEquals("SW", MatchExtras.compass(225));
+        assertEquals("N", MatchExtras.compass(359));
+        assertEquals("GB", MatchExtras.countryCode("England"));
+        assertEquals("", MatchExtras.countryCode("Narnia"));
+    }
+
+    @Test
+    public void thePredictionsBoardIsBestFirstThenTheSeason() {
+        java.util.List<Object[]> picks = new java.util.ArrayList<>();
+        picks.add(new Object[]{"Player 3", 1, 1});
+        picks.add(new Object[]{"You", 2, 1});
+        picks.add(new Object[]{"Player 2", 3, 1});
+        picks.add(new Object[]{"Taken back", -1, -1});
+        java.util.List<String[]> rows = PredictionBoard.results(picks, 2, 1);
+        assertEquals(3, rows.size());
+        assertEquals("You", rows.get(0)[0]);
+        assertEquals("Spot on · +3", rows.get(0)[2]);
+        assertEquals("Right result · +1", rows.get(1)[2]);
+        assertEquals("No points", rows.get(2)[2]);
+        String[][] pages = PredictionBoard.boardPages(rows, "You 41 · Player 2 37");
+        assertEquals(4, pages.length);
+        assertEquals("You  2–1", pages[0][0]);
+        assertEquals("Season", pages[3][0]);
+        assertEquals(3, PredictionBoard.score(2, 1, 2, 1));
+        assertEquals(1, PredictionBoard.score(3, 0, 2, 1));
+        assertEquals(0, PredictionBoard.score(0, 0, 2, 1));
+    }
+
+    @Test
+    public void anAlertTurnsThroughItsPages() {
+        BoardDrop.Drop d = new BoardDrop.Drop();
+        assertEquals(1, BoardDrop.pageCount(d));
+        d.pages = new String[][]{{"1  Ødegaard", "8.5"}, {"2  Raya", "8.2"}, {"3  Tzolakis", "8.0"}};
+        assertEquals(3, BoardDrop.pageCount(d));
+        d.lineups = true;
+        assertEquals(2, BoardDrop.pageCount(d));
+        assertEquals(1, BoardDrop.pageCount(null));
+    }
 }

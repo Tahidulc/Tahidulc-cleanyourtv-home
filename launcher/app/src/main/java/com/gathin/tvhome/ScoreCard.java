@@ -108,6 +108,12 @@ final class ScoreCard {
         String homeName, awayName, score, minute, position;
         /** F1 results: up to three {position, photo, team logo, surname, line}. */
         final List<Object[]> podium = new ArrayList<>();
+        /**
+         * Beside the scoreboard over the channel (BoardCover): the pages its strip turns through ({bold words, line}),
+         * each with its own picture (null for none); null for one page from the rest as before.
+         */
+        String[][] boardPages;
+        Bitmap[] boardPhotos;
         /** Where it is on (its logo, or its name), and what OK does; null without anywhere to watch. */
         Bitmap channelLogo;
         /** How much larger than a channel's logo it is drawn (Debrid Stream's two-line mark, on the release cards). */

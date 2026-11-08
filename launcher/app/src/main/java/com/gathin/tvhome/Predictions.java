@@ -262,14 +262,9 @@ final class Predictions {
         return p == null ? new int[]{-1, -1} : new int[]{p.optInt(0, -1), p.optInt(1, -1)};
     }
 
-    private static int sign(int x) {
-        return Integer.compare(x, 0);
-    }
-
     /** The points for a pick: 3 exact, 1 the right result, 0 otherwise. */
     static int score(int ph, int pa, int h, int a) {
-        if (ph == h && pa == a) return 3;
-        return sign(ph - pa) == sign(h - a) ? 1 : 0;
+        return PredictionBoard.score(ph, pa, h, a);
     }
 
     /**
@@ -311,7 +306,8 @@ final class Predictions {
                 return;
             }
             // YOU CALLED IT or SO CLOSE for the best pick (its crests read here, off the main thread); else the leaderboard.
-            ScoreCard.Data d = MoreAlerts.prediction(app, g, one, h, a);
+            // The results board: each pick and its points, then the season's table (beside the scoreboard when it is up).
+            ScoreCard.Data d = MoreAlerts.predictionBoard(app, g, one, h, a);
             if (d != null) MAIN.post(() -> ScoreCard.show(app, d));
             else MAIN.post(() -> card(app, g, one, h, a));
         });
