@@ -253,6 +253,14 @@ final class MoreAlerts {
                 StringBuilder line = new StringBuilder();
                 if (st.homePoss >= 0) line.append("Possession ").append(st.homePoss).append("–").append(st.awayPoss).append('%');
                 if (st.homeShots >= 0) line.append(line.length() > 0 ? " · " : "").append("Shots ").append(st.homeShots).append("–").append(st.awayShots);
+                // FotMob's expected goals at the break, when it has the game.
+                String[] xg = null;
+                if (BoardCover.fotmobOn(s)) {
+                    for (String[] r : FotMob.rows(FotMob.forGame(g.id, g.homeName, g.awayName, g.kickoff))) {
+                        if ("Expected goals".equals(r[0])) xg = r;
+                    }
+                }
+                if (xg != null) line.append(line.length() > 0 ? " · " : "").append("xG ").append(xg[1]).append("–").append(xg[2]);
                 d.line = line.toString();
                 d.showMs = 11_000L;
                 // Over an app: LineupCard's card, the scorers under each side and the numbers as thin bars.
@@ -272,6 +280,10 @@ final class MoreAlerts {
                 f.awayPoss = st.awayPoss;
                 f.homeShots = st.homeShots;
                 f.awayShots = st.awayShots;
+                if (xg != null) {
+                    f.homeXg = xg[1];
+                    f.awayXg = xg[2];
+                }
                 f.homeColour = g.homeColor;
                 f.awayColour = g.awayColor;
                 f.onHome = () -> ScoreCard.show(s, d);

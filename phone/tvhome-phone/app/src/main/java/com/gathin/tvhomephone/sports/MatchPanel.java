@@ -220,6 +220,7 @@ public final class MatchPanel extends LinearLayout {
             LocalDate day = java.time.Instant.ofEpochMilli(g.kickoff).atZone(ZoneId.systemDefault()).toLocalDate();
             for (Game x : Espn.scoreboard(g.slug, day, 15_000L)) if (x.id.equals(g.id)) fresh = x;
             Espn.Summary s = Espn.summary(g.slug, g.id, 20_000L);
+            if (g.state != Game.PRE) com.gathin.tvhomephone.live.FotMob.addTo(s.stats, g.id, g.homeName, g.awayName, g.kickoff);
             List<String[]> t = wantTable ? Espn.table(g.slug) : null;
             Game got = fresh;
             post(() -> {

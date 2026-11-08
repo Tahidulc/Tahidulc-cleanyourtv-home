@@ -1303,6 +1303,12 @@ final class LiveCentre {
     private static final Map<String, List<String[]>> statPages = new java.util.concurrent.ConcurrentHashMap<>();
     private static int statAt;
 
+    /** One of FotMob's figures as a page ({LABEL, home, away, kind}), when it has it. */
+    private static void fotPage(List<String[]> pages, Map<String, String[]> fot, String name, String label) {
+        String[] s = fot.get(name);
+        if (s != null) pages.add(new String[]{label, s[1], s[2], "text".equals(s[3]) ? "text" : "bar"});
+    }
+
     /** Reads the game's match summary: the match stats while it is on or over, the form and the places always. */
     private static void stats(ScoresTicker.Game g) {
         if (g == null || g.id == null || g.slug == null) return;
@@ -1328,13 +1334,22 @@ final class LiveCentre {
             List<String[]> xi = lineupPages(g, d.optJSONArray("rosters"));
             lineupsOut(g, xi);
             if (goals != null) pages.add(goals);
+            // FotMob's figures beside ESPN's (expected goals, big chances, touches in the box), when it has the game.
+            FotMob.Match fm = g.state != 1 && app != null && BoardCover.fotmobOn(app) ? FotMob.forGame(g.id, g.homeName, g.awayName, g.kickoff) : null;
+            java.util.Map<String, String[]> fot = FotMob.statsOf(fm, BoardCover.code(g.home, g.homeName), BoardCover.code(g.away, g.awayName));
             if (g.state != 1 && h.containsKey("possessionPct")) {
                 pages.add(new String[]{"POSSESSION", pct(h.get("possessionPct")), pct(a.get("possessionPct")), "bar"});
+                fotPage(pages, fot, "Expected goals", "EXPECTED GOALS (xG)");
+                fotPage(pages, fot, "Big chances", "BIG CHANCES");
                 if (h.containsKey("totalShots")) pages.add(new String[]{"SHOTS (ON TARGET)", h.get("totalShots") + " (" + h.getOrDefault("shotsOnTarget", "0") + ")",
                         a.get("totalShots") + " (" + a.getOrDefault("shotsOnTarget", "0") + ")", "bar"});
                 if (star != null) pages.add(star);
                 if (odds != null) pages.add(odds);
                 if (h.containsKey("wonCorners")) pages.add(new String[]{"CORNERS", h.get("wonCorners"), a.get("wonCorners"), "bar"});
+                fotPage(pages, fot, "Top rated", "TOP RATED (FOTMOB)");
+                fotPage(pages, fot, "xG on target", "xG ON TARGET");
+                fotPage(pages, fot, "Touches in box", "TOUCHES IN THE BOX");
+                fotPage(pages, fot, "Distance run", "DISTANCE RUN");
                 if (shapes != null) pages.add(shapes);
                 if (h.containsKey("accuratePasses") && h.containsKey("totalPasses"))
                     pages.add(new String[]{"PASS ACCURACY", passes(h), passes(a), "bar"});

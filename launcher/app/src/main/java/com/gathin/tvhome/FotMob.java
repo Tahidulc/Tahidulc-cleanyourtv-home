@@ -53,6 +53,60 @@ final class FotMob {
         int homeTeamId, awayTeamId;
     }
 
+    /** Each game read lately, by ESPN's id: {the Match (or null when not found), when}. Shared by every scoreboard. */
+    private static final Map<String, Object[]> read = new HashMap<>();
+    private static final long READ_FRESH_MS = 60_000L;
+
+    /**
+     * The game's FotMob figures, read at most once a minute whichever scoreboard asks (off the main thread); null when
+     * FotMob doesn't have it.
+     */
+    static Match forGame(String espnId, String home, String away, long kickoff) {
+        if (espnId == null) return null;
+        long now = System.currentTimeMillis();
+        synchronized (read) {
+            Object[] r = read.get(espnId);
+            if (r != null && now - (Long) r[1] < READ_FRESH_MS) return (Match) r[0];
+        }
+        Match m = null;
+        try {
+            int id = find(espnId, home, away, kickoff);
+            m = id > 0 ? details(id) : null;
+        } catch (RuntimeException ignored) {
+            m = null;
+        }
+        synchronized (read) {
+            if (read.size() > 30) read.clear();
+            read.put(espnId, new Object[]{m, now});
+        }
+        return m;
+    }
+
+    /**
+     * Pure: FotMob's figures as plain rows for a scoreboard's own stats ({name, home, away}), best first: expected
+     * goals, big chances, xG on target, touches in the box. Empty without them.
+     */
+    static java.util.List<String[]> rows(Match m) {
+        java.util.List<String[]> out = new ArrayList<>();
+        if (m == null) return out;
+        String[][] want = {{"expected_goals", "Expected goals"}, {"big_chance", "Big chances"},
+                {"expected_goals_on_target", "xG on target"}, {"touches_opp_box", "Touches in box"}};
+        for (String[] w : want) {
+            String[] v = m.stats.get(w[0]);
+            if (v != null && !v[0].isEmpty() && !v[1].isEmpty()) out.add(new String[]{w[1], v[0], v[1]});
+        }
+        return out;
+    }
+
+    /** Pure: "1.26" as 126, for a bar's share; 0 when it is no number. */
+    static int hundredths(String v) {
+        try {
+            return (int) Math.round(Double.parseDouble(v.trim()) * 100);
+        } catch (RuntimeException e) {
+            return 0;
+        }
+    }
+
     /** A player's picture at FotMob, by its id. */
     static String photoUrl(int playerId) {
         return "https://images.fotmob.com/image_resources/playerimages/" + playerId + ".png";

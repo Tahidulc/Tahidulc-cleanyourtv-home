@@ -117,6 +117,7 @@ public class GameActivity extends AppCompatActivity {
             LocalDate day = java.time.Instant.ofEpochMilli(game.kickoff).atZone(ZoneId.systemDefault()).toLocalDate();
             for (Game g : Espn.scoreboard(game.slug, day, 15_000L)) if (g.id.equals(game.id)) fresh = g;
             Espn.Summary s = Espn.summary(game.slug, game.id, 20_000L);
+            if (game.state != Game.PRE) com.gathin.tvhomephone.live.FotMob.addTo(s.stats, game.id, game.homeName, game.awayName, game.kickoff);
             Game got = fresh;
             App.main.post(() -> {
                 if (isFinishing()) return;

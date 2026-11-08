@@ -949,4 +949,22 @@ public class BoardCoverTest {
         assertEquals("On Gabriel Martinelli · off Leandro Trossard · 67'", d.line);
         assertEquals(1, d.side);
     }
+
+    // ---- 4.32: FotMob on every scoreboard ---------------------------------------------------------------------------
+
+    @Test
+    public void fotMobsRowsComeBestFirstForEveryScoreboard() {
+        FotMob.Match m = new FotMob.Match();
+        m.stats.put("touches_opp_box", new String[]{"45", "18"});
+        m.stats.put("expected_goals", new String[]{"1.26", "0.36"});
+        m.stats.put("big_chance", new String[]{"2", "0"});
+        java.util.List<String[]> rows = FotMob.rows(m);
+        assertEquals(3, rows.size());
+        assertEquals("Expected goals", rows.get(0)[0]);
+        assertEquals("Big chances", rows.get(1)[0]);
+        assertEquals("Touches in box", rows.get(2)[0]);
+        assertTrue(FotMob.rows(null).isEmpty());
+        assertEquals(126, FotMob.hundredths("1.26"));
+        assertEquals(0, FotMob.hundredths("n/a"));
+    }
 }

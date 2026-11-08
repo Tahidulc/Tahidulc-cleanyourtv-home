@@ -639,6 +639,8 @@ final class LineupCard {
         final List<String> homeGoals = new ArrayList<>(), awayGoals = new ArrayList<>();
         /** Possession in percent and shots, each side's (-1 where ESPN gave none), and the sides' colours for the bars. */
         int homePoss = -1, awayPoss = -1, homeShots = -1, awayShots = -1, homeColour, awayColour;
+        /** FotMob's expected goals for each side ("1.26"), null when it has none. */
+        String homeXg, awayXg;
         /** Run instead when Home is in front as its turn comes (Home's bar, ScoreCard). */
         Runnable onHome;
         /** Times it has waited for another pop-up to go, and for Settings to close. */
@@ -819,6 +821,12 @@ final class LineupCard {
             LinearLayout.LayoutParams rl = new LinearLayout.LayoutParams(-1, -2);
             rl.topMargin = px(any ? 9 : 0);
             col.addView(statRow(c, String.valueOf(f.homeShots), "SHOTS", String.valueOf(f.awayShots), f.homeShots, f.awayShots, hc, ac), rl);
+            any = true;
+        }
+        if (f.homeXg != null && f.awayXg != null) {
+            LinearLayout.LayoutParams rl = new LinearLayout.LayoutParams(-1, -2);
+            rl.topMargin = px(any ? 9 : 0);
+            col.addView(statRow(c, f.homeXg, "EXPECTED GOALS", f.awayXg, FotMob.hundredths(f.homeXg), FotMob.hundredths(f.awayXg), hc, ac), rl);
         }
         page.addView(col, full());
         // The clubs come in from either side, then the score between them, as the line-ups' fixture page.

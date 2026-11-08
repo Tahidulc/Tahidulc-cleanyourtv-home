@@ -24,7 +24,7 @@ import java.util.TimeZone;
  * FotMob has no published API: these are the addresses its own site reads, no key, so they may change; every call is off
  * the main thread and anything it cannot read is left out (ESPN's stats stand alone then).
  */
-final class FotMob {
+public final class FotMob {
     private FotMob() { }
 
     private static final String BASE = "https://www.fotmob.com/api/data/";
@@ -35,7 +35,7 @@ final class FotMob {
     private static final Map<String, Integer> players = new HashMap<>();
 
     /** One game's figures as read. */
-    static final class Match {
+    public static final class Match {
         int id;
         /** Each stat FotMob lists, by its key ("expected_goals"), as {home, away}. */
         final Map<String, String[]> stats = new HashMap<>();
@@ -51,6 +51,79 @@ final class FotMob {
         final List<String[]> events = new ArrayList<>();
         boolean varPending;
         int homeTeamId, awayTeamId;
+    }
+
+    /** Each game read lately, by ESPN's id: {the Match (or null when not found), when}. Shared by every scoreboard. */
+    private static final Map<String, Object[]> read = new HashMap<>();
+    private static final long READ_FRESH_MS = 60_000L;
+
+    /**
+     * The game's FotMob figures, read at most once a minute whichever scoreboard asks (off the main thread); null when
+     * FotMob doesn't have it.
+     */
+    static Match forGame(String espnId, String home, String away, long kickoff) {
+        if (espnId == null) return null;
+        long now = System.currentTimeMillis();
+        synchronized (read) {
+            Object[] r = read.get(espnId);
+            if (r != null && now - (Long) r[1] < READ_FRESH_MS) return (Match) r[0];
+        }
+        Match m = null;
+        try {
+            int id = find(espnId, home, away, kickoff);
+            m = id > 0 ? details(id) : null;
+        } catch (RuntimeException ignored) {
+            m = null;
+        }
+        synchronized (read) {
+            if (read.size() > 30) read.clear();
+            read.put(espnId, new Object[]{m, now});
+        }
+        return m;
+    }
+
+    /**
+     * Pure: FotMob's figures as plain rows for a scoreboard's own stats ({name, home, away}), best first: expected
+     * goals, big chances, xG on target, touches in the box. Empty without them.
+     */
+    static java.util.List<String[]> rows(Match m) {
+        java.util.List<String[]> out = new ArrayList<>();
+        if (m == null) return out;
+        String[][] want = {{"expected_goals", "Expected goals"}, {"big_chance", "Big chances"},
+                {"expected_goals_on_target", "xG on target"}, {"touches_opp_box", "Touches in box"}};
+        for (String[] w : want) {
+            String[] v = m.stats.get(w[0]);
+            if (v != null && !v[0].isEmpty() && !v[1].isEmpty()) out.add(new String[]{w[1], v[0], v[1]});
+        }
+        return out;
+    }
+
+    /**
+     * FotMob's figures put into a game's stats list (the info tile's, the match page's), each after Possession, in place
+     * of the same row read before; off the main thread. Nothing when FotMob is switched off or doesn't have the game.
+     */
+    public static void addTo(java.util.List<String[]> stats, String espnId, String home, String away, long kickoff) {
+        android.content.Context c = com.gathin.tvhomephone.App.app;
+        if (stats == null || c == null || !ScoreBoard.fotmobOn(c)) return;
+        java.util.List<String[]> rows = rows(forGame(espnId, home, away, kickoff));
+        synchronized (stats) {
+            for (int i = rows.size() - 1; i >= 0; i--) {
+                String[] r = rows.get(i);
+                int at = -1;
+                for (int k = 0; k < stats.size(); k++) if (r[0].equals(stats.get(k)[0])) at = k;
+                if (at >= 0) stats.set(at, r);
+                else stats.add(Math.min(1, stats.size()), r);
+            }
+        }
+    }
+
+    /** Pure: "1.26" as 126, for a bar's share; 0 when it is no number. */
+    static int hundredths(String v) {
+        try {
+            return (int) Math.round(Double.parseDouble(v.trim()) * 100);
+        } catch (RuntimeException e) {
+            return 0;
+        }
     }
 
     /** A player's picture at FotMob, by its id. */

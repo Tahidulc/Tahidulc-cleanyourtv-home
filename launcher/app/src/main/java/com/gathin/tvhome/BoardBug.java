@@ -23,7 +23,7 @@ import java.util.Objects;
  * minutes added beside it, along one row, or in two in a box nearer square (its height set apart from its width). The
  * phone's eight looks: Classic (the launcher's navy, the score on blue), Glass (smoked glass, a pill), Light, Club
  * colours (each side in its club's colour), Minimal (one line of words), Crests and time, Stacked (the clubs one
- * above the other) and Card (each crest on white, the score over the clock on red between them, its light slants drifting
+ * above the other) and Card (each crest on white, the score over the clock on blue between them, red in added time with its light slants drifting
  * across the red and a shine passing now and then, the minutes added in a tab of their own beside it).
  *
  * <p>It comes and goes as broadcasters' do (its first block opening out of a thin line, the rest wiping out of it
@@ -94,6 +94,8 @@ final class BoardBug extends View {
     /** Card's white (a soft one, shaded to a light grey at its foot: it stays up all game) and its red. */
     static final int CARD_TOP = 0xFFF1F3F7, CARD_FOOT = 0xFFD3D8E1, CARD_RED = 0xFFD7192F, CARD_RED_FOOT = 0xFF8E0B1D,
             CARD_SOFT = 0xFFF6C9CF;
+    /** Card's own blue in the middle (as the clubs' results cards have it); red only in added time. */
+    static final int CARD_BLUE = 0xFF2A3DC9, CARD_BLUE_FOOT = 0xFF0F1B7E, CARD_BLUE_SOFT = 0xFFC3CBF4;
     /** Card's red moving: its slants drift across it once in SLANT_MS; a shine passes every SHINE_EVERY for SHINE_MS. */
     static final long SLANT_MS = 6_000L, SHINE_EVERY = 9_000L, SHINE_MS = 1_200L, TAB_IN_MS = 400L;
 
@@ -162,8 +164,8 @@ final class BoardBug extends View {
                 // Each crest on white, the score over the clock on blue between them, each club's colour at its end.
                 p.ground = CARD_TOP;
                 p.comp = 0;
-                p.score0 = CARD_RED;
-                p.score1 = CARD_RED_FOOT;
+                p.score0 = CARD_BLUE;
+                p.score1 = CARD_BLUE_FOOT;
                 p.clock = 0;
                 p.ink = NAVY;
                 p.dim = 0xFF4E5778;
@@ -546,7 +548,7 @@ final class BoardBug extends View {
         s.light = style == Style.LIGHT || style == Style.CARD;
         s.apart = p.round >= 0.5f;
         s.round = p.round;
-        s.block = style == Style.CLUB ? INK : style == Style.LIGHT ? NAVY : style == Style.CARD ? CARD_RED
+        s.block = style == Style.CLUB ? INK : style == Style.LIGHT ? NAVY : style == Style.CARD ? CARD_BLUE
                 : p.score0 != 0 && (p.score0 >>> 24) == 0xFF ? p.score0 : 0x40FFFFFF;
         return s;
     }
@@ -701,8 +703,8 @@ final class BoardBug extends View {
             cv.drawRoundRect(r, rad, rad, edge);
         }
         if (goalOn && goalFrozen < 0) postInvalidateOnAnimation();
-        // Card's red moving (a few frames a second is enough for a slow drift), while it is all there.
-        else if ((style == Style.CARD || look.stoppage) && !part && animFrozen < 0) postInvalidateDelayed(33);
+        // Moving in added time (a few frames a second is enough for a slow drift), while it is all there.
+        else if (look.stoppage && !part && animFrozen < 0) postInvalidateDelayed(33);
     }
 
     /** Its corners' radius: a pill's half its height while it is long, else its look's own (Glass nearer square: round corners). */
@@ -822,12 +824,15 @@ final class BoardBug extends View {
 
     private void scoreBlock(Canvas cv, float x, float y, float w, float h) {
         if (p.score0 == 0 && p.score1 == 0) return;
-        if (scoreShade == null || shadeY != y || shadeH != h || shadeA != p.score0 || shadeB != p.score1) {
-            scoreShade = new LinearGradient(0, y, 0, y + h, p.score0, p.score1, Shader.TileMode.CLAMP);
+        // Card: its blue, turning red in added time.
+        boolean red = style == Style.CARD && look.stoppage;
+        int a = red ? CARD_RED : p.score0, b = red ? CARD_RED_FOOT : p.score1;
+        if (scoreShade == null || shadeY != y || shadeH != h || shadeA != a || shadeB != b) {
+            scoreShade = new LinearGradient(0, y, 0, y + h, a, b, Shader.TileMode.CLAMP);
             shadeY = y;
             shadeH = h;
-            shadeA = p.score0;
-            shadeB = p.score1;
+            shadeA = a;
+            shadeB = b;
         }
         fill.setShader(scoreShade);
         cv.drawRect(x, y, x + w, y + h, fill);
@@ -1223,8 +1228,8 @@ final class BoardBug extends View {
         cardSide(cv, w - strip - panel, strip, panel, h, false);
         float mx = strip + panel;
         scoreBlock(cv, mx, 0, mid, h);
-        long t = animFrozen >= 0 ? animFrozen : now;
-        slants(cv, mx, 0, mid, h, t);
+        // Moving only in added time, as every look does then (red then too).
+        if (look.stoppage) slants(cv, mx, 0, mid, h, stoppageT());
         // The score, popping up big after a goal but never past the red.
         String sc = cardScore();
         float ss = h * 0.46f * k * scoreZoom, sw = measure(sc, ss);
@@ -1262,7 +1267,7 @@ final class BoardBug extends View {
         }
         float rh = h - top;
         scoreBlock(cv, 0, top, w, rh);
-        slants(cv, 0, top, w, Math.round(rh), animFrozen >= 0 ? animFrozen : now);
+        if (look.stoppage) slants(cv, 0, top, w, Math.round(rh), stoppageT());
         String sc = cardScore();
         float ss = rh * 0.5f * scoreZoom;
         ss *= Math.min(1f, w * 0.9f / Math.max(1f, measure(sc, ss)));
@@ -1331,8 +1336,8 @@ final class BoardBug extends View {
     private void cardClockLine(Canvas cv, float x, float y, float w, float lh, float size, float addedSize) {
         String c = cardClock();
         if (c.isEmpty()) return;
-        // White on the red while the game runs, at half time and at full time (amber would not read on red).
-        int colour = look.live || "HT".equals(look.clock) || "FT".equals(look.clock) ? p.clockInk : CARD_SOFT;
+        // White on the blue (or red) while the game runs, at half time and at full time (amber would not read on it).
+        int colour = look.live || "HT".equals(look.clock) || "FT".equals(look.clock) ? p.clockInk : look.stoppage ? CARD_SOFT : CARD_BLUE_SOFT;
         if (look.added.isEmpty() || addedOutside) {
             float s = Math.min(1f, w * 0.9f / Math.max(1f, measure(c, size)));
             words(cv, c, x + w / 2f, y, lh, size * s, colour);

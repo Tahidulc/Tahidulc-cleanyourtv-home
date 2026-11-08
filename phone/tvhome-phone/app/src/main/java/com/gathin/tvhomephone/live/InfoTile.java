@@ -696,7 +696,7 @@ final class InfoTile {
         }
         int shown = 0;
         for (String[] s : stats) {
-            if (shown >= most || !("Possession".equals(s[0]) || "Shots".equals(s[0]) || "On target".equals(s[0]))) continue;
+            if (shown >= most || !("Possession".equals(s[0]) || "Expected goals".equals(s[0]) || "Shots".equals(s[0]) || "On target".equals(s[0]))) continue;
             col.addView(statRow(k, s), k.margins(0, 10, 0, 0, -1, -2));
             shown++;
         }

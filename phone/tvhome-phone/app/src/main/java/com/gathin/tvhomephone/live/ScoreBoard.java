@@ -133,7 +133,7 @@ public final class ScoreBoard implements LiveAlerts.Listener {
     }
 
     /** FotMob's figures added to the stats (expected goals, big chances, ratings, momentum) and its players' pictures. */
-    static boolean fotmobOn(Context c) {
+    public static boolean fotmobOn(Context c) {
         return prefs(c).getBoolean("fotmob", true);
     }
 
@@ -919,12 +919,7 @@ public final class ScoreBoard implements LiveAlerts.Listener {
             // FotMob's figures on top: expected goals, big chances, ratings, who is on top, its player of the match.
             FotMob.Match fm = null;
             if (fotmob && state != Game.PRE) {
-                try {
-                    int fid = FotMob.find(id, homeName, awayName, kickoff);
-                    fm = fid > 0 ? FotMob.details(fid) : null;
-                } catch (RuntimeException ignored) {
-                    fm = null;
-                }
+                fm = FotMob.forGame(id, homeName, awayName, kickoff);
                 if (fm != null) by.putAll(FotMob.statsOf(fm, homeCode, awayCode));
             }
             FotMob.Match read = fm;

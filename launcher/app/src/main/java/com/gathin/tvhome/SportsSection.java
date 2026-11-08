@@ -231,6 +231,13 @@ final class SportsSection {
             List<ScoresTicker.Game> games = ScoresTicker.load(all.toArray(new String[0]));
             ScoresTicker.Game pick = pick(games, alertTags, clubs);
             Featured f = pick == null ? null : featured(pick);
+            // FotMob's figures under ESPN's: expected goals, big chances, xG on target, touches in the box.
+            if (f != null && f.game.state != 1 && !f.stats.isEmpty() && BoardCover.fotmobOn(ctx)) {
+                for (String[] r : FotMob.rows(FotMob.forGame(pick.id, pick.homeName, pick.awayName, pick.kickoff))) {
+                    f.stats.add(Math.min(1, f.stats.size()), r);
+                    if (f.stats.size() >= 7) break;
+                }
+            }
             if (f != null) f.tv = TvGuide.orAbroad(TvGuide.find(ctx.getResources().getStringArray(R.array.football_tv_channels),
                     pick.homeName, pick.awayName, pick.kickoff), f.game);
             Map<String, Table> fresh = new HashMap<>();

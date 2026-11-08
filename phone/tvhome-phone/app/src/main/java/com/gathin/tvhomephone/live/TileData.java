@@ -138,7 +138,10 @@ final class TileData {
         i.kind = TileKind.Kind.MATCH;
         if (g.slug != null && g.id != null) {
             Espn.Summary s = Espn.summary(g.slug, g.id, 30_000L);
-            if (g.state != Game.PRE) i.stats = s.stats;
+            if (g.state != Game.PRE) {
+                FotMob.addTo(s.stats, g.id, g.homeName, g.awayName, g.kickoff);
+                i.stats = s.stats;
+            }
             i.facts = com.gathin.tvhomephone.sports.Facts.of(g, s);
         }
         return true;

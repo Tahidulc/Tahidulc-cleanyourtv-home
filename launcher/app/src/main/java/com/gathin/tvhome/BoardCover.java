@@ -1942,12 +1942,7 @@ final class BoardCover {
             // FotMob's figures on top: expected goals, big chances, ratings, who is on top, its player of the match.
             FotMob.Match fm = null;
             if (fotmob) {
-                try {
-                    int fid = FotMob.find(id, g.homeName, g.awayName, g.kickoff);
-                    fm = fid > 0 ? FotMob.details(fid) : null;
-                } catch (RuntimeException ignored) {
-                    fm = null;
-                }
+                fm = FotMob.forGame(id, g.homeName, g.awayName, g.kickoff);
                 if (fm != null) {
                     if (got == null) got = new HashMap<>();
                     got.putAll(FotMob.statsOf(fm, code(g.home, g.homeName), code(g.away, g.awayName)));

@@ -288,6 +288,10 @@ stamped on it, and in a close game's last minutes the clock beats red. FotMob's 
 player of the match); each substitution slides out with the picture of who comes on, and a player with no cut-out gets
 his FotMob picture. Both have a switch on the Scoreboard settings. As the TV launcher's 4.31 has it.
 
+FotMob everywhere, Card blue (4.27): FotMob's expected goals, big chances, xG on target and touches in the box also in
+the player's info tile and on the match page, read once a minute for all of them; Card's middle back in its own blue
+all game, red and moving only in added time. As the TV launcher's 4.32 has it.
+
 Subtitles (CC in the film's player): the film's or episode's own, from your playlist's stream, come first, in the
 languages you choose (Settings, Subtitles, in order). When it has none, OpenSubtitles.com is looked in by the title's
 TMDB id (the series' with its season and episode), best first: your languages, the ones that fit the copy playing (its

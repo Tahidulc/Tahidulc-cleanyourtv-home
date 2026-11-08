@@ -72,6 +72,8 @@ final class OverlayBug extends View implements BurnGuard.Dims {
      */
     static final int CARD_TOP = 0xFFF1F3F7, CARD_FOOT = 0xFFD3D8E1, CARD_RED = 0xFFD7192F, CARD_RED_FOOT = 0xFF8E0B1D,
             CARD_SOFT = 0xFFF6D3D8, CARD_HT = 0xFFFFE7A3;
+    /** Card's own blue in the middle (as the clubs' results cards have it); red only in added time. */
+    static final int CARD_BLUE = 0xFF2A3DC9, CARD_BLUE_FOOT = 0xFF0F1B7E, CARD_BLUE_SOFT = 0xFFC3CBF4;
     /**
      * Card's red, and every look's score in added time, alive: its slants drift a slant's period every DRIFT_MS; a shine
      * sweeps it over SHINE_MS every SHINE_EVERY_MS (in added time the first as it begins).
@@ -225,8 +227,8 @@ final class OverlayBug extends View implements BurnGuard.Dims {
                 // Each crest on white, the score over the clock on red between them, each club's colour at its end.
                 p.ground = CARD_TOP;
                 p.comp = 0;
-                p.score0 = CARD_RED;
-                p.score1 = CARD_RED_FOOT;
+                p.score0 = CARD_BLUE;
+                p.score1 = CARD_BLUE_FOOT;
                 p.clock = 0;
                 p.ink = NAVY;
                 p.dim = 0xFF4E5778;
@@ -473,7 +475,7 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         s.light = style == Style.LIGHT || style == Style.CARD;
         s.apart = p.round >= 0.5f;
         s.round = p.round;
-        s.block = style == Style.CLUB ? 0xFFFFFFFF : style == Style.LIGHT ? NAVY : style == Style.CARD ? CARD_RED
+        s.block = style == Style.CLUB ? 0xFFFFFFFF : style == Style.LIGHT ? NAVY : style == Style.CARD ? CARD_BLUE
                 : p.score0 != 0 && (p.score0 >>> 24) == 0xFF ? p.score0 : 0x40FFFFFF;
         return s;
     }
@@ -739,7 +741,7 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         if ((goalOn && goalFrozen < 0) || ((turning || rippling || scanning || stamping) && !part)) postInvalidateOnAnimation();
         // Alive (Card's red always, every look's score in added time): drawn again about 30 times a second while it
         // shows (Minimal, with only its shine, as that comes), not while a goal's band is over it; else not at all.
-        else if (aliveNow() && !part && animFrozen < 0 && isShown()) {
+        else if ((aliveNow() || !look.f1 && look.late && look.live) && !part && animFrozen < 0 && isShown()) {
             removeCallbacks(tick);
             postDelayed(tick, nextFrame());
         }
@@ -748,14 +750,14 @@ final class OverlayBug extends View implements BurnGuard.Dims {
     /** The next frame while alive: one at a time, however often it is drawn in between. */
     private final Runnable tick = this::invalidate;
 
-    /** Whether its score is alive now: Card's red always, every look in added time; never F1. */
+    /** Whether its score is alive now: every look in added time (Card's middle red then); never F1. */
     private boolean aliveNow() {
-        return !look.f1 && (style == Style.CARD || look.stoppage || look.late && look.live);
+        return !look.f1 && look.stoppage;
     }
 
     /** When to draw it again while alive: about 30 times a second; Minimal (its shine alone) not till the next shine. */
     private long nextFrame() {
-        if (style != Style.MINIMAL) return 33;
+        if (style != Style.MINIMAL || look.late && look.live) return 33;
         long st = shineTime(animTime()), in = ((st % SHINE_EVERY_MS) + SHINE_EVERY_MS) % SHINE_EVERY_MS;
         return in < SHINE_MS ? 33 : Math.max(33, SHINE_EVERY_MS - in);
     }
@@ -860,12 +862,15 @@ final class OverlayBug extends View implements BurnGuard.Dims {
     /** The score's block in the look's colours (none in Minimal's), alive in added time (Card's always). */
     private void scoreBlock(Canvas cv, float x, float y, float w, float h) {
         if (p.score0 == 0 && p.score1 == 0) return;
-        if (scoreShade == null || shadeY != y || shadeH != h || shadeA != p.score0 || shadeB != p.score1) {
-            scoreShade = new LinearGradient(0, y, 0, y + h, p.score0, p.score1, Shader.TileMode.CLAMP);
+        // Card: its blue, turning red in added time.
+        boolean red = style == Style.CARD && look.stoppage;
+        int a = red ? CARD_RED : p.score0, b = red ? CARD_RED_FOOT : p.score1;
+        if (scoreShade == null || shadeY != y || shadeH != h || shadeA != a || shadeB != b) {
+            scoreShade = new LinearGradient(0, y, 0, y + h, a, b, Shader.TileMode.CLAMP);
             shadeY = y;
             shadeH = h;
-            shadeA = p.score0;
-            shadeB = p.score1;
+            shadeA = a;
+            shadeB = b;
         }
         fill.setShader(scoreShade);
         cv.drawRect(x, y, x + w, y + h, fill);
@@ -1499,7 +1504,7 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         String c = cardClock();
         if (c.isEmpty()) return;
         float y = h * 0.5f, lh = h * 0.44f, size = cardClockSize(h) * k;
-        int colour = "HT".equals(look.clock) ? CARD_HT : look.live || "FT".equals(look.clock) ? p.clockInk : CARD_SOFT;
+        int colour = "HT".equals(look.clock) ? CARD_HT : look.live || "FT".equals(look.clock) ? p.clockInk : look.stoppage ? CARD_SOFT : CARD_BLUE_SOFT;
         if (!addedInside()) {
             float s = Math.min(1f, w * 0.9f / Math.max(1f, measure(c, size)));
             words(cv, c, x + w / 2f, y, lh, size * s, colour);
