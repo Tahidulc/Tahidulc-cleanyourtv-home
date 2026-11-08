@@ -39,4 +39,6 @@
     <string name="live4_settings_line">A scoreboard over the picture in Homefield\'s player, in step with what the channel shows, and the alerts dropping from it. It can sit over other apps too.</string>
     <string name="live4_other_delay">Other apps\' picture runs behind the live scores by</string>
     <string name="live4_seconds">%1$d s</string>
+    <string name="live26_fotmob">FotMob stats and pictures (expected goals, big chances, ratings, who is on top)</string>
+    <string name="live26_subs">Substitutions from the scoreboard, with who comes on</string>
 </resources>

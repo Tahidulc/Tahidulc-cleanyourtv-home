@@ -2,6 +2,7 @@ package com.gathin.tvhomephone.live;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 import com.gathin.tvhomephone.sports.Events;
@@ -94,7 +95,9 @@ public class ScoreBoardTest {
     @Test
     public void theCardLookIsTheLastAndLightsOnItsWhite() {
         OverlayBug.Style[] all = OverlayBug.Style.values();
-        assertEquals(OverlayBug.Style.CARD, all[all.length - 1]);
+        assertEquals(OverlayBug.Style.CARD, all[all.length - 2]);
+        // 4.26: Frosted glass after it.
+        assertEquals(OverlayBug.Style.FROSTED, all[all.length - 1]);
         assertEquals(OverlayBug.Style.CARD, OverlayBug.Style.of("CARD"));
         assertEquals("Card", OverlayBug.Style.CARD.label);
         // Its white over its blue: a light blend stays light, the club's colour laid fully over is the club's.
@@ -381,5 +384,53 @@ public class ScoreBoardTest {
         // Each side's keeper and defence, its midfield and attack, then the pitch: a little under half a minute.
         long ms = BoardLineups.showFor(d);
         assertTrue(ms > 15_000L && ms < 40_000L);
+    }
+
+    // ---- 4.26: frosted glass, the new moments, FotMob ----------------------------------------------------------------
+
+    @Test
+    public void theClockBeatsOnlyInACloseGamesLastMinutes() {
+        assertTrue(ScoreBoard.late("88:10", 1, 1));
+        assertTrue(ScoreBoard.late("90:00", 2, 1));
+        assertFalse(ScoreBoard.late("88:10", 3, 1));
+        assertFalse(ScoreBoard.late("70:00", 1, 1));
+        assertFalse(ScoreBoard.late("HT", 1, 1));
+        float most = 0f;
+        for (long t = 0; t < 1000; t += 10) most = Math.max(most, OverlayBug.heartbeat(t));
+        assertTrue(most > 0.8f);
+        assertEquals(OverlayBug.Style.FROSTED, OverlayBug.Style.of("FROSTED"));
+    }
+
+    @Test
+    public void fotMobsFiguresComeAsTheBoardsStats() {
+        FotMob.Match m = new FotMob.Match();
+        m.homeTeamId = 9825;
+        m.stats.put("expected_goals", new String[]{"1.26", "0.36"});
+        m.stats.put("physical_metrics_distance_covered", new String[]{"118995", "114637"});
+        m.homeTop = new String[]{"Martin Ødegaard", "8.5", "1"};
+        m.awayTop = new String[]{"Lewie Coyle", "7.1", "2"};
+        m.insights.add(new String[]{"Have scored 8 goals in their last 5 matches", "9825", ""});
+        java.util.Map<String, String[]> by = FotMob.statsOf(m, "ARS", "HUL");
+        assertEquals("1.26", by.get("Expected goals")[1]);
+        assertEquals("119.0 km", by.get("Distance run")[1]);
+        assertEquals("Ødegaard 8.5", by.get("Top rated")[1]);
+        assertEquals("ARS have scored 8 goals in their last 5 matches", by.get("Insight")[1]);
+        assertNull(by.get("Momentum"));
+        assertEquals("Expected goals", ScoreBoard.statsFor("ft", by).get(0)[0]);
+        assertTrue(FotMob.sameClub("Man Utd", "Manchester United"));
+        assertFalse(FotMob.sameClub("Manchester City", "Manchester United"));
+    }
+
+    @Test
+    public void aSubstitutionSaysWhoCameOnAndWhoWentOff() {
+        Game g = new Game();
+        g.id = "1";
+        g.homeName = "Arsenal";
+        g.awayName = "Hull City";
+        ScoreBoard.Drop d = ScoreBoard.subDrop(g, new String[]{"Substitution", "69", "1", "Eberechi Eze", "9", "Christos Tzolis", "8"});
+        assertEquals("SUBSTITUTION", d.chip);
+        assertEquals("Arsenal", d.title);
+        assertEquals("On Eberechi Eze · off Christos Tzolis · 69'", d.line);
+        assertEquals(1, d.side);
     }
 }

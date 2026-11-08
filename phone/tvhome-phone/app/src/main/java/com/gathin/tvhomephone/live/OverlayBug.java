@@ -40,6 +40,8 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         boolean f1, live;
         /** In added time: the clock past its period's end, as the board's controller (ScoreBoard) decides it. */
         boolean stoppage;
+        /** The last minutes of a close game (one goal or level, from the 85th): its clock beats red. */
+        boolean late;
         String home = "", away = "", score = "", clock = "", added = "", tag = "";
         int homeColour = 0xFFFFFFFF, awayColour = 0xFFFFFFFF;
         /** F1: the session, the corner ({"LAP", "23"}, {"Q2", "08:31"}), the first drivers' codes and colours. */
@@ -50,7 +52,7 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         @Override public boolean equals(Object o) {
             if (!(o instanceof Look)) return false;
             Look l = (Look) o;
-            return f1 == l.f1 && live == l.live && stoppage == l.stoppage && home.equals(l.home) && away.equals(l.away)
+            return f1 == l.f1 && live == l.live && stoppage == l.stoppage && late == l.late && home.equals(l.home) && away.equals(l.away)
                     && score.equals(l.score)
                     && clock.equals(l.clock) && added.equals(l.added) && tag.equals(l.tag) && homeColour == l.homeColour
                     && awayColour == l.awayColour && label.equals(l.label) && cornerA.equals(l.cornerA)
@@ -120,7 +122,7 @@ final class OverlayBug extends View implements BurnGuard.Dims {
     /** How it looks: the choices in Settings and the player's options. */
     enum Style {
         CLASSIC("Classic"), GLASS("Glass"), LIGHT("Light"), CLUB("Club colours"), MINIMAL("Minimal"),
-        CRESTS("Crests and time"), STACKED("Stacked", 1.7f), CARD("Card", 1.6f);
+        CRESTS("Crests and time"), STACKED("Stacked", 1.7f), CARD("Card", 1.6f), FROSTED("Frosted glass");
 
         final String label;
         /** How much taller than the others it is drawn in its own corner (Stacked: the clubs one above the other; Card: big crests). */
@@ -145,6 +147,9 @@ final class OverlayBug extends View implements BurnGuard.Dims {
     private static final class Palette {
         int ground, comp, score0, score1, clock, ink, scoreInk, clockInk, dim;
         boolean strips = true, clubFill;
+        /** Its ground falling to this colour at its foot (0: one colour); a sheen across its top and a fine light edge (Frosted glass). */
+        int groundFoot;
+        boolean sheen, edgeLine;
         /** The corners' radius as a share of the height (0.5: a pill). */
         float round = 0.2f;
     }
@@ -201,6 +206,21 @@ final class OverlayBug extends View implements BurnGuard.Dims {
                 p.clock = CLOCK;
                 p.round = 0.3f;
                 break;
+            case FROSTED:
+                // Frosted glass in look: solid (the channel's own scoreboard under it never shows), a silvery frost
+                // falling darker to its foot, a sheen across its top, a fine light edge; the crests, the score in
+                // lighter frost, the clock: no names.
+                p.ground = 0xFF9AA5BA;
+                p.groundFoot = 0xFF5D677D;
+                p.comp = 0;
+                p.score0 = 0x3DFFFFFF;
+                p.score1 = 0x1FFFFFFF;
+                p.clock = 0x24000000;
+                p.dim = 0xFFE3E8F2;
+                p.round = 0.3f;
+                p.sheen = true;
+                p.edgeLine = true;
+                break;
             case CARD:
                 // Each crest on white, the score over the clock on red between them, each club's colour at its end.
                 p.ground = CARD_TOP;
@@ -256,6 +276,10 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         long now = android.os.SystemClock.uptimeMillis();
         if (look.added.isEmpty() && !l.added.isEmpty()) tabAt = now;
         if (!look.stoppage && l.stoppage) stoppageAt = now;
+        // Half time and full time as they come: the board turns over, FULL TIME is stamped on it.
+        long wall = System.currentTimeMillis();
+        if ("HT".equals(l.clock) && !"HT".equals(look.clock) && !look.clock.isEmpty()) htAt = wall;
+        if ("FT".equals(l.clock) && !"FT".equals(look.clock) && !look.clock.isEmpty()) ftAt = wall;
         look = l;
         // A board of a width set (over the channel's own, or as the family sized it): grown by the tab beside it while
         // there is one, its own part as it was.
@@ -285,6 +309,105 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         goalFrozen = -1;
         postInvalidateOnAnimation();
     }
+
+    /** The net's shiver after the band (from RIPPLE_AT, over RIPPLE_MS); half time turning over; FULL TIME stamped. */
+    static final long RIPPLE_AT = BAND_OUT + BAND_MS - 150, RIPPLE_MS = 900, HT_MS = 700, FT_MS = 2600;
+    private long htAt, ftAt, varUntil;
+
+    /** VAR is checking: a white line scans back and forth across the board for ms. */
+    void varCheck(long ms) {
+        varUntil = System.currentTimeMillis() + Math.max(0, ms);
+        postInvalidateOnAnimation();
+    }
+
+    /** Previews: half time this far into its turn, FULL TIME this far into its stamp, VAR scanning (-1: none). */
+    void momentsNow(long ht, long ft, boolean var) {
+        long now = System.currentTimeMillis();
+        htAt = ht < 0 ? 0 : now - ht;
+        ftAt = ft < 0 ? 0 : now - ft;
+        varUntil = var ? now + 60_000L : 0;
+        invalidate();
+    }
+
+    /** Pure: a heartbeat's strength at a moment, 0 to 1: two quick beats a second, as a pulse is. */
+    static float heartbeat(long t) {
+        float x = (t % 1000L) / 1000f;
+        float a = (float) Math.exp(-Math.pow((x - 0.12f) / 0.06f, 2)), b = 0.7f * (float) Math.exp(-Math.pow((x - 0.34f) / 0.07f, 2));
+        return Math.min(1f, a + b);
+    }
+
+    /** Rings running out from the scorer's end of the board, t ms in, as the net's shiver: light, thin, fading as they spread. */
+    private void netRipple(Canvas cv, int w, int h, long t) {
+        float x = Math.max(0f, Math.min(1f, t / (float) RIPPLE_MS));
+        float cx = flashSide == 2 ? w * 0.62f : w * 0.16f, cy = h / 2f, far = w * 0.75f;
+        edge.setStyle(Paint.Style.STROKE);
+        edge.setColor(0xFFFFFFFF);
+        for (int k = 0; k < 3; k++) {
+            float p = x - k * 0.16f;
+            if (p <= 0f || p >= 1f) continue;
+            float e = 1f - (1f - p) * (1f - p);
+            edge.setStrokeWidth(Math.max(1f, h * (0.05f - 0.03f * e)));
+            edge.setAlpha(Math.round(110 * (1f - p) * (k == 0 ? 1f : 0.6f)));
+            cv.drawCircle(cx, cy, h * 0.3f + far * e, edge);
+        }
+        edge.setAlpha(255);
+        edge.setStyle(Paint.Style.FILL);
+    }
+
+    /** VAR checking: a bright white line sweeping back and forth across the board, a soft glow either side. */
+    private void varScan(Canvas cv, int w, int h, long now) {
+        float x = (float) ((now % 1600L) / 1600.0), along = x < 0.5f ? x * 2f : 2f - x * 2f;
+        float lx = along * w, lw = Math.max(2f, h * 0.06f);
+        fill.setShader(new LinearGradient(lx - h * 0.6f, 0, lx + h * 0.6f, 0, new int[]{0x00FFFFFF, 0x55FFFFFF, 0x00FFFFFF}, null,
+                Shader.TileMode.CLAMP));
+        cv.drawRect(lx - h * 0.6f, 0, lx + h * 0.6f, h, fill);
+        fill.setShader(null);
+        fill.setColor(0xFFFFFFFF);
+        cv.drawRect(lx - lw / 2f, 0, lx + lw / 2f, h, fill);
+    }
+
+    /** FULL TIME stamped on the board, t ms in: it lands big and settles, holds, then lifts to show the final score. */
+    private void fullTimeStamp(Canvas cv, int w, int h, long t) {
+        float in = Math.min(1f, t / 260f), out = t > FT_MS - 400 ? (FT_MS - t) / 400f : 1f;
+        float scale = 1f + 1.2f * (1f - in) * (1f - in), a = in * Math.max(0f, out);
+        fill.setShader(null);
+        fill.setColor(0xFF000000);
+        fill.setAlpha(Math.round(170 * a));
+        cv.drawRect(0, 0, w, h, fill);
+        fill.setAlpha(255);
+        cv.save();
+        cv.scale(scale, scale, w / 2f, h / 2f);
+        text.setLetterSpacing(0.18f);
+        String s = "FULL TIME";
+        float size = Math.min(h * 0.5f, w * 0.8f / Math.max(1f, measure(s, 1f) * 1.2f));
+        float sw = measure(s, size), pad = h * 0.18f;
+        edge.setStyle(Paint.Style.STROKE);
+        edge.setStrokeWidth(Math.max(1.5f, h * 0.05f));
+        edge.setColor(0xFFFFFFFF);
+        edge.setAlpha(Math.round(255 * a));
+        r.set(w / 2f - sw / 2f - pad, h * 0.16f, w / 2f + sw / 2f + pad, h * 0.84f);
+        cv.drawRoundRect(r, h * 0.1f, h * 0.1f, edge);
+        edge.setAlpha(255);
+        edge.setStyle(Paint.Style.FILL);
+        words(cv, s, w / 2f, 0, h, size, (Math.round(255 * a) << 24) | 0xFFFFFF);
+        text.setLetterSpacing(0f);
+        cv.restore();
+    }
+
+    /** Frosted glass's sheen: light across its top, gone by its foot. */
+    private void sheen(Canvas cv, int w, int h) {
+        if (sheenShade == null || sheenH != h) {
+            sheenShade = new LinearGradient(0, 0, 0, h, new int[]{0x2EFFFFFF, 0x0AFFFFFF, 0x00FFFFFF},
+                    new float[]{0f, 0.5f, 1f}, Shader.TileMode.CLAMP);
+            sheenH = h;
+        }
+        fill.setShader(sheenShade);
+        cv.drawRect(0, 0, w, h, fill);
+        fill.setShader(null);
+    }
+
+    private LinearGradient sheenShade;
+    private int sheenH;
 
     /** Previews and tests: drawn t ms into a goal for this side (-1: no goal). */
     void goalNow(int side, long t) {
@@ -387,7 +510,7 @@ final class OverlayBug extends View implements BurnGuard.Dims {
             for (String c : look.codes) w += h * 0.16f + measure(c, h * 0.44f) + h * 0.5f;
             return Math.round(w);
         }
-        if (style == Style.CRESTS) return Math.round(crestsWidth(h));
+        if (style == Style.CRESTS || style == Style.FROSTED) return Math.round(crestsWidth(h));
         if (style == Style.STACKED) return Math.round(stackedWidth(h));
         if (style == Style.CARD) return Math.round(cardWidth(h));
         return Math.round(h + 2 * (h * 0.1f + crestW(h) + code(h)) + scoreW(h) + clockW(h));
@@ -529,7 +652,7 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         float[] in = null;
         if (part) {
             // Its first block (the competition's square, Crests' home crest, F1's red), never more than a third of it.
-            float first = look.f1 ? h * 1.3f : style == Style.CRESTS ? h * 1.25f : style == Style.STACKED ? h * 0.9f
+            float first = look.f1 ? h * 1.3f : style == Style.CRESTS || style == Style.FROSTED ? h * 1.25f : style == Style.STACKED ? h * 0.9f
                     : style == Style.CARD ? h * 1.29f
                     : style == Style.MINIMAL ? h * 1.2f : h;
             in = shownPart(shown, w, h, Math.min(first, w / 3f));
@@ -555,12 +678,23 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         cv.clipPath(clip);
         fill.setShader(null);
         fill.setColor(p.ground);
+        if (p.groundFoot != 0) fill.setShader(new LinearGradient(0, 0, 0, h, p.ground, p.groundFoot, Shader.TileMode.CLAMP));
         cv.drawRect(r, fill);
+        fill.setShader(null);
+        if (p.sheen) sheen(cv, w, h);
+        // Half time comes in as the board turns over, a card shown its other face (HT_MS).
+        long ht = htAt > 0 ? now - htAt : -1;
+        boolean turning = ht >= 0 && ht < HT_MS && !look.f1;
+        cv.save();
+        if (turning) {
+            float f = Math.abs((float) Math.cos(Math.PI * ht / HT_MS));
+            cv.scale(1f, Math.max(0.04f, f), 0, h / 2f);
+        }
         if (style == Style.MINIMAL) {
             minimal(cv, w, h);
         } else if (look.f1) {
             if (w / (float) h >= 3.6f) f1Row(cv, 0, 0, w, h); else f1Two(cv, w, h);
-        } else if (style == Style.CRESTS) {
+        } else if (style == Style.CRESTS || style == Style.FROSTED) {
             if (w / (float) h >= 3.2f) crestsRow(cv, w, h); else crestsTwo(cv, w, h);
         } else if (style == Style.STACKED) {
             stacked(cv, w, h);
@@ -571,7 +705,25 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         } else {
             twoRows(cv, w, h);
         }
+        cv.restore();
         if (goalOn && !look.f1) goalMoment(cv, w, h, gt);
+        // The net shivering after the ball goes in, once the scorers' band has gone; VAR checking; FULL TIME stamped.
+        boolean rippling = !look.f1 && gt >= RIPPLE_AT && gt < RIPPLE_AT + RIPPLE_MS;
+        if (rippling) netRipple(cv, w, h, gt - RIPPLE_AT);
+        boolean scanning = varUntil > now && !look.f1;
+        if (scanning) varScan(cv, w, h, now);
+        long ft = ftAt > 0 && !look.f1 ? now - ftAt : -1;
+        boolean stamping = ft >= 0 && ft < FT_MS;
+        if (stamping) fullTimeStamp(cv, w, h, ft);
+        if (p.edgeLine) {
+            float e = Math.max(1f, h * 0.025f);
+            edge.setStyle(Paint.Style.STROKE);
+            edge.setStrokeWidth(e);
+            edge.setColor(0x8CFFFFFF);
+            r.set(e / 2, e / 2, w - e / 2, h - e / 2);
+            cv.drawRoundRect(r, rad, rad, edge);
+            edge.setStyle(Paint.Style.FILL);
+        }
         cv.restore();
         if (tab > 0) addedTab(cv, w, full, h);
         if (part) {
@@ -584,7 +736,7 @@ final class OverlayBug extends View implements BurnGuard.Dims {
                 cv.drawRect(in[2] - lw, 0, in[2], h, edge);
             }
         }
-        if (goalOn && goalFrozen < 0) postInvalidateOnAnimation();
+        if ((goalOn && goalFrozen < 0) || ((turning || rippling || scanning || stamping) && !part)) postInvalidateOnAnimation();
         // Alive (Card's red always, every look's score in added time): drawn again about 30 times a second while it
         // shows (Minimal, with only its shine, as that comes), not while a goal's band is over it; else not at all.
         else if (aliveNow() && !part && animFrozen < 0 && isShown()) {
@@ -598,7 +750,7 @@ final class OverlayBug extends View implements BurnGuard.Dims {
 
     /** Whether its score is alive now: Card's red always, every look in added time; never F1. */
     private boolean aliveNow() {
-        return !look.f1 && (style == Style.CARD || look.stoppage);
+        return !look.f1 && (style == Style.CARD || look.stoppage || look.late && look.live);
     }
 
     /** When to draw it again while alive: about 30 times a second; Minimal (its shine alone) not till the next shine. */
@@ -778,6 +930,13 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         if (p.clock != 0) {
             fill.setColor(p.clock);
             cv.drawRect(x, y, x + w, y + h, fill);
+        }
+        if (look.late && look.live) {
+            // The last minutes of a close game: the clock's box beats red, about once a second.
+            fill.setColor(0xFFE3061B);
+            fill.setAlpha(Math.round(60 + 150 * heartbeat(System.currentTimeMillis())));
+            cv.drawRect(x, y, x + w, y + h, fill);
+            fill.setAlpha(255);
         }
         int colour = "HT".equals(look.clock) ? AMBER : look.live ? p.clockInk : p.dim;
         if (!addedInside()) {

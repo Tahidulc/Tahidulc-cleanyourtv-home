@@ -41,7 +41,8 @@ public class ChannelMarkTest {
             assertFalse(l.channel() && l.broadcast());
             assertEquals(l, LogoCover.Look.of(l.name()));
         }
-        assertEquals(7, channel);
+        assertEquals(8, channel);
+        assertTrue(LogoCover.Look.FROSTED.channel());
         assertFalse(LogoCover.Look.OFF.channel());
         assertFalse(LogoCover.Look.BADGE.channel());
         assertTrue(LogoCover.Look.MATCHDAY.channel());

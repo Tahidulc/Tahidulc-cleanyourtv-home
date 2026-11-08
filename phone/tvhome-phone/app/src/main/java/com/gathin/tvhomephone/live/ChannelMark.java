@@ -29,6 +29,8 @@ final class ChannelMark {
     static final String NAME = "WHITEBROOK ROAD", SPORTS = "SPORTS", L1 = "WHITEBROOK", L2 = "ROAD ";
     static final int VIOLET = 0xFF6D28F2, CORAL = 0xFFFF6B6B, LILAC = 0xFFC2ADFF, PEACH = 0xFFFFA196, NIGHT = 0xFF07090F,
             DUSK = 0xFF1B1F31, WHITE = 0xFFFFFFFF, LIVE_RED = 0xFFFF3B4E;
+    /** The frosted look's frost, as the frosted scoreboard's: its top and its foot. */
+    static final int FROST_TOP = 0xFF9AA5BA, FROST_FOOT = 0xFF5D677D;
     /** The tag's boxes: white with the letters cut in the ground's colour, lined in white, or in the mark's colours. */
     private static final int SOLID = 0, LINED = 1, GRADED = 2, ON_COLOUR = 3;
 
@@ -166,6 +168,9 @@ final class ChannelMark {
                 break;
             case SMOKED:
                 smoked(cv, x, y, w, h);
+                break;
+            case FROSTED:
+                frosted(cv, x, y, w, h);
                 break;
             default:
                 signature(cv, x, y, w, h);
@@ -432,6 +437,31 @@ final class ChannelMark {
         float pad = Math.min(h * 0.15f, w * 0.06f);
         float mw = Math.min((h - 2 * pad) * 0.66f, w * 0.2f), mh = mw * 49f / 51f;
         mark(cv, x + pad * 1.1f, y + (h - mh) / 2f, mw, 0xF2FFFFFF, solid(0xFF1B1E28));
+        float left = x + pad * 1.1f + mw + pad * 0.8f;
+        twoLines(cv, left, y, x + w - pad - left, h, (h - 2 * pad) * 0.8f, heavy, medium, false, LINED, 0f);
+    }
+
+    /**
+     * Frosted glass, as the frosted scoreboard: a silvery frost falling darker to its foot, a soft sheen over its top half
+     * and a fine white edge; the mark and both lines in white.
+     */
+    private void frosted(Canvas cv, float x, float y, float w, float h) {
+        float rad = Math.min(w, h) * 0.18f;
+        r.set(x, y, x + w + ext, y + h + down);
+        fill.setShader(grad(0, y, 0, y + h + down, FROST_TOP, FROST_FOOT));
+        cv.drawRoundRect(r, rad, rad, fill);
+        // The sheen: light across its top, gone by its middle.
+        fill.setShader(grad(0, y, 0, y + h * 0.55f, 0x47FFFFFF, 0x00FFFFFF));
+        cv.drawRoundRect(r, rad, rad, fill);
+        fill.setShader(null);
+        line.setStrokeWidth(Math.max(1f, h * 0.016f));
+        line.setShader(grad(0, y, 0, y + h + down, 0xB3FFFFFF, 0x4DFFFFFF));
+        r.inset(line.getStrokeWidth() / 2f, line.getStrokeWidth() / 2f);
+        cv.drawRoundRect(r, rad, rad, line);
+        line.setShader(null);
+        float pad = Math.min(h * 0.15f, w * 0.06f);
+        float mw = Math.min((h - 2 * pad) * 0.66f, w * 0.2f), mh = mw * 49f / 51f;
+        mark(cv, x + pad * 1.1f, y + (h - mh) / 2f, mw, WHITE, solid(FROST_FOOT));
         float left = x + pad * 1.1f + mw + pad * 0.8f;
         twoLines(cv, left, y, x + w - pad - left, h, (h - 2 * pad) * 0.8f, heavy, medium, false, LINED, 0f);
     }

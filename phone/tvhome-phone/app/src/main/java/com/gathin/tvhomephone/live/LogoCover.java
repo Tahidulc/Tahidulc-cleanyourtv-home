@@ -28,7 +28,7 @@ final class LogoCover extends View implements BurnGuard.Dims {
     /** The looks, as Settings names them. */
     enum Look {
         OFF("Leave the channel's"), SIGNATURE("Signature"), MATCHDAY("Matchday"), ROOFLINE("Roofline"), VELOCITY("Velocity"),
-        ROUNDEL("Roundel"), BLOCK("Solid block"), SMOKED("Smoked glass"), COMPETITION("The competition's logo"), BADGE("Badge"), GLASS("Glass"), MARK("Mark only"),
+        ROUNDEL("Roundel"), BLOCK("Solid block"), FROSTED("Frosted glass"), SMOKED("Smoked glass"), COMPETITION("The competition's logo"), BADGE("Badge"), GLASS("Glass"), MARK("Mark only"),
         WORD("Wordmark"), BROADCAST("Broadcast, see-through"), BROADCAST_BOARD("Broadcast, scoreboard colours");
 
         /** Laid out as a sports channel's own logo, one solid block. */
@@ -227,7 +227,7 @@ final class LogoCover extends View implements BurnGuard.Dims {
         words.setTextSize(foot * 0.5f);
         words.setLetterSpacing(0.42f);
         float tw = words.measureText("LIVE"), cx = w / 2f, cy = h - foot / 2f + line / 2f;
-        if (look.channel() && look != Look.SMOKED) {
+        if (look.channel() && look != Look.SMOKED && look != Look.FROSTED) {
             inkShader = new LinearGradient(cx - tw / 2f, 0, cx + tw / 2f, 0, ChannelMark.LILAC, ChannelMark.PEACH, Shader.TileMode.CLAMP);
         }
         float gap = foot * 0.4f, rule = Math.min(foot * 1.2f, (w - tw) / 2f - gap - in);

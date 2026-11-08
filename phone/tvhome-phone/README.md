@@ -280,6 +280,14 @@ cover" in Settings and the player's menu turns it off.
 LIVE as part of the one tile (4.25): no red bar and no dot; each look's own ground runs on down under LIVE, a fine light
 line across, LIVE spaced out between two short rules in the look's own colours, as the TV launcher's 4.30 has it.
 
+Frosted glass, new moments and FotMob (4.26): a Frosted glass scoreboard with the crests and the time only (a silvery
+frost, a sheen, a fine white edge) and a matching Frosted glass logo look. On every look, light rings run out from the
+scorer's end after a goal's band, half time turns the board over, VAR checking scans a line across it, FULL TIME is
+stamped on it, and in a close game's last minutes the clock beats red. FotMob's figures join the stats beside the board
+(expected goals, big chances, touches in the box, distance run, each side's top rated, who is on top, an insight, its
+player of the match); each substitution slides out with the picture of who comes on, and a player with no cut-out gets
+his FotMob picture. Both have a switch on the Scoreboard settings. As the TV launcher's 4.31 has it.
+
 Subtitles (CC in the film's player): the film's or episode's own, from your playlist's stream, come first, in the
 languages you choose (Settings, Subtitles, in order). When it has none, OpenSubtitles.com is looked in by the title's
 TMDB id (the series' with its season and episode), best first: your languages, the ones that fit the copy playing (its

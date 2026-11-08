@@ -76,7 +76,7 @@ public final class PlayerPhotos {
     }
 
     /** A picture from its address, kept in the app's cache; null when it does not come. */
-    static Bitmap picture(Context c, String url) {
+    public static Bitmap picture(Context c, String url) {
         File dir = new File(c.getCacheDir(), "player_photos");
         File f = new File(dir, Integer.toHexString(url.hashCode()) + ".img");
         try {

@@ -132,6 +132,24 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         e.apply();
     }
 
+    /** FotMob's figures added to the stats (expected goals, big chances, ratings, momentum) and its players' pictures. */
+    static boolean fotmobOn(Context c) {
+        return prefs(c).getBoolean("fotmob", true);
+    }
+
+    static void setFotmobOn(Context c, boolean on) {
+        prefs(c).edit().putBoolean("fotmob", on).apply();
+    }
+
+    /** Each substitution slides out beside the board, with the picture of who comes on. */
+    static boolean subsOn(Context c) {
+        return prefs(c).getBoolean("subs", true);
+    }
+
+    static void setSubsOn(Context c, boolean on) {
+        prefs(c).edit().putBoolean("subs", on).apply();
+    }
+
     /** LIVE along the logo cover's foot while the game is live (on unless switched off). */
     static boolean logoLive(Context c) {
         return prefs(c).getBoolean("logo_live", true);
@@ -823,17 +841,23 @@ public final class ScoreBoard implements LiveAlerts.Listener {
                 least = 1;
                 break;
             case "h1":
-                want = new String[]{"Possession", "Shots", "On target", "Corners"};
+                want = new String[]{"Possession", "Expected goals", "Shots", "On target", "Momentum", "Corners"};
+                most = 4;
                 break;
             case "ht":
-                want = new String[]{"Possession", "Shots", "On target", "Corners", "Pass accuracy", "Fouls"};
+                want = new String[]{"Possession", "Expected goals", "Shots", "Big chances", "On target", "Top rated", "Corners",
+                        "Pass accuracy", "Fouls"};
                 most = 5;
                 break;
             case "h2":
-                want = new String[]{"Possession", "Player of the match", "Corners", "On target", "Shots"};
+                want = new String[]{"Expected goals", "Momentum", "Possession", "Touches in box", "Player of the match", "Corners",
+                        "On target", "Shots"};
+                most = 4;
                 break;
             case "ft":
-                want = new String[]{"Possession", "Shots", "Player of the match", "Pass accuracy", "On target"};
+                want = new String[]{"Expected goals", "Possession", "Shots", "Big chances", "Player of the match", "Distance run",
+                        "Insight", "Pass accuracy", "On target"};
+                most = 5;
                 break;
             default:
                 return new ArrayList<>();
@@ -880,6 +904,9 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         String id = g.id, slug = g.slug;
         String homeCode = code(g.home, g.homeName), awayCode = code(g.away, g.awayName);
         int state = g.state;
+        boolean fotmob = fotmobOn(c);
+        String homeName = g.homeName, awayName = g.awayName;
+        long kickoff = g.kickoff;
         App.io.execute(() -> {
             Espn.Summary sum = null;
             try {
@@ -889,15 +916,100 @@ public final class ScoreBoard implements LiveAlerts.Listener {
             }
             Espn.Summary got = sum;
             Map<String, String[]> by = got == null ? new HashMap<>() : statsOf(got, state, homeCode, awayCode);
+            // FotMob's figures on top: expected goals, big chances, ratings, who is on top, its player of the match.
+            FotMob.Match fm = null;
+            if (fotmob && state != Game.PRE) {
+                try {
+                    int fid = FotMob.find(id, homeName, awayName, kickoff);
+                    fm = fid > 0 ? FotMob.details(fid) : null;
+                } catch (RuntimeException ignored) {
+                    fm = null;
+                }
+                if (fm != null) by.putAll(FotMob.statsOf(fm, homeCode, awayCode));
+            }
+            FotMob.Match read = fm;
             App.main.post(() -> {
                 statsReading = false;
-                if (got == null) return;
+                if (read != null) fotmobRead(g, read);
+                if (got == null) {
+                    if (!by.isEmpty()) {
+                        statsBy = by;
+                        statsFor = id;
+                    }
+                    return;
+                }
                 if (!id.equals(statsFor)) addedUp = new int[]{-1, -1, -1, -1};
                 for (int i = 0; i < 4; i++) if (got.added[i] > 0) addedUp[i] = got.added[i];
                 if (!by.isEmpty()) statsBy = by;
                 statsFor = id;
             });
         });
+    }
+
+    /** The substitutions seen, "game|minute|who came on": each slides out once, those before the board came up never. */
+    private final Set<String> subsSeen = new java.util.HashSet<>(), subsGames = new java.util.HashSet<>();
+
+    /** FotMob's game read (main thread): its VAR check on the board, and each new substitution beside it. */
+    private void fotmobRead(Game g, FotMob.Match m) {
+        boolean own = g.id != null && g.id.equals(lastId) && mode == FOOTBALL_MODE;
+        if (own && m.varPending) bug.varCheck(8_000L);
+        boolean first = subsGames.add(g.id);
+        for (String[] e : m.events) {
+            if (!"Substitution".equals(e[0])) continue;
+            if (!subsSeen.add(g.id + "|" + e[1] + "|" + e[4]) || first) continue;
+            if (subsSeen.size() > 400) subsSeen.clear();
+            if (!own || small || !subsOn(c) || !shows(c, FOOTBALL)) continue;
+            Drop d = subDrop(g, e);
+            d.own = true;
+            d.homeCrest = bug.homeCrest;
+            d.awayCrest = bug.awayCrest;
+            String club = "1".equals(e[2]) ? g.homeName : g.awayName;
+            App.io.execute(() -> {
+                Bitmap photo = null;
+                try {
+                    photo = PlayerPhotos.get(c, e[3], club, null);
+                    if (photo == null) photo = fotmobPhoto(c, parse(e[4]));
+                } catch (RuntimeException ignored) {
+                    // without it
+                }
+                Bitmap p = photo;
+                App.main.post(() -> {
+                    d.photo = p;
+                    drop(d);
+                });
+            });
+        }
+    }
+
+    /** Pure: a substitution's alert ({type, minute, home, on, on id, off, off id}): who came on, who went off, when. */
+    static Drop subDrop(Game g, String[] e) {
+        Drop d = new Drop();
+        boolean home = "1".equals(e[2]);
+        d.chip = "SUBSTITUTION";
+        d.colour = 0xFF5CC8FF;
+        String team = home ? (g.homeName != null ? g.homeName : g.home) : (g.awayName != null ? g.awayName : g.away);
+        d.title = team == null ? "" : team;
+        StringBuilder line = new StringBuilder("On ").append(e[3] == null ? "" : e[3].trim());
+        if (e[5] != null && !e[5].trim().isEmpty()) line.append(" · off ").append(e[5].trim());
+        if (e[1] != null && !e[1].isEmpty()) line.append(" · ").append(e[1]).append("'");
+        d.line = line.toString();
+        d.homeColour = OverlayBug.colour(g.homeColor, g.homeAlt);
+        d.awayColour = OverlayBug.colour(g.awayColor, g.awayAlt);
+        d.side = home ? 1 : 2;
+        return d;
+    }
+
+    private static int parse(String n) {
+        try {
+            return Integer.parseInt(n == null ? "" : n.trim());
+        } catch (NumberFormatException e) {
+            return 0;
+        }
+    }
+
+    /** A player's FotMob picture by its id (off the main thread); null when there is none. */
+    private static Bitmap fotmobPhoto(Context c, int id) {
+        return id > 0 ? PlayerPhotos.picture(c, FotMob.photoUrl(id)) : null;
     }
 
     /**
@@ -1068,7 +1180,14 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         }
         // In added time every look's score comes alive (decided here, where the clock's words are made).
         l.stoppage = stoppage(g, l.clock);
+        l.late = late(l.clock, g.homeScore, g.awayScore);
         return l;
+    }
+
+    /** Pure: the last minutes of a close game (the 85th on, a goal or none between them): the board's clock beats then. */
+    static boolean late(String clock, int home, int away) {
+        int m = minuteOfClock(clock);
+        return m >= 85 && m <= 130 && Math.abs(home - away) <= 1;
     }
 
     /** "EVE" from ESPN's abbreviation, else the name's first three letters. */
@@ -1130,6 +1249,7 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         Drop d = drop(a);
         Game g = a.game;
         d.own = g != null && g.id != null && g.id.equals(lastId) && mode == FOOTBALL_MODE;
+        if (d.own && "var".equals(a.kind)) bug.varCheck(8_000L);
         // The line-ups, while the board is up: as the TV's card beside it.
         if (d.lineups && a.summary != null && g != null && boardUp() && !(src instanceof FloatService)) {
             lineupsCard(a);
@@ -1193,6 +1313,7 @@ public final class ScoreBoard implements LiveAlerts.Listener {
             Bitmap photo = null, home = null, away = null;
             try {
                 if (who != null) photo = PlayerPhotos.get(c, who, club, null);
+                if (photo == null && who != null && fotmobOn(c)) photo = fotmobPhoto(c, FotMob.playerId(who));
                 if (crests) {
                     home = LiveGames.picture(c, LiveGames.homeCrest(g), px);
                     away = LiveGames.picture(c, LiveGames.awayCrest(g), px);
