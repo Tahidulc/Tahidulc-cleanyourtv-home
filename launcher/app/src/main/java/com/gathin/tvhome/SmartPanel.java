@@ -132,8 +132,8 @@ final class SmartPanel {
         readTuya();
     }
 
-    /** Only layout changes animate (a size or place changing), not views coming and going. */
-    private static android.animation.LayoutTransition changing() {
+    /** Only layout changes animate (a size or place changing), not views coming and going (the thermostat's card too). */
+    static android.animation.LayoutTransition changing() {
         android.animation.LayoutTransition t = new android.animation.LayoutTransition();
         t.disableTransitionType(android.animation.LayoutTransition.APPEARING);
         t.disableTransitionType(android.animation.LayoutTransition.DISAPPEARING);

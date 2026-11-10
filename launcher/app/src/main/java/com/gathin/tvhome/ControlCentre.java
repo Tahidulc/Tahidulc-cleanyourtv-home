@@ -36,6 +36,11 @@ final class ControlCentre {
         String section;
         /** A switch (Do not disturb, Goal Rush): OK changes it and the panel stays open, its line saying what it is now. */
         boolean stays;
+        /**
+         * Read afresh each time the panel opens (the thermostat), by its owner off the main thread: given what puts the
+         * new line on its tile once it is in. Null: its line as it is.
+         */
+        java.util.function.Consumer<Runnable> fresh;
 
         Item(String name, int icon, Supplier<String> state, Supplier<Boolean> lit, Runnable ok) {
             this.name = name;
@@ -52,6 +57,11 @@ final class ControlCentre {
 
         Item stays() {
             stays = true;
+            return this;
+        }
+
+        Item fresh(java.util.function.Consumer<Runnable> read) {
+            fresh = read;
             return this;
         }
     }
@@ -244,6 +254,14 @@ final class ControlCentre {
                 if (i % ACROSS > 0) tp.leftMargin = px(16);
                 line.addView(t, tp);
                 tiles.add(t);
+                if (it.fresh != null) {
+                    // Its line read afresh (the thermostat's temperatures), put on the tile when it comes if still open.
+                    it.fresh.accept(() -> {
+                        if (!open || !tiles.contains(t)) return;
+                        restate(t, it);
+                        paint();
+                    });
+                }
                 if (it.stays) {
                     acts.add(() -> {
                         it.ok.run();

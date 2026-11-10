@@ -838,6 +838,8 @@ final class HomeV2 {
 
     private WeatherPanel weatherPanel;
     private SmartPanel smartPanel;
+    /** The thermostat's card (Tuya's): from its tile in the Control Centre, with a Tuya project. */
+    private ThermostatPanel thermostatPanel;
     /** One search for everything: the magnifier in the top bar, or the remote's Search key. */
     private SearchPanel search;
     /** Your viewing: in the Control Centre. */
@@ -991,6 +993,13 @@ final class HomeV2 {
         if (smartHome.resolveActivity(a.getPackageManager()) != null || installed(CameraAlert.TUYA) || TuyaCloud.configured(a)) {
             smartPanel = new SmartPanel(this);
             items.add(new ControlCentre.Item("Lights & home", R.drawable.ic_bulb, () -> "Lights, cameras, the car", null, () -> smartPanel.show()));
+        }
+        // The thermostat (with a Tuya project): the room's temperature, the target and the mode on its tile (lit while the
+        // heating is on), read afresh as the Control Centre opens; OK opens its card. None in the project: it says so.
+        if (TuyaCloud.configured(a)) {
+            thermostatPanel = new ThermostatPanel(this);
+            items.add(new ControlCentre.Item(a.getString(R.string.thermostat), R.drawable.ic_thermostat, thermostatPanel::glance,
+                    thermostatPanel::heating, () -> thermostatPanel.show()).fresh(thermostatPanel::fresh));
         }
         // Match mode: one game, quiet but for it, the lights down at kick-off and flashing for its goals (with Tuya
         // lights), and its alerts in step with the channel.
@@ -1751,6 +1760,7 @@ final class HomeV2 {
         if (viewing != null) viewing.hide();
         if (search != null) search.hide();
         if (smartPanel != null) smartPanel.hide();
+        if (thermostatPanel != null) thermostatPanel.hide();
         HomeStyle.close();
         guide.hide();
         closePage();
@@ -1786,6 +1796,7 @@ final class HomeV2 {
                 || (playersPanel != null && playersPanel.isOpen()) || (seasonPanel != null && seasonPanel.isOpen())
                 || (plannerPanel != null && plannerPanel.isOpen()) || (boardPanel != null && boardPanel.isOpen())
                 || (smartPanel != null && smartPanel.isOpen()) || (weatherPanel != null && weatherPanel.isOpen())
+                || (thermostatPanel != null && thermostatPanel.isOpen())
                 || (titlePanel != null && titlePanel.isOpen()) || (viewing != null && viewing.isOpen())
                 || (search != null && search.isOpen()) || Surprise.isOpen() || EpisodeDice.isOpen() || Recap.isOpen() || TrailerReel.isOpen()
                 || AlertToday.isOpen() || TvLink.isOpen() || Birthday.isOpen() || MonthRecap.isOpen()
@@ -1848,11 +1859,13 @@ final class HomeV2 {
         if (e.getKeyCode() == KeyEvent.KEYCODE_SEARCH && search != null) {
             if (e.getAction() == KeyEvent.ACTION_UP) {
                 if (smartPanel != null) smartPanel.hide();
+                if (thermostatPanel != null) thermostatPanel.hide();
                 if (weatherPanel != null) weatherPanel.hide();
                 search.show();
             }
             return true;
         }
+        if (thermostatPanel != null && thermostatPanel.isOpen()) return thermostatPanel.key(e);
         if (smartPanel != null && smartPanel.isOpen()) return smartPanel.key(e);
         if (weatherPanel != null && weatherPanel.isOpen()) return weatherPanel.key(e);
         if (guide.isOpen()) return guide.key(e);

@@ -1715,7 +1715,8 @@ public class GoalWatchService extends Service {
             YouTubeBox.test(this, intent.getStringExtra("test_yt").split(","));
         }
         if (intent != null && intent.hasExtra("test_tuya")) {
-            // adb only: what the Tuya cloud project sees, and whether its cameras stream, to files/tuya.txt.
+            // adb only: what the Tuya cloud project sees (or plainly that it sees no devices), each thermostat's
+            // specification and state, and whether its cameras stream, to files/tuya.txt.
             TuyaCloud.test(this);
         }
         if (intent != null && intent.hasExtra("test_render_video")) {

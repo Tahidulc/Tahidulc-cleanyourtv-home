@@ -152,4 +152,39 @@
     <!-- Cinematic top shelf (cinematic_home): the line under the focused dock app's name; %1$s is when it was
          last opened, e.g. "5 minutes ago" or "yesterday, 9:40 pm". -->
     <string name="last_opened">Last opened %1$s</string>
+
+    <!-- The thermostat from Tuya's cloud (ThermostatPanel): the Control Centre's tile and its card. -->
+    <string name="thermostat">Thermostat</string>
+    <string name="thermostat_kicker">THERMOSTAT</string>
+    <string name="thermostat_reading">Reading…</string>
+    <!-- The tile's line when the Tuya project has no thermostat; the card says it in full. -->
+    <string name="thermostat_none_short">None found in Tuya</string>
+    <string name="thermostat_none">No thermostat found in Tuya</string>
+    <string name="thermostat_no_devices">Tuya sees no devices: link the Tuya app account to the cloud project, and check its IoT Core service has not expired.</string>
+    <string name="thermostat_unreachable">Tuya not reachable</string>
+    <!-- %1$s is Tuya's own reason, e.g. "device is offline". -->
+    <string name="thermostat_refused">Tuya didn\'t take that: %1$s</string>
+    <!-- Reading it was refused; %1$s is Tuya's reason, e.g. "permission deny". -->
+    <string name="thermostat_read_refused">Tuya refused: %1$s</string>
+    <string name="thermostat_not_refreshed">Tuya · not refreshed</string>
+    <!-- %1$s is the time it was last read, e.g. "21:04". -->
+    <string name="thermostat_updated">Tuya · %1$s</string>
+    <!-- The tile's line: the room's temperature, then the target ("20.5° → 21.5°"). -->
+    <string name="thermostat_glance">%1$s → %2$s</string>
+    <!-- The tile's line, then the mode or Off ("20.5° → 21.5° · Auto"). -->
+    <string name="thermostat_glance_more">%1$s · %2$s</string>
+    <string name="thermostat_set_to">SET TO</string>
+    <string name="thermostat_room">ROOM</string>
+    <string name="thermostat_now">NOW</string>
+    <string name="thermostat_mode">MODE</string>
+    <string name="thermostat_heating">Heating</string>
+    <string name="thermostat_idle">Idle</string>
+    <string name="thermostat_valve_open">Valve open</string>
+    <string name="thermostat_valve_closed">Valve closed</string>
+    <string name="thermostat_no_switch">This one has no on/off switch</string>
+    <string name="thermostat_back">Back closes</string>
+    <string name="thermostat_hint_target">◀ ▶ sets the temperature</string>
+    <string name="thermostat_hint_target_all">◀ ▶ or ▲ ▼ sets the temperature</string>
+    <string name="thermostat_hint_power">OK turns it on or off</string>
+    <string name="thermostat_hint_mode">▼ the mode</string>
 </resources>
