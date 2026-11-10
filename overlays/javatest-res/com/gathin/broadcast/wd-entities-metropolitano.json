@@ -1,0 +1,18 @@
+{"_note": "The shape of Wikidata's wbgetentities answer (props=labels|aliases|descriptions|claims), written by hand: illustrative ids, names and file; Q483110 (stadium) and Q476028 (association football club) are Wikidata's classes.",
+ "entities": {
+  "Q20000003": {"type": "item", "id": "Q20000003",
+   "labels": {"en": {"language": "en", "value": "Atlético Madrid"}},
+   "descriptions": {"en": {"language": "en", "value": "association football club in Madrid, Spain"}},
+   "aliases": {},
+   "claims": {"P31": [{"mainsnak": {"snaktype": "value", "property": "P31", "datavalue": {"value": {"entity-type": "item", "numeric-id": 476028, "id": "Q476028"}, "type": "wikibase-entityid"}, "datatype": "wikibase-item"}, "type": "statement", "rank": "normal"}],
+              "P373": [{"mainsnak": {"snaktype": "value", "property": "P373", "datavalue": {"value": "Club Atlético de Madrid", "type": "string"}, "datatype": "string"}, "type": "statement", "rank": "normal"}]}},
+  "Q20000002": {"type": "item", "id": "Q20000002",
+   "labels": {"en": {"language": "en", "value": "Metropolitano Stadium"}, "es": {"language": "es", "value": "Estadio Metropolitano"}},
+   "descriptions": {"en": {"language": "en", "value": "football stadium in Madrid, Spain"}, "es": {"language": "es", "value": "estadio de fútbol en Madrid, España"}},
+   "aliases": {"en": [{"language": "en", "value": "Wanda Metropolitano"}, {"language": "en", "value": "Riyadh Air Metropolitano"}, {"language": "en", "value": "La Peineta"}],
+               "es": [{"language": "es", "value": "Cívitas Metropolitano"}, {"language": "es", "value": "Metropolitano"}]},
+   "claims": {"P31": [{"mainsnak": {"snaktype": "value", "property": "P31", "datavalue": {"value": {"entity-type": "item", "numeric-id": 483110, "id": "Q483110"}, "type": "wikibase-entityid"}, "datatype": "wikibase-item"}, "type": "statement", "rank": "normal"}],
+              "P373": [{"mainsnak": {"snaktype": "value", "property": "P373", "datavalue": {"value": "Metropolitano Stadium", "type": "string"}, "datatype": "string"}, "type": "statement", "rank": "normal"}],
+              "P18": [{"mainsnak": {"snaktype": "value", "property": "P18", "datavalue": {"value": "Metropolitano Stadium interior 2019.jpg", "type": "string"}, "datatype": "commonsMedia"}, "type": "statement", "rank": "normal"}]}}
+ },
+ "success": 1}

@@ -15,6 +15,7 @@ and its tests (`javatest/`).
 | `java/.../BroadcastView.java` | A see-through view playing one of them over the picture: the page in a WebView, its sounds (`sfx/`) in a SoundPool. |
 | `java/.../BroadcastData.java` | What a page is given: clubs, crests, colours, competition, ground; for the line-ups FotMob's two teams with each player's picture, all inline. |
 | `java/.../PlPhotos.java` | The Premier League's own player pictures, matched to FotMob's line-ups by club and name through its fantasy game's player list. |
+| `java/.../LaLigaPhotos.java` | La Liga's own player pictures for a La Liga game, from each player's public page on laliga.com (checked for the same name and club), cut square to the Premier League's framing. |
 | `java/.../Moments.java` | When each comes: the line-ups from seven minutes before kick-off on the picture, the pop-up at each kick-off and 40 seconds after a goal reaches the picture. |
 
 The pages are built from `src/` with `./build.sh` (Node's `npx` fetches esbuild to put the 3D trophies and three.js

@@ -14,6 +14,7 @@ import java.io.File;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -145,7 +146,8 @@ public final class BroadcastData {
     /**
      * The classic line-ups from FotMob's match details (its "content.lineup"): both elevens with their places, numbers
      * and the captain, the subs, the formations, the ground's place for its light, and each player's picture (the
-     * Premier League's cut-out, else FotMob's face). Null when FotMob has no line-ups for the game yet.
+     * Premier League's cut-out, in a La Liga game La Liga's, else FotMob's face). Null when FotMob has no line-ups for
+     * the game yet.
      */
     public static JSONObject lineups(Match m, JSONObject details, File cacheDir) throws JSONException {
         JSONObject content = details == null ? null : details.optJSONObject("content");
@@ -166,17 +168,27 @@ public final class BroadcastData {
         try {
             Future<String> hc = pool.submit(() -> image(m.homeCrest, m.homeCrestUrl != null ? m.homeCrestUrl : fotmobCrest(ht), false));
             Future<String> ac = pool.submit(() -> image(m.awayCrest, m.awayCrestUrl != null ? m.awayCrestUrl : fotmobCrest(at), false));
-            JSONObject boot = PlPhotos.boot(cacheDir);
-            Map<JSONObject, Future<String[]>> pics = new LinkedHashMap<>();
-            for (JSONObject[] t : new JSONObject[][]{{home, ht}, {away, at}}) {
+            // a La Liga game's players have La Liga's own cut-outs (a few pages a game); any other's the Premier League's
+            boolean laLiga = LaLigaPhotos.isLaLiga(m.compId, m.compName, details);
+            LaLigaPhotos.Budget budget = laLiga ? new LaLigaPhotos.Budget() : null;
+            JSONObject boot = laLiga ? null : PlPhotos.boot(cacheDir);
+            JSONObject[][] teams = {{home, ht}, {away, at}};
+            List<List<PlPhotos.Element>> clubs = new ArrayList<>();
+            for (JSONObject[] t : teams) {
                 List<PlPhotos.Element> club = PlPhotos.club(boot, t[0].optString("name"));
                 if (club.isEmpty()) club = PlPhotos.club(boot, t[1].optString("name"));
-                final List<PlPhotos.Element> els = club;
-                for (String list : new String[]{"xi", "subs"}) {
-                    JSONArray ps = t[0].optJSONArray(list);
+                clubs.add(club);
+            }
+            // both elevens before the subs, so the page budget goes to the starters first
+            Map<JSONObject, Future<String[]>> pics = new LinkedHashMap<>();
+            for (String list : new String[]{"xi", "subs"}) {
+                for (int k = 0; k < teams.length; k++) {
+                    final List<PlPhotos.Element> els = clubs.get(k);
+                    final String[] names = laLiga ? new String[]{teams[k][0].optString("name"), teams[k][1].optString("name")} : null;
+                    JSONArray ps = teams[k][0].optJSONArray(list);
                     for (int i = 0; ps != null && i < ps.length(); i++) {
                         JSONObject p = ps.getJSONObject(i);
-                        pics.put(p, pool.submit(() -> pictures(els, p)));
+                        pics.put(p, pool.submit(() -> pictures(els, names, budget, cacheDir, p)));
                     }
                 }
             }
@@ -208,7 +220,7 @@ public final class BroadcastData {
         String ref = referee(info);
         if (!ref.isEmpty()) o.put("referee", ref);
         // the ground itself behind the line-ups (a free photo, graded by the page for the time of the game)
-        JSONObject photo = Grounds.ground(o.optString("stadium"), cacheDir);
+        JSONObject photo = Grounds.ground(o.optString("stadium"), o.optString("city"), cacheDir);
         if (photo != null) o.put("ground", photo);
         long ko = m.kickoff > 0 ? m.kickoff : System.currentTimeMillis();
         ZonedDateTime local = Instant.ofEpochMilli(ko).atZone(ZoneId.systemDefault());
@@ -311,12 +323,19 @@ public final class BroadcastData {
         return id > 0 ? "https://images.fotmob.com/image_resources/logo/teamlogo/" + id + ".png" : null;
     }
 
-    /** One player's two pictures, as data: URLs: {the Premier League's cut-out, FotMob's face (only without one)}. */
-    private static String[] pictures(List<PlPhotos.Element> club, JSONObject p) {
+    /**
+     * One player's two pictures, as data: URLs: {the Premier League's cut-out (in a La Liga game, La Liga's: laLiga
+     * holds his club's names), FotMob's face (only without one)}.
+     */
+    private static String[] pictures(List<PlPhotos.Element> club, String[] laLiga, LaLigaPhotos.Budget budget, File cacheDir, JSONObject p) {
         String photo = null, face = null;
-        int code = PlPhotos.codeFor(club, p.optString("name"), p.optString("last"));
-        Bitmap bm = PlPhotos.picture(code);
-        if (bm != null) photo = dataUrl(bm, true);
+        if (laLiga != null) {
+            photo = LaLigaPhotos.photo(p.optString("name"), p.optString("last"), laLiga, cacheDir, budget);
+        } else {
+            int code = PlPhotos.codeFor(club, p.optString("name"), p.optString("last"));
+            Bitmap bm = PlPhotos.picture(code);
+            if (bm != null) photo = dataUrl(bm, true);
+        }
         if (photo == null && p.optLong("id") > 0) {
             face = image(null, "https://images.fotmob.com/image_resources/playerimages/" + p.optLong("id") + ".png", false);
         }
@@ -355,16 +374,20 @@ public final class BroadcastData {
     }
 
     /** A bitmap as a data: URL: PNG (exact, for crests and logos) or WebP with its see-through kept (players' pictures). */
-    @SuppressWarnings("deprecation")
     static String dataUrl(Bitmap bm, boolean webp) {
+        if (webp) return "data:image/webp;base64," + Base64.encodeToString(webp(bm), Base64.NO_WRAP);
         ByteArrayOutputStream out = new ByteArrayOutputStream();
-        if (webp) {
-            Bitmap.CompressFormat f = Build.VERSION.SDK_INT >= 30 ? Bitmap.CompressFormat.WEBP_LOSSY : Bitmap.CompressFormat.WEBP;
-            bm.compress(f, 86, out);
-            return "data:image/webp;base64," + Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP);
-        }
         bm.compress(Bitmap.CompressFormat.PNG, 100, out);
         return "data:image/png;base64," + Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP);
+    }
+
+    /** A player's picture as the line-ups take it: WebP, its see-through kept. */
+    @SuppressWarnings("deprecation")
+    static byte[] webp(Bitmap bm) {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        Bitmap.CompressFormat f = Build.VERSION.SDK_INT >= 30 ? Bitmap.CompressFormat.WEBP_LOSSY : Bitmap.CompressFormat.WEBP;
+        bm.compress(f, 86, out);
+        return out.toByteArray();
     }
 
     /** Pure: the goals so far as a score {home, away} from a board's "2–1" (any dash); null when it is not one. */

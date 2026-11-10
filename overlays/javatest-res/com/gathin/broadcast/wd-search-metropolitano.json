@@ -1,0 +1,15 @@
+{"_note": "The shape of Wikidata's wbsearchentities answer (mediawiki.org/wiki/Wikibase/API), written by hand while Wikimedia rate-limited the machine: the ids and texts are illustrative.",
+ "searchinfo": {"search": "Riyadh Air Metropolitano"},
+ "search": [
+  {"id": "Q20000001", "title": "Q20000001", "pageid": 20000001, "repository": "wikidata",
+   "url": "//www.wikidata.org/wiki/Q20000001", "concepturi": "http://www.wikidata.org/entity/Q20000001",
+   "display": {"label": {"value": "Estadio Metropolitano", "language": "en"}, "description": {"value": "Madrid Metro station near the stadium", "language": "en"}},
+   "label": "Estadio Metropolitano", "description": "Madrid Metro station near the stadium",
+   "match": {"type": "alias", "language": "en", "text": "Riyadh Air Metropolitano"}},
+  {"id": "Q20000002", "title": "Q20000002", "pageid": 20000002, "repository": "wikidata",
+   "url": "//www.wikidata.org/wiki/Q20000002", "concepturi": "http://www.wikidata.org/entity/Q20000002",
+   "display": {"label": {"value": "Metropolitano Stadium", "language": "en"}, "description": {"value": "football stadium in Madrid, Spain", "language": "en"}},
+   "label": "Metropolitano Stadium", "description": "football stadium in Madrid, Spain",
+   "match": {"type": "alias", "language": "en", "text": "Riyadh Air Metropolitano"}, "aliases": ["Riyadh Air Metropolitano"]}
+ ],
+ "success": 1}

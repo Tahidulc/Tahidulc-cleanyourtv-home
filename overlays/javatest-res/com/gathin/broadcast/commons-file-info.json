@@ -1,0 +1,7 @@
+{"_note": "The shape of Commons' imageinfo answer for one file (titles=File:..., iiprop=url|size|mime|extmetadata), written by hand: illustrative.",
+ "batchcomplete": "",
+ "query": {"pages": {"90000001": {"pageid": 90000001, "ns": 6, "title": "File:Metropolitano Stadium interior 2019.jpg", "imagerepository": "local",
+  "imageinfo": [{"size": 2400000, "width": 4000, "height": 2250, "thumburl": "https://upload.wikimedia.org/wikipedia/commons/thumb/x/xx/Metropolitano_Stadium_interior_2019.jpg/1920px-Metropolitano_Stadium_interior_2019.jpg",
+   "thumbwidth": 1920, "thumbheight": 1080, "url": "https://upload.wikimedia.org/wikipedia/commons/x/xx/Metropolitano_Stadium_interior_2019.jpg", "mime": "image/jpeg",
+   "extmetadata": {"Artist": {"value": "<a href=\"//commons.wikimedia.org/wiki/User:Example\">Example</a>", "source": "commons-desc-page"},
+                   "LicenseShortName": {"value": "CC BY-SA 4.0", "source": "commons-desc-page", "hidden": ""}}}]}}}}

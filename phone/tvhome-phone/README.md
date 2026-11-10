@@ -346,6 +346,8 @@ Fix (4.40): the scoreboard settings no longer close the app when they open (the 
 
 The line-ups over the ground's photo alone, with no credit on it (4.41).
 
+La Liga players with their own waist-up pictures in the line-ups, a wider search for the ground's photo, and the kick-off pop-up's crests in deep blue glass circles with a blue glow (4.42).
+
 Subtitles (CC in the film's player): the film's or episode's own, from your playlist's stream, come first, in the
 languages you choose (Settings, Subtitles, in order). When it has none, OpenSubtitles.com is looked in by the title's
 TMDB id (the series' with its season and episode), best first: your languages, the ones that fit the copy playing (its

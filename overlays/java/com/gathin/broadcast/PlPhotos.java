@@ -78,13 +78,17 @@ public final class PlPhotos {
 
     /** Pure: a name folded to plain lowercase letters and digits (accents, ø, æ, ß, ł, đ, ı folded to plain letters). */
     static String fold(String s) {
+        StringBuilder b = new StringBuilder();
+        for (char ch : plain(s).toCharArray()) if (Character.isLetterOrDigit(ch)) b.append(ch);
+        return b.toString();
+    }
+
+    /** Pure: a name in plain lowercase letters, its spaces and marks kept ("Ødegaard-Núñez": "odegaard-nunez"). */
+    static String plain(String s) {
         if (s == null) return "";
         String t = s.replace("ø", "o").replace("Ø", "O").replace("æ", "ae").replace("Æ", "AE").replace("ß", "ss")
                 .replace("ł", "l").replace("Ł", "L").replace("đ", "d").replace("Đ", "D").replace("ı", "i");
-        t = Normalizer.normalize(t, Normalizer.Form.NFKD).replaceAll("\\p{M}", "");
-        StringBuilder b = new StringBuilder();
-        for (char ch : t.toLowerCase(Locale.ROOT).toCharArray()) if (Character.isLetterOrDigit(ch)) b.append(ch);
-        return b.toString();
+        return Normalizer.normalize(t, Normalizer.Form.NFKD).replaceAll("\\p{M}", "").toLowerCase(Locale.ROOT);
     }
 
     /** Clubs whose full names (FotMob's, ESPN's) are not the list's short ones. */

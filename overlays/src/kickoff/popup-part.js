@@ -315,21 +315,34 @@
     const r = R_CREST, pad = 30, sz = 2 * (r + pad);
     const c = mk(sz, sz), g = c.getContext('2d');
     const cx = sz / 2, cy = sz / 2;
-    g.save(); g.shadowColor = 'rgba(0,0,0,0.38)'; g.shadowBlur = 20; g.shadowOffsetY = 6;
-    const fg = g.createRadialGradient(cx - r * 0.25, cy - r * 0.3, r * 0.1, cx, cy, r);
-    fg.addColorStop(0, '#ffffff'); fg.addColorStop(0.75, '#f6f8fb'); fg.addColorStop(1, '#e9eef4');
-    g.beginPath(); g.arc(cx, cy, r, 0, TAU); g.fillStyle = fg; g.fill(); g.restore();
+    // a soft blue glow round the circle, always there (asked for: the deep blue circle with the blue glow)
+    const og = g.createRadialGradient(cx, cy, r * 0.9, cx, cy, r + pad);
+    og.addColorStop(0, 'rgba(90,170,255,0.6)'); og.addColorStop(0.45, 'rgba(60,140,255,0.24)'); og.addColorStop(1, 'rgba(40,110,255,0)');
+    g.fillStyle = og; g.fillRect(0, 0, sz, sz);
+    // the circle: deep blue glass, lit from above
+    const fg = g.createRadialGradient(cx - r * 0.2, cy - r * 0.45, r * 0.1, cx, cy, r);
+    fg.addColorStop(0, '#2f6fd6'); fg.addColorStop(0.45, '#173f99'); fg.addColorStop(0.85, '#0b2463'); fg.addColorStop(1, '#071a4c');
+    g.beginPath(); g.arc(cx, cy, r, 0, TAU); g.fillStyle = fg; g.fill();
     const im = IMG[side];
     if (im) {
       const L = crestLook(im);
-      const k = ((2 * r) / Math.hypot(L.w, L.h)) * 1.13; // a little past fitting corner to corner
+      const k = (2 * r) / Math.hypot(L.w, L.h); // whole inside the circle, corner to corner
       const dw = L.w * k, dh = L.h * k;
       g.save(); g.beginPath(); g.arc(cx, cy, r - 0.5, 0, TAU); g.clip();
-      g.shadowColor = 'rgba(0,0,0,0.2)'; g.shadowBlur = 5; g.shadowOffsetY = 2;
+      g.shadowColor = 'rgba(0,0,0,0.45)'; g.shadowBlur = 8; g.shadowOffsetY = 3;
       g.imageSmoothingQuality = 'high';
       g.drawImage(im, L.x0, L.y0, L.w, L.h, cx - dw / 2, cy - dh / 2, dw, dh);
       g.restore();
     }
+    // the glass's shine over its top, and its bright blue rim
+    g.save(); g.beginPath(); g.arc(cx, cy, r - 1, 0, TAU); g.clip();
+    const sh = g.createLinearGradient(0, cy - r, 0, cy + r * 0.1);
+    sh.addColorStop(0, 'rgba(255,255,255,0.3)'); sh.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = sh; g.beginPath(); g.ellipse(cx, cy - r * 0.42, r * 0.86, r * 0.55, 0, 0, TAU); g.fill();
+    g.restore();
+    const rim = Math.max(3, r * 0.045);
+    g.lineWidth = rim; g.strokeStyle = 'rgba(140,205,255,0.95)'; g.beginPath(); g.arc(cx, cy, r - rim / 2, 0, TAU); g.stroke();
+    g.lineWidth = 1.5; g.strokeStyle = 'rgba(235,247,255,0.9)'; g.beginPath(); g.arc(cx, cy, r - 0.75, 0, TAU); g.stroke();
     MEDAL[side] = c;
     return c;
   }
@@ -339,10 +352,10 @@
     if (alpha <= 0.001 || scale <= 0.01) return;
     const c = medallion(side), sz = c.width * scale, r = R_CREST * scale;
     g.save(); g.globalAlpha = alpha;
-    if (glow > 0.01) { // a warm golden halo round the circle
+    if (glow > 0.01) { // a blue halo round the circle
       g.save(); g.globalCompositeOperation = 'lighter';
       const hg = g.createRadialGradient(x, y, r * 0.7, x, y, r * 1.55);
-      hg.addColorStop(0, `rgba(255,205,90,${(0.55 * glow).toFixed(3)})`); hg.addColorStop(0.45, `rgba(255,170,40,${(0.28 * glow).toFixed(3)})`); hg.addColorStop(1, 'rgba(255,150,20,0)');
+      hg.addColorStop(0, `rgba(120,190,255,${(0.55 * glow).toFixed(3)})`); hg.addColorStop(0.45, `rgba(60,140,255,${(0.28 * glow).toFixed(3)})`); hg.addColorStop(1, 'rgba(40,110,255,0)');
       g.fillStyle = hg; g.fillRect(x - r * 1.6, y - r * 1.6, r * 3.2, r * 3.2);
       g.restore();
     }
@@ -351,20 +364,20 @@
     g.transform(ct, Math.sin(tilt) * 0.16, 0, 1, 0, 0); // turned: narrower, with a slight lean as it would in perspective
     g.imageSmoothingQuality = 'high';
     g.drawImage(c, -sz / 2, -sz / 2, sz, sz);
-    // the gold over the logo: a warm wash from the light's side, and a gold glint passing across
+    // the light over the logo: a cool wash from the light's side, and a glint passing across
     g.beginPath(); g.arc(0, 0, r - 0.5, 0, TAU); g.clip();
     const lx = -r * 0.6 - Math.sin(tilt) * r * 0.8, ly = -r * 0.7;
     const wg = g.createRadialGradient(lx, ly, 0, lx, ly, r * 2.1);
-    wg.addColorStop(0, `rgba(255,214,120,${(0.18 + 0.4 * glow).toFixed(3)})`); wg.addColorStop(0.55, `rgba(255,190,70,${(0.06 + 0.16 * glow).toFixed(3)})`); wg.addColorStop(1, 'rgba(255,180,60,0)');
+    wg.addColorStop(0, `rgba(150,205,255,${(0.18 + 0.4 * glow).toFixed(3)})`); wg.addColorStop(0.55, `rgba(90,160,255,${(0.06 + 0.16 * glow).toFixed(3)})`); wg.addColorStop(1, 'rgba(80,150,255,0)');
     g.globalCompositeOperation = 'soft-light'; g.fillStyle = wg; g.fillRect(-r, -r, 2 * r, 2 * r);
     g.globalCompositeOperation = 'lighter';
     const wg2 = g.createRadialGradient(lx, ly, 0, lx, ly, r * 1.6);
-    wg2.addColorStop(0, `rgba(255,200,90,${(0.1 + 0.3 * glow).toFixed(3)})`); wg2.addColorStop(1, 'rgba(255,180,60,0)');
+    wg2.addColorStop(0, `rgba(140,200,255,${(0.1 + 0.3 * glow).toFixed(3)})`); wg2.addColorStop(1, 'rgba(80,150,255,0)');
     g.fillStyle = wg2; g.fillRect(-r, -r, 2 * r, 2 * r);
     if (sheen > 0 && sheen < 1) {
       const sx = -r * 1.7 + sheen * r * 3.4;
       const sg = g.createLinearGradient(sx - r * 0.22, -r * 0.6, sx + r * 0.22, r * 0.6);
-      sg.addColorStop(0, 'rgba(255,200,80,0)'); sg.addColorStop(0.5, 'rgba(255,224,140,0.55)'); sg.addColorStop(1, 'rgba(255,200,80,0)');
+      sg.addColorStop(0, 'rgba(200,230,255,0)'); sg.addColorStop(0.5, 'rgba(225,240,255,0.55)'); sg.addColorStop(1, 'rgba(200,230,255,0)');
       g.fillStyle = sg; g.fillRect(-r, -r, 2 * r, 2 * r);
     }
     g.restore();
@@ -566,7 +579,7 @@
     const r = R_CREST;
     return SPR.halo || (SPR.halo = bake(-r * 1.6 - 1, -r * 1.6 - 1, r * 3.2 + 2, r * 3.2 + 2, (g) => {
       const hg = g.createRadialGradient(0, 0, r * 0.7, 0, 0, r * 1.55);
-      hg.addColorStop(0, 'rgba(255,205,90,0.66)'); hg.addColorStop(0.45, 'rgba(255,170,40,0.336)'); hg.addColorStop(1, 'rgba(255,150,20,0)');
+      hg.addColorStop(0, 'rgba(120,190,255,0.66)'); hg.addColorStop(0.45, 'rgba(60,140,255,0.336)'); hg.addColorStop(1, 'rgba(40,110,255,0)');
       g.fillStyle = hg; g.fillRect(-r * 1.6, -r * 1.6, r * 3.2, r * 3.2);
     }));
   }
@@ -585,16 +598,16 @@
     g.beginPath(); g.arc(0, 0, r - 0.5, 0, TAU); g.clip();
     const lx = -r * 0.6 - Math.sin(tilt) * r * 0.8, ly = -r * 0.7;
     const wg = g.createRadialGradient(lx, ly, 0, lx, ly, r * 2.1);
-    wg.addColorStop(0, `rgba(255,214,120,${(0.18 + 0.4 * glow).toFixed(3)})`); wg.addColorStop(0.55, `rgba(255,190,70,${(0.06 + 0.16 * glow).toFixed(3)})`); wg.addColorStop(1, 'rgba(255,180,60,0)');
+    wg.addColorStop(0, `rgba(150,205,255,${(0.18 + 0.4 * glow).toFixed(3)})`); wg.addColorStop(0.55, `rgba(90,160,255,${(0.06 + 0.16 * glow).toFixed(3)})`); wg.addColorStop(1, 'rgba(80,150,255,0)');
     g.globalCompositeOperation = 'soft-light'; g.fillStyle = wg; g.fillRect(-r, -r, 2 * r, 2 * r);
     g.globalCompositeOperation = 'lighter';
     const wg2 = g.createRadialGradient(lx, ly, 0, lx, ly, r * 1.6);
-    wg2.addColorStop(0, `rgba(255,200,90,${(0.1 + 0.3 * glow).toFixed(3)})`); wg2.addColorStop(1, 'rgba(255,180,60,0)');
+    wg2.addColorStop(0, `rgba(140,200,255,${(0.1 + 0.3 * glow).toFixed(3)})`); wg2.addColorStop(1, 'rgba(80,150,255,0)');
     g.fillStyle = wg2; g.fillRect(-r, -r, 2 * r, 2 * r);
     if (sheen > 0 && sheen < 1) {
       const sx = -r * 1.7 + sheen * r * 3.4;
       const sg = g.createLinearGradient(sx - r * 0.22, -r * 0.6, sx + r * 0.22, r * 0.6);
-      sg.addColorStop(0, 'rgba(255,200,80,0)'); sg.addColorStop(0.5, 'rgba(255,224,140,0.55)'); sg.addColorStop(1, 'rgba(255,200,80,0)');
+      sg.addColorStop(0, 'rgba(200,230,255,0)'); sg.addColorStop(0.5, 'rgba(225,240,255,0.55)'); sg.addColorStop(1, 'rgba(200,230,255,0)');
       g.fillStyle = sg; g.fillRect(-r, -r, 2 * r, 2 * r);
     }
     g.restore();

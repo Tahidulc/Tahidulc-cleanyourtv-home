@@ -1,0 +1,8 @@
+{"_note": "The shape of Wikipedia's search with page props (generator=search, prop=pageprops, ppprop=wikibase_item), written by hand: illustrative ids.",
+ "batchcomplete": "",
+ "continue": {"gsroffset": 3, "continue": "gsroffset||"},
+ "query": {"pages": {
+  "40000002": {"pageid": 40000002, "ns": 0, "title": "Atlético Madrid", "index": 2, "pageprops": {"wikibase_item": "Q20000003"}},
+  "40000001": {"pageid": 40000001, "ns": 0, "title": "Metropolitano Stadium", "index": 1, "pageprops": {"wikibase_item": "Q20000002"}},
+  "40000003": {"pageid": 40000003, "ns": 0, "title": "Metropolitano (disambiguation)", "index": 3}
+ }}}
