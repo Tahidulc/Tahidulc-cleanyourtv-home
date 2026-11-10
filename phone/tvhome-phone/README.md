@@ -344,6 +344,8 @@ The Event look for the logo cover (4.39), navy or white: Whitebrook Road stacked
 
 Fix (4.40): the scoreboard settings no longer close the app when they open (the Event look's channel sub-name used a pattern Android refuses).
 
+The line-ups over the ground's photo alone, with no credit on it (4.41).
+
 Subtitles (CC in the film's player): the film's or episode's own, from your playlist's stream, come first, in the
 languages you choose (Settings, Subtitles, in order). When it has none, OpenSubtitles.com is looked in by the title's
 TMDB id (the series' with its season and episode), best first: your languages, the ones that fit the copy playing (its

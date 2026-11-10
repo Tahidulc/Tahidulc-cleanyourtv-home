@@ -28,7 +28,8 @@
       // the stadium's own photograph, when the app has one: {photo: a data URL (JPEG), credit: "Photo: ..."}
       const ground = cfg.ground && typeof cfg.ground === 'object' && cfg.ground.photo ? cfg.ground : null;
       window.ASSET_URLS = { home: cfg.home.crest, away: cfg.away.crest, photos, plphotos, ground: ground ? String(ground.photo) : '' };
-      window.GROUND_CREDIT = ground ? String(ground.credit || '') : '';
+      // the photo alone behind the line-ups, no credit on it (asked for; kept with the photo in the app's cache)
+      window.GROUND_CREDIT = '';
       // always the full look; q only when the app gives it, to compare: {flat (no shadows)}
       const q = cfg.q && Object.keys(cfg.q).length ? cfg.q : {};
       if (q.flat) BX.flat();
