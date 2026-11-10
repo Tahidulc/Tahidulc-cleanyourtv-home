@@ -60,6 +60,20 @@ final class ClassicIntro {
     private static boolean fetching;
     /** A try from the Scoreboard card or adb is on: over whatever is in front, not taken down with the board. */
     private static boolean trial;
+    /** When each game's phase last changed (uptime): half time's length, for the second half's pop-up made ready. */
+    private static final Map<String, Long> phaseSince = new HashMap<>();
+    /**
+     * A pop-up made ready before its moment (BroadcastView.prepare), out of sight in a window a pixel square, so that it
+     * is on the screen the moment comes (it took the TCL four to twelve seconds to get one ready): the kick-off's from
+     * two and a half minutes before, a goal's restart 25 seconds after the goal shows, the second half's from ten
+     * minutes into half time. One at a time, kept a quarter of an hour at most.
+     */
+    private static BroadcastView prep;
+    private static FrameLayout prepWin;
+    private static String prepKey, prepKind = "";
+    private static long prepAt;
+    private static boolean preparing;
+    private static final long PREP_KICKOFF_MS = 150_000L, PREP_RESTART_MS = 25_000L, PREP_SECOND_MS = 10 * 60_000L, PREP_KEEP_MS = 15 * 60_000L;
 
     private static Handler handler() {
         if (main == null) main = new Handler(Looper.getMainLooper());
@@ -108,16 +122,44 @@ final class ClassicIntro {
         if (showing() && !BoardCover.playerUp(c)) hide();
         String was = phases.get(g.id);
         String now = Moments.phase(pre, state, halftime, was);
-        if (!now.isEmpty()) phases.put(g.id, now);
+        long up = android.os.SystemClock.uptimeMillis();
+        if (!now.isEmpty()) {
+            if (!now.equals(was)) phaseSince.put(g.id, up);
+            phases.put(g.id, now);
+        }
+        if (prep != null && up - prepAt > PREP_KEEP_MS) dropPrepared();
         String kind = was == null ? null : Moments.moment(was, now);
         if (kind != null && popupOn(c)) popup(c, g, kind, "kickoff".equals(kind) ? null : BroadcastData.score(score), null, null);
         if ("pre".equals(now) && g.kickoff > 0 && lineupsOn(c) && Moments.lineupsDue(g.kickoff - screenNow)) lineups(c, g);
+        // made ready before their moments, while nothing else is on
+        if (!popupOn(c) || showing() || fetching || !BoardCover.playerUp(c)) return;
+        long untilKo = g.kickoff - screenNow;
+        if ("pre".equals(now) && g.kickoff > 0 && untilKo <= PREP_KICKOFF_MS && untilKo > -10 * 60_000L) {
+            prepare(c, g, "kickoff", null, null, null, g.id + "|kickoff", null, null);
+        }
+        Long since = phaseSince.get(g.id);
+        if ("ht".equals(now) && since != null && up - since >= PREP_SECOND_MS) {
+            int[] sc = BroadcastData.score(score);
+            if (sc != null) prepare(c, g, "second", sc, null, null, g.id + "|second|" + sc[0] + "-" + sc[1], null, null);
+        }
     }
 
     /** A goal reached the screen (the board's moment): the restart's pop-up in a little while, if the half goes on. */
     static void goal(Context c, ScoresTicker.Game g, String score, int side) {
         if (g == null || !popupOn(c)) return;
         String id = g.id;
+        Context app = c.getApplicationContext();
+        handler().postDelayed(() -> {
+            String ph = phases.get(id);
+            if (!"h1".equals(ph) && !"h2".equals(ph) || showing() || !BoardCover.playerUp(app)) return;
+            ScoresTicker.Game now = GoalWatchService.latestGame(id);
+            ScoresTicker.Game game = now != null ? now : g;
+            String[] last = Moments.lastGoal(game.goals, side);
+            int[] sc = BroadcastData.score(score);
+            if (sc == null) return;
+            prepare(app, game, "restart", sc, Moments.scorer(last), last == null ? "" : BroadcastData.minute(last[2]),
+                    id + "|restart|" + sc[0] + "-" + sc[1], null, null);
+        }, PREP_RESTART_MS);
         handler().postDelayed(() -> {
             String ph = phases.get(id);
             if (!"h1".equals(ph) && !"h2".equals(ph)) return;   // half time or full time came first
@@ -153,6 +195,7 @@ final class ClassicIntro {
     private static void popup(Context c, ScoresTicker.Game g, String kind, int[] score, String scorer, String minute) {
         String key = g.id + "|" + kind + (score == null ? "" : "|" + score[0] + "-" + score[1]);
         if (shown.contains(key) || showing() || !BoardCover.playerUp(c)) return;
+        if (goPrepared(key)) return;
         shown.add(key);
         BroadcastData.Match m = match(g);
         Context app = c.getApplicationContext();
@@ -203,14 +246,7 @@ final class ClassicIntro {
         removeWindow();
         FrameLayout f = new FrameLayout(c);
         f.addView(v, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
-        WindowManager.LayoutParams lp = new WindowManager.LayoutParams(WindowManager.LayoutParams.MATCH_PARENT,
-                WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
-                        | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
-                        | WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
-                PixelFormat.TRANSLUCENT);
-        lp.gravity = Gravity.TOP | Gravity.START;
-        lp.setTitle("ClassicIntro");
+        WindowManager.LayoutParams lp = params(WindowManager.LayoutParams.MATCH_PARENT);
         try {
             c.getSystemService(WindowManager.class).addView(f, lp);
         } catch (Exception e) {
@@ -220,15 +256,132 @@ final class ClassicIntro {
         win = f;
         view = v;
         viewKind = kind;
-        if ("lineups".equals(kind)) {
-            BoardCover.classicLineups(true);
-            if (!InputKeyService.running) AppSearchService.keysFor("classic", true);
-        }
+        lineupsUp(kind);
         return true;
+    }
+
+    /** The line-ups on the screen: the board out of the way, Back taken here (no key helper on the TCL). */
+    private static void lineupsUp(String kind) {
+        if (!"lineups".equals(kind)) return;
+        BoardCover.classicLineups(true);
+        if (!InputKeyService.running) AppSearchService.keysFor("classic", true);
+    }
+
+    /** The overlay's window: the whole screen (MATCH_PARENT), or a pixel square while a pop-up is made ready (1). */
+    private static WindowManager.LayoutParams params(int size) {
+        WindowManager.LayoutParams lp = new WindowManager.LayoutParams(size, size, WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+                        | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+                        | WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
+                PixelFormat.TRANSLUCENT);
+        lp.gravity = Gravity.TOP | Gravity.START;
+        lp.setTitle("ClassicIntro");
+        return lp;
+    }
+
+    // ---- made ready before the moment ---------------------------------------------------------------------------
+
+    /**
+     * The pop-up for key (kind, with its score, scorer and minute) made ready now, out of sight, for its moment (main
+     * thread). q: how much to draw (adb tries), else the page's own choice. ready: told when it can go (a try's).
+     */
+    private static void prepare(Context c, ScoresTicker.Game g, String kind, int[] score, String scorer, String minute, String key,
+                                JSONObject q, BroadcastView.Ready ready) {
+        if (preparing || key.equals(prepKey) || shown.contains(key)) return;
+        dropPrepared();
+        preparing = true;
+        BroadcastData.Match m = match(g);
+        Context app = c.getApplicationContext();
+        io.execute(() -> {
+            JSONObject cfg = null;
+            try {
+                cfg = BroadcastData.kickoff(kind, m, score, scorer, minute);
+                if (q != null && q.length() > 0) cfg.put("q", q);
+            } catch (Exception ignored) {
+                // not made ready: the moment makes it then, as before
+            }
+            JSONObject got = cfg;
+            handler().post(() -> {
+                preparing = false;
+                if (got != null && !shown.contains(key)) hold(app, "kickoff", got, kind, key, ready);
+            });
+        });
+    }
+
+    /** The overlay (page "kickoff" or "lineups", made from cfg) made ready in a window a pixel square (main thread). */
+    private static boolean hold(Context app, String page, JSONObject cfg, String kind, String key, BroadcastView.Ready ready) {
+        dropPrepared();
+        BroadcastView v;
+        try {
+            v = BroadcastView.prepare(app, page, cfg, ClassicIntro::gone, ready);
+        } catch (Exception e) {
+            return false;
+        }
+        FrameLayout f = new FrameLayout(app);
+        f.addView(v, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+        try {
+            app.getSystemService(WindowManager.class).addView(f, params(1));
+        } catch (Exception e) {
+            v.stop();
+            return false;
+        }
+        prep = v;
+        prepWin = f;
+        prepKey = key;
+        prepKind = kind;
+        prepAt = android.os.SystemClock.uptimeMillis();
+        android.util.Log.i("Sport", "classic " + kind + " being made ready: " + key);
+        return true;
+    }
+
+    /** The pop-up made ready for key, on the whole screen now (it plays as soon as it is ready, if it is not yet). */
+    private static boolean goPrepared(String key) {
+        if (prep == null || !key.equals(prepKey) || prep.isOver() || showing()) return false;
+        BroadcastView v = prep;
+        FrameLayout f = prepWin;
+        prep = null;
+        prepWin = null;
+        prepKey = null;
+        removeWindow();
+        try {
+            f.getContext().getSystemService(WindowManager.class).updateViewLayout(f, params(WindowManager.LayoutParams.MATCH_PARENT));
+        } catch (Exception e) {
+            v.stop();
+            return false;
+        }
+        win = f;
+        view = v;
+        viewKind = prepKind;
+        lineupsUp(prepKind);
+        shown.add(key);
+        android.util.Log.i("Sport", "classic " + prepKind + " shown" + (v.isReady() ? ", made ready before" : ", still getting ready"));
+        v.go();
+        return true;
+    }
+
+    /** The pop-up made ready, let go (its moment passed, or another is wanted). */
+    private static void dropPrepared() {
+        if (prep != null) prep.stop();   // gone() takes its window
+        else removePrepWindow();
+    }
+
+    private static void removePrepWindow() {
+        if (prepWin == null) return;
+        FrameLayout w = prepWin;
+        prepWin = null;
+        try {
+            w.getContext().getSystemService(WindowManager.class).removeView(w);
+        } catch (Exception ignored) { }
     }
 
     /** Over (its own end, Back, or taken down): the window goes, the board comes back. */
     private static void gone(BroadcastView v) {
+        if (v != null && v == prep) {
+            removePrepWindow();
+            prep = null;
+            prepKey = null;
+            return;
+        }
         if (v != null && v != view) return;
         boolean wasLineups = "lineups".equals(viewKind);
         view = null;
@@ -276,7 +429,11 @@ final class ClassicIntro {
      * fortnight (the line-ups need a game whose teams are out; the goal's pop-up one with a goal). note: why nothing came
      * (main thread). Main thread.
      */
-    static void tryIt(Context c, ScoresTicker.Game chosen, String kind, Consumer<String> note) {
+    static void tryIt(Context c, ScoresTicker.Game chosen, String spec, Consumer<String> note) {
+        // adb may add how much to draw after a bar: "kickoff|scale=0.6,flat,t3every=2,t3res=0.6" (the page's q)
+        String[] sp = spec.split("\\|", 2);
+        String kind = sp[0];
+        JSONObject q = quality(sp.length > 1 ? sp[1] : "");
         if (showing() || fetching) {
             note.accept("Wait for the one on to finish");
             return;
@@ -297,12 +454,14 @@ final class ClassicIntro {
                     try {
                         if (lu) {
                             cfg = BroadcastData.lineups(m, FotMob.raw(FotMob.find(g.id, g.homeName, g.awayName, g.kickoff)), app.getCacheDir());
+                            if (cfg != null && q.length() > 0) cfg.put("q", q);
                         } else {
                             int[] score = "kickoff".equals(kind) ? null : trialScore(g);
                             String[] last = g.goals.isEmpty() ? null : g.goals.get(g.goals.size() - 1);
                             boolean goal = "restart".equals(kind);
                             cfg = BroadcastData.kickoff(kind, m, score, goal ? Moments.scorer(last) : null,
                                     goal ? (last == null ? "" : BroadcastData.minute(last[2])) : null);
+                            if (q.length() > 0) cfg.put("q", q);
                         }
                     } catch (Exception oneGame) {
                         cfg = null;
@@ -326,11 +485,30 @@ final class ClassicIntro {
                     return;
                 }
                 if (showing()) return;
-                android.util.Log.i("Sport", "classic try " + kind + ": " + game + ", ready in " + (android.os.SystemClock.uptimeMillis() - t0) + " ms");
-                BroadcastView v = lu ? BroadcastView.lineups(app, got, ClassicIntro::gone) : BroadcastView.kickoff(app, got, ClassicIntro::gone);
-                trial = show(app, v, kind);
+                android.util.Log.i("Sport", "classic try " + kind + ": " + game + ", data in " + (android.os.SystemClock.uptimeMillis() - t0) + " ms");
+                // made ready out of sight, then the whole screen the moment it is (no empty window while it loads)
+                String key = "try|" + kind + "|" + android.os.SystemClock.uptimeMillis();
+                hold(app, lu ? "lineups" : "kickoff", got, kind, key, (v) -> {
+                    if (goPrepared(key)) trial = true;
+                });
             });
         });
+    }
+
+    /** "scale=0.6,flat,t3every=2" as the page's q: {"scale":0.6,"flat":true,"t3every":2}. */
+    private static JSONObject quality(String words) {
+        JSONObject q = new JSONObject();
+        for (String w : words.split(",")) {
+            String[] kv = w.trim().split("=", 2);
+            if (kv[0].isEmpty()) continue;
+            try {
+                if (kv.length == 1) q.put(kv[0], true);
+                else q.put(kv[0], Double.parseDouble(kv[1]));
+            } catch (Exception ignored) {
+                // a word it does not know is left out
+            }
+        }
+        return q;
     }
 
     /** The games a try looks at, in turn: the one chosen, then the Premier League's played ones, latest first (io thread). */

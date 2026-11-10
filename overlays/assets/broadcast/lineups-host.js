@@ -8,7 +8,7 @@
   BX.fit(cvs);
   window.addEventListener('resize', () => BX.fit(cvs));
   window.OVERLAY = true;
-  let cfg = null, raf = 0, finished = false, began = false, t0 = 0, cues = [], ci = 0, endAt = 1e9;
+  let cfg = null, raf = 0, finished = false, began = false, t0 = 0, cues = [], ci = 0, endAt = 1e9, going = false, readyNow = false;
   const now = () => (performance.now() - t0) / 1000;
   window.BROADCAST = {
     start(c) {
@@ -27,7 +27,11 @@
         if (p.face) photos[p.id] = p.face;
       }
       window.ASSET_URLS = { home: cfg.home.crest, away: cfg.away.crest, photos, plphotos };
-      window.onBroadcastReady = play;
+      window.onBroadcastReady = () => {
+        quality(cfg.q && Object.keys(cfg.q).length ? cfg.q : auto());
+        readyNow = true;
+        if (cfg.hold && !going) BX.prepared(); else play();
+      };
       window.onBroadcastFailed = (e) => { BX.log('could not start: ' + e); finish(); };
       BX.load('lineups.js').catch((e) => { BX.log(e); finish(); });
     },
@@ -35,8 +39,25 @@
       if (!began) { finish(); return; }
       if (window.FADE_FROM == null) { window.FADE_FROM = now(); endAt = Math.min(endAt, window.FADE_FROM + 0.55); }
     },
+    go() {
+      going = true;
+      if (readyNow) play();
+    },
     stop: () => finish(),
   };
+  // How much this TV can draw (BX.bench2d, measured now): all of it, three quarters of the canvas, or half without
+  // shadows on a TV as slow as the TCL. q: {scale (0.4-1), flat}, given by the app to compare, else this choice.
+  function auto() {
+    const ms = BX.bench2d();
+    BX.log('fill ' + ms.toFixed(1) + ' ms here');
+    return ms < 8 ? {} : ms < 16 ? { scale: 0.75 } : { scale: 0.5, flat: true };
+  }
+  function quality(q) {
+    const s = Math.max(0.4, Math.min(1, +q.scale || 1));
+    if (s < 1) { cvs.width = Math.round(1920 * s); cvs.height = Math.round(1080 * s); window.RENDER_SCALE = s; }
+    if (q.flat) BX.flat();
+    BX.log('quality ' + JSON.stringify(q));
+  }
   function cueSound(c) {
     if (!cfg || cfg.sound === false) return;
     const v = cfg.volume == null ? 1 : cfg.volume;
@@ -62,7 +83,9 @@
         ci++;
       }
       BX.fit(cvs);
+      const d0 = performance.now();
       window.drawFrame(Math.min(t, endAt));
+      BX.meter(performance.now() - d0, performance.now());
       if (first) { first = false; BX.started(); BX.log(BX.view()); }
       if (t >= endAt) { finish(); return; }
       raf = requestAnimationFrame(frame);
@@ -73,6 +96,7 @@
     if (finished) return;
     finished = true;
     cancelAnimationFrame(raf);
+    BX.log(BX.meterWords());
     const g = cvs.getContext('2d');
     g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, cvs.width, cvs.height);
     BX.done();

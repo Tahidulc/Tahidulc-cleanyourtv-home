@@ -29,12 +29,19 @@ import java.util.Map;
  * by the page over a see-through view (put it over the channel's picture, the size of the picture), its sounds played
  * here as the page calls for them. It takes no keys or touches; Back for the line-ups is the app's, through back().
  * When it is over (or fails, or runs too long) the listener is told once and the view is empty: take it down then.
+ * <p>Held (prepare): the page gets everything ready out of sight (the TCL took four to twelve seconds), says so, and
+ * waits for go(), so that the app can show it on the moment: put it in a tiny window meanwhile, the full size at go().
  */
 @SuppressLint("ViewConstructor")
 public final class BroadcastView extends FrameLayout {
     /** Told once, on the main thread, when the overlay is over. */
     public interface Listener {
         void onDone(BroadcastView v);
+    }
+
+    /** Told once, on the main thread, when a held overlay is ready to go. */
+    public interface Ready {
+        void onReady(BroadcastView v);
     }
 
     private static final String TAG = "Broadcast";
@@ -47,27 +54,41 @@ public final class BroadcastView extends FrameLayout {
     private SoundPool pool;
     private final Map<String, Integer> sounds = new HashMap<>();
     private float volume = 1f;
-    private boolean started, over;
+    private boolean started, over, held, ready, going;
+    private Ready onReady;
+    private final long maxMs;
     /** When it was made (uptime), for the log of how long it took to show. */
     private long born;
     private final Runnable tooLong = this::finish;
 
     /** The kick-off pop-up (BroadcastData.kickoff): about eight seconds. */
     public static BroadcastView kickoff(Context c, JSONObject cfg, Listener l) {
-        return new BroadcastView(c, "kickoff", cfg.toString(), 25_000L, l);
+        return new BroadcastView(c, "kickoff", cfg.toString(), 25_000L, l, null);
+    }
+
+    /**
+     * Held: "kickoff" (BroadcastData.kickoff) or "lineups" (BroadcastData.lineups) made ready, then shown by go(). Not
+     * gone by itself while it waits: stop() it if its moment never comes.
+     */
+    public static BroadcastView prepare(Context c, String page, JSONObject cfg, Listener l, Ready r) throws org.json.JSONException {
+        JSONObject held = new JSONObject(cfg.toString()).put("hold", true);
+        return new BroadcastView(c, "lineups".equals(page) ? "lineups" : "kickoff", held.toString(), "lineups".equals(page) ? 180_000L : 25_000L, l, r);
     }
 
     /** The classic line-ups (BroadcastData.lineups): both teams, about a minute and a half. */
     public static BroadcastView lineups(Context c, JSONObject cfg, Listener l) {
-        return new BroadcastView(c, "lineups", cfg.toString(), 180_000L, l);
+        return new BroadcastView(c, "lineups", cfg.toString(), 180_000L, l, null);
     }
 
     @SuppressLint({"SetJavaScriptEnabled", "AddJavascriptInterface"})
-    private BroadcastView(Context c, String page, String cfg, long maxMs, Listener l) {
+    private BroadcastView(Context c, String page, String cfg, long maxMs, Listener l, Ready r) {
         super(c);
         this.page = page;
         this.cfg = cfg;
         this.listener = l;
+        this.maxMs = maxMs;
+        this.held = r != null;
+        this.onReady = r;
         setBackgroundColor(Color.TRANSPARENT);
         setFocusable(false);
         setClickable(false);
@@ -82,7 +103,9 @@ public final class BroadcastView extends FrameLayout {
         }
         web = new WebView(c);
         web.setBackgroundColor(Color.TRANSPARENT);
-        web.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+        // No layer of its own: a full-screen hardware layer is one more copy of the screen each frame (the page draws
+        // its own canvas on the GPU already). "hwlayer" in the q of the settings puts it back, to compare.
+        if (wantsLayer(cfg)) web.setLayerType(View.LAYER_TYPE_HARDWARE, null);
         web.setFocusable(false);
         web.setFocusableInTouchMode(false);
         web.setClickable(false);
@@ -111,7 +134,7 @@ public final class BroadcastView extends FrameLayout {
             }
         });
         addView(web, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
-        main.postDelayed(tooLong, maxMs);
+        if (!held) main.postDelayed(tooLong, maxMs);
         born = SystemClock.uptimeMillis();
         web.loadUrl("file:///android_asset/broadcast/" + page + ".html");
     }
@@ -125,6 +148,34 @@ public final class BroadcastView extends FrameLayout {
     /** The sounds' level, 0 to 1 (1: as made, about as loud as the channel). */
     public void setVolume(float v) {
         volume = Math.max(0f, Math.min(1f, v));
+    }
+
+    private static boolean wantsLayer(String cfg) {
+        try {
+            JSONObject q = new JSONObject(cfg).optJSONObject("q");
+            return q != null && q.optBoolean("hwlayer");
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /** A held one shown now (at once if it is ready, else as soon as it is); the others are already going. */
+    public void go() {
+        if (over || going) return;
+        going = true;
+        main.removeCallbacks(tooLong);
+        main.postDelayed(tooLong, maxMs);
+        if (web != null) web.evaluateJavascript("BROADCAST.go()", null);
+    }
+
+    /** Whether a held one is ready to go (everything loaded and made). */
+    public boolean isReady() {
+        return ready;
+    }
+
+    /** Whether it was made held (prepare) and go() has not been said. */
+    public boolean isHeld() {
+        return held && !going;
     }
 
     /** Whether its first frame has been drawn (it is on the screen). */
@@ -177,6 +228,20 @@ public final class BroadcastView extends FrameLayout {
             Log.i(TAG, page + ": page ready in " + (SystemClock.uptimeMillis() - born) + " ms");
             main.post(() -> {
                 if (!over && web != null) web.evaluateJavascript("BROADCAST.start(" + JSONObject.quote(cfg) + ")", null);
+            });
+        }
+
+        @JavascriptInterface
+        public void prepared() {
+            Log.i(TAG, page + ": ready to go " + (SystemClock.uptimeMillis() - born) + " ms after it was made");
+            main.post(() -> {
+                if (over) return;
+                ready = true;
+                // go() said before the page could hear it: said again now
+                if (going && web != null) web.evaluateJavascript("BROADCAST.go()", null);
+                Ready r = onReady;
+                onReady = null;
+                if (r != null) r.onReady(BroadcastView.this);
             });
         }
 

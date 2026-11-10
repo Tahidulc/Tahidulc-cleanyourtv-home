@@ -846,7 +846,8 @@
 
   function drawFrame(t) {
     const g = ctx;
-    g.setTransform(1, 0, 0, 1, 0, 0);
+    const RS = window.RENDER_SCALE || 1;   // a slower TV draws into a smaller canvas, stretched to the screen
+    g.setTransform(RS, 0, 0, RS, 0, 0);
     g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; g.filter = 'none';
     // the ground: one still, slowly drifting
     const kk = t / DUR, z = 1.03 + 0.04 * kk, dx = lerp(-16, 16, kk);

@@ -373,6 +373,8 @@ function render(kind, rotY, tilt = 0, time = 0) {
   return canvas;
 }
 
-window.TROPHY3D = { render, W, H, kinds: Object.keys(BUILD) };
+// setRes(f): the trophy drawn into a canvas f times the size each way (a slower TV draws fewer pixels)
+function setRes(f) { const k = Math.max(0.3, Math.min(1, f || 1)); renderer.setSize(Math.round(W * k), Math.round(H * k), false); }
+window.TROPHY3D = { render, setRes, W, H, kinds: Object.keys(BUILD) };
 window.TROPHY3D_READY = true;
 }

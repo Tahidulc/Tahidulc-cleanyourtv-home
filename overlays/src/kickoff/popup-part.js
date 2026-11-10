@@ -542,7 +542,14 @@
       if (window.TROPHY3D) {
         const turnIn = 1 - eOut3(ramp(0.14, 0.8, T));
         const rotY = -1.25 * turnIn + 0.13 * Math.sin(T * 0.75) + 1.0 * eIn3(ramp(tc + 0.12, tc + 0.55, T));
-        const tc3 = window.TROPHY3D.render(kind3, rotY, 0, T);
+        // the model drawn again only every T3_EVERY frames on a slower TV (the last one kept between)
+        const T3 = window.T3MS || (window.T3MS = { n: 0, sum: 0, f: 0, last: null });
+        let tc3 = T3.last;
+        if (!tc3 || T3.f++ % (window.T3_EVERY || 1) === 0) {
+          const r0 = performance.now();
+          tc3 = T3.last = window.TROPHY3D.render(kind3, rotY, 0, T);
+          T3.n++; T3.sum += performance.now() - r0;
+        }
         const fit = T3_FIT[kind3] || T3_FIT.generic;
         const k = (T3_H * fit[0]) / (tc3.height * 0.9);
         const dw = tc3.width * k, dh = tc3.height * k;
@@ -682,7 +689,8 @@
   }
   function drawFrame(t) {
     ctx.save();
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    const RS = window.RENDER_SCALE || 1;   // a slower TV draws into a smaller canvas, stretched to the screen
+    ctx.setTransform(RS, 0, 0, RS, 0, 0);
     ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; ctx.filter = 'none';
     const mom = momentAt(t);
     const mirror = !!(mom && mom.mirror), kicks = (mom && mom.kicksOff) || 'home';
