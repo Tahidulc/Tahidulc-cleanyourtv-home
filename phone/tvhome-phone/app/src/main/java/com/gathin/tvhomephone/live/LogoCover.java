@@ -28,7 +28,8 @@ final class LogoCover extends View implements BurnGuard.Dims {
     /** The looks, as Settings names them. */
     enum Look {
         OFF("Leave the channel's"), SIGNATURE("Signature"), MATCHDAY("Matchday"), ROOFLINE("Roofline"), VELOCITY("Velocity"),
-        ROUNDEL("Roundel"), BLOCK("Solid block"), FROSTED("Frosted glass"), SMOKED("Smoked glass"), COMPETITION("The competition's logo"), BADGE("Badge"), GLASS("Glass"), MARK("Mark only"),
+        ROUNDEL("Roundel"), BLOCK("Solid block"), FROSTED("Frosted glass"), SMOKED("Smoked glass"), EVENT_NAVY("Event, navy"),
+        EVENT_WHITE("Event, white"), COMPETITION("The competition's logo"), BADGE("Badge"), GLASS("Glass"), MARK("Mark only"),
         WORD("Wordmark"), BROADCAST("Broadcast, see-through"), BROADCAST_BOARD("Broadcast, scoreboard colours"),
         SPORTS("Whitebrook Road Sports"), SPORTS_STACKED("Whitebrook Road Sports, stacked"), STYLES("Whitebrook Road styles");
 
@@ -37,9 +38,17 @@ final class LogoCover extends View implements BurnGuard.Dims {
             return this == SPORTS || this == SPORTS_STACKED;
         }
 
-        /** Drawn whole over the cover by a renderer of its own (the wordmark, the 54 styles): no LIVE foot, no block beside. */
+        /** Event (ChannelMark's, as the TV's): the name and "sports" over the channel's own name, in navy or white. */
+        boolean event() {
+            return this == EVENT_NAVY || this == EVENT_WHITE;
+        }
+
+        /**
+         * Drawn whole over the cover by a renderer of its own (the wordmark, Event, the 54 styles): no LIVE foot, no block
+         * beside, see-through over the picture if chosen.
+         */
         boolean own() {
-            return sports() || this == STYLES;
+            return sports() || event() || this == STYLES;
         }
 
         /** Laid out as a sports channel's own logo, one solid block. */
@@ -49,7 +58,7 @@ final class LogoCover extends View implements BurnGuard.Dims {
 
         /** Whitebrook Road's own channel looks (ChannelMark draws them, as the TV does). */
         boolean channel() {
-            return ordinal() >= SIGNATURE.ordinal() && ordinal() <= SMOKED.ordinal();
+            return ordinal() >= SIGNATURE.ordinal() && ordinal() <= EVENT_WHITE.ordinal();
         }
 
         final String label;
@@ -104,6 +113,8 @@ final class LogoCover extends View implements BurnGuard.Dims {
     /** Whitebrook Road styles: the renderer and the style chosen (0 to BrandStyles.COUNT - 1). */
     private BrandStyles brand;
     private int styleNo;
+    /** Event's name for the channel ("main event"; "" for none), and the channel's name it was read from. */
+    private String sub = "", subFrom;
 
     LogoCover(Context c) {
         super(c);
@@ -170,6 +181,21 @@ final class LogoCover extends View implements BurnGuard.Dims {
         if (n.equals(what)) return;
         what = n;
         if (look.sports()) invalidate();
+    }
+
+    /** Event's name for the channel as it is to show ("main event"; "" for none). */
+    void sub(String s) {
+        String n = s == null ? "" : s;
+        if (n.equals(sub)) return;
+        sub = n;
+        if (look.event()) invalidate();
+    }
+
+    /** The channel under the cover, by its name: Event's own name for it (ChannelMark.subOf, read once a channel). */
+    void channelName(String name) {
+        if (java.util.Objects.equals(name, subFrom)) return;
+        subFrom = name;
+        sub(ChannelMark.subOf(name));
     }
 
     /** The family's name alone (WHITEBROOK ROAD), or with SPORTS. */
@@ -340,6 +366,15 @@ final class LogoCover extends View implements BurnGuard.Dims {
             if (k < 1f) postInvalidateOnAnimation();
         }
         float in = clear ? Math.min(w, h) * 0.04f : 0f;
+        if (look.event()) {
+            if (channel == null) {
+                channel = new ChannelMark(getContext());
+                channel.nameOnly(nameOnly);
+            }
+            // On its plate it fills the whole cover (the channel's logo under it never shows); alone, in from the edge.
+            channel.event(cv, in, in, w - 2 * in, h - 2 * in, sub, tag, look == Look.EVENT_WHITE, !clear);
+            return;
+        }
         if (look == Look.STYLES) {
             if (brand == null) brand = new BrandStyles(getContext());
             brand.draw(cv, styleNo, in, in, w - 2 * in, h - 2 * in, !nameOnly, tag, !clear);

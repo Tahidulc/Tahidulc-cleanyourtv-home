@@ -1663,6 +1663,7 @@ final class BoardCover {
         // The logo's cover in Broadcast: the picture's tag, LIVE while the game is, the scoreboard's colours.
         if (mark != null) {
             mark.tag(logoTag(c).on(InStep.channel(c)));
+            mark.channelName(InStep.channel(c));
             mark.live(l.live);
             mark.boardLook(bug.stripLook());
             mark.what(whatNow(c));
@@ -1776,6 +1777,7 @@ final class BoardCover {
             mark.nameOnly(logoNameOnly(c));
             mark.seeThrough(logoSeeThrough(c));
             mark.what(whatNow(c));
+            mark.channelName(InStep.channel(c));
             mark.style(logoStyle(c));
             mark.inset(edge);
             logoWin = frame(c, mark);

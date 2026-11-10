@@ -340,6 +340,8 @@ The line-ups smooth from their first frame (4.37): both line-ups pages have ever
 
 A test of everything (4.38): in the player's menu (⋮), every alert, the kick-off pop-up in both styles at its three moments, both line-ups, the scoreboard's goal, scorer, stats, line-up card, substitution, VAR and added time, each goal sound, each info tile and the other notifications; in Settings, Test notifications, those that need no channel playing.
 
+The Event look for the logo cover (4.39), navy or white: Whitebrook Road stacked beside a red sports box, with the channel's own sub-name (main event, premier league, f1...) in an open box under it, the broadcaster's name always left out.
+
 Subtitles (CC in the film's player): the film's or episode's own, from your playlist's stream, come first, in the
 languages you choose (Settings, Subtitles, in order). When it has none, OpenSubtitles.com is looked in by the title's
 TMDB id (the series' with its season and episode), best first: your languages, the ones that fit the copy playing (its

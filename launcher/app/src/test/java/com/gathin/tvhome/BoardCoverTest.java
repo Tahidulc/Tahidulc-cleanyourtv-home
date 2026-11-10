@@ -744,7 +744,7 @@ public class BoardCoverTest {
             assertFalse(l.channel() && l.broadcast());
             assertEquals(l, LogoMark.Look.of(l.name()));
         }
-        assertEquals(8, channel);
+        assertEquals(10, channel);
         assertTrue(LogoMark.Look.FROSTED.channel());
         assertTrue(LogoMark.Look.SIGNATURE.channel());
         assertTrue(LogoMark.Look.SMOKED.channel());
@@ -757,6 +757,70 @@ public class BoardCoverTest {
         assertEquals(LogoMark.Look.COMPETITION, LogoMark.Look.of("COMPETITION"));
         assertFalse(LogoMark.Look.COMPETITION.channel());
         assertFalse(LogoMark.Look.COMPETITION.broadcast());
+    }
+
+    // ---- Event: the name and "sports" over the channel's own name ---------------------------------------------------
+
+    @Test
+    public void eventIsAChannelLookDrawnWholeInTwoInks() {
+        for (LogoMark.Look l : new LogoMark.Look[]{LogoMark.Look.EVENT_NAVY, LogoMark.Look.EVENT_WHITE}) {
+            assertTrue(l.event());
+            // In the channel looks' picker, drawn whole (no LIVE foot, no block beside), see-through when chosen.
+            assertTrue(l.channel());
+            assertTrue(l.own());
+            assertFalse(l.sports());
+            assertFalse(l.broadcast());
+            assertEquals(l, LogoMark.Look.of(l.name()));
+        }
+        assertEquals("Event, navy", LogoMark.Look.EVENT_NAVY.label);
+        assertEquals("Event, white", LogoMark.Look.EVENT_WHITE.label);
+        assertFalse(LogoMark.Look.SMOKED.event());
+        assertFalse(LogoMark.Look.SMOKED.own());
+        assertTrue(LogoMark.Look.STYLES.own());
+        // Never the default.
+        assertEquals(LogoMark.Look.GLASS, LogoMark.Look.of(""));
+        assertEquals(LogoMark.Look.GLASS, LogoMark.Look.of(null));
+    }
+
+    @Test
+    public void eventsNameIsTheChannelsOwnWithoutTheBroadcaster() {
+        assertEquals("main event", ChannelMark.subOf("UK: Sky Sports Main Event HD"));
+        assertEquals("main event", ChannelMark.subOf("Sky Sports Main Event UHD HDR"));
+        assertEquals("premier league", ChannelMark.subOf("Sky Sports Premier League"));
+        assertEquals("premier league", ChannelMark.subOf("|UK| SKY SPORTS PREMIER LEAGUE FHD 50FPS"));
+        assertEquals("f1", ChannelMark.subOf("Sky Sports F1 UHD"));
+        assertEquals("f1", ChannelMark.subOf("Sky Sports F1 \u1D34\u1D30"));
+        assertEquals("football", ChannelMark.subOf("Sky Sports Football"));
+        assertEquals("main event", ChannelMark.subOf("Sky Sports Main Event (Backup) [Multi-Audio]"));
+        assertEquals("box office", ChannelMark.subOf("TNT Sports Box Office 1080p"));
+        assertEquals("ultimate", ChannelMark.subOf("TNT Sports Ultimate 4K"));
+        assertEquals("bundesliga", ChannelMark.subOf("Sky Sport Bundesliga HD"));
+        // A number alone is the family's "sports 1".
+        assertEquals("sports 1", ChannelMark.subOf("TNT Sports 1"));
+        assertEquals("sports 2", ChannelMark.subOf("BT Sport 2 HD"));
+        assertEquals("sports 1", ChannelMark.subOf("Premier Sports 1 FHD (UK)"));
+        assertEquals("sports 2", ChannelMark.subOf("Eurosport2"));
+        assertEquals("sports 3", ChannelMark.subOf("beIN SPORTS 3"));
+        assertEquals("sports 1", ChannelMark.subOf("DAZN 1"));
+        // "premier" goes with Premier Sports, not with the Premier League.
+        assertEquals("premier league", ChannelMark.subOf("Premier Sports Premier League"));
+        // Nothing left: no name.
+        assertEquals("", ChannelMark.subOf("ESPN"));
+        assertEquals("", ChannelMark.subOf("Sky Sports+"));
+        assertEquals("", ChannelMark.subOf("Amazon Prime Video HD"));
+        // A channel of no sports broadcaster known here has none, so no other broadcaster's name ever shows.
+        assertEquals("", ChannelMark.subOf("BBC One HD"));
+        assertEquals("", ChannelMark.subOf("Sky Atlantic"));
+        assertEquals("", ChannelMark.subOf("Racing TV"));
+        assertEquals("", ChannelMark.subOf(""));
+        assertEquals("", ChannelMark.subOf(null));
+        // Never a broadcaster's word in what is left.
+        for (String ch : new String[]{"Sky Sports Main Event", "TNT Sports 3 HD", "SkySports Arena", "Viaplay Sports 1",
+                "Setanta Sports Ireland", "NBC Sports Gold", "Fox Sports Racing"}) {
+            for (String word : ChannelMark.subOf(ch).split(" ")) {
+                assertFalse(ch, java.util.Arrays.asList("sky", "tnt", "bt", "viaplay", "setanta", "nbc", "fox", "skysports").contains(word));
+            }
+        }
     }
 
     // ---- 4.13: out sideways, a few stats moments a game ----------------------------------------------------------------

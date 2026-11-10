@@ -115,6 +115,8 @@ public final class BoardSettings {
                 ((LogoCover) pic).style(ScoreBoard.logoStyle(c));
                 ((LogoCover) pic).what("premier league");
                 ((LogoCover) pic).nameOnly(ScoreBoard.logoNameOnly(c));
+                // Event: a channel's own name on it, as the family's picture has it.
+                ((LogoCover) pic).sub("main event");
             }
             if (lk == LogoCover.Look.COMPETITION && pic instanceof LogoCover) ((LogoCover) pic).competition(null, "Premier League");
             one.addView(pic, 0, new LinearLayout.LayoutParams(Ui.dp(c, tall ? 112 : 104), Ui.dp(c, tall ? 52 : 36)));
@@ -163,7 +165,8 @@ public final class BoardSettings {
             one.addView(lc, 0, new LinearLayout.LayoutParams(Ui.dp(c, 124), Ui.dp(c, 44)));
             one.setOnClickListener(v -> {
                 ScoreBoard.setLogoStyle(c, n);
-                if (!ScoreBoard.logoCover(c).own()) ScoreBoard.setLogoCover(c, LogoCover.Look.STYLES);
+                LogoCover.Look now = ScoreBoard.logoCover(c);
+                if (!now.own() || now.event()) ScoreBoard.setLogoCover(c, LogoCover.Look.STYLES);
                 for (android.view.View f : bframes) f.setSelected(f == v);
             });
             bframes.add(one);

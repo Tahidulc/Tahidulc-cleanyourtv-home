@@ -25,7 +25,8 @@ final class LogoMark extends View {
     /** Its looks, as the Scoreboard card names them. */
     enum Look {
         SIGNATURE("Signature"), MATCHDAY("Matchday"), ROOFLINE("Roofline"), VELOCITY("Velocity"), ROUNDEL("Roundel"),
-        BLOCK("Solid block"), FROSTED("Frosted glass"), SMOKED("Smoked glass"), COMPETITION("The competition's logo"),
+        BLOCK("Solid block"), FROSTED("Frosted glass"), SMOKED("Smoked glass"), EVENT_NAVY("Event, navy"),
+        EVENT_WHITE("Event, white"), COMPETITION("The competition's logo"),
         GLASS("Glass, with the mark"), MARK("Mark only"), PLAIN("Plain"), BROADCAST("Broadcast, see-through"),
         BROADCAST_BOARD("Broadcast, scoreboard colours"), SPORTS("Whitebrook Road Sports"),
         SPORTS_STACKED("Whitebrook Road Sports, stacked"), STYLES("Whitebrook Road styles");
@@ -35,9 +36,17 @@ final class LogoMark extends View {
             return this == SPORTS || this == SPORTS_STACKED;
         }
 
-        /** Drawn whole over the cover by a renderer of its own (the wordmark, the 54 styles): no LIVE foot, no block beside. */
+        /** Event (ChannelMark's): the name and "sports" over the channel's own name, in navy or white, see-through if chosen. */
+        boolean event() {
+            return this == EVENT_NAVY || this == EVENT_WHITE;
+        }
+
+        /**
+         * Drawn whole over the cover by a renderer of its own (the wordmark, Event, the 54 styles): no LIVE foot, no block
+         * beside, see-through over the picture if chosen.
+         */
         boolean own() {
-            return sports() || this == STYLES;
+            return sports() || event() || this == STYLES;
         }
 
         /** Laid out as a channel's own logo: three rows, taller than the others. */
@@ -47,7 +56,7 @@ final class LogoMark extends View {
 
         /** Whitebrook Road's own channel looks (ChannelMark draws them). */
         boolean channel() {
-            return ordinal() <= SMOKED.ordinal();
+            return ordinal() <= EVENT_WHITE.ordinal();
         }
 
         final String label;
@@ -110,6 +119,8 @@ final class LogoMark extends View {
     /** Whitebrook Road styles: the renderer and the style chosen (0 to BrandStyles.COUNT - 1). */
     private BrandStyles brand;
     private int styleNo;
+    /** Event's name for the channel ("main event"; "" for none), and the channel's name it was read from. */
+    private String sub = "", subFrom;
 
     LogoMark(Context c) {
         super(c);
@@ -192,6 +203,21 @@ final class LogoMark extends View {
         if (n.equals(what)) return;
         what = n;
         if (look.sports()) invalidate();
+    }
+
+    /** Event's name for the channel as it is to show ("main event"; "" for none). */
+    void sub(String s) {
+        String n = s == null ? "" : s;
+        if (n.equals(sub)) return;
+        sub = n;
+        if (look.event()) invalidate();
+    }
+
+    /** The channel under the cover, by its name: Event's own name for it (ChannelMark.subOf, read once a channel). */
+    void channelName(String name) {
+        if (java.util.Objects.equals(name, subFrom)) return;
+        subFrom = name;
+        sub(ChannelMark.subOf(name));
     }
 
     /** The family's name alone (WHITEBROOK ROAD), or with SPORTS. */
@@ -370,6 +396,16 @@ final class LogoMark extends View {
             if (k < 1f) postInvalidateOnAnimation();
         }
         float in = Math.max(inset, Math.min(w, h) * (clear ? 0.04f : 0f));
+        if (look.event()) {
+            if (channel == null) {
+                channel = new ChannelMark(getContext());
+                channel.nameOnly(nameOnly);
+            }
+            // On its plate it fills the whole cover (the channel's logo under it never shows); alone, in from the edge.
+            float p = clear ? in : 0f;
+            channel.event(cv, p, p, w - 2 * p, h - 2 * p, sub, tag, look == Look.EVENT_WHITE, !clear);
+            return;
+        }
         if (look == Look.STYLES) {
             if (brand == null) brand = new BrandStyles(getContext());
             // On its plate the style fills the whole cover (the channel's logo under it never shows).

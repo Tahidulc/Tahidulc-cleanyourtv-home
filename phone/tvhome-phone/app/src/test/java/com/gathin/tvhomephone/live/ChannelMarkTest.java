@@ -41,7 +41,7 @@ public class ChannelMarkTest {
             assertFalse(l.channel() && l.broadcast());
             assertEquals(l, LogoCover.Look.of(l.name()));
         }
-        assertEquals(8, channel);
+        assertEquals(10, channel);
         assertTrue(LogoCover.Look.FROSTED.channel());
         assertFalse(LogoCover.Look.OFF.channel());
         assertFalse(LogoCover.Look.BADGE.channel());
@@ -52,5 +52,42 @@ public class ChannelMarkTest {
         assertEquals("MATCHDAY", ChannelMark.channelFor(null));
         assertFalse(LogoCover.Look.COMPETITION.channel());
         assertEquals(LogoCover.Look.COMPETITION, LogoCover.Look.of("COMPETITION"));
+    }
+
+    @Test
+    public void eventIsAChannelLookDrawnWholeInTwoInks() {
+        for (LogoCover.Look l : new LogoCover.Look[]{LogoCover.Look.EVENT_NAVY, LogoCover.Look.EVENT_WHITE}) {
+            assertTrue(l.event());
+            assertTrue(l.channel());
+            assertTrue(l.own());
+            assertFalse(l.sports());
+            assertFalse(l.broadcast());
+            assertEquals(l, LogoCover.Look.of(l.name()));
+        }
+        // Named as the TV names them.
+        assertEquals("Event, navy", LogoCover.Look.EVENT_NAVY.label);
+        assertEquals("Event, white", LogoCover.Look.EVENT_WHITE.label);
+        assertFalse(LogoCover.Look.SMOKED.event());
+        assertFalse(LogoCover.Look.SMOKED.own());
+        assertEquals(LogoCover.Look.BADGE, LogoCover.Look.of(""));
+    }
+
+    @Test
+    public void eventsNameIsTheChannelsOwnWithoutTheBroadcaster() {
+        assertEquals("main event", ChannelMark.subOf("UK: Sky Sports Main Event HD"));
+        assertEquals("premier league", ChannelMark.subOf("Sky Sports Premier League"));
+        assertEquals("premier league", ChannelMark.subOf("|UK| SKY SPORTS PREMIER LEAGUE FHD 50FPS"));
+        assertEquals("f1", ChannelMark.subOf("Sky Sports F1 UHD"));
+        assertEquals("f1", ChannelMark.subOf("Sky Sports F1 \u1D34\u1D30"));
+        assertEquals("football", ChannelMark.subOf("Sky Sports Football"));
+        assertEquals("main event", ChannelMark.subOf("Sky Sports Main Event (Backup) [Multi-Audio]"));
+        assertEquals("sports 1", ChannelMark.subOf("TNT Sports 1"));
+        assertEquals("sports 1", ChannelMark.subOf("Premier Sports 1 FHD (UK)"));
+        assertEquals("sports 2", ChannelMark.subOf("Eurosport2"));
+        assertEquals("premier league", ChannelMark.subOf("Premier Sports Premier League"));
+        assertEquals("", ChannelMark.subOf("Sky Sports+"));
+        assertEquals("", ChannelMark.subOf("BBC One HD"));
+        assertEquals("", ChannelMark.subOf("Sky Atlantic"));
+        assertEquals("", ChannelMark.subOf(null));
     }
 }

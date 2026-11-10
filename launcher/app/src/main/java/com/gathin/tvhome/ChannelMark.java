@@ -12,9 +12,13 @@ import android.graphics.RectF;
 import android.graphics.Shader;
 import android.graphics.Typeface;
 
+import java.text.Normalizer;
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Whitebrook Road's own sports channel, drawn as broadcasters draw theirs, for the cover LogoMark puts over the channel's
@@ -23,7 +27,9 @@ import java.util.Map;
  * mark in its tile beside the name (Signature), the name over a channel bar (Matchday, Grand Prix for Formula 1), the
  * house as a badge with WR in it (Roofline), leaning forward (Velocity), in a ring (Roundel), one solid block, and smoked
  * glass as channels' own logos sit on the picture. Solid but for Smoked glass, so the channel's logo under it never
- * shows. The family's own words and mark, never a channel's.
+ * shows. And Event, the family's picture of its channel: the name in two heavy lines beside "sports" on a red box, the
+ * channel's own name ("main event") under them in a box open at its top, in navy or white, on its plate or alone over
+ * the picture. The family's own words and mark, never a channel's.
  */
 final class ChannelMark {
     static final String NAME = "WHITEBROOK ROAD", SPORTS = "SPORTS", L1 = "WHITEBROOK", L2 = "ROAD ";
@@ -72,6 +78,50 @@ final class ChannelMark {
     /** The channel's own name for what is on: Grand Prix for Formula 1, Matchday for football. */
     static String channelFor(String sport) {
         return "f1".equals(sport) ? "GRAND PRIX" : "MATCHDAY";
+    }
+
+    /** The sports broadcasters whose channels Event names: a channel of none of these has no name of its own on it. */
+    private static final String[] BROADCASTERS = {"sky sports", "sky sport", "skysports", "tnt sports", "tnt sport", "bt sport",
+            "bt sports", "premier sports", "eurosport", "dazn", "amazon", "prime video", "viaplay", "bein", "beinsports", "espn",
+            "setanta", "free sports", "freesports", "fox sports", "nbc sports", "cbs sports", "supersport", "sportsnet", "tsn",
+            "ziggo sport", "canal sport"};
+    /** The broadcasters' names of more than one word, taken out whole ("premier sports", but "premier league" kept). */
+    private static final String[] BRAND_PHRASES = {"sky sports", "sky sport", "tnt sports", "tnt sport", "bt sports", "bt sport",
+            "premier sports", "bein sports", "viaplay sports", "setanta sports", "free sports", "fox sports", "nbc sports",
+            "cbs sports", "ziggo sport", "canal sport", "amazon prime", "prime video", "dolby vision"};
+    /** Words never in a channel's own name on Event: the broadcasters', the picture's and the region's tags, and the like. */
+    private static final Set<String> NOT_NAME = new HashSet<>(Arrays.asList("sky", "skysports", "tnt", "tntsports", "bt",
+            "btsport", "eurosport", "dazn", "amazon", "prime", "video", "viaplay", "bein", "beinsports", "setanta", "freesports",
+            "fox", "nbc", "cbs", "supersport", "sportsnet", "tsn", "ziggo", "canal", "now", "bbc", "itv", "sport", "sports", "tv",
+            "channel", "network", "live", "hd", "fhd", "uhd", "sd", "4k", "8k", "hdr", "hdr10", "hlg", "dv", "hevc", "raw", "vip",
+            "backup", "alt", "multi", "audio", "lq", "hq", "ppv", "fps", "uk", "gb", "ie", "irl", "eng", "en"));
+
+    /**
+     * Pure: the channel's own name for Event, in lower case: its name without the broadcaster's words, the picture's tags
+     * and the region's ("UK: Sky Sports Main Event HD" "main event", "Sky Sports F1 UHD" "f1"); a number left alone as
+     * "sports 1" ("TNT Sports 1"). "" for a channel of no sports broadcaster known here (so no broadcaster's name is ever
+     * shown), or with nothing left.
+     */
+    static String subOf(String channel) {
+        if (channel == null) return "";
+        // Small capitals and the like as plain letters ("ᴴᴰ" as "HD"); what is in brackets is a tag ("(UK)", "[Backup]").
+        String s = Normalizer.normalize(channel, Normalizer.Form.NFKC).toLowerCase(Locale.ROOT)
+                .replaceAll("\\([^)]*\\)|\\[[^\\]]*]|\\{[^}]*}", " ")
+                .replaceAll("[^\\p{L}\\p{N}]+", " ")
+                .replaceAll("\\b(eurosport|espn|dazn|bein|tnt|bt|viaplay)(\\d+)\\b", "$1 $2");
+        s = " " + s.trim() + " ";
+        boolean known = false;
+        for (String b : BROADCASTERS) known |= s.contains(" " + b + " ");
+        if (!known) return "";
+        for (String p : BRAND_PHRASES) while (s.contains(" " + p + " ")) s = s.replace(" " + p + " ", " ");
+        StringBuilder out = new StringBuilder();
+        for (String word : s.trim().split(" ")) {
+            if (word.isEmpty() || NOT_NAME.contains(word) || word.matches("\\d+(p|i|fps|hz)|espn\\w*|[hx]26\\d")) continue;
+            if (out.length() > 0) out.append(' ');
+            out.append(word);
+        }
+        String n = out.toString();
+        return n.matches("\\d+") ? "sports " + n : n;
     }
 
     private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG), cut = new Paint(Paint.ANTI_ALIAS_FLAG),
@@ -467,6 +517,156 @@ final class ChannelMark {
         twoLines(cv, left, y, x + w - pad - left, h, (h - 2 * pad) * 0.8f, heavy, medium, false, LINED, 0f);
     }
 
+    // ---- Event ----
+
+    /** Event's inks: navy's letters and line; its name's fall of light from top to foot in navy and in white; the red box's. */
+    static final int NAVY = 0xFF13248C, NAVY_LINE = 0xFF1B2A8E;
+    private static final int[] NAVY_FALL = {0xFF2B49C9, 0xFF1A2F9C, 0xFF0F1F78, 0xFF13237F},
+            WHITE_FALL = {0xFFFFFFFF, 0xFFF2F4FA, 0xFFD9DEEC, 0xFFE8EBF4}, RED_FALL = {0xFFFF3A3A, 0xFFF01212, 0xFFD90B0B, 0xFFE01818};
+    private static final float[] NAME_STOPS = {0f, 0.46f, 0.54f, 1f}, RED_STOPS = {0f, 0.48f, 0.52f, 1f};
+    /** Its plates: a soft light grey under navy (never white, kind to the panel), night under white. */
+    static final int LIGHT_TOP = 0xFFECEFF5, LIGHT_FOOT = 0xFFDCE1EB, DARK_TOP = 0xFF141A2E, DARK_FOOT = 0xFF0A0E1C;
+
+    /**
+     * Event in the box (x, y, w, h), as the family's picture of its channel has it, fitted and centred: "whitebrook" over
+     * "road" in heavy lower case beside "sports" in white on a red box; under them, as wide, the channel's own name (sub,
+     * "main event"; "" for none, and no box) in a box open at its top, the tag at its end. In navy or in white (white
+     * true); on its plate (light under navy, dark under white) so the channel's logo under it never shows, or alone over
+     * the picture with a soft shadow. A general channel's has no red box.
+     */
+    void event(Canvas cv, float x, float y, float w, float h, String sub, String tag, boolean white, boolean plate) {
+        if (w <= 2 || h <= 2) return;
+        String on = sub == null ? "" : sub.trim();
+        boolean sports = !nameOnly, lower = !on.isEmpty();
+        this.tag = lower && tag != null ? tag.trim() : "";
+        int ink = white ? WHITE : NAVY, edgeInk = white ? WHITE : NAVY_LINE;
+        if (plate) {
+            r.set(x, y, x + w, y + h);
+            float rad = Math.min(w, h) * 0.14f;
+            fill.setShader(grad(0, y, 0, y + h, white ? DARK_TOP : LIGHT_TOP, white ? DARK_FOOT : LIGHT_FOOT));
+            cv.drawRoundRect(r, rad, rad, fill);
+            fill.setShader(null);
+        }
+        // Laid out in the picture's own units: the name 62 high in lines 0.86 apart, "sports" 100 high in its box (24
+        // either side, 2 over, 14 under) 16 after it, the channel's name 92 high in its box 10 under them.
+        float nsp = -1.5f / 62f, lineH = 62f * 0.86f, nameH = 2 * lineH + 4f;
+        float nameW = Math.max(widthAt("whitebrook", heavy, 62f, nsp), widthAt("road", heavy, 62f, nsp));
+        float boxW = sports ? 48f + widthAt("sports", medium, 100f, -0.01f) : 0f, boxH = 116f;
+        float rowW = nameW + (sports ? 16f + boxW : 0f), rowH = sports ? boxH : nameH;
+        float side = 34f, edge = 3f, subH = 24f + 92f * 1.05f + 28f + edge;
+        float th = 50f, tw = tagW(th, false), tagGap = tw > 0 ? 26f : 0f;
+        float subW = lower ? widthAt(on, medium, 92f, -1f / 92f) : 0f;
+        // The channel's name smaller to keep to the row's width, down to three fifths; past that its box is wider.
+        float k = lower ? Math.max(0.6f, Math.min(1f, (rowW - 2 * (edge + side) - tagGap - tw) / Math.max(1f, subW))) : 1f;
+        float allW = Math.max(rowW, 2 * (edge + side) + subW * k + tagGap + tw), allH = rowH + (lower ? 10f + subH : 0f);
+        float pad = Math.min(w, h) * (plate ? 0.12f : 0.03f);
+        float u = Math.min((w - 2 * pad) / allW, (h - 2 * pad) / allH);
+        if (u <= 0f) return;
+        float ox = x + (w - allW * u) / 2f, oy = y + (h - allH * u) / 2f;
+        // Alone over the picture: a soft shadow under the marks (a soft light under navy), so they read on any picture.
+        int shade = white ? 0x8C000000 : 0x99FFFFFF;
+        float blur = Math.max(1f, (white ? 6f : 7f) * u), drop = white ? 1.5f * u : 0f;
+        if (!plate) {
+            text.setShadowLayer(blur, 0, drop, shade);
+            line.setShadowLayer(blur, 0, drop, shade);
+        }
+        // The name: its two lines in the ink's fall of light, lighter over darker.
+        float nameTop = oy + (rowH - nameH) / 2f * u;
+        Shader fall = new LinearGradient(0, nameTop, 0, nameTop + nameH * u, white ? WHITE_FALL : NAVY_FALL, NAME_STOPS,
+                Shader.TileMode.CLAMP);
+        float b1 = baseIn(heavy, 62f * u, nameTop, lineH * u), b2 = baseIn(heavy, 62f * u, nameTop + lineH * u, lineH * u);
+        if (!plate) {
+            // Its shadow first, under the name in one colour: a shadow drawn with the fall of light takes the fall's colours.
+            int solid = (white ? WHITE_FALL : NAVY_FALL)[2];
+            words(cv, "whitebrook", heavy, 62f * u, nsp, solid, null, ox, b1, Paint.Align.LEFT);
+            words(cv, "road", heavy, 62f * u, nsp, solid, null, ox, b2, Paint.Align.LEFT);
+            text.clearShadowLayer();
+        }
+        words(cv, "whitebrook", heavy, 62f * u, nsp, 0, fall, ox, b1, Paint.Align.LEFT);
+        words(cv, "road", heavy, 62f * u, nsp, 0, fall, ox, b2, Paint.Align.LEFT);
+        if (!plate) text.setShadowLayer(blur, 0, drop, shade);
+        if (sports) redBox(cv, ox + (nameW + 16f) * u, oy, boxW * u, boxH * u, u, plate, shade, blur, drop);
+        if (lower) {
+            // The box open at its top: its sides and its foot, the foot's corners round.
+            float top = oy + (rowH + 10f) * u, e = edge * u, half = e / 2f, rr = 10f * u - half;
+            float l = ox + half, rt = ox + allW * u - half, b = top + subH * u - half;
+            path.reset();
+            path.moveTo(l, top);
+            path.lineTo(l, b - rr);
+            r.set(l, b - 2 * rr, l + 2 * rr, b);
+            path.arcTo(r, 180f, -90f);
+            path.lineTo(rt - rr, b);
+            r.set(rt - 2 * rr, b - 2 * rr, rt, b);
+            path.arcTo(r, 90f, -90f);
+            path.lineTo(rt, top);
+            line.setShader(null);
+            line.setColor(edgeInk);
+            line.setStrokeWidth(e);
+            line.setStrokeCap(Paint.Cap.BUTT);
+            cv.drawPath(path, line);
+            line.setStrokeCap(Paint.Cap.ROUND);
+            // The channel's name from the left, and the tag at the right, in the middle of the line it sits on.
+            float lineTop = top + 24f * u, lh = 92f * 1.05f * u;
+            words(cv, on, medium, 92f * k * u, -1f / 92f, ink, null, ox + (edge + side) * u, baseIn(medium, 92f * k * u, lineTop, lh),
+                    Paint.Align.LEFT);
+            if (tw > 0) eventTag(cv, ox + (allW - edge - side) * u, lineTop + lh / 2f, th * u, ink);
+        }
+        text.clearShadowLayer();
+        line.clearShadowLayer();
+        fill.clearShadowLayer();
+    }
+
+    /** "sports" in white on the red box (w by h at (x, y)), a soft gloss over its top third. */
+    private void redBox(Canvas cv, float x, float y, float w, float h, float u, boolean plate, int shade, float blur, float drop) {
+        r.set(x, y, x + w, y + h);
+        if (!plate) {
+            // Its shadow drawn first in plain red (one drawn with the red's fall would glow red).
+            fill.setShader(null);
+            fill.setColor(RED_FALL[3]);
+            fill.setShadowLayer(blur, 0, Math.max(drop, 1.5f * u), 0x66000000);
+            cv.drawRoundRect(r, 10f * u, 10f * u, fill);
+            fill.clearShadowLayer();
+        }
+        fill.setShader(new LinearGradient(0, y, 0, y + h, RED_FALL, RED_STOPS, Shader.TileMode.CLAMP));
+        cv.drawRoundRect(r, 10f * u, 10f * u, fill);
+        // The gloss: in from its sides and top, its foot curving down at the corners.
+        float gl = x + 5f * u, gt = y + 4f * u, gw = w - 10f * u, gh = h * 0.36f;
+        r.set(gl, gt, gl + gw, gt + gh);
+        float c = 8f * u, foot = gw * 0.4f, fh = 12f * u;
+        path.reset();
+        path.addRoundRect(r, new float[]{c, c, c, c, foot, fh, foot, fh}, Path.Direction.CW);
+        fill.setShader(grad(0, gt, 0, gt + gh, 0x57FFFFFF, 0x0AFFFFFF));
+        cv.drawPath(path, fill);
+        fill.setShader(null);
+        // No shadow on the red: "sports" as the picture has it, 2 under the box's top, 24 in.
+        text.clearShadowLayer();
+        words(cv, "sports", medium, 100f * u, -0.01f, WHITE, null, x + 24f * u, baseIn(medium, 100f * u, y + 2f * u, 100f * u),
+                Paint.Align.LEFT);
+        if (!plate) text.setShadowLayer(blur, 0, drop, shade);
+    }
+
+    /** The tag in boxes lined in the ink, its right end at right, centred on cy. */
+    private void eventTag(Canvas cv, float right, float cy, float th, int ink) {
+        String a = main();
+        float wa = boxW(a, th), bx = right - tagW(th, false), by = cy - th / 2f;
+        if (!a.isEmpty()) {
+            lined(cv, a, bx, by, wa, th, ink);
+            bx += wa + th * 0.18f;
+        }
+        if (hdr()) lined(cv, "HDR", bx, by, boxW("HDR", th), th, ink);
+    }
+
+    private void lined(Canvas cv, String s, float x, float y, float w, float th, int ink) {
+        float e = Math.max(1f, th * 0.09f), br = th * 0.2f;
+        r.set(x + e / 2f, y + e / 2f, x + w - e / 2f, y + th - e / 2f);
+        line.setShader(null);
+        line.setColor(ink);
+        line.setStrokeWidth(e);
+        cv.drawRoundRect(r, br, br, line);
+        float size = tagSize(th);
+        words(cv, s, heavy, size, 0.04f, ink, null, x + w / 2f, y + (th + capOf(heavy) * size) / 2f, Paint.Align.CENTER);
+    }
+
     // ---- Parts ----
 
     /** The block's ground: a soft fall of light from its top, and a fine light edge. */
@@ -657,6 +857,14 @@ final class ChannelMark {
         float wd = text.measureText(s) * size / 100f;
         text.setLetterSpacing(0f);
         return wd;
+    }
+
+    /** Where words in t at this size stand on a line lineH high from top, as a browser sets them: their base. */
+    private float baseIn(Typeface t, float size, float top, float lineH) {
+        text.setTypeface(t);
+        text.setTextSize(size);
+        Paint.FontMetrics fm = text.getFontMetrics();
+        return top + (lineH - (fm.descent - fm.ascent)) / 2f - fm.ascent;
     }
 
     /** The size at which s, so spaced, is wd wide. */

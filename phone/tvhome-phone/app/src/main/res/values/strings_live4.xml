@@ -45,7 +45,7 @@
     <string name="live28_styles_line">Tap one, then choose Whitebrook Road styles above to show it over the channel\'s logo.</string>
     <string name="live28_what">On the Sports wordmark</string>
     <string name="live28_name_only">General channel: Whitebrook Road, no sport</string>
-    <string name="live28_see_through">See-through, the channel\'s own logo hidden under it (Sports wordmark and styles)</string>
+    <string name="live28_see_through">See-through, the channel\'s own logo hidden under it (Sports wordmark, Event and styles)</string>
     <string name="live28_lineups">Line-ups on screen before kick-off</string>
     <string name="live33_classic_popup">Kick-off pop-up: at each kick-off, after goals and for the second half</string>
     <string name="live33_classic_lineups">Line-ups before kick-off (Back closes them)</string>

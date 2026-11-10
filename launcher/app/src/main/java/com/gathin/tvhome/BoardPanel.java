@@ -327,8 +327,7 @@ final class BoardPanel extends SportPanel {
         List<Row> channels = new ArrayList<>(), others = new ArrayList<>();
         List<Row> own = new ArrayList<>();
         for (LogoMark.Look l : LogoMark.Look.values()) (l.channel() ? channels : l.own() ? own : others).add(markTile(l));
-        addLine(150, 4, channels.subList(0, 4));
-        addLine(150, 4, channels.subList(4, channels.size()));
+        for (int i = 0; i < channels.size(); i += 4) addLine(150, 4, channels.subList(i, Math.min(channels.size(), i + 4)));
         heading("LOGO COVER LOOK: THE SPORTS WORDMARK AND 54 STYLES");
         addLine(150, 3, own);
         Row back = row("‹  Back a style", false);
@@ -356,7 +355,7 @@ final class BoardPanel extends SportPanel {
         Row see = row("See-through, the channel's logo hidden", true);
         see.on = () -> BoardCover.logoSeeThrough(c);
         see.words = () -> !BoardCover.logoSeeThrough(c) ? "Off · on its own plate over the logo"
-                : ChannelSight.possible() ? "The wordmark and the styles on the picture itself, the channel's logo filled in from round it"
+                : ChannelSight.possible() ? "The wordmark, Event and the styles on the picture itself, the channel's logo filled in from round it"
                 : "Needs the search helper on (Android 11 and later); on its plate meanwhile";
         see.ok = () -> BoardCover.setLogoSeeThrough(c, !BoardCover.logoSeeThrough(c));
         add(see);
@@ -429,6 +428,9 @@ final class BoardPanel extends SportPanel {
         m.what(BoardCover.whatNow(c));
         m.nameOnly(BoardCover.logoNameOnly(c));
         m.style(BoardCover.logoStyle(c));
+        // Event: the channel's own name on it, the board's channel's when it has one, else "main event".
+        String sub = ChannelMark.subOf(InStep.channel(c));
+        m.sub(sub.isEmpty() ? "main event" : sub);
         if (look == LogoMark.Look.STYLES) stylePreview = m;
         // Broadcast and the channel looks: the picture's tag chosen, LIVE, the scoreboard look chosen for its colours.
         m.tag(previewTag());
@@ -440,8 +442,8 @@ final class BoardPanel extends SportPanel {
         BoardBug colours = new BoardBug(c);
         colours.style(BoardCover.style(c));
         m.boardLook(colours.stripLook());
-        stage.addView(m, look.own() ? new FrameLayout.LayoutParams(h.px(230), h.px(80), Gravity.CENTER)
-                : look.channel() || look == LogoMark.Look.COMPETITION ? new FrameLayout.LayoutParams(h.px(190), h.px(90), Gravity.CENTER)
+        stage.addView(m, look.channel() || look == LogoMark.Look.COMPETITION ? new FrameLayout.LayoutParams(h.px(190), h.px(90), Gravity.CENTER)
+                : look.own() ? new FrameLayout.LayoutParams(h.px(230), h.px(80), Gravity.CENTER)
                 : look.broadcast() ? new FrameLayout.LayoutParams(h.px(170), h.px(96), Gravity.CENTER)
                 : new FrameLayout.LayoutParams(h.px(150), h.px(52), Gravity.CENTER));
         t.addView(stage, new LinearLayout.LayoutParams(-1, 0, 1f));
