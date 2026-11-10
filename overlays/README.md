@@ -1,4 +1,4 @@
-# Live overlays: the classic kick-off pop-up and line-ups
+# Live overlays: the kick-off pop-up and line-ups, two styles each
 
 The family's own broadcast-style graphics, shown over the channel by the TV launcher (`launcher/`, ClassicIntro) and
 the phone app (`phone/tvhome-phone/`, PlayerIntro). Both apps take this folder in through their `build.gradle`
@@ -9,6 +9,9 @@ and its tests (`javatest/`).
 |---|---|
 | `assets/broadcast/kickoff.html` | The kick-off pop-up: both crests fly in, the competition's 3D trophy rises behind, the bar opens with the teams, the tab changes (competition, Whitebrook Road Sports, the ground), then it all closes. Kinds: `kickoff`, `restart` (the score, scorer and minute after a goal), `second` (the second half). |
 | `assets/broadcast/lineups.html` | The classic line-ups: each team by position, the players beaming in with their number and name, the subs, the formation on a tilted pitch; both teams, then a wipe back to the channel. Back fades it away. |
+| `assets/broadcast/strap.html` | The first design's kick-off pop-up: a strap in the scoreboard's own look (all nine), the teams, the ground and its weather, that folds into the board where it sits (`board` {x, y, w, h} on 1920 x 1080). Same kinds as the pop-up. |
+| `assets/broadcast/stadium.html` | The first design's line-ups: a stadium drawn for the day and the weather, the Whitebrook Road Sports ident, a title card, each eleven on a formation board with their pictures, the manager and subs, the referee and a countdown, then a wipe back. Back fades it away. |
+| `java/.../Sfx.java` | The scoreboard's own sounds, played by the app: the line-ups' tab swish as anything slides out beside the board, and the goal sound chosen over the board's goal animation. |
 | `java/.../BroadcastView.java` | A see-through view playing one of them over the picture: the page in a WebView, its sounds (`sfx/`) in a SoundPool. |
 | `java/.../BroadcastData.java` | What a page is given: clubs, crests, colours, competition, ground; for the line-ups FotMob's two teams with each player's picture, all inline. |
 | `java/.../PlPhotos.java` | The Premier League's own player pictures, matched to FotMob's line-ups by club and name through its fantasy game's player list. |
@@ -21,7 +24,8 @@ into one script):
 - `src/host/`: the pages and the small scripts that take the app's data (`BROADCAST.start(json)`) and drive them in real time, calling the app back (`AndroidBroadcast.ready/started/done/sound/log`).
 - `src/vendor/`: three.js r170 (MIT) and its RoomEnvironment.
 - `src/fonts/`: Khand 600 and 700 (the lettering matched to the user's clips), Barlow Condensed 700 (its `&`, and the Premier League's ribbons), Outfit (the Whitebrook Road Sports wordmark); all SIL Open Font Licence.
-- `src/sfx/`: the sounds, synthesised for the mock-ups and cut to each moment (Ogg Vorbis).
+- `src/strap/`, `src/stadium/`: the first designs (the stadium continues `src/lineups/head.js`, the same ground).
+- `src/sfx/`: the sounds, synthesised for the mock-ups and cut to each moment (Ogg Vorbis): `popup-*`, `swish-*`, `strap-<look>` (no whistle, no crowd), `stadium-*`, and the nine goal sounds `goal-*` (made by `tools/goal_synth.py`, timed to the board's goal animation; three of them in the style measured from the family's kick-off clip, a bright swipe of air into a deep boom, with nothing of its sound used).
 
 Nothing here is the broadcaster's: the drawing, the trophies (our own 3D models), the lettering (a free font close to
 theirs) and the sounds are all made for this project; the competitions' and clubs' logos come from the scores' feeds

@@ -10,6 +10,10 @@ cp src/sfx/*.ogg "$OUT/sfx/"
 cp src/host/*.html src/host/*.js "$OUT/"
 cat src/kickoff/scene-part.js src/kickoff/popup-part.js > "$OUT/kickoff.js"
 cat src/lineups/head.js src/lineups/body.js > "$OUT/lineups.js"
+# the first designs: the kick-off strap in the board's look (page elements), and the line-ups over the ground (the same
+# head as the classic line-ups', with their own sequence)
+cp src/strap/strap.js "$OUT/strap.js"
+cat src/lineups/head.js src/stadium/body.js > "$OUT/stadium.js"
 npx --yes esbuild@0.24.0 src/kickoff/trophy3d.js --bundle --format=iife --minify --target=es2019 \
   --alias:three="$(pwd)/src/vendor/three.module.js" --outfile="$OUT/trophy3d.js" --log-level=warning
 echo "built $OUT: $(du -sh "$OUT" | cut -f1)"
