@@ -236,6 +236,8 @@ public class PlayerActivity extends AppCompatActivity {
                 // Moving the scoreboard first (Back keeps where it was put), then the match centre, then the touch
                 // lock holds, then out.
                 if (extras.endAdjust()) return;
+                // The line-ups out beside the scoreboard: Back closes them, the channel playing on.
+                if (extras.closeLineups()) return;
                 if (extras.matchShown()) extras.closeMatch();
                 else if (!extras.locked()) close();
             }

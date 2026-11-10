@@ -68,6 +68,11 @@ final class BoardDrop extends BoardSide {
     }
 
     private Drop drop;
+
+    /** Whether the line-ups are out beside the board now (Back folds them away). */
+    boolean showingLineups() {
+        return isOut() && drop != null && drop.lineups;
+    }
     private int chipColour;
     /** The line-ups: whose eleven it shows (0 home, 1 away), and the turn to it (0 the last, 1 this one). */
     private int page;

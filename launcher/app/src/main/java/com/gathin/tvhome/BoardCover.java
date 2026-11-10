@@ -1881,6 +1881,7 @@ final class BoardCover {
         }
         drops.clear();
         dropping = false;
+        lineupKeys(false);
         if (stats != null) stats.gone();
         if (drop != null) drop.gone();
         holdKeys(false);
@@ -2090,6 +2091,7 @@ final class BoardCover {
         if (drops.isEmpty() || drop == null || bug == null || column == null) {
             drops.clear();
             dropping = false;
+            lineupKeys(false);
             return;
         }
         dropping = true;
@@ -2108,6 +2110,8 @@ final class BoardCover {
             return;
         }
         BoardDrop.Drop d = drops.pollFirst();
+        // The line-ups out: the remote's Back is taken for them meanwhile (it closes them), also where Hold OK is off.
+        lineupKeys(d != null && d.lineups);
         poke();
         int bh = bug.getLayoutParams().height;
         drop.place(bug.stripLook(), boardH * TEXT, tuck, sideLeft, head);
@@ -2750,6 +2754,7 @@ final class BoardCover {
     static boolean key(KeyEvent e) {
         if (menuWin != null) return menuKey(e);
         if (!adjusting && fourKKey(e)) return true;
+        if (!adjusting && lineupsBack(e)) return true;
         if (!adjusting) return holdOk(e);
         int code = e.getKeyCode();
         boolean down = e.getAction() == KeyEvent.ACTION_DOWN, up = e.getAction() == KeyEvent.ACTION_UP && !e.isCanceled();
@@ -2824,6 +2829,25 @@ final class BoardCover {
         }
         layout(app);
         hintWords();
+    }
+
+    /**
+     * Back while the line-ups are out beside the board: they fold away at once (the next alert, if one waits, then
+     * comes), and the press never reaches the player, so the channel stays on.
+     */
+    private static boolean lineupsKeys;
+
+    /** The keys taken on a TV without the key helper while the line-ups are out (Back for them), or let go. */
+    private static void lineupKeys(boolean on) {
+        if (on == lineupsKeys) return;
+        lineupsKeys = on;
+        if (!InputKeyService.running) AppSearchService.keysFor("lineups", on);
+    }
+
+    private static boolean lineupsBack(KeyEvent e) {
+        if (e.getKeyCode() != KeyEvent.KEYCODE_BACK || drop == null || !drop.showingLineups()) return false;
+        if (e.getAction() == KeyEvent.ACTION_UP && !e.isCanceled()) main().post(BoardCover::hideDrop);
+        return true;
     }
 
     /** The board's width on the screen now, as a share of the screen's (0: not drawn yet). */

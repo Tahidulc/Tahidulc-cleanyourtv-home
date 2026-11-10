@@ -464,6 +464,11 @@ final class PlayerExtras implements LiveAlerts.Listener {
         p.slideIn();
     }
 
+    /** Back: the line-ups beside the scoreboard closed if they are out (true), before anything else Back does. */
+    boolean closeLineups() {
+        return overlay != null && overlay.closeLineups();
+    }
+
     boolean matchShown() {
         return match != null;
     }

@@ -142,6 +142,16 @@ final class BoardLineups extends View {
         return getVisibility() == VISIBLE;
     }
 
+    /** Closed at once (Back): out as it goes at its end, what waited for it then coming. */
+    void close() {
+        if (!isOut()) return;
+        removeCallbacks(next);
+        if (turning != null) turning.cancel();
+        if (running != null) running.cancel();
+        animate().cancel();
+        animate().alpha(0f).translationX(-12 * dp).setDuration(220).withEndAction(this::finish).start();
+    }
+
     private void page(int i) {
         at = i;
         if (turning != null) turning.cancel();

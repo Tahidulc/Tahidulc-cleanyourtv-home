@@ -177,6 +177,13 @@ public final class ScoreBoard implements LiveAlerts.Listener {
     }
 
     /** The line-ups on screen (out of the board, before kick-off): on unless switched off. */
+    /** Back over the player: the line-ups closed if they are out (true), so the press goes no further. */
+    boolean closeLineups() {
+        if (!lineups.isOut()) return false;
+        lineups.close();
+        return true;
+    }
+
     static boolean lineupsOn(Context c) {
         return prefs(c).getBoolean("lineups", true);
     }

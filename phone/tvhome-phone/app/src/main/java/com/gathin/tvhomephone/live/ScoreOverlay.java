@@ -295,6 +295,11 @@ final class ScoreOverlay implements ScoreBoard.Source {
         return in == null || iw <= 0 || ih <= 0 ? null : Bitmap.createBitmap(in, iw, ih, Bitmap.Config.ARGB_8888);
     }
 
+    /** Back over the player: the line-ups beside the board closed if they are out. */
+    boolean closeLineups() {
+        return started && board.closeLineups();
+    }
+
     /** The look or the logo's cover changed in Options. */
     void restyle() {
         board.bug.style(ScoreBoard.style(a));
