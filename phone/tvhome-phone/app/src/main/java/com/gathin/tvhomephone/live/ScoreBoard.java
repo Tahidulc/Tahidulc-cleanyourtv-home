@@ -1240,14 +1240,7 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         }
         // In added time every look's score comes alive (decided here, where the clock's words are made).
         l.stoppage = stoppage(g, l.clock);
-        l.late = late(l.clock, g.homeScore, g.awayScore);
         return l;
-    }
-
-    /** Pure: the last minutes of a close game (the 85th on, a goal or none between them): the board's clock beats then. */
-    static boolean late(String clock, int home, int away) {
-        int m = minuteOfClock(clock);
-        return m >= 85 && m <= 130 && Math.abs(home - away) <= 1;
     }
 
     /** "EVE" from ESPN's abbreviation, else the name's first three letters. */

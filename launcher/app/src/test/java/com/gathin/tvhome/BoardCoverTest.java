@@ -931,14 +931,20 @@ public class BoardCoverTest {
     // ---- 4.31: frosted glass, the new moments, FotMob ----------------------------------------------------------------
 
     @Test
-    public void theClockBeatsOnlyInACloseGamesLastMinutes() {
-        assertTrue(BoardCover.late("88:10", "1", "1"));
-        assertTrue(BoardCover.late("90:00", "2", "1"));
-        assertTrue(BoardCover.late("94:30", "0", "0"));
-        assertFalse(BoardCover.late("88:10", "3", "1"));
-        assertFalse(BoardCover.late("70:00", "1", "1"));
-        assertFalse(BoardCover.late("HT", "1", "1"));
-        assertFalse(BoardCover.late(null, "1", "1"));
+    public void theClockBeatsRedOnlyInAddedTime() {
+        BoardBug.Look l = new BoardBug.Look();
+        l.live = true;
+        l.clock = "88:10";
+        // A close game's last minutes: no beat any more.
+        assertFalse(BoardBug.pulses(l));
+        // Into the half's added time: it beats, on every look.
+        l.clock = "90:40";
+        l.stoppage = true;
+        assertTrue(BoardBug.pulses(l));
+        // Not once the game is over, nor with none.
+        l.live = false;
+        assertFalse(BoardBug.pulses(l));
+        assertFalse(BoardBug.pulses(null));
     }
 
     @Test

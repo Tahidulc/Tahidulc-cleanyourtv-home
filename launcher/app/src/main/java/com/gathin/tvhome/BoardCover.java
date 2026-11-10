@@ -714,19 +714,8 @@ final class BoardCover {
             } else {
                 l.clock = r.detail;
             }
-            l.late = late(l.clock, r.home, r.away);
         }
         return l;
-    }
-
-    /**
-     * Pure: the last minutes of a close game (the 85th on, a goal or none between them): the board's clock beats then.
-     */
-    static boolean late(String clock, String home, String away) {
-        int m = minuteOfClock(clock);
-        if (m < 85 || m > 130) return false;
-        int h = goalsOf(score(home) + "–" + score(away), 1), a = goalsOf(score(home) + "–" + score(away), 2);
-        return h >= 0 && a >= 0 && Math.abs(h - a) <= 1;
     }
 
     /** A made-up game, to place it by with no game on (Move and resize, the adb test). */

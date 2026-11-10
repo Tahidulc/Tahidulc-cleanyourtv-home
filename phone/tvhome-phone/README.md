@@ -306,6 +306,9 @@ whatever size it is set to, their words a little smaller and never longer than e
 along inside). Move and resize: Width for the scoreboard and for the logo's cover, beside Size and Height. As the TV
 launcher's 4.35 has it.
 
+Red only in added time (4.30): the clock no longer beats red in a close game's last minutes; it beats red only in a
+half's added time, on every scoreboard look. As the TV launcher's 4.36 has it.
+
 Subtitles (CC in the film's player): the film's or episode's own, from your playlist's stream, come first, in the
 languages you choose (Settings, Subtitles, in order). When it has none, OpenSubtitles.com is looked in by the title's
 TMDB id (the series' with its season and episode), best first: your languages, the ones that fit the copy playing (its

@@ -389,12 +389,22 @@ public class ScoreBoardTest {
     // ---- 4.26: frosted glass, the new moments, FotMob ----------------------------------------------------------------
 
     @Test
-    public void theClockBeatsOnlyInACloseGamesLastMinutes() {
-        assertTrue(ScoreBoard.late("88:10", 1, 1));
-        assertTrue(ScoreBoard.late("90:00", 2, 1));
-        assertFalse(ScoreBoard.late("88:10", 3, 1));
-        assertFalse(ScoreBoard.late("70:00", 1, 1));
-        assertFalse(ScoreBoard.late("HT", 1, 1));
+    public void theClockBeatsRedOnlyInAddedTime() {
+        OverlayBug.Look l = new OverlayBug.Look();
+        l.live = true;
+        l.clock = "88:10";
+        // A close game's last minutes: no beat any more.
+        assertFalse(OverlayBug.pulses(l));
+        // Into the half's added time: it beats, on every look.
+        l.clock = "90:40";
+        l.stoppage = true;
+        assertTrue(OverlayBug.pulses(l));
+        // Never on F1's board, nor once the game is over.
+        l.f1 = true;
+        assertFalse(OverlayBug.pulses(l));
+        l.f1 = false;
+        l.live = false;
+        assertFalse(OverlayBug.pulses(l));
         float most = 0f;
         for (long t = 0; t < 1000; t += 10) most = Math.max(most, OverlayBug.heartbeat(t));
         assertTrue(most > 0.8f);

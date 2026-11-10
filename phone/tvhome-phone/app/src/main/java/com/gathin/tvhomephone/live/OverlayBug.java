@@ -38,10 +38,8 @@ final class OverlayBug extends View implements BurnGuard.Dims {
     /** What it shows. */
     static final class Look {
         boolean f1, live;
-        /** In added time: the clock past its period's end, as the board's controller (ScoreBoard) decides it. */
+        /** In added time: the clock past its period's end, as the board's controller (ScoreBoard) decides it; its clock beats red then. */
         boolean stoppage;
-        /** The last minutes of a close game (one goal or level, from the 85th): its clock beats red. */
-        boolean late;
         String home = "", away = "", score = "", clock = "", added = "", tag = "";
         int homeColour = 0xFFFFFFFF, awayColour = 0xFFFFFFFF;
         /** F1: the session, the corner ({"LAP", "23"}, {"Q2", "08:31"}), the first drivers' codes and colours. */
@@ -52,7 +50,7 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         @Override public boolean equals(Object o) {
             if (!(o instanceof Look)) return false;
             Look l = (Look) o;
-            return f1 == l.f1 && live == l.live && stoppage == l.stoppage && late == l.late && home.equals(l.home) && away.equals(l.away)
+            return f1 == l.f1 && live == l.live && stoppage == l.stoppage && home.equals(l.home) && away.equals(l.away)
                     && score.equals(l.score)
                     && clock.equals(l.clock) && added.equals(l.added) && tag.equals(l.tag) && homeColour == l.homeColour
                     && awayColour == l.awayColour && label.equals(l.label) && cornerA.equals(l.cornerA)
@@ -329,6 +327,32 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         ftAt = ft < 0 ? 0 : now - ft;
         varUntil = var ? now + 60_000L : 0;
         invalidate();
+    }
+
+    /** Pure: whether the clock beats red: only in a half's added time, while the game is live (on every look; never F1). */
+    static boolean pulses(Look l) {
+        return l != null && !l.f1 && l.live && l.stoppage;
+    }
+
+    /** The clock's box beating red in added time (pulses): a red wash over (x, y, w, h), strongest on each beat. */
+    private void pulse(Canvas cv, float x, float y, float w, float h, int red, int least, int most) {
+        pulse(cv, x, y, w, h, red, least, most, 0f);
+    }
+
+    /** The same with round corners (Minimal's clock, which has no box of its own: a red pill behind it). */
+    private void pulse(Canvas cv, float x, float y, float w, float h, int red, int least, int most, float round) {
+        if (!pulses(look)) return;
+        float beat = heartbeat(System.currentTimeMillis());
+        fill.setShader(null);
+        fill.setColor(red);
+        fill.setAlpha(Math.round(least + (most - least) * beat));
+        if (round > 0f) {
+            r.set(x, y, x + w, y + h);
+            cv.drawRoundRect(r, round, round, fill);
+        } else {
+            cv.drawRect(x, y, x + w, y + h, fill);
+        }
+        fill.setAlpha(255);
     }
 
     /** Pure: a heartbeat's strength at a moment, 0 to 1: two quick beats a second, as a pulse is. */
@@ -741,7 +765,7 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         if ((goalOn && goalFrozen < 0) || ((turning || rippling || scanning || stamping) && !part)) postInvalidateOnAnimation();
         // Alive (Card's red always, every look's score in added time): drawn again about 30 times a second while it
         // shows (Minimal, with only its shine, as that comes), not while a goal's band is over it; else not at all.
-        else if ((aliveNow() || !look.f1 && look.late && look.live) && !part && animFrozen < 0 && isShown()) {
+        else if (aliveNow() && !part && animFrozen < 0 && isShown()) {
             removeCallbacks(tick);
             postDelayed(tick, nextFrame());
         }
@@ -757,7 +781,7 @@ final class OverlayBug extends View implements BurnGuard.Dims {
 
     /** When to draw it again while alive: about 30 times a second; Minimal (its shine alone) not till the next shine. */
     private long nextFrame() {
-        if (style != Style.MINIMAL || look.late && look.live) return 33;
+        if (style != Style.MINIMAL || pulses(look)) return 33;
         long st = shineTime(animTime()), in = ((st % SHINE_EVERY_MS) + SHINE_EVERY_MS) % SHINE_EVERY_MS;
         return in < SHINE_MS ? 33 : Math.max(33, SHINE_EVERY_MS - in);
     }
@@ -936,13 +960,8 @@ final class OverlayBug extends View implements BurnGuard.Dims {
             fill.setColor(p.clock);
             cv.drawRect(x, y, x + w, y + h, fill);
         }
-        if (look.late && look.live) {
-            // The last minutes of a close game: the clock's box beats red, about once a second.
-            fill.setColor(0xFFE3061B);
-            fill.setAlpha(Math.round(60 + 150 * heartbeat(System.currentTimeMillis())));
-            cv.drawRect(x, y, x + w, y + h, fill);
-            fill.setAlpha(255);
-        }
+        // In added time: the clock's box beats red, about once a second.
+        pulse(cv, x, y, w, h, 0xFFE3061B, 60, 210);
         int colour = "HT".equals(look.clock) ? AMBER : look.live ? p.clockInk : p.dim;
         if (!addedInside()) {
             words(cv, look.clock, x + w / 2, y, h, h * 0.44f * k, colour);
@@ -1060,6 +1079,9 @@ final class OverlayBug extends View implements BurnGuard.Dims {
             String under = (m[1] + (m[2].isEmpty() ? "" : "  " + m[2])).trim();
             float bh = h - top;
             float k2 = Math.min(1f, w * 0.9f / Math.max(1f, measure(under, bh * 0.62f)));
+            // In added time a red pill beats behind its clock.
+            float uw = measure(under, bh * 0.62f * k2), pad = bh * 0.22f;
+            pulse(cv, w / 2f - uw / 2f - pad, top - h * 0.04f + bh * 0.12f, uw + 2 * pad, bh * 0.76f, 0xFFE3061B, 70, 220, bh * 0.38f);
             int ink = "HT".equals(look.clock) ? AMBER : p.clockInk;
             words(cv, under, w / 2f, top - h * 0.04f, bh, bh * 0.62f * k2, ink);
             return;
@@ -1070,6 +1092,8 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         words(cv, m[0], x + a / 2, 0, h, h * 0.48f * k, look.f1 ? F1_RED : p.ink);
         x += a + h * 0.7f * k;
         float b = measure(m[1], h * 0.44f * k);
+        // In added time a red pill beats behind its clock.
+        pulse(cv, x - h * 0.2f * k, h * 0.2f, b + h * 0.4f * k, h * 0.6f, 0xFFE3061B, 70, 220, h * 0.3f);
         int clockInk = "HT".equals(look.clock) ? AMBER : flash > 0 ? (flashSide == 1 ? look.homeColour : look.awayColour) : p.clockInk;
         words(cv, m[1], x + b / 2, 0, h, h * 0.44f * k, clockInk);
         x += b + h * 0.5f * k;
@@ -1233,6 +1257,7 @@ final class OverlayBug extends View implements BurnGuard.Dims {
     private void stackedClock(Canvas cv, float x, float w, float h, float k) {
         fill.setColor(p.clock != 0 ? p.clock : p.ground);
         cv.drawRect(x, 0, x + w, h, fill);
+        pulse(cv, x, 0, w, h, 0xFFE3061B, 60, 210);
         int colour = "HT".equals(look.clock) ? AMBER : look.live ? p.clockInk : p.dim;
         if (!addedInside()) {
             words(cv, look.clock, x + w / 2, 0, h, h * 0.3f * k, colour);
@@ -1504,6 +1529,8 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         String c = cardClock();
         if (c.isEmpty()) return;
         float y = h * 0.5f, lh = h * 0.44f, size = cardClockSize(h) * k;
+        // In added time the middle is red already: its clock's line beats a lighter red over it.
+        pulse(cv, x, y, w, lh, 0xFFFF5A6A, 0, 150);
         int colour = "HT".equals(look.clock) ? CARD_HT : look.live || "FT".equals(look.clock) ? p.clockInk : look.stoppage ? CARD_SOFT : CARD_BLUE_SOFT;
         if (!addedInside()) {
             float s = Math.min(1f, w * 0.9f / Math.max(1f, measure(c, size)));
