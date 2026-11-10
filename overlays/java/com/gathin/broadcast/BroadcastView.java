@@ -30,7 +30,8 @@ import java.util.Map;
  * here as the page calls for them. It takes no keys or touches; Back for the line-ups is the app's, through back().
  * When it is over (or fails, or runs too long) the listener is told once and the view is empty: take it down then.
  * <p>Held (prepare): the page gets everything ready out of sight (the TCL took four to twelve seconds), says so, and
- * waits for go(), so that the app can show it on the moment: put it in a tiny window meanwhile, the full size at go().
+ * waits for go(), so that the app can show it on the moment: keep it full size but unseen meanwhile (a window of alpha 0;
+ * a WebView laid out a pixel square and then stretched kept drawing at that size on the TVs), and seen at go().
  */
 @SuppressLint("ViewConstructor")
 public final class BroadcastView extends FrameLayout {

@@ -63,7 +63,7 @@ final class ClassicIntro {
     /** When each game's phase last changed (uptime): half time's length, for the second half's pop-up made ready. */
     private static final Map<String, Long> phaseSince = new HashMap<>();
     /**
-     * A pop-up made ready before its moment (BroadcastView.prepare), out of sight in a window a pixel square, so that it
+     * A pop-up made ready before its moment (BroadcastView.prepare), out of sight in an unseen window (alpha 0), so that it
      * is on the screen the moment comes (it took the TCL four to twelve seconds to get one ready): the kick-off's from
      * two and a half minutes before, a goal's restart 25 seconds after the goal shows, the second half's from ten
      * minutes into half time. One at a time, kept a quarter of an hour at most.
@@ -304,7 +304,7 @@ final class ClassicIntro {
         if (lu && !InputKeyService.running) AppSearchService.keysFor("classic", true);
     }
 
-    /** The overlay's window: the whole screen (MATCH_PARENT), or a pixel square while a pop-up is made ready (1). */
+    /** The overlay's window over the whole screen (MATCH_PARENT). */
     private static WindowManager.LayoutParams params(int size) {
         WindowManager.LayoutParams lp = new WindowManager.LayoutParams(size, size, WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
@@ -346,7 +346,7 @@ final class ClassicIntro {
         });
     }
 
-    /** The overlay (page "kickoff" or "lineups", made from cfg) made ready in a window a pixel square (main thread). */
+    /** The overlay (its page, made from cfg) made ready in an unseen window over the whole screen (main thread). */
     private static boolean hold(Context app, String page, JSONObject cfg, String kind, String key, BroadcastView.Ready ready) {
         dropPrepared();
         BroadcastView v;
@@ -358,7 +358,11 @@ final class ClassicIntro {
         FrameLayout f = new FrameLayout(app);
         f.addView(v, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
         try {
-            app.getSystemService(WindowManager.class).addView(f, params(1));
+            // The whole screen from the start, unseen (alpha 0, which the compositor skips): a WebView made in a window a
+            // pixel square and then stretched kept drawing at that size on the TVs (nothing, or a blown-up corner, showed).
+            WindowManager.LayoutParams hidden = params(WindowManager.LayoutParams.MATCH_PARENT);
+            hidden.alpha = 0f;
+            app.getSystemService(WindowManager.class).addView(f, hidden);
         } catch (Exception e) {
             v.stop();
             return false;
