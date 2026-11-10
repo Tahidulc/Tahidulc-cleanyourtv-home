@@ -470,7 +470,18 @@ final class ClassicIntro {
     static void tryIt(Context c, ScoresTicker.Game chosen, String spec, Consumer<String> note) {
         // adb may add how much to draw after a bar: "kickoff|scale=0.6,flat,t3every=2,t3res=0.6" (the page's q)
         String[] sp = spec.split("\\|", 2);
-        String kind = sp[0];
+        // adb may name the style: "strap:kickoff", "classic:restart", "stadium", "lineups" (else this TV's own styles)
+        String head = sp[0], forced = null;
+        if (head.startsWith("strap:") || head.startsWith("classic:")) {
+            forced = head.substring(0, head.indexOf(':'));
+            head = head.substring(head.indexOf(':') + 1);
+        } else if ("stadium".equals(head)) {
+            forced = "stadium";
+            head = "lineups";
+        } else if ("lineups".equals(head)) {
+            forced = "classic";
+        }
+        String kind = head, force = forced;
         JSONObject q = quality(sp.length > 1 ? sp[1] : "");
         if (showing() || fetching) {
             note.accept("Wait for the one on to finish");
@@ -497,7 +508,7 @@ final class ClassicIntro {
                             int[] score = "kickoff".equals(kind) ? null : trialScore(g);
                             String[] last = g.goals.isEmpty() ? null : g.goals.get(g.goals.size() - 1);
                             boolean goal = "restart".equals(kind);
-                            cfg = popupCfg(app, popupPage(app), g, m, kind, score, goal ? Moments.scorer(last) : null,
+                            cfg = popupCfg(app, tryPopupPage(app, force), g, m, kind, score, goal ? Moments.scorer(last) : null,
                                     goal ? (last == null ? "" : BroadcastData.minute(last[2])) : null);
                             if (q.length() > 0) cfg.put("q", q);
                         }
@@ -526,13 +537,27 @@ final class ClassicIntro {
                 android.util.Log.i("Sport", "classic try " + kind + ": " + game + ", data in " + (android.os.SystemClock.uptimeMillis() - t0) + " ms");
                 // made ready out of sight, then the whole screen the moment it is (no empty window while it loads)
                 String key = "try|" + kind + "|" + android.os.SystemClock.uptimeMillis();
-                String page = lu ? ("stadium".equals(lineupsStyle(app)) ? "stadium" : "lineups") : popupPage(app);
+                String page = lu ? tryLineupsPage(app, force) : tryPopupPage(app, force);
                 String shownAs = lu ? page : "strap".equals(page) ? "strap" : kind;
                 hold(app, page, got, shownAs, key, (v) -> {
                     if (goPrepared(key)) trial = true;
                 });
             });
         });
+    }
+
+    /** A try's pop-up page: the style adb named, else this TV's. */
+    private static String tryPopupPage(Context c, String force) {
+        if ("strap".equals(force)) return "strap";
+        if ("classic".equals(force)) return "kickoff";
+        return popupPage(c);
+    }
+
+    /** A try's line-ups page: the style adb named, else this TV's. */
+    private static String tryLineupsPage(Context c, String force) {
+        if ("stadium".equals(force)) return "stadium";
+        if ("classic".equals(force)) return "lineups";
+        return "stadium".equals(lineupsStyle(c)) ? "stadium" : "lineups";
     }
 
     /** "scale=0.6,flat,t3every=2" as the page's q: {"scale":0.6,"flat":true,"t3every":2}. */

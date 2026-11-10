@@ -1382,6 +1382,40 @@ final class BoardCover {
         main().post(tick);
     }
 
+    /**
+     * adb only (test_board_moments): the board for a minute over whatever is on, a goal on it after 3 s with the goal
+     * sound goalKey ("hit", ...: Sfx.GOALS), then its scorer sliding out beside it, then the stats (both with the swish).
+     */
+    static void testMoments(Context c, String goalKey) {
+        Context a = c.getApplicationContext();
+        com.gathin.broadcast.Sfx.warm(a, com.gathin.broadcast.Sfx.SWISH, "goal-" + goalKey);
+        test(a);
+        main().postDelayed(() -> {
+            if (bug == null) return;
+            bug.goal(1);
+            com.gathin.broadcast.Sfx.goal(a, goalKey);
+        }, 3_000L);
+        main().postDelayed(() -> {
+            BoardDrop.Drop d = new BoardDrop.Drop();
+            d.chip = "GOAL";
+            d.title = "Test 1–0";
+            d.line = "A. Player 23'";
+            d.colour = 0xFF3DDC84;
+            d.side = 1;
+            d.what = "test goal";
+            drop(a, d);
+        }, 3_000L + BoardBug.GOAL_MS + 400L);
+        main().postDelayed(() -> {
+            if (stats == null || bug == null || column == null || stats.isOut() || dropping) return;
+            java.util.List<String[]> pick = java.util.Arrays.asList(new String[]{"Possession", "58%", "42%"},
+                    new String[]{"Shots", "11", "6"}, new String[]{"Expected goals", "1.84", "0.71"});
+            int bh = bug.getLayoutParams().height;
+            stats.place(bug.stripLook(), boardH * TEXT, tuck, sideLeft);
+            beside(stats, stats.widthFor(pick, bh, shortRoom(bh, sideMax)));
+            stats.show(pick);
+        }, 3_000L + BoardBug.GOAL_MS + 400L + 9_000L);
+    }
+
     /** adb only (--ez test_board_cover true): the board and the cover over whatever is on for a minute. */
     static void test(Context c) {
         app = c.getApplicationContext();

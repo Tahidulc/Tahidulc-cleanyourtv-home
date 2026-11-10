@@ -1673,6 +1673,11 @@ public class GoalWatchService extends Service {
         }
         // adb only: the test alerts of the next minute come up without their sound (a check of the look, not the TV's room).
         if (intent != null && intent.getBooleanExtra("test_quiet", false)) quietUntil = android.os.SystemClock.elapsedRealtime() + 60_000L;
+        if (intent != null && intent.hasExtra("test_board_moments")) {
+            // adb only: the board over whatever is on, a goal with this goal sound, the scorer and the stats with the swish
+            String key = intent.getStringExtra("test_board_moments");
+            main.post(() -> BoardCover.testMoments(this, key == null || key.isEmpty() ? "hit" : key));
+        }
         if (intent != null && intent.hasExtra("test_classic")) {
             // adb only: the classic pop-up ("kickoff", "restart", "second") or line-ups ("lineups") now, as the Scoreboard
             // card's Try rows play them, for the Premier League's latest game.
