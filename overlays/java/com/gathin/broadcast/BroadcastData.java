@@ -207,6 +207,9 @@ public final class BroadcastData {
         o.put("lon", ground != null && ground.has("long") ? ground.optDouble("long", -0.1) : -0.1);
         String ref = referee(info);
         if (!ref.isEmpty()) o.put("referee", ref);
+        // the ground itself behind the line-ups (a free photo, graded by the page for the time of the game)
+        JSONObject photo = Grounds.ground(o.optString("stadium"), cacheDir);
+        if (photo != null) o.put("ground", photo);
         long ko = m.kickoff > 0 ? m.kickoff : System.currentTimeMillis();
         ZonedDateTime local = Instant.ofEpochMilli(ko).atZone(ZoneId.systemDefault());
         o.put("ko", String.format(Locale.ROOT, "%02d:%02d", local.getHour(), local.getMinute()));

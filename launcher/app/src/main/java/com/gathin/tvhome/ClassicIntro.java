@@ -307,7 +307,10 @@ final class ClassicIntro {
     /** The overlay's window over the whole screen (MATCH_PARENT). */
     private static WindowManager.LayoutParams params(int size) {
         WindowManager.LayoutParams lp = new WindowManager.LayoutParams(size, size, WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+                // Not FLAG_NOT_TOUCHABLE: Android 12 and later turn such an overlay down to 80% (to let touches through),
+                // and the channel showed through the crests, trophy and line-ups (as BoardCover's windows found). A TV has
+                // no touch screen; not focusable keeps every key with the app.
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
                         | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
                         | WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
                 PixelFormat.TRANSLUCENT);

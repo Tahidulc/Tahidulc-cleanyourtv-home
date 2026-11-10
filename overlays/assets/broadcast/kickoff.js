@@ -1602,7 +1602,230 @@
     still: { pages: [['comp', 'vs']], steps: [], close: 9 },
   };
   function popLen(m) { return KINDS[m.kind].close + 0.62; }
-  function drawPopup(g, m, T) {
+
+  // ---------------------------------------------------------------- its layers (layers.js)
+  // Every part is drawn once, when the pop-up is made ready, into a canvas of its own with its shadow and its glow (a
+  // sprite); a frame then only places the sprites (a transform and an opacity each), so it is the compositor's work
+  // alone, as the strap page's is. The trophy is drawn ready turned for each moment it is seen (a sprite each, the frame
+  // only picks one); what changes as it plays (the crests' gold light, the tab's light) goes in small canvases of its own.
+  const Lmul = LK.mul, LT = LK.T;
+  const SPR = {};
+  const bake = (x, y, w, h, draw) => {
+    const c = mk(Math.max(1, Math.ceil(w)), Math.max(1, Math.ceil(h))), g = c.getContext('2d');
+    g.translate(-x, -y); draw(g);
+    return { c, x, y };
+  };
+  const at = (s, M, a, blend) => { if (s) LK.put(s.c, Lmul(M, LT(s.x, s.y)), a, blend); };
+  // a flare's three parts (the round glow and its two streaks), each at full strength: the frame sets how strong
+  function flareBake(size, warm) {
+    const key = 'fl:' + size + ':' + warm;
+    if (SPR[key]) return SPR[key];
+    const c0 = warm ? [255, 236, 190] : [235, 245, 255], c1 = warm ? [255, 176, 60] : [140, 190, 255];
+    const rad = bake(-size - 1, -size - 1, 2 * size + 2, 2 * size + 2, (g) => {
+      const rg = g.createRadialGradient(0, 0, 0, 0, 0, size);
+      rg.addColorStop(0, `rgba(${c0},1)`); rg.addColorStop(0.18, `rgba(${c1},0.55)`); rg.addColorStop(1, `rgba(${c1},0)`);
+      g.fillStyle = rg; g.fillRect(-size, -size, size * 2, size * 2);
+    });
+    const hw = size * 3.2, hh = size * 0.035, vw = size * 0.035, vh = size * 1.6;
+    const hs = bake(-hw - 1, -hh - 1, 2 * hw + 2, 2 * hh + 2, (g) => {
+      const lg = g.createLinearGradient(-hw, 0, hw, 0);
+      lg.addColorStop(0, `rgba(${c0},0)`); lg.addColorStop(0.5, `rgba(${c0},0.85)`); lg.addColorStop(1, `rgba(${c0},0)`);
+      g.fillStyle = lg; g.fillRect(-hw, -hh, 2 * hw, 2 * hh);
+    });
+    const vs = bake(-vw - 1, -vh - 1, 2 * vw + 2, 2 * vh + 2, (g) => {
+      const vg = g.createLinearGradient(0, -vh, 0, vh);
+      vg.addColorStop(0, `rgba(${c0},0)`); vg.addColorStop(0.5, `rgba(${c0},0.85)`); vg.addColorStop(1, `rgba(${c0},0)`);
+      g.fillStyle = vg; g.fillRect(-vw, -vh, 2 * vw, 2 * vh);
+    });
+    return (SPR[key] = [rad, hs, vs]);
+  }
+  function flareL(x, y, size, a, warm = true) {
+    if (a <= 0.003) return;
+    for (const s of flareBake(size, warm)) at(s, LT(x, y), a, 'lighter');
+  }
+  const sparkleBake = (s) => SPR['sk:' + s] || (SPR['sk:' + s] = bake(-s - 2, -s - 2, 2 * s + 4, 2 * s + 4, (g) => sparkle(g, 0, 0, s, 1)));
+  // the gold halo behind a crest, at its strongest (glow 1.2); the frame sets how strong
+  function haloBake() {
+    const r = R_CREST;
+    return SPR.halo || (SPR.halo = bake(-r * 1.6 - 1, -r * 1.6 - 1, r * 3.2 + 2, r * 3.2 + 2, (g) => {
+      const hg = g.createRadialGradient(0, 0, r * 0.7, 0, 0, r * 1.55);
+      hg.addColorStop(0, 'rgba(255,205,90,0.66)'); hg.addColorStop(0.45, 'rgba(255,170,40,0.336)'); hg.addColorStop(1, 'rgba(255,150,20,0)');
+      g.fillStyle = hg; g.fillRect(-r * 1.6, -r * 1.6, r * 3.2, r * 3.2);
+    }));
+  }
+  // a crest's coin with the gold over it (a warm wash from the light's side, a glint passing): its own small canvas,
+  // drawn again only when the light on it changes
+  function medalCoin(side, sheen, tilt, glow) {
+    const base = medallion(side), sz = base.width, r = R_CREST;
+    const c = LK.dyn('medal-' + side, sz, sz), g = c._g;
+    const key = sheen.toFixed(3) + '|' + tilt.toFixed(4) + '|' + glow.toFixed(3);
+    if (c._key === key) return c;
+    c._key = key;
+    g.setTransform(1, 0, 0, 1, 0, 0); g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
+    g.clearRect(0, 0, sz, sz);
+    g.drawImage(base, 0, 0);
+    g.save(); g.translate(sz / 2, sz / 2);
+    g.beginPath(); g.arc(0, 0, r - 0.5, 0, TAU); g.clip();
+    const lx = -r * 0.6 - Math.sin(tilt) * r * 0.8, ly = -r * 0.7;
+    const wg = g.createRadialGradient(lx, ly, 0, lx, ly, r * 2.1);
+    wg.addColorStop(0, `rgba(255,214,120,${(0.18 + 0.4 * glow).toFixed(3)})`); wg.addColorStop(0.55, `rgba(255,190,70,${(0.06 + 0.16 * glow).toFixed(3)})`); wg.addColorStop(1, 'rgba(255,180,60,0)');
+    g.globalCompositeOperation = 'soft-light'; g.fillStyle = wg; g.fillRect(-r, -r, 2 * r, 2 * r);
+    g.globalCompositeOperation = 'lighter';
+    const wg2 = g.createRadialGradient(lx, ly, 0, lx, ly, r * 1.6);
+    wg2.addColorStop(0, `rgba(255,200,90,${(0.1 + 0.3 * glow).toFixed(3)})`); wg2.addColorStop(1, 'rgba(255,180,60,0)');
+    g.fillStyle = wg2; g.fillRect(-r, -r, 2 * r, 2 * r);
+    if (sheen > 0 && sheen < 1) {
+      const sx = -r * 1.7 + sheen * r * 3.4;
+      const sg = g.createLinearGradient(sx - r * 0.22, -r * 0.6, sx + r * 0.22, r * 0.6);
+      sg.addColorStop(0, 'rgba(255,200,80,0)'); sg.addColorStop(0.5, 'rgba(255,224,140,0.55)'); sg.addColorStop(1, 'rgba(255,200,80,0)');
+      g.fillStyle = sg; g.fillRect(-r, -r, 2 * r, 2 * r);
+    }
+    g.restore();
+    return c;
+  }
+  // tilt: the circle turned about its upright axis (radians); glow: the gold light behind and over it (0..1.2);
+  // sheen: a gold glint passing across (0..1 as it goes, 0 when none)
+  function medalLayers(side, x, y, scale, alpha, sheen, tilt, glow) {
+    if (alpha <= 0.001 || scale <= 0.01) return;
+    if (glow > 0.01) at(haloBake(), [scale, 0, 0, scale, x, y], alpha * glow / 1.2, 'lighter');
+    const c = medalCoin(side, sheen, tilt, glow), h = c.width / 2;
+    const ct = Math.max(0.08, Math.cos(tilt));
+    // turned: narrower, with a slight lean as it would in perspective
+    LK.put(c, Lmul([ct, Math.sin(tilt) * 0.16, 0, 1, x, y], [scale, 0, 0, scale, -h * scale, -h * scale]), alpha);
+  }
+  // the tab: its two ends and a column of its middle (stretched to any width), cut from one drawn at TAB_REF wide
+  const TAB_REF = 400, TAB_M = 26;
+  function tabBake() {
+    if (SPR.tab) return SPR.tab;
+    const bot = CY - BAR_H / 2, top = bot - TAB_H, x0 = 960 - TAB_REF / 2, x1 = 960 + TAB_REF / 2;
+    const full = bake(x0 - TAB_M, top - TAB_M, TAB_REF + 2 * TAB_M, TAB_H + TAB_M, (g) => drawTab(g, TAB_REF, CY, 1));
+    const cut = (sx, w) => {
+      const c = mk(w, full.c.height);
+      c.getContext('2d').drawImage(full.c, sx - full.x, 0, w, full.c.height, 0, 0, w, full.c.height);
+      return { c, x: sx, y: full.y };
+    };
+    return (SPR.tab = { L: cut(x0 - TAB_M, TAB_M + 12), M: cut(959, 2), R: cut(x1 - 12, TAB_M + 12) });
+  }
+  function tabLayers(G, tw, rr) {
+    const P = tabBake(), M = Lmul(G, LT(0, (1 - rr) * TAB_H));
+    const xl = Math.round(960 - tw / 2), xr = xl + Math.round(tw);
+    at(P.L, Lmul(M, LT(xl - (960 - TAB_REF / 2), 0)), 1);
+    const mw = xr - xl - 24;
+    if (mw > 0) LK.put(P.M.c, Lmul(M, [mw / 2, 0, 0, 1, xl + 12, P.M.y]), 1);
+    at(P.R, Lmul(M, LT(xr - (960 + TAB_REF / 2), 0)), 1);
+  }
+  // the tab's words for a page, sharp and in steps of blur (they come in out of a blur on a change)
+  const TABW = {};
+  function tabContentBake(kind, m, lvl) {
+    const key = 'tc:' + kind + ':' + lvl;
+    if (SPR[key]) return SPR[key];
+    const g0 = mk(8, 8).getContext('2d');
+    let w = 0; tabItems(g0, kind, m).forEach((it, i) => { w += it.w + (i ? (it.gap || 14) : 0); });
+    const mid = CY - BAR_H / 2 - TAB_H / 2, pad = 26;
+    return (SPR[key] = bake(Math.floor(960 - w / 2 - pad), mid - TAB_H / 2 - pad, w + 2 * pad + 1, TAB_H + 2 * pad, (g) => drawTabContent(g, tabItems(g, kind, m), mid, 1, lvl)));
+  }
+  const blurLvl = (b) => (b > 0.2 ? Math.min(8, Math.round(b)) : 0);
+  function tabSweep(G, tw, top, swapK) {
+    const TW = 1000, c = LK.dyn('tabsweep', TW, TAB_H), g = c._g, ox = 960 - TW / 2;
+    g.setTransform(1, 0, 0, 1, 0, 0); g.globalCompositeOperation = 'source-over'; g.clearRect(0, 0, TW, TAB_H);
+    g.translate(-ox, 0);
+    const sx = lerp(960 - tw / 2 - 80, 960 + tw / 2 + 80, clamp(swapK / 0.5));
+    const sg = g.createLinearGradient(sx - 60, 0, sx + 60, 0); sg.addColorStop(0, 'rgba(255,255,255,0)'); sg.addColorStop(0.5, 'rgba(255,255,255,0.35)'); sg.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = sg; g.fillRect(960 - tw / 2, 0, tw, TAB_H);
+    LK.put(c, Lmul(G, LT(ox, top)), 1, 'lighter');
+  }
+  const barTextBake = (kind, m) => SPR['bt:' + kind] || (SPR['bt:' + kind] = bake(BAR_L, CY - BAR_H / 2, BAR_R - BAR_L, BAR_H, (g) => {
+    g.beginPath(); g.rect(BAR_L, CY - BAR_H / 2, BAR_R - BAR_L, BAR_H); g.clip();
+    barText(g, kind, m, CY, 0);
+  }));
+  const centreBake = (kind, m) => SPR['cb:' + kind] || (SPR['cb:' + kind] = bake(960 - 62 - 24, CY - 45 - 24, 124 + 48, 90 + 48, (g) => centreBox(g, kind, m, CY, 1)));
+  function bakeFixed() {
+    SPR.bar = bake(BAR_L, CY - BAR_H / 2 - 2, BAR_R - BAR_L, BAR_H + 4, (g) => drawBar(g, BAR_L, BAR_R, CY));
+    SPR.sheen = bake(-120, CY - BAR_H / 2, 240, BAR_H, (g) => {
+      const sg = g.createLinearGradient(-120, 0, 120, 0);
+      sg.addColorStop(0, 'rgba(255,255,255,0)'); sg.addColorStop(0.5, 'rgba(160,200,255,0.28)'); sg.addColorStop(1, 'rgba(255,255,255,0)');
+      g.fillStyle = sg; g.fillRect(-120, CY - BAR_H / 2, 240, BAR_H);
+    });
+    const bx = 960 + 64;
+    SPR.beamL = bake(bx - 16, 600, 32, 330, (g) => {
+      const bg = g.createLinearGradient(bx - 16, 0, bx + 16, 0);
+      bg.addColorStop(0, 'rgba(255,255,255,0)'); bg.addColorStop(0.5, 'rgba(255,255,255,0.75)'); bg.addColorStop(1, 'rgba(255,255,255,0)');
+      g.fillStyle = bg; g.fillRect(bx - 16, 600, 32, 330);
+    });
+    SPR.beamC = bake(bx - 3, 600, 6, 330, (g) => {
+      const cg = g.createLinearGradient(0, 600, 0, 930); cg.addColorStop(0, 'rgba(255,255,255,0)'); cg.addColorStop(0.35, 'rgba(255,255,255,0.85)'); cg.addColorStop(1, 'rgba(255,255,255,0)');
+      g.fillStyle = cg; g.fillRect(bx - 2.5, 600, 5, 330);
+    });
+    haloBake(); tabBake();
+    for (const [s, w] of [[220, true], [120, true], [150, true], [230, true], [90, true]]) flareBake(s, w);
+  }
+  function bakeMoment(m) {
+    const K = KINDS[m.kind];
+    const g0 = mk(8, 8).getContext('2d');
+    for (const [tabKind, mainKind] of K.pages) {
+      TABW[tabKind] = tabWidth(tabItems(g0, tabKind, m));
+      for (let l = 0; l <= 8; l++) tabContentBake(tabKind, m, l);
+      barTextBake(mainKind, m);
+      if (mainKind === 'vs' || mainKind === 'score') centreBake(mainKind, m);
+    }
+  }
+
+  // ---- the trophy, ready turned: the 3D model drawn once for each moment it is seen (every 1/30 s as it turns in and
+  // away, every 1/10 s as it sways, the frame showing the two either side of the moment mixed), each scaled as the frame
+  // drew it and cut to the box its pixels keep to; the frame only shows one or two of them
+  let TSPR = null;
+  const trophyRot = (T, tc) => -1.25 * (1 - eOut3(ramp(0.14, 0.8, T))) + 0.13 * Math.sin(T * 0.75) + 1.0 * eIn3(ramp(tc + 0.12, tc + 0.55, T));
+  async function trophySprites(kind3, tc) {
+    const T3 = window.TROPHY3D, t0 = performance.now();
+    const fit = T3_FIT[kind3] || T3_FIT.generic;
+    const times = [];
+    for (let i = 0; 0.14 + i / 30 < 0.8 - 1e-6; i++) times.push(0.14 + i / 30);
+    for (let i = 0; 0.8 + i * 0.1 < tc + 0.12 - 1e-6; i++) times.push(0.8 + i * 0.1);
+    for (let i = 0; tc + 0.12 + i / 30 < tc + 0.55 + 1e-6; i++) times.push(tc + 0.12 + i / 30);
+    const render = (T) => T3.render(kind3, trophyRot(T, tc), 0, T);
+    let cv = render(times[0]);
+    const k = (T3_H * fit[0]) / (cv.height * 0.9), dw = cv.width * k, dh = cv.height * k;
+    const X0 = 960 - dw / 2, Y0 = T_TOP - cv.height * 0.08 * k + fit[1];
+    // the box: what is drawn at a dozen moments through the turn, a quarter size, with room to spare
+    const pw = Math.ceil(dw / 4), ph = Math.ceil(dh / 4);
+    const pg = mk(pw, ph).getContext('2d', { willReadFrequently: true });
+    let bx0 = pw, by0 = ph, bx1 = -1, by1 = -1;
+    for (let j = 0; j < 12; j++) {
+      const T = times[Math.round((j * (times.length - 1)) / 11)];
+      cv = render(T);
+      pg.clearRect(0, 0, pw, ph); pg.drawImage(cv, 0, 0, pw, ph);
+      const d = pg.getImageData(0, 0, pw, ph).data;
+      for (let y = 0; y < ph; y++) for (let x = 0; x < pw; x++) if (d[(y * pw + x) * 4 + 3] > 1) { if (x < bx0) bx0 = x; if (x > bx1) bx1 = x; if (y < by0) by0 = y; if (y > by1) by1 = y; }
+    }
+    if (bx1 < 0) { bx0 = 0; by0 = 0; bx1 = pw; by1 = ph; }
+    const SX = Math.floor(X0 + Math.max(0, bx0 * 4 - 20)), SY = Math.floor(Y0 + Math.max(0, by0 * 4 - 20));
+    // (rising, it only goes down from here: nothing below the screen's foot is ever seen)
+    const EX = Math.ceil(X0 + Math.min(dw, bx1 * 4 + 24)), EY = Math.ceil(Math.min(Y0 + Math.min(dh, by1 * 4 + 24), 1080));
+    const list = [];
+    for (let i = 0; i < times.length; i++) {
+      cv = render(times[i]);
+      const c = mk(EX - SX, EY - SY), g = c.getContext('2d');
+      g.imageSmoothingQuality = 'high';
+      g.drawImage(cv, X0 - SX, Y0 - SY, dw, dh);
+      list.push({ t: times[i], c, x: SX, y: SY });
+      if (i % 6 === 5) await new Promise((r) => setTimeout(r, 0));
+    }
+    TSPR = { list };
+    const ms = performance.now() - t0;
+    if (window.BX) BX.log('trophy: ' + list.length + ' turns of ' + (EX - SX) + 'x' + (EY - SY) + ' drawn in ' + ms.toFixed(0) + ' ms');
+    window.TROPHY_SPRITES = { n: list.length, w: EX - SX, h: EY - SY, ms };
+  }
+  function trophyLayers(T, trA, rise) {
+    const L = TSPR.list, M = LT(0, rise);
+    let i = 0; while (i < L.length - 1 && L[i + 1].t <= T) i++;
+    const A = L[i], B = L[Math.min(i + 1, L.length - 1)];
+    if (B === A || T <= A.t) { at(A, M, trA); return; }
+    const f = clamp((T - A.t) / (B.t - A.t));
+    if (B.t - A.t < 0.06) { at(f < 0.5 ? A : B, M, trA); return; }   // turning: the nearest
+    at(B, M, trA); at(A, M, trA * (1 - f));                            // swaying: the two mixed
+  }
+
+  function popupLayers(m, T) {
     const K = KINDS[m.kind], tc = K.close;
     // ---- where things are
     const inK = eOutBack(ramp(0.06, 0.42, T), 1.3);
@@ -1621,46 +1844,23 @@
     // ---- trophy, behind everything: the 3D model rises turning in, sways a little, and turns away as it sinks
     const kind3 = m.trophy || MATCH.trophy || MATCH.comp;
     if (trA > 0.01) {
-      g.save(); g.globalAlpha = trA;
-      if (window.TROPHY3D) {
-        const turnIn = 1 - eOut3(ramp(0.14, 0.8, T));
-        const rotY = -1.25 * turnIn + 0.13 * Math.sin(T * 0.75) + 1.0 * eIn3(ramp(tc + 0.12, tc + 0.55, T));
-        // the model drawn again only every T3_EVERY frames on a slower TV (the last one kept between)
-        const T3 = window.T3MS || (window.T3MS = { n: 0, sum: 0, f: 0, last: null });
-        let tc3 = T3.last;
-        if (!tc3 || T3.f++ % (window.T3_EVERY || 1) === 0) {
-          const r0 = performance.now();
-          tc3 = T3.last = window.TROPHY3D.render(kind3, rotY, 0, T);
-          T3.n++; T3.sum += performance.now() - r0;
-        }
-        const fit = T3_FIT[kind3] || T3_FIT.generic;
-        const k = (T3_H * fit[0]) / (tc3.height * 0.9);
-        const dw = tc3.width * k, dh = tc3.height * k;
-        g.imageSmoothingQuality = 'high';
-        g.drawImage(tc3, 960 - dw / 2, T_TOP - tc3.height * 0.08 * k + fit[1] + rise, dw, dh);
-      } else {
-        g.drawImage(tr, 960 - tr.width / 2, T_TOP - 10 + rise);
-      }
-      g.restore();
-      // glints on the trophy's top and shoulders
+      if (TSPR) trophyLayers(T, trA, rise);
+      else at(SPR.tr2d, LT(0, rise), trA);
+      // glints on the trophy's top and shoulders, following its size and its top
       const gl = [[-62, 18, 1.2], [0, 4, 2.4], [62, 18, 3.6], [-48, 140, 5.0], [55, 175, 0.6]];
-      const gf = T3_FIT[kind3] || T3_FIT.generic;   // the glints follow the trophy's size and its top
-      for (const [x, y, ph] of gl) { const a = Math.pow(Math.max(0, Math.sin(T * 2.1 + ph * 1.7)), 14) * 0.9 * trA; sparkle(g, 960 + x * gf[2], T_TOP + gf[3] + y * gf[2] + rise, 26 * Math.max(0.7, gf[2]), a); }
+      const gf = T3_FIT[kind3] || T3_FIT.generic, gs = sparkleBake(26 * Math.max(0.7, gf[2]));
+      for (const [x, y, ph] of gl) {
+        const a = Math.pow(Math.max(0, Math.sin(T * 2.1 + ph * 1.7)), 14) * 0.9 * trA;
+        if (a > 0.01) at(gs, LT(960 + x * gf[2], T_TOP + gf[3] + y * gf[2] + rise), a, 'lighter');
+      }
     }
     // the light that comes with it
-    flare(g, 960, CY - 30, 220, 0.85 * Math.sin(PI * ramp(0, 0.5, T)));
+    flareL(960, CY - 30, 220, 0.85 * Math.sin(PI * ramp(0, 0.5, T)));
     const beam = Math.sin(PI * ramp(0.28, 0.72, T));
     if (beam > 0.01) {
-      g.save(); g.globalCompositeOperation = 'lighter';
-      const bx = 960 + 64, bg = g.createLinearGradient(bx - 16, 0, bx + 16, 0);
-      bg.addColorStop(0, 'rgba(255,255,255,0)'); bg.addColorStop(0.5, `rgba(255,255,255,${0.75 * beam})`); bg.addColorStop(1, 'rgba(255,255,255,0)');
-      const vg = g.createLinearGradient(0, 600 + rise * 0.3, 0, 960); vg.addColorStop(0, 'rgba(0,0,0,1)'); vg.addColorStop(1, 'rgba(0,0,0,0)');
-      g.fillStyle = bg; g.fillRect(bx - 16, 600, 32, 330);
-      g.globalCompositeOperation = 'source-over';
-      const cg = g.createLinearGradient(0, 600, 0, 930); cg.addColorStop(0, 'rgba(255,255,255,0)'); cg.addColorStop(0.35, `rgba(255,255,255,${0.85 * beam})`); cg.addColorStop(1, 'rgba(255,255,255,0)');
-      g.fillStyle = cg; g.fillRect(bx - 2.5, 600, 5, 330);
-      g.restore();
-      flare(g, bx, 640 + rise * 0.6, 120, 0.6 * beam, true);
+      at(SPR.beamL, LK.I, beam, 'lighter');
+      at(SPR.beamC, LK.I, beam);
+      flareL(960 + 64, 640 + rise * 0.6, 120, 0.6 * beam, true);
     }
     // ---- what the tab and the bar say now
     let page = 0, flipK = -1, swapK = -1;
@@ -1677,53 +1877,41 @@
     if (flipK >= 0) { sy = Math.abs(Math.cos(PI * flipK)); skew = -0.32 * Math.sin(PI * flipK); shade = Math.sin(PI * flipK); }
     const tabRise = eOut3(ramp(0.8, 1.0, T));
     const tabGone = ramp(tc, tc + 0.15, T);
-    g.save();
-    g.translate(0, CY); g.scale(1, Math.max(0.02, sy)); g.translate(0, -CY);
-    // the tab: on a change its words go, a light sweeps across, the new words come in out of a blur
-    const items = tabItems(g, tabKind, m);
-    let tw = tabWidth(items), oldItems = null, newItems = null;
-    if (swapK >= 0) {
-      oldItems = items; newItems = tabItems(g, K.pages[Math.min(page + 1, last)][0], m);
-      tw = lerp(tabWidth(oldItems), tabWidth(newItems), eInOut3(clamp((swapK - 0.25) / 0.5)));
-    }
+    const syc = Math.max(0.02, sy), G = [1, 0, 0, syc, 0, CY - CY * syc];
+    // the tab (behind the bar, which hides its foot): on a change its words go, a light sweeps across, the new words come
+    // in out of a blur
+    let tw = TABW[tabKind], newKind = null;
+    if (swapK >= 0) { newKind = K.pages[Math.min(page + 1, last)][0]; tw = lerp(TABW[tabKind], TABW[newKind], eInOut3(clamp((swapK - 0.25) / 0.5))); }
     if (tabGone < 1 && openK > 0.6) {
-      const tb = drawTab(g, tw, CY, tabRise * (1 - eIn3(tabGone)));
-      if (tb) {
-        g.save(); g.beginPath(); g.rect(0, 0, W, tb.clipBottom); g.clip();
+      const rr = tabRise * (1 - eIn3(tabGone));
+      if (rr > 0.01) {
+        tabLayers(G, tw, rr);
+        const top = CY - BAR_H / 2 - TAB_H + (1 - rr) * TAB_H, MG = Lmul(G, LT(0, (1 - rr) * TAB_H));
         if (swapK >= 0) {
-          if (swapK < 0.38) drawTabContent(g, oldItems, tb.mid, 1 - swapK / 0.38, 0);
-          else { const k = (swapK - 0.38) / 0.62; drawTabContent(g, newItems, tb.mid, k, 8 * (1 - k)); }
-          const sx = lerp(960 - tw / 2 - 80, 960 + tw / 2 + 80, clamp(swapK / 0.5));
-          const sg = g.createLinearGradient(sx - 60, 0, sx + 60, 0); sg.addColorStop(0, 'rgba(255,255,255,0)'); sg.addColorStop(0.5, 'rgba(255,255,255,0.35)'); sg.addColorStop(1, 'rgba(255,255,255,0)');
-          g.globalCompositeOperation = 'lighter'; g.fillStyle = sg; g.fillRect(960 - tw / 2, tb.top, tw, TAB_H);
-        } else drawTabContent(g, items, tb.mid, 1 - tabGone, 6 * tabGone);
-        g.restore();
+          if (swapK < 0.38) { const a = 1 - swapK / 0.38; if (a > 0.01) at(tabContentBake(tabKind, m, 0), MG, a); }
+          else { const k2 = (swapK - 0.38) / 0.62; if (k2 > 0.01) at(tabContentBake(newKind, m, blurLvl(8 * (1 - k2))), MG, k2); }
+          tabSweep(G, tw, top, swapK);
+        } else if (1 - tabGone > 0.01) at(tabContentBake(tabKind, m, blurLvl(6 * tabGone)), MG, 1 - tabGone);
       }
     }
-    // bar between the crests
+    // the bar between the crests, opening out: its words, a shade as it flips, a sheen along it as it opens
     const bx0 = Math.max(BAR_L, lx + R_CREST * 0.35), bx1 = Math.min(BAR_R, rx - R_CREST * 0.35);
     const barA = clamp(spread * 6) * (1 - endK);
-    g.save(); g.globalAlpha *= barA;
-    drawBar(g, bx0, bx1, CY);
-    g.restore();
-    if (bx1 - bx0 > 4 && barA > 0.01) {
-      g.save(); g.beginPath(); g.rect(bx0, CY - BAR_H / 2, bx1 - bx0, BAR_H); g.clip();
-      const ta = (1 - ramp(tc + 0.08, tc + 0.24, T)) * barA;
-      g.globalAlpha = ta;
-      barText(g, mainKind, m, CY, skew);
-      if (shade > 0) { g.fillStyle = `rgba(0,0,20,${0.45 * shade})`; g.fillRect(bx0, CY - BAR_H / 2, bx1 - bx0, BAR_H); }
-      const sw = ramp(0.86, 1.3, T); // a sheen along the bar as it opens
-      if (sw > 0 && sw < 1) {
-        const sx = lerp(bx0 - 200, bx1 + 200, sw), sg = g.createLinearGradient(sx - 120, 0, sx + 120, 0);
-        sg.addColorStop(0, 'rgba(255,255,255,0)'); sg.addColorStop(0.5, 'rgba(160,200,255,0.28)'); sg.addColorStop(1, 'rgba(255,255,255,0)');
-        g.globalCompositeOperation = 'lighter'; g.fillStyle = sg; g.fillRect(bx0, CY - BAR_H / 2, bx1 - bx0, BAR_H);
+    if (bx1 - bx0 >= 2 && barA > 0.002) {
+      LK.clip('bar', Lmul(G, LT(bx0, CY - BAR_H / 2 - 2)), bx1 - bx0, BAR_H + 4);
+      at(SPR.bar, G, barA);
+      if (bx1 - bx0 > 4 && barA > 0.01) {
+        const ta = (1 - ramp(tc + 0.08, tc + 0.24, T)) * barA;
+        at(barTextBake(mainKind, m), Lmul(G, [1, 0, skew, 1, -skew * CY, 0]), ta);
+        if (shade > 0) LK.put(LK.fill('rgb(0,0,20)'), Lmul(G, LK.rect(BAR_L, CY - BAR_H / 2, BAR_R - BAR_L, BAR_H, 4, 4)), ta * 0.45 * shade);
+        const sw = ramp(0.86, 1.3, T);
+        if (sw > 0 && sw < 1) at(SPR.sheen, Lmul(G, LT(lerp(bx0 - 200, bx1 + 200, sw), 0)), ta, 'lighter');
       }
-      g.restore();
+      LK.endClip();
     }
     // the V (or score) between the crests
     const vIn = eOutBack(ramp(0.44, 0.6, T), 1.6) * (1 - ramp(tc + 0.05, tc + 0.2, T));
-    centreBox(g, mainKind, m, CY, vIn);
-    g.restore();
+    if (vIn > 0.01 && (mainKind === 'vs' || mainKind === 'score')) at(centreBake(mainKind, m), Lmul(G, [vIn, 0, 0, vIn, 960 - 960 * vIn, CY - CY * vIn]), 1);
     // crests, in front: they turn in as they fly in, lean as they slide, rock gently while open, turn as they meet
     const inTilt = (1 - eOutBack(ramp(0.06, 0.62, T), 1.4)) * 1.15;
     const slide = Math.sin(PI * clamp(openK)) * 0.42 * (1 - closeK) + Math.sin(PI * clamp(closeK)) * 0.5;
@@ -1732,68 +1920,23 @@
     const tiltL = -inTilt - slide + rock - outTilt, tiltR = inTilt + slide - rock * 0.9 + outTilt;
     const glow = 0.95 * Math.sin(PI * ramp(0.0, 0.75, T)) + 0.42 + 0.1 * Math.sin(T * 2.3) + 0.9 * Math.sin(PI * ramp(tc + 0.15, tc + 0.6, T));
     const sheenL = ramp(1.35, 2.1, T) + ramp(5.0, 5.75, T), sheenR = ramp(1.5, 2.25, T) + ramp(5.15, 5.9, T);
-    drawMedal(g, 'home', lx, CY, medScale, medAlpha, sheenL % 1 === 0 ? 0 : sheenL % 1, tiltL, Math.min(1.2, glow));
-    drawMedal(g, 'away', rx, CY, medScale, medAlpha, sheenR % 1 === 0 ? 0 : sheenR % 1, tiltR, Math.min(1.2, glow));
+    medalLayers('home', lx, CY, medScale, medAlpha, sheenL % 1 === 0 ? 0 : sheenL % 1, tiltL, Math.min(1.2, glow));
+    medalLayers('away', rx, CY, medScale, medAlpha, sheenR % 1 === 0 ? 0 : sheenR % 1, tiltR, Math.min(1.2, glow));
     // flashes: as they arrive, and where they meet when it closes
-    flare(g, 960, CY, 150, 0.8 * Math.sin(PI * ramp(0.04, 0.3, T)));
+    flareL(960, CY, 150, 0.8 * Math.sin(PI * ramp(0.04, 0.3, T)));
     const meet = Math.sin(PI * ramp(tc + 0.28, tc + 0.56, T));
-    flare(g, 960, CY - 10, 230, 0.95 * meet);
-    flare(g, 960, CY - 70, 90, 0.7 * Math.sin(PI * ramp(tc + 0.1, tc + 0.4, T)));
+    flareL(960, CY - 10, 230, 0.95 * meet);
+    flareL(960, CY - 70, 90, 0.7 * Math.sin(PI * ramp(tc + 0.1, tc + 0.4, T)));
   }
 
-  // ---------------------------------------------------------------- the frame
-  const scene = mk(W, H), sctx = scene.getContext('2d');
-  const quarter = mk(W / 4, H / 4), qctx = quarter.getContext('2d');
-  function bloom(g) {
-    if (!(CFG.bloom > 0)) return;
-    qctx.filter = 'none'; qctx.fillStyle = '#000'; qctx.fillRect(0, 0, W / 4, H / 4);
-    qctx.filter = 'brightness(0.5) contrast(5) blur(7px)';
-    qctx.drawImage(scene, 0, 0, W / 4, H / 4);
-    qctx.filter = 'none';
-    g.save(); g.globalCompositeOperation = 'screen'; g.globalAlpha = CFG.bloom * 0.6;
-    g.drawImage(quarter, 0, 0, W, H);
-    g.restore();
-  }
-  function caption(g, text, n, a) {
-    if (a <= 0.01) return;
-    g.save(); g.globalAlpha = a;
-    fontOut(g, 600, 26, 0.3); const w = g.measureText(text).width + 92;
-    g.beginPath(); g.roundRect(56, 52, w, 54, 14); g.fillStyle = 'rgba(8,10,20,0.62)'; g.fill();
-    g.strokeStyle = 'rgba(255,255,255,0.16)'; g.lineWidth = 1.5; g.stroke();
-    g.beginPath(); g.arc(56 + 30, 79, 15, 0, TAU); g.fillStyle = RED; g.fill();
-    fontOut(g, 800, 18, 0); g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = '#fff'; g.fillText(String(n), 56 + 30, 80);
-    fontOut(g, 600, 26, 0.3); g.textAlign = 'left'; g.fillText(text, 56 + 56, 80);
-    g.restore();
-  }
-  function momentAt(t) {
-    let cur = POP.moments[0];
-    for (const m of POP.moments) if (t >= m.t0 - (m.lead || 1.2)) cur = m;
-    return cur;
-  }
+  // ---------------------------------------------------------------- the frame: the layers placed for second t
   function drawFrame(t) {
-    ctx.save();
-    const RS = window.RENDER_SCALE || 1;   // a slower TV draws into a smaller canvas, stretched to the screen
-    ctx.setTransform(RS, 0, 0, RS, 0, 0);
-    ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; ctx.filter = 'none';
-    const mom = momentAt(t);
-    const mirror = !!(mom && mom.mirror), kicks = (mom && mom.kicksOff) || 'home';
-    if (POP.background !== 'none' && `${mirror}|${kicks}` !== curKey) { placeTeams(mirror, kicks); curKey = `${mirror}|${kicks}`; }
-    if (POP.background !== 'none') {
-      renderScene(sctx, broadcastCam(t), t); grade(sctx); bloom(sctx);
-      ctx.drawImage(scene, 0, 0);
-    } else { ctx.clearRect(0, 0, W, H); }
-    // between moments: a quick dip, as a cut in the mock-up
+    LK.begin();
     for (const m of POP.moments) {
       const T = t - m.t0;
-      if (T >= -0.001 && T <= popLen(m)) drawPopup(ctx, m, T);
-      if (m.label && POP.captions !== false) {
-        const a = ramp(m.t0 - 1.1, m.t0 - 0.7, t) * (1 - ramp(m.t0 + popLen(m) + 0.2, m.t0 + popLen(m) + 0.6, t));
-        caption(ctx, m.label, m.n, a);
-      }
+      if (T >= -0.001 && T <= popLen(m)) popupLayers(m, T);
     }
-    const dip = POP.cuts ? Math.max(0, ...POP.cuts.map((c) => 1 - Math.abs(t - c) / 0.25)) : 0;
-    if (dip > 0) { ctx.fillStyle = `rgba(0,0,0,${dip.toFixed(3)})`; ctx.fillRect(0, 0, W, H); }
-    ctx.restore();
+    LK.end();
   }
 
   function grade(g) {
@@ -1816,6 +1959,21 @@
     for (let i = 0; i < 50 && !window.TROPHY3D_READY; i++) await new Promise((r) => setTimeout(r, 100));
     if (!window.TROPHY3D) for (const k of Object.keys(TROPHY_DRAW)) trophyCanvas(k);
     medallion('home'); medallion('away');
+    // every part drawn now, once (the frames only place them): the fixed parts, each moment's words, the trophy turned
+    LK.mount();
+    bakeFixed();
+    const Q = POP.q || {};
+    for (const m of POP.moments) {
+      bakeMoment(m);
+      const kind3 = m.trophy || MATCH.trophy || MATCH.comp;
+      if (window.TROPHY3D) {
+        if (+Q.t3res > 0 && +Q.t3res < 1 && window.TROPHY3D.setRes) window.TROPHY3D.setRes(+Q.t3res);
+        await trophySprites(kind3, KINDS[m.kind].close);
+      } else {
+        const c = trophyCanvas(kind3);
+        SPR.tr2d = { c, x: 960 - c.width / 2, y: T_TOP - 10 };
+      }
+    }
     window.DUR = POP.dur;
     window.SOL = SOL;
     window.INIT_MS = performance.now() - t0;

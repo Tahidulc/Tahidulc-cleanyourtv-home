@@ -1032,6 +1032,11 @@
   // a round headshot with a soft rim in the club's colour; a neat stand-in in its colours when there is no picture
   function headshot(g, side, person, cx, cy, r, o = {}) {
     if (!(r >= 1)) return false; // the first instant of a pop: nothing to draw yet
+    headRim(g, side, cx, cy, r, o);
+    return headFace(g, side, person, cx, cy, r, o);
+  }
+  // its two parts, drawn apart where they fade apart (the rim and its glow; the picture or the stand-in, and its ring)
+  function headRim(g, side, cx, cy, r, o = {}) {
     const K = TEAMS[side];
     const rim = o.rim === undefined ? Math.max(1.5, r * 0.075) : o.rim;
     g.save();
@@ -1040,6 +1045,8 @@
     g.shadowColor = rgba(hex(K.c1), 0.65); g.shadowBlur = o.glow === undefined ? r * 0.45 : o.glow; g.shadowOffsetY = 0;
     g.fill();
     g.restore();
+  }
+  function headFace(g, side, person, cx, cy, r, o = {}) {
     const pc = photoCircle(side, person.id, o.px || r * 2);
     if (pc) g.drawImage(pc, cx - r, cy - r, 2 * r, 2 * r);
     else standIn(g, side, person, cx, cy, r, o.initials);
@@ -1078,4 +1085,93 @@
     g.fillStyle = 'rgba(7,9,15,0.9)'; g.beginPath(); g.arc(cx - 0.12 * s, cy + 0.08 * s, 0.1 * s, 0, TAU); g.fill();
     g.lineWidth = s * 0.06; g.beginPath(); g.arc(cx - 0.47 * s, cy - 0.02 * s, 0.1 * s, 0, TAU); g.stroke();
     g.restore();
+  }
+
+  // ================================================================ the ground's own photograph (cfg.ground)
+  // The stadium the game is played in: its photo (usually taken by day) fitted to cover the screen and graded once for the
+  // sun at kick-off, from the same sun as the drawn ground's (lat, lon, kick-off): by day as it is with a little contrast;
+  // the golden hour (sun 0-6 degrees up) warm; dusk (0-6 below) cooler with a warm glow left over the roofs; night (below
+  // 6) a good deal darker and blue, the floodlights glowing along the stands' roofs and the photo's own lights blooming.
+  // A wet night has its rain over it, as the drawn ground has.
+  function groundPhase() { const a = SOL.alt; return a > 6 ? 'day' : a > 0 ? 'golden' : a > -6 ? 'dusk' : 'night'; }
+  function groundPhoto(im) {
+    const c = mk(W, H), g = c.getContext('2d');
+    const k = Math.max(W / im.width, H / im.height), dw = im.width * k, dh = im.height * k;
+    const base = mk(W, H), bg = base.getContext('2d');
+    bg.imageSmoothingQuality = 'high';
+    bg.drawImage(im, (W - dw) / 2, (H - dh) / 2, dw, dh);
+    const phase = groundPhase();
+    const F = { day: 'contrast(1.07) saturate(1.06) brightness(0.95)', golden: 'contrast(1.06) saturate(1.12) brightness(0.97)',
+      dusk: 'brightness(0.8) contrast(1.06) saturate(0.86)', night: 'brightness(0.6) contrast(1.12) saturate(0.8)' }[phase];
+    g.filter = F; g.drawImage(base, 0, 0); g.filter = 'none';
+    const vert = (stops) => { const gr = g.createLinearGradient(0, 0, 0, H); for (const [o, col] of stops) gr.addColorStop(o, col); return gr; };
+    const over = (op, style) => { g.globalCompositeOperation = op; g.fillStyle = style; g.fillRect(0, 0, W, H); g.globalCompositeOperation = 'source-over'; };
+    // the floodlights: a soft line of light along the roofs (about a fifth of the way down a ground photo), lamps in it
+    const floods = (s) => {
+      g.save(); g.globalCompositeOperation = 'screen';
+      const band = g.createLinearGradient(0, H * 0.06, 0, H * 0.36);
+      band.addColorStop(0, 'rgba(210,225,255,0)'); band.addColorStop(0.45, `rgba(225,235,255,${0.12 * s})`); band.addColorStop(1, 'rgba(210,225,255,0)');
+      g.fillStyle = band; g.fillRect(0, 0, W, H * 0.45);
+      for (let i = 0; i < 9; i++) {
+        const x = 110 + i * 212 + (i % 2 ? 26 : -18), y = H * (0.17 + 0.03 * Math.sin(i * 1.7));
+        g.save(); g.translate(x, y); g.scale(1, 0.38);
+        const lg = g.createRadialGradient(0, 0, 0, 0, 0, 150);
+        lg.addColorStop(0, `rgba(255,248,230,${0.42 * s})`); lg.addColorStop(0.22, `rgba(235,240,255,${0.13 * s})`); lg.addColorStop(1, 'rgba(220,230,255,0)');
+        g.fillStyle = lg; g.fillRect(-150, -150, 300, 300);
+        g.restore();
+      }
+      g.restore();
+    };
+    // the photo's own bright parts glowing (as the drawn ground's bloom)
+    const bloom = (a) => {
+      const q = mk(W / 4, H / 4), qg = q.getContext('2d');
+      qg.fillStyle = '#000'; qg.fillRect(0, 0, W / 4, H / 4);
+      qg.filter = 'brightness(0.5) contrast(5) blur(7px)'; qg.drawImage(c, 0, 0, W / 4, H / 4); qg.filter = 'none';
+      g.save(); g.globalCompositeOperation = 'screen'; g.globalAlpha = a; g.drawImage(q, 0, 0, W, H); g.restore();
+    };
+    if (phase === 'day') {
+      bloom(0.12);
+    } else if (phase === 'golden') {
+      over('soft-light', 'rgba(255,150,60,0.5)');
+      over('screen', vert([[0, 'rgba(255,170,80,0.22)'], [0.45, 'rgba(255,150,70,0.06)'], [1, 'rgba(255,140,60,0)']]));
+      bloom(0.22);
+    } else if (phase === 'dusk') {
+      over('multiply', 'rgba(150,170,225,0.55)');
+      over('screen', vert([[0, 'rgba(255,135,80,0.26)'], [0.3, 'rgba(255,120,90,0.1)'], [0.55, 'rgba(0,0,0,0)']]));
+      floods(0.35); bloom(0.32);
+    } else {
+      over('multiply', 'rgba(105,130,205,0.7)');
+      over('source-over', vert([[0, 'rgba(4,8,22,0.45)'], [0.35, 'rgba(4,8,22,0.12)'], [0.7, 'rgba(4,8,22,0)'], [1, 'rgba(4,8,22,0.18)']]));
+      floods(1); bloom(0.5);
+    }
+    window.GROUND_PHASE = phase;
+    return c;
+  }
+  // the rain's streaks over the photo (the drawn ground's own, without its drops on the pitch)
+  function rainStreaks(g, t) {
+    g.save(); g.globalCompositeOperation = 'lighter'; g.lineCap = 'round';
+    for (const L of [{ n: 1100, len: 14, sp: 1250, a: 0.07, w: 1, seed: 3 }, { n: 520, len: 28, sp: 1850, a: 0.1, w: 1.3, seed: 5 }, { n: 120, len: 64, sp: 2700, a: 0.11, w: 2.2, seed: 9 }]) {
+      g.strokeStyle = `rgba(200,214,236,${L.a})`; g.lineWidth = L.w; g.beginPath();
+      for (let i = 0; i < L.n; i++) {
+        const x0 = hash(i, L.seed) * (W + 300) - 150, y0 = hash(i + 9999, L.seed) * (H + 240);
+        const y = ((y0 + t * L.sp) % (H + 240)) - 120, x = x0 + y * 0.12;
+        g.moveTo(x, y); g.lineTo(x + 0.12 * L.len, y + L.len);
+      }
+      g.stroke();
+    }
+    g.restore();
+  }
+  // its credit, very small in a corner on a faint dark backing (x, y: the line's right or left end and baseline)
+  function groundCredit(text, x, y, align) {
+    const s = String(text || '').slice(0, 140);
+    if (!s) return null;
+    setFont(ctx, 500, 15, 0.2);
+    const tw = ctx.measureText(s).width, w = Math.ceil(tw) + 24, x0 = align === 'right' ? x - w + 12 : x - 12;
+    const c = mk(w, 34), g = c.getContext('2d');
+    g.translate(-x0, -(y - 22));
+    g.beginPath(); g.roundRect(align === 'right' ? x - tw - 8 : x - 8, y - 16, tw + 16, 22, 6); g.fillStyle = 'rgba(0,0,0,0.32)'; g.fill();
+    shadowOn(g, 6, 0.75, 1);
+    txt(g, s, align === 'right' ? x : x, y, { w: 500, s: 15, ls: 0.2, al: align === 'right' ? 'right' : 'left', c: 'rgba(255,255,255,0.62)' });
+    shadowOff(g);
+    return { c, x: x0, y: y - 22 };
   }
