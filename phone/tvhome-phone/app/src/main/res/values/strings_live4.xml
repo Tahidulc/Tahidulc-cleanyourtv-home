@@ -47,4 +47,6 @@
     <string name="live28_name_only">General channel: Whitebrook Road, no sport</string>
     <string name="live28_see_through">See-through, the channel\'s own logo hidden under it (Sports wordmark and styles)</string>
     <string name="live28_lineups">Line-ups on screen before kick-off</string>
+    <string name="live33_classic_popup">Kick-off pop-up: crests, trophy and teams at each kick-off and after goals</string>
+    <string name="live33_classic_lineups">Classic line-ups before kick-off (Back closes them)</string>
 </resources>

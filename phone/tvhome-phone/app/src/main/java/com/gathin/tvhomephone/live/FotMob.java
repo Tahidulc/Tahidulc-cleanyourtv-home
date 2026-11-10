@@ -193,6 +193,16 @@ public final class FotMob {
     }
 
     /** The game's figures (off the main thread); null when FotMob cannot be read. */
+    /** FotMob's match details as it gives them (off the main thread), for the classic line-ups; null when not read. */
+    static JSONObject raw(int id) {
+        if (id <= 0) return null;
+        try {
+            return new JSONObject(get(BASE + "matchDetails?matchId=" + id));
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
     static Match details(int id) {
         if (id <= 0) return null;
         try {

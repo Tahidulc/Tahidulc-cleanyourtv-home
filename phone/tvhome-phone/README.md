@@ -315,6 +315,15 @@ channel playing on, as on the TV (launcher 4.37).
 General channel (4.32): the logo's cover can be Whitebrook Road as a general channel rather than a sports one, with no
 "sports" tab, no sport and no competition's logo on it (Scoreboard settings, General channel). As the TV launcher's 4.38 has it.
 
+Kick-off pop-up and classic line-ups (4.33): over the player's picture, while the scoreboard follows the channel's own
+game, the family's broadcast-style graphics from their clips (overlays/ in the repository, shared with the TV launcher).
+The line-ups come once, from seven minutes before kick-off on the picture: each team by position, the players beaming
+in with the Premier League's own pictures where it has them, the subs, the formation, with the swish; Back closes them.
+The pop-up comes at the kick-off, 40 seconds after each goal reaches the picture (the score, scorer and minute) and at
+the second half's kick-off: both crests, the competition's 3D trophy, the teams on the bar, its sounds. The lettering
+matches the clips (Khand, a free font close to the broadcaster's own). Each has its switch in the Scoreboard
+settings. As the TV launcher's 4.39 has it.
+
 Subtitles (CC in the film's player): the film's or episode's own, from your playlist's stream, come first, in the
 languages you choose (Settings, Subtitles, in order). When it has none, OpenSubtitles.com is looked in by the title's
 TMDB id (the series' with its season and episode), best first: your languages, the ones that fit the copy playing (its

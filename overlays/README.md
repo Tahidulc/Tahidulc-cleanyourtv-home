@@ -1,0 +1,30 @@
+# Live overlays: the classic kick-off pop-up and line-ups
+
+The family's own broadcast-style graphics, shown over the channel by the TV launcher (`launcher/`, ClassicIntro) and
+the phone app (`phone/tvhome-phone/`, PlayerIntro). Both apps take this folder in through their `build.gradle`
+(`sourceSets`): the pages and their files (`assets/broadcast/`), the Java that plays them (`java/com/gathin/broadcast/`)
+and its tests (`javatest/`).
+
+| Part | What it is |
+|---|---|
+| `assets/broadcast/kickoff.html` | The kick-off pop-up: both crests fly in, the competition's 3D trophy rises behind, the bar opens with the teams, the tab changes (competition, Whitebrook Road Sports, the ground), then it all closes. Kinds: `kickoff`, `restart` (the score, scorer and minute after a goal), `second` (the second half). |
+| `assets/broadcast/lineups.html` | The classic line-ups: each team by position, the players beaming in with their number and name, the subs, the formation on a tilted pitch; both teams, then a wipe back to the channel. Back fades it away. |
+| `java/.../BroadcastView.java` | A see-through view playing one of them over the picture: the page in a WebView, its sounds (`sfx/`) in a SoundPool. |
+| `java/.../BroadcastData.java` | What a page is given: clubs, crests, colours, competition, ground; for the line-ups FotMob's two teams with each player's picture, all inline. |
+| `java/.../PlPhotos.java` | The Premier League's own player pictures, matched to FotMob's line-ups by club and name through its fantasy game's player list. |
+| `java/.../Moments.java` | When each comes: the line-ups from seven minutes before kick-off on the picture, the pop-up at each kick-off and 40 seconds after a goal reaches the picture. |
+
+The pages are built from `src/` with `./build.sh` (Node's `npx` fetches esbuild to put the 3D trophies and three.js
+into one script):
+
+- `src/kickoff/`, `src/lineups/`: the drawing code, from the mock-ups, set to draw over a see-through page (`POP.background = 'none'`, `window.OVERLAY`).
+- `src/host/`: the pages and the small scripts that take the app's data (`BROADCAST.start(json)`) and drive them in real time, calling the app back (`AndroidBroadcast.ready/started/done/sound/log`).
+- `src/vendor/`: three.js r170 (MIT) and its RoomEnvironment.
+- `src/fonts/`: Khand 600 and 700 (the lettering matched to the user's clips), Barlow Condensed 700 (its `&`, and the Premier League's ribbons), Outfit (the Whitebrook Road Sports wordmark); all SIL Open Font Licence.
+- `src/sfx/`: the sounds, synthesised for the mock-ups and cut to each moment (Ogg Vorbis).
+
+Nothing here is the broadcaster's: the drawing, the trophies (our own 3D models), the lettering (a free font close to
+theirs) and the sounds are all made for this project; the competitions' and clubs' logos come from the scores' feeds
+at run time, as elsewhere in the apps.
+
+Without WebGL the pop-up draws flat trophies instead. If FotMob has no line-ups yet, the apps ask again a minute later.

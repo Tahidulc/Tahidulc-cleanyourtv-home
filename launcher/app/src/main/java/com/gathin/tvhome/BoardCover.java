@@ -1575,6 +1575,10 @@ final class BoardCover {
             placeKey = key;
         }
         if (g != null && !g.id.equals(imagesFor)) loadImages(c, g);
+        // The classic kick-off pop-up and line-ups (ClassicIntro): the kick-off, the second half's, the line-ups due.
+        if (g != null && !adjusting) {
+            ClassicIntro.tick(c, g, pre != null, r == null ? 1 : r.state, r != null && r.halftime, l.score, now - InStep.holdMs(c, true));
+        }
         // A goal on the screen: its moment on the board (the scorers' colour across it, the new score popping up), and
         // the board bright again.
         if (pre == null && g != null && r != null && id.equals(shownId) && shownScore != null && !shownScore.equals(l.score)) {
@@ -1583,6 +1587,7 @@ final class BoardCover {
                 bug.goal(side);
                 goalShownAt = now;
                 expectScorer(c, g, l.score, side);
+                ClassicIntro.goal(c, g, l.score, side);
             }
             poke();
         }
@@ -1854,8 +1859,17 @@ final class BoardCover {
         if (!asked) main().postDelayed(patchRun, 250L);
     }
 
+    /** The classic line-ups on the screen (ClassicIntro): the board and the cover out of their way meanwhile. */
+    private static boolean classicUp;
+
+    static void classicLineups(boolean on) {
+        classicUp = on;
+        veil(ChannelSight.aside());
+    }
+
     /** The board, the cover and the chip unseen for a moment, their windows kept (ChannelSight's pictures), or seen again. */
     private static void veil(boolean on) {
+        on = on || classicUp;
         veiled = on;
         float a = on ? 0f : 1f;
         if (boardWin != null && boardWin.getAlpha() != a) boardWin.setAlpha(a);
@@ -1882,6 +1896,7 @@ final class BoardCover {
         drops.clear();
         dropping = false;
         lineupKeys(false);
+        ClassicIntro.hide();
         if (stats != null) stats.gone();
         if (drop != null) drop.gone();
         holdKeys(false);
@@ -2753,6 +2768,7 @@ final class BoardCover {
      */
     static boolean key(KeyEvent e) {
         if (menuWin != null) return menuKey(e);
+        if (!adjusting && ClassicIntro.key(e)) return true;
         if (!adjusting && fourKKey(e)) return true;
         if (!adjusting && lineupsBack(e)) return true;
         if (!adjusting) return holdOk(e);

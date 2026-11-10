@@ -11,8 +11,8 @@ android {
         applicationId providers.gradleProperty('launcherApplicationId').getOrElse('com.gathin.tvhome')
         minSdk 26
         targetSdk 34
-        versionCode 438
-        versionName '4.38'
+        versionCode 439
+        versionName '4.39'
         // Google's text reader (ChannelSight, the channel's own clock) ships its own native code: the TVs' two.
         ndk {
             abiFilters 'arm64-v8a', 'armeabi-v7a'
@@ -48,6 +48,18 @@ android {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
     }
+
+    // The classic kick-off pop-up and line-ups, shared with the phone app: their pages, fonts and sounds
+    // (overlays/assets/broadcast) and the code that plays them (overlays/java), with its tests.
+    sourceSets {
+        main {
+            java.srcDirs += ['../../overlays/java']
+            assets.srcDirs += ['../../overlays/assets']
+        }
+        test {
+            java.srcDirs += ['../../overlays/javatest']
+        }
+    }
 }
 
 dependencies {
@@ -57,4 +69,6 @@ dependencies {
     implementation 'com.google.mlkit:text-recognition:16.0.1'
     // Test only (never in the APK): plain JVM tests for the module card validators, src/test.
     testImplementation 'junit:junit:4.13.2'
+    // Test only: org.json as on the TV, for the overlays' tests (the SDK's own is a stub on the JVM).
+    testImplementation 'org.json:json:20240303'
 }

@@ -1,0 +1,239 @@
+package com.gathin.tvhomephone.live;
+
+import android.app.Activity;
+import android.content.Context;
+import android.content.SharedPreferences;
+import android.os.Handler;
+import android.os.Looper;
+import android.widget.FrameLayout;
+
+import com.gathin.broadcast.BroadcastData;
+import com.gathin.broadcast.BroadcastView;
+import com.gathin.broadcast.Moments;
+import com.gathin.tvhomephone.sports.Game;
+
+import org.json.JSONObject;
+
+import java.io.File;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.function.BooleanSupplier;
+import java.util.function.Consumer;
+
+/**
+ * The classic kick-off pop-up and line-ups over the player's picture, as on the TV (the launcher's ClassicIntro): the
+ * line-ups once, from seven minutes before kick-off on the picture (Back closes them, the scoreboard out of their way
+ * meanwhile); the pop-up at the kick-off, when play starts again after a goal and at the second half's kick-off. The
+ * scoreboard (ScoreOverlay) tells it the channel's own game as the picture shows it. Each has its switch in Options.
+ */
+final class PlayerIntro {
+    private static final String FILE = "classic_intro";
+
+    private final Activity a;
+    private final FrameLayout root;
+    private final BooleanSupplier canShow;
+    private final Consumer<Boolean> lineupsUp;
+    private final Handler h = new Handler(Looper.getMainLooper());
+    private final ExecutorService io = Executors.newSingleThreadExecutor();
+    private final Set<String> shown = new HashSet<>();
+    private final Map<String, String> phases = new HashMap<>();
+    private final Map<String, Long> tried = new HashMap<>();
+    private BroadcastView view;
+    private String viewKind = "";
+    private boolean fetching;
+    /** The picture's place in the player (the overlay is put over it). */
+    private float px, py, pw = -1, ph = -1;
+
+    PlayerIntro(Activity a, FrameLayout root, BooleanSupplier canShow, Consumer<Boolean> lineupsUp) {
+        this.a = a;
+        this.root = root;
+        this.canShow = canShow;
+        this.lineupsUp = lineupsUp;
+    }
+
+    private static SharedPreferences prefs(Context c) {
+        return c.getApplicationContext().getSharedPreferences(FILE, Context.MODE_PRIVATE);
+    }
+
+    static boolean popupOn(Context c) {
+        return prefs(c).getBoolean("popup", true);
+    }
+
+    static void setPopupOn(Context c, boolean on) {
+        prefs(c).edit().putBoolean("popup", on).apply();
+    }
+
+    static boolean lineupsOn(Context c) {
+        return prefs(c).getBoolean("lineups", true);
+    }
+
+    static void setLineupsOn(Context c, boolean on) {
+        prefs(c).edit().putBoolean("lineups", on).apply();
+    }
+
+    boolean showing() {
+        return view != null && !view.isOver();
+    }
+
+    // ---- when ---------------------------------------------------------------------------------------------------------
+
+    /** The channel's own game as the picture shows it (each time the scoreboard draws); screenNow: the picture's time. */
+    void tick(Game g, long screenNow) {
+        if (g == null || g.id == null) return;
+        if (showing() && !canShow.getAsBoolean()) stop();
+        String was = phases.get(g.id);
+        String now = Moments.phase(false, g.state, g.halftime, was);
+        if (!now.isEmpty()) phases.put(g.id, now);
+        String kind = was == null ? null : Moments.moment(was, now);
+        if (kind != null && popupOn(a)) popup(g, kind, "kickoff".equals(kind) ? null : new int[]{g.homeScore, g.awayScore}, null, null);
+        if ("pre".equals(now) && g.kickoff > 0 && lineupsOn(a) && Moments.lineupsDue(g.kickoff - screenNow)) lineups(g);
+    }
+
+    /** A goal reached the picture (1 home, 2 away): the restart's pop-up in a little while, if the half goes on. */
+    void goal(Game g, int side) {
+        if (g == null || g.id == null || !popupOn(a)) return;
+        int[] score = {g.homeScore, g.awayScore};
+        String id = g.id;
+        h.postDelayed(() -> {
+            String ph = phases.get(id);
+            if (!"h1".equals(ph) && !"h2".equals(ph)) return;
+            String[] last = Moments.lastGoal(g.goals, side);
+            popup(g, "restart", score, Moments.scorer(last), last == null ? "" : BroadcastData.minute(last[2]));
+        }, Moments.RESTART_MS);
+    }
+
+    // ---- showing ------------------------------------------------------------------------------------------------------
+
+    /** Pure: an ESPN colour ("ffff00", "#ff0000") as ARGB; 0 when there is none. */
+    static int colour(String hex) {
+        if (hex == null) return 0;
+        String s = hex.trim().replace("#", "");
+        if (s.length() != 6) return 0;
+        try {
+            return 0xFF000000 | Integer.parseInt(s, 16);
+        } catch (NumberFormatException e) {
+            return 0;
+        }
+    }
+
+    static BroadcastData.Match match(Game g) {
+        BroadcastData.Match m = new BroadcastData.Match();
+        m.homeName = g.homeFull != null && !g.homeFull.isEmpty() ? g.homeFull : g.homeName;
+        m.awayName = g.awayFull != null && !g.awayFull.isEmpty() ? g.awayFull : g.awayName;
+        m.homeShort = g.home;
+        m.awayShort = g.away;
+        m.homeColor = colour(g.homeColor);
+        m.awayColor = colour(g.awayColor);
+        m.homeAlt = colour(g.homeAlt);
+        m.awayAlt = colour(g.awayAlt);
+        m.homeCrestUrl = g.homeLogo;
+        m.awayCrestUrl = g.awayLogo;
+        m.compLogoUrl = g.leagueLogo;
+        m.compId = g.slug == null ? "" : g.slug;
+        m.compName = g.leagueName == null ? "" : g.leagueName;
+        m.venue = g.venue == null ? "" : g.venue;
+        m.kickoff = g.kickoff;
+        return m;
+    }
+
+    private void popup(Game g, String kind, int[] score, String scorer, String minute) {
+        String key = g.id + "|" + kind + (score == null ? "" : "|" + score[0] + "-" + score[1]);
+        if (shown.contains(key) || showing() || !canShow.getAsBoolean()) return;
+        shown.add(key);
+        BroadcastData.Match m = match(g);
+        io.execute(() -> {
+            JSONObject cfg;
+            try {
+                cfg = BroadcastData.kickoff(kind, m, score, scorer, minute);
+            } catch (Exception e) {
+                return;
+            }
+            h.post(() -> {
+                if (showing() || !canShow.getAsBoolean() || a.isFinishing()) return;
+                show(BroadcastView.kickoff(a, cfg, this::gone), kind);
+            });
+        });
+    }
+
+    private void lineups(Game g) {
+        String key = g.id + "|lineups";
+        long now = System.currentTimeMillis();
+        Long at = tried.get(g.id);
+        if (shown.contains(key) || fetching || showing() || at != null && now - at < Moments.RETRY_MS || !canShow.getAsBoolean()) return;
+        fetching = true;
+        tried.put(g.id, now);
+        BroadcastData.Match m = match(g);
+        File cache = a.getCacheDir();
+        String homeName = g.homeName, awayName = g.awayName;
+        io.execute(() -> {
+            JSONObject cfg = null;
+            try {
+                int id = FotMob.find(g.id, homeName, awayName, g.kickoff);
+                cfg = BroadcastData.lineups(m, FotMob.raw(id), cache);
+            } catch (Exception ignored) {
+                // tried again in a minute
+            }
+            JSONObject got = cfg;
+            h.post(() -> {
+                fetching = false;
+                if (got == null || shown.contains(key) || showing() || !canShow.getAsBoolean() || a.isFinishing()) return;
+                shown.add(key);
+                show(BroadcastView.lineups(a, got, this::gone), "lineups");
+            });
+        });
+    }
+
+    private void show(BroadcastView v, String kind) {
+        view = v;
+        viewKind = kind;
+        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(pw > 0 ? Math.round(pw) : -1, ph > 0 ? Math.round(ph) : -1);
+        // just over the picture and the scoreboard: the player's own tile and buttons still come up over it
+        root.addView(v, Math.min(5, root.getChildCount()), lp);
+        v.setTranslationX(pw > 0 ? px : 0);
+        v.setTranslationY(ph > 0 ? py : 0);
+        if ("lineups".equals(kind)) lineupsUp.accept(true);
+    }
+
+    private void gone(BroadcastView v) {
+        if (v != view) return;
+        boolean wasLineups = "lineups".equals(viewKind);
+        view = null;
+        viewKind = "";
+        root.removeView(v);
+        if (wasLineups) lineupsUp.accept(false);
+    }
+
+    /** The picture laid out again (turned, resized): the overlay kept over it. */
+    void place(float x, float y, float w, float h) {
+        px = x;
+        py = y;
+        pw = w;
+        ph = h;
+        if (view == null) return;
+        FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) view.getLayoutParams();
+        int ww = w > 0 ? Math.round(w) : -1, hh = h > 0 ? Math.round(h) : -1;
+        if (lp.width != ww || lp.height != hh) {
+            lp.width = ww;
+            lp.height = hh;
+            view.setLayoutParams(lp);
+        }
+        view.setTranslationX(w > 0 ? x : 0);
+        view.setTranslationY(h > 0 ? y : 0);
+    }
+
+    /** Back: the line-ups fade away if they are on (true), before anything else Back does. */
+    boolean back() {
+        if (!showing() || !"lineups".equals(viewKind)) return false;
+        view.back();
+        return true;
+    }
+
+    /** Taken down at once (the player stopping, the small window). */
+    void stop() {
+        if (view != null) view.stop();
+    }
+}

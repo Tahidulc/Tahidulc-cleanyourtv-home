@@ -190,6 +190,8 @@ public final class BoardSettings {
         row(c, col, c.getString(R.string.live28_name_only), ScoreBoard.logoNameOnly(c), on -> ScoreBoard.setLogoNameOnly(c, on));
         row(c, col, c.getString(R.string.live28_see_through), ScoreBoard.logoSeeThrough(c), on -> ScoreBoard.setLogoSeeThrough(c, on));
         row(c, col, c.getString(R.string.live28_lineups), ScoreBoard.lineupsOn(c), on -> ScoreBoard.setLineupsOn(c, on));
+        row(c, col, c.getString(R.string.live33_classic_popup), PlayerIntro.popupOn(c), on -> PlayerIntro.setPopupOn(c, on));
+        row(c, col, c.getString(R.string.live33_classic_lineups), PlayerIntro.lineupsOn(c), on -> PlayerIntro.setLineupsOn(c, on));
         row(c, col, c.getString(R.string.live21_logo_comp), ScoreBoard.logoComp(c), on -> ScoreBoard.setLogoComp(c, on));
         row(c, col, c.getString(R.string.live24_logo_live), ScoreBoard.logoLive(c), on -> ScoreBoard.setLogoLive(c, on));
         row(c, col, c.getString(R.string.live26_fotmob), ScoreBoard.fotmobOn(c), on -> ScoreBoard.setFotmobOn(c, on));

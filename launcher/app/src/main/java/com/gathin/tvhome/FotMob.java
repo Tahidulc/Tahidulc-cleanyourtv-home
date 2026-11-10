@@ -203,6 +203,16 @@ final class FotMob {
         }
     }
 
+    /** FotMob's match details as it gives them (off the main thread), for the classic line-ups; null when not read. */
+    static JSONObject raw(int id) {
+        if (id <= 0) return null;
+        try {
+            return new JSONObject(get(BASE + "matchDetails?matchId=" + id));
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
     /** Pure, but for the players it notes: FotMob's match details as a Match. */
     static Match parse(JSONObject d) {
         Match m = new Match();

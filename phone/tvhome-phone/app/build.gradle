@@ -10,8 +10,8 @@ android {
         applicationId 'com.gathin.tvhomephone'
         minSdk 26
         targetSdk 34
-        versionCode 63
-        versionName '4.32'
+        versionCode 64
+        versionName '4.33'
         // Phones: the ARM builds of the native parts (the sound decoder, the text reader) only.
         ndk {
             abiFilters 'arm64-v8a', 'armeabi-v7a'
@@ -38,6 +38,18 @@ android {
 
     testOptions {
         unitTests.returnDefaultValues = true
+    }
+
+    // The classic kick-off pop-up and line-ups, shared with the TV launcher: their pages, fonts and sounds
+    // (overlays/assets/broadcast) and the code that plays them (overlays/java), with its tests.
+    sourceSets {
+        main {
+            java.srcDirs += ['../../../overlays/java']
+            assets.srcDirs += ['../../../overlays/assets']
+        }
+        test {
+            java.srcDirs += ['../../../overlays/javatest']
+        }
     }
 }
 

@@ -60,6 +60,12 @@ public final class ScoreBoard implements LiveAlerts.Listener {
 
         /** An alert's drop tapped (a goal elsewhere: its game, to watch). */
         void alertTapped(Events.Alert a);
+
+        /** The channel's own game as the picture shows it, each time the board draws (the classic pop-up follows it). */
+        default void shown(Game g, long screenNow) {}
+
+        /** A goal of the channel's own game reached the picture: 1 home, 2 away. */
+        default void goalShown(Game g, int side) {}
     }
 
     static final String FOOTBALL = "football", SPORT = "sport", NEWS = "news";
@@ -752,6 +758,7 @@ public final class ScoreBoard implements LiveAlerts.Listener {
             Game g = screen.game(now);
             if (g != null) {
                 shown = g;
+                if (channelGame) src.shown(g, now - src.behindMs(true));
                 l = look(g, screen.boardClock(now));
                 // From the half's last minute, the added time put up beside the clock (the channel's own when it shows it).
                 if (l.live) l.added = addedBox(period(g, l.clock), minuteOfClock(l.clock), addedUp, l.added);
@@ -763,6 +770,7 @@ public final class ScoreBoard implements LiveAlerts.Listener {
                         goalShownAt = now;
                         if (changed != null) changed.run();
                         caption(g, side);
+                        if (channelGame) src.goalShown(g, side);
                     }
                 }
                 lastShownId = g.id;

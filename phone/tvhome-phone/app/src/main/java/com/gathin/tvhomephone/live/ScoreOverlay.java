@@ -97,6 +97,9 @@ final class ScoreOverlay implements ScoreBoard.Source {
     /** Burn-in: the board and the mark over the logo moved now and then, dimmed when nothing happens. */
     private final BurnGuard guard;
 
+    /** The classic kick-off pop-up and line-ups over the picture (PlayerIntro). */
+    private final PlayerIntro intro;
+
     private final Runnable look = this::look;
     private final Runnable readClock = this::readClock;
     private final Runnable readScreen = this::readScreen;
@@ -108,6 +111,11 @@ final class ScoreOverlay implements ScoreBoard.Source {
         this.host = host;
         board = new ScoreBoard(a, this);
         cover = new LogoCover(a);
+        intro = new PlayerIntro(a, root, () -> started && !inPip && !editing, (on) -> {
+            // the classic line-ups fill the picture: the scoreboard and the logo's cover out of their way meanwhile
+            board.view.setAlpha(on ? 0f : 1f);
+            cover.setAlpha(on ? 0f : 1f);
+        });
         cover.setVisibility(View.GONE);
         // Held: dragged where the finger goes. Tapped twice: Move and resize. (The screen reader's long press: the same.)
         cover.setOnLongClickListener(v -> {
@@ -146,6 +154,7 @@ final class ScoreOverlay implements ScoreBoard.Source {
 
     void stop() {
         if (editing) endAdjust(true);
+        intro.stop();
         started = false;
         up = false;
         endBreak(true);
@@ -190,6 +199,7 @@ final class ScoreOverlay implements ScoreBoard.Source {
 
     void pip(boolean in) {
         if (in && editing) endAdjust(true);
+        if (in) intro.stop();
         inPip = in;
         // In the small window the board stays, small, in the same look, its clock going on: no drops, no covers.
         board.small(in);
@@ -297,7 +307,18 @@ final class ScoreOverlay implements ScoreBoard.Source {
 
     /** Back over the player: the line-ups beside the board closed if they are out. */
     boolean closeLineups() {
+        if (intro.back()) return true;
         return started && board.closeLineups();
+    }
+
+    @Override
+    public void shown(Game g, long screenNow) {
+        if (started) intro.tick(g, screenNow);
+    }
+
+    @Override
+    public void goalShown(Game g, int side) {
+        if (started) intro.goal(g, side);
     }
 
     /** The look or the logo's cover changed in Options. */
@@ -381,6 +402,7 @@ final class ScoreOverlay implements ScoreBoard.Source {
             pfy = fy;
             pfw = fw;
             pfh = fh;
+            intro.place(fx, fy, fw, fh);
         }
         BoardPlace own = mine();
         boolean placed = own.board() && !inPip && fw > 0 && fh > 0;

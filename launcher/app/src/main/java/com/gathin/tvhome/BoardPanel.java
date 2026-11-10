@@ -199,6 +199,18 @@ final class BoardPanel extends SportPanel {
                 : "The settings, match or not · on this TV a held key then doesn't repeat in TiviMate";
         anywhere.ok = () -> BoardCover.setHoldAnywhere(c, !BoardCover.holdAnywhere(c));
         add(lineups, anywhere);
+        // The classic broadcast pop-up and line-ups (ClassicIntro), as the user's clips have them.
+        Row classicPop = row("Kick-off pop-up", true);
+        classicPop.on = () -> ClassicIntro.popupOn(c);
+        classicPop.words = () -> ClassicIntro.popupOn(c) ? "Crests, trophy and teams at kick-off, after a goal and for the second half"
+                : "Off · the kick-off without it";
+        classicPop.ok = () -> ClassicIntro.setPopupOn(c, !ClassicIntro.popupOn(c));
+        Row classicLu = row("Classic line-ups", true);
+        classicLu.on = () -> ClassicIntro.lineupsOn(c);
+        classicLu.words = () -> ClassicIntro.lineupsOn(c) ? "Both teams beaming in, seven minutes before kick-off · Back closes them"
+                : "Off · no line-ups before kick-off";
+        classicLu.ok = () -> ClassicIntro.setLineupsOn(c, !ClassicIntro.lineupsOn(c));
+        add(classicPop, classicLu);
         Row clock = row("Clock with the channel's", true);
         clock.on = () -> BoardCover.asksAtKickoff(c);
         clock.words = () -> BoardCover.asksAtKickoff(c) ? "OK at each kick-off when asked sets it to the second"
