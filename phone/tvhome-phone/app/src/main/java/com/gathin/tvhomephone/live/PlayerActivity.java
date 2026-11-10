@@ -124,6 +124,13 @@ public class PlayerActivity extends AppCompatActivity {
     /** The info tile over the picture (the Full-screen TV Info Tiles canvas), its programme, and the style chosen. */
     private FrameLayout tiles;
     private TileData.Info info;
+    /**
+     * On Automatic (Settings' "Scoreboard over matches"): the match the player found on this channel itself
+     * (OverMatches), for the board where the tile has no game; whether a look is under way, and when the last began.
+     */
+    private Game found;
+    private boolean finding;
+    private long lookedAt;
     private TileKind.Style style = TileKind.Style.AUTO;
     /** The programme last shown, so a new one starting brings its tile up. */
     private String seen;
@@ -151,10 +158,14 @@ public class PlayerActivity extends AppCompatActivity {
     private boolean leaveOnPip;
     private Insets cut = Insets.NONE;
     private final Runnable hide = this::hideOverlay;
-    /** Every half a minute: a new programme on this channel brings its tile up, as the TV's banner does. */
+    /**
+     * Every half a minute: a new programme on this channel brings its tile up, as the TV's banner does; on Automatic,
+     * a match on it looked for again now and then.
+     */
     private final Runnable tick = new Runnable() {
         @Override public void run() {
             h.removeCallbacks(this);
+            lookForMatch();
             if (cur != null && !isInPictureInPictureMode() && style != TileKind.Style.PANEL) {
                 TileData.Info now = TileData.now(PlayerActivity.this, lib, cur);
                 if (now.onNow && seen != null && seen.startsWith(cur.key + "|") && !seen.equals(now.id()) && !overlayShown()
@@ -495,6 +506,8 @@ public class PlayerActivity extends AppCompatActivity {
         pb.play(ch);
         if (!same) {
             extras.game(null);
+            found = null;
+            lookedAt = 0;
             if (matchButton != null) matchButton.setVisibility(View.GONE);
             extras.closeMatch();
         }
@@ -503,6 +516,39 @@ public class PlayerActivity extends AppCompatActivity {
         aspect = Aspect.get(store, ch.key, landscape);
         video.apply(aspect);
         if (!same || !overlayShown()) showOverlay();
+        lookForMatch();
+    }
+
+    /** The channel's game: the tile's; else, on Automatic, the match the player found on the channel itself. */
+    private Game channelGame() {
+        if (info != null && info.game != null) return info.game;
+        return found != null && OverMatches.AUTO.equals(OverMatches.mode(this)) ? found : null;
+    }
+
+    /**
+     * On Automatic: whether the channel playing shows a football match, live or within 15 minutes of kick-off
+     * (OverMatches), as it starts and every two minutes; one found comes on the board by itself (its alerts waiting for
+     * this stream too) where the tile has no game for it. Ask and Off: nothing looked for, as before.
+     */
+    private void lookForMatch() {
+        if (cur == null || finding || extras == null || !OverMatches.AUTO.equals(OverMatches.mode(this))) return;
+        if (info != null && info.game != null) return;
+        long now = System.currentTimeMillis();
+        if (lookedAt > 0 && now - lookedAt < OverMatches.LOOK_MS) return;
+        Channel ch = cur;
+        List<OverMatches.Programme> guide = OverMatches.guide(lib.schedule(ch.key), now);
+        if (!OverMatches.worthLooking(ch.name, ch.group, guide, com.gathin.tvhomephone.sports.Channels.british())) return;
+        lookedAt = now;
+        finding = true;
+        OverMatches.find(ch, guide, g -> {
+            finding = false;
+            if (isFinishing() || isDestroyed() || cur == null || !cur.key.equals(ch.key)) return;
+            boolean shown = (info != null && info.game != null) || (g != null && found != null && g.id.equals(found.id));
+            if (OverMatches.decide(OverMatches.mode(this), g != null, shown) != OverMatches.SHOW) return;
+            found = g;
+            extras.game(g);
+            if (matchButton != null) matchButton.setVisibility(View.VISIBLE);
+        });
     }
 
     private void step(int by) {
@@ -709,8 +755,9 @@ public class PlayerActivity extends AppCompatActivity {
             TileData.enrich(this, asked, done -> h.postDelayed(() -> {
                 if (isFinishing() || info == null || !done.id().equals(info.id())) return;
                 info = done;
-                extras.game(info.game);
-                matchButton.setVisibility(info.game != null ? View.VISIBLE : View.GONE);
+                // The tile's game, else (on Automatic) the match found on the channel: as it was on Ask.
+                extras.game(channelGame());
+                matchButton.setVisibility(channelGame() != null ? View.VISIBLE : View.GONE);
                 marks(info);
                 if (tilesShown()) drawTile(false);
             }, wait));
@@ -1708,7 +1755,7 @@ public class PlayerActivity extends AppCompatActivity {
 
             @Override public void play(Channel ch) { switchTo(ch); }
 
-            @Override public com.gathin.tvhomephone.sports.Game game() { return info == null ? null : info.game; }
+            @Override public com.gathin.tvhomephone.sports.Game game() { return channelGame(); }
 
             @Override public void closeSheet() {
                 if (sheet != null) sheet.dismiss();
@@ -1722,7 +1769,7 @@ public class PlayerActivity extends AppCompatActivity {
         extras.overlay(new ScoreOverlay(this, root, video, new ScoreOverlay.Host() {
             @Override public Channel current() { return cur; }
 
-            @Override public com.gathin.tvhomephone.sports.Game game() { return info == null ? null : info.game; }
+            @Override public com.gathin.tvhomephone.sports.Game game() { return channelGame(); }
 
             @Override public void openMatch() { extras.openMatch(); }
 

@@ -103,7 +103,15 @@ final class TvGuide {
     static final class Watch {
         final List<String> names;
         final String logo;
-        Watch(List<String> names, String logo) { this.names = names; this.logo = logo; }
+        /** How many of the names, from the first, are the game's own (Sky's guide's, ESPN's); the rest are its competition's usual broadcasters. */
+        final int own;
+        Watch(List<String> names, String logo) { this(names, logo, names.size()); }
+        Watch(List<String> names, String logo, int own) { this.names = names; this.logo = logo; this.own = Math.max(0, Math.min(own, names.size())); }
+
+        /** The game's own channels: the ones Sky's guide or ESPN lists it on (none when neither does). */
+        List<String> own() {
+            return names.subList(0, own);
+        }
     }
 
     /**
@@ -149,6 +157,8 @@ final class TvGuide {
             logo = uk.logo;
         }
         if (g.broadcasts != null) for (String n : g.broadcasts) if (!names.contains(n)) names.add(n);
+        // So far the game's own channels; the rest are only where its competition is usually shown.
+        int own = names.size();
         String[] rights = g.slug == null ? null : RIGHTS.get(g.slug);
         if (rights != null) for (String n : rights) if (!names.contains(n)) names.add(n);
         // Not found in the guide: the first British channel named still has its logo, by its Sky service id.
@@ -164,7 +174,7 @@ final class TvGuide {
                 if (logo != null) break;
             }
         }
-        return names.isEmpty() ? null : new Watch(names, logo);
+        return names.isEmpty() ? null : new Watch(names, logo, own);
     }
 
     /**
@@ -189,9 +199,13 @@ final class TvGuide {
         Channel up = uhd(c, new Channel(w.names.isEmpty() ? null : w.names.get(0), w.logo));
         if (up.logo.equals(w.logo)) return w;
         List<String> names = new ArrayList<>(w.names);
+        // The UHD form first: one of the game's own when the channel it is the UHD form of is; else none are told apart.
+        boolean ownChannel = false;
+        for (String n : w.own()) ownChannel |= InStep.base(n).equals(InStep.base(up.name));
+        int own = ownChannel ? w.own + (w.own().contains(up.name) ? 0 : 1) : 0;
         names.remove(up.name);
         names.add(0, up.name);
-        return new Watch(names, up.logo);
+        return new Watch(names, up.logo, own);
     }
 
     /** The British channel, or else where it is on in the US ("ESPN+ (US)", no logo); null when neither is known. */

@@ -17,7 +17,8 @@ import java.util.Locale;
 
 /**
  * The Control Centre's Scoreboard card (BoardCover): the scoreboard over the channel on or off for the game chosen
- * (OK steps through today's games of the followed clubs and competitions, live ones first), the board itself and the
+ * (OK steps through today's games of the followed clubs and competitions, live ones first), what a match being watched
+ * gets (Scoreboard over matches: on by itself, the hold-OK button, or neither; OverlayPrompt), the board itself and the
  * cover over the channel's logo each on or off, the alerts and stats that slide out beside it, its clock set at
  * kick-off, OK held over the match for its menu, Move and resize over the channel, the board's look and the cover's
  * (each drawn as it looks, the game chosen in it, to pick from), the standard places back, the classic kick-off pop-up
@@ -144,6 +145,16 @@ final class BoardPanel extends SportPanel {
             redraw();
         };
         add(on, which);
+        // What a match being watched gets: the overlays on by themselves, the hold-OK button, or neither (OverlayPrompt).
+        Row matches = row(c.getString(R.string.board_over_matches), true);
+        matches.on = () -> OverlayPrompt.on(c);
+        matches.words = () -> {
+            String m = OverlayPrompt.mode(c);
+            return c.getString(OverlayPrompt.AUTO.equals(m) ? R.string.board_over_matches_auto
+                    : OverlayPrompt.OFF.equals(m) ? R.string.board_over_matches_off : R.string.board_over_matches_ask);
+        };
+        matches.ok = () -> OverlayPrompt.setMode(c, OverlayPrompt.next(OverlayPrompt.mode(c)));
+        add(matches);
 
         heading("OVER THE CHANNEL");
         Row board = row("The scoreboard itself", true);
@@ -294,10 +305,6 @@ final class BoardPanel extends SportPanel {
             android.widget.Toast.makeText(c, "Back to the standard places", android.widget.Toast.LENGTH_SHORT).show();
         };
         add(hold, reset);
-        Row ask = row("Ask over a match", true);
-        ask.on = () -> OverlayPrompt.on(c);
-        ask.words = () -> OverlayPrompt.on(c) ? "A match or F1 on: hold OK on the button for the overlays" : "Off";
-        ask.ok = () -> OverlayPrompt.setOn(c, !OverlayPrompt.on(c));
         Row comp = row("Competition logo on the logo cover", true);
         comp.on = () -> BoardCover.logoComp(c);
         comp.words = () -> BoardCover.logoComp(c) ? "Beside every look: the Premier League's, the Champions League's, F1's" : "Off";
@@ -312,8 +319,7 @@ final class BoardPanel extends SportPanel {
             BoardCover.setLogoLive(c, !BoardCover.logoLive(c));
             for (LogoMark m : markPreviews) m.liveBar(BoardCover.logoLive(c));
         };
-        add(ask, comp);
-        add(liveRow);
+        add(comp, liveRow);
 
         // Each look drawn as it is, the game chosen above in it: the arrows go along, OK chooses.
         heading("SCOREBOARD LOOK");
@@ -371,9 +377,10 @@ final class BoardPanel extends SportPanel {
         loadCrests();
 
         heading("KIND TO THE SCREEN");
-        words("Never on by itself: only for the game you turn it on for, and off ten minutes after its full time. It keeps "
-                + "to soft colours (Light a soft grey, not white), moves a pixel or two each minute, dims a little after five "
-                + "minutes without a goal, and rests at half time once the half's stats are done.", 17, 0xCCFFFFFF);
+        words("Never on by itself unless Scoreboard over matches is on Automatic: only for the game you turn it on for (or "
+                + "the match it sees you watching), and off ten minutes after its full time. It keeps to soft colours (Light a "
+                + "soft grey, not white), moves a pixel or two each minute, dims a little after five minutes without a goal, and "
+                + "rests at half time once the half's stats are done.", 17, 0xCCFFFFFF);
     }
 
     /** One of the board's looks, drawn with the game chosen, its name under it (a tick on the one chosen). */

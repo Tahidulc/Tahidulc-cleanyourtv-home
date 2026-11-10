@@ -91,6 +91,11 @@ public final class ScoreBoard implements LiveAlerts.Listener {
 
     static void setOn(Context c, boolean v) { prefs(c).edit().putBoolean("on", v).apply(); }
 
+    /** Settings' "Scoreboard over matches" as chosen for when it is on: "auto" or "ask" ("" until chosen: OverMatches). */
+    static String overMatches(Context c) { return prefs(c).getString("over_matches", ""); }
+
+    static void setOverMatches(Context c, String v) { prefs(c).edit().putString("over_matches", v).apply(); }
+
     /** Over the channel's own scoreboard, its size, when one is found (on until switched off). */
     static boolean cover(Context c) { return prefs(c).getBoolean("cover", true); }
 

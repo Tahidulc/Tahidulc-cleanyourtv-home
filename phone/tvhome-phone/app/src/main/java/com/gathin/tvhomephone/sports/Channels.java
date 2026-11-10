@@ -86,12 +86,25 @@ public final class Channels {
 
     /** Every name to look for in the playlist, best first: the British channel, ESPN's, the competition's. */
     public static List<String> names(Game g) {
+        List<String> out = own(g);
+        String[] r = g.slug == null ? null : RIGHTS.get(g.slug);
+        if (r != null) for (String n : r) if (!out.contains(n)) out.add(n);
+        return out;
+    }
+
+    /** The game's own channels: the British one Sky's guide shows it on, then ESPN's for it. Off the main thread. */
+    public static List<String> own(Game g) {
         List<String> out = new ArrayList<>();
         String uk = uk(g);
         if (uk != null) out.add(uk);
         for (String b : g.broadcasts) if (!out.contains(b)) out.add(b);
-        String[] r = g.slug == null ? null : RIGHTS.get(g.slug);
-        if (r != null) for (String n : r) if (!out.contains(n)) out.add(n);
+        return out;
+    }
+
+    /** The British football channels (Sky's, TNT's, Premier's, BBC One, ITV1, Channel 4, 5), by name. */
+    public static List<String> british() {
+        List<String> out = new ArrayList<>();
+        for (String[] ch : FOOTBALL) out.add(ch[1]);
         return out;
     }
 

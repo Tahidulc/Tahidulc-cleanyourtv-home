@@ -56,4 +56,11 @@
     <string name="live35_style_off">Off</string>
     <string name="live35_goal_sound">Sound over the goal on the scoreboard (tap one to hear it)</string>
     <string name="live34_swish">Swish as the scorer, stats and alerts slide out beside the scoreboard</string>
+    <!-- Settings' "Scoreboard over matches" (OverMatches), the TV's setting: Automatic, Ask (the player as it always was;
+         the phone asks nothing) or Off (no scoreboard on the picture). -->
+    <string name="live36_over_matches">Scoreboard over matches</string>
+    <string name="live36_over_auto">Automatic</string>
+    <string name="live36_over_ask">Ask</string>
+    <string name="live36_over_off">Off</string>
+    <string name="live36_over_line">Automatic: the player works out itself when the channel is showing a football match, live or within 15 minutes of kick-off (from its guide, its name or the channels the game is on), and the scoreboard comes on for it by itself. Ask: as before, the scoreboard for the game the programme\'s tile names, else your clubs\' live games. Off: no scoreboard on the picture (Options ⋮ in the player switches it back on).</string>
 </resources>

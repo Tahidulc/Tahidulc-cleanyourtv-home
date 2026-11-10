@@ -9,8 +9,9 @@ import com.gathin.tvhomephone.R;
 import com.google.android.material.materialswitch.MaterialSwitch;
 
 /**
- * Settings' "Scoreboard while you watch": the scoreboard over the player's picture, over the channel's own, which
- * alerts drop from it, over other apps, and how far behind the other apps' pictures run.
+ * Settings' "Scoreboard while you watch": the scoreboard over matches (Automatic, Ask as it always was, or Off:
+ * OverMatches), over the channel's own, which alerts drop from it, over other apps, and how far behind the other apps'
+ * pictures run.
  */
 public final class BoardSettings {
     private BoardSettings() {}
@@ -23,7 +24,12 @@ public final class BoardSettings {
         Context c = a;
         col.addView(com.gathin.tvhomephone.sports.Ui.heading(c, c.getString(R.string.live4_settings_title), c.getColor(R.color.text_soft)));
         col.addView(com.gathin.tvhomephone.sports.Ui.text(c, c.getString(R.string.live4_settings_line), 13, c.getColor(R.color.text_dim), false));
-        row(c, col, c.getString(R.string.live4_board_on), ScoreBoard.on(c), on -> ScoreBoard.setOn(c, on));
+        // Scoreboard over matches: Automatic (it finds the match on the channel itself), Ask (as it always was) or Off (no
+        // scoreboard on the picture; the player's options switch it back on).
+        styles(c, col, c.getString(R.string.live36_over_matches), new String[]{OverMatches.AUTO, OverMatches.ASK, OverMatches.OFF},
+                new String[]{c.getString(R.string.live36_over_auto), c.getString(R.string.live36_over_ask), c.getString(R.string.live36_over_off)},
+                OverMatches.mode(c), m -> OverMatches.setMode(c, m));
+        col.addView(com.gathin.tvhomephone.sports.Ui.text(c, c.getString(R.string.live36_over_line), 13, c.getColor(R.color.text_dim), false));
         row(c, col, c.getString(R.string.live4_board_cover), ScoreBoard.cover(c), on -> ScoreBoard.setCover(c, on));
         row(c, col, c.getString(R.string.live6_still), ScoreBoard.still(c), on -> ScoreBoard.setStill(c, on));
         col.addView(com.gathin.tvhomephone.sports.Ui.text(c, c.getString(R.string.live6_still_line), 13, c.getColor(R.color.text_dim), false));

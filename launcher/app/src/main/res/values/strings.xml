@@ -187,4 +187,15 @@
     <string name="thermostat_hint_target_all">◀ ▶ or ▲ ▼ sets the temperature</string>
     <string name="thermostat_hint_power">OK turns it on or off</string>
     <string name="thermostat_hint_mode">▼ the mode</string>
+
+    <!-- The Scoreboard card's "Scoreboard over matches" (OverlayPrompt): what happens when a match is being watched in
+         the player. Each line ends with what OK changes it to. -->
+    <string name="board_over_matches">Scoreboard over matches</string>
+    <string name="board_over_matches_auto">Automatic: on by itself once a match is seen on the channel, Back as it comes on puts it away for the game · OK: Off</string>
+    <string name="board_over_matches_ask">Ask: a match or F1 on, hold OK on the button for the overlays · OK: Automatic</string>
+    <string name="board_over_matches_off">Off: never on by itself, nor asked · OK: Ask</string>
+    <!-- The button over a scoreboard and logo cover that came on by themselves: BACK (the remote's button) "to put away". -->
+    <string name="overlay_back">BACK</string>
+    <string name="overlay_put_away">to put away</string>
+    <string name="overlay_back_desc">Back puts the scoreboard and the logo\'s cover away for this game</string>
 </resources>

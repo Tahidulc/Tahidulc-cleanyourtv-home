@@ -953,13 +953,13 @@ public class BoardCoverTest {
         on.put("game:1", java.util.Arrays.asList("Sky Sports Main Event", "Sky Sports Premier League"));
         on.put("game:2", java.util.Arrays.asList("TNT Sports 1"));
         // The banner as the channel changes: the channel, its programme, its times.
-        String[] hit = OverlayPrompt.among(java.util.Arrays.asList("UK: Sky Sports Main Event HD", "Arsenal v Everton", "17:30 - 19:30"), on);
+        String[] hit = OverlayPrompt.among(java.util.Arrays.asList("UK: Sky Sports Main Event HD", "Arsenal v Everton", "17:30 - 19:30"), on, on);
         assertNotNull(hit);
         assertEquals("game:1", hit[0]);
         assertEquals("UK: Sky Sports Main Event HD", hit[1]);
         // A guide or a list naming both: nothing to say.
-        assertNull(OverlayPrompt.among(java.util.Arrays.asList("Sky Sports Premier League HD", "TNT Sports 1 HD"), on));
-        assertNull(OverlayPrompt.among(java.util.Arrays.asList("BBC One HD", "Pointless"), on));
+        assertNull(OverlayPrompt.among(java.util.Arrays.asList("Sky Sports Premier League HD", "TNT Sports 1 HD"), on, on));
+        assertNull(OverlayPrompt.among(java.util.Arrays.asList("BBC One HD", "Pointless"), on, on));
         // Asked once a game, F1 once a day.
         assertEquals("g|401", OverlayPrompt.askKey("football", gameWithId("401"), 0L));
         assertTrue(OverlayPrompt.askKey("f1", null, 1_762_500_000_000L).startsWith("f1|2025"));

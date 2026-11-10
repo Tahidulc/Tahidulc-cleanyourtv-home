@@ -13,17 +13,22 @@ import android.view.animation.LinearInterpolator;
  * The overlays prompt's button (OverlayPrompt): small and solid, laid out as a sports channel's own logo is but as one
  * block: HOLD and the remote's OK button in its light top band, "for overlays" large in its dark middle, and what they
  * are spaced out along its foot. While OK is held a bright line fills along the foot of the band until they come on.
+ * Over overlays that came on by themselves (away): BACK and the remote's Back button, "to put away".
  */
 final class OverlayButton extends View {
     private static final int BAND = 0xFFA4A9B0, BODY = 0xFF101216, INK = 0xFFFFFFFF, SOFT = 0xFFB8BDC6;
-    private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG), text = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG), text = new Paint(Paint.ANTI_ALIAS_FLAG),
+            line = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final RectF r = new RectF();
-    private final Path clip = new Path();
+    private final Path clip = new Path(), arrow = new Path();
     private String foot = "SCOREBOARD · LOGO";
     /** The Google TV Streamer's remote: its pale OK button rather than the TCL's black one. */
     private boolean streamer;
     /** How far the hold has gone, 0 to 1. */
     private float held;
+    /** The overlays on by themselves: BACK to put them away, not HOLD for them (its words read once). */
+    private boolean away;
+    private String backWord = "", awayLine = "";
     private ValueAnimator holding;
 
     OverlayButton(Context c) {
@@ -31,6 +36,20 @@ final class OverlayButton extends View {
         text.setTypeface(ScoreCard.outfit(c, 700));
         setLayerType(LAYER_TYPE_HARDWARE, null);
         setContentDescription("Hold OK for overlays");
+        line.setStyle(Paint.Style.STROKE);
+        line.setStrokeCap(Paint.Cap.ROUND);
+        line.setStrokeJoin(Paint.Join.ROUND);
+    }
+
+    /** Over overlays that came on by themselves: BACK and the remote's Back button, to put them away. */
+    void away(boolean on) {
+        away = on;
+        if (on) {
+            backWord = getContext().getString(R.string.overlay_back);
+            awayLine = getContext().getString(R.string.overlay_put_away);
+        }
+        setContentDescription(on ? getContext().getString(R.string.overlay_back_desc) : "Hold OK for overlays");
+        invalidate();
     }
 
     /** What the overlays are, along its foot. */
@@ -90,16 +109,18 @@ final class OverlayButton extends View {
         float band = h * 0.36f, pad = h * 0.12f;
         fill.setColor(BAND);
         cv.drawRect(0, 0, w, band, fill);
-        words(cv, "HOLD", pad, 0, band, band * 0.58f, 0.06f, INK, Paint.Align.LEFT);
+        words(cv, away ? backWord : "HOLD", pad, 0, band, band * 0.58f, 0.06f, INK, Paint.Align.LEFT);
         float ok = band * 0.78f;
-        okButton(cv, w - pad * 0.6f - ok, (band - ok) / 2f, ok);
+        if (away) backButton(cv, w - pad * 0.6f - ok, (band - ok) / 2f, ok);
+        else okButton(cv, w - pad * 0.6f - ok, (band - ok) / 2f, ok);
         if (held > 0f) {
             fill.setColor(INK);
             cv.drawRect(0, band - Math.max(2f, h * 0.05f), w * held, band, fill);
         }
         // "for overlays" large in the middle, what they are along the foot.
         float mid = h * 0.4f;
-        words(cv, "for overlays", w / 2f, band, mid, fit("for overlays", w - 2 * pad, mid * 0.62f, 0f), 0f, INK, Paint.Align.CENTER);
+        String middle = away ? awayLine : "for overlays";
+        words(cv, middle, w / 2f, band, mid, fit(middle, w - 2 * pad, mid * 0.62f, 0f), 0f, INK, Paint.Align.CENTER);
         float footH = h - band - mid;
         words(cv, foot, w / 2f, band + mid - footH * 0.1f, footH, fit(foot, w - 2 * pad, footH * 0.52f, 0.16f), 0.16f, SOFT,
                 Paint.Align.CENTER);
@@ -114,6 +135,23 @@ final class OverlayButton extends View {
         fill.setColor(streamer ? 0xFFEDEAE4 : 0xFF0E0F11);
         cv.drawCircle(cx, cy, rr * 0.76f, fill);
         words(cv, "OK", cx, y, s, rr * 0.62f, 0f, streamer ? 0xFF2B2D31 : INK, Paint.Align.CENTER);
+    }
+
+    /** The remote's Back button: as its OK is drawn, a chevron pointing back in it. */
+    private void backButton(Canvas cv, float x, float y, float s) {
+        float rr = s / 2f, cx = x + rr, cy = y + rr;
+        fill.setColor(streamer ? 0xFFD9D6CF : 0xFF2B2D31);
+        cv.drawCircle(cx, cy, rr, fill);
+        fill.setColor(streamer ? 0xFFEDEAE4 : 0xFF0E0F11);
+        cv.drawCircle(cx, cy, rr * 0.76f, fill);
+        float a = rr * 0.3f;
+        line.setColor(streamer ? 0xFF2B2D31 : INK);
+        line.setStrokeWidth(Math.max(1.5f, s * 0.08f));
+        arrow.reset();
+        arrow.moveTo(cx + a * 0.55f, cy - a);
+        arrow.lineTo(cx - a * 0.45f, cy);
+        arrow.lineTo(cx + a * 0.55f, cy + a);
+        cv.drawPath(arrow, line);
     }
 
     private float fit(String s, float room, float most, float spacing) {

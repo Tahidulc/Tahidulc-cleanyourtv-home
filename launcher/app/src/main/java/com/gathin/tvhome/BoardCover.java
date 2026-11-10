@@ -38,10 +38,11 @@ import java.util.regex.Pattern;
 
 /**
  * The phone's scoreboard and its cover over the channel's logo (Homefield's player), over TiviMate on the TV. Never on
- * by itself: it is switched on by hand for one game (the Control Centre's Scoreboard tile, for the game on now or the
- * next one put on; or the Scoreboard card, for the game chosen there), shows while that game is on the screen, and
- * switches itself off ten minutes after the game's full time (four hours at most). The next game needs it switching
- * on again.
+ * by itself unless the Scoreboard card's "Scoreboard over matches" is on Automatic (then for a match seen being watched,
+ * OverlayPrompt): it is switched on by hand for one game (the Control Centre's Scoreboard tile, for the game on now or
+ * the next one put on; the Scoreboard card, for the game chosen there; OK held on the overlays button over a match),
+ * shows while that game is on the screen, and switches itself off ten minutes after the game's full time (four hours at
+ * most). The next game needs it switching on again.
  *
  * <p>It shows the game as the picture does, not as the scores are: each reading of the scores' poll is kept with when it
  * was seen, and the board shows the one the channel has reached, that channel's wait (InStep) behind, its clock counting
@@ -130,8 +131,11 @@ final class BoardCover {
 
     static void stop(Context c, String why) {
         boolean was = prefs(c).getBoolean("on", false);
+        String id = prefs(c).getString("game", "");
         prefs(c).edit().putBoolean("on", false).remove("ft").apply();
         if (was) AlertLog.note(c, "scoreboard off: " + why);
+        // Switched off by hand for a game: Scoreboard over matches on Automatic leaves that game alone from now.
+        if (was && why.startsWith("switched off")) OverlayPrompt.switchedOff(c, id);
         if (!adjusting && testUntil <= System.currentTimeMillis()) hideAll();
     }
 
@@ -1469,7 +1473,8 @@ final class BoardCover {
             // Before kick-off: up in its last minutes with the kick-off's time on its clock (the kick-off and the
             // line-ups slide out of it).
             ScoresTicker.Game g = GoalWatchService.latestGame(id);
-            if (g != null && g.state == 1 && g.kickoff > now && g.kickoff - now <= PRE_MS) {
+            // A late kick-off (or the scores a poll behind) keeps it up as it was, ready for the game (OverlayPrompt.LATE_MS).
+            if (g != null && g.state == 1 && g.kickoff - now <= PRE_MS && now - g.kickoff <= OverlayPrompt.LATE_MS) {
                 if (ensureWindows(c)) showGame(c, now, false, preLook(g));
                 return 1_000L;
             }
