@@ -20,8 +20,8 @@ import java.util.Locale;
  * (OK steps through today's games of the followed clubs and competitions, live ones first), the board itself and the
  * cover over the channel's logo each on or off, the alerts and stats that slide out beside it, its clock set at
  * kick-off, OK held over the match for its menu, Move and resize over the channel, the board's look and the cover's
- * (each drawn as it looks, the game chosen in it, to pick from), and the standard places back; then what it does to be
- * kind to the screen. The Control Centre's Scoreboard tile is the quick switch beside it.
+ * (each drawn as it looks, the game chosen in it, to pick from), the standard places back, the classic kick-off pop-up
+ * and line-ups (each on or off, and tried there and then over Home); then what it does to be kind to the screen. The Control Centre's Scoreboard tile is the quick switch beside it.
  */
 final class BoardPanel extends SportPanel {
     private final List<ScoresTicker.Game> games = new ArrayList<>();
@@ -85,6 +85,20 @@ final class BoardPanel extends SportPanel {
                 if (open) redraw();
             });
         });
+    }
+
+    /** The game a try uses, in words: the one chosen above, else the Premier League's latest played. */
+    private String tryGame() {
+        ScoresTicker.Game g = game();
+        return g == null ? "the last Premier League game" : g.home + " v " + g.away;
+    }
+
+    /** A try of the classic pop-up or line-ups: the card away, then it over Home (ClassicIntro.tryIt). */
+    private void tryClassic(String kind) {
+        ScoresTicker.Game g = game();
+        hide();
+        if ("lineups".equals(kind)) android.widget.Toast.makeText(c, "Getting the line-ups…", android.widget.Toast.LENGTH_SHORT).show();
+        ClassicIntro.tryIt(c, g, kind, (why) -> android.widget.Toast.makeText(c, why, android.widget.Toast.LENGTH_LONG).show());
     }
 
     private ScoresTicker.Game game() {
@@ -211,6 +225,21 @@ final class BoardPanel extends SportPanel {
                 : "Off · no line-ups before kick-off";
         classicLu.ok = () -> ClassicIntro.setLineupsOn(c, !ClassicIntro.lineupsOn(c));
         add(classicPop, classicLu);
+        // Each tried now over Home, for the game chosen above when it can be (else the Premier League's latest played).
+        Row tryKick = row("Try the kick-off pop-up", false);
+        tryKick.words = () -> "Plays it now, with " + tryGame();
+        tryKick.ok = () -> tryClassic("kickoff");
+        Row tryGoal = row("Try the goal pop-up", false);
+        tryGoal.words = () -> "As play starts again after a goal: the score, scorer and minute";
+        tryGoal.ok = () -> tryClassic("restart");
+        add(tryKick, tryGoal);
+        Row trySecond = row("Try the second-half pop-up", false);
+        trySecond.words = () -> "The second half's kick-off, with the score";
+        trySecond.ok = () -> tryClassic("second");
+        Row tryLineups = row("Try the classic line-ups", false);
+        tryLineups.words = () -> "The chosen game's when they're out, else the last Premier League game's · Back closes them";
+        tryLineups.ok = () -> tryClassic("lineups");
+        add(trySecond, tryLineups);
         Row clock = row("Clock with the channel's", true);
         clock.on = () -> BoardCover.asksAtKickoff(c);
         clock.words = () -> BoardCover.asksAtKickoff(c) ? "OK at each kick-off when asked sets it to the second"

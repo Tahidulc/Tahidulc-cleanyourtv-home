@@ -1673,6 +1673,12 @@ public class GoalWatchService extends Service {
         }
         // adb only: the test alerts of the next minute come up without their sound (a check of the look, not the TV's room).
         if (intent != null && intent.getBooleanExtra("test_quiet", false)) quietUntil = android.os.SystemClock.elapsedRealtime() + 60_000L;
+        if (intent != null && intent.hasExtra("test_classic")) {
+            // adb only: the classic pop-up ("kickoff", "restart", "second") or line-ups ("lineups") now, as the Scoreboard
+            // card's Try rows play them, for the Premier League's latest game.
+            String kind = intent.getStringExtra("test_classic");
+            main.post(() -> ClassicIntro.tryIt(this, null, kind, (why) -> android.util.Log.i("Sport", "classic try: " + why)));
+        }
         if (intent != null && intent.hasExtra("test_goal")) {
             // adb only (the service needs DUMP from outside): one sample alert now, to check the look over an app.
             ScoresTicker.Game g = new ScoresTicker.Game();

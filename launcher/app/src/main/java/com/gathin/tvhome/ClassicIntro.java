@@ -17,12 +17,18 @@ import com.gathin.broadcast.Moments;
 import org.json.JSONObject;
 
 import java.io.File;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.function.Consumer;
 
 /**
  * The classic kick-off pop-up and line-ups over the channel, as the user's clips have them (overlays/: BroadcastView),
@@ -33,7 +39,8 @@ import java.util.concurrent.Executors;
  * <li>the pop-up as the kick-off reaches the screen, when play starts again after a goal (40 seconds after the goal shows,
  * with the score, scorer and minute) and at the second half's kick-off (with the score).</li>
  * </ul>
- * Each moment is shown once. Nothing shows over Home, another app, the screensaver or another of the launcher's frames.
+ * Each moment is shown once. Nothing shows over Home, another app, the screensaver or another of the launcher's frames,
+ * except a try from the Scoreboard card (tryIt), which shows over whatever is in front.
  */
 final class ClassicIntro {
     private ClassicIntro() { }
@@ -51,6 +58,8 @@ final class ClassicIntro {
     private static final Map<String, Long> lineupsTried = new HashMap<>();
     private static final ExecutorService io = Executors.newSingleThreadExecutor();
     private static boolean fetching;
+    /** A try from the Scoreboard card or adb is on: over whatever is in front, not taken down with the board. */
+    private static boolean trial;
 
     private static Handler handler() {
         if (main == null) main = new Handler(Looper.getMainLooper());
@@ -190,7 +199,7 @@ final class ClassicIntro {
         });
     }
 
-    private static void show(Context c, BroadcastView v, String kind) {
+    private static boolean show(Context c, BroadcastView v, String kind) {
         removeWindow();
         FrameLayout f = new FrameLayout(c);
         f.addView(v, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
@@ -206,7 +215,7 @@ final class ClassicIntro {
             c.getSystemService(WindowManager.class).addView(f, lp);
         } catch (Exception e) {
             v.stop();
-            return;
+            return false;
         }
         win = f;
         view = v;
@@ -215,6 +224,7 @@ final class ClassicIntro {
             BoardCover.classicLineups(true);
             if (!InputKeyService.running) AppSearchService.keysFor("classic", true);
         }
+        return true;
     }
 
     /** Over (its own end, Back, or taken down): the window goes, the board comes back. */
@@ -223,6 +233,7 @@ final class ClassicIntro {
         boolean wasLineups = "lineups".equals(viewKind);
         view = null;
         viewKind = "";
+        trial = false;
         removeWindow();
         if (wasLineups) {
             BoardCover.classicLineups(false);
@@ -239,8 +250,9 @@ final class ClassicIntro {
         } catch (Exception ignored) { }
     }
 
-    /** Taken down at once (Home, another app, the board off). */
+    /** Taken down at once (Home, another app, the board off); a try plays on to its end (or Back, for the line-ups). */
     static void hide() {
+        if (trial) return;
         if (view != null) view.stop();
         else removeWindow();
     }
@@ -256,11 +268,92 @@ final class ClassicIntro {
         return true;
     }
 
-    /** adb tests only: the pop-up or the line-ups for a game now, as if its moment had come. */
-    static void test(Context c, ScoresTicker.Game g, String kind) {
-        shown.removeIf((k) -> k.startsWith(g.id + "|"));
-        lineupsTried.remove(g.id);
-        if ("lineups".equals(kind)) lineups(c, g);
-        else popup(c, g, kind, "kickoff".equals(kind) ? null : new int[]{1, 0}, "restart".equals(kind) ? "A. Player" : null, "restart".equals(kind) ? "23'" : null);
+    // ---- a try (the Scoreboard card's Try rows, adb) ------------------------------------------------------------
+
+    /**
+     * The pop-up ("kickoff", "restart", "second") or the line-ups ("lineups") now, over whatever is in front, for a real
+     * game: the one chosen on the Scoreboard card first, else the Premier League's latest played, looking back a
+     * fortnight (the line-ups need a game whose teams are out; the goal's pop-up one with a goal). note: why nothing came
+     * (main thread). Main thread.
+     */
+    static void tryIt(Context c, ScoresTicker.Game chosen, String kind, Consumer<String> note) {
+        if (showing() || fetching) {
+            note.accept("Wait for the one on to finish");
+            return;
+        }
+        Context app = c.getApplicationContext();
+        boolean lu = "lineups".equals(kind);
+        fetching = true;
+        io.execute(() -> {
+            JSONObject cfg = null;
+            String about = null;
+            int looked = 0;
+            try {
+                for (ScoresTicker.Game g : candidates(chosen)) {
+                    if ("restart".equals(kind) && g.goals.isEmpty() && g != chosen) continue;
+                    if (++looked > (lu ? 5 : 3)) break;
+                    BroadcastData.Match m = match(g);
+                    try {
+                        if (lu) {
+                            cfg = BroadcastData.lineups(m, FotMob.raw(FotMob.find(g.id, g.homeName, g.awayName, g.kickoff)), app.getCacheDir());
+                        } else {
+                            int[] score = "kickoff".equals(kind) ? null : trialScore(g);
+                            String[] last = g.goals.isEmpty() ? null : g.goals.get(g.goals.size() - 1);
+                            boolean goal = "restart".equals(kind);
+                            cfg = BroadcastData.kickoff(kind, m, score, goal ? Moments.scorer(last) : null,
+                                    goal ? (last == null ? "" : BroadcastData.minute(last[2])) : null);
+                        }
+                    } catch (Exception oneGame) {
+                        cfg = null;
+                    }
+                    if (cfg != null) {
+                        about = m.homeName + " v " + m.awayName;
+                        break;
+                    }
+                }
+            } catch (RuntimeException ignored) {
+                // nothing found: said below
+            }
+            JSONObject got = cfg;
+            String game = about;
+            int tries = looked;
+            handler().post(() -> {
+                fetching = false;
+                if (got == null) {
+                    android.util.Log.i("Sport", "classic try " + kind + ": nothing after " + tries + " game(s)");
+                    note.accept(tries == 0 ? "Couldn't reach the scores just now" : lu ? "No game with its line-ups out to try" : "Couldn't make it just now");
+                    return;
+                }
+                if (showing()) return;
+                android.util.Log.i("Sport", "classic try " + kind + ": " + game);
+                BroadcastView v = lu ? BroadcastView.lineups(app, got, ClassicIntro::gone) : BroadcastView.kickoff(app, got, ClassicIntro::gone);
+                trial = show(app, v, kind);
+            });
+        });
+    }
+
+    /** The games a try looks at, in turn: the one chosen, then the Premier League's played ones, latest first (io thread). */
+    private static List<ScoresTicker.Game> candidates(ScoresTicker.Game chosen) {
+        List<ScoresTicker.Game> out = new ArrayList<>();
+        if (chosen != null && chosen.id != null) out.add(chosen);
+        LocalDate day = LocalDate.now(ZoneId.systemDefault());
+        for (int back = 0; back < 14 && out.size() < 8; back++) {
+            List<ScoresTicker.Game> played = new ArrayList<>();
+            for (ScoresTicker.Game g : ScoresTicker.load(new String[]{"eng.1|PL"}, day.minusDays(back))) {
+                if (g.state != 1 && g.id != null && (chosen == null || !g.id.equals(chosen.id))) played.add(g);
+            }
+            played.sort(Comparator.comparingLong((ScoresTicker.Game g) -> g.kickoff).reversed());
+            out.addAll(played);
+        }
+        return out;
+    }
+
+    /** The game's score as it stands (or ended), for the goal's and the second half's pop-ups; 1–0 when it has none. */
+    private static int[] trialScore(ScoresTicker.Game g) {
+        try {
+            return new int[]{Integer.parseInt(g.homeScore.trim()), Integer.parseInt(g.awayScore.trim())};
+        } catch (RuntimeException e) {
+            return new int[]{1, 0};
+        }
     }
 }
