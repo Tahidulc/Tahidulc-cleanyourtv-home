@@ -75,7 +75,9 @@
     if (t !== r.m || refit) { el.style.transform = t; r.m = t; }
     const o = Math.round(a * 1000) / 1000;
     if (o !== r.o) { el.style.opacity = String(o); r.o = o; }
-    const b = blend === 'lighter' ? PLUS : blend || '';
+    // added light as a blend of the compositor's own, unless the page turned it off (LK_PLUS false): each such layer is an
+    // offscreen surface of its own, and the Streamer's PowerVR took a second a frame over the pop-up's dozen of them
+    const b = blend === 'lighter' ? (window.LK_PLUS === false ? '' : PLUS) : blend || '';
     if (b !== r.b) { el.style.mixBlendMode = b || 'normal'; r.b = b; }
     const z = top ? 100000 + order++ : g0 ? g0.n++ : order++;
     if (z !== r.z) { el.style.zIndex = String(z); r.z = z; }

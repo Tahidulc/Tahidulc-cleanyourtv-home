@@ -24,10 +24,12 @@
           goalMin: cfg.goalMin || '', scorer: BX.up(cfg.scorer) }],
       };
       window.ASSET_URLS = { home: cfg.home.crest, away: cfg.away.crest, logos: cfg.compLogo ? { [comp]: cfg.compLogo } : {} };
-      // always the full look; q only when the app gives it, to compare: {flat (no shadows), t3res (0.3-1: the trophy
+      // always the full look; q only when the app gives it, to compare: {flat (no shadows), plus (added light), t3res (0.3-1: the trophy
       // drawn smaller, then scaled up)}
       const q = cfg.q && Object.keys(cfg.q).length ? cfg.q : {};
       if (q.flat) BX.flat();
+      // the glows laid over as they are (q.plus: added light, as drawn before, to compare)
+      window.LK_PLUS = !!q.plus;
       window.POP.q = q;
       BX.log('quality ' + JSON.stringify(q));
       window.onBroadcastReady = () => {
