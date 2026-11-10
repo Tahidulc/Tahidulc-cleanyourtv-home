@@ -41,6 +41,15 @@ public final class Moments {
         return untilKickoffMs <= LINEUPS_FROM_MS && untilKickoffMs >= LINEUPS_UNTIL_MS;
     }
 
+    /** The stadium line-ups (the first design): at the walk-out, from three and a half minutes before to a minute before. */
+    public static final long STADIUM_FROM_MS = 210_000L, STADIUM_UNTIL_MS = 60_000L;
+
+    /** Pure: whether the line-ups in this style ("classic" or "stadium") are due this long before the kick-off. */
+    public static boolean lineupsDue(String style, long untilKickoffMs) {
+        if ("stadium".equals(style)) return untilKickoffMs <= STADIUM_FROM_MS && untilKickoffMs >= STADIUM_UNTIL_MS;
+        return lineupsDue(untilKickoffMs);
+    }
+
     /** Pure: a side's (1 home, 2 away) latest goal as the feeds list them ({key, scorer, minute, "home"/"away", kind}). */
     public static String[] lastGoal(List<String[]> goals, int side) {
         String want = side == 1 ? "home" : "away";

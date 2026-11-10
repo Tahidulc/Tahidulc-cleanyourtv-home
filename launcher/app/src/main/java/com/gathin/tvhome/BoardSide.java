@@ -74,6 +74,14 @@ abstract class BoardSide extends View {
 
     /** Out from under the board (shown at once when it already is). */
     protected void slideOut() {
+        // the line-ups' tab swish as it comes out (the scorer, the stats, an alert), panned to where it is on the screen
+        if (!isOut() && BoardCover.swishOn(getContext())) {
+            int[] at = new int[2];
+            getLocationOnScreen(at);
+            int sw = getResources().getDisplayMetrics().widthPixels;
+            float pan = sw > 0 ? Math.max(-0.6f, Math.min(0.6f, ((at[0] + getWidth() / 2f) / sw * 2f - 1f) * 0.6f)) : 0f;
+            com.gathin.broadcast.Sfx.play(getContext(), com.gathin.broadcast.Sfx.SWISH, pan, 0.7f);
+        }
         if (!isOut()) out = 0f;
         after = null;
         setVisibility(VISIBLE);

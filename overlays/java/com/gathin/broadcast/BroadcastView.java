@@ -45,7 +45,42 @@ public final class BroadcastView extends FrameLayout {
     }
 
     private static final String TAG = "Broadcast";
-    private static final String[] SOUNDS = {"popup-kickoff", "popup-restart", "popup-second", "swish-tab", "swish-out", "swish-coin"};
+    /** Each page's sounds in broadcast/sfx: the names that start so (the strap only its look's). */
+    private static String[] sounds(Context c, String page, String cfg) {
+        String prefix = "kickoff".equals(page) ? "popup-" : "lineups".equals(page) ? "swish-" : page + "-";
+        if ("strap".equals(page)) {
+            try {
+                String look = new JSONObject(cfg).optString("look", "CLASSIC").toLowerCase(java.util.Locale.ROOT);
+                return new String[]{"strap-" + look};
+            } catch (Exception ignored) {
+                // all of them, then
+            }
+        }
+        java.util.List<String> out = new java.util.ArrayList<>();
+        try {
+            String[] all = c.getAssets().list("broadcast/sfx");
+            for (String f : all == null ? new String[0] : all) {
+                if (f.startsWith(prefix) && f.endsWith(".ogg")) out.add(f.substring(0, f.length() - 4));
+            }
+        } catch (Exception ignored) {
+            // none
+        }
+        return out.toArray(new String[0]);
+    }
+
+    /** The pages there are, and the longest each may run before it is taken down. */
+    private static long maxMs(String page) {
+        switch (page) {
+            case "lineups": return 180_000L;
+            case "stadium": return 150_000L;
+            case "strap": return 20_000L;
+            default: return 25_000L;
+        }
+    }
+
+    private static String pageOf(String page) {
+        return "lineups".equals(page) || "strap".equals(page) || "stadium".equals(page) ? page : "kickoff";
+    }
 
     private final Handler main = new Handler(Looper.getMainLooper());
     private final String page, cfg;
@@ -62,6 +97,12 @@ public final class BroadcastView extends FrameLayout {
     private final Runnable tooLong = this::finish;
 
     /** The kick-off pop-up (BroadcastData.kickoff): about eight seconds. */
+    /** Any page ("kickoff", "lineups", "strap", "stadium") playing as soon as it is ready. */
+    public static BroadcastView page(Context c, String page, JSONObject cfg, Listener l) {
+        String p = pageOf(page);
+        return new BroadcastView(c, p, cfg.toString(), maxMs(p), l, null);
+    }
+
     public static BroadcastView kickoff(Context c, JSONObject cfg, Listener l) {
         return new BroadcastView(c, "kickoff", cfg.toString(), 25_000L, l, null);
     }
@@ -72,7 +113,8 @@ public final class BroadcastView extends FrameLayout {
      */
     public static BroadcastView prepare(Context c, String page, JSONObject cfg, Listener l, Ready r) throws org.json.JSONException {
         JSONObject held = new JSONObject(cfg.toString()).put("hold", true);
-        return new BroadcastView(c, "lineups".equals(page) ? "lineups" : "kickoff", held.toString(), "lineups".equals(page) ? 180_000L : 25_000L, l, r);
+        String p = pageOf(page);
+        return new BroadcastView(c, p, held.toString(), maxMs(p), l, r);
     }
 
     /** The classic line-ups (BroadcastData.lineups): both teams, about a minute and a half. */
@@ -94,7 +136,7 @@ public final class BroadcastView extends FrameLayout {
         setClickable(false);
         pool = new SoundPool.Builder().setMaxStreams(4).setAudioAttributes(new AudioAttributes.Builder()
                 .setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build()).build();
-        for (String s : SOUNDS) {
+        for (String s : sounds(c, page, cfg)) {
             try (AssetFileDescriptor fd = c.getAssets().openFd("broadcast/sfx/" + s + ".ogg")) {
                 sounds.put(s, pool.load(fd, 1));
             } catch (Exception e) {
@@ -190,7 +232,7 @@ public final class BroadcastView extends FrameLayout {
     /** Back: the line-ups fade away to the channel at once (the pop-up, being short, just goes). */
     public void back() {
         if (over) return;
-        if (web != null && "lineups".equals(page) && started) web.evaluateJavascript("BROADCAST.back()", null);
+        if (web != null && ("lineups".equals(page) || "stadium".equals(page)) && started) web.evaluateJavascript("BROADCAST.back()", null);
         else finish();
     }
 

@@ -47,6 +47,13 @@
     <string name="live28_name_only">General channel: Whitebrook Road, no sport</string>
     <string name="live28_see_through">See-through, the channel\'s own logo hidden under it (Sports wordmark and styles)</string>
     <string name="live28_lineups">Line-ups on screen before kick-off</string>
-    <string name="live33_classic_popup">Kick-off pop-up: crests, trophy and teams at each kick-off and after goals</string>
-    <string name="live33_classic_lineups">Classic line-ups before kick-off (Back closes them)</string>
+    <string name="live33_classic_popup">Kick-off pop-up: at each kick-off, after goals and for the second half</string>
+    <string name="live33_classic_lineups">Line-ups before kick-off (Back closes them)</string>
+    <string name="live35_style_classic">Classic: crests, trophy and teams</string>
+    <string name="live35_style_strap">In the scoreboard\'s look</string>
+    <string name="live35_style_beam">Classic beam-in</string>
+    <string name="live35_style_stadium">Stadium board</string>
+    <string name="live35_style_off">Off</string>
+    <string name="live35_goal_sound">Sound over the goal on the scoreboard (tap one to hear it)</string>
+    <string name="live34_swish">Swish as the scorer, stats and alerts slide out beside the scoreboard</string>
 </resources>

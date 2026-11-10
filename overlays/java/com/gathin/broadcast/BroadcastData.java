@@ -205,6 +205,8 @@ public final class BroadcastData {
         o.put("city", ground == null ? "" : ground.optString("city"));
         o.put("lat", ground != null && ground.has("lat") ? ground.optDouble("lat", 51.5) : 51.5);
         o.put("lon", ground != null && ground.has("long") ? ground.optDouble("long", -0.1) : -0.1);
+        String ref = referee(info);
+        if (!ref.isEmpty()) o.put("referee", ref);
         long ko = m.kickoff > 0 ? m.kickoff : System.currentTimeMillis();
         ZonedDateTime local = Instant.ofEpochMilli(ko).atZone(ZoneId.systemDefault());
         o.put("ko", String.format(Locale.ROOT, "%02d:%02d", local.getHour(), local.getMinute()));
@@ -212,6 +214,31 @@ public final class BroadcastData {
         o.put("cond", night(local) ? "night" : "day");
         o.put("compName", compName(compKey(m.compId, m.compName), m.compName));
         o.put("sound", true);
+        return o;
+    }
+
+    /** Pure: the referee's name from FotMob's info box ({"Referee": {"text": ...}}), "" when it has none. */
+    static String referee(JSONObject infoBox) {
+        JSONObject r = infoBox == null ? null : infoBox.optJSONObject("Referee");
+        return r == null ? "" : r.optString("text", "").trim();
+    }
+
+    // ---- the first design: the strap in the board's own look ------------------------------------------------------
+
+    /**
+     * The kick-off strap in the scoreboard's look (page "strap"): the pop-up's settings, with the board's look (its
+     * BoardBug style's name), where the board sits on a 1920 x 1080 screen {x, y, w, h} (the strap folds into it) and
+     * the ground's weather ("9° · light rain", or "").
+     */
+    public static JSONObject strap(String kind, Match m, int[] score, String scorer, String minute, String look, float[] board,
+                                   String weather) throws JSONException {
+        JSONObject o = kickoff(kind, m, score, scorer, minute);
+        o.put("look", look == null || look.isEmpty() ? "CLASSIC" : look);
+        if (board != null && board.length == 4 && board[2] > 0 && board[3] > 0) {
+            o.put("board", new JSONObject().put("x", Math.round(board[0])).put("y", Math.round(board[1]))
+                    .put("w", Math.round(board[2])).put("h", Math.round(board[3])));
+        }
+        if (weather != null && !weather.isEmpty()) o.put("weather", weather);
         return o;
     }
 

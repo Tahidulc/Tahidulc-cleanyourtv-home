@@ -425,6 +425,25 @@ final class BoardCover {
     }
 
     /** The game's stats sliding out beside it now and then. */
+    /** The sound over the board's goal animation (Sfx.GOALS: "off", "roar", "hit", "horn", "swish", "drums", "stab"). */
+    static String goalSound(Context c) {
+        return prefs(c).getString("goal_sound", "off");
+    }
+
+    static void setGoalSound(Context c, String key) {
+        prefs(c).edit().putString("goal_sound", key).apply();
+        com.gathin.broadcast.Sfx.warm(c, "goal-" + key);
+    }
+
+    /** The line-ups' tab swish as anything slides out beside the board (the scorer, the stats, alerts): on unless switched off. */
+    static boolean swishOn(Context c) {
+        return prefs(c).getBoolean("swish", true);
+    }
+
+    static void setSwishOn(Context c, boolean on) {
+        prefs(c).edit().putBoolean("swish", on).apply();
+    }
+
     static boolean statsOn(Context c) {
         return prefs(c).getBoolean("stats", true);
     }
@@ -1585,6 +1604,7 @@ final class BoardCover {
             int side = goalSide(shownScore, l.score);
             if (side > 0) {
                 bug.goal(side);
+                com.gathin.broadcast.Sfx.goal(c, goalSound(c));
                 goalShownAt = now;
                 expectScorer(c, g, l.score, side);
                 ClassicIntro.goal(c, g, l.score, side);
@@ -1685,6 +1705,7 @@ final class BoardCover {
     private static boolean ensureWindows(Context c) {
         if (boardWin != null) return true;
         if (!Settings.canDrawOverlays(c)) return false;
+        com.gathin.broadcast.Sfx.warm(c, com.gathin.broadcast.Sfx.SWISH, "goal-" + goalSound(c));
         android.util.DisplayMetrics dm = c.getResources().getDisplayMetrics();
         sw = Math.max(dm.widthPixels, dm.heightPixels);
         sh = Math.min(dm.widthPixels, dm.heightPixels);
@@ -1859,6 +1880,20 @@ final class BoardCover {
         if (!asked) main().postDelayed(patchRun, 250L);
     }
 
+    /** Where the board was last put on the screen {x, y, w, h} (px), for the kick-off strap to fold into. */
+    private static int[] lastBoard;
+
+    /**
+     * Where the board is (or was last put, or would stand by default) on a 1920 x 1080 screen {x, y, w, h}: the strap in
+     * the board's look folds into it. Null before it was ever placed (the page then uses the standard top left).
+     */
+    static float[] boardRect1920() {
+        int[] r = lastBoard;
+        if (r == null || sw <= 0) return null;
+        float k = 1920f / sw;
+        return new float[]{r[0] * k, r[1] * k, r[2] * k, r[3] * k};
+    }
+
     /** The classic line-ups on the screen (ClassicIntro): the board and the cover out of their way meanwhile. */
     private static boolean classicUp;
 
@@ -2011,6 +2046,7 @@ final class BoardCover {
         sizeAt(bug, vw, vh, boardAt, head);
         if (stats.isOut()) beside(stats, stats.getLayoutParams().width);
         if (drop.isOut()) beside(drop, drop.getLayoutParams().width);
+        lastBoard = new int[]{x, y, w, h};
         WindowManager.LayoutParams lp = (WindowManager.LayoutParams) boardWin.getLayoutParams();
         int wx = x - 2 * edge - boardAt, wy = y - 2 * edge - head, ww = boardAt + vw + (sideLeft ? 0 : sideGap + room) + 2 * edge,
                 wh = head + vh + 2 * edge;

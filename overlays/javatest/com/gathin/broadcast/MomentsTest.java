@@ -45,6 +45,15 @@ public class MomentsTest {
     }
 
     @Test
+    public void theStadiumLineUpsComeAtTheWalkOut() {
+        assertFalse(Moments.lineupsDue("stadium", 5 * 60_000L));
+        assertTrue(Moments.lineupsDue("stadium", 210_000L));
+        assertTrue(Moments.lineupsDue("stadium", 90_000L));
+        assertFalse(Moments.lineupsDue("stadium", 50_000L));
+        assertTrue(Moments.lineupsDue("classic", 5 * 60_000L));
+    }
+
+    @Test
     public void theRestartNamesTheSidesLatestScorer() {
         List<String[]> goals = Arrays.asList(new String[]{"a", "Saka", "12'", "home", ""}, new String[]{"b", "Delap", "30'", "away", ""},
                 new String[]{"c", "Havertz", "41'", "home", "pen"});

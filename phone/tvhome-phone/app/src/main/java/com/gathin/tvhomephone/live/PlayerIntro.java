@@ -59,20 +59,61 @@ final class PlayerIntro {
         return c.getApplicationContext().getSharedPreferences(FILE, Context.MODE_PRIVATE);
     }
 
-    static boolean popupOn(Context c) {
-        return prefs(c).getBoolean("popup", true);
+    /** The line-ups' tab swish as anything slides out beside the scoreboard (the scorer, the stats, alerts): on unless off. */
+    static boolean swishOn(Context c) {
+        return prefs(c).getBoolean("swish", true);
     }
 
-    static void setPopupOn(Context c, boolean on) {
-        prefs(c).edit().putBoolean("popup", on).apply();
+    static void setSwishOn(Context c, boolean on) {
+        prefs(c).edit().putBoolean("swish", on).apply();
+        if (on) com.gathin.broadcast.Sfx.play(c, com.gathin.broadcast.Sfx.SWISH, 0f, 0.7f);
+    }
+
+    /** The sound over the scoreboard's goal animation (Sfx.GOALS: "off", "roar", "hit", "horn", "swish", "drums", "stab"). */
+    static String goalSound(Context c) {
+        return prefs(c).getString("goal_sound", "off");
+    }
+
+    static void setGoalSound(Context c, String key) {
+        prefs(c).edit().putString("goal_sound", key).apply();
+        com.gathin.broadcast.Sfx.warm(c, "goal-" + key);
+        // heard as it is chosen (the first time once it has loaded)
+        if (!"off".equals(key)) new Handler(Looper.getMainLooper()).postDelayed(() -> com.gathin.broadcast.Sfx.goal(c, key), 250);
+    }
+
+    /** The pop-up's style: "classic" (crests, trophy and teams), "strap" (in the scoreboard's look) or "off". */
+    static String popupStyle(Context c) {
+        String s = prefs(c).getString("popup_style", null);
+        return s != null ? s : prefs(c).getBoolean("popup", true) ? "classic" : "off";
+    }
+
+    static void setPopupStyle(Context c, String style) {
+        prefs(c).edit().putString("popup_style", style).apply();
+    }
+
+    /** The line-ups' style: "classic" (the beam-in), "stadium" (each eleven on a board over a ground lit for the day) or "off". */
+    static String lineupsStyle(Context c) {
+        String s = prefs(c).getString("lineups_style", null);
+        return s != null ? s : prefs(c).getBoolean("lineups", true) ? "classic" : "off";
+    }
+
+    static void setLineupsStyle(Context c, String style) {
+        prefs(c).edit().putString("lineups_style", style).apply();
+    }
+
+    static boolean popupOn(Context c) {
+        return !"off".equals(popupStyle(c));
     }
 
     static boolean lineupsOn(Context c) {
-        return prefs(c).getBoolean("lineups", true);
+        return !"off".equals(lineupsStyle(c));
     }
 
-    static void setLineupsOn(Context c, boolean on) {
-        prefs(c).edit().putBoolean("lineups", on).apply();
+    /** Where the scoreboard is over the picture, on a 1920 x 1080 picture {x, y, w, h} (the strap folds into it); null: unknown. */
+    private java.util.function.Supplier<float[]> boardAt = () -> null;
+
+    void boardAt(java.util.function.Supplier<float[]> where) {
+        boardAt = where == null ? () -> null : where;
     }
 
     boolean showing() {
@@ -90,7 +131,7 @@ final class PlayerIntro {
         if (!now.isEmpty()) phases.put(g.id, now);
         String kind = was == null ? null : Moments.moment(was, now);
         if (kind != null && popupOn(a)) popup(g, kind, "kickoff".equals(kind) ? null : new int[]{g.homeScore, g.awayScore}, null, null);
-        if ("pre".equals(now) && g.kickoff > 0 && lineupsOn(a) && Moments.lineupsDue(g.kickoff - screenNow)) lineups(g);
+        if ("pre".equals(now) && g.kickoff > 0 && lineupsOn(a) && Moments.lineupsDue(lineupsStyle(a), g.kickoff - screenNow)) lineups(g);
     }
 
     /** A goal reached the picture (1 home, 2 away): the restart's pop-up in a little while, if the half goes on. */
@@ -145,16 +186,20 @@ final class PlayerIntro {
         if (shown.contains(key) || showing() || !canShow.getAsBoolean()) return;
         shown.add(key);
         BroadcastData.Match m = match(g);
+        boolean strap = "strap".equals(popupStyle(a));
+        String look = ScoreBoard.style(a).name();
+        float[] board = boardAt.get();
         io.execute(() -> {
             JSONObject cfg;
             try {
-                cfg = BroadcastData.kickoff(kind, m, score, scorer, minute);
+                cfg = strap ? BroadcastData.strap(kind, m, score, scorer, minute, look, board, "")
+                        : BroadcastData.kickoff(kind, m, score, scorer, minute);
             } catch (Exception e) {
                 return;
             }
             h.post(() -> {
                 if (showing() || !canShow.getAsBoolean() || a.isFinishing()) return;
-                show(BroadcastView.kickoff(a, cfg, this::gone), kind);
+                show(BroadcastView.page(a, strap ? "strap" : "kickoff", cfg, this::gone), strap ? "strap" : kind);
             });
         });
     }
@@ -182,7 +227,8 @@ final class PlayerIntro {
                 fetching = false;
                 if (got == null || shown.contains(key) || showing() || !canShow.getAsBoolean() || a.isFinishing()) return;
                 shown.add(key);
-                show(BroadcastView.lineups(a, got, this::gone), "lineups");
+                String page = "stadium".equals(lineupsStyle(a)) ? "stadium" : "lineups";
+                show(BroadcastView.page(a, page, got, this::gone), page);
             });
         });
     }
@@ -195,12 +241,17 @@ final class PlayerIntro {
         root.addView(v, Math.min(5, root.getChildCount()), lp);
         v.setTranslationX(pw > 0 ? px : 0);
         v.setTranslationY(ph > 0 ? py : 0);
-        if ("lineups".equals(kind)) lineupsUp.accept(true);
+        if (hidesBoard(kind)) lineupsUp.accept(true);
+    }
+
+    /** The line-ups (either) and the strap (which draws the board itself as it folds into it): the board out of the way. */
+    private static boolean hidesBoard(String kind) {
+        return "lineups".equals(kind) || "stadium".equals(kind) || "strap".equals(kind);
     }
 
     private void gone(BroadcastView v) {
         if (v != view) return;
-        boolean wasLineups = "lineups".equals(viewKind);
+        boolean wasLineups = hidesBoard(viewKind);
         view = null;
         viewKind = "";
         root.removeView(v);
@@ -227,7 +278,7 @@ final class PlayerIntro {
 
     /** Back: the line-ups fade away if they are on (true), before anything else Back does. */
     boolean back() {
-        if (!showing() || !"lineups".equals(viewKind)) return false;
+        if (!showing() || !("lineups".equals(viewKind) || "stadium".equals(viewKind))) return false;
         view.back();
         return true;
     }

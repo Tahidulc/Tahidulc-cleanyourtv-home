@@ -84,22 +84,56 @@ final class ClassicIntro {
         return c.getApplicationContext().getSharedPreferences(FILE, Context.MODE_PRIVATE);
     }
 
-    /** The kick-off pop-up (and the restart's and the second half's): on unless switched off. */
+    /**
+     * The kick-off pop-up's style (and the restart's and the second half's): "classic" (from the family's clip: crests,
+     * trophy and teams), "strap" (the first design: a strap in the scoreboard's own look that folds into it) or "off".
+     */
+    static String popupStyle(Context c) {
+        String s = prefs(c).getString("popup_style", null);
+        return s != null ? s : prefs(c).getBoolean("popup", true) ? "classic" : "off";
+    }
+
+    static void setPopupStyle(Context c, String style) {
+        prefs(c).edit().putString("popup_style", style).apply();
+    }
+
+    /** The line-ups' style before kick-off: "classic" (the beam-in, from the reel), "stadium" (the first design) or "off". */
+    static String lineupsStyle(Context c) {
+        String s = prefs(c).getString("lineups_style", null);
+        return s != null ? s : prefs(c).getBoolean("lineups", true) ? "classic" : "off";
+    }
+
+    static void setLineupsStyle(Context c, String style) {
+        prefs(c).edit().putString("lineups_style", style).apply();
+    }
+
+    /** Pure: the next style on the card's OK: classic, then the first design, then off. */
+    static String nextStyle(String style, String first) {
+        return "classic".equals(style) ? first : first.equals(style) ? "off" : "classic";
+    }
+
     static boolean popupOn(Context c) {
-        return prefs(c).getBoolean("popup", true);
+        return !"off".equals(popupStyle(c));
     }
 
-    static void setPopupOn(Context c, boolean on) {
-        prefs(c).edit().putBoolean("popup", on).apply();
-    }
-
-    /** The classic line-ups before kick-off: on unless switched off. */
     static boolean lineupsOn(Context c) {
-        return prefs(c).getBoolean("lineups", true);
+        return !"off".equals(lineupsStyle(c));
     }
 
-    static void setLineupsOn(Context c, boolean on) {
-        prefs(c).edit().putBoolean("lineups", on).apply();
+    /** The page for a pop-up in this TV's style. */
+    private static String popupPage(Context c) {
+        return "strap".equals(popupStyle(c)) ? "strap" : "kickoff";
+    }
+
+    /**
+     * A pop-up's settings for its page (io thread): the classic's, or the strap's with the board's look, where the board
+     * is and the ground's weather now.
+     */
+    private static JSONObject popupCfg(Context c, String page, ScoresTicker.Game g, BroadcastData.Match m, String kind, int[] score,
+                                       String scorer, String minute) throws org.json.JSONException {
+        if (!"strap".equals(page)) return BroadcastData.kickoff(kind, m, score, scorer, minute);
+        return BroadcastData.strap(kind, m, score, scorer, minute, BoardCover.style(c).name(), BoardCover.boardRect1920(),
+                "kickoff".equals(kind) ? MatchExtras.weatherNow(c, g) : "");
     }
 
     /** Whether one of them is on the screen now. */
@@ -108,7 +142,7 @@ final class ClassicIntro {
     }
 
     static boolean showingLineups() {
-        return showing() && "lineups".equals(viewKind);
+        return showing() && ("lineups".equals(viewKind) || "stadium".equals(viewKind));
     }
 
     // ---- when (com.gathin.broadcast.Moments: the same on the phone) ---------------------------------------------
@@ -130,7 +164,7 @@ final class ClassicIntro {
         if (prep != null && up - prepAt > PREP_KEEP_MS) dropPrepared();
         String kind = was == null ? null : Moments.moment(was, now);
         if (kind != null && popupOn(c)) popup(c, g, kind, "kickoff".equals(kind) ? null : BroadcastData.score(score), null, null);
-        if ("pre".equals(now) && g.kickoff > 0 && lineupsOn(c) && Moments.lineupsDue(g.kickoff - screenNow)) lineups(c, g);
+        if ("pre".equals(now) && g.kickoff > 0 && lineupsOn(c) && Moments.lineupsDue(lineupsStyle(c), g.kickoff - screenNow)) lineups(c, g);
         // made ready before their moments, while nothing else is on
         if (!popupOn(c) || showing() || fetching || !BoardCover.playerUp(c)) return;
         long untilKo = g.kickoff - screenNow;
@@ -199,16 +233,17 @@ final class ClassicIntro {
         shown.add(key);
         BroadcastData.Match m = match(g);
         Context app = c.getApplicationContext();
+        String page = popupPage(c);
         io.execute(() -> {
             JSONObject cfg;
             try {
-                cfg = BroadcastData.kickoff(kind, m, score, scorer, minute);
+                cfg = popupCfg(app, page, g, m, kind, score, scorer, minute);
             } catch (Exception e) {
                 return;
             }
             handler().post(() -> {
                 if (showing() || !BoardCover.playerUp(app)) return;
-                show(app, BroadcastView.kickoff(app, cfg, ClassicIntro::gone), kind);
+                show(app, BroadcastView.page(app, page, cfg, ClassicIntro::gone), "strap".equals(page) ? "strap" : kind);
             });
         });
     }
@@ -237,7 +272,8 @@ final class ClassicIntro {
                 fetching = false;
                 if (got == null || shown.contains(key) || showing() || !BoardCover.playerUp(app)) return;
                 shown.add(key);
-                show(app, BroadcastView.lineups(app, got, ClassicIntro::gone), "lineups");
+                String page = "stadium".equals(lineupsStyle(app)) ? "stadium" : "lineups";
+                show(app, BroadcastView.page(app, page, got, ClassicIntro::gone), page);
             });
         });
     }
@@ -262,9 +298,10 @@ final class ClassicIntro {
 
     /** The line-ups on the screen: the board out of the way, Back taken here (no key helper on the TCL). */
     private static void lineupsUp(String kind) {
-        if (!"lineups".equals(kind)) return;
-        BoardCover.classicLineups(true);
-        if (!InputKeyService.running) AppSearchService.keysFor("classic", true);
+        boolean lu = "lineups".equals(kind) || "stadium".equals(kind);
+        if (!lu && !"strap".equals(kind)) return;
+        BoardCover.classicLineups(true);   // the strap draws the board itself as it folds into it
+        if (lu && !InputKeyService.running) AppSearchService.keysFor("classic", true);
     }
 
     /** The overlay's window: the whole screen (MATCH_PARENT), or a pixel square while a pop-up is made ready (1). */
@@ -292,10 +329,11 @@ final class ClassicIntro {
         preparing = true;
         BroadcastData.Match m = match(g);
         Context app = c.getApplicationContext();
+        String page = popupPage(c);
         io.execute(() -> {
             JSONObject cfg = null;
             try {
-                cfg = BroadcastData.kickoff(kind, m, score, scorer, minute);
+                cfg = popupCfg(app, page, g, m, kind, score, scorer, minute);
                 if (q != null && q.length() > 0) cfg.put("q", q);
             } catch (Exception ignored) {
                 // not made ready: the moment makes it then, as before
@@ -303,7 +341,7 @@ final class ClassicIntro {
             JSONObject got = cfg;
             handler().post(() -> {
                 preparing = false;
-                if (got != null && !shown.contains(key)) hold(app, "kickoff", got, kind, key, ready);
+                if (got != null && !shown.contains(key)) hold(app, page, got, "strap".equals(page) ? "strap" : kind, key, ready);
             });
         });
     }
@@ -383,7 +421,7 @@ final class ClassicIntro {
             return;
         }
         if (v != null && v != view) return;
-        boolean wasLineups = "lineups".equals(viewKind);
+        boolean wasLineups = "lineups".equals(viewKind) || "stadium".equals(viewKind) || "strap".equals(viewKind);
         view = null;
         viewKind = "";
         trial = false;
@@ -459,7 +497,7 @@ final class ClassicIntro {
                             int[] score = "kickoff".equals(kind) ? null : trialScore(g);
                             String[] last = g.goals.isEmpty() ? null : g.goals.get(g.goals.size() - 1);
                             boolean goal = "restart".equals(kind);
-                            cfg = BroadcastData.kickoff(kind, m, score, goal ? Moments.scorer(last) : null,
+                            cfg = popupCfg(app, popupPage(app), g, m, kind, score, goal ? Moments.scorer(last) : null,
                                     goal ? (last == null ? "" : BroadcastData.minute(last[2])) : null);
                             if (q.length() > 0) cfg.put("q", q);
                         }
@@ -488,7 +526,9 @@ final class ClassicIntro {
                 android.util.Log.i("Sport", "classic try " + kind + ": " + game + ", data in " + (android.os.SystemClock.uptimeMillis() - t0) + " ms");
                 // made ready out of sight, then the whole screen the moment it is (no empty window while it loads)
                 String key = "try|" + kind + "|" + android.os.SystemClock.uptimeMillis();
-                hold(app, lu ? "lineups" : "kickoff", got, kind, key, (v) -> {
+                String page = lu ? ("stadium".equals(lineupsStyle(app)) ? "stadium" : "lineups") : popupPage(app);
+                String shownAs = lu ? page : "strap".equals(page) ? "strap" : kind;
+                hold(app, page, got, shownAs, key, (v) -> {
                     if (goPrepared(key)) trial = true;
                 });
             });

@@ -190,8 +190,16 @@ public final class BoardSettings {
         row(c, col, c.getString(R.string.live28_name_only), ScoreBoard.logoNameOnly(c), on -> ScoreBoard.setLogoNameOnly(c, on));
         row(c, col, c.getString(R.string.live28_see_through), ScoreBoard.logoSeeThrough(c), on -> ScoreBoard.setLogoSeeThrough(c, on));
         row(c, col, c.getString(R.string.live28_lineups), ScoreBoard.lineupsOn(c), on -> ScoreBoard.setLineupsOn(c, on));
-        row(c, col, c.getString(R.string.live33_classic_popup), PlayerIntro.popupOn(c), on -> PlayerIntro.setPopupOn(c, on));
-        row(c, col, c.getString(R.string.live33_classic_lineups), PlayerIntro.lineupsOn(c), on -> PlayerIntro.setLineupsOn(c, on));
+        // The kick-off pop-up and the line-ups before kick-off: each in one of two styles, or off.
+        styles(c, col, c.getString(R.string.live33_classic_popup), new String[]{"classic", "strap", "off"},
+                new String[]{c.getString(R.string.live35_style_classic), c.getString(R.string.live35_style_strap), c.getString(R.string.live35_style_off)},
+                PlayerIntro.popupStyle(c), st -> PlayerIntro.setPopupStyle(c, st));
+        styles(c, col, c.getString(R.string.live33_classic_lineups), new String[]{"classic", "stadium", "off"},
+                new String[]{c.getString(R.string.live35_style_beam), c.getString(R.string.live35_style_stadium), c.getString(R.string.live35_style_off)},
+                PlayerIntro.lineupsStyle(c), st -> PlayerIntro.setLineupsStyle(c, st));
+        row(c, col, c.getString(R.string.live34_swish), PlayerIntro.swishOn(c), on -> PlayerIntro.setSwishOn(c, on));
+        styles(c, col, c.getString(R.string.live35_goal_sound), com.gathin.broadcast.Sfx.GOALS, com.gathin.broadcast.Sfx.GOAL_NAMES,
+                PlayerIntro.goalSound(c), key -> PlayerIntro.setGoalSound(c, key));
         row(c, col, c.getString(R.string.live21_logo_comp), ScoreBoard.logoComp(c), on -> ScoreBoard.setLogoComp(c, on));
         row(c, col, c.getString(R.string.live24_logo_live), ScoreBoard.logoLive(c), on -> ScoreBoard.setLogoLive(c, on));
         row(c, col, c.getString(R.string.live26_fotmob), ScoreBoard.fotmobOn(c), on -> ScoreBoard.setFotmobOn(c, on));
@@ -255,6 +263,28 @@ public final class BoardSettings {
     }
 
     /** One choice: its picture (added first) over its name, ringed when chosen. */
+    /** A heading and a row of choices, one picked (keys[i] shown as words[i]). */
+    private static void styles(Context c, LinearLayout col, String title, String[] keys, String[] words, String now,
+                               java.util.function.Consumer<String> set) {
+        col.addView(sub(c, title));
+        android.widget.HorizontalScrollView hs = new android.widget.HorizontalScrollView(c);
+        hs.setHorizontalScrollBarEnabled(false);
+        LinearLayout line = new LinearLayout(c);
+        hs.addView(line);
+        java.util.List<android.view.View> frames = new java.util.ArrayList<>();
+        for (int i = 0; i < keys.length; i++) {
+            String k = keys[i];
+            LinearLayout one = choice(c, words[i], k.equals(now));
+            one.setOnClickListener(v -> {
+                set.accept(k);
+                for (android.view.View f : frames) f.setSelected(f == v);
+            });
+            frames.add(one);
+            line.addView(one, spaced(c));
+        }
+        col.addView(hs, new LinearLayout.LayoutParams(-1, -2));
+    }
+
     private static LinearLayout choice(Context c, String name, boolean on) {
         LinearLayout one = new LinearLayout(c);
         one.setOrientation(LinearLayout.VERTICAL);

@@ -87,6 +87,11 @@ final class BoardPanel extends SportPanel {
         });
     }
 
+    /** The pop-up's style in a word or two, for the Try rows ("classic" when it is off: a try still shows one). */
+    private String popupStyleWords() {
+        return "strap".equals(ClassicIntro.popupStyle(c)) ? "in the scoreboard's look" : "classic";
+    }
+
     /** The game a try uses, in words: the one chosen above, else the Premier League's latest played. */
     private String tryGame() {
         ScoresTicker.Game g = game();
@@ -159,6 +164,22 @@ final class BoardPanel extends SportPanel {
         stats.words = () -> BoardCover.statsOn(c) ? "A few times a game: before kick-off, each half, half and full time" : "Off";
         stats.ok = () -> BoardCover.setStatsOn(c, !BoardCover.statsOn(c));
         add(drops, stats);
+        Row swish = row("Swish as they slide out", true);
+        swish.on = () -> BoardCover.swishOn(c);
+        swish.words = () -> BoardCover.swishOn(c) ? "The line-ups' swish for the scorer, the stats and every alert beside the board" : "Off · they come out silently";
+        swish.ok = () -> {
+            BoardCover.setSwishOn(c, !BoardCover.swishOn(c));
+            if (BoardCover.swishOn(c)) com.gathin.broadcast.Sfx.play(c, com.gathin.broadcast.Sfx.SWISH, 0f, 0.7f);
+        };
+        Row goalSound = row("Goal sound", false);
+        goalSound.words = () -> com.gathin.broadcast.Sfx.goalName(BoardCover.goalSound(c)) + " · over the goal on the board · OK: the next one (it plays)";
+        goalSound.ok = () -> {
+            String next = com.gathin.broadcast.Sfx.nextGoal(BoardCover.goalSound(c));
+            BoardCover.setGoalSound(c, next);
+            // heard as it is chosen (the first time once it has loaded)
+            if (!"off".equals(next)) new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> com.gathin.broadcast.Sfx.goal(c, next), 250);
+        };
+        add(swish, goalSound);
         Row fot = row("FotMob's stats and pictures", true);
         fot.on = () -> BoardCover.fotmobOn(c);
         fot.words = () -> BoardCover.fotmobOn(c) ? "Expected goals, big chances, ratings, who is on top, players' pictures"
@@ -214,20 +235,26 @@ final class BoardPanel extends SportPanel {
         anywhere.ok = () -> BoardCover.setHoldAnywhere(c, !BoardCover.holdAnywhere(c));
         add(lineups, anywhere);
         // The classic broadcast pop-up and line-ups (ClassicIntro), as the user's clips have them.
-        Row classicPop = row("Kick-off pop-up", true);
-        classicPop.on = () -> ClassicIntro.popupOn(c);
-        classicPop.words = () -> ClassicIntro.popupOn(c) ? "Crests, trophy and teams at kick-off, after a goal and for the second half"
-                : "Off · the kick-off without it";
-        classicPop.ok = () -> ClassicIntro.setPopupOn(c, !ClassicIntro.popupOn(c));
-        Row classicLu = row("Classic line-ups", true);
-        classicLu.on = () -> ClassicIntro.lineupsOn(c);
-        classicLu.words = () -> ClassicIntro.lineupsOn(c) ? "Both teams beaming in, seven minutes before kick-off · Back closes them"
-                : "Off · no line-ups before kick-off";
-        classicLu.ok = () -> ClassicIntro.setLineupsOn(c, !ClassicIntro.lineupsOn(c));
+        Row classicPop = row("Kick-off pop-up", false);
+        classicPop.words = () -> {
+            String st = ClassicIntro.popupStyle(c);
+            return "strap".equals(st) ? "In the scoreboard's look: a strap that folds into the board · OK: off"
+                    : "off".equals(st) ? "Off · OK: classic (crests, trophy and teams)"
+                    : "Classic: crests, trophy and teams, from your clip · OK: in the scoreboard's look";
+        };
+        classicPop.ok = () -> ClassicIntro.setPopupStyle(c, ClassicIntro.nextStyle(ClassicIntro.popupStyle(c), "strap"));
+        Row classicLu = row("Line-ups before kick-off", false);
+        classicLu.words = () -> {
+            String st = ClassicIntro.lineupsStyle(c);
+            return "stadium".equals(st) ? "Stadium: each eleven on a board over a ground lit for the day, 3½ minutes before · OK: off"
+                    : "off".equals(st) ? "Off · OK: classic beam-in"
+                    : "Classic beam-in, from the reel, 7 minutes before · OK: the stadium board";
+        };
+        classicLu.ok = () -> ClassicIntro.setLineupsStyle(c, ClassicIntro.nextStyle(ClassicIntro.lineupsStyle(c), "stadium"));
         add(classicPop, classicLu);
         // Each tried now over Home, for the game chosen above when it can be (else the Premier League's latest played).
         Row tryKick = row("Try the kick-off pop-up", false);
-        tryKick.words = () -> "Plays it now, with " + tryGame();
+        tryKick.words = () -> "Plays it now (" + popupStyleWords() + "), with " + tryGame();
         tryKick.ok = () -> tryClassic("kickoff");
         Row tryGoal = row("Try the goal pop-up", false);
         tryGoal.words = () -> "As play starts again after a goal: the score, scorer and minute";
@@ -236,8 +263,9 @@ final class BoardPanel extends SportPanel {
         Row trySecond = row("Try the second-half pop-up", false);
         trySecond.words = () -> "The second half's kick-off, with the score";
         trySecond.ok = () -> tryClassic("second");
-        Row tryLineups = row("Try the classic line-ups", false);
-        tryLineups.words = () -> "The chosen game's when they're out, else the last Premier League game's · Back closes them";
+        Row tryLineups = row("Try the line-ups", false);
+        tryLineups.words = () -> ("stadium".equals(ClassicIntro.lineupsStyle(c)) ? "Stadium board" : "Classic beam-in")
+                + ": the chosen game's when they're out, else the last Premier League game's · Back closes them";
         tryLineups.ok = () -> tryClassic("lineups");
         add(trySecond, tryLineups);
         Row clock = row("Clock with the channel's", true);

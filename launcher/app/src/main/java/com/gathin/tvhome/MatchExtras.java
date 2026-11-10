@@ -184,6 +184,19 @@ final class MatchExtras {
         main().post(() -> ScoreCard.show(s, d));
     }
 
+    /** The ground's weather now as the kick-off strap says it ("9° · light rain"), "" when it can't be read (io thread). */
+    static String weatherNow(Context c, ScoresTicker.Game g) {
+        if (c == null || g == null) return "";
+        try {
+            double[] at = place(c, g.venueCity, g.venueCountry);
+            Object[] w = at == null ? null : read(at[0], at[1], 2);
+            if (w == null) return "";
+            return weatherHead((Double) w[0], WeatherLine.describe((Integer) w[1]).toLowerCase(java.util.Locale.UK));
+        } catch (RuntimeException e) {
+            return "";
+        }
+    }
+
     /** Pure: "9° · Light rain at the Emirates Stadium" (the ground left off when not known). */
     static String weatherHeadline(double temp, String sky, String ground) {
         return weatherHead(temp, sky) + (ground == null || ground.isEmpty() ? "" : " at " + ground);

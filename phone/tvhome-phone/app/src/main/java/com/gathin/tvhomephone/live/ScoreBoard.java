@@ -767,6 +767,7 @@ public final class ScoreBoard implements LiveAlerts.Listener {
                     int side = g.homeScore > lastHome && lastHome >= 0 ? 1 : g.awayScore > lastAway && lastAway >= 0 ? 2 : 0;
                     if (side > 0) {
                         bug.goal(side);
+                        com.gathin.broadcast.Sfx.goal(c, PlayerIntro.goalSound(c));
                         goalShownAt = now;
                         if (changed != null) changed.run();
                         caption(g, side);

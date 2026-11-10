@@ -111,10 +111,20 @@ final class ScoreOverlay implements ScoreBoard.Source {
         this.host = host;
         board = new ScoreBoard(a, this);
         cover = new LogoCover(a);
+        com.gathin.broadcast.Sfx.warm(a, com.gathin.broadcast.Sfx.SWISH, "goal-" + PlayerIntro.goalSound(a));   // loaded before they are needed
         intro = new PlayerIntro(a, root, () -> started && !inPip && !editing, (on) -> {
             // the classic line-ups fill the picture: the scoreboard and the logo's cover out of their way meanwhile
             board.view.setAlpha(on ? 0f : 1f);
             cover.setAlpha(on ? 0f : 1f);
+        });
+        // the strap in the board's look folds into the board: where it is over the picture, on a 1920 x 1080 picture
+        intro.boardAt(() -> {
+            if (pfw <= 10 || pfh <= 10 || board.view.getWidth() <= 0) return null;
+            int[] b = new int[2], r = new int[2];
+            board.view.getLocationInWindow(b);
+            root.getLocationInWindow(r);
+            float k = 1920f / pfw, kh = 1080f / pfh;
+            return new float[]{(b[0] - r[0] - pfx) * k, (b[1] - r[1] - pfy) * kh, board.view.getWidth() * k, board.view.getHeight() * kh};
         });
         cover.setVisibility(View.GONE);
         // Held: dragged where the finger goes. Tapped twice: Move and resize. (The screen reader's long press: the same.)

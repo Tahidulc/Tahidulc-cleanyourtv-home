@@ -107,4 +107,17 @@ public class BroadcastDataTest {
         assertNull(BroadcastData.lineups(new BroadcastData.Match(), d, null));
         assertNull(BroadcastData.lineups(new BroadcastData.Match(), null, null));
     }
+
+    @Test
+    public void theStrapCarriesTheBoardsLookAndPlaceAndTheRefereeIsReadFromTheInfoBox() throws Exception {
+        BroadcastData.Match m = new BroadcastData.Match();
+        m.homeName = "Arsenal"; m.awayName = "Everton"; m.homeShort = "ARS"; m.awayShort = "EVE"; m.compId = "eng.1"; m.venue = "Emirates Stadium";
+        org.json.JSONObject s = BroadcastData.strap("kickoff", m, null, null, null, "FROSTED", new float[]{64, 46, 380, 49}, "9° · light rain");
+        assertEquals("FROSTED", s.getString("look"));
+        assertEquals(380, s.getJSONObject("board").getInt("w"));
+        assertEquals("9° · light rain", s.getString("weather"));
+        assertEquals("pl", s.getString("comp"));
+        assertEquals("Michael Oliver", BroadcastData.referee(new org.json.JSONObject("{\"Referee\":{\"text\":\" Michael Oliver \"}}")));
+        assertEquals("", BroadcastData.referee(null));
+    }
 }
