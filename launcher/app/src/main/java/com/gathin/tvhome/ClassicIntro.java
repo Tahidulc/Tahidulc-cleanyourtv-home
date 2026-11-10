@@ -284,6 +284,7 @@ final class ClassicIntro {
         Context app = c.getApplicationContext();
         boolean lu = "lineups".equals(kind);
         fetching = true;
+        long t0 = android.os.SystemClock.uptimeMillis();
         io.execute(() -> {
             JSONObject cfg = null;
             String about = null;
@@ -325,7 +326,7 @@ final class ClassicIntro {
                     return;
                 }
                 if (showing()) return;
-                android.util.Log.i("Sport", "classic try " + kind + ": " + game);
+                android.util.Log.i("Sport", "classic try " + kind + ": " + game + ", ready in " + (android.os.SystemClock.uptimeMillis() - t0) + " ms");
                 BroadcastView v = lu ? BroadcastView.lineups(app, got, ClassicIntro::gone) : BroadcastView.kickoff(app, got, ClassicIntro::gone);
                 trial = show(app, v, kind);
             });

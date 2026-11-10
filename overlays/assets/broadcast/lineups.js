@@ -1999,7 +1999,9 @@
     for (const f of ['600 40px KhandM', '700 40px KhandM']) await document.fonts.load(f, 'AZaz09&ĆćØøÖöÃãÉé');
     await document.fonts.ready;
     for (const side of ['home', 'away']) {
-      const im = new Image(); im.src = window.ASSET_URLS[side]; await im.decode(); IMG[side] = im;
+      // a crest that will not come leaves a plain coin rather than stopping the line-ups
+      const url = window.ASSET_URLS[side];
+      if (url) { try { const im = new Image(); im.src = url; await im.decode(); IMG[side] = im; } catch (e) { /* plain coin */ } }
     }
     const pl = window.ASSET_URLS.plphotos || {};
     for (const id of Object.keys(pl)) {
@@ -2055,5 +2057,5 @@
     if (CFG.grade === 'night') { g.fillStyle = 'rgba(20,40,70,0.07)'; g.globalCompositeOperation = 'screen'; g.fillRect(0, 0, W, H); g.globalCompositeOperation = 'source-over'; }
     if (CFG.grade === 'sunset') { g.fillStyle = 'rgba(80,30,40,0.06)'; g.globalCompositeOperation = 'screen'; g.fillRect(0, 0, W, H); g.globalCompositeOperation = 'source-over'; }
   }
-  init().catch((e) => { window.INIT_ERR = String(e && e.stack || e); });
+  init().catch((e) => { window.INIT_ERR = String(e && e.stack || e); if (window.onBroadcastFailed) window.onBroadcastFailed(window.INIT_ERR); });
 })();

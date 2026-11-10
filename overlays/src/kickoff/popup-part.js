@@ -716,8 +716,10 @@
     for (const w of [600, 700]) await document.fonts.load(`${w} 40px 'KhandM'`, 'AZaz09&ØÖÉ');
     await document.fonts.ready;
     const A = window.ASSET_URLS || {};
-    for (const side of ['home', 'away']) { const im = new Image(); im.src = A[side]; await im.decode(); IMG[side] = im; }
-    for (const [k, url] of Object.entries(A.logos || {})) { const im = new Image(); im.src = url; await im.decode(); LOGO[k] = im; }
+    // a crest or logo that will not come is left out (a plain coin, no logo) rather than stopping the pop-up
+    const img = async (url) => { if (!url) return null; try { const im = new Image(); im.src = url; await im.decode(); return im; } catch (e) { return null; } };
+    for (const side of ['home', 'away']) { const im = await img(A[side]); if (im) IMG[side] = im; }
+    for (const [k, url] of Object.entries(A.logos || {})) { const im = await img(url); if (im) LOGO[k] = im; }
     if (POP.background !== 'none') { GL = groundLight(); buildCrowd(); buildSky(); }   // the live overlay draws no ground
     window.RIBBON_COLORS = [TEAMS.home.c1, TEAMS.away.c1];
     for (let i = 0; i < 50 && !window.TROPHY3D_READY; i++) await new Promise((r) => setTimeout(r, 100));
@@ -730,5 +732,5 @@
     window.READY = true;
     if (window.onBroadcastReady) window.onBroadcastReady();
   }
-  init().catch((e) => { window.INIT_ERR = String(e && e.stack || e); });
+  init().catch((e) => { window.INIT_ERR = String(e && e.stack || e); if (window.onBroadcastFailed) window.onBroadcastFailed(window.INIT_ERR); });
 })();

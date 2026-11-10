@@ -28,6 +28,7 @@
       }
       window.ASSET_URLS = { home: cfg.home.crest, away: cfg.away.crest, photos, plphotos };
       window.onBroadcastReady = play;
+      window.onBroadcastFailed = (e) => { BX.log('could not start: ' + e); finish(); };
       BX.load('lineups.js').catch((e) => { BX.log(e); finish(); });
     },
     back() {
@@ -60,8 +61,9 @@
         if (window.FADE_FROM == null && t - cues[ci].at < 0.25) cueSound(cues[ci]);   // late ones are skipped, never bunched
         ci++;
       }
+      BX.fit(cvs);
       window.drawFrame(Math.min(t, endAt));
-      if (first) { first = false; BX.started(); }
+      if (first) { first = false; BX.started(); BX.log(BX.view()); }
       if (t >= endAt) { finish(); return; }
       raf = requestAnimationFrame(frame);
     };

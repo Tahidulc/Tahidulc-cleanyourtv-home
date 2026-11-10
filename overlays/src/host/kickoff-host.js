@@ -26,6 +26,7 @@
       };
       window.ASSET_URLS = { home: cfg.home.crest, away: cfg.away.crest, logos: cfg.compLogo ? { [comp]: cfg.compLogo } : {} };
       window.onBroadcastReady = play;
+      window.onBroadcastFailed = (e) => { BX.log('could not start: ' + e); finish(); };
       BX.load('kickoff.js').catch((e) => { BX.log(e); finish(); });
     },
     stop: () => finish(),
@@ -39,8 +40,9 @@
     const frame = (now) => {
       if (finished) return;
       const t = (now - t0) / 1000 - LEAD;
+      BX.fit(cvs);
       window.drawFrame(t);
-      if (first) { first = false; BX.started(); }
+      if (first) { first = false; BX.started(); BX.log(BX.view()); }
       if (t > LEN[kind] + 0.75) { finish(); return; }
       raf = requestAnimationFrame(frame);
     };

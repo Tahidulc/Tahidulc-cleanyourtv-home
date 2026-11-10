@@ -8,6 +8,7 @@ import android.media.AudioAttributes;
 import android.media.SoundPool;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
 import android.util.Log;
 import android.view.MotionEvent;
 import android.view.View;
@@ -47,6 +48,8 @@ public final class BroadcastView extends FrameLayout {
     private final Map<String, Integer> sounds = new HashMap<>();
     private float volume = 1f;
     private boolean started, over;
+    /** When it was made (uptime), for the log of how long it took to show. */
+    private long born;
     private final Runnable tooLong = this::finish;
 
     /** The kick-off pop-up (BroadcastData.kickoff): about eight seconds. */
@@ -91,8 +94,13 @@ public final class BroadcastView extends FrameLayout {
         s.setMediaPlaybackRequiresUserGesture(false);
         s.setAllowFileAccess(true);
         s.setAllowContentAccess(false);
-        s.setLoadWithOverviewMode(true);
-        s.setUseWideViewPort(false);
+        // The page's own viewport (width=device-width), never zoomed: with the overview mode a TV's WebView (1.75 CSS
+        // pixels to a screen pixel on the TCL) zoomed out to the 1920-wide drawing, which then sat mostly off the screen.
+        s.setLoadWithOverviewMode(false);
+        s.setUseWideViewPort(true);
+        s.setSupportZoom(false);
+        s.setBuiltInZoomControls(false);
+        s.setTextZoom(100);
         web.addJavascriptInterface(new Bridge(), "AndroidBroadcast");
         web.setWebViewClient(new WebViewClient() {
             @Override
@@ -104,6 +112,7 @@ public final class BroadcastView extends FrameLayout {
         });
         addView(web, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
         main.postDelayed(tooLong, maxMs);
+        born = SystemClock.uptimeMillis();
         web.loadUrl("file:///android_asset/broadcast/" + page + ".html");
     }
 
@@ -165,6 +174,7 @@ public final class BroadcastView extends FrameLayout {
     private final class Bridge {
         @JavascriptInterface
         public void ready() {
+            Log.i(TAG, page + ": page ready in " + (SystemClock.uptimeMillis() - born) + " ms");
             main.post(() -> {
                 if (!over && web != null) web.evaluateJavascript("BROADCAST.start(" + JSONObject.quote(cfg) + ")", null);
             });
@@ -172,6 +182,7 @@ public final class BroadcastView extends FrameLayout {
 
         @JavascriptInterface
         public void started() {
+            Log.i(TAG, page + ": on the screen " + (SystemClock.uptimeMillis() - born) + " ms after it was made");
             main.post(() -> started = true);
         }
 
