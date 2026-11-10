@@ -33,7 +33,7 @@ import java.util.regex.Pattern;
  * as PlPhotos has the Premier League's: each player's public page on laliga.com (found by the name La Liga knows him
  * by) lists his pictures. The page must name the same player and, when it says, the same club. The picture is cut
  * square to the Premier League's framing (head at the top, a third of the width across), so the pages draw it as
- * they draw a Premier League one. Kept a month per player (a miss three days); at most PAGE_BUDGET pages a game.
+ * they draw a Premier League one. Kept a month per player (a miss three days); at most PAGE_BUDGET pages a game (70: both elevens and their second tries).
  * Only the public pages and pictures are read. Never the main thread.
  */
 public final class LaLigaPhotos {
@@ -44,7 +44,7 @@ public final class LaLigaPhotos {
     private static final String UA = "TVHomeLauncher/1.0 (TV launcher; player pictures)";
     static final long KEEP_MS = 30L * 24 * 3600_000L, MISS_MS = 3L * 24 * 3600_000L;
     /** Pages fetched at most for one game's line-ups (the rest, and the subs past it, are tried at the next game). */
-    static final int PAGE_BUDGET = 25;
+    static final int PAGE_BUDGET = 70;   // both elevens with their second tries (25 left players out on a first game)
     /** The square cut: its side as a share of the picture's height, and the room left above the head (of the side). */
     static final float SIDE = 0.713f, HEAD_ROOM = 0.012f;
     /** The cut's size, as the Premier League's pictures come. */
