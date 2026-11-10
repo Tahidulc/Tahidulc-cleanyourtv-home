@@ -32,7 +32,7 @@
 
   let F = I, fitW = -1, fitH = -1, frame = 0, order = 0, refit = false;
   let used = [], usedNow = [], parked = [];
-  const PARK = 45;   // frames hidden before a sprite leaves the compositor altogether (display none)
+  let PARK = 45;   // frames hidden before a sprite leaves the compositor altogether (display none); LK.park(n) to change
   let group = null;                   // the clip group being filled
   const groups = {};
 
@@ -176,5 +176,5 @@
     for (const k in groups) delete groups[k];
   }
   function mount() { if (!root.parentNode) { document.body.appendChild(root); document.body.appendChild(over); } fit(); }
-  window.LK = { W, H, put, clip, endClip, begin, end, dyn, fill, rect, fade, wipe, hideAll, clear, mount, mul, inv, T, S, R, I, fitNow: () => { fitW = -1; fit(); }, root, inner, PLUS };
+  window.LK = { W, H, put, clip, endClip, begin, end, dyn, fill, rect, fade, wipe, hideAll, clear, mount, mul, inv, T, S, R, I, fitNow: () => { fitW = -1; fit(); }, park: (n) => { PARK = n; }, root, inner, PLUS };
 })();

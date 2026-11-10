@@ -34,7 +34,10 @@
       BX.log('quality ' + JSON.stringify(q));
       window.onBroadcastReady = () => {
         BX.log('ready in ' + (window.INIT_MS || 0).toFixed(0) + ' ms');
-        if (cfg.hold && !going) BX.prepared(); else play();
+        rehearse().then(() => {
+          if (finished) return;
+          if (cfg.hold && !going) BX.prepared(); else play();
+        });
       };
       window.onBroadcastFailed = (e) => { BX.log('could not start: ' + e); finish(); };
       BX.load('kickoff.js').catch((e) => { BX.log(e); finish(); });
@@ -45,6 +48,20 @@
     },
     stop: () => finish(),
   };
+  // The whole pop-up played through once out of sight (the stage at 0.4%, in a window still unseen when it is held), every
+  // quarter second: each part's first showing costs the GPU (on the Streamer's PowerVR the first frames took one to two
+  // seconds each), and that is paid here. Nothing is parked meanwhile or after (it is eight seconds long).
+  async function rehearse() {
+    if (!window.LK || !window.drawFrame) return;
+    const r0 = performance.now(), raf2 = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    LK.park(Infinity);
+    LK.root.style.opacity = '0.004';
+    for (let t = -LEAD; t <= LEN[kind] + 0.75 && !finished; t += 0.25) { window.drawFrame(t); await raf2(); }
+    LK.hideAll();
+    await raf2();
+    LK.root.style.opacity = '';
+    BX.log('rehearsed in ' + (performance.now() - r0).toFixed(0) + ' ms');
+  }
   function play() {
     if (finished || began) return;
     began = true;

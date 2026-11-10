@@ -1990,6 +1990,16 @@
         SPR.tr2d = { c, x: 960 - c.width / 2, y: T_TOP - 10 };
       }
     }
+    // every part's drawing done now, on this TV's GPU: its WebView keeps a canvas's drawing until something reads it, so
+    // the Streamer's PowerVR did it all in the first frames seen (one to two seconds each). Each is read once, small,
+    // into a scratch canvas, and one read back of that waits for the lot.
+    const s0 = performance.now(), scratch = mk(4, 4).getContext('2d', { willReadFrequently: false });
+    let touched = 0;
+    const touch = (c) => { if (c && c.width > 1 && c.height > 1) { scratch.drawImage(c, 0, 0, 4, 4); touched++; } };
+    for (const v of Object.values(SPR)) (Array.isArray(v) ? v : [v]).forEach((s) => touch(s && s.c));
+    if (TSPR) TSPR.list.forEach((s) => touch(s.c));
+    scratch.getImageData(0, 0, 1, 1);
+    if (window.BX) BX.log('settled ' + touched + ' parts in ' + (performance.now() - s0).toFixed(0) + ' ms');
     window.DUR = POP.dur;
     window.SOL = SOL;
     window.INIT_MS = performance.now() - t0;
