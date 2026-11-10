@@ -330,6 +330,8 @@ Two styles each, the swish and a goal sound (4.35): in the scoreboard settings, 
 
 Smooth, and the game's ground behind the line-ups (4.36): the kick-off pop-up, the classic line-ups and the stadium board are drawn once while they get ready and then only moved, so they keep up with the screen on a modest phone, and the pop-up's parts are all drawn before it is shown. The line-ups stand over a freely licensed photo of the ground the game is at, from Wikimedia Commons (kept two months), tinted for the time of day at kick-off, with its credit; with none, the drawn ground as before.
 
+The line-ups smooth from their first frame (4.37): both line-ups pages have every part drawn before they are shown, as the kick-off pop-up does, so their opening no longer stalls on a modest phone.
+
 Subtitles (CC in the film's player): the film's or episode's own, from your playlist's stream, come first, in the
 languages you choose (Settings, Subtitles, in order). When it has none, OpenSubtitles.com is looked in by the title's
 TMDB id (the series' with its season and episode), best first: your languages, the ones that fit the copy playing (its
