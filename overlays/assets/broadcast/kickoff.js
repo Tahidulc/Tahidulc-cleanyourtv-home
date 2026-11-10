@@ -1815,14 +1815,30 @@
     if (window.BX) BX.log('trophy: ' + list.length + ' turns of ' + (EX - SX) + 'x' + (EY - SY) + ' drawn in ' + ms.toFixed(0) + ' ms');
     window.TROPHY_SPRITES = { n: list.length, w: EX - SX, h: EY - SY, ms };
   }
+  // The turns are never on the page themselves: the one (or two, mixed) for the moment is copied into one small canvas,
+  // which is all the compositor sees. Each turn a layer of its own (93 of them, about 79 MB) froze the Streamer for
+  // seconds at a time as each was handed to its GPU the first time it showed.
   function trophyLayers(T, trA, rise) {
     const L = TSPR.list, M = LT(0, rise);
     let i = 0; while (i < L.length - 1 && L[i + 1].t <= T) i++;
     const A = L[i], B = L[Math.min(i + 1, L.length - 1)];
-    if (B === A || T <= A.t) { at(A, M, trA); return; }
-    const f = clamp((T - A.t) / (B.t - A.t));
-    if (B.t - A.t < 0.06) { at(f < 0.5 ? A : B, M, trA); return; }   // turning: the nearest
-    at(B, M, trA); at(A, M, trA * (1 - f));                            // swaying: the two mixed
+    let top = A, under = null, f = 0;
+    if (B !== A && T > A.t) {
+      f = clamp((T - A.t) / (B.t - A.t));
+      if (B.t - A.t < 0.06) top = f < 0.5 ? A : B;   // turning: the nearest
+      else { under = B; f = Math.round(f * 50) / 50; }   // swaying: the two mixed
+    }
+    const w = A.c.width, h = A.c.height, c = LK.dyn('trophy:' + w + 'x' + h, w, h), g = c._g;
+    const key = L.indexOf(top) + '|' + (under ? f : '-');
+    if (c._key !== key) {
+      c._key = key;
+      g.setTransform(1, 0, 0, 1, 0, 0); g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
+      g.clearRect(0, 0, w, h);
+      if (under) { g.drawImage(under.c, 0, 0); g.globalAlpha = 1 - f; }
+      g.drawImage(top.c, 0, 0);
+      g.globalAlpha = 1;
+    }
+    LK.put(c, Lmul(M, LT(A.x, A.y)), trA);
   }
 
   function popupLayers(m, T) {

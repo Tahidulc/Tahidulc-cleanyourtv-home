@@ -25,8 +25,14 @@
     view: () => 'view ' + document.documentElement.clientWidth + 'x' + document.documentElement.clientHeight + ' (inner ' + window.innerWidth + 'x' + window.innerHeight + ') at ' + (window.devicePixelRatio || 1),
     // how it ran, for the app's log: frames drawn, frames a second, the drawing's own time each frame, the GPU
     meter(ms, now) {
-      const m = BX._m || (BX._m = { n: 0, sum: 0, max: 0, first: now, last: now, slow: 0 });
-      m.n++; m.sum += ms; m.max = Math.max(m.max, ms); if (now - m.last > 50) m.slow++; m.last = now;
+      const m = BX._m || (BX._m = { n: 0, sum: 0, max: 0, first: now, last: now, slow: 0, at: [] });
+      m.n++; m.sum += ms; m.max = Math.max(m.max, ms);
+      if (now - m.last > 50) {
+        m.slow++;
+        // when the slowest gaps came (seconds in) and how long they were, for the log
+        if (m.at.length < 8) m.at.push(((m.last - m.first) / 1000).toFixed(1) + 's:' + (now - m.last).toFixed(0));
+      }
+      m.last = now;
     },
     meterWords() {
       const m = BX._m; if (!m || m.n < 2) return 'no frames';
@@ -38,7 +44,7 @@
         gpu = gl ? (ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER)) : 'no webgl';
       } catch (e) { gpu = 'error'; }
       return 'frames ' + m.n + ' in ' + secs.toFixed(1) + ' s (' + (m.n / Math.max(0.01, secs)).toFixed(1) + ' a second, ' + m.slow +
-        ' over 50 ms), drawing ' + (m.sum / m.n).toFixed(1) + ' ms a frame (most ' + m.max.toFixed(0) + '), trophy ' + (window.T3MS ? (window.T3MS.sum / window.T3MS.n).toFixed(1) + ' ms' : 'none') + ', GPU ' + gpu;
+        ' over 50 ms' + (m.at.length ? ': ' + m.at.join(' ') : '') + '), drawing ' + (m.sum / m.n).toFixed(1) + ' ms a frame (most ' + m.max.toFixed(0) + '), trophy ' + (window.T3MS ? (window.T3MS.sum / window.T3MS.n).toFixed(1) + ' ms' : 'none') + ', GPU ' + gpu;
     },
     // how long this TV's chip takes over a full-screen fill with a shadowed bar (ms; the TCL's is the yardstick)
     bench2d() {
