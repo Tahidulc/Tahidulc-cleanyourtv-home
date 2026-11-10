@@ -350,6 +350,8 @@ La Liga players with their own waist-up pictures in the line-ups, a wider search
 
 Both La Liga elevens get their own pictures the first time a club is seen (4.43).
 
+A La Liga player not yet photographed keeps his face on the drawn body rather than La Liga's black stand-in (4.44).
+
 Subtitles (CC in the film's player): the film's or episode's own, from your playlist's stream, come first, in the
 languages you choose (Settings, Subtitles, in order). When it has none, OpenSubtitles.com is looked in by the title's
 TMDB id (the series' with its season and episode), best first: your languages, the ones that fit the copy playing (its

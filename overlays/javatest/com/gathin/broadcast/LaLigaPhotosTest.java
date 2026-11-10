@@ -161,4 +161,14 @@ public class LaLigaPhotosTest {
         assertArrayEquals(new int[]{10, 59}, LaLigaPhotos.head(px, w, 40, h));
         assertNull(LaLigaPhotos.head(new int[w * 10], w, 10, h));
     }
+
+    @Test
+    public void blackStandInIsASilhouette() {
+        // all opaque samples black: La Liga's stand-in for a player not yet photographed
+        org.junit.Assert.assertTrue(LaLigaPhotos.silhouette(400, 0));
+        // a real face and shirt: mean luma well above
+        org.junit.Assert.assertFalse(LaLigaPhotos.silhouette(400, 400L * 120 * 1000));
+        // too few opaque samples to say
+        org.junit.Assert.assertFalse(LaLigaPhotos.silhouette(10, 0));
+    }
 }

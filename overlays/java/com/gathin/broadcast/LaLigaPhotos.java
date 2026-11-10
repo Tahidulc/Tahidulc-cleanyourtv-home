@@ -447,7 +447,7 @@ public final class LaLigaPhotos {
         String club = clubs == null || clubs.length == 0 ? "" : clubCore(clubs[0]);
         key = key + "-" + club;
         if (key.length() > 90) key = key.substring(0, 90);
-        File dir = cacheDir == null ? null : new File(cacheDir, "laliga");
+        File dir = cacheDir == null ? null : new File(cacheDir, "laliga2");
         File hit = dir == null ? null : new File(dir, key + ".webp"), miss = dir == null ? null : new File(dir, key + ".none");
         long now = System.currentTimeMillis();
         try {
@@ -504,6 +504,31 @@ public final class LaLigaPhotos {
         }
     }
 
+    /**
+     * Whether a cut-out is La Liga's stand-in for a player not yet photographed: a black figure in the kit (its head and
+     * shoulders all but black). Such a player keeps FotMob's face on the drawn body instead.
+     */
+    static boolean silhouette(Bitmap bm) {
+        int w = bm.getWidth(), h = (int) (bm.getHeight() * 0.4), step = Math.max(1, Math.min(w, h) / 48);
+        int[] px = new int[w];
+        long sum = 0, n = 0;
+        for (int y = 0; y < h; y += step) {
+            bm.getPixels(px, 0, w, 0, y, w, 1);
+            for (int x = 0; x < w; x += step) {
+                int c = px[x];
+                if ((c >>> 24) < 200) continue;
+                sum += ((c >> 16) & 255) * 299 + ((c >> 8) & 255) * 587 + (c & 255) * 114;
+                n++;
+            }
+        }
+        return silhouette(n, sum);
+    }
+
+    /** Pure: n opaque samples whose summed luma (×1000) says the figure's top is all but black. */
+    static boolean silhouette(long n, long lumaSum) {
+        return n >= 50 && lumaSum / (n * 1000.0) < 28;
+    }
+
     /** A cut-out fetched, checked (a real one, see-through round the player) and framed, as WebP; null when it is not one. */
     private static byte[] picture(String url) throws IOException, InterruptedException {
         byte[] b = Net.get(url, UA, 10_000, 20_000, 8 << 20);
@@ -512,7 +537,7 @@ public final class LaLigaPhotos {
             Bitmap bm = BitmapFactory.decodeByteArray(b, 0, b.length);
             if (bm == null) return null;
             try {
-                if (!PlPhotos.cutOut(bm)) return null;
+                if (!PlPhotos.cutOut(bm) || silhouette(bm)) return null;
                 Bitmap f = frame(bm);
                 if (f == null) return null;
                 byte[] out = BroadcastData.webp(f);

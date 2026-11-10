@@ -216,3 +216,4 @@ have it.
 | 4.56 | A try of the pop-up or line-ups (adb test_classic) can take its game from a named league: "lineups@laliga", "strap:kickoff@esp.1" (else the Premier League) | Built |
 | 4.57 | La Liga players in the line-ups with their own waist-up pictures in the kit (from La Liga's public player pages, framed like the Premier League's; the face only when none is found); the ground's photo found through Wikidata too (old and sponsor names, its Commons category); the kick-off pop-up's crests in deep blue glass circles with a blue glow | Built |
 | 4.58 | La Liga line-ups: up to 70 player pages a game (was 25), so both elevens get their own pictures the first time a club is seen | Built |
+| 4.59 | La Liga line-ups: La Liga's black stand-in figure (a player not yet photographed) is turned down, so he keeps his face on the drawn body; La Liga's pictures fetched afresh once (new cache folder) | Built |
