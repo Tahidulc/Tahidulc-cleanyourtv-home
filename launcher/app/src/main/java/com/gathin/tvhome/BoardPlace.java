@@ -80,6 +80,16 @@ final class BoardPlace {
         moveBoard(0, 0, bw / bh);
     }
 
+    /**
+     * Move and resize's Width: the scoreboard's width times k (from width, a share of the screen's, when it had none of
+     * its own yet), its height kept, so it is drawn wider or narrower to fill that box. Pure.
+     */
+    void widthBoard(float k, float width) {
+        if (bw <= 0) bw = clamp(width > 0 ? width : bh * 9f * 1080f / 1920f, MIN_BW, MAX_BW);
+        bw = clamp(bw * k, Math.max(MIN_BW, bh * 1080f / 1920f * 1.2f), MAX_BW);
+        moveBoard(0, 0, bw / bh);
+    }
+
     /** The cover moved by (dx, dy), kept on the screen. Pure. */
     void moveLogo(float dx, float dy) {
         lx = clamp(lx + dx, 0, Math.max(0, 1 - lw));
@@ -191,13 +201,16 @@ final class BoardPlace {
     }
 
     /**
-     * The channel's own places, else its broadcaster's as last set, else where its broadcaster is known to put its own,
-     * else the last set on any channel, else the standard ones.
+     * The channel's own places (set by hand), else where the TV saw the channel's own scoreboard and logo (ChannelSight),
+     * else its broadcaster's as last set, else where its broadcaster is known to put its own, else the last set on any
+     * channel, else the standard ones.
      */
     static BoardPlace get(Context c, String channel) {
         SharedPreferences p = prefs(c);
         BoardPlace own = decode(p.getString(key(channel), null));
         if (own != null) return own;
+        BoardPlace seen = decode(p.getString(seenKey(channel), null));
+        if (seen != null) return seen;
         String b = broadcaster(channel);
         if (!b.isEmpty()) {
             BoardPlace theirs = decode(p.getString("b." + b, null));
@@ -215,6 +228,57 @@ final class BoardPlace {
         SharedPreferences.Editor e = prefs(c).edit().putString(key(channel), s).putString("last", s);
         if (!by.isEmpty()) e.putString("b." + by, s);
         e.apply();
+    }
+
+    /** Pure: where the places seen on a channel are kept ("s.skysportspremierleague"). */
+    static String seenKey(String channel) {
+        return "s." + InStep.base(channel);
+    }
+
+    /** Whether the channel's places were set by hand (Move and resize): what is seen on it never moves them then. */
+    static boolean setByHand(Context c, String channel) {
+        return prefs(c).contains(key(channel));
+    }
+
+    /** Whether the TV has seen where this channel puts its own (ChannelSight). */
+    static boolean seen(Context c, String channel) {
+        return prefs(c).contains(seenKey(channel));
+    }
+
+    /** Where the TV saw the channel's own scoreboard and logo (ChannelSight): for this channel only, under what is set by hand. */
+    static void putSeen(Context c, String channel, BoardPlace b) {
+        prefs(c).edit().putString(seenKey(channel), b.encode()).apply();
+    }
+
+    /** Looked for again: what was set by hand and what was seen on this channel let go (its broadcaster's kept). */
+    static void forget(Context c, String channel) {
+        prefs(c).edit().remove(key(channel)).remove(seenKey(channel)).apply();
+    }
+
+    /**
+     * Pure: the places over what was seen, as fractions of the screen (sw by sh pixels): the scoreboard's box (null:
+     * where it was) a little over each edge so none of the channel's shows round it, its height made the look's own
+     * (tall: Stacked and Card are drawn taller than the height set), its width kept; the logo's (null: where it was)
+     * the same.
+     */
+    static BoardPlace over(BoardPlace was, float[] board, float[] logo, float tall, float sw, float sh) {
+        BoardPlace p = was.copy();
+        float across = sh / Math.max(1f, sw);
+        if (board != null) {
+            float h = board[3] - board[1], pad = Math.max(2f / sh, h * 0.08f), padX = pad * across;
+            p.bx = clamp(board[0] - padX, 0, 1);
+            p.by = clamp(board[1] - pad, 0, 1);
+            p.bh = clamp((h + 2 * pad) / Math.max(1f, tall), MIN_H, MAX_H);
+            p.bw = clamp(board[2] - board[0] + 2 * padX, MIN_BW, MAX_BW);
+        }
+        if (logo != null) {
+            float h = logo[3] - logo[1], pad = Math.max(2f / sh, h * 0.1f), padX = pad * across;
+            p.lw = clamp(logo[2] - logo[0] + 2 * padX, MIN_W, MAX_W);
+            p.lh = clamp(h + 2 * pad, MIN_LH, MAX_LH);
+            p.lx = clamp(logo[0] - padX, 0, Math.max(0, 1 - p.lw));
+            p.ly = clamp(logo[1] - pad, 0, Math.max(0, 1 - p.lh));
+        }
+        return p;
     }
 
     /** The channel (its broadcaster's, and every channel with no places of its own) back to where its broadcaster puts its own, else the standard places. */

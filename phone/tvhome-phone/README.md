@@ -292,6 +292,15 @@ FotMob everywhere, Card blue (4.27): FotMob's expected goals, big chances, xG on
 the player's info tile and on the match page, read once a minute for all of them; Card's middle back in its own blue
 all game, red and moving only in added time. As the TV launcher's 4.32 has it.
 
+Sleeker pop-outs and Whitebrook Road Sports (4.28): the alerts and stats beside the scoreboard come out of its middle as
+a slim tab, two thirds of its height, their words smaller and never longer than ten of the tab's own heights. A new
+cover over the channel's logo, Whitebrook Road Sports: "whitebrook road", "sports" on a red tab, then what is on
+("premier league" for the Premier League's games, "football" for any other, "f1", or one chosen in Settings) and the
+picture tag, in one line or stacked on a plate in the colour of what is on; and Whitebrook Road in 54 styles of its own,
+each drawn in Settings to pick from. The name alone (Whitebrook Road, no Sports) on every Whitebrook Road look.
+See-through: the wordmark and the styles on the picture itself, the channel's own logo filled in from the picture round
+it twice a second, from the player's own frames. A switch for the line-ups on screen. As the TV launcher's 4.34 has it.
+
 Subtitles (CC in the film's player): the film's or episode's own, from your playlist's stream, come first, in the
 languages you choose (Settings, Subtitles, in order). When it has none, OpenSubtitles.com is looked in by the title's
 TMDB id (the series' with its season and episode), best first: your languages, the ones that fit the copy playing (its

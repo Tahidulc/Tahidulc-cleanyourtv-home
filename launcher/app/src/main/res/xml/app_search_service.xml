@@ -5,13 +5,16 @@
      banner as the channel changes, at most every second, for a match or F1 being watched (OverlayPrompt); Tuya Smart's, to
      open a camera's live view, magnified to fill the screen. Keys only while pop-up mode is open on a TV without the
      key helper (a TCL, whose remote loses its key repeat while any service filters keys): switched on and off at
-     runtime (AppSearchService.keysForPopup), never otherwise. -->
+     runtime (AppSearchService.keysForPopup), never otherwise. Pictures of the screen (Android 11 and later) while a
+     match plays in TiviMate under the scoreboard, to find the channel's own scoreboard and read its clock
+     (ChannelSight) and to see round the channel's logo (LogoPatch): made small at once, never kept or sent. -->
 <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
     android:accessibilityFeedbackType="feedbackGeneric"
     android:canRetrieveWindowContent="true"
     android:canPerformGestures="true"
     android:canControlMagnification="true"
     android:canRequestFilterKeyEvents="true"
+    android:canTakeScreenshot="true"
     android:accessibilityEventTypes="typeViewFocused|typeWindowContentChanged"
     android:accessibilityFlags="flagRetrieveInteractiveWindows|flagIncludeNotImportantViews|flagReportViewIds"
     android:packageNames="com.debridstream.tv,ar.tvplayer.tv"

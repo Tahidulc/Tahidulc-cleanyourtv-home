@@ -110,7 +110,12 @@ public final class BoardSettings {
                 lc.live(true);
                 pic = lc;
             }
-            boolean tall = lk.channel() || lk.broadcast() || lk == LogoCover.Look.COMPETITION;
+            boolean tall = lk.channel() || lk.broadcast() || lk == LogoCover.Look.COMPETITION || lk.own();
+            if (pic instanceof LogoCover && lk.own()) {
+                ((LogoCover) pic).style(ScoreBoard.logoStyle(c));
+                ((LogoCover) pic).what("premier league");
+                ((LogoCover) pic).nameOnly(ScoreBoard.logoNameOnly(c));
+            }
             if (lk == LogoCover.Look.COMPETITION && pic instanceof LogoCover) ((LogoCover) pic).competition(null, "Premier League");
             one.addView(pic, 0, new LinearLayout.LayoutParams(Ui.dp(c, tall ? 112 : 104), Ui.dp(c, tall ? 52 : 36)));
             one.setOnClickListener(v -> {
@@ -139,6 +144,52 @@ public final class BoardSettings {
             tagRow.addView(one, spaced(c));
         }
         col.addView(ht, new LinearLayout.LayoutParams(-1, -2));
+        // The 54 Whitebrook Road styles, each drawn as it would be: tap one.
+        col.addView(sub(c, c.getString(R.string.live28_styles)));
+        col.addView(com.gathin.tvhomephone.sports.Ui.text(c, c.getString(R.string.live28_styles_line), 13, c.getColor(R.color.text_dim), false));
+        android.widget.HorizontalScrollView hb = new android.widget.HorizontalScrollView(c);
+        hb.setHorizontalScrollBarEnabled(false);
+        LinearLayout brandRow = new LinearLayout(c);
+        hb.addView(brandRow);
+        java.util.List<android.view.View> bframes = new java.util.ArrayList<>();
+        for (int i = 0; i < BrandStyles.COUNT; i++) {
+            final int n = i;
+            LinearLayout one = choice(c, (i + 1) + ". " + BrandStyles.name(i), ScoreBoard.logoStyle(c) == i);
+            LogoCover lc = new LogoCover(c);
+            lc.look(LogoCover.Look.STYLES);
+            lc.style(i);
+            lc.nameOnly(ScoreBoard.logoNameOnly(c));
+            lc.tag("HD");
+            one.addView(lc, 0, new LinearLayout.LayoutParams(Ui.dp(c, 124), Ui.dp(c, 44)));
+            one.setOnClickListener(v -> {
+                ScoreBoard.setLogoStyle(c, n);
+                if (!ScoreBoard.logoCover(c).own()) ScoreBoard.setLogoCover(c, LogoCover.Look.STYLES);
+                for (android.view.View f : bframes) f.setSelected(f == v);
+            });
+            bframes.add(one);
+            brandRow.addView(one, spaced(c));
+        }
+        col.addView(hb, new LinearLayout.LayoutParams(-1, -2));
+        // What the Sports wordmark says is on: from the game, or one chosen.
+        col.addView(sub(c, c.getString(R.string.live28_what)));
+        android.widget.HorizontalScrollView hw = new android.widget.HorizontalScrollView(c);
+        hw.setHorizontalScrollBarEnabled(false);
+        LinearLayout whatRow = new LinearLayout(c);
+        hw.addView(whatRow);
+        java.util.List<android.view.View> wframes = new java.util.ArrayList<>();
+        for (String w : SportsMark.WHATS) {
+            LinearLayout one = choice(c, SportsMark.label(w), ScoreBoard.logoWhat(c).equals(w));
+            one.setOnClickListener(v -> {
+                ScoreBoard.setLogoWhat(c, w);
+                for (android.view.View f : wframes) f.setSelected(f == v);
+            });
+            wframes.add(one);
+            whatRow.addView(one, spaced(c));
+        }
+        col.addView(hw, new LinearLayout.LayoutParams(-1, -2));
+        row(c, col, c.getString(R.string.live28_name_only), ScoreBoard.logoNameOnly(c), on -> ScoreBoard.setLogoNameOnly(c, on));
+        row(c, col, c.getString(R.string.live28_see_through), ScoreBoard.logoSeeThrough(c), on -> ScoreBoard.setLogoSeeThrough(c, on));
+        row(c, col, c.getString(R.string.live28_lineups), ScoreBoard.lineupsOn(c), on -> ScoreBoard.setLineupsOn(c, on));
         row(c, col, c.getString(R.string.live21_logo_comp), ScoreBoard.logoComp(c), on -> ScoreBoard.setLogoComp(c, on));
         row(c, col, c.getString(R.string.live24_logo_live), ScoreBoard.logoLive(c), on -> ScoreBoard.setLogoLive(c, on));
         row(c, col, c.getString(R.string.live26_fotmob), ScoreBoard.fotmobOn(c), on -> ScoreBoard.setFotmobOn(c, on));

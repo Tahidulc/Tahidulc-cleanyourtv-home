@@ -89,6 +89,8 @@ final class ChannelMark {
     /** How much further down than the look's own height its ground runs (LIVE's foot); 0 for none. */
     private float down;
     private String sport = "";
+    /** The family's name alone, without SPORTS (the Scoreboard card's Name: Whitebrook Road). */
+    private boolean nameOnly;
 
     ChannelMark(Context c) {
         black = ScoreCard.outfit(c, 900);
@@ -110,6 +112,11 @@ final class ChannelMark {
         line.setStyle(Paint.Style.STROKE);
         line.setStrokeJoin(Paint.Join.ROUND);
         line.setStrokeCap(Paint.Cap.ROUND);
+    }
+
+    /** WHITEBROOK ROAD alone, or with SPORTS (as it was). */
+    void nameOnly(boolean on) {
+        nameOnly = on;
     }
 
     /** One look in the box (x, y, w, h): the tag ("" for none), live or not, the sport ("f1", else football). */
@@ -185,7 +192,8 @@ final class ChannelMark {
      */
     private void twoLines(Canvas cv, float left, float y, float room, float h, float tall, Typeface t, Typeface sportsT,
                           boolean graded, int tagStyle, float lean) {
-        float sp = 0.02f, w1 = widthAt(L1, t, 1f, sp), w2a = widthAt(L2, t, 1f, sp), w2b = widthAt(SPORTS, sportsT, 1f, sp);
+        String l2 = nameOnly ? "ROAD" : L2;
+        float sp = 0.02f, w1 = widthAt(L1, t, 1f, sp), w2a = widthAt(l2, t, 1f, sp), w2b = nameOnly ? 0f : widthAt(SPORTS, sportsT, 1f, sp);
         float lw = Math.max(w1, w2a + w2b), cap = capOf(t), gap = cap * 0.52f, lh = 2 * cap + gap;
         boolean stacked = hdr() && !main().isEmpty();
         float th = stacked ? lh * 0.47f : cap * 1.5f, tagU = tagW(th, stacked), tagGap = cap * 0.7f;
@@ -199,10 +207,15 @@ final class ChannelMark {
             cv.translate(0, -base);
         }
         words(cv, L1, t, s, sp, WHITE, null, left, top + cap * s, Paint.Align.LEFT);
-        words(cv, L2, t, s, sp, WHITE, null, left, base, Paint.Align.LEFT);
+        words(cv, l2, t, s, sp, WHITE, null, left, base, Paint.Align.LEFT);
         float sx = left + w2a * s;
-        if (graded) words(cv, SPORTS, sportsT, s, sp, 0, grad(sx, 0, sx + w2b * s, 0, LILAC, PEACH), sx, base, Paint.Align.LEFT);
-        else words(cv, SPORTS, sportsT, s, sp, 0xD9FFFFFF, null, sx, base, Paint.Align.LEFT);
+        if (nameOnly) {
+            // the name alone
+        } else if (graded) {
+            words(cv, SPORTS, sportsT, s, sp, 0, grad(sx, 0, sx + w2b * s, 0, LILAC, PEACH), sx, base, Paint.Align.LEFT);
+        } else {
+            words(cv, SPORTS, sportsT, s, sp, 0xD9FFFFFF, null, sx, base, Paint.Align.LEFT);
+        }
         if (tagU > 0) {
             float tagH = stacked ? th * s * 2.18f : th * s;
             tagDraw(cv, left + (lw + tagGap) * s, top + (lh * s - tagH) / 2f, th * s, stacked, tagStyle, NIGHT);
@@ -267,19 +280,21 @@ final class ChannelMark {
         houseBadge(cv, bx, by, bw, bh);
         float left = bx + bw + pad * 0.9f, room = x + w - pad - left;
         boolean hdr = tag.endsWith("HDR");
-        // SPORTS in heavy capitals with the tag after it, the name spaced out under, as wide.
-        float capS = capOf(black), sportsU = widthAt(SPORTS, black, 1f, 0f);
+        // SPORTS in heavy capitals with the tag after it, the name spaced out under, as wide (the name alone: WHITEBROOK
+        // big, ROAD spaced out under it).
+        String big = nameOnly ? "WHITEBROOK" : SPORTS, small = nameOnly ? "ROAD" : NAME;
+        float capS = capOf(black), sportsU = widthAt(big, black, 1f, 0f);
         float tagU = tagW(capS, false), line1 = sportsU + (tagU > 0 ? capS * 0.4f + tagU : 0f);
         float s = Math.min(room / line1, bh * 0.5f / capS);
         float sw = line1 * s;
-        float nameS = sizeTo(NAME, semi, 0.12f, sw);
+        float nameS = sizeTo(small, semi, 0.12f, sw);
         nameS = Math.min(nameS, s * 0.42f);
         float capN = capOf(semi) * nameS, gap = capS * s * 0.42f;
         float top = y + (h - capS * s - gap - capN) / 2f;
-        words(cv, SPORTS, black, s, 0f, WHITE, null, left, top + capS * s, Paint.Align.LEFT);
+        words(cv, big, black, s, 0f, WHITE, null, left, top + capS * s, Paint.Align.LEFT);
         if (tagU > 0) tagDraw(cv, left + sportsU * s + capS * s * 0.4f, top, capS * s, false, hdr ? SOLID : LINED, NIGHT);
-        float sp = spacingTo(NAME, semi, nameS, sw);
-        words(cv, NAME, semi, nameS, sp, 0xD9FFFFFF, null, left, top + capS * s + gap + capN, Paint.Align.LEFT);
+        float sp = spacingTo(small, semi, nameS, sw);
+        words(cv, small, semi, nameS, sp, 0xD9FFFFFF, null, left, top + capS * s + gap + capN, Paint.Align.LEFT);
     }
 
     /** Leaning forward: a blade in the mark's colours with the mark on it, two slashes, the name in heavy italic, the tag. */
@@ -340,7 +355,7 @@ final class ChannelMark {
         // At size 1: the name, the rule and SPORTS under it (half as big, spaced to the name's width), the tag after.
         String name = "Whitebrook Road";
         float nameU = widthAt(name, bold, 1f, 0f), capN = capOf(bold), gap = capN * 0.42f, rule = capN * 0.1f;
-        float capS = capOf(bold) * 0.6f, lh = capN + gap + rule + gap + capS;
+        float capS = nameOnly ? 0f : capOf(bold) * 0.6f, lh = capN + gap + rule + (nameOnly ? 0f : gap + capS);
         boolean stacked = hdr() && !main().isEmpty();
         float th = stacked ? lh * 0.47f : capN * 1.45f, tagU = tagW(th, stacked), tagGap = capN * 0.8f;
         float s = Math.min(room / (nameU + (tagU > 0 ? tagGap + tagU : 0f)), d * 0.8f / lh);
@@ -351,7 +366,7 @@ final class ChannelMark {
         cv.drawRect(left, ry, left + nw, ry + Math.max(1f, rule * s), fill);
         fill.setShader(null);
         float ss = s * 0.6f;
-        words(cv, SPORTS, bold, ss, spacingTo(SPORTS, bold, ss, nw), 0xD9FFFFFF, null, left, top + lh * s, Paint.Align.LEFT);
+        if (!nameOnly) words(cv, SPORTS, bold, ss, spacingTo(SPORTS, bold, ss, nw), 0xD9FFFFFF, null, left, top + lh * s, Paint.Align.LEFT);
         if (tagU > 0) {
             float tagH = stacked ? th * s * 2.18f : th * s;
             tagDraw(cv, left + (nameU + tagGap) * s, cy - tagH / 2f, th * s, stacked, LINED, NIGHT);
@@ -376,18 +391,20 @@ final class ChannelMark {
         float mw = band * 0.56f, mh = mw * 49f / 51f;
         mark(cv, x + pad, y + (band - mh) / 2f, mw, WHITE, gradPaint(x, y, x + w, y + band));
         float left = x + pad + mw + pad * 0.55f;
-        float ns = Math.min((x + w - pad - left) / widthAt(NAME, heavy, 1f, 0.04f), band * 0.36f / capOf(heavy));
-        words(cv, NAME, heavy, ns, 0.04f, WHITE, null, left, y + (band + capOf(heavy) * ns) / 2f, Paint.Align.LEFT);
+        // The name alone: WHITEBROOK on the band, ROAD large below it.
+        String bandName = nameOnly ? "WHITEBROOK" : NAME, bigWord = nameOnly ? "ROAD" : SPORTS;
+        float ns = Math.min((x + w - pad - left) / widthAt(bandName, heavy, 1f, 0.04f), band * 0.36f / capOf(heavy));
+        words(cv, bandName, heavy, ns, 0.04f, WHITE, null, left, y + (band + capOf(heavy) * ns) / 2f, Paint.Align.LEFT);
         float body = h - band;
         if (wide) {
             // SPORTS from the left, the tag and LIVE at the row's end.
             float th = body * 0.36f, tw = tagW(th, false), lw = live ? liveW(th * 0.8f) : 0f;
-            float most = body * 0.5f / capOf(black), sportsU = widthAt(SPORTS, black, 1f, 0.02f);
+            float most = body * 0.5f / capOf(black), sportsU = widthAt(bigWord, black, 1f, 0.02f);
             // LIVE only where SPORTS keeps its full size beside it and the tag.
             if (lw > 0 && sportsU * most + pad * 0.6f + lw + (tw > 0 ? tw + pad * 0.5f : 0f) > w - 2 * pad) lw = 0f;
             float end = (tw > 0 ? tw : 0f) + (lw > 0 ? lw + (tw > 0 ? pad * 0.5f : 0f) : 0f);
             float ss = Math.min((w - 2 * pad - (end > 0 ? end + pad * 0.6f : 0f)) / sportsU, most);
-            words(cv, SPORTS, black, ss, 0.02f, WHITE, null, x + pad, y + band + (body + capOf(black) * ss) / 2f, Paint.Align.LEFT);
+            words(cv, bigWord, black, ss, 0.02f, WHITE, null, x + pad, y + band + (body + capOf(black) * ss) / 2f, Paint.Align.LEFT);
             float ex = x + w - pad;
             if (tw > 0) {
                 tagDraw(cv, ex - tw, y + band + (body - th) / 2f, th, false, SOLID, NIGHT);
@@ -397,8 +414,8 @@ final class ChannelMark {
         } else {
             // SPORTS large in the middle; LIVE and the tag along the foot.
             float foot = body * 0.36f, mid = body - foot;
-            float ss = Math.min((w - 2 * pad) / widthAt(SPORTS, black, 1f, 0.03f), mid * 0.62f / capOf(black));
-            words(cv, SPORTS, black, ss, 0.03f, WHITE, null, x + pad, y + band + (mid + capOf(black) * ss) / 2f + mid * 0.06f, Paint.Align.LEFT);
+            float ss = Math.min((w - 2 * pad) / widthAt(bigWord, black, 1f, 0.03f), mid * 0.62f / capOf(black));
+            words(cv, bigWord, black, ss, 0.03f, WHITE, null, x + pad, y + band + (mid + capOf(black) * ss) / 2f + mid * 0.06f, Paint.Align.LEFT);
             float th = foot * 0.62f, tw = tagW(th, false), fy = y + band + mid;
             if (tw > 0) tagDraw(cv, x + w - pad - tw, fy + (foot - th) / 2f - foot * 0.08f, th, false, SOLID, NIGHT);
             if (live) liveDraw(cv, x + pad, fy + foot / 2f - foot * 0.08f, th * 0.9f);

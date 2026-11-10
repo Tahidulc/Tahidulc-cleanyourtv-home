@@ -250,14 +250,39 @@ public class BoardCoverTest {
 
     @Test
     public void theHintSaysWhatTheArrowsDo() {
-        assertTrue(BoardCover.hintFor(0, true).startsWith("Moving the scoreboard"));
-        assertTrue(BoardCover.hintFor(1, true).contains("OK: its height"));
-        assertTrue(BoardCover.hintFor(2, true).contains("its width kept"));
-        // Timing comes after the height, then the logo's cover (or back to moving the board without one).
+        // Each of the two by its position, its height, then its width.
+        assertTrue(BoardCover.hintFor(0, true).startsWith("Scoreboard  ·  POSITION"));
+        assertTrue(BoardCover.hintFor(0, true).contains("OK: its height"));
+        assertTrue(BoardCover.hintFor(1, true).contains("HEIGHT") && BoardCover.hintFor(1, true).contains("its width kept"));
+        assertTrue(BoardCover.hintFor(2, true).contains("WIDTH") && BoardCover.hintFor(2, true).contains("its height kept"));
+        // Timing comes after the width, then the logo's cover (or back to moving the board without one).
         assertTrue(BoardCover.hintFor(3, true).contains("the logo's cover"));
         assertTrue(BoardCover.hintFor(3, false).contains("OK: move it"));
         assertTrue(BoardCover.hintFor(3, true).contains("a second later"));
-        assertTrue(BoardCover.hintFor(5, true).contains("its width"));
+        assertTrue(BoardCover.hintFor(4, true).startsWith("Logo's cover  ·  POSITION"));
+        assertTrue(BoardCover.hintFor(5, true).contains("HEIGHT"));
+        assertTrue(BoardCover.hintFor(6, true).contains("WIDTH") && BoardCover.hintFor(6, true).contains("OK: the scoreboard"));
+        // What each is now, as shares of the screen.
+        BoardPlace p = BoardPlace.standard();
+        assertEquals("5% high", BoardCover.sizeWords(1, p, 0.2f));
+        assertEquals("20% wide", BoardCover.sizeWords(2, p, 0.2f));
+        assertEquals("10% wide", BoardCover.sizeWords(6, p, 0.2f));
+        assertEquals("5% across, 5% down", BoardCover.sizeWords(0, p, 0.2f));
+    }
+
+    @Test
+    public void theScoreboardsWidthIsSetApartFromItsHeight() {
+        BoardPlace p = BoardPlace.standard();
+        float h = p.bh;
+        p.widthBoard(1.5f, 0.2f);
+        assertEquals(0.3f, p.bw, 1e-4f);
+        assertEquals(h, p.bh, 1e-6f);
+        for (int i = 0; i < 200; i++) p.widthBoard(1.04f, 0f);
+        assertEquals(BoardPlace.MAX_BW, p.bw, 1e-4f);
+        // Kept on the screen as it grows.
+        assertTrue(p.bx + p.bw <= 1f + 1e-4f);
+        for (int i = 0; i < 300; i++) p.widthBoard(1 / 1.04f, 0f);
+        assertTrue(p.bw >= BoardPlace.MIN_BW);
     }
 
     // ---- the places --------------------------------------------------------------------------------------------------
@@ -585,18 +610,46 @@ public class BoardCoverTest {
 
     @Test
     public void theMenuOverTheMatchSaysWhatEachLineWillDo() {
-        String[] on = BoardCover.menuLines(true, true, "Classic", "Plain", "Auto, from the channel");
-        assertEquals(7, on.length);
-        assertEquals("Move and resize", on[0]);
-        assertEquals("Hide the scoreboard", on[1]);
-        assertEquals("Hide the logo's cover", on[2]);
+        BoardCover.MenuState m = new BoardCover.MenuState();
+        m.boardShown = true;
+        m.logoOn = true;
+        m.look = "Classic";
+        m.logoLook = "Whitebrook Road Sports";
+        m.sportsLook = true;
+        m.what = "Auto, from the game (premier league)";
+        m.tag = "Auto, from the channel";
+        m.find = true;
+        m.lineups = true;
+        m.active = true;
+        String[] on = BoardCover.menuLines(m);
+        assertEquals(12, on.length);
+        assertTrue(on[0].startsWith("Move and resize") && on[0].contains("position, height, width"));
+        assertTrue(on[1].startsWith("Scoreboard:") && on[1].contains("On"));
+        assertTrue(on[2].startsWith("Logo's cover:") && on[2].contains("On"));
         assertTrue(on[3].contains("Classic"));
-        assertTrue(on[4].contains("Plain"));
-        assertTrue(on[5].startsWith("Picture tag") && on[5].contains("Auto"));
-        assertEquals("Turn the scoreboard off", on[6]);
-        String[] off = BoardCover.menuLines(false, false, "Glass", "Mark only", "UHD HDR");
-        assertEquals("Show the scoreboard", off[1]);
-        assertEquals("Show the logo's cover", off[2]);
+        assertTrue(on[4].contains("Whitebrook Road Sports"));
+        assertTrue(on[5].contains("premier league") && !on[5].contains("looks)"));
+        assertTrue(on[6].contains("Whitebrook Road Sports"));
+        assertTrue(on[7].startsWith("Picture tag") && on[7].contains("Auto"));
+        assertTrue(on[8].startsWith("See-through") && on[8].contains("Off"));
+        assertTrue(on[9].startsWith("Find the channel's scoreboard") && on[9].contains("look again now"));
+        assertTrue(on[10].startsWith("Line-ups on screen") && on[10].contains("On"));
+        assertEquals("Turn the scoreboard off", on[11]);
+        m.boardShown = false;
+        m.logoOn = false;
+        m.nameOnly = true;
+        m.seeThrough = true;
+        m.lineups = false;
+        m.active = false;
+        m.sportsLook = false;
+        String[] off = BoardCover.menuLines(m);
+        assertTrue(off[1].contains("Off"));
+        assertTrue(off[2].contains("Off"));
+        assertTrue(off[5].contains("(Whitebrook Road Sports looks)"));
+        assertTrue(off[6].contains("‹  Whitebrook Road  ›"));
+        assertTrue(off[8].contains("On"));
+        assertTrue(off[10].contains("Off"));
+        assertEquals("Turn the scoreboard on for the game on now", off[11]);
     }
 
     @Test

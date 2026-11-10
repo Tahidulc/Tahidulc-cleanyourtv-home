@@ -173,6 +173,32 @@ final class BoardPanel extends SportPanel {
         weather.words = () -> MatchExtras.weatherOn(c) ? "At kick-off and half time: temperature, wind, rain by full time" : "Off";
         weather.ok = () -> MatchExtras.setWeatherOn(c, !MatchExtras.weatherOn(c));
         add(ratings, weather);
+        Row sight = row("Find the channel's own scoreboard", true);
+        sight.on = () -> ChannelSight.on(c);
+        sight.words = () -> !ChannelSight.on(c) ? "Off · where its broadcaster usually has it"
+                : !ChannelSight.possible() ? "Needs the search helper on (Android 11 and later)"
+                : !ChannelSight.note().isEmpty() ? ChannelSight.note()
+                : "Looks at the screen: the board over the channel's own, its clock in step with the channel's";
+        sight.ok = () -> ChannelSight.setOn(c, !ChannelSight.on(c));
+        Row again = row("Look for it again now", false);
+        again.words = () -> "On the channel on now: where its scoreboard and logo are, and its clock";
+        again.ok = () -> {
+            if (!ChannelSight.on(c)) ChannelSight.setOn(c, true);
+            ChannelSight.lookAgain(c);
+            android.widget.Toast.makeText(c, "Looking for the channel's scoreboard when the match is on", android.widget.Toast.LENGTH_SHORT).show();
+        };
+        add(sight, again);
+        Row lineups = row("Line-ups on screen", true);
+        lineups.on = () -> BoardCover.lineupsOn(c);
+        lineups.words = () -> BoardCover.lineupsOn(c) ? "Before kick-off, beside the scoreboard or as the line-up card" : "Off · the kick-off without them";
+        lineups.ok = () -> BoardCover.setLineupsOn(c, !BoardCover.lineupsOn(c));
+        Row anywhere = row("Hold OK anywhere in TiviMate", true);
+        anywhere.on = () -> BoardCover.holdAnywhere(c);
+        anywhere.words = () -> !BoardCover.holdAnywhere(c) ? "Off · only over a match with the scoreboard up"
+                : InputKeyService.running ? "The scoreboard and logo settings, match or not"
+                : "The settings, match or not · on this TV a held key then doesn't repeat in TiviMate";
+        anywhere.ok = () -> BoardCover.setHoldAnywhere(c, !BoardCover.holdAnywhere(c));
+        add(lineups, anywhere);
         Row clock = row("Clock with the channel's", true);
         clock.on = () -> BoardCover.asksAtKickoff(c);
         clock.words = () -> BoardCover.asksAtKickoff(c) ? "OK at each kick-off when asked sets it to the second"
@@ -180,7 +206,7 @@ final class BoardPanel extends SportPanel {
         clock.ok = () -> BoardCover.setAsksAtKickoff(c, !BoardCover.asksAtKickoff(c));
         Row move = row("Move and resize", false);
         String channel = InStep.channel(c);
-        move.words = () -> (channel.isEmpty() ? "Over the channel" : "Over " + channel) + ": move, size, height, timing";
+        move.words = () -> (channel.isEmpty() ? "Over the channel" : "Over " + channel) + ": position, height, width, timing";
         move.ok = () -> {
             hide();
             BoardCover.adjust(c);
@@ -230,9 +256,41 @@ final class BoardPanel extends SportPanel {
         heading("LOGO COVER LOOK: WHITEBROOK ROAD SPORTS");
         markPreviews.clear();
         List<Row> channels = new ArrayList<>(), others = new ArrayList<>();
-        for (LogoMark.Look l : LogoMark.Look.values()) (l.channel() ? channels : others).add(markTile(l));
+        List<Row> own = new ArrayList<>();
+        for (LogoMark.Look l : LogoMark.Look.values()) (l.channel() ? channels : l.own() ? own : others).add(markTile(l));
         addLine(150, 4, channels.subList(0, 4));
         addLine(150, 4, channels.subList(4, channels.size()));
+        heading("LOGO COVER LOOK: THE SPORTS WORDMARK AND 54 STYLES");
+        addLine(150, 3, own);
+        Row back = row("‹  Back a style", false);
+        back.words = () -> BoardCover.logoStyle(c) + 1 + " of " + BrandStyles.COUNT + " · " + BrandStyles.name(BoardCover.logoStyle(c));
+        back.ok = () -> stepStyle(-1);
+        Row next = row("Next style  ›", false);
+        next.words = () -> "Whitebrook Road in 54 styles";
+        next.ok = () -> stepStyle(1);
+        add(back, next);
+        Row what = row("On the Sports wordmark", false);
+        what.words = () -> BoardCover.logoWhat(c).isEmpty() ? "Auto, from the game: premier league, football, f1 · OK to choose"
+                : BoardCover.logoWhat(c) + " · OK for the next";
+        what.ok = () -> {
+            BoardCover.stepLogoWhat(c, 1);
+            for (LogoMark m : markPreviews) m.what(BoardCover.whatNow(c));
+        };
+        Row name = row("The name", false);
+        name.words = () -> BoardCover.logoNameOnly(c) ? "Whitebrook Road · OK for Whitebrook Road Sports"
+                : "Whitebrook Road Sports · OK for just Whitebrook Road";
+        name.ok = () -> {
+            BoardCover.setLogoNameOnly(c, !BoardCover.logoNameOnly(c));
+            for (LogoMark m : markPreviews) m.nameOnly(BoardCover.logoNameOnly(c));
+        };
+        add(what, name);
+        Row see = row("See-through, the channel's logo hidden", true);
+        see.on = () -> BoardCover.logoSeeThrough(c);
+        see.words = () -> !BoardCover.logoSeeThrough(c) ? "Off · on its own plate over the logo"
+                : ChannelSight.possible() ? "The wordmark and the styles on the picture itself, the channel's logo filled in from round it"
+                : "Needs the search helper on (Android 11 and later); on its plate meanwhile";
+        see.ok = () -> BoardCover.setLogoSeeThrough(c, !BoardCover.logoSeeThrough(c));
+        add(see);
         heading("LOGO COVER LOOK: THE COMPETITION'S, GLASS AND BROADCAST");
         addLine(132, 3, others.subList(0, 3));
         addLine(150, 3, others.subList(3, others.size()));
@@ -299,6 +357,10 @@ final class BoardPanel extends SportPanel {
         LogoMark m = new LogoMark(c);
         m.look(look);
         m.inset(1);
+        m.what(BoardCover.whatNow(c));
+        m.nameOnly(BoardCover.logoNameOnly(c));
+        m.style(BoardCover.logoStyle(c));
+        if (look == LogoMark.Look.STYLES) stylePreview = m;
         // Broadcast and the channel looks: the picture's tag chosen, LIVE, the scoreboard look chosen for its colours.
         m.tag(previewTag());
         m.live(true);
@@ -309,7 +371,8 @@ final class BoardPanel extends SportPanel {
         BoardBug colours = new BoardBug(c);
         colours.style(BoardCover.style(c));
         m.boardLook(colours.stripLook());
-        stage.addView(m, look.channel() || look == LogoMark.Look.COMPETITION ? new FrameLayout.LayoutParams(h.px(190), h.px(90), Gravity.CENTER)
+        stage.addView(m, look.own() ? new FrameLayout.LayoutParams(h.px(230), h.px(80), Gravity.CENTER)
+                : look.channel() || look == LogoMark.Look.COMPETITION ? new FrameLayout.LayoutParams(h.px(190), h.px(90), Gravity.CENTER)
                 : look.broadcast() ? new FrameLayout.LayoutParams(h.px(170), h.px(96), Gravity.CENTER)
                 : new FrameLayout.LayoutParams(h.px(150), h.px(52), Gravity.CENTER));
         t.addView(stage, new LinearLayout.LayoutParams(-1, 0, 1f));
@@ -325,6 +388,16 @@ final class BoardPanel extends SportPanel {
         r.ok = () -> BoardCover.setLogoLook(c, look);
         if (look == LogoMark.Look.BROADCAST_BOARD) boardColoured.add(m);
         return r;
+    }
+
+    /** The style tile's preview, for Back and Next. */
+    private LogoMark stylePreview;
+
+    /** The next (or the last) of the 54 styles, chosen and shown on its tile; the look itself is the styles'. */
+    private void stepStyle(int step) {
+        BoardCover.stepLogoStyle(c, step);
+        if (BoardCover.logoLook(c) != LogoMark.Look.STYLES) BoardCover.setLogoLook(c, LogoMark.Look.STYLES);
+        if (stylePreview != null) stylePreview.style(BoardCover.logoStyle(c));
     }
 
     /** The tag the pickers show: the one chosen, or on Auto what a UHD channel would show. */

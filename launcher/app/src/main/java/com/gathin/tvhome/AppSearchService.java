@@ -50,6 +50,11 @@ public class AppSearchService extends AccessibilityService {
     private long hideDelay, pickedAt, lastBack, startedAt, lastSearch;
     private int searches;
 
+    /** The helper while Android has it bound (ScreenShots takes the screen's pictures through it); null otherwise. */
+    static AccessibilityService helper() {
+        return instance;
+    }
+
     /** The screen locked as the power button does (the TV to sleep); false without the helper or on Android 8. */
     static boolean sleepScreen() {
         return instance != null && android.os.Build.VERSION.SDK_INT >= 28 && instance.performGlobalAction(GLOBAL_ACTION_LOCK_SCREEN);
@@ -942,6 +947,32 @@ public class AppSearchService extends AccessibilityService {
                 : was & ~android.accessibilityservice.AccessibilityServiceInfo.FLAG_REQUEST_FILTER_KEY_EVENTS;
         if (info.flags != was) s.setServiceInfo(info);
     }
+
+    /** Whether the keys are taken here for who now (with the helper bound). */
+    static boolean keysTakenFor(String who) {
+        return instance != null && keysWanted.contains(who);
+    }
+
+    /**
+     * On a TV without the key helper (the TCL), with OK held anywhere in the player switched on (BoardCover.holdAnywhere):
+     * the remote's keys taken here while the player is in front (looked at every two seconds), so that OK held there opens
+     * the scoreboard's menu; let go as soon as it is not. A held key does not repeat in the player meanwhile.
+     */
+    static void playerKeysCheck(Context c) {
+        AppSearchService s = instance;
+        if (s == null) return;
+        s.main.removeCallbacks(s.playerKeys);
+        s.main.post(s.playerKeys);
+    }
+
+    private final Runnable playerKeys = new Runnable() {
+        @Override public void run() {
+            boolean want = !InputKeyService.running && BoardCover.holdAnywhere(AppSearchService.this);
+            String f = want ? front() : null;
+            keysFor("player", want && f != null && BoardCover.isPlayer(f));
+            if (want) main.postDelayed(this, 2_000L);
+        }
+    };
 
     /** OK sent on to the app in front, as Android's own D-pad OK (a short OK kept back to see whether it was held). */
     static void ok() {
@@ -2543,6 +2574,8 @@ public class AppSearchService extends AccessibilityService {
         if (Config.themeFlag(this, "alerts_everywhere", false)) GoalWatchService.startEverywhere(this);
         super.onServiceConnected();
         instance = this;
+        BoardCover.attach(this);
+        playerKeysCheck(this);
     }
 
     @Override public boolean onUnbind(Intent intent) {

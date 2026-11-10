@@ -11,8 +11,12 @@ android {
         applicationId providers.gradleProperty('launcherApplicationId').getOrElse('com.gathin.tvhome')
         minSdk 26
         targetSdk 34
-        versionCode 433
-        versionName '4.33'
+        versionCode 434
+        versionName '4.34'
+        // Google's text reader (ChannelSight, the channel's own clock) ships its own native code: the TVs' two.
+        ndk {
+            abiFilters 'arm64-v8a', 'armeabi-v7a'
+        }
     }
 
     buildTypes {
@@ -34,6 +38,12 @@ android {
         }
     }
 
+    lint {
+        // Google's text reader (ChannelSight) brings AppCompat along with it; the launcher's own views and screens are
+        // plain Android and never use it, so its "use AppCompat's" checks do not apply here.
+        disable 'AppCompatCustomView', 'UseAppTint'
+    }
+
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
@@ -43,6 +53,8 @@ android {
 dependencies {
     implementation 'androidx.recyclerview:recyclerview:1.3.2'
     implementation 'androidx.dynamicanimation:dynamicanimation:1.0.0'
+    // The channel's own scoreboard read off the screen (ChannelSight): Google's text reader, offline, on the TV itself.
+    implementation 'com.google.mlkit:text-recognition:16.0.1'
     // Test only (never in the APK): plain JVM tests for the module card validators, src/test.
     testImplementation 'junit:junit:4.13.2'
 }

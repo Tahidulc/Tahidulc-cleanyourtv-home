@@ -8,6 +8,7 @@ import android.graphics.ColorMatrix;
 import android.graphics.ColorMatrixColorFilter;
 import android.graphics.Paint;
 import android.graphics.PixelFormat;
+import android.graphics.RectF;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Handler;
 import android.os.Looper;
@@ -292,6 +293,82 @@ final class BoardCover {
     static void stepLogoTag(Context c, int step) {
         ChannelMark.Tag[] all = ChannelMark.Tag.values();
         setLogoTag(c, all[((logoTag(c).ordinal() + step) % all.length + all.length) % all.length]);
+    }
+
+    /** What is on the Whitebrook Road Sports wordmark: "" (from the game) or one chosen ("premier league", "f1"). */
+    static String logoWhat(Context c) {
+        return prefs(c).getString("what", "");
+    }
+
+    static void setLogoWhat(Context c, String what) {
+        prefs(c).edit().putString("what", what == null ? "" : what).apply();
+        if (mark != null) mark.what(whatNow(c));
+    }
+
+    static void stepLogoWhat(Context c, int step) {
+        String[] all = SportsMark.WHATS;
+        int at = java.util.Arrays.asList(all).indexOf(logoWhat(c));
+        setLogoWhat(c, all[((Math.max(0, at) + step) % all.length + all.length) % all.length]);
+    }
+
+    /** What is on now: the one chosen, else from the game the board is on for (the Premier League's, else football). */
+    static String whatNow(Context c) {
+        String chosen = logoWhat(c);
+        if (!chosen.isEmpty()) return chosen;
+        String id = game(c);
+        ScoresTicker.Game g = id == null || id.isEmpty() ? null : GoalWatchService.latestGame(id);
+        return SportsMark.auto(g == null ? null : g.slug, false);
+    }
+
+    /** Which of the Whitebrook Road styles the cover shows in that look (0 to BrandStyles.COUNT - 1). */
+    static int logoStyle(Context c) {
+        return BrandStyles.clamp(prefs(c).getInt("brand_style", 0));
+    }
+
+    static void setLogoStyle(Context c, int n) {
+        prefs(c).edit().putInt("brand_style", BrandStyles.clamp(n)).apply();
+        if (mark != null) mark.style(logoStyle(c));
+    }
+
+    static void stepLogoStyle(Context c, int step) {
+        int n = BrandStyles.COUNT;
+        setLogoStyle(c, ((logoStyle(c) + step) % n + n) % n);
+    }
+
+    /** The family's name alone on the logo's cover (WHITEBROOK ROAD), or with SPORTS (as it was). */
+    static boolean logoNameOnly(Context c) {
+        return prefs(c).getBoolean("name_only", false);
+    }
+
+    static void setLogoNameOnly(Context c, boolean on) {
+        prefs(c).edit().putBoolean("name_only", on).apply();
+        if (mark != null) mark.nameOnly(on);
+    }
+
+    /**
+     * See-through: Whitebrook Road Sports over the picture itself, the channel's own logo under it hidden by what is round
+     * it (LogoPatch, from the screen's pictures); where those cannot be had, it stands on its plate. Off unless chosen.
+     */
+    static boolean logoSeeThrough(Context c) {
+        return prefs(c).getBoolean("see_through", false);
+    }
+
+    static void setLogoSeeThrough(Context c, boolean on) {
+        prefs(c).edit().putBoolean("see_through", on).apply();
+        if (mark != null) {
+            mark.seeThrough(on);
+            if (!on) mark.patch(null);
+        }
+        patchSoon();
+    }
+
+    /** The line-ups on screen (the line-up card beside the board, the line-ups out of it): on unless switched off. */
+    static boolean lineupsOn(Context c) {
+        return prefs(c).getBoolean("lineups", true);
+    }
+
+    static void setLineupsOn(Context c, boolean on) {
+        prefs(c).edit().putBoolean("lineups", on).apply();
     }
 
     /** OK held over the match while the board is up: its menu (move it, hide it, the looks, off). */
@@ -702,16 +779,49 @@ final class BoardCover {
         resume(c);
     }
 
-    /** Pure: the clock set by hand for this game, {base seconds, when}, from "id|base|at"; null for none, or another game's. */
+    /**
+     * Pure: the clock set for this game, {base seconds, when, its half (0: by the seconds)}, from "id|base|at" (set by
+     * hand) or "id|base|at|half" (read off the channel's own, ChannelSight); null for none, or another game's.
+     */
     static long[] anchorOf(String s, String gameId) {
         if (s == null || gameId == null) return null;
         String[] f = s.split("\\|");
-        if (f.length != 3 || !f[0].equals(gameId)) return null;
+        if ((f.length != 3 && f.length != 4) || !f[0].equals(gameId)) return null;
         try {
-            return new long[]{Long.parseLong(f[1]), Long.parseLong(f[2])};
+            return new long[]{Long.parseLong(f[1]), Long.parseLong(f[2]), f.length > 3 ? Long.parseLong(f[3]) : 0};
         } catch (NumberFormatException e) {
             return null;
         }
+    }
+
+    /** Pure: the half ESPN's minute is in (1, 2, then extra time's 3 and 4); 0 when it gives none. */
+    static int periodOf(String detail) {
+        int first = firstMinute(detail);
+        return first <= 0 ? 0 : first <= 45 ? 1 : first <= 90 ? 2 : first <= 105 ? 3 : 4;
+    }
+
+    /**
+     * The channel's own clock read off the screen (ChannelSight): base seconds at the moment at, in that half. The board
+     * counts from it as from an OK at kick-off; read again every minute or so, it changes only when a second or more out.
+     */
+    static void anchorSeen(Context c, String gameId, int base, long at, int half) {
+        if (gameId == null || gameId.isEmpty() || base < 0) return;
+        long[] was = anchorOf(prefs(c).getString("anchor", null), gameId);
+        boolean same = was != null && (was[2] == half || was[2] == 0 && periodOfSecs(was[0]) == half)
+                && Math.abs(was[0] + (at - was[1]) / 1000.0 - base) < 1.0;
+        if (same) return;
+        prefs(c).edit().putString("anchor", gameId + "|" + base + "|" + at + "|" + half).apply();
+        steadyKey = null;
+        if (was == null || was[2] != half) {
+            AlertLog.note(c, "scoreboard clock read off the channel's own: " + (base / 60) + ":" + String.format(Locale.ROOT, "%02d", base % 60));
+        }
+        poke();
+    }
+
+    /** Whether the board's clock is set from the channel's own (an OK at kick-off, or read off it) for the half on now. */
+    static boolean clockSet(Context c, String detail) {
+        String id = game(c);
+        return anchoredSecs(anchorOf(prefs(c).getString("anchor", null), id), System.currentTimeMillis(), detail) >= 0;
     }
 
     /** Pure: the period a clock of total seconds is in (1, 2, then extra time's 3 and 4). */
@@ -731,7 +841,7 @@ final class BoardCover {
     /** Pure: the same as seconds (-1: none). */
     static double anchoredSecs(long[] a, long now, String detail) {
         if (a == null || now < a[1]) return -1;
-        int period = periodOfSecs(a[0]), first = firstMinute(detail);
+        int period = a.length > 2 && a[2] > 0 ? (int) a[2] : periodOfSecs(a[0]), first = firstMinute(detail);
         if (first > 0 && (first <= 45 ? 1 : first <= 90 ? 2 : first <= 105 ? 3 : 4) != period) return -1;
         return a[0] + (now - a[1]) / 1000.0;
     }
@@ -744,7 +854,7 @@ final class BoardCover {
         steadyKey = null;
         String id = game(c);
         long[] a = anchorOf(prefs(c).getString("anchor", null), id);
-        if (a != null) prefs(c).edit().putString("anchor", id + "|" + a[0] + "|" + (a[1] + delta)).apply();
+        if (a != null) prefs(c).edit().putString("anchor", id + "|" + a[0] + "|" + (a[1] + delta) + (a[2] > 0 ? "|" + a[2] : "")).apply();
     }
 
     /** Timing's line: how far the board is held behind the live scores, and whether its clock was set at kick-off. */
@@ -919,6 +1029,7 @@ final class BoardCover {
     /** The kick-off's line-ups while the board is up: both elevens slid out beside it; true when taken (main thread). */
     static boolean takeLineups(Context c, ScoresTicker.Game g, ScoresTicker.Side[] sides, Bitmap home, Bitmap away) {
         if (g == null || g.id == null || sides == null || sides.length < 2 || sides[0] == null || sides[1] == null || !up(c)) return false;
+        if (!lineupsOn(c)) return false;
         if (!NotifyPrefs.allowed(c, "kickoff", false, g.slug, g.id)) return false;
         drop(c, lineupsDrop(g, sides, home, away));
         return true;
@@ -1200,6 +1311,27 @@ final class BoardCover {
     static final long DROP_MS = 8_000L;
     /** The widest what slides out beside the board may be, in board heights. */
     static final float STRIP_W = 15f;
+    /**
+     * The alerts and stats beside the board, kept sleek: this share of its height, centred on it, their words sized
+     * from that, and never longer than SLIM_W of their own heights (longer words run along instead).
+     */
+    static final float SLIM = 0.64f, SLIM_W = 10f;
+
+    /** Pure: a pop-out's height beside a board bh high. */
+    static int slimH(int bh) {
+        return Math.max(12, Math.round(bh * SLIM));
+    }
+
+    /** Pure: the longest a pop-out sh high may be, within room. */
+    static int slimRoom(int popH, int room) {
+        return Math.max(popH * 3, Math.min(room, Math.round(popH * SLIM_W)));
+    }
+
+    /** The room over an alert's strip for the scorer's picture to stand into: a little over half the strip, up to the board's top room. */
+    private static int dropHead(int bh) {
+        int popH = slimH(bh), off = (bh - popH) / 2;
+        return Math.max(0, Math.min(head + off, Math.round(popH * 0.55f)));
+    }
     private static TextView hint;
     /** This channel's places, and which channel they are for. */
     private static BoardPlace place;
@@ -1231,6 +1363,20 @@ final class BoardCover {
     };
 
     /** Looked at again: when it is on (the service starting, a switch, a poll), Move and resize, the test. */
+    /** The services up (the key helper, the search helper): the context for the menu held open over the player. */
+    static void attach(Context c) {
+        if (app == null) app = c.getApplicationContext();
+    }
+
+    /** The screen's size, for what opens before the board's own windows were ever made (the menu over the player). */
+    private static void screen(Context c) {
+        if (sw > 0 && sh > 0) return;
+        android.util.DisplayMetrics dm = c.getResources().getDisplayMetrics();
+        sw = Math.max(dm.widthPixels, dm.heightPixels);
+        sh = Math.min(dm.widthPixels, dm.heightPixels);
+        edge = Math.max(2, Math.round(2f * sw / 1920f));
+    }
+
     static void resume(Context c) {
         app = c.getApplicationContext();
         if (!active(app) && !adjusting && testUntil <= System.currentTimeMillis()) return;
@@ -1327,6 +1473,10 @@ final class BoardCover {
             }
         }
         if (!ensureWindows(c)) return 5_000L;
+        // The channel's own scoreboard looked for on the screen, its clock read (ChannelSight): the board and the cover
+        // stand aside meanwhile where the screen's pictures would show them.
+        if (r.state == 0 && !r.halftime) ChannelSight.tick(c, id, InStep.channel(c), r.detail);
+        veil(ChannelSight.aside());
         showGame(c, now, false, null);
         // The match playing in TiviMate: its picture frozen (the backup channel), its 4K form in the playlist (the chip).
         if (r.state == 0 && !r.halftime) {
@@ -1477,6 +1627,9 @@ final class BoardCover {
             mark.tag(logoTag(c).on(InStep.channel(c)));
             mark.live(l.live);
             mark.boardLook(bug.stripLook());
+            mark.what(whatNow(c));
+            // See-through: the picture round the channel's logo, about once a second.
+            if (mark.wantsPatch()) patchSoon();
         }
         layout(c);
         guard(now);
@@ -1581,6 +1734,10 @@ final class BoardCover {
             mark.competition(compImage, compTag);
             mark.compOn(logoComp(c));
             mark.liveBar(logoLive(c));
+            mark.nameOnly(logoNameOnly(c));
+            mark.seeThrough(logoSeeThrough(c));
+            mark.what(whatNow(c));
+            mark.style(logoStyle(c));
             mark.inset(edge);
             logoWin = frame(c, mark);
             if (!addWindow(c, logoWin)) {
@@ -1644,6 +1801,96 @@ final class BoardCover {
         } catch (RuntimeException ignored) {
             // gone already
         }
+    }
+
+    private static boolean veiled;
+
+    // ---- see-through: the channel's own logo hidden under Whitebrook Road Sports (LogoPatch) ---------------------------
+
+    private static final Runnable patchRun = BoardCover::patchNow;
+    private static long patchAt;
+    private static boolean patchLoop;
+
+    /** The patch looked at again soon, if it is wanted (the loop keeps itself going while it is). */
+    private static void patchSoon() {
+        if (patchLoop) return;
+        patchLoop = true;
+        main().post(patchRun);
+    }
+
+    /**
+     * See-through: the picture round the logo's cover taken (ScreenShots, a margin wider than the cover's window, so the
+     * cover itself is never in what is used) and its inside made up from that margin (LogoPatch), for the cover to stand
+     * on; about once a second (more often where the pictures leave the launcher's windows out). Stops when not wanted.
+     */
+    private static void patchNow() {
+        Context c = app;
+        if (c == null || mark == null || logoWin == null || !mark.wantsPatch()) {
+            patchLoop = false;
+            return;
+        }
+        if (!ScreenShots.available()) {
+            // No pictures to be had here: the cover stands on its plate.
+            mark.patch(null);
+            patchLoop = false;
+            return;
+        }
+        long now = SystemClock.uptimeMillis(), every = ScreenShots.windowOnly() ? Math.max(450L, ScreenShots.gap()) : 1_000L;
+        // Not while the board stands aside for ChannelSight's look, nor with the 4K chip under the cover (in its margin).
+        if (veiled || chipWin != null || now - patchAt < every || !ScreenShots.ready()) {
+            main().postDelayed(patchRun, 200L);
+            return;
+        }
+        int[] at = new int[2];
+        mark.getLocationOnScreen(at);
+        float vw = mark.getWidth(), vh = mark.getHeight();
+        if (vw < 4 || vh < 4 || sw <= 0 || sh <= 0) {
+            main().postDelayed(patchRun, 500L);
+            return;
+        }
+        // The margin: clear of the cover's own window (its edge and the burn-in step's room), a sixth of its height more.
+        float m = 3 * edge + Math.max(6f * sw / 1920f, vh * 0.16f);
+        float l = Math.max(0, at[0] - m), t = Math.max(0, at[1] - m), r = Math.min(sw, at[0] + vw + m), b = Math.min(sh, at[1] + vh + m);
+        float rw = r - l, rh = b - t;
+        int ph = 36, pw = Math.max(8, Math.min(160, Math.round(ph * rw / Math.max(1f, rh))));
+        float kx = pw / rw, ky = ph / rh;
+        // Each side's margin in the small picture (none where the cover is at the screen's edge).
+        int ml = Math.round((at[0] - l) * kx), mt = Math.round((at[1] - t) * ky), mr = Math.round((r - at[0] - vw) * kx),
+                mb = Math.round((b - at[1] - vh) * ky);
+        patchAt = now;
+        RectF part = new RectF(l / sw, t / sh, r / sw, b / sh);
+        boolean asked = ScreenShots.take(new RectF[]{part}, new int[][]{{pw, ph}}, (parts, when, own) -> {
+            Bitmap small = parts[0];
+            if (small != null && mark != null) {
+                int w = small.getWidth(), h = small.getHeight();
+                int[] px = new int[w * h];
+                small.getPixels(px, 0, w, 0, 0, w, h);
+                small.recycle();
+                int[] in = LogoPatch.fill(px, w, h, Math.min(ml, w / 3), Math.min(mt, h / 3), Math.min(mr, w / 3), Math.min(mb, h / 3));
+                int iw = w - Math.min(ml, w / 3) - Math.min(mr, w / 3), ih = h - Math.min(mt, h / 3) - Math.min(mb, h / 3);
+                if (in != null && iw > 0 && ih > 0) mark.patch(Bitmap.createBitmap(in, iw, ih, Bitmap.Config.ARGB_8888));
+            }
+            main().postDelayed(patchRun, 100L);
+        });
+        if (!asked) main().postDelayed(patchRun, 250L);
+    }
+
+    /** The board, the cover and the chip unseen for a moment, their windows kept (ChannelSight's pictures), or seen again. */
+    private static void veil(boolean on) {
+        veiled = on;
+        float a = on ? 0f : 1f;
+        if (boardWin != null && boardWin.getAlpha() != a) boardWin.setAlpha(a);
+        if (logoWin != null && logoWin.getAlpha() != a) logoWin.setAlpha(a);
+        if (chipWin != null && chipWin.getAlpha() != a) chipWin.setAlpha(a);
+    }
+
+    /** ChannelSight saw where the channel puts its own, or stands the board aside or back: placed and shown again now. */
+    static void sightChanged() {
+        place = null;
+        placeKey = null;
+        veil(ChannelSight.aside());
+        poke();
+        if (app != null) resume(app);
     }
 
     /** Both away at once (Home, another app, switched off): what was out beside it with them. */
@@ -1801,8 +2048,14 @@ final class BoardCover {
     private static void beside(View v, int w) {
         FrameLayout.LayoutParams b = (FrameLayout.LayoutParams) bug.getLayoutParams();
         int left = sideLeft ? boardAt + tuck - sideGap - w : boardAt + b.width - tuck + sideGap;
-        if (v == drop) sizeAt(v, w, b.height + head, left, 0);
-        else sizeAt(v, w, b.height, left, head);
+        // Slim, centred on the board's height: a tab out of its middle rather than a second board.
+        int popH = slimH(b.height), off = (b.height - popH) / 2;
+        if (v == drop) {
+            int dh = dropHead(b.height);
+            sizeAt(v, w, popH + dh, left, head + off - dh);
+        } else {
+            sizeAt(v, w, popH, left, head + off);
+        }
     }
 
     /**
@@ -1870,9 +2123,9 @@ final class BoardCover {
             stats.fold(() -> main().post(nextDropRun));
             return;
         }
-        // The line-up card beside the board: the alert waits for it.
-        if (LineupCard.isShowing()) {
-            main().postDelayed(nextDropRun, 1_500L);
+        // The line-up card beside the board: the alert waits for it; and for the board back from standing aside.
+        if (LineupCard.isShowing() || veiled) {
+            main().postDelayed(nextDropRun, veiled ? 1_000L : 1_500L);
             return;
         }
         long wait = bug.bandLeft(System.currentTimeMillis());
@@ -1882,8 +2135,9 @@ final class BoardCover {
         }
         BoardDrop.Drop d = drops.pollFirst();
         poke();
-        drop.place(bug.stripLook(), boardH, tuck, sideLeft, head);
-        beside(drop, drop.widthFor(d, bug.getLayoutParams().height, sideMax));
+        int bh = bug.getLayoutParams().height, popH = slimH(bh);
+        drop.place(bug.stripLook(), boardH * SLIM, tuck, sideLeft, dropHead(bh));
+        beside(drop, drop.widthFor(d, popH, slimRoom(popH, sideMax)));
         drop.show(d);
         main().postDelayed(hideDropRun, drop.showFor(DROP_MS));
     }
@@ -2204,8 +2458,9 @@ final class BoardCover {
         if (statsShown.size() > 60) statsShown.clear();
         statsShown.add(g.id + "|" + slot);
         poke();
-        stats.place(bug.stripLook(), boardH, tuck, sideLeft);
-        beside(stats, stats.widthFor(pick, bug.getLayoutParams().height, sideMax));
+        int bh = bug.getLayoutParams().height, popH = slimH(bh);
+        stats.place(bug.stripLook(), boardH * SLIM, tuck, sideLeft);
+        beside(stats, stats.widthFor(pick, popH, slimRoom(popH, sideMax)));
         stats.show(pick);
     }
 
@@ -2383,6 +2638,7 @@ final class BoardCover {
     private static void beginAdjust() {
         Context c = app;
         if (c == null || adjusting) return;
+        screen(c);
         adjusting = true;
         adjustAt = SystemClock.uptimeMillis();
         part = 0;
@@ -2451,19 +2707,20 @@ final class BoardCover {
     static String hintFor(int part, boolean logo) {
         switch (part) {
             case 1:
-                return "Sizing the scoreboard  ·  Up bigger, Down smaller  ·  OK: its height  ·  Back: keep it";
+                return "Scoreboard  ·  HEIGHT  ·  Up taller, Down shorter, its width kept  ·  OK: its width  ·  Back: keep it";
             case 2:
-                return "The scoreboard's height  ·  Up taller, Down flatter, its width kept  ·  OK: its timing  ·  Back: keep it";
+                return "Scoreboard  ·  WIDTH  ·  Right wider, Left narrower, its height kept  ·  OK: its timing  ·  Back: keep it";
             case 3:
                 return "Timing  ·  Right a second later, Left a second sooner, Down and Up five  ·  OK: "
                         + (logo ? "the logo's cover" : "move it") + "  ·  Back: keep it";
             case 4:
-                return "Moving the cover over the channel's logo  ·  arrows move it  ·  OK: its size  ·  Back: keep it";
+                return "Logo's cover  ·  POSITION  ·  arrows move it  ·  OK: its height  ·  Back: keep it";
             case 5:
-                return "Sizing the logo's cover  ·  Left and Right its width, Up and Down its height  ·  OK: the scoreboard"
-                        + "  ·  Back: keep it";
+                return "Logo's cover  ·  HEIGHT  ·  Up taller, Down shorter  ·  OK: its width  ·  Back: keep it";
+            case 6:
+                return "Logo's cover  ·  WIDTH  ·  Right wider, Left narrower  ·  OK: the scoreboard  ·  Back: keep it";
             default:
-                return "Moving the scoreboard  ·  arrows move it  ·  OK: its size  ·  Back: keep it";
+                return "Scoreboard  ·  POSITION  ·  arrows move it  ·  OK: its height  ·  Back: keep it";
         }
     }
 
@@ -2471,7 +2728,26 @@ final class BoardCover {
         if (hint == null) return;
         String s = hintFor(part, mark != null);
         if (part == 3 && app != null) s = timingWords(app) + "  ·  " + s;
+        else if (editing != null) s = s + "  ·  " + sizeWords(part, editing, boardWidthNow());
         Keys.set(hint, s);
+    }
+
+    /** Pure: what the part being set is now, as shares of the screen ("38% wide"). */
+    static String sizeWords(int part, BoardPlace p, float boardWidth) {
+        switch (part) {
+            case 1:
+                return Math.round(p.bh * 100) + "% high";
+            case 2:
+                return Math.round((p.bw > 0 ? p.bw : boardWidth) * 100) + "% wide";
+            case 4:
+                return Math.round(p.lx * 100) + "% across, " + Math.round(p.ly * 100) + "% down";
+            case 5:
+                return Math.round(p.lh * 100) + "% high";
+            case 6:
+                return Math.round(p.lw * 100) + "% wide";
+            default:
+                return Math.round(p.bx * 100) + "% across, " + Math.round(p.by * 100) + "% down";
+        }
     }
 
     /** The one being placed ringed. */
@@ -2510,7 +2786,7 @@ final class BoardCover {
 
     private static void nextPart() {
         if (!adjusting) return;
-        part = (part + 1) % (mark != null ? 6 : 4);
+        part = (part + 1) % (mark != null ? 7 : 4);
         outline();
         hintWords();
     }
@@ -2526,12 +2802,14 @@ final class BoardCover {
                 editing.moveBoard(x, y, aspect);
                 break;
             case 1:
-                editing.sizeBoard(dy < 0 || dx > 0 ? 1.04f : 1 / 1.04f, aspect);
+                if (dy == 0) return;
+                // Taller or shorter, its width kept as it is now: the board fills that box (two rows when near square).
+                editing.heightBoard(dy < 0 ? 1.04f : 1 / 1.04f, boardWidthNow());
                 break;
             case 2:
-                if (dy == 0) return;
-                // Taller or flatter, its width kept as it is now: the board fills that box (two rows when near square).
-                editing.heightBoard(dy < 0 ? 1.04f : 1 / 1.04f, bug == null ? 0f : Math.max(0f, bug.getWidth() - 2f * edge) / sw);
+                if (dx == 0) return;
+                // Wider or narrower, its height kept.
+                editing.widthBoard(dx > 0 ? 1.04f : 1 / 1.04f, boardWidthNow());
                 break;
             case 3:
                 timing(app, dx * 1_000L + (dy > 0 ? 5_000L : dy < 0 ? -5_000L : 0L));
@@ -2540,10 +2818,21 @@ final class BoardCover {
             case 4:
                 editing.moveLogo(x, y);
                 break;
+            case 5:
+                if (dy == 0) return;
+                editing.sizeLogo(1f, dy < 0 ? 1.04f : 1 / 1.04f);
+                break;
             default:
-                editing.sizeLogo(dx > 0 ? 1.04f : dx < 0 ? 1 / 1.04f : 1f, dy < 0 ? 1.04f : dy > 0 ? 1 / 1.04f : 1f);
+                if (dx == 0) return;
+                editing.sizeLogo(dx > 0 ? 1.04f : 1 / 1.04f, 1f);
         }
         layout(app);
+        hintWords();
+    }
+
+    /** The board's width on the screen now, as a share of the screen's (0: not drawn yet). */
+    private static float boardWidthNow() {
+        return bug == null ? 0f : Math.max(0f, bug.getWidth() - 2f * edge) / sw;
     }
 
     /** The board's width as a share of the screen's, for each share of its height set (Stacked drawn taller). */
@@ -2582,6 +2871,7 @@ final class BoardCover {
 
     private static FrameLayout menuWin;
     private static LinearLayout menuRows;
+    private static TextView menuNote;
     private static int menuAt;
     /** The OK being watched for a hold (its press's time), and whether the hold opened the menu. */
     private static long okDown = -1, menuOkDown = -1;
@@ -2600,7 +2890,8 @@ final class BoardCover {
      * its release). Not while a card or another of the launcher's frames has the remote.
      */
     private static boolean holdOk(KeyEvent e) {
-        if (!QuietHold.isOk(e.getKeyCode()) || android.os.Build.VERSION.SDK_INT < 33 || boardWin == null || app == null
+        if (!QuietHold.isOk(e.getKeyCode()) || android.os.Build.VERSION.SDK_INT < 33 || app == null
+                || (boardWin == null && !holdInPlayer(app))
                 || !holdMenuOn(app) || QuietHold.up() || InStepCard.isShowing() || LiveCentre.isShowing() || F1Tower.isShowing()
                 || HalfTimeBreak.isShowing() || CreditsCover.isShowing() || ScoreCard.busy() || LineupCard.isShowing()) {
             return false;
@@ -2624,16 +2915,76 @@ final class BoardCover {
         return false;
     }
 
+    /**
+     * OK held in the player (TiviMate) with no board up: the menu all the same. With the key helper (the Streamer) always;
+     * on a TV without it (the TCL) only when switched on, as it costs a held key its repeat in TiviMate.
+     */
+    static boolean holdInPlayer(Context c) {
+        if (!holdAnywhere(c)) return false;
+        if (!InputKeyService.running && !AppSearchService.keysTakenFor("player")) return false;
+        String f = AppSearchService.front();
+        return f != null && isPlayer(f) && !GoalWatchService.homeInFront;
+    }
+
+    /** OK held anywhere in TiviMate opens the menu (on unless switched off; a TV without the key helper asks for it). */
+    static boolean holdAnywhere(Context c) {
+        return prefs(c).getBoolean("hold_anywhere", InputKeyService.running);
+    }
+
+    static void setHoldAnywhere(Context c, boolean on) {
+        prefs(c).edit().putBoolean("hold_anywhere", on).apply();
+        AppSearchService.playerKeysCheck(c);
+    }
+
+    /** What the menu's lines say: each switch and look as it stands. */
+    static final class MenuState {
+        boolean boardShown, logoOn, nameOnly, seeThrough, find, lineups, active, sportsLook, stylesLook;
+        String look = "", logoLook = "", what = "", tag = "", note = "", style = "";
+    }
+
     /** Pure: the menu's lines, as the switches stand. */
-    static String[] menuLines(boolean boardShown, boolean logoOn, String look, String logoLook, String tag) {
-        return new String[]{"Move and resize", boardShown ? "Hide the scoreboard" : "Show the scoreboard",
-                logoOn ? "Hide the logo's cover" : "Show the logo's cover", "Scoreboard look:  ‹  " + look + "  ›",
-                "Logo cover look:  ‹  " + logoLook + "  ›", "Picture tag:  ‹  " + tag + "  ›", "Turn the scoreboard off"};
+    static String[] menuLines(MenuState m) {
+        return new String[]{"Move and resize  ·  position, height, width",
+                "Scoreboard:  ‹  " + (m.boardShown ? "On" : "Off") + "  ›",
+                "Logo's cover:  ‹  " + (m.logoOn ? "On" : "Off") + "  ›",
+                "Scoreboard look:  ‹  " + m.look + "  ›",
+                "Logo look:  ‹  " + m.logoLook + "  ›",
+                m.stylesLook ? "Style:  ‹  " + m.style + "  ›"
+                        : "On the logo:  ‹  " + m.what + "  ›" + (m.sportsLook ? "" : "  (Whitebrook Road Sports looks)"),
+                "Name:  ‹  " + (m.nameOnly ? "Whitebrook Road" : "Whitebrook Road Sports") + "  ›",
+                "Picture tag:  ‹  " + m.tag + "  ›",
+                "See-through, the channel's logo hidden:  ‹  " + (m.seeThrough ? "On" : "Off") + "  ›",
+                "Find the channel's scoreboard:  ‹  " + (m.find ? "On" : "Off") + "  ›  ·  OK: look again now",
+                "Line-ups on screen:  ‹  " + (m.lineups ? "On" : "Off") + "  ›",
+                m.active ? "Turn the scoreboard off" : "Turn the scoreboard on for the game on now"};
+    }
+
+    /** The menu's state now. */
+    private static MenuState menuState(Context c) {
+        MenuState m = new MenuState();
+        m.boardShown = boardShown(c);
+        m.logoOn = logoOn(c);
+        m.look = style(c).label;
+        m.logoLook = logoLook(c).label;
+        m.sportsLook = logoLook(c).sports();
+        m.stylesLook = logoLook(c) == LogoMark.Look.STYLES;
+        m.style = (logoStyle(c) + 1) + " of " + BrandStyles.COUNT + "  ·  " + BrandStyles.name(logoStyle(c));
+        String w = logoWhat(c);
+        m.what = w.isEmpty() ? "Auto, from the game (" + whatNow(c) + ")" : w;
+        m.nameOnly = logoNameOnly(c);
+        m.tag = logoTag(c).label;
+        m.seeThrough = logoSeeThrough(c);
+        m.find = ChannelSight.on(c);
+        m.lineups = lineupsOn(c);
+        m.active = active(c);
+        m.note = ChannelSight.note();
+        return m;
     }
 
     private static void openMenu() {
         Context c = app;
         if (c == null || menuWin != null) return;
+        screen(c);
         float u = sw / 1920f;
         Context soft = new GoalWatchService.SoftwareWindow(c);
         FrameLayout win = new FrameLayout(soft);
@@ -2646,21 +2997,27 @@ final class BoardCover {
         bg.setStroke(Math.max(1, Math.round(u)), 0x40FFFFFF);
         box.setBackground(bg);
         TextView head = new TextView(soft);
-        head.setText("Scoreboard  ·  Up and Down, OK  ·  Back to close");
+        head.setText("Scoreboard and logo  ·  Up and Down, Left and Right, OK  ·  Back to close");
         head.setTextColor(0xB3FFFFFF);
         head.setTextSize(TypedValue.COMPLEX_UNIT_PX, 19f * u);
         head.setPadding(Math.round(10 * u), 0, Math.round(10 * u), Math.round(12 * u));
         box.addView(head);
+        // What the TV last saw of the channel's own scoreboard (ChannelSight).
+        menuNote = new TextView(soft);
+        menuNote.setTextColor(0x99FFFFFF);
+        menuNote.setTextSize(TypedValue.COMPLEX_UNIT_PX, 17f * u);
+        menuNote.setPadding(Math.round(10 * u), 0, Math.round(10 * u), Math.round(10 * u));
+        box.addView(menuNote);
         menuRows = new LinearLayout(soft);
         menuRows.setOrientation(LinearLayout.VERTICAL);
         for (int i = 0; i < MENU_LINES; i++) {
             TextView t = new TextView(soft);
             t.setTextColor(0xFFFFFFFF);
-            t.setTextSize(TypedValue.COMPLEX_UNIT_PX, 26f * u);
+            t.setTextSize(TypedValue.COMPLEX_UNIT_PX, 21f * u);
             t.setTypeface(c.getResources().getFont(R.font.inter_semibold));
-            t.setPadding(Math.round(22 * u), Math.round(12 * u), Math.round(40 * u), Math.round(12 * u));
+            t.setPadding(Math.round(20 * u), Math.round(8 * u), Math.round(36 * u), Math.round(8 * u));
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
-            lp.topMargin = Math.round(4 * u);
+            lp.topMargin = Math.round(3 * u);
             menuRows.addView(t, lp);
         }
         box.addView(menuRows, new LinearLayout.LayoutParams(-2, -2));
@@ -2689,7 +3046,12 @@ final class BoardCover {
         Context c = app;
         if (menuRows == null || c == null) return;
         float u = sw / 1920f;
-        String[] lines = menuLines(boardShown(c), logoOn(c), style(c).label, logoLook(c).label, logoTag(c).label);
+        MenuState state = menuState(c);
+        String[] lines = menuLines(state);
+        if (menuNote != null) {
+            menuNote.setText(state.note);
+            menuNote.setVisibility(state.note.isEmpty() ? View.GONE : View.VISIBLE);
+        }
         for (int i = 0; i < menuRows.getChildCount(); i++) {
             TextView t = (TextView) menuRows.getChildAt(i);
             t.setText(lines[i]);
@@ -2736,9 +3098,7 @@ final class BoardCover {
             if (down) main().post(() -> {
                 Context c = app;
                 if (c == null) return;
-                if (menuAt == 3) stepStyle(c, step);
-                else if (menuAt == 4) stepLogoLook(c, step);
-                else if (menuAt == 5) stepLogoTag(c, step);
+                menuStep(c, menuAt, step);
                 paintMenu();
             });
             return true;
@@ -2755,6 +3115,25 @@ final class BoardCover {
                 closeMenu();
                 beginAdjust();
                 return;
+            case 9:
+                // Looked for again now, on the channel on (what was seen there, and set by hand, let go).
+                if (!ChannelSight.on(c)) ChannelSight.setOn(c, true);
+                ChannelSight.lookAgain(c);
+                break;
+            case MENU_LINES - 1:
+                closeMenu();
+                if (active(c)) stop(c, "switched off over the match");
+                else toggle(c);
+                return;
+            default:
+                menuStep(c, menuAt, 1);
+        }
+        paintMenu();
+    }
+
+    /** One line of the menu stepped on (Right, OK) or back (Left): a switch turned over, a look or a choice the next. */
+    private static void menuStep(Context c, int line, int step) {
+        switch (line) {
             case 1:
                 setBoardShown(c, !boardShown(c));
                 break;
@@ -2762,24 +3141,37 @@ final class BoardCover {
                 setLogoOn(c, !logoOn(c));
                 break;
             case 3:
-                stepStyle(c, 1);
+                stepStyle(c, step);
                 break;
             case 4:
-                stepLogoLook(c, 1);
+                stepLogoLook(c, step);
                 break;
             case 5:
-                stepLogoTag(c, 1);
+                if (logoLook(c) == LogoMark.Look.STYLES) stepLogoStyle(c, step);
+                else stepLogoWhat(c, step);
+                break;
+            case 6:
+                setLogoNameOnly(c, !logoNameOnly(c));
+                break;
+            case 7:
+                stepLogoTag(c, step);
+                break;
+            case 8:
+                setLogoSeeThrough(c, !logoSeeThrough(c));
+                break;
+            case 9:
+                ChannelSight.setOn(c, !ChannelSight.on(c));
+                break;
+            case 10:
+                setLineupsOn(c, !lineupsOn(c));
                 break;
             default:
-                closeMenu();
-                stop(c, "switched off over the match");
-                return;
+                break;
         }
-        paintMenu();
     }
 
-    /** The menu's lines: move, the board, the logo's cover, the two looks, the picture tag, off. */
-    private static final int MENU_LINES = 7;
+    /** The menu's lines: move, the board, the cover, the looks, what is on, the name, the tag, see-through, find, line-ups, off. */
+    private static final int MENU_LINES = 12;
 
     static boolean menuShowing() {
         return menuWin != null;
@@ -2790,6 +3182,7 @@ final class BoardCover {
         FrameLayout w = menuWin;
         menuWin = null;
         menuRows = null;
+        menuNote = null;
         if (!InputKeyService.running) AppSearchService.keysFor("boardmenu", false);
         removeWindow(app, w);
     }

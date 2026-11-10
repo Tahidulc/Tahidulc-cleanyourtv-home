@@ -29,7 +29,18 @@ final class LogoCover extends View implements BurnGuard.Dims {
     enum Look {
         OFF("Leave the channel's"), SIGNATURE("Signature"), MATCHDAY("Matchday"), ROOFLINE("Roofline"), VELOCITY("Velocity"),
         ROUNDEL("Roundel"), BLOCK("Solid block"), FROSTED("Frosted glass"), SMOKED("Smoked glass"), COMPETITION("The competition's logo"), BADGE("Badge"), GLASS("Glass"), MARK("Mark only"),
-        WORD("Wordmark"), BROADCAST("Broadcast, see-through"), BROADCAST_BOARD("Broadcast, scoreboard colours");
+        WORD("Wordmark"), BROADCAST("Broadcast, see-through"), BROADCAST_BOARD("Broadcast, scoreboard colours"),
+        SPORTS("Whitebrook Road Sports"), SPORTS_STACKED("Whitebrook Road Sports, stacked"), STYLES("Whitebrook Road styles");
+
+        /** Whitebrook Road Sports' wordmark (SportsMark): what is on in it, see-through over the picture if chosen. */
+        boolean sports() {
+            return this == SPORTS || this == SPORTS_STACKED;
+        }
+
+        /** Drawn whole over the cover by a renderer of its own (the wordmark, the 54 styles): no LIVE foot, no block beside. */
+        boolean own() {
+            return sports() || this == STYLES;
+        }
 
         /** Laid out as a sports channel's own logo, one solid block. */
         boolean broadcast() {
@@ -81,6 +92,18 @@ final class LogoCover extends View implements BurnGuard.Dims {
     private float ext;
     /** How much further down the look's ground runs than its own height (LIVE's foot). */
     private float down;
+    /** Whitebrook Road Sports: what is on ("premier league"), the name with SPORTS or alone, see-through or on its plate. */
+    private SportsMark sportsMark;
+    private String what = "football";
+    private boolean nameOnly, seeThrough;
+    /** See-through: what the picture is like under the channel's logo (LogoPatch), and the one before, fading over. */
+    private android.graphics.Bitmap patch, patchWas;
+    private long patchAt;
+    private static final long PATCH_FADE_MS = 500L;
+    private final Paint patchPaint = new Paint(Paint.FILTER_BITMAP_FLAG);
+    /** Whitebrook Road styles: the renderer and the style chosen (0 to BrandStyles.COUNT - 1). */
+    private BrandStyles brand;
+    private int styleNo;
 
     LogoCover(Context c) {
         super(c);
@@ -107,7 +130,7 @@ final class LogoCover extends View implements BurnGuard.Dims {
         String n = t == null ? "" : t;
         if (n.equals(tag)) return;
         tag = n;
-        if (look.broadcast() || look.channel()) invalidate();
+        if (look.broadcast() || look.channel() || look.own()) invalidate();
     }
 
     /** The competition on the board: its logo (null for none yet) and its name. */
@@ -139,6 +162,51 @@ final class LogoCover extends View implements BurnGuard.Dims {
         if (n.equals(sport)) return;
         sport = n;
         if (look.channel()) invalidate();
+    }
+
+    /** What is on, for Whitebrook Road Sports ("premier league", "football", "f1"). */
+    void what(String w) {
+        String n = w == null || w.isEmpty() ? "football" : w;
+        if (n.equals(what)) return;
+        what = n;
+        if (look.sports()) invalidate();
+    }
+
+    /** The family's name alone (WHITEBROOK ROAD), or with SPORTS. */
+    void nameOnly(boolean on) {
+        if (on == nameOnly) return;
+        nameOnly = on;
+        if (channel != null) channel.nameOnly(on);
+        invalidate();
+    }
+
+    /** See-through over the picture, the channel's own logo hidden by the patch under it (looks that can be). */
+    void seeThrough(boolean on) {
+        if (on == seeThrough) return;
+        seeThrough = on;
+        invalidate();
+    }
+
+    /** Whitebrook Road styles: which of them (0 to BrandStyles.COUNT - 1). */
+    void style(int n) {
+        int k = BrandStyles.clamp(n);
+        if (k == styleNo) return;
+        styleNo = k;
+        if (look == Look.STYLES) invalidate();
+    }
+
+    /** Whether it wants the picture round the channel's logo now (LogoPatch): see-through, in a look that can be. */
+    boolean wantsPatch() {
+        return seeThrough && look.own() && getVisibility() == VISIBLE && getWidth() > 0;
+    }
+
+    /** What the picture is like under the channel's logo (null: none to be had; the look then stands on its plate). */
+    void patch(android.graphics.Bitmap b) {
+        if (b == patch) return;
+        patchWas = patch;
+        patch = b;
+        patchAt = android.os.SystemClock.uptimeMillis();
+        invalidate();
     }
 
     /** Whether the game is live (Broadcast's LIVE). */
@@ -194,6 +262,10 @@ final class LogoCover extends View implements BurnGuard.Dims {
     @Override protected void onDraw(Canvas cv) {
         float full = getWidth(), whole = getHeight();
         if (full <= 0 || whole <= 0 || look == Look.OFF) return;
+        if (look.own()) {
+            ownLook(cv, full, whole);
+            return;
+        }
         // While the game is live: a red LIVE bar along the foot of the whole cover, the look above it (its own LIVE left
         // to the bar).
         float foot = live && liveBar ? Math.max(8f, whole * 0.22f) : 0f, h = whole - foot;
@@ -248,6 +320,36 @@ final class LogoCover extends View implements BurnGuard.Dims {
         words.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD));
     }
 
+    /**
+     * Whitebrook Road Sports and the 54 styles: see-through over the picture (the patch under it hiding the channel's own
+     * logo, the one before fading into the new), or on its plate when there is no patch to be had.
+     */
+    private void ownLook(Canvas cv, float w, float h) {
+        boolean clear = seeThrough && patch != null && !patch.isRecycled();
+        if (clear) {
+            r.set(0, 0, w, h);
+            long t = android.os.SystemClock.uptimeMillis() - patchAt;
+            float k = Math.min(1f, t / (float) PATCH_FADE_MS);
+            patchPaint.setAlpha(255);
+            if (patchWas != null && k < 1f && !patchWas.isRecycled()) {
+                cv.drawBitmap(patchWas, null, r, patchPaint);
+                patchPaint.setAlpha(Math.round(255 * k));
+            }
+            cv.drawBitmap(patch, null, r, patchPaint);
+            patchPaint.setAlpha(255);
+            if (k < 1f) postInvalidateOnAnimation();
+        }
+        float in = clear ? Math.min(w, h) * 0.04f : 0f;
+        if (look == Look.STYLES) {
+            if (brand == null) brand = new BrandStyles(getContext());
+            brand.draw(cv, styleNo, in, in, w - 2 * in, h - 2 * in, !nameOnly, tag, !clear);
+            return;
+        }
+        if (sportsMark == null) sportsMark = new SportsMark(getContext());
+        sportsMark.draw(cv, in, in, w - 2 * in, h - 2 * in, look == Look.SPORTS_STACKED, !nameOnly, what, tag, !clear,
+                compOn ? comp : null);
+    }
+
     /** The competition's logo from x0 to x1 on the look's ground: a fine line before it, the logo (below a top band). */
     private void compMark(Canvas cv, float x0, float x1, float h) {
         float top = 0f;
@@ -271,7 +373,10 @@ final class LogoCover extends View implements BurnGuard.Dims {
             return;
         }
         if (look.channel()) {
-            if (channel == null) channel = new ChannelMark(getContext());
+            if (channel == null) {
+                channel = new ChannelMark(getContext());
+                channel.nameOnly(nameOnly);
+            }
             channel.draw(cv, look, 0, 0, w, h, tag, live, sport, ext, down);
             return;
         }

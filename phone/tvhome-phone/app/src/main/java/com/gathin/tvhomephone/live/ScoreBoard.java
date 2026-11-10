@@ -132,6 +132,59 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         e.apply();
     }
 
+    /** What is on the Whitebrook Road Sports wordmark: "" (from the game) or one chosen ("premier league", "f1"). */
+    static String logoWhat(Context c) {
+        return prefs(c).getString("what", "");
+    }
+
+    static void setLogoWhat(Context c, String what) {
+        prefs(c).edit().putString("what", what == null ? "" : what).apply();
+    }
+
+    /** Pure: what is on, the one chosen or from the board's competition (its name) and whether F1 is on it. */
+    static String whatFor(String chosen, String compName, boolean f1) {
+        if (chosen != null && !chosen.isEmpty()) return chosen;
+        if (f1) return "f1";
+        String n = compName == null ? "" : compName.toLowerCase(java.util.Locale.ROOT);
+        return n.contains("premier league") && !n.contains("scottish") ? "premier league" : "football";
+    }
+
+    /** The family's name alone on the logo's cover (WHITEBROOK ROAD), or with SPORTS (as it was). */
+    static boolean logoNameOnly(Context c) {
+        return prefs(c).getBoolean("name_only", false);
+    }
+
+    static void setLogoNameOnly(Context c, boolean on) {
+        prefs(c).edit().putBoolean("name_only", on).apply();
+    }
+
+    /** See-through: Whitebrook Road Sports and the styles over the picture itself, the channel's logo hidden (LogoPatch). */
+    static boolean logoSeeThrough(Context c) {
+        return prefs(c).getBoolean("see_through", false);
+    }
+
+    static void setLogoSeeThrough(Context c, boolean on) {
+        prefs(c).edit().putBoolean("see_through", on).apply();
+    }
+
+    /** Which of the 54 Whitebrook Road styles the cover shows in that look. */
+    static int logoStyle(Context c) {
+        return BrandStyles.clamp(prefs(c).getInt("brand_style", 0));
+    }
+
+    static void setLogoStyle(Context c, int n) {
+        prefs(c).edit().putInt("brand_style", BrandStyles.clamp(n)).apply();
+    }
+
+    /** The line-ups on screen (out of the board, before kick-off): on unless switched off. */
+    static boolean lineupsOn(Context c) {
+        return prefs(c).getBoolean("lineups", true);
+    }
+
+    static void setLineupsOn(Context c, boolean on) {
+        prefs(c).edit().putBoolean("lineups", on).apply();
+    }
+
     /** FotMob's figures added to the stats (expected goals, big chances, ratings, momentum) and its players' pictures. */
     public static boolean fotmobOn(Context c) {
         return prefs(c).getBoolean("fotmob", true);
@@ -441,13 +494,36 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         return !sideLeft && bug.tabIn(boardW(), boardH()) > 0;
     }
 
-    /** What slides out (the stats, an alert) w wide, as high as the board and beside it, its near end tucked under it. */
+    /**
+     * The alerts and stats beside the board, kept sleek: this share of its height, centred on it, their words sized from
+     * that, and never longer than SLIM_W of their own heights (longer words run along instead).
+     */
+    static final float SLIM = 0.64f, SLIM_W = 10f;
+
+    /** Pure: a pop-out's height beside a board bh high. */
+    static int slimH(int bh) {
+        return Math.max(12, Math.round(bh * SLIM));
+    }
+
+    /** Pure: the longest a pop-out popH high may be, within room. */
+    static int slimRoom(int popH, int room) {
+        return Math.max(popH * 3, Math.min(room, Math.round(popH * SLIM_W)));
+    }
+
+    /** The room over an alert's strip for the scorer's picture to stand into: a little over half the strip, up to the board's top room. */
+    private int dropHead() {
+        int bh = boardH(), popH = slimH(bh), off = (bh - popH) / 2;
+        return Math.max(0, Math.min(head + off, Math.round(popH * 0.55f)));
+    }
+
+    /** What slides out (the stats, an alert) w wide, slim and centred on the board's height beside it, its near end tucked under it. */
     private void beside(View v, int w, boolean withHead) {
         int bh = boardH(), bw = boardW();
         boolean onBoard = boardUp();
         FrameLayout.LayoutParams l = (FrameLayout.LayoutParams) v.getLayoutParams();
         int left = !onBoard ? boardAt : sideLeft ? boardAt + tuck - sideGap - w : boardAt + bw - nearTuck() + nearGap();
-        int height = bh + (withHead ? head : 0), top = withHead ? 0 : head;
+        int popH = slimH(bh), off = (bh - popH) / 2, dh = withHead ? dropHead() : 0;
+        int height = popH + dh, top = head + off - dh;
         if (l.width == w && l.height == height && l.leftMargin == left && l.topMargin == top) return;
         l.width = w;
         l.height = height;
@@ -888,9 +964,10 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         if (statsShown.size() > 60) statsShown.clear();
         statsShown.add(key);
         if (changed != null) changed.run();
-        stats.place(bug.stripLook(), unit(), nearTuck(), sideLeft, 0);
+        int popH = slimH(boardH());
+        stats.place(bug.stripLook(), unit() * SLIM, nearTuck(), sideLeft, 0);
         stats.alone(false);
-        beside(stats, stats.widthFor(pick, boardH(), sideMax), false);
+        beside(stats, stats.widthFor(pick, popH, slimRoom(popH, sideMax)), false);
         stats.show(pick);
     }
 
@@ -1246,7 +1323,7 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         d.own = g != null && g.id != null && g.id.equals(lastId) && mode == FOOTBALL_MODE;
         if (d.own && "var".equals(a.kind)) bug.varCheck(8_000L);
         // The line-ups, while the board is up: as the TV's card beside it.
-        if (d.lineups && a.summary != null && g != null && boardUp() && !(src instanceof FloatService)) {
+        if (d.lineups && lineupsOn(c) && a.summary != null && g != null && boardUp() && !(src instanceof FloatService)) {
             lineupsCard(a);
             return;
         }
@@ -1592,17 +1669,11 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         boolean onBoard = boardUp();
         int bh = boardH();
         // On its own (no board up): where the board would be, round at both ends.
-        strip.place(bug.stripLook(), unit(), onBoard ? nearTuck() : 0, onBoard && sideLeft, d.photo != null ? head : 0);
+        int popH = slimH(bh);
+        strip.place(bug.stripLook(), unit() * SLIM, onBoard ? nearTuck() : 0, onBoard && sideLeft, d.photo != null ? dropHead() : 0);
         strip.alone(!onBoard);
-        int w = strip.widthFor(d, bh, onBoard ? sideMax : Math.max(Math.round(unit() * 6), sideMax - tuck));
-        beside(strip, w, true);
-        if (d.photo == null) {
-            // No one to stand up out of it: the strip alone, as high as the board.
-            FrameLayout.LayoutParams l = (FrameLayout.LayoutParams) strip.getLayoutParams();
-            l.height = bh;
-            l.topMargin = head;
-            strip.setLayoutParams(l);
-        }
+        int w = strip.widthFor(d, popH, slimRoom(popH, onBoard ? sideMax : Math.max(Math.round(unit() * 6), sideMax - tuck)));
+        beside(strip, w, d.photo != null);
         strip.show(d);
         h.postDelayed(hide, strip.showFor(DROP_MS));
     }

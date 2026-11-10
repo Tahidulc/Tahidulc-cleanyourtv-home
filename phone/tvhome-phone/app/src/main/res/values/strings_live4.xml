@@ -41,4 +41,10 @@
     <string name="live4_seconds">%1$d s</string>
     <string name="live26_fotmob">FotMob stats and pictures (expected goals, big chances, ratings, who is on top)</string>
     <string name="live26_subs">Substitutions from the scoreboard, with who comes on</string>
+    <string name="live28_styles">Whitebrook Road styles</string>
+    <string name="live28_styles_line">Tap one, then choose Whitebrook Road styles above to show it over the channel\'s logo.</string>
+    <string name="live28_what">On the Sports wordmark</string>
+    <string name="live28_name_only">Just Whitebrook Road (no Sports)</string>
+    <string name="live28_see_through">See-through, the channel\'s own logo hidden under it (Sports wordmark and styles)</string>
+    <string name="live28_lineups">Line-ups on screen before kick-off</string>
 </resources>

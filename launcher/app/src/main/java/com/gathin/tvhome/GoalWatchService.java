@@ -2889,7 +2889,7 @@ public class GoalWatchService extends Service {
             }
             // The line-ups out, and the theme asks for it ("lineup_card"), or the scoreboard is up over the channel: the
             // line-up card in place of the pill (beside the scoreboard, in line with it, while that is up).
-            if (sides != null && (Config.themeFlag(this, "lineup_card", false) || BoardCover.up(this))) {
+            if (sides != null && BoardCover.lineupsOn(this) && (Config.themeFlag(this, "lineup_card", false) || BoardCover.up(this))) {
                 LineupCard.Data card = lineupCard(g, sides, tv, channels);
                 main.post(() -> LineupCard.show(this, card));
                 return;

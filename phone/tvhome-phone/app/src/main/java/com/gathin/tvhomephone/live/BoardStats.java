@@ -134,7 +134,7 @@ final class BoardStats extends BoardSide {
     }
 
     private float nameSize(boolean two) {
-        return unit * (two ? 0.28f : 0.27f);
+        return unit * (two ? 0.3f : 0.31f);
     }
 
     private float valueSize(boolean two) {
@@ -197,7 +197,7 @@ final class BoardStats extends BoardSide {
         p.two = two;
         p.start = start;
         p.mid = h / 2f;
-        p.nameSize = unit * (two ? 0.28f : 0.27f);
+        p.nameSize = unit * (two ? 0.3f : 0.31f);
         p.valueSize = unit * (two ? 0.46f : 0.44f);
         float room = Math.max(1f, end - start), gapName = unit * 0.45f;
         float square = unit * 0.46f, squareGap = unit * 0.06f;

@@ -369,7 +369,7 @@ final class BoardDrop extends BoardSide {
     }
 
     private float chipW() {
-        chipText.setTextSize(unit * 0.28f);
+        chipText.setTextSize(unit * 0.32f);
         return chipText.measureText(drop.chip) + unit * 0.3f;
     }
 
@@ -382,7 +382,7 @@ final class BoardDrop extends BoardSide {
         float rad = look.apart ? ch / 2f : ch * 0.22f;
         cv.drawRoundRect(r, rad, rad, fill);
         fill.setAlpha(255);
-        chipText.setTextSize(unit * 0.28f);
+        chipText.setTextSize(unit * 0.32f);
         chipText.setColor((chipColour >>> 24) < 0xC0 ? look.ink : BoardBug.ink(chipColour));
         chipText.setAlpha(a);
         chipText.setTextAlign(Paint.Align.CENTER);

@@ -242,6 +242,59 @@ final class ScoreOverlay implements ScoreBoard.Source {
         return System.currentTimeMillis() - ocrOkAt < 30_000L;
     }
 
+    // ---- see-through: the channel's own logo hidden under Whitebrook Road Sports (LogoPatch) ---------------------------
+
+    private boolean patchLoop;
+    private Bitmap patchFrame;
+    private final Runnable patchRun = this::patchNow;
+
+    /**
+     * See-through: the player's own frame copied (FrameSampler), the cover's place and a margin round it cut from it, and
+     * its inside made up from that margin (LogoPatch) for the cover to stand on; twice a second while it is wanted.
+     */
+    private void patchNow() {
+        if (!started || inPip || sampler == null || !cover.wantsPatch()) {
+            patchLoop = false;
+            if (!cover.wantsPatch()) cover.patch(null);
+            return;
+        }
+        FrameLayout.LayoutParams cp = (FrameLayout.LayoutParams) cover.getLayoutParams();
+        float d = a.getResources().getDisplayMetrics().density;
+        float m = 6 * d + cp.height * 0.16f;
+        // The cover's place and its margin as fractions of the picture.
+        float l = (cp.leftMargin - m - pfx) / pfw, t = (cp.topMargin - m - pfy) / pfh;
+        float r = (cp.leftMargin + cp.width + m - pfx) / pfw, b = (cp.topMargin + cp.height + m - pfy) / pfh;
+        float cl = (cp.leftMargin - pfx) / pfw, ct = (cp.topMargin - pfy) / pfh;
+        float cr = (cp.leftMargin + cp.width - pfx) / pfw, cb = (cp.topMargin + cp.height - pfy) / pfh;
+        if (patchFrame == null) patchFrame = Bitmap.createBitmap(480, 270, Bitmap.Config.ARGB_8888);
+        Bitmap frame = patchFrame;
+        boolean asked = sampler.copy(video.surface(), frame, (got, at) -> {
+            Bitmap patch = got == null ? null : patchOf(got, l, t, r, b, cl, ct, cr, cb);
+            h.post(() -> {
+                if (patch != null && started) cover.patch(patch);
+                h.postDelayed(patchRun, 500L);
+            });
+        });
+        if (!asked) h.postDelayed(patchRun, 250L);
+    }
+
+    /** The patch from a frame: the part (l, t, r, b) cut out, its inside (the cover, cl to cb) filled from the rest. Pure enough. */
+    static Bitmap patchOf(Bitmap frame, float l, float t, float r, float b, float cl, float ct, float cr, float cb) {
+        int fw = frame.getWidth(), fh = frame.getHeight();
+        int x0 = Math.max(0, Math.round(l * fw)), y0 = Math.max(0, Math.round(t * fh));
+        int x1 = Math.min(fw, Math.round(r * fw)), y1 = Math.min(fh, Math.round(b * fh));
+        int ix0 = Math.max(x0, Math.round(cl * fw)), iy0 = Math.max(y0, Math.round(ct * fh));
+        int ix1 = Math.min(x1, Math.round(cr * fw)), iy1 = Math.min(y1, Math.round(cb * fh));
+        int w = x1 - x0, h = y1 - y0;
+        if (w < 4 || h < 4 || ix1 <= ix0 || iy1 <= iy0) return null;
+        int[] px = new int[w * h];
+        frame.getPixels(px, 0, w, x0, y0, w, h);
+        int ml = ix0 - x0, mt = iy0 - y0, mr = x1 - ix1, mb = y1 - iy1;
+        int[] in = LogoPatch.fill(px, w, h, ml, mt, mr, mb);
+        int iw = w - ml - mr, ih = h - mt - mb;
+        return in == null || iw <= 0 || ih <= 0 ? null : Bitmap.createBitmap(in, iw, ih, Bitmap.Config.ARGB_8888);
+    }
+
     /** The look or the logo's cover changed in Options. */
     void restyle() {
         board.bug.style(ScoreBoard.style(a));
@@ -405,9 +458,18 @@ final class ScoreOverlay implements ScoreBoard.Source {
                 cover.competition(board.compPic(), board.compName());
                 cover.compOn(ScoreBoard.logoComp(a));
                 cover.liveBar(ScoreBoard.logoLive(a));
+                cover.what(ScoreBoard.whatFor(ScoreBoard.logoWhat(a), board.compName(), board.f1()));
+                cover.nameOnly(ScoreBoard.logoNameOnly(a));
+                cover.seeThrough(ScoreBoard.logoSeeThrough(a));
+                cover.style(ScoreBoard.logoStyle(a));
             }
         }
         cover.setVisibility(show ? View.VISIBLE : View.GONE);
+        // See-through: the picture round the channel's logo, a couple of times a second.
+        if (show && cover.wantsPatch() && !patchLoop) {
+            patchLoop = true;
+            h.post(patchRun);
+        }
         // The room round the board for what slides out of it: to the screen's edges, short of the logo's mark where
         // it is level with the board; the board's place kept as what is beside it moves the view.
         int bh = bp.height > 0 ? bp.height : Math.round(30 * d);

@@ -158,7 +158,7 @@ final class BoardStats extends BoardSide {
     }
 
     private float nameSize(boolean two) {
-        return unit * (two ? 0.28f : 0.26f);
+        return unit * (two ? 0.3f : 0.31f);
     }
 
     private float valueSize(boolean two) {

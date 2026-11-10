@@ -38,6 +38,7 @@ public class InputKeyService extends AccessibilityService {
     @Override
     protected void onServiceConnected() {
         super.onServiceConnected();
+        BoardCover.attach(this);
         // From config.xml or a theme's config.json; theme.sh rebinds this service after a push.
         Config config = Config.load(this);
         running = config.keyFilter;
