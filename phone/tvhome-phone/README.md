@@ -324,6 +324,8 @@ the second half's kick-off: both crests, the competition's 3D trophy, the teams 
 matches the clips (Khand, a free font close to the broadcaster's own). Each has its switch in the Scoreboard
 settings. As the TV launcher's 4.39 has it.
 
+The pop-up and line-ups fitting the picture (4.34): on a screen with more than one pixel to a CSS pixel (every phone, and the TVs at 1.75) the overlay's page had been zoomed out to its 1920-wide drawing, which then sat mostly off the picture; it now keeps its own size and fits the picture on every frame. A crest that will not load leaves a plain coin instead of stopping it, and each measures the phone first and draws all of it, three quarters or half to suit (as the TV launcher's 4.43 has it).
+
 Subtitles (CC in the film's player): the film's or episode's own, from your playlist's stream, come first, in the
 languages you choose (Settings, Subtitles, in order). When it has none, OpenSubtitles.com is looked in by the title's
 TMDB id (the series' with its season and episode), best first: your languages, the ones that fit the copy playing (its
