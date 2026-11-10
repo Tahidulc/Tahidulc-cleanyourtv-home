@@ -342,6 +342,8 @@ A test of everything (4.38): in the player's menu (⋮), every alert, the kick-o
 
 The Event look for the logo cover (4.39), navy or white: Whitebrook Road stacked beside a red sports box, with the channel's own sub-name (main event, premier league, f1...) in an open box under it, the broadcaster's name always left out.
 
+Fix (4.40): the scoreboard settings no longer close the app when they open (the Event look's channel sub-name used a pattern Android refuses).
+
 Subtitles (CC in the film's player): the film's or episode's own, from your playlist's stream, come first, in the
 languages you choose (Settings, Subtitles, in order). When it has none, OpenSubtitles.com is looked in by the title's
 TMDB id (the series' with its season and episode), best first: your languages, the ones that fit the copy playing (its

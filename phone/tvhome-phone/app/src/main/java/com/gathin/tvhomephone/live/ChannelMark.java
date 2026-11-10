@@ -106,7 +106,7 @@ final class ChannelMark {
         if (channel == null) return "";
         // Small capitals and the like as plain letters ("ᴴᴰ" as "HD"); what is in brackets is a tag ("(UK)", "[Backup]").
         String s = Normalizer.normalize(channel, Normalizer.Form.NFKC).toLowerCase(Locale.ROOT)
-                .replaceAll("\\([^)]*\\)|\\[[^\\]]*]|\\{[^}]*}", " ")
+                .replaceAll("\\([^)]*\\)|\\[[^\\]]*\\]|\\{[^}]*\\}", " ")   // every bracket escaped: Android's regex refuses a bare ] or }
                 .replaceAll("[^\\p{L}\\p{N}]+", " ")
                 .replaceAll("\\b(eurosport|espn|dazn|bein|tnt|bt|viaplay)(\\d+)\\b", "$1 $2");
         s = " " + s.trim() + " ";
