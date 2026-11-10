@@ -39,7 +39,26 @@
     h = Math.imul(h ^ (h >>> 13), 1274126177);
     return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
   }
-  function mk(w, h) { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; }
+  // every canvas made while the page gets ready, for settle() (then null)
+  let MADE = [];
+  function mk(w, h) { const c = document.createElement('canvas'); c.width = w; c.height = h; if (MADE) MADE.push(c); return c; }
+  // Every part's drawing done now, on this TV's GPU, before the page says it is ready: the TV's WebView keeps a canvas's
+  // drawing until something reads it, and the Streamer's PowerVR then spent seconds over the first frame seen. The
+  // frames are run through once, unseen and unrendered (anything made on first use is made here, silently), then each
+  // canvas made is read once, small, and one read back waits for the lot.
+  function settle(frameAt, dur) {
+    const s0 = performance.now();
+    for (let t = 0; t < dur; t += 0.5) frameAt(t);
+    frameAt(0);
+    LK.hideAll();
+    const sg = document.createElement('canvas').getContext('2d');
+    sg.canvas.width = sg.canvas.height = 4;
+    let n = 0;
+    for (const c of (MADE || []).concat(LK.canvases())) if (c.width > 1 && c.height > 1) { sg.drawImage(c, 0, 0, 4, 4); n++; }
+    sg.getImageData(0, 0, 1, 1);
+    MADE = null;
+    if (window.BX) BX.log('settled ' + n + ' parts in ' + (performance.now() - s0).toFixed(0) + ' ms');
+  }
   const hex = (h) => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
   const rgba = (c, a) => `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${a})`;
 

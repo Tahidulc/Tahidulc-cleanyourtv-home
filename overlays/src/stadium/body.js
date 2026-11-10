@@ -885,6 +885,7 @@
     window.DUR = DUR;
     window.SEQ = SEQ;
     window.SOL = SOL;
+    settle(drawFrame, DUR);
     window.INIT_MS = performance.now() - t0;
     window.drawFrame = drawFrame;
     window.READY = true;

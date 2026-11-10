@@ -1104,6 +1104,7 @@
     window.DUR = DUR;
     window.SOL = SOL;
     window.BLOCKS_INFO = BLOCKS.map((B) => ({ side: B.side, t0: B.t0, groups: B.groups.map((G) => ({ key: G.key, first: G.first, out: G.out, solids: G.slots.map((s) => +s.solid.toFixed(2)) })), glint: B.glint, coin1: B.coin1, subs: B.subsT, coin2: B.coin2, board: B.boardT, boardEnd: B.boardEnd }));
+    settle(drawFrame, DUR);
     window.INIT_MS = performance.now() - t0;
     window.drawFrame = drawFrame;
     window.READY = true;

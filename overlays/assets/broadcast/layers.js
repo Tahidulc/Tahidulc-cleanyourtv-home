@@ -176,5 +176,5 @@
     for (const k in groups) delete groups[k];
   }
   function mount() { if (!root.parentNode) { document.body.appendChild(root); document.body.appendChild(over); } fit(); }
-  window.LK = { W, H, put, clip, endClip, begin, end, dyn, fill, rect, fade, wipe, hideAll, clear, mount, mul, inv, T, S, R, I, fitNow: () => { fitW = -1; fit(); }, park: (n) => { PARK = n; }, root, inner, PLUS };
+  window.LK = { W, H, put, clip, endClip, begin, end, dyn, fill, rect, fade, wipe, hideAll, clear, mount, mul, inv, T, S, R, I, fitNow: () => { fitW = -1; fit(); }, park: (n) => { PARK = n; }, canvases: () => Object.values(dyns), root, inner, PLUS };
 })();
