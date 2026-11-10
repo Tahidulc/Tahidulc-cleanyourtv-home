@@ -629,6 +629,25 @@ public class BoardCoverTest {
     }
 
     @Test
+    public void aGeneralChannelDropsTheSportFromTheLogo() {
+        BoardCover.MenuState m = new BoardCover.MenuState();
+        m.logoLook = "Whitebrook Road Sports";
+        m.sportsLook = true;
+        m.what = "premier league";
+        m.nameOnly = true;
+        String[] on = BoardCover.menuLines(m);
+        assertTrue(on[6].startsWith("Channel:") && on[6].contains("General") && !on[6].contains("Sports"));
+        assertTrue(on[5].contains("on a sports channel only"));
+        m.nameOnly = false;
+        on = BoardCover.menuLines(m);
+        assertTrue(on[6].contains("Sports · Whitebrook Road Sports"));
+        assertEquals("", SportsMark.onFor(false, "premier league"));
+        assertEquals("", SportsMark.onFor(false, ""));
+        assertEquals("premier league", SportsMark.onFor(true, "premier league"));
+        assertEquals("football", SportsMark.onFor(true, ""));
+    }
+
+    @Test
     public void theMenuOverTheMatchSaysWhatEachLineWillDo() {
         BoardCover.MenuState m = new BoardCover.MenuState();
         m.boardShown = true;
@@ -665,8 +684,10 @@ public class BoardCoverTest {
         String[] off = BoardCover.menuLines(m);
         assertTrue(off[1].contains("Off"));
         assertTrue(off[2].contains("Off"));
-        assertTrue(off[5].contains("(Whitebrook Road Sports looks)"));
-        assertTrue(off[6].contains("‹  Whitebrook Road  ›"));
+        assertTrue(off[5].contains("(on a sports channel only)"));
+        assertTrue(off[6].contains("‹  General · Whitebrook Road  ›"));
+        m.nameOnly = false;
+        assertTrue(BoardCover.menuLines(m)[5].contains("(Whitebrook Road Sports looks)"));
         assertTrue(off[8].contains("On"));
         assertTrue(off[10].contains("Off"));
         assertEquals("Turn the scoreboard on for the game on now", off[11]);

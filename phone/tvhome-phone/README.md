@@ -312,6 +312,9 @@ half's added time, on every scoreboard look. As the TV launcher's 4.36 has it.
 Back closes the line-ups (4.31): with the line-ups out beside the scoreboard before a game, Back closes them first, the
 channel playing on, as on the TV (launcher 4.37).
 
+General channel (4.32): the logo's cover can be Whitebrook Road as a general channel rather than a sports one, with no
+"sports" tab, no sport and no competition's logo on it (Scoreboard settings, General channel). As the TV launcher's 4.38 has it.
+
 Subtitles (CC in the film's player): the film's or episode's own, from your playlist's stream, come first, in the
 languages you choose (Settings, Subtitles, in order). When it has none, OpenSubtitles.com is looked in by the title's
 TMDB id (the series' with its season and episode), best first: your languages, the ones that fit the copy playing (its

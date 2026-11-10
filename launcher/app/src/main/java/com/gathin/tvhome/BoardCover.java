@@ -2970,8 +2970,9 @@ final class BoardCover {
                 "Scoreboard look:  ‹  " + m.look + "  ›",
                 "Logo look:  ‹  " + m.logoLook + "  ›",
                 m.stylesLook ? "Style:  ‹  " + m.style + "  ›"
-                        : "On the logo:  ‹  " + m.what + "  ›" + (m.sportsLook ? "" : "  (Whitebrook Road Sports looks)"),
-                "Name:  ‹  " + (m.nameOnly ? "Whitebrook Road" : "Whitebrook Road Sports") + "  ›",
+                        : "On the logo:  ‹  " + m.what + "  ›" + (m.nameOnly ? "  (on a sports channel only)"
+                        : m.sportsLook ? "" : "  (Whitebrook Road Sports looks)"),
+                "Channel:  ‹  " + (m.nameOnly ? "General · Whitebrook Road" : "Sports · Whitebrook Road Sports") + "  ›",
                 "Picture tag:  ‹  " + m.tag + "  ›",
                 "See-through, the channel's logo hidden:  ‹  " + (m.seeThrough ? "On" : "Off") + "  ›",
                 "Find the channel's scoreboard:  ‹  " + (m.find ? "On" : "Off") + "  ›  ·  OK: look again now",

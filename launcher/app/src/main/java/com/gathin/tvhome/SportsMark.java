@@ -19,7 +19,8 @@ import java.util.Locale;
  * What is on follows the game (the Premier League's games "premier league", any other football "football", Formula 1
  * "f1"), unless one is chosen. Drawn on its own plate (stacked: in the colour of what is on), so the channel's logo under
  * it never shows, or plain over the picture (see-through) with a soft shadow, where LogoPatch has hidden the channel's own
- * logo under it. The family's own words; no broadcaster's lettering or emblem.
+ * logo under it. Or as a general channel (sports off): the name alone, with no sport and no competition, in the house colours
+ * (stacked: "whitebrook" over "road"). The family's own words; no broadcaster's lettering or emblem.
  */
 final class SportsMark {
     /** What can be on it, as the Scoreboard card offers them: "" (Auto, from the game) first. */
@@ -67,6 +68,15 @@ final class SportsMark {
         }
     }
 
+    /**
+     * Pure: what the mark says is on: nothing on a general channel (sports false: the name alone, no sport on it), else
+     * the choice, or "football" when none is made.
+     */
+    static String onFor(boolean sports, String what) {
+        if (!sports) return "";
+        return what == null || what.isEmpty() ? "football" : what;
+    }
+
     /** Pure: the label the Scoreboard card shows for a choice ("Auto, from the game" for ""). */
     static String label(String what) {
         return what == null || what.isEmpty() ? "Auto, from the game" : what;
@@ -80,20 +90,22 @@ final class SportsMark {
     void draw(Canvas cv, float x, float y, float w, float h, boolean stacked, boolean sports, String what, String tag, boolean plate,
               Bitmap comp) {
         if (w <= 2 || h <= 2) return;
-        String on = what == null || what.isEmpty() ? "football" : what;
+        String on = onFor(sports, what);
+        boolean general = !sports;
+        if (general) comp = null; // a general channel carries no competition
         String t = tag == null ? "" : tag.trim();
-        int colour = colourOf(on);
+        int colour = general ? RED : colourOf(on);
         if (plate) {
             float rad = Math.min(w, h) * (stacked ? 0.14f : 0.18f);
             r.set(x, y, x + w, y + h);
-            if (stacked) {
+            if (stacked && !general) {
                 fill.setShader(new LinearGradient(x, y, x + w, y + h, lighten(colour, 0.12f), darken(colour, 0.2f), Shader.TileMode.CLAMP));
             } else {
                 fill.setShader(new LinearGradient(x, y, x, y + h, 0xFF141A2E, NIGHT, Shader.TileMode.CLAMP));
             }
             cv.drawRoundRect(r, rad, rad, fill);
             fill.setShader(null);
-            if (!stacked) {
+            if (!stacked || general) {
                 // A line in the colour of what is on along its foot, inside the round corners.
                 float lh = Math.max(2f, h * 0.07f);
                 fill.setColor(colour);
@@ -103,7 +115,8 @@ final class SportsMark {
         float pad = plate ? Math.min(h * (stacked ? 0.16f : 0.2f), w * 0.05f) : Math.min(h * 0.06f, w * 0.02f);
         float bx = x + pad, by = y + pad, bw = w - 2 * pad, bh = h - 2 * pad;
         if (plate) text.clearShadowLayer();
-        if (stacked) stacked(cv, bx, by, bw, bh, sports, on, t, plate, comp);
+        if (stacked && general) stackedName(cv, bx, by, bw, bh, t, plate);
+        else if (stacked) stacked(cv, bx, by, bw, bh, sports, on, t, plate, comp);
         else line(cv, bx, by, bw, bh, sports, on, t, plate, comp);
         text.clearShadowLayer();
         fill.clearShadowLayer();
@@ -114,17 +127,17 @@ final class SportsMark {
     private void line(Canvas cv, float x, float y, float w, float h, boolean sports, String on, String tag, boolean plate, Bitmap comp) {
         // Laid out at a size of 1 (x-height 1), then fitted.
         float xh = xOf(heavy), name = width("whitebrook road", heavy, -0.01f) / xh;
-        float gap = 0.42f, tabW = sports ? tabW() : 0f, what = width(on, bold, -0.005f) / xOf(bold);
+        float gap = 0.42f, tabW = sports ? tabW() : 0f, what = on.isEmpty() ? 0f : width(on, bold, -0.005f) / xOf(bold);
         float compW = comp != null ? 1.5f * comp.getWidth() / Math.max(1f, comp.getHeight()) : 0f;
         float tagW = tag.isEmpty() ? 0f : 0.5f + width(tag, semi, 0.04f) / xOf(semi);
-        float total = name + gap + (sports ? tabW + gap : 0f) + what + (compW > 0 ? gap + compW : 0f) + (tagW > 0 ? gap + tagW : 0f);
+        float total = name + (sports ? gap + tabW : 0f) + (what > 0 ? gap + what : 0f) + (compW > 0 ? gap + compW : 0f) + (tagW > 0 ? gap + tagW : 0f);
         // Ascenders and descenders: about 2.2 x-heights from top to bottom.
         float s = Math.min(w / total, h / 2.25f);
         float base = y + h / 2f + s * 0.5f, left = x;
         shadow(plate, s);
-        left = words(cv, "whitebrook road", heavy, -0.01f, s, WHITE, left, base) + gap * s;
-        if (sports) left = tab(cv, left, base, s, plate) + gap * s;
-        left = words(cv, on, bold, -0.005f, s, WHITE, left, base);
+        left = words(cv, "whitebrook road", heavy, -0.01f, s, WHITE, left, base);
+        if (sports) left = tab(cv, left + gap * s, base, s, plate);
+        if (what > 0) left = words(cv, on, bold, -0.005f, s, WHITE, left + gap * s, base);
         if (compW > 0) {
             left += gap * s;
             float ch = 1.5f * s, cw = compW * s;
@@ -136,6 +149,23 @@ final class SportsMark {
     }
 
     // ---- stacked -----------------------------------------------------------------------------------------------------
+
+    private void stackedName(Canvas cv, float x, float y, float w, float h, String tag, boolean plate) {
+        // A general channel, stacked: "whitebrook" over "road", both big, the tag beside "road".
+        float gap = 0.42f;
+        float w1 = width("whitebrook", heavy, -0.015f) / xOf(heavy), w2 = width("road", heavy, -0.015f) / xOf(heavy);
+        float tagW = tag.isEmpty() ? 0f : 0.5f + width(tag, semi, 0.04f) / xOf(semi) * 0.8f;
+        float line2 = w2 + (tagW > 0 ? gap + tagW : 0f);
+        float tall = 2.1f + 0.35f + 2.1f;
+        float s = Math.min(w / Math.max(w1, line2), h / tall);
+        float blockW = Math.max(w1, line2) * s, blockH = tall * s;
+        float left = plate ? x + (w - blockW) / 2f : x, y0 = y + (h - blockH) / 2f;
+        shadow(plate, s);
+        words(cv, "whitebrook", heavy, -0.015f, s, WHITE, left, y0 + 1.55f * s);
+        float base2 = y0 + blockH - 0.62f * s;
+        float l2 = words(cv, "road", heavy, -0.015f, s, WHITE, left, base2);
+        if (tagW > 0) tagAfter(cv, l2 + gap * s, base2, s * 0.8f, tag);
+    }
 
     private void stacked(Canvas cv, float x, float y, float w, float h, boolean sports, String on, String tag, boolean plate, Bitmap comp) {
         // The name small on top (with "sports" on its tab), what is on big under it, the tag beside what is on.

@@ -19,6 +19,14 @@ public class SeeThroughTest {
         assertEquals("", SportsMark.WHATS[0]);
     }
 
+    @Test public void aGeneralChannelCarriesNoSport() {
+        // Sports off: the name alone, nothing on it; on, the choice or football.
+        assertEquals("", SportsMark.onFor(false, "premier league"));
+        assertEquals("", SportsMark.onFor(false, ""));
+        assertEquals("f1", SportsMark.onFor(true, "f1"));
+        assertEquals("football", SportsMark.onFor(true, ""));
+    }
+
     @Test public void thePatchFillsTheLogoFromWhatIsRoundIt() {
         int w = 16, h = 10, m = 3;
         int[] px = new int[w * h];

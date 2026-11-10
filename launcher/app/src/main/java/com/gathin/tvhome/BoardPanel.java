@@ -276,9 +276,9 @@ final class BoardPanel extends SportPanel {
             BoardCover.stepLogoWhat(c, 1);
             for (LogoMark m : markPreviews) m.what(BoardCover.whatNow(c));
         };
-        Row name = row("The name", false);
-        name.words = () -> BoardCover.logoNameOnly(c) ? "Whitebrook Road · OK for Whitebrook Road Sports"
-                : "Whitebrook Road Sports · OK for just Whitebrook Road";
+        Row name = row("Sports or general channel", false);
+        name.words = () -> BoardCover.logoNameOnly(c) ? "General: Whitebrook Road, no sport on it · OK for Sports"
+                : "Sports: Whitebrook Road Sports · OK for a general channel";
         name.ok = () -> {
             BoardCover.setLogoNameOnly(c, !BoardCover.logoNameOnly(c));
             for (LogoMark m : markPreviews) m.nameOnly(BoardCover.logoNameOnly(c));
