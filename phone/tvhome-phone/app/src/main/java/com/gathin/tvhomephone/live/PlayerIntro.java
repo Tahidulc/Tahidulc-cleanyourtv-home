@@ -10,19 +10,25 @@ import android.widget.FrameLayout;
 import com.gathin.broadcast.BroadcastData;
 import com.gathin.broadcast.BroadcastView;
 import com.gathin.broadcast.Moments;
+import com.gathin.tvhomephone.R;
 import com.gathin.tvhomephone.sports.Game;
+import com.gathin.tvhomephone.sports.TestAlerts;
 
 import org.json.JSONObject;
 
 import java.io.File;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
+import java.util.function.IntConsumer;
 
 /**
  * The classic kick-off pop-up and line-ups over the player's picture, as on the TV (the launcher's ClassicIntro): the
@@ -286,5 +292,119 @@ final class PlayerIntro {
     /** Taken down at once (the player stopping, the small window). */
     void stop() {
         if (view != null) view.stop();
+    }
+
+    // ---- test notifications (the player's options, PlayerTests) ------------------------------------------------------
+
+    /**
+     * Tests: the kick-off pop-up in a style ("classic", or "strap" in the scoreboard's look) at a moment ("kickoff",
+     * "restart", "second"), now, whatever the style chosen: on the game watched, else a recent Premier League game (as the
+     * TV's tries find one), else a made-up one. Nothing is marked shown, so the real moments still come. note: why not now.
+     */
+    void testPopup(String style, String kind, Game watching, IntConsumer note) {
+        if (showing() || fetching) {
+            note.accept(R.string.live7_wait);
+            return;
+        }
+        fetching = true;
+        boolean strap = "strap".equals(style);
+        String look = ScoreBoard.style(a).name();
+        float[] board = boardAt.get();
+        Context app = a.getApplicationContext();
+        io.execute(() -> {
+            JSONObject cfg = null;
+            List<Game> games = new ArrayList<>();
+            try {
+                games.addAll(watching != null && watching.id != null ? Collections.singletonList(watching) : TestAlerts.candidates(null));
+            } catch (RuntimeException ignored) {
+                // the made-up one, then
+            }
+            int looked = 0;
+            for (Game g : games) {
+                if ("restart".equals(kind) && g.goals.isEmpty() && g != watching) continue;
+                if (++looked > 3) break;
+                cfg = testPopupCfg(g, kind, strap, look, board);
+                if (cfg != null) break;
+            }
+            if (cfg == null) cfg = testPopupCfg(TestAlerts.sample(app, null), kind, strap, look, board);
+            JSONObject got = cfg;
+            h.post(() -> {
+                fetching = false;
+                if (got == null) {
+                    note.accept(R.string.live7_no_game);
+                    return;
+                }
+                if (showing() || a.isFinishing()) {
+                    note.accept(R.string.live7_wait);
+                    return;
+                }
+                show(BroadcastView.page(a, strap ? "strap" : "kickoff", got, this::gone), strap ? "strap" : kind);
+            });
+        });
+    }
+
+    /** A test pop-up's settings for game g (its crests read in); null when it can't be made. Off the main thread. */
+    private static JSONObject testPopupCfg(Game g, String kind, boolean strap, String look, float[] board) {
+        try {
+            BroadcastData.Match m = match(g);
+            boolean restart = "restart".equals(kind);
+            int[] score = "kickoff".equals(kind) ? null : testScore(g, restart);
+            String[] last = g.goals.isEmpty() ? null : g.goals.get(g.goals.size() - 1);
+            String scorer = !restart ? null : last == null ? "A. Player" : Moments.scorer(last);
+            String minute = !restart ? null : last == null ? "23'" : BroadcastData.minute(last[2]);
+            return strap ? BroadcastData.strap(kind, m, score, scorer, minute, look, board, "")
+                    : BroadcastData.kickoff(kind, m, score, scorer, minute);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /** Pure: the score a test pop-up shows: the game's own; 1–0 for a restart when it has no goal yet. */
+    static int[] testScore(Game g, boolean restart) {
+        if (restart && g.homeScore + g.awayScore == 0) return new int[]{1, 0};
+        return new int[]{g.homeScore, g.awayScore};
+    }
+
+    /**
+     * Tests: the line-ups in a style ("lineups", the classic beam-in, or "stadium") now, whatever the style chosen: on
+     * the game watched when FotMob has its line-ups, else on a recent Premier League game's (as the TV's tries find one).
+     * Back closes them, as the real ones. note: why not now.
+     */
+    void testLineups(String style, Game watching, IntConsumer note) {
+        if (showing() || fetching) {
+            note.accept(R.string.live7_wait);
+            return;
+        }
+        fetching = true;
+        note.accept(R.string.live7_looking);
+        File cache = a.getCacheDir();
+        io.execute(() -> {
+            JSONObject cfg = null;
+            try {
+                cfg = TestAlerts.tryOn(watching, 5, g -> {
+                    try {
+                        return BroadcastData.lineups(match(g), FotMob.raw(FotMob.find(g.id, g.homeName, g.awayName, g.kickoff)), cache);
+                    } catch (Exception oneGame) {
+                        return null;
+                    }
+                });
+            } catch (RuntimeException ignored) {
+                // none found: said below
+            }
+            JSONObject got = cfg;
+            h.post(() -> {
+                fetching = false;
+                if (got == null) {
+                    note.accept(R.string.live7_no_lineups);
+                    return;
+                }
+                if (showing() || a.isFinishing()) {
+                    note.accept(R.string.live7_wait);
+                    return;
+                }
+                String page = "stadium".equals(style) ? "stadium" : "lineups";
+                show(BroadcastView.page(a, page, got, this::gone), page);
+            });
+        });
     }
 }

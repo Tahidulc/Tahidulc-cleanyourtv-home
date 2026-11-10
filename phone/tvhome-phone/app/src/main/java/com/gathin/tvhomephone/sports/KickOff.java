@@ -92,6 +92,18 @@ public final class KickOff {
     private static void post(Context c, Game g, String reminderChannel, long now) {
         if (g.id == null || AlertLog.sent(c, key(g.id)) || MuteReceiver.muted(c, g.id)) return;
         AlertLog.markSent(c, key(g.id));
+        send(c, g, reminderChannel, now);
+    }
+
+    /**
+     * A test of the heads-up (TestAlerts), as it comes, for a game two minutes from its kick-off: under the test game's
+     * own id, not remembered. Off the main thread.
+     */
+    static void test(Context c, Game g) {
+        if (g.id != null) send(c, g, null, System.currentTimeMillis());
+    }
+
+    private static void send(Context c, Game g, String reminderChannel, long now) {
         com.gathin.tvhomephone.live.Channel ch;
         try {
             ch = com.gathin.tvhomephone.live.AlsoShowing.best(c, g);

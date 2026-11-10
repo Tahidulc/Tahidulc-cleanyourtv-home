@@ -205,7 +205,56 @@ public final class SportsSettings {
                 col.addView(r);
             }
         }
+
+        // Each of them, and the other notifications, to try now.
+        tests(c, col);
         return col;
+    }
+
+    /**
+     * Settings' "Test notifications": the alerts (all in turn, or one kind; the line-ups') and the other notifications and
+     * pop-ups over apps, as they really come (TestAlerts), on a made-up game of the starred clubs. What shows over the
+     * picture is tried in the player's options.
+     */
+    private static void tests(Context c, LinearLayout col) {
+        col.addView(Ui.heading(c, c.getString(R.string.live4_tests), c.getColor(R.color.text_soft)));
+        col.addView(Ui.text(c, c.getString(R.string.live7_settings_line), 13, c.getColor(R.color.text_dim), false));
+        java.util.function.IntConsumer note = res -> android.widget.Toast.makeText(c, res, android.widget.Toast.LENGTH_SHORT).show();
+        LinearLayout alerts = testRow(c, col, c.getString(R.string.live7_settings_alerts));
+        testChip(c, alerts, c.getString(R.string.live4_tests_all), () -> TestAlerts.play(c, null, null));
+        for (String[] k : TestAlerts.kinds()) testChip(c, alerts, k[1], () -> TestAlerts.play(c, null, k[0]));
+        testChip(c, alerts, c.getString(R.string.live7_lineups_alert), () -> {
+            note.accept(R.string.live7_looking);
+            TestAlerts.lineups(c, null, note);
+        });
+        LinearLayout others = testRow(c, col, c.getString(R.string.live7_settings_other));
+        for (String id : TestAlerts.OTHERS) testChip(c, others, c.getString(TestAlerts.label(id)), () -> TestAlerts.other(c, null, id, note));
+    }
+
+    /** A labelled row of chips that scrolls sideways. */
+    private static LinearLayout testRow(Context c, LinearLayout col, String label) {
+        TextView g = Ui.text(c, label.toUpperCase(Locale.UK), 11, c.getColor(R.color.text_soft), true);
+        g.setLetterSpacing(0.1f);
+        g.setPadding(0, Ui.dp(c, 10), 0, Ui.dp(c, 4));
+        col.addView(g);
+        android.widget.HorizontalScrollView hs = new android.widget.HorizontalScrollView(c);
+        hs.setHorizontalScrollBarEnabled(false);
+        LinearLayout chips = Ui.row(c);
+        hs.addView(chips);
+        col.addView(hs, Ui.matchWrap());
+        return chips;
+    }
+
+    /** A chip that runs a test when tapped. */
+    private static void testChip(Context c, LinearLayout row, String label, Runnable r) {
+        TextView chip = Ui.text(c, label, 14, c.getColor(R.color.text), true);
+        chip.setPadding(Ui.dp(c, 14), Ui.dp(c, 8), Ui.dp(c, 14), Ui.dp(c, 8));
+        chip.setBackground(Ui.fill(c, 0x1FFFFFFF, 18));
+        chip.setContentDescription(c.getString(R.string.live7_try, label));
+        chip.setOnClickListener(v -> r.run());
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, -2);
+        lp.rightMargin = Ui.dp(c, 8);
+        row.addView(chip, lp);
     }
 
     /** Settings' "Pop-ups over apps". */

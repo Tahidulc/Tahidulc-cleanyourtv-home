@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Test notifications for everything: the player's options (PlayerTests) and Settings (SportsSettings, TestAlerts). -->
+<resources>
+    <string name="live7_alerts">Test · Alerts</string>
+    <string name="live7_popup">Test · Kick-off pop-up, classic</string>
+    <string name="live7_strap">Test · Kick-off pop-up, scoreboard\'s look</string>
+    <string name="live7_lineups">Test · Line-ups</string>
+    <string name="live7_board">Test · Scoreboard</string>
+    <string name="live7_sounds">Test · Goal sounds</string>
+    <string name="live7_tiles">Test · Info tiles</string>
+    <string name="live7_other">Test · Other notifications</string>
+    <string name="live7_lineups_alert">Line-ups</string>
+    <string name="live7_kickoff">Kick-off</string>
+    <string name="live7_restart">Restart after a goal</string>
+    <string name="live7_second">Second half</string>
+    <string name="live7_goal_home">Goal: home</string>
+    <string name="live7_goal_away">Goal: away</string>
+    <string name="live7_scorer">Scorer</string>
+    <string name="live7_stats">Stats</string>
+    <string name="live7_card">Line-up card</string>
+    <string name="live7_sub">Substitution</string>
+    <string name="live7_var">VAR check</string>
+    <string name="live7_added">Added time +4</string>
+    <string name="live7_banner">Goal in another game</string>
+    <string name="live7_held">Alert waiting for the stream</string>
+    <string name="live7_break">Broadcast break</string>
+    <string name="live7_kickoff_soon">Kick-off in 2 min</string>
+    <string name="live7_following">Following live</string>
+    <string name="live7_expiry">Playlist running out</string>
+    <string name="live7_health">Playlist struggling</string>
+    <string name="live7_popup_try">Pop-up over apps</string>
+    <string name="live7_float">Scoreboard over apps</string>
+    <string name="live7_note">The rest show now on this channel as they really come, whatever style you chose, and change none of your settings. Nothing here goes in your alerts or takes a real one\'s place; one already on the screen is waited for. Goal sounds play as you tap them.</string>
+    <string name="live7_wait">Wait for the one on the screen to finish</string>
+    <string name="live7_board_off">Switch the scoreboard on first (Scoreboard, in these options)</string>
+    <string name="live7_board_hidden">The scoreboard is hidden: Move and resize shows it again</string>
+    <string name="live7_f1">The scoreboard shows F1 just now: that one is for a football game</string>
+    <string name="live7_looking">Looking for a game with its line-ups out…</string>
+    <string name="live7_no_lineups">No game with its line-ups out to try just now</string>
+    <string name="live7_no_game">Couldn\'t make it just now</string>
+    <string name="live7_popup_allow">Allow Display over other apps first (Pop-ups over apps, in Settings)</string>
+    <string name="live7_test_playlist">Test playlist</string>
+    <string name="live7_settings_line">Each as it really comes (All: every kind a few seconds apart), its notification and its pop-up over apps, on a made-up game of your clubs. Nothing is kept in your alerts and no setting changes. The kick-off pop-up, the line-ups, the scoreboard\'s moments and the info tiles show over a channel: play one, then Options (⋮), Test.</string>
+    <string name="live7_settings_alerts">Alerts</string>
+    <string name="live7_settings_other">Other notifications</string>
+    <string name="live7_try">Try %1$s</string>
+</resources>

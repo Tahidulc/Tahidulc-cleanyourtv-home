@@ -168,6 +168,21 @@ public final class LiveAlerts {
         return true;
     }
 
+    /**
+     * A test (PlayerTests): an alert waiting ms for the stream, as hold() keeps one back (the full screen's "1 alert
+     * waiting" line), then show. Nothing else is touched: no delay learnt, no game's last moment kept.
+     */
+    static void testHold(Events.Alert a, long ms, Runnable show) {
+        Held h = new Held(a.game == null ? "" : a.game.id, a.title, System.currentTimeMillis() + ms);
+        held.add(h);
+        for (Listener l : listeners) main.post(l::onHeldChanged);
+        main.postDelayed(() -> {
+            held.remove(h);
+            for (Listener l : listeners) l.onHeldChanged();
+            show.run();
+        }, ms);
+    }
+
     /** When to go back to for a moment's alert seen now: 25 s before it reached the screen. */
     static long replayFrom(long shownAt) {
         return shownAt - 25_000L;

@@ -22,6 +22,8 @@ import com.gathin.tvhomephone.R;
 import com.gathin.tvhomephone.sports.Events;
 import com.gathin.tvhomephone.sports.Game;
 
+import java.util.function.IntConsumer;
+
 /**
  * The scoreboard over the player's picture (ScoreBoard), with its alerts. On a game it covers the channel's own
  * scoreboard where one is found (BugFinder on the picture's frames, FrameSampler), at its size; elsewhere it sits top
@@ -1246,6 +1248,93 @@ final class ScoreOverlay implements ScoreBoard.Source {
 
     boolean onBreak() {
         return breakScreen != null;
+    }
+
+    // ---- test notifications (the player's options, PlayerTests) ------------------------------------------------------
+
+    /** Why a test over the picture can't show now (a string), or 0 when it can; board: one on the scoreboard. */
+    private int testBlocked(boolean onBoard) {
+        if (inPip || editing || intro.showing() || breakScreen != null) return R.string.live7_wait;
+        if (onBoard && !started) return R.string.live7_board_off;
+        if (onBoard && !ScoreBoard.boardShown(a)) return R.string.live7_board_hidden;
+        return 0;
+    }
+
+    /** Tests: the kick-off pop-up in a style at a moment, now (PlayerIntro.testPopup). */
+    void testPopup(String style, String kind, IntConsumer note) {
+        int no = testBlocked(false);
+        if (no != 0) note.accept(no);
+        else intro.testPopup(style, kind, host.game(), note);
+    }
+
+    /** Tests: the line-ups in a style, now (PlayerIntro.testLineups). */
+    void testLineups(String style, IntConsumer note) {
+        int no = testBlocked(false);
+        if (no != 0) note.accept(no);
+        else intro.testLineups(style, host.game(), note);
+    }
+
+    /** Tests: one of the scoreboard's moments (PlayerTests.BOARD_TESTS) now, on its game or a made-up one. */
+    void testBoard(String what, IntConsumer note) {
+        int no = testBlocked(true);
+        if (no != 0) {
+            note.accept(no);
+            return;
+        }
+        boolean football = !board.f1();
+        boolean ok;
+        switch (what) {
+            case "goal_home":
+            case "goal_away":
+                if (!football) {
+                    note.accept(R.string.live7_f1);
+                    return;
+                }
+                ok = board.testGoal("goal_home".equals(what) ? 1 : 2);
+                break;
+            case "scorer":
+                ok = board.testScorer(1);
+                break;
+            case "stats":
+                ok = board.testStats();
+                break;
+            case "card": {
+                // a game with its line-ups out (the one watched, else a recent Premier League game): its card beside the board
+                note.accept(R.string.live7_looking);
+                Game watching = host.game();
+                App.io.execute(() -> {
+                    Events.Alert al = com.gathin.tvhomephone.sports.TestAlerts.lineupsAlert(watching);
+                    App.main.post(() -> {
+                        if (a.isFinishing()) return;
+                        if (al == null) note.accept(R.string.live7_no_lineups);
+                        else if (testBlocked(true) != 0 || !board.testCard(al)) note.accept(R.string.live7_wait);
+                    });
+                });
+                return;
+            }
+            case "sub":
+                ok = board.testSub();
+                break;
+            case "var":
+            case "added":
+                if (!football) {
+                    note.accept(R.string.live7_f1);
+                    return;
+                }
+                ok = "var".equals(what) ? board.testVar() : board.testAdded();
+                break;
+            default:
+                return;
+        }
+        if (!ok) note.accept(R.string.live7_wait);
+    }
+
+    /** Tests: broadcast mode's break now, for up to a minute (Back to the channel ends it). */
+    void testBreak(IntConsumer note) {
+        int no = testBlocked(true);
+        if (no == R.string.live7_board_hidden) no = 0;
+        if (no != 0) note.accept(no);
+        else startBreak(true);
     }
 
     // ---- the options -------------------------------------------------------------------------------------------------

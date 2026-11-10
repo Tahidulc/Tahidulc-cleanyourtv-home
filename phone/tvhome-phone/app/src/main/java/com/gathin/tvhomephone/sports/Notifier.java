@@ -289,6 +289,22 @@ public final class Notifier {
         return b;
     }
 
+    /**
+     * A test of "Following live" (TestAlerts) with game g as its card: under its own id (the real one, ONGOING_ID, is
+     * never replaced), not ongoing, gone by itself in a minute. Off the main thread (the crests).
+     */
+    static void testFollowing(Context c, Game g) {
+        long now = System.currentTimeMillis();
+        String line = g.homeName + " " + g.score() + " " + g.awayName + " · " + LiveClock.words(g, now);
+        NotificationCompat.Builder b = following(c, LiveCard.draw(c, java.util.Collections.singletonList(g)), line, now, now)
+                .setOngoing(false)
+                .setAutoCancel(true)
+                .setTimeoutAfter(60_000L);
+        notify(c, TEST_FOLLOWING_ID, b);
+    }
+
+    static final int TEST_FOLLOWING_ID = "TEST|following".hashCode();
+
     /** The notification is drawn again every this often while a game is on (AlertService's read). */
     static final long REDRAWN_MS = 30_000L;
 

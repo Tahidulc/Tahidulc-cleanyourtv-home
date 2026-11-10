@@ -38,4 +38,16 @@ public class PlayerIntroTest {
         assertEquals("pl", BroadcastData.compKey(m.compId, m.compName));
         assertEquals("Old Trafford", m.venue);
     }
+
+    @Test
+    public void aTestRestartHasAGoalInIt() {
+        Game g = new Game();
+        assertEquals(1, PlayerIntro.testScore(g, true)[0]);
+        assertEquals(0, PlayerIntro.testScore(g, true)[1]);
+        assertEquals(0, PlayerIntro.testScore(g, false)[0]);
+        g.homeScore = 2;
+        g.awayScore = 3;
+        assertEquals(2, PlayerIntro.testScore(g, true)[0]);
+        assertEquals(3, PlayerIntro.testScore(g, false)[1]);
+    }
 }

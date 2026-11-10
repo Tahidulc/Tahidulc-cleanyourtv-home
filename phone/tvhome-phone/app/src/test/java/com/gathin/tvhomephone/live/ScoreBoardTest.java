@@ -443,4 +443,39 @@ public class ScoreBoardTest {
         assertEquals("On Eberechi Eze · off Christos Tzolis · 69'", d.line);
         assertEquals(1, d.side);
     }
+
+    @Test public void theStatsTestShowsTheGamesOwnElseOneOfEachKind() {
+        // Nothing read yet: made-up ones, a bar, the form, two places and one line.
+        List<String[]> made = ScoreBoard.testStats(new java.util.HashMap<>());
+        assertEquals(5, made.size());
+        java.util.Set<String> kinds = new java.util.HashSet<>();
+        for (String[] s : made) kinds.add(s.length > 3 ? s[3] : "bar");
+        assertEquals(new java.util.HashSet<>(java.util.Arrays.asList("bar", "form", "text", "one")), kinds);
+        // The game's own once read: half time's moment of them.
+        java.util.Map<String, String[]> by = new java.util.HashMap<>();
+        by.put("Possession", new String[]{"Possession", "61%", "39%"});
+        by.put("Shots", new String[]{"Shots", "9", "4"});
+        List<String[]> own = ScoreBoard.testStats(by);
+        assertEquals(2, own.size());
+        assertEquals("61%", own.get(0)[1]);
+    }
+
+    @Test public void theAddedTimeTestPutsUpFourInItsHalf() {
+        OverlayBug.Look l = new OverlayBug.Look();
+        l.clock = "67:23";
+        ScoreBoard.addedTest(l, 0);
+        assertEquals("90:00", l.clock);
+        assertEquals("+4", l.added);
+        assertTrue(l.stoppage);
+        assertTrue(l.live);
+        assertTrue(OverlayBug.pulses(l));
+        OverlayBug.Look first = new OverlayBug.Look();
+        first.clock = "31:05";
+        ScoreBoard.addedTest(first, 75);
+        assertEquals("46:15", first.clock);
+        OverlayBug.Look ht = new OverlayBug.Look();
+        ht.clock = "HT";
+        ScoreBoard.addedTest(ht, 5);
+        assertEquals("90:05", ht.clock);
+    }
 }

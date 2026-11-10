@@ -48,6 +48,9 @@ final class PlayerExtras implements LiveAlerts.Listener {
         Game game();
 
         void closeSheet();
+
+        /** Tests: the info tile in this style now (the guide panel for PANEL), the style chosen kept. */
+        default void testTile(TileKind.Style style) {}
     }
 
     private final Activity a;
@@ -370,7 +373,13 @@ final class PlayerExtras implements LiveAlerts.Listener {
 
     @Override public void onGoalElsewhere(Events.Alert alert) {
         // The scoreboard over the picture drops it instead (tap it to switch).
-        if (inPip || a.isFinishing() || (overlay != null && overlay.on())) return;
+        if (overlay != null && overlay.on()) return;
+        banner(alert);
+    }
+
+    /** The banner for a goal in another game, with Switch (a test shows it whether the scoreboard is on or not). */
+    void banner(Events.Alert alert) {
+        if (inPip || a.isFinishing() || alert == null) return;
         bannerAlert = alert;
         bannerText.setText(alert.title + (alert.text == null || alert.text.isEmpty() ? "" : "\n" + alert.text.split("\n")[0]));
         fadeIn(banner);
@@ -769,23 +778,8 @@ final class PlayerExtras implements LiveAlerts.Listener {
                     });
         }
 
-        // Test notifications: every kind, or one, on this game (or a made-up one), as they really come.
-        LinearLayout tests = chipRow(c, box, R.string.live4_tests);
-        TextView all = Ui.guideChip(c, a.getString(R.string.live4_tests_all), true);
-        all.setOnClickListener(v -> {
-            host.closeSheet();
-            com.gathin.tvhomephone.sports.TestAlerts.play(a, host.game(), null);
-        });
-        addChip(tests, all);
-        for (String[] k : com.gathin.tvhomephone.sports.TestAlerts.kinds()) {
-            TextView t = Ui.guideChip(c, k[1], false);
-            t.setOnClickListener(v -> {
-                host.closeSheet();
-                com.gathin.tvhomephone.sports.TestAlerts.play(a, host.game(), k[0]);
-            });
-            addChip(tests, t);
-        }
-        note(c, box, a.getString(R.string.live4_tests_note));
+        // Test notifications, everything, grouped: each as it really comes, on this game (or a made-up one), now.
+        PlayerTests.add(a, box, host, overlay, this);
 
         // Night sound, the touch lock, on a TV.
         if (NightSound.available()) {
@@ -807,7 +801,7 @@ final class PlayerExtras implements LiveAlerts.Listener {
         void set(boolean on);
     }
 
-    private static LinearLayout chipRow(Context c, LinearLayout box, int label) {
+    static LinearLayout chipRow(Context c, LinearLayout box, int label) {
         TextView t = Ui.text(c, c.getString(label).toUpperCase(Locale.UK), 12, Ui.G_SELECT, true);
         t.setLetterSpacing(0.1f);
         t.setPadding(0, Ui.dp(c, 16), 0, Ui.dp(c, 2));
@@ -821,13 +815,13 @@ final class PlayerExtras implements LiveAlerts.Listener {
         return row;
     }
 
-    private static void addChip(LinearLayout row, TextView chip) {
+    static void addChip(LinearLayout row, TextView chip) {
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, -2);
         lp.rightMargin = Ui.dp(row.getContext(), 8);
         row.addView(chip, lp);
     }
 
-    private static void note(Context c, LinearLayout box, String words) {
+    static void note(Context c, LinearLayout box, String words) {
         TextView n = Ui.text(c, words, 12, Ui.DIM, false);
         n.setPadding(0, Ui.dp(c, 6), 0, 0);
         box.addView(n);

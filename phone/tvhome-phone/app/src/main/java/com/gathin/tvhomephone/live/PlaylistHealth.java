@@ -322,19 +322,31 @@ public final class PlaylistHealth {
     }
 
     private static void tell(Context c, Sources.Entry e, Result r) {
+        tell(c, e.id, e.name, r);
+    }
+
+    /**
+     * A test of the warning (TestAlerts): a made-up playlist struggling (six of ten channels tried didn't play), under
+     * its own id; nothing is kept, so a real check and its warning go on as before.
+     */
+    public static void test(Context c) {
+        tell(c, "TEST|health", c.getString(R.string.live7_test_playlist), new Result(900, 4200, 10, 6, System.currentTimeMillis()));
+    }
+
+    private static void tell(Context c, String id, String name, Result r) {
         Expiry.channel(c);
         String text = r.sampled > 0 ? c.getString(R.string.f2_health_bad_text, r.failed, r.sampled, seconds(r.startMs))
                 : c.getString(R.string.f2_health_bad_answer);
         NotificationCompat.Builder b = new NotificationCompat.Builder(c, Expiry.CHANNEL)
                 .setSmallIcon(R.drawable.live_ic_guide)
-                .setContentTitle(c.getString(R.string.f2_health_bad_title, e.name))
+                .setContentTitle(c.getString(R.string.f2_health_bad_title, name))
                 .setContentText(text)
                 .setStyle(new NotificationCompat.BigTextStyle().bigText(text))
                 .setColor(0xFFFF4FA3)
                 .setAutoCancel(true)
                 .setContentIntent(Expiry.settings(c));
         try {
-            NotificationManagerCompat.from(c).notify(("health:" + e.id).hashCode(), b.build());
+            NotificationManagerCompat.from(c).notify(("health:" + id).hashCode(), b.build());
         } catch (SecurityException ignored) {
             // notifications not allowed on this phone
         }

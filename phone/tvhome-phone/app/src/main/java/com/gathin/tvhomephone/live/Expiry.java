@@ -83,11 +83,23 @@ public final class Expiry {
     }
 
     private static void notify(Context c, Sources.Entry e, Sources.Info i, long now) {
+        show(c, e.id, e.name, i.expires, Library.get(c).countIn(e.id), now);
+    }
+
+    /**
+     * A test of the warning (TestAlerts): a made-up playlist running out in six days, under its own id; nothing is
+     * remembered, so a real warning still comes.
+     */
+    public static void test(Context c) {
+        long now = System.currentTimeMillis();
+        show(c, "TEST|expiry", c.getString(R.string.live7_test_playlist), now + 6 * DAY - 60_000L, 1200, now);
+    }
+
+    private static void show(Context c, String id, String name, long expires, int channels, long now) {
         channel(c);
-        String day = java.time.Instant.ofEpochMilli(i.expires).atZone(java.time.ZoneId.systemDefault())
+        String day = java.time.Instant.ofEpochMilli(expires).atZone(java.time.ZoneId.systemDefault())
                 .format(java.time.format.DateTimeFormatter.ofPattern("EEEE d MMM", Locale.UK));
-        int channels = Library.get(c).countIn(e.id);
-        String title = c.getString(R.string.f2_expiry_title, e.name, left(i.expires, now));
+        String title = c.getString(R.string.f2_expiry_title, name, left(expires, now));
         String text = channels > 0 ? c.getString(R.string.f2_expiry_text_count, day, channels) : c.getString(R.string.f2_expiry_text, day);
         NotificationCompat.Builder b = new NotificationCompat.Builder(c, CHANNEL)
                 .setSmallIcon(R.drawable.live_ic_guide)
@@ -99,7 +111,7 @@ public final class Expiry {
                 .setCategory(NotificationCompat.CATEGORY_REMINDER)
                 .setContentIntent(settings(c));
         try {
-            NotificationManagerCompat.from(c).notify(("expiry:" + e.id).hashCode(), b.build());
+            NotificationManagerCompat.from(c).notify(("expiry:" + id).hashCode(), b.build());
         } catch (SecurityException ignored) {
             // notifications not allowed on this phone
         }

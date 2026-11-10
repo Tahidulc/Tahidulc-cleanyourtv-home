@@ -557,6 +557,8 @@ public final class ScoreBoard implements LiveAlerts.Listener {
 
     void stop() {
         running = false;
+        testUntil = 0;
+        addedUntil = 0;
         ScreenTime.clear(screen);
         LiveAlerts.removeListener(this);
         h.removeCallbacksAndMessages(null);
@@ -798,6 +800,9 @@ public final class ScoreBoard implements LiveAlerts.Listener {
             l = f1Look((F1Live.Session) pick[1], at);
         }
         if (l == null && preview) l = sample();
+        // A test from the player's options with nothing on the board: its made-up game, until what it put out is back in.
+        if (l == null && testing(now)) l = look(testGame, null);
+        if (l != null && !l.f1 && now < addedUntil) testAdded(l, now);
         if (l == null || hidden) {
             // Away as a broadcaster's goes: what is out beside it back in, wiped back into its first block, closed to a line.
             if (bug.getVisibility() == View.VISIBLE && !bug.closing()) {
@@ -968,6 +973,11 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         if (pick.isEmpty()) return;
         if (statsShown.size() > 60) statsShown.clear();
         statsShown.add(key);
+        showStats(pick);
+    }
+
+    /** These stats out beside the board now, in its look. */
+    private void showStats(List<String[]> pick) {
         if (changed != null) changed.run();
         stats.place(bug.stripLook(), unit() * TEXT, nearTuck(), sideLeft, 0);
         stats.alone(false);
@@ -1686,6 +1696,157 @@ public final class ScoreBoard implements LiveAlerts.Listener {
     /** For the tests and the previews: an alert dropped now. */
     void show(Drop d) {
         drop(d);
+    }
+
+    // ---- test notifications (the player's options, PlayerTests): each moment on demand, nothing kept ----------------
+
+    /** A test's made-up game, shown while nothing else is on the board; how long the board stays up for a test at least. */
+    private Game testGame;
+    private long testUntil, addedFrom, addedUntil;
+    private static final long TEST_MS = 12_000L, ADDED_MS = 12_000L, OPEN_MS = 700L;
+
+    /** Whether a test keeps the board up with its made-up game: a while, and until what it put out is back in. */
+    private boolean testing(long now) {
+        if (testGame == null || testUntil == 0) return false;
+        if (now < testUntil || dropping || stats.isOut() || lineups.isOut() || bug.bandLeft(now) > 0) return true;
+        testUntil = 0;
+        return false;
+    }
+
+    /** The game a test is shown on: the board's own when it shows a football game, else a made-up one (TestAlerts). */
+    private Game testGame(long now) {
+        Game g = mode == FOOTBALL_MODE ? screen.game(now) : null;
+        if (g != null) return g;
+        if (testGame == null) testGame = com.gathin.tvhomephone.sports.TestAlerts.sample(c, null);
+        return testGame;
+    }
+
+    /** A test on the board: at once when it is up, else once the made-up game has come up on it. False: not now. */
+    private boolean test(Runnable r) {
+        if (!running || small || hidden) return false;
+        long now = System.currentTimeMillis();
+        testGame(now);
+        testUntil = Math.max(testUntil, now + TEST_MS);
+        if (boardUp()) {
+            r.run();
+            return true;
+        }
+        draw(now);
+        h.postDelayed(() -> {
+            if (running && !small) r.run();
+        }, OPEN_MS);
+        return true;
+    }
+
+    /** Tests: a goal for side (1 home, 2 away) on the board with the goal sound chosen, then its scorer beside it. */
+    boolean testGoal(int side) {
+        if (bug.bandLeft(System.currentTimeMillis()) > 0) return false;
+        return test(() -> {
+            long now = System.currentTimeMillis();
+            Game g = testGame(now);
+            bug.goal(side);
+            com.gathin.broadcast.Sfx.goal(c, PlayerIntro.goalSound(c));
+            if (changed != null) changed.run();
+            h.postDelayed(() -> testScorer(g, side), bug.bandLeft(now) + 2_000L);
+        });
+    }
+
+    /** Tests: a goal's scorer beside the board, standing up out of it when he has a photo. */
+    boolean testScorer(int side) {
+        return test(() -> testScorer(testGame(System.currentTimeMillis()), side));
+    }
+
+    /** The side's latest scorer in g (else a made-up one) beside the board, as the board captions a goal. */
+    private void testScorer(Game g, int side) {
+        if (!running || small) return;
+        String[] goal = lastGoal(g, side);
+        if (goal == null) goal = new String[]{"TEST|scorer", side == 1 ? "A. Player" : "B. Player", "67'", side == 1 ? "home" : "away", ""};
+        Drop d = goalDrop(g, goal);
+        d.homeCrest = bug.homeCrest;
+        d.awayCrest = bug.awayCrest;
+        enrich(d, g, goal[1], "home".equals(goal[3]) ? g.homeName : g.awayName);
+    }
+
+    /** Tests: the game's stats out beside the board, one after another. False while something else is out. */
+    boolean testStats() {
+        if (dropping || stats.isOut() || lineups.isOut()) return false;
+        return test(() -> {
+            if (dropping || stats.isOut() || lineups.isOut()) return;
+            showStats(testStats(mode == FOOTBALL_MODE && lastId.equals(statsFor) ? statsBy : new HashMap<>()));
+        });
+    }
+
+    /**
+     * Pure: the stats a test shows: the game's own at half time's moment when they have been read, else made-up ones,
+     * one of each kind a stat can be (a bar, the form, two places, one line).
+     */
+    static List<String[]> testStats(Map<String, String[]> by) {
+        List<String[]> pick = statsFor("ht", by);
+        if (!pick.isEmpty()) return pick;
+        List<String[]> out = new ArrayList<>();
+        out.add(new String[]{"Possession", "58%", "42%"});
+        out.add(new String[]{"Shots", "12", "7"});
+        out.add(new String[]{"Form", "WWDLW", "LDWWD", "form"});
+        out.add(new String[]{"League table", "4th · 31 pts", "9th · 22 pts", "text"});
+        out.add(new String[]{"Player of the match", "C. Player · 2 goals", "", "one"});
+        return out;
+    }
+
+    /** Tests: a line-ups alert's card beside the board (after what is out now, as a real one). */
+    boolean testCard(Events.Alert a) {
+        if (a == null || a.summary == null || a.game == null) return false;
+        return test(() -> lineupsCard(a));
+    }
+
+    /** Tests: a substitution beside the board, who comes on and who goes off (made up). */
+    boolean testSub() {
+        return test(() -> {
+            Game g = testGame(System.currentTimeMillis());
+            Drop d = subDrop(g, new String[]{"Substitution", "71", "1", "E. Player", "", "F. Player", ""});
+            d.own = mode != F1_MODE;
+            d.homeCrest = bug.homeCrest;
+            d.awayCrest = bug.awayCrest;
+            drop(d);
+        });
+    }
+
+    /** Tests: VAR checking, its line scanning across the board. */
+    boolean testVar() {
+        return test(() -> {
+            bug.varCheck(8_000L);
+            if (changed != null) changed.run();
+        });
+    }
+
+    /** Tests: the added time put up beside the clock for a few seconds, the clock in its half's added time. */
+    boolean testAdded() {
+        if (System.currentTimeMillis() < addedUntil) return false;
+        return test(() -> {
+            long now = System.currentTimeMillis();
+            addedFrom = now;
+            addedUntil = now + ADDED_MS;
+            testUntil = Math.max(testUntil, addedUntil);
+            if (changed != null) changed.run();
+            draw(now);
+        });
+    }
+
+    private void testAdded(OverlayBug.Look l, long now) {
+        addedTest(l, (now - addedFrom) / 1000);
+    }
+
+    /**
+     * Pure: a look in the added time's test, secs into it: "+4" beside the clock, the clock going on from its half's end
+     * (the first half's before the 45th minute, else the second's), the score alive as in added time.
+     */
+    static void addedTest(OverlayBug.Look l, long secs) {
+        int m = minuteOfClock(l.clock);
+        int end = m >= 0 && m < 45 ? 45 : 90;
+        long s = Math.max(0, secs);
+        l.clock = String.format(Locale.UK, "%d:%02d", end + s / 60, s % 60);
+        l.added = "+4";
+        l.live = true;
+        l.stoppage = true;
     }
 
     List<Drop> waiting() {

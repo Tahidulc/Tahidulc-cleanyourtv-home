@@ -91,11 +91,17 @@ shows. It finds it by reading the top of the picture for this game's clock (not 
 few seconds: the clock to the second (46:12 in added time, stopped when the channel's stops, its "+4"), the score once
 it has read it twice, and HT and FT, so it is never ahead of the picture. Options says what it last read. Portrait,
 picture-in-picture and the channel's tile show the same board and time, the tile's stats in step with it. The "Following
-live" notification counts in minutes and seconds. In the full-screen player, the menu (⋮) has a test notification for
-every kind. Overlays guard against burn-in: they move a little every minute and dim after five. Broadcast mode
-(Settings): when the channel goes to its adverts before kick-off, at half time or after the game, Homefield shows its
-own break (your reminders, news, what's on in each section, trailers) with the channel small in a corner, and goes
-back when the channel does. Swipe up on the Live TV panel to hide it and see more of the guide; swipe down for it.
+live" notification counts in minutes and seconds. In the full-screen player, the menu (⋮) tests everything the app
+can show, now on the channel playing, whatever the styles chosen and without changing them: each kind of alert (all in
+turn, or one) and the line-ups', the kick-off pop-up in both styles at the kick-off, the restart after a goal and the
+second half, the line-ups in both styles, the scoreboard's goal for each side with the goal sound chosen (and each goal
+sound to hear), its scorer, stats, line-up card, a substitution, VAR and the added time's +4, each info tile, and the
+other notifications and on-screen moments. Settings, Test notifications, has those that need no channel playing. A test
+is never kept in the alerts and never takes a real one's place. Overlays guard against burn-in: they move a little every
+minute and dim after five. Broadcast mode (Settings): when the channel goes to its adverts before kick-off, at half
+time or after the game, Homefield shows its own break (your reminders, news, what's on in each section, trailers) with
+the channel small in a corner, and goes back when the channel does. Swipe up on the Live TV panel to hide it and see
+more of the guide; swipe down for it.
 
 Broadcast mode's break, more of it (4.0): fun facts (Bangladesh first, two for every one of the world's or football's,
 fresh each break), a quiz question with its answer a few seconds on, today's prayer times from Darus Salam Mosque
@@ -331,6 +337,8 @@ Two styles each, the swish and a goal sound (4.35): in the scoreboard settings, 
 Smooth, and the game's ground behind the line-ups (4.36): the kick-off pop-up, the classic line-ups and the stadium board are drawn once while they get ready and then only moved, so they keep up with the screen on a modest phone, and the pop-up's parts are all drawn before it is shown. The line-ups stand over a freely licensed photo of the ground the game is at, from Wikimedia Commons (kept two months), tinted for the time of day at kick-off, with its credit; with none, the drawn ground as before.
 
 The line-ups smooth from their first frame (4.37): both line-ups pages have every part drawn before they are shown, as the kick-off pop-up does, so their opening no longer stalls on a modest phone.
+
+A test of everything (4.38): in the player's menu (⋮), every alert, the kick-off pop-up in both styles at its three moments, both line-ups, the scoreboard's goal, scorer, stats, line-up card, substitution, VAR and added time, each goal sound, each info tile and the other notifications; in Settings, Test notifications, those that need no channel playing.
 
 Subtitles (CC in the film's player): the film's or episode's own, from your playlist's stream, come first, in the
 languages you choose (Settings, Subtitles, in order). When it has none, OpenSubtitles.com is looked in by the title's

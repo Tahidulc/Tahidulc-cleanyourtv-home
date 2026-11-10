@@ -97,6 +97,29 @@ public final class FloatService extends Service implements ScoreBoard.Source {
         }
     }
 
+    /** A test's run: shown for this long while it is switched off. */
+    private static final String TRIAL = "trial";
+    private static final long TRIAL_MS = 25_000L;
+    /** A test's run over: gone, unless it has been switched on meanwhile. */
+    private final Runnable trialEnd = () -> {
+        if (!on(this)) stopSelf();
+    };
+
+    /**
+     * A test (TestAlerts): the scoreboard over other apps now with a goal on it (its game, else a made-up one); switched
+     * off, it shows for a while and goes, the switch left as it is; on, the goal is on the one up. It keeps out of the
+     * player's way as ever. False without Android's "Display over other apps".
+     */
+    public static boolean test(Context c) {
+        if (!Settings.canDrawOverlays(c)) return false;
+        try {
+            ContextCompat.startForegroundService(c, new Intent(c, FloatService.class).setAction(TRIAL));
+            return true;
+        } catch (RuntimeException e) {
+            return false;
+        }
+    }
+
     @Override public IBinder onBind(Intent intent) {
         return null;
     }
@@ -130,6 +153,14 @@ public final class FloatService extends Service implements ScoreBoard.Source {
             return START_NOT_STICKY;
         }
         if (win == null) show();
+        if (intent != null && TRIAL.equals(intent.getAction())) {
+            if (board != null) board.testGoal(1);
+            if (!on(this)) {
+                h.removeCallbacks(trialEnd);
+                h.postDelayed(trialEnd, TRIAL_MS);
+                return START_NOT_STICKY;
+            }
+        }
         return START_STICKY;
     }
 

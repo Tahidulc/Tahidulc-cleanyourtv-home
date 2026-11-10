@@ -729,6 +729,28 @@ public class PlayerActivity extends AppCompatActivity {
         tiles.addView(InfoTile.build(this, info, s, wideTile(), tileActions, animate), new FrameLayout.LayoutParams(-1, -1));
     }
 
+    /**
+     * Tests (the player's options): the info tile in this style now, on what's on, made-up parts where it is not of that
+     * kind (PlayerTests.tileInfo); the guide panel for PANEL. The style chosen stays, and the next time the tile comes
+     * it is the real one again.
+     */
+    private void testTile(TileKind.Style s) {
+        if (cur == null || isInPictureInPictureMode()) return;
+        if (s == TileKind.Style.PANEL || s == TileKind.Style.AUTO) {
+            showPanel();
+            return;
+        }
+        TileData.Info t = PlayerTests.tileInfo(info != null ? info : TileData.now(this, lib, cur), s,
+                com.gathin.tvhomephone.sports.TestAlerts.sample(this, null));
+        marks(t);
+        if (panel.getVisibility() == View.VISIBLE) fade(panel, false);
+        tiles.removeAllViews();
+        tiles.addView(InfoTile.build(this, t, s, wideTile(), tileActions, true), new FrameLayout.LayoutParams(-1, -1));
+        fade(tiles, true);
+        fade(top, true);
+        keepPanel();
+    }
+
     /** Across the picture on its side or on a tablet; stacked upright on a phone. */
     private boolean wideTile() {
         return landscape || getResources().getConfiguration().screenWidthDp >= 600;
@@ -1352,7 +1374,8 @@ public class PlayerActivity extends AppCompatActivity {
         });
     }
 
-    private int styleLabel(TileKind.Style st) {
+    /** A tile style's name (the options, and the test chips: PlayerTests). */
+    static int styleLabel(TileKind.Style st) {
         switch (st) {
             case RIBBON: return R.string.tile_ribbon;
             case CARD: return R.string.tile_card;
@@ -1689,6 +1712,10 @@ public class PlayerActivity extends AppCompatActivity {
 
             @Override public void closeSheet() {
                 if (sheet != null) sheet.dismiss();
+            }
+
+            @Override public void testTile(TileKind.Style s) {
+                PlayerActivity.this.testTile(s);
             }
         });
         // The scoreboard over the picture, under the tile and the buttons.
