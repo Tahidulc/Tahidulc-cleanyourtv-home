@@ -1312,25 +1312,15 @@ final class BoardCover {
     /** The widest what slides out beside the board may be, in board heights. */
     static final float STRIP_W = 15f;
     /**
-     * The alerts and stats beside the board, kept sleek: this share of its height, centred on it, their words sized
-     * from that, and never longer than SLIM_W of their own heights (longer words run along instead).
+     * The alerts and stats beside the board: as high as the board, in line with it whatever size it is set to, their
+     * words a little smaller than its own (TEXT of its height), and never longer than SHORT of its heights (longer words
+     * run along instead).
      */
-    static final float SLIM = 0.64f, SLIM_W = 10f;
+    static final float TEXT = 0.86f, SHORT = 8f;
 
-    /** Pure: a pop-out's height beside a board bh high. */
-    static int slimH(int bh) {
-        return Math.max(12, Math.round(bh * SLIM));
-    }
-
-    /** Pure: the longest a pop-out sh high may be, within room. */
-    static int slimRoom(int popH, int room) {
-        return Math.max(popH * 3, Math.min(room, Math.round(popH * SLIM_W)));
-    }
-
-    /** The room over an alert's strip for the scorer's picture to stand into: a little over half the strip, up to the board's top room. */
-    private static int dropHead(int bh) {
-        int popH = slimH(bh), off = (bh - popH) / 2;
-        return Math.max(0, Math.min(head + off, Math.round(popH * 0.55f)));
+    /** Pure: the longest a pop-out beside a board bh high may be, within room. */
+    static int shortRoom(int bh, int room) {
+        return Math.max(bh * 3, Math.min(room, Math.round(bh * SHORT)));
     }
     private static TextView hint;
     /** This channel's places, and which channel they are for. */
@@ -2048,14 +2038,9 @@ final class BoardCover {
     private static void beside(View v, int w) {
         FrameLayout.LayoutParams b = (FrameLayout.LayoutParams) bug.getLayoutParams();
         int left = sideLeft ? boardAt + tuck - sideGap - w : boardAt + b.width - tuck + sideGap;
-        // Slim, centred on the board's height: a tab out of its middle rather than a second board.
-        int popH = slimH(b.height), off = (b.height - popH) / 2;
-        if (v == drop) {
-            int dh = dropHead(b.height);
-            sizeAt(v, w, popH + dh, left, head + off - dh);
-        } else {
-            sizeAt(v, w, popH, left, head + off);
-        }
+        // As high as the board and in line with it; an alert with the room over the board for the scorer's picture.
+        if (v == drop) sizeAt(v, w, b.height + head, left, 0);
+        else sizeAt(v, w, b.height, left, head);
     }
 
     /**
@@ -2135,9 +2120,9 @@ final class BoardCover {
         }
         BoardDrop.Drop d = drops.pollFirst();
         poke();
-        int bh = bug.getLayoutParams().height, popH = slimH(bh);
-        drop.place(bug.stripLook(), boardH * SLIM, tuck, sideLeft, dropHead(bh));
-        beside(drop, drop.widthFor(d, popH, slimRoom(popH, sideMax)));
+        int bh = bug.getLayoutParams().height;
+        drop.place(bug.stripLook(), boardH * TEXT, tuck, sideLeft, head);
+        beside(drop, drop.widthFor(d, bh, shortRoom(bh, sideMax)));
         drop.show(d);
         main().postDelayed(hideDropRun, drop.showFor(DROP_MS));
     }
@@ -2458,9 +2443,9 @@ final class BoardCover {
         if (statsShown.size() > 60) statsShown.clear();
         statsShown.add(g.id + "|" + slot);
         poke();
-        int bh = bug.getLayoutParams().height, popH = slimH(bh);
-        stats.place(bug.stripLook(), boardH * SLIM, tuck, sideLeft);
-        beside(stats, stats.widthFor(pick, popH, slimRoom(popH, sideMax)));
+        int bh = bug.getLayoutParams().height;
+        stats.place(bug.stripLook(), boardH * TEXT, tuck, sideLeft);
+        beside(stats, stats.widthFor(pick, bh, shortRoom(bh, sideMax)));
         stats.show(pick);
     }
 
@@ -2703,47 +2688,60 @@ final class BoardCover {
         hintWords();
     }
 
+    /** Move and resize's parts, in turn (OK the next): the scoreboard's, its timing, then the logo's cover's. */
+    static final int B_POSITION = 0, B_SIZE = 1, B_HEIGHT = 2, B_WIDTH = 3, TIMING = 4, L_POSITION = 5, L_SIZE = 6, L_HEIGHT = 7,
+            L_WIDTH = 8;
+
     /** Pure: the hint for each part ("logo": the logo's cover is on, so its parts come next). */
     static String hintFor(int part, boolean logo) {
         switch (part) {
-            case 1:
+            case B_SIZE:
+                return "Scoreboard  ·  SIZE  ·  Up or Right bigger, Down or Left smaller, its shape kept  ·  OK: its height  ·  Back: keep it";
+            case B_HEIGHT:
                 return "Scoreboard  ·  HEIGHT  ·  Up taller, Down shorter, its width kept  ·  OK: its width  ·  Back: keep it";
-            case 2:
+            case B_WIDTH:
                 return "Scoreboard  ·  WIDTH  ·  Right wider, Left narrower, its height kept  ·  OK: its timing  ·  Back: keep it";
-            case 3:
+            case TIMING:
                 return "Timing  ·  Right a second later, Left a second sooner, Down and Up five  ·  OK: "
                         + (logo ? "the logo's cover" : "move it") + "  ·  Back: keep it";
-            case 4:
-                return "Logo's cover  ·  POSITION  ·  arrows move it  ·  OK: its height  ·  Back: keep it";
-            case 5:
+            case L_POSITION:
+                return "Logo's cover  ·  POSITION  ·  arrows move it  ·  OK: its size  ·  Back: keep it";
+            case L_SIZE:
+                return "Logo's cover  ·  SIZE  ·  Up or Right bigger, Down or Left smaller, its shape kept  ·  OK: its height  ·  Back: keep it";
+            case L_HEIGHT:
                 return "Logo's cover  ·  HEIGHT  ·  Up taller, Down shorter  ·  OK: its width  ·  Back: keep it";
-            case 6:
+            case L_WIDTH:
                 return "Logo's cover  ·  WIDTH  ·  Right wider, Left narrower  ·  OK: the scoreboard  ·  Back: keep it";
             default:
-                return "Scoreboard  ·  POSITION  ·  arrows move it  ·  OK: its height  ·  Back: keep it";
+                return "Scoreboard  ·  POSITION  ·  arrows move it  ·  OK: its size  ·  Back: keep it";
         }
     }
 
     private static void hintWords() {
         if (hint == null) return;
         String s = hintFor(part, mark != null);
-        if (part == 3 && app != null) s = timingWords(app) + "  ·  " + s;
+        if (part == TIMING && app != null) s = timingWords(app) + "  ·  " + s;
         else if (editing != null) s = s + "  ·  " + sizeWords(part, editing, boardWidthNow());
         Keys.set(hint, s);
     }
 
     /** Pure: what the part being set is now, as shares of the screen ("38% wide"). */
     static String sizeWords(int part, BoardPlace p, float boardWidth) {
+        float bw = p.bw > 0 ? p.bw : boardWidth;
         switch (part) {
-            case 1:
+            case B_SIZE:
+                return Math.round(bw * 100) + "% wide, " + Math.round(p.bh * 100) + "% high";
+            case B_HEIGHT:
                 return Math.round(p.bh * 100) + "% high";
-            case 2:
-                return Math.round((p.bw > 0 ? p.bw : boardWidth) * 100) + "% wide";
-            case 4:
+            case B_WIDTH:
+                return Math.round(bw * 100) + "% wide";
+            case L_POSITION:
                 return Math.round(p.lx * 100) + "% across, " + Math.round(p.ly * 100) + "% down";
-            case 5:
+            case L_SIZE:
+                return Math.round(p.lw * 100) + "% wide, " + Math.round(p.lh * 100) + "% high";
+            case L_HEIGHT:
                 return Math.round(p.lh * 100) + "% high";
-            case 6:
+            case L_WIDTH:
                 return Math.round(p.lw * 100) + "% wide";
             default:
                 return Math.round(p.bx * 100) + "% across, " + Math.round(p.by * 100) + "% down";
@@ -2752,8 +2750,8 @@ final class BoardCover {
 
     /** The one being placed ringed. */
     private static void outline() {
-        if (bug != null) bug.outline(adjusting && part <= 3);
-        if (mark != null) mark.outline(adjusting && part >= 4);
+        if (bug != null) bug.outline(adjusting && part <= TIMING);
+        if (mark != null) mark.outline(adjusting && part >= L_POSITION);
     }
 
     /**
@@ -2786,7 +2784,7 @@ final class BoardCover {
 
     private static void nextPart() {
         if (!adjusting) return;
-        part = (part + 1) % (mark != null ? 7 : 4);
+        part = (part + 1) % (mark != null ? L_WIDTH + 1 : TIMING + 1);
         outline();
         hintWords();
     }
@@ -2797,28 +2795,37 @@ final class BoardCover {
         float fast = repeat >= 3 ? 4f : 1f;
         float x = dx * 6f * fast / 1920f, y = dy * 6f * fast / 1080f;
         float aspect = aspect();
+        // Bigger with Up or Right, smaller with Down or Left.
+        float grow = dy < 0 || dx > 0 ? 1.04f : 1 / 1.04f;
         switch (part) {
-            case 0:
+            case B_POSITION:
                 editing.moveBoard(x, y, aspect);
                 break;
-            case 1:
+            case B_SIZE:
+                // Bigger or smaller, its shape kept (its width with its height, where it has one of its own).
+                editing.sizeBoard(grow, aspect);
+                break;
+            case B_HEIGHT:
                 if (dy == 0) return;
                 // Taller or shorter, its width kept as it is now: the board fills that box (two rows when near square).
                 editing.heightBoard(dy < 0 ? 1.04f : 1 / 1.04f, boardWidthNow());
                 break;
-            case 2:
+            case B_WIDTH:
                 if (dx == 0) return;
                 // Wider or narrower, its height kept.
                 editing.widthBoard(dx > 0 ? 1.04f : 1 / 1.04f, boardWidthNow());
                 break;
-            case 3:
+            case TIMING:
                 timing(app, dx * 1_000L + (dy > 0 ? 5_000L : dy < 0 ? -5_000L : 0L));
                 hintWords();
                 return;
-            case 4:
+            case L_POSITION:
                 editing.moveLogo(x, y);
                 break;
-            case 5:
+            case L_SIZE:
+                editing.scaleLogo(grow);
+                break;
+            case L_HEIGHT:
                 if (dy == 0) return;
                 editing.sizeLogo(1f, dy < 0 ? 1.04f : 1 / 1.04f);
                 break;
@@ -2944,7 +2951,7 @@ final class BoardCover {
 
     /** Pure: the menu's lines, as the switches stand. */
     static String[] menuLines(MenuState m) {
-        return new String[]{"Move and resize  ·  position, height, width",
+        return new String[]{"Move and resize  ·  position, size, height, width",
                 "Scoreboard:  ‹  " + (m.boardShown ? "On" : "Off") + "  ›",
                 "Logo's cover:  ‹  " + (m.logoOn ? "On" : "Off") + "  ›",
                 "Scoreboard look:  ‹  " + m.look + "  ›",

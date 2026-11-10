@@ -13,7 +13,7 @@ import java.util.List;
 
 /**
  * The player's "Move and resize" panel, along the foot while the scoreboard and Homefield's mark over the channel's
- * logo are dragged into place: each one on or off, its size (smaller and bigger) and its height alone, its look; the
+ * logo are dragged into place: each one on or off, its size (smaller and bigger), its height alone and its width alone, its look; the
  * board's timing against the channel (read off the channel's own clock, or put later or sooner by hand); keeping them
  * still, and Reset (back to where Homefield puts them) or Done.
  */
@@ -27,6 +27,8 @@ final class AdjustPanel {
 
         void boardHeight(float k);
 
+        void boardWidth(float k);
+
         void boardStyle(OverlayBug.Style s);
 
         void logoShown(boolean on);
@@ -34,6 +36,8 @@ final class AdjustPanel {
         void logoSize(float k);
 
         void logoHeight(float k);
+
+        void logoWidth(float k);
 
         void logoLook(LogoCover.Look l);
 
@@ -79,6 +83,9 @@ final class AdjustPanel {
         board.addView(label(c, "Height"));
         board.addView(step(c, "−", "Scoreboard shorter", () -> a.boardHeight(1 / STEP)));
         board.addView(step(c, "+", "Scoreboard taller", () -> a.boardHeight(STEP)));
+        board.addView(label(c, "Width"));
+        board.addView(step(c, "−", "Scoreboard narrower", () -> a.boardWidth(1 / STEP)));
+        board.addView(step(c, "+", "Scoreboard wider", () -> a.boardWidth(STEP)));
         List<TextView> styles = new ArrayList<>();
         for (OverlayBug.Style s : OverlayBug.Style.values()) {
             TextView t = Ui.guideChip(c, s.label, s == style);
@@ -100,6 +107,9 @@ final class AdjustPanel {
         logo.addView(label(c, "Height"));
         logo.addView(step(c, "−", "Logo shorter", () -> a.logoHeight(1 / STEP)));
         logo.addView(step(c, "+", "Logo taller", () -> a.logoHeight(STEP)));
+        logo.addView(label(c, "Width"));
+        logo.addView(step(c, "−", "Logo narrower", () -> a.logoWidth(1 / STEP)));
+        logo.addView(step(c, "+", "Logo wider", () -> a.logoWidth(STEP)));
         List<TextView> looks = new ArrayList<>();
         for (LogoCover.Look l : LogoCover.Look.values()) {
             // Off is the switch's.

@@ -107,6 +107,14 @@ final class BoardPlace {
         moveLogo(0, 0);
     }
 
+    /** The cover's size times k about its middle, its shape kept as far as its width and height both may go, kept on the screen. Pure. */
+    void scaleLogo(float k) {
+        float lo = Math.max(MIN_W / Math.max(1e-4f, lw), MIN_LH / Math.max(1e-4f, lh));
+        float hi = Math.min(MAX_W / Math.max(1e-4f, lw), MAX_LH / Math.max(1e-4f, lh));
+        float f = clamp(k, Math.min(1f, lo), Math.max(1f, hi));
+        sizeLogo(f, f);
+    }
+
     static float clamp(float v, float lo, float hi) {
         return Math.max(lo, Math.min(hi, v));
     }

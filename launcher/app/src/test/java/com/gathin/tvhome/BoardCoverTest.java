@@ -250,24 +250,44 @@ public class BoardCoverTest {
 
     @Test
     public void theHintSaysWhatTheArrowsDo() {
-        // Each of the two by its position, its height, then its width.
-        assertTrue(BoardCover.hintFor(0, true).startsWith("Scoreboard  ·  POSITION"));
-        assertTrue(BoardCover.hintFor(0, true).contains("OK: its height"));
-        assertTrue(BoardCover.hintFor(1, true).contains("HEIGHT") && BoardCover.hintFor(1, true).contains("its width kept"));
-        assertTrue(BoardCover.hintFor(2, true).contains("WIDTH") && BoardCover.hintFor(2, true).contains("its height kept"));
+        // Each of the two by its position, its size, its height, then its width; the board's timing between them.
+        assertTrue(BoardCover.hintFor(BoardCover.B_POSITION, true).startsWith("Scoreboard  ·  POSITION"));
+        assertTrue(BoardCover.hintFor(BoardCover.B_POSITION, true).contains("OK: its size"));
+        assertTrue(BoardCover.hintFor(BoardCover.B_SIZE, true).contains("SIZE") && BoardCover.hintFor(BoardCover.B_SIZE, true).contains("its shape kept"));
+        assertTrue(BoardCover.hintFor(BoardCover.B_HEIGHT, true).contains("HEIGHT") && BoardCover.hintFor(BoardCover.B_HEIGHT, true).contains("its width kept"));
+        assertTrue(BoardCover.hintFor(BoardCover.B_WIDTH, true).contains("WIDTH") && BoardCover.hintFor(BoardCover.B_WIDTH, true).contains("its height kept"));
         // Timing comes after the width, then the logo's cover (or back to moving the board without one).
-        assertTrue(BoardCover.hintFor(3, true).contains("the logo's cover"));
-        assertTrue(BoardCover.hintFor(3, false).contains("OK: move it"));
-        assertTrue(BoardCover.hintFor(3, true).contains("a second later"));
-        assertTrue(BoardCover.hintFor(4, true).startsWith("Logo's cover  ·  POSITION"));
-        assertTrue(BoardCover.hintFor(5, true).contains("HEIGHT"));
-        assertTrue(BoardCover.hintFor(6, true).contains("WIDTH") && BoardCover.hintFor(6, true).contains("OK: the scoreboard"));
+        assertTrue(BoardCover.hintFor(BoardCover.TIMING, true).contains("the logo's cover"));
+        assertTrue(BoardCover.hintFor(BoardCover.TIMING, false).contains("OK: move it"));
+        assertTrue(BoardCover.hintFor(BoardCover.TIMING, true).contains("a second later"));
+        assertTrue(BoardCover.hintFor(BoardCover.L_POSITION, true).startsWith("Logo's cover  ·  POSITION"));
+        assertTrue(BoardCover.hintFor(BoardCover.L_SIZE, true).contains("SIZE"));
+        assertTrue(BoardCover.hintFor(BoardCover.L_HEIGHT, true).contains("HEIGHT"));
+        assertTrue(BoardCover.hintFor(BoardCover.L_WIDTH, true).contains("WIDTH") && BoardCover.hintFor(BoardCover.L_WIDTH, true).contains("OK: the scoreboard"));
         // What each is now, as shares of the screen.
         BoardPlace p = BoardPlace.standard();
-        assertEquals("5% high", BoardCover.sizeWords(1, p, 0.2f));
-        assertEquals("20% wide", BoardCover.sizeWords(2, p, 0.2f));
-        assertEquals("10% wide", BoardCover.sizeWords(6, p, 0.2f));
-        assertEquals("5% across, 5% down", BoardCover.sizeWords(0, p, 0.2f));
+        assertEquals("20% wide, 5% high", BoardCover.sizeWords(BoardCover.B_SIZE, p, 0.2f));
+        assertEquals("5% high", BoardCover.sizeWords(BoardCover.B_HEIGHT, p, 0.2f));
+        assertEquals("20% wide", BoardCover.sizeWords(BoardCover.B_WIDTH, p, 0.2f));
+        assertEquals("10% wide, 7% high", BoardCover.sizeWords(BoardCover.L_SIZE, p, 0.2f));
+        assertEquals("10% wide", BoardCover.sizeWords(BoardCover.L_WIDTH, p, 0.2f));
+        assertEquals("5% across, 5% down", BoardCover.sizeWords(BoardCover.B_POSITION, p, 0.2f));
+    }
+
+    @Test
+    public void theLogosSizeKeepsItsShape() {
+        BoardPlace p = BoardPlace.standard();
+        float ratio = p.lw / p.lh;
+        p.scaleLogo(1.2f);
+        assertEquals(ratio, p.lw / p.lh, 1e-4f);
+        assertEquals(0.12f, p.lw, 1e-4f);
+        // Its middle stays where it was.
+        assertEquals(0.855f + 0.05f, p.lx + p.lw / 2, 1e-4f);
+        // As big as it may go, still its shape.
+        for (int i = 0; i < 100; i++) p.scaleLogo(1.04f);
+        assertEquals(ratio, p.lw / p.lh, 1e-3f);
+        assertTrue(p.lw <= BoardPlace.MAX_W + 1e-4f && p.lh <= BoardPlace.MAX_LH + 1e-4f);
+        assertTrue(p.lx + p.lw <= 1f + 1e-4f);
     }
 
     @Test
@@ -623,7 +643,7 @@ public class BoardCoverTest {
         m.active = true;
         String[] on = BoardCover.menuLines(m);
         assertEquals(12, on.length);
-        assertTrue(on[0].startsWith("Move and resize") && on[0].contains("position, height, width"));
+        assertTrue(on[0].startsWith("Move and resize") && on[0].contains("position, size, height, width"));
         assertTrue(on[1].startsWith("Scoreboard:") && on[1].contains("On"));
         assertTrue(on[2].startsWith("Logo's cover:") && on[2].contains("On"));
         assertTrue(on[3].contains("Classic"));

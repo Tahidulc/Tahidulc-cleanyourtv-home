@@ -206,7 +206,7 @@ final class BoardPanel extends SportPanel {
         clock.ok = () -> BoardCover.setAsksAtKickoff(c, !BoardCover.asksAtKickoff(c));
         Row move = row("Move and resize", false);
         String channel = InStep.channel(c);
-        move.words = () -> (channel.isEmpty() ? "Over the channel" : "Over " + channel) + ": position, height, width, timing";
+        move.words = () -> (channel.isEmpty() ? "Over the channel" : "Over " + channel) + ": position, size, height, width, timing";
         move.ok = () -> {
             hide();
             BoardCover.adjust(c);

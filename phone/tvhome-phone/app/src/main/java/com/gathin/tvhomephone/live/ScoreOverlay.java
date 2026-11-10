@@ -549,6 +549,12 @@ final class ScoreOverlay implements ScoreBoard.Source {
                 place();
             }
 
+            @Override public void boardWidth(float k) {
+                mine.widthBoard(k, pfw > 0 && board.bug.getWidth() > 0 ? board.bug.ownWidth() / pfw : 0.3f);
+                board.bug.post(ScoreOverlay.this::place);
+                place();
+            }
+
             @Override public void logoShown(boolean on) {
                 ScoreBoard.setLogoCover(a, on ? ScoreBoard.lastLogo(a) : LogoCover.Look.OFF);
                 if (on && !mine.logo()) {
@@ -563,6 +569,11 @@ final class ScoreOverlay implements ScoreBoard.Source {
 
             @Override public void logoHeight(float k) {
                 if (mine.logo()) mine.heightLogo(k);
+                place();
+            }
+
+            @Override public void logoWidth(float k) {
+                if (mine.logo()) mine.widthLogo(k);
                 place();
             }
 

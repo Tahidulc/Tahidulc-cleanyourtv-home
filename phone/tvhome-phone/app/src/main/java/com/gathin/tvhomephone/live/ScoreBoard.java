@@ -495,35 +495,24 @@ public final class ScoreBoard implements LiveAlerts.Listener {
     }
 
     /**
-     * The alerts and stats beside the board, kept sleek: this share of its height, centred on it, their words sized from
-     * that, and never longer than SLIM_W of their own heights (longer words run along instead).
+     * The alerts and stats beside the board: as high as the board, in line with it whatever size it is set to, their
+     * words a little smaller than its own (TEXT of its height), and never longer than SHORT of its heights (longer words
+     * run along instead).
      */
-    static final float SLIM = 0.64f, SLIM_W = 10f;
+    static final float TEXT = 0.86f, SHORT = 8f;
 
-    /** Pure: a pop-out's height beside a board bh high. */
-    static int slimH(int bh) {
-        return Math.max(12, Math.round(bh * SLIM));
+    /** Pure: the longest a pop-out beside a board bh high may be, within room. */
+    static int shortRoom(int bh, int room) {
+        return Math.max(bh * 3, Math.min(room, Math.round(bh * SHORT)));
     }
 
-    /** Pure: the longest a pop-out popH high may be, within room. */
-    static int slimRoom(int popH, int room) {
-        return Math.max(popH * 3, Math.min(room, Math.round(popH * SLIM_W)));
-    }
-
-    /** The room over an alert's strip for the scorer's picture to stand into: a little over half the strip, up to the board's top room. */
-    private int dropHead() {
-        int bh = boardH(), popH = slimH(bh), off = (bh - popH) / 2;
-        return Math.max(0, Math.min(head + off, Math.round(popH * 0.55f)));
-    }
-
-    /** What slides out (the stats, an alert) w wide, slim and centred on the board's height beside it, its near end tucked under it. */
+    /** What slides out (the stats, an alert) w wide, as high as the board and in line with it, its near end tucked under it. */
     private void beside(View v, int w, boolean withHead) {
         int bh = boardH(), bw = boardW();
         boolean onBoard = boardUp();
         FrameLayout.LayoutParams l = (FrameLayout.LayoutParams) v.getLayoutParams();
         int left = !onBoard ? boardAt : sideLeft ? boardAt + tuck - sideGap - w : boardAt + bw - nearTuck() + nearGap();
-        int popH = slimH(bh), off = (bh - popH) / 2, dh = withHead ? dropHead() : 0;
-        int height = popH + dh, top = head + off - dh;
+        int height = bh + (withHead ? head : 0), top = withHead ? 0 : head;
         if (l.width == w && l.height == height && l.leftMargin == left && l.topMargin == top) return;
         l.width = w;
         l.height = height;
@@ -964,10 +953,9 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         if (statsShown.size() > 60) statsShown.clear();
         statsShown.add(key);
         if (changed != null) changed.run();
-        int popH = slimH(boardH());
-        stats.place(bug.stripLook(), unit() * SLIM, nearTuck(), sideLeft, 0);
+        stats.place(bug.stripLook(), unit() * TEXT, nearTuck(), sideLeft, 0);
         stats.alone(false);
-        beside(stats, stats.widthFor(pick, popH, slimRoom(popH, sideMax)), false);
+        beside(stats, stats.widthFor(pick, boardH(), shortRoom(boardH(), sideMax)), false);
         stats.show(pick);
     }
 
@@ -1669,10 +1657,9 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         boolean onBoard = boardUp();
         int bh = boardH();
         // On its own (no board up): where the board would be, round at both ends.
-        int popH = slimH(bh);
-        strip.place(bug.stripLook(), unit() * SLIM, onBoard ? nearTuck() : 0, onBoard && sideLeft, d.photo != null ? dropHead() : 0);
+        strip.place(bug.stripLook(), unit() * TEXT, onBoard ? nearTuck() : 0, onBoard && sideLeft, d.photo != null ? head : 0);
         strip.alone(!onBoard);
-        int w = strip.widthFor(d, popH, slimRoom(popH, onBoard ? sideMax : Math.max(Math.round(unit() * 6), sideMax - tuck)));
+        int w = strip.widthFor(d, bh, shortRoom(bh, onBoard ? sideMax : Math.max(Math.round(unit() * 6), sideMax - tuck)));
         beside(strip, w, d.photo != null);
         strip.show(d);
         h.postDelayed(hide, strip.showFor(DROP_MS));

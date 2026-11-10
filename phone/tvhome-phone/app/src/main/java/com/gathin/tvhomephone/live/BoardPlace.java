@@ -68,6 +68,24 @@ final class BoardPlace {
         by = clamp(by, 0, Math.max(0, 1 - bh));
     }
 
+    /**
+     * The scoreboard wider or narrower by k, its height kept (w: its width now, a share of the picture's, when it has no
+     * width of its own yet): it draws to fill the box. Kept on the picture. Pure.
+     */
+    void widthBoard(float k, float w) {
+        if (bw <= 0) bw = clamp(w, MIN_BW, MAX_BW);
+        bw = clamp(bw * k, MIN_BW, MAX_BW);
+        bx = clamp(bx, 0, Math.max(0, 1 - bw));
+    }
+
+    /** The mark wider or narrower by k about its middle, its height kept, kept on the picture. Pure. */
+    void widthLogo(float k) {
+        float w = clamp(lw * k, MIN_W, MAX_W);
+        float cx = lx + lw / 2;
+        lw = w;
+        lx = clamp(cx - w / 2, 0, Math.max(0, 1 - w));
+    }
+
     /** The mark taller or shorter by k about its middle, its width kept, kept on the picture. Pure. */
     void heightLogo(float k) {
         float h = clamp(lh * k, MIN_LH, MAX_LH);
