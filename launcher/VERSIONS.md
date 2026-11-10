@@ -213,3 +213,4 @@ have it.
 | 4.53 | Fix: the Scoreboard card in the Control Centre crashed on opening (4.52's Event look worked out the channel's sub-name with a pattern Android's regex refuses: a bare ] and }) | Built |
 | 4.54 | Thermostat in the Control Centre (when Tuya is set up): a tile with the room and target temperatures, and a panel to change the target by the thermostat's own step, switch the heating and pick its mode; read from the device's own specification. Tuya's adb report now lists each thermostat's codes and ranges, and says plainly when the project sees no devices | Built |
 | 4.55 | The line-ups (classic and stadium) over the ground's photo alone, with no photo credit on it | Built |
+| 4.56 | A try of the pop-up or line-ups (adb test_classic) can take its game from a named league: "lineups@laliga", "strap:kickoff@esp.1" (else the Premier League) | Built |

@@ -479,6 +479,14 @@ final class ClassicIntro {
         String[] sp = spec.split("\\|", 2);
         // adb may name the style: "strap:kickoff", "classic:restart", "stadium", "lineups" (else this TV's own styles)
         String head = sp[0], forced = null;
+        // and the league to take the game from: "classic:kickoff@laliga", "stadium@esp.1" (else the Premier League)
+        String leagueSpec = "eng.1|PL";
+        int at = head.indexOf('@');
+        if (at >= 0) {
+            leagueSpec = league(head.substring(at + 1));
+            head = head.substring(0, at);
+        }
+        final String lg = leagueSpec;
         if (head.startsWith("strap:") || head.startsWith("classic:")) {
             forced = head.substring(0, head.indexOf(':'));
             head = head.substring(head.indexOf(':') + 1);
@@ -503,7 +511,7 @@ final class ClassicIntro {
             String about = null;
             int looked = 0;
             try {
-                for (ScoresTicker.Game g : candidates(chosen)) {
+                for (ScoresTicker.Game g : candidates(chosen, lg)) {
                     if ("restart".equals(kind) && g.goals.isEmpty() && g != chosen) continue;
                     if (++looked > (lu ? 5 : 3)) break;
                     BroadcastData.Match m = match(g);
@@ -584,13 +592,23 @@ final class ClassicIntro {
     }
 
     /** The games a try looks at, in turn: the one chosen, then the Premier League's played ones, latest first (io thread). */
-    private static List<ScoresTicker.Game> candidates(ScoresTicker.Game chosen) {
+    /** Pure: a try's league as ScoresTicker takes it: "laliga" or "esp.1" to "esp.1|LALIGA", "pl" to "eng.1|PL". */
+    static String league(String s) {
+        String k = s == null ? "" : s.trim().toLowerCase(java.util.Locale.ROOT);
+        switch (k) {
+            case "": case "pl": case "eng.1": case "premier": return "eng.1|PL";
+            case "laliga": case "la liga": case "esp": case "esp.1": return "esp.1|LALIGA";
+            default: return k.contains("|") ? s.trim() : k + "|" + k.toUpperCase(java.util.Locale.ROOT);
+        }
+    }
+
+    private static List<ScoresTicker.Game> candidates(ScoresTicker.Game chosen, String league) {
         List<ScoresTicker.Game> out = new ArrayList<>();
         if (chosen != null && chosen.id != null) out.add(chosen);
         LocalDate day = LocalDate.now(ZoneId.systemDefault());
         for (int back = 0; back < 14 && out.size() < 8; back++) {
             List<ScoresTicker.Game> played = new ArrayList<>();
-            for (ScoresTicker.Game g : ScoresTicker.load(new String[]{"eng.1|PL"}, day.minusDays(back))) {
+            for (ScoresTicker.Game g : ScoresTicker.load(new String[]{league}, day.minusDays(back))) {
                 if (g.state != 1 && g.id != null && (chosen == null || !g.id.equals(chosen.id))) played.add(g);
             }
             played.sort(Comparator.comparingLong((ScoresTicker.Game g) -> g.kickoff).reversed());
