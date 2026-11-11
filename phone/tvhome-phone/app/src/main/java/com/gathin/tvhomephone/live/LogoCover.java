@@ -218,6 +218,11 @@ final class LogoCover extends View implements BurnGuard.Dims {
         if (look == Look.STYLES) invalidate();
     }
 
+    /** Whether its look is one that can stand see-through over the picture (the wordmark, Event, the styles). */
+    boolean seeThroughLook() {
+        return look.own();
+    }
+
     /** Whether it wants the channel's logo filled in under it now (LogoShape): see-through, in a look that can be. */
     boolean wantsPatch() {
         return seeThrough && look.own() && getVisibility() == VISIBLE && getWidth() > 0;

@@ -10,6 +10,11 @@
     <string name="live50_size_here">This channel\'s size</string>
     <string name="live50_style_here">This channel\'s Whitebrook Road style</string>
     <string name="live50_see_through">See-through, the channel\'s logo hidden (this channel)</string>
+    <string name="live53_see_learning">Learning this channel\'s logo (%1$d of %2$d pictures): ours stands on its plate till then</string>
+    <string name="live53_see_known">This channel\'s logo is learned and taken out under ours</string>
+    <string name="live53_see_block">This channel\'s logo is a solid block: ours stays on its plate over it</string>
+    <string name="live53_see_look">See-through works with the Whitebrook Road Sports, Event and style looks</string>
+    <string name="live53_see_waiting">Starts as soon as the logo is up over the picture</string>
     <string name="live50_name_only">A general channel: Whitebrook Road without SPORTS (this channel)</string>
     <string name="live49_hand">Up by hand</string>
     <string name="live49_hand_off">Off</string>

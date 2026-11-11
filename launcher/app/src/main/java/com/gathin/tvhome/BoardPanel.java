@@ -26,6 +26,12 @@ import java.util.Locale;
  * and line-ups (each on or off, and tried there and then over Home); then what it does to be kind to the screen. The Control Centre's Scoreboard tile is the quick switch beside it.
  */
 final class BoardPanel extends SportPanel {
+    /** The see-through row's words, with what it is doing over the channel on now when it is at work. */
+    private static String seeNow(String words) {
+        String now = BoardCover.seeThroughWords();
+        return now.isEmpty() ? words : "Now: " + now + "  ·  " + words;
+    }
+
     private final List<ScoresTicker.Game> games = new ArrayList<>();
     private int chosen;
     private boolean loading;
@@ -422,7 +428,7 @@ final class BoardPanel extends SportPanel {
         see.on = () -> BoardCover.logoSeeThrough(c);
         see.words = () -> !BoardCover.logoSeeThrough(c) ? "Off · on its own plate over the logo"
                 : android.os.Build.VERSION.SDK_INT < 34 ? "Needs Android 14 (a picture without the cover in it); on its plate here"
-                : ChannelSight.possible() ? "The wordmark, Event and the styles on the live picture: the channel's logo learned, its strokes alone filled in (on its plate while it learns a channel's, and for a solid block)"
+                : ChannelSight.possible() ? seeNow("The wordmark, Event and the styles on the live picture: each channel's logo learned and taken out, its see-through parts worked back (on its plate while it learns a channel's, and for a solid block)")
                 : "Needs the search helper on; on its plate meanwhile";
         see.ok = () -> BoardCover.setLogoSeeThrough(c, !BoardCover.logoSeeThrough(c));
         add(see);

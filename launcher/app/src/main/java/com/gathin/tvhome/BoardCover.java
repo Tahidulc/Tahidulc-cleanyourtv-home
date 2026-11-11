@@ -2240,6 +2240,20 @@ final class BoardCover {
         main().post(patchRun);
     }
 
+    /**
+     * What see-through is doing over the channel on now, in a few words, for the menu and the Scoreboard card ("" when
+     * it is not at work: off, another look, no cover up).
+     */
+    static String seeThroughWords() {
+        LogoShape.Here at = here;
+        if (mark == null || !mark.wantsPatch()) return "";
+        if (android.os.Build.VERSION.SDK_INT < 34) return "needs Android 14, on its plate";
+        if (at == null) return "starting";
+        if (at.known()) return "logo taken out";
+        if (at.block()) return "a solid logo, on its plate";
+        return "learning the logo, " + Math.min(at.learnt(), LogoShape.ENOUGH) + " of " + LogoShape.ENOUGH;
+    }
+
     /** No fill under the cover: it stands on its plate. */
     private static void unfill() {
         if (fill != null) fill.clear();
@@ -3474,7 +3488,7 @@ final class BoardCover {
     /** What the menu's lines say: each switch and look as it stands. */
     static final class MenuState {
         boolean boardShown, logoOn, nameOnly, seeThrough, find, lineups, active, manual, sportsLook, stylesLook;
-        String look = "", logoLook = "", what = "", tag = "", note = "", style = "", showing = "";
+        String look = "", logoLook = "", what = "", tag = "", note = "", style = "", showing = "", seeing = "";
         /** The channel on now ("" when not known), its mode and its own look, in words. */
         String channel = "", channelMode = "As the rest", channelLook = "As the rest";
     }
@@ -3497,7 +3511,8 @@ final class BoardCover {
                         : m.sportsLook ? "" : "  (Whitebrook Road Sports looks)"),
                 "Channel:  ‹  " + (m.nameOnly ? "General · Whitebrook Road" : "Sports · Whitebrook Road Sports") + "  ›",
                 "Picture tag:  ‹  " + m.tag + "  ›",
-                "See-through, the channel's logo hidden:  ‹  " + (m.seeThrough ? "On" : "Off") + "  ›",
+                "See-through, the channel's logo hidden:  ‹  " + (m.seeThrough ? "On" : "Off") + "  ›"
+                        + (m.seeThrough && !m.seeing.isEmpty() ? "  ·  " + m.seeing : ""),
                 "Find the channel's scoreboard:  ‹  " + (m.find ? "On" : "Off") + "  ›  ·  OK: look again now",
                 "Line-ups on screen:  ‹  " + (m.lineups ? "On" : "Off") + "  ›"};
     }
@@ -3521,6 +3536,7 @@ final class BoardCover {
         m.nameOnly = nameOnlyNow(c);
         m.tag = tagNow(c).label;
         m.seeThrough = seeThroughNow(c);
+        m.seeing = seeThroughWords();
         m.find = ChannelSight.on(c);
         m.lineups = lineupsOn(c);
         m.active = active(c);

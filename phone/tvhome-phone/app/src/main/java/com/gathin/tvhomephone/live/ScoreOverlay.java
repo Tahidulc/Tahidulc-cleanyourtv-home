@@ -503,6 +503,17 @@ final class ScoreOverlay implements ScoreBoard.Source {
     private int partMisses;
     private long patchAt;
 
+    /** What see-through is doing over the channel playing, in a few words for its options (null when it is off). */
+    String seeThroughStatus() {
+        if (!seeThroughHere()) return null;
+        if (!cover.seeThroughLook()) return a.getString(R.string.live53_see_look);
+        LogoShape.Here at = here;
+        if (at == null || cover.getVisibility() != View.VISIBLE) return a.getString(R.string.live53_see_waiting);
+        if (at.known()) return a.getString(R.string.live53_see_known);
+        if (at.block()) return a.getString(R.string.live53_see_block);
+        return a.getString(R.string.live53_see_learning, Math.min(at.learnt(), LogoShape.ENOUGH), LogoShape.ENOUGH);
+    }
+
     /** No fill under the cover: it stands on its plate. */
     private void unfill() {
         fill.clear();
