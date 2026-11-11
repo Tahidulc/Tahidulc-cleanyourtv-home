@@ -11,8 +11,8 @@ android {
         applicationId providers.gradleProperty('launcherApplicationId').getOrElse('com.gathin.tvhome')
         minSdk 26
         targetSdk 34
-        versionCode 459
-        versionName '4.59'
+        versionCode 460
+        versionName '4.60'
         // Google's text reader (ChannelSight, the channel's own clock) ships its own native code: the TVs' two.
         ndk {
             abiFilters 'arm64-v8a', 'armeabi-v7a'
@@ -54,7 +54,8 @@ android {
     sourceSets {
         main {
             java.srcDirs += ['../../overlays/java']
-            assets.srcDirs += ['../../overlays/assets']
+            // and the TV's own: the matchday intro's real-footage film (24 MB, not in the phone app)
+            assets.srcDirs += ['../../overlays/assets', '../../overlays/assets-tv']
         }
         test {
             java.srcDirs += ['../../overlays/javatest']

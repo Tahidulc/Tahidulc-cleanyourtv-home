@@ -120,4 +120,29 @@ public class BroadcastDataTest {
         assertEquals("Michael Oliver", BroadcastData.referee(new org.json.JSONObject("{\"Referee\":{\"text\":\" Michael Oliver \"}}")));
         assertEquals("", BroadcastData.referee(null));
     }
+
+    @Test
+    public void introTrophyCoversTheLeaguesItHas() {
+        assertEquals("pl", BroadcastData.introTrophy("eng.1", "Premier League"));
+        assertEquals("ucl", BroadcastData.introTrophy("uefa.champions", ""));
+        assertEquals("laliga", BroadcastData.introTrophy("esp.1", "LALIGA"));
+        assertEquals("laliga", BroadcastData.introTrophy("", "Spanish LaLiga"));
+        assertEquals("seriea", BroadcastData.introTrophy("ita.1", ""));
+        assertEquals("bundesliga", BroadcastData.introTrophy("", "German Bundesliga"));
+        assertEquals("ligue1", BroadcastData.introTrophy("fra.1", "French Ligue 1"));
+        assertEquals("", BroadcastData.introTrophy("esp.2", "LaLiga 2"));
+        assertEquals("", BroadcastData.introTrophy("ned.1", "Eredivisie"));
+    }
+
+    @Test
+    public void introSettingsCarryTheTeamsTrophyAndFilm() throws Exception {
+        BroadcastData.Match m = new BroadcastData.Match();
+        m.homeName = "Atlético Madrid"; m.awayName = "Barcelona"; m.compId = "esp.1"; m.compName = "LALIGA";
+        org.json.JSONObject o = BroadcastData.intro(m, true);
+        assertEquals("laliga", o.getString("trophy"));
+        assertEquals("Atlético Madrid", o.getJSONObject("home").getString("name"));
+        assertEquals("Barcelona", o.getJSONObject("away").getString("name"));
+        assertTrue(o.getBoolean("footage"));
+        assertFalse(BroadcastData.intro(m, false).has("footage"));
+    }
 }

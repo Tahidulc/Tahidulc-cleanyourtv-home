@@ -263,6 +263,16 @@ final class BoardPanel extends SportPanel {
         };
         classicLu.ok = () -> ClassicIntro.setLineupsStyle(c, ClassicIntro.nextStyle(ClassicIntro.lineupsStyle(c), "stadium"));
         add(classicPop, classicLu);
+        Row intro = row("Matchday intro", true);
+        intro.on = () -> ClassicIntro.introOn(c);
+        intro.words = () -> ClassicIntro.introOn(c)
+                ? "Real footage, the competition's trophy and Matchday, over the last break (4 minutes before kick-off)"
+                : "Off · OK to play it over the last break before kick-off";
+        intro.ok = () -> ClassicIntro.setIntro(c, !ClassicIntro.introOn(c));
+        Row tryIntro = row("Try the matchday intro", false);
+        tryIntro.words = () -> "Plays it now (51 seconds), with " + tryGame() + " · Back fades it away";
+        tryIntro.ok = () -> tryClassic("intro");
+        add(intro, tryIntro);
         // Each tried now over Home, for the game chosen above when it can be (else the Premier League's latest played).
         Row tryKick = row("Try the kick-off pop-up", false);
         tryKick.words = () -> "Plays it now (" + popupStyleWords() + "), with " + tryGame();

@@ -112,6 +112,15 @@ final class ClassicIntro {
         return "classic".equals(style) ? first : first.equals(style) ? "off" : "classic";
     }
 
+    /** The matchday intro over the last advert break before kick-off (intro.html, with the real-footage film): on or off. */
+    static boolean introOn(Context c) {
+        return prefs(c).getBoolean("intro", true);
+    }
+
+    static void setIntro(Context c, boolean on) {
+        prefs(c).edit().putBoolean("intro", on).apply();
+    }
+
     static boolean popupOn(Context c) {
         return !"off".equals(popupStyle(c));
     }
@@ -145,6 +154,11 @@ final class ClassicIntro {
         return showing() && ("lineups".equals(viewKind) || "stadium".equals(viewKind));
     }
 
+    /** Whether the overlay on now covers the board and takes Back: the line-ups and the intro. */
+    private static boolean covers(String kind) {
+        return "lineups".equals(kind) || "stadium".equals(kind) || "intro".equals(kind);
+    }
+
     // ---- when (com.gathin.broadcast.Moments: the same on the phone) ---------------------------------------------
 
     /**
@@ -165,6 +179,14 @@ final class ClassicIntro {
         String kind = was == null ? null : Moments.moment(was, now);
         if (kind != null && popupOn(c)) popup(c, g, kind, "kickoff".equals(kind) ? null : BroadcastData.score(score), null, null);
         if ("pre".equals(now) && g.kickoff > 0 && lineupsOn(c) && Moments.lineupsDue(lineupsStyle(c), g.kickoff - screenNow)) lineups(c, g);
+        // the matchday intro over the last break: made ready a little before, then on the whole screen
+        if ("pre".equals(now) && g.kickoff > 0 && introOn(c)) {
+            long until = g.kickoff - screenNow;
+            String key = g.id + "|intro";
+            if (Moments.introDue(until)) intro(c, g, key);
+            else if (Moments.introPrep(until) && !showing() && !fetching && !preparing && BoardCover.playerUp(c)
+                    && !key.equals(prepKey) && !shown.contains(key)) holdIntro(c, g, key, null);
+        }
         // made ready before their moments, while nothing else is on
         if (!popupOn(c) || showing() || fetching || !BoardCover.playerUp(c)) return;
         long untilKo = g.kickoff - screenNow;
@@ -248,6 +270,35 @@ final class ClassicIntro {
         });
     }
 
+    /** The intro's settings for a game: its competition's trophy, the teams, the film (it is in this app's bundle). */
+    private static JSONObject introCfg(ScoresTicker.Game g) throws org.json.JSONException {
+        return BroadcastData.intro(match(g), true);
+    }
+
+    /** The intro now (made ready before, else as soon as it is ready), once a game. */
+    private static void intro(Context c, ScoresTicker.Game g, String key) {
+        if (shown.contains(key) || showing() || !BoardCover.playerUp(c)) return;
+        if (goPrepared(key)) return;
+        if (preparing || fetching) return;
+        shown.add(key);
+        Context app = c.getApplicationContext();
+        try {
+            show(app, BroadcastView.page(app, "intro", introCfg(g), ClassicIntro::gone), "intro");
+            android.util.Log.i("Sport", "matchday intro shown (not made ready before): " + key);
+        } catch (Exception e) {
+            android.util.Log.w("Sport", "matchday intro: " + e);
+        }
+    }
+
+    /** The intro made ready out of sight for key; ready: told when it can go (a try's). */
+    private static void holdIntro(Context c, ScoresTicker.Game g, String key, BroadcastView.Ready ready) {
+        try {
+            hold(c.getApplicationContext(), "intro", introCfg(g), "intro", key, ready);
+        } catch (Exception e) {
+            android.util.Log.w("Sport", "matchday intro not made ready: " + e);
+        }
+    }
+
     private static void lineups(Context c, ScoresTicker.Game g) {
         String key = g.id + "|lineups";
         long now = System.currentTimeMillis();
@@ -298,7 +349,7 @@ final class ClassicIntro {
 
     /** The line-ups on the screen: the board out of the way, Back taken here (no key helper on the TCL). */
     private static void lineupsUp(String kind) {
-        boolean lu = "lineups".equals(kind) || "stadium".equals(kind);
+        boolean lu = covers(kind);
         if (!lu && !"strap".equals(kind)) return;
         BoardCover.classicLineups(true);   // the strap draws the board itself as it folds into it
         if (lu && !InputKeyService.running) AppSearchService.keysFor("classic", true);
@@ -428,7 +479,7 @@ final class ClassicIntro {
             return;
         }
         if (v != null && v != view) return;
-        boolean wasLineups = "lineups".equals(viewKind) || "stadium".equals(viewKind) || "strap".equals(viewKind);
+        boolean wasLineups = covers(viewKind) || "strap".equals(viewKind);
         view = null;
         viewKind = "";
         trial = false;
@@ -457,7 +508,7 @@ final class ClassicIntro {
 
     /** Back while the line-ups are on: they fade away to the channel (from the key helpers, as the board's keys). */
     static boolean key(KeyEvent e) {
-        if (!showingLineups()) return false;
+        if (!showing() || !covers(viewKind)) return false;
         int code = e.getKeyCode();
         if (code != KeyEvent.KEYCODE_BACK && code != KeyEvent.KEYCODE_ESCAPE) return false;
         if (e.getAction() == KeyEvent.ACTION_UP && !e.isCanceled()) handler().post(() -> {
@@ -498,6 +549,10 @@ final class ClassicIntro {
         }
         String kind = head, force = forced;
         JSONObject q = quality(sp.length > 1 ? sp[1] : "");
+        if ("intro".equals(kind)) {
+            tryIntro(c, chosen, lg, q, note);
+            return;
+        }
         if (showing() || fetching) {
             note.accept("Wait for the one on to finish");
             return;
@@ -555,6 +610,45 @@ final class ClassicIntro {
                 String page = lu ? tryLineupsPage(app, force) : tryPopupPage(app, force);
                 String shownAs = lu ? page : "strap".equals(page) ? "strap" : kind;
                 hold(app, page, got, shownAs, key, (v) -> {
+                    if (goPrepared(key)) trial = true;
+                });
+            });
+        });
+    }
+
+    /** A try of the matchday intro, for the game chosen, else the league's latest played (its trophy and teams). */
+    private static void tryIntro(Context c, ScoresTicker.Game chosen, String league, JSONObject q, Consumer<String> note) {
+        if (showing() || fetching) {
+            note.accept("Wait for the one on to finish");
+            return;
+        }
+        Context app = c.getApplicationContext();
+        fetching = true;
+        io.execute(() -> {
+            JSONObject cfg = null;
+            String about = null;
+            try {
+                for (ScoresTicker.Game g : candidates(chosen, league)) {
+                    cfg = introCfg(g);
+                    if (q.length() > 0) cfg.put("q", q);
+                    about = (g.homeName != null ? g.homeName : g.home) + " v " + (g.awayName != null ? g.awayName : g.away);
+                    break;
+                }
+            } catch (Exception ignored) {
+                cfg = null;
+            }
+            JSONObject got = cfg;
+            String game = about;
+            handler().post(() -> {
+                fetching = false;
+                if (got == null) {
+                    note.accept("Couldn't reach the scores just now");
+                    return;
+                }
+                if (showing()) return;
+                android.util.Log.i("Sport", "matchday intro try: " + game);
+                String key = "try|intro|" + android.os.SystemClock.uptimeMillis();
+                hold(app, "intro", got, "intro", key, (v) -> {
                     if (goPrepared(key)) trial = true;
                 });
             });

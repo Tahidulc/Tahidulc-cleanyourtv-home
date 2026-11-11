@@ -141,6 +141,44 @@ public final class BroadcastData {
         return s.endsWith("'") ? s : s + "'";
     }
 
+    // ---- the matchday intro ------------------------------------------------------------------------------------------
+
+    /**
+     * Pure: the trophy at the intro's end: the six cups' and leagues' keys (compKey), and the four leagues it also has a
+     * trophy for ("laliga", "seriea", "bundesliga", "ligue1"); "" for its plain star.
+     */
+    public static String introTrophy(String id, String name) {
+        String k = compKey(id, name);
+        if (!k.isEmpty()) return k;
+        String s = id == null ? "" : id.trim().toLowerCase(Locale.ROOT);
+        String n = name == null ? "" : name.trim().toLowerCase(Locale.ROOT);
+        if (n.contains("women") || n.contains(" 2") || n.contains("segunda")) return "";
+        String nn = n.replace(" ", "");
+        if (s.equals("esp.1") || s.equals("87") || nn.equals("laliga") || nn.equals("spanishlaliga") || nn.startsWith("laligaea")) return "laliga";
+        if (s.equals("ita.1") || s.equals("55") || n.equals("serie a") || n.startsWith("italian serie a")) return "seriea";
+        if (s.equals("ger.1") || s.equals("54") || n.equals("bundesliga") || n.startsWith("german bundesliga")) return "bundesliga";
+        if (s.equals("fra.1") || s.equals("53") || n.equals("ligue 1") || n.startsWith("french ligue 1")) return "ligue1";
+        return "";
+    }
+
+    /**
+     * The matchday intro's settings (intro.html): the competition and its trophy, both teams for the end card, the
+     * music, and whether the real-footage film opens it (the TV's bundle has it; without it the page draws it all).
+     */
+    public static JSONObject intro(Match m, boolean footage) throws JSONException {
+        JSONObject o = new JSONObject();
+        String key = compKey(m.compId, m.compName);
+        o.put("comp", key.isEmpty() ? "other" : key);
+        o.put("compName", compName(key, m.compName));
+        String trophy = introTrophy(m.compId, m.compName);
+        if (!trophy.isEmpty()) o.put("trophy", trophy);
+        o.put("home", new JSONObject().put("name", m.homeName == null ? "" : m.homeName));
+        o.put("away", new JSONObject().put("name", m.awayName == null ? "" : m.awayName));
+        o.put("sound", true);
+        if (footage) o.put("footage", true);
+        return o;
+    }
+
     // ---- the line-ups ------------------------------------------------------------------------------------------------
 
     /**

@@ -64,4 +64,15 @@ public class MomentsTest {
         assertEquals("Gabriel (OG)", Moments.scorer(new String[]{"d", "Gabriel", "77'", "away", "og"}));
         assertEquals("", Moments.scorer(null));
     }
+
+    @Test
+    public void introOverTheLastBreakBeforeKickoff() {
+        assertFalse(Moments.introDue(300_000L));
+        assertTrue(Moments.introDue(240_000L));
+        assertTrue(Moments.introDue(150_000L));
+        assertFalse(Moments.introDue(90_000L));
+        assertTrue(Moments.introPrep(300_000L));
+        assertFalse(Moments.introPrep(240_000L));
+        assertFalse(Moments.introPrep(400_000L));
+    }
 }

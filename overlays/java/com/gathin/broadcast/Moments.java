@@ -41,6 +41,23 @@ public final class Moments {
         return untilKickoffMs <= LINEUPS_FROM_MS && untilKickoffMs >= LINEUPS_UNTIL_MS;
     }
 
+    /**
+     * The matchday intro: over the channel's last advert break before the kick-off, taken as four minutes before it on the
+     * screen (after the classic line-ups, before the stadium line-ups and the walk-out), not later than 100 seconds before;
+     * made ready out of sight from five and a half minutes before.
+     */
+    public static final long INTRO_FROM_MS = 240_000L, INTRO_UNTIL_MS = 100_000L, INTRO_PREP_MS = 330_000L;
+
+    /** Pure: whether the intro is due this long before the kick-off. */
+    public static boolean introDue(long untilKickoffMs) {
+        return untilKickoffMs <= INTRO_FROM_MS && untilKickoffMs >= INTRO_UNTIL_MS;
+    }
+
+    /** Pure: whether the intro should be made ready now (shortly before it is due). */
+    public static boolean introPrep(long untilKickoffMs) {
+        return untilKickoffMs <= INTRO_PREP_MS && untilKickoffMs > INTRO_FROM_MS;
+    }
+
     /** The stadium line-ups (the first design): at the walk-out, from three and a half minutes before to a minute before. */
     public static final long STADIUM_FROM_MS = 210_000L, STADIUM_UNTIL_MS = 60_000L;
 
