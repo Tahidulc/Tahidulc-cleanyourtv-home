@@ -12,4 +12,10 @@
     <string name="live46_builtin">Built-in footage</string>
     <string name="live46_own">Your own video…</string>
     <string name="live46_back">Back to the built-in footage, here and on the TVs</string>
+    <string name="live47_title">MATCHDAY INTRO</string>
+    <string name="live47_line">Plays over the last break, 4 minutes before kick-off, on the phone and the TVs: real footage (or your own video), then the competition\'s trophy and the Whitebrook Road Sports Matchday card.</string>
+    <string name="live47_hint">Your video plays as it is, muted under the intro\'s music, ending on the flash into the trophy: trim it first to the part you want (40 seconds at most is used).</string>
+    <string name="live47_resend">Send it to the TV again</string>
+    <string name="live47_now_builtin">Now: the built-in footage</string>
+    <string name="live47_now_own">Now: your own video, %1$s</string>
 </resources>

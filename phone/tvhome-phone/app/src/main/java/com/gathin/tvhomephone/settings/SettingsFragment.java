@@ -28,6 +28,8 @@ public class SettingsFragment extends Fragment {
         int pad = (int) (20 * getResources().getDisplayMetrics().density);
         col.setPadding(pad, pad, pad, pad);
         scroll.addView(col);
+        // The matchday intro first: its own video is the thing most often changed here.
+        col.addView(com.gathin.tvhomephone.live.IntroSettings.build(requireContext()));
         col.addView(com.gathin.tvhomephone.sync.SyncSettings.build(this, col));
         col.addView(com.gathin.tvhomephone.sports.SportsSettings.build(this, col));
         android.view.View live = com.gathin.tvhomephone.live.LiveTvSettings.build(this, col);

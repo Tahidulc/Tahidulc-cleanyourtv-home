@@ -16,7 +16,7 @@ import com.google.android.material.materialswitch.MaterialSwitch;
 public final class BoardSettings {
     private BoardSettings() {}
 
-    private interface Flip {
+    interface Flip {
         void set(boolean on);
     }
 
@@ -206,20 +206,6 @@ public final class BoardSettings {
         styles(c, col, c.getString(R.string.live33_classic_lineups), new String[]{"classic", "stadium", "off"},
                 new String[]{c.getString(R.string.live35_style_beam), c.getString(R.string.live35_style_stadium), c.getString(R.string.live35_style_off)},
                 PlayerIntro.lineupsStyle(c), st -> PlayerIntro.setLineupsStyle(c, st));
-        row(c, col, c.getString(R.string.live45_intro), PlayerIntro.introOn(c), on -> PlayerIntro.setIntro(c, on));
-        // The intro's film: the built-in one, or a video of the family's own (chosen here, sent to the TVs too).
-        styles(c, col, c.getString(R.string.live46_intro_video), new String[]{"builtin", "own"},
-                new String[]{c.getString(R.string.live46_builtin), IntroVideo.has(c) ? IntroVideo.words(c) : c.getString(R.string.live46_own)},
-                IntroVideo.useOwn(c) ? "own" : "builtin", key -> {
-                    if ("own".equals(key)) {
-                        c.startActivity(new android.content.Intent(c, PickIntroActivity.class)
-                                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK));
-                    } else if (IntroVideo.has(c)) {
-                        IntroVideo.clear(c);
-                        com.gathin.tvhomephone.sync.TvUpload.clearIntroVideo(c);
-                        android.widget.Toast.makeText(c, R.string.live46_back, android.widget.Toast.LENGTH_SHORT).show();
-                    }
-                });
         row(c, col, c.getString(R.string.live34_swish), PlayerIntro.swishOn(c), on -> PlayerIntro.setSwishOn(c, on));
         styles(c, col, c.getString(R.string.live35_goal_sound), com.gathin.broadcast.Sfx.GOALS, com.gathin.broadcast.Sfx.GOAL_NAMES,
                 PlayerIntro.goalSound(c), key -> PlayerIntro.setGoalSound(c, key));
@@ -287,7 +273,7 @@ public final class BoardSettings {
 
     /** One choice: its picture (added first) over its name, ringed when chosen. */
     /** A heading and a row of choices, one picked (keys[i] shown as words[i]). */
-    private static void styles(Context c, LinearLayout col, String title, String[] keys, String[] words, String now,
+    static void styles(Context c, LinearLayout col, String title, String[] keys, String[] words, String now,
                                java.util.function.Consumer<String> set) {
         col.addView(sub(c, title));
         android.widget.HorizontalScrollView hs = new android.widget.HorizontalScrollView(c);
@@ -331,7 +317,7 @@ public final class BoardSettings {
         return lp;
     }
 
-    private static MaterialSwitch row(Context c, LinearLayout col, String label, boolean on, Flip flip) {
+    static MaterialSwitch row(Context c, LinearLayout col, String label, boolean on, Flip flip) {
         LinearLayout r = com.gathin.tvhomephone.sports.Ui.row(c);
         r.setPadding(0, Ui.dp(c, 4), 0, Ui.dp(c, 4));
         r.addView(com.gathin.tvhomephone.sports.Ui.text(c, label, 16, c.getColor(R.color.text), false), com.gathin.tvhomephone.sports.Ui.weight(1));

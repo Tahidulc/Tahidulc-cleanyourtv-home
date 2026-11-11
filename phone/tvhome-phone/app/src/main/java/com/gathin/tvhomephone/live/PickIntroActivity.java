@@ -46,6 +46,7 @@ public final class PickIntroActivity extends Activity {
                     Toast.makeText(app, why, Toast.LENGTH_LONG).show();
                     return;
                 }
+                IntroSettings.changed();
                 Toast.makeText(app, "Intro video: " + IntroVideo.words(app) + ". Sending it to the TV…", Toast.LENGTH_LONG).show();
                 TvUpload.introVideo(app, IntroVideo.file(app), IntroVideo.name(app),
                         (line, err) -> Toast.makeText(app, line, Toast.LENGTH_LONG).show());
