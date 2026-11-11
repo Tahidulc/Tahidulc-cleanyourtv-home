@@ -108,7 +108,7 @@ final class LogoCover extends View implements BurnGuard.Dims {
     /** See-through: what the picture is like under the channel's logo (LogoPatch), and the one before, fading over. */
     private android.graphics.Bitmap patch, patchWas;
     private long patchAt;
-    private static final long PATCH_FADE_MS = 500L;
+    private static final long PATCH_FADE_MS = 250L;
     private final Paint patchPaint = new Paint(Paint.FILTER_BITMAP_FLAG);
     /** Whitebrook Road styles: the renderer and the style chosen (0 to BrandStyles.COUNT - 1). */
     private BrandStyles brand;

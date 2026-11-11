@@ -40,6 +40,14 @@ final class Video extends PlayerView {
         if (f != null && r > 0) f.setAspectRatio(r);
     }
 
+    /** The stream's picture in its own pixels {width, height}: {0, 0} while not known. */
+    int[] videoPixels() {
+        androidx.media3.common.Player p = getPlayer();
+        if (p == null) return new int[]{0, 0};
+        androidx.media3.common.VideoSize v = p.getVideoSize();
+        return new int[]{v.width, v.height};
+    }
+
     /** The surface the video is drawn on (for its frames: ScoreOverlay's look at the channel's scoreboard). */
     android.view.View surface() {
         return getVideoSurfaceView();

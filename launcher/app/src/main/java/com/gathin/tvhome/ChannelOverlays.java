@@ -53,8 +53,33 @@ final class ChannelOverlays {
     static void setLook(Context c, String channel, String look) {
         String k = key(channel);
         if (k.isEmpty()) return;
-        if (look == null || look.isEmpty()) prefs(c).edit().remove("l." + k).remove("s." + k).apply();
+        if (look == null || look.isEmpty()) clearLogo(c, channel);
         else prefs(c).edit().putString("l." + k, look).apply();
+    }
+
+    /**
+     * One of the channel's own logo settings ("see_through", "name_only", "tag", "what", "live", "comp"), as kept: set
+     * from the menu over the player while the channel is on; null for the general one.
+     */
+    static String opt(Context c, String channel, String name) {
+        String k = key(channel);
+        return k.isEmpty() ? null : prefs(c).getString("o." + name + "." + k, null);
+    }
+
+    static void setOpt(Context c, String channel, String name, String value) {
+        String k = key(channel);
+        if (k.isEmpty()) return;
+        if (value == null) prefs(c).edit().remove("o." + name + "." + k).apply();
+        else prefs(c).edit().putString("o." + name + "." + k, value).apply();
+    }
+
+    /** All of the channel's own logo settings let go (its look, style and the rest): as the rest. */
+    static void clearLogo(Context c, String channel) {
+        String k = key(channel);
+        if (k.isEmpty()) return;
+        SharedPreferences.Editor e = prefs(c).edit().remove("l." + k).remove("s." + k);
+        for (String name : prefs(c).getAll().keySet()) if (name.startsWith("o.") && name.endsWith("." + k)) e.remove(name);
+        e.apply();
     }
 
     /** The channel's own one of the Whitebrook Road styles (its own look being those); -1 for the general one. */

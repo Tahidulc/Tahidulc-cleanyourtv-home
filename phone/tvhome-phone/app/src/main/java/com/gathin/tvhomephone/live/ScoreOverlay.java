@@ -184,15 +184,99 @@ final class ScoreOverlay implements ScoreBoard.Source {
         return ChannelOverlays.lookOf(ChannelOverlays.look(a, chKey()), ScoreBoard.logoCover(a));
     }
 
-    /** The look chosen in Move and resize: this channel's when it has its own, else the general one. */
+    /** A look chosen while a channel plays (Move and resize, the options): kept for that channel, else for all. */
     private void setLookHere(LogoCover.Look l) {
-        if (ChannelOverlays.look(a, chKey()) != null) ChannelOverlays.setLook(a, chKey(), l);
+        if (chKey() != null) ChannelOverlays.setLook(a, chKey(), l);
         else ScoreBoard.setLogoCover(a, l);
     }
 
-    private int styleHere() {
-        int own = ChannelOverlays.look(a, chKey()) != null ? ChannelOverlays.style(a, chKey()) : -1;
+    int styleHere() {
+        int own = ChannelOverlays.style(a, chKey());
         return own >= 0 ? own : ScoreBoard.logoStyle(a);
+    }
+
+    // The rest of the logo's settings and the scoreboard's size on this channel: its own, else the general ones.
+
+    private String ownOpt(String name) {
+        return ChannelOverlays.opt(a, chKey(), name);
+    }
+
+    float sizeHere() {
+        String o = ownOpt("size");
+        try {
+            return o != null ? Float.parseFloat(o) : ScoreBoard.size(a);
+        } catch (NumberFormatException e) {
+            return ScoreBoard.size(a);
+        }
+    }
+
+    boolean seeThroughHere() {
+        String o = ownOpt("see_through");
+        return o != null ? "1".equals(o) : ScoreBoard.logoSeeThrough(a);
+    }
+
+    boolean nameOnlyHere() {
+        String o = ownOpt("name_only");
+        return o != null ? "1".equals(o) : ScoreBoard.logoNameOnly(a);
+    }
+
+    ChannelMark.Tag tagHere() {
+        String o = ownOpt("tag");
+        return o != null ? ChannelMark.Tag.of(o) : ScoreBoard.logoTag(a);
+    }
+
+    boolean liveHere() {
+        String o = ownOpt("live");
+        return o != null ? "1".equals(o) : ScoreBoard.logoLive(a);
+    }
+
+    boolean compHere() {
+        String o = ownOpt("comp");
+        return o != null ? "1".equals(o) : ScoreBoard.logoComp(a);
+    }
+
+    LogoCover.Look lookNow() {
+        return lookHere();
+    }
+
+    /**
+     * One of the settings changed in the player while a channel plays: kept for that channel (its own from then on),
+     * else for every channel; the board and the logo redrawn.
+     */
+    void setHere(String name, String value) {
+        String key = chKey();
+        if (key != null) {
+            ChannelOverlays.setOpt(a, key, name, value);
+        } else {
+            switch (name) {
+                case "size": ScoreBoard.setSize(a, Float.parseFloat(value)); break;
+                case "see_through": ScoreBoard.setLogoSeeThrough(a, "1".equals(value)); break;
+                case "name_only": ScoreBoard.setLogoNameOnly(a, "1".equals(value)); break;
+                case "tag": ScoreBoard.setLogoTag(a, ChannelMark.Tag.of(value)); break;
+                case "live": ScoreBoard.setLogoLive(a, "1".equals(value)); break;
+                case "comp": ScoreBoard.setLogoComp(a, "1".equals(value)); break;
+                default: break;
+            }
+        }
+        restyle();
+    }
+
+    /** The look and the Whitebrook Road style chosen in the player for this channel (else for all). */
+    void setLookFromOptions(LogoCover.Look l) {
+        if (l == null) ChannelOverlays.setLook(a, chKey(), null);
+        else setLookHere(l);
+        restyle();
+    }
+
+    void setStyleHere(int n) {
+        if (chKey() != null) ChannelOverlays.setStyle(a, chKey(), n);
+        else ScoreBoard.setLogoStyle(a, n);
+        restyle();
+    }
+
+    /** Whether the channel playing is known (its settings can be its own). */
+    boolean channelKnown() {
+        return chKey() != null;
     }
 
     /** The game put up by hand, read (null: the channel's own, none, or still being read). */
@@ -413,22 +497,51 @@ final class ScoreOverlay implements ScoreBoard.Source {
         FrameLayout.LayoutParams cp = (FrameLayout.LayoutParams) cover.getLayoutParams();
         float d = a.getResources().getDisplayMetrics().density;
         float m = 6 * d + cp.height * 0.16f;
-        // The cover's place and its margin as fractions of the picture.
-        float l = (cp.leftMargin - m - pfx) / pfw, t = (cp.topMargin - m - pfy) / pfh;
-        float r = (cp.leftMargin + cp.width + m - pfx) / pfw, b = (cp.topMargin + cp.height + m - pfy) / pfh;
-        float cl = (cp.leftMargin - pfx) / pfw, ct = (cp.topMargin - pfy) / pfh;
-        float cr = (cp.leftMargin + cp.width - pfx) / pfw, cb = (cp.topMargin + cp.height - pfy) / pfh;
-        if (patchFrame == null) patchFrame = Bitmap.createBitmap(480, 270, Bitmap.Config.ARGB_8888);
+        // The cover's place and, round it, room as deep as it on each side (to the picture's edge) for the picture
+        // beside it to be mirrored in (LogoPatch.natural), as fractions of the picture.
+        float x = cp.leftMargin - pfx, y = cp.topMargin - pfy;
+        float[] room = LogoPatch.room(x, y, cp.width, cp.height, pfw, pfh, m);
+        float l = (x - room[0]) / pfw, t = (y - room[1]) / pfh, r = (x + cp.width + room[2]) / pfw, b = (y + cp.height + room[3]) / pfh;
+        float cl = x / pfw, ct = y / pfh, cr = (x + cp.width) / pfw, cb = (y + cp.height) / pfh;
+        int[] vp = video.videoPixels();
+        if (partMisses < 3 && vp[0] > 0 && vp[1] > 0 && r > l && b > t) {
+            // That part alone, in the stream's own pixels: as sharp as the picture itself.
+            android.graphics.Rect src = new android.graphics.Rect(Math.max(0, Math.round(l * vp[0])), Math.max(0, Math.round(t * vp[1])),
+                    Math.min(vp[0], Math.round(r * vp[0])), Math.min(vp[1], Math.round(b * vp[1])));
+            if (src.width() >= 8 && src.height() >= 8) {
+                float k = Math.min(1f, Math.min(720f / src.width(), 420f / src.height()));
+                int ow = Math.max(8, Math.round(src.width() * k)), oh = Math.max(8, Math.round(src.height() * k));
+                if (patchPart == null || patchPart.getWidth() != ow || patchPart.getHeight() != oh) {
+                    patchPart = Bitmap.createBitmap(ow, oh, Bitmap.Config.ARGB_8888);
+                }
+                float fl = (cl - l) / (r - l), ft = (ct - t) / (b - t), fr = (cr - l) / (r - l), fb = (cb - t) / (b - t);
+                boolean asked = sampler.copyPart(video.surface(), src, patchPart, (got, at) -> {
+                    Bitmap patch = got == null ? null : patchOf(got, 0, 0, 1, 1, fl, ft, fr, fb);
+                    h.post(() -> {
+                        partMisses = got == null ? partMisses + 1 : 0;
+                        if (patch != null && started) cover.patch(patch);
+                        h.postDelayed(patchRun, 350L);
+                    });
+                });
+                if (asked) return;
+            }
+        }
+        // Else the whole frame, larger than for the rest, and the part cut from it.
+        if (patchFrame == null) patchFrame = Bitmap.createBitmap(1280, 720, Bitmap.Config.ARGB_8888);
         Bitmap frame = patchFrame;
         boolean asked = sampler.copy(video.surface(), frame, (got, at) -> {
             Bitmap patch = got == null ? null : patchOf(got, l, t, r, b, cl, ct, cr, cb);
             h.post(() -> {
                 if (patch != null && started) cover.patch(patch);
-                h.postDelayed(patchRun, 500L);
+                h.postDelayed(patchRun, 400L);
             });
         });
         if (!asked) h.postDelayed(patchRun, 250L);
     }
+
+    /** The see-through patch's part of the picture alone (its own pixels), and how often that could not be had running. */
+    private Bitmap patchPart;
+    private int partMisses;
 
     /** The patch from a frame: the part (l, t, r, b) cut out, its inside (the cover, cl to cb) filled from the rest. Pure enough. */
     static Bitmap patchOf(Bitmap frame, float l, float t, float r, float b, float cl, float ct, float cr, float cb) {
@@ -442,7 +555,7 @@ final class ScoreOverlay implements ScoreBoard.Source {
         int[] px = new int[w * h];
         frame.getPixels(px, 0, w, x0, y0, w, h);
         int ml = ix0 - x0, mt = iy0 - y0, mr = x1 - ix1, mb = y1 - iy1;
-        int[] in = LogoPatch.fill(px, w, h, ml, mt, mr, mb);
+        int[] in = LogoPatch.best(px, w, h, ml, mt, mr, mb);
         int iw = w - ml - mr, ih = h - mt - mb;
         return in == null || iw <= 0 || ih <= 0 ? null : Bitmap.createBitmap(in, iw, ih, Bitmap.Config.ARGB_8888);
     }
@@ -586,7 +699,7 @@ final class ScoreOverlay implements ScoreBoard.Source {
             boolean upright = root.getHeight() > root.getWidth();
             bp.width = LinearLayout.LayoutParams.WRAP_CONTENT;
             // Its own corner, at the size chosen (Medium as it was); Stacked taller, its clubs one above the other.
-            bp.height = Math.round((upright ? 24 : 30) * d * ScoreBoard.size(a) * board.bug.style().tall);
+            bp.height = Math.round((upright ? 24 : 30) * d * sizeHere() * board.bug.style().tall);
             left = Math.round(Math.max(fx, 0) + 14 * d) + (fx <= insetLeft ? insetLeft : 0);
             top = Math.round(Math.max(fy, 0) + 12 * d) + (fy <= insetTop ? insetTop : 0);
             // The channel's own scoreboard found and not covered: just under it.
@@ -629,17 +742,17 @@ final class ScoreOverlay implements ScoreBoard.Source {
                 cover.setLayoutParams(cp);
                 // Broadcast: the channel's picture tag, LIVE while the game is, the scoreboard's colours.
                 Channel ch = host.current();
-                cover.tag(ScoreBoard.logoTag(a).on(ch == null ? null : ch.name));
+                cover.tag(tagHere().on(ch == null ? null : ch.name));
                 cover.channelName(ch == null ? null : ch.name);
                 cover.sport(board.f1() ? "f1" : "");
                 cover.live(board.live());
                 cover.boardLook(board.bug.stripLook());
                 cover.competition(board.compPic(), board.compName());
-                cover.compOn(ScoreBoard.logoComp(a));
-                cover.liveBar(ScoreBoard.logoLive(a));
+                cover.compOn(compHere());
+                cover.liveBar(liveHere());
                 cover.what(ScoreBoard.whatFor(ScoreBoard.logoWhat(a), board.compName(), board.f1()));
-                cover.nameOnly(ScoreBoard.logoNameOnly(a));
-                cover.seeThrough(ScoreBoard.logoSeeThrough(a));
+                cover.nameOnly(nameOnlyHere());
+                cover.seeThrough(seeThroughHere());
                 cover.style(styleHere());
             }
         }

@@ -68,6 +68,25 @@ final class FrameSampler {
     }
 
     /**
+     * Part of the picture (src, in the stream's own pixels) copied into into at that sharpness: the see-through patch's
+     * place and the picture round it. A SurfaceView's only (PixelCopy reads its buffer); false otherwise, or when busy.
+     */
+    boolean copyPart(View surface, android.graphics.Rect src, Bitmap into, Got got) {
+        if (busy || !(surface instanceof SurfaceView) || into == null || src == null || src.isEmpty()) return false;
+        SurfaceView sv = (SurfaceView) surface;
+        if (sv.getHolder().getSurface() == null || !sv.getHolder().getSurface().isValid()) return false;
+        long at = System.currentTimeMillis();
+        busy = true;
+        try {
+            PixelCopy.request(sv, src, into, result -> hand(got, result == PixelCopy.SUCCESS ? into : null, at), worker);
+            return true;
+        } catch (RuntimeException e) {
+            busy = false;
+            return false;
+        }
+    }
+
+    /**
      * The copy handed over, on the sampler's thread. Whatever goes wrong in reading it (a frame of another size, the
      * reader's own trouble) stays here: that frame is let go and the next is taken, and the stream plays on.
      */

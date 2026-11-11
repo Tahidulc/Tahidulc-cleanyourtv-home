@@ -246,8 +246,7 @@ final class BoardCover {
 
     /** Which of the Whitebrook Road styles on the channel on now: its own (with its own look), else the general one. */
     static int styleNow(Context c) {
-        String channel = InStep.channel(c);
-        int own = ChannelOverlays.look(c, channel) != null ? ChannelOverlays.style(c, channel) : -1;
+        int own = ChannelOverlays.style(c, InStep.channel(c));
         return own >= 0 ? own : logoStyle(c);
     }
 
@@ -271,13 +270,114 @@ final class BoardCover {
     /** The style line on a channel with its own look in the styles: that channel's, else the general one. */
     private static void stepStyleHere(Context c, int step) {
         String channel = InStep.channel(c);
-        if (ChannelOverlays.look(c, channel) == null) {
+        if (channel.isEmpty()) {
             stepLogoStyle(c, step);
             return;
         }
         int n = BrandStyles.COUNT;
         ChannelOverlays.setStyle(c, channel, ((styleNow(c) + step) % n + n) % n);
         if (mark != null) mark.style(styleNow(c));
+    }
+
+    // The logo's other settings on the channel on now: its own (set from the menu over the player), else the general.
+
+    private static String ownOpt(Context c, String name) {
+        return ChannelOverlays.opt(c, InStep.channel(c), name);
+    }
+
+    static boolean seeThroughNow(Context c) {
+        String o = ownOpt(c, "see_through");
+        return o != null ? "1".equals(o) : logoSeeThrough(c);
+    }
+
+    static boolean nameOnlyNow(Context c) {
+        String o = ownOpt(c, "name_only");
+        return o != null ? "1".equals(o) : logoNameOnly(c);
+    }
+
+    static ChannelMark.Tag tagNow(Context c) {
+        String o = ownOpt(c, "tag");
+        return o != null ? ChannelMark.Tag.of(o) : logoTag(c);
+    }
+
+    static String whatChosenNow(Context c) {
+        String o = ownOpt(c, "what");
+        return o != null ? o : logoWhat(c);
+    }
+
+    static boolean liveNow(Context c) {
+        String o = ownOpt(c, "live");
+        return o != null ? "1".equals(o) : logoLive(c);
+    }
+
+    static boolean compNow(Context c) {
+        String o = ownOpt(c, "comp");
+        return o != null ? "1".equals(o) : logoComp(c);
+    }
+
+    /** A logo setting from the menu over the player: kept for the channel on when it is known, else for every channel. */
+    private static void setHere(Context c, String name, String value, Runnable general) {
+        String channel = InStep.channel(c);
+        if (channel.isEmpty()) general.run();
+        else ChannelOverlays.setOpt(c, channel, name, value);
+    }
+
+    /** The logo's cover on or off on the channel on (its own logo left), its look kept for it when back on. */
+    private static void toggleLogoHere(Context c) {
+        String channel = InStep.channel(c);
+        if (channel.isEmpty()) {
+            setLogoOn(c, !logoOn(c));
+            return;
+        }
+        ChannelOverlays.setLook(c, channel, logoNow(c) ? ChannelOverlays.LEAVE : lookNow(c).name());
+        restyle();
+    }
+
+    /** The logo's look stepped for the channel on (kept for it), else for every channel. */
+    private static void stepLookHere(Context c, int step) {
+        String channel = InStep.channel(c);
+        if (channel.isEmpty()) {
+            stepLogoLook(c, step);
+            return;
+        }
+        boolean was = logoNow(c);
+        LogoMark.Look[] all = LogoMark.Look.values();
+        LogoMark.Look next = all[((lookNow(c).ordinal() + step) % all.length + all.length) % all.length];
+        ChannelOverlays.setLook(c, channel, next.name());
+        if (mark != null && was) mark.look(next);
+        else restyle();
+    }
+
+    private static void stepWhatHere(Context c, int step) {
+        String[] all = SportsMark.WHATS;
+        int at = java.util.Arrays.asList(all).indexOf(whatChosenNow(c));
+        String next = all[((Math.max(0, at) + step) % all.length + all.length) % all.length];
+        setHere(c, "what", next, () -> setLogoWhat(c, next));
+        if (mark != null) mark.what(whatNow(c));
+    }
+
+    private static void toggleNameOnlyHere(Context c) {
+        boolean on = !nameOnlyNow(c);
+        setHere(c, "name_only", on ? "1" : "0", () -> setLogoNameOnly(c, on));
+        if (mark != null) mark.nameOnly(nameOnlyNow(c));
+    }
+
+    private static void stepTagHere(Context c, int step) {
+        ChannelMark.Tag[] all = ChannelMark.Tag.values();
+        ChannelMark.Tag next = all[((tagNow(c).ordinal() + step) % all.length + all.length) % all.length];
+        setHere(c, "tag", next.name(), () -> setLogoTag(c, next));
+        if (mark != null) mark.tag(tagNow(c).on(InStep.channel(c)));
+        F1Tower.retag(c);
+    }
+
+    private static void toggleSeeThroughHere(Context c) {
+        boolean on = !seeThroughNow(c);
+        setHere(c, "see_through", on ? "1" : "0", () -> setLogoSeeThrough(c, on));
+        if (mark != null) {
+            mark.seeThrough(seeThroughNow(c));
+            if (!seeThroughNow(c)) mark.patch(null);
+        }
+        patchSoon();
     }
 
     /** The game the board shows now: the one it is on for, else on a channel set Always up the one found on it. */
@@ -470,7 +570,7 @@ final class BoardCover {
 
     static void setLogoLive(Context c, boolean on) {
         prefs(c).edit().putBoolean("live_bar", on).apply();
-        if (mark != null) mark.liveBar(on);
+        if (mark != null) mark.liveBar(liveNow(c));
     }
 
     /** The competition's logo beside the logo cover's look (on unless switched off). */
@@ -480,7 +580,7 @@ final class BoardCover {
 
     static void setLogoComp(Context c, boolean on) {
         prefs(c).edit().putBoolean("comp_on", on).apply();
-        if (mark != null) mark.compOn(on);
+        if (mark != null) mark.compOn(compNow(c));
     }
 
     /** The picture tag on the logo cover: Auto (from the channel's name), none, or one set (HD, UHD, 4K, with HDR or not). */
@@ -490,7 +590,7 @@ final class BoardCover {
 
     static void setLogoTag(Context c, ChannelMark.Tag t) {
         prefs(c).edit().putString("tag", t.name()).apply();
-        if (mark != null) mark.tag(t.on(InStep.channel(c)));
+        if (mark != null) mark.tag(tagNow(c).on(InStep.channel(c)));
         F1Tower.retag(c);
     }
 
@@ -517,7 +617,7 @@ final class BoardCover {
 
     /** What is on now: the one chosen, else from the game the board is on for (the Premier League's, else football). */
     static String whatNow(Context c) {
-        String chosen = logoWhat(c);
+        String chosen = whatChosenNow(c);
         if (!chosen.isEmpty()) return chosen;
         String id = showingId(c);
         ScoresTicker.Game g = id == null || id.isEmpty() || NO_GAME.equals(id) ? null : GoalWatchService.latestGame(id);
@@ -546,7 +646,7 @@ final class BoardCover {
 
     static void setLogoNameOnly(Context c, boolean on) {
         prefs(c).edit().putBoolean("name_only", on).apply();
-        if (mark != null) mark.nameOnly(on);
+        if (mark != null) mark.nameOnly(nameOnlyNow(c));
     }
 
     /**
@@ -560,8 +660,8 @@ final class BoardCover {
     static void setLogoSeeThrough(Context c, boolean on) {
         prefs(c).edit().putBoolean("see_through", on).apply();
         if (mark != null) {
-            mark.seeThrough(on);
-            if (!on) mark.patch(null);
+            mark.seeThrough(seeThroughNow(c));
+            if (!seeThroughNow(c)) mark.patch(null);
         }
         patchSoon();
     }
@@ -1897,7 +1997,7 @@ final class BoardCover {
         stats.colours(l.homeColour, l.awayColour, l.homeOwn, l.awayOwn);
         // The logo's cover in Broadcast: the picture's tag, LIVE while the game is, the scoreboard's colours.
         if (mark != null) {
-            mark.tag(logoTag(c).on(InStep.channel(c)));
+            mark.tag(tagNow(c).on(InStep.channel(c)));
             mark.channelName(InStep.channel(c));
             mark.live(l.live);
             mark.boardLook(bug.stripLook());
@@ -1938,7 +2038,7 @@ final class BoardCover {
             placeKey = key;
         }
         if (mark != null) {
-            mark.tag(logoTag(c).on(channel));
+            mark.tag(tagNow(c).on(channel));
             mark.channelName(channel);
             mark.live(false);
             mark.boardLook(bug.stripLook());
@@ -2043,10 +2143,10 @@ final class BoardCover {
             mark = new LogoMark(c);
             mark.look(lookNow(c));
             mark.competition(compImage, compTag);
-            mark.compOn(logoComp(c));
-            mark.liveBar(logoLive(c));
-            mark.nameOnly(logoNameOnly(c));
-            mark.seeThrough(logoSeeThrough(c));
+            mark.compOn(compNow(c));
+            mark.liveBar(liveNow(c));
+            mark.nameOnly(nameOnlyNow(c));
+            mark.seeThrough(seeThroughNow(c));
             mark.what(whatNow(c));
             mark.channelName(InStep.channel(c));
             mark.style(styleNow(c));
@@ -2120,6 +2220,7 @@ final class BoardCover {
     // ---- see-through: the channel's own logo hidden under Whitebrook Road Sports (LogoPatch) ---------------------------
 
     private static final Runnable patchRun = BoardCover::patchNow;
+    private static final ExecutorService patchIo = Executors.newSingleThreadExecutor();
     private static long patchAt;
     private static boolean patchLoop;
 
@@ -2160,29 +2261,46 @@ final class BoardCover {
             main().postDelayed(patchRun, 500L);
             return;
         }
-        // The margin: clear of the cover's own window (its edge and the burn-in step's room), a sixth of its height more.
+        // The margins: room on each side as deep as the cover (up to the screen's edge), for the picture beside it to be
+        // mirrored in (LogoPatch.natural); at least clear of the cover's own window (its edge and the burn-in step's room).
         float m = 3 * edge + Math.max(6f * sw / 1920f, vh * 0.16f);
-        float l = Math.max(0, at[0] - m), t = Math.max(0, at[1] - m), r = Math.min(sw, at[0] + vw + m), b = Math.min(sh, at[1] + vh + m);
+        float[] room = LogoPatch.room(at[0], at[1], vw, vh, sw, sh, m);
+        float l = at[0] - room[0], t = at[1] - room[1], r = at[0] + vw + room[2], b = at[1] + vh + room[3];
         float rw = r - l, rh = b - t;
-        int ph = 36, pw = Math.max(8, Math.min(160, Math.round(ph * rw / Math.max(1f, rh))));
+        // Taken at the screen's own sharpness (a large place a little smaller), so the patch is drawn as sharp as the picture.
+        float k = Math.min(1f, Math.min(720f / Math.max(1f, rw), 420f / Math.max(1f, rh)));
+        int pw = Math.max(8, Math.round(rw * k)), ph = Math.max(8, Math.round(rh * k));
         float kx = pw / rw, ky = ph / rh;
-        // Each side's margin in the small picture (none where the cover is at the screen's edge).
-        int ml = Math.round((at[0] - l) * kx), mt = Math.round((at[1] - t) * ky), mr = Math.round((r - at[0] - vw) * kx),
-                mb = Math.round((b - at[1] - vh) * ky);
+        int ml = Math.round(room[0] * kx), mt = Math.round(room[1] * ky), mr = Math.round(room[2] * kx), mb = Math.round(room[3] * ky);
         patchAt = now;
         RectF part = new RectF(l / sw, t / sh, r / sw, b / sh);
         boolean asked = ScreenShots.take(new RectF[]{part}, new int[][]{{pw, ph}}, (parts, when, own) -> {
             Bitmap small = parts[0];
-            if (small != null && mark != null) {
-                int w = small.getWidth(), h = small.getHeight();
-                int[] px = new int[w * h];
-                small.getPixels(px, 0, w, 0, 0, w, h);
-                small.recycle();
-                int[] in = LogoPatch.fill(px, w, h, Math.min(ml, w / 3), Math.min(mt, h / 3), Math.min(mr, w / 3), Math.min(mb, h / 3));
-                int iw = w - Math.min(ml, w / 3) - Math.min(mr, w / 3), ih = h - Math.min(mt, h / 3) - Math.min(mb, h / 3);
-                if (in != null && iw > 0 && ih > 0) mark.patch(Bitmap.createBitmap(in, iw, ih, Bitmap.Config.ARGB_8888));
+            if (small == null || mark == null) {
+                main().postDelayed(patchRun, 100L);
+                return;
             }
-            main().postDelayed(patchRun, 100L);
+            int w = small.getWidth(), h = small.getHeight();
+            int[] px = new int[w * h];
+            small.getPixels(px, 0, w, 0, 0, w, h);
+            small.recycle();
+            // Made off the main thread, on a thread of its own (the picture's light and texture carried in take a moment),
+            // then put under the cover.
+            patchIo.execute(() -> {
+                Bitmap made = null;
+                try {
+                    int[] in = LogoPatch.best(px, w, h, ml, mt, mr, mb);
+                    int iw = w - ml - mr, ih = h - mt - mb;
+                    if (in != null && iw > 0 && ih > 0) made = Bitmap.createBitmap(in, iw, ih, Bitmap.Config.ARGB_8888);
+                } catch (RuntimeException ignored) {
+                    // the next picture, then
+                }
+                Bitmap got = made;
+                main().post(() -> {
+                    if (got != null && mark != null) mark.patch(got);
+                    main().postDelayed(patchRun, 100L);
+                });
+            });
         });
         if (!asked) main().postDelayed(patchRun, 250L);
     }
@@ -3350,9 +3468,9 @@ final class BoardCover {
     private static MenuState menuState(Context c) {
         MenuState m = new MenuState();
         m.boardShown = boardShown(c);
-        m.logoOn = logoOn(c);
+        m.logoOn = logoNow(c);
         m.look = style(c).label;
-        m.logoLook = logoLook(c).label;
+        m.logoLook = lookNow(c).label;
         // What the cover on this channel is drawn in: its own look, else the general one.
         m.sportsLook = lookNow(c).sports();
         m.stylesLook = lookNow(c) == LogoMark.Look.STYLES;
@@ -3360,11 +3478,11 @@ final class BoardCover {
         m.channel = InStep.channel(c);
         m.channelMode = ChannelOverlays.modeWords(ChannelOverlays.mode(c, m.channel));
         m.channelLook = ChannelOverlays.lookWords(ChannelOverlays.look(c, m.channel), logoOn(c) ? logoLook(c).label : "none");
-        String w = logoWhat(c);
+        String w = whatChosenNow(c);
         m.what = w.isEmpty() ? "Auto, from the game (" + whatNow(c) + ")" : w;
-        m.nameOnly = logoNameOnly(c);
-        m.tag = logoTag(c).label;
-        m.seeThrough = logoSeeThrough(c);
+        m.nameOnly = nameOnlyNow(c);
+        m.tag = tagNow(c).label;
+        m.seeThrough = seeThroughNow(c);
         m.find = ChannelSight.on(c);
         m.lineups = lineupsOn(c);
         m.active = active(c);
@@ -3390,7 +3508,9 @@ final class BoardCover {
         bg.setStroke(Math.max(1, Math.round(u)), 0x40FFFFFF);
         box.setBackground(bg);
         TextView head = new TextView(soft);
-        head.setText("Scoreboard and logo  ·  Up and Down, Left and Right, OK  ·  Back to close");
+        String here = InStep.channel(c);
+        head.setText("Scoreboard and logo  ·  Up and Down, Left and Right, OK  ·  Back to close"
+                + (here.isEmpty() ? "" : "\nThe logo's look, style and size are kept for " + here));
         head.setTextColor(0xB3FFFFFF);
         head.setTextSize(TypedValue.COMPLEX_UNIT_PX, 19f * u);
         head.setPadding(Math.round(10 * u), 0, Math.round(10 * u), Math.round(12 * u));
@@ -3539,27 +3659,28 @@ final class BoardCover {
             case 4:
                 setBoardShown(c, !boardShown(c));
                 break;
+            // The logo's lines: kept for the channel on (its own from then on), else for every channel.
             case 5:
-                setLogoOn(c, !logoOn(c));
+                toggleLogoHere(c);
                 break;
             case 6:
                 stepStyle(c, step);
                 break;
             case 7:
-                stepLogoLook(c, step);
+                stepLookHere(c, step);
                 break;
             case 8:
                 if (lookNow(c) == LogoMark.Look.STYLES) stepStyleHere(c, step);
-                else stepLogoWhat(c, step);
+                else stepWhatHere(c, step);
                 break;
             case 9:
-                setLogoNameOnly(c, !logoNameOnly(c));
+                toggleNameOnlyHere(c);
                 break;
             case 10:
-                stepLogoTag(c, step);
+                stepTagHere(c, step);
                 break;
             case 11:
-                setLogoSeeThrough(c, !logoSeeThrough(c));
+                toggleSeeThroughHere(c);
                 break;
             case 12:
                 ChannelSight.setOn(c, !ChannelSight.on(c));

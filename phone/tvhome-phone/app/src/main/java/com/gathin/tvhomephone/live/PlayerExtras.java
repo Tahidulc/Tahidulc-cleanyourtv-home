@@ -653,15 +653,15 @@ final class PlayerExtras implements LiveAlerts.Listener {
                 host.closeSheet();
                 overlay.adjust();
             });
-            LinearLayout sizes = chipRow(c, box, R.string.live6_size);
+            // The size, kept for the channel playing (its own from then on).
+            LinearLayout sizes = chipRow(c, box, overlay.channelKnown() ? R.string.live50_size_here : R.string.live6_size);
             List<TextView> ss = new ArrayList<>();
             for (int i = 0; i < ScoreBoard.SIZES.length; i++) {
                 float k = ScoreBoard.SIZES[i];
-                TextView t = Ui.guideChip(c, ScoreBoard.SIZE_NAMES[i], Math.abs(ScoreBoard.size(c) - k) < 0.01f);
+                TextView t = Ui.guideChip(c, ScoreBoard.SIZE_NAMES[i], Math.abs(overlay.sizeHere() - k) < 0.01f);
                 t.setOnClickListener(v -> {
-                    ScoreBoard.setSize(c, k);
+                    overlay.setHere("size", Float.toString(k));
                     for (TextView x : ss) Ui.styleChip(c, x, x == v);
-                    overlay.restyle();
                 });
                 ss.add(t);
                 addChip(sizes, t);
@@ -696,39 +696,23 @@ final class PlayerExtras implements LiveAlerts.Listener {
                 ls.add(t);
                 addChip(looks, t);
             }
-            LinearLayout logos = chipRow(c, box, R.string.live4_logo);
-            List<TextView> lg = new ArrayList<>();
-            for (LogoCover.Look lk : LogoCover.Look.values()) {
-                TextView t = Ui.guideChip(c, lk.label, ScoreBoard.logoCover(c) == lk);
-                t.setOnClickListener(v -> {
-                    ScoreBoard.setLogoCover(c, lk);
-                    for (TextView x : lg) Ui.styleChip(c, x, x == v);
-                    overlay.restyle();
-                });
-                lg.add(t);
-                addChip(logos, t);
-            }
             // The picture tag on the logo's cover.
             LinearLayout tags = chipRow(c, box, R.string.live20_logo_tag);
             List<TextView> tg = new ArrayList<>();
             for (ChannelMark.Tag tag : ChannelMark.Tag.values()) {
-                TextView t = Ui.guideChip(c, tag == ChannelMark.Tag.AUTO ? "Auto" : tag.label, ScoreBoard.logoTag(c) == tag);
+                TextView t = Ui.guideChip(c, tag == ChannelMark.Tag.AUTO ? "Auto" : tag.label, overlay.tagHere() == tag);
                 t.setOnClickListener(v -> {
-                    ScoreBoard.setLogoTag(c, tag);
+                    overlay.setHere("tag", tag.name());
                     for (TextView x : tg) Ui.styleChip(c, x, x == v);
-                    overlay.restyle();
                 });
                 tg.add(t);
                 addChip(tags, t);
             }
-            toggle(c, box, a.getString(R.string.live24_logo_live), ScoreBoard.logoLive(c), on -> {
-                ScoreBoard.setLogoLive(c, on);
-                overlay.restyle();
-            });
-            toggle(c, box, a.getString(R.string.live21_logo_comp), ScoreBoard.logoComp(c), on -> {
-                ScoreBoard.setLogoComp(c, on);
-                overlay.restyle();
-            });
+            toggle(c, box, a.getString(R.string.live24_logo_live), overlay.liveHere(), on -> overlay.setHere("live", on ? "1" : "0"));
+            toggle(c, box, a.getString(R.string.live21_logo_comp), overlay.compHere(), on -> overlay.setHere("comp", on ? "1" : "0"));
+            // See-through (the channel's own logo hidden, the picture carried over it) and a general channel's name.
+            toggle(c, box, a.getString(R.string.live50_see_through), overlay.seeThroughHere(), on -> overlay.setHere("see_through", on ? "1" : "0"));
+            toggle(c, box, a.getString(R.string.live50_name_only), overlay.nameOnlyHere(), on -> overlay.setHere("name_only", on ? "1" : "0"));
             // Broadcast mode: Homefield's break over the channel's adverts; one to see now.
             toggle(c, box, a.getString(R.string.live5_broadcast), ScoreBoard.broadcast(c), on -> ScoreBoard.setBroadcast(c, on));
             action(c, box, R.drawable.live_ic_play, a.getString(R.string.live5_broadcast_try), () -> {
@@ -867,7 +851,7 @@ final class PlayerExtras implements LiveAlerts.Listener {
         note(c, box, a.getString(R.string.live49_hand_note));
     }
 
-    /** This channel's own: as the rest, always up, or never; and its own logo look, else the general one. */
+    /** This channel's own: as the rest, always up, or never; and its own logo look and style, else the general ones. */
     private void channelOptions(Context c, LinearLayout box) {
         Channel ch = host.current();
         if (ch == null || ch.key == null) return;
@@ -891,21 +875,32 @@ final class PlayerExtras implements LiveAlerts.Listener {
         LogoCover.Look own = ChannelOverlays.look(c, key);
         TextView same = Ui.guideChip(c, a.getString(R.string.live49_channel_logo_same, ScoreBoard.logoCover(c).label), own == null);
         same.setOnClickListener(v -> {
-            ChannelOverlays.setLook(c, key, null);
+            overlay.setLookFromOptions(null);
             for (TextView x : ls) Ui.styleChip(c, x, x == v);
-            overlay.channelChanged();
         });
         ls.add(same);
         addChip(looks, same);
         for (LogoCover.Look lk : LogoCover.Look.values()) {
             TextView t = Ui.guideChip(c, lk.label, own == lk);
             t.setOnClickListener(v -> {
-                ChannelOverlays.setLook(c, key, lk);
+                overlay.setLookFromOptions(lk);
                 for (TextView x : ls) Ui.styleChip(c, x, x == v);
-                overlay.channelChanged();
             });
             ls.add(t);
             addChip(looks, t);
+        }
+        // The Whitebrook Road style on this channel (for the look of that name).
+        LinearLayout styles = chipRow(c, box, R.string.live50_style_here);
+        List<TextView> sts = new ArrayList<>();
+        for (int i = 0; i < BrandStyles.COUNT; i++) {
+            int n = i;
+            TextView t = Ui.guideChip(c, (i + 1) + ". " + BrandStyles.name(i), overlay.styleHere() == i);
+            t.setOnClickListener(v -> {
+                overlay.setStyleHere(n);
+                for (TextView x : sts) Ui.styleChip(c, x, x == v);
+            });
+            sts.add(t);
+            addChip(styles, t);
         }
         note(c, box, a.getString(R.string.live49_channel_note, ch.name == null ? "this channel" : ch.name));
     }
