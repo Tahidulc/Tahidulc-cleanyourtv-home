@@ -374,8 +374,8 @@ final class OverlayPrompt {
         if (win != null || (football && (g == null || g.id == null))) return;
         String mode = mode(c);
         String key = askKey(k, g, System.currentTimeMillis());
-        // Its overlays on already: nothing to ask.
-        boolean already = football ? g.id.equals(BoardCover.game(c)) : F1Tower.isShowing();
+        // Its overlays on already, or the scoreboard and logo up by hand (what they show is chosen there): nothing to ask.
+        boolean already = football ? g.id.equals(BoardCover.game(c)) || BoardCover.manual(c) : F1Tower.isShowing();
         // By themselves only for a football match sure to be the one on, its competition's alerts not switched off.
         boolean itself = football && sure && NotifyPrefs.competitionOn(c, g.slug);
         boolean dismissed = has(c, "asked", key) || AUTO.equals(mode) && has(c, "away", key);

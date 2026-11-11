@@ -16,8 +16,9 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * The Control Centre's Scoreboard card (BoardCover): the scoreboard over the channel on or off for the game chosen
- * (OK steps through today's games of the followed clubs and competitions, live ones first), what a match being watched
+ * The Control Centre's Scoreboard card (BoardCover): the scoreboard and the logo's cover up by hand over the channel,
+ * now, for the game chosen (OK steps through today's games of the followed clubs and competitions, live ones first, then
+ * none: the logo's cover alone), until switched off or the TV goes off; what a match being watched
  * gets (Scoreboard over matches: on by itself, the hold-OK button, or neither; OverlayPrompt), the board itself and the
  * cover over the channel's logo each on or off, the alerts and stats that slide out beside it, its clock set at
  * kick-off, OK held over the match for its menu, Move and resize over the channel, the board's look and the cover's
@@ -83,6 +84,8 @@ final class BoardPanel extends SportPanel {
                 games.addAll(list);
                 chosen = 0;
                 for (int i = 0; i < games.size(); i++) if (games.get(i).id.equals(pick)) chosen = i;
+                // Up by hand with no game: the logo only chosen.
+                if (BoardCover.NO_GAME.equals(BoardCover.game(c))) chosen = games.size();
                 if (open) redraw();
             });
         });
@@ -111,14 +114,21 @@ final class BoardPanel extends SportPanel {
         ClassicIntro.tryIt(c, g, kind, (why) -> android.widget.Toast.makeText(c, why, android.widget.Toast.LENGTH_LONG).show());
     }
 
+    /** The game chosen; null for none (the logo only, or no games today). */
     private ScoresTicker.Game game() {
-        return games.isEmpty() ? null : games.get(Math.min(chosen, games.size() - 1));
+        return chosen < games.size() ? games.get(chosen) : null;
+    }
+
+    /** None chosen: up by hand, the logo's cover alone. */
+    private boolean logoOnly() {
+        return !games.isEmpty() && chosen >= games.size();
     }
 
     private String gameWords() {
         if (loading && games.isEmpty()) return "Finding today's games…";
+        if (logoOnly()) return "None · the logo's cover only   (OK for the games)";
         ScoresTicker.Game g = game();
-        if (g == null) return "No games today from your clubs and competitions";
+        if (g == null) return "No games today from your clubs and competitions · the logo's cover only";
         String when = g.state == 0 ? "Live" + (g.halftime ? " · half time" : "")
                 : HM.format(Instant.ofEpochMilli(g.kickoff).atZone(ZoneId.systemDefault()));
         return MatchMode.label(g) + " · " + when + (games.size() > 1 ? "   (" + (chosen + 1) + " of " + games.size() + ")" : "");
@@ -126,25 +136,30 @@ final class BoardPanel extends SportPanel {
 
     @Override protected void build() {
         title("Scoreboard", "OK to choose  ·  Back to close");
-        Row on = row("Scoreboard over the channel", true);
+        // Up by hand: the scoreboard and the logo's cover over the channel now, whatever the TV finds on it.
+        Row on = row("Scoreboard and logo, by hand", true);
         on.on = () -> BoardCover.active(c);
         on.words = () -> {
-            String id = BoardCover.game(c);
-            if (id == null) return game() == null ? "Off · choose a game first" : "Off · OK to turn it on for the game beside";
-            if (id.isEmpty()) return "On for the game you put on · off after it";
-            return "On for " + BoardCover.label(c) + " · off ten minutes after full time";
+            if (!BoardCover.active(c)) {
+                ScoresTicker.Game g = game();
+                return g != null ? "Off · OK: up now over the channel, the scoreboard for " + MatchMode.label(g)
+                        : "Off · OK: up now over the channel, the logo's cover" + (logoOnly() ? " only" : " (the game when one's found)");
+            }
+            return (BoardCover.manual(c) ? "Up by hand · " + BoardCover.showingWords(c) + " · until you turn it off or the TV goes off"
+                    : "On by itself for " + BoardCover.showingWords(c) + " · off after full time") + " · OK: down";
         };
         on.ok = () -> {
             if (BoardCover.active(c)) BoardCover.stop(c, "switched off");
-            else BoardCover.start(c, game());
+            else BoardCover.manualOn(c, game(), logoOnly());
         };
         Row which = row("The game", false);
         which.words = this::gameWords;
         which.ok = () -> {
-            if (games.size() < 2) return;
-            chosen = (chosen + 1) % games.size();
-            // On already: on for the game chosen now.
-            if (BoardCover.active(c)) BoardCover.start(c, game());
+            if (games.isEmpty()) return;
+            // Each of today's games, then none (the logo's cover only), round again.
+            chosen = (chosen + 1) % (games.size() + 1);
+            // Up already: up by hand for the one chosen now.
+            if (BoardCover.active(c)) BoardCover.manualOn(c, game(), logoOnly());
             // The looks below drawn with this game.
             redraw();
         };

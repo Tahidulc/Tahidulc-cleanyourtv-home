@@ -39,10 +39,11 @@ import java.util.regex.Pattern;
 /**
  * The phone's scoreboard and its cover over the channel's logo (Homefield's player), over TiviMate on the TV. Never on
  * by itself unless the Scoreboard card's "Scoreboard over matches" is on Automatic (then for a match seen being watched,
- * OverlayPrompt): it is switched on by hand for one game (the Control Centre's Scoreboard tile, for the game on now or
- * the next one put on; the Scoreboard card, for the game chosen there; OK held on the overlays button over a match),
- * shows while that game is on the screen, and switches itself off ten minutes after the game's full time (four hours at
- * most). The next game needs it switching on again.
+ * OverlayPrompt, or OK held on the overlays button over a match): then it is on for that game, shows while the game is
+ * on the screen, and switches itself off ten minutes after its full time (four hours at most). Or up by hand (manual):
+ * the Control Centre's Scoreboard tile, the Scoreboard card's top row, or the first line of the menu OK held over the
+ * player opens; both up over the channel at once, whatever is found on it, the scoreboard for the game chosen (or the
+ * one found on the channel, or none: the logo's cover alone), until switched off or the TV goes off.
  *
  * <p>It shows the game as the picture does, not as the scores are: each reading of the scores' poll is kept with when it
  * was seen, and the board shows the one the channel has reached, that channel's wait (InStep) behind, its clock counting
@@ -118,11 +119,121 @@ final class BoardCover {
         return prefs(c).getString("label", "");
     }
 
+    // ---- by hand -------------------------------------------------------------------------------------------------------
+
+    /** Up by hand: until switched off, the TV goes off, or this long at most. */
+    static final long MANUAL_MS = 12 * 3_600_000L;
+    /** The game it is up for by hand when it is none: the logo's cover alone. */
+    static final String NO_GAME = "-";
+
+    /** Up by hand (not on by itself for a game: Automatic, the hold-OK button). */
+    static boolean manual(Context c) {
+        return active(c) && prefs(c).getBoolean("manual", false);
+    }
+
+    /**
+     * Up now by hand, over the channel whatever is found on it: the scoreboard for g (null: the game on the channel,
+     * found as for the tile, the logo's cover alone meanwhile; noGame: none, the logo's cover alone) and the cover over
+     * the channel's logo. Main thread.
+     */
+    static void manualOn(Context c, ScoresTicker.Game g, boolean noGame) {
+        long now = System.currentTimeMillis();
+        String id = noGame ? NO_GAME : g == null || g.id == null ? "" : g.id;
+        prefs(c).edit().putBoolean("on", true).putBoolean("manual", true).putString("game", id)
+                .putString("label", noGame || g == null ? "" : MatchMode.label(g))
+                .putLong("until", now + MANUAL_MS).remove("ft").apply();
+        AlertLog.note(c, "scoreboard and logo up by hand: "
+                + (noGame ? "the logo only" : g == null ? "the game on the channel" : AlertLog.game(g)));
+        standby(c, true);
+        if (id.isEmpty()) {
+            ScoresTicker.Game mm = matchModeGame(c);
+            if (mm != null) take(c, mm);
+            else findGameOnNow(c);
+        }
+        resume(c);
+    }
+
+    private static android.content.BroadcastReceiver standby;
+
+    /** Up by hand: the TV going off takes them down (a receiver kept only meanwhile). */
+    private static void standby(Context c, boolean on) {
+        Context a = c.getApplicationContext();
+        if (on && standby == null) {
+            android.content.BroadcastReceiver r = new android.content.BroadcastReceiver() {
+                @Override public void onReceive(Context context, Intent intent) {
+                    if (Intent.ACTION_SCREEN_OFF.equals(intent.getAction()) && manual(a)) stop(a, "the TV went off");
+                }
+            };
+            try {
+                a.registerReceiver(r, new android.content.IntentFilter(Intent.ACTION_SCREEN_OFF));
+                standby = r;
+            } catch (RuntimeException ignored) {
+                // the twelve hours, then
+            }
+        } else if (!on && standby != null) {
+            try {
+                a.unregisterReceiver(standby);
+            } catch (RuntimeException ignored) {
+                // gone already
+            }
+            standby = null;
+        }
+    }
+
+    /** Today's games for the menu's by-hand line (the scores' latest): those not over, the followed clubs' and live first. */
+    private static List<ScoresTicker.Game> handGames(Context c) {
+        return MatchPanel.choices(GoalWatchService.latestGames(), new java.util.HashSet<>(java.util.Arrays.asList(SyncHub.starredClubs(c))));
+    }
+
+    /**
+     * Pure: the by-hand line's next choice, step on (1) or back (-1) from now (null: off; "": the game on the channel;
+     * NO_GAME: the logo only; else a game's id): off, the game on the channel, each of the games, the logo only, round.
+     */
+    static String nextHand(String now, List<String> ids, int step) {
+        List<String> all = new ArrayList<>();
+        all.add(null);
+        all.add("");
+        for (String id : ids) if (id != null && !id.isEmpty() && !NO_GAME.equals(id)) all.add(id);
+        all.add(NO_GAME);
+        int at = all.indexOf(now);
+        if (at < 0) at = 1;
+        return all.get(((at + step) % all.size() + all.size()) % all.size());
+    }
+
+    /** The menu's by-hand line stepped: off, or up by hand for its next choice. */
+    private static void stepHand(Context c, int step) {
+        List<ScoresTicker.Game> games = handGames(c);
+        List<String> ids = new ArrayList<>();
+        for (ScoresTicker.Game g : games) ids.add(g.id);
+        String next = nextHand(active(c) ? game(c) : null, ids, step);
+        if (next == null) {
+            stop(c, "switched off over the player");
+        } else if (NO_GAME.equals(next)) {
+            manualOn(c, null, true);
+        } else if (next.isEmpty()) {
+            manualOn(c, null, false);
+        } else {
+            ScoresTicker.Game pick = null;
+            for (ScoresTicker.Game g : games) if (next.equals(g.id)) pick = g;
+            manualOn(c, pick, false);
+        }
+    }
+
+    /** What it is up for, in a few words: the game, the logo only, or the game on the channel still to be found. */
+    static String showingWords(Context c) {
+        String id = game(c);
+        if (id == null) return "";
+        if (NO_GAME.equals(id)) return "the logo only";
+        if (id.isEmpty()) return "the logo, the game when it's found on the channel";
+        String l = label(c);
+        return l.isEmpty() ? "this game" : l;
+    }
+
     /** On for this game (null: the next game put on, from Home or in Match mode, within four hours). */
     static void start(Context c, ScoresTicker.Game g) {
         long now = System.currentTimeMillis();
         long from = g == null ? now : Math.max(now, g.kickoff);
-        prefs(c).edit().putBoolean("on", true).putString("game", g == null || g.id == null ? "" : g.id)
+        prefs(c).edit().putBoolean("on", true).putBoolean("manual", false).putString("game", g == null || g.id == null ? "" : g.id)
                 .putString("label", g == null ? "" : MatchMode.label(g))
                 .putLong("until", Math.min(from + MAX_MS, now + MAX_MS + 3_600_000L)).remove("ft").apply();
         AlertLog.note(c, "scoreboard on: " + (g == null ? "for the next game put on" : AlertLog.game(g)));
@@ -132,7 +243,8 @@ final class BoardCover {
     static void stop(Context c, String why) {
         boolean was = prefs(c).getBoolean("on", false);
         String id = prefs(c).getString("game", "");
-        prefs(c).edit().putBoolean("on", false).remove("ft").apply();
+        prefs(c).edit().putBoolean("on", false).putBoolean("manual", false).remove("ft").apply();
+        standby(c, false);
         if (was) AlertLog.note(c, "scoreboard off: " + why);
         // Switched off by hand for a game: Scoreboard over matches on Automatic leaves that game alone from now.
         if (was && why.startsWith("switched off")) OverlayPrompt.switchedOff(c, id);
@@ -140,17 +252,16 @@ final class BoardCover {
     }
 
     /**
-     * The Control Centre's tile: on for the game on now (Match mode's, else the one on the channel last tuned, looked
-     * for at once), else for the next game put on; or off again. Main thread.
+     * The Control Centre's tile (and the Scoreboard card's top row with no game chosen): up by hand now, the scoreboard
+     * for the game on (Match mode's, else the one on the channel last tuned, looked for at once; the logo's cover alone
+     * meanwhile); or off again. Main thread.
      */
     static void toggle(Context c) {
         if (active(c)) {
             stop(c, "switched off");
             return;
         }
-        ScoresTicker.Game mm = matchModeGame(c);
-        start(c, mm);
-        if (mm == null) findGameOnNow(c);
+        manualOn(c, matchModeGame(c), false);
     }
 
     /** Match mode's game, while it is on and the game not over (main thread). */
@@ -192,19 +303,19 @@ final class BoardCover {
     /** The game waited for, found: the board is on for it from now, for four hours from its kick-off at most. */
     private static void take(Context c, ScoresTicker.Game g) {
         long now = System.currentTimeMillis();
-        prefs(c).edit().putString("game", g.id).putString("label", MatchMode.label(g))
-                .putLong("until", Math.min(Math.max(now, g.kickoff) + MAX_MS, now + MAX_MS + 3_600_000L)).apply();
+        SharedPreferences.Editor e = prefs(c).edit().putString("game", g.id).putString("label", MatchMode.label(g));
+        // Up by hand: until switched off, not until the game's end.
+        if (!prefs(c).getBoolean("manual", false)) e.putLong("until", Math.min(Math.max(now, g.kickoff) + MAX_MS, now + MAX_MS + 3_600_000L));
+        e.apply();
         AlertLog.note(c, "scoreboard on for the game put on: " + AlertLog.game(g));
         resume(c);
     }
 
-    /** The tile's line: "Off", "On · Everton v Spurs", "On · the game you put on". */
+    /** The tile's line: "Off · OK: up now", "Up by hand · Everton v Spurs", "On · Everton v Spurs" (by itself). */
     static String words(Context c) {
         String id = game(c);
-        if (id == null) return "Off · OK for the game on";
-        if (id.isEmpty()) return "On · the game you put on";
-        String l = label(c);
-        return "On · " + (l.isEmpty() ? "this game" : l);
+        if (id == null) return "Off · OK: up now over the channel";
+        return (prefs(c).getBoolean("manual", false) ? "Up by hand · " : "On · ") + showingWords(c);
     }
 
     // ---- its looks -------------------------------------------------------------------------------------------------
@@ -1382,6 +1493,7 @@ final class BoardCover {
     static void resume(Context c) {
         app = c.getApplicationContext();
         if (!active(app) && !adjusting && testUntil <= System.currentTimeMillis()) return;
+        if (manual(app)) standby(app, true);
         main().removeCallbacks(tick);
         main().post(tick);
     }
@@ -1455,14 +1567,20 @@ final class BoardCover {
             hideAll();
         }
         if (!active(c)) {
-            if (prefs(c).getBoolean("on", false)) stop(c, "four hours on");
+            if (prefs(c).getBoolean("on", false)) stop(c, prefs(c).getBoolean("manual", false) ? "twelve hours up by hand" : "four hours on");
             hideAll();
             return 0;
         }
+        // Up by hand: over the channel whatever is found on it, the logo's cover alone when there is no game to show.
+        boolean byHand = prefs(c).getBoolean("manual", false);
         String id = game(c);
-        if (id == null || id.isEmpty()) {
+        if (id == null || id.isEmpty() || NO_GAME.equals(id)) {
+            if (byHand && canShow(c)) {
+                logoOnly(c, now);
+                return 1_000L;
+            }
             hideAll();
-            return 5_000L;
+            return byHand ? 1_000L : 5_000L;
         }
         if (!canShow(c)) {
             hideAll();
@@ -1471,11 +1589,15 @@ final class BoardCover {
         Reading r = screen(c, id, now);
         if (r == null || r.state == 1) {
             // Before kick-off: up in its last minutes with the kick-off's time on its clock (the kick-off and the
-            // line-ups slide out of it).
+            // line-ups slide out of it); by hand, from the moment it is put up.
             ScoresTicker.Game g = GoalWatchService.latestGame(id);
             // A late kick-off (or the scores a poll behind) keeps it up as it was, ready for the game (OverlayPrompt.LATE_MS).
-            if (g != null && g.state == 1 && g.kickoff - now <= PRE_MS && now - g.kickoff <= OverlayPrompt.LATE_MS) {
+            if (g != null && g.state == 1 && (byHand || g.kickoff - now <= PRE_MS && now - g.kickoff <= OverlayPrompt.LATE_MS)) {
                 if (ensureWindows(c)) showGame(c, now, false, preLook(g));
+                return 1_000L;
+            }
+            if (byHand) {
+                logoOnly(c, now);
                 return 1_000L;
             }
             closeAll();
@@ -1489,16 +1611,19 @@ final class BoardCover {
                 prefs(c).edit().putLong("ft", ft).apply();
                 poke();
             }
-            if (now - ft > AFTER_FT_MS) {
+            if (now - ft > AFTER_FT_MS && !byHand) {
                 stop(c, "full time");
                 return 0;
             }
             if (now - ft > FT_SHOWN_MS && (!dropping || now - ft > FT_GONE_MS)) {
-                closeAll();
+                // Up by hand: the board rests, the logo's cover stays until switched off.
+                if (byHand) logoOnly(c, now);
+                else closeAll();
                 return 5_000L;
             }
         }
-        if (r.halftime) {
+        // Half time: by itself the board rests after a little; up by hand it stays.
+        if (r.halftime && !byHand) {
             // Half time on the screen: up a little longer for its alert and the half's stats, then it rests.
             if (!id.equals(htFor)) {
                 htFor = id;
@@ -1682,6 +1807,41 @@ final class BoardCover {
             if (pre != null) maybeStats(c, g, null, now, true);
             else if (r != null) maybeStats(c, g, r, now, false);
         }
+    }
+
+    /**
+     * Up by hand with no game to show (none chosen, the one on the channel not found yet, or its full time gone): the
+     * cover over the channel's logo alone, the board resting (wiped away as a broadcaster's goes, if it was up).
+     */
+    private static void logoOnly(Context c, long now) {
+        if (!ensureWindows(c)) return;
+        if (column.getVisibility() == View.VISIBLE) {
+            if (fresh) {
+                column.setVisibility(View.INVISIBLE);
+            } else if (!bug.closing()) {
+                if (stats != null) stats.fold(null);
+                if (drop != null) drop.fold(null);
+                bug.close(() -> {
+                    if (column != null) column.setVisibility(View.INVISIBLE);
+                    fresh = true;
+                });
+            }
+        }
+        String channel = InStep.channel(c), key = BoardPlace.key(channel);
+        if (place == null || !key.equals(placeKey)) {
+            place = BoardPlace.get(c, channel);
+            placeKey = key;
+        }
+        if (mark != null) {
+            mark.tag(logoTag(c).on(channel));
+            mark.channelName(channel);
+            mark.live(false);
+            mark.boardLook(bug.stripLook());
+            mark.what(whatNow(c));
+            if (mark.wantsPatch()) patchSoon();
+        }
+        layout(c);
+        guard(now);
     }
 
     /** Whether the channel app has the screen to itself: not Home, the screensaver, another of the launcher's frames. */
@@ -3051,13 +3211,16 @@ final class BoardCover {
 
     /** What the menu's lines say: each switch and look as it stands. */
     static final class MenuState {
-        boolean boardShown, logoOn, nameOnly, seeThrough, find, lineups, active, sportsLook, stylesLook;
-        String look = "", logoLook = "", what = "", tag = "", note = "", style = "";
+        boolean boardShown, logoOn, nameOnly, seeThrough, find, lineups, active, manual, sportsLook, stylesLook;
+        String look = "", logoLook = "", what = "", tag = "", note = "", style = "", showing = "";
     }
 
     /** Pure: the menu's lines, as the switches stand. */
     static String[] menuLines(MenuState m) {
-        return new String[]{"Move and resize  ·  position, size, height, width",
+        return new String[]{!m.active ? "Up by hand:  ‹  Off  ›  ·  OK: the scoreboard and logo up now"
+                : "Up by hand:  ‹  " + (m.manual ? "On · " + m.showing : "On by itself · " + m.showing + ", off after full time")
+                + "  ›  ·  OK: down",
+                "Move and resize  ·  position, size, height, width",
                 "Scoreboard:  ‹  " + (m.boardShown ? "On" : "Off") + "  ›",
                 "Logo's cover:  ‹  " + (m.logoOn ? "On" : "Off") + "  ›",
                 "Scoreboard look:  ‹  " + m.look + "  ›",
@@ -3069,8 +3232,7 @@ final class BoardCover {
                 "Picture tag:  ‹  " + m.tag + "  ›",
                 "See-through, the channel's logo hidden:  ‹  " + (m.seeThrough ? "On" : "Off") + "  ›",
                 "Find the channel's scoreboard:  ‹  " + (m.find ? "On" : "Off") + "  ›  ·  OK: look again now",
-                "Line-ups on screen:  ‹  " + (m.lineups ? "On" : "Off") + "  ›",
-                m.active ? "Turn the scoreboard off" : "Turn the scoreboard on for the game on now"};
+                "Line-ups on screen:  ‹  " + (m.lineups ? "On" : "Off") + "  ›"};
     }
 
     /** The menu's state now. */
@@ -3091,6 +3253,8 @@ final class BoardCover {
         m.find = ChannelSight.on(c);
         m.lineups = lineupsOn(c);
         m.active = active(c);
+        m.manual = manual(c);
+        m.showing = showingWords(c);
         m.note = ChannelSight.note();
         return m;
     }
@@ -3226,19 +3390,19 @@ final class BoardCover {
         if (c == null || menuWin == null) return;
         switch (menuAt) {
             case 0:
+                // Up by hand now (the game on the channel, else the logo's cover alone), or down.
+                if (active(c)) stop(c, "switched off over the player");
+                else toggle(c);
+                break;
+            case 1:
                 closeMenu();
                 beginAdjust();
                 return;
-            case 9:
+            case 10:
                 // Looked for again now, on the channel on (what was seen there, and set by hand, let go).
                 if (!ChannelSight.on(c)) ChannelSight.setOn(c, true);
                 ChannelSight.lookAgain(c);
                 break;
-            case MENU_LINES - 1:
-                closeMenu();
-                if (active(c)) stop(c, "switched off over the match");
-                else toggle(c);
-                return;
             default:
                 menuStep(c, menuAt, 1);
         }
@@ -3248,35 +3412,38 @@ final class BoardCover {
     /** One line of the menu stepped on (Right, OK) or back (Left): a switch turned over, a look or a choice the next. */
     private static void menuStep(Context c, int line, int step) {
         switch (line) {
-            case 1:
-                setBoardShown(c, !boardShown(c));
+            case 0:
+                stepHand(c, step);
                 break;
             case 2:
-                setLogoOn(c, !logoOn(c));
+                setBoardShown(c, !boardShown(c));
                 break;
             case 3:
-                stepStyle(c, step);
+                setLogoOn(c, !logoOn(c));
                 break;
             case 4:
-                stepLogoLook(c, step);
+                stepStyle(c, step);
                 break;
             case 5:
+                stepLogoLook(c, step);
+                break;
+            case 6:
                 if (logoLook(c) == LogoMark.Look.STYLES) stepLogoStyle(c, step);
                 else stepLogoWhat(c, step);
                 break;
-            case 6:
+            case 7:
                 setLogoNameOnly(c, !logoNameOnly(c));
                 break;
-            case 7:
+            case 8:
                 stepLogoTag(c, step);
                 break;
-            case 8:
+            case 9:
                 setLogoSeeThrough(c, !logoSeeThrough(c));
                 break;
-            case 9:
+            case 10:
                 ChannelSight.setOn(c, !ChannelSight.on(c));
                 break;
-            case 10:
+            case 11:
                 setLineupsOn(c, !lineupsOn(c));
                 break;
             default:
@@ -3284,7 +3451,7 @@ final class BoardCover {
         }
     }
 
-    /** The menu's lines: move, the board, the cover, the looks, what is on, the name, the tag, see-through, find, line-ups, off. */
+    /** The menu's lines: up by hand, move, the board, the cover, the looks, what is on, the name, the tag, see-through, find, line-ups. */
     private static final int MENU_LINES = 12;
 
     static boolean menuShowing() {
