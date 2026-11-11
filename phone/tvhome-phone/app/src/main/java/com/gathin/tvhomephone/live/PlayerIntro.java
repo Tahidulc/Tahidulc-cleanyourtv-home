@@ -107,6 +107,15 @@ final class PlayerIntro {
         prefs(c).edit().putString("lineups_style", style).apply();
     }
 
+    /** The matchday intro over the last break before kick-off (intro.html, with the real-footage film): on unless off. */
+    static boolean introOn(Context c) {
+        return prefs(c).getBoolean("intro", true);
+    }
+
+    static void setIntro(Context c, boolean on) {
+        prefs(c).edit().putBoolean("intro", on).apply();
+    }
+
     static boolean popupOn(Context c) {
         return !"off".equals(popupStyle(c));
     }
@@ -138,6 +147,57 @@ final class PlayerIntro {
         String kind = was == null ? null : Moments.moment(was, now);
         if (kind != null && popupOn(a)) popup(g, kind, "kickoff".equals(kind) ? null : new int[]{g.homeScore, g.awayScore}, null, null);
         if ("pre".equals(now) && g.kickoff > 0 && lineupsOn(a) && Moments.lineupsDue(lineupsStyle(a), g.kickoff - screenNow)) lineups(g);
+        if ("pre".equals(now) && g.kickoff > 0 && introOn(a) && Moments.introDue(g.kickoff - screenNow)) intro(g);
+    }
+
+    /** The matchday intro over the picture, once a game: the film, then the competition's trophy and the Matchday card. */
+    private void intro(Game g) {
+        String key = g.id + "|intro";
+        if (shown.contains(key) || showing() || fetching || !canShow.getAsBoolean()) return;
+        shown.add(key);
+        try {
+            show(BroadcastView.page(a, "intro", BroadcastData.intro(match(g), true), this::gone), "intro");
+        } catch (Exception ignored) {
+            // not this time
+        }
+    }
+
+    /** Tests: the matchday intro now, with the game watched (its trophy and teams), else a recent Premier League game. */
+    void testIntro(Game watching, IntConsumer note) {
+        if (showing() || fetching) {
+            note.accept(R.string.live7_wait);
+            return;
+        }
+        fetching = true;
+        Context app = a.getApplicationContext();
+        io.execute(() -> {
+            Game g = null;
+            try {
+                g = watching != null && watching.id != null ? watching : TestAlerts.candidates(null).get(0);
+            } catch (RuntimeException ignored) {
+                // the made-up one, then
+            }
+            if (g == null) g = TestAlerts.sample(app, null);
+            JSONObject cfg = null;
+            try {
+                cfg = BroadcastData.intro(match(g), true);
+            } catch (Exception ignored) {
+                // said below
+            }
+            JSONObject got = cfg;
+            h.post(() -> {
+                fetching = false;
+                if (got == null) {
+                    note.accept(R.string.live7_no_game);
+                    return;
+                }
+                if (showing() || a.isFinishing()) {
+                    note.accept(R.string.live7_wait);
+                    return;
+                }
+                show(BroadcastView.page(a, "intro", got, this::gone), "intro");
+            });
+        });
     }
 
     /** A goal reached the picture (1 home, 2 away): the restart's pop-up in a little while, if the half goes on. */
@@ -252,7 +312,7 @@ final class PlayerIntro {
 
     /** The line-ups (either) and the strap (which draws the board itself as it folds into it): the board out of the way. */
     private static boolean hidesBoard(String kind) {
-        return "lineups".equals(kind) || "stadium".equals(kind) || "strap".equals(kind);
+        return "lineups".equals(kind) || "stadium".equals(kind) || "strap".equals(kind) || "intro".equals(kind);
     }
 
     private void gone(BroadcastView v) {
@@ -284,7 +344,7 @@ final class PlayerIntro {
 
     /** Back: the line-ups fade away if they are on (true), before anything else Back does. */
     boolean back() {
-        if (!showing() || !("lineups".equals(viewKind) || "stadium".equals(viewKind))) return false;
+        if (!showing() || !("lineups".equals(viewKind) || "stadium".equals(viewKind) || "intro".equals(viewKind))) return false;
         view.back();
         return true;
     }

@@ -206,6 +206,7 @@ public final class BoardSettings {
         styles(c, col, c.getString(R.string.live33_classic_lineups), new String[]{"classic", "stadium", "off"},
                 new String[]{c.getString(R.string.live35_style_beam), c.getString(R.string.live35_style_stadium), c.getString(R.string.live35_style_off)},
                 PlayerIntro.lineupsStyle(c), st -> PlayerIntro.setLineupsStyle(c, st));
+        row(c, col, c.getString(R.string.live45_intro), PlayerIntro.introOn(c), on -> PlayerIntro.setIntro(c, on));
         row(c, col, c.getString(R.string.live34_swish), PlayerIntro.swishOn(c), on -> PlayerIntro.setSwishOn(c, on));
         styles(c, col, c.getString(R.string.live35_goal_sound), com.gathin.broadcast.Sfx.GOALS, com.gathin.broadcast.Sfx.GOAL_NAMES,
                 PlayerIntro.goalSound(c), key -> PlayerIntro.setGoalSound(c, key));

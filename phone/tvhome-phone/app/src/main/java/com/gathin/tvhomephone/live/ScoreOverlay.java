@@ -1275,6 +1275,13 @@ final class ScoreOverlay implements ScoreBoard.Source {
         else intro.testLineups(style, host.game(), note);
     }
 
+    /** Tests: the matchday intro, now (PlayerIntro.testIntro). */
+    void testIntro(IntConsumer note) {
+        int no = testBlocked(false);
+        if (no != 0) note.accept(no);
+        else intro.testIntro(host.game(), note);
+    }
+
     /** Tests: one of the scoreboard's moments (PlayerTests.BOARD_TESTS) now, on its game or a made-up one. */
     void testBoard(String what, IntConsumer note) {
         int no = testBlocked(true);

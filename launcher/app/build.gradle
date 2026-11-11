@@ -54,7 +54,7 @@ android {
     sourceSets {
         main {
             java.srcDirs += ['../../overlays/java']
-            // and the TV's own: the matchday intro's real-footage film (24 MB, not in the phone app)
+            // and the TV's own: the matchday intro's real-footage film (24 MB; the phone app has it too)
             assets.srcDirs += ['../../overlays/assets', '../../overlays/assets-tv']
         }
         test {

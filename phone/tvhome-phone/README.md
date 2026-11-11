@@ -352,6 +352,8 @@ Both La Liga elevens get their own pictures the first time a club is seen (4.43)
 
 A La Liga player not yet photographed keeps his face on the drawn body rather than La Liga's black stand-in (4.44).
 
+The matchday intro (4.45): four minutes before kick-off on the picture, over the channel's last break, 40 seconds of real footage cut to its own music, then the competition's trophy and the Whitebrook Road Sports MATCHDAY card, as on the TV launcher (4.60). A switch in the scoreboard settings; under Tests, Line-ups has a Matchday intro chip; Back fades it away.
+
 Subtitles (CC in the film's player): the film's or episode's own, from your playlist's stream, come first, in the
 languages you choose (Settings, Subtitles, in order). When it has none, OpenSubtitles.com is looked in by the title's
 TMDB id (the series' with its season and episode), best first: your languages, the ones that fit the copy playing (its

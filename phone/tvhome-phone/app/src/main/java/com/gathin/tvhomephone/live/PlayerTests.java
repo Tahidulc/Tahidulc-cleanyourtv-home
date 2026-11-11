@@ -37,7 +37,7 @@ final class PlayerTests {
     static final String ALL = "all", LINEUPS_ALERT = "lineups_alert";
     /** The kick-off pop-up's moments (both styles), and the line-ups' two styles. */
     static final String[] MOMENTS = {"kickoff", "restart", "second"};
-    static final String[] LINEUP_STYLES = {"lineups", "stadium"};
+    static final String[] LINEUP_STYLES = {"lineups", "stadium", "intro"};
     /** The scoreboard's own: a goal each way (with the goal sound), its scorer, the stats, the line-up card, a
      * substitution, VAR checking, the added time's "+N". */
     static final String[] BOARD_TESTS = {"goal_home", "goal_away", "scorer", "stats", "card", "sub", "var", "added"};
@@ -143,7 +143,8 @@ final class PlayerTests {
                 overlay.testPopup(POPUP.equals(group) ? "classic" : "strap", id, note);
                 break;
             case LINEUPS:
-                overlay.testLineups(id, note);
+                if ("intro".equals(id)) overlay.testIntro(note);
+                else overlay.testLineups(id, note);
                 break;
             case BOARD:
                 overlay.testBoard(id, note);
@@ -207,7 +208,8 @@ final class PlayerTests {
                 return c.getString("kickoff".equals(id) ? R.string.live7_kickoff : "restart".equals(id) ? R.string.live7_restart
                         : R.string.live7_second);
             case LINEUPS:
-                return c.getString("stadium".equals(id) ? R.string.live35_style_stadium : R.string.live35_style_beam);
+                return c.getString("stadium".equals(id) ? R.string.live35_style_stadium : "intro".equals(id) ? R.string.live45_intro_test
+                        : R.string.live35_style_beam);
             case BOARD:
                 return c.getString(boardLabel(id));
             case SOUNDS:
