@@ -73,32 +73,6 @@ public class ChannelSightTest {
     }
 
     @Test
-    public void thePatchRunsSmoothlyFromOneEdgesColoursToTheOthers() {
-        int w = 12, h = 8, m = 2;
-        int[] px = new int[w * h];
-        // Left half of the margin green, right half blue, the inside (the logo) bright white.
-        for (int y = 0; y < h; y++) {
-            for (int x = 0; x < w; x++) {
-                boolean inside = x >= m && x < w - m && y >= m && y < h - m;
-                px[y * w + x] = inside ? 0xFFFFFFFF : x < w / 2 ? 0xFF208020 : 0xFF2020C0;
-            }
-        }
-        int[] in = LogoPatch.fill(px, w, h, m, m);
-        assertNotNull(in);
-        int iw = w - 2 * m, ih = h - 2 * m;
-        assertEquals(iw * ih, in.length);
-        // No white of the logo left in it, and green at the left giving way to blue at the right.
-        for (int c : in) assertTrue((c & 0xFFFFFF) != 0xFFFFFF);
-        int leftMid = in[(ih / 2) * iw], rightMid = in[(ih / 2) * iw + iw - 1];
-        assertTrue(((leftMid >> 8) & 0xFF) > ((rightMid >> 8) & 0xFF));
-        assertTrue((rightMid & 0xFF) > (leftMid & 0xFF));
-        // At the screen's top (no margin above): still filled, from the other three sides.
-        assertNotNull(LogoPatch.fill(px, w, h, m, 0, m, m));
-        assertNull(LogoPatch.fill(px, w, h, 0, 0, 0, 0));
-        assertArrayEquals(new int[]{4, 7}, LogoPatch.margins(48, 36, 200, 70, 20));
-    }
-
-    @Test
     public void theWordmarkSaysWhatIsOn() {
         assertEquals("premier league", SportsMark.auto("eng.1", false));
         assertEquals("football", SportsMark.auto("uefa.champions", false));

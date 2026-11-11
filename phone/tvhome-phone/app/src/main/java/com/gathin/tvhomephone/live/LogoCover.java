@@ -105,11 +105,8 @@ final class LogoCover extends View implements BurnGuard.Dims {
     private SportsMark sportsMark;
     private String what = "football";
     private boolean nameOnly, seeThrough;
-    /** See-through: what the picture is like under the channel's logo (LogoPatch), and the one before, fading over. */
-    private android.graphics.Bitmap patch, patchWas;
-    private long patchAt;
-    private static final long PATCH_FADE_MS = 250L;
-    private final Paint patchPaint = new Paint(Paint.FILTER_BITMAP_FLAG);
+    /** See-through: the channel's logo filled in under it (LogoFill), so it stands clear over the picture. */
+    private boolean filled;
     /** Whitebrook Road styles: the renderer and the style chosen (0 to BrandStyles.COUNT - 1). */
     private BrandStyles brand;
     private int styleNo;
@@ -206,7 +203,7 @@ final class LogoCover extends View implements BurnGuard.Dims {
         invalidate();
     }
 
-    /** See-through over the picture, the channel's own logo hidden by the patch under it (looks that can be). */
+    /** See-through over the picture, the channel's own logo filled in under it (looks that can be). */
     void seeThrough(boolean on) {
         if (on == seeThrough) return;
         seeThrough = on;
@@ -221,17 +218,18 @@ final class LogoCover extends View implements BurnGuard.Dims {
         if (look == Look.STYLES) invalidate();
     }
 
-    /** Whether it wants the picture round the channel's logo now (LogoPatch): see-through, in a look that can be. */
+    /** Whether it wants the channel's logo filled in under it now (LogoShape): see-through, in a look that can be. */
     boolean wantsPatch() {
         return seeThrough && look.own() && getVisibility() == VISIBLE && getWidth() > 0;
     }
 
-    /** What the picture is like under the channel's logo (null: none to be had; the look then stands on its plate). */
-    void patch(android.graphics.Bitmap b) {
-        if (b == patch) return;
-        patchWas = patch;
-        patch = b;
-        patchAt = android.os.SystemClock.uptimeMillis();
+    /**
+     * Whether the channel's logo is filled in under it (LogoFill): it then stands clear over the picture; else (its
+     * shape still being learned, a solid block, no frames to be had) on its plate.
+     */
+    void filled(boolean on) {
+        if (on == filled) return;
+        filled = on;
         invalidate();
     }
 
@@ -347,24 +345,11 @@ final class LogoCover extends View implements BurnGuard.Dims {
     }
 
     /**
-     * Whitebrook Road Sports and the 54 styles: see-through over the picture (the patch under it hiding the channel's own
-     * logo, the one before fading into the new), or on its plate when there is no patch to be had.
+     * Whitebrook Road Sports and the 54 styles: see-through over the picture (the channel's own logo filled in under it,
+     * LogoFill), or on its plate while that cannot be.
      */
     private void ownLook(Canvas cv, float w, float h) {
-        boolean clear = seeThrough && patch != null && !patch.isRecycled();
-        if (clear) {
-            r.set(0, 0, w, h);
-            long t = android.os.SystemClock.uptimeMillis() - patchAt;
-            float k = Math.min(1f, t / (float) PATCH_FADE_MS);
-            patchPaint.setAlpha(255);
-            if (patchWas != null && k < 1f && !patchWas.isRecycled()) {
-                cv.drawBitmap(patchWas, null, r, patchPaint);
-                patchPaint.setAlpha(Math.round(255 * k));
-            }
-            cv.drawBitmap(patch, null, r, patchPaint);
-            patchPaint.setAlpha(255);
-            if (k < 1f) postInvalidateOnAnimation();
-        }
+        boolean clear = seeThrough && filled;
         float in = clear ? Math.min(w, h) * 0.04f : 0f;
         if (look.event()) {
             if (channel == null) {

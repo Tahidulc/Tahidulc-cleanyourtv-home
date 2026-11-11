@@ -22,12 +22,13 @@ import java.util.concurrent.Executors;
 
 /**
  * Pictures of the screen (Android 11 and later), taken through the search helper (AppSearchService), for ChannelSight
- * (the channel's own scoreboard and clock) and LogoPatch (what is round the channel's logo): on Android 14 and later of
+ * (the channel's own scoreboard and clock) and LogoShape (the channel's logo, for see-through): on Android 14 and later of
  * TiviMate's window alone, so what the launcher puts over the picture is never in them; before that of the whole
  * screen, the launcher's own windows and all. Only the parts asked for come back, each made small by the TV's graphics
  * chip and read back small: a 4K screen is never copied whole by the CPU. Android allows one only every so often (a
  * third of a second, or a second on older TVs): asked sooner, it says no and the gap here grows to fit. Nothing is ever
- * kept or sent anywhere: each picture is let go as soon as its parts are made.
+ * sent anywhere or written down: each picture is let go as soon as its parts are made (see-through holds a few dozen small
+ * ones of the logo's place in memory while it learns the logo's shape, and keeps only that shape).
  */
 final class ScreenShots {
     private ScreenShots() {

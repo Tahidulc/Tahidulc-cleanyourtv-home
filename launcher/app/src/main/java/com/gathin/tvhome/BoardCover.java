@@ -375,7 +375,7 @@ final class BoardCover {
         setHere(c, "see_through", on ? "1" : "0", () -> setLogoSeeThrough(c, on));
         if (mark != null) {
             mark.seeThrough(seeThroughNow(c));
-            if (!seeThroughNow(c)) mark.patch(null);
+            if (!seeThroughNow(c)) unfill();
         }
         patchSoon();
     }
@@ -650,8 +650,9 @@ final class BoardCover {
     }
 
     /**
-     * See-through: Whitebrook Road Sports over the picture itself, the channel's own logo under it hidden by what is round
-     * it (LogoPatch, from the screen's pictures); where those cannot be had, it stands on its plate. Off unless chosen.
+     * See-through: Whitebrook Road Sports over the picture itself, the channel's own logo under it filled in stroke by
+     * stroke from the picture just round it (LogoShape, from pictures of TiviMate's window); on its plate while the logo's
+     * shape is learned, and where that cannot be (a solid block of a logo, no such pictures). Off unless chosen.
      */
     static boolean logoSeeThrough(Context c) {
         return prefs(c).getBoolean("see_through", false);
@@ -661,7 +662,7 @@ final class BoardCover {
         prefs(c).edit().putBoolean("see_through", on).apply();
         if (mark != null) {
             mark.seeThrough(seeThroughNow(c));
-            if (!seeThroughNow(c)) mark.patch(null);
+            if (!seeThroughNow(c)) unfill();
         }
         patchSoon();
     }
@@ -1602,6 +1603,8 @@ final class BoardCover {
     // ---- showing it ------------------------------------------------------------------------------------------------
 
     private static FrameLayout boardWin, logoWin, hintWin;
+    /** See-through's fill: the channel's logo filled in under the cover (LogoShape), in the cover's window. */
+    private static LogoFill fill;
     /** The board and, beside it in line with it, what slides out of it (the stats, an alert), drawn over their tucked ends. */
     private static FrameLayout column;
     private static BoardBug bug;
@@ -2002,7 +2005,7 @@ final class BoardCover {
             mark.live(l.live);
             mark.boardLook(bug.stripLook());
             mark.what(whatNow(c));
-            // See-through: the picture round the channel's logo, about once a second.
+            // See-through: the channel's logo learned and filled in under the cover, about three times a second.
             if (mark.wantsPatch()) patchSoon();
         }
         layout(c);
@@ -2152,9 +2155,13 @@ final class BoardCover {
             mark.style(styleNow(c));
             mark.inset(edge);
             logoWin = frame(c, mark);
+            // See-through's fill under the cover, in the same window: it never takes the burn-in step, nor dims.
+            fill = new LogoFill(c);
+            logoWin.addView(fill, 0, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
             if (!addWindow(c, logoWin)) {
                 logoWin = null;
                 mark = null;
+                fill = null;
             }
         }
         imagesFor = null;
@@ -2217,88 +2224,118 @@ final class BoardCover {
 
     private static boolean veiled;
 
-    // ---- see-through: the channel's own logo hidden under Whitebrook Road Sports (LogoPatch) ---------------------------
+    // ---- see-through: the channel's own logo filled in under Whitebrook Road Sports (LogoShape, LogoFill) ---------------
 
     private static final Runnable patchRun = BoardCover::patchNow;
     private static final ExecutorService patchIo = Executors.newSingleThreadExecutor();
     private static long patchAt;
     private static boolean patchLoop;
+    /** The logo under the cover now: its shape (learned, or kept from before) and the pictures it is learned from. */
+    private static LogoShape.Here here;
 
-    /** The patch looked at again soon, if it is wanted (the loop keeps itself going while it is). */
+    /** The fill looked at again soon, if it is wanted (the loop keeps itself going while it is). */
     private static void patchSoon() {
         if (patchLoop) return;
         patchLoop = true;
         main().post(patchRun);
     }
 
+    /** No fill under the cover: it stands on its plate. */
+    private static void unfill() {
+        if (fill != null) fill.clear();
+        if (mark != null) mark.filled(false);
+    }
+
     /**
-     * See-through: the picture round the logo's cover taken (ScreenShots, a margin wider than the cover's window, so the
-     * cover itself is never in what is used) and its inside made up from that margin (LogoPatch), for the cover to stand
-     * on; about once a second (more often where the pictures leave the launcher's windows out). Stops when not wanted.
+     * See-through: the channel's own logo under the cover learned stroke by stroke from pictures of its place (ScreenShots,
+     * of TiviMate's window alone, so the cover is never in them; kept per channel) and, about three times a second, its
+     * strokes alone filled in from the live picture just round them (LogoShape), all else under the cover the channel's
+     * own picture. The cover stands on its plate while the shape is learned, for a logo that is a solid block, and where
+     * such pictures cannot be had. Stops when not wanted.
      */
     private static void patchNow() {
         Context c = app;
-        if (c == null || mark == null || logoWin == null || !mark.wantsPatch()) {
+        if (c == null || mark == null || logoWin == null || fill == null || !mark.wantsPatch()) {
+            unfill();
             patchLoop = false;
             return;
         }
-        if (!ScreenShots.available()) {
-            // No pictures to be had here: the cover stands on its plate.
-            mark.patch(null);
+        if (!ScreenShots.available() || !ScreenShots.windowOnly()) {
+            // No pictures without the cover in them here: it stands on its plate.
+            unfill();
             patchLoop = false;
             return;
         }
-        long now = SystemClock.uptimeMillis(), every = ScreenShots.windowOnly() ? Math.max(450L, ScreenShots.gap()) : 1_000L;
-        // Not while the board stands aside for ChannelSight's look, nor with the 4K chip under the cover (in its margin).
-        if (veiled || chipWin != null || now - patchAt < every || !ScreenShots.ready()) {
-            main().postDelayed(patchRun, 200L);
+        long now = SystemClock.uptimeMillis();
+        LogoShape.Here was = here;
+        // About three a second once the logo is known (room left between for ChannelSight's own pictures), two while learning.
+        long every = was != null && was.known() ? Math.max(400L, ScreenShots.gap() + 50L) : 500L, wait = every - (now - patchAt);
+        if (veiled || wait > 0 || !ScreenShots.ready()) {
+            main().postDelayed(patchRun, wait > 0 ? Math.min(wait, 150L) : 100L);
             return;
         }
-        int[] at = new int[2];
-        mark.getLocationOnScreen(at);
-        float vw = mark.getWidth(), vh = mark.getHeight();
-        if (vw < 4 || vh < 4 || sw <= 0 || sh <= 0) {
+        WindowManager.LayoutParams lp = (WindowManager.LayoutParams) logoWin.getLayoutParams();
+        if (lp == null || lp.width < 4 * edge + 8 || lp.height < 4 * edge + 8 || sw <= 0 || sh <= 0) {
             main().postDelayed(patchRun, 500L);
             return;
         }
-        // The margins: room on each side as deep as the cover (up to the screen's edge), for the picture beside it to be
-        // mirrored in (LogoPatch.natural); at least clear of the cover's own window (its edge and the burn-in step's room).
-        float m = 3 * edge + Math.max(6f * sw / 1920f, vh * 0.16f);
-        float[] room = LogoPatch.room(at[0], at[1], vw, vh, sw, sh, m);
-        float l = at[0] - room[0], t = at[1] - room[1], r = at[0] + vw + room[2], b = at[1] + vh + room[3];
-        float rw = r - l, rh = b - t;
-        // Taken at the screen's own sharpness (a large place a little smaller), so the patch is drawn as sharp as the picture.
-        float k = Math.min(1f, Math.min(720f / Math.max(1f, rw), 420f / Math.max(1f, rh)));
-        int pw = Math.max(8, Math.round(rw * k)), ph = Math.max(8, Math.round(rh * k));
-        float kx = pw / rw, ky = ph / rh;
-        int ml = Math.round(room[0] * kx), mt = Math.round(room[1] * ky), mr = Math.round(room[2] * kx), mb = Math.round(room[3] * ky);
+        // The cover's own place on the screen (its window less the room for its edge and the burn-in step): the logo is
+        // under it. Round it, room for what the logo is told from (its softening).
+        int bx = lp.x + 2 * edge, by = lp.y + 2 * edge, bw = lp.width - 4 * edge, bh = lp.height - 4 * edge;
+        int m = Math.max(8, Math.round(LogoShape.MARGIN * sh / 1080f));
+        int x0 = Math.max(0, bx - m), y0 = Math.max(0, by - m), x1 = Math.min(sw, bx + bw + m), y1 = Math.min(sh, by + bh + m);
+        if (x1 - x0 < 8 || y1 - y0 < 8) {
+            main().postDelayed(patchRun, 500L);
+            return;
+        }
+        String key = ChannelOverlays.key(InStep.channel(c));
+        int bl = bx - x0, bt = by - y0, br = bl + bw, bb = bt + bh;
+        if (was == null || !was.same(key, sw, sh, x0, y0, x1 - x0, y1 - y0, bl, bt, br, bb)) {
+            // Another channel, or the cover moved: its shape from its file, or learned (the plate meanwhile).
+            unfill();
+            here = new LogoShape.Here(new java.io.File(c.getFilesDir(), "logo_shapes"), key, sw, sh, x0, y0, x1 - x0, y1 - y0,
+                    bl, bt, br, bb);
+        }
+        LogoShape.Here at = here;
         patchAt = now;
-        RectF part = new RectF(l / sw, t / sh, r / sw, b / sh);
-        boolean asked = ScreenShots.take(new RectF[]{part}, new int[][]{{pw, ph}}, (parts, when, own) -> {
-            Bitmap small = parts[0];
-            if (small == null || mark == null) {
+        RectF part = new RectF(x0 / (float) sw, y0 / (float) sh, x1 / (float) sw, y1 / (float) sh);
+        boolean asked = ScreenShots.take(new RectF[]{part}, new int[][]{{at.w, at.h}}, (parts, when, own) -> {
+            Bitmap got = parts[0];
+            // Only TiviMate's window: a picture of the whole screen has the cover itself in it.
+            if (got == null || !own || here != at || mark == null) {
+                if (got != null) got.recycle();
                 main().postDelayed(patchRun, 100L);
                 return;
             }
-            int w = small.getWidth(), h = small.getHeight();
+            int w = got.getWidth(), h = got.getHeight();
             int[] px = new int[w * h];
-            small.getPixels(px, 0, w, 0, 0, w, h);
-            small.recycle();
-            // Made off the main thread, on a thread of its own (the picture's light and texture carried in take a moment),
-            // then put under the cover.
+            got.getPixels(px, 0, w, 0, 0, w, h);
+            got.recycle();
+            long taken = SystemClock.uptimeMillis();
+            // Learned from and filled in on a thread of its own (learning takes a moment, now and then), then put under
+            // the cover.
             patchIo.execute(() -> {
+                LogoShape.Fill f;
                 Bitmap made = null;
                 try {
-                    int[] in = LogoPatch.best(px, w, h, ml, mt, mr, mb);
-                    int iw = w - ml - mr, ih = h - mt - mb;
-                    if (in != null && iw > 0 && ih > 0) made = Bitmap.createBitmap(in, iw, ih, Bitmap.Config.ARGB_8888);
-                } catch (RuntimeException ignored) {
-                    // the next picture, then
+                    f = at.take(px, taken);
+                    if (f != null && !f.empty()) made = Bitmap.createBitmap(f.argb, f.w, f.h, Bitmap.Config.ARGB_8888);
+                } catch (RuntimeException | OutOfMemoryError e) {
+                    f = null;
                 }
-                Bitmap got = made;
+                LogoShape.Fill done = f;
+                Bitmap b = made;
                 main().post(() -> {
-                    if (got != null && mark != null) mark.patch(got);
-                    main().postDelayed(patchRun, 100L);
+                    if (here == at && mark != null && fill != null && mark.wantsPatch()) {
+                        if (done == null) {
+                            unfill();
+                        } else {
+                            if (b != null) fill.show(b, done.x, done.y, done.x + done.w, done.y + done.h);
+                            else fill.clear();
+                            mark.filled(true);
+                        }
+                    }
+                    main().postDelayed(patchRun, 30L);
                 });
             });
         });
@@ -2367,6 +2404,7 @@ final class BoardCover {
         removeWindow(c, logoWin);
         boardWin = null;
         logoWin = null;
+        fill = null;
         column = null;
         bug = null;
         stats = null;

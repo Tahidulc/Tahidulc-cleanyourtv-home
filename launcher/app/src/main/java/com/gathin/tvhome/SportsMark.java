@@ -18,8 +18,8 @@ import java.util.Locale;
  * event") and the picture's tag after a fine bar ("| HD"). In one line, or stacked (the name small over what is on, big).
  * What is on follows the game (the Premier League's games "premier league", any other football "football", Formula 1
  * "f1"), unless one is chosen. Drawn on its own plate (stacked: in the colour of what is on), so the channel's logo under
- * it never shows, or plain over the picture (see-through) with a soft shadow, where LogoPatch has hidden the channel's own
- * logo under it. Or as a general channel (sports off): the name alone, with no sport and no competition, in the house colours
+ * it never shows, or plain over the picture (see-through) with a soft shadow, where the channel's own logo under it is
+ * filled in stroke by stroke (LogoShape). Or as a general channel (sports off): the name alone, with no sport and no competition, in the house colours
  * (stacked: "whitebrook" over "road"). The family's own words; no broadcaster's lettering or emblem.
  */
 final class SportsMark {

@@ -76,6 +76,8 @@ final class ScoreOverlay implements ScoreBoard.Source {
     /** The channel's own logo, and Homefield's over it. */
     private BugFinder.Box logo;
     private final LogoCover cover;
+    /** See-through's fill: the channel's logo filled in under the cover (LogoShape), where the logo is in the picture. */
+    private final LogoFill fill;
     /** The family's own places on this channel (Move and resize), and which channel they are for. */
     private BoardPlace mine = new BoardPlace();
     private String mineKey;
@@ -113,11 +115,15 @@ final class ScoreOverlay implements ScoreBoard.Source {
         this.host = host;
         board = new ScoreBoard(a, this);
         cover = new LogoCover(a);
+        fill = new LogoFill(a);
+        // A fresh fill several times a second here: each fades in over the one before quickly.
+        fill.fade(70L);
         com.gathin.broadcast.Sfx.warm(a, com.gathin.broadcast.Sfx.SWISH, "goal-" + PlayerIntro.goalSound(a));   // loaded before they are needed
         intro = new PlayerIntro(a, root, () -> started && !inPip && !editing, (on) -> {
             // the classic line-ups fill the picture: the scoreboard and the logo's cover out of their way meanwhile
             board.view.setAlpha(on ? 0f : 1f);
             cover.setAlpha(on ? 0f : 1f);
+            fill.setAlpha(on ? 0f : 1f);
         });
         // the intros: the channel's own sound off while one plays
         intro.hush(host::mute);
@@ -138,6 +144,8 @@ final class ScoreOverlay implements ScoreBoard.Source {
         });
         // Just over the picture and its touch layer: the tile, the buttons and the sheets stay over them.
         root.addView(cover, Math.min(2, root.getChildCount()), new FrameLayout.LayoutParams(0, 0, Gravity.TOP | Gravity.START));
+        // The fill just under the cover, over the whole picture (it draws only the logo's strokes, where they are).
+        root.addView(fill, root.indexOfChild(cover), new FrameLayout.LayoutParams(-1, -1));
         root.addView(board.view, Math.min(3, root.getChildCount()), new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.START));
         guard = new BurnGuard(a, 2f, new View[]{board.view, cover}, new BurnGuard.Dims[]{board.bug, cover});
         board.changed = guard::poke;
@@ -478,86 +486,134 @@ final class ScoreOverlay implements ScoreBoard.Source {
         return System.currentTimeMillis() - ocrOkAt < 30_000L;
     }
 
-    // ---- see-through: the channel's own logo hidden under Whitebrook Road Sports (LogoPatch) ---------------------------
+    // ---- see-through: the channel's own logo filled in under Whitebrook Road Sports (LogoShape, LogoFill) ---------------
 
     private boolean patchLoop;
-    private Bitmap patchFrame;
     private final Runnable patchRun = this::patchNow;
+    /** Filling in, on a thread of its own (one for the app: the player comes and goes, the thread stays the one). */
+    private static final java.util.concurrent.ExecutorService patchIo = java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
+        Thread t = new Thread(r, "SeeThrough");
+        t.setDaemon(true);
+        return t;
+    });
+    /** The logo under the cover now: its shape (learned, or kept from before) and the frames it is learned from. */
+    private LogoShape.Here here;
+    /** The cover's part of the frame, in the stream's own pixels; how often that could not be had running; when last asked. */
+    private Bitmap patchPart;
+    private int partMisses;
+    private long patchAt;
+
+    /** No fill under the cover: it stands on its plate. */
+    private void unfill() {
+        fill.clear();
+        cover.filled(false);
+    }
 
     /**
-     * See-through: the player's own frame copied (FrameSampler), the cover's place and a margin round it cut from it, and
-     * its inside made up from that margin (LogoPatch) for the cover to stand on; twice a second while it is wanted.
+     * See-through: the channel's own logo under the cover learned stroke by stroke from the player's own frames (the
+     * cover's part of each, in the stream's pixels; kept per channel) and, about ten times a second, its strokes alone
+     * filled in from the live picture just round them (LogoShape), all else under the cover the channel's own picture.
+     * The cover stands on its plate while the shape is learned, for a logo that is a solid block, and when the frames
+     * cannot be had. Stops when not wanted.
      */
     private void patchNow() {
         if (!started || inPip || sampler == null || !cover.wantsPatch()) {
             patchLoop = false;
-            if (!cover.wantsPatch()) cover.patch(null);
+            unfill();
             return;
         }
-        FrameLayout.LayoutParams cp = (FrameLayout.LayoutParams) cover.getLayoutParams();
-        float d = a.getResources().getDisplayMetrics().density;
-        float m = 6 * d + cp.height * 0.16f;
-        // The cover's place and, round it, room as deep as it on each side (to the picture's edge) for the picture
-        // beside it to be mirrored in (LogoPatch.natural), as fractions of the picture.
-        float x = cp.leftMargin - pfx, y = cp.topMargin - pfy;
-        float[] room = LogoPatch.room(x, y, cp.width, cp.height, pfw, pfh, m);
-        float l = (x - room[0]) / pfw, t = (y - room[1]) / pfh, r = (x + cp.width + room[2]) / pfw, b = (y + cp.height + room[3]) / pfh;
-        float cl = x / pfw, ct = y / pfh, cr = (x + cp.width) / pfw, cb = (y + cp.height) / pfh;
         int[] vp = video.videoPixels();
-        if (partMisses < 3 && vp[0] > 0 && vp[1] > 0 && r > l && b > t) {
-            // That part alone, in the stream's own pixels: as sharp as the picture itself.
-            android.graphics.Rect src = new android.graphics.Rect(Math.max(0, Math.round(l * vp[0])), Math.max(0, Math.round(t * vp[1])),
-                    Math.min(vp[0], Math.round(r * vp[0])), Math.min(vp[1], Math.round(b * vp[1])));
-            if (src.width() >= 8 && src.height() >= 8) {
-                float k = Math.min(1f, Math.min(720f / src.width(), 420f / src.height()));
-                int ow = Math.max(8, Math.round(src.width() * k)), oh = Math.max(8, Math.round(src.height() * k));
-                if (patchPart == null || patchPart.getWidth() != ow || patchPart.getHeight() != oh) {
-                    patchPart = Bitmap.createBitmap(ow, oh, Bitmap.Config.ARGB_8888);
-                }
-                float fl = (cl - l) / (r - l), ft = (ct - t) / (b - t), fr = (cr - l) / (r - l), fb = (cb - t) / (b - t);
-                boolean asked = sampler.copyPart(video.surface(), src, patchPart, (got, at) -> {
-                    Bitmap patch = got == null ? null : patchOf(got, 0, 0, 1, 1, fl, ft, fr, fb);
-                    h.post(() -> {
-                        partMisses = got == null ? partMisses + 1 : 0;
-                        if (patch != null && started) cover.patch(patch);
-                        h.postDelayed(patchRun, 350L);
-                    });
-                });
-                if (asked) return;
-            }
+        FrameLayout.LayoutParams cp = (FrameLayout.LayoutParams) cover.getLayoutParams();
+        if (vp[0] <= 0 || vp[1] <= 0 || pfw <= 1 || pfh <= 1 || cp.width <= 0 || cp.height <= 0) {
+            unfill();
+            h.postDelayed(patchRun, 500L);
+            return;
         }
-        // Else the whole frame, larger than for the rest, and the part cut from it.
-        if (patchFrame == null) patchFrame = Bitmap.createBitmap(1280, 720, Bitmap.Config.ARGB_8888);
-        Bitmap frame = patchFrame;
-        boolean asked = sampler.copy(video.surface(), frame, (got, at) -> {
-            Bitmap patch = got == null ? null : patchOf(got, l, t, r, b, cl, ct, cr, cb);
-            h.post(() -> {
-                if (patch != null && started) cover.patch(patch);
-                h.postDelayed(patchRun, 400L);
+        if (partMisses >= 3) {
+            // The frames could not be had (three times running): on its plate for a while, then tried again.
+            partMisses = 0;
+            unfill();
+            h.postDelayed(patchRun, 3_000L);
+            return;
+        }
+        // The cover's place in the stream's own pixels (the logo is under it), and round it room for what the logo is
+        // told from (its softening).
+        float kx = vp[0] / pfw, ky = vp[1] / pfh;
+        int bx = Math.round((cp.leftMargin - pfx) * kx), by = Math.round((cp.topMargin - pfy) * ky);
+        int bw = Math.round(cp.width * kx), bh = Math.round(cp.height * ky);
+        int m = Math.max(8, Math.round(LogoShape.MARGIN * vp[1] / 1080f));
+        int x0 = Math.max(0, bx - m), y0 = Math.max(0, by - m), x1 = Math.min(vp[0], bx + bw + m), y1 = Math.min(vp[1], by + bh + m);
+        if (x1 - x0 < 8 || y1 - y0 < 8) {
+            unfill();
+            h.postDelayed(patchRun, 500L);
+            return;
+        }
+        String key = chKey();
+        int bl = bx - x0, bt = by - y0, br = bl + bw, bb = bt + bh;
+        if (here == null || !here.same(key, vp[0], vp[1], x0, y0, x1 - x0, y1 - y0, bl, bt, br, bb)) {
+            // Another channel, another picture size, or the cover moved: its shape from its file, or learned (the plate
+            // meanwhile).
+            unfill();
+            here = new LogoShape.Here(new java.io.File(a.getFilesDir(), "logo_shapes"), key, vp[0], vp[1], x0, y0, x1 - x0, y1 - y0,
+                    bl, bt, br, bb);
+        }
+        LogoShape.Here at = here;
+        long now = android.os.SystemClock.uptimeMillis(), wait = (at.known() ? 90L : 300L) - (now - patchAt);
+        if (wait > 0) {
+            h.postDelayed(patchRun, wait);
+            return;
+        }
+        if (patchPart == null || patchPart.getWidth() != at.w || patchPart.getHeight() != at.h) {
+            patchPart = Bitmap.createBitmap(at.w, at.h, Bitmap.Config.ARGB_8888);
+        }
+        patchAt = now;
+        Bitmap into = patchPart;
+        boolean asked = sampler.copyPart(video.surface(), new android.graphics.Rect(x0, y0, x1, y1), into, (got, when) -> {
+            // On the sampler's thread: the pixels out of the frame, and the frame let go for the next.
+            int[] px = null;
+            if (got != null && got.getWidth() == at.w && got.getHeight() == at.h) {
+                px = new int[at.w * at.h];
+                got.getPixels(px, 0, at.w, 0, 0, at.w, at.h);
+            }
+            int[] pixels = px;
+            long taken = android.os.SystemClock.uptimeMillis();
+            patchIo.execute(() -> {
+                LogoShape.Fill f = null;
+                Bitmap made = null;
+                if (pixels != null) {
+                    try {
+                        f = at.take(pixels, taken);
+                        if (f != null && !f.empty()) made = Bitmap.createBitmap(f.argb, f.w, f.h, Bitmap.Config.ARGB_8888);
+                    } catch (RuntimeException | OutOfMemoryError e) {
+                        f = null;
+                    }
+                }
+                LogoShape.Fill done = f;
+                Bitmap b = made;
+                h.post(() -> {
+                    partMisses = pixels == null ? partMisses + 1 : 0;
+                    if (started && here == at && cover.wantsPatch()) {
+                        if (done == null) {
+                            unfill();
+                        } else {
+                            if (b != null) {
+                                // From the stream's pixels to the screen's: where the picture is, where the root is.
+                                int[] rl = new int[2];
+                                root.getLocationOnScreen(rl);
+                                float sx = pfw / vp[0], sy = pfh / vp[1];
+                                fill.show(b, rl[0] + pfx + done.x * sx, rl[1] + pfy + done.y * sy,
+                                        rl[0] + pfx + (done.x + done.w) * sx, rl[1] + pfy + (done.y + done.h) * sy);
+                            } else {
+                                fill.clear();
+                            }
+                            cover.filled(true);
+                        }
+                    }
+                    h.postDelayed(patchRun, 10L);
+                });
             });
         });
-        if (!asked) h.postDelayed(patchRun, 250L);
-    }
-
-    /** The see-through patch's part of the picture alone (its own pixels), and how often that could not be had running. */
-    private Bitmap patchPart;
-    private int partMisses;
-
-    /** The patch from a frame: the part (l, t, r, b) cut out, its inside (the cover, cl to cb) filled from the rest. Pure enough. */
-    static Bitmap patchOf(Bitmap frame, float l, float t, float r, float b, float cl, float ct, float cr, float cb) {
-        int fw = frame.getWidth(), fh = frame.getHeight();
-        int x0 = Math.max(0, Math.round(l * fw)), y0 = Math.max(0, Math.round(t * fh));
-        int x1 = Math.min(fw, Math.round(r * fw)), y1 = Math.min(fh, Math.round(b * fh));
-        int ix0 = Math.max(x0, Math.round(cl * fw)), iy0 = Math.max(y0, Math.round(ct * fh));
-        int ix1 = Math.min(x1, Math.round(cr * fw)), iy1 = Math.min(y1, Math.round(cb * fh));
-        int w = x1 - x0, h = y1 - y0;
-        if (w < 4 || h < 4 || ix1 <= ix0 || iy1 <= iy0) return null;
-        int[] px = new int[w * h];
-        frame.getPixels(px, 0, w, x0, y0, w, h);
-        int ml = ix0 - x0, mt = iy0 - y0, mr = x1 - ix1, mb = y1 - iy1;
-        int[] in = LogoPatch.best(px, w, h, ml, mt, mr, mb);
-        int iw = w - ml - mr, ih = h - mt - mb;
-        return in == null || iw <= 0 || ih <= 0 ? null : Bitmap.createBitmap(in, iw, ih, Bitmap.Config.ARGB_8888);
+        if (!asked) h.postDelayed(patchRun, 120L);
     }
 
     /** Back over the player: the line-ups beside the board closed if they are out. */
@@ -757,8 +813,10 @@ final class ScoreOverlay implements ScoreBoard.Source {
             }
         }
         cover.setVisibility(show ? View.VISIBLE : View.GONE);
-        // See-through: the picture round the channel's logo, a couple of times a second.
-        if (show && cover.wantsPatch() && !patchLoop) {
+        // See-through: the channel's logo learned and filled in under the cover, several times a second.
+        if (!show || !cover.wantsPatch()) {
+            unfill();
+        } else if (!patchLoop) {
             patchLoop = true;
             h.post(patchRun);
         }

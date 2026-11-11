@@ -7,7 +7,8 @@
      key helper (a TCL, whose remote loses its key repeat while any service filters keys): switched on and off at
      runtime (AppSearchService.keysForPopup), never otherwise. Pictures of the screen (Android 11 and later) while a
      match plays in TiviMate under the scoreboard, to find the channel's own scoreboard and read its clock
-     (ChannelSight) and to see round the channel's logo (LogoPatch): made small at once, never kept or sent. -->
+     (ChannelSight) and to learn the channel's logo stroke by stroke for see-through (LogoShape): made small at once,
+     never sent, never written down (only the logo's learned shape is kept, no picture). -->
 <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
     android:accessibilityFeedbackType="feedbackGeneric"
     android:canRetrieveWindowContent="true"

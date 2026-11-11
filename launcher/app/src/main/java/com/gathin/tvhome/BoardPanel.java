@@ -421,8 +421,9 @@ final class BoardPanel extends SportPanel {
         Row see = row("See-through, the channel's logo hidden", true);
         see.on = () -> BoardCover.logoSeeThrough(c);
         see.words = () -> !BoardCover.logoSeeThrough(c) ? "Off · on its own plate over the logo"
-                : ChannelSight.possible() ? "The wordmark, Event and the styles on the picture itself, the channel's logo filled in from round it"
-                : "Needs the search helper on (Android 11 and later); on its plate meanwhile";
+                : android.os.Build.VERSION.SDK_INT < 34 ? "Needs Android 14 (a picture without the cover in it); on its plate here"
+                : ChannelSight.possible() ? "The wordmark, Event and the styles on the live picture: the channel's logo learned, its strokes alone filled in (on its plate while it learns a channel's, and for a solid block)"
+                : "Needs the search helper on; on its plate meanwhile";
         see.ok = () -> BoardCover.setLogoSeeThrough(c, !BoardCover.logoSeeThrough(c));
         add(see);
         heading("LOGO COVER LOOK: THE COMPETITION'S, GLASS AND BROADCAST");
