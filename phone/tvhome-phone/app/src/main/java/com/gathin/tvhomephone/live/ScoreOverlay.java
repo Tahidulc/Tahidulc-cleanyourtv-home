@@ -149,17 +149,137 @@ final class ScoreOverlay implements ScoreBoard.Source {
         video.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> h.post(this::place));
     }
 
+    // ---- up by hand, and each channel's own -------------------------------------------------------------------------
+
+    /** The channel playing's key (null for none). */
+    private String chKey() {
+        Channel ch = host.current();
+        return ch == null ? null : ch.key;
+    }
+
+    /** This channel is set to never have them. */
+    private boolean neverHere() {
+        return ChannelOverlays.NEVER.equals(ChannelOverlays.mode(a, chKey()));
+    }
+
+    /** Up by hand here: switched on by hand, or this channel set to always have them (never on one set Never). */
+    private boolean byHand() {
+        String m = ChannelOverlays.mode(a, chKey());
+        return !ChannelOverlays.NEVER.equals(m) && (ScoreBoard.handOn(a) || ChannelOverlays.ALWAYS.equals(m));
+    }
+
+    /** Whether the scoreboard and the mark are wanted over this channel at all. */
+    private boolean wanted() {
+        return !neverHere() && (ScoreBoard.on(a) || byHand());
+    }
+
+    /** The board out of sight while its clock and score run: hidden by hand, a channel set Never, up by hand for the mark alone. */
+    private boolean boardHidden() {
+        return !ScoreBoard.boardShown(a) || neverHere()
+                || ScoreBoard.handOn(a) && ScoreBoard.NO_GAME.equals(ScoreBoard.handGame(a));
+    }
+
+    /** The mark's look over this channel: its own, else the general one. */
+    private LogoCover.Look lookHere() {
+        return ChannelOverlays.lookOf(ChannelOverlays.look(a, chKey()), ScoreBoard.logoCover(a));
+    }
+
+    /** The look chosen in Move and resize: this channel's when it has its own, else the general one. */
+    private void setLookHere(LogoCover.Look l) {
+        if (ChannelOverlays.look(a, chKey()) != null) ChannelOverlays.setLook(a, chKey(), l);
+        else ScoreBoard.setLogoCover(a, l);
+    }
+
+    private int styleHere() {
+        int own = ChannelOverlays.look(a, chKey()) != null ? ChannelOverlays.style(a, chKey()) : -1;
+        return own >= 0 ? own : ScoreBoard.logoStyle(a);
+    }
+
+    /** The game put up by hand, read (null: the channel's own, none, or still being read). */
+    private Game handGame;
+    private String handFor = "";
+
+    /** Up by hand now: for g (null: the channel's own game), or the mark alone (logoOnly). */
+    void hand(Game g, boolean logoOnly) {
+        String id = logoOnly ? ScoreBoard.NO_GAME : g == null || g.id == null ? "" : g.id;
+        String label = g == null || logoOnly ? "" : (g.home + " v " + g.away);
+        ScoreBoard.setHand(a, true, id, label);
+        handGame = logoOnly ? null : g;
+        handFor = id;
+        refresh();
+    }
+
+    /** Down again: as the general settings and the channel's own say. */
+    void handOff() {
+        ScoreBoard.setHand(a, false, "", "");
+        handGame = null;
+        handFor = "";
+        refresh();
+    }
+
+    boolean handOn() {
+        return ScoreBoard.handOn(a);
+    }
+
+    /** The channel's own setting changed (the options' "This channel"). */
+    void channelChanged() {
+        refresh();
+        restyle();
+    }
+
+    /** Up, hidden or away as by hand and the channel's own setting say now. */
+    private void refresh() {
+        if (!started && wanted()) start();
+        if (!started) return;
+        board.view.setVisibility(inPip || !wanted() ? View.GONE : View.VISIBLE);
+        board.hidden(boardHidden());
+        String id = ScoreBoard.handOn(a) ? ScoreBoard.handGame(a) : "";
+        if (!id.equals(handFor) || (handGame == null && !id.isEmpty() && !ScoreBoard.NO_GAME.equals(id))) {
+            handFor = id;
+            handGame = null;
+            readHandGame(id);
+        }
+        board.changed();
+        place();
+        h.removeCallbacks(look);
+        h.postDelayed(look, 1500);
+    }
+
+    /** The game up by hand read again (after the player started afresh): from today's games. */
+    private void readHandGame(String id) {
+        if (id.isEmpty() || ScoreBoard.NO_GAME.equals(id)) return;
+        App.io.execute(() -> {
+            Game found = null;
+            try {
+                for (Game g : com.gathin.tvhomephone.sports.OnAir.today(60_000L)) if (id.equals(g.id)) found = g;
+            } catch (RuntimeException ignored) {
+                // the channel's own meanwhile
+            }
+            Game got = found;
+            App.main.post(() -> {
+                if (got == null || !id.equals(handFor) || !started) return;
+                handGame = got;
+                board.changed();
+            });
+        });
+    }
+
     void start() {
-        if (started || !ScoreBoard.on(a)) {
-            board.view.setVisibility(ScoreBoard.on(a) ? View.VISIBLE : View.GONE);
+        if (started || !wanted()) {
+            board.view.setVisibility(wanted() ? View.VISIBLE : View.GONE);
             return;
         }
         started = true;
         up = true;
         board.view.setVisibility(inPip ? View.GONE : View.VISIBLE);
         board.start();
-        // Switched off in Move and resize: its clock and score go on, unseen, and the mark over the logo is its own.
-        board.hidden(!ScoreBoard.boardShown(a));
+        // Switched off in Move and resize (or a channel set Never, or up by hand for the mark alone): its clock and
+        // score go on, unseen, and the mark over the logo is its own.
+        board.hidden(boardHidden());
+        if (ScoreBoard.handOn(a) && handGame == null) {
+            handFor = ScoreBoard.handGame(a);
+            readHandGame(handFor);
+        }
         guard.start();
         if (sampler == null) sampler = new FrameSampler();
         h.postDelayed(look, 4000);
@@ -204,6 +324,13 @@ final class ScoreOverlay implements ScoreBoard.Source {
         h.removeCallbacks(look);
         h.removeCallbacks(readClock);
         if (started) h.postDelayed(look, 4000);
+        // Another channel: its own setting (never, always, its logo) from now.
+        if (!started && wanted()) start();
+        else if (started) {
+            board.view.setVisibility(inPip || !wanted() ? View.GONE : View.VISIBLE);
+            board.hidden(boardHidden());
+            cover.look(lookHere());
+        }
     }
 
     /** The channel's delay changed (the alerts' chips, "It's just happened"). */
@@ -217,7 +344,7 @@ final class ScoreOverlay implements ScoreBoard.Source {
         inPip = in;
         // In the small window the board stays, small, in the same look, its clock going on: no drops, no covers.
         board.small(in);
-        board.view.setVisibility(!ScoreBoard.on(a) ? View.GONE : View.VISIBLE);
+        board.view.setVisibility(!wanted() ? View.GONE : View.VISIBLE);
         place();
         // Back from the small window: the channel's scoreboard looked for, and its clock read, again.
         if (!in && started) {
@@ -245,7 +372,8 @@ final class ScoreOverlay implements ScoreBoard.Source {
         ScoreBoard.setOn(a, on);
         if (on) {
             start();
-        } else {
+        } else if (!wanted()) {
+            // (Up by hand, or a channel set to always have them, keeps them up.)
             stop();
             board.view.setVisibility(View.GONE);
         }
@@ -258,7 +386,7 @@ final class ScoreOverlay implements ScoreBoard.Source {
 
     /** Whether the board shows in the small window (the old text line there is then not needed). */
     boolean inSmallWindow() {
-        return started && inPip && ScoreBoard.on(a) && board.showing();
+        return started && inPip && wanted() && board.showing();
     }
 
     /** Whether the channel's clock was read off its scoreboard lately. */
@@ -338,9 +466,9 @@ final class ScoreOverlay implements ScoreBoard.Source {
     /** The look or the logo's cover changed in Options. */
     void restyle() {
         board.bug.style(ScoreBoard.style(a));
-        cover.look(ScoreBoard.logoCover(a));
+        cover.look(lookHere());
         place();
-        if (started && ScoreBoard.logoCover(a) != LogoCover.Look.OFF) {
+        if (started && lookHere() != LogoCover.Look.OFF) {
             h.removeCallbacks(look);
             h.post(look);
         }
@@ -357,6 +485,8 @@ final class ScoreOverlay implements ScoreBoard.Source {
     }
 
     @Override public Game game() {
+        // Up by hand for a game: that one, as the channel's own.
+        if (handGame != null && byHand() && ScoreBoard.handOn(a) && handGame.id != null && handGame.id.equals(ScoreBoard.handGame(a))) return handGame;
         return host.game();
     }
 
@@ -469,9 +599,11 @@ final class ScoreOverlay implements ScoreBoard.Source {
         int boardLeft = left, boardTop = top;
         // Homefield's mark over the channel's logo: where the family put it, else over the logo found, its size and
         // a little over.
-        LogoCover.Look look = ScoreBoard.logoCover(a);
-        boolean base = look != LogoCover.Look.OFF && started && !inPip && ScoreBoard.on(a);
-        boolean show = base && (own.logo() || logo != null);
+        LogoCover.Look look = lookHere();
+        boolean base = look != LogoCover.Look.OFF && started && !inPip && wanted();
+        // Up by hand: the mark shows whether or not the channel's logo was found (top right of the picture then).
+        boolean hand = byHand();
+        boolean show = base && (own.logo() || logo != null || hand);
         if (show) {
             FrameLayout.LayoutParams cp = (FrameLayout.LayoutParams) cover.getLayoutParams();
             if (own.logo()) {
@@ -479,6 +611,11 @@ final class ScoreOverlay implements ScoreBoard.Source {
                 cp.height = Math.max(Math.round(8 * d), Math.round(own.lh * fh));
                 cp.leftMargin = Math.max(0, Math.min(Math.round(fx + own.lx * fw), root.getWidth() - cp.width));
                 cp.topMargin = Math.max(0, Math.min(Math.round(fy + own.ly * fh), root.getHeight() - cp.height));
+            } else if (logo == null) {
+                cp.width = Math.max(Math.round(12 * d), Math.round(0.13f * fw));
+                cp.height = Math.max(Math.round(8 * d), Math.round(0.075f * fh));
+                cp.leftMargin = Math.max(0, Math.min(Math.round(fx + (1 - 0.035f) * fw) - cp.width, root.getWidth() - cp.width));
+                cp.topMargin = Math.max(0, Math.min(Math.round(fy + 0.05f * fh), root.getHeight() - cp.height));
             } else {
                 float pad = Math.max(2 * d, logo.height() * fh * 0.12f);
                 cp.leftMargin = Math.round(fx + logo.left * fw - pad);
@@ -503,7 +640,7 @@ final class ScoreOverlay implements ScoreBoard.Source {
                 cover.what(ScoreBoard.whatFor(ScoreBoard.logoWhat(a), board.compName(), board.f1()));
                 cover.nameOnly(ScoreBoard.logoNameOnly(a));
                 cover.seeThrough(ScoreBoard.logoSeeThrough(a));
-                cover.style(ScoreBoard.logoStyle(a));
+                cover.style(styleHere());
             }
         }
         cover.setVisibility(show ? View.VISIBLE : View.GONE);
@@ -556,7 +693,7 @@ final class ScoreOverlay implements ScoreBoard.Source {
      * takes no swipes meanwhile.
      */
     void adjust() {
-        if (editing || !started || inPip || !ScoreBoard.on(a)) return;
+        if (editing || !started || inPip || !wanted()) return;
         Channel ch = host.current();
         if (ch == null) return;
         host.hideControls();
@@ -566,7 +703,7 @@ final class ScoreOverlay implements ScoreBoard.Source {
         float d = a.getResources().getDisplayMetrics().density;
         // Started from where they are now.
         boardFromHere();
-        if (!mine.logo() && ScoreBoard.logoCover(a) != LogoCover.Look.OFF) logoFromHere();
+        if (!mine.logo() && lookHere() != LogoCover.Look.OFF) logoFromHere();
         shield = new View(a);
         shield.setBackgroundColor(0x40000000);
         shield.setClickable(true);
@@ -575,7 +712,7 @@ final class ScoreOverlay implements ScoreBoard.Source {
         panel = AdjustPanel.build(a, new AdjustPanel.Actions() {
             @Override public void boardShown(boolean on) {
                 ScoreBoard.setBoardShown(a, on);
-                board.hidden(!on);
+                board.hidden(boardHidden());
                 place();
             }
 
@@ -598,7 +735,7 @@ final class ScoreOverlay implements ScoreBoard.Source {
             }
 
             @Override public void logoShown(boolean on) {
-                ScoreBoard.setLogoCover(a, on ? ScoreBoard.lastLogo(a) : LogoCover.Look.OFF);
+                setLookHere(on ? ScoreBoard.lastLogo(a) : LogoCover.Look.OFF);
                 if (on && !mine.logo()) {
                     mine.lw = 0.13f;
                     mine.lh = 0.075f;
@@ -639,7 +776,7 @@ final class ScoreOverlay implements ScoreBoard.Source {
             }
 
             @Override public void logoLook(LogoCover.Look l) {
-                ScoreBoard.setLogoCover(a, l);
+                setLookHere(l);
                 if (l != LogoCover.Look.OFF && !mine.logo()) {
                     mine.lw = 0.13f;
                     mine.lh = 0.075f;
@@ -664,7 +801,7 @@ final class ScoreOverlay implements ScoreBoard.Source {
             @Override public void done() {
                 endAdjust(true);
             }
-        }, ScoreBoard.style(a), ScoreBoard.logoCover(a), ScoreBoard.still(a), ScoreBoard.boardShown(a), timingWords());
+        }, ScoreBoard.style(a), lookHere(), ScoreBoard.still(a), ScoreBoard.boardShown(a), timingWords());
         int side = Math.round(12 * d);
         FrameLayout.LayoutParams pp = new FrameLayout.LayoutParams(wide ? Math.min(Math.round(600 * d), Math.round(root.getWidth() * 0.72f)) : -1, -2,
                 Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
@@ -867,7 +1004,7 @@ final class ScoreOverlay implements ScoreBoard.Source {
     private void look() {
         h.removeCallbacks(look);
         boolean scoreboard = board.football(),
-                logos = ScoreBoard.logoCover(a) != LogoCover.Look.OFF || (ScoreBoard.broadcast(a) && board.football());
+                logos = lookHere() != LogoCover.Look.OFF || (ScoreBoard.broadcast(a) && board.football());
         if (!started || inPip || sampler == null) return;
         // F1's tower read for its lap, on an F1 channel.
         // The channel's scoreboard (or F1's tower) read: the reads keep themselves going once started.

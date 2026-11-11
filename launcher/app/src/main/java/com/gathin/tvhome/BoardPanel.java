@@ -174,6 +174,21 @@ final class BoardPanel extends SportPanel {
         };
         matches.ok = () -> OverlayPrompt.setMode(c, OverlayPrompt.next(OverlayPrompt.mode(c)));
         add(matches);
+        // This channel's own (the channel last on): always up, never, or as the rest; and its own logo look.
+        String here = InStep.channel(c);
+        if (!here.isEmpty()) {
+            heading("THIS CHANNEL  ·  " + here.toUpperCase(Locale.UK));
+            Row mode = row("Scoreboard and logo on this channel", false);
+            mode.words = () -> ChannelOverlays.modeWords(ChannelOverlays.mode(c, here))
+                    + (ChannelOverlays.ALWAYS.equals(ChannelOverlays.mode(c, here)) ? " · up whenever it's on" : "")
+                    + "  ·  OK for the next";
+            mode.ok = () -> BoardCover.stepChannelMode(c, 1);
+            Row look = row("This channel's logo", false);
+            look.words = () -> ChannelOverlays.lookWords(ChannelOverlays.look(c, here),
+                    BoardCover.logoOn(c) ? BoardCover.logoLook(c).label : "none") + "  ·  OK for the next";
+            look.ok = () -> BoardCover.stepChannelLook(c, 1);
+            add(mode, look);
+        }
 
         heading("OVER THE CHANNEL");
         Row board = row("The scoreboard itself", true);

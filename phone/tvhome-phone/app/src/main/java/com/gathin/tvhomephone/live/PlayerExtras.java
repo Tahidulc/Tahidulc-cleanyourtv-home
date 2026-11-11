@@ -646,6 +646,8 @@ final class PlayerExtras implements LiveAlerts.Listener {
         if (overlay != null) {
             chipRow(c, box, R.string.live4_board);
             toggle(c, box, a.getString(R.string.live4_board_on), overlay.on(), overlay::set);
+            handOptions(c, box);
+            channelOptions(c, box);
             // Moved and sized by hand: the scoreboard and the mark over the logo, dragged into place on the picture.
             action(c, box, R.drawable.live_ic_fullscreen, a.getString(R.string.live6_adjust), () -> {
                 host.closeSheet();
@@ -804,6 +806,108 @@ final class PlayerExtras implements LiveAlerts.Listener {
 
     private interface Flip {
         void set(boolean on);
+    }
+
+    /**
+     * Up by hand: the scoreboard and the mark over the logo over the picture now, whatever is found on the channel:
+     * off, the channel's own game, one of today's games (read off the main thread), or the mark alone.
+     */
+    private void handOptions(Context c, LinearLayout box) {
+        LinearLayout row = chipRow(c, box, R.string.live49_hand);
+        List<TextView> all = new ArrayList<>();
+        boolean on = overlay.handOn();
+        String id = on ? ScoreBoard.handGame(c) : null;
+        TextView off = Ui.guideChip(c, a.getString(R.string.live49_hand_off), !on);
+        TextView own = Ui.guideChip(c, a.getString(R.string.live49_hand_channel), on && "".equals(id));
+        TextView only = Ui.guideChip(c, a.getString(R.string.live49_hand_logo), on && ScoreBoard.NO_GAME.equals(id));
+        off.setOnClickListener(v -> {
+            overlay.handOff();
+            for (TextView x : all) Ui.styleChip(c, x, x == v);
+        });
+        own.setOnClickListener(v -> {
+            overlay.hand(null, false);
+            for (TextView x : all) Ui.styleChip(c, x, x == v);
+        });
+        only.setOnClickListener(v -> {
+            overlay.hand(null, true);
+            for (TextView x : all) Ui.styleChip(c, x, x == v);
+        });
+        all.add(off);
+        all.add(own);
+        all.add(only);
+        addChip(row, off);
+        addChip(row, own);
+        addChip(row, only);
+        // Today's games not over (live first), put in before "The logo only" once read.
+        App.io.execute(() -> {
+            List<Game> games = new ArrayList<>();
+            try {
+                for (Game g : com.gathin.tvhomephone.sports.OnAir.today(60_000L)) {
+                    if (g != null && g.id != null && g.state != Game.POST && games.size() < 16) games.add(g);
+                }
+            } catch (RuntimeException ignored) {
+                // the chips as they are
+            }
+            games.sort((x, y) -> x.state != y.state ? (x.state == Game.LIVE ? -1 : y.state == Game.LIVE ? 1 : 0) : Long.compare(x.kickoff, y.kickoff));
+            App.main.post(() -> {
+                if (row.getParent() == null) return;
+                for (Game g : games) {
+                    TextView t = Ui.guideChip(c, g.home + " v " + g.away + (g.state == Game.LIVE ? " · live" : ""), on && g.id.equals(id));
+                    t.setOnClickListener(v -> {
+                        overlay.hand(g, false);
+                        for (TextView x : all) Ui.styleChip(c, x, x == v);
+                    });
+                    all.add(t);
+                    LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, -2);
+                    lp.rightMargin = Ui.dp(c, 8);
+                    row.addView(t, row.indexOfChild(only), lp);
+                }
+            });
+        });
+        note(c, box, a.getString(R.string.live49_hand_note));
+    }
+
+    /** This channel's own: as the rest, always up, or never; and its own logo look, else the general one. */
+    private void channelOptions(Context c, LinearLayout box) {
+        Channel ch = host.current();
+        if (ch == null || ch.key == null) return;
+        String key = ch.key;
+        LinearLayout modes = chipRow(c, box, R.string.live49_channel);
+        List<TextView> ms = new ArrayList<>();
+        String[][] choices = {{ChannelOverlays.SAME, a.getString(R.string.live49_channel_same)},
+                {ChannelOverlays.ALWAYS, a.getString(R.string.live49_channel_always)}, {ChannelOverlays.NEVER, a.getString(R.string.live49_channel_never)}};
+        for (String[] m : choices) {
+            TextView t = Ui.guideChip(c, m[1], ChannelOverlays.mode(c, key).equals(m[0]));
+            t.setOnClickListener(v -> {
+                ChannelOverlays.setMode(c, key, m[0]);
+                for (TextView x : ms) Ui.styleChip(c, x, x == v);
+                overlay.channelChanged();
+            });
+            ms.add(t);
+            addChip(modes, t);
+        }
+        LinearLayout looks = chipRow(c, box, R.string.live49_channel_logo);
+        List<TextView> ls = new ArrayList<>();
+        LogoCover.Look own = ChannelOverlays.look(c, key);
+        TextView same = Ui.guideChip(c, a.getString(R.string.live49_channel_logo_same, ScoreBoard.logoCover(c).label), own == null);
+        same.setOnClickListener(v -> {
+            ChannelOverlays.setLook(c, key, null);
+            for (TextView x : ls) Ui.styleChip(c, x, x == v);
+            overlay.channelChanged();
+        });
+        ls.add(same);
+        addChip(looks, same);
+        for (LogoCover.Look lk : LogoCover.Look.values()) {
+            TextView t = Ui.guideChip(c, lk.label, own == lk);
+            t.setOnClickListener(v -> {
+                ChannelOverlays.setLook(c, key, lk);
+                for (TextView x : ls) Ui.styleChip(c, x, x == v);
+                overlay.channelChanged();
+            });
+            ls.add(t);
+            addChip(looks, t);
+        }
+        note(c, box, a.getString(R.string.live49_channel_note, ch.name == null ? "this channel" : ch.name));
     }
 
     static LinearLayout chipRow(Context c, LinearLayout box, int label) {

@@ -91,6 +91,33 @@ public final class ScoreBoard implements LiveAlerts.Listener {
 
     static void setOn(Context c, boolean v) { prefs(c).edit().putBoolean("on", v).apply(); }
 
+    /**
+     * Up by hand (the player's options): the scoreboard and the mark over the logo over the picture now, whatever is
+     * found on the channel, until switched off (twelve hours at most); the board for the game chosen ("": the channel's
+     * own, NO_GAME: none, the mark alone).
+     */
+    static final long HAND_MS = 12 * 3_600_000L;
+    static final String NO_GAME = "-";
+
+    static boolean handOn(Context c) {
+        SharedPreferences p = prefs(c);
+        return p.getBoolean("hand", false) && System.currentTimeMillis() < p.getLong("hand_until", 0);
+    }
+
+    static String handGame(Context c) {
+        return prefs(c).getString("hand_game", "");
+    }
+
+    static String handLabel(Context c) {
+        return prefs(c).getString("hand_label", "");
+    }
+
+    static void setHand(Context c, boolean on, String gameId, String label) {
+        prefs(c).edit().putBoolean("hand", on).putString("hand_game", gameId == null ? "" : gameId)
+                .putString("hand_label", label == null ? "" : label)
+                .putLong("hand_until", on ? System.currentTimeMillis() + HAND_MS : 0).apply();
+    }
+
     /** Settings' "Scoreboard over matches" as chosen for when it is on: "auto" or "ask" ("" until chosen: OverMatches). */
     static String overMatches(Context c) { return prefs(c).getString("over_matches", ""); }
 

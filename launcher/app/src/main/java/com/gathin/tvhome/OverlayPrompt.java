@@ -262,6 +262,16 @@ final class OverlayPrompt {
      * (its guide, its lists) says nothing.
      */
     static void seen(Context c, List<String> texts) {
+        // A channel with scoreboard and logo settings of its own named on its own (its banner): the channel watched, so
+        // its settings apply (BoardCover, ChannelOverlays).
+        if (texts != null && texts.size() <= 40) {
+            String mine = ChannelOverlays.named(texts, ChannelOverlays.keys(c));
+            if (mine != null && !ChannelOverlays.key(mine).equals(ChannelOverlays.key(InStep.channel(c)))) {
+                InStep.tuned(c, Collections.singletonList(mine));
+                AlertLog.note(c, "channel watched, from the player's banner (its own overlay settings): " + mine);
+                BoardCover.resume(c);
+            }
+        }
         Map<String, List<String>> on = onNow, own = ownNow;
         if (on.isEmpty() || texts == null || texts.isEmpty() || texts.size() > 40) return;
         String[] hit = among(texts, own, on);
@@ -280,6 +290,7 @@ final class OverlayPrompt {
         if (!InStep.onChannel(Collections.singletonList(InStep.channel(app)), names) || !InStep.channel(app).equals(hit[1])) {
             InStep.tuned(app, names);
             AlertLog.note(app, "channel watched, from the player's banner: " + hit[1]);
+            BoardCover.resume(app);
         }
         if ("f1".equals(hit[0])) {
             maybeAsk(app, "f1", null, false);
@@ -372,10 +383,12 @@ final class OverlayPrompt {
     private static void maybeAsk(Context c, String k, ScoresTicker.Game g, boolean sure) {
         boolean football = "football".equals(k);
         if (win != null || (football && (g == null || g.id == null))) return;
+        // A channel set Never: nothing asked over it.
+        if (BoardCover.neverHere(c)) return;
         String mode = mode(c);
         String key = askKey(k, g, System.currentTimeMillis());
         // Its overlays on already, or the scoreboard and logo up by hand (what they show is chosen there): nothing to ask.
-        boolean already = football ? g.id.equals(BoardCover.game(c)) || BoardCover.manual(c) : F1Tower.isShowing();
+        boolean already = football ? g.id.equals(BoardCover.game(c)) || BoardCover.manual(c) || BoardCover.alwaysHere(c) : F1Tower.isShowing();
         // By themselves only for a football match sure to be the one on, its competition's alerts not switched off.
         boolean itself = football && sure && NotifyPrefs.competitionOn(c, g.slug);
         boolean dismissed = has(c, "asked", key) || AUTO.equals(mode) && has(c, "away", key);

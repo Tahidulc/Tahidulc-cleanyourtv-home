@@ -636,11 +636,11 @@ public class BoardCoverTest {
         m.what = "premier league";
         m.nameOnly = true;
         String[] on = BoardCover.menuLines(m);
-        assertTrue(on[7].startsWith("Channel:") && on[7].contains("General") && !on[7].contains("Sports"));
-        assertTrue(on[6].contains("on a sports channel only"));
+        assertTrue(on[9].startsWith("Channel:") && on[9].contains("General") && !on[9].contains("Sports"));
+        assertTrue(on[8].contains("on a sports channel only"));
         m.nameOnly = false;
         on = BoardCover.menuLines(m);
-        assertTrue(on[7].contains("Sports · Whitebrook Road Sports"));
+        assertTrue(on[9].contains("Sports · Whitebrook Road Sports"));
         assertEquals("", SportsMark.onFor(false, "premier league"));
         assertEquals("", SportsMark.onFor(false, ""));
         assertEquals("premier league", SportsMark.onFor(true, "premier league"));
@@ -663,19 +663,20 @@ public class BoardCoverTest {
         m.manual = true;
         m.showing = "Everton v Spurs";
         String[] on = BoardCover.menuLines(m);
-        assertEquals(12, on.length);
+        assertEquals(14, on.length);
+        assertTrue(on[1].startsWith("This channel:") && on[1].contains("not known"));
         assertTrue(on[0].startsWith("Up by hand:") && on[0].contains("On · Everton v Spurs") && on[0].contains("OK: down"));
-        assertTrue(on[1].startsWith("Move and resize") && on[1].contains("position, size, height, width"));
-        assertTrue(on[2].startsWith("Scoreboard:") && on[2].contains("On"));
-        assertTrue(on[3].startsWith("Logo's cover:") && on[3].contains("On"));
-        assertTrue(on[4].contains("Classic"));
-        assertTrue(on[5].contains("Whitebrook Road Sports"));
-        assertTrue(on[6].contains("premier league") && !on[6].contains("looks)"));
+        assertTrue(on[3].startsWith("Move and resize") && on[3].contains("position, size, height, width"));
+        assertTrue(on[4].startsWith("Scoreboard:") && on[4].contains("On"));
+        assertTrue(on[5].startsWith("Logo's cover:") && on[5].contains("On"));
+        assertTrue(on[6].contains("Classic"));
         assertTrue(on[7].contains("Whitebrook Road Sports"));
-        assertTrue(on[8].startsWith("Picture tag") && on[8].contains("Auto"));
-        assertTrue(on[9].startsWith("See-through") && on[9].contains("Off"));
-        assertTrue(on[10].startsWith("Find the channel's scoreboard") && on[10].contains("look again now"));
-        assertTrue(on[11].startsWith("Line-ups on screen") && on[11].contains("On"));
+        assertTrue(on[8].contains("premier league") && !on[8].contains("looks)"));
+        assertTrue(on[9].contains("Whitebrook Road Sports"));
+        assertTrue(on[10].startsWith("Picture tag") && on[10].contains("Auto"));
+        assertTrue(on[11].startsWith("See-through") && on[11].contains("Off"));
+        assertTrue(on[12].startsWith("Find the channel's scoreboard") && on[12].contains("look again now"));
+        assertTrue(on[13].startsWith("Line-ups on screen") && on[13].contains("On"));
         m.manual = false;
         assertTrue(BoardCover.menuLines(m)[0].contains("On by itself · Everton v Spurs, off after full time"));
         m.boardShown = false;
@@ -687,14 +688,39 @@ public class BoardCoverTest {
         m.sportsLook = false;
         String[] off = BoardCover.menuLines(m);
         assertTrue(off[0].contains("‹  Off  ›") && off[0].contains("OK: the scoreboard and logo up now"));
-        assertTrue(off[2].contains("Off"));
-        assertTrue(off[3].contains("Off"));
-        assertTrue(off[6].contains("(on a sports channel only)"));
-        assertTrue(off[7].contains("‹  General · Whitebrook Road  ›"));
+        assertTrue(off[4].contains("Off"));
+        assertTrue(off[5].contains("Off"));
+        assertTrue(off[8].contains("(on a sports channel only)"));
+        assertTrue(off[9].contains("‹  General · Whitebrook Road  ›"));
         m.nameOnly = false;
-        assertTrue(BoardCover.menuLines(m)[6].contains("(Whitebrook Road Sports looks)"));
-        assertTrue(off[9].contains("On"));
-        assertTrue(off[11].contains("Off"));
+        assertTrue(BoardCover.menuLines(m)[8].contains("(Whitebrook Road Sports looks)"));
+        assertTrue(off[11].contains("On"));
+        assertTrue(off[13].contains("Off"));
+    }
+
+    @Test
+    public void eachChannelHasItsOwnModeAndLogo() {
+        BoardCover.MenuState m = new BoardCover.MenuState();
+        m.channel = "Sky Sports Main Event HD";
+        m.channelMode = "Always up";
+        m.channelLook = "Whitebrook Road Sports";
+        String[] l = BoardCover.menuLines(m);
+        assertTrue(l[1].contains("‹  Always up  ›") && l[1].contains("Sky Sports Main Event HD"));
+        assertTrue(l[2].startsWith("This channel's logo:") && l[2].contains("Whitebrook Road Sports"));
+        assertEquals(ChannelOverlays.ALWAYS, ChannelOverlays.nextMode(ChannelOverlays.SAME, 1));
+        assertEquals(ChannelOverlays.NEVER, ChannelOverlays.nextMode(ChannelOverlays.ALWAYS, 1));
+        assertEquals(ChannelOverlays.SAME, ChannelOverlays.nextMode(ChannelOverlays.NEVER, 1));
+        assertEquals(ChannelOverlays.NEVER, ChannelOverlays.nextMode(ChannelOverlays.SAME, -1));
+        assertEquals(ChannelOverlays.LEAVE, ChannelOverlays.nextLook(null, 1));
+        assertEquals(LogoMark.Look.values()[0].name(), ChannelOverlays.nextLook(ChannelOverlays.LEAVE, 1));
+        assertNull(ChannelOverlays.nextLook(LogoMark.Look.values()[LogoMark.Look.values().length - 1].name(), 1));
+        assertEquals("As the rest (Glass)", ChannelOverlays.lookWords(null, "Glass"));
+        assertEquals("Leave the channel's own", ChannelOverlays.lookWords(ChannelOverlays.LEAVE, "Glass"));
+        // its HD and 4K forms share it
+        assertEquals(ChannelOverlays.key("UK: Sky Sports Main Event HD"), ChannelOverlays.key("Sky Sports Main Event UHD"));
+        java.util.Set<String> keys = new java.util.HashSet<>(java.util.Collections.singletonList(ChannelOverlays.key("Sky Sports Main Event")));
+        assertEquals("Sky Sports Main Event HD", ChannelOverlays.named(java.util.Arrays.asList("401 Sky Sports Main Event HD", "Live: Arsenal v Everton"), keys));
+        assertNull(ChannelOverlays.named(java.util.Arrays.asList("BBC One", "News at Six"), keys));
     }
 
     @Test

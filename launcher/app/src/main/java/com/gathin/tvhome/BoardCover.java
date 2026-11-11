@@ -219,6 +219,85 @@ final class BoardCover {
         }
     }
 
+    // ---- each channel's own (ChannelOverlays) ------------------------------------------------------------------------
+
+    /** The channel on now is set to never have them. */
+    static boolean neverHere(Context c) {
+        return ChannelOverlays.NEVER.equals(ChannelOverlays.mode(c, InStep.channel(c)));
+    }
+
+    /** The channel on now is set to always have them (as up by hand whenever it is on). */
+    static boolean alwaysHere(Context c) {
+        return ChannelOverlays.ALWAYS.equals(ChannelOverlays.mode(c, InStep.channel(c)));
+    }
+
+    /** The logo's cover's look on the channel on now: its own, else the general one. */
+    static LogoMark.Look lookNow(Context c) {
+        String own = ChannelOverlays.look(c, InStep.channel(c));
+        return own != null && !ChannelOverlays.LEAVE.equals(own) ? LogoMark.Look.of(own) : logoLook(c);
+    }
+
+    /** Whether the channel on now gets the logo's cover: its own look says (a look, or its own logo left), else the general switch. */
+    static boolean logoNow(Context c) {
+        String own = ChannelOverlays.look(c, InStep.channel(c));
+        if (ChannelOverlays.LEAVE.equals(own)) return false;
+        return own != null || logoOn(c);
+    }
+
+    /** Which of the Whitebrook Road styles on the channel on now: its own (with its own look), else the general one. */
+    static int styleNow(Context c) {
+        String channel = InStep.channel(c);
+        int own = ChannelOverlays.look(c, channel) != null ? ChannelOverlays.style(c, channel) : -1;
+        return own >= 0 ? own : logoStyle(c);
+    }
+
+    /** The channel on now's mode stepped (the menu): as the rest, always up, never. */
+    static void stepChannelMode(Context c, int step) {
+        String channel = InStep.channel(c);
+        ChannelOverlays.setMode(c, channel, ChannelOverlays.nextMode(ChannelOverlays.mode(c, channel), step));
+        AlertLog.note(c, "overlays on " + channel + ": " + ChannelOverlays.modeWords(ChannelOverlays.mode(c, channel)));
+        restyle();
+        resume(c);
+    }
+
+    /** The channel on now's own look stepped (the menu): the general one, its own logo left, each look. */
+    static void stepChannelLook(Context c, int step) {
+        String channel = InStep.channel(c);
+        ChannelOverlays.setLook(c, channel, ChannelOverlays.nextLook(ChannelOverlays.look(c, channel), step));
+        restyle();
+        resume(c);
+    }
+
+    /** The style line on a channel with its own look in the styles: that channel's, else the general one. */
+    private static void stepStyleHere(Context c, int step) {
+        String channel = InStep.channel(c);
+        if (ChannelOverlays.look(c, channel) == null) {
+            stepLogoStyle(c, step);
+            return;
+        }
+        int n = BrandStyles.COUNT;
+        ChannelOverlays.setStyle(c, channel, ((styleNow(c) + step) % n + n) % n);
+        if (mark != null) mark.style(styleNow(c));
+    }
+
+    /** The game the board shows now: the one it is on for, else on a channel set Always up the one found on it. */
+    static String showingId(Context c) {
+        String id = game(c);
+        if (id != null) return id;
+        if (!alwaysHere(c)) return null;
+        return alwaysFor.equals(ChannelOverlays.key(InStep.channel(c))) ? alwaysGame : "";
+    }
+
+    /** The game found on a channel set Always up (with the board not on for one), and that channel's key. */
+    private static String alwaysGame = "", alwaysFor = "";
+
+    /** The windows were made for this channel (its key, and whether it gets the logo's cover): made again for another. */
+    private static String windowsFor = "";
+
+    private static String windowsKey(Context c) {
+        return ChannelOverlays.key(InStep.channel(c)) + "|" + logoNow(c);
+    }
+
     /** What it is up for, in a few words: the game, the logo only, or the game on the channel still to be found. */
     static String showingWords(Context c) {
         String id = game(c);
@@ -294,7 +373,17 @@ final class BoardCover {
             main().post(() -> {
                 finding = false;
                 String id = game(a);
-                if (found == null || found.id == null || id == null || !id.isEmpty()) return;
+                if (found == null || found.id == null) return;
+                if (id == null) {
+                    // A channel set Always up: the board for the game found on it, while it is on.
+                    if (alwaysHere(a)) {
+                        alwaysGame = found.id;
+                        alwaysFor = ChannelOverlays.key(InStep.channel(a));
+                        resume(a);
+                    }
+                    return;
+                }
+                if (!id.isEmpty()) return;
                 take(a, found);
             });
         });
@@ -365,7 +454,7 @@ final class BoardCover {
 
     static void setLogoLook(Context c, LogoMark.Look l) {
         prefs(c).edit().putString("look", l.name()).apply();
-        if (mark != null) mark.look(l);
+        if (mark != null) mark.look(lookNow(c));
         else restyle();
     }
 
@@ -430,8 +519,8 @@ final class BoardCover {
     static String whatNow(Context c) {
         String chosen = logoWhat(c);
         if (!chosen.isEmpty()) return chosen;
-        String id = game(c);
-        ScoresTicker.Game g = id == null || id.isEmpty() ? null : GoalWatchService.latestGame(id);
+        String id = showingId(c);
+        ScoresTicker.Game g = id == null || id.isEmpty() || NO_GAME.equals(id) ? null : GoalWatchService.latestGame(id);
         return SportsMark.auto(g == null ? null : g.slug, false);
     }
 
@@ -442,7 +531,7 @@ final class BoardCover {
 
     static void setLogoStyle(Context c, int n) {
         prefs(c).edit().putInt("brand_style", BrandStyles.clamp(n)).apply();
-        if (mark != null) mark.style(logoStyle(c));
+        if (mark != null) mark.style(styleNow(c));
     }
 
     static void stepLogoStyle(Context c, int step) {
@@ -1376,7 +1465,14 @@ final class BoardCover {
         }
         // A game not read for half an hour is over: its readings go.
         readings.values().removeIf(l -> l.isEmpty() || now - l.peekLast().seen > 30 * 60_000L);
-        if (!active(c)) return;
+        if (!active(c)) {
+            // A channel set Always up: up whenever it is on, the game on it looked for.
+            if (alwaysHere(c)) {
+                findGameOnNow(c);
+                resume(c);
+            }
+            return;
+        }
         String id = game(c);
         if (id != null && id.isEmpty()) {
             ScoresTicker.Game mm = matchModeGame(c);
@@ -1492,7 +1588,7 @@ final class BoardCover {
 
     static void resume(Context c) {
         app = c.getApplicationContext();
-        if (!active(app) && !adjusting && testUntil <= System.currentTimeMillis()) return;
+        if (!active(app) && !alwaysHere(app) && !adjusting && testUntil <= System.currentTimeMillis()) return;
         if (manual(app)) standby(app, true);
         main().removeCallbacks(tick);
         main().post(tick);
@@ -1566,14 +1662,23 @@ final class BoardCover {
             testUntil = 0;
             hideAll();
         }
-        if (!active(c)) {
-            if (prefs(c).getBoolean("on", false)) stop(c, prefs(c).getBoolean("manual", false) ? "twelve hours up by hand" : "four hours on");
+        if (!active(c) && prefs(c).getBoolean("on", false)) stop(c, prefs(c).getBoolean("manual", false) ? "twelve hours up by hand" : "four hours on");
+        // A channel set Always up: as up by hand whenever it is on.
+        boolean always = alwaysHere(c);
+        if (!active(c) && !always) {
             hideAll();
             return 0;
         }
+        // A channel set Never: nothing over it (back when another channel is on).
+        if (neverHere(c)) {
+            hideAll();
+            return 1_000L;
+        }
+        // Another channel under the windows: made again in its own look.
+        if (boardWin != null && !windowsKey(c).equals(windowsFor)) hideAll();
         // Up by hand: over the channel whatever is found on it, the logo's cover alone when there is no game to show.
-        boolean byHand = prefs(c).getBoolean("manual", false);
-        String id = game(c);
+        boolean byHand = prefs(c).getBoolean("manual", false) || always;
+        String id = showingId(c);
         if (id == null || id.isEmpty() || NO_GAME.equals(id)) {
             if (byHand && canShow(c)) {
                 logoOnly(c, now);
@@ -1727,7 +1832,7 @@ final class BoardCover {
 
     /** The game (the made-up one; before kick-off, pre) on the board, where this channel's places put it. */
     private static void showGame(Context c, long now, boolean orSample, BoardBug.Look pre) {
-        String id = game(c);
+        String id = showingId(c);
         ScoresTicker.Game g = id == null || id.isEmpty() ? null : GoalWatchService.latestGame(id);
         Reading r = g == null || pre != null ? null : screen(c, id, now);
         BoardBug.Look l;
@@ -1933,9 +2038,10 @@ final class BoardCover {
             drop = null;
             return false;
         }
-        if (logoOn(c)) {
+        windowsFor = windowsKey(c);
+        if (logoNow(c)) {
             mark = new LogoMark(c);
-            mark.look(logoLook(c));
+            mark.look(lookNow(c));
             mark.competition(compImage, compTag);
             mark.compOn(logoComp(c));
             mark.liveBar(logoLive(c));
@@ -1943,7 +2049,7 @@ final class BoardCover {
             mark.seeThrough(logoSeeThrough(c));
             mark.what(whatNow(c));
             mark.channelName(InStep.channel(c));
-            mark.style(logoStyle(c));
+            mark.style(styleNow(c));
             mark.inset(edge);
             logoWin = frame(c, mark);
             if (!addWindow(c, logoWin)) {
@@ -3213,6 +3319,8 @@ final class BoardCover {
     static final class MenuState {
         boolean boardShown, logoOn, nameOnly, seeThrough, find, lineups, active, manual, sportsLook, stylesLook;
         String look = "", logoLook = "", what = "", tag = "", note = "", style = "", showing = "";
+        /** The channel on now ("" when not known), its mode and its own look, in words. */
+        String channel = "", channelMode = "As the rest", channelLook = "As the rest";
     }
 
     /** Pure: the menu's lines, as the switches stand. */
@@ -3220,6 +3328,9 @@ final class BoardCover {
         return new String[]{!m.active ? "Up by hand:  ‹  Off  ›  ·  OK: the scoreboard and logo up now"
                 : "Up by hand:  ‹  " + (m.manual ? "On · " + m.showing : "On by itself · " + m.showing + ", off after full time")
                 + "  ›  ·  OK: down",
+                m.channel.isEmpty() ? "This channel:  not known yet (put one on)"
+                        : "This channel:  ‹  " + m.channelMode + "  ›  ·  " + m.channel,
+                m.channel.isEmpty() ? "This channel's logo:  not known yet" : "This channel's logo:  ‹  " + m.channelLook + "  ›",
                 "Move and resize  ·  position, size, height, width",
                 "Scoreboard:  ‹  " + (m.boardShown ? "On" : "Off") + "  ›",
                 "Logo's cover:  ‹  " + (m.logoOn ? "On" : "Off") + "  ›",
@@ -3242,9 +3353,13 @@ final class BoardCover {
         m.logoOn = logoOn(c);
         m.look = style(c).label;
         m.logoLook = logoLook(c).label;
-        m.sportsLook = logoLook(c).sports();
-        m.stylesLook = logoLook(c) == LogoMark.Look.STYLES;
-        m.style = (logoStyle(c) + 1) + " of " + BrandStyles.COUNT + "  ·  " + BrandStyles.name(logoStyle(c));
+        // What the cover on this channel is drawn in: its own look, else the general one.
+        m.sportsLook = lookNow(c).sports();
+        m.stylesLook = lookNow(c) == LogoMark.Look.STYLES;
+        m.style = (styleNow(c) + 1) + " of " + BrandStyles.COUNT + "  ·  " + BrandStyles.name(styleNow(c));
+        m.channel = InStep.channel(c);
+        m.channelMode = ChannelOverlays.modeWords(ChannelOverlays.mode(c, m.channel));
+        m.channelLook = ChannelOverlays.lookWords(ChannelOverlays.look(c, m.channel), logoOn(c) ? logoLook(c).label : "none");
         String w = logoWhat(c);
         m.what = w.isEmpty() ? "Auto, from the game (" + whatNow(c) + ")" : w;
         m.nameOnly = logoNameOnly(c);
@@ -3394,11 +3509,11 @@ final class BoardCover {
                 if (active(c)) stop(c, "switched off over the player");
                 else toggle(c);
                 break;
-            case 1:
+            case 3:
                 closeMenu();
                 beginAdjust();
                 return;
-            case 10:
+            case 12:
                 // Looked for again now, on the channel on (what was seen there, and set by hand, let go).
                 if (!ChannelSight.on(c)) ChannelSight.setOn(c, true);
                 ChannelSight.lookAgain(c);
@@ -3415,35 +3530,41 @@ final class BoardCover {
             case 0:
                 stepHand(c, step);
                 break;
-            case 2:
-                setBoardShown(c, !boardShown(c));
+            case 1:
+                if (!InStep.channel(c).isEmpty()) stepChannelMode(c, step);
                 break;
-            case 3:
-                setLogoOn(c, !logoOn(c));
+            case 2:
+                if (!InStep.channel(c).isEmpty()) stepChannelLook(c, step);
                 break;
             case 4:
-                stepStyle(c, step);
+                setBoardShown(c, !boardShown(c));
                 break;
             case 5:
-                stepLogoLook(c, step);
+                setLogoOn(c, !logoOn(c));
                 break;
             case 6:
-                if (logoLook(c) == LogoMark.Look.STYLES) stepLogoStyle(c, step);
-                else stepLogoWhat(c, step);
+                stepStyle(c, step);
                 break;
             case 7:
-                setLogoNameOnly(c, !logoNameOnly(c));
+                stepLogoLook(c, step);
                 break;
             case 8:
-                stepLogoTag(c, step);
+                if (lookNow(c) == LogoMark.Look.STYLES) stepStyleHere(c, step);
+                else stepLogoWhat(c, step);
                 break;
             case 9:
-                setLogoSeeThrough(c, !logoSeeThrough(c));
+                setLogoNameOnly(c, !logoNameOnly(c));
                 break;
             case 10:
-                ChannelSight.setOn(c, !ChannelSight.on(c));
+                stepLogoTag(c, step);
                 break;
             case 11:
+                setLogoSeeThrough(c, !logoSeeThrough(c));
+                break;
+            case 12:
+                ChannelSight.setOn(c, !ChannelSight.on(c));
+                break;
+            case 13:
                 setLineupsOn(c, !lineupsOn(c));
                 break;
             default:
@@ -3451,8 +3572,11 @@ final class BoardCover {
         }
     }
 
-    /** The menu's lines: up by hand, move, the board, the cover, the looks, what is on, the name, the tag, see-through, find, line-ups. */
-    private static final int MENU_LINES = 12;
+    /**
+     * The menu's lines: up by hand, this channel's mode and logo, move, the board, the cover, the looks, what is on, the
+     * name, the tag, see-through, find, line-ups.
+     */
+    private static final int MENU_LINES = 14;
 
     static boolean menuShowing() {
         return menuWin != null;

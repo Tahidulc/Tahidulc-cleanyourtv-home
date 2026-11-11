@@ -427,6 +427,8 @@ public class AppSearchService extends AccessibilityService {
         final java.util.List<String> all = tuneNames(c, channels);
         // The channel watched from now: its game's alerts wait for it (InStep).
         InStep.tuned(c, all);
+        // That channel's own scoreboard and logo settings from now (always up, never, its own logo).
+        BoardCover.resume(c);
         // The helper not connected (a TCL drops it now and then): without it TiviMate only opens, on the channel last
         // watched. Connected again first, then the tune.
         if (instance == null && !all.isEmpty() && ensure(c)) {
