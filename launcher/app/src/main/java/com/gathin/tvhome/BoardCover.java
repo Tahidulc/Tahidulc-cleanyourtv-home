@@ -286,7 +286,8 @@ final class BoardCover {
     }
 
     static boolean seeThroughNow(Context c) {
-        return false;
+        String o = ownOpt(c, "see_through");
+        return o != null ? "1".equals(o) : logoSeeThrough(c);
     }
 
     static boolean nameOnlyNow(Context c) {
@@ -367,6 +368,16 @@ final class BoardCover {
         setHere(c, "tag", next.name(), () -> setLogoTag(c, next));
         if (mark != null) mark.tag(tagNow(c).on(InStep.channel(c)));
         F1Tower.retag(c);
+    }
+
+    private static void toggleSeeThroughHere(Context c) {
+        boolean on = !seeThroughNow(c);
+        setHere(c, "see_through", on ? "1" : "0", () -> setLogoSeeThrough(c, on));
+        if (mark != null) {
+            mark.seeThrough(seeThroughNow(c));
+            if (!seeThroughNow(c)) mark.patch(null);
+        }
+        patchSoon();
     }
 
     /** The game the board shows now: the one it is on for, else on a channel set Always up the one found on it. */
@@ -643,9 +654,7 @@ final class BoardCover {
      * it (LogoPatch, from the screen's pictures); where those cannot be had, it stands on its plate. Off unless chosen.
      */
     static boolean logoSeeThrough(Context c) {
-        // Retired (4.66): what is under the channel's logo can only be guessed from a few pictures a second, so it never
-        // looked clean; every look now stands on its own solid ground over the logo instead.
-        return false;
+        return prefs(c).getBoolean("see_through", false);
     }
 
     static void setLogoSeeThrough(Context c, boolean on) {
@@ -3450,6 +3459,7 @@ final class BoardCover {
                         : m.sportsLook ? "" : "  (Whitebrook Road Sports looks)"),
                 "Channel:  ‹  " + (m.nameOnly ? "General · Whitebrook Road" : "Sports · Whitebrook Road Sports") + "  ›",
                 "Picture tag:  ‹  " + m.tag + "  ›",
+                "See-through, the channel's logo hidden:  ‹  " + (m.seeThrough ? "On" : "Off") + "  ›",
                 "Find the channel's scoreboard:  ‹  " + (m.find ? "On" : "Off") + "  ›  ·  OK: look again now",
                 "Line-ups on screen:  ‹  " + (m.lineups ? "On" : "Off") + "  ›"};
     }
@@ -3623,7 +3633,7 @@ final class BoardCover {
                 closeMenu();
                 beginAdjust();
                 return;
-            case 11:
+            case 12:
                 // Looked for again now, on the channel on (what was seen there, and set by hand, let go).
                 if (!ChannelSight.on(c)) ChannelSight.setOn(c, true);
                 ChannelSight.lookAgain(c);
@@ -3670,9 +3680,12 @@ final class BoardCover {
                 stepTagHere(c, step);
                 break;
             case 11:
-                ChannelSight.setOn(c, !ChannelSight.on(c));
+                toggleSeeThroughHere(c);
                 break;
             case 12:
+                ChannelSight.setOn(c, !ChannelSight.on(c));
+                break;
+            case 13:
                 setLineupsOn(c, !lineupsOn(c));
                 break;
             default:
@@ -3682,9 +3695,9 @@ final class BoardCover {
 
     /**
      * The menu's lines: up by hand, this channel's mode and logo, move, the board, the cover, the looks, what is on, the
-     * name, the tag, find, line-ups.
+     * name, the tag, see-through, find, line-ups.
      */
-    private static final int MENU_LINES = 13;
+    private static final int MENU_LINES = 14;
 
     static boolean menuShowing() {
         return menuWin != null;

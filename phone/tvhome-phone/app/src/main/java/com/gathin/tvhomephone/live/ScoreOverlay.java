@@ -211,7 +211,8 @@ final class ScoreOverlay implements ScoreBoard.Source {
     }
 
     boolean seeThroughHere() {
-        return false;
+        String o = ownOpt("see_through");
+        return o != null ? "1".equals(o) : ScoreBoard.logoSeeThrough(a);
     }
 
     boolean nameOnlyHere() {

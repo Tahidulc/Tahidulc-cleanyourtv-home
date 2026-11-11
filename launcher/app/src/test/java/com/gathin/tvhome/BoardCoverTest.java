@@ -663,7 +663,7 @@ public class BoardCoverTest {
         m.manual = true;
         m.showing = "Everton v Spurs";
         String[] on = BoardCover.menuLines(m);
-        assertEquals(13, on.length);
+        assertEquals(14, on.length);
         assertTrue(on[1].startsWith("This channel:") && on[1].contains("not known"));
         assertTrue(on[0].startsWith("Up by hand:") && on[0].contains("On · Everton v Spurs") && on[0].contains("OK: down"));
         assertTrue(on[3].startsWith("Move and resize") && on[3].contains("position, size, height, width"));
@@ -674,9 +674,9 @@ public class BoardCoverTest {
         assertTrue(on[8].contains("premier league") && !on[8].contains("looks)"));
         assertTrue(on[9].contains("Whitebrook Road Sports"));
         assertTrue(on[10].startsWith("Picture tag") && on[10].contains("Auto"));
-        assertTrue(on[11].startsWith("Find the channel's scoreboard") && on[11].contains("look again now"));
-        assertTrue(on[12].startsWith("Line-ups on screen") && on[12].contains("On"));
-        for (String line : on) assertTrue(!line.startsWith("See-through"));
+        assertTrue(on[11].startsWith("See-through") && on[11].contains("Off"));
+        assertTrue(on[12].startsWith("Find the channel's scoreboard") && on[12].contains("look again now"));
+        assertTrue(on[13].startsWith("Line-ups on screen") && on[13].contains("On"));
         m.manual = false;
         assertTrue(BoardCover.menuLines(m)[0].contains("On by itself · Everton v Spurs, off after full time"));
         m.boardShown = false;
@@ -694,7 +694,8 @@ public class BoardCoverTest {
         assertTrue(off[9].contains("‹  General · Whitebrook Road  ›"));
         m.nameOnly = false;
         assertTrue(BoardCover.menuLines(m)[8].contains("(Whitebrook Road Sports looks)"));
-        assertTrue(off[12].contains("Off"));
+        assertTrue(off[11].contains("On"));
+        assertTrue(off[13].contains("Off"));
     }
 
     @Test

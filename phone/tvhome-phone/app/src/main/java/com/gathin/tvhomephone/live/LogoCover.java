@@ -30,7 +30,7 @@ final class LogoCover extends View implements BurnGuard.Dims {
         OFF("Leave the channel's"), SIGNATURE("Signature"), MATCHDAY("Matchday"), ROOFLINE("Roofline"), VELOCITY("Velocity"),
         ROUNDEL("Roundel"), BLOCK("Solid block"), FROSTED("Frosted glass"), SMOKED("Smoked glass"), EVENT_NAVY("Event, navy"),
         EVENT_WHITE("Event, white"), COMPETITION("The competition's logo"), BADGE("Badge"), GLASS("Glass"), MARK("Mark only"),
-        WORD("Wordmark"), BROADCAST("Broadcast, dark"), BROADCAST_BOARD("Broadcast, scoreboard colours"),
+        WORD("Wordmark"), BROADCAST("Broadcast, see-through"), BROADCAST_BOARD("Broadcast, scoreboard colours"),
         SPORTS("Whitebrook Road Sports"), SPORTS_STACKED("Whitebrook Road Sports, stacked"), STYLES("Whitebrook Road styles");
 
         /** Whitebrook Road Sports' wordmark (SportsMark): what is on in it, see-through over the picture if chosen. */
@@ -487,7 +487,7 @@ final class LogoCover extends View implements BurnGuard.Dims {
     private void broadcast(Canvas cv, float w, float h, boolean seeThrough) {
         int ground, band, bandInk, tagBox, tagInk, ink;
         if (seeThrough) {
-            ground = 0xFF0E1014;
+            ground = 0xC20E1014;
             band = 0x40FFFFFF;
             bandInk = 0xF7FFFFFF;
             tagBox = 0x33FFFFFF;
