@@ -156,10 +156,19 @@ final class PlayerIntro {
         if (shown.contains(key) || showing() || fetching || !canShow.getAsBoolean()) return;
         shown.add(key);
         try {
-            show(BroadcastView.page(a, "intro", BroadcastData.intro(match(g), true), this::gone), "intro");
+            show(BroadcastView.page(a, "intro", introCfg(a, g), this::gone), "intro");
         } catch (Exception ignored) {
             // not this time
         }
+    }
+
+    /** The intro's settings: the family's own video when one is chosen (IntroVideo), else the built-in film. */
+    private static JSONObject introCfg(Context c, Game g) throws org.json.JSONException {
+        if (IntroVideo.useOwn(c)) {
+            return BroadcastData.intro(match(g), "file://" + IntroVideo.file(c).getAbsolutePath(),
+                    Moments.introStart(IntroVideo.durationMs(c)));
+        }
+        return BroadcastData.intro(match(g), true);
     }
 
     /** Tests: the matchday intro now, with the game watched (its trophy and teams), else a recent Premier League game. */
@@ -180,7 +189,7 @@ final class PlayerIntro {
             if (g == null) g = TestAlerts.sample(app, null);
             JSONObject cfg = null;
             try {
-                cfg = BroadcastData.intro(match(g), true);
+                cfg = introCfg(app, g);
             } catch (Exception ignored) {
                 // said below
             }

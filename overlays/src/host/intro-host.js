@@ -8,10 +8,12 @@
 // q: {scale: 0.3-1 (the drawing's resolution, else chosen from a quick measure), aa, low (fewer stars, a smaller crowd)}.
 // footage: true (or a path): the first footageEnd seconds (40) are the real-footage film (footage/intro-footage.mp4, made in
 // step with the same music) in a <video>, and three.js draws only from then on (the trophy and the card). When the film is
-// missing or will not play (the phone's bundle has none), the whole intro is drawn as before.
+// missing or will not play, the whole intro is drawn as before. A film of the family's own (a file:// address) may be
+// shorter: startAt (seconds into the music) begins the music there so that the film ends on the flash into the trophy;
+// footageFallback: the built-in film, played instead (from the music's start) when the own one will not load.
 (function () {
   const MUSIC = 'sfx/intro-music.ogg';
-  let cfg = null, raf = 0, finished = false, began = false, going = false, ready = false, audio = null, backAt = -1, video = null, FOOT = 40;
+  let cfg = null, raf = 0, finished = false, began = false, going = false, ready = false, audio = null, backAt = -1, video = null, FOOT = 40, T0 = 0;
   window.BROADCAST = {
     start(c) {
       if (cfg) return;
@@ -24,6 +26,7 @@
       }
       if (cfg.footage) {
         FOOT = +cfg.footageEnd > 0 ? +cfg.footageEnd : 40;
+        T0 = Math.max(0, Math.min(FOOT - 1, +cfg.startAt || 0));
         try {
           video = document.createElement('video');
           video.muted = true; video.playsInline = true; video.preload = 'auto'; video.setAttribute('playsinline', '');
@@ -94,15 +97,29 @@
     try { video.pause(); video.removeAttribute('src'); video.load(); video.remove(); } catch (e) { /* gone */ }
     video = null;
   }
-  // the film loaded enough to play through (it is in the app's own files); else the intro is drawn whole
+  // the film loaded enough to play through (it is in the app's own files); an own film that will not load gives way to
+  // the built-in one (from the music's start); else the intro is drawn whole
   function filmReady() {
     if (!video) return Promise.resolve();
-    return new Promise((res) => {
-      const ok = () => { clearTimeout(to); res(); };
-      if (video.readyState >= 3) return res();
-      const to = setTimeout(() => { BX.log('film not ready, drawing the whole intro'); dropFilm(); res(); }, 8000);
+    const once = () => new Promise((res) => {
+      if (video.readyState >= 3) return res(true);
+      let to = 0;
+      const ok = () => { clearTimeout(to); res(true); };
+      const bad = () => { clearTimeout(to); res(false); };
+      to = setTimeout(bad, 8000);
       video.addEventListener('canplaythrough', ok, { once: true });
-      video.addEventListener('error', () => { BX.log('film failed to load, drawing the whole intro'); clearTimeout(to); dropFilm(); res(); }, { once: true });
+      video.addEventListener('error', bad, { once: true });
+    });
+    return once().then((ok) => {
+      if (ok || !video) return;
+      if (cfg.footageFallback) {
+        BX.log('own film would not load, the built-in one instead');
+        T0 = 0;
+        try { video.src = cfg.footageFallback; video.load(); } catch (e) { dropFilm(); return; }
+        return once().then((ok2) => { if (!ok2) { BX.log('film failed to load, drawing the whole intro'); dropFilm(); } });
+      }
+      BX.log('film failed to load, drawing the whole intro');
+      dropFilm();
     });
   }
   let tStart = 0;
@@ -121,11 +138,11 @@
     began = true;
     const I = window.INTRO;
     if (cfg._music === 'app') BX.sound('intro-music', cfg.volume == null ? 1 : cfg.volume, 0);
-    if (audio) { try { audio.currentTime = 0; const p = audio.play(); if (p && p.catch) p.catch((e) => { BX.log('music blocked: ' + e); audio = null; }); } catch (e) { audio = null; } }
+    if (audio) { try { audio.currentTime = T0; const p = audio.play(); if (p && p.catch) p.catch((e) => { BX.log('music blocked: ' + e); audio = null; }); } catch (e) { audio = null; } }
     if (video) {
       try { video.currentTime = 0; const p = video.play(); if (p && p.catch) p.catch((e) => { BX.log('film blocked: ' + e); dropFilm(); }); } catch (e) { dropFilm(); }
     }
-    tStart = performance.now();
+    tStart = performance.now() - T0 * 1000;
     let first = true, slowN = 0, last = 0;
     const frame = (now) => {
       if (finished) return;
@@ -137,13 +154,17 @@
         if (audio) audio.volume = Math.max(0, fade) * Math.max(0, Math.min(1, cfg.volume == null ? 1 : +cfg.volume));
         if (fade <= 0) { finish(); return; }
       }
+      // the fade in from where the music began (a shorter own film starts part way in)
+      const lead = T0 > 0 ? Math.max(0, Math.min(1, (t - T0) / 0.35)) : 1;
       if (video && t < FOOT) {
         // the film, kept with the music (a stall or a late start put right); three.js idle meanwhile
-        if (!video.seeking && Math.abs(video.currentTime - t) > 0.3) { try { video.currentTime = t; } catch (e) { /* next frame */ } }
-        video.style.opacity = String(I.opacity(t) * fade);
+        const vt = t - T0;
+        if (!video.seeking && Math.abs(video.currentTime - vt) > 0.3 && vt < (video.duration || 1e9) - 0.1) { try { video.currentTime = Math.max(0, vt); } catch (e) { /* next frame */ } }
+        video.style.opacity = String(I.opacity(t) * lead * fade);
       } else {
         if (video) { dropFilm(); BX.log('film over at ' + t.toFixed(2) + ' s'); }
-        I.draw(Math.min(t, I.LEN), fade < 1 ? I.opacity(t) * fade : undefined);
+        const op = I.opacity(t) * lead * fade;
+        I.draw(Math.min(t, I.LEN), op < 1 ? op : undefined);
       }
       BX.meter(performance.now() - d0, now);
       if (first) { first = false; BX.started(); BX.log(BX.view()); }

@@ -53,6 +53,19 @@ public final class Moments {
         return untilKickoffMs <= INTRO_FROM_MS && untilKickoffMs >= INTRO_UNTIL_MS;
     }
 
+    /** Where the film ends in the intro's music: the flash into the trophy (40 s). */
+    public static final double INTRO_FILM_END = 40.0;
+
+    /**
+     * Pure: where in the intro's music a film of this length starts (seconds), so that it ends on the flash into the
+     * trophy: 0 for one of 40 seconds or longer (cut there).
+     */
+    public static double introStart(long filmMs) {
+        if (filmMs <= 0) return 0;
+        double s = INTRO_FILM_END - filmMs / 1000.0;
+        return s <= 0 ? 0 : Math.round(s * 100) / 100.0;
+    }
+
     /** Pure: whether the intro should be made ready now (shortly before it is due). */
     public static boolean introPrep(long untilKickoffMs) {
         return untilKickoffMs <= INTRO_PREP_MS && untilKickoffMs > INTRO_FROM_MS;

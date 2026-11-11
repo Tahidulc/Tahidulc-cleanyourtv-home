@@ -122,19 +122,35 @@ final class DeliveryLink {
         if (request == null) return;
         String[] parts = request.split(" ");
         String method = parts.length > 0 ? parts[0] : "", path = parts.length > 1 ? parts[1] : "";
-        int length = 0;
-        String token = null;
+        long length = 0;
+        String token = null, fileName = null;
         for (String h; (h = line(in)) != null && !h.isEmpty(); ) {
             int colon = h.indexOf(':');
             if (colon < 0) continue;
             String name = h.substring(0, colon).trim().toLowerCase(Locale.ROOT), value = h.substring(colon + 1).trim();
-            if (name.equals("content-length")) length = Integer.parseInt(value);
+            if (name.equals("content-length")) length = Long.parseLong(value);
             if (name.equals("x-token")) token = value;
+            if (name.equals("x-name")) fileName = value;
+        }
+        // The family's own video for the matchday intro, from a paired phone: streamed straight to a file (IntroVideo).
+        if (method.equals("POST") && (path.equals("/intro-video") || path.equals("/intro-video/clear"))) {
+            if (!paired(token)) { reply(s, 401, "{\"error\":\"not paired\"}"); return; }
+            if (path.endsWith("/clear")) {
+                IntroVideo.clear(context);
+                reply(s, 200, "{\"ok\":true}");
+                return;
+            }
+            if (length <= 0 || length > IntroVideo.MAX_BYTES) { reply(s, 413, "{\"error\":\"too big\"}"); return; }
+            s.setSoTimeout(30_000);
+            String why = IntroVideo.receive(context, in, length, fileName);
+            if (why != null) reply(s, 400, new JSONObject().put("error", why).toString());
+            else reply(s, 200, new JSONObject().put("ok", true).put("ms", IntroVideo.durationMs(context)).toString());
+            return;
         }
         if (length < 0 || length > (path.startsWith("/sync") ? SYNC_BODY : MAX_BODY)) { reply(s, 413, "{\"error\":\"too big\"}"); return; }
-        byte[] body = new byte[length];
+        byte[] body = new byte[(int) length];
         for (int read = 0; read < length; ) {
-            int n = in.read(body, read, length - read);
+            int n = in.read(body, read, (int) length - read);
             if (n < 0) break;
             read += n;
         }

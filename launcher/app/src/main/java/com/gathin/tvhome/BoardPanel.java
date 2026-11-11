@@ -269,10 +269,18 @@ final class BoardPanel extends SportPanel {
                 ? "Real footage, the competition's trophy and Matchday, over the last break (4 minutes before kick-off)"
                 : "Off · OK to play it over the last break before kick-off";
         intro.ok = () -> ClassicIntro.setIntro(c, !ClassicIntro.introOn(c));
+        Row film = row("Intro video", false);
+        film.words = () -> IntroVideo.useOwn(c) ? "Your own: " + IntroVideo.words(c) + " · OK: the built-in footage"
+                : IntroVideo.has(c) ? "Built-in footage · OK: your own (" + IntroVideo.words(c) + ")"
+                : "Built-in footage · send your own from the phone app (Scoreboard settings, Intro video)";
+        film.ok = () -> {
+            if (IntroVideo.has(c)) IntroVideo.setUseOwn(c, !IntroVideo.useOwn(c));
+        };
         Row tryIntro = row("Try the matchday intro", false);
         tryIntro.words = () -> "Plays it now (51 seconds), with " + tryGame() + " · Back fades it away";
         tryIntro.ok = () -> tryClassic("intro");
-        add(intro, tryIntro);
+        add(intro, film);
+        add(tryIntro);
         // Each tried now over Home, for the game chosen above when it can be (else the Premier League's latest played).
         Row tryKick = row("Try the kick-off pop-up", false);
         tryKick.words = () -> "Plays it now (" + popupStyleWords() + "), with " + tryGame();

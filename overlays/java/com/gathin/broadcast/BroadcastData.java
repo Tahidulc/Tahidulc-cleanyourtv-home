@@ -166,6 +166,17 @@ public final class BroadcastData {
      * music, and whether the real-footage film opens it (the TV's bundle has it; without it the page draws it all).
      */
     public static JSONObject intro(Match m, boolean footage) throws JSONException {
+        return intro(m, footage ? BUILT_IN_FILM : null, 0);
+    }
+
+    /** The film in the TV's bundle (overlays/assets-tv), cut to the intro's music. */
+    public static final String BUILT_IN_FILM = "footage/intro-footage.mp4";
+
+    /**
+     * The intro with a film of the family's own choosing (a file:// address) that starts startAt seconds into the music
+     * (Moments.introStart), the built-in film kept to fall back on; or with no film (null): drawn whole.
+     */
+    public static JSONObject intro(Match m, String film, double startAt) throws JSONException {
         JSONObject o = new JSONObject();
         String key = compKey(m.compId, m.compName);
         o.put("comp", key.isEmpty() ? "other" : key);
@@ -175,7 +186,11 @@ public final class BroadcastData {
         o.put("home", new JSONObject().put("name", m.homeName == null ? "" : m.homeName));
         o.put("away", new JSONObject().put("name", m.awayName == null ? "" : m.awayName));
         o.put("sound", true);
-        if (footage) o.put("footage", true);
+        if (film != null && !film.isEmpty()) {
+            o.put("footage", film);
+            if (!BUILT_IN_FILM.equals(film)) o.put("footageFallback", BUILT_IN_FILM);
+            if (startAt > 0) o.put("startAt", startAt);
+        }
         return o;
     }
 

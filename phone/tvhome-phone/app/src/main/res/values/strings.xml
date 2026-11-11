@@ -8,4 +8,8 @@
     <string name="tab_settings">Settings</string>
     <string name="live45_intro">Matchday intro before kick-off (real footage, the trophy, Matchday)</string>
     <string name="live45_intro_test">Matchday intro</string>
+    <string name="live46_intro_video">Intro video (sent to the TVs too)</string>
+    <string name="live46_builtin">Built-in footage</string>
+    <string name="live46_own">Your own video…</string>
+    <string name="live46_back">Back to the built-in footage, here and on the TVs</string>
 </resources>

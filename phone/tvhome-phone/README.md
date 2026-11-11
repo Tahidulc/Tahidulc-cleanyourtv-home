@@ -438,3 +438,5 @@ HDR10 or HLG, and Dolby Atmos, Dolby Digital 5.1, AAC Stereo and the like. Live 
 
 Build: JDK 17, Android SDK 34. `./gradlew assembleRelease testReleaseUnitTest lintRelease`; the APK is in
 `app/build/outputs/apk/release/`, signed with the debug key for sideloading.
+
+Your own intro video (4.46): in the scoreboard settings, Intro video, "Your own video…" opens the file picker; the video is kept in the app, plays before the trophy and the Matchday card in place of the built-in footage (muted under the intro's music, ending on the flash into the trophy), and is sent to the paired TVs (launcher 4.61). "Built-in footage" goes back, here and on the TVs.

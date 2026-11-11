@@ -207,6 +207,19 @@ public final class BoardSettings {
                 new String[]{c.getString(R.string.live35_style_beam), c.getString(R.string.live35_style_stadium), c.getString(R.string.live35_style_off)},
                 PlayerIntro.lineupsStyle(c), st -> PlayerIntro.setLineupsStyle(c, st));
         row(c, col, c.getString(R.string.live45_intro), PlayerIntro.introOn(c), on -> PlayerIntro.setIntro(c, on));
+        // The intro's film: the built-in one, or a video of the family's own (chosen here, sent to the TVs too).
+        styles(c, col, c.getString(R.string.live46_intro_video), new String[]{"builtin", "own"},
+                new String[]{c.getString(R.string.live46_builtin), IntroVideo.has(c) ? IntroVideo.words(c) : c.getString(R.string.live46_own)},
+                IntroVideo.useOwn(c) ? "own" : "builtin", key -> {
+                    if ("own".equals(key)) {
+                        c.startActivity(new android.content.Intent(c, PickIntroActivity.class)
+                                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK));
+                    } else if (IntroVideo.has(c)) {
+                        IntroVideo.clear(c);
+                        com.gathin.tvhomephone.sync.TvUpload.clearIntroVideo(c);
+                        android.widget.Toast.makeText(c, R.string.live46_back, android.widget.Toast.LENGTH_SHORT).show();
+                    }
+                });
         row(c, col, c.getString(R.string.live34_swish), PlayerIntro.swishOn(c), on -> PlayerIntro.setSwishOn(c, on));
         styles(c, col, c.getString(R.string.live35_goal_sound), com.gathin.broadcast.Sfx.GOALS, com.gathin.broadcast.Sfx.GOAL_NAMES,
                 PlayerIntro.goalSound(c), key -> PlayerIntro.setGoalSound(c, key));

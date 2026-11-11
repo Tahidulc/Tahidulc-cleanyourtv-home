@@ -55,6 +55,11 @@
 
         <!-- Watch (phone-watch): a film's or series' page. -->
         <activity android:name=".watch.TitleActivity" android:exported="false" />
+        <!-- The family's own matchday intro video: Android's file picker, then it is kept and sent to the TVs. -->
+        <activity
+            android:name=".live.PickIntroActivity"
+            android:exported="false"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
         <!-- Live TV (phone-sports): the player, full screen. -->
         <!-- Watch: a film or episode from the family's own playlist (Vod), full screen on its side. -->
         <activity

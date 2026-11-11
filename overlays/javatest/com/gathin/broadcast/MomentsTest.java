@@ -75,4 +75,13 @@ public class MomentsTest {
         assertFalse(Moments.introPrep(240_000L));
         assertFalse(Moments.introPrep(400_000L));
     }
+
+    @Test
+    public void anOwnFilmEndsOnTheTrophyFlash() {
+        assertEquals(0.0, Moments.introStart(0), 0);
+        assertEquals(0.0, Moments.introStart(52_000), 0);
+        assertEquals(0.0, Moments.introStart(40_000), 0);
+        assertEquals(15.0, Moments.introStart(25_000), 0);
+        assertEquals(29.33, Moments.introStart(10_670), 0);
+    }
 }

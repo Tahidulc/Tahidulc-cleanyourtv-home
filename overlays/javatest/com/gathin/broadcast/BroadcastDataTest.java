@@ -142,7 +142,12 @@ public class BroadcastDataTest {
         assertEquals("laliga", o.getString("trophy"));
         assertEquals("Atlético Madrid", o.getJSONObject("home").getString("name"));
         assertEquals("Barcelona", o.getJSONObject("away").getString("name"));
-        assertTrue(o.getBoolean("footage"));
+        assertEquals("footage/intro-footage.mp4", o.getString("footage"));
+        assertFalse(o.has("footageFallback"));
         assertFalse(BroadcastData.intro(m, false).has("footage"));
+        org.json.JSONObject own = BroadcastData.intro(m, "file:///data/x/own.mp4", 15.0);
+        assertEquals("file:///data/x/own.mp4", own.getString("footage"));
+        assertEquals("footage/intro-footage.mp4", own.getString("footageFallback"));
+        assertEquals(15.0, own.getDouble("startAt"), 0);
     }
 }

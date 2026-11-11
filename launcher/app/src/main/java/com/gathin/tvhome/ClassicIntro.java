@@ -270,8 +270,15 @@ final class ClassicIntro {
         });
     }
 
-    /** The intro's settings for a game: its competition's trophy, the teams, the film (it is in this app's bundle). */
-    private static JSONObject introCfg(ScoresTicker.Game g) throws org.json.JSONException {
+    /**
+     * The intro's settings for a game: its competition's trophy, the teams, and the film: the family's own video when
+     * one was sent from the phone and is chosen (IntroVideo), else the one in this app's bundle.
+     */
+    private static JSONObject introCfg(Context c, ScoresTicker.Game g) throws org.json.JSONException {
+        if (IntroVideo.useOwn(c)) {
+            return BroadcastData.intro(match(g), "file://" + IntroVideo.file(c).getAbsolutePath(),
+                    Moments.introStart(IntroVideo.durationMs(c)));
+        }
         return BroadcastData.intro(match(g), true);
     }
 
@@ -283,7 +290,7 @@ final class ClassicIntro {
         shown.add(key);
         Context app = c.getApplicationContext();
         try {
-            show(app, BroadcastView.page(app, "intro", introCfg(g), ClassicIntro::gone), "intro");
+            show(app, BroadcastView.page(app, "intro", introCfg(app, g), ClassicIntro::gone), "intro");
             android.util.Log.i("Sport", "matchday intro shown (not made ready before): " + key);
         } catch (Exception e) {
             android.util.Log.w("Sport", "matchday intro: " + e);
@@ -293,7 +300,7 @@ final class ClassicIntro {
     /** The intro made ready out of sight for key; ready: told when it can go (a try's). */
     private static void holdIntro(Context c, ScoresTicker.Game g, String key, BroadcastView.Ready ready) {
         try {
-            hold(c.getApplicationContext(), "intro", introCfg(g), "intro", key, ready);
+            hold(c.getApplicationContext(), "intro", introCfg(c.getApplicationContext(), g), "intro", key, ready);
         } catch (Exception e) {
             android.util.Log.w("Sport", "matchday intro not made ready: " + e);
         }
@@ -629,7 +636,7 @@ final class ClassicIntro {
             String about = null;
             try {
                 for (ScoresTicker.Game g : candidates(chosen, league)) {
-                    cfg = introCfg(g);
+                    cfg = introCfg(app, g);
                     if (q.length() > 0) cfg.put("q", q);
                     about = (g.homeName != null ? g.homeName : g.home) + " v " + (g.awayName != null ? g.awayName : g.away);
                     break;
