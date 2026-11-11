@@ -2062,6 +2062,20 @@ public class GoalWatchService extends Service {
             WeatherAlerts.Outlook outlook = weatherNow && !lat.isEmpty() ? WeatherAlerts.outlook(lat, lon) : null;
             F1Results.Race race = f1 ? F1Results.load(null) : null;
             F1Results.Weekend weekend = f1Live ? F1Results.weekend(null) : null;
+            // The intros for F1, UFC and boxing: the programme starting on the channel tuned, and the race's own start
+            Object[] onTuned = null;
+            F1Results.Weekend raceWeekend = weekend;
+            if (ClassicIntro.introOn(this)) {
+                try {
+                    onTuned = TvGuide.startingOn(getResources().getStringArray(R.array.football_tv_channels), InStep.tunedNames(this),
+                            System.currentTimeMillis(), com.gathin.broadcast.Moments.INTRO_FROM_MS, 60_000L);
+                } catch (RuntimeException ignored) {
+                    // looked at again next time
+                }
+                if (raceWeekend == null && ClassicIntro.tunedF1(this)) raceWeekend = F1Results.weekend(null);
+            }
+            final Object[] programme = onTuned;
+            final F1Results.Weekend forIntro = raceWeekend;
             List<String[]> headlines = news ? readNews(newsAlerts, boxingAlerts) : null;
             boolean f1On = false;
             for (F1Results.Session s : weekend == null ? new ArrayList<F1Results.Session>() : weekend.sessions) {
@@ -2088,6 +2102,7 @@ public class GoalWatchService extends Service {
                 }
                 // The weekend planner: a game planned for this TV kicking off now goes on (WeekendPlanner).
                 WeekendPlanner.due(this);
+                ClassicIntro.sportTick(this, forIntro, programme);
                 for (ScoresTicker.Game g : games) {
                     if (playerOnly.contains(g.id)) continue;
                     if (kickoffReminders && lineupGame(g) && g.state == 1 && g.kickoff - now > 0

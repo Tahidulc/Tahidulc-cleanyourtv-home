@@ -1,7 +1,7 @@
 // The trophies themselves: our own models of each competition's trophy, shaped from photos, public descriptions and
 // published measurements (heights and widths), in polished silver and gold. No emblem or lettering of a competition on any
 // of them (the Premier League's ribbons carry its name, as the real ones do). Shared by the kick-off pop-up's trophy
-// (trophy3d.js, which lights and turns one for the pop-up) and the matchday intro (src/intro/), which puts one in its own scene.
+// (trophy3d.js, which lights and turns one for the pop-up).
 // trophyKit() makes the materials and returns { BUILD: { kind() -> THREE.Group }, ribbonsFor(kind), shapeRibbon(mesh, t) }.
 import * as THREE from '../vendor/three.module.js';
 

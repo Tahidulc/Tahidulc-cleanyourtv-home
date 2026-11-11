@@ -12,10 +12,9 @@ import java.util.Locale;
 
 /**
  * The family's own video for the matchday intro, in place of the built-in film: sent from the phone app over the home
- * network (DeliveryLink's /intro-video, a paired phone only) and kept in this app's own files. It plays before the
- * trophy and the Matchday card (ClassicIntro), muted under the intro's music; one shorter than 40 seconds starts part
- * way into the music so that it ends on the flash into the trophy. The Scoreboard card switches between it and the
- * built-in film.
+ * network (DeliveryLink's /intro-video, a paired phone only) and kept in this app's own files. It plays in place of the
+ * competition's built-in film (ClassicIntro, BroadcastData.intro), without its sound and 40 seconds of it at most, then
+ * the Whitebrook Road Sports ending with its music. The Scoreboard card switches between it and the built-in films.
  */
 final class IntroVideo {
     private IntroVideo() { }

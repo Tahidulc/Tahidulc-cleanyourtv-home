@@ -99,6 +99,10 @@ final class BoardPanel extends SportPanel {
         return g == null ? "the last Premier League game" : g.home + " v " + g.away;
     }
 
+    /** The sports' intros the try row steps through: key, name. */
+    private static final String[][] SPORTS = {{"f1", "F1"}, {"ufc", "UFC"}, {"boxing", "boxing"}, {"football", "plain football"}};
+    private int sportTry;
+
     /** A try of the classic pop-up or line-ups: the card away, then it over Home (ClassicIntro.tryIt). */
     private void tryClassic(String kind) {
         ScoresTicker.Game g = game();
@@ -263,24 +267,32 @@ final class BoardPanel extends SportPanel {
         };
         classicLu.ok = () -> ClassicIntro.setLineupsStyle(c, ClassicIntro.nextStyle(ClassicIntro.lineupsStyle(c), "stadium"));
         add(classicPop, classicLu);
-        Row intro = row("Matchday intro", true);
+        Row intro = row("Intros", true);
         intro.on = () -> ClassicIntro.introOn(c);
         intro.words = () -> ClassicIntro.introOn(c)
-                ? "Real footage, the competition's trophy and Matchday, over the last break (4 minutes before kick-off)"
-                : "Off · OK to play it over the last break before kick-off";
+                ? "The competition's own intro over the last break (4 minutes before kick-off), F1, UFC and boxing as they begin · the channel's sound off meanwhile"
+                : "Off · OK to play them over the last break before kick-off";
         intro.ok = () -> ClassicIntro.setIntro(c, !ClassicIntro.introOn(c));
         Row film = row("Intro video", false);
-        film.words = () -> IntroVideo.useOwn(c) ? "Your own: " + IntroVideo.words(c) + " · OK: the built-in footage"
-                : IntroVideo.has(c) ? "Built-in footage · OK: your own (" + IntroVideo.words(c) + ")"
-                : "Built-in footage · send your own from the phone app (Scoreboard settings, Intro video)";
+        film.words = () -> IntroVideo.useOwn(c) ? "Your own: " + IntroVideo.words(c) + " · OK: the built-in films"
+                : IntroVideo.has(c) ? "Built-in films · OK: your own (" + IntroVideo.words(c) + ")"
+                : "Built-in films, one per competition · send your own from the phone app (Settings, Intro video)";
         film.ok = () -> {
             if (IntroVideo.has(c)) IntroVideo.setUseOwn(c, !IntroVideo.useOwn(c));
         };
-        Row tryIntro = row("Try the matchday intro", false);
-        tryIntro.words = () -> "Plays it now (51 seconds), with " + tryGame() + " · Back fades it away";
+        Row tryIntro = row("Try the intro", false);
+        tryIntro.words = () -> "Plays it now (20 seconds): the competition of " + tryGame() + " · Back fades it away";
         tryIntro.ok = () -> tryClassic("intro");
+        Row trySport = row("Try the F1, UFC or boxing intro", false);
+        trySport.words = () -> "Plays " + SPORTS[sportTry % SPORTS.length][1] + "'s now · OK again for the next";
+        trySport.ok = () -> {
+            String k = SPORTS[sportTry % SPORTS.length][0];
+            sportTry++;
+            hide();
+            ClassicIntro.trySport(c, k, (why) -> android.widget.Toast.makeText(c, why, android.widget.Toast.LENGTH_LONG).show());
+        };
         add(intro, film);
-        add(tryIntro);
+        add(tryIntro, trySport);
         // Each tried now over Home, for the game chosen above when it can be (else the Premier League's latest played).
         Row tryKick = row("Try the kick-off pop-up", false);
         tryKick.words = () -> "Plays it now (" + popupStyleWords() + "), with " + tryGame();

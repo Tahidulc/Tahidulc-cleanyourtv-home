@@ -41,7 +41,8 @@ public class PlayerTestsTest {
         for (String g : new String[]{PlayerTests.POPUP, PlayerTests.STRAP}) {
             assertEquals(java.util.Arrays.asList("kickoff", "restart", "second"), PlayerTests.tests(g));
         }
-        assertEquals(java.util.Arrays.asList("lineups", "stadium", "intro"), PlayerTests.tests(PlayerTests.LINEUPS));
+        assertEquals(java.util.Arrays.asList("lineups", "stadium", "intro", "intro:f1", "intro:ufc", "intro:boxing", "intro:football"),
+                PlayerTests.tests(PlayerTests.LINEUPS));
     }
 
     @Test public void everyGoalSoundButOffAndEveryTileStyleButAuto() {

@@ -66,6 +66,39 @@ public final class Moments {
         return s <= 0 ? 0 : Math.round(s * 100) / 100.0;
     }
 
+    /** Pure: whether a programme starting at startMs is due its intro now: four minutes before it, or up to a minute into it. */
+    public static boolean programmeDue(long startMs, long now) {
+        long until = startMs - now;
+        return startMs > 0 && until <= INTRO_FROM_MS && until >= -60_000L;
+    }
+
+    /**
+     * Pure: the intro a programme's title calls for: "ufc", "boxing" or "f1" (a race day, not practice or qualifying);
+     * null for anything else (football has its own way in, by its game), and for highlights and replays.
+     */
+    public static String sportOf(String title) {
+        if (title == null) return null;
+        String t = " " + title.toLowerCase(java.util.Locale.ROOT).replaceAll("[^a-z0-9]+", " ") + " ";
+        if (t.contains(" highlights ") || t.contains(" replay ") || t.contains(" review ") || t.contains(" classic ")
+                || t.contains(" rewind ") || t.contains(" preview ")) return null;
+        if (t.contains(" ufc ")) return "ufc";
+        if (t.contains(" boxing ") || t.contains(" box office ")) return "boxing";
+        if (t.contains(" f1 ") || t.contains(" formula 1 ") || t.contains(" formula one ")) {
+            for (String not : new String[]{" practice ", " qualifying ", " shootout ", " press conference ", " notebook ", " debrief ", " show "}) {
+                if (t.contains(not)) return null;
+            }
+            return "f1";
+        }
+        return null;
+    }
+
+    /** Pure: a programme's title as the line under the wordmark: "Live UFC 323: Dvalishvili v Yan" to "UFC 323: Dvalishvili v Yan". */
+    public static String eventLine(String title) {
+        if (title == null) return "";
+        String s = title.trim().replaceFirst("(?i)^live\\s*[:\\-]?\\s*", "");
+        return s.length() > 48 ? s.substring(0, 48).trim() : s;
+    }
+
     /** Pure: whether the intro should be made ready now (shortly before it is due). */
     public static boolean introPrep(long untilKickoffMs) {
         return untilKickoffMs <= INTRO_PREP_MS && untilKickoffMs > INTRO_FROM_MS;

@@ -135,19 +135,31 @@ public class BroadcastDataTest {
     }
 
     @Test
-    public void introSettingsCarryTheTeamsTrophyAndFilm() throws Exception {
-        BroadcastData.Match m = new BroadcastData.Match();
-        m.homeName = "Atlético Madrid"; m.awayName = "Barcelona"; m.compId = "esp.1"; m.compName = "LALIGA";
-        org.json.JSONObject o = BroadcastData.intro(m, true);
-        assertEquals("laliga", o.getString("trophy"));
-        assertEquals("Atlético Madrid", o.getJSONObject("home").getString("name"));
-        assertEquals("Barcelona", o.getJSONObject("away").getString("name"));
-        assertEquals("footage/intro-footage.mp4", o.getString("footage"));
-        assertFalse(o.has("footageFallback"));
-        assertFalse(BroadcastData.intro(m, false).has("footage"));
-        org.json.JSONObject own = BroadcastData.intro(m, "file:///data/x/own.mp4", 15.0);
-        assertEquals("file:///data/x/own.mp4", own.getString("footage"));
-        assertEquals("footage/intro-footage.mp4", own.getString("footageFallback"));
-        assertEquals(15.0, own.getDouble("startAt"), 0);
+    public void introsByCompetitionElsePlainFootball() {
+        assertEquals("pl", BroadcastData.introKey("eng.1", "Premier League"));
+        assertEquals("laliga", BroadcastData.introKey("esp.1", ""));
+        assertEquals("ucl", BroadcastData.introKey("uefa.champions", ""));
+        assertEquals("football", BroadcastData.introKey("ned.1", "Eredivisie"));
+        assertEquals("football", BroadcastData.introKey("", ""));
+    }
+
+    @Test
+    public void introSettingsCarryTheFilmSoundAndFixture() throws Exception {
+        org.json.JSONObject pl = BroadcastData.intro("pl", BroadcastData.fixture("Arsenal", "Everton"), null, 0);
+        assertEquals("intros/pl.mp4", pl.getJSONArray("clips").getString(0));
+        assertEquals("intros/sound-pl.m4a", pl.getString("sound"));
+        assertEquals("ARSENAL v EVERTON", pl.getString("fixture"));
+        assertEquals(13.8, pl.getDouble("fixtureAt"), 0);
+        org.json.JSONObject f1 = BroadcastData.intro("f1", "Abu Dhabi Grand Prix", null, 0);
+        assertEquals("intros/f1.mp4", f1.getJSONArray("clips").getString(0));
+        assertEquals("intros/sound-full.m4a", f1.getString("sound"));
+        assertEquals(15.2, f1.getDouble("fixtureAt"), 0);
+        assertEquals("ABU DHABI GRAND PRIX", f1.getString("fixture"));
+        assertEquals("UFC 310: PANTOJA v ASAKURA", BroadcastData.intro("ufc", "UFC 310: Pantoja v Asakura", null, 0).getString("fixture"));
+        org.json.JSONObject own = BroadcastData.intro("pl", "", "/data/x/own.mp4", 25_000);
+        assertEquals(2, own.getJSONArray("clips").length());
+        assertEquals("intros/tail.mp4", own.getJSONArray("clips").getString(1));
+        assertEquals(25.0, own.getDouble("soundAt"), 0);
+        assertEquals("", BroadcastData.fixture("Arsenal", ""));
     }
 }

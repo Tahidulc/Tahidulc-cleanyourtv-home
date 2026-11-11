@@ -107,7 +107,7 @@ final class PlayerIntro {
         prefs(c).edit().putString("lineups_style", style).apply();
     }
 
-    /** The matchday intro over the last break before kick-off (intro.html, with the real-footage film): on unless off. */
+    /** The intros (reveal.html) over the last break before kick-off, and as F1, UFC and boxing begin: on unless off. */
     static boolean introOn(Context c) {
         return prefs(c).getBoolean("intro", true);
     }
@@ -156,19 +156,63 @@ final class PlayerIntro {
         if (shown.contains(key) || showing() || fetching || !canShow.getAsBoolean()) return;
         shown.add(key);
         try {
-            show(BroadcastView.page(a, "intro", introCfg(a, g), this::gone), "intro");
+            show(BroadcastView.page(a, "reveal", introCfg(a, g), this::gone), "intro");
         } catch (Exception ignored) {
             // not this time
         }
     }
 
-    /** The intro's settings: the family's own video when one is chosen (IntroVideo), else the built-in film. */
+    /** The intro's settings for a game: its competition's own film (else plain football's), the two teams under it. */
     private static JSONObject introCfg(Context c, Game g) throws org.json.JSONException {
-        if (IntroVideo.useOwn(c)) {
-            return BroadcastData.intro(match(g), "file://" + IntroVideo.file(c).getAbsolutePath(),
-                    Moments.introStart(IntroVideo.durationMs(c)));
+        BroadcastData.Match m = match(g);
+        return cfgFor(c, BroadcastData.introKey(m.compId, m.compName), BroadcastData.fixture(m.homeName, m.awayName));
+    }
+
+    /** An intro's settings: key's film (or the family's own video, then the ending), the line under the wordmark. */
+    private static JSONObject cfgFor(Context c, String key, String line) throws org.json.JSONException {
+        if (IntroVideo.useOwn(c)) return BroadcastData.intro(key, line, "file://" + IntroVideo.file(c).getAbsolutePath(), IntroVideo.durationMs(c));
+        return BroadcastData.intro(key, line, null, 0);
+    }
+
+    /** The channel's own sound off while an intro plays (the player's volume), back after. */
+    private Consumer<Boolean> hush = (on) -> { };
+
+    void hush(Consumer<Boolean> h) {
+        hush = h == null ? (on) -> { } : h;
+    }
+
+    /** The programmes on the channel now and next: F1's, UFC's and boxing's intros four minutes before they begin. */
+    void sportTick(List<OverMatches.Programme> guide) {
+        if (guide == null || !introOn(a) || showing() || fetching || !canShow.getAsBoolean()) return;
+        long now = System.currentTimeMillis();
+        for (OverMatches.Programme p : guide) {
+            String sport = Moments.sportOf(p.title);
+            if (sport == null || !Moments.programmeDue(p.start, now)) continue;
+            String key = sport + "|" + p.start;
+            if (shown.contains(key)) continue;
+            shown.add(key);
+            try {
+                show(BroadcastView.page(a, "reveal", cfgFor(a, sport, Moments.eventLine(p.title)), this::gone), "intro");
+            } catch (Exception ignored) {
+                // not this time
+            }
+            return;
         }
-        return BroadcastData.intro(match(g), true);
+    }
+
+    /** Tests: a sport's intro ("f1", "ufc", "boxing", "football"), now. */
+    void testSport(String key, IntConsumer note) {
+        if (showing() || fetching) {
+            note.accept(R.string.live7_wait);
+            return;
+        }
+        String line = "f1".equals(key) ? "Abu Dhabi Grand Prix" : "ufc".equals(key) ? "UFC main card"
+                : "boxing".equals(key) ? "Tonight's main event" : "England v Spain";
+        try {
+            show(BroadcastView.page(a, "reveal", cfgFor(a, key, line), this::gone), "intro");
+        } catch (Exception e) {
+            note.accept(R.string.live7_no_game);
+        }
     }
 
     /** Tests: the matchday intro now, with the game watched (its trophy and teams), else a recent Premier League game. */
@@ -204,7 +248,7 @@ final class PlayerIntro {
                     note.accept(R.string.live7_wait);
                     return;
                 }
-                show(BroadcastView.page(a, "intro", got, this::gone), "intro");
+                show(BroadcastView.page(a, "reveal", got, this::gone), "intro");
             });
         });
     }
@@ -317,6 +361,7 @@ final class PlayerIntro {
         v.setTranslationX(pw > 0 ? px : 0);
         v.setTranslationY(ph > 0 ? py : 0);
         if (hidesBoard(kind)) lineupsUp.accept(true);
+        if ("intro".equals(kind)) hush.accept(true);
     }
 
     /** The line-ups (either) and the strap (which draws the board itself as it folds into it): the board out of the way. */
@@ -327,6 +372,7 @@ final class PlayerIntro {
     private void gone(BroadcastView v) {
         if (v != view) return;
         boolean wasLineups = hidesBoard(viewKind);
+        if ("intro".equals(viewKind)) hush.accept(false);
         view = null;
         viewKind = "";
         root.removeView(v);

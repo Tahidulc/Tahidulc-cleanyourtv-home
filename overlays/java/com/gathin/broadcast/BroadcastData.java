@@ -161,37 +161,49 @@ public final class BroadcastData {
         return "";
     }
 
-    /**
-     * The matchday intro's settings (intro.html): the competition and its trophy, both teams for the end card, the
-     * music, and whether the real-footage film opens it (the TV's bundle has it; without it the page draws it all).
-     */
-    public static JSONObject intro(Match m, boolean footage) throws JSONException {
-        return intro(m, footage ? BUILT_IN_FILM : null, 0);
+    /** The competitions, the sports and plain football that have an intro of their own (assets: broadcast/intros/KEY.mp4). */
+    public static final String[] INTRO_KEYS = {"pl", "laliga", "ucl", "uel", "uecl", "facup", "leaguecup", "seriea", "bundesliga",
+            "ligue1", "football", "f1", "ufc", "boxing"};
+
+    /** Pure: a football game's intro: its competition's own, else plain football's (the Champions League ball). */
+    public static String introKey(String compId, String compName) {
+        String k = introTrophy(compId, compName);
+        return k.isEmpty() ? "football" : k;
     }
 
-    /** The film in the TV's bundle (overlays/assets-tv), cut to the intro's music. */
-    public static final String BUILT_IN_FILM = "footage/intro-footage.mp4";
-
     /**
-     * The intro with a film of the family's own choosing (a file:// address) that starts startAt seconds into the music
-     * (Moments.introStart), the built-in film kept to fall back on; or with no film (null): drawn whole.
+     * The intro's settings (reveal.html): the film for key (the Premier League's: the family's own clip, then the
+     * Whitebrook Road Sports ending), its sound, and the fixture written under the wordmark at its moment. own: a
+     * family's own video (a file's path) played first instead, then the ending on its own; ownMs its length.
      */
-    public static JSONObject intro(Match m, String film, double startAt) throws JSONException {
+    public static JSONObject intro(String key, String fixture, String own, long ownMs) throws JSONException {
         JSONObject o = new JSONObject();
-        String key = compKey(m.compId, m.compName);
-        o.put("comp", key.isEmpty() ? "other" : key);
-        o.put("compName", compName(key, m.compName));
-        String trophy = introTrophy(m.compId, m.compName);
-        if (!trophy.isEmpty()) o.put("trophy", trophy);
-        o.put("home", new JSONObject().put("name", m.homeName == null ? "" : m.homeName));
-        o.put("away", new JSONObject().put("name", m.awayName == null ? "" : m.awayName));
-        o.put("sound", true);
-        if (film != null && !film.isEmpty()) {
-            o.put("footage", film);
-            if (!BUILT_IN_FILM.equals(film)) o.put("footageFallback", BUILT_IN_FILM);
-            if (startAt > 0) o.put("startAt", startAt);
+        JSONArray clips = new JSONArray();
+        String k = key == null || key.isEmpty() ? "football" : key;
+        if (own != null && !own.isEmpty()) {
+            double first = Math.min(40.0, Math.max(1.0, ownMs / 1000.0));
+            clips.put(own).put("intros/tail.mp4");
+            o.put("firstMax", 40.0);
+            o.put("sound", "intros/sound-tail.m4a");
+            o.put("soundAt", first);
+            o.put("fixtureAt", first + 3.8);
+        } else {
+            clips.put("intros/" + k + ".mp4");
+            o.put("sound", "pl".equals(k) ? "intros/sound-pl.m4a" : "intros/sound-full.m4a");
+            o.put("fixtureAt", "pl".equals(k) ? 13.8 : 15.2);
         }
+        o.put("key", k);
+        o.put("clips", clips);
+        // in capitals as the wordmark's lines are, the "v" between two sides kept small
+        o.put("fixture", fixture == null ? "" : fixture.trim().toUpperCase(Locale.ROOT).replace(" V ", " v "));
         return o;
+    }
+
+    /** Pure: the fixture under the wordmark: "ARSENAL v EVERTON" (the v kept small), or "" without both teams. */
+    public static String fixture(String home, String away) {
+        String h = home == null ? "" : home.trim(), a = away == null ? "" : away.trim();
+        if (h.isEmpty() || a.isEmpty()) return "";
+        return h.toUpperCase(Locale.ROOT) + " v " + a.toUpperCase(Locale.ROOT);
     }
 
     // ---- the line-ups ------------------------------------------------------------------------------------------------

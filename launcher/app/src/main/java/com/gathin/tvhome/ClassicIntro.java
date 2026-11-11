@@ -112,7 +112,10 @@ final class ClassicIntro {
         return "classic".equals(style) ? first : first.equals(style) ? "off" : "classic";
     }
 
-    /** The matchday intro over the last advert break before kick-off (intro.html, with the real-footage film): on or off. */
+    /**
+     * The intros (reveal.html: the competition's own film, then Whitebrook Road Sports) over the last advert break before
+     * kick-off, and as F1, UFC and boxing begin on the channel watched: on or off.
+     */
     static boolean introOn(Context c) {
         return prefs(c).getBoolean("intro", true);
     }
@@ -270,16 +273,16 @@ final class ClassicIntro {
         });
     }
 
-    /**
-     * The intro's settings for a game: its competition's trophy, the teams, and the film: the family's own video when
-     * one was sent from the phone and is chosen (IntroVideo), else the one in this app's bundle.
-     */
+    /** The intro's settings for a game: its competition's own film (else plain football's) and the two teams. */
     private static JSONObject introCfg(Context c, ScoresTicker.Game g) throws org.json.JSONException {
-        if (IntroVideo.useOwn(c)) {
-            return BroadcastData.intro(match(g), "file://" + IntroVideo.file(c).getAbsolutePath(),
-                    Moments.introStart(IntroVideo.durationMs(c)));
-        }
-        return BroadcastData.intro(match(g), true);
+        return cfgFor(c, BroadcastData.introKey(g.slug, g.league),
+                BroadcastData.fixture(g.homeName != null ? g.homeName : g.home, g.awayName != null ? g.awayName : g.away));
+    }
+
+    /** An intro's settings: key's film (or the family's own video sent from the phone, then the ending), the line under it. */
+    private static JSONObject cfgFor(Context c, String key, String fixture) throws org.json.JSONException {
+        if (IntroVideo.useOwn(c)) return BroadcastData.intro(key, fixture, "file://" + IntroVideo.file(c).getAbsolutePath(), IntroVideo.durationMs(c));
+        return BroadcastData.intro(key, fixture, null, 0);
     }
 
     /** The intro now (made ready before, else as soon as it is ready), once a game. */
@@ -290,7 +293,7 @@ final class ClassicIntro {
         shown.add(key);
         Context app = c.getApplicationContext();
         try {
-            show(app, BroadcastView.page(app, "intro", introCfg(app, g), ClassicIntro::gone), "intro");
+            if (show(app, BroadcastView.page(app, "reveal", introCfg(app, g), ClassicIntro::gone), "intro")) IntroQuiet.hush(app);
             android.util.Log.i("Sport", "matchday intro shown (not made ready before): " + key);
         } catch (Exception e) {
             android.util.Log.w("Sport", "matchday intro: " + e);
@@ -300,7 +303,7 @@ final class ClassicIntro {
     /** The intro made ready out of sight for key; ready: told when it can go (a try's). */
     private static void holdIntro(Context c, ScoresTicker.Game g, String key, BroadcastView.Ready ready) {
         try {
-            hold(c.getApplicationContext(), "intro", introCfg(c.getApplicationContext(), g), "intro", key, ready);
+            hold(c.getApplicationContext(), "reveal", introCfg(c.getApplicationContext(), g), "intro", key, ready);
         } catch (Exception e) {
             android.util.Log.w("Sport", "matchday intro not made ready: " + e);
         }
@@ -456,6 +459,7 @@ final class ClassicIntro {
         view = v;
         viewKind = prepKind;
         lineupsUp(prepKind);
+        if ("intro".equals(prepKind)) IntroQuiet.hush(f.getContext());
         shown.add(key);
         android.util.Log.i("Sport", "classic " + prepKind + " shown" + (v.isReady() ? ", made ready before" : ", still getting ready"));
         v.go();
@@ -487,6 +491,7 @@ final class ClassicIntro {
         }
         if (v != null && v != view) return;
         boolean wasLineups = covers(viewKind) || "strap".equals(viewKind);
+        if ("intro".equals(viewKind) && v != null) IntroQuiet.release(v.getContext());
         view = null;
         viewKind = "";
         trial = false;
@@ -556,6 +561,10 @@ final class ClassicIntro {
         }
         String kind = head, force = forced;
         JSONObject q = quality(sp.length > 1 ? sp[1] : "");
+        if (kind.startsWith("intro:")) {
+            trySport(c, kind.substring(6), note);
+            return;
+        }
         if ("intro".equals(kind)) {
             tryIntro(c, chosen, lg, q, note);
             return;
@@ -623,7 +632,7 @@ final class ClassicIntro {
         });
     }
 
-    /** A try of the matchday intro, for the game chosen, else the league's latest played (its trophy and teams). */
+    /** A try of the matchday intro, for the game chosen, else the league's latest played (its competition's film and teams). */
     private static void tryIntro(Context c, ScoresTicker.Game chosen, String league, JSONObject q, Consumer<String> note) {
         if (showing() || fetching) {
             note.accept("Wait for the one on to finish");
@@ -655,11 +664,84 @@ final class ClassicIntro {
                 if (showing()) return;
                 android.util.Log.i("Sport", "matchday intro try: " + game);
                 String key = "try|intro|" + android.os.SystemClock.uptimeMillis();
-                hold(app, "intro", got, "intro", key, (v) -> {
+                hold(app, "reveal", got, "intro", key, (v) -> {
                     if (goPrepared(key)) trial = true;
                 });
             });
         });
+    }
+
+    /** What a sport's try writes under the wordmark. */
+    private static String sample(String key) {
+        switch (key) {
+            case "f1": return "Abu Dhabi Grand Prix";
+            case "ufc": return "UFC main card";
+            case "boxing": return "Tonight's main event";
+            default: return "England v Spain";
+        }
+    }
+
+    /** A try of a sport's intro ("f1", "ufc", "boxing", or "football" and any competition's key), over whatever is in front. */
+    static void trySport(Context c, String key, Consumer<String> note) {
+        if (showing() || fetching) {
+            note.accept("Wait for the one on to finish");
+            return;
+        }
+        Context app = c.getApplicationContext();
+        try {
+            String k = java.util.Arrays.asList(BroadcastData.INTRO_KEYS).contains(key) ? key : "football";
+            String id = "try|intro|" + android.os.SystemClock.uptimeMillis();
+            hold(app, "reveal", cfgFor(app, k, sample(k)), "intro", id, (v) -> {
+                if (goPrepared(id)) trial = true;
+            });
+        } catch (Exception e) {
+            note.accept("Couldn't make it just now");
+        }
+    }
+
+    // ---- F1, UFC and boxing: as they begin on the channel watched ------------------------------------------------
+
+    /** Whether the channel last tuned is an F1 one by its name ("Sky Sports F1", "F1 TV"). */
+    static boolean tunedF1(Context c) {
+        for (String n : InStep.tunedNames(c)) {
+            String k = " " + n.toLowerCase(java.util.Locale.ROOT).replaceAll("[^a-z0-9]+", " ") + " ";
+            if (k.contains(" f1 ") || k.contains(" formula")) return true;
+        }
+        return false;
+    }
+
+    /**
+     * Each scores poll (main thread): F1's intro four minutes before the race starts (ESPN's weekend) on an F1 channel,
+     * and UFC's and boxing's four minutes before their programme starts on the channel tuned (Sky's guide: prog is its
+     * {title, start ms}, or null); each once.
+     */
+    static void sportTick(Context c, F1Results.Weekend weekend, Object[] prog) {
+        if (!introOn(c) || showing() || fetching || preparing || !BoardCover.playerUp(c)) return;
+        long now = System.currentTimeMillis();
+        String title = prog == null ? null : (String) prog[0];
+        long start = prog == null ? 0 : (Long) prog[1];
+        String sport = Moments.sportOf(title);
+        if (weekend != null) {
+            for (F1Results.Session s : weekend.sessions) {
+                if (!"Race".equals(s.abbr) || !"pre".equals(s.state) || !Moments.introDue(s.start - now)) continue;
+                if ("f1".equals(sport) || tunedF1(c)) sportIntro(c, "f1", weekend.name, "f1|" + s.id);
+                return;
+            }
+        }
+        if (sport == null || !Moments.programmeDue(start, now)) return;
+        if ("f1".equals(sport) && weekend != null) return;   // the race's own start, above
+        sportIntro(c, sport, Moments.eventLine(title), sport + "|" + start);
+    }
+
+    private static void sportIntro(Context c, String key, String line, String momentKey) {
+        if (shown.contains(momentKey) || momentKey.equals(prepKey)) return;
+        Context app = c.getApplicationContext();
+        try {
+            android.util.Log.i("Sport", "intro for " + key + ": " + line);
+            hold(app, "reveal", cfgFor(app, key, line), "intro", momentKey, (v) -> goPrepared(momentKey));
+        } catch (Exception e) {
+            android.util.Log.w("Sport", "intro for " + key + ": " + e);
+        }
     }
 
     /** A try's pop-up page: the style adb named, else this TV's. */

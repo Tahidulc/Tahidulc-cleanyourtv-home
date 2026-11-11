@@ -1,0 +1,16 @@
+{
+  "pl":         {"name": "Premier League",    "logo": "pl-dark",         "logoLight": "pl",         "c1": "#a855f7", "c2": "#efdcff", "bg": "#14012a", "ink": "#37003c", "title": "MATCHDAY",    "sample": "Arsenal v Everton"},
+  "laliga":     {"name": "LaLiga",            "logo": "laliga-dark",     "logoLight": "laliga",     "c1": "#ff4b44", "c2": "#ffc2a8", "bg": "#1c0505", "ink": "#ff4b44", "title": "MATCHDAY",    "sample": "Atlético Madrid v Barcelona"},
+  "ucl":        {"name": "Champions League",  "logo": "ucl-dark",        "logoLight": "ucl",        "c1": "#5b8cff", "c2": "#dfe9ff", "bg": "#020a2a", "ink": "#0a1d56", "title": "MATCHDAY",    "sample": "Real Madrid v Liverpool"},
+  "uel":        {"name": "Europa League",     "logo": "uel-dark",        "logoLight": "uel",        "c1": "#ff7a00", "c2": "#ffd2a6", "bg": "#170800", "ink": "#1a1a1a", "title": "MATCHDAY",    "sample": "Tottenham v Roma"},
+  "uecl":       {"name": "Conference League", "logo": "uecl-dark",       "logoLight": "uecl",       "c1": "#19e36b", "c2": "#c8ffdf", "bg": "#021a0b", "ink": "#1a1a1a", "title": "MATCHDAY",    "sample": "Chelsea v Fiorentina"},
+  "facup":      {"name": "FA Cup",            "logo": "facup-dark",      "logoLight": "facup",      "c1": "#3b6dff", "c2": "#ffd0d6", "bg": "#030c26", "ink": "#0b2361", "title": "MATCHDAY",    "sample": "Manchester United v Newcastle"},
+  "leaguecup":  {"name": "Carabao Cup",       "logo": "leaguecup-dark",  "logoLight": "leaguecup",  "c1": "#16c060", "c2": "#d4ffe4", "bg": "#021a0c", "ink": "#00843d", "title": "MATCHDAY",    "sample": "Liverpool v Manchester City"},
+  "seriea":     {"name": "Serie A",           "logo": "seriea-dark",     "logoLight": "seriea",     "c1": "#2e8bff", "c2": "#cdeaff", "bg": "#020c26", "ink": "#0b2a6b", "title": "MATCHDAY",    "sample": "Inter v Juventus"},
+  "bundesliga": {"name": "Bundesliga",        "logo": "bundesliga-dark", "logoLight": "bundesliga", "c1": "#ff1f2d", "c2": "#ffc9cc", "bg": "#1a0203", "ink": "#d20515", "title": "MATCHDAY",    "sample": "Bayern Munich v Borussia Dortmund"},
+  "ligue1":     {"name": "Ligue 1",           "logo": "ligue1-dark",     "logoLight": "ligue1",     "c1": "#6fd3ff", "c2": "#e6f8ff", "bg": "#03101c", "ink": "#091c3a", "title": "MATCHDAY",    "sample": "PSG v Marseille"},
+  "football":   {"name": "Football",          "emblem": "starball",                                 "c1": "#22c55e", "c2": "#dcfce7", "bg": "#03160a", "ink": "#0f3d22", "title": "MATCHDAY",    "sample": "England v Spain"},
+  "f1":         {"name": "Formula 1",         "logo": "f1",              "logoLight": "f1",         "c1": "#ff1e00", "c2": "#ffd1c7", "bg": "#160302", "ink": "#e10600", "title": "RACE DAY",    "sample": "Abu Dhabi Grand Prix"},
+  "ufc":        {"name": "Ultimate Fighting Championship",               "logo": "ufc",             "logoLight": "ufc",        "c1": "#ff2a2a", "c2": "#ffe0b0", "bg": "#140303", "ink": "#d20a0a", "title": "FIGHT NIGHT", "sample": "Main card"},
+  "boxing":     {"name": "Boxing",            "emblem": "gloves",                                   "c1": "#ffb02e", "c2": "#fff0c2", "bg": "#160b02", "ink": "#8a1c0c", "title": "FIGHT NIGHT", "sample": "Heavyweight title fight"}
+}

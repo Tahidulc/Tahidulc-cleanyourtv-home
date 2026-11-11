@@ -100,6 +100,11 @@ final class PlayerExtras implements LiveAlerts.Listener {
     /** The scoreboard over the picture, with its alerts (ScoreOverlay). */
     private ScoreOverlay overlay;
 
+    /** The scoreboard over the picture (null before it is made). */
+    ScoreOverlay overlay() {
+        return overlay;
+    }
+
     void overlay(ScoreOverlay o) {
         overlay = o;
     }

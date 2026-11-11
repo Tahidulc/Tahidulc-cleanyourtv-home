@@ -2,7 +2,7 @@
 // The app (TV launcher or phone) loads a page, waits for ready(), then calls BROADCAST.start(json).
 (function () {
   const none = () => {};
-  const bridge = window.AndroidBroadcast || { ready: none, started: none, prepared: none, done: none, sound: none, log: (m) => console.log(m) };
+  const bridge = window.AndroidBroadcast || { ready: none, started: none, prepared: none, done: none, sound: none, musicLoad: none, music: none, musicStop: none, log: (m) => console.log(m) };
   const call = (f, ...a) => { try { bridge[f](...a); } catch (e) { /* the app has gone */ } };
   window.BX = {
     ready: () => call('ready'),
@@ -10,6 +10,10 @@
     prepared: () => call('prepared'),
     done: () => call('done'),
     sound: (name, gain, pan) => call('sound', String(name), +(gain == null ? 1 : gain), +(pan || 0)),
+    // a long sound (an intro's music) played by the app itself: loaded ahead, started with the picture, stopped at the end
+    musicLoad: (name, gain) => call('musicLoad', String(name), +(gain == null ? 1 : gain)),
+    music: () => call('music'),
+    musicStop: () => call('musicStop'),
     log: (m) => call('log', String(m)),
     // the 1920x1080 drawing, as large as fits, in the middle (the rest stays see-through). Looked at again on every
     // frame (refit): a WebView can learn its real size after the page has started, without a resize event.

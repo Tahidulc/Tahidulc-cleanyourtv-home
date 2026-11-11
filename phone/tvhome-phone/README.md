@@ -442,3 +442,5 @@ Build: JDK 17, Android SDK 34. `./gradlew assembleRelease testReleaseUnitTest li
 Your own intro video (4.46): in the scoreboard settings, Intro video, "Your own video…" opens the file picker; the video is kept in the app, plays before the trophy and the Matchday card in place of the built-in footage (muted under the intro's music, ending on the flash into the trophy), and is sent to the paired TVs (launcher 4.61). "Built-in footage" goes back, here and on the TVs.
 
 The matchday intro has its own section at the top of Settings (4.47): on or off, Built-in footage or Your own video…, which one is on now, and Send it to the TV again.
+
+The intros (4.48): one film per competition, the same as the TV launcher 4.62: the Premier League's is your own clip with the Whitebrook Road Sports ending, the other competitions have replicas with their own logos, plain football has a Champions League-style ball, and F1, UFC and boxing play as their programme begins on the channel (from its guide). The channel's sound is off while an intro plays and comes back when it ends. The old footage intro is gone. Under Tests, Line-ups has F1, UFC, Boxing and Football intro chips.

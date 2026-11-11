@@ -75,12 +75,13 @@ public final class BroadcastView extends FrameLayout {
             case "lineups": return 180_000L;
             case "stadium": return 150_000L;
             case "strap": return 20_000L;
+            case "reveal": return 60_000L;   // a competition's intro (20 s), or a family's own video and the tail
             default: return 25_000L;
         }
     }
 
     private static String pageOf(String page) {
-        return "lineups".equals(page) || "strap".equals(page) || "stadium".equals(page) ? page : "kickoff";
+        return "lineups".equals(page) || "strap".equals(page) || "stadium".equals(page) || "reveal".equals(page) ? page : "kickoff";
     }
 
     private final Handler main = new Handler(Looper.getMainLooper());
@@ -88,6 +89,9 @@ public final class BroadcastView extends FrameLayout {
     private final Listener listener;
     private WebView web;
     private SoundPool pool;
+    /** A long sound the page asked for (an intro's music): the page's own media would take the channel's sound for good. */
+    private android.media.MediaPlayer music;
+    private boolean musicReady, musicWanted;
     private final Map<String, Integer> sounds = new HashMap<>();
     private float volume = 1f;
     private boolean started, over, held, ready, going;
@@ -230,10 +234,10 @@ public final class BroadcastView extends FrameLayout {
         return over;
     }
 
-    /** Back: the line-ups fade away to the channel at once (the pop-up, being short, just goes). */
+    /** Back: the line-ups and the intros fade away to the channel at once (the pop-up, being short, just goes). */
     public void back() {
         if (over) return;
-        if (web != null && ("lineups".equals(page) || "stadium".equals(page)) && started) web.evaluateJavascript("BROADCAST.back()", null);
+        if (web != null && ("lineups".equals(page) || "stadium".equals(page) || "reveal".equals(page)) && started) web.evaluateJavascript("BROADCAST.back()", null);
         else finish();
     }
 
@@ -256,12 +260,64 @@ public final class BroadcastView extends FrameLayout {
                 w.destroy();
             } catch (Exception ignored) { }
         }
+        stopMusic();
         if (pool != null) {
             SoundPool p = pool;
             pool = null;
             main.postDelayed(p::release, 3000);   // a swish or rumble still playing ends on its own
         }
         if (listener != null) listener.onDone(this);
+    }
+
+    // ---- a long sound, played here (the intros' music) ---------------------------------------------------------------
+
+    /** Loaded ahead (broadcast/NAME from the assets, or a file's path), to start with the picture (startMusic). */
+    private void loadMusic(String name, float gain) {
+        stopMusic();
+        if (over || name == null || name.isEmpty()) return;
+        android.media.MediaPlayer mp = new android.media.MediaPlayer();
+        try {
+            mp.setAudioAttributes(new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build());
+            if (name.startsWith("/")) mp.setDataSource(name);
+            else try (AssetFileDescriptor fd = getContext().getAssets().openFd("broadcast/" + name)) {
+                mp.setDataSource(fd.getFileDescriptor(), fd.getStartOffset(), fd.getLength());
+            }
+            float v = Math.max(0f, Math.min(1f, gain)) * volume;
+            mp.setVolume(v, v);
+            mp.setOnPreparedListener(p -> {
+                musicReady = true;
+                if (musicWanted && !over) p.start();
+            });
+            mp.setOnErrorListener((p, what, extra) -> {
+                Log.w(TAG, page + ": music " + name + " failed " + what + "/" + extra);
+                return true;
+            });
+            mp.prepareAsync();
+            music = mp;
+        } catch (Exception e) {
+            Log.w(TAG, page + ": music " + name + ": " + e);
+            mp.release();
+        }
+    }
+
+    private void startMusic() {
+        musicWanted = true;
+        if (music != null && musicReady && !music.isPlaying()) music.start();
+    }
+
+    private void stopMusic() {
+        musicWanted = false;
+        musicReady = false;
+        if (music == null) return;
+        android.media.MediaPlayer mp = music;
+        music = null;
+        try {
+            mp.stop();
+        } catch (Exception ignored) {
+            // not started yet
+        }
+        mp.release();
     }
 
     /** What the page calls (on WebView's own thread: everything is sent on to the main thread). */
@@ -307,6 +363,21 @@ public final class BroadcastView extends FrameLayout {
                 float g = Math.max(0f, gain) * volume, p = Math.max(-1f, Math.min(1f, pan));
                 pool.play(id, g * Math.min(1f, 1f - p), g * Math.min(1f, 1f + p), 1, 0, 1f);
             });
+        }
+
+        @JavascriptInterface
+        public void musicLoad(String name, float gain) {
+            main.post(() -> loadMusic(name, gain));
+        }
+
+        @JavascriptInterface
+        public void music() {
+            main.post(BroadcastView.this::startMusic);
+        }
+
+        @JavascriptInterface
+        public void musicStop() {
+            main.post(BroadcastView.this::stopMusic);
         }
 
         @JavascriptInterface

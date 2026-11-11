@@ -15,7 +15,8 @@ import java.util.Locale;
 
 /**
  * The family's own video for the matchday intro, chosen on this phone (PickIntroActivity) and kept in the app's own
- * files: it plays before the trophy and the Matchday card in place of the built-in film, and is sent to the paired TVs.
+ * files: it plays in place of the competition's built-in film, without its sound, before the Whitebrook Road Sports
+ * ending, and is sent to the paired TVs.
  */
 public final class IntroVideo {
     private IntroVideo() {}

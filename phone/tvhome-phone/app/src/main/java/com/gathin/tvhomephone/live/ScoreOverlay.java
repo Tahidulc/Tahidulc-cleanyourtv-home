@@ -119,6 +119,8 @@ final class ScoreOverlay implements ScoreBoard.Source {
             board.view.setAlpha(on ? 0f : 1f);
             cover.setAlpha(on ? 0f : 1f);
         });
+        // the intros: the channel's own sound off while one plays
+        intro.hush(host::mute);
         // the strap in the board's look folds into the board: where it is over the picture, on a 1920 x 1080 picture
         intro.boardAt(() -> {
             if (pfw <= 10 || pfh <= 10 || board.view.getWidth() <= 0) return null;
@@ -1280,6 +1282,18 @@ final class ScoreOverlay implements ScoreBoard.Source {
         int no = testBlocked(false);
         if (no != 0) note.accept(no);
         else intro.testIntro(host.game(), note);
+    }
+
+    /** The programmes on this channel now and next (each half minute): F1's, UFC's and boxing's intros as they begin. */
+    void programmes(java.util.List<OverMatches.Programme> guide) {
+        if (started && !inPip && !editing) intro.sportTick(guide);
+    }
+
+    /** Tests: a sport's intro ("f1", "ufc", "boxing", "football"), now. */
+    void testSport(String key, IntConsumer note) {
+        int no = testBlocked(false);
+        if (no != 0) note.accept(no);
+        else intro.testSport(key, note);
     }
 
     /** Tests: one of the scoreboard's moments (PlayerTests.BOARD_TESTS) now, on its game or a made-up one. */

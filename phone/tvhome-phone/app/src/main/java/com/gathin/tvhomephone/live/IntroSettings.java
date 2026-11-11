@@ -16,7 +16,7 @@ import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
- * The matchday intro's own section, at the top of Settings: on or off, and its film: the built-in footage or a video of
+ * The matchday intro's own section, at the top of Settings: on or off, and its film: the built-in films or a video of
  * the family's own (Android's file picker; kept here and sent to the paired TVs), with a line saying which is on.
  */
 public final class IntroSettings {
@@ -24,7 +24,7 @@ public final class IntroSettings {
 
     private static final List<Runnable> SHOWN = new CopyOnWriteArrayList<>();
 
-    /** The video changed (chosen, or back to the built-in footage): the section, if open, says so. */
+    /** The video changed (chosen, or back to the built-in films): the section, if open, says so. */
     static void changed() {
         for (Runnable r : SHOWN) App.main.post(r);
     }

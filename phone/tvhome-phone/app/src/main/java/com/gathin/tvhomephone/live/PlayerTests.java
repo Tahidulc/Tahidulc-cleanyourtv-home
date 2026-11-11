@@ -38,6 +38,8 @@ final class PlayerTests {
     /** The kick-off pop-up's moments (both styles), and the line-ups' two styles. */
     static final String[] MOMENTS = {"kickoff", "restart", "second"};
     static final String[] LINEUP_STYLES = {"lineups", "stadium", "intro"};
+    /** The other intros: F1's, UFC's, boxing's and plain football's (no competition). */
+    static final String[] SPORT_INTROS = {"intro:f1", "intro:ufc", "intro:boxing", "intro:football"};
     /** The scoreboard's own: a goal each way (with the goal sound), its scorer, the stats, the line-up card, a
      * substitution, VAR checking, the added time's "+N". */
     static final String[] BOARD_TESTS = {"goal_home", "goal_away", "scorer", "stats", "card", "sub", "var", "added"};
@@ -63,6 +65,7 @@ final class PlayerTests {
                 break;
             case LINEUPS:
                 out.addAll(Arrays.asList(LINEUP_STYLES));
+                out.addAll(Arrays.asList(SPORT_INTROS));
                 break;
             case BOARD:
                 out.addAll(Arrays.asList(BOARD_TESTS));
@@ -144,6 +147,7 @@ final class PlayerTests {
                 break;
             case LINEUPS:
                 if ("intro".equals(id)) overlay.testIntro(note);
+                else if (id.startsWith("intro:")) overlay.testSport(id.substring(6), note);
                 else overlay.testLineups(id, note);
                 break;
             case BOARD:
@@ -183,6 +187,16 @@ final class PlayerTests {
         h.post(again[0]);
     }
 
+    /** A sport's intro, as its chip reads. */
+    static int sportLabel(String key) {
+        switch (key) {
+            case "f1": return R.string.live48_intro_f1;
+            case "ufc": return R.string.live48_intro_ufc;
+            case "boxing": return R.string.live48_intro_boxing;
+            default: return R.string.live48_intro_football;
+        }
+    }
+
     static int groupLabel(String group) {
         switch (group) {
             case ALERTS: return R.string.live7_alerts;
@@ -208,6 +222,7 @@ final class PlayerTests {
                 return c.getString("kickoff".equals(id) ? R.string.live7_kickoff : "restart".equals(id) ? R.string.live7_restart
                         : R.string.live7_second);
             case LINEUPS:
+                if (id.startsWith("intro:")) return c.getString(sportLabel(id.substring(6)));
                 return c.getString("stadium".equals(id) ? R.string.live35_style_stadium : "intro".equals(id) ? R.string.live45_intro_test
                         : R.string.live35_style_beam);
             case BOARD:

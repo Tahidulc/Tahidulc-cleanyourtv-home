@@ -99,6 +99,32 @@ final class TvGuide {
         return false;
     }
 
+    /**
+     * The programme on the channel being watched (one of channels, by the name tuned first) that starts within aheadMs
+     * or began within pastMs: {title, start ms}; null when there is none, or the channel is not one Sky's guide covers.
+     * Off the main thread.
+     */
+    static synchronized Object[] startingOn(String[] channels, List<String> tuned, long now, long aheadMs, long pastMs) {
+        if (tuned == null || tuned.isEmpty()) return null;
+        String sid = null;
+        for (String c : channels) {
+            String[] p = c.split("\\|", 2);
+            if (p.length > 1 && InStep.onChannel(tuned.subList(0, 1), java.util.Collections.singletonList(p[1].trim()))) {
+                sid = p[0].trim();
+                break;
+            }
+        }
+        if (sid == null) return null;
+        String date = Instant.ofEpochMilli(now).atZone(ZoneOffset.UTC).toLocalDate().format(DateTimeFormatter.BASIC_ISO_DATE);
+        Object[] found = null;
+        for (Object[] e : schedule(channels, date)) {
+            if (!sid.equals(e[0])) continue;
+            long st = (Long) e[2];
+            if (st - now <= aheadMs && now - st <= pastMs) found = new Object[]{e[1], st};
+        }
+        return found;
+    }
+
     /** Where to watch a game in TiviMate: the channel names to try in turn, and the first one's logo (or null). */
     static final class Watch {
         final List<String> names;

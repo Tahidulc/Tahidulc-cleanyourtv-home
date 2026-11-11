@@ -77,6 +77,33 @@ public class MomentsTest {
     }
 
     @Test
+    public void sportsIntrosFromTheProgramme() {
+        assertEquals("ufc", Moments.sportOf("Live UFC 323: Dvalishvili v Yan"));
+        assertEquals("ufc", Moments.sportOf("UFC Fight Night: Royval v Kape"));
+        assertEquals("boxing", Moments.sportOf("Live Boxing: Usyk v Dubois"));
+        assertEquals("boxing", Moments.sportOf("Sky Sports Box Office: Joshua v Ngannou"));
+        assertEquals("f1", Moments.sportOf("Live F1: The Abu Dhabi Grand Prix"));
+        assertEquals("f1", Moments.sportOf("Formula 1: Las Vegas GP - Race"));
+        assertNull(Moments.sportOf("Live F1: Abu Dhabi GP Qualifying"));
+        assertNull(Moments.sportOf("F1 Practice 2"));
+        assertNull(Moments.sportOf("UFC 322 Highlights"));
+        assertNull(Moments.sportOf("Live PL: Arsenal v Everton"));
+        assertNull(Moments.sportOf(null));
+        assertEquals("UFC 323: Dvalishvili v Yan", Moments.eventLine("Live UFC 323: Dvalishvili v Yan"));
+        assertEquals("Boxing: Usyk v Dubois", Moments.eventLine("LIVE: Boxing: Usyk v Dubois"));
+    }
+
+    @Test
+    public void aProgrammesIntroFourMinutesBeforeItToAMinuteIn() {
+        long start = 1_000_000_000L;
+        assertFalse(Moments.programmeDue(start, start - 300_000L));
+        assertTrue(Moments.programmeDue(start, start - 240_000L));
+        assertTrue(Moments.programmeDue(start, start + 30_000L));
+        assertFalse(Moments.programmeDue(start, start + 90_000L));
+        assertFalse(Moments.programmeDue(0, start));
+    }
+
+    @Test
     public void anOwnFilmEndsOnTheTrophyFlash() {
         assertEquals(0.0, Moments.introStart(0), 0);
         assertEquals(0.0, Moments.introStart(52_000), 0);

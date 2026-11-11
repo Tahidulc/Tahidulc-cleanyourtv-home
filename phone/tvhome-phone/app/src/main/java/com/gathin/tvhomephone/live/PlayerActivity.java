@@ -166,6 +166,10 @@ public class PlayerActivity extends AppCompatActivity {
         @Override public void run() {
             h.removeCallbacks(this);
             lookForMatch();
+            // F1, UFC and boxing: their intro as their programme begins on this channel
+            if (cur != null && extras != null && extras.overlay() != null) {
+                extras.overlay().programmes(OverMatches.guide(lib.schedule(cur.key), System.currentTimeMillis()));
+            }
             if (cur != null && !isInPictureInPictureMode() && style != TileKind.Style.PANEL) {
                 TileData.Info now = TileData.now(PlayerActivity.this, lib, cur);
                 if (now.onNow && seen != null && seen.startsWith(cur.key + "|") && !seen.equals(now.id()) && !overlayShown()

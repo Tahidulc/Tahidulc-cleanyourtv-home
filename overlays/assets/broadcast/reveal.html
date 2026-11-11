@@ -1,0 +1,21 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Intro</title>
+<style>
+  @font-face { font-family: 'Outfit'; src: url('fonts/outfit.ttf') format('truetype'); font-weight: 100 900; }
+  html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: transparent; }
+  #stage { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; transform-origin: 0 0; opacity: 0; background: #000; overflow: hidden; }
+  #stage video { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; object-fit: cover; display: none; background: #000; }
+  #fixture { position: absolute; left: 0; top: 664px; width: 1920px; height: 52px; line-height: 52px; text-align: center; opacity: 0;
+    font: 600 40px Outfit, sans-serif; letter-spacing: 5px; color: rgba(214, 220, 240, 0.95); white-space: nowrap; }
+</style>
+</head>
+<body>
+<div id="stage"><div id="fixture"></div></div>
+<script src="host.js"></script>
+<script src="reveal-host.js"></script>
+</body>
+</html>
