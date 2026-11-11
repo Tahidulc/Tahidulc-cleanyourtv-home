@@ -710,8 +710,7 @@ final class PlayerExtras implements LiveAlerts.Listener {
             }
             toggle(c, box, a.getString(R.string.live24_logo_live), overlay.liveHere(), on -> overlay.setHere("live", on ? "1" : "0"));
             toggle(c, box, a.getString(R.string.live21_logo_comp), overlay.compHere(), on -> overlay.setHere("comp", on ? "1" : "0"));
-            // See-through (the channel's own logo hidden, the picture carried over it) and a general channel's name.
-            toggle(c, box, a.getString(R.string.live50_see_through), overlay.seeThroughHere(), on -> overlay.setHere("see_through", on ? "1" : "0"));
+            // A general channel's name (no SPORTS).
             toggle(c, box, a.getString(R.string.live50_name_only), overlay.nameOnlyHere(), on -> overlay.setHere("name_only", on ? "1" : "0"));
             // Broadcast mode: Homefield's break over the channel's adverts; one to see now.
             toggle(c, box, a.getString(R.string.live5_broadcast), ScoreBoard.broadcast(c), on -> ScoreBoard.setBroadcast(c, on));

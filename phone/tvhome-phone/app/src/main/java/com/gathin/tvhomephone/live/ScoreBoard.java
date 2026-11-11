@@ -198,7 +198,9 @@ public final class ScoreBoard implements LiveAlerts.Listener {
 
     /** See-through: Whitebrook Road Sports and the styles over the picture itself, the channel's logo hidden (LogoPatch). */
     static boolean logoSeeThrough(Context c) {
-        return prefs(c).getBoolean("see_through", false);
+        // Retired (4.51): what is under the channel's logo can only be guessed, so it never looked clean; every look
+        // now stands on its own solid ground over the logo instead.
+        return false;
     }
 
     static void setLogoSeeThrough(Context c, boolean on) {

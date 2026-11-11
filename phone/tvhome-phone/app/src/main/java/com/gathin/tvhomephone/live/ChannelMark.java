@@ -492,7 +492,7 @@ final class ChannelMark {
     private void smoked(Canvas cv, float x, float y, float w, float h) {
         float rad = Math.min(w, h) * 0.18f;
         r.set(x, y, x + w + ext, y + h + down);
-        fill.setShader(grad(0, y, 0, y + h + down, 0xC8262A36, 0xC40D0F16));
+        fill.setShader(grad(0, y, 0, y + h + down, 0xFF262A36, 0xFF0D0F16));
         cv.drawRoundRect(r, rad, rad, fill);
         fill.setShader(null);
         // Its edge catching the light along the top.

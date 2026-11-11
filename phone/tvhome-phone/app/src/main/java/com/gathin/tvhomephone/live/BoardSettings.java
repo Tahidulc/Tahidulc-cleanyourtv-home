@@ -197,7 +197,6 @@ public final class BoardSettings {
         }
         col.addView(hw, new LinearLayout.LayoutParams(-1, -2));
         row(c, col, c.getString(R.string.live28_name_only), ScoreBoard.logoNameOnly(c), on -> ScoreBoard.setLogoNameOnly(c, on));
-        row(c, col, c.getString(R.string.live28_see_through), ScoreBoard.logoSeeThrough(c), on -> ScoreBoard.setLogoSeeThrough(c, on));
         row(c, col, c.getString(R.string.live28_lineups), ScoreBoard.lineupsOn(c), on -> ScoreBoard.setLineupsOn(c, on));
         // The kick-off pop-up and the line-ups before kick-off: each in one of two styles, or off.
         styles(c, col, c.getString(R.string.live33_classic_popup), new String[]{"classic", "strap", "off"},

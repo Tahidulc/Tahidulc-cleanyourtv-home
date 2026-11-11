@@ -27,7 +27,7 @@ final class LogoMark extends View {
         SIGNATURE("Signature"), MATCHDAY("Matchday"), ROOFLINE("Roofline"), VELOCITY("Velocity"), ROUNDEL("Roundel"),
         BLOCK("Solid block"), FROSTED("Frosted glass"), SMOKED("Smoked glass"), EVENT_NAVY("Event, navy"),
         EVENT_WHITE("Event, white"), COMPETITION("The competition's logo"),
-        GLASS("Glass, with the mark"), MARK("Mark only"), PLAIN("Plain"), BROADCAST("Broadcast, see-through"),
+        GLASS("Glass, with the mark"), MARK("Mark only"), PLAIN("Plain"), BROADCAST("Broadcast, dark"),
         BROADCAST_BOARD("Broadcast, scoreboard colours"), SPORTS("Whitebrook Road Sports"),
         SPORTS_STACKED("Whitebrook Road Sports, stacked"), STYLES("Whitebrook Road styles");
 
@@ -517,7 +517,7 @@ final class LogoMark extends View {
         if (cw <= 0 || ch <= 0) return;
         int ground, band, bandInk, tagBox, tagInk, ink, liveInk;
         if (seeThrough) {
-            ground = 0xC20E1014;
+            ground = 0xFF0E1014;
             band = 0x40FFFFFF;
             bandInk = 0xF7FFFFFF;
             tagBox = 0x33FFFFFF;
