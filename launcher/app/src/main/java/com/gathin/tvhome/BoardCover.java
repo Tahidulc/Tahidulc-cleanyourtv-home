@@ -53,7 +53,8 @@ import java.util.regex.Pattern;
  * Timing puts it a second or five later or sooner. It comes in and goes as a broadcaster's does (BoardBug); a goal on
  * the screen sweeps the scorers' colour across it with their crest and GOAL, the new score popping up after. Up twenty
  * minutes before kick-off with the kick-off's time; at half time a little longer for its alert and the half's stats,
- * then it rests (gone); full time shows for two minutes.
+ * then it rests (gone, up by hand too: the logo's cover stays) until the second half kicks off on the screen; full time
+ * shows for two minutes.
  *
  * <p>Out beside it, in line with it and in its look: the game's stats and facts a few times a game (BoardStats: the
  * chances, form and table before kick-off, a few of each half's, the player of the match), and while it is up the
@@ -1677,6 +1678,11 @@ final class BoardCover {
     private static boolean sideLeft;
     /** How long before kick-off it is up (the kick-off and the line-ups slide out of it), and how long into half time. */
     static final long PRE_MS = 20 * 60_000L, HT_SHOWN_MS = 20_000L;
+
+    /** Pure: whether the board rests at half time: shown HT_SHOWN_MS for its alert, then as soon as nothing is out of it. */
+    static boolean htRests(long sinceHt, boolean dropping, boolean statsOut) {
+        return sinceHt > HT_SHOWN_MS && !dropping && !statsOut;
+    }
     /** The stats: how often they are read, and how long before kick-off their first moment may come. */
     static final long STATS_READ_MS = 120_000L, PRE_STATS_MS = 10 * 60_000L;
     /** How long an alert stays out at least (a longer one longer, for its words to run to their end). */
@@ -1880,15 +1886,17 @@ final class BoardCover {
                 return 5_000L;
             }
         }
-        // Half time: by itself the board rests after a little; up by hand it stays.
-        if (r.halftime && !byHand) {
-            // Half time on the screen: up a little longer for its alert and the half's stats, then it rests.
+        // Half time on the screen: up a little longer for its alert and the half's stats, then the board rests until the
+        // second half kicks off on the screen (the readings are the screen's, InStep), however it was put up; up by hand,
+        // the logo's cover stays meanwhile.
+        if (r.halftime) {
             if (!id.equals(htFor)) {
                 htFor = id;
                 htAt = now;
             }
-            if (now - htAt > HT_SHOWN_MS && !dropping && (stats == null || !stats.isOut())) {
-                closeAll();
+            if (htRests(now - htAt, dropping, stats != null && stats.isOut())) {
+                if (byHand) logoOnly(c, now);
+                else closeAll();
                 return 1_000L;
             }
         }

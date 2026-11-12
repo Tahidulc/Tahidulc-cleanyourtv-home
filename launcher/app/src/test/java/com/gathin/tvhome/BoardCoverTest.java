@@ -1295,4 +1295,12 @@ public class BoardCoverTest {
         assertEquals("Transparent", BoardCover.groundWords(LogoMark.CLEAR));
         assertEquals("Plate", BoardCover.groundWords(LogoMark.PLATE));
     }
+
+    @Test public void theBoardRestsAtHalfTimeOnceItsAlertIsInWhicheverWayItCameUp() {
+        // Up for its alert at first, then away; never while an alert or the stats are still out of it.
+        assertFalse(BoardCover.htRests(5_000L, false, false));
+        assertTrue(BoardCover.htRests(BoardCover.HT_SHOWN_MS + 1_000L, false, false));
+        assertFalse(BoardCover.htRests(BoardCover.HT_SHOWN_MS + 1_000L, true, false));
+        assertFalse(BoardCover.htRests(BoardCover.HT_SHOWN_MS + 1_000L, false, true));
+    }
 }
