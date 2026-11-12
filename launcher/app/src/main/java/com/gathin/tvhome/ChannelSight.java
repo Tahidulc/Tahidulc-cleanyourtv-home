@@ -205,7 +205,9 @@ final class ChannelSight {
         boolean asked = ScreenShots.take(new RectF[]{ALL}, new int[][]{{FIND_W, FIND_H}}, (parts, at, own) -> {
             if (!looking || f != finder) return;
             if (parts[0] != null) {
-                f.add(ScreenShots.grey(parts[0]));
+                // A picture of the whole screen while the board stays put (TiviMate's window paused a moment): the board is in
+                // it, so it is not looked at.
+                if (own || !lookUnseen) f.add(ScreenShots.grey(parts[0]));
                 parts[0].recycle();
             }
             int want = ScreenShots.gap() >= 700L ? 14 : 24;
@@ -280,6 +282,13 @@ final class ChannelSight {
             readAside = false;
             if (wasAside) BoardCover.sightChanged();
             Bitmap b = parts[0];
+            // Read with the board in place but the whole screen came back (TiviMate's window paused a moment): the board's
+            // own clock may be in it, so it is not read.
+            if (b != null && !own && !wasAside) {
+                b.recycle();
+                reading = false;
+                return;
+            }
             if (b == null || !reading) {
                 reading = false;
                 return;

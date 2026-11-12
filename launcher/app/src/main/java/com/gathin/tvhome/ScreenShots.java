@@ -46,8 +46,11 @@ final class ScreenShots {
     /** The shortest gap between two pictures (it grows when Android says one came too soon). */
     private static long gap = 350L;
     private static boolean busy;
-    /** TiviMate's window alone came back black this many times running: the whole screen is taken from then on. */
-    private static int blackWindows;
+    /** The shortest gap there is, and when Android last said a picture came too soon (the gap shrinks back a minute after). */
+    private static final long LEAST_GAP = 350L;
+    private static long soonAt;
+    /** Whether TiviMate's window alone is taken now, or the whole screen for a while after its pictures missed. */
+    private static final WindowPause WINDOWS = new WindowPause();
     /** Android refused the helper pictures at all (its permission not given): not asked again until it is bound again. */
     private static boolean refused;
     private static Object refusedBy;
@@ -64,9 +67,47 @@ final class ScreenShots {
         return Build.VERSION.SDK_INT >= 30 && s != null && !refused;
     }
 
-    /** Its state in a few words, for the log: black window pictures running, refused, the gap. */
+    /** Its state in a few words, for the log: window pictures missed running (or paused), refused, the gap. */
     static String state() {
-        return "black windows " + blackWindows + ", refused " + refused + ", gap " + gap + " ms, last failure " + lastFailure;
+        return "window misses " + WINDOWS.misses() + (WINDOWS.on(SystemClock.uptimeMillis()) ? "" : ", window pictures paused")
+                + ", refused " + refused + ", gap " + gap + " ms, last failure " + lastFailure;
+    }
+
+    /**
+     * Whether TiviMate's window alone is taken (Android 14). After three of its pictures running came back black or not at
+     * all, the whole screen is taken instead for a while (30 s, twice as long each time the window misses again straight
+     * after, up to five minutes), then the window is tried again: a hitch (TiviMate busy for a moment, so Android gives up
+     * on the picture; a black frame between programmes) never turns window pictures off for good. A good one forgets the
+     * misses. Plain Java, for its test.
+     */
+    static final class WindowPause {
+        static final int MISSES = 3;
+        static final long FIRST = 30_000L, LONGEST = 300_000L;
+        private int misses;
+        private long offUntil = Long.MIN_VALUE, next = FIRST;
+
+        /** Whether the window may be taken at now (uptime ms). */
+        boolean on(long now) {
+            return now >= offUntil;
+        }
+
+        /** One of its pictures black, or not taken, at now. */
+        void missed(long now) {
+            if (++misses < MISSES) return;
+            misses = 0;
+            offUntil = now + next;
+            next = Math.min(LONGEST, next * 2);
+        }
+
+        /** A good one: the misses and the longer pauses forgotten. */
+        void good() {
+            misses = 0;
+            next = FIRST;
+        }
+
+        int misses() {
+            return misses;
+        }
     }
 
     private static int lastFailure;
@@ -76,10 +117,10 @@ final class ScreenShots {
         return gap;
     }
 
-    /** Whether a picture now leaves the launcher's own windows out (Android 14, TiviMate's window found, not black). */
+    /** Whether a picture now leaves the launcher's own windows out (Android 14, TiviMate's window found, not paused). */
     static boolean windowOnly() {
         AccessibilityService s = AppSearchService.helper();
-        return Build.VERSION.SDK_INT >= 34 && s != null && blackWindows < 3 && tivimateWindow(s) >= 0;
+        return Build.VERSION.SDK_INT >= 34 && s != null && WINDOWS.on(SystemClock.uptimeMillis()) && tivimateWindow(s) >= 0;
     }
 
     /** Whether one is under way or the gap since the last is not over. */
@@ -102,7 +143,7 @@ final class ScreenShots {
         lastAt = SystemClock.uptimeMillis();
         busy = true;
         long at = System.currentTimeMillis();
-        int window = Build.VERSION.SDK_INT >= 34 && blackWindows < 3 ? tivimateWindow(s) : -1;
+        int window = Build.VERSION.SDK_INT >= 34 && WINDOWS.on(lastAt) ? tivimateWindow(s) : -1;
         boolean own = window >= 0;
         AccessibilityService.TakeScreenshotCallback cb = new AccessibilityService.TakeScreenshotCallback() {
             @Override public void onSuccess(AccessibilityService.ScreenshotResult r) {
@@ -122,7 +163,11 @@ final class ScreenShots {
                 boolean black = own && out.length > 0 && out[0] != null && black(out[0]);
                 MAIN.post(() -> {
                     busy = false;
-                    if (own) blackWindows = black ? blackWindows + 1 : 0;
+                    long now = SystemClock.uptimeMillis();
+                    if (own && black) WINDOWS.missed(now);
+                    else if (own) WINDOWS.good();
+                    // Told "too soon" once (a late answer, a busy moment): the gap back down bit by bit a minute after.
+                    if (gap > LEAST_GAP && now - soonAt > 60_000L) gap = Math.max(LEAST_GAP, gap - 50L);
                     got.got(out, at, own);
                 });
             }
@@ -133,12 +178,14 @@ final class ScreenShots {
                     busy = false;
                     if (code == AccessibilityService.ERROR_TAKE_SCREENSHOT_INTERVAL_TIME_SHORT) {
                         gap = Math.min(1_100L, gap + 250L);
+                        soonAt = SystemClock.uptimeMillis();
                     } else if (code == AccessibilityService.ERROR_TAKE_SCREENSHOT_NO_ACCESSIBILITY_ACCESS) {
                         refused = true;
                         refusedBy = AppSearchService.helper();
                     } else if (own) {
-                        // TiviMate's window could not be taken (secure, gone): the whole screen from now on.
-                        blackWindows = 3;
+                        // TiviMate's window could not be taken (busy past Android's wait, secure, gone): tried again,
+                        // and after three running the whole screen for a while.
+                        WINDOWS.missed(SystemClock.uptimeMillis());
                     }
                     got.got(new Bitmap[parts.length], at, own);
                 });
