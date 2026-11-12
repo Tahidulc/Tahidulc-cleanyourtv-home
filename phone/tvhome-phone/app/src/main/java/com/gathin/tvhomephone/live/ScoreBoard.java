@@ -397,6 +397,8 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         Events.Alert alert;
         /** A substitution (or several at once): its OFF page, then its ON page, each player with picture and name. */
         SubsPage.Subs subs;
+        /** The minutes added (an ADDED TIME alert): a big +N counting up to them as it comes out, MINUTES ADDED by it. */
+        int addedMins;
     }
 
     private final Runnable tick = new Runnable() {
@@ -1756,6 +1758,7 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         Drop d = new Drop();
         d.chip = "ADDED TIME";
         d.colour = 0xFFE3061B;
+        d.addedMins = n;
         d.title = "+" + n + (n == 1 ? " minute" : " minutes");
         d.homeColour = OverlayBug.colour(g.homeColor, g.homeAlt);
         d.awayColour = OverlayBug.colour(g.awayColor, g.awayAlt);

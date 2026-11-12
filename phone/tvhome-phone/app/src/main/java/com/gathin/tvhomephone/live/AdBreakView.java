@@ -529,9 +529,10 @@ final class AdBreakView extends FrameLayout {
         String hc = AdBreakData.homeCrest(g), ac = AdBreakData.awayCrest(g), hn = name(g, true), an = name(g, false);
         String comp = g.leagueName == null ? "" : g.leagueName;
 
-        // Half time: the first half (its scorers, possession and shots), first.
-        if (AdBreak.atHalfTime(g) && (!k.firstHalf.isEmpty() || !g.goals.isEmpty())) {
-            match.add(new Widget(compMark(), "FIRST\nHALF", c -> {
+        // Half time: the first half (its scorers, possession and shots), first; full time: the whole game the same way.
+        boolean full = g.state == Game.POST;
+        if ((full || AdBreak.atHalfTime(g)) && (!k.firstHalf.isEmpty() || !g.goals.isEmpty())) {
+            match.add(new Widget(compMark(), full ? "FULL\nTIME" : "FIRST\nHALF", c -> {
                 Game now = k.game != null ? k.game : g;
                 String hs = AdBreak.scorers(now, "home"), as = AdBreak.scorers(now, "away");
                 List<View> out = new ArrayList<>();
@@ -546,7 +547,7 @@ final class AdBreakView extends FrameLayout {
                         for (String[] x : k.firstHalf) l.addView(cell(x[side + 1], 13, NAVY, true, 46));
                         out.add(l);
                     }
-                    String goals = hs.isEmpty() && as.isEmpty() ? "No goals yet" : (hs.isEmpty() ? "" : hn + ": " + hs) + (!hs.isEmpty() && !as.isEmpty() ? " · " : "") + (as.isEmpty() ? "" : an + ": " + as);
+                    String goals = hs.isEmpty() && as.isEmpty() ? (full ? "No goals" : "No goals yet") : (hs.isEmpty() ? "" : hn + ": " + hs) + (!hs.isEmpty() && !as.isEmpty() ? " · " : "") + (as.isEmpty() ? "" : an + ": " + as);
                     out.add(foot(goals));
                 } else {
                     for (int side = 0; side < 2; side++) {
@@ -560,7 +561,7 @@ final class AdBreakView extends FrameLayout {
                         l.addView(t, new LinearLayout.LayoutParams(0, -2, 1f));
                         out.add(l);
                     }
-                    out.add(foot("Goals in the first half"));
+                    out.add(foot(full ? "The goals" : "Goals in the first half"));
                 }
                 return out;
             }));

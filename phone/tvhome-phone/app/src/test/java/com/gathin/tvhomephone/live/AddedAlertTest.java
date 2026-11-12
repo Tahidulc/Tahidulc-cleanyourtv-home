@@ -15,6 +15,7 @@ public class AddedAlertTest {
         assertEquals("ADDED TIME", d.chip);
         assertEquals("+4 minutes", d.title);
         assertEquals(0xFFE3061B, d.colour);
+        assertEquals(4, d.addedMins);
         assertEquals("+1 minute", ScoreBoard.addedDrop(g, "+1").title);
         assertNull(ScoreBoard.addedDrop(g, "+?"));
         assertNull(ScoreBoard.addedDrop(g, "0"));
@@ -28,5 +29,22 @@ public class AddedAlertTest {
         assertEquals(0, FotMob.addedHalf(0));
         assertEquals(4, FotMob.minutes("+4"));
         assertEquals(0, FotMob.minutes("soon"));
+    }
+
+    @Test public void theMinutesAddedCountUpAsTheyComeOut() {
+        long start = BoardSide.SLIDE_MS / 2;
+        assertEquals(1, BoardDrop.countUp(4, start));
+        assertEquals(2, BoardDrop.countUp(4, start + BoardDrop.COUNT_STEP_MS));
+        assertEquals(4, BoardDrop.countUp(4, 60_000L));
+        assertEquals(4, BoardDrop.countUp(4, -1));
+    }
+
+    @Test public void theTabsLineFillsAsTheMinutesAddedRun() {
+        assertEquals(0f, OverlayBug.addedRun("89:30", "+4"), 0.001f);
+        assertEquals(0.5f, OverlayBug.addedRun("92:00", "+4"), 0.001f);
+        assertEquals(1f, OverlayBug.addedRun("95:10", "+4"), 0.001f);
+        assertEquals(0.25f, OverlayBug.addedRun("45:30", "+2"), 0.001f);
+        assertEquals(-1f, OverlayBug.addedRun("30:00", "+2"), 0.001f);
+        assertEquals(-1f, OverlayBug.addedRun("92:00", ""), 0.001f);
     }
 }

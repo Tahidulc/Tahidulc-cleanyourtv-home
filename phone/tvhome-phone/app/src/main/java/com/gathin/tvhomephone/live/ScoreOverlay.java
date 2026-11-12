@@ -1647,11 +1647,12 @@ final class ScoreOverlay implements ScoreBoard.Source {
                     endAdBreak();
                     return;
                 }
-                // Half time as the picture shows it (the board's game in step with the channel), or asked for by hand:
-                // the half-time widgets (the quiz, fun facts, prayer times) in among the last card's own.
+                // Half time as the picture shows it (the board's game in step with the channel), full time, or asked for
+                // by hand: the half-time widgets (the quiz, fun facts, prayer times) in among the last card's own, every
+                // widget there is.
                 Game onScreen = ScreenTime.game(host.game(), System.currentTimeMillis());
                 Game ht = onScreen != null && k.game != null && k.game.id != null && k.game.id.equals(onScreen.id) ? onScreen : k.game;
-                k.halfTime = !k.general && (adBreakHalf || ht != null && AdBreak.atHalfTime(ht));
+                k.halfTime = !k.general && (adBreakHalf || ht != null && (AdBreak.atHalfTime(ht) || ht.state == Game.POST));
                 boolean sideways = a.getResources().getConfiguration().orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE;
                 android.graphics.Rect pic = new android.graphics.Rect(Math.round(pfx), Math.round(pfy), Math.round(pfx + pfw), Math.round(pfy + pfh));
                 view.post(() -> {

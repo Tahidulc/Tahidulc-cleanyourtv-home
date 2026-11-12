@@ -1573,11 +1573,50 @@ final class OverlayBug extends View implements BurnGuard.Dims {
             cv.drawRoundRect(r, rad, rad, fill);
             fill.setAlpha(255);
         }
-        // Its words white on the red; red while it is lit white.
+        // The minutes added running: a thin white line along its foot filling as they go (empty at the half's end, full
+        // once they are up), on a faint track; steady, moving only as the clock does.
+        float run = addedRun(look.clock, look.added), textY = y;
+        if (run >= 0f) {
+            float lh = Math.max(2f, th * 0.08f), lx = x + th * 0.2f, lw = tw - th * 0.4f, ly = y + th - lh - th * 0.12f;
+            fill.setColor(0x4DFFFFFF);
+            cv.drawRect(lx, ly, lx + lw, ly + lh, fill);
+            fill.setColor(0xF2FFFFFF);
+            cv.drawRect(lx, ly, lx + lw * run, ly + lh, fill);
+            textY = y - th * 0.05f;
+        }
+        // Its words white on the red.
         float most = th * 0.6f, ts = Math.min(most, (tw - th * 0.3f) * most / Math.max(1f, measure(look.added, most)));
-        words(cv, look.added, x + tw / 2f, y, th, ts, blend(0xFFFFFFFF, red, white));
+        words(cv, look.added, x + tw / 2f, textY, th, ts, blend(0xFFFFFFFF, red, white));
         cv.restore();
         if (tabFrozen < 0 && (f < 1f || lit > 0f)) postInvalidateOnAnimation();
+    }
+
+    /**
+     * Pure: how far through its minutes added a clock is, 0 at the half's end to 1 once they are up; -1 when it cannot
+     * tell (no minutes, no clock). The half's end is the last of 45, 90, 105 and 120 the clock has reached (or is a
+     * minute short of).
+     */
+    static float addedRun(String clock, String added) {
+        int n;
+        try {
+            n = Integer.parseInt(added == null ? "" : added.replace("+", "").trim());
+        } catch (NumberFormatException e) {
+            return -1f;
+        }
+        int colon = clock == null ? -1 : clock.indexOf(':');
+        if (n <= 0 || colon <= 0) return -1f;
+        int m, s;
+        try {
+            m = Integer.parseInt(clock.substring(0, colon).trim());
+            s = Integer.parseInt(clock.substring(colon + 1).replaceAll("[^0-9].*$", "").trim());
+        } catch (NumberFormatException e) {
+            return -1f;
+        }
+        int end = -1;
+        for (int e : new int[]{45, 90, 105, 120}) if (m >= e - 1) end = e;
+        if (end < 0) return -1f;
+        float run = (m * 60 + s - end * 60) / (n * 60f);
+        return Math.max(0f, Math.min(1f, run));
     }
 
     /** Pure: b laid over a at this share. */
