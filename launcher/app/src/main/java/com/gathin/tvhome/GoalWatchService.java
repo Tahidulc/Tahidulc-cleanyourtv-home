@@ -1720,6 +1720,22 @@ public class GoalWatchService extends Service {
             // adb only: the board over whatever is on, one substitution (OFF, then ON) and then three at once
             main.post(() -> BoardCover.testSubs(this));
         }
+        if (intent != null && intent.getBooleanExtra("test_board_pens", false)) {
+            // adb only: the board over whatever is on and a made-up shootout under it, kick by kick, into sudden death
+            main.post(() -> BoardCover.testPens(this));
+        }
+        if (intent != null && intent.getBooleanExtra("test_board_winchance", false)) {
+            // adb only: the board over whatever is on, its win chance under it, a goal moving it and the WIN CHANCE alert
+            main.post(() -> BoardCover.testWinChance(this));
+        }
+        if (intent != null && intent.getBooleanExtra("test_board_milestones", false)) {
+            // adb only: the board over whatever is on, a goal tagged "3rd of the season", then a yellow one short of a ban
+            main.post(() -> BoardCover.testMilestones(this));
+        }
+        if (intent != null && intent.getBooleanExtra("test_fight", false)) {
+            // adb only: a made-up fight night: the main event's card, then the round's card counting down and its result
+            main.post(() -> FightNight.test(this));
+        }
         if (intent != null && intent.hasExtra("test_classic")) {
             // adb only: the classic pop-up ("kickoff", "restart", "second") or line-ups ("lineups") now, as the Scoreboard
             // card's Try rows play them, for the Premier League's latest game.
@@ -2145,6 +2161,8 @@ public class GoalWatchService extends Service {
                 // The weekend planner: a game planned for this TV kicking off now goes on (WeekendPlanner).
                 WeekendPlanner.due(this);
                 ClassicIntro.sportTick(this, forIntro, programme);
+                // UFC's fight night: the main event's card, its ring-walk reminder, the round's card on the channel.
+                FightNight.tick(this, programme);
                 for (ScoresTicker.Game g : games) {
                     if (playerOnly.contains(g.id)) continue;
                     if (kickoffReminders && lineupGame(g) && g.state == 1 && g.kickoff - now > 0

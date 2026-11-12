@@ -915,6 +915,37 @@ final class BoardCover {
         prefs(c).edit().putBoolean("subs", on).apply();
     }
 
+    /** The win chance under the board while the game is on (and how a goal moves it, beside it): on unless switched off. */
+    static boolean winChanceOn(Context c) {
+        return prefs(c).getBoolean("win_chance", true);
+    }
+
+    static void setWinChanceOn(Context c, boolean on) {
+        prefs(c).edit().putBoolean("win_chance", on).apply();
+        if (!on && under != null && under.mode() == BoardUnder.WIN) under.fold(null);
+        poke();
+    }
+
+    /** A penalty shootout's kicks under the board as they are taken: on unless switched off. */
+    static boolean pensOn(Context c) {
+        return prefs(c).getBoolean("pens", true);
+    }
+
+    static void setPensOn(Context c, boolean on) {
+        prefs(c).edit().putBoolean("pens", on).apply();
+        if (!on && under != null && under.mode() == BoardUnder.PENS) under.fold(null);
+        poke();
+    }
+
+    /** A player's milestones on the alerts (a goal's place in his season, a yellow card that brings a ban near): on. */
+    static boolean milestonesOn(Context c) {
+        return prefs(c).getBoolean("milestones", true);
+    }
+
+    static void setMilestonesOn(Context c, boolean on) {
+        prefs(c).edit().putBoolean("milestones", on).apply();
+    }
+
     /** Whether each kick-off of its game asks for OK as it shows, to set its clock with the channel's (InStepCard). */
     static boolean asksAtKickoff(Context c) {
         return prefs(c).getBoolean("ask_clock", true);
@@ -1803,6 +1834,10 @@ final class BoardCover {
     private static BoardBug bug;
     private static BoardStats stats;
     private static BoardDrop drop;
+    /** The slim strip down from under the board: the win chance, or a penalty shootout's kicks (BoardUnder). */
+    private static BoardUnder under;
+    /** The room kept in the board's window under it for that strip, in pixels (0: none, no room on the screen). */
+    private static int underRoom;
     private static LogoMark mark;
     /** The windows just made: the board comes in as a broadcaster's does at its first showing. */
     private static boolean fresh;
@@ -2210,6 +2245,7 @@ final class BoardCover {
                 goalShownAt = now;
                 expectScorer(c, g, l.score, side);
                 ClassicIntro.goal(c, g, l.score, side);
+                winChanceAlert(c, g, r, l, shownScore, side);
             }
             poke();
         }
@@ -2243,6 +2279,8 @@ final class BoardCover {
         guard(now);
         if (g != null && board && !adjusting && testUntil <= now) {
             readStats(c, g, now);
+            underTick(c, g, pre == null ? r : null, l, now);
+            milestonesTick(c, g, now);
             if (pre != null) maybeStats(c, g, null, now, true);
             else if (r != null) maybeStats(c, g, r, now, false);
         }
@@ -2260,6 +2298,7 @@ final class BoardCover {
             } else if (!bug.closing()) {
                 if (stats != null) stats.fold(null);
                 if (drop != null) drop.fold(null);
+                if (under != null) under.fold(null);
                 bug.close(() -> {
                     if (column != null) column.setVisibility(View.INVISIBLE);
                     fresh = true;
@@ -2357,8 +2396,10 @@ final class BoardCover {
         drop = new BoardDrop(c);
         // The board, and beside it what slides out of it, drawn under the board where their near ends tuck in.
         column = new FrameLayout(c);
+        under = new BoardUnder(c);
         column.addView(stats, new FrameLayout.LayoutParams(1, 1));
         column.addView(drop, new FrameLayout.LayoutParams(1, 1));
+        column.addView(under, new FrameLayout.LayoutParams(1, 1));
         column.addView(bug, new FrameLayout.LayoutParams(1, 1));
         boardWin = new FrameLayout(c);
         FrameLayout.LayoutParams cl = new FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT);
@@ -2371,6 +2412,7 @@ final class BoardCover {
             bug = null;
             stats = null;
             drop = null;
+            under = null;
             return false;
         }
         windowsFor = windowsKey(c);
@@ -2749,6 +2791,7 @@ final class BoardCover {
         ClassicIntro.hide();
         if (stats != null) stats.gone();
         if (drop != null) drop.gone();
+        if (under != null) under.gone();
         holdKeys(false);
         if (main != null) main.removeCallbacks(menuOnHold);
         okDown = -1;
@@ -2762,6 +2805,7 @@ final class BoardCover {
         bug = null;
         stats = null;
         drop = null;
+        under = null;
         mark = null;
         imagesFor = null;
         shownScore = null;
@@ -2780,6 +2824,7 @@ final class BoardCover {
         if (bug.closing()) return;
         if (stats != null) stats.fold(null);
         if (drop != null) drop.fold(null);
+        if (under != null) under.fold(null);
         bug.close(BoardCover::hideAll);
     }
 
@@ -2862,10 +2907,17 @@ final class BoardCover {
         sizeAt(bug, vw, vh, boardAt, head);
         if (stats.isOut()) beside(stats, stats.getLayoutParams().width);
         if (drop.isOut()) beside(drop, drop.getLayoutParams().width);
+        // Room under the board for the win chance or a shootout's kicks, kept while either is on and the screen has it.
+        int below = Math.round(unit * BoardUnder.ROOM);
+        underRoom = (winChanceOn(c) || pensOn(c)) && y + h + edge + below <= sh ? below : 0;
+        if (under != null && under.isOut()) {
+            if (underRoom > 0) placeUnder(under.mode());
+            else under.gone();
+        }
         lastBoard = new int[]{x, y, w, h};
         WindowManager.LayoutParams lp = (WindowManager.LayoutParams) boardWin.getLayoutParams();
         int wx = x - 2 * edge - boardAt, wy = y - 2 * edge - head, ww = boardAt + vw + (sideLeft ? 0 : sideGap + room) + 2 * edge,
-                wh = head + vh + 2 * edge;
+                wh = head + vh + 2 * edge + underRoom;
         if (lp == null || (lp.x == wx && lp.y == wy && lp.width == ww && lp.height == wh)) return;
         lp.x = wx;
         lp.y = wy;
@@ -2941,6 +2993,8 @@ final class BoardCover {
         if (captioned.size() > 200) captioned.clear();
         // The board's own game: the board beside it says the clubs and the score already.
         d.own = d.gameId != null && d.gameId.equals(game(c));
+        // A goal's place in the scorer's season (the game's second, a hat-trick, his 3rd of the season), as a tag.
+        if (d.key != null && d.tag == null && milestonesOn(c)) goalTag(d);
         drops.addLast(d);
         while (drops.size() > 4) drops.removeFirst();
         if (d.own && bug != null && "VAR".equals(d.chip)) bug.varCheck(8_000L);
@@ -2996,6 +3050,414 @@ final class BoardCover {
             return;
         }
         drop.fold(BoardCover::nextDrop);
+    }
+
+    // ---- the strip under the board: the win chance, or a penalty shootout's kicks --------------------------------------
+
+    /** How often the summary is read in a shootout; the least time between two kicks coming on the strip. */
+    static final long PENS_READ_MS = 10_000L, PENS_GAP_MS = 3_000L;
+    /** The WIN CHANCE alert's chip. */
+    static final int WIN_CHANCE_COLOUR = 0xFF3D7BFF;
+
+    /** A game's shootout as read: its kicks in order, when each was first read, whether it is on (since), how many show. */
+    private static final class Pens {
+        final List<Shootout.Kick> kicks = new ArrayList<>();
+        final Map<Long, Long> seen = new HashMap<>();
+        boolean on;
+        long onAt;
+        int shown = -1;
+    }
+
+    private static final Map<String, Pens> pens = new HashMap<>();
+    /** Each game's goals in ninety minutes from its chances before kick-off (WinChance.fit), once its summary is read. */
+    private static final Map<String, double[]> winRates = new java.util.concurrent.ConcurrentHashMap<>();
+    /** The dots each shootout row has room for (the strip is sized for them). */
+    private static int underSlots = 5;
+
+    /** The strip under the board (its look, where it sits, its size) for this mode, from the board as it is placed now. */
+    private static void placeUnder(int mode) {
+        if (under == null || bug == null || mode == BoardUnder.NONE) return;
+        FrameLayout.LayoutParams b = (FrameLayout.LayoutParams) bug.getLayoutParams();
+        BoardBug.StripLook look = bug.stripLook();
+        int vh = b.height, bw = Math.max(1, b.width - 2 * edge);
+        // Its top tucked under the board's foot (a pill's: well up behind it, a gap below), so it comes down from under it.
+        int hide = look.apart ? Math.round(vh * 0.45f) : Math.max(2, Math.round(vh * look.round)) + 1;
+        int gap = look.apart ? Math.max(2, Math.round(boardH * 0.1f)) : 0;
+        under.place(look, boardH, hide, gap);
+        int w = mode == BoardUnder.PENS ? Math.max(bw, under.pensWidth(underSlots)) : bw;
+        // Wider than the board (a shootout's dots): out on the side with room, its other end in line with the board's.
+        int left = sideLeft ? Math.max(0, boardAt + edge + bw - w) : boardAt + edge;
+        sizeAt(under, w, hide + gap + BoardUnder.heightFor(mode, boardH), left, head + vh - edge - hide);
+    }
+
+    /** The summary just read (off the main thread): the chances before kick-off kept, the shootout's kicks taken in. */
+    private static void underRead(String id, org.json.JSONObject summary, ScoresTicker.Game g) {
+        if (!winRates.containsKey(id)) {
+            if (winRates.size() > 40) winRates.clear();
+            winRates.put(id, WinChance.fit(WinChance.fromSummary(summary)));
+        }
+        List<Shootout.Kick> kicks = Shootout.kicks(summary, g.homeId, g.awayId, g.homeName);
+        boolean on = Shootout.on(summary);
+        if (kicks.isEmpty() && !on) return;
+        long now = System.currentTimeMillis();
+        main().post(() -> {
+            Pens p = pens.get(id);
+            if (p == null) {
+                if (pens.size() > 20) pens.clear();
+                p = new Pens();
+                pens.put(id, p);
+            }
+            if (p.onAt == 0) p.onAt = now;
+            p.on = on;
+            for (Shootout.Kick k : kicks) if (!p.seen.containsKey(k.id)) p.seen.put(k.id, now);
+            p.kicks.clear();
+            p.kicks.addAll(kicks);
+        });
+    }
+
+    /**
+     * Each look at the board while it is up for its game (main thread): a shootout's kicks under it as the screen shows
+     * them (InStep's hold after they are read); else, while the game is on, its win chance, held at half time, and at
+     * full time as it ended (it goes with the board).
+     */
+    private static void underTick(Context c, ScoresTicker.Game g, Reading r, BoardBug.Look l, long now) {
+        if (under == null || bug == null || underRoom <= 0 || bug.closing()) return;
+        Pens p = pens.get(g.id);
+        long hold = InStep.holdMs(c, true);
+        if (pensOn(c) && p != null && (p.on || !p.kicks.isEmpty()) && now >= p.onAt + hold) {
+            pensTick(g, p, now, hold);
+            return;
+        }
+        if (under.mode() == BoardUnder.PENS) return;
+        boolean wanted = winChanceOn(c) && r != null && (r.state == 0 || r.state == 2);
+        if (!wanted) {
+            if (under.isOut()) under.fold(null);
+            return;
+        }
+        // Half time: as it stood.
+        if (r.halftime && under.isOut()) return;
+        int[] chance = winNow(g, r, l, l.score);
+        if (chance == null) return;
+        if (!under.isOut() || under.mode() != BoardUnder.WIN) placeUnder(BoardUnder.WIN);
+        under.win(chance, l.homeColour, l.awayColour);
+    }
+
+    /** The shootout under the board: its rows down (the win chance away first), each kick's dot popping in as it shows. */
+    private static void pensTick(ScoresTicker.Game g, Pens p, long now, long hold) {
+        if (under.isOut() && under.mode() != BoardUnder.PENS) {
+            under.fold(null);
+            return;
+        }
+        long[] seen = new long[p.kicks.size()];
+        for (int i = 0; i < seen.length; i++) {
+            Long at = p.seen.get(p.kicks.get(i).id);
+            seen[i] = at == null ? now : at;
+        }
+        int n = Shootout.revealed(seen, hold, PENS_GAP_MS, now);
+        List<Boolean> h = Shootout.side(p.kicks, n, true), a = Shootout.side(p.kicks, n, false);
+        int slots = Shootout.slots(h.size(), a.size(), Shootout.decided(h, a));
+        boolean first = !under.isOut();
+        if (first || slots != underSlots) {
+            under.clubs(code(g.home, g.homeName), code(g.away, g.awayName), homeCrest, awayCrest,
+                    BoardBug.colour(g.homeColor, g.homeAlt), BoardBug.colour(g.awayColor, g.awayAlt));
+            underSlots = slots;
+            placeUnder(BoardUnder.PENS);
+        }
+        if (!first && n == p.shown) return;
+        // Down with the kicks so far (no pop for those taken before it came); then each new one pops in with the swish.
+        boolean pop = !first && p.shown >= 0 && n > p.shown;
+        under.pens(h, a, pop, n > 0 && p.kicks.get(n - 1).home);
+        p.shown = n;
+    }
+
+    /** Pure: the seconds of a clock ("67:23": 23); 0 when it shows none. */
+    static int secondsOfClock(String clock) {
+        int colon = clock == null ? -1 : clock.indexOf(':');
+        if (colon <= 0) return 0;
+        try {
+            return Integer.parseInt(clock.substring(colon + 1).trim());
+        } catch (NumberFormatException e) {
+            return 0;
+        }
+    }
+
+    /** The win chance {home, draw, away} with this score at the board's clock (null: no score or clock to go by). */
+    private static int[] winNow(ScoresTicker.Game g, Reading r, BoardBug.Look l, String score) {
+        double[] rates = winRates.get(g.id);
+        if (rates == null) rates = new double[]{WinChance.HOME_RATE, WinChance.AWAY_RATE};
+        int h = goalsOf(score, 1), a = goalsOf(score, 2);
+        if (h < 0 || a < 0) return null;
+        double left, minute;
+        if (r.state == 2) {
+            left = 0;
+            minute = 999;
+        } else {
+            int m = minuteOfClock(l.clock);
+            if (m < 0) return null;
+            minute = m + secondsOfClock(l.clock) / 60.0;
+            int period = periodOf(l.clock, r.detail);
+            int[] ann = announced.get(g.id);
+            int added = ann != null && period >= 1 && period <= ann.length ? ann[period - 1] : 0;
+            left = WinChance.left(minute, period >= 3, added);
+        }
+        return WinChance.percents(WinChance.now(rates, left, h - a,
+                WinChance.reds(g.reds, "home", minute), WinChance.reds(g.reds, "away", minute)));
+    }
+
+    /**
+     * A goal on the board: how it moved its scorers' chance, out beside the board after its caption (WIN CHANCE, "Everton
+     * 34% → 71%"), when it moved five points or more.
+     */
+    private static void winChanceAlert(Context c, ScoresTicker.Game g, Reading r, BoardBug.Look l, String before, int side) {
+        if (!winChanceOn(c) || !dropsOn(c) || r == null || r.state != 0 || before == null) return;
+        int[] was = winNow(g, r, l, before), now = winNow(g, r, l, l.score);
+        if (was == null || now == null) return;
+        int i = side == 1 ? 0 : 2;
+        String home = g.homeName != null ? g.homeName : nz(g.home), away = g.awayName != null ? g.awayName : nz(g.away);
+        String line = WinChance.alertLine(side == 1 ? home : away, was[i], now[i]);
+        if (line == null) return;
+        BoardDrop.Drop d = new BoardDrop.Drop();
+        d.gameId = g.id;
+        d.chip = "WIN CHANCE";
+        d.colour = WIN_CHANCE_COLOUR;
+        d.title = home + " " + l.score + " " + away;
+        d.line = line;
+        d.homeColour = BoardBug.colour(g.homeColor, g.homeAlt);
+        d.awayColour = BoardBug.colour(g.awayColor, g.awayAlt);
+        d.side = side;
+        d.what = "WIN CHANCE " + line;
+        Context a = c.getApplicationContext();
+        String id = g.id;
+        main().postDelayed(() -> {
+            if (bug == null || !id.equals(game(a))) return;
+            d.homeCrest = homeCrest;
+            d.awayCrest = awayCrest;
+            drop(a, d);
+        }, BoardBug.BAND_OUT + BoardBug.BAND_MS + 4_000L);
+    }
+
+    // ---- a player's milestones: a goal's place in his season, a yellow card that brings a ban near --------------------
+
+    /** Each player's season before tonight {goals, yellow cards} in the game's competition, by "game|ESPN id" (-1: not known). */
+    private static final Map<String, int[]> seasons = new java.util.concurrent.ConcurrentHashMap<>();
+    private static final java.util.Set<String> seasonAsked = new java.util.HashSet<>();
+    /** Each yellow card seen, "game|card", when (the screen shows it InStep's hold later; -1 done), and the games seen. */
+    private static final Map<String, Long> yellowsSeen = new HashMap<>();
+    private static final java.util.Set<String> yellowGames = new java.util.HashSet<>();
+
+    /**
+     * Each look at the board for its game (main thread): each scorer's and booked player's season asked for as their goal
+     * or card first appears in the scores (well before the screen shows it), and each yellow card that brings a ban near
+     * out beside the board as the screen shows it.
+     */
+    private static void milestonesTick(Context c, ScoresTicker.Game g, long now) {
+        if (!milestonesOn(c) || g.slug == null || g.id == null || g.state == 1) return;
+        for (String[] x : g.goals) if (x.length > 5 && !"og".equals(x[4])) season(g, x[5]);
+        boolean rule = Milestones.banAt(g.slug, 1, java.time.LocalDate.now()) >= 0;
+        boolean first = yellowGames.add(g.id);
+        if (yellowGames.size() > 40) yellowGames.clear();
+        long hold = InStep.holdMs(c, true);
+        for (String[] y : g.yellows) {
+            if (y.length < 6) continue;
+            String key = g.id + "|" + y[0];
+            Long at = yellowsSeen.get(key);
+            if (at == null) {
+                // Those already given as the board came up: not again.
+                yellowsSeen.put(key, first || !rule ? -1L : now);
+                if (!first && rule) season(g, y[5]);
+                continue;
+            }
+            if (at < 0 || now < at + hold) continue;
+            yellowsSeen.put(key, -1L);
+            yellowOut(c, g, y);
+        }
+        if (yellowsSeen.size() > 400) yellowsSeen.clear();
+    }
+
+    /** A player's season in the game's competition read (off the main thread) from ESPN's player overview, once a game. */
+    private static void season(ScoresTicker.Game g, String athlete) {
+        if (athlete == null || athlete.isEmpty()) return;
+        String key = g.id + "|" + athlete;
+        if (!seasonAsked.add(key)) return;
+        if (seasonAsked.size() > 300) {
+            seasonAsked.clear();
+            seasonAsked.add(key);
+        }
+        String slug = g.slug, league = g.league, id = g.id;
+        io.execute(() -> {
+            try {
+                org.json.JSONObject o = new org.json.JSONObject(ScoresTicker.get("https://site.web.api.espn.com/apis/common/v3/sports/soccer/"
+                        + slug + "/athletes/" + athlete + "/overview", ScoresTicker.GENERIC_UA));
+                if (seasons.size() > 300) seasons.clear();
+                seasons.put(key, Milestones.season(o, Milestones.names(slug, league), id));
+            } catch (Exception ignored) {
+                // no tag for this one
+            }
+        });
+    }
+
+    /** A goal's alert: its place in the scorer's game and season, as a gold tag with a star (none when there is nothing to say). */
+    private static void goalTag(BoardDrop.Drop d) {
+        int bar = d.key.indexOf('|');
+        if (bar <= 0 || (d.side != 1 && d.side != 2)) return;
+        String id = d.key.substring(0, bar), score = d.key.substring(bar + 1);
+        ScoresTicker.Game g = GoalWatchService.latestGame(id);
+        if (g == null) return;
+        String[] goal = scorerOf(g.goals, d.side == 1 ? "home" : "away", goalsOf(score, d.side));
+        if (goal == null || "og".equals(goal[4])) return;
+        int inGame = Milestones.inGame(g.goals, goal);
+        int[] before = goal.length > 5 ? seasons.get(id + "|" + goal[5]) : null;
+        String tag = Milestones.goal(inGame, before != null && before[0] >= 0 ? before[0] + inGame : 0);
+        if (tag == null) return;
+        d.tag = tag;
+        d.tagColour = Milestones.GOLD;
+        d.tagMark = BoardDrop.STAR;
+    }
+
+    /** A yellow card as the screen shows it: out beside the board when it leaves him one short of a ban, or brings one. */
+    private static void yellowOut(Context c, ScoresTicker.Game g, String[] y) {
+        if (!dropsOn(c) || bug == null || !g.id.equals(game(c))) return;
+        int[] before = seasons.get(g.id + "|" + y[5]);
+        if (before == null || before[1] < 0) return;
+        String tag = Milestones.yellow(g.slug, before[1] + Milestones.inGame(g.yellows, y), java.time.LocalDate.now());
+        if (tag == null) return;
+        BoardDrop.Drop d = yellowDrop(g, y, tag);
+        boolean home = d.side == 1;
+        Context a = c.getApplicationContext();
+        String team = home ? g.homeName : g.awayName;
+        int kit = home ? g.homeColor : g.awayColor;
+        io.execute(() -> {
+            Bitmap b = null;
+            try {
+                b = GoalWatchService.photoFor(y[1], team, kit);
+            } catch (RuntimeException ignored) {
+                // its initials' place instead
+            }
+            Bitmap photo = b;
+            main().post(() -> {
+                d.photo = photo;
+                d.homeCrest = homeCrest;
+                d.awayCrest = awayCrest;
+                drop(a, d);
+            });
+        });
+    }
+
+    /** Pure: a yellow card's alert with its ban line ({key, player, minute, side, "", id}). */
+    static BoardDrop.Drop yellowDrop(ScoresTicker.Game g, String[] y, String tag) {
+        boolean home = "home".equals(y[3]);
+        BoardDrop.Drop d = new BoardDrop.Drop();
+        d.gameId = g.id;
+        d.chip = "YELLOW CARD";
+        d.colour = Milestones.YELLOW;
+        d.title = home ? (g.homeName != null ? g.homeName : nz(g.home)) : (g.awayName != null ? g.awayName : nz(g.away));
+        d.line = (nz(y[1]) + " " + nz(y[2])).trim();
+        d.tag = tag;
+        d.tagColour = tag != null && tag.startsWith("Banned") ? 0xFFE04848 : 0xFFFF8A1F;
+        d.tagMark = BoardDrop.CARD;
+        d.homeColour = BoardBug.colour(g.homeColor, g.homeAlt);
+        d.awayColour = BoardBug.colour(g.awayColor, g.awayAlt);
+        d.side = home ? 1 : 2;
+        d.what = ("YELLOW CARD " + d.line + " · " + tag).trim();
+        return d;
+    }
+
+    // ---- the tests (adb) ----------------------------------------------------------------------------------------------
+
+    /** adb only (--ez test_board_pens true): the board, then a made-up shootout under it kick by kick, into sudden death. */
+    static void testPens(Context c) {
+        Context a = c.getApplicationContext();
+        test(a);
+        // Each round {home, away}: 4–4 after five each, then the home side's in and the away side's missed: 5–4.
+        boolean[][] rounds = {{true, true}, {true, true}, {false, true}, {true, false}, {true, true}, {true, false}};
+        main().postDelayed(() -> {
+            if (under == null || bug == null || underRoom <= 0) return;
+            under.clubs("HOM", "AWY", null, null, 0xD8323B, 0x4F8BFF);
+            underSlots = 5;
+            placeUnder(BoardUnder.PENS);
+            under.pens(new ArrayList<>(), new ArrayList<>(), false, true);
+        }, 2_500L);
+        for (int i = 0; i < 12; i++) {
+            final int n = i + 1;
+            main().postDelayed(() -> {
+                if (under == null || bug == null || underRoom <= 0) return;
+                List<Boolean> h = new ArrayList<>(), w = new ArrayList<>();
+                for (int k = 0; k < n; k++) (k % 2 == 0 ? h : w).add(rounds[k / 2][k % 2]);
+                int slots = Shootout.slots(h.size(), w.size(), Shootout.decided(h, w));
+                if (slots != underSlots) {
+                    underSlots = slots;
+                    placeUnder(BoardUnder.PENS);
+                }
+                under.pens(h, w, true, (n - 1) % 2 == 0);
+            }, 5_000L + i * 2_800L);
+        }
+    }
+
+    /** adb only (--ez test_board_winchance true): the board, its win chance under it, a goal moving it and its alert. */
+    static void testWinChance(Context c) {
+        Context a = c.getApplicationContext();
+        test(a);
+        double[] rates = WinChance.fit(new double[]{0.45, 0.27, 0.28});
+        int[] before = WinChance.percents(WinChance.now(rates, WinChance.left(30, false, 0), 0, 0, 0));
+        int[] after = WinChance.percents(WinChance.now(rates, WinChance.left(31, false, 0), 1, 0, 0));
+        main().postDelayed(() -> {
+            if (under == null || bug == null || underRoom <= 0) return;
+            placeUnder(BoardUnder.WIN);
+            under.win(before, 0xD8323B, 0x4F8BFF);
+        }, 2_500L);
+        main().postDelayed(() -> {
+            if (under == null || bug == null) return;
+            bug.goal(1);
+            under.win(after, 0xD8323B, 0x4F8BFF);
+        }, 8_000L);
+        main().postDelayed(() -> {
+            String line = WinChance.alertLine("Home", before[0], after[0]);
+            if (line == null) return;
+            BoardDrop.Drop d = new BoardDrop.Drop();
+            d.chip = "WIN CHANCE";
+            d.colour = WIN_CHANCE_COLOUR;
+            d.title = "Home 1–0 Away";
+            d.line = line;
+            d.homeColour = 0xD8323B;
+            d.awayColour = 0x4F8BFF;
+            d.side = 1;
+            d.what = "test WIN CHANCE " + line;
+            drop(a, d);
+        }, 8_000L + BoardBug.GOAL_MS + 400L);
+    }
+
+    /** adb only (--ez test_board_milestones true): the board, a goal "3rd of the season", then a yellow one short of a ban. */
+    static void testMilestones(Context c) {
+        Context a = c.getApplicationContext();
+        test(a);
+        main().postDelayed(() -> {
+            if (bug != null) bug.goal(1);
+        }, 3_000L);
+        main().postDelayed(() -> {
+            BoardDrop.Drop d = new BoardDrop.Drop();
+            d.chip = "GOAL";
+            d.colour = kindColour("goal");
+            d.title = "Test 1–0";
+            d.line = "A. Player 23'";
+            d.homeColour = 0xD8323B;
+            d.awayColour = 0x4F8BFF;
+            d.side = 1;
+            d.tag = Milestones.goal(1, 3);
+            d.tagColour = Milestones.GOLD;
+            d.tagMark = BoardDrop.STAR;
+            d.what = "test goal · " + d.tag;
+            drop(a, d);
+        }, 3_000L + BoardBug.GOAL_MS + 400L);
+        main().postDelayed(() -> {
+            ScoresTicker.Game g = new ScoresTicker.Game();
+            g.id = "test-yellow";
+            g.homeName = "Home";
+            g.awayName = "Away";
+            g.homeColor = 0xD8323B;
+            g.awayColor = 0x4F8BFF;
+            String tag = Milestones.yellow("eng.1", 4, java.time.LocalDate.of(2026, 11, 12));
+            drop(a, yellowDrop(g, new String[]{"Y|test", "B. Example", "41'", "away", "", ""}, tag));
+        }, 16_000L);
     }
 
     // ---- a goal's scorer, captioned beside it --------------------------------------------------------------------------
@@ -3113,11 +3575,14 @@ final class BoardCover {
         if (statsReading || g.slug == null || g.id == null) return;
         // Near a half's end, every half a minute: the added time put up comes on the board soon after.
         long every = nearHalfsEnd(minuteOfClock(bug == null ? null : bug.look().clock)) ? 30_000L : STATS_READ_MS;
+        // A penalty shootout on (or near): every ten seconds, each kick on the strip under the board soon after.
+        Pens p0 = pens.get(g.id);
+        if (pensOn(c) && (p0 != null && p0.on || Shootout.likely(g.detail) && g.state == 0)) every = PENS_READ_MS;
         if (g.id.equals(statsFor) && now - statsReadAt < every) return;
         statsReading = true;
         statsReadAt = now;
         String id = g.id, slug = g.slug;
-        boolean fotmob = fotmobOn(c);
+        boolean fotmob = fotmobOn(c) && !(p0 != null && p0.on);
         io.execute(() -> {
             Map<String, String[]> got = null;
             try {
@@ -3125,6 +3590,7 @@ final class BoardCover {
                         + slug + "/summary?event=" + id));
                 announced.put(id, announcedOf(summary));
                 got = statsOf(summary, g);
+                underRead(id, summary, g);
             } catch (Exception ignored) {
                 // read again in two minutes
             }

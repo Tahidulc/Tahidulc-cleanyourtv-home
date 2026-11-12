@@ -112,10 +112,12 @@ final class ScoresTicker {
         String leagueLogo, homeLogo, awayLogo;
         int state;   // 0 live, 1 upcoming, 2 finished: the order they are shown in
         long kickoff;
-        /** Every goal so far: {unique key, scorer, minute, "home"/"away", "pen"/"og"/""}. */
+        /** Every goal so far: {unique key, scorer, minute, "home"/"away", "pen"/"og"/"", ESPN's id for the scorer ("" none)}. */
         final List<String[]> goals = new ArrayList<>();
-        /** Every red card: {unique key, player, minute, "home"/"away", ""}. */
+        /** Every red card: {unique key, player, minute, "home"/"away", "", ESPN's id for the player ("" none)}. */
         final List<String[]> reds = new ArrayList<>();
+        /** Every yellow card, as the red cards (a player's milestones: one short of a ban, a ban). */
+        final List<String[]> yellows = new ArrayList<>();
         /** An F1 session instead of a game: the leading drivers as {code, team logo url}, else a line of text. */
         List<String[]> drivers;
         String text;
@@ -505,14 +507,18 @@ final class ScoresTicker {
             JSONObject x = details.getJSONObject(d);
             boolean red = x.optBoolean("redCard") || (x.optJSONObject("type") != null
                     && x.getJSONObject("type").optString("text").toLowerCase(java.util.Locale.ROOT).contains("red card"));
-            if (!x.optBoolean("scoringPlay") && !red) continue;
+            boolean yellow = !red && (x.optBoolean("yellowCard") || (x.optJSONObject("type") != null
+                    && x.getJSONObject("type").optString("text").toLowerCase(java.util.Locale.ROOT).contains("yellow card")));
+            if (!x.optBoolean("scoringPlay") && !red && !yellow) continue;
             JSONArray who = x.optJSONArray("athletesInvolved");
             String scorer = who != null && who.length() > 0 ? who.getJSONObject(0).optString("displayName") : "";
+            String athlete = who != null && who.length() > 0 ? who.getJSONObject(0).optString("id") : "";
             String minute = x.optJSONObject("clock") != null ? x.getJSONObject("clock").optString("displayValue") : "";
             String side = homeId.equals(x.optJSONObject("team") != null ? x.getJSONObject("team").optString("id") : "") ? "home" : "away";
             String kind = x.optBoolean("ownGoal") ? "og" : x.optBoolean("penaltyKick") ? "pen" : "";
-            if (red) g.reds.add(new String[]{"R|" + id + "|" + minute + "|" + scorer, scorer, minute, side, ""});
-            else g.goals.add(new String[]{id + "|" + minute + "|" + scorer, scorer, minute, side, kind});
+            if (yellow) g.yellows.add(new String[]{"Y|" + id + "|" + minute + "|" + scorer, scorer, minute, side, "", athlete});
+            else if (red) g.reds.add(new String[]{"R|" + id + "|" + minute + "|" + scorer, scorer, minute, side, "", athlete});
+            else g.goals.add(new String[]{id + "|" + minute + "|" + scorer, scorer, minute, side, kind, athlete});
         }
         g.league = tag;
         JSONObject ground = c.optJSONObject("venue");
@@ -2006,7 +2012,16 @@ final class ScoresTicker {
     }
 
     static String get(String url) throws Exception {
+        return get(url, null);
+    }
+
+    /** A generic client name for the reads that ask for one (ESPN's player and fight pages): nothing of the TV or family. */
+    static final String GENERIC_UA = "TVHomeLauncher/1.0 (TV launcher; personal use)";
+
+    /** The same, as this client (null: the system's own). */
+    static String get(String url, String agent) throws Exception {
         HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
+        if (agent != null) conn.setRequestProperty("User-Agent", agent);
         conn.setConnectTimeout(6000);
         conn.setReadTimeout(8000);
         try (InputStream in = conn.getInputStream()) {

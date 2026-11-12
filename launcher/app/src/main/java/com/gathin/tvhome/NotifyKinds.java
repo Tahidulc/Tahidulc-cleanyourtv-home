@@ -77,6 +77,7 @@ final class NotifyKinds {
             k("f1result", "🏆", "F1 results", "The podium and the full result", SPORT),
             k("f1grid", "🚦", "F1 starting grid", "The grid fifteen minutes before the start", SPORT, "f1_live_alerts", false),
             k("ufc", "🥊", "UFC", "A fight starting, and how it was won", SPORT, "ufc_alerts", false),
+            k("fightnight", "🥊", "Fight night", "UFC's main event before the walk-out, and its rounds", SPORT),
             k("boxing", "🥊", "Boxing", "Boxing's news from BBC Sport", SPORT, "boxing_alerts", false),
             k("tennis", "🎾", "Tennis", "A final under way, and its result", SPORT, "tennis_alerts", false),
             k("news", "📰", "Breaking news", "BBC News and BBC Sport", NEWS, "news_alerts", false),

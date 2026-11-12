@@ -48,7 +48,18 @@ final class BoardDrop extends BoardSide {
         SubsPage.Subs subs;
         /** The minutes added (an ADDED TIME alert): a big +N counting up to them as it comes out, MINUTES ADDED by it. */
         int addedMins;
+        /**
+         * A player's milestone after the line, as a small tag in its colour (Milestones): a goal's place in his season
+         * (gold, with a star), a yellow card's ban near (with a little card); null for none.
+         */
+        String tag;
+        int tagColour = Milestones.GOLD;
+        /** The tag's mark: STAR, CARD or none (0). */
+        int tagMark;
     }
+
+    /** A tag's marks: a star (a goal's milestone), a little yellow card (a ban near). */
+    static final int STAR = 1, CARD = 2;
 
     /** Each step of the minutes added counting up (+1, +2 ... +N), after the first half of its slide out. */
     static final long COUNT_STEP_MS = 150L;
@@ -82,6 +93,9 @@ final class BoardDrop extends BoardSide {
         boolean lineBold;
         /** The bold words this much bigger (the minutes added's +N). */
         float headScale = 1f;
+        /** The milestone's tag after the line (null: none), its colour and mark. */
+        String tag;
+        int tagColour, tagMark;
     }
 
     /** The alert out now and when it began to come out (the minutes added count up from then). */
@@ -294,6 +308,11 @@ final class BoardDrop extends BoardSide {
             o.crestB = d.awayCrest;
             o.line = d.line;
         }
+        if (d.tag != null && !d.tag.isEmpty() && !o.line.isEmpty()) {
+            o.tag = d.tag;
+            o.tagColour = d.tagColour;
+            o.tagMark = d.tagMark;
+        }
         return o;
     }
 
@@ -412,11 +431,14 @@ final class BoardDrop extends BoardSide {
         float lineY = two ? h * 0.5f : 0f, lineH = two ? h * 0.42f : h;
         Paint p = o.lineBold ? bold : plain;
         float ls = two ? unit * 0.4f : o.lineBold ? headSize : unit * 0.38f;
-        float lw = measure(p, o.line, ls);
+        float textW = measure(p, o.line, ls), tw = tagW(o, lineH);
+        // The milestone's tag runs along with the line, just after it.
+        float lw = textW + (tw > 0 ? unit * 0.22f + tw : 0f);
         if (cv != null) {
             cv.save();
             cv.clipRect(lx, dy + lineY, x0 + room, dy + lineY + lineH);
             words(cv, p, o.line, lx - runBy, dy + lineY, lineH, ls, o.lineColour, a);
+            if (tw > 0) tag(cv, o, lx - runBy + textW + unit * 0.22f, dy + lineY, lineH, tw, a);
             cv.restore();
         }
         float total = two ? Math.max(firstEnd, lx + lw) : lx + lw;
@@ -425,6 +447,75 @@ final class BoardDrop extends BoardSide {
 
     private float chipW() {
         return chipW(drop.chip);
+    }
+
+    /** The tag's height in a row rowH high: a little under a chip's. */
+    private float tagH(float rowH) {
+        return Math.min(rowH * 0.66f, unit * 0.5f);
+    }
+
+    /** The milestone's tag's width (0: none): its mark, then its words. */
+    private float tagW(Part o, float rowH) {
+        if (o.tag == null || o.tag.isEmpty()) return 0;
+        float th = tagH(rowH);
+        chipText.setTextSize(unit * 0.28f);
+        return unit * 0.16f + (o.tagMark != 0 ? th * 0.62f + unit * 0.1f : 0f) + chipText.measureText(o.tag) + unit * 0.16f;
+    }
+
+    /** The milestone's tag at x: a small pill in its colour, its mark (a star, a little card), its words. */
+    private void tag(Canvas cv, Part o, float x, float y, float rowH, float tw, int a) {
+        float th = tagH(rowH), top = y + (rowH - th) / 2f;
+        fill.setColor(o.tagColour);
+        fill.setAlpha(Math.round(a * ((o.tagColour >>> 24) / 255f)));
+        r.set(x, top, x + tw, top + th);
+        float rad = look.apart ? th / 2f : th * 0.26f;
+        cv.drawRoundRect(r, rad, rad, fill);
+        int ink = BoardBug.ink(o.tagColour);
+        float tx = x + unit * 0.16f, ms = th * 0.62f;
+        if (o.tagMark == STAR) {
+            fill.setColor(ink);
+            fill.setAlpha(a);
+            cv.drawPath(star(tx + ms / 2f, top + th / 2f, ms / 2f), fill);
+            tx += ms + unit * 0.1f;
+        } else if (o.tagMark == CARD) {
+            float cw = ms * 0.66f, ch = ms;
+            r.set(tx + (ms - cw) / 2f, top + (th - ch) / 2f, tx + (ms + cw) / 2f, top + (th + ch) / 2f);
+            cv.save();
+            cv.rotate(12f, r.centerX(), r.centerY());
+            fill.setColor(Milestones.YELLOW);
+            fill.setAlpha(a);
+            cv.drawRoundRect(r, cw * 0.14f, cw * 0.14f, fill);
+            fill.setColor(0xFF0B1033);
+            fill.setAlpha(a / 3);
+            fill.setStyle(Paint.Style.STROKE);
+            fill.setStrokeWidth(Math.max(1f, cw * 0.1f));
+            cv.drawRoundRect(r, cw * 0.14f, cw * 0.14f, fill);
+            fill.setStyle(Paint.Style.FILL);
+            cv.restore();
+            tx += ms + unit * 0.1f;
+        }
+        fill.setAlpha(255);
+        chipText.setTextSize(unit * 0.28f);
+        chipText.setColor(ink);
+        chipText.setAlpha(a);
+        chipText.setTextAlign(Paint.Align.LEFT);
+        Paint.FontMetrics fm = chipText.getFontMetrics();
+        cv.drawText(o.tag, tx, top + th / 2f - (fm.ascent + fm.descent) / 2f, chipText);
+    }
+
+    private final android.graphics.Path starPath = new android.graphics.Path();
+
+    /** A five-pointed star of radius rad about (cx, cy). */
+    private android.graphics.Path star(float cx, float cy, float rad) {
+        starPath.reset();
+        for (int i = 0; i < 10; i++) {
+            double ang = -Math.PI / 2 + i * Math.PI / 5;
+            float rr = i % 2 == 0 ? rad : rad * 0.45f;
+            float px = cx + (float) Math.cos(ang) * rr, py = cy + (float) Math.sin(ang) * rr;
+            if (i == 0) starPath.moveTo(px, py); else starPath.lineTo(px, py);
+        }
+        starPath.close();
+        return starPath;
     }
 
     private float chipW(String text) {
