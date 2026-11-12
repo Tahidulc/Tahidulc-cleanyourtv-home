@@ -788,6 +788,8 @@ public final class ScoreBoard implements LiveAlerts.Listener {
                 l = look(g, screen.boardClock(now));
                 // From the half's last minute, the added time put up beside the clock (the channel's own when it shows it).
                 if (l.live) l.added = addedBox(period(g, l.clock), minuteOfClock(l.clock), addedUp, l.added);
+                // The minutes added, once known for this half: out beside the board once as an alert, then in its tab.
+                if (l.live && !l.added.isEmpty()) addedOut(g, l.added, period(g, l.clock));
                 // A goal as the screen shows it: that side lit, then its scorer captioned.
                 if (g.id != null && g.id.equals(lastShownId)) {
                     int side = g.homeScore > lastHome && lastHome >= 0 ? 1 : g.awayScore > lastAway && lastAway >= 0 ? 2 : 0;
@@ -1082,6 +1084,8 @@ public final class ScoreBoard implements LiveAlerts.Listener {
     private void fotmobRead(Game g, FotMob.Match m) {
         boolean own = g.id != null && g.id.equals(lastId) && mode == FOOTBALL_MODE;
         if (own && m.varPending) bug.varCheck(8_000L);
+        // The minutes added FotMob has where ESPN's commentary has none (not every game has commentary).
+        if (own) for (int i = 0; i < 4; i++) if (addedUp[i] <= 0 && m.added[i] > 0) addedUp[i] = m.added[i];
         boolean first = subsGames.add(g.id);
         List<String[]> fresh = new java.util.ArrayList<>();
         for (String[] e : m.events) {
@@ -1724,6 +1728,40 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         return d != null && d.alert != null && waitsForAdBreak(d.alert.kind);
     }
 
+    /** The halves whose minutes added have come out beside the board, "game|half": each once. */
+    private final Set<String> addedShown = new java.util.HashSet<>();
+
+    /** The minutes added out beside the board as an alert, once a half (the tab beside the board keeps them after). */
+    private void addedOut(Game g, String added, int half) {
+        if (g.id == null || !addedShown.add(g.id + "|" + half)) return;
+        if (addedShown.size() > 200) addedShown.clear();
+        if (small || !shows(c, FOOTBALL)) return;
+        Drop d = addedDrop(g, added);
+        if (d == null) return;
+        d.own = true;
+        d.homeCrest = bug.homeCrest;
+        d.awayCrest = bug.awayCrest;
+        drop(d);
+    }
+
+    /** Pure: the minutes added's alert ("ADDED TIME", "+4 minutes"), in added time's red; null for words that are no minutes. */
+    static Drop addedDrop(Game g, String added) {
+        int n;
+        try {
+            n = Integer.parseInt(added.replace("+", "").trim());
+        } catch (RuntimeException e) {
+            return null;
+        }
+        if (n <= 0) return null;
+        Drop d = new Drop();
+        d.chip = "ADDED TIME";
+        d.colour = 0xFFE3061B;
+        d.title = "+" + n + (n == 1 ? " minute" : " minutes");
+        d.homeColour = OverlayBug.colour(g.homeColor, g.homeAlt);
+        d.awayColour = OverlayBug.colour(g.awayColor, g.awayAlt);
+        return d;
+    }
+
     private void drop(Drop d) {
         if (small) return;
         drops.addLast(d);
@@ -1922,7 +1960,7 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         });
     }
 
-    /** Tests: the added time put up beside the clock for a few seconds, the clock in its half's added time. */
+    /** Tests: the added time put up beside the clock for a few seconds (the board red, steady), and its alert beside it. */
     boolean testAdded() {
         if (System.currentTimeMillis() < addedUntil) return false;
         return test(() -> {
@@ -1932,6 +1970,13 @@ public final class ScoreBoard implements LiveAlerts.Listener {
             testUntil = Math.max(testUntil, addedUntil);
             if (changed != null) changed.run();
             draw(now);
+            Drop d = addedDrop(testGame(now), "+4");
+            if (d != null && mode != F1_MODE) {
+                d.own = true;
+                d.homeCrest = bug.homeCrest;
+                d.awayCrest = bug.awayCrest;
+                drop(d);
+            }
         });
     }
 

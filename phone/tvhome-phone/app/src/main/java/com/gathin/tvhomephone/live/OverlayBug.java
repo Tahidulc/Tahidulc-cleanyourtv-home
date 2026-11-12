@@ -342,10 +342,10 @@ final class OverlayBug extends View implements BurnGuard.Dims {
     /** The same with round corners (Minimal's clock, which has no box of its own: a red pill behind it). */
     private void pulse(Canvas cv, float x, float y, float w, float h, int red, int least, int most, float round) {
         if (!pulses(look)) return;
-        float beat = heartbeat(System.currentTimeMillis());
+        // Red and staying red: no beat, nothing flashing (least is kept for the looks' call sites, unused).
         fill.setShader(null);
         fill.setColor(red);
-        fill.setAlpha(Math.round(least + (most - least) * beat));
+        fill.setAlpha(most);
         if (round > 0f) {
             r.set(x, y, x + w, y + h);
             cv.drawRoundRect(r, round, round, fill);
@@ -763,12 +763,7 @@ final class OverlayBug extends View implements BurnGuard.Dims {
             }
         }
         if ((goalOn && goalFrozen < 0) || ((turning || rippling || scanning || stamping) && !part)) postInvalidateOnAnimation();
-        // Alive (Card's red always, every look's score in added time): drawn again about 30 times a second while it
-        // shows (Minimal, with only its shine, as that comes), not while a goal's band is over it; else not at all.
-        else if (aliveNow() && !part && animFrozen < 0 && isShown()) {
-            removeCallbacks(tick);
-            postDelayed(tick, nextFrame());
-        }
+        // Added time is red and still now: nothing on it moves, so nothing more to draw for it.
     }
 
     /** The next frame while alive: one at a time, however often it is drawn in between. */
@@ -1069,8 +1064,7 @@ final class OverlayBug extends View implements BurnGuard.Dims {
 
     private void minimal(Canvas cv, int w, int h) {
         String[] m = minimalParts();
-        // No block of its own: in added time its shine sweeps across it all, under the words.
-        if (aliveNow()) aliveShine(cv, 0, 0, w, h, shineTime(animTime()));
+        // No block of its own: in added time its clock's pill is red (steady), nothing sweeping across it.
         if (w / (float) h < 3.6f) {
             // A squarer place: the clubs and score over the clock.
             float top = h * 0.55f;
@@ -1400,12 +1394,10 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         return animFrozen < 0 && look.stoppage && stoppageAt > 0 ? t - stoppageAt : t;
     }
 
-    /** A score block (x, y, w, h) alive: lighter slants drifting across it, a shine sweeping it now and then. */
+    /** A score block (x, y, w, h) in added time: its lighter slants standing still across the red, nothing flashing. */
     private void alive(Canvas cv, float x, float y, float w, float h) {
         if (!aliveNow() || w < 1f || h < 1f) return;
-        long t = animTime();
-        slants(cv, x, y, w, h, t);
-        aliveShine(cv, x, y, w, h, shineTime(t));
+        slants(cv, x, y, w, h, 0L);
     }
 
     /**
@@ -1562,7 +1554,8 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         if (tw <= 0 || th <= 0) return;
         long since = tabFrozen >= 0 ? tabFrozen : animFrozen >= 0 || tabAt == 0 ? Long.MAX_VALUE / 2
                 : android.os.SystemClock.uptimeMillis() - tabAt;
-        float f = Math.min(1f, since / (float) TAB_IN_MS), lit = since < TAB_FLASH_MS ? 1f - since / (float) TAB_FLASH_MS : 0f;
+        // Out from behind the board, then still: no white flash as it lands.
+        float f = Math.min(1f, since / (float) TAB_IN_MS), lit = 0f;
         float x = bodyW + gap - (1f - ease(f)) * (tw + gap), y = tallTab() ? h - th : (h - th) / 2f;
         cv.save();
         // Behind the board until it has slid out.

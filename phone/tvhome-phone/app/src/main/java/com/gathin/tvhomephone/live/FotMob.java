@@ -49,6 +49,8 @@ public final class FotMob {
         final List<String[]> insights = new ArrayList<>();
         /** Cards and substitutions: {type ("Card"/"Substitution"), minute, home ("1"/"0"), name, id, card or name off, id off}. */
         final List<String[]> events = new ArrayList<>();
+        /** The minutes added put up in each half (FotMob's AddedTime events): {first, second, extra time's two}; 0 not yet. */
+        final int[] added = new int[4];
         boolean varPending;
         int homeTeamId, awayTeamId;
     }
@@ -114,6 +116,20 @@ public final class FotMob {
                 if (at >= 0) stats.set(at, r);
                 else stats.add(Math.min(1, stats.size()), r);
             }
+        }
+    }
+
+    /** Pure: the half an added-time event is for, by the minute it is put up at (45: 1, 90: 2, 105: 3, 120: 4); 0 none. */
+    static int addedHalf(int minute) {
+        return minute <= 0 ? 0 : minute <= 45 ? 1 : minute <= 90 ? 2 : minute <= 105 ? 3 : minute <= 120 ? 4 : 0;
+    }
+
+    /** Pure: the minutes in FotMob's words for them ("+4"); 0 for none. */
+    static int minutes(String s) {
+        try {
+            return Integer.parseInt(s == null ? "" : s.replace("+", "").trim());
+        } catch (NumberFormatException e) {
+            return 0;
         }
     }
 
@@ -276,6 +292,13 @@ public final class FotMob {
                 String type = e.optString("type");
                 String minute = String.valueOf(e.optInt("time")) + (e.optInt("overloadTime") > 0 ? "+" + e.optInt("overloadTime") : "");
                 String home = e.optBoolean("isHome") ? "1" : "0";
+                if ("AddedTime".equals(type)) {
+                    int half = addedHalf(e.optInt("time"));
+                    int n = e.optInt("minutesAddedInput", 0);
+                    if (n <= 0) n = minutes(e.optString("minutesAddedStr"));
+                    if (half > 0 && n > 0) m.added[half - 1] = n;
+                    continue;
+                }
                 if ("Card".equals(type)) {
                     JSONObject pl = e.optJSONObject("player");
                     m.events.add(new String[]{type, minute, home, pl == null ? "" : pl.optString("name"), pl == null ? "" : pl.optString("id"),
