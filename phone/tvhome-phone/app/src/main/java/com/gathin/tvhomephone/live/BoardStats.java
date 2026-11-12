@@ -97,6 +97,7 @@ final class BoardStats extends BoardSide {
             return;
         }
         at++;
+        swish();
         if (turning != null) turning.cancel();
         ValueAnimator va = ValueAnimator.ofFloat(0f, 1f);
         va.setDuration(TURN_MS);

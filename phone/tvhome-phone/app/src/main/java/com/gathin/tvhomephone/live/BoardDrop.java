@@ -172,6 +172,7 @@ final class BoardDrop extends BoardSide {
         if (!isOut() || drop == null || !drop.lineups || page >= 1) return;
         if (running != null) running.cancel();
         page = 1;
+        swish();
         run = 0f;
         if (turning != null) turning.cancel();
         ValueAnimator va = ValueAnimator.ofFloat(0f, 1f);

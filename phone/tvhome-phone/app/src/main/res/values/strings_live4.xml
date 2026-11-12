@@ -55,7 +55,7 @@
     <string name="live35_style_stadium">Stadium board</string>
     <string name="live35_style_off">Off</string>
     <string name="live35_goal_sound">Sound over the goal on the scoreboard (tap one to hear it)</string>
-    <string name="live34_swish">Swish as the scorer, stats and alerts slide out beside the scoreboard</string>
+    <string name="live34_swish">A swish each time the scorer, stats or an alert moves beside the scoreboard: out, every page, back in</string>
     <!-- Settings' "Scoreboard over matches" (OverMatches), the TV's setting: Automatic, Ask (the player as it always was;
          the phone asks nothing) or Off (no scoreboard on the picture). -->
     <string name="live36_over_matches">Scoreboard over matches</string>

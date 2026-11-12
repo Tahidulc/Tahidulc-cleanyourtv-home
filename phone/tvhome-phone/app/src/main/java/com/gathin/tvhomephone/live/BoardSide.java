@@ -93,18 +93,28 @@ abstract class BoardSide extends View {
 
     /** Out from under the board (shown at once when it already is). */
     protected void slideOut() {
-        // the line-ups' tab swish as it comes out (the scorer, the stats, an alert), panned to where it is on the screen
-        if (!isOut() && PlayerIntro.swishOn(getContext())) {
-            int[] at = new int[2];
-            getLocationOnScreen(at);
-            int sw = getResources().getDisplayMetrics().widthPixels;
-            float pan = sw > 0 ? Math.max(-0.6f, Math.min(0.6f, ((at[0] + getWidth() / 2f) / sw * 2f - 1f) * 0.6f)) : 0f;
-            com.gathin.broadcast.Sfx.play(getContext(), com.gathin.broadcast.Sfx.SWISH, pan, 0.7f);
-        }
+        if (!isOut()) swish();
+        goingIn = false;
         if (!isOut()) out = 0f;
         after = null;
         setVisibility(VISIBLE);
         to(1f, null);
+    }
+
+    /** On its way back in under the board. */
+    private boolean goingIn;
+
+    /**
+     * The line-ups' tab swish, panned to where it is on the screen, for each of its moves: out from under the board, each
+     * turn of its pages (the next stat, the alert's next page, the second eleven) and back in. Not with the switch off.
+     */
+    protected void swish() {
+        if (!PlayerIntro.swishOn(getContext())) return;
+        int[] at = new int[2];
+        getLocationOnScreen(at);
+        int sw = getResources().getDisplayMetrics().widthPixels;
+        float pan = sw > 0 ? Math.max(-0.6f, Math.min(0.6f, ((at[0] + getWidth() / 2f) / sw * 2f - 1f) * 0.6f)) : 0f;
+        com.gathin.broadcast.Sfx.play(getContext(), com.gathin.broadcast.Sfx.SWISH, pan, 0.7f);
     }
 
     /** Back in under the board; then() once it is away (at once if it is): waiting ones run in turn. */
@@ -120,7 +130,11 @@ abstract class BoardSide extends View {
             then.run();
         };
         onFolding();
+        // A swish going back in too, once (not again for a fold asked for while it is already on its way).
+        if (!goingIn) swish();
+        goingIn = true;
         to(0f, () -> {
+            goingIn = false;
             setVisibility(GONE);
             onGone();
             Runnable a = after;
@@ -132,6 +146,7 @@ abstract class BoardSide extends View {
     /** Away at once (the board going, the small window). */
     void gone() {
         if (sliding != null) sliding.cancel();
+        goingIn = false;
         after = null;
         out = 0f;
         onFolding();
