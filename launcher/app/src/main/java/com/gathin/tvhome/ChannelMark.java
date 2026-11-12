@@ -540,6 +540,8 @@ final class ChannelMark {
 
     /** Event's grounds: its own plate, glass laid under it by the cover (no plate drawn, the marks as on one), or none. */
     static final int GROUND_PLATE = 0, GROUND_GLASS = 1, GROUND_NONE = 2;
+    /** Clear (tempered) glass under it: laid out as on a plate, the marks with their soft shadow, as over the picture. */
+    static final int GROUND_CLEAR_GLASS = 3;
     /** The logo of what is on (the Formula 1 logo, the Premier League's) for Event's lower box, in place of the words; null: the words. */
     private android.graphics.Bitmap eventLogo;
     private final Paint logoPaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
@@ -554,7 +556,7 @@ final class ChannelMark {
     /** Event on the ground given: on its plate or on glass the marks as on a plate; on none, each with a soft shadow. */
     void event(Canvas cv, float x, float y, float w, float h, String sub, String tag, boolean white, int ground) {
         if (w <= 2 || h <= 2) return;
-        boolean plate = ground != GROUND_NONE;
+        boolean plate = ground != GROUND_NONE, glow = ground == GROUND_NONE || ground == GROUND_CLEAR_GLASS;
         String on = sub == null ? "" : sub.trim();
         android.graphics.Bitmap mark = eventLogo;
         boolean sports = !nameOnly, lower = !on.isEmpty() || mark != null;
@@ -601,7 +603,7 @@ final class ChannelMark {
         // Alone over the picture: a soft shadow under the marks (a soft light under navy), so they read on any picture.
         int shade = white ? 0x8C000000 : 0x99FFFFFF;
         float blur = Math.max(1f, (white ? 6f : 7f) * u), drop = white ? 1.5f * u : 0f;
-        if (!plate) {
+        if (glow) {
             text.setShadowLayer(blur, 0, drop, shade);
             line.setShadowLayer(blur, 0, drop, shade);
         }
@@ -610,7 +612,7 @@ final class ChannelMark {
         Shader fall = new LinearGradient(0, nameTop, 0, nameTop + nameH * u, white ? WHITE_FALL : NAVY_FALL, NAME_STOPS,
                 Shader.TileMode.CLAMP);
         float b1 = baseIn(heavy, 62f * u, nameTop, lineH * u), b2 = baseIn(heavy, 62f * u, nameTop + lineH * u, lineH * u);
-        if (!plate) {
+        if (glow) {
             // Its shadow first, under the name in one colour: a shadow drawn with the fall of light takes the fall's colours.
             int solid = (white ? WHITE_FALL : NAVY_FALL)[2];
             words(cv, "whitebrook", heavy, 62f * u, nsp, solid, null, ox, b1, Paint.Align.LEFT);
@@ -619,9 +621,9 @@ final class ChannelMark {
         }
         words(cv, "whitebrook", heavy, 62f * u, nsp, 0, fall, ox, b1, Paint.Align.LEFT);
         words(cv, "road", heavy, 62f * u, nsp, 0, fall, ox, b2, Paint.Align.LEFT);
-        if (!plate) text.setShadowLayer(blur, 0, drop, shade);
+        if (glow) text.setShadowLayer(blur, 0, drop, shade);
         // "sports" at the right, over the right side of the channel's box.
-        if (sports) redBox(cv, ox + (fullW - boxW) * u, oy, boxW * u, boxH * u, u, plate, shade, blur, drop);
+        if (sports) redBox(cv, ox + (fullW - boxW) * u, oy, boxW * u, boxH * u, u, !glow, shade, blur, drop);
         float top = oy + (rowH + 10f) * u, lineTop = top + 24f * u, lh = 92f * 1.05f * u;
         // The channel's name from the left, in the middle of the line it sits on.
         if (lower && mark == null) {
@@ -655,7 +657,7 @@ final class ChannelMark {
                 float lx = ox + (edge + side) * u * sx, ly = lineTop + (lh - dh) / 2f;
                 r.set(lx, ly, lx + dw, ly + dh);
                 logoPaint.setColorFilter(white ? null : new android.graphics.PorterDuffColorFilter(ink, android.graphics.PorterDuff.Mode.SRC_IN));
-                if (!plate) logoPaint.setShadowLayer(blur, 0, drop, shade);
+                if (glow) logoPaint.setShadowLayer(blur, 0, drop, shade);
                 else logoPaint.clearShadowLayer();
                 cv.drawBitmap(mark, null, r, logoPaint);
                 logoPaint.clearShadowLayer();

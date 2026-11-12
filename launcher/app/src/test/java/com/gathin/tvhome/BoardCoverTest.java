@@ -1283,11 +1283,13 @@ public class BoardCoverTest {
 
     @Test public void theLogosGroundsStepRoundInOrder() {
         assertEquals(LogoMark.FROST, BoardCover.nextGround(LogoMark.PLATE, 1));
-        assertEquals(LogoMark.SMOKE, BoardCover.nextGround(LogoMark.FROST, 1));
+        assertEquals(LogoMark.TEMPERED, BoardCover.nextGround(LogoMark.FROST, 1));
+        assertEquals(LogoMark.SMOKE, BoardCover.nextGround(LogoMark.TEMPERED, 1));
+        assertEquals("Tempered glass", BoardCover.groundWords(LogoMark.TEMPERED));
         assertEquals(LogoMark.CLEAR, BoardCover.nextGround(LogoMark.SMOKE, 1));
         assertEquals(LogoMark.PLATE, BoardCover.nextGround(LogoMark.CLEAR, 1));
         assertEquals(LogoMark.CLEAR, BoardCover.nextGround(LogoMark.PLATE, -1));
-        assertEquals(LogoMark.FROST, BoardCover.nextGround(LogoMark.SMOKE, -1));
+        assertEquals(LogoMark.TEMPERED, BoardCover.nextGround(LogoMark.SMOKE, -1));
         assertEquals("Smoked glass", BoardCover.groundWords(LogoMark.SMOKE));
         assertEquals("Frosted glass", BoardCover.groundWords(LogoMark.FROST));
         assertEquals("Transparent", BoardCover.groundWords(LogoMark.CLEAR));

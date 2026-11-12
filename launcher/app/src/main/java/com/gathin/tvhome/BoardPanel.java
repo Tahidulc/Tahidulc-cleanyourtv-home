@@ -424,14 +424,15 @@ final class BoardPanel extends SportPanel {
             for (LogoMark m : markPreviews) m.nameOnly(BoardCover.logoNameOnly(c));
         };
         add(what, name);
-        Row see = row("Background: plate, frosted glass, smoked glass or transparent", false);
+        Row see = row("Background: plate, frosted, tempered or smoked glass, or transparent", false);
         see.words = () -> {
             int g = BoardCover.logoGround(c), n = BoardCover.nextGround(g, 1);
             String then = "OK for " + BoardCover.groundWords(n).toLowerCase(java.util.Locale.UK);
             if (g == LogoMark.PLATE) return "Plate · the look on its own plate over the channel's logo · " + then;
             if (android.os.Build.VERSION.SDK_INT < 34) return BoardCover.groundWords(g) + " needs Android 14 (a picture without the cover in it); solid glass here · " + then;
             if (!ChannelSight.possible()) return BoardCover.groundWords(g) + " needs the search helper on; solid glass meanwhile · " + then;
-            if (g == LogoMark.FROST) return seeNow("Frosted glass · silvery frost over the picture behind it, softened, white lettering, the channel's logo taken out under it once learned · " + then);
+            if (g == LogoMark.FROST) return seeNow("Frosted glass · the look as on its plate, on pale frosted glass: the picture behind it softened through it, the channel's logo taken out under it once learned · " + then);
+            if (g == LogoMark.TEMPERED) return seeNow("Tempered glass · clear glass with a bright edge and a sheen, the picture behind it only a little softened, the lettering with a soft light round it · " + then);
             if (g == LogoMark.SMOKE) return seeNow("Smoked glass · dark glass over the picture behind it, softened, white lettering, the channel's logo taken out under it once learned · " + then);
             return seeNow("Transparent · white on the picture itself, as a channel's own logo is, the channel's logo taken out (on smoked glass while it learns a channel's) · " + then);
         };

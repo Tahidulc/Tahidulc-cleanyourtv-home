@@ -290,10 +290,11 @@ final class BoardCover {
     }
 
     /** The logo cover's grounds as kept ("plate", "frost", "clear", "smoke": LogoMark.PLATE, FROST, CLEAR, SMOKE) and in words. */
-    private static final String[] GROUNDS = {"plate", "frost", "clear", "smoke"};
+    private static final String[] GROUNDS = {"plate", "frost", "clear", "smoke", "tempered"};
 
     static String groundWords(int g) {
-        return g == LogoMark.FROST ? "Frosted glass" : g == LogoMark.SMOKE ? "Smoked glass" : g == LogoMark.CLEAR ? "Transparent" : "Plate";
+        return g == LogoMark.FROST ? "Frosted glass" : g == LogoMark.TEMPERED ? "Tempered glass" : g == LogoMark.SMOKE ? "Smoked glass"
+                : g == LogoMark.CLEAR ? "Transparent" : "Plate";
     }
 
     /** Pure: the ground step steps from g (Plate, Frosted glass, Smoked glass, Transparent, round again). */
@@ -330,7 +331,7 @@ final class BoardCover {
     }
 
     static void setLogoGround(Context c, int g) {
-        int k = g == LogoMark.FROST || g == LogoMark.CLEAR || g == LogoMark.SMOKE ? g : LogoMark.PLATE;
+        int k = g == LogoMark.FROST || g == LogoMark.CLEAR || g == LogoMark.SMOKE || g == LogoMark.TEMPERED ? g : LogoMark.PLATE;
         prefs(c).edit().putString("ground", GROUNDS[k]).putBoolean("see_through", k == LogoMark.CLEAR).apply();
         groundChanged(c);
     }
@@ -2322,7 +2323,7 @@ final class BoardCover {
         if (mark == null || !mark.wantsPatch()) return "";
         if (android.os.Build.VERSION.SDK_INT < 34) return "needs Android 14, on its plate";
         if (at == null) return "starting";
-        boolean frost = mark.ground() == LogoMark.FROST || mark.ground() == LogoMark.SMOKE;
+        boolean frost = mark.ground() == LogoMark.FROST || mark.ground() == LogoMark.SMOKE || mark.ground() == LogoMark.TEMPERED;
         if (at.known()) return frost ? "the channel's logo taken out under the glass" : "logo taken out";
         if (at.block()) return frost ? "a solid logo under the glass" : "a solid logo, on smoked glass";
         return "learning the logo, " + Math.min(at.learnt(), LogoShape.ENOUGH) + " of " + LogoShape.ENOUGH + (frost ? "" : ", on smoked glass meanwhile");
@@ -2474,8 +2475,9 @@ final class BoardCover {
                     f = at.take(px, taken);
                     // The fill shows only on Transparent; on frosted glass it takes the logo out of the picture under it.
                     if (ground == LogoMark.CLEAR && f != null && !f.empty()) made = Bitmap.createBitmap(f.argb, f.w, f.h, Bitmap.Config.ARGB_8888);
-                    if (ground == LogoMark.FROST || ground == LogoMark.SMOKE || (ground == LogoMark.CLEAR && f == null)) {
-                        pane = FrostPane.of(px, at.w, at.h, f, at.x, at.y, at.bl, at.bt, at.br, at.bb);
+                    if (ground == LogoMark.FROST || ground == LogoMark.SMOKE || ground == LogoMark.TEMPERED || (ground == LogoMark.CLEAR && f == null)) {
+                        // Tempered glass is clear: softened only a little.
+                        pane = FrostPane.of(px, at.w, at.h, f, at.x, at.y, at.bl, at.bt, at.br, at.bb, ground == LogoMark.TEMPERED ? 0.08f : 0.26f);
                         if (pane != null) glass = Bitmap.createBitmap(pane.argb, pane.w, pane.h, Bitmap.Config.ARGB_8888);
                     }
                 } catch (RuntimeException | OutOfMemoryError e) {

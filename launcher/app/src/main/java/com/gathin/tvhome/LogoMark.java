@@ -120,9 +120,9 @@ final class LogoMark extends View {
      * behind it softened and lightened, FrostPane); or none, over the picture itself with the channel's logo filled in
      * under it (see-through: frosted glass while that logo is learned).
      */
-    static final int PLATE = 0, FROST = 1, CLEAR = 2, SMOKE = 3;
-    /** The grounds in the order they are stepped through: the plate, frosted glass, smoked glass, transparent. */
-    static final int[] GROUNDS = {PLATE, FROST, SMOKE, CLEAR};
+    static final int PLATE = 0, FROST = 1, CLEAR = 2, SMOKE = 3, TEMPERED = 4;
+    /** The grounds in the order they are stepped through: the plate, frosted, tempered and smoked glass, transparent. */
+    static final int[] GROUNDS = {PLATE, FROST, TEMPERED, SMOKE, CLEAR};
     private int ground = PLATE;
     /** See-through: the channel's logo filled in under it (LogoFill), so it stands clear over the picture. */
     private boolean filled;
@@ -256,7 +256,7 @@ final class LogoMark extends View {
 
     /** Its ground: PLATE, FROST, SMOKE or CLEAR (the looks drawn whole; the others keep their own grounds). */
     void ground(int g) {
-        int k = g == FROST || g == CLEAR || g == SMOKE ? g : PLATE;
+        int k = g == FROST || g == CLEAR || g == SMOKE || g == TEMPERED ? g : PLATE;
         if (k == ground) return;
         ground = k;
         if (k == PLATE) frost(null, 0, 0, 0, 0);
@@ -456,7 +456,8 @@ final class LogoMark extends View {
         // behind it once one is in; till then (or where none can be had) the same glass, solid.
         boolean frosted = !clear && ground != PLATE;
         float in = Math.max(inset, Math.min(w, h) * (clear ? 0.04f : 0f));
-        if (frosted) glass(cv, w, h, ground == FROST ? FROST : SMOKE);
+        int kind = ground == FROST || ground == TEMPERED ? ground : SMOKE;
+        if (frosted) glass(cv, w, h, kind);
         if (look.event()) {
             if (channel == null) {
                 channel = new ChannelMark(getContext());
@@ -467,8 +468,10 @@ final class LogoMark extends View {
             float p = clear ? in : 0f;
             // What is on as its own logo (the competition's, when known and switched on), else the channel's words.
             channel.eventLogo(compOn ? comp : null);
-            channel.event(cv, p, p, w - 2 * p, h - 2 * p, sub, tag, look == Look.EVENT_WHITE || clear || frosted,
-                    clear ? ChannelMark.GROUND_NONE : frosted ? ChannelMark.GROUND_GLASS : ChannelMark.GROUND_PLATE);
+            // Its own navy on frosted and tempered glass (light glass), white on smoked and over the picture itself.
+            boolean white = clear || (frosted ? kind == SMOKE : look == Look.EVENT_WHITE);
+            channel.event(cv, p, p, w - 2 * p, h - 2 * p, sub, tag, white, clear ? ChannelMark.GROUND_NONE
+                    : !frosted ? ChannelMark.GROUND_PLATE : kind == TEMPERED ? ChannelMark.GROUND_CLEAR_GLASS : ChannelMark.GROUND_GLASS);
             return;
         }
         if (look == Look.STYLES) {
@@ -508,20 +511,36 @@ final class LogoMark extends View {
         if (tintFor != h || tintKind != (seen ? kind : kind + 10)) {
             tintFor = h;
             tintKind = seen ? kind : kind + 10;
-            // Over the picture: most of the glass's own colour, a little of the picture through it. Without: solid.
-            int top = kind == FROST ? 0x9AA5BA : 0x262A36, foot = kind == FROST ? 0x5D677D : 0x0D0F16;
-            int a1 = seen ? (kind == FROST ? 0xB3 : 0xB0) : 0xFF, a2 = seen ? (kind == FROST ? 0xBF : 0xC4) : 0xFF;
+            // Over the picture: frosted, a pale frost with a little of the picture through it; tempered, clear glass with
+            // most of the picture through it; smoked, dark. Without a picture: the light (or dark) glass solid.
+            int top = kind == SMOKE ? 0x262A36 : 0xF4F7FD, foot = kind == SMOKE ? 0x0D0F16 : 0xDCE4F2;
+            int a1, a2;
+            if (!seen) {
+                a1 = a2 = 0xFF;
+            } else if (kind == FROST) {
+                a1 = 0xB8;
+                a2 = 0xA6;
+            } else if (kind == TEMPERED) {
+                a1 = 0x52;
+                a2 = 0x38;
+            } else {
+                a1 = 0xB0;
+                a2 = 0xC4;
+            }
             tint.setShader(new android.graphics.LinearGradient(0, 0, 0, h, (a1 << 24) | top, (a2 << 24) | foot, Shader.TileMode.CLAMP));
-            sheen.setShader(kind == FROST ? new android.graphics.LinearGradient(0, 0, 0, h * 0.55f, 0x47FFFFFF, 0x00FFFFFF,
-                    Shader.TileMode.CLAMP) : null);
+            // Frosted: a soft sheen over its top half; tempered: a bright streak across it, as light on a glass pane.
+            sheen.setShader(kind == FROST ? new android.graphics.LinearGradient(0, 0, 0, h * 0.55f, 0x4DFFFFFF, 0x00FFFFFF, Shader.TileMode.CLAMP)
+                    : kind == TEMPERED ? new android.graphics.LinearGradient(0, 0, h * 1.4f, h, new int[]{0x00FFFFFF, 0x38FFFFFF, 0x00FFFFFF,
+                    0x00FFFFFF, 0x1FFFFFFF, 0x00FFFFFF}, new float[]{0.1f, 0.22f, 0.34f, 0.42f, 0.5f, 0.58f}, Shader.TileMode.CLAMP) : null);
             rim.setStyle(Paint.Style.STROKE);
-            rim.setShader(new android.graphics.LinearGradient(0, 0, 0, h, kind == FROST ? 0xB3FFFFFF : 0x59FFFFFF,
-                    kind == FROST ? 0x4DFFFFFF : 0x14FFFFFF, Shader.TileMode.CLAMP));
+            rim.setShader(new android.graphics.LinearGradient(0, 0, 0, h, kind == SMOKE ? 0x59FFFFFF : kind == TEMPERED ? 0xF2FFFFFF : 0xCCFFFFFF,
+                    kind == SMOKE ? 0x14FFFFFF : kind == TEMPERED ? 0x66FFFFFF : 0x59FFFFFF, Shader.TileMode.CLAMP));
         }
         r.set(0, 0, w, h);
         cv.drawRoundRect(r, rad, rad, tint);
-        if (kind == FROST) cv.drawRoundRect(r, rad, rad, sheen);
-        float line = Math.max(1f, h * (kind == FROST ? 0.016f : 0.014f));
+        if (kind != SMOKE) cv.drawRoundRect(r, rad, rad, sheen);
+        // Tempered glass's thick edge: a brighter, wider bevel.
+        float line = Math.max(1f, h * (kind == TEMPERED ? 0.026f : kind == FROST ? 0.016f : 0.014f));
         rim.setStrokeWidth(line);
         r.set(line / 2f, line / 2f, w - line / 2f, h - line / 2f);
         cv.drawRoundRect(r, rad - line / 2f, rad - line / 2f, rim);

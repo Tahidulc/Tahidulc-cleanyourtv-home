@@ -31,6 +31,11 @@ final class FrostPane {
      * null when the box is not in the picture.
      */
     static Pane of(int[] px, int w, int h, LogoShape.Fill fill, int ox, int oy, int l, int t, int r, int b) {
+        return of(px, w, h, fill, ox, oy, l, t, r, b, 0.26f);
+    }
+
+    /** As above, softened by soft of the cover's height (0.26 frosted; less for clear, tempered glass). */
+    static Pane of(int[] px, int w, int h, LogoShape.Fill fill, int ox, int oy, int l, int t, int r, int b, float soft) {
         if (px == null || px.length != w * h || r <= l || b <= t) return null;
         int boxH = b - t, m = Math.max(4, boxH / 2);
         int x0 = Math.max(0, l - m), y0 = Math.max(0, t - m), x1 = Math.min(w, r + m), y1 = Math.min(h, b + m);
@@ -62,7 +67,7 @@ final class FrostPane {
             blue[k] /= c;
         }
         // Softened a long way: three box passes each way (as good as a Gaussian), a quarter of the cover's height.
-        int rad = Math.max(1, Math.round(boxH / (float) s * 0.26f));
+        int rad = Math.max(1, Math.round(boxH / (float) s * soft));
         float[] tmp = new float[n];
         for (float[] ch : new float[][]{red, green, blue}) {
             for (int pass = 0; pass < 3; pass++) {
