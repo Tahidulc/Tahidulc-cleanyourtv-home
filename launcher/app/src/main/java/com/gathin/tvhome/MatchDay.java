@@ -630,6 +630,20 @@ final class MatchDay {
         return full != null ? full : home ? g.home : g.away;
     }
 
+    /**
+     * A side's results from ESPN's "lastFiveGames" events, oldest first ("LWWDW"), as ESPN lists them (by date, the
+     * latest last); at most the last five.
+     */
+    static String lastFive(JSONArray events) {
+        StringBuilder f = new StringBuilder();
+        for (int k = 0; events != null && k < events.length(); k++) {
+            JSONObject e = events.optJSONObject(k);
+            String r = e == null ? "" : e.optString("gameResult");
+            if (!r.isEmpty()) f.append(Character.toUpperCase(r.charAt(0)));
+        }
+        return f.length() > 5 ? f.substring(f.length() - 5) : f.toString();
+    }
+
     /** Each side's last five, oldest first ("LWWDW"), from ESPN's match summary. */
     private void form(Pick p) {
         if (p.g.slug == null || p.g.id == null) return;
@@ -640,14 +654,9 @@ final class MatchDay {
             for (int i = 0; teams != null && i < teams.length(); i++) {
                 JSONObject t = teams.getJSONObject(i);
                 String id = t.optJSONObject("team") == null ? "" : t.getJSONObject("team").optString("id");
-                JSONArray ev = t.optJSONArray("events");
-                StringBuilder f = new StringBuilder();
-                for (int k = ev == null ? -1 : ev.length() - 1; k >= 0; k--) {
-                    String r = ev.getJSONObject(k).optString("gameResult");
-                    if (!r.isEmpty()) f.append(r.charAt(0));
-                }
-                if (id.equals(p.g.homeId)) p.homeForm = f.toString();
-                else if (id.equals(p.g.awayId)) p.awayForm = f.toString();
+                String f = lastFive(t.optJSONArray("events"));
+                if (id.equals(p.g.homeId)) p.homeForm = f;
+                else if (id.equals(p.g.awayId)) p.awayForm = f;
             }
             // Each side's top scorer in this competition (ESPN's "leaders", goals first).
             JSONArray leaders = s.optJSONArray("leaders");
