@@ -1707,6 +1707,10 @@ public class GoalWatchService extends Service {
             String key = intent.getStringExtra("test_board_moments");
             main.post(() -> BoardCover.testMoments(this, key == null || key.isEmpty() ? "hit" : key));
         }
+        if (intent != null && intent.getBooleanExtra("test_board_added", false)) {
+            // adb only: the board over whatever is on and the minutes added coming out beside it ("+4 minutes")
+            main.post(() -> BoardCover.testAdded(this));
+        }
         if (intent != null && intent.getBooleanExtra("test_board_subs", false)) {
             // adb only: the board over whatever is on, one substitution (OFF, then ON) and then three at once
             main.post(() -> BoardCover.testSubs(this));

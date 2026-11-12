@@ -977,6 +977,48 @@ final class BoardCover {
         return m >= (period == 1 ? 45 : period == 2 ? 90 : period == 3 ? 105 : 120);
     }
 
+    /** Pure: the half a clock is in (1, 2, extra time's 3 and 4), by ESPN's first minute when it gives one. */
+    static int periodOf(String clock, String detail) {
+        int m = minuteOfClock(clock), first = firstMinute(detail);
+        if (first > 0) return first <= 45 ? 1 : first <= 90 ? 2 : first <= 105 ? 3 : 4;
+        return m < 0 || m < 45 ? 1 : m < 90 ? 2 : m < 105 ? 3 : 4;
+    }
+
+    /** The halves whose minutes added have come out beside the board, "game|half": each once. */
+    private static final java.util.Set<String> addedShown = new java.util.HashSet<>();
+
+    /** The minutes added out beside the board as an alert, once a half (the tab beside the board keeps them after). */
+    private static void addedOut(Context c, ScoresTicker.Game g, String added, int period) {
+        if (g == null || g.id == null || !addedShown.add(g.id + "|" + period)) return;
+        if (addedShown.size() > 200) addedShown.clear();
+        if (!dropsOn(c)) return;
+        BoardDrop.Drop d = addedDrop(g, added);
+        if (d == null) return;
+        d.homeCrest = homeCrest;
+        d.awayCrest = awayCrest;
+        drop(c.getApplicationContext(), d);
+    }
+
+    /** Pure: the minutes added's alert ("ADDED TIME", "+4 minutes"), in added time's red; null for words that are no minutes. */
+    static BoardDrop.Drop addedDrop(ScoresTicker.Game g, String added) {
+        int n;
+        try {
+            n = Integer.parseInt(added.replace("+", "").trim());
+        } catch (RuntimeException e) {
+            return null;
+        }
+        if (n <= 0) return null;
+        BoardDrop.Drop d = new BoardDrop.Drop();
+        d.gameId = g.id;
+        d.chip = "ADDED TIME";
+        d.colour = kindColour("added");
+        d.title = "+" + n + (n == 1 ? " minute" : " minutes");
+        d.homeColour = BoardBug.colour(g.homeColor, g.homeAlt);
+        d.awayColour = BoardBug.colour(g.awayColor, g.awayAlt);
+        d.what = "ADDED TIME " + d.title;
+        return d;
+    }
+
     private static final Pattern ADDED_TIME = Pattern.compile("(\\d+)\\s+minutes?\\s+of\\s+(?:added|stoppage|injury)\\s+time",
             Pattern.CASE_INSENSITIVE);
 
@@ -998,6 +1040,16 @@ final class BoardCover {
             int first = t == null ? 0 : firstMinute(t.optString("displayValue"));
             if (first <= 0) continue;
             out[(first <= 45 ? 1 : first <= 90 ? 2 : first <= 105 ? 3 : 4) - 1] = n;
+        }
+        return out;
+    }
+
+    /** Pure: the minutes added put up in each half, ESPN's commentary's first and FotMob's where it has none. */
+    static int[] mergeAdded(int[] espn, int[] fotmob) {
+        int[] out = new int[4];
+        for (int i = 0; i < 4; i++) {
+            int a = espn != null && i < espn.length ? espn[i] : 0, b = fotmob != null && i < fotmob.length ? fotmob[i] : 0;
+            out[i] = a > 0 ? a : Math.max(0, b);
         }
         return out;
     }
@@ -1237,6 +1289,7 @@ final class BoardCover {
             case "red": return 0xFFFF5A5F;
             case "var": case "pen": case "drama": case "incident": return 0xFFFFB547;
             case "sub": return 0xFF5CC8FF;
+            case "added": return 0xFFE3061B;
             default: return BoardDrop.PLAIN;
         }
     }
@@ -1804,6 +1857,17 @@ final class BoardCover {
                 new String[]{"Substitution", "75", "2", "Gus Mock", "", "Hal Pilot", ""}))), 3_000L);
     }
 
+    /** adb only (--ez test_board_added true): the board, then the minutes added coming out beside it (made up). */
+    static void testAdded(Context c) {
+        Context a = c.getApplicationContext();
+        test(a);
+        ScoresTicker.Game g = new ScoresTicker.Game();
+        g.id = "test-added";
+        g.homeColor = 0xC8102E;
+        g.awayColor = 0x1B458F;
+        main().postDelayed(() -> drop(a, addedDrop(g, "+4")), 2_000L);
+    }
+
     /** adb only (--ez test_board_cover true): the board and the cover over whatever is on for a minute. */
     static void test(Context c) {
         app = c.getApplicationContext();
@@ -2027,8 +2091,10 @@ final class BoardCover {
                 if (secs >= 0) l.clock = clockWords(steady(id, r.detail, secs, now), r.detail)[0];
                 // From the half's last minute, the added time put up beside it once it is known.
                 l.added = addedWords(l.clock, r.detail, announced.get(id));
-                // In its half's added time: every look moves, the minutes added beside it.
+                // In its half's added time: every look's clock red (steady), the minutes added beside it.
                 l.stoppage = inAddedTime(l.clock, r.detail);
+                // The minutes added, once known for this half: out beside the board once as an alert, then in its tab.
+                if (!l.added.isEmpty()) addedOut(c, g, l.added, periodOf(l.clock, r.detail));
             }
         } else if (orSample) {
             l = sample();
@@ -2976,6 +3042,8 @@ final class BoardCover {
             if (fotmob) {
                 fm = FotMob.forGame(id, g.homeName, g.awayName, g.kickoff);
                 if (fm != null) {
+                    // The minutes added FotMob has where ESPN's commentary has none (not every game has commentary).
+                    announced.put(id, mergeAdded(announced.get(id), fm.added));
                     if (got == null) got = new HashMap<>();
                     got.putAll(FotMob.statsOf(fm, code(g.home, g.homeName), code(g.away, g.awayName)));
                 }

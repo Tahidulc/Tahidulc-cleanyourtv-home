@@ -23,8 +23,8 @@ import java.util.Objects;
  * minutes added beside it, along one row, or in two in a box nearer square (its height set apart from its width). The
  * phone's eight looks: Classic (the launcher's navy, the score on blue), Glass (smoked glass, a pill), Light, Club
  * colours (each side in its club's colour), Minimal (one line of words), Crests and time, Stacked (the clubs one
- * above the other) and Card (each crest on white, the score over the clock on blue between them, red in added time with its light slants drifting
- * across the red and a shine passing now and then, the minutes added in a tab of their own beside it).
+ * above the other) and Card (each crest on white, the score over the clock on blue between them, red in added time (steady, its light slants
+ * still, nothing flashing), the minutes added in a tab of their own beside it).
  *
  * <p>It comes and goes as broadcasters' do (its first block opening out of a thin line, the rest wiping out of it
  * behind a bright edge), and a goal is shown as theirs are: a white hit, the scorers' colour sweeping across it from
@@ -44,7 +44,7 @@ final class BoardBug extends View {
         /** Each club's own colour as it shows on white (Card's ends); 0 when not known (its colour above instead). */
         int homeOwn, awayOwn;
         boolean live;
-        /** In its half's added time (BoardCover knows the half): every look moves then, its clock beats red, its minutes added beside it. */
+        /** In its half's added time (BoardCover knows the half): every look's clock goes red and stays red, its minutes added beside it. */
         boolean stoppage;
 
         @Override public boolean equals(Object o) {
@@ -326,12 +326,12 @@ final class BoardBug extends View {
         invalidate();
     }
 
-    /** Pure: whether the clock beats red: only in a half's added time, while the game is live (on every look). */
+    /** Pure: whether the clock's box is red: only in a half's added time, while the game is live (on every look). */
     static boolean pulses(Look l) {
         return l != null && l.live && l.stoppage;
     }
 
-    /** The clock's box beating red in added time (pulses): a red wash over (x, y, w, h), strongest on each beat. */
+    /** The clock's box red in added time (pulses): a steady red over (x, y, w, h), never flashing. */
     private void pulse(Canvas cv, float x, float y, float w, float h, int red, int least, int most) {
         pulse(cv, x, y, w, h, red, least, most, 0f);
     }
@@ -339,10 +339,10 @@ final class BoardBug extends View {
     /** The same with round corners (Minimal's clock, which has no box of its own: a red pill behind it). */
     private void pulse(Canvas cv, float x, float y, float w, float h, int red, int least, int most, float round) {
         if (!pulses(look)) return;
-        float beat = heartbeat(drawNow);
+        // Red and staying red: no beat, nothing flashing (least is kept for the looks' call sites, unused).
         fill.setShader(null);
         fill.setColor(red);
-        fill.setAlpha(Math.round(least + (most - least) * beat));
+        fill.setAlpha(most);
         if (round > 0f) {
             r.set(x, y, x + w, y + h);
             cv.drawRoundRect(r, round, round, fill);
@@ -679,7 +679,6 @@ final class BoardBug extends View {
             else if (bw / (float) ch >= 3.6f) oneRow(cv, 0, 0, bw, ch);
             else twoRows(cv, bw, ch);
             // In added time a board with no block of its own (Minimal) has the shine pass over it all.
-            if (look.stoppage && style == Style.MINIMAL) shine(cv, 0, 0, bw, ch, stoppageT());
         }
         cv.translate(-inset, -inset);
         if (goalOn) goalMoment(cv, body, h, gt);
@@ -724,9 +723,8 @@ final class BoardBug extends View {
             r.set(sw / 2, sw / 2, w - sw / 2, h - sw / 2);
             cv.drawRoundRect(r, rad, rad, edge);
         }
+        // Added time is red and still: nothing moves on it then, so nothing to draw again but the goal's sweep.
         if (goalOn && goalFrozen < 0) postInvalidateOnAnimation();
-        // Moving in added time (a few frames a second is enough for a slow drift), while it is all there.
-        else if (look.stoppage && !part && animFrozen < 0) postInvalidateDelayed(33);
     }
 
     /** Its corners' radius: a pill's half its height while it is long, else its look's own (Glass nearer square: round corners). */
@@ -912,7 +910,7 @@ final class BoardBug extends View {
             fill.setColor(p.clock);
             cv.drawRect(x, y, x + w, y + h, fill);
         }
-        // In added time: the clock's box beats red, about once a second.
+        // In added time: the clock's box red, steady.
         pulse(cv, x, y, w, h, 0xFFE3061B, 60, 210);
         int colour = "HT".equals(look.clock) ? AMBER : look.live ? p.clockInk : p.dim;
         if (look.added.isEmpty() || addedOutside) {
@@ -1324,13 +1322,14 @@ final class BoardBug extends View {
         return in >= SHINE_MS ? -1f : ease(in / (float) SHINE_MS);
     }
 
-    /** Card's red moving (x, y: where the red starts): its lighter slants drifting across it, and now and then a shine. */
+    /** Card's red (x, y: where the red starts): its lighter slants across it, standing still. */
     private void slants(Canvas cv, float x, float y, float w, int h, long t) {
         cv.save();
         cv.clipRect(x, y, x + w, y + h);
         cv.translate(0, y);
         float spacing = Math.max(h * 0.9f, w * 0.62f), band = spacing * 0.42f, lean = h * 0.7f;
-        float shift = drift(t) * spacing;
+        // Still: the slants stand where they are (they drifted and shone before; added time is steady red now).
+        float shift = 0f;
         fill.setShader(null);
         fill.setColor(0x22FFFFFF);
         slant.reset();
@@ -1343,7 +1342,6 @@ final class BoardBug extends View {
         }
         cv.drawPath(slant, fill);
         cv.restore();
-        shine(cv, x, y, w, h, t);
     }
 
     /**
@@ -1401,16 +1399,9 @@ final class BoardBug extends View {
         r.set(left, top, left + tw, top + th);
         cv.drawRoundRect(r, rad, rad, fill);
         words(cv, look.added, left + tw / 2f, top, th, th * 0.6f, INK);
-        // A white flash as it lands, fading.
-        float flashIn = Math.max(0f, Math.min(1f, (since - TAB_IN_MS * 0.6f) / 600f));
-        if (since < TAB_IN_MS * 0.6f + 600) {
-            fill.setColor(0xFFFFFFFF);
-            fill.setAlpha(Math.round(190 * (1f - flashIn)));
-            cv.drawRoundRect(r, rad, rad, fill);
-            fill.setAlpha(255);
-        }
         cv.restore();
-        if (since < TAB_IN_MS * 0.6f + 600) postInvalidateOnAnimation();
+        // Out from behind the board, then still (no flash as it lands).
+        if (since < TAB_IN_MS) postInvalidateOnAnimation();
     }
 
     /** A shine passing across (x, y, w, h), t ms into its round (none between its passes). */
