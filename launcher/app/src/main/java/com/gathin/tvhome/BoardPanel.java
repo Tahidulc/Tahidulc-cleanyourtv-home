@@ -243,7 +243,11 @@ final class BoardPanel extends SportPanel {
         };
         add(swish, scoreSwish);
         add(goalSound);
-        add(logoAway);
+        Row varWhy = row("VAR explained", true);
+        varWhy.on = () -> BoardCover.varExplainedOn(c);
+        varWhy.words = () -> BoardCover.varExplainedOn(c) ? "A check comes out of the board, then its decision with WHY: the law behind it and how long it took" : "Off · VAR's alerts as before";
+        varWhy.ok = () -> BoardCover.setVarExplainedOn(c, !BoardCover.varExplainedOn(c));
+        add(logoAway, varWhy);
         Row fot = row("FotMob's stats and pictures", true);
         fot.on = () -> BoardCover.fotmobOn(c);
         fot.words = () -> BoardCover.fotmobOn(c) ? "Expected goals, big chances, ratings, who is on top, players' pictures"

@@ -1712,6 +1712,10 @@ public class GoalWatchService extends Service {
             main.post(() -> BoardCover.logoAway(true));
             main.postDelayed(() -> BoardCover.logoAway(false), 5_000L);
         }
+        if (intent != null && intent.getBooleanExtra("test_board_var", false)) {
+            // adb only: the board over whatever is on, a VAR check out of it, then its decision with the WHY under it
+            main.post(() -> BoardCover.testVar(this));
+        }
         if (intent != null && intent.getBooleanExtra("test_board_added", false)) {
             // adb only: the board over whatever is on and the minutes added coming out beside it ("+4 minutes")
             main.post(() -> BoardCover.testAdded(this));

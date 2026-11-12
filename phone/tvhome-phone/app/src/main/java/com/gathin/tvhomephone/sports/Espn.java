@@ -241,6 +241,8 @@ public final class Espn {
         public double[] chances;
         /** A penalty shootout's kicks so far, each side's in order: {taker, "1" scored or "0" not}. */
         public final List<String[]> homePens = new ArrayList<>(), awayPens = new ArrayList<>();
+        /** The commentary's lines about VAR and those round them ({text, minute, sequence}, oldest first): VAR explained's. */
+        public final List<String[]> varLines = new ArrayList<>();
     }
 
     /** Indexes into Summary.plays, and the kinds of play. */
@@ -336,6 +338,7 @@ public final class Espn {
             extras(root, s);
             plays(root, s, competitors);
             addedTime(root.optJSONArray("commentary"), s.added);
+            varLines(root.optJSONArray("commentary"), s.varLines);
             winChance(root.optJSONArray("odds"), s);
             if (s.chances == null) winChance(root.optJSONArray("pickcenter"), s);
             shootout(root.optJSONArray("shootout"), homeId, s);
@@ -466,6 +469,28 @@ public final class Espn {
     public static int halfOf(String minute) {
         int m = Game.minute(minute == null ? "" : minute.replaceAll("\\+.*", ""));
         return m <= 0 ? 0 : m <= 45 ? 1 : m <= 90 ? 2 : m <= 105 ? 3 : 4;
+    }
+
+    /**
+     * The commentary's VAR lines and the six before and two after each ({text, minute, sequence}, oldest first), for VAR
+     * explained (the reason and the referee's call round each check and decision); none when VAR is never mentioned.
+     */
+    static void varLines(JSONArray commentary, List<String[]> into) {
+        int n = commentary == null ? 0 : commentary.length();
+        boolean[] keep = new boolean[n];
+        for (int i = 0; i < n; i++) {
+            JSONObject x = commentary.optJSONObject(i);
+            String t = x == null ? "" : x.optString("text", "");
+            if (!t.contains("VAR")) continue;
+            for (int j = Math.max(0, i - 6); j <= Math.min(n - 1, i + 2); j++) keep[j] = true;
+        }
+        for (int i = 0; i < n; i++) {
+            if (!keep[i]) continue;
+            JSONObject x = commentary.optJSONObject(i);
+            JSONObject t = x == null ? null : x.optJSONObject("time");
+            into.add(new String[]{x == null ? "" : x.optString("text", ""), t == null ? "" : t.optString("displayValue", ""),
+                    x == null ? "" : String.valueOf(x.optInt("sequence", i))});
+        }
     }
 
     /** The added time put up in each half, from ESPN's commentary ("Fourth official has announced 4 minutes of added time."). */

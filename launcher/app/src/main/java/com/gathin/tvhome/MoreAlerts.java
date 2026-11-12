@@ -464,9 +464,13 @@ final class MoreAlerts {
         JSONArray com = summary == null ? null : summary.optJSONArray("commentary");
         if (com == null) return out;
         int lastDecision = -1;
+        // The commentary as VAR explained reads it ({text, minute}), for each check's and decision's reason.
+        List<String[]> lines = new ArrayList<>();
         for (int i = 0; i < com.length(); i++) {
             JSONObject e = com.optJSONObject(i);
             if (e != null && e.optString("text").contains("VAR Decision:")) lastDecision = i;
+            JSONObject t = e == null ? null : e.optJSONObject("time");
+            lines.add(new String[]{e == null ? "" : e.optString("text"), t == null ? "" : t.optString("displayValue")});
         }
         for (int i = 0; i < com.length(); i++) {
             JSONObject e = com.optJSONObject(i);
@@ -485,6 +489,9 @@ final class MoreAlerts {
                 words = "VAR Decision: " + m.group(1).trim();
                 String kind = kindOf(words);
                 if (kind == null) continue;
+                VarExplained.Call call = VarExplained.decision(lines, i);
+                if (call != null) VarExplained.remember(g.id, key, call);
+                if ("red".equals(kind) && call != null) player = call.player;
                 if ("goal".equals(kind)) {
                     Matcher who = IN_BRACKETS.matcher(m.group(1).trim());
                     if (who.find()) player = who.group(1).trim();
@@ -500,6 +507,7 @@ final class MoreAlerts {
                 }
             } else {
                 words = "VAR checking: " + checkReason(com, i);
+                VarExplained.rememberCheck(key, VarExplained.checkAbout(lines, i));
             }
             out.add(new String[]{key, "📺  VAR", player, minute, words});
         }
@@ -527,7 +535,7 @@ final class MoreAlerts {
         return false;
     }
 
-    /** penalty, no_penalty, goal or no_goal from ESPN's words; null for the rest (a card upgraded, and the like). */
+    /** penalty, no_penalty, goal, no_goal or red (a card upgraded) from ESPN's words; null for the rest. */
     static String kindOf(String words) {
         if (words == null) return null;
         String w = words.replaceFirst("^.*?VAR Decision:\\s*", "").toLowerCase(Locale.ROOT);
@@ -535,6 +543,7 @@ final class MoreAlerts {
         if (w.startsWith("penalty")) return "penalty";
         if (w.startsWith("no goal")) return "no_goal";
         if (w.startsWith("goal")) return "goal";
+        if (w.startsWith("card upgraded")) return "red";
         return null;
     }
 
@@ -559,6 +568,7 @@ final class MoreAlerts {
             case "no_penalty": return new String[]{"NO PENALTY", "VAR"};
             case "goal": return new String[]{"GOAL", "STANDS"};
             case "no_goal": return new String[]{"NO GOAL", "VAR"};
+            case "red": return new String[]{"RED CARD", "VAR"};
             default: return null;
         }
     }
@@ -635,6 +645,7 @@ final class MoreAlerts {
                     case "penalty": d.headline = team != null ? "Penalty to " + team : "Penalty given"; break;
                     case "no_penalty": d.headline = team != null ? "No penalty for " + team : "No penalty"; break;
                     case "goal": d.headline = who.isEmpty() ? "The goal stands" : who + "'s goal stands"; break;
+                    case "red": d.headline = who.isEmpty() ? "Card upgraded to red" : who + " sent off"; break;
                     default: d.headline = who.isEmpty() ? "Goal ruled out" : who + "'s goal ruled out";
                 }
                 d.line = "VAR decision";

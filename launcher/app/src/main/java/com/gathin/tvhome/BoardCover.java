@@ -812,6 +812,15 @@ final class BoardCover {
         prefs(c).edit().putBoolean("score_swish", on).apply();
     }
 
+    /** VAR explained: the check out of the board, then its decision with a WHY under it: on unless switched off. */
+    static boolean varExplainedOn(Context c) {
+        return prefs(c).getBoolean("var_explained", true);
+    }
+
+    static void setVarExplainedOn(Context c, boolean on) {
+        prefs(c).edit().putBoolean("var_explained", on).apply();
+    }
+
     /** Your logo stepping aside while the channel's is gone (its ad breaks) and back with it: on unless switched off. */
     static boolean logoAwayOn(Context c) {
         return prefs(c).getBoolean("logo_away", true);
@@ -1552,6 +1561,11 @@ final class BoardCover {
         long ft = prefs(c).getLong("ft", 0);
         if (d.boardPages != null && ft > 0 && System.currentTimeMillis() - ft > FT_GONE_MS - 35_000L) return false;
         ScoresTicker.Game g = GoalWatchService.latestGame(d.gameId);
+        // VAR explained: the board's own game's check out of it, then its decision with a WHY, in place of the card.
+        if ("var".equals(d.kind) && varExplainedOn(c) && d.gameId.equals(game(c))) {
+            varTake(c, d, g);
+            return true;
+        }
         drop(c, dropOf(d, g == null ? 0 : BoardBug.colour(g.homeColor, g.homeAlt), g == null ? 0 : BoardBug.colour(g.awayColor, g.awayAlt)));
         return true;
     }
@@ -2792,6 +2806,7 @@ final class BoardCover {
         if (stats != null) stats.gone();
         if (drop != null) drop.gone();
         if (under != null) under.gone();
+        if (c != null) VarWhy.away(c);
         holdKeys(false);
         if (main != null) main.removeCallbacks(menuOnHold);
         okDown = -1;
@@ -2823,6 +2838,7 @@ final class BoardCover {
         }
         if (bug.closing()) return;
         if (stats != null) stats.fold(null);
+        if (app != null) VarWhy.fold(app, null);
         if (drop != null) drop.fold(null);
         if (under != null) under.fold(null);
         bug.close(BoardCover::hideAll);
@@ -2991,13 +3007,14 @@ final class BoardCover {
         // A goal is captioned once: from its card, or (no card come) from the scores.
         if (d.key != null && !captioned.add(d.key)) return;
         if (captioned.size() > 200) captioned.clear();
-        // The board's own game: the board beside it says the clubs and the score already.
-        d.own = d.gameId != null && d.gameId.equals(game(c));
+        // The board's own game: the board beside it says the clubs and the score already (VAR explained's tests say so).
+        d.own = d.own || d.gameId != null && d.gameId.equals(game(c));
         // A goal's place in the scorer's season (the game's second, a hat-trick, his 3rd of the season), as a tag.
         if (d.key != null && d.tag == null && milestonesOn(c)) goalTag(d);
         drops.addLast(d);
         while (drops.size() > 4) drops.removeFirst();
-        if (d.own && bug != null && "VAR".equals(d.chip)) bug.varCheck(8_000L);
+        // VAR explained keeps the scan going for its own check (and stops it at the decision).
+        if (d.own && bug != null && "VAR".equals(d.chip) && !d.varCheck && d.why == null) bug.varCheck(8_000L);
         AlertLog.note(c, "alert from the scoreboard: " + d.what);
         if (d.gameId != null && d.gameId.equals(game(c))) poke();
         if (!dropping) nextDrop();
@@ -3040,6 +3057,17 @@ final class BoardCover {
         boolean many = d != null && d.subs != null && Math.max(d.subs.on.length, d.subs.off.length) > 1;
         beside(drop, drop.widthFor(d, bh, many ? Math.max(shortRoom(bh, sideMax), Math.min(sideMax, bh * 16)) : shortRoom(bh, sideMax)));
         drop.show(d);
+        // VAR explained: a check stays out until its decision (CHECK_MAX_MS at most); a decision with its WHY under it.
+        if (d != null && d.varCheck) {
+            main().postDelayed(hideDropRun, VarExplained.CHECK_MAX_MS);
+            return;
+        }
+        if (d != null && d.why != null) {
+            BoardDrop.Drop shown = d;
+            main().postDelayed(() -> showWhy(shown), BoardSide.SLIDE_MS);
+            main().postDelayed(hideDropRun, Math.max(VarExplained.WHY_MS, drop.showFor(DROP_MS)));
+            return;
+        }
         main().postDelayed(hideDropRun, drop.showFor(DROP_MS));
     }
 
@@ -3047,6 +3075,17 @@ final class BoardCover {
         main().removeCallbacks(hideDropRun);
         if (drop == null || !drop.isOut()) {
             nextDrop();
+            return;
+        }
+        BoardDrop.Drop out = drop.showing();
+        // A check gone without its decision: the scan along the board stops with it.
+        if (out != null && out.varCheck && out.own && bug != null) bug.varCheck(0L);
+        // The WHY folds back up under the decision first, then the decision goes in.
+        if (VarWhy.up() && app != null) {
+            VarWhy.fold(app, () -> {
+                if (drop != null) drop.fold(BoardCover::nextDrop);
+                else nextDrop();
+            });
             return;
         }
         drop.fold(BoardCover::nextDrop);
@@ -3460,6 +3499,157 @@ final class BoardCover {
         }, 16_000L);
     }
 
+    // ---- VAR explained: the check out of the board, then its decision with a WHY ------------------------------------
+
+    /** A VAR card for the board's own game (main thread): its check out of the board, or its decision with a WHY. */
+    private static void varTake(Context c, ScoreCard.Data d, ScoresTicker.Game g) {
+        if ("VAR CHECK".equals(d.label)) {
+            String[] about = VarExplained.checkFor(d.key);
+            varCheckOut(c, d.gameId, g, about != null ? about : VarExplained.checkOf(d.headline));
+            return;
+        }
+        VarExplained.Call call = VarExplained.callFor(d.key);
+        if (call == null) {
+            VarExplained.Call card = VarExplained.fromCard(d.label, d.labelSmall, d.minute);
+            VarExplained.Call near = VarExplained.callNear(d.gameId, card.kind, d.minute);
+            call = near != null ? near : card;
+        }
+        VarExplained.enrich(call, VarExplained.fotmobVars(d.gameId));
+        varDecisionOut(c, d.gameId, g, call);
+    }
+
+    /** Pure: VAR explained's alert beside the board: the chip in VAR's cyan, the game's clubs' colours at its far end. */
+    static BoardDrop.Drop varDrop(String gameId, ScoresTicker.Game g, String title, String line) {
+        BoardDrop.Drop o = new BoardDrop.Drop();
+        o.gameId = gameId;
+        o.chip = "VAR";
+        o.colour = VarExplained.CYAN;
+        o.title = title;
+        o.line = line == null ? "" : line;
+        o.own = true;
+        if (g != null) {
+            o.homeColour = BoardBug.colour(g.homeColor, g.homeAlt);
+            o.awayColour = BoardBug.colour(g.awayColor, g.awayAlt);
+        }
+        o.what = ("VAR " + title + " " + o.line).trim();
+        return o;
+    }
+
+    /** A check under way ({about, reason, player}): out of the board until its decision, the scan along the board with it. */
+    private static void varCheckOut(Context c, String gameId, ScoresTicker.Game g, String[] about) {
+        long now = System.currentTimeMillis();
+        if (VarExplained.decidedLately(gameId, now) && !VarExplained.checking(gameId, now)) {
+            // Its decision is in already (the check read late): nothing to wait for.
+            return;
+        }
+        BoardDrop.Drop out = drop == null ? null : drop.showing();
+        if (out != null && out.varCheck && gameId.equals(out.gameId)) return;
+        for (BoardDrop.Drop q : drops) if (q.varCheck && gameId.equals(q.gameId)) return;
+        VarExplained.checkStarted(gameId, now);
+        if (bug != null) bug.varCheck(VarExplained.CHECK_MAX_MS);
+        BoardDrop.Drop d = varDrop(gameId, g, VarExplained.checkTitle(about[0]), VarExplained.checkLine(about[1], about[2]));
+        d.varCheck = true;
+        drop(c, d);
+    }
+
+    /** A decision: in its check's place (turning over), else out of the board; its WHY folding down under it. */
+    private static void varDecisionOut(Context c, String gameId, ScoresTicker.Game g, VarExplained.Call call) {
+        long now = System.currentTimeMillis();
+        // One decision a moment, whichever of ESPN and FotMob has it first.
+        if (VarExplained.decidedLately(gameId, now) && !VarExplained.checking(gameId, now)) return;
+        VarExplained.decided(gameId, now);
+        long took = VarExplained.checkLength(gameId, now);
+        if (bug != null) bug.varCheck(0L);
+        BoardDrop.Drop d = varDrop(gameId, g, VarExplained.outcome(call), VarExplained.callLine(call.onField));
+        d.why = VarExplained.whyOf(call, took);
+        AlertLog.note(c, "VAR explained: " + call + " · " + d.why.foot);
+        BoardDrop.Drop out = drop == null ? null : drop.showing();
+        if (out != null && out.varCheck && gameId.equals(out.gameId) && bug != null) {
+            // The check out now turns over into its decision, wider or narrower as its words need.
+            main().removeCallbacks(hideDropRun);
+            int bh = bug.getLayoutParams().height;
+            int to = drop.widthFor(d, bh, shortRoom(bh, sideMax));
+            widen(drop.getLayoutParams().width, to);
+            drop.turnTo(d);
+            main().postDelayed(() -> showWhy(d), 360L);
+            main().postDelayed(hideDropRun, VarExplained.WHY_MS);
+            return;
+        }
+        // A check still waiting its turn: the decision in its place.
+        drops.removeIf(q -> q.varCheck && gameId.equals(q.gameId));
+        drop(c, d);
+    }
+
+    private static android.animation.ValueAnimator widening;
+
+    /** The alert's width eased from one to another as its words turn over. */
+    private static void widen(int from, int to) {
+        if (widening != null) widening.cancel();
+        if (from == to || drop == null) return;
+        android.animation.ValueAnimator va = android.animation.ValueAnimator.ofInt(from, to);
+        va.setDuration(320L);
+        va.addUpdateListener(a -> {
+            if (drop != null && bug != null) beside(drop, (int) a.getAnimatedValue());
+        });
+        widening = va;
+        va.start();
+    }
+
+    /** The decision's WHY folding down from under it, in the board's look, while it is still the one out. */
+    private static void showWhy(BoardDrop.Drop d) {
+        if (app == null || drop == null || bug == null || drop.showing() != d || d.why == null) return;
+        int[] at = new int[2];
+        drop.getLocationOnScreen(at);
+        int w = drop.getWidth(), bh = bug.getLayoutParams().height;
+        float unit = boardH * TEXT;
+        int width = VarWhy.widthFor(unit, w - tuck);
+        int x = sideLeft ? at[0] + w - tuck - width : at[0] + tuck;
+        int y = at[1] + head + bh;
+        x = Math.max(0, Math.min(sw - width, x));
+        VarWhy.show(app, bug.stripLook(), d.why, unit, x, y, width, sideLeft);
+    }
+
+    /** FotMob's read for the board's own game (main thread): a check FotMob has under way, and a decision only it has. */
+    private static void varFromFotMob(Context c, ScoresTicker.Game g, FotMob.Match m) {
+        java.util.List<String[]> fresh = VarExplained.freshFotmob(g.id, m.vars);
+        if (!varExplainedOn(c) || !dropsOn(c) || !up(c)) return;
+        long now = System.currentTimeMillis();
+        if (m.varPending) varCheckOut(c, g.id, g, VarExplained.noCheck());
+        for (String[] e : fresh) {
+            VarExplained.Call call = VarExplained.fromFotMob(e, m.reds);
+            if (call == null || VarExplained.decidedLately(g.id, now) && !VarExplained.checking(g.id, now)) continue;
+            varDecisionOut(c, g.id, g, call);
+        }
+    }
+
+    /**
+     * adb only (--ez test_board_var true): the board, then a VAR check out of it ("Checking a penalty", possible handball)
+     * with its scan, and 8 s later its decision turning over in its place with the WHY folding down (made up).
+     */
+    static void testVar(Context c) {
+        Context a = c.getApplicationContext();
+        test(a);
+        ScoresTicker.Game g = new ScoresTicker.Game();
+        g.id = "test-var";
+        g.homeColor = 0x1B458F;
+        g.awayColor = 0xC8102E;
+        main().postDelayed(() -> {
+            if (bug == null) return;
+            varCheckOut(a, g.id, g, new String[]{"penalty", VarExplained.HANDBALL, "Sam Okafor"});
+            // As if the check began 85 s before its decision (the test shows it for 8 s).
+            VarExplained.checkBegan(g.id, System.currentTimeMillis() - 77_000L);
+        }, 2_500L);
+        main().postDelayed(() -> {
+            if (bug == null) return;
+            VarExplained.Call call = new VarExplained.Call();
+            call.kind = "no_penalty";
+            call.reason = VarExplained.HANDBALL;
+            call.player = "Sam Okafor";
+            call.onField = 1;
+            varDecisionOut(a, g.id, g, call);
+        }, 10_500L);
+    }
+
     // ---- a goal's scorer, captioned beside it --------------------------------------------------------------------------
 
     /** The goals captioned beside the board, "game|score": each once, from its card or else from the scores. */
@@ -3573,8 +3763,10 @@ final class BoardCover {
      */
     private static void readStats(Context c, ScoresTicker.Game g, long now) {
         if (statsReading || g.slug == null || g.id == null) return;
-        // Near a half's end, every half a minute: the added time put up comes on the board soon after.
-        long every = nearHalfsEnd(minuteOfClock(bug == null ? null : bug.look().clock)) ? 30_000L : STATS_READ_MS;
+        // Near a half's end, every half a minute: the added time put up comes on the board soon after. So too while VAR
+        // checks: its decision comes out of the board soon after it is made.
+        long every = nearHalfsEnd(minuteOfClock(bug == null ? null : bug.look().clock)) || VarExplained.checking(g.id, now)
+                ? 30_000L : STATS_READ_MS;
         // A penalty shootout on (or near): every ten seconds, each kick on the strip under the board soon after.
         Pens p0 = pens.get(g.id);
         if (pensOn(c) && (p0 != null && p0.on || Shootout.likely(g.detail) && g.state == 0)) every = PENS_READ_MS;
@@ -3585,15 +3777,18 @@ final class BoardCover {
         boolean fotmob = fotmobOn(c) && !(p0 != null && p0.on);
         io.execute(() -> {
             Map<String, String[]> got = null;
+            List<VarExplained.Seen> var = null;
             try {
                 org.json.JSONObject summary = new org.json.JSONObject(ScoresTicker.get("https://site.api.espn.com/apis/site/v2/sports/soccer/"
                         + slug + "/summary?event=" + id));
                 announced.put(id, announcedOf(summary));
                 got = statsOf(summary, g);
                 underRead(id, summary, g);
+                var = VarExplained.scan(commentaryOf(summary));
             } catch (Exception ignored) {
                 // read again in two minutes
             }
+            List<VarExplained.Seen> varSeen = var;
             // FotMob's figures on top: expected goals, big chances, ratings, who is on top, its player of the match.
             FotMob.Match fm = null;
             if (fotmob) {
@@ -3610,11 +3805,42 @@ final class BoardCover {
             main().post(() -> {
                 statsReading = false;
                 if (read != null) fotmobRead(c, g, read);
+                if (varSeen != null) varFromEspn(c, g, varSeen);
                 if (by == null || by.isEmpty()) return;
                 statsBy = by;
                 statsFor = id;
             });
         });
+    }
+
+    /** Pure: a summary's commentary as VAR explained reads it: {text, minute, sequence}, oldest first. */
+    static List<String[]> commentaryOf(org.json.JSONObject summary) {
+        List<String[]> lines = new java.util.ArrayList<>();
+        org.json.JSONArray com = summary == null ? null : summary.optJSONArray("commentary");
+        for (int i = 0; com != null && i < com.length(); i++) {
+            org.json.JSONObject e = com.optJSONObject(i);
+            org.json.JSONObject t = e == null ? null : e.optJSONObject("time");
+            lines.add(new String[]{e == null ? "" : e.optString("text"), t == null ? "" : t.optString("displayValue"),
+                    e == null ? "" : String.valueOf(e.optInt("sequence", i))});
+        }
+        return lines;
+    }
+
+    /**
+     * ESPN's commentary as the board read it (main thread): a VAR check or decision for the board's own game not seen
+     * before, out of the board as VAR explained has it (the alerts' own, where they follow the game, are the same one).
+     */
+    private static void varFromEspn(Context c, ScoresTicker.Game g, List<VarExplained.Seen> all) {
+        List<VarExplained.Seen> fresh = VarExplained.fresh(g.id, all);
+        if (!g.id.equals(game(c)) || !varExplainedOn(c) || !dropsOn(c) || !up(c)) return;
+        for (VarExplained.Seen s : fresh) {
+            if (s.call != null) {
+                VarExplained.enrich(s.call, VarExplained.fotmobVars(g.id));
+                varDecisionOut(c, g.id, g, s.call);
+            } else if (s.about != null) {
+                varCheckOut(c, g.id, g, s.about);
+            }
+        }
     }
 
     /** The substitutions seen, "game|minute|who came on": each slides out once, those before the board came up never. */
@@ -3624,7 +3850,10 @@ final class BoardCover {
     /** FotMob's game read (main thread): its VAR check on the board, and each new substitution beside it. */
     private static void fotmobRead(Context c, ScoresTicker.Game g, FotMob.Match m) {
         boolean own = g.id.equals(game(c));
-        if (own && m.varPending && bug != null) bug.varCheck(8_000L);
+        // FotMob's VAR events kept for VAR explained (the reason and the on-field call ESPN's words lack).
+        VarExplained.fotmob(g.id, m.vars, m.reds);
+        if (own && m.varPending && bug != null && !varExplainedOn(c)) bug.varCheck(8_000L);
+        if (own) varFromFotMob(c, g, m);
         boolean first = subsGames.add(g.id);
         if (subsGames.size() > 40) subsGames.clear();
         java.util.List<String[]> fresh = new java.util.ArrayList<>();

@@ -37,6 +37,8 @@ final class BoardDrop extends BoardSide {
         /** A milestone's tag after the words ("" none), and its kind (TAG_*). */
         String tag = "";
         int tagKind;
+        /** Three dots beating after the bold words (a VAR check under way). */
+        boolean dots;
     }
 
     /** A milestone tag's kinds: a goal's (gold, a star), a yellow card one short of a ban, a ban (red). */
@@ -58,6 +60,9 @@ final class BoardDrop extends BoardSide {
     private long shownAt;
 
     private ScoreBoard.Drop drop;
+    /** The alert this one turned from in place (a VAR check into its decision), and its page, while the turn goes on. */
+    private ScoreBoard.Drop prevDrop;
+    private int prevPage;
     private int chipColour;
     /** The line-ups: whose eleven it shows (0 home, 1 away), and the turn to it (0 the last, 1 this one). */
     private int page;
@@ -124,9 +129,43 @@ final class BoardDrop extends BoardSide {
         return givenW;
     }
 
+    /**
+     * This alert in place of the one out (a VAR check turning into its decision), its words turning over as a page does,
+     * with the swish; out as usual when none is. After widthFor() and its size set.
+     */
+    void turnTo(ScoreBoard.Drop d) {
+        if (!isOut() || drop == null) {
+            show(d);
+            return;
+        }
+        onFolding();
+        prevDrop = drop;
+        prevPage = page;
+        drop = d;
+        shownDrop = d;
+        shownAt = android.os.SystemClock.uptimeMillis();
+        chipColour = d.colour == ScoreBoard.PLAIN ? look.block : d.colour;
+        page = 0;
+        run = 0f;
+        swish();
+        turn = 0f;
+        ValueAnimator va = ValueAnimator.ofFloat(0f, 1f);
+        va.setDuration(TURN_MS);
+        va.addUpdateListener(a -> {
+            turn = (float) a.getAnimatedValue();
+            if (turn >= 1f) prevDrop = null;
+            invalidate();
+        });
+        turning = va;
+        va.start();
+        postDelayed(startRun, TURN_MS + RUN_WAIT_MS);
+        setContentDescription(d.chip + ". " + d.title + (d.line.isEmpty() ? "" : ". " + d.line));
+    }
+
     /** Out with this alert (after widthFor() and its size set): the line-ups' second eleven turning up after the first. */
     void show(ScoreBoard.Drop d) {
         onFolding();
+        prevDrop = null;
         drop = d;
         shownDrop = d;
         shownAt = android.os.SystemClock.uptimeMillis();
@@ -169,6 +208,7 @@ final class BoardDrop extends BoardSide {
 
     @Override protected void onGone() {
         drop = null;
+        prevDrop = null;
     }
 
     private long pageFor(int p) {
@@ -227,10 +267,20 @@ final class BoardDrop extends BoardSide {
 
     /** Page p's words: an eleven; the board's own game's who and when; another game's score and what happened. */
     private Part part(int p) {
-        ScoreBoard.Drop d = drop;
+        return partOf(drop, p);
+    }
+
+    private Part partOf(ScoreBoard.Drop d, int p) {
         Part o = new Part();
         o.headColour = look.ink;
         o.lineColour = look.dim;
+        if (d.varCheck || d.why != null) {
+            // VAR explained: what is checked or decided, big; what and who, or whether the call stood, small.
+            o.head = d.title;
+            o.line = d.line;
+            o.dots = d.varCheck;
+            return o;
+        }
         if (d.addedMins > 0) {
             // ADDED TIME: the minutes counting up to them as it comes out (+1, +2 ... +4), big; MINUTES ADDED, small.
             int n = d.addedMins;
@@ -303,9 +353,22 @@ final class BoardDrop extends BoardSide {
         cv.save();
         if (fitK < 1f) cv.scale(fitK, fitK, start, h / 2f);
         float inRoom = room / fitK;
-        if (turn < 1f && page > 0) lay(cv, part(page - 1), start, h, -h * 0.6f * turn, Math.round(255 * (1f - turn)), inRoom, 0);
+        // A VAR check's dots beat while it is out (a frame now and then is enough).
+        if (drop.varCheck) postInvalidateDelayed(50);
+        if (turn < 1f && prevDrop != null) lay(cv, partOf(prevDrop, prevPage), start, h, -h * 0.6f * turn, Math.round(255 * (1f - turn)), inRoom, 0);
+        else if (turn < 1f && page > 0) lay(cv, part(page - 1), start, h, -h * 0.6f * turn, Math.round(255 * (1f - turn)), inRoom, 0);
         lay(cv, part(page), start, h, h * 0.6f * (1f - turn), Math.round(255 * turn), inRoom, run);
         cv.restore();
+    }
+
+    /** Pure: a VAR check's three dots' brightness t ms on (each 0.3 to 1, one after another, softly). */
+    static float[] dots(long t) {
+        float[] a = new float[3];
+        for (int i = 0; i < 3; i++) {
+            double ph = ((t % 1200L) / 1200.0 - i * 0.18) * 2 * Math.PI;
+            a[i] = (float) (0.3 + 0.7 * (0.5 + 0.5 * Math.cos(ph)));
+        }
+        return a;
     }
 
     /** How much smaller it is drawn to fit its first row in its room (1: as sized). */
@@ -383,6 +446,21 @@ final class BoardDrop extends BoardSide {
             if (cv != null) words(cv, bold, o.head, rx, dy + rowY, rowH, hs, o.headColour, a);
             // A number's width as its widest (the minutes added count up through narrower ones).
             rx += o.headScale > 1f ? Math.max(measure(bold, o.head, hs), measure(bold, o.head.replaceAll("[0-9]", "8"), hs)) : measure(bold, o.head, hs);
+        }
+        if (o.dots) {
+            // Three dots beating softly after the words: the check still going on.
+            float dr = unit * 0.07f, gap = unit * 0.2f;
+            rx += unit * 0.18f;
+            if (cv != null) {
+                float[] b = dots(android.os.SystemClock.uptimeMillis());
+                for (int i = 0; i < 3; i++) {
+                    fill.setColor(chipColour);
+                    fill.setAlpha(Math.round(a * b[i]));
+                    cv.drawCircle(rx + dr + i * gap, dy + rowY + rowH / 2f, dr, fill);
+                }
+                fill.setAlpha(255);
+            }
+            rx += 2 * gap + 2 * dr;
         }
         if (o.crestB != null) {
             rx += unit * 0.16f;

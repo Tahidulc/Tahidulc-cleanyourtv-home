@@ -55,6 +55,26 @@ final class FotMob {
         int homeTeamId, awayTeamId;
         /** Every player FotMob has rated, best first: {name, rating ("8.5"), id, home ("1"/"0")}. */
         final List<String[]> ratings = new ArrayList<>();
+        /**
+         * FotMob's VAR events, what VAR changed: {minute, player, its key ("var_goal_cancelled"), its words ("Goal
+         * ruled out"), the second key when there is one ("offside", "foul"), else ""}.
+         */
+        final List<String[]> vars = new ArrayList<>();
+        /** The red cards with FotMob's reason for each: {minute, player, reason key ("card_desc_violent_conduct") or ""}. */
+        final List<String[]> reds = new ArrayList<>();
+    }
+
+    /** Pure: FotMob's VAR event as VarExplained reads it ({minute, player, key, words, second key}); null for none. */
+    static String[] varEvent(JSONObject e) {
+        JSONObject v = e == null ? null : e.optJSONObject("VAR");
+        JSONObject d = v == null ? null : v.optJSONObject("decision");
+        if (d == null || v.optBoolean("pendingDecision")) return null;
+        JSONArray keys = d.optJSONArray("key"), words = d.optJSONArray("value");
+        String key = keys == null ? "" : keys.optString(0, ""), word = words == null ? "" : words.optString(0, "");
+        if (key.isEmpty() && word.isEmpty()) return null;
+        JSONObject pl = e.optJSONObject("player");
+        return new String[]{String.valueOf(e.optInt("time") + Math.max(0, e.optInt("overloadTime"))), pl == null ? "" : pl.optString("name").trim(),
+                key, word, keys != null && keys.length() > 1 ? keys.optString(1, "") : ""};
     }
 
     /** Pure: the half an added-time event is for, by the minute it is put up at (45: 1, 90: 2, 105: 3, 120: 4); 0 none. */
@@ -298,10 +318,20 @@ final class FotMob {
                     if (half > 0 && n > 0) m.added[half - 1] = n;
                     continue;
                 }
+                if ("VAR".equals(type)) {
+                    String[] v = varEvent(e);
+                    if (v != null) m.vars.add(v);
+                    continue;
+                }
                 if ("Card".equals(type)) {
                     JSONObject pl = e.optJSONObject("player");
                     m.events.add(new String[]{type, minute, home, pl == null ? "" : pl.optString("name"), pl == null ? "" : pl.optString("id"),
                             e.optString("card"), ""});
+                    if ("Red".equalsIgnoreCase(e.optString("card"))) {
+                        JSONObject why = e.optJSONObject("cardReason");
+                        m.reds.add(new String[]{String.valueOf(e.optInt("time") + Math.max(0, e.optInt("overloadTime"))),
+                                pl == null ? "" : pl.optString("name").trim(), why == null ? "" : why.optString("localizedKey", why.optString("defaultText", ""))});
+                    }
                 } else if ("Substitution".equals(type)) {
                     JSONArray sw = e.optJSONArray("swap");
                     JSONObject on = sw == null ? null : sw.optJSONObject(0), off = sw == null ? null : sw.optJSONObject(1);
