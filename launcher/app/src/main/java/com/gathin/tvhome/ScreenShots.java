@@ -113,6 +113,17 @@ final class ScreenShots {
         void good() {
             misses = 0;
             next = FIRST;
+            seen = true;
+        }
+
+        private boolean seen;
+
+        /**
+         * Whether a good one has come yet: after that a black one is the picture itself (between channels, a fade),
+         * not a window that cannot be taken, and is no miss.
+         */
+        boolean seen() {
+            return seen;
         }
 
         int misses() {
@@ -195,8 +206,11 @@ final class ScreenShots {
                     waitingFor = 0;
                     busy = false;
                     long now = SystemClock.uptimeMillis();
-                    if (own && black) WINDOWS.missed(now);
-                    else if (own) WINDOWS.good();
+                    if (own && black) {
+                        if (!WINDOWS.seen()) WINDOWS.missed(now);
+                    } else if (own) {
+                        WINDOWS.good();
+                    }
                     // Told "too soon" once (a late answer, a busy moment): the gap back down bit by bit a minute after.
                     if (gap > LEAST_GAP && now - soonAt > 60_000L) gap = Math.max(LEAST_GAP, gap - 50L);
                     got.got(out, at, own);

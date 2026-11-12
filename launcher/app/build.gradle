@@ -11,8 +11,8 @@ android {
         applicationId providers.gradleProperty('launcherApplicationId').getOrElse('com.gathin.tvhome')
         minSdk 26
         targetSdk 34
-        versionCode 473
-        versionName '4.73'
+        versionCode 474
+        versionName '4.74'
         // Google's text reader (ChannelSight, the channel's own clock) ships its own native code: the TVs' two.
         ndk {
             abiFilters 'arm64-v8a', 'armeabi-v7a'

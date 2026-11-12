@@ -1045,6 +1045,11 @@ final class HomeV2 {
         items.add(new ControlCentre.Item("Assistant", R.drawable.ic_mic, () -> "Ask Google", null, () -> open(new Intent(Intent.ACTION_ASSIST))));
         items.add(new ControlCentre.Item("Settings", R.drawable.ic_settings, () -> "The TV's settings", null,
                 () -> open(new Intent(android.provider.Settings.ACTION_SETTINGS))));
+        // Check for updates: an update of the launcher put ready on the TV installed (Updater), a bar on the screen
+        // showing how far it has got; lit while one is waiting.
+        Updater.started(a);
+        items.add(new ControlCentre.Item("Check for updates", R.drawable.ic_update, () -> Updater.words(a), () -> Updater.waiting(a),
+                () -> Updater.check(a, true)));
         // The cameras at the top, when the TV has them: the first one named in the theme, OK opening the smart home panel.
         List<String> cams = CameraAlert.cameras(a);
         String cam = smartPanel == null || !installed(CameraAlert.TUYA) ? null : cams.isEmpty() ? "Cameras" : cams.get(0);

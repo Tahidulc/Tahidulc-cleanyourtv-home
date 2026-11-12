@@ -535,12 +535,21 @@ final class ChannelMark {
      * the picture with a soft shadow. A general channel's has no red box.
      */
     void event(Canvas cv, float x, float y, float w, float h, String sub, String tag, boolean white, boolean plate) {
+        event(cv, x, y, w, h, sub, tag, white, plate ? GROUND_PLATE : GROUND_NONE);
+    }
+
+    /** Event's grounds: its own plate, glass laid under it by the cover (no plate drawn, the marks as on one), or none. */
+    static final int GROUND_PLATE = 0, GROUND_GLASS = 1, GROUND_NONE = 2;
+
+    /** Event on the ground given: on its plate or on glass the marks as on a plate; on none, each with a soft shadow. */
+    void event(Canvas cv, float x, float y, float w, float h, String sub, String tag, boolean white, int ground) {
         if (w <= 2 || h <= 2) return;
+        boolean plate = ground != GROUND_NONE;
         String on = sub == null ? "" : sub.trim();
         boolean sports = !nameOnly, lower = !on.isEmpty();
         this.tag = lower && tag != null ? tag.trim() : "";
         int ink = white ? WHITE : NAVY, edgeInk = white ? WHITE : NAVY_LINE;
-        if (plate) {
+        if (ground == GROUND_PLATE) {
             r.set(x, y, x + w, y + h);
             float rad = Math.min(w, h) * 0.14f;
             fill.setShader(grad(0, y, 0, y + h, white ? DARK_TOP : LIGHT_TOP, white ? DARK_FOOT : LIGHT_FOOT));

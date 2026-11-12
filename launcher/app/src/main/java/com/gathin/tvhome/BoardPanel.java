@@ -424,13 +424,18 @@ final class BoardPanel extends SportPanel {
             for (LogoMark m : markPreviews) m.nameOnly(BoardCover.logoNameOnly(c));
         };
         add(what, name);
-        Row see = row("See-through, the channel's logo hidden", true);
-        see.on = () -> BoardCover.logoSeeThrough(c);
-        see.words = () -> !BoardCover.logoSeeThrough(c) ? "Off · on its own plate over the logo"
-                : android.os.Build.VERSION.SDK_INT < 34 ? "Needs Android 14 (a picture without the cover in it); on its plate here"
-                : ChannelSight.possible() ? seeNow("The wordmark, Event and the styles on the live picture: each channel's logo learned and taken out, its see-through parts worked back (on its plate while it learns a channel's, and for a solid block)")
-                : "Needs the search helper on; on its plate meanwhile";
-        see.ok = () -> BoardCover.setLogoSeeThrough(c, !BoardCover.logoSeeThrough(c));
+        Row see = row("Background: plate, frosted glass or transparent", false);
+        see.words = () -> {
+            int g = BoardCover.logoGround(c);
+            String then = g == LogoMark.PLATE ? "OK for frosted glass" : g == LogoMark.FROST ? "OK for transparent" : "OK for the plate";
+            if (g == LogoMark.PLATE) return "Plate · the look on its own plate over the channel's logo · " + then;
+            if (android.os.Build.VERSION.SDK_INT < 34) return BoardCover.groundWords(g) + " needs Android 14 (a picture without the cover in it); on its plate here · " + then;
+            if (!ChannelSight.possible()) return BoardCover.groundWords(g) + " needs the search helper on; on its plate meanwhile · " + then;
+            return g == LogoMark.FROST
+                    ? seeNow("Frosted glass · the picture behind it softened and lightened, the channel's logo taken out under it once learned · " + then)
+                    : seeNow("Transparent · white on the picture itself, as a channel's own logo is, the channel's logo taken out (on frosted glass while it learns a channel's) · " + then);
+        };
+        see.ok = () -> BoardCover.setLogoGround(c, (BoardCover.logoGround(c) + 1) % 3);
         add(see);
         heading("LOGO COVER LOOK: THE COMPETITION'S, GLASS AND BROADCAST");
         addLine(132, 3, others.subList(0, 3));

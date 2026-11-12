@@ -674,7 +674,7 @@ public class BoardCoverTest {
         assertTrue(on[8].contains("premier league") && !on[8].contains("looks)"));
         assertTrue(on[9].contains("Whitebrook Road Sports"));
         assertTrue(on[10].startsWith("Picture tag") && on[10].contains("Auto"));
-        assertTrue(on[11].startsWith("See-through") && on[11].contains("Off"));
+        assertTrue(on[11].startsWith("Logo's background") && on[11].contains("‹  Plate  ›"));
         assertTrue(on[12].startsWith("Find the channel's scoreboard") && on[12].contains("look again now"));
         assertTrue(on[13].startsWith("Line-ups on screen") && on[13].contains("On"));
         m.manual = false;
@@ -683,6 +683,8 @@ public class BoardCoverTest {
         m.logoOn = false;
         m.nameOnly = true;
         m.seeThrough = true;
+        m.ground = "Transparent";
+        m.seeing = "logo taken out";
         m.lineups = false;
         m.active = false;
         m.sportsLook = false;
@@ -694,7 +696,7 @@ public class BoardCoverTest {
         assertTrue(off[9].contains("‹  General · Whitebrook Road  ›"));
         m.nameOnly = false;
         assertTrue(BoardCover.menuLines(m)[8].contains("(Whitebrook Road Sports looks)"));
-        assertTrue(off[11].contains("On"));
+        assertTrue(off[11].contains("‹  Transparent  ›") && off[11].contains("logo taken out"));
         assertTrue(off[13].contains("Off"));
     }
 

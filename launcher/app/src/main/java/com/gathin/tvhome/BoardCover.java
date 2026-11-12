@@ -286,8 +286,56 @@ final class BoardCover {
     }
 
     static boolean seeThroughNow(Context c) {
-        String o = ownOpt(c, "see_through");
-        return o != null ? "1".equals(o) : logoSeeThrough(c);
+        return groundNow(c) == LogoMark.CLEAR;
+    }
+
+    /** The logo cover's grounds as kept ("plate", "frost", "clear": LogoMark.PLATE, FROST, CLEAR) and in words. */
+    private static final String[] GROUNDS = {"plate", "frost", "clear"};
+
+    static String groundWords(int g) {
+        return g == LogoMark.FROST ? "Frosted glass" : g == LogoMark.CLEAR ? "Transparent" : "Plate";
+    }
+
+    private static int groundOf(String kept) {
+        for (int i = 0; i < GROUNDS.length; i++) if (GROUNDS[i].equals(kept)) return i;
+        return -1;
+    }
+
+    /**
+     * The cover's ground on the channel on now: its own (set from the menu over the player), else the general one. A
+     * channel set before there were grounds: see-through on is Transparent; off, the general ground (the plate when that
+     * is Transparent).
+     */
+    static int groundNow(Context c) {
+        int own = groundOf(ownOpt(c, "ground"));
+        if (own >= 0) return own;
+        String see = ownOpt(c, "see_through");
+        int all = logoGround(c);
+        if (see != null) return "1".equals(see) ? LogoMark.CLEAR : all == LogoMark.CLEAR ? LogoMark.PLATE : all;
+        return all;
+    }
+
+    /** The general ground: as chosen, else Transparent where see-through was on, else the plate. */
+    static int logoGround(Context c) {
+        int g = groundOf(prefs(c).getString("ground", null));
+        return g >= 0 ? g : prefs(c).getBoolean("see_through", false) ? LogoMark.CLEAR : LogoMark.PLATE;
+    }
+
+    static void setLogoGround(Context c, int g) {
+        int k = g == LogoMark.FROST || g == LogoMark.CLEAR ? g : LogoMark.PLATE;
+        prefs(c).edit().putString("ground", GROUNDS[k]).putBoolean("see_through", k == LogoMark.CLEAR).apply();
+        groundChanged(c);
+    }
+
+    /** The cover's ground on now put on it: the fill and the glass let go where they no longer belong. */
+    private static void groundChanged(Context c) {
+        if (mark != null) {
+            int g = groundNow(c);
+            mark.ground(g);
+            if (g != LogoMark.CLEAR) unfill();
+            if (g == LogoMark.PLATE) unfrost();
+        }
+        patchSoon();
     }
 
     static boolean nameOnlyNow(Context c) {
@@ -370,16 +418,12 @@ final class BoardCover {
         F1Tower.retag(c);
     }
 
-    private static void toggleSeeThroughHere(Context c) {
-        boolean on = !seeThroughNow(c);
-        setHere(c, "see_through", on ? "1" : "0", () -> setLogoSeeThrough(c, on));
-        // On here: on for every channel too, unless one is switched off for itself.
-        if (on && !logoSeeThrough(c)) setLogoSeeThrough(c, true);
-        if (mark != null) {
-            mark.seeThrough(seeThroughNow(c));
-            if (!seeThroughNow(c)) unfill();
-        }
-        patchSoon();
+    /** The ground on this channel, a step on (Plate, Frosted glass, Transparent); every channel without its own too. */
+    private static void stepGroundHere(Context c, int step) {
+        int next = ((groundNow(c) + step) % GROUNDS.length + GROUNDS.length) % GROUNDS.length;
+        setHere(c, "ground", GROUNDS[next], () -> setLogoGround(c, next));
+        if (logoGround(c) != next) setLogoGround(c, next);
+        groundChanged(c);
     }
 
     /** The game the board shows now: the one it is on for, else on a channel set Always up the one found on it. */
@@ -657,16 +701,11 @@ final class BoardCover {
      * shape is learned, and where that cannot be (a solid block of a logo, no such pictures). Off unless chosen.
      */
     static boolean logoSeeThrough(Context c) {
-        return prefs(c).getBoolean("see_through", false);
+        return logoGround(c) == LogoMark.CLEAR;
     }
 
     static void setLogoSeeThrough(Context c, boolean on) {
-        prefs(c).edit().putBoolean("see_through", on).apply();
-        if (mark != null) {
-            mark.seeThrough(seeThroughNow(c));
-            if (!seeThroughNow(c)) unfill();
-        }
-        patchSoon();
+        setLogoGround(c, on ? LogoMark.CLEAR : logoGround(c) == LogoMark.CLEAR ? LogoMark.PLATE : logoGround(c));
     }
 
     /** The line-ups on screen (the line-up card beside the board, the line-ups out of it): on unless switched off. */
@@ -2151,7 +2190,7 @@ final class BoardCover {
             mark.compOn(compNow(c));
             mark.liveBar(liveNow(c));
             mark.nameOnly(nameOnlyNow(c));
-            mark.seeThrough(seeThroughNow(c));
+            mark.ground(groundNow(c));
             mark.what(whatNow(c));
             mark.channelName(InStep.channel(c));
             mark.style(styleNow(c));
@@ -2273,9 +2312,10 @@ final class BoardCover {
         if (mark == null || !mark.wantsPatch()) return "";
         if (android.os.Build.VERSION.SDK_INT < 34) return "needs Android 14, on its plate";
         if (at == null) return "starting";
-        if (at.known()) return "logo taken out";
-        if (at.block()) return "a solid logo, on its plate";
-        return "learning the logo, " + Math.min(at.learnt(), LogoShape.ENOUGH) + " of " + LogoShape.ENOUGH;
+        boolean frost = mark.ground() == LogoMark.FROST;
+        if (at.known()) return frost ? "the channel's logo taken out under the glass" : "logo taken out";
+        if (at.block()) return frost ? "a solid logo under the glass" : "a solid logo, on frosted glass";
+        return "learning the logo, " + Math.min(at.learnt(), LogoShape.ENOUGH) + " of " + LogoShape.ENOUGH + (frost ? "" : ", on frosted glass meanwhile");
     }
 
     /**
@@ -2316,6 +2356,11 @@ final class BoardCover {
         if (mark != null) mark.filled(false);
     }
 
+    /** No frosted glass under the cover (no pictures to make it from, another place): its plate meanwhile. */
+    private static void unfrost() {
+        if (mark != null) mark.frost(null, 0, 0, 0, 0);
+    }
+
     /**
      * See-through: the channel's own logo under the cover learned stroke by stroke from pictures of its place (ScreenShots,
      * of TiviMate's window alone, so the cover is never in them; kept per channel) and, about three times a second, its
@@ -2328,6 +2373,7 @@ final class BoardCover {
         Context c = app;
         if (c == null || mark == null || logoWin == null || fill == null || !mark.wantsPatch()) {
             unfill();
+            unfrost();
             patchLoop = false;
             return;
         }
@@ -2336,6 +2382,7 @@ final class BoardCover {
                     + ScreenShots.windowOnly() + ", " + ScreenShots.state());
             // No pictures without the cover in them here: it stands on its plate.
             unfill();
+            unfrost();
             patchLoop = false;
             return;
         }
@@ -2371,6 +2418,7 @@ final class BoardCover {
         if (was == null || !was.same(key, sw, sh, x0, y0, x1 - x0, y1 - y0, bl, bt, br, bb)) {
             // Another channel, or the cover moved: its shape from its file, or learned (the plate meanwhile).
             unfill();
+            unfrost();
             // Where a look at the logo away from the TV can be asked for over ADB (LogoShape.dumpDir).
             if (LogoShape.dumpDir == null) LogoShape.dumpDir = c.getExternalFilesDir("see-through");
             seeLog((was == null ? "place" : "place changed") + ": pictures [" + x0 + ", " + y0 + ", " + x1 + ", " + y1 + "], cover ["
@@ -2392,6 +2440,13 @@ final class BoardCover {
                 return;
             }
             int w = got.getWidth(), h = got.getHeight();
+            // A black picture (between channels, a fade to black): nothing learned from it, nothing changed under the cover.
+            if (ScreenShots.black(got)) {
+                got.recycle();
+                main().postDelayed(patchRun, 100L);
+                return;
+            }
+            int ground = mark.ground();
             // The same pixels' room each time (handed to the thread and back): less for the memory tidy, which can lose
             // a picture under way (ScreenShots).
             int[] px = pxRoom != null && pxRoom.length == w * h ? pxRoom : new int[w * h];
@@ -2403,15 +2458,22 @@ final class BoardCover {
             // the cover.
             patchIo.execute(() -> {
                 LogoShape.Fill f;
-                Bitmap made = null;
+                Bitmap made = null, glass = null;
+                FrostPane.Pane pane = null;
                 try {
                     f = at.take(px, taken);
-                    if (f != null && !f.empty()) made = Bitmap.createBitmap(f.argb, f.w, f.h, Bitmap.Config.ARGB_8888);
+                    // The fill shows only on Transparent; on frosted glass it takes the logo out of the picture under it.
+                    if (ground == LogoMark.CLEAR && f != null && !f.empty()) made = Bitmap.createBitmap(f.argb, f.w, f.h, Bitmap.Config.ARGB_8888);
+                    if (ground == LogoMark.FROST || (ground == LogoMark.CLEAR && f == null)) {
+                        pane = FrostPane.of(px, at.w, at.h, f, at.x, at.y, at.bl, at.bt, at.br, at.bb);
+                        if (pane != null) glass = Bitmap.createBitmap(pane.argb, pane.w, pane.h, Bitmap.Config.ARGB_8888);
+                    }
                 } catch (RuntimeException | OutOfMemoryError e) {
                     f = null;
                 }
                 LogoShape.Fill done = f;
-                Bitmap b = made;
+                Bitmap b = made, frosted = glass;
+                FrostPane.Pane where = pane;
                 main().post(() -> {
                     pxRoom = px;
                     if (here == at && !placeSaid) {
@@ -2419,13 +2481,14 @@ final class BoardCover {
                         seeLog(at.fromFile() ? "the logo kept for this channel serves here" : "no logo kept for this channel fits here: learning it");
                     }
                     if (here == at && mark != null && fill != null && mark.wantsPatch()) {
-                        if (done == null) {
+                        if (done == null || mark.ground() != LogoMark.CLEAR) {
                             unfill();
                         } else {
                             if (b != null) fill.show(b, done.x, done.y, done.x + done.w, done.y + done.h);
                             else fill.clear();
                             mark.filled(true);
                         }
+                        if (frosted != null) mark.frost(frosted, where.l, where.t, where.r, where.b);
                         onTheLogo(c, at.logoBox(), bx, by, bw, bh);
                         int[] lb = at.logoBox();
                         seeLog(at.known() ? "logo taken out" + (lb == null ? "" : " at " + java.util.Arrays.toString(lb))
@@ -3160,7 +3223,7 @@ final class BoardCover {
         if (mark != null && hc != null && now - beatAt >= 60_000L) {
             beatAt = now;
             seeLog("cover: " + mark.lookName() + (mark.lookCanSeeThrough() ? "" : " (a look that cannot be see-through)")
-                    + ", see-through " + (seeThroughNow(hc) ? "on" : "off") + " here (all channels " + (logoSeeThrough(hc) ? "on" : "off")
+                    + ", ground " + groundWords(groundNow(hc)) + " here (all channels " + groundWords(logoGround(hc))
                     + "), the cover's own " + (mark.seeThroughSet() ? "on" : "off") + ", wanted " + mark.wantsPatch() + ", loop "
                     + patchLoop + ", ran " + (patchRanAt == 0 ? "never" : (SystemClock.uptimeMillis() - patchRanAt) / 1000 + " s ago"));
         }
@@ -3579,7 +3642,7 @@ final class BoardCover {
     /** What the menu's lines say: each switch and look as it stands. */
     static final class MenuState {
         boolean boardShown, logoOn, nameOnly, seeThrough, find, lineups, active, manual, sportsLook, stylesLook;
-        String look = "", logoLook = "", what = "", tag = "", note = "", style = "", showing = "", seeing = "";
+        String look = "", logoLook = "", what = "", tag = "", note = "", style = "", showing = "", seeing = "", ground = "Plate";
         /** The channel on now ("" when not known), its mode and its own look, in words. */
         String channel = "", channelMode = "As the rest", channelLook = "As the rest";
     }
@@ -3602,8 +3665,7 @@ final class BoardCover {
                         : m.sportsLook ? "" : "  (Whitebrook Road Sports looks)"),
                 "Channel:  ‹  " + (m.nameOnly ? "General · Whitebrook Road" : "Sports · Whitebrook Road Sports") + "  ›",
                 "Picture tag:  ‹  " + m.tag + "  ›",
-                "See-through, the channel's logo hidden:  ‹  " + (m.seeThrough ? "On" : "Off") + "  ›"
-                        + (m.seeThrough && !m.seeing.isEmpty() ? "  ·  " + m.seeing : ""),
+                "Logo's background:  ‹  " + m.ground + "  ›" + (!"Plate".equals(m.ground) && !m.seeing.isEmpty() ? "  ·  " + m.seeing : ""),
                 "Find the channel's scoreboard:  ‹  " + (m.find ? "On" : "Off") + "  ›  ·  OK: look again now",
                 "Line-ups on screen:  ‹  " + (m.lineups ? "On" : "Off") + "  ›"};
     }
@@ -3627,6 +3689,7 @@ final class BoardCover {
         m.nameOnly = nameOnlyNow(c);
         m.tag = tagNow(c).label;
         m.seeThrough = seeThroughNow(c);
+        m.ground = groundWords(groundNow(c));
         m.seeing = seeThroughWords();
         m.find = ChannelSight.on(c);
         m.lineups = lineupsOn(c);
@@ -3825,7 +3888,7 @@ final class BoardCover {
                 stepTagHere(c, step);
                 break;
             case 11:
-                toggleSeeThroughHere(c);
+                stepGroundHere(c, step);
                 break;
             case 12:
                 ChannelSight.setOn(c, !ChannelSight.on(c));

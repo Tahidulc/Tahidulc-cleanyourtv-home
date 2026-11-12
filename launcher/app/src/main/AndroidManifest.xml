@@ -15,6 +15,9 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <!-- The launcher's own updates (Updater): installed by itself, on Android 12 and later without a question. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <uses-permission android:name="android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION" />
     <!-- Your viewing: how long each app is open (usage access, given once over the TV's own debugging connection). -->
     <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS"
         tools:ignore="ProtectedPermissions" />
@@ -282,6 +285,19 @@
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
             </intent-filter>
         </receiver>
+        <!-- An update put ready on the TV installed now, asked for over ADB only (Updater). -->
+        <receiver
+            android:name=".UpdateReceiver"
+            android:exported="true"
+            android:permission="android.permission.WRITE_SECURE_SETTINGS">
+            <intent-filter>
+                <action android:name="com.gathin.tvhome.action.UPDATE" />
+            </intent-filter>
+        </receiver>
+        <!-- Android's installer's word on the launcher's own update. -->
+        <receiver
+            android:name=".UpdateStatus"
+            android:exported="false" />
         <receiver
             android:name=".GuardConfig"
             android:exported="true"

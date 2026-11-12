@@ -23,6 +23,9 @@ public class ScreenShotsTest {
         p.missed(2_000);
         p.missed(2_350);
         assertTrue(p.on(2_700));
+        // Once a good one has come, a black one is the picture itself (between channels): ScreenShots counts it no miss.
+        assertTrue(p.seen());
+        assertFalse(new ScreenShots.WindowPause().seen());
     }
 
     @Test

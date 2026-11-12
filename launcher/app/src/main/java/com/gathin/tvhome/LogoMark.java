@@ -1,12 +1,16 @@
 package com.gathin.tvhome;
 
 import android.content.Context;
+import android.graphics.Bitmap;
+import android.graphics.BitmapShader;
 import android.graphics.Canvas;
 import android.graphics.DashPathEffect;
 import android.graphics.Matrix;
 import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.RectF;
+import android.graphics.Shader;
+import android.os.SystemClock;
 import android.view.View;
 
 /**
@@ -110,9 +114,27 @@ final class LogoMark extends View {
     /** Whitebrook Road Sports: what is on ("premier league"), the name with SPORTS or alone, see-through or on its plate. */
     private SportsMark sportsMark;
     private String what = "football";
-    private boolean nameOnly, seeThrough;
+    private boolean nameOnly;
+    /**
+     * Its ground in the looks drawn whole (the wordmark, Event, the styles): its own plate; frosted glass (the picture
+     * behind it softened and lightened, FrostPane); or none, over the picture itself with the channel's logo filled in
+     * under it (see-through: frosted glass while that logo is learned).
+     */
+    static final int PLATE = 0, FROST = 1, CLEAR = 2;
+    private int ground = PLATE;
     /** See-through: the channel's logo filled in under it (LogoFill), so it stands clear over the picture. */
     private boolean filled;
+    /** The frosted glass's picture (FrostPane), the one before it while the new one fades in, where each lies on the screen. */
+    private Bitmap frost, frostWas;
+    private BitmapShader frostShader, frostWasShader;
+    private final RectF frostAt = new RectF(), frostWasAt = new RectF();
+    private long frostSince;
+    private final int[] onScreen = new int[2];
+    private final Matrix frostMatrix = new Matrix();
+    private final Paint glass = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG), tint = new Paint(Paint.ANTI_ALIAS_FLAG),
+            rim = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private float tintFor = -1f;
+    private boolean tintLight;
     /** Whitebrook Road styles: the renderer and the style chosen (0 to BrandStyles.COUNT - 1). */
     private BrandStyles brand;
     private int styleNo;
@@ -225,11 +247,49 @@ final class LogoMark extends View {
         invalidate();
     }
 
-    /** See-through over the picture, the channel's own logo filled in under it (looks that can be). */
+    /** See-through over the picture, the channel's own logo filled in under it (looks that can be): Transparent, else its plate. */
     void seeThrough(boolean on) {
-        if (on == seeThrough) return;
-        seeThrough = on;
+        ground(on ? CLEAR : PLATE);
+    }
+
+    /** Its ground: PLATE, FROST or CLEAR (the looks drawn whole; the others keep their own grounds). */
+    void ground(int g) {
+        int k = g == FROST || g == CLEAR ? g : PLATE;
+        if (k == ground) return;
+        ground = k;
+        if (k == PLATE) frost(null, 0, 0, 0, 0);
         invalidate();
+    }
+
+    int ground() {
+        return ground;
+    }
+
+    /**
+     * The frosted glass's picture (FrostPane's, null: none) and where it lies on the screen (l, t, r, b, pixels): faded
+     * in over the one before. With none, the plate.
+     */
+    void frost(Bitmap b, float l, float t, float r, float bt) {
+        if (b == null) {
+            if (frost == null) return;
+            frost = frostWas = null;
+            frostShader = frostWasShader = null;
+            invalidate();
+            return;
+        }
+        boolean fade = frost != null;
+        frostWas = fade ? frost : null;
+        frostWasShader = fade ? frostShader : null;
+        frostWasAt.set(frostAt);
+        frost = b;
+        frostShader = new BitmapShader(b, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP);
+        frostAt.set(l, t, r, bt);
+        frostSince = SystemClock.uptimeMillis();
+        invalidate();
+    }
+
+    boolean hasFrost() {
+        return frost != null;
     }
 
     /** Whitebrook Road styles: which of them (0 to BrandStyles.COUNT - 1). */
@@ -250,11 +310,11 @@ final class LogoMark extends View {
     }
 
     boolean seeThroughSet() {
-        return seeThrough;
+        return ground == CLEAR;
     }
 
     boolean wantsPatch() {
-        return seeThrough && look.own() && getVisibility() == VISIBLE;
+        return ground != PLATE && look.own() && getVisibility() == VISIBLE;
     }
 
     /**
@@ -389,28 +449,82 @@ final class LogoMark extends View {
      * its plate while that cannot be; the competition's logo in it.
      */
     private void ownLook(Canvas cv, float w, float h) {
-        boolean clear = seeThrough && filled;
+        boolean clear = ground == CLEAR && filled;
+        // Frosted glass: chosen, or Transparent's while the channel's logo is learned; the plate until its picture is in.
+        boolean frosted = !clear && ground != PLATE && frost != null;
         float in = Math.max(inset, Math.min(w, h) * (clear ? 0.04f : 0f));
+        if (frosted) glass(cv, w, h, look == Look.EVENT_NAVY);
         if (look.event()) {
             if (channel == null) {
                 channel = new ChannelMark(getContext());
                 channel.nameOnly(nameOnly);
             }
-            // On its plate it fills the whole cover (the channel's logo under it never shows); alone, in from the edge.
+            // On its plate (or glass) it fills the whole cover (the channel's logo under it never shows); alone, in from
+            // the edge, and white as a channel's own logo is on its picture.
             float p = clear ? in : 0f;
-            channel.event(cv, p, p, w - 2 * p, h - 2 * p, sub, tag, look == Look.EVENT_WHITE, !clear);
+            channel.event(cv, p, p, w - 2 * p, h - 2 * p, sub, tag, look == Look.EVENT_WHITE || clear,
+                    clear ? ChannelMark.GROUND_NONE : frosted ? ChannelMark.GROUND_GLASS : ChannelMark.GROUND_PLATE);
             return;
         }
         if (look == Look.STYLES) {
             if (brand == null) brand = new BrandStyles(getContext());
             // On its plate the style fills the whole cover (the channel's logo under it never shows).
             float p = clear ? in : inset;
-            brand.draw(cv, styleNo, p, p, w - 2 * p, h - 2 * p, !nameOnly, tag, !clear);
+            brand.draw(cv, styleNo, p, p, w - 2 * p, h - 2 * p, !nameOnly, tag, !clear && !frosted);
             return;
         }
         if (sportsMark == null) sportsMark = new SportsMark(getContext());
-        sportsMark.draw(cv, in, in, w - 2 * in, h - 2 * in, look == Look.SPORTS_STACKED, !nameOnly, what, tag, !clear,
+        sportsMark.draw(cv, in, in, w - 2 * in, h - 2 * in, look == Look.SPORTS_STACKED, !nameOnly, what, tag, !clear && !frosted,
                 compOn ? comp : null);
+    }
+
+    /**
+     * Frosted glass over the cover's whole box (w by h, its plate's round corners): the picture behind it softened
+     * (FrostPane, lined up with the screen wherever the cover stands, the new one faded in over the one before), then
+     * lightened (light) or smoked, brighter towards its top, and a fine light edge.
+     */
+    private void glass(Canvas cv, float w, float h, boolean light) {
+        float rad = Math.min(w, h) * 0.14f;
+        getLocationOnScreen(onScreen);
+        float k = Math.min(1f, (SystemClock.uptimeMillis() - frostSince) / 350f);
+        r.set(0, 0, w, h);
+        if (frostWas != null && k < 1f) {
+            pane(cv, frostWas, frostWasShader, frostWasAt, rad, 255);
+            pane(cv, frost, frostShader, frostAt, rad, Math.round(255 * k));
+            postInvalidateOnAnimation();
+        } else {
+            frostWas = null;
+            frostWasShader = null;
+            pane(cv, frost, frostShader, frostAt, rad, 255);
+        }
+        if (tintFor != h || tintLight != light) {
+            tintFor = h;
+            tintLight = light;
+            tint.setShader(new android.graphics.LinearGradient(0, 0, 0, h, light ? 0xA6FFFFFF : 0x700B0F24, light ? 0x80F4F6FB : 0x8C05070F,
+                    Shader.TileMode.CLAMP));
+            rim.setStyle(Paint.Style.STROKE);
+            rim.setShader(new android.graphics.LinearGradient(0, 0, 0, h, light ? 0xD9FFFFFF : 0x73FFFFFF, light ? 0x4DFFFFFF : 0x1FFFFFFF,
+                    Shader.TileMode.CLAMP));
+        }
+        r.set(0, 0, w, h);
+        cv.drawRoundRect(r, rad, rad, tint);
+        float line = Math.max(1f, Math.min(w, h) * 0.012f);
+        rim.setStrokeWidth(line);
+        r.set(line / 2f, line / 2f, w - line / 2f, h - line / 2f);
+        cv.drawRoundRect(r, rad - line / 2f, rad - line / 2f, rim);
+    }
+
+    /** One frosted picture over the box's round corners, where it lies on the screen, at alpha. */
+    private void pane(Canvas cv, Bitmap b, BitmapShader s, RectF at, float rad, int alpha) {
+        if (b == null || s == null || b.isRecycled() || at.width() <= 0 || at.height() <= 0) return;
+        frostMatrix.setScale(at.width() / b.getWidth(), at.height() / b.getHeight());
+        frostMatrix.postTranslate(at.left - onScreen[0], at.top - onScreen[1]);
+        s.setLocalMatrix(frostMatrix);
+        glass.setShader(s);
+        glass.setAlpha(alpha);
+        r.set(0, 0, getWidth(), getHeight());
+        cv.drawRoundRect(r, rad, rad, glass);
+        glass.setShader(null);
     }
 
     /** The look itself in the box w wide (the whole box, or short of the competition's block). */
