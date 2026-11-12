@@ -2122,7 +2122,7 @@ final class BoardCover {
         if (GoalWatchService.homeInFront || GoalWatchService.dreamingNow()) return false;
         PowerManager pm = c.getSystemService(PowerManager.class);
         if (pm != null && !pm.isInteractive()) return false;
-        if (LiveCentre.isShowing() || F1Tower.isShowing() || CreditsCover.isShowing() || HalfTimeBreak.isShowing()
+        if (LiveCentre.isShowing() || F1Tower.isShowing() || CreditsCover.isShowing()
                 || PopupFrame.isShowing() || TwoUp.active()) return false;
         return playerInFront(c);
     }
@@ -3649,7 +3649,7 @@ final class BoardCover {
         if (!QuietHold.isOk(e.getKeyCode()) || android.os.Build.VERSION.SDK_INT < 33 || app == null
                 || (boardWin == null && !holdInPlayer(app))
                 || !holdMenuOn(app) || QuietHold.up() || InStepCard.isShowing() || LiveCentre.isShowing() || F1Tower.isShowing()
-                || HalfTimeBreak.isShowing() || CreditsCover.isShowing() || ScoreCard.busy() || LineupCard.isShowing()) {
+                || CreditsCover.isShowing() || ScoreCard.busy() || LineupCard.isShowing()) {
             return false;
         }
         if (SystemClock.uptimeMillis() - QuietHold.okSentAt < 400L) return false;

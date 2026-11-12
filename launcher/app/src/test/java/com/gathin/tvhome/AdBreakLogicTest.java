@@ -153,29 +153,13 @@ public class AdBreakLogicTest {
 
     // ---- one screen at a break ------------------------------------------------------------------------------------------
 
-    private static final int AD = AdBreakLogic.AD, BREAK = AdBreakLogic.HALF_BREAK, CARD = AdBreakLogic.HALF_CARD, HOP = AdBreakLogic.HOP;
+    private static final int AD = AdBreakLogic.AD, CARD = AdBreakLogic.HALF_CARD, HOP = AdBreakLogic.HOP;
 
-    @Test public void broadcastModeKeepsHalfTimeAndTheAdBreakScreenTheRest() {
-        // Half-time: its break, after the half-time card and the hop as before; never the ad-break screen.
-        assertEquals(BREAK | CARD | HOP, AdBreakLogic.breaks(true, true, false, false, false));
-        assertEquals(0, AdBreakLogic.breaks(true, true, true, false, false) & AD);
-        // The build-up, a break in play, after full time: the ad-break screen.
-        assertEquals(AD | CARD | HOP, AdBreakLogic.breaks(true, false, false, false, false));
-        // Its break up (the Control Centre's try): no ad-break screen over it.
-        assertEquals(0, AdBreakLogic.breaks(true, false, true, false, false) & AD);
-        // The ad-break screen up as half-time comes: it goes, and the break waits until it has.
-        assertEquals(0, AdBreakLogic.breaks(true, true, false, true, false) & (AD | BREAK));
-    }
-
-    @Test public void withoutBroadcastModeTheAdBreakScreenCoversHalfTimeAndTheCardsGiveWay() {
-        assertEquals(AD | CARD | HOP, AdBreakLogic.breaks(false, true, false, false, false));
+    @Test public void theAdBreakScreenCoversEveryBreakAndTheHalfTimeCardsGiveWay() {
+        // No broadcast mode's break any more: the ad-break screen may come at half-time as at any break.
+        assertEquals(AD | CARD | HOP, AdBreakLogic.breaks(false, false));
         // Up: no half-time card, no hop.
-        assertEquals(AD, AdBreakLogic.breaks(false, true, false, true, false));
-        assertEquals(AD, AdBreakLogic.breaks(false, false, false, true, false));
-        // Broadcast mode's break never, with it off.
-        for (boolean ht : new boolean[]{false, true}) {
-            for (boolean up : new boolean[]{false, true}) assertEquals(0, AdBreakLogic.breaks(false, ht, false, up, false) & BREAK);
-        }
+        assertEquals(AD, AdBreakLogic.breaks(true, false));
     }
 
     @Test public void matchModesQuietLetsOnlyItsOwnGamesScreenThrough() {
@@ -186,8 +170,7 @@ public class AdBreakLogicTest {
         assertTrue(MatchMode.keepsBack(true, true, "adbreak", null, "g1"));
         assertFalse(MatchMode.keepsBack(true, false, "adbreak", "g2", "g1"));
         assertFalse(MatchMode.keepsBack(false, true, "adbreak", "g2", "g1"));
-        assertEquals(CARD | HOP, AdBreakLogic.breaks(false, false, false, false, true));
-        assertEquals(BREAK | CARD | HOP, AdBreakLogic.breaks(true, true, false, false, true));
+        assertEquals(CARD | HOP, AdBreakLogic.breaks(false, true));
     }
 
     @Test public void halfTimeShowsUntilTheChannelsWaitAfterTheScoresSawTheSecondHalf() {

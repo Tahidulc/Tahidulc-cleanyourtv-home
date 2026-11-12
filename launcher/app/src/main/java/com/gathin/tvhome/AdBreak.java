@@ -54,9 +54,10 @@ import java.util.concurrent.Executors;
  * BREAK with the score and the minute, FULL TIME; AD BREAK and the programme for the general screen), with three cards
  * in the line-up card's look taking turns through what is really known (a widget with nothing behind it is left out);
  * for a game, the line-up card (before kick-off and at half-time), the table and fans' posts (FanPosts) too. It goes
- * when the logo comes back, when the programme's time is over, or when the channel or the app changes. With broadcast
- * mode on, half-time is its break's (HalfTimeBreak); with it off this screen covers half-time, the first half and the
- * hop in its cards, the half-time card and the hop's card giving way (AdBreakLogic.breaks).
+ * when the logo comes back, when the programme's time is over, or when the channel or the app changes. It covers every
+ * break, half-time's too: there the first half and the hop are in its cards, the half-time card and the hop's card give
+ * way (AdBreakLogic.breaks), and its last card gets the half-time widgets (HalfTimeFun): the quiz played with the
+ * remote for points, fun facts and today's prayer times. Before kick-off it keeps to the usual widgets.
  *
  * <p>The logo is told by its own learned shape (LogoShape), from pictures of its place of the player's window alone
  * (ScreenShots), about one a second from half an hour before the window opens; where such pictures cannot be had
@@ -89,6 +90,8 @@ final class AdBreak {
     /** The game whose build-up is on the channel watched (the scores poll's word), its channels. */
     private static boolean checking, looking, forced;
     private static long forcedUntil;
+    /** The test as at half-time: the half-time widgets in the last card whatever the game's state. */
+    private static boolean forcedHalf;
     private static final AdBreakLogic.Trigger trigger = new AdBreakLogic.Trigger();
     private static LogoShape.Here logoHere;
     private static String logoKey = "";
@@ -366,6 +369,7 @@ final class AdBreak {
         if (forced) {
             if (now > forcedUntil) {
                 forced = false;
+                forcedHalf = false;
                 hide("the test's time is up");
             } else {
                 main.postDelayed(lookRun, 1_000L);
@@ -431,13 +435,13 @@ final class AdBreak {
     }
 
     /**
-     * Whether the screen may come for this session now (AdBreakLogic.breaks): not over broadcast mode's half-time break
-     * nor, with broadcast mode on, at the game's half-time; not for another game than Match mode's while its quiet is on.
+     * Whether the screen may come for this session now (AdBreakLogic.breaks): at every break, half-time's too; not for
+     * another game than Match mode's while its quiet is on.
      */
-    private static boolean mayCome(Context c, Session ss, long now) {
+    private static boolean mayCome(Context c, Session ss, @SuppressWarnings("unused") long now) {
         ScoresTicker.Game g = fresh(ss.g);
         boolean quiet = MatchMode.keepsBack(c, "adbreak", g == null ? null : g.id);
-        int m = AdBreakLogic.breaks(HalfTimeBreak.on(c), g != null && halfTimeShows(c, g, now), HalfTimeBreak.isShowing(), isShowing(), quiet);
+        int m = AdBreakLogic.breaks(isShowing(), quiet);
         return (m & AdBreakLogic.AD) != 0;
     }
 
@@ -447,12 +451,9 @@ final class AdBreak {
         return AdBreakLogic.halfTimeShows(g.halftime, seen == null ? 0 : seen, InStep.holdMs(c, true), now);
     }
 
-    /** Whether the half-time card, the hop's card or broadcast mode's break may show now (one of AdBreakLogic's). */
-    static boolean allows(Context c, int what) {
-        Session ss = session;
-        ScoresTicker.Game g = ss == null ? null : fresh(ss.g);
-        long now = System.currentTimeMillis();
-        int m = AdBreakLogic.breaks(HalfTimeBreak.on(c), g != null && halfTimeShows(c, g, now), HalfTimeBreak.isShowing(), isShowing(), false);
+    /** Whether the half-time card or the hop's card may show now (one of AdBreakLogic's): not while this screen is up. */
+    static boolean allows(@SuppressWarnings("unused") Context c, int what) {
+        int m = AdBreakLogic.breaks(isShowing(), false);
         return (m & what) != 0;
     }
 
@@ -475,6 +476,12 @@ final class AdBreak {
 
     /** adb: up now over anything for TEST_MS, for what is on the channel or else the soonest game to come. */
     static void test(Context c, boolean up) {
+        test(c, up, false);
+    }
+
+    /** adb: as test, with the half-time widgets (the quiz, fun facts, prayer times) when half is asked for. */
+    static void test(Context c, boolean up, boolean half) {
+        forcedHalf = up && half;
         app = c.getApplicationContext();
         if (!up) {
             forced = false;
@@ -543,6 +550,10 @@ final class AdBreak {
         List<ScoresTicker.Game> liveNow = new ArrayList<>(), doneToday = new ArrayList<>(), laterToday = new ArrayList<>();
         /** At half-time: the first half (the half-time card's numbers: scorers, possession, shots). */
         MoreAlerts.Stats half;
+        /** For the half-time widgets (HalfTimeFun): today's prayer times, the next one, and whose times they are. */
+        List<Prayer.Slot> prayers = new ArrayList<>();
+        Prayer.Slot prayerNext;
+        String prayerFoot;
     }
 
     private static Pack pack;
@@ -714,6 +725,18 @@ final class AdBreak {
             }
         }
         today(c, p, g);
+        // Today's prayer times for the half-time widgets (the mosque's page once a day).
+        {
+            try {
+                Prayer.refresh(c, true);
+                p.prayers = Prayer.slots(c, java.time.LocalDate.now());
+                p.prayerNext = Prayer.next(c);
+                String h = Prayer.hijri(c);
+                if (!p.prayers.isEmpty()) p.prayerFoot = (Prayer.source(c) + (h == null ? "" : " · " + h)).toUpperCase(Locale.UK);
+            } catch (RuntimeException ignored) {
+                // no prayer times widget
+            }
+        }
         // Every crest a widget names.
         List<String> ids = new ArrayList<>();
         for (AdBreakLogic.Row r : p.table) ids.add(r.id);
@@ -1058,7 +1081,11 @@ final class AdBreak {
         }
         if (shown.g == null || !shown.g.id.equals(p.g.id)) return;
         List<List<Widget>> lists = Widgets.build(c, p, s);
+        // At half-time (as it shows on screen) the last card gets the quiz, fun facts and prayer times in among its own.
+        filledHalf = forcedHalf || halfTimeShows(c, fresh(p.g), System.currentTimeMillis());
+        if (filledHalf) lists.set(2, HalfTimeFun.mix(HalfTimeFun.widgets(c, p, s), lists.get(2)));
         for (int i = 0; i < 3; i++) cards[i].set(lists.get(i));
+        hintNow();
         Bitmap hc = p.g.homeId == null ? null : p.crests.get(p.g.homeId), ac = p.g.awayId == null ? null : p.crests.get(p.g.awayId);
         if (homeCrest != null && hc != null) homeCrest.setImageBitmap(hc);
         if (awayCrest != null && ac != null) awayCrest.setImageBitmap(ac);
@@ -1075,6 +1102,19 @@ final class AdBreak {
             table.animate().alpha(1f).translationX(0).setDuration(340).setInterpolator(new DecelerateInterpolator(2f)).start();
         }
         openLineups(c, p);
+    }
+
+    /** Whether the cards were last filled for half-time (the half-time widgets in the last card). */
+    private static boolean filledHalf;
+
+    /** The last card again when half-time starts or ends on screen while the screen is up. */
+    private static void refillHalf(Context c, Pack p) {
+        boolean ht = forcedHalf || halfTimeShows(c, fresh(p.g), System.currentTimeMillis());
+        if (ht == filledHalf || cards[2] == null) return;
+        filledHalf = ht;
+        List<Widget> last = Widgets.build(c, p, s).get(2);
+        cards[2].set(ht ? HalfTimeFun.mix(HalfTimeFun.widgets(c, p, s), last) : last);
+        hintNow();
     }
 
     /** The line-up card, before kick-off and at half-time only. */
@@ -1125,6 +1165,7 @@ final class AdBreak {
                 String clock = ph == AdBreakLogic.LIVE ? ScoresTicker.liveClock(g) : "";
                 countdown.setText(clock == null ? "" : clock);
             }
+            if (g != null && pack != null && pack.g != null && pack.g.id.equals(g.id) && app != null) refillHalf(app, pack);
             if (ph != shownPhase) {
                 int was = shownPhase;
                 shownPhase = ph;
@@ -1288,10 +1329,13 @@ final class AdBreak {
                 inside = true;
                 picked = firstCard();
                 ring();
-                if (hint != null) hint.setText("Left, Right: card · Up, Down: scroll · Back: out");
+                hintNow();
             }
             return true;
         }
+        // The widget on the picked card first (the quiz: OK plays, the arrows pick, Back stops).
+        Widget w = cards[picked] == null ? null : cards[picked].current();
+        if (w != null && w.keys != null && w.keys.key(code, down)) return true;
         switch (code) {
             case KeyEvent.KEYCODE_DPAD_LEFT:
             case KeyEvent.KEYCODE_DPAD_RIGHT:
@@ -1304,11 +1348,15 @@ final class AdBreak {
                         }
                     }
                     ring();
+                    hintNow();
                 }
                 return true;
             case KeyEvent.KEYCODE_DPAD_UP:
             case KeyEvent.KEYCODE_DPAD_DOWN:
-                if (down && cards[picked] != null) cards[picked].turn(code == KeyEvent.KEYCODE_DPAD_UP ? -1 : 1);
+                if (down && cards[picked] != null) {
+                    cards[picked].turn(code == KeyEvent.KEYCODE_DPAD_UP ? -1 : 1);
+                    hintNow();
+                }
                 return true;
             case KeyEvent.KEYCODE_DPAD_CENTER:
             case KeyEvent.KEYCODE_ENTER:
@@ -1318,10 +1366,11 @@ final class AdBreak {
                 if (!down) {
                     inside = false;
                     ring();
-                    if (hint != null) hint.setText("Down: widgets");
+                    hintNow();
                     if (forced) {
                         // The test: Back puts it away.
                         forced = false;
+                        forcedHalf = false;
                         trigger.set(false);
                         hide("Back, on the test");
                     }
@@ -1330,6 +1379,25 @@ final class AdBreak {
             default:
                 return false;
         }
+    }
+
+    /** The strip's hint as things stand: the way in, the cards' keys, or the picked widget's own (the quiz). */
+    static void hintNow() {
+        if (hint == null) return;
+        if (!inside) {
+            hint.setText(InputKeyService.running ? "Down: widgets" : "");
+            return;
+        }
+        Widget w = cards[picked] == null ? null : cards[picked].current();
+        String own = w != null && w.keys != null ? w.keys.hint() : null;
+        hint.setText(own != null ? own : "Left, Right: card · Up, Down: scroll · Back: out");
+    }
+
+    /** Whether the picked card, held by the remote, shows a widget with these keys now. */
+    static boolean pickedShows(Keys k) {
+        if (!isShowing() || !inside || k == null || cards[picked] == null) return false;
+        Widget w = cards[picked].current();
+        return w != null && w.keys == k;
     }
 
     private static int firstCard() {
@@ -1351,15 +1419,31 @@ final class AdBreak {
         final Runnable ok;
         final String clipUrl;
         final Bitmap clipStill;
+        /** The remote's keys while it shows on the picked card, before the cards' own (the quiz); null none. */
+        final Keys keys;
 
         Widget(Bitmap mark, String caption, Widgets.Lines lines, Runnable ok, String clipUrl, Bitmap clipStill) {
+            this(mark, caption, lines, ok, clipUrl, clipStill, null);
+        }
+
+        Widget(Bitmap mark, String caption, Widgets.Lines lines, Runnable ok, String clipUrl, Bitmap clipStill, Keys keys) {
             this.mark = mark;
             this.caption = caption;
             this.lines = lines;
             this.ok = ok;
             this.clipUrl = clipUrl;
             this.clipStill = clipStill;
+            this.keys = keys;
         }
+    }
+
+    /** A widget that takes the remote while it shows on the picked card (HalfTimeFun's quiz). */
+    interface Keys {
+        /** A key (down or up); true when it was the widget's, so the cards don't see it. */
+        boolean key(int code, boolean down);
+
+        /** The strip's hint while it shows on the picked card. */
+        String hint();
     }
 
     private static final class Card {
@@ -1398,6 +1482,10 @@ final class AdBreak {
 
         boolean has() {
             return !list.isEmpty();
+        }
+
+        Widget current() {
+            return at >= 0 && at < list.size() ? list.get(at) : null;
         }
 
         void set(List<Widget> widgets) {

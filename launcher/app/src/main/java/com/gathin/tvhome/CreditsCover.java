@@ -736,6 +736,12 @@ final class CreditsCover {
         return window != null;
     }
 
+    /** The cover's unit: a 960-wide grid on the screen's long side, so a 1080p screen and a 4K one look alike. */
+    static float unit(int widthPx, int heightPx) {
+        int longSide = Math.max(widthPx, heightPx);
+        return longSide <= 0 ? 2f : longSide / 960f;
+    }
+
     private static int px(float v) {
         return Math.round(v * u);
     }
@@ -901,7 +907,7 @@ final class CreditsCover {
     static void show(Context c, Content k) {
         if (window != null) close();
         if (!k.test) {
-            if (GoalWatchService.homeInFront || HalfTimeBreak.isShowing() || QuickReply.isOpen()) return;
+            if (GoalWatchService.homeInFront || QuickReply.isOpen()) return;
             boolean home = NotifyPrefs.homeNow();
             if (!NotifyPrefs.allowed(c, KIND, home)) {
                 NotifyPrefs.held(c, KIND, home, null, "credits cover: " + k.name);
@@ -911,7 +917,7 @@ final class CreditsCover {
         app = c.getApplicationContext();
         shown = k;
         android.util.DisplayMetrics dm = app.getResources().getDisplayMetrics();
-        u = HalfTimeBreak.unit(dm.widthPixels, dm.heightPixels);
+        u = unit(dm.widthPixels, dm.heightPixels);
         fontScale = Math.max(0.85f, Math.min(1.3f, app.getResources().getConfiguration().fontScale));
         Context sw = new GoalWatchService.SoftwareWindow(app);
         FrameLayout win = new FrameLayout(sw);

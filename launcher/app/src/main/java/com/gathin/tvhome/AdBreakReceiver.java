@@ -7,7 +7,8 @@ import android.content.Intent;
 /**
  * The ad-break screen brought up (or put away) over whatever is on, asked for over ADB only: only a sender holding
  * WRITE_SECURE_SETTINGS (ADB's shell, never another app) can. "--es do show" or "--es do hide"; up for ten minutes at
- * most, or until Back. "--es do session" only logs what would count on the channel watched now (nothing is shown).
+ * most, or until Back; "--es do half" shows it as at half-time (the quiz, fun facts and prayer times in the last card).
+ * "--es do session" only logs what would count on the channel watched now (nothing is shown).
  */
 public class AdBreakReceiver extends BroadcastReceiver {
     static final String ACTION = "com.gathin.tvhome.action.ADBREAK";
@@ -16,6 +17,6 @@ public class AdBreakReceiver extends BroadcastReceiver {
         if (!ACTION.equals(intent.getAction())) return;
         String what = intent.getStringExtra("do");
         if ("session".equals(what)) AdBreak.logSession(c);
-        else AdBreak.test(c, !"hide".equals(what));
+        else AdBreak.test(c, !"hide".equals(what), "half".equals(what));
     }
 }

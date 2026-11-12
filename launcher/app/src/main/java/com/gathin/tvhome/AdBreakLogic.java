@@ -195,28 +195,20 @@ final class AdBreakLogic {
         return phase == BEFORE || phase == HALF;
     }
 
-    // ---- one screen at a break: the ad-break screen, broadcast mode's half-time break, the half-time card, the hop ----
+    // ---- one screen at a break: the ad-break screen, the half-time card, the hop -------------------------------------
 
-    static final int AD = 1, HALF_BREAK = 2, HALF_CARD = 4, HOP = 8;
+    static final int AD = 1, HALF_CARD = 4, HOP = 8;
 
     /**
-     * Pure: which of the break's screens may show now, as a mask of AD, HALF_BREAK, HALF_CARD and HOP, so that they never
-     * stack. broadcast: broadcast mode on (HalfTimeBreak); halfTime: the game watched at half-time as it shows on screen;
-     * halfBreakUp: broadcast mode's break on screen; adUp: the ad-break screen on screen; quietBlocks: Match mode's quiet
-     * keeps other pop-ups back and this is not its game.
-     * <ul>
-     * <li>Broadcast mode on: half-time is its break's, exactly as before (the half-time card and the hop first, then the
-     * break); the ad-break screen never comes while that break is up nor at the game's half-time. It covers the other
-     * breaks: the build-up, any break in play, after full time.</li>
-     * <li>Broadcast mode off: the ad-break screen covers half-time too; while it is up the half-time card and the hop
-     * don't show (one up when it comes is closed).</li>
-     * <li>Match mode: its own game's screen always may come; any other only when its quiet is off.</li>
-     * </ul>
+     * Pure: which of the break's screens may show now, as a mask of AD, HALF_CARD and HOP, so that they never stack.
+     * adUp: the ad-break screen on screen; quietBlocks: Match mode's quiet keeps other pop-ups back and this is not its
+     * game. The ad-break screen covers every break, half-time's too (its own half-time widgets: the quiz, fun facts,
+     * prayer times); while it is up the half-time card and the hop don't show (one up when it comes is closed). Match
+     * mode: its own game's screen always may come; any other only when its quiet is off.
      */
-    static int breaks(boolean broadcast, boolean halfTime, boolean halfBreakUp, boolean adUp, boolean quietBlocks) {
+    static int breaks(boolean adUp, boolean quietBlocks) {
         int m = 0;
-        if (!quietBlocks && !halfBreakUp && !(broadcast && halfTime)) m |= AD;
-        if (broadcast && halfTime && !adUp) m |= HALF_BREAK;
+        if (!quietBlocks) m |= AD;
         if (!adUp) m |= HALF_CARD | HOP;
         return m;
     }

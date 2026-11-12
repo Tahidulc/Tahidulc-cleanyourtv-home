@@ -2184,8 +2184,6 @@ public class GoalWatchService extends Service {
                         else if (halfBefore && !g.halftime) {
                             // Hopped away at half time: its channel back on for the second half (HalfTimeHop).
                             if (HalfTimeHop.away(g.id)) HalfTimeHop.secondHalf(this, g);
-                            // The half-time break goes just before the second half shows (HalfTimeBreak).
-                            if (watched(g)) HalfTimeBreak.secondHalf(g.id, hold(g));
                             restart(g, true);
                         } else if (!halfBefore && g.halftime) {
                             if (MatchMode.isGame(this, g.id)) main.postDelayed(() -> MatchMode.event(this, g, "ht", null), hold(g));
@@ -2195,8 +2193,6 @@ public class GoalWatchService extends Service {
                             if (!homeInFront && watched(g) && HalfTimeHop.on(this)) {
                                 main.postDelayed(() -> HalfTimeHop.offer(this, g, new ArrayList<>(latest.values())), hold(g) + 15_000L);
                             }
-                            // Broadcast mode: Homefield's own break over the channel's half time (HalfTimeBreak).
-                            if (watched(g) && HalfTimeBreak.on(this)) HalfTimeBreak.halfTime(this, g, new ArrayList<>(latest.values()), hold(g));
                         }
                     }
                     if (primed && before != null && before == 0 && g.state == 2) {

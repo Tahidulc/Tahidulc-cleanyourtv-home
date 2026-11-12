@@ -65,7 +65,12 @@ final class Prayer {
 
     /** The mosque's page once a day (and Aladhan for any day it has no times for); off the main thread. */
     static void refresh(Context c) {
-        if (!on(c)) return;
+        refresh(c, false);
+    }
+
+    /** As refresh, always when asked (the ad-break screen's half-time widget), else only with the theme's prayer_times. */
+    static void refresh(Context c, boolean always) {
+        if (!always && !on(c)) return;
         SharedPreferences p = prefs(c);
         LocalDate today = LocalDate.now();
         String url = mosqueUrl(c);
