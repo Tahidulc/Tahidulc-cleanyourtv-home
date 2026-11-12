@@ -241,6 +241,18 @@ final class LogoMark extends View {
     }
 
     /** Whether it wants the channel's logo filled in under it now (LogoShape): see-through, in a look that can be. */
+    String lookName() {
+        return look.name();
+    }
+
+    boolean lookCanSeeThrough() {
+        return look.own();
+    }
+
+    boolean seeThroughSet() {
+        return seeThrough;
+    }
+
     boolean wantsPatch() {
         return seeThrough && look.own() && getVisibility() == VISIBLE;
     }

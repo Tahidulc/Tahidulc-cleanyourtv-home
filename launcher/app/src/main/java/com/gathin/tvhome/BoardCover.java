@@ -373,6 +373,8 @@ final class BoardCover {
     private static void toggleSeeThroughHere(Context c) {
         boolean on = !seeThroughNow(c);
         setHere(c, "see_through", on ? "1" : "0", () -> setLogoSeeThrough(c, on));
+        // On here: on for every channel too, unless one is switched off for itself.
+        if (on && !logoSeeThrough(c)) setLogoSeeThrough(c, true);
         if (mark != null) {
             mark.seeThrough(seeThroughNow(c));
             if (!seeThroughNow(c)) unfill();
@@ -2235,9 +2237,27 @@ final class BoardCover {
 
     /** The fill looked at again soon, if it is wanted (the loop keeps itself going while it is). */
     private static void patchSoon() {
-        if (patchLoop) return;
+        // Running and heard from lately: nothing to do. Gone quiet (a picture asked for and never answered): started again.
+        if (patchLoop && SystemClock.uptimeMillis() - patchRanAt < 5_000L) return;
+        if (patchLoop) seeLog("see-through had gone quiet: started again");
         patchLoop = true;
+        main().removeCallbacks(patchRun);
         main().post(patchRun);
+    }
+
+    /** When the see-through loop last ran, and since when it has been waiting for the same thing (for the log). */
+    private static long patchRanAt, waitingSince, beatAt;
+    private static String waitingFor = "";
+
+    /** A wait, said to the log only when it has gone on for three seconds. */
+    private static void waiting(String what) {
+        long now = SystemClock.uptimeMillis();
+        if (!what.equals(waitingFor)) {
+            waitingFor = what;
+            waitingSince = now;
+        } else if (now - waitingSince > 3_000L) {
+            seeLog("waiting: " + what);
+        }
     }
 
     /**
@@ -2298,6 +2318,7 @@ final class BoardCover {
      * such pictures cannot be had. Stops when not wanted.
      */
     private static void patchNow() {
+        patchRanAt = SystemClock.uptimeMillis();
         Context c = app;
         if (c == null || mark == null || logoWin == null || fill == null || !mark.wantsPatch()) {
             unfill();
@@ -2317,11 +2338,14 @@ final class BoardCover {
         // About three a second once the logo is known (room left between for ChannelSight's own pictures), two while learning.
         long every = was != null && was.known() ? Math.max(400L, ScreenShots.gap() + 50L) : 500L, wait = every - (now - patchAt);
         if (veiled || wait > 0 || !ScreenShots.ready()) {
+            if (veiled) waiting("the cover stands aside (ChannelSight or the line-ups)");
+            else if (wait <= 0) waiting("pictures not ready (" + ScreenShots.state() + ")");
             main().postDelayed(patchRun, wait > 0 ? Math.min(wait, 150L) : 100L);
             return;
         }
         WindowManager.LayoutParams lp = (WindowManager.LayoutParams) logoWin.getLayoutParams();
         if (lp == null || lp.width < 4 * edge + 8 || lp.height < 4 * edge + 8 || sw <= 0 || sh <= 0) {
+            waiting("the cover's window not laid out yet");
             main().postDelayed(patchRun, 500L);
             return;
         }
@@ -3112,6 +3136,15 @@ final class BoardCover {
             move(mark, o);
         }
         setDim(dims(changedAt, now));
+        Context hc = app;
+        if (mark != null && hc != null && mark.wantsPatch()) patchSoon();
+        if (mark != null && hc != null && now - beatAt >= 60_000L) {
+            beatAt = now;
+            seeLog("cover: " + mark.lookName() + (mark.lookCanSeeThrough() ? "" : " (a look that cannot be see-through)")
+                    + ", see-through " + (seeThroughNow(hc) ? "on" : "off") + " here (all channels " + (logoSeeThrough(hc) ? "on" : "off")
+                    + "), the cover's own " + (mark.seeThroughSet() ? "on" : "off") + ", wanted " + mark.wantsPatch() + ", loop "
+                    + patchLoop + ", ran " + (patchRanAt == 0 ? "never" : (SystemClock.uptimeMillis() - patchRanAt) / 1000 + " s ago"));
+        }
     }
 
     private static void move(View v, int[] o) {
