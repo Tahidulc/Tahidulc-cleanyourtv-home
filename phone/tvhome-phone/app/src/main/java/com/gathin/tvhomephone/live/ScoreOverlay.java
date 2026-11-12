@@ -75,6 +75,8 @@ final class ScoreOverlay implements ScoreBoard.Source {
     private String gameId = "";
     /** The channel's own logo, and Homefield's over it. */
     private BugFinder.Box logo;
+    /** See-through found the logo itself (on this channel): the finder's box no longer moves the cover off it. */
+    private boolean logoLearned;
     private final LogoCover cover;
     /** See-through's fill: the channel's logo filled in under the cover (LogoShape), where the logo is in the picture. */
     private final LogoFill fill;
@@ -405,6 +407,7 @@ final class ScoreOverlay implements ScoreBoard.Source {
         readBox = null;
         lastRead = "";
         logo = null;
+        logoLearned = false;
         breaks = null;
         endBreak(true);
         finder = null;
@@ -514,6 +517,31 @@ final class ScoreOverlay implements ScoreBoard.Source {
         return a.getString(R.string.live53_see_learning, Math.min(at.learnt(), LogoShape.ENOUGH), LogoShape.ENOUGH);
     }
 
+    /**
+     * The cover moved onto the channel's logo where see-through found it not all under the cover (the box found over the
+     * picture set a little off it): over it and a little round it, for this channel (its own place, when it has one).
+     * Not while it is being moved by hand. Space: the stream's pixels (vp).
+     */
+    private void onTheLogo(int[] box, int[] vp, int bx, int by, int bw, int bh) {
+        if (box == null || editing || carrying || vp[0] <= 0 || vp[1] <= 0) return;
+        logoLearned = true;
+        int slack = Math.max(2, Math.round(3f * vp[1] / 1080f));
+        if (box[0] >= bx - slack && box[1] >= by - slack && box[2] <= bx + bw + slack && box[3] <= by + bh + slack) return;
+        float l = box[0] / (float) vp[0], t = box[1] / (float) vp[1], r = box[2] / (float) vp[0], b = box[3] / (float) vp[1];
+        BoardPlace own = mine();
+        if (own != null && own.logo() && mineKey != null) {
+            float pad = (b - t) * 0.12f, padX = pad * vp[1] / (float) vp[0];
+            own.lw = Math.max(BoardPlace.MIN_W, Math.min(BoardPlace.MAX_W, r - l + 2 * padX));
+            own.lh = Math.max(BoardPlace.MIN_LH, Math.min(BoardPlace.MAX_LH, b - t + 2 * pad));
+            own.lx = Math.max(0f, Math.min(1f - own.lw, l - padX));
+            own.ly = Math.max(0f, Math.min(1f - own.lh, t - pad));
+            BoardPlace.put(a, mineKey, own);
+        } else {
+            logo = new BugFinder.Box(l, t, r, b, false);
+        }
+        place();
+    }
+
     /** No fill under the cover: it stands on its plate. */
     private void unfill() {
         fill.clear();
@@ -552,8 +580,10 @@ final class ScoreOverlay implements ScoreBoard.Source {
         float kx = vp[0] / pfw, ky = vp[1] / pfh;
         int bx = Math.round((cp.leftMargin - pfx) * kx), by = Math.round((cp.topMargin - pfy) * ky);
         int bw = Math.round(cp.width * kx), bh = Math.round(cp.height * ky);
-        int m = Math.max(8, Math.round(LogoShape.MARGIN * vp[1] / 1080f));
-        int x0 = Math.max(0, bx - m), y0 = Math.max(0, by - m), x1 = Math.min(vp[0], bx + bw + m), y1 = Math.min(vp[1], by + bh + m);
+        // Wide enough round the cover to find the logo when the cover is a little off it: across, a good part of its
+        // width; up and down, its own height and more.
+        int m = Math.max(8, Math.round(LogoShape.MARGIN * vp[1] / 1080f)), mx = Math.max(m, Math.round(0.4f * bw)), my = Math.max(m, bh + 2 * m);
+        int x0 = Math.max(0, bx - mx), y0 = Math.max(0, by - my), x1 = Math.min(vp[0], bx + bw + mx), y1 = Math.min(vp[1], by + bh + my);
         if (x1 - x0 < 8 || y1 - y0 < 8) {
             unfill();
             h.postDelayed(patchRun, 500L);
@@ -619,6 +649,7 @@ final class ScoreOverlay implements ScoreBoard.Source {
                             }
                             cover.filled(true);
                         }
+                        onTheLogo(at.logoBox(), vp, bx, by, bw, bh);
                     }
                     h.postDelayed(patchRun, 10L);
                 });
@@ -1216,7 +1247,7 @@ final class ScoreOverlay implements ScoreBoard.Source {
                 }
                 finder = null;
                 // Kept still: the mark stays over the logo where it was first found.
-                if ((mark != null || logo != null) && !(ScoreBoard.still(a) && logo != null)) {
+                if ((mark != null || logo != null) && !(ScoreBoard.still(a) && logo != null) && !logoLearned) {
                     logo = mark;
                     place();
                 }

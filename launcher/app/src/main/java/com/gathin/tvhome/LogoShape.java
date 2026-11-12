@@ -205,6 +205,16 @@ final class LogoShape {
             return m != null && m.state == Model.BLOCK;
         }
 
+        /**
+         * Where the logo was found {l, t, r, b} in the space's pixels (r and b just past it), once learned (a block's too);
+         * null before. A cover not over it all is moved onto it.
+         */
+        int[] logoBox() {
+            Model m = model;
+            if (m == null || m.state == Model.NONE || m.bounds == null) return null;
+            return new int[]{x + m.bounds[0], y + m.bounds[1], x + m.bounds[2], y + m.bounds[3]};
+        }
+
         /** Pictures kept towards learning it (of ENOUGH, the first time). */
         int learnt() {
             return learner.count();
@@ -385,8 +395,12 @@ final class LogoShape {
         if (nf < 3 || w <= 3 || h <= 3) return null;
         int n = w * h;
         for (int[] f : frames) if (f == null || f.length != n) return null;
-        int reach = Math.max(2, Math.round(REACH * k));
-        int pl = clamp(bl - reach, 0, w), pt = clamp(bt - reach, 0, h), pr = clamp(br + reach, pl, w), pb = clamp(bb + reach, pt, h);
+        // Looked for over all the pictures but a ring round their edge (the picture round it), and at least over the
+        // cover and a little round it: a cover set a little off the logo (or a broadcaster's other channel's place) still
+        // finds it, and is then moved onto it.
+        int reach = Math.max(2, Math.round(REACH * k)), ring = Math.max(6, Math.round(12 * k));
+        int pl = Math.min(clamp(bl - reach, 0, w), Math.min(ring, w)), pt = Math.min(clamp(bt - reach, 0, h), Math.min(ring, h));
+        int pr = Math.max(clamp(br + reach, pl, w), Math.max(pl, w - ring)), pb = Math.max(clamp(bb + reach, pt, h), Math.max(pt, h - ring));
         if (pr - pl < 2 || pb - pt < 2) return null;
         boolean[] place = new boolean[n];
         for (int y = pt; y < pb; y++) for (int x = pl; x < pr; x++) place[y * w + x] = true;
@@ -426,6 +440,7 @@ final class LogoShape {
             for (int i = 0; i < n; i++) logo[i] = ex[i] && ((fit.effect[i] >= 6f && fit.sure[i] >= 4f) || fit.t[i] <= 0.6f);
             dropSpecks(logo, w, h, 6);
         }
+        logo = mainGroup(logo, w, h, Math.max(3, Math.round(4 * k)), Math.max(12, Math.round(20 * k)));
         if (count(logo) < few) return new Model(w, h, new boolean[n], ones(n), new float[3][n], Model.NONE);
         // A stray pixel (not fitting a logo at all) takes what its neighbours let through; what it adds is worked out again
         // for that. Where it still cannot be worked back (it would add more light than there
@@ -567,6 +582,62 @@ final class LogoShape {
             out.effect[i] = eff;
             out.sure[i] = sure;
         }
+        return out;
+    }
+
+    /**
+     * Pure: the logo's own pixels: those of the biggest group (pixels within join of each other counted together, so a
+     * logo's letters are one), and of any other group whose box comes within near of its box; the rest let go.
+     */
+    static boolean[] mainGroup(boolean[] m, int w, int h, int join, int near) {
+        int n = w * h;
+        boolean[] grown = dilate(m, w, h, join);
+        int[] label = new int[n];
+        List<int[]> boxes = new ArrayList<>();
+        List<Integer> sizes = new ArrayList<>();
+        int[] stack = new int[n];
+        for (int s = 0; s < n; s++) {
+            if (!grown[s] || label[s] != 0) continue;
+            int id = boxes.size() + 1, sp = 0, size = 0;
+            int[] box = {w, h, -1, -1};
+            stack[sp++] = s;
+            label[s] = id;
+            while (sp > 0) {
+                int i = stack[--sp], x = i % w, y = i / w;
+                if (m[i]) {
+                    size++;
+                    box[0] = Math.min(box[0], x);
+                    box[1] = Math.min(box[1], y);
+                    box[2] = Math.max(box[2], x + 1);
+                    box[3] = Math.max(box[3], y + 1);
+                }
+                for (int dy = -1; dy <= 1; dy++) {
+                    for (int dx = -1; dx <= 1; dx++) {
+                        int xx = x + dx, yy = y + dy;
+                        if (xx < 0 || yy < 0 || xx >= w || yy >= h) continue;
+                        int j = yy * w + xx;
+                        if (grown[j] && label[j] == 0) {
+                            label[j] = id;
+                            stack[sp++] = j;
+                        }
+                    }
+                }
+            }
+            boxes.add(box);
+            sizes.add(size);
+        }
+        if (boxes.isEmpty()) return m.clone();
+        int best = 0;
+        for (int g = 1; g < sizes.size(); g++) if (sizes.get(g) > sizes.get(best)) best = g;
+        int[] bb = boxes.get(best);
+        boolean[] keep = new boolean[boxes.size() + 1];
+        for (int g = 0; g < boxes.size(); g++) {
+            int[] b = boxes.get(g);
+            if (sizes.get(g) == 0) continue;
+            keep[g + 1] = b[0] < bb[2] + near && b[2] > bb[0] - near && b[1] < bb[3] + near && b[3] > bb[1] - near;
+        }
+        boolean[] out = new boolean[n];
+        for (int i = 0; i < n; i++) out[i] = m[i] && keep[label[i]];
         return out;
     }
 

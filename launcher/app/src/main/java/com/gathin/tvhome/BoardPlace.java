@@ -243,6 +243,20 @@ final class BoardPlace {
         return "s." + InStep.base(channel);
     }
 
+    /** Whether see-through has found where this channel's logo is (its pictures): the cover then stays where it found it. */
+    static boolean logoFound(Context c, String channel) {
+        return prefs(c).getBoolean("f." + InStep.base(channel), false);
+    }
+
+    static void setLogoFound(Context c, String channel) {
+        if (!logoFound(c, channel)) prefs(c).edit().putBoolean("f." + InStep.base(channel), true).apply();
+    }
+
+    /** Kept for this channel alone, as set by hand (its broadcaster's and the other channels' left as they are). */
+    static void putOwn(Context c, String channel, BoardPlace b) {
+        prefs(c).edit().putString(key(channel), b.encode()).apply();
+    }
+
     /** Whether the channel's places were set by hand (Move and resize): what is seen on it never moves them then. */
     static boolean setByHand(Context c, String channel) {
         return prefs(c).contains(key(channel));

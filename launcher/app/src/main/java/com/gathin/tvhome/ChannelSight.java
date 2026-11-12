@@ -240,7 +240,9 @@ final class ChannelSight {
             if (!BoardPlace.setByHand(app, name)) {
                 android.util.DisplayMetrics dm = app.getResources().getDisplayMetrics();
                 float sw = Math.max(dm.widthPixels, dm.heightPixels), sh = Math.min(dm.widthPixels, dm.heightPixels);
-                BoardPlace p = BoardPlace.over(BoardPlace.get(app, name), arr(box), logo == null ? null : arr(logo),
+                // The logo's place left alone where see-through has found the logo itself.
+                boolean found = BoardPlace.logoFound(app, name);
+                BoardPlace p = BoardPlace.over(BoardPlace.get(app, name), arr(box), logo == null || found ? null : arr(logo),
                         BoardCover.style(app).tall, sw, sh);
                 BoardPlace.putSeen(app, name, p);
             }

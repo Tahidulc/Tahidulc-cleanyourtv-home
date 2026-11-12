@@ -2254,6 +2254,27 @@ final class BoardCover {
         return "learning the logo, " + Math.min(at.learnt(), LogoShape.ENOUGH) + " of " + LogoShape.ENOUGH;
     }
 
+    /**
+     * The cover moved onto the channel's logo where see-through found it not all under the cover (set a little off it,
+     * or a broadcaster's other channel's place): over it and a little round it, kept for this channel (as set by hand
+     * when it was, else as seen). Not while it is being moved by hand.
+     */
+    private static void onTheLogo(Context c, int[] logo, int bx, int by, int bw, int bh) {
+        if (logo == null || adjusting || sw <= 0 || sh <= 0) return;
+        // Found: what ChannelSight sees on this channel no longer moves the cover off it.
+        BoardPlace.setLogoFound(c, InStep.channel(c));
+        int slack = Math.max(2, edge);
+        if (logo[0] >= bx - slack && logo[1] >= by - slack && logo[2] <= bx + bw + slack && logo[3] <= by + bh + slack) return;
+        String channel = InStep.channel(c);
+        BoardPlace was = place != null ? place : BoardPlace.get(c, channel);
+        BoardPlace p = BoardPlace.over(was, null, new float[]{logo[0] / (float) sw, logo[1] / (float) sh, logo[2] / (float) sw,
+                logo[3] / (float) sh}, 1f, sw, sh);
+        if (BoardPlace.setByHand(c, channel)) BoardPlace.putOwn(c, channel, p);
+        else BoardPlace.putSeen(c, channel, p);
+        AlertLog.note(c, "see-through found the channel's logo off the cover: the cover moved onto it");
+        sightChanged();
+    }
+
     /** No fill under the cover: it stands on its plate. */
     private static void unfill() {
         if (fill != null) fill.clear();
@@ -2296,8 +2317,10 @@ final class BoardCover {
         // The cover's own place on the screen (its window less the room for its edge and the burn-in step): the logo is
         // under it. Round it, room for what the logo is told from (its softening).
         int bx = lp.x + 2 * edge, by = lp.y + 2 * edge, bw = lp.width - 4 * edge, bh = lp.height - 4 * edge;
-        int m = Math.max(8, Math.round(LogoShape.MARGIN * sh / 1080f));
-        int x0 = Math.max(0, bx - m), y0 = Math.max(0, by - m), x1 = Math.min(sw, bx + bw + m), y1 = Math.min(sh, by + bh + m);
+        // Wide enough round the cover to find the logo when the cover is a little off it (a broadcaster's other channel's
+        // place): across, a good part of its width; up and down, its own height and more.
+        int m = Math.max(8, Math.round(LogoShape.MARGIN * sh / 1080f)), mx = Math.max(m, Math.round(0.4f * bw)), my = Math.max(m, bh + 2 * m);
+        int x0 = Math.max(0, bx - mx), y0 = Math.max(0, by - my), x1 = Math.min(sw, bx + bw + mx), y1 = Math.min(sh, by + bh + my);
         if (x1 - x0 < 8 || y1 - y0 < 8) {
             main().postDelayed(patchRun, 500L);
             return;
@@ -2348,6 +2371,7 @@ final class BoardCover {
                             else fill.clear();
                             mark.filled(true);
                         }
+                        onTheLogo(c, at.logoBox(), bx, by, bw, bh);
                     }
                     main().postDelayed(patchRun, 30L);
                 });
