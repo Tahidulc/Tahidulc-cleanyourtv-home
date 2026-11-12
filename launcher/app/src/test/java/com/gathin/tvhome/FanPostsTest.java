@@ -95,6 +95,16 @@ public class FanPostsTest {
         assertEquals(AdBreakLogic.time("2026-11-12T14:03:22Z"), got.get(0).at);
     }
 
+    @Test public void onlyPostsAboutTheGameNotTheCountrysNews() {
+        assertFalse(FanPosts.about("UK: Senior doctors in England put strike on hold after union talks", "England", "Croatia"));
+        assertFalse(FanPosts.about("It is very late in the year for butterflies to still be out", "England", "Croatia"));
+        assertTrue(FanPosts.about("England v Croatia tonight, cannot wait", "England", "Croatia"));
+        assertTrue(FanPosts.about("England need a goal early tonight to settle the nerves", "England", "Croatia"));
+        assertTrue(FanPosts.about("Man Utd to win this one comfortably, three points", "Manchester United", "Everton"));
+        assertTrue(FanPosts.about("Big day #MUFC let's go", "Manchester United", "Everton"));
+        assertFalse(FanPosts.about("Manchester United shares rose on the stock market today", "Manchester United", "Everton"));
+    }
+
     @Test public void clubsGoToTheirSubredditsElseRSoccer() {
         assertEquals("reddevils", FanPosts.sub("Manchester United"));
         assertEquals("Everton", FanPosts.sub("Everton"));

@@ -669,7 +669,8 @@ final class AdBreak {
         @Override public void run() {
             if (!isShowing() || shownFor == null) return;
             long left = Math.max(0, shownFor.kickoff - System.currentTimeMillis()) / 1000;
-            countdown.setText(String.format(Locale.UK, "%d:%02d", left / 60, left % 60));
+            countdown.setText(left >= 3600 ? String.format(Locale.UK, "%d:%02d:%02d", left / 3600, left / 60 % 60, left % 60)
+                    : String.format(Locale.UK, "%d:%02d", left / 60, left % 60));
             main.postDelayed(this, 1_000L - System.currentTimeMillis() % 1000);
         }
     };
@@ -1014,7 +1015,8 @@ final class AdBreak {
             View gap = new View(c);
             b.addView(gap, new LinearLayout.LayoutParams(1, 0, 1f));
             TextView pos = text(c, (at + 1) + " / " + list.size(), 13.5f, 0xB3FFFFFF, Typeface.create("sans-serif-condensed", Typeface.BOLD));
-            b.addView(pos);
+            pos.setGravity(Gravity.CENTER);
+            b.addView(pos, new LinearLayout.LayoutParams(-1, -2));
             band.addView(b, new FrameLayout.LayoutParams(-1, -1));
             for (int i = stage.getChildCount() - 1; i >= 0; i--) if (stage.getChildAt(i) != wipe) stage.removeViewAt(i);
             if (w.clipUrl != null) {

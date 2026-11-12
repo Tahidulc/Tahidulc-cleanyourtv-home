@@ -205,6 +205,40 @@ final class FanPosts {
         return m.find() ? m.group(1) : "";
     }
 
+    /** Words that make a post naming a club about its football (not the country's news, not another sport). */
+    private static final String[] FOOTBALL = {"match", "game", "goal", "goals", "kick-off", "kick off", "kickoff", "ko", "squad", "line-up",
+            "lineup", "line up", "starting xi", "xi", "bench", "manager", "boss", "keeper", "striker", "midfield", "defence", "defense",
+            "win", "draw", "score", "scored", "fans", "stadium", "league", "cup", "tonight", "pitch", "referee", "ref", "penalty",
+            "nations league", "world cup", "euros", "qualifier", "fixture", "football", "footy", "three points", "clean sheet", "derby",
+            "home win", "away win", "come on", "c'mon", "up the", "come on you", "coys", "ggmu", "utfr", "ynwa", "coyb", "cfc", "lfc", "mufc"};
+
+    /** Pure: whether a post is about the game: names a club (or its tag) and the other club or the game's football. */
+    static boolean about(String text, String home, String away) {
+        String t = " " + text.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9'#\\- ]", " ") + " ";
+        boolean h = names(t, home), a = names(t, away);
+        if (!h && !a) return false;
+        // Both clubs named, or a club's own fans' tag (#MUFC): about the game.
+        if (h && a || tagged(t, home) || tagged(t, away)) return true;
+        for (String w : FOOTBALL) if (t.contains(" " + w + " ")) return true;
+        return false;
+    }
+
+    private static boolean tagged(String t, String club) {
+        String tag = club == null ? null : TAGS.get(club.toLowerCase(Locale.ROOT));
+        return tag != null && t.contains("#" + tag.toLowerCase(Locale.ROOT));
+    }
+
+    private static boolean names(String t, String club) {
+        if (club == null || club.isEmpty()) return false;
+        String c = club.toLowerCase(Locale.ROOT);
+        if (t.contains(" " + c + " ") || t.contains(" " + c + "'s ")) return true;
+        String tag = TAGS.get(c);
+        if (tag != null && t.contains("#" + tag.toLowerCase(Locale.ROOT))) return true;
+        // "Man United" for "Manchester United", "Spurs", "Villa": the short names fans use.
+        String shortName = c.replace("manchester ", "man ").replace(" hotspur", "").replace(" united", " utd");
+        return !shortName.equals(c) && t.contains(" " + shortName + " ");
+    }
+
     // ---- fetching (off the main thread) -----------------------------------------------------------------------------
 
     /** The newest posts about the game from both sites, newest first, each once; empty when neither can be read. */
@@ -214,9 +248,11 @@ final class FanPosts {
         for (String club : new String[]{homeName, awayName}) {
             if (club == null || club.isEmpty()) continue;
             String tag = TAGS.get(club.toLowerCase(Locale.ROOT).trim());
-            for (String q : tag == null ? new String[]{"\"" + club + "\""} : new String[]{"\"" + club + "\"", "#" + tag}) {
+            String other = club.equals(homeName) ? awayName : homeName;
+            for (String q : tag == null ? new String[]{"\"" + club + "\" \"" + other + "\"", "\"" + club + "\" football"}
+                    : new String[]{"\"" + club + "\" \"" + other + "\"", "#" + tag}) {
                 String body = get(blueskyUrl(q));
-                if (body != null) for (Post p : bluesky(body)) if (seen.add(p.key)) all.add(p);
+                if (body != null) for (Post p : bluesky(body)) if (about(p.text, homeName, awayName) && seen.add(p.key)) all.add(p);
             }
             String sub = sub(club);
             String list = get("https://www.reddit.com/r/" + sub + "/new/.rss");
