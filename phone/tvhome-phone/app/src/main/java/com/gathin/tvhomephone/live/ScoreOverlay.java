@@ -51,6 +51,15 @@ final class ScoreOverlay implements ScoreBoard.Source {
 
         /** The channel's game when it kicks off within the hour (for the ad-break screen), else null; looked up as needed. */
         default Game soonGame() { return game(); }
+
+        /** The ad-break screen's session on the channel playing (the listings', else a game found), null for none yet. */
+        default AdBreak.Session adSession() { return null; }
+
+        /** The programme on now in the channel's own guide, null without one. */
+        default String programmeNow() { return null; }
+
+        /** Whether the channel playing may be showing a match (a sports channel, a fixture in its guide). */
+        default boolean sportsNow() { return false; }
     }
 
     /** Whether the player's scoreboard is up (the one over other apps keeps out of its way). */
@@ -1228,11 +1237,14 @@ final class ScoreOverlay implements ScoreBoard.Source {
         h.removeCallbacks(look);
         boolean scoreboard = board.football(),
                 logos = lookHere() != LogoCover.Look.OFF || (ScoreBoard.broadcast(a) && board.football());
+        // The ad-break screen: its session's logo learnt as soon as there is one (so the first break isn't missed), and
+        // on a sports channel without a game the broadcaster's scoreboard looked for (a match on: a general session).
+        boolean adverts = ScoreBoard.adBreak(a) && (host.adSession() != null || host.sportsNow());
         if (!started || inPip || sampler == null) return;
         // F1's tower read for its lap, on an F1 channel.
         // The channel's scoreboard (or F1's tower) read: the reads keep themselves going once started.
         if (ScoreBoard.reads(a) && !screenLoop()) readSoon(1000);
-        if (!scoreboard && !logos) {
+        if (!scoreboard && !logos && !adverts) {
             h.postDelayed(look, RETRY_MS);
             return;
         }
@@ -1247,6 +1259,8 @@ final class ScoreOverlay implements ScoreBoard.Source {
             if (b != null) f.add(FrameSampler.grey(b, 0, 0, FIND_W, FIND_H));
             boolean done = f.frames() >= BugFinder.ENOUGH;
             BugFinder.Box found = done && scoreboard ? f.find() : null;
+            // Without a game on the board: the broadcaster's scoreboard only looked for, never placed over.
+            BugFinder.Box seenBoard = done && !scoreboard && adverts ? f.find() : null;
             boolean watchAdverts = ScoreBoard.broadcast(a) || ScoreBoard.adBreak(a);
             BugFinder.Box mark = done && (logos || watchAdverts) ? f.logo(found) : null;
             boolean[] outline = mark != null && watchAdverts ? f.logoMask(mark) : null;
@@ -1257,6 +1271,11 @@ final class ScoreOverlay implements ScoreBoard.Source {
                     return;
                 }
                 finder = null;
+                // A scoreboard on the picture: a match is on this channel (the ad-break screen's general session).
+                if (found != null || seenBoard != null) {
+                    boardSeenAt = System.currentTimeMillis();
+                    boardSeenOn = chKey();
+                }
                 // Kept still: the mark stays over the logo where it was first found.
                 if ((mark != null || logo != null) && !(ScoreBoard.still(a) && logo != null) && !logoLearned) {
                     logo = mark;
@@ -1562,13 +1581,14 @@ final class ScoreOverlay implements ScoreBoard.Source {
                     boolean on = w.add(p);
                     long now = System.currentTimeMillis();
                     if (!on) adBreakHidden = false;
-                    // Before kick-off: the ad-break screen (the channel's game within the hour); else broadcast mode's break.
-                    Game soon = ScoreBoard.adBreak(a) ? host.soonGame() : null;
-                    boolean pre = AdBreak.soon(soon, now);
-                    if (AdBreak.wanted(ScoreBoard.adBreak(a), on, soon, now) && adBreak == null && breakScreen == null && !adBreakHidden) startAdBreak(soon, false);
-                    else if (adBreak != null && !manualAdBreak && (!on || !pre)) endAdBreak();
+                    // Inside the session's time (the listings' programme, else the game's, else a match's scoreboard
+                    // seen): the ad-break screen; else broadcast mode's break.
+                    AdBreak.Session sn = ScoreBoard.adBreak(a) ? session() : null;
+                    boolean ours = AdBreak.eligible(sn, now);
+                    if (AdBreak.wanted(ScoreBoard.adBreak(a), on, sn, now) && adBreak == null && breakScreen == null && !adBreakHidden) startAdBreak(sn, false);
+                    else if (adBreak != null && !manualAdBreak && (!on || !ours)) endAdBreak();
                     Game g = ScreenTime.game(host.game(), now);
-                    if (ScoreBoard.broadcast(a) && !pre && on && breakScreen == null && adBreak == null && BreakWatch.allowed(g)) startBreak(false);
+                    if (ScoreBoard.broadcast(a) && !ours && on && breakScreen == null && adBreak == null && BreakWatch.allowed(g)) startBreak(false);
                     else if (!on && breakScreen != null && !manualBreak) endBreak(false);
                 }
                 h.postDelayed(checkBreak, 2000);
@@ -1621,11 +1641,31 @@ final class ScoreOverlay implements ScoreBoard.Source {
         return breakScreen != null || adBreak != null;
     }
 
-    // ---- the ad-break screen before kick-off --------------------------------------------------------------------------
+    // ---- the ad-break screen over a match's adverts -------------------------------------------------------------------
+
+    /** The broadcaster's scoreboard last seen on the picture, and on which channel (a general session's sign). */
+    private long boardSeenAt;
+    private String boardSeenOn;
+
+    /** The ad-break screen's session now: the player's (listings, a game found), else a general one from the scoreboard seen. */
+    private AdBreak.Session session() {
+        AdBreak.Session s = host.adSession();
+        if (s != null) return s;
+        String key = chKey();
+        if (boardSeenAt <= 0 || key == null || !key.equals(boardSeenOn)) return null;
+        return AdBreak.general(host.programmeNow(), boardSeenAt);
+    }
 
     /** Up over the adverts for this game (manual: from the options, to see it; it goes after two minutes or Hide). */
     void startAdBreak(Game g, boolean manual) {
-        if (adBreak != null || !started || g == null || inPip) return;
+        startAdBreak(AdBreak.fromGame(g, null, System.currentTimeMillis()), manual);
+    }
+
+    /** Up over the adverts for this session: its game's build-up, half time or full time; a general one without a game. */
+    void startAdBreak(AdBreak.Session sn, boolean manual) {
+        if (adBreak != null || !started || sn == null || inPip) return;
+        Game g = sn.game;
+        String title = sn.title;
         manualAdBreak = manual;
         Context app = a.getApplicationContext();
         AdBreakView view = new AdBreakView(a, new AdBreakView.Host() {
@@ -1642,9 +1682,15 @@ final class ScoreOverlay implements ScoreBoard.Source {
         adBreak = view;
         root.addView(view, Math.min(4, root.getChildCount()), new FrameLayout.LayoutParams(-1, -1));
         App.io.execute(() -> {
-            AdBreakData.Content k = AdBreakData.load(app, g);
+            AdBreakData.Content k = g != null ? AdBreakData.load(app, g) : AdBreakData.general(app, title);
             App.main.post(() -> {
                 if (adBreak != view) return;
+                // Nothing real to show (nothing could be read): away again, and not tried again until the next break.
+                if (!AdBreakView.worth(k)) {
+                    adBreakHidden = true;
+                    endAdBreak();
+                    return;
+                }
                 boolean sideways = a.getResources().getConfiguration().orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE;
                 android.graphics.Rect pic = new android.graphics.Rect(Math.round(pfx), Math.round(pfy), Math.round(pfx + pfw), Math.round(pfy + pfh));
                 view.post(() -> {
@@ -1679,6 +1725,11 @@ final class ScoreOverlay implements ScoreBoard.Source {
     /** Options: the ad-break screen now, for the channel's game or else the next real game today. */
     void tryAdBreak() {
         if (adBreak != null) return;
+        AdBreak.Session sn = session();
+        if (sn != null) {
+            startAdBreak(sn, true);
+            return;
+        }
         Game g = host.soonGame();
         if (g == null) g = host.game();
         if (g != null) {

@@ -4,6 +4,7 @@ import android.content.Context;
 import android.graphics.Bitmap;
 
 import com.gathin.tvhomephone.Net;
+import com.gathin.tvhomephone.sports.Clubs;
 import com.gathin.tvhomephone.sports.Competitions;
 import com.gathin.tvhomephone.sports.Espn;
 import com.gathin.tvhomephone.sports.F1;
@@ -20,10 +21,11 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * Everything the pre-match ad-break screen shows (AdBreakView), read off the main thread from what the app already
- * reads: ESPN's summary for the game, the competition's table, each club's games in this competition, today's games,
- * F1's weekend, BBC Sport's club news, the players' photos, the last meeting's video and the fans' posts. A part that
- * can't be read is left empty, and its widget is not shown: nothing is made up.
+ * Everything the ad-break screen shows (AdBreakView), read off the main thread from what the app already reads: ESPN's
+ * summary for the game, the competition's table, each club's games in this competition, today's games, F1's weekend,
+ * BBC Sport's club news, the players' photos, the last meeting's video and the fans' posts. Without a game (a general
+ * session: the broadcaster's scoreboard seen, the game not known) only the day's: the scores now, later today and
+ * football's headlines. A part that can't be read is left empty, and its widget is not shown: nothing is made up.
  */
 final class AdBreakData {
     private AdBreakData() {}
@@ -56,6 +58,69 @@ final class AdBreakData {
         /** The elevens, when they are out (the line-up card). */
         BoardLineups.Data lineups;
         List<FanPosts.Post> posts = new ArrayList<>();
+        /** A general session: no game, the programme's title (from the listings, else ""). */
+        boolean general;
+        String programme = "";
+    }
+
+    /** BBC Sport's football headlines: a general session's. */
+    static final String FOOTBALL_NEWS = "https://feeds.bbci.co.uk/sport/football/rss.xml";
+
+    /**
+     * A general session's (a match on, its game not known): the games on now (followed clubs' first), later today
+     * (games and F1) and football's headlines. Off the main thread.
+     */
+    static Content general(Context c, String title) {
+        Content k = new Content();
+        k.general = true;
+        k.programme = title == null ? "" : title.trim();
+        long now = System.currentTimeMillis();
+        java.util.Set<String> mine = java.util.Collections.emptySet();
+        try {
+            mine = Clubs.starred(c);
+        } catch (RuntimeException ignored) {
+            // no clubs followed
+        }
+        try {
+            List<Game> on = new ArrayList<>(), later = new ArrayList<>();
+            for (Game x : OnAir.today(60_000L)) {
+                if (x.id == null) continue;
+                if (x.state == Game.LIVE) on.add(x);
+                else if (x.state == Game.PRE && x.kickoff > now && sameDay(x.kickoff, now)) later.add(x);
+            }
+            k.elsewhere = AdBreak.mineFirst(on, mine, GENERAL_SCORES);
+            later.sort((a, b) -> Long.compare(a.kickoff, b.kickoff));
+            k.later = new ArrayList<>(later.subList(0, Math.min(3, later.size())));
+        } catch (RuntimeException ignored) {
+            // no games this time
+        }
+        f1Today(k, now);
+        try {
+            List<BreakingNews.Story> st = BreakingNews.parse(Net.get(FOOTBALL_NEWS));
+            for (int i = 0; i < Math.min(GENERAL_HEADLINES, st.size()); i++) k.headlines.add(new String[]{"", st.get(i).title});
+        } catch (Exception ignored) {
+            // the headlines another time
+        }
+        return k;
+    }
+
+    /** A general session's most games on now, and headlines (three a widget). */
+    static final int GENERAL_SCORES = 6, GENERAL_HEADLINES = 6;
+
+    /** F1's sessions still to come today, into k.f1Today. */
+    private static void f1Today(Content k, long now) {
+        try {
+            F1.Weekend w = F1.next();
+            if (w != null) {
+                for (Object[] s : w.sessions) {
+                    long at = (Long) s[1];
+                    if (at > now && sameDay(at, now)) k.f1Today.add(new String[]{(String) s[0], hm(at)});
+                }
+                if (w.race > now && sameDay(w.race, now)) k.f1Today.add(new String[]{"Race", hm(w.race)});
+            }
+        } catch (RuntimeException ignored) {
+            // no F1 today
+        }
     }
 
     /** All of it, for this game. Off the main thread. */
@@ -115,6 +180,7 @@ final class AdBreakData {
         // Today's other games: kicking off with this one, on now, later on.
         try {
             for (Game x : OnAir.today(60_000L)) {
+                if (x.id != null && x.id.equals(g.id)) k.game = x;   // as it is now: the score at half time
                 if (x.id == null || x.id.equals(g.id)) continue;
                 if (x.state == Game.LIVE) k.elsewhere.add(x);
                 else if (x.state == Game.PRE && Math.abs(x.kickoff - g.kickoff) < 60_000L) k.alsoNow.add(x);
@@ -136,18 +202,7 @@ final class AdBreakData {
         } catch (RuntimeException ignored) {
             // none this time
         }
-        try {
-            F1.Weekend w = F1.next();
-            if (w != null) {
-                for (Object[] s : w.sessions) {
-                    long at = (Long) s[1];
-                    if (at > now && sameDay(at, now)) k.f1Today.add(new String[]{(String) s[0], hm(at)});
-                }
-                if (w.race > now && sameDay(w.race, now)) k.f1Today.add(new String[]{"Race", hm(w.race)});
-            }
-        } catch (RuntimeException ignored) {
-            // no F1 today
-        }
+        f1Today(k, now);
         // The clubs' news: BBC Sport's feed for each club.
         for (int side = 0; side < 2; side++) {
             String full = side == 0 ? g.homeFull : g.awayFull;
@@ -165,8 +220,8 @@ final class AdBreakData {
             k.lastMeeting = sum.meetings.get(0);
             if (k.lastMeeting.length > 6 && !k.lastMeeting[6].isEmpty()) k.clip = Espn.video(slug, k.lastMeeting[6]);
         }
-        // The elevens, when they are out.
-        if (!sum.homeLineup.isEmpty() && !sum.awayLineup.isEmpty()) {
+        // The elevens, when they are out: before kick-off and at half time only.
+        if (AdBreak.lineupsNow(AdBreak.phase(k.game)) && !sum.homeLineup.isEmpty() && !sum.awayLineup.isEmpty()) {
             try {
                 int px = Math.round(28 * c.getResources().getDisplayMetrics().density * 2);
                 k.lineups = ScoreBoard.lineupsData(c, g, sum, px);

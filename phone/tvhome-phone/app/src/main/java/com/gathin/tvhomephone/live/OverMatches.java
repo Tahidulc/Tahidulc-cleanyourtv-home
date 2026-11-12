@@ -134,7 +134,16 @@ public final class OverMatches {
                           Map<String, List<String>> usual, long now) {
         List<Game> on = new ArrayList<>();
         for (Game g : games) if (g != null && g.id != null && onOrSoon(g, now)) on.add(g);
-        if (on.isEmpty()) return null;
+        return recogniseAmong(channel, guide, on, own, usual);
+    }
+
+    /**
+     * Pure: as recognise, among games already chosen (the ad-break screen's: every game whose build-up, half time or
+     * aftermath is on now), none left out for its time.
+     */
+    static Game recogniseAmong(String channel, List<Programme> guide, List<Game> on, Map<String, List<String>> own,
+                               Map<String, List<String>> usual) {
+        if (on == null || on.isEmpty()) return null;
         for (Programme p : guide) {
             Game g = OnAir.match(p.title, p.desc, p.start, p.stop, on);
             if (g != null) return g;

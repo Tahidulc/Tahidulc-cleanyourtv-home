@@ -87,22 +87,35 @@ public class AdBreakTest {
         assertEquals("22nd", AdBreak.ordinal(22));
     }
 
-    @Test public void itComesUpOnlyInTheHourBeforeKickOffDuringTheAdverts() {
+    @Test public void itComesUpDuringTheAdvertsInsideTheSessionWhenTheBallIsNotMoving() {
         long now = 1_000_000_000L;
         Game g = new Game();
         g.state = Game.PRE;
         g.kickoff = now + 40 * 60_000L;
-        assertTrue(AdBreak.wanted(true, true, g, now));
-        assertFalse(AdBreak.wanted(false, true, g, now));   // switched off
-        assertFalse(AdBreak.wanted(true, false, g, now));   // no adverts
-        g.kickoff = now + 90 * 60_000L;
-        assertFalse(AdBreak.wanted(true, true, g, now));    // too early
-        g.kickoff = now - 1000;
-        assertFalse(AdBreak.wanted(true, true, g, now));    // kicked off
-        g.kickoff = now + 10 * 60_000L;
+        AdBreak.Session s = AdBreak.fromGame(g, null, now);
+        assertTrue(AdBreak.wanted(true, true, s, now));
+        assertFalse(AdBreak.wanted(false, true, s, now));   // switched off
+        assertFalse(AdBreak.wanted(true, false, s, now));   // no adverts
+        assertFalse(AdBreak.wanted(true, true, null, now)); // no session
+        // Outside the session's time: before it, after it.
+        assertFalse(AdBreak.wanted(true, true, s, s.from - 1));
+        assertFalse(AdBreak.wanted(true, true, s, s.to + 1));
+        // In play: never (no adverts while the ball moves); at half time and late in a half: yes.
         g.state = Game.LIVE;
-        assertFalse(AdBreak.wanted(true, true, g, now));    // in play
-        assertFalse(AdBreak.wanted(true, true, null, now));
+        g.period = 1;
+        g.clock = 20 * 60;
+        assertFalse(AdBreak.wanted(true, true, s, now));
+        g.halftime = true;
+        assertTrue(AdBreak.wanted(true, true, s, now));
+        g.halftime = false;
+        g.clock = 44 * 60;
+        assertTrue(AdBreak.wanted(true, true, s, now));
+        g.state = Game.POST;
+        assertTrue(AdBreak.wanted(true, true, s, now));
+        // A general session (no game): the whole of its time.
+        AdBreak.Session gen = AdBreak.general("Live Football", now);
+        assertTrue(AdBreak.wanted(true, true, gen, now));
+        assertFalse(AdBreak.wanted(true, true, gen, now + AdBreak.BOARD_HOLDS_MS + 1));
     }
 
     @Test public void countdownToKickOff() {

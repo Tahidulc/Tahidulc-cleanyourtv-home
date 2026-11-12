@@ -89,4 +89,22 @@ public class OnAirTest {
         assertFalse(Kinds.waits("f1live"));
         assertEquals(60_000L, Kinds.TV_DELAY_MS);
     }
+
+    @Test public void oneClubIsEnoughInAFixtureTitleWhenOnlyOneGameWouldDo() {
+        // Both named: as match.
+        assertEquals("1", OnAir.matchEither("AEK Athens v Real Madrid", "", KO - 3600_000L, KO + 2 * 3600_000L, tonight()).id);
+        // "Los Blancos" is Real Madrid in the listings' words: Athens alone, in a title that reads as a fixture.
+        assertEquals("1", OnAir.matchEither("Live: Athens v Los Blancos", "", KO - 3600_000L, KO + 2 * 3600_000L, tonight()).id);
+        assertEquals("4", OnAir.matchEither("Live Champions League", "PSV v the Belgian champions.", KO + 2 * 3600_000L,
+                KO + 5 * 3600_000L, tonight()).id);
+        // Not a fixture: one club named tells nothing ("Real Madrid: The Movie").
+        assertNull(OnAir.matchEither("AEK Athens Story", "", KO - 3600_000L, KO + 2 * 3600_000L, tonight()));
+        // Outside the programme's time.
+        assertNull(OnAir.matchEither("Live: Athens v Los Blancos", "", KO + 4 * 3600_000L, KO + 6 * 3600_000L, tonight()));
+        // Two games would do: neither.
+        List<Game> two = tonight();
+        two.add(game("5", "Panathinaikos Athens", "Panathinaikos", "PAO", "Ajax Amsterdam", "Ajax", "AJA", KO));
+        assertNull(OnAir.matchEither("Live: Athens v Somebody", "", KO - 3600_000L, KO + 2 * 3600_000L, two));
+        assertNull(OnAir.matchEither("Live: Athens v Los Blancos", "", KO - 3600_000L, KO + 2 * 3600_000L, null));
+    }
 }

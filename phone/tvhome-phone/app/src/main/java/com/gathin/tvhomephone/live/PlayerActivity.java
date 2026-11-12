@@ -59,6 +59,7 @@ import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.bumptech.glide.Glide;
+import com.gathin.tvhomephone.App;
 import com.gathin.tvhomephone.R;
 import com.gathin.tvhomephone.sports.Game;
 import com.gathin.tvhomephone.sports.GameActivity;
@@ -531,34 +532,84 @@ public class PlayerActivity extends AppCompatActivity {
         lookForMatch();
     }
 
-    /** The channel's game: the tile's; else, on Automatic, the match the player found on the channel itself. */
-    /** The channel's game within the hour before kick-off (the ad-break screen), looked for on its own; null when none. */
-    private Game soon;
-    private String soonKey;
-    private long soonLooked;
-    private boolean soonFinding;
+    /**
+     * The ad-break screen's session on the channel playing (AdBreak.Session), looked for on its own as the channel starts
+     * and every two minutes, off the main thread; null while there is none (or not yet known). In turn: the listings
+     * (the channel's own guide: the programme on now, or the next, naming one of today's games: its whole time counts);
+     * else a game found another way (the tile's, the scoreboard's, the channel's name, the games' channels): the hour
+     * before kick-off to half an hour after full time. ScoreOverlay adds the general one (no game, the broadcaster's
+     * scoreboard seen) itself.
+     */
+    private AdBreak.Session adSession;
+    private String adKey;
+    private long adLooked;
+    private boolean adFinding;
 
-    private Game gameSoon() {
+    private AdBreak.Session adSession() {
         long now = System.currentTimeMillis();
-        Game g = channelGame();
-        if (AdBreak.soon(g, now)) return g;
         if (cur == null) return null;
-        if (cur.key.equals(soonKey) && AdBreak.soon(soon, now)) return soon;
-        if (soonFinding || (cur.key.equals(soonKey) && now - soonLooked < OverMatches.LOOK_MS)) return null;
+        if (!cur.key.equals(adKey)) adSession = null;
+        if (adFinding || (cur.key.equals(adKey) && now - adLooked < OverMatches.LOOK_MS)) return adSession;
         Channel ch = cur;
-        List<OverMatches.Programme> guide = OverMatches.guide(lib.schedule(ch.key), now, AdBreak.BEFORE_MS);
-        if (!OverMatches.worthLooking(ch.name, ch.group, guide, com.gathin.tvhomephone.sports.Channels.british())) return null;
-        soonKey = ch.key;
-        soonLooked = now;
-        soon = null;
-        soonFinding = true;
-        OverMatches.find(ch, guide, AdBreak.BEFORE_MS, found -> {
-            soonFinding = false;
-            if (cur != null && cur.key.equals(ch.key)) soon = found;
+        List<OverMatches.Programme> guide = OverMatches.guide(lib.schedule(ch.key), now, AdBreak.NEXT_WITHIN_MS);
+        adKey = ch.key;
+        adLooked = now;
+        if (!OverMatches.worthLooking(ch.name, ch.group, guide, com.gathin.tvhomephone.sports.Channels.british())) {
+            adSession = null;
+            return null;
+        }
+        Game tile = channelGame();
+        adFinding = true;
+        App.io.execute(() -> {
+            AdBreak.Session got = null;
+            try {
+                List<Game> today = com.gathin.tvhomephone.sports.OnAir.today(OverMatches.FRESH_MS);
+                got = AdBreak.fromListings(guide, today, now);
+                if (got == null) {
+                    List<Game> on = AdBreak.candidates(today, now);
+                    Game g = null;
+                    if (tile != null && tile.id != null) for (Game x : on) if (tile.id.equals(x.id)) g = x;
+                    java.util.Map<String, List<String>> none = java.util.Collections.emptyMap();
+                    if (g == null) g = OverMatches.recogniseAmong(ch.name, guide, on, none, none);
+                    if (g == null && !on.isEmpty()) {
+                        java.util.Map<String, List<String>> own = new java.util.HashMap<>(), usual = new java.util.HashMap<>();
+                        for (Game x : on) {
+                            List<String> mine = com.gathin.tvhomephone.sports.Channels.own(x), all = com.gathin.tvhomephone.sports.Channels.names(x);
+                            all.removeAll(mine);
+                            own.put(x.id, mine);
+                            usual.put(x.id, all);
+                        }
+                        g = OverMatches.recogniseAmong(ch.name, guide, on, own, usual);
+                    }
+                    got = AdBreak.fromGame(g, guide.isEmpty() ? null : guide.get(0).title, now);
+                }
+            } catch (RuntimeException ignored) {
+                // looked for again at the next look
+            }
+            AdBreak.Session s = got;
+            App.main.post(() -> {
+                adFinding = false;
+                if (cur != null && cur.key.equals(ch.key)) adSession = s;
+            });
         });
-        return null;
+        return adSession;
     }
 
+    /** The programme on the channel playing now, from its own guide (a general session's line); null without one. */
+    private String programmeNow() {
+        if (cur == null) return null;
+        List<OverMatches.Programme> guide = OverMatches.guide(lib.schedule(cur.key), System.currentTimeMillis(), 0);
+        return guide.isEmpty() ? null : guide.get(0).title;
+    }
+
+    /** Whether the channel playing may be showing a match: a sports channel, a football channel, a fixture in its guide. */
+    private boolean sportsNow() {
+        if (cur == null) return false;
+        List<OverMatches.Programme> guide = OverMatches.guide(lib.schedule(cur.key), System.currentTimeMillis(), 0);
+        return OverMatches.worthLooking(cur.name, cur.group, guide, com.gathin.tvhomephone.sports.Channels.british());
+    }
+
+    /** The channel's game: the tile's; else, on Automatic, the match the player found on the channel itself. */
     private Game channelGame() {
         if (info != null && info.game != null) return info.game;
         return found != null && OverMatches.AUTO.equals(OverMatches.mode(this)) ? found : null;
@@ -1823,7 +1874,16 @@ public class PlayerActivity extends AppCompatActivity {
                 hideOverlay();
             }
 
-            @Override public com.gathin.tvhomephone.sports.Game soonGame() { return gameSoon(); }
+            @Override public com.gathin.tvhomephone.sports.Game soonGame() {
+                AdBreak.Session s = adSession();
+                return s == null ? null : s.game;
+            }
+
+            @Override public AdBreak.Session adSession() { return PlayerActivity.this.adSession(); }
+
+            @Override public String programmeNow() { return PlayerActivity.this.programmeNow(); }
+
+            @Override public boolean sportsNow() { return PlayerActivity.this.sportsNow(); }
         }));
         ViewCompat.setOnApplyWindowInsetsListener(root, (v, insets) -> {
             cut = insets.getInsets(WindowInsetsCompat.Type.displayCutout());

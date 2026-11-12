@@ -50,8 +50,7 @@ public final class OnAir {
      */
     public static Game match(String title, String desc, long start, long stop, List<Game> games) {
         if (games == null || games.isEmpty()) return null;
-        String text = " " + clean((title == null ? "" : title) + " " + (desc == null ? "" : desc)) + " ";
-        for (String[] a : Channels.ALIASES) text = text.replace(" " + a[0] + " ", " " + a[1] + " ");
+        String text = words(title, desc);
         Game best = null;
         long bestGap = Long.MAX_VALUE;
         for (Game g : games) {
@@ -65,6 +64,34 @@ public final class OnAir {
             }
         }
         return best;
+    }
+
+    /**
+     * As match, and failing that one club named in a programme that reads as a fixture ("Live: England v Croatia" where
+     * the other side's name reads in a way of its own): the one game in the programme's time naming either club; null
+     * when none, or more than one would do. Pure.
+     */
+    public static Game matchEither(String title, String desc, long start, long stop, List<Game> games) {
+        Game both = match(title, desc, start, stop, games);
+        if (both != null || games == null) return both;
+        if (!looksLikeFixture(title) && !looksLikeFixture(desc)) return null;
+        String text = words(title, desc);
+        Game one = null;
+        for (Game g : games) {
+            if (g == null) continue;
+            if (start > 0 && stop > start && (g.kickoff < start - 30 * 60_000L || g.kickoff > stop)) continue;
+            if (!named(text, g.homeFull, g.homeName, g.home) && !named(text, g.awayFull, g.awayName, g.away)) continue;
+            if (one != null && one != g) return null;
+            one = g;
+        }
+        return one;
+    }
+
+    /** A programme's title and description as one cleaned line, the usual short forms read as the clubs' names. */
+    private static String words(String title, String desc) {
+        String text = " " + clean((title == null ? "" : title) + " " + (desc == null ? "" : desc)) + " ";
+        for (String[] a : Channels.ALIASES) text = text.replace(" " + a[0] + " ", " " + a[1] + " ");
+        return text;
     }
 
     /** Whether the text names the club: its full or short name as words, else one of its own long words. */

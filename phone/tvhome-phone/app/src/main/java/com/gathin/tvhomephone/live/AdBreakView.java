@@ -50,8 +50,10 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * The pre-match ad-break screen over the channel's adverts (ScoreOverlay puts it up while the channel's logo is gone
- * in the hour before kick-off): along the foot a strip, BEFORE KICK-OFF, the match and the time to kick-off, with
+ * The ad-break screen over a match's adverts (ScoreOverlay puts it up while the channel's logo is gone inside the
+ * session's time: the listings' programme, else the game's, else a match's scoreboard seen): along the foot a strip
+ * saying where the match is (BEFORE KICK-OFF and the time to kick-off; HALF-TIME, AD BREAK or FULL TIME with the score;
+ * AD BREAK and the programme without a game), with
  * cards in the TV's line-up card's style (a navy streaked band with the competition's logo and the widget's name, a
  * pale streaked panel with navy words, the slanted navy wipe as one widget gives way to the next) taking turns through
  * the widgets AdBreakData found; on the right the line-up card going round until the break ends and where the two clubs
@@ -83,7 +85,9 @@ final class AdBreakView extends FrameLayout {
     private boolean landscape;
     private final List<Card> cards = new ArrayList<>();
     private int picked = -1;
-    private TextView countdown;
+    private TextView countdown, tagView, matchView, lead;
+    /** When the game was last read again (its score and clock on the line over the cards). */
+    private long refreshedAt;
     private BoardLineups lineups;
     private LinearLayout postsBox;
     private int postAt;
@@ -110,6 +114,7 @@ final class AdBreakView extends FrameLayout {
         else buildUpright(picture);
         setAlpha(0f);
         animate().alpha(1f).setDuration(320).start();
+        refreshedAt = System.currentTimeMillis();
         h.post(tick);
         for (int i = 0; i < cards.size(); i++) {
             Card cd = cards.get(i);
@@ -287,19 +292,35 @@ final class AdBreakView extends FrameLayout {
 
     // ---- the line of words over the cards -----------------------------------------------------------------------------
 
+    /**
+     * The tag (BEFORE KICK-OFF, HALF-TIME, AD BREAK, FULL TIME), the match (before kick-off its time; after, the crests
+     * and score), and on the right the time to kick-off, else HT, FT or the minute; a general session's programme.
+     */
     private View headline() {
         LinearLayout r = new LinearLayout(getContext());
         r.setGravity(Gravity.CENTER_VERTICAL);
-        TextView tag = words("BEFORE KICK-OFF", 11, 0xFFFF8A8A, true);
-        tag.setLetterSpacing(0.1f);
-        r.addView(tag);
+        tagView = words("", 11, 0xFFFF8A8A, true);
+        tagView.setLetterSpacing(0.1f);
+        r.addView(tagView);
         Game g = k.game;
-        TextView match = words(g == null ? "" : g.title() + " · " + AdBreakData.hm(g.kickoff), 13, 0xFFFFFFFF, true);
-        match.setPadding(px(10), 0, 0, 0);
-        r.addView(match, new LinearLayout.LayoutParams(0, -2, 1f));
+        LinearLayout mid = new LinearLayout(getContext());
+        mid.setGravity(Gravity.CENTER_VERTICAL);
+        mid.setPadding(px(10), 0, px(6), 0);
+        matchView = words("", 13, 0xFFFFFFFF, true);
+        matchView.setMaxLines(1);
+        matchView.setEllipsize(TextUtils.TruncateAt.END);
+        if (g != null) mid.addView(crest(AdBreakData.homeCrest(g), 16));
+        LinearLayout.LayoutParams ml = new LinearLayout.LayoutParams(-2, -2);
+        ml.leftMargin = g != null ? px(6) : 0;
+        ml.rightMargin = g != null ? px(6) : 0;
+        mid.addView(matchView, ml);
+        if (g != null) mid.addView(crest(AdBreakData.awayCrest(g), 16));
+        r.addView(mid, new LinearLayout.LayoutParams(0, -2, 1f));
         countdown = words("", 18, 0xFFFFFFFF, true);
-        r.addView(words("Kick-off in ", 11, 0xFFA9B1CC, false));
+        lead = words("Kick-off in ", 11, 0xFFA9B1CC, false);
+        r.addView(lead);
         r.addView(countdown);
+        line();
         TextView hide = words("Hide", 12, 0xFFFFFFFF, true);
         hide.setPadding(px(12), px(5), px(12), px(5));
         hide.setBackground(Ui.fill(getContext(), 0x2EFFFFFF, 14));
@@ -311,9 +332,51 @@ final class AdBreakView extends FrameLayout {
         return r;
     }
 
+    /** The line over the cards as it is now (the tick's, each second). */
+    private void line() {
+        if (k == null || tagView == null) return;
+        Game g = k.game;
+        int phase = k.general ? AdBreak.NO_GAME : AdBreak.phase(g);
+        tagView.setText(AdBreak.tag(phase));
+        if (g == null) {
+            matchView.setText(k.programme.isEmpty() ? "Today's football" : k.programme);
+            lead.setVisibility(GONE);
+            countdown.setText("");
+            return;
+        }
+        if (phase == AdBreak.BEFORE) {
+            matchView.setText(g.title() + " · " + AdBreakData.hm(g.kickoff));
+            String left = AdBreak.countdown(g.kickoff, System.currentTimeMillis());
+            lead.setVisibility(left.isEmpty() ? GONE : VISIBLE);
+            countdown.setText(left);
+        } else {
+            matchView.setText(name(g, true) + "  " + g.score() + "  " + name(g, false));
+            lead.setVisibility(GONE);
+            countdown.setText(AdBreak.clockLabel(g));
+        }
+    }
+
     private final Runnable tick = new Runnable() {
         @Override public void run() {
-            if (k != null && k.game != null && countdown != null) countdown.setText(AdBreak.countdown(k.game.kickoff, System.currentTimeMillis()));
+            line();
+            // The game read again now and then, off the main thread: its score and clock (half time, full time).
+            long now = System.currentTimeMillis();
+            Game g = k == null ? null : k.game;
+            if (g != null && g.id != null && now - refreshedAt > AdBreak.SCORE_EVERY_MS) {
+                refreshedAt = now;
+                App.io.execute(() -> {
+                    Game fresh = null;
+                    try {
+                        for (Game x : com.gathin.tvhomephone.sports.OnAir.today(AdBreak.SCORE_EVERY_MS)) if (g.id.equals(x.id)) fresh = x;
+                    } catch (RuntimeException ignored) {
+                        // as it was
+                    }
+                    Game f = fresh;
+                    App.main.post(() -> {
+                        if (!ending && f != null && k.game == g) k.game = f;
+                    });
+                });
+            }
             h.postDelayed(this, 1000);
         }
     };
@@ -455,6 +518,7 @@ final class AdBreakView extends FrameLayout {
 
     /** The widgets, in three decks: the match, the league, the day. Only ones with something real to show. */
     private List<List<Widget>> decks() {
+        if (k.general) return generalDecks();
         List<List<Widget>> all = new ArrayList<>();
         List<Widget> match = new ArrayList<>(), league = new ArrayList<>(), day = new ArrayList<>();
         Game g = k.game;
@@ -604,23 +668,7 @@ final class AdBreakView extends FrameLayout {
         if (!k.elsewhere.isEmpty()) {
             league.add(new Widget(compMark(), "ELSE-\nWHERE", c -> {
                 List<View> out = new ArrayList<>();
-                for (Game x : k.elsewhere) {
-                    LinearLayout l = row(6);
-                    View dot = new View(getContext());
-                    dot.setBackground(Ui.fill(getContext(), x.halftime ? 0xFF8F97B3 : LOSS, 4));
-                    l.addView(dot, new LinearLayout.LayoutParams(px(7), px(7)));
-                    l.addView(crest(AdBreakData.homeCrest(x), 15));
-                    l.addView(words(name(x, true), 12, NAVY, true));
-                    TextView sc = words(x.score(), 12.5f, NAVY, true);
-                    sc.setPadding(px(5), px(1), px(5), px(1));
-                    sc.setBackground(Ui.fill(getContext(), 0x1A151A63, 4));
-                    l.addView(sc);
-                    l.addView(words(name(x, false), 12, NAVY, true));
-                    l.addView(crest(AdBreakData.awayCrest(x), 15));
-                    l.addView(spacer(0), new LinearLayout.LayoutParams(0, 1, 1f));
-                    l.addView(words(x.halftime ? "HT" : x.displayClock == null || x.displayClock.isEmpty() ? x.detail : x.displayClock, 10.5f, INK_SOFT, true));
-                    out.add(l);
-                }
+                for (Game x : k.elsewhere) out.add(scoreRow(x));
                 return out;
             }));
         }
@@ -647,25 +695,8 @@ final class AdBreakView extends FrameLayout {
                 return out;
             }));
         }
-        if (!k.later.isEmpty() || !k.f1Today.isEmpty()) {
-            league.add(new Widget(compMark(), "LATER\nTODAY", c -> {
-                List<View> out = new ArrayList<>();
-                for (Game x : k.later) {
-                    LinearLayout l = fixtureRow(x, AdBreakData.hm(x.kickoff));
-                    if (x.slug != null && !x.slug.equals(g.slug)) l.addView(crest(safe(com.gathin.tvhomephone.sports.Competitions.logo(x)), 15));
-                    out.add(l);
-                }
-                for (String[] f : k.f1Today) {
-                    LinearLayout l = row(6);
-                    l.addView(cell(f[1], 12, NAVY, true, 40));
-                    l.addView(crest(F1_LOGO, 16));
-                    l.addView(words(f[0], 12, NAVY, true));
-                    out.add(l);
-                }
-                while (out.size() > 3) out.remove(out.size() - 1);
-                return out;
-            }));
-        }
+        Widget later = laterToday(compMark(), g.slug);
+        if (later != null) league.add(later);
 
         if (!k.headlines.isEmpty()) {
             day.add(new Widget(houseMark(), "HEAD-\nLINES", c -> {
@@ -707,6 +738,91 @@ final class AdBreakView extends FrameLayout {
         if (!league.isEmpty()) all.add(league);
         if (!day.isEmpty()) all.add(day);
         return all;
+    }
+
+    /**
+     * A general session's (a match on, its game not known): the scores now (followed clubs' first), later today and
+     * football's headlines, three to a widget, under the Homefield mark. No posts, line-ups or table: nothing about a
+     * game it can't name.
+     */
+    private List<List<Widget>> generalDecks() {
+        List<List<Widget>> all = new ArrayList<>();
+        List<Widget> scores = new ArrayList<>(), news = new ArrayList<>();
+        for (int i = 0; i < k.elsewhere.size(); i += 3) {
+            List<Game> page = new ArrayList<>(k.elsewhere.subList(i, Math.min(k.elsewhere.size(), i + 3)));
+            scores.add(new Widget(houseMark(), "SCORES\nNOW", c -> {
+                List<View> out = new ArrayList<>();
+                for (Game x : page) out.add(scoreRow(x));
+                return out;
+            }));
+        }
+        if (!scores.isEmpty()) all.add(scores);
+        Widget later = laterToday(houseMark(), null);
+        if (later != null) {
+            List<Widget> one = new ArrayList<>();
+            one.add(later);
+            all.add(one);
+        }
+        for (int i = 0; i < k.headlines.size(); i += 3) {
+            List<String[]> page = new ArrayList<>(k.headlines.subList(i, Math.min(k.headlines.size(), i + 3)));
+            news.add(new Widget(houseMark(), "HEAD-\nLINES", c -> {
+                List<View> out = new ArrayList<>();
+                for (String[] hl : page) {
+                    TextView t = words(hl[1], 11.5f, NAVY, true);
+                    t.setMaxLines(1);
+                    t.setEllipsize(TextUtils.TruncateAt.END);
+                    out.add(t);
+                }
+                out.add(foot("BBC Sport · football"));
+                return out;
+            }));
+        }
+        if (!news.isEmpty()) all.add(news);
+        return all;
+    }
+
+    /** A game on now: a live dot (grey at half time), the crests and score, its minute. */
+    private LinearLayout scoreRow(Game x) {
+        LinearLayout l = row(6);
+        View dot = new View(getContext());
+        dot.setBackground(Ui.fill(getContext(), x.halftime ? 0xFF8F97B3 : LOSS, 4));
+        l.addView(dot, new LinearLayout.LayoutParams(px(7), px(7)));
+        l.addView(crest(AdBreakData.homeCrest(x), 15));
+        l.addView(words(name(x, true), 12, NAVY, true));
+        TextView sc = words(x.score(), 12.5f, NAVY, true);
+        sc.setPadding(px(5), px(1), px(5), px(1));
+        sc.setBackground(Ui.fill(getContext(), 0x1A151A63, 4));
+        l.addView(sc);
+        l.addView(words(name(x, false), 12, NAVY, true));
+        l.addView(crest(AdBreakData.awayCrest(x), 15));
+        l.addView(spacer(0), new LinearLayout.LayoutParams(0, 1, 1f));
+        l.addView(words(x.halftime ? "HT" : x.displayClock == null || x.displayClock.isEmpty() ? safe(x.detail) : x.displayClock, 10.5f, INK_SOFT, true));
+        return l;
+    }
+
+    /**
+     * Later today: the games still to kick off (another competition's with its logo; slug: this game's, null for
+     * none) and F1's sessions; null without any.
+     */
+    private Widget laterToday(java.util.function.Supplier<View> mark, String slug) {
+        if (k.later.isEmpty() && k.f1Today.isEmpty()) return null;
+        return new Widget(mark, "LATER\nTODAY", c -> {
+            List<View> out = new ArrayList<>();
+            for (Game x : k.later) {
+                LinearLayout l = fixtureRow(x, AdBreakData.hm(x.kickoff));
+                if (x.slug != null && !x.slug.equals(slug)) l.addView(crest(safe(com.gathin.tvhomephone.sports.Competitions.logo(x)), 15));
+                out.add(l);
+            }
+            for (String[] f : k.f1Today) {
+                LinearLayout l = row(6);
+                l.addView(cell(f[1], 12, NAVY, true, 40));
+                l.addView(crest(F1_LOGO, 16));
+                l.addView(words(f[0], 12, NAVY, true));
+                out.add(l);
+            }
+            while (out.size() > 3) out.remove(out.size() - 1);
+            return out;
+        });
     }
 
     /** Fewer cards than decks: the last ones go on the last card together. */
@@ -1426,6 +1542,8 @@ final class AdBreakView extends FrameLayout {
 
     /** Whether there is anything to show at all. */
     static boolean worth(AdBreakData.Content k) {
-        return k != null && k.game != null;
+        if (k == null) return false;
+        if (!k.general) return k.game != null;
+        return !k.elsewhere.isEmpty() || !k.later.isEmpty() || !k.f1Today.isEmpty() || !k.headlines.isEmpty();
     }
 }
