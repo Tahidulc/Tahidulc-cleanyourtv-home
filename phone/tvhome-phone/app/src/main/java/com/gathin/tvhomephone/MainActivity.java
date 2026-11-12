@@ -48,6 +48,21 @@ public class MainActivity extends AppCompatActivity {
         if (OPEN_LIVE.equals(getIntent().getStringExtra(EXTRA_OPEN))) start = R.id.tab_live;
         tabs.setSelectedItemId(start);
         if (Build.VERSION.SDK_INT >= 33) requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"}, 1);
+        // Turned on its side with rotation on (the page made again): a picture playing small goes full screen.
+        if (state != null) com.gathin.tvhomephone.live.SideFull.remade(this, state.getBoolean(UPRIGHT, true));
+    }
+
+    private static final String UPRIGHT = "upright";
+
+    /** With rotation locked: the phone turned on its side while a picture plays small, wherever in the app: full screen. */
+    @Override protected void onResume() {
+        super.onResume();
+        com.gathin.tvhomephone.live.SideFull.watch(this, true);
+    }
+
+    @Override protected void onPause() {
+        com.gathin.tvhomephone.live.SideFull.watch(this, false);
+        super.onPause();
     }
 
     /** A notification tapped while the app is open: its place shown (the playlists in Settings). */
@@ -74,6 +89,7 @@ public class MainActivity extends AppCompatActivity {
     @Override protected void onSaveInstanceState(Bundle out) {
         super.onSaveInstanceState(out);
         out.putInt(TAB, tabs.getSelectedItemId());
+        out.putBoolean(UPRIGHT, com.gathin.tvhomephone.live.SideFull.upright(this));
     }
 
     /** Opens a tab from anywhere in the app (a notification's "Open in Live TV", Home's cards). */

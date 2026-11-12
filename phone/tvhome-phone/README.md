@@ -458,3 +458,5 @@ See-through finds the logo next to the cover too (4.54), as on the TV launcher (
 The player's sizing pop-up (double-tap the scoreboard or logo) shows every logo look as a picture (4.55), each drawn as it would stand over the picture on a pitch's green with the tag, style and name chosen in Settings, the one on now ringed; tap one to put it on. As the TV launcher's menu over the player shows them (4.77).
 
 Breaking news comes with pictures (4.56): each story's own picture from the BBC's feed, asked for large, fills its notification opened out and its pop-up over the apps, with BBC News's or BBC Sport's logo from the playlist beside the words.
+
+Turning the phone on its side goes full screen wherever in the app a picture plays small (4.57): the guide's, or one carried on to another tab, with the phone's rotation locked (read from its tilt) or not (the page turning round is the turn); upright again goes back. Not on a tablet, nor while paused.
