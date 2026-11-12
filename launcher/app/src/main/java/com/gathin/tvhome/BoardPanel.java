@@ -215,9 +215,9 @@ final class BoardPanel extends SportPanel {
         stats.words = () -> BoardCover.statsOn(c) ? "A few times a game: before kick-off, each half, half and full time" : "Off";
         stats.ok = () -> BoardCover.setStatsOn(c, !BoardCover.statsOn(c));
         add(drops, stats);
-        Row swish = row("Swish as they slide out", true);
+        Row swish = row("Swish as they move", true);
         swish.on = () -> BoardCover.swishOn(c);
-        swish.words = () -> BoardCover.swishOn(c) ? "The line-ups' swish for the scorer, the stats and every alert beside the board" : "Off · they come out silently";
+        swish.words = () -> BoardCover.swishOn(c) ? "A swish each time the scorer, stats or an alert moves: out, every page, back in" : "Off · they move silently";
         swish.ok = () -> {
             BoardCover.setSwishOn(c, !BoardCover.swishOn(c));
             if (BoardCover.swishOn(c)) com.gathin.broadcast.Sfx.play(c, com.gathin.broadcast.Sfx.SWISH, 0f, 0.7f);

@@ -313,9 +313,26 @@ final class HalfTimeFun {
                 }
                 l.add(line);
             }
+            // Its views let go once they leave the screen (the quiz itself stays for the game).
+            TextView mine = ask;
+            mine.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
+                @Override public void onViewAttachedToWindow(View v) { }
+
+                @Override public void onViewDetachedFromWindow(View v) {
+                    if (ask == mine) release();
+                }
+            });
             paint();
             if (!playing) main.postDelayed(reveal, REVEAL_MS);
             return l;
+        }
+
+        private void release() {
+            ask = null;
+            chip = null;
+            java.util.Arrays.fill(buttons, null);
+            java.util.Arrays.fill(letters, null);
+            java.util.Arrays.fill(answers, null);
         }
 
         private boolean onScreen() {
@@ -472,10 +489,11 @@ final class HalfTimeFun {
 
         /** Confetti from the right answer and the points' chip jumping. */
         private void celebrate(View from) {
-            if (chip != null) {
-                chip.setBackground(AdBreak.fill(WIN, px(12)));
-                chip.animate().scaleX(1.35f).scaleY(1.35f).setDuration(160).withEndAction(() -> chip.animate().scaleX(1f).scaleY(1f).setDuration(260)
-                        .withEndAction(() -> chip.setBackground(AdBreak.fill(INK, px(12)))).start()).start();
+            TextView ch = chip;
+            if (ch != null) {
+                ch.setBackground(AdBreak.fill(WIN, px(12)));
+                ch.animate().scaleX(1.35f).scaleY(1.35f).setDuration(160).withEndAction(() -> ch.animate().scaleX(1f).scaleY(1f).setDuration(260)
+                        .withEndAction(() -> ch.setBackground(AdBreak.fill(INK, px(12)))).start()).start();
             }
             if (from == null || !from.isAttachedToWindow()) return;
             View root = from.getRootView();
