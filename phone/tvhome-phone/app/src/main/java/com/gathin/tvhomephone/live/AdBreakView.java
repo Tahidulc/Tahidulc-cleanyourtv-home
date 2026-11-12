@@ -136,13 +136,17 @@ final class AdBreakView extends FrameLayout {
         int w = getResources().getDisplayMetrics().widthPixels, ht = getResources().getDisplayMetrics().heightPixels;
         if (getWidth() > 0) { w = getWidth(); ht = getHeight(); }
         int margin = px(16), gap = px(12), cardH = px(96);
+        // Clear of the camera's cut-out, the bars showing and the screen's rounded corners, so no card runs under them.
+        int[] safe = safeSides();
+        int padL = margin + safe[0], padR = margin + safe[1];
+        w -= safe[0] + safe[1];
         List<List<Widget>> decks = decks();
         int n = Math.max(1, Math.min(decks.size(), w >= px(3 * 290 + 2 * 12 + 32) ? 3 : 2));
         decks = fold(decks, n);
         // The strip along the foot: a dark fade, its line of words, then the cards.
         LinearLayout strip = new LinearLayout(getContext());
         strip.setOrientation(LinearLayout.VERTICAL);
-        strip.setPadding(margin, px(26), margin, px(12));
+        strip.setPadding(padL, px(26), padR, px(12) + safe[2]);
         strip.setBackground(new GradientDrawable(GradientDrawable.Orientation.BOTTOM_TOP, new int[]{0xF5070912, 0xEB0B0F24, 0x000B0F24}));
         strip.addView(headline(), new LinearLayout.LayoutParams(-1, -2));
         LinearLayout row = new LinearLayout(getContext());
@@ -158,7 +162,7 @@ final class AdBreakView extends FrameLayout {
         strip.addView(row, rl);
         addView(strip, new LayoutParams(-1, -2, Gravity.BOTTOM));
         // The right: where they stand above the line-up card, the same size.
-        int stripH = px(26) + px(26) + px(8) + cardH + px(12);
+        int stripH = px(26) + px(26) + px(8) + cardH + px(12) + safe[2];
         int room = ht - stripH - px(12);
         int boxH = Math.max(px(70), Math.min(px(112), (room - px(10)) / 2));
         int boxW = BoardLineups.widthFor(boxH);
@@ -173,7 +177,7 @@ final class AdBreakView extends FrameLayout {
             right.addView(lineups, ll);
         }
         LayoutParams rp = new LayoutParams(-2, -2, Gravity.TOP | Gravity.END);
-        rp.rightMargin = margin;
+        rp.rightMargin = padR;
         rp.topMargin = Math.max(px(10), ht - stripH - px(10) - (stand != null ? boxH : 0) - (k.lineups != null ? boxH + px(10) : 0));
         addView(right, rp);
         // The left, above the strip: the fans' posts, the newest under the older two.
@@ -182,9 +186,48 @@ final class AdBreakView extends FrameLayout {
         postsBox.setGravity(Gravity.BOTTOM);
         int postsW = Math.min(px(320), w - boxW - margin * 2 - px(24));
         LayoutParams pp = new LayoutParams(postsW, -2, Gravity.BOTTOM | Gravity.START);
-        pp.leftMargin = margin;
+        pp.leftMargin = padL;
         pp.bottomMargin = stripH + px(10);
         if (postsW > px(180)) addView(postsBox, pp);
+    }
+
+    /**
+     * The room the phone keeps for itself sideways, left, right and foot: the camera's cut-out (wherever the screen
+     * is turned), the system bars while they show, and the screen's rounded corners at the foot (the part of the
+     * curve a card's corner would run into).
+     */
+    private int[] safeSides() {
+        int[] s = new int[3];
+        android.view.WindowInsets wi = getRootWindowInsets();
+        if (wi == null && getContext() instanceof android.app.Activity) {
+            wi = ((android.app.Activity) getContext()).getWindow().getDecorView().getRootWindowInsets();
+        }
+        if (wi == null) return s;
+        if (android.os.Build.VERSION.SDK_INT >= 30) {
+            android.graphics.Insets cut = wi.getInsetsIgnoringVisibility(android.view.WindowInsets.Type.displayCutout());
+            android.graphics.Insets bars = wi.getInsets(android.view.WindowInsets.Type.systemBars());
+            s[0] = Math.max(cut.left, bars.left);
+            s[1] = Math.max(cut.right, bars.right);
+            s[2] = Math.max(cut.bottom, bars.bottom);
+        } else {
+            if (android.os.Build.VERSION.SDK_INT >= 28 && wi.getDisplayCutout() != null) {
+                android.view.DisplayCutout dc = wi.getDisplayCutout();
+                s[0] = dc.getSafeInsetLeft();
+                s[1] = dc.getSafeInsetRight();
+                s[2] = dc.getSafeInsetBottom();
+            }
+            s[0] = Math.max(s[0], wi.getSystemWindowInsetLeft());
+            s[1] = Math.max(s[1], wi.getSystemWindowInsetRight());
+            s[2] = Math.max(s[2], wi.getSystemWindowInsetBottom());
+        }
+        if (android.os.Build.VERSION.SDK_INT >= 31) {
+            android.view.RoundedCorner bl = wi.getRoundedCorner(android.view.RoundedCorner.POSITION_BOTTOM_LEFT);
+            android.view.RoundedCorner br = wi.getRoundedCorner(android.view.RoundedCorner.POSITION_BOTTOM_RIGHT);
+            // A card's corner sits about where the curve is deepest: keep it a third of the radius further in.
+            if (bl != null) s[0] = Math.max(s[0], bl.getRadius() / 3);
+            if (br != null) s[1] = Math.max(s[1], br.getRadius() / 3);
+        }
+        return s;
     }
 
     // ---- upright: the room under the picture --------------------------------------------------------------------------
