@@ -49,6 +49,13 @@ final class LogoShape {
     /** Fewer of the logo's pixels than this (on a 1080-line picture): nothing found yet. */
     static final int FEW = 40;
 
+    /**
+     * Where a look at a logo away from the TV is written when asked for (a file named "dump" put there over ADB, used up
+     * once): the pictures it was learned from and what was learned. Null: never. Kept on the device; nothing is sent.
+     */
+    static volatile File dumpDir;
+    private static final int DUMP_MAGIC = 0x4C534431;
+
     /** Where logos are learned: a quiet thread of their own, so the fills go on meanwhile. */
     private static final Executor LEARN = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "LogoShape");
@@ -165,6 +172,12 @@ final class LogoShape {
         private boolean loaded;
         /** How many pictures the logo it has was learned from. */
         private volatile int learntFrom;
+        /** Whether the logo it started with was the one kept for the channel (its file). */
+        private volatile boolean fromFile;
+
+        boolean fromFile() {
+            return fromFile;
+        }
 
         Here(File dir, String key, int sw, int sh, int x, int y, int w, int h, int bl, int bt, int br, int bb) {
             this(dir, key, sw, sh, x, y, w, h, bl, bt, br, bb, LEARN);
@@ -239,6 +252,7 @@ final class LogoShape {
                 learnOn.execute(() -> {
                     try {
                         Model got = learn(frames, w, h, bl, bt, br, bb, sh / 1080f);
+                        dump(frames, got);
                         if (got != null && accept(got)) {
                             model = got;
                             learntFrom = frames.size();
@@ -282,6 +296,53 @@ final class LogoShape {
             return out == null ? null : new Fill(out, x + l, y + t, rr - l, b - t);
         }
 
+        /**
+         * The pictures a logo was learned from and what was learned (null: nothing), into dumpDir as frames.bin and
+         * model.bin when a file named "dump" there asks for it; that file then goes, so it is written once.
+         */
+        private void dump(List<int[]> frames, Model got) {
+            File dir = dumpDir;
+            File ask = dir == null ? null : new File(dir, "dump");
+            if (ask == null || !ask.isFile() || frames == null) return;
+            int n = w * h;
+            File pt = new File(dir, "frames.bin.new"), st = new File(dir, "model.bin.new");
+            java.nio.ByteBuffer b = java.nio.ByteBuffer.allocate(n * 4);
+            try (DataOutputStream out = new DataOutputStream(new java.io.BufferedOutputStream(new FileOutputStream(pt), 1 << 16))) {
+                out.writeInt(DUMP_MAGIC);
+                for (int v : new int[]{sw, sh, x, y, w, h, bl, bt, br, bb, frames.size()}) out.writeInt(v);
+                for (int[] f : frames) {
+                    b.clear();
+                    b.asIntBuffer().put(f);
+                    out.write(b.array(), 0, n * 4);
+                }
+            } catch (IOException | RuntimeException e) {
+                if (!pt.delete()) pt.deleteOnExit();
+                return;
+            }
+            try (DataOutputStream out = new DataOutputStream(new java.io.BufferedOutputStream(new FileOutputStream(st), 1 << 16))) {
+                out.writeInt(DUMP_MAGIC);
+                out.writeInt(got == null ? -1 : got.state);
+                if (got != null) {
+                    byte[] logo = new byte[n];
+                    for (int i = 0; i < n; i++) logo[i] = (byte) (got.logo[i] ? 1 : 0);
+                    out.write(logo);
+                    b.clear();
+                    b.asFloatBuffer().put(got.t);
+                    out.write(b.array(), 0, n * 4);
+                    for (int c = 0; c < 3; c++) {
+                        b.clear();
+                        b.asFloatBuffer().put(got.add[c]);
+                        out.write(b.array(), 0, n * 4);
+                    }
+                }
+            } catch (IOException | RuntimeException e) {
+                if (!st.delete()) st.deleteOnExit();
+                return;
+            }
+            boolean ok = pt.renameTo(new File(dir, "frames.bin")) & st.renameTo(new File(dir, "model.bin"));
+            if (ok && !ask.delete()) ask.deleteOnExit();
+        }
+
         /** The logo kept for this channel, if it was learned in this space and lies within this place. */
         private void load() {
             if (file == null) return;
@@ -317,6 +378,7 @@ final class LogoShape {
                 if (m.state != Model.NONE) {
                     model = m;
                     learntFrom = KEEP;
+                    fromFile = true;
                 }
             } catch (IOException | RuntimeException e) {
                 // learned again, then

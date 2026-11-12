@@ -2232,6 +2232,10 @@ final class BoardCover {
     private static final ExecutorService patchIo = Executors.newSingleThreadExecutor();
     private static long patchAt;
     private static boolean patchLoop;
+    /** Room for a picture's pixels, back from the see-through thread for the next (null while it is in use there). */
+    private static int[] pxRoom;
+    /** Whether the log was told if the logo kept for the channel served at the place now. */
+    private static boolean placeSaid;
     /** The logo under the cover now: its shape (learned, or kept from before) and the pictures it is learned from. */
     private static LogoShape.Here here;
 
@@ -2292,6 +2296,8 @@ final class BoardCover {
         if (BoardPlace.setByHand(c, channel)) BoardPlace.putOwn(c, channel, p);
         else BoardPlace.putSeen(c, channel, p);
         AlertLog.note(c, "see-through found the channel's logo off the cover: the cover moved onto it");
+        seeLog("the cover moved onto the logo at " + java.util.Arrays.toString(logo) + " (it was at [" + bx + ", " + by + ", "
+                + (bx + bw) + ", " + (by + bh) + "])");
         sightChanged();
     }
 
@@ -2365,6 +2371,11 @@ final class BoardCover {
         if (was == null || !was.same(key, sw, sh, x0, y0, x1 - x0, y1 - y0, bl, bt, br, bb)) {
             // Another channel, or the cover moved: its shape from its file, or learned (the plate meanwhile).
             unfill();
+            // Where a look at the logo away from the TV can be asked for over ADB (LogoShape.dumpDir).
+            if (LogoShape.dumpDir == null) LogoShape.dumpDir = c.getExternalFilesDir("see-through");
+            seeLog((was == null ? "place" : "place changed") + ": pictures [" + x0 + ", " + y0 + ", " + x1 + ", " + y1 + "], cover ["
+                    + bx + ", " + by + ", " + (bx + bw) + ", " + (by + bh) + "]");
+            placeSaid = false;
             here = new LogoShape.Here(new java.io.File(c.getFilesDir(), "logo_shapes"), key, sw, sh, x0, y0, x1 - x0, y1 - y0,
                     bl, bt, br, bb);
         }
@@ -2381,7 +2392,10 @@ final class BoardCover {
                 return;
             }
             int w = got.getWidth(), h = got.getHeight();
-            int[] px = new int[w * h];
+            // The same pixels' room each time (handed to the thread and back): less for the memory tidy, which can lose
+            // a picture under way (ScreenShots).
+            int[] px = pxRoom != null && pxRoom.length == w * h ? pxRoom : new int[w * h];
+            pxRoom = null;
             got.getPixels(px, 0, w, 0, 0, w, h);
             got.recycle();
             long taken = SystemClock.uptimeMillis();
@@ -2399,6 +2413,11 @@ final class BoardCover {
                 LogoShape.Fill done = f;
                 Bitmap b = made;
                 main().post(() -> {
+                    pxRoom = px;
+                    if (here == at && !placeSaid) {
+                        placeSaid = true;
+                        seeLog(at.fromFile() ? "the logo kept for this channel serves here" : "no logo kept for this channel fits here: learning it");
+                    }
                     if (here == at && mark != null && fill != null && mark.wantsPatch()) {
                         if (done == null) {
                             unfill();

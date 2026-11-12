@@ -224,4 +224,41 @@ public class LogoShapeTest {
         for (int i = 0; i < 25; i++) ring[i] = i % 5 > 0 && i % 5 < 4 && i / 5 > 0 && i / 5 < 4;
         assertEquals(2, LogoShape.depth(ring, 5, 5));
     }
+
+    @Test public void aLookAtTheLogoIsWrittenOnlyWhenAskedForAndOnce() throws Exception {
+        File out = tmp.newFolder("see-through");
+        File before = LogoShape.dumpDir;
+        LogoShape.dumpDir = out;
+        try {
+            LogoShape.Here here = new LogoShape.Here(null, "sports 3", 1920, 1080, 1700, 40, W, H, BL, BT, BR, BB, Runnable::run);
+            int t = 0;
+            // Not asked for: nothing written.
+            for (; t < LogoShape.ENOUGH; t++) here.take(withLogo(picture(t), LogoShapeTest::seeThroughLogo), t * 500L);
+            assertFalse(new File(out, "frames.bin").exists());
+            // Asked for: the next learning writes the pictures and what was learned, and the ask is used up.
+            File ask = new File(out, "dump");
+            assertTrue(ask.createNewFile());
+            for (; t < 80 && ask.exists(); t++) here.take(withLogo(picture(t), LogoShapeTest::seeThroughLogo), t * 500L);
+            assertFalse(ask.exists());
+            File frames = new File(out, "frames.bin"), model = new File(out, "model.bin");
+            int nf;
+            try (java.io.DataInputStream in = new java.io.DataInputStream(new java.io.FileInputStream(frames))) {
+                assertEquals(0x4C534431, in.readInt());
+                int[] head = new int[11];
+                for (int i = 0; i < head.length; i++) head[i] = in.readInt();
+                assertArrayEquals(new int[]{1920, 1080, 1700, 40, W, H, BL, BT, BR, BB}, java.util.Arrays.copyOf(head, 10));
+                nf = head[10];
+            }
+            assertTrue(nf > LogoShape.ENOUGH);
+            assertEquals(48L + (long) nf * W * H * 4, frames.length());
+            try (java.io.DataInputStream in = new java.io.DataInputStream(new java.io.FileInputStream(model))) {
+                assertEquals(0x4C534431, in.readInt());
+                assertEquals(LogoShape.Model.SEEN, in.readInt());
+            }
+            assertEquals(8L + W * H + 4L * 4 * W * H, model.length());
+            assertFalse(new File(out, "frames.bin.new").exists());
+        } finally {
+            LogoShape.dumpDir = before;
+        }
+    }
 }

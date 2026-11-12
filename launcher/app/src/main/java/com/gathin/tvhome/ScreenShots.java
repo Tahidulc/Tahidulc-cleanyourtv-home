@@ -16,9 +16,11 @@ import android.view.Display;
 import android.view.accessibility.AccessibilityNodeInfo;
 import android.view.accessibility.AccessibilityWindowInfo;
 
+import java.lang.ref.WeakReference;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Pictures of the screen (Android 11 and later), taken through the search helper (AppSearchService), for ChannelSight
@@ -51,6 +53,14 @@ final class ScreenShots {
     private static long soonAt;
     /** Whether TiviMate's window alone is taken now, or the whole screen for a while after its pictures missed. */
     private static final WindowPause WINDOWS = new WindowPause();
+    /** The pictures asked for, the one whose answer is waited for (0: none), and window pictures given up on. */
+    private static int asked, waitingFor, lost;
+    /** How often a window picture not back yet is looked at, and how many looks before it is given up on (a second). */
+    private static final long LOOK_MS = 250L;
+    private static final int LOST_LOOKS = 4;
+    /** TiviMate's window as last looked for (-1: none) and when: looked for again after a second, not for each picture. */
+    private static int windowId = -1;
+    private static long windowAt = Long.MIN_VALUE;
     /** Android refused the helper pictures at all (its permission not given): not asked again until it is bound again. */
     private static boolean refused;
     private static Object refusedBy;
@@ -70,7 +80,7 @@ final class ScreenShots {
     /** Its state in a few words, for the log: window pictures missed running (or paused), refused, the gap. */
     static String state() {
         return "window misses " + WINDOWS.misses() + (WINDOWS.on(SystemClock.uptimeMillis()) ? "" : ", window pictures paused")
-                + ", refused " + refused + ", gap " + gap + " ms, last failure " + lastFailure;
+                + ", lost " + lost + ", refused " + refused + ", gap " + gap + " ms, last failure " + lastFailure;
     }
 
     /**
@@ -120,7 +130,17 @@ final class ScreenShots {
     /** Whether a picture now leaves the launcher's own windows out (Android 14, TiviMate's window found, not paused). */
     static boolean windowOnly() {
         AccessibilityService s = AppSearchService.helper();
-        return Build.VERSION.SDK_INT >= 34 && s != null && WINDOWS.on(SystemClock.uptimeMillis()) && tivimateWindow(s) >= 0;
+        return Build.VERSION.SDK_INT >= 34 && s != null && WINDOWS.on(SystemClock.uptimeMillis()) && tivimateWindowNow(s) >= 0;
+    }
+
+    /** TiviMate's window (tivimateWindow), looked for at most once a second: asked for by each picture and each look. */
+    private static int tivimateWindowNow(AccessibilityService s) {
+        long now = SystemClock.uptimeMillis();
+        if (now - windowAt >= 1_000L || now < windowAt) {
+            windowId = tivimateWindow(s);
+            windowAt = now;
+        }
+        return windowId;
     }
 
     /** Whether one is under way or the gap since the last is not over. */
@@ -143,10 +163,15 @@ final class ScreenShots {
         lastAt = SystemClock.uptimeMillis();
         busy = true;
         long at = System.currentTimeMillis();
-        int window = Build.VERSION.SDK_INT >= 34 && WINDOWS.on(lastAt) ? tivimateWindow(s) : -1;
+        int window = Build.VERSION.SDK_INT >= 34 && WINDOWS.on(lastAt) ? tivimateWindowNow(s) : -1;
         boolean own = window >= 0;
+        // This one's answer is the one waited for: any other (one given up on) is let go when it comes.
+        int id = ++asked;
+        waitingFor = id;
+        AtomicBoolean back = new AtomicBoolean();
         AccessibilityService.TakeScreenshotCallback cb = new AccessibilityService.TakeScreenshotCallback() {
             @Override public void onSuccess(AccessibilityService.ScreenshotResult r) {
+                back.set(true);
                 Bitmap[] out = new Bitmap[parts.length];
                 HardwareBuffer hb = null;
                 Bitmap hw = null;
@@ -162,6 +187,12 @@ final class ScreenShots {
                 }
                 boolean black = own && out.length > 0 && out[0] != null && black(out[0]);
                 MAIN.post(() -> {
+                    if (waitingFor != id) {
+                        // Given up on meanwhile, and another asked for: let go.
+                        for (Bitmap b : out) if (b != null) b.recycle();
+                        return;
+                    }
+                    waitingFor = 0;
                     busy = false;
                     long now = SystemClock.uptimeMillis();
                     if (own && black) WINDOWS.missed(now);
@@ -173,7 +204,11 @@ final class ScreenShots {
             }
 
             @Override public void onFailure(int code) {
+                back.set(true);
                 MAIN.post(() -> {
+                    // Android's own late word on one given up on (its five seconds over): nothing more to do.
+                    if (waitingFor != id) return;
+                    waitingFor = 0;
                     lastFailure = code;
                     busy = false;
                     if (code == AccessibilityService.ERROR_TAKE_SCREENSHOT_INTERVAL_TIME_SHORT) {
@@ -183,8 +218,9 @@ final class ScreenShots {
                         refused = true;
                         refusedBy = AppSearchService.helper();
                     } else if (own) {
-                        // TiviMate's window could not be taken (busy past Android's wait, secure, gone): tried again,
-                        // and after three running the whole screen for a while.
+                        // TiviMate's window could not be taken (secure, gone): looked for again, tried again, and after
+                        // three running the whole screen for a while.
+                        windowAt = Long.MIN_VALUE;
                         WINDOWS.missed(SystemClock.uptimeMillis());
                     }
                     got.got(new Bitmap[parts.length], at, own);
@@ -192,10 +228,34 @@ final class ScreenShots {
             }
         };
         try {
-            if (own) s.takeScreenshotOfWindow(window, work(), cb);
-            else s.takeScreenshot(Display.DEFAULT_DISPLAY, work(), cb);
+            if (own) {
+                // Android 14 holds its own listener for a window's picture only weakly: when the launcher's memory is
+                // tidied before the picture is back, the picture is dropped and Android says so only five seconds later.
+                // A mark made with it goes in the same tidy: seen gone with no answer, the picture is given up on at
+                // once and the next asked for (a second at most in any case), not five seconds of a still fill.
+                WeakReference<Object> mark = new WeakReference<>(new Object());
+                s.takeScreenshotOfWindow(window, work(), cb);
+                MAIN.postDelayed(new Runnable() {
+                    private int looks;
+
+                    @Override public void run() {
+                        if (waitingFor != id || back.get()) return;
+                        if (mark.get() != null && ++looks < LOST_LOOKS) {
+                            MAIN.postDelayed(this, LOOK_MS);
+                            return;
+                        }
+                        waitingFor = 0;
+                        busy = false;
+                        lost++;
+                        got.got(new Bitmap[parts.length], at, true);
+                    }
+                }, LOOK_MS);
+            } else {
+                s.takeScreenshot(Display.DEFAULT_DISPLAY, work(), cb);
+            }
             return true;
         } catch (RuntimeException e) {
+            waitingFor = 0;
             busy = false;
             return false;
         }
