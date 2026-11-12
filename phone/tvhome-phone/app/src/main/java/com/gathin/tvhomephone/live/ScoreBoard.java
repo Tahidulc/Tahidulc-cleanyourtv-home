@@ -80,6 +80,12 @@ public final class ScoreBoard implements LiveAlerts.Listener {
     static final long STATS_READ_MS = 120_000L, ENDS_READ_MS = 30_000L;
     /** The first of the stats' moments: this long before kick-off at most. */
     static final long PRE_STATS_MS = 10 * 60_000L;
+    /** During a penalty shootout the game is read this often (each kick in step with the picture). */
+    static final long PENS_READ_MS = 10_000L;
+    /** The shootout's strip stays this long after the game ends on the screen. */
+    static final long PENS_STAY_MS = 60_000L;
+    /** The win chance's pop-out's chip colour. */
+    static final int WIN_CHANCE_BLUE = 0xFF3D7BFF;
     private static final Pattern F1_CHANNEL = Pattern.compile("(?i)\\bf1\\b|formula ?(1|one)");
 
     // ---- the switches -------------------------------------------------------------------------------------------
@@ -315,6 +321,21 @@ public final class ScoreBoard implements LiveAlerts.Listener {
 
     static void setOtherDelay(Context c, int s) { prefs(c).edit().putInt("other_delay", LiveAlerts.clamp(s)).apply(); }
 
+    /** The win chance under the board (and its pop-out after a goal that moves it). */
+    static boolean winChanceOn(Context c) { return prefs(c).getBoolean("win_chance", true); }
+
+    static void setWinChanceOn(Context c, boolean v) { prefs(c).edit().putBoolean("win_chance", v).apply(); }
+
+    /** A penalty shootout's kicks under the board. */
+    static boolean pensOn(Context c) { return prefs(c).getBoolean("pens", true); }
+
+    static void setPensOn(Context c, boolean v) { prefs(c).edit().putBoolean("pens", v).apply(); }
+
+    /** The milestones on the pop-outs: a goal's place in the season, a yellow card's ban. */
+    static boolean milestonesOn(Context c) { return prefs(c).getBoolean("milestones", true); }
+
+    static void setMilestonesOn(Context c, boolean v) { prefs(c).edit().putBoolean("milestones", v).apply(); }
+
     /** Pure: the switch group an alert's kind is under. */
     static String group(String kind) {
         String g = Kinds.group(kind);
@@ -343,6 +364,8 @@ public final class ScoreBoard implements LiveAlerts.Listener {
     final BoardStats stats;
     /** The line-ups, as the TV's card, beside it. */
     final BoardLineups lineups;
+    /** Under it: the win chance, or a penalty shootout's kicks in its place while one is on. */
+    final BoardUnder under;
     /** The game's stats and facts read last, by their names ("Possession", "Form"…), each {name, home, away[, kind]}. */
     private Map<String, String[]> statsBy = new HashMap<>();
     /** The added time put up in each half (minutes; -1 until it is), for the game read. */
@@ -404,6 +427,11 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         SubsPage.Subs subs;
         /** The minutes added (an ADDED TIME alert): a big +N counting up to them as it comes out, MINUTES ADDED by it. */
         int addedMins;
+        /** A milestone's tag at the end of its words ("3rd of the season", "One more and he's banned"), its kind (BoardDrop.TAG_*). */
+        String tag = "";
+        int tagKind;
+        /** Its milestone, looked up off the main thread before it comes out: {tag, kind}, or null for none. */
+        java.util.concurrent.Callable<Object[]> milestone;
     }
 
     private final Runnable tick = new Runnable() {
@@ -437,6 +465,9 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         view.addView(strip, new FrameLayout.LayoutParams(Math.round(280 * d), Math.round(30 * d)));
         lineups = new BoardLineups(ctx);
         view.addView(lineups, new FrameLayout.LayoutParams(Math.round(300 * d), Math.round(100 * d)));
+        // Under the board, its top tucked under the board's foot.
+        under = new BoardUnder(ctx);
+        view.addView(under, new FrameLayout.LayoutParams(Math.round(200 * d), Math.round(20 * d)));
         bug = new OverlayBug(ctx);
         bug.style(style(ctx));
         bug.setVisibility(View.GONE);
@@ -598,6 +629,8 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         dropping = false;
         stats.gone();
         lineups.gone();
+        under.gone();
+        yellowsWaiting.clear();
     }
 
     /** The small window: the board alone, no drops (they'd cover the picture). */
@@ -611,6 +644,7 @@ public final class ScoreBoard implements LiveAlerts.Listener {
             dropping = false;
             stats.fold(null);
             lineups.gone();
+            under.gone();
         }
     }
 
@@ -625,6 +659,8 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         mode = NONE;
         lastId = "";
         bug.setVisibility(View.GONE);
+        under.gone();
+        yellowsWaiting.clear();
         h.removeCallbacks(read);
         if (running) h.post(read);
     }
@@ -764,6 +800,7 @@ public final class ScoreBoard implements LiveAlerts.Listener {
                         compPic = pics[2];
                     }
                     compName = got.leagueName == null ? "" : got.leagueName;
+                    prefetchGoals(got);
                 } else if (session != null) {
                     channelGame = false;
                     f1Reads.addLast(new Object[]{now, session});
@@ -777,7 +814,8 @@ public final class ScoreBoard implements LiveAlerts.Listener {
                 // A breaking story: an alert like the rest (its notification, its pop-up, its drop here, once).
                 if (stories != null) BreakingNews.post(c, stories);
                 draw(now);
-                h.postDelayed(read, READ_MS);
+                // A shootout's kicks read more often, each in step with the picture.
+                h.postDelayed(read, got != null && inShootout(got) ? PENS_READ_MS : READ_MS);
             });
         });
     }
@@ -797,6 +835,8 @@ public final class ScoreBoard implements LiveAlerts.Listener {
                 if (l.live) l.added = addedBox(period(g, l.clock), minuteOfClock(l.clock), addedUp, l.added);
                 // The minutes added, once known for this half: out beside the board once as an alert, then in its tab.
                 if (l.live && !l.added.isEmpty()) addedOut(g, l.added, period(g, l.clock));
+                // Each side's chance of winning as the screen shows the game (its score, its clock, its red cards).
+                int[] pctNow = winChanceOn(c) ? chanceShown(g, l) : null;
                 // A goal as the screen shows it: that side lit, then its scorer captioned.
                 if (g.id != null && g.id.equals(lastShownId)) {
                     int side = g.homeScore > lastHome && lastHome >= 0 ? 1 : g.awayScore > lastAway && lastAway >= 0 ? 2 : 0;
@@ -806,13 +846,19 @@ public final class ScoreBoard implements LiveAlerts.Listener {
                         goalShownAt = now;
                         if (changed != null) changed.run();
                         caption(g, side);
+                        chanceAfterGoal(g, side, pctNow, now);
                         if (channelGame) src.goalShown(g, side);
                     }
+                }
+                if (pctNow != null && g.id != null) {
+                    lastPct = pctNow;
+                    pctFor = g.id;
                 }
                 lastShownId = g.id;
                 lastHome = g.homeScore;
                 lastAway = g.awayScore;
                 boardMinute = minuteOfClock(l.clock);
+                releaseYellows(g, l.clock);
                 // Full time on the screen: shown a little under a minute (its alert, its stats), then away.
                 String id = g.id == null ? "" : g.id;
                 if (g.state == Game.POST) {
@@ -821,7 +867,7 @@ public final class ScoreBoard implements LiveAlerts.Listener {
                         ftAt = now;
                         if (changed != null) changed.run();
                     }
-                    if (ftGone(now - ftAt, dropping || lineups.isOut())) l = null;
+                    if (ftGone(now - ftAt, dropping || lineups.isOut() || under.mode() == BoardUnder.PENS)) l = null;
                 } else if (id.equals(ftFor)) {
                     ftFor = "";
                 }
@@ -850,6 +896,7 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         if (l != null && !l.f1 && now < addedUntil) testAdded(l, now);
         if (l == null || hidden) {
             // Away as a broadcaster's goes: what is out beside it back in, wiped back into its first block, closed to a line.
+            under.away();
             if (bug.getVisibility() == View.VISIBLE && !bug.closing()) {
                 stats.fold(null);
                 if (strip.isOut()) strip.fold(null);
@@ -869,6 +916,7 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         }
         stats.colours(l.homeColour, l.awayColour);
         if (mode == FOOTBALL_MODE && shown != null) maybeStats(shown, now);
+        underNow(mode == FOOTBALL_MODE ? shown : null, l, now);
     }
 
     /** Pure: whether half time has been shown long enough: 25 seconds, or a minute at most whatever is out of it. */
@@ -1040,7 +1088,7 @@ public final class ScoreBoard implements LiveAlerts.Listener {
     /** The game's summary read again now and then (off the main thread): its stats and facts, the added time put up. */
     private void readStats(Game g, long now) {
         if (g == null || g.id == null || g.slug == null || statsReading) return;
-        long every = readEvery(boardMinute);
+        long every = pensDue(g) ? PENS_READ_MS : readEvery(boardMinute);
         if (g.id.equals(statsFor) && now - statsReadAt < every) return;
         statsReadAt = now;
         statsReading = true;
@@ -1050,6 +1098,7 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         boolean fotmob = fotmobOn(c);
         String homeName = g.homeName, awayName = g.awayName;
         long kickoff = g.kickoff;
+        boolean needRates = !id.equals(ratesFor) || !ratesPriced, last = state == Game.POST;
         App.io.execute(() -> {
             Espn.Summary sum = null;
             try {
@@ -1058,6 +1107,9 @@ public final class ScoreBoard implements LiveAlerts.Listener {
                 // another time
             }
             Espn.Summary got = sum;
+            // The win chance's rates fitted to the prices before kick-off (once a game; again once there are prices).
+            double[] fitted = needRates && got != null ? WinChance.rates(got.chances) : null;
+            boolean priced = got != null && got.chances != null;
             Map<String, String[]> by = got == null ? new HashMap<>() : statsOf(got, state, homeCode, awayCode);
             // FotMob's figures on top: expected goals, big chances, ratings, who is on top, its player of the match.
             FotMob.Match fm = null;
@@ -1080,8 +1132,406 @@ public final class ScoreBoard implements LiveAlerts.Listener {
                 for (int i = 0; i < 4; i++) if (got.added[i] > 0) addedUp[i] = got.added[i];
                 if (!by.isEmpty()) statsBy = by;
                 statsFor = id;
+                if (fitted != null && (!id.equals(ratesFor) || priced)) {
+                    rates = fitted;
+                    ratesFor = id;
+                    ratesPriced = priced;
+                }
+                lastSum = got;
+                sumFor = id;
+                pensRead(id, got, System.currentTimeMillis(), last);
+                yellowsRead(g, got);
             });
         });
+    }
+
+    // ---- under the board: the win chance, a penalty shootout; the milestones on the pop-outs -------------------------
+
+    /** The win chance's goals per 90 minutes for the game read (fitted to its prices once there are some), for which game. */
+    private double[] rates;
+    private String ratesFor = "";
+    private boolean ratesPriced;
+    /** The chances last shown for the board's game, {home, draw, away} in whole percentages. */
+    private int[] lastPct;
+    private String pctFor = "";
+    /** A shootout's kicks as read for one game, each side's with when each came; whether the last read was after it ended. */
+    private final List<Boolean> pensHome = new ArrayList<>(), pensAway = new ArrayList<>();
+    private final List<Long> pensHomeAt = new ArrayList<>(), pensAwayAt = new ArrayList<>();
+    private String pensFor = "", pensEndFor = "", pensShownFor = "";
+    private boolean pensFinal;
+    private long pensEndAt;
+    /** The kicks the strip shows (to pop the newest in): for which shootout, how many a side. */
+    private int pensShownHome, pensShownAway;
+    /** The game's summary read last (its line-ups for ESPN's player ids, its table for the matchweek), and for which game. */
+    private Espn.Summary lastSum;
+    private String sumFor = "";
+    /** The yellow cards seen ("E|…" keys) and the games read for them; those waiting for the picture: {minute, Drop}. */
+    private final Set<String> yellowsSeen = new java.util.HashSet<>(), yellowGames = new java.util.HashSet<>();
+    private final ArrayDeque<Object[]> yellowsWaiting = new ArrayDeque<>();
+    /** The goals whose scorer's season has been asked for, and the games seen for it. */
+    private final Set<String> milestoneAsked = new java.util.HashSet<>(), milestoneGames = new java.util.HashSet<>();
+    /** Each player's season read for a game, "game|player": {goals, yellow cards, tonight in it 1/0}, or none (empty). */
+    private static final Map<String, int[]> SEASONS = new HashMap<>();
+    /** The tests under the board: from when, until when. */
+    private long pensTestFrom, pensTestUntil, chanceTestFrom, chanceTestUntil;
+
+    /**
+     * Pure: whether a game is in its penalty shootout: ESPN's fifth period, or its words say so while it is on.
+     */
+    static boolean inShootout(Game g) {
+        if (g == null || g.state != Game.LIVE) return false;
+        if (g.period >= 5) return true;
+        String d = g.detail == null ? "" : g.detail.toLowerCase(Locale.ROOT);
+        return d.contains("pen") || d.contains("shootout");
+    }
+
+    /** Whether the game's summary is wanted often: in its shootout, or just over with the shootout's last read not in. */
+    private boolean pensDue(Game g) {
+        if (inShootout(g)) return true;
+        return g.state == Game.POST && g.id != null && g.id.equals(pensFor) && !pensFinal && !(pensHome.isEmpty() && pensAway.isEmpty());
+    }
+
+    /** A summary read (main thread): its shootout's kicks, each new one kept with when it came. */
+    private void pensRead(String id, Espn.Summary s, long at, boolean last) {
+        if (!id.equals(pensFor)) {
+            pensFor = id;
+            pensHome.clear();
+            pensAway.clear();
+            pensHomeAt.clear();
+            pensAwayAt.clear();
+            pensFinal = false;
+        }
+        Shootout.arrived(pensHome, pensHomeAt, Shootout.kicks(s.homePens), at);
+        Shootout.arrived(pensAway, pensAwayAt, Shootout.kicks(s.awayPens), at);
+        if (last && !(pensHome.isEmpty() && pensAway.isEmpty())) pensFinal = true;
+    }
+
+    /**
+     * What the strip under the board shows now, in the board's look: a shootout's kicks as the picture shows them (a
+     * test's made-up ones), else each side's chance of winning; nothing in the small window, the preview, while the
+     * line-ups are out or with no room below the board.
+     */
+    private void underNow(Game g, OverlayBug.Look l, long now) {
+        if (l == null || l.f1 || small || preview || hidden || lineups.isOut() || !boardUp()) {
+            under.away();
+            return;
+        }
+        under.clubs(l.home, l.away, l.homeColour, l.awayColour, bug.homeCrest, bug.awayCrest);
+        if (now < pensTestUntil) {
+            List<Boolean>[] k = Shootout.test(now - pensTestFrom);
+            if (!pensOut("TEST", k[0], k[1])) under.away();
+            return;
+        }
+        if (now < chanceTestUntil) {
+            if (placeUnder(BoardUnder.CHANCE, 0)) under.chance(testChance(now - chanceTestFrom));
+            else under.away();
+            return;
+        }
+        if (g != null && pensNow(g, now)) return;
+        int[] p = g == null || !winChanceOn(c) || inShootout(g) || afterPens(g) ? null : chanceShown(g, l);
+        if (p == null || !placeUnder(BoardUnder.CHANCE, 0)) {
+            under.away();
+            return;
+        }
+        under.chance(p);
+    }
+
+    /** Whether a game over went to penalties (a draw on the board: its chances would say nothing). */
+    private boolean afterPens(Game g) {
+        if (g.state != Game.POST || g.homeScore != g.awayScore) return false;
+        String d = g.detail == null ? "" : g.detail.toLowerCase(Locale.ROOT);
+        return d.contains("pen") || g.id != null && g.id.equals(pensFor) && !(pensHome.isEmpty() && pensAway.isEmpty());
+    }
+
+    /** The shootout under the board for g, its kicks in step with the picture; false when there's none to show. */
+    private boolean pensNow(Game g, long now) {
+        if (g.id == null || !pensOn(c)) return false;
+        boolean ours = g.id.equals(pensFor), on = inShootout(g);
+        if (g.state == Game.POST) {
+            if (!ours || pensHome.isEmpty() && pensAway.isEmpty()) return false;
+            // Over on the screen: it stays a minute, then goes with the board.
+            if (!g.id.equals(pensEndFor)) {
+                pensEndFor = g.id;
+                pensEndAt = now;
+            }
+            on = now - pensEndAt < PENS_STAY_MS;
+        }
+        if (!on) return false;
+        long seen = now - screen.behind();
+        List<Boolean> hk = ours ? Shootout.shown(pensHome, pensHomeAt, seen) : new ArrayList<>();
+        List<Boolean> ak = ours ? Shootout.shown(pensAway, pensAwayAt, seen) : new ArrayList<>();
+        return pensOut(g.id, hk, ak);
+    }
+
+    /** These kicks under the board: the newest popping in with the swish (none for those there when it came). */
+    private boolean pensOut(String key, List<Boolean> hk, List<Boolean> ak) {
+        if (!placeUnder(BoardUnder.PENS, Math.max(5, Math.max(hk.size(), ak.size())))) return false;
+        int newSide = -1, newIndex = -1;
+        if (!key.equals(pensShownFor)) {
+            pensShownFor = key;
+        } else {
+            if (ak.size() > pensShownAway) {
+                newSide = 1;
+                newIndex = ak.size() - 1;
+            }
+            if (hk.size() > pensShownHome) {
+                newSide = 0;
+                newIndex = hk.size() - 1;
+            }
+        }
+        pensShownHome = hk.size();
+        pensShownAway = ak.size();
+        under.pens(Shootout.dots(hk, ak), Shootout.scored(hk), Shootout.scored(ak), newSide, newIndex);
+        return true;
+    }
+
+    /**
+     * The strip under the board placed for what it shows (dots: the shootout's in a row): its top tucked under the board's
+     * foot (a little apart under a pill), as wide as the board for the chances (a little wider for a narrow board), the
+     * shootout as wide as its dots; drawn smaller rather than past the screen's edge. False when there's no room below.
+     */
+    private boolean placeUnder(int what, int dots) {
+        float u = unit(), dp = c.getResources().getDisplayMetrics().density;
+        int bh = boardH(), bw = boardW(), most = bw + Math.max(0, roomRight);
+        OverlayBug.StripLook look = bug.stripLook();
+        int w;
+        if (what == BoardUnder.PENS) {
+            int need = BoardUnder.pensWidth(u, dots);
+            if (need > most) u = Math.max(u * 0.6f, u * most / (float) need);
+            w = Math.min(BoardUnder.pensWidth(u, dots), Math.max(most, bw));
+        } else {
+            w = Math.max(bw, Math.min(Math.round(u * 6f), most));
+        }
+        int h = BoardUnder.heightFor(what, u);
+        int into = look.apart ? -Math.round(3 * dp) : Math.round(Math.min(8 * dp, bh * look.round)) + 1;
+        if (roomBelow < h - into) return false;
+        FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) under.getLayoutParams();
+        int top = head + bh - into;
+        if (lp.width != w || lp.height != h || lp.leftMargin != boardAt || lp.topMargin != top) {
+            lp.width = w;
+            lp.height = h;
+            lp.leftMargin = boardAt;
+            lp.topMargin = top;
+            under.setLayoutParams(lp);
+        }
+        under.place(look, u, bw);
+        return true;
+    }
+
+    /** The chances {home, draw, away} in whole percentages for the game as the board shows it; null before its rates are read. */
+    private int[] chanceShown(Game g, OverlayBug.Look l) {
+        if (g == null || g.id == null || !g.id.equals(ratesFor) || rates == null) return null;
+        return WinChance.percents(chanceOf(g, l.clock, rates, g.id.equals(statsFor) ? addedUp : null));
+    }
+
+    /**
+     * Pure: each side's chance of winning, and the draw's, as the board shows a game: before kick-off the whole game to
+     * come; in play what is left of it by its clock (half time: the second half), its score and its red cards; over, the
+     * result.
+     */
+    static double[] chanceOf(Game g, String clock, double[] rates, int[] added) {
+        if (g.state == Game.POST) {
+            int d = g.homeScore - g.awayScore;
+            return d > 0 ? new double[]{1, 0, 0} : d < 0 ? new double[]{0, 0, 1} : new double[]{0, 1, 0};
+        }
+        int homeReds = 0, awayReds = 0;
+        for (String[] r : g.reds) {
+            if (r.length < 4) continue;
+            if ("home".equals(r[3])) homeReds++;
+            else if ("away".equals(r[3])) awayReds++;
+        }
+        double rest;
+        if (g.state == Game.PRE) {
+            rest = 1.0;
+        } else if (g.halftime) {
+            rest = g.period >= 3 ? WinChance.rest(105, 4, 0) : WinChance.rest(45, 2, 0);
+        } else {
+            int m = minuteOfClock(clock);
+            if (m < 0) m = Math.max(0, firstNumber(g.displayClock));
+            int p = period(g, clock);
+            int add = added != null && p >= 1 && p <= added.length ? Math.max(0, added[p - 1]) : 0;
+            rest = WinChance.rest(m, p, add);
+        }
+        return WinChance.now(rates, g.homeScore, g.awayScore, rest, homeReds, awayReds);
+    }
+
+    /** A goal on the screen that moves its side's chance 5 points or more: out beside the board after its scorer. */
+    private void chanceAfterGoal(Game g, int side, int[] after, long now) {
+        if (after == null || lastPct == null || g.id == null || !g.id.equals(pctFor) || small || !shows(c, FOOTBALL)) return;
+        int i = side == 1 ? 0 : 2;
+        if (!WinChance.moved(lastPct[i], after[i])) return;
+        Drop d = chanceDrop(g, side, lastPct[i], after[i]);
+        d.homeCrest = bug.homeCrest;
+        d.awayCrest = bug.awayCrest;
+        // After the scorer's caption (its band, then its photo looked for): queued behind it.
+        h.postDelayed(() -> {
+            if (running && !small) drop(d);
+        }, bug.bandLeft(now) + 2_000L + PHOTO_WAIT_MS + 400L);
+    }
+
+    /** Pure: the win chance's pop-out after a goal: WIN CHANCE, "Everton 34% → 71%", by that side's crest. */
+    static Drop chanceDrop(Game g, int side, int was, int is) {
+        Drop d = new Drop();
+        d.chip = "WIN CHANCE";
+        d.colour = WIN_CHANCE_BLUE;
+        d.own = true;
+        d.side = side;
+        d.title = WinChance.words(side == 1 ? g.homeName : g.awayName, was, is);
+        d.homeColour = OverlayBug.colour(g.homeColor, g.homeAlt);
+        d.awayColour = OverlayBug.colour(g.awayColor, g.awayAlt);
+        return d;
+    }
+
+    /** The tests' made-up chances: before a goal, then after the home side's. */
+    static final int[] TEST_BEFORE = {34, 29, 37}, TEST_AFTER = {71, 19, 10};
+    static final long TEST_GOAL_AT_MS = 5_000L, TEST_CHANCE_MS = 18_000L;
+
+    /** Pure: the test's chances since ms into it. */
+    static int[] testChance(long since) {
+        return since < TEST_GOAL_AT_MS ? TEST_BEFORE : TEST_AFTER;
+    }
+
+    // ---- milestones ------------------------------------------------------------------------------------------------
+
+    /** ESPN's id for a player of the board's game by his name and side, from its line-ups read last; null when not known. */
+    private String athlete(Game g, String name, String side) {
+        if (lastSum == null || g == null || g.id == null || !g.id.equals(sumFor)) return null;
+        List<String[]> lineup = "home".equals(side) ? lastSum.homeLineup : "away".equals(side) ? lastSum.awayLineup : null;
+        return Milestones.athleteId(lineup, name, Espn.P_NAME, Espn.P_SHORT, Espn.P_ID);
+    }
+
+    /**
+     * Each new goal of the board's game (as the scores have it, ahead of the picture): its scorer's season looked up now,
+     * off the main thread, so his caption has it when the picture gets there. Those before the board came up: never.
+     */
+    private void prefetchGoals(Game g) {
+        if (!milestonesOn(c) || g.id == null || !g.id.equals(sumFor) || lastSum == null) return;
+        boolean first = milestoneGames.add(g.id);
+        for (String[] goal : g.goals) {
+            if (goal.length < 4 || !milestoneAsked.add(goal[0]) || first) continue;
+            if (milestoneAsked.size() > 400) milestoneAsked.clear();
+            if (goal.length > 4 && "og".equals(goal[4])) continue;
+            String aid = athlete(g, goal[1], goal[3]);
+            if (aid == null) continue;
+            String slug = g.slug, id = g.id, league = g.leagueName;
+            App.io.execute(() -> seasonOf(slug, id, league, aid));
+        }
+    }
+
+    /** A goal's milestone, looked up off the main thread: {"3rd of the season", TAG_GOAL}, or null for none. */
+    private java.util.concurrent.Callable<Object[]> goalMilestone(Game g, String[] goal) {
+        if (!milestonesOn(c) || g == null || g.id == null || goal == null || goal.length < 4) return null;
+        if (goal.length > 4 && "og".equals(goal[4])) return null;
+        int inGame = Milestones.inGame(g.goals, goal[0], goal[1]);
+        String aid = inGame >= 2 ? null : athlete(g, goal[1], goal[3]);
+        String slug = g.slug, id = g.id, league = g.leagueName;
+        return () -> {
+            int season = -1;
+            boolean counted = false;
+            int[] s = aid == null ? null : seasonOf(slug, id, league, aid);
+            if (s != null && s.length == 3) {
+                season = s[0];
+                counted = s[2] == 1;
+            }
+            String t = Milestones.goal(inGame, Milestones.seasonWithTonight(season, counted, inGame), false);
+            return t.isEmpty() ? null : new Object[]{t, BoardDrop.TAG_GOAL};
+        };
+    }
+
+    /** A player's season in the game's competition (off the main thread), read once a game: null when ESPN has none. */
+    private static int[] seasonOf(String slug, String gameId, String league, String athleteId) {
+        String key = gameId + "|" + athleteId;
+        synchronized (SEASONS) {
+            if (SEASONS.containsKey(key)) {
+                int[] had = SEASONS.get(key);
+                return had == null || had.length == 0 ? null : had;
+            }
+        }
+        org.json.JSONObject o = Espn.athleteOverview(slug, athleteId);
+        int[] s = o == null ? null : Milestones.season(o, gameId, Espn.name(slug), league == null ? "" : league);
+        synchronized (SEASONS) {
+            if (SEASONS.size() > 200) SEASONS.clear();
+            // Not read (no answer): asked again next time; read with no figures: none for the game.
+            if (o != null) SEASONS.put(key, s == null ? new int[0] : s);
+        }
+        return s;
+    }
+
+    /**
+     * A summary read (main thread): each new yellow card of the board's game where the competition counts them; its
+     * player's yellows this season looked up, and out beside the board once the picture has shown it, only when it says
+     * something (one more and he's banned; banned for the next game). Those before the board came up: never.
+     */
+    private void yellowsRead(Game g, Espn.Summary s) {
+        if (g.id == null) return;
+        boolean own = g.id.equals(lastId) && mode == FOOTBALL_MODE, first = yellowGames.add(g.id);
+        for (String[] e : s.events) {
+            if (e.length < 5 || !"yellow card".equalsIgnoreCase(e[1])) continue;
+            if (!yellowsSeen.add(e[4]) || first) continue;
+            if (yellowsSeen.size() > 400) yellowsSeen.clear();
+            if (!own || small || !milestonesOn(c) || !shows(c, FOOTBALL) || !Milestones.counts(g.slug)) continue;
+            String aid = athlete(g, e[2], e[3]);
+            if (aid == null) continue;
+            int played = 0;
+            String team = "home".equals(e[3]) ? g.homeId : g.awayId;
+            for (String[] row : s.table) if (row.length > 4 && row[0].equals(team)) played = parse(row[4]);
+            int week = Milestones.matchweek(played, java.util.Calendar.getInstance());
+            String slug = g.slug, id = g.id, league = g.leagueName;
+            int minute = cardMinute(e[0]);
+            App.io.execute(() -> {
+                int[] season = seasonOf(slug, id, league, aid);
+                if (season == null || season.length < 3) return;
+                int yellows = Milestones.seasonWithTonight(season[1], season[2] == 1, 1);
+                int kind = Milestones.yellow(slug, yellows, week);
+                if (kind == Milestones.NONE) return;
+                App.main.post(() -> {
+                    if (!running || !id.equals(lastId)) return;
+                    Drop d = yellowDrop(g, e, kind);
+                    d.homeCrest = bug.homeCrest;
+                    d.awayCrest = bug.awayCrest;
+                    yellowsWaiting.addLast(new Object[]{minute, d, id});
+                });
+            });
+        }
+    }
+
+    /** The yellow cards waiting for the picture: out once the board's clock (in step with it) has passed their minute. */
+    private void releaseYellows(Game g, String clock) {
+        if (yellowsWaiting.isEmpty()) return;
+        int m = minuteOfClock(clock);
+        for (java.util.Iterator<Object[]> it = yellowsWaiting.iterator(); it.hasNext(); ) {
+            Object[] w = it.next();
+            if (g.id == null || !g.id.equals(w[2]) || g.state == Game.POST) {
+                it.remove();
+                continue;
+            }
+            if (m < 0 || m < (Integer) w[0] || g.halftime) continue;
+            it.remove();
+            if (!small) drop((Drop) w[1]);
+        }
+    }
+
+    /** Pure: a card's minute as the board's clock passes it ("34'": 34; "45'+2'": 47); 0 when it has none. */
+    static int cardMinute(String minute) {
+        if (minute == null) return 0;
+        String[] parts = minute.split("\\+");
+        int base = firstNumber(parts[0]), extra = parts.length > 1 ? firstNumber(parts[1]) : 0;
+        return base + extra;
+    }
+
+    /** Pure: a yellow card's pop-out with its ban's words: YELLOW CARD, the player and his minute, the tag. */
+    static Drop yellowDrop(Game g, String[] e, int kind) {
+        Drop d = new Drop();
+        d.chip = "YELLOW CARD";
+        d.colour = BoardDrop.CARD_YELLOW;
+        d.own = true;
+        d.side = "home".equals(e[3]) ? 1 : "away".equals(e[3]) ? 2 : 0;
+        d.line = (e[2] + " " + e[0]).trim();
+        d.tag = Milestones.yellowWords(kind);
+        d.tagKind = kind == Milestones.BANNED ? BoardDrop.TAG_BAN : BoardDrop.TAG_WARN;
+        d.homeColour = OverlayBug.colour(g.homeColor, g.homeAlt);
+        d.awayColour = OverlayBug.colour(g.awayColor, g.awayAlt);
+        return d;
     }
 
     /** The substitutions seen, "game|minute|who came on": each slides out once, those before the board came up never. */
@@ -1421,6 +1871,7 @@ public final class ScoreBoard implements LiveAlerts.Listener {
             if (d.own) {
                 d.homeCrest = bug.homeCrest;
                 d.awayCrest = bug.awayCrest;
+                if ("goal".equals(a.kind) && who != null) d.milestone = goalMilestone(g, who);
             }
             enrich(d, g, who == null ? null : who[1], who == null ? null : "home".equals(who[3]) ? g.homeName : g.awayName);
             return;
@@ -1447,12 +1898,12 @@ public final class ScoreBoard implements LiveAlerts.Listener {
     }
 
     /**
-     * The alert's pictures fetched off the main thread (the player's photo, another game's crests), then it slides out;
-     * after PHOTO_WAIT_MS it goes without what hasn't come.
+     * The alert's pictures fetched off the main thread (the player's photo, another game's crests) and its milestone
+     * looked up beside them, then it slides out; after PHOTO_WAIT_MS it goes without what hasn't come.
      */
     private void enrich(Drop d, Game g, String who, String club) {
         boolean crests = !d.own && g != null && (d.homeCrest == null || d.awayCrest == null);
-        if (who == null && !crests) {
+        if (who == null && !crests && d.milestone == null) {
             drop(d);
             return;
         }
@@ -1463,6 +1914,33 @@ public final class ScoreBoard implements LiveAlerts.Listener {
             drop(d);
         };
         h.postDelayed(go, PHOTO_WAIT_MS);
+        // Out once both have come (the pictures, the milestone), or at PHOTO_WAIT_MS without what hasn't.
+        int[] left = {d.milestone != null ? 2 : 1};
+        Runnable one = () -> {
+            if (done[0] || --left[0] > 0) return;
+            h.removeCallbacks(go);
+            go.run();
+        };
+        if (d.milestone != null) {
+            java.util.concurrent.Callable<Object[]> work = d.milestone;
+            App.io.execute(() -> {
+                Object[] mark = null;
+                try {
+                    mark = work.call();
+                } catch (Exception ignored) {
+                    // without it
+                }
+                Object[] m = mark;
+                App.main.post(() -> {
+                    if (done[0]) return;
+                    if (m != null) {
+                        d.tag = (String) m[0];
+                        d.tagKind = (Integer) m[1];
+                    }
+                    one.run();
+                });
+            });
+        }
         int px = Math.round(28 * c.getResources().getDisplayMetrics().density * 2);
         App.io.execute(() -> {
             Bitmap photo = null, home = null, away = null;
@@ -1482,8 +1960,7 @@ public final class ScoreBoard implements LiveAlerts.Listener {
                 d.photo = p;
                 if (hc != null) d.homeCrest = hc;
                 if (ac != null) d.awayCrest = ac;
-                h.removeCallbacks(go);
-                go.run();
+                one.run();
             });
         });
     }
@@ -1502,6 +1979,7 @@ public final class ScoreBoard implements LiveAlerts.Listener {
             Drop d = goalDrop(at, goal);
             d.homeCrest = bug.homeCrest;
             d.awayCrest = bug.awayCrest;
+            d.milestone = goalMilestone(at, goal);
             enrich(d, at, goal[1], "home".equals(goal[3]) ? at.homeName : at.awayName);
         }, wait);
     }
@@ -1984,6 +2462,60 @@ public final class ScoreBoard implements LiveAlerts.Listener {
                 d.homeCrest = bug.homeCrest;
                 d.awayCrest = bug.awayCrest;
                 drop(d);
+            }
+        });
+    }
+
+    /** Tests: a made-up penalty shootout under the board, a kick every few seconds, into sudden death. */
+    boolean testPens() {
+        if (System.currentTimeMillis() < pensTestUntil) return false;
+        return test(() -> {
+            long now = System.currentTimeMillis();
+            chanceTestUntil = 0;
+            pensShownFor = "";
+            pensTestFrom = now;
+            pensTestUntil = now + (Shootout.TEST_HOME.length + Shootout.TEST_AWAY.length + 2) * Shootout.TEST_EVERY_MS;
+            testUntil = Math.max(testUntil, pensTestUntil);
+            if (changed != null) changed.run();
+            draw(now);
+        });
+    }
+
+    /** Tests: the win chance under the board, then a goal moving it, with its pop-out beside the board. */
+    boolean testWinChance() {
+        if (System.currentTimeMillis() < chanceTestUntil) return false;
+        return test(() -> {
+            long now = System.currentTimeMillis();
+            pensTestUntil = 0;
+            chanceTestFrom = now;
+            chanceTestUntil = now + TEST_CHANCE_MS;
+            testUntil = Math.max(testUntil, chanceTestUntil);
+            if (changed != null) changed.run();
+            draw(now);
+            Game g = testGame(now);
+            h.postDelayed(() -> {
+                if (!running || small || mode == F1_MODE) return;
+                Drop d = chanceDrop(g, 1, TEST_BEFORE[0], TEST_AFTER[0]);
+                d.homeCrest = bug.homeCrest;
+                d.awayCrest = bug.awayCrest;
+                drop(d);
+            }, TEST_GOAL_AT_MS);
+        });
+    }
+
+    /** Tests: a goal's milestone ("3rd of the season"), then a yellow card's ("One more and he's banned"), beside the board. */
+    boolean testMilestones() {
+        return test(() -> {
+            Game g = testGame(System.currentTimeMillis());
+            Drop goal = goalDrop(g, new String[]{"TEST|milestone", "A. Player", "67'", "home", ""});
+            goal.tag = Milestones.goal(1, 3, false);
+            goal.tagKind = BoardDrop.TAG_GOAL;
+            Drop card = yellowDrop(g, new String[]{"71'", "Yellow Card", "B. Player", "away", "TEST|yellow", ""}, Milestones.ONE_MORE);
+            for (Drop x : new Drop[]{goal, card}) {
+                x.own = mode != F1_MODE;
+                x.homeCrest = bug.homeCrest;
+                x.awayCrest = bug.awayCrest;
+                drop(x);
             }
         });
     }

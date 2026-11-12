@@ -57,7 +57,8 @@ public class PlayerTestsTest {
 
     @Test public void theScoreboardHasEachOfItsMoments() {
         List<String> board = PlayerTests.tests(PlayerTests.BOARD);
-        for (String id : new String[]{"goal_home", "goal_away", "scorer", "stats", "card", "sub", "var", "added"}) {
+        for (String id : new String[]{"goal_home", "goal_away", "scorer", "stats", "card", "sub", "var", "added", "pens", "winchance",
+                "milestones"}) {
             assertTrue(id, board.contains(id));
         }
     }

@@ -133,7 +133,8 @@ final class ScoreOverlay implements ScoreBoard.Source {
         fill = new LogoFill(a);
         // A fresh fill several times a second here: each fades in over the one before quickly.
         fill.fade(70L);
-        com.gathin.broadcast.Sfx.warm(a, com.gathin.broadcast.Sfx.SWISH, com.gathin.broadcast.Sfx.SCORE, "goal-" + PlayerIntro.goalSound(a));   // loaded before they are needed
+        com.gathin.broadcast.Sfx.warm(a, com.gathin.broadcast.Sfx.SWISH, com.gathin.broadcast.Sfx.SCORE, "goal-" + PlayerIntro.goalSound(a),
+                "goal-" + com.gathin.broadcast.Sfx.GOAL_DEFAULT);   // loaded before they are needed (the swoosh: a shootout's goals too)
         intro = new PlayerIntro(a, root, () -> started && !inPip && !editing, (on) -> {
             // the classic line-ups fill the picture: the scoreboard and the logo's cover out of their way meanwhile
             board.view.setAlpha(on ? 0f : 1f);
@@ -1897,6 +1898,15 @@ final class ScoreOverlay implements ScoreBoard.Source {
                     return;
                 }
                 ok = "var".equals(what) ? board.testVar() : board.testAdded();
+                break;
+            case "pens":
+            case "winchance":
+            case "milestones":
+                if (!football) {
+                    note.accept(R.string.live7_f1);
+                    return;
+                }
+                ok = "pens".equals(what) ? board.testPens() : "winchance".equals(what) ? board.testWinChance() : board.testMilestones();
                 break;
             default:
                 return;

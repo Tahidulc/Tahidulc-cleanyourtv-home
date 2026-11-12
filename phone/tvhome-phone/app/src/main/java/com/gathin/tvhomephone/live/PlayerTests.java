@@ -42,7 +42,8 @@ final class PlayerTests {
     static final String[] SPORT_INTROS = {"intro:f1", "intro:ufc", "intro:boxing", "intro:football"};
     /** The scoreboard's own: a goal each way (with the goal sound), its scorer, the stats, the line-up card, a
      * substitution, VAR checking, the added time's "+N". */
-    static final String[] BOARD_TESTS = {"goal_home", "goal_away", "scorer", "stats", "card", "sub", "var", "added", "logo_away"};
+    static final String[] BOARD_TESTS = {"goal_home", "goal_away", "scorer", "stats", "card", "sub", "var", "added", "logo_away", "pens",
+            "winchance", "milestones"};
     /** On the full screen only: the banner for a goal in another game, an alert waiting for the stream, the break. */
     static final String BANNER = "banner", HELD = "held", BREAK = "break";
     /** How long the test alert waits for the stream. */
@@ -249,6 +250,9 @@ final class PlayerTests {
             case "sub": return R.string.live7_sub;
             case "var": return R.string.live7_var;
             case "logo_away": return R.string.live68_test_logo_away;
+            case "pens": return R.string.live69_test_pens;
+            case "winchance": return R.string.live69_test_win_chance;
+            case "milestones": return R.string.live69_test_milestones;
             default: return R.string.live7_added;
         }
     }

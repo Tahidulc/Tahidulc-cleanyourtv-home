@@ -237,6 +237,10 @@ public final class Espn {
         public final int[] added = {-1, -1, -1, -1};
         /** Each side's chance of winning as the prices before kick-off put them ("48%"); "" without prices. */
         public String winHome = "", winAway = "";
+        /** The prices before kick-off as chances, {home, draw, away}, the three made 1; null without prices. */
+        public double[] chances;
+        /** A penalty shootout's kicks so far, each side's in order: {taker, "1" scored or "0" not}. */
+        public final List<String[]> homePens = new ArrayList<>(), awayPens = new ArrayList<>();
     }
 
     /** Indexes into Summary.plays, and the kinds of play. */
@@ -333,6 +337,8 @@ public final class Espn {
             plays(root, s, competitors);
             addedTime(root.optJSONArray("commentary"), s.added);
             winChance(root.optJSONArray("odds"), s);
+            if (s.chances == null) winChance(root.optJSONArray("pickcenter"), s);
+            shootout(root.optJSONArray("shootout"), homeId, s);
             JSONObject box = root.optJSONObject("boxscore");
             JSONArray bt = box == null ? null : box.optJSONArray("teams");
             if (bt != null && bt.length() == 2) {
@@ -484,6 +490,35 @@ public final class Espn {
         double all = h + a + d;
         s.winHome = Math.round(100 * h / all) + "%";
         s.winAway = Math.round(100 * a / all) + "%";
+        s.chances = new double[]{h / all, d / all, a / all};
+    }
+
+    /**
+     * One player's season in each competition and his last games (ESPN's athlete overview: its "statistics" and
+     * "gameLog"), kept a while; null when ESPN has none. Read off the main thread.
+     */
+    public static JSONObject athleteOverview(String slug, String athleteId) {
+        if (slug == null || athleteId == null || !athleteId.matches("[0-9]{1,12}") || !slug.matches("[a-z0-9._]{1,40}")) return null;
+        try {
+            return new JSONObject(cached("https://site.web.api.espn.com/apis/common/v3/sports/soccer/" + slug + "/athletes/" + athleteId
+                    + "/overview", 30 * 60_000L));
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /** A penalty shootout's kicks from ESPN's summary ({id, team, shots: [{player, shotNumber, didScore}]} a side), in order. */
+    static void shootout(JSONArray teams, String homeId, Summary s) {
+        for (int i = 0; teams != null && i < teams.length(); i++) {
+            JSONObject t = teams.optJSONObject(i);
+            JSONArray shots = t == null ? null : t.optJSONArray("shots");
+            if (shots == null) continue;
+            List<JSONObject> in = new ArrayList<>();
+            for (int k = 0; k < shots.length(); k++) if (shots.optJSONObject(k) != null) in.add(shots.optJSONObject(k));
+            in.sort((x, y) -> Integer.compare(x.optInt("shotNumber"), y.optInt("shotNumber")));
+            List<String[]> into = homeId.equals(t.optString("id")) ? s.homePens : s.awayPens;
+            for (JSONObject x : in) into.add(new String[]{x.optString("player"), x.optBoolean("didScore") ? "1" : "0"});
+        }
     }
 
     private static double chance(JSONObject x) {

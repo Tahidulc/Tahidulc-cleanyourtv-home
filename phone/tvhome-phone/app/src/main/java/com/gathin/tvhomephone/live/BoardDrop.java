@@ -17,7 +17,9 @@ import android.graphics.Typeface;
  * the alert says the rest (the scorer's crest, who and when); another game's has both clubs and the score between their
  * crests. The line-ups (when the card can't come): each club's eleven in turn, led by its crest and its name and shape
  * in its colour. Words too long for their room run along to their end. Beside a taller board (Stacked, Card) the words
- * sit in two rows. Sized from the board's height.
+ * sit in two rows. A milestone rides at the end of its words as a small tag: a goal's place in the game or the season
+ * in gold with a star ("3rd of the season", "Hat-trick!"), a yellow card's ban with a card ("One more and he's banned";
+ * red once he is). Sized from the board's height.
  */
 final class BoardDrop extends BoardSide {
     private static final long TURN_MS = 320L, RUN_WAIT_MS = 1400L, RUN_END_MS = 1800L, PAGE_MS = 6000L;
@@ -32,7 +34,14 @@ final class BoardDrop extends BoardSide {
         boolean lineBold;
         /** The bold words this much bigger (the minutes added's +N). */
         float headScale = 1f;
+        /** A milestone's tag after the words ("" none), and its kind (TAG_*). */
+        String tag = "";
+        int tagKind;
     }
+
+    /** A milestone tag's kinds: a goal's (gold, a star), a yellow card one short of a ban, a ban (red). */
+    static final int TAG_GOAL = 1, TAG_WARN = 2, TAG_BAN = 3;
+    static final int GOLD = 0xFFFFC21A, CARD_YELLOW = 0xFFFFD21A, BAN_RED = 0xFFE5484D, GOLD_INK = 0xFF151A63;
 
     /** Each step of the minutes added counting up (+1, +2 ... +N), after the first half of its slide out. */
     static final long COUNT_STEP_MS = 150L;
@@ -128,7 +137,8 @@ final class BoardDrop extends BoardSide {
         slideOut();
         postDelayed(startRun, SLIDE_MS + RUN_WAIT_MS);
         if (pages(d) > 1) postDelayed(nextPage, SLIDE_MS + pageFor(0));
-        setContentDescription(d.chip + ". " + d.title + (d.line.isEmpty() ? "" : ". " + d.line) + (d.line2.isEmpty() ? "" : ". " + d.line2));
+        setContentDescription(d.chip + ". " + d.title + (d.line.isEmpty() ? "" : ". " + d.line) + (d.line2.isEmpty() ? "" : ". " + d.line2)
+                + (d.tag == null || d.tag.isEmpty() ? "" : ". " + d.tag));
     }
 
     /** How long it stays out: at least least, long enough for a long line to run to its end, each eleven its page. */
@@ -250,6 +260,10 @@ final class BoardDrop extends BoardSide {
             o.head = d.title;
             o.crestB = d.awayCrest;
             o.line = d.line;
+        }
+        if (!d.lineups && d.tag != null) {
+            o.tag = d.tag;
+            o.tagKind = d.tagKind;
         }
         return o;
     }
@@ -378,8 +392,17 @@ final class BoardDrop extends BoardSide {
         // Where the first row's parts end (no gap left after a chip or crest that ends it).
         float firstEnd = rx > x && o.head.isEmpty() && o.crestB == null
                 ? rx - (o.crestA != null ? unit * 0.16f : unit * 0.22f) : rx;
+        float tw = tagW(o), tg = tw > 0 ? unit * 0.24f : 0f;
+        if (o.line.isEmpty()) {
+            // A tag with no line: after the first row's words.
+            if (tw > 0) {
+                if (cv != null) tag(cv, o, firstEnd + tg, dy + rowY, rowH, a);
+                firstEnd += tg + tw;
+            }
+            firstEndAt = firstEnd - x0;
+            return new float[]{firstEnd - x0, firstEnd - x0, 0};
+        }
         firstEndAt = firstEnd - x0;
-        if (o.line.isEmpty()) return new float[]{firstEnd - x0, firstEnd - x0, 0};
         float lx = two ? x : firstEnd + (firstEnd > x ? unit * 0.3f : 0f);
         float lineY = two ? h * 0.5f : 0f, lineH = two ? h * 0.42f : h;
         Paint p = o.lineBold ? bold : plain;
@@ -389,14 +412,81 @@ final class BoardDrop extends BoardSide {
             cv.save();
             cv.clipRect(lx, dy + lineY, x0 + room, dy + lineY + lineH);
             words(cv, p, o.line, lx - runBy, dy + lineY, lineH, ls, o.lineColour, a);
+            // The milestone's tag at the line's end, running along with it.
+            if (tw > 0) tag(cv, o, lx - runBy + lw + tg, dy + lineY, lineH, a);
             cv.restore();
         }
+        lw += tg + tw;
         float total = two ? Math.max(firstEnd, lx + lw) : lx + lw;
         return new float[]{total - x0, lx - x0, lw};
     }
 
     private float chipW() {
         return chipW(drop.chip);
+    }
+
+    // ---- a milestone's tag ---------------------------------------------------------------------------------------------
+
+    /** A tag's width: its mark, its words and a little room at each end (0 for none). */
+    private float tagW(Part o) {
+        if (o.tag == null || o.tag.isEmpty()) return 0;
+        return unit * (0.14f + 0.3f + 0.1f + 0.18f) + measure(bold, o.tag, unit * 0.3f);
+    }
+
+    /** A tag at x in the middle of (y, rowH): a goal's gold with a star, a warning's quiet with a yellow card, a ban's red. */
+    private void tag(Canvas cv, Part o, float x, float y, float rowH, int a) {
+        float th = Math.min(rowH * 0.74f, unit * 0.52f), top = y + (rowH - th) / 2f, w = tagW(o);
+        int ground = o.tagKind == TAG_BAN ? BAN_RED : o.tagKind == TAG_WARN ? (look.light ? 0x1F0B1033 : 0x2EFFFFFF) : GOLD;
+        int ink = o.tagKind == TAG_BAN ? 0xFFFFFFFF : o.tagKind == TAG_WARN ? look.ink : GOLD_INK;
+        fill.setColor(ground);
+        fill.setAlpha(Math.round(a * ((ground >>> 24) / 255f)));
+        r.set(x, top, x + w, top + th);
+        float rad = look.apart ? th / 2f : th * 0.28f;
+        cv.drawRoundRect(r, rad, rad, fill);
+        fill.setAlpha(255);
+        float is = unit * 0.3f, cx = x + unit * 0.14f + is / 2f, cy = top + th / 2f;
+        if (o.tagKind == TAG_GOAL) star(cv, cx, cy, is * 0.56f, ink, a);
+        else card(cv, cx, cy, is, o.tagKind == TAG_BAN, a);
+        words(cv, bold, o.tag, x + unit * (0.14f + 0.1f) + is, top, th, unit * 0.3f, ink, a);
+    }
+
+    private final android.graphics.Path mark = new android.graphics.Path();
+
+    /** A five-pointed star of radius rad round (cx, cy). */
+    private void star(Canvas cv, float cx, float cy, float rad, int colour, int a) {
+        mark.reset();
+        for (int i = 0; i < 10; i++) {
+            double ang = -Math.PI / 2 + i * Math.PI / 5;
+            float rr = i % 2 == 0 ? rad : rad * 0.45f;
+            float px = cx + (float) (Math.cos(ang) * rr), py = cy + (float) (Math.sin(ang) * rr);
+            if (i == 0) mark.moveTo(px, py); else mark.lineTo(px, py);
+        }
+        mark.close();
+        fill.setColor(colour);
+        fill.setAlpha(Math.round(a * ((colour >>> 24) / 255f)));
+        cv.drawPath(mark, fill);
+        fill.setAlpha(255);
+    }
+
+    /** A yellow card, a little tilted, size high; a ban's with a white edge on its red ground. */
+    private void card(Canvas cv, float cx, float cy, float size, boolean ban, int a) {
+        float ch = size * 0.92f, cw = ch * 0.7f;
+        cv.save();
+        cv.rotate(12f, cx, cy);
+        r.set(cx - cw / 2f, cy - ch / 2f, cx + cw / 2f, cy + ch / 2f);
+        fill.setColor(CARD_YELLOW);
+        fill.setAlpha(a);
+        cv.drawRoundRect(r, cw * 0.14f, cw * 0.14f, fill);
+        if (ban) {
+            fill.setStyle(Paint.Style.STROKE);
+            fill.setStrokeWidth(Math.max(1f, size * 0.07f));
+            fill.setColor(0xFFFFFFFF);
+            fill.setAlpha(a);
+            cv.drawRoundRect(r, cw * 0.14f, cw * 0.14f, fill);
+            fill.setStyle(Paint.Style.FILL);
+        }
+        fill.setAlpha(255);
+        cv.restore();
     }
 
     private float chipW(String text) {
