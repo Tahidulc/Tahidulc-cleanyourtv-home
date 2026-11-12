@@ -424,18 +424,18 @@ final class BoardPanel extends SportPanel {
             for (LogoMark m : markPreviews) m.nameOnly(BoardCover.logoNameOnly(c));
         };
         add(what, name);
-        Row see = row("Background: plate, frosted glass or transparent", false);
+        Row see = row("Background: plate, frosted glass, smoked glass or transparent", false);
         see.words = () -> {
-            int g = BoardCover.logoGround(c);
-            String then = g == LogoMark.PLATE ? "OK for frosted glass" : g == LogoMark.FROST ? "OK for transparent" : "OK for the plate";
+            int g = BoardCover.logoGround(c), n = BoardCover.nextGround(g, 1);
+            String then = "OK for " + BoardCover.groundWords(n).toLowerCase(java.util.Locale.UK);
             if (g == LogoMark.PLATE) return "Plate · the look on its own plate over the channel's logo · " + then;
-            if (android.os.Build.VERSION.SDK_INT < 34) return BoardCover.groundWords(g) + " needs Android 14 (a picture without the cover in it); on its plate here · " + then;
-            if (!ChannelSight.possible()) return BoardCover.groundWords(g) + " needs the search helper on; on its plate meanwhile · " + then;
-            return g == LogoMark.FROST
-                    ? seeNow("Frosted glass · the picture behind it softened and lightened, the channel's logo taken out under it once learned · " + then)
-                    : seeNow("Transparent · white on the picture itself, as a channel's own logo is, the channel's logo taken out (on frosted glass while it learns a channel's) · " + then);
+            if (android.os.Build.VERSION.SDK_INT < 34) return BoardCover.groundWords(g) + " needs Android 14 (a picture without the cover in it); solid glass here · " + then;
+            if (!ChannelSight.possible()) return BoardCover.groundWords(g) + " needs the search helper on; solid glass meanwhile · " + then;
+            if (g == LogoMark.FROST) return seeNow("Frosted glass · silvery frost over the picture behind it, softened, white lettering, the channel's logo taken out under it once learned · " + then);
+            if (g == LogoMark.SMOKE) return seeNow("Smoked glass · dark glass over the picture behind it, softened, white lettering, the channel's logo taken out under it once learned · " + then);
+            return seeNow("Transparent · white on the picture itself, as a channel's own logo is, the channel's logo taken out (on smoked glass while it learns a channel's) · " + then);
         };
-        see.ok = () -> BoardCover.setLogoGround(c, (BoardCover.logoGround(c) + 1) % 3);
+        see.ok = () -> BoardCover.setLogoGround(c, BoardCover.nextGround(BoardCover.logoGround(c), 1));
         add(see);
         heading("LOGO COVER LOOK: THE COMPETITION'S, GLASS AND BROADCAST");
         addLine(132, 3, others.subList(0, 3));

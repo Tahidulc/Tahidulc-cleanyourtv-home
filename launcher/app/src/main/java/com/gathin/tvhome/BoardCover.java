@@ -289,11 +289,19 @@ final class BoardCover {
         return groundNow(c) == LogoMark.CLEAR;
     }
 
-    /** The logo cover's grounds as kept ("plate", "frost", "clear": LogoMark.PLATE, FROST, CLEAR) and in words. */
-    private static final String[] GROUNDS = {"plate", "frost", "clear"};
+    /** The logo cover's grounds as kept ("plate", "frost", "clear", "smoke": LogoMark.PLATE, FROST, CLEAR, SMOKE) and in words. */
+    private static final String[] GROUNDS = {"plate", "frost", "clear", "smoke"};
 
     static String groundWords(int g) {
-        return g == LogoMark.FROST ? "Frosted glass" : g == LogoMark.CLEAR ? "Transparent" : "Plate";
+        return g == LogoMark.FROST ? "Frosted glass" : g == LogoMark.SMOKE ? "Smoked glass" : g == LogoMark.CLEAR ? "Transparent" : "Plate";
+    }
+
+    /** Pure: the ground step steps from g (Plate, Frosted glass, Smoked glass, Transparent, round again). */
+    static int nextGround(int g, int step) {
+        int[] order = LogoMark.GROUNDS;
+        int at = 0;
+        for (int i = 0; i < order.length; i++) if (order[i] == g) at = i;
+        return order[((at + step) % order.length + order.length) % order.length];
     }
 
     private static int groundOf(String kept) {
@@ -322,7 +330,7 @@ final class BoardCover {
     }
 
     static void setLogoGround(Context c, int g) {
-        int k = g == LogoMark.FROST || g == LogoMark.CLEAR ? g : LogoMark.PLATE;
+        int k = g == LogoMark.FROST || g == LogoMark.CLEAR || g == LogoMark.SMOKE ? g : LogoMark.PLATE;
         prefs(c).edit().putString("ground", GROUNDS[k]).putBoolean("see_through", k == LogoMark.CLEAR).apply();
         groundChanged(c);
     }
@@ -418,9 +426,9 @@ final class BoardCover {
         F1Tower.retag(c);
     }
 
-    /** The ground on this channel, a step on (Plate, Frosted glass, Transparent); every channel without its own too. */
+    /** The ground on this channel, a step on (Plate, Frosted glass, Smoked glass, Transparent); every channel without its own too. */
     private static void stepGroundHere(Context c, int step) {
-        int next = ((groundNow(c) + step) % GROUNDS.length + GROUNDS.length) % GROUNDS.length;
+        int next = nextGround(groundNow(c), step);
         setHere(c, "ground", GROUNDS[next], () -> setLogoGround(c, next));
         if (logoGround(c) != next) setLogoGround(c, next);
         groundChanged(c);
@@ -2312,10 +2320,10 @@ final class BoardCover {
         if (mark == null || !mark.wantsPatch()) return "";
         if (android.os.Build.VERSION.SDK_INT < 34) return "needs Android 14, on its plate";
         if (at == null) return "starting";
-        boolean frost = mark.ground() == LogoMark.FROST;
+        boolean frost = mark.ground() == LogoMark.FROST || mark.ground() == LogoMark.SMOKE;
         if (at.known()) return frost ? "the channel's logo taken out under the glass" : "logo taken out";
-        if (at.block()) return frost ? "a solid logo under the glass" : "a solid logo, on frosted glass";
-        return "learning the logo, " + Math.min(at.learnt(), LogoShape.ENOUGH) + " of " + LogoShape.ENOUGH + (frost ? "" : ", on frosted glass meanwhile");
+        if (at.block()) return frost ? "a solid logo under the glass" : "a solid logo, on smoked glass";
+        return "learning the logo, " + Math.min(at.learnt(), LogoShape.ENOUGH) + " of " + LogoShape.ENOUGH + (frost ? "" : ", on smoked glass meanwhile");
     }
 
     /**
@@ -2464,7 +2472,7 @@ final class BoardCover {
                     f = at.take(px, taken);
                     // The fill shows only on Transparent; on frosted glass it takes the logo out of the picture under it.
                     if (ground == LogoMark.CLEAR && f != null && !f.empty()) made = Bitmap.createBitmap(f.argb, f.w, f.h, Bitmap.Config.ARGB_8888);
-                    if (ground == LogoMark.FROST || (ground == LogoMark.CLEAR && f == null)) {
+                    if (ground == LogoMark.FROST || ground == LogoMark.SMOKE || (ground == LogoMark.CLEAR && f == null)) {
                         pane = FrostPane.of(px, at.w, at.h, f, at.x, at.y, at.bl, at.bt, at.br, at.bb);
                         if (pane != null) glass = Bitmap.createBitmap(pane.argb, pane.w, pane.h, Bitmap.Config.ARGB_8888);
                     }

@@ -120,7 +120,9 @@ final class LogoMark extends View {
      * behind it softened and lightened, FrostPane); or none, over the picture itself with the channel's logo filled in
      * under it (see-through: frosted glass while that logo is learned).
      */
-    static final int PLATE = 0, FROST = 1, CLEAR = 2;
+    static final int PLATE = 0, FROST = 1, CLEAR = 2, SMOKE = 3;
+    /** The grounds in the order they are stepped through: the plate, frosted glass, smoked glass, transparent. */
+    static final int[] GROUNDS = {PLATE, FROST, SMOKE, CLEAR};
     private int ground = PLATE;
     /** See-through: the channel's logo filled in under it (LogoFill), so it stands clear over the picture. */
     private boolean filled;
@@ -132,9 +134,9 @@ final class LogoMark extends View {
     private final int[] onScreen = new int[2];
     private final Matrix frostMatrix = new Matrix();
     private final Paint glass = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG), tint = new Paint(Paint.ANTI_ALIAS_FLAG),
-            rim = new Paint(Paint.ANTI_ALIAS_FLAG);
+            rim = new Paint(Paint.ANTI_ALIAS_FLAG), sheen = new Paint(Paint.ANTI_ALIAS_FLAG);
     private float tintFor = -1f;
-    private boolean tintLight;
+    private int tintKind = -1;
     /** Whitebrook Road styles: the renderer and the style chosen (0 to BrandStyles.COUNT - 1). */
     private BrandStyles brand;
     private int styleNo;
@@ -252,9 +254,9 @@ final class LogoMark extends View {
         ground(on ? CLEAR : PLATE);
     }
 
-    /** Its ground: PLATE, FROST or CLEAR (the looks drawn whole; the others keep their own grounds). */
+    /** Its ground: PLATE, FROST, SMOKE or CLEAR (the looks drawn whole; the others keep their own grounds). */
     void ground(int g) {
-        int k = g == FROST || g == CLEAR ? g : PLATE;
+        int k = g == FROST || g == CLEAR || g == SMOKE ? g : PLATE;
         if (k == ground) return;
         ground = k;
         if (k == PLATE) frost(null, 0, 0, 0, 0);
@@ -450,10 +452,11 @@ final class LogoMark extends View {
      */
     private void ownLook(Canvas cv, float w, float h) {
         boolean clear = ground == CLEAR && filled;
-        // Frosted glass: chosen, or Transparent's while the channel's logo is learned; the plate until its picture is in.
-        boolean frosted = !clear && ground != PLATE && frost != null;
+        // On glass: frosted or smoked as chosen, smoked for Transparent while the channel's logo is learned. Its picture
+        // behind it once one is in; till then (or where none can be had) the same glass, solid.
+        boolean frosted = !clear && ground != PLATE;
         float in = Math.max(inset, Math.min(w, h) * (clear ? 0.04f : 0f));
-        if (frosted) glass(cv, w, h, look == Look.EVENT_NAVY);
+        if (frosted) glass(cv, w, h, ground == FROST ? FROST : SMOKE);
         if (look.event()) {
             if (channel == null) {
                 channel = new ChannelMark(getContext());
@@ -462,7 +465,7 @@ final class LogoMark extends View {
             // On its plate (or glass) it fills the whole cover (the channel's logo under it never shows); alone, in from
             // the edge, and white as a channel's own logo is on its picture.
             float p = clear ? in : 0f;
-            channel.event(cv, p, p, w - 2 * p, h - 2 * p, sub, tag, look == Look.EVENT_WHITE || clear,
+            channel.event(cv, p, p, w - 2 * p, h - 2 * p, sub, tag, look == Look.EVENT_WHITE || clear || frosted,
                     clear ? ChannelMark.GROUND_NONE : frosted ? ChannelMark.GROUND_GLASS : ChannelMark.GROUND_PLATE);
             return;
         }
@@ -479,36 +482,44 @@ final class LogoMark extends View {
     }
 
     /**
-     * Frosted glass over the cover's whole box (w by h, its plate's round corners): the picture behind it softened
-     * (FrostPane, lined up with the screen wherever the cover stands, the new one faded in over the one before), then
-     * lightened (light) or smoked, brighter towards its top, and a fine light edge.
+     * Glass over the cover's whole box (w by h, its plate's round corners), as the Frosted glass and Smoked glass looks
+     * are: the picture behind it softened (FrostPane, lined up with the screen wherever the cover stands, the new one faded
+     * in over the one before), then frosted silvery with a sheen over its top, or smoked; a fine light edge catching the
+     * light along the top. With no picture yet, the same glass solid, so nothing under it shows.
      */
-    private void glass(Canvas cv, float w, float h, boolean light) {
+    private void glass(Canvas cv, float w, float h, int kind) {
         float rad = Math.min(w, h) * 0.14f;
-        getLocationOnScreen(onScreen);
-        float k = Math.min(1f, (SystemClock.uptimeMillis() - frostSince) / 350f);
-        r.set(0, 0, w, h);
-        if (frostWas != null && k < 1f) {
-            pane(cv, frostWas, frostWasShader, frostWasAt, rad, 255);
-            pane(cv, frost, frostShader, frostAt, rad, Math.round(255 * k));
-            postInvalidateOnAnimation();
-        } else {
-            frostWas = null;
-            frostWasShader = null;
-            pane(cv, frost, frostShader, frostAt, rad, 255);
+        boolean seen = frost != null;
+        if (seen) {
+            getLocationOnScreen(onScreen);
+            float k = Math.min(1f, (SystemClock.uptimeMillis() - frostSince) / 350f);
+            if (frostWas != null && k < 1f) {
+                pane(cv, frostWas, frostWasShader, frostWasAt, rad, 255);
+                pane(cv, frost, frostShader, frostAt, rad, Math.round(255 * k));
+                postInvalidateOnAnimation();
+            } else {
+                frostWas = null;
+                frostWasShader = null;
+                pane(cv, frost, frostShader, frostAt, rad, 255);
+            }
         }
-        if (tintFor != h || tintLight != light) {
+        if (tintFor != h || tintKind != (seen ? kind : kind + 10)) {
             tintFor = h;
-            tintLight = light;
-            tint.setShader(new android.graphics.LinearGradient(0, 0, 0, h, light ? 0xA6FFFFFF : 0x700B0F24, light ? 0x80F4F6FB : 0x8C05070F,
-                    Shader.TileMode.CLAMP));
+            tintKind = seen ? kind : kind + 10;
+            // Over the picture: most of the glass's own colour, a little of the picture through it. Without: solid.
+            int top = kind == FROST ? 0x9AA5BA : 0x262A36, foot = kind == FROST ? 0x5D677D : 0x0D0F16;
+            int a1 = seen ? (kind == FROST ? 0xB3 : 0xB0) : 0xFF, a2 = seen ? (kind == FROST ? 0xBF : 0xC4) : 0xFF;
+            tint.setShader(new android.graphics.LinearGradient(0, 0, 0, h, (a1 << 24) | top, (a2 << 24) | foot, Shader.TileMode.CLAMP));
+            sheen.setShader(kind == FROST ? new android.graphics.LinearGradient(0, 0, 0, h * 0.55f, 0x47FFFFFF, 0x00FFFFFF,
+                    Shader.TileMode.CLAMP) : null);
             rim.setStyle(Paint.Style.STROKE);
-            rim.setShader(new android.graphics.LinearGradient(0, 0, 0, h, light ? 0xD9FFFFFF : 0x73FFFFFF, light ? 0x4DFFFFFF : 0x1FFFFFFF,
-                    Shader.TileMode.CLAMP));
+            rim.setShader(new android.graphics.LinearGradient(0, 0, 0, h, kind == FROST ? 0xB3FFFFFF : 0x59FFFFFF,
+                    kind == FROST ? 0x4DFFFFFF : 0x14FFFFFF, Shader.TileMode.CLAMP));
         }
         r.set(0, 0, w, h);
         cv.drawRoundRect(r, rad, rad, tint);
-        float line = Math.max(1f, Math.min(w, h) * 0.012f);
+        if (kind == FROST) cv.drawRoundRect(r, rad, rad, sheen);
+        float line = Math.max(1f, h * (kind == FROST ? 0.016f : 0.014f));
         rim.setStrokeWidth(line);
         r.set(line / 2f, line / 2f, w - line / 2f, h - line / 2f);
         cv.drawRoundRect(r, rad - line / 2f, rad - line / 2f, rim);
