@@ -93,6 +93,11 @@ final class AdBreak {
     /** The test as at half-time: the half-time widgets in the last card whatever the game's state. */
     private static boolean forcedHalf;
     private static final AdBreakLogic.Trigger trigger = new AdBreakLogic.Trigger();
+    /**
+     * Your own logo over the channel's (BoardCover's cover) stepping aside while the channel's logo is gone (an ad
+     * break) and back with it: its own trigger from the same looks, whatever the ad-break screen does, on any channel.
+     */
+    private static final AdBreakLogic.Trigger away = new AdBreakLogic.Trigger();
     private static LogoShape.Here logoHere;
     private static String logoKey = "";
 
@@ -377,20 +382,27 @@ final class AdBreak {
             }
         }
         Session ss = session;
-        if (c == null || ss == null || now > ss.to) {
+        boolean live = c != null && ss != null && now <= ss.to;
+        // Your logo up over the channel's: looked for on any channel, a game on it or not.
+        boolean cover = c != null && BoardCover.logoCoverUp() && BoardCover.logoAwayOn(c);
+        if (!live && !cover) {
             looking = false;
             int a = trigger.step(now, true, false, false, false, -1);
             if (a == AdBreakLogic.HIDE || isShowing()) hide(ss == null ? "nothing on to break from" : "the programme's time is over");
             if (ss != null && session == ss) session = null;
+            awayAct(away.step(now, false, false, false, false, -1));
             return;
         }
         boolean front = BoardCover.playerInFront(c) && !GoalWatchService.homeInFront;
         String channel = InStep.channel(c);
-        boolean onChannel = !channel.isEmpty() && InStep.base(channel).equals(InStep.base(ss.channel));
-        boolean inWindow = AdBreakLogic.inside(ss.window(), now) && mayCome(c, ss, now);
+        boolean onChannel = live && !channel.isEmpty() && InStep.base(channel).equals(InStep.base(ss.channel));
+        boolean inWindow = live && AdBreakLogic.inside(ss.window(), now) && mayCome(c, ss, now);
         // The logo is looked at (and learned) from LEARN_AHEAD_MS before the window opens; the screen comes only inside it.
-        if (!on(c) || !front || !onChannel || !AdBreakLogic.watch(ss.window(), now)) {
-            act(c, ss, trigger.step(now, on(c), front, onChannel, inWindow, -1));
+        boolean forScreen = live && on(c) && front && onChannel && AdBreakLogic.watch(ss.window(), now);
+        boolean forCover = cover && front && !channel.isEmpty();
+        if (live && !forScreen) act(c, ss, trigger.step(now, on(c), front, onChannel, inWindow, -1));
+        if (!forCover) awayAct(away.step(now, cover, front, true, true, -1));
+        if (!forScreen && !forCover) {
             main.postDelayed(lookRun, 2_000L);
             return;
         }
@@ -408,7 +420,12 @@ final class AdBreak {
         if (logoHere == null || !logoHere.same(key, sw, sh, x0, y0, x1 - x0, y1 - y0, bx - x0, by - y0, bx - x0 + bw, by - y0 + bh)) {
             logoHere = new LogoShape.Here(new java.io.File(c.getFilesDir(), "adbreak_logos"), key, sw, sh, x0, y0, x1 - x0, y1 - y0,
                     bx - x0, by - y0, bx - x0 + bw, by - y0 + bh);
-            if (!key.equals(logoKey)) trigger.set(isShowing());
+            if (!key.equals(logoKey)) {
+                trigger.set(isShowing());
+                // Another channel: your logo back at once, its looks from the start.
+                away.set(false);
+                BoardCover.logoAway(false);
+            }
             logoKey = key;
         }
         LogoShape.Here at = logoHere;
@@ -428,10 +445,29 @@ final class AdBreak {
             if (got != null) got.recycle();
             Session now2 = session;
             long t = System.currentTimeMillis();
-            if (now2 != null) act(c, now2, trigger.step(t, on(c), true, true, AdBreakLogic.inside(now2.window(), t) && mayCome(c, now2, t), presence));
-            main.postDelayed(lookRun, 1_000L);
+            if (forScreen && now2 != null) act(c, now2, trigger.step(t, on(c), true, true, AdBreakLogic.inside(now2.window(), t) && mayCome(c, now2, t), presence));
+            if (forCover) awayAct(away.step(t, BoardCover.logoCoverUp(), true, true, true, presence));
+            // Away: looked at twice as often, so your logo is back hardly a moment after the channel's.
+            main.postDelayed(lookRun, away.showing ? 500L : 1_000L);
         });
         if (!asked) main.postDelayed(lookRun, 400L);
+    }
+
+    /** The watch started for your logo over the channel's (BoardCover, as it comes up): it looks while the cover is up. */
+    static void watchCover(Context c) {
+        if (app == null) app = c.getApplicationContext();
+        startLooking();
+    }
+
+    /** Your logo away as the channel's goes (SHOW) and back as it returns (HIDE). */
+    private static void awayAct(int what) {
+        if (what == AdBreakLogic.SHOW) {
+            android.util.Log.i(TAG, "the channel's logo gone: your logo steps aside");
+            BoardCover.logoAway(true);
+        } else if (what == AdBreakLogic.HIDE) {
+            android.util.Log.i(TAG, "the channel's logo back: your logo too");
+            BoardCover.logoAway(false);
+        }
     }
 
     /**

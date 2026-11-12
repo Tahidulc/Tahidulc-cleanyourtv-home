@@ -222,6 +222,10 @@ final class BoardPanel extends SportPanel {
             BoardCover.setSwishOn(c, !BoardCover.swishOn(c));
             if (BoardCover.swishOn(c)) com.gathin.broadcast.Sfx.play(c, com.gathin.broadcast.Sfx.SWISH, 0f, 0.7f);
         };
+        Row logoAway = row("Logo aside in ad breaks", true);
+        logoAway.on = () -> BoardCover.logoAwayOn(c);
+        logoAway.words = () -> BoardCover.logoAwayOn(c) ? "Your logo pops out as the channel's goes for its adverts, and back in after" : "Off · your logo stays up through the adverts";
+        logoAway.ok = () -> BoardCover.setLogoAwayOn(c, !BoardCover.logoAwayOn(c));
         Row goalSound = row("Goal sound", false);
         goalSound.words = () -> com.gathin.broadcast.Sfx.goalName(BoardCover.goalSound(c)) + " · over the goal on the board · OK: the next one (it plays)";
         goalSound.ok = () -> {
@@ -231,6 +235,7 @@ final class BoardPanel extends SportPanel {
             if (!"off".equals(next)) new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> com.gathin.broadcast.Sfx.goal(c, next), 250);
         };
         add(swish, goalSound);
+        add(logoAway);
         Row fot = row("FotMob's stats and pictures", true);
         fot.on = () -> BoardCover.fotmobOn(c);
         fot.words = () -> BoardCover.fotmobOn(c) ? "Expected goals, big chances, ratings, who is on top, players' pictures"

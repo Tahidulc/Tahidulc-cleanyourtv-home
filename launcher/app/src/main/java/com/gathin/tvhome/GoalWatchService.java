@@ -1707,6 +1707,11 @@ public class GoalWatchService extends Service {
             String key = intent.getStringExtra("test_board_moments");
             main.post(() -> BoardCover.testMoments(this, key == null || key.isEmpty() ? "hit" : key));
         }
+        if (intent != null && intent.getBooleanExtra("test_logo_away", false)) {
+            // adb only: your logo popping out as if an ad break came, and back in five seconds later
+            main.post(() -> BoardCover.logoAway(true));
+            main.postDelayed(() -> BoardCover.logoAway(false), 5_000L);
+        }
         if (intent != null && intent.getBooleanExtra("test_board_added", false)) {
             // adb only: the board over whatever is on and the minutes added coming out beside it ("+4 minutes")
             main.post(() -> BoardCover.testAdded(this));

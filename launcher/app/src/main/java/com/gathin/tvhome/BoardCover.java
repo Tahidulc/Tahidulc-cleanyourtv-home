@@ -800,6 +800,82 @@ final class BoardCover {
         prefs(c).edit().putBoolean("swish", on).apply();
     }
 
+    /** Your logo stepping aside while the channel's is gone (its ad breaks) and back with it: on unless switched off. */
+    static boolean logoAwayOn(Context c) {
+        return prefs(c).getBoolean("logo_away", true);
+    }
+
+    static void setLogoAwayOn(Context c, boolean on) {
+        prefs(c).edit().putBoolean("logo_away", on).apply();
+        if (!on) logoAway(false);
+    }
+
+    // ---- your logo aside in the channel's ad breaks (AdBreak's looks at the channel's own logo) -------------------------
+
+    /** Your logo is aside now (the channel's gone: its ad break). */
+    private static boolean logoAwayNow;
+    private static android.animation.AnimatorSet logoAnim;
+    static final long LOGO_OUT_MS = 340L, LOGO_IN_MS = 460L;
+
+    /** Whether your logo is up over the channel's now (the windows up with it). */
+    static boolean logoCoverUp() {
+        return logoWin != null && mark != null;
+    }
+
+    /**
+     * Your logo popping out as the channel's goes (a little swell, then shrinking away to nothing as it fades), or
+     * popping back in as the channel's returns (from small, overshooting a touch and settling). Its size and fade only:
+     * the burn-in step's drift and the dimming are left as they are.
+     */
+    static void logoAway(boolean away) {
+        if (away == logoAwayNow) return;
+        logoAwayNow = away;
+        if (logoWin == null) return;
+        if (logoAnim != null) logoAnim.cancel();
+        java.util.List<android.animation.Animator> parts = new java.util.ArrayList<>();
+        for (int i = 0; i < logoWin.getChildCount(); i++) {
+            View v = logoWin.getChildAt(i);
+            v.setPivotX(v.getWidth() / 2f);
+            v.setPivotY(v.getHeight() / 2f);
+            if (away) {
+                android.animation.ObjectAnimator sx = android.animation.ObjectAnimator.ofFloat(v, View.SCALE_X, v.getScaleX(), 1.12f, 0f);
+                android.animation.ObjectAnimator sy = android.animation.ObjectAnimator.ofFloat(v, View.SCALE_Y, v.getScaleY(), 1.12f, 0f);
+                android.animation.ObjectAnimator fa = android.animation.ObjectAnimator.ofFloat(v, View.ALPHA, v.getAlpha(), 1f, 0f);
+                for (android.animation.ObjectAnimator o : new android.animation.ObjectAnimator[]{sx, sy, fa}) {
+                    o.setDuration(LOGO_OUT_MS);
+                    o.setInterpolator(new android.view.animation.AccelerateInterpolator(1.6f));
+                    parts.add(o);
+                }
+            } else {
+                android.animation.ObjectAnimator sx = android.animation.ObjectAnimator.ofFloat(v, View.SCALE_X, 0.3f, 1f);
+                android.animation.ObjectAnimator sy = android.animation.ObjectAnimator.ofFloat(v, View.SCALE_Y, 0.3f, 1f);
+                for (android.animation.ObjectAnimator o : new android.animation.ObjectAnimator[]{sx, sy}) {
+                    o.setDuration(LOGO_IN_MS);
+                    o.setInterpolator(new android.view.animation.OvershootInterpolator(2.4f));
+                    parts.add(o);
+                }
+                android.animation.ObjectAnimator fa = android.animation.ObjectAnimator.ofFloat(v, View.ALPHA, 0f, 1f);
+                fa.setDuration(LOGO_IN_MS / 2);
+                parts.add(fa);
+            }
+        }
+        android.animation.AnimatorSet set = new android.animation.AnimatorSet();
+        set.playTogether(parts);
+        logoAnim = set;
+        set.start();
+    }
+
+    /** A new cover while your logo is aside: it starts aside too (popping in when the channel's comes back). */
+    private static void logoAwayAtOnce() {
+        if (!logoAwayNow || logoWin == null) return;
+        for (int i = 0; i < logoWin.getChildCount(); i++) {
+            View v = logoWin.getChildAt(i);
+            v.setScaleX(0f);
+            v.setScaleY(0f);
+            v.setAlpha(0f);
+        }
+    }
+
     static boolean statsOn(Context c) {
         return prefs(c).getBoolean("stats", true);
     }
@@ -2306,6 +2382,8 @@ final class BoardCover {
                 logoWin = null;
                 mark = null;
                 fill = null;
+            } else {
+                logoAwayAtOnce();
             }
         }
         imagesFor = null;
@@ -3375,6 +3453,8 @@ final class BoardCover {
 
     /** Each second: a step round the circle once a minute (still while being placed), dimmer when nothing happens. */
     private static void guard(long now) {
+        // Your logo up: the channel's own looked at, so yours steps aside in its ad breaks (AdBreak).
+        if (logoWin != null && app != null && logoAwayOn(app)) AdBreak.watchCover(app);
         if (adjusting) {
             setDim(false);
             return;
