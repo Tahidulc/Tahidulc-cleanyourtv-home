@@ -226,6 +226,13 @@ final class BoardPanel extends SportPanel {
         logoAway.on = () -> BoardCover.logoAwayOn(c);
         logoAway.words = () -> BoardCover.logoAwayOn(c) ? "Your logo pops out as the channel's goes for its adverts, and back in after" : "Off · your logo stays up through the adverts";
         logoAway.ok = () -> BoardCover.setLogoAwayOn(c, !BoardCover.logoAwayOn(c));
+        Row scoreSwish = row("Swish on the new score", true);
+        scoreSwish.on = () -> BoardCover.scoreSwishOn(c);
+        scoreSwish.words = () -> BoardCover.scoreSwishOn(c) ? "Your swish as a goal's new score pops up on the board, every look" : "Off · the new score comes up silently";
+        scoreSwish.ok = () -> {
+            BoardCover.setScoreSwishOn(c, !BoardCover.scoreSwishOn(c));
+            if (BoardCover.scoreSwishOn(c)) com.gathin.broadcast.Sfx.play(c, com.gathin.broadcast.Sfx.SCORE, 0f, 0.85f);
+        };
         Row goalSound = row("Goal sound", false);
         goalSound.words = () -> com.gathin.broadcast.Sfx.goalName(BoardCover.goalSound(c)) + " · over the goal on the board · OK: the next one (it plays)";
         goalSound.ok = () -> {
@@ -234,7 +241,8 @@ final class BoardPanel extends SportPanel {
             // heard as it is chosen (the first time once it has loaded)
             if (!"off".equals(next)) new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> com.gathin.broadcast.Sfx.goal(c, next), 250);
         };
-        add(swish, goalSound);
+        add(swish, scoreSwish);
+        add(goalSound);
         add(logoAway);
         Row fot = row("FotMob's stats and pictures", true);
         fot.on = () -> BoardCover.fotmobOn(c);

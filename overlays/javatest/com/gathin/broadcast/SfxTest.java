@@ -7,7 +7,9 @@ import org.junit.Test;
 public class SfxTest {
     @Test
     public void theGoalSoundsComeRoundInTurnAndAreNamed() {
-        assertEquals("roar", Sfx.nextGoal("off"));
+        assertEquals("swoosh", Sfx.nextGoal("off"));
+        assertEquals("roar", Sfx.nextGoal("swoosh"));
+        assertEquals("Your swoosh", Sfx.goalName(Sfx.GOAL_DEFAULT));
         assertEquals("hit", Sfx.nextGoal("roar"));
         assertEquals("boom", Sfx.nextGoal("stab"));
         assertEquals("off", Sfx.nextGoal("sting"));

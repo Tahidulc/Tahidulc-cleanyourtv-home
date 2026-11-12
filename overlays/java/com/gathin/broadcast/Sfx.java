@@ -15,8 +15,9 @@ import java.util.Set;
 /**
  * The scoreboard's own short sounds (broadcast/sfx/NAME.ogg in the shared bundle), played by the app itself, outside the
  * overlays' pages: the line-ups' tab swish as anything slides out beside the board (the scorer, the stats, the alerts),
- * and the goal's sound over the board's goal animation. Loaded once and kept; played on the media stream, so the TV's
- * or phone's volume sets them with the channel. The same sound is never started twice within a quarter of a second.
+ * the goal's sound over the board's goal animation, and the family's swish as a goal's new score comes out. Loaded once
+ * and kept; played on the media stream, so the TV's or phone's volume sets them with the channel. The same sound is
+ * never started twice within a quarter of a second.
  */
 public final class Sfx {
     private Sfx() { }
@@ -24,10 +25,21 @@ public final class Sfx {
     private static final String TAG = "Sfx";
     /** The line-ups' tab swish. */
     public static final String SWISH = "swish-tab";
-    /** The goal sounds over the board's goal animation (goal-KEY.ogg), and their names, in the order offered. */
-    public static final String[] GOALS = {"off", "roar", "hit", "horn", "swish", "drums", "stab", "boom", "rumble", "sting"};
-    public static final String[] GOAL_NAMES = {"Off", "Stadium roar", "Broadcast hit", "Goal horn", "Swish and chime", "Drum hit",
-            "Synth stab", "Broadcast boom", "Swipe and rumble", "Score sting"};
+    /** The family's own swish (a stock sound they picked), as a goal's new score comes out from under its band. */
+    public static final String SCORE = "score-swish";
+    /** Its loudest moment, in ms from its start: put on the new score's pop. */
+    public static final long SCORE_PEAK_MS = 500;
+    /**
+     * The goal sounds over the board's goal animation (goal-KEY.ogg), and their names, in the order offered. "swoosh" is
+     * the family's own pick (a stock swoosh they supplied), cut so its loudest moment lands as the GOAL band does.
+     */
+    public static final String[] GOALS = {"off", "swoosh", "roar", "hit", "horn", "swish", "drums", "stab", "boom", "rumble", "sting"};
+    public static final String[] GOAL_NAMES = {"Off", "Your swoosh", "Stadium roar", "Broadcast hit", "Goal horn", "Swish and chime",
+            "Drum hit", "Synth stab", "Broadcast boom", "Swipe and rumble", "Score sting"};
+    /** The goal sound unless another is chosen: the family's swoosh. */
+    public static final String GOAL_DEFAULT = "swoosh";
+    /** Its loudest moment, in ms from its start (it starts with the goal): the GOAL band landing across the board. */
+    public static final long SWOOSH_PEAK_MS = 650;
 
     /** Pure: the goal sound after this one (off, then each in turn). */
     public static String nextGoal(String key) {

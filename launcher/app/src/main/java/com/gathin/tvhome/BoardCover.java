@@ -781,13 +781,16 @@ final class BoardCover {
     }
 
     /** The game's stats sliding out beside it now and then. */
-    /** The sound over the board's goal animation (Sfx.GOALS: "off", "roar", "hit", "horn", "swish", "drums", "stab"). */
+    /**
+     * The sound over the board's goal animation (Sfx.GOALS: "off", "swoosh", "roar", ...): the family's swoosh unless
+     * another is chosen (a new key, so the swoosh they picked replaces whatever was tried before it).
+     */
     static String goalSound(Context c) {
-        return prefs(c).getString("goal_sound", "off");
+        return prefs(c).getString("goal_sound_pick", com.gathin.broadcast.Sfx.GOAL_DEFAULT);
     }
 
     static void setGoalSound(Context c, String key) {
-        prefs(c).edit().putString("goal_sound", key).apply();
+        prefs(c).edit().putString("goal_sound_pick", key).apply();
         com.gathin.broadcast.Sfx.warm(c, "goal-" + key);
     }
 
@@ -798,6 +801,15 @@ final class BoardCover {
 
     static void setSwishOn(Context c, boolean on) {
         prefs(c).edit().putBoolean("swish", on).apply();
+    }
+
+    /** The family's swish as a goal's new score comes out on the board, every look: on unless switched off. */
+    static boolean scoreSwishOn(Context c) {
+        return prefs(c).getBoolean("score_swish", true);
+    }
+
+    static void setScoreSwishOn(Context c, boolean on) {
+        prefs(c).edit().putBoolean("score_swish", on).apply();
     }
 
     /** Your logo stepping aside while the channel's is gone (its ad breaks) and back with it: on unless switched off. */
@@ -1889,7 +1901,7 @@ final class BoardCover {
      */
     static void testMoments(Context c, String goalKey) {
         Context a = c.getApplicationContext();
-        com.gathin.broadcast.Sfx.warm(a, com.gathin.broadcast.Sfx.SWISH, "goal-" + goalKey);
+        com.gathin.broadcast.Sfx.warm(a, com.gathin.broadcast.Sfx.SWISH, com.gathin.broadcast.Sfx.SCORE, "goal-" + goalKey);
         test(a);
         main().postDelayed(() -> {
             if (bug == null) return;
@@ -2333,7 +2345,7 @@ final class BoardCover {
     private static boolean ensureWindows(Context c) {
         if (boardWin != null) return true;
         if (!Settings.canDrawOverlays(c)) return false;
-        com.gathin.broadcast.Sfx.warm(c, com.gathin.broadcast.Sfx.SWISH, "goal-" + goalSound(c));
+        com.gathin.broadcast.Sfx.warm(c, com.gathin.broadcast.Sfx.SWISH, com.gathin.broadcast.Sfx.SCORE, "goal-" + goalSound(c));
         android.util.DisplayMetrics dm = c.getResources().getDisplayMetrics();
         sw = Math.max(dm.widthPixels, dm.heightPixels);
         sh = Math.min(dm.widthPixels, dm.heightPixels);
