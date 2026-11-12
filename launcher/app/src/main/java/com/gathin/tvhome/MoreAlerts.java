@@ -303,6 +303,45 @@ final class MoreAlerts {
         boolean wholeGame;
     }
 
+    /**
+     * The whole game at full time, for the ad-break screen's FULL TIME widget: the final score, every scorer in order,
+     * the game's possession and shots from ESPN's match summary (-1 where not known).
+     */
+    static Stats fullTime(ScoresTicker.Game g, JSONObject sum) {
+        Stats st = new Stats();
+        int hg = 0, ag = 0;
+        for (String[] goal : sorted(g)) {
+            boolean forHome = "home".equals(goal[3]);
+            String words = GoalWatchService.surname(goal[1]) + " " + goal[2] + ("pen".equals(goal[4]) ? " (pen)" : "og".equals(goal[4]) ? " (og)" : "");
+            (forHome ? st.homeGoals : st.awayGoals).add(words);
+            st.inOrder.add(words);
+            if (forHome) hg++; else ag++;
+        }
+        st.home = parse(g.homeScore) >= 0 ? parse(g.homeScore) : hg;
+        st.away = parse(g.awayScore) >= 0 ? parse(g.awayScore) : ag;
+        st.wholeGame = true;
+        JSONObject box = sum == null ? null : sum.optJSONObject("boxscore");
+        JSONArray teams = box == null ? null : box.optJSONArray("teams");
+        for (int i = 0; teams != null && i < teams.length(); i++) {
+            JSONObject t = teams.optJSONObject(i);
+            if (t == null) continue;
+            boolean home = "home".equals(t.optString("homeAway"));
+            JSONArray stats = t.optJSONArray("statistics");
+            for (int j = 0; stats != null && j < stats.length(); j++) {
+                JSONObject x = stats.optJSONObject(j);
+                if (x == null) continue;
+                double v = parseNumber(x.optString("displayValue"));
+                if (v < 0) continue;
+                if ("possessionPct".equals(x.optString("name"))) { if (home) st.homePoss = (int) Math.round(v); else st.awayPoss = (int) Math.round(v); }
+                if ("totalShots".equals(x.optString("name"))) { if (home) st.homeShots = (int) Math.round(v); else st.awayShots = (int) Math.round(v); }
+            }
+        }
+        if (st.homePoss >= 0 && st.awayPoss >= 0) st.awayPoss = 100 - st.homePoss;
+        else { st.homePoss = -1; st.awayPoss = -1; }
+        if (st.homeShots < 0 || st.awayShots < 0) { st.homeShots = -1; st.awayShots = -1; }
+        return st;
+    }
+
     private static final Pattern BREAK = Pattern.compile("ends,\\s*(.+?)\\s+(\\d+),\\s*(.+?)\\s+(\\d+)\\.?\\s*$");
 
     /**

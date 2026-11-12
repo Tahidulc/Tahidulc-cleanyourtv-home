@@ -17,6 +17,7 @@ public class AddedTimeTest {
         assertEquals("+4 minutes", d.title);
         assertEquals(0xFFE3061B, d.colour);
         assertEquals("9", d.gameId);
+        assertEquals(4, d.addedMins);
         assertEquals("+1 minute", BoardCover.addedDrop(g, "+1").title);
         assertNull(BoardCover.addedDrop(g, "+?"));
         assertNull(BoardCover.addedDrop(g, "+0"));
@@ -53,5 +54,28 @@ public class AddedTimeTest {
         assertTrue(BoardBug.pulses(l));
         l.live = false;
         assertFalse(BoardBug.pulses(l));
+    }
+
+    @Test public void theMinutesAddedCountUpAsTheyComeOut() {
+        long start = BoardSide.SLIDE_MS / 2;
+        assertEquals(1, BoardDrop.countUp(4, 0));
+        assertEquals(1, BoardDrop.countUp(4, start));
+        assertEquals(2, BoardDrop.countUp(4, start + BoardDrop.COUNT_STEP_MS));
+        assertEquals(4, BoardDrop.countUp(4, start + 3 * BoardDrop.COUNT_STEP_MS));
+        assertEquals(4, BoardDrop.countUp(4, 60_000L));
+        // Not counting (measured for its width, or shown again): the minutes themselves.
+        assertEquals(4, BoardDrop.countUp(4, -1));
+        assertEquals(1, BoardDrop.countUp(1, 0));
+    }
+
+    @Test public void theTabsLineFillsAsTheMinutesAddedRun() {
+        assertEquals(0f, BoardBug.addedRun("89:30", "+4"), 0.001f);
+        assertEquals(0f, BoardBug.addedRun("90:00", "+4"), 0.001f);
+        assertEquals(0.5f, BoardBug.addedRun("92:00", "+4"), 0.001f);
+        assertEquals(1f, BoardBug.addedRun("95:10", "+4"), 0.001f);
+        assertEquals(0.25f, BoardBug.addedRun("45:30", "+2"), 0.001f);
+        assertEquals(-1f, BoardBug.addedRun("30:00", "+2"), 0.001f);
+        assertEquals(-1f, BoardBug.addedRun("HT", "+2"), 0.001f);
+        assertEquals(-1f, BoardBug.addedRun("92:00", ""), 0.001f);
     }
 }

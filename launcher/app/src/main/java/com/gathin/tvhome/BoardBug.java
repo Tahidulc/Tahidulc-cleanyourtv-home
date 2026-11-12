@@ -1398,10 +1398,50 @@ final class BoardBug extends View {
         fill.setColor(style == Style.CARD ? CARD_RED : ADDED);
         r.set(left, top, left + tw, top + th);
         cv.drawRoundRect(r, rad, rad, fill);
-        words(cv, look.added, left + tw / 2f, top, th, th * 0.6f, INK);
+        // The minutes added running: a thin white line along its foot filling as they go (empty at the half's end, full
+        // once they are up), on a faint track; steady, moving only as the clock does.
+        float run = addedRun(look.clock, look.added);
+        float textTop = top;
+        if (run >= 0f) {
+            float lh = Math.max(2f, th * 0.08f), lx = left + th * 0.2f, lw = tw - th * 0.4f, ly = top + th - lh - th * 0.12f;
+            fill.setColor(0x4DFFFFFF);
+            cv.drawRect(lx, ly, lx + lw, ly + lh, fill);
+            fill.setColor(0xF2FFFFFF);
+            cv.drawRect(lx, ly, lx + lw * run, ly + lh, fill);
+            textTop = top - th * 0.05f;
+        }
+        words(cv, look.added, left + tw / 2f, textTop, th, th * 0.6f, INK);
         cv.restore();
         // Out from behind the board, then still (no flash as it lands).
         if (since < TAB_IN_MS) postInvalidateOnAnimation();
+    }
+
+    /**
+     * Pure: how far through its minutes added a clock is, 0 at the half's end to 1 once they are up; -1 when it cannot
+     * tell (no minutes, no clock). The half's end is the last of 45, 90, 105 and 120 the clock has reached (or is a
+     * minute short of).
+     */
+    static float addedRun(String clock, String added) {
+        int n;
+        try {
+            n = Integer.parseInt(added == null ? "" : added.replace("+", "").trim());
+        } catch (NumberFormatException e) {
+            return -1f;
+        }
+        int colon = clock == null ? -1 : clock.indexOf(':');
+        if (n <= 0 || colon <= 0) return -1f;
+        int m, s;
+        try {
+            m = Integer.parseInt(clock.substring(0, colon).trim());
+            s = Integer.parseInt(clock.substring(colon + 1).replaceAll("[^0-9].*$", "").trim());
+        } catch (NumberFormatException e) {
+            return -1f;
+        }
+        int end = -1;
+        for (int e : new int[]{45, 90, 105, 120}) if (m >= e - 1) end = e;
+        if (end < 0) return -1f;
+        float run = (m * 60 + s - end * 60) / (n * 60f);
+        return Math.max(0f, Math.min(1f, run));
     }
 
     /** A shine passing across (x, y, w, h), t ms into its round (none between its passes). */

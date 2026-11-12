@@ -550,6 +550,8 @@ final class AdBreak {
         List<ScoresTicker.Game> liveNow = new ArrayList<>(), doneToday = new ArrayList<>(), laterToday = new ArrayList<>();
         /** At half-time: the first half (the half-time card's numbers: scorers, possession, shots). */
         MoreAlerts.Stats half;
+        /** At full time: the whole game (the final score, every scorer, possession, shots). */
+        MoreAlerts.Stats full;
         /** For the half-time widgets (HalfTimeFun): today's prayer times, the next one, and whose times they are. */
         List<Prayer.Slot> prayers = new ArrayList<>();
         Prayer.Slot prayerNext;
@@ -702,6 +704,13 @@ final class AdBreak {
                 if (side == 0) { p.homeForm = form; p.homeNext = next; } else { p.awayForm = form; p.awayNext = next; }
             } catch (Exception ignored) {
                 // no form for that club
+            }
+        }
+        if (g.state == 2) {
+            try {
+                p.full = MoreAlerts.fullTime(g, p.summary);
+            } catch (RuntimeException ignored) {
+                // no full time's numbers
             }
         }
         if (p.summary != null && g.state == 0 && g.halftime) {
@@ -1081,8 +1090,9 @@ final class AdBreak {
         }
         if (shown.g == null || !shown.g.id.equals(p.g.id)) return;
         List<List<Widget>> lists = Widgets.build(c, p, s);
-        // At half-time (as it shows on screen) the last card gets the quiz, fun facts and prayer times in among its own.
-        filledHalf = forcedHalf || halfTimeShows(c, fresh(p.g), System.currentTimeMillis());
+        // At half-time (as it shows on screen) and at full time the last card gets the quiz, fun facts and prayer times
+        // in among its own: every widget there is.
+        filledHalf = funNow(c, p);
         if (filledHalf) lists.set(2, HalfTimeFun.mix(HalfTimeFun.widgets(c, p, s), lists.get(2)));
         for (int i = 0; i < 3; i++) cards[i].set(lists.get(i));
         hintNow();
@@ -1107,9 +1117,15 @@ final class AdBreak {
     /** Whether the cards were last filled for half-time (the half-time widgets in the last card). */
     private static boolean filledHalf;
 
-    /** The last card again when half-time starts or ends on screen while the screen is up. */
+    /** Whether the half-time widgets join the rest now: half-time as it shows on screen, or full time (or the test's). */
+    private static boolean funNow(Context c, Pack p) {
+        ScoresTicker.Game g = fresh(p.g);
+        return forcedHalf || g != null && (g.state == 2 || halfTimeShows(c, g, System.currentTimeMillis()));
+    }
+
+    /** The last card again when half-time starts or ends on screen (or full time comes) while the screen is up. */
     private static void refillHalf(Context c, Pack p) {
-        boolean ht = forcedHalf || halfTimeShows(c, fresh(p.g), System.currentTimeMillis());
+        boolean ht = funNow(c, p);
         if (ht == filledHalf || cards[2] == null) return;
         filledHalf = ht;
         List<Widget> last = Widgets.build(c, p, s).get(2);

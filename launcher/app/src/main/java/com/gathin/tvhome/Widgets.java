@@ -199,8 +199,10 @@ final class Widgets {
         Bitmap mark = p.mark;
         String home = shortName(p, true), away = shortName(p, false);
 
+        // At full time: the whole game (the final score, every scorer, possession, shots).
+        if (p.full != null) a.add(new AdBreak.Widget(mark, "FULL\nTIME", c -> gameLines(c, p, p.full, home, away), null, null, null));
         // At half-time: the first half, as the half-time card has it (the scorers, possession, shots).
-        if (p.half != null) {
+        if (p.half != null && p.full == null) {
             MoreAlerts.Stats st = p.half;
             a.add(new AdBreak.Widget(mark, "FIRST\nHALF", c -> {
                 List<View> l = new ArrayList<>();
@@ -573,6 +575,29 @@ final class Widgets {
             }, null, clip[0], p.clipStill));
         }
         return out;
+    }
+
+    /** A whole game's lines (FULL TIME): the score between both crests, each side's scorers, possession and shots. */
+    private static List<View> gameLines(Context c, AdBreak.Pack p, MoreAlerts.Stats st, String home, String away) {
+        ScoresTicker.Game g = p.g;
+        List<View> l = new ArrayList<>();
+        TextView score = t(c, st.home + "–" + st.away, 22.5f, INK, true);
+        score.setPadding(px(9), px(1), px(9), px(1));
+        score.setBackground(AdBreak.fill(0x1A151A63, px(6)));
+        l.add(row(c, 9, crest(c, p, g.homeId, 27), t(c, home, 18, INK, true), score, t(c, away, 18, INK, true), crest(c, p, g.awayId, 27)));
+        for (int side = 0; side < 2; side++) {
+            List<String> goals = side == 0 ? st.homeGoals : st.awayGoals;
+            if (goals.isEmpty()) continue;
+            TextView who = t(c, String.join(" · ", goals), 15, INK, false);
+            who.setSingleLine(true);
+            who.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            l.add(row(c, 7, crest(c, p, side == 0 ? g.homeId : g.awayId, 19), who));
+        }
+        StringBuilder line = new StringBuilder();
+        if (st.homePoss >= 0) line.append("Possession ").append(st.homePoss).append("–").append(st.awayPoss).append('%');
+        if (st.homeShots >= 0) line.append(line.length() > 0 ? " · " : "").append("Shots ").append(st.homeShots).append("–").append(st.awayShots);
+        if (line.length() > 0) l.add(foot(c, line.toString()));
+        return l;
     }
 
     // ---- the general screen (a match on, no game known) -----------------------------------------------------------------

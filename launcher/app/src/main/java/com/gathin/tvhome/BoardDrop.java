@@ -46,6 +46,18 @@ final class BoardDrop extends BoardSide {
         Bitmap[] photos;
         /** A substitution (or several at once): its OFF page, then its ON page, each player with picture and name. */
         SubsPage.Subs subs;
+        /** The minutes added (an ADDED TIME alert): a big +N counting up to them as it comes out, MINUTES ADDED by it. */
+        int addedMins;
+    }
+
+    /** Each step of the minutes added counting up (+1, +2 ... +N), after the first half of its slide out. */
+    static final long COUNT_STEP_MS = 150L;
+
+    /** Pure: the number the minutes added show, since ms after it began to come out: from 1 up to n, one a step. */
+    static int countUp(int n, long since) {
+        if (n <= 1) return Math.max(1, n);
+        if (since < 0) return n;
+        return (int) Math.min(n, 1 + Math.max(0L, since - SLIDE_MS / 2) / COUNT_STEP_MS);
     }
 
     /** Pure: how many pages an alert turns through (the line-ups' two, its own pages, else one). */
@@ -68,7 +80,13 @@ final class BoardDrop extends BoardSide {
         String head = "", line = "";
         int headColour, lineColour;
         boolean lineBold;
+        /** The bold words this much bigger (the minutes added's +N). */
+        float headScale = 1f;
     }
+
+    /** The alert out now and when it began to come out (the minutes added count up from then). */
+    private Drop shownDrop;
+    private long shownAt;
 
     private Drop drop;
 
@@ -132,6 +150,8 @@ final class BoardDrop extends BoardSide {
     void show(Drop d) {
         onFolding();
         drop = d;
+        shownDrop = d;
+        shownAt = android.os.SystemClock.uptimeMillis();
         chipColour = d.colour == PLAIN ? look.block : d.colour;
         page = 0;
         turn = 1f;
@@ -234,6 +254,15 @@ final class BoardDrop extends BoardSide {
         Part o = new Part();
         o.headColour = look.ink;
         o.lineColour = look.dim;
+        if (d.addedMins > 0) {
+            // ADDED TIME: the minutes counting up to them as it comes out (+1, +2 ... +4), big; MINUTES ADDED, small.
+            int n = d.addedMins;
+            o.head = "+" + countUp(n, d == shownDrop ? android.os.SystemClock.uptimeMillis() - shownAt : -1);
+            o.headScale = 1.3f;
+            o.line = n == 1 ? "MINUTE ADDED" : "MINUTES ADDED";
+            o.lineColour = look.dim;
+            return o;
+        }
         if (!d.lineups && d.pages != null && d.pages.length > 0) {
             String[] pg = d.pages[Math.max(0, Math.min(d.pages.length - 1, p))];
             o.head = pg.length > 0 && pg[0] != null ? pg[0] : "";
@@ -293,6 +322,10 @@ final class BoardDrop extends BoardSide {
             subsK = subsFit(h, room);
             subsPages(cv, h, false);
             return;
+        }
+        // The minutes added still counting up: drawn again until they reach theirs.
+        if (drop.addedMins > 0 && drop == shownDrop && countUp(drop.addedMins, android.os.SystemClock.uptimeMillis() - shownAt) < drop.addedMins) {
+            postInvalidateOnAnimation();
         }
         // One page at a time, never two over each other (BoardStats.turnParts).
         float[] o = BoardStats.turnParts(turn);
@@ -361,8 +394,10 @@ final class BoardDrop extends BoardSide {
             rx += cs + unit * 0.16f;
         }
         if (!o.head.isEmpty()) {
-            if (cv != null) words(cv, bold, o.head, rx, dy + rowY, rowH, headSize, o.headColour, a);
-            rx += measure(bold, o.head, headSize);
+            float hs = headSize * o.headScale;
+            if (cv != null) words(cv, bold, o.head, rx, dy + rowY, rowH, hs, o.headColour, a);
+            // A number's width as its widest (the minutes added count up through narrower ones).
+            rx += o.headScale > 1f ? Math.max(measure(bold, o.head, hs), measure(bold, o.head.replaceAll("[0-9]", "8"), hs)) : measure(bold, o.head, hs);
         }
         if (o.crestB != null) {
             rx += unit * 0.16f;

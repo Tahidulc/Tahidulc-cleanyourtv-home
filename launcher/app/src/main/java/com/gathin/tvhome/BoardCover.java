@@ -1012,6 +1012,7 @@ final class BoardCover {
         d.gameId = g.id;
         d.chip = "ADDED TIME";
         d.colour = kindColour("added");
+        d.addedMins = n;
         d.title = "+" + n + (n == 1 ? " minute" : " minutes");
         d.homeColour = BoardBug.colour(g.homeColor, g.homeAlt);
         d.awayColour = BoardBug.colour(g.awayColor, g.awayAlt);
