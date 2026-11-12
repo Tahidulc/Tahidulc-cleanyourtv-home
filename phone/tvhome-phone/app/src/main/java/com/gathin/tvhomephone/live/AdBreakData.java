@@ -48,6 +48,10 @@ final class AdBreakData {
         List<Game> alsoNow = new ArrayList<>(), elsewhere = new ArrayList<>(), later = new ArrayList<>();
         /** The playlist channel for each game kicking off with this one (null where none), in alsoNow's order. */
         List<Channel> alsoChannels = new ArrayList<>();
+        /** The playlist channel for each game on now elsewhere (null where none), in elsewhere's order: tap to watch it. */
+        List<Channel> elsewhereChannels = new ArrayList<>();
+        /** The first half in figures ({label, home, away}: possession, shots, on target), from the summary; for half time. */
+        List<String[]> firstHalf = new ArrayList<>();
         /** F1 today: {session, "HH:mm"}. */
         List<String[]> f1Today = new ArrayList<>();
         /** The clubs' news (BBC Sport): {"home"/"away", headline}. */
@@ -89,6 +93,7 @@ final class AdBreakData {
                 else if (x.state == Game.PRE && x.kickoff > now && sameDay(x.kickoff, now)) later.add(x);
             }
             k.elsewhere = AdBreak.mineFirst(on, mine, GENERAL_SCORES);
+            k.elsewhereChannels = channels(c, k.elsewhere);
             later.sort((a, b) -> Long.compare(a.kickoff, b.kickoff));
             k.later = new ArrayList<>(later.subList(0, Math.min(3, later.size())));
         } catch (RuntimeException ignored) {
@@ -102,6 +107,21 @@ final class AdBreakData {
             // the headlines another time
         }
         return k;
+    }
+
+    /** Each game's playlist channel (null where it isn't in the playlist), in the games' order. */
+    private static List<Channel> channels(Context c, List<Game> games) {
+        List<Channel> out = new ArrayList<>();
+        for (Game x : games) {
+            Channel ch = null;
+            try {
+                ch = AlsoShowing.best(c, x);
+            } catch (RuntimeException ignored) {
+                // not in the playlist
+            }
+            out.add(ch);
+        }
+        return out;
     }
 
     /** A general session's most games on now, and headlines (three a widget). */
@@ -190,18 +210,13 @@ final class AdBreakData {
             while (k.alsoNow.size() > 3) k.alsoNow.remove(k.alsoNow.size() - 1);
             while (k.elsewhere.size() > 3) k.elsewhere.remove(k.elsewhere.size() - 1);
             while (k.later.size() > 3) k.later.remove(k.later.size() - 1);
-            for (Game x : k.alsoNow) {
-                Channel ch = null;
-                try {
-                    ch = AlsoShowing.best(c, x);
-                } catch (RuntimeException ignored) {
-                    // not in the playlist
-                }
-                k.alsoChannels.add(ch);
-            }
+            k.alsoChannels = channels(c, k.alsoNow);
+            k.elsewhereChannels = channels(c, k.elsewhere);
         } catch (RuntimeException ignored) {
             // none this time
         }
+        // The first half in figures, for half time's widget (the summary's stats are the first half's then).
+        k.firstHalf = AdBreak.firstHalf(sum.stats);
         f1Today(k, now);
         // The clubs' news: BBC Sport's feed for each club.
         for (int side = 0; side < 2; side++) {

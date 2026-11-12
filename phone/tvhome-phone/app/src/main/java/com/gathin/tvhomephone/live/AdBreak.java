@@ -138,6 +138,76 @@ final class AdBreak {
         return s != null && s.in(now) && !inPlay(s.game);
     }
 
+    // ---- who takes a break: the ad-break screen or broadcast mode's family break -----------------------------------------
+
+    /** What takes a break (the channel on its adverts): nothing, the ad-break screen, or broadcast mode's family break. */
+    static final int TAKE_NONE = 0, TAKE_AD_BREAK = 1, TAKE_FAMILY = 2;
+
+    /**
+     * Pure: which screen a break now goes to, so the two never stack. Broadcast mode on: its family break keeps the
+     * board's game's half time and full time as it always had them (BreakWatch.allowed, the game at half time or over);
+     * the ad-break screen takes the rest of its session (the build-up, a break while the game is still live); any other
+     * break the family break could take (before kick-off with no session) stays the family break's. Broadcast mode off:
+     * the ad-break screen, half time and full time too. boardGame: the board's game as the picture has it (ScreenTime).
+     */
+    static int take(boolean adBreakOn, boolean broadcastOn, Session s, Game boardGame, long now) {
+        boolean family = broadcastOn && BreakWatch.allowed(boardGame);
+        if (family && familyCovers(boardGame)) return TAKE_FAMILY;
+        if (adBreakOn && eligible(s, now)) return TAKE_AD_BREAK;
+        return family ? TAKE_FAMILY : TAKE_NONE;
+    }
+
+    /** Pure: the game's own half time or full time: the breaks broadcast mode's family break has. */
+    static boolean familyCovers(Game g) {
+        int phase = phase(g);
+        return phase == HALF_TIME || phase == FULL_TIME;
+    }
+
+    /**
+     * Pure: whether it is the game's half-time break: ESPN says so, or the first half's last minutes with the channel
+     * gone to its adverts (ESPN's half time comes a little late).
+     */
+    static boolean atHalfTime(Game g) {
+        int phase = phase(g);
+        return phase == HALF_TIME || (phase == LIVE_BREAK && g.period == 1 && !inPlay(g));
+    }
+
+    /** Pure: the first half in figures for its widget, {label, home, away}: possession, shots, on target, those there are. */
+    static List<String[]> firstHalf(List<String[]> stats) {
+        List<String[]> out = new ArrayList<>();
+        if (stats == null) return out;
+        for (String want : new String[]{"Possession", "Shots", "On target"}) {
+            for (String[] x : stats) {
+                if (x == null || x.length < 3 || !want.equals(x[0])) continue;
+                boolean pct = "Possession".equals(want);
+                out.add(new String[]{want, pct ? percent(x[1]) : x[1], pct ? percent(x[2]) : x[2]});
+                break;
+            }
+        }
+        return out;
+    }
+
+    private static String percent(String v) {
+        if (v == null) return "";
+        try {
+            return Math.round(Float.parseFloat(v.replace("%", "").trim())) + "%";
+        } catch (NumberFormatException e) {
+            return v;
+        }
+    }
+
+    /** Pure: a side's goals so far ("home"/"away"), as the board captions them: "Saka 23', Havertz 41' (pen)"; "" for none. */
+    static String scorers(Game g, String side) {
+        if (g == null || g.goals == null) return "";
+        StringBuilder b = new StringBuilder();
+        for (String[] x : g.goals) {
+            if (x == null || x.length < 4 || !side.equals(x[3])) continue;
+            if (b.length() > 0) b.append(", ");
+            b.append(x[1]).append(' ').append(x[2]).append(ScoreBoard.kindWords(x.length > 4 ? x[4] : ""));
+        }
+        return b.toString();
+    }
+
     /** Whether a game is before its kick-off, within the hour (the screen shown by hand from the options). */
     static boolean soon(Game g, long now) {
         return g != null && g.state == Game.PRE && g.kickoff > now && g.kickoff - now <= BEFORE_MS;

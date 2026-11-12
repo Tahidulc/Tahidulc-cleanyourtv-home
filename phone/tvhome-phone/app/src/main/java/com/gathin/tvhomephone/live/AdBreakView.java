@@ -527,6 +527,42 @@ final class AdBreakView extends FrameLayout {
         String hc = AdBreakData.homeCrest(g), ac = AdBreakData.awayCrest(g), hn = name(g, true), an = name(g, false);
         String comp = g.leagueName == null ? "" : g.leagueName;
 
+        // Half time: the first half (its scorers, possession and shots), first.
+        if (AdBreak.atHalfTime(g) && (!k.firstHalf.isEmpty() || !g.goals.isEmpty())) {
+            match.add(new Widget(compMark(), "FIRST\nHALF", c -> {
+                Game now = k.game != null ? k.game : g;
+                String hs = AdBreak.scorers(now, "home"), as = AdBreak.scorers(now, "away");
+                List<View> out = new ArrayList<>();
+                if (!k.firstHalf.isEmpty()) {
+                    LinearLayout head = row(4);
+                    head.addView(spacer(0), new LinearLayout.LayoutParams(0, 1, 1f));
+                    for (String[] x : k.firstHalf) head.addView(cell(statLabel(x[0]), 9.5f, INK_SOFT, true, 46));
+                    out.add(head);
+                    for (int side = 0; side < 2; side++) {
+                        LinearLayout l = row(4);
+                        l.addView(clubLabel(side == 0 ? hc : ac, side == 0 ? hn : an), new LinearLayout.LayoutParams(0, -2, 1f));
+                        for (String[] x : k.firstHalf) l.addView(cell(x[side + 1], 13, NAVY, true, 46));
+                        out.add(l);
+                    }
+                    String goals = hs.isEmpty() && as.isEmpty() ? "No goals yet" : (hs.isEmpty() ? "" : hn + ": " + hs) + (!hs.isEmpty() && !as.isEmpty() ? " · " : "") + (as.isEmpty() ? "" : an + ": " + as);
+                    out.add(foot(goals));
+                } else {
+                    for (int side = 0; side < 2; side++) {
+                        String who = side == 0 ? hs : as;
+                        if (who.isEmpty()) continue;
+                        LinearLayout l = row(7);
+                        l.addView(crest(side == 0 ? hc : ac, 16));
+                        TextView t = words(who, 12, NAVY, true);
+                        t.setMaxLines(1);
+                        t.setEllipsize(TextUtils.TruncateAt.END);
+                        l.addView(t, new LinearLayout.LayoutParams(0, -2, 1f));
+                        out.add(l);
+                    }
+                    out.add(foot("Goals in the first half"));
+                }
+                return out;
+            }));
+        }
         if (!k.homeForm.isEmpty() || !k.awayForm.isEmpty()) {
             match.add(new Widget(compMark(), "FORM", c -> list(
                     formRow(hc, hn, k.homeForm), formRow(ac, an, k.awayForm),
@@ -665,13 +701,7 @@ final class AdBreakView extends FrameLayout {
             for (Channel ch : k.alsoChannels) if (ch != null) { also.action = () -> host.play(ch); break; }
             league.add(also);
         }
-        if (!k.elsewhere.isEmpty()) {
-            league.add(new Widget(compMark(), "ELSE-\nWHERE", c -> {
-                List<View> out = new ArrayList<>();
-                for (Game x : k.elsewhere) out.add(scoreRow(x));
-                return out;
-            }));
-        }
+        if (!k.elsewhere.isEmpty()) league.add(alsoOnNow(compMark(), "ALSO\nON NOW", k.elsewhere));
         if (!k.homeNext.isEmpty() || !k.awayNext.isEmpty()) {
             league.add(new Widget(compMark(), "COMING\nUP", c -> {
                 List<View> out = new ArrayList<>();
@@ -750,11 +780,7 @@ final class AdBreakView extends FrameLayout {
         List<Widget> scores = new ArrayList<>(), news = new ArrayList<>();
         for (int i = 0; i < k.elsewhere.size(); i += 3) {
             List<Game> page = new ArrayList<>(k.elsewhere.subList(i, Math.min(k.elsewhere.size(), i + 3)));
-            scores.add(new Widget(houseMark(), "SCORES\nNOW", c -> {
-                List<View> out = new ArrayList<>();
-                for (Game x : page) out.add(scoreRow(x));
-                return out;
-            }));
+            scores.add(alsoOnNow(houseMark(), "SCORES\nNOW", page));
         }
         if (!scores.isEmpty()) all.add(scores);
         Widget later = laterToday(houseMark(), null);
@@ -779,6 +805,54 @@ final class AdBreakView extends FrameLayout {
         }
         if (!news.isEmpty()) all.add(news);
         return all;
+    }
+
+    /**
+     * The games on now (up to three): each a row with its score and minute; one in the playlist taps through to its
+     * channel (OK: the first of them), so the break can be spent on another game.
+     */
+    private Widget alsoOnNow(java.util.function.Supplier<View> mark, String caption, List<Game> games) {
+        Channel first = null;
+        for (Game x : games) {
+            Channel ch = channelFor(x);
+            if (ch != null) { first = ch; break; }
+        }
+        boolean any = first != null;
+        Widget w = new Widget(mark, caption, c -> {
+            List<View> out = new ArrayList<>();
+            for (Game x : games) {
+                LinearLayout l = scoreRow(x);
+                Channel ch = channelFor(x);
+                if (ch != null) {
+                    l.setOnClickListener(v -> host.play(ch));
+                    l.setContentDescription("Watch " + x.title() + " on " + ch.name);
+                }
+                out.add(l);
+                if (out.size() >= 3) break;
+            }
+            if (any) out.add(foot("Tap a game to watch it"));
+            return out;
+        });
+        if (first != null) {
+            Channel ch = first;
+            w.action = () -> host.play(ch);
+        }
+        return w;
+    }
+
+    /** A game on now's playlist channel, from the content's (null where it isn't in the playlist). */
+    private Channel channelFor(Game x) {
+        int i = k.elsewhere.indexOf(x);
+        return i >= 0 && i < k.elsewhereChannels.size() ? k.elsewhereChannels.get(i) : null;
+    }
+
+    /** A stat's short name for a narrow column. */
+    private static String statLabel(String name) {
+        switch (name) {
+            case "Possession": return "POSS";
+            case "On target": return "ON TGT";
+            default: return name.toUpperCase(Locale.UK);
+        }
     }
 
     /** A game on now: a live dot (grey at half time), the crests and score, its minute. */

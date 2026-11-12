@@ -1581,14 +1581,16 @@ final class ScoreOverlay implements ScoreBoard.Source {
                     boolean on = w.add(p);
                     long now = System.currentTimeMillis();
                     if (!on) adBreakHidden = false;
-                    // Inside the session's time (the listings' programme, else the game's, else a match's scoreboard
-                    // seen): the ad-break screen; else broadcast mode's break.
+                    // Who takes the break (AdBreak.take), one at a time: broadcast mode's family break keeps the game's
+                    // half time and full time; the ad-break screen the rest of its session (the listings' programme,
+                    // else the game's, else a match's scoreboard seen), and half time and full time too without
+                    // broadcast mode. Neither comes while the other is up.
                     AdBreak.Session sn = ScoreBoard.adBreak(a) ? session() : null;
-                    boolean ours = AdBreak.eligible(sn, now);
-                    if (AdBreak.wanted(ScoreBoard.adBreak(a), on, sn, now) && adBreak == null && breakScreen == null && !adBreakHidden) startAdBreak(sn, false);
-                    else if (adBreak != null && !manualAdBreak && (!on || !ours)) endAdBreak();
                     Game g = ScreenTime.game(host.game(), now);
-                    if (ScoreBoard.broadcast(a) && !ours && on && breakScreen == null && adBreak == null && BreakWatch.allowed(g)) startBreak(false);
+                    int take = AdBreak.take(ScoreBoard.adBreak(a), ScoreBoard.broadcast(a), sn, g, now);
+                    if (on && take == AdBreak.TAKE_AD_BREAK && adBreak == null && breakScreen == null && !adBreakHidden) startAdBreak(sn, false);
+                    else if (adBreak != null && !manualAdBreak && (!on || take != AdBreak.TAKE_AD_BREAK)) endAdBreak();
+                    if (on && take == AdBreak.TAKE_FAMILY && breakScreen == null && adBreak == null) startBreak(false);
                     else if (!on && breakScreen != null && !manualBreak) endBreak(false);
                 }
                 h.postDelayed(checkBreak, 2000);
@@ -1680,6 +1682,8 @@ final class ScoreOverlay implements ScoreBoard.Source {
             }
         });
         adBreak = view;
+        // The board's half-time and full-time pop-outs wait while it is up (they come after it, not on top of it).
+        board.holdBreakMoments(true);
         root.addView(view, Math.min(4, root.getChildCount()), new FrameLayout.LayoutParams(-1, -1));
         App.io.execute(() -> {
             AdBreakData.Content k = g != null ? AdBreakData.load(app, g) : AdBreakData.general(app, title);
@@ -1709,6 +1713,7 @@ final class ScoreOverlay implements ScoreBoard.Source {
         if (v == null) return;
         adBreak = null;
         manualAdBreak = false;
+        board.holdBreakMoments(false);
         v.end(() -> root.removeView(v));
     }
 

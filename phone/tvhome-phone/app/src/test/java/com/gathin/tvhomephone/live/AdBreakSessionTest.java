@@ -254,4 +254,117 @@ public class AdBreakSessionTest {
         assertEquals(Arrays.asList(arsenal, palace, leeds), AdBreak.mineFirst(Arrays.asList(arsenal, palace, leeds), null, 6));
         assertTrue(AdBreak.mineFirst(null, null, 3).isEmpty());
     }
+
+    // ---- who takes a break: the ad-break screen or broadcast mode's family break --------------------------------------
+
+    private static final int NONE = AdBreak.TAKE_NONE, AD = AdBreak.TAKE_AD_BREAK, FAMILY = AdBreak.TAKE_FAMILY;
+
+    @Test
+    public void broadcastModeOnKeepsHalfTimeAndFullTimeForTheFamilyBreak() {
+        Game g = game("1", "Arsenal", "Chelsea", Game.LIVE, NOW - 50 * MIN);
+        AdBreak.Session s = AdBreak.fromGame(g, null, NOW);
+        // Half time and full time: the family break's, as before; the ad-break screen never.
+        g.halftime = true;
+        assertEquals(FAMILY, AdBreak.take(true, true, s, g, NOW));
+        g.halftime = false;
+        g.state = Game.POST;
+        assertEquals(FAMILY, AdBreak.take(true, true, s, g, NOW));
+        // The build-up: the ad-break screen's (the family break had it only when there is no session).
+        g.state = Game.PRE;
+        g.kickoff = NOW + 30 * MIN;
+        s = AdBreak.fromGame(g, null, NOW);
+        assertEquals(AD, AdBreak.take(true, true, s, g, NOW));
+        assertEquals(FAMILY, AdBreak.take(true, true, null, g, NOW));
+        assertEquals(FAMILY, AdBreak.take(false, true, s, g, NOW));   // the ad-break screen switched off
+        // A break while ESPN still has the game live (late in a half): the family break never takes those; the screen does.
+        g.state = Game.LIVE;
+        g.kickoff = NOW - 44 * MIN;
+        g.period = 1;
+        g.clock = 44 * 60;
+        s = AdBreak.fromGame(g, null, NOW);
+        assertEquals(AD, AdBreak.take(true, true, s, g, NOW));
+        // The ball in play: neither.
+        g.clock = 20 * 60;
+        assertEquals(NONE, AdBreak.take(true, true, s, g, NOW));
+    }
+
+    @Test
+    public void broadcastModeOffTheAdBreakScreenHasHalfTimeAndFullTimeToo() {
+        Game g = game("1", "Arsenal", "Chelsea", Game.LIVE, NOW - 50 * MIN);
+        AdBreak.Session s = AdBreak.fromGame(g, null, NOW);
+        g.halftime = true;
+        assertEquals(AD, AdBreak.take(true, false, s, g, NOW));
+        g.halftime = false;
+        g.state = Game.POST;
+        assertEquals(AD, AdBreak.take(true, false, s, g, NOW));
+        // Half an hour after full time the session is over: nothing.
+        assertEquals(NONE, AdBreak.take(true, false, s, g, s.to + 1));
+        assertEquals(NONE, AdBreak.take(false, false, s, g, NOW));
+    }
+
+    @Test
+    public void withNoGameOnTheBoardTheFamilyBreakHasNothingToCover() {
+        // The board shows no game (the family break can't take a break): the session's half time is the screen's.
+        Game g = game("1", "Arsenal", "Chelsea", Game.LIVE, NOW - 50 * MIN);
+        g.halftime = true;
+        AdBreak.Session s = AdBreak.fromGame(g, null, NOW);
+        assertEquals(AD, AdBreak.take(true, true, s, null, NOW));
+        assertEquals(AD, AdBreak.take(true, true, AdBreak.general("Live Football", NOW), null, NOW));
+        assertEquals(NONE, AdBreak.take(true, true, null, null, NOW));
+        assertTrue(AdBreak.familyCovers(g));
+        assertFalse(AdBreak.familyCovers(null));
+    }
+
+    @Test
+    public void halfTimeIsEspnsOrTheFirstHalfsLastMinutes() {
+        Game g = game("1", "Arsenal", "Chelsea", Game.LIVE, NOW - 50 * MIN);
+        g.period = 1;
+        g.clock = 45 * 60;
+        assertTrue(AdBreak.atHalfTime(g));   // ESPN not caught up yet
+        g.clock = 20 * 60;
+        assertFalse(AdBreak.atHalfTime(g));
+        g.halftime = true;
+        assertTrue(AdBreak.atHalfTime(g));
+        g.halftime = false;
+        g.period = 2;
+        g.clock = 88 * 60;
+        assertFalse(AdBreak.atHalfTime(g));   // that is full time coming
+        g.state = Game.POST;
+        assertFalse(AdBreak.atHalfTime(g));
+        assertFalse(AdBreak.atHalfTime(null));
+    }
+
+    @Test
+    public void theFirstHalfInFiguresAndItsScorers() {
+        List<String[]> stats = Arrays.asList(new String[]{"Fouls", "6", "9"}, new String[]{"On target", "4", "1"},
+                new String[]{"Possession", "61.4", "38.6"}, new String[]{"Shots", "9", "3"});
+        List<String[]> f = AdBreak.firstHalf(stats);
+        assertEquals(3, f.size());
+        assertEquals("Possession", f.get(0)[0]);
+        assertEquals("61%", f.get(0)[1]);
+        assertEquals("39%", f.get(0)[2]);
+        assertEquals("Shots", f.get(1)[0]);
+        assertEquals("On target", f.get(2)[0]);
+        assertEquals("4", f.get(2)[1]);
+        assertTrue(AdBreak.firstHalf(null).isEmpty());
+        assertTrue(AdBreak.firstHalf(Collections.singletonList(new String[]{"Fouls", "1", "2"})).isEmpty());
+
+        Game g = game("1", "Arsenal", "Chelsea", Game.LIVE, NOW - 50 * MIN);
+        g.goals.add(new String[]{"G|1|23'|Saka", "Bukayo Saka", "23'", "home", ""});
+        g.goals.add(new String[]{"G|1|30'|Palmer", "Cole Palmer", "30'", "away", "pen"});
+        g.goals.add(new String[]{"G|1|41'|Havertz", "Kai Havertz", "41'", "home", "og"});
+        assertEquals("Bukayo Saka 23', Kai Havertz 41' (og)", AdBreak.scorers(g, "home"));
+        assertEquals("Cole Palmer 30' (pen)", AdBreak.scorers(g, "away"));
+        assertEquals("", AdBreak.scorers(game("2", "Leeds", "Burnley", Game.LIVE, NOW), "home"));
+        assertEquals("", AdBreak.scorers(null, "home"));
+    }
+
+    @Test
+    public void halfTimesAndFullTimesPopOutsWaitForTheAdBreakScreen() {
+        assertTrue(ScoreBoard.waitsForAdBreak("ht"));
+        assertTrue(ScoreBoard.waitsForAdBreak("ft"));
+        assertFalse(ScoreBoard.waitsForAdBreak("goal"));
+        assertFalse(ScoreBoard.waitsForAdBreak("h1"));
+        assertFalse(ScoreBoard.waitsForAdBreak(null));
+    }
 }

@@ -1010,6 +1010,8 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         String slot = statsSlot(pre, g.kickoff - now, g.state, g.halftime, boardMinute);
         String key = lastId + "|" + slot;
         if (slot == null || statsShown.contains(key)) return;
+        // Half time's and full time's wait while the ad-break screen is up (shown once it has gone, still in their time).
+        if (holdBreak && waitsForAdBreak(slot)) return;
         List<String[]> pick = statsFor(slot, statsBy);
         if (pick.isEmpty()) return;
         if (statsShown.size() > 60) statsShown.clear();
@@ -1681,6 +1683,25 @@ public final class ScoreBoard implements LiveAlerts.Listener {
     /** The colour of the kinds with none of their own (half time, the line-ups, the table…): the board's block instead. */
     public static final int PLAIN = 0xFFDDE3FF;
 
+    /** The ad-break screen up: the half-time and full-time pop-outs (alerts and stats) wait until it has gone. */
+    private boolean holdBreak;
+
+    /** The ad-break screen up (true) or gone (false): what waited comes out then. */
+    void holdBreakMoments(boolean hold) {
+        if (holdBreak == hold) return;
+        holdBreak = hold;
+        if (!hold && !dropping && !drops.isEmpty()) next();
+    }
+
+    /** Pure: whether an alert's kind (or a stats moment) waits while the ad-break screen is up: half time's and full time's. */
+    static boolean waitsForAdBreak(String kind) {
+        return "ht".equals(kind) || "ft".equals(kind);
+    }
+
+    private static boolean waits(Drop d) {
+        return d != null && d.alert != null && waitsForAdBreak(d.alert.kind);
+    }
+
     private void drop(Drop d) {
         if (small) return;
         drops.addLast(d);
@@ -1707,7 +1728,18 @@ public final class ScoreBoard implements LiveAlerts.Listener {
             h.postDelayed(nextDrop, wait);
             return;
         }
-        Drop d = drops.pollFirst();
+        // The ad-break screen up: half time's and full time's wait (in their place), the rest come out.
+        Drop d = null;
+        if (holdBreak) {
+            for (Drop x : drops) if (!waits(x)) { d = x; break; }
+            if (d == null) {
+                dropping = false;
+                return;
+            }
+            drops.remove(d);
+        } else {
+            d = drops.pollFirst();
+        }
         if (d.lineups && d.alert != null && d.alert.summary != null && d.alert.game != null && boardUp() && !(src instanceof FloatService)) {
             dropping = false;
             lineupsCard(d.alert);
