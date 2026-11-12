@@ -1707,6 +1707,10 @@ public class GoalWatchService extends Service {
             String key = intent.getStringExtra("test_board_moments");
             main.post(() -> BoardCover.testMoments(this, key == null || key.isEmpty() ? "hit" : key));
         }
+        if (intent != null && intent.getBooleanExtra("test_board_subs", false)) {
+            // adb only: the board over whatever is on, one substitution (OFF, then ON) and then three at once
+            main.post(() -> BoardCover.testSubs(this));
+        }
         if (intent != null && intent.hasExtra("test_classic")) {
             // adb only: the classic pop-up ("kickoff", "restart", "second") or line-ups ("lineups") now, as the Scoreboard
             // card's Try rows play them, for the Premier League's latest game.

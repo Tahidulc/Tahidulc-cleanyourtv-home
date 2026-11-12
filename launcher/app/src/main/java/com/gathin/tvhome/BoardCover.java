@@ -1787,6 +1787,23 @@ final class BoardCover {
         }, 3_000L + BoardBug.GOAL_MS + 400L + 9_000L);
     }
 
+    /** adb only (--ez test_board_subs true): the board, then one substitution (OFF, ON), then three at once (made up). */
+    static void testSubs(Context c) {
+        Context a = c.getApplicationContext();
+        test(a);
+        ScoresTicker.Game g = new ScoresTicker.Game();
+        g.id = "test-subs";
+        g.homeName = "Home";
+        g.awayName = "Away";
+        g.homeColor = 0xC8102E;
+        g.awayColor = 0x1B458F;
+        main().postDelayed(() -> drop(a, subDrop(g, new String[]{"Substitution", "62", "1", "Alex Player", "", "Ben Example", ""})), 2_000L);
+        main().postDelayed(() -> drop(a, subDrop(g, java.util.Arrays.asList(
+                new String[]{"Substitution", "75", "2", "Carl Sample", "", "Dan van Test", ""},
+                new String[]{"Substitution", "75", "2", "Eli Demo", "", "Finn Trial", ""},
+                new String[]{"Substitution", "75", "2", "Gus Mock", "", "Hal Pilot", ""}))), 3_000L);
+    }
+
     /** adb only (--ez test_board_cover true): the board and the cover over whatever is on for a minute. */
     static void test(Context c) {
         app = c.getApplicationContext();
@@ -2808,7 +2825,9 @@ final class BoardCover {
         poke();
         int bh = bug.getLayoutParams().height;
         drop.place(bug.stripLook(), boardH * TEXT, tuck, sideLeft, head);
-        beside(drop, drop.widthFor(d, bh, shortRoom(bh, sideMax)));
+        // Two or more substitutions at once: the room beside the board, wider than an alert's, for every player on a page.
+        boolean many = d != null && d.subs != null && Math.max(d.subs.on.length, d.subs.off.length) > 1;
+        beside(drop, drop.widthFor(d, bh, many ? Math.max(shortRoom(bh, sideMax), Math.min(sideMax, bh * 16)) : shortRoom(bh, sideMax)));
         drop.show(d);
         main().postDelayed(hideDropRun, drop.showFor(DROP_MS));
     }
@@ -2983,45 +3002,76 @@ final class BoardCover {
         if (own && m.varPending && bug != null) bug.varCheck(8_000L);
         boolean first = subsGames.add(g.id);
         if (subsGames.size() > 40) subsGames.clear();
+        java.util.List<String[]> fresh = new java.util.ArrayList<>();
         for (String[] e : m.events) {
             if (!"Substitution".equals(e[0])) continue;
             String key = g.id + "|" + e[1] + "|" + e[4];
             if (!subsSeen.add(key) || first) continue;
             if (subsSeen.size() > 400) subsSeen.clear();
             if (!own || !dropsOn(c) || !subsOn(c)) continue;
-            boolean home = "1".equals(e[2]);
-            String team = home ? g.homeName : g.awayName;
-            int kit = home ? g.homeColor : g.awayColor;
-            BoardDrop.Drop d = subDrop(g, e);
-            Context a = c.getApplicationContext();
-            io.execute(() -> {
-                Bitmap b = GoalWatchService.photoFor(e[3], team, kit);
-                if (b == null) b = fotmobPhoto(a, e[4]);
-                Bitmap photo = b;
-                main().post(() -> {
-                    d.photo = photo;
-                    d.homeCrest = homeCrest;
-                    d.awayCrest = awayCrest;
-                    drop(a, d);
-                });
+            fresh.add(e);
+        }
+        // A club's changes in the same minute together: a double, triple or more on one OFF page and one ON page.
+        for (java.util.List<String[]> group : SubsPage.group(fresh)) subsOut(c, g, group);
+    }
+
+    /** One club's substitution(s) out beside the board, once every player's picture has been looked for (off the main thread). */
+    private static void subsOut(Context c, ScoresTicker.Game g, java.util.List<String[]> group) {
+        boolean home = "1".equals(group.get(0)[2]);
+        String team = home ? g.homeName : g.awayName;
+        int kit = home ? g.homeColor : g.awayColor;
+        BoardDrop.Drop d = subDrop(g, group);
+        SubsPage.Subs s = d.subs;
+        Context a = c.getApplicationContext();
+        io.execute(() -> {
+            for (int i = 0; i < s.on.length; i++) s.onFaces[i] = face(a, s.onFull[i], s.onIds[i], team, kit);
+            for (int i = 0; i < s.off.length; i++) s.offFaces[i] = face(a, s.offFull[i], s.offIds[i], team, kit);
+            main().post(() -> {
+                d.homeCrest = homeCrest;
+                d.awayCrest = awayCrest;
+                drop(a, d);
             });
+        });
+    }
+
+    /** A player's picture (off the main thread): the cut-out the cards use, else FotMob's; null when there is neither. */
+    private static Bitmap face(Context a, String name, String id, String team, int kit) {
+        try {
+            Bitmap b = name == null || name.isEmpty() ? null : GoalWatchService.photoFor(name, team, kit);
+            return b != null ? b : fotmobPhoto(a, id);
+        } catch (RuntimeException e) {
+            return null;
         }
     }
 
     /** Pure: a substitution's alert ({type, minute, home, on, on id, off, off id}): who came on, who went off, when. */
     static BoardDrop.Drop subDrop(ScoresTicker.Game g, String[] e) {
+        return subDrop(g, java.util.Collections.singletonList(e));
+    }
+
+    /**
+     * Pure: a club's substitution or substitutions at once: its OFF page (who goes off, each with their picture and
+     * name) and its ON page (who comes on), the whole name for one, the surname for more (SubsPage).
+     */
+    static BoardDrop.Drop subDrop(ScoresTicker.Game g, java.util.List<String[]> group) {
         BoardDrop.Drop d = new BoardDrop.Drop();
+        String[] e = group.get(0);
         boolean home = "1".equals(e[2]);
         d.gameId = g.id;
         d.chip = "SUBSTITUTION";
         d.colour = kindColour("sub");
         String team = home ? (g.homeName != null ? g.homeName : nz(g.home)) : (g.awayName != null ? g.awayName : nz(g.away));
         d.title = team;
-        d.line = join("On " + nz(e[3]), "off " + nz(e[5]), nz(e[1]).isEmpty() ? "" : e[1] + "'");
+        d.subs = SubsPage.of(group);
+        d.subs.colour = home ? BoardBug.colour(g.homeColor, g.homeAlt) : BoardBug.colour(g.awayColor, g.awayAlt);
+        StringBuilder on = new StringBuilder(), off = new StringBuilder();
+        for (String n : d.subs.onFull) on.append(on.length() > 0 ? ", " : "").append(n);
+        for (String n : d.subs.offFull) off.append(off.length() > 0 ? ", " : "").append(n);
+        d.line = join("On " + on, off.length() > 0 ? "off " + off : "", d.subs.minute.isEmpty() ? "" : d.subs.minute + "'");
         d.homeColour = BoardBug.colour(g.homeColor, g.homeAlt);
         d.awayColour = BoardBug.colour(g.awayColor, g.awayAlt);
         d.side = home ? 1 : 2;
-        d.what = ("SUBSTITUTION " + team + " " + d.line).trim();
+        d.what = ((group.size() > 1 ? group.size() + " SUBSTITUTIONS " : "SUBSTITUTION ") + team + " " + d.line).trim();
         return d;
     }
 
