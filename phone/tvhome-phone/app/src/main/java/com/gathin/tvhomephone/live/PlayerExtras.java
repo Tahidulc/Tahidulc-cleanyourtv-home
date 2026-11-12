@@ -725,17 +725,16 @@ final class PlayerExtras implements LiveAlerts.Listener {
             String seeing = overlay.seeThroughStatus();
             if (seeing != null) note(c, box, seeing);
             toggle(c, box, a.getString(R.string.live50_name_only), overlay.nameOnlyHere(), on -> overlay.setHere("name_only", on ? "1" : "0"));
-            // Broadcast mode: Homefield's break over the channel's adverts; one to see now.
-            toggle(c, box, a.getString(R.string.live5_broadcast), ScoreBoard.broadcast(c), on -> ScoreBoard.setBroadcast(c, on));
-            action(c, box, R.drawable.live_ic_play, a.getString(R.string.live5_broadcast_try), () -> {
-                host.closeSheet();
-                overlay.startBreak(true);
-            });
-            // The ad-break screen before kick-off: on or off, and one to see now.
+            // The ad-break screen at the adverts (the build-up, half time, after the game): on or off, one to see now, and
+            // one as at half time (the quiz, fun facts and prayer times).
             toggle(c, box, a.getString(R.string.live58_ad_break), ScoreBoard.adBreak(c), on -> ScoreBoard.setAdBreak(c, on));
             action(c, box, R.drawable.live_ic_play, a.getString(R.string.live58_ad_break_try), () -> {
                 host.closeSheet();
                 overlay.tryAdBreak();
+            });
+            action(c, box, R.drawable.live_ic_play, a.getString(R.string.live63_ad_break_half), () -> {
+                host.closeSheet();
+                overlay.tryAdBreak(true);
             });
             toggle(c, box, a.getString(R.string.live5_burn), BurnGuard.on(c), on -> BurnGuard.setOn(c, on));
             toggle(c, box, a.getString(R.string.live4_read), ScoreBoard.reads(c), on -> {

@@ -255,64 +255,40 @@ public class AdBreakSessionTest {
         assertTrue(AdBreak.mineFirst(null, null, 3).isEmpty());
     }
 
-    // ---- who takes a break: the ad-break screen or broadcast mode's family break --------------------------------------
+    // ---- who takes a break: the ad-break screen, at every break of its session ------------------------------------------
 
-    private static final int NONE = AdBreak.TAKE_NONE, AD = AdBreak.TAKE_AD_BREAK, FAMILY = AdBreak.TAKE_FAMILY;
+    private static final int NONE = AdBreak.TAKE_NONE, AD = AdBreak.TAKE_AD_BREAK;
 
     @Test
-    public void broadcastModeOnKeepsHalfTimeAndFullTimeForTheFamilyBreak() {
+    public void theAdBreakScreenTakesEveryBreakHalfTimeAndFullTimeToo() {
         Game g = game("1", "Arsenal", "Chelsea", Game.LIVE, NOW - 50 * MIN);
         AdBreak.Session s = AdBreak.fromGame(g, null, NOW);
-        // Half time and full time: the family break's, as before; the ad-break screen never.
+        // Half time and full time: the ad-break screen's (no family break any more).
         g.halftime = true;
-        assertEquals(FAMILY, AdBreak.take(true, true, s, g, NOW));
+        assertEquals(AD, AdBreak.take(true, s, NOW));
         g.halftime = false;
         g.state = Game.POST;
-        assertEquals(FAMILY, AdBreak.take(true, true, s, g, NOW));
-        // The build-up: the ad-break screen's (the family break had it only when there is no session).
+        assertEquals(AD, AdBreak.take(true, s, NOW));
+        // The build-up.
         g.state = Game.PRE;
         g.kickoff = NOW + 30 * MIN;
         s = AdBreak.fromGame(g, null, NOW);
-        assertEquals(AD, AdBreak.take(true, true, s, g, NOW));
-        assertEquals(FAMILY, AdBreak.take(true, true, null, g, NOW));
-        assertEquals(FAMILY, AdBreak.take(false, true, s, g, NOW));   // the ad-break screen switched off
-        // A break while ESPN still has the game live (late in a half): the family break never takes those; the screen does.
+        assertEquals(AD, AdBreak.take(true, s, NOW));
+        assertEquals(NONE, AdBreak.take(true, null, NOW));
+        assertEquals(NONE, AdBreak.take(false, s, NOW));   // switched off
+        // A break while ESPN still has the game live (late in a half): the screen's.
         g.state = Game.LIVE;
         g.kickoff = NOW - 44 * MIN;
         g.period = 1;
         g.clock = 44 * 60;
         s = AdBreak.fromGame(g, null, NOW);
-        assertEquals(AD, AdBreak.take(true, true, s, g, NOW));
-        // The ball in play: neither.
+        assertEquals(AD, AdBreak.take(true, s, NOW));
+        // The ball in play: nothing.
         g.clock = 20 * 60;
-        assertEquals(NONE, AdBreak.take(true, true, s, g, NOW));
-    }
-
-    @Test
-    public void broadcastModeOffTheAdBreakScreenHasHalfTimeAndFullTimeToo() {
-        Game g = game("1", "Arsenal", "Chelsea", Game.LIVE, NOW - 50 * MIN);
-        AdBreak.Session s = AdBreak.fromGame(g, null, NOW);
-        g.halftime = true;
-        assertEquals(AD, AdBreak.take(true, false, s, g, NOW));
-        g.halftime = false;
-        g.state = Game.POST;
-        assertEquals(AD, AdBreak.take(true, false, s, g, NOW));
-        // Half an hour after full time the session is over: nothing.
-        assertEquals(NONE, AdBreak.take(true, false, s, g, s.to + 1));
-        assertEquals(NONE, AdBreak.take(false, false, s, g, NOW));
-    }
-
-    @Test
-    public void withNoGameOnTheBoardTheFamilyBreakHasNothingToCover() {
-        // The board shows no game (the family break can't take a break): the session's half time is the screen's.
-        Game g = game("1", "Arsenal", "Chelsea", Game.LIVE, NOW - 50 * MIN);
-        g.halftime = true;
-        AdBreak.Session s = AdBreak.fromGame(g, null, NOW);
-        assertEquals(AD, AdBreak.take(true, true, s, null, NOW));
-        assertEquals(AD, AdBreak.take(true, true, AdBreak.general("Live Football", NOW), null, NOW));
-        assertEquals(NONE, AdBreak.take(true, true, null, null, NOW));
-        assertTrue(AdBreak.familyCovers(g));
-        assertFalse(AdBreak.familyCovers(null));
+        assertEquals(NONE, AdBreak.take(true, s, NOW));
+        // Half an hour after full time the session is over: nothing; a general session's break is the screen's.
+        assertEquals(NONE, AdBreak.take(true, s, s.to + 1));
+        assertEquals(AD, AdBreak.take(true, AdBreak.general("Live Football", NOW), NOW));
     }
 
     @Test

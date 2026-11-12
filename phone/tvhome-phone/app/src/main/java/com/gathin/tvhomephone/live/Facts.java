@@ -6,9 +6,10 @@ import java.util.List;
 import java.util.Random;
 
 /**
- * Broadcast mode's fun facts and quiz, as the TVs' Ambient mode has them: Bangladesh first (two of its facts for each
- * of the rest), the world's and football's in between; and quiz questions, the answer shown a few seconds after. Each
- * break takes the next ones from a shuffled deck, so the breaks of one evening don't repeat. Pure: the tests check it.
+ * The ad-break screen's half-time widgets' fun facts and quiz (HalfTimeFun), as the TV's: Bangladesh first (two of its
+ * facts for each of the rest), the world's and football's in between; and quiz questions with four answers each,
+ * played for points (10 a right answer, 5 more for each one in a row, at most 30). Each half-time takes the next ones
+ * from a shuffled deck, so the breaks of one evening don't repeat. Pure: the tests check it.
  */
 final class Facts {
     private Facts() {}
@@ -109,32 +110,89 @@ final class Facts {
             "A Premier League pitch is 105 metres long and 68 metres wide.",
             "Hamza Choudhury, an FA Cup winner with Leicester in 2021, first played for Bangladesh in 2025."};
 
-    /** {question, answer}. */
+    /** {question, the right answer, three wrong ones}: short answers, for four buttons. */
     static final String[][] QUIZ = {
-            {"Which country won the first World Cup, in 1930?", "Uruguay"},
-            {"Who has scored the most Premier League goals?", "Alan Shearer, with 260"},
-            {"Which club went the whole 2003–04 Premier League season unbeaten?", "Arsenal, the Invincibles"},
-            {"How many times have Brazil won the World Cup?", "Five"},
-            {"Which team won the Premier League in 2015–16 at odds of 5000-1?", "Leicester City"},
-            {"What is the capital of Bangladesh?", "Dhaka"},
-            {"What is the largest mangrove forest in the world?", "The Sundarbans"},
-            {"How many points did Manchester City get in 2017–18, the Premier League record?", "100"},
-            {"In which year did the Premier League begin?", "1992"},
-            {"What is Bangladesh's national animal?", "The Royal Bengal tiger"},
-            {"Where was the first Formula One World Championship race held?", "Silverstone, in 1950"},
-            {"Which planet takes 165 years to go once round the Sun?", "Neptune"},
-            {"What is Bangladesh's cricket team nicknamed?", "The Tigers"},
-            {"How many bones does an adult have?", "206"},
-            {"What is Bangladesh's national fish?", "The hilsa, or ilish"},
-            {"Who scored 36 Premier League goals in 2022–23?", "Erling Haaland"},
-            {"What is the national sport of Bangladesh?", "Kabaddi"},
-            {"How many hearts does an octopus have?", "Three"},
-            {"When is Victory Day in Bangladesh?", "16 December"},
-            {"Which musical does You'll Never Walk Alone come from?", "Carousel"},
-            {"Which stadium is nicknamed the Theatre of Dreams?", "Old Trafford"},
-            {"How many players does each team have on the pitch?", "Eleven"},
-            {"What is a group of flamingos called?", "A flamboyance"},
-            {"Who wrote the national anthems of both Bangladesh and India?", "Rabindranath Tagore"}};
+            {"Which country won the first World Cup, in 1930?", "Uruguay", "Brazil", "Italy", "Argentina"},
+            {"Who has scored the most Premier League goals?", "Alan Shearer", "Wayne Rooney", "Harry Kane", "Thierry Henry"},
+            {"Which club went the whole 2003–04 Premier League season unbeaten?", "Arsenal", "Chelsea", "Man United", "Liverpool"},
+            {"How many times have Brazil won the World Cup?", "Five", "Four", "Three", "Six"},
+            {"Who won the Premier League in 2015–16 at odds of 5000-1?", "Leicester City", "West Ham", "Southampton", "Everton"},
+            {"What is the capital of Bangladesh?", "Dhaka", "Chittagong", "Sylhet", "Khulna"},
+            {"What is the largest mangrove forest in the world?", "The Sundarbans", "The Amazon", "Borneo", "The Everglades"},
+            {"How many points did Man City get in 2017–18, the Premier League record?", "100", "99", "98", "96"},
+            {"In which year did the Premier League begin?", "1992", "1988", "1996", "2000"},
+            {"What is Bangladesh's national animal?", "Bengal tiger", "Elephant", "Leopard", "Water buffalo"},
+            {"Where was the first Formula One World Championship race, in 1950?", "Silverstone", "Monza", "Monaco", "Spa"},
+            {"Which planet takes 165 years to go once round the Sun?", "Neptune", "Uranus", "Saturn", "Jupiter"},
+            {"What is Bangladesh's cricket team nicknamed?", "The Tigers", "The Lions", "The Eagles", "The Falcons"},
+            {"How many bones does an adult have?", "206", "186", "226", "306"},
+            {"What is Bangladesh's national fish?", "Hilsa (ilish)", "Rui", "Pangas", "Koi"},
+            {"Who scored 36 Premier League goals in 2022–23?", "Erling Haaland", "Harry Kane", "Mohamed Salah", "Ivan Toney"},
+            {"What is the national sport of Bangladesh?", "Kabaddi", "Cricket", "Football", "Hockey"},
+            {"How many hearts does an octopus have?", "Three", "One", "Two", "Eight"},
+            {"When is Victory Day in Bangladesh?", "16 December", "26 March", "21 February", "15 August"},
+            {"Which musical does You'll Never Walk Alone come from?", "Carousel", "Oklahoma!", "Cats", "Grease"},
+            {"Which stadium is nicknamed the Theatre of Dreams?", "Old Trafford", "Anfield", "Wembley", "Goodison Park"},
+            {"How many players does each team have on the pitch?", "Eleven", "Ten", "Twelve", "Nine"},
+            {"What is a group of flamingos called?", "A flamboyance", "A parade", "A pride", "A gaggle"},
+            {"Who wrote the national anthems of both Bangladesh and India?", "Rabindranath Tagore", "Kazi Nazrul Islam", "Jasimuddin", "Lalon"},
+            {"How long is a football match, without added time?", "90 minutes", "80 minutes", "100 minutes", "120 minutes"},
+            {"How many Formula One world titles has Lewis Hamilton won?", "Seven", "Six", "Five", "Eight"},
+            {"Which country hosted the 2022 World Cup?", "Qatar", "Russia", "Brazil", "Saudi Arabia"},
+            {"Who won the 2022 World Cup?", "Argentina", "France", "Croatia", "Brazil"},
+            {"Which club is nicknamed the Toffees?", "Everton", "Burnley", "Fulham", "Brentford"},
+            {"Which club plays at the Etihad Stadium?", "Man City", "Man United", "Arsenal", "Newcastle"},
+            {"What colour card sends a player off?", "Red", "Yellow", "Blue", "Green"},
+            {"Which is the largest ocean?", "The Pacific", "The Atlantic", "The Indian", "The Arctic"},
+            {"How many continents are there?", "Seven", "Five", "Six", "Eight"},
+            {"What do bees make from nectar?", "Honey", "Milk", "Silk", "Jam"},
+            {"Which is the fastest land animal?", "The cheetah", "The lion", "The horse", "The gazelle"},
+            {"What is the tallest mountain in the world?", "Everest", "K2", "Kilimanjaro", "Mont Blanc"},
+            {"What is Bangladesh's national bird?", "Magpie robin", "Kingfisher", "Myna", "Peacock"},
+            {"Which national team are called the Three Lions?", "England", "Wales", "Scotland", "Ireland"},
+            {"Who won Euro 2024?", "Spain", "England", "France", "Germany"},
+            {"Which Formula One team's cars are red?", "Ferrari", "McLaren", "Williams", "Alpine"},
+            {"How many points is a win worth in the Premier League?", "Three", "Two", "One", "Four"},
+            {"Which month of the Islamic calendar is Ramadan?", "The ninth", "The first", "The seventh", "The twelfth"},
+            {"How many daily prayers are there in Islam?", "Five", "Three", "Four", "Seven"},
+            {"Which is the biggest planet?", "Jupiter", "Saturn", "Neptune", "Earth"},
+            {"Which animal is called the ship of the desert?", "The camel", "The horse", "The elephant", "The donkey"},
+            {"Who is England men's record goalscorer?", "Harry Kane", "Wayne Rooney", "Bobby Charlton", "Gary Lineker"},
+            {"Which club has won the European Cup the most times?", "Real Madrid", "AC Milan", "Liverpool", "Bayern Munich"},
+            {"Which ground do Liverpool play at?", "Anfield", "Goodison Park", "Villa Park", "St James' Park"},
+            {"Which river flows through London?", "The Thames", "The Severn", "The Mersey", "The Trent"},
+            {"How many sides does a hexagon have?", "Six", "Five", "Seven", "Eight"},
+            {"Which is the hottest planet?", "Venus", "Mercury", "Mars", "Jupiter"}};
+
+    /** A question as asked: its four answers in a shuffled order, and which of them is right. */
+    static final class Question {
+        final String text;
+        final String[] answers;
+        final int right;
+
+        Question(String text, String[] answers, int right) {
+            this.text = text;
+            this.answers = answers;
+            this.right = right;
+        }
+
+        String rightAnswer() {
+            return answers[right];
+        }
+    }
+
+    /** A bank's row as asked, its answers shuffled. */
+    static Question ask(String[] row, Random r) {
+        List<String> a = new ArrayList<>();
+        for (int i = 1; i < row.length; i++) a.add(row[i]);
+        Collections.shuffle(a, r);
+        return new Question(row[0], a.toArray(new String[0]), a.indexOf(row[1]));
+    }
+
+    /** Points for a right answer, given how many in a row it makes (1 for the first): 10, 15, 20 ... at most 30. */
+    static int points(int inARow) {
+        return Math.min(30, 10 + 5 * Math.max(0, inARow - 1));
+    }
 
     /** {kind, fact} in order: two of Bangladesh's, then one of the world's or football's (taking turns). */
     static List<String[]> deck(Random r) {
@@ -174,18 +232,14 @@ final class Facts {
         return out;
     }
 
-    /** The next n quiz questions, {question, answer}. */
-    static synchronized List<String[]> questions(int n) {
-        List<String[]> out = new ArrayList<>();
-        for (int i = 0; i < n; i++) {
-            if (quiz == null || quizAt >= quiz.size()) {
-                quiz = new ArrayList<>();
-                Collections.addAll(quiz, QUIZ);
-                Collections.shuffle(quiz, RANDOM);
-                quizAt = 0;
-            }
-            out.add(quiz.get(quizAt++));
+    /** The next question from the shuffled bank, its answers shuffled too. */
+    static synchronized Question question() {
+        if (quiz == null || quizAt >= quiz.size()) {
+            quiz = new ArrayList<>();
+            Collections.addAll(quiz, QUIZ);
+            Collections.shuffle(quiz, RANDOM);
+            quizAt = 0;
         }
-        return out;
+        return ask(quiz.get(quizAt++), RANDOM);
     }
 }

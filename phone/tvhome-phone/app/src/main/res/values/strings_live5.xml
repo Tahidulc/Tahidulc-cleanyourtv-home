@@ -1,10 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Broadcast mode and the burn-in guard (BreakScreen, BreakWatch, BurnGuard). -->
+<!-- The burn-in guard (BurnGuard) and the player's own lines. -->
 <resources>
-    <string name="live5_broadcast">Broadcast mode</string>
-    <string name="live5_broadcast_line">When the match\'s channel goes to its adverts (before kick-off, at half time, after the game: its logo goes), Homefield\'s own break takes over, with the channel in a small window: what\'s on your TV to carry on, new episodes, your list and reminders, the other games, the headlines, a trailer, fun facts, a quiz, today\'s prayer times from Darus Salam Mosque and the weather. Back to the channel when the adverts end.</string>
-    <string name="live5_break_shows">What the break shows</string>
-    <string name="live5_broadcast_try">See broadcast mode\'s break now</string>
     <string name="live5_burn">Burn-in guard</string>
     <string name="live5_burn_line">The scoreboard, the mark over the channel\'s logo and the scoreboard over other apps move a pixel or two every minute, and dim a little after five minutes without a change, so they never burn into the screen.</string>
     <string name="live5_last_read">Last read off the channel\'s scoreboard %1$d s ago: %2$s</string>

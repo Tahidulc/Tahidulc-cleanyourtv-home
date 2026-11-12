@@ -23,7 +23,7 @@
     <string name="live7_added">Added time +4</string>
     <string name="live7_banner">Goal in another game</string>
     <string name="live7_held">Alert waiting for the stream</string>
-    <string name="live7_break">Broadcast break</string>
+    <string name="live7_break">Ad-break screen at half time</string>
     <string name="live7_kickoff_soon">Kick-off in 2 min</string>
     <string name="live7_following">Following live</string>
     <string name="live7_expiry">Playlist running out</string>

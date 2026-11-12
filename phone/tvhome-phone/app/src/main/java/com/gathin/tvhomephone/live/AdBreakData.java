@@ -65,6 +65,12 @@ final class AdBreakData {
         /** A general session: no game, the programme's title (from the listings, else ""). */
         boolean general;
         String programme = "";
+        /** Half time as the picture shows it (or asked for by hand): the half-time widgets in the last card (HalfTimeFun). */
+        boolean halfTime;
+        /** For the half-time widgets: today's prayer times, the next one, and whose times they are. */
+        List<com.gathin.tvhomephone.Prayer.Slot> prayers = new ArrayList<>();
+        com.gathin.tvhomephone.Prayer.Slot prayerNext;
+        String prayerFoot;
     }
 
     /** BBC Sport's football headlines: a general session's. */
@@ -144,6 +150,19 @@ final class AdBreakData {
     }
 
     /** All of it, for this game. Off the main thread. */
+    /** Today's prayer times for the half-time widget (the mosque's page once a day); none when they can't be had. */
+    private static void prayers(Context c, Content k) {
+        try {
+            com.gathin.tvhomephone.Prayer.refresh(c);
+            k.prayers = com.gathin.tvhomephone.Prayer.slots(c, LocalDate.now());
+            k.prayerNext = com.gathin.tvhomephone.Prayer.next(c);
+            String h = com.gathin.tvhomephone.Prayer.hijri(c);
+            if (!k.prayers.isEmpty()) k.prayerFoot = (com.gathin.tvhomephone.Prayer.source(c) + (h == null ? "" : " · " + h)).toUpperCase(Locale.UK);
+        } catch (RuntimeException e) {
+            k.prayers = new ArrayList<>();
+        }
+    }
+
     static Content load(Context c, Game g) {
         Content k = new Content();
         k.game = g;
@@ -153,6 +172,7 @@ final class AdBreakData {
         k.compLogoOnNavy = k.compLogo.contains("/500/") ? k.compLogo.replace("/500/", "/500-dark/") : k.compLogo;
         Espn.Summary sum = Espn.summary(slug, g.id, 60_000L);
         k.summary = sum;
+        prayers(c, k);
         // Form: this competition only, from each club's own games in it, oldest first.
         List<String[]> hs = Espn.schedule(slug, g.homeId, false), as = Espn.schedule(slug, g.awayId, false);
         k.homeForm = AdBreak.form(hs, g.homeId, 5);

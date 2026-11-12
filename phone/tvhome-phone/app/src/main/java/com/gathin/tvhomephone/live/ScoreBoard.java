@@ -297,37 +297,13 @@ public final class ScoreBoard implements LiveAlerts.Listener {
     static void setReads(Context c, boolean v) { prefs(c).edit().putBoolean("read", v).apply(); }
 
     /**
-     * Broadcast mode: when the channel goes to its adverts before kick-off, at half time or after the game (its logo
-     * gone), Homefield's own break instead (BreakScreen). On until switched off.
-     */
-    static boolean broadcast(Context c) { return prefs(c).getBoolean("broadcast", true); }
-
-    static void setBroadcast(Context c, boolean v) { prefs(c).edit().putBoolean("broadcast", v).apply(); }
-
-    /**
-     * The ad-break screen: when the channel goes to its adverts in the hour before a game kicks off (its logo gone),
-     * the build-up's widgets, the line-ups and the fans' posts over the adverts (AdBreakView), the channel playing on.
-     * On until switched off.
+     * The ad-break screen: when the channel goes to its adverts around a game (its logo gone: the build-up, half time,
+     * after the game), the widgets, the line-ups and the fans' posts over the adverts (AdBreakView), the channel playing
+     * on; at half time its half-time widgets too (the quiz, fun facts, prayer times). On until switched off.
      */
     static boolean adBreak(Context c) { return prefs(c).getBoolean("ad_break", true); }
 
     static void setAdBreak(Context c, boolean v) { prefs(c).edit().putBoolean("ad_break", v).apply(); }
-
-    /** What the break can show, {key, name}: each on until switched off in Settings. */
-    static final String[][] BREAK_KINDS = {{"tv", "Your TV"}, {"facts", "Fun facts"}, {"prayer", "Prayer times"}, {"quiz", "Quiz"},
-            {"reminders", "Reminders"}, {"games", "Other games"}, {"news", "Headlines"}, {"trailer", "Trailers"}, {"today", "Today & weather"}};
-
-    static boolean breakShows(Context c, String kind) {
-        return !prefs(c).getStringSet("break_off", java.util.Collections.emptySet()).contains(kind);
-    }
-
-    static void setBreakShows(Context c, String kind, boolean on) {
-        java.util.Set<String> off = new java.util.HashSet<>(prefs(c).getStringSet("break_off", java.util.Collections.emptySet()));
-        if (on) off.remove(kind);
-        else off.add(kind);
-        prefs(c).edit().putStringSet("break_off", off).apply();
-        BreakScreen.forget();
-    }
 
     /** How far behind the other apps' pictures run (their streams' delay), in seconds. */
     static int otherDelay(Context c) { return prefs(c).getInt("other_delay", 0); }

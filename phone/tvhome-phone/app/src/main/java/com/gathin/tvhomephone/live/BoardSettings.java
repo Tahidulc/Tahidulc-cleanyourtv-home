@@ -34,37 +34,8 @@ public final class BoardSettings {
         row(c, col, c.getString(R.string.live6_still), ScoreBoard.still(c), on -> ScoreBoard.setStill(c, on));
         col.addView(com.gathin.tvhomephone.sports.Ui.text(c, c.getString(R.string.live6_still_line), 13, c.getColor(R.color.text_dim), false));
         row(c, col, c.getString(R.string.live4_read), ScoreBoard.reads(c), on -> ScoreBoard.setReads(c, on));
-        row(c, col, c.getString(R.string.live5_broadcast), ScoreBoard.broadcast(c), on -> ScoreBoard.setBroadcast(c, on));
-        col.addView(com.gathin.tvhomephone.sports.Ui.text(c, c.getString(R.string.live5_broadcast_line), 13, c.getColor(R.color.text_dim), false));
         row(c, col, c.getString(R.string.live58_ad_break), ScoreBoard.adBreak(c), on -> ScoreBoard.setAdBreak(c, on));
         col.addView(com.gathin.tvhomephone.sports.Ui.text(c, c.getString(R.string.live58_ad_break_line), 13, c.getColor(R.color.text_dim), false));
-        // What the break shows: a chip each, on until tapped off.
-        col.addView(sub(c, c.getString(R.string.live5_break_shows)));
-        android.widget.HorizontalScrollView kinds = new android.widget.HorizontalScrollView(c);
-        kinds.setHorizontalScrollBarEnabled(false);
-        LinearLayout chips = new LinearLayout(c);
-        kinds.addView(chips);
-        for (String[] k : ScoreBoard.BREAK_KINDS) {
-            TextView chip = com.gathin.tvhomephone.sports.Ui.text(c, k[1], 14, 0, true);
-            chip.setPadding(Ui.dp(c, 14), Ui.dp(c, 8), Ui.dp(c, 14), Ui.dp(c, 8));
-            Runnable paint = () -> {
-                boolean on = ScoreBoard.breakShows(c, k[0]);
-                chip.setBackground(com.gathin.tvhomephone.sports.Ui.fill(c, on ? 0xFFFFFFFF : 0x1FFFFFFF, 18));
-                chip.setTextColor(on ? 0xFF0A0D33 : c.getColor(R.color.text_dim));
-                chip.setContentDescription(k[1] + (on ? ", shown in the break" : ", not shown"));
-            };
-            paint.run();
-            chip.setOnClickListener(v -> {
-                ScoreBoard.setBreakShows(c, k[0], !ScoreBoard.breakShows(c, k[0]));
-                paint.run();
-            });
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, -2);
-            lp.rightMargin = Ui.dp(c, 8);
-            chips.addView(chip, lp);
-        }
-        LinearLayout.LayoutParams kp = new LinearLayout.LayoutParams(-1, -2);
-        kp.bottomMargin = Ui.dp(c, 8);
-        col.addView(kinds, kp);
         row(c, col, c.getString(R.string.live5_burn), BurnGuard.on(c), on -> BurnGuard.setOn(c, on));
         col.addView(com.gathin.tvhomephone.sports.Ui.text(c, c.getString(R.string.live5_burn_line), 13, c.getColor(R.color.text_dim), false));
         col.addView(com.gathin.tvhomephone.sports.Ui.text(c, c.getString(R.string.live4_read_line), 13, c.getColor(R.color.text_dim), false));

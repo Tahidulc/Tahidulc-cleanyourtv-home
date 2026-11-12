@@ -508,6 +508,8 @@ final class AdBreakView extends FrameLayout {
         Runnable action;
         /** A clip to play while it is up: {mp4, still}. */
         String[] clip;
+        /** While true, its card holds still on it (the quiz being played); null never. */
+        java.util.function.BooleanSupplier hold;
 
         Widget(java.util.function.Supplier<View> mark, String caption, java.util.function.Function<Context, List<View>> lines) {
             this.mark = mark;
@@ -764,6 +766,8 @@ final class AdBreakView extends FrameLayout {
             }
             day.add(last);
         }
+        // Half time (as the picture shows it): the quiz, fun facts and prayer times in among the last card's own.
+        if (k.halfTime) day = HalfTimeFun.mix(new HalfTimeFun(getContext(), k).widgets(houseMark()), day);
         if (!match.isEmpty()) all.add(match);
         if (!league.isEmpty()) all.add(league);
         if (!day.isEmpty()) all.add(day);
@@ -1099,10 +1103,15 @@ final class AdBreakView extends FrameLayout {
             if (!stopped) postDelayed(turnNext, ms);
         }
 
-        /** Its own turn: the next widget, unless it is picked (then it holds still and looks again in a while). */
+        /**
+         * Its own turn: the next widget, unless it is picked (then it holds still and looks again in a while), or its
+         * widget holds it (the quiz being played: it looks again in a few seconds).
+         */
         private void auto() {
             boolean mine = picked >= 0 && picked < cards.size() && cards.get(picked) == this;
+            Widget w = widgets == null || widgets.isEmpty() ? null : widgets.get(at);
             if (mine) schedule(AdBreak.TURN_MS);
+            else if (w != null && w.hold != null && w.hold.getAsBoolean()) schedule(3_000L);
             else turn(1);
         }
 

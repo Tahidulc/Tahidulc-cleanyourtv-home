@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The ad-break screen's half-time widgets (HalfTimeFun). -->
+<resources>
+    <string name="live63_ad_break_half">Show it as at half time</string>
+</resources>

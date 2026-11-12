@@ -109,8 +109,6 @@ final class ScoreOverlay implements ScoreBoard.Source {
 
     /** Broadcast mode: the channel's logo watched for its adverts, and the break up while they run. */
     private BreakWatch breaks;
-    private BreakScreen breakScreen;
-    private boolean manualBreak;
     /** The ad-break screen before kick-off (AdBreakView); shown by hand from the options; hidden for this break. */
     private AdBreakView adBreak;
     private boolean manualAdBreak, adBreakHidden;
@@ -403,7 +401,6 @@ final class ScoreOverlay implements ScoreBoard.Source {
         endAdBreak();
         started = false;
         up = false;
-        endBreak(true);
         guard.stop();
         board.stop();
         h.removeCallbacksAndMessages(null);
@@ -427,7 +424,6 @@ final class ScoreOverlay implements ScoreBoard.Source {
         logo = null;
         logoLearned = false;
         breaks = null;
-        endBreak(true);
         finder = null;
         reader = null;
         ocrOkAt = 0;
@@ -1236,7 +1232,7 @@ final class ScoreOverlay implements ScoreBoard.Source {
     private void look() {
         h.removeCallbacks(look);
         boolean scoreboard = board.football(),
-                logos = lookHere() != LogoCover.Look.OFF || (ScoreBoard.broadcast(a) && board.football());
+                logos = lookHere() != LogoCover.Look.OFF || (ScoreBoard.adBreak(a) && board.football());
         // The ad-break screen: its session's logo learnt as soon as there is one (so the first break isn't missed), and
         // on a sports channel without a game the broadcaster's scoreboard looked for (a match on: a general session).
         boolean adverts = ScoreBoard.adBreak(a) && (host.adSession() != null || host.sportsNow());
@@ -1261,7 +1257,7 @@ final class ScoreOverlay implements ScoreBoard.Source {
             BugFinder.Box found = done && scoreboard ? f.find() : null;
             // Without a game on the board: the broadcaster's scoreboard only looked for, never placed over.
             BugFinder.Box seenBoard = done && !scoreboard && adverts ? f.find() : null;
-            boolean watchAdverts = ScoreBoard.broadcast(a) || ScoreBoard.adBreak(a);
+            boolean watchAdverts = ScoreBoard.adBreak(a);
             BugFinder.Box mark = done && (logos || watchAdverts) ? f.logo(found) : null;
             boolean[] outline = mark != null && watchAdverts ? f.logoMask(mark) : null;
             h.post(() -> safely(() -> {
@@ -1562,12 +1558,13 @@ final class ScoreOverlay implements ScoreBoard.Source {
     /**
      * Every two seconds while the channel's logo is known: is it still on the picture? Gone for about eight seconds
      * before kick-off, at half time or after the game (never in play: football has no adverts then), the channel has
-     * gone to its adverts: Homefield's break instead. Back for a few seconds: the channel again.
+     * gone to its adverts: the ad-break screen over them (at half time with its half-time widgets: the quiz, fun facts,
+     * prayer times). Back for a few seconds: gone again.
      */
     private void checkBreak() {
         h.removeCallbacks(checkBreak);
         BreakWatch w = breaks;
-        if (!started || w == null || sampler == null || !(ScoreBoard.broadcast(a) || ScoreBoard.adBreak(a))) return;
+        if (!started || w == null || sampler == null || !ScoreBoard.adBreak(a)) return;
         if (inPip) {
             h.postDelayed(checkBreak, 2000);
             return;
@@ -1581,17 +1578,12 @@ final class ScoreOverlay implements ScoreBoard.Source {
                     boolean on = w.add(p);
                     long now = System.currentTimeMillis();
                     if (!on) adBreakHidden = false;
-                    // Who takes the break (AdBreak.take), one at a time: broadcast mode's family break keeps the game's
-                    // half time and full time; the ad-break screen the rest of its session (the listings' programme,
-                    // else the game's, else a match's scoreboard seen), and half time and full time too without
-                    // broadcast mode. Neither comes while the other is up.
+                    // The ad-break screen takes every break of its session (the listings' programme, else the game's,
+                    // else a match's scoreboard seen): the build-up, half time, after the game (AdBreak.take).
                     AdBreak.Session sn = ScoreBoard.adBreak(a) ? session() : null;
-                    Game g = ScreenTime.game(host.game(), now);
-                    int take = AdBreak.take(ScoreBoard.adBreak(a), ScoreBoard.broadcast(a), sn, g, now);
-                    if (on && take == AdBreak.TAKE_AD_BREAK && adBreak == null && breakScreen == null && !adBreakHidden) startAdBreak(sn, false);
+                    int take = AdBreak.take(ScoreBoard.adBreak(a), sn, now);
+                    if (on && take == AdBreak.TAKE_AD_BREAK && adBreak == null && !adBreakHidden) startAdBreak(sn, false);
                     else if (adBreak != null && !manualAdBreak && (!on || take != AdBreak.TAKE_AD_BREAK)) endAdBreak();
-                    if (on && take == AdBreak.TAKE_FAMILY && breakScreen == null && adBreak == null) startBreak(false);
-                    else if (!on && breakScreen != null && !manualBreak) endBreak(false);
                 }
                 h.postDelayed(checkBreak, 2000);
             }, () -> h.postDelayed(checkBreak, 2000)));
@@ -1599,48 +1591,8 @@ final class ScoreOverlay implements ScoreBoard.Source {
         if (!asked) h.postDelayed(checkBreak, 1000);
     }
 
-    /** Homefield's break up (manual: from Options, to see it; it ends with Back to the channel or after a minute). */
-    void startBreak(boolean manual) {
-        if (breakScreen != null || !started) return;
-        manualBreak = manual;
-        Context app = a.getApplicationContext();
-        Game watching = host.game();
-        BreakScreen screen = new BreakScreen(a, video, new BreakScreen.Host() {
-            @Override public void mute(boolean on) {
-                host.mute(on);
-            }
-
-            @Override public void back() {
-                endBreak(true);
-            }
-        });
-        breakScreen = screen;
-        root.addView(screen, Math.min(4, root.getChildCount()), new FrameLayout.LayoutParams(-1, -1));
-        App.io.execute(() -> {
-            BreakScreen.Content k = BreakScreen.load(app, watching);
-            App.main.post(() -> {
-                if (breakScreen != screen) return;
-                screen.post(() -> screen.show(k));
-            });
-        });
-        if (manual) h.postDelayed(() -> {
-            if (breakScreen == screen) endBreak(true);
-        }, 60_000L);
-    }
-
-    /** The break over: the channel back (now: at once, without waiting for its logo). */
-    void endBreak(boolean now) {
-        BreakScreen s = breakScreen;
-        if (s == null) return;
-        breakScreen = null;
-        manualBreak = false;
-        s.end(() -> root.removeView(s));
-        // The logo was gone a while: it is learnt again on the next look.
-        if (now && breaks != null && breaks.onBreak()) breaks = null;
-    }
-
     boolean onBreak() {
-        return breakScreen != null || adBreak != null;
+        return adBreak != null;
     }
 
     // ---- the ad-break screen over a match's adverts -------------------------------------------------------------------
@@ -1695,6 +1647,11 @@ final class ScoreOverlay implements ScoreBoard.Source {
                     endAdBreak();
                     return;
                 }
+                // Half time as the picture shows it (the board's game in step with the channel), or asked for by hand:
+                // the half-time widgets (the quiz, fun facts, prayer times) in among the last card's own.
+                Game onScreen = ScreenTime.game(host.game(), System.currentTimeMillis());
+                Game ht = onScreen != null && k.game != null && k.game.id != null && k.game.id.equals(onScreen.id) ? onScreen : k.game;
+                k.halfTime = !k.general && (adBreakHalf || ht != null && AdBreak.atHalfTime(ht));
                 boolean sideways = a.getResources().getConfiguration().orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE;
                 android.graphics.Rect pic = new android.graphics.Rect(Math.round(pfx), Math.round(pfy), Math.round(pfx + pfw), Math.round(pfy + pfh));
                 view.post(() -> {
@@ -1713,6 +1670,7 @@ final class ScoreOverlay implements ScoreBoard.Source {
         if (v == null) return;
         adBreak = null;
         manualAdBreak = false;
+        adBreakHalf = false;
         board.holdBreakMoments(false);
         v.end(() -> root.removeView(v));
     }
@@ -1727,9 +1685,18 @@ final class ScoreOverlay implements ScoreBoard.Source {
         return adBreak != null && adBreak.back();
     }
 
+    /** The ad-break screen shown by hand as at half time (the options' and the tests' half-time try). */
+    private boolean adBreakHalf;
+
     /** Options: the ad-break screen now, for the channel's game or else the next real game today. */
     void tryAdBreak() {
+        tryAdBreak(false);
+    }
+
+    /** Options: as tryAdBreak, as at half time when half is asked for (the quiz, fun facts and prayer times). */
+    void tryAdBreak(boolean half) {
         if (adBreak != null) return;
+        adBreakHalf = half;
         AdBreak.Session sn = session();
         if (sn != null) {
             startAdBreak(sn, true);
@@ -1768,7 +1735,7 @@ final class ScoreOverlay implements ScoreBoard.Source {
 
     /** Why a test over the picture can't show now (a string), or 0 when it can; board: one on the scoreboard. */
     private int testBlocked(boolean onBoard) {
-        if (inPip || editing || intro.showing() || breakScreen != null) return R.string.live7_wait;
+        if (inPip || editing || intro.showing()) return R.string.live7_wait;
         if (onBoard && !started) return R.string.live7_board_off;
         if (onBoard && !ScoreBoard.boardShown(a)) return R.string.live7_board_hidden;
         return 0;
@@ -1862,12 +1829,11 @@ final class ScoreOverlay implements ScoreBoard.Source {
         if (!ok) note.accept(R.string.live7_wait);
     }
 
-    /** Tests: broadcast mode's break now, for up to a minute (Back to the channel ends it). */
+    /** Tests: the ad-break screen now as at half time (the quiz, fun facts and prayer times in its last card). */
     void testBreak(IntConsumer note) {
-        int no = testBlocked(true);
-        if (no == R.string.live7_board_hidden) no = 0;
+        int no = testBlocked(false);
         if (no != 0) note.accept(no);
-        else startBreak(true);
+        else tryAdBreak(true);
     }
 
     // ---- the options -------------------------------------------------------------------------------------------------

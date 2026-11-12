@@ -3,6 +3,6 @@
     <!-- 4.58: the ad-break screen before kick-off (AdBreakView). -->
     <string name="live58_ad_break">Ad-break screen</string>
     <string name="live58_ad_break_try">Show ad-break screen now</string>
-    <string name="live58_ad_break_line">In the hour before kick-off, when the channel goes to its adverts: the build-up\'s widgets, the line-ups and what fans are saying, over the adverts. The channel keeps playing.</string>
+    <string name="live58_ad_break_line">When the channel goes to its adverts around a game (the build-up, half time, after the game): the widgets, the line-ups and what fans are saying, over the adverts. At half time the half-time quiz (tap an answer to score), fun facts and today\'s prayer times join in. The channel keeps playing.</string>
     <string name="live58_ad_break_none">No game to show it for yet today</string>
 </resources>

@@ -138,29 +138,18 @@ final class AdBreak {
         return s != null && s.in(now) && !inPlay(s.game);
     }
 
-    // ---- who takes a break: the ad-break screen or broadcast mode's family break -----------------------------------------
+    // ---- who takes a break: the ad-break screen ------------------------------------------------------------------------
 
-    /** What takes a break (the channel on its adverts): nothing, the ad-break screen, or broadcast mode's family break. */
-    static final int TAKE_NONE = 0, TAKE_AD_BREAK = 1, TAKE_FAMILY = 2;
+    /** What takes a break (the channel on its adverts): nothing, or the ad-break screen. */
+    static final int TAKE_NONE = 0, TAKE_AD_BREAK = 1;
 
     /**
-     * Pure: which screen a break now goes to, so the two never stack. Broadcast mode on: its family break keeps the
-     * board's game's half time and full time as it always had them (BreakWatch.allowed, the game at half time or over);
-     * the ad-break screen takes the rest of its session (the build-up, a break while the game is still live); any other
-     * break the family break could take (before kick-off with no session) stays the family break's. Broadcast mode off:
-     * the ad-break screen, half time and full time too. boardGame: the board's game as the picture has it (ScreenTime).
+     * Pure: whether a break now goes to the ad-break screen: switched on and inside its session, the game not in play.
+     * It has every break of its session, half time's too (with its half-time widgets: the quiz, fun facts, prayer
+     * times); broadcast mode's family break is gone.
      */
-    static int take(boolean adBreakOn, boolean broadcastOn, Session s, Game boardGame, long now) {
-        boolean family = broadcastOn && BreakWatch.allowed(boardGame);
-        if (family && familyCovers(boardGame)) return TAKE_FAMILY;
-        if (adBreakOn && eligible(s, now)) return TAKE_AD_BREAK;
-        return family ? TAKE_FAMILY : TAKE_NONE;
-    }
-
-    /** Pure: the game's own half time or full time: the breaks broadcast mode's family break has. */
-    static boolean familyCovers(Game g) {
-        int phase = phase(g);
-        return phase == HALF_TIME || phase == FULL_TIME;
+    static int take(boolean adBreakOn, Session s, long now) {
+        return adBreakOn && eligible(s, now) ? TAKE_AD_BREAK : TAKE_NONE;
     }
 
     /**
