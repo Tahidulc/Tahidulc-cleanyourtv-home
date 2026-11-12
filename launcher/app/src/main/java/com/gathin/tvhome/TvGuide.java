@@ -125,6 +125,40 @@ final class TvGuide {
         return found;
     }
 
+    /**
+     * Sky's guide for the channel being watched (one of channels, by the name tuned first): the programme on at now and
+     * the next if it starts within soonMs, as {title, start ms, end ms}; empty when the channel is not one it covers.
+     * Off the main thread.
+     */
+    static synchronized List<Object[]> around(String[] channels, List<String> tuned, long now, long soonMs) {
+        List<Object[]> out = new ArrayList<>();
+        if (tuned == null || tuned.isEmpty()) return out;
+        String sid = null;
+        for (String c : channels) {
+            String[] p = c.split("\\|", 2);
+            if (p.length > 1 && InStep.onChannel(tuned.subList(0, 1), java.util.Collections.singletonList(p[1].trim()))) {
+                sid = p[0].trim();
+                break;
+            }
+        }
+        if (sid == null) return out;
+        String date = Instant.ofEpochMilli(now).atZone(ZoneOffset.UTC).toLocalDate().format(DateTimeFormatter.BASIC_ISO_DATE);
+        List<Object[]> day = new ArrayList<>(schedule(channels, date));
+        // Just after midnight (UTC) the programme on may be yesterday's.
+        String before = Instant.ofEpochMilli(now - 6 * 3_600_000L).atZone(ZoneOffset.UTC).toLocalDate().format(DateTimeFormatter.BASIC_ISO_DATE);
+        if (!before.equals(date)) day.addAll(schedule(channels, before));
+        Object[] on = null, next = null;
+        for (Object[] e : day) {
+            if (!sid.equals(e[0])) continue;
+            long st = (Long) e[2], en = (Long) e[3];
+            if (now >= st && now < en) on = new Object[]{e[1], st, en};
+            else if (st > now && st - now <= soonMs && (next == null || st < (Long) next[1])) next = new Object[]{e[1], st, en};
+        }
+        if (on != null) out.add(on);
+        if (next != null) out.add(next);
+        return out;
+    }
+
     /** Where to watch a game in TiviMate: the channel names to try in turn, and the first one's logo (or null). */
     static final class Watch {
         final List<String> names;

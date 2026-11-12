@@ -223,6 +223,27 @@ final class ChannelSight {
         if (!asked) main().postDelayed(shoot, 120L);
     }
 
+    /** When the channel's own scoreboard was last seen on each channel (found, or its clock read), and for which game. */
+    private static final java.util.Map<String, Long> seen = new java.util.concurrent.ConcurrentHashMap<>();
+    private static final java.util.Map<String, String> seenFor = new java.util.concurrent.ConcurrentHashMap<>();
+
+    /** When the channel's own scoreboard was last seen on the channel named (wall clock ms); 0 never since the start. */
+    static long seenAt(String channelName) {
+        Long t = seen.get(BoardPlace.key(channelName));
+        return t == null ? 0 : t;
+    }
+
+    /** The game the scoreboard seen last on the channel named was being read for; null when none. */
+    static String seenFor(String channelName) {
+        return seenFor.get(BoardPlace.key(channelName));
+    }
+
+    private static void markSeen() {
+        if (channel == null) return;
+        seen.put(channel, System.currentTimeMillis());
+        if (gameId != null) seenFor.put(channel, gameId);
+    }
+
     /** The look over: what it found (b null: nothing), kept for the channel, the board put over it, its clock read. */
     private static void found(BugFinder.Box b, BugFinder.Box l) {
         looking = false;
@@ -237,6 +258,7 @@ final class ChannelSight {
         }
         box = new RectF(b.left, b.top, b.right, b.bottom);
         logo = l == null ? null : new RectF(l.left, l.top, l.right, l.bottom);
+        markSeen();
         if (app != null) {
             prefs(app).edit().putString("b." + channel, encode(box)).putString("l." + channel, logo == null ? "" : encode(logo)).apply();
             if (!BoardPlace.setByHand(app, name)) {
@@ -326,6 +348,7 @@ final class ChannelSight {
             return;
         }
         int half = BoardCover.periodOf(detail);
+        markSeen();
         BoardCover.anchorSeen(app, gameId, clock, at, half > 0 ? half : BoardCover.periodOfSecs(clock));
         note = "Channel's clock read: " + mmss(clock) + (name.isEmpty() ? "" : " on " + name);
     }

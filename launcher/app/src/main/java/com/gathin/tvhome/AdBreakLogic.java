@@ -16,8 +16,18 @@ import java.util.List;
 final class AdBreakLogic {
     private AdBreakLogic() { }
 
-    /** Before kick-off, how long ahead the screen may come: a channel's build-up. */
+    /** Without a guide's word: how long before kick-off the screen may come (a channel's build-up). */
     static final long WINDOW_MS = 60 * 60_000L;
+    /** Without a guide's word: how long after kick-off it still may (full time, about 115 minutes in, then 30). */
+    static final long AFTER_MS = 145 * 60_000L;
+    /** A programme in the guide counts to its listed end and this much over (a game running long). */
+    static final long LISTED_TAIL_MS = 5 * 60_000L;
+    /** The programme to come counts when it starts within this. */
+    static final long SOON_MS = 15 * 60_000L;
+    /** No game known, only the channel's scoreboard seen: breaks count this long after it was last seen. */
+    static final long GENERAL_MS = 20 * 60_000L;
+    /** The channel's logo is learned from this long before the window opens, so the first break is not missed. */
+    static final long LEARN_AHEAD_MS = 30 * 60_000L;
     /** The logo gone this long (each look about a second apart): the adverts. */
     static final long GONE_MS = 6_000L;
     /** Below ABSENT of the logo's solid strokes where they should be: gone; above PRESENT: there. */
@@ -32,19 +42,19 @@ final class AdBreakLogic {
     static final int NONE = 0, SHOW = 1, HIDE = 2;
 
     /**
-     * Whether the screen should come or go, a look at a time (about one a second while a game's build-up is on in the
-     * player): it comes once the channel's logo has been gone GONE_MS while the game on that channel kicks off within
-     * WINDOW_MS; it goes when the logo is seen back (BACK_LOOKS in a row), at kick-off, or when the channel, the app or
-     * the switch says otherwise. A look that cannot tell (presence below 0: no logo learned yet, no picture) changes
-     * nothing.
+     * Whether the screen should come or go, a look at a time (about one a second while a match's programme is on in the
+     * player): it comes once the channel's logo has been gone GONE_MS inside the window (the programme in the guide,
+     * else the hour before kick-off to half an hour after full time); it goes when the logo is seen back (BACK_LOOKS in
+     * a row), when the window closes, or when the channel, the app or the switch says otherwise. A look that cannot
+     * tell (presence below 0: no logo learned yet, no picture) changes nothing.
      */
     static final class Trigger {
         private long goneSince = -1;
         private int backRun;
         boolean showing;
 
-        int step(long now, boolean switchOn, boolean playerFront, boolean onChannel, long msToKickoff, float presence) {
-            boolean eligible = switchOn && playerFront && onChannel && msToKickoff > 0 && msToKickoff <= WINDOW_MS;
+        int step(long now, boolean switchOn, boolean playerFront, boolean onChannel, boolean inWindow, float presence) {
+            boolean eligible = switchOn && playerFront && onChannel && inWindow;
             if (!eligible) {
                 goneSince = -1;
                 backRun = 0;
@@ -81,6 +91,161 @@ final class AdBreakLogic {
             goneSince = -1;
             backRun = 0;
         }
+    }
+
+    // ---- what is on: the guide's programme, the game, the window ----------------------------------------------------------
+
+    /**
+     * How surely a guide's title (or a channel's name: "03. England vs Croatia 19:45") names a game: 2 when both clubs
+     * are named either side of its "v" or "vs", 1 when one of them is, 0 when neither or there is no "v". Clubs are
+     * matched as TvGuide matches Sky's titles (nicknames, a shared word of four letters or more).
+     */
+    static int names(String text, String[] home, String[] away) {
+        if (text == null || text.isEmpty()) return 0;
+        String t = " " + text.replace('\u00a0', ' ').trim() + " ";
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("(?i)\\s(?:v|vs|vs\\.|versus|-v-)\\s").matcher(t);
+        if (!m.find()) return 0;
+        String left = t.substring(0, m.start()), right = t.substring(m.end());
+        int colon = Math.max(left.lastIndexOf(':'), left.lastIndexOf('|'));
+        if (colon >= 0) left = left.substring(colon + 1);
+        left = left.replaceAll("(?i)^\\s*(live|\\d+\\.)\\s*", " ");
+        right = right.split("\\s+[-|(]\\s*|:|,|\\s\\d{1,2}[:.]\\d{2}")[0];
+        boolean lh = club(left, home), la = club(left, away), rh = club(right, home), ra = club(right, away);
+        if (lh && ra || la && rh) return 2;
+        return lh || la || rh || ra ? 1 : 0;
+    }
+
+    /** Whether one side of a title is the club, by any of its names (ESPN's full name, its short one). */
+    private static boolean club(String side, String[] names) {
+        if (side == null || side.trim().isEmpty() || names == null) return false;
+        for (String n : names) if (n != null && !n.isEmpty() && TvGuide.sameClub(side.trim(), n)) return true;
+        return false;
+    }
+
+    /**
+     * Of the games ({home names, away names} each, in the order given), the one a title names: the first named for
+     * both clubs, else the one game named for one club when only one is; -1 when none, or several for one club only.
+     */
+    static int pick(String text, List<String[][]> games) {
+        int one = -1, ones = 0;
+        for (int i = 0; i < games.size(); i++) {
+            int n = names(text, games.get(i)[0], games.get(i)[1]);
+            if (n == 2) return i;
+            if (n == 1) { one = i; ones++; }
+        }
+        return ones == 1 ? one : -1;
+    }
+
+    /** The guide's programme: from its start to its listed end and LISTED_TAIL_MS over. */
+    static long[] listedWindow(long start, long end) {
+        return new long[]{start, end + LISTED_TAIL_MS};
+    }
+
+    /** The guide's programme from now: the next one (starting within SOON_MS) counts from now, its lead-in. */
+    static long[] listedWindow(long start, long end, long now) {
+        return new long[]{Math.min(start, now), end + LISTED_TAIL_MS};
+    }
+
+    /**
+     * No guide's word: from an hour before kick-off to half an hour after full time: kick-off and AFTER_MS, or later
+     * while it is still on (now) or when it was last seen on (lastLive: extra time, a late finish).
+     */
+    static long[] gameWindow(long kickoff, int state, long now, long lastLive) {
+        long to = kickoff + AFTER_MS;
+        if (state == 0) to = Math.max(to, now + 30 * 60_000L);
+        else if (lastLive > 0) to = Math.max(to, lastLive + 30 * 60_000L);
+        return new long[]{kickoff - WINDOW_MS, to};
+    }
+
+    /** No game, the channel's scoreboard seen at seenAt: from then for GENERAL_MS. */
+    static long[] generalWindow(long seenAt) {
+        return new long[]{seenAt - 60_000L, seenAt + GENERAL_MS};
+    }
+
+    static boolean inside(long[] w, long at) {
+        return w != null && at >= w[0] && at <= w[1];
+    }
+
+    /** Whether to look at the logo (and learn it): inside the window or within LEARN_AHEAD_MS of its opening. */
+    static boolean watch(long[] w, long at) {
+        return w != null && at >= w[0] - LEARN_AHEAD_MS && at <= w[1];
+    }
+
+    static final int BEFORE = 0, HALF = 1, LIVE = 2, FULL = 3, GENERAL = 4;
+
+    /** Where the game is for the screen's line: before kick-off, half-time, on, over; no game: general. */
+    static int phase(boolean game, int state, boolean halftime, long kickoff, long now) {
+        if (!game) return GENERAL;
+        if (state == 2) return FULL;
+        if (state == 0) return halftime ? HALF : LIVE;
+        return BEFORE;
+    }
+
+    static String label(int phase) {
+        switch (phase) {
+            case BEFORE: return "BEFORE KICK-OFF";
+            case HALF: return "HALF-TIME";
+            case FULL: return "FULL TIME";
+            default: return "AD BREAK";
+        }
+    }
+
+    /** The line-up card belongs before kick-off and at half-time. */
+    static boolean lineups(int phase) {
+        return phase == BEFORE || phase == HALF;
+    }
+
+    // ---- one screen at a break: the ad-break screen, broadcast mode's half-time break, the half-time card, the hop ----
+
+    static final int AD = 1, HALF_BREAK = 2, HALF_CARD = 4, HOP = 8;
+
+    /**
+     * Pure: which of the break's screens may show now, as a mask of AD, HALF_BREAK, HALF_CARD and HOP, so that they never
+     * stack. broadcast: broadcast mode on (HalfTimeBreak); halfTime: the game watched at half-time as it shows on screen;
+     * halfBreakUp: broadcast mode's break on screen; adUp: the ad-break screen on screen; quietBlocks: Match mode's quiet
+     * keeps other pop-ups back and this is not its game.
+     * <ul>
+     * <li>Broadcast mode on: half-time is its break's, exactly as before (the half-time card and the hop first, then the
+     * break); the ad-break screen never comes while that break is up nor at the game's half-time. It covers the other
+     * breaks: the build-up, any break in play, after full time.</li>
+     * <li>Broadcast mode off: the ad-break screen covers half-time too; while it is up the half-time card and the hop
+     * don't show (one up when it comes is closed).</li>
+     * <li>Match mode: its own game's screen always may come; any other only when its quiet is off.</li>
+     * </ul>
+     */
+    static int breaks(boolean broadcast, boolean halfTime, boolean halfBreakUp, boolean adUp, boolean quietBlocks) {
+        int m = 0;
+        if (!quietBlocks && !halfBreakUp && !(broadcast && halfTime)) m |= AD;
+        if (broadcast && halfTime && !adUp) m |= HALF_BREAK;
+        if (!adUp) m |= HALF_CARD | HOP;
+        return m;
+    }
+
+    /**
+     * Pure: whether the game watched is at half-time as it shows on screen: the scores say so now, or said so until less
+     * than the channel's wait (hold) ago (the second half shows on the channel that much after the scores see it).
+     */
+    static boolean halfTimeShows(boolean scoresHalf, long lastHalfSeen, long hold, long now) {
+        return scoresHalf || lastHalfSeen > 0 && now - lastHalfSeen < Math.max(0, hold) + 5_000L;
+    }
+
+    /** "1:05:09" over an hour, "4:09" under. */
+    static String countdown(long ms) {
+        long left = Math.max(0, ms) / 1000;
+        return left >= 3600 ? String.format(java.util.Locale.UK, "%d:%02d:%02d", left / 3600, left / 60 % 60, left % 60)
+                : String.format(java.util.Locale.UK, "%d:%02d", left / 60, left % 60);
+    }
+
+    /** An RSS feed's item titles (CDATA or plain, entities read), the first max of them. */
+    static List<String> rssTitles(String xml, int max) {
+        List<String> out = new ArrayList<>();
+        if (xml == null) return out;
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("(?s)<item\\b.*?<title>(?:<!\\[CDATA\\[)?(.*?)(?:\\]\\]>)?</title>").matcher(xml);
+        while (m.find() && out.size() < max) {
+            String t = FanFilter.entities(m.group(1)).replaceAll("\\s+", " ").trim();
+            if (!t.isEmpty()) out.add(t);
+        }
+        return out;
     }
 
     // ---- the cards taking turns ----------------------------------------------------------------------------------------

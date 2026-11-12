@@ -2,6 +2,7 @@ package com.gathin.tvhome;
 
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
@@ -21,39 +22,197 @@ public class AdBreakLogicTest {
     @Test public void comesAfterTheLogoHasBeenGoneSixSecondsAndGoesWhenItIsBack() {
         AdBreakLogic.Trigger t = new AdBreakLogic.Trigger();
         long now = 0;
-        assertEquals(AdBreakLogic.NONE, t.step(now, true, true, true, 30 * MIN, 0.9f));
-        for (int i = 0; i < 6; i++) assertEquals(AdBreakLogic.NONE, t.step(now += 1000, true, true, true, 30 * MIN, 0.1f));
-        assertEquals(AdBreakLogic.SHOW, t.step(now += 1000, true, true, true, 30 * MIN, 0.1f));
-        assertEquals(AdBreakLogic.NONE, t.step(now += 1000, true, true, true, 30 * MIN, 0.05f));
+        assertEquals(AdBreakLogic.NONE, t.step(now, true, true, true, true, 0.9f));
+        for (int i = 0; i < 6; i++) assertEquals(AdBreakLogic.NONE, t.step(now += 1000, true, true, true, true, 0.1f));
+        assertEquals(AdBreakLogic.SHOW, t.step(now += 1000, true, true, true, true, 0.1f));
+        assertEquals(AdBreakLogic.NONE, t.step(now += 1000, true, true, true, true, 0.05f));
         // One look back is not enough (a flash of it in the adverts); two are.
-        assertEquals(AdBreakLogic.NONE, t.step(now += 1000, true, true, true, 30 * MIN, 0.9f));
-        assertEquals(AdBreakLogic.HIDE, t.step(now += 1000, true, true, true, 30 * MIN, 0.9f));
+        assertEquals(AdBreakLogic.NONE, t.step(now += 1000, true, true, true, true, 0.9f));
+        assertEquals(AdBreakLogic.HIDE, t.step(now += 1000, true, true, true, true, 0.9f));
     }
 
     @Test public void aShortGapOrALookThatCannotTellChangesNothing() {
         AdBreakLogic.Trigger t = new AdBreakLogic.Trigger();
         long now = 0;
-        for (int i = 0; i < 4; i++) t.step(now += 1000, true, true, true, 30 * MIN, 0.1f);
-        assertEquals(AdBreakLogic.NONE, t.step(now += 1000, true, true, true, 30 * MIN, 0.9f));
-        for (int i = 0; i < 5; i++) assertEquals(AdBreakLogic.NONE, t.step(now += 1000, true, true, true, 30 * MIN, 0.1f));
-        assertEquals(AdBreakLogic.NONE, t.step(now += 1000, true, true, true, 30 * MIN, -1f));
-        assertEquals(AdBreakLogic.SHOW, t.step(now += 1000, true, true, true, 30 * MIN, 0.1f));
+        for (int i = 0; i < 4; i++) t.step(now += 1000, true, true, true, true, 0.1f);
+        assertEquals(AdBreakLogic.NONE, t.step(now += 1000, true, true, true, true, 0.9f));
+        for (int i = 0; i < 5; i++) assertEquals(AdBreakLogic.NONE, t.step(now += 1000, true, true, true, true, 0.1f));
+        assertEquals(AdBreakLogic.NONE, t.step(now += 1000, true, true, true, true, -1f));
+        assertEquals(AdBreakLogic.SHOW, t.step(now += 1000, true, true, true, true, 0.1f));
     }
 
-    @Test public void onlyWithinTheHourBeforeKickOffOnTheGamesChannelInThePlayerWithTheSwitchOn() {
+    @Test public void onlyInsideTheWindowOnTheChannelInThePlayerWithTheSwitchOn() {
         long now = 0;
         for (boolean[] k : new boolean[][]{{false, true, true}, {true, false, true}, {true, true, false}}) {
             AdBreakLogic.Trigger t = new AdBreakLogic.Trigger();
-            for (int i = 0; i < 10; i++) assertEquals(AdBreakLogic.NONE, t.step(now += 1000, k[0], k[1], k[2], 30 * MIN, 0.1f));
+            for (int i = 0; i < 10; i++) assertEquals(AdBreakLogic.NONE, t.step(now += 1000, k[0], k[1], k[2], true, 0.1f));
         }
         AdBreakLogic.Trigger far = new AdBreakLogic.Trigger();
-        for (int i = 0; i < 10; i++) assertEquals(AdBreakLogic.NONE, far.step(now += 1000, true, true, true, 61 * MIN, 0.1f));
-        // Up, then kick-off (or the channel changed): away at once.
+        for (int i = 0; i < 10; i++) assertEquals(AdBreakLogic.NONE, far.step(now += 1000, true, true, true, false, 0.1f));
+        // Up, then the window closes (or the channel changed): away at once.
         AdBreakLogic.Trigger t = new AdBreakLogic.Trigger();
         boolean shown = false;
-        for (int i = 0; i < 8; i++) shown |= t.step(now += 1000, true, true, true, 10 * MIN, 0.1f) == AdBreakLogic.SHOW;
+        for (int i = 0; i < 8; i++) shown |= t.step(now += 1000, true, true, true, true, 0.1f) == AdBreakLogic.SHOW;
         assertTrue(shown);
-        assertEquals(AdBreakLogic.HIDE, t.step(now += 1000, true, true, true, 0, 0.1f));
+        assertEquals(AdBreakLogic.HIDE, t.step(now += 1000, true, true, true, false, 0.1f));
+    }
+
+    // ---- what is on: the guide's programme, the game, the window ----------------------------------------------------------
+
+    private static String[][] game(String home, String away) {
+        return new String[][]{{home}, {away}};
+    }
+
+    @Test public void aGuideTitleNamesTheGameByBothClubs() {
+        String[] eng = {"England"}, cro = {"Croatia"};
+        assertEquals(2, AdBreakLogic.names("Live International Football: England v Croatia", eng, cro));
+        assertEquals(2, AdBreakLogic.names("03. England vs Croatia 19:45", eng, cro));
+        assertEquals(2, AdBreakLogic.names("LIVE Croatia v England", eng, cro));
+        assertEquals(2, AdBreakLogic.names("England v Croatia - World Cup Qualifier", eng, cro));
+        assertEquals(1, AdBreakLogic.names("England v Serbia", eng, cro));
+        assertEquals(0, AdBreakLogic.names("Football Focus", eng, cro));
+        assertEquals(0, AdBreakLogic.names("England and Croatia preview", eng, cro));
+        assertEquals(0, AdBreakLogic.names(null, eng, cro));
+        // ESPN's full name and its short one both count.
+        assertEquals(2, AdBreakLogic.names("Premier League: Spurs v Arsenal",
+                new String[]{"Tottenham Hotspur", "Tottenham"}, new String[]{"Arsenal"}));
+    }
+
+    @Test public void theGameIsPickedOnlyWhenOneIsClearlyNamed() {
+        List<String[][]> games = new ArrayList<>();
+        games.add(game("Wales", "Belgium"));
+        games.add(game("England", "Croatia"));
+        games.add(game("England", "Serbia"));
+        assertEquals(1, AdBreakLogic.pick("Live: England v Croatia", games));
+        assertEquals(0, AdBreakLogic.pick("Wales v North Macedonia", games));
+        // England alone names two games: neither is picked.
+        assertEquals(-1, AdBreakLogic.pick("England v Spain", games));
+        assertEquals(-1, AdBreakLogic.pick("Gogglebox", games));
+        assertEquals(-1, AdBreakLogic.pick("England v Croatia", new ArrayList<>()));
+    }
+
+    @Test public void theWindowsOpenAndCloseWhereTheySay() {
+        long start = 1_000 * MIN, end = start + 150 * MIN;
+        assertArrayEquals(new long[]{start, end + 5 * MIN}, AdBreakLogic.listedWindow(start, end));
+        long kick = 2_000 * MIN;
+        assertArrayEquals(new long[]{kick - 60 * MIN, kick + 145 * MIN}, AdBreakLogic.gameWindow(kick, 1, kick - 90 * MIN, 0));
+        // Still on long after: half an hour from now; over after extra time: half an hour after it was last on.
+        assertArrayEquals(new long[]{kick - 60 * MIN, kick + 170 * MIN}, AdBreakLogic.gameWindow(kick, 0, kick + 140 * MIN, 0));
+        assertArrayEquals(new long[]{kick - 60 * MIN, kick + 182 * MIN}, AdBreakLogic.gameWindow(kick, 2, kick + 160 * MIN, kick + 152 * MIN));
+        assertArrayEquals(new long[]{kick - 60 * MIN, kick + 145 * MIN}, AdBreakLogic.gameWindow(kick, 2, kick + 120 * MIN, kick + 110 * MIN));
+        // The next programme in the guide counts from now, its lead-in.
+        assertArrayEquals(new long[]{start - 10 * MIN, end + 5 * MIN}, AdBreakLogic.listedWindow(start, end, start - 10 * MIN));
+        assertArrayEquals(new long[]{start, end + 5 * MIN}, AdBreakLogic.listedWindow(start, end, start + 10 * MIN));
+        assertArrayEquals(new long[]{kick - MIN, kick + 20 * MIN}, AdBreakLogic.generalWindow(kick));
+        long[] w = AdBreakLogic.gameWindow(kick, 1, kick, 0);
+        assertTrue(AdBreakLogic.inside(w, kick - 60 * MIN));
+        assertTrue(AdBreakLogic.inside(w, kick + 100 * MIN));
+        assertFalse(AdBreakLogic.inside(w, kick - 61 * MIN));
+        assertFalse(AdBreakLogic.inside(w, kick + 146 * MIN));
+        assertFalse(AdBreakLogic.inside(null, kick));
+        // The logo is learned from half an hour before the window opens.
+        assertTrue(AdBreakLogic.watch(w, kick - 90 * MIN));
+        assertFalse(AdBreakLogic.watch(w, kick - 91 * MIN));
+    }
+
+    @Test public void theTriggerFollowsTheWindow() {
+        long kick = 2_000 * MIN;
+        long[] w = AdBreakLogic.listedWindow(kick - 15 * MIN, kick + 105 * MIN);
+        AdBreakLogic.Trigger t = new AdBreakLogic.Trigger();
+        long now = kick - 20 * MIN;
+        // Before the programme: nothing, however long the logo is gone.
+        for (int i = 0; i < 10; i++) assertEquals(AdBreakLogic.NONE, t.step(now += 1000, true, true, true, AdBreakLogic.inside(w, now), 0.1f));
+        // At half-time, inside the programme: up after six seconds.
+        now = kick + 50 * MIN;
+        boolean shown = false;
+        for (int i = 0; i < 8; i++) shown |= t.step(now += 1000, true, true, true, AdBreakLogic.inside(w, now), 0.1f) == AdBreakLogic.SHOW;
+        assertTrue(shown);
+        // The programme's listed end and five minutes: away.
+        now = kick + 111 * MIN;
+        assertEquals(AdBreakLogic.HIDE, t.step(now, true, true, true, AdBreakLogic.inside(w, now), 0.1f));
+    }
+
+    @Test public void theLineSaysWhereTheGameIs() {
+        long kick = 2_000 * MIN;
+        assertEquals(AdBreakLogic.BEFORE, AdBreakLogic.phase(true, 1, false, kick, kick - 10 * MIN));
+        assertEquals(AdBreakLogic.LIVE, AdBreakLogic.phase(true, 0, false, kick, kick + 10 * MIN));
+        assertEquals(AdBreakLogic.HALF, AdBreakLogic.phase(true, 0, true, kick, kick + 50 * MIN));
+        assertEquals(AdBreakLogic.FULL, AdBreakLogic.phase(true, 2, false, kick, kick + 120 * MIN));
+        assertEquals(AdBreakLogic.GENERAL, AdBreakLogic.phase(false, 0, false, 0, kick));
+        assertEquals("BEFORE KICK-OFF", AdBreakLogic.label(AdBreakLogic.BEFORE));
+        assertEquals("HALF-TIME", AdBreakLogic.label(AdBreakLogic.HALF));
+        assertEquals("AD BREAK", AdBreakLogic.label(AdBreakLogic.LIVE));
+        assertEquals("FULL TIME", AdBreakLogic.label(AdBreakLogic.FULL));
+        assertEquals("AD BREAK", AdBreakLogic.label(AdBreakLogic.GENERAL));
+        assertTrue(AdBreakLogic.lineups(AdBreakLogic.BEFORE));
+        assertTrue(AdBreakLogic.lineups(AdBreakLogic.HALF));
+        assertFalse(AdBreakLogic.lineups(AdBreakLogic.LIVE));
+        assertFalse(AdBreakLogic.lineups(AdBreakLogic.FULL));
+        assertFalse(AdBreakLogic.lineups(AdBreakLogic.GENERAL));
+    }
+
+    // ---- one screen at a break ------------------------------------------------------------------------------------------
+
+    private static final int AD = AdBreakLogic.AD, BREAK = AdBreakLogic.HALF_BREAK, CARD = AdBreakLogic.HALF_CARD, HOP = AdBreakLogic.HOP;
+
+    @Test public void broadcastModeKeepsHalfTimeAndTheAdBreakScreenTheRest() {
+        // Half-time: its break, after the half-time card and the hop as before; never the ad-break screen.
+        assertEquals(BREAK | CARD | HOP, AdBreakLogic.breaks(true, true, false, false, false));
+        assertEquals(0, AdBreakLogic.breaks(true, true, true, false, false) & AD);
+        // The build-up, a break in play, after full time: the ad-break screen.
+        assertEquals(AD | CARD | HOP, AdBreakLogic.breaks(true, false, false, false, false));
+        // Its break up (the Control Centre's try): no ad-break screen over it.
+        assertEquals(0, AdBreakLogic.breaks(true, false, true, false, false) & AD);
+        // The ad-break screen up as half-time comes: it goes, and the break waits until it has.
+        assertEquals(0, AdBreakLogic.breaks(true, true, false, true, false) & (AD | BREAK));
+    }
+
+    @Test public void withoutBroadcastModeTheAdBreakScreenCoversHalfTimeAndTheCardsGiveWay() {
+        assertEquals(AD | CARD | HOP, AdBreakLogic.breaks(false, true, false, false, false));
+        // Up: no half-time card, no hop.
+        assertEquals(AD, AdBreakLogic.breaks(false, true, false, true, false));
+        assertEquals(AD, AdBreakLogic.breaks(false, false, false, true, false));
+        // Broadcast mode's break never, with it off.
+        for (boolean ht : new boolean[]{false, true}) {
+            for (boolean up : new boolean[]{false, true}) assertEquals(0, AdBreakLogic.breaks(false, ht, false, up, false) & BREAK);
+        }
+    }
+
+    @Test public void matchModesQuietLetsOnlyItsOwnGamesScreenThrough() {
+        // Its own game: never kept back.
+        assertFalse(MatchMode.keepsBack(true, true, "adbreak", "g1", "g1"));
+        // Another game, or none known (the general screen): kept back while its quiet is on.
+        assertTrue(MatchMode.keepsBack(true, true, "adbreak", "g2", "g1"));
+        assertTrue(MatchMode.keepsBack(true, true, "adbreak", null, "g1"));
+        assertFalse(MatchMode.keepsBack(true, false, "adbreak", "g2", "g1"));
+        assertFalse(MatchMode.keepsBack(false, true, "adbreak", "g2", "g1"));
+        assertEquals(CARD | HOP, AdBreakLogic.breaks(false, false, false, false, true));
+        assertEquals(BREAK | CARD | HOP, AdBreakLogic.breaks(true, true, false, false, true));
+    }
+
+    @Test public void halfTimeShowsUntilTheChannelsWaitAfterTheScoresSawTheSecondHalf() {
+        long t = 2_000 * MIN;
+        assertTrue(AdBreakLogic.halfTimeShows(true, 0, 0, t));
+        assertTrue(AdBreakLogic.halfTimeShows(false, t, 60_000L, t + 60_000L));
+        assertFalse(AdBreakLogic.halfTimeShows(false, t, 60_000L, t + 66_000L));
+        assertFalse(AdBreakLogic.halfTimeShows(false, 0, 60_000L, t));
+    }
+
+    @Test public void theCountdownShowsHoursOnlyOverAnHour() {
+        assertEquals("4:09", AdBreakLogic.countdown(249_000L));
+        assertEquals("59:59", AdBreakLogic.countdown(3_599_000L));
+        assertEquals("1:05:09", AdBreakLogic.countdown(3_909_000L));
+        assertEquals("0:00", AdBreakLogic.countdown(-5_000L));
+    }
+
+    @Test public void theFeedsTitlesAreReadPlainOrInCdata() {
+        String xml = "<rss><channel><title>BBC Sport - Football</title><item><title><![CDATA[Spurs sack manager]]></title></item>"
+                + "<item><title>Saka &amp; Rice fit for England</title></item><item><title>Third</title></item></channel></rss>";
+        List<String> t = AdBreakLogic.rssTitles(xml, 2);
+        assertEquals(2, t.size());
+        assertEquals("Spurs sack manager", t.get(0));
+        assertEquals("Saka & Rice fit for England", t.get(1));
+        assertTrue(AdBreakLogic.rssTitles(null, 3).isEmpty());
     }
 
     @Test public void theCardsChangeFourSecondsApartAndGoRound() {

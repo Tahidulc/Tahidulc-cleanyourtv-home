@@ -262,6 +262,15 @@ final class OverlayPrompt {
      * (its guide, its lists) says nothing.
      */
     static void seen(Context c, List<String> texts) {
+        // The playlist's own channel named on its own (its banner, as the channel changes): the channel watched. Then
+        // the banner's words are kept for the ad-break screen (its programme's title names the game).
+        String listed = Listings.bannerChannel(texts);
+        if (listed != null && !InStep.base(listed).equals(InStep.base(InStep.channel(c)))) {
+            InStep.tuned(c, Collections.singletonList(listed));
+            AlertLog.note(c, "channel watched, from the player's banner (the playlist's channels)");
+            BoardCover.resume(c);
+        }
+        AdBreak.banner(c, texts);
         // A channel with scoreboard and logo settings of its own named on its own (its banner): the channel watched, so
         // its settings apply (BoardCover, ChannelOverlays).
         if (texts != null && texts.size() <= 40) {

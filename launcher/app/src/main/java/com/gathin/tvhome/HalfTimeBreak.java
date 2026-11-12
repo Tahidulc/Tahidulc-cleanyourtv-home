@@ -202,7 +202,8 @@ final class HalfTimeBreak {
             return;
         }
         // The half-time card and the hop's card first: tried again every few seconds for a while.
-        if ((LineupCard.hopShowing() || InStepCard.isShowing() || QuickReply.isOpen()) && tries++ < 24) {
+        // The ad-break screen goes at half-time with broadcast mode on (AdBreakLogic.breaks): the break waits for it.
+        if ((LineupCard.hopShowing() || InStepCard.isShowing() || QuickReply.isOpen() || AdBreak.isShowing()) && tries++ < 24) {
             main().postDelayed(begin, 5_000L);
             return;
         }

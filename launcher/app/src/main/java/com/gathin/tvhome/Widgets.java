@@ -199,6 +199,28 @@ final class Widgets {
         Bitmap mark = p.mark;
         String home = shortName(p, true), away = shortName(p, false);
 
+        // At half-time: the first half, as the half-time card has it (the scorers, possession, shots).
+        if (p.half != null) {
+            MoreAlerts.Stats st = p.half;
+            a.add(new AdBreak.Widget(mark, "FIRST\nHALF", c -> {
+                List<View> l = new ArrayList<>();
+                TextView score = t(c, st.home + "–" + st.away, 22.5f, INK, true);
+                score.setPadding(px(9), px(1), px(9), px(1));
+                score.setBackground(AdBreak.fill(0x1A151A63, px(6)));
+                l.add(row(c, 9, crest(c, p, g.homeId, 27), t(c, home, 18, INK, true), score, t(c, away, 18, INK, true), crest(c, p, g.awayId, 27)));
+                for (int side = 0; side < 2; side++) {
+                    List<String> goals = side == 0 ? st.homeGoals : st.awayGoals;
+                    if (goals.isEmpty()) continue;
+                    l.add(row(c, 7, crest(c, p, side == 0 ? g.homeId : g.awayId, 19), t(c, String.join(" · ", goals), 15, INK, false)));
+                }
+                StringBuilder line = new StringBuilder();
+                if (st.homePoss >= 0) line.append("Possession ").append(st.homePoss).append("–").append(st.awayPoss).append('%');
+                if (st.homeShots >= 0) line.append(line.length() > 0 ? " · " : "").append("Shots ").append(st.homeShots).append("–").append(st.awayShots);
+                if (line.length() > 0) l.add(foot(c, line.toString()));
+                return l;
+            }, null, null, null));
+        }
+
         // Form, this competition only.
         if (!p.homeForm.isEmpty() || !p.awayForm.isEmpty()) {
             a.add(new AdBreak.Widget(mark, "FORM", c -> {
@@ -421,19 +443,22 @@ final class Widgets {
                 if (k.get(Calendar.DAY_OF_YEAR) == today.get(Calendar.DAY_OF_YEAR) && k.get(Calendar.YEAR) == today.get(Calendar.YEAR)) later.add(x);
             }
         }
+        // At half-time: the games still playing, the first one a hop away (HalfTimeHop's: back for the second half).
+        List<ScoresTicker.Game> hops = p.half != null && HalfTimeHop.on(ctx) ? HalfTimeHop.choices(g, latestGames()) : new ArrayList<>();
+        if (!hops.isEmpty()) {
+            ScoresTicker.Game to = hops.get(0);
+            b.add(new AdBreak.Widget(mark, "ALSO\nON NOW", c -> {
+                List<View> l = new ArrayList<>();
+                for (ScoresTicker.Game x : hops) l.add(scoreRow(c, p, x, x.detail));
+                l.add(foot(c, "OK: the first one for the break, back for the second half"));
+                return l;
+            }, () -> HalfTimeHop.hop(ctx, g, to), null, null));
+            live.clear();
+        }
         if (!live.isEmpty()) {
             b.add(new AdBreak.Widget(mark, "ELSE-\nWHERE\nNOW", c -> {
                 List<View> l = new ArrayList<>();
-                for (ScoresTicker.Game x : live) {
-                    TextView score = t(c, (x.homeScore == null ? "0" : x.homeScore) + "–" + (x.awayScore == null ? "0" : x.awayScore), 18, INK, true);
-                    score.setPadding(px(9), px(1), px(9), px(1));
-                    score.setBackground(AdBreak.fill(0x1A151A63, px(6)));
-                    LinearLayout line = row(c, 7, crest(c, p, x.homeId, 21), t(c, AdBreak.name(x, true), 16.5f, INK, true), score,
-                            t(c, AdBreak.name(x, false), 16.5f, INK, true), crest(c, p, x.awayId, 21));
-                    line.addView(new View(c), new LinearLayout.LayoutParams(0, 1, 1f));
-                    line.addView(t(c, x.detail == null ? "" : x.detail, 15, MUTE, true));
-                    l.add(line);
-                }
+                for (ScoresTicker.Game x : live) l.add(scoreRow(c, p, x, x.detail));
                 return l;
             }, null, null, null));
         }
@@ -470,17 +495,7 @@ final class Widgets {
             while (rows.size() > 3) rows.remove(rows.size() - 1);
             b.add(new AdBreak.Widget(mark, "LATER\nTODAY", c -> {
                 List<View> l = new ArrayList<>();
-                for (Object[] r : rows) {
-                    View when = sized(t(c, (String) r[0], 18, INK, true), 60, 24);
-                    if (r[1] instanceof ScoresTicker.Game) {
-                        ScoresTicker.Game x = (ScoresTicker.Game) r[1];
-                        l.add(row(c, 7, when, crest(c, p, x.homeId, 21), t(c, AdBreak.name(x, true), 16.5f, INK, true),
-                                t(c, "v", 15, MUTE, false), t(c, AdBreak.name(x, false), 16.5f, INK, true), crest(c, p, x.awayId, 21)));
-                    } else {
-                        String[] f = (String[]) r[1];
-                        l.add(row(c, 7, when, crest(c, p, "f1", 21), t(c, f[1], 16.5f, INK, true), t(c, f[2], 15, MUTE, false)));
-                    }
-                }
+                for (Object[] r : rows) l.add(laterRow(c, p, r));
                 return l;
             }, null, null, null));
         }
@@ -558,6 +573,104 @@ final class Widgets {
             }, null, clip[0], p.clipStill));
         }
         return out;
+    }
+
+    // ---- the general screen (a match on, no game known) -----------------------------------------------------------------
+
+    /**
+     * The general screen's cards: the scores now (the clubs you follow first) and today's results; the games and F1
+     * later today and your players today; BBC Sport's football headlines. A card with nothing behind it is left empty.
+     */
+    static List<List<AdBreak.Widget>> general(Context ctx, AdBreak.Pack p, float scale) {
+        s = scale;
+        List<List<AdBreak.Widget>> out = new ArrayList<>();
+        List<AdBreak.Widget> a = new ArrayList<>(), b = new ArrayList<>(), h = new ArrayList<>();
+        out.add(a);
+        out.add(b);
+        out.add(h);
+        for (List<ScoresTicker.Game> part : threes(p.liveNow)) {
+            a.add(new AdBreak.Widget(null, "SCORES\nNOW", c -> {
+                List<View> l = new ArrayList<>();
+                for (ScoresTicker.Game x : part) l.add(scoreRow(c, p, x, x.halftime ? "HT" : ScoresTicker.liveClock(x)));
+                return l;
+            }, null, null, null));
+        }
+        for (List<ScoresTicker.Game> part : threes(p.doneToday)) {
+            a.add(new AdBreak.Widget(null, "RESULTS\nTODAY", c -> {
+                List<View> l = new ArrayList<>();
+                for (ScoresTicker.Game x : part) l.add(scoreRow(c, p, x, "FT"));
+                return l;
+            }, null, null, null));
+        }
+        // The games and today's F1 sessions together, in time order, three a widget.
+        List<Object[]> rows = new ArrayList<>();
+        for (ScoresTicker.Game x : p.laterToday) rows.add(new Object[]{new java.text.SimpleDateFormat("HH:mm", Locale.UK).format(new java.util.Date(x.kickoff)), x});
+        for (String[] f : p.f1Later) rows.add(new Object[]{f[0], f});
+        rows.sort((x, y) -> String.valueOf(x[0]).compareTo(String.valueOf(y[0])));
+        while (rows.size() > 6) rows.remove(rows.size() - 1);
+        for (int i = 0; i < rows.size(); i += 3) {
+            List<Object[]> part = rows.subList(i, Math.min(rows.size(), i + 3));
+            b.add(new AdBreak.Widget(null, "LATER\nTODAY", c -> {
+                List<View> l = new ArrayList<>();
+                for (Object[] r : part) l.add(laterRow(c, p, r));
+                return l;
+            }, null, null, null));
+        }
+        if (!p.mine.isEmpty()) {
+            b.add(new AdBreak.Widget(null, "YOUR\nPLAYERS", c -> {
+                List<View> l = new ArrayList<>();
+                for (String[] m : p.mine) {
+                    l.add(row(c, 9, ringed(c, p.faces.get(m[0]), AdBreak.initials(m[0]), INK, px(40)), crest(c, p, m[1], 21),
+                            t(c, Players.surname(m[0]), 17, INK, true), t(c, "· " + m[3], 15, MUTE, false),
+                            t(c, "v", 14, MUTE, false), crest(c, p, m[2], 21)));
+                }
+                l.add(foot(c, "Players you follow, playing today"));
+                return l;
+            }, null, null, null));
+        }
+        for (int i = 0; i < p.headlines.size(); i += 3) {
+            List<String> part = p.headlines.subList(i, Math.min(p.headlines.size(), i + 3));
+            h.add(new AdBreak.Widget(null, "HEAD-\nLINES", c -> {
+                List<View> l = new ArrayList<>();
+                for (String x : part) {
+                    View bar = new View(c);
+                    bar.setBackground(AdBreak.fill(LOSS, px(2)));
+                    l.add(row(c, 10, sized(bar, 4.5f, 21), t(c, x, 16.5f, INK, false)));
+                }
+                return l;
+            }, null, null, null));
+        }
+        return out;
+    }
+
+    private static List<List<ScoresTicker.Game>> threes(List<ScoresTicker.Game> games) {
+        List<List<ScoresTicker.Game>> out = new ArrayList<>();
+        for (int i = 0; i < games.size(); i += 3) out.add(new ArrayList<>(games.subList(i, Math.min(games.size(), i + 3))));
+        return out;
+    }
+
+    /** A game's line: both crests and names round the score, and its minute (or HT, FT) at the end. */
+    private static LinearLayout scoreRow(Context c, AdBreak.Pack p, ScoresTicker.Game x, String end) {
+        TextView score = t(c, (x.homeScore == null ? "0" : x.homeScore) + "–" + (x.awayScore == null ? "0" : x.awayScore), 18, INK, true);
+        score.setPadding(px(9), px(1), px(9), px(1));
+        score.setBackground(AdBreak.fill(0x1A151A63, px(6)));
+        LinearLayout line = row(c, 7, crest(c, p, x.homeId, 21), t(c, AdBreak.name(x, true), 16.5f, INK, true), score,
+                t(c, AdBreak.name(x, false), 16.5f, INK, true), crest(c, p, x.awayId, 21));
+        line.addView(new View(c), new LinearLayout.LayoutParams(0, 1, 1f));
+        line.addView(t(c, end == null ? "" : end, 15, MUTE, true));
+        return line;
+    }
+
+    /** A later-today line: {"HH:mm", a game} or {"HH:mm", an F1 session {time, session, Grand Prix}}. */
+    private static LinearLayout laterRow(Context c, AdBreak.Pack p, Object[] r) {
+        View when = sized(t(c, (String) r[0], 18, INK, true), 60, 24);
+        if (r[1] instanceof ScoresTicker.Game) {
+            ScoresTicker.Game x = (ScoresTicker.Game) r[1];
+            return row(c, 7, when, crest(c, p, x.homeId, 21), t(c, AdBreak.name(x, true), 16.5f, INK, true),
+                    t(c, "v", 15, MUTE, false), t(c, AdBreak.name(x, false), 16.5f, INK, true), crest(c, p, x.awayId, 21));
+        }
+        String[] f = (String[]) r[1];
+        return row(c, 7, when, crest(c, p, "f1", 21), t(c, f[1], 16.5f, INK, true), t(c, f[2], 15, MUTE, false));
     }
 
     private static List<ScoresTicker.Game> latestGames() {

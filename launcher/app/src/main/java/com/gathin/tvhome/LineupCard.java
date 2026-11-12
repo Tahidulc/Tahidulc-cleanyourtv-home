@@ -726,6 +726,11 @@ final class LineupCard {
             if (f.onHome != null) f.onHome.run();
             return;
         }
+        // The ad-break screen up (broadcast mode off): it covers the break, with the first half in its cards.
+        if (!AdBreak.allows(c, AdBreakLogic.HALF_CARD)) {
+            AlertLog.note(c, "half-time card: not shown (the ad-break screen covers the break)");
+            return;
+        }
         // Over Settings Android hides every app's pop-ups: it waits until Settings is closed (ten minutes at most).
         if (OverlayGuard.hiding(c) != null && hiddenWait(c, "half-time card", f.hiddenWaits++, () -> showHalfTime(c, f))) return;
         // One at a time, as the F1 boards: two seconds at a time, at most a minute and a half, then it shows all the same.
@@ -782,6 +787,7 @@ final class LineupCard {
         host = win;
         QuietHold.shown(c, win, () -> close(true));
         showing = carrier;
+        halfUp = true;
         shownAt = android.os.SystemClock.uptimeMillis();
         bar = false;
         if (f.key != null) AlertToday.shown(c, f.key);
@@ -974,6 +980,14 @@ final class LineupCard {
         return host != null && hopping != null;
     }
 
+    /** Whether the half-time card is the one showing. */
+    private static boolean halfUp;
+
+    /** Whether the half-time card or the hop's card is the one showing (the ad-break screen closes them). */
+    static boolean halfOrHopShowing() {
+        return host != null && (halfUp || hopping != null);
+    }
+
     /**
      * Opens the hop's card (main thread), after any other pop-up has gone (the half-time card first): the band with
      * the competition's mark and HALF TIME, the game at the break along the top, then a line for each game on now and
@@ -981,6 +995,11 @@ final class LineupCard {
      */
     static void showHop(Context ctx, Hop hp) {
         Context c = ctx.getApplicationContext();
+        // The ad-break screen up: it offers the hop itself (its "also on now" card).
+        if (!AdBreak.allows(c, AdBreakLogic.HOP)) {
+            AlertLog.note(c, "half-time hop: not shown (the ad-break screen covers the break)");
+            return;
+        }
         if (OverlayGuard.hiding(c) != null && hiddenWait(c, "half-time hop", hp.hiddenWaits++, () -> showHop(c, hp))) return;
         if ((CameraAlert.isShowing() || ScoreCard.busy() || GoalWatchService.alertShowing() || isShowing() || QuickReply.isOpen())
                 && hp.waited < 45) {
@@ -2828,6 +2847,7 @@ final class LineupCard {
         host = null;
         showing = null;
         hopping = null;
+        halfUp = false;
         bar = false;
         if (v == null) return;
         v.setOnKeyListener(null);

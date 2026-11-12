@@ -96,16 +96,33 @@ final class HalfTimeHop {
     /** OK on line i of the card: that game's channel on (the last line: stay). */
     private static void choose(ScoresTicker.Game from, List<ScoresTicker.Game> others, int i) {
         if (i < 0 || i >= others.size() || app == null) return;
-        ScoresTicker.Game to = others.get(i);
-        TvGuide.Watch w = TvGuide.watch(app.getResources().getStringArray(R.array.football_tv_channels), to);
-        if (w == null || w.names.isEmpty()) return;
-        awayGame = from.id;
-        backNames = InStep.tunedNames(app);
-        long h = InStep.current(app);
-        backHold = h >= 0 ? h : 30_000L;
-        awayAt = System.currentTimeMillis();
-        AlertLog.note(app, "half-time hop to " + AlertLog.game(to) + ", back for " + AlertLog.game(from));
-        AppSearchService.tune(app, "ar.tvplayer.tv", w.names, null);
+        hop(app, from, others.get(i));
+    }
+
+    /**
+     * The hop itself (the hop's card, the ad-break screen's "also on now"): to's channel on, and from's back on by itself
+     * as its second half shows. Off the main thread or on it.
+     */
+    static void hop(Context c, ScoresTicker.Game from, ScoresTicker.Game to) {
+        if (c == null || from == null || to == null) return;
+        if (app == null) app = c.getApplicationContext();
+        Context a = app;
+        // Where it is on may read the guide: worked out off the main thread, the channel tuned on it.
+        Thread t = new Thread(() -> {
+            TvGuide.Watch w = TvGuide.watch(a.getResources().getStringArray(R.array.football_tv_channels), to);
+            if (w == null || w.names.isEmpty()) return;
+            main().post(() -> {
+                awayGame = from.id;
+                backNames = InStep.tunedNames(a);
+                long h = InStep.current(a);
+                backHold = h >= 0 ? h : 30_000L;
+                awayAt = System.currentTimeMillis();
+                AlertLog.note(a, "half-time hop to " + AlertLog.game(to) + ", back for " + AlertLog.game(from));
+                AppSearchService.tune(a, "ar.tvplayer.tv", w.names, null);
+            });
+        }, "HalfTimeHop");
+        t.setDaemon(true);
+        t.start();
     }
 
     /** Whether the watched game was hopped away from (for its second half). */
