@@ -302,13 +302,30 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         BurnGuard.dimLayer(this, on);
     }
 
-    /** A goal for side 1 (home) or 2 (away), as broadcasters show one (GOAL_MS in all). */
+    /** A goal for side 1 (home) or 2 (away), as broadcasters show one (GOAL_MS in all), the family's swish on its new score. */
     void goal(int side) {
         flashSide = side;
         goalAt = System.currentTimeMillis();
         goalFrozen = -1;
+        removeCallbacks(scoreSwish);
+        postDelayed(scoreSwish, scoreSwishAt());
         postInvalidateOnAnimation();
     }
+
+    /** Pure: when the family's swish starts, in ms into the goal: its loudest moment on the new score's pop (the band gone). */
+    static long scoreSwishAt() {
+        return Math.max(0, BAND_OUT + BAND_MS - com.gathin.broadcast.Sfx.SCORE_PEAK_MS);
+    }
+
+    /** The family's swish as the new score comes out from under the band, panned to the board; only while it is up. */
+    private final Runnable scoreSwish = () -> {
+        if (!isAttachedToWindow() || !isShown() || getAlpha() < 0.05f || !PlayerIntro.scoreSwishOn(getContext())) return;
+        int[] at = new int[2];
+        getLocationOnScreen(at);
+        int sw = getResources().getDisplayMetrics().widthPixels;
+        float pan = sw > 0 ? Math.max(-0.6f, Math.min(0.6f, ((at[0] + getWidth() / 2f) / sw * 2f - 1f) * 0.6f)) : 0f;
+        com.gathin.broadcast.Sfx.play(getContext(), com.gathin.broadcast.Sfx.SCORE, pan, 0.85f);
+    };
 
     /** The net's shiver after the band (from RIPPLE_AT, over RIPPLE_MS); half time turning over; FULL TIME stamped. */
     static final long RIPPLE_AT = BAND_OUT + BAND_MS - 150, RIPPLE_MS = 900, HT_MS = 700, FT_MS = 2600;

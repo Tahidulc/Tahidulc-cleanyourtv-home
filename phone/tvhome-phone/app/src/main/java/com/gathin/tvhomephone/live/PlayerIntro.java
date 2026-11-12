@@ -75,13 +75,28 @@ final class PlayerIntro {
         if (on) com.gathin.broadcast.Sfx.play(c, com.gathin.broadcast.Sfx.SWISH, 0f, 0.7f);
     }
 
-    /** The sound over the scoreboard's goal animation (Sfx.GOALS: "off", "roar", "hit", "horn", "swish", "drums", "stab"). */
+    /** The family's swish as a goal's new score comes out on the scoreboard, every look: on unless switched off. */
+    static boolean scoreSwishOn(Context c) {
+        return prefs(c).getBoolean("score_swish", true);
+    }
+
+    static void setScoreSwishOn(Context c, boolean on) {
+        prefs(c).edit().putBoolean("score_swish", on).apply();
+        com.gathin.broadcast.Sfx.warm(c, com.gathin.broadcast.Sfx.SCORE);
+        // heard as it is switched on (the first time once it has loaded)
+        if (on) new Handler(Looper.getMainLooper()).postDelayed(() -> com.gathin.broadcast.Sfx.play(c, com.gathin.broadcast.Sfx.SCORE, 0f, 0.85f), 250);
+    }
+
+    /**
+     * The sound over the scoreboard's goal animation (Sfx.GOALS: "off", "swoosh", "roar", ...): the family's swoosh unless
+     * another is chosen (a new key, so the swoosh they picked replaces whatever was tried before it).
+     */
     static String goalSound(Context c) {
-        return prefs(c).getString("goal_sound", "off");
+        return prefs(c).getString("goal_sound_pick", com.gathin.broadcast.Sfx.GOAL_DEFAULT);
     }
 
     static void setGoalSound(Context c, String key) {
-        prefs(c).edit().putString("goal_sound", key).apply();
+        prefs(c).edit().putString("goal_sound_pick", key).apply();
         com.gathin.broadcast.Sfx.warm(c, "goal-" + key);
         // heard as it is chosen (the first time once it has loaded)
         if (!"off".equals(key)) new Handler(Looper.getMainLooper()).postDelayed(() -> com.gathin.broadcast.Sfx.goal(c, key), 250);
