@@ -152,9 +152,39 @@ final class LineupCard {
         return host != null ? host.getHeight() : 0;
     }
 
+    /** Where the ad-break screen puts the card (its window's top left, px), set for the next show only; null otherwise. */
+    private static int[] breakPlace;
+
+    /**
+     * The card for the ad-break screen (AdBreak): at its place beside the strip, going round its pages again and again
+     * (the wipe back to the fixture after the pitch) until close() when the break ends; never taking the remote.
+     */
+    static void showForBreak(Context ctx, Data d, int x, int y) {
+        breakPlace = new int[]{x, y};
+        show(ctx, d);
+        breakPlace = null;
+    }
+
     /** Opens the card (on the main thread), in place of one already showing; after the camera card, if that is up. */
     static void show(Context ctx, Data d) {
         Context c = ctx.getApplicationContext();
+        int[] forBreak = breakPlace;
+        if (forBreak != null) {
+            showNow(c, d, forBreak);
+            return;
+        }
+        showNow(c, d, null);
+    }
+
+    private static void showNow(Context c, Data d, int[] forBreak) {
+        if (forBreak != null) {
+            k = c.getResources().getDisplayMetrics().widthPixels / 1920f * SCALE;
+            close(false);
+            wipeBody = 0xFF151A63;
+            wipeEdge = 0xFF3D4BD6;
+            build(c, d, null, forBreak);
+            return;
+        }
         // Switched off in the Control Centre's Notifications (kick-off and line-ups, the game's competition, or where
         // it would show).
         boolean home = NotifyPrefs.homeNow();
@@ -177,6 +207,12 @@ final class LineupCard {
         // On Home: the same line-ups as a wide bar across the top, in the style of Home's score bars.
         if (shots == null && (GoalWatchService.laneHome && GoalWatchService.homeInFront || PopupFrame.isShowing())) { showBar(c, d); return; }
         k = c.getResources().getDisplayMetrics().widthPixels / 1920f * SCALE;
+        build(c, d, shots, null);
+    }
+
+    /** The card's window and its pages (show, or the ad-break screen's at its place, going round until closed). */
+    private static void build(Context c, Data d, java.io.File shots, int[] forBreak) {
+        boolean loop = forBreak != null;
         int w = px(W), h = px(H), margin = px(10);
 
         FrameLayout win = new FrameLayout(c);
@@ -220,8 +256,14 @@ final class LineupCard {
         // Over Ambient mode: above its bar along the foot, not on it.
         lp.y = px(AmbientScene.showing() ? AmbientScene.ALERT_FOOT : 34);
         // The scoreboard up over the channel: beside it, in line with it (its top level with the board's).
-        int[] beside = BoardCover.besideBoard(w, h);
-        boolean fromRight = false;
+        int[] beside = loop ? null : BoardCover.besideBoard(w, h);
+        boolean fromRight = loop;
+        if (loop) {
+            lp.gravity = Gravity.TOP | Gravity.START;
+            lp.x = forBreak[0];
+            lp.y = forBreak[1];
+            lp.setTitle("LineupCardBreak");
+        }
         if (beside != null) {
             lp.gravity = Gravity.TOP | Gravity.START;
             lp.x = beside[0] - margin;
@@ -272,8 +314,14 @@ final class LineupCard {
                 int i = at[0];
                 pages.get(i).run();
                 // Without the key helper (the TCL): the card takes the remote's keys while it shows, OK watching
-                // (when there is a channel), Back or any other key closing it.
-                if (i == 0 && !helper) offerWatch(win, d);
+                // (when there is a channel), Back or any other key closing it. Never in an ad break (the channel's).
+                if (i == 0 && !helper && !loop) offerWatch(win, d);
+                if (i == pages.size() - 1 && loop) {
+                    // The ad break: round again, the wipe bringing the fixture back after the pitch.
+                    at[0] = 0;
+                    main.postDelayed(this, times.get(i));
+                    return;
+                }
                 if (i == pages.size() - 1) {
                     main.postDelayed(() -> { if (host == win) close(true); }, times.get(i));
                     return;

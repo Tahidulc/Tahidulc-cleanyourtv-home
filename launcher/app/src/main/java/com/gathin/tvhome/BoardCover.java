@@ -2123,7 +2123,7 @@ final class BoardCover {
     private static boolean frontOk = true;
 
     /** Whether a channel app is in front (looked at every two seconds); true when that cannot be told. */
-    private static boolean playerInFront(Context c) {
+    static boolean playerInFront(Context c) {
         long now = SystemClock.uptimeMillis();
         if (now - frontAt < 2_000L) return frontOk;
         frontAt = now;

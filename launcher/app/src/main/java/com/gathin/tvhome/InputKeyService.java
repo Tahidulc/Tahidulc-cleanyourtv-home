@@ -76,6 +76,8 @@ public class InputKeyService extends AccessibilityService {
     private boolean keys(KeyEvent event) {
         // The overlays button over a match: OK held turns them on (OverlayPrompt).
         if (OverlayPrompt.key(event)) return true;
+        // The ad-break screen before kick-off: Down into its cards, the arrows, OK and Back while in (AdBreak).
+        if (AdBreak.key(event)) return true;
         // Back on Tuya Smart's camera, opened from the launcher: back to what was on, the camera kept ready.
         if (event.getKeyCode() == KeyEvent.KEYCODE_BACK && AppSearchService.cameraBack(this, event)) return true;
         // OK while the line-up card shows: the game's channel.

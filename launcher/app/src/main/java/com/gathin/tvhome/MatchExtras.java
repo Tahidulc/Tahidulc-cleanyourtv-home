@@ -197,6 +197,25 @@ final class MatchExtras {
         }
     }
 
+    /**
+     * The ground's weather for the ad-break screen: {"9° · light rain", "Wind 14 mph SW · Dry to full time"}; null when it
+     * cannot be read (io thread).
+     */
+    static String[] weatherParts(Context c, ScoresTicker.Game g) {
+        if (c == null || g == null) return null;
+        try {
+            double[] at = place(c, g.venueCity, g.venueCountry);
+            long toFt = Math.max(0, g.kickoff + 115 * 60_000L - System.currentTimeMillis());
+            Object[] w = at == null ? null : read(at[0], at[1], (int) Math.max(2, toFt / 3_600_000L + 1));
+            if (w == null) return null;
+            String head = weatherHead((Double) w[0], WeatherLine.describe((Integer) w[1]));
+            String line = weatherLine((Double) w[2], (String) w[5], (Integer) w[3], (Double) w[4], false);
+            return new String[]{head, line};
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
     /** Pure: "9° · Light rain at the Emirates Stadium" (the ground left off when not known). */
     static String weatherHeadline(double temp, String sky, String ground) {
         return weatherHead(temp, sky) + (ground == null || ground.isEmpty() ? "" : " at " + ground);

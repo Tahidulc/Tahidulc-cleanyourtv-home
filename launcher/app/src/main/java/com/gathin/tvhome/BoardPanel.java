@@ -259,6 +259,11 @@ final class BoardPanel extends SportPanel {
         weather.words = () -> MatchExtras.weatherOn(c) ? "At kick-off and half time: temperature, wind, rain by full time" : "Off";
         weather.ok = () -> MatchExtras.setWeatherOn(c, !MatchExtras.weatherOn(c));
         add(ratings, weather);
+        Row adBreak = row("Ad-break screen", true);
+        adBreak.on = () -> AdBreak.on(c);
+        adBreak.words = () -> AdBreak.on(c) ? "Before kick-off, when the channel's logo goes for the adverts: the line-ups, the table, widgets and fans' posts" : "Off";
+        adBreak.ok = () -> AdBreak.setOn(c, !AdBreak.on(c));
+        add(adBreak);
         Row sight = row("Find the channel's own scoreboard", true);
         sight.on = () -> ChannelSight.on(c);
         sight.words = () -> !ChannelSight.on(c) ? "Off · where its broadcaster usually has it"

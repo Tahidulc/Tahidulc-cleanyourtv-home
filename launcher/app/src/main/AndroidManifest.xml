@@ -294,6 +294,15 @@
                 <action android:name="com.gathin.tvhome.action.UPDATE" />
             </intent-filter>
         </receiver>
+        <!-- The ad-break screen brought up over anything for checking, asked for over ADB only (AdBreak). -->
+        <receiver
+            android:name=".AdBreakReceiver"
+            android:exported="true"
+            android:permission="android.permission.WRITE_SECURE_SETTINGS">
+            <intent-filter>
+                <action android:name="com.gathin.tvhome.action.ADBREAK" />
+            </intent-filter>
+        </receiver>
         <!-- Android's installer's word on the launcher's own update. -->
         <receiver
             android:name=".UpdateStatus"

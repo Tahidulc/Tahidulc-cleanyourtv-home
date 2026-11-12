@@ -288,6 +288,16 @@ final class LogoShape {
             return yes;
         }
 
+        /**
+         * How much of the logo learned is on a fresh picture of the place now (0 to 1; -1 when no logo is learned or too
+         * little of it is solid to tell): the ad-break screen's word on whether the channel's own logo is up.
+         */
+        float presence(int[] px) {
+            Model m = model;
+            if (px == null || px.length != w * h || m == null || m.state != Model.SEEN) return -1f;
+            return LogoShape.presence(px, m);
+        }
+
         private Fill fill(int[] px, Model m) {
             int[] r = m.bounds;
             // With a pixel of the picture round it: all that filling it in needs.
@@ -428,6 +438,29 @@ final class LogoShape {
     private static final int MAGIC = 0x4C534832;
 
     /** Pure: how different two pictures are, the mean difference of their channels (every fourth pixel). */
+    /** Off by at most this much (each colour, 0 to 255) a solid stroke is still the logo's. */
+    static final int PRESENT_NEAR = 40;
+
+    /**
+     * Pure: the share of the logo's solid strokes (letting through less than LO) that are their own colour on a picture
+     * (a solid stroke shows its own light whatever is under it): near 1 with the logo up, near 0 without (an advert
+     * under nothing). -1 when fewer than FEW of its pixels are solid.
+     */
+    static float presence(int[] px, Model m) {
+        int solid = 0, own = 0;
+        for (int i = 0; i < m.logo.length && i < px.length; i++) {
+            if (!m.logo[i] || m.t[i] >= LO) continue;
+            solid++;
+            int p = px[i];
+            float r = (p >> 16) & 0xFF, g = (p >> 8) & 0xFF, b = p & 0xFF;
+            // What it would be: what lets through times the picture under it, plus its own light.
+            float k = m.t[i];
+            if (Math.abs(r - m.add[0][i]) <= PRESENT_NEAR + 255 * k && Math.abs(g - m.add[1][i]) <= PRESENT_NEAR + 255 * k
+                    && Math.abs(b - m.add[2][i]) <= PRESENT_NEAR + 255 * k) own++;
+        }
+        return solid < FEW ? -1f : own / (float) solid;
+    }
+
     static int meanDiff(int[] a, int[] b) {
         if (a == null || b == null || a.length != b.length) return 255;
         long s = 0;

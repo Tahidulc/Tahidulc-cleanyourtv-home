@@ -310,6 +310,35 @@ public class GoalWatchService extends Service {
      * A competition's logo for the score card's navy band: the white version (the Premier League's lion in white,
      * ESPN's logos for dark grounds), so it shows on the navy; the logo as it is when there is no such version.
      */
+    /** A game's competition mark for a navy band (the Premier League's lion alone, in white), px high; null without one. */
+    static android.graphics.Bitmap bandMark(Context c, ScoresTicker.Game g, int px) {
+        String url = g == null ? null : g.leagueLogo != null ? g.leagueLogo : leagueLogoFor(g);
+        return url == null ? null : bandLogo(c, url, px);
+    }
+
+    /** Where a game is on, as the cards say it (watchFor: {names, logo, watch}), from the running service; null otherwise. */
+    static Object[] watchOn(ScoresTicker.Game g) {
+        GoalWatchService s = self;
+        try {
+            return s == null || g == null ? null : s.watchFor(g);
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
+    /** The line-up card's data for a game whose line-ups are out (the ad-break screen), off the main thread; null without. */
+    static LineupCard.Data breakLineups(ScoresTicker.Game g) {
+        GoalWatchService s = self;
+        if (s == null || g == null) return null;
+        try {
+            ScoresTicker.Side[] sides = ScoresTicker.lineups(g);
+            if (sides == null || sides.length < 2 || sides[0].players.isEmpty() || sides[1].players.isEmpty()) return null;
+            return s.lineupCard(g, sides, null, null);
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
     private static android.graphics.Bitmap bandLogo(Context c, String url, int px) {
         if (url == null) return null;
         if (premier(url)) {
@@ -2126,6 +2155,7 @@ public class GoalWatchService extends Service {
                 BoardCover.read(this, games);
                 // A match or F1 being watched with its overlays off: the button that turns them on (OK held).
                 OverlayPrompt.check(this, games, live);
+                AdBreak.games(this, games);
                 for (ScoresTicker.Game g : games) {
                     live |= g.state == 0;
                     if (playerOnly.contains(g.id)) {

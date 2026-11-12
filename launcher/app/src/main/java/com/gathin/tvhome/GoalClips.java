@@ -24,6 +24,11 @@ import java.util.regex.Pattern;
  */
 final class GoalClips {
     private static final long EVERY_MS = 40_000L, FOR_MS = 12 * 60_000L;
+    /** Whether a clip's headline is a goal's. */
+    static boolean goalish(String headline) {
+        return headline != null && GOALISH.matcher(headline).matches();
+    }
+
     private static final Pattern GOALISH = Pattern.compile("(?i).*(scores|goal|back of the net|scoresheet|strike|finish|header|"
             + "equali[sz]|penalty|brace|hat-trick|doubles|makes it|finds the net|on target|nets|fires|curls|slots|volley).*");
 
