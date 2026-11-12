@@ -2275,6 +2275,15 @@ final class BoardCover {
         sightChanged();
     }
 
+    private static String seeSaid = "";
+
+    /** What see-through is doing, to the system log (only when it changes): read over ADB when it does not behave. */
+    private static void seeLog(String what) {
+        if (what.equals(seeSaid)) return;
+        seeSaid = what;
+        android.util.Log.i("SeeThrough", what);
+    }
+
     /** No fill under the cover: it stands on its plate. */
     private static void unfill() {
         if (fill != null) fill.clear();
@@ -2296,6 +2305,8 @@ final class BoardCover {
             return;
         }
         if (!ScreenShots.available() || !ScreenShots.windowOnly()) {
+            seeLog("no pictures of TiviMate's window alone: available " + ScreenShots.available() + ", window alone "
+                    + ScreenShots.windowOnly() + ", " + ScreenShots.state());
             // No pictures without the cover in them here: it stands on its plate.
             unfill();
             patchLoop = false;
@@ -2339,6 +2350,7 @@ final class BoardCover {
         boolean asked = ScreenShots.take(new RectF[]{part}, new int[][]{{at.w, at.h}}, (parts, when, own) -> {
             Bitmap got = parts[0];
             // Only TiviMate's window: a picture of the whole screen has the cover itself in it.
+            if (got == null || !own) seeLog(got == null ? "no picture came back (" + ScreenShots.state() + ")" : "a picture of the whole screen, not TiviMate's window");
             if (got == null || !own || here != at || mark == null) {
                 if (got != null) got.recycle();
                 main().postDelayed(patchRun, 100L);
@@ -2372,6 +2384,9 @@ final class BoardCover {
                             mark.filled(true);
                         }
                         onTheLogo(c, at.logoBox(), bx, by, bw, bh);
+                        int[] lb = at.logoBox();
+                        seeLog(at.known() ? "logo taken out" + (lb == null ? "" : " at " + java.util.Arrays.toString(lb))
+                                : at.block() ? "a solid block, on the plate" : "learning " + at.learnt() + " of " + LogoShape.ENOUGH);
                     }
                     main().postDelayed(patchRun, 30L);
                 });

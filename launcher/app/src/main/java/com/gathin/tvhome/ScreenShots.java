@@ -64,6 +64,13 @@ final class ScreenShots {
         return Build.VERSION.SDK_INT >= 30 && s != null && !refused;
     }
 
+    /** Its state in a few words, for the log: black window pictures running, refused, the gap. */
+    static String state() {
+        return "black windows " + blackWindows + ", refused " + refused + ", gap " + gap + " ms, last failure " + lastFailure;
+    }
+
+    private static int lastFailure;
+
     /** How far apart pictures can be taken, in ms. */
     static long gap() {
         return gap;
@@ -122,6 +129,7 @@ final class ScreenShots {
 
             @Override public void onFailure(int code) {
                 MAIN.post(() -> {
+                    lastFailure = code;
                     busy = false;
                     if (code == AccessibilityService.ERROR_TAKE_SCREENSHOT_INTERVAL_TIME_SHORT) {
                         gap = Math.min(1_100L, gap + 250L);
