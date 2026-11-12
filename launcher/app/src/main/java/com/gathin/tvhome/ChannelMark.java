@@ -540,6 +540,8 @@ final class ChannelMark {
 
     /** Event's grounds: its own plate, glass laid under it by the cover (no plate drawn, the marks as on one), or none. */
     static final int GROUND_PLATE = 0, GROUND_GLASS = 1, GROUND_NONE = 2;
+    /** How much narrower or wider Event's lettering may be drawn to fill its box (past that, the row spreads instead). */
+    static final float MOST_NARROW = 0.7f, MOST_WIDE = 1.4f;
 
     /** Event on the ground given: on its plate or on glass the marks as on a plate; on none, each with a soft shadow. */
     void event(Canvas cv, float x, float y, float w, float h, String sub, String tag, boolean white, int ground) {
@@ -568,10 +570,23 @@ final class ChannelMark {
         // The channel's name smaller to keep to the row's width, down to three fifths; past that its box is wider.
         float k = lower ? Math.max(0.6f, Math.min(1f, (rowW - 2 * (edge + side) - tagGap - tw) / Math.max(1f, subW))) : 1f;
         float allW = Math.max(rowW, 2 * (edge + side) + subW * k + tagGap + tw), allH = rowH + (lower ? 10f + subH : 0f);
-        float pad = Math.min(w, h) * (plate ? 0.12f : 0.03f);
-        float u = Math.min((w - 2 * pad) / allW, (h - 2 * pad) / allH);
+        // It fills its box whatever size it is set to: a narrow margin, the design as tall as the box, and as wide too, its
+        // lettering drawn narrower or wider to fit (as far as it reads well); past that a wider box spreads the row
+        // ("sports" at the right edge, the channel's box across the whole width) and a narrower one keeps it whole.
+        float pad = Math.min(w, h) * (plate ? 0.07f : 0.03f), aw = w - 2 * pad, ah = h - 2 * pad;
+        if (aw <= 0f || ah <= 0f) return;
+        float u = ah / allH, sx = aw / (allW * u), spread = 0f;
+        if (sx > MOST_WIDE) {
+            spread = aw / (u * MOST_WIDE) - allW;
+            sx = MOST_WIDE;
+        } else if (sx < MOST_NARROW) {
+            u = aw / (allW * MOST_NARROW);
+            sx = MOST_NARROW;
+        }
         if (u <= 0f) return;
-        float ox = x + (w - allW * u) / 2f, oy = y + (h - allH * u) / 2f;
+        float ox = x + pad, oy = y + (h - allH * u) / 2f, fullW = allW + spread;
+        int saved = cv.save();
+        cv.scale(sx, 1f, ox, 0f);
         // Alone over the picture: a soft shadow under the marks (a soft light under navy), so they read on any picture.
         int shade = white ? 0x8C000000 : 0x99FFFFFF;
         float blur = Math.max(1f, (white ? 6f : 7f) * u), drop = white ? 1.5f * u : 0f;
@@ -594,11 +609,20 @@ final class ChannelMark {
         words(cv, "whitebrook", heavy, 62f * u, nsp, 0, fall, ox, b1, Paint.Align.LEFT);
         words(cv, "road", heavy, 62f * u, nsp, 0, fall, ox, b2, Paint.Align.LEFT);
         if (!plate) text.setShadowLayer(blur, 0, drop, shade);
-        if (sports) redBox(cv, ox + (nameW + 16f) * u, oy, boxW * u, boxH * u, u, plate, shade, blur, drop);
+        // "sports" at the right, over the right side of the channel's box.
+        if (sports) redBox(cv, ox + (fullW - boxW) * u, oy, boxW * u, boxH * u, u, plate, shade, blur, drop);
+        float top = oy + (rowH + 10f) * u, lineTop = top + 24f * u, lh = 92f * 1.05f * u;
+        // The channel's name from the left, in the middle of the line it sits on.
+        if (lower) {
+            words(cv, on, medium, 92f * k * u, -1f / 92f, ink, null, ox + (edge + side) * u, baseIn(medium, 92f * k * u, lineTop, lh),
+                    Paint.Align.LEFT);
+        }
+        // The box's lines and the tag drawn as they are, not drawn wider: the same weight all round.
+        cv.restoreToCount(saved);
         if (lower) {
             // The box open at its top: its sides and its foot, the foot's corners round.
-            float top = oy + (rowH + 10f) * u, e = edge * u, half = e / 2f, rr = 10f * u - half;
-            float l = ox + half, rt = ox + allW * u - half, b = top + subH * u - half;
+            float e = edge * u, half = e / 2f, rr = 10f * u - half;
+            float l = ox + half, rt = ox + fullW * u * sx - half, b = top + subH * u - half;
             path.reset();
             path.moveTo(l, top);
             path.lineTo(l, b - rr);
@@ -614,11 +638,8 @@ final class ChannelMark {
             line.setStrokeCap(Paint.Cap.BUTT);
             cv.drawPath(path, line);
             line.setStrokeCap(Paint.Cap.ROUND);
-            // The channel's name from the left, and the tag at the right, in the middle of the line it sits on.
-            float lineTop = top + 24f * u, lh = 92f * 1.05f * u;
-            words(cv, on, medium, 92f * k * u, -1f / 92f, ink, null, ox + (edge + side) * u, baseIn(medium, 92f * k * u, lineTop, lh),
-                    Paint.Align.LEFT);
-            if (tw > 0) eventTag(cv, ox + (allW - edge - side) * u, lineTop + lh / 2f, th * u, ink);
+            // The tag at the right, in the middle of the channel's name's line.
+            if (tw > 0) eventTag(cv, ox + (fullW - edge - side) * u * sx, lineTop + lh / 2f, th * u, ink);
         }
         text.clearShadowLayer();
         line.clearShadowLayer();
