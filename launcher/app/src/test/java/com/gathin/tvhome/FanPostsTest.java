@@ -23,6 +23,25 @@ public class FanPostsTest {
         assertFalse(FanFilter.blocked("Same eleven as Saturday please, the midfield finally clicked"));
     }
 
+    @Test public void bettingAndTippingAreKeptOff() {
+        // The kind of post seen on the Streamer on 12 Nov (made up here): a model's verdict, odds, an acca.
+        assertTrue(FanFilter.betting("Model and market are close here. Model verdict: home win, confidence 84%"));
+        assertTrue(FanFilter.betting("Get on at 5/2 odds before kick-off"));
+        assertTrue(FanFilter.betting("My acca for today: four home wins and BTTS"));
+        assertFalse(FanFilter.ok("Best odds for the derby are in, free bets for new customers"));
+        assertTrue(FanFilter.bettingName("TheBoxPredict"));
+        assertTrue(FanFilter.bettingName("acca_tips"));
+        assertTrue(FanFilter.bettingName("BetNorthFootball"));
+        // Ordinary football talk stays.
+        assertFalse(FanFilter.betting("So much at stake tonight, the transfer market will be watching"));
+        assertFalse(FanFilter.betting("My prediction: 2-1 to us, Kane to score"));
+        assertFalse(FanFilter.betting("Better than last time, they have been better at home"));
+        assertFalse(FanFilter.bettingName("Goodison Lou"));
+        assertFalse(FanFilter.bettingName("stretford_sam"));
+        assertFalse(FanFilter.bettingName("Elizabeth Alphabet"));
+        assertTrue(FanFilter.bettingName("theboxpredict.bsky.social"));
+    }
+
     @Test public void onlyEnglishWordsGetThrough() {
         assertTrue(FanFilter.ok("Same eleven as Saturday please, the midfield finally clicked"));
         assertFalse(FanFilter.ok("Vamos equipo, hoy ganamos seguro con el once titular"));

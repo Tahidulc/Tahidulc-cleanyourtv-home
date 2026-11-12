@@ -36,6 +36,7 @@ import android.widget.TextView;
 import org.json.JSONObject;
 
 import java.util.ArrayList;
+import java.util.Calendar;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -311,6 +312,11 @@ final class AdBreak {
         String[] clip;
         Bitmap clipStill;
         List<Object[]> alsoNow = new ArrayList<>();
+        /** Today's F1 sessions still to come: {"HH:mm", the session, the Grand Prix}; and F1's logo for them. */
+        List<String[]> f1Later = new ArrayList<>();
+        Bitmap f1Logo;
+        /** Players you follow (Players) whose club plays today: {name, club id, opponent id, when, the club's name}. */
+        List<String[]> mine = new ArrayList<>();
         LineupCard.Data lineups;
         long at;
     }
@@ -391,10 +397,46 @@ final class AdBreak {
                 if (!h.isEmpty() && FanFilter.ok(h)) p.headlines.add(FanFilter.clip(h, 70));
             }
         }
+        // Today's F1 sessions still to come, for later today (the race calendar the TV already keeps).
+        try {
+            java.time.ZoneId zone = java.time.ZoneId.systemDefault();
+            java.time.LocalDate today = java.time.LocalDate.now(zone);
+            java.time.Instant now = java.time.Instant.now();
+            java.time.format.DateTimeFormatter hm = java.time.format.DateTimeFormatter.ofPattern("HH:mm");
+            for (RaceWeekend.Race race : Config.load(c).raceCalendar) {
+                for (RaceWeekend.Session s : race.sessions) {
+                    if (!s.start.isAfter(now) || !s.start.atZone(zone).toLocalDate().equals(today)) continue;
+                    p.f1Later.add(new String[]{s.start.atZone(zone).format(hm), s.title(c.getResources()), race.name});
+                }
+            }
+            if (!p.f1Later.isEmpty()) p.f1Logo = ScoresTicker.cachedLogo(c, F1Results.F1_LOGO, crestPx);
+            if (p.f1Logo != null) p.crests.put("f1", p.f1Logo);
+        } catch (RuntimeException ignored) {
+            // no F1 today, then
+        }
+        // Players you follow whose club plays today (on now or still to come), with their photos.
+        Calendar day = Calendar.getInstance();
+        for (Players.Followed f : Players.list(c)) {
+            if (f.teamId == null || f.teamId.isEmpty() || p.mine.size() >= 3) continue;
+            for (ScoresTicker.Game x : latest) {
+                if (x == null || x.state == 2 || !(f.teamId.equals(x.homeId) || f.teamId.equals(x.awayId))) continue;
+                Calendar k = Calendar.getInstance();
+                k.setTimeInMillis(x.kickoff);
+                if (k.get(Calendar.DAY_OF_YEAR) != day.get(Calendar.DAY_OF_YEAR) || k.get(Calendar.YEAR) != day.get(Calendar.YEAR)) continue;
+                boolean home = f.teamId.equals(x.homeId);
+                String when = x.state == 0 ? "on now" : new java.text.SimpleDateFormat("HH:mm", Locale.UK).format(new java.util.Date(x.kickoff));
+                if (x.id != null && x.id.equals(g.id)) when = "in this game";
+                p.mine.add(new String[]{f.name, f.teamId, home ? x.awayId : x.homeId, when, f.team});
+                Bitmap face = PlayerPhotos.find(c, f.name, f.team, facePx);
+                if (face != null) p.faces.put(f.name, face);
+                break;
+            }
+        }
         // Every crest a widget names.
         List<String> ids = new ArrayList<>();
         for (AdBreakLogic.Row r : p.table) ids.add(r.id);
         for (List<String[]> l : java.util.Arrays.asList(p.homeNext, p.awayNext)) for (String[] n : l) ids.add(n[0]);
+        for (String[] m : p.mine) { ids.add(m[1]); ids.add(m[2]); }
         if (g.homeId != null) ids.add(g.homeId);
         if (g.awayId != null) ids.add(g.awayId);
         for (String id : ids) {
@@ -629,7 +671,7 @@ final class AdBreak {
         strip.animate().translationY(0).setDuration(420).setInterpolator(new DecelerateInterpolator(2f)).start();
         // The posts' column, above the strip on the left.
         postsBox = new FrameLayout(c);
-        add(c, postsBox, params(px(705), px(430), Gravity.BOTTOM | Gravity.START, px(60), stripH + px(27)));
+        add(c, postsBox, params(px(705), POSTS_H_PX(), Gravity.BOTTOM | Gravity.START, px(60), stripH + px(27)));
         inside = false;
         picked = 0;
         tick.run();
@@ -768,11 +810,18 @@ final class AdBreak {
         postsBox.addView(card, fl);
         card.measure(View.MeasureSpec.makeMeasureSpec(px(705), View.MeasureSpec.EXACTLY), View.MeasureSpec.UNSPECIFIED);
         int hgt = card.getMeasuredHeight() + px(15);
+        card.setTag(hgt);
         int count = postsBox.getChildCount();
-        for (int i = 0; i < count - 1; i++) {
+        // From the newest up: each older post moves up by the new one's height; one that would no longer fit in the
+        // column (three long posts can be taller than it) goes now, with any older, rather than being cut off at the top.
+        int used = hgt - px(15);
+        boolean full = false;
+        for (int i = count - 2; i >= 0; i--) {
             View v = postsBox.getChildAt(i);
             int age = count - 1 - i;
-            if (age >= POSTS_SHOWN) {
+            used += v.getTag() instanceof Integer ? (Integer) v.getTag() : hgt;
+            if (used > POSTS_H_PX()) full = true;
+            if (age >= POSTS_SHOWN || full) {
                 v.animate().alpha(0f).translationYBy(-hgt).setDuration(300).withEndAction(() -> postsBox_remove(v)).start();
             } else {
                 v.animate().translationYBy(-hgt).alpha(age == 1 ? 0.8f : 0.6f).setDuration(380).setInterpolator(new DecelerateInterpolator(2f)).start();
@@ -781,6 +830,11 @@ final class AdBreak {
         card.setAlpha(0f);
         card.setTranslationX(-px(40));
         card.animate().alpha(1f).translationX(0).setDuration(420).setInterpolator(new DecelerateInterpolator(2f)).start();
+    }
+
+    /** The posts' column's height: room for three short posts, or two long ones. */
+    private static int POSTS_H_PX() {
+        return px(430);
     }
 
     private static void postsBox_remove(View v) {

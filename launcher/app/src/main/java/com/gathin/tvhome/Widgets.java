@@ -461,13 +461,25 @@ final class Widgets {
                 return l;
             }, null, null, null));
         }
-        if (!later.isEmpty()) {
+        if (!later.isEmpty() || !p.f1Later.isEmpty()) {
+            // The games and today's F1 sessions together, in time order, three at most.
+            List<Object[]> rows = new ArrayList<>();
+            for (ScoresTicker.Game x : later) rows.add(new Object[]{new java.text.SimpleDateFormat("HH:mm", Locale.UK).format(new java.util.Date(x.kickoff)), x});
+            for (String[] f : p.f1Later) rows.add(new Object[]{f[0], f});
+            rows.sort((x, y) -> String.valueOf(x[0]).compareTo(String.valueOf(y[0])));
+            while (rows.size() > 3) rows.remove(rows.size() - 1);
             b.add(new AdBreak.Widget(mark, "LATER\nTODAY", c -> {
                 List<View> l = new ArrayList<>();
-                for (ScoresTicker.Game x : later) {
-                    String when = new java.text.SimpleDateFormat("HH:mm", Locale.UK).format(new java.util.Date(x.kickoff));
-                    l.add(row(c, 7, sized(t(c, when, 18, INK, true), 60, 24), crest(c, p, x.homeId, 21), t(c, AdBreak.name(x, true), 16.5f, INK, true),
-                            t(c, "v", 15, MUTE, false), t(c, AdBreak.name(x, false), 16.5f, INK, true), crest(c, p, x.awayId, 21)));
+                for (Object[] r : rows) {
+                    View when = sized(t(c, (String) r[0], 18, INK, true), 60, 24);
+                    if (r[1] instanceof ScoresTicker.Game) {
+                        ScoresTicker.Game x = (ScoresTicker.Game) r[1];
+                        l.add(row(c, 7, when, crest(c, p, x.homeId, 21), t(c, AdBreak.name(x, true), 16.5f, INK, true),
+                                t(c, "v", 15, MUTE, false), t(c, AdBreak.name(x, false), 16.5f, INK, true), crest(c, p, x.awayId, 21)));
+                    } else {
+                        String[] f = (String[]) r[1];
+                        l.add(row(c, 7, when, crest(c, p, "f1", 21), t(c, f[1], 16.5f, INK, true), t(c, f[2], 15, MUTE, false)));
+                    }
                 }
                 return l;
             }, null, null, null));
@@ -506,6 +518,19 @@ final class Widgets {
             if (MatchMode.isGame(ctx, g.id)) MatchMode.stop(ctx); else MatchMode.start(ctx, g);
             mode[0] = MatchMode.isGame(ctx, g.id);
         }, null, null));
+        if (!p.mine.isEmpty()) {
+            // The players you follow whose clubs play today: their photo, club, when and against whom.
+            h.add(new AdBreak.Widget(null, "YOUR\nPLAYERS", c -> {
+                List<View> l = new ArrayList<>();
+                for (String[] m : p.mine) {
+                    l.add(row(c, 9, ringed(c, p.faces.get(m[0]), AdBreak.initials(m[0]), INK, px(40)), crest(c, p, m[1], 21),
+                            t(c, Players.surname(m[0]), 17, INK, true), t(c, "· " + m[3], 15, MUTE, false),
+                            t(c, "v", 14, MUTE, false), crest(c, p, m[2], 21)));
+                }
+                l.add(foot(c, "Players you follow, playing today"));
+                return l;
+            }, null, null, null));
+        }
         if (!p.headlines.isEmpty()) {
             h.add(new AdBreak.Widget(null, "HEAD-\nLINES", c -> {
                 List<View> l = new ArrayList<>();

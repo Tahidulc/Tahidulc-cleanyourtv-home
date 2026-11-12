@@ -117,6 +117,7 @@ final class FanPosts {
                 String name = FanFilter.clean(author.optString("displayName"));
                 if (name.isEmpty() || FanFilter.blocked(name) || FanFilter.blocked(handle)) name = handle;
                 if (FanFilter.blocked(name) || FanFilter.blocked(handle)) continue;
+                if (FanFilter.bettingName(name) || FanFilter.bettingName(handle)) continue;
                 long at = AdBreakLogic.time(trimMillis(record.optString("createdAt")));
                 out.add(new Post(BLUESKY, name, "@" + handle, author.optString("avatar", null), FanFilter.clip(text, FanFilter.MAX), at,
                         p.optString("uri", handle + at)));
@@ -193,7 +194,7 @@ final class FanPosts {
             String text = FanFilter.clean(raw.replaceAll("(?s)<table.*?</table>", " ").replaceAll("submitted by .*$", " "));
             text = text.replaceAll("\\[link\\]|\\[comments\\]|submitted by\\s+/u/\\S+", " ").replaceAll("\\s+", " ").trim();
             if (titles || text.length() < 12) text = FanFilter.clean(FanFilter.entities(group(TITLE, body)));
-            if (!FanFilter.ok(text) || FanFilter.blocked(who)) continue;
+            if (!FanFilter.ok(text) || FanFilter.blocked(who) || FanFilter.bettingName(who)) continue;
             long at = AdBreakLogic.time(group(UPDATED, body).replaceAll("\\+00:00$", "Z"));
             out.add(new Post(REDDIT, who, "u/" + who, null, FanFilter.clip(text, FanFilter.MAX), at, group(ID, body)));
         }

@@ -78,7 +78,40 @@ final class FanFilter {
         int letters = 0;
         for (int i = 0; i < t.length(); i++) if (Character.isLetter(t.charAt(i))) letters++;
         if (letters < 8) return false;
-        return english(t) && !blocked(t);
+        return english(t) && !blocked(t) && !betting(t);
+    }
+
+    /**
+     * Betting and tipping: odds, tips, prediction models and the like, in a post's words or in who posted it (a name or
+     * handle such as "BoxPredict" or "acca_tips"). Not for a family TV, and not what fans are saying.
+     */
+    private static final Pattern BETTING = Pattern.compile(
+            "\\b(bet|bets|betting|bettor|wager|wagers|odds|bookie|bookies|bookmakers?|acca|accas|accumulator|tipster|tipsters|"
+                    + "parlay|parlays|punters|each-way|over/under|btts|value bet|free bets?|sportsbook|"
+                    + "model verdict|our model|model and market|confidence:? \\d+ ?%|\\d+/\\d+ (?:shot|odds))\\b",
+            Pattern.CASE_INSENSITIVE);
+    /** Betting words as whole words of a name ("Bet North", "acca_tips", "TheBoxPredict" read as "the box predict"). */
+    private static final java.util.Set<String> BETTING_WORDS = new java.util.HashSet<>(java.util.Arrays.asList(
+            "bet", "bets", "betting", "odds", "tips", "tipster", "tipsters", "predict", "predicts", "predictor", "prediction",
+            "predictions", "punter", "punters", "acca", "accas", "wager", "wagers", "bookie", "bookies", "picks"));
+    /** And inside one word of a handle written all together ("theboxpredict"): only those never part of an ordinary name. */
+    private static final String[] BETTING_INSIDE = {"predict", "tipster", "betting", "punter", "bookie"};
+
+    /** Whether the words are about betting or tipping (see BETTING). */
+    static boolean betting(String text) {
+        return text != null && BETTING.matcher(text).find();
+    }
+
+    /** Whether a poster's name or handle is a betting or tipping account's (see BETTING_NAME). */
+    static boolean bettingName(String nameOrHandle) {
+        if (nameOrHandle == null) return false;
+        // Words split at spaces, dots, underscores, digits and where a capital follows a small letter.
+        String split = nameOrHandle.replaceAll("([a-z])([A-Z])", "$1 $2").replaceAll("[^A-Za-z]+", " ").toLowerCase(java.util.Locale.ROOT).trim();
+        for (String w : split.split(" ")) {
+            if (BETTING_WORDS.contains(w)) return true;
+            for (String in : BETTING_INSIDE) if (w.contains(in)) return true;
+        }
+        return false;
     }
 
     /** Whether any blocked word is in it, read with look-alikes (0 1 3 4 5 7 @ $ !) as letters and repeats squeezed. */
