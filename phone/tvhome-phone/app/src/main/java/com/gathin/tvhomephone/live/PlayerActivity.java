@@ -251,6 +251,8 @@ public class PlayerActivity extends AppCompatActivity {
                 // Moving the scoreboard first (Back keeps where it was put), then the match centre, then the touch
                 // lock holds, then out.
                 if (extras.endAdjust()) return;
+                // A card picked on the ad-break screen: let go first.
+                if (extras.adBreakBack()) return;
                 // The line-ups out beside the scoreboard: Back closes them, the channel playing on.
                 if (extras.closeLineups()) return;
                 if (extras.matchShown()) extras.closeMatch();
@@ -265,6 +267,12 @@ public class PlayerActivity extends AppCompatActivity {
         SharedPreferences p = prefs();
         style = TileKind.Style.of(p.getString("tile_style", TileKind.Style.AUTO.name()));
         if (!p.getBoolean("hint_seen", false)) h.postDelayed(this::showHint, 700);
+    }
+
+    /** The ad-break screen's cards take the remote's arrows once Down has gone into them. */
+    @Override public boolean dispatchKeyEvent(android.view.KeyEvent e) {
+        if (extras != null && extras.adBreakKey(e)) return true;
+        return super.dispatchKeyEvent(e);
     }
 
     private SharedPreferences prefs() {
@@ -524,6 +532,33 @@ public class PlayerActivity extends AppCompatActivity {
     }
 
     /** The channel's game: the tile's; else, on Automatic, the match the player found on the channel itself. */
+    /** The channel's game within the hour before kick-off (the ad-break screen), looked for on its own; null when none. */
+    private Game soon;
+    private String soonKey;
+    private long soonLooked;
+    private boolean soonFinding;
+
+    private Game gameSoon() {
+        long now = System.currentTimeMillis();
+        Game g = channelGame();
+        if (AdBreak.soon(g, now)) return g;
+        if (cur == null) return null;
+        if (cur.key.equals(soonKey) && AdBreak.soon(soon, now)) return soon;
+        if (soonFinding || (cur.key.equals(soonKey) && now - soonLooked < OverMatches.LOOK_MS)) return null;
+        Channel ch = cur;
+        List<OverMatches.Programme> guide = OverMatches.guide(lib.schedule(ch.key), now, AdBreak.BEFORE_MS);
+        if (!OverMatches.worthLooking(ch.name, ch.group, guide, com.gathin.tvhomephone.sports.Channels.british())) return null;
+        soonKey = ch.key;
+        soonLooked = now;
+        soon = null;
+        soonFinding = true;
+        OverMatches.find(ch, guide, AdBreak.BEFORE_MS, found -> {
+            soonFinding = false;
+            if (cur != null && cur.key.equals(ch.key)) soon = found;
+        });
+        return null;
+    }
+
     private Game channelGame() {
         if (info != null && info.game != null) return info.game;
         return found != null && OverMatches.AUTO.equals(OverMatches.mode(this)) ? found : null;
@@ -1787,6 +1822,8 @@ public class PlayerActivity extends AppCompatActivity {
             @Override public void hideControls() {
                 hideOverlay();
             }
+
+            @Override public com.gathin.tvhomephone.sports.Game soonGame() { return gameSoon(); }
         }));
         ViewCompat.setOnApplyWindowInsetsListener(root, (v, insets) -> {
             cut = insets.getInsets(WindowInsetsCompat.Type.displayCutout());

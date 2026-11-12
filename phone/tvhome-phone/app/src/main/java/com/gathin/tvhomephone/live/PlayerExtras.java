@@ -483,6 +483,15 @@ final class PlayerExtras implements LiveAlerts.Listener {
         return overlay != null && overlay.closeLineups();
     }
 
+    /** The ad-break screen's cards: a key for them (true when taken), Back letting a picked card go. */
+    boolean adBreakKey(android.view.KeyEvent e) {
+        return overlay != null && overlay.adBreakKey(e);
+    }
+
+    boolean adBreakBack() {
+        return overlay != null && overlay.adBreakBack();
+    }
+
     boolean matchShown() {
         return match != null;
     }
@@ -721,6 +730,12 @@ final class PlayerExtras implements LiveAlerts.Listener {
             action(c, box, R.drawable.live_ic_play, a.getString(R.string.live5_broadcast_try), () -> {
                 host.closeSheet();
                 overlay.startBreak(true);
+            });
+            // The ad-break screen before kick-off: on or off, and one to see now.
+            toggle(c, box, a.getString(R.string.live58_ad_break), ScoreBoard.adBreak(c), on -> ScoreBoard.setAdBreak(c, on));
+            action(c, box, R.drawable.live_ic_play, a.getString(R.string.live58_ad_break_try), () -> {
+                host.closeSheet();
+                overlay.tryAdBreak();
             });
             toggle(c, box, a.getString(R.string.live5_burn), BurnGuard.on(c), on -> BurnGuard.setOn(c, on));
             toggle(c, box, a.getString(R.string.live4_read), ScoreBoard.reads(c), on -> {

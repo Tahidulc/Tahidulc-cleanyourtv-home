@@ -302,6 +302,15 @@ public final class ScoreBoard implements LiveAlerts.Listener {
 
     static void setBroadcast(Context c, boolean v) { prefs(c).edit().putBoolean("broadcast", v).apply(); }
 
+    /**
+     * The ad-break screen: when the channel goes to its adverts in the hour before a game kicks off (its logo gone),
+     * the build-up's widgets, the line-ups and the fans' posts over the adverts (AdBreakView), the channel playing on.
+     * On until switched off.
+     */
+    static boolean adBreak(Context c) { return prefs(c).getBoolean("ad_break", true); }
+
+    static void setAdBreak(Context c, boolean v) { prefs(c).edit().putBoolean("ad_break", v).apply(); }
+
     /** What the break can show, {key, name}: each on until switched off in Settings. */
     static final String[][] BREAK_KINDS = {{"tv", "Your TV"}, {"facts", "Fun facts"}, {"prayer", "Prayer times"}, {"quiz", "Quiz"},
             {"reminders", "Reminders"}, {"games", "Other games"}, {"news", "Headlines"}, {"trailer", "Trailers"}, {"today", "Today & weather"}};

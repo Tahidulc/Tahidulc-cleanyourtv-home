@@ -218,7 +218,7 @@ public final class Espn {
         public final List<String[]> table = new ArrayList<>();
         /** Each side's last five, oldest first: {"W"/"D"/"L", goals for, goals against, opponent, "@" or "vs", competition}. */
         public final List<String[]> homeLast = new ArrayList<>(), awayLast = new ArrayList<>();
-        /** Earlier meetings, newest first: {year, home name, home goals, away name, away goals}. */
+        /** Earlier meetings, newest first: {year, home name, home goals, away name, away goals, date, ESPN's game id, home id, away id}. */
         public final List<String[]> meetings = new ArrayList<>();
         /**
          * ESPN's leaders for each side: {"home"/"away", what ("goalsLeaders", "totalShots", "saves"...), player, value as
@@ -417,7 +417,7 @@ public final class Espn {
                 if ("away".equals(h.optString("homeAway"))) { JSONObject t = h; h = w; w = t; }
                 String date = e.optString("date");
                 s.meetings.add(new String[]{date.length() >= 4 ? date.substring(0, 4) : "", name(h), h.optString("score"), name(w),
-                        w.optString("score"), date});
+                        w.optString("score"), date, e.optString("id"), h.optString("id"), w.optString("id")});
             }
         }
         s.meetings.sort((a, b) -> b[5].compareTo(a[5]));
@@ -704,6 +704,97 @@ public final class Espn {
             // none this time
         }
         return out;
+    }
+
+    // ---- a club's games in one competition ------------------------------------------------------------------------
+
+    /** Indexes into a schedule row: {game id, date (ISO), home id, home name, home goals, away id, away name, away goals, "pre"/"in"/"post"}. */
+    public static final int S_ID = 0, S_DATE = 1, S_HOME = 2, S_HOME_NAME = 3, S_HOME_GOALS = 4, S_AWAY = 5, S_AWAY_NAME = 6,
+            S_AWAY_GOALS = 7, S_STATE = 8;
+
+    /**
+     * A club's games in this competition only (ESPN's team schedule for the league), oldest first; fixtures: the ones
+     * still to come instead of the ones played. Empty when ESPN gives none.
+     */
+    public static List<String[]> schedule(String slug, String teamId, boolean fixtures) {
+        try {
+            String url = SITE + slug + "/teams/" + teamId + "/schedule" + (fixtures ? "?fixture=true" : "");
+            return schedule(new JSONObject(cached(url, 15 * 60_000L)));
+        } catch (Exception ignored) {
+            return new ArrayList<>();
+        }
+    }
+
+    /** Pure: the rows of ESPN's team schedule, oldest first. */
+    static List<String[]> schedule(JSONObject root) {
+        List<String[]> out = new ArrayList<>();
+        JSONArray events = root.optJSONArray("events");
+        for (int i = 0; events != null && i < events.length(); i++) {
+            JSONObject e = events.optJSONObject(i);
+            JSONArray comps = e == null ? null : e.optJSONArray("competitions");
+            JSONObject c = comps != null && comps.length() > 0 ? comps.optJSONObject(0) : null;
+            JSONArray cs = c == null ? null : c.optJSONArray("competitors");
+            if (cs == null || cs.length() != 2) continue;
+            JSONObject h = cs.optJSONObject(0), w = cs.optJSONObject(1);
+            if (h == null || w == null) continue;
+            if ("away".equals(h.optString("homeAway"))) { JSONObject t = h; h = w; w = t; }
+            JSONObject status = c.optJSONObject("status");
+            JSONObject type = status == null ? null : status.optJSONObject("type");
+            String state = type == null ? "" : type.optString("state");
+            out.add(new String[]{e.optString("id"), e.optString("date"), teamId(h), teamName(h), goals(h), teamId(w), teamName(w), goals(w), state});
+        }
+        out.sort((a, b) -> a[S_DATE].compareTo(b[S_DATE]));
+        return out;
+    }
+
+    private static String teamId(JSONObject competitor) {
+        JSONObject t = competitor.optJSONObject("team");
+        return t == null ? competitor.optString("id") : t.optString("id", competitor.optString("id"));
+    }
+
+    private static String teamName(JSONObject competitor) {
+        JSONObject t = competitor.optJSONObject("team");
+        return t == null ? "" : t.optString("shortDisplayName", t.optString("displayName", ""));
+    }
+
+    /** A competitor's goals: ESPN gives the score as a number, a string or {value, displayValue}. */
+    private static String goals(JSONObject competitor) {
+        Object sc = competitor.opt("score");
+        if (sc instanceof JSONObject) return ((JSONObject) sc).optString("displayValue", "");
+        return sc == null ? "" : String.valueOf(sc);
+    }
+
+    // ---- a game's video -----------------------------------------------------------------------------------------
+
+    /** A game's first video as ESPN publishes it: {mp4 address, its still, its headline}; null when it has none. */
+    public static String[] video(String slug, String id) {
+        try {
+            return video(new JSONObject(cached(SITE + slug + "/summary?event=" + id, 60 * 60_000L)));
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    /** Pure: the first video in a summary that has an mp4 to play. */
+    static String[] video(JSONObject root) {
+        JSONArray vs = root.optJSONArray("videos");
+        for (int i = 0; vs != null && i < vs.length(); i++) {
+            JSONObject v = vs.optJSONObject(i);
+            JSONObject links = v == null ? null : v.optJSONObject("links");
+            JSONObject source = links == null ? null : links.optJSONObject("source");
+            if (source == null) continue;
+            String url = "";
+            for (String k : new String[]{"HD", "mezzanine", "full", "href"}) {
+                Object o = source.opt(k);
+                if (o instanceof JSONObject) url = ((JSONObject) o).optString("href", "");
+                else if (o instanceof String) url = (String) o;
+                if (url.startsWith("https://") && url.contains(".mp4")) break;
+                url = "";
+            }
+            if (url.isEmpty()) continue;
+            return new String[]{url, v.optString("thumbnail", ""), v.optString("headline", "")};
+        }
+        return null;
     }
 
     /** A club's crest by ESPN id (the TV's own URLs). */

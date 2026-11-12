@@ -71,9 +71,14 @@ public final class OverMatches {
 
     /** Pure: whether a game counts as on: live, kicking off within SOON_MS, or a late kick-off within LATE_MS. */
     static boolean onOrSoon(Game g, long now) {
+        return onOrWithin(g, now, SOON_MS);
+    }
+
+    /** Pure: as onOrSoon, kicking off within this long (the ad-break screen looks an hour ahead). */
+    static boolean onOrWithin(Game g, long now, long within) {
         if (g == null) return false;
         if (g.state == Game.LIVE) return true;
-        return g.state == Game.PRE && g.kickoff > 0 && g.kickoff - now <= SOON_MS && now - g.kickoff <= LATE_MS;
+        return g.state == Game.PRE && g.kickoff > 0 && g.kickoff - now <= within && now - g.kickoff <= LATE_MS;
     }
 
     /** A programme in the channel's guide: its title, description and times. */
@@ -91,11 +96,16 @@ public final class OverMatches {
 
     /** The programme on now, and the next one when it starts within SOON_MS (the match after its build-up). */
     static List<Programme> guide(Guide.Schedule s, long now) {
+        return guide(s, now, SOON_MS);
+    }
+
+    /** The programme on now, and the next one when it starts within this long. */
+    static List<Programme> guide(Guide.Schedule s, long now, long within) {
         List<Programme> out = new ArrayList<>();
         if (s == null) return out;
         int at = s.at(now), next = s.after(now);
         if (at >= 0) out.add(new Programme(s.title[at], s.desc[at], s.start[at], s.stop[at]));
-        if (next >= 0 && s.start[next] - now <= SOON_MS) out.add(new Programme(s.title[next], s.desc[next], s.start[next], s.stop[next]));
+        if (next >= 0 && s.start[next] - now <= within) out.add(new Programme(s.title[next], s.desc[next], s.start[next], s.stop[next]));
         return out;
     }
 
@@ -185,12 +195,17 @@ public final class OverMatches {
      * only then where each game is on (Sky's guide is read for that); done on the main thread.
      */
     static void find(Channel ch, List<Programme> guide, Found done) {
+        find(ch, guide, SOON_MS, done);
+    }
+
+    /** As find, for a game kicking off within this long. */
+    static void find(Channel ch, List<Programme> guide, long within, Found done) {
         App.io.execute(() -> {
             Game g = null;
             try {
                 long now = System.currentTimeMillis();
                 List<Game> on = new ArrayList<>();
-                for (Game x : OnAir.today(FRESH_MS)) if (onOrSoon(x, now)) on.add(x);
+                for (Game x : OnAir.today(FRESH_MS)) if (onOrWithin(x, now, within)) on.add(x);
                 Map<String, List<String>> none = Collections.emptyMap();
                 g = recognise(ch.name, guide, on, none, none, now);
                 if (g == null && !on.isEmpty()) {

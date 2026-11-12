@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 4.58: the ad-break screen before kick-off (AdBreakView). -->
+    <string name="live58_ad_break">Ad-break screen</string>
+    <string name="live58_ad_break_try">Show ad-break screen now</string>
+    <string name="live58_ad_break_line">In the hour before kick-off, when the channel goes to its adverts: the build-up\'s widgets, the line-ups and what fans are saying, over the adverts. The channel keeps playing.</string>
+    <string name="live58_ad_break_none">No game to show it for yet today</string>
+</resources>

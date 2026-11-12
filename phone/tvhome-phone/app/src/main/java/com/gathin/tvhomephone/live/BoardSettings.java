@@ -36,6 +36,8 @@ public final class BoardSettings {
         row(c, col, c.getString(R.string.live4_read), ScoreBoard.reads(c), on -> ScoreBoard.setReads(c, on));
         row(c, col, c.getString(R.string.live5_broadcast), ScoreBoard.broadcast(c), on -> ScoreBoard.setBroadcast(c, on));
         col.addView(com.gathin.tvhomephone.sports.Ui.text(c, c.getString(R.string.live5_broadcast_line), 13, c.getColor(R.color.text_dim), false));
+        row(c, col, c.getString(R.string.live58_ad_break), ScoreBoard.adBreak(c), on -> ScoreBoard.setAdBreak(c, on));
+        col.addView(com.gathin.tvhomephone.sports.Ui.text(c, c.getString(R.string.live58_ad_break_line), 13, c.getColor(R.color.text_dim), false));
         // What the break shows: a chip each, on until tapped off.
         col.addView(sub(c, c.getString(R.string.live5_break_shows)));
         android.widget.HorizontalScrollView kinds = new android.widget.HorizontalScrollView(c);

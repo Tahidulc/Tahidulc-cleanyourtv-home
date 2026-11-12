@@ -48,6 +48,9 @@ final class ScoreOverlay implements ScoreBoard.Source {
 
         /** Move and resize is opening: the player's own tile and buttons out of the way. */
         default void hideControls() {}
+
+        /** The channel's game when it kicks off within the hour (for the ad-break screen), else null; looked up as needed. */
+        default Game soonGame() { return game(); }
     }
 
     /** Whether the player's scoreboard is up (the one over other apps keeps out of its way). */
@@ -99,6 +102,9 @@ final class ScoreOverlay implements ScoreBoard.Source {
     private BreakWatch breaks;
     private BreakScreen breakScreen;
     private boolean manualBreak;
+    /** The ad-break screen before kick-off (AdBreakView); shown by hand from the options; hidden for this break. */
+    private AdBreakView adBreak;
+    private boolean manualAdBreak, adBreakHidden;
     private final Runnable checkBreak = this::checkBreak;
     /** Burn-in: the board and the mark over the logo moved now and then, dimmed when nothing happens. */
     private final BurnGuard guard;
@@ -317,6 +323,8 @@ final class ScoreOverlay implements ScoreBoard.Source {
 
     /** The channel's own setting changed (the options' "This channel"). */
     void channelChanged() {
+        endAdBreak();
+        adBreakHidden = false;
         refresh();
         restyle();
     }
@@ -383,6 +391,7 @@ final class ScoreOverlay implements ScoreBoard.Source {
     void stop() {
         if (editing) endAdjust(true);
         intro.stop();
+        endAdBreak();
         started = false;
         up = false;
         endBreak(true);
@@ -436,6 +445,7 @@ final class ScoreOverlay implements ScoreBoard.Source {
     void pip(boolean in) {
         if (in && editing) endAdjust(true);
         if (in) intro.stop();
+        if (in) endAdBreak();
         inPip = in;
         // In the small window the board stays, small, in the same look, its clock going on: no drops, no covers.
         board.small(in);
@@ -1237,8 +1247,9 @@ final class ScoreOverlay implements ScoreBoard.Source {
             if (b != null) f.add(FrameSampler.grey(b, 0, 0, FIND_W, FIND_H));
             boolean done = f.frames() >= BugFinder.ENOUGH;
             BugFinder.Box found = done && scoreboard ? f.find() : null;
-            BugFinder.Box mark = done && (logos || ScoreBoard.broadcast(a)) ? f.logo(found) : null;
-            boolean[] outline = mark != null && ScoreBoard.broadcast(a) ? f.logoMask(mark) : null;
+            boolean watchAdverts = ScoreBoard.broadcast(a) || ScoreBoard.adBreak(a);
+            BugFinder.Box mark = done && (logos || watchAdverts) ? f.logo(found) : null;
+            boolean[] outline = mark != null && watchAdverts ? f.logoMask(mark) : null;
             h.post(() -> safely(() -> {
                 if (!started || f != finder) return;
                 if (!done) {
@@ -1537,7 +1548,7 @@ final class ScoreOverlay implements ScoreBoard.Source {
     private void checkBreak() {
         h.removeCallbacks(checkBreak);
         BreakWatch w = breaks;
-        if (!started || w == null || sampler == null || !ScoreBoard.broadcast(a)) return;
+        if (!started || w == null || sampler == null || !(ScoreBoard.broadcast(a) || ScoreBoard.adBreak(a))) return;
         if (inPip) {
             h.postDelayed(checkBreak, 2000);
             return;
@@ -1549,8 +1560,15 @@ final class ScoreOverlay implements ScoreBoard.Source {
                 if (!started || w != breaks) return;
                 if (p >= 0) {
                     boolean on = w.add(p);
-                    Game g = ScreenTime.game(host.game(), System.currentTimeMillis());
-                    if (on && breakScreen == null && BreakWatch.allowed(g)) startBreak(false);
+                    long now = System.currentTimeMillis();
+                    if (!on) adBreakHidden = false;
+                    // Before kick-off: the ad-break screen (the channel's game within the hour); else broadcast mode's break.
+                    Game soon = ScoreBoard.adBreak(a) ? host.soonGame() : null;
+                    boolean pre = AdBreak.soon(soon, now);
+                    if (AdBreak.wanted(ScoreBoard.adBreak(a), on, soon, now) && adBreak == null && breakScreen == null && !adBreakHidden) startAdBreak(soon, false);
+                    else if (adBreak != null && !manualAdBreak && (!on || !pre)) endAdBreak();
+                    Game g = ScreenTime.game(host.game(), now);
+                    if (ScoreBoard.broadcast(a) && !pre && on && breakScreen == null && adBreak == null && BreakWatch.allowed(g)) startBreak(false);
                     else if (!on && breakScreen != null && !manualBreak) endBreak(false);
                 }
                 h.postDelayed(checkBreak, 2000);
@@ -1600,7 +1618,94 @@ final class ScoreOverlay implements ScoreBoard.Source {
     }
 
     boolean onBreak() {
-        return breakScreen != null;
+        return breakScreen != null || adBreak != null;
+    }
+
+    // ---- the ad-break screen before kick-off --------------------------------------------------------------------------
+
+    /** Up over the adverts for this game (manual: from the options, to see it; it goes after two minutes or Hide). */
+    void startAdBreak(Game g, boolean manual) {
+        if (adBreak != null || !started || g == null || inPip) return;
+        manualAdBreak = manual;
+        Context app = a.getApplicationContext();
+        AdBreakView view = new AdBreakView(a, new AdBreakView.Host() {
+            @Override public void play(Channel ch) {
+                endAdBreak();
+                host.play(ch);
+            }
+
+            @Override public void hide() {
+                adBreakHidden = true;
+                endAdBreak();
+            }
+        });
+        adBreak = view;
+        root.addView(view, Math.min(4, root.getChildCount()), new FrameLayout.LayoutParams(-1, -1));
+        App.io.execute(() -> {
+            AdBreakData.Content k = AdBreakData.load(app, g);
+            App.main.post(() -> {
+                if (adBreak != view) return;
+                boolean sideways = a.getResources().getConfiguration().orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE;
+                android.graphics.Rect pic = new android.graphics.Rect(Math.round(pfx), Math.round(pfy), Math.round(pfx + pfw), Math.round(pfy + pfh));
+                view.post(() -> {
+                    if (adBreak == view) view.show(k, sideways, pic);
+                });
+            });
+        });
+        if (manual) h.postDelayed(() -> {
+            if (adBreak == view) endAdBreak();
+        }, 120_000L);
+    }
+
+    /** The ad-break screen away (the adverts over, kick-off, another channel, Hide). */
+    void endAdBreak() {
+        AdBreakView v = adBreak;
+        if (v == null) return;
+        adBreak = null;
+        manualAdBreak = false;
+        v.end(() -> root.removeView(v));
+    }
+
+    /** A key for the ad-break screen's cards: true when it took it. */
+    boolean adBreakKey(android.view.KeyEvent e) {
+        return adBreak != null && adBreak.key(e);
+    }
+
+    /** Back: a picked card let go. */
+    boolean adBreakBack() {
+        return adBreak != null && adBreak.back();
+    }
+
+    /** Options: the ad-break screen now, for the channel's game or else the next real game today. */
+    void tryAdBreak() {
+        if (adBreak != null) return;
+        Game g = host.soonGame();
+        if (g == null) g = host.game();
+        if (g != null) {
+            startAdBreak(g, true);
+            return;
+        }
+        Context app = a.getApplicationContext();
+        App.io.execute(() -> {
+            Game next = nextGame(app);
+            App.main.post(() -> {
+                if (next != null) startAdBreak(next, true);
+                else android.widget.Toast.makeText(a, R.string.live58_ad_break_none, android.widget.Toast.LENGTH_SHORT).show();
+            });
+        });
+    }
+
+    /** The next game still to kick off today: a followed club's first, else the soonest. Off the main thread. */
+    private static Game nextGame(Context c) {
+        java.util.Set<String> mine = com.gathin.tvhomephone.sports.Clubs.starred(c);
+        Game best = null, bestMine = null;
+        long now = System.currentTimeMillis();
+        for (Game x : com.gathin.tvhomephone.sports.OnAir.today(5 * 60_000L)) {
+            if (x.state != Game.PRE || x.kickoff <= now) continue;
+            if (best == null || x.kickoff < best.kickoff) best = x;
+            if (x.involves(mine) && (bestMine == null || x.kickoff < bestMine.kickoff)) bestMine = x;
+        }
+        return bestMine != null ? bestMine : best;
     }
 
     // ---- test notifications (the player's options, PlayerTests) ------------------------------------------------------
