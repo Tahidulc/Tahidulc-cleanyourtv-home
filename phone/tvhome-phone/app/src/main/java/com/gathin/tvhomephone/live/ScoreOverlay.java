@@ -137,8 +137,8 @@ final class ScoreOverlay implements ScoreBoard.Source {
         intro = new PlayerIntro(a, root, () -> started && !inPip && !editing, (on) -> {
             // the classic line-ups fill the picture: the scoreboard and the logo's cover out of their way meanwhile
             board.view.setAlpha(on ? 0f : 1f);
-            cover.setAlpha(on ? 0f : 1f);
-            fill.setAlpha(on ? 0f : 1f);
+            cover.setAlpha(on || logoAwayNow ? 0f : 1f);
+            fill.setAlpha(on || logoAwayNow ? 0f : 1f);
         });
         // the intros: the channel's own sound off while one plays
         intro.hush(host::mute);
@@ -424,6 +424,16 @@ final class ScoreOverlay implements ScoreBoard.Source {
         logo = null;
         logoLearned = false;
         breaks = null;
+        // Another channel: your logo back at once (its adverts watched afresh).
+        if (logoAwayNow) {
+            if (logoAnim != null) logoAnim.cancel();
+            logoAwayNow = false;
+            for (View v : new View[]{cover, fill}) {
+                v.setScaleX(1f);
+                v.setScaleY(1f);
+                v.setAlpha(1f);
+            }
+        }
         finder = null;
         reader = null;
         ocrOkAt = 0;
@@ -1257,7 +1267,8 @@ final class ScoreOverlay implements ScoreBoard.Source {
             BugFinder.Box found = done && scoreboard ? f.find() : null;
             // Without a game on the board: the broadcaster's scoreboard only looked for, never placed over.
             BugFinder.Box seenBoard = done && !scoreboard && adverts ? f.find() : null;
-            boolean watchAdverts = ScoreBoard.adBreak(a);
+            // The adverts watched for the ad-break screen, and for your logo stepping aside in them.
+            boolean watchAdverts = ScoreBoard.adBreak(a) || ScoreBoard.logoAway(a);
             BugFinder.Box mark = done && (logos || watchAdverts) ? f.logo(found) : null;
             boolean[] outline = mark != null && watchAdverts ? f.logoMask(mark) : null;
             h.post(() -> safely(() -> {
@@ -1564,7 +1575,10 @@ final class ScoreOverlay implements ScoreBoard.Source {
     private void checkBreak() {
         h.removeCallbacks(checkBreak);
         BreakWatch w = breaks;
-        if (!started || w == null || sampler == null || !ScoreBoard.adBreak(a)) return;
+        if (!started || w == null || sampler == null || !ScoreBoard.adBreak(a) && !ScoreBoard.logoAway(a)) {
+            logoAway(false);
+            return;
+        }
         if (inPip) {
             h.postDelayed(checkBreak, 2000);
             return;
@@ -1577,6 +1591,8 @@ final class ScoreOverlay implements ScoreBoard.Source {
                 if (p >= 0) {
                     boolean on = w.add(p);
                     long now = System.currentTimeMillis();
+                    // Your logo out while the channel's is gone, back in with it.
+                    logoAway(on && ScoreBoard.logoAway(a));
                     if (!on) adBreakHidden = false;
                     // The ad-break screen takes every break of its session (the listings' programme, else the game's,
                     // else a match's scoreboard seen): the build-up, half time, after the game (AdBreak.take).
@@ -1585,10 +1601,65 @@ final class ScoreOverlay implements ScoreBoard.Source {
                     if (on && take == AdBreak.TAKE_AD_BREAK && adBreak == null && !adBreakHidden) startAdBreak(sn, false);
                     else if (adBreak != null && !manualAdBreak && (!on || take != AdBreak.TAKE_AD_BREAK)) endAdBreak();
                 }
-                h.postDelayed(checkBreak, 2000);
+                // On a break: looked at twice as often, so your logo is back hardly a moment after the channel's.
+                h.postDelayed(checkBreak, w.onBreak() ? 1000 : 2000);
             }, () -> h.postDelayed(checkBreak, 2000)));
         });
         if (!asked) h.postDelayed(checkBreak, 1000);
+    }
+
+    // ---- your logo aside in the channel's adverts ---------------------------------------------------------------------
+
+    /** Your logo is aside now (the channel's gone: its adverts). */
+    private boolean logoAwayNow;
+    private android.animation.AnimatorSet logoAnim;
+
+    /**
+     * Your logo popping out as the channel's goes (a little swell, then shrinking away as it fades) or popping back in
+     * as the channel's returns (from small, overshooting a touch and settling): the cover and the see-through fill under it.
+     */
+    private void logoAway(boolean away) {
+        if (away == logoAwayNow) return;
+        logoAwayNow = away;
+        if (logoAnim != null) logoAnim.cancel();
+        java.util.List<android.animation.Animator> parts = new java.util.ArrayList<>();
+        for (View v : new View[]{cover, fill}) {
+            v.setPivotX(v.getWidth() / 2f);
+            v.setPivotY(v.getHeight() / 2f);
+            if (away) {
+                for (android.util.Property<View, Float> pr : java.util.Arrays.asList(View.SCALE_X, View.SCALE_Y)) {
+                    android.animation.ObjectAnimator o = android.animation.ObjectAnimator.ofFloat(v, pr, 1f, 1.12f, 0f);
+                    o.setDuration(340);
+                    o.setInterpolator(new android.view.animation.AccelerateInterpolator(1.6f));
+                    parts.add(o);
+                }
+                android.animation.ObjectAnimator fa = android.animation.ObjectAnimator.ofFloat(v, View.ALPHA, v.getAlpha(), 1f, 0f);
+                fa.setDuration(340);
+                parts.add(fa);
+            } else {
+                for (android.util.Property<View, Float> pr : java.util.Arrays.asList(View.SCALE_X, View.SCALE_Y)) {
+                    android.animation.ObjectAnimator o = android.animation.ObjectAnimator.ofFloat(v, pr, 0.3f, 1f);
+                    o.setDuration(460);
+                    o.setInterpolator(new android.view.animation.OvershootInterpolator(2.4f));
+                    parts.add(o);
+                }
+                android.animation.ObjectAnimator fa = android.animation.ObjectAnimator.ofFloat(v, View.ALPHA, 0f, 1f);
+                fa.setDuration(230);
+                parts.add(fa);
+            }
+        }
+        android.animation.AnimatorSet set = new android.animation.AnimatorSet();
+        set.playTogether(parts);
+        logoAnim = set;
+        set.start();
+    }
+
+    /** Tests: your logo popping out as if the adverts came, and back in five seconds later. */
+    boolean testLogoAway() {
+        if (cover.getVisibility() != View.VISIBLE) return false;
+        logoAway(true);
+        h.postDelayed(() -> logoAway(false), 5000);
+        return true;
     }
 
     boolean onBreak() {
@@ -1815,6 +1886,9 @@ final class ScoreOverlay implements ScoreBoard.Source {
             }
             case "sub":
                 ok = board.testSub();
+                break;
+            case "logo_away":
+                ok = testLogoAway();
                 break;
             case "var":
             case "added":

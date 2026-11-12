@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="live68_logo_away">Your logo pops out in the channel\'s ad breaks and back in after</string>
+    <string name="live68_test_logo_away">Your logo out and back in (an ad break)</string>
+</resources>

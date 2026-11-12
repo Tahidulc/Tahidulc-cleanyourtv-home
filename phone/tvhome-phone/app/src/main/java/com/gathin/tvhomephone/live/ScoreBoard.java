@@ -305,6 +305,11 @@ public final class ScoreBoard implements LiveAlerts.Listener {
 
     static void setAdBreak(Context c, boolean v) { prefs(c).edit().putBoolean("ad_break", v).apply(); }
 
+    /** Your logo over the channel's popping out while the channel's is gone (its adverts) and back with it: on unless off. */
+    static boolean logoAway(Context c) { return prefs(c).getBoolean("logo_away", true); }
+
+    static void setLogoAway(Context c, boolean v) { prefs(c).edit().putBoolean("logo_away", v).apply(); }
+
     /** How far behind the other apps' pictures run (their streams' delay), in seconds. */
     static int otherDelay(Context c) { return prefs(c).getInt("other_delay", 0); }
 
