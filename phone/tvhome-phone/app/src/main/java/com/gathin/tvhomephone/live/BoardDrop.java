@@ -73,6 +73,13 @@ final class BoardDrop extends BoardSide {
         return 0xFF000000 | r << 16 | g << 8 | b;
     }
 
+    /** Pure: how many pages an alert turns through: a substitution's OFF and ON, the line-ups' two elevens, else one. */
+    static int pages(ScoreBoard.Drop d) {
+        if (d == null) return 1;
+        if (d.subs != null) return d.subs.pages();
+        return d.lineups ? 2 : 1;
+    }
+
     /** The alert it shows; null when none. */
     ScoreBoard.Drop drop() {
         return drop;
@@ -83,7 +90,9 @@ final class BoardDrop extends BoardSide {
         ScoreBoard.Drop was = drop;
         drop = d;
         float most = 0;
-        for (int p = 0; p < (d.lineups ? 2 : 1); p++) most = Math.max(most, lay(null, part(p), 0, h, 0, 255, 1e6f, 0)[0]);
+        for (int p = 0; p < pages(d); p++) {
+            most = Math.max(most, d.subs != null ? subsLay(null, p, 0, h, 0, 255, false) : lay(null, part(p), 0, h, 0, 255, 1e6f, 0)[0]);
+        }
         drop = was;
         givenH = h;
         givenW = Math.round(Math.min(room, most + ends(look, unit, h, tuck, true)));
@@ -100,14 +109,14 @@ final class BoardDrop extends BoardSide {
         run = 0f;
         slideOut();
         postDelayed(startRun, SLIDE_MS + RUN_WAIT_MS);
-        if (d.lineups) postDelayed(nextPage, SLIDE_MS + pageFor(0));
+        if (pages(d) > 1) postDelayed(nextPage, SLIDE_MS + pageFor(0));
         setContentDescription(d.chip + ". " + d.title + (d.line.isEmpty() ? "" : ". " + d.line) + (d.line2.isEmpty() ? "" : ". " + d.line2));
     }
 
     /** How long it stays out: at least least, long enough for a long line to run to its end, each eleven its page. */
     long showFor(long least) {
         if (drop == null) return least;
-        if (!drop.lineups) return Math.max(least, SLIDE_MS + RUN_WAIT_MS + runTime(0) + RUN_END_MS);
+        if (pages(drop) < 2) return Math.max(least, SLIDE_MS + RUN_WAIT_MS + runTime(0) + RUN_END_MS);
         return SLIDE_MS + pageFor(0) + TURN_MS + pageFor(1);
     }
 
@@ -116,7 +125,7 @@ final class BoardDrop extends BoardSide {
         onFolding();
         drop = d;
         chipColour = d.colour == ScoreBoard.PLAIN ? look.block : d.colour;
-        page = d.lineups ? Math.max(0, Math.min(1, pg)) : 0;
+        page = pages(d) > 1 ? Math.max(0, Math.min(1, pg)) : 0;
         turn = 1f;
         run = along;
         outNow(howFar);
@@ -140,7 +149,7 @@ final class BoardDrop extends BoardSide {
 
     /** How far page p's line has to run to show its end, in pixels (0: it fits). */
     private float runMax(int p) {
-        if (drop == null || givenW <= 0) return 0;
+        if (drop == null || drop.subs != null || givenW <= 0) return 0;
         float room = givenW - ends(look, unit, givenH, tuck, true);
         room /= fit(part(p), givenH, room);
         float[] m = lay(null, part(p), 0, givenH, 0, 255, room, 0);
@@ -169,7 +178,7 @@ final class BoardDrop extends BoardSide {
     }
 
     private void nextPage() {
-        if (!isOut() || drop == null || !drop.lineups || page >= 1) return;
+        if (!isOut() || drop == null || pages(drop) < 2 || page >= 1) return;
         if (running != null) running.cancel();
         page = 1;
         swish();
@@ -240,6 +249,11 @@ final class BoardDrop extends BoardSide {
     @Override protected void content(Canvas cv, int w, int h) {
         if (drop == null) return;
         float room = end - start;
+        if (drop.subs != null) {
+            subsK = subsFit(h, room);
+            subsPages(cv, h, false);
+            return;
+        }
         // Its first row longer than its room (a narrow screen's edge): all of it drawn smaller, never cut or overlapping.
         fitK = fit(part(page), h, room);
         cv.save();
@@ -263,6 +277,10 @@ final class BoardDrop extends BoardSide {
 
     /** The scorer, standing by the board on the strip's foot and up into the room above it. */
     @Override protected void over(Canvas cv, int w, int h) {
+        if (drop != null && drop.subs != null) {
+            subsPages(cv, h, true);
+            return;
+        }
         if (drop == null || photoX < 0 || drop.photo == null || drop.lineups) return;
         Bitmap b = drop.photo;
         // Drawn smaller with the rest when its first row is short of room, still standing on the strip's foot.
@@ -282,7 +300,7 @@ final class BoardDrop extends BoardSide {
     /** The scorer's width: as high as the strip and the room above it allow, at the picture's own shape. */
     private float photoW(int h) {
         Bitmap b = drop.photo;
-        if (b == null || drop.lineups || b.getHeight() <= 0) return 0;
+        if (b == null || drop.lineups || drop.subs != null || b.getHeight() <= 0) return 0;
         float tall = h + Math.min(head, h * 0.55f) * 0.96f;
         return Math.min(tall * 0.92f, tall * b.getWidth() / (float) b.getHeight());
     }
@@ -346,12 +364,20 @@ final class BoardDrop extends BoardSide {
     }
 
     private float chipW() {
+        return chipW(drop.chip);
+    }
+
+    private float chipW(String text) {
         chipText.setTextSize(unit * 0.32f);
-        return chipText.measureText(drop.chip) + unit * 0.3f;
+        return chipText.measureText(text) + unit * 0.3f;
     }
 
     /** The kind's chip: its own colour (a goal's green, a red card's red), else the board's block. */
     private void chip(Canvas cv, float x, float y, float rowH, float cw, int a) {
+        chip(cv, drop.chip, chipColour, x, y, rowH, cw, a);
+    }
+
+    private void chip(Canvas cv, String text, int chipColour, float x, float y, float rowH, float cw, int a) {
         float ch = Math.min(rowH * 0.72f, unit * 0.56f), top = y + (rowH - ch) / 2f;
         fill.setColor(chipColour);
         fill.setAlpha(Math.round(a * ((chipColour >>> 24) / 255f)));
@@ -364,7 +390,93 @@ final class BoardDrop extends BoardSide {
         chipText.setAlpha(a);
         chipText.setTextAlign(Paint.Align.CENTER);
         Paint.FontMetrics fm = chipText.getFontMetrics();
-        cv.drawText(drop.chip, x + cw / 2f, top + ch / 2f - (fm.ascent + fm.descent) / 2f, chipText);
+        cv.drawText(text, x + cw / 2f, top + ch / 2f - (fm.ascent + fm.descent) / 2f, chipText);
+    }
+
+    // ---- substitutions: OFF, then ON, each player with picture and name -------------------------------------------------
+
+    /** How much smaller the substitutions are drawn to fit their room (1: as sized), the same for both pages. */
+    private float subsK = 1f;
+
+    private float subsFit(int h, float room) {
+        float most = 0;
+        for (int p = 0; p < pages(drop); p++) most = Math.max(most, subsLay(null, p, 0, h, 0, 255, false));
+        return most > room && most > 0 ? Math.max(0.4f, room / most) : 1f;
+    }
+
+    /** Both pages as they turn (the last going up and away, this one coming up), the words or the pictures. */
+    private void subsPages(Canvas cv, int h, boolean faces) {
+        cv.save();
+        if (subsK < 1f) cv.scale(subsK, subsK, start, h);
+        if (turn < 1f && page > 0) subsLay(cv, page - 1, start, h, -h * 0.6f * turn, Math.round(255 * (1f - turn)), faces);
+        subsLay(cv, page, start, h, h * 0.6f * (1f - turn), Math.round(255 * turn), faces);
+        cv.restore();
+    }
+
+    /** Each player's picture's height: the strip's and the room above it, as the scorer's. */
+    private float faceTall(int h) {
+        return h + Math.min(head, h * 0.55f) * 0.96f;
+    }
+
+    /**
+     * Page p of a substitution laid out from x0 (drawn when cv is not null: its words, or with faces its pictures, at
+     * height offset dy and alpha a): the club's crest, OFF or ON, then each player's picture and name, then the minute.
+     * Returns its width.
+     */
+    private float subsLay(Canvas cv, int p, float x0, int h, float dy, int a, boolean faces) {
+        SubsPage.Subs s = drop.subs;
+        boolean off = s.offPage(p);
+        String[] names = off ? s.off : s.on;
+        Bitmap[] pics = off ? s.offFaces : s.onFaces;
+        boolean words = cv != null && !faces, pictures = cv != null && faces;
+        float x = x0, cs = unit * 0.62f, size = unit * 0.44f, pw = faceTall(h) * 0.8f;
+        Bitmap crest = drop.side == 1 ? drop.homeCrest : drop.side == 2 ? drop.awayCrest : null;
+        if (crest != null) {
+            if (words) image(cv, crest, x, dy + (h - cs) / 2f, cs, a);
+            x += cs + unit * 0.2f;
+        }
+        String label = off ? "OFF" : "ON";
+        float cw = chipW(label);
+        if (words) chip(cv, label, off ? SubsPage.OFF_COLOUR : SubsPage.ON_COLOUR, x, dy, h, cw, a);
+        x += cw + unit * 0.28f;
+        for (int i = 0; i < names.length; i++) {
+            if (i > 0) x += unit * 0.45f;
+            if (pictures) face(cv, i < pics.length ? pics[i] : null, names[i], x, dy, pw, h, a);
+            x += pw + unit * 0.12f;
+            if (words) words(cv, bold, names[i], x, dy, h, size, look.ink, a);
+            x += measure(bold, names[i], size);
+        }
+        if (!s.minute.isEmpty()) {
+            String m = s.minute + "'";
+            x += unit * 0.32f;
+            if (words) words(cv, plain, m, x, dy, h, unit * 0.38f, look.dim, a);
+            x += measure(plain, m, unit * 0.38f);
+        }
+        return x - x0;
+    }
+
+    /** A player's picture standing on the strip's foot; without one, their initials on a disc in the club's colour. */
+    private void face(Canvas cv, Bitmap b, String name, float x, float dy, float pw, int h, int a) {
+        if (b != null && b.getWidth() > 0 && b.getHeight() > 0) {
+            float tall = faceTall(h), k = Math.min(pw / b.getWidth(), tall / b.getHeight());
+            float bw = b.getWidth() * k, bh = b.getHeight() * k;
+            r.set(x + (pw - bw) / 2f, dy + h - bh, x + (pw + bw) / 2f, dy + h);
+            image.setAlpha(a);
+            cv.drawBitmap(b, null, r, image);
+            return;
+        }
+        float d = h * 0.82f, cx = x + pw / 2f, cy = dy + h - d / 2f - h * 0.06f;
+        int colour = drop.subs.colour != 0 ? 0xFF000000 | drop.subs.colour : look.block;
+        fill.setColor(colour);
+        fill.setAlpha(a);
+        cv.drawCircle(cx, cy, d / 2f, fill);
+        fill.setAlpha(255);
+        chipText.setTextSize(d * 0.4f);
+        chipText.setColor(OverlayBug.ink(colour));
+        chipText.setAlpha(a);
+        chipText.setTextAlign(Paint.Align.CENTER);
+        Paint.FontMetrics fm = chipText.getFontMetrics();
+        cv.drawText(SubsPage.initials(name), cx, cy - (fm.ascent + fm.descent) / 2f, chipText);
     }
 
     private static float measure(Paint p, String s, float size) {

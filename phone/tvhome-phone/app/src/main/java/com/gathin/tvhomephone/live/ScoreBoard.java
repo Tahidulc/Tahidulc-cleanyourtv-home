@@ -395,6 +395,8 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         /** The scorer's (or the player's) photo, head and shoulders; both clubs' crests; each may be null. */
         Bitmap photo, homeCrest, awayCrest;
         Events.Alert alert;
+        /** A substitution (or several at once): its OFF page, then its ON page, each player with picture and name. */
+        SubsPage.Subs subs;
     }
 
     private final Runnable tick = new Runnable() {
@@ -1081,44 +1083,66 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         boolean own = g.id != null && g.id.equals(lastId) && mode == FOOTBALL_MODE;
         if (own && m.varPending) bug.varCheck(8_000L);
         boolean first = subsGames.add(g.id);
+        List<String[]> fresh = new java.util.ArrayList<>();
         for (String[] e : m.events) {
             if (!"Substitution".equals(e[0])) continue;
             if (!subsSeen.add(g.id + "|" + e[1] + "|" + e[4]) || first) continue;
             if (subsSeen.size() > 400) subsSeen.clear();
             if (!own || small || !subsOn(c) || !shows(c, FOOTBALL)) continue;
-            Drop d = subDrop(g, e);
-            d.own = true;
-            d.homeCrest = bug.homeCrest;
-            d.awayCrest = bug.awayCrest;
-            String club = "1".equals(e[2]) ? g.homeName : g.awayName;
-            App.io.execute(() -> {
-                Bitmap photo = null;
-                try {
-                    photo = PlayerPhotos.get(c, e[3], club, null);
-                    if (photo == null) photo = fotmobPhoto(c, parse(e[4]));
-                } catch (RuntimeException ignored) {
-                    // without it
-                }
-                Bitmap p = photo;
-                App.main.post(() -> {
-                    d.photo = p;
-                    drop(d);
-                });
-            });
+            fresh.add(e);
+        }
+        // A club's changes in the same minute together: a double, triple or more on one OFF page and one ON page.
+        for (List<String[]> group : SubsPage.group(fresh)) subsOut(g, group);
+    }
+
+    /** One club's substitution(s) out beside the board, once every player's picture has been looked for (off the main thread). */
+    private void subsOut(Game g, List<String[]> group) {
+        Drop d = subDrop(g, group);
+        d.own = true;
+        d.homeCrest = bug.homeCrest;
+        d.awayCrest = bug.awayCrest;
+        String club = "1".equals(group.get(0)[2]) ? g.homeName : g.awayName;
+        SubsPage.Subs s = d.subs;
+        App.io.execute(() -> {
+            for (int i = 0; i < s.on.length; i++) s.onFaces[i] = face(s.onFull[i], s.onIds[i], club);
+            for (int i = 0; i < s.off.length; i++) s.offFaces[i] = face(s.offFull[i], s.offIds[i], club);
+            App.main.post(() -> drop(d));
+        });
+    }
+
+    /** A player's picture (off the main thread): the cut-out the cards use, else FotMob's; null when there is neither. */
+    private Bitmap face(String name, String id, String club) {
+        try {
+            Bitmap b = name == null || name.isEmpty() ? null : PlayerPhotos.get(c, name, club, null);
+            return b != null ? b : fotmobPhoto(c, parse(id));
+        } catch (RuntimeException e) {
+            return null;
         }
     }
 
     /** Pure: a substitution's alert ({type, minute, home, on, on id, off, off id}): who came on, who went off, when. */
     static Drop subDrop(Game g, String[] e) {
+        return subDrop(g, java.util.Collections.singletonList(e));
+    }
+
+    /**
+     * Pure: a club's substitution or substitutions at once: its OFF page (who goes off, each with their picture and
+     * name) and its ON page (who comes on), the whole name for one, the surname for more (SubsPage).
+     */
+    static Drop subDrop(Game g, List<String[]> group) {
         Drop d = new Drop();
+        String[] e = group.get(0);
         boolean home = "1".equals(e[2]);
+        d.subs = SubsPage.of(group);
+        d.subs.colour = home ? OverlayBug.colour(g.homeColor, g.homeAlt) : OverlayBug.colour(g.awayColor, g.awayAlt);
         d.chip = "SUBSTITUTION";
         d.colour = 0xFF5CC8FF;
         String team = home ? (g.homeName != null ? g.homeName : g.home) : (g.awayName != null ? g.awayName : g.away);
         d.title = team == null ? "" : team;
-        StringBuilder line = new StringBuilder("On ").append(e[3] == null ? "" : e[3].trim());
-        if (e[5] != null && !e[5].trim().isEmpty()) line.append(" · off ").append(e[5].trim());
-        if (e[1] != null && !e[1].isEmpty()) line.append(" · ").append(e[1]).append("'");
+        StringBuilder line = new StringBuilder("On ");
+        for (int i = 0; i < d.subs.onFull.length; i++) line.append(i > 0 ? ", " : "").append(d.subs.onFull[i].trim());
+        for (int i = 0; i < d.subs.offFull.length; i++) line.append(i > 0 ? ", " : " · off ").append(d.subs.offFull[i].trim());
+        if (!d.subs.minute.isEmpty()) line.append(" · ").append(d.subs.minute).append("'");
         d.line = line.toString();
         d.homeColour = OverlayBug.colour(g.homeColor, g.homeAlt);
         d.awayColour = OverlayBug.colour(g.awayColor, g.awayAlt);
@@ -1747,10 +1771,13 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         boolean onBoard = boardUp();
         int bh = boardH();
         // On its own (no board up): where the board would be, round at both ends.
-        strip.place(bug.stripLook(), unit() * TEXT, onBoard ? nearTuck() : 0, onBoard && sideLeft, d.photo != null ? head : 0);
+        strip.place(bug.stripLook(), unit() * TEXT, onBoard ? nearTuck() : 0, onBoard && sideLeft, d.photo != null || d.subs != null ? head : 0);
         strip.alone(!onBoard);
-        int w = strip.widthFor(d, bh, shortRoom(bh, onBoard ? sideMax : Math.max(Math.round(unit() * 6), sideMax - tuck)));
-        beside(strip, w, d.photo != null);
+        int room = onBoard ? sideMax : Math.max(Math.round(unit() * 6), sideMax - tuck);
+        // Two or more substitutions at once: the room beside the board, wider than an alert's, for every player on a page.
+        boolean many = d.subs != null && Math.max(d.subs.on.length, d.subs.off.length) > 1;
+        int w = strip.widthFor(d, bh, many ? Math.max(shortRoom(bh, room), Math.min(room, bh * 16)) : shortRoom(bh, room));
+        beside(strip, w, d.photo != null || d.subs != null);
         strip.show(d);
         h.postDelayed(hide, strip.showFor(DROP_MS));
     }
@@ -1869,15 +1896,21 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         return test(() -> lineupsCard(a));
     }
 
-    /** Tests: a substitution beside the board, who comes on and who goes off (made up). */
+    /** Tests: a substitution beside the board (OFF, then ON), then three at once (made up). */
     boolean testSub() {
         return test(() -> {
             Game g = testGame(System.currentTimeMillis());
-            Drop d = subDrop(g, new String[]{"Substitution", "71", "1", "E. Player", "", "F. Player", ""});
-            d.own = mode != F1_MODE;
-            d.homeCrest = bug.homeCrest;
-            d.awayCrest = bug.awayCrest;
-            drop(d);
+            Drop d = subDrop(g, new String[]{"Substitution", "71", "1", "Alex Player", "", "Ben Example", ""});
+            Drop three = subDrop(g, java.util.Arrays.asList(
+                    new String[]{"Substitution", "78", "2", "Carl Sample", "", "Dan van Test", ""},
+                    new String[]{"Substitution", "78", "2", "Eli Demo", "", "Finn Trial", ""},
+                    new String[]{"Substitution", "78", "2", "Gus Mock", "", "Hal Pilot", ""}));
+            for (Drop x : new Drop[]{d, three}) {
+                x.own = mode != F1_MODE;
+                x.homeCrest = bug.homeCrest;
+                x.awayCrest = bug.awayCrest;
+                drop(x);
+            }
         });
     }
 
