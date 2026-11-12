@@ -24,16 +24,21 @@ public final class BreakingNews {
     static final long EVERY_MS = 5 * 60_000L;
     private static final long FRESH_MS = 45 * 60_000L;
 
-    /** A story: its headline, its one line, its link, when it was published (0 when not given). */
+    /** A story: its headline, its one line, its link, when it was published (0 when not given), its picture ("" for none). */
     static final class Story {
-        final String title, line, link;
+        final String title, line, link, picture;
         final long at;
 
         Story(String title, String line, String link, long at) {
+            this(title, line, link, at, "");
+        }
+
+        Story(String title, String line, String link, long at, String picture) {
             this.title = title;
             this.line = line;
             this.link = link;
             this.at = at;
+            this.picture = picture == null ? "" : picture;
         }
     }
 
@@ -68,6 +73,7 @@ public final class BreakingNews {
                     "N|" + (st.length > 3 && !st[3].isEmpty() ? st[3] : st[1]), st[1], st[2], null);
             a.channel = st[0];
             a.slug = st.length > 3 ? st[3] : null;
+            a.picture = st.length > 4 && !st[4].isEmpty() ? st[4] : null;
             com.gathin.tvhomephone.App.io.execute(() -> com.gathin.tvhomephone.sports.Notifier.post(c, a));
         }
     }
@@ -87,7 +93,7 @@ public final class BreakingNews {
                 if (stories.isEmpty()) continue;
                 Story lead = stories.get(0);
                 if (seen.add(lead.link.isEmpty() ? lead.title : lead.link) && primed && breaking(lead, now)) {
-                    out.add(new String[]{f[1], lead.title, lead.line, lead.link});
+                    out.add(new String[]{f[1], lead.title, lead.line, lead.link, lead.picture});
                 }
             } catch (Exception ignored) {
                 // that feed another time
@@ -108,9 +114,21 @@ public final class BreakingNews {
             String item = m.group(1);
             String title = tag(item, "title");
             if (title.isEmpty()) continue;
-            out.add(new Story(title, tag(item, "description"), tag(item, "link"), date(tag(item, "pubDate"))));
+            out.add(new Story(title, tag(item, "description"), tag(item, "link"), date(tag(item, "pubDate")), picture(item)));
         }
         return out;
+    }
+
+    private static final Pattern THUMB = Pattern.compile("<media:thumbnail\\b[^>]*\\burl=\"([^\"]+)\"");
+
+    /** Pure: a story's picture from its feed item, the large size asked for ("" when it has none). */
+    static String picture(String item) {
+        Matcher m = THUMB.matcher(item == null ? "" : item);
+        if (!m.find()) return "";
+        String u = m.group(1).replace("&amp;", "&");
+        if (!u.startsWith("https://")) return "";
+        // The feed gives 240 wide; the same picture is there 976 wide.
+        return u.replace("/standard/240/", "/standard/976/");
     }
 
     /** A tag's words, CDATA unwrapped and the common entities read. */

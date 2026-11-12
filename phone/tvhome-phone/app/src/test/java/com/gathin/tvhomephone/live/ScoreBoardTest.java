@@ -77,6 +77,12 @@ public class ScoreBoardTest {
         assertTrue(BreakingNews.breaking(s.get(0), at + 10 * 60_000L));
         assertFalse(BreakingNews.breaking(s.get(0), at + 60 * 60_000L));
         assertFalse(BreakingNews.breaking(new BreakingNews.Story("Quiz of the week", "", "", at), at));
+        // Its picture, asked for large; none without one, and only over https.
+        assertEquals("", s.get(0).picture);
+        assertEquals("https://ichef.example.org/ace/standard/976/a/b.jpg", BreakingNews.picture(
+                "<title>x</title><media:thumbnail width=\"240\" height=\"135\" url=\"https://ichef.example.org/ace/standard/240/a/b.jpg\"/>"));
+        assertEquals("", BreakingNews.picture("<media:thumbnail url=\"http://plain.example.org/a.jpg\"/>"));
+        assertEquals("", BreakingNews.picture(null));
     }
 
     @Test

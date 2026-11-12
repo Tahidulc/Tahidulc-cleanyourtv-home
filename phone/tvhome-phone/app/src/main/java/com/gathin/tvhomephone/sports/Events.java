@@ -22,6 +22,8 @@ public final class Events {
         public final Game game;
         /** A reminder's competition and channel (its game is not read again): for the logos; null when none. */
         public String slug, channel;
+        /** A news story's own picture (its address; null when none): shown with its alert and pop-up. */
+        public String picture;
         /** The line-ups alert's summary, for its pitch (not kept); null for the others. */
         public transient Espn.Summary summary;
 

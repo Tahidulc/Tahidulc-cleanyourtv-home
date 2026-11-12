@@ -109,7 +109,7 @@ public final class Notifier {
         // Watch match first: the game on the family's own playlist (AlsoShowing's best channel for it).
         if (a.game != null && a.game.state != Game.POST && !a.kind.startsWith("f1")) watchMatch(c, a.game, b);
         com.gathin.tvhomephone.live.LiveAlerts.seeAgain(c, a, b);
-        if (!(NotifCard.drawn(a) && carded(c, a, b)) && !drawnOther(c, a, b)) {
+        if (!(NotifCard.drawn(a) && carded(c, a, b)) && !drawnOther(c, a, b) && !pictured(c, a, b)) {
             if (a.game != null) {
                 Bitmap crest = crest(c, a);
                 if (crest != null) b.setLargeIcon(crest);
@@ -119,6 +119,22 @@ public final class Notifier {
         notify(c, (a.key).hashCode(), b);
         if (a.game != null) summary(c, a.game, channel);
         if (popup) Popups.show(c, a);
+    }
+
+    /**
+     * A story with its own picture (breaking news): the source's logo from the playlist (or the picture) beside the words,
+     * the picture across the whole of it opened out. False when it has none or it could not be fetched.
+     */
+    private static boolean pictured(Context c, Events.Alert a, NotificationCompat.Builder b) {
+        if (a.picture == null || a.picture.isEmpty()) return false;
+        Bitmap pic = NotifCard.logo(c, a.picture, 960, 540);
+        if (pic == null) return false;
+        String channelUrl = a.channel == null || a.channel.isEmpty() ? null : ChannelLogos.find(c, a.channel);
+        Bitmap source = bitmap(c, channelUrl, Ui.dp(c, 64), Ui.dp(c, 64));
+        b.setLargeIcon(source != null ? source : pic)
+                .setStyle(new NotificationCompat.BigPictureStyle().bigPicture(pic).bigLargeIcon((Bitmap) null)
+                        .setSummaryText(a.text == null ? "" : a.text));
+        return true;
     }
 
     /**

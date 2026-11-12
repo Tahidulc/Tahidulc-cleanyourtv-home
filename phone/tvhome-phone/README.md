@@ -456,3 +456,5 @@ See-through takes see-through logos out too (4.53), as on the TV launcher (4.68)
 See-through finds the logo next to the cover too (4.54), as on the TV launcher (4.69): it looks round the cover (up and down by its height) and, once it has found the channel's logo, moves the cover onto it; the logo finder no longer moves it off again.
 
 The player's sizing pop-up (double-tap the scoreboard or logo) shows every logo look as a picture (4.55), each drawn as it would stand over the picture on a pitch's green with the tag, style and name chosen in Settings, the one on now ringed; tap one to put it on. As the TV launcher's menu over the player shows them (4.77).
+
+Breaking news comes with pictures (4.56): each story's own picture from the BBC's feed, asked for large, fills its notification opened out and its pop-up over the apps, with BBC News's or BBC Sport's logo from the playlist beside the words.

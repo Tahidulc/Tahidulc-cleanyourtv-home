@@ -540,6 +540,14 @@ final class ChannelMark {
 
     /** Event's grounds: its own plate, glass laid under it by the cover (no plate drawn, the marks as on one), or none. */
     static final int GROUND_PLATE = 0, GROUND_GLASS = 1, GROUND_NONE = 2;
+    /** The logo of what is on (the Formula 1 logo, the Premier League's) for Event's lower box, in place of the words; null: the words. */
+    private android.graphics.Bitmap eventLogo;
+    private final Paint logoPaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+
+    void eventLogo(android.graphics.Bitmap b) {
+        eventLogo = b != null && !b.isRecycled() && b.getWidth() > 0 && b.getHeight() > 0 ? b : null;
+    }
+
     /** How much narrower or wider Event's lettering may be drawn to fill its box (past that, the row spreads instead). */
     static final float MOST_NARROW = 0.7f, MOST_WIDE = 1.4f;
 
@@ -548,7 +556,8 @@ final class ChannelMark {
         if (w <= 2 || h <= 2) return;
         boolean plate = ground != GROUND_NONE;
         String on = sub == null ? "" : sub.trim();
-        boolean sports = !nameOnly, lower = !on.isEmpty();
+        android.graphics.Bitmap mark = eventLogo;
+        boolean sports = !nameOnly, lower = !on.isEmpty() || mark != null;
         this.tag = lower && tag != null ? tag.trim() : "";
         int ink = white ? WHITE : NAVY, edgeInk = white ? WHITE : NAVY_LINE;
         if (ground == GROUND_PLATE) {
@@ -566,7 +575,9 @@ final class ChannelMark {
         float rowW = nameW + (sports ? 16f + boxW : 0f), rowH = sports ? boxH : nameH;
         float side = 34f, edge = 3f, subH = 24f + 92f * 1.05f + 28f + edge;
         float th = 50f, tw = tagW(th, false), tagGap = tw > 0 ? 26f : 0f;
-        float subW = lower ? widthAt(on, medium, 92f, -1f / 92f) : 0f;
+        // What is on: its logo as tall as the words' capitals and more, else the words.
+        float logoH = 92f * 0.95f;
+        float subW = mark != null ? logoH * mark.getWidth() / mark.getHeight() : lower ? widthAt(on, medium, 92f, -1f / 92f) : 0f;
         // The channel's name smaller to keep to the row's width, down to three fifths; past that its box is wider.
         float k = lower ? Math.max(0.6f, Math.min(1f, (rowW - 2 * (edge + side) - tagGap - tw) / Math.max(1f, subW))) : 1f;
         float allW = Math.max(rowW, 2 * (edge + side) + subW * k + tagGap + tw), allH = rowH + (lower ? 10f + subH : 0f);
@@ -613,7 +624,7 @@ final class ChannelMark {
         if (sports) redBox(cv, ox + (fullW - boxW) * u, oy, boxW * u, boxH * u, u, plate, shade, blur, drop);
         float top = oy + (rowH + 10f) * u, lineTop = top + 24f * u, lh = 92f * 1.05f * u;
         // The channel's name from the left, in the middle of the line it sits on.
-        if (lower) {
+        if (lower && mark == null) {
             words(cv, on, medium, 92f * k * u, -1f / 92f, ink, null, ox + (edge + side) * u, baseIn(medium, 92f * k * u, lineTop, lh),
                     Paint.Align.LEFT);
         }
@@ -638,6 +649,17 @@ final class ChannelMark {
             line.setStrokeCap(Paint.Cap.BUTT);
             cv.drawPath(path, line);
             line.setStrokeCap(Paint.Cap.ROUND);
+            if (mark != null) {
+                // What is on, as its own logo: in its colours on a dark ground, in the lettering's navy on the light plate.
+                float dh = logoH * k * u, dw = dh * mark.getWidth() / mark.getHeight();
+                float lx = ox + (edge + side) * u * sx, ly = lineTop + (lh - dh) / 2f;
+                r.set(lx, ly, lx + dw, ly + dh);
+                logoPaint.setColorFilter(white ? null : new android.graphics.PorterDuffColorFilter(ink, android.graphics.PorterDuff.Mode.SRC_IN));
+                if (!plate) logoPaint.setShadowLayer(blur, 0, drop, shade);
+                else logoPaint.clearShadowLayer();
+                cv.drawBitmap(mark, null, r, logoPaint);
+                logoPaint.clearShadowLayer();
+            }
             // The tag at the right, in the middle of the channel's name's line.
             if (tw > 0) eventTag(cv, ox + (fullW - edge - side) * u * sx, lineTop + lh / 2f, th * u, ink);
         }

@@ -115,6 +115,9 @@ public final class Popups {
             p.head = "Formula 1";
         } else if ("news".equals(a.kind)) {
             p.head = a.channel == null ? "News" : a.channel;
+            // The source's logo (from the playlist) by its name, the story's own picture as its card.
+            if (a.channel != null && !a.channel.isEmpty()) p.comp = NotifCard.logo(app, ChannelLogos.find(app, a.channel), logo * 2, logo);
+            if (a.picture != null && !a.picture.isEmpty()) p.card = NotifCard.logo(app, a.picture, 960, 540);
         } else if ("weather".equals(a.kind)) {
             p.head = "Weather";
         }

@@ -2054,6 +2054,7 @@ final class BoardCover {
             mark.live(l.live);
             mark.boardLook(bug.stripLook());
             mark.what(whatNow(c));
+            eventLogoFallback(c);
             // See-through: the channel's logo learned and filled in under the cover, about three times a second.
             if (mark.wantsPatch()) patchSoon();
         }
@@ -2095,6 +2096,7 @@ final class BoardCover {
             mark.live(false);
             mark.boardLook(bug.stripLook());
             mark.what(whatNow(c));
+            eventLogoFallback(c);
             if (mark.wantsPatch()) patchSoon();
         }
         layout(c);
@@ -3161,6 +3163,36 @@ final class BoardCover {
                 compTag = g.league == null ? "" : g.league;
                 if (bug != null) bug.images(h, w, l);
                 if (mark != null) mark.competition(l, compTag);
+            });
+        });
+    }
+
+    /** Formula 1 named on the channel or as the logo's sport ("Sky Sports F1", "f1"); ICU-safe. */
+    private static final java.util.regex.Pattern F1_NAMED = java.util.regex.Pattern.compile("(^|[^a-z0-9])(f1|formula 1|formula one)([^a-z0-9]|$)");
+    private static boolean f1Shown;
+
+    /**
+     * No game's competition known (the board not up for one): on a Formula 1 channel, or with F1 as the logo's sport, the
+     * Formula 1 logo for Event's lower box all the same; let go again on another channel.
+     */
+    private static void eventLogoFallback(Context c) {
+        if (mark == null || compImage != null) return;
+        boolean f1 = F1_NAMED.matcher((InStep.channel(c) + " " + whatNow(c)).toLowerCase(java.util.Locale.UK)).find();
+        if (!f1) {
+            if (f1Shown) {
+                f1Shown = false;
+                mark.competition(null, "");
+            }
+            return;
+        }
+        if (f1Shown) return;
+        f1Shown = true;
+        Context a = c.getApplicationContext();
+        io.execute(() -> {
+            Bitmap b = ScoreCard.onNavy(ScoresTicker.cachedLogo(a, F1Results.F1_LOGO, 200));
+            main().post(() -> {
+                if (mark != null && compImage == null && f1Shown) mark.competition(b, "Formula 1");
+                if (b == null) f1Shown = false;
             });
         });
     }

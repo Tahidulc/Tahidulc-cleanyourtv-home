@@ -465,6 +465,8 @@ final class LogoMark extends View {
             // On its plate (or glass) it fills the whole cover (the channel's logo under it never shows); alone, in from
             // the edge, and white as a channel's own logo is on its picture.
             float p = clear ? in : 0f;
+            // What is on as its own logo (the competition's, when known and switched on), else the channel's words.
+            channel.eventLogo(compOn ? comp : null);
             channel.event(cv, p, p, w - 2 * p, h - 2 * p, sub, tag, look == Look.EVENT_WHITE || clear || frosted,
                     clear ? ChannelMark.GROUND_NONE : frosted ? ChannelMark.GROUND_GLASS : ChannelMark.GROUND_PLATE);
             return;
