@@ -484,4 +484,12 @@ public class ScoreBoardTest {
         ScoreBoard.addedTest(ht, 5);
         assertEquals("90:05", ht.clock);
     }
+
+    @Test public void theBoardGoesAtHalfTimeAfterItsAlertAndComesBackForTheSecondHalf() {
+        assertFalse(ScoreBoard.htGone(10_000L, false));
+        assertTrue(ScoreBoard.htGone(ScoreBoard.HT_SHOWN_MS + 1_000L, false));
+        // Something still out of it (the alert, the half's stats): it waits, a minute at most.
+        assertFalse(ScoreBoard.htGone(ScoreBoard.HT_SHOWN_MS + 1_000L, true));
+        assertTrue(ScoreBoard.htGone(ScoreBoard.HT_MOST_MS + 1_000L, true));
+    }
 }

@@ -72,6 +72,8 @@ public final class ScoreBoard implements LiveAlerts.Listener {
     private static final long READ_MS = 15_000L, DROP_MS = 7_000L;
     /** Full time on the screen: up this long (its alert, its stats), then away; never longer than the most, an alert or not. */
     static final long FT_SHOWN_MS = 50_000L, FT_MOST_MS = 60_000L;
+    /** Half time: shown this long for its alert, or this long at most whatever is out of it, then away till the second half. */
+    static final long HT_SHOWN_MS = 25_000L, HT_MOST_MS = 60_000L;
     /** A goal's scorer's photo is waited for this long before the caption goes without it. */
     private static final long PHOTO_WAIT_MS = 2_500L;
     /** The match summary (stats, facts, the added time put up) is read again this often, and near the ends of halves this often. */
@@ -373,6 +375,9 @@ public final class ScoreBoard implements LiveAlerts.Listener {
     private final Set<String> captioned = new java.util.HashSet<>();
     /** Full time: the game it showed for, and since when. */
     private String ftFor = "";
+    /** Half time as the screen shows it: for which game, since when. */
+    private String htFor = "";
+    private long htAt;
     private long ftAt;
     /** The minute the board's clock shows (-1: none), for how often the summary is read. */
     private int boardMinute = -1;
@@ -833,6 +838,18 @@ public final class ScoreBoard implements LiveAlerts.Listener {
                 } else if (id.equals(ftFor)) {
                     ftFor = "";
                 }
+                // Half time on the screen: shown a little (its alert, the half's stats), then away until the second half
+                // kicks off on the screen (the screen's own game, in step), whether it came by itself or was put up by hand.
+                if (g.state != Game.POST && g.halftime) {
+                    if (!id.equals(htFor)) {
+                        htFor = id;
+                        htAt = now;
+                        if (changed != null) changed.run();
+                    }
+                    if (htGone(now - htAt, dropping || lineups.isOut() || stats.isOut())) l = null;
+                } else if (id.equals(htFor)) {
+                    htFor = "";
+                }
             }
         } else if (mode == F1_MODE && !f1Reads.isEmpty()) {
             long at = now - src.behindMs(false);
@@ -865,6 +882,11 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         }
         stats.colours(l.homeColour, l.awayColour);
         if (mode == FOOTBALL_MODE && shown != null) maybeStats(shown, now);
+    }
+
+    /** Pure: whether half time has been shown long enough: 25 seconds, or a minute at most whatever is out of it. */
+    static boolean htGone(long sinceHt, boolean busy) {
+        return sinceHt > HT_MOST_MS || (sinceHt > HT_SHOWN_MS && !busy);
     }
 
     /** Pure: whether full time has been shown long enough: a little under a minute, or a minute at most whatever is out. */
