@@ -110,19 +110,23 @@ final class AdjustPanel {
         logo.addView(label(c, "Width"));
         logo.addView(step(c, "−", "Logo narrower", () -> a.logoWidth(1 / STEP)));
         logo.addView(step(c, "+", "Logo wider", () -> a.logoWidth(STEP)));
-        List<TextView> looks = new ArrayList<>();
+        // Its look, each one drawn as it would stand over the picture (on a pitch's green), the one on now ringed: tap one
+        // to put it on (the cover on too, if it was off).
+        LinearLayout lookRow = row(c, card, "Look");
+        List<View> looks = new ArrayList<>();
         for (LogoCover.Look l : LogoCover.Look.values()) {
             // Off is the switch's.
             if (l == LogoCover.Look.OFF) continue;
-            TextView t = Ui.guideChip(c, l.label, l == look);
-            t.setOnClickListener(v -> {
-                for (TextView x : looks) Ui.styleChip(c, x, x == v);
+            View one = lookPicture(c, l, l == look);
+            one.setOnClickListener(v -> {
+                for (View x : looks) x.setSelected(x == v);
                 a.logoLook(l);
-                // A look chosen while the cover is off: on, in it.
                 if (!"✓ On".contentEquals(logoSwitch.getText())) logoSwitch.performClick();
             });
-            looks.add(t);
-            chip(logo, t);
+            looks.add(one);
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, -2);
+            lp.rightMargin = Ui.dp(c, 8);
+            lookRow.addView(one, lp);
         }
 
         // The board's timing against the channel's own scoreboard.
@@ -228,5 +232,49 @@ final class AdjustPanel {
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, -2);
         lp.rightMargin = Ui.dp(row.getContext(), 8);
         row.addView(t, lp);
+    }
+
+    /**
+     * One look as a picture: the cover in it on a stand-in for the picture (a pitch's green), as Settings has them, with
+     * the picture tag, the style, the sport and the name as chosen there, and its name under it; ringed when chosen.
+     */
+    private static View lookPicture(Context c, LogoCover.Look l, boolean on) {
+        LinearLayout one = new LinearLayout(c);
+        one.setOrientation(LinearLayout.VERTICAL);
+        one.setGravity(Gravity.CENTER_HORIZONTAL);
+        int p = Ui.dp(c, 6);
+        one.setPadding(p, p, p, Ui.dp(c, 5));
+        android.graphics.drawable.StateListDrawable bg = new android.graphics.drawable.StateListDrawable();
+        bg.addState(new int[]{android.R.attr.state_selected}, Ui.ring(c, 0x1FFFFFFF, 0xFFFFFFFF, 2, 12));
+        bg.addState(new int[]{}, Ui.round(c, 0x14FFFFFF, 12));
+        one.setBackground(bg);
+        one.setSelected(on);
+        one.setContentDescription(l.label);
+        android.widget.FrameLayout stage = new android.widget.FrameLayout(c);
+        GradientDrawable pitch = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0xFF2F7A35, 0xFF4C9A4A, 0xFF2A6A2F});
+        pitch.setCornerRadius(Ui.dp(c, 8));
+        stage.setBackground(pitch);
+        LogoCover lc = new LogoCover(c);
+        lc.look(l);
+        ChannelMark.Tag tg = ScoreBoard.logoTag(c);
+        lc.tag(tg == ChannelMark.Tag.AUTO ? "UHD" : tg.shown);
+        lc.live(false);
+        if (l.own()) {
+            lc.style(ScoreBoard.logoStyle(c));
+            lc.what("premier league");
+            lc.nameOnly(ScoreBoard.logoNameOnly(c));
+            lc.sub("main event");
+        }
+        if (l == LogoCover.Look.COMPETITION) lc.competition(null, "Premier League");
+        boolean tall = l.channel() || l.broadcast() || l == LogoCover.Look.COMPETITION || l.own();
+        stage.addView(lc, new android.widget.FrameLayout.LayoutParams(Ui.dp(c, 96), Ui.dp(c, tall ? 44 : 32), Gravity.CENTER));
+        one.addView(stage, new LinearLayout.LayoutParams(Ui.dp(c, 112), Ui.dp(c, 58)));
+        TextView name = Ui.text(c, l.label, 11, 0xFFFFFFFF, false);
+        name.setSingleLine(true);
+        name.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        name.setGravity(Gravity.CENTER);
+        name.setPadding(0, Ui.dp(c, 5), 0, 0);
+        one.addView(name, new LinearLayout.LayoutParams(Ui.dp(c, 112), -2));
+        return one;
     }
 }

@@ -3582,6 +3582,9 @@ final class BoardCover {
 
     private static FrameLayout menuWin;
     private static LinearLayout menuRows;
+    /** The menu's picture of the logo: the look on now, large, the ones before and after it small, and their names. */
+    private static LogoMark menuLook, menuPrev, menuNext;
+    private static TextView menuLookName, menuPrevName, menuNextName;
     private static TextView menuNote;
     private static int menuAt;
     /** The OK being watched for a hold (its press's time), and whether the hold opened the menu. */
@@ -3749,7 +3752,14 @@ final class BoardCover {
             lp.topMargin = Math.round(3 * u);
             menuRows.addView(t, lp);
         }
-        box.addView(menuRows, new LinearLayout.LayoutParams(-2, -2));
+        // The rows on the left, the logo as it looks on the right: Left and Right on its lines change it there and then.
+        LinearLayout body = new LinearLayout(soft);
+        body.setOrientation(LinearLayout.HORIZONTAL);
+        body.addView(menuRows, new LinearLayout.LayoutParams(-2, -2));
+        LinearLayout.LayoutParams pv = new LinearLayout.LayoutParams(Math.round(470 * u), -2);
+        pv.leftMargin = Math.round(18 * u);
+        body.addView(previewPanel(soft, c, u), pv);
+        box.addView(body, new LinearLayout.LayoutParams(-2, -2));
         win.addView(box, new FrameLayout.LayoutParams(-2, -2));
         WindowManager.LayoutParams lp = params(WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT, false);
         lp.gravity = Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL;
@@ -3781,6 +3791,7 @@ final class BoardCover {
             menuNote.setText(state.note);
             menuNote.setVisibility(state.note.isEmpty() ? View.GONE : View.VISIBLE);
         }
+        paintPreview(c);
         for (int i = 0; i < menuRows.getChildCount(); i++) {
             TextView t = (TextView) menuRows.getChildAt(i);
             t.setText(lines[i]);
@@ -3792,6 +3803,123 @@ final class BoardCover {
             t.setBackground(g);
             t.setTextColor(on ? 0xFFFFFFFF : 0xCCFFFFFF);
         }
+    }
+
+    /**
+     * The menu's picture of the logo: the look on now drawn large on a stand-in picture (a pitch's green, so glass and
+     * Transparent show as they would over a game), its name and background under it, and the looks before and after it
+     * small either side of a line under that: what Left and Right on "Logo look" would bring.
+     */
+    private static View previewPanel(Context soft, Context c, float u) {
+        LinearLayout col = new LinearLayout(soft);
+        col.setOrientation(LinearLayout.VERTICAL);
+        col.setGravity(Gravity.CENTER_HORIZONTAL);
+        TextView label = new TextView(soft);
+        label.setText("THE LOGO ON THIS CHANNEL");
+        label.setTextColor(0x99FFFFFF);
+        label.setLetterSpacing(0.12f);
+        label.setTextSize(TypedValue.COMPLEX_UNIT_PX, 15f * u);
+        col.addView(label, new LinearLayout.LayoutParams(-2, -2));
+        FrameLayout stage = stage(soft, u);
+        menuLook = new LogoMark(c);
+        FrameLayout.LayoutParams ml = new FrameLayout.LayoutParams(Math.round(340 * u), Math.round(130 * u), Gravity.CENTER);
+        stage.addView(menuLook, ml);
+        LinearLayout.LayoutParams sl = new LinearLayout.LayoutParams(-1, Math.round(200 * u));
+        sl.topMargin = Math.round(10 * u);
+        col.addView(stage, sl);
+        menuLookName = caption(soft, c, u, 19f, 0xFFFFFFFF);
+        col.addView(menuLookName, new LinearLayout.LayoutParams(-2, -2));
+        LinearLayout row = new LinearLayout(soft);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        LinearLayout.LayoutParams rl = new LinearLayout.LayoutParams(-1, -2);
+        rl.topMargin = Math.round(14 * u);
+        col.addView(row, rl);
+        menuPrev = new LogoMark(c);
+        menuNext = new LogoMark(c);
+        menuPrevName = caption(soft, c, u, 15f, 0x99FFFFFF);
+        menuNextName = caption(soft, c, u, 15f, 0x99FFFFFF);
+        row.addView(small(soft, u, menuPrev, menuPrevName, "‹  before"), new LinearLayout.LayoutParams(0, -2, 1f));
+        LinearLayout.LayoutParams nl = new LinearLayout.LayoutParams(0, -2, 1f);
+        nl.leftMargin = Math.round(12 * u);
+        row.addView(small(soft, u, menuNext, menuNextName, "next  ›"), nl);
+        return col;
+    }
+
+    /** A stand-in picture for the logo to sit on: a pitch's green, lighter in its middle, round corners. */
+    private static FrameLayout stage(Context soft, float u) {
+        FrameLayout f = new FrameLayout(soft);
+        GradientDrawable g = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0xFF2F7A35, 0xFF4C9A4A, 0xFF2A6A2F});
+        g.setCornerRadius(14 * u);
+        f.setBackground(g);
+        f.setClipToOutline(true);
+        return f;
+    }
+
+    private static TextView caption(Context soft, Context c, float u, float size, int colour) {
+        TextView t = new TextView(soft);
+        t.setTextColor(colour);
+        t.setTextSize(TypedValue.COMPLEX_UNIT_PX, size * u);
+        t.setTypeface(c.getResources().getFont(R.font.inter_semibold));
+        t.setGravity(Gravity.CENTER);
+        t.setSingleLine(true);
+        t.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        t.setPadding(0, Math.round(6 * u), 0, 0);
+        return t;
+    }
+
+    /** A small look on its own stand-in picture, its name under it, which way it is (before, next) over it. */
+    private static View small(Context soft, float u, LogoMark m, TextView name, String way) {
+        LinearLayout col = new LinearLayout(soft);
+        col.setOrientation(LinearLayout.VERTICAL);
+        col.setGravity(Gravity.CENTER_HORIZONTAL);
+        TextView w = new TextView(soft);
+        w.setText(way);
+        w.setTextColor(0x80FFFFFF);
+        w.setTextSize(TypedValue.COMPLEX_UNIT_PX, 14f * u);
+        col.addView(w, new LinearLayout.LayoutParams(-2, -2));
+        FrameLayout stage = stage(soft, u);
+        stage.addView(m, new FrameLayout.LayoutParams(Math.round(170 * u), Math.round(66 * u), Gravity.CENTER));
+        LinearLayout.LayoutParams sl = new LinearLayout.LayoutParams(-1, Math.round(96 * u));
+        sl.topMargin = Math.round(4 * u);
+        col.addView(stage, sl);
+        col.addView(name, new LinearLayout.LayoutParams(-1, -2));
+        return col;
+    }
+
+    /** The menu's pictures as the settings on this channel now stand. */
+    private static void paintPreview(Context c) {
+        if (menuLook == null) return;
+        LogoMark.Look now = lookNow(c);
+        LogoMark.Look[] all = LogoMark.Look.values();
+        LogoMark.Look before = all[(now.ordinal() - 1 + all.length) % all.length], after = all[(now.ordinal() + 1) % all.length];
+        dress(c, menuLook, now);
+        dress(c, menuPrev, before);
+        dress(c, menuNext, after);
+        String bg = now.own() ? "  ·  " + groundWords(groundNow(c)) : "";
+        String style = now == LogoMark.Look.STYLES ? "  ·  " + BrandStyles.name(styleNow(c)) : "";
+        menuLookName.setText(now.label + style + bg);
+        menuPrevName.setText(before.label);
+        menuNextName.setText(after.label);
+    }
+
+    /** A picture's mark dressed as the cover on this channel would be, in the look given. */
+    private static void dress(Context c, LogoMark m, LogoMark.Look look) {
+        String channel = InStep.channel(c);
+        m.look(look);
+        m.competition(compImage, compTag);
+        m.compOn(compNow(c));
+        m.liveBar(liveNow(c));
+        m.nameOnly(nameOnlyNow(c));
+        int g = groundNow(c);
+        m.ground(g);
+        // Transparent shown as it stands once the channel's logo is taken out.
+        m.filled(g == LogoMark.CLEAR);
+        m.what(whatNow(c));
+        m.channelName(channel);
+        m.style(styleNow(c));
+        m.tag(tagNow(c).on(channel));
+        m.live(false);
+        m.invalidate();
     }
 
     private static boolean menuKey(KeyEvent e) {
@@ -3925,6 +4053,8 @@ final class BoardCover {
         menuWin = null;
         menuRows = null;
         menuNote = null;
+        menuLook = menuPrev = menuNext = null;
+        menuLookName = menuPrevName = menuNextName = null;
         if (!InputKeyService.running) AppSearchService.keysFor("boardmenu", false);
         removeWindow(app, w);
     }
