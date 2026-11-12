@@ -162,7 +162,7 @@ public final class Vod {
     }
 
     /** A playlist's index now: an Xtream account's read again when a day old (or missing). */
-    private static synchronized File index(Context c, Sources.Entry e) {
+    static synchronized File index(Context c, Sources.Entry e) {
         File f = file(c, e.id);
         Source s = e.source;
         if (Source.XTREAM.equals(s.type)) {

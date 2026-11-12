@@ -49,7 +49,7 @@ final class RecentRow {
     private static final int FILM = 0xFFFF4FA3, SHOW = 0xFF4F8BFF, SPORT = 0xFF3DDC84, NEWS = 0xFFFFB238, LIVE = 0xFFE5333B;
     private static final int INK = 0xFF0A0D33;
     /** Home's sides. */
-    private static final int SIDE_DP = 18;
+    private static final int SIDE_DP = 16;
 
     private final Fragment host;
     private final LinearLayout box;
@@ -62,8 +62,9 @@ final class RecentRow {
         Context c = host.requireContext();
         // Out to the screen's edges (layoutParams), the heading and the first card in line with Home's others.
         box = Ui.column(c);
-        TextView head = Ui.heading(c, "Recently watched", c.getColor(R.color.discover));
-        head.setPadding(Ui.dp(c, SIDE_DP), head.getPaddingTop(), Ui.dp(c, SIDE_DP), head.getPaddingBottom());
+        // The heading as Home's other rows have it (Outfit, white), its cards under it.
+        TextView head = HomeScreen.heading(c, "Recently watched");
+        head.setPadding(head.getPaddingLeft(), head.getPaddingTop(), head.getPaddingRight(), Ui.dp(c, 12));
         box.addView(head);
         RecyclerView row = new RecyclerView(c);
         row.setLayoutManager(new LinearLayoutManager(c, LinearLayoutManager.HORIZONTAL, false));

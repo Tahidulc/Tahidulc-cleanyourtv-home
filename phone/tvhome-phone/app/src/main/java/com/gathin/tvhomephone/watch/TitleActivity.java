@@ -52,10 +52,19 @@ public class TitleActivity extends AppCompatActivity {
     private MaterialButton listButton, rateButton, nightButton;
 
     public static void open(Context c, Title t) {
+        c.startActivity(intent(c, t));
+    }
+
+    /** Its page, and Play pressed on it at once (Home's hero): from the family's own playlists only, as Play is. */
+    public static void play(Context c, Title t) {
+        c.startActivity(intent(c, t).putExtra("autoplay", true));
+    }
+
+    private static Intent intent(Context c, Title t) {
         Intent i = new Intent(c, TitleActivity.class).putExtra("id", t.id).putExtra("tv", t.tv).putExtra("title", t.title)
-                .putExtra("poster", t.poster).putExtra("backdrop", t.backdrop);
+                .putExtra("poster", t.poster).putExtra("backdrop", t.backdrop).putExtra("year", t.year);
         if (!(c instanceof android.app.Activity)) i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        c.startActivity(i);
+        return i;
     }
 
     @Override protected void onCreate(Bundle state) {
@@ -67,6 +76,7 @@ public class TitleActivity extends AppCompatActivity {
         t.title = in.getStringExtra("title") == null ? "" : in.getStringExtra("title");
         t.poster = in.getStringExtra("poster");
         t.backdrop = in.getStringExtra("backdrop");
+        t.year = in.getStringExtra("year") == null ? "" : in.getStringExtra("year");
 
         ScrollView scroll = new ScrollView(this);
         scroll.setBackgroundColor(Ui.ground(this));
@@ -124,6 +134,8 @@ public class TitleActivity extends AppCompatActivity {
         bs.addView(buttons);
         col.addView(bs, Ui.fill());
         addButtons();
+        // Opened with Play (Home's hero): Play pressed once, as the page comes up.
+        if (state == null && in.getBooleanExtra("autoplay", false)) col.post(this::play);
 
         LinearLayout more = Ui.column(this);
         col.addView(more, Ui.fill());

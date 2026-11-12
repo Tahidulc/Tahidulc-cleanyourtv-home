@@ -35,6 +35,14 @@ public final class HomeWatch {
     private HomeWatch() {}
 
     public static View build(Fragment host, ViewGroup parent) {
+        return build(host, parent, true);
+    }
+
+    /**
+     * The cards; withResume false leaves out the TVs' Continue watching (Home's own row has it, with this phone's
+     * films and episodes).
+     */
+    public static View build(Fragment host, ViewGroup parent, boolean withResume) {
         Context c = host.requireContext();
         LinearLayout box = Ui.column(c);
         if (!Tvs.paired(c)) {
@@ -50,10 +58,10 @@ public final class HomeWatch {
         PosterAdapter resume = new PosterAdapter((t, i) -> TitleActivity.open(c, t), null, Ui.dp(c, 112));
         LinearLayout resumeBox = rowSection(c, "Continue watching", resume);
         box.addView(resumeBox, Ui.fill());
-        List<Title> cached = Lists.resume(c);
+        List<Title> cached = withResume ? Lists.resume(c) : new ArrayList<>();
         resume.set(cached);
         resumeBox.setVisibility(cached.isEmpty() ? View.GONE : View.VISIBLE);
-        Tvs.watching(c, (w, e) -> {
+        if (withResume) Tvs.watching(c, (w, e) -> {
             if (!host.isAdded()) return;
             List<Title> now = Lists.resume(c);
             resume.set(now);

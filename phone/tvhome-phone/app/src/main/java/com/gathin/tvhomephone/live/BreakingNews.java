@@ -17,7 +17,7 @@ import java.util.regex.Pattern;
  */
 public final class BreakingNews {
     /** {feed, its name on the alert}. */
-    static final String[][] FEEDS = {
+    public static final String[][] FEEDS = {
             {"https://feeds.bbci.co.uk/news/rss.xml", "BBC News"},
             {"https://feeds.bbci.co.uk/sport/rss.xml", "BBC Sport"},
     };
@@ -25,15 +25,15 @@ public final class BreakingNews {
     private static final long FRESH_MS = 45 * 60_000L;
 
     /** A story: its headline, its one line, its link, when it was published (0 when not given), its picture ("" for none). */
-    static final class Story {
-        final String title, line, link, picture;
-        final long at;
+    public static final class Story {
+        public final String title, line, link, picture;
+        public final long at;
 
         Story(String title, String line, String link, long at) {
             this(title, line, link, at, "");
         }
 
-        Story(String title, String line, String link, long at, String picture) {
+        public Story(String title, String line, String link, long at, String picture) {
             this.title = title;
             this.line = line;
             this.link = link;
@@ -105,8 +105,8 @@ public final class BreakingNews {
 
     private static final Pattern ITEM = Pattern.compile("<item\\b[^>]*>(.*?)</item>", Pattern.DOTALL);
 
-    /** Pure: an RSS feed's stories, in its order. */
-    static List<Story> parse(String xml) {
+    /** Pure: an RSS feed's stories, in its order (Home's Headlines read them too). */
+    public static List<Story> parse(String xml) {
         List<Story> out = new ArrayList<>();
         if (xml == null) return out;
         Matcher m = ITEM.matcher(xml);

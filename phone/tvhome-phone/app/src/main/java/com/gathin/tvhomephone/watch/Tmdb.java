@@ -82,6 +82,36 @@ public final class Tmdb {
         }
     }
 
+    /**
+     * One TMDB path, taken from the copy kept on disk while it is younger than keepMs (a title's details hardly change),
+     * else read as get() reads it. Home's picks use it so a cold start doesn't read every title again.
+     */
+    public static JSONObject getKept(Context c, String path, long keepMs) throws IOException {
+        synchronized (MEMORY) {
+            Object[] had = MEMORY.get(path);
+            if (had != null && System.currentTimeMillis() - (Long) had[0] < keepMs) return (JSONObject) had[1];
+        }
+        File disk = file(c, path);
+        if (disk.exists() && System.currentTimeMillis() - disk.lastModified() < Math.min(keepMs, KEEP_MS)) {
+            try {
+                JSONObject j = new JSONObject(read(disk));
+                synchronized (MEMORY) {
+                    MEMORY.put(path, new Object[]{disk.lastModified(), j});
+                }
+                return j;
+            } catch (IOException | JSONException ignored) {
+                // read again below
+            }
+        }
+        return get(c, path);
+    }
+
+    /** A title's details as details() reads them, from the copy kept on disk while it is under three days old. */
+    public static JSONObject detailsKept(Context c, int id, boolean tv) throws IOException {
+        return getKept(c, (tv ? "tv/" : "movie/") + id
+                + "?append_to_response=credits,videos,images,watch/providers,release_dates&include_image_language=en,null", KEEP_MS);
+    }
+
     /** A list's results, from as many pages as asked (TMDB gives 20 a page); tvHint for paths that don't say. */
     public static List<Title> list(Context c, String path, Boolean tvHint, int pages) throws IOException {
         List<Title> out = new ArrayList<>();
