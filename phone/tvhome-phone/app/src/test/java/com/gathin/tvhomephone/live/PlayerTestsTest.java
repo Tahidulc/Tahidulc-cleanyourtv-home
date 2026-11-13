@@ -57,10 +57,11 @@ public class PlayerTestsTest {
 
     @Test public void theScoreboardHasEachOfItsMoments() {
         List<String> board = PlayerTests.tests(PlayerTests.BOARD);
-        for (String id : new String[]{"goal_home", "goal_away", "scorer", "stats", "card", "sub", "var", "added", "pens", "winchance",
-                "milestones"}) {
+        for (String id : new String[]{"goal_home", "goal_away", "scorer", "stats", "card", "sub", "var", "added", "pens", "milestones"}) {
             assertTrue(id, board.contains(id));
         }
+        // The win chance under the board was taken out: no test for it.
+        assertFalse(board.contains("winchance"));
     }
 
     @Test public void settingsHasEveryOneThatNeedsNoChannel() {

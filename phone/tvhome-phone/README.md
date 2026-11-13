@@ -500,3 +500,5 @@ Channel logos on black tiles (4.75), as the TVs draw them. In Live TV's channel 
 The scoreboard looks redrawn against the pictures of the broadcasts' own boards (4.76), as on the TV: the same blocks, sizes and colours as each broadcaster's, lettering in the nearest free typefaces, the competition's emblem cut from its wordmark where the broadcast shows only the emblem, and no broadcaster's or sponsor's mark. The logo is whichever competition is on.
 
 Channel logos back as they were (4.77): the black tiles of 4.75 are taken out of the phone (its switch with them), so Live TV, the guide, the player and Home show each channel's logo in its own box as before. The TVs keep theirs.
+
+The win chance under the scoreboard taken out (4.78), as on the TV: no strip of each side's chance under the board, no WIN CHANCE pop-out after a goal, and no switch or test for it in Settings. The penalty shootout tracker still comes down from under the board in a shootout.

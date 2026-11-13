@@ -1,12 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Under the scoreboard: the win chance and a penalty shootout; the milestones on its pop-outs (ScoreBoard). -->
+<!-- Under the scoreboard: a penalty shootout; the milestones on its pop-outs (ScoreBoard). -->
 <resources>
-    <string name="live69_win_chance">Win chance under the scoreboard</string>
-    <string name="live69_win_chance_line">Each side\'s chance of winning and the draw\'s, moving with the score and the clock, and a pop-out when a goal changes it</string>
     <string name="live69_pens">Penalty shootout tracker</string>
     <string name="live69_milestones">Milestones on goals and yellow cards</string>
     <string name="live69_milestones_line">A goal\'s place in the player\'s season, and a yellow card that means a ban (Premier League and European cups)</string>
     <string name="live69_test_pens">Penalty shootout under the board</string>
-    <string name="live69_test_win_chance">Win chance, then a goal that moves it</string>
     <string name="live69_test_milestones">Milestones: a goal, then a yellow card</string>
 </resources>

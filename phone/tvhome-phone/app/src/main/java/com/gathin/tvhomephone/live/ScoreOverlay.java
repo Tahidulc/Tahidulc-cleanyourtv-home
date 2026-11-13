@@ -1985,13 +1985,12 @@ final class ScoreOverlay implements ScoreBoard.Source {
                 ok = "var".equals(what) ? board.testVar() : board.testAdded();
                 break;
             case "pens":
-            case "winchance":
             case "milestones":
                 if (!football) {
                     note.accept(R.string.live7_f1);
                     return;
                 }
-                ok = "pens".equals(what) ? board.testPens() : "winchance".equals(what) ? board.testWinChance() : board.testMilestones();
+                ok = "pens".equals(what) ? board.testPens() : board.testMilestones();
                 break;
             default:
                 return;

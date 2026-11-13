@@ -14,29 +14,24 @@ import android.view.animation.DecelerateInterpolator;
 /**
  * The slim strip under the scoreboard over the picture (ScoreBoard), in the board's own look (its StripLook: ground,
  * words, corners; tucked under the board, or a little apart under a pill), sliding down from under it and back up. It
- * shows one of two things. The win chance: each side's chance of winning and the draw's, a three-part bar in the clubs'
- * own colours with the percentages over it, the bar's parts moving as the chances do. A penalty shootout, in its place
- * while one is on: two small rows, each side's crest, its three letters, a dot a kick (scored green with a tick, missed
- * red with a cross, to come an empty ring), and its tally; the newest kick lands (PenMark): a goal pops in on the
- * family's swoosh with a green sweep and a fading glow ring, a miss has its cross drawn in with a small shake and no
- * sound. Small, so it never covers much of the picture. Drawn, not built of views.
+ * shows a penalty shootout while one is on: two small rows, each side's crest, its three letters, a dot a kick (scored
+ * green with a tick, missed red with a cross, to come an empty ring), and its tally; the newest kick lands (PenMark): a
+ * goal pops in on the family's swoosh with a green sweep and a fading glow ring, a miss has its cross drawn in with a
+ * small shake and no sound. Small, so it never covers much of the picture. Drawn, not built of views.
  */
 final class BoardUnder extends View {
-    static final int NONE = 0, CHANCE = 1, PENS = 2;
+    static final int NONE = 0, PENS = 1;
     static final int SCORED_GREEN = 0xFF2FBF5F, MISSED_RED = 0xFFE5484D;
-    static final long SLIDE_MS = 360L, BAR_MS = 700L;
+    static final long SLIDE_MS = 360L;
 
     private OverlayBug.StripLook look = new OverlayBug.StripLook();
     private float unit = 48f;
     private int mode = NONE, want = NONE;
     /** 0 up under the board, 1 all the way down. */
     private float out;
-    private ValueAnimator sliding, bar, pop;
+    private ValueAnimator sliding, pop;
 
-    // The win chance: the percentages now, shown (moving towards them), and the clubs.
-    private final float[] shown = {0, 0, 0}, from = {0, 0, 0};
-    private final int[] pct = {0, 0, 0};
-    private float barT = 1f;
+    // The clubs: their three letters, colours and crests.
     private String homeCode = "", awayCode = "";
     private int homeColour = 0xFF2A4FD0, awayColour = 0xFFD42B2B;
     private Bitmap homeCrest, awayCrest;
@@ -71,9 +66,9 @@ final class BoardUnder extends View {
 
     private int boardW;
 
-    /** Pure: its height for what it shows at a board unit high: the win chance slim, the shootout's two rows a board high. */
+    /** Pure: its height for what it shows at a board unit high: the shootout's two rows a board high (none for NONE). */
     static int heightFor(int mode, float unit) {
-        return Math.round(mode == PENS ? unit * 0.96f : mode == CHANCE ? unit * 0.62f : 0);
+        return mode == PENS ? Math.round(unit * 0.96f) : 0;
     }
 
     /** Pure: the shootout's width at a board unit high with n dots a row: the label, crest, letters, dots, tally. */
@@ -104,7 +99,7 @@ final class BoardUnder extends View {
         this.awayColour = awayColour != 0 ? 0xFF000000 | awayColour : 0xFFD42B2B;
         // Two clubs of much the same colour: the away side's made lighter (darker on a light ground) to tell them apart.
         if (near(this.homeColour, this.awayColour)) this.awayColour = OverlayBug.blend(this.awayColour, look.light ? 0xFF0B1033 : 0xFFFFFFFF, 0.55f);
-        // A club's colour too near the ground it sits on: its bar part made to show there.
+        // A club's colour too near the ground it sits on: made to show there.
         this.homeColour = BoardDrop.legible(this.homeColour, look.light);
         this.awayColour = BoardDrop.legible(this.awayColour, look.light);
         this.homeCrest = homeCrest;
@@ -119,32 +114,6 @@ final class BoardUnder extends View {
     static boolean near(int a, int b) {
         int dr = ((a >> 16) & 0xFF) - ((b >> 16) & 0xFF), dg = ((a >> 8) & 0xFF) - ((b >> 8) & 0xFF), db = (a & 0xFF) - (b & 0xFF);
         return dr * dr + dg * dg + db * db < 70 * 70;
-    }
-
-    /** The win chance {home, draw, away} in whole percentages: down from under the board, or its bar moving to them. */
-    void chance(int[] p) {
-        boolean same = mode == CHANCE && pct[0] == p[0] && pct[1] == p[1] && pct[2] == p[2];
-        if (same && want == CHANCE) return;
-        boolean fresh = mode != CHANCE;
-        System.arraycopy(p, 0, pct, 0, 3);
-        if (fresh) {
-            for (int i = 0; i < 3; i++) shown[i] = from[i] = p[i];
-            barT = 1f;
-        } else {
-            System.arraycopy(shown, 0, from, 0, 3);
-            if (bar != null) bar.cancel();
-            ValueAnimator va = ValueAnimator.ofFloat(0f, 1f);
-            va.setDuration(BAR_MS);
-            va.setInterpolator(new DecelerateInterpolator(2f));
-            va.addUpdateListener(an -> {
-                barT = (float) an.getAnimatedValue();
-                for (int i = 0; i < 3; i++) shown[i] = from[i] + (pct[i] - from[i]) * barT;
-                invalidate();
-            });
-            bar = va;
-            va.start();
-        }
-        show(CHANCE);
     }
 
     /** The shootout as it stands: each side's dots and tally, the newest kick's side and place (-1 none) popping in. */
@@ -286,7 +255,6 @@ final class BoardUnder extends View {
     @Override protected void onDetachedFromWindow() {
         super.onDetachedFromWindow();
         if (sliding != null) sliding.cancel();
-        if (bar != null) bar.cancel();
         if (pop != null) pop.cancel();
     }
 
@@ -309,44 +277,7 @@ final class BoardUnder extends View {
         fill.setColor(look.ground);
         cv.drawPath(shape, fill);
         cv.clipPath(shape);
-        if (mode == CHANCE) chanceDraw(cv, w, h);
-        else pensDraw(cv, w, h);
-        cv.restore();
-    }
-
-    private void chanceDraw(Canvas cv, int w, int h) {
-        float pad = unit * 0.24f, ts = unit * 0.26f, barH = Math.max(3f, unit * 0.1f);
-        float textMid = h * 0.38f, barY = h * 0.7f;
-        text.setTextSize(ts);
-        Paint.FontMetrics fm = text.getFontMetrics();
-        float base = textMid - (fm.ascent + fm.descent) / 2f;
-        // The three percentages: each side's at its end, the draw's in the middle.
-        text.setColor(look.ink);
-        text.setTextAlign(Paint.Align.LEFT);
-        cv.drawText(homeCode + " " + Math.round(shown[0]) + "%", pad, base, text);
-        text.setTextAlign(Paint.Align.RIGHT);
-        cv.drawText(Math.round(shown[2]) + "% " + awayCode, w - pad, base, text);
-        text.setTextAlign(Paint.Align.CENTER);
-        text.setColor(look.dim);
-        text.setTextSize(ts * 0.88f);
-        cv.drawText("DRAW " + Math.round(shown[1]) + "%", w / 2f, base, text);
-        // The bar: home | draw | away, in the clubs' colours and a quiet middle.
-        float bx = pad, bw = w - 2 * pad, all = Math.max(1f, shown[0] + shown[1] + shown[2]);
-        float hw = bw * shown[0] / all, dw = bw * shown[1] / all;
-        float br = barH / 2f;
-        cv.save();
-        r.set(bx, barY - barH / 2f, bx + bw, barY + barH / 2f);
-        mark.reset();
-        mark.addRoundRect(r, br, br, Path.Direction.CW);
-        cv.clipPath(mark);
-        fill.setColor(homeColour);
-        cv.drawRect(bx, barY - barH / 2f, bx + hw, barY + barH / 2f, fill);
-        fill.setColor(look.dim);
-        fill.setAlpha(Math.round(0.55f * ((look.dim >>> 24))));
-        cv.drawRect(bx + hw, barY - barH / 2f, bx + hw + dw, barY + barH / 2f, fill);
-        fill.setAlpha(255);
-        fill.setColor(awayColour);
-        cv.drawRect(bx + hw + dw, barY - barH / 2f, bx + bw, barY + barH / 2f, fill);
+        pensDraw(cv, w, h);
         cv.restore();
     }
 

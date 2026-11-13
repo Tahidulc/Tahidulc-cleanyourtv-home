@@ -191,8 +191,6 @@ public final class BoardSettings {
         row(c, col, c.getString(R.string.live24_logo_live), ScoreBoard.logoLive(c), on -> ScoreBoard.setLogoLive(c, on));
         row(c, col, c.getString(R.string.live26_fotmob), ScoreBoard.fotmobOn(c), on -> ScoreBoard.setFotmobOn(c, on));
         row(c, col, c.getString(R.string.live26_subs), ScoreBoard.subsOn(c), on -> ScoreBoard.setSubsOn(c, on));
-        row(c, col, c.getString(R.string.live69_win_chance), ScoreBoard.winChanceOn(c), on -> ScoreBoard.setWinChanceOn(c, on));
-        col.addView(com.gathin.tvhomephone.sports.Ui.text(c, c.getString(R.string.live69_win_chance_line), 13, c.getColor(R.color.text_dim), false));
         row(c, col, c.getString(R.string.live69_pens), ScoreBoard.pensOn(c), on -> ScoreBoard.setPensOn(c, on));
         row(c, col, c.getString(R.string.live69_milestones), ScoreBoard.milestonesOn(c), on -> ScoreBoard.setMilestonesOn(c, on));
         col.addView(com.gathin.tvhomephone.sports.Ui.text(c, c.getString(R.string.live69_milestones_line), 13, c.getColor(R.color.text_dim), false));

@@ -2,7 +2,10 @@ package com.gathin.tvhomephone.live;
 
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
+
+import com.gathin.tvhomephone.sports.Game;
 
 import org.junit.Test;
 
@@ -93,10 +96,9 @@ public class ShootoutTest {
     }
 
     @Test public void theStripIsSmallUnderTheBoard() {
-        // The shootout's two rows a board high at most, the chances' slimmer.
+        // The shootout's two rows a board high at most; nothing when it shows nothing.
         assertTrue(BoardUnder.heightFor(BoardUnder.PENS, 40f) <= 40);
         assertTrue(BoardUnder.heightFor(BoardUnder.PENS, 40f) >= 32);
-        assertTrue(BoardUnder.heightFor(BoardUnder.CHANCE, 40f) < BoardUnder.heightFor(BoardUnder.PENS, 40f));
         assertEquals(0, BoardUnder.heightFor(BoardUnder.NONE, 40f));
         // Each sudden-death kick a dot wider.
         assertTrue(BoardUnder.pensWidth(40f, 6) > BoardUnder.pensWidth(40f, 5));
@@ -106,5 +108,23 @@ public class ShootoutTest {
     @Test public void clubsOfOneColourAreToldApart() {
         assertTrue(BoardUnder.near(0xFFC8102E, 0xFFD0142F));
         assertTrue(!BoardUnder.near(0xFFC8102E, 0xFF1B458F));
+    }
+
+    @Test public void aShootoutIsTheFifthPeriod() {
+        Game g = new Game();
+        g.id = "1";
+        g.state = Game.LIVE;
+        g.homeScore = 1;
+        g.awayScore = 1;
+        g.period = 4;
+        g.detail = "120'";
+        assertFalse(ScoreBoard.inShootout(g));
+        g.period = 5;
+        assertTrue(ScoreBoard.inShootout(g));
+        g.period = 0;
+        g.detail = "Penalties";
+        assertTrue(ScoreBoard.inShootout(g));
+        g.state = Game.POST;
+        assertFalse(ScoreBoard.inShootout(g));
     }
 }
