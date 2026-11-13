@@ -271,11 +271,13 @@ final class SkinSwipGuide {
             cell.setPadding(s.px(16), 0, s.px(12), 0);
             cell.setBackground(s.fill(12, top + r == chan ? SkinSwip.PANEL2 : SkinSwip.PANEL));
             FrameLayout tile = new FrameLayout(s.c);
-            GradientDrawable g = new GradientDrawable(GradientDrawable.Orientation.TL_BR,
-                    new int[]{SkinSwip.channelColour(ch[1]), darker(SkinSwip.channelColour(ch[1]))});
+            // On a black tile (ChannelTiles), else on the channel's colour.
+            boolean black = ChannelTiles.on(s.c);
+            int ground = black ? ChannelTiles.GROUND : SkinSwip.channelColour(ch[1]);
+            GradientDrawable g = new GradientDrawable(GradientDrawable.Orientation.TL_BR, new int[]{ground, black ? ground : darker(ground)});
             g.setCornerRadius(s.px(10));
             tile.setBackground(g);
-            String logo = host.channelLogo(ch[0]);
+            String logo = black ? ChannelTiles.url(host.channelLogo(ch[0])) : host.channelLogo(ch[0]);
             if (logo != null) {
                 ImageView lv = new ImageView(s.c);
                 lv.setScaleType(ImageView.ScaleType.FIT_CENTER);

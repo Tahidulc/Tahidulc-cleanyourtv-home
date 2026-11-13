@@ -101,6 +101,11 @@ final class HomeStyle {
         private FrameLayout overlay;
         private final List<View> cards = new ArrayList<>();
         private int at;
+        /** 0: the styles; 1: the channel logos' line under them (ChannelTiles). */
+        private int row;
+        private TextView logos;
+        /** The channel logos' switch changed: the style's screen is built again as the picker goes (not under it). */
+        private boolean logosChanged;
 
         Picker(HomeV2 h) {
             this.h = h;
@@ -128,9 +133,15 @@ final class HomeStyle {
                 add(overlay, card, x0 + i * (w + gap), 340, w, 470, Gravity.NO_GRAVITY);
                 cards.add(card);
             }
+            // Channel logos on black tiles or as they come, in the guides and channel tiles of every style.
+            logos = text(22, h.semi, 0xFFFFFFFF);
+            logos.setGravity(Gravity.CENTER);
+            logos.setBackground(fill(26, 0x26FFFFFF));
+            logos.setOnClickListener(v -> { row = 1; flipLogos(); });
+            add(overlay, logos, (1920 - 620) / 2, 846, 620, 52, Gravity.NO_GRAVITY);
             TextView foot = text(19, h.regular, 0x99FFFFFF);
-            foot.setText("◀ ▶ to choose  ·  OK to switch  ·  Back to keep this one");
-            add(overlay, foot, 0, 870, 1920, 28, Gravity.CENTER_HORIZONTAL);
+            foot.setText("◀ ▶ to choose  ·  OK to switch  ·  ▼ channel logos  ·  Back to keep this one");
+            add(overlay, foot, 0, 930, 1920, 28, Gravity.CENTER_HORIZONTAL);
             h.root.addView(overlay, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
             overlay.setAlpha(0f);
             overlay.animate().alpha(1f).setDuration(200).start();
@@ -138,6 +149,10 @@ final class HomeStyle {
         }
 
         void hide() {
+            if (logosChanged) {
+                logosChanged = false;
+                h.restyle();
+            }
             if (overlay != null) {
                 View o = overlay;
                 o.animate().alpha(0f).setDuration(160).withEndAction(() -> h.root.removeView(o)).start();
@@ -147,9 +162,13 @@ final class HomeStyle {
         }
 
         private void paint() {
+            if (logos != null) {
+                logos.setText(ChannelTiles.on(c) ? "Channel logos:  on black tiles" : "Channel logos:  as they come");
+                logos.setForeground(row == 1 ? ring(26, 0xFFFFFFFF, 3) : null);
+            }
             for (int i = 0; i < cards.size(); i++) {
                 View v = cards.get(i);
-                boolean f = i == at;
+                boolean f = i == at && row == 0;
                 v.animate().scaleX(f ? 1.05f : 1f).scaleY(f ? 1.05f : 1f).setDuration(160).start();
                 v.setForeground(f ? ring(28, 0xFFFFFFFF, 4) : null);
             }
@@ -163,6 +182,15 @@ final class HomeStyle {
             android.widget.Toast.makeText(c, name(style) + " on", android.widget.Toast.LENGTH_SHORT).show();
         }
 
+        /** The channel logos' switch: black tiles or as they come, the style's screen built again with them. */
+        private void flipLogos() {
+            boolean on = !ChannelTiles.on(c);
+            ChannelTiles.set(c, on);
+            logosChanged = !logosChanged;
+            paint();
+            android.widget.Toast.makeText(c, on ? "Channel logos on black tiles" : "Channel logos as they come", android.widget.Toast.LENGTH_SHORT).show();
+        }
+
         boolean key(KeyEvent e) {
             int code = e.getKeyCode();
             if (code == KeyEvent.KEYCODE_BACK) {
@@ -170,12 +198,17 @@ final class HomeStyle {
                 return true;
             }
             if (Skin.isOk(code)) {
-                if (e.getAction() == KeyEvent.ACTION_UP && !e.isCanceled()) apply();
+                if (e.getAction() == KeyEvent.ACTION_UP && !e.isCanceled()) {
+                    if (row == 1) flipLogos();
+                    else apply();
+                }
                 return true;
             }
             if (e.getAction() != KeyEvent.ACTION_DOWN) return true;
-            if (code == KeyEvent.KEYCODE_DPAD_LEFT && at > 0) at--;
-            else if (code == KeyEvent.KEYCODE_DPAD_RIGHT && at < ALL.length - 1) at++;
+            if (code == KeyEvent.KEYCODE_DPAD_DOWN) row = 1;
+            else if (code == KeyEvent.KEYCODE_DPAD_UP) row = 0;
+            else if (row == 0 && code == KeyEvent.KEYCODE_DPAD_LEFT && at > 0) at--;
+            else if (row == 0 && code == KeyEvent.KEYCODE_DPAD_RIGHT && at < ALL.length - 1) at++;
             paint();
             return true;
         }

@@ -481,7 +481,9 @@ final class SkinUhf extends Skin {
             }
             return f;
         }
-        int colour = Item.LIVE.equals(it.kind) ? channelColour(it.channel) : Item.APP.equals(it.kind) ? appColour(it.name) : 0xFF2A2A2E;
+        // A live channel's tile black (ChannelTiles), else in the channel's colour.
+        boolean black = Item.LIVE.equals(it.kind) && ChannelTiles.on(c);
+        int colour = black ? ChannelTiles.GROUND : Item.LIVE.equals(it.kind) ? channelColour(it.channel) : Item.APP.equals(it.kind) ? appColour(it.name) : 0xFF2A2A2E;
         GradientDrawable g = new GradientDrawable(GradientDrawable.Orientation.TL_BR, new int[]{colour, mix(colour, 0xFF050505, 0.7f)});
         g.setCornerRadius(px(radius));
         f.setBackground(g);
@@ -494,7 +496,7 @@ final class SkinUhf extends Skin {
                     : new FrameLayout.LayoutParams(px(200), px(70), Gravity.CENTER);
             if (big) { lp.rightMargin = px(160); lp.topMargin = -px(90); }
             f.addView(logo, lp);
-            host.image(logo, it.mark, big ? 640 : 240);
+            host.image(logo, black && !big ? ChannelTiles.url(it.mark) : it.mark, big ? 640 : 240);
         } else if (word != null) {
             TextView t = text(big ? 170 : 64, host.display(), big ? 0x1FFFFFFF : 0x2EFFFFFF);
             t.setText(word);
@@ -1410,7 +1412,9 @@ final class SkinUhf extends Skin {
         base.setBackground(fill(16, TILE));
         box.addView(base, full());
         FrameLayout top = new FrameLayout(c);
-        int col = channelColour(it.channel);
+        // Black (ChannelTiles), else the channel's colour.
+        boolean black = ChannelTiles.on(c);
+        int col = black ? ChannelTiles.GROUND : channelColour(it.channel);
         top.setBackground(new RoundShade(px(16), true, new Shade(0, 0, 1, 1, new int[]{col, mix(col, 0xFF000000, 0.38f)}, new float[]{0, 1})));
         box.addView(top, new FrameLayout.LayoutParams(px(KW[CHAN]), px(112)));
         TextView name = text(32, host.display(), TEXT);
@@ -1423,7 +1427,8 @@ final class SkinUhf extends Skin {
             logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
             logo.setVisibility(View.INVISIBLE);
             top.addView(logo, new FrameLayout.LayoutParams(px(190), px(62), Gravity.CENTER));
-            later(() -> host.image(logo, it.mark, 240, () -> { logo.setVisibility(View.VISIBLE); name.setVisibility(View.GONE); }));
+            String mark = black ? ChannelTiles.url(it.mark) : it.mark;
+            later(() -> host.image(logo, mark, 240, () -> { logo.setVisibility(View.VISIBLE); name.setVisibility(View.GONE); }));
         }
         FrameLayout badge = new FrameLayout(c);
         badge.setBackground(fill(8, RED));

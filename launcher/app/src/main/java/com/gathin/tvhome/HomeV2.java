@@ -574,6 +574,14 @@ final class HomeV2 {
      * and alerts. Home's own views stay as they are under a style but are not drawn (root's drawChild), so they are back
      * exactly as they were when it goes.
      */
+    /** The style's screen built again (its channel tiles after the channel logos' switch); Home's own guide redraws as it goes. */
+    void restyle() {
+        String s = skinStyle;
+        if (s == null || HomeStyle.HOME.equals(s)) return;
+        skinStyle = "";
+        applyStyle(s);
+    }
+
     void applyStyle(String style) {
         String want = HomeStyle.of(style);
         if (want.equals(skinStyle)) return;
@@ -4149,6 +4157,8 @@ final class HomeV2 {
     }
 
     private Bitmap fetch(String url, int width) {
+        // A channel's logo for its black tile (ChannelTiles): the logo as ever, then made ready for black.
+        if (ChannelTiles.marked(url)) return ChannelTiles.ready(fetch(ChannelTiles.unmarked(url), width));
         if (url.endsWith("#yt")) return video(url.substring(0, url.length() - 3), width);
         if (url.startsWith("crest:")) return crests(url.substring(6), width);
         // Surprise me's moods: drawn here, not fetched.

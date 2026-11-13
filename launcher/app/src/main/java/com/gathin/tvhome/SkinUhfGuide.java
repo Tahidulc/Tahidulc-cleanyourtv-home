@@ -489,6 +489,9 @@ final class SkinUhfGuide {
     /** A tile in the channel's colour with its logo (white on clear) or its name. */
     private FrameLayout channelTile(String[] ch, int colour, float radius, float logoW, float logoH) {
         FrameLayout t = new FrameLayout(s.c);
+        // On a black tile (ChannelTiles), else on the channel's colour.
+        boolean black = ChannelTiles.on(s.c);
+        if (black) colour = ChannelTiles.GROUND;
         GradientDrawable g = new GradientDrawable(GradientDrawable.Orientation.TL_BR, new int[]{colour, SkinUhf.mix(colour, 0xFF000000, 0.35f)});
         g.setCornerRadius(s.px(radius));
         t.setBackground(g);
@@ -498,7 +501,7 @@ final class SkinUhfGuide {
         name.setSingleLine(false);
         name.setMaxLines(2);
         t.addView(name, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.CENTER));
-        String url = host.channelLogo(ch[0]);
+        String url = black ? ChannelTiles.url(host.channelLogo(ch[0])) : host.channelLogo(ch[0]);
         if (url != null) {
             ImageView logo = new ImageView(s.c);
             logo.setScaleType(ImageView.ScaleType.FIT_CENTER);

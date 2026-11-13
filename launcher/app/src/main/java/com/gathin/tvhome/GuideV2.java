@@ -622,11 +622,20 @@ final class GuideV2 {
             num.setText(ch[3].isEmpty() ? String.valueOf(i + 1) : ch[3]);
             nl.addView(num, new LinearLayout.LayoutParams(px(46), ViewGroup.LayoutParams.WRAP_CONTENT));
             ImageView logo = new ImageView(c);
-            logo.setAdjustViewBounds(true);
-            logo.setMaxHeight(px(26));
-            logo.setMaxWidth(px(92));
-            nl.addView(logo, new LinearLayout.LayoutParams(px(96), px(26)));
-            image(logo, logoUrl(ch[0]), px(120));
+            if (ChannelTiles.on(c)) {
+                // On its black tile, as the phone and Homefield TV show their channels.
+                logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
+                logo.setBackground(fill(8, ChannelTiles.GROUND));
+                logo.setPadding(px(9), px(8), px(9), px(8));
+                nl.addView(logo, new LinearLayout.LayoutParams(px(72), px(42)));
+                image(logo, ChannelTiles.url(logoUrl(ch[0])), px(120));
+            } else {
+                logo.setAdjustViewBounds(true);
+                logo.setMaxHeight(px(26));
+                logo.setMaxWidth(px(92));
+                nl.addView(logo, new LinearLayout.LayoutParams(px(96), px(26)));
+                image(logo, logoUrl(ch[0]), px(120));
+            }
             TextView n = text(19, selRow ? semi : regular, Color.WHITE);
             n.setText(ch[1]);
             n.setSingleLine(true);
@@ -736,17 +745,21 @@ final class GuideV2 {
             return;
         }
         v.setImageDrawable(null);
+        // A channel's logo for its black tile (ChannelTiles): fetched as ever, then made ready for black.
+        boolean tile = ChannelTiles.marked(url);
+        String src = ChannelTiles.unmarked(url);
         pics.execute(() -> {
             Bitmap b = null;
             try {
-                HttpURLConnection con = (HttpURLConnection) new URL(url).openConnection();
+                HttpURLConnection con = (HttpURLConnection) new URL(src).openConnection();
                 con.setConnectTimeout(6000);
                 con.setReadTimeout(10000);
                 try (InputStream in = con.getInputStream()) {
                     BitmapFactory.Options o = new BitmapFactory.Options();
                     Bitmap full = BitmapFactory.decodeStream(in, null, o);
-                    if (url.contains("newchanlogos")) full = HomeV2.trim(full);
-                    if (full != null && url.endsWith("#uhd")) full = ScoresTicker.uhdLogo(c, full);
+                    if (src.contains("newchanlogos")) full = HomeV2.trim(full);
+                    if (full != null && src.endsWith("#uhd")) full = ScoresTicker.uhdLogo(c, full);
+                    if (tile) full = ChannelTiles.ready(full);
                     if (full != null && full.getWidth() > width * 2) {
                         b = Bitmap.createScaledBitmap(full, width, Math.round(full.getHeight() * width / (float) full.getWidth()), true);
                         full.recycle();
