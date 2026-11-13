@@ -149,6 +149,8 @@ final class ScoreOverlay implements ScoreBoard.Source {
         });
         // the intros: the channel's own sound off while one plays
         intro.hush(host::mute);
+        // a goal's restart pop-up waits out the channel's replays (the board away in them)
+        intro.inReplay(board::replayAway);
         // the strap in the board's look folds into the board: where it is over the picture, on a 1920 x 1080 picture
         intro.boardAt(() -> {
             if (pfw <= 10 || pfh <= 10 || board.view.getWidth() <= 0) return null;

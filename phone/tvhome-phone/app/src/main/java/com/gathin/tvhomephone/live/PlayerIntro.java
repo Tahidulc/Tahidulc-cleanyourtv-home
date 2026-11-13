@@ -157,7 +157,8 @@ final class PlayerIntro {
         if (g == null || g.id == null) return;
         if (showing() && !canShow.getAsBoolean()) stop();
         String was = phases.get(g.id);
-        String now = Moments.phase(false, g.state, g.halftime, was);
+        // The half the scores give, for a game joined part way through (no kick-off or half time seen).
+        String now = Moments.phase(false, g.state, g.halftime, was, g.period >= 1 && g.period <= 4 ? g.period : 0);
         if (!now.isEmpty()) phases.put(g.id, now);
         String kind = was == null ? null : Moments.moment(was, now);
         if (kind != null && popupOn(a)) popup(g, kind, "kickoff".equals(kind) ? null : new int[]{g.homeScore, g.awayScore}, null, null);
@@ -273,12 +274,29 @@ final class PlayerIntro {
         if (g == null || g.id == null || !popupOn(a)) return;
         int[] score = {g.homeScore, g.awayScore};
         String id = g.id;
-        h.postDelayed(() -> {
-            String ph = phases.get(id);
-            if (!"h1".equals(ph) && !"h2".equals(ph)) return;
-            String[] last = Moments.lastGoal(g.goals, side);
-            popup(g, "restart", score, Moments.scorer(last), last == null ? "" : BroadcastData.minute(last[2]));
+        long at = android.os.SystemClock.uptimeMillis();
+        h.postDelayed(new Runnable() {
+            @Override public void run() {
+                String ph = phases.get(id);
+                if (!"h1".equals(ph) && !"h2".equals(ph)) return;
+                // Still in the channel's replays of it (the board away): on the restart, once live play is back.
+                int go = Moments.restartNow(android.os.SystemClock.uptimeMillis() - at, inReplay.getAsBoolean());
+                if (go == 0) {
+                    h.postDelayed(this, 1_000L);
+                    return;
+                }
+                if (go < 0) return;
+                String[] last = Moments.lastGoal(g.goals, side);
+                popup(g, "restart", score, Moments.scorer(last), last == null ? "" : BroadcastData.minute(last[2]));
+            }
         }, Moments.RESTART_MS);
+    }
+
+    /** Whether the channel is in its replays now (the scoreboard away, BugCover): the restart's pop-up waits for live play. */
+    private BooleanSupplier inReplay = () -> false;
+
+    void inReplay(BooleanSupplier s) {
+        inReplay = s == null ? () -> false : s;
     }
 
     // ---- showing ------------------------------------------------------------------------------------------------------
