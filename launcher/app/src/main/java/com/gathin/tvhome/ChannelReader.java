@@ -14,13 +14,19 @@ import java.util.List;
 
 /**
  * The words on part of the picture, read on the phone (Google's text reader, which works offline): the channel's
- * scoreboard for its clock and score (ScreenText), F1's tower for its lap. One read at a time; the answer comes on
- * the main thread.
+ * scoreboard for its clock and score (ScreenText), F1's tower for its lap, a tennis board's rows word by word. One read
+ * at a time; the answer comes on the main thread.
  */
 final class ChannelReader {
     interface Got {
         /** The lines read, top to bottom, each with its box in the bitmap; empty when nothing was read. */
         void lines(List<String> lines, List<Rect> boxes);
+
+        /**
+         * The same read word by word (each with its box in the bitmap), after lines: for a reader that wants each word
+         * where it is (the tennis board's, SportCover). Nothing by default.
+         */
+        default void elements(List<String> words, List<Rect> boxes) { }
     }
 
     private TextRecognizer reader;
@@ -35,19 +41,26 @@ final class ChannelReader {
             reader.process(InputImage.fromBitmap(b, 0))
                     .addOnSuccessListener(t -> {
                         busy = false;
-                        List<String> lines = new ArrayList<>();
-                        List<Rect> boxes = new ArrayList<>();
+                        List<String> lines = new ArrayList<>(), words = new ArrayList<>();
+                        List<Rect> boxes = new ArrayList<>(), wordBoxes = new ArrayList<>();
                         for (Text.TextBlock block : t.getTextBlocks()) {
                             for (Text.Line line : block.getLines()) {
                                 lines.add(line.getText());
                                 boxes.add(line.getBoundingBox() == null ? new Rect() : line.getBoundingBox());
+                                for (Text.Element e : line.getElements()) {
+                                    if (e.getBoundingBox() == null) continue;
+                                    words.add(e.getText());
+                                    wordBoxes.add(e.getBoundingBox());
+                                }
                             }
                         }
                         got.lines(lines, boxes);
+                        got.elements(words, wordBoxes);
                     })
                     .addOnFailureListener(e -> {
                         busy = false;
                         got.lines(new ArrayList<>(), new ArrayList<>());
+                        got.elements(new ArrayList<>(), new ArrayList<>());
                     });
             return true;
         } catch (RuntimeException e) {

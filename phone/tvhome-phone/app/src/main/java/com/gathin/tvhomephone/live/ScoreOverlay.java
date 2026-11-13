@@ -70,7 +70,7 @@ final class ScoreOverlay implements ScoreBoard.Source {
 
     private static final int FIND_W = 256, FIND_H = 144, READ_W = 960, READ_H = 540, OCR_W = 1280, OCR_H = 720;
     private static final long SAMPLE_MS = 250, LOOK_AGAIN_MS = 3 * 60_000L, RETRY_MS = 20_000L, READ_FOR_MS = 80_000L,
-            READ_AGAIN_MS = 4 * 60_000L, OCR_MS = 2000, F1_OCR_MS = 4000, SPORT_OCR_MS = 3000;
+            READ_AGAIN_MS = 4 * 60_000L, OCR_MS = 2000, F1_OCR_MS = 4000;
 
     private final Activity a;
     private final FrameLayout root;
@@ -1067,10 +1067,24 @@ final class ScoreOverlay implements ScoreBoard.Source {
             lp.topMargin = vt;
             board.view.setLayoutParams(lp);
         }
-        // Tennis, boxing and UFC: where this board sits (placed by hand, else its own corner), at its rows' height; just
+        // Tennis, boxing and UFC: over the channel's own tennis scoreboard once it has been read off the picture (its
+        // place, its rows, at least its width), for the rest of the programme, unless the sport board was dragged by hand
+        // on this channel; else where this board sits (placed by hand, else its own corner), at its rows' height, just
         // under it while it shows a followed club's game.
         float rows;
         int sl, st;
+        float[] theirs = sport.cover();
+        boolean sportHand = "1".equals(ChannelOverlays.opt(a, chKey(), "sport_hand"));
+        if (theirs != null && !sportHand && !inPip && fw > 0 && fh > 0) {
+            float l = Math.max(0f, theirs[0]), t = Math.max(0f, theirs[1]);
+            sl = Math.round(fx + l * fw);
+            st = Math.round(fy + t * fh);
+            rows = Math.max(theirs[4] * fh, (Math.min(1f, theirs[3]) - t) * fh / 2f);
+            sport.minWidth(Math.round((Math.min(1f, theirs[2]) - l) * fw));
+            sport.place(sl, st, rows, root.getWidth(), root.getHeight());
+            return;
+        }
+        sport.minWidth(0);
         if (placed) {
             rows = own.bh * fh / Math.max(1f, board.bug.tall());
             sl = Math.round(fx + own.bx * fw);
@@ -1414,6 +1428,8 @@ final class ScoreOverlay implements ScoreBoard.Source {
                     held[0] = false;
                     carrying = false;
                     if (mineKey != null) BoardPlace.put(a, mineKey, mine);
+                    // Put here by hand: it stays here on this channel (not over the channel's own tennis board).
+                    ChannelOverlays.setOpt(a, chKey(), "sport_hand", "1");
                     outlineOne(v, false);
                     place();
                     return true;
@@ -1662,31 +1678,31 @@ final class ScoreOverlay implements ScoreBoard.Source {
         screenAt = System.currentTimeMillis();
         if (!started || inPip || sampler == null || !ScoreBoard.reads(a)) return;
         boolean f1 = host.game() == null && ScoreBoard.f1Channel(host.current());
-        // A tennis match on the sport board: the channel's own tennis scoreboard read for its points (SportScreen).
+        // A tennis match on the sport board: the channel's own tennis scoreboard read word by word (TennisScreen), its
+        // box alone once found (scaled so its rows read tall), else the top and the foot of the picture in turn.
         boolean tennis = !f1 && !board.football() && sport.wantsReading();
         if (!f1 && !board.football() && !tennis) {
             readSoon(5000);
             return;
         }
         BugFinder.Box rb = readBox;
-        int band = sport.band();
+        float[] area = tennis ? sport.readArea(OCR_H) : null;
         if (ocrFrame == null) ocrFrame = Bitmap.createBitmap(OCR_W, OCR_H, Bitmap.Config.ARGB_8888);
         boolean asked = sampler.copy(video.surface(), ocrFrame, (frame, at) -> {
             Cut cut = frame == null ? null : f1 ? Cut.of(frame, 0f, 0f, 0.34f, 0.24f)
-                    : tennis ? (band == 1 ? Cut.of(frame, 0f, 0.64f, 0.62f, 1f) : Cut.of(frame, 0f, 0f, 0.62f, 0.36f))
+                    : tennis ? (area[4] > 0 ? Cut.of(frame, area[0], area[1], area[2], area[3], area[4]) : Cut.of(frame, area[0], area[1], area[2], area[3]))
                     : rb != null ? Cut.of(frame, rb.left, rb.top, rb.right, rb.bottom) : Cut.of(frame, 0f, 0f, 1f, 0.34f);
             h.post(() -> safely(() -> {
                 if (!started || cut == null) {
-                    readSoon(OCR_MS);
+                    readSoon(tennis ? SportOverlay.READ_MS : OCR_MS);
+                    return;
+                }
+                if (tennis) {
+                    readTennis(cut);
                     return;
                 }
                 boolean reading = ocr.read(cut.b, (lines, boxes) -> safely(() -> {
                     if (!started) return;
-                    if (tennis) {
-                        sport.screen(lines, boxes);
-                        readSoon(SPORT_OCR_MS);
-                        return;
-                    }
                     if (f1) {
                         ScreenText.Reading r = ScreenText.f1(lines);
                         if (r.any()) board.f1Screen(r.lap, r.laps, r.left, at);
@@ -1701,6 +1717,31 @@ final class ScoreOverlay implements ScoreBoard.Source {
             }, () -> readSoon(OCR_MS)));
         });
         if (!asked) readSoon(1000);
+    }
+
+    /**
+     * Part of the picture read for the channel's own tennis scoreboard: each word with its box in the part's pixels
+     * (TennisScreen.Word), then the sport board told what it says and where, as shares of the picture.
+     */
+    private void readTennis(Cut cut) {
+        java.util.List<com.gathin.broadcast.TennisScreen.Word> got = new java.util.ArrayList<>();
+        boolean reading = ocr.read(cut.b, new ChannelReader.Got() {
+            @Override public void words(java.util.List<String> words, java.util.List<android.graphics.Rect> boxes) {
+                for (int i = 0; i < Math.min(words.size(), boxes.size()); i++) {
+                    android.graphics.Rect q = boxes.get(i);
+                    got.add(new com.gathin.broadcast.TennisScreen.Word(words.get(i), q.left, q.top, q.right, q.bottom));
+                }
+            }
+
+            @Override public void lines(java.util.List<String> lines, java.util.List<android.graphics.Rect> boxes) {
+                safely(() -> {
+                    if (!started) return;
+                    sport.screen(got, cut.x0, cut.y0, cut.sx, cut.sy);
+                    readSoon(SportOverlay.READ_MS);
+                }, () -> readSoon(SportOverlay.READ_MS));
+            }
+        });
+        if (!reading) readSoon(SportOverlay.READ_MS);
     }
 
     /**
@@ -1806,6 +1847,11 @@ final class ScoreOverlay implements ScoreBoard.Source {
         float fy(int y) { return y0 + y * sy; }
 
         static Cut of(Bitmap frame, float l, float t, float r, float bt) {
+            return of(frame, l, t, r, bt, 0f);
+        }
+
+        /** As of, at scale scale (0: a thin strip made bigger, a wide band only a little). */
+        static Cut of(Bitmap frame, float l, float t, float r, float bt, float scale) {
             int fw = frame.getWidth(), fh = frame.getHeight();
             int x0 = Math.max(0, Math.round(l * fw)), y0 = Math.max(0, Math.round(t * fh));
             int x1 = Math.min(fw, Math.round(r * fw)), y1 = Math.min(fh, Math.round(bt * fh));
@@ -1813,7 +1859,8 @@ final class ScoreOverlay implements ScoreBoard.Source {
             try {
                 Bitmap c = Bitmap.createBitmap(frame, x0, y0, x1 - x0, y1 - y0);
                 // A thin strip is made bigger (the reader wants its words tall); a wide band only a little.
-                float k = Math.max(1f, Math.min(4f, (y1 - y0) < 140 ? 120f / (y1 - y0) : 1.5f));
+                float k = scale > 0 ? Math.max(1f, Math.min(4f, scale))
+                        : Math.max(1f, Math.min(4f, (y1 - y0) < 140 ? 120f / (y1 - y0) : 1.5f));
                 Bitmap big = k > 1.05f ? Bitmap.createScaledBitmap(c, Math.round((x1 - x0) * k), Math.round((y1 - y0) * k), true)
                         : c.copy(Bitmap.Config.ARGB_8888, false);
                 return new Cut(big, x0 / (float) fw, y0 / (float) fh, 1f / (k * fw), 1f / (k * fh));

@@ -14,6 +14,7 @@ import com.gathin.broadcast.Sfx;
 import com.gathin.broadcast.SportBoard;
 import com.gathin.broadcast.SportBug;
 import com.gathin.broadcast.SportFeeds;
+import com.gathin.broadcast.TennisScreen;
 import com.gathin.tvhomephone.App;
 import com.gathin.tvhomephone.R;
 import com.gathin.tvhomephone.sports.LiveGames;
@@ -30,10 +31,11 @@ import java.util.Map;
  * (SportFeeds.sportOf), the scoreboard is on, and no football or F1 board is up for the channel's own game.
  *
  * <p>Tennis and UFC from ESPN's scoreboards every 15 seconds, the match or fight the programme shows picked by the
- * names in its title or read off the picture (SportFeeds.pick), a fight's round clock counted on between reads. Tennis's
- * points, which ESPN hasn't, and the set in play's games as the picture has them come from the channel's own scoreboard
- * read off the picture (SportScreen) where it reads cleanly. Boxing has no scores to read: the names come from the
- * title, and its round clock from the first bell as seen on the screen (a tap on the board: Bell now).
+ * names in its title or read off the picture (SportFeeds.pick), a fight's round clock counted on between reads. Tennis
+ * as the picture has it: the channel's own scoreboard read off the picture every second or so (TennisScreen), its games
+ * and its points (ESPN's have none) shown while the reading is fresh, its moments with them, and the board put over the
+ * channel's own for the rest of the programme (unless dragged by hand there). Boxing has no scores to read: the names
+ * come from the title, and its round clock from the first bell as seen on the screen (a tap on the board: Bell now).
  *
  * <p>It opens out with the football board's swish, its tab (the event, the round) rolls down for its first twenty
  * seconds, between rounds and at the end; a tennis game won plays the score swish, a set, the match and a fight's winner
@@ -61,7 +63,14 @@ final class SportOverlay {
     }
 
     static final long POLL_MS = 15_000L, TICK_MS = 1_000L, TAB_FIRST_MS = 20_000L, KEEP_MS = 10 * 60_000L,
-            RESULT_MS = 3 * 60_000L, SCREEN_FRESH_MS = 12_000L;
+            RESULT_MS = 3 * 60_000L;
+    /**
+     * Tennis off the picture: read this often; a reading this old still shown (then ESPN's games, no points); the
+     * board's box read alone until this many misses in a row (then the bands again); its rows read this tall (pixels).
+     */
+    static final long READ_MS = 1_200L, FRESH_MS = 5_000L;
+    static final int MISSES = 5;
+    static final float ROW_PX = 44f;
 
     private final Activity a;
     final SportView view;
@@ -87,11 +96,19 @@ final class SportOverlay {
     /** What it last showed (for its moments), since when it shows, since when what it shows is over. */
     private SportBoard last;
     private long shownSince, overSince;
-    /** The channel's own tennis scoreboard as last read off the picture, and when; the band of the picture read. */
-    private SportScreen.Reading screen;
-    private long screenAt;
+    /**
+     * The channel's own tennis scoreboard as last read off the picture (TennisScreen) and when; where it is, as shares
+     * of the picture {left, top, right, bottom, its rows' pitch} (null: not found lately, the bands read instead), and
+     * where this board covers it for the rest of the programme (kept while the reading comes and goes); the band next.
+     */
+    private TennisScreen.Reading reading;
+    private long readingAt;
+    private float[] readBox, coverBox;
     private String seen = "";
-    private int screenBand, screenMisses;
+    private int band, misses;
+    /** Tennis: the sets and games its moments last came for (each comes once, however the reading comes and goes). */
+    private long fired = -1;
+    private boolean firedOver;
 
     private final Map<String, Bitmap> pics = new HashMap<>();
     private Bitmap ufcLogo;
@@ -166,10 +183,14 @@ final class SportOverlay {
         bellAt = 0;
         last = null;
         overSince = 0;
-        screen = null;
-        screenAt = 0;
+        reading = null;
+        readingAt = 0;
+        readBox = null;
+        coverBox = null;
         seen = "";
-        screenMisses = 0;
+        misses = 0;
+        fired = -1;
+        firedOver = false;
         hide();
     }
 
@@ -178,26 +199,83 @@ final class SportOverlay {
         return started && sport == SportBoard.TENNIS && view.getVisibility() == View.VISIBLE && picked != null && picked.live();
     }
 
-    /** The band of the picture to read: 0 its top, 1 its foot (tennis's scoreboards sit in either). */
-    int band() {
-        return screenBand;
+    /** The part of the picture to read next, as shares {left, top, right, bottom} and its scale (0: the reader's own). */
+    float[] readArea(int frameH) {
+        return area(readBox, band, frameH);
     }
 
-    /** The lines read off that band of the picture (each with its box): the match's rows, its points. */
-    void screen(List<String> lines, List<android.graphics.Rect> boxes) {
-        SportBoard p = picked;
-        if (p == null || lines == null) return;
-        seen = android.text.TextUtils.join(" ", lines);
-        SportScreen.Reading r = SportScreen.tennis(lines, boxes, p.at(readAt, System.currentTimeMillis()));
-        if (r.found) {
-            screen = r;
-            screenAt = System.currentTimeMillis();
-            screenMisses = 0;
-        } else if (++screenMisses >= 3) {
-            // Not there: the other band of the picture.
-            screenMisses = 0;
-            screenBand = 1 - screenBand;
+    /**
+     * Pure: the part to read: the channel's board found (box, as shares, its rows' pitch last), that box and a little
+     * more round it, scaled so its rows read ROW_PX tall; not found, a band of the picture where tennis's boards sit, the
+     * top (0) or the foot (1), the left of it.
+     */
+    static float[] area(float[] box, int band, int frameH) {
+        if (box != null) {
+            float w = box[2] - box[0], h = box[3] - box[1];
+            float rowPx = box[4] * frameH;
+            float k = rowPx > 0 ? Math.max(1f, Math.min(4f, ROW_PX / rowPx)) : 0f;
+            return new float[]{share(box[0] - w * 0.15f), share(box[1] - h * 0.15f), share(box[2] + w * 0.15f), share(box[3] + h * 0.15f), k};
         }
+        return band == 1 ? new float[]{0f, 0.64f, 0.62f, 1f, 0f} : new float[]{0f, 0f, 0.62f, 0.36f, 0f};
+    }
+
+    private static float share(float v) {
+        return Math.max(0f, Math.min(1f, v));
+    }
+
+    /**
+     * The words read off that part of the picture (in its pixels) and the way back to the picture's shares (x0 + x *
+     * sx, y0 + y * sy): the channel's own tennis scoreboard for the match shown, where it is. Not found: the box again
+     * until MISSES in a row, then the bands in turn.
+     */
+    void screen(List<TennisScreen.Word> words, float x0, float y0, float sx, float sy) {
+        SportBoard p = picked;
+        if (p == null || words == null) return;
+        long now = System.currentTimeMillis();
+        StringBuilder sb = new StringBuilder();
+        for (TennisScreen.Word w : words) sb.append(w.text).append(' ');
+        seen = sb.toString();
+        TennisScreen.Reading r = TennisScreen.read(words, p);
+        if (r.found) {
+            reading = r;
+            readingAt = now;
+            misses = 0;
+            readBox = shares(r, x0, y0, sx, sy);
+            float[] was = coverBox;
+            coverBox = moved(was, readBox) ? readBox.clone() : was;
+            if (coverBox != was) host.relayout();
+            tick();
+        } else {
+            if (readBox != null && ++misses >= MISSES) {
+                readBox = null;
+                misses = 0;
+            }
+            if (readBox == null) band = 1 - band;
+        }
+    }
+
+    /** Pure: a reading's box as shares of the picture {left, top, right, bottom, rows' pitch}, from the part's pixels. */
+    static float[] shares(TennisScreen.Reading r, float x0, float y0, float sx, float sy) {
+        return new float[]{x0 + r.l * sx, y0 + r.t * sy, x0 + r.r * sx, y0 + r.b * sy, r.row * sy};
+    }
+
+    /** Pure: the board's box has moved or changed size enough to move ours (not each reading's few pixels). */
+    static boolean moved(float[] was, float[] now) {
+        if (was == null) return now != null;
+        if (now == null) return false;
+        float h = Math.max(0.01f, was[3] - was[1]), w = Math.max(0.01f, was[2] - was[0]);
+        return Math.abs(now[0] - was[0]) > 0.015f || Math.abs(now[1] - was[1]) > 0.015f
+                || Math.abs((now[3] - now[1]) - h) > h * 0.12f || Math.abs((now[2] - now[0]) - w) > w * 0.12f;
+    }
+
+    /** Where it covers the channel's own board for this programme (shares, rows' pitch last); null: not found yet. */
+    float[] cover() {
+        return coverBox;
+    }
+
+    /** At least this wide (over the channel's board: as wide as it), pixels. */
+    void minWidth(int px) {
+        view.minWidth(px);
     }
 
     // ---- reading the feed ---------------------------------------------------------------------------------------------
@@ -264,7 +342,9 @@ final class SportOverlay {
                 if (p == null || picked == null || !p.id.equals(picked.id)) {
                     last = null;
                     overSince = 0;
-                    screen = null;
+                    reading = null;
+                    fired = -1;
+                    firedOver = false;
                 }
                 picked = p;
                 readAt = now;
@@ -299,10 +379,16 @@ final class SportOverlay {
     /** Pure: the words carry this side's surname (its last word, three letters or more) as a word. */
     static boolean named(String words, SportBoard.Side s) {
         String n = s.shortName == null || s.shortName.isEmpty() ? s.name : s.shortName;
-        String[] w = SportScreen.key(n).toLowerCase(Locale.ROOT).split("[\\s-]+");
+        String[] w = key(n).toLowerCase(Locale.ROOT).split("[\\s-]+");
         String last = w.length == 0 ? "" : w[w.length - 1];
         return last.length() >= 3 && java.util.regex.Pattern.compile("\\b" + java.util.regex.Pattern.quote(last) + "\\b")
-                .matcher(SportScreen.key(words).toLowerCase(Locale.ROOT)).find();
+                .matcher(key(words).toLowerCase(Locale.ROOT)).find();
+    }
+
+    /** Pure: words as compared: capitals, without accents. */
+    static String key(String s) {
+        if (s == null) return "";
+        return java.text.Normalizer.normalize(s, java.text.Normalizer.Form.NFD).replaceAll("\\p{M}+", "").toUpperCase(Locale.ROOT);
     }
 
     // ---- what it shows ----------------------------------------------------------------------------------------------
@@ -317,7 +403,7 @@ final class SportOverlay {
             if (picked == null) return null;
             b = picked.at(readAt, now);
             if (b == picked) b = picked.copy();
-            if (sport == SportBoard.TENNIS && screen != null && now - screenAt < SCREEN_FRESH_MS) withScreen(b, screen);
+            if (sport == SportBoard.TENNIS) b = truth(b, reading, readingAt, now);
         }
         b.a.flag = pics.get(b.a.flagUrl);
         b.b.flag = pics.get(b.b.flagUrl);
@@ -350,25 +436,25 @@ final class SportOverlay {
         return b;
     }
 
-    /** Pure: the picture's tennis on the feed's: each player's points, the set in play's games as the picture has them. */
-    static void withScreen(SportBoard b, SportScreen.Reading r) {
-        if (b == null || r == null || !r.found || !b.live()) return;
-        b.a.points = r.points[0];
-        b.b.points = r.points[1];
-        int i = b.setColumns() - 1;
-        if (i >= 0 && i < b.a.games.length && r.games[0] >= 0) b.a.games[i] = r.games[0];
-        if (i >= 0 && i < b.b.games.length && r.games[1] >= 0) b.b.games[i] = r.games[1];
+    /**
+     * Pure: tennis as the board shows it: the picture's (its games, its points, its server: TennisScreen.apply) while
+     * its last reading is no older than FRESH_MS; ESPN's games and no points after.
+     */
+    static SportBoard truth(SportBoard espn, TennisScreen.Reading r, long readingAt, long now) {
+        if (espn == null) return null;
+        if (r != null && r.found && readingAt > 0 && now - readingAt <= FRESH_MS) return TennisScreen.apply(espn, r);
+        SportBoard b = espn.copy();
+        b.a.points = "";
+        b.b.points = "";
+        return b;
     }
 
-    /** Pure: a tennis game won between two readings of the same match (the set in play's games up; not a set or the match). */
-    static boolean gameWon(SportBoard was, SportBoard now) {
-        if (was == null || now == null || now.sport != SportBoard.TENNIS || !was.id.equals(now.id) || !now.live()) return false;
-        if (was.setColumns() != now.setColumns()) return false;
-        int i = now.setColumns() - 1;
-        int wa = i < was.a.games.length ? was.a.games[i] : 0, wb = i < was.b.games.length ? was.b.games[i] : 0;
-        int na = i < now.a.games.length ? now.a.games[i] : 0, nb = i < now.b.games.length ? now.b.games[i] : 0;
-        if (na + nb <= wa + wb) return false;
-        return SportBoard.moment(was, now) == null;
+    /** Pure: where a tennis match stands, to tell a set or a game won once: its sets done, then the set in play's games. */
+    static long mark(SportBoard b) {
+        int[] s = b.sets();
+        int i = b.setColumns() - 1;
+        int g = (i >= 0 && i < b.a.games.length ? b.a.games[i] : 0) + (i >= 0 && i < b.b.games.length ? b.b.games[i] : 0);
+        return (s[0] + s[1]) * 100L + g;
     }
 
     /** Pure: the tab under it: its first twenty seconds, between rounds, at the end. */
@@ -398,6 +484,8 @@ final class SportOverlay {
         if (opening) {
             shownSince = now;
             Sfx.warm(a, Sfx.SWISH, Sfx.SCORE, "goal-" + PlayerIntro.goalSound(a));
+            // Where the match stands as it comes up: no moment for what happened before.
+            if (b.sport == SportBoard.TENNIS) fired = Math.max(fired, mark(b));
         }
         boolean tabWas = view.tab();
         boolean tab = tabWanted(b, now - shownSince);
@@ -419,12 +507,42 @@ final class SportOverlay {
 
     /** A moment between what it showed and what it shows: its band and sound; a tennis game won, the score swish. */
     private void moment(SportBoard was, SportBoard b) {
+        if (b.sport == SportBoard.TENNIS) {
+            tennisMoment(was, b);
+            return;
+        }
         SportBoard.Moment m = SportBoard.moment(was, b);
         if (m != null) {
             view.band(m.words, m.colour);
             if (m.words.startsWith("ROUND")) sound(Sfx.SWISH);
             else goal();
-        } else if (gameWon(was, b)) {
+        }
+    }
+
+    /**
+     * Tennis's moments as the board shows them (the picture's games while its reading is fresh): the match, a set (its
+     * band and the goal sound), a game (the score swish), each once: when the reading lapses and ESPN's games, behind,
+     * come back, and then the picture's again, nothing comes twice.
+     */
+    private void tennisMoment(SportBoard was, SportBoard b) {
+        long before = fired, now = mark(b);
+        fired = Math.max(fired, now);
+        if (before < 0 || was == null) return;
+        if (b.over() && !firedOver) {
+            firedOver = true;
+            SportBoard.Moment m = SportBoard.moment(was, b);
+            if (m != null) {
+                view.band(m.words, m.colour);
+                goal();
+            }
+            return;
+        }
+        if (now <= before || !b.live()) return;
+        SportBoard.Moment m = now / 100 > before / 100 ? SportBoard.moment(was, b) : null;
+        if (m != null) {
+            view.band(m.words, m.colour);
+            goal();
+        } else if (now / 100 == before / 100) {
             sound(Sfx.SCORE);
         }
     }
@@ -525,7 +643,9 @@ final class SportOverlay {
         picked = live.get((at + 1) % live.size());
         pinned = picked.id;
         last = null;
-        screen = null;
+        reading = null;
+        fired = -1;
+        firedOver = false;
         overSince = 0;
         tick();
         h.removeCallbacks(poll);

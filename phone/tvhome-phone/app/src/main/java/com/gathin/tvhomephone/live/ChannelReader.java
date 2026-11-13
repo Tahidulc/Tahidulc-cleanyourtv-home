@@ -21,6 +21,12 @@ final class ChannelReader {
     interface Got {
         /** The lines read, top to bottom, each with its box in the bitmap; empty when nothing was read. */
         void lines(List<String> lines, List<Rect> boxes);
+
+        /**
+         * Each word read (the reader's elements), with its box in the bitmap, just before lines (a tennis scoreboard's
+         * columns are read word by word: TennisScreen). Nothing by default.
+         */
+        default void words(List<String> words, List<Rect> boxes) { }
     }
 
     private TextRecognizer reader;
@@ -35,18 +41,25 @@ final class ChannelReader {
             reader.process(InputImage.fromBitmap(b, 0))
                     .addOnSuccessListener(t -> {
                         busy = false;
-                        List<String> lines = new ArrayList<>();
-                        List<Rect> boxes = new ArrayList<>();
+                        List<String> lines = new ArrayList<>(), words = new ArrayList<>();
+                        List<Rect> boxes = new ArrayList<>(), wboxes = new ArrayList<>();
                         for (Text.TextBlock block : t.getTextBlocks()) {
                             for (Text.Line line : block.getLines()) {
                                 lines.add(line.getText());
                                 boxes.add(line.getBoundingBox() == null ? new Rect() : line.getBoundingBox());
+                                for (Text.Element e : line.getElements()) {
+                                    if (e.getBoundingBox() == null) continue;
+                                    words.add(e.getText());
+                                    wboxes.add(e.getBoundingBox());
+                                }
                             }
                         }
+                        got.words(words, wboxes);
                         got.lines(lines, boxes);
                     })
                     .addOnFailureListener(e -> {
                         busy = false;
+                        got.words(new ArrayList<>(), new ArrayList<>());
                         got.lines(new ArrayList<>(), new ArrayList<>());
                     });
             return true;

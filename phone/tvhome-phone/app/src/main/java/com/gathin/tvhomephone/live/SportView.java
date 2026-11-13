@@ -29,6 +29,8 @@ final class SportView extends View {
     private String bandWords;
     private int bandColour;
     private int wantW, wantH;
+    /** At least this wide (over the channel's own board: as wide as it), pixels. */
+    private int minW;
 
     SportView(Context c) {
         super(c);
@@ -54,11 +56,25 @@ final class SportView extends View {
         invalidate();
     }
 
-    /** Its size for what it shows: {width, height}, the tab's room under it included. */
+    /** Its size for what it shows: {width, height}, the tab's room under it included; at least minWidth wide. */
     int[] size() {
         if (board == null) return new int[]{0, 0};
         float[] z = bug.size(skin, board, u);
-        return new int[]{(int) Math.ceil(z[0]), (int) Math.ceil(z[1])};
+        return new int[]{Math.max(minW, (int) Math.ceil(z[0])), (int) Math.ceil(z[1])};
+    }
+
+    /** At least this wide from now (0: its own width): it draws to fill it. */
+    void minWidth(int px) {
+        int w = Math.max(0, px);
+        if (w == minW) return;
+        minW = w;
+        int[] z = size();
+        if (z[0] != wantW || z[1] != wantH) {
+            wantW = z[0];
+            wantH = z[1];
+            requestLayout();
+        }
+        invalidate();
     }
 
     /** Opening out from its left edge, now. */
