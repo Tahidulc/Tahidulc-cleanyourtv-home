@@ -15,7 +15,11 @@ import com.google.android.material.bottomnavigation.BottomNavigationView;
  * part. A phone gets the bar at the foot; a tablet the same, with wider content inside each tab.
  */
 public class MainActivity extends AppCompatActivity {
-    private static final String TAB = "tab";
+    private static final String TAB = "tab", SAVED_AT = "savedAt";
+    /** Away from the screen this long, coming back counts as opening it again: Live TV (as Settings has it). */
+    static final long BACK_AFTER_MS = 60_000L;
+    /** When it last left the screen (not turned on its side), elapsed-time ms; 0 while it is here. */
+    private long awayAt;
     /** An intent's extra: what to open (a notification's tap): OPEN_PLAYLISTS, Settings at Live TV's playlists. */
     public static final String EXTRA_OPEN = "open", OPEN_PLAYLISTS = "playlists", OPEN_LIVE = "live";
     private BottomNavigationView tabs;
@@ -43,6 +47,9 @@ public class MainActivity extends AppCompatActivity {
         int start = state != null ? state.getInt(TAB, R.id.tab_home) : R.id.tab_home;
         // Opened afresh from its icon: Live TV (it goes on with the channel last watched), unless Settings says Home.
         if (state == null && opening(getIntent()) && com.gathin.tvhomephone.live.LiveTvSettings.openOnLive(this)) start = R.id.tab_live;
+        // Made again after Android let it go while it was away a while (not only turned on its side): the same.
+        if (state != null && opening(getIntent()) && backToLive(System.currentTimeMillis() - state.getLong(SAVED_AT, System.currentTimeMillis()))
+                && com.gathin.tvhomephone.live.LiveTvSettings.openOnLive(this)) start = R.id.tab_live;
         if (state == null && OPEN_PLAYLISTS.equals(getIntent().getStringExtra(EXTRA_OPEN))) {
             com.gathin.tvhomephone.settings.SettingsFragment.toPlaylists = true;
             start = R.id.tab_settings;
@@ -67,6 +74,27 @@ public class MainActivity extends AppCompatActivity {
         super.onPause();
     }
 
+    /** Back on the screen after a while away (its icon, the app switcher): Live TV, as when it opens afresh. */
+    @Override protected void onStart() {
+        super.onStart();
+        long away = awayAt;
+        awayAt = 0;
+        if (away > 0 && backToLive(android.os.SystemClock.elapsedRealtime() - away) && tabs != null
+                && com.gathin.tvhomephone.live.LiveTvSettings.openOnLive(this) && tabs.getSelectedItemId() != R.id.tab_live) {
+            tabs.setSelectedItemId(R.id.tab_live);
+        }
+    }
+
+    @Override protected void onStop() {
+        super.onStop();
+        if (!isChangingConfigurations()) awayAt = android.os.SystemClock.elapsedRealtime();
+    }
+
+    /** Pure: away this long, coming back is opening the app again. */
+    static boolean backToLive(long awayMs) {
+        return awayMs >= BACK_AFTER_MS;
+    }
+
     /** Pure-ish: an intent that just opens the app (its icon, or nothing asked for), not one pointing somewhere. */
     static boolean opening(android.content.Intent i) {
         if (i == null || i.getStringExtra(EXTRA_OPEN) != null) return false;
@@ -77,6 +105,8 @@ public class MainActivity extends AppCompatActivity {
     /** A notification tapped while the app is open: its place shown (the playlists in Settings). */
     @Override protected void onNewIntent(android.content.Intent intent) {
         super.onNewIntent(intent);
+        // A notification or a link says where to go: that, not Live TV for having been away (onStart comes after this).
+        awayAt = 0;
         // Its icon tapped while it was open in the background: Live TV again, as when it opens afresh.
         if (intent != null && android.content.Intent.ACTION_MAIN.equals(intent.getAction()) && intent.hasCategory(android.content.Intent.CATEGORY_LAUNCHER)
                 && intent.getStringExtra(EXTRA_OPEN) == null && com.gathin.tvhomephone.live.LiveTvSettings.openOnLive(this)) {
@@ -104,6 +134,7 @@ public class MainActivity extends AppCompatActivity {
     @Override protected void onSaveInstanceState(Bundle out) {
         super.onSaveInstanceState(out);
         out.putInt(TAB, tabs.getSelectedItemId());
+        out.putLong(SAVED_AT, System.currentTimeMillis());
         out.putBoolean(UPRIGHT, com.gathin.tvhomephone.live.SideFull.upright(this));
     }
 
