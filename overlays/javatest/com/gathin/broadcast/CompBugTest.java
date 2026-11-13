@@ -60,7 +60,16 @@ public class CompBugTest {
             int[] s = CompBug.strip(k);
             assertEquals(4, s.length);
             assertEquals(0xFF, s[0] >>> 24);
-            assertTrue(k.tall >= 1f && k.tall <= 2f);
+            // Some stand an emblem over their row (the FA Cup's trophy, 2016's lion): up to a little over three rows.
+            assertTrue(k.tall >= 1f && k.tall <= 3.3f);
+            // Their row lies inside them, one row high.
+            float h = 100f * k.tall;
+            float[] bar = CompBug.bar(k, h);
+            assertTrue(bar[0] >= 0f && bar[1] <= h + 0.01f);
+            if (k != CompBug.Kind.LALIGA && k != CompBug.Kind.LIGAPORTUGAL && k != CompBug.Kind.BUNDESLIGA && k != CompBug.Kind.LIGUE1
+                    && k != CompBug.Kind.R2004 && k.tall > 1f) {
+                assertEquals(100f, bar[1] - bar[0], 0.5f);
+            }
             assertTrue(!k.label.isEmpty());
         }
         assertEquals(20, CompBug.Kind.values().length);
@@ -85,6 +94,66 @@ public class CompBugTest {
         for (CompBug.Kind k : new CompBug.Kind[]{CompBug.Kind.R2004, CompBug.Kind.R2008, CompBug.Kind.R2012, CompBug.Kind.R2016}) {
             assertTrue(k.label.startsWith("Retro"));
         }
+    }
+
+    @Test
+    public void theTabsNameTheCompetitionAsTheBroadcastsDo() {
+        assertEquals("PREMIER LEAGUE", CompBug.title("English Premier League"));
+        assertEquals("LIGA MX", CompBug.title("Mexican Liga BBVA MX"));
+        assertEquals("LIGA PORTUGAL", CompBug.title("Portuguese Primeira Liga"));
+        assertEquals("CHAMPIONS LEAGUE", CompBug.title("UEFA Champions League"));
+        assertEquals("NATIONS LEAGUE", CompBug.title("UEFA Nations League"));
+        assertEquals("PREMIERSHIP", CompBug.title("Scottish Premiership"));
+        assertEquals("", CompBug.title(null));
+        // Liga MX's title has its year and half, as CBS's does.
+        assertEquals("2026 LIGA MX APERTURA", CompBug.mxSeason(2026, 9));
+        assertEquals("2027 LIGA MX CLAUSURA", CompBug.mxSeason(2027, 3));
+    }
+
+    /** A W by H logo: a shape in rows 2 to 9, a clear gap, then a wordmark in rows 14 to 17. */
+    private static int[] logoWithWordmark(int w, int h, int shape, int words) {
+        int[] px = new int[w * h];
+        for (int y = 2; y < 10; y++) for (int x = 6; x < 14; x++) px[y * w + x] = shape;
+        for (int y = 14; y < 18; y++) for (int x = 1; x < w - 1; x++) px[y * w + x] = words;
+        return px;
+    }
+
+    @Test
+    public void aLogosEmblemIsCutFromTheWordmarkUnderIt() {
+        int w = 20, h = 20;
+        int[] px = logoWithWordmark(w, h, 0xFFFFFFFF, 0xFFFFFFFF);
+        assertArrayEquals(new int[]{2, 10}, CompBug.topBand(px, w, h));
+        int[] cut = CompBug.emblemPixels(px, w, h, CompBug.E_MARK);
+        assertEquals(0xFFFFFFFF, cut[5 * w + 8]);
+        assertEquals(0, cut[15 * w + 8]);
+        // No gap: nothing parts it, the logo stays whole.
+        int[] solid = new int[w * h];
+        java.util.Arrays.fill(solid, 0xFF2040A0);
+        assertNull(CompBug.topBand(solid, w, h));
+        // Its colour first (Serie A's blue emblem off its white plate), its white first (the FA Cup's trophy off its shield).
+        int[] blueOnWhite = logoWithWordmark(w, h, 0xFF1E6BE0, 0xFF0B2A6C);
+        for (int i = 0; i < blueOnWhite.length; i++) if (blueOnWhite[i] == 0) blueOnWhite[i] = 0xFFFFFFFF;
+        int[] blue = CompBug.emblemPixels(blueOnWhite, w, h, CompBug.E_COLOUR_MARK);
+        assertEquals(0xFF1E6BE0, blue[5 * w + 8]);
+        assertEquals(0, blue[0]);
+        assertEquals(0, blue[15 * w + 8]);
+        int[] trophy = logoWithWordmark(w, h, 0xFFFFFFFF, 0xFFFFFFFF);
+        for (int i = 0; i < trophy.length; i++) if (trophy[i] == 0) trophy[i] = 0xFF0B1E50;
+        int[] white = CompBug.emblemPixels(trophy, w, h, CompBug.E_WHITE_MARK);
+        assertEquals(0xFF, white[5 * w + 8] >>> 24);
+        assertEquals(0, white[0]);
+        // Beside a wordmark: its left part (Liga MX's ball).
+        int[] side = new int[w * h];
+        for (int y = 4; y < 12; y++) {
+            for (int x = 1; x < 6; x++) side[y * w + x] = 0xFFE03030;
+            for (int x = 9; x < 19; x++) side[y * w + x] = 0xFF1040A0;
+        }
+        assertArrayEquals(new int[]{1, 6}, CompBug.leftBand(side, w, h));
+        int[] ball = CompBug.emblemPixels(side, w, h, CompBug.E_MARK_LEFT);
+        assertEquals(0xFFE03030, ball[6 * w + 3]);
+        assertEquals(0, ball[6 * w + 12]);
+        // Nothing of the colour asked for: nothing.
+        assertNull(CompBug.emblemPixels(new int[w * h], w, h, CompBug.E_MARK));
     }
 
     @Test

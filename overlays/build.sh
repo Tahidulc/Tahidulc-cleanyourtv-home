@@ -5,7 +5,7 @@ cd "$(dirname "$0")"
 OUT=assets/broadcast
 rm -rf "$OUT"
 mkdir -p "$OUT/fonts" "$OUT/sfx"
-cp src/fonts/*.ttf "$OUT/fonts/"
+cp src/fonts/*.ttf src/fonts/OFL.txt "$OUT/fonts/"
 cp src/sfx/*.ogg "$OUT/sfx/"
 cp src/host/*.html src/host/*.js "$OUT/"
 cat src/kickoff/scene-part.js src/kickoff/popup-part.js > "$OUT/kickoff.js"
