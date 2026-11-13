@@ -5,10 +5,13 @@ import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.PixelFormat;
+import android.graphics.Rect;
+import android.graphics.RectF;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
 import android.text.TextUtils;
 import android.util.TypedValue;
 import android.view.Gravity;
@@ -23,12 +26,16 @@ import com.gathin.broadcast.Sfx;
 import com.gathin.broadcast.SportBoard;
 import com.gathin.broadcast.SportBug;
 import com.gathin.broadcast.SportFeeds;
+import com.gathin.broadcast.TennisScreen;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -40,7 +47,12 @@ import java.util.concurrent.Executors;
  * for a few seconds from the card's Try rows.
  *
  * <p>Tennis and UFC are read from ESPN's scores every 15 seconds (the match or fight the programme is showing: by its
- * names when the title has them, else the one on now), UFC's round clock counted on between reads. Boxing has no scores
+ * names when the title has them, else the one on now), UFC's round clock counted on between reads. Tennis is read off
+ * the picture too, as it is: the channel's own board found (along the foot on the left, or along the top) and read every
+ * second and a bit (ScreenShots, ChannelReader, TennisScreen), each set's games and the points as the picture has them
+ * shown while that reading is under five seconds old, ESPN's alone after. Where the pictures are of TiviMate's window
+ * alone (Android 14 and later) ours goes over theirs, as big, unless Move and resize has a place for the channel; before
+ * that the pictures show ours too, so it stays where it was (its own words left out of every reading). Boxing has no scores
  * to read: the fighters come from the title, and the round clock from the first bell as seen on the screen, one OK on a
  * small card at the top right; at each bell after it the card comes back for a few seconds, and OK there puts the clock
  * right again. A set, the match, a round beginning and a fight's winner sweep across the board in the side's colour.
@@ -94,6 +106,42 @@ final class SportCover {
     private static long momentAt;
     private static boolean tabWas;
     private static long tabAt;
+
+    // ---- the channel's own tennis board, read off the picture --------------------------------------------------------------
+
+    /** A look at the picture this often (never sooner than Android allows), slower after many looks find nothing. */
+    static final long LOOK_MS = 1_300L, SLOW_LOOK_MS = 4_000L;
+    /** A reading off the picture counts this long; then ESPN's alone. */
+    static final long FRESH_MS = 5_000L;
+    /** Looks at their box finding nothing before the bands are looked at again; band looks before looking more slowly. */
+    static final int MISSES_BACK = 5, SLOW_AFTER = 24;
+    /** Their box grown this much for the next look, its rows read at least this tall, a band at most this tall. */
+    static final float LOOK_GROW = 1.3f, LEAST_ROW = 40f;
+    static final int MOST_H = 1024;
+    /** Where a channel's tennis board is looked for till found (fractions): the foot on the left, the top. */
+    static final float[] FOOT = {0f, 0.64f, 0.62f, 1f}, TOP = {0f, 0f, 0.62f, 0.36f};
+    /** ESPN's match as last read: the picture's reading goes on it. */
+    private static SportBoard espn;
+    /** The picture's last reading found, and when that picture was taken. */
+    private static TennisScreen.Reading seen;
+    private static long seenAt;
+    private static boolean looking;
+    private static long lookAt;
+    private static int band, misses, bandMisses;
+    /** Their board's box (screen pixels: left, top, right, bottom) and its rows' pitch, as last found. */
+    private static float[] theirs;
+    private static float theirRow;
+    /** Where ours covers theirs: {left, top, width, row height} in screen pixels; null: its usual place. */
+    private static float[] cover;
+    private static ChannelReader reader;
+    /** The moments already swept across it (a set read off the picture first, then ESPN's later: once). */
+    private static final Set<String> fired = new HashSet<>();
+    private static String firedFor = "";
+    private static int gamesMax;
+    /** The server the picture says, kept steady: shown, the other seen once, when last said; kept this long unsaid. */
+    static final long SERVE_KEEP_MS = 20_000L;
+    private static int serveShown = -1, serveNext = -1;
+    private static long serveSaidAt;
 
     private SportCover() { }
 
@@ -293,6 +341,9 @@ final class SportCover {
         tabWas = false;
         stepAt = openedAt;
         step = 0;
+        resetLook();
+        main().removeCallbacks(look);
+        main().postDelayed(look, LOOK_MS);
         // The sounds loaded now, so the first is not lost.
         Sfx.warm(c, Sfx.SWISH, Sfx.SCORE, "goal-" + BoardCover.goalSound(c));
         if (sport == SportBoard.UFC) loadLogo();
@@ -304,6 +355,12 @@ final class SportCover {
     static void close() {
         main().removeCallbacks(tick);
         main().removeCallbacks(tryEnd);
+        main().removeCallbacks(look);
+        if (reader != null) {
+            reader.close();
+            reader = null;
+        }
+        resetLook();
         closeBell();
         FrameLayout f = win;
         Face v = face;
@@ -362,7 +419,7 @@ final class SportCover {
             main().post(() -> {
                 reading = false;
                 if (win == null || trying || kind != sport) return;
-                if (f != null) apply(f, at);
+                if (f != null) espnRead(f, at);
             });
         });
     }
@@ -427,13 +484,63 @@ final class SportCover {
         // Over since: the one shown finished (a new one, or one on again, starts the count afresh).
         if (!b.over()) overAt = 0;
         else if (overAt == 0 || was == null || !was.id.equals(b.id)) overAt = at;
+        firedFor(was, b);
         SportBoard.Moment m = SportBoard.moment(was, b);
+        int total = gamesTotal(b);
         if (m != null) {
-            momentNow(m);
-        } else if (gameWon(was, b)) {
+            if (fired.add(momentKey(m, b))) momentNow(m);
+        } else if (gameWon(was, b) && total > gamesMax) {
             sound(Sfx.SCORE);
         }
+        gamesMax = Math.max(gamesMax, total);
         relayout();
+    }
+
+    /** A new match or fight: what was swept across the last forgotten, its games so far counted as heard. */
+    private static void firedFor(SportBoard was, SportBoard b) {
+        if (b.id.equals(firedFor)) return;
+        fired.clear();
+        firedFor = b.id;
+        gamesMax = was != null && was.id.equals(b.id) ? gamesTotal(was) : gamesTotal(b);
+    }
+
+    /** Pure: a moment's key for its match: its words, and for tennis the sets then (a set's moment comes once). */
+    static String momentKey(SportBoard.Moment m, SportBoard b) {
+        return b.id + "|" + m.words + (b.sport == SportBoard.TENNIS ? "|" + Arrays.toString(b.sets()) : "");
+    }
+
+    /** Pure: the games played in the match so far, both players' in every set. */
+    static int gamesTotal(SportBoard b) {
+        int n = 0;
+        for (int g : b.a.games) n += g;
+        for (int g : b.b.games) n += g;
+        return n;
+    }
+
+    /** ESPN's new reading: tennis shown with the picture's games and points on it while the picture's are fresh. */
+    private static void espnRead(SportBoard f, long at) {
+        if (f.sport != SportBoard.TENNIS) {
+            apply(f, at);
+            return;
+        }
+        if (espn == null || !espn.id.equals(f.id)) {
+            seen = null;
+            seenAt = 0;
+            serveShown = serveNext = -1;
+            serveSaidAt = 0;
+        }
+        espn = f;
+        apply(asSeen(System.currentTimeMillis()), at);
+    }
+
+    /** The tennis board to show: the picture's reading on ESPN's while it is fresh; ESPN's alone after. */
+    private static SportBoard asSeen(long t) {
+        return seen != null && fresh(seenAt, t) ? TennisScreen.apply(espn, seen) : espn;
+    }
+
+    /** Pure: a reading taken at at still counts at t. */
+    static boolean fresh(long at, long t) {
+        return at > 0 && t - at <= FRESH_MS;
     }
 
     /** Pure: a tennis game won between two readings of the same match: the set in play's games up, no set or match won. */
@@ -482,6 +589,11 @@ final class SportCover {
             if (!trying && gone(t)) return;
             if (sport == SportBoard.BOXING && !trying && board != null) boxing(t);
             if (!trying && sport != SportBoard.BOXING && t - triedAt >= READ_MS) read();
+            // The picture's reading too old: ESPN's alone (no points) until the next.
+            if (!trying && seen != null && !fresh(seenAt, t)) {
+                seen = null;
+                if (espn != null) apply(espn, t);
+            }
             now = board == null ? null : board.at(readAt, t);
             show(trying || (now != null && BoardCover.playerUp(app) && !footballUp(app)));
             if (!hidden && t - stepAt >= BoardCover.STEP_MS) {
@@ -544,9 +656,15 @@ final class SportCover {
                 if (win == null || trying) return;
                 String t = o == null ? "" : (String) o[0];
                 if (o != null && SportFeeds.sportOf(t) == kind) {
+                    boolean anew = !t.equals(title);
                     title = t;
                     start = (Long) o[1];
                     end = (Long) o[2];
+                    if (anew) {
+                        // A new programme: its board looked for afresh, ours back in its usual place meanwhile.
+                        resetLook();
+                        relayout();
+                    }
                     return;
                 }
                 if (o == null) {
@@ -588,8 +706,9 @@ final class SportCover {
         readAt = t;
         if (!b.over()) overAt = 0;
         else if (overAt == 0) overAt = t;
+        firedFor(was, b);
         SportBoard.Moment m = SportBoard.moment(was, b);
-        if (m != null) momentNow(m);
+        if (m != null && fired.add(momentKey(m, b))) momentNow(m);
         // The card at a bell: the first; then through each minute between rounds and the first seconds of the next.
         int due = bellDue(bellAt, b, t - openedAt);
         if (due > 0 && due != bellFor && bellWin == null && !hidden) showBell(due);
@@ -657,14 +776,25 @@ final class SportCover {
         FrameLayout f = win;
         SportBoard b = board;
         if (f == null || b == null || bug == null || skin == null) return;
-        BoardPlace p = BoardPlace.get(app, channel.isEmpty() ? InStep.channel(app) : channel);
-        if (p == null) p = BoardPlace.standard();
-        u = Math.max(12f, p.bh * sh);
+        float x0, y0, least = 0f;
+        if (cover != null) {
+            // Over the channel's own: at its box, its rows' height, at least as wide.
+            x0 = cover[0];
+            y0 = cover[1];
+            least = cover[2];
+            u = Math.max(12f, cover[3]);
+        } else {
+            BoardPlace p = BoardPlace.get(app, channel.isEmpty() ? InStep.channel(app) : channel);
+            if (p == null) p = BoardPlace.standard();
+            u = Math.max(12f, p.bh * sh);
+            x0 = p.bx * sw;
+            y0 = p.by * sh;
+        }
         float[] z = bug.size(skin, b, u);
-        bw = Math.min(z[0], sw * 0.9f);
+        bw = Math.min(Math.max(z[0], least), sw * 0.9f);
         bh = z[1];
         int w = Math.round(bw) + 4 * edge, h = Math.round(bh) + 4 * edge;
-        int x = Math.max(0, Math.min(sw - w, Math.round(p.bx * sw) - 2 * edge)), y = Math.max(0, Math.min(sh - h, Math.round(p.by * sh) - 2 * edge));
+        int x = Math.max(0, Math.min(sw - w, Math.round(x0) - 2 * edge)), y = Math.max(0, Math.min(sh - h, Math.round(y0) - 2 * edge));
         WindowManager.LayoutParams lp = (WindowManager.LayoutParams) f.getLayoutParams();
         if (lp == null || lp.x == x && lp.y == y && lp.width == w && lp.height == h) return;
         lp.x = x;
@@ -685,6 +815,234 @@ final class SportCover {
         skin = SportBug.skin(style.name(), style.kind);
         relayout();
         if (face != null) face.invalidate();
+    }
+
+    // ---- the channel's own tennis board, looked at -------------------------------------------------------------------------
+
+    private static void resetLook() {
+        espn = null;
+        seen = null;
+        seenAt = 0;
+        looking = false;
+        band = 0;
+        misses = 0;
+        bandMisses = 0;
+        theirs = null;
+        theirRow = 0;
+        cover = null;
+        fired.clear();
+        firedFor = "";
+        gamesMax = 0;
+        serveShown = serveNext = -1;
+        serveSaidAt = 0;
+    }
+
+    private static final Runnable look = SportCover::look;
+
+    /**
+     * A look at the picture for the channel's own tennis board (main thread): its box when found lately, else the bands
+     * in turn; the words read there handed to TennisScreen with ESPN's match.
+     */
+    private static void look() {
+        if (win == null || app == null) return;
+        long t = SystemClock.uptimeMillis();
+        // A read that never answered: given up on.
+        if (looking && t - lookAt > 10_000L) looking = false;
+        long next = bandMisses > SLOW_AFTER ? SLOW_LOOK_MS : LOOK_MS;
+        if (trying || sport != SportBoard.TENNIS || hidden || espn == null || looking || !ScreenShots.available()) {
+            main().postDelayed(look, LOOK_MS);
+            return;
+        }
+        if (!ScreenShots.ready()) {
+            main().postDelayed(look, 150L);
+            return;
+        }
+        boolean box = theirs != null && misses < MISSES_BACK;
+        float[] part;
+        int oh;
+        if (box) {
+            part = lookBox(theirs, sw, sh, LOOK_GROW);
+            oh = lookHeight(theirRow, (part[3] - part[1]) * sh);
+        } else {
+            part = band % 2 == 0 ? FOOT : TOP;
+            band++;
+            oh = Math.min(MOST_H, Math.max(24, Math.round((part[3] - part[1]) * sh)));
+        }
+        // Its shape kept (a picture is at most 2048 wide): the words and the server's ball in one scale both ways.
+        float aspect = (part[2] - part[0]) * sw / Math.max(1f, (part[3] - part[1]) * sh);
+        if (aspect * oh > 2048f) oh = Math.max(24, (int) (2048f / aspect));
+        SportBoard m = espn;
+        int[][] ours = oursOnScreen();
+        float pw = sw, ph = sh;
+        looking = true;
+        lookAt = t;
+        boolean asked = ScreenShots.take(new RectF[]{new RectF(part[0], part[1], part[2], part[3])}, new int[][]{{0, oh}}, (parts, at, own) -> {
+            Bitmap bmp = parts[0];
+            if (bmp == null || win == null || trying || sport != SportBoard.TENNIS) {
+                if (bmp != null) bmp.recycle();
+                looking = false;
+                return;
+            }
+            if (reader == null) reader = new ChannelReader();
+            int bw0 = bmp.getWidth(), bh0 = bmp.getHeight();
+            boolean ok = reader.read(bmp, new ChannelReader.Got() {
+                @Override public void lines(List<String> lines, List<Rect> boxes) {
+                    // the words are wanted, each where it is (elements)
+                }
+
+                @Override public void elements(List<String> texts, List<Rect> boxes) {
+                    looking = false;
+                    // The whole screen (before Android 14, or TiviMate's window paused): ours left out of it.
+                    List<TennisScreen.Word> words = words(texts, corners(boxes), part, bw0, bh0, pw, ph, own ? null : ours);
+                    TennisScreen.Reading r = TennisScreen.read(words, m);
+                    int server = -1;
+                    if (r.found) {
+                        // The server's ball, off the same picture's pixels (in the words' units), then the box on the screen.
+                        try {
+                            int[] px = new int[bw0 * bh0];
+                            bmp.getPixels(px, 0, bw0, 0, 0, bw0, bh0);
+                            server = TennisScreen.server(px, bw0, bh0, r);
+                        } catch (RuntimeException | OutOfMemoryError ignored) {
+                            // the server as it was
+                        }
+                        toScreen(r, part, bw0, bh0, pw, ph);
+                    }
+                    bmp.recycle();
+                    seenNow(r, server, at, own, box);
+                }
+            });
+            if (!ok) {
+                looking = false;
+                bmp.recycle();
+            }
+        });
+        if (!asked) looking = false;
+        main().postDelayed(look, Math.max(next, ScreenShots.gap()));
+    }
+
+    /** What a look found: shown on ESPN's at once; ours over theirs where the picture was TiviMate's alone. */
+    private static void seenNow(TennisScreen.Reading r, int server, long at, boolean own, boolean box) {
+        if (win == null || espn == null || trying) return;
+        // Who serves, kept steady: another only when the picture shows them twice running; unsaid, the last for a while.
+        long[] st = serve(serveShown, serveNext, serveSaidAt, r != null && r.found ? server : -1, System.currentTimeMillis());
+        serveShown = (int) st[0];
+        serveNext = (int) st[1];
+        serveSaidAt = st[2];
+        if (r == null || !r.found) {
+            if (box) misses++;
+            else bandMisses++;
+            return;
+        }
+        r.server = serveShown;
+        misses = 0;
+        bandMisses = 0;
+        theirs = new float[]{r.l, r.t, r.r, r.b};
+        theirRow = r.row;
+        seen = r;
+        seenAt = at;
+        // Never over theirs where the pictures show ours (it would read itself), nor where the family set its place.
+        if (own && !BoardPlace.setByHand(app, channel)) {
+            float[] c = coverAt(r);
+            if (cover == null || moved(cover, c)) cover = c;
+        }
+        apply(asSeen(System.currentTimeMillis()), System.currentTimeMillis());
+    }
+
+    /** Our own windows on the screen now (the board, the bell card): {left, top, right, bottom}, to leave out of pictures. */
+    private static int[][] oursOnScreen() {
+        List<int[]> out = new ArrayList<>();
+        for (View v : new View[]{win, bellWin}) {
+            if (v == null || v.getVisibility() != View.VISIBLE || v.getWidth() <= 0) continue;
+            int[] at = new int[2];
+            v.getLocationOnScreen(at);
+            out.add(new int[]{at[0], at[1], at[0] + v.getWidth(), at[1] + v.getHeight()});
+        }
+        return out.toArray(new int[0][]);
+    }
+
+    private static List<int[]> corners(List<Rect> boxes) {
+        List<int[]> out = new ArrayList<>();
+        for (Rect r : boxes) out.add(r == null ? new int[4] : new int[]{r.left, r.top, r.right, r.bottom});
+        return out;
+    }
+
+    /**
+     * Pure: the words read off a part of the picture (part: fractions of the screen; the bitmap bw by bh), in the bitmap's
+     * own pixels (the server's ball is looked for in them); those whose middle is inside ours on the screen (screen
+     * pixels, the screen sw by sh; null: none) left out.
+     */
+    static List<TennisScreen.Word> words(List<String> texts, List<int[]> boxes, float[] part, int bw, int bh, float sw, float sh,
+                                         int[][] ours) {
+        List<TennisScreen.Word> out = new ArrayList<>();
+        if (texts == null || boxes == null || part == null || bw <= 0 || bh <= 0) return out;
+        float x0 = part[0] * sw, y0 = part[1] * sh, kx = (part[2] - part[0]) * sw / bw, ky = (part[3] - part[1]) * sh / bh;
+        for (int i = 0; i < Math.min(texts.size(), boxes.size()); i++) {
+            int[] b = boxes.get(i);
+            float cx = x0 + (b[0] + b[2]) / 2f * kx, cy = y0 + (b[1] + b[3]) / 2f * ky;
+            if (ours != null && inside(cx, cy, ours)) continue;
+            out.add(new TennisScreen.Word(texts.get(i), b[0], b[1], b[2], b[3]));
+        }
+        return out;
+    }
+
+    /** Pure: a reading's box and rows' pitch, in a part's bitmap's pixels (bw by bh), put in the screen's (sw by sh). */
+    static void toScreen(TennisScreen.Reading r, float[] part, int bw, int bh, float sw, float sh) {
+        if (r == null || bw <= 0 || bh <= 0) return;
+        float x0 = part[0] * sw, y0 = part[1] * sh, kx = (part[2] - part[0]) * sw / bw, ky = (part[3] - part[1]) * sh / bh;
+        r.l = x0 + r.l * kx;
+        r.r = x0 + r.r * kx;
+        r.t = y0 + r.t * ky;
+        r.b = y0 + r.b * ky;
+        r.row = r.row * ky;
+    }
+
+    /**
+     * Pure: who serves now, the picture having said s (0, 1; -1 nothing) at t: {shown, the other seen once, when last
+     * said}. The one shown changes only when the picture shows the other twice running; unsaid, the one shown stays
+     * SERVE_KEEP_MS, then none (ESPN's, where it has one).
+     */
+    static long[] serve(int shown, int next, long saidAt, int s, long t) {
+        if (s >= 0) {
+            if (s == shown) return new long[]{shown, -1, t};
+            if (s == next) return new long[]{s, -1, t};
+            return new long[]{shown, s, saidAt};
+        }
+        if (shown >= 0 && t - saidAt > SERVE_KEEP_MS) return new long[]{-1, next, saidAt};
+        return new long[]{shown, next, saidAt};
+    }
+
+    /** Pure: a point inside any of these boxes ({left, top, right, bottom}). */
+    static boolean inside(float x, float y, int[][] boxes) {
+        for (int[] q : boxes) if (q != null && q.length == 4 && x >= q[0] && x <= q[2] && y >= q[1] && y <= q[3]) return true;
+        return false;
+    }
+
+    /** Pure: their box (screen pixels) grown by grow round its middle, as fractions of the screen, kept on it. */
+    static float[] lookBox(float[] box, float sw, float sh, float grow) {
+        float cx = (box[0] + box[2]) / 2f, cy = (box[1] + box[3]) / 2f;
+        float hw = (box[2] - box[0]) * grow / 2f, hh = (box[3] - box[1]) * grow / 2f;
+        return new float[]{part((cx - hw) / sw), part((cy - hh) / sh), part((cx + hw) / sw), part((cy + hh) / sh)};
+    }
+
+    private static float part(float v) {
+        return Math.max(0f, Math.min(1f, v));
+    }
+
+    /** Pure: the picture's height for a part partH screen pixels high, its rows (row pixels apart) read at least LEAST_ROW. */
+    static int lookHeight(float row, float partH) {
+        float k = row > 0 ? Math.max(1f, LEAST_ROW / row) : 1f;
+        return Math.max(24, Math.min(MOST_H, Math.round(partH * k)));
+    }
+
+    /** Pure: where ours goes over theirs: {left, top, width, row height}, its two rows at least as tall as their box. */
+    static float[] coverAt(TennisScreen.Reading r) {
+        return new float[]{r.l, r.t, r.r - r.l, Math.max(r.row, (r.b - r.t) / 2f)};
+    }
+
+    /** Pure: a new place for ours far enough from the last to move it (a few pixels; a few hundredths of its size). */
+    static boolean moved(float[] was, float[] now) {
+        return Math.abs(was[0] - now[0]) > 3f || Math.abs(was[1] - now[1]) > 3f
+                || Math.abs(was[2] - now[2]) > was[2] * 0.04f || Math.abs(was[3] - now[3]) > was[3] * 0.04f;
     }
 
     // ---- the board itself ------------------------------------------------------------------------------------------------

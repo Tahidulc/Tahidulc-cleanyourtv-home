@@ -137,6 +137,104 @@ public class SportCoverTest {
     }
 
     @Test
+    public void aReadingCountsFiveSeconds() {
+        assertTrue(SportCover.fresh(1_000L, 1_000L + SportCover.FRESH_MS));
+        assertFalse(SportCover.fresh(1_000L, 1_001L + SportCover.FRESH_MS));
+        assertFalse(SportCover.fresh(0L, 10L));
+    }
+
+    @Test
+    public void theirBoardIsLookedAtWhereItWasGrown() {
+        // Their box at 100..500 x 900..980 on a 1920x1080 screen, grown 30% round its middle.
+        float[] f = SportCover.lookBox(new float[]{100, 900, 500, 980}, 1920, 1080, 1.3f);
+        assertEquals((300 - 260) / 1920f, f[0], 1e-4);
+        assertEquals((940 - 52) / 1080f, f[1], 1e-4);
+        assertEquals((300 + 260) / 1920f, f[2], 1e-4);
+        assertEquals((940 + 52) / 1080f, f[3], 1e-4);
+        // Kept on the screen.
+        float[] edge = SportCover.lookBox(new float[]{0, 1000, 300, 1080}, 1920, 1080, 1.3f);
+        assertEquals(0f, edge[0], 0f);
+        assertEquals(1f, edge[3], 0f);
+        // Rows 30 px apart read at least 40 tall: the part made a third taller; rows 60 apart as they are.
+        assertEquals(Math.round(104 * 40f / 30f), SportCover.lookHeight(30f, 104f));
+        assertEquals(104, SportCover.lookHeight(60f, 104f));
+        assertEquals(SportCover.MOST_H, SportCover.lookHeight(5f, 900f));
+    }
+
+    @Test
+    public void wordsComeInThePicturesOwnPixelsAndNeverOurs() {
+        // A part 0.5..1 x 0.5..1 of a 1920x1080 screen, read off a bitmap 480x270 (half size).
+        float[] part = {0.5f, 0.5f, 1f, 1f};
+        List<String> texts = Arrays.asList("SABALENKA", "15");
+        List<int[]> boxes = Arrays.asList(new int[]{10, 20, 110, 40}, new int[]{300, 20, 330, 40});
+        List<com.gathin.broadcast.TennisScreen.Word> all = SportCover.words(texts, boxes, part, 480, 270, 1920, 1080, null);
+        assertEquals(2, all.size());
+        assertEquals(10f, all.get(0).l, 0f);
+        assertEquals(40f, all.get(0).b, 0f);
+        // Ours on the screen where "15" sits (960 + 315*2 = 1590, 540 + 30*2 = 600): left out.
+        List<com.gathin.broadcast.TennisScreen.Word> mine = SportCover.words(texts, boxes, part, 480, 270, 1920, 1080,
+                new int[][]{{1500, 560, 1700, 640}});
+        assertEquals(1, mine.size());
+        assertEquals("SABALENKA", mine.get(0).text);
+        // The box found, put back on the screen.
+        com.gathin.broadcast.TennisScreen.Reading r = new com.gathin.broadcast.TennisScreen.Reading();
+        r.l = 10;
+        r.t = 20;
+        r.r = 330;
+        r.b = 80;
+        r.row = 25;
+        SportCover.toScreen(r, part, 480, 270, 1920, 1080);
+        assertEquals(980f, r.l, 1e-3);
+        assertEquals(580f, r.t, 1e-3);
+        assertEquals(1620f, r.r, 1e-3);
+        assertEquals(700f, r.b, 1e-3);
+        assertEquals(50f, r.row, 1e-3);
+        // Ours over it: at its box, as wide, its rows at least half its height.
+        float[] c = SportCover.coverAt(r);
+        assertEquals(980f, c[0], 1e-3);
+        assertEquals(580f, c[1], 1e-3);
+        assertEquals(640f, c[2], 1e-3);
+        assertEquals(60f, c[3], 1e-3);
+        assertFalse(SportCover.moved(c, new float[]{981, 581, 645, 61}));
+        assertTrue(SportCover.moved(c, new float[]{990, 580, 640, 60}));
+        assertTrue(SportCover.moved(c, new float[]{980, 580, 700, 60}));
+    }
+
+    @Test
+    public void theServerIsKeptSteady() {
+        long t = 100_000L;
+        // Seen once: not yet; twice running: shown.
+        long[] st = SportCover.serve(-1, -1, 0L, 0, t);
+        assertEquals(-1, st[0]);
+        st = SportCover.serve((int) st[0], (int) st[1], st[2], 0, t + 1_300L);
+        assertEquals(0, st[0]);
+        // The other once: still the first; nothing said meanwhile keeps both.
+        st = SportCover.serve((int) st[0], (int) st[1], st[2], 1, t + 2_600L);
+        assertEquals(0, st[0]);
+        st = SportCover.serve((int) st[0], (int) st[1], st[2], -1, t + 3_900L);
+        assertEquals(0, st[0]);
+        st = SportCover.serve((int) st[0], (int) st[1], st[2], 1, t + 5_200L);
+        assertEquals(1, st[0]);
+        // Unsaid: kept twenty seconds, then none (ESPN's).
+        st = SportCover.serve((int) st[0], (int) st[1], st[2], -1, t + 5_200L + SportCover.SERVE_KEEP_MS);
+        assertEquals(1, st[0]);
+        st = SportCover.serve((int) st[0], (int) st[1], st[2], -1, t + 5_201L + SportCover.SERVE_KEEP_MS);
+        assertEquals(-1, st[0]);
+    }
+
+    @Test
+    public void aSetsMomentComesOnce() {
+        SportBoard b = tennis("in", new int[]{6, 2}, new int[]{4, 1});
+        SportBoard.Moment m = SportBoard.moment(tennis("in", new int[]{5}, new int[]{4}), tennis("in", new int[]{6, 0}, new int[]{4, 0}));
+        assertEquals("SET KOVALENKO", m.words);
+        // Its key holds the sets then: the same set from the picture and later from ESPN is one key.
+        assertEquals(SportCover.momentKey(m, tennis("in", new int[]{6, 0}, new int[]{4, 0})),
+                SportCover.momentKey(m, tennis("in", new int[]{6, 0}, new int[]{4, 0})));
+        assertFalse(SportCover.momentKey(m, b).equals(SportCover.momentKey(m, tennis("in", new int[]{6, 6, 0}, new int[]{4, 2, 0}))));
+        assertEquals(15, SportCover.gamesTotal(tennis("in", new int[]{6, 2}, new int[]{4, 3})));
+    }
+
+    @Test
     public void aMatchOnTheChannelKeepsItsPlace() {
         Map<String, List<String>> on = new HashMap<>();
         on.put("game:1", Arrays.asList("TNT Sports 1", "TNT Sports 1 HD"));
