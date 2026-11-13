@@ -37,7 +37,7 @@ public final class SportBug {
     static final int INK = 0xFFE6E9F2, SOFT = 0xFFA9B1D6, NAVY = 0xFF0B1640, NAVY_DEEP = 0xFF070C26, CLOCK = 0xFF050816,
             SCORE_TOP = 0xFF2443B4, SCORE_BOTTOM = 0xFF142A78, MINIMAL_GROUND = 0xFF070912, CRESTS_GROUND = 0xFF0A1238,
             STACKED_GROUND = 0xFF0E1330, GOALS = 0xFF1E2A66, CARD_TOP = 0xFFF1F3F7, CARD_FOOT = 0xFFD3D8E1,
-            CARD_BLUE = 0xFF2A3DC9, CARD_BLUE_FOOT = 0xFF0F1B7E, BALL = 0xFFD7F23A;
+            CARD_BLUE = 0xFF2A3DC9, CARD_BLUE_FOOT = 0xFF0F1B7E, BALL = 0xFFD7F23A, SERVE = 0xFF3CD46A;
 
     /** A look's colours and shapes, for these boards. */
     public static final class Skin {
@@ -309,6 +309,8 @@ public final class SportBug {
             float top = row * u;
             boolean lost = b.over() && other.winner;
             playerCell(cv, s, b, side, x, top, colsX - u * 0.12f, u, lost);
+            // The server's green ball, in its own place before the sets, as the channels' boards have it.
+            if (side.serving && b.live()) serveBall(cv, s, colsX - u * 0.28f, top + u / 2f, u * 0.15f);
             // The sets.
             int n = b.setColumns();
             for (int i = 0; i < n; i++) {
@@ -344,6 +346,19 @@ public final class SportBug {
         // A fine line between the rows.
         float hair = Math.max(1f, u * 0.02f);
         rect(cv, x, u - hair / 2f, s.card ? colsX : w, u + hair / 2f, s.light ? 0x220B1640 : 0x26FFFFFF);
+    }
+
+    /** The server's mark: a green ball with a lighter cap, ringed on the light looks so it shows on white. */
+    private void serveBall(Canvas cv, Skin s, float cx, float cy, float rad) {
+        fill.setShader(null);
+        if (s.light) {
+            fill.setColor(0x330B1640);
+            cv.drawCircle(cx, cy, rad * 1.18f, fill);
+        }
+        fill.setColor(SERVE);
+        cv.drawCircle(cx, cy, rad, fill);
+        fill.setColor(0x66FFFFFF);
+        cv.drawCircle(cx - rad * 0.3f, cy - rad * 0.3f, rad * 0.38f, fill);
     }
 
     private static int tieOf(SportBoard.Side s, int i) {
@@ -385,11 +400,6 @@ public final class SportBug {
         if (!small.isEmpty()) {
             left(cv, small, x, t + u * 0.42f, u * 0.3f, s.fill ? (ink & 0x00FFFFFF) | 0xB0000000 : s.dim, s.face);
             x += measure(small, u * 0.3f, s.face) + u * 0.12f;
-        }
-        if (side.serving && b.live()) {
-            fill.setShader(null);
-            fill.setColor(BALL);
-            cv.drawCircle(x + u * 0.1f, t + u / 2f, u * 0.1f, fill);
         }
         if (side.winner && b.over()) {
             tick(cv, Math.min(rr - u * 0.36f, x + u * 0.26f), t + u / 2f, u * 0.2f, s.fill ? inkOn(side.colour) : s.light ? 0xFF1B8A4B : 0xFF3DDC84);

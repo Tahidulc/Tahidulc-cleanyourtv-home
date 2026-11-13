@@ -56,6 +56,11 @@ public final class TennisScreen {
         public int server = -1;
         /** The board's box in the picture, and its rows' pitch. */
         public float l, t, r, b, row;
+        /**
+         * Where a server's mark may be, for each row (as server() looks): {left, top, right, bottom} before the name
+         * (left of its initial) and {left, right} between the name (and its seed) and the first column.
+         */
+        public float[] beforeA, beforeB, afterA, afterB;
     }
 
     private static final Pattern POINT = Pattern.compile("^(0|15|30|40|AD)$");
@@ -85,12 +90,117 @@ public final class TennisScreen {
             t = Math.min(t, s[2]);
             b = Math.max(b, s[3]);
         }
-        out.l = l - h * 1.6f;
-        out.t = t - h * 0.35f;
-        out.r = r + h * 0.45f;
-        out.b = b + h * 0.35f;
+        out.l = l - h * 2.9f;
+        out.t = t - h * 0.5f;
+        out.r = r + h * 0.6f;
+        out.b = b + h * 0.5f;
         out.row = pitch;
+        float first = spans.isEmpty() ? Math.max(na.r, nb.r) + h : spans.get(0)[0];
+        out.beforeA = before(words, na, h);
+        out.beforeB = before(words, nb, h);
+        out.afterA = after(words, na, h, first);
+        out.afterB = after(words, nb, h, first);
         return out;
+    }
+
+    /** Pure: a row's room before its name (and its initial, "A."): where a server's ball sits on most boards. */
+    static float[] before(List<Word> words, Word name, float h) {
+        float left = name.l;
+        for (Word w : words) {
+            if (w == name || Math.abs(w.cy() - name.cy()) > h * 0.5f) continue;
+            if (w.r <= name.l + h * 0.2f && w.l >= name.l - h * 2.5f && letters(key(w.text)).length() <= 2) left = Math.min(left, w.l);
+        }
+        return new float[]{left - h * 3f, name.t - h * 0.15f, left - h * 0.12f, name.b + h * 0.15f};
+    }
+
+    /** Pure: a row's room after its name and seed, before the first column: where some boards put the ball. */
+    static float[] after(List<Word> words, Word name, float h, float first) {
+        float from = name.r;
+        for (Word w : words) {
+            if (w == name || Math.abs(w.cy() - name.cy()) > h * 0.5f) continue;
+            if (w.l >= name.r - h * 0.3f && w.r <= first - h * 0.1f) from = Math.max(from, w.r);
+        }
+        return new float[]{from + h * 0.15f, name.t - h * 0.15f, first - h * 0.15f, name.b + h * 0.15f};
+    }
+
+    /**
+     * Pure: the server by the board's own mark, from the pixels of the picture the words were read off (px, w by h,
+     * ARGB, in the words' units): a ball or a dot by one row's name and nothing like it by the other's, before the
+     * names or between them and the first column. 0 the first row, 1 the second, -1 when the picture doesn't say.
+     */
+    public static int server(int[] px, int w, int h, Reading r) {
+        if (px == null || r == null || !r.found || r.beforeA == null || px.length < w * h) return -1;
+        int s = side(px, w, h, r.beforeA, r.beforeB, r.row);
+        return s >= 0 ? s : side(px, w, h, r.afterA, r.afterB, r.row);
+    }
+
+    /** Pure: which of two rows' rooms has a mark the other hasn't: {0, 1, or -1}. */
+    static int side(int[] px, int w, int h, float[] ra, float[] rb, float row) {
+        int[] a = mark(px, w, h, ra), b = mark(px, w, h, rb);
+        float least = Math.max(6f, row * row * 0.06f);
+        // A thing there (not the board's ground), compact, in one row only.
+        if (a[0] >= least && a[1] == 1 && b[0] * 4 <= a[0]) return 0;
+        if (b[0] >= least && b[1] == 1 && a[0] * 4 <= b[0]) return 1;
+        // Both have something (flags): a ball's colours in one only.
+        if (a[2] >= least / 2 && b[2] * 4 <= a[2]) return 0;
+        if (b[2] >= least / 2 && a[2] * 4 <= b[2]) return 1;
+        return -1;
+    }
+
+    /**
+     * Pure: what is in a room of the picture: {the pixels unlike its ground, 1 when they make a compact thing (not a line
+     * of the board's edge), the pixels of a ball's colours (yellow-green to green, bright)}.
+     */
+    static int[] mark(int[] px, int w, int h, float[] room) {
+        int x0 = Math.max(0, Math.round(room[0])), y0 = Math.max(0, Math.round(room[1]));
+        int x1 = Math.min(w, Math.round(room[2])), y1 = Math.min(h, Math.round(room[3]));
+        if (x1 - x0 < 2 || y1 - y0 < 2) return new int[]{0, 0, 0};
+        int n = (x1 - x0) * (y1 - y0);
+        float[] lum = new float[n];
+        int k = 0;
+        for (int y = y0; y < y1; y++) {
+            for (int x = x0; x < x1; x++) {
+                int p = px[y * w + x];
+                lum[k++] = ((p >> 16) & 0xFF) * 0.3f + ((p >> 8) & 0xFF) * 0.59f + (p & 0xFF) * 0.11f;
+            }
+        }
+        float[] sorted = lum.clone();
+        Arrays.sort(sorted);
+        float ground = sorted[n / 2];
+        int things = 0, ball = 0, minX = x1, maxX = -1, minY = y1, maxY = -1;
+        k = 0;
+        for (int y = y0; y < y1; y++) {
+            for (int x = x0; x < x1; x++, k++) {
+                int p = px[y * w + x];
+                if (Math.abs(lum[k] - ground) > 45f) {
+                    things++;
+                    minX = Math.min(minX, x);
+                    maxX = Math.max(maxX, x);
+                    minY = Math.min(minY, y);
+                    maxY = Math.max(maxY, y);
+                }
+                if (ballColour(p)) ball++;
+            }
+        }
+        float rowH = y1 - y0;
+        boolean compact = maxX >= minX && maxX - minX + 1 >= rowH * 0.3f && maxY - minY + 1 >= rowH * 0.3f;
+        return new int[]{things, compact ? 1 : 0, ball};
+    }
+
+    /** Pure: a colour a server's ball or dot is drawn in: yellow-green to green (or teal), bright, not grey. */
+    static boolean ballColour(int p) {
+        int r = (p >> 16) & 0xFF, g = (p >> 8) & 0xFF, b = p & 0xFF;
+        int max = Math.max(r, Math.max(g, b)), min = Math.min(r, Math.min(g, b));
+        if (max < 90 || g != max && !(r == max && r - g < 30)) return false;
+        float sat = (max - min) / (float) max;
+        if (sat < 0.35f) return false;
+        // The hue: from yellow-green (about 55 degrees) to teal (about 170).
+        float hue;
+        if (max == r) hue = 60f * (((g - b) / (float) (max - min)) % 6f);
+        else if (max == g) hue = 60f * ((b - r) / (float) (max - min) + 2f);
+        else hue = 60f * ((r - g) / (float) (max - min) + 4f);
+        if (hue < 0) hue += 360f;
+        return hue >= 55f && hue <= 170f;
     }
 
     // ---- the names ----------------------------------------------------------------------------------------------------

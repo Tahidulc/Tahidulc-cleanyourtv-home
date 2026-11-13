@@ -183,6 +183,52 @@ public class TennisScreenTest {
         assertFalse(TennisScreen.read(picture(new String[]{"3", "5", "15"}, new String[]{"6", "1", "30"}), ahead).found);
     }
 
+    /** A picture w by h of the board's ground, with a round blob of colour c at (cx, cy). */
+    private static int[] ground(int w, int h) {
+        int[] px = new int[w * h];
+        java.util.Arrays.fill(px, 0xFF1E2A26);
+        return px;
+    }
+
+    private static void blob(int[] px, int w, float cx, float cy, float rad, int c) {
+        for (int y = 0; y < px.length / w; y++) {
+            for (int x = 0; x < w; x++) {
+                if ((x - cx) * (x - cx) + (y - cy) * (y - cy) <= rad * rad) px[y * w + x] = c;
+            }
+        }
+    }
+
+    private static void rect(int[] px, int w, int l, int t, int r, int b, int c) {
+        for (int y = t; y < b; y++) for (int x = l; x < r; x++) px[y * w + x] = c;
+    }
+
+    @Test
+    public void theServersBallIsSeenOnThePicture() {
+        SportBoard m = match(new int[]{3, 5}, new int[]{6, 1});
+        TennisScreen.Reading r = TennisScreen.read(picture(new String[]{"3", "5", "15"}, new String[]{"6", "1", "30"}), m);
+        int w = 500, h = 200;
+        // Nothing beside either name: the picture doesn't say.
+        int[] px = ground(w, h);
+        assertEquals(-1, TennisScreen.server(px, w, h, r));
+        // A green ball left of the first player's initial (as the family's channel has it): theirs.
+        blob(px, w, 25, A + H / 2f, 9, 0xFF3FB06A);
+        assertEquals(0, TennisScreen.server(px, w, h, r));
+        // On the second row instead.
+        int[] px2 = ground(w, h);
+        blob(px2, w, 25, B + H / 2f, 9, 0xFFD7F23A);
+        assertEquals(1, TennisScreen.server(px2, w, h, r));
+        // Flags by both names (red and blue), the ball by the second's only, between the name and the sets.
+        int[] px3 = ground(w, h);
+        rect(px3, w, 4, (int) A + 4, 34, (int) A + 20, 0xFFC8102E);
+        rect(px3, w, 4, (int) B + 4, 34, (int) B + 20, 0xFF1F4FD8);
+        blob(px3, w, 268, B + H / 2f, 8, 0xFF7ED957);
+        assertEquals(1, TennisScreen.server(px3, w, h, r));
+        // The board's green edge, a thin line down both rows: not a ball.
+        int[] px4 = ground(w, h);
+        rect(px4, w, 6, (int) A - 6, 8, (int) B + 30, 0xFF3FB06A);
+        assertEquals(-1, TennisScreen.server(px4, w, h, r));
+    }
+
     @Test
     public void theServersMark() {
         SportBoard m = match(new int[]{3, 5}, new int[]{6, 1});
