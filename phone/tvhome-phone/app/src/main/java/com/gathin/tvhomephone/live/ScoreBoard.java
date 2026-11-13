@@ -393,6 +393,13 @@ public final class ScoreBoard implements LiveAlerts.Listener {
     private long ftAt;
     /** The minute the board's clock shows (-1: none), for how often the summary is read. */
     private int boardMinute = -1;
+    /** The board's clock in seconds into the game (in step with the picture; -1 none): a substitution waits for its minute. */
+    private int boardSecs = -1;
+    /** The game as last read, to read its summary again at once when the channel shows a substitution. */
+    private Game lastGot;
+    /** Until when the channel has just shown a substitution (its graphic): the data read often, one found out at once. */
+    private long subsSeenUntil;
+    private final Runnable subsLook = this::subsLook;
     private final OnScreen screen = new OnScreen();
     /** F1 reads as they came: {when, session}. */
     private final ArrayDeque<Object[]> f1Reads = new ArrayDeque<>();
@@ -807,6 +814,7 @@ public final class ScoreBoard implements LiveAlerts.Listener {
                     channelGame = mineNow;
                     screen.behind(src.behindMs(mineNow));
                     screen.add(got, now);
+                    lastGot = got;
                     readStats(got, now);
                     mode = FOOTBALL_MODE;
                     lastId = got.id == null ? "" : got.id;
@@ -880,6 +888,7 @@ public final class ScoreBoard implements LiveAlerts.Listener {
                 lastHome = g.homeScore;
                 lastAway = g.awayScore;
                 boardMinute = minuteOfClock(l.clock);
+                boardSecs = com.gathin.broadcast.SubsTiming.clockSeconds(l.clock);
                 releaseYellows(g, l.clock);
                 // Full time on the screen: shown a little under a minute (its alert, its stats), then away.
                 String id = g.id == null ? "" : g.id;
@@ -1113,8 +1122,12 @@ public final class ScoreBoard implements LiveAlerts.Listener {
     private void readStats(Game g, long now) {
         if (g == null || g.id == null || g.slug == null || statsReading) return;
         // A shootout: every ten seconds. While VAR checks, every half a minute: its decision comes out of the board soon after.
+        // In play: every half minute, so a substitution is known soon after it is made; just after the channel showed one:
+        // every few seconds until it is in the data (SubsTiming).
         long every = pensDue(g) ? PENS_READ_MS
-                : VarExplained.checking(g.id, now) ? Math.min(30_000L, readEvery(boardMinute)) : readEvery(boardMinute);
+                : now < subsSeenUntil ? com.gathin.broadcast.SubsTiming.SEEN_READ_MS
+                : g.state == Game.LIVE || VarExplained.checking(g.id, now) ? Math.min(com.gathin.broadcast.SubsTiming.LIVE_READ_MS, readEvery(boardMinute))
+                : readEvery(boardMinute);
         if (g.id.equals(statsFor) && now - statsReadAt < every) return;
         statsReadAt = now;
         statsReading = true;
@@ -1484,11 +1497,51 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         d.awayCrest = bug.awayCrest;
         String club = "1".equals(group.get(0)[2]) ? g.homeName : g.awayName;
         SubsPage.Subs s = d.subs;
+        String minute = group.get(0)[1];
+        long known = System.currentTimeMillis();
         App.io.execute(() -> {
             for (int i = 0; i < s.on.length; i++) s.onFaces[i] = face(s.onFull[i], s.onIds[i], club);
             for (int i = 0; i < s.off.length; i++) s.offFaces[i] = face(s.offFull[i], s.offIds[i], club);
-            App.main.post(() -> drop(d));
+            App.main.post(() -> subDue(d, minute, known));
         });
+    }
+
+    /**
+     * A substitution out beside the board once the picture has reached it: the board's clock at its minute (it can be
+     * known before the channel shows it), at once when the channel has just shown one (its graphic), or after waiting
+     * its longest (SubsTiming).
+     */
+    private void subDue(Drop d, String minute, long known) {
+        if (!running) return;
+        long now = System.currentTimeMillis();
+        if (com.gathin.broadcast.SubsTiming.due(minute, boardSecs, now < subsSeenUntil, now - known)) {
+            drop(d);
+            return;
+        }
+        h.postDelayed(() -> subDue(d, minute, known), 1_000L);
+    }
+
+    /**
+     * The channel's own graphic for a substitution seen (the words BugCover read off what grew out of its scoreboard):
+     * the match data read now and every few seconds for a while, and the substitution out as soon as it is in it.
+     */
+    void subOnScreen() {
+        long now = System.currentTimeMillis();
+        boolean fresh = now >= subsSeenUntil;
+        subsSeenUntil = now + com.gathin.broadcast.SubsTiming.SEEN_MS;
+        if (!fresh) return;
+        android.util.Log.i("ScoreBoard", "the channel shows a substitution: its data read now");
+        statsReadAt = 0;
+        subsLook();
+    }
+
+    /** While the channel's substitution is fresh: the summary read as often as SubsTiming says (readStats keeps the pace). */
+    private void subsLook() {
+        h.removeCallbacks(subsLook);
+        long now = System.currentTimeMillis();
+        if (!running || now >= subsSeenUntil) return;
+        if (lastGot != null && lastGot.state == Game.LIVE) readStats(lastGot, now);
+        h.postDelayed(subsLook, 2_000L);
     }
 
     /** A player's picture (off the main thread): the cut-out the cards use, else FotMob's; null when there is neither. */

@@ -367,6 +367,8 @@ final class BugCover {
                     p.words = w;
                     android.util.Log.i(TAG, "a graphic out of the channel's scoreboard said: " + w);
                     BoardCover.platesChanged();
+                    // The channel's own graphic for a substitution: ours comes out with it (its data read at once).
+                    if (com.gathin.broadcast.SubsTiming.onScreen(w)) BoardCover.subOnScreen();
                 }
             });
             if (!ok) {

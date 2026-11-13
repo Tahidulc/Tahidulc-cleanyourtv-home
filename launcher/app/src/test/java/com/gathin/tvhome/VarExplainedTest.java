@@ -193,7 +193,7 @@ public class VarExplainedTest {
                 VarExplained.reasonOf("Offside, Celta Vigo. Pablo Durán is caught offside."));
         assertArrayEquals(new String[]{VarExplained.HANDBALL, "Nikola Stulic", "Lecce", VarExplained.FROM_LINE},
                 VarExplained.reasonOf("Handball by Nikola Stulic (Lecce)."));
-        assertArrayEquals(new String[]{VarExplained.FOUL, "", "Hoffenheim", VarExplained.FROM_PENALTY},
+        assertArrayEquals(new String[]{VarExplained.FOUL, "", "Hoffenheim", VarExplained.FROM_PENALTY, "Fisnik Asllani"},
                 VarExplained.reasonOf("Penalty Hoffenheim. Fisnik Asllani draws a foul in the penalty area."));
         assertEquals(VarExplained.FROM_FOUL_BY, VarExplained.reasonOf("Foul by Marc Cucurella (Real Madrid).")[3]);
         assertEquals(VarExplained.SERIOUS, VarExplained.reasonOf("Giorgi Kvernadze (Frosinone) is shown the red card for a bad foul.")[0]);
@@ -266,6 +266,63 @@ public class VarExplainedTest {
         // ESPN's handball kept (FotMob calls it a foul); the on-field call from FotMob.
         assertEquals(VarExplained.HANDBALL, c.reason);
         assertEquals(-1, c.onField);
+    }
+
+    @Test
+    public void theWhyNamesThePlayersTheCommentaryNames() {
+        // Who handled it, in the penalty's own line.
+        VarExplained.Call hand = VarExplained.decision(lines(
+                "Penalty conceded by Giorgio Cittadini (Frosinone) with a handball in the penalty area.", "29'",
+                "VAR Decision: Penalty Atalanta.", "29'"), 1);
+        assertEquals("The ball hit Giorgio Cittadini's hand or arm in the penalty area. It's a penalty when the arm makes the body"
+                + " bigger or moves towards the ball.", VarExplained.why(hand));
+        // Who fouled whom.
+        VarExplained.Call foul = VarExplained.decision(lines(
+                "Penalty Hoffenheim. Fisnik Asllani draws a foul in the penalty area.", "76'",
+                "Penalty conceded by Edmond Tapsoba (Bayer 04 Leverkusen) after a foul in the penalty area.", "76'",
+                "VAR Decision: Penalty Hoffenheim.", "77'"), 2);
+        assertEquals("Fisnik Asllani", foul.victim);
+        assertEquals("Edmond Tapsoba fouled Fisnik Asllani inside the penalty area, and that's a penalty kick.", VarExplained.why(foul));
+        // Who was offside: the scorer himself.
+        VarExplained.Call off = VarExplained.decision(lines(
+                "GOAL OVERTURNED BY VAR: Casper Tengstedt (Toulouse) scores but the goal is ruled out after a VAR review.", "68'",
+                "Offside, Toulouse. Casper Tengstedt is caught offside.", "68'",
+                "VAR Decision: No Goal Marseille 2-0 Toulouse.", "68'"), 2);
+        assertTrue(VarExplained.why(off), VarExplained.why(off).startsWith("Casper Tengstedt was offside when the ball was played."));
+        // Who dived.
+        VarExplained.Call dive = VarExplained.decision(lines(
+                "Kaïl Boudache (Lyon) has gone down, but the referee deems it simulation.", "61'",
+                "VAR Decision: No Penalty Lyon.", "62'"), 1);
+        assertTrue(VarExplained.why(dive).startsWith("Kaïl Boudache went down without being fouled."));
+        // Whose goal stands; whose penalty is taken away.
+        VarExplained.Call stood = VarExplained.decision(lines(
+                "Goal! Newcastle United 0, Everton 1. Thierno Barry (Everton) right footed shot from very close range.Goal confirmed following VAR Review.", "49'",
+                "VAR Decision: Goal Everton - Newcastle United 0-1 Everton (Thierno Barry).", "51'"), 1);
+        assertEquals("Thierno Barry", stood.scorer);
+        assertTrue(VarExplained.why(stood).contains("rule out Thierno Barry's goal"));
+        VarExplained.Call gone = VarExplained.decision(lines("VAR Decision: No Penalty Racing de Santander.", "72'"), 0);
+        gone.onField = -1;
+        assertTrue(VarExplained.why(gone).contains("Racing de Santander's penalty is taken away"));
+        // The sending-off's player.
+        VarExplained.Call red = VarExplained.decision(lines(
+                "VAR Decision: Card upgraded Igor Thiago (Brentford).", "23'",
+                "Igor Thiago (Brentford) is shown the red card for violent conduct.", "23'"), 0);
+        assertTrue(VarExplained.why(red).startsWith("Violent conduct by Igor Thiago:"));
+    }
+
+    @Test
+    public void aScorerFotMobNamesIsNeverTheOneAtFault() {
+        // FotMob's goal ruled out for offside names the scorer: the offside may have been anyone's.
+        VarExplained.Call c = VarExplained.fromFotMob(new String[]{"47", "Nikola Stulic", "var_goal_cancelled", "Goal ruled out", "offside"}, null);
+        assertEquals("Nikola Stulic", c.scorer);
+        assertFalse(c.atFault);
+        assertTrue(VarExplained.why(c).startsWith("An attacker was offside"));
+        assertFalse(VarExplained.why(c).contains("Nikola Stulic was"));
+        // A card's player is the one it was about.
+        VarExplained.Call card = VarExplained.fromFotMob(new String[]{"30", "Dan Example", "var_card_cancelled", "Card cancelled", "identity"}, null);
+        assertTrue(VarExplained.why(card).startsWith("The card went to Dan Example by mistake."));
+        assertEquals("Scotland's", VarExplained.poss("Scotland"));
+        assertEquals("Jesus'", VarExplained.poss("Jesus"));
     }
 
     @Test

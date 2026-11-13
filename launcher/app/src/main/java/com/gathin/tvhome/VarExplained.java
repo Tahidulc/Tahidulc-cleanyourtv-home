@@ -46,6 +46,12 @@ final class VarExplained {
         String reason = "";
         /** Who the reason is about, as written ("Nikola Stulic"), "" when not told. */
         String player = "";
+        /** Whether player is the one at fault (the reason names them: handled, offside, conceded, sent off), not just the scorer. */
+        boolean atFault;
+        /** Whose goal it was, as written, for a goal decision; "" when not told. */
+        String scorer = "";
+        /** Who was fouled, for a penalty decision ("Fisnik Asllani draws a foul in the penalty area"); "" when not told. */
+        String victim = "";
         /** The on-field call: 1 it stood, -1 it was changed, 0 not known. */
         int onField;
         /** When, as written ("45'+2'"). */
@@ -85,6 +91,8 @@ final class VarExplained {
     private static final Pattern OVERTURNED = Pattern.compile("OVERTURNED BY VAR:\\s*(.+?) \\(([^)]+)\\)");
     private static final Pattern GOAL_LINE = Pattern.compile("^(?:Goal!|Own Goal)[^.]*\\.\\s*(.+?) \\(([^)]+)\\)");
     private static final Pattern UPGRADED = Pattern.compile("Card upgraded (.+?) \\(([^)]+)\\)");
+    /** A goal decision's scorer at its end ("VAR Decision: Goal Everton - Newcastle United 0-1 Everton (Thierno Barry)."). */
+    private static final Pattern SCORER_AT_END = Pattern.compile("\\(([^()]+)\\)\\.?\\s*$");
 
     /** Pure: the minute a commentary time stands for ("45'+2'": 45, "90'+6'": 90); -1 when there is none. */
     static int base(String minute) {
@@ -143,9 +151,9 @@ final class VarExplained {
         if (m.find()) return new String[]{OFFSIDE, m.group(2).trim(), m.group(1).trim(), FROM_LINE};
         m = SIMULATED.matcher(text);
         if (m.find()) return new String[]{SIMULATION, m.group(1).trim(), m.group(2).trim(), FROM_LINE};
-        // The player who drew the foul was fouled, not at fault: no name with it.
+        // The player who drew the foul was fouled, not at fault: no name with it as the one at fault, kept as the fouled.
         m = DRAWS.matcher(text);
-        if (m.find()) return new String[]{FOUL, "", m.group(1).trim(), FROM_PENALTY};
+        if (m.find()) return new String[]{FOUL, "", m.group(1).trim(), FROM_PENALTY, m.group(2).trim()};
         m = RED_CARD.matcher(text.trim());
         if (m.find()) {
             String why = redReason(m.group(3));
@@ -193,7 +201,7 @@ final class VarExplained {
         c.team = "penalty".equals(kind) || "no_penalty".equals(kind) ? teamOf(text) : "";
         int when = at(c.minute);
         // Whose goal (or card) it was: the line that names them.
-        String scorer = "", scorerTeam = "";
+        String scorer = "", scorerTeam = "", victim = "";
         boolean overturnedGoal = false, confirmed = false, awarded = false, penaltyBefore = false, penaltyEarlier = false;
         Matcher up = UPGRADED.matcher(text);
         if (up.find()) {
@@ -225,6 +233,8 @@ final class VarExplained {
                 penaltyBefore = true;
                 if (when >= 0 && w >= 0 && w < when) penaltyEarlier = true;
             }
+            Matcher dr = DRAWS.matcher(t);
+            if (victim.isEmpty() && dr.find() && ("penalty".equals(kind) || "no_penalty".equals(kind))) victim = dr.group(2).trim();
         }
         // The reason: the strongest the lines round it give that is about this decision, the nearest of those.
         String[] best = null;
@@ -246,8 +256,19 @@ final class VarExplained {
         if (best != null) {
             c.reason = best[0];
             c.player = best[1];
+            c.atFault = !best[1].isEmpty();
         } else if (!scorer.isEmpty()) {
             c.player = scorer;
+            // A card upgraded: the player named is the one sent off; a goal's scorer is no one at fault.
+            c.atFault = "red".equals(kind);
+        }
+        c.victim = victim;
+        if ("goal".equals(kind) || "no_goal".equals(kind)) {
+            if (scorer.isEmpty()) {
+                Matcher sm = SCORER_AT_END.matcher(text == null ? "" : text);
+                if (sm.find()) scorer = sm.group(1).trim();
+            }
+            c.scorer = scorer;
         }
         switch (kind) {
             case "goal": c.onField = confirmed ? 1 : awarded ? -1 : 0; break;
@@ -480,60 +501,114 @@ final class VarExplained {
     }
 
     /**
-     * Pure: the WHY's sentences: the law behind the decision for the reason found, plainly; with no reason, what VAR
-     * looks for in that kind of decision. Never more than the reason and the decision say.
+     * Pure: the WHY's sentences: the law behind the decision for the reason found, plainly, with the players and the side
+     * the commentary names for it (whose hand, who was offside, who fouled whom, whose goal, whose penalty); with no
+     * reason, what VAR looks for in that kind of decision. Never more than the reason and the decision say: a player is
+     * named only for the part the commentary gives them, and without names the sentences are the general ones.
      */
     static String why(Call c) {
         if (c == null) return GENERAL;
         String k = c.kind, r = c.reason;
+        String p = c.atFault ? nz(c.player) : "", v = nz(c.victim), s = nz(c.scorer), t = nz(c.team);
         switch (r) {
             case OFFSIDE:
-                if ("no_goal".equals(k)) return "An attacker was offside and involved in the move. Under the offside law, that stops the goal counting.";
-                if ("goal".equals(k)) return "VAR checked the offside lines and found the scorer level or behind, so the goal counts.";
-                if ("no_penalty".equals(k)) return "An attacker was offside earlier in the move, so play should have stopped there: no penalty.";
+                if ("no_goal".equals(k)) {
+                    if (!p.isEmpty() && !s.isEmpty() && !same(p, s)) {
+                        return p + " was offside and involved in the move, so " + poss(s) + " goal can't count under the offside law.";
+                    }
+                    if (!p.isEmpty()) return p + " was offside when the ball was played. Under the offside law, that stops the goal counting.";
+                    return "An attacker was offside and involved in the move. Under the offside law, that stops the goal counting.";
+                }
+                if ("goal".equals(k)) {
+                    return "VAR checked the offside lines and found " + (s.isEmpty() ? "the scorer" : s) + " level or behind, so the goal counts.";
+                }
+                if ("no_penalty".equals(k)) {
+                    return (p.isEmpty() ? "An attacker" : p) + " was offside earlier in the move, so play should have stopped there: no penalty"
+                            + (t.isEmpty() ? "." : " for " + t + ".");
+                }
                 break;
-            case HANDBALL:
-                if ("no_goal".equals(k)) return "The ball touched an attacker's hand or arm just before the goal. Under the handball law, a goal can't come straight from that, even by accident.";
-                if ("penalty".equals(k)) return "The ball hit a defender's hand or arm in the penalty area. It's a penalty when the arm makes the body bigger or moves towards the ball.";
-                if ("no_penalty".equals(k)) return "The ball touched a hand or arm, but not in a way the handball law punishes, so there's no penalty.";
+            case HANDBALL: {
+                String arm = p.isEmpty() ? null : poss(p) + " hand or arm";
+                if ("no_goal".equals(k)) return "The ball touched " + (arm == null ? "an attacker's hand or arm" : arm)
+                        + " just before the goal. Under the handball law, a goal can't come straight from that, even by accident.";
+                if ("penalty".equals(k)) return "The ball hit " + (arm == null ? "a defender's hand or arm" : arm)
+                        + " in the penalty area. It's a penalty when the arm makes the body bigger or moves towards the ball.";
+                if ("no_penalty".equals(k)) return "The ball touched " + (arm == null ? "a hand or arm" : arm)
+                        + ", but not in a way the handball law punishes, so there's no penalty.";
                 break;
+            }
             case FOUL:
-                if ("no_goal".equals(k)) return "There was a foul by the attacking side in the build-up, so the goal can't count.";
-                if ("penalty".equals(k)) return "A defender fouled an opponent inside the penalty area, and that's a penalty kick.";
-                if ("no_penalty".equals(k)) return "VAR found no foul worth a penalty in the area, so play goes on without one.";
+                if ("no_goal".equals(k)) {
+                    return (p.isEmpty() ? "There was a foul by the attacking side" : p + " fouled an opponent") + " in the build-up, so "
+                            + (s.isEmpty() || same(p, s) ? "the goal" : poss(s) + " goal") + " can't count.";
+                }
+                if ("penalty".equals(k)) {
+                    if (!p.isEmpty() && !v.isEmpty()) return p + " fouled " + v + " inside the penalty area, and that's a penalty kick.";
+                    if (!p.isEmpty()) return p + " fouled an opponent inside the penalty area, and that's a penalty kick.";
+                    if (!v.isEmpty()) return v + " was fouled inside the penalty area, and that's a penalty kick.";
+                    return "A defender fouled an opponent inside the penalty area, and that's a penalty kick.";
+                }
+                if ("no_penalty".equals(k)) {
+                    if (!p.isEmpty()) return "VAR found no foul by " + p + (v.isEmpty() ? "" : " on " + v) + " worth a penalty, so play goes on without one.";
+                    if (!v.isEmpty()) return "VAR found no foul on " + v + " worth a penalty, so play goes on without one.";
+                    return "VAR found no foul worth a penalty in the area, so play goes on without one.";
+                }
                 break;
             case SIMULATION:
-                return "The player went down without being fouled. Trying to trick the referee into a penalty is called simulation, and it can be a yellow card.";
+                return (p.isEmpty() ? "The player" : p) + " went down without being fouled. Trying to trick the referee into a penalty is called"
+                        + " simulation, and it can be a yellow card.";
             case VIOLENT:
-                return "Violent conduct: using too much force against someone when not challenging for the ball. That's a straight red card.";
+                return "Violent conduct" + (p.isEmpty() ? "" : " by " + p) + ": using too much force against someone when not challenging for"
+                        + " the ball. That's a straight red card.";
             case SERIOUS:
-                return "Serious foul play: a challenge with excessive force that puts an opponent's safety at risk. That's a straight red card.";
+                return "Serious foul play" + (p.isEmpty() ? "" : " by " + p) + ": a challenge with excessive force that puts an opponent's safety"
+                        + " at risk. That's a straight red card.";
             case CHANCE:
-                return "Stopping a clear goal-scoring chance with a foul is a sending-off offence.";
+                return p.isEmpty() ? "Stopping a clear goal-scoring chance with a foul is a sending-off offence."
+                        : p + " stopped a clear goal-scoring chance with a foul, and that's a sending-off offence.";
             case LANGUAGE:
-                return "Offensive, insulting or abusive words or gestures are a straight red card.";
+                return p.isEmpty() ? "Offensive, insulting or abusive words or gestures are a straight red card."
+                        : p + " used offensive, insulting or abusive words or gestures, and that's a straight red card.";
             case OUT:
-                return "The ball went out of play earlier in the move, so what came after it doesn't count.";
+                return "The ball went out of play earlier in the move, so " + (s.isEmpty() ? "what came after it doesn't count." : poss(s) + " goal doesn't count.");
             case IDENTITY:
-                return "The card went to the wrong player. VAR can step in to put a case of mistaken identity right.";
+                return (p.isEmpty() ? "The card went to the wrong player." : "The card went to " + p + " by mistake.")
+                        + " VAR can step in to put a case of mistaken identity right.";
             default:
                 break;
         }
         switch (k) {
-            case "goal": return c.onField < 0
-                    ? "The on-field call was wrong: VAR found nothing to stop the goal, so it counts."
-                    : "VAR checks every goal. It found nothing clear and obvious to rule this one out, so it stands.";
-            case "no_goal": return "VAR found something in the build-up that stops the goal counting, such as an offside, a foul or a handball.";
+            case "goal": {
+                String whose = s.isEmpty() ? "this one" : poss(s) + " goal";
+                return c.onField < 0
+                        ? "The on-field call was wrong: VAR found nothing to stop " + (s.isEmpty() ? "the goal" : whose) + ", so it counts."
+                        : "VAR checks every goal. It found nothing clear and obvious to rule " + (s.isEmpty() ? "this one out" : "out " + whose) + ", so it stands.";
+            }
+            case "no_goal": return "VAR found something in the build-up that stops " + (s.isEmpty() ? "the goal" : poss(s) + " goal")
+                    + " counting, such as an offside, a foul or a handball.";
             case "penalty": return c.onField > 0
-                    ? "VAR looked again at the referee's penalty and found no clear and obvious error, so it stands."
-                    : "VAR found a foul or handball in the penalty area that the referee needed to see, so it's a penalty.";
+                    ? "VAR looked again at the referee's penalty" + (t.isEmpty() ? "" : " for " + t) + " and found no clear and obvious error, so it stands."
+                    : "VAR found a foul or handball in the penalty area that the referee needed to see, so it's a penalty" + (t.isEmpty() ? "." : " to " + t + ".");
             case "no_penalty": return c.onField < 0
-                    ? "VAR showed the referee there was no penalty offence after all, so the penalty is taken away."
-                    : "VAR only changes a decision for a clear and obvious error. After the review, there's no penalty.";
-            case "red": return "VAR can step in for a straight red card the referee missed or got wrong.";
-            case "card_cancelled": return "VAR can take back a card when it was shown to the wrong player.";
+                    ? "VAR showed the referee there was no penalty offence after all, so " + (t.isEmpty() ? "the penalty is" : poss(t) + " penalty is") + " taken away."
+                    : "VAR only changes a decision for a clear and obvious error. After the review, there's no penalty" + (t.isEmpty() ? "." : " for " + t + ".");
+            case "red": return p.isEmpty() ? "VAR can step in for a straight red card the referee missed or got wrong."
+                    : p + " is sent off: VAR can step in for a straight red card the referee missed or got wrong.";
+            case "card_cancelled": return p.isEmpty() ? "VAR can take back a card when it was shown to the wrong player."
+                    : poss(p) + " card is taken back: VAR can take back a card shown to the wrong player.";
             default: return GENERAL;
         }
+    }
+
+    private static String nz(String s) {
+        return s == null ? "" : s.trim();
+    }
+
+    /** Pure: a name's possessive ("Thierno Barry's", "Scotland's"; "Jesus'"). */
+    static String poss(String name) {
+        String n = nz(name);
+        if (n.isEmpty()) return n;
+        return n.endsWith("s") ? n + "'" : n + "'s";
     }
 
     private static final String GENERAL = "VAR only steps in for a clear and obvious error, or a serious incident the referee missed.";
@@ -560,6 +635,7 @@ final class VarExplained {
         c.minute = e[0] == null ? "" : e[0] + "'";
         c.player = e[1] == null ? "" : e[1];
         c.onField = -1;
+        // FotMob names the scorer for a goal, the player for a card: only a card's is the one at fault.
         if (key.contains("goal")) {
             c.kind = key.contains("cancel") || key.contains("disallow") || key.contains("ruled") ? "no_goal" : "goal";
         } else if (key.contains("penalty")) {
@@ -583,6 +659,8 @@ final class VarExplained {
             c.words = e[3] == null ? "" : e[3];
         }
         if (c.reason.isEmpty()) c.reason = fotmobReason(more);
+        if ("goal".equals(c.kind) || "no_goal".equals(c.kind)) c.scorer = c.player;
+        c.atFault = "red".equals(c.kind) || "card_cancelled".equals(c.kind);
         return c;
     }
 
@@ -608,7 +686,11 @@ final class VarExplained {
             if (!match) continue;
             if (c.onField == 0) c.onField = f.onField;
             if (c.reason.isEmpty()) c.reason = f.reason;
-            if (c.player.isEmpty()) c.player = f.player;
+            if (c.player.isEmpty()) {
+                c.player = f.player;
+                c.atFault = f.atFault;
+            }
+            if (c.scorer.isEmpty()) c.scorer = f.scorer;
             return;
         }
     }

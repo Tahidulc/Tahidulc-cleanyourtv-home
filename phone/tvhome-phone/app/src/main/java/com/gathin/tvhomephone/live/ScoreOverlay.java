@@ -490,6 +490,13 @@ final class ScoreOverlay implements ScoreBoard.Source {
      * pixels, laid on the picture where it is, in the board's look; only while the board is up and still.
      */
     private void showPlates(java.util.List<int[]> rects, java.util.List<String> words) {
+        // The channel's own graphic for a substitution: ours comes out with it (its data read at once: SubsTiming).
+        for (String w : words) {
+            if (com.gathin.broadcast.SubsTiming.onScreen(w)) {
+                board.subOnScreen();
+                break;
+            }
+        }
         int[] vp = video.videoPixels();
         boolean show = started && !inPip && !editing && board.bug.getVisibility() == View.VISIBLE && !board.bug.closing()
                 && vp[0] > 0 && vp[1] > 0 && pfw > 1 && pfh > 1;

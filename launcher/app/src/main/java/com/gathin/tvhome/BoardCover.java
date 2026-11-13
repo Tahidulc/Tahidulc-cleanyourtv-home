@@ -3781,8 +3781,11 @@ final class BoardCover {
         if (statsReading || g.slug == null || g.id == null) return;
         // Near a half's end, every half a minute: the added time put up comes on the board soon after. So too while VAR
         // checks: its decision comes out of the board soon after it is made.
-        long every = nearHalfsEnd(minuteOfClock(bug == null ? null : bug.look().clock)) || VarExplained.checking(g.id, now)
-                ? 30_000L : STATS_READ_MS;
+        // In play: every half minute, so a substitution is known soon after it is made; just after the channel showed one:
+        // every few seconds until it is in the data (SubsTiming).
+        long every = now < subsSeenUntil ? com.gathin.broadcast.SubsTiming.SEEN_READ_MS
+                : nearHalfsEnd(minuteOfClock(bug == null ? null : bug.look().clock)) || VarExplained.checking(g.id, now) || g.state == 0
+                ? com.gathin.broadcast.SubsTiming.LIVE_READ_MS : STATS_READ_MS;
         // A penalty shootout on (or near): every ten seconds, each kick on the strip under the board soon after.
         Pens p0 = pens.get(g.id);
         if (pensOn(c) && (p0 != null && p0.on || Shootout.likely(g.detail) && g.state == 0)) every = PENS_READ_MS;
@@ -3893,16 +3896,62 @@ final class BoardCover {
         BoardDrop.Drop d = subDrop(g, group);
         SubsPage.Subs s = d.subs;
         Context a = c.getApplicationContext();
+        String minute = group.get(0)[1];
+        long known = System.currentTimeMillis();
         io.execute(() -> {
             for (int i = 0; i < s.on.length; i++) s.onFaces[i] = face(a, s.onFull[i], s.onIds[i], team, kit);
             for (int i = 0; i < s.off.length; i++) s.offFaces[i] = face(a, s.offFull[i], s.offIds[i], team, kit);
-            main().post(() -> {
-                d.homeCrest = homeCrest;
-                d.awayCrest = awayCrest;
-                drop(a, d);
-            });
+            main().post(() -> subDue(a, d, minute, known));
         });
     }
+
+    /**
+     * A substitution out beside the board once the picture has reached it: the board's clock at its minute (it can be
+     * known before the channel shows it), at once when the channel has just shown one (its graphic), or after waiting
+     * its longest (SubsTiming).
+     */
+    private static void subDue(Context a, BoardDrop.Drop d, String minute, long known) {
+        if (bug == null) return;
+        long now = System.currentTimeMillis();
+        int secs = com.gathin.broadcast.SubsTiming.clockSeconds(bug.look().clock);
+        if (com.gathin.broadcast.SubsTiming.due(minute, secs, now < subsSeenUntil, now - known)) {
+            d.homeCrest = homeCrest;
+            d.awayCrest = awayCrest;
+            drop(a, d);
+            return;
+        }
+        main().postDelayed(() -> subDue(a, d, minute, known), 1_000L);
+    }
+
+    /** Until when the channel has just shown a substitution (its graphic): the data read often, one found out at once. */
+    private static long subsSeenUntil;
+
+    /**
+     * The channel's own graphic for a substitution seen (the words BugCover read off what grew out of its scoreboard):
+     * the match data read now and every few seconds for a while, and the substitution out as soon as it is in it.
+     */
+    static void subOnScreen() {
+        long now = System.currentTimeMillis();
+        boolean fresh = now >= subsSeenUntil;
+        subsSeenUntil = now + com.gathin.broadcast.SubsTiming.SEEN_MS;
+        if (!fresh || app == null) return;
+        AlertLog.note(app, "the channel shows a substitution: its data read now");
+        statsReadAt = 0;
+        subsLook();
+    }
+
+    /** While the channel's substitution is fresh: the summary read as often as SubsTiming says (readStats keeps the pace). */
+    private static void subsLook() {
+        main().removeCallbacks(SUBS_LOOK);
+        long now = System.currentTimeMillis();
+        if (now >= subsSeenUntil || app == null || bug == null) return;
+        String id = game(app);
+        ScoresTicker.Game g = id == null || id.isEmpty() ? null : GoalWatchService.latestGame(id);
+        if (g != null && g.state == 0) readStats(app, g, now);
+        main().postDelayed(SUBS_LOOK, 2_000L);
+    }
+
+    private static final Runnable SUBS_LOOK = BoardCover::subsLook;
 
     /** A player's picture (off the main thread): the cut-out the cards use, else FotMob's; null when there is neither. */
     private static Bitmap face(Context a, String name, String id, String team, int kit) {
