@@ -1883,6 +1883,11 @@ public class PlayerActivity extends AppCompatActivity {
 
             @Override public String programmeNow() { return PlayerActivity.this.programmeNow(); }
 
+            @Override public boolean muted() {
+                ExoPlayer p = pb.player();
+                return p != null && p.getVolume() <= 0f || volume() <= 0f;
+            }
+
             @Override public boolean sportsNow() { return PlayerActivity.this.sportsNow(); }
         }));
         ViewCompat.setOnApplyWindowInsetsListener(root, (v, insets) -> {

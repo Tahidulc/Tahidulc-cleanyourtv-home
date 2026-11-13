@@ -63,6 +63,30 @@ public final class BoardSettings {
         }
         col.addView(hs, new LinearLayout.LayoutParams(-1, -2));
 
+        // Tennis, boxing and UFC: their board in the look chosen, tried here for a few seconds with one moment.
+        col.addView(sub(c, c.getString(R.string.live81_try_title)));
+        col.addView(com.gathin.tvhomephone.sports.Ui.text(c, c.getString(R.string.live81_try_line), 13, c.getColor(R.color.text_dim), false));
+        android.widget.FrameLayout stage = new android.widget.FrameLayout(c);
+        stage.setBackground(Ui.round(c, 0xFF2F4A33, 12));
+        stage.setVisibility(android.view.View.GONE);
+        SportView pv = new SportView(c);
+        stage.addView(pv, new android.widget.FrameLayout.LayoutParams(-2, -2, android.view.Gravity.CENTER));
+        LinearLayout tries = new LinearLayout(c);
+        tries.setPadding(0, Ui.dp(c, 6), 0, Ui.dp(c, 6));
+        int[] sports = {com.gathin.broadcast.SportBoard.TENNIS, com.gathin.broadcast.SportBoard.BOXING, com.gathin.broadcast.SportBoard.UFC};
+        int[] labels = {R.string.live81_try_tennis, R.string.live81_try_boxing, R.string.live81_try_ufc};
+        for (int i = 0; i < sports.length; i++) {
+            int sp = sports[i];
+            TextView t = Ui.chip(c, c.getString(labels[i]), false);
+            t.setOnClickListener(v -> SportOverlay.tryIt(c, stage, pv, sp, Ui.dp(c, 30)));
+            tries.addView(t, spaced(c));
+        }
+        android.widget.HorizontalScrollView tryRow = new android.widget.HorizontalScrollView(c);
+        tryRow.setHorizontalScrollBarEnabled(false);
+        tryRow.addView(tries);
+        col.addView(tryRow, new LinearLayout.LayoutParams(-1, -2));
+        col.addView(stage, new LinearLayout.LayoutParams(-1, Ui.dp(c, 130)));
+
         // The channel's logo: Homefield's mark over it, each way drawn, tap one.
         col.addView(sub(c, c.getString(R.string.live4_logo)));
         col.addView(com.gathin.tvhomephone.sports.Ui.text(c, c.getString(R.string.live4_logo_line), 13, c.getColor(R.color.text_dim), false));

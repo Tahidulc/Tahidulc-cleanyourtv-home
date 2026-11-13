@@ -1005,6 +1005,8 @@ public class AppSearchService extends AccessibilityService {
         if (OverlayPrompt.key(event)) return true;
         // OK at the kick-off on screen, while the card asking for it is up (InStepCard); the replay's bar.
         if (InStepCard.key(event) || Replay.key(event)) return true;
+        // OK at a boxing bell, while the card asking for it is up (SportCover).
+        if (SportCover.key(event)) return true;
         if (CreditsCover.key(event)) return true;
         if (BoardCover.key(event)) return true;
         if (LiveCentre.key(event) || F1Tower.key(event)) return true;

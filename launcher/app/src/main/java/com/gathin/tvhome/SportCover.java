@@ -65,7 +65,7 @@ final class SportCover {
     static final long WIPE_MS = 420L, TAB_IN_MS = 320L;
     private static final String FILE = "sport_cover";
 
-    private static final Handler main = new Handler(Looper.getMainLooper());
+    private static Handler main;
     private static final ExecutorService io = Executors.newSingleThreadExecutor();
     /** Flags, photos and UFC's logo, by address, once fetched. */
     private static final Map<String, Bitmap> pics = new HashMap<>();
@@ -81,7 +81,9 @@ final class SportCover {
     private static long start, end;
     /** As last read (boxing: as made from the title), when, and as drawn now. */
     private static SportBoard board, now;
-    private static long readAt, openedAt, overAt, firstShownAt;
+    private static long readAt, triedAt, openedAt, overAt, firstShownAt;
+    /** Each Try counted, so a Try's steps never land on the next one's board. */
+    private static int tryGen;
     private static boolean trying, reading, hidden = true, checkingEnd;
     private static long bellAt, bellPressedAt, endGrace;
     private static int bellFor;
@@ -94,6 +96,12 @@ final class SportCover {
     private static long tabAt;
 
     private SportCover() { }
+
+    /** The main thread's handler, made when first wanted (the pure parts load without one, for the tests). */
+    private static Handler main() {
+        if (main == null) main = new Handler(Looper.getMainLooper());
+        return main;
+    }
 
     private static SharedPreferences prefs(Context c) {
         return c.getApplicationContext().getSharedPreferences(FILE, Context.MODE_PRIVATE);
@@ -136,7 +144,7 @@ final class SportCover {
         if (!up()) return;
         AlertLog.note(app, "tennis/boxing/UFC board on: " + title + (channel.isEmpty() ? "" : ", " + channel));
         if (kind != SportBoard.BOXING) read();
-        main.post(tick);
+        main().post(tick);
     }
 
     /** A sample board in the chosen look for a few seconds, over whatever is on, with one moment: the card's Try rows. */
@@ -149,11 +157,12 @@ final class SportCover {
         title = "";
         board = sample(kind);
         bellAt = 0;
+        int gen = ++tryGen;
         if (!up()) return;
-        main.post(tick);
-        // One moment while it is up: a set won, a round begun.
-        main.postDelayed(() -> {
-            if (!trying || win == null || board == null) return;
+        main().post(tick);
+        // One moment while it is up: the match won, a round begun.
+        main().postDelayed(() -> {
+            if (!trying || gen != tryGen || win == null || board == null) return;
             SportBoard after = board.copy();
             if (kind == SportBoard.TENNIS) {
                 // The deciding set won: the match, its winner ticked.
@@ -169,8 +178,8 @@ final class SportCover {
             apply(after, System.currentTimeMillis());
         }, 3_500L);
         // And a game won before it, for its swish (tennis).
-        if (kind == SportBoard.TENNIS) main.postDelayed(() -> {
-            if (!trying || win == null || board == null) return;
+        if (kind == SportBoard.TENNIS) main().postDelayed(() -> {
+            if (!trying || gen != tryGen || win == null || board == null) return;
             SportBoard after = board.copy();
             after.a.games = new int[]{6, 4, 5};
             after.a.points = "0";
@@ -179,8 +188,12 @@ final class SportCover {
             after.b.serving = true;
             apply(after, System.currentTimeMillis());
         }, 1_600L);
-        main.postDelayed(SportCover::close, TRY_MS);
+        main().postDelayed(tryEnd, TRY_MS);
     }
+
+    private static final Runnable tryEnd = () -> {
+        if (trying) close();
+    };
 
     /** Made-up players and fighters for the Try rows (never real ones). */
     static SportBoard sample(int kind) {
@@ -274,6 +287,7 @@ final class SportCover {
         firstShownAt = 0;
         overAt = 0;
         readAt = 0;
+        triedAt = 0;
         now = null;
         moment = null;
         tabWas = false;
@@ -288,7 +302,8 @@ final class SportCover {
 
     /** Away (the channel changed, the programme or the match is over, Back on its button, a Try's time up). */
     static void close() {
-        main.removeCallbacks(tick);
+        main().removeCallbacks(tick);
+        main().removeCallbacks(tryEnd);
         closeBell();
         FrameLayout f = win;
         Face v = face;
@@ -319,6 +334,7 @@ final class SportCover {
     private static void read() {
         if (reading || trying || sport == SportBoard.BOXING || app == null) return;
         reading = true;
+        triedAt = System.currentTimeMillis();
         int kind = sport;
         String t = title;
         Context c = app;
@@ -343,7 +359,7 @@ final class SportCover {
             }
             SportBoard f = found;
             long at = System.currentTimeMillis();
-            main.post(() -> {
+            main().post(() -> {
                 reading = false;
                 if (win == null || trying || kind != sport) return;
                 if (f != null) apply(f, at);
@@ -396,7 +412,7 @@ final class SportCover {
         io.execute(() -> {
             Bitmap m = picture(c, SportFeeds.UFC_LOGO, 200);
             Bitmap t = m == null ? null : HomeV2.trim(m);
-            main.post(() -> {
+            main().post(() -> {
                 logo = t;
                 if (face != null) face.invalidate();
             });
@@ -448,7 +464,8 @@ final class SportCover {
     private static void sound(String name) {
         Context c = app;
         if (c == null || hidden || face == null) return;
-        boolean wanted = Sfx.SCORE.equals(name) ? BoardCover.scoreSwishOn(c) : BoardCover.swishOn(c);
+        // The football board's switches: the swish's; the score swish's too for a tennis game won.
+        boolean wanted = BoardCover.swishOn(c) && (!Sfx.SCORE.equals(name) || BoardCover.scoreSwishOn(c));
         if (!wanted) return;
         int[] at = new int[2];
         face.getLocationOnScreen(at);
@@ -464,7 +481,7 @@ final class SportCover {
             long t = System.currentTimeMillis();
             if (!trying && gone(t)) return;
             if (sport == SportBoard.BOXING && !trying && board != null) boxing(t);
-            if (!trying && sport != SportBoard.BOXING && t - readAt >= READ_MS) read();
+            if (!trying && sport != SportBoard.BOXING && t - triedAt >= READ_MS) read();
             now = board == null ? null : board.at(readAt, t);
             show(trying || (now != null && BoardCover.playerUp(app) && !footballUp(app)));
             if (!hidden && t - stepAt >= BoardCover.STEP_MS) {
@@ -474,7 +491,7 @@ final class SportCover {
             }
             tab(t);
             if (face != null) face.invalidate();
-            main.postDelayed(this, TICK_MS);
+            main().postDelayed(this, TICK_MS);
         }
     };
 
@@ -522,7 +539,7 @@ final class SportCover {
                 // looked at again in a minute
             }
             Object[] o = on;
-            main.post(() -> {
+            main().post(() -> {
                 checkingEnd = false;
                 if (win == null || trying) return;
                 String t = o == null ? "" : (String) o[0];
@@ -608,8 +625,9 @@ final class SportCover {
             if (firstShownAt == 0) firstShownAt = System.currentTimeMillis();
             if (face != null) face.in();
             sound(Sfx.SWISH);
-            tabWas = true;
-            tabAt = System.currentTimeMillis() + WIPE_MS;
+            long t = System.currentTimeMillis();
+            tabWas = tabWanted(now, t - firstShownAt, trying);
+            tabAt = t + WIPE_MS;
         } else if (!want && !hidden) {
             hidden = true;
             f.setVisibility(View.INVISIBLE);
@@ -670,6 +688,12 @@ final class SportCover {
     }
 
     // ---- the board itself ------------------------------------------------------------------------------------------------
+
+    /** Pure: eased in and out (0 to 1). */
+    static float ease(float t) {
+        float x = Math.max(0f, Math.min(1f, t));
+        return x * x * (3f - 2f * x);
+    }
 
     /** The board drawn: coming in from the left, its tab sliding out under it, a moment's band, the step against burn-in. */
     private static final class Face extends View {
@@ -736,7 +760,7 @@ final class SportCover {
             }
             float w = bw, h = bh;
             float tabH = SportBug.tabHeight(u) + u * 0.08f, bodyH = h - tabH;
-            float wipe = SportBug.ease(shown);
+            float wipe = ease(shown);
             cv.save();
             cv.translate(2 * edge + ox, 2 * edge + oy);
             // The board, wiping in from the left.
@@ -749,7 +773,7 @@ final class SportCover {
                 float k = Math.max(0f, Math.min(1f, (t - tabAt) / (float) TAB_IN_MS));
                 if (k < 1f) animating = true;
                 cv.save();
-                cv.clipRect(0, bodyH, w * SportBug.ease(k), h);
+                cv.clipRect(0, bodyH, w * ease(k), h);
                 bug.draw(cv, skin, b, logo, w, h, u, true);
                 cv.restore();
             }
@@ -837,7 +861,7 @@ final class SportCover {
     }
 
     private static void closeBell() {
-        main.removeCallbacks(bellAway);
+        main().removeCallbacks(bellAway);
         FrameLayout f = bellWin;
         bellWin = null;
         bellDone = false;
@@ -857,7 +881,7 @@ final class SportCover {
         if (bellWin == null) return false;
         int code = e.getKeyCode();
         if (code == KeyEvent.KEYCODE_BACK || code == KeyEvent.KEYCODE_ESCAPE) {
-            if (e.getAction() == KeyEvent.ACTION_UP && !e.isCanceled()) main.post(() -> {
+            if (e.getAction() == KeyEvent.ACTION_UP && !e.isCanceled()) main().post(() -> {
                 // Not asked again until the next bell.
                 bellFor = bellAsk;
                 closeBell();
@@ -867,7 +891,7 @@ final class SportCover {
         if (!QuietHold.isOk(code)) return false;
         if (e.getAction() == KeyEvent.ACTION_UP && !e.isCanceled()) {
             long pressed = System.currentTimeMillis();
-            main.post(() -> bell(pressed));
+            main().post(() -> bell(pressed));
         }
         return true;
     }
@@ -883,8 +907,8 @@ final class SportCover {
         if (bellTitle != null) bellTitle.setText(r <= 1 ? "Round clock started" : "Round " + r + " · clock kept");
         if (bellUnder != null) bellUnder.setText("Three minutes a round, a minute between · OK at any bell puts it right");
         AlertLog.note(app, "boxing bell for round " + r + " set from the screen");
-        main.removeCallbacks(bellAway);
-        main.postDelayed(bellAway, BELL_DONE_MS);
+        main().removeCallbacks(bellAway);
+        main().postDelayed(bellAway, BELL_DONE_MS);
         if (face != null) face.invalidate();
     }
 

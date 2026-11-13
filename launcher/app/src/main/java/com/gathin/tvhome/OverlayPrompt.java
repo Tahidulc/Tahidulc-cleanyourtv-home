@@ -67,8 +67,13 @@ final class OverlayPrompt {
     private static Context app;
     private static FrameLayout win;
     private static OverlayButton button;
-    /** What it asks for: "football" (game) or "f1". */
+    /** What it asks for: "football" (game), "f1", or "sport" (tennis, boxing or UFC: SportCover). */
     private static String kind;
+    /** The tennis, boxing or UFC programme on the channel watched, by Sky's guide: its title, start, end and sport. */
+    private static String sportTitle = "";
+    private static long sportStart, sportEnd;
+    private static int sportKind;
+    private static boolean sportChecking;
     private static ScoresTicker.Game game;
     /** The button is up over overlays that came on by themselves: Back puts them away, every other key is the player's. */
     private static boolean byItself;
@@ -170,6 +175,8 @@ final class OverlayPrompt {
         if (live.isEmpty() && !f1Live) {
             onNow = new HashMap<>();
             ownNow = new HashMap<>();
+            // No match or F1 on: a tennis, boxing or UFC programme may be.
+            sportCheck(app);
             return;
         }
         checking = true;
@@ -209,8 +216,53 @@ final class OverlayPrompt {
                 ownNow = own;
                 if (w != null) maybeAsk(a, "football", w.game, w.sure);
                 else if (f1) maybeAsk(a, "f1", null, false);
+                else sportCheck(a);
             });
         });
+    }
+
+    /**
+     * The programme on the channel watched, by Sky's guide (off the main thread): tennis, boxing or UFC (SportFeeds.sportOf)
+     * gets what a match gets, the button or the board by itself (SportCover); never where a match or F1 is on.
+     */
+    static void sportCheck(Context c) {
+        if (c == null || sportChecking || !on(c) || !SportCover.on(c)) return;
+        Context a = c.getApplicationContext();
+        app = a;
+        sportChecking = true;
+        io.execute(() -> {
+            Object[] on = null;
+            List<String> tuned = Collections.emptyList();
+            try {
+                tuned = InStep.tunedNames(a);
+                String[] channels = a.getResources().getStringArray(R.array.sport_tv_channels);
+                List<Object[]> around = TvGuide.around(channels, tuned, System.currentTimeMillis(), 0);
+                if (!around.isEmpty()) on = around.get(0);
+            } catch (RuntimeException ignored) {
+                // looked at again at the next poll
+            }
+            Object[] o = on;
+            List<String> t = tuned;
+            main().post(() -> {
+                sportChecking = false;
+                if (o == null) return;
+                String title = (String) o[0];
+                int kind = com.gathin.broadcast.SportFeeds.sportOf(title);
+                if (kind == 0 || footballHere(t, onNow)) return;
+                sportTitle = title;
+                sportStart = (Long) o[1];
+                sportEnd = (Long) o[2];
+                sportKind = kind;
+                maybeAsk(a, "sport", null, false);
+            });
+        });
+    }
+
+    /** Pure: whether a match or F1 is on the channel tuned (its channels in on): it keeps its place. */
+    static boolean footballHere(List<String> tuned, Map<String, List<String>> on) {
+        if (tuned == null || tuned.isEmpty() || on == null) return false;
+        for (List<String> names : on.values()) if (InStep.onChannel(tuned, names)) return true;
+        return false;
     }
 
     /**
@@ -269,6 +321,7 @@ final class OverlayPrompt {
             InStep.tuned(c, Collections.singletonList(listed));
             AlertLog.note(c, "channel watched, from the player's banner (the playlist's channels)");
             BoardCover.resume(c);
+            sportCheck(c);
         }
         AdBreak.banner(c, texts);
         // A channel with scoreboard and logo settings of its own named on its own (its banner): the channel watched, so
@@ -279,6 +332,7 @@ final class OverlayPrompt {
                 InStep.tuned(c, Collections.singletonList(mine));
                 AlertLog.note(c, "channel watched, from the player's banner (its own overlay settings): " + mine);
                 BoardCover.resume(c);
+                sportCheck(c);
             }
         }
         Map<String, List<String>> on = onNow, own = ownNow;
@@ -361,7 +415,13 @@ final class OverlayPrompt {
     /** Pure: the key a question is asked once under: a game's id, else F1's on that day ("f1|20261107"). */
     static String askKey(String kind, ScoresTicker.Game g, long now) {
         if ("f1".equals(kind)) return "f1|" + new java.text.SimpleDateFormat("yyyyMMdd", Locale.UK).format(new java.util.Date(now));
+        if ("sport".equals(kind)) return sportKey(sportTitle, sportStart);
         return "g|" + (g == null ? "" : g.id);
+    }
+
+    /** Pure: the key a tennis, boxing or UFC programme is asked about once under: its start and title. */
+    static String sportKey(String title, long start) {
+        return "s|" + start + "|" + (title == null ? "" : title);
     }
 
     private static boolean has(Context c, String set, String key) {
@@ -397,9 +457,12 @@ final class OverlayPrompt {
         String mode = mode(c);
         String key = askKey(k, g, System.currentTimeMillis());
         // Its overlays on already, or the scoreboard and logo up by hand (what they show is chosen there): nothing to ask.
-        boolean already = football ? g.id.equals(BoardCover.game(c)) || BoardCover.manual(c) || BoardCover.alwaysHere(c) : F1Tower.isShowing();
-        // By themselves only for a football match sure to be the one on, its competition's alerts not switched off.
-        boolean itself = football && sure && NotifyPrefs.competitionOn(c, g.slug);
+        boolean sport = "sport".equals(k);
+        boolean already = football ? g.id.equals(BoardCover.game(c)) || BoardCover.manual(c) || BoardCover.alwaysHere(c)
+                : sport ? SportCover.isShowing() : F1Tower.isShowing();
+        // By themselves for a football match sure to be the one on, its competition's alerts not switched off; and for a
+        // tennis, boxing or UFC programme (once a programme).
+        boolean itself = football ? sure && NotifyPrefs.competitionOn(c, g.slug) : sport;
         boolean dismissed = has(c, "asked", key) || AUTO.equals(mode) && has(c, "away", key);
         int act = decide(mode, true, itself, dismissed, already);
         if (act == NOTHING) return;
@@ -420,7 +483,7 @@ final class OverlayPrompt {
         float scale = sw / 1920f;
         int w = Math.round(200 * scale), h = Math.round(100 * scale);
         OverlayButton b = new OverlayButton(app);
-        b.foot("f1".equals(k) ? "TIMING · LOGO" : "SCOREBOARD · LOGO");
+        b.foot("f1".equals(k) ? "TIMING · LOGO" : "sport".equals(k) ? "SCOREBOARD" : "SCOREBOARD · LOGO");
         b.remote("streamer".equalsIgnoreCase(Config.themeString(app, "ok_button", "tcl")));
         b.away(itself);
         FrameLayout f = new FrameLayout(app);
@@ -461,7 +524,8 @@ final class OverlayPrompt {
         b.animate().alpha(1f).translationX(0f).setDuration(320).withLayer().start();
         main().removeCallbacks(hideRun);
         main().postDelayed(hideRun, SHOW_MS);
-        AlertLog.note(app, (itself ? "Back-to-put-away button up: " : "overlays button up: ") + ("f1".equals(k) ? "F1" : AlertLog.game(g)));
+        AlertLog.note(app, (itself ? "Back-to-put-away button up: " : "overlays button up: ")
+                + ("f1".equals(k) ? "F1" : "sport".equals(k) ? sportTitle : AlertLog.game(g)));
     }
 
     /** Away (its time up, Back, or the overlays on). */
@@ -542,6 +606,9 @@ final class OverlayPrompt {
             BoardCover.setLogoOn(c, true);
             F1Tower.open(c, false);
             AlertLog.note(c, "overlays on (F1) " + how + (channel.isEmpty() ? "" : ", " + channel));
+        } else if ("sport".equals(k)) {
+            SportCover.open(c, sportKind, sportTitle, sportStart, sportEnd);
+            AlertLog.note(c, "tennis/boxing/UFC board on " + how + ": " + sportTitle + (channel.isEmpty() ? "" : ", " + channel));
         } else if (g != null) {
             BoardCover.setBoardShown(c, true);
             BoardCover.setLogoOn(c, true);
@@ -556,7 +623,14 @@ final class OverlayPrompt {
         Context c = app;
         ScoresTicker.Game g = game;
         boolean itself = byItself;
+        String k = kind;
         hide();
+        if (itself && c != null && "sport".equals(k)) {
+            // A tennis, boxing or UFC board that came by itself: away, and left away for that programme.
+            mark(c, "away", askKey("sport", null, 0L));
+            SportCover.close();
+            return;
+        }
         if (!itself || c == null || g == null || g.id == null) return;
         mark(c, "away", askKey("football", g, 0L));
         if (g.id.equals(BoardCover.game(c))) BoardCover.stop(c, "put away with Back");

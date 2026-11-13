@@ -591,6 +591,8 @@ final class BoardCover {
     /** A look chosen: the board drawn in it at once where it is up (no coming in again). */
     static void setStyle(Context c, BoardBug.Style s) {
         prefs(c).edit().putString("style", s.name()).apply();
+        // The tennis, boxing or UFC board up takes the look too.
+        SportCover.restyle(c);
         if (bug != null && !adjusting) {
             bug.style(s);
             layout(c);

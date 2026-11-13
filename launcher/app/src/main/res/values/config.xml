@@ -561,6 +561,30 @@
         <item>4075|Channel 4</item>
         <item>4058|5</item>
     </string-array>
+    <!-- What the channel watched is showing, for the tennis, boxing and UFC boards (SportCover): these channels' listings
+         in Sky's guide. The football channels, and the ones that carry tennis, boxing and UFC besides. -->
+    <string-array name="sport_tv_channels" translatable="false">
+        <item>1284|Sky Sports Tennis</item>
+        <item>4002|Sky Sports Main Event</item>
+        <item>1035|Sky Sports Box Office</item>
+        <item>3625|TNT Sports 1</item>
+        <item>3627|TNT Sports 2</item>
+        <item>3629|TNT Sports 3</item>
+        <item>4040|TNT Sports 4</item>
+        <item>1210|TNT Sports Box Office</item>
+        <item>1099|TNT Sports Box Office 2</item>
+        <item>3940|Sky Sports+</item>
+        <item>4090|Sky Sports Mix</item>
+        <item>4010|Sky Sports Premier League</item>
+        <item>3939|Sky Sports Football</item>
+        <item>1289|Premier Sports 1</item>
+        <item>1290|Premier Sports 2</item>
+        <item>3007|BBC One</item>
+        <item>2075|BBC Two</item>
+        <item>6504|ITV1</item>
+        <item>4075|Channel 4</item>
+        <item>4058|5</item>
+    </string-array>
     <!-- The live tables in the sports row (a theme's "sports_section"): "league slug|name". -->
     <string-array name="table_leagues" translatable="false">
         <item>eng.1|PREMIER LEAGUE</item>

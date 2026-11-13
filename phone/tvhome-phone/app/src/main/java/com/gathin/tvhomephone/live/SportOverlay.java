@@ -145,7 +145,8 @@ final class SportOverlay {
         start = st;
         sport = SportFeeds.sportOf(ti);
         reset();
-        if (sport == SportBoard.BOXING) boxing = SportFeeds.boxing(ti, st);
+        // Boxing: no time beside VS before the bell (the programme's start is not the main event's).
+        if (sport == SportBoard.BOXING) boxing = SportFeeds.boxing(ti, 0);
         if (started && (sport == SportBoard.TENNIS || sport == SportBoard.UFC)) {
             h.removeCallbacks(poll);
             h.post(poll);
@@ -213,6 +214,8 @@ final class SportOverlay {
         long since = overSince;
         Context c = a.getApplicationContext();
         int px = Math.max(48, Math.round(u * 2.2f));
+        java.util.Set<String> have = new java.util.HashSet<>(pics.keySet());
+        boolean needLogo = ufcLogo == null;
         App.io.execute(() -> {
             List<SportBoard> got = new ArrayList<>();
             boolean read = false;
@@ -234,7 +237,7 @@ final class SportOverlay {
             if (p != null) {
                 for (String url : new String[]{p.a.flagUrl, p.b.flagUrl, sp == SportBoard.UFC ? p.a.photoUrl : "",
                         sp == SportBoard.UFC ? p.b.photoUrl : ""}) {
-                    if (url == null || url.isEmpty() || pics.containsKey(url)) continue;
+                    if (url == null || url.isEmpty() || have.contains(url)) continue;
                     try {
                         Bitmap b = LiveGames.picture(c, url, px);
                         if (b != null) found.put(url, b);
@@ -242,7 +245,7 @@ final class SportOverlay {
                         // without it: the country's letters, the flag
                     }
                 }
-                if (sp == SportBoard.UFC && ufcLogo == null) {
+                if (sp == SportBoard.UFC && needLogo) {
                     try {
                         logo = LiveGames.picture(c, SportFeeds.UFC_LOGO, px);
                     } catch (RuntimeException ignored) {
@@ -583,20 +586,15 @@ final class SportOverlay {
             b.division = "Women's Singles";
             side(b.a, "Mira Kovalenko", "Kovalenko", "UKR", "2");
             side(b.b, "Lena Hartwell", "Hartwell", "GBR", "6");
-            b.a.games = after ? new int[]{6, 0} : new int[]{5, 4};
-            b.b.games = after ? new int[]{4, 0} : new int[]{4, 4};
-            b.a.tiebreak = new int[]{-1, -1};
-            b.b.tiebreak = new int[]{-1, -1};
+            // Kovalenko serving for the first set at 40-15; then the set hers, the second about to begin.
+            b.a.games = after ? new int[]{6, 0} : new int[]{5};
+            b.b.games = after ? new int[]{4, 0} : new int[]{4};
+            b.a.tiebreak = after ? new int[]{-1, -1} : new int[]{-1};
+            b.b.tiebreak = after ? new int[]{-1, -1} : new int[]{-1};
             b.a.points = after ? "0" : "40";
             b.b.points = after ? "0" : "15";
             b.a.serving = !after;
             b.b.serving = after;
-            if (!after) {
-                b.a.games = new int[]{5};
-                b.b.games = new int[]{4};
-                b.a.tiebreak = new int[]{-1};
-                b.b.tiebreak = new int[]{-1};
-            }
         } else if (sport == SportBoard.BOXING) {
             b = SportFeeds.boxing("Boxing: Tom Archer v Rio Mendes - Heavyweight", 0L);
             b.id = "try-boxing";
@@ -631,6 +629,54 @@ final class SportOverlay {
             }
         }
         return b;
+    }
+
+    private static final Handler TRY = new Handler(Looper.getMainLooper());
+    private static final Object TRY_TOKEN = new Object();
+
+    /**
+     * Try (Settings): a sport's made-up board in the look chosen, on stage, for twelve seconds: it opens with its
+     * swish, its moment comes after a few seconds (a set won, a round begun, the winner) with its sound, then it goes.
+     */
+    static void tryIt(Context c, android.view.View stage, SportView pv, int sport, float rows) {
+        TRY.removeCallbacksAndMessages(TRY_TOKEN);
+        Sfx.warm(c, Sfx.SWISH, Sfx.SCORE, "goal-" + PlayerIntro.goalSound(c));
+        SportBoard before = sample(sport, false), after = sample(sport, true);
+        Bitmap[] logo = {null};
+        stage.setVisibility(View.VISIBLE);
+        pv.show(skin(c), before, null, rows, true);
+        pv.open();
+        if (PlayerIntro.swishOn(c)) Sfx.play(c, Sfx.SWISH, 0f, 0.7f);
+        if (sport == SportBoard.UFC) {
+            // UFC's own logo once it has loaded (the glove meanwhile).
+            Context app = c.getApplicationContext();
+            App.io.execute(() -> {
+                Bitmap lg;
+                try {
+                    lg = LiveGames.picture(app, SportFeeds.UFC_LOGO, Math.round(rows * 2.2f));
+                } catch (RuntimeException e) {
+                    lg = null;
+                }
+                Bitmap got = lg;
+                App.main.post(() -> {
+                    logo[0] = got;
+                    SportBoard on = pv.board();
+                    if (got != null && on != null && on.sport == SportBoard.UFC) pv.show(skin(c), on, got, rows, true);
+                });
+            });
+        }
+        TRY.postAtTime(() -> {
+            pv.show(skin(c), after, logo[0], rows, true);
+            SportBoard.Moment m = SportBoard.moment(before, after);
+            if (m == null) return;
+            pv.band(m.words, m.colour);
+            if (m.words.startsWith("ROUND")) {
+                if (PlayerIntro.swishOn(c)) Sfx.play(c, Sfx.SWISH, 0f, 0.7f);
+            } else {
+                Sfx.goal(c, PlayerIntro.goalSound(c));
+            }
+        }, TRY_TOKEN, android.os.SystemClock.uptimeMillis() + 2_800L);
+        TRY.postAtTime(() -> stage.setVisibility(View.GONE), TRY_TOKEN, android.os.SystemClock.uptimeMillis() + 12_000L);
     }
 
     private static void side(SportBoard.Side s, String name, String shortName, String country, String seed) {

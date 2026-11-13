@@ -58,6 +58,9 @@ final class ScoreOverlay implements ScoreBoard.Source {
         /** The programme on now in the channel's own guide, null without one. */
         default String programmeNow() { return null; }
 
+        /** The player's sound is off (a Homefield break, the phone's media volume at nothing). */
+        default boolean muted() { return false; }
+
         /** Whether the channel playing may be showing a match (a sports channel, a fixture in its guide). */
         default boolean sportsNow() { return false; }
     }
@@ -67,7 +70,7 @@ final class ScoreOverlay implements ScoreBoard.Source {
 
     private static final int FIND_W = 256, FIND_H = 144, READ_W = 960, READ_H = 540, OCR_W = 1280, OCR_H = 720;
     private static final long SAMPLE_MS = 250, LOOK_AGAIN_MS = 3 * 60_000L, RETRY_MS = 20_000L, READ_FOR_MS = 80_000L,
-            READ_AGAIN_MS = 4 * 60_000L, OCR_MS = 2000, F1_OCR_MS = 4000;
+            READ_AGAIN_MS = 4 * 60_000L, OCR_MS = 2000, F1_OCR_MS = 4000, SPORT_OCR_MS = 3000;
 
     private final Activity a;
     private final FrameLayout root;
@@ -118,6 +121,9 @@ final class ScoreOverlay implements ScoreBoard.Source {
 
     /** The classic kick-off pop-up and line-ups over the picture (PlayerIntro). */
     private final PlayerIntro intro;
+
+    /** Tennis, boxing and UFC: their board where this one sits, while the channel's guide has one on (SportOverlay). */
+    private final SportOverlay sport;
 
     /** The channel's own scoreboard watched under the board (BugCover): away in replays, plates over what grows out of it. */
     private final BugCover bugCover;
@@ -227,6 +233,31 @@ final class ScoreOverlay implements ScoreBoard.Source {
         board.changed = guard::poke;
         handles(board.bug, true);
         handles(cover, false);
+        sport = new SportOverlay(a, new SportOverlay.Host() {
+            @Override public boolean free() {
+                return started && !inPip && !editing && wanted() && !boardHidden() && !intro.showing()
+                        && !(board.showing() && (board.channelGame() || board.f1()));
+            }
+
+            @Override public boolean muted() {
+                return ScoreOverlay.this.host.muted();
+            }
+
+            @Override public void relayout() {
+                place();
+            }
+
+            @Override public void adjust() {
+                safely(ScoreOverlay.this::adjust, null);
+            }
+
+            @Override public void readSoon() {
+                if (ScoreBoard.reads(a) && !screenLoop()) ScoreOverlay.this.readSoon(1000);
+            }
+        });
+        // Just over the football board (they sit in the same place, never up together but for a followed game's).
+        root.addView(sport.view, root.indexOfChild(board.view) + 1, new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.START));
+        sportHandles(sport.view);
         root.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
             if (r - l != or - ol || b - t != ob - ot) h.post(this::place);
         });
@@ -456,6 +487,8 @@ final class ScoreOverlay implements ScoreBoard.Source {
         place();
         bugCover.start();
         h.postDelayed(playLook, 1_000L);
+        sport.programme(chKey(), host.programmeNow(), 0);
+        sport.start();
     }
 
     /** The whole picture, small, for LivePlay: the board's own copy, made again for each look. */
@@ -526,6 +559,7 @@ final class ScoreOverlay implements ScoreBoard.Source {
         up = false;
         guard.stop();
         board.stop();
+        sport.stop();
         h.removeCallbacksAndMessages(null);
         if (sampler != null) {
             sampler.quit();
@@ -562,6 +596,8 @@ final class ScoreOverlay implements ScoreBoard.Source {
         ocrOkAt = 0;
         ocrMisses = 0;
         board.changed();
+        // Another channel: its programme's sport board (or none) from now.
+        sport.programme(chKey(), host.programmeNow(), 0);
         place();
         h.removeCallbacks(look);
         h.removeCallbacks(readClock);
@@ -1031,6 +1067,22 @@ final class ScoreOverlay implements ScoreBoard.Source {
             lp.topMargin = vt;
             board.view.setLayoutParams(lp);
         }
+        // Tennis, boxing and UFC: where this board sits (placed by hand, else its own corner), at its rows' height; just
+        // under it while it shows a followed club's game.
+        float rows;
+        int sl, st;
+        if (placed) {
+            rows = own.bh * fh / Math.max(1f, board.bug.tall());
+            sl = Math.round(fx + own.bx * fw);
+            st = Math.round(fy + own.by * fh);
+        } else {
+            boolean upright = root.getHeight() > root.getWidth();
+            rows = (upright ? 24 : 30) * d * sizeHere();
+            sl = Math.round(Math.max(fx, 0) + 14 * d) + (fx <= insetLeft ? insetLeft : 0);
+            st = Math.round(Math.max(fy, 0) + 12 * d) + (fy <= insetTop ? insetTop : 0);
+        }
+        if (board.showing() && !inPip) st = boardTop + bh + Math.round(6 * d);
+        sport.place(sl, st, rows, root.getWidth(), root.getHeight());
     }
 
     /** This channel's own places (loaded as the channel changes; held as they are while being set). */
@@ -1298,6 +1350,79 @@ final class ScoreOverlay implements ScoreBoard.Source {
         });
     }
 
+    /**
+     * The tennis, boxing or UFC board's touches, as the football board's: a tap for its menu (Bell now, Next match,
+     * Hide), two for Move and resize, held to drag it (the football board's place moves with it: they share it).
+     */
+    @SuppressLint("ClickableViewAccessibility")
+    private void sportHandles(View v) {
+        float[] start = new float[4];
+        boolean[] held = {false};
+        v.setOnClickListener(x -> sport.menu());
+        GestureDetector g = new GestureDetector(a, new GestureDetector.SimpleOnGestureListener() {
+            @Override public boolean onDown(MotionEvent e) {
+                return true;
+            }
+
+            @Override public boolean onSingleTapConfirmed(MotionEvent e) {
+                v.performClick();
+                return true;
+            }
+
+            @Override public boolean onDoubleTap(MotionEvent e) {
+                safely(ScoreOverlay.this::adjust, null);
+                return true;
+            }
+
+            @Override public void onLongPress(MotionEvent e) {
+                if (editing || inPip || !started || host.current() == null || pfw <= 1 || pfh <= 1) return;
+                mine();
+                carrying = true;
+                if (!mine.board()) {
+                    // Its place from here, at the football board's height for these rows.
+                    FrameLayout.LayoutParams sp = (FrameLayout.LayoutParams) v.getLayoutParams();
+                    mine.bh = BoardPlace.clamp(sport.rows() * Math.max(1f, board.bug.tall()) / pfh, BoardPlace.MIN_H, BoardPlace.MAX_H);
+                    mine.bx = 0;
+                    mine.moveBoard((sp.leftMargin - pfx) / pfw, (sp.topMargin - pfy) / pfh, v.getWidth() / pfw);
+                }
+                start[0] = e.getRawX();
+                start[1] = e.getRawY();
+                start[2] = mine.bx;
+                start[3] = mine.by;
+                held[0] = true;
+                v.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
+                if (v.getParent() != null) v.getParent().requestDisallowInterceptTouchEvent(true);
+                outlineOne(v, true);
+                place();
+            }
+        });
+        v.setOnTouchListener((view, e) -> {
+            g.onTouchEvent(e);
+            if (!held[0]) return true;
+            switch (e.getActionMasked()) {
+                case MotionEvent.ACTION_MOVE: {
+                    float x = start[2] + (e.getRawX() - start[0]) / pfw, y = start[3] + (e.getRawY() - start[1]) / pfh;
+                    float minX = Math.max(0, -pfx / pfw), minY = Math.max(0, -pfy / pfh);
+                    float maxX = Math.min(1, (root.getWidth() - pfx) / pfw), maxY = Math.min(1, (root.getHeight() - pfy) / pfh);
+                    float w = v.getWidth() / pfw, hh = v.getHeight() / pfh;
+                    mine.moveBoard(BoardPlace.clamp(x, minX, Math.max(minX, maxX - w)), BoardPlace.clamp(y, minY, Math.max(minY, maxY - hh)), w);
+                    place();
+                    return true;
+                }
+                case MotionEvent.ACTION_UP:
+                case MotionEvent.ACTION_CANCEL:
+                    held[0] = false;
+                    carrying = false;
+                    if (mineKey != null) BoardPlace.put(a, mineKey, mine);
+                    outlineOne(v, false);
+                    place();
+                    return true;
+                default:
+                    return true;
+            }
+        });
+    }
+
     /** The one dragged where the finger has gone from where it was (start: the finger's and the place's), kept in sight. */
     private void follow(boolean isBoard, float[] start, MotionEvent e) {
         float x = start[2] + (e.getRawX() - start[0]) / pfw, y = start[3] + (e.getRawY() - start[1]) / pfh;
@@ -1537,14 +1662,18 @@ final class ScoreOverlay implements ScoreBoard.Source {
         screenAt = System.currentTimeMillis();
         if (!started || inPip || sampler == null || !ScoreBoard.reads(a)) return;
         boolean f1 = host.game() == null && ScoreBoard.f1Channel(host.current());
-        if (!f1 && !board.football()) {
+        // A tennis match on the sport board: the channel's own tennis scoreboard read for its points (SportScreen).
+        boolean tennis = !f1 && !board.football() && sport.wantsReading();
+        if (!f1 && !board.football() && !tennis) {
             readSoon(5000);
             return;
         }
         BugFinder.Box rb = readBox;
+        int band = sport.band();
         if (ocrFrame == null) ocrFrame = Bitmap.createBitmap(OCR_W, OCR_H, Bitmap.Config.ARGB_8888);
         boolean asked = sampler.copy(video.surface(), ocrFrame, (frame, at) -> {
             Cut cut = frame == null ? null : f1 ? Cut.of(frame, 0f, 0f, 0.34f, 0.24f)
+                    : tennis ? (band == 1 ? Cut.of(frame, 0f, 0.64f, 0.62f, 1f) : Cut.of(frame, 0f, 0f, 0.62f, 0.36f))
                     : rb != null ? Cut.of(frame, rb.left, rb.top, rb.right, rb.bottom) : Cut.of(frame, 0f, 0f, 1f, 0.34f);
             h.post(() -> safely(() -> {
                 if (!started || cut == null) {
@@ -1553,6 +1682,11 @@ final class ScoreOverlay implements ScoreBoard.Source {
                 }
                 boolean reading = ocr.read(cut.b, (lines, boxes) -> safely(() -> {
                     if (!started) return;
+                    if (tennis) {
+                        sport.screen(lines, boxes);
+                        readSoon(SPORT_OCR_MS);
+                        return;
+                    }
                     if (f1) {
                         ScreenText.Reading r = ScreenText.f1(lines);
                         if (r.any()) board.f1Screen(r.lap, r.laps, r.left, at);
@@ -1962,6 +2096,11 @@ final class ScoreOverlay implements ScoreBoard.Source {
     /** The programmes on this channel now and next (each half minute): F1's, UFC's and boxing's intros as they begin. */
     void programmes(java.util.List<OverMatches.Programme> guide) {
         if (started && !inPip && !editing) intro.sportTick(guide);
+        // Tennis, boxing or UFC on now: their board.
+        long now = System.currentTimeMillis();
+        OverMatches.Programme on = null;
+        if (guide != null) for (OverMatches.Programme p : guide) if (p.start <= now && now < p.stop) on = p;
+        sport.programme(chKey(), on == null ? "" : on.title, on == null ? 0 : on.start);
     }
 
     /** Tests: a sport's intro ("f1", "ufc", "boxing", "football"), now. */

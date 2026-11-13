@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Tennis, boxing and UFC: their scoreboard in the player (SportOverlay) and its Try in Settings (BoardSettings). -->
+<resources>
+    <string name="live81_board">Tennis, boxing or UFC scoreboard</string>
+    <string name="live81_bell">Bell now — start the round clock</string>
+    <string name="live81_next">Next match</string>
+    <string name="live81_hide">Hide</string>
+    <string name="live81_try_title">Tennis, boxing and UFC</string>
+    <string name="live81_try_line">Their scoreboard comes up in the look above when the channel\'s guide says one is on: tennis set by set, a fight\'s round and its clock. Tap it in the player for Bell now (boxing), Next match (tennis) or Hide.</string>
+    <string name="live81_try_tennis">Try tennis</string>
+    <string name="live81_try_boxing">Try boxing</string>
+    <string name="live81_try_ufc">Try UFC</string>
+</resources>

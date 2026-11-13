@@ -23,7 +23,8 @@ import java.util.Locale;
  * cover over the channel's logo each on or off, the alerts and stats that slide out beside it, its clock set at
  * kick-off, OK held over the match for its menu, Move and resize over the channel, the board's look and the cover's
  * (each drawn as it looks, the game chosen in it, to pick from), the standard places back, the classic kick-off pop-up
- * and line-ups (each on or off, and tried there and then over Home); then what it does to be kind to the screen. The Control Centre's Scoreboard tile is the quick switch beside it.
+ * and line-ups (each on or off, and tried there and then over Home), the tennis, boxing and UFC boards (on or off, and
+ * tried there and then in the look chosen); then what it does to be kind to the screen. The Control Centre's Scoreboard tile is the quick switch beside it.
  */
 final class BoardPanel extends SportPanel {
     /** The see-through row's words, with what it is doing over the channel on now when it is at work. */
@@ -113,6 +114,12 @@ final class BoardPanel extends SportPanel {
     private int sportTry;
 
     /** A try of the classic pop-up or line-ups: the card away, then it over Home (ClassicIntro.tryIt). */
+    /** A tennis, boxing or UFC board tried now over Home, in the look chosen (SportCover). */
+    private void trySportBoard(int kind) {
+        hide();
+        SportCover.tryIt(c, kind);
+    }
+
     private void tryClassic(String kind) {
         ScoresTicker.Game g = game();
         hide();
@@ -389,6 +396,23 @@ final class BoardPanel extends SportPanel {
                 + ": the chosen game's when they're out, else the last Premier League game's · Back closes them";
         tryLineups.ok = () -> tryClassic("lineups");
         add(trySecond, tryLineups);
+        // Tennis, boxing and UFC: their own scoreboard in the look chosen (SportCover), each tried there and then.
+        Row sports = row("Tennis, boxing and UFC boards", true);
+        sports.on = () -> SportCover.on(c);
+        sports.words = () -> SportCover.on(c) ? "Over them as over a match, in the look chosen · boxing: OK at the first bell"
+                : "Off · OK to have them as a match has its board";
+        sports.ok = () -> SportCover.setOn(c, !SportCover.on(c));
+        Row tryTennis = row("Try tennis", false);
+        tryTennis.words = () -> "A made-up match in the look chosen: a game won, then the match (12 seconds)";
+        tryTennis.ok = () -> trySportBoard(com.gathin.broadcast.SportBoard.TENNIS);
+        add(sports, tryTennis);
+        Row tryBoxing = row("Try boxing", false);
+        tryBoxing.words = () -> "A made-up fight in the look chosen: the bell for the next round";
+        tryBoxing.ok = () -> trySportBoard(com.gathin.broadcast.SportBoard.BOXING);
+        Row tryUfc = row("Try UFC", false);
+        tryUfc.words = () -> "A made-up main event in the look chosen: the next round begins";
+        tryUfc.ok = () -> trySportBoard(com.gathin.broadcast.SportBoard.UFC);
+        add(tryBoxing, tryUfc);
         Row clock = row("Clock with the channel's", true);
         clock.on = () -> BoardCover.asksAtKickoff(c);
         clock.words = () -> BoardCover.asksAtKickoff(c) ? "OK at each kick-off when asked sets it to the second"
