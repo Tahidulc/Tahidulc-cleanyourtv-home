@@ -272,7 +272,7 @@ final class ChannelSight {
                 // The logo's place left alone where see-through has found the logo itself.
                 boolean found = BoardPlace.logoFound(app, name);
                 BoardPlace p = BoardPlace.over(BoardPlace.get(app, name), arr(box), logo == null || found ? null : arr(logo),
-                        BoardCover.style(app).tall, sw, sh);
+                        BoardCover.tallNow(app), sw, sh);
                 BoardPlace.putSeen(app, name, p);
             }
             AlertLog.note(app, "channel's own scoreboard seen" + (name.isEmpty() ? "" : " on " + name) + ": " + b

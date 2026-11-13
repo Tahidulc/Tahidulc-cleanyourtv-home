@@ -516,10 +516,15 @@ final class BoardPanel extends SportPanel {
         b.style(style);
         b.inset(1);
         b.crests(crests != null);
-        b.set(BoardCover.previewLook(game()));
+        ScoresTicker.Game pg = game();
+        if (pg != null) {
+            b.competition(pg.slug, pg.league);
+            b.names(pg.homeName, pg.awayName);
+        }
+        b.set(BoardCover.previewLook(pg));
         if (crests != null) b.images(crests[0], crests[1], crests[2]);
         previews.add(b);
-        int bh = Math.round(h.px(36) * style.tall);
+        int bh = Math.round(h.px(36) * b.tall());
         stage.addView(b, new FrameLayout.LayoutParams(-1, bh, Gravity.CENTER));
         t.addView(stage, new LinearLayout.LayoutParams(-1, 0, 1f));
         TextView name = h.text(17, semi, 0xE6FFFFFF);

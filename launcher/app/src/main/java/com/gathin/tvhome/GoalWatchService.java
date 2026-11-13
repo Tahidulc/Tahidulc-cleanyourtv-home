@@ -2941,7 +2941,8 @@ public class GoalWatchService extends Service {
                 {"uefa.champions", "2"}, {"UCL", "2"}, {"uefa.europa", "2310"}, {"UEL", "2310"},
                 {"uefa.europa.conf", "20296"}, {"UECL", "20296"}, {"esp.1", "15"}, {"LALIGA", "15"}, {"ita.1", "12"},
                 {"SERIE A", "12"}, {"ger.1", "10"}, {"BUNDESLIGA", "10"}, {"fra.1", "9"}, {"LIGUE 1", "9"},
-                {"sco.1", "45"}, {"SPFL", "45"}};
+                {"sco.1", "45"}, {"SPFL", "45"}, {"eng.3", "25"}, {"eng.4", "26"}, {"ned.1", "11"}, {"EREDIVISIE", "11"},
+                {"por.1", "14"}, {"LIGA PORTUGAL", "14"}, {"usa.1", "19"}, {"MLS", "19"}, {"mex.1", "22"}, {"LIGA MX", "22"}};
         for (String[] e : ids) LEAGUE_IDS.put(e[0], Integer.parseInt(e[1]));
     }
 

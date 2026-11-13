@@ -574,6 +574,11 @@ final class BoardCover {
         restyle();
     }
 
+    /** How much taller than a row the board is drawn now (By competition: its game's competition's look's). */
+    static float tallNow(Context c) {
+        return bug != null ? bug.tall() : style(c).tall;
+    }
+
     static BoardBug.Style style(Context c) {
         return BoardBug.Style.of(prefs(c).getString("style", ""));
     }
@@ -2272,6 +2277,11 @@ final class BoardCover {
             shownScore = l.score;
         }
         bug.crests(g != null && (g.homeLogo != null || g.awayLogo != null));
+        // The game's competition: By competition draws its own look, and its logo with it.
+        if (g != null) {
+            bug.competition(g.slug, g.league);
+            bug.names(g.homeName, g.awayName);
+        }
         bug.set(l);
         boolean board = adjusting || testUntil > now || boardShown(c);
         // A replay on the channel (its own scoreboard gone, BugCover): away as a broadcaster's goes, what is out beside it
@@ -2987,7 +2997,7 @@ final class BoardCover {
         BoardPlace p = adjusting && editing != null ? editing : place;
         if (p == null) p = BoardPlace.standard();
         // Stacked is drawn taller than the height set (its clubs one above the other), and kept on the screen.
-        int bh = Math.max(8, Math.round(p.bh * sh * bug.style().tall));
+        int bh = Math.max(8, Math.round(p.bh * sh * bug.tall()));
         int bw = p.bw > 0 ? Math.max(bh * 2, Math.min(Math.round(sw * 0.6f), Math.round(p.bw * sw)))
                 : Math.min(Math.round(sw * 0.5f), bug.natural(bh));
         int bx = Math.min(Math.round(p.bx * sw), sw - bw), by = Math.min(Math.round(p.by * sh), sh - bh);
@@ -4203,14 +4213,17 @@ final class BoardCover {
         String league = g.leagueLogo != null ? g.leagueLogo : GoalWatchService.leagueLogoFor(g);
         Context a = c.getApplicationContext();
         io.execute(() -> {
-            Bitmap h = crest(a, home), w = crest(a, away), l = compLogo(a, league);
+            Bitmap h = crest(a, home), w = crest(a, away), l = compLogo(a, league), ll = compLogoLight(a, league);
             main().post(() -> {
                 if (!id.equals(imagesFor)) return;
                 homeCrest = h;
                 awayCrest = w;
                 compImage = l;
                 compTag = g.league == null ? "" : g.league;
-                if (bug != null) bug.images(h, w, l);
+                if (bug != null) {
+                    bug.images(h, w, l);
+                    bug.competitionLight(ll);
+                }
                 if (mark != null) mark.competition(l, compTag);
             });
         });
@@ -4258,6 +4271,18 @@ final class BoardCover {
     }
 
     /** A competition's logo for the dark block: ESPN's for dark grounds; the Premier League's lion alone, in white. */
+    /** The competition's logo in its own colours (ESPN's for light grounds), for the looks that set it on white. */
+    private static Bitmap compLogoLight(Context c, String url) {
+        if (url == null) return null;
+        String light = url.replace("/500-dark/", "/500/");
+        String key = "compLight|" + light;
+        Bitmap have = images().get(key);
+        if (have != null) return have;
+        Bitmap b = ScoresTicker.cachedLogo(c, light, 128);
+        if (b != null) images().put(key, b);
+        return b;
+    }
+
     private static Bitmap compLogo(Context c, String url) {
         if (url == null) return null;
         String key = "comp|" + url;
@@ -4633,7 +4658,7 @@ final class BoardCover {
     /** The board's width as a share of the screen's, for each share of its height set (Stacked drawn taller). */
     private static float aspect() {
         if (editing.bw > 0) return editing.bw / Math.max(0.001f, editing.bh);
-        float tall = bug == null ? 1f : bug.style().tall;
+        float tall = bug == null ? 1f : bug.tall();
         int h = Math.max(1, Math.round(editing.bh * sh * tall));
         float ratio = bug == null ? 9f : bug.natural(h) / (float) h;
         return ratio * tall * sh / (float) sw;

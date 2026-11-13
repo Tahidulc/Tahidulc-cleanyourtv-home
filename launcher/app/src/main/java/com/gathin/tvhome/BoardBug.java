@@ -15,6 +15,8 @@ import android.graphics.RectF;
 import android.graphics.Shader;
 import android.view.View;
 
+import com.gathin.broadcast.CompBug;
+
 import java.util.Objects;
 
 /**
@@ -63,11 +65,20 @@ final class BoardBug extends View {
     /** Its looks, as the Scoreboard card names them (the phone's, in the phone's order). */
     enum Style {
         CLASSIC("Classic"), GLASS("Glass"), LIGHT("Light"), CLUB("Club colours"), MINIMAL("Minimal"),
-        CRESTS("Crests and time"), STACKED("Stacked", 1.7f), CARD("Card", 1.6f), FROSTED("Frosted glass");
+        CRESTS("Crests and time"), STACKED("Stacked", 1.7f), CARD("Card", 1.6f), FROSTED("Frosted glass"),
+        /** Each game in its own competition's look, with its logo (CompBug); Classic for one with no look of its own. */
+        COMPETITION("By competition"),
+        PL_WORLD(CompBug.Kind.PL), PL_US(CompBug.Kind.PL_US), FA_CUP(CompBug.Kind.FACUP), EFL(CompBug.Kind.EFL),
+        UCL(CompBug.Kind.UCL), UEL(CompBug.Kind.UEL), UECL(CompBug.Kind.UECL), SPFL(CompBug.Kind.SPFL),
+        LALIGA(CompBug.Kind.LALIGA), SERIE_A(CompBug.Kind.SERIEA), BUNDESLIGA(CompBug.Kind.BUNDESLIGA), LIGUE_1(CompBug.Kind.LIGUE1),
+        EREDIVISIE(CompBug.Kind.EREDIVISIE), LIGA_PORTUGAL(CompBug.Kind.LIGAPORTUGAL), MLS(CompBug.Kind.MLS), LIGA_MX(CompBug.Kind.LIGAMX),
+        RETRO_2004(CompBug.Kind.R2004), RETRO_2008(CompBug.Kind.R2008), RETRO_2012(CompBug.Kind.R2012), RETRO_2016(CompBug.Kind.R2016);
 
         final String label;
         /** How much taller than the others it is drawn (Stacked: the clubs one above the other; Card: big crests). */
         final float tall;
+        /** A competition's own look (CompBug), or null. */
+        final CompBug.Kind kind;
 
         Style(String label) {
             this(label, 1f);
@@ -76,6 +87,13 @@ final class BoardBug extends View {
         Style(String label, float tall) {
             this.label = label;
             this.tall = tall;
+            this.kind = null;
+        }
+
+        Style(CompBug.Kind k) {
+            this.label = k.label;
+            this.tall = k.tall;
+            this.kind = k;
         }
 
         static Style of(String name) {
@@ -238,8 +256,104 @@ final class BoardBug extends View {
     void style(Style s) {
         if (s == style) return;
         style = s;
-        p = palette(s);
+        p = paletteNow();
         invalidate();
+    }
+
+    // ---- the competitions' own looks (CompBug) -----------------------------------------------------------------------
+
+    /** The game's competition's look (By competition draws it), its name, and its logo in its own colours. */
+    private CompBug.Kind gameKind;
+    private String compName = "";
+    private Bitmap compLight;
+    private CompBug compBug;
+    private final CompBug.Data compData = new CompBug.Data();
+
+    /** The game's competition (ESPN's slug and its name): By competition takes its look, and its logo with it. */
+    void competition(String slug, String name) {
+        CompBug.Kind k = CompBug.forGame(slug, name);
+        compName = name == null ? "" : name;
+        if (k == gameKind) return;
+        gameKind = k;
+        if (style == Style.COMPETITION) {
+            p = paletteNow();
+            requestLayout();
+        }
+        invalidate();
+    }
+
+    /** The clubs' names (the retro looks name them), from the game. */
+    private String homeName = "", awayName = "";
+
+    void names(String home, String away) {
+        String h = home == null ? "" : home, a = away == null ? "" : away;
+        if (h.equals(homeName) && a.equals(awayName)) return;
+        homeName = h;
+        awayName = a;
+        if (kind() != null) {
+            requestLayout();
+            invalidate();
+        }
+    }
+
+    /** The competition's logo in its own colours, for the looks that set it on white. */
+    void competitionLight(Bitmap b) {
+        compLight = b;
+        invalidate();
+    }
+
+    /** The competition look drawn now (its own, or By competition's for the game's), or null for the board's own looks. */
+    CompBug.Kind kind() {
+        return style.kind != null ? style.kind : style == Style.COMPETITION ? gameKind : null;
+    }
+
+    /** How much taller than a row it is drawn now (By competition: its competition's look's). */
+    float tall() {
+        CompBug.Kind k = kind();
+        return k != null ? k.tall : style.tall;
+    }
+
+    private CompBug comp() {
+        if (compBug == null) compBug = new CompBug(getContext());
+        return compBug;
+    }
+
+    /** What the competition look draws: the board's look, crests, logos and the goal's glow. */
+    private CompBug.Data compData() {
+        CompBug.Data d = compData;
+        d.home = look.home;
+        d.away = look.away;
+        d.homeName = homeName;
+        d.awayName = awayName;
+        d.score = look.score;
+        d.clock = look.clock;
+        d.comp = compName;
+        d.homeColour = look.homeColour;
+        d.awayColour = look.awayColour;
+        d.homeCrest = homeCrest;
+        d.awayCrest = awayCrest;
+        d.logo = comp;
+        d.logoLight = compLight;
+        d.stoppage = pulses(look);
+        d.glow = flash;
+        d.glowSide = flashSide;
+        return d;
+    }
+
+    /** Its colours now: a competition look's own (it draws its grounds itself), else its look's. */
+    private Palette paletteNow() {
+        CompBug.Kind k = kind();
+        if (k == null) return palette(style);
+        Palette c = new Palette();
+        int[] st = CompBug.strip(k);
+        c.ground = 0;
+        c.comp = 0;
+        c.score0 = c.score1 = st[3];
+        c.clock = st[0];
+        c.ink = c.scoreInk = c.clockInk = st[1];
+        c.dim = st[2];
+        c.round = 0f;
+        return c;
     }
 
     Style style() {
@@ -571,13 +685,28 @@ final class BoardBug extends View {
 
     /** Its strips' look, made again only when its own look changes. */
     StripLook stripLook() {
-        if (strip == null || stripFor != style) {
-            strip = strip(style, p);
+        CompBug.Kind k = kind();
+        if (strip == null || stripFor != style || stripKind != k) {
+            strip = k != null ? compStrip(k) : strip(style, p);
             stripFor = style;
+            stripKind = k;
         }
         return strip;
     }
 
+    /** A competition look's strips: its own dark ground and its accent, square cornered. */
+    private static StripLook compStrip(CompBug.Kind k) {
+        int[] c = CompBug.strip(k);
+        StripLook s = new StripLook();
+        s.ground = c[0];
+        s.ink = c[1];
+        s.dim = c[2];
+        s.block = c[3];
+        s.round = 0.06f;
+        return s;
+    }
+
+    private CompBug.Kind stripKind;
     private StripLook strip;
     private Style stripFor;
 
@@ -602,7 +731,9 @@ final class BoardBug extends View {
         boolean was = addedOutside;
         addedOutside = !look.added.isEmpty();
         float tab = addedTab(h), w;
-        if (style == Style.MINIMAL) w = minimalWidth(h);
+        CompBug.Kind kind = kind();
+        if (kind != null) w = comp().natural(kind, compData(), h);
+        else if (style == Style.MINIMAL) w = minimalWidth(h);
         else if (style == Style.CRESTS || style == Style.FROSTED) w = h * 0.4f + crestCell(h, true) + scoreW(h) + crestCell(h, false) + clockW(h);
         else if (style == Style.STACKED) w = h * 0.9f + stackedRowsW(h / 2f) + stackedClockW(h);
         else if (style == Style.CARD) w = cardWidth(h);
@@ -643,7 +774,8 @@ final class BoardBug extends View {
         float[] in = null;
         if (part) {
             // Its first block (the competition's square, Crests' first crest), never more than a third of it.
-            float first = style == Style.CRESTS || style == Style.FROSTED ? ch * 1.25f : style == Style.STACKED ? ch * 0.9f : style == Style.CARD ? ch * 1.29f
+            CompBug.Kind fk = kind();
+            float first = fk != null ? comp().first(fk, compData(), ch) : style == Style.CRESTS || style == Style.FROSTED ? ch * 1.25f : style == Style.STACKED ? ch * 0.9f : style == Style.CARD ? ch * 1.29f
                     : style == Style.MINIMAL ? ch * 1.2f : ch;
             in = shownPart(shown, w, h, Math.min(first + inset, w / 3f));
             cv.save();
@@ -680,8 +812,10 @@ final class BoardBug extends View {
         }
         cv.translate(inset, inset);
         int bw = cw - tab;
+        CompBug.Kind ck = kind();
         if (bw > 0 && ch > 0) {
-            if (style == Style.MINIMAL) minimal(cv, bw, ch);
+            if (ck != null) comp().draw(cv, ck, compData(), bw, ch);
+            else if (style == Style.MINIMAL) minimal(cv, bw, ch);
             else if (style == Style.CRESTS || style == Style.FROSTED) {
                 if (bw / (float) ch >= 3.2f) crestsRow(cv, bw, ch);
                 else crestsTwo(cv, bw, ch);
@@ -698,12 +832,24 @@ final class BoardBug extends View {
             // In added time a board with no block of its own (Minimal) has the shine pass over it all.
         }
         cv.translate(-inset, -inset);
-        if (goalOn) goalMoment(cv, body, h, gt);
+        // A competition look with a tab over or under its row: the goal's band and the rest run along its row.
+        float[] row = ck != null ? CompBug.bar(ck, ch) : null;
+        int mh = h;
+        if (row != null && (row[0] > 0.5f || row[1] < ch - 0.5f)) {
+            cv.save();
+            cv.translate(0, inset + row[0]);
+            cv.clipRect(0, 0, body, row[1] - row[0]);
+            mh = Math.max(1, Math.round(row[1] - row[0]));
+        } else {
+            row = null;
+        }
+        if (goalOn) goalMoment(cv, body, mh, gt);
         // The net shivering across it as the ball goes in, once the scorers' band has gone.
-        if (gt >= RIPPLE_AT && gt < RIPPLE_AT + RIPPLE_MS) netRipple(cv, body, h, gt - RIPPLE_AT);
-        if (varUntil > now) varScan(cv, body, h, now);
+        if (gt >= RIPPLE_AT && gt < RIPPLE_AT + RIPPLE_MS) netRipple(cv, body, mh, gt - RIPPLE_AT);
+        if (varUntil > now) varScan(cv, body, mh, now);
         long ft = ftAt > 0 ? now - ftAt : -1;
-        if (ft >= 0 && ft < FT_MS) fullTimeStamp(cv, body, h, ft);
+        if (ft >= 0 && ft < FT_MS) fullTimeStamp(cv, body, mh, ft);
+        if (row != null) cv.restore();
         if (p.edgeLine) {
             float e = Math.max(1f, h * 0.025f);
             edge.setPathEffect(null);
@@ -1227,7 +1373,7 @@ final class BoardBug extends View {
 
     /** The tab's height: half the board's beside a tall one (Stacked, Card), else most of it. */
     private float tabHeight(int h) {
-        return style.tall > 1.2f ? h * 0.5f : h * 0.8f;
+        return tall() > 1.2f ? h * 0.5f : h * 0.8f;
     }
 
     /** The room the minutes added take beside the board ("+4" in a tab of their own, a little apart); none without them. */
@@ -1406,7 +1552,7 @@ final class BoardBug extends View {
         float in = Math.min(1f, since / (float) TAB_IN_MS);
         float gap = ch * 0.06f, tw = tab - gap, th = tabHeight(ch);
         float left = body + gap - (1f - ease(in)) * (tw + gap);
-        float top = style.tall > 1.2f ? edgePx + ch - th : edgePx + (ch - th) / 2f;
+        float top = tall() > 1.2f ? edgePx + ch - th : edgePx + (ch - th) / 2f;
         float rad = p.round >= 0.5f ? th / 2f : th * 0.12f;
         cv.save();
         // Out from behind the board.

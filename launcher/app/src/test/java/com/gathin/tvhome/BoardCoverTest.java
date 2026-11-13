@@ -375,7 +375,17 @@ public class BoardCoverTest {
 
     @Test
     public void theLooksAreThePhonesEight() {
-        assertEquals(9, BoardBug.Style.values().length);
+        // The nine of the board's own, By competition, the sixteen competitions' own looks and four retro ones (4.97).
+        assertEquals(30, BoardBug.Style.values().length);
+        assertEquals("By competition", BoardBug.Style.COMPETITION.label);
+        assertEquals(com.gathin.broadcast.CompBug.Kind.LALIGA, BoardBug.Style.LALIGA.kind);
+        assertEquals(BoardBug.Style.UCL, BoardBug.Style.of("UCL"));
+        assertTrue(BoardBug.Style.BUNDESLIGA.tall > 1.5f);
+        for (com.gathin.broadcast.CompBug.Kind k : com.gathin.broadcast.CompBug.Kind.values()) {
+            boolean has = false;
+            for (BoardBug.Style st : BoardBug.Style.values()) if (st.kind == k) has = true;
+            assertTrue(k.name(), has);
+        }
         // 4.31: Frosted glass, crests and time only.
         assertEquals(BoardBug.Style.FROSTED, BoardBug.Style.of("FROSTED"));
         // 4.13: Card, the results card, a little taller than the others.
