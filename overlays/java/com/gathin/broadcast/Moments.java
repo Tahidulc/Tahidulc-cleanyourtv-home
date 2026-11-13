@@ -21,12 +21,36 @@ public final class Moments {
      * ("h1"; "h2" once half time has been seen); "" when the half cannot be told (the board came on during the game).
      */
     public static String phase(boolean pre, int state, boolean halftime, String was) {
+        return phase(pre, state, halftime, was, 0);
+    }
+
+    /**
+     * Pure: as phase, and when the half cannot be told from what was seen (the board came on, or the app started, during
+     * the game), the half the scores give (period: 1 the first, 2 the second, 3 and 4 extra time; 0 not known): so a goal's
+     * restart pop-up still comes for a game joined part way through.
+     */
+    public static String phase(boolean pre, int state, boolean halftime, String was, int period) {
         if (pre || state == 1) return "pre";
         if (state == 2) return "ft";
         if (halftime) return "ht";
         if ("ht".equals(was) || "h2".equals(was)) return "h2";
         if ("pre".equals(was) || "h1".equals(was)) return "h1";
+        if (state == 0 && period == 1) return "h1";
+        if (state == 0 && period >= 2) return "h2";
         return "";
+    }
+
+    /** How long after the goal the restart's pop-up waits at most for the channel's replays to end (the board back). */
+    public static final long RESTART_WAIT_MS = 100_000L;
+
+    /**
+     * Pure: what the restart's pop-up does sinceGoal ms after the goal reached the picture, with the channel in its
+     * replays (the board away) or not: 1 show it now, 0 wait a second more, -1 let it go (waited too long).
+     */
+    public static int restartNow(long sinceGoal, boolean inReplay) {
+        if (sinceGoal < RESTART_MS) return 0;
+        if (!inReplay) return 1;
+        return sinceGoal < RESTART_WAIT_MS ? 0 : -1;
     }
 
     /** Pure: the pop-up a change of phase brings: the kick-off's ("kickoff") or the second half's ("second"); else null. */

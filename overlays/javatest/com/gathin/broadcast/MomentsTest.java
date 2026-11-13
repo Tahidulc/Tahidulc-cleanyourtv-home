@@ -111,4 +111,28 @@ public class MomentsTest {
         assertEquals(15.0, Moments.introStart(25_000), 0);
         assertEquals(29.33, Moments.introStart(10_670), 0);
     }
+
+    @Test
+    public void aGameJoinedPartWayThroughTakesItsHalfFromTheScores() {
+        // England v Croatia: the board up by hand in the second half, no kick-off or half time ever seen.
+        assertEquals("h2", Moments.phase(false, 0, false, null, 2));
+        assertEquals("h1", Moments.phase(false, 0, false, null, 1));
+        assertEquals("h2", Moments.phase(false, 0, false, null, 3));
+        // Not known: as before; what was seen always wins over the scores.
+        assertEquals("", Moments.phase(false, 0, false, null, 0));
+        assertEquals("h1", Moments.phase(false, 0, false, "pre", 2));
+        assertEquals("ht", Moments.phase(false, 0, true, null, 1));
+        assertEquals("ft", Moments.phase(false, 2, false, null, 2));
+        // Joined in the second half: no kick-off pop-up for it.
+        assertNull(Moments.moment(null, Moments.phase(false, 0, false, null, 2)));
+    }
+
+    @Test
+    public void theRestartWaitsForTheReplaysToEnd() {
+        assertEquals(0, Moments.restartNow(10_000L, false));
+        assertEquals(1, Moments.restartNow(Moments.RESTART_MS, false));
+        assertEquals(0, Moments.restartNow(Moments.RESTART_MS + 5_000L, true));
+        assertEquals(1, Moments.restartNow(Moments.RESTART_MS + 20_000L, false));
+        assertEquals(-1, Moments.restartNow(Moments.RESTART_WAIT_MS, true));
+    }
 }

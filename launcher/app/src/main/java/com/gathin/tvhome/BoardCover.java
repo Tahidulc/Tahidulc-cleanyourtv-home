@@ -2250,7 +2250,8 @@ final class BoardCover {
         if (g != null && !g.id.equals(imagesFor)) loadImages(c, g);
         // The classic kick-off pop-up and line-ups (ClassicIntro): the kick-off, the second half's, the line-ups due.
         if (g != null && !adjusting) {
-            ClassicIntro.tick(c, g, pre != null, r == null ? 1 : r.state, r != null && r.halftime, l.score, now - InStep.holdMs(c, true));
+            ClassicIntro.tick(c, g, pre != null, r == null ? 1 : r.state, r != null && r.halftime, l.score, now - InStep.holdMs(c, true),
+                    r == null ? 0 : periodOf(r.detail));
         }
         // A goal on the screen: its moment on the board (the scorers' colour across it, the new score popping up), and
         // the board bright again.

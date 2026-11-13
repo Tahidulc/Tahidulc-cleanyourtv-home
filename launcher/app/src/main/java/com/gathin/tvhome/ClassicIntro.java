@@ -166,13 +166,14 @@ final class ClassicIntro {
 
     /**
      * From the board each time it draws the game (main thread): its phase moved on (the kick-off, the second half's), or
-     * the line-ups due. screenNow: the time the channel's picture has reached.
+     * the line-ups due. screenNow: the time the channel's picture has reached; period: the half the scores give for it (0
+     * not known), so a game joined part way through still has its goals' restart pop-ups.
      */
-    static void tick(Context c, ScoresTicker.Game g, boolean pre, int state, boolean halftime, String score, long screenNow) {
+    static void tick(Context c, ScoresTicker.Game g, boolean pre, int state, boolean halftime, String score, long screenNow, int period) {
         if (g == null || g.id == null) return;
         if (showing() && !BoardCover.playerUp(c)) hide();
         String was = phases.get(g.id);
-        String now = Moments.phase(pre, state, halftime, was);
+        String now = Moments.phase(pre, state, halftime, was, period);
         long up = android.os.SystemClock.uptimeMillis();
         if (!now.isEmpty()) {
             if (!now.equals(was)) phaseSince.put(g.id, up);
@@ -219,13 +220,26 @@ final class ClassicIntro {
             prepare(app, game, "restart", sc, Moments.scorer(last), last == null ? "" : BroadcastData.minute(last[2]),
                     id + "|restart|" + sc[0] + "-" + sc[1], null, null);
         }, PREP_RESTART_MS);
-        handler().postDelayed(() -> {
-            String ph = phases.get(id);
-            if (!"h1".equals(ph) && !"h2".equals(ph)) return;   // half time or full time came first
-            ScoresTicker.Game now = GoalWatchService.latestGame(id);
-            ScoresTicker.Game game = now != null ? now : g;
-            String[] last = Moments.lastGoal(game.goals, side);
-            popup(c, game, "restart", BroadcastData.score(score), Moments.scorer(last), last == null ? "" : BroadcastData.minute(last[2]));
+        long at = android.os.SystemClock.uptimeMillis();
+        handler().postDelayed(new Runnable() {
+            @Override public void run() {
+                String ph = phases.get(id);
+                if (!"h1".equals(ph) && !"h2".equals(ph)) return;   // half time or full time came first
+                // Still in the channel's replays of it (the board away, BugCover): on the restart, once live play is back.
+                int go = Moments.restartNow(android.os.SystemClock.uptimeMillis() - at, BugCover.away());
+                if (go == 0) {
+                    handler().postDelayed(this, 1_000L);
+                    return;
+                }
+                if (go < 0) {
+                    AlertLog.note(app, "restart pop-up let go: the channel's replays ran on");
+                    return;
+                }
+                ScoresTicker.Game now = GoalWatchService.latestGame(id);
+                ScoresTicker.Game game = now != null ? now : g;
+                String[] last = Moments.lastGoal(game.goals, side);
+                popup(c, game, "restart", BroadcastData.score(score), Moments.scorer(last), last == null ? "" : BroadcastData.minute(last[2]));
+            }
         }, Moments.RESTART_MS);
     }
 
