@@ -21,6 +21,7 @@
     <string name="live3_rewind_none">Nothing kept yet to go back to</string>
     <string name="live3_back_to_live">Back to live</string>
     <string name="live3_night">Night sound</string>
+    <string name="live3_logo_tiles">Channel logos on black tiles</string>
     <string name="live3_night_none">Night sound needs Android 9 or later</string>
     <string name="live3_lock">Touch lock</string>
     <string name="live3_lock_hint">Hold the lock to unlock</string>

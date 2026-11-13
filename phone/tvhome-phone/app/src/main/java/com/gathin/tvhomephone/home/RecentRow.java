@@ -288,10 +288,18 @@ final class RecentRow {
             ImageView logo = new ImageView(c);
             logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
             logo.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-            FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(Ui.dp(c, 78), Ui.dp(c, 54), Gravity.CENTER_HORIZONTAL | Gravity.TOP);
+            boolean tiles = com.gathin.tvhomephone.live.LogoTiles.on(c);
+            FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(Ui.dp(c, tiles ? 92 : 78), Ui.dp(c, 54), Gravity.CENTER_HORIZONTAL | Gravity.TOP);
             lp.topMargin = Ui.dp(c, 44);
             frame.addView(logo, lp);
-            Ui.load(logo, e.channelLogo, null, () -> {
+            if (tiles) {
+                // The channel's logo on its black tile, as Live TV shows it.
+                GradientDrawable tile = new GradientDrawable();
+                tile.setColor(com.gathin.tvhomephone.live.LogoTiles.GROUND);
+                tile.setCornerRadius(Ui.dp(c, 10));
+                logo.setBackground(tile);
+            }
+            com.gathin.tvhomephone.live.LogoTiles.load(logo, e.channelLogo, () -> {
                 logo.setVisibility(View.GONE);
                 name.setVisibility(View.VISIBLE);
             });
