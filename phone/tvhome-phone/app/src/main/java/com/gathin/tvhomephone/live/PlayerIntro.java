@@ -275,25 +275,50 @@ final class PlayerIntro {
         int[] score = {g.homeScore, g.awayScore};
         String id = g.id;
         long at = android.os.SystemClock.uptimeMillis();
+        // What comes out of the scoreboard after the goal waits for this pop-up (restartWaiting), so they never meet.
+        restartUntil = at + Moments.RESTART_WAIT_MS;
         h.postDelayed(new Runnable() {
             @Override public void run() {
                 String ph = phases.get(id);
-                if (!"h1".equals(ph) && !"h2".equals(ph)) return;
-                // Still in the channel's replays of it (the board away): on the restart, once live play is back.
-                int go = Moments.restartNow(android.os.SystemClock.uptimeMillis() - at, inReplay.getAsBoolean());
+                if (!"h1".equals(ph) && !"h2".equals(ph)) {
+                    restartUntil = 0;
+                    return;
+                }
+                // Still in the channel's replays of it (the board away, or as the whole picture shows: LivePlay): on the
+                // restart, once live play is back.
+                int go = Moments.restartNow(android.os.SystemClock.uptimeMillis() - at, inReplay.getAsBoolean(), liveVerdict.getAsInt());
                 if (go == 0) {
                     h.postDelayed(this, 1_000L);
                     return;
                 }
-                if (go < 0) return;
+                if (go < 0) {
+                    restartUntil = 0;
+                    return;
+                }
+                // A moment's grace while it is made ready to show (showing() then says so).
+                restartUntil = android.os.SystemClock.uptimeMillis() + 3_000L;
                 String[] last = Moments.lastGoal(g.goals, side);
                 popup(g, "restart", score, Moments.scorer(last), last == null ? "" : BroadcastData.minute(last[2]));
             }
-        }, Moments.RESTART_MS);
+        }, com.gathin.broadcast.LivePlay.FIRST_MS);
+    }
+
+    /** Until when a goal's restart pop-up may still come (uptime; 0: none waiting). */
+    private long restartUntil;
+
+    /** Whether a goal's restart pop-up is still to come: what comes out of the scoreboard after the goal waits for it. */
+    boolean restartWaiting() {
+        return android.os.SystemClock.uptimeMillis() < restartUntil;
     }
 
     /** Whether the channel is in its replays now (the scoreboard away, BugCover): the restart's pop-up waits for live play. */
     private BooleanSupplier inReplay = () -> false;
+    /** What the whole picture says after a goal (LivePlay's verdict): BLIND keeps the old timing. */
+    private java.util.function.IntSupplier liveVerdict = () -> com.gathin.broadcast.LivePlay.BLIND;
+
+    void liveVerdict(java.util.function.IntSupplier s) {
+        liveVerdict = s == null ? () -> com.gathin.broadcast.LivePlay.BLIND : s;
+    }
 
     void inReplay(BooleanSupplier s) {
         inReplay = s == null ? () -> false : s;
@@ -440,6 +465,7 @@ final class PlayerIntro {
     /** Taken down at once (the player stopping, the small window). */
     void stop() {
         if (view != null) view.stop();
+        restartUntil = 0;
     }
 
     // ---- test notifications (the player's options, PlayerTests) ------------------------------------------------------

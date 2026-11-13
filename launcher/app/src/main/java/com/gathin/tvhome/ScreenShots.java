@@ -63,11 +63,19 @@ final class ScreenShots {
         void got(Bitmap part, long at);
     }
 
-    private static volatile Ride ride;
+    private static volatile Ride ride, whole;
 
     /** The part made from every window picture from now on (null: none). */
     static void ride(Ride r) {
         ride = r;
+    }
+
+    /**
+     * The whole picture, small, made from every picture from now on (null: none): LivePlay's, through BugCover. From
+     * pictures of the whole screen too (before Android 14): what the launcher puts over the channel is small there.
+     */
+    static void whole(Ride r) {
+        whole = r;
     }
 
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
@@ -215,13 +223,14 @@ final class ScreenShots {
                 Bitmap[] out = new Bitmap[parts.length];
                 HardwareBuffer hb = null;
                 Bitmap hw = null;
-                Ride rd = own ? ride : null;
-                Bitmap rode = null;
+                Ride rd = own ? ride : null, wd = whole;
+                Bitmap rode = null, all = null;
                 try {
                     hb = r.getHardwareBuffer();
                     hw = Bitmap.wrapHardwareBuffer(hb, r.getColorSpace());
                     if (hw != null) for (int i = 0; i < parts.length; i++) out[i] = part(hw, parts[i], sizes[i][0], sizes[i][1]);
                     if (hw != null && rd != null) rode = part(hw, rd.part, rd.w, rd.h);
+                    if (hw != null && wd != null) all = part(hw, wd.part, wd.w, wd.h);
                 } catch (RuntimeException | OutOfMemoryError e) {
                     // left as none: the next one may do
                 } finally {
@@ -235,6 +244,14 @@ final class ScreenShots {
                         // Not for a black window picture (TiviMate's window not taken), nor once the rider has changed.
                         if (black || ride != rd) give.recycle();
                         else rd.got.got(give, at);
+                    });
+                }
+                if (all != null) {
+                    Bitmap give = all;
+                    boolean dark = black(give);
+                    MAIN.post(() -> {
+                        if (dark || whole != wd) give.recycle();
+                        else wd.got.got(give, at);
                     });
                 }
                 MAIN.post(() -> {

@@ -40,16 +40,29 @@ public final class Moments {
         return "";
     }
 
-    /** How long after the goal the restart's pop-up waits at most for the channel's replays to end (the board back). */
-    public static final long RESTART_WAIT_MS = 100_000L;
+    /** How long after the goal the restart's pop-up waits at most for live play (the replays to end): LivePlay's most. */
+    public static final long RESTART_WAIT_MS = LivePlay.MOST_MS;
 
     /**
      * Pure: what the restart's pop-up does sinceGoal ms after the goal reached the picture, with the channel in its
      * replays (the board away) or not: 1 show it now, 0 wait a second more, -1 let it go (waited too long).
      */
     public static int restartNow(long sinceGoal, boolean inReplay) {
-        if (sinceGoal < RESTART_MS) return 0;
-        if (!inReplay) return 1;
+        return restartNow(sinceGoal, inReplay, LivePlay.BLIND);
+    }
+
+    /**
+     * Pure: as restartNow, with what the picture says (LivePlay's verdict): live play back after the goal shows it then
+     * (never sooner than LivePlay.FIRST_MS); still waiting (the celebrations, replays the channel's scoreboard stays up
+     * in, a VAR check) holds it until RESTART_WAIT_MS; held its longest without play seen lets it go. With no pictures
+     * to tell by (BLIND), as before: RESTART_MS after the goal, once the channel's scoreboard is back from a replay.
+     */
+    public static int restartNow(long sinceGoal, boolean inReplay, int verdict) {
+        if (verdict == LivePlay.LATE) return -1;
+        if (inReplay) return sinceGoal < RESTART_WAIT_MS ? 0 : -1;
+        if (verdict == LivePlay.BLIND) return sinceGoal < RESTART_MS ? 0 : 1;
+        if (sinceGoal < LivePlay.FIRST_MS) return 0;
+        if (verdict == LivePlay.LIVE) return 1;
         return sinceGoal < RESTART_WAIT_MS ? 0 : -1;
     }
 

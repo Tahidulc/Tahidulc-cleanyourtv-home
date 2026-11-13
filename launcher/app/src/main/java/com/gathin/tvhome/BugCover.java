@@ -50,6 +50,13 @@ final class BugCover {
     private static boolean looping, away, reading;
     private static String said = "";
     private static ChannelReader reader;
+    /**
+     * Whether the picture is back in live play after a goal (LivePlay, from the whole picture small with each window
+     * picture): what a goal brings waits for it, also where the channel's own scoreboard stays up in its replays.
+     */
+    static final com.gathin.broadcast.LivePlay PLAY = new com.gathin.broadcast.LivePlay();
+    /** When the whole picture last came; a picture of its own after a goal when none has come this long. */
+    private static long wholeAt;
 
     /** A plate over something grown out of the channel's scoreboard: where (the screen's pixels), its words once read. */
     static final class Plate {
@@ -196,6 +203,22 @@ final class BugCover {
         BugWatch.Place p = w.place();
         RectF part = new RectF(p.x / (float) sw, p.y / (float) sh, (p.x + p.w) / (float) sw, (p.y + p.h) / (float) sh);
         ScreenShots.ride(new ScreenShots.Ride(part, p.fw, p.fh, BugCover::got));
+        ScreenShots.whole(new ScreenShots.Ride(new RectF(0, 0, 1, 1), com.gathin.broadcast.LivePlay.W, com.gathin.broadcast.LivePlay.H,
+                BugCover::gotWhole));
+    }
+
+    /** The whole picture, small (the whole ride): to LivePlay on the quiet thread. */
+    private static void gotWhole(Bitmap b, long at) {
+        if (!looping || b.getWidth() != com.gathin.broadcast.LivePlay.W || b.getHeight() != com.gathin.broadcast.LivePlay.H) {
+            b.recycle();
+            return;
+        }
+        wholeAt = SystemClock.uptimeMillis();
+        int[] px = new int[b.getWidth() * b.getHeight()];
+        b.getPixels(px, 0, b.getWidth(), 0, 0, b.getWidth(), b.getHeight());
+        b.recycle();
+        long t = wholeAt;
+        work().execute(() -> PLAY.frame(px, com.gathin.broadcast.LivePlay.W, com.gathin.broadcast.LivePlay.H, t));
     }
 
     /** Stopped (the board gone, half time, switched off): your board not held away, no plates. The look learned is kept. */
@@ -203,6 +226,7 @@ final class BugCover {
         boolean was = looping;
         looping = false;
         ScreenShots.ride(null);
+        ScreenShots.whole(null);
         if (main != null) main.removeCallbacks(loop);
         if (away) {
             away = false;
@@ -224,8 +248,11 @@ final class BugCover {
             return;
         }
         BugWatch w = watch;
-        // None come with anything else's lately: one of its own (its part comes through the ride, as for any other).
-        if (w != null && now - frameAt >= OWN_MS && ScreenShots.ready() && ScreenShots.windowOnly()) {
+        // None come with anything else's lately: one of its own (its part comes through the ride, as for any other). After
+        // a goal, the whole picture wanted for LivePlay: one of the whole screen too where window pictures can't be had.
+        boolean bugDue = w != null && now - frameAt >= OWN_MS && ScreenShots.windowOnly();
+        boolean wholeDue = now - wholeAt >= OWN_MS && PLAY.pending();
+        if ((bugDue || wholeDue) && ScreenShots.ready()) {
             ScreenShots.take(new RectF[]{new RectF(0, 0, 1, 1)}, new int[][]{{16, 9}}, (parts, at, own) -> {
                 if (parts[0] != null) parts[0].recycle();
             });
@@ -263,6 +290,7 @@ final class BugCover {
             said = st;
             android.util.Log.i(TAG, st);
         }
+        PLAY.bug(aw, SystemClock.uptimeMillis());
         boolean nowAway = aw && replaysOn(app);
         if (nowAway != away) {
             away = nowAway;

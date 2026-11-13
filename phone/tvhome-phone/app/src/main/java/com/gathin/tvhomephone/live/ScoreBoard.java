@@ -860,10 +860,14 @@ public final class ScoreBoard implements LiveAlerts.Listener {
                 if (l.live) l.added = addedBox(period(g, l.clock), minuteOfClock(l.clock), addedUp, l.added);
                 // The minutes added, once known for this half: out beside the board once as an alert, then in its tab.
                 if (l.live && !l.added.isEmpty()) addedOut(g, l.added, period(g, l.clock));
-                // A goal as the screen shows it: that side lit, then its scorer captioned.
+                // Another game on the board, half time, full time: nothing after a goal waits any more (LivePlay).
+                if (g.id == null || !g.id.equals(lastShownId) || g.halftime || g.state != Game.LIVE) play.clear();
+                else play.var(VarExplained.checking(g.id, now));
+                // A goal as the screen shows it: that side lit, then its scorer captioned once live play is back.
                 if (g.id != null && g.id.equals(lastShownId)) {
                     int side = g.homeScore > lastHome && lastHome >= 0 ? 1 : g.awayScore > lastAway && lastAway >= 0 ? 2 : 0;
                     if (side > 0) {
+                        play.goal(now);
                         bug.goal(side);
                         com.gathin.broadcast.Sfx.goal(c, PlayerIntro.goalSound(c));
                         goalShownAt = now;
@@ -1663,10 +1667,23 @@ public final class ScoreBoard implements LiveAlerts.Listener {
 
     /** The channel's own scoreboard gone (a replay, BugCover): the board away as a broadcaster's goes, back with it. */
     private boolean replayAway;
+    /**
+     * Whether the picture is back in live play after a goal (LivePlay, from the whole frame twice a second: ScoreOverlay),
+     * so what a goal brings (its scorer, the restart's pop-up) never comes over its replays, also where the channel's
+     * own scoreboard stays up in them.
+     */
+    final com.gathin.broadcast.LivePlay play = new com.gathin.broadcast.LivePlay();
+    /** The classic pop-up up, or a goal's restart pop-up still to come (PlayerIntro): what comes out of the board waits. */
+    private java.util.function.BooleanSupplier introBusy = () -> false;
+
+    void introBusy(java.util.function.BooleanSupplier s) {
+        introBusy = s == null ? () -> false : s;
+    }
 
     void replay(boolean away) {
         if (away == replayAway) return;
         replayAway = away;
+        play.bug(away, System.currentTimeMillis());
         draw(System.currentTimeMillis());
         // Back for live play: what waited comes out.
         if (!away && !drops.isEmpty()) h.post(nextDrop);
@@ -2198,8 +2215,12 @@ public final class ScoreBoard implements LiveAlerts.Listener {
             return;
         }
         dropping = true;
-        // In a replay (the board away): the alert waits for live play.
-        if (replayAway) {
+        // In a replay (the board away), or after a goal until play is back (its replays the channel's scoreboard stays
+        // up in): the alert waits for live play. A VAR check's own comes at once.
+        Drop first = drops.peekFirst();
+        boolean var = first != null && (first.varCheck || first.why != null);
+        // And while the classic pop-up is up, or a goal's restart pop-up is still to come: that first, then this.
+        if (replayAway || !var && (play.holding(System.currentTimeMillis()) || introBusy.getAsBoolean())) {
             h.postDelayed(nextDrop, 1000);
             return;
         }

@@ -149,8 +149,12 @@ final class ScoreOverlay implements ScoreBoard.Source {
         });
         // the intros: the channel's own sound off while one plays
         intro.hush(host::mute);
-        // a goal's restart pop-up waits out the channel's replays (the board away in them)
+        // a goal's restart pop-up waits out the channel's replays (the board away in them), and comes with live play
+        // as the whole picture shows it (LivePlay), where the channel's own scoreboard stays up in its replays
         intro.inReplay(board::replayAway);
+        intro.liveVerdict(() -> board.play.verdict(System.currentTimeMillis()));
+        // what comes out of the scoreboard waits while a pop-up is up, or a goal's restart pop-up is still to come
+        board.introBusy(() -> intro.showing() || intro.restartWaiting());
         // the strap in the board's look folds into the board: where it is over the picture, on a 1920 x 1080 picture
         intro.boardAt(() -> {
             if (pfw <= 10 || pfh <= 10 || board.view.getWidth() <= 0) return null;
@@ -451,6 +455,34 @@ final class ScoreOverlay implements ScoreBoard.Source {
         h.postDelayed(look, 4000);
         place();
         bugCover.start();
+        h.postDelayed(playLook, 1_000L);
+    }
+
+    /** The whole picture, small, for LivePlay: the board's own copy, made again for each look. */
+    private Bitmap playFrame;
+    private final Runnable playLook = this::playLook;
+
+    /**
+     * Twice a second while the channel's match is in play here (not in PiP): the whole picture, small, from the player's
+     * own frames, so LivePlay can tell live play from celebrations and replays after a goal (ScoreBoard.play).
+     */
+    private void playLook() {
+        h.removeCallbacks(playLook);
+        if (!started) return;
+        Game g = host.game();
+        if (inPip || editing || sampler == null || !board.channelGame() || g == null || g.state != Game.LIVE || g.halftime) {
+            h.postDelayed(playLook, 2_000L);
+            return;
+        }
+        int w = com.gathin.broadcast.LivePlay.W, ht = com.gathin.broadcast.LivePlay.H;
+        if (playFrame == null) playFrame = Bitmap.createBitmap(w, ht, Bitmap.Config.ARGB_8888);
+        boolean asked = sampler.copy(video.surface(), playFrame, (b, at) -> {
+            if (b == null || b.getWidth() != w || b.getHeight() != ht) return;
+            int[] px = new int[w * ht];
+            b.getPixels(px, 0, w, 0, 0, w, ht);
+            board.play.frame(px, w, ht, at);
+        });
+        h.postDelayed(playLook, asked ? 500L : 120L);
     }
 
     /**

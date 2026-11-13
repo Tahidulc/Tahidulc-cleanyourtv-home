@@ -73,7 +73,7 @@ final class ClassicIntro {
     private static String prepKey, prepKind = "";
     private static long prepAt;
     private static boolean preparing;
-    private static final long PREP_KICKOFF_MS = 150_000L, PREP_RESTART_MS = 25_000L, PREP_SECOND_MS = 10 * 60_000L, PREP_KEEP_MS = 15 * 60_000L;
+    private static final long PREP_KICKOFF_MS = 150_000L, PREP_RESTART_MS = 12_000L, PREP_SECOND_MS = 10 * 60_000L, PREP_KEEP_MS = 15 * 60_000L;
 
     private static Handler handler() {
         if (main == null) main = new Handler(Looper.getMainLooper());
@@ -153,6 +153,14 @@ final class ClassicIntro {
         return view != null && !view.isOver();
     }
 
+    /** Until when a goal's restart pop-up may still come (uptime; 0: none waiting). */
+    private static long restartUntil;
+
+    /** Whether a goal's restart pop-up is still to come: what comes out of the board after the goal waits for it. */
+    static boolean restartWaiting() {
+        return android.os.SystemClock.uptimeMillis() < restartUntil;
+    }
+
     static boolean showingLineups() {
         return showing() && ("lineups".equals(viewKind) || "stadium".equals(viewKind));
     }
@@ -221,26 +229,36 @@ final class ClassicIntro {
                     id + "|restart|" + sc[0] + "-" + sc[1], null, null);
         }, PREP_RESTART_MS);
         long at = android.os.SystemClock.uptimeMillis();
+        // What comes out of the board after the goal waits for this pop-up (restartWaiting), so they never meet.
+        restartUntil = at + Moments.RESTART_WAIT_MS;
         handler().postDelayed(new Runnable() {
             @Override public void run() {
                 String ph = phases.get(id);
-                if (!"h1".equals(ph) && !"h2".equals(ph)) return;   // half time or full time came first
-                // Still in the channel's replays of it (the board away, BugCover): on the restart, once live play is back.
-                int go = Moments.restartNow(android.os.SystemClock.uptimeMillis() - at, BugCover.away());
+                if (!"h1".equals(ph) && !"h2".equals(ph)) {   // half time or full time came first
+                    restartUntil = 0;
+                    return;
+                }
+                // Still in the channel's replays of it (the board away, BugCover; or as the whole picture shows: LivePlay):
+                // on the restart, once live play is back.
+                long t = android.os.SystemClock.uptimeMillis();
+                int go = Moments.restartNow(t - at, BugCover.away(), BugCover.PLAY.verdict(t));
                 if (go == 0) {
                     handler().postDelayed(this, 1_000L);
                     return;
                 }
                 if (go < 0) {
+                    restartUntil = 0;
                     AlertLog.note(app, "restart pop-up let go: the channel's replays ran on");
                     return;
                 }
+                // A moment's grace while it is made ready to show (showing() then says so).
+                restartUntil = android.os.SystemClock.uptimeMillis() + 3_000L;
                 ScoresTicker.Game now = GoalWatchService.latestGame(id);
                 ScoresTicker.Game game = now != null ? now : g;
                 String[] last = Moments.lastGoal(game.goals, side);
                 popup(c, game, "restart", BroadcastData.score(score), Moments.scorer(last), last == null ? "" : BroadcastData.minute(last[2]));
             }
-        }, Moments.RESTART_MS);
+        }, com.gathin.broadcast.LivePlay.FIRST_MS);
     }
 
     // ---- showing ----------------------------------------------------------------------------------------------------

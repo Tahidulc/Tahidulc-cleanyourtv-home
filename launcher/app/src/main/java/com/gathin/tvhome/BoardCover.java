@@ -2247,11 +2247,16 @@ final class BoardCover {
             ClassicIntro.tick(c, g, pre != null, r == null ? 1 : r.state, r != null && r.halftime, l.score, now - InStep.holdMs(c, true),
                     r == null ? 0 : periodOf(r.detail));
         }
+        // Another game, half time, full time: nothing after a goal waits any more for live play (LivePlay); a VAR check
+        // on the game holds what does.
+        if (pre != null || g == null || r == null || !id.equals(shownId) || r.halftime || r.state != 0) BugCover.PLAY.clear();
+        else BugCover.PLAY.var(VarExplained.checking(g.id, now));
         // A goal on the screen: its moment on the board (the scorers' colour across it, the new score popping up), and
-        // the board bright again.
+        // the board bright again; what it brings (its scorer, the restart's pop-up) once live play is back.
         if (pre == null && g != null && r != null && id.equals(shownId) && shownScore != null && !shownScore.equals(l.score)) {
             int side = goalSide(shownScore, l.score);
             if (side > 0) {
+                BugCover.PLAY.goal(SystemClock.uptimeMillis());
                 bug.goal(side);
                 com.gathin.broadcast.Sfx.goal(c, goalSound(c));
                 goalShownAt = now;
@@ -3170,8 +3175,13 @@ final class BoardCover {
             return;
         }
         // The line-up card beside the board: the alert waits for it; and for the board back from standing aside.
-        // In a replay (the board stepped aside), an alert waits for live play.
-        if (LineupCard.isShowing() || veiled || BugCover.away()) {
+        // In a replay (the board stepped aside), or after a goal until play is back as the whole picture shows it (its
+        // replays the channel's scoreboard stays up in: LivePlay), an alert waits for live play. A VAR check's own: at once.
+        BoardDrop.Drop first = drops.peekFirst();
+        boolean var = first != null && (first.varCheck || first.why != null);
+        // And while the classic pop-up is up, or a goal's restart pop-up is still to come: that first, then this.
+        if (LineupCard.isShowing() || veiled || BugCover.away() || !var && (BugCover.PLAY.holding(SystemClock.uptimeMillis())
+                || ClassicIntro.showing() || ClassicIntro.restartWaiting())) {
             main().postDelayed(nextDropRun, veiled ? 1_000L : 1_500L);
             return;
         }
