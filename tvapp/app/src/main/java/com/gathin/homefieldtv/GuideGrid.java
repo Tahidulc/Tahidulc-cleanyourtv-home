@@ -307,8 +307,9 @@ final class GuideGrid extends View {
             descL = d.isEmpty() ? null : Ui.layout(d, descP, Math.round(w), 3);
         }
         if (descL != null) Ui.draw(c, descL, x, Ui.f(dy + 8));
-        // The channel's logo, large, at the right.
-        Bitmap logo = Pics.get(ch.logo, Ui.px(250), Ui.px(120), Pics.FIT, redraw);
+        // The channel's logo, large, at the right (on its black tile: Pics.tiles).
+        Bitmap logo = Pics.tiles ? Pics.get(ch.logo, Ui.px(214), Ui.px(120), Pics.TILE, redraw)
+                : Pics.get(ch.logo, Ui.px(250), Ui.px(120), Pics.FIT, redraw);
         if (logo != null) c.drawBitmap(logo, Ui.f(RIGHT) - logo.getWidth(), Ui.f(60) + (Ui.f(120) - logo.getHeight()) / 2f, bmp);
     }
 
@@ -329,7 +330,9 @@ final class GuideGrid extends View {
         String num = String.valueOf(lib.number(ch));
         TextPaint np = lit ? numOn : numP;
         c.drawText(num, Ui.f(X + 64) - np.measureText(num), (top + bottom) / 2f + Ui.f(9), np);
-        Bitmap logo = Pics.get(ch.logo, Ui.px(128), Ui.px(58), Pics.FIT, redraw);
+        // On its black tile (Pics.tiles), a little wider and taller than the logo's own room was.
+        Bitmap logo = Pics.tiles ? Pics.get(ch.logo, Ui.px(132), Ui.px(70), Pics.TILE, redraw)
+                : Pics.get(ch.logo, Ui.px(128), Ui.px(58), Pics.FIT, redraw);
         if (logo != null) {
             c.drawBitmap(logo, Ui.f(X + 80) + (Ui.f(128) - logo.getWidth()) / 2f, (top + bottom - logo.getHeight()) / 2f, bmp);
         } else {

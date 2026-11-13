@@ -26,8 +26,8 @@ import java.util.Locale;
  */
 final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Host {
     private static final List<String> MENU = Arrays.asList("Your playlists", "Add an M3U playlist", "Add an Xtream Codes login",
-            "Refresh now", "Remove everything", "About");
-    private static final int PLAYLISTS = 0, ADD_M3U = 1, ADD_XTREAM = 2, REFRESH = 3, CLEAR = 4, ABOUT = 5;
+            "Refresh now", "Remove everything", "Channel logos", "About");
+    private static final int PLAYLISTS = 0, ADD_M3U = 1, ADD_XTREAM = 2, REFRESH = 3, CLEAR = 4, LOGOS = 5, ABOUT = 6;
 
     private Strip strip;
     private ListPanel menu, content;
@@ -176,6 +176,11 @@ final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Ho
                             "Your playlists, channels, favourites and where you left films"));
                 }
                 break;
+            case LOGOS:
+                out.add(new ListPanel.Item("tiles", ListPanel.TEXT, "On black tiles", Pics.tiles ? "Chosen" : "Each logo trimmed and centred on a black tile"));
+                out.add(new ListPanel.Item("plain", ListPanel.TEXT, "As the playlist gives them", Pics.tiles ? "The logos as they come" : "Chosen"));
+                out.add(new ListPanel.Item(null, ListPanel.NOTE, "In the guide, the channel banner, search and on Home.", ""));
+                break;
             default:
                 out.add(new ListPanel.Item(null, ListPanel.NOTE, "Homefield TV " + version(), ""));
                 out.add(new ListPanel.Item(null, ListPanel.NOTE, "Live TV, the guide, films and TV shows come only from your own playlists.", ""));
@@ -312,6 +317,11 @@ final class SettingsScreen extends Screen implements ListPanel.Host, Keyboard.Ho
             case ADD_M3U:
             case ADD_XTREAM:
                 if (t.equals("add")) add();
+                return;
+            case LOGOS:
+                Pics.setTiles(tv, t.equals("tiles"));
+                fillContent();
+                content.setFocus(t.equals("tiles") ? 0 : 1);
                 return;
             case REFRESH:
                 status = "Reading your playlist…";

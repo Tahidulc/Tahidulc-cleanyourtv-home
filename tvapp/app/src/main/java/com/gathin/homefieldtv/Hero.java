@@ -78,7 +78,9 @@ final class Hero extends View {
         drawPicture(c);
         float x = Ui.f(textX), y = Ui.f(textY);
         if (!logo.isEmpty()) {
-            Bitmap b = Pics.get(logo, Ui.px(300), Ui.px(70), Pics.FIT, redraw);
+            // The channel's logo, on its black tile (Pics.tiles).
+            Bitmap b = Pics.tiles ? Pics.get(logo, Ui.px(150), Ui.px(70), Pics.TILE, redraw)
+                    : Pics.get(logo, Ui.px(300), Ui.px(70), Pics.FIT, redraw);
             if (b != null) c.drawBitmap(b, x, y + (Ui.f(70) - b.getHeight()) / 2f, fade);
             y += Ui.f(84);
         } else if (!chip.isEmpty()) {

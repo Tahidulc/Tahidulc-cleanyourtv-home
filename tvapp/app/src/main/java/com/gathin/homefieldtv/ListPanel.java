@@ -61,6 +61,7 @@ final class ListPanel extends View {
     private final TextPaint titleP = Ui.paint(30, false, Ui.WHITE), titleOn = Ui.paint(30, true, Ui.WHITE);
     private final TextPaint subP = Ui.paint(24, false, Ui.FAINT), headP = Ui.paint(26, true, Ui.DIM), noteP = Ui.paint(26, false, Ui.DIM);
     private final Paint line = Ui.fill(0x1FFFFFFF), logoBack = Ui.fill(0x33062A66), bmp = new Paint(Paint.FILTER_BITMAP_FLAG);
+    private final Paint tileBack = Ui.fill(com.gathin.broadcast.LogoTile.GROUND);
     private final RectF r = new RectF();
     private final Runnable redraw = this::invalidate;
 
@@ -235,8 +236,12 @@ final class ListPanel extends View {
         } else if (it.kind == LOGO) {
             float lw = Ui.f(128), lh = Ui.f(72);
             r.set(tx, Ui.f(top) + (Ui.f(h) - lh) / 2f, tx + lw, Ui.f(top) + (Ui.f(h) + lh) / 2f);
-            c.drawRect(r, logoBack);
-            Bitmap b = Pics.get(it.picture, Math.round(lw - Ui.f(12)), Math.round(lh - Ui.f(12)), Pics.FIT, redraw);
+            // A channel's logo on its black tile (Pics.tiles), else on the guide's blue.
+            boolean tile = Pics.tiles;
+            if (tile) c.drawRoundRect(r, Math.min(lw, lh) * 0.12f, Math.min(lw, lh) * 0.12f, tileBack);
+            else c.drawRect(r, logoBack);
+            Bitmap b = tile ? Pics.get(it.picture, Math.round(lw), Math.round(lh), Pics.TILE, redraw)
+                    : Pics.get(it.picture, Math.round(lw - Ui.f(12)), Math.round(lh - Ui.f(12)), Pics.FIT, redraw);
             if (b != null) c.drawBitmap(b, r.centerX() - b.getWidth() / 2f, r.centerY() - b.getHeight() / 2f, bmp);
             tx += lw + Ui.f(24);
         }

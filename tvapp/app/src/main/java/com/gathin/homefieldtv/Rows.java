@@ -81,6 +81,7 @@ final class Rows extends View {
     private final TextPaint underP = Ui.paint(26, false, Ui.WHITE), underDim = Ui.paint(22, false, Ui.FAINT);
     private final Paint bmp = new Paint(Paint.FILTER_BITMAP_FLAG | Paint.ANTI_ALIAS_FLAG), track = Ui.fill(0x55FFFFFF);
     private final Paint bar = Ui.fill(Ui.CYAN), cardBack = new Paint(Paint.ANTI_ALIAS_FLAG), shade = new Paint();
+    private final Paint tileBack = Ui.fill(com.gathin.broadcast.LogoTile.GROUND);
     private final RectF r = new RectF(), f = new RectF();
     private float shadeFor = -1f, cardFor = -1f;
     private final Runnable redraw = this::invalidate;
@@ -382,9 +383,16 @@ final class Rows extends View {
         cardBack.setAlpha(a);
         c.save();
         c.translate(x, y);
-        c.drawRect(0, 0, w, h, cardBack);
+        // A channel's card on its black tile (Pics.tiles), the logo made ready for black.
+        boolean tile = k == CHANNEL && Pics.tiles;
+        if (tile) {
+            tileBack.setAlpha(a);
+            c.drawRect(0, 0, w, h, tileBack);
+        } else {
+            c.drawRect(0, 0, w, h, cardBack);
+        }
         if (k == CHANNEL) {
-            Bitmap logo = Pics.get(t.logo, Math.round(w * 0.6f), Math.round(h * 0.4f), Pics.FIT, redraw);
+            Bitmap logo = Pics.get(t.logo, Math.round(w * 0.6f), Math.round(h * 0.4f), tile ? Pics.READY : Pics.FIT, redraw);
             if (logo != null) {
                 bmp.setAlpha(a);
                 c.drawBitmap(logo, (w - logo.getWidth()) / 2f, h * 0.36f - logo.getHeight() / 2f, bmp);
@@ -429,7 +437,9 @@ final class Rows extends View {
             c.drawText(t.fitT, Ui.f(16), base, capP);
         }
         if (k == WIDE && !t.logo.isEmpty()) {
-            Bitmap logo = Pics.get(t.logo, Ui.px(170), Ui.px(44), Pics.FIT, redraw);
+            // The channel's logo over the picture: on its own small black tile (Pics.tiles).
+            Bitmap logo = Pics.tiles ? Pics.get(t.logo, Ui.px(100), Ui.px(56), Pics.TILE, redraw)
+                    : Pics.get(t.logo, Ui.px(170), Ui.px(44), Pics.FIT, redraw);
             if (logo != null) {
                 bmp.setAlpha(a);
                 c.drawBitmap(logo, Ui.f(16), base - Ui.f(two ? 64 : 34) - logo.getHeight(), bmp);

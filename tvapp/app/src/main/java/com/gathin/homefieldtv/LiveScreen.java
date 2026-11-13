@@ -228,6 +228,7 @@ final class LiveScreen extends Screen implements LiveTv.Listener {
 
     private final class Banner extends View {
         private final Paint band = new Paint(), line = new Paint(), cardBack = Ui.fill(0x1AFFFFFF), thumb = new Paint();
+        private final Paint tileBack = Ui.fill(com.gathin.broadcast.LogoTile.GROUND);
         private final Paint chev = Ui.stroke(Ui.WHITE, 3f), chevDim = Ui.stroke(Ui.DIM, 3f), bar = Ui.fill(Ui.CYAN);
         private final Paint track = Ui.fill(0x55FFFFFF), bmp = new Paint(Paint.FILTER_BITMAP_FLAG), digitBack = Ui.fill(0xCC062A66);
         private final TextPaint menuP = Ui.paint(28, false, Ui.DIM), nameP = Ui.paint(34, false, Ui.WHITE);
@@ -310,8 +311,12 @@ final class LiveScreen extends Screen implements LiveTv.Listener {
                 thumb.setShader(new LinearGradient(0, ty, 0, ty + th, Ui.CARD_LIGHT, Ui.NAVY, Shader.TileMode.CLAMP));
                 thumbFor = ty;
             }
-            c.drawRect(tx, ty, tx + tw, ty + th, thumb);
-            Bitmap logo = Pics.get(ch.logo, Math.round(tw * 0.7f), Math.round(th * 0.5f), Pics.FIT, redraw);
+            // On a black tile (Pics.tiles): the logo made ready for black, in the tile's own room.
+            if (Pics.tiles) c.drawRect(tx, ty, tx + tw, ty + th, tileBack);
+            else c.drawRect(tx, ty, tx + tw, ty + th, thumb);
+            Bitmap logo = Pics.tiles
+                    ? Pics.get(ch.logo, Math.round(tw * com.gathin.broadcast.LogoTile.FILL_W), Math.round(th * com.gathin.broadcast.LogoTile.FILL_H), Pics.READY, redraw)
+                    : Pics.get(ch.logo, Math.round(tw * 0.7f), Math.round(th * 0.5f), Pics.FIT, redraw);
             if (logo != null) c.drawBitmap(logo, tx + (tw - logo.getWidth()) / 2f, ty + (th - logo.getHeight()) / 2f, bmp);
             else {
                 String nm = Ui.fit(ch.name, thumbName, tw - Ui.f(24));

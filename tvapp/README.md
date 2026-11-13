@@ -26,7 +26,8 @@ from the playlists added to it. The app's name and wordmark are Homefield; it ca
   place, and a series goes on to the next episode.
 - **Search:** channels, films and TV shows, typed on the on-screen keyboard.
 - **Settings:** the playlists (all of them together or one, their expiry dates), adding an M3U playlist or an Xtream
-  Codes login, reading them again, removing everything.
+  Codes login, reading them again, removing everything, and the channel logos: on black tiles (each logo trimmed and set
+  in the middle of a black tile, a dark one turned light) or as the playlist gives them.
 
 ## Getting a playlist on to a TV
 
@@ -60,3 +61,4 @@ The APK is `app/build/outputs/apk/release/app-release.apk`, signed with the debu
 | Version | What changed |
 |---|---|
 | 1.0 | The first version: Home, the TV guide, live TV with the channel banner, Movies and TV shows from the playlists, title pages with seasons and episodes, the player with the playback bar, Search and Settings. |
+| 1.1 | Channel logos on black tiles, drawn as the TV launcher and the phone draw them: in the guide (the channel column and the large logo at the top), the channel banner's cards, Home's channel cards and its large picture, and Search. Each logo from the playlist is trimmed and set in the middle of a black tile; a white JPEG box round it is taken away and a mostly dark logo is turned light. Settings, Channel logos: on black tiles, or as the playlist gives them. |

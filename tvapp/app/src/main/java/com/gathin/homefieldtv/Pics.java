@@ -44,9 +44,24 @@ final class Pics {
 
     /**
      * CROP fills the size (posters, backdrops); FIT keeps the whole picture inside it (logos); FADE and FADE_TALL are
-     * CROP faded into the blue on the left and at the foot, for the big picture at the top of a screen.
+     * CROP faded into the blue on the left and at the foot, for the big picture at the top of a screen. TILE is a
+     * channel's logo on its black tile, the size given (LogoTile); READY is FIT with the logo made ready for black (for a
+     * screen that draws the black itself).
      */
-    static final int CROP = 0, FIT = 1, FADE = 2, FADE_TALL = 3;
+    static final int CROP = 0, FIT = 1, FADE = 2, FADE_TALL = 3, TILE = 4, READY = 5;
+
+    /** Channel logos on black tiles (Settings, Channel logos): on unless switched off. */
+    static volatile boolean tiles = true;
+
+    /** A channel logo's mode: on its tile, else as it comes. */
+    static int logoMode() {
+        return tiles ? TILE : FIT;
+    }
+
+    static void setTiles(Context c, boolean on) {
+        tiles = on;
+        c.getApplicationContext().getSharedPreferences("look", Context.MODE_PRIVATE).edit().putBoolean("logo_tiles", on).apply();
+    }
     private static final int THREADS = 3, QUEUE = 48;
     private static final long DISK_MAX = 160L << 20, DISK_KEEP = 120L << 20;
 
@@ -81,6 +96,7 @@ final class Pics {
 
     static synchronized void init(Context c) {
         if (disk != null) return;
+        tiles = c.getApplicationContext().getSharedPreferences("look", Context.MODE_PRIVATE).getBoolean("logo_tiles", true);
         disk = new File(c.getCacheDir(), "pics");
         //noinspection ResultOfMethodCallIgnored
         disk.mkdirs();
@@ -187,18 +203,31 @@ final class Pics {
         BitmapFactory.decodeByteArray(data, 0, data.length, o);
         if (o.outWidth <= 0 || o.outHeight <= 0) return null;
         int sample = 1;
-        if (mode != FIT) {
+        boolean fit = mode == FIT || mode == TILE || mode == READY;
+        if (!fit) {
             while (o.outWidth / (sample * 2) >= w && o.outHeight / (sample * 2) >= h) sample *= 2;
         } else {
             while (o.outWidth / (sample * 2) >= w || o.outHeight / (sample * 2) >= h) sample *= 2;
         }
         BitmapFactory.Options d = new BitmapFactory.Options();
         d.inSampleSize = sample;
-        d.inPreferredConfig = mode == FIT ? Bitmap.Config.ARGB_8888 : Bitmap.Config.RGB_565;
+        d.inPreferredConfig = fit ? Bitmap.Config.ARGB_8888 : Bitmap.Config.RGB_565;
         Bitmap src = BitmapFactory.decodeByteArray(data, 0, data.length, d);
         if (src == null) return null;
+        if (mode == TILE || mode == READY) {
+            // Made ready for black and trimmed (LogoTile); nothing of it to draw: no logo (the name instead).
+            Bitmap ready = com.gathin.broadcast.LogoTile.ready(src);
+            src.recycle();
+            if (ready == null) return null;
+            if (mode == TILE) {
+                Bitmap t = com.gathin.broadcast.LogoTile.tileOf(ready, w, h, Math.min(w, h) * 0.12f);
+                ready.recycle();
+                return t;
+            }
+            src = ready;
+        }
         Paint p = new Paint(Paint.FILTER_BITMAP_FLAG | Paint.ANTI_ALIAS_FLAG);
-        if (mode != FIT) {
+        if (!fit) {
             float sc = Math.max(w / (float) src.getWidth(), h / (float) src.getHeight());
             Bitmap out = Bitmap.createBitmap(w, h, src.hasAlpha() ? Bitmap.Config.ARGB_8888 : Bitmap.Config.RGB_565);
             Matrix m = new Matrix();
