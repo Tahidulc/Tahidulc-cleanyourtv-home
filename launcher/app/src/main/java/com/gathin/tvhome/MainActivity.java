@@ -1151,7 +1151,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             else if (intent != null && intent.getBooleanExtra("open_notifications", false)) v2.openNotifications();
             // adb only (--ez open_match_mode true): the Control Centre's Match mode.
             else if (intent != null && intent.getBooleanExtra("open_match_mode", false)) v2.openMatchMode();
-            // adb only (--es open_sport players|season|planner|board): one of the Control Centre's sports cards.
+            // adb only (--es open_sport follow|players|season|planner|board): one of the Control Centre's sports cards.
             else if (intent != null && intent.getStringExtra("open_sport") != null) v2.openSport(intent.getStringExtra("open_sport"));
             // adb only (--ez test_board_cover true): the scoreboard and the logo's cover over whatever is on, for a minute.
             else if (intent != null && intent.getBooleanExtra("test_board_cover", false)) BoardCover.test(this);

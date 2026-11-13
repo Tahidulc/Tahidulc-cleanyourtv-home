@@ -814,6 +814,9 @@ public class GoalWatchService extends Service {
         all.addAll(Arrays.asList(homeLeagues(c)));
         if (Config.themeFlag(c, "team_alerts", false)) all.addAll(Arrays.asList(c.getResources().getStringArray(R.array.team_alert_leagues)));
         if (Config.themeFlag(c, "kickoff_reminders", false)) all.addAll(Arrays.asList(LINEUP_LEAGUES));
+        // Teams & competitions: the competitions switched on there, and the starred clubs' own leagues (Following).
+        all.addAll(Following.extraLeagues(c));
+        all.addAll(Following.clubLeagues(c));
         Set<String> out = new java.util.LinkedHashSet<>();
         for (String l : all) out.add(l.split("\\|", 2)[0].trim());
         return out;
@@ -2076,6 +2079,12 @@ public class GoalWatchService extends Service {
         all.addAll(Arrays.asList(homeLeagues(this)));
         // The competitions of the players followed (their games are read for their goals only, Players).
         all.addAll(Players.leagues(this));
+        // Teams & competitions (Following): every game of each competition switched on there, announced on Home only
+        // unless a starred club plays (homeOnly()); and the starred clubs' own leagues and the Conference League, for
+        // their games wherever they play. A game of either on the channel can have the scoreboard.
+        all.addAll(Following.extraLeagues(this));
+        all.addAll(Following.clubLeagues(this));
+        Set<String> everyGame = Following.extraSlugs(this);
         Set<String> playerTeams = Players.teamIds(this);
         // Each competition read once a time round (LaLiga, Serie A and the rest were in two of the lists, read twice).
         Set<String> slugs = new HashSet<>();
@@ -2100,9 +2109,12 @@ public class GoalWatchService extends Service {
             Map<String, ScoresTicker.Game> byId = new java.util.LinkedHashMap<>();
             // Games read only for a followed player's goals (nothing else of them is announced).
             Set<String> playerOnly = new HashSet<>();
+            // The starred clubs starred on the phone: their leagues looked up, a few at a time, for the next poll.
+            Following.resolve(this);
             for (ScoresTicker.Game g : ScoresTicker.load(leagues)) {
                 boolean wanted = alertTags.contains(g.league) || clubs.contains(g.homeId) || clubs.contains(g.awayId)
-                        || LINEUP_TEAMS.contains(g.homeId) || LINEUP_TEAMS.contains(g.awayId) || homeSlugs(this).contains(g.slug);
+                        || LINEUP_TEAMS.contains(g.homeId) || LINEUP_TEAMS.contains(g.awayId) || homeSlugs(this).contains(g.slug)
+                        || everyGame.contains(g.slug);
                 boolean forPlayers = playerTeams.contains(g.homeId) || playerTeams.contains(g.awayId);
                 if ((wanted || forPlayers) && g.id != null && !byId.containsKey(g.id)) {
                     byId.put(g.id, g);
@@ -2751,9 +2763,18 @@ public class GoalWatchService extends Service {
      */
     static boolean follows(Context c, ScoresTicker.Game g) {
         if (g == null) return false;
-        // Every competition on Home's score pills: the long bar on Home too (homeOnly()).
-        if (g.slug != null && homeSlugs(c).contains(g.slug)) return true;
+        // Every competition on Home's score pills, and those followed in Teams & competitions: the long bar on Home too
+        // (homeOnly()).
+        if (homeOnlySlug(c, g.slug)) return true;
         return followsAnywhere(c, g);
+    }
+
+    /**
+     * A competition whose games are announced on Home only unless a followed club plays: those on Home's score pills
+     * (homeSlugs) and those switched on in Teams & competitions that are read for them alone (Following).
+     */
+    static boolean homeOnlySlug(Context c, String slug) {
+        return slug != null && (homeSlugs(c).contains(slug) || Following.extraSlugs(c).contains(slug));
     }
 
     /**
@@ -2786,9 +2807,12 @@ public class GoalWatchService extends Service {
         return homeSlugs;
     }
 
-    /** A game announced only while Home is in front: a Championship or LaLiga game no followed club plays in. */
+    /**
+     * A game announced only while Home is in front: a Championship or LaLiga game no followed club plays in, or one of
+     * a competition followed in Teams & competitions.
+     */
     private boolean homeOnly(ScoresTicker.Game g) {
-        return g != null && g.slug != null && homeSlugs(this).contains(g.slug) && !followsAnywhere(this, g);
+        return g != null && homeOnlySlug(this, g.slug) && !followsAnywhere(this, g);
     }
 
     /** A game this service announces everywhere: its competition is a goal_alert_leagues one, or a club is followed. */

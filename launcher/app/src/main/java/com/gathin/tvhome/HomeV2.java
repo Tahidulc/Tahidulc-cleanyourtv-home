@@ -245,10 +245,10 @@ final class HomeV2 {
         if (matchPanel != null) matchPanel.show();
     }
 
-    /** adb only (--es open_sport players|season|planner|board): one of the Control Centre's sports cards. */
+    /** adb only (--es open_sport follow|players|season|planner|board): one of the Control Centre's sports cards. */
     void openSport(String which) {
-        SportPanel p = "players".equals(which) ? playersPanel : "season".equals(which) ? seasonPanel : "planner".equals(which) ? plannerPanel
-                : "board".equals(which) ? boardPanel : null;
+        SportPanel p = "follow".equals(which) ? followPanel : "players".equals(which) ? playersPanel : "season".equals(which) ? seasonPanel
+                : "planner".equals(which) ? plannerPanel : "board".equals(which) ? boardPanel : null;
         if (p != null) p.show();
     }
 
@@ -858,7 +858,8 @@ final class HomeV2 {
     private NotifyPanel notifyPanel;
     /** Match mode: quiet but for one game, the lights with it, the alerts' timing (MatchPanel). */
     private MatchPanel matchPanel;
-    /** Sport's other cards: the players followed, the clubs' seasons, the weekend planner. */
+    /** Sport's other cards: the teams and competitions followed, the players followed, the clubs' seasons, the weekend planner. */
+    private FollowPanel followPanel;
     private PlayersPanel playersPanel;
     private SeasonPanel seasonPanel;
     private PlannerPanel plannerPanel;
@@ -1009,6 +1010,11 @@ final class HomeV2 {
             items.add(new ControlCentre.Item(a.getString(R.string.thermostat), R.drawable.ic_thermostat, thermostatPanel::glance,
                     thermostatPanel::heating, () -> thermostatPanel.show()).fresh(thermostatPanel::fresh));
         }
+        // Teams & competitions (as the phone's Settings has them): the starred clubs, a switch for each competition, and
+        // Scoreboard over matches; a game of theirs on the channel gets the scoreboard (Following).
+        followPanel = new FollowPanel(this);
+        items.add(new ControlCentre.Item("Teams & competitions", R.drawable.ic_v2_sport, () -> FollowPanel.describe(a), null,
+                () -> followPanel.show()).in("SPORT"));
         // Match mode: one game, quiet but for it, the lights down at kick-off and flashing for its goals (with Tuya
         // lights), and its alerts in step with the channel.
         matchPanel = new MatchPanel(this);
@@ -1756,6 +1762,7 @@ final class HomeV2 {
         if (controlCentre != null) controlCentre.hide();
         if (notifyPanel != null) notifyPanel.hide();
         if (matchPanel != null) matchPanel.hide();
+        if (followPanel != null) followPanel.hide();
         if (playersPanel != null) playersPanel.hide();
         if (seasonPanel != null) seasonPanel.hide();
         if (plannerPanel != null) plannerPanel.hide();
@@ -1806,6 +1813,7 @@ final class HomeV2 {
         if (match == null || !match.active() || zone == Z_MATCH) return;
         boolean busy = page != null || guide.isOpen() || (controlCentre != null && controlCentre.isOpen())
                 || (notifyPanel != null && notifyPanel.isOpen()) || (matchPanel != null && matchPanel.isOpen())
+                || (followPanel != null && followPanel.isOpen())
                 || (playersPanel != null && playersPanel.isOpen()) || (seasonPanel != null && seasonPanel.isOpen())
                 || (plannerPanel != null && plannerPanel.isOpen()) || (boardPanel != null && boardPanel.isOpen())
                 || (smartPanel != null && smartPanel.isOpen()) || (weatherPanel != null && weatherPanel.isOpen())
@@ -1853,6 +1861,7 @@ final class HomeV2 {
         if (controlCentre != null && controlCentre.isOpen()) return controlCentre.key(e);
         if (notifyPanel != null && notifyPanel.isOpen()) return notifyPanel.key(e);
         if (matchPanel != null && matchPanel.isOpen()) return matchPanel.key(e);
+        if (followPanel != null && followPanel.isOpen()) return followPanel.key(e);
         if (playersPanel != null && playersPanel.isOpen()) return playersPanel.key(e);
         if (seasonPanel != null && seasonPanel.isOpen()) return seasonPanel.key(e);
         if (plannerPanel != null && plannerPanel.isOpen()) return plannerPanel.key(e);

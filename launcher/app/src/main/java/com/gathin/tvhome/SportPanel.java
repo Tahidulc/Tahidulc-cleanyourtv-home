@@ -33,11 +33,13 @@ abstract class SportPanel {
     protected LinearLayout list;
     protected boolean open;
 
-    /** One row: its view, its lines, its switch (or none), its words now, and what OK does. */
+    /** One row: its view, its lines, its switch (or none), its picture's place (or none), its words now, and what OK does. */
     static final class Row {
         View view;
         TextView name, sub;
         View track, knob;
+        /** Where its picture goes (a club's crest, a competition's logo), showing its mark until one comes. */
+        FrameLayout pic;
         BooleanSupplier on;
         Supplier<String> words;
         Runnable ok;
@@ -243,10 +245,29 @@ abstract class SportPanel {
 
     /** A row: its name, the line under it, and a switch at its end (switched) or a ›. */
     protected Row row(String name, boolean switched) {
+        return row(name, switched, null);
+    }
+
+    /**
+     * As row(name, switched), with a picture's place before its name (mark not null): the mark (a ball, a cup) shows
+     * there until picture() puts the picture in.
+     */
+    protected Row row(String name, boolean switched, String mark) {
         Row r = new Row();
         LinearLayout t = new LinearLayout(c);
         t.setGravity(Gravity.CENTER_VERTICAL);
-        t.setPadding(h.px(24), 0, h.px(20), 0);
+        t.setPadding(h.px(mark != null ? 18 : 24), 0, h.px(20), 0);
+        if (mark != null) {
+            FrameLayout slot = new FrameLayout(c);
+            TextView m = h.text(26, regular, Color.WHITE);
+            m.setText(mark);
+            m.setGravity(Gravity.CENTER);
+            slot.addView(m, new FrameLayout.LayoutParams(-1, -1));
+            LinearLayout.LayoutParams pl = new LinearLayout.LayoutParams(h.px(54), h.px(54));
+            pl.rightMargin = h.px(16);
+            t.addView(slot, pl);
+            r.pic = slot;
+        }
         LinearLayout ws = new LinearLayout(c);
         ws.setOrientation(LinearLayout.VERTICAL);
         TextView n = h.text(22, semi, Color.WHITE);
@@ -282,6 +303,16 @@ abstract class SportPanel {
         }
         r.view = t;
         return r;
+    }
+
+    /** A row's picture in its place, its mark gone. */
+    protected void picture(Row r, android.graphics.Bitmap b) {
+        if (r == null || r.pic == null || b == null) return;
+        r.pic.removeAllViews();
+        android.widget.ImageView iv = new android.widget.ImageView(c);
+        iv.setScaleType(android.widget.ImageView.ScaleType.FIT_CENTER);
+        iv.setImageBitmap(b);
+        r.pic.addView(iv, new FrameLayout.LayoutParams(-1, -1));
     }
 
     // ---- keys and focus ----------------------------------------------------------------------------------------------

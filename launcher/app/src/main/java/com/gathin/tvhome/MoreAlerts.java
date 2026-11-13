@@ -926,9 +926,9 @@ final class MoreAlerts {
 
     // ---- the rest -------------------------------------------------------------------------------------------------
 
-    /** A game announced only on Home: a competition on Home's score pills that no followed club plays in. */
+    /** A game announced only on Home: a competition on Home's score pills (or followed in Teams & competitions) no followed club plays in. */
     static boolean homeOnly(Context c, ScoresTicker.Game g) {
-        return g != null && g.slug != null && GoalWatchService.homeSlugs(c).contains(g.slug) && !GoalWatchService.followsAnywhere(c, g);
+        return g != null && GoalWatchService.homeOnlySlug(c, g.slug) && !GoalWatchService.followsAnywhere(c, g);
     }
 
     /** ESPN's real VAR decision for the test: in this game, or the latest one in the followed competitions. */

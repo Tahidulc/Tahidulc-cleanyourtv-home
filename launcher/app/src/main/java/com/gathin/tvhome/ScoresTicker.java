@@ -1735,7 +1735,8 @@ final class ScoresTicker {
                 {"uefa.europa", "Europa League"}, {"uefa.europa.conf", "Conference League"}, {"uefa.nations", "Nations League"},
                 {"esp.1", "LaLiga"}, {"esp.copa_del_rey", "Copa del Rey"}, {"ita.1", "Serie A"}, {"ita.coppa_italia", "Coppa Italia"},
                 {"ger.1", "Bundesliga"}, {"ger.dfb_pokal", "DFB-Pokal"}, {"fra.1", "Ligue 1"}, {"fra.coupe_de_france", "Coupe de France"},
-                {"ned.1", "Eredivisie"}, {"por.1", "Liga Portugal"}, {"usa.1", "MLS"}, {"fifa.world", "World Cup"},
+                {"ned.1", "Eredivisie"}, {"por.1", "Liga Portugal"}, {"usa.1", "MLS"}, {"mex.1", "Liga MX"},
+                {"ksa.1", "Saudi Pro League"}, {"fifa.world", "World Cup"},
                 {"fifa.friendly", "International Friendly"}, {"fifa.worldq.uefa", "World Cup Qualifier"},
                 {"uefa.euroq", "Euro Qualifier"}, {"uefa.euro", "Euros"}, {"esp.super_cup", "Supercopa"}};
         for (String[] x : n) NAMES.put(x[0], x[1]);

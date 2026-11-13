@@ -111,6 +111,21 @@ final class SyncHub {
         return c.getResources().getStringArray(R.array.goal_alert_teams);
     }
 
+    /**
+     * The starred clubs chosen on this TV (the Control Centre's Teams & competitions): kept as the list, and the next
+     * look at the stores stamps it as changed here, so the other TV hears of it in ten seconds and the phone next time
+     * it syncs.
+     */
+    static void setStarredClubs(Context c, List<String> ids) {
+        JSONArray a = new JSONArray();
+        for (String id : ids) {
+            String t = id == null ? "" : id.trim();
+            if (!t.isEmpty() && t.length() < 12 && a.length() < 40) a.put(t);
+        }
+        prefs(c).edit().putString("clubs", a.toString()).apply();
+        changed(c);
+    }
+
     // ---- the stores as items -----------------------------------------------------------------------------------------
 
     /** Every item the TV holds now, by id ("mylist|tv:1399"), as data maps in a fixed order. */

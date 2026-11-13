@@ -113,6 +113,12 @@ final class SportsData {
         return body == null ? new ArrayList<>() : parseRoster(body);
     }
 
+    /** A league's clubs (the World Cup's: its national sides), A to Z, for Teams & competitions' Add a club. */
+    static List<Team> clubs(Context c, String league) {
+        String body = cached(c, SITE + league + "/teams", TEAM_FOR);
+        return body == null ? new ArrayList<>() : parseClubs(body, league);
+    }
+
     /** A league's table: each club's id to its place (1 the top). */
     static Map<String, Integer> places(Context c, String league) {
         String body = cached(c, "https://site.api.espn.com/apis/v2/sports/soccer/" + league + "/standings", GAMES_FOR);
@@ -147,6 +153,35 @@ final class SportsData {
         } catch (JSONException e) {
             return null;
         }
+    }
+
+    /** A league's teams page (sports[0].leagues[0].teams): each club's id, names and crest, A to Z; none it can't read. */
+    static List<Team> parseClubs(String body, String league) {
+        List<Team> out = new ArrayList<>();
+        try {
+            JSONArray sports = new JSONObject(body).optJSONArray("sports");
+            JSONObject sport = sports == null ? null : sports.optJSONObject(0);
+            JSONArray leagues = sport == null ? null : sport.optJSONArray("leagues");
+            JSONObject l = leagues == null ? null : leagues.optJSONObject(0);
+            JSONArray teams = l == null ? null : l.optJSONArray("teams");
+            for (int i = 0; teams != null && i < teams.length(); i++) {
+                JSONObject w = teams.optJSONObject(i);
+                JSONObject t = w == null ? null : w.optJSONObject("team");
+                if (t == null || t.optString("id").isEmpty()) continue;
+                Team x = new Team();
+                x.id = t.optString("id");
+                x.league = league == null ? "" : league;
+                x.name = t.optString("displayName", t.optString("name"));
+                x.abbr = t.optString("abbreviation");
+                JSONArray logos = t.optJSONArray("logos");
+                if (logos != null && logos.length() > 0 && logos.optJSONObject(0) != null) x.logo = logos.optJSONObject(0).optString("href", null);
+                if (!x.name.isEmpty()) out.add(x);
+            }
+        } catch (JSONException e) {
+            return out;
+        }
+        out.sort((a, b) -> a.name.compareToIgnoreCase(b.name));
+        return out;
     }
 
     static int colour(String hex) {
