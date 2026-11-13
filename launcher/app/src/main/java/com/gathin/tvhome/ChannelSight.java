@@ -233,6 +233,11 @@ final class ChannelSight {
         return t == null ? 0 : t;
     }
 
+    /** Where the channel's own scoreboard was found on the channel named, {left, top, right, bottom} as fractions; null when never. */
+    static float[] seenBox(Context c, String channelName) {
+        return boxOf(prefs(c).getString("b." + BoardPlace.key(channelName), null));
+    }
+
     /** The game the scoreboard seen last on the channel named was being read for; null when none. */
     static String seenFor(String channelName) {
         return seenFor.get(BoardPlace.key(channelName));

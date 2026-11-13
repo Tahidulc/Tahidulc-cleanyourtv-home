@@ -248,6 +248,18 @@ final class BoardPanel extends SportPanel {
         varWhy.words = () -> BoardCover.varExplainedOn(c) ? "A check comes out of the board, then its decision with WHY: the law behind it and how long it took" : "Off · VAR's alerts as before";
         varWhy.ok = () -> BoardCover.setVarExplainedOn(c, !BoardCover.varExplainedOn(c));
         add(logoAway, varWhy);
+        Row replays = row("Away in replays", true);
+        replays.on = () -> BugCover.replaysOn(c);
+        replays.words = () -> !ScreenShots.available() ? "Needs the search helper on (Android 14): it watches the channel's own scoreboard"
+                : BugCover.replaysOn(c) ? "Your board goes as the channel's does for a replay, and comes back with it for live play"
+                : "Off · your board stays up through replays";
+        replays.ok = () -> BugCover.setReplaysOn(c, !BugCover.replaysOn(c));
+        Row popOuts = row("Cover the channel's pop-outs", true);
+        popOuts.on = () -> BugCover.popOutsOn(c);
+        popOuts.words = () -> BugCover.popOutsOn(c) ? "Anything coming out of the channel's scoreboard is covered where it is, in your board's look and letters"
+                : "Off · the channel's strips and tabs show round your board";
+        popOuts.ok = () -> BugCover.setPopOutsOn(c, !BugCover.popOutsOn(c));
+        add(replays, popOuts);
         Row fot = row("FotMob's stats and pictures", true);
         fot.on = () -> BoardCover.fotmobOn(c);
         fot.words = () -> BoardCover.fotmobOn(c) ? "Expected goals, big chances, ratings, who is on top, players' pictures"

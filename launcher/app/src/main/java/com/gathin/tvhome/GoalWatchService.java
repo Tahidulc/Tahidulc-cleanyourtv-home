@@ -1724,6 +1724,10 @@ public class GoalWatchService extends Service {
             // adb only: the board over whatever is on, one substitution (OFF, then ON) and then three at once
             main.post(() -> BoardCover.testSubs(this));
         }
+        if (intent != null && intent.getBooleanExtra("test_bug_cover", false)) {
+            // adb only: the board over whatever is on, stepping aside as in a replay and back, then a plate under it
+            main.post(() -> BoardCover.testBugCover(this));
+        }
         if (intent != null && intent.getBooleanExtra("test_board_pens", false)) {
             // adb only: the board over whatever is on and a made-up shootout under it, kick by kick, into sudden death
             main.post(() -> BoardCover.testPens(this));

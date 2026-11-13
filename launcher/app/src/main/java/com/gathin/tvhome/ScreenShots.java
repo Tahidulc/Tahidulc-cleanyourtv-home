@@ -41,6 +41,35 @@ final class ScreenShots {
         void got(Bitmap[] parts, long at, boolean ownWindow);
     }
 
+    /**
+     * One part made from every picture of TiviMate's window alone, whoever asked for it (see-through, the ad-break
+     * screen, ChannelSight, or the rider itself): the channel's scoreboard watched (BugCover) without pictures of its
+     * own most of the time. The part (fractions) made w by h; got on the main thread, which lets the bitmap go.
+     */
+    static final class Ride {
+        final RectF part;
+        final int w, h;
+        final RideGot got;
+
+        Ride(RectF part, int w, int h, RideGot got) {
+            this.part = part;
+            this.w = w;
+            this.h = h;
+            this.got = got;
+        }
+    }
+
+    interface RideGot {
+        void got(Bitmap part, long at);
+    }
+
+    private static volatile Ride ride;
+
+    /** The part made from every window picture from now on (null: none). */
+    static void ride(Ride r) {
+        ride = r;
+    }
+
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
     private static final Paint SCALE = new Paint(Paint.FILTER_BITMAP_FLAG);
     private static ExecutorService work;
@@ -186,10 +215,13 @@ final class ScreenShots {
                 Bitmap[] out = new Bitmap[parts.length];
                 HardwareBuffer hb = null;
                 Bitmap hw = null;
+                Ride rd = own ? ride : null;
+                Bitmap rode = null;
                 try {
                     hb = r.getHardwareBuffer();
                     hw = Bitmap.wrapHardwareBuffer(hb, r.getColorSpace());
                     if (hw != null) for (int i = 0; i < parts.length; i++) out[i] = part(hw, parts[i], sizes[i][0], sizes[i][1]);
+                    if (hw != null && rd != null) rode = part(hw, rd.part, rd.w, rd.h);
                 } catch (RuntimeException | OutOfMemoryError e) {
                     // left as none: the next one may do
                 } finally {
@@ -197,6 +229,14 @@ final class ScreenShots {
                     if (hb != null) hb.close();
                 }
                 boolean black = own && out.length > 0 && out[0] != null && black(out[0]);
+                if (rode != null) {
+                    Bitmap give = rode;
+                    MAIN.post(() -> {
+                        // Not for a black window picture (TiviMate's window not taken), nor once the rider has changed.
+                        if (black || ride != rd) give.recycle();
+                        else rd.got.got(give, at);
+                    });
+                }
                 MAIN.post(() -> {
                     if (waitingFor != id) {
                         // Given up on meanwhile, and another asked for: let go.

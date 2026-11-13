@@ -1841,6 +1841,9 @@ final class BoardCover {
     // ---- showing it ------------------------------------------------------------------------------------------------
 
     private static FrameLayout boardWin, logoWin, hintWin;
+    /** The plates over what grows out of the channel's own scoreboard (BugCover), in a window under the board's. */
+    private static FrameLayout plateWin;
+    private static BugPlates platesView;
     /** See-through's fill: the channel's logo filled in under the cover (LogoShape), in the cover's window. */
     private static LogoFill fill;
     /** The board and, beside it in line with it, what slides out of it (the stats, an alert), drawn over their tucked ends. */
@@ -2270,13 +2273,37 @@ final class BoardCover {
         bug.crests(g != null && (g.homeLogo != null || g.awayLogo != null));
         bug.set(l);
         boolean board = adjusting || testUntil > now || boardShown(c);
-        column.setVisibility(board ? View.VISIBLE : View.INVISIBLE);
-        if (board && (fresh || bug.closing())) {
-            // In as a broadcaster's comes in: just up, its first block opening out of a line; going, back again.
-            if (fresh) bug.shownAt(0f);
-            bug.open();
+        // A replay on the channel (its own scoreboard gone, BugCover): away as a broadcaster's goes, what is out beside it
+        // folded in first; back as the channel's comes back. Never in the middle of its own goal moment.
+        boolean replay = board && !adjusting && BugCover.away() && bug.bandLeft(now) <= 0;
+        if (replay) {
+            if (column.getVisibility() == View.VISIBLE && !fresh) {
+                if (!bug.closing()) {
+                    if (stats != null) stats.fold(null);
+                    if (drop != null) drop.fold(null);
+                    if (under != null) under.fold(null);
+                    VarWhy.fold(c, null);
+                    bug.close(() -> {
+                        if (column == null) return;
+                        column.setVisibility(View.INVISIBLE);
+                        fresh = true;
+                        // Live play back while it went: in again at once.
+                        if (!BugCover.away() && app != null) resume(app);
+                    });
+                }
+            } else {
+                column.setVisibility(View.INVISIBLE);
+                fresh = true;
+            }
+        } else {
+            column.setVisibility(board ? View.VISIBLE : View.INVISIBLE);
+            if (board && (fresh || bug.closing())) {
+                // In as a broadcaster's comes in: just up, its first block opening out of a line; going, back again.
+                if (fresh) bug.shownAt(0f);
+                bug.open();
+            }
+            fresh = false;
         }
-        fresh = false;
         stats.colours(l.homeColour, l.awayColour, l.homeOwn, l.awayOwn);
         // The logo's cover in Broadcast: the picture's tag, LIVE while the game is, the scoreboard's colours.
         if (mark != null) {
@@ -2291,13 +2318,98 @@ final class BoardCover {
         }
         layout(c);
         guard(now);
+        // The channel's own scoreboard watched under yours while the match is in play (BugCover): a replay steps yours
+        // aside, what grows out of the channel's is covered where it is. Kept going while yours is aside, to see it back.
+        boolean inPlay = pre == null && g != null && r != null && r.state == 0 && !r.halftime;
+        if (inPlay && board && !adjusting && testUntil <= now && lastBoard != null) BugCover.tick(c, lastBoard, channel);
+        else if (testUntil <= now) BugCover.stop();
+        layoutPlates();
         if (g != null && board && !adjusting && testUntil <= now) {
             readStats(c, g, now);
-            underTick(c, g, pre == null ? r : null, l, now);
-            milestonesTick(c, g, now);
-            if (pre != null) maybeStats(c, g, null, now, true);
-            else if (r != null) maybeStats(c, g, r, now, false);
+            // Not while the board is aside in a replay: what comes out of it waits for live play.
+            if (!replay) {
+                underTick(c, g, pre == null ? r : null, l, now);
+                milestonesTick(c, g, now);
+                if (pre != null) maybeStats(c, g, null, now, true);
+                else if (r != null) maybeStats(c, g, r, now, false);
+            }
         }
+    }
+
+    // ---- the channel's own scoreboard under yours (BugCover): replays and what grows out of it --------------------------
+
+    /** BugCover: the channel's own scoreboard gone (a replay) or back: the board stepped aside or brought back now. */
+    static void bugChanged() {
+        if (!BugCover.away()) poke();
+        if (app != null) resume(app);
+    }
+
+    /** BugCover: the plates over what grows out of the channel's scoreboard changed (or their words were read). */
+    static void platesChanged() {
+        layoutPlates();
+    }
+
+    /**
+     * The plates laid out in their window (under the board's): over the place BugCover watches while any shows, else a
+     * pixel out of the way. Only with the board up and still (not going, aside, being moved, or standing aside).
+     */
+    private static void layoutPlates() {
+        Context c = app;
+        if (plateWin == null || platesView == null || c == null || bug == null) return;
+        boolean show = column != null && column.getVisibility() == View.VISIBLE && !bug.closing() && !adjusting && !veiled;
+        java.util.List<BugCover.Plate> ps = show ? BugCover.plates() : new java.util.ArrayList<>();
+        int[] region = BugCover.region();
+        WindowManager.LayoutParams lp = (WindowManager.LayoutParams) plateWin.getLayoutParams();
+        if (lp == null) return;
+        if (ps.isEmpty() && !platesView.busy()) {
+            // Nothing out: the window a pixel in the corner, nothing over the picture.
+            if (lp.width != 1 || lp.height != 1) {
+                lp.x = 0;
+                lp.y = 0;
+                lp.width = 1;
+                lp.height = 1;
+                try {
+                    c.getSystemService(WindowManager.class).updateViewLayout(plateWin, lp);
+                } catch (RuntimeException ignored) {
+                    // the window went meanwhile
+                }
+            }
+            return;
+        }
+        if (region == null || ps.isEmpty()) {
+            // Folding away where they are.
+            platesView.set(new java.util.ArrayList<>(), new java.util.ArrayList<>(), null, null, boardH);
+            return;
+        }
+        if (lp.x != region[0] || lp.y != region[1] || lp.width != region[2] || lp.height != region[3]) {
+            lp.x = region[0];
+            lp.y = region[1];
+            lp.width = region[2];
+            lp.height = region[3];
+            try {
+                c.getSystemService(WindowManager.class).updateViewLayout(plateWin, lp);
+            } catch (RuntimeException ignored) {
+                return;
+            }
+        }
+        java.util.List<RectF> rects = new java.util.ArrayList<>();
+        java.util.List<String> words = new java.util.ArrayList<>();
+        for (BugCover.Plate p : ps) {
+            rects.add(new RectF(p.r[0] - region[0], p.r[1] - region[1], p.r[2] - region[0], p.r[3] - region[1]));
+            words.add(p.words);
+        }
+        int[] b = lastBoard;
+        RectF board = b == null ? null : new RectF(b[0] - region[0], b[1] - region[1], b[0] + b[2] - region[0], b[1] + b[3] - region[1]);
+        platesView.set(rects, words, board, bug.stripLook(), boardH);
+    }
+
+    /** adb only (--ez test_bug_cover true): the board over whatever is on, aside as in a replay, back, then a plate under it. */
+    static void testBugCover(Context c) {
+        Context a = c.getApplicationContext();
+        test(a);
+        main().postDelayed(() -> {
+            if (lastBoard != null) BugCover.test(a, lastBoard);
+        }, 2_500L);
     }
 
     /**
@@ -2415,12 +2527,26 @@ final class BoardCover {
         column.addView(drop, new FrameLayout.LayoutParams(1, 1));
         column.addView(under, new FrameLayout.LayoutParams(1, 1));
         column.addView(bug, new FrameLayout.LayoutParams(1, 1));
+        // The plates over what grows out of the channel's own scoreboard (BugCover): their window first, so the board's
+        // (and all that slides out of it) is over them.
+        platesView = new BugPlates(c);
+        plateWin = new FrameLayout(c);
+        plateWin.addView(platesView, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+        if (addWindow(c, plateWin)) {
+            platesView.onSettled(BoardCover::layoutPlates);
+        } else {
+            plateWin = null;
+            platesView = null;
+        }
         boardWin = new FrameLayout(c);
         FrameLayout.LayoutParams cl = new FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT);
         cl.leftMargin = edge;
         cl.topMargin = edge;
         boardWin.addView(column, cl);
         if (!addWindow(c, boardWin)) {
+            removeWindow(c, plateWin);
+            plateWin = null;
+            platesView = null;
             boardWin = null;
             column = null;
             bug = null;
@@ -2779,6 +2905,7 @@ final class BoardCover {
         veiled = on;
         float a = on ? 0f : 1f;
         if (boardWin != null && boardWin.getAlpha() != a) boardWin.setAlpha(a);
+        if (plateWin != null && plateWin.getAlpha() != a) plateWin.setAlpha(a);
         if (logoWin != null && logoWin.getAlpha() != a) logoWin.setAlpha(a);
         if (chipWin != null && chipWin.getAlpha() != a) chipWin.setAlpha(a);
     }
@@ -2811,6 +2938,12 @@ final class BoardCover {
         if (main != null) main.removeCallbacks(menuOnHold);
         okDown = -1;
         if (chipWin != null || chipFor != null) hideFourK();
+        // The channel's own scoreboard no longer watched (what was learned of it kept), its plates gone with the board.
+        BugCover.stop();
+        if (platesView != null) platesView.clear();
+        removeWindow(c, plateWin);
+        plateWin = null;
+        platesView = null;
         removeWindow(c, boardWin);
         removeWindow(c, logoWin);
         boardWin = null;
@@ -3038,7 +3171,8 @@ final class BoardCover {
             return;
         }
         // The line-up card beside the board: the alert waits for it; and for the board back from standing aside.
-        if (LineupCard.isShowing() || veiled) {
+        // In a replay (the board stepped aside), an alert waits for live play.
+        if (LineupCard.isShowing() || veiled || BugCover.away()) {
             main().postDelayed(nextDropRun, veiled ? 1_000L : 1_500L);
             return;
         }
@@ -4200,6 +4334,7 @@ final class BoardCover {
         dimmed = on;
         dimLayer(bug, on);
         dimLayer(mark, on);
+        dimLayer(platesView, on);
     }
 
     /** A view dimmed through its layer: solid, darker, never see-through. */
