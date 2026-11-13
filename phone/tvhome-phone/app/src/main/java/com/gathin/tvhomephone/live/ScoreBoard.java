@@ -546,7 +546,7 @@ public final class ScoreBoard implements LiveAlerts.Listener {
 
     /** What the strips' words are sized from: the board's height as set (Stacked and Card are drawn taller). */
     private float unit() {
-        return boardH() / Math.max(1f, bug.style().tall);
+        return boardH() / Math.max(1f, bug.tall());
     }
 
     /** Pure: which side what slides out goes: its left only when there's little on its right and more on its left. */
@@ -795,8 +795,10 @@ public final class ScoreBoard implements LiveAlerts.Listener {
             }
             Bitmap[] crests = null;
             if (g != null && g.id != null && !g.id.equals(had)) {
+                String light = com.gathin.tvhomephone.sports.Competitions.lightLogo(g.slug);
                 crests = new Bitmap[]{LiveGames.picture(c, LiveGames.homeCrest(g), px), LiveGames.picture(c, LiveGames.awayCrest(g), px),
-                        LiveGames.picture(c, com.gathin.tvhomephone.sports.Competitions.logo(g), px)};
+                        LiveGames.picture(c, com.gathin.tvhomephone.sports.Competitions.logo(g), px),
+                        light == null ? null : LiveGames.picture(c, light, px)};
             }
             List<String[]> stories = news ? this.news.read(System.currentTimeMillis()) : null;
             Game got = g;
@@ -824,8 +826,12 @@ public final class ScoreBoard implements LiveAlerts.Listener {
                         crestsFor = lastId;
                         bug.crests(pics[0], pics[1], pics[2]);
                         compPic = pics[2];
+                        if (pics.length > 3) bug.competitionLight(pics[3]);
                     }
                     compName = got.leagueName == null ? "" : got.leagueName;
+                    // The game's competition: By competition draws its own look, and its logo with it; the retro looks name the clubs.
+                    bug.competition(got.slug, got.leagueName != null && !got.leagueName.isEmpty() ? got.leagueName : got.league);
+                    bug.names(got.homeName, got.awayName);
                     prefetchGoals(got);
                 } else if (session != null) {
                     channelGame = false;

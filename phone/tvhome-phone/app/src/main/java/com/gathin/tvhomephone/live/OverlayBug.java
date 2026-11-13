@@ -17,6 +17,8 @@ import android.view.View;
 
 import com.gathin.tvhomephone.R;
 
+import com.gathin.broadcast.CompBug;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -115,18 +117,27 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         text.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD));
         text.setFontFeatureSettings("tnum");
         setLayerType(LAYER_TYPE_HARDWARE, null);
-        p = palette(style, blueTop, blueBottom);
+        p = paletteNow();
         shine.setShader(shineShader);
     }
 
     /** How it looks: the choices in Settings and the player's options. */
     enum Style {
         CLASSIC("Classic"), GLASS("Glass"), LIGHT("Light"), CLUB("Club colours"), MINIMAL("Minimal"),
-        CRESTS("Crests and time"), STACKED("Stacked", 1.7f), CARD("Card", 1.6f), FROSTED("Frosted glass");
+        CRESTS("Crests and time"), STACKED("Stacked", 1.7f), CARD("Card", 1.6f), FROSTED("Frosted glass"),
+        /** Each game in its own competition's look, with its logo (CompBug); Classic for one with no look of its own. */
+        COMPETITION("By competition"),
+        PL_WORLD(CompBug.Kind.PL), PL_US(CompBug.Kind.PL_US), FA_CUP(CompBug.Kind.FACUP), EFL(CompBug.Kind.EFL),
+        UCL(CompBug.Kind.UCL), UEL(CompBug.Kind.UEL), UECL(CompBug.Kind.UECL), SPFL(CompBug.Kind.SPFL),
+        LALIGA(CompBug.Kind.LALIGA), SERIE_A(CompBug.Kind.SERIEA), BUNDESLIGA(CompBug.Kind.BUNDESLIGA), LIGUE_1(CompBug.Kind.LIGUE1),
+        EREDIVISIE(CompBug.Kind.EREDIVISIE), LIGA_PORTUGAL(CompBug.Kind.LIGAPORTUGAL), MLS(CompBug.Kind.MLS), LIGA_MX(CompBug.Kind.LIGAMX),
+        RETRO_2004(CompBug.Kind.R2004), RETRO_2008(CompBug.Kind.R2008), RETRO_2012(CompBug.Kind.R2012), RETRO_2016(CompBug.Kind.R2016);
 
         final String label;
         /** How much taller than the others it is drawn in its own corner (Stacked: the clubs one above the other; Card: big crests). */
         final float tall;
+        /** A competition's own look (CompBug), or null. */
+        final CompBug.Kind kind;
 
         Style(String label) {
             this(label, 1f);
@@ -135,6 +146,13 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         Style(String label, float tall) {
             this.label = label;
             this.tall = tall;
+            this.kind = null;
+        }
+
+        Style(CompBug.Kind k) {
+            this.label = k.label;
+            this.tall = k.tall;
+            this.kind = k;
         }
 
         static Style of(String name) {
@@ -254,9 +272,106 @@ final class OverlayBug extends View implements BurnGuard.Dims {
     void style(Style s) {
         if (s == style) return;
         style = s;
-        p = palette(s, blueTop, blueBottom);
+        p = paletteNow();
         requestLayout();
         invalidate();
+    }
+
+    // ---- the competitions' own looks (CompBug) -----------------------------------------------------------------------
+
+    /** The game's competition's look (By competition draws it), its name, the clubs' names, its logo in its own colours. */
+    private CompBug.Kind gameKind;
+    private String compName = "", homeName = "", awayName = "";
+    private Bitmap compLight;
+    private CompBug compBug;
+    private final CompBug.Data compData = new CompBug.Data();
+
+    /** The game's competition (ESPN's slug and its name): By competition takes its look, and its logo with it. */
+    void competition(String slug, String name) {
+        CompBug.Kind k = CompBug.forGame(slug, name);
+        compName = name == null ? "" : name;
+        if (k == gameKind) return;
+        gameKind = k;
+        if (style == Style.COMPETITION) {
+            p = paletteNow();
+            requestLayout();
+        }
+        invalidate();
+    }
+
+    /** The clubs' names (the retro looks name them), from the game. */
+    void names(String home, String away) {
+        String h = home == null ? "" : home, a = away == null ? "" : away;
+        if (h.equals(homeName) && a.equals(awayName)) return;
+        homeName = h;
+        awayName = a;
+        if (kind() != null) {
+            requestLayout();
+            invalidate();
+        }
+    }
+
+    /** The competition's logo in its own colours, for the looks that set it on white. */
+    void competitionLight(Bitmap b) {
+        compLight = b;
+        invalidate();
+    }
+
+    /** The competition look drawn now (its own, or By competition's for the game's), or null (the board's own looks; F1). */
+    CompBug.Kind kind() {
+        if (look.f1) return null;
+        return style.kind != null ? style.kind : style == Style.COMPETITION ? gameKind : null;
+    }
+
+    /** How much taller than a row it is drawn now (By competition: its competition's look's). */
+    float tall() {
+        CompBug.Kind k = kind();
+        return k != null ? k.tall : style.tall;
+    }
+
+    private CompBug comp() {
+        if (compBug == null) compBug = new CompBug(getContext());
+        return compBug;
+    }
+
+    private CompBug.Data compData() {
+        CompBug.Data d = compData;
+        d.home = look.home;
+        d.away = look.away;
+        d.homeName = homeName;
+        d.awayName = awayName;
+        d.score = look.score;
+        d.clock = look.clock;
+        d.comp = compName;
+        d.homeColour = look.homeColour;
+        d.awayColour = look.awayColour;
+        d.homeCrest = homeCrest;
+        d.awayCrest = awayCrest;
+        d.logo = comp;
+        d.logoLight = compLight;
+        d.stoppage = pulses(look);
+        d.glow = flash;
+        d.glowSide = flashSide;
+        return d;
+    }
+
+    /** Its colours now: a competition look's own (it draws its grounds itself), else its look's. */
+    private Palette paletteNow() {
+        CompBug.Kind k = kind();
+        if (k == null) return palette(style, blueTop, blueBottom);
+        Palette c = palette(Style.CLASSIC, blueTop, blueBottom);
+        int[] st = CompBug.strip(k);
+        c.ground = 0;
+        c.groundFoot = 0;
+        c.comp = 0;
+        c.score0 = c.score1 = st[3];
+        c.clock = st[0];
+        c.ink = c.scoreInk = c.clockInk = st[1];
+        c.dim = st[2];
+        c.round = 0f;
+        c.sheen = false;
+        c.edgeLine = false;
+        return c;
     }
 
     Style style() {
@@ -498,13 +613,28 @@ final class OverlayBug extends View implements BurnGuard.Dims {
 
     /** Its strips' look, made again only when its own look changes. */
     StripLook stripLook() {
-        if (strip == null || stripFor != style) {
-            strip = strip(style, p);
+        CompBug.Kind k = kind();
+        if (strip == null || stripFor != style || stripKind != k) {
+            strip = k != null ? compStrip(k) : strip(style, p);
             stripFor = style;
+            stripKind = k;
         }
         return strip;
     }
 
+    /** A competition look's strips: its own dark ground and its accent, square cornered. */
+    private static StripLook compStrip(CompBug.Kind k) {
+        int[] c = CompBug.strip(k);
+        StripLook s = new StripLook();
+        s.ground = c[0];
+        s.ink = c[1];
+        s.dim = c[2];
+        s.block = c[3];
+        s.round = 0.06f;
+        return s;
+    }
+
+    private CompBug.Kind stripKind;
     private StripLook strip;
     private Style stripFor;
 
@@ -547,6 +677,8 @@ final class OverlayBug extends View implements BurnGuard.Dims {
     /** Its own part's width at height h, the minutes added inside beside the clock only when addedIn. */
     private int ownNatural(int h) {
         text.setTextSize(h * 0.46f);
+        CompBug.Kind kind = kind();
+        if (kind != null) return Math.round(comp().natural(kind, compData(), h));
         if (style == Style.MINIMAL) return Math.round(minimalWidth(h));
         if (look.f1) {
             float w = h * 1.3f + label(h) + corner(h) + h * 0.3f;
@@ -695,7 +827,8 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         float[] in = null;
         if (part) {
             // Its first block (the competition's square, Crests' home crest, F1's red), never more than a third of it.
-            float first = look.f1 ? h * 1.3f : style == Style.CRESTS || style == Style.FROSTED ? h * 1.25f : style == Style.STACKED ? h * 0.9f
+            CompBug.Kind fk = kind();
+            float first = fk != null ? comp().first(fk, compData(), h) : look.f1 ? h * 1.3f : style == Style.CRESTS || style == Style.FROSTED ? h * 1.25f : style == Style.STACKED ? h * 0.9f
                     : style == Style.CARD ? h * 1.29f
                     : style == Style.MINIMAL ? h * 1.2f : h;
             in = shownPart(shown, w, h, Math.min(first, w / 3f));
@@ -733,7 +866,10 @@ final class OverlayBug extends View implements BurnGuard.Dims {
             float f = Math.abs((float) Math.cos(Math.PI * ht / HT_MS));
             cv.scale(1f, Math.max(0.04f, f), 0, h / 2f);
         }
-        if (style == Style.MINIMAL) {
+        CompBug.Kind ck = kind();
+        if (ck != null) {
+            comp().draw(cv, ck, compData(), w, h);
+        } else if (style == Style.MINIMAL) {
             minimal(cv, w, h);
         } else if (look.f1) {
             if (w / (float) h >= 3.6f) f1Row(cv, 0, 0, w, h); else f1Two(cv, w, h);
@@ -749,15 +885,27 @@ final class OverlayBug extends View implements BurnGuard.Dims {
             twoRows(cv, w, h);
         }
         cv.restore();
-        if (goalOn && !look.f1) goalMoment(cv, w, h, gt);
+        // A competition look with a tab over or under its row: the goal's band and the rest run along its row.
+        float[] row = ck != null ? CompBug.bar(ck, h) : null;
+        int mh = h;
+        if (row != null && (row[0] > 0.5f || row[1] < h - 0.5f)) {
+            cv.save();
+            cv.translate(0, row[0]);
+            cv.clipRect(0, 0, w, row[1] - row[0]);
+            mh = Math.max(1, Math.round(row[1] - row[0]));
+        } else {
+            row = null;
+        }
+        if (goalOn && !look.f1) goalMoment(cv, w, mh, gt);
         // The net shivering after the ball goes in, once the scorers' band has gone; VAR checking; FULL TIME stamped.
         boolean rippling = !look.f1 && gt >= RIPPLE_AT && gt < RIPPLE_AT + RIPPLE_MS;
-        if (rippling) netRipple(cv, w, h, gt - RIPPLE_AT);
+        if (rippling) netRipple(cv, w, mh, gt - RIPPLE_AT);
         boolean scanning = varUntil > now && !look.f1;
-        if (scanning) varScan(cv, w, h, now);
+        if (scanning) varScan(cv, w, mh, now);
         long ft = ftAt > 0 && !look.f1 ? now - ftAt : -1;
         boolean stamping = ft >= 0 && ft < FT_MS;
-        if (stamping) fullTimeStamp(cv, w, h, ft);
+        if (stamping) fullTimeStamp(cv, w, mh, ft);
+        if (row != null) cv.restore();
         if (p.edgeLine) {
             float e = Math.max(1f, h * 0.025f);
             edge.setStyle(Paint.Style.STROKE);

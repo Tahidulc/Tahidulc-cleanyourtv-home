@@ -97,7 +97,10 @@ public class CompetitionsTest {
         assertEquals("https://a.espncdn.com/i/leaguelogos/soccer/500/23.png", Competitions.lightLogo("eng.1"));
         assertEquals("https://a.espncdn.com/i/leaguelogos/soccer/500-dark/2.png", Competitions.logo("uefa.champions"));
         assertEquals("https://a.espncdn.com/i/teamlogos/leagues/500/f1.png", Competitions.logo(Competitions.F1));
-        assertNull(Competitions.logo("usa.1"));
+        // 4.74: MLS, Liga MX, the Eredivisie and Liga Portugal have their logos (their scoreboard looks show them).
+        assertEquals("https://a.espncdn.com/i/leaguelogos/soccer/500-dark/19.png", Competitions.logo("usa.1"));
+        assertEquals("https://a.espncdn.com/i/leaguelogos/soccer/500/22.png", Competitions.lightLogo("mex.1"));
+        assertNull(Competitions.logo("bra.9"));
         assertNull(Competitions.logo((String) null));
     }
 

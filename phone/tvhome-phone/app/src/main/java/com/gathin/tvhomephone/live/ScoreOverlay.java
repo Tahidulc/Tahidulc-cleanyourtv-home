@@ -906,7 +906,7 @@ final class ScoreOverlay implements ScoreBoard.Source {
             boolean upright = root.getHeight() > root.getWidth();
             bp.width = LinearLayout.LayoutParams.WRAP_CONTENT;
             // Its own corner, at the size chosen (Medium as it was); Stacked taller, its clubs one above the other.
-            bp.height = Math.round((upright ? 24 : 30) * d * sizeHere() * board.bug.style().tall);
+            bp.height = Math.round((upright ? 24 : 30) * d * sizeHere() * board.bug.tall());
             left = Math.round(Math.max(fx, 0) + 14 * d) + (fx <= insetLeft ? insetLeft : 0);
             top = Math.round(Math.max(fy, 0) + 12 * d) + (fy <= insetTop ? insetTop : 0);
             // The channel's own scoreboard found and not covered: just under it.

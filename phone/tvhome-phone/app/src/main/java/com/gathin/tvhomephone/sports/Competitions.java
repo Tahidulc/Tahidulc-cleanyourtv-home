@@ -37,7 +37,8 @@ public final class Competitions {
         String[][] ids = {{"eng.1", "23"}, {"uefa.champions", "2"}, {"eng.fa", "40"}, {"eng.league_cup", "41"}, {"eng.2", "24"},
                 {"uefa.europa", "2310"}, {"uefa.europa.conf", "20296"}, {"esp.1", "15"}, {"ita.1", "12"}, {"ger.1", "10"},
                 {"fra.1", "9"}, {"sco.1", "45"}, {"esp.copa_del_rey", "80"}, {"esp.super_cup", "431"}, {"uefa.nations", "2395"},
-                {"fifa.worldq.uefa", "67"}, {"uefa.euroq", "56"}, {"fifa.friendly", "53"}, {"fifa.world", "4"}, {"uefa.euro", "74"}};
+                {"fifa.worldq.uefa", "67"}, {"uefa.euroq", "56"}, {"fifa.friendly", "53"}, {"fifa.world", "4"}, {"uefa.euro", "74"},
+                {"eng.3", "25"}, {"eng.4", "26"}, {"ned.1", "11"}, {"por.1", "14"}, {"usa.1", "19"}, {"mex.1", "22"}};
         for (String[] i : ids) IDS.put(i[0], i[1]);
     }
 
