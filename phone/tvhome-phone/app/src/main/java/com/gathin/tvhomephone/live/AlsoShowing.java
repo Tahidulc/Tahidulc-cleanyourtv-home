@@ -274,11 +274,11 @@ public final class AlsoShowing {
             row.setPadding(Ui.dp(c, 6), Ui.dp(c, 8), Ui.dp(c, 6), Ui.dp(c, 8));
             row.setBackground(Ui.touch(c, false, 0, 12));
             FrameLayout chip = new FrameLayout(c);
-            chip.setBackground(Ui.round(c, LogoTiles.fill(c, 0xFF0C3483), 8));
+            chip.setBackground(Ui.round(c, 0xFF0C3483, 8));
             ImageView logo = new ImageView(c);
             logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
             logo.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-            int pad = LogoTiles.pad(c, 6);
+            int pad = Ui.dp(c, 6);
             chip.setPadding(pad, pad, pad, pad);
             chip.addView(logo, new FrameLayout.LayoutParams(-1, -1));
             TextView initials = Ui.text(c, initials(r.name), 13, Ui.TEXT, true);
@@ -287,7 +287,7 @@ public final class AlsoShowing {
             chip.addView(initials, new FrameLayout.LayoutParams(-1, -1));
             if (r.logo != null && !r.logo.isEmpty()) {
                 initials.setVisibility(View.GONE);
-                LogoTiles.load(logo, r.logo, () -> initials.setVisibility(View.VISIBLE));
+                com.gathin.tvhomephone.sports.Ui.load(logo, r.logo, null, () -> initials.setVisibility(View.VISIBLE));
             }
             if (r.uhd) {
                 FrameLayout.LayoutParams bl = new FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM | Gravity.END);

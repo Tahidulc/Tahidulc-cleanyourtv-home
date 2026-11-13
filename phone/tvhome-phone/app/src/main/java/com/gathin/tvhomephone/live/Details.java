@@ -58,11 +58,10 @@ final class Details extends LinearLayout {
         LinearLayout head = new LinearLayout(c);
         head.setGravity(Gravity.CENTER_VERTICAL);
         FrameLayout box = new FrameLayout(c);
-        if (LogoTiles.on(c)) box.setBackground(Ui.round(c, LogoTiles.GROUND, 6));
         logo = new ImageView(c);
         logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
         box.addView(logo, new FrameLayout.LayoutParams(-1, -1));
-        if (!compact) head.addView(box, new LinearLayout.LayoutParams(Ui.dp(c, LogoTiles.on(c) ? 52 : 44), Ui.dp(c, 30)));
+        if (!compact) head.addView(box, new LinearLayout.LayoutParams(Ui.dp(c, 44), Ui.dp(c, 30)));
         channel = Ui.text(c, "", 13, Ui.SOFT, true);
         channel.setSingleLine(true);
         channel.setEllipsize(TextUtils.TruncateAt.END);
@@ -193,7 +192,7 @@ final class Details extends LinearLayout {
         String chan = n > 0 ? n + "  " + ch.name : ch.name;
         channel.setText(chan);
         if (ch.logo.isEmpty()) Glide.with(logo).clear(logo);
-        else LogoTiles.load(logo, ch.logo);
+        else Glide.with(logo).load(ch.logo).into(logo);
         long now = System.currentTimeMillis();
         boolean fav = Picks.isFavourite(c, ch.key);
         star.setText(fav ? R.string.live_fav_remove_short : R.string.live_fav_add_short);

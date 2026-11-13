@@ -1045,7 +1045,6 @@ final class InfoTile {
         /** The channel's logo, else its initials, in a w by h box. */
         View logo(TileData.Info i, int wDp, int hDp) {
             FrameLayout box = new FrameLayout(c);
-            if (LogoTiles.on(c)) box.setBackground(Ui.round(c, LogoTiles.GROUND, 6));
             TextView ini = text(Ui.initials(i.ch.name), 12, 0xCCFFFFFF, 800);
             ini.setGravity(Gravity.CENTER);
             box.addView(ini, new FrameLayout.LayoutParams(-1, -1));
@@ -1053,7 +1052,7 @@ final class InfoTile {
             img.setScaleType(ImageView.ScaleType.FIT_CENTER);
             img.setContentDescription(i.ch.name);
             box.addView(img, new FrameLayout.LayoutParams(-1, -1));
-            if (i.channelLogo != null) LogoTiles.load(img, i.channelLogo, () -> ini.setText(""), null);
+            if (i.channelLogo != null) com.gathin.tvhomephone.sports.Ui.load(img, i.channelLogo, () -> ini.setText(""), null);
             return box;
         }
 

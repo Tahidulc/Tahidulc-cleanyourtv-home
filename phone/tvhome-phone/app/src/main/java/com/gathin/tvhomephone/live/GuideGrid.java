@@ -727,24 +727,6 @@ final class GuideGrid extends FrameLayout {
             blocks.quality = GuideLook.quality(c.name);
             initials.setText(Ui.initials(c.name));
             String url = c.logo;
-            if (LogoTiles.on(itemView.getContext())) {
-                // On a black tile, as the TVs draw their channels' logos (LogoTiles).
-                ground.setColor(LogoTiles.GROUND);
-                if (url.isEmpty()) {
-                    Glide.with(logo).clear(logo);
-                    initials.setVisibility(View.VISIBLE);
-                } else {
-                    initials.setVisibility(View.INVISIBLE);
-                    LogoTiles.load(logo, url, () -> {
-                        if (ch == c) initials.setVisibility(View.VISIBLE);
-                    });
-                }
-                marks();
-                describe(c);
-                return;
-            }
-            int lp = Ui.dp(itemView.getContext(), 8);
-            logo.setPadding(lp, lp, lp, lp);
             Integer known = url.isEmpty() ? null : tiles.get(url);
             ground.setColor(known != null ? known : url.isEmpty() ? GuideLook.nameColour(c.name) : GuideLook.PILL_ON);
             if (url.isEmpty()) {
@@ -775,11 +757,6 @@ final class GuideGrid extends FrameLayout {
                 }).into(logo);
             }
             marks();
-            describe(c);
-        }
-
-        /** What is said of the row (and drawn again). */
-        private void describe(Channel c) {
             Guide.Schedule s = blocks.schedule;
             int at = s == null ? -1 : s.at(st.now);
             tile.setContentDescription(c.name + (at >= 0 ? ", " + s.title[at] : ""));

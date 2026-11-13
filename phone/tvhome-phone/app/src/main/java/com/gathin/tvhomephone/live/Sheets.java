@@ -157,15 +157,15 @@ final class Sheets {
 
     private static FrameLayout logo(Context c, Channel ch, int w, int h) {
         FrameLayout box = new FrameLayout(c);
-        box.setBackground(Ui.round(c, LogoTiles.fill(c, Ui.GLASS), 10));
+        box.setBackground(Ui.round(c, Ui.GLASS, 10));
         TextView ini = Ui.text(c, ch.logo.isEmpty() ? Ui.initials(ch.name) : "", 12, Ui.SOFT, true);
         ini.setGravity(Gravity.CENTER);
         box.addView(ini, new FrameLayout.LayoutParams(-1, -1));
         ImageView img = new ImageView(c);
         img.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        int p = LogoTiles.pad(c, 4);
+        int p = Ui.dp(c, 4);
         img.setPadding(p, p, p, p);
-        if (!ch.logo.isEmpty()) LogoTiles.load(img, ch.logo);
+        if (!ch.logo.isEmpty()) Glide.with(img).load(ch.logo).into(img);
         box.addView(img, new FrameLayout.LayoutParams(-1, -1));
         box.setLayoutParams(new LinearLayout.LayoutParams(Ui.dp(c, w), Ui.dp(c, h)));
         return box;
@@ -288,13 +288,13 @@ final class Sheets {
                 row.setGravity(Gravity.CENTER_VERTICAL);
                 row.setLayoutParams(new RecyclerView.LayoutParams(-1, Ui.dp(c, 64)));
                 FrameLayout box = new FrameLayout(c);
-                box.setBackground(Ui.round(c, LogoTiles.fill(c, Ui.GLASS), 10));
+                box.setBackground(Ui.round(c, Ui.GLASS, 10));
                 TextView ini = Ui.text(c, "", 12, Ui.SOFT, true);
                 ini.setGravity(Gravity.CENTER);
                 box.addView(ini, new FrameLayout.LayoutParams(-1, -1));
                 ImageView logo = new ImageView(c);
                 logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
-                int p = LogoTiles.pad(c, 4);
+                int p = Ui.dp(c, 4);
                 logo.setPadding(p, p, p, p);
                 box.addView(logo, new FrameLayout.LayoutParams(-1, -1));
                 row.addView(box, new LinearLayout.LayoutParams(Ui.dp(c, 56), Ui.dp(c, 40)));
@@ -334,7 +334,7 @@ final class Sheets {
                 ImageView logo = (ImageView) v[1];
                 boolean pic = ch != null && !ch.logo.isEmpty();
                 ((TextView) v[0]).setText(pic ? "" : Ui.initials(label));
-                if (pic) LogoTiles.load(logo, ch.logo);
+                if (pic) Glide.with(logo).load(ch.logo).into(logo);
                 else Glide.with(logo).clear(logo);
                 int n = ch == null ? 0 : lib.number(ch);
                 ((TextView) v[2]).setText(n > 0 ? n + "  " + label : label);
@@ -504,10 +504,10 @@ final class Sheets {
                 handle.setContentDescription(c.getString(R.string.live_drag));
                 row.addView(handle, new LinearLayout.LayoutParams(Ui.dp(c, 48), Ui.dp(c, 48)));
                 FrameLayout box = new FrameLayout(c);
-                box.setBackground(Ui.round(c, LogoTiles.fill(c, Ui.GLASS), 10));
+                box.setBackground(Ui.round(c, Ui.GLASS, 10));
                 ImageView logo = new ImageView(c);
                 logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
-                int p = LogoTiles.pad(c, 4);
+                int p = Ui.dp(c, 4);
                 logo.setPadding(p, p, p, p);
                 box.addView(logo, new FrameLayout.LayoutParams(-1, -1));
                 row.addView(box, new LinearLayout.LayoutParams(Ui.dp(c, 56), Ui.dp(c, 40)));
@@ -540,7 +540,7 @@ final class Sheets {
                 View[] v = (View[]) h.itemView.getTag();
                 ImageView logo = (ImageView) v[0];
                 if (ch.logo.isEmpty()) Glide.with(logo).clear(logo);
-                else LogoTiles.load(logo, ch.logo);
+                else Glide.with(logo).load(ch.logo).into(logo);
                 int n = lib.number(ch);
                 ((TextView) v[1]).setText(n > 0 ? n + "  " + ch.name : ch.name);
             }

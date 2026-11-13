@@ -534,7 +534,7 @@ public class LiveTvFragment extends Fragment {
             lp.rightMargin = Ui.dp(c, 8);
             lp.topMargin = lp.bottomMargin = Ui.dp(c, small ? 4 : 6);
             tile.setLayoutParams(lp);
-            tile.setBackground(Ui.touch(c, false, LogoTiles.fill(c, Ui.GLASS), 10));
+            tile.setBackground(Ui.touch(c, false, Ui.GLASS, 10));
             TextView ini = Ui.text(c, "", 12, Ui.SOFT, true);
             ini.setGravity(Gravity.CENTER);
             tile.addView(ini, new FrameLayout.LayoutParams(-1, -1));
@@ -553,8 +553,7 @@ public class LiveTvFragment extends Fragment {
             TextView ini = (TextView) v[0];
             ImageView img = (ImageView) v[1];
             if (position >= favs.size()) {
-                // The last tile: Manage favourites (glass, not a channel's tile).
-                holder.itemView.setBackground(Ui.touch(c, false, Ui.GLASS, 10));
+                // The last tile: Manage favourites.
                 Glide.with(img).clear(img);
                 img.setImageResource(R.drawable.live_ic_edit);
                 img.setImageTintList(ColorStateList.valueOf(Ui.G_SELECT));
@@ -566,14 +565,11 @@ public class LiveTvFragment extends Fragment {
                 return;
             }
             Channel ch = favs.get(position);
-            holder.itemView.setBackground(Ui.touch(c, false, LogoTiles.fill(c, Ui.GLASS), 10));
-            int pad = LogoTiles.pad(c, 6);
-            img.setPadding(pad, pad, pad, pad);
             img.setImageTintList(null);
             img.setScaleType(ImageView.ScaleType.FIT_CENTER);
             ini.setText(ch.logo.isEmpty() ? Ui.initials(ch.name) : "");
             if (ch.logo.isEmpty()) Glide.with(img).clear(img);
-            else LogoTiles.load(img, ch.logo);
+            else Glide.with(img).load(ch.logo).into(img);
             holder.itemView.setContentDescription(getString(R.string.live_watch_named, ch.name));
             holder.itemView.setOnClickListener(x -> play(ch));
             holder.itemView.setOnLongClickListener(x -> {
@@ -1368,13 +1364,13 @@ public class LiveTvFragment extends Fragment {
             lp.bottomMargin = Ui.dp(c, 6);
             view.setLayoutParams(lp);
             FrameLayout box = new FrameLayout(c);
-            box.setBackground(Ui.round(c, LogoTiles.fill(c, Ui.GLASS), 12));
+            box.setBackground(Ui.round(c, Ui.GLASS, 12));
             initials = Ui.text(c, "", 14, Ui.SOFT, true);
             initials.setGravity(Gravity.CENTER);
             box.addView(initials, new FrameLayout.LayoutParams(-1, -1));
             logo = new ImageView(c);
             logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
-            int p = LogoTiles.pad(c, 5);
+            int p = Ui.dp(c, 5);
             logo.setPadding(p, p, p, p);
             box.addView(logo, new FrameLayout.LayoutParams(-1, -1));
             // A 4K/UHD channel's mark, at the logo's foot.
@@ -1443,7 +1439,7 @@ public class LiveTvFragment extends Fragment {
                 initials.setVisibility(View.VISIBLE);
             } else {
                 initials.setVisibility(View.INVISIBLE);
-                LogoTiles.load(logo, pic);
+                Glide.with(logo).load(pic).into(logo);
             }
             uhd.setVisibility(Names.uhd(c.name) ? View.VISIBLE : View.GONE);
             boolean fav = Picks.isFavourite(ctx, c.key);
@@ -1487,13 +1483,13 @@ public class LiveTvFragment extends Fragment {
             view.setLayoutParams(lp);
             view.setBackground(Ui.touch(c, false, 0x14FFFFFF, 14));
             FrameLayout box = new FrameLayout(c);
-            box.setBackground(Ui.round(c, LogoTiles.fill(c, Ui.GLASS), 10));
+            box.setBackground(Ui.round(c, Ui.GLASS, 10));
             initials = Ui.text(c, "", 12, Ui.SOFT, true);
             initials.setGravity(Gravity.CENTER);
             box.addView(initials, new FrameLayout.LayoutParams(-1, -1));
             logo = new ImageView(c);
             logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
-            int p = LogoTiles.pad(c, 4);
+            int p = Ui.dp(c, 4);
             logo.setPadding(p, p, p, p);
             box.addView(logo, new FrameLayout.LayoutParams(-1, -1));
             view.addView(box, new LinearLayout.LayoutParams(Ui.dp(c, 52), Ui.dp(c, 40)));
@@ -1541,7 +1537,7 @@ public class LiveTvFragment extends Fragment {
             badge.setVisibility(on ? View.VISIBLE : View.GONE);
             initials.setText(ch.logo.isEmpty() ? Ui.initials(ch.name) : "");
             if (ch.logo.isEmpty()) Glide.with(logo).clear(logo);
-            else LogoTiles.load(logo, ch.logo);
+            else Glide.with(logo).load(ch.logo).into(logo);
         }
     }
 

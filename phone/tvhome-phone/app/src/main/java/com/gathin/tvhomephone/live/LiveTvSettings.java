@@ -408,7 +408,6 @@ public final class LiveTvSettings {
         col.addView(rRow);
         col.addView(toggle(c, c.getString(R.string.live3_hold), LiveAlerts.holding(c), on -> LiveAlerts.setHolding(c, on)));
         if (NightSound.available()) col.addView(toggle(c, c.getString(R.string.live3_night), NightSound.on(c), on -> NightSound.set(c, on)));
-        col.addView(toggle(c, c.getString(R.string.live3_logo_tiles), LogoTiles.on(c), on -> LogoTiles.set(c, on)));
     }
 
     interface Flip {

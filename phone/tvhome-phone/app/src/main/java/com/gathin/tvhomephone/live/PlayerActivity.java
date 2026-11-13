@@ -989,7 +989,7 @@ public class PlayerActivity extends AppCompatActivity {
         group.setVisibility(cur.group.isEmpty() ? View.GONE : View.VISIBLE);
         initials.setText(cur.logo.isEmpty() ? Ui.initials(cur.name) : "");
         if (cur.logo.isEmpty()) Glide.with(logo).clear(logo);
-        else LogoTiles.load(logo, cur.logo);
+        else Glide.with(logo).load(cur.logo).into(logo);
         markStar();
         Guide.Schedule s = lib.schedule(cur.key);
         long now = System.currentTimeMillis();
@@ -1115,16 +1115,13 @@ public class PlayerActivity extends AppCompatActivity {
             num.setPadding(0, 0, Ui.dp(c, 8), 0);
             head.addView(num);
             FrameLayout box = new FrameLayout(c);
-            // On a tile (LogoTiles): a small black one, a little wider for the tile's room round the logo.
-            boolean tiles = LogoTiles.on(c);
-            if (tiles) box.setBackground(Ui.round(c, LogoTiles.GROUND, 5));
             TextView ini = Ui.text(c, "", 10, Ui.SOFT, true);
             ini.setGravity(Gravity.CENTER);
             box.addView(ini, new FrameLayout.LayoutParams(-1, -1));
             ImageView img = new ImageView(c);
             img.setScaleType(ImageView.ScaleType.FIT_CENTER);
             box.addView(img, new FrameLayout.LayoutParams(-1, -1));
-            head.addView(box, new LinearLayout.LayoutParams(Ui.dp(c, tiles ? 44 : 34), Ui.dp(c, tiles ? 26 : 22)));
+            head.addView(box, new LinearLayout.LayoutParams(Ui.dp(c, 34), Ui.dp(c, 22)));
             TextView nm = Ui.text(c, "", 12, Ui.SOFT, true);
             nm.setSingleLine(true);
             nm.setEllipsize(TextUtils.TruncateAt.END);
@@ -1164,7 +1161,7 @@ public class PlayerActivity extends AppCompatActivity {
             ((TextView) v[1]).setText(ch.logo.isEmpty() ? Ui.initials(ch.name) : "");
             ImageView img = (ImageView) v[2];
             if (ch.logo.isEmpty()) Glide.with(img).clear(img);
-            else LogoTiles.load(img, ch.logo);
+            else Glide.with(img).load(ch.logo).into(img);
             ((TextView) v[3]).setText(ch.name);
             Guide.Schedule s = lib.schedule(ch.key);
             long now = System.currentTimeMillis();
@@ -1474,11 +1471,9 @@ public class PlayerActivity extends AppCompatActivity {
                 lb.addView(ini, new FrameLayout.LayoutParams(-1, -1));
                 ImageView img = new ImageView(c);
                 img.setScaleType(ImageView.ScaleType.FIT_CENTER);
-                boolean tiles = LogoTiles.on(c);
-                if (tiles) lb.setBackground(Ui.round(c, LogoTiles.GROUND, 6));
-                if (logo != null) LogoTiles.load(img, logo);
+                if (logo != null) Glide.with(img).load(logo).into(img);
                 lb.addView(img, new FrameLayout.LayoutParams(-1, -1));
-                card.addView(lb, new LinearLayout.LayoutParams(Ui.dp(c, tiles ? 46 : 40), Ui.dp(c, 28)));
+                card.addView(lb, new LinearLayout.LayoutParams(Ui.dp(c, 40), Ui.dp(c, 28)));
                 TextView nm = Ui.text(c, ch.name, 13, Ui.TEXT, true);
                 nm.setSingleLine(true);
                 nm.setPadding(Ui.dp(c, 8), 0, 0, 0);
@@ -1936,13 +1931,13 @@ public class PlayerActivity extends AppCompatActivity {
         number.setPadding(0, 0, Ui.dp(c, 12), 0);
         row.addView(number);
         FrameLayout box = new FrameLayout(c);
-        box.setBackground(Ui.round(c, LogoTiles.fill(c, 0x26FFFFFF), 10));
+        box.setBackground(Ui.round(c, 0x26FFFFFF, 10));
         initials = Ui.text(c, "", 14, Ui.SOFT, true);
         initials.setGravity(Gravity.CENTER);
         box.addView(initials, new FrameLayout.LayoutParams(-1, -1));
         logo = new ImageView(c);
         logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        int p = LogoTiles.pad(c, 5);
+        int p = Ui.dp(c, 5);
         logo.setPadding(p, p, p, p);
         box.addView(logo, new FrameLayout.LayoutParams(-1, -1));
         row.addView(box, new LinearLayout.LayoutParams(Ui.dp(c, 68), Ui.dp(c, 46)));
