@@ -1736,7 +1736,7 @@ final class ScoreOverlay implements ScoreBoard.Source {
             @Override public void lines(java.util.List<String> lines, java.util.List<android.graphics.Rect> boxes) {
                 safely(() -> {
                     if (!started) return;
-                    sport.screen(got, cut.x0, cut.y0, cut.sx, cut.sy);
+                    sport.screen(got, cut.b, cut.x0, cut.y0, cut.sx, cut.sy);
                     readSoon(SportOverlay.READ_MS);
                 }, () -> readSoon(SportOverlay.READ_MS));
             }

@@ -6,9 +6,8 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 
-import android.graphics.Rect;
-
 import com.gathin.broadcast.SportBoard;
+import com.gathin.broadcast.TennisScreen;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -19,7 +18,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
-/** The player's tennis, boxing and UFC board: the channel's tennis read off the picture, the bell's clock, its moments. */
+/** The player's tennis, boxing and UFC board: tennis as the picture has it, the bell's clock, its moments. */
 @RunWith(RobolectricTestRunner.class)
 @Config(sdk = 34)
 public class SportOverlayTest {
@@ -35,51 +34,121 @@ public class SportOverlayTest {
         Arrays.fill(s.b.tiebreak, -1);
         s.a.points = "";
         s.b.points = "";
+        s.a.serving = false;
+        s.b.serving = false;
         return s;
     }
 
+    /** The family's picture (WTA Finals): ESPN at 3-6 5-1, the channel's board "A. SABALENKA [2] 3 5 15 / E. SVITOLINA [6] 6 1 30". */
+    private static SportBoard sabalenka() {
+        SportBoard m = tennis(new int[]{3, 5}, new int[]{6, 1});
+        m.a.name = "Aryna Sabalenka";
+        m.a.shortName = "Sabalenka";
+        m.b.name = "Elina Svitolina";
+        m.b.shortName = "Svitolina";
+        return m;
+    }
+
+    /** Its words as the reader gives them, in the part's pixels (rows 40 apart, words 30 tall). */
+    private static List<TennisScreen.Word> words(String pa, String pb) {
+        List<TennisScreen.Word> w = new ArrayList<>();
+        String[][] rows = {{"A.", "SABALENKA", "[2]", "3", "5", pa}, {"E.", "SVITOLINA", "[6]", "6", "1", pb}};
+        float[] xs = {100, 140, 330, 400, 450, 510};
+        float[] ws = {30, 180, 40, 20, 20, 40};
+        for (int r = 0; r < 2; r++) {
+            float t = 200 + r * 40;
+            for (int i = 0; i < rows[r].length; i++) w.add(new TennisScreen.Word(rows[r][i], xs[i], t, xs[i] + ws[i], t + 30));
+        }
+        return w;
+    }
+
     @Test
-    public void theChannelsTennisScoreboardIsReadRowByRow() {
-        SportBoard m = tennis(new int[]{6, 3}, new int[]{4, 2});
-        // One line a row.
-        SportScreen.Reading r = SportScreen.tennis(Arrays.asList("KOVALENKO 6 3 40", "HARTWELL 4 2 15"),
-                Arrays.asList(new Rect(10, 10, 300, 40), new Rect(10, 50, 300, 80)), m);
+    public void thePictureIsTheTruthWhileItsReadingIsFresh() {
+        SportBoard espn = sabalenka();
+        TennisScreen.Reading r = TennisScreen.read(words("15", "30"), espn);
         assertTrue(r.found);
-        assertArrayEquals(new String[]{"40", "15"}, r.points);
-        assertArrayEquals(new int[]{3, 2}, r.games);
-        // Columns read apart: the numbers level with each name, left to right; a seed before the name left out.
-        List<String> lines = Arrays.asList("(2) KOVALENKO", "6", "3", "A", "HARTWELL", "4", "2", "40");
-        List<Rect> boxes = Arrays.asList(new Rect(10, 10, 150, 40), new Rect(200, 12, 220, 38), new Rect(240, 12, 260, 38),
-                new Rect(290, 12, 310, 38), new Rect(10, 50, 150, 80), new Rect(200, 52, 220, 78), new Rect(240, 52, 260, 78),
-                new Rect(290, 52, 310, 78));
-        r = SportScreen.tennis(lines, boxes, m);
-        assertTrue(r.found);
-        assertArrayEquals(new String[]{"AD", "40"}, r.points);
-        // The picture a game ahead of the feed: taken; further apart (another court, a misread): not.
-        r = SportScreen.tennis(Arrays.asList("KOVALENKO 6 4 0", "HARTWELL 4 2 0"),
-                Arrays.asList(new Rect(10, 10, 300, 40), new Rect(10, 50, 300, 80)), m);
-        assertTrue(r.found);
-        assertEquals(4, r.games[0]);
-        r = SportScreen.tennis(Arrays.asList("KOVALENKO 6 5 0", "HARTWELL 4 2 0"),
-                Arrays.asList(new Rect(10, 10, 300, 40), new Rect(10, 50, 300, 80)), m);
-        assertFalse(r.found);
-        // Points on one row only, a row not found, a points column that isn't one: not taken.
-        assertFalse(SportScreen.tennis(Arrays.asList("KOVALENKO 6 3 40", "HARTWELL 4 2"),
-                Arrays.asList(new Rect(10, 10, 300, 40), new Rect(10, 50, 300, 80)), m).found);
-        assertFalse(SportScreen.tennis(Arrays.asList("KOVALENKO 6 3 40"), Arrays.asList(new Rect(10, 10, 300, 40)), m).found);
-        assertFalse(SportScreen.tennis(Arrays.asList("KOVALENKO 6 3 45", "HARTWELL 4 2 15"),
-                Arrays.asList(new Rect(10, 10, 300, 40), new Rect(10, 50, 300, 80)), m).found);
-        // A tiebreak's count is its points.
-        SportBoard tb = tennis(new int[]{6, 6}, new int[]{4, 6});
-        r = SportScreen.tennis(Arrays.asList("KOVALENKO 6 6 5", "HARTWELL 4 6 3"),
-                Arrays.asList(new Rect(10, 10, 300, 40), new Rect(10, 50, 300, 80)), tb);
-        assertTrue(r.found);
-        assertArrayEquals(new String[]{"5", "3"}, r.points);
-        // Taken onto the feed's board.
-        SportOverlay.withScreen(m, SportScreen.tennis(Arrays.asList("KOVALENKO 6 4 15", "HARTWELL 4 2 0"),
-                Arrays.asList(new Rect(10, 10, 300, 40), new Rect(10, 50, 300, 80)), m));
-        assertEquals("15", m.a.points);
-        assertEquals(4, m.a.games[1]);
+        SportBoard shown = SportOverlay.truth(espn, r, 1_000L, 3_000L, -1);
+        assertEquals("15", shown.a.points);
+        assertEquals("30", shown.b.points);
+        assertArrayEquals(new int[]{3, 5}, shown.a.games);
+        // A game on in the picture before ESPN has it: the picture's.
+        TennisScreen.Reading on = TennisScreen.read(words("0", "0"), espn);
+        on.games = new int[][]{{3, 6}, {6, 1}};
+        assertArrayEquals(new int[]{3, 6}, SportOverlay.truth(espn, on, 1_000L, 2_000L, -1).a.games);
+        // Its reading older than FRESH_MS: ESPN's games, no points.
+        SportBoard stale = SportOverlay.truth(espn, r, 1_000L, 1_000L + SportOverlay.FRESH_MS + 1, -1);
+        assertEquals("", stale.a.points);
+        assertArrayEquals(new int[]{3, 5}, stale.a.games);
+        // The server given shows, fresh or not; none given: ESPN's (here none).
+        assertTrue(SportOverlay.truth(espn, r, 1_000L, 3_000L, 0).a.serving);
+        assertFalse(SportOverlay.truth(espn, r, 1_000L, 3_000L, 0).b.serving);
+        assertTrue(SportOverlay.truth(espn, r, 1_000L, 1_000L + SportOverlay.FRESH_MS + 1, 1).b.serving);
+        assertFalse(SportOverlay.truth(espn, r, 1_000L, 3_000L, -1).a.serving);
+        assertEquals(-1, SportOverlay.espnServer(espn));
+    }
+
+    @Test
+    public void theChannelsBoardIsFoundAndReadAgainWhereItIs() {
+        SportBoard espn = sabalenka();
+        TennisScreen.Reading r = TennisScreen.read(words("15", "30"), espn);
+        // Back to the picture's shares: the part's pixels times its scale, from its corner.
+        float[] box = SportOverlay.shares(r, 0.1f, 0.6f, 0.001f, 0.002f);
+        assertEquals(0.1f + r.l * 0.001f, box[0], 1e-6);
+        assertEquals(0.6f + r.t * 0.002f, box[1], 1e-6);
+        assertEquals(r.row * 0.002f, box[4], 1e-6);
+        // Read next: that box with a little round it, its rows scaled to read ROW_PX tall; not found, the bands in turn.
+        float[] at = {0.10f, 0.70f, 0.40f, 0.80f, 0.03f};
+        float[] next = SportOverlay.area(at, 0, 720);
+        assertEquals(0.055f, next[0], 1e-4);
+        assertEquals(0.685f, next[1], 1e-4);
+        assertEquals(0.445f, next[2], 1e-4);
+        assertEquals(0.815f, next[3], 1e-4);
+        assertEquals(SportOverlay.ROW_PX / (0.03f * 720), next[4], 1e-4);
+        assertArrayEquals(new float[]{0f, 0f, 0.62f, 0.36f, 0f}, SportOverlay.area(null, 0, 720), 0f);
+        assertArrayEquals(new float[]{0f, 0.64f, 0.62f, 1f, 0f}, SportOverlay.area(null, 1, 720), 0f);
+        // Our board moves with theirs only when theirs has moved, not for each reading's few pixels.
+        assertTrue(SportOverlay.moved(null, at));
+        assertFalse(SportOverlay.moved(at, new float[]{0.103f, 0.702f, 0.401f, 0.803f, 0.03f}));
+        assertTrue(SportOverlay.moved(at, new float[]{0.20f, 0.70f, 0.50f, 0.80f, 0.03f}));
+        assertTrue(SportOverlay.moved(at, new float[]{0.10f, 0.70f, 0.40f, 0.86f, 0.03f}));
+    }
+
+    @Test
+    public void theServerIsKeptSteady() {
+        SportOverlay.Serving s = new SportOverlay.Serving();
+        assertEquals(-1, s.now(0, -1));
+        s.seen(0, 1_000L);
+        assertEquals(0, s.now(1_000L, -1));
+        // The other once: kept; twice running: changed.
+        s.seen(1, 2_000L);
+        assertEquals(0, s.now(2_000L, -1));
+        s.seen(1, 3_000L);
+        assertEquals(1, s.now(3_000L, -1));
+        // Once, then the first again: no change.
+        s.seen(0, 4_000L);
+        s.seen(1, 5_000L);
+        assertEquals(1, s.now(5_000L, -1));
+        // Nothing marked: the last kept a while, then ESPN's, else none.
+        s.seen(-1, 6_000L);
+        assertEquals(1, s.now(5_000L + SportOverlay.Serving.KEEP_MS, -1));
+        assertEquals(0, s.now(5_000L + SportOverlay.Serving.KEEP_MS + 1, 0));
+        assertEquals(-1, s.now(5_000L + SportOverlay.Serving.KEEP_MS + 1, -1));
+    }
+
+    @Test
+    public void aSetOrAGameIsTakenOnceWhereverItStands() {
+        // Where a match stands: its sets done, then the set in play's games.
+        assertEquals(106L, SportOverlay.mark(sabalenka()));
+        assertEquals(107L, SportOverlay.mark(tennis(new int[]{3, 5}, new int[]{6, 2})));
+        assertEquals(200L, SportOverlay.mark(tennis(new int[]{3, 7, 0}, new int[]{6, 5, 0})));
+        assertTrue(SportOverlay.mark(tennis(new int[]{3, 7, 0}, new int[]{6, 5, 0})) > SportOverlay.mark(tennis(new int[]{3, 6}, new int[]{6, 5})));
+        // The tab: its first twenty seconds, between rounds, at the end.
+        SportBoard f = SportOverlay.sample(SportBoard.UFC, false);
+        assertTrue(SportOverlay.tabWanted(f, 5_000L));
+        assertFalse(SportOverlay.tabWanted(f, 60_000L));
+        f.resting = true;
+        assertTrue(SportOverlay.tabWanted(f, 60_000L));
+        assertTrue(SportOverlay.tabWanted(SportOverlay.sample(SportBoard.UFC, true), 60_000L));
     }
 
     @Test
@@ -91,8 +160,7 @@ public class SportOverlayTest {
         assertEquals("in", r1.state);
         assertEquals(1, r1.round);
         assertEquals("2:30", r1.clockLeft());
-        SportBoard rest = SportOverlay.boxingAt(box, bell, bell + 200_000L);
-        assertTrue(rest.resting);
+        assertTrue(SportOverlay.boxingAt(box, bell, bell + 200_000L).resting);
         SportBoard end = SportOverlay.boxingAt(box, bell, bell + 12 * 240_000L);
         assertEquals("post", end.state);
         assertEquals("End", end.method);
@@ -106,25 +174,6 @@ public class SportOverlayTest {
         SportBoard r2 = SportOverlay.boxingAt(box, between, bell + 200_000L);
         assertEquals(2, r2.round);
         assertFalse(r2.resting);
-    }
-
-    @Test
-    public void aGameWonIsNotASetOrTheMatch() {
-        SportBoard was = tennis(new int[]{6, 3}, new int[]{4, 2});
-        SportBoard game = tennis(new int[]{6, 4}, new int[]{4, 2});
-        assertTrue(SportOverlay.gameWon(was, game));
-        assertFalse(SportOverlay.gameWon(was, was.copy()));
-        SportBoard setUp = tennis(new int[]{5}, new int[]{4});
-        SportBoard set = tennis(new int[]{6, 0}, new int[]{4, 0});
-        assertFalse(SportOverlay.gameWon(setUp, set));
-        assertEquals("SET KOVALENKO", SportBoard.moment(setUp, set).words);
-        // The tab: its first twenty seconds, between rounds, at the end.
-        SportBoard f = SportOverlay.sample(SportBoard.UFC, false);
-        assertTrue(SportOverlay.tabWanted(f, 5_000L));
-        assertFalse(SportOverlay.tabWanted(f, 60_000L));
-        f.resting = true;
-        assertTrue(SportOverlay.tabWanted(f, 60_000L));
-        assertTrue(SportOverlay.tabWanted(SportOverlay.sample(SportBoard.UFC, true), 60_000L));
     }
 
     @Test

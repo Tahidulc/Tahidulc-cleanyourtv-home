@@ -109,6 +109,50 @@ final class SportOverlay {
     /** Tennis: the sets and games its moments last came for (each comes once, however the reading comes and goes). */
     private long fired = -1;
     private boolean firedOver;
+    /** Tennis: who serves, as the channel's own board marks it, kept steady (Serving). */
+    private final Serving serving = new Serving();
+
+    /**
+     * The server as the channel's board marks them, kept steady: another player only when the picture marks them twice
+     * running; nothing marked, the last kept KEEP_MS, then ESPN's (0, 1; -1 none).
+     */
+    static final class Serving {
+        static final long KEEP_MS = 20_000L;
+        private int server = -1, pending = -1, runs;
+        private long at;
+
+        /** The picture marks s (0 the first player, 1 the second, -1 none) at now. */
+        void seen(int s, long now) {
+            if (s < 0) return;
+            if (s == server || server < 0) {
+                server = s;
+                at = now;
+                pending = -1;
+                runs = 0;
+                return;
+            }
+            runs = s == pending ? runs + 1 : 1;
+            pending = s;
+            if (runs >= 2) {
+                server = s;
+                at = now;
+                pending = -1;
+                runs = 0;
+            }
+        }
+
+        /** The server to show at now: the picture's while it marked them within KEEP_MS, else ESPN's (espn: 0, 1, -1). */
+        int now(long now, int espn) {
+            return server >= 0 && now - at <= KEEP_MS ? server : espn;
+        }
+
+        void reset() {
+            server = -1;
+            pending = -1;
+            runs = 0;
+            at = 0;
+        }
+    }
 
     private final Map<String, Bitmap> pics = new HashMap<>();
     private Bitmap ufcLogo;
@@ -191,6 +235,7 @@ final class SportOverlay {
         misses = 0;
         fired = -1;
         firedOver = false;
+        serving.reset();
         hide();
     }
 
@@ -224,11 +269,12 @@ final class SportOverlay {
     }
 
     /**
-     * The words read off that part of the picture (in its pixels) and the way back to the picture's shares (x0 + x *
-     * sx, y0 + y * sy): the channel's own tennis scoreboard for the match shown, where it is. Not found: the box again
-     * until MISSES in a row, then the bands in turn.
+     * The words read off that part of the picture (in its pixels: part, the bitmap they were read from) and the way
+     * back to the picture's shares (x0 + x * sx, y0 + y * sy): the channel's own tennis scoreboard for the match shown,
+     * where it is, and who it marks as serving (its ball, off part's pixels). Not found: the box again until MISSES in
+     * a row, then the bands in turn.
      */
-    void screen(List<TennisScreen.Word> words, float x0, float y0, float sx, float sy) {
+    void screen(List<TennisScreen.Word> words, Bitmap part, float x0, float y0, float sx, float sy) {
         SportBoard p = picked;
         if (p == null || words == null) return;
         long now = System.currentTimeMillis();
@@ -237,6 +283,12 @@ final class SportOverlay {
         seen = sb.toString();
         TennisScreen.Reading r = TennisScreen.read(words, p);
         if (r.found) {
+            if (part != null && !part.isRecycled()) {
+                int w = part.getWidth(), h = part.getHeight();
+                int[] px = new int[w * h];
+                part.getPixels(px, 0, w, 0, 0, w, h);
+                serving.seen(TennisScreen.server(px, w, h, r), now);
+            }
             reading = r;
             readingAt = now;
             misses = 0;
@@ -345,6 +397,7 @@ final class SportOverlay {
                     reading = null;
                     fired = -1;
                     firedOver = false;
+                    serving.reset();
                 }
                 picked = p;
                 readAt = now;
@@ -403,7 +456,7 @@ final class SportOverlay {
             if (picked == null) return null;
             b = picked.at(readAt, now);
             if (b == picked) b = picked.copy();
-            if (sport == SportBoard.TENNIS) b = truth(b, reading, readingAt, now);
+            if (sport == SportBoard.TENNIS) b = truth(b, reading, readingAt, now, serving.now(now, espnServer(b)));
         }
         b.a.flag = pics.get(b.a.flagUrl);
         b.b.flag = pics.get(b.b.flagUrl);
@@ -437,16 +490,30 @@ final class SportOverlay {
     }
 
     /**
-     * Pure: tennis as the board shows it: the picture's (its games, its points, its server: TennisScreen.apply) while
-     * its last reading is no older than FRESH_MS; ESPN's games and no points after.
+     * Pure: tennis as the board shows it: the picture's (its games, its points: TennisScreen.apply) while its last
+     * reading is no older than FRESH_MS, ESPN's games and no points after; the server given (Serving.now: -1 ESPN's).
      */
-    static SportBoard truth(SportBoard espn, TennisScreen.Reading r, long readingAt, long now) {
+    static SportBoard truth(SportBoard espn, TennisScreen.Reading r, long readingAt, long now, int server) {
         if (espn == null) return null;
-        if (r != null && r.found && readingAt > 0 && now - readingAt <= FRESH_MS) return TennisScreen.apply(espn, r);
-        SportBoard b = espn.copy();
-        b.a.points = "";
-        b.b.points = "";
+        SportBoard b;
+        if (r != null && r.found && readingAt > 0 && now - readingAt <= FRESH_MS) {
+            r.server = server;
+            b = TennisScreen.apply(espn, r);
+        } else {
+            b = espn.copy();
+            b.a.points = "";
+            b.b.points = "";
+        }
+        if (server >= 0) {
+            b.a.serving = server == 0;
+            b.b.serving = server == 1;
+        }
         return b;
+    }
+
+    /** Pure: ESPN's server for a match (0, 1; -1: it has none, as for most). */
+    static int espnServer(SportBoard b) {
+        return b.a.serving && !b.b.serving ? 0 : b.b.serving && !b.a.serving ? 1 : -1;
     }
 
     /** Pure: where a tennis match stands, to tell a set or a game won once: its sets done, then the set in play's games. */
@@ -569,7 +636,10 @@ final class SportOverlay {
         int[] z = view.size();
         FrameLayout.LayoutParams lp = view.getLayoutParams() instanceof FrameLayout.LayoutParams
                 ? (FrameLayout.LayoutParams) view.getLayoutParams() : new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.START);
-        int x = Math.max(0, Math.min(l, rootW - Math.max(1, Math.min(z[0], rootW)))), y = Math.max(0, Math.min(t, rootH - Math.max(1, Math.min(z[1], rootH))));
+        // Kept on the screen by its body (its tab may go under the screen's foot: over a board at the picture's foot,
+        // ours stays exactly over theirs).
+        int body = Math.max(1, Math.round(z[1] - SportBug.tabHeight(u) - u * 0.08f));
+        int x = Math.max(0, Math.min(l, rootW - Math.max(1, Math.min(z[0], rootW)))), y = Math.max(0, Math.min(t, rootH - Math.min(body, rootH)));
         if (lp.leftMargin != x || lp.topMargin != y) {
             lp.leftMargin = x;
             lp.topMargin = y;
@@ -646,6 +716,7 @@ final class SportOverlay {
         reading = null;
         fired = -1;
         firedOver = false;
+        serving.reset();
         overSince = 0;
         tick();
         h.removeCallbacks(poll);

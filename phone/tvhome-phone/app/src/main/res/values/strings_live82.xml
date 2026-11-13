@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Opening on Live TV (MainActivity, LiveTvSettings). -->
+<resources>
+    <string name="live82_open_live">Open on Live TV</string>
+    <string name="live82_open_live_line">The app opens straight on Live TV, on the channel you were last watching. Turn it off to open on Home. A notification or link still opens where it points.</string>
+</resources>

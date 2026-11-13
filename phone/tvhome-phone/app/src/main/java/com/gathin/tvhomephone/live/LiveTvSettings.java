@@ -34,6 +34,15 @@ public final class LiveTvSettings {
     private static final int SOON_DAYS = 14;
     private static final int AMBER = 0xFFFFC93C;
 
+    /** Whether the app opens on Live TV (on until switched off) rather than Home. */
+    public static boolean openOnLive(Context c) {
+        return c.getSharedPreferences("start", Context.MODE_PRIVATE).getBoolean("open_live", true);
+    }
+
+    static void setOpenOnLive(Context c, boolean on) {
+        c.getSharedPreferences("start", Context.MODE_PRIVATE).edit().putBoolean("open_live", on).apply();
+    }
+
     public static View build(Fragment host, ViewGroup parent) {
         Context c = host.requireContext();
         Library lib = Library.get(c);
@@ -45,6 +54,12 @@ public final class LiveTvSettings {
         TextView body = Ui.text(c, c.getString(R.string.live_settings_body), 14, Ui.SOFT, false);
         body.setPadding(0, Ui.dp(c, 4), 0, Ui.dp(c, 12));
         col.addView(body);
+
+        // Open on Live TV: the app opens straight on it (the channel last watched); off, on Home.
+        BoardSettings.row(c, col, c.getString(R.string.live82_open_live), openOnLive(c), on -> setOpenOnLive(c, on));
+        TextView openLine = Ui.text(c, c.getString(R.string.live82_open_live_line), 13, Ui.DIM, false);
+        openLine.setPadding(0, 0, 0, Ui.dp(c, 12));
+        col.addView(openLine);
 
         // Use: all together, or one of them (only when there are two or more).
         TextView useLabel = Ui.text(c, c.getString(R.string.live_use), 13, Ui.DIM, true);
