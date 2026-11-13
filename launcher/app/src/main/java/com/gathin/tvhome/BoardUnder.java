@@ -17,24 +17,21 @@ import java.util.List;
 /**
  * A slim strip that slides down from under the scoreboard over the channel (BoardCover), in the board's own look
  * (BoardBug's StripLook: its ground, its words, its corners; under the Glass pill a pill of its own a little apart):
- * either the game's win chance as it stands (a bar in three parts, each club's share in its colour and the draw's in a
- * quiet grey, each with its figure, the parts growing and shrinking as the game goes), or a penalty shootout's kicks
- * (a row a club: its crest, its three letters, a dot a kick, green with a tick for one in, red with a cross for one
- * missed, an empty ring for one to come, the tally at the end). A kick scored lands with the family's swoosh: its dot
- * pops in from small past its size, its green sweeping round, its tick drawn in, a soft ring fading out from it, the
- * swoosh's loudest moment on the pop; one missed or saved has its red cross drawn in with a small shake, and no sound.
- * Small, so the picture stays the picture: no taller than the board.
+ * a penalty shootout's kicks (a row a club: its crest, its three letters, a dot a kick, green with a tick for one in,
+ * red with a cross for one missed, an empty ring for one to come, the tally at the end). A kick scored lands with the
+ * family's swoosh: its dot pops in from small past its size, its green sweeping round, its tick drawn in, a soft ring
+ * fading out from it, the swoosh's loudest moment on the pop; one missed or saved has its red cross drawn in with a
+ * small shake, and no sound. Small, so the picture stays the picture: no taller than the board.
  */
 final class BoardUnder extends View {
-    static final int NONE = 0, WIN = 1, PENS = 2;
-    /** Its height for each, in board heights (the room under the board for it: ROOM). */
-    static final float WIN_H = 0.62f, PENS_H = 0.95f, ROOM = 1.1f;
-    private static final long SHARE_MS = 900L;
+    static final int NONE = 0, PENS = 1;
+    /** Its height, in board heights (the room under the board for it: ROOM). */
+    static final float PENS_H = 0.95f, ROOM = 1.1f;
     /** A kick scored's landing, its pop that far in (the swoosh's loudest moment on it); a kick missed's. */
     static final long SCORED_MS = 760L, SCORED_POP_MS = 300L, MISSED_MS = 560L;
     /** The swoosh a kick scored lands with (the family's goal sound). */
     static final String SWOOSH = "goal-" + com.gathin.broadcast.Sfx.GOAL_DEFAULT;
-    static final int IN = 0xFF2DB560, MISSED = 0xFFE04848, DRAW_DARK = 0xFF5A6278, DRAW_LIGHT = 0xFFB8BECC;
+    static final int IN = 0xFF2DB560, MISSED = 0xFFE04848;
 
     private BoardBug.StripLook look = new BoardBug.StripLook();
     /** The board's height; how far its top is under the board; the gap under a pill. */
@@ -43,19 +40,15 @@ final class BoardUnder extends View {
     private int mode = NONE;
     /** 0 under the board, 1 all the way down. */
     private float out;
-    private ValueAnimator sliding, sharing, popping;
+    private ValueAnimator sliding, popping;
     private Runnable after;
     private boolean goingIn;
 
-    // The win chance: each part's share drawn now {home, draw, away}, the figures, the clubs' colours.
-    private final float[] shares = {1 / 3f, 1 / 3f, 1 / 3f};
-    private int[] pct = {33, 34, 33};
-    private int homeColour = 0xFFD8323B, awayColour = 0xFF4F8BFF;
-
-    // The shootout: each side's kicks shown, the clubs' letters and crests, the newest kick's place and its pop.
+    // The shootout: each side's kicks shown, the clubs' letters, crests and colours, the newest kick's place and its pop.
     private final List<Boolean> homeKicks = new ArrayList<>(), awayKicks = new ArrayList<>();
     private String homeCode = "", awayCode = "";
     private Bitmap homeCrest, awayCrest;
+    private int homeColour = 0xFFD8323B, awayColour = 0xFF4F8BFF;
     private boolean newHome, newScored;
     private int newAt = -1;
     /** The newest kick's landing, 0 to 1 (below 0: still to land, its empty ring showing). */
@@ -96,50 +89,9 @@ final class BoardUnder extends View {
         return getVisibility() == VISIBLE;
     }
 
-    /** Pure: the strip's own height (under what is hidden) for a mode, a board unit high. */
+    /** Pure: the strip's own height (under what is hidden) for a mode, a board unit high (none for NONE). */
     static int heightFor(int mode, float unit) {
-        return Math.round(unit * (mode == PENS ? PENS_H : WIN_H));
-    }
-
-    // ---- the win chance --------------------------------------------------------------------------------------------
-
-    /**
-     * The win chance {home, draw, away} in whole percentages, the clubs' colours (as the board has them): down from under
-     * the board in its parts, or, already down, its parts growing and shrinking to these.
-     */
-    void win(int[] p, int home, int away) {
-        if (p == null || p.length < 3) return;
-        homeColour = 0xFF000000 | home;
-        awayColour = 0xFF000000 | away;
-        boolean same = mode == WIN && isOut() && pct[0] == p[0] && pct[1] == p[1] && pct[2] == p[2];
-        pct = p.clone();
-        if (same) return;
-        float[] to = {p[0] / 100f, p[1] / 100f, p[2] / 100f};
-        if (mode != WIN || !isOut()) {
-            mode = WIN;
-            // Coming down even, then each part to its share.
-            shares[0] = shares[1] = shares[2] = 1 / 3f;
-            slideDown();
-            shareTo(to, BoardSide.SLIDE_MS);
-        } else {
-            shareTo(to, 0);
-        }
-    }
-
-    private void shareTo(float[] to, long delay) {
-        if (sharing != null) sharing.cancel();
-        float[] from = shares.clone();
-        ValueAnimator va = ValueAnimator.ofFloat(0f, 1f);
-        va.setDuration(SHARE_MS);
-        va.setStartDelay(delay);
-        va.setInterpolator(new android.view.animation.DecelerateInterpolator(1.6f));
-        va.addUpdateListener(a -> {
-            float t = (float) a.getAnimatedValue();
-            for (int i = 0; i < 3; i++) shares[i] = from[i] + (to[i] - from[i]) * t;
-            invalidate();
-        });
-        sharing = va;
-        va.start();
+        return mode == PENS ? Math.round(unit * PENS_H) : 0;
     }
 
     // ---- the shootout ------------------------------------------------------------------------------------------------
@@ -344,7 +296,6 @@ final class BoardUnder extends View {
     }
 
     private void stopAll() {
-        if (sharing != null) sharing.cancel();
         if (popping != null) popping.cancel();
         removeCallbacks(swooshRun);
         pop = 1f;
@@ -409,56 +360,12 @@ final class BoardUnder extends View {
         cv.drawPath(shape, fill);
         cv.save();
         cv.clipPath(shape);
-        if (mode == WIN) drawWin(cv, w, contentTop, h);
-        else drawPens(cv, w, contentTop, h);
+        drawPens(cv, w, contentTop, h);
         cv.restore();
         cv.restore();
     }
 
-    private void drawWin(Canvas cv, int w, float y, float h) {
-        float x = pad(), end = w - pad();
-        // Its name, small and quiet, then the bar.
-        text.setTextSize(unit * 0.22f);
-        text.setLetterSpacing(0.12f);
-        String name = "WIN CHANCE";
-        float nw = text.measureText(name);
-        boolean named = end - x - nw > unit * 3.2f;
-        if (named) {
-            words(cv, name, x, y, h, unit * 0.22f, 0.12f, look.dim, Paint.Align.LEFT);
-            x += nw + unit * 0.24f;
-        }
-        float bh = Math.min(h * 0.66f, unit * 0.44f), by = y + (h - bh) / 2f, gapX = Math.max(1.5f, unit * 0.04f);
-        float room = end - x - 2 * gapX, br = Math.min(bh / 2f, look.apart ? bh / 2f : Math.max(2f, bh * look.round * 1.6f));
-        int[] colours = {barColour(homeColour), look.light ? DRAW_LIGHT : DRAW_DARK, barColour(awayColour)};
-        float sum = Math.max(0.001f, shares[0] + shares[1] + shares[2]);
-        float px = x;
-        for (int i = 0; i < 3; i++) {
-            float pw = room * shares[i] / sum;
-            if (pw <= 0.5f) {
-                px += gapX;
-                continue;
-            }
-            fill.setColor(colours[i]);
-            r.set(px, by, px + pw, by + bh);
-            // The outer ends round, the joins square.
-            float lr = i == 0 ? br : 0f, rr = i == 2 ? br : 0f;
-            corners[0] = corners[1] = corners[6] = corners[7] = lr;
-            corners[2] = corners[3] = corners[4] = corners[5] = rr;
-            shape.reset();
-            shape.addRoundRect(r, corners, Path.Direction.CW);
-            cv.drawPath(shape, fill);
-            String fig = pct[i] + "%";
-            float fs = Math.min(bh * 0.74f, unit * 0.3f);
-            text.setTextSize(fs);
-            text.setLetterSpacing(0f);
-            if (text.measureText(fig) + unit * 0.16f <= pw) {
-                words(cv, fig, px + pw / 2f, by, bh, fs, 0f, BoardBug.ink(colours[i]), Paint.Align.CENTER);
-            }
-            px += pw + gapX;
-        }
-    }
-
-    /** A club's colour on the bar: as on the board for a dark ground (a very dark one lightened), darkened for a light one. */
+    /** A club's colour on the strip: as on the board for a dark ground (a very dark one lightened), darkened for a light one. */
     private int barColour(int c) {
         return look.light ? BoardDrop.legible(c, true) : BoardStats.visible(c);
     }

@@ -270,15 +270,11 @@ final class BoardPanel extends SportPanel {
         subs.words = () -> BoardCover.subsOn(c) ? "Who comes on, with his picture, and who goes off" : "Off";
         subs.ok = () -> BoardCover.setSubsOn(c, !BoardCover.subsOn(c));
         add(fot, subs);
-        Row winChance = row("Win chance under the board", true);
-        winChance.on = () -> BoardCover.winChanceOn(c);
-        winChance.words = () -> BoardCover.winChanceOn(c) ? "Each side's chance and the draw's as the game goes, and how a goal moves it" : "Off";
-        winChance.ok = () -> BoardCover.setWinChanceOn(c, !BoardCover.winChanceOn(c));
         Row pens = row("Penalty shootout tracker", true);
         pens.on = () -> BoardCover.pensOn(c);
         pens.words = () -> BoardCover.pensOn(c) ? "Every kick under the board as it is taken: in, missed, still to come" : "Off";
         pens.ok = () -> BoardCover.setPensOn(c, !BoardCover.pensOn(c));
-        add(winChance, pens);
+        add(pens);
         Row milestones = row("Player milestones", true);
         milestones.on = () -> BoardCover.milestonesOn(c);
         milestones.words = () -> BoardCover.milestonesOn(c) ? "A goal's place in his season, a yellow card that brings a ban near" : "Off";

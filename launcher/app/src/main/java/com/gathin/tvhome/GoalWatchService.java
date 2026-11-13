@@ -1732,10 +1732,6 @@ public class GoalWatchService extends Service {
             // adb only: the board over whatever is on and a made-up shootout under it, kick by kick, into sudden death
             main.post(() -> BoardCover.testPens(this));
         }
-        if (intent != null && intent.getBooleanExtra("test_board_winchance", false)) {
-            // adb only: the board over whatever is on, its win chance under it, a goal moving it and the WIN CHANCE alert
-            main.post(() -> BoardCover.testWinChance(this));
-        }
         if (intent != null && intent.getBooleanExtra("test_board_milestones", false)) {
             // adb only: the board over whatever is on, a goal tagged "3rd of the season", then a yellow one short of a ban
             main.post(() -> BoardCover.testMilestones(this));
