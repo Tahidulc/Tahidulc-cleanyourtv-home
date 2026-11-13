@@ -183,6 +183,8 @@ public final class BoardSettings {
         row(c, col, c.getString(R.string.live69_score_swish), PlayerIntro.scoreSwishOn(c), on -> PlayerIntro.setScoreSwishOn(c, on));
         row(c, col, c.getString(R.string.live68_logo_away), ScoreBoard.logoAway(c), on -> ScoreBoard.setLogoAway(c, on));
         row(c, col, c.getString(R.string.live_var_explained), ScoreBoard.varExplained(c), on -> ScoreBoard.setVarExplained(c, on));
+        row(c, col, c.getString(R.string.live_bug_replays), ScoreBoard.awayInReplays(c), on -> ScoreBoard.setAwayInReplays(c, on));
+        row(c, col, c.getString(R.string.live_bug_pop_outs), ScoreBoard.coverPopOuts(c), on -> ScoreBoard.setCoverPopOuts(c, on));
         styles(c, col, c.getString(R.string.live35_goal_sound), com.gathin.broadcast.Sfx.GOALS, com.gathin.broadcast.Sfx.GOAL_NAMES,
                 PlayerIntro.goalSound(c), key -> PlayerIntro.setGoalSound(c, key));
         row(c, col, c.getString(R.string.live21_logo_comp), ScoreBoard.logoComp(c), on -> ScoreBoard.setLogoComp(c, on));

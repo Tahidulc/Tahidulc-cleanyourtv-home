@@ -314,6 +314,16 @@ public final class ScoreBoard implements LiveAlerts.Listener {
     /** Your logo over the channel's popping out while the channel's is gone (its adverts) and back with it: on unless off. */
     static boolean logoAway(Context c) { return prefs(c).getBoolean("logo_away", true); }
 
+    /** The board away in the channel's replays (its own scoreboard gone), back for live play: on unless switched off. */
+    static boolean awayInReplays(Context c) { return prefs(c).getBoolean("replays_away", true); }
+
+    static void setAwayInReplays(Context c, boolean v) { prefs(c).edit().putBoolean("replays_away", v).apply(); }
+
+    /** What grows out of the channel's own scoreboard covered where it is, in the board's look: on unless switched off. */
+    static boolean coverPopOuts(Context c) { return prefs(c).getBoolean("pop_outs", true); }
+
+    static void setCoverPopOuts(Context c, boolean v) { prefs(c).edit().putBoolean("pop_outs", v).apply(); }
+
     static void setLogoAway(Context c, boolean v) { prefs(c).edit().putBoolean("logo_away", v).apply(); }
 
     /** VAR explained: the check out of the board, then its decision with a WHY under it: on unless switched off. */
@@ -910,7 +920,9 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         // A test from the player's options with nothing on the board: its made-up game, until what it put out is back in.
         if (l == null && testing(now)) l = look(testGame, null);
         if (l != null && !l.f1 && now < addedUntil) testAdded(l, now);
-        if (l == null || hidden) {
+        // A replay on the channel (its own scoreboard gone, BugCover): away the same way, never in its own goal moment.
+        boolean replay = replayAway && l != null && !l.f1 && bug.bandLeft(now) <= 0;
+        if (l == null || hidden || replay) {
             // Away as a broadcaster's goes: what is out beside it back in, wiped back into its first block, closed to a line.
             under.away();
             if (bug.getVisibility() == View.VISIBLE && !bug.closing()) {
@@ -1768,6 +1780,22 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         draw(System.currentTimeMillis());
     }
 
+    /** The channel's own scoreboard gone (a replay, BugCover): the board away as a broadcaster's goes, back with it. */
+    private boolean replayAway;
+
+    void replay(boolean away) {
+        if (away == replayAway) return;
+        replayAway = away;
+        draw(System.currentTimeMillis());
+        // Back for live play: what waited comes out.
+        if (!away && !drops.isEmpty()) h.post(nextDrop);
+    }
+
+    /** Whether the board is away in a replay now. */
+    boolean replayAway() {
+        return replayAway;
+    }
+
     void preview(boolean on) {
         preview = on;
         draw(System.currentTimeMillis());
@@ -2289,6 +2317,11 @@ public final class ScoreBoard implements LiveAlerts.Listener {
             return;
         }
         dropping = true;
+        // In a replay (the board away): the alert waits for live play.
+        if (replayAway) {
+            h.postDelayed(nextDrop, 1000);
+            return;
+        }
         // The stats back in beside the board first, the alert coming out in their place.
         if (stats.isOut()) {
             stats.fold(() -> h.post(nextDrop));

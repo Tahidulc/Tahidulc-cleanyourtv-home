@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="live_bug_replays">Away in replays: the scoreboard goes as the channel\'s does for a replay, and comes back with it for live play</string>
+    <string name="live_bug_pop_outs">Cover the channel\'s pop-outs: anything coming out of the channel\'s scoreboard is covered where it is, in your board\'s look</string>
+</resources>

@@ -119,6 +119,12 @@ final class ScoreOverlay implements ScoreBoard.Source {
     /** The classic kick-off pop-up and line-ups over the picture (PlayerIntro). */
     private final PlayerIntro intro;
 
+    /** The channel's own scoreboard watched under the board (BugCover): away in replays, plates over what grows out of it. */
+    private final BugCover bugCover;
+    private final BugPlates plates;
+    /** The board's place on the root as last laid out {x, y, w, h}; null before (or in the small window). */
+    private int[] boardRoot;
+
     private final Runnable look = this::look;
     private final Runnable readClock = this::readClock;
     private final Runnable readScreen = this::readScreen;
@@ -163,6 +169,54 @@ final class ScoreOverlay implements ScoreBoard.Source {
         // The fill just under the cover, over the whole picture (it draws only the logo's strokes, where they are).
         root.addView(fill, root.indexOfChild(cover), new FrameLayout.LayoutParams(-1, -1));
         root.addView(board.view, Math.min(3, root.getChildCount()), new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.START));
+        // The plates over what grows out of the channel's own scoreboard: just under the board, so what slides out of
+        // it is always over them.
+        plates = new BugPlates(a);
+        root.addView(plates, root.indexOfChild(board.view), new FrameLayout.LayoutParams(-1, -1));
+        bugCover = new BugCover(a, new BugCover.Host() {
+            @Override public boolean watching() {
+                if (!started || inPip || editing || carrying || sampler == null || !board.channelGame()) return false;
+                Game g = ScoreOverlay.this.host.game();
+                if (g == null || g.state != Game.LIVE || g.halftime) return false;
+                return board.replayAway() || board.bug.getVisibility() == View.VISIBLE;
+            }
+
+            @Override public int[] videoPixels() {
+                return video.videoPixels();
+            }
+
+            @Override public int[] boardInStream() {
+                int[] b = boardRoot, vp = video.videoPixels();
+                if (b == null || vp[0] <= 0 || vp[1] <= 0 || pfw <= 1 || pfh <= 1) return null;
+                float kx = vp[0] / pfw, ky = vp[1] / pfh;
+                int x0 = Math.max(0, Math.round((b[0] - pfx) * kx)), y0 = Math.max(0, Math.round((b[1] - pfy) * ky));
+                int x1 = Math.min(vp[0], Math.round((b[0] + b[2] - pfx) * kx)), y1 = Math.min(vp[1], Math.round((b[1] + b[3] - pfy) * ky));
+                return x1 - x0 < 4 || y1 - y0 < 4 ? null : new int[]{x0, y0, x1 - x0, y1 - y0};
+            }
+
+            @Override public int[] bugInStream() {
+                BugFinder.Box bx = box;
+                int[] vp = video.videoPixels();
+                if (bx == null || vp[0] <= 0 || vp[1] <= 0) return null;
+                return new int[]{Math.round(bx.left * vp[0]), Math.round(bx.top * vp[1]), Math.round(bx.right * vp[0]), Math.round(bx.bottom * vp[1])};
+            }
+
+            @Override public String channelKey() {
+                return chKey();
+            }
+
+            @Override public boolean copyPart(android.graphics.Rect src, Bitmap into, FrameSampler.Got got) {
+                return sampler != null && sampler.copyPart(video.surface(), src, into, got);
+            }
+
+            @Override public void away(boolean on) {
+                board.replay(on);
+            }
+
+            @Override public void plates(java.util.List<int[]> rects, java.util.List<String> words) {
+                showPlates(rects, words);
+            }
+        });
         guard = new BurnGuard(a, 2f, new View[]{board.view, cover}, new BurnGuard.Dims[]{board.bug, cover});
         board.changed = guard::poke;
         handles(board.bug, true);
@@ -394,10 +448,37 @@ final class ScoreOverlay implements ScoreBoard.Source {
         if (sampler == null) sampler = new FrameSampler();
         h.postDelayed(look, 4000);
         place();
+        bugCover.start();
+    }
+
+    /**
+     * The plates over what grows out of the channel's own scoreboard (BugCover): each {l, t, r, b} in the stream's
+     * pixels, laid on the picture where it is, in the board's look; only while the board is up and still.
+     */
+    private void showPlates(java.util.List<int[]> rects, java.util.List<String> words) {
+        int[] vp = video.videoPixels();
+        boolean show = started && !inPip && !editing && board.bug.getVisibility() == View.VISIBLE && !board.bug.closing()
+                && vp[0] > 0 && vp[1] > 0 && pfw > 1 && pfh > 1;
+        java.util.List<android.graphics.RectF> rs = new java.util.ArrayList<>();
+        java.util.List<String> ws = new java.util.ArrayList<>();
+        if (show) {
+            float sx = pfw / vp[0], sy = pfh / vp[1];
+            for (int i = 0; i < rects.size(); i++) {
+                int[] r = rects.get(i);
+                rs.add(new android.graphics.RectF(pfx + r[0] * sx, pfy + r[1] * sy, pfx + r[2] * sx, pfy + r[3] * sy));
+                ws.add(words.get(i));
+            }
+        }
+        int[] b = boardRoot;
+        android.graphics.RectF br = b == null ? null : new android.graphics.RectF(b[0], b[1], b[0] + b[2], b[1] + b[3]);
+        float bh = b == null ? 30 * a.getResources().getDisplayMetrics().density : b[3];
+        plates.set(rs, ws, br, board.bug.stripLook(), bh);
     }
 
     void stop() {
         if (editing) endAdjust(true);
+        bugCover.stop();
+        plates.clear();
         intro.stop();
         endAdBreak();
         started = false;
@@ -901,6 +982,8 @@ final class ScoreOverlay implements ScoreBoard.Source {
             if (level && cp.leftMargin + cp.width <= boardLeft) roomL = Math.min(roomL, boardLeft - (cp.leftMargin + cp.width) - margin);
         }
         board.room(inPip ? 0 : roomL, inPip ? 0 : roomR, inPip ? 0 : boardTop, inPip ? 0 : roomDown);
+        // The board's place, for the watch on the channel's own scoreboard under it (BugCover).
+        boardRoot = inPip ? null : new int[]{boardLeft, boardTop, bw, bh};
         int vl = boardLeft - board.boardDx(), vt = boardTop - board.boardDy();
         if (lp.leftMargin != vl || lp.topMargin != vt) {
             lp.leftMargin = vl;
