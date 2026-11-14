@@ -518,3 +518,5 @@ The pop-up after a goal in the player (4.84), and at kick-off and the second hal
 The pop-up slower and up longer (4.85): it comes in and goes at two-thirds speed and stays up two and a half seconds more, its sounds moved to match; the circles turn as the Bolton v Chelsea recording has them (in turned towards the middle with the coin's edge showing, then face on, turning in again as they meet at the end); the competition's box is black with its logo and writing in white.
 
 The competition on the pop-up without a box of its own (4.86): its logo and name sit straight on the pop-up's tab, inside it; and the circles turn clearly but gently from left to right as the pop-up comes in, seen in perspective (the near side taller, the coin's edge showing), then settle face on.
+
+Season intros (4.87): before a Premier League, LaLiga, Serie A, Bundesliga or Ligue 1 game, every club of the season in a scene of its own to music made for it, then Whitebrook Road Sports and the fixture: over an ad break from 90 to 6 minutes before kick-off, else as the game's intro. Settings, Intro: Season intros.
