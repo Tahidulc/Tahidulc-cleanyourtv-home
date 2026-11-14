@@ -66,6 +66,8 @@ final class DeliveryLink {
     private String code;
     private long codeAt;
     private int attempts;
+    /** The request's socket when handle() gave it to a thread of its own (PhoneShelf): not closed by serve(). */
+    private Socket handedOn;
 
     DeliveryLink(Context context, Sink sink) {
         this.context = context.getApplicationContext();
@@ -98,12 +100,18 @@ final class DeliveryLink {
         }
         register();
         while (server != null && !server.isClosed()) {
-            try (Socket s = server.accept()) {
+            Socket s = null;
+            try {
+                s = server.accept();
                 s.setSoTimeout(5_000);
-                if (!homeAddress(s.getInetAddress())) continue;
-                handle(s);
+                handedOn = null;
+                if (homeAddress(s.getInetAddress())) handle(s);
             } catch (Exception ignored) {
                 // one bad request; keep listening
+            } finally {
+                // A phone fetching Homefield's update has its socket on a thread of its own (PhoneShelf), which closes it.
+                if (s != null && s != handedOn) try { s.close(); } catch (Exception ignored) { }
+                handedOn = null;
             }
         }
     }
@@ -123,7 +131,7 @@ final class DeliveryLink {
         String[] parts = request.split(" ");
         String method = parts.length > 0 ? parts[0] : "", path = parts.length > 1 ? parts[1] : "";
         long length = 0;
-        String token = null, fileName = null;
+        String token = null, fileName = null, range = null;
         for (String h; (h = line(in)) != null && !h.isEmpty(); ) {
             int colon = h.indexOf(':');
             if (colon < 0) continue;
@@ -131,6 +139,14 @@ final class DeliveryLink {
             if (name.equals("content-length")) length = Long.parseLong(value);
             if (name.equals("x-token")) token = value;
             if (name.equals("x-name")) fileName = value;
+            if (name.equals("range")) range = value;
+        }
+        // Homefield's newest version kept here for the phones and tablets (PhoneShelf): for a paired phone, or over ADB
+        // (its port forward reaches the link from the TV itself).
+        if (method.equals("GET") && path.startsWith("/phone/")) {
+            if (!paired(token) && !s.getInetAddress().isLoopbackAddress()) { reply(s, 401, "{\"error\":\"not paired\"}"); return; }
+            if (PhoneShelf.serve(context, s, path.substring("/phone/".length()), range)) handedOn = s;
+            return;
         }
         // The family's own video for the matchday intro, from a paired phone: streamed straight to a file (IntroVideo).
         if (method.equals("POST") && (path.equals("/intro-video") || path.equals("/intro-video/clear"))) {
@@ -379,11 +395,11 @@ final class DeliveryLink {
         return out.toString("UTF-8");
     }
 
-    private static void reply(Socket s, int status, String body) throws Exception {
+    static void reply(Socket s, int status, String body) throws Exception {
         reply(s, status, "application/json", body);
     }
 
-    private static void reply(Socket s, int status, String type, String body) throws Exception {
+    static void reply(Socket s, int status, String type, String body) throws Exception {
         byte[] b = body.getBytes(StandardCharsets.UTF_8);
         OutputStream out = s.getOutputStream();
         out.write(("HTTP/1.1 " + status + " OK\r\nContent-Type: " + type + "\r\nContent-Length: " + b.length

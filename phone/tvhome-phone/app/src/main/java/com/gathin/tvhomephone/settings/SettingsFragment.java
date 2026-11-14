@@ -6,16 +6,12 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
-import android.widget.TextView;
 
 import androidx.fragment.app.Fragment;
 
-import com.gathin.tvhomephone.BuildConfig;
-import com.gathin.tvhomephone.R;
-
 /**
  * Settings: one scrolling page of each part's own section (the TVs and sync, the alerts and clubs, Live TV's playlist,
- * the films' subtitles), then the version.
+ * the films' subtitles), then the app's own updates (its version, and the newer one the TVs have).
  */
 public class SettingsFragment extends Fragment {
     /** Set before Settings opens from a playlist's notification: scrolled down to Live TV's playlists once. */
@@ -39,11 +35,8 @@ public class SettingsFragment extends Fragment {
             toPlaylists = false;
             scroll.post(() -> scroll.smoothScrollTo(0, live.getTop()));
         }
-        TextView v = new TextView(requireContext());
-        v.setText(getString(R.string.app_name) + " " + BuildConfig.VERSION_NAME);
-        v.setTextColor(requireContext().getColor(R.color.text_dim));
-        v.setPadding(0, pad, 0, 0);
-        col.addView(v);
+        // Last, in place of the version line: this version and the newer one the TVs have, to update to here.
+        col.addView(com.gathin.tvhomephone.update.UpdateSettings.build(this));
         return scroll;
     }
 }

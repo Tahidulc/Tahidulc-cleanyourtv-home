@@ -6,7 +6,7 @@ import androidx.annotation.NonNull;
 import androidx.work.Worker;
 import androidx.work.WorkerParameters;
 
-/** Every 15 minutes (WorkManager): a sync with every paired TV, the phone asleep or not. */
+/** Every 15 minutes (WorkManager): a sync with every paired TV, the phone asleep or not; and a look for app updates. */
 public class SyncWorker extends Worker {
     public SyncWorker(@NonNull Context c, @NonNull WorkerParameters p) {
         super(c, p);
@@ -14,6 +14,12 @@ public class SyncWorker extends Worker {
 
     @NonNull @Override public Result doWork() {
         Syncer.syncAll(getApplicationContext(), false);
+        try {
+            // Homefield's own updates: the TVs looked at every few hours, a newer version said once.
+            com.gathin.tvhomephone.update.AppUpdate.background(getApplicationContext());
+        } catch (RuntimeException e) {
+            android.util.Log.w("TvHome", "update check", e);
+        }
         return Result.success();
     }
 }

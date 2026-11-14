@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Homefield's own updates, from the family's TVs (update.AppUpdate). -->
+    <string name="update_channel_ready">App updates</string>
+    <string name="update_channel_ready_about">A new version of Homefield ready on your TVs</string>
+    <string name="update_channel_done">Homefield updated</string>
+    <string name="update_channel_done_about">Says when Homefield has updated itself</string>
+</resources>

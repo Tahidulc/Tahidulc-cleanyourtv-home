@@ -46,3 +46,25 @@ call `/sync` on another TV without a token only from an address it knows as one 
 
 The phone syncs with every paired TV when it opens, after each change it makes, and every 15 minutes (WorkManager).
 A TV syncs with the other TVs ten seconds after a local change and every ten minutes.
+
+## Homefield's own updates (GET, from launcher 5.16)
+
+Each TV keeps the newest Homefield for the phones and tablets (PhoneShelf), in the launcher's own folder
+`/sdcard/Android/data/com.gathin.tvhome/files/phone/`, put there over ADB. Both calls carry `X-Token` (or come from the
+TV itself, over ADB's port forward):
+
+- `GET /phone/update.json` → `{"code", "name", "notes", "file", "size", "sha256", "patches": [{"from", "file",
+  "bytes"}]}`: the version kept (its version code and name, a line on what is new), the whole APK (its file name,
+  length and SHA-256) and what changed against recent versions (launcher/update/mkpatch.py, one per version code
+  `from`). 404 when nothing is kept.
+- `GET /phone/<file>` → the file, `Range: bytes=N-` answered with 206 so a broken download picks up where it stopped;
+  503 while two phones are already fetching.
+
+The app (update/AppUpdate) asks its paired TVs when it opens (at most every half hour) and from the 15-minute sync
+(every three hours), fetches the patch for its own version when there is one (else the whole APK), puts the new APK
+together against the one installed, checks its length and SHA-256 and installs it through Android's PackageInstaller
+(on Android 12 and later, once Homefield may install apps, without a question).
+
+To put a new version on a TV: make the patches with `mkpatch.py OLD.apk NEW.apk Homefield-<old code>-<new code>.patch`
+(it prints the new APK's SHA-256), write update.json, then `adb push` the APK and patches into that folder and
+update.json last. The launcher makes the folder when it starts, so it can read what ADB puts there.

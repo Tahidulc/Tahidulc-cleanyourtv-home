@@ -148,6 +148,8 @@ final class Updater {
      */
     static void started(Context c) {
         dir(c);
+        // Homefield's shelf too, for the phones' own updates (PhoneShelf): made here so what ADB puts there is ours to read.
+        PhoneShelf.dir(c);
         SharedPreferences p = prefs(c);
         int to = p.getInt("to", 0);
         if (to > 0) {

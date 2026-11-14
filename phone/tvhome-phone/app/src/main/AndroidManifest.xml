@@ -18,6 +18,10 @@
          watcher start from the background on Android 12 and later. -->
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <!-- Homefield's own updates, from the family's TVs (update.AppUpdate): a new version of itself installed, and on
+         Android 12 and later, once Homefield may install apps, without Android asking again each time. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <uses-permission android:name="android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION" />
 
     <!-- The streaming apps a title can be opened in (Watch: the licensed app on the phone that carries it, or its store). -->
     <queries>
@@ -109,6 +113,14 @@
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/club_widget_info" />
+        </receiver>
+
+        <!-- Homefield's own updates: Android's installer's word on one, and the new version saying it is in. -->
+        <receiver android:name=".update.InstallStatus" android:exported="false" />
+        <receiver android:name=".update.Updated" android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
         </receiver>
 
         <receiver android:name=".sports.BootReceiver" android:exported="false">

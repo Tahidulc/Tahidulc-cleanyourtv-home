@@ -21,7 +21,7 @@ public class MainActivity extends AppCompatActivity {
     /** When it last left the screen (not turned on its side), elapsed-time ms; 0 while it is here. */
     private long awayAt;
     /** An intent's extra: what to open (a notification's tap): OPEN_PLAYLISTS, Settings at Live TV's playlists. */
-    public static final String EXTRA_OPEN = "open", OPEN_PLAYLISTS = "playlists", OPEN_LIVE = "live";
+    public static final String EXTRA_OPEN = "open", OPEN_PLAYLISTS = "playlists", OPEN_LIVE = "live", OPEN_UPDATE = "update";
     private BottomNavigationView tabs;
 
     @Override protected void onCreate(Bundle state) {
@@ -56,6 +56,8 @@ public class MainActivity extends AppCompatActivity {
         }
         if (OPEN_LIVE.equals(getIntent().getStringExtra(EXTRA_OPEN))) start = R.id.tab_live;
         tabs.setSelectedItemId(start);
+        // The "Homefield X is ready" note tapped: its question (Update or Later).
+        if (state == null && OPEN_UPDATE.equals(getIntent().getStringExtra(EXTRA_OPEN))) com.gathin.tvhomephone.update.AppUpdate.ask(this, true);
         if (Build.VERSION.SDK_INT >= 33) requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"}, 1);
         // Turned on its side with rotation on (the page made again): a picture playing small goes full screen.
         if (state != null) com.gathin.tvhomephone.live.SideFull.remade(this, state.getBoolean(UPRIGHT, true));
@@ -67,6 +69,8 @@ public class MainActivity extends AppCompatActivity {
     @Override protected void onResume() {
         super.onResume();
         com.gathin.tvhomephone.live.SideFull.watch(this, true);
+        // Back from letting Homefield install its own updates: the update it was starting goes on.
+        com.gathin.tvhomephone.update.AppUpdate.resumed(this);
     }
 
     @Override protected void onPause() {
@@ -77,6 +81,8 @@ public class MainActivity extends AppCompatActivity {
     /** Back on the screen after a while away (its icon, the app switcher): Live TV, as when it opens afresh. */
     @Override protected void onStart() {
         super.onStart();
+        // Homefield's own updates: a word if it just updated; the TVs looked at for a newer version (AppUpdate).
+        com.gathin.tvhomephone.update.AppUpdate.opened(this);
         long away = awayAt;
         awayAt = 0;
         if (away > 0 && backToLive(android.os.SystemClock.elapsedRealtime() - away) && tabs != null
@@ -87,6 +93,7 @@ public class MainActivity extends AppCompatActivity {
 
     @Override protected void onStop() {
         super.onStop();
+        com.gathin.tvhomephone.update.AppUpdate.closed();
         if (!isChangingConfigurations()) awayAt = android.os.SystemClock.elapsedRealtime();
     }
 
@@ -107,6 +114,11 @@ public class MainActivity extends AppCompatActivity {
         super.onNewIntent(intent);
         // A notification or a link says where to go: that, not Live TV for having been away (onStart comes after this).
         awayAt = 0;
+        // The "Homefield X is ready" note tapped while the app was open: its question, over whatever is on.
+        if (intent != null && OPEN_UPDATE.equals(intent.getStringExtra(EXTRA_OPEN))) {
+            com.gathin.tvhomephone.update.AppUpdate.ask(this, true);
+            return;
+        }
         // Its icon tapped while it was open in the background: Live TV again, as when it opens afresh.
         if (intent != null && android.content.Intent.ACTION_MAIN.equals(intent.getAction()) && intent.hasCategory(android.content.Intent.CATEGORY_LAUNCHER)
                 && intent.getStringExtra(EXTRA_OPEN) == null && com.gathin.tvhomephone.live.LiveTvSettings.openOnLive(this)) {
