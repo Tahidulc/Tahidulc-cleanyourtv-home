@@ -152,9 +152,8 @@ public final class Moments {
     }
 
     /**
-     * The intros over the advert breaks before the game (the league's season intro and the competition's film, back to
-     * back): every break that starts from an hour and a half to five and a half minutes before the kick-off (the last
-     * minutes are the matchday intro's).
+     * The intro over the advert breaks before the game (the one in its competition's style): every break that starts from
+     * an hour and a half to five and a half minutes before the kick-off (the last minutes are the matchday intro's).
      */
     public static final long BREAKS_FROM_MS = 90 * 60_000L, BREAKS_UNTIL_MS = INTRO_PREP_MS;
 

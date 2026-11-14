@@ -332,9 +332,9 @@ final class ClassicIntro {
     }
 
     /**
-     * The intro's settings for a game: its competition's own film (else plain football's) and the two teams; for a top-five
-     * league's game whose breaks have had no intros (none seen, or this TV cannot see them), the break's intros instead
-     * (the season's clubs, then the competition's film), once (season: false for a try, which keeps to the competition's).
+     * The intro's settings for a game, in the style made for its competition: a top-five league's season intro (its clubs
+     * one by one), else the competition's own film (else plain football's); the family's own video when they chose it;
+     * the two teams under it (season: false for the competition's film whatever the league, a try's).
      */
     private static JSONObject introCfg(Context c, ScoresTicker.Game g) throws org.json.JSONException {
         return introCfg(c, g, true);
@@ -342,10 +342,7 @@ final class ClassicIntro {
 
     private static JSONObject introCfg(Context c, ScoresTicker.Game g, boolean season) throws org.json.JSONException {
         String sk = BroadcastData.seasonKey(g.slug, g.league);
-        if (season && seasonOn(c) && !sk.isEmpty() && !IntroVideo.useOwn(c) && g.id != null && shown.add(g.id + "|break")) {
-            android.util.Log.i("Sport", "matchday intro: the break's intros (" + sk + "), no break had them");
-            return BroadcastData.breakIntros(sk, BroadcastData.introKey(g.slug, g.league), fixtureOf(g));
-        }
+        if (season && seasonOn(c) && !sk.isEmpty() && !IntroVideo.useOwn(c)) return BroadcastData.season(sk, fixtureOf(g));
         return cfgFor(c, BroadcastData.introKey(g.slug, g.league), fixtureOf(g));
     }
 
@@ -365,10 +362,9 @@ final class ClassicIntro {
 
     /**
      * An advert break has started on the channel (AdBreak, the channel's logo gone), from an hour and a half to five and a
-     * half minutes before the game's kick-off: the intros over it, every break: a top-five league's season intro, then
-     * the competition's own film, back to back with one piece of music under both (the competition's film alone for
-     * the others), the channel's sound off meanwhile. True when they are on (the break's own screen waits for their end;
-     * it is never on the screen with them). Main thread.
+     * half minutes before the game's kick-off: an intro over it, every break, in the style made for its competition (a
+     * top-five league's season intro, else the competition's own film), the channel's sound off meanwhile. True when it is
+     * on (the break's own screen waits for its end; it is never on the screen with it). Main thread.
      */
     static boolean breakIntros(Context c, ScoresTicker.Game g) {
         if (g == null || g.id == null || g.kickoff <= 0 || showing() || fetching) return false;
@@ -385,7 +381,7 @@ final class ClassicIntro {
         shown.add(g.id + "|break");
         breakUp = true;
         IntroQuiet.hush(app);
-        AlertLog.note(app, "intros over the break before " + AlertLog.game(g) + ": " + (sk.isEmpty() ? "" : "the season's (" + sk + "), ") + ck);
+        AlertLog.note(app, "intro over the break before " + AlertLog.game(g) + ": " + (sk.isEmpty() ? "the competition's (" + ck + ")" : "the season's (" + sk + ")"));
         return true;
     }
 
@@ -395,8 +391,8 @@ final class ClassicIntro {
     }
 
     /**
-     * A try of what a break before a league's game gets ("pl", "laliga", "seriea", "bundesliga", "ligue1"): its season
-     * intro, then its own film, with the game's teams when given.
+     * A try of a league's season intro ("pl", "laliga", "seriea", "bundesliga", "ligue1"), what its games' breaks get,
+     * with the game's teams when given.
      */
     static void trySeason(Context c, String key, ScoresTicker.Game g, Consumer<String> note) {
         if (showing() || fetching) {
@@ -407,7 +403,7 @@ final class ClassicIntro {
         try {
             String fixture = g != null && key.equals(BroadcastData.seasonKey(g.slug, g.league)) ? fixtureOf(g) : "";
             String id = "try|season|" + android.os.SystemClock.uptimeMillis();
-            hold(app, "reveal", BroadcastData.breakIntros(key, key, fixture), "intro", id, (v) -> {
+            hold(app, "reveal", BroadcastData.season(key, fixture), "intro", id, (v) -> {
                 if (goPrepared(id)) trial = true;
             });
         } catch (Exception e) {

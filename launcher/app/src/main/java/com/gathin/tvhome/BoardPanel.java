@@ -369,7 +369,7 @@ final class BoardPanel extends SportPanel {
         Row intro = row("Intros", true);
         intro.on = () -> ClassicIntro.introOn(c);
         intro.words = () -> ClassicIntro.introOn(c)
-                ? "The competition's own intro over the last break (4 minutes before kick-off), F1, UFC and boxing as they begin · the channel's sound off meanwhile"
+                ? "Over every ad break before kick-off, in its competition's style (the season intro for the top five leagues), F1, UFC and boxing as they begin · the channel's sound off meanwhile"
                 : "Off · OK to play them over the last break before kick-off";
         intro.ok = () -> ClassicIntro.setIntro(c, !ClassicIntro.introOn(c));
         Row film = row("Intro video", false);
@@ -396,12 +396,11 @@ final class BoardPanel extends SportPanel {
         Row season = row("Season intros", true);
         season.on = () -> ClassicIntro.seasonOn(c);
         season.words = () -> ClassicIntro.seasonOn(c)
-                ? "The top five leagues: every club in its own scene, then the competition's intro, over every ad break before the game (else as its intro)"
+                ? "The top five leagues: every club in its own scene, over every ad break before the game and as its intro (the others keep their own)"
                 : "Off · OK to have them before Premier League, LaLiga, Serie A, Bundesliga and Ligue 1 games";
         season.ok = () -> ClassicIntro.setSeason(c, !ClassicIntro.seasonOn(c));
-        Row trySeason = row("Try a break's intros", false);
-        trySeason.words = () -> "What an ad break before a game of " + SEASONS[seasonTry % SEASONS.length][1]
-                + " gets: its season intro, then its own (about 70 seconds) · OK again for the next league";
+        Row trySeason = row("Try a season intro", false);
+        trySeason.words = () -> "Plays " + SEASONS[seasonTry % SEASONS.length][1] + "'s now (about a minute) · OK again for the next league";
         trySeason.ok = () -> {
             String k = SEASONS[seasonTry % SEASONS.length][0];
             seasonTry++;

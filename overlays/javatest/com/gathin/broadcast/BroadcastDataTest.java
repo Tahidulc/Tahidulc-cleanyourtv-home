@@ -109,15 +109,17 @@ public class BroadcastDataTest {
         assertEquals("intros/sound-season-pl.m4a", o.getString("sound"));
         assertEquals("ARSENAL v EVERTON", o.getString("fixture"));
         assertEquals(3.8, o.getDouble("fixtureIn"), 1e-9);
-        // a break: the season's clubs, then the competition's own film, one piece of music under both
+        // a break gets one intro, in its competition's style: a top-five league's season intro (then the ending)...
         JSONObject b = BroadcastData.breakIntros("laliga", "laliga", "Real Madrid v Barcelona");
+        assertEquals(2, b.getJSONArray("clips").length());
         assertEquals("intros/season-laliga.mp4", b.getJSONArray("clips").getString(0));
-        assertEquals("intros/laliga.mp4", b.getJSONArray("clips").getString(1));
-        assertEquals("intros/sound-chain-laliga.m4a", b.getString("sound"));
-        assertEquals(15.2, b.getDouble("fixtureIn"), 1e-9);
-        assertEquals(13.8, BroadcastData.breakIntros("pl", "pl", "").getDouble("fixtureIn"), 1e-9);
-        // the Champions League has no season intro: its own film; with intros off, the season's alone
-        assertEquals("intros/ucl.mp4", BroadcastData.breakIntros("", "ucl", "").getJSONArray("clips").getString(0));
+        assertEquals("intros/tail.mp4", b.getJSONArray("clips").getString(1));
+        assertEquals("intros/sound-season-laliga.m4a", b.getString("sound"));
+        assertEquals("REAL MADRID v BARCELONA", b.getString("fixture"));
+        // ...the Champions League and the others their own film, never the two one after another
+        JSONObject u = BroadcastData.breakIntros("", "ucl", "");
+        assertEquals(1, u.getJSONArray("clips").length());
+        assertEquals("intros/ucl.mp4", u.getJSONArray("clips").getString(0));
         assertEquals("intros/season-pl.mp4", BroadcastData.breakIntros("pl", "", "").getJSONArray("clips").getString(0));
     }
 
@@ -132,7 +134,6 @@ public class BroadcastDataTest {
         for (String k : BroadcastData.SEASON_KEYS) {
             assertTrue(k, new java.io.File(dir, "season-" + k + ".mp4").isFile());
             assertTrue(k, new java.io.File(dir, "sound-season-" + k + ".m4a").isFile());
-            assertTrue(k, new java.io.File(dir, "sound-chain-" + k + ".m4a").isFile());
             assertTrue(k, new java.io.File(dir, k + ".mp4").isFile());
         }
         assertTrue(new java.io.File(dir, "tail.mp4").isFile());

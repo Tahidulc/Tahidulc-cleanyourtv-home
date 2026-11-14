@@ -522,3 +522,5 @@ The competition on the pop-up without a box of its own (4.86): its logo and name
 Season intros (4.87): before a Premier League, LaLiga, Serie A, Bundesliga or Ligue 1 game, every club of the season in a scene of its own to music made for it, then Whitebrook Road Sports and the fixture: over an ad break from 90 to 6 minutes before kick-off, else as the game's intro. Settings, Intro: Season intros.
 
 Intros on every ad break before a game (4.88): every break from 90 to 5½ minutes before kick-off gets the season intro and then the competition's intro back to back (the competition's alone for the Champions League and the others); the ad-break screen never shows with an intro.
+
+One intro at a time (4.89), in the style made for the competition: a top-five league's games get its season intro over every ad break before kick-off and as the matchday intro; the Champions League and the others keep their own intro.

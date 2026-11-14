@@ -200,8 +200,8 @@ final class PlayerIntro {
     }
 
     /**
-     * The matchday intro over the picture, once a game: the film, then the competition's trophy and the Matchday card; for
-     * a top-five league's game whose breaks have had no intros, the break's intros instead (its season's clubs, then it).
+     * The matchday intro over the picture, once a game, in the style made for its competition: a top-five league's season
+     * intro (its clubs one by one), else the competition's film, then the trophy and the Matchday card.
      */
     private void intro(Game g) {
         String key = g.id + "|intro";
@@ -210,9 +210,8 @@ final class PlayerIntro {
         try {
             BroadcastData.Match m = match(g);
             String sk = BroadcastData.seasonKey(m.compId, m.compName);
-            JSONObject cfg = seasonOn(a) && !sk.isEmpty() && !IntroVideo.useOwn(a) && shown.add(g.id + "|break")
-                    ? BroadcastData.breakIntros(sk, BroadcastData.introKey(m.compId, m.compName), BroadcastData.fixture(m.homeName, m.awayName))
-                    : introCfg(a, g);
+            JSONObject cfg = seasonOn(a) && !sk.isEmpty() && !IntroVideo.useOwn(a)
+                    ? BroadcastData.season(sk, BroadcastData.fixture(m.homeName, m.awayName)) : introCfg(a, g);
             show(BroadcastView.page(a, "reveal", cfg, this::gone), "intro");
         } catch (Exception ignored) {
             // not this time
@@ -238,8 +237,8 @@ final class PlayerIntro {
 
     /**
      * An ad break has started (the channel's logo gone), from an hour and a half to five and a half minutes before the
-     * game's kick-off: the intros over it, every break (a top-five league's season intro, then the competition's own film,
-     * one piece of music under both; the competition's film alone for the others). True when they are on.
+     * game's kick-off: an intro over it, every break, in the style made for its competition (a top-five league's season
+     * intro, else the competition's own film). True when it is on.
      */
     boolean breakIntros(Game g) {
         if (breakDone || g == null || g.id == null || g.kickoff <= 0 || showing() || fetching || !canShow.getAsBoolean()) return false;
