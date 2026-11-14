@@ -41,6 +41,10 @@ public class UpdateSettingsTest {
         return out;
     }
 
+    @org.junit.Before public void idle() throws Exception {
+        AppUpdateFetchTest.idle();
+    }
+
     private static View shown() {
         org.robolectric.android.controller.ActivityController<AppCompatActivity> ctl = Robolectric.buildActivity(AppCompatActivity.class);
         ctl.get().setTheme(R.style.Theme_TvHome);

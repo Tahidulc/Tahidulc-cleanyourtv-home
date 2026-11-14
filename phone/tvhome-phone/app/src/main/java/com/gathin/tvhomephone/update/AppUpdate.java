@@ -315,7 +315,7 @@ public final class AppUpdate {
     }
 
     /** Each paired TV asked for its update.json (off the main thread). */
-    private static Look look(Context c) {
+    static Look look(Context c) {
         Look l = new Look();
         for (JSONObject tv : Tvs.list(c)) {
             String token = tv.optString("token"), host = tv.optString("host");
@@ -344,7 +344,7 @@ public final class AppUpdate {
     }
 
     /** What was found kept: the newest version, or none when a TV answered with nothing newer (one away keeps it). */
-    private static void keep(Context c, Look l) {
+    static void keep(Context c, Look l) {
         SharedPreferences.Editor e = prefs(c).edit().putLong("checked", System.currentTimeMillis())
                 .putInt("asked", l.asked).putInt("answered", l.answered);
         try {
@@ -506,7 +506,7 @@ public final class AppUpdate {
      * One file of the update fetched into the app's cache, picking up a part already there (the same file of the same
      * version); from and to: the share of the whole it stands for.
      */
-    private static File fetch(Context c, Offer o, String name, float from, float to) throws IOException {
+    static File fetch(Context c, Offer o, String name, float from, float to) throws IOException {
         String token = tokenFor(c, o.tv);
         if (token == null) throw new Refused("This phone is no longer paired with " + o.tv + ". Pair it again in Settings");
         File dir = folder(c);
