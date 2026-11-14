@@ -139,13 +139,25 @@ function glow(color, size, a = 1) {
   return p;
 }
 let DOT = null;
-/** A building's material: its face and lights. */
+/** A building's material: its face and lights (shared by every shot with the same club, kind and light: a TV's memory). */
+const MATS = new Map();
 function slabMat(lk, seed, kind, env, em = 1.4) {
-  const f = K.facade(lk, seed, kind);
-  return new THREE.MeshStandardMaterial({
+  const key = [lk.glow, lk.panel, kind, seed % 2, em, env ? env.uuid : ''].join('|');
+  if (MATS.has(key)) return MATS.get(key);
+  const f = K.facade(lk, seed % 2, kind);
+  const m = new THREE.MeshStandardMaterial({
     color: 0xffffff, map: K.tex(f.map), emissive: 0xffffff, emissiveMap: K.tex(f.em), emissiveIntensity: em,
     metalness: 0.65, roughness: 0.3, envMap: env, envMapIntensity: 1.1,
   });
+  MATS.set(key, m);
+  return m;
+}
+/** A night sky (shared the same way). */
+const SKIES = new Map();
+function skyOf(top, low, seed) {
+  const key = top + '|' + low + '|' + (seed % 2);
+  if (!SKIES.has(key)) SKIES.set(key, K.sky(top, low, seed % 2));
+  return SKIES.get(key);
 }
 function blocks(list, mat) {
   const inst = new THREE.InstancedMesh(BOX, mat, list.length);
@@ -171,7 +183,7 @@ SHOTS.comet = (env, o) => {
   scene.background = K.col('#02040b');
   scene.fog = new THREE.Fog(K.col('#030812'), 6000, 30000);
   lights(scene, lk);
-  const skyP = picture(K.sky('#01030a', '#0b2452', 7)); skyP.scale.set(52000, 30000, 1); skyP.position.set(0, 4000, -26000); scene.add(skyP);
+  const skyP = picture(skyOf('#01030a', '#0b2452', 7)); skyP.scale.set(52000, 30000, 1); skyP.position.set(0, 4000, -26000); scene.add(skyP);
   // the tower, and the city far off
   const tower = new THREE.Mesh(BOX, slabMat(lk, 3, 0, env, 1.6));
   tower.scale.set(1100, 16000, 1100); tower.position.set(900, 3000, -3200); tower.rotation.y = -0.42; scene.add(tower);
@@ -340,7 +352,7 @@ SHOTS.card = (env, o) => {
   const lk = o.lk, scene = new THREE.Scene(), cam = camera(), P = o.player;
   scene.background = K.col(lk.deep);
   lights(scene, lk);
-  const bg = picture(K.sky(lk.deep, lk.panel, o.seed || 5)); bg.scale.set(9000, 5200, 1); bg.position.set(0, 400, -4200); scene.add(bg);
+  const bg = picture(skyOf(lk.deep, lk.panel, o.seed || 5)); bg.scale.set(9000, 5200, 1); bg.position.set(0, 400, -4200); scene.add(bg);
   const R = K.rng((o.seed || 5) + 9), slabs = [];
   for (let i = 0; i < 14; i++) {
     const s = i % 2 ? 1 : -1, h = 1500 + R() * 2600;
@@ -441,7 +453,7 @@ SHOTS.chant = (env, o) => {
     pan.push({ x: s * (1000 + R() * 700), y: (R() - 0.5) * 1600, z: -300 - i * 650, w: 900, h: 260 + R() * 340, d: 70, ry: -s * (0.55 + R() * 0.3), rz: s * (R() - 0.5) * 0.3 });
   }
   scene.add(blocks(pan, slabMat(lk, (o.seed || 7) + 1, 2, env, 2.2)));
-  const back = picture(K.sky(lk.deep, lk.panel, (o.seed || 7) + 2)); back.scale.set(9000, 6000, 1); back.position.z = -5000; scene.add(back);
+  const back = picture(skyOf(lk.deep, lk.panel, (o.seed || 7) + 2)); back.scale.set(9000, 6000, 1); back.position.z = -5000; scene.add(back);
   const txt = new THREE.Group(); txt.rotation.y = -0.2; txt.position.set(40, 30, 0); scene.add(txt);
   const ink2 = K.hsl(0, 0, 1);
   const L = K.lettering(o.chant, { size: 250, sy: 1.12, skew: 0.2, fill: [[0, ink2], [0.08, lk.ink], [1, lk.ink]], glow: { blur: 26, c: K.rgba(lk.glow, 0.7), a: 1 } });
@@ -482,7 +494,7 @@ SHOTS.parade = (env, o) => {
     sl.push({ x: s * (500 + R() * 1700), y: -1300 + h / 2, z: -600 - R() * 2600, w: 260 + R() * 500, h, d: 300, ry: (R() - 0.5) * 0.8 });
   }
   scene.add(blocks(sl, slabMat(lk, (o.seed || 9) + 1, R() < 0.5 ? 0 : 1, env, 1.6)));
-  const back = picture(K.sky(lk.deep, lk.mid, (o.seed || 9) + 2)); back.scale.set(9000, 6000, 1); back.position.z = -5000; scene.add(back);
+  const back = picture(skyOf(lk.deep, lk.mid, (o.seed || 9) + 2)); back.scale.set(9000, 6000, 1); back.position.z = -5000; scene.add(back);
   const gl = glow(lk.glow, 2000, 0.7); gl.position.z = -300; scene.add(gl);
   const cr = crest3d(o.crest, 14, 4); cr.scale.setScalar(1.55 * (o.crestScale || 1)); scene.add(cr);
   const s0 = o.side || 1;
@@ -734,7 +746,7 @@ SHOTS.lockup = (env, o) => {
   scene.fog = new THREE.Fog(K.col('#020814'), 3500, 16000);
   lights(scene, lk);
   // the hall behind: a dark sky with a glow low down, two rows of tall fins leading away, light shafts, a gloss floor
-  const skyB = picture(K.sky('#010309', '#0a2a5e', 19)); skyB.scale.set(26000, 15000, 1); skyB.position.set(0, 1500, -12000); scene.add(skyB);
+  const skyB = picture(skyOf('#010309', '#0a2a5e', 19)); skyB.scale.set(26000, 15000, 1); skyB.position.set(0, 1500, -12000); scene.add(skyB);
   const fins = [];
   for (const s of [-1, 1]) for (let i = 0; i < 9; i++) {
     fins.push({ x: s * (980 + i * 380), y: 300, z: -500 - i * 760, w: 120, h: 3600 + i * 260, d: 1100, ry: s * 0.42 });
@@ -826,4 +838,4 @@ SHOTS.lockup = (env, o) => {
   };
 };
 
-export { SHOTS, crest3d, word, neonLine, diamondLines, glow, slabMat, blocks, lights, label, shade, panelCanvas, fade, GEO, BOX };
+export { SHOTS, skyOf, crest3d, word, neonLine, diamondLines, glow, slabMat, blocks, lights, label, shade, panelCanvas, fade, GEO, BOX };

@@ -17,15 +17,22 @@ function lightsU(scene, k = 1) {
   const b = new THREE.PointLight(K.col('#3b5bff'), 5 * k, 0, 0); b.position.set(-1600, 300, 900); scene.add(b);
   const w = new THREE.DirectionalLight(0xffffff, 1.1 * k); w.position.set(0, 2, 3); scene.add(w);
 }
+const BACKS = new Map();
 function backdrop(scene, top, mid, z = -6000, seed = 3) {
+  const key = top + '|' + mid + '|' + seed;
+  const c = BACKS.get(key) || backCanvas(top, mid, seed);
+  BACKS.set(key, c);
+  const p = picture(c); p.scale.set(-z * 2.4, -z * 1.35, 1); p.position.z = z; scene.add(p);
+  return p;
+}
+function backCanvas(top, mid, seed) {
   const c = K.canvas(1024, 576), g = c.getContext('2d'), R = K.rng(seed);
   const gr = g.createRadialGradient(512, 330, 20, 512, 300, 700);
   gr.addColorStop(0, mid); gr.addColorStop(1, top);
   g.fillStyle = gr; g.fillRect(0, 0, 1024, 576);
   for (let i = 0; i < 120; i++) { g.globalAlpha = 0.15 + R() * 0.5; g.fillStyle = '#d8dcff'; g.fillRect(R() * 1024, R() * 576, 1.2, 1.2); }
   g.globalAlpha = 1;
-  const p = picture(c); p.scale.set(-z * 2.4, -z * 1.35, 1); p.position.z = z; scene.add(p);
-  return p;
+  return c;
 }
 
 // ---- the pictures: a star-panelled ball, the white star, the trophy's outline, the brand -----------------------------
