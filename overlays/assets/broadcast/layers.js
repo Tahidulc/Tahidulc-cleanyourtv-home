@@ -56,8 +56,11 @@
     return el._lk;
   }
   // a sprite on the screen this frame: m (sprite pixels to stage), alpha 0..1, blend '' or 'lighter' (added light);
-  // top: above everything, outside the wipe and the fade
-  function put(el, m, alpha, blend, top) {
+  // top: above everything, outside the wipe and the fade; turn: { x, y, yaw, d, z } turned about the upright axis through
+  // stage point (x, y) by yaw (radians, its right side away from us when above 0), seen from d stage pixels away (so its near
+  // side is the taller), and z pixels in front of where m puts it (below 0: behind, as a coin's back is). The compositor's
+  // own perspective: nothing is drawn again.
+  function put(el, m, alpha, blend, top, turn) {
     const a = alpha == null ? 1 : Math.max(0, Math.min(1, alpha));
     if (!el || a <= 0.002 || (group && group.off && !top)) return;
     const r = rec(el);
@@ -66,12 +69,13 @@
     if (r.p !== parent) { parent.appendChild(el); r.p = parent; r.m = ''; r.z = -1; }
     if (r.f === frame) {   // the same sprite twice in one frame: a copy for the second
       const c = el._copy || (el._copy = cloneCanvas(el));
-      return put(c, m, a, blend, top);
+      return put(c, m, a, blend, top, turn);
     }
     r.f = frame;
     if (r.d) { el.style.display = ''; r.d = false; }
-    const M = g0 ? mul(g0.inv, m) : mul(F, m);
-    const t = css(M);
+    const A = g0 ? g0.inv : F;
+    const t = turn ? css(mul(A, T(turn.x, turn.y))) + ` perspective(${n2(turn.d)}px) rotateY(${n4(turn.yaw)}rad) translateZ(${n2(turn.z || 0)}px) `
+      + css(mul(T(-turn.x, -turn.y), m)) : css(mul(A, m));
     if (t !== r.m || refit) { el.style.transform = t; r.m = t; }
     const o = Math.round(a * 1000) / 1000;
     if (o !== r.o) { el.style.opacity = String(o); r.o = o; }
