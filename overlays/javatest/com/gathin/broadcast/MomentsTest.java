@@ -135,4 +135,26 @@ public class MomentsTest {
         assertEquals(1, Moments.restartNow(Moments.RESTART_MS + 20_000L, false));
         assertEquals(-1, Moments.restartNow(Moments.RESTART_WAIT_MS, true));
     }
+
+    @Test
+    public void theBoardIsNeverOnTheScreenWithAMomentsPopUp() {
+        // on while a moment's pop-up is on
+        org.junit.Assert.assertTrue(Moments.boardAwayForPopup(true, false, false));
+        org.junit.Assert.assertTrue(Moments.boardAwayForPopup(true, true, false));
+        // away in a goal's replays with its restart pop-up still to come: kept away until that has been
+        org.junit.Assert.assertTrue(Moments.boardAwayForPopup(false, true, true));
+        // up with the restart's pop-up still to come (no replays seen): it goes only when the pop-up comes
+        org.junit.Assert.assertFalse(Moments.boardAwayForPopup(false, true, false));
+        // nothing on, nothing to come: back
+        org.junit.Assert.assertFalse(Moments.boardAwayForPopup(false, false, true));
+        org.junit.Assert.assertFalse(Moments.boardAwayForPopup(false, false, false));
+        // the moments: the kick-off, the restart after a goal, the second half; not the line-ups, the strap or the intro
+        org.junit.Assert.assertTrue(Moments.boardMoment("kickoff"));
+        org.junit.Assert.assertTrue(Moments.boardMoment("restart"));
+        org.junit.Assert.assertTrue(Moments.boardMoment("second"));
+        org.junit.Assert.assertFalse(Moments.boardMoment("strap"));
+        org.junit.Assert.assertFalse(Moments.boardMoment("lineups"));
+        org.junit.Assert.assertFalse(Moments.boardMoment("intro"));
+        org.junit.Assert.assertFalse(Moments.boardMoment(null));
+    }
 }

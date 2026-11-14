@@ -933,7 +933,13 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         if (l != null && !l.f1 && now < addedUntil) testAdded(l, now);
         // A replay on the channel (its own scoreboard gone, BugCover): away the same way, never in its own goal moment.
         boolean replay = replayAway && l != null && !l.f1 && bug.bandLeft(now) <= 0;
-        if (l == null || hidden || replay) {
+        // A moment's pop-up (PlayerIntro: the kick-off, the restart after a goal, the second half) the same: the board is
+        // never on the picture with it. Away in a goal's replays with the restart's pop-up still to come, it stays away until
+        // that has been and gone, so it never comes back only to go again; then in with its swish.
+        boolean popup = l != null && !l.f1 && bug.bandLeft(now) <= 0 && com.gathin.broadcast.Moments.boardAwayForPopup(
+                momentUp.getAsBoolean(), restartNext.getAsBoolean(), bug.getVisibility() != View.VISIBLE);
+        if (popup) swishBack = true;
+        if (l == null || hidden || replay || popup) {
             // Away as a broadcaster's goes: what is out beside it back in, wiped back into its first block, closed to a line.
             under.away();
             if (bug.getVisibility() == View.VISIBLE && !bug.closing()) {
@@ -952,7 +958,10 @@ public final class ScoreBoard implements LiveAlerts.Listener {
             if (fresh) bug.shownAt(0f);
             bug.setVisibility(View.VISIBLE);
             bug.open();
+            // back after a moment's pop-up: with the swish, as what slides out beside it comes
+            if (fresh && swishBack) swishIn();
         }
+        swishBack = false;
         stats.colours(l.homeColour, l.awayColour);
         if (mode == FOOTBALL_MODE && shown != null) maybeStats(shown, now);
         underNow(mode == FOOTBALL_MODE ? shown : null, l, now);
@@ -1737,6 +1746,33 @@ public final class ScoreBoard implements LiveAlerts.Listener {
 
     void introBusy(java.util.function.BooleanSupplier s) {
         introBusy = s == null ? () -> false : s;
+    }
+
+    /** A moment's pop-up on the picture now (PlayerIntro): the board away meanwhile. */
+    private java.util.function.BooleanSupplier momentUp = () -> false;
+    /** A goal's restart pop-up still to come (PlayerIntro): away in the replays, the board stays away until it has been. */
+    private java.util.function.BooleanSupplier restartNext = () -> false;
+    /** Away for a moment's pop-up: back in with the swish. */
+    private boolean swishBack;
+
+    void moments(java.util.function.BooleanSupplier up, java.util.function.BooleanSupplier next) {
+        momentUp = up == null ? () -> false : up;
+        restartNext = next == null ? () -> false : next;
+    }
+
+    /** A moment's pop-up came or went (PlayerIntro): the board away or back in now. */
+    void momentChanged() {
+        draw(System.currentTimeMillis());
+    }
+
+    /** The swish as the board comes back in, panned to where it is on the screen; not with the switch off. */
+    private void swishIn() {
+        if (!PlayerIntro.swishOn(bug.getContext())) return;
+        int[] at = new int[2];
+        bug.getLocationOnScreen(at);
+        int sw = bug.getResources().getDisplayMetrics().widthPixels;
+        float pan = sw > 0 ? Math.max(-0.6f, Math.min(0.6f, ((at[0] + bug.getWidth() / 2f) / sw * 2f - 1f) * 0.6f)) : 0f;
+        com.gathin.broadcast.Sfx.play(bug.getContext(), com.gathin.broadcast.Sfx.SWISH, pan, 0.7f);
     }
 
     void replay(boolean away) {

@@ -153,6 +153,20 @@ final class ClassicIntro {
         return view != null && !view.isOver();
     }
 
+    /**
+     * The moments' pop-ups in the classic look: the kick-off, play starting again after a goal, the second half. The board
+     * is away while one is on (never on the screen with it) and comes back in once it has gone, with its swish (BoardCover).
+     * The strap is the board's own look and folds into it, so it is not one of them.
+     */
+    static boolean moment(String kind) {
+        return com.gathin.broadcast.Moments.boardMoment(kind);
+    }
+
+    /** Whether a moment's pop-up is on the screen now: the board stays away meanwhile. */
+    static boolean momentShowing() {
+        return showing() && moment(viewKind);
+    }
+
     /** Until when a goal's restart pop-up may still come (uptime; 0: none waiting). */
     private static long restartUntil;
 
@@ -386,6 +400,7 @@ final class ClassicIntro {
         view = v;
         viewKind = kind;
         lineupsUp(kind);
+        if (moment(kind)) BoardCover.resume(c);   // the board away at once, not on the screen with it
         return true;
     }
 
@@ -491,6 +506,7 @@ final class ClassicIntro {
         view = v;
         viewKind = prepKind;
         lineupsUp(prepKind);
+        if (moment(prepKind)) BoardCover.resume(f.getContext());   // the board away at once, not on the screen with it
         if ("intro".equals(prepKind)) IntroQuiet.hush(f.getContext());
         shown.add(key);
         android.util.Log.i("Sport", "classic " + prepKind + " shown" + (v.isReady() ? ", made ready before" : ", still getting ready"));
@@ -523,6 +539,7 @@ final class ClassicIntro {
         }
         if (v != null && v != view) return;
         boolean wasLineups = covers(viewKind) || "strap".equals(viewKind);
+        boolean wasMoment = moment(viewKind);
         if ("intro".equals(viewKind) && v != null) IntroQuiet.release(v.getContext());
         view = null;
         viewKind = "";
@@ -532,6 +549,8 @@ final class ClassicIntro {
             BoardCover.classicLineups(false);
             AppSearchService.keysFor("classic", false);
         }
+        // the board back in now, as a broadcaster's comes in, with its swish
+        if (wasMoment) BoardCover.momentGone();
     }
 
     private static void removeWindow() {

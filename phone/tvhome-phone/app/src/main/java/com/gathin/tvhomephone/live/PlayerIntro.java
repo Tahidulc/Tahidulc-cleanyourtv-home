@@ -150,6 +150,27 @@ final class PlayerIntro {
         return view != null && !view.isOver();
     }
 
+    /**
+     * The moments' pop-ups in the classic look: the kick-off, play starting again after a goal, the second half. The
+     * scoreboard is away while one is on (never on the picture with it) and comes back in once it has gone, with its swish
+     * (ScoreBoard). The strap is the board's own look and folds into it, so it is not one of them.
+     */
+    static boolean moment(String kind) {
+        return com.gathin.broadcast.Moments.boardMoment(kind);
+    }
+
+    /** Whether a moment's pop-up is on the picture now: the scoreboard stays away meanwhile. */
+    boolean momentShowing() {
+        return showing() && moment(viewKind);
+    }
+
+    /** Told when a moment's pop-up comes or goes (the scoreboard away or back in now). */
+    private Runnable momentChanged = () -> { };
+
+    void momentChanged(Runnable r) {
+        momentChanged = r == null ? () -> { } : r;
+    }
+
     // ---- when ---------------------------------------------------------------------------------------------------------
 
     /** The channel's own game as the picture shows it (each time the scoreboard draws); screenNow: the picture's time. */
@@ -421,6 +442,7 @@ final class PlayerIntro {
         v.setTranslationY(ph > 0 ? py : 0);
         if (hidesBoard(kind)) lineupsUp.accept(true);
         if ("intro".equals(kind)) hush.accept(true);
+        if (moment(kind)) momentChanged.run();
     }
 
     /** The line-ups (either) and the strap (which draws the board itself as it folds into it): the board out of the way. */
@@ -431,11 +453,13 @@ final class PlayerIntro {
     private void gone(BroadcastView v) {
         if (v != view) return;
         boolean wasLineups = hidesBoard(viewKind);
+        boolean wasMoment = moment(viewKind);
         if ("intro".equals(viewKind)) hush.accept(false);
         view = null;
         viewKind = "";
         root.removeView(v);
         if (wasLineups) lineupsUp.accept(false);
+        if (wasMoment) momentChanged.run();
     }
 
     /** The picture laid out again (turned, resized): the overlay kept over it. */

@@ -40,6 +40,21 @@ public final class Moments {
         return "";
     }
 
+    /**
+     * Pure: whether the app's own scoreboard stays away for the classic pop-up, the same on the TV and the phone: while a
+     * moment's pop-up is on (the kick-off, the restart after a goal, the second half: never on the screen with it), and,
+     * once already away after a goal (its replays), while that goal's restart pop-up is still to come, so it never comes
+     * back only to go again. Once it has gone the board comes back in, with its swish.
+     */
+    public static boolean boardAwayForPopup(boolean popupOn, boolean restartToCome, boolean boardAway) {
+        return popupOn || boardAway && restartToCome;
+    }
+
+    /** Pure: the moments' pop-ups the board stays away for (the strap is the board's own look and folds into it). */
+    public static boolean boardMoment(String kind) {
+        return "kickoff".equals(kind) || "restart".equals(kind) || "second".equals(kind);
+    }
+
     /** How long after the goal the restart's pop-up waits at most for live play (the replays to end): LivePlay's most. */
     public static final long RESTART_WAIT_MS = LivePlay.MOST_MS;
 

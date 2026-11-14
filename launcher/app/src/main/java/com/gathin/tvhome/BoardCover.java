@@ -2291,7 +2291,13 @@ final class BoardCover {
         boolean board = adjusting || testUntil > now || boardShown(c);
         // A replay on the channel (its own scoreboard gone, BugCover): away as a broadcaster's goes, what is out beside it
         // folded in first; back as the channel's comes back. Never in the middle of its own goal moment.
-        boolean replay = board && !adjusting && BugCover.away() && bug.bandLeft(now) <= 0;
+        // A moment's pop-up (ClassicIntro: the kick-off, the restart after a goal, the second half) the same: the board is
+        // never on the screen with it. Away in a goal's replays with the restart's pop-up still to come, it stays away
+        // until that has been and gone, so it never comes back only to go again; then in with its swish.
+        boolean popup = !adjusting && com.gathin.broadcast.Moments.boardAwayForPopup(ClassicIntro.momentShowing(),
+                ClassicIntro.restartWaiting(), fresh);
+        boolean replay = board && !adjusting && (BugCover.away() || popup) && bug.bandLeft(now) <= 0;
+        if (replay && popup) swishBack = true;
         if (replay) {
             if (column.getVisibility() == View.VISIBLE && !fresh) {
                 if (!bug.closing()) {
@@ -2317,7 +2323,10 @@ final class BoardCover {
                 // In as a broadcaster's comes in: just up, its first block opening out of a line; going, back again.
                 if (fresh) bug.shownAt(0f);
                 bug.open();
+                // back after a moment's pop-up: with the swish, as what slides out beside it comes
+                if (fresh && swishBack) swishIn(c);
             }
+            if (board) swishBack = false;
             fresh = false;
         }
         stats.colours(l.homeColour, l.awayColour, l.homeOwn, l.awayOwn);
@@ -2353,6 +2362,25 @@ final class BoardCover {
     }
 
     // ---- the channel's own scoreboard under yours (BugCover): replays and what grows out of it --------------------------
+
+    /** Back after a moment's pop-up (ClassicIntro): the board comes in with its swish. */
+    private static boolean swishBack;
+
+    /** A moment's pop-up has gone (ClassicIntro): the board back in now, as a broadcaster's comes in, with its swish. */
+    static void momentGone() {
+        main().post(() -> {
+            if (app != null) resume(app);
+        });
+    }
+
+    /** The swish as the board comes in, from where it is (left or right of the picture); not with the switch off. */
+    private static void swishIn(Context c) {
+        if (bug == null || !swishOn(c)) return;
+        int[] at = new int[2];
+        bug.getLocationOnScreen(at);
+        float pan = sw > 0 ? Math.max(-0.6f, Math.min(0.6f, ((at[0] + bug.getWidth() / 2f) / sw * 2f - 1f) * 0.6f)) : 0f;
+        com.gathin.broadcast.Sfx.play(c, com.gathin.broadcast.Sfx.SWISH, pan, 0.7f);
+    }
 
     /** BugCover: the channel's own scoreboard gone (a replay) or back: the board stepped aside or brought back now. */
     static void bugChanged() {

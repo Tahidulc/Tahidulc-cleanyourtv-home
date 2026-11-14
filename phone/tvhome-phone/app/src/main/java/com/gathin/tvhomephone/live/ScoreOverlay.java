@@ -168,6 +168,10 @@ final class ScoreOverlay implements ScoreBoard.Source {
         intro.liveVerdict(() -> board.play.verdict(System.currentTimeMillis()));
         // what comes out of the scoreboard waits while a pop-up is up, or a goal's restart pop-up is still to come
         board.introBusy(() -> intro.showing() || intro.restartWaiting());
+        // the scoreboard itself away while a moment's pop-up is on (and kept away after a goal's replays until it has
+        // been), back in with its swish once it has gone
+        board.moments(intro::momentShowing, intro::restartWaiting);
+        intro.momentChanged(board::momentChanged);
         // the strap in the board's look folds into the board: where it is over the picture, on a 1920 x 1080 picture
         intro.boardAt(() -> {
             if (pfw <= 10 || pfh <= 10 || board.view.getWidth() <= 0) return null;
