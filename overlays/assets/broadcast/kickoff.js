@@ -1601,10 +1601,9 @@
   function pillShape(g, x, cy, w) {
     const h = PILL_H, top = cy - h / 2, rr = h / 2;
     g.beginPath(); g.moveTo(x, top); g.lineTo(x + w - rr, top); g.arc(x + w - rr, cy, rr, -PI / 2, PI / 2); g.lineTo(x + PILL_SLANT, top + h); g.closePath();
-    const bg = g.createLinearGradient(0, top, 0, top + h);
-    bg.addColorStop(0, '#3a6cc8'); bg.addColorStop(0.46, '#1d4597'); bg.addColorStop(0.5, '#123477'); bg.addColorStop(1, '#0b245c');
-    g.fillStyle = bg; g.fill();
-    g.lineWidth = 2; g.strokeStyle = 'rgba(236,244,255,0.96)'; g.stroke();
+    // black, as the family asked: the competition's logo and writing white on it
+    g.fillStyle = '#000'; g.fill();
+    g.lineWidth = 2; g.strokeStyle = 'rgba(236,244,255,0.9)'; g.stroke();
   }
   // the competition's own mark (broadcast/marks: its logo, then its name in its own lettering, white): its logo 34 px
   // tall in the pill, never wider than the tab can take
@@ -1737,7 +1736,22 @@
     second: { pages: [['comp', 'score'], ['second', 'score']], steps: [[2.3, 'tab']], close: 4.4 },
     still: { pages: [['comp', 'vs']], steps: [], close: 9 },
   };
-  function popLen(m) { return KINDS[m.kind].close + 0.62; }
+  // Slower and up longer, as the family asked: a moment comes in and goes at two-thirds speed (SLOW) and stays up two and a
+  // half seconds more (HOLD). Every part is drawn on the design's own clock (warp), so the trophy, the page turns and the
+  // lights keep together; the page turns while it is up come slower with it.
+  const SLOW = 1.5, HOLD = 2.5, OPENED = 1.0;
+  function closeAt(kind) { const tc = KINDS[kind].close; return kind === 'still' ? tc : OPENED * SLOW + (tc - OPENED) + HOLD; }
+  function warp(kind, T) {
+    const tc = KINDS[kind].close;
+    if (kind === 'still') return T;
+    const o = OPENED * SLOW, rc = closeAt(kind);
+    if (T <= o) return T / SLOW;
+    if (T <= rc) return OPENED + ((T - o) * (tc - OPENED)) / (rc - o);
+    return tc + (T - rc) / SLOW;
+  }
+  function popLen(m) { return closeAt(m.kind) + (m.kind === 'still' ? 0.62 : 0.62 * SLOW); }
+  // the whole pop-up's length in seconds, for the host (kickoff-host.js)
+  window.POP_LEN = (kind) => (KINDS[kind] ? popLen({ kind }) : 0);
 
   // ---------------------------------------------------------------- its layers (layers.js)
   // Every part is drawn once, when the pop-up is made ready, into a canvas of its own with its shadow and its glow (a
@@ -1820,16 +1834,44 @@
     g.restore();
     return c;
   }
-  // tilt: the circle turned about its upright axis (radians); glow: the gold light behind and over it (0..1.2);
+  // The circles' turn about their upright axis, as the family's recording has it (measured frame by frame): in big and
+  // turned 45 degrees towards the middle, the coin's edge showing on its outer side; round to 15 as they shrink and rise,
+  // 20 again as they slide apart, then face on; and as they meet when it closes, turning in again to 40.
+  const YAW_IN = [[0, 45], [0.1, 44], [0.2, 16], [0.465, 10], [0.6, 21], [0.75, 10], [0.9, 0]];
+  function keyed(keys, t) {
+    if (t <= keys[0][0]) return keys[0][1];
+    for (let i = 1; i < keys.length; i++) {
+      if (t <= keys[i][0]) {
+        const [t0, v0] = keys[i - 1], [t1, v1] = keys[i], u = (t - t0) / (t1 - t0);
+        return v0 + (v1 - v0) * u * u * (3 - 2 * u);
+      }
+    }
+    return keys[keys.length - 1][1];
+  }
+  const yawAt = (T, tc) => (keyed(YAW_IN, T) + 40 * eInOut3(ramp(tc + 0.1, tc + 0.5, T))) * DEG;
+  // the coin's edge, seen when it is turned: its rim's side, silver lit from above, darker below
+  function edgeBake() {
+    if (SPR.edge) return SPR.edge;
+    const base = medallion('home'), sz = base.width, R = R_CREST * MS, c = mk(sz, sz), g = c.getContext('2d');
+    const cx = sz / 2, cy = sz / 2;
+    const gr = g.createLinearGradient(0, cy - R, 0, cy + R);
+    gr.addColorStop(0, '#f2f6fc'); gr.addColorStop(0.35, '#b9c6da'); gr.addColorStop(0.7, '#6d7f9c'); gr.addColorStop(1, '#2c3a52');
+    g.beginPath(); g.arc(cx, cy, R * 0.995, 0, TAU); g.fillStyle = gr; g.fill();
+    g.lineWidth = R * 0.03; g.strokeStyle = 'rgba(10,18,32,0.85)'; g.stroke();
+    return (SPR.edge = c);
+  }
+  // tilt: the circle turned towards the middle (radians); glow: the gold light behind and over it (0..1.2);
   // sheen: a gold glint passing across (0..1 as it goes, 0 when none)
   function medalLayers(side, x, y, scale, alpha, sheen, tilt, glow) {
     if (alpha <= 0.001 || scale <= 0.01) return;
     if (glow > 0.01) at(haloBake(), [scale, 0, 0, scale, x, y], alpha * glow / 1.2, 'lighter');
-    const c = medalCoin(side, sheen, tilt, glow), h = c.width / 2;
-    const ct = Math.max(0.08, Math.cos(tilt));
-    // turned: narrower, with a slight lean as it would in perspective
-    const k = scale / MS;
-    LK.put(c, Lmul([ct, Math.sin(tilt) * 0.16, 0, 1, x, y], [k, 0, 0, k, -h * k, -h * k]), alpha);
+    // the coin's light moves with the turn in steps (each a redraw); the turn itself is smooth
+    const c = medalCoin(side, sheen, Math.round(tilt / 0.05) * 0.05, glow), h = c.width / 2;
+    const ct = Math.max(0.08, Math.cos(tilt)), k = scale / MS;
+    // turned: narrower, the far half of the coin's edge showing on its outer side, as thick as the recording's rim
+    const out = side === 'home' ? -1 : 1, edge = R_CREST * 0.17 * scale * Math.sin(tilt);
+    if (edge > 0.4) LK.put(edgeBake(), Lmul([ct, 0, 0, 1, x + out * edge, y], [k, 0, 0, k, -h * k, -h * k]), alpha);
+    LK.put(c, Lmul([ct, 0, 0, 1, x, y], [k, 0, 0, k, -h * k, -h * k]), alpha);
   }
   // the tab: its two ends and a column of its middle (stretched to any width), cut from one drawn at TAB_REF wide
   const TAB_REF = 400, TAB_M = 26;
@@ -2000,7 +2042,8 @@
     // closing: back together in the middle, meeting in a flash of gold, then gone
     const closeK = eIn3(ramp(tc + 0.12, tc + 0.33, T));
     const spread = clamp(openK - closeK, 0, 1);
-    const touch = R_CREST * sc * 0.985;
+    const yaw = yawAt(T, tc);   // turned towards the middle: narrower, so they touch nearer it
+    const touch = R_CREST * sc * 0.985 * Math.cos(yaw);
     const lx = lerp(960 - touch, OPEN_L, spread), rx = lerp(960 + touch, OPEN_R, spread);
     const cyM = lerp(930 + 95 * big, CY - 4, openK);
     const endK = ramp(tc + 0.36, tc + 0.5, T);
@@ -2093,11 +2136,11 @@
     // the V (or score) between the crests
     const vIn = eOutBack(ramp(0.44, 0.56, T), 1.6) * (1 - ramp(tc + 0.05, tc + 0.2, T));
     if (vIn > 0.01 && (mainKind === 'vs' || mainKind === 'score')) at(centreBake(mainKind, m), Lmul(G, [vIn, 0, 0, vIn, 960 - 960 * vIn, CY - CY * vIn]), 1);
-    // the crests, in front, face on as the recording's
+    // the crests, in front, turned as the recording's (yawAt)
     const glow = 0.3 + 0.5 * Math.sin(PI * ramp(0.0, 0.6, T)) + 0.6 * Math.sin(PI * ramp(tc + 0.15, tc + 0.6, T));
     const sheenL = ramp(1.35, 2.1, T) + ramp(5.0, 5.75, T), sheenR = ramp(1.5, 2.25, T) + ramp(5.15, 5.9, T);
-    medalLayers('home', lx, cyM, medScale, medAlpha, sheenL % 1 === 0 ? 0 : sheenL % 1, 0, Math.min(1.2, glow));
-    medalLayers('away', rx, cyM, medScale, medAlpha, sheenR % 1 === 0 ? 0 : sheenR % 1, 0, Math.min(1.2, glow));
+    medalLayers('home', lx, cyM, medScale, medAlpha, sheenL % 1 === 0 ? 0 : sheenL % 1, yaw, Math.min(1.2, glow));
+    medalLayers('away', rx, cyM, medScale, medAlpha, sheenR % 1 === 0 ? 0 : sheenR % 1, yaw, Math.min(1.2, glow));
     // where they meet as it closes: the gold flash
     const meet = Math.sin(PI * ramp(tc + 0.26, tc + 0.54, T));
     if (meet > 0.01) {
@@ -2111,7 +2154,7 @@
     LK.begin();
     for (const m of POP.moments) {
       const T = t - m.t0;
-      if (T >= -0.001 && T <= popLen(m)) popupLayers(m, T);
+      if (T >= -0.001 && T <= popLen(m)) popupLayers(m, warp(m.kind, T));
     }
     LK.end();
   }

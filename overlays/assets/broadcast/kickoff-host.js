@@ -5,6 +5,8 @@
 (function () {
   const LEAD = 0.15;   // the sound starts this much before the first frame (its thump lands as the crests do)
   const LEN = { kickoff: 6.6, restart: 4.4, second: 4.4 };
+  // the whole pop-up's length as the page plays it (slower and up longer than LEN, its design's own times: kickoff.js)
+  const length = () => (window.POP_LEN && window.POP_LEN(kind)) || LEN[kind] + 0.62;
   const TROPHY = { pl: 'pl', facup: 'facup', leaguecup: 'leaguecup', ucl: 'ucl', uel: 'uel', uecl: 'uecl' };
   let cfg = null, kind = 'kickoff', raf = 0, finished = false, began = false, going = false;
   window.BROADCAST = {
@@ -51,13 +53,13 @@
   };
   // The whole pop-up played through once out of sight (the stage at 0.4%, in a window still unseen when it is held), every
   // quarter second: each part's first showing costs the GPU (on the Streamer's PowerVR the first frames took one to two
-  // seconds each), and that is paid here. Nothing is parked meanwhile or after (it is eight seconds long).
+  // seconds each), and that is paid here. Nothing is parked meanwhile or after (it is eight to ten seconds long).
   async function rehearse() {
     if (!window.LK || !window.drawFrame) return;
     const r0 = performance.now(), raf2 = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
     LK.park(Infinity);
     LK.root.style.opacity = '0.004';
-    for (let t = -LEAD; t <= LEN[kind] + 0.75 && !finished; t += 0.25) { window.drawFrame(t); await raf2(); }
+    for (let t = -LEAD; t <= length() + 0.13 && !finished; t += 0.25) { window.drawFrame(t); await raf2(); }
     LK.hideAll();
     await raf2();
     LK.root.style.opacity = '';
@@ -76,7 +78,7 @@
       window.drawFrame(t);
       BX.meter(performance.now() - d0, now);
       if (first) { first = false; BX.started(); BX.log(BX.view()); }
-      if (t > LEN[kind] + 0.75) { finish(); return; }
+      if (t > length() + 0.13) { finish(); return; }
       raf = requestAnimationFrame(frame);
     };
     raf = requestAnimationFrame(frame);
