@@ -493,6 +493,9 @@ final class AdBreak {
         return (m & what) != 0;
     }
 
+    /** The break's screen waiting for the season intro over the break to end (ClassicIntro.seasonBreak). */
+    private static Session afterIntro;
+
     private static void act(Context c, Session ss, int what) {
         if (what == AdBreakLogic.SHOW) {
             android.util.Log.i(TAG, "the channel's logo gone: up (" + ss.source + ")");
@@ -501,11 +504,26 @@ final class AdBreak {
                 AlertLog.note(c, "half-time card closed: the ad-break screen covers the break");
                 LineupCard.close(false);
             }
+            // Before a top-five league's kick-off: its season intro over this break first (once a game), the screen after.
+            ScoresTicker.Game g = fresh(ss.g);
+            if (g != null && ClassicIntro.seasonBreak(c, g)) {
+                afterIntro = ss;
+                return;
+            }
             show(c, ss);
         } else if (what == AdBreakLogic.HIDE) {
             android.util.Log.i(TAG, "away");
+            afterIntro = null;
+            ClassicIntro.seasonBack();
             hide("the logo back, or the programme, channel or app changed");
         }
+    }
+
+    /** The season intro over a break has ended: the break's own screen, while the break goes on. Main thread. */
+    static void introGone(Context c) {
+        Session ss = afterIntro;
+        afterIntro = null;
+        if (ss != null && trigger.showing && session == ss) show(c, ss);
     }
 
     // ---- the test (adb) -------------------------------------------------------------------------------------------------

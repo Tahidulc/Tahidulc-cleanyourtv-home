@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The season intros (PlayerIntro): the top five leagues, every club in a scene of its own, in Settings' intro page. -->
+<resources>
+    <string name="live84_season">Season intros (top five leagues)</string>
+    <string name="live84_season_line">Premier League, LaLiga, Serie A, Bundesliga and Ligue 1: every club in a scene of its own to music made for it, then Whitebrook Road Sports and the fixture. Over an ad break before the game, else as its intro 4 minutes before kick-off.</string>
+</resources>

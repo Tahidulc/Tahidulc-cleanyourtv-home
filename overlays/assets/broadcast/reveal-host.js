@@ -2,7 +2,8 @@
 // BROADCAST.start({clips: ['intros/pl.mp4'] (in turn; a family's own video then the tail), sound: 'intros/sound-pl.m4a'
 // (played by the app, AndroidBroadcast.music: the page's own media would take the sound from the channel for good),
 // soundAt (seconds into the clips it starts at), fixture: 'ARSENAL v EVERTON' (written under the Whitebrook Road Sports
-// wordmark at fixtureAt seconds), firstMax (the first clip cut there), volume, hold}) loads them; held, says prepared() and
+// wordmark at fixtureAt seconds, or fixtureIn seconds into the last clip), firstMax (the first clip cut there), volume,
+// hold}) loads them; held, says prepared() and
 // waits for go(); then plays, and at the end fades back to the channel and says done(). back() fades it away early.
 (function () {
   let cfg = null, vids = [], cur = 0, began = false, finished = false, ready = false, going = false, raf = 0, backAt = -1,
@@ -101,7 +102,8 @@
     if (endAt >= 0) op = Math.min(op, 1 - (performance.now() - endAt) / 400);
     if (backAt >= 0) op = Math.min(op, 1 - (performance.now() - backAt) / 500);
     stage.style.opacity = String(Math.max(0, op));
-    const fa = cfg.fixture ? ss(cfg.fixtureAt, cfg.fixtureAt + 0.7, t) : 0;
+    const fxAt = cfg.fixtureIn != null ? (cur === vids.length - 1 ? offset + cfg.fixtureIn : 1e9) : cfg.fixtureAt;
+    const fa = cfg.fixture ? ss(fxAt, fxAt + 0.7, t) : 0;
     fx.style.opacity = String(fa);
     fx.style.transform = `translateY(${(10 * (1 - fa)).toFixed(1)}px)`;
     if (op <= 0 && (endAt >= 0 || backAt >= 0)) { finish(); return; }

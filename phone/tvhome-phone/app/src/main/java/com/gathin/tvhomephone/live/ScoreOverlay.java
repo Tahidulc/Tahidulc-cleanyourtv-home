@@ -1943,8 +1943,13 @@ final class ScoreOverlay implements ScoreBoard.Source {
                     // else a match's scoreboard seen): the build-up, half time, after the game (AdBreak.take).
                     AdBreak.Session sn = ScoreBoard.adBreak(a) ? session() : null;
                     int take = AdBreak.take(ScoreBoard.adBreak(a), sn, now);
-                    if (on && take == AdBreak.TAKE_AD_BREAK && adBreak == null && !adBreakHidden) startAdBreak(sn, false);
+                    boolean takeIt = on && take == AdBreak.TAKE_AD_BREAK && adBreak == null && !adBreakHidden;
+                    // Before a top-five league's kick-off: its season intro over this break first, the screen after it.
+                    if (takeIt && (intro.seasonShowing() || sn != null && sn.game != null && intro.seasonBreak(sn.game))) {
+                        // the break's screen waits for the season intro's end
+                    } else if (takeIt) startAdBreak(sn, false);
                     else if (adBreak != null && !manualAdBreak && (!on || take != AdBreak.TAKE_AD_BREAK)) endAdBreak();
+                    if (!on) intro.seasonBack();
                 }
                 // On a break: looked at twice as often, so your logo is back hardly a moment after the channel's.
                 h.postDelayed(checkBreak, w.onBreak() ? 1000 : 2000);

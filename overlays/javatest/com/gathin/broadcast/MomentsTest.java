@@ -71,6 +71,12 @@ public class MomentsTest {
         assertTrue(Moments.introDue(240_000L));
         assertTrue(Moments.introDue(150_000L));
         assertFalse(Moments.introDue(90_000L));
+        // the season intro over a break from an hour and a half to six minutes before (the last breaks are the intro's)
+        assertTrue(Moments.seasonBreakDue(20 * 60_000L));
+        assertTrue(Moments.seasonBreakDue(6 * 60_000L));
+        assertFalse(Moments.seasonBreakDue(5 * 60_000L));
+        assertFalse(Moments.seasonBreakDue(2 * 3_600_000L));
+        assertFalse(Moments.seasonBreakDue(-60_000L));
         assertTrue(Moments.introPrep(300_000L));
         assertFalse(Moments.introPrep(240_000L));
         assertFalse(Moments.introPrep(400_000L));

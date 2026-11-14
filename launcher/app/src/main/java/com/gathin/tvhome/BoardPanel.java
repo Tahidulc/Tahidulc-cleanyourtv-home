@@ -112,6 +112,9 @@ final class BoardPanel extends SportPanel {
     /** The sports' intros the try row steps through: key, name. */
     private static final String[][] SPORTS = {{"f1", "F1"}, {"ufc", "UFC"}, {"boxing", "boxing"}, {"football", "plain football"}};
     private int sportTry;
+    private static final String[][] SEASONS = {{"pl", "the Premier League"}, {"laliga", "LaLiga"}, {"seriea", "Serie A"},
+        {"bundesliga", "the Bundesliga"}, {"ligue1", "Ligue 1"}};
+    private int seasonTry;
 
     /** A try of the classic pop-up or line-ups: the card away, then it over Home (ClassicIntro.tryIt). */
     /** A switch for one of the logo's extras (LogoExtras), on unless switched off. */
@@ -389,6 +392,23 @@ final class BoardPanel extends SportPanel {
         };
         add(intro, film);
         add(tryIntro, trySport);
+        // The season intros (the top five leagues, every club in a scene of its own), over a break before the game.
+        Row season = row("Season intros", true);
+        season.on = () -> ClassicIntro.seasonOn(c);
+        season.words = () -> ClassicIntro.seasonOn(c)
+                ? "The top five leagues: every club in its own scene, then Whitebrook Road Sports, over an ad break before the game (else as its intro)"
+                : "Off · OK to have them before Premier League, LaLiga, Serie A, Bundesliga and Ligue 1 games";
+        season.ok = () -> ClassicIntro.setSeason(c, !ClassicIntro.seasonOn(c));
+        Row trySeason = row("Try a season intro", false);
+        trySeason.words = () -> "Plays " + SEASONS[seasonTry % SEASONS.length][1] + "'s now (about a minute) · OK again for the next league";
+        trySeason.ok = () -> {
+            String k = SEASONS[seasonTry % SEASONS.length][0];
+            seasonTry++;
+            ScoresTicker.Game g = game();
+            hide();
+            ClassicIntro.trySeason(c, k, g, (why) -> android.widget.Toast.makeText(c, why, android.widget.Toast.LENGTH_LONG).show());
+        };
+        add(season, trySeason);
         // Each tried now over Home, for the game chosen above when it can be (else the Premier League's latest played).
         Row tryKick = row("Try the kick-off pop-up", false);
         tryKick.words = () -> "Plays it now (" + popupStyleWords() + "), with " + tryGame();

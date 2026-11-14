@@ -272,6 +272,31 @@ public final class BroadcastData {
         return o;
     }
 
+    /** The leagues with a season intro of their own (assets: broadcast/intros/season-KEY.mp4): the top five. */
+    public static final String[] SEASON_KEYS = {"pl", "laliga", "seriea", "bundesliga", "ligue1"};
+
+    /** Pure: a game's season intro, by its competition ("pl", "laliga", "seriea", "bundesliga", "ligue1"), or "" for none. */
+    public static String seasonKey(String compId, String compName) {
+        String k = introTrophy(compId, compName);
+        for (String s : SEASON_KEYS) if (s.equals(k)) return k;
+        return "";
+    }
+
+    /**
+     * The season intro's settings (reveal.html): the league's clubs one by one (tools/season_render.js), then the
+     * Whitebrook Road Sports ending, the season's own music under both (tools/season_music.py, the ending's sound after
+     * it), and the fixture written under the wordmark 3.8 seconds into the ending.
+     */
+    public static JSONObject season(String key, String fixture) throws JSONException {
+        JSONObject o = new JSONObject();
+        o.put("key", "season-" + key);
+        o.put("clips", new JSONArray().put("intros/season-" + key + ".mp4").put("intros/tail.mp4"));
+        o.put("sound", "intros/sound-season-" + key + ".m4a");
+        o.put("fixtureIn", 3.8);
+        o.put("fixture", fixture == null ? "" : fixture.trim().toUpperCase(Locale.ROOT).replace(" V ", " v "));
+        return o;
+    }
+
     /** Pure: the fixture under the wordmark: "ARSENAL v EVERTON" (the v kept small), or "" without both teams. */
     public static String fixture(String home, String away) {
         String h = home == null ? "" : home.trim(), a = away == null ? "" : away.trim();

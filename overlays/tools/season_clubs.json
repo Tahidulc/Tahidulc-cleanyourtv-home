@@ -1,0 +1,2023 @@
+{
+ "349": {
+  "name": "AFC BOURNEMOUTH",
+  "bg": {
+   "t": "stripes",
+   "c": [
+    "#DA291C",
+    "#111111"
+   ],
+   "n": 9
+  },
+  "fx": [
+   {
+    "m": "e:1f352",
+    "a": "rain",
+    "n": 14
+   }
+  ],
+  "ink": "#FFFFFF",
+  "accent": "#FFFFFF"
+ },
+ "359": {
+  "name": "ARSENAL",
+  "bg": {
+   "t": "radial",
+   "c": [
+    "#F0161E",
+    "#5E0004"
+   ]
+  },
+  "fx": [
+   {
+    "m": "s:cannon",
+    "a": "flank",
+    "n": 2
+   }
+  ],
+  "ink": "#FFFFFF",
+  "accent": "#F6C342"
+ },
+ "362": {
+  "name": "ASTON VILLA",
+  "bg": {
+   "t": "radial",
+   "c": [
+    "#8A1A44",
+    "#33041A"
+   ]
+  },
+  "fx": [
+   {
+    "m": "e:1f981",
+    "a": "roar",
+    "n": 1
+   },
+   {
+    "m": "e:2728",
+    "a": "orbit",
+    "n": 6,
+    "tint": "#95BFE5"
+   }
+  ],
+  "ink": "#FFFFFF",
+  "accent": "#95BFE5"
+ },
+ "337": {
+  "name": "BRENTFORD",
+  "bg": {
+   "t": "stripes",
+   "c": [
+    "#E30613",
+    "#F4F4F4"
+   ],
+   "n": 7
+  },
+  "fx": [
+   {
+    "m": "e:1f41d",
+    "a": "swarm",
+    "n": 14
+   }
+  ],
+  "ink": "#FFFFFF",
+  "accent": "#FFD400"
+ },
+ "331": {
+  "name": "BRIGHTON & HOVE ALBION",
+  "bg": {
+   "t": "radial",
+   "c": [
+    "#1478E0",
+    "#00205B"
+   ]
+  },
+  "fx": [
+   {
+    "m": "s:gull",
+    "a": "fly",
+    "n": 12
+   }
+  ],
+  "ink": "#FFFFFF",
+  "accent": "#FFFFFF"
+ },
+ "363": {
+  "name": "CHELSEA",
+  "bg": {
+   "t": "radial",
+   "c": [
+    "#0A5BC4",
+    "#021C4A"
+   ]
+  },
+  "fx": [
+   {
+    "m": "e:1f981",
+    "a": "flank",
+    "n": 2
+   }
+  ],
+  "ink": "#FFFFFF",
+  "accent": "#F5C518"
+ },
+ "388": {
+  "name": "COVENTRY CITY",
+  "bg": {
+   "t": "radial",
+   "c": [
+    "#6CC5EE",
+    "#1B5F8C"
+   ]
+  },
+  "fx": [
+   {
+    "m": "e:1f418",
+    "a": "run",
+    "n": 3
+   }
+  ],
+  "ink": "#FFFFFF",
+  "accent": "#FFFFFF"
+ },
+ "384": {
+  "name": "CRYSTAL PALACE",
+  "bg": {
+   "t": "split",
+   "c": [
+    "#1B458F",
+    "#C4122E"
+   ]
+  },
+  "fx": [
+   {
+    "m": "e:1f985",
+    "a": "flank",
+    "n": 2
+   }
+  ],
+  "ink": "#FFFFFF",
+  "accent": "#FFFFFF"
+ },
+ "368": {
+  "name": "EVERTON",
+  "bg": {
+   "t": "radial",
+   "c": [
+    "#1F4DC2",
+    "#001A5E"
+   ]
+  },
+  "fx": [
+   {
+    "m": "s:tower",
+    "a": "grow",
+    "n": 2
+   },
+   {
+    "m": "e:2728",
+    "a": "orbit",
+    "n": 6
+   }
+  ],
+  "ink": "#FFFFFF",
+  "accent": "#FFFFFF"
+ },
+ "370": {
+  "name": "FULHAM",
+  "bg": {
+   "t": "radial",
+   "c": [
+    "#2E2E2E",
+    "#050505"
+   ]
+  },
+  "fx": [
+   {
+    "m": "e:1f3e1",
+    "a": "grow",
+    "n": 1
+   },
+   {
+    "m": "s:waves",
+    "a": "sail",
+    "n": 1,
+    "tint": "#26303D"
+   }
+  ],
+  "ink": "#FFFFFF",
+  "accent": "#CC0000"
+ },
+ "306": {
+  "name": "HULL CITY",
+  "bg": {
+   "t": "tiger",
+   "c": [
+    "#F5A12D",
+    "#111111"
+   ]
+  },
+  "fx": [
+   {
+    "m": "e:1f42f",
+    "a": "roar",
+    "n": 1
+   }
+  ],
+  "ink": "#FFFFFF",
+  "accent": "#111111"
+ },
+ "373": {
+  "name": "IPSWICH TOWN",
+  "bg": {
+   "t": "radial",
+   "c": [
+    "#1E5BC6",
+    "#062A6B"
+   ]
+  },
+  "fx": [
+   {
+    "m": "e:1f40e",
+    "a": "run",
+    "n": 3
+   }
+  ],
+  "ink": "#FFFFFF",
+  "accent": "#DE2C37"
+ },
+ "357": {
+  "name": "LEEDS UNITED",
+  "bg": {
+   "t": "radial",
+   "c": [
+    "#1D428A",
+    "#0B1E46"
+   ]
+  },
+  "fx": [
+   {
+    "m": "s:rose",
+    "a": "bloom",
+    "n": 8,
+    "s": 1.3
+   }
+  ],
+  "ink": "#FFFFFF",
+  "accent": "#FFCD00"
+ },
+ "364": {
+  "name": "LIVERPOOL",
+  "bg": {
+   "t": "radial",
+   "c": [
+    "#D00027",
+    "#5E0010"
+   ]
+  },
+  "fx": [
+   {
+    "m": "s:gull",
+    "a": "fly",
+    "n": 10,
+    "tint": "#F6EB61"
+   }
+  ],
+  "ink": "#FFFFFF",
+  "accent": "#F6EB61"
+ },
+ "382": {
+  "name": "MANCHESTER CITY",
+  "bg": {
+   "t": "radial",
+   "c": [
+    "#8FC8EE",
+    "#2C6AA0"
+   ]
+  },
+  "fx": [
+   {
+    "m": "e:26f5",
+    "a": "sail",
+    "n": 2
+   },
+   {
+    "m": "s:waves",
+    "a": "sail",
+    "n": 1,
+    "tint": "#1C2C5B"
+   }
+  ],
+  "ink": "#FFFFFF",
+  "accent": "#F2C230"
+ },
+ "360": {
+  "name": "MANCHESTER UNITED",
+  "bg": {
+   "t": "radial",
+   "c": [
+    "#E2001A",
+    "#4A0007"
+   ]
+  },
+  "fx": [
+   {
+    "m": "s:trident",
+    "a": "flank",
+    "n": 2,
+    "s": 1.5
+   },
+   {
+    "m": "e:1f608",
+    "a": "bloom",
+    "n": 6,
+    "s": 0.9
+   }
+  ],
+  "ink": "#FFFFFF",
+  "accent": "#FBE122"
+ },
+ "361": {
+  "name": "NEWCASTLE UNITED",
+  "bg": {
+   "t": "stripes",
+   "c": [
+    "#111111",
+    "#F2F2F2"
+   ],
+   "n": 9
+  },
+  "fx": [
+   {
+    "m": "e:1f426",
+    "a": "fly",
+    "n": 9,
+    "tint": "#111111",
+    "ol": "#FFFFFF",
+    "alt": "#FFFFFF"
+   }
+  ],
+  "ink": "#FFFFFF",
+  "accent": "#41B6E6"
+ },
+ "393": {
+  "name": "NOTTINGHAM FOREST",
+  "bg": {
+   "t": "radial",
+   "c": [
+    "#E1001A",
+    "#6B0010"
+   ]
+  },
+  "fx": [
+   {
+    "m": "e:1f333",
+    "a": "grow",
+    "n": 5
+   }
+  ],
+  "ink": "#FFFFFF",
+  "accent": "#FFFFFF"
+ },
+ "366": {
+  "name": "SUNDERLAND",
+  "bg": {
+   "t": "stripes",
+   "c": [
+    "#EB172B",
+    "#FFFFFF"
+   ],
+   "n": 7
+  },
+  "fx": [
+   {
+    "m": "e:1f408-200d-2b1b",
+    "a": "run",
+    "n": 3
+   }
+  ],
+  "ink": "#FFFFFF",
+  "accent": "#111111"
+ },
+ "367": {
+  "name": "TOTTENHAM HOTSPUR",
+  "bg": {
+   "t": "radial",
+   "c": [
+    "#1E3A8A",
+    "#0A1430"
+   ]
+  },
+  "fx": [
+   {
+    "m": "e:1f413",
+    "a": "flank",
+    "n": 2
+   }
+  ],
+  "ink": "#FFFFFF",
+  "accent": "#FFFFFF"
+ },
+ "96": {
+  "name": "ALAVÉS",
+  "bg": {
+   "t": "stripes",
+   "c": [
+    "#0A3FAF",
+    "#FFFFFF"
+   ],
+   "n": 9
+  },
+  "fx": [
+   {
+    "m": "e:1f3f0",
+    "a": "grow",
+    "n": 1
+   }
+  ],
+  "ink": "#FFFFFF",
+  "accent": "#FFFFFF"
+ },
+ "93": {
+  "name": "ATHLETIC CLUB",
+  "bg": {
+   "t": "stripes",
+   "c": [
+    "#EE2523",
+    "#FFFFFF"
+   ],
+   "n": 9
+  },
+  "fx": [
+   {
+    "m": "e:1f981",
+    "a": "flank",
+    "n": 2
+   }
+  ],
+  "ink": "#FFFFFF",
+  "accent": "#111111"
+ },
+ "1068": {
+  "name": "ATLÉTICO MADRID",
+  "bg": {
+   "t": "stripes",
+   "c": [
+    "#CB3524",
+    "#FFFFFF"
+   ],
+   "n": 9
+  },
+  "fx": [
+   {
+    "m": "e:1f43b",
+    "a": "roar",
+    "n": 1
+   },
+   {
+    "m": "e:1f353",
+    "a": "rain",
+    "n": 12
+   }
+  ],
+  "ink": "#FFFFFF",
+  "accent": "#272E61"
+ },
+ "83": {
+  "name": "BARCELONA",
+  "bg": {
+   "t": "split",
+   "c": [
+    "#004D98",
+    "#A50044"
+   ]
+  },
+  "fx": [
+   {
+    "m": "s:spires",
+    "a": "grow",
+    "n": 1,
+    "side": 1
+   },
+   {
+    "m": "e:2728",
+    "a": "orbit",
+    "n": 6,
+    "tint": "#EDBB00"
+   }
+  ],
+  "ink": "#FFFFFF",
+  "accent": "#EDBB00"
+ },
+ "85": {
+  "name": "CELTA VIGO",
+  "bg": {
+   "t": "radial",
+   "c": [
+    "#8AC3EE",
+    "#1A5E9C"
+   ]
+  },
+  "fx": [
+   {
+    "m": "e:1f41f",
+    "a": "swarm",
+    "n": 12
+   },
+   {
+    "m": "s:waves",
+    "a": "sail",
+    "n": 1,
+    "tint": "#0E3E73"
+   }
+  ],
+  "ink": "#FFFFFF",
+  "accent": "#E5254E"
+ },
+ "90": {
+  "name": "DEPORTIVO",
+  "bg": {
+   "t": "stripes",
+   "c": [
+    "#1B57C2",
+    "#FFFFFF"
+   ],
+   "n": 9
+  },
+  "fx": [
+   {
+    "m": "s:lighthouse",
+    "a": "grow",
+    "n": 1,
+    "side": 1
+   }
+  ],
+  "ink": "#FFFFFF",
+  "accent": "#FFFFFF"
+ },
+ "3751": {
+  "name": "ELCHE",
+  "bg": {
+   "t": "radial",
+   "c": [
+    "#19A04B",
+    "#0A4D22"
+   ]
+  },
+  "fx": [
+   {
+    "m": "e:1f334",
+    "a": "grow",
+    "n": 3
+   }
+  ],
+  "ink": "#FFFFFF",
+  "accent": "#FFFFFF"
+ },
+ "88": {
+  "name": "ESPANYOL",
+  "bg": {
+   "t": "stripes",
+   "c": [
+    "#1F6FD1",
+    "#FFFFFF"
+   ],
+   "n": 9
+  },
+  "fx": [
+   {
+    "m": "e:1f99c",
+    "a": "fly",
+    "n": 8
+   }
+  ],
+  "ink": "#FFFFFF",
+  "accent": "#FFFFFF"
+ },
+ "2922": {
+  "name": "GETAFE",
+  "bg": {
+   "t": "radial",
+   "c": [
+    "#1E6FD9",
+    "#062E66"
+   ]
+  },
+  "fx": [
+   {
+    "m": "e:2708",
+    "a": "fly",
+    "n": 4
+   }
+  ],
+  "ink": "#FFFFFF",
+  "accent": "#FFFFFF"
+ },
+ "1538": {
+  "name": "LEVANTE",
+  "bg": {
+   "t": "stripes",
+   "c": [
+    "#0B4FA3",
+    "#B5121B"
+   ],
+   "n": 9
+  },
+  "fx": [
+   {
+    "m": "e:1f438",
+    "a": "hop",
+    "n": 6
+   }
+  ],
+  "ink": "#FFFFFF",
+  "accent": "#FFD400"
+ },
+ "99": {
+  "name": "MÁLAGA",
+  "bg": {
+   "t": "stripes",
+   "c": [
+    "#6EC1E4",
+    "#FFFFFF"
+   ],
+   "n": 9
+  },
+  "fx": [
+   {
+    "m": "e:2600",
+    "a": "grow",
+    "n": 1
+   },
+   {
+    "m": "e:1f334",
+    "a": "bloom",
+    "n": 4
+   }
+  ],
+  "ink": "#FFFFFF",
+  "accent": "#FFFFFF"
+ },
+ "97": {
+  "name": "OSASUNA",
+  "bg": {
+   "t": "radial",
+   "c": [
+    "#D91A21",
+    "#5E0A0E"
+   ]
+  },
+  "fx": [
+   {
+    "m": "e:1f402",
+    "a": "run",
+    "n": 3
+   }
+  ],
+  "ink": "#FFFFFF",
+  "accent": "#0A2B6B"
+ },
+ "87": {
+  "name": "RACING SANTANDER",
+  "bg": {
+   "t": "stripes",
+   "c": [
+    "#1E8F3E",
+    "#FFFFFF"
+   ],
+   "n": 9
+  },
+  "fx": [
+   {
+    "m": "e:26f5",
+    "a": "sail",
+    "n": 2
+   },
+   {
+    "m": "s:waves",
+    "a": "sail",
+    "n": 1,
+    "tint": "#0E5A2A"
+   }
+  ],
+  "ink": "#FFFFFF",
+  "accent": "#FFFFFF"
+ },
+ "101": {
+  "name": "RAYO VALLECANO",
+  "bg": {
+   "t": "sash",
+   "c": [
+    "#F4F4F4",
+    "#E30613"
+   ]
+  },
+  "fx": [
+   {
+    "m": "e:26a1",
+    "a": "rain",
+    "n": 7
+   }
+  ],
+  "ink": "#FFFFFF",
+  "accent": "#E30613"
+ },
+ "244": {
+  "name": "REAL BETIS",
+  "bg": {
+   "t": "stripes",
+   "c": [
+    "#0BB363",
+    "#FFFFFF"
+   ],
+   "n": 9
+  },
+  "fx": [
+   {
+    "m": "e:1f33f",
+    "a": "bloom",
+    "n": 10
+   }
+  ],
+  "ink": "#FFFFFF",
+  "accent": "#FFFFFF"
+ },
+ "86": {
+  "name": "REAL MADRID",
+  "bg": {
+   "t": "radial",
+   "c": [
+    "#FFFFFF",
+    "#C9B37E"
+   ]
+  },
+  "fx": [
+   {
+    "m": "e:1f451",
+    "a": "orbit",
+    "n": 5
+   },
+   {
+    "m": "e:2728",
+    "a": "bloom",
+    "n": 8
+   }
+  ],
+  "ink": "#1B1B3A",
+  "accent": "#3E1F7A"
+ },
+ "89": {
+  "name": "REAL SOCIEDAD",
+  "bg": {
+   "t": "stripes",
+   "c": [
+    "#0067B1",
+    "#FFFFFF"
+   ],
+   "n": 9
+  },
+  "fx": [
+   {
+    "m": "e:1f41a",
+    "a": "bloom",
+    "n": 8
+   },
+   {
+    "m": "s:waves",
+    "a": "sail",
+    "n": 1,
+    "tint": "#003E73"
+   }
+  ],
+  "ink": "#FFFFFF",
+  "accent": "#FFFFFF"
+ },
+ "243": {
+  "name": "SEVILLA",
+  "bg": {
+   "t": "radial",
+   "c": [
+    "#FFFFFF",
+    "#E3E3E3"
+   ]
+  },
+  "fx": [
+   {
+    "m": "e:1f34a",
+    "a": "rain",
+    "n": 12
+   }
+  ],
+  "ink": "#C8102E",
+  "accent": "#C8102E"
+ },
+ "94": {
+  "name": "VALENCIA",
+  "bg": {
+   "t": "radial",
+   "c": [
+    "#3A3A3A",
+    "#050505"
+   ]
+  },
+  "fx": [
+   {
+    "m": "e:1f987",
+    "a": "swarm",
+    "n": 12,
+    "ol": "#FFFFFF",
+    "s": 1.5
+   }
+  ],
+  "ink": "#FFFFFF",
+  "accent": "#EE7F00"
+ },
+ "102": {
+  "name": "VILLARREAL",
+  "bg": {
+   "t": "radial",
+   "c": [
+    "#FFE667",
+    "#E3B800"
+   ]
+  },
+  "fx": [
+   {
+    "m": "s:submarine",
+    "a": "sail",
+    "n": 1,
+    "s": 1.5
+   },
+   {
+    "m": "s:waves",
+    "a": "sail",
+    "n": 1,
+    "tint": "#005187"
+   }
+  ],
+  "ink": "#0A2B6B",
+  "accent": "#005187"
+ },
+ "103": {
+  "name": "AC MILAN",
+  "bg": {
+   "t": "stripes",
+   "c": [
+    "#E2001A",
+    "#111111"
+   ],
+   "n": 9
+  },
+  "fx": [
+   {
+    "m": "e:1f608",
+    "a": "bloom",
+    "n": 6,
+    "s": 1.2
+   }
+  ],
+  "ink": "#FFFFFF",
+  "accent": "#FFFFFF"
+ },
+ "104": {
+  "name": "AS ROMA",
+  "bg": {
+   "t": "radial",
+   "c": [
+    "#A6192E",
+    "#4D0A14"
+   ]
+  },
+  "fx": [
+   {
+    "m": "e:1f43a",
+    "a": "roar",
+    "n": 1
+   }
+  ],
+  "ink": "#FFFFFF",
+  "accent": "#F0BC42"
+ },
+ "105": {
+  "name": "ATALANTA",
+  "bg": {
+   "t": "stripes",
+   "c": [
+    "#1E71B8",
+    "#111111"
+   ],
+   "n": 9
+  },
+  "fx": [
+   {
+    "m": "e:1f34e",
+    "a": "rain",
+    "n": 12,
+    "tint": "#F2C230"
+   }
+  ],
+  "ink": "#FFFFFF",
+  "accent": "#F2C230"
+ },
+ "107": {
+  "name": "BOLOGNA",
+  "bg": {
+   "t": "split",
+   "c": [
+    "#A21C26",
+    "#1A2F48"
+   ]
+  },
+  "fx": [
+   {
+    "m": "s:towers",
+    "a": "grow",
+    "n": 1,
+    "side": 1
+   }
+  ],
+  "ink": "#FFFFFF",
+  "accent": "#FFFFFF"
+ },
+ "2925": {
+  "name": "CAGLIARI",
+  "bg": {
+   "t": "split",
+   "c": [
+    "#A6192E",
+    "#002350"
+   ]
+  },
+  "fx": [
+   {
+    "m": "e:1f9a9",
+    "a": "fly",
+    "n": 7,
+    "s": 1.6
+   }
+  ],
+  "ink": "#FFFFFF",
+  "accent": "#FFFFFF"
+ },
+ "2572": {
+  "name": "COMO",
+  "bg": {
+   "t": "radial",
+   "c": [
+    "#2F6BD6",
+    "#0C2A66"
+   ]
+  },
+  "fx": [
+   {
+    "m": "e:1f3d4",
+    "a": "grow",
+    "n": 1
+   },
+   {
+    "m": "e:26f5",
+    "a": "sail",
+    "n": 1
+   },
+   {
+    "m": "s:waves",
+    "a": "sail",
+    "n": 1,
+    "tint": "#08224F"
+   }
+  ],
+  "ink": "#FFFFFF",
+  "accent": "#FFFFFF"
+ },
+ "109": {
+  "name": "FIORENTINA",
+  "bg": {
+   "t": "radial",
+   "c": [
+    "#6B2FA8",
+    "#2A0D4D"
+   ]
+  },
+  "fx": [
+   {
+    "m": "e:269c",
+    "a": "bloom",
+    "n": 8,
+    "tint": "#E2231A",
+    "ol": "#FFFFFF"
+   }
+  ],
+  "ink": "#FFFFFF",
+  "accent": "#FFFFFF"
+ },
+ "4057": {
+  "name": "FROSINONE",
+  "bg": {
+   "t": "radial",
+   "c": [
+    "#FFD84D",
+    "#E0A800"
+   ]
+  },
+  "fx": [
+   {
+    "m": "e:1f424",
+    "a": "fly",
+    "n": 9,
+    "s": 1.4
+   }
+  ],
+  "ink": "#1A3D8F",
+  "accent": "#1A3D8F"
+ },
+ "3263": {
+  "name": "GENOA",
+  "bg": {
+   "t": "split",
+   "c": [
+    "#A6192E",
+    "#0A2140"
+   ]
+  },
+  "fx": [
+   {
+    "m": "e:1f985",
+    "a": "flank",
+    "n": 2
+   }
+  ],
+  "ink": "#FFFFFF",
+  "accent": "#F2C230"
+ },
+ "110": {
+  "name": "INTER",
+  "bg": {
+   "t": "stripes",
+   "c": [
+    "#0068A8",
+    "#111111"
+   ],
+   "n": 9
+  },
+  "fx": [
+   {
+    "m": "e:1f40d",
+    "a": "flank",
+    "n": 2
+   }
+  ],
+  "ink": "#FFFFFF",
+  "accent": "#F2C230"
+ },
+ "111": {
+  "name": "JUVENTUS",
+  "bg": {
+   "t": "stripes",
+   "c": [
+    "#111111",
+    "#FFFFFF"
+   ],
+   "n": 9
+  },
+  "fx": [
+   {
+    "m": "e:1f993",
+    "a": "run",
+    "n": 4
+   }
+  ],
+  "ink": "#FFFFFF",
+  "accent": "#FFFFFF"
+ },
+ "112": {
+  "name": "LAZIO",
+  "bg": {
+   "t": "radial",
+   "c": [
+    "#87D8F7",
+    "#2A7DB5"
+   ]
+  },
+  "fx": [
+   {
+    "m": "e:1f985",
+    "a": "roar",
+    "n": 1
+   }
+  ],
+  "ink": "#FFFFFF",
+  "accent": "#FFFFFF"
+ },
+ "113": {
+  "name": "LECCE",
+  "bg": {
+   "t": "stripes",
+   "c": [
+    "#FFE500",
+    "#D2152B"
+   ],
+   "n": 9
+  },
+  "fx": [
+   {
+    "m": "e:1f43a",
+    "a": "run",
+    "n": 3
+   }
+  ],
+  "ink": "#FFFFFF",
+  "accent": "#111111"
+ },
+ "4007": {
+  "name": "MONZA",
+  "bg": {
+   "t": "split",
+   "c": [
+    "#E2001A",
+    "#FFFFFF"
+   ]
+  },
+  "fx": [
+   {
+    "m": "e:1f451",
+    "a": "grow",
+    "n": 1,
+    "tint": "#B8BCC4"
+   }
+  ],
+  "ink": "#FFFFFF",
+  "accent": "#FFFFFF"
+ },
+ "114": {
+  "name": "NAPOLI",
+  "bg": {
+   "t": "radial",
+   "c": [
+    "#12A0D7",
+    "#004B87"
+   ]
+  },
+  "fx": [
+   {
+    "m": "e:1f30b",
+    "a": "grow",
+    "n": 1
+   },
+   {
+    "m": "e:1f355",
+    "a": "rain",
+    "n": 10
+   }
+  ],
+  "ink": "#FFFFFF",
+  "accent": "#FFFFFF"
+ },
+ "115": {
+  "name": "PARMA",
+  "bg": {
+   "t": "cross",
+   "c": [
+    "#1A3D8F",
+    "#FFD400"
+   ]
+  },
+  "fx": [
+   {
+    "m": "e:1f9c0",
+    "a": "bloom",
+    "n": 8
+   }
+  ],
+  "ink": "#FFFFFF",
+  "accent": "#FFD400"
+ },
+ "3997": {
+  "name": "SASSUOLO",
+  "bg": {
+   "t": "tiles",
+   "c": [
+    "#00A752",
+    "#111111"
+   ]
+  },
+  "fx": [
+   {
+    "m": "e:2728",
+    "a": "orbit",
+    "n": 7
+   }
+  ],
+  "ink": "#FFFFFF",
+  "accent": "#00A752"
+ },
+ "239": {
+  "name": "TORINO",
+  "bg": {
+   "t": "radial",
+   "c": [
+    "#8A1E03",
+    "#3D0D01"
+   ]
+  },
+  "fx": [
+   {
+    "m": "e:1f402",
+    "a": "roar",
+    "n": 1
+   }
+  ],
+  "ink": "#FFFFFF",
+  "accent": "#FFFFFF"
+ },
+ "118": {
+  "name": "UDINESE",
+  "bg": {
+   "t": "stripes",
+   "c": [
+    "#FFFFFF",
+    "#111111"
+   ],
+   "n": 11
+  },
+  "fx": [
+   {
+    "m": "e:1f993",
+    "a": "flank",
+    "n": 2
+   }
+  ],
+  "ink": "#FFFFFF",
+  "accent": "#FFFFFF"
+ },
+ "17530": {
+  "name": "VENEZIA",
+  "bg": {
+   "t": "radial",
+   "c": [
+    "#2F3A33",
+    "#050505"
+   ]
+  },
+  "fx": [
+   {
+    "m": "e:1f6f6",
+    "a": "sail",
+    "n": 2,
+    "s": 1.4
+   },
+   {
+    "m": "s:waves",
+    "a": "sail",
+    "n": 1,
+    "tint": "#00843D"
+   }
+  ],
+  "ink": "#FFFFFF",
+  "accent": "#F37A1F"
+ },
+ "598": {
+  "name": "1. FC UNION BERLIN",
+  "bg": {
+   "t": "radial",
+   "c": [
+    "#D4011D",
+    "#5C0010"
+   ]
+  },
+  "fx": [
+   {
+    "m": "e:2692",
+    "a": "flank",
+    "n": 2
+   }
+  ],
+  "ink": "#FFFFFF",
+  "accent": "#FFD400"
+ },
+ "131": {
+  "name": "BAYER LEVERKUSEN",
+  "bg": {
+   "t": "radial",
+   "c": [
+    "#E32221",
+    "#3A0505"
+   ]
+  },
+  "fx": [
+   {
+    "m": "e:2699",
+    "a": "orbit",
+    "n": 5,
+    "s": 1.7
+   }
+  ],
+  "ink": "#FFFFFF",
+  "accent": "#111111"
+ },
+ "132": {
+  "name": "FC BAYERN MÜNCHEN",
+  "bg": {
+   "t": "radial",
+   "c": [
+    "#DC052D",
+    "#6B0016"
+   ]
+  },
+  "fx": [
+   {
+    "m": "s:rauten",
+    "a": "grow",
+    "n": 1
+   },
+   {
+    "m": "e:1f968",
+    "a": "rain",
+    "n": 10
+   }
+  ],
+  "ink": "#FFFFFF",
+  "accent": "#0066B2"
+ },
+ "124": {
+  "name": "BORUSSIA DORTMUND",
+  "bg": {
+   "t": "radial",
+   "c": [
+    "#FDE100",
+    "#E0B000"
+   ]
+  },
+  "fx": [
+   {
+    "m": "e:1f41d",
+    "a": "swarm",
+    "n": 16
+   }
+  ],
+  "ink": "#111111",
+  "accent": "#111111"
+ },
+ "268": {
+  "name": "BORUSSIA MÖNCHENGLADBACH",
+  "bg": {
+   "t": "radial",
+   "c": [
+    "#1A9E4B",
+    "#0B4D24"
+   ]
+  },
+  "fx": [
+   {
+    "m": "e:1f40e",
+    "a": "run",
+    "n": 4
+   }
+  ],
+  "ink": "#FFFFFF",
+  "accent": "#FFFFFF"
+ },
+ "125": {
+  "name": "EINTRACHT FRANKFURT",
+  "bg": {
+   "t": "radial",
+   "c": [
+    "#E1000F",
+    "#1A0003"
+   ]
+  },
+  "fx": [
+   {
+    "m": "e:1f985",
+    "a": "roar",
+    "n": 1
+   }
+  ],
+  "ink": "#FFFFFF",
+  "accent": "#FFFFFF"
+ },
+ "3841": {
+  "name": "FC AUGSBURG",
+  "bg": {
+   "t": "split",
+   "c": [
+    "#BA3733",
+    "#46793A"
+   ]
+  },
+  "fx": [
+   {
+    "m": "s:pinecone",
+    "a": "rain",
+    "n": 9,
+    "s": 1.4
+   }
+  ],
+  "ink": "#FFFFFF",
+  "accent": "#FFFFFF"
+ },
+ "122": {
+  "name": "1. FC KÖLN",
+  "bg": {
+   "t": "radial",
+   "c": [
+    "#ED1C24",
+    "#6B0A0F"
+   ]
+  },
+  "fx": [
+   {
+    "m": "e:1f410",
+    "a": "hop",
+    "n": 3
+   }
+  ],
+  "ink": "#FFFFFF",
+  "accent": "#FFFFFF"
+ },
+ "127": {
+  "name": "HAMBURGER SV",
+  "bg": {
+   "t": "radial",
+   "c": [
+    "#0A3EA8",
+    "#04153D"
+   ]
+  },
+  "fx": [
+   {
+    "m": "e:2693",
+    "a": "rain",
+    "n": 8,
+    "tint": "#FFFFFF",
+    "s": 1.3
+   },
+   {
+    "m": "s:waves",
+    "a": "sail",
+    "n": 1,
+    "tint": "#021033"
+   }
+  ],
+  "ink": "#FFFFFF",
+  "accent": "#FFFFFF"
+ },
+ "2950": {
+  "name": "1. FSV MAINZ 05",
+  "bg": {
+   "t": "radial",
+   "c": [
+    "#ED1C24",
+    "#6B0A0F"
+   ]
+  },
+  "fx": [
+   {
+    "m": "e:1f3ad",
+    "a": "bloom",
+    "n": 6
+   },
+   {
+    "m": "e:1f389",
+    "a": "rain",
+    "n": 8
+   }
+  ],
+  "ink": "#FFFFFF",
+  "accent": "#FFFFFF"
+ },
+ "11420": {
+  "name": "RB LEIPZIG",
+  "bg": {
+   "t": "radial",
+   "c": [
+    "#FFFFFF",
+    "#D5D9E0"
+   ]
+  },
+  "fx": [
+   {
+    "m": "e:1f402",
+    "a": "flank",
+    "n": 2
+   }
+  ],
+  "ink": "#0C2043",
+  "accent": "#DD0741"
+ },
+ "126": {
+  "name": "SC FREIBURG",
+  "bg": {
+   "t": "radial",
+   "c": [
+    "#D2122E",
+    "#1A0306"
+   ]
+  },
+  "fx": [
+   {
+    "m": "e:1f332",
+    "a": "grow",
+    "n": 5
+   }
+  ],
+  "ink": "#FFFFFF",
+  "accent": "#FFFFFF"
+ },
+ "3307": {
+  "name": "SC PADERBORN 07",
+  "bg": {
+   "t": "radial",
+   "c": [
+    "#0A50A1",
+    "#04173D"
+   ]
+  },
+  "fx": [
+   {
+    "m": "e:1f4a7",
+    "a": "rain",
+    "n": 14
+   }
+  ],
+  "ink": "#FFFFFF",
+  "accent": "#FFFFFF"
+ },
+ "10388": {
+  "name": "SV ELVERSBERG",
+  "bg": {
+   "t": "radial",
+   "c": [
+    "#2A2A2A",
+    "#000000"
+   ]
+  },
+  "fx": [
+   {
+    "m": "e:1f680",
+    "a": "grow",
+    "n": 1
+   },
+   {
+    "m": "e:2728",
+    "a": "orbit",
+    "n": 6
+   }
+  ],
+  "ink": "#FFFFFF",
+  "accent": "#FFFFFF"
+ },
+ "133": {
+  "name": "SCHALKE 04",
+  "bg": {
+   "t": "radial",
+   "c": [
+    "#004D9D",
+    "#00163D"
+   ]
+  },
+  "fx": [
+   {
+    "m": "e:26cf",
+    "a": "flank",
+    "n": 2
+   }
+  ],
+  "ink": "#FFFFFF",
+  "accent": "#FFFFFF"
+ },
+ "7911": {
+  "name": "TSG HOFFENHEIM",
+  "bg": {
+   "t": "radial",
+   "c": [
+    "#1961B5",
+    "#062A5A"
+   ]
+  },
+  "fx": [
+   {
+    "m": "e:1f33b",
+    "a": "bloom",
+    "n": 8
+   }
+  ],
+  "ink": "#FFFFFF",
+  "accent": "#FFFFFF"
+ },
+ "134": {
+  "name": "VFB STUTTGART",
+  "bg": {
+   "t": "band",
+   "c": [
+    "#FFFFFF",
+    "#E32219"
+   ]
+  },
+  "fx": [
+   {
+    "m": "e:1f98c",
+    "a": "flank",
+    "n": 2
+   }
+  ],
+  "ink": "#E32219",
+  "accent": "#E32219"
+ },
+ "137": {
+  "name": "WERDER BREMEN",
+  "bg": {
+   "t": "radial",
+   "c": [
+    "#1D9053",
+    "#0A4426"
+   ]
+  },
+  "fx": [
+   {
+    "m": "s:musicians",
+    "a": "stack",
+    "n": 1
+   },
+   {
+    "m": "e:1f511",
+    "a": "orbit",
+    "n": 5,
+    "tint": "#E8E8E8"
+   }
+  ],
+  "ink": "#FFFFFF",
+  "accent": "#FFFFFF"
+ },
+ "172": {
+  "name": "AJ AUXERRE",
+  "bg": {
+   "t": "radial",
+   "c": [
+    "#FFFFFF",
+    "#D6E2F2"
+   ]
+  },
+  "fx": [
+   {
+    "m": "e:1f40c",
+    "a": "run",
+    "n": 3,
+    "slow": 1
+   }
+  ],
+  "ink": "#0F3D8F",
+  "accent": "#0F3D8F"
+ },
+ "174": {
+  "name": "AS MONACO",
+  "bg": {
+   "t": "split",
+   "c": [
+    "#E51B22",
+    "#FFFFFF"
+   ]
+  },
+  "fx": [
+   {
+    "m": "e:1f48e",
+    "a": "rain",
+    "n": 10
+   }
+  ],
+  "ink": "#FFFFFF",
+  "accent": "#FFFFFF"
+ },
+ "7868": {
+  "name": "ANGERS SCO",
+  "bg": {
+   "t": "stripes",
+   "c": [
+    "#111111",
+    "#FFFFFF"
+   ],
+   "n": 9
+  },
+  "fx": [
+   {
+    "m": "e:1f3f0",
+    "a": "grow",
+    "n": 1
+   }
+  ],
+  "ink": "#FFFFFF",
+  "accent": "#FFFFFF"
+ },
+ "6997": {
+  "name": "STADE BRESTOIS",
+  "bg": {
+   "t": "radial",
+   "c": [
+    "#E2001A",
+    "#5E000B"
+   ]
+  },
+  "fx": [
+   {
+    "m": "e:2693",
+    "a": "flank",
+    "n": 2
+   }
+  ],
+  "ink": "#FFFFFF",
+  "accent": "#FFFFFF"
+ },
+ "3236": {
+  "name": "LE HAVRE AC",
+  "bg": {
+   "t": "split",
+   "c": [
+    "#8CC8EC",
+    "#0B2A63"
+   ]
+  },
+  "fx": [
+   {
+    "m": "e:1f6a2",
+    "a": "sail",
+    "n": 1
+   },
+   {
+    "m": "s:waves",
+    "a": "sail",
+    "n": 1,
+    "tint": "#06183B"
+   }
+  ],
+  "ink": "#FFFFFF",
+  "accent": "#FFFFFF"
+ },
+ "2697": {
+  "name": "LE MANS FC",
+  "bg": {
+   "t": "radial",
+   "c": [
+    "#D62B11",
+    "#5E1205"
+   ]
+  },
+  "fx": [
+   {
+    "m": "e:1f3c1",
+    "a": "flank",
+    "n": 2
+   },
+   {
+    "m": "e:1f3ce",
+    "a": "run",
+    "n": 2
+   }
+  ],
+  "ink": "#FFFFFF",
+  "accent": "#FFD400"
+ },
+ "175": {
+  "name": "RC LENS",
+  "bg": {
+   "t": "split",
+   "c": [
+    "#E51B22",
+    "#FFD400"
+   ]
+  },
+  "fx": [
+   {
+    "m": "e:26cf",
+    "a": "rain",
+    "n": 8
+   }
+  ],
+  "ink": "#FFFFFF",
+  "accent": "#111111"
+ },
+ "166": {
+  "name": "LOSC LILLE",
+  "bg": {
+   "t": "radial",
+   "c": [
+    "#E01E13",
+    "#0B1F4D"
+   ]
+  },
+  "fx": [
+   {
+    "m": "e:1f415",
+    "a": "flank",
+    "n": 2
+   }
+  ],
+  "ink": "#FFFFFF",
+  "accent": "#FFFFFF"
+ },
+ "273": {
+  "name": "FC LORIENT",
+  "bg": {
+   "t": "radial",
+   "c": [
+    "#F58113",
+    "#8A3D00"
+   ]
+  },
+  "fx": [
+   {
+    "m": "e:1f41f",
+    "a": "swarm",
+    "n": 12
+   }
+  ],
+  "ink": "#FFFFFF",
+  "accent": "#111111"
+ },
+ "167": {
+  "name": "OLYMPIQUE LYONNAIS",
+  "bg": {
+   "t": "radial",
+   "c": [
+    "#FFFFFF",
+    "#D5DDEE"
+   ]
+  },
+  "fx": [
+   {
+    "m": "e:1f981",
+    "a": "roar",
+    "n": 1
+   }
+  ],
+  "ink": "#14387F",
+  "accent": "#DA0812"
+ },
+ "176": {
+  "name": "OLYMPIQUE DE MARSEILLE",
+  "bg": {
+   "t": "radial",
+   "c": [
+    "#8FD1F0",
+    "#1E7FB8"
+   ]
+  },
+  "fx": [
+   {
+    "m": "e:2b50",
+    "a": "orbit",
+    "n": 6
+   },
+   {
+    "m": "s:waves",
+    "a": "sail",
+    "n": 1,
+    "tint": "#0B4F7A"
+   }
+  ],
+  "ink": "#FFFFFF",
+  "accent": "#FFFFFF"
+ },
+ "2502": {
+  "name": "OGC NICE",
+  "bg": {
+   "t": "stripes",
+   "c": [
+    "#E2001A",
+    "#111111"
+   ],
+   "n": 9
+  },
+  "fx": [
+   {
+    "m": "e:1f985",
+    "a": "fly",
+    "n": 5,
+    "s": 1.6
+   }
+  ],
+  "ink": "#FFFFFF",
+  "accent": "#FFFFFF"
+ },
+ "6851": {
+  "name": "PARIS FC",
+  "bg": {
+   "t": "radial",
+   "c": [
+    "#1B2A4A",
+    "#070D1C"
+   ]
+  },
+  "fx": [
+   {
+    "m": "e:1f950",
+    "a": "rain",
+    "n": 10
+   }
+  ],
+  "ink": "#FFFFFF",
+  "accent": "#8FC8EE"
+ },
+ "160": {
+  "name": "PARIS SAINT-GERMAIN",
+  "bg": {
+   "t": "radial",
+   "c": [
+    "#004170",
+    "#001A33"
+   ]
+  },
+  "fx": [
+   {
+    "m": "s:eiffel",
+    "a": "grow",
+    "n": 1,
+    "side": 1
+   },
+   {
+    "m": "e:269c",
+    "a": "orbit",
+    "n": 6,
+    "tint": "#FFFFFF"
+   }
+  ],
+  "ink": "#FFFFFF",
+  "accent": "#DA291C"
+ },
+ "169": {
+  "name": "STADE RENNAIS",
+  "bg": {
+   "t": "split",
+   "c": [
+    "#E2001A",
+    "#111111"
+   ]
+  },
+  "fx": [
+   {
+    "m": "e:1f95e",
+    "a": "rain",
+    "n": 8
+   }
+  ],
+  "ink": "#FFFFFF",
+  "accent": "#FFFFFF"
+ },
+ "180": {
+  "name": "RC STRASBOURG",
+  "bg": {
+   "t": "radial",
+   "c": [
+    "#0A5FD1",
+    "#032A6B"
+   ]
+  },
+  "fx": [
+   {
+    "m": "e:1f9a9",
+    "a": "fly",
+    "n": 6,
+    "s": 1.8
+   }
+  ],
+  "ink": "#FFFFFF",
+  "accent": "#FFFFFF"
+ },
+ "179": {
+  "name": "TOULOUSE FC",
+  "bg": {
+   "t": "radial",
+   "c": [
+    "#6A1B9A",
+    "#2A0846"
+   ]
+  },
+  "fx": [
+   {
+    "m": "e:1f338",
+    "a": "bloom",
+    "n": 10,
+    "tint": "#C9A0F0"
+   }
+  ],
+  "ink": "#FFFFFF",
+  "accent": "#FFFFFF"
+ },
+ "170": {
+  "name": "ESTAC TROYES",
+  "bg": {
+   "t": "radial",
+   "c": [
+    "#1F5FD1",
+    "#072A66"
+   ]
+  },
+  "fx": [
+   {
+    "m": "e:1f3d8",
+    "a": "grow",
+    "n": 1
+   }
+  ],
+  "ink": "#FFFFFF",
+  "accent": "#FFFFFF"
+ }
+}

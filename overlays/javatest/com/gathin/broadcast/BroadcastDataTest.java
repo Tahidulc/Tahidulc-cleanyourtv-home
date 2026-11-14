@@ -92,6 +92,41 @@ public class BroadcastDataTest {
     }
 
     @Test
+    public void theTopFiveLeaguesHaveTheirSeasonIntros() throws Exception {
+        assertEquals("pl", BroadcastData.seasonKey("eng.1", "English Premier League"));
+        assertEquals("laliga", BroadcastData.seasonKey("esp.1", "Spanish LALIGA"));
+        assertEquals("seriea", BroadcastData.seasonKey("ita.1", "Italian Serie A"));
+        assertEquals("bundesliga", BroadcastData.seasonKey("ger.1", "German Bundesliga"));
+        assertEquals("ligue1", BroadcastData.seasonKey("fra.1", "French Ligue 1"));
+        // a cup, the Championship and the Champions League keep to their own intros
+        assertEquals("", BroadcastData.seasonKey("eng.fa", "English FA Cup"));
+        assertEquals("", BroadcastData.seasonKey("eng.2", "English League Championship"));
+        assertEquals("", BroadcastData.seasonKey("uefa.champions", "UEFA Champions League"));
+        JSONObject o = BroadcastData.season("pl", "Arsenal v Everton");
+        JSONArray clips = o.getJSONArray("clips");
+        assertEquals("intros/season-pl.mp4", clips.getString(0));
+        assertEquals("intros/tail.mp4", clips.getString(1));
+        assertEquals("intros/sound-season-pl.m4a", o.getString("sound"));
+        assertEquals("ARSENAL v EVERTON", o.getString("fixture"));
+        assertEquals(3.8, o.getDouble("fixtureIn"), 1e-9);
+    }
+
+    @Test
+    public void everySeasonIntroHasItsFilmAndMusic() {
+        java.io.File dir = null;
+        for (java.io.File d = new java.io.File("").getAbsoluteFile(); d != null && dir == null; d = d.getParentFile()) {
+            java.io.File m = new java.io.File(d, "overlays/assets-tv/broadcast/intros");
+            if (m.isDirectory()) dir = m;
+        }
+        org.junit.Assert.assertNotNull("overlays/assets-tv/broadcast/intros", dir);
+        for (String k : BroadcastData.SEASON_KEYS) {
+            assertTrue(k, new java.io.File(dir, "season-" + k + ".mp4").isFile());
+            assertTrue(k, new java.io.File(dir, "sound-season-" + k + ".m4a").isFile());
+        }
+        assertTrue(new java.io.File(dir, "tail.mp4").isFile());
+    }
+
+    @Test
     public void coloursMinutesAndScoresAreWrittenAsThePageReadsThem() {
         assertEquals("#ef0107", BroadcastData.hex(0xFFEF0107));
         assertNull(BroadcastData.hex(0));
