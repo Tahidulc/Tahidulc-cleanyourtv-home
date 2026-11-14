@@ -1883,6 +1883,12 @@ public class PlayerActivity extends AppCompatActivity {
 
             @Override public String programmeNow() { return PlayerActivity.this.programmeNow(); }
 
+            @Override public String[] streamTags() {
+                ExoPlayer p = pb.player();
+                if (p == null) return null;
+                return new String[]{MediaTags.video(p.getVideoFormat()), MediaTags.hdr(p.getVideoFormat()), MediaTags.audio(p.getAudioFormat())};
+            }
+
             @Override public boolean muted() {
                 ExoPlayer p = pb.player();
                 return p != null && p.getVolume() <= 0f || volume() <= 0f;

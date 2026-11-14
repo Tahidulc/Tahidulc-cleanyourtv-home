@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The extras on the family's channel logo in the player (LogoExtras), in Settings' scoreboard page. -->
+<resources>
+    <string name="live83_extras">On the logo</string>
+    <string name="live83_next">Up next</string>
+    <string name="live83_prayer">Prayer time</string>
+    <string name="live83_clock">Clock and weather</string>
+    <string name="live83_marks">Picture and sound marks</string>
+    <string name="live83_line">Up next slides out of the logo 5 minutes before the next programme; one prayer reminder 5 minutes before each prayer; every 5 minutes the channel\'s name turns over to the time and the weather for 30 seconds; and the picture\'s and sound\'s marks the channel really carries (4K, HDR, Dolby Atmos) sit beside its name. They wait for the scoreboard.</string>
+</resources>

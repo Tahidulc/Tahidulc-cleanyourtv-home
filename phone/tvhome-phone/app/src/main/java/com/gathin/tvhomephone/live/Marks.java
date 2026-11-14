@@ -113,6 +113,35 @@ final class Marks {
         return out;
     }
 
+    /**
+     * The marks the channel's logo carries beside its name, only what the stream itself has, in white: 4K (its logo),
+     * the HDR's logo (Dolby Vision, HDR10, HDR10+, HLG), the sound's: Dolby Atmos's logo; Dolby's logo for Dolby's other
+     * sound (Digital, Digital Plus, TrueHD, AC-4) with its surround channels; DTS; 5.1 or 7.1; Stereo. Nothing for HD or
+     * SD pictures, mono or sound not known. Pure.
+     */
+    static List<Mark> logo(String video, String hdr, String audio) {
+        List<Mark> out = new ArrayList<>();
+        if ("4K".equals(video == null ? "" : video.trim())) out.add(new Mark(R.drawable.fmt_4k, "4K", "4K Ultra HD"));
+        Mark h = hdr(hdr);
+        if (h != null) out.add(h);
+        String a = audio == null ? "" : audio.trim(), ch = channels(a);
+        boolean surround = ch.equals("5.1") || ch.equals("7.1");
+        if (a.startsWith("Dolby Atmos")) {
+            out.add(new Mark(R.drawable.fmt_dolby_atmos, "Dolby Atmos", "Dolby Atmos"));
+        } else if (a.startsWith("Dolby")) {
+            out.add(new Mark(R.drawable.fmt_dolby, "Dolby", a.replace(" " + ch, "").trim()));
+            if (surround) out.add(new Mark(0, ch, ch));
+        } else if (a.startsWith("DTS")) {
+            out.add(new Mark(0, a.split(" ")[0], a.split(" ")[0]));
+            if (surround) out.add(new Mark(0, ch, ch));
+        } else if (surround) {
+            out.add(new Mark(0, ch, ch));
+        } else if (ch.equals("Stereo")) {
+            out.add(new Mark(0, "Stereo", "Stereo"));
+        }
+        return out;
+    }
+
     /** The channels at the end of MediaTags' words ("Dolby Digital+ 5.1" → "5.1"), or "". Pure. */
     static String channels(String audio) {
         String a = audio == null ? "" : audio.trim();

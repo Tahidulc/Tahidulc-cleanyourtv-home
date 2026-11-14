@@ -735,6 +735,12 @@ public final class ScoreBoard implements LiveAlerts.Listener {
 
     private String confirmedId = "";
 
+    /** Something out of the board now (an alert, the stats, the line-ups, VAR's why, what is under it): the logo's extras wait. */
+    boolean outNow() {
+        return strip.isOut() || stats.isOut() || lineups.getVisibility() == View.VISIBLE || under.getVisibility() == View.VISIBLE
+                || why.getVisibility() == View.VISIBLE;
+    }
+
     /** Whether it shows a scoreboard now (not only alerts). */
     boolean showing() {
         return bug.getVisibility() == View.VISIBLE;

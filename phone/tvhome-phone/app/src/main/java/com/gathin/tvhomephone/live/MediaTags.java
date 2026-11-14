@@ -35,21 +35,38 @@ public final class MediaTags {
     /** The picture's HDR: Dolby Vision, HDR10 (PQ, with HDR10+ when the codec says so), HLG; "" for none. */
     public static String hdr(Format f) {
         if (f == null) return "";
-        String mime = f.sampleMimeType == null ? "" : f.sampleMimeType;
-        String codecs = f.codecs == null ? "" : f.codecs.toLowerCase(Locale.ROOT);
-        if (MimeTypes.VIDEO_DOLBY_VISION.equals(mime) || codecs.startsWith("dvh") || codecs.startsWith("dva")) return "Dolby Vision";
         ColorInfo ci = f.colorInfo;
-        if (ci == null) return "";
-        if (ci.colorTransfer == C.COLOR_TRANSFER_ST2084) return ci.hdrStaticInfo != null && codecs.contains("hdr10+") ? "HDR10+" : "HDR10";
-        if (ci.colorTransfer == C.COLOR_TRANSFER_HLG) return "HLG";
+        return hdr(f.sampleMimeType, f.codecs, ci == null ? C.INDEX_UNSET : ci.colorTransfer);
+    }
+
+    /**
+     * Pure: the HDR by the picture's type (Dolby Vision's own, or a Dolby Vision codec: dvh1, dvhe, dav1, dva1, dvav),
+     * its codec's words (HDR10+ where a codec string says so) and its transfer (PQ: HDR10, HLG); "" for none.
+     */
+    static String hdr(String mime, String codecs, int transfer) {
+        String m = mime == null ? "" : mime, cs = codecs == null ? "" : codecs.toLowerCase(Locale.ROOT).trim();
+        if (MimeTypes.VIDEO_DOLBY_VISION.equals(m) || cs.startsWith("dvh") || cs.startsWith("dva") || cs.startsWith("dav1")
+                || cs.contains(",dvh") || cs.contains(",dva")) return "Dolby Vision";
+        if (cs.contains("hdr10+") || cs.contains("hdr10plus")) return "HDR10+";
+        if (transfer == C.COLOR_TRANSFER_ST2084) return "HDR10";
+        if (transfer == C.COLOR_TRANSFER_HLG) return "HLG";
         return "";
     }
 
     /** The sound: its kind and its channels ("Dolby Digital 5.1", "AAC Stereo", "Dolby Atmos"), or "". */
     public static String audio(Format f) {
         if (f == null) return "";
-        String kind = codec(f.sampleMimeType);
-        String ch = channels(f.channelCount);
+        return audio(f.sampleMimeType, f.codecs, f.channelCount);
+    }
+
+    /**
+     * Pure: the sound by its type, its codec's words and its channels: E-AC-3 with joint object coding (its own type,
+     * or the "ec+3" codec a stream's playlist names it by) is Dolby Atmos.
+     */
+    static String audio(String mime, String codecs, int channelCount) {
+        String cs = codecs == null ? "" : codecs.toLowerCase(Locale.ROOT);
+        String kind = cs.contains("ec+3") || cs.contains("ec-3.joc") ? "Dolby Atmos" : codec(mime);
+        String ch = channels(channelCount);
         if ("Dolby Atmos".equals(kind)) return kind;
         if (kind.isEmpty()) return ch;
         return ch.isEmpty() ? kind : kind + " " + ch;

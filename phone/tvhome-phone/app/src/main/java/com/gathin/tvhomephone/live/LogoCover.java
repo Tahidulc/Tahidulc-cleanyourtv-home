@@ -112,6 +112,18 @@ final class LogoCover extends View implements BurnGuard.Dims {
     private int styleNo;
     /** Event's name for the channel ("main event"; "" for none), and the channel's name it was read from. */
     private String sub = "", subFrom;
+    /**
+     * The logo's extras in Event's name box (LogoExtras): the stream's own marks (null: not known, the tag as before),
+     * room for the clock, the clock and the weather turned over to (since flipAt), their words and picture.
+     */
+    private java.util.List<Marks.Mark> marks;
+    private String marksKey = "";
+    private boolean clockRoom, clockShown;
+    private long flipAt = -1;
+    private String clockTime = "", clockTemp = "";
+    private int clockSky = LogoExtras.SKY_PARTLY;
+    private final RectF box = new RectF();
+    static final long FLIP_MS = 500L;
 
     LogoCover(Context c) {
         super(c);
@@ -131,6 +143,52 @@ final class LogoCover extends View implements BurnGuard.Dims {
     void look(Look l) {
         look = l;
         invalidate();
+    }
+
+    /** The stream's own marks in Event's name box (null or none: the picture's tag as before). */
+    void marks(java.util.List<Marks.Mark> m) {
+        String k = m == null ? "" : Marks.spoken(m);
+        if (k.equals(marksKey)) return;
+        marksKey = k;
+        marks = m == null || m.isEmpty() ? null : m;
+        if (look.event()) invalidate();
+    }
+
+    /** Room kept in Event's name box for the clock (its switch on). */
+    void clockRoom(boolean on) {
+        if (on == clockRoom) return;
+        clockRoom = on;
+        if (look.event()) invalidate();
+    }
+
+    /** The name turned over to the clock and the weather (show), or back; its words and picture as known (null: kept). */
+    void clock(boolean show, String time, int sky, String temp) {
+        if (show != clockShown) {
+            clockShown = show;
+            flipAt = android.os.SystemClock.uptimeMillis();
+        }
+        if (time != null) clockTime = time;
+        if (sky >= 0) clockSky = sky;
+        if (temp != null) clockTemp = temp;
+        invalidate();
+    }
+
+    /** Whether it has a name box to turn over (Event, with the channel's name). */
+    boolean nameBox() {
+        return look.event() && !sub.isEmpty() && getVisibility() == VISIBLE;
+    }
+
+    /** Where its name box is drawn, on this view (the whole cover when it has none). */
+    RectF anchor() {
+        if (look.event() && channel != null && !channel.subBox.isEmpty()) return channel.subBox;
+        return whole();
+    }
+
+    /** Where its mark is drawn, on this view. */
+    RectF whole() {
+        if (look.event() && channel != null && !channel.whole.isEmpty()) return channel.whole;
+        box.set(0, 0, getWidth(), getHeight());
+        return box;
     }
 
     /** The channel's picture tag for Broadcast's box ("HD", "UHD"; "" for none). */
@@ -361,8 +419,12 @@ final class LogoCover extends View implements BurnGuard.Dims {
                 channel = new ChannelMark(getContext());
                 channel.nameOnly(nameOnly);
             }
+            // The extras in its name box: the stream's marks, the clock and the weather turning over.
+            float f = flipAt < 0 ? 1f : Math.min(1f, (android.os.SystemClock.uptimeMillis() - flipAt) / (float) FLIP_MS);
+            channel.inside(marks, clockRoom, clockShown, f, clockTime, clockSky, clockTemp);
             // On its plate it fills the whole cover (the channel's logo under it never shows); alone, in from the edge.
             channel.event(cv, in, in, w - 2 * in, h - 2 * in, sub, tag, look == Look.EVENT_WHITE, !clear);
+            if (f < 1f) postInvalidateOnAnimation();
             return;
         }
         if (look == Look.STYLES) {

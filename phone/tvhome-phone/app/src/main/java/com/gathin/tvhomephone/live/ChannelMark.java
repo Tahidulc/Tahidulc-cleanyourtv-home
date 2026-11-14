@@ -1,7 +1,11 @@
 package com.gathin.tvhomephone.live;
 
 import android.content.Context;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
+import android.graphics.PorterDuff;
+import android.graphics.PorterDuffColorFilter;
 import android.graphics.LinearGradient;
 import android.graphics.Matrix;
 import android.graphics.Paint;
@@ -142,7 +146,38 @@ final class ChannelMark {
     /** The family's name alone, without SPORTS (Settings' Name: Whitebrook Road). */
     private boolean nameOnly;
 
+    // ---- Event's extras inside its name box (the logo's extras, LogoExtras) ----
+    /** The stream's own marks after a fine bar (null or none: the tag as before). */
+    private java.util.List<Marks.Mark> marks;
+    /** The clock and the weather in the name's place: room kept for them, shown now, the flip between (0 to 1, 1 done). */
+    private boolean clockRoom, clockShown;
+    private float flip = 1f;
+    private String clockTime = "", clockTemp = "";
+    private int clockSky = LogoExtras.SKY_PARTLY;
+    /** Where Event last drew its name box, and the whole mark, in the canvas's units (the extras go by them). */
+    final RectF subBox = new RectF(), whole = new RectF();
+    private final Context app;
+    private static final Map<Integer, Bitmap> PICS = new HashMap<>();
+    private final Paint pic = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+    /** A mark's height in Event's units (its words 92 high). */
+    private static final float MARK_H = 56f;
+
+    /**
+     * What Event's name box carries besides the channel's name: the stream's marks (null: the tag), room for the clock
+     * (clockRoom), the clock and the weather in the name's place (clockShown) and how far the flip to it has gone.
+     */
+    void inside(java.util.List<Marks.Mark> m, boolean room, boolean shown, float flipAt, String time, int sky, String temp) {
+        marks = m;
+        clockRoom = room;
+        clockShown = shown;
+        flip = Math.max(0f, Math.min(1f, flipAt));
+        clockTime = time == null ? "" : time;
+        clockSky = sky;
+        clockTemp = temp == null ? "" : temp;
+    }
+
     ChannelMark(Context c) {
+        app = c.getApplicationContext();
         black = outfit(c, 900);
         heavy = outfit(c, 800);
         bold = outfit(c, 700);
@@ -571,7 +606,15 @@ final class ChannelMark {
         float rowW = nameW + (sports ? 16f + boxW : 0f), rowH = sports ? boxH : nameH;
         float side = 34f, edge = 3f, subH = 24f + 92f * 1.05f + 28f + edge;
         float th = 50f, tw = tagW(th, false), tagGap = tw > 0 ? 26f : 0f;
+        // The stream's own marks once known, after a fine bar, in the tag's place.
+        boolean withMarks = lower && marks != null && !marks.isEmpty();
+        if (withMarks) {
+            tw = marksW();
+            tagGap = 26f + 3f + 26f;
+        }
         float subW = lower ? widthAt(on, medium, 92f, -1f / 92f) : 0f;
+        // Room kept for the clock and the weather, so the logo keeps its size as they turn over.
+        if (lower && clockRoom) subW = Math.max(subW, clockW(92f));
         // The channel's name smaller to keep to the row's width, down to three fifths; past that its box is wider.
         float k = lower ? Math.max(0.6f, Math.min(1f, (rowW - 2 * (edge + side) - tagGap - tw) / Math.max(1f, subW))) : 1f;
         float allW = Math.max(rowW, 2 * (edge + side) + subW * k + tagGap + tw), allH = rowH + (lower ? 10f + subH : 0f);
@@ -621,15 +664,114 @@ final class ChannelMark {
             line.setStrokeCap(Paint.Cap.BUTT);
             cv.drawPath(path, line);
             line.setStrokeCap(Paint.Cap.ROUND);
-            // The channel's name from the left, and the tag at the right, in the middle of the line it sits on.
-            float lineTop = top + 24f * u, lh = 92f * 1.05f * u;
-            words(cv, on, medium, 92f * k * u, -1f / 92f, ink, null, ox + (edge + side) * u, baseIn(medium, 92f * k * u, lineTop, lh),
-                    Paint.Align.LEFT);
-            if (tw > 0) eventTag(cv, ox + (allW - edge - side) * u, lineTop + lh / 2f, th * u, ink);
+            // The channel's name from the left (or the clock and the weather, turning over to them), and the tag at the
+            // right (or the stream's marks after a fine bar), in the middle of the line they sit on.
+            float lineTop = top + 24f * u, lh = 92f * 1.05f * u, nx = ox + (edge + side) * u;
+            nameOrClock(cv, on, nx, lineTop, lh, 92f * k * u, ink);
+            if (withMarks) marksAt(cv, nx + subW * k * u + 26f * u, lineTop + lh / 2f, u, ink);
+            else if (tw > 0) eventTag(cv, ox + (allW - edge - side) * u, lineTop + lh / 2f, th * u, ink);
+            subBox.set(l - half, top, rt + half, b + half);
+        } else {
+            subBox.setEmpty();
         }
+        whole.set(ox, oy, ox + allW * u, oy + allH * u);
         text.clearShadowLayer();
         line.clearShadowLayer();
         fill.clearShadowLayer();
+    }
+
+    /** The name box's words: the channel's name or the clock and the weather, the one turning over into the other. */
+    private void nameOrClock(Canvas cv, String on, float x, float lineTop, float lh, float size, int ink) {
+        float cy = lineTop + lh / 2f;
+        boolean showClock = flip >= 0.5f ? clockShown : !clockShown;
+        float sy = flip >= 1f ? 1f : flip >= 0.5f ? (flip - 0.5f) * 2f : 1f - flip * 2f;
+        cv.save();
+        if (sy < 1f) cv.scale(1f, Math.max(0.03f, sy), x, cy);
+        if (showClock) clockAt(cv, x, lineTop, lh, size, ink);
+        else words(cv, on, medium, size, -1f / 92f, ink, null, x, baseIn(medium, size, lineTop, lh), Paint.Align.LEFT);
+        cv.restore();
+    }
+
+    /** The room the clock takes at a size (the widest time and temperature, so the logo never changes size for it). */
+    private float clockW(float size) {
+        String t = "88:88", d = "-88°";
+        return widthAt(t, semi, size, 0f) + size * 0.47f + size * 0.84f * 22f / 16f + size * 0.47f + widthAt(d, medium, size * 0.9f, 0f);
+    }
+
+    /** The time, the weather's picture and the temperature, from x on the line. */
+    private void clockAt(Canvas cv, float x, float lineTop, float lh, float size, int ink) {
+        String t = clockTime.isEmpty() ? "--:--" : clockTime;
+        words(cv, t, semi, size, 0f, ink, null, x, baseIn(semi, size, lineTop, lh), Paint.Align.LEFT);
+        float ix = x + widthAt(t, semi, size, 0f) + size * 0.47f, ih = size * 0.84f;
+        LogoExtras.sky(cv, line, fill, clockSky, ix, lineTop + (lh - ih) / 2f, ih, ink);
+        if (!clockTemp.isEmpty()) {
+            words(cv, clockTemp, medium, size * 0.9f, 0f, ink, null, ix + ih * 22f / 16f + size * 0.47f,
+                    baseIn(medium, size * 0.9f, lineTop, lh), Paint.Align.LEFT);
+        }
+    }
+
+    /** The marks' width in Event's units, the gaps between them included. */
+    private float marksW() {
+        float w = 0f;
+        for (int i = 0; i < marks.size(); i++) w += (i > 0 ? 24f : 0f) + markW(marks.get(i));
+        return w;
+    }
+
+    private float markW(Marks.Mark m) {
+        Bitmap b = m.logo != 0 ? picOf(m.logo) : null;
+        if (b != null) return MARK_H * logoH(m.logo) * b.getWidth() / Math.max(1f, b.getHeight());
+        return widthAt(m.words, heavy, markSize(), 0.02f);
+    }
+
+    /** Words' size so their capitals stand three fifths of a mark high. */
+    private float markSize() {
+        return MARK_H * 0.6f / Math.max(0.3f, capOf(heavy));
+    }
+
+    /** How much of a mark's height a logo takes (their pictures' own margins differ). */
+    private static float logoH(int logo) {
+        if (logo == com.gathin.tvhomephone.R.drawable.fmt_hdr10 || logo == com.gathin.tvhomephone.R.drawable.fmt_hdr10plus) return 0.95f;
+        if (logo == com.gathin.tvhomephone.R.drawable.fmt_dolby || logo == com.gathin.tvhomephone.R.drawable.fmt_dolby_atmos
+                || logo == com.gathin.tvhomephone.R.drawable.fmt_dolby_vision) return 0.62f;
+        return 0.8f;
+    }
+
+    /** A fine bar, then the marks in the ink (white on Event, white), each its own logo or its words, centred on cy. */
+    private void marksAt(Canvas cv, float x, float cy, float u, int ink) {
+        float bar = Math.max(1f, 3f * u), bh = 70f * u;
+        fill.setShader(null);
+        fill.setColor((ink & 0x00FFFFFF) | 0x66000000);
+        cv.drawRect(x, cy - bh / 2f, x + bar, cy + bh / 2f, fill);
+        float left = x + bar + 26f * u;
+        pic.setColorFilter(new PorterDuffColorFilter(ink, PorterDuff.Mode.SRC_IN));
+        for (Marks.Mark m : marks) {
+            Bitmap b = m.logo != 0 ? picOf(m.logo) : null;
+            float mw = markW(m) * u;
+            if (b != null) {
+                float h = MARK_H * logoH(m.logo) * u;
+                r.set(left, cy - h / 2f, left + mw, cy + h / 2f);
+                cv.drawBitmap(b, null, r, pic);
+            } else {
+                float size = markSize() * u;
+                words(cv, m.words, heavy, size, 0.02f, ink, null, left, cy + capOf(heavy) * size / 2f, Paint.Align.LEFT);
+            }
+            left += mw + 24f * u;
+        }
+    }
+
+    private Bitmap picOf(int res) {
+        synchronized (PICS) {
+            Bitmap b = PICS.get(res);
+            if (b == null && !PICS.containsKey(res)) {
+                try {
+                    b = BitmapFactory.decodeResource(app.getResources(), res);
+                } catch (RuntimeException e) {
+                    b = null;
+                }
+                PICS.put(res, b);
+            }
+            return b;
+        }
     }
 
     /** "sports" in white on the red box (w by h at (x, y)), a soft gloss over its top third. */

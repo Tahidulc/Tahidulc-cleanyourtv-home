@@ -131,6 +131,13 @@ public final class BoardSettings {
             logos.addView(one, spaced(c));
         }
         col.addView(hl, new LinearLayout.LayoutParams(-1, -2));
+        // Its extras: Up next, prayer time, the clock and the weather, the stream's marks (LogoExtras), each on its own.
+        col.addView(sub(c, c.getString(R.string.live83_extras)));
+        row(c, col, c.getString(R.string.live83_next), LogoExtras.on(c, "next"), on -> LogoExtras.setOn(c, "next", on));
+        row(c, col, c.getString(R.string.live83_prayer), LogoExtras.on(c, "prayer"), on -> LogoExtras.setOn(c, "prayer", on));
+        row(c, col, c.getString(R.string.live83_clock), LogoExtras.on(c, "clock"), on -> LogoExtras.setOn(c, "clock", on));
+        row(c, col, c.getString(R.string.live83_marks), LogoExtras.on(c, "marks"), on -> LogoExtras.setOn(c, "marks", on));
+        col.addView(com.gathin.tvhomephone.sports.Ui.text(c, c.getString(R.string.live83_line), 13, c.getColor(R.color.text_dim), false));
         // The picture tag on it: Auto (from the channel's name), none, or one set.
         col.addView(sub(c, c.getString(R.string.live20_logo_tag)));
         col.addView(com.gathin.tvhomephone.sports.Ui.text(c, c.getString(R.string.live20_logo_tag_line), 13, c.getColor(R.color.text_dim), false));

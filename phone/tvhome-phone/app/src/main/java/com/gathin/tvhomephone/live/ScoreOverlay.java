@@ -61,6 +61,9 @@ final class ScoreOverlay implements ScoreBoard.Source {
         /** The player's sound is off (a Homefield break, the phone's media volume at nothing). */
         default boolean muted() { return false; }
 
+        /** What the stream itself carries, from the tracks the player chose: {resolution, HDR, sound} (MediaTags); null not yet. */
+        default String[] streamTags() { return null; }
+
         /** Whether the channel playing may be showing a match (a sports channel, a fixture in its guide). */
         default boolean sportsNow() { return false; }
     }
@@ -124,6 +127,10 @@ final class ScoreOverlay implements ScoreBoard.Source {
 
     /** Tennis, boxing and UFC: their board where this one sits, while the channel's guide has one on (SportOverlay). */
     private final SportOverlay sport;
+
+    /** The logo's extras: Up next, prayer time, the clock and the weather, the stream's marks (LogoExtras). */
+    private final LogoExtras extras;
+    private final android.graphics.RectF boardRect = new android.graphics.RectF();
 
     /** The channel's own scoreboard watched under the board (BugCover): away in replays, plates over what grows out of it. */
     private final BugCover bugCover;
@@ -258,6 +265,23 @@ final class ScoreOverlay implements ScoreBoard.Source {
         // Just over the football board (they sit in the same place, never up together but for a followed game's).
         root.addView(sport.view, root.indexOfChild(board.view) + 1, new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.START));
         sportHandles(sport.view);
+        extras = new LogoExtras(a, cover, new LogoExtras.Host() {
+            @Override public boolean ready() {
+                return started && !inPip && !editing && !logoAwayNow && !intro.showing() && cover.getVisibility() == View.VISIBLE;
+            }
+
+            @Override public boolean clear(android.graphics.RectF onRoot) {
+                if (board.showing() && board.outNow()) return false;
+                if (board.showing() && overlaps(board.view, onRoot)) return false;
+                return !(sport.showing() && overlaps(sport.view, onRoot));
+            }
+
+            @Override public String[] streamTags() {
+                return ScoreOverlay.this.host.streamTags();
+            }
+        });
+        // Just over the logo's cover, under the scoreboards: drawn with the logo, wherever it is.
+        root.addView(extras, root.indexOfChild(cover) + 1, new FrameLayout.LayoutParams(-1, -1));
         root.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
             if (r - l != or - ol || b - t != ob - ot) h.post(this::place);
         });
@@ -489,6 +513,15 @@ final class ScoreOverlay implements ScoreBoard.Source {
         h.postDelayed(playLook, 1_000L);
         sport.programme(chKey(), host.programmeNow(), 0);
         sport.start();
+        extras.start();
+    }
+
+    /** Whether a view (as laid out on the root, with its moves) and a rect on the root meet. */
+    private boolean overlaps(View v, android.graphics.RectF onRoot) {
+        if (v.getVisibility() != View.VISIBLE || v.getWidth() <= 0) return false;
+        float l = v.getLeft() + v.getTranslationX(), t = v.getTop() + v.getTranslationY();
+        boardRect.set(l, t, l + v.getWidth(), t + v.getHeight());
+        return android.graphics.RectF.intersects(boardRect, onRoot);
     }
 
     /** The whole picture, small, for LivePlay: the board's own copy, made again for each look. */
@@ -560,6 +593,7 @@ final class ScoreOverlay implements ScoreBoard.Source {
         guard.stop();
         board.stop();
         sport.stop();
+        extras.stop();
         h.removeCallbacksAndMessages(null);
         if (sampler != null) {
             sampler.quit();
@@ -596,8 +630,9 @@ final class ScoreOverlay implements ScoreBoard.Source {
         ocrOkAt = 0;
         ocrMisses = 0;
         board.changed();
-        // Another channel: its programme's sport board (or none) from now.
+        // Another channel: its programme's sport board (or none) from now, and its own Up next (the guide's next tick).
         sport.programme(chKey(), host.programmeNow(), 0);
+        extras.guide(chKey(), null);
         place();
         h.removeCallbacks(look);
         h.removeCallbacks(readClock);
@@ -2148,6 +2183,7 @@ final class ScoreOverlay implements ScoreBoard.Source {
         OverMatches.Programme on = null;
         if (guide != null) for (OverMatches.Programme p : guide) if (p.start <= now && now < p.stop) on = p;
         sport.programme(chKey(), on == null ? "" : on.title, on == null ? 0 : on.start);
+        extras.guide(chKey(), guide);
     }
 
     /** Tests: a sport's intro ("f1", "ufc", "boxing", "football"), now. */
