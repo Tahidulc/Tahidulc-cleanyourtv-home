@@ -48,8 +48,12 @@ final class PlayerIntro {
     private final ExecutorService io = Executors.newSingleThreadExecutor();
     /** The match intro's gathering (its clubs' squads and pictures: up to a minute), apart from the pop-ups'. */
     private final ExecutorService matchIo = Executors.newSingleThreadExecutor();
-    /** The match intro's settings made ahead for one game (its id), when, whether being made; the breaks with an intro so far. */
-    private JSONObject matchCfg;
+    /**
+     * The match intro's settings made ahead for one game (its id), written out in each style it can have (megabytes, its
+     * pictures: written on the gathering's thread, so that a break only hands them over), when, whether being made; the
+     * breaks with an intro so far.
+     */
+    private String matchNet, matchUcl;
     private String matchFor;
     private long matchAt;
     private boolean matchMaking;
@@ -172,36 +176,33 @@ final class PlayerIntro {
         matchMaking = true;
         BroadcastData.Match m = match(g);
         Context app = a.getApplicationContext();
+        boolean uclGame = ucl(g);
         matchIo.execute(() -> {
-            JSONObject cfg = null;
+            String net = null, uc = null;
             try {
                 int id = FotMob.find(g.id, m.homeName, m.awayName, g.kickoff);
-                cfg = MatchIntro.build(app.getAssets(), m, id > 0 ? FotMob.raw(id) : null, app.getCacheDir(), BroadcastData.fixture(m.homeName, m.awayName));
+                JSONObject cfg = MatchIntro.build(app.getAssets(), m, id > 0 ? FotMob.raw(id) : null, app.getCacheDir(), BroadcastData.fixture(m.homeName, m.awayName));
+                net = cfg.put("style", "network").toString();
+                if (uclGame) uc = cfg.put("style", "ucl").toString();
             } catch (Exception ignored) {
                 // tried again in a while
             }
-            JSONObject got = cfg;
+            String gotNet = net, gotUcl = uc;
             h.post(() -> {
                 matchMaking = false;
-                if (got == null) return;
-                matchCfg = got;
+                if (gotNet == null) return;
+                matchNet = gotNet;
+                matchUcl = gotUcl;
                 matchFor = g.id;
                 matchAt = System.currentTimeMillis();
             });
         });
     }
 
-    /**
-     * The match intro's settings for g in a style ("ucl" or "network"), or null when not made for it. The one made is
-     * given (its pictures are megabytes: never copied on the main thread), its style set each time.
-     */
-    private JSONObject matchCfg(Game g, String style) {
-        if (g == null || g.id == null || !g.id.equals(matchFor) || matchCfg == null) return null;
-        try {
-            return matchCfg.put("style", style);
-        } catch (Exception e) {
-            return null;
-        }
+    /** The match intro's settings for g in a style ("ucl" or "network"), written out, or null when not made for it. */
+    private String matchJson(Game g, String style) {
+        if (g == null || g.id == null || !g.id.equals(matchFor)) return null;
+        return "ucl".equals(style) ? matchUcl : matchNet;
     }
 
     private static boolean ucl(Game g) {
@@ -276,7 +277,7 @@ final class PlayerIntro {
         shown.add(key);
         try {
             BroadcastData.Match m = match(g);
-            JSONObject mc = matchOn(a) ? matchCfg(g, ucl(g) ? "ucl" : "network") : null;
+            String mc = matchOn(a) ? matchJson(g, ucl(g) ? "ucl" : "network") : null;
             if (mc != null) {
                 show(BroadcastView.page(a, "match", mc, this::gone), "intro");
                 return;
@@ -320,11 +321,11 @@ final class PlayerIntro {
         String ck = introOn(a) ? BroadcastData.introKey(m.compId, m.compName) : "";
         Integer seen = breaksSeen.get(g.id);
         int n = seen == null ? 0 : seen;
-        String style = Moments.breakStyle(n, matchOn(a) && matchCfg(g, "network") != null, !sk.isEmpty() || !ck.isEmpty(), ucl(g));
+        String style = Moments.breakStyle(n, matchOn(a) && matchJson(g, "network") != null, !sk.isEmpty() || !ck.isEmpty(), ucl(g));
         if (style.isEmpty()) return false;
         try {
             if ("other".equals(style)) show(BroadcastView.page(a, "reveal", BroadcastData.breakIntros(sk, ck, BroadcastData.fixture(m.homeName, m.awayName)), this::gone), "intro");
-            else show(BroadcastView.page(a, "match", matchCfg(g, style), this::gone), "intro");
+            else show(BroadcastView.page(a, "match", matchJson(g, style), this::gone), "intro");
         } catch (Exception e) {
             return false;
         }

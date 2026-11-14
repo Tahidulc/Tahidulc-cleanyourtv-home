@@ -526,3 +526,5 @@ Intros on every ad break before a game (4.88): every break from 90 to 5½ minute
 One intro at a time (4.89), in the style made for the competition: a top-five league's games get its season intro over every ad break before kick-off and as the matchday intro; the Champions League and the others keep their own intro.
 
 The match intro (4.90): the game about to be watched, in a big network's style made our own: its two clubs and their best-known players, the competition's other clubs that day, the two clubs face to face, then Whitebrook Road Sports and the fixture, to its own music; a Champions League game also has the competition's own purple style with the trophy. Over the ad breaks before the game, in turn with the competition's own intro, and as the matchday intro; Settings, Intros: Match intro.
+
+No pause as an ad break starts (4.91): the match intro's settings are written out ahead while they are gathered, so the break only hands them over.

@@ -595,6 +595,17 @@ public final class BroadcastData {
         return out.toByteArray();
     }
 
+    /**
+     * Pure: a page's settings, written out, made held ("hold": true) by adding it at their end, not by reading them and
+     * writing them again (a match intro's are megabytes); read and written again only when they already say "hold".
+     */
+    public static String held(String json) throws JSONException {
+        String s = json == null ? "" : json.trim();
+        if (s.length() < 2 || s.charAt(0) != '{' || s.charAt(s.length() - 1) != '}') return new JSONObject().put("hold", true).toString();
+        if (s.contains("\"hold\"")) return new JSONObject(s).put("hold", true).toString();
+        return s.substring(0, s.length() - 1) + (s.length() > 2 ? "," : "") + "\"hold\":true}";
+    }
+
     /** Pure: the goals so far as a score {home, away} from a board's "2–1" (any dash); null when it is not one. */
     public static int[] score(String s) {
         if (s == null) return null;

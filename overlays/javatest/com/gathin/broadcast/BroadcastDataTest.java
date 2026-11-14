@@ -143,6 +143,23 @@ public class BroadcastDataTest {
     }
 
     @Test
+    public void heldSettingsAreMadeWithoutReadingThemAgain() throws Exception {
+        assertEquals("{\"a\":1,\"hold\":true}", BroadcastData.held("{\"a\":1}"));
+        assertEquals("{\"hold\":true}", BroadcastData.held("{}"));
+        assertEquals("{\"hold\":true}", BroadcastData.held(""));
+        // already saying "hold": read and written again, the one key true
+        org.json.JSONObject o = new org.json.JSONObject(BroadcastData.held("{\"hold\":false,\"b\":2}"));
+        assertTrue(o.getBoolean("hold"));
+        assertEquals(2, o.getInt("b"));
+        // what the page reads is the settings with hold added
+        org.json.JSONObject big = new org.json.JSONObject().put("home", new org.json.JSONObject().put("name", "NEWCASTLE")).put("style", "ucl");
+        org.json.JSONObject back = new org.json.JSONObject(BroadcastData.held(big.toString()));
+        assertTrue(back.getBoolean("hold"));
+        assertEquals("ucl", back.getString("style"));
+        assertEquals("NEWCASTLE", back.getJSONObject("home").getString("name"));
+    }
+
+    @Test
     public void coloursMinutesAndScoresAreWrittenAsThePageReadsThem() {
         assertEquals("#ef0107", BroadcastData.hex(0xFFEF0107));
         assertNull(BroadcastData.hex(0));

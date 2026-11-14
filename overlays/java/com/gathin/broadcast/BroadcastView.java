@@ -103,12 +103,21 @@ public final class BroadcastView extends FrameLayout {
     private long born;
     private final Runnable tooLong = this::finish;
 
-    /** The kick-off pop-up (BroadcastData.kickoff): about eight seconds. */
-    /** Any page ("kickoff", "lineups", "strap", "stadium") playing as soon as it is ready. */
+    /** Any page ("kickoff", "lineups", "strap", "stadium", "reveal", "match") playing as soon as it is ready. */
     public static BroadcastView page(Context c, String page, JSONObject cfg, Listener l) {
-        String p = pageOf(page);
-        return new BroadcastView(c, p, cfg.toString(), maxMs(p), l, null);
+        return page(c, page, cfg.toString(), l);
     }
+
+    /**
+     * The same with its settings already written out: a match intro's are megabytes (its pictures), written once off the
+     * main thread rather than read and written again on it as a break begins.
+     */
+    public static BroadcastView page(Context c, String page, String cfgJson, Listener l) {
+        String p = pageOf(page);
+        return new BroadcastView(c, p, cfgJson, maxMs(p), l, null);
+    }
+
+    /** The kick-off pop-up (BroadcastData.kickoff): about eight seconds. */
 
     public static BroadcastView kickoff(Context c, JSONObject cfg, Listener l) {
         return new BroadcastView(c, "kickoff", cfg.toString(), 25_000L, l, null);
@@ -119,9 +128,13 @@ public final class BroadcastView extends FrameLayout {
      * gone by itself while it waits: stop() it if its moment never comes.
      */
     public static BroadcastView prepare(Context c, String page, JSONObject cfg, Listener l, Ready r) throws org.json.JSONException {
-        JSONObject held = new JSONObject(cfg.toString()).put("hold", true);
+        return prepare(c, page, cfg.toString(), l, r);
+    }
+
+    /** The same with its settings already written out (see page): "hold" is added to them without reading them again. */
+    public static BroadcastView prepare(Context c, String page, String cfgJson, Listener l, Ready r) throws org.json.JSONException {
         String p = pageOf(page);
-        return new BroadcastView(c, p, held.toString(), maxMs(p), l, r);
+        return new BroadcastView(c, p, BroadcastData.held(cfgJson), maxMs(p), l, r);
     }
 
     /** The classic line-ups (BroadcastData.lineups): both teams, about a minute and a half. */
@@ -200,6 +213,8 @@ public final class BroadcastView extends FrameLayout {
     }
 
     private static boolean wantsLayer(String cfg) {
+        // only settings that ask for it are read for it (a match intro's are megabytes, not read again for this)
+        if (cfg == null || !cfg.contains("\"hwlayer\"")) return false;
         try {
             JSONObject q = new JSONObject(cfg).optJSONObject("q");
             return q != null && q.optBoolean("hwlayer");
