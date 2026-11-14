@@ -191,11 +191,14 @@ final class PlayerIntro {
         });
     }
 
-    /** The match intro's settings for g in a style ("ucl" or "network"), or null when not made for it. */
+    /**
+     * The match intro's settings for g in a style ("ucl" or "network"), or null when not made for it. The one made is
+     * given (its pictures are megabytes: never copied on the main thread), its style set each time.
+     */
     private JSONObject matchCfg(Game g, String style) {
         if (g == null || g.id == null || !g.id.equals(matchFor) || matchCfg == null) return null;
         try {
-            return new JSONObject(matchCfg.toString()).put("style", style);
+            return matchCfg.put("style", style);
         } catch (Exception e) {
             return null;
         }
