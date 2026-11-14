@@ -1002,6 +1002,7 @@ public class AppSearchService extends AccessibilityService {
 
     private boolean keys(android.view.KeyEvent event) {
         // The overlays button over a match: OK held turns them on (OverlayPrompt).
+        if (event != null && event.getAction() == KeyEvent.ACTION_DOWN) InputKeyService.lastKeyAt = System.currentTimeMillis();
         if (OverlayPrompt.key(event)) return true;
         // OK at the kick-off on screen, while the card asking for it is up (InStepCard); the replay's bar.
         if (InStepCard.key(event) || Replay.key(event)) return true;
@@ -2613,18 +2614,12 @@ public class AppSearchService extends AccessibilityService {
         lastLook = System.currentTimeMillis();
         CharSequence from = event == null ? null : event.getPackageName();
         if (from != null && getString(R.string.scores_open_package).contentEquals(from)) {
-            // The player's screen: its channel banner, read for the channel watched (OverlayPrompt), at most every second.
-            if (lastLook - lastPlayerLook < 1_000L) return;
-            lastPlayerLook = lastLook;
-            try {
-                AccessibilityNodeInfo top = getRootInActiveWindow();
-                if (top == null) return;
-                java.util.List<String> texts = new java.util.ArrayList<>();
-                texts(top, 0, texts);
-                OverlayPrompt.seen(this, texts);
-            } catch (RuntimeException ignored) {
-                // read again at its next change
-            }
+            // The player's screen: its channel banner, read for the channel watched (OverlayPrompt). Never while it is
+            // moving (the guide scrolled, a list gone through): every read asks the player for its views on its own main
+            // thread, and on a slower TV that holds up its scrolling and the remote's presses behind it. So once it has
+            // been still a moment (its banner stays up for seconds), and not again soon after a screen of many channels.
+            playerMain.removeCallbacks(readPlayer);
+            playerMain.postDelayed(readPlayer, PLAYER_STILL_MS);
             return;
         }
         AccessibilityNodeInfo root = getRootInActiveWindow();
@@ -2651,18 +2646,41 @@ public class AppSearchService extends AccessibilityService {
                 .putLong("at", System.currentTimeMillis()).apply();
     }
 
-    /** When the player's screen was last read for its channel. */
-    private long lastPlayerLook;
+    /** The player still this long: its screen read. A screen of a list or the guide: not read again for GUIDE_REST_MS. */
+    static final long PLAYER_STILL_MS = 1_200L, GUIDE_REST_MS = 8_000L;
+    /** At most this many of the player's views asked for in one read. */
+    private static final int MOST_VIEWS = 250;
+    private final android.os.Handler playerMain = new android.os.Handler(android.os.Looper.getMainLooper());
+    private long guideUntil;
+    private final Runnable readPlayer = () -> {
+        long now = System.currentTimeMillis();
+        if (now < guideUntil) return;
+        try {
+            AccessibilityNodeInfo top = getRootInActiveWindow();
+            if (top == null || top.getPackageName() == null || !getString(R.string.scores_open_package).contentEquals(top.getPackageName())) return;
+            java.util.List<String> texts = new java.util.ArrayList<>();
+            texts(top, 0, texts, new int[]{MOST_VIEWS});
+            if (listLike(texts.size())) guideUntil = now + GUIDE_REST_MS;
+            OverlayPrompt.seen(this, texts);
+        } catch (RuntimeException ignored) {
+            // read again once it is still again
+        }
+    };
 
-    /** The words on a screen, at most 60 of them, each short (a banner's channel, its programme, its times). */
-    private static void texts(AccessibilityNodeInfo n, int depth, java.util.List<String> out) {
-        if (n == null || depth > 14 || out.size() >= 60) return;
+    /** Pure: a screen with this many words is a list or the guide, not a channel's banner (a dozen at most). */
+    static boolean listLike(int words) {
+        return words >= 40;
+    }
+
+    /** The words on a screen, at most 60 of them, each short (a banner's channel, its programme, its times); views budget[0] at most. */
+    private static void texts(AccessibilityNodeInfo n, int depth, java.util.List<String> out, int[] budget) {
+        if (n == null || depth > 14 || out.size() >= 60 || budget[0]-- <= 0) return;
         CharSequence t = n.getText();
         if (t != null) {
             String s = t.toString().trim();
             if (!s.isEmpty() && s.length() <= 80) out.add(s);
         }
-        for (int i = 0; i < n.getChildCount() && out.size() < 60; i++) texts(n.getChild(i), depth + 1, out);
+        for (int i = 0; i < n.getChildCount() && out.size() < 60 && budget[0] > 0; i++) texts(n.getChild(i), depth + 1, out, budget);
     }
 
     private void loadSeen() {

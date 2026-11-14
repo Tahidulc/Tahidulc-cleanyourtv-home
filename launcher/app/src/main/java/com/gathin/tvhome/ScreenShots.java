@@ -206,6 +206,9 @@ final class ScreenShots {
     @android.annotation.TargetApi(34)
     static boolean take(RectF[] parts, int[][] sizes, Got got) {
         if (!ready() || parts == null || sizes == null || parts.length != sizes.length) return false;
+        // The remote just pressed (a menu, the guide, a list moving): no picture now, so the TV's graphics are all the
+        // app's while it moves (a slower TV's scrolling stuttered with pictures taken under it). Asked again shortly.
+        if (keysMoving(System.currentTimeMillis(), InputKeyService.lastKeyAt)) return false;
         AccessibilityService s = AppSearchService.helper();
         if (Build.VERSION.SDK_INT < 30 || s == null) return false;
         lastAt = SystemClock.uptimeMillis();
@@ -334,6 +337,13 @@ final class ScreenShots {
 
     /** The part f (fractions) of hw, ow by oh (ow 0: oh high in its own shape), scaled by the graphics chip; null if too small. */
     @android.annotation.TargetApi(30)
+    /** Pure: a remote button pressed this recently: pictures wait. */
+    static boolean keysMoving(long now, long lastKey) {
+        return lastKey > 0 && now - lastKey >= 0 && now - lastKey < KEYS_REST_MS;
+    }
+
+    static final long KEYS_REST_MS = 1_500L;
+
     private static Bitmap part(Bitmap hw, RectF f, int ow, int oh) {
         int w = hw.getWidth(), h = hw.getHeight();
         Rect src = new Rect(Math.max(0, Math.round(f.left * w)), Math.max(0, Math.round(f.top * h)),

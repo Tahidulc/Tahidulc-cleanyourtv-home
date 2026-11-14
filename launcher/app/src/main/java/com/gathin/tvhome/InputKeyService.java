@@ -65,8 +65,12 @@ public class InputKeyService extends AccessibilityService {
         return false;
     }
 
+    /** When a remote button was last pressed (any helper that sees it): pictures of the screen wait while menus move. */
+    static volatile long lastKeyAt;
+
     @Override
     protected boolean onKeyEvent(KeyEvent event) {
+        if (event != null && event.getAction() == KeyEvent.ACTION_DOWN) lastKeyAt = System.currentTimeMillis();
         // Quick reply open: its keyboard has the remote, before a pop-up's OK held for quiet or anything else here.
         if (QuickReply.key(event)) return true;
         // OK held on a pop-up: quiet for an hour (QuietHold); a short OK comes back through keys as it was pressed.
