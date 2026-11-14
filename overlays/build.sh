@@ -16,4 +16,7 @@ cp src/strap/strap.js "$OUT/strap.js"
 cat src/lineups/head.js src/stadium/body.js > "$OUT/stadium.js"
 npx --yes esbuild@0.24.0 src/kickoff/trophy3d.js --bundle --format=iife --minify --target=es2019 \
   --alias:three="$(pwd)/src/vendor/three.module.js" --outfile="$OUT/trophy3d.js" --log-level=warning
+# the match intro (src/match): three.js and its scenes, one file
+npx --yes esbuild@0.24.0 src/match/match.js --bundle --format=iife --minify --target=es2019 \
+  --alias:three="$(pwd)/src/vendor/three.module.js" --outfile="$OUT/match3d.js" --log-level=warning
 echo "built $OUT: $(du -sh "$OUT" | cut -f1)"

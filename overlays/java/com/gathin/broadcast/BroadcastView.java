@@ -76,12 +76,14 @@ public final class BroadcastView extends FrameLayout {
             case "stadium": return 150_000L;
             case "strap": return 20_000L;
             case "reveal": return 60_000L;   // a competition's intro (20 s), or a family's own video and the tail
+            case "match": return 75_000L;    // the match intro (48 s, or the Champions League's 38), drawn live
             default: return 25_000L;
         }
     }
 
     private static String pageOf(String page) {
-        return "lineups".equals(page) || "strap".equals(page) || "stadium".equals(page) || "reveal".equals(page) ? page : "kickoff";
+        return "lineups".equals(page) || "strap".equals(page) || "stadium".equals(page) || "reveal".equals(page) || "match".equals(page)
+                ? page : "kickoff";
     }
 
     private final Handler main = new Handler(Looper.getMainLooper());
@@ -237,8 +239,11 @@ public final class BroadcastView extends FrameLayout {
     /** Back: the line-ups and the intros fade away to the channel at once (the pop-up, being short, just goes). */
     public void back() {
         if (over) return;
-        if (web != null && ("lineups".equals(page) || "stadium".equals(page) || "reveal".equals(page)) && started) web.evaluateJavascript("BROADCAST.back()", null);
-        else finish();
+        if (web != null && ("lineups".equals(page) || "stadium".equals(page) || "reveal".equals(page) || "match".equals(page)) && started) {
+            web.evaluateJavascript("BROADCAST.back()", null);
+        } else {
+            finish();
+        }
     }
 
     /** Taken down now, without its ending. */

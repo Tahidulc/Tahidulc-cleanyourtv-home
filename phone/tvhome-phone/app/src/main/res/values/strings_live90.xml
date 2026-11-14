@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The match intro (PlayerIntro, overlays/src/match): the game itself, in Settings' intro page. -->
+<resources>
+    <string name="live90_match">Match intro (the game itself)</string>
+    <string name="live90_match_line">The two clubs of the game, their best-known players and the competition\'s other clubs in a big network\'s style, then Whitebrook Road Sports and the fixture; a Champions League game also has its own purple style with the trophy. Over the ad breaks before the game, in turn with the competition\'s own intro, and as its intro 4 minutes before kick-off.</string>
+</resources>

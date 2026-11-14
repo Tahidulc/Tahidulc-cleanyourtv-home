@@ -83,6 +83,29 @@ public class MomentsTest {
     }
 
     @Test
+    public void theMatchIntroIsReadyBeforeTheBreaksAndTakesTurnsWithTheCompetitionsOwn() {
+        // gathered from twenty minutes before the breaks' intros begin, until just after the kick-off
+        assertTrue(Moments.matchWarm(100 * 60_000L));
+        assertTrue(Moments.matchWarm(110 * 60_000L));
+        assertFalse(Moments.matchWarm(111 * 60_000L));
+        assertTrue(Moments.matchWarm(0));
+        assertFalse(Moments.matchWarm(-6 * 60_000L));
+        // the match intro first, then in turn with the competition's own
+        assertEquals("network", Moments.breakStyle(0, true, true, false));
+        assertEquals("other", Moments.breakStyle(1, true, true, false));
+        assertEquals("network", Moments.breakStyle(2, true, true, false));
+        // alone when the competition's own is off, the competition's own when the match intro is not ready
+        assertEquals("network", Moments.breakStyle(1, true, false, false));
+        assertEquals("other", Moments.breakStyle(0, false, true, false));
+        assertEquals("", Moments.breakStyle(0, false, false, false));
+        // a Champions League game: its own style, then the network's
+        assertEquals("ucl", Moments.breakStyle(0, true, true, true));
+        assertEquals("network", Moments.breakStyle(1, true, true, true));
+        assertEquals("ucl", Moments.breakStyle(2, true, false, true));
+        assertEquals("other", Moments.breakStyle(3, false, true, true));
+    }
+
+    @Test
     public void sportsIntrosFromTheProgramme() {
         assertEquals("ufc", Moments.sportOf("Live UFC 323: Dvalishvili v Yan"));
         assertEquals("ufc", Moments.sportOf("UFC Fight Night: Royval v Kape"));

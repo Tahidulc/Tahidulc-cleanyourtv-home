@@ -127,9 +127,16 @@ public final class PlPhotos {
      * -1 when none does or two match as well.
      */
     static int codeFor(List<Element> els, String name, String last) {
+        Element e = elementFor(els, name, last);
+        return e == null ? -1 : e.code;
+    }
+
+    /** Pure: the one player of the club who matches the name as codeFor scores it; null when none does or two as well. */
+    static Element elementFor(List<Element> els, String name, String last) {
         String l = fold(last == null || last.isEmpty() ? name : last), full = fold(name == null || name.isEmpty() ? last : name);
-        if (l.isEmpty()) return -1;
-        int best = 0, second = 0, code = -1;
+        if (l.isEmpty()) return null;
+        int best = 0, second = 0;
+        Element hit = null;
         for (Element e : els) {
             String sn = fold(e.second), fn = fold(e.first);
             String[] wparts = e.web.split("\\.");
@@ -138,10 +145,51 @@ public final class PlPhotos {
             if (l.equals(wn) || l.equals(sn)) score = 3;
             else if ((!sn.isEmpty() && (sn.contains(l) || full.contains(sn))) || (!wn.isEmpty() && l.contains(wn))) score = 2;
             if (score > 0 && fn.length() >= 1 && full.contains(fn.substring(0, Math.min(3, fn.length())))) score++;
-            if (score > best) { second = best; best = score; code = e.code; }
+            if (score > best) { second = best; best = score; hit = e; }
             else if (score > second) second = score;
         }
-        return best > 0 && best > second ? code : -1;
+        return best > 0 && best > second ? hit : null;
+    }
+
+    /**
+     * Pure: the club's players fit to play (status "a"), dearest first in the fantasy game (its price: its best-known),
+     * then by points; at most n, as the list gives them.
+     */
+    static List<JSONObject> dearest(JSONObject boot, String club, int n) {
+        List<JSONObject> out = new ArrayList<>();
+        if (boot == null) return out;
+        int id = teamId(boot.optJSONArray("teams"), club);
+        JSONArray els = boot.optJSONArray("elements");
+        for (int i = 0; id > 0 && els != null && i < els.length(); i++) {
+            JSONObject e = els.optJSONObject(i);
+            if (e != null && e.optInt("team") == id && "a".equals(e.optString("status"))) out.add(e);
+        }
+        out.sort((a, b) -> a.optInt("now_cost") != b.optInt("now_cost") ? b.optInt("now_cost") - a.optInt("now_cost")
+                : b.optInt("total_points") - a.optInt("total_points"));
+        return out.size() > n ? new ArrayList<>(out.subList(0, n)) : out;
+    }
+
+    /** Pure: the game's place for a player type (1 to 4). */
+    static String place(int type) {
+        switch (type) {
+            case 1: return "GK";
+            case 2: return "DEF";
+            case 3: return "MID";
+            case 4: return "FWD";
+            default: return "";
+        }
+    }
+
+    /** Pure: a club's strength in the list (home and away overall added; 6 when not known), for the round's big games. */
+    static int strength(JSONObject boot, String club) {
+        if (boot == null) return 6;
+        int id = teamId(boot.optJSONArray("teams"), club);
+        JSONArray ts = boot.optJSONArray("teams");
+        for (int i = 0; id > 0 && ts != null && i < ts.length(); i++) {
+            JSONObject t = ts.optJSONObject(i);
+            if (t != null && t.optInt("id") == id) return t.optInt("strength_overall_home", 3) + t.optInt("strength_overall_away", 3);
+        }
+        return 6;
     }
 
     /** The club's players in the list (empty when the club is not in it). */

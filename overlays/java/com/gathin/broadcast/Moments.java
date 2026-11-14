@@ -162,6 +162,30 @@ public final class Moments {
         return untilKickoffMs <= BREAKS_FROM_MS && untilKickoffMs >= BREAKS_UNTIL_MS;
     }
 
+    /**
+     * The match intro's settings (overlays/src/match: the game's clubs and players) take a while to gather: made from
+     * twenty minutes before the breaks' intros begin until the kick-off, and again every twenty minutes for the line-ups
+     * that come out an hour before.
+     */
+    public static final long MATCH_WARM_FROM_MS = BREAKS_FROM_MS + 20 * 60_000L, MATCH_REMAKE_MS = 20 * 60_000L;
+
+    /** Pure: whether the match intro's settings should be ready this long before the kick-off. */
+    public static boolean matchWarm(long untilKickoffMs) {
+        return untilKickoffMs <= MATCH_WARM_FROM_MS && untilKickoffMs > -5 * 60_000L;
+    }
+
+    /**
+     * Pure: the style of the n-th advert break's intro before a game (n from 0), one a break: the match intro first, then
+     * in turn with the competition's own (a top-five league's season intro, else its film); in a Champions League game its
+     * own style of the match intro and the network's in turn. match: the match intro is on and ready; other: the
+     * competition's own is on. "ucl", "network", "other", or "" for none.
+     */
+    public static String breakStyle(int n, boolean match, boolean other, boolean ucl) {
+        if (match && ucl) return n % 2 == 0 ? "ucl" : "network";
+        if (match && (!other || n % 2 == 0)) return "network";
+        return other ? "other" : "";
+    }
+
     /** Pure: whether the intro should be made ready now (shortly before it is due). */
     public static boolean introPrep(long untilKickoffMs) {
         return untilKickoffMs <= INTRO_PREP_MS && untilKickoffMs > INTRO_FROM_MS;

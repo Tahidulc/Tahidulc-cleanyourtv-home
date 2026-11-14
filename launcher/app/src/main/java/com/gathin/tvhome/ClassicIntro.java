@@ -12,6 +12,7 @@ import android.widget.FrameLayout;
 
 import com.gathin.broadcast.BroadcastData;
 import com.gathin.broadcast.BroadcastView;
+import com.gathin.broadcast.MatchIntro;
 import com.gathin.broadcast.Moments;
 
 import org.json.JSONObject;
@@ -57,6 +58,15 @@ final class ClassicIntro {
     private static final Map<String, String> phases = new HashMap<>();
     private static final Map<String, Long> lineupsTried = new HashMap<>();
     private static final ExecutorService io = Executors.newSingleThreadExecutor();
+    /** The match intro's gathering (its clubs' squads and pictures: up to a minute), apart from the pop-ups' own. */
+    private static final ExecutorService matchIo = Executors.newSingleThreadExecutor();
+    /** The match intro's settings made ahead for one game (its id), when, and whether they are being made now. */
+    private static JSONObject matchCfg;
+    private static String matchFor;
+    private static long matchAt;
+    private static boolean matchMaking;
+    /** Each game's ad breaks so far that had an intro (the styles take turns). */
+    private static final Map<String, Integer> breaksSeen = new HashMap<>();
     private static boolean fetching;
     /** A try from the Scoreboard card or adb is on: over whatever is in front, not taken down with the board. */
     private static boolean trial;
@@ -134,6 +144,71 @@ final class ClassicIntro {
 
     static void setSeason(Context c, boolean on) {
         prefs(c).edit().putBoolean("season", on).apply();
+    }
+
+    /**
+     * The match intro (overlays/src/match): an open in a big network's style for the game itself, its two clubs and their
+     * best-known players, the competition's other clubs, Whitebrook Road Sports to end; in a Champions League game its
+     * own style in turn. Over the breaks before the game (in turn with the competition's own) and as its matchday intro.
+     */
+    static boolean matchOn(Context c) {
+        return prefs(c).getBoolean("match", true);
+    }
+
+    static void setMatch(Context c, boolean on) {
+        prefs(c).edit().putBoolean("match", on).apply();
+    }
+
+    /** The match intro's settings for g made (again) out of sight, ready for its breaks (main thread). */
+    private static void warmMatch(Context c, ScoresTicker.Game g) {
+        if (g == null || g.id == null || matchMaking) return;
+        long now = System.currentTimeMillis();
+        if (g.id.equals(matchFor) && now - matchAt < Moments.MATCH_REMAKE_MS) return;
+        matchMaking = true;
+        Context app = c.getApplicationContext();
+        BroadcastData.Match m = match(g);
+        String fixture = fixtureOf(g);
+        matchIo.execute(() -> {
+            JSONObject cfg = null;
+            long t0 = android.os.SystemClock.uptimeMillis();
+            try {
+                int id = FotMob.find(g.id, g.homeName, g.awayName, g.kickoff);
+                cfg = MatchIntro.build(app.getAssets(), m, id > 0 ? FotMob.raw(id) : null, app.getCacheDir(), fixture);
+            } catch (Exception e) {
+                android.util.Log.w("Sport", "match intro not made: " + e);
+            }
+            JSONObject got = cfg;
+            long ms = android.os.SystemClock.uptimeMillis() - t0;
+            handler().post(() -> {
+                matchMaking = false;
+                if (got == null) return;
+                matchCfg = got;
+                matchFor = g.id;
+                matchAt = System.currentTimeMillis();
+                android.util.Log.i("Sport", "match intro made for " + g.id + " in " + ms + " ms: " + players(got) + " players");
+            });
+        });
+    }
+
+    private static int players(JSONObject cfg) {
+        JSONObject h = cfg.optJSONObject("home"), a = cfg.optJSONObject("away");
+        return (h == null || h.optJSONArray("players") == null ? 0 : h.optJSONArray("players").length())
+                + (a == null || a.optJSONArray("players") == null ? 0 : a.optJSONArray("players").length());
+    }
+
+    /** The match intro's settings for g in a style ("ucl" or "network"), or null when not made for it. */
+    private static JSONObject matchCfg(ScoresTicker.Game g, String style) {
+        if (g == null || g.id == null || !g.id.equals(matchFor) || matchCfg == null) return null;
+        try {
+            return new JSONObject(matchCfg.toString()).put("style", style);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /** Pure: whether a game is the Champions League's (its own style of the match intro). */
+    static boolean ucl(ScoresTicker.Game g) {
+        return g != null && "ucl".equals(BroadcastData.introTrophy(g.slug, g.league));
     }
 
     static boolean popupOn(Context c) {
@@ -217,6 +292,8 @@ final class ClassicIntro {
         String kind = was == null ? null : Moments.moment(was, now);
         if (kind != null && popupOn(c)) popup(c, g, kind, "kickoff".equals(kind) ? null : BroadcastData.score(score), null, null);
         if ("pre".equals(now) && g.kickoff > 0 && lineupsOn(c) && Moments.lineupsDue(lineupsStyle(c), g.kickoff - screenNow)) lineups(c, g);
+        // the match intro's clubs and players gathered ahead of the breaks before the game
+        if ("pre".equals(now) && g.kickoff > 0 && matchOn(c) && Moments.matchWarm(g.kickoff - screenNow)) warmMatch(c, g);
         // the matchday intro over the last break: made ready a little before, then on the whole screen
         if ("pre".equals(now) && g.kickoff > 0 && introOn(c)) {
             long until = g.kickoff - screenNow;
@@ -371,17 +448,27 @@ final class ClassicIntro {
         if (!Moments.breakIntrosDue(g.kickoff - System.currentTimeMillis())) return false;
         String sk = seasonOn(c) ? BroadcastData.seasonKey(g.slug, g.league) : "";
         String ck = introOn(c) ? BroadcastData.introKey(g.slug, g.league) : "";
-        if (sk.isEmpty() && ck.isEmpty()) return false;
+        boolean uclGame = ucl(g);
+        boolean matchReady = matchOn(c) && matchCfg(g, "network") != null;
+        Integer seen = breaksSeen.get(g.id);
+        int n = seen == null ? 0 : seen;
+        String style = Moments.breakStyle(n, matchReady, !sk.isEmpty() || !ck.isEmpty(), uclGame);
+        if (style.isEmpty()) return false;
         Context app = c.getApplicationContext();
         try {
-            if (!show(app, BroadcastView.page(app, "reveal", BroadcastData.breakIntros(sk, ck, fixtureOf(g)), ClassicIntro::gone), "intro")) return false;
+            boolean ok = "other".equals(style)
+                    ? show(app, BroadcastView.page(app, "reveal", BroadcastData.breakIntros(sk, ck, fixtureOf(g)), ClassicIntro::gone), "intro")
+                    : show(app, BroadcastView.page(app, "match", matchCfg(g, style), ClassicIntro::gone), "intro");
+            if (!ok) return false;
         } catch (Exception e) {
             return false;
         }
+        breaksSeen.put(g.id, n + 1);
         shown.add(g.id + "|break");
         breakUp = true;
         IntroQuiet.hush(app);
-        AlertLog.note(app, "intro over the break before " + AlertLog.game(g) + ": " + (sk.isEmpty() ? "the competition's (" + ck + ")" : "the season's (" + sk + ")"));
+        AlertLog.note(app, "intro over the break before " + AlertLog.game(g) + ": " + ("ucl".equals(style) ? "the match's, Champions League style"
+                : "network".equals(style) ? "the match's" : sk.isEmpty() ? "the competition's (" + ck + ")" : "the season's (" + sk + ")"));
         return true;
     }
 
@@ -425,7 +512,8 @@ final class ClassicIntro {
         shown.add(key);
         Context app = c.getApplicationContext();
         try {
-            if (show(app, BroadcastView.page(app, "reveal", introCfg(app, g), ClassicIntro::gone), "intro")) IntroQuiet.hush(app);
+            JSONObject mc = matchOn(app) ? matchCfg(g, ucl(g) ? "ucl" : "network") : null;
+            if (show(app, mc != null ? BroadcastView.page(app, "match", mc, ClassicIntro::gone) : BroadcastView.page(app, "reveal", introCfg(app, g), ClassicIntro::gone), "intro")) IntroQuiet.hush(app);
             android.util.Log.i("Sport", "matchday intro shown (not made ready before): " + key);
         } catch (Exception e) {
             android.util.Log.w("Sport", "matchday intro: " + e);
@@ -435,7 +523,10 @@ final class ClassicIntro {
     /** The intro made ready out of sight for key; ready: told when it can go (a try's). */
     private static void holdIntro(Context c, ScoresTicker.Game g, String key, BroadcastView.Ready ready) {
         try {
-            hold(c.getApplicationContext(), "reveal", introCfg(c.getApplicationContext(), g), "intro", key, ready);
+            Context app = c.getApplicationContext();
+            JSONObject mc = matchOn(app) ? matchCfg(g, ucl(g) ? "ucl" : "network") : null;
+            if (mc != null) hold(app, "match", mc, "intro", key, ready);
+            else hold(app, "reveal", introCfg(app, g), "intro", key, ready);
         } catch (Exception e) {
             android.util.Log.w("Sport", "matchday intro not made ready: " + e);
         }
@@ -713,6 +804,10 @@ final class ClassicIntro {
             tryIntro(c, chosen, lg, q, note);
             return;
         }
+        if ("match".equals(kind) || kind.startsWith("match:")) {
+            tryMatch(c, chosen, at >= 0 ? lg : null, kind.startsWith("match:") ? kind.substring(6) : "network", q, note);
+            return;
+        }
         if (showing() || fetching) {
             note.accept("Wait for the one on to finish");
             return;
@@ -809,6 +904,52 @@ final class ClassicIntro {
                 android.util.Log.i("Sport", "matchday intro try: " + game);
                 String key = "try|intro|" + android.os.SystemClock.uptimeMillis();
                 hold(app, "reveal", got, "intro", key, (v) -> {
+                    if (goPrepared(key)) trial = true;
+                });
+            });
+        });
+    }
+
+    /**
+     * A try of the match intro in a style ("network", or "ucl": the Champions League's), for the game chosen, else the
+     * league's next (league: ESPN's slug and name, "uefa.champions|Champions League"; null for the style's own: the
+     * Champions League's for "ucl", else the Premier League's). Its data takes a while (up to a minute).
+     */
+    private static void tryMatch(Context c, ScoresTicker.Game chosen, String league, String style, JSONObject q, Consumer<String> note) {
+        if (showing() || fetching) {
+            note.accept("Wait for the one on to finish");
+            return;
+        }
+        Context app = c.getApplicationContext();
+        String lg = league != null ? league : "ucl".equals(style) ? "uefa.champions|Champions League" : "eng.1|PL";
+        fetching = true;
+        note.accept("Getting the players ready (up to a minute)");
+        matchIo.execute(() -> {
+            JSONObject cfg = null;
+            String about = null;
+            try {
+                for (ScoresTicker.Game g : candidates("ucl".equals(style) && !ucl(chosen) ? null : chosen, lg)) {
+                    int id = FotMob.find(g.id, g.homeName, g.awayName, g.kickoff);
+                    cfg = MatchIntro.build(app.getAssets(), match(g), id > 0 ? FotMob.raw(id) : null, app.getCacheDir(), fixtureOf(g)).put("style", style);
+                    if (q.length() > 0) cfg.put("q", q);
+                    about = (g.homeName != null ? g.homeName : g.home) + " v " + (g.awayName != null ? g.awayName : g.away);
+                    break;
+                }
+            } catch (Exception ignored) {
+                cfg = null;
+            }
+            JSONObject got = cfg;
+            String game = about;
+            handler().post(() -> {
+                fetching = false;
+                if (got == null) {
+                    note.accept("Couldn't reach the scores just now");
+                    return;
+                }
+                if (showing()) return;
+                android.util.Log.i("Sport", "match intro try (" + style + "): " + game + ", " + players(got) + " players");
+                String key = "try|match|" + android.os.SystemClock.uptimeMillis();
+                hold(app, "match", got, "intro", key, (v) -> {
                     if (goPrepared(key)) trial = true;
                 });
             });

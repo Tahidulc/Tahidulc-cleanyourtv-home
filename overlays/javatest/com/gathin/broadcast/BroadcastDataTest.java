@@ -137,6 +137,9 @@ public class BroadcastDataTest {
             assertTrue(k, new java.io.File(dir, k + ".mp4").isFile());
         }
         assertTrue(new java.io.File(dir, "tail.mp4").isFile());
+        // the match intro's music, its network style's and the Champions League style's
+        assertTrue(new java.io.File(dir, MatchIntro.SOUND.substring("intros/".length())).isFile());
+        assertTrue(new java.io.File(dir, MatchIntro.SOUND_UCL.substring("intros/".length())).isFile());
     }
 
     @Test

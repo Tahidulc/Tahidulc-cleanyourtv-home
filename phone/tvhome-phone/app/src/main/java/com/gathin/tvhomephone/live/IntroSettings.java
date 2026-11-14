@@ -36,6 +36,8 @@ public final class IntroSettings {
         BoardSettings.row(c, col, c.getString(R.string.live45_intro), PlayerIntro.introOn(c), on -> PlayerIntro.setIntro(c, on));
         BoardSettings.row(c, col, c.getString(R.string.live84_season), PlayerIntro.seasonOn(c), on -> PlayerIntro.setSeason(c, on));
         col.addView(Ui.text(c, c.getString(R.string.live84_season_line), 13, c.getColor(R.color.text_dim), false));
+        BoardSettings.row(c, col, c.getString(R.string.live90_match), PlayerIntro.matchOn(c), on -> PlayerIntro.setMatch(c, on));
+        col.addView(Ui.text(c, c.getString(R.string.live90_match_line), 13, c.getColor(R.color.text_dim), false));
         TextView now = Ui.text(c, "", 14, c.getColor(R.color.text), true);
         TextView resend = Ui.text(c, c.getString(R.string.live47_resend), 14, 0xFF6FB6FF, true);
         resend.setPadding(0, Ui.dp(c, 8), 0, Ui.dp(c, 8));

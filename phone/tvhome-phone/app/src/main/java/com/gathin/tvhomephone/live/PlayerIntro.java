@@ -9,6 +9,7 @@ import android.widget.FrameLayout;
 
 import com.gathin.broadcast.BroadcastData;
 import com.gathin.broadcast.BroadcastView;
+import com.gathin.broadcast.MatchIntro;
 import com.gathin.broadcast.Moments;
 import com.gathin.tvhomephone.R;
 import com.gathin.tvhomephone.sports.Game;
@@ -45,6 +46,14 @@ final class PlayerIntro {
     private final Consumer<Boolean> lineupsUp;
     private final Handler h = new Handler(Looper.getMainLooper());
     private final ExecutorService io = Executors.newSingleThreadExecutor();
+    /** The match intro's gathering (its clubs' squads and pictures: up to a minute), apart from the pop-ups'. */
+    private final ExecutorService matchIo = Executors.newSingleThreadExecutor();
+    /** The match intro's settings made ahead for one game (its id), when, whether being made; the breaks with an intro so far. */
+    private JSONObject matchCfg;
+    private String matchFor;
+    private long matchAt;
+    private boolean matchMaking;
+    private final Map<String, Integer> breaksSeen = new HashMap<>();
     private final Set<String> shown = new HashSet<>();
     private final Map<String, String> phases = new HashMap<>();
     private final Map<String, Long> tried = new HashMap<>();
@@ -143,6 +152,60 @@ final class PlayerIntro {
         prefs(c).edit().putBoolean("season", on).apply();
     }
 
+    /**
+     * The match intro (overlays/src/match): the game itself, its clubs and their best-known players in a big network's
+     * style (a Champions League game's in its own too), Whitebrook Road Sports to end: over the ad breaks before the
+     * game in turn with the competition's own, and as its matchday intro. On unless off.
+     */
+    static boolean matchOn(Context c) {
+        return prefs(c).getBoolean("match", true);
+    }
+
+    static void setMatch(Context c, boolean on) {
+        prefs(c).edit().putBoolean("match", on).apply();
+    }
+
+    /** The match intro's settings for g made (again) out of sight, ready for its breaks (main thread). */
+    private void warmMatch(Game g) {
+        if (g == null || g.id == null || matchMaking) return;
+        if (g.id.equals(matchFor) && System.currentTimeMillis() - matchAt < Moments.MATCH_REMAKE_MS) return;
+        matchMaking = true;
+        BroadcastData.Match m = match(g);
+        Context app = a.getApplicationContext();
+        matchIo.execute(() -> {
+            JSONObject cfg = null;
+            try {
+                int id = FotMob.find(g.id, m.homeName, m.awayName, g.kickoff);
+                cfg = MatchIntro.build(app.getAssets(), m, id > 0 ? FotMob.raw(id) : null, app.getCacheDir(), BroadcastData.fixture(m.homeName, m.awayName));
+            } catch (Exception ignored) {
+                // tried again in a while
+            }
+            JSONObject got = cfg;
+            h.post(() -> {
+                matchMaking = false;
+                if (got == null) return;
+                matchCfg = got;
+                matchFor = g.id;
+                matchAt = System.currentTimeMillis();
+            });
+        });
+    }
+
+    /** The match intro's settings for g in a style ("ucl" or "network"), or null when not made for it. */
+    private JSONObject matchCfg(Game g, String style) {
+        if (g == null || g.id == null || !g.id.equals(matchFor) || matchCfg == null) return null;
+        try {
+            return new JSONObject(matchCfg.toString()).put("style", style);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private static boolean ucl(Game g) {
+        BroadcastData.Match m = match(g);
+        return "ucl".equals(BroadcastData.introTrophy(m.compId, m.compName));
+    }
+
     static boolean popupOn(Context c) {
         return !"off".equals(popupStyle(c));
     }
@@ -196,6 +259,7 @@ final class PlayerIntro {
         String kind = was == null ? null : Moments.moment(was, now);
         if (kind != null && popupOn(a)) popup(g, kind, "kickoff".equals(kind) ? null : new int[]{g.homeScore, g.awayScore}, null, null);
         if ("pre".equals(now) && g.kickoff > 0 && lineupsOn(a) && Moments.lineupsDue(lineupsStyle(a), g.kickoff - screenNow)) lineups(g);
+        if ("pre".equals(now) && g.kickoff > 0 && matchOn(a) && Moments.matchWarm(g.kickoff - screenNow)) warmMatch(g);
         if ("pre".equals(now) && g.kickoff > 0 && introOn(a) && Moments.introDue(g.kickoff - screenNow)) intro(g);
     }
 
@@ -209,6 +273,11 @@ final class PlayerIntro {
         shown.add(key);
         try {
             BroadcastData.Match m = match(g);
+            JSONObject mc = matchOn(a) ? matchCfg(g, ucl(g) ? "ucl" : "network") : null;
+            if (mc != null) {
+                show(BroadcastView.page(a, "match", mc, this::gone), "intro");
+                return;
+            }
             String sk = BroadcastData.seasonKey(m.compId, m.compName);
             JSONObject cfg = seasonOn(a) && !sk.isEmpty() && !IntroVideo.useOwn(a)
                     ? BroadcastData.season(sk, BroadcastData.fixture(m.homeName, m.awayName)) : introCfg(a, g);
@@ -246,12 +315,17 @@ final class PlayerIntro {
         BroadcastData.Match m = match(g);
         String sk = seasonOn(a) ? BroadcastData.seasonKey(m.compId, m.compName) : "";
         String ck = introOn(a) ? BroadcastData.introKey(m.compId, m.compName) : "";
-        if (sk.isEmpty() && ck.isEmpty()) return false;
+        Integer seen = breaksSeen.get(g.id);
+        int n = seen == null ? 0 : seen;
+        String style = Moments.breakStyle(n, matchOn(a) && matchCfg(g, "network") != null, !sk.isEmpty() || !ck.isEmpty(), ucl(g));
+        if (style.isEmpty()) return false;
         try {
-            show(BroadcastView.page(a, "reveal", BroadcastData.breakIntros(sk, ck, BroadcastData.fixture(m.homeName, m.awayName)), this::gone), "intro");
+            if ("other".equals(style)) show(BroadcastView.page(a, "reveal", BroadcastData.breakIntros(sk, ck, BroadcastData.fixture(m.homeName, m.awayName)), this::gone), "intro");
+            else show(BroadcastView.page(a, "match", matchCfg(g, style), this::gone), "intro");
         } catch (Exception e) {
             return false;
         }
+        breaksSeen.put(g.id, n + 1);
         shown.add(g.id + "|break");
         breakUp = true;
         breakDone = true;
