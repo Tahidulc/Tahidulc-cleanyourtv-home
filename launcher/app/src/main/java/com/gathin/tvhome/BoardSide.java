@@ -34,6 +34,23 @@ abstract class BoardSide extends View {
     protected float start, end;
     /** The room over its top, in pixels, for what stands out of it (the strip is the rest of its height, at its foot). */
     protected int head;
+    /** Room under its strip for the sponsor's strap (Stride), in pixels: 0 for none. */
+    protected int strap;
+    /** The light passing across the strap as it comes out (0 to 1; outside that, none). */
+    private float sweep = -1f;
+    private ValueAnimator sweeping;
+
+    /** The sponsor's strap under it, px high with its gap (0: none). */
+    void strap(int px) {
+        if (strap == px) return;
+        strap = px;
+        invalidate();
+    }
+
+    /** Pure: the room the sponsor's strap takes under a strip h high, its gap included. */
+    static int strapRoom(int h) {
+        return com.gathin.broadcast.Stride.strapHeight(h) + com.gathin.broadcast.Stride.gap(h);
+    }
     private ValueAnimator sliding;
     private Runnable after;
     private final Paint ground = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -74,6 +91,19 @@ abstract class BoardSide extends View {
 
     /** Out from under the board (shown at once when it already is). */
     protected void slideOut() {
+        // The sponsor's strap: a light across it once it is out.
+        if (!isOut() && strap > 0) {
+            if (sweeping != null) sweeping.cancel();
+            ValueAnimator sv = ValueAnimator.ofFloat(0f, 1f);
+            sv.setStartDelay(SLIDE_MS);
+            sv.setDuration(900);
+            sv.addUpdateListener(a -> {
+                sweep = (float) a.getAnimatedValue();
+                invalidate();
+            });
+            sweeping = sv;
+            sv.start();
+        }
         if (!isOut()) swish();
         goingIn = false;
         if (!isOut()) out = 0f;
@@ -202,7 +232,7 @@ abstract class BoardSide extends View {
     }
 
     @Override protected void onDraw(Canvas cv) {
-        int w = getWidth(), h = getHeight() - head;
+        int w = getWidth(), h = getHeight() - head - strap;
         if (w <= 0 || h <= 0 || out <= 0f) return;
         float seen = w * BoardBug.ease(out), tx = leftOf ? w - seen : seen - w;
         cv.save();
@@ -242,5 +272,14 @@ abstract class BoardSide extends View {
         cv.translate(tx, head);
         over(cv, w, h);
         cv.restore();
+        // Under it, the sponsor's strap (Stride), sliding out with it, its end at the far end.
+        if (strap > 0) {
+            int g = com.gathin.broadcast.Stride.gap(h);
+            cv.save();
+            cv.clipRect(leftOf ? 0 : tuck, 0, leftOf ? w - tuck : w, getHeight());
+            cv.translate(tx, head + h + g);
+            com.gathin.broadcast.Stride.draw(cv, leftOf ? 0 : tuck, 0, w - tuck, strap - g, look.ground, !leftOf, sweep);
+            cv.restore();
+        }
     }
 }

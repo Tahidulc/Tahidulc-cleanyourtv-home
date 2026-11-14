@@ -1144,6 +1144,15 @@ final class BoardCover {
     private static BoardDrop.Drop lastOut;
     private static boolean addedGoing;
 
+    /** Stride's "Sponsored by" strap under the alerts beside the board (the family's made-up sponsor): on unless switched off. */
+    static boolean sponsorOn(Context c) {
+        return prefs(c).getBoolean("sponsor", true);
+    }
+
+    static void setSponsorOn(Context c, boolean on) {
+        prefs(c).edit().putBoolean("sponsor", on).apply();
+    }
+
     /** The minutes added stay out beside the board until the half is over: on unless switched off. */
     static boolean addedStaysOn(Context c) {
         return prefs(c).getBoolean("added_stays", true);
@@ -3228,6 +3237,9 @@ final class BoardCover {
         // Room under the board for a shootout's kicks, kept while they are on and the screen has it.
         int below = Math.round(unit * BoardUnder.ROOM);
         underRoom = pensOn(c) && y + h + edge + below <= sh ? below : 0;
+        // Room under the board for Stride's strap under the alerts, where the screen has it.
+        int strapBelow = BoardSide.strapRoom(vh);
+        strapRoom = sponsorOn(c) && y + h + edge + strapBelow <= sh ? strapBelow : 0;
         if (under != null && under.isOut()) {
             if (underRoom > 0) placeUnder(under.mode());
             else under.gone();
@@ -3235,7 +3247,7 @@ final class BoardCover {
         lastBoard = new int[]{x, y, w, h};
         WindowManager.LayoutParams lp = (WindowManager.LayoutParams) boardWin.getLayoutParams();
         int wx = x - 2 * edge - boardAt, wy = y - 2 * edge - head, ww = boardAt + vw + (sideLeft ? 0 : sideGap + room) + 2 * edge,
-                wh = head + vh + 2 * edge + underRoom;
+                wh = head + vh + 2 * edge + Math.max(underRoom, strapRoom);
         if (lp == null || (lp.x == wx && lp.y == wy && lp.width == ww && lp.height == wh)) return;
         lp.x = wx;
         lp.y = wy;
@@ -3266,7 +3278,7 @@ final class BoardCover {
         FrameLayout.LayoutParams b = (FrameLayout.LayoutParams) bug.getLayoutParams();
         int left = sideLeft ? boardAt + tuck - sideGap - w : boardAt + b.width - tuck + sideGap;
         // As high as the board and in line with it; an alert with the room over the board for the scorer's picture.
-        if (v == drop) sizeAt(v, w, b.height + head, left, 0);
+        if (v == drop) sizeAt(v, w, b.height + head + drop.strap, left, 0);
         else sizeAt(v, w, b.height, left, head);
     }
 
@@ -3302,6 +3314,8 @@ final class BoardCover {
     // ---- what slides out beside it: the alerts --------------------------------------------------------------------------
 
     private static final ArrayDeque<BoardDrop.Drop> drops = new ArrayDeque<>();
+    /** The room under the board for Stride's strap (0: none, the screen has no room or it is switched off). */
+    private static int strapRoom;
     private static boolean dropping;
     private static final Runnable nextDropRun = BoardCover::nextDrop, hideDropRun = BoardCover::hideDrop;
 
@@ -3367,7 +3381,12 @@ final class BoardCover {
         drop.place(bug.stripLook(), boardH * TEXT, tuck, sideLeft, head);
         // Two or more substitutions at once: the room beside the board, wider than an alert's, for every player on a page.
         boolean many = d != null && d.subs != null && Math.max(d.subs.on.length, d.subs.off.length) > 1;
-        beside(drop, drop.widthFor(d, bh, many ? Math.max(shortRoom(bh, sideMax), Math.min(sideMax, bh * 16)) : shortRoom(bh, sideMax)));
+        // Stride's strap under it, where there is room under the board for it: the alert at least as wide as the strap.
+        boolean strap = app != null && sponsorOn(app) && strapRoom > 0;
+        drop.strap(strap ? BoardSide.strapRoom(bh) : 0);
+        int dw = drop.widthFor(d, bh, many ? Math.max(shortRoom(bh, sideMax), Math.min(sideMax, bh * 16)) : shortRoom(bh, sideMax));
+        if (strap) dw = Math.min(sideMax, Math.max(dw, tuck + Math.round(com.gathin.broadcast.Stride.width(com.gathin.broadcast.Stride.strapHeight(bh)))));
+        beside(drop, dw);
         drop.show(d);
         // The minutes added: out until their half is over (keepAdded takes them in), not for a few seconds.
         if (d != null && d == standing) return;

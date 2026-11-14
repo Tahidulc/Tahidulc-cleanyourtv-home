@@ -211,6 +211,7 @@ public final class BoardSettings {
                 new String[]{c.getString(R.string.live35_style_beam), c.getString(R.string.live35_style_stadium), c.getString(R.string.live35_style_off)},
                 PlayerIntro.lineupsStyle(c), st -> PlayerIntro.setLineupsStyle(c, st));
         row(c, col, c.getString(R.string.live_added_stays), ScoreBoard.addedStays(c), on -> ScoreBoard.setAddedStays(c, on));
+        row(c, col, c.getString(R.string.live_sponsor), ScoreBoard.sponsored(c), on -> ScoreBoard.setSponsored(c, on));
         row(c, col, c.getString(R.string.live34_swish), PlayerIntro.swishOn(c), on -> PlayerIntro.setSwishOn(c, on));
         row(c, col, c.getString(R.string.live69_score_swish), PlayerIntro.scoreSwishOn(c), on -> PlayerIntro.setScoreSwishOn(c, on));
         row(c, col, c.getString(R.string.live68_logo_away), ScoreBoard.logoAway(c), on -> ScoreBoard.setLogoAway(c, on));

@@ -329,6 +329,11 @@ public final class ScoreBoard implements LiveAlerts.Listener {
 
     static void setAddedStays(Context c, boolean v) { prefs(c).edit().putBoolean("added_stays", v).apply(); }
 
+    /** Stride's "Sponsored by" strap under the alerts (the family's made-up sponsor): on unless switched off. */
+    static boolean sponsored(Context c) { return prefs(c).getBoolean("sponsor", true); }
+
+    static void setSponsored(Context c, boolean v) { prefs(c).edit().putBoolean("sponsor", v).apply(); }
+
     /** VAR explained: the check out of the board, then its decision with a WHY under it: on unless switched off. */
     static boolean varExplained(Context c) { return prefs(c).getBoolean("var_explained", true); }
 
@@ -618,7 +623,7 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         boolean onBoard = boardUp();
         FrameLayout.LayoutParams l = (FrameLayout.LayoutParams) v.getLayoutParams();
         int left = !onBoard ? boardAt : sideLeft ? boardAt + tuck - sideGap - w : boardAt + bw - nearTuck() + nearGap();
-        int height = bh + (withHead ? head : 0), top = withHead ? 0 : head;
+        int height = bh + (withHead ? head : 0) + (v == strip ? strip.strap : 0), top = withHead ? 0 : head;
         if (l.width == w && l.height == height && l.leftMargin == left && l.topMargin == top) return;
         l.width = w;
         l.height = height;
@@ -2425,6 +2430,10 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         // Two or more substitutions at once: the room beside the board, wider than an alert's, for every player on a page.
         boolean many = d.subs != null && Math.max(d.subs.on.length, d.subs.off.length) > 1;
         int w = strip.widthFor(d, bh, many ? Math.max(shortRoom(bh, room), Math.min(room, bh * 16)) : shortRoom(bh, room));
+        // Stride's strap under it: the alert at least as wide as the strap.
+        boolean strap = sponsored(c);
+        strip.strap(strap ? BoardSide.strapRoom(bh) : 0);
+        if (strap) w = Math.min(room, Math.max(w, tuck + Math.round(com.gathin.broadcast.Stride.width(com.gathin.broadcast.Stride.strapHeight(bh)))));
         beside(strip, w, d.photo != null || d.subs != null);
         strip.show(d);
         // The minutes added: out until their half is over (keepAdded takes them in), not for a few seconds.

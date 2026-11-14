@@ -241,7 +241,11 @@ final class BoardPanel extends SportPanel {
         added.words = () -> BoardCover.addedStaysOn(c) ? "The minutes added stay out beside the board until the half is over, over the channel's own"
                 : "Off · the minutes added come out for a few seconds";
         added.ok = () -> BoardCover.setAddedStaysOn(c, !BoardCover.addedStaysOn(c));
-        add(added);
+        Row sponsor = row("Sponsored by Stride", true);
+        sponsor.on = () -> BoardCover.sponsorOn(c);
+        sponsor.words = () -> BoardCover.sponsorOn(c) ? "A slim Sponsored by Stride strap under each alert (the family's own made-up sponsor)" : "Off · no strap";
+        sponsor.ok = () -> BoardCover.setSponsorOn(c, !BoardCover.sponsorOn(c));
+        add(added, sponsor);
         Row swish = row("Swish as they move", true);
         swish.on = () -> BoardCover.swishOn(c);
         swish.words = () -> BoardCover.swishOn(c) ? "A swish each time the scorer, stats or an alert moves: out, every page, back in" : "Off · they move silently";
