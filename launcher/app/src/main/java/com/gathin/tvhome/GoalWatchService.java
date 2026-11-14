@@ -2898,7 +2898,10 @@ public class GoalWatchService extends Service {
         InStep.restarted(g.id, System.currentTimeMillis());
         AlertLog.note(this, (secondHalf ? "second half" : "kick-off") + " seen for the game watched: " + AlertLog.game(g));
         main.postDelayed(() -> MatchMode.event(this, g, secondHalf ? "2h" : "ko", null), hold(g));
-        if (!homeInFront && !NotifyPrefs.dndOn(this) && (board || InStep.wantsLineUp(this))) InStepCard.show(this, g, secondHalf, board);
+        // Only over TiviMate: no other app's picture has a clock to line up with.
+        if (!homeInFront && !NotifyPrefs.dndOn(this) && (board || InStep.wantsLineUp(this)) && BoardCover.tiviMateInFront(this)) {
+            InStepCard.show(this, g, secondHalf, board);
+        }
     }
 
     /** A game read only for the players followed: their goals, nothing else of it (Players). */

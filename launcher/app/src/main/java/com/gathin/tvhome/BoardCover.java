@@ -2599,6 +2599,13 @@ final class BoardCover {
         return frontOk;
     }
 
+    /** Whether TiviMate itself is in front now (not another app, not unknown): the set-the-clock card is only for it. */
+    static boolean tiviMateInFront(Context c) {
+        String f = AppSearchService.front();
+        if (f == null || f.equals(c.getPackageName())) f = usageFront(c);
+        return ChannelWatch.TIVIMATE.equals(f);
+    }
+
     static boolean isPlayer(String pkg) {
         for (String p : PLAYERS) if (p.equals(pkg)) return true;
         return false;

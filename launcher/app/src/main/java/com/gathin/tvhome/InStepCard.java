@@ -110,6 +110,7 @@ final class InStepCard {
         QuietHold.shown(app, win, InStepCard::close);
         if (!InputKeyService.running) AppSearchService.keysFor("instep", true);
         main.postDelayed(away, WAIT_MS);
+        main.postDelayed(stillTiviMate, 2_000L);
         AlertLog.note(app, "line-up card up for " + AlertLog.game(g));
     }
 
@@ -153,8 +154,21 @@ final class InStepCard {
         main.postDelayed(away, DONE_MS);
     }
 
+    /** Every two seconds while it is up: gone as soon as TiviMate is no longer in front (another app, Home). */
+    private static final Runnable stillTiviMate = new Runnable() {
+        @Override public void run() {
+            if (card == null || app == null) return;
+            if (!BoardCover.tiviMateInFront(app)) {
+                close();
+                return;
+            }
+            main.postDelayed(this, 2_000L);
+        }
+    };
+
     static void close() {
         main.removeCallbacks(away);
+        main.removeCallbacks(stillTiviMate);
         FrameLayout v = card;
         card = null;
         if (v == null) return;
