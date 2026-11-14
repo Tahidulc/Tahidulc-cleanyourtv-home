@@ -78,8 +78,11 @@ final class ScreenShots {
         whole = r;
     }
 
-    private static final Handler MAIN = new Handler(Looper.getMainLooper());
-    private static final Paint SCALE = new Paint(Paint.FILTER_BITMAP_FLAG);
+    /** The main thread's handler and the scaling paint, made when first wanted (the pure parts load without them, for the tests). */
+    private static final class Made {
+        static final Handler MAIN = new Handler(Looper.getMainLooper());
+        static final Paint SCALE = new Paint(Paint.FILTER_BITMAP_FLAG);
+    }
     private static ExecutorService work;
     private static long lastAt;
     /** The shortest gap between two pictures (it grows when Android says one came too soon). */
@@ -243,7 +246,7 @@ final class ScreenShots {
                 boolean black = own && out.length > 0 && out[0] != null && black(out[0]);
                 if (rode != null) {
                     Bitmap give = rode;
-                    MAIN.post(() -> {
+                    Made.MAIN.post(() -> {
                         // Not for a black window picture (TiviMate's window not taken), nor once the rider has changed.
                         if (black || ride != rd) give.recycle();
                         else rd.got.got(give, at);
@@ -252,12 +255,12 @@ final class ScreenShots {
                 if (all != null) {
                     Bitmap give = all;
                     boolean dark = black(give);
-                    MAIN.post(() -> {
+                    Made.MAIN.post(() -> {
                         if (dark || whole != wd) give.recycle();
                         else wd.got.got(give, at);
                     });
                 }
-                MAIN.post(() -> {
+                Made.MAIN.post(() -> {
                     if (waitingFor != id) {
                         // Given up on meanwhile, and another asked for: let go.
                         for (Bitmap b : out) if (b != null) b.recycle();
@@ -279,7 +282,7 @@ final class ScreenShots {
 
             @Override public void onFailure(int code) {
                 back.set(true);
-                MAIN.post(() -> {
+                Made.MAIN.post(() -> {
                     // Android's own late word on one given up on (its five seconds over): nothing more to do.
                     if (waitingFor != id) return;
                     waitingFor = 0;
@@ -309,13 +312,13 @@ final class ScreenShots {
                 // once and the next asked for (a second at most in any case), not five seconds of a still fill.
                 WeakReference<Object> mark = new WeakReference<>(new Object());
                 s.takeScreenshotOfWindow(window, work(), cb);
-                MAIN.postDelayed(new Runnable() {
+                Made.MAIN.postDelayed(new Runnable() {
                     private int looks;
 
                     @Override public void run() {
                         if (waitingFor != id || back.get()) return;
                         if (mark.get() != null && ++looks < LOST_LOOKS) {
-                            MAIN.postDelayed(this, LOOK_MS);
+                            Made.MAIN.postDelayed(this, LOOK_MS);
                             return;
                         }
                         waitingFor = 0;
@@ -335,8 +338,6 @@ final class ScreenShots {
         }
     }
 
-    /** The part f (fractions) of hw, ow by oh (ow 0: oh high in its own shape), scaled by the graphics chip; null if too small. */
-    @android.annotation.TargetApi(30)
     /** Pure: a remote button pressed this recently: pictures wait. */
     static boolean keysMoving(long now, long lastKey) {
         return lastKey > 0 && now - lastKey >= 0 && now - lastKey < KEYS_REST_MS;
@@ -344,6 +345,8 @@ final class ScreenShots {
 
     static final long KEYS_REST_MS = 1_500L;
 
+    /** The part f (fractions) of hw, ow by oh (ow 0: oh high in its own shape), scaled by the graphics chip; null if too small. */
+    @android.annotation.TargetApi(30)
     private static Bitmap part(Bitmap hw, RectF f, int ow, int oh) {
         int w = hw.getWidth(), h = hw.getHeight();
         Rect src = new Rect(Math.max(0, Math.round(f.left * w)), Math.max(0, Math.round(f.top * h)),
@@ -354,7 +357,7 @@ final class ScreenShots {
         oh = Math.min(oh, 2048);
         Picture p = new Picture();
         Canvas pc = p.beginRecording(ow, oh);
-        pc.drawBitmap(hw, src, new Rect(0, 0, ow, oh), SCALE);
+        pc.drawBitmap(hw, src, new Rect(0, 0, ow, oh), Made.SCALE);
         p.endRecording();
         Bitmap gpu = Bitmap.createBitmap(p, ow, oh, Bitmap.Config.HARDWARE);
         Bitmap soft = gpu.copy(Bitmap.Config.ARGB_8888, false);

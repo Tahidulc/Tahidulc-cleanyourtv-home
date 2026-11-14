@@ -16,6 +16,7 @@ import java.text.Normalizer;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
@@ -142,7 +143,11 @@ final class ChannelMark {
     /** The family's name alone, without SPORTS (the Scoreboard card's Name: Whitebrook Road). */
     private boolean nameOnly;
 
+    /** For the marks' pictures. */
+    private final Context context;
+
     ChannelMark(Context c) {
+        context = c.getApplicationContext();
         black = ScoreCard.outfit(c, 900);
         heavy = ScoreCard.outfit(c, 800);
         bold = ScoreCard.outfit(c, 700);
@@ -550,11 +555,132 @@ final class ChannelMark {
         eventLogo = b != null && !b.isRecycled() && b.getWidth() > 0 && b.getHeight() > 0 ? b : null;
     }
 
+    // ---- Event's extras (LogoExtras): the marks after a fine line, the name turning over to the clock ----
+
+    /** The picture and sound marks inside the name's box (LogoExtras.marks); none: the tag as it was. */
+    private List<String> marks = new java.util.ArrayList<>();
+    /** The name turned over: 0 the name, 1 the clock (between, turning); the clock's time, the weather's icon, its temperature. */
+    private float flip;
+    private String clockHm;
+    private android.graphics.drawable.Drawable clockIcon;
+    private String clockTemp = "";
+    /** The name's box as last drawn (in the canvas's units), and whether it was. */
+    private final RectF lowerBox = new RectF();
+    private boolean lowerDrawn;
+    private final java.util.Map<String, android.graphics.Bitmap> markPics = new java.util.HashMap<>();
+    private final Paint markPaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+
+    void marks(List<String> m) {
+        marks = m == null ? new java.util.ArrayList<>() : m;
+    }
+
+    void clock(float turned, String hm, android.graphics.drawable.Drawable icon, String temp) {
+        flip = Math.max(0f, Math.min(1f, turned));
+        clockHm = hm;
+        clockIcon = icon;
+        clockTemp = temp == null ? "" : temp;
+    }
+
+    /** The name's box as last drawn into out; false when the look drew none. */
+    boolean nameBox(RectF out) {
+        if (!lowerDrawn) return false;
+        out.set(lowerBox);
+        return true;
+    }
+
+    /** A mark's picture (the real format's logo), or null for one drawn in letters (4K, UHD, HD, HDR, DTS, 5.1). */
+    private android.graphics.Bitmap markPic(String m) {
+        int res = "HDR10+".equals(m) ? R.drawable.fmt_hdr10plus : "HDR10".equals(m) ? R.drawable.fmt_hdr10
+                : "DOLBY VISION".equals(m) ? R.drawable.fmt_dolby_vision : "DOLBY ATMOS".equals(m) ? R.drawable.fmt_dolby_atmos : 0;
+        if (res == 0) return null;
+        if (!markPics.containsKey(m)) {
+            android.graphics.Bitmap b = null;
+            try {
+                b = android.graphics.BitmapFactory.decodeResource(context.getResources(), res);
+            } catch (RuntimeException ignored) {
+                // drawn in letters instead
+            }
+            markPics.put(m, b);
+        }
+        return markPics.get(m);
+    }
+
+    /** The marks' width at th (the name's box units): the line's room, then each mark with a gap between. */
+    private float marksW(float th) {
+        float w = th * 0.9f + Math.max(1f, th * 0.04f);
+        for (int i = 0; i < marks.size(); i++) w += markW(marks.get(i), th) + (i > 0 ? th * 0.35f : 0f);
+        return w;
+    }
+
+    private float markW(String m, float th) {
+        android.graphics.Bitmap b = markPic(m);
+        if (b != null) return th * 0.5f * b.getWidth() / b.getHeight();
+        float size = th * 0.5f / capOf(heavy);
+        return widthAt(m, heavy, size, 0.02f);
+    }
+
+    /** The marks with their fine line before them, right-aligned at right, centred on cy, th high (screen units). */
+    private void drawMarks(Canvas cv, float right, float cy, float th, int ink, boolean glow, float blur, float drop, int shade) {
+        float x = right - marksW(th) + th * 0.45f;
+        line.setShader(null);
+        line.setColor((ink & 0x00FFFFFF) | 0x66000000);
+        line.setStrokeWidth(Math.max(1f, th * 0.04f));
+        cv.drawLine(x, cy - th * 0.42f, x, cy + th * 0.42f, line);
+        x += Math.max(1f, th * 0.04f) + th * 0.45f;
+        markPaint.setColorFilter(new android.graphics.PorterDuffColorFilter(ink, android.graphics.PorterDuff.Mode.SRC_IN));
+        if (glow) markPaint.setShadowLayer(blur, 0, drop, shade);
+        else markPaint.clearShadowLayer();
+        for (int i = 0; i < marks.size(); i++) {
+            String m = marks.get(i);
+            if (i > 0) x += th * 0.35f;
+            android.graphics.Bitmap b = markPic(m);
+            float w = markW(m, th);
+            if (b != null) {
+                float h = th * 0.5f;
+                r.set(x, cy - h / 2f, x + w, cy + h / 2f);
+                cv.drawBitmap(b, null, r, markPaint);
+            } else {
+                float size = th * 0.5f / capOf(heavy);
+                words(cv, m, heavy, size, 0.02f, ink, null, x, cy + capOf(heavy) * size / 2f, Paint.Align.LEFT);
+            }
+            x += w;
+        }
+        markPaint.clearShadowLayer();
+    }
+
+    /** The clock, the weather's icon and the temperature, from x, centred on cy, size its letters' size, within room. */
+    private void drawClock(Canvas cv, float x, float cy, float size, float room, int ink) {
+        if (clockHm == null) return;
+        float iw = clockIcon != null ? size * 0.8f : 0f, gap = size * 0.28f;
+        float w = widthAt(clockHm, semi, size, 0f) + (iw > 0 ? gap + iw : 0f)
+                + (clockTemp.isEmpty() ? 0f : gap + widthAt(clockTemp, medium, size * 0.9f, 0f));
+        if (w > room && room > 0f) {
+            float k = room / w;
+            size *= k;
+            iw *= k;
+            gap *= k;
+        }
+        words(cv, clockHm, semi, size, 0f, ink, null, x, cy + capOf(semi) * size / 2f, Paint.Align.LEFT);
+        x += widthAt(clockHm, semi, size, 0f);
+        if (iw > 0) {
+            x += gap;
+            clockIcon.setBounds(Math.round(x), Math.round(cy - iw / 2f), Math.round(x + iw), Math.round(cy + iw / 2f));
+            clockIcon.setColorFilter(new android.graphics.PorterDuffColorFilter(ink, android.graphics.PorterDuff.Mode.SRC_IN));
+            clockIcon.draw(cv);
+            x += iw;
+        }
+        if (!clockTemp.isEmpty()) {
+            x += gap;
+            words(cv, clockTemp, medium, size * 0.9f, 0f, ink, null, x, cy + capOf(medium) * size * 0.9f / 2f, Paint.Align.LEFT);
+        }
+    }
+
     /** How much narrower or wider Event's lettering may be drawn to fill its box (past that, the row spreads instead). */
     static final float MOST_NARROW = 0.7f, MOST_WIDE = 1.4f;
 
     /** Event on the ground given: on its plate or on glass the marks as on a plate; on none, each with a soft shadow. */
     void event(Canvas cv, float x, float y, float w, float h, String sub, String tag, boolean white, int ground) {
+        lowerDrawn = false;
         if (w <= 2 || h <= 2) return;
         boolean plate = ground != GROUND_NONE, glow = ground == GROUND_NONE || ground == GROUND_CLEAR_GLASS;
         String on = sub == null ? "" : sub.trim();
@@ -577,6 +703,15 @@ final class ChannelMark {
         float rowW = nameW + (sports ? 16f + boxW : 0f), rowH = sports ? boxH : nameH;
         float side = 34f, edge = 3f, subH = 24f + 92f * 1.05f + 28f + edge;
         float th = 50f, tw = tagW(th, false), tagGap = tw > 0 ? 26f : 0f;
+        // The picture and sound marks in place of the tag's boxes, after a fine line.
+        boolean showMarks = lower && !marks.isEmpty();
+        if (showMarks) {
+            tw = marksW(th);
+            tagGap = 26f;
+        }
+        // The name turned over to the clock: squashed to its line and back out (its first half the name, then the clock).
+        float turn = Math.abs((float) Math.cos(flip * Math.PI));
+        boolean clockNow = flip >= 0.5f && clockHm != null;
         // What is on: its logo as tall as the words' capitals and more, else the words.
         float logoH = 92f * 0.95f;
         float subW = mark != null ? logoH * mark.getWidth() / mark.getHeight() : lower ? widthAt(on, medium, 92f, -1f / 92f) : 0f;
@@ -625,10 +760,13 @@ final class ChannelMark {
         // "sports" at the right, over the right side of the channel's box.
         if (sports) redBox(cv, ox + (fullW - boxW) * u, oy, boxW * u, boxH * u, u, !glow, shade, blur, drop);
         float top = oy + (rowH + 10f) * u, lineTop = top + 24f * u, lh = 92f * 1.05f * u;
-        // The channel's name from the left, in the middle of the line it sits on.
-        if (lower && mark == null) {
+        // The channel's name from the left, in the middle of the line it sits on (squashed while it turns over).
+        if (lower && mark == null && !clockNow) {
+            int nameSave = cv.save();
+            cv.scale(1f, Math.max(0.001f, turn), 0f, lineTop + lh / 2f);
             words(cv, on, medium, 92f * k * u, -1f / 92f, ink, null, ox + (edge + side) * u, baseIn(medium, 92f * k * u, lineTop, lh),
                     Paint.Align.LEFT);
+            cv.restoreToCount(nameSave);
         }
         // The box's lines and the tag drawn as they are, not drawn wider: the same weight all round.
         cv.restoreToCount(saved);
@@ -651,19 +789,33 @@ final class ChannelMark {
             line.setStrokeCap(Paint.Cap.BUTT);
             cv.drawPath(path, line);
             line.setStrokeCap(Paint.Cap.ROUND);
-            if (mark != null) {
+            if (mark != null && !clockNow) {
                 // What is on, as its own logo: in its colours on a dark ground, in the lettering's navy on the light plate.
                 float dh = logoH * k * u, dw = dh * mark.getWidth() / mark.getHeight();
                 float lx = ox + (edge + side) * u * sx, ly = lineTop + (lh - dh) / 2f;
+                int logoSave = cv.save();
+                cv.scale(1f, Math.max(0.001f, turn), 0f, lineTop + lh / 2f);
                 r.set(lx, ly, lx + dw, ly + dh);
                 logoPaint.setColorFilter(white ? null : new android.graphics.PorterDuffColorFilter(ink, android.graphics.PorterDuff.Mode.SRC_IN));
                 if (glow) logoPaint.setShadowLayer(blur, 0, drop, shade);
                 else logoPaint.clearShadowLayer();
                 cv.drawBitmap(mark, null, r, logoPaint);
                 logoPaint.clearShadowLayer();
+                cv.restoreToCount(logoSave);
             }
-            // The tag at the right, in the middle of the channel's name's line.
-            if (tw > 0) eventTag(cv, ox + (fullW - edge - side) * u * sx, lineTop + lh / 2f, th * u, ink);
+            if (clockNow) {
+                // The clock and the weather where the name was, turning out of its line.
+                int clockSave = cv.save();
+                cv.scale(1f, Math.max(0.001f, turn), 0f, lineTop + lh / 2f);
+                float room = (fullW - 2 * (edge + side) - tagGap - tw) * u * sx;
+                drawClock(cv, ox + (edge + side) * u * sx, lineTop + lh / 2f, 92f * k * u, room, ink);
+                cv.restoreToCount(clockSave);
+            }
+            // The marks (or the tag) at the right, in the middle of the channel's name's line.
+            if (showMarks) drawMarks(cv, ox + (fullW - edge - side) * u * sx, lineTop + lh / 2f, th * u, ink, glow, blur, drop, shade);
+            else if (tw > 0) eventTag(cv, ox + (fullW - edge - side) * u * sx, lineTop + lh / 2f, th * u, ink);
+            lowerBox.set(ox, top, ox + fullW * u * sx, top + subH * u);
+            lowerDrawn = true;
         }
         text.clearShadowLayer();
         line.clearShadowLayer();

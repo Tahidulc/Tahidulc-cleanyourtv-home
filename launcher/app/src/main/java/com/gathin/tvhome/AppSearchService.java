@@ -1002,7 +1002,7 @@ public class AppSearchService extends AccessibilityService {
 
     private boolean keys(android.view.KeyEvent event) {
         // The overlays button over a match: OK held turns them on (OverlayPrompt).
-        if (event != null && event.getAction() == KeyEvent.ACTION_DOWN) InputKeyService.lastKeyAt = System.currentTimeMillis();
+        if (event != null && event.getAction() == android.view.KeyEvent.ACTION_DOWN) InputKeyService.lastKeyAt = System.currentTimeMillis();
         if (OverlayPrompt.key(event)) return true;
         // OK at the kick-off on screen, while the card asking for it is up (InStepCard); the replay's bar.
         if (InStepCard.key(event) || Replay.key(event)) return true;

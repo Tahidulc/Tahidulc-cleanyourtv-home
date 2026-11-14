@@ -114,6 +114,15 @@ final class BoardPanel extends SportPanel {
     private int sportTry;
 
     /** A try of the classic pop-up or line-ups: the card away, then it over Home (ClassicIntro.tryIt). */
+    /** A switch for one of the logo's extras (LogoExtras), on unless switched off. */
+    private Row extraRow(String name, String which, String on) {
+        Row r = row(name, true);
+        r.on = () -> LogoExtras.on(c, which);
+        r.words = () -> LogoExtras.on(c, which) ? on : "Off";
+        r.ok = () -> BoardCover.setLogoExtra(c, which, !LogoExtras.on(c, which));
+        return r;
+    }
+
     /** A tennis, boxing or UFC board tried now over Home, in the look chosen (SportCover). */
     private void trySportBoard(int kind) {
         hide();
@@ -454,6 +463,17 @@ final class BoardPanel extends SportPanel {
             for (LogoMark m : markPreviews) m.liveBar(BoardCover.logoLive(c));
         };
         add(comp, liveRow);
+        // What the family's logo (Event) shows besides, each on or off (LogoExtras).
+        Row upNext = extraRow("Up next on the logo", LogoExtras.NEXT,
+                "5 minutes before the next programme, a panel slides out of the logo for 30 seconds");
+        Row prayerRow = extraRow("Prayer time on the logo", LogoExtras.PRAYER,
+                "One reminder 5 minutes before each prayer, under the logo for 30 seconds");
+        add(upNext, prayerRow);
+        Row clockRow = extraRow("Clock and weather on the logo", LogoExtras.CLOCK,
+                "Every 5 minutes the channel's name turns over to the time and the weather for 30 seconds");
+        Row marksRow = extraRow("Picture and sound marks on the logo", LogoExtras.MARKS,
+                "The formats the channel's own name says it carries (4K, HDR10+, Dolby Atmos…), in the name's box");
+        add(clockRow, marksRow);
 
         // Each look drawn as it is, the game chosen above in it: the arrows go along, OK chooses.
         heading("SCOREBOARD LOOK");

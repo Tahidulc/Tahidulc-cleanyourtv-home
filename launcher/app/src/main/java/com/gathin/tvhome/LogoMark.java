@@ -239,6 +239,65 @@ final class LogoMark extends View {
         if (java.util.Objects.equals(name, subFrom)) return;
         subFrom = name;
         sub(ChannelMark.subOf(name));
+        marks(marksOn);
+    }
+
+    // ---- Event's extras (LogoExtras) ----
+
+    /** The picture and sound marks in the name's box, by the channel's own name (LogoExtras.marks); on or off. */
+    private boolean marksOn = true;
+
+    void marks(boolean on) {
+        marksOn = on;
+        if (channel == null) {
+            channel = new ChannelMark(getContext());
+            channel.nameOnly(nameOnly);
+        }
+        channel.marks(on ? LogoExtras.marks(subFrom) : null);
+        if (look.event()) invalidate();
+    }
+
+    /** The name turned over to the clock (on), or back; its time, the weather's icon (a drawable, 0 none), its temperature. */
+    private boolean clockOn;
+    private long clockAt;
+    private String clockHm;
+    private int clockIcon;
+    private android.graphics.drawable.Drawable clockDrawable;
+    private String clockTemp = "";
+    static final long TURN_MS = 500L;
+
+    void clock(boolean on, String hm, int icon, String temp) {
+        boolean changed = on != clockOn || on && (!java.util.Objects.equals(hm, clockHm) || icon != clockIcon || !temp.equals(clockTemp));
+        if (on != clockOn) {
+            long now = android.os.SystemClock.uptimeMillis();
+            // Turning back part way round: from where it is.
+            long done = Math.min(TURN_MS, now - clockAt);
+            clockAt = now - (TURN_MS - done);
+            clockOn = on;
+        }
+        if (on) {
+            clockHm = hm;
+            if (icon != clockIcon) clockDrawable = icon == 0 ? null : getContext().getDrawable(icon);
+            clockIcon = icon;
+            clockTemp = temp == null ? "" : temp;
+        }
+        if (changed && look.event()) invalidate();
+    }
+
+    /** How far turned over to the clock now (0 the name, 1 the clock). */
+    private float turned() {
+        float p = Math.min(1f, (android.os.SystemClock.uptimeMillis() - clockAt) / (float) TURN_MS);
+        return clockOn ? p : 1f - p;
+    }
+
+    /** Whether the look is Event (the one with the name's box the extras go with). */
+    boolean eventLook() {
+        return look.event();
+    }
+
+    /** The name's box as Event last drew it (this view's pixels) into out; false for none. */
+    boolean nameBox(RectF out) {
+        return look.event() && channel != null && channel.nameBox(out);
     }
 
     /** The family's name alone (WHITEBROOK ROAD), or with SPORTS. */
@@ -468,6 +527,9 @@ final class LogoMark extends View {
             float p = clear ? in : 0f;
             // What is on as its own logo (the competition's, when known and switched on), else the channel's words.
             channel.eventLogo(compOn ? comp : null);
+            float t = turned();
+            channel.clock(t, clockHm, clockDrawable, clockTemp);
+            if (t > 0f && t < 1f) postInvalidateOnAnimation();
             // Its own navy on frosted and tempered glass (light glass), white on smoked and over the picture itself.
             boolean white = clear || (frosted ? kind == SMOKE : look == Look.EVENT_WHITE);
             channel.event(cv, p, p, w - 2 * p, h - 2 * p, sub, tag, white, clear ? ChannelMark.GROUND_NONE

@@ -637,6 +637,12 @@ final class BoardCover {
     }
 
     /** The competition's logo beside the logo cover's look (on unless switched off). */
+    /** One of the logo's extras switched on or off on the Scoreboard card (LogoExtras): the logo up takes it at once. */
+    static void setLogoExtra(Context c, String which, boolean on) {
+        LogoExtras.set(c, which, on);
+        if (mark != null && LogoExtras.MARKS.equals(which)) mark.marks(on);
+    }
+
     static boolean logoComp(Context c) {
         return prefs(c).getBoolean("comp_on", true);
     }
@@ -858,6 +864,7 @@ final class BoardCover {
     static void logoAway(boolean away) {
         if (away == logoAwayNow) return;
         logoAwayNow = away;
+        extrasAlpha();
         if (logoWin == null) return;
         if (logoAnim != null) logoAnim.cancel();
         java.util.List<android.animation.Animator> parts = new java.util.ArrayList<>();
@@ -1837,6 +1844,9 @@ final class BoardCover {
     // ---- showing it ------------------------------------------------------------------------------------------------
 
     private static FrameLayout boardWin, logoWin, hintWin;
+    /** The logo's extras out beside it (LogoExtras: Up next, the prayer time), in a window kept with the logo's. */
+    private static FrameLayout extrasWin;
+    private static LogoExtras.Extras extras;
     /** The plates over what grows out of the channel's own scoreboard (BugCover), in a window under the board's. */
     private static FrameLayout plateWin;
     private static BugPlates platesView;
@@ -2584,6 +2594,16 @@ final class BoardCover {
                 fill = null;
             } else {
                 logoAwayAtOnce();
+                mark.marks(LogoExtras.on(c, LogoExtras.MARKS));
+                extras = new LogoExtras.Extras(c, mark);
+                extrasWin = frame(c, extras);
+                if (!addWindow(c, extrasWin)) {
+                    extrasWin = null;
+                    extras = null;
+                }
+                LogoExtras.view(extras);
+                LogoExtras.reset(System.currentTimeMillis());
+                extrasAlpha();
             }
         }
         imagesFor = null;
@@ -2914,6 +2934,49 @@ final class BoardCover {
         if (plateWin != null && plateWin.getAlpha() != a) plateWin.setAlpha(a);
         if (logoWin != null && logoWin.getAlpha() != a) logoWin.setAlpha(a);
         if (chipWin != null && chipWin.getAlpha() != a) chipWin.setAlpha(a);
+        extrasAlpha();
+    }
+
+    /** The logo's extras seen as the logo is: unseen while it is veiled or aside. */
+    private static void extrasAlpha() {
+        float a = veiled || logoAwayNow ? 0f : 1f;
+        if (extrasWin != null && extrasWin.getAlpha() != a) extrasWin.animate().alpha(a).setDuration(a > 0 ? 300 : 150).start();
+    }
+
+    /**
+     * The extras' window where the logo is (x, y, w, h on the screen): room to its left for Up next and under it for the
+     * prayer time; never off the screen.
+     */
+    private static void positionExtras(Context c, int x, int y, int w, int h) {
+        if (extrasWin == null || extras == null) return;
+        int roomL = Math.min(x, Math.round(h * 4.2f)), roomB = Math.min(sh - (y + h), Math.round(h * 0.7f));
+        int wx = Math.max(0, x - roomL - 2 * edge), wy = Math.max(0, y - 2 * edge);
+        int ww = Math.min(sw - wx, roomL + w + 4 * edge), wh = Math.min(sh - wy, h + Math.max(0, roomB) + 4 * edge);
+        android.view.ViewGroup.LayoutParams vl = extras.getLayoutParams();
+        if (vl.width != ww || vl.height != wh) {
+            vl.width = ww;
+            vl.height = wh;
+            extras.setLayoutParams(vl);
+        }
+        WindowManager.LayoutParams lp = (WindowManager.LayoutParams) extrasWin.getLayoutParams();
+        if (lp == null || lp.x == wx && lp.y == wy && lp.width == ww && lp.height == wh) return;
+        lp.x = wx;
+        lp.y = wy;
+        lp.width = ww;
+        lp.height = wh;
+        try {
+            c.getSystemService(WindowManager.class).updateViewLayout(extrasWin, lp);
+        } catch (RuntimeException ignored) {
+            // the window went meanwhile
+        }
+    }
+
+    /** The scoreboard's place on the screen now, {left, top, right, bottom} (the extras keep clear of it); null when down. */
+    private static float[] boardOnScreen() {
+        if (boardWin == null || boardWin.getWidth() <= 0) return null;
+        int[] at = new int[2];
+        boardWin.getLocationOnScreen(at);
+        return new float[]{at[0], at[1], at[0] + boardWin.getWidth(), at[1] + boardWin.getHeight()};
     }
 
     /** ChannelSight saw where the channel puts its own, or stands the board aside or back: placed and shown again now. */
@@ -2952,6 +3015,10 @@ final class BoardCover {
         platesView = null;
         removeWindow(c, boardWin);
         removeWindow(c, logoWin);
+        removeWindow(c, extrasWin);
+        extrasWin = null;
+        extras = null;
+        LogoExtras.view(null);
         boardWin = null;
         logoWin = null;
         fill = null;
@@ -3000,6 +3067,7 @@ final class BoardCover {
         positionBoard(c, Math.max(0, bx), Math.max(0, by), bw, bh);
         if (logoWin != null && mark != null) {
             position(c, logoWin, mark, Math.round(p.lx * sw), Math.round(p.ly * sh), Math.round(p.lw * sw), Math.round(p.lh * sh));
+            positionExtras(c, Math.round(p.lx * sw), Math.round(p.ly * sh), Math.round(p.lw * sw), Math.round(p.lh * sh));
         }
     }
 
@@ -4242,6 +4310,11 @@ final class BoardCover {
 
     /** Each second: a step round the circle once a minute (still while being placed), dimmer when nothing happens. */
     private static void guard(long now) {
+        // The logo's extras: what comes out of it next (Up next, the prayer time, the clock), never over the board's moments.
+        if (mark != null && app != null) {
+            boolean moment = dropping || bug != null && bug.bandLeft(now) > 0;
+            LogoExtras.tick(app, mark, mark.eventLook(), !moment && !veiled && !logoAwayNow && !adjusting, boardOnScreen());
+        }
         // Your logo up: the channel's own looked at, so yours steps aside in its ad breaks (AdBreak).
         if (logoWin != null && app != null && logoAwayOn(app)) AdBreak.watchCover(app);
         if (adjusting) {
@@ -4254,6 +4327,7 @@ final class BoardCover {
             int[] o = orbit(step);
             move(column, o);
             move(mark, o);
+            move(extras, o);
         }
         setDim(dims(changedAt, now));
         Context hc = app;
