@@ -297,6 +297,25 @@ public final class BroadcastData {
         return o;
     }
 
+    /**
+     * What an ad break before a game gets (every break from an hour and a half before): the league's season intro (season,
+     * "" for none) and then the competition's own film (comp, "" for none) back to back, one piece of music under both
+     * (tools: the season's music, then the competition film's own sound), the fixture written under the wordmark at the
+     * end of the competition's film. One of them alone when the other is off or there is none.
+     */
+    public static JSONObject breakIntros(String season, String comp, String fixture) throws JSONException {
+        String s = season == null ? "" : season, k = comp == null ? "" : comp;
+        if (s.isEmpty()) return intro(k, fixture, null, 0);
+        if (k.isEmpty()) return season(s, fixture);
+        JSONObject o = new JSONObject();
+        o.put("key", "break-" + s);
+        o.put("clips", new JSONArray().put("intros/season-" + s + ".mp4").put("intros/" + k + ".mp4"));
+        o.put("sound", "intros/sound-chain-" + s + ".m4a");
+        o.put("fixtureIn", "pl".equals(k) ? 13.8 : 15.2);
+        o.put("fixture", fixture == null ? "" : fixture.trim().toUpperCase(Locale.ROOT).replace(" V ", " v "));
+        return o;
+    }
+
     /** Pure: the fixture under the wordmark: "ARSENAL v EVERTON" (the v kept small), or "" without both teams. */
     public static String fixture(String home, String away) {
         String h = home == null ? "" : home.trim(), a = away == null ? "" : away.trim();

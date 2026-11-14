@@ -493,7 +493,7 @@ final class AdBreak {
         return (m & what) != 0;
     }
 
-    /** The break's screen waiting for the season intro over the break to end (ClassicIntro.seasonBreak). */
+    /** The break's screen waiting for the intros over the break to end (ClassicIntro: never on the screen with them). */
     private static Session afterIntro;
 
     private static void act(Context c, Session ss, int what) {
@@ -504,9 +504,9 @@ final class AdBreak {
                 AlertLog.note(c, "half-time card closed: the ad-break screen covers the break");
                 LineupCard.close(false);
             }
-            // Before a top-five league's kick-off: its season intro over this break first (once a game), the screen after.
+            // An intro on, or the intros this break gets before the game (every break): the screen after them.
             ScoresTicker.Game g = fresh(ss.g);
-            if (g != null && ClassicIntro.seasonBreak(c, g)) {
+            if (ClassicIntro.introShowing() || g != null && ClassicIntro.breakIntros(c, g)) {
                 afterIntro = ss;
                 return;
             }
@@ -514,12 +514,19 @@ final class AdBreak {
         } else if (what == AdBreakLogic.HIDE) {
             android.util.Log.i(TAG, "away");
             afterIntro = null;
-            ClassicIntro.seasonBack();
+            ClassicIntro.breakOver();
             hide("the logo back, or the programme, channel or app changed");
         }
     }
 
-    /** The season intro over a break has ended: the break's own screen, while the break goes on. Main thread. */
+    /** An intro has come over the channel (ClassicIntro): the screen steps aside for it, back after it while the break goes on. */
+    static void introUp() {
+        if (!isShowing()) return;
+        afterIntro = shown;
+        hide("an intro over the channel");
+    }
+
+    /** The intros over a break have ended: the break's own screen, while the break goes on. Main thread. */
     static void introGone(Context c) {
         Session ss = afterIntro;
         afterIntro = null;

@@ -201,7 +201,7 @@ final class PlayerIntro {
 
     /**
      * The matchday intro over the picture, once a game: the film, then the competition's trophy and the Matchday card; for
-     * a top-five league's game whose season intro has not been over a break, that instead.
+     * a top-five league's game whose breaks have had no intros, the break's intros instead (its season's clubs, then it).
      */
     private void intro(Game g) {
         String key = g.id + "|intro";
@@ -210,47 +210,59 @@ final class PlayerIntro {
         try {
             BroadcastData.Match m = match(g);
             String sk = BroadcastData.seasonKey(m.compId, m.compName);
-            JSONObject cfg = seasonOn(a) && !sk.isEmpty() && !IntroVideo.useOwn(a) && shown.add(g.id + "|season")
-                    ? BroadcastData.season(sk, BroadcastData.fixture(m.homeName, m.awayName)) : introCfg(a, g);
+            JSONObject cfg = seasonOn(a) && !sk.isEmpty() && !IntroVideo.useOwn(a) && shown.add(g.id + "|break")
+                    ? BroadcastData.breakIntros(sk, BroadcastData.introKey(m.compId, m.compName), BroadcastData.fixture(m.homeName, m.awayName))
+                    : introCfg(a, g);
             show(BroadcastView.page(a, "reveal", cfg, this::gone), "intro");
         } catch (Exception ignored) {
             // not this time
         }
     }
 
-    // ---- the season intro over an ad break before the game ----------------------------------------------------------
+    // ---- the intros over the ad breaks before the game ----------------------------------------------------------------
 
-    /** The season intro is the one on (over a break). */
-    private boolean seasonUp;
+    /** The intros on are a break's (its end fades them); this break has had them (once a break: the next brings them again). */
+    private boolean breakUp, breakDone;
+
+    /** Told when an intro comes over the picture: the ad-break screen goes for it (never on the picture with it). */
+    private Runnable introUp = () -> { };
+
+    void introUp(Runnable r) {
+        introUp = r == null ? () -> { } : r;
+    }
+
+    /** Whether an intro (a break's or the matchday's) is over the picture now: the break's own screen waits. */
+    boolean introShowing() {
+        return showing() && "intro".equals(viewKind);
+    }
 
     /**
-     * An ad break has started (the channel's logo gone): for a top-five league's game, from an hour and a half to six
-     * minutes before its kick-off, the league's season intro over it, once a game. True when it is on (the break's own
-     * screen waits for its end).
+     * An ad break has started (the channel's logo gone), from an hour and a half to five and a half minutes before the
+     * game's kick-off: the intros over it, every break (a top-five league's season intro, then the competition's own film,
+     * one piece of music under both; the competition's film alone for the others). True when they are on.
      */
-    boolean seasonBreak(Game g) {
-        if (g == null || g.id == null || g.kickoff <= 0 || !seasonOn(a) || showing() || fetching || !canShow.getAsBoolean()) return false;
+    boolean breakIntros(Game g) {
+        if (breakDone || g == null || g.id == null || g.kickoff <= 0 || showing() || fetching || !canShow.getAsBoolean()) return false;
+        if (!Moments.breakIntrosDue(g.kickoff - System.currentTimeMillis())) return false;
         BroadcastData.Match m = match(g);
-        String key = BroadcastData.seasonKey(m.compId, m.compName);
-        if (key.isEmpty() || shown.contains(g.id + "|season") || !Moments.seasonBreakDue(g.kickoff - System.currentTimeMillis())) return false;
+        String sk = seasonOn(a) ? BroadcastData.seasonKey(m.compId, m.compName) : "";
+        String ck = introOn(a) ? BroadcastData.introKey(m.compId, m.compName) : "";
+        if (sk.isEmpty() && ck.isEmpty()) return false;
         try {
-            show(BroadcastView.page(a, "reveal", BroadcastData.season(key, BroadcastData.fixture(m.homeName, m.awayName)), this::gone), "intro");
+            show(BroadcastView.page(a, "reveal", BroadcastData.breakIntros(sk, ck, BroadcastData.fixture(m.homeName, m.awayName)), this::gone), "intro");
         } catch (Exception e) {
             return false;
         }
-        shown.add(g.id + "|season");
-        seasonUp = true;
+        shown.add(g.id + "|break");
+        breakUp = true;
+        breakDone = true;
         return true;
     }
 
-    /** Whether the season intro is on now (the break's own screen waits). */
-    boolean seasonShowing() {
-        return seasonUp && showing();
-    }
-
-    /** The break is over (the channel's logo back): the season intro fades to the programme. */
-    void seasonBack() {
-        if (seasonShowing()) view.back();
+    /** The break is over (the channel's logo back): its intros fade to the programme; the next break gets them again. */
+    void breakOver() {
+        breakDone = false;
+        if (breakUp && showing()) view.back();
     }
 
     /** The intro's settings for a game: its competition's own film (else plain football's), the two teams under it. */
@@ -495,7 +507,10 @@ final class PlayerIntro {
         v.setTranslationX(pw > 0 ? px : 0);
         v.setTranslationY(ph > 0 ? py : 0);
         if (hidesBoard(kind)) lineupsUp.accept(true);
-        if ("intro".equals(kind)) hush.accept(true);
+        if ("intro".equals(kind)) {
+            hush.accept(true);
+            introUp.run();
+        }
         if (moment(kind)) momentChanged.run();
     }
 
@@ -508,7 +523,7 @@ final class PlayerIntro {
         if (v != view) return;
         boolean wasLineups = hidesBoard(viewKind);
         boolean wasMoment = moment(viewKind);
-        seasonUp = false;
+        breakUp = false;
         if ("intro".equals(viewKind)) hush.accept(false);
         view = null;
         viewKind = "";

@@ -152,14 +152,15 @@ public final class Moments {
     }
 
     /**
-     * The season intro (a top-five league's clubs one by one, about a minute) over an advert break before the game: one
-     * that starts from an hour and a half to six minutes before the kick-off (later breaks are the matchday intro's).
+     * The intros over the advert breaks before the game (the league's season intro and the competition's film, back to
+     * back): every break that starts from an hour and a half to five and a half minutes before the kick-off (the last
+     * minutes are the matchday intro's).
      */
-    public static final long SEASON_FROM_MS = 90 * 60_000L, SEASON_UNTIL_MS = 6 * 60_000L;
+    public static final long BREAKS_FROM_MS = 90 * 60_000L, BREAKS_UNTIL_MS = INTRO_PREP_MS;
 
-    /** Pure: whether an advert break starting this long before the kick-off may have the season intro. */
-    public static boolean seasonBreakDue(long untilKickoffMs) {
-        return untilKickoffMs <= SEASON_FROM_MS && untilKickoffMs >= SEASON_UNTIL_MS;
+    /** Pure: whether an advert break starting this long before the kick-off has the intros over it. */
+    public static boolean breakIntrosDue(long untilKickoffMs) {
+        return untilKickoffMs <= BREAKS_FROM_MS && untilKickoffMs >= BREAKS_UNTIL_MS;
     }
 
     /** Pure: whether the intro should be made ready now (shortly before it is due). */

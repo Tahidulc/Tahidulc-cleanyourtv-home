@@ -172,6 +172,8 @@ final class ScoreOverlay implements ScoreBoard.Source {
         // been), back in with its swish once it has gone
         board.moments(intro::momentShowing, intro::restartWaiting);
         intro.momentChanged(board::momentChanged);
+        // An intro over the picture: the ad-break screen goes for it (the next look at the break brings it back after).
+        intro.introUp(() -> { if (adBreak != null && !manualAdBreak) endAdBreak(); });
         // the strap in the board's look folds into the board: where it is over the picture, on a 1920 x 1080 picture
         intro.boardAt(() -> {
             if (pfw <= 10 || pfh <= 10 || board.view.getWidth() <= 0) return null;
@@ -1944,12 +1946,12 @@ final class ScoreOverlay implements ScoreBoard.Source {
                     AdBreak.Session sn = ScoreBoard.adBreak(a) ? session() : null;
                     int take = AdBreak.take(ScoreBoard.adBreak(a), sn, now);
                     boolean takeIt = on && take == AdBreak.TAKE_AD_BREAK && adBreak == null && !adBreakHidden;
-                    // Before a top-five league's kick-off: its season intro over this break first, the screen after it.
-                    if (takeIt && (intro.seasonShowing() || sn != null && sn.game != null && intro.seasonBreak(sn.game))) {
-                        // the break's screen waits for the season intro's end
+                    // An intro on, or the intros this break gets before the game (every break): the screen after them.
+                    if (takeIt && (intro.introShowing() || sn != null && sn.game != null && intro.breakIntros(sn.game))) {
+                        // the break's screen waits for the intros' end
                     } else if (takeIt) startAdBreak(sn, false);
                     else if (adBreak != null && !manualAdBreak && (!on || take != AdBreak.TAKE_AD_BREAK)) endAdBreak();
-                    if (!on) intro.seasonBack();
+                    if (!on) intro.breakOver();
                 }
                 // On a break: looked at twice as often, so your logo is back hardly a moment after the channel's.
                 h.postDelayed(checkBreak, w.onBreak() ? 1000 : 2000);
