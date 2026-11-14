@@ -1,4 +1,4 @@
-// The kick-off pop-up, live: BROADCAST.start({kind, home, away, comp, compName, compLogo, stadium, score, scorer,
+// The kick-off pop-up, live: BROADCAST.start({kind, home, away, comp, compName, compLogo, mark, markImg, stadium, score, scorer,
 // goalMin, kicksOff, sound, volume, q, hold}) plays it once over a see-through page, then calls done(). With hold it
 // gets everything ready, calls prepared() and waits for BROADCAST.go() (the app shows it on the moment, without the wait).
 // It is drawn as compositor layers (layers.js): every part drawn once while it gets ready, the frames only placing them.
@@ -18,12 +18,13 @@
       window.DATA = { home: side(cfg.home), away: side(cfg.away), lat: 51.5, lon: -0.1 };
       window.POP = {
         background: 'none', captions: false, cuts: [], dur: 12,
-        match: { home: BX.up(cfg.home.name), away: BX.up(cfg.away.name), stadium: BX.up(cfg.stadium), comp, compName: cfg.compName || '',
+        match: { home: BX.up(cfg.home.name), away: BX.up(cfg.away.name), stadium: BX.up(cfg.stadium), comp, compName: cfg.compName || '', mark: cfg.mark || '',
           trophy: TROPHY[cfg.trophy] || TROPHY[comp] || 'generic' },
         moments: [{ n: 1, kind, t0: 0, kicksOff: cfg.kicksOff === 'away' ? 'away' : 'home', score: cfg.score || [0, 0],
           goalMin: cfg.goalMin || '', scorer: BX.up(cfg.scorer) }],
       };
-      window.ASSET_URLS = { home: cfg.home.crest, away: cfg.away.crest, logos: cfg.compLogo ? { [comp]: cfg.compLogo } : {} };
+      // the competition's own mark (its logo, then its name in its own lettering) comes inline as markImg
+      window.ASSET_URLS = { home: cfg.home.crest, away: cfg.away.crest, logos: cfg.compLogo ? { [comp]: cfg.compLogo } : {}, mark: cfg.markImg || '' };
       // always the full look; q only when the app gives it, to compare: {flat (no shadows), plus (added light), t3res (0.3-1: the trophy
       // drawn smaller, then scaled up)}
       const q = cfg.q && Object.keys(cfg.q).length ? cfg.q : {};

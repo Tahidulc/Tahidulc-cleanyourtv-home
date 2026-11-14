@@ -366,11 +366,12 @@ final class PlayerIntro {
         boolean strap = "strap".equals(popupStyle(a));
         String look = ScoreBoard.style(a).name();
         float[] board = boardAt.get();
+        android.content.res.AssetManager assets = a.getAssets();
         io.execute(() -> {
             JSONObject cfg;
             try {
                 cfg = strap ? BroadcastData.strap(kind, m, score, scorer, minute, look, board, "")
-                        : BroadcastData.kickoff(kind, m, score, scorer, minute);
+                        : BroadcastData.withMark(assets, BroadcastData.kickoff(kind, m, score, scorer, minute));
             } catch (Exception e) {
                 return;
             }
@@ -501,7 +502,7 @@ final class PlayerIntro {
                 if (cfg != null) break;
             }
             if (cfg == null) cfg = testPopupCfg(TestAlerts.sample(app, null), kind, strap, look, board);
-            JSONObject got = cfg;
+            JSONObject got = strap ? cfg : BroadcastData.withMark(app.getAssets(), cfg);
             h.post(() -> {
                 fetching = false;
                 if (got == null) {

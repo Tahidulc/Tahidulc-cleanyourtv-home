@@ -143,7 +143,7 @@ final class ClassicIntro {
      */
     private static JSONObject popupCfg(Context c, String page, ScoresTicker.Game g, BroadcastData.Match m, String kind, int[] score,
                                        String scorer, String minute) throws org.json.JSONException {
-        if (!"strap".equals(page)) return BroadcastData.kickoff(kind, m, score, scorer, minute);
+        if (!"strap".equals(page)) return BroadcastData.withMark(c.getAssets(), BroadcastData.kickoff(kind, m, score, scorer, minute));
         return BroadcastData.strap(kind, m, score, scorer, minute, BoardCover.style(c).name(), BoardCover.boardRect1920(),
                 "kickoff".equals(kind) ? MatchExtras.weatherNow(c, g) : "");
     }

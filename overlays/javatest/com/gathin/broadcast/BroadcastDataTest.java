@@ -42,6 +42,56 @@ public class BroadcastDataTest {
     }
 
     @Test
+    public void eachCompetitionHasItsOwnMarkOnTheTab() {
+        // by ESPN's slug or FotMob's id
+        assertEquals("pl", BroadcastData.mark("eng.1", "English Premier League"));
+        assertEquals("pl", BroadcastData.mark("47", ""));
+        assertEquals("championship", BroadcastData.mark("eng.2", ""));
+        assertEquals("league1", BroadcastData.mark("eng.3", ""));
+        assertEquals("league2", BroadcastData.mark("109", ""));
+        assertEquals("ucl", BroadcastData.mark("uefa.champions", ""));
+        assertEquals("spfl", BroadcastData.mark("sco.1", "Scottish Premiership"));
+        assertEquals("scotchamp", BroadcastData.mark("sco.2", ""));
+        // by name, for a feed without the id
+        assertEquals("championship", BroadcastData.mark("", "English League Championship"));
+        assertEquals("championship", BroadcastData.mark(null, "Championship"));
+        assertEquals("league2", BroadcastData.mark("", "League Two"));
+        assertEquals("leaguecup", BroadcastData.mark("", "Carabao Cup"));
+        assertEquals("laliga", BroadcastData.mark("", "Spanish LALIGA"));
+        assertEquals("bundesliga", BroadcastData.mark("", "German Bundesliga"));
+        assertEquals("scotchamp", BroadcastData.mark("", "Scottish Championship"));
+        assertEquals("wsl", BroadcastData.mark("", "Barclays Women’s Super League"));
+        assertEquals("mls", BroadcastData.mark("", "MLS"));
+        // none: the feed's logo and the name instead
+        assertEquals("", BroadcastData.mark("uefa.euro", "UEFA European Championship"));
+        assertEquals("", BroadcastData.mark("", "UEFA European Championship"));
+        assertEquals("", BroadcastData.mark("", "Premier League 2"));
+        assertEquals("", BroadcastData.mark("", "U21 Premier League"));
+        assertEquals("", BroadcastData.mark("", "UEFA Women's Champions League"));
+        assertEquals("", BroadcastData.mark("eng.w.fa", "Women's FA Cup"));
+        assertEquals("", BroadcastData.mark(null, null));
+    }
+
+    @Test
+    public void everyMarkHasItsPicture() {
+        java.io.File dir = null;
+        for (java.io.File d = new java.io.File("").getAbsoluteFile(); d != null && dir == null; d = d.getParentFile()) {
+            java.io.File m = new java.io.File(d, "overlays/assets/broadcast/marks");
+            if (m.isDirectory()) dir = m;
+        }
+        org.junit.Assert.assertNotNull("overlays/assets/broadcast/marks", dir);
+        String[] ids = {"eng.1", "eng.2", "eng.3", "eng.4", "eng.fa", "eng.league_cup", "eng.trophy", "eng.w.1", "uefa.champions",
+                "uefa.europa", "uefa.europa.conf", "uefa.nations", "esp.1", "esp.copa_del_rey", "esp.super_cup", "ita.1",
+                "ita.coppa_italia", "ger.1", "ger.dfb_pokal", "fra.1", "fra.coupe_de_france", "ned.1", "por.1", "sco.1", "sco.2",
+                "usa.1", "ksa.1"};
+        for (String id : ids) {
+            String k = BroadcastData.mark(id, "");
+            org.junit.Assert.assertFalse(id, k.isEmpty());
+            org.junit.Assert.assertTrue(k, new java.io.File(dir, k + ".png").isFile());
+        }
+    }
+
+    @Test
     public void coloursMinutesAndScoresAreWrittenAsThePageReadsThem() {
         assertEquals("#ef0107", BroadcastData.hex(0xFFEF0107));
         assertNull(BroadcastData.hex(0));

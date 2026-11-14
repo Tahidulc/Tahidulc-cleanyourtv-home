@@ -1,5 +1,6 @@
 package com.gathin.broadcast;
 
+import android.content.res.AssetManager;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.os.Build;
@@ -11,6 +12,7 @@ import org.json.JSONObject;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.io.InputStream;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
@@ -86,6 +88,75 @@ public final class BroadcastData {
         }
     }
 
+    /**
+     * Pure: the competition's own mark on the pop-up's tab (assets: broadcast/marks/KEY.png): its logo, then its name in
+     * its own lettering, white. From ESPN's slug or FotMob's league id, else its name; "" for one without (the tab then
+     * has the feed's logo and the name in the pop-up's own lettering). Sponsors' names that are betting firms are never
+     * in a mark: the Scottish leagues' marks carry the league's name only.
+     */
+    public static String mark(String id, String name) {
+        String s = id == null ? "" : id.trim().toLowerCase(Locale.ROOT);
+        switch (s) {
+            case "eng.1": case "47": return "pl";
+            case "eng.2": case "48": return "championship";
+            case "eng.3": case "108": return "league1";
+            case "eng.4": case "109": return "league2";
+            case "eng.fa": case "132": return "facup";
+            case "eng.league_cup": case "133": return "leaguecup";
+            case "eng.trophy": case "142": return "efltrophy";
+            case "eng.w.1": case "9227": return "wsl";
+            case "uefa.champions": case "42": return "ucl";
+            case "uefa.europa": case "73": return "uel";
+            case "uefa.europa.conf": case "10216": return "uecl";
+            case "uefa.nations": case "9806": return "nations";
+            case "esp.1": case "87": return "laliga";
+            case "esp.copa_del_rey": case "138": return "copadelrey";
+            case "esp.super_cup": case "139": return "supercopa";
+            case "ita.1": case "55": return "seriea";
+            case "ita.coppa_italia": case "141": return "coppaitalia";
+            case "ger.1": case "54": return "bundesliga";
+            case "ger.dfb_pokal": case "209": return "dfbpokal";
+            case "fra.1": case "53": return "ligue1";
+            case "fra.coupe_de_france": case "134": return "coupedefrance";
+            case "ned.1": case "57": return "eredivisie";
+            case "por.1": case "61": return "ligaportugal";
+            case "sco.1": case "64": return "spfl";
+            case "sco.2": case "123": return "scotchamp";
+            case "usa.1": case "130": return "mls";
+            case "ksa.1": case "536": return "saudipro";
+            default: break;
+        }
+        if (!s.isEmpty() && !s.matches("[0-9]+") && s.contains(".")) return "";   // another league ESPN knows: none
+        String n = name == null ? "" : name.trim().toLowerCase(Locale.ROOT).replace('’', '\'');
+        if (n.isEmpty()) return "";
+        if (n.contains("women") || n.contains("wsl")) {
+            return n.contains("super league") || n.equals("wsl") ? "wsl" : "";
+        }
+        if (n.matches(".*\\b(u-?1[0-9]|u-?2[0-3]|under[- ]?[12][0-9]|youth|reserve|premier league 2)\\b.*")) return "";
+        String k = compKey("", name);
+        if (!k.isEmpty()) return k;
+        k = introTrophy("", name);
+        if (!k.isEmpty()) return k;
+        if (n.contains("nations league")) return "nations";
+        if (n.contains("scottish premiership") || n.equals("premiership")) return "spfl";
+        if (n.contains("scottish championship")) return "scotchamp";
+        if (n.equals("championship") || n.contains("league championship") || n.equals("efl championship")
+                || n.equals("english championship") || n.endsWith("bet championship")) return "championship";
+        if (n.equals("league one") || n.contains("league one") || n.equals("english league 1")) return "league1";
+        if (n.equals("league two") || n.contains("league two") || n.equals("english league 2")) return "league2";
+        if (n.contains("efl trophy") || n.contains("vertu trophy")) return "efltrophy";
+        if (n.contains("copa del rey")) return "copadelrey";
+        if (n.contains("supercopa") || n.contains("spanish super cup")) return "supercopa";
+        if (n.contains("coppa italia")) return "coppaitalia";
+        if (n.contains("dfb") && n.contains("pokal")) return "dfbpokal";
+        if (n.contains("coupe de france")) return "coupedefrance";
+        if (n.contains("eredivisie")) return "eredivisie";
+        if (n.contains("primeira liga") || n.contains("liga portugal")) return "ligaportugal";
+        if (n.equals("mls") || n.contains("major league soccer")) return "mls";
+        if (n.contains("saudi pro league") || n.contains("saudi professional league") || n.contains("roshn")) return "saudipro";
+        return "";
+    }
+
     /** Pure: "#rrggbb" for an ARGB colour; null for none (0). */
     public static String hex(int argb) {
         return argb == 0 ? null : String.format(Locale.ROOT, "#%06x", argb & 0xFFFFFF);
@@ -114,6 +185,8 @@ public final class BroadcastData {
         o.put("compName", compName(key, m.compName));
         String logo = image(m.compLogo, m.compLogoUrl, false);
         if (logo != null) o.put("compLogo", logo);
+        String mk = mark(m.compId, m.compName);
+        if (!mk.isEmpty()) o.put("mark", mk);
         o.put("stadium", m.venue == null ? "" : m.venue);
         if (score != null && score.length == 2) o.put("score", new JSONArray().put(score[0]).put(score[1]));
         if (scorer != null) o.put("scorer", scorer);
@@ -436,6 +509,38 @@ public final class BroadcastData {
         } catch (Exception e) {
             return null;
         }
+    }
+
+    /**
+     * The pop-up's settings with the competition's own mark put inline (markImg: a data: URL of broadcast/marks/KEY.png),
+     * when it has one. The page draws it into its canvases, so it comes inline as the crests do, never from a file.
+     */
+    public static JSONObject withMark(AssetManager am, JSONObject o) {
+        String k = o == null ? "" : o.optString("mark", "");
+        if (k.isEmpty() || am == null || !k.matches("[a-z0-9]+")) return o;
+        String key = "mark:" + k, s;
+        synchronized (IMAGES) {
+            s = IMAGES.get(key);
+        }
+        if (s == null) {
+            try (InputStream in = am.open("broadcast/marks/" + k + ".png")) {
+                ByteArrayOutputStream out = new ByteArrayOutputStream();
+                byte[] b = new byte[16384];
+                for (int n; (n = in.read(b)) > 0; ) out.write(b, 0, n);
+                s = "data:image/png;base64," + Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP);
+            } catch (Exception e) {
+                return o;
+            }
+            synchronized (IMAGES) {
+                IMAGES.put(key, s);
+            }
+        }
+        try {
+            o.put("markImg", s);
+        } catch (JSONException ignored) {
+            // left without it: the tab has the logo and the name
+        }
+        return o;
     }
 
     /** A bitmap as a data: URL: PNG (exact, for crests and logos) or WebP with its see-through kept (players' pictures). */
