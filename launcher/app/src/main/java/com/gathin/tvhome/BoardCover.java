@@ -1127,7 +1127,73 @@ final class BoardCover {
         if (d == null) return;
         d.homeCrest = homeCrest;
         d.awayCrest = awayCrest;
+        // Kept out for the rest of the half (over the channel's own added-time board), unless switched off.
+        if (addedStaysOn(c)) {
+            standing = d;
+            standingPeriod = period;
+        }
         drop(c.getApplicationContext(), d);
+    }
+
+    // ---- the minutes added kept out beside the board until the half is over -------------------------------------------
+
+    /** The minutes added out beside the board for the rest of their half, and that half (1, 2, extra time's 3 and 4). */
+    private static BoardDrop.Drop standing;
+    private static int standingPeriod;
+    /** The alert out beside the board last; whether the minutes added are on their way in for another alert. */
+    private static BoardDrop.Drop lastOut;
+    private static boolean addedGoing;
+
+    /** The minutes added stay out beside the board until the half is over: on unless switched off. */
+    static boolean addedStaysOn(Context c) {
+        return prefs(c).getBoolean("added_stays", true);
+    }
+
+    static void setAddedStaysOn(Context c, boolean on) {
+        prefs(c).edit().putBoolean("added_stays", on).apply();
+        if (!on) endAdded();
+    }
+
+    /** Pure: whether the minutes added stay out now: the game live, not half or full time, still the half they came in. */
+    static boolean addedStands(int state, boolean halftime, boolean live, int period, int standingPeriod) {
+        return state == 0 && !halftime && live && period == standingPeriod;
+    }
+
+    /**
+     * Each look at the game: the minutes added kept out beside the board (in for another alert and back out after it,
+     * back out with the board after a replay), or let go once the half is over on the screen.
+     */
+    private static void keepAdded(ScoresTicker.Game g, Reading r, BoardBug.Look l) {
+        BoardDrop.Drop s = standing;
+        if (s == null) return;
+        boolean on = g != null && r != null && l != null && s.gameId != null && s.gameId.equals(g.id)
+                && addedStands(r.state, r.halftime, l.live, periodOf(l.clock, r.detail), standingPeriod);
+        if (!on) {
+            endAdded();
+            return;
+        }
+        if (drop == null || bug == null || column == null) return;
+        if (!dropping) {
+            nextDrop();
+            return;
+        }
+        boolean out = drop.showing() == s;
+        if (out && !drops.isEmpty() && !addedGoing) {
+            addedGoing = true;
+            hideDrop();
+        } else if (!out && lastOut == s && !drop.isOut()) {
+            nextDrop();
+        }
+    }
+
+    /** The half is over (or the game another): the minutes added go back in under the board. */
+    private static void endAdded() {
+        BoardDrop.Drop s = standing;
+        standing = null;
+        if (s != null && drop != null && drop.showing() == s && !addedGoing) {
+            addedGoing = true;
+            hideDrop();
+        }
     }
 
     /** Pure: the minutes added's alert ("ADDED TIME", "+4 minutes"), in added time's red; null for words that are no minutes. */
@@ -2243,6 +2309,7 @@ final class BoardCover {
                 // The minutes added, once known for this half: out beside the board once as an alert, then in its tab.
                 if (!l.added.isEmpty()) addedOut(c, g, l.added, periodOf(l.clock, r.detail));
             }
+            keepAdded(g, r, l);
         } else if (orSample) {
             l = sample();
         } else {
@@ -3261,6 +3328,9 @@ final class BoardCover {
      */
     private static void nextDrop() {
         main().removeCallbacks(nextDropRun);
+        addedGoing = false;
+        // Nothing else to say: the minutes added back out, while their half lasts.
+        if (drops.isEmpty() && standing != null && drop != null && bug != null && column != null) drops.addLast(standing);
         if (drops.isEmpty() || drop == null || bug == null || column == null) {
             drops.clear();
             dropping = false;
@@ -3289,6 +3359,7 @@ final class BoardCover {
             return;
         }
         BoardDrop.Drop d = drops.pollFirst();
+        lastOut = d;
         // The line-ups out: the remote's Back is taken for them meanwhile (it closes them), also where Hold OK is off.
         lineupKeys(d != null && d.lineups);
         poke();
@@ -3298,6 +3369,8 @@ final class BoardCover {
         boolean many = d != null && d.subs != null && Math.max(d.subs.on.length, d.subs.off.length) > 1;
         beside(drop, drop.widthFor(d, bh, many ? Math.max(shortRoom(bh, sideMax), Math.min(sideMax, bh * 16)) : shortRoom(bh, sideMax)));
         drop.show(d);
+        // The minutes added: out until their half is over (keepAdded takes them in), not for a few seconds.
+        if (d != null && d == standing) return;
         // VAR explained: a check stays out until its decision (CHECK_MAX_MS at most); a decision with its WHY under it.
         if (d != null && d.varCheck) {
             main().postDelayed(hideDropRun, VarExplained.CHECK_MAX_MS);

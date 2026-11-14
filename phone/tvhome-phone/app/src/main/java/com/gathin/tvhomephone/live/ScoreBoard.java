@@ -324,6 +324,11 @@ public final class ScoreBoard implements LiveAlerts.Listener {
 
     static void setLogoAway(Context c, boolean v) { prefs(c).edit().putBoolean("logo_away", v).apply(); }
 
+    /** The minutes added stay out beside the board until the half is over (over the channel's own): on unless switched off. */
+    static boolean addedStays(Context c) { return prefs(c).getBoolean("added_stays", true); }
+
+    static void setAddedStays(Context c, boolean v) { prefs(c).edit().putBoolean("added_stays", v).apply(); }
+
     /** VAR explained: the check out of the board, then its decision with a WHY under it: on unless switched off. */
     static boolean varExplained(Context c) { return prefs(c).getBoolean("var_explained", true); }
 
@@ -651,6 +656,7 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         LiveAlerts.removeListener(this);
         h.removeCallbacksAndMessages(null);
         drops.clear();
+        standing = null;
         strip.gone();
         dropping = false;
         stats.gone();
@@ -874,6 +880,7 @@ public final class ScoreBoard implements LiveAlerts.Listener {
                 if (l.live) l.added = addedBox(period(g, l.clock), minuteOfClock(l.clock), addedUp, l.added);
                 // The minutes added, once known for this half: out beside the board once as an alert, then in its tab.
                 if (l.live && !l.added.isEmpty()) addedOut(g, l.added, period(g, l.clock));
+                keepAdded(g, l);
                 // Another game on the board, half time, full time: nothing after a goal waits any more (LivePlay).
                 if (g.id == null || !g.id.equals(lastShownId) || g.halftime || g.state != Game.LIVE) play.clear();
                 else play.var(VarExplained.checking(g.id, now));
@@ -2273,7 +2280,64 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         d.own = true;
         d.homeCrest = bug.homeCrest;
         d.awayCrest = bug.awayCrest;
+        // Kept out for the rest of the half (over the channel's own added-time board), unless switched off.
+        if (addedStays(c)) {
+            standing = d;
+            standingGame = g.id;
+            standingPeriod = half;
+        }
         drop(d);
+    }
+
+    // ---- the minutes added kept out beside the board until the half is over -------------------------------------------
+
+    /** The minutes added out beside the board for the rest of their half: the alert, its game, its half. */
+    private Drop standing;
+    private String standingGame;
+    private int standingPeriod;
+    /** The alert out beside the board last; whether the minutes added are on their way in for another alert. */
+    private Drop lastOut;
+    private boolean addedGoing;
+
+    /** Pure: whether the minutes added stay out now: the game live, not half or full time, still the half they came in. */
+    static boolean addedStands(int state, boolean halftime, boolean live, int period, int standingPeriod) {
+        return state == Game.LIVE && !halftime && live && period == standingPeriod;
+    }
+
+    /**
+     * Each frame drawn: the minutes added kept out beside the board (in for another alert and back out after it, back
+     * out with the board after a replay), or let go once the half is over on the screen.
+     */
+    private void keepAdded(Game g, OverlayBug.Look l) {
+        Drop s = standing;
+        if (s == null) return;
+        boolean on = !small && g != null && l != null && g.id != null && g.id.equals(standingGame)
+                && addedStands(g.state, g.halftime, l.live, period(g, l.clock), standingPeriod);
+        if (!on) {
+            endAdded();
+            return;
+        }
+        if (!dropping) {
+            next();
+            return;
+        }
+        boolean out = strip.isOut() && strip.drop() == s;
+        if (out && !drops.isEmpty() && !addedGoing) {
+            addedGoing = true;
+            hideDrop();
+        } else if (!out && lastOut == s && !strip.isOut()) {
+            next();
+        }
+    }
+
+    /** The half is over (or the game another): the minutes added go back in under the board. */
+    private void endAdded() {
+        Drop s = standing;
+        standing = null;
+        if (s != null && strip.isOut() && strip.drop() == s && !addedGoing) {
+            addedGoing = true;
+            hideDrop();
+        }
     }
 
     /** Pure: the minutes added's alert ("ADDED TIME", "+4 minutes"), in added time's red; null for words that are no minutes. */
@@ -2304,6 +2368,9 @@ public final class ScoreBoard implements LiveAlerts.Listener {
 
     private void next() {
         h.removeCallbacks(nextDrop);
+        addedGoing = false;
+        // Nothing else to say: the minutes added back out, while their half lasts.
+        if (!small && drops.isEmpty() && standing != null) drops.addLast(standing);
         if (small || drops.isEmpty()) {
             drops.clear();
             dropping = false;
@@ -2347,6 +2414,7 @@ public final class ScoreBoard implements LiveAlerts.Listener {
             lineupsCard(d.alert);
             return;
         }
+        lastOut = d;
         if (changed != null) changed.run();
         boolean onBoard = boardUp();
         int bh = boardH();
@@ -2359,6 +2427,8 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         int w = strip.widthFor(d, bh, many ? Math.max(shortRoom(bh, room), Math.min(room, bh * 16)) : shortRoom(bh, room));
         beside(strip, w, d.photo != null || d.subs != null);
         strip.show(d);
+        // The minutes added: out until their half is over (keepAdded takes them in), not for a few seconds.
+        if (d == standing) return;
         // VAR explained: a check stays out until its decision (CHECK_MAX_MS at most); a decision with its WHY under it.
         if (d.varCheck) {
             h.postDelayed(hide, VarExplained.CHECK_MAX_MS);
