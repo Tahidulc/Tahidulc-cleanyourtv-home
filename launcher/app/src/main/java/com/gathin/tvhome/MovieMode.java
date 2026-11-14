@@ -164,7 +164,11 @@ final class MovieMode {
     private List<String> plan;
     private int at = -1, ad, between, trailer;
     private boolean ended, ready;
+    /** All three trailers looked for (how many there are is known). */
+    private volatile boolean prepared;
     private long lastBack;
+    /** Pictures handed over before the page was ready: {key, data: URL}, given to it once it is. */
+    private final List<String[]> early = new ArrayList<>();
     /** The trailers made ready (off the main thread): each {"id", "title", "label", "sub", "backdrop" key}. */
     private final List<JSONObject> trailers = Collections.synchronizedList(new ArrayList<>());
     /** The teams' next games, made ready: null until looked at, empty for none. */
@@ -232,7 +236,13 @@ final class MovieMode {
     /** What the page says (its own thread): each onto the main one. */
     private final class Bridge {
         @JavascriptInterface public void ready() {
-            h.main.post(() -> { if (!ended && !ready) { ready = true; next(); } });
+            h.main.post(() -> {
+                if (ended || ready) return;
+                ready = true;
+                for (String[] i : early) give(i[0], i[1]);
+                early.clear();
+                next();
+            });
         }
         @JavascriptInterface public void done(String kind) {
             h.main.post(() -> { if (!ended) next(); });
@@ -289,12 +299,12 @@ final class MovieMode {
                     if (trailer >= trailers.size()) { at++; return null; }
                     JSONObject t = trailers.get(trailer);
                     return p.put("label", t.optString("label")).put("title", t.optString("title")).put("sub", t.optString("sub"))
-                            .put("backdrop", t.optString("backdrop")).put("n", trailer + 1).put("of", Math.min(3, trailers.size()));
+                            .put("backdrop", t.optString("backdrop")).put("n", trailer + 1).put("of", of());
                 }
                 case "trailer": {
                     if (trailer >= trailers.size()) return null;
                     JSONObject t = trailers.get(trailer++);
-                    return new JSONObject(t.toString()).put("kind", "trailer").put("n", trailer).put("of", Math.min(3, trailers.size()));
+                    return new JSONObject(t.toString()).put("kind", "trailer").put("n", trailer).put("of", of());
                 }
                 default:
                     return p;
@@ -302,6 +312,11 @@ final class MovieMode {
         } catch (Exception e) {
             return null;
         }
+    }
+
+    /** How many trailers tonight: three while they are still being looked for. */
+    private int of() {
+        return prepared ? Math.min(3, trailers.size()) : 3;
     }
 
     /** The trailer full screen in Home's YouTube player, the page see-through over it with its marks. */
@@ -353,7 +368,7 @@ final class MovieMode {
                 // no games part
             }
             games = out;
-            if (key == null || key.isEmpty()) return;
+            if (key == null || key.isEmpty()) { prepared = true; return; }
             // three trailers of what is new on this TV's apps (not tonight's film)
             try {
                 for (PagesV2.Title t : TrailerReel.titles(h, TrailerReel.ALL)) {
@@ -380,6 +395,7 @@ final class MovieMode {
             } catch (Exception ignored) {
                 // fewer trailers
             }
+            prepared = true;
         });
     }
 
@@ -415,8 +431,14 @@ final class MovieMode {
         b.compress(photo ? Bitmap.CompressFormat.JPEG : Bitmap.CompressFormat.PNG, photo ? 82 : 100, out);
         String url = "data:image/" + (photo ? "jpeg" : "png") + ";base64," + Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP);
         h.main.post(() -> {
-            if (web != null) web.evaluateJavascript("CINEMA.image(" + JSONObject.quote(key) + "," + JSONObject.quote(url) + ")", null);
+            if (web == null) return;
+            if (ready) give(key, url);
+            else early.add(new String[]{key, url});
         });
+    }
+
+    private void give(String key, String url) {
+        if (web != null) web.evaluateJavascript("CINEMA.image(" + JSONObject.quote(key) + "," + JSONObject.quote(url) + ")", null);
     }
 
     // ---- the lights -----------------------------------------------------------------------------------------------
@@ -507,9 +529,12 @@ final class MovieMode {
         overlay = null;
         if (o != null && o.getParent() instanceof ViewGroup) ((ViewGroup) o.getParent()).removeView(o);
         if (withFilm) {
-            List<Object[]> copy;
-            synchronized (lit) { copy = new ArrayList<>(lit); }
-            Cinema.adopt(c, copy);
+            // the lights to Cinema mode once the dimming and the switching off are through (Back twice can come first)
+            LIGHTS.execute(() -> {
+                List<Object[]> copy;
+                synchronized (lit) { copy = new ArrayList<>(lit); }
+                h.main.post(() -> Cinema.adopt(c, copy));
+            });
             AlertLog.note(c, "movie mode: on to " + film.title);
             open.run();
         } else {

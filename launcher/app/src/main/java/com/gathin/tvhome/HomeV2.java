@@ -956,10 +956,9 @@ final class HomeV2 {
         String art = t.backdrop != null ? t.backdrop : t.poster;
         String app = onYourApps(this, gb);
         if (app != null) {
-            String d = debridPackage();
-            // On your apps: Debrid Stream's page and on to its Play (Surprise me's episode, when asked, comes first).
-            if (d != null) AppSearchService.wantPlay(t.title, Boolean.TRUE);
-            searchTitle(d != null ? d : app, t.title, t.tv, t.id, art);
+            // On your apps: Debrid Stream's page and on to its Play (Surprise me's episode, when asked, comes first), after
+            // Movie mode's pre-show for a film when it is on.
+            openOnYourApps(t, app);
             return;
         }
         String store = storeFor(this, gb);
