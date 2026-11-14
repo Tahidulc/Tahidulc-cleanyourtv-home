@@ -286,6 +286,15 @@ final class HomeV2 {
      * store or a note).
      */
     void openOnYourApps(PagesV2.Title t, String app) {
+        // Movie mode: ten minutes of Whitebrook Road Cinema first (a film only), then on to it
+        if (app != null && MovieMode.wants(a, t)) {
+            MovieMode.start(this, t, () -> openOnYourAppsNow(t, app));
+            return;
+        }
+        openOnYourAppsNow(t, app);
+    }
+
+    private void openOnYourAppsNow(PagesV2.Title t, String app) {
         String pkg = debridPackage();
         String art = t.backdrop != null ? t.backdrop : t.poster;
         if (pkg != null && app != null) {
@@ -1003,6 +1012,9 @@ final class HomeV2 {
             smartPanel = new SmartPanel(this);
             items.add(new ControlCentre.Item("Lights & home", R.drawable.ic_bulb, () -> "Lights, cameras, the car", null, () -> smartPanel.show()));
         }
+        // Movie mode: a film opened from Home starts with ten minutes of Whitebrook Road Cinema (trailers, the lights down)
+        items.add(new ControlCentre.Item("Movie mode", R.drawable.ic_v2_movies, () -> MovieMode.words(a), () -> MovieMode.on(a),
+                () -> MovieMode.toggle(a)).stays());
         // The thermostat (with a Tuya project): the room's temperature, the target and the mode on its tile (lit while the
         // heating is on), read afresh as the Control Centre opens; OK opens its card. None in the project: it says so.
         if (TuyaCloud.configured(a)) {
@@ -1702,6 +1714,7 @@ final class HomeV2 {
         if (skin != null) skin.stop();
         main.removeCallbacks(filmNight);
         TrailerReel.close();
+        MovieMode.close();
         main.removeCallbacks(warmPages);
         main.removeCallbacks(shiftMesh);
         main.removeCallbacks(matchBack);
@@ -1819,7 +1832,7 @@ final class HomeV2 {
                 || (smartPanel != null && smartPanel.isOpen()) || (weatherPanel != null && weatherPanel.isOpen())
                 || (thermostatPanel != null && thermostatPanel.isOpen())
                 || (titlePanel != null && titlePanel.isOpen()) || (viewing != null && viewing.isOpen())
-                || (search != null && search.isOpen()) || Surprise.isOpen() || EpisodeDice.isOpen() || Recap.isOpen() || TrailerReel.isOpen()
+                || (search != null && search.isOpen()) || Surprise.isOpen() || EpisodeDice.isOpen() || Recap.isOpen() || TrailerReel.isOpen() || MovieMode.isOpen()
                 || AlertToday.isOpen() || TvLink.isOpen() || Birthday.isOpen() || MonthRecap.isOpen()
                 || Predictions.isOpen();
         if (busy || (zone != Z_ROW && zone != Z_CATS)) {
@@ -1855,6 +1868,8 @@ final class HomeV2 {
             main.removeCallbacks(matchBack);
             main.postDelayed(matchBack, MATCH_BACK_MS);
         }
+        // Movie mode's pre-show: Back twice skips to the film; nothing else moves under it.
+        if (MovieMode.isOpen()) return MovieMode.key(e);
         // Two at once: its options (Home pressed while both are up) or the apps to choose from.
         if (TwoUp.open()) return TwoUp.key(e);
         if (HomeStyle.isOpen()) return HomeStyle.key(e);

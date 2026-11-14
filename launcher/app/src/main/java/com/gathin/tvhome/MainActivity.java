@@ -116,7 +116,10 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     private long settingsRevision;
     /** Idle time on Home before ClockActivity; 0 is off (config.xml, home_idle_clock_minutes). */
     private long idleClockMs;
-    private final Runnable showIdleClock = () -> startActivity(new Intent(this, ClockActivity.class));
+    private final Runnable showIdleClock = () -> {
+        if (MovieMode.isOpen()) restartIdleClock();   // the pre-show is no idle Home
+        else startActivity(new Intent(this, ClockActivity.class));
+    };
     /** Launcher v2: Ambient mode after the theme's "ambient_minutes" without a key on Home (0, the default, is off). */
     private final android.os.Handler ambientTimer = new android.os.Handler(android.os.Looper.getMainLooper());
     private long ambientMs;
@@ -1481,7 +1484,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         if (pm != null && !pm.isInteractive()) return false;
         android.media.AudioManager am = getSystemService(android.media.AudioManager.class);
         if (am != null && am.isMusicActive()) return false;
-        return !GoalWatchService.alertShowing() && !LiveCentre.isShowing() && !TwoUp.active();
+        return !GoalWatchService.alertShowing() && !LiveCentre.isShowing() && !TwoUp.active() && !MovieMode.isOpen();
     }
 
     private void restartIdleClock() {

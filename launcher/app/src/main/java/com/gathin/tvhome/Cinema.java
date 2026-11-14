@@ -37,8 +37,29 @@ final class Cinema {
     static volatile long raisedAt;
 
     static boolean on(Context c) {
-        // Also for a film night that asked for the lights (FilmNight), around its film's time.
-        return (Config.themeFlag(c, "cinema_mode", false) || FilmNight.dimNow(c)) && TuyaCloud.configured(c);
+        // Also for a film night that asked for the lights (FilmNight), around its film's time, and for the film after Movie
+        // mode's pre-show (the lights it put out brought back up as these are).
+        return (Config.themeFlag(c, "cinema_mode", false) || FilmNight.dimNow(c) || System.currentTimeMillis() < adoptedUntil)
+                && TuyaCloud.configured(c);
+    }
+
+    /** Until when the film after Movie mode's pre-show is watched for its pause, its end and its credits. */
+    private static volatile long adoptedUntil;
+
+    /**
+     * Movie mode's pre-show put these lights out ({light, level before}): they come back up as Cinema mode's own do, when
+     * the film after it is paused, stopped or into its credits (watched for up to four hours).
+     */
+    static void adopt(Context c, List<Object[]> lights) {
+        if (lights == null || lights.isEmpty()) return;
+        app = c.getApplicationContext();
+        synchronized (saved) {
+            saved.clear();
+            saved.addAll(lights);
+        }
+        dimmed = true;
+        wantDim = true;
+        adoptedUntil = System.currentTimeMillis() + 4 * 3_600_000L;
     }
 
     /** The media sessions now (WatchHistory, each time they change): each one watched for playing and pausing. */
