@@ -72,7 +72,120 @@ public class CompBugTest {
             }
             assertTrue(!k.label.isEmpty());
         }
-        assertEquals(20, CompBug.Kind.values().length);
+        assertEquals(25, CompBug.Kind.values().length);
+    }
+
+    @Test
+    public void theLabsLooksAreForAnyGameNeverACompetitionsOwn() {
+        CompBug.Kind[] lab = {CompBug.Kind.FLOODLIGHT, CompBug.Kind.SPLITKIT, CompBug.Kind.TICKER, CompBug.Kind.DUO, CompBug.Kind.LED};
+        for (CompBug.Kind k : lab) assertTrue(k.lab());
+        for (CompBug.Kind k : CompBug.Kind.values()) {
+            if (!k.lab()) assertTrue(k.ordinal() < CompBug.Kind.FLOODLIGHT.ordinal());
+        }
+        assertEquals("Floodlight", CompBug.Kind.FLOODLIGHT.label);
+        assertEquals("Split kit", CompBug.Kind.SPLITKIT.label);
+        assertEquals("Ticker", CompBug.Kind.TICKER.label);
+        assertEquals("Duo pills", CompBug.Kind.DUO.label);
+        assertEquals("Stadium LED", CompBug.Kind.LED.label);
+        // By competition never picks one, whatever is on.
+        for (String slug : new String[]{"eng.1", "uefa.nations", "esp.1", "fifa.friendly", "", null}) {
+            CompBug.Kind k = CompBug.forGame(slug, "Floodlight Ticker Split kit Stadium LED Duo pills");
+            assertTrue(k == null || !k.lab());
+        }
+        // Floodlight and the LED board roll a goal's new score up; the others don't.
+        assertTrue(CompBug.Kind.FLOODLIGHT.rolls());
+        assertTrue(CompBug.Kind.LED.rolls());
+        assertTrue(!CompBug.Kind.TICKER.rolls() && !CompBug.Kind.DUO.rolls() && !CompBug.Kind.SPLITKIT.rolls() && !CompBug.Kind.PL.rolls());
+        // Floodlight's row is its top 1/1.6, the clock's tab under it; the others' row is all of them.
+        assertArrayEquals(new float[]{0f, 100f}, CompBug.bar(CompBug.Kind.FLOODLIGHT, 160f), 0.01f);
+        assertArrayEquals(new float[]{0f, 40f}, CompBug.bar(CompBug.Kind.TICKER, 40f), 0.01f);
+        // The LED board's pop-outs are amber on black, as its figures.
+        assertEquals(0xFFFFB21E, CompBug.strip(CompBug.Kind.LED)[1]);
+        assertEquals(0xFF050505, CompBug.strip(CompBug.Kind.LED)[0]);
+    }
+
+    @Test
+    public void theLabsLooksNameTheCompetitionShort() {
+        assertEquals("PL", CompBug.compShort("English Premier League"));
+        assertEquals("PL", CompBug.compShort("Premier League"));
+        assertEquals("UCL", CompBug.compShort("UEFA Champions League"));
+        assertEquals("UEL", CompBug.compShort("UEFA Europa League"));
+        assertEquals("UECL", CompBug.compShort("UEFA Conference League"));
+        assertEquals("FAC", CompBug.compShort("English FA Cup"));
+        assertEquals("EFL", CompBug.compShort("English League Championship"));
+        assertEquals("LL", CompBug.compShort("Spanish LaLiga"));
+        assertEquals("SA", CompBug.compShort("Italian Serie A"));
+        assertEquals("BL", CompBug.compShort("German Bundesliga"));
+        assertEquals("L1", CompBug.compShort("French Ligue 1"));
+        assertEquals("UNL", CompBug.compShort("UEFA Nations League"));
+        assertEquals("WC", CompBug.compShort("FIFA World Cup"));
+        assertEquals("WCQ", CompBug.compShort("FIFA World Cup Qualifying - UEFA"));
+        assertEquals("CWC", CompBug.compShort("FIFA Club World Cup"));
+        assertEquals("EURO", CompBug.compShort("UEFA European Championship"));
+        assertEquals("FR", CompBug.compShort("International Friendly"));
+        assertEquals("CA", CompBug.compShort("Copa América"));
+        assertEquals("WSL", CompBug.compShort("FA Women's Super League"));
+        // Else its words' initials, the fillers and the countries left out, three at most.
+        assertEquals("CR", CompBug.compShort("Spanish Copa del Rey"));
+        assertEquals("SPF", CompBug.compShort("Somewhere Premier Football Cup Series"));
+        assertEquals("", CompBug.compShort(""));
+        assertEquals("", CompBug.compShort(null));
+    }
+
+    @Test
+    public void theSlimLooksShowTheMinuteAlone() {
+        assertEquals("74'", CompBug.minuteMark("74:05"));
+        assertEquals("0'", CompBug.minuteMark("0:48"));
+        assertEquals("90'", CompBug.minuteMark("90:00"));
+        assertEquals("105'", CompBug.minuteMark("105:12"));
+        assertEquals("45+2'", CompBug.minuteMark("45 + 2"));
+        assertEquals("HT", CompBug.minuteMark("HT"));
+        assertEquals("FT", CompBug.minuteMark("FT"));
+        assertEquals("", CompBug.minuteMark(null));
+    }
+
+    @Test
+    public void aGoalsNewFigureRollsUpOrTurnsDownIntoPlace() {
+        // The roll: from nought to all the way, a touch past as it lands, settled at 1.
+        assertEquals(0f, CompBug.rollEase(0f), 0.001f);
+        assertEquals(1f, CompBug.rollEase(1f), 0.001f);
+        float most = 0f;
+        for (int i = 0; i <= 100; i++) {
+            float e = CompBug.rollEase(i / 100f);
+            most = Math.max(most, e);
+            assertTrue(e >= -0.001f);
+        }
+        assertTrue(most > 1f && most < 1.1f);
+        assertEquals(1f, CompBug.rollEase(3f), 0.001f);
+        // Slow away: a fifth of the way in it has barely moved; half way it is well on.
+        assertTrue(CompBug.rollEase(0.2f) < 0.2f);
+        assertTrue(CompBug.rollEase(0.5f) > 0.4f);
+        // The flip: edge on and above its place to start, flat and in place at the end, never squashed past edge on,
+        // landing a touch past its place on the way (its lift below nought).
+        assertTrue(CompBug.flipScale(0f) < 0.2f);
+        assertEquals(1f, CompBug.flipScale(1f), 0.001f);
+        assertEquals(1.1f, CompBug.flipLift(0f), 0.001f);
+        assertEquals(0f, CompBug.flipLift(1f), 0.001f);
+        float least = 1f, lowest = 1f;
+        for (int i = 0; i <= 40; i++) {
+            least = Math.min(least, CompBug.flipScale(i / 40f));
+            lowest = Math.min(lowest, CompBug.flipLift(i / 40f));
+        }
+        assertTrue(least >= 0.17f);
+        assertTrue(lowest < 0f && lowest > -0.3f);
+        assertTrue(CompBug.flipScale(0.5f) > 0.9f);
+        // CSS's curves: the ends fixed, the middle of a straight one in the middle.
+        assertEquals(0f, CompBug.bezier(0.3f, 1.4f, 0.5f, 1f, 0f), 0f);
+        assertEquals(1f, CompBug.bezier(0.3f, 1.4f, 0.5f, 1f, 1f), 0f);
+        assertEquals(0.5f, CompBug.bezier(0.25f, 0.25f, 0.75f, 0.75f, 0.5f), 0.001f);
+        // The moves' names as the boards give them.
+        assertEquals(1, CompBug.MOVE_FLIP);
+        assertEquals(2, CompBug.MOVE_ROLL);
+        CompBug.Data d = new CompBug.Data();
+        assertEquals(0, d.move);
+        assertEquals(1f, d.moveAt, 0f);
+        assertNull(d.before);
+        assertTrue(!d.htFace);
     }
 
     @Test

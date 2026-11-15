@@ -158,24 +158,30 @@ public final class BoardFx {
      * degrees about its foot (-30 swung back, 8 in place)}.
      */
     public static float[] redCardPose(long t) {
-        if (t <= 0 || t >= RED_MS) return new float[]{2f, -30f};
-        float k;
+        float k = cardIn(t);
+        return new float[]{2f * (1f - k), -30f + 38f * k};
+    }
+
+    /** How far up the card is (0 hidden, 1 in place, a touch past as it lands). */
+    private static float cardIn(long t) {
+        if (t <= 0 || t >= RED_MS) return 0f;
         if (t < RED_UP) {
             float x = t / (float) RED_UP, c1 = 1.4f, c3 = c1 + 1f, u = x - 1f;
-            k = 1f + c3 * u * u * u + c1 * u * u;
-        } else if (t < RED_AWAY) {
-            k = 1f;
-        } else {
-            float x = (t - RED_AWAY) / (float) (RED_MS - RED_AWAY);
-            k = 1f - x * x;
+            return 1f + c3 * u * u * u + c1 * u * u;
         }
-        return new float[]{2f * (1f - k), -30f + 38f * k};
+        if (t < RED_AWAY) return 1f;
+        float x = (t - RED_AWAY) / (float) (RED_MS - RED_AWAY);
+        return 1f - x * x;
     }
 
     /** Pure: VAR's dot now, {its scale 1 to 0.55, its strength 1 to 0.4}, a second's pulse. */
     public static float[] varPulse(long now) {
-        float k = 0.5f - 0.5f * (float) Math.cos(2 * Math.PI * Math.floorMod(now, 1000L) / 1000.0);
+        float k = pulse(now);
         return new float[]{1f - 0.45f * k, 1f - 0.6f * k};
+    }
+
+    private static float pulse(long now) {
+        return 0.5f - 0.5f * (float) Math.cos(2 * Math.PI * Math.floorMod(now, 1000L) / 1000.0);
     }
 
     /** The substitution card's cross-over, as the Lab's: SWAP_MS round, the player off's line SWAP_LAG after the player on's. */
@@ -204,10 +210,14 @@ public final class BoardFx {
         return new float[]{0.35f + 0.65f * k, -0.33f * (1f - k), pop};
     }
 
-    private static final Paint ARROW = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private static final Path ARROW_PATH = new Path();
     /** The arrows' colours: the player on's green, the player off's red. */
     public static final int ON_GREEN = 0xFF3DDC84, OFF_RED = 0xFFFF6B6B;
+
+    /** The arrows' paint and shape, made the first time an arrow is drawn (the pure parts above need neither). */
+    private static final class Arrow {
+        static final Paint PAINT = new Paint(Paint.ANTI_ALIAS_FLAG);
+        static final Path PATH = new Path();
+    }
 
     /**
      * The substitution's arrow about (cx, cy), size high: ▲ in green for the player coming on, ▼ in red for the player
@@ -215,26 +225,27 @@ public final class BoardFx {
      */
     public static void swapArrow(Canvas cv, float cx, float cy, float size, boolean on, float alpha) {
         if (cv == null || size <= 0f || alpha <= 0f) return;
-        synchronized (ARROW) {
+        synchronized (Arrow.class) {
+            Path p = Arrow.PATH;
+            Paint paint = Arrow.PAINT;
             float half = size / 2f, w = size * 0.56f;
-            ARROW_PATH.reset();
+            p.reset();
             if (on) {
-                ARROW_PATH.moveTo(cx, cy - half);
-                ARROW_PATH.lineTo(cx + w, cy + half);
-                ARROW_PATH.lineTo(cx - w, cy + half);
+                p.moveTo(cx, cy - half);
+                p.lineTo(cx + w, cy + half);
+                p.lineTo(cx - w, cy + half);
             } else {
-                ARROW_PATH.moveTo(cx - w, cy - half);
-                ARROW_PATH.lineTo(cx + w, cy - half);
-                ARROW_PATH.lineTo(cx, cy + half);
+                p.moveTo(cx - w, cy - half);
+                p.lineTo(cx + w, cy - half);
+                p.lineTo(cx, cy + half);
             }
-            ARROW_PATH.close();
-            ARROW.setStyle(Paint.Style.FILL_AND_STROKE);
-            ARROW.setStrokeJoin(Paint.Join.ROUND);
-            ARROW.setStrokeWidth(Math.max(1f, size * 0.12f));
-            int c = on ? ON_GREEN : OFF_RED;
-            ARROW.setColor(c);
-            ARROW.setAlpha(Math.round(255 * Math.max(0f, Math.min(1f, alpha))));
-            cv.drawPath(ARROW_PATH, ARROW);
+            p.close();
+            paint.setStyle(Paint.Style.FILL_AND_STROKE);
+            paint.setStrokeJoin(Paint.Join.ROUND);
+            paint.setStrokeWidth(Math.max(1f, size * 0.12f));
+            paint.setColor(on ? ON_GREEN : OFF_RED);
+            paint.setAlpha(Math.round(255 * Math.max(0f, Math.min(1f, alpha))));
+            cv.drawPath(p, paint);
         }
     }
 
@@ -461,20 +472,24 @@ public final class BoardFx {
         float a = meshAlpha(t);
         if (a <= 0f || w <= 0 || h <= 0) return;
         float k = swell(t);
-        float gap = Math.max(4f, h * 0.27f), stroke = Math.max(1f, h * 0.06f);
+        float gap = Math.max(4f, h * 0.29f), stroke = Math.max(1f, h * 0.05f);
         cv.save();
         cv.clipRect(0, 0, w, h);
         cv.scale(1f + 0.05f * k, 1f + 0.3f * k, w / 2f, h / 2f);
         line.setShader(null);
         line.setStrokeCap(Paint.Cap.BUTT);
-        line.setStrokeWidth(stroke);
-        line.setColor(0xFFFFFFFF);
-        line.setAlpha(Math.round(118 * a));
-        // Each way's lines across the whole board and a little past it (the swell shows past its edges).
+        // Each way's lines across the whole board and a little past it (the swell shows past its edges): first a faint
+        // dark edge (so the net shows on a white board too, Floodlight's or Light's), then the white line over it.
         float reach = w + h * 2f;
-        for (float o = -h * 1.2f; o <= reach; o += gap) {
-            cv.drawLine(o, -h * 0.3f, o + h * 1.6f, h * 1.3f, line);
-            cv.drawLine(o + h * 1.6f, -h * 0.3f, o, h * 1.3f, line);
+        for (int pass = 0; pass < 2; pass++) {
+            boolean edge = pass == 0;
+            line.setStrokeWidth(edge ? stroke * 1.9f : stroke);
+            line.setColor(edge ? 0xFF0B0E16 : 0xFFFFFFFF);
+            line.setAlpha(Math.round((edge ? 46 : 94) * a));
+            for (float o = -h * 1.2f; o <= reach; o += gap) {
+                cv.drawLine(o, -h * 0.3f, o + h * 1.6f, h * 1.3f, line);
+                cv.drawLine(o + h * 1.6f, -h * 0.3f, o, h * 1.3f, line);
+            }
         }
         line.setAlpha(255);
         line.setStrokeCap(Paint.Cap.ROUND);
@@ -513,11 +528,10 @@ public final class BoardFx {
     /** The red card swinging up about its foot (cx, foot), h high, t ms in (RED_MS), glowing red; hidden below at either end. */
     public void redCard(Canvas cv, float cx, float foot, float h, long t) {
         if (h <= 0 || t <= 0 || t >= RED_MS) return;
-        float[] pose = redCardPose(t);
-        float w = h * 0.7f;
+        float k = cardIn(t), w = h * 0.7f;
         cv.save();
-        cv.translate(0, pose[0] * h);
-        cv.rotate(pose[1], cx, foot);
+        cv.translate(0, 2f * (1f - k) * h);
+        cv.rotate(-30f + 38f * k, cx, foot);
         r.set(cx - w / 2f, foot - h, cx + w / 2f, foot);
         fill.setShader(null);
         fill.setColor(0xFFE3061B);
@@ -533,11 +547,11 @@ public final class BoardFx {
     /** VAR's dot at (cx, cy), r its radius: white, pulsing a second's round (varPulse). */
     public void varDot(Canvas cv, float cx, float cy, float rad, long now) {
         if (rad <= 0) return;
-        float[] p = varPulse(now);
+        float k = pulse(now);
         fill.setShader(null);
         fill.setColor(0xFFFFFFFF);
-        fill.setAlpha(Math.round(255 * p[1]));
-        cv.drawCircle(cx, cy, rad * p[0], fill);
+        fill.setAlpha(Math.round(255 * (1f - 0.6f * k)));
+        cv.drawCircle(cx, cy, rad * (1f - 0.45f * k), fill);
         fill.setAlpha(255);
     }
 
@@ -648,6 +662,9 @@ public final class BoardFx {
 
     // ---- the weather touch: particles from a fixed seed ---------------------------------------------------------------
 
+    /** Rain's and wind's light steel blue: seen on a white board as on a dark one. */
+    static final int RAIN_INK = 0xFFA9C4E8, WIND_INK = 0xFFC9D6E8;
+
     /** Each particle's place across (0 to 1), its start in its fall (0 to 1), its speed and its size (each 0.6 to 1.4). */
     private static final float[] PX = new float[24], PP = new float[24], PS = new float[24], PZ = new float[24];
 
@@ -705,7 +722,7 @@ public final class BoardFx {
     /** n streaks falling and slanting, each period ms to fall, len of h long, stroke of h wide, at alpha (of 255). */
     private void streaks(Canvas cv, float w, float h, long t, int n, long period, float len, float stroke, float alpha) {
         line.setShader(null);
-        line.setColor(0xFFDCE8FF);
+        line.setColor(RAIN_INK);
         float slant = 0.27f;
         for (int i = 0; i < n; i++) {
             float p = ((t / (float) (period * PS[i])) + PP[i]) % 1f;
@@ -720,6 +737,7 @@ public final class BoardFx {
     private void snow(Canvas cv, float w, float h, long t, float a) {
         fill.setShader(null);
         fill.setColor(0xFFFFFFFF);
+        fill.setShadowLayer(Math.max(1f, h * 0.03f), 0, 0, 0x66000000);
         for (int i = 0; i < 14; i++) {
             float p = ((t / (3000f * PS[i])) + PP[i]) % 1f;
             float rad = Math.max(1f, h * 0.035f * PZ[i]), y = -rad + (h + rad * 2f) * p;
@@ -727,6 +745,7 @@ public final class BoardFx {
             fill.setAlpha(Math.round(90 * a * (0.55f + 0.45f * PZ[i] / 1.4f)));
             cv.drawCircle(x, y, rad, fill);
         }
+        fill.clearShadowLayer();
         fill.setAlpha(255);
     }
 
@@ -750,14 +769,24 @@ public final class BoardFx {
     }
 
     private void cloud(Canvas cv, float w, float h, long t, float a) {
-        float x = -w * 0.5f + w * 1.5f * (t / (float) WEATHER_MS);
-        fill.setShader(new android.graphics.RadialGradient(x, h * 0.5f, Math.max(1f, w * 0.35f), new int[]{0x4D000000, 0x00000000}, null,
-                Shader.TileMode.CLAMP));
+        if (shade == null || shadeW != w || shadeH != h) {
+            shade = new android.graphics.RadialGradient(0, h * 0.5f, Math.max(1f, w * 0.35f), new int[]{0x4D000000, 0x00000000}, null,
+                    Shader.TileMode.CLAMP);
+            shadeW = w;
+            shadeH = h;
+        }
+        matrix.reset();
+        matrix.setTranslate(-w * 0.5f + w * 1.5f * (t / (float) WEATHER_MS), 0f);
+        shade.setLocalMatrix(matrix);
+        fill.setShader(shade);
         fill.setAlpha(Math.round(255 * a));
         cv.drawRect(0, 0, w, h, fill);
         fill.setShader(null);
         fill.setAlpha(255);
     }
+
+    private android.graphics.RadialGradient shade;
+    private float shadeW = -1, shadeH = -1;
 
     private void glint(Canvas cv, float w, float h, long t, float a) {
         if (glint == null || glintW != w) {
@@ -786,6 +815,7 @@ public final class BoardFx {
     private void stars(Canvas cv, float w, float h, long t, float a) {
         line.setShader(null);
         line.setColor(0xFFFFFFFF);
+        line.setShadowLayer(Math.max(1f, h * 0.03f), 0, 0, 0x66000000);
         for (int i = 0; i < 5; i++) {
             float x = w * (0.08f + 0.84f * PX[i]), y = h * (0.12f + 0.76f * PP[i]);
             float tw = 0.5f + 0.5f * (float) Math.sin((t / 450.0) * PS[i] + i * 1.7);
@@ -795,12 +825,13 @@ public final class BoardFx {
             cv.drawLine(x - s, y, x + s, y, line);
             cv.drawLine(x, y - s, x, y + s, line);
         }
+        line.clearShadowLayer();
         line.setAlpha(255);
     }
 
     private void wind(Canvas cv, float w, float h, long t, float a) {
         line.setShader(null);
-        line.setColor(0xFFFFFFFF);
+        line.setColor(WIND_INK);
         for (int i = 0; i < 6; i++) {
             float p = ((t / (900f * PS[i])) + PP[i]) % 1f, l = w * 0.18f * PZ[i];
             float x = w + l - (w + l * 2f) * p, y = h * (0.15f + 0.7f * PX[i]) + (float) Math.sin(t / 300.0 + i) * h * 0.03f;

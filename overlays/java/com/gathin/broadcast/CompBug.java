@@ -317,6 +317,18 @@ public final class CompBug {
      */
     public static String compShort(String comp) {
         if (comp == null || comp.trim().isEmpty()) return "";
+        String plain = java.text.Normalizer.normalize(comp, java.text.Normalizer.Form.NFD).replaceAll("\\p{M}+", "");
+        String n = " " + plain.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]+", " ") + " ";
+        // The internationals and the cups first (a European Championship is no EFL Championship).
+        if (n.contains(" nations league ")) return "UNL";
+        if (n.contains(" club world cup ")) return "CWC";
+        if (n.contains(" world cup ")) return n.contains(" qualif") ? "WCQ" : "WC";
+        if (n.contains(" euro ") || n.contains(" european championship")) return n.contains(" qualif") ? "EQ" : "EURO";
+        if (n.contains(" friendl")) return "FR";
+        if (n.contains(" copa america ")) return "CA";
+        if (n.contains(" community shield ")) return "CS";
+        if (n.contains(" super cup ")) return "SC";
+        if (n.contains(" women") && n.contains(" super league ")) return "WSL";
         Kind k = forGame(null, comp);
         if (k != null) {
             switch (k) {
@@ -338,17 +350,6 @@ public final class CompBug {
                 default: break;
             }
         }
-        String plain = java.text.Normalizer.normalize(comp, java.text.Normalizer.Form.NFD).replaceAll("\\p{M}+", "");
-        String n = " " + plain.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]+", " ") + " ";
-        if (n.contains(" nations league ")) return "UNL";
-        if (n.contains(" club world cup ")) return "CWC";
-        if (n.contains(" world cup ")) return n.contains(" qualif") ? "WCQ" : "WC";
-        if (n.contains(" euro ") || n.contains(" european championship")) return n.contains(" qualif") ? "EQ" : "EURO";
-        if (n.contains(" friendl")) return "FR";
-        if (n.contains(" copa america ")) return "CA";
-        if (n.contains(" community shield ")) return "CS";
-        if (n.contains(" super cup ")) return "SC";
-        if (n.contains(" women") && n.contains(" super league ")) return "WSL";
         StringBuilder out = new StringBuilder();
         for (String w : n.trim().split(" ")) {
             if (w.length() < 2 || SKIP_WORDS.contains(w)) continue;
@@ -376,24 +377,43 @@ public final class CompBug {
 
     /** Pure: how far a rolling figure is on its way up (0 to 1, a touch past 1 as it lands), from its move's progress. */
     public static float rollEase(float at) {
-        float t = Math.max(0f, Math.min(1f, at));
-        // Quick, with a small overshoot before it settles (as the Lab's roll, cubic-bezier(.5, 0, .2, 1.2)).
-        float c1 = 0.9f, c3 = c1 + 1f, u = t - 1f;
-        return 1f + c3 * u * u * u + c1 * u * u;
+        // The Lab's roll: away slowly, quick, a little past before it settles (cubic-bezier(.5, 0, .2, 1.2)).
+        return bezier(0.5f, 0f, 0.2f, 1.2f, at);
     }
 
     /** Pure: a flipping figure's height as a share of its own (edge on at 0, flat at 1), from its move's progress. */
     public static float flipScale(float at) {
-        float t = Math.max(0f, Math.min(1f, at));
-        float e = 1f - (1f - t) * (1f - t);
-        return (float) Math.cos(Math.toRadians(80.0 * (1f - e)));
+        return (float) Math.cos(Math.toRadians(80.0 * (1f - flipEase(at))));
     }
 
     /** Pure: how far above its place a flipping figure is, in its own heights (1.1 at the start, 0 in place). */
     public static float flipLift(float at) {
-        float t = Math.max(0f, Math.min(1f, at));
-        float e = 1f - (1f - t) * (1f - t) * (1f - t);
-        return 1.1f * (1f - e);
+        return 1.1f * (1f - flipEase(at));
+    }
+
+    /** The Lab's flip: quick, landing a touch past its place and back (cubic-bezier(.3, 1.4, .5, 1)). */
+    private static float flipEase(float at) {
+        return bezier(0.3f, 1.4f, 0.5f, 1f, at);
+    }
+
+    /** Pure: CSS's cubic-bezier(x1, y1, x2, y2) at t (0 to 1): the curve's height where it is t across. */
+    public static float bezier(float x1, float y1, float x2, float y2, float t) {
+        if (t <= 0f) return 0f;
+        if (t >= 1f) return 1f;
+        float lo = 0f, hi = 1f, s = t;
+        for (int i = 0; i < 24; i++) {
+            float x = cubic(x1, x2, s);
+            if (Math.abs(x - t) < 1e-5f) break;
+            if (x < t) lo = s;
+            else hi = s;
+            s = (lo + hi) / 2f;
+        }
+        return cubic(y1, y2, s);
+    }
+
+    private static float cubic(float a, float b, float s) {
+        float u = 1f - s;
+        return 3f * u * u * s * a + 3f * u * s * s * b + s * s * s;
     }
 
     /**
@@ -1359,7 +1379,9 @@ public final class CompBug {
             fill.setShader(null);
             fill.setColor(0xD1080A10);
             cv.drawRoundRect(r, u / 2f, u / 2f, fill);
-            int colour = side == 0 ? hc : ac;
+            // At half time the discs turn over: white, the figures dark (in place of the small blocks other looks have).
+            boolean face = d.htFace;
+            int colour = face ? FLOOD : side == 0 ? hc : ac;
             float dcx = side == 0 ? rr - u * 0.11f - disc / 2f : l + u * 0.11f + disc / 2f;
             fill.setColor(colour);
             cv.drawCircle(dcx, cy, disc / 2f, fill);
@@ -1370,7 +1392,9 @@ public final class CompBug {
             }
             if (sc != null) {
                 wght = W800;
-                scoreOne(cv, d, sc[side], side + 1, dcx, cy, u * 0.44f, ink(colour), outfit);
+                d.htFace = false;
+                scoreOne(cv, d, sc[side], side + 1, dcx, cy, u * 0.44f, face ? LAB_DARK : ink(colour), outfit);
+                d.htFace = face;
                 wght = W760;
             }
         }
@@ -1394,7 +1418,12 @@ public final class CompBug {
         if (d.stoppage) rect(cv, x[3] + gap / 4f, edge * 2f, right - edge * 2f, u - edge * 2f, 0xFF3A0B06);
         text.setShadowLayer(u * 0.14f, 0, 0, 0xE6FFB21E);
         lwords(cv, d.home, (x[0] + pad + x[1] - gap / 2f) / 2f, cy, u * 0.44f, 0, AMBER, mono, 0, W760, 0.12f);
+        // Half time on a ground's screen: the figures lit amber blocks, dark in them.
+        faceGround = AMBER;
+        faceInk = 0xFF050505;
         digits(cv, d, sc, x[1] + gap / 2f, x[2] - gap / 2f, cy, u * 0.62f, AMBER, mono, W760, 0.12f, "-", 1f);
+        faceGround = 0;
+        faceInk = 0;
         lwords(cv, d.away, (x[2] + gap / 2f + x[3] - gap / 2f) / 2f, cy, u * 0.44f, 0, AMBER, mono, 0, W760, 0.12f);
         text.setShadowLayer(u * 0.14f, 0, 0, 0xE6FF5A3C);
         lwords(cv, minuteMark(d.clock), (x[3] + gap / 2f + right - pad) / 2f, cy, u * 0.44f, right - x[3] - pad, LED_RED, mono, 0, W760, 0.12f);
@@ -1638,13 +1667,16 @@ public final class CompBug {
     private int faceBlock(Canvas cv, String s, float cx, float cy, float size, int ink, Typeface tf) {
         int r0 = (ink >> 16) & 0xFF, g0 = (ink >> 8) & 0xFF, b0 = ink & 0xFF;
         boolean darkInk = (r0 * 299 + g0 * 587 + b0 * 114) / 1000 < 128;
-        float w = Math.max(tw(s, size, tf), tw("0", size, tf)) + size * 0.36f, hh = size * 1.06f, rad = size * 0.16f;
+        float w = Math.max(tw(s, size, tf), tw("0", size, tf)) + size * 0.28f, hh = size * 1.0f, rad = size * 0.16f;
         r.set(cx - w / 2f, cy - hh / 2f, cx + w / 2f, cy + hh / 2f);
         fill.setShader(null);
-        fill.setColor(darkInk ? LAB_DARK : 0xF2F6F7FA);
+        fill.setColor(faceGround != 0 ? faceGround : darkInk ? LAB_DARK : 0xF2F6F7FA);
         cv.drawRoundRect(r, rad, rad, fill);
-        return darkInk ? INK : LAB_DARK;
+        return faceGround != 0 ? faceInk : darkInk ? INK : LAB_DARK;
     }
+
+    /** A look's own half-time face (the LED board's amber blocks), 0 for the plain one. */
+    private int faceGround, faceInk;
 
     /** A figure on its way in: rolling up as the one before it rolls away, or turning down into place from above. */
     private void moving(Canvas cv, Data d, String was, String now, float cx, float cy, float size, int ink, Typeface tf) {
