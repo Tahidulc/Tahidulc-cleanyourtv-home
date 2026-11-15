@@ -695,6 +695,185 @@ final class VarExplained {
         }
     }
 
+    // ---- FotMob's live commentary ---------------------------------------------------------------------------------------
+
+    /** Pure: whether w (lower case, words between single spaces, a space at each end) has any of these phrases. */
+    private static boolean has(String w, String... phrases) {
+        for (String p : phrases) if (w.contains(" " + p + " ")) return true;
+        return false;
+    }
+
+    /** Pure: a commentary line as has() reads it: lower case, only letters, digits and apostrophes, a space at each end. */
+    private static String plain(String text) {
+        return " " + (text == null ? "" : text).toLowerCase(Locale.ROOT).replace('’', '\'').replaceAll("[^a-z0-9']+", " ").trim() + " ";
+    }
+
+    /**
+     * Pure: the decision a line of FotMob's live commentary says, as a person writes it while the game goes on ("PENALTY
+     * STANDS!", "No penalty: VAR overturns it", "the goal is ruled out"): penalty, no_penalty, goal or no_goal; "other"
+     * for a check it says is over without saying how; null for a check still going on (or words it can't read).
+     */
+    static String tickerKind(String text) {
+        String w = plain(text);
+        if (has(w, "ruled out", "disallowed", "chalked off", "no goal", "goal is overturned", "goal overturned", "won't count",
+                "will not count", "doesn't count", "does not count", "not going to count", "goal won't stand", "goal will not stand")) {
+            return "no_goal";
+        }
+        if (has(w, "goal stands", "goal will stand", "goal is given", "goal is confirmed", "goal confirmed", "goal counts",
+                "goal is good", "goal is awarded", "goal awarded", "it's a goal", "it is a goal")) {
+            return "goal";
+        }
+        if (has(w, "no penalty", "penalty is overturned", "penalty overturned", "overturns the penalty", "penalty cancelled",
+                "penalty is cancelled", "penalty rescinded", "penalty is rescinded", "penalty is taken away", "not a penalty",
+                "no spot kick", "spot kick is overturned")) {
+            return "no_penalty";
+        }
+        if (has(w, "says penalty", "penalty stands", "penalty will stand", "penalty is confirmed", "penalty confirmed",
+                "penalty is given", "penalty given", "penalty awarded", "penalty is awarded", "awards a penalty", "points to the spot",
+                "pointing to the spot", "it's a penalty", "it is a penalty", "spot kick stands")) {
+            return "penalty";
+        }
+        boolean aboutPenalty = has(w, "penalty", "spot kick", "spot");
+        if (aboutPenalty && has(w, "play goes on", "play continues", "waves play on", "nothing doing", "nothing given", "no foul")) {
+            return "no_penalty";
+        }
+        if (has(w, "check is complete", "check complete", "check is over", "checks are complete", "check has been completed")) return "other";
+        return null;
+    }
+
+    /** Pure: what a commentary line says of the referee's call: 1 it stood, -1 VAR changed it, 0 it doesn't say. */
+    static int tickerOnField(String text) {
+        String w = plain(text);
+        if (has(w, "overturn", "overturns", "overturned", "reverses", "reversed", "rescinds", "rescinded", "changes his mind",
+                "changes her mind", "changed his mind", "changed her mind", "changes his decision", "changes her decision",
+                "taken away", "cancelled")) {
+            return -1;
+        }
+        // Never a bare "stands": the crowd is in the stands.
+        if (has(w, "decision stands", "call stands", "penalty stands", "goal stands", "it stands", "will stand", "sticks with",
+                "stays with", "confirmed", "says penalty", "isn't having it", "is not having it", "check is complete", "check complete",
+                "right call", "correct call", "original decision")) {
+            return 1;
+        }
+        return 0;
+    }
+
+    /** Pure: a commentary minute as ESPN writes one (44, -1: "44'"; 45, 2: "45'+2'"). */
+    static String tickerMinute(int elapsed, int plus) {
+        if (elapsed < 0) return "";
+        return plus > 0 ? elapsed + "'+" + plus + "'" : elapsed + "'";
+    }
+
+    /**
+     * Pure: what VAR did as FotMob's live commentary has it (its VAR lines {key, minute as ESPN writes it, words}, oldest
+     * first), with ESPN's commentary ({text, minute}) for who and why: each line that says a decision as that decision,
+     * worked out as if ESPN had written "VAR Decision:" at that minute; and the latest that doesn't as the check still
+     * going on (none once a decision came after it). A quick check that leaves the referee's call as it was has a line
+     * here and nowhere else.
+     */
+    static List<Seen> ticker(List<String[]> vars, List<String[]> espn) {
+        List<Seen> out = new ArrayList<>();
+        if (vars == null) return out;
+        int lastDecision = -1, lastCheck = -1;
+        for (int i = 0; i < vars.size(); i++) {
+            if (vars.get(i) == null || vars.get(i).length < 3) continue;
+            if (tickerKind(vars.get(i)[2]) != null) lastDecision = i;
+            else lastCheck = i;
+        }
+        for (int i = 0; i < vars.size(); i++) {
+            String[] v = vars.get(i);
+            if (v == null || v.length < 3) continue;
+            String kind = tickerKind(v[2]);
+            if (kind == null) continue;
+            Seen s = new Seen();
+            s.key = "ltc:" + v[0];
+            s.call = tickerCall(v, kind, espn);
+            out.add(s);
+        }
+        if (lastCheck > lastDecision) {
+            String[] v = vars.get(lastCheck);
+            Seen s = new Seen();
+            s.key = "ltc:" + v[0];
+            s.about = tickerAbout(v, espn);
+            out.add(s);
+        }
+        return out;
+    }
+
+    /**
+     * Pure: the live commentary's VAR moments less the decisions ESPN's commentary has too (the same kind within four
+     * minutes), so one written up in both comes out once, however late the second is.
+     */
+    static List<Seen> notInEspn(List<Seen> ltc, List<Seen> espn) {
+        List<Seen> out = new ArrayList<>();
+        if (ltc == null) return out;
+        for (Seen s : ltc) {
+            boolean both = false;
+            for (Seen e : espn == null ? new ArrayList<Seen>() : espn) {
+                if (s.call == null || e.call == null || !s.call.kind.equals(e.call.kind)) continue;
+                int a = at(s.call.minute), b = at(e.call.minute);
+                if (a < 0 || b < 0 || Math.abs(a - b) <= 4) both = true;
+            }
+            if (!both) out.add(s);
+        }
+        return out;
+    }
+
+    /** Pure: the place in ESPN's lines (oldest first) for a line at this minute: after the last at or before it. */
+    private static int placeFor(List<String[]> lines, String minute) {
+        int when = at(minute), i = lines.size();
+        while (i > 0 && when >= 0 && at(lines.get(i - 1)[1]) > when) i--;
+        return i;
+    }
+
+    /** Pure: a decision from FotMob's line {key, minute, words}, its kind as tickerKind read it, its who and why from ESPN's. */
+    static Call tickerCall(String[] v, String kind, List<String[]> espn) {
+        String minute = v[1] == null ? "" : v[1];
+        Call c = null;
+        if (!"other".equals(kind)) {
+            List<String[]> lines = espn == null ? new ArrayList<>() : new ArrayList<>(espn);
+            int at = placeFor(lines, minute);
+            String words = "penalty".equals(kind) ? "Penalty" : "no_penalty".equals(kind) ? "No Penalty" : "goal".equals(kind) ? "Goal" : "No Goal";
+            lines.add(at, new String[]{"VAR Decision: " + words + ".", minute, "ltc"});
+            c = decision(lines, at);
+        }
+        if (c == null) {
+            c = new Call();
+            c.kind = kind;
+            c.minute = minute;
+            if ("other".equals(kind)) c.words = "Check complete";
+        }
+        int said = tickerOnField(v[2]);
+        if (said != 0) c.onField = said;
+        if (c.team.isEmpty() && ("penalty".equals(c.kind) || "no_penalty".equals(c.kind))) c.team = penaltyTeam(espn, minute);
+        return c;
+    }
+
+    /** Pure: the side ESPN's lines give a penalty to near this minute ("Penalty Whitebrook. … draws a foul"); "" when none. */
+    static String penaltyTeam(List<String[]> espn, String minute) {
+        if (espn == null) return "";
+        int when = at(minute);
+        String team = "";
+        for (String[] l : espn) {
+            int w = at(l[1]);
+            if (when >= 0 && w >= 0 && (w > when + 1 || w < when - 4)) continue;
+            Matcher m = DRAWS.matcher(l[0] == null ? "" : l[0]);
+            if (m.find()) team = m.group(1).trim();
+        }
+        return team;
+    }
+
+    /** Pure: a check under way from FotMob's line: what it is about ({about, reason, player}), from its words and ESPN's. */
+    static String[] tickerAbout(String[] v, List<String[]> espn) {
+        List<String[]> lines = espn == null ? new ArrayList<>() : new ArrayList<>(espn);
+        int at = placeFor(lines, v[1]);
+        lines.add(at, new String[]{"VAR checking.", v[1], "ltc"});
+        String[] about = checkAbout(lines, at);
+        String said = aboutOf(v[2]);
+        if (!said.isEmpty()) about[0] = said;
+        return about;
+    }
+
     // ---- what was read, kept between the alert service and the board (any thread) --------------------------------------
 
     private static final Map<String, Call> calls = new LinkedHashMap<String, Call>() {

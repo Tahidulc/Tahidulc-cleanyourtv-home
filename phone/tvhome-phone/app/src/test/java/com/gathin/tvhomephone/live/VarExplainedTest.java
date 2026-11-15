@@ -414,4 +414,91 @@ public class VarExplainedTest {
         assertEquals(1f, VarWhy.seen(1f), 1e-6f);
         assertEquals(0f, VarWhy.seen(0f), 1e-6f);
     }
+
+    // ---- FotMob's live commentary (made-up clubs, players and referee) ------------------------------------------------
+
+    @Test
+    public void aQuickCheckThatLeftThePenaltyIsWrittenUpOnlyInTheLiveCommentary() {
+        List<String[]> espn = lines(
+                "Penalty Whitebrook. Sam Okafor draws a foul in the penalty area.", "41'",
+                "Penalty conceded by Theo Marsh (Riverside) after a foul in the penalty area.", "41'",
+                "Attempt saved. Leo Brandt (Whitebrook) header from the centre of the box is saved.", "40'");
+        List<String[]> vars = Collections.singletonList(new String[]{"en:1001", "44'",
+                "KELLAND SAYS PENALTY! The VAR team are involved with the Brandt-Hollis discussion, but the referee isn't having it!"});
+        List<VarExplained.Seen> seen = VarExplained.ticker(vars, espn);
+        assertEquals(1, seen.size());
+        assertEquals("ltc:en:1001", seen.get(0).key);
+        VarExplained.Call c = seen.get(0).call;
+        assertNotNull(c);
+        assertEquals("penalty", c.kind);
+        assertEquals(1, c.onField);
+        assertEquals(VarExplained.FOUL, c.reason);
+        assertEquals("Theo Marsh", c.player);
+        assertEquals("Sam Okafor", c.victim);
+        assertEquals("Whitebrook", c.team);
+        assertEquals("44'", c.minute);
+        assertEquals("the referee's call stands", VarExplained.callLine(c.onField));
+        assertEquals("Theo Marsh fouled Sam Okafor inside the penalty area, and that's a penalty kick.", VarExplained.why(c));
+    }
+
+    @Test
+    public void theLiveCommentarysWordsForADecision() {
+        assertEquals("penalty", VarExplained.tickerKind("KELLAND SAYS PENALTY! The VAR team are involved, but he isn't having it!"));
+        assertEquals("no_penalty", VarExplained.tickerKind("NO PENALTY! After a long look at the monitor, the decision is overturned."));
+        assertEquals("no_penalty", VarExplained.tickerKind("VAR has a look at the challenge for a penalty, but play goes on."));
+        assertEquals("no_goal", VarExplained.tickerKind("The goal is ruled out for offside after a VAR check."));
+        assertEquals("goal", VarExplained.tickerKind("The goal stands! VAR finds nothing wrong with it."));
+        assertEquals("other", VarExplained.tickerKind("The check is complete, and we go again."));
+        assertNull(VarExplained.tickerKind("VAR is checking a possible handball by Hollis here..."));
+        assertNull(VarExplained.tickerKind(null));
+        assertEquals(-1, VarExplained.tickerOnField("NO PENALTY! The decision is overturned."));
+        assertEquals(1, VarExplained.tickerOnField("PENALTY STANDS! Kelland sticks with his call."));
+        // The crowd is in the stands: that says nothing of the referee's call.
+        assertEquals(0, VarExplained.tickerOnField("The home stands are furious as the goal is ruled out."));
+        assertEquals("44'", VarExplained.tickerMinute(44, -1));
+        assertEquals("45'+2'", VarExplained.tickerMinute(45, 2));
+    }
+
+    @Test
+    public void aCheckStillGoingOnUntilItsDecisionIsWrittenUp() {
+        List<String[]> espn = lines("Handball by Jay Hollis (Riverside).", "62'");
+        List<String[]> check = Collections.singletonList(new String[]{"en:2001", "63'", "VAR is having a look at a possible penalty here."});
+        List<VarExplained.Seen> seen = VarExplained.ticker(check, espn);
+        assertEquals(1, seen.size());
+        assertNull(seen.get(0).call);
+        assertArrayEquals(new String[]{"penalty", VarExplained.HANDBALL, "Jay Hollis"}, seen.get(0).about);
+        List<String[]> both = Arrays.asList(check.get(0), new String[]{"en:2002", "64'", "NO PENALTY! The check is complete and play goes on."});
+        seen = VarExplained.ticker(both, espn);
+        assertEquals(1, seen.size());
+        assertEquals("no_penalty", seen.get(0).call.kind);
+        assertEquals(VarExplained.HANDBALL, seen.get(0).call.reason);
+    }
+
+    @Test
+    public void fotmobsLiveCommentaryVarLinesOldestFirst() throws Exception {
+        JSONObject ltc = new JSONObject("{\"Events\":["
+                + "{\"MessageId\":\"en:3\",\"IncidentCode\":\"comment\",\"Elapsed\":70,\"ElapsedPlus\":-1,\"Description\":\"A corner.\"},"
+                + "{\"MessageId\":\"en:2\",\"IncidentCode\":\"var\",\"Elapsed\":45,\"ElapsedPlus\":2,\"Description\":\"GOAL STANDS!\"},"
+                + "{\"MessageId\":\"en:1\",\"IncidentCode\":\"var\",\"Elapsed\":12,\"ElapsedPlus\":-1,\"Description\":\"VAR checking.\"},"
+                + "{\"MessageId\":\"en:0\",\"IncidentCode\":\"var\",\"Elapsed\":5,\"ElapsedPlus\":-1,\"Description\":\"\"}]}");
+        List<String[]> v = FotMob.tickerVars(ltc);
+        assertEquals(2, v.size());
+        assertArrayEquals(new String[]{"en:1", "12'", "VAR checking."}, v.get(0));
+        assertArrayEquals(new String[]{"en:2", "45'+2'", "GOAL STANDS!"}, v.get(1));
+        assertTrue(FotMob.hasEnglish(new JSONObject("{\"langs\":\"ar_gen,de,en,es\"}")));
+        assertFalse(FotMob.hasEnglish(new JSONObject("{\"langs\":\"de,en_gen\"}")));
+        assertFalse(FotMob.hasEnglish(null));
+    }
+
+    @Test
+    public void aDecisionInBothCommentariesComesOutOnce() {
+        List<String[]> espn = lines("VAR Decision: No Goal Whitebrook 1-0 Riverside.", "23'");
+        List<VarExplained.Seen> fromEspn = VarExplained.scan(espn);
+        List<VarExplained.Seen> ltc = VarExplained.ticker(Arrays.asList(
+                new String[]{"en:1", "26'", "The goal is ruled out! VAR spots a handball."},
+                new String[]{"en:2", "70'", "The goal is ruled out for offside this time."}), espn);
+        List<VarExplained.Seen> left = VarExplained.notInEspn(ltc, fromEspn);
+        assertEquals(1, left.size());
+        assertEquals("70'", left.get(0).call.minute);
+    }
 }

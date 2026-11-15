@@ -3397,8 +3397,14 @@ final class BoardCover {
         d.own = d.own || d.gameId != null && d.gameId.equals(game(c));
         // A goal's place in the scorer's season (the game's second, a hat-trick, his 3rd of the season), as a tag.
         if (d.key != null && d.tag == null && milestonesOn(c)) goalTag(d);
-        drops.addLast(d);
-        while (drops.size() > 4) drops.removeFirst();
+        if ("VAR".equals(d.chip)) {
+            // VAR's check and decision go first: they are about now, and over in a minute or two.
+            drops.addFirst(d);
+            while (drops.size() > 4) drops.removeLast();
+        } else {
+            drops.addLast(d);
+            while (drops.size() > 4) drops.removeFirst();
+        }
         // VAR explained keeps the scan going for its own check (and stops it at the decision).
         if (d.own && bug != null && "VAR".equals(d.chip) && !d.varCheck && d.why == null) bug.varCheck(8_000L);
         AlertLog.note(c, "alert from the scoreboard: " + d.what);
@@ -3837,7 +3843,19 @@ final class BoardCover {
         if (bug != null) bug.varCheck(VarExplained.CHECK_MAX_MS);
         BoardDrop.Drop d = varDrop(gameId, g, VarExplained.checkTitle(about[0]), VarExplained.checkLine(about[1], about[2]));
         d.varCheck = true;
+        penaltyAside(gameId);
         drop(c, d);
+    }
+
+    /**
+     * A VAR moment for the game while its penalty card is out: the card goes in for it, and comes out again after it
+     * (until its kick), rather than the check waiting behind a card that stays out until the kick.
+     */
+    private static void penaltyAside(String gameId) {
+        BoardDrop.Drop out = drop == null ? null : drop.showing();
+        if (out == null || !out.penalty || !gameId.equals(out.gameId) || !drop.isOut()) return;
+        drops.addFirst(out);
+        hideDrop();
     }
 
     /** A decision: in its check's place (turning over), else out of the board; its WHY folding down under it. */
@@ -3861,11 +3879,23 @@ final class BoardCover {
             drop.turnTo(d);
             main().postDelayed(() -> showWhy(d), 360L);
             main().postDelayed(hideDropRun, VarExplained.WHY_MS);
+            if ("no_penalty".equals(call.kind)) penaltyGone(gameId);
             return;
         }
         // A check still waiting its turn: the decision in its place.
         drops.removeIf(q -> q.varCheck && gameId.equals(q.gameId));
+        penaltyAside(gameId);
         drop(c, d);
+        if ("no_penalty".equals(call.kind)) penaltyGone(gameId);
+    }
+
+    /** VAR took the penalty away: its card (waiting to come out again) goes, and nothing waits for its kick. */
+    private static void penaltyGone(String gameId) {
+        drops.removeIf(q -> q.penalty && gameId.equals(q.gameId));
+        if (gameId.equals(penaltyFor)) {
+            penaltyFor = null;
+            penaltyUntil = 0;
+        }
     }
 
     private static android.animation.ValueAnimator widening;
@@ -4238,9 +4268,11 @@ final class BoardCover {
         statsReadAt = now;
         String id = g.id, slug = g.slug;
         boolean fotmob = fotmobOn(c) && !(p0 != null && p0.on);
+        boolean live = g.state == 0, varOn = varExplainedOn(c);
         io.execute(() -> {
             Map<String, String[]> got = null;
             List<VarExplained.Seen> var = null;
+            List<String[]> lines = null;
             Object[] pen = null;
             try {
                 org.json.JSONObject summary = new org.json.JSONObject(ScoresTicker.get("https://site.api.espn.com/apis/site/v2/sports/soccer/"
@@ -4249,7 +4281,8 @@ final class BoardCover {
                 wornRead(c, g, summary);
                 got = statsOf(summary, g);
                 underRead(id, summary, g);
-                var = VarExplained.scan(commentaryOf(summary));
+                lines = commentaryOf(summary);
+                var = VarExplained.scan(lines);
                 pen = penaltyLook(c, g, summary);
             } catch (Exception ignored) {
                 // read again in two minutes
@@ -4267,12 +4300,20 @@ final class BoardCover {
                     got.putAll(FotMob.statsOf(fm, code(g.home, g.homeName), code(g.away, g.awayName)));
                 }
             }
+            // FotMob's live commentary while the game is on: the quick VAR checks that change nothing have a line only there.
+            List<VarExplained.Seen> ltc = null;
+            if (fm != null && fm.ticker && live && varOn) {
+                List<String[]> tick = FotMob.ticker(fm.id);
+                if (tick != null) ltc = VarExplained.notInEspn(VarExplained.ticker(tick, lines), var);
+            }
+            List<VarExplained.Seen> ltcSeen = ltc;
             Map<String, String[]> by = got;
             FotMob.Match read = fm;
             main().post(() -> {
                 statsReading = false;
                 if (read != null) fotmobRead(c, g, read);
                 if (varSeen != null) varFromEspn(c, g, varSeen);
+                if (ltcSeen != null) varFromTicker(c, g, ltcSeen);
                 if (penSeen != null) penaltyRead(c, g, (String) penSeen[0], (BoardDrop.Drop) penSeen[1]);
                 if (by == null || by.isEmpty()) return;
                 statsBy = by;
@@ -4302,6 +4343,25 @@ final class BoardCover {
         List<VarExplained.Seen> fresh = VarExplained.fresh(g.id, all);
         if (!g.id.equals(game(c)) || !varExplainedOn(c) || !dropsOn(c) || !up(c)) return;
         for (VarExplained.Seen s : fresh) {
+            if (s.call != null) {
+                VarExplained.enrich(s.call, VarExplained.fotmobVars(g.id));
+                varDecisionOut(c, g.id, g, s.call);
+            } else if (s.about != null) {
+                varCheckOut(c, g.id, g, s.about);
+            }
+        }
+    }
+
+    /**
+     * FotMob's live commentary as the board read it (main thread): a VAR check or decision for the board's own game not
+     * seen before (none from before the board came up). A quick check that leaves the referee's call as it was is written
+     * up there and nowhere else: neither ESPN's commentary nor FotMob's events have it.
+     */
+    private static void varFromTicker(Context c, ScoresTicker.Game g, List<VarExplained.Seen> all) {
+        List<VarExplained.Seen> fresh = VarExplained.fresh(g.id + "|ltc", all);
+        if (!g.id.equals(game(c)) || !varExplainedOn(c) || !dropsOn(c) || !up(c)) return;
+        for (VarExplained.Seen s : fresh) {
+            AlertLog.note(c, "VAR from FotMob's commentary: " + (s.call != null ? s.call : "check " + String.join("/", s.about)));
             if (s.call != null) {
                 VarExplained.enrich(s.call, VarExplained.fotmobVars(g.id));
                 varDecisionOut(c, g.id, g, s.call);

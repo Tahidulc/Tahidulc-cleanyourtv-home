@@ -1179,6 +1179,30 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         if (g.id.equals(penaltyFor)) penaltyTaken(g.id);
     }
 
+    /** The penalty card's first page as it last came out (it comes out again after a VAR moment that stepped it aside). */
+    private Drop penaltyCard;
+
+    /**
+     * A VAR moment for the game while its penalty card is out: the card goes in for it, and comes out again after it
+     * (until its kick), rather than the check waiting behind a card that stays out until the kick.
+     */
+    private void penaltyAside(String gameId) {
+        Drop out = strip.isOut() ? strip.drop() : null;
+        if (out == null || !out.penalty || gameId == null || !gameId.equals(out.gameId)) return;
+        drops.addFirst(penaltyCard != null && gameId.equals(penaltyCard.gameId) ? penaltyCard : out);
+        if (penaltyTurn != null) h.removeCallbacks(penaltyTurn);
+        hideDrop();
+    }
+
+    /** VAR took the penalty away: its card (waiting to come out again) goes, and nothing waits for its kick. */
+    private void penaltyGone(String gameId) {
+        drops.removeIf(q -> q.penalty && gameId.equals(q.gameId));
+        if (gameId.equals(penaltyFor)) {
+            penaltyFor = null;
+            penaltyUntil = 0;
+        }
+    }
+
     /** The kick is in (or a goal came first): the card goes, whether out or waiting its turn. */
     private void penaltyTaken(String gameId) {
         if (gameId.equals(penaltyFor)) {
@@ -1412,7 +1436,7 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         String id = g.id, slug = g.slug;
         String homeCode = code(g.home, g.homeName), awayCode = code(g.away, g.awayName);
         int state = g.state;
-        boolean fotmob = fotmobOn(c);
+        boolean fotmob = fotmobOn(c), varOn = varExplained(c);
         String homeName = g.homeName, awayName = g.awayName;
         long kickoff = g.kickoff;
         boolean last = state == Game.POST;
@@ -1435,12 +1459,20 @@ public final class ScoreBoard implements LiveAlerts.Listener {
             }
             FotMob.Match read = fm;
             List<VarExplained.Seen> var = got == null ? null : VarExplained.scan(got.varLines);
+            // FotMob's live commentary while the game is on: the quick VAR checks that change nothing have a line only there.
+            List<VarExplained.Seen> ltc = null;
+            if (fm != null && fm.ticker && state == Game.LIVE && varOn) {
+                List<String[]> tick = FotMob.ticker(fm.id);
+                if (tick != null) ltc = VarExplained.notInEspn(VarExplained.ticker(tick, got == null ? null : got.varLines), var);
+            }
+            List<VarExplained.Seen> ltcSeen = ltc;
             App.main.post(() -> {
                 statsReading = false;
                 if (recoloured) Espn.wornOn(g);   // the kits they wear in this game, from the next look on
                 if (pen != null) penaltyRead(g, (String) pen[0], (Drop[]) pen[1]);
                 if (read != null) fotmobRead(g, read);
                 if (var != null) varFromEspn(g, var);
+                if (ltcSeen != null) varFromTicker(g, ltcSeen);
                 if (got == null) {
                     if (!by.isEmpty()) {
                         statsBy = by;
@@ -2648,8 +2680,14 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         if (small) return;
         // A goal in the game: its penalty waiting for the kick is taken (scored, or play went on).
         if (d.key != null && penaltyFor != null && (d.own || penaltyFor.equals(d.gameId))) penaltyTaken(penaltyFor);
-        drops.addLast(d);
-        while (drops.size() > 4) drops.removeFirst();
+        if ("VAR".equals(d.chip)) {
+            // VAR's check and decision go first: they are about now, and over in a minute or two.
+            drops.addFirst(d);
+            while (drops.size() > 4) drops.removeLast();
+        } else {
+            drops.addLast(d);
+            while (drops.size() > 4) drops.removeFirst();
+        }
         if (!dropping) next();
     }
 
@@ -2748,6 +2786,7 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         }
         // The penalty card: out until its kick is in (penaltyRead takes it in), turning over to the taker and the keeper.
         if (d.penalty) {
+            if (d.turns != null || penaltyCard == null || !java.util.Objects.equals(penaltyCard.gameId, d.gameId)) penaltyCard = d;
             turnPenalty(d, 0);
             h.postDelayed(hide, PENALTY_MAX_MS);
             return;
@@ -2809,6 +2848,7 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         bug.varCheck(VarExplained.CHECK_MAX_MS);
         Drop d = varDrop(g, VarExplained.checkTitle(about[0]), VarExplained.checkLine(about[1], about[2]));
         d.varCheck = true;
+        penaltyAside(g.id);
         drop(d);
     }
 
@@ -2834,11 +2874,14 @@ public final class ScoreBoard implements LiveAlerts.Listener {
             strip.turnTo(d);
             h.postDelayed(() -> showWhy(d), 360L);
             h.postDelayed(hide, VarExplained.WHY_MS);
+            if ("no_penalty".equals(call.kind)) penaltyGone(g.id);
             return;
         }
         // A check still waiting its turn: the decision in its place.
         drops.removeIf(q -> q.varCheck && g.id.equals(q.gameId));
+        penaltyAside(g.id);
         drop(d);
+        if ("no_penalty".equals(call.kind)) penaltyGone(g.id);
     }
 
     /** The decision's WHY folding down from under it, in the board's look, while it is still the one out. */
@@ -2863,6 +2906,25 @@ public final class ScoreBoard implements LiveAlerts.Listener {
     /** ESPN's commentary as the board read it (main thread): a VAR check or decision for its own game not seen before. */
     private void varFromEspn(Game g, List<VarExplained.Seen> all) {
         List<VarExplained.Seen> fresh = VarExplained.fresh(g.id, all);
+        boolean own = g.id != null && g.id.equals(lastId) && mode == FOOTBALL_MODE;
+        if (!own || !running || !varExplained(c) || !shows(c, FOOTBALL)) return;
+        for (VarExplained.Seen s : fresh) {
+            if (s.call != null) {
+                VarExplained.enrich(s.call, VarExplained.fotmobVars(g.id));
+                varDecisionOut(g, s.call);
+            } else if (s.about != null) {
+                varCheckOut(g, s.about);
+            }
+        }
+    }
+
+    /**
+     * FotMob's live commentary as the board read it (main thread): a VAR check or decision for its own game not seen
+     * before (none from before the board came up). A quick check that leaves the referee's call as it was is written up
+     * there and nowhere else: neither ESPN's commentary nor FotMob's events have it.
+     */
+    private void varFromTicker(Game g, List<VarExplained.Seen> all) {
+        List<VarExplained.Seen> fresh = VarExplained.fresh(g.id + "|ltc", all);
         boolean own = g.id != null && g.id.equals(lastId) && mode == FOOTBALL_MODE;
         if (!own || !running || !varExplained(c) || !shows(c, FOOTBALL)) return;
         for (VarExplained.Seen s : fresh) {

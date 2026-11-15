@@ -64,6 +64,8 @@ public final class FotMob {
         final List<com.gathin.broadcast.ShotMap.Shot> shots = new ArrayList<>();
         /** The referee's name and country ("" until FotMob names one). */
         String referee = "", refereeCountry = "";
+        /** Whether FotMob writes a live commentary in English for it (its VAR checks are in that, see ticker()). */
+        boolean ticker;
     }
 
     /** Pure: FotMob's VAR event as VarExplained reads it ({minute, player, key, words, second key}); null for none. */
@@ -266,6 +268,7 @@ public final class FotMob {
         }
         JSONObject c = d.optJSONObject("content");
         if (c == null) return m;
+        m.ticker = hasEnglish(c.optJSONObject("liveticker"));
         m.shots.addAll(com.gathin.broadcast.ShotMap.parse(c, m.homeTeamId));
         JSONObject info = c.optJSONObject("matchFacts") == null ? null : c.optJSONObject("matchFacts").optJSONObject("infoBox");
         JSONObject ref = info == null ? null : info.optJSONObject("Referee");
@@ -528,6 +531,70 @@ public final class FotMob {
         return sp < 0 ? plain : plain.substring(sp + 1);
     }
 
+    // ---- the live commentary: VAR's checks as they are written up ------------------------------------------------------
+
+    /** Pure: whether a game's liveticker ({"langs": "ar_gen,de,en,es"}) has the English commentary. */
+    static boolean hasEnglish(JSONObject liveticker) {
+        String langs = liveticker == null ? "" : liveticker.optString("langs", "");
+        for (String l : langs.split(",")) if ("en".equals(l.trim())) return true;
+        return false;
+    }
+
+    /**
+     * Pure: the VAR lines of FotMob's live commentary (its Events, newest first, each with an IncidentCode, Elapsed,
+     * ElapsedPlus and Description), oldest first: {its MessageId, the minute as ESPN writes one ("44'", "45'+2'"), its words}.
+     */
+    static List<String[]> tickerVars(JSONObject ltc) {
+        List<Object[]> found = new ArrayList<>();
+        JSONArray ev = ltc == null ? null : ltc.optJSONArray("Events");
+        for (int i = 0; ev != null && i < ev.length(); i++) {
+            JSONObject e = ev.optJSONObject(i);
+            if (e == null || !"var".equalsIgnoreCase(e.optString("IncidentCode").trim())) continue;
+            String words = e.optString("Description", "").trim();
+            if (words.isEmpty()) continue;
+            int at = e.optInt("Elapsed", -1), plus = e.optInt("ElapsedPlus", -1);
+            found.add(new Object[]{at * 100 + Math.max(0, plus), -i,
+                    new String[]{e.optString("MessageId", "ltc" + i), VarExplained.tickerMinute(at, plus), words}});
+        }
+        // Oldest first: by the minute, then the order written (the list is newest first).
+        found.sort((a, b) -> {
+            int c = Integer.compare((Integer) a[0], (Integer) b[0]);
+            return c != 0 ? c : Integer.compare((Integer) a[1], (Integer) b[1]);
+        });
+        List<String[]> out = new ArrayList<>();
+        for (Object[] o : found) out.add((String[]) o[2]);
+        return out;
+    }
+
+    private static final Map<Integer, Object[]> tickers = new HashMap<>();
+
+    /**
+     * The VAR lines of a game's English live commentary (off the main thread), read at most every half minute; null when
+     * it could not be read. A person writes it up as the game goes on, the quick checks that change nothing included.
+     */
+    static List<String[]> ticker(int matchId) {
+        if (matchId <= 0) return null;
+        long now = System.currentTimeMillis();
+        synchronized (tickers) {
+            Object[] r = tickers.get(matchId);
+            if (r != null && now - (Long) r[1] < 30_000L) {
+                @SuppressWarnings("unchecked") List<String[]> kept = (List<String[]>) r[0];
+                return kept;
+            }
+        }
+        List<String[]> got;
+        try {
+            got = tickerVars(new JSONObject(get("https://data.fotmob.com/webcl/ltc/gsm/" + matchId + "_en.json.gz")));
+        } catch (Exception e) {
+            got = null;
+        }
+        synchronized (tickers) {
+            if (tickers.size() > 20) tickers.clear();
+            tickers.put(matchId, new Object[]{got, now});
+        }
+        return got;
+    }
+
     private static String get(String url) throws Exception {
         HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
         conn.setConnectTimeout(6000);
@@ -539,7 +606,16 @@ public final class FotMob {
             byte[] buf = new byte[8192];
             int n;
             while ((n = in.read(buf)) > 0 && out.size() < 3 * 1024 * 1024) out.write(buf, 0, n);
-            return out.toString("UTF-8");
+            byte[] b = out.toByteArray();
+            // The live commentary comes gzipped; the phone's connection undoes that itself, else it is undone here.
+            if (b.length > 2 && (b[0] & 0xFF) == 0x1F && (b[1] & 0xFF) == 0x8B) {
+                try (java.util.zip.GZIPInputStream z = new java.util.zip.GZIPInputStream(new java.io.ByteArrayInputStream(b))) {
+                    ByteArrayOutputStream plain = new ByteArrayOutputStream();
+                    while ((n = z.read(buf)) > 0 && plain.size() < 6 * 1024 * 1024) plain.write(buf, 0, n);
+                    return plain.toString("UTF-8");
+                }
+            }
+            return new String(b, "UTF-8");
         } finally {
             conn.disconnect();
         }
