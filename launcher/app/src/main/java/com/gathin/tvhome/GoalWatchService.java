@@ -1116,6 +1116,7 @@ public class GoalWatchService extends Service {
     @Override public void onCreate() {
         super.onCreate();
         self = this;
+        BoardCover.wornKept(this);   // the kits named for today's games, before the first scores come in
         android.content.IntentFilter f = new android.content.IntentFilter(Intent.ACTION_DREAMING_STARTED);
         f.addAction(Intent.ACTION_DREAMING_STOPPED);
         if (Build.VERSION.SDK_INT >= 33) registerReceiver(dreams, f, Context.RECEIVER_NOT_EXPORTED);
@@ -1714,6 +1715,10 @@ public class GoalWatchService extends Service {
             // adb only: your logo popping out as if an ad break came, and back in five seconds later
             main.post(() -> BoardCover.logoAway(true));
             main.postDelayed(() -> BoardCover.logoAway(false), 5_000L);
+        }
+        if (intent != null && intent.getBooleanExtra("test_board_penalty", false)) {
+            // adb only: the board over whatever is on, a made-up penalty's card out of it, taken in 20 s later
+            main.post(() -> BoardCover.testPenalty(this));
         }
         if (intent != null && intent.getBooleanExtra("test_board_var", false)) {
             // adb only: the board over whatever is on, a VAR check out of it, then its decision with the WHY under it
@@ -3105,10 +3110,13 @@ public class GoalWatchService extends Service {
             d.watch = () -> AppSearchService.tune(this, getString(R.string.scores_open_package), names, logo);
         }
         d.remote = Config.themeString(this, "ok_button", "");
-        // The kits they wear today, from their Wikipedia articles (this season's): the away side in its second or third
-        // kit when its first is too close to the home side's. ESPN's club colours when the articles cannot be read.
+        // The kits they wear today: the ones ESPN's line-ups name for the game (Worn), drawn as their Wikipedia articles
+        // have this season's kit of that name; where none is named, the away side in its second or third kit when its
+        // first is too close to the home side's. ESPN's colours when the articles cannot be read.
         Kits.Kit[] homeKits = Kits.of(this, sides[0].name), awayKits = Kits.of(this, sides.length > 1 ? sides[1].name : null);
-        Kits.Kit homeWears = Kits.wearing(homeKits, awayKits, false), awayWears = Kits.wearing(awayKits, homeKits, true);
+        com.gathin.broadcast.Worn.Kit[] named = com.gathin.broadcast.Worn.get(g.id);
+        Kits.Kit homeWears = Kits.worn(homeKits, awayKits, false, named == null ? null : named[0]),
+                awayWears = Kits.worn(awayKits, homeKits, true, named == null ? null : named[1]);
         int homeKit = g.homeColor, awayKit = g.awayColor;
         boolean clash = homeKit != 0 && awayKit != 0 && LineupCard.distance(homeKit, awayKit) < 120;
         ExecutorService pool = Executors.newFixedThreadPool(6, LOW);

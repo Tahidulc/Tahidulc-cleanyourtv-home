@@ -58,6 +58,8 @@ final class BoardDrop extends BoardSide {
         int tagMark;
         /** VAR explained: a check under way (its title, three dots beating beside it), out until its decision. */
         boolean varCheck;
+        /** The penalty card: out until its kick is taken (Penalty), PENALTY_MAX_MS at most. */
+        boolean penalty;
         /** VAR explained: the decision's WHY, folding down under it (null for any other alert). */
         VarExplained.Why why;
     }

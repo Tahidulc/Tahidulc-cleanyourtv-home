@@ -129,6 +129,9 @@ public final class Espn {
         g.awayColor = at.optString("color", "");
         g.homeAlt = ht.optString("alternateColor", "");
         g.awayAlt = at.optString("alternateColor", "");
+        // The kits they wear in this game where ESPN's line-ups have named them (Worn), else the clubs' colours, the
+        // away side's second when they clash.
+        wornOn(g);
         JSONObject ground = c.optJSONObject("venue");
         if (ground != null && !ground.optString("fullName").isEmpty()) g.venue = ground.optString("fullName");
         JSONArray details = c.optJSONArray("details");
@@ -193,6 +196,8 @@ public final class Espn {
 
     /** A game's events, line-ups and stats (ESPN's summary). */
     public static final class Summary {
+        /** The kits ESPN's line-ups name for the game, {home, away} (either null), as Worn reads them. */
+        public com.gathin.broadcast.Worn.Kit[] worn = new com.gathin.broadcast.Worn.Kit[2];
         /**
          * {minute, what ("Goal", "Yellow Card", "Substitution", "VAR"...), player, "home"/"away"/"", key, the second
          * player ("" when none: the one replaced for a substitution, the assist for a goal)}.
@@ -243,6 +248,8 @@ public final class Espn {
         public final List<String[]> homePens = new ArrayList<>(), awayPens = new ArrayList<>();
         /** The commentary's lines about VAR and those round them ({text, minute, sequence}, oldest first): VAR explained's. */
         public final List<String[]> varLines = new ArrayList<>();
+        /** The commentary's lines about penalties, and its latest line, {text, minute, sequence}, oldest first (Penalty). */
+        public final List<String[]> penaltyLines = new ArrayList<>();
     }
 
     /** Indexes into Summary.plays, and the kinds of play. */
@@ -252,6 +259,35 @@ public final class Espn {
     /** Indexes into a line-up's rows. */
     public static final int P_NUMBER = 0, P_NAME = 1, P_POSITION = 2, P_STARTER = 3, P_PLACE = 4, P_SHORT = 5, P_ON = 6,
             P_OFF = 7, P_GOALS = 8, P_CARDS = 9, P_OWN = 10, P_ID = 11, P_RATING = 12;
+
+    /** The game coloured by the kits named for it (Worn), else its clubs' colours with the away side's second on a clash. */
+    public static void wornOn(Game g) {
+        int[] kit = com.gathin.broadcast.Worn.pick(com.gathin.broadcast.Worn.get(g.id), com.gathin.broadcast.Worn.hex(g.homeColor),
+                com.gathin.broadcast.Worn.hex(g.homeAlt), com.gathin.broadcast.Worn.hex(g.awayColor), com.gathin.broadcast.Worn.hex(g.awayAlt));
+        g.homeColor = com.gathin.broadcast.Worn.hexOf(kit[0]);
+        g.homeAlt = com.gathin.broadcast.Worn.hexOf(kit[1]);
+        g.awayColor = com.gathin.broadcast.Worn.hexOf(kit[2]);
+        g.awayAlt = com.gathin.broadcast.Worn.hexOf(kit[3]);
+    }
+
+    private static boolean wornBack;
+
+    /** The kits named for recent games, kept from before (a restart mid-game keeps them), back once. */
+    public static void wornKept(android.content.Context c) {
+        if (wornBack) return;
+        wornBack = true;
+        com.gathin.broadcast.Worn.restore(c.getSharedPreferences("worn", android.content.Context.MODE_PRIVATE).getString("games", ""));
+    }
+
+    /** The kits a summary names for the game, noted and kept (off the main thread); whether they changed. */
+    public static boolean wornRead(android.content.Context c, String id, Summary s) {
+        wornKept(c);
+        boolean changed = s != null && com.gathin.broadcast.Worn.note(id, s.worn);
+        if (com.gathin.broadcast.Worn.unsaved()) {
+            c.getSharedPreferences("worn", android.content.Context.MODE_PRIVATE).edit().putString("games", com.gathin.broadcast.Worn.save()).apply();
+        }
+        return changed;
+    }
 
     public static Summary summary(String slug, String id, long freshMs) {
         try {
@@ -331,6 +367,7 @@ public final class Espn {
                 }
             }
             s.homeId = homeId;
+            s.worn = com.gathin.broadcast.Worn.of(rosters, homeId);
             for (int i = 0; competitors != null && i < competitors.length(); i++) {
                 JSONObject t = competitors.getJSONObject(i);
                 if (!"home".equals(t.optString("homeAway"))) s.awayId = t.optString("id");
@@ -339,6 +376,7 @@ public final class Espn {
             plays(root, s, competitors);
             addedTime(root.optJSONArray("commentary"), s.added);
             varLines(root.optJSONArray("commentary"), s.varLines);
+            penaltyLines(root.optJSONArray("commentary"), s.penaltyLines);
             winChance(root.optJSONArray("odds"), s);
             if (s.chances == null) winChance(root.optJSONArray("pickcenter"), s);
             shootout(root.optJSONArray("shootout"), homeId, s);
@@ -469,6 +507,31 @@ public final class Espn {
     public static int halfOf(String minute) {
         int m = Game.minute(minute == null ? "" : minute.replaceAll("\\+.*", ""));
         return m <= 0 ? 0 : m <= 45 ? 1 : m <= 90 ? 2 : m <= 105 ? 3 : 4;
+    }
+
+    /** Pure: the commentary's lines that speak of a penalty (given, conceded, taken), and its latest, oldest first. */
+    static void penaltyLines(JSONArray commentary, List<String[]> into) {
+        int n = commentary == null ? 0 : commentary.length();
+        for (int i = 0; i < n; i++) {
+            JSONObject x = commentary.optJSONObject(i);
+            String t = x == null ? "" : x.optString("text", "");
+            if (i != n - 1 && !t.toLowerCase(java.util.Locale.ROOT).contains("penalty")) continue;
+            JSONObject tm = x == null ? null : x.optJSONObject("time");
+            into.add(new String[]{t, tm == null ? "" : tm.optString("displayValue", ""), x == null ? "" : String.valueOf(x.optInt("sequence", i))});
+        }
+    }
+
+    /**
+     * Off the main thread: the penalty card's records for a penalty to the home side (home) or the away one, from the
+     * game's summary as last read and each player's figures in the competition (Penalty.records).
+     */
+    public static com.gathin.broadcast.Penalty.Records penaltyRecords(String slug, String id, boolean home) {
+        try {
+            JSONObject root = new JSONObject(cached(SITE + slug + "/summary?event=" + id, 120_000L));
+            return com.gathin.broadcast.Penalty.records(root, slug, home, Net::get);
+        } catch (Exception e) {
+            return new com.gathin.broadcast.Penalty.Records();
+        }
     }
 
     /**

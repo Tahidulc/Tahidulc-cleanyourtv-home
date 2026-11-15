@@ -56,6 +56,7 @@
     <string name="live35_style_off">Off</string>
     <string name="live35_goal_sound">Sound over the goal on the scoreboard (tap one to hear it)</string>
     <string name="live_shot_map">Shot map at half and full time: every shot on a small pitch beside the scoreboard, after the stats</string>
+    <string name="live_penalty">Penalty card: who won it, the likely taker and the keeper, out until the kick</string>
     <string name="live_referee">Referee at kick-off: the referee\'s name and country slide out once the game is on</string>
     <string name="live_sponsor">Sponsored by Stride: a slim strap under each alert beside the scoreboard (the family\'s own made-up sponsor)</string>
     <string name="live_added_stays">The minutes added stay out beside the scoreboard until the half is over, over the channel\'s own</string>

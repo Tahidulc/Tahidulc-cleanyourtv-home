@@ -253,7 +253,11 @@ final class BoardPanel extends SportPanel {
         referee.on = () -> BoardCover.refereeOn(c);
         referee.words = () -> BoardCover.refereeOn(c) ? "The referee's name and country slide out once the game is on" : "Off";
         referee.ok = () -> BoardCover.setRefereeOn(c, !BoardCover.refereeOn(c));
-        add(added, sponsor, shotMap, referee);
+        Row penalty = row("Penalty card", true);
+        penalty.on = () -> BoardCover.penaltyOn(c);
+        penalty.words = () -> BoardCover.penaltyOn(c) ? "Who won it, the likely taker and the keeper, out until the kick" : "Off";
+        penalty.ok = () -> BoardCover.setPenaltyOn(c, !BoardCover.penaltyOn(c));
+        add(added, sponsor, shotMap, referee, penalty);
         Row swish = row("Swish as they move", true);
         swish.on = () -> BoardCover.swishOn(c);
         swish.words = () -> BoardCover.swishOn(c) ? "A swish each time the scorer, stats or an alert moves: out, every page, back in" : "Off · they move silently";

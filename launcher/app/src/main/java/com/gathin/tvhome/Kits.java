@@ -69,8 +69,24 @@ final class Kits {
         if (mine.length == 0 || !mine[0].known()) return null;
         if (!away || theirs.length == 0 || !theirs[0].known()) return mine[0];
         int against = theirs[0].body;
-        for (Kit k : mine) if (k.known() && LineupCard.distance(k.body, against) >= 120) return k;
+        for (Kit k : mine) if (k.known() && com.gathin.broadcast.Worn.distance(k.body, against) >= 120) return k;
         return mine[0];
+    }
+
+    /**
+     * The kit the club wears in this game: the one ESPN's line-ups name (named; this season's kit of that name from the
+     * article, where its colour agrees, for its sleeves, shorts and socks; else ESPN's colour alone), else as wearing
+     * has it. Null when neither is known.
+     */
+    static Kit worn(Kit[] mine, Kit[] theirs, boolean away, com.gathin.broadcast.Worn.Kit named) {
+        if (named == null) return wearing(mine, theirs, away);
+        int at = "home".equals(named.type) ? 0 : "away".equals(named.type) ? 1 : "third".equals(named.type) ? 2 : -1;
+        if (at >= 0 && at < mine.length && mine[at].known() && com.gathin.broadcast.Worn.distance(mine[at].body, named.body) < 120) return mine[at];
+        for (Kit k : mine) if (k.known() && com.gathin.broadcast.Worn.distance(k.body, named.body) < 60) return k;
+        Kit k = new Kit();
+        k.body = named.body;
+        k.sleeves = named.body;
+        return k;
     }
 
     /** "body,sleeves,shorts,socks;…" for each kit in the infobox, "" when it has none, null when it cannot be read. */

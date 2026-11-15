@@ -20,5 +20,6 @@ public class App extends Application {
         CrashNote.install(this);
         // Each part's start-up (the sync client, the alerts), set up in their own packages.
         Startup.run(this);
+        com.gathin.tvhomephone.sports.Espn.wornKept(this);   // the kits named for today's games
     }
 }

@@ -344,6 +344,11 @@ public final class ScoreBoard implements LiveAlerts.Listener {
 
     static void setReferee(Context c, boolean v) { prefs(c).edit().putBoolean("referee", v).apply(); }
 
+    /** The penalty card: a penalty given in the game, out of the board until its kick (on unless switched off). */
+    static boolean penaltyCard(Context c) { return prefs(c).getBoolean("penalty_card", true); }
+
+    static void setPenaltyCard(Context c, boolean v) { prefs(c).edit().putBoolean("penalty_card", v).apply(); }
+
     /** VAR explained: the check out of the board, then its decision with a WHY under it: on unless switched off. */
     static boolean varExplained(Context c) { return prefs(c).getBoolean("var_explained", true); }
 
@@ -473,6 +478,9 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         VarExplained.Why why;
         /** VAR explained: the game it is about. */
         String gameId;
+        /** The penalty card: out until its kick is in (PENALTY_MAX_MS at most), turning over to each of turns in order. */
+        boolean penalty;
+        Drop[] turns;
     }
 
     private final Runnable tick = new Runnable() {
@@ -1051,6 +1059,127 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         v.animate().alpha(0f).setDuration(300).withEndAction(() -> view.removeView(v)).start();
     }
 
+    // ---- the penalty card ---------------------------------------------------------------------------------------------
+
+    /** A penalty's card out at most this long; each of its pages this long before it turns over to the next. */
+    static final long PENALTY_MAX_MS = 180_000L, PENALTY_PAGE_MS = 6_000L;
+    /** Penalties carded, "game|minute|side": each comes out once. */
+    private static final java.util.Set<String> pensCarded = java.util.Collections.synchronizedSet(new java.util.HashSet<>());
+    /** A penalty given and its kick not yet read: the summary read every few seconds until then (penaltyFor's). */
+    private long penaltyUntil;
+    private String penaltyFor;
+    private Runnable penaltyTurn;
+
+    /**
+     * Off the main thread: the penalty given in the game whose kick is still to come, {its key ("" for none), its card's
+     * pages when new (records and pictures looked up), else null}; null when the card is off.
+     */
+    private Object[] penaltyLook(Game g, Espn.Summary s, int state) {
+        if (s == null || !penaltyCard(c) || state != Game.LIVE || small || !shows(c, FOOTBALL)) return null;
+        String hn = g.homeFull != null && !g.homeFull.isEmpty() ? g.homeFull : g.homeName;
+        String an = g.awayFull != null && !g.awayFull.isEmpty() ? g.awayFull : g.awayName;
+        com.gathin.broadcast.Penalty.Given pen = com.gathin.broadcast.Penalty.pending(s.penaltyLines, hn, an);
+        int side = com.gathin.broadcast.Penalty.side(pen, hn, an);
+        if (pen == null || side == 0) return new Object[]{"", null};
+        String key = g.id + "|" + pen.key();
+        if (!pensCarded.add(key)) return new Object[]{key, null};
+        if (pensCarded.size() > 60) pensCarded.clear();
+        com.gathin.broadcast.Penalty.Records r = Espn.penaltyRecords(g.slug, g.id, side == 1);
+        Drop[] pages = penaltyDrops(g, pen, side, r);
+        String team = side == 1 ? g.homeName : g.awayName, other = side == 1 ? g.awayName : g.homeName;
+        for (Drop p : pages) {
+            if (p == pages[0]) continue;
+            boolean taker = p.line.startsWith("Likely taker");
+            p.photo = face(taker ? r.taker : r.keeper, "", taker ? team : other);
+        }
+        return new Object[]{key, pages};
+    }
+
+    /**
+     * Pure: the penalty card's pages: PENALTY, the side it is for, who won it and who gave it away; then the likely
+     * taker's record and the keeper's, each where ESPN has it.
+     */
+    static Drop[] penaltyDrops(Game g, com.gathin.broadcast.Penalty.Given pen, int side, com.gathin.broadcast.Penalty.Records r) {
+        java.util.List<Drop> out = new java.util.ArrayList<>();
+        String team = side == 1 ? g.homeName : g.awayName;
+        out.add(penaltyPage(g, side, team == null ? "" : team, com.gathin.broadcast.Penalty.wonLine(pen)));
+        // The board's own game: its pop-outs show their line, not their title, so each name is in its line.
+        if (r != null && r.takerLine != null) {
+            String who = com.gathin.broadcast.Penalty.surname(r.taker);
+            out.add(penaltyPage(g, side, who, "Likely taker " + who + " · " + lower(r.takerLine)));
+        }
+        if (r != null && r.keeperLine != null) {
+            String who = com.gathin.broadcast.Penalty.surname(r.keeper);
+            out.add(penaltyPage(g, side == 1 ? 2 : 1, who, who + " in goal · " + lower(r.keeperLine)));
+        }
+        return out.toArray(new Drop[0]);
+    }
+
+    private static String lower(String s) {
+        return s == null || s.isEmpty() ? "" : Character.toLowerCase(s.charAt(0)) + s.substring(1);
+    }
+
+    private static Drop penaltyPage(Game g, int side, String title, String line) {
+        Drop d = new Drop();
+        d.chip = "PENALTY";
+        d.title = title;
+        d.line = line == null ? "" : line;
+        d.side = side;
+        d.penalty = true;
+        d.own = true;
+        d.gameId = g.id;
+        d.homeColour = OverlayBug.colour(g.homeColor, g.homeAlt);
+        d.awayColour = OverlayBug.colour(g.awayColor, g.awayAlt);
+        return d;
+    }
+
+    /** The penalty read (main thread): a new one's card out of the board; once its kick is in, the card goes. */
+    private void penaltyRead(Game g, String key, Drop[] pages) {
+        long now = System.currentTimeMillis();
+        if (!key.isEmpty()) {
+            penaltyFor = g.id;
+            penaltyUntil = now + PENALTY_MAX_MS;
+            if (pages != null && pages.length > 0) {
+                Drop d = pages[0];
+                d.turns = pages.length > 1 ? java.util.Arrays.copyOfRange(pages, 1, pages.length) : null;
+                for (Drop p : pages) {
+                    p.homeCrest = bug.homeCrest;
+                    p.awayCrest = bug.awayCrest;
+                }
+                drop(d);
+            }
+            return;
+        }
+        if (g.id.equals(penaltyFor)) penaltyTaken(g.id);
+    }
+
+    /** The kick is in (or a goal came first): the card goes, whether out or waiting its turn. */
+    private void penaltyTaken(String gameId) {
+        if (gameId.equals(penaltyFor)) {
+            penaltyFor = null;
+            penaltyUntil = 0;
+        }
+        drops.removeIf(q -> q.penalty && gameId.equals(q.gameId));
+        Drop out = strip.isOut() ? strip.drop() : null;
+        if (out != null && out.penalty && gameId.equals(out.gameId)) {
+            if (penaltyTurn != null) h.removeCallbacks(penaltyTurn);
+            hideDrop();
+        }
+    }
+
+    /** The card turning over to its next page every PENALTY_PAGE_MS, while it is still the one out. */
+    private void turnPenalty(Drop first, int i) {
+        if (penaltyTurn != null) h.removeCallbacks(penaltyTurn);
+        if (first.turns == null || i >= first.turns.length) return;
+        penaltyTurn = () -> {
+            Drop out = strip.isOut() ? strip.drop() : null;
+            if (!running || out == null || !out.penalty || first.gameId == null || !first.gameId.equals(out.gameId)) return;
+            strip.turnTo(first.turns[i]);
+            turnPenalty(first, i + 1);
+        };
+        h.postDelayed(penaltyTurn, PENALTY_PAGE_MS);
+    }
+
     /** At kick-off (its first ten minutes, once): the referee's name and country out beside the board as an alert. */
     private void refereeOut(Game g, FotMob.Match m) {
         if (!referee(c) || m.referee.isEmpty() || g.state != Game.LIVE || small || !shows(c, FOOTBALL)) return;
@@ -1248,7 +1377,7 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         // In play: every half minute, so a substitution is known soon after it is made; just after the channel showed one:
         // every few seconds until it is in the data (SubsTiming).
         long every = pensDue(g) ? PENS_READ_MS
-                : now < subsSeenUntil ? com.gathin.broadcast.SubsTiming.SEEN_READ_MS
+                : now < subsSeenUntil || now < penaltyUntil ? com.gathin.broadcast.SubsTiming.SEEN_READ_MS
                 : g.state == Game.LIVE || VarExplained.checking(g.id, now) ? Math.min(com.gathin.broadcast.SubsTiming.LIVE_READ_MS, readEvery(boardMinute))
                 : readEvery(boardMinute);
         if (g.id.equals(statsFor) && now - statsReadAt < every) return;
@@ -1269,6 +1398,8 @@ public final class ScoreBoard implements LiveAlerts.Listener {
                 // another time
             }
             Espn.Summary got = sum;
+            boolean recoloured = Espn.wornRead(c, id, got);
+            Object[] pen = penaltyLook(g, got, state);
             Map<String, String[]> by = got == null ? new HashMap<>() : statsOf(got, state, homeCode, awayCode);
             // FotMob's figures on top: expected goals, big chances, ratings, who is on top, its player of the match.
             FotMob.Match fm = null;
@@ -1280,6 +1411,8 @@ public final class ScoreBoard implements LiveAlerts.Listener {
             List<VarExplained.Seen> var = got == null ? null : VarExplained.scan(got.varLines);
             App.main.post(() -> {
                 statsReading = false;
+                if (recoloured) Espn.wornOn(g);   // the kits they wear in this game, from the next look on
+                if (pen != null) penaltyRead(g, (String) pen[0], (Drop[]) pen[1]);
                 if (read != null) fotmobRead(g, read);
                 if (var != null) varFromEspn(g, var);
                 if (got == null) {
@@ -2467,6 +2600,8 @@ public final class ScoreBoard implements LiveAlerts.Listener {
 
     private void drop(Drop d) {
         if (small) return;
+        // A goal in the game: its penalty waiting for the kick is taken (scored, or play went on).
+        if (d.key != null && penaltyFor != null && (d.own || penaltyFor.equals(d.gameId))) penaltyTaken(penaltyFor);
         drops.addLast(d);
         while (drops.size() > 4) drops.removeFirst();
         if (!dropping) next();
@@ -2524,24 +2659,46 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         if (changed != null) changed.run();
         boolean onBoard = boardUp();
         int bh = boardH();
+        // A player's picture standing up out of it (on any of its pages): the room above the strip for it.
+        boolean pictured = d.photo != null || d.subs != null;
+        if (d.turns != null) for (Drop t : d.turns) pictured |= t.photo != null;
         // On its own (no board up): where the board would be, round at both ends.
-        strip.place(bug.stripLook(), unit() * TEXT, onBoard ? nearTuck() : 0, onBoard && sideLeft, d.photo != null || d.subs != null ? head : 0);
+        strip.place(bug.stripLook(), unit() * TEXT, onBoard ? nearTuck() : 0, onBoard && sideLeft, pictured ? head : 0);
         strip.alone(!onBoard);
         int room = onBoard ? sideMax : Math.max(Math.round(unit() * 6), sideMax - tuck);
         // Two or more substitutions at once: the room beside the board, wider than an alert's, for every player on a page.
         boolean many = d.subs != null && Math.max(d.subs.on.length, d.subs.off.length) > 1;
         int w = strip.widthFor(d, bh, many ? Math.max(shortRoom(bh, room), Math.min(room, bh * 16)) : shortRoom(bh, room));
+        // The penalty card as wide as its widest page, so it turns over without changing size (the widest measured last:
+        // the strip keeps the last width it measured for its lines' runs).
+        if (d.turns != null) {
+            Drop widest = d;
+            for (Drop t : d.turns) {
+                int tw = strip.widthFor(t, bh, shortRoom(bh, room));
+                if (tw > w) {
+                    w = tw;
+                    widest = t;
+                }
+            }
+            w = strip.widthFor(widest, bh, shortRoom(bh, room));
+        }
         // Stride's strap under it: the alert at least as wide as the strap.
         boolean strap = sponsored(c);
         strip.strap(strap ? BoardSide.strapRoom(bh) : 0);
         if (strap) w = Math.min(room, Math.max(w, tuck + Math.round(com.gathin.broadcast.Stride.width(com.gathin.broadcast.Stride.strapHeight(bh)))));
-        beside(strip, w, d.photo != null || d.subs != null);
+        beside(strip, w, pictured);
         strip.show(d);
         // The minutes added: out until their half is over (keepAdded takes them in), not for a few seconds.
         if (d == standing) return;
         // VAR explained: a check stays out until its decision (CHECK_MAX_MS at most); a decision with its WHY under it.
         if (d.varCheck) {
             h.postDelayed(hide, VarExplained.CHECK_MAX_MS);
+            return;
+        }
+        // The penalty card: out until its kick is in (penaltyRead takes it in), turning over to the taker and the keeper.
+        if (d.penalty) {
+            turnPenalty(d, 0);
+            h.postDelayed(hide, PENALTY_MAX_MS);
             return;
         }
         if (d.why != null) {

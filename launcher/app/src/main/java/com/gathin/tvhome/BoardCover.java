@@ -1162,6 +1162,15 @@ final class BoardCover {
         prefs(c).edit().putBoolean("referee", on).apply();
     }
 
+    /** The penalty card: a penalty given in the board's own game, out of the board until its kick (on unless switched off). */
+    static boolean penaltyOn(Context c) {
+        return prefs(c).getBoolean("penalty_card", true);
+    }
+
+    static void setPenaltyOn(Context c, boolean on) {
+        prefs(c).edit().putBoolean("penalty_card", on).apply();
+    }
+
     /** Stride's "Sponsored by" strap under the alerts beside the board (the family's made-up sponsor): on unless switched off. */
     static boolean sponsorOn(Context c) {
         return prefs(c).getBoolean("sponsor", true);
@@ -3356,6 +3365,8 @@ final class BoardCover {
         // A goal is captioned once: from its card, or (no card come) from the scores.
         if (d.key != null && !captioned.add(d.key)) return;
         if (captioned.size() > 200) captioned.clear();
+        // A goal for the game: its penalty waiting for the kick is taken (scored, or play went on).
+        if (d.key != null && d.gameId != null && d.gameId.equals(penaltyFor)) penaltyTaken(d.gameId);
         // The board's own game: the board beside it says the clubs and the score already (VAR explained's tests say so).
         d.own = d.own || d.gameId != null && d.gameId.equals(game(c));
         // A goal's place in the scorer's season (the game's second, a hat-trick, his 3rd of the season), as a tag.
@@ -3426,6 +3437,11 @@ final class BoardCover {
         // VAR explained: a check stays out until its decision (CHECK_MAX_MS at most); a decision with its WHY under it.
         if (d != null && d.varCheck) {
             main().postDelayed(hideDropRun, VarExplained.CHECK_MAX_MS);
+            return;
+        }
+        // The penalty card: out until its kick is in (penaltyRead takes it in), PENALTY_MAX_MS at most.
+        if (d != null && d.penalty) {
+            main().postDelayed(hideDropRun, PENALTY_MAX_MS);
             return;
         }
         if (d != null && d.why != null) {
@@ -3862,6 +3878,38 @@ final class BoardCover {
     }
 
     /**
+     * adb only (--ez test_board_penalty true): the board, then a made-up penalty's card out of it (who won it, a likely
+     * taker and the keeper, invented players), taken in 20 s later as if its kick had come.
+     */
+    static void testPenalty(Context c) {
+        Context a = c.getApplicationContext();
+        test(a);
+        ScoresTicker.Game g = new ScoresTicker.Game();
+        g.id = "test-penalty";
+        g.homeName = "Whitebrook";
+        g.awayName = "Riverside";
+        g.homeColor = 0x1B458F;
+        g.awayColor = 0xC8102E;
+        com.gathin.broadcast.Penalty.Given pen = new com.gathin.broadcast.Penalty.Given();
+        pen.team = "Whitebrook";
+        pen.wonBy = "Sam Okafor";
+        pen.concededBy = "Theo Marsh";
+        pen.minute = "63'";
+        com.gathin.broadcast.Penalty.Records r = new com.gathin.broadcast.Penalty.Records();
+        r.taker = "Leo Brandt";
+        r.takerLine = com.gathin.broadcast.Penalty.takerLine(new int[]{4, 5, 0, 0}, null);
+        r.keeper = "Jonas Vale";
+        r.keeperLine = com.gathin.broadcast.Penalty.keeperLine(new int[]{0, 0, 6, 1}, null);
+        main().postDelayed(() -> {
+            if (bug == null) return;
+            BoardDrop.Drop d = penaltyDrop(g, pen, 1, r);
+            penaltyFor = g.id;
+            drop(a, d);
+        }, 2_500L);
+        main().postDelayed(() -> penaltyTaken(g.id), 22_500L);
+    }
+
+    /**
      * adb only (--ez test_board_var true): the board, then a VAR check out of it ("Checking a penalty", possible handball)
      * with its scan, and 8 s later its decision turning over in its place with the WHY folding down (made up).
      */
@@ -3996,6 +4044,137 @@ final class BoardCover {
     /** The stats moments shown, "game|moment": each once a game. */
     private static final java.util.Set<String> statsShown = new java.util.HashSet<>();
 
+    // ---- the penalty card ---------------------------------------------------------------------------------------------
+
+    /** A penalty's card out at most this long (its kick not read by then: it goes all the same). */
+    static final long PENALTY_MAX_MS = 180_000L;
+    /** Penalties carded, "game|minute|side": each comes out once. */
+    private static final java.util.Set<String> pensCarded = java.util.Collections.synchronizedSet(new java.util.HashSet<>());
+    /** A penalty given and its kick not yet read: the summary read every few seconds until then. */
+    private static long penaltyUntil;
+    /** The game whose penalty is waiting its kick (null: none). */
+    private static String penaltyFor;
+
+    /**
+     * Off the main thread: the penalty given in the board's own game whose kick is still to come, {its key ("" for
+     * none), its card when new (with its records and pictures looked up), else null}; null when the card is off.
+     */
+    private static Object[] penaltyLook(Context c, ScoresTicker.Game g, org.json.JSONObject summary) {
+        if (!penaltyOn(c) || !dropsOn(c) || g.state != 0) return null;
+        com.gathin.broadcast.Penalty.Given pen = com.gathin.broadcast.Penalty.pending(commentaryOf(summary), g.homeName, g.awayName);
+        int side = com.gathin.broadcast.Penalty.side(pen, g.homeName, g.awayName);
+        if (pen == null || side == 0) return new Object[]{"", null};
+        String key = g.id + "|" + pen.key();
+        if (!pensCarded.add(key)) return new Object[]{key, null};
+        if (pensCarded.size() > 60) pensCarded.clear();
+        com.gathin.broadcast.Penalty.Records r = com.gathin.broadcast.Penalty.records(summary, g.slug, side == 1, ScoresTicker::get);
+        Context a = c.getApplicationContext();
+        String team = side == 1 ? g.homeName : g.awayName, other = side == 1 ? g.awayName : g.homeName;
+        int kit = side == 1 ? g.homeColor : g.awayColor, theirKit = side == 1 ? g.awayColor : g.homeColor;
+        Bitmap takerFace = r.taker == null ? null : face(a, r.taker, null, team, kit);
+        Bitmap keeperFace = r.keeper == null ? null : face(a, r.keeper, null, other, theirKit);
+        BoardDrop.Drop d = penaltyDrop(g, pen, side, r);
+        // Each page's picture: none for who won it, then the taker's and the keeper's.
+        if (d.pages != null) {
+            d.photos = new Bitmap[d.pages.length];
+            for (int i = 1; i < d.pages.length; i++) d.photos[i] = i == 1 && r.takerLine != null ? takerFace : keeperFace;
+        }
+        AlertLog.note(c, "penalty to " + team + ": " + d.what);
+        return new Object[]{key, d};
+    }
+
+    /**
+     * Pure: the penalty card: PENALTY, the side it is for, who won it and who gave it away; then the likely taker's
+     * record and the keeper's, each a page of its own where ESPN has it.
+     */
+    static BoardDrop.Drop penaltyDrop(ScoresTicker.Game g, com.gathin.broadcast.Penalty.Given pen, int side,
+                                      com.gathin.broadcast.Penalty.Records r) {
+        BoardDrop.Drop d = new BoardDrop.Drop();
+        d.gameId = g.id;
+        d.chip = "PENALTY";
+        d.side = side;
+        d.penalty = true;
+        d.homeColour = BoardBug.colour(g.homeColor, g.homeAlt);
+        d.awayColour = BoardBug.colour(g.awayColor, g.awayAlt);
+        String team = side == 1 ? (g.homeName != null ? g.homeName : g.home) : (g.awayName != null ? g.awayName : g.away);
+        String won = com.gathin.broadcast.Penalty.wonLine(pen);
+        java.util.List<String[]> pages = new java.util.ArrayList<>();
+        pages.add(new String[]{team == null ? "" : team, won});
+        if (r != null && r.takerLine != null) pages.add(new String[]{com.gathin.broadcast.Penalty.surname(r.taker), "Likely taker · " + r.takerLine});
+        if (r != null && r.keeperLine != null) pages.add(new String[]{com.gathin.broadcast.Penalty.surname(r.keeper), "In goal · " + r.keeperLine});
+        d.title = pages.get(0)[0];
+        d.line = won;
+        if (pages.size() > 1) d.pages = pages.toArray(new String[0][]);
+        StringBuilder what = new StringBuilder("PENALTY ").append(team).append(won.isEmpty() ? "" : " (" + won + ")");
+        for (int i = 1; i < pages.size(); i++) what.append("; ").append(pages.get(i)[0]).append(": ").append(pages.get(i)[1]);
+        d.what = what.toString();
+        return d;
+    }
+
+    /**
+     * The penalty read (main thread): a new one's card out of the board, read every few seconds until its kick; once
+     * the kick is in (or the penalty is no more), its card goes.
+     */
+    private static void penaltyRead(Context c, ScoresTicker.Game g, String key, BoardDrop.Drop card) {
+        long now = System.currentTimeMillis();
+        if (!key.isEmpty()) {
+            penaltyFor = g.id;
+            penaltyUntil = now + PENALTY_MAX_MS;
+            if (card != null && g.id.equals(game(c)) && up(c)) {
+                card.homeCrest = homeCrest;
+                card.awayCrest = awayCrest;
+                card.own = true;
+                drop(c, card);
+            }
+            return;
+        }
+        if (g.id.equals(penaltyFor)) penaltyTaken(g.id);
+    }
+
+    /** The kick is in (or a goal for the game came first): its card goes, whether out or waiting its turn. */
+    static void penaltyTaken(String gameId) {
+        if (gameId == null) return;
+        if (gameId.equals(penaltyFor)) {
+            penaltyFor = null;
+            penaltyUntil = 0;
+        }
+        drops.removeIf(q -> q.penalty && gameId.equals(q.gameId));
+        BoardDrop.Drop out = drop == null ? null : drop.showing();
+        if (out != null && out.penalty && gameId.equals(out.gameId)) hideDrop();
+    }
+
+    /** Whether the kits kept from before (Worn's text in the "worn" preferences) are back. */
+    private static boolean wornBack;
+
+    /**
+     * The kits ESPN's line-ups name for the game (Worn), off the main thread: the board, its pop-outs, the shot map and
+     * the line-ups coloured by what the two sides wear, from the next look on. Kept, so a TV that restarts mid-game has
+     * them before its first read.
+     */
+    static void wornRead(Context c, ScoresTicker.Game g, org.json.JSONObject summary) {
+        wornKept(c);
+        if (com.gathin.broadcast.Worn.note(g.id, com.gathin.broadcast.Worn.of(summary, g.homeId))) {
+            int[] k = com.gathin.broadcast.Worn.pick(com.gathin.broadcast.Worn.get(g.id), g.homeColor, g.homeAlt, g.awayColor, g.awayAlt);
+            g.homeColor = k[0];
+            g.homeAlt = k[1];
+            g.awayColor = k[2];
+            g.awayAlt = k[3];
+            com.gathin.broadcast.Worn.Kit[] w = com.gathin.broadcast.Worn.get(g.id);
+            AlertLog.note(c, "kits for " + g.home + " v " + g.away + ": " + (w[0] == null ? "-" : w[0].label()) + ", "
+                    + (w[1] == null ? "-" : w[1].label()));
+        }
+        if (com.gathin.broadcast.Worn.unsaved()) {
+            c.getSharedPreferences("worn", Context.MODE_PRIVATE).edit().putString("games", com.gathin.broadcast.Worn.save()).apply();
+        }
+    }
+
+    /** The kits kept from before, back once. */
+    static void wornKept(Context c) {
+        if (wornBack) return;
+        wornBack = true;
+        com.gathin.broadcast.Worn.restore(c.getSharedPreferences("worn", Context.MODE_PRIVATE).getString("games", ""));
+    }
+
     /**
      * The game's match summary read again every two minutes while the board is up (off the main thread): its stats and
      * facts, and the added time put up in each half.
@@ -4006,7 +4185,7 @@ final class BoardCover {
         // checks: its decision comes out of the board soon after it is made.
         // In play: every half minute, so a substitution is known soon after it is made; just after the channel showed one:
         // every few seconds until it is in the data (SubsTiming).
-        long every = now < subsSeenUntil ? com.gathin.broadcast.SubsTiming.SEEN_READ_MS
+        long every = now < subsSeenUntil || now < penaltyUntil ? com.gathin.broadcast.SubsTiming.SEEN_READ_MS
                 : nearHalfsEnd(minuteOfClock(bug == null ? null : bug.look().clock)) || VarExplained.checking(g.id, now) || g.state == 0
                 ? com.gathin.broadcast.SubsTiming.LIVE_READ_MS : STATS_READ_MS;
         // A penalty shootout on (or near): every ten seconds, each kick on the strip under the board soon after.
@@ -4020,17 +4199,21 @@ final class BoardCover {
         io.execute(() -> {
             Map<String, String[]> got = null;
             List<VarExplained.Seen> var = null;
+            Object[] pen = null;
             try {
                 org.json.JSONObject summary = new org.json.JSONObject(ScoresTicker.get("https://site.api.espn.com/apis/site/v2/sports/soccer/"
                         + slug + "/summary?event=" + id));
                 announced.put(id, announcedOf(summary));
+                wornRead(c, g, summary);
                 got = statsOf(summary, g);
                 underRead(id, summary, g);
                 var = VarExplained.scan(commentaryOf(summary));
+                pen = penaltyLook(c, g, summary);
             } catch (Exception ignored) {
                 // read again in two minutes
             }
             List<VarExplained.Seen> varSeen = var;
+            Object[] penSeen = pen;
             // FotMob's figures on top: expected goals, big chances, ratings, who is on top, its player of the match.
             FotMob.Match fm = null;
             if (fotmob) {
@@ -4048,6 +4231,7 @@ final class BoardCover {
                 statsReading = false;
                 if (read != null) fotmobRead(c, g, read);
                 if (varSeen != null) varFromEspn(c, g, varSeen);
+                if (penSeen != null) penaltyRead(c, g, (String) penSeen[0], (BoardDrop.Drop) penSeen[1]);
                 if (by == null || by.isEmpty()) return;
                 statsBy = by;
                 statsFor = id;

@@ -748,6 +748,7 @@ final class AdBreak {
         try {
             String sum = espn(base + "/summary?event=" + g.id);
             if (sum != null) p.summary = new JSONObject(sum);
+            if (p.summary != null) com.gathin.broadcast.Worn.note(g.id, com.gathin.broadcast.Worn.of(p.summary, g.homeId));
         } catch (Exception ignored) {
             // the widgets from it are left out
         }
@@ -840,10 +841,12 @@ final class AdBreak {
         // Their kits today, as the line-up card has them.
         try {
             Kits.Kit[] hk = Kits.of(c, g.homeName != null ? g.homeName : g.home), ak = Kits.of(c, g.awayName != null ? g.awayName : g.away);
-            p.homeKit = Kits.wearing(hk, ak, false);
-            p.awayKit = Kits.wearing(ak, hk, true);
-            p.homeKitName = kitName(hk, p.homeKit);
-            p.awayKitName = kitName(ak, p.awayKit);
+            com.gathin.broadcast.Worn.Kit[] named = com.gathin.broadcast.Worn.get(g.id);
+            com.gathin.broadcast.Worn.Kit hn = named == null ? null : named[0], an = named == null ? null : named[1];
+            p.homeKit = Kits.worn(hk, ak, false, hn);
+            p.awayKit = Kits.worn(ak, hk, true, an);
+            p.homeKitName = hn != null ? hn.label() : kitName(hk, p.homeKit);
+            p.awayKitName = an != null ? an.label() : kitName(ak, p.awayKit);
         } catch (RuntimeException ignored) {
             // no kits
         }

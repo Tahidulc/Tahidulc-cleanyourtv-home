@@ -539,7 +539,13 @@ final class ScoresTicker {
         g.awayAlt = color(away.getJSONObject("team").optString("alternateColor", ""));
         g.homeColor = color(home.getJSONObject("team").optString("color", ""));
         g.awayColor = color(away.getJSONObject("team").optString("color", ""));
-        if (g.awayColor == g.homeColor) g.awayColor = color(away.getJSONObject("team").optString("alternateColor", ""));
+        // The kits they wear in this game where ESPN's line-ups have named them (Worn), else the clubs' colours, the
+        // away side's second when they clash.
+        int[] kit = com.gathin.broadcast.Worn.pick(com.gathin.broadcast.Worn.get(g.id), g.homeColor, g.homeAlt, g.awayColor, g.awayAlt);
+        g.homeColor = kit[0];
+        g.homeAlt = kit[1];
+        g.awayColor = kit[2];
+        g.awayAlt = kit[3];
         g.awayLogo = away.getJSONObject("team").optString("logo", null);
         g.homeScore = home.optString("score", "0");
         g.awayScore = away.optString("score", "0");
@@ -671,6 +677,7 @@ final class ScoresTicker {
             JSONObject summary = new JSONObject(get("https://site.api.espn.com/apis/site/v2/sports/soccer/" + g.slug
                     + "/summary?event=" + g.id));
             JSONArray rosters = summary.optJSONArray("rosters");
+            com.gathin.broadcast.Worn.note(g.id, com.gathin.broadcast.Worn.of(rosters, g.homeId));
             Side home = null, away = null;
             for (int i = 0; rosters != null && i < rosters.length(); i++) {
                 JSONObject r = rosters.getJSONObject(i);
