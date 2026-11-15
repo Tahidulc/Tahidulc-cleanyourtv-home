@@ -4110,6 +4110,8 @@ final class BoardCover {
     private static Map<String, String[]> statsBy = new HashMap<>();
     private static String statsFor = "";
     private static long statsReadAt, goalShownAt;
+    /** When a failed read of the game's summary was last put in the log (every ten minutes at most). */
+    private static volatile long summaryFailNoted;
     private static boolean statsReading;
     /** The stats moments shown, "game|moment": each once a game. */
     private static final java.util.Set<String> statsShown = new java.util.HashSet<>();
@@ -4284,8 +4286,13 @@ final class BoardCover {
                 lines = commentaryOf(summary);
                 var = VarExplained.scan(lines);
                 pen = penaltyLook(c, g, summary);
-            } catch (Exception ignored) {
-                // read again in two minutes
+            } catch (Exception e) {
+                // Read again soon. Said in the log now and then: the penalty card, VAR's checks and the stats need it.
+                long at = System.currentTimeMillis();
+                if (at - summaryFailNoted > 10 * 60_000L) {
+                    summaryFailNoted = at;
+                    AlertLog.note(c, "board's game summary not read from ESPN (" + e.getClass().getSimpleName() + "): no penalty card, VAR or stats from it");
+                }
             }
             List<VarExplained.Seen> varSeen = var;
             Object[] penSeen = pen;

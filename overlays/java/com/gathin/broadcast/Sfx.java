@@ -30,6 +30,20 @@ public final class Sfx {
     /** Its loudest moment, in ms from its start: put on the new score's pop. */
     public static final long SCORE_PEAK_MS = 500;
     /**
+     * The Scoreboard Lab moments' own sounds (overlays/tools/lab_synth.py, made from maths, nobody's audio): the net
+     * shivering after a goal, the scorer's crest bursting, the score rolling up like an odometer, the new digit
+     * flipping in, the red card swinging up, VAR checking, and a substitution's two players crossing over.
+     */
+    public static final String NET = "lab-net", BURST = "lab-burst", ROLL = "lab-roll", FLIP = "lab-flip", CARD = "lab-card",
+            VAR = "lab-var", SWAP = "lab-swap";
+    /** Every Lab sound at once, to warm them ahead of their first moment. */
+    public static final String[] LAB = {NET, BURST, ROLL, FLIP, CARD, VAR, SWAP};
+    /**
+     * How loud the Lab's sounds are played: under the tab swish (0.7), and each is made a few dB quieter than it too, so
+     * they sit under the commentary and never get in the way.
+     */
+    public static final float QUIET = 0.6f;
+    /**
      * The goal sounds over the board's goal animation (goal-KEY.ogg), and their names, in the order offered. "swoosh" is
      * the family's own pick (a stock swoosh they supplied), cut so its loudest moment lands as the GOAL band does.
      */
