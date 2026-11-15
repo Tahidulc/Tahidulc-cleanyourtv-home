@@ -1762,7 +1762,8 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         List<String[]> fresh = new java.util.ArrayList<>();
         for (String[] e : m.events) {
             if (!"Substitution".equals(e[0])) continue;
-            if (!subsSeen.add(g.id + "|" + e[1] + "|" + e[4]) || first) continue;
+            // known by its two players, never the minute (the data can put it right a minute later)
+            if (!subsSeen.add(com.gathin.broadcast.SubsTiming.key(g.id, e)) || first) continue;
             if (subsSeen.size() > 400) subsSeen.clear();
             if (!own || small || !subsOn(c) || !shows(c, FOOTBALL)) continue;
             fresh.add(e);

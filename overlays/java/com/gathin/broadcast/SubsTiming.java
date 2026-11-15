@@ -68,4 +68,22 @@ public final class SubsTiming {
         }
         return on && off || in && out;
     }
+
+    /**
+     * Pure: what a substitution is known by in a game, so it comes out once (the event as FotMob's is read: {type,
+     * minute, home, one player, their id, the other, their id}): its two players whichever way round, each by id (else
+     * by name), and never its minute, which the data can put right a minute later (20' then 21' had brought the same
+     * change out twice).
+     */
+    public static String key(String gameId, String[] e) {
+        String a = who(e, 3, 4), b = who(e, 5, 6);
+        return gameId + "|sub|" + (a.compareTo(b) <= 0 ? a + "|" + b : b + "|" + a);
+    }
+
+    private static String who(String[] e, int name, int id) {
+        String i = e != null && e.length > id && e[id] != null ? e[id].trim() : "";
+        if (!i.isEmpty() && !"0".equals(i)) return "#" + i;
+        String n = e != null && e.length > name && e[name] != null ? e[name] : "";
+        return n.toLowerCase(Locale.ROOT).replaceAll("[^\\p{L}\\p{N}]+", "");
+    }
 }

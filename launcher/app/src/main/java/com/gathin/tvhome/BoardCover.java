@@ -4289,7 +4289,10 @@ final class BoardCover {
         }
     }
 
-    /** The substitutions seen, "game|minute|who came on": each slides out once, those before the board came up never. */
+    /**
+     * The substitutions seen, by their two players (SubsTiming.key, never the minute, which the data can put right a
+     * minute later): each slides out once, those before the board came up never.
+     */
     private static final java.util.Set<String> subsSeen = new java.util.HashSet<>();
     private static final java.util.Set<String> subsGames = new java.util.HashSet<>();
 
@@ -4310,8 +4313,7 @@ final class BoardCover {
         java.util.List<String[]> fresh = new java.util.ArrayList<>();
         for (String[] e : m.events) {
             if (!"Substitution".equals(e[0])) continue;
-            String key = g.id + "|" + e[1] + "|" + e[4];
-            if (!subsSeen.add(key) || first) continue;
+            if (!subsSeen.add(com.gathin.broadcast.SubsTiming.key(g.id, e)) || first) continue;
             if (subsSeen.size() > 400) subsSeen.clear();
             if (!own || !dropsOn(c) || !subsOn(c)) continue;
             fresh.add(e);

@@ -50,4 +50,23 @@ public class SubsTimingTest {
         // A surname that starts with the letters is not the word.
         assertFalse(SubsTiming.onScreen("SUBOTIC 12'"));
     }
+
+    @Test
+    public void aSubstitutionIsKnownByItsTwoPlayersNotItsMinute() {
+        String[] first = {"Substitution", "20", "0", "Leo Brandt", "4101", "Sam Okafor", "4102"};
+        // the data puts the minute right a minute later: the same change, not a second one
+        String[] again = {"Substitution", "21", "0", "Leo Brandt", "4101", "Sam Okafor", "4102"};
+        assertEquals(SubsTiming.key("g1", first), SubsTiming.key("g1", again));
+        // its two players the other way round: the same change
+        String[] swapped = {"Substitution", "21", "0", "Sam Okafor", "4102", "Leo Brandt", "4101"};
+        assertEquals(SubsTiming.key("g1", first), SubsTiming.key("g1", swapped));
+        // another change, another game: not the same
+        String[] other = {"Substitution", "20", "0", "Jay Hollis", "4103", "Sam Okafor", "4102"};
+        assertFalse(SubsTiming.key("g1", first).equals(SubsTiming.key("g1", other)));
+        assertFalse(SubsTiming.key("g1", first).equals(SubsTiming.key("g2", first)));
+        // no ids: by name, its case and marks aside
+        String[] named = {"Substitution", "20", "0", "Leo BRANDT", "", "Sam O'Kafor", ""};
+        String[] named2 = {"Substitution", "21", "0", "leo brandt", "", "sam okafor", ""};
+        assertEquals(SubsTiming.key("g1", named), SubsTiming.key("g1", named2));
+    }
 }
