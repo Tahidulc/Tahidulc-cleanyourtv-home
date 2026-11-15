@@ -184,6 +184,25 @@ final class MatchExtras {
         main().post(() -> ScoreCard.show(s, d));
     }
 
+    /**
+     * The sky over the ground now for the board's weather touch (BoardFx.skyOfWmo: Open-Meteo's weather code, day or
+     * night, the wind), where FotMob gives no weather for the game; null when it can't be read (io thread).
+     */
+    static com.gathin.broadcast.BoardFx.Sky skyNow(Context c, ScoresTicker.Game g) {
+        if (c == null || g == null) return null;
+        try {
+            double[] at = place(c, g.venueCity, g.venueCountry);
+            if (at == null) return null;
+            JSONObject json = new JSONObject(ScoresTicker.get("https://api.open-meteo.com/v1/forecast?latitude=" + at[0] + "&longitude=" + at[1]
+                    + "&current=weather_code,wind_speed_10m,is_day&wind_speed_unit=mph&timezone=auto"));
+            JSONObject now = json.getJSONObject("current");
+            return com.gathin.broadcast.BoardFx.skyOfWmo(now.optInt("weather_code"), now.optInt("is_day", 1) == 1,
+                    now.optDouble("wind_speed_10m", 0));
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
     /** The ground's weather now as the kick-off strap says it ("9° · light rain"), "" when it can't be read (io thread). */
     static String weatherNow(Context c, ScoresTicker.Game g) {
         if (c == null || g == null) return "";

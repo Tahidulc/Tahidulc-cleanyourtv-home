@@ -121,11 +121,21 @@ abstract class BoardSide extends View {
      */
     protected void swish() {
         if (!BoardCover.swishOn(getContext())) return;
+        com.gathin.broadcast.Sfx.play(getContext(), com.gathin.broadcast.Sfx.SWISH, panNow(), 0.7f);
+    }
+
+    /** Where it is across the screen, as a sound's pan (-0.6 left to 0.6 right). */
+    protected float panNow() {
         int[] at = new int[2];
         getLocationOnScreen(at);
         int sw = getResources().getDisplayMetrics().widthPixels;
-        float pan = sw > 0 ? Math.max(-0.6f, Math.min(0.6f, ((at[0] + getWidth() / 2f) / sw * 2f - 1f) * 0.6f)) : 0f;
-        com.gathin.broadcast.Sfx.play(getContext(), com.gathin.broadcast.Sfx.SWISH, pan, 0.7f);
+        return sw > 0 ? Math.max(-0.6f, Math.min(0.6f, ((at[0] + getWidth() / 2f) / sw * 2f - 1f) * 0.6f)) : 0f;
+    }
+
+    /** A Scoreboard Lab sound for what it shows, quietly (Sfx.QUIET): only while it is up, not with the swish switched off. */
+    protected void lab(String name) {
+        if (!BoardLab.heard(isAttachedToWindow() && isShown(), getAlpha(), BoardCover.swishOn(getContext()))) return;
+        com.gathin.broadcast.Sfx.play(getContext(), name, panNow(), com.gathin.broadcast.Sfx.QUIET);
     }
 
     /** Back in under the board; then() once it is away (at once if it is): waiting ones run in turn. */

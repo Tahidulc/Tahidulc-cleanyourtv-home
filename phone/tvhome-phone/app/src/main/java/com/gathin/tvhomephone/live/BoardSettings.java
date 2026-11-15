@@ -233,6 +233,13 @@ public final class BoardSettings {
         row(c, col, c.getString(R.string.live69_pens), ScoreBoard.pensOn(c), on -> ScoreBoard.setPensOn(c, on));
         row(c, col, c.getString(R.string.live69_milestones), ScoreBoard.milestonesOn(c), on -> ScoreBoard.setMilestonesOn(c, on));
         col.addView(com.gathin.tvhomephone.sports.Ui.text(c, c.getString(R.string.live69_milestones_line), 13, c.getColor(R.color.text_dim), false));
+        // The stats beside the board: a switch for each (the Scoreboard Lab's with the board's own, as the TV's), all on at first.
+        col.addView(sub(c, c.getString(R.string.lab_stats_title)));
+        col.addView(com.gathin.tvhomephone.sports.Ui.text(c, c.getString(R.string.lab_stats_line), 13, c.getColor(R.color.text_dim), false));
+        for (int i = 0; i < BoardLab.KEYS.length; i++) {
+            String key = BoardLab.KEYS[i];
+            row(c, col, c.getString(BoardLab.NAMES[i]), ScoreBoard.statOn(c, key), on -> ScoreBoard.setStatOn(c, key, on));
+        }
         row(c, col, c.getString(R.string.live4_alerts_football), ScoreBoard.shows(c, ScoreBoard.FOOTBALL), on -> ScoreBoard.setShows(c, ScoreBoard.FOOTBALL, on));
         row(c, col, c.getString(R.string.live4_alerts_sport), ScoreBoard.shows(c, ScoreBoard.SPORT), on -> ScoreBoard.setShows(c, ScoreBoard.SPORT, on));
         row(c, col, c.getString(R.string.live4_alerts_news), ScoreBoard.shows(c, ScoreBoard.NEWS), on -> ScoreBoard.setShows(c, ScoreBoard.NEWS, on));

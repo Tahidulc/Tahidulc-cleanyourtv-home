@@ -66,6 +66,24 @@ public final class FotMob {
         String referee = "", refereeCountry = "";
         /** Whether FotMob writes a live commentary in English for it (its VAR checks are in that, see ticker()). */
         boolean ticker;
+        /**
+         * The ground's weather as FotMob has it now (content.weather, read again with every read): its weather.com icon
+         * (-1: FotMob gives none), the rain and snow falling, the wind in km/h, the cloud in %, when it was last updated.
+         */
+        int weatherIcon = -1, cloudCover;
+        double rain, snow, windKmh;
+        String weatherAt = "";
+        /** The head to head (content.h2h) and each side's last results (matchFacts.teamForm), as FotMob gives them; null without. */
+        JSONObject h2h;
+        JSONArray homeForm, awayForm;
+        /** The shot map's shots as FotMob gives them (content.shotmap.shots), for a big save or a great finish; null without. */
+        JSONArray shotsRaw;
+    }
+
+    /** Pure: the sky over the ground from a read's weather (BoardFx.sky), or null when FotMob gave none. */
+    static com.gathin.broadcast.BoardFx.Sky sky(Match m) {
+        if (m == null || m.weatherIcon < 0) return null;
+        return com.gathin.broadcast.BoardFx.sky(m.weatherIcon, m.rain, m.snow, m.windKmh, m.cloudCover);
     }
 
     /** Pure: FotMob's VAR event as VarExplained reads it ({minute, player, key, words, second key}); null for none. */
@@ -269,6 +287,26 @@ public final class FotMob {
         JSONObject c = d.optJSONObject("content");
         if (c == null) return m;
         m.ticker = hasEnglish(c.optJSONObject("liveticker"));
+        // The ground's weather now, for the board's weather touch.
+        JSONObject wx = c.optJSONObject("weather");
+        if (wx != null && wx.has("iconCode")) {
+            m.weatherIcon = wx.optInt("iconCode", -1);
+            m.rain = wx.optDouble("precipitation", 0);
+            m.snow = wx.optDouble("snow", 0);
+            m.windKmh = wx.optDouble("windSpeed", 0);
+            m.cloudCover = wx.optInt("cloudCover", 0);
+            m.weatherAt = wx.optString("lastUpdated", "");
+        }
+        // What MatchStats works its stats out from: the meetings, each side's last results, the shots as given.
+        m.h2h = c.optJSONObject("h2h");
+        JSONObject map = c.optJSONObject("shotmap");
+        m.shotsRaw = map == null ? null : map.optJSONArray("shots");
+        JSONObject mf = c.optJSONObject("matchFacts");
+        JSONArray tf = mf == null ? null : mf.optJSONArray("teamForm");
+        if (tf != null) {
+            m.homeForm = tf.optJSONArray(0);
+            m.awayForm = tf.optJSONArray(1);
+        }
         m.shots.addAll(com.gathin.broadcast.ShotMap.parse(c, m.homeTeamId));
         JSONObject info = c.optJSONObject("matchFacts") == null ? null : c.optJSONObject("matchFacts").optJSONObject("infoBox");
         JSONObject ref = info == null ? null : info.optJSONObject("Referee");

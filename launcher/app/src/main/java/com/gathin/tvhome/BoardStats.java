@@ -18,7 +18,8 @@ import java.util.regex.Pattern;
  * the next turning up into its place, then back in under the board. Each is its name and its figures: each side's
  * number with a bar between them split in the clubs' colours by their share ("bar"); two figures with a line between
  * them, as places in the table ("text"); each side's last five results as coloured squares ("form"); or one line, as
- * the player of the match ("one"). Beside a taller board (Stacked, Card) the name sits over the figures.
+ * the player of the match ("one"); or the momentum's wave drawn in from the left, the side on top after it ("wave",
+ * the Scoreboard Lab's). Beside a taller board (Stacked, Card) the name sits over the figures.
  */
 final class BoardStats extends BoardSide {
     /** How long each stat shows. */
@@ -35,6 +36,9 @@ final class BoardStats extends BoardSide {
     private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG), text = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final RectF r = new RectF();
     private final Runnable nextOne = this::next;
+    /** The Lab's momentum wave (BoardFx), and when the stat out now came in (uptime: the wave draws in from then). */
+    private final com.gathin.broadcast.BoardFx fx = new com.gathin.broadcast.BoardFx();
+    private long itemAt;
     /** Checks only: where each word, bar and square was drawn (null: not kept). */
     private java.util.List<RectF> drawn;
 
@@ -95,13 +99,46 @@ final class BoardStats extends BoardSide {
         items.addAll(list);
         at = 0;
         turn = 1f;
+        itemAt = android.os.SystemClock.uptimeMillis() + SLIDE_MS;
         slideOut();
-        postDelayed(nextOne, SLIDE_MS + EACH_MS);
+        postDelayed(nextOne, SLIDE_MS + eachMs(items.get(0)));
     }
 
     /** Pure: how long n stats take, out, each in turn and back in. */
     static long showFor(int n) {
         return 2 * SLIDE_MS + n * EACH_MS + Math.max(0, n - 1) * TURN_MS;
+    }
+
+    /** Pure: how long a stat shows: the momentum's wave long enough to draw in and be read, any other EACH_MS. */
+    static long eachMs(String[] s) {
+        return s != null && "wave".equals(kind(s)) ? com.gathin.broadcast.BoardFx.WAVE_MS : EACH_MS;
+    }
+
+    /** Pure: the momentum's values for a wave stat, {minute, value}, as "minute:value" by commas ("21:35,22:-12"). */
+    static String waveCode(List<int[]> values) {
+        StringBuilder b = new StringBuilder();
+        for (int[] v : values == null ? new ArrayList<int[]>() : values) {
+            if (v == null || v.length < 2) continue;
+            if (b.length() > 0) b.append(',');
+            b.append(v[0]).append(':').append(v[1]);
+        }
+        return b.toString();
+    }
+
+    /** Pure: the values back from waveCode (none it cannot read). */
+    static List<int[]> waveValues(String code) {
+        List<int[]> out = new ArrayList<>();
+        if (code == null || code.isEmpty()) return out;
+        for (String part : code.split(",")) {
+            int c = part.indexOf(':');
+            if (c <= 0) continue;
+            try {
+                out.add(new int[]{Integer.parseInt(part.substring(0, c).trim()), Integer.parseInt(part.substring(c + 1).trim())});
+            } catch (NumberFormatException ignored) {
+                // left out
+            }
+        }
+        return out;
     }
 
     /** Previews: shown at once, this far out, on this stat. */
@@ -111,6 +148,7 @@ final class BoardStats extends BoardSide {
         items.addAll(list);
         at = Math.max(0, Math.min(index, items.size() - 1));
         turn = 1f;
+        itemAt = 0;
         outNow(howFar);
     }
 
@@ -122,6 +160,7 @@ final class BoardStats extends BoardSide {
         }
         at++;
         swish();
+        itemAt = android.os.SystemClock.uptimeMillis() + TURN_MS / 2;
         if (turning != null) turning.cancel();
         ValueAnimator va = ValueAnimator.ofFloat(0f, 1f);
         va.setDuration(TURN_MS);
@@ -131,7 +170,7 @@ final class BoardStats extends BoardSide {
         });
         turning = va;
         va.start();
-        postDelayed(nextOne, TURN_MS + EACH_MS);
+        postDelayed(nextOne, TURN_MS + eachMs(items.get(at)));
     }
 
     @Override protected void onFolding() {
@@ -190,8 +229,15 @@ final class BoardStats extends BoardSide {
         return n == 0 ? 0 : n * unit * 0.44f + (n - 1) * unit * 0.06f;
     }
 
+    /** The wave's own width (its label after it). */
+    private float waveW() {
+        return unit * 3.4f;
+    }
+
     private float groupW(String[] s, boolean two) {
         switch (kind(s)) {
+            case "wave":
+                return waveW() + unit * 0.3f + valueW(s[2], two);
             case "one":
                 return valueW(s[1], two);
             case "form":
@@ -226,6 +272,10 @@ final class BoardStats extends BoardSide {
         float[] o = turnParts(turn);
         if (o[1] > 0f && i > 0) item(cv, items.get(i - 1), h, -h * 0.5f * o[0], o[1]);
         if (o[3] > 0f) item(cv, items.get(i), h, h * 0.5f * o[2], o[3]);
+        // The momentum's wave drawing in: drawn again until it is all there.
+        if ("wave".equals(kind(items.get(i))) && itemAt > 0 && android.os.SystemClock.uptimeMillis() - itemAt < com.gathin.broadcast.BoardFx.WAVE_IN) {
+            postInvalidateOnAnimation();
+        }
     }
 
     /**
@@ -272,6 +322,16 @@ final class BoardStats extends BoardSide {
             case "one":
                 words(cv, s[1], x, y, rowH, vs, 0f, look.ink, a, Paint.Align.LEFT);
                 return;
+            case "wave": {
+                // Who has been on top, minute by minute: the line drawn in from the left (the home side above, the away
+                // side below, each lightly in its colour), then which side it says is on top.
+                float drawnBy = itemAt > 0 ? com.gathin.broadcast.BoardFx.waveDrawn(android.os.SystemClock.uptimeMillis() - itemAt) : 1f;
+                fx.wave(cv, x, y + rowH * 0.16f, x + waveW(), y + rowH * 0.84f, waveValues(s[1]), drawnBy, barColour(true), barColour(false),
+                        look.ink, a / 255f);
+                if (drawn != null) drawn.add(new RectF(x, y + rowH * 0.16f, x + waveW(), y + rowH * 0.84f));
+                words(cv, s[2], x + waveW() + unit * 0.3f, y, rowH, vs, 0f, look.ink, a, Paint.Align.LEFT);
+                return;
+            }
             case "form":
                 float after = form(cv, s[1], x, y, rowH, a);
                 form(cv, s[2], after + unit * 0.4f, y, rowH, a);

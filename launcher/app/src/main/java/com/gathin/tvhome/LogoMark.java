@@ -33,7 +33,9 @@ final class LogoMark extends View {
         EVENT_WHITE("Event, white"), COMPETITION("The competition's logo"),
         GLASS("Glass, with the mark"), MARK("Mark only"), PLAIN("Plain"), BROADCAST("Broadcast, see-through"),
         BROADCAST_BOARD("Broadcast, scoreboard colours"), SPORTS("Whitebrook Road Sports"),
-        SPORTS_STACKED("Whitebrook Road Sports, stacked"), STYLES("Whitebrook Road styles");
+        SPORTS_STACKED("Whitebrook Road Sports, stacked"), STYLES("Whitebrook Road styles"),
+        /** The Scoreboard Lab's five, to go with its boards (LabMarks draws them; named as LabMarks.Look names them). */
+        FLOODLIGHT("Floodlight"), SPLITKIT("Split kit"), TICKER("Ticker"), DUO("Duo pills"), LED("Stadium LED");
 
         /** Whitebrook Road Sports' wordmark (SportsMark): what is on in it, see-through over the picture if chosen. */
         boolean sports() {
@@ -46,11 +48,16 @@ final class LogoMark extends View {
         }
 
         /**
-         * Drawn whole over the cover by a renderer of its own (the wordmark, Event, the 54 styles): no LIVE foot, no block
-         * beside, see-through over the picture if chosen.
+         * Drawn whole over the cover by a renderer of its own (the wordmark, Event, the 54 styles, the Scoreboard Lab's
+         * five): no LIVE foot, no block beside, see-through over the picture if chosen.
          */
         boolean own() {
-            return sports() || event() || this == STYLES;
+            return sports() || event() || this == STYLES || lab() != null;
+        }
+
+        /** The Scoreboard Lab's logo it is (LabMarks draws it, on a plate of its own), null for the others. */
+        com.gathin.broadcast.LabMarks.Look lab() {
+            return ordinal() > STYLES.ordinal() ? com.gathin.broadcast.LabMarks.Look.of(name()) : null;
         }
 
         /** Laid out as a channel's own logo: three rows, taller than the others. */
@@ -139,6 +146,8 @@ final class LogoMark extends View {
     private int tintKind = -1;
     /** Whitebrook Road styles: the renderer and the style chosen (0 to BrandStyles.COUNT - 1). */
     private BrandStyles brand;
+    /** The Scoreboard Lab's logos (made the first time one is drawn). */
+    private com.gathin.broadcast.LabMarks labMarks;
     private int styleNo;
     /** Event's name for the channel ("main event"; "" for none), and the channel's name it was read from. */
     private String sub = "", subFrom;
@@ -543,9 +552,42 @@ final class LogoMark extends View {
             brand.draw(cv, styleNo, p, p, w - 2 * p, h - 2 * p, !nameOnly, tag, !clear && !frosted);
             return;
         }
+        com.gathin.broadcast.LabMarks.Look lab = look.lab();
+        if (lab != null) {
+            // Its own plate over the cover (the channel's logo under it never shows), in from the edge when see-through.
+            float p = clear ? in : inset;
+            labLook(cv, lab, p, p, w - 2 * p, h - 2 * p);
+            return;
+        }
         if (sportsMark == null) sportsMark = new SportsMark(getContext());
         sportsMark.draw(cv, in, in, w - 2 * in, h - 2 * in, look == Look.SPORTS_STACKED, !nameOnly, what, tag, !clear && !frosted,
                 compOn ? comp : null);
+    }
+
+    /**
+     * A Scoreboard Lab logo (LabMarks) in the box bw by bh at (x, y): the family's name with SPORTS (alone for a general
+     * channel) and the picture's tag, as tall as the box and as wide; where its words want more room than the box has,
+     * the tag goes first, then it is drawn less tall, in the middle of the box.
+     */
+    private void labLook(Canvas cv, com.gathin.broadcast.LabMarks.Look l, float x, float y, float bw, float bh) {
+        if (bw <= 2 || bh <= 2) return;
+        if (labMarks == null) labMarks = new com.gathin.broadcast.LabMarks(getContext());
+        String sports = nameOnly ? "" : "SPORTS", t = tag;
+        float natural = labMarks.width(l, bh, NAME, sports, t);
+        if (natural > bw && !t.isEmpty()) {
+            t = "";
+            natural = labMarks.width(l, bh, NAME, sports, t);
+        }
+        float lh = labHeight(natural, bw, bh);
+        cv.save();
+        cv.translate(x, y + (bh - lh) / 2f);
+        labMarks.draw(cv, l, bw, lh, NAME, sports, t);
+        cv.restore();
+    }
+
+    /** Pure: how tall a Lab logo is drawn in a box bw by bh, natural its width when as tall as the box: the box's height, or less to fit. */
+    static float labHeight(float natural, float bw, float bh) {
+        return natural <= bw || natural <= 0f ? bh : bh * bw / natural;
     }
 
     /**

@@ -375,6 +375,13 @@ public final class ScoreBoard implements LiveAlerts.Listener {
 
     static void setMilestonesOn(Context c, boolean v) { prefs(c).edit().putBoolean("milestones", v).apply(); }
 
+    /** One of the board's stats (BoardLab.KEYS, by its key, as the TV's) shown: on unless switched off ("": no switch). */
+    static boolean statOn(Context c, String key) {
+        return key == null || key.isEmpty() || prefs(c).getBoolean("stat_" + key, true);
+    }
+
+    static void setStatOn(Context c, String key, boolean on) { prefs(c).edit().putBoolean("stat_" + key, on).apply(); }
+
     /** Pure: the switch group an alert's kind is under. */
     static String group(String kind) {
         String g = Kinds.group(kind);
@@ -918,6 +925,8 @@ public final class ScoreBoard implements LiveAlerts.Listener {
             Game g = screen.game(now);
             if (g != null) {
                 shown = g;
+                // Its goals' set, half time's face and the shootout's place are the game's own (BoardFx.pick).
+                bug.game(g.id);
                 if (channelGame) src.shown(g, now - src.behindMs(true));
                 l = look(g, screen.boardClock(now));
                 // From the half's last minute, the added time put up beside the clock (the channel's own when it shows it).
@@ -936,6 +945,7 @@ public final class ScoreBoard implements LiveAlerts.Listener {
                     int side = g.homeScore > lastHome && lastHome >= 0 ? 1 : g.awayScore > lastAway && lastAway >= 0 ? 2 : 0;
                     if (side > 0) {
                         play.goal(now);
+                        labGoal(g, side, l.clock, lastHome, lastAway);
                         bug.goal(side);
                         com.gathin.broadcast.Sfx.goal(c, PlayerIntro.goalSound(c));
                         // the scorer's shirt out of the board and round to his name and number (its own switch)
@@ -960,7 +970,7 @@ public final class ScoreBoard implements LiveAlerts.Listener {
                         ftAt = now;
                         if (changed != null) changed.run();
                     }
-                    if (ftGone(now - ftAt, dropping || lineups.isOut() || under.mode() == BoardUnder.PENS || mapView != null)) l = null;
+                    if (ftGone(now - ftAt, dropping || lineups.isOut() || under.mode() == BoardUnder.PENS || bug.pensShown() || mapView != null)) l = null;
                 } else if (id.equals(ftFor)) {
                     ftFor = "";
                 }
@@ -985,7 +995,10 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         }
         if (l == null && preview) l = sample();
         // A test from the player's options with nothing on the board: its made-up game, until what it put out is back in.
-        if (l == null && testing(now)) l = look(testGame, null);
+        if (l == null && testing(now)) {
+            l = look(testGame, null);
+            if (testGame != null) bug.game(testGame.id);
+        }
         if (l != null && !l.f1 && now < addedUntil) testAdded(l, now);
         // A replay on the channel (its own scoreboard gone, BugCover): away the same way, never in its own goal moment.
         boolean replay = replayAway && l != null && !l.f1 && bug.bandLeft(now) <= 0;
@@ -1024,6 +1037,7 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         mapAway = l.awayColour;
         if (mode == FOOTBALL_MODE && shown != null) {
             maybeStats(shown, now);
+            labTick(shown, now);
             maybeShotMap(shown);
         }
         underNow(mode == FOOTBALL_MODE ? shown : null, l, now);
@@ -1047,7 +1061,7 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         if (dropping || mapView != null || lineups.isOut() || stats.isOut() || bug.closing() || !boardUp()) return;
         String half = g.state == Game.POST ? "ft" : g.halftime ? "ht" : null;
         if (half == null || holdBreak) return;
-        boolean statsDone = statsShown.contains(lastId + "|" + half) || statsFor(half, statsBy).isEmpty();
+        boolean statsDone = statsShown.contains(lastId + "|" + half) || statsPick(half).isEmpty();
         if (!statsDone || !mapShown.add(g.id + "|" + half)) return;
         if (mapShown.size() > 60) mapShown.clear();
         List<com.gathin.broadcast.ShotMap.Shot> these = com.gathin.broadcast.ShotMap.of(shots, "ht".equals(half));
@@ -1356,8 +1370,9 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         int most = 3, least = 2;
         switch (slot == null ? "" : slot) {
             case "pre":
-                want = new String[]{"Win chance", "Form", "League table"};
+                want = new String[]{"Win chance", "Form", "League table", "Head to head", "Streak home", "Streak away"};
                 least = 1;
+                most = 5;
                 break;
             case "h1":
                 want = new String[]{"Possession", "Expected goals", "Shots", "On target", "Momentum", "Corners"};
@@ -1404,11 +1419,177 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         if (slot == null || statsShown.contains(key)) return;
         // Half time's and full time's wait while the ad-break screen is up (shown once it has gone, still in their time).
         if (holdBreak && waitsForAdBreak(slot)) return;
-        List<String[]> pick = statsFor(slot, statsBy);
+        List<String[]> pick = statsPick(slot);
         if (pick.isEmpty()) return;
         if (statsShown.size() > 60) statsShown.clear();
         statsShown.add(key);
         showStats(pick);
+    }
+
+    // ---- the Scoreboard Lab's moments: the weather touch, the momentum wave, its stats (as the TV's) ------------------
+
+    /** The Lab's moments shown, by "game|moment" (each once a game); the stats waiting for their turn, each {game, stat...}. */
+    private final Set<String> labShown = new java.util.HashSet<>();
+    private final List<String[]> labQueue = new ArrayList<>();
+    /** The board's game's momentum and FotMob's match (head to head, runs), and the sky over each game's ground. */
+    private String labFor = "";
+    private List<int[]> labMomentum = new ArrayList<>();
+    private FotMob.Match labMatch;
+    private final Map<String, com.gathin.broadcast.BoardFx.Sky> labSky = new HashMap<>();
+    /** The shots and the games whose first read has been seen (a big save from before the board came up is never news). */
+    private final Set<String> labShots = new java.util.HashSet<>(), labGames = new java.util.HashSet<>();
+    /** The board's game's goals as they came ({side}, {minute}), when it has been seen from 0-0 (a comeback needs them all). */
+    private String labGoalsFor = "";
+    private final List<Integer> labSides = new ArrayList<>(), labMinutes = new ArrayList<>();
+    private boolean labFromStart;
+
+    /**
+     * FotMob's read for the board's game (main thread): its momentum and match kept for the Lab's moments, the sky over
+     * its ground (FotMob's weather only: none when it gives none); a big save or a great finish, and the referee's first
+     * booking, waiting for their turn (none from before the board came up).
+     */
+    private void labRead(Game g, FotMob.Match m) {
+        labFor = g.id;
+        labMomentum = new ArrayList<>(m.momentum);
+        labMatch = m;
+        com.gathin.broadcast.BoardFx.Sky sky = FotMob.sky(m);
+        if (sky != null) labSky.put(g.id, sky);
+        else labSky.remove(g.id);
+        if (labSky.size() > 20) labSky.clear();
+        boolean first = labGames.add(g.id);
+        if (labGames.size() > 40) labGames.clear();
+        if (first) {
+            // What was there before the board came up: seen, not news.
+            while (com.gathin.broadcast.MatchStats.shotMoment(m.shotsRaw, labShots) != null) {
+                // each call marks one shot seen
+            }
+            int[] cards = BoardLab.cards(m.events);
+            if (cards[0] + cards[1] > 0) labShown.add(g.id + "|referee");
+            return;
+        }
+        String[] shot = com.gathin.broadcast.MatchStats.shotMoment(m.shotsRaw, labShots);
+        if (labShots.size() > 600) labShots.clear();
+        if (shot != null) labWait(g.id, shot);
+        int[] cards = BoardLab.cards(m.events);
+        if (cards[0] + cards[1] > 0 && !m.referee.isEmpty() && labShown.add(g.id + "|referee")) {
+            String[] ref = com.gathin.broadcast.MatchStats.refCards(m.referee, cards[0], cards[1]);
+            if (ref != null) labWait(g.id, ref);
+        }
+    }
+
+    /** A Lab stat waiting for its turn beside the board (a few at most). */
+    private void labWait(String gameId, String[] stat) {
+        String[] q = new String[stat.length + 1];
+        q[0] = gameId;
+        System.arraycopy(stat, 0, q, 1, stat.length);
+        labQueue.add(q);
+        while (labQueue.size() > 4) labQueue.remove(0);
+    }
+
+    /**
+     * A goal on the board (main thread, before its moment): the Lab's early goal (inside the first five minutes) and
+     * comeback (a side back level or ahead from behind), waiting for their turn after the goal's own moment. A comeback
+     * only for a game seen from 0-0, so every goal is known.
+     */
+    private void labGoal(Game g, int side, String clock, int homeBefore, int awayBefore) {
+        if (g.id == null) return;
+        if (!g.id.equals(labGoalsFor)) {
+            labGoalsFor = g.id;
+            labSides.clear();
+            labMinutes.clear();
+            labFromStart = homeBefore == 0 && awayBefore == 0;
+        }
+        labSides.add(side);
+        labMinutes.add(Math.max(0, minuteOfClock(clock)));
+        String[] early = com.gathin.broadcast.MatchStats.early(clock);
+        if (early != null) labWait(g.id, early);
+        if (labFromStart) {
+            int[] sides = new int[labSides.size()], minutes = new int[labMinutes.size()];
+            for (int i = 0; i < sides.length; i++) {
+                sides[i] = labSides.get(i);
+                minutes[i] = labMinutes.get(i);
+            }
+            String[] back = com.gathin.broadcast.MatchStats.comeback(sides, minutes, code(g.home, g.homeName), code(g.away, g.awayName));
+            if (back != null) labWait(g.id, back);
+        }
+    }
+
+    /** The Lab's stats for the game now, by name (BoardLab.pick): the head to head and runs, each side's drought, the table as it stands. */
+    private Map<String, String[]> labStatsNow(Game g, int minute) {
+        Map<String, String[]> out = new HashMap<>();
+        String hc = code(g.home, g.homeName), ac = code(g.away, g.awayName);
+        int hg = g.homeScore, ag = g.awayScore;
+        if (g.id.equals(labFor) && labMatch != null) {
+            out.putAll(BoardLab.before(labMatch, hc, ac));
+            String[] dh = com.gathin.broadcast.MatchStats.drought(labMatch.homeForm, hc, hg, minute);
+            String[] da = com.gathin.broadcast.MatchStats.drought(labMatch.awayForm, ac, ag, minute);
+            if (dh != null) out.put("Goal drought home", dh);
+            if (da != null) out.put("Goal drought away", da);
+        }
+        if (lastSum != null && g.id.equals(sumFor) && lastSum.standings != null && hg >= 0 && ag >= 0) {
+            String[] t = com.gathin.broadcast.MatchStats.asItStands(lastSum.standings, g.homeId, g.awayId, hg, ag, hc, ac);
+            if (t != null) out.put("As it stands", t);
+        }
+        return out;
+    }
+
+    /**
+     * Each look at the board for its game (main thread): the Scoreboard Lab's moments, as the TV's. The ground's weather
+     * lightly over the board two or three times a game (BoardFx.weatherMinutes), the sky as FotMob has it then; the
+     * momentum wave once or twice a half; the Lab stats' own moments (early on, after the break, late on); and what
+     * happened worth a word (an early goal, a comeback, a big save or great finish, the referee's first booking), each in
+     * its turn. Each under its own switch (Stats to show); never in the small window, over an alert or just after a goal.
+     */
+    private void labTick(Game g, long now) {
+        if (g == null || g.id == null || small || preview || hidden || !boardUp()) return;
+        int minute = boardMinute;
+        boolean live = g.state == Game.LIVE && !g.halftime;
+        if (labShown.size() > 300) labShown.clear();
+        // The weather touch, the sky as it is now (none when FotMob has none).
+        if (live && minute >= 0 && statOn(c, "weather") && com.gathin.broadcast.BoardFx.weatherDue(g.id, minute, labShown)) {
+            com.gathin.broadcast.BoardFx.Sky sky = labSky.get(g.id);
+            if (sky != null) bug.weather(sky);
+        }
+        // The stats wait: something out beside the board, a goal just in, the scores ahead of the picture.
+        if (dropping || lineups.isOut() || stats.isOut() || bug.closing()) return;
+        if (now - goalShownAt < 90_000L || screen.ahead(now)) return;
+        String hc = code(g.home, g.homeName), ac = code(g.away, g.awayName);
+        // The momentum wave once or twice a half.
+        if (live && minute >= 0 && statOn(c, "momentum") && g.id.equals(labFor)) {
+            String due = com.gathin.broadcast.BoardFx.waveDue(g.id, minute, labShown);
+            String[] w = due == null ? null : BoardLab.wave(labMomentum, minute, hc, ac);
+            if (w != null) {
+                showStats(java.util.Collections.singletonList(w));
+                return;
+            }
+        }
+        // The Lab stats' own moments.
+        String slot = BoardLab.slot(g.state, g.halftime, minute);
+        if (slot != null && labShown.add(g.id + "|" + slot)) {
+            List<String[]> pick = BoardLab.pick(slot, labStatsNow(g, minute));
+            pick.removeIf(st -> !statOn(c, BoardLab.statKey(st[0])));
+            if (!pick.isEmpty()) {
+                showStats(pick);
+                return;
+            }
+        }
+        // What happened worth a word, in turn.
+        for (int i = 0; i < labQueue.size(); i++) {
+            String[] q = labQueue.get(i);
+            if (!g.id.equals(q[0])) continue;
+            labQueue.remove(i);
+            String[] st = java.util.Arrays.copyOfRange(q, 1, q.length);
+            if (statOn(c, BoardLab.statKey(st[0]))) showStats(java.util.Collections.singletonList(st));
+            return;
+        }
+        labQueue.removeIf(q -> !g.id.equals(q[0]));
+    }
+
+    /** A stats moment's stats now: statsFor's, each under its own switch (the settings' Stats to show). */
+    private List<String[]> statsPick(String slot) {
+        List<String[]> pick = statsFor(slot, statsBy);
+        pick.removeIf(st -> !statOn(c, BoardLab.statKey(st[0])));
+        return pick;
     }
 
     /** These stats out beside the board now, in its look. */
@@ -1453,9 +1634,13 @@ public final class ScoreBoard implements LiveAlerts.Listener {
             Map<String, String[]> by = got == null ? new HashMap<>() : statsOf(got, state, homeCode, awayCode);
             // FotMob's figures on top: expected goals, big chances, ratings, who is on top, its player of the match.
             FotMob.Match fm = null;
-            if (fotmob && state != Game.PRE) {
+            // Before kick-off only in its last quarter of an hour: the head to head and each side's run for its stats.
+            if (fotmob && (state != Game.PRE || kickoff - System.currentTimeMillis() <= PRE_STATS_MS + 5 * 60_000L)) {
                 fm = FotMob.forGame(id, homeName, awayName, kickoff);
-                if (fm != null) by.putAll(FotMob.statsOf(fm, homeCode, awayCode));
+                if (fm != null) {
+                    by.putAll(FotMob.statsOf(fm, homeCode, awayCode));
+                    by.putAll(BoardLab.before(fm, homeCode, awayCode));
+                }
             }
             FotMob.Match read = fm;
             List<VarExplained.Seen> var = got == null ? null : VarExplained.scan(got.varLines);
@@ -1554,15 +1739,22 @@ public final class ScoreBoard implements LiveAlerts.Listener {
     private void underNow(Game g, OverlayBug.Look l, long now) {
         if (l == null || l.f1 || small || preview || hidden || lineups.isOut() || !boardUp()) {
             under.away();
+            bug.pens(null, null);
             return;
         }
         under.clubs(l.home, l.away, l.homeColour, l.awayColour, bug.homeCrest, bug.awayCrest);
         if (now < pensTestUntil) {
             List<Boolean>[] k = Shootout.test(now - pensTestFrom);
-            if (!pensOut("TEST", k[0], k[1])) under.away();
+            if (!pensOut("TEST", k[0], k[1])) {
+                under.away();
+                bug.pens(null, null);
+            }
             return;
         }
-        if (g == null || !pensNow(g, now)) under.away();
+        if (g == null || !pensNow(g, now)) {
+            under.away();
+            bug.pens(null, null);
+        }
     }
 
     /** The shootout under the board for g, its kicks in step with the picture; false when there's none to show. */
@@ -1585,8 +1777,23 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         return pensOut(g.id, hk, ak);
     }
 
-    /** These kicks under the board: the newest popping in with the swish (none for those there when it came). */
+    /**
+     * These kicks under the board: the newest popping in with the swish (none for those there when it came). The games
+     * that have it (BoardFx.pensInClock, as the TV's) show them beside the clock on the board instead, in a tab of their
+     * own, each new kick in with the swish.
+     */
     private boolean pensOut(String key, List<Boolean> hk, List<Boolean> ak) {
+        if (bug.pensInClock()) {
+            boolean fresh = key.equals(pensShownFor) && (hk.size() > pensShownHome || ak.size() > pensShownAway);
+            pensShownFor = key;
+            pensShownHome = hk.size();
+            pensShownAway = ak.size();
+            under.away();
+            bug.pens(hk, ak);
+            if (fresh) swishIn();
+            return true;
+        }
+        bug.pens(null, null);
         if (!placeUnder(Math.max(5, Math.max(hk.size(), ak.size())))) return false;
         int newSide = -1, newIndex = -1;
         if (!key.equals(pensShownFor)) {
@@ -1794,6 +2001,7 @@ public final class ScoreBoard implements LiveAlerts.Listener {
             shotsFor = g.id;
             shots = new java.util.ArrayList<>(m.shots);
             refereeOut(g, m);
+            labRead(g, m);
         }
         boolean first = subsGames.add(g.id);
         List<String[]> fresh = new java.util.ArrayList<>();

@@ -68,6 +68,9 @@ final class BoardBug extends View {
         CRESTS("Crests and time"), STACKED("Stacked", 1.7f), CARD("Card", 1.6f), FROSTED("Frosted glass"),
         /** Each side's kit in 3D in a cell of its own (KitSheets' frames), turning in and swaying; GOAL on gold. */
         KITS("3D kits", 1.25f),
+        /** The Scoreboard Lab's five, drawn by CompBug as the competitions' looks are (every moment over them the same). */
+        FLOODLIGHT(CompBug.Kind.FLOODLIGHT), SPLITKIT(CompBug.Kind.SPLITKIT), TICKER(CompBug.Kind.TICKER), DUO(CompBug.Kind.DUO),
+        LED(CompBug.Kind.LED),
         /** Each game in its own competition's look, with its logo (CompBug); Classic for one with no look of its own. */
         COMPETITION("By competition"),
         PL_WORLD(CompBug.Kind.PL), PL_US(CompBug.Kind.PL_US), FA_CUP(CompBug.Kind.FACUP), EFL(CompBug.Kind.EFL),
@@ -246,6 +249,22 @@ final class BoardBug extends View {
     /** Its ground's edge round everything, in pixels (the room for BoardCover's burn-in step). */
     private int inset;
     private boolean outlined;
+    // ---- the Scoreboard Lab's moments (BoardFx), chosen for the game the board shows and kept all through it -------------
+
+    private final com.gathin.broadcast.BoardFx fx = new com.gathin.broadcast.BoardFx();
+    /** The game shown (its moments are picked by it), its goals' set, whether its half time and shootout have the Lab's. */
+    private String gameId = "";
+    private int goalSet = com.gathin.broadcast.BoardFx.GOAL_BAND;
+    private boolean htFaceGame, pensClockGame;
+    /** The score before the goal on now: its new figure rolls or flips in from it. */
+    private String scoreWas = "";
+    /** The ground's weather over the board (BoardFx.weather): its sky and when it began (0: none). */
+    private com.gathin.broadcast.BoardFx.Sky weatherSky;
+    private long weatherAt, weatherFrozen = -1;
+    /** A shootout's kicks in the clock's place (pensInClock games): each side's so far; null while none is on. */
+    private java.util.List<Boolean> pensHome, pensAway;
+    private final android.graphics.Rect textBounds = new android.graphics.Rect();
+
     /** Made once for a size and kept: the score's shade, the band's, Glass's sheen, the ring's dashes. */
     private LinearGradient scoreShade, bandShade, sheenShade;
     private float shadeY = -1, shadeH = -1, bandShadeH = -1, sheenH = -1, dashFor = -1;
@@ -350,6 +369,11 @@ final class BoardBug extends View {
         d.stoppage = pulses(look);
         d.glow = flash;
         d.glowSide = flashSide;
+        float[] mv = moveNow();
+        d.move = Math.round(mv[0]);
+        d.moveAt = mv[1];
+        d.before = CompBug.scores(scoreWas);
+        d.htFace = htFaceNow();
         return d;
     }
 
@@ -426,14 +450,197 @@ final class BoardBug extends View {
             new int[]{0x00FFFFFF, 0x52FFFFFF, 0x00FFFFFF}, null, Shader.TileMode.CLAMP);
     private final Matrix shineAt = new Matrix();
 
-    /** A goal for side 1 (home) or 2 (away), as broadcasters show one (GOAL_MS in all), the family's swish on its new score. */
+    /**
+     * A goal for side 1 (home) or 2 (away), in the game's set (BoardFx.goalSet): as broadcasters show one with the family's
+     * swish on its new score (today's band), the Lab's flip or its crest burst; the net shivering across the board after
+     * every one, each with its own quiet sound.
+     */
     void goal(int side) {
         flashSide = side;
+        scoreWas = look.score;
         goalAt = System.currentTimeMillis();
         goalFrozen = -1;
         removeCallbacks(scoreSwish);
-        postDelayed(scoreSwish, scoreSwishAt());
+        int set = goalSetNow();
+        // Today's band: the family's swish on its new score, every look (its own switch); the Lab's sets their own sounds.
+        if (set == com.gathin.broadcast.BoardFx.GOAL_BAND) postDelayed(scoreSwish, scoreSwishAt());
+        labGoalSounds(set);
         postInvalidateOnAnimation();
+    }
+
+    /** The game shown: its goals' set, half time's face and the shootout's place, the same all game (BoardFx.pick). */
+    void game(String id) {
+        String g = id == null ? "" : id;
+        if (g.equals(gameId)) return;
+        gameId = g;
+        goalSet = com.gathin.broadcast.BoardFx.goalSet(g);
+        htFaceGame = com.gathin.broadcast.BoardFx.htFace(g);
+        pensClockGame = com.gathin.broadcast.BoardFx.pensInClock(g);
+        invalidate();
+    }
+
+    /** Whether the game's shootout dots stand in the clock's place (else the strip under the board, BoardUnder). */
+    boolean pensInClock() {
+        return pensClockGame;
+    }
+
+    /** The goal set drawn now (setFor). */
+    int goalSetNow() {
+        return setFor(style, goalSet);
+    }
+
+    /** Pure: the goal set a look draws for a game's set: the 3D kits look keeps its own gold GOAL (today's timing); the rest the game's. */
+    static int setFor(Style style, int gameSet) {
+        return style == Style.KITS ? com.gathin.broadcast.BoardFx.GOAL_BAND : gameSet;
+    }
+
+    /** Whether the look's score rolls up like an odometer (Floodlight, Stadium LED). */
+    private boolean rolls() {
+        CompBug.Kind k = kind();
+        return k != null && k.rolls();
+    }
+
+    /** Pure: how long a set's own moment lasts, in ms from the goal (an alert beside the board waits for it). */
+    static long setMs(int set) {
+        switch (set) {
+            case com.gathin.broadcast.BoardFx.GOAL_FLIP: return com.gathin.broadcast.BoardFx.FLIP_MS;
+            case com.gathin.broadcast.BoardFx.GOAL_BURST: return com.gathin.broadcast.BoardFx.BURST_MS;
+            default: return BAND_OUT + BAND_MS;
+        }
+    }
+
+    /** Pure: when the net shivers in a set, in ms from the goal (after the band in today's). */
+    static long meshAt(int set) {
+        switch (set) {
+            case com.gathin.broadcast.BoardFx.GOAL_FLIP: return com.gathin.broadcast.BoardFx.MESH_AFTER_FLIP;
+            case com.gathin.broadcast.BoardFx.GOAL_BURST: return com.gathin.broadcast.BoardFx.MESH_AFTER_BURST;
+            default: return RIPPLE_AT;
+        }
+    }
+
+    /** Pure: the whole goal's length in a set: its moment and the net's shiver (and today's glow after the band). */
+    static long goalMs(int set) {
+        if (set == com.gathin.broadcast.BoardFx.GOAL_BAND) return GOAL_MS;
+        return Math.max(setMs(set), meshAt(set) + com.gathin.broadcast.BoardFx.MESH_MS);
+    }
+
+    /** Pure: when today's band rolls its new score in on an odometer look: as the band goes, over 0.8 s. */
+    static final long BAND_ROLL_FROM = BAND_OUT + 150, BAND_ROLL_TO = BAND_OUT + 950;
+
+    /**
+     * Pure: the score's move t ms into a goal of a set ({CompBug.MOVE_FLIP or MOVE_ROLL (0: none), how far, 0 to 1}): the
+     * flip's figure turning in, the burst's rolling up; on an odometer look (rolls) always a roll, in today's band as the
+     * band goes. {0, 1} before and after.
+     */
+    static float[] moveAt(int set, boolean rolls, long t) {
+        if (t < 0 || t >= goalMs(set)) return new float[]{0f, 1f};
+        switch (set) {
+            case com.gathin.broadcast.BoardFx.GOAL_FLIP:
+                return new float[]{rolls ? CompBug.MOVE_ROLL : CompBug.MOVE_FLIP, com.gathin.broadcast.BoardFx.flipMove(t)};
+            case com.gathin.broadcast.BoardFx.GOAL_BURST:
+                return new float[]{CompBug.MOVE_ROLL, com.gathin.broadcast.BoardFx.rollMove(t)};
+            default:
+                if (!rolls) return new float[]{0f, 1f};
+                float k = t <= BAND_ROLL_FROM ? 0f : t >= BAND_ROLL_TO ? 1f : (t - BAND_ROLL_FROM) / (float) (BAND_ROLL_TO - BAND_ROLL_FROM);
+                return new float[]{CompBug.MOVE_ROLL, k};
+        }
+    }
+
+    /** The score's move now (the goal on, its set, the look). */
+    private float[] moveNow() {
+        long gt = goalFrozen >= 0 ? goalFrozen : goalAt > 0 ? System.currentTimeMillis() - goalAt : -1;
+        if (style == Style.KITS || gt < 0) return new float[]{0f, 1f};
+        return moveAt(goalSetNow(), rolls(), gt);
+    }
+
+    /**
+     * Half time's face now: the game has it, the board shows HT and is past the middle of its turn (its other face). Card
+     * keeps its own Half-Time, Minimal has no block of its own, the 3D kits their own.
+     */
+    private boolean htFaceNow() {
+        if (!htFaceGame || !"HT".equals(look.clock) || !htFaceLook(style, kind())) return false;
+        return htAt <= 0 || System.currentTimeMillis() - htAt >= HT_MS / 2;
+    }
+
+    /** Pure: whether a look shows half time's face (the competitions' and the Lab's looks, and the board's own but three). */
+    static boolean htFaceLook(Style style, CompBug.Kind kind) {
+        return kind != null || style != Style.CARD && style != Style.MINIMAL && style != Style.KITS;
+    }
+
+    private final Runnable netSound = () -> lab(com.gathin.broadcast.Sfx.NET), flipSound = () -> lab(com.gathin.broadcast.Sfx.FLIP),
+            rollSound = () -> lab(com.gathin.broadcast.Sfx.ROLL), burstSound = () -> lab(com.gathin.broadcast.Sfx.BURST);
+
+    /** The goal's quiet sounds in its set (goalSounds), each at its moment. */
+    private void labGoalSounds(int set) {
+        removeCallbacks(netSound);
+        removeCallbacks(flipSound);
+        removeCallbacks(rollSound);
+        removeCallbacks(burstSound);
+        for (java.util.Map.Entry<String, Long> e : goalSounds(set, rolls()).entrySet()) {
+            String n = e.getKey();
+            Runnable r = com.gathin.broadcast.Sfx.NET.equals(n) ? netSound : com.gathin.broadcast.Sfx.FLIP.equals(n) ? flipSound
+                    : com.gathin.broadcast.Sfx.ROLL.equals(n) ? rollSound : burstSound;
+            postDelayed(r, e.getValue());
+        }
+    }
+
+    /**
+     * Pure: a goal's quiet sounds in a set, each Sfx name with its ms from the goal, in order: the digit's flip (a roll on
+     * an odometer look), or the crest's burst and the roll; then the net's. (Today's band has the family's swish on its
+     * new score instead, on every look, and the net's after.)
+     */
+    static java.util.LinkedHashMap<String, Long> goalSounds(int set, boolean rolls) {
+        java.util.LinkedHashMap<String, Long> out = new java.util.LinkedHashMap<>();
+        if (set == com.gathin.broadcast.BoardFx.GOAL_FLIP) {
+            out.put(rolls ? com.gathin.broadcast.Sfx.ROLL : com.gathin.broadcast.Sfx.FLIP, com.gathin.broadcast.BoardFx.FLIP_FROM);
+        } else if (set == com.gathin.broadcast.BoardFx.GOAL_BURST) {
+            out.put(com.gathin.broadcast.Sfx.BURST, 0L);
+            out.put(com.gathin.broadcast.Sfx.ROLL, com.gathin.broadcast.BoardFx.ROLL_FROM);
+        }
+        out.put(com.gathin.broadcast.Sfx.NET, meshAt(set));
+        return out;
+    }
+
+    /** A Lab sound now, quietly (Sfx.QUIET), panned to the board: only while it is up, and not with the swish switched off. */
+    private void lab(String name) {
+        if (!BoardLab.heard(isAttachedToWindow() && isShown(), getAlpha(), BoardCover.swishOn(getContext()))) return;
+        com.gathin.broadcast.Sfx.play(getContext(), name, panNow(), com.gathin.broadcast.Sfx.QUIET);
+    }
+
+    /** Where the board is across the screen, as a sound's pan (-0.6 left to 0.6 right). */
+    private float panNow() {
+        int[] at = new int[2];
+        getLocationOnScreen(at);
+        int sw = getResources().getDisplayMetrics().widthPixels;
+        return sw > 0 ? Math.max(-0.6f, Math.min(0.6f, ((at[0] + getWidth() / 2f) / sw * 2f - 1f) * 0.6f)) : 0f;
+    }
+
+    /** The ground's weather over the board now, for WEATHER_MS (BoardFx.weather): light and short. */
+    void weather(com.gathin.broadcast.BoardFx.Sky sky) {
+        if (sky == null) return;
+        weatherSky = sky;
+        weatherAt = System.currentTimeMillis();
+        weatherFrozen = -1;
+        postInvalidateOnAnimation();
+    }
+
+    /** Previews: the weather this far into its touch (-1: none). */
+    void weatherNow(com.gathin.broadcast.BoardFx.Sky sky, long t) {
+        weatherSky = t < 0 ? null : sky;
+        weatherFrozen = t;
+        weatherAt = t < 0 ? 0 : System.currentTimeMillis() - t;
+        invalidate();
+    }
+
+    /** A shootout's kicks so far in the clock's place (pensInClock games): each side's in order; null for none on. */
+    void pens(java.util.List<Boolean> home, java.util.List<Boolean> away) {
+        boolean was = pensHome != null, now = home != null && away != null;
+        int before = was ? com.gathin.broadcast.BoardFx.pensCols(pensHome.size(), pensAway.size()) : 0;
+        pensHome = now ? new java.util.ArrayList<>(home) : null;
+        pensAway = now ? new java.util.ArrayList<>(away) : null;
+        int after = now ? com.gathin.broadcast.BoardFx.pensCols(home.size(), away.size()) : 0;
+        if (was != now || before != after) requestLayout();
+        invalidate();
     }
 
     /** Pure: when the family's swish starts, in ms into the goal: its loudest moment on the new score's pop (the band gone). */
@@ -444,14 +651,10 @@ final class BoardBug extends View {
     /** The family's swish as the new score comes out from under the band, panned to the board; only while it is up. */
     private final Runnable scoreSwish = () -> {
         if (!isAttachedToWindow() || !isShown() || getAlpha() < 0.05f || !BoardCover.scoreSwishOn(getContext())) return;
-        int[] at = new int[2];
-        getLocationOnScreen(at);
-        int sw = getResources().getDisplayMetrics().widthPixels;
-        float pan = sw > 0 ? Math.max(-0.6f, Math.min(0.6f, ((at[0] + getWidth() / 2f) / sw * 2f - 1f) * 0.6f)) : 0f;
-        com.gathin.broadcast.Sfx.play(getContext(), com.gathin.broadcast.Sfx.SCORE, pan, 0.85f);
+        com.gathin.broadcast.Sfx.play(getContext(), com.gathin.broadcast.Sfx.SCORE, panNow(), 0.85f);
     };
 
-    /** The net's shiver after the band (from RIPPLE_AT, over RIPPLE_MS); half time turning over; FULL TIME stamped. */
+    /** The net's shiver after the band (from RIPPLE_AT, BoardFx.netMesh); half time turning over; FULL TIME stamped. */
     static final long RIPPLE_AT = BAND_OUT + BAND_MS - 150, RIPPLE_MS = 900, HT_MS = 700, FT_MS = 2600;
     private long htAt, ftAt, varUntil;
 
@@ -501,27 +704,6 @@ final class BoardBug extends View {
         float x = (t % 1000L) / 1000f;
         float a = (float) Math.exp(-Math.pow((x - 0.12f) / 0.06f, 2)), b = 0.7f * (float) Math.exp(-Math.pow((x - 0.34f) / 0.07f, 2));
         return Math.min(1f, a + b);
-    }
-
-    /** The net shivering across the board, t ms in: white mesh lines that bulge and fade, as the ball hits the net. */
-    private void netRipple(Canvas cv, int w, int h, long t) {
-        // Rings running out from the scorer's end of the board, as the net's shiver after the ball goes in: light, thin,
-        // fading as they spread, the score always readable through them.
-        float x = Math.max(0f, Math.min(1f, t / (float) RIPPLE_MS));
-        float cx = flashSide == 2 ? w * 0.62f : w * 0.16f, cy = h / 2f, far = w * 0.75f;
-        edge.setPathEffect(null);
-        edge.setColor(0xFFFFFF);
-        for (int k = 0; k < 3; k++) {
-            float p = x - k * 0.16f;
-            if (p <= 0f || p >= 1f) continue;
-            float e = 1f - (1f - p) * (1f - p);
-            edge.setStrokeWidth(Math.max(1f, h * (0.05f - 0.03f * e)));
-            edge.setAlpha(Math.round(110 * (1f - p) * (k == 0 ? 1f : 0.6f)));
-            cv.drawCircle(cx, cy, h * 0.3f + far * e, edge);
-        }
-        edge.setAlpha(255);
-        edge.setColor(INK);
-        dashFor = -1;
     }
 
     /** VAR checking: a bright white line sweeping back and forth across the board, a soft glow either side. */
@@ -576,8 +758,12 @@ final class BoardBug extends View {
 
     /** How long until the goal's band has gone (an alert waits for it), in ms; 0 when there is none. */
     long bandLeft(long now) {
-        if (goalAt <= 0 || goalFrozen >= 0) return 0;
-        return Math.max(0, goalAt + BAND_OUT + BAND_MS - now);
+        return goalFrozen >= 0 ? 0 : bandLeft(goalAt, goalSetNow(), now);
+    }
+
+    /** Pure: how much of a goal's own moment in a set (from goalAt; 0: no goal) is still to come at now; 0 once it is over. */
+    static long bandLeft(long goalAt, int set, long now) {
+        return goalAt <= 0 ? 0 : Math.max(0, goalAt + setMs(set) - now);
     }
 
     /**
@@ -744,7 +930,7 @@ final class BoardBug extends View {
         // The minutes added stand beside the board at its natural width, in a tab of their own.
         boolean was = addedOutside;
         addedOutside = !look.added.isEmpty();
-        float tab = addedTab(h), w;
+        float tab = !look.added.isEmpty() ? addedTab(h) : pensTab(h), w;
         CompBug.Kind kind = kind();
         if (kind != null) w = comp().natural(kind, compData(), h);
         else if (style == Style.MINIMAL) w = minimalWidth(h);
@@ -799,14 +985,17 @@ final class BoardBug extends View {
         }
         long now = System.currentTimeMillis();
         long gt = goalFrozen >= 0 ? goalFrozen : goalAt > 0 ? now - goalAt : -1;
-        boolean goalOn = gt >= 0 && gt < GOAL_MS;
-        flash = goalOn ? glow(gt) : 0f;
-        // The new score pops up big as the band goes, and settles.
+        int set = goalSetNow();
+        boolean goalOn = gt >= 0 && gt < goalMs(set);
+        // Today's band: the new score pops up big as the band goes, and settles (an odometer look rolls it in instead).
+        flash = goalOn && set == com.gathin.broadcast.BoardFx.GOAL_BAND && !rolls() ? glow(gt) : 0f;
         scoreZoom = 1f + 0.38f * flash * flash;
         float rad = cornerOf(w, h);
-        // The minutes added stand in a tab of their own beside it (inside it only on a board kept too narrow).
-        int tab = addedTabbed(cw, ch) ? Math.round(addedTab(ch)) : 0, body = Math.max(1, w - tab);
-        addedOutside = tab > 0;
+        // The minutes added stand in a tab of their own beside it (inside it only on a board kept too narrow); a shootout's
+        // dots the same in the games that have them in the clock's place.
+        boolean addedTab = addedTabbed(cw, ch);
+        int tab = addedTab ? Math.round(addedTab(ch)) : pensTabbed(cw, ch) ? Math.round(pensTab(ch)) : 0, body = Math.max(1, w - tab);
+        addedOutside = addedTab;
         drawNow = now;
         r.set(0, 0, body, h);
         clip.reset();
@@ -860,13 +1049,23 @@ final class BoardBug extends View {
         } else {
             row = null;
         }
-        if (goalOn && style != Style.KITS) goalMoment(cv, body, mh, gt);
-        // The net shivering across it as the ball goes in, once the scorers' band has gone.
-        if (gt >= RIPPLE_AT && gt < RIPPLE_AT + RIPPLE_MS) netRipple(cv, body, mh, gt - RIPPLE_AT);
+        if (goalOn && style != Style.KITS) {
+            if (set == com.gathin.broadcast.BoardFx.GOAL_FLIP) flipMoment(cv, body, mh, gt);
+            else if (set == com.gathin.broadcast.BoardFx.GOAL_BURST) burstMoment(cv, body, mh, gt);
+            else goalMoment(cv, body, mh, gt);
+        }
+        // The net shivering across it after every goal (the Lab's net), at its own moment in each set.
+        long mesh = gt < 0 ? -1 : gt - meshAt(set);
+        boolean meshing = mesh >= 0 && mesh < com.gathin.broadcast.BoardFx.MESH_MS;
+        if (meshing) fx.netMesh(cv, body, mh, mesh);
         if (varUntil > now) varScan(cv, body, mh, now);
         long ft = ftAt > 0 ? now - ftAt : -1;
         if (ft >= 0 && ft < FT_MS) fullTimeStamp(cv, body, mh, ft);
         if (row != null) cv.restore();
+        // The ground's weather, lightly over it all two or three times a game.
+        long wt = weatherSky == null ? -1 : weatherFrozen >= 0 ? weatherFrozen : weatherAt > 0 ? now - weatherAt : -1;
+        boolean weathering = wt >= 0 && wt < com.gathin.broadcast.BoardFx.WEATHER_MS;
+        if (weathering) fx.weather(cv, body, h, weatherSky, wt);
         if (p.edgeLine) {
             float e = Math.max(1f, h * 0.025f);
             edge.setPathEffect(null);
@@ -878,9 +1077,12 @@ final class BoardBug extends View {
             dashFor = -1;
         }
         cv.restore();
-        boolean moving = turning || (gt >= RIPPLE_AT && gt < RIPPLE_AT + RIPPLE_MS) || varUntil > now || (ft >= 0 && ft < FT_MS);
+        boolean moving = turning || meshing || varUntil > now || (ft >= 0 && ft < FT_MS) || weathering && weatherFrozen < 0;
         if (moving && !part) postInvalidateOnAnimation();
-        if (tab > 0) addedTabDraw(cv, body, inset, ch, tab, now);
+        if (tab > 0) {
+            if (addedTab) addedTabDraw(cv, body, inset, ch, tab, now);
+            else pensTabDraw(cv, body, inset, ch, tab);
+        }
         if (part) {
             cv.restore();
             // The wipe's leading edge, a bright line fading as it lands.
@@ -981,6 +1183,34 @@ final class BoardBug extends View {
         }
     }
 
+    /**
+     * The scorers' part of the board for a set's wash or glow: their end of a long board (their letters, not the score
+     * between), their row of one nearer square (Stacked's, the stacked competitions').
+     */
+    private void sideOf(int w, int h, boolean home, RectF out) {
+        if (w / (float) h < 2.2f) out.set(0, home ? 0 : h / 2f, w * 0.62f, home ? h / 2f : h);
+        else if (home) out.set(0, 0, w * 0.36f, h);
+        else out.set(w * 0.64f, 0, w, h);
+    }
+
+    /** The Lab's flip, t ms in: the scorers' side washing in their colour and a shine sweeping the board (their figure turns in). */
+    private void flipMoment(Canvas cv, int w, int h, long t) {
+        boolean home = flashSide != 2;
+        sideOf(w, h, home, r);
+        fx.sideWash(cv, r.left, r.top, r.right, r.bottom, home ? look.homeColour : look.awayColour, com.gathin.broadcast.BoardFx.washAlpha(t));
+        fx.shineSweep(cv, w, h, t);
+    }
+
+    /** The Lab's burst, t ms in: the scorers' crest popping with rings in their colour, their side glowing (the score rolls up). */
+    private void burstMoment(Canvas cv, int w, int h, long t) {
+        boolean home = flashSide != 2;
+        int colour = home ? look.homeColour : look.awayColour;
+        sideOf(w, h, home, r);
+        fx.sideWash(cv, r.left, r.top, r.right, r.bottom, colour, com.gathin.broadcast.BoardFx.glowAlpha(t));
+        float cx = (r.left + r.right) / 2f, cy = (r.top + r.bottom) / 2f, rad = Math.min(r.height(), h) * 0.36f;
+        fx.crestBurst(cv, cx, cy, rad, home ? homeCrest : awayCrest, colour, t);
+    }
+
     /** The clubs, the score and the clock along one row in (x, y, w, h). */
     private void oneRow(Canvas cv, float x, float y, float w, float h) {
         int hi = Math.round(h);
@@ -1018,7 +1248,7 @@ final class BoardBug extends View {
         float crest = withCrests ? crestW : 0;
         cx = side(cv, cx, y, h, strip, crest, codeW, k, true);
         scoreBlock(cv, cx, y, score, h);
-        words(cv, look.score, cx + score / 2, y, h, h * 0.56f * k * scoreZoom, p.scoreInk);
+        scoreWords(cv, look.score, scoreWas, cx + score / 2, y, h, h * 0.56f * k * scoreZoom, p.scoreInk);
         cx += score;
         cx = side(cv, cx, y, h, strip, crest, codeW, k, false);
         if (clock > 0) clock(cv, cx, y, x + w - cx, h, k);
@@ -1325,7 +1555,7 @@ final class BoardBug extends View {
         float extra = Math.max(0, w - need * k);
         float cx = side(cv, 0, 0, h, strip * k, withCrests ? crestW : 0, codeW * k + extra / 2, k, true);
         scoreBlock(cv, cx, 0, score * k, h);
-        words(cv, look.score, cx + score * k / 2, 0, h, h * 0.56f * k * scoreZoom, p.scoreInk);
+        scoreWords(cv, look.score, scoreWas, cx + score * k / 2, 0, h, h * 0.56f * k * scoreZoom, p.scoreInk);
         side(cv, cx + score * k, 0, h, strip * k, withCrests ? crestW : 0, codeW * k + extra / 2, k, false);
     }
 
@@ -1353,7 +1583,7 @@ final class BoardBug extends View {
         crestSide(cv, cx, 0, hc, h, true);
         cx += hc;
         scoreBlock(cv, cx, 0, score, h);
-        words(cv, look.score, cx + score / 2, 0, h, h * 0.56f * k * scoreZoom, p.scoreInk);
+        scoreWords(cv, look.score, scoreWas, cx + score / 2, 0, h, h * 0.56f * k * scoreZoom, p.scoreInk);
         cx += score;
         crestSide(cv, cx, 0, ac, h, false);
         cx += ac + pad;
@@ -1368,7 +1598,7 @@ final class BoardBug extends View {
         crestSide(cv, cx, 0, hc * k, top, true);
         cx += hc * k;
         scoreBlock(cv, cx, 0, score * k, top);
-        words(cv, look.score, cx + score * k / 2, 0, top, top * 0.56f * k * scoreZoom, p.scoreInk);
+        scoreWords(cv, look.score, scoreWas, cx + score * k / 2, 0, top, top * 0.56f * k * scoreZoom, p.scoreInk);
         cx += score * k;
         crestSide(cv, cx, 0, ac * k, top, false);
         fill.setColor(p.clock != 0 ? p.clock : p.ground);
@@ -1408,7 +1638,12 @@ final class BoardBug extends View {
 
     /** "2–1" as {"2", "1"}; none when it is not a score. */
     private String[] goals() {
-        String[] g = look.score.split("\\s*[–-]\\s*");
+        return goalsOf(look.score);
+    }
+
+    /** Pure: a score's two figures ("2–1": {"2", "1"}); two empties when it has not two (before kick-off). */
+    static String[] goalsOf(String score) {
+        String[] g = (score == null ? "" : score).split("\\s*[–-]\\s*");
         return g.length == 2 ? g : new String[]{"", ""};
     }
 
@@ -1488,7 +1723,8 @@ final class BoardBug extends View {
         fill.setColor(p.score0 != 0 ? p.score0 : p.ground);
         cv.drawRect(gx, y, x + w, y + r, fill);
         if (look.stoppage) slants(cv, gx, y, x + w - gx, Math.round(r), stoppageT());
-        words(cv, goals, gx + goalsW / 2, y, r, r * 0.62f * k * (scored ? scoreZoom : 1f), p.scoreInk);
+        String[] before = goalsOf(scoreWas);
+        scoreWords(cv, goals, home ? before[0] : before[1], gx + goalsW / 2, y, r, r * 0.62f * k * (scored ? scoreZoom : 1f), p.scoreInk);
     }
 
     /** The clock's column: minutes and seconds, the minutes added on red under them. */
@@ -1534,8 +1770,13 @@ final class BoardBug extends View {
 
     /** "2 - 1", spaced as the results cards set it ("v" before kick-off). */
     private String cardScore() {
-        String[] g = goals();
-        return g[0].isEmpty() ? look.score : g[0] + " - " + g[1];
+        return cardScoreOf(look.score);
+    }
+
+    /** Pure: a score as Card spaces it ("2 - 1"; as it is before kick-off). */
+    static String cardScoreOf(String score) {
+        String[] g = goalsOf(score);
+        return g[0].isEmpty() ? (score == null ? "" : score) : g[0] + " - " + g[1];
     }
 
     /** The clock under the score: minutes and seconds, Half-Time and Full-Time in words, the kick-off's time before it. */
@@ -1610,7 +1851,7 @@ final class BoardBug extends View {
         String sc = cardScore();
         float ss = h * 0.46f * k * scoreZoom, sw = measure(sc, ss);
         if (sw > mid * 0.94f) ss *= mid * 0.94f / sw;
-        words(cv, sc, mx + mid / 2f, h * 0.04f, h * 0.5f, ss, p.scoreInk);
+        scoreWords(cv, sc, cardScoreOf(scoreWas), mx + mid / 2f, h * 0.04f, h * 0.5f, ss, p.scoreInk);
         cardClockLine(cv, mx, h * 0.5f, mid, h * 0.44f, cardClockSize(h) * k, h * 0.24f * k);
     }
 
@@ -1647,7 +1888,7 @@ final class BoardBug extends View {
         String sc = cardScore();
         float ss = rh * 0.5f * scoreZoom;
         ss *= Math.min(1f, w * 0.9f / Math.max(1f, measure(sc, ss)));
-        words(cv, sc, w / 2f, top, rh * 0.56f, ss, p.scoreInk);
+        scoreWords(cv, sc, cardScoreOf(scoreWas), w / 2f, top, rh * 0.56f, ss, p.scoreInk);
         float cs = rh * (cardClock().length() > 6 ? 0.28f : 0.34f);
         cardClockLine(cv, 0, top + rh * 0.52f, w, rh * 0.44f, cs, rh * 0.24f);
     }
@@ -1874,6 +2115,65 @@ final class BoardBug extends View {
     }
 
     // ---- helpers ---------------------------------------------------------------------------------------------------
+
+    /**
+     * A score's words about cx in the middle of (y, h), as words() draws them; while a goal's new figure moves in (the
+     * flip's turn or the odometer's roll) it moves from the score before (was), the rest still; at half time in the games
+     * that have the Lab's face, the figures on a small white block in dark ink.
+     */
+    private void scoreWords(Canvas cv, String now, String was, float cx, float y, float h, float size, int colour) {
+        if (now == null || now.isEmpty()) return;
+        if (htFaceNow()) {
+            text.setTextSize(size);
+            float tw = text.measureText(now);
+            text.getTextBounds("8", 0, 1, textBounds);
+            float capH = -textBounds.top, padX = size * 0.22f, padY = size * 0.16f, mid = y + h / 2f;
+            fill.setShader(null);
+            fill.setColor(0xF2FFFFFF);
+            r.set(cx - tw / 2f - padX, mid - capH / 2f - padY, cx + tw / 2f + padX, mid + capH / 2f + padY);
+            cv.drawRoundRect(r, size * 0.12f, size * 0.12f, fill);
+            words(cv, now, cx, y, h, size, 0xFF0B0E16);
+            return;
+        }
+        float[] mv = moveNow();
+        if (mv[0] == 0f || mv[1] >= 1f || was == null || was.isEmpty() || was.equals(now)) {
+            words(cv, now, cx, y, h, size, colour);
+            return;
+        }
+        text.setTextSize(size);
+        text.setColor(colour);
+        text.setTextAlign(Paint.Align.LEFT);
+        Paint.FontMetrics fm = text.getFontMetrics();
+        float base = y + h / 2 - (fm.ascent + fm.descent) / 2;
+        text.getTextBounds("H8", 0, 2, textBounds);
+        fx.scoreMove(cv, text, was, now, cx, base + textBounds.top / 2f, Math.round(mv[0]), mv[1]);
+        text.setAlpha(255);
+    }
+
+    /** Whether a shootout's dots stand beside the clock now (pensInClock games, while one is on), the board keeping its room. */
+    private boolean pensTabbed(int w, int h) {
+        return pensHome != null && pensAway != null && look.added.isEmpty() && w - pensTab(h) >= h * 2f;
+    }
+
+    /** The room the shootout's dots take beside the board (two rows of five, more in sudden death); none without them. */
+    private float pensTab(int h) {
+        if (pensHome == null || pensAway == null) return 0;
+        float th = tabHeight(h);
+        return h * 0.06f + th * 0.5f + com.gathin.broadcast.BoardFx.pensCols(pensHome.size(), pensAway.size()) * th * 0.46f;
+    }
+
+    /** The shootout's dots in their tab beside the clock: the home side's row over the away side's, on the clock's ground. */
+    private void pensTabDraw(Canvas cv, int body, int edgePx, int ch, int tab) {
+        float gap = ch * 0.06f, tw = tab - gap, th = tabHeight(ch);
+        float left = body + gap, top = tall() > 1.2f ? edgePx + ch - th : edgePx + (ch - th) / 2f;
+        float rad = p.round >= 0.5f ? th / 2f : th * 0.12f;
+        int ground = p.clock != 0 ? p.clock : p.ground != 0 ? p.ground : CLOCK;
+        fill.setShader(null);
+        fill.setColor(0xFF000000 | ground);
+        r.set(left, top, left + tw, top + th);
+        cv.drawRoundRect(r, rad, rad, fill);
+        fx.pensDots(cv, left + th * 0.25f, top + th * 0.08f, left + tw - th * 0.25f, top + th * 0.92f, pensHome, pensAway, INK);
+    }
 
     /** Words centred on cx, in the middle of (y, h). */
     private void words(Canvas cv, String s, float cx, float y, float h, float size, int colour) {

@@ -275,7 +275,8 @@ final class BoardPanel extends SportPanel {
         add(goalShirt, tryShirt);
         Row swish = row("Swish as they move", true);
         swish.on = () -> BoardCover.swishOn(c);
-        swish.words = () -> BoardCover.swishOn(c) ? "A swish each time the scorer, stats or an alert moves: out, every page, back in" : "Off · they move silently";
+        swish.words = () -> BoardCover.swishOn(c) ? "A swish each time the scorer, stats or an alert moves: out, every page, back in; the board's "
+                + "own moments (the net, a flip, a red card, VAR, a sub) softly, under the commentary" : "Off · they move silently";
         swish.ok = () -> {
             BoardCover.setSwishOn(c, !BoardCover.swishOn(c));
             if (BoardCover.swishOn(c)) com.gathin.broadcast.Sfx.play(c, com.gathin.broadcast.Sfx.SWISH, 0f, 0.7f);
@@ -356,6 +357,12 @@ final class BoardPanel extends SportPanel {
         weather.words = () -> MatchExtras.weatherOn(c) ? "At kick-off and half time: temperature, wind, rain by full time" : "Off";
         weather.ok = () -> MatchExtras.setWeatherOn(c, !MatchExtras.weatherOn(c));
         add(ratings, weather);
+        Row touch = row("Weather touch on the board", true);
+        touch.on = () -> BoardCover.weatherTouchOn(c);
+        touch.words = () -> BoardCover.weatherTouchOn(c) ? "The ground's rain, snow, wind, sun or cloud, lightly over the board two or three times a game"
+                : "Off";
+        touch.ok = () -> BoardCover.setWeatherTouchOn(c, !BoardCover.weatherTouchOn(c));
+        add(touch);
         Row adBreak = row("Ad-break screen", true);
         adBreak.on = () -> AdBreak.on(c);
         adBreak.words = () -> AdBreak.on(c) ? "Before kick-off, when the channel's logo goes for the adverts: the line-ups, the table, widgets and fans' posts" : "Off";
@@ -552,6 +559,12 @@ final class BoardPanel extends SportPanel {
                 "The formats the channel's own name says it carries (4K, HDR10+, Dolby Atmos…), in the name's box");
         add(clockRow, marksRow);
 
+        // The Scoreboard Lab's stats, each on or off (all on to begin with; none while the stats beside the board are off).
+        heading("STATS TO SHOW BESIDE THE SCOREBOARD");
+        List<Row> labStats = new ArrayList<>();
+        for (String[] st : BoardLab.STATS) labStats.add(statRow(st));
+        addAll(labStats);
+
         // Each look drawn as it is, the game chosen above in it: the arrows go along, OK chooses.
         heading("SCOREBOARD LOOK");
         previews.clear();
@@ -562,9 +575,13 @@ final class BoardPanel extends SportPanel {
         heading("LOGO COVER LOOK: WHITEBROOK ROAD SPORTS");
         markPreviews.clear();
         List<Row> channels = new ArrayList<>(), others = new ArrayList<>();
-        List<Row> own = new ArrayList<>();
-        for (LogoMark.Look l : LogoMark.Look.values()) (l.channel() ? channels : l.own() ? own : others).add(markTile(l));
+        List<Row> own = new ArrayList<>(), lab = new ArrayList<>();
+        for (LogoMark.Look l : LogoMark.Look.values()) {
+            (l.channel() ? channels : l.lab() != null ? lab : l.own() ? own : others).add(markTile(l));
+        }
         for (int i = 0; i < channels.size(); i += 4) addLine(150, 4, channels.subList(i, Math.min(channels.size(), i + 4)));
+        heading("LOGO COVER LOOK: THE SCOREBOARD LAB'S FIVE");
+        for (int i = 0; i < lab.size(); i += 3) addLine(150, 3, lab.subList(i, Math.min(lab.size(), i + 3)));
         heading("LOGO COVER LOOK: THE SPORTS WORDMARK AND 54 STYLES");
         addLine(150, 3, own);
         Row back = row("‹  Back a style", false);
@@ -619,6 +636,15 @@ final class BoardPanel extends SportPanel {
                 + "the match it sees you watching), and off ten minutes after its full time. It keeps to soft colours (Light a "
                 + "soft grey, not white), moves a pixel or two each minute, dims a little after five minutes without a goal, and "
                 + "rests at half time once the half's stats are done.", 17, 0xCCFFFFFF);
+    }
+
+    /** One of the Lab's stats ({key, name, what it is}, BoardLab.STATS) on or off: shown while the stats beside the board are on. */
+    private Row statRow(String[] st) {
+        Row r = row(st[1], true);
+        r.on = () -> BoardCover.statOn(c, st[0]);
+        r.words = () -> !BoardCover.statOn(c, st[0]) ? "Off" : BoardCover.statsOn(c) ? st[2] : st[2] + " · with the stats, now off";
+        r.ok = () -> BoardCover.setStatOn(c, st[0], !BoardCover.statOn(c, st[0]));
+        return r;
     }
 
     /** One of the board's looks, drawn with the game chosen, its name under it (a tick on the one chosen). */

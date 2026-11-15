@@ -130,6 +130,13 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         CRESTS("Crests and time"), STACKED("Stacked", 1.7f), CARD("Card", 1.6f), FROSTED("Frosted glass"),
         /** Each side's kit in 3D in a cell of its own (KitSheets' frames), turning in and swaying; GOAL on gold. */
         KITS("3D kits", 1.25f),
+        /**
+         * The Scoreboard Lab's own boards (CompBug draws them, as on the TV): Floodlight (crisp white, the clock tucked
+         * under), Split kit (each half in its club's colour, cut on an angle), Ticker (one slim line), Duo pills (two
+         * pills, the clock between) and Stadium LED (amber dots, as a ground's own screen).
+         */
+        FLOODLIGHT(CompBug.Kind.FLOODLIGHT), SPLITKIT(CompBug.Kind.SPLITKIT), TICKER(CompBug.Kind.TICKER), DUO(CompBug.Kind.DUO),
+        LED(CompBug.Kind.LED),
         /** Each game in its own competition's look, with its logo (CompBug); Classic for one with no look of its own. */
         COMPETITION("By competition"),
         PL_WORLD(CompBug.Kind.PL), PL_US(CompBug.Kind.PL_US), FA_CUP(CompBug.Kind.FACUP), EFL(CompBug.Kind.EFL),
@@ -363,8 +370,13 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         d.logo = comp;
         d.logoLight = compLight;
         d.stoppage = pulses(look);
-        d.glow = flash;
+        // The band's new score glows and pops; the Lab's sets and a rolling board move the figure in instead.
+        d.glow = goalSet == com.gathin.broadcast.BoardFx.GOAL_BAND && !rollsNow() ? flash : 0f;
         d.glowSide = flashSide;
+        d.move = moveKind;
+        d.moveAt = moveAt;
+        d.before = CompBug.scores(scoreFrom);
+        d.htFace = htFaceNow();
         return d;
     }
 
@@ -435,10 +447,191 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         flashSide = side;
         goalAt = System.currentTimeMillis();
         goalFrozen = -1;
+        // The score as it was: the new figure moves in from it (the new score comes on the board just after this).
+        scoreFrom = look.score;
+        goalSet = setFor(style, gameId);
         removeCallbacks(scoreSwish);
-        postDelayed(scoreSwish, scoreSwishAt());
+        for (Runnable r0 : labSounds) removeCallbacks(r0);
+        boolean rolls = rollsNow();
+        switch (goalSet) {
+            case com.gathin.broadcast.BoardFx.GOAL_FLIP:
+                postDelayed(rolls ? rollSound : flipSound, com.gathin.broadcast.BoardFx.FLIP_FROM);
+                postDelayed(netSound, com.gathin.broadcast.BoardFx.MESH_AFTER_FLIP);
+                break;
+            case com.gathin.broadcast.BoardFx.GOAL_BURST:
+                post(burstSound);
+                postDelayed(rollSound, com.gathin.broadcast.BoardFx.ROLL_FROM);
+                postDelayed(netSound, com.gathin.broadcast.BoardFx.MESH_AFTER_BURST);
+                break;
+            default:
+                // Today's band: the family's swish on the new score, then the net.
+                postDelayed(scoreSwish, scoreSwishAt());
+                postDelayed(netSound, RIPPLE_AT);
+        }
         postInvalidateOnAnimation();
     }
+
+    // ---- the Scoreboard Lab's moments (BoardFx): the same game's the same on the TV and here ---------------------------
+
+    /**
+     * Where each side's crest (0 home, 1 away) and its part of the board were drawn this frame (empty: not drawn): a
+     * burst comes out of the scorers' own crest, or over their part on a look without one.
+     */
+    private final RectF[] crestSeen = {new RectF(), new RectF()}, partSeen = {new RectF(), new RectF()};
+    private final RectF burstAt = new RectF();
+
+    /** The moments' drawing (its paints kept); the game on the board; the set its goals come in (BoardFx.goalSet). */
+    private final com.gathin.broadcast.BoardFx fx = new com.gathin.broadcast.BoardFx();
+    private String gameId;
+    private int goalSet = com.gathin.broadcast.BoardFx.GOAL_BAND;
+    /** The score before the goal on now (its new figure moves in from it), and how it moves now (CompBug.MOVE_*, how far). */
+    private String scoreFrom = "";
+    private int moveKind;
+    private float moveAt = 1f;
+    /** The ground's weather over the board: its sky and since when (0: none), or for previews how far in (-1: as time goes). */
+    private com.gathin.broadcast.BoardFx.Sky weatherSky;
+    private long weatherAt, weatherFrozen = -1;
+    /** A shootout's kicks in the clock's place (null: the clock), each side's in order: true scored. */
+    private List<Boolean> pensHome, pensAway;
+    /** Half time's face: dark figures on a light block (white on a dark board). */
+    private static final int FACE_GROUND = 0xF2F6F7FA, FACE_INK = 0xFF0B0E16;
+    /** On a rolling board (Floodlight, Stadium LED) the band's new score rolls up as the band goes, over this. */
+    static final long ROLL_BAND_FROM = BAND_OUT + 150, ROLL_BAND_TO = BAND_OUT + 950;
+
+    /** The game on the board (ESPN's id): its goals' set, half time's face and the shootout's place are its own, every time. */
+    void game(String id) {
+        gameId = id;
+    }
+
+    String game() {
+        return gameId;
+    }
+
+    /** Pure: the set a look shows a game's goals in: the 3D kits keep their own (the band's), no game the band; else the game's. */
+    static int setFor(Style s, String gameId) {
+        if (s == Style.KITS || gameId == null || gameId.isEmpty()) return com.gathin.broadcast.BoardFx.GOAL_BAND;
+        return com.gathin.broadcast.BoardFx.goalSet(gameId);
+    }
+
+    /** Whether the look's new score rolls up into place whatever the set (Floodlight, Stadium LED). */
+    private boolean rollsNow() {
+        CompBug.Kind k = kind();
+        return k != null && k.rolls();
+    }
+
+    /** How long the goal's moment is in its set: the band's GOAL_MS, the flip's and the burst's own. */
+    private long goalLen() {
+        return goalSet == com.gathin.broadcast.BoardFx.GOAL_FLIP ? com.gathin.broadcast.BoardFx.FLIP_MS
+                : goalSet == com.gathin.broadcast.BoardFx.GOAL_BURST ? com.gathin.broadcast.BoardFx.BURST_MS : GOAL_MS;
+    }
+
+    /** When the net shivers in the goal's set, in ms from the goal: after the band goes, or the Lab's own moment. */
+    private long meshAt() {
+        return goalSet == com.gathin.broadcast.BoardFx.GOAL_FLIP ? com.gathin.broadcast.BoardFx.MESH_AFTER_FLIP
+                : goalSet == com.gathin.broadcast.BoardFx.GOAL_BURST ? com.gathin.broadcast.BoardFx.MESH_AFTER_BURST : RIPPLE_AT;
+    }
+
+    /** Pure: how far t is from a to b, 0 to 1. */
+    static float along(long t, long a, long b) {
+        return t <= a ? 0f : t >= b ? 1f : (t - a) / (float) (b - a);
+    }
+
+    /** How the score's figure moves t ms into the goal (sets moveKind and moveAt): flipping, rolling, or not at all. */
+    private void moveNow(long gt, boolean goalOn) {
+        moveKind = 0;
+        moveAt = 1f;
+        if (!goalOn || look.f1 || scoreFrom == null || scoreFrom.isEmpty() || scoreFrom.equals(look.score)) return;
+        boolean rolls = rollsNow();
+        if (goalSet == com.gathin.broadcast.BoardFx.GOAL_FLIP) {
+            moveKind = rolls ? CompBug.MOVE_ROLL : CompBug.MOVE_FLIP;
+            moveAt = com.gathin.broadcast.BoardFx.flipMove(gt);
+        } else if (goalSet == com.gathin.broadcast.BoardFx.GOAL_BURST) {
+            moveKind = CompBug.MOVE_ROLL;
+            moveAt = com.gathin.broadcast.BoardFx.rollMove(gt);
+        } else if (rolls) {
+            moveKind = CompBug.MOVE_ROLL;
+            moveAt = along(gt, ROLL_BAND_FROM, ROLL_BAND_TO);
+        }
+    }
+
+    /** Whether the score shows half time's face now: the game picks it, from the board's turn's middle on, while HT. */
+    private boolean htFaceNow() {
+        if (look.f1 || gameId == null || !"HT".equals(look.clock) || !com.gathin.broadcast.BoardFx.htFace(gameId)) return false;
+        // Card keeps its own Half-Time, Minimal has no block, the 3D kits their own.
+        if (kind() == null && (style == Style.CARD || style == Style.MINIMAL || style == Style.KITS)) return false;
+        long ht = htAt > 0 ? System.currentTimeMillis() - htAt : -1;
+        return ht < 0 || ht >= HT_MS / 2;
+    }
+
+    /** The ground's weather lightly over the board for BoardFx.WEATHER_MS, its sky as it is now. */
+    void weather(com.gathin.broadcast.BoardFx.Sky sky) {
+        if (sky == null) return;
+        weatherSky = sky;
+        weatherAt = System.currentTimeMillis();
+        weatherFrozen = -1;
+        postInvalidateOnAnimation();
+    }
+
+    /** Previews: the weather this far in (sky null: none). */
+    void weatherNow(com.gathin.broadcast.BoardFx.Sky sky, long t) {
+        weatherSky = sky;
+        weatherFrozen = sky == null ? -1 : t;
+        weatherAt = sky == null ? 0 : System.currentTimeMillis() - Math.max(0, t);
+        invalidate();
+    }
+
+    /**
+     * A shootout's kicks so far beside the clock, in a tab of their own as the added time's (the games that have it,
+     * pensInClock): each side's in order, true scored; null for none (the clock alone again). The board grows by the
+     * tab, its own part kept, as it does for the added time.
+     */
+    void pens(List<Boolean> home, List<Boolean> away) {
+        boolean was = pensHome != null, now = home != null && away != null;
+        int before = was ? com.gathin.broadcast.BoardFx.pensCols(pensHome.size(), pensAway.size()) : 0;
+        int after = now ? com.gathin.broadcast.BoardFx.pensCols(home.size(), away.size()) : 0;
+        if (!was && !now) return;
+        if (was && now && before == after && pensHome.equals(home) && pensAway.equals(away)) return;
+        android.view.ViewGroup.LayoutParams lp = getLayoutParams();
+        int h = lp != null && lp.height > 0 ? lp.height : getHeight() > 0 ? getHeight() : Math.round(30 * dp);
+        int wide = natural(h);
+        pensHome = now ? new ArrayList<>(home) : null;
+        pensAway = now ? new ArrayList<>(away) : null;
+        if (was != now || before != after) {
+            if (lp != null && lp.width > 0) {
+                int w = withTab(Math.max(1, lp.width - lpTab), h);
+                if (w != lp.width) {
+                    lp.width = w;
+                    setLayoutParams(lp);
+                }
+            }
+            if (natural(h) != wide) requestLayout();
+        }
+        invalidate();
+    }
+
+    /** Whether the game on the board has its shootout beside the clock (BoardFx.pensInClock), not under the board. */
+    boolean pensInClock() {
+        return !look.f1 && gameId != null && !gameId.isEmpty() && com.gathin.broadcast.BoardFx.pensInClock(gameId);
+    }
+
+    /** Whether a shootout's kicks are beside the clock now. */
+    boolean pensShown() {
+        return pensHome != null;
+    }
+
+    /** One of the Lab's quiet sounds as its moment comes (Sfx.QUIET, panned to the board); only while it is up, behind the swish's switch. */
+    private void labSound(String name) {
+        if (!isAttachedToWindow() || !isShown() || getAlpha() < 0.05f || !PlayerIntro.swishOn(getContext())) return;
+        int[] at = new int[2];
+        getLocationOnScreen(at);
+        int sw = getResources().getDisplayMetrics().widthPixels;
+        float pan = sw > 0 ? Math.max(-0.6f, Math.min(0.6f, ((at[0] + getWidth() / 2f) / sw * 2f - 1f) * 0.6f)) : 0f;
+        com.gathin.broadcast.Sfx.play(getContext(), name, pan, com.gathin.broadcast.Sfx.QUIET);
+    }
+
+    private final Runnable netSound = () -> labSound(com.gathin.broadcast.Sfx.NET), flipSound = () -> labSound(com.gathin.broadcast.Sfx.FLIP),
+            burstSound = () -> labSound(com.gathin.broadcast.Sfx.BURST), rollSound = () -> labSound(com.gathin.broadcast.Sfx.ROLL);
+    private final Runnable[] labSounds = {netSound, flipSound, burstSound, rollSound};
 
     /** Pure: when the family's swish starts, in ms into the goal: its loudest moment on the new score's pop (the band gone). */
     static long scoreSwishAt() {
@@ -455,8 +648,8 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         com.gathin.broadcast.Sfx.play(getContext(), com.gathin.broadcast.Sfx.SCORE, pan, 0.85f);
     };
 
-    /** The net's shiver after the band (from RIPPLE_AT, over RIPPLE_MS); half time turning over; FULL TIME stamped. */
-    static final long RIPPLE_AT = BAND_OUT + BAND_MS - 150, RIPPLE_MS = 900, HT_MS = 700, FT_MS = 2600;
+    /** The net's shiver after the band (from RIPPLE_AT: the Lab's net, BoardFx.netMesh); half time turning over; FULL TIME stamped. */
+    static final long RIPPLE_AT = BAND_OUT + BAND_MS - 150, HT_MS = 700, FT_MS = 2600;
     private long htAt, ftAt, varUntil;
 
     /** VAR is checking: a white line scans back and forth across the board for ms. */
@@ -505,24 +698,6 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         float x = (t % 1000L) / 1000f;
         float a = (float) Math.exp(-Math.pow((x - 0.12f) / 0.06f, 2)), b = 0.7f * (float) Math.exp(-Math.pow((x - 0.34f) / 0.07f, 2));
         return Math.min(1f, a + b);
-    }
-
-    /** Rings running out from the scorer's end of the board, t ms in, as the net's shiver: light, thin, fading as they spread. */
-    private void netRipple(Canvas cv, int w, int h, long t) {
-        float x = Math.max(0f, Math.min(1f, t / (float) RIPPLE_MS));
-        float cx = flashSide == 2 ? w * 0.62f : w * 0.16f, cy = h / 2f, far = w * 0.75f;
-        edge.setStyle(Paint.Style.STROKE);
-        edge.setColor(0xFFFFFFFF);
-        for (int k = 0; k < 3; k++) {
-            float p = x - k * 0.16f;
-            if (p <= 0f || p >= 1f) continue;
-            float e = 1f - (1f - p) * (1f - p);
-            edge.setStrokeWidth(Math.max(1f, h * (0.05f - 0.03f * e)));
-            edge.setAlpha(Math.round(110 * (1f - p) * (k == 0 ? 1f : 0.6f)));
-            cv.drawCircle(cx, cy, h * 0.3f + far * e, edge);
-        }
-        edge.setAlpha(255);
-        edge.setStyle(Paint.Style.FILL);
     }
 
     /** VAR checking: a bright white line sweeping back and forth across the board, a soft glow either side. */
@@ -582,16 +757,27 @@ final class OverlayBug extends View implements BurnGuard.Dims {
 
     /** Previews and tests: drawn t ms into a goal for this side (-1: no goal). */
     void goalNow(int side, long t) {
+        goalNow(side, t, null);
+    }
+
+    /**
+     * Previews and tests: drawn t ms into a goal for this side (-1: no goal) in the game's set (game()), its new figure
+     * moving in from the score before (from; null: none to move from).
+     */
+    void goalNow(int side, long t, String from) {
         flashSide = side;
         goalFrozen = t;
         goalAt = t < 0 ? 0 : System.currentTimeMillis() - t;
+        goalSet = setFor(style, gameId);
+        scoreFrom = from == null ? "" : from;
         invalidate();
     }
 
     /** How long until the goal's band has gone (an alert waits for it), in ms; 0 when there is none. */
     long bandLeft(long now) {
         if (goalAt <= 0 || goalFrozen >= 0) return 0;
-        return Math.max(0, goalAt + BAND_OUT + BAND_MS - now);
+        long end = goalSet == com.gathin.broadcast.BoardFx.GOAL_BAND ? BAND_OUT + BAND_MS : goalLen();
+        return Math.max(0, goalAt + end - now);
     }
 
     /**
@@ -852,10 +1038,15 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         }
         long now = System.currentTimeMillis();
         long gt = goalFrozen >= 0 ? goalFrozen : goalAt > 0 ? now - goalAt : -1;
-        boolean goalOn = gt >= 0 && gt < GOAL_MS;
-        flash = goalOn ? glow(gt) : 0f;
-        // The new score pops up big as the band goes, and settles.
-        scoreZoom = 1f + 0.38f * flash * flash;
+        boolean goalOn = gt >= 0 && gt < goalLen();
+        boolean band = goalSet == com.gathin.broadcast.BoardFx.GOAL_BAND;
+        // The scorers' side lit: the band's glow once it goes, the flip's wash, the burst's glow.
+        flash = !goalOn ? 0f : band ? glow(gt) : goalSet == com.gathin.broadcast.BoardFx.GOAL_FLIP
+                ? com.gathin.broadcast.BoardFx.washAlpha(gt) / 0.75f * 0.9f : com.gathin.broadcast.BoardFx.glowAlpha(gt) / 0.6f * 0.75f;
+        // The band's new score pops up big as the band goes, and settles; in the Lab's sets (and on a rolling board) the
+        // new figure moves in instead.
+        scoreZoom = band && !rollsNow() ? 1f + 0.38f * flash * flash : 1f;
+        moveNow(gt, goalOn);
         clip.reset();
         float rad = p.round >= 0.5f ? h / 2f : Math.min(h * p.round, 8 * dp);
         // The added time stands beside it in a tab of its own: the board's ground, its corners and a goal's band are
@@ -880,6 +1071,10 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         if (turning) {
             float f = Math.abs((float) Math.cos(Math.PI * ht / HT_MS));
             cv.scale(1f, Math.max(0.04f, f), 0, h / 2f);
+        }
+        for (int i = 0; i < 2; i++) {
+            crestSeen[i].setEmpty();
+            partSeen[i].setEmpty();
         }
         CompBug.Kind ck = kind();
         if (ck != null) {
@@ -913,16 +1108,24 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         } else {
             row = null;
         }
-        if (goalOn && !look.f1 && style != Style.KITS) goalMoment(cv, w, mh, gt);
-        // The net shivering after the ball goes in, once the scorers' band has gone; VAR checking; FULL TIME stamped.
-        boolean rippling = !look.f1 && gt >= RIPPLE_AT && gt < RIPPLE_AT + RIPPLE_MS;
-        if (rippling) netRipple(cv, w, mh, gt - RIPPLE_AT);
+        if (goalOn && !look.f1 && style != Style.KITS) {
+            if (band) goalMoment(cv, w, mh, gt);
+            else labGoal(cv, w, mh, gt, ck != null);
+        }
+        // The net shivering across the board after every goal (the Lab's net); VAR checking; FULL TIME stamped.
+        long mesh = gt - meshAt();
+        boolean rippling = !look.f1 && gt >= 0 && mesh >= 0 && mesh < com.gathin.broadcast.BoardFx.MESH_MS;
+        if (rippling) fx.netMesh(cv, w, mh, mesh);
         boolean scanning = varUntil > now && !look.f1;
         if (scanning) varScan(cv, w, mh, now);
         long ft = ftAt > 0 && !look.f1 ? now - ftAt : -1;
         boolean stamping = ft >= 0 && ft < FT_MS;
         if (stamping) fullTimeStamp(cv, w, mh, ft);
         if (row != null) cv.restore();
+        // The ground's weather lightly over the board, two or three times a game.
+        long wt = weatherSky == null ? -1 : weatherFrozen >= 0 ? weatherFrozen : now - weatherAt;
+        boolean weathering = !look.f1 && wt >= 0 && wt < com.gathin.broadcast.BoardFx.WEATHER_MS;
+        if (weathering) fx.weather(cv, w, h, weatherSky, wt);
         if (p.edgeLine) {
             float e = Math.max(1f, h * 0.025f);
             edge.setStyle(Paint.Style.STROKE);
@@ -933,7 +1136,8 @@ final class OverlayBug extends View implements BurnGuard.Dims {
             edge.setStyle(Paint.Style.FILL);
         }
         cv.restore();
-        if (tab > 0) addedTab(cv, w, full, h);
+        if (tab > 0 && !look.added.isEmpty()) addedTab(cv, w, full, h);
+        else if (tab > 0) pensTab(cv, w, full, h);
         if (part) {
             cv.restore();
             // The wipe's leading edge, a bright line fading as it lands.
@@ -944,7 +1148,9 @@ final class OverlayBug extends View implements BurnGuard.Dims {
                 cv.drawRect(in[2] - lw, 0, in[2], h, edge);
             }
         }
-        if ((goalOn && goalFrozen < 0) || ((turning || rippling || scanning || stamping) && !part)) postInvalidateOnAnimation();
+        if ((goalOn && goalFrozen < 0) || (weathering && weatherFrozen < 0 && !part) || ((turning || rippling || scanning || stamping) && !part)) {
+            postInvalidateOnAnimation();
+        }
         // The 3D kits: every frame while they turn in, else when the sway next shows another frame.
         if (style == Style.KITS && !look.f1 && !part && animFrozen < 0) kitsNext(now);
         // Added time is red and still now: nothing on it moves, so nothing more to draw for it.
@@ -963,6 +1169,60 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         if (style != Style.MINIMAL || pulses(look)) return 33;
         long st = shineTime(animTime()), in = ((st % SHINE_EVERY_MS) + SHINE_EVERY_MS) % SHINE_EVERY_MS;
         return in < SHINE_MS ? 33 : Math.max(33, SHINE_EVERY_MS - in);
+    }
+
+    /**
+     * The Lab's goal over the board, t ms in: the flip's shine sweeping it, or the burst's crest popping with rings in the
+     * scorers' colour; on a competition's look (which lights no side of its own) the scorers' end washed in their colour.
+     */
+    private void labGoal(Canvas cv, int w, int h, long t, boolean compLook) {
+        boolean home = flashSide != 2;
+        int colour = home ? look.homeColour : look.awayColour;
+        if (goalSet == com.gathin.broadcast.BoardFx.GOAL_FLIP) {
+            if (compLook) wash(cv, w, h, home, colour, com.gathin.broadcast.BoardFx.washAlpha(t));
+            fx.shineSweep(cv, w, h, t);
+        } else {
+            if (compLook) wash(cv, w, h, home, colour, com.gathin.broadcast.BoardFx.glowAlpha(t));
+            // Out of the scorers' own crest on the board, settling back into it; on a look without one (or before it has
+            // come), over their part, fading once it has popped so their letters show again.
+            RectF crest = crestSeen[home ? 0 : 1], part = partSeen[home ? 0 : 1];
+            boolean own = !crest.isEmpty();
+            if (own) burstAt.set(crest);
+            else if (!part.isEmpty()) burstAt.set(part);
+            else sideOf(w, h, home, burstAt);
+            float rad = own ? crest.width() / 2f : Math.min(burstAt.height(), h) * 0.36f, a = own ? 1f : burstFade(t);
+            if (a <= 0f) return;
+            if (a < 1f) cv.saveLayerAlpha(0, 0, w, h, Math.round(255 * a));
+            fx.crestBurst(cv, burstAt.centerX(), burstAt.centerY(), rad, home ? homeCrest : awayCrest, colour, t);
+            if (a < 1f) cv.restore();
+        }
+    }
+
+    /** Pure: a burst's strength t ms in on a look with no crest of the scorers' own: whole until it has popped, then fading. */
+    static float burstFade(long t) {
+        long from = com.gathin.broadcast.BoardFx.POP_MS + 100, to = from + 800;
+        return t <= from ? 1f : t >= to ? 0f : 1f - (t - from) / (float) (to - from);
+    }
+
+    /**
+     * The scorers' part of the board, as the TV's: their end of a long board, their row of one nearer square (where the
+     * board has not said where it drew them).
+     */
+    private static void sideOf(int w, int h, boolean home, RectF out) {
+        if (w / (float) h < 2.2f) out.set(0, home ? 0 : h / 2f, w * 0.62f, home ? h / 2f : h);
+        else if (home) out.set(0, 0, w * 0.36f, h);
+        else out.set(w * 0.64f, 0, w, h);
+    }
+
+    /** A side's crest in its own place on the board, that place kept for the burst. */
+    private void drawCrest(Canvas cv, boolean home, Bitmap crest, float x, float y, float size) {
+        crestSeen[home ? 0 : 1].set(x, y, x + size, y + size);
+        drawImage(cv, crest, x, y, size);
+    }
+
+    /** The scorers' end of a competition's look washed lightly in their colour, clear of the score in the middle. */
+    private void wash(Canvas cv, int w, int h, boolean home, int colour, float alpha) {
+        fx.sideWash(cv, home ? 0 : w * 0.64f, 0, home ? w * 0.36f : w, h, colour, alpha * 0.5f);
     }
 
     /** The goal's hit and band over the board, t ms in: the scorers' colour, their crest and GOAL, a shine across it. */
@@ -1056,7 +1316,7 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         cx = side(cv, cx, y, h, strip, crests ? crestW : 0, codeW, k, true);
         // The score on its own block.
         scoreBlock(cv, cx, y, score, h);
-        words(cv, look.score, cx + score / 2, y, h, h * 0.56f * k * scoreZoom, p.scoreInk);
+        score(cv, look.score, scoreFrom, cx + score / 2, y, h, h * 0.56f * k * scoreZoom, p.scoreInk);
         cx += score;
         cx = side(cv, cx, y, h, strip, crests ? crestW : 0, codeW, k, false);
         if (withClock && clock > 0) clock(cv, cx, y, x + w - cx, h, k);
@@ -1064,6 +1324,13 @@ final class OverlayBug extends View implements BurnGuard.Dims {
 
     /** The score's block in the look's colours (none in Minimal's), alive in added time (Card's always). */
     private void scoreBlock(Canvas cv, float x, float y, float w, float h) {
+        if (htFaceNow()) {
+            // Half time's face: the block turned over, light, its figures dark.
+            fill.setShader(null);
+            fill.setColor(FACE_GROUND);
+            cv.drawRect(x, y, x + w, y + h, fill);
+            return;
+        }
         if (p.score0 == 0 && p.score1 == 0) return;
         // Card: its blue, turning red in added time.
         boolean red = style == Style.CARD && look.stoppage;
@@ -1100,6 +1367,7 @@ final class OverlayBug extends View implements BurnGuard.Dims {
     private float side(Canvas cv, float cx, float y, float h, float strip, float crestW, float codeW, float k, boolean home) {
         int colour = home ? look.homeColour : look.awayColour;
         float width = strip + crestW + codeW;
+        partSeen[home ? 0 : 1].set(cx, y, cx + width, y + h);
         if (flash > 0 && flashSide == (home ? 1 : 2)) {
             fill.setColor(colour);
             fill.setAlpha(Math.round(200 * flash));
@@ -1120,11 +1388,11 @@ final class OverlayBug extends View implements BurnGuard.Dims {
                 fill.setColor(colour);
                 cv.drawRect(cx, y, cx + strip, y + h, fill);
             }
-            if (crestW > 0 && crest != null) drawImage(cv, crest, cx + strip + crestW * 0.14f, y + (h - crestW * 0.72f) / 2, crestW * 0.72f);
+            if (crestW > 0 && crest != null) drawCrest(cv, home, crest, cx + strip + crestW * 0.14f, y + (h - crestW * 0.72f) / 2, crestW * 0.72f);
             words(cv, code, cx + strip + crestW + codeW / 2, y, h, h * 0.46f * k, ink);
         } else {
             words(cv, code, cx + codeW / 2, y, h, h * 0.46f * k, ink);
-            if (crestW > 0 && crest != null) drawImage(cv, crest, cx + codeW + crestW * 0.14f, y + (h - crestW * 0.72f) / 2, crestW * 0.72f);
+            if (crestW > 0 && crest != null) drawCrest(cv, home, crest, cx + codeW + crestW * 0.14f, y + (h - crestW * 0.72f) / 2, crestW * 0.72f);
             if (p.strips) {
                 fill.setColor(colour);
                 cv.drawRect(cx + codeW + crestW, y, cx + width, y + h, fill);
@@ -1178,7 +1446,7 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         float extra = Math.max(0, w - need * k);
         float cx = side(cv, 0, 0, h, strip * k, crests ? crestW : 0, codeW * k + extra / 2, k, true);
         scoreBlock(cv, cx, 0, score * k, h);
-        words(cv, look.score, cx + score * k / 2, 0, h, h * 0.56f * k * scoreZoom, p.scoreInk);
+        score(cv, look.score, scoreFrom, cx + score * k / 2, 0, h, h * 0.56f * k * scoreZoom, p.scoreInk);
         side(cv, cx + score * k, 0, h, strip * k, crests ? crestW : 0, codeW * k + extra / 2, k, false);
     }
 
@@ -1309,7 +1577,7 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         crestSide(cv, cx, 0, hc, h, true);
         cx += hc;
         scoreBlock(cv, cx, 0, score, h);
-        words(cv, look.score, cx + score / 2, 0, h, h * 0.56f * k * scoreZoom, p.scoreInk);
+        score(cv, look.score, scoreFrom, cx + score / 2, 0, h, h * 0.56f * k * scoreZoom, p.scoreInk);
         cx += score;
         crestSide(cv, cx, 0, ac, h, false);
         cx += ac + pad;
@@ -1324,7 +1592,7 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         crestSide(cv, cx, 0, hc * k, top, true);
         cx += hc * k;
         scoreBlock(cv, cx, 0, score * k, top);
-        words(cv, look.score, cx + score * k / 2, 0, top, top * 0.56f * k * scoreZoom, p.scoreInk);
+        score(cv, look.score, scoreFrom, cx + score * k / 2, 0, top, top * 0.56f * k * scoreZoom, p.scoreInk);
         cx += score * k;
         crestSide(cv, cx, 0, ac * k, top, false);
         fill.setColor(p.clock != 0 ? p.clock : p.ground);
@@ -1335,6 +1603,7 @@ final class OverlayBug extends View implements BurnGuard.Dims {
     /** One club's crest (its letters until the crest comes) with its colour as a line at the foot; lit as it scores. */
     private void crestSide(Canvas cv, float x, float y, float w, float h, boolean home) {
         int colour = home ? look.homeColour : look.awayColour;
+        partSeen[home ? 0 : 1].set(x, y, x + w, y + h);
         if (flash > 0 && flashSide == (home ? 1 : 2)) {
             fill.setColor(colour);
             fill.setAlpha(Math.round(200 * flash));
@@ -1343,7 +1612,7 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         }
         Bitmap crest = home ? homeCrest : awayCrest;
         float size = Math.min(w, h) * 0.7f;
-        if (crest != null) drawImage(cv, crest, x + (w - size) / 2, y + h * 0.1f, size);
+        if (crest != null) drawCrest(cv, home, crest, x + (w - size) / 2, y + h * 0.1f, size);
         else words(cv, home ? look.home : look.away, x + w / 2, y - h * 0.04f, h, h * 0.42f, litInk(colour, flashSide == (home ? 1 : 2)));
         fill.setColor(colour);
         cv.drawRect(x + w * 0.2f, y + h * 0.86f, x + w * 0.8f, y + h * 0.93f, fill);
@@ -1369,7 +1638,12 @@ final class OverlayBug extends View implements BurnGuard.Dims {
 
     /** "2–1" as {"2", "1"}; none when it is not a score (before kick-off). */
     private String[] goals() {
-        String[] g = look.score.split("\\s*[–-]\\s*");
+        return goals(look.score);
+    }
+
+    /** Pure: each side's figure in a score ("2–1": {"2", "1"}); {"", ""} when it has not two. */
+    static String[] goals(String score) {
+        String[] g = (score == null ? "" : score).split("\\s*[–-]\\s*");
         return g.length == 2 ? g : new String[]{"", ""};
     }
 
@@ -1412,6 +1686,7 @@ final class OverlayBug extends View implements BurnGuard.Dims {
     private void stackedRow(Canvas cv, float x, float y, float w, float r, float strip, float crestW, float goalsW,
             boolean home, String goals, float k) {
         int colour = home ? look.homeColour : look.awayColour;
+        partSeen[home ? 0 : 1].set(x, y, x + w, y + r);
         boolean scored = flash > 0 && flashSide == (home ? 1 : 2);
         if (scored) {
             fill.setColor(colour);
@@ -1422,13 +1697,14 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         fill.setColor(colour);
         cv.drawRect(x, y, x + strip, y + r, fill);
         Bitmap crest = home ? homeCrest : awayCrest;
-        if (crestW > 0 && crest != null) drawImage(cv, crest, x + strip + crestW * 0.12f, y + (r - crestW * 0.76f) / 2, crestW * 0.76f);
+        if (crestW > 0 && crest != null) drawCrest(cv, home, crest, x + strip + crestW * 0.12f, y + (r - crestW * 0.76f) / 2, crestW * 0.76f);
         wordsFrom(cv, home ? look.home : look.away, x + strip + crestW + r * 0.22f, y, r, r * 0.5f * k, litInk(colour, scored));
         float gx = x + w - goalsW;
-        fill.setColor(p.score0 != 0 ? p.score0 : p.ground);
+        boolean face = htFaceNow();
+        fill.setColor(face ? FACE_GROUND : p.score0 != 0 ? p.score0 : p.ground);
         cv.drawRect(gx, y, x + w, y + r, fill);
-        alive(cv, gx, y, goalsW, r);
-        words(cv, goals, gx + goalsW / 2, y, r, r * 0.62f * k * (scored ? scoreZoom : 1f), p.scoreInk);
+        if (!face) alive(cv, gx, y, goalsW, r);
+        score(cv, goals, goals(scoreFrom)[home ? 0 : 1], gx + goalsW / 2, y, r, r * 0.62f * k * (scored ? scoreZoom : 1f), p.scoreInk);
     }
 
     /** The clock's column: minutes and seconds, the minutes added on red under them. */
@@ -1457,8 +1733,13 @@ final class OverlayBug extends View implements BurnGuard.Dims {
 
     /** "2 - 1", spaced as the results cards set it ("v" before kick-off). */
     private String cardScore() {
-        String[] g = goals();
-        return g[0].isEmpty() ? look.score : g[0] + " - " + g[1];
+        return cardScore(look.score);
+    }
+
+    /** Pure: a score as Card sets it ("2–1": "2 - 1"); as it is when it has not two figures. */
+    static String cardScore(String score) {
+        String[] g = goals(score);
+        return g[0].isEmpty() ? score == null ? "" : score : g[0] + " - " + g[1];
     }
 
     /** The clock under the score: minutes and seconds, Half-Time and Full-Time in words, the kick-off's time before it. */
@@ -1494,8 +1775,35 @@ final class OverlayBug extends View implements BurnGuard.Dims {
 
     /** The room the added time's tab takes beside the board at height h: the gap and the tab (0 when there is none, or F1). */
     int tabRoom(int h) {
-        if (h <= 0 || look.f1 || look.added.isEmpty()) return 0;
-        return Math.round(h * 0.06f + tabW(h));
+        if (h <= 0 || look.f1) return 0;
+        if (!look.added.isEmpty()) return Math.round(h * 0.06f + tabW(h));
+        return pensHome != null && pensAway != null ? Math.round(h * 0.06f + pensTabW(h)) : 0;
+    }
+
+    /** The shootout's tab's width at height h: two rows of five dots (more in sudden death), with room round them. */
+    private float pensTabW(int h) {
+        if (pensHome == null || pensAway == null) return 0f;
+        float th = tabH(h);
+        return th * 0.5f + com.gathin.broadcast.BoardFx.pensCols(pensHome.size(), pensAway.size()) * th * 0.46f;
+    }
+
+    /**
+     * The shootout's kicks in their tab beside the board (bodyW: where its own part ends, full: the view's width), as
+     * high and placed as the added time's: the home side's row over the away side's, on the clock's ground (the board's
+     * where the clock has none of its own), solid over the picture.
+     */
+    private void pensTab(Canvas cv, int bodyW, int full, int h) {
+        float gap = h * 0.06f, th = tabH(h), tw = Math.min(pensTabW(h), full - bodyW - gap);
+        if (tw <= 0 || th <= 0) return;
+        float x = bodyW + gap, y = tallTab() ? h - th : (h - th) / 2f;
+        boolean own = (p.clock >>> 24) >= 0xC0;
+        int ground = 0xFF000000 | ((own ? p.clock : p.ground) & 0xFFFFFF), ink = own ? p.clockInk : p.ink;
+        fill.setShader(null);
+        fill.setColor(ground);
+        r.set(x, y, x + tw, y + th);
+        float rad = style == Style.GLASS ? th / 2f : th * 0.12f;
+        cv.drawRoundRect(r, rad, rad, fill);
+        fx.pensDots(cv, x + th * 0.25f, y + th * 0.08f, x + tw - th * 0.25f, y + th * 0.92f, pensHome, pensAway, ink);
     }
 
     /** The tab's room beside a board w wide in all, h high: none when its own part would be narrower than twice its height. */
@@ -1613,7 +1921,7 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         String sc = cardScore();
         float ss = h * 0.46f * k * scoreZoom, sw = measure(sc, ss);
         if (sw > mid * 0.94f) ss *= mid * 0.94f / sw;
-        words(cv, sc, mx + mid / 2f, h * 0.04f, h * 0.5f, ss, p.scoreInk);
+        score(cv, sc, cardScore(scoreFrom), mx + mid / 2f, h * 0.04f, h * 0.5f, ss, p.scoreInk);
         cardClockLine(cv, mx, mid, h, k);
     }
 
@@ -1621,6 +1929,7 @@ final class OverlayBug extends View implements BurnGuard.Dims {
     private void cardSide(Canvas cv, float x, float strip, float panel, int h, boolean home) {
         int colour = home ? look.homeColour : look.awayColour;
         float px = home ? x + strip : x, sx = home ? x : x + panel;
+        partSeen[home ? 0 : 1].set(px, 0, px + panel, h);
         boolean lit = flash > 0 && flashSide == (home ? 1 : 2);
         if (lit) {
             fill.setColor(colour);
@@ -1632,7 +1941,7 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         cv.drawRect(sx, 0, sx + strip, h, fill);
         Bitmap crest = home ? homeCrest : awayCrest;
         float size = Math.min(panel * 0.8f, h * 0.76f);
-        if (crest != null) drawImage(cv, crest, px + (panel - size) / 2f, (h - size) / 2f, size);
+        if (crest != null) drawCrest(cv, home, crest, px + (panel - size) / 2f, (h - size) / 2f, size);
         else words(cv, home ? look.home : look.away, px + panel / 2f, 0, h, Math.min(h * 0.42f, panel * 0.3f),
                 lit ? ink(blend(CARD_TOP, colour, 200 * flash / 255f)) : NAVY);
     }
@@ -1824,6 +2133,29 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         cv.drawText(s, x, y + h / 2 - (fm.ascent + fm.descent) / 2, text);
     }
 
+    /**
+     * A score's words as words() sets them, with a goal's new figure moving in from was (flipping down or rolling up,
+     * BoardFx.scoreMove) while the move goes on; dark on half time's light face.
+     */
+    private void score(Canvas cv, String now, String was, float cx, float y, float h, float size, int colour) {
+        if (htFaceNow()) colour = FACE_INK;
+        if (moveKind == 0 || moveAt >= 1f || was == null || was.isEmpty() || was.equals(now)) {
+            words(cv, now, cx, y, h, size, colour);
+            return;
+        }
+        text.setTextSize(size);
+        text.setColor(colour);
+        text.setTextAlign(Paint.Align.LEFT);
+        Paint.FontMetrics fm = text.getFontMetrics();
+        float base = y + h / 2 - (fm.ascent + fm.descent) / 2;
+        text.getTextBounds("H8", 0, 2, capBox);
+        // scoreMove sets its line on its capitals' middle: that middle where words() would set the line.
+        fx.scoreMove(cv, text, was, now, cx, base + capBox.top / 2f, moveKind, moveAt);
+        text.setTextAlign(Paint.Align.CENTER);
+    }
+
+    private final android.graphics.Rect capBox = new android.graphics.Rect();
+
     /** Words centred on cx, in the middle of (y, h). */
     private void words(Canvas cv, String s, float cx, float y, float h, float size, int colour) {
         if (s == null || s.isEmpty()) return;
@@ -1955,7 +2287,7 @@ final class OverlayBug extends View implements BurnGuard.Dims {
             float pk = Math.max(0.05f, eBack(kprog(gt, HIT_MS, HIT_MS + 300)));
             words(cv, "GOAL", x + score / 2, 0, h, h * 0.56f * k * pk, KIT_INK);
         } else {
-            words(cv, look.score, x + score / 2, 0, h, h * 0.56f * k * scoreZoom, p.scoreInk);
+            score(cv, look.score, scoreFrom, x + score / 2, 0, h, h * 0.56f * k * scoreZoom, p.scoreInk);
         }
         x += score;
         fill.setColor(KIT_CODE);

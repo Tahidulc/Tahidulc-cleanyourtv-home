@@ -915,6 +915,24 @@ final class BoardCover {
         return prefs(c).getBoolean("stats", true);
     }
 
+    /** One of the Scoreboard Lab's stats (BoardLab.STATS, by its key) shown: on unless switched off ("": no switch). */
+    static boolean statOn(Context c, String key) {
+        return key == null || key.isEmpty() || prefs(c).getBoolean("stat_" + key, true);
+    }
+
+    static void setStatOn(Context c, String key, boolean on) {
+        prefs(c).edit().putBoolean("stat_" + key, on).apply();
+    }
+
+    /** The Scoreboard Lab's weather touch: the ground's weather lightly over the board two or three times a game (on). */
+    static boolean weatherTouchOn(Context c) {
+        return prefs(c).getBoolean("weather_touch", true);
+    }
+
+    static void setWeatherTouchOn(Context c, boolean on) {
+        prefs(c).edit().putBoolean("weather_touch", on).apply();
+    }
+
     static void setStatsOn(Context c, boolean on) {
         prefs(c).edit().putBoolean("stats", on).apply();
         if (!on && stats != null) stats.fold(null);
@@ -2075,6 +2093,7 @@ final class BoardCover {
     static void testMoments(Context c, String goalKey) {
         Context a = c.getApplicationContext();
         com.gathin.broadcast.Sfx.warm(a, com.gathin.broadcast.Sfx.SWISH, com.gathin.broadcast.Sfx.SCORE, "goal-" + goalKey);
+        com.gathin.broadcast.Sfx.warm(a, com.gathin.broadcast.Sfx.LAB);
         test(a);
         main().postDelayed(() -> {
             if (bug == null) return;
@@ -2394,6 +2413,7 @@ final class BoardCover {
                 // the scorer's shirt out of the board and round to his name and number (its own switch)
                 KitBoard.goal(c, g, side, bug);
                 goalShownAt = now;
+                labGoal(c, g, side, l.clock, shownScore);
                 expectScorer(c, g, l.score, side);
                 ClassicIntro.goal(c, g, l.score, side);
             }
@@ -2408,6 +2428,8 @@ final class BoardCover {
         if (g != null) {
             bug.competition(g.slug, g.league);
             bug.names(g.homeName, g.awayName);
+            // its moments chosen for this game (BoardFx): the same goals, half time and shootout all through it
+            bug.game(g.id);
             // the 3D kits: the look's two shirts made for the kits worn, a new goal's shirt made ahead of its moment
             if (style(c) == BoardBug.Style.KITS && bug.getLayoutParams() != null) {
                 KitBoard.board(c, g, bug, Math.max(1, bug.getLayoutParams().height - 2 * edge));
@@ -2487,6 +2509,7 @@ final class BoardCover {
                 if (pre != null) maybeStats(c, g, null, now, true);
                 else if (r != null) {
                     maybeStats(c, g, r, now, false);
+                    labTick(c, g, r, now);
                     maybeShotMap(c, g, r);
                 }
             }
@@ -2694,6 +2717,7 @@ final class BoardCover {
         if (boardWin != null) return true;
         if (!Settings.canDrawOverlays(c)) return false;
         com.gathin.broadcast.Sfx.warm(c, com.gathin.broadcast.Sfx.SWISH, com.gathin.broadcast.Sfx.SCORE, "goal-" + goalSound(c));
+        com.gathin.broadcast.Sfx.warm(c, com.gathin.broadcast.Sfx.LAB);
         android.util.DisplayMetrics dm = c.getResources().getDisplayMetrics();
         sw = Math.max(dm.widthPixels, dm.heightPixels);
         sh = Math.min(dm.widthPixels, dm.heightPixels);
@@ -3572,10 +3596,32 @@ final class BoardCover {
      * them (InStep's hold after they are read).
      */
     private static void underTick(Context c, ScoresTicker.Game g, long now) {
-        if (under == null || bug == null || underRoom <= 0 || bug.closing()) return;
+        if (bug == null || bug.closing()) return;
         Pens p = pens.get(g.id);
         long hold = InStep.holdMs(c, true);
-        if (pensOn(c) && p != null && (p.on || !p.kicks.isEmpty()) && now >= p.onAt + hold) pensTick(g, p, now, hold);
+        boolean on = pensOn(c) && p != null && (p.on || !p.kicks.isEmpty()) && now >= p.onAt + hold;
+        // The games that have it (the Lab's, BoardFx.pensInClock): the kicks in the clock's place on the board instead.
+        if (bug.pensInClock()) {
+            if (!on) {
+                bug.pens(null, null);
+                return;
+            }
+            if (under != null && under.isOut() && under.mode() == BoardUnder.PENS) under.fold(null);
+            long[] seen = new long[p.kicks.size()];
+            for (int i = 0; i < seen.length; i++) {
+                Long at = p.seen.get(p.kicks.get(i).id);
+                seen[i] = at == null ? now : at;
+            }
+            int n = Shootout.revealed(seen, hold, PENS_GAP_MS, now);
+            bug.pens(Shootout.side(p.kicks, n, true), Shootout.side(p.kicks, n, false));
+            // each new kick in with the swish, as under the board
+            if (p.shown >= 0 && n > p.shown && swishOn(c)) com.gathin.broadcast.Sfx.play(c, com.gathin.broadcast.Sfx.SWISH, 0f, 0.7f);
+            p.shown = n;
+            return;
+        }
+        bug.pens(null, null);
+        if (under == null || underRoom <= 0) return;
+        if (on) pensTick(g, p, now, hold);
     }
 
     /** The shootout under the board: its rows down, each kick's dot popping in as it shows. */
@@ -4276,6 +4322,7 @@ final class BoardCover {
             List<VarExplained.Seen> var = null;
             List<String[]> lines = null;
             Object[] pen = null;
+            org.json.JSONObject table = null;
             try {
                 org.json.JSONObject summary = new org.json.JSONObject(ScoresTicker.get("https://site.api.espn.com/apis/site/v2/sports/soccer/"
                         + slug + "/summary?event=" + id));
@@ -4284,6 +4331,7 @@ final class BoardCover {
                 got = statsOf(summary, g);
                 underRead(id, summary, g);
                 lines = commentaryOf(summary);
+                table = summary.optJSONObject("standings");
                 var = VarExplained.scan(lines);
                 pen = penaltyLook(c, g, summary);
             } catch (Exception e) {
@@ -4305,8 +4353,17 @@ final class BoardCover {
                     announced.put(id, mergeAdded(announced.get(id), fm.added));
                     if (got == null) got = new HashMap<>();
                     got.putAll(FotMob.statsOf(fm, code(g.home, g.homeName), code(g.away, g.awayName)));
+                    got.putAll(labBefore(fm, code(g.home, g.homeName), code(g.away, g.awayName)));
                 }
             }
+            // The ground's weather from Open-Meteo where FotMob gives none (every ten minutes at most), for the weather touch.
+            com.gathin.broadcast.BoardFx.Sky wx = null;
+            if ((fm == null || FotMob.skyOf(fm) == null) && System.currentTimeMillis() - labSkyAskedAt > 10 * 60_000L && weatherTouchOn(c)) {
+                labSkyAskedAt = System.currentTimeMillis();
+                wx = MatchExtras.skyNow(c, g);
+            }
+            com.gathin.broadcast.BoardFx.Sky wxRead = wx;
+            org.json.JSONObject tableRead = table;
             // FotMob's live commentary while the game is on: the quick VAR checks that change nothing have a line only there.
             List<VarExplained.Seen> ltc = null;
             if (fm != null && fm.ticker && live && varOn) {
@@ -4318,6 +4375,11 @@ final class BoardCover {
             FotMob.Match read = fm;
             main().post(() -> {
                 statsReading = false;
+                if (tableRead != null) {
+                    labTableFor = g.id;
+                    labTable = tableRead;
+                }
+                if (wxRead != null) labSky.put(g.id, wxRead);
                 if (read != null) fotmobRead(c, g, read);
                 if (varSeen != null) varFromEspn(c, g, varSeen);
                 if (ltcSeen != null) varFromTicker(c, g, ltcSeen);
@@ -4393,6 +4455,7 @@ final class BoardCover {
             shots = new java.util.ArrayList<>(m.shots);
             refereeOut(c, g, m);
         }
+        if (own) labRead(c, g, m);
         // FotMob's VAR events kept for VAR explained (the reason and the on-field call ESPN's words lack).
         VarExplained.fotmob(g.id, m.vars, m.reds);
         if (own && m.varPending && bug != null && !varExplainedOn(c)) bug.varCheck(8_000L);
@@ -4448,6 +4511,235 @@ final class BoardCover {
                 "ht".equals(slot) ? "First half" : "Full time", code(g.home, g.homeName), mapHome, code(g.away, g.awayName), mapAway);
         poke();
         ShotMapCard.show(c, map, sideLeft ? -0.4f : 0.4f);
+    }
+
+    // ---- the Scoreboard Lab's moments: the weather touch, the momentum wave, its stats ----------------------------------
+
+    /** The Lab's moments shown, by "game|moment" (each once a game); the stats waiting for their turn, each {game, stat...}. */
+    private static final java.util.Set<String> labShown = new java.util.HashSet<>();
+    private static final List<String[]> labQueue = new ArrayList<>();
+    /** The board's game's momentum, FotMob's match (head to head, runs), ESPN's table, the skies over its ground. */
+    private static String labMomentumFor = "", labMatchFor = "", labTableFor = "";
+    private static List<int[]> labMomentum = new ArrayList<>();
+    private static FotMob.Match labMatch;
+    private static org.json.JSONObject labTable;
+    private static final Map<String, com.gathin.broadcast.BoardFx.Sky> labSky = new HashMap<>();
+    private static volatile long labSkyAskedAt;
+    /** The shots and the games whose first read has been seen (a big save from before the board came up is never news). */
+    private static final java.util.Set<String> labShots = new java.util.HashSet<>(), labGames = new java.util.HashSet<>();
+    /** The board's game's goals as they came ({side}, {minute}), when it has been seen from 0-0 (a comeback needs them all). */
+    private static String labGoalsFor = "";
+    private static final List<Integer> labSides = new ArrayList<>(), labMinutes = new ArrayList<>();
+    private static boolean labFromStart;
+
+    /** Pure (off the main thread): the Lab's stats before kick-off from FotMob's match: the head to head, each side's run. */
+    static Map<String, String[]> labBefore(FotMob.Match m, String homeCode, String awayCode) {
+        Map<String, String[]> out = new HashMap<>();
+        if (m == null) return out;
+        String[] h2h = com.gathin.broadcast.MatchStats.h2h(m.h2h, m.homeTeamId, m.awayTeamId, homeCode, awayCode);
+        if (h2h != null) out.put("Head to head", h2h);
+        String[] sh = com.gathin.broadcast.MatchStats.streak(m.homeForm, homeCode), sa = com.gathin.broadcast.MatchStats.streak(m.awayForm, awayCode);
+        if (sh != null) out.put("Streak home", sh);
+        if (sa != null) out.put("Streak away", sa);
+        return out;
+    }
+
+    /**
+     * FotMob's read for the board's game (main thread): its momentum and match kept for the Lab's moments, the sky over
+     * its ground; a big save or a great finish, and the referee's first booking, waiting for their turn (none from before
+     * the board came up).
+     */
+    private static void labRead(Context c, ScoresTicker.Game g, FotMob.Match m) {
+        labMomentumFor = g.id;
+        labMomentum = new ArrayList<>(m.momentum);
+        labMatchFor = g.id;
+        labMatch = m;
+        com.gathin.broadcast.BoardFx.Sky sky = FotMob.skyOf(m);
+        if (sky != null) labSky.put(g.id, sky);
+        if (labSky.size() > 20) labSky.clear();
+        boolean first = labGames.add(g.id);
+        if (labGames.size() > 40) labGames.clear();
+        if (first) {
+            // What was there before the board came up: seen, not news.
+            while (com.gathin.broadcast.MatchStats.shotMoment(m.shotList, labShots) != null) {
+                // each call marks one shot seen
+            }
+            int[] cards = BoardLab.cards(m.events);
+            if (cards[0] + cards[1] > 0) labShown.add(g.id + "|referee");
+            return;
+        }
+        String[] shot = com.gathin.broadcast.MatchStats.shotMoment(m.shotList, labShots);
+        if (labShots.size() > 600) labShots.clear();
+        if (shot != null) labWait(g.id, shot);
+        int[] cards = BoardLab.cards(m.events);
+        if (cards[0] + cards[1] > 0 && !m.referee.isEmpty() && labShown.add(g.id + "|referee")) {
+            String[] ref = com.gathin.broadcast.MatchStats.refCards(m.referee, cards[0], cards[1]);
+            if (ref != null) labWait(g.id, ref);
+        }
+    }
+
+    /** A Lab stat waiting for its turn beside the board (a few at most). */
+    private static void labWait(String gameId, String[] stat) {
+        String[] q = new String[stat.length + 1];
+        q[0] = gameId;
+        System.arraycopy(stat, 0, q, 1, stat.length);
+        labQueue.add(q);
+        while (labQueue.size() > 4) labQueue.remove(0);
+    }
+
+    /**
+     * A goal on the board (main thread): the Lab's early goal (inside the first five minutes) and comeback (a side back
+     * level or ahead from behind), waiting for their turn after the goal's own moment. A comeback only for a game seen
+     * from 0-0, so every goal is known.
+     */
+    private static void labGoal(Context c, ScoresTicker.Game g, int side, String clock, String before) {
+        String[] b = BoardBug.goalsOf(before);
+        int had = toInt(b[0]) >= 0 && toInt(b[1]) >= 0 ? toInt(b[0]) + toInt(b[1]) : -1;
+        if (!g.id.equals(labGoalsFor)) {
+            labGoalsFor = g.id;
+            labSides.clear();
+            labMinutes.clear();
+            labFromStart = had == 0;
+        }
+        int minute = Math.max(0, minuteOfClock(clock));
+        labSides.add(side);
+        labMinutes.add(minute);
+        String[] early = com.gathin.broadcast.MatchStats.early(clock);
+        if (early != null) labWait(g.id, early);
+        // Every goal known (none missed while the board was away, none taken back since): else no comeback all game.
+        if (labFromStart && labSides.size() == had + 1) {
+            int[] sides = new int[labSides.size()], minutes = new int[labMinutes.size()];
+            for (int i = 0; i < sides.length; i++) {
+                sides[i] = labSides.get(i);
+                minutes[i] = labMinutes.get(i);
+            }
+            String[] back = com.gathin.broadcast.MatchStats.comeback(sides, minutes, code(g.home, g.homeName), code(g.away, g.awayName));
+            if (back != null) labWait(g.id, back);
+        }
+    }
+
+    /** The Lab's stats for the game now, by name (BoardLab.pick): the head to head and runs, each side's drought, the table as it stands. */
+    private static Map<String, String[]> labStatsNow(ScoresTicker.Game g, int minute) {
+        Map<String, String[]> out = new HashMap<>();
+        String hc = code(g.home, g.homeName), ac = code(g.away, g.awayName);
+        String[] goals = BoardBug.goalsOf(bug == null ? "" : bug.look().score);
+        int hg = toInt(goals[0]), ag = toInt(goals[1]);
+        if (g.id.equals(labMatchFor) && labMatch != null) {
+            out.putAll(labBefore(labMatch, hc, ac));
+            String[] dh = com.gathin.broadcast.MatchStats.drought(labMatch.homeForm, hc, hg, minute);
+            String[] da = com.gathin.broadcast.MatchStats.drought(labMatch.awayForm, ac, ag, minute);
+            if (dh != null) out.put("Goal drought home", dh);
+            if (da != null) out.put("Goal drought away", da);
+        }
+        if (g.id.equals(labTableFor) && labTable != null && hg >= 0 && ag >= 0) {
+            String[] t = com.gathin.broadcast.MatchStats.asItStands(labTable, g.homeId, g.awayId, hg, ag, hc, ac);
+            if (t != null) out.put("As it stands", t);
+        }
+        return out;
+    }
+
+    private static int toInt(String s) {
+        try {
+            return Integer.parseInt(s == null ? "" : s.trim());
+        } catch (NumberFormatException e) {
+            return -1;
+        }
+    }
+
+    /** Pure: a sky in plain words for the log ("rain", "clear night"). */
+    static String skyWords(com.gathin.broadcast.BoardFx.Sky sky) {
+        return sky == null ? "none" : sky.name().toLowerCase(java.util.Locale.ROOT).replace('_', ' ');
+    }
+
+    /** Pure: the log's line for a weather touch ("weather touch: rain at 23'"). */
+    static String weatherNote(com.gathin.broadcast.BoardFx.Sky sky, int minute) {
+        return "weather touch: " + skyWords(sky) + " at " + minute + "'";
+    }
+
+    /** Pure: the log's line for the momentum wave ("momentum wave at 61' (ARS on top)"). */
+    static String waveNote(int minute, String who) {
+        return "momentum wave at " + minute + "' (" + who + ")";
+    }
+
+    /**
+     * Pure: the log's line for the Lab's stats out, what (when any) then their names, a single one's words after it:
+     * "Lab stats at 15': Head to head, Streak", "Lab Big save (Keeper denies Striker)".
+     */
+    static String labNote(String what, List<String[]> list) {
+        StringBuilder b = new StringBuilder("Lab");
+        if (what != null && !what.isEmpty()) b.append(' ').append(what).append(':');
+        for (int i = 0; list != null && i < list.size(); i++) b.append(i == 0 ? " " : ", ").append(list.get(i)[0]);
+        if (list != null && list.size() == 1 && list.get(0).length > 1 && !list.get(0)[1].isEmpty()) {
+            b.append(" (").append(list.get(0)[1]).append(')');
+        }
+        return b.toString();
+    }
+
+    /**
+     * Each look at the board for its game (main thread): the Scoreboard Lab's moments. The ground's weather lightly over
+     * the board two or three times a game (BoardFx.weatherMinutes), the sky as it is then; the momentum wave once or twice
+     * a half; the Lab stats' own moments (early on, after the break, late on); and what happened worth a word (an early
+     * goal, a comeback, a big save or great finish, the referee's first booking), each in its turn. Each stat under its
+     * own switch (BoardLab.STATS) and the stats switch, never over an alert or just after a goal.
+     */
+    private static void labTick(Context c, ScoresTicker.Game g, Reading r, long now) {
+        if (bug == null || r == null || g == null || g.id == null) return;
+        int minute = minuteOfClock(bug.look().clock);
+        if (minute < 0) minute = minuteOf(r.detail);
+        boolean live = r.state == 0 && !r.halftime;
+        if (labShown.size() > 300) labShown.clear();
+        // The weather touch, the sky as it is now (its minute kept for a few minutes while the sky is not yet known).
+        com.gathin.broadcast.BoardFx.Sky sky = labSky.get(g.id);
+        if (live && minute >= 0 && sky != null && weatherTouchOn(c) && !bug.closing()
+                && com.gathin.broadcast.BoardFx.weatherDue(g.id, minute, labShown)) {
+            bug.weather(sky);
+            AlertLog.note(c, weatherNote(sky, minute));
+        }
+        // The stats wait: off, something out beside the board, a goal just in, the scores ahead of the picture.
+        if (!statsOn(c) || dropping || stats == null || stats.isOut() || bug.closing() || bug.getWidth() <= 0 || LineupCard.isShowing()) return;
+        if (now - goalShownAt < 90_000L || ahead(g.id, r)) return;
+        String hc = code(g.home, g.homeName), ac = code(g.away, g.awayName);
+        // The momentum wave once or twice a half.
+        if (live && minute >= 0 && statOn(c, "momentum") && g.id.equals(labMomentumFor)) {
+            String due = com.gathin.broadcast.BoardFx.waveDue(g.id, minute, labShown);
+            String[] w = due == null ? null : BoardLab.wave(labMomentum, minute, hc, ac);
+            if (w != null) {
+                labOut(c, java.util.Collections.singletonList(w), waveNote(minute, w[2]));
+                return;
+            }
+        }
+        // The Lab stats' own moments.
+        String slot = BoardLab.slot(r.state, r.halftime, minute);
+        if (slot != null && labShown.add(g.id + "|" + slot)) {
+            List<String[]> pick = BoardLab.pick(slot, labStatsNow(g, minute));
+            pick.removeIf(st -> !statOn(c, BoardLab.statKey(st[0])));
+            if (!pick.isEmpty()) {
+                labOut(c, pick, labNote("stats at " + minute + "'", pick));
+                return;
+            }
+        }
+        // What happened worth a word, in turn.
+        for (int i = 0; i < labQueue.size(); i++) {
+            String[] q = labQueue.get(i);
+            if (!g.id.equals(q[0])) continue;
+            labQueue.remove(i);
+            String[] st = java.util.Arrays.copyOfRange(q, 1, q.length);
+            List<String[]> one = java.util.Collections.singletonList(st);
+            if (statOn(c, BoardLab.statKey(st[0]))) labOut(c, one, labNote("", one));
+            return;
+        }
+        labQueue.removeIf(q -> !g.id.equals(q[0]));
+    }
+
+    /** The Lab's stats out beside the board (with the swish, as all the stats), noted in the log as note says. */
+    private static void labOut(Context c, List<String[]> list, String note) {
+        if (stats == null || bug == null) return;
+        poke();
+        int bh = bug.getLayoutParams().height;
+        stats.place(bug.stripLook(), boardH * TEXT, tuck, sideLeft);
+        beside(stats, stats.widthFor(list, bh, shortRoom(bh, sideMax)));
+        stats.show(list);
+        AlertLog.note(c, note);
     }
 
     /** At kick-off (its first ten minutes, once): the referee's name and country out beside the board as an alert. */
@@ -4616,8 +4908,9 @@ final class BoardCover {
         int most = 3, least = 2;
         switch (slot == null ? "" : slot) {
             case "pre":
-                want = new String[]{"Win chance", "Form", "League table"};
+                want = new String[]{"Win chance", "Form", "League table", "Head to head", "Streak home", "Streak away"};
                 least = 1;
+                most = 5;
                 break;
             case "h1":
                 want = new String[]{"Possession", "Expected goals", "Shots", "On target", "Momentum", "Corners"};
@@ -4681,6 +4974,7 @@ final class BoardCover {
         String slot = statsSlot(pre, g.kickoff - now, r == null ? 1 : r.state, r != null && r.halftime, minute);
         if (slot == null || statsShown.contains(g.id + "|" + slot)) return;
         List<String[]> pick = statsFor(slot, statsBy);
+        pick.removeIf(s -> !statOn(c, BoardLab.statKey(s[0])));
         if (pick.isEmpty()) return;
         if (statsShown.size() > 60) statsShown.clear();
         statsShown.add(g.id + "|" + slot);

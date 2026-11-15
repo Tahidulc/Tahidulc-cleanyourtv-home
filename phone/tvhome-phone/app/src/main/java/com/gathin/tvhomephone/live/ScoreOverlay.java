@@ -157,6 +157,7 @@ final class ScoreOverlay implements ScoreBoard.Source {
         fill.fade(70L);
         com.gathin.broadcast.Sfx.warm(a, com.gathin.broadcast.Sfx.SWISH, com.gathin.broadcast.Sfx.SCORE, "goal-" + PlayerIntro.goalSound(a),
                 "goal-" + com.gathin.broadcast.Sfx.GOAL_DEFAULT);   // loaded before they are needed (the swoosh: a shootout's goals too)
+        com.gathin.broadcast.Sfx.warm(a, com.gathin.broadcast.Sfx.LAB);   // the Scoreboard Lab's quiet moments, ready with the board
         intro = new PlayerIntro(a, root, () -> started && !inPip && !editing, (on) -> {
             // the classic line-ups fill the picture: the scoreboard and the logo's cover out of their way meanwhile
             board.view.setAlpha(on ? 0f : 1f);

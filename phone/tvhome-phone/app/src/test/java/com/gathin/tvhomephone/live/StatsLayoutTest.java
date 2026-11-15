@@ -25,6 +25,9 @@ public class StatsLayoutTest {
             {"form", "Form", "WWDLW", "LDWWL"},
             {"form", "Form", "WWD", "L"},
             {"one", "Player of the match", "Saka (ARS) · 2 goals · 1 assist", ""},
+            // 5.02: the Scoreboard Lab's momentum wave (its values, then who is on top).
+            {"wave", "Momentum", "20:35,21:12,22:-40,23:-8,24:55", "WHI on top"},
+            {"wave", "Momentum", "60:0,61:5,62:-5,63:2", "Level"},
     };
 
     /** Rough widths, as wide as the bold face runs or wider: a letter at a little over half its size, the name spaced out. */
@@ -48,13 +51,14 @@ public class StatsLayoutTest {
                     for (String[] st : STATS) {
                         String kind = st[0];
                         float nameSize = unit * (two ? 0.28f : 0.27f), valueSize = unit * (two ? 0.46f : 0.44f);
-                        float hw = "form".equals(kind) ? 0 : valueW(st[2], valueSize);
+                        float hw = "form".equals(kind) ? 0 : "wave".equals(kind) ? BoardStats.WAVE * unit : valueW(st[2], valueSize);
                         float aw = "one".equals(kind) || "form".equals(kind) ? 0 : valueW(st[3], valueSize);
                         int hn = "form".equals(kind) ? Math.min(5, st[2].length()) : 0, an = "form".equals(kind) ? Math.min(5, st[3].length()) : 0;
                         BoardStats.Parts p = BoardStats.layout(kind, nameW(st[1], nameSize), hw, aw, hn, an, unit, h, start, end, two);
                         String where = st[1] + " at unit " + unit + ", height " + h + ", room " + roomUnits + " units";
                         assertTrue(where + ": scale " + p.k, p.k > 0f && p.k <= 1f);
                         if ("bar".equals(kind)) assertTrue(where + ": bar " + p.bar, p.bar >= BoardStats.BAR_LEAST * unit - 0.01f);
+                        if ("wave".equals(kind)) assertTrue(where + ": wave " + p.bar, p.bar >= BoardStats.WAVE_LEAST * unit - 0.01f);
                         float[][] seen = new float[p.boxes.size()][];
                         for (int i = 0; i < p.boxes.size(); i++) {
                             float[] b = p.boxes.get(i);

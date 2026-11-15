@@ -133,6 +133,12 @@ final class BoardDrop extends BoardSide {
             image = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
     private final RectF r = new RectF();
     private final Runnable nextPage = this::nextPage, startRun = this::startRun;
+    /** The Scoreboard Lab's moments on an alert: the red card's swing, VAR's pulse, the substitution's swap (BoardFx). */
+    private final com.gathin.broadcast.BoardFx fx = new com.gathin.broadcast.BoardFx();
+    /** When the page out now came in (uptime): the substitution's players brighten and slide in from then. */
+    private long pageAt;
+    private final Runnable cardSound = () -> lab(com.gathin.broadcast.Sfx.CARD), varSound = () -> lab(com.gathin.broadcast.Sfx.VAR),
+            swapSound = () -> lab(com.gathin.broadcast.Sfx.SWAP);
 
     BoardDrop(Context c) {
         super(c);
@@ -219,9 +225,41 @@ final class BoardDrop extends BoardSide {
         page = 0;
         turn = 1f;
         run = 0f;
+        pageAt = shownAt + SLIDE_MS;
         slideOut();
         postDelayed(startRun, SLIDE_MS + RUN_WAIT_MS);
         if (pageCount(d) > 1) postDelayed(nextPage, SLIDE_MS + pageFor(0));
+        // The red card's swing and VAR's check each with their own quiet sound as they come out.
+        removeCallbacks(cardSound);
+        removeCallbacks(varSound);
+        removeCallbacks(swapSound);
+        if (red(d)) postDelayed(cardSound, SLIDE_MS / 2);
+        else if (d.varCheck) postDelayed(varSound, SLIDE_MS / 2);
+    }
+
+    /** Pure: whether an alert is a red card's (its card swings up by its chip). */
+    static boolean red(Drop d) {
+        return d != null && "RED CARD".equals(d.chip);
+    }
+
+    /**
+     * Pure: the red card's moment since ms after the alert began to come out: up from half way through its slide, then
+     * standing by its chip (BoardFx's swing, held once it lands rather than tucked away).
+     */
+    static long cardT(long since) {
+        long t = since - SLIDE_MS / 2;
+        return Math.max(1, Math.min(t, com.gathin.broadcast.BoardFx.RED_AWAY - 1));
+    }
+
+    /**
+     * Pure: a substitution page's players since ms after it came in, as the Lab's swap: {strength 0.35 to 1, slide in ems
+     * (-0.33 to 0), the arrow's pop (1 to 1.25 and back)}, played once and held (never dimming again as the Lab's loop does).
+     */
+    static float[] swapNow(long since) {
+        long t = Math.max(0, Math.min(since, (long) (com.gathin.broadcast.BoardFx.SWAP_MS * 0.6f)));
+        float[] s = com.gathin.broadcast.BoardFx.swapAt(t);
+        return new float[]{s[com.gathin.broadcast.BoardFx.SW_IN_ALPHA], s[com.gathin.broadcast.BoardFx.SW_IN_SHIFT],
+                s[com.gathin.broadcast.BoardFx.SW_IN_POP]};
     }
 
     /** How long it stays out: at least least, long enough for a long line to run to its end, each eleven its page. */
@@ -242,6 +280,8 @@ final class BoardDrop extends BoardSide {
         page = Math.max(0, Math.min(pageCount(d) - 1, pg));
         turn = 1f;
         run = along;
+        pageAt = 0;
+        shownAt = 0;
         outNow(howFar);
     }
 
@@ -256,6 +296,9 @@ final class BoardDrop extends BoardSide {
     @Override protected void onGone() {
         drop = null;
         prevDrop = null;
+        removeCallbacks(cardSound);
+        removeCallbacks(varSound);
+        removeCallbacks(swapSound);
     }
 
     private long pageFor(int p) {
@@ -297,6 +340,9 @@ final class BoardDrop extends BoardSide {
         page++;
         swish();
         run = 0f;
+        pageAt = android.os.SystemClock.uptimeMillis() + TURN_MS / 2;
+        // A substitution turning from the players off to those on: the swap's quiet crossing.
+        if (drop.subs != null && drop.subs.offPage(page - 1) && !drop.subs.offPage(page)) postDelayed(swapSound, TURN_MS / 2);
         if (turning != null) turning.cancel();
         ValueAnimator va = ValueAnimator.ofFloat(0f, 1f);
         va.setDuration(TURN_MS);
@@ -399,7 +445,13 @@ final class BoardDrop extends BoardSide {
         if (drop.subs != null) {
             subsK = subsFit(h, room);
             subsPages(cv, h, false);
+            // The swap's players brightening and sliding in: drawn again until they are in.
+            if (pageAt > 0 && android.os.SystemClock.uptimeMillis() - pageAt < com.gathin.broadcast.BoardFx.SWAP_MS * 0.6f) postInvalidateOnAnimation();
             return;
+        }
+        // The red card swinging up: drawn again until it stands.
+        if (red(drop) && shownAt > 0 && android.os.SystemClock.uptimeMillis() - shownAt < SLIDE_MS + com.gathin.broadcast.BoardFx.RED_UP + 100) {
+            postInvalidateOnAnimation();
         }
         // The minutes added still counting up: drawn again until they reach theirs.
         if (drop.addedMins > 0 && drop == shownDrop && countUp(drop.addedMins, android.os.SystemClock.uptimeMillis() - shownAt) < drop.addedMins) {
@@ -476,9 +528,22 @@ final class BoardDrop extends BoardSide {
         float rowY = two ? h * 0.08f : 0f, rowH = two ? h * 0.42f : h;
         float rx = x, headSize = unit * (two ? 0.42f : 0.44f), cs = unit * 0.62f;
         if (!drop.chip.isEmpty()) {
-            float cw = chipW();
-            if (cv != null) chip(cv, rx, dy + rowY, rowH, cw, a);
+            // A VAR check's chip has the Lab's pulsing dot before its word.
+            float lead = drop.varCheck ? unit * 0.3f : 0f, cw = chipW() + lead;
+            if (cv != null) {
+                chip(cv, drop.chip, chipColour, rx, dy + rowY, rowH, cw, a, lead);
+                if (lead > 0) varPulse(cv, rx + unit * 0.2f, dy + rowY + rowH / 2f, a);
+            }
             rx += cw + unit * 0.22f;
+        }
+        // A red card: the Lab's card swinging up by its chip as it comes out, then standing there.
+        if (red(drop)) {
+            float cardH = Math.min(rowH * 0.72f, unit * 0.56f) * 0.95f, cardW = cardH * 0.7f;
+            if (cv != null) {
+                long since = shownAt > 0 ? android.os.SystemClock.uptimeMillis() - shownAt : 10_000L;
+                fx.redCard(cv, rx + cardW / 2f, dy + rowY + rowH / 2f + cardH / 2f, cardH, cardT(since));
+            }
+            rx += cardW + unit * 0.24f;
         }
         if (o.crestA != null) {
             if (cv != null) image(cv, o.crestA, rx, dy + rowY + (rowH - cs) / 2f, cs, a);
@@ -616,6 +681,20 @@ final class BoardDrop extends BoardSide {
     }
 
     private void chip(Canvas cv, String text, int chipColour, float x, float y, float rowH, float cw, int a) {
+        chip(cv, text, chipColour, x, y, rowH, cw, a, 0f);
+    }
+
+    /** VAR's dot at (cx, cy), pulsing a second's round (the Lab's), in the chip's ink so it shows on VAR's cyan. */
+    private void varPulse(Canvas cv, float cx, float cy, int a) {
+        float[] k = com.gathin.broadcast.BoardFx.varPulse(android.os.SystemClock.uptimeMillis());
+        fill.setColor((chipColour >>> 24) < 0xC0 ? look.ink : BoardBug.ink(chipColour));
+        fill.setAlpha(Math.round(a * k[1]));
+        cv.drawCircle(cx, cy, unit * 0.085f * k[0], fill);
+        fill.setAlpha(255);
+    }
+
+    /** The chip with lead pixels kept at its left (VAR's dot), its word centred in the rest. */
+    private void chip(Canvas cv, String text, int chipColour, float x, float y, float rowH, float cw, int a, float lead) {
         float ch = Math.min(rowH * 0.72f, unit * 0.56f), top = y + (rowH - ch) / 2f;
         fill.setColor(chipColour);
         fill.setAlpha(Math.round(a * ((chipColour >>> 24) / 255f)));
@@ -628,7 +707,7 @@ final class BoardDrop extends BoardSide {
         chipText.setAlpha(a);
         chipText.setTextAlign(Paint.Align.CENTER);
         Paint.FontMetrics fm = chipText.getFontMetrics();
-        cv.drawText(text, x + cw / 2f, top + ch / 2f - (fm.ascent + fm.descent) / 2f, chipText);
+        cv.drawText(text, x + lead + (cw - lead) / 2f, top + ch / 2f - (fm.ascent + fm.descent) / 2f, chipText);
     }
 
     // ---- substitutions: OFF, then ON, each player with picture and name -------------------------------------------------
@@ -678,11 +757,18 @@ final class BoardDrop extends BoardSide {
         float cw = chipW(label);
         if (words) chip(cv, label, off ? SubsPage.OFF_COLOUR : SubsPage.ON_COLOUR, x, dy, h, cw, a);
         x += cw + unit * 0.28f;
+        // The Lab's swap: the page's arrow (▼ red off, ▲ green on) popping in, its players brightening and sliding in.
+        float[] sw = p == page && pageAt > 0 ? swapNow(android.os.SystemClock.uptimeMillis() - pageAt) : new float[]{1f, 0f, 1f};
+        float as = unit * 0.34f;
+        if (words) com.gathin.broadcast.BoardFx.swapArrow(cv, x + as * 0.6f, dy + h / 2f, as * sw[2], !off, a / 255f);
+        x += as * 1.2f + unit * 0.16f;
+        int pa = Math.round(a * sw[0]);
+        float shift = sw[1] * size;
         for (int i = 0; i < names.length; i++) {
             if (i > 0) x += unit * 0.45f;
-            if (pictures) face(cv, i < pics.length ? pics[i] : null, names[i], x, dy, pw, h, a);
+            if (pictures) face(cv, i < pics.length ? pics[i] : null, names[i], x + shift, dy, pw, h, pa);
             x += pw + unit * 0.12f;
-            if (words) words(cv, bold, names[i], x, dy, h, size, look.ink, a);
+            if (words) words(cv, bold, names[i], x + shift, dy, h, size, look.ink, pa);
             x += measure(bold, names[i], size);
         }
         if (!s.minute.isEmpty()) {

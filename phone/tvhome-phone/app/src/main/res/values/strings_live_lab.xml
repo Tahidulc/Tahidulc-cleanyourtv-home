@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The Scoreboard Lab's stats in the board's settings: a switch for each, on unless switched off (as the TV's). -->
+    <string name="lab_stats_title">Stats to show</string>
+    <string name="lab_stats_line">Each stat the board slides out beside it, and the Scoreboard Lab\'s moments: on unless switched off. Nothing paid, no prices.</string>
+    <string name="lab_stat_xg">Expected goals</string>
+    <string name="lab_stat_xgot">xG on target</string>
+    <string name="lab_stat_chances">Big chances</string>
+    <string name="lab_stat_touches">Touches in the box</string>
+    <string name="lab_stat_momentum">Momentum, and its wave once or twice a half</string>
+    <string name="lab_stat_ratings">Player ratings and the player of the match</string>
+    <string name="lab_stat_basics">Possession, shots and corners</string>
+    <string name="lab_stat_form">Form before kick-off</string>
+    <string name="lab_stat_streaks">Streaks: unbeaten and winning runs, clean sheets</string>
+    <string name="lab_stat_h2h">Head to head</string>
+    <string name="lab_stat_drought">Goal droughts</string>
+    <string name="lab_stat_comeback">Comebacks</string>
+    <string name="lab_stat_early">Early goals</string>
+    <string name="lab_stat_referee">Referee\'s cards so far</string>
+    <string name="lab_stat_table">Table as it stands</string>
+    <string name="lab_stat_shots">Big saves and great finishes</string>
+    <string name="lab_stat_weather">Weather touch over the board, two or three times a game</string>
+</resources>

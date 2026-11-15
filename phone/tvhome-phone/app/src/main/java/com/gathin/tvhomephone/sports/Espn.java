@@ -223,6 +223,8 @@ public final class Espn {
         public String homeId = "", awayId = "";
         /** The competition's table as it stood: {team id, name, rank, points, played}. */
         public final List<String[]> table = new ArrayList<>();
+        /** ESPN's standings as given (its groups' entries with every figure), for the table as it stands (MatchStats); null without. */
+        public JSONObject standings;
         /** Each side's last five, oldest first: {"W"/"D"/"L", goals for, goals against, opponent, "@" or "vs", competition}. */
         public final List<String[]> homeLast = new ArrayList<>(), awayLast = new ArrayList<>();
         /** Earlier meetings, newest first: {year, home name, home goals, away name, away goals, date, ESPN's game id, home id, away id}. */
@@ -418,6 +420,7 @@ public final class Espn {
     /** The table, both sides' last five, earlier meetings, leaders, the crowd and the referee, for the facts. */
     private static void extras(JSONObject root, Summary s) {
         JSONObject st = root.optJSONObject("standings");
+        s.standings = st;
         JSONArray groups = st == null ? null : st.optJSONArray("groups");
         for (int gi = 0; groups != null && gi < groups.length(); gi++) {
             JSONObject grp = groups.optJSONObject(gi);

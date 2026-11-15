@@ -68,6 +68,21 @@ final class FotMob {
         String referee = "", refereeCountry = "";
         /** Whether FotMob writes a live commentary in English for it (its VAR checks are in that, see ticker()). */
         boolean ticker;
+        /**
+         * The ground's weather now as FotMob has it (its content.weather, updated through the game): its weather.com icon
+         * (-1: none given), the rain and snow falling, the wind and the cloud; for the board's weather touch.
+         */
+        int weatherIcon = -1, weatherCloud;
+        double weatherRain, weatherSnow, weatherWind;
+        /** For the Scoreboard Lab's stats (MatchStats): the head to head, each side's last five, every shot as FotMob gives them. */
+        JSONObject h2h;
+        JSONArray homeForm, awayForm, shotList;
+    }
+
+    /** Pure: the sky over the ground as FotMob's weather says it (BoardFx.sky); null when FotMob gives none. */
+    static com.gathin.broadcast.BoardFx.Sky skyOf(Match m) {
+        if (m == null || m.weatherIcon < 0) return null;
+        return com.gathin.broadcast.BoardFx.sky(m.weatherIcon, m.weatherRain, m.weatherSnow, m.weatherWind, m.weatherCloud);
     }
 
     /** Pure: FotMob's VAR event as VarExplained reads it ({minute, player, key, words, second key}); null for none. */
@@ -268,6 +283,26 @@ final class FotMob {
         JSONObject c = d.optJSONObject("content");
         if (c == null) return m;
         m.ticker = hasEnglish(c.optJSONObject("liveticker"));
+        JSONObject wx = c.optJSONObject("weather");
+        if (wx != null && wx.has("iconCode")) {
+            m.weatherIcon = wx.optInt("iconCode", -1);
+            m.weatherRain = wx.optDouble("precipitation", 0);
+            m.weatherSnow = wx.optDouble("snow", 0);
+            m.weatherWind = wx.optDouble("windSpeed", 0);
+            m.weatherCloud = wx.optInt("cloudCover", 0);
+            if (Double.isNaN(m.weatherRain)) m.weatherRain = 0;
+            if (Double.isNaN(m.weatherSnow)) m.weatherSnow = 0;
+            if (Double.isNaN(m.weatherWind)) m.weatherWind = 0;
+        }
+        m.h2h = c.optJSONObject("h2h");
+        JSONObject sm = c.optJSONObject("shotmap");
+        m.shotList = sm == null ? null : sm.optJSONArray("shots");
+        JSONObject mf = c.optJSONObject("matchFacts");
+        JSONArray tf = mf == null ? null : mf.optJSONArray("teamForm");
+        if (tf != null) {
+            m.homeForm = tf.optJSONArray(0);
+            m.awayForm = tf.optJSONArray(1);
+        }
         m.shots.addAll(com.gathin.broadcast.ShotMap.parse(c, m.homeTeamId));
         JSONObject info = c.optJSONObject("matchFacts") == null ? null : c.optJSONObject("matchFacts").optJSONObject("infoBox");
         JSONObject ref = info == null ? null : info.optJSONObject("Referee");
