@@ -38,7 +38,13 @@ public final class CompBug {
         LALIGA("LaLiga", 2f), SERIEA("Serie A", 1.63f), BUNDESLIGA("Bundesliga", 2f), LIGUE1("Ligue 1", 2f),
         EREDIVISIE("Eredivisie", 1f), LIGAPORTUGAL("Liga Portugal", 2f), MLS("MLS", 1f), LIGAMX("Liga MX", 1.95f),
         /** The Premier League's own boards of years gone by, with the logo of whatever competition is on. */
-        R2004("Retro 2004", 1.9f), R2008("Retro 2008", 1.95f), R2012("Retro 2012", 1.95f), R2016("Retro 2016", 3.25f);
+        R2004("Retro 2004", 1.9f), R2008("Retro 2008", 1.95f), R2012("Retro 2012", 1.95f), R2016("Retro 2016", 3.25f),
+        /**
+         * The Scoreboard Lab's own looks, for any game (By competition never picks one): Floodlight (crisp white, the clock
+         * tucked under), Split kit (each half in its club's colour), Ticker (one slim line), Duo pills (each side a pill of
+         * its own, the clock between) and Stadium LED (amber dot matrix, as a ground's big screen).
+         */
+        FLOODLIGHT("Floodlight", 1.6f), SPLITKIT("Split kit", 1f), TICKER("Ticker", 1f), DUO("Duo pills", 1f), LED("Stadium LED", 1f);
 
         public final String label;
         /** How much taller than one row it is drawn. */
@@ -47,6 +53,16 @@ public final class CompBug {
         Kind(String label, float tall) {
             this.label = label;
             this.tall = tall;
+        }
+
+        /** Whether a goal's new score rolls up into place, as a ground's own board turns its figures (Floodlight, Stadium LED). */
+        public boolean rolls() {
+            return this == FLOODLIGHT || this == LED;
+        }
+
+        /** One of the Scoreboard Lab's looks, not a competition's own. */
+        public boolean lab() {
+            return ordinal() >= FLOODLIGHT.ordinal();
         }
     }
 
@@ -65,7 +81,20 @@ public final class CompBug {
         /** The new score's glow after a goal (1 down to 0) and the side that scored (1 home, 2 away). */
         public float glow;
         public int glowSide;
+        /**
+         * A goal's new score coming in (MOVE_FLIP: turning down into place from above; MOVE_ROLL: rolling up from below as
+         * the old one rolls away; 0: none), how far it is (0 to 1, 1 done) and the scores before it ({home, away}): only
+         * the side whose figure changed moves.
+         */
+        public int move;
+        public float moveAt = 1f;
+        public String[] before;
+        /** Half time's face: each score turned over in its own small block (white with dark figures on a dark board). */
+        public boolean htFace;
     }
+
+    /** How a goal's new score comes in (Data.move). */
+    public static final int MOVE_FLIP = 1, MOVE_ROLL = 2;
 
     /**
      * Pure: the look of a game's competition (ESPN's slug: "eng.1", "uefa.champions"...; else its name), or null for one
@@ -147,6 +176,11 @@ public final class CompBug {
             case R2008: return new int[]{0xFF0B2A6F, INK, 0xFFB5C2E2, 0xFFD21F2B};
             case R2012: return new int[]{0xFF1E4FB0, INK, 0xFFC4D2F0, 0xFFD21F2B};
             case R2016: return new int[]{0xFF38003C, INK, 0xFFD9B8E0, 0xFF00C46A};
+            case FLOODLIGHT: return new int[]{0xFF0B0E16, INK, 0xFFB7BDCC, 0xFF4A5470};
+            case SPLITKIT: return new int[]{0xFF0B0E16, INK, 0xFFB3B9C9, VIOLET};
+            case TICKER: return new int[]{0xFF080A10, INK, 0xFFCFD5E4, VIOLET};
+            case DUO: return new int[]{0xFF080A10, INK, 0xFFB9BFCC, VIOLET};
+            case LED: return new int[]{0xFF050505, AMBER, 0xFFC98A1A, LED_RED};
             case LIGUE1: default: return new int[]{0xFF121418, INK, 0xFFB9BDC5, 0xFF2654D8};
         }
     }
@@ -182,6 +216,9 @@ public final class CompBug {
     // ---- drawing ------------------------------------------------------------------------------------------------------
 
     private static final int INK = 0xFFF5F6FA, DARK = 0xFF111418, RED = 0xFFD7192F;
+    /** The Lab's colours: the family's violet to coral, Floodlight's white and ink, the LED board's amber and red-orange. */
+    static final int VIOLET = 0xFF6D28F2, CORAL = 0xFFFF6B6B, FLOOD = 0xFFF6F7FA, FLOOD_INK = 0xFF0B0E16, AMBER = 0xFFFFB21E,
+            LED_RED = 0xFFFF5A3C, LAB_DARK = 0xFF0B0E16, YELLOW = 0xFFFFD21E;
     /** Where the row sits in the looks with something standing over it, in rows from the top. */
     private static final float PL_TOP = 0.4f, FA_TOP = 1.6f, SA_TOP = 0.17f, MX_TOP = 0.88f, R8_TOP = 0.08f, R16_TOP = 1.5f;
     private static Typeface barlow, khand, outfit, mont5, mont6, mont7, mont8, bcond8, bsemi7, rubik6, inter5, inter6;
@@ -208,9 +245,21 @@ public final class CompBug {
             if (rubik6 == null) rubik6 = font(c, "broadcast/fonts/Rubik-600.ttf", Typeface.DEFAULT_BOLD);
             if (inter5 == null) inter5 = font(c, "broadcast/fonts/Inter-500.ttf", Typeface.DEFAULT);
             if (inter6 == null) inter6 = font(c, "broadcast/fonts/Inter-600.ttf", Typeface.DEFAULT_BOLD);
+            if (mono == null) mono = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD);
         }
         text.setFontFeatureSettings("tnum");
     }
+
+    /** The Lab's clocks and the LED board: the system's bold monospace. */
+    private static Typeface mono;
+    /** Outfit's weight for the words now (the competitions' looks 760; the Lab's heavier), and their letter spacing (em). */
+    private String wght = W760;
+    private float spacing;
+    private static final String W760 = "'wght' 760", W800 = "'wght' 820", W900 = "'wght' 900", W600 = "'wght' 620";
+    /** The LED board's dot matrix: one cell of it, made once for its size. */
+    private android.graphics.Bitmap dotTile;
+    private android.graphics.BitmapShader dotShader;
+    private int dotCell;
 
     private static Typeface font(Context c, String path, Typeface or) {
         try {
@@ -256,8 +305,95 @@ public final class CompBug {
             case R2004: return new float[]{u * 0.2f, u * 1.22f};
             case R2008: case R2012: return new float[]{u * R8_TOP, u * (R8_TOP + 1f)};
             case R2016: return new float[]{u * R16_TOP, u * (R16_TOP + 1f)};
+            case FLOODLIGHT: return new float[]{0, u};
             default: return new float[]{0, h};
         }
+    }
+
+    /**
+     * Pure: a competition's name as the Lab's looks show it, a few capitals ("Premier League" PL, "UEFA Champions League"
+     * UCL, "UEFA Nations League" UNL, "FIFA World Cup" WC, "International Friendly" FR); else the initials of its words,
+     * three at most; "" for none.
+     */
+    public static String compShort(String comp) {
+        if (comp == null || comp.trim().isEmpty()) return "";
+        Kind k = forGame(null, comp);
+        if (k != null) {
+            switch (k) {
+                case PL: return "PL";
+                case FACUP: return "FAC";
+                case EFL: return "EFL";
+                case UCL: return "UCL";
+                case UEL: return "UEL";
+                case UECL: return "UECL";
+                case SPFL: return "SPFL";
+                case LALIGA: return "LL";
+                case SERIEA: return "SA";
+                case BUNDESLIGA: return "BL";
+                case LIGUE1: return "L1";
+                case EREDIVISIE: return "ERE";
+                case LIGAPORTUGAL: return "LP";
+                case MLS: return "MLS";
+                case LIGAMX: return "LMX";
+                default: break;
+            }
+        }
+        String plain = java.text.Normalizer.normalize(comp, java.text.Normalizer.Form.NFD).replaceAll("\\p{M}+", "");
+        String n = " " + plain.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]+", " ") + " ";
+        if (n.contains(" nations league ")) return "UNL";
+        if (n.contains(" club world cup ")) return "CWC";
+        if (n.contains(" world cup ")) return n.contains(" qualif") ? "WCQ" : "WC";
+        if (n.contains(" euro ") || n.contains(" european championship")) return n.contains(" qualif") ? "EQ" : "EURO";
+        if (n.contains(" friendl")) return "FR";
+        if (n.contains(" copa america ")) return "CA";
+        if (n.contains(" community shield ")) return "CS";
+        if (n.contains(" super cup ")) return "SC";
+        if (n.contains(" women") && n.contains(" super league ")) return "WSL";
+        StringBuilder out = new StringBuilder();
+        for (String w : n.trim().split(" ")) {
+            if (w.length() < 2 || SKIP_WORDS.contains(w)) continue;
+            out.append(Character.toUpperCase(w.charAt(0)));
+            if (out.length() == 3) break;
+        }
+        return out.toString();
+    }
+
+    private static final java.util.Set<String> SKIP_WORDS = new java.util.HashSet<>(java.util.Arrays.asList("the", "of", "de", "del",
+            "la", "le", "der", "das", "and", "english", "spanish", "italian", "german", "french", "dutch", "portuguese", "mexican",
+            "scottish", "american", "uefa", "fifa", "conmebol", "concacaf", "afc", "caf"));
+
+    /** Pure: a clock as the Lab's slim looks show it, the minute alone ("74:05" 74', "45+2" 45+2'); HT and FT as they are. */
+    public static String minuteMark(String clock) {
+        if (clock == null) return "";
+        String c = clock.trim();
+        Matcher m = MINUTE.matcher(c);
+        if (m.matches()) return m.group(1) + "'";
+        if (c.matches("\\d+\\s*\\+\\s*\\d+")) return c.replaceAll("\\s+", "") + "'";
+        return c;
+    }
+
+    private static final Pattern MINUTE = Pattern.compile("(\\d+):\\d\\d");
+
+    /** Pure: how far a rolling figure is on its way up (0 to 1, a touch past 1 as it lands), from its move's progress. */
+    public static float rollEase(float at) {
+        float t = Math.max(0f, Math.min(1f, at));
+        // Quick, with a small overshoot before it settles (as the Lab's roll, cubic-bezier(.5, 0, .2, 1.2)).
+        float c1 = 0.9f, c3 = c1 + 1f, u = t - 1f;
+        return 1f + c3 * u * u * u + c1 * u * u;
+    }
+
+    /** Pure: a flipping figure's height as a share of its own (edge on at 0, flat at 1), from its move's progress. */
+    public static float flipScale(float at) {
+        float t = Math.max(0f, Math.min(1f, at));
+        float e = 1f - (1f - t) * (1f - t);
+        return (float) Math.cos(Math.toRadians(80.0 * (1f - e)));
+    }
+
+    /** Pure: how far above its place a flipping figure is, in its own heights (1.1 at the start, 0 in place). */
+    public static float flipLift(float at) {
+        float t = Math.max(0f, Math.min(1f, at));
+        float e = 1f - (1f - t) * (1f - t) * (1f - t);
+        return 1.1f * (1f - e);
     }
 
     /**
@@ -388,6 +524,39 @@ public final class CompBug {
                 float code = Math.max(u * 2.3f, codes(d, u * 0.78f, rubik6) + u * 1.2f);
                 return new float[]{u * 0.14f, code, u * 2.35f, code, u * 0.14f};
             }
+            case FLOODLIGHT: {
+                // The row's three cells, and past them whatever the tab under it needs more than the row (rarely any).
+                float code = Math.max(u * 1.1f, labCodes(d, u * 0.44f, W800, 0.04f) + u * 0.76f);
+                float score = Math.max(u * 1.5f, lw(scoreText(d), u * 0.44f, outfit, W800, 0.04f) + u * 0.76f);
+                return new float[]{code, score, code, Math.max(0f, floodTab(d, u) - code * 2f - score)};
+            }
+            case SPLITKIT: {
+                float code = labCodes(d, u * 0.42f, W800, 0.04f), num = numW(d, u * 0.55f);
+                // The away half starts under the home half's cut (0.35 of a row), so it adds that much less.
+                return new float[]{u * 0.5f + code + u * 0.2f + num + u * 0.7f, u * 0.4f + num + u * 0.2f + code + u * 0.5f,
+                        Math.max(u * 1.6f, lw(splitClock(d, true), u * 0.36f, mono, W760, 0f) + u * 0.7f)};
+            }
+            case TICKER: {
+                String cp = compShort(d.comp);
+                float pad = u * 0.9f;
+                float comp = cp.isEmpty() ? u * 1.05f : lw(cp, u * 0.5f, outfit, W800, 0.06f) + pad;
+                float code = labCodes(d, u * 0.5f, W760, 0.06f) + pad;
+                float score = Math.max(u * 1.4f, lw(scoreText(d), u * 0.5f, outfit, W800, 0.06f) + pad);
+                float clk = Math.max(lw("88'", u * 0.46f, mono, W760, 0f), lw(minuteMark(d.clock), u * 0.46f, mono, W760, 0f)) + pad;
+                return new float[]{comp, code, score, code, clk};
+            }
+            case DUO: {
+                float code = labCodes(d, u * 0.4f, W760, 0.04f), pill = u * 0.35f + code + u * 0.2f + u * 0.78f + u * 0.11f;
+                return new float[]{pill, u * 0.15f, Math.max(u * 1.5f, lw(duoClock(d, true), u * 0.36f, mono, W760, 0f) + u * 0.6f),
+                        u * 0.15f, pill};
+            }
+            case LED: {
+                float pad = u * 0.26f, gap = u * 0.3f;
+                float code = Math.max(lw(d.home, u * 0.44f, mono, W760, 0.12f), lw(d.away, u * 0.44f, mono, W760, 0.12f));
+                float score = lw(ledScore(d), u * 0.62f, mono, W760, 0.12f);
+                float clk = Math.max(lw("88'", u * 0.44f, mono, W760, 0.12f), lw(minuteMark(d.clock), u * 0.44f, mono, W760, 0.12f));
+                return new float[]{pad + code + gap / 2f, gap + score, gap + code, gap / 2f + clk + pad};
+            }
             case LIGUE1: default: return new float[]{Math.max(u * 1.4f, tw(c, u * 0.42f, mont7) + u * 0.45f),
                     Math.max(u * 2.2f, codes(d, u * 0.46f, mont7) + u * 1.3f), u * 0.05f, u * 0.1f};
         }
@@ -418,10 +587,30 @@ public final class CompBug {
     private float tw(String s, float size, Typeface tf) {
         text.setTypeface(tf);
         text.setTextSize(size);
-        if (tf == outfit) text.setFontVariationSettings("'wght' 760");
+        text.setLetterSpacing(spacing);
+        if (tf == outfit) text.setFontVariationSettings(wght);
         float w = text.measureText(s == null ? "" : s);
         if (tf == outfit) text.setFontVariationSettings(null);
         return w;
+    }
+
+    /** A Lab look's words measured at their own weight and letter spacing (em). */
+    private float lw(String s, float size, Typeface tf, String weight, float em) {
+        wght = weight;
+        spacing = em;
+        float w = tw(s, size, tf);
+        wght = W760;
+        spacing = 0f;
+        return w;
+    }
+
+    /** A Lab look's words drawn at their own weight and letter spacing (em), as words() lays them. */
+    private void lwords(Canvas cv, String s, float x, float cy, float size, float maxW, int colour, Typeface tf, int align, String weight, float em) {
+        wght = weight;
+        spacing = em;
+        words(cv, s, x, cy, size, maxW, colour, tf, align);
+        wght = W760;
+        spacing = 0f;
     }
 
     /** The look drawn into w by h (its own grounds: the board draws none under it). */
@@ -454,6 +643,11 @@ public final class CompBug {
             case R2008: r2008(cv, d, x, u, sc, false); break;
             case R2012: r2008(cv, d, x, u, sc, true); break;
             case R2016: r2016(cv, d, x, u, sc); break;
+            case FLOODLIGHT: floodlight(cv, d, x, u, sc); break;
+            case SPLITKIT: splitKit(cv, d, x, u, sc); break;
+            case TICKER: ticker(cv, d, x, u, sc); break;
+            case DUO: duo(cv, d, x, u, sc); break;
+            case LED: led(cv, d, x, u, sc); break;
             case LIGUE1: default: ligue1(cv, d, x, h, sc); break;
         }
     }
@@ -1225,7 +1419,8 @@ public final class CompBug {
         if (s == null || s.isEmpty() || size <= 1f) return;
         text.setTypeface(tf);
         text.setTextSize(size);
-        if (tf == outfit) text.setFontVariationSettings("'wght' 760");
+        text.setLetterSpacing(spacing);
+        if (tf == outfit) text.setFontVariationSettings(wght);
         float tw = text.measureText(s);
         if (maxW > 1f && tw > maxW) {
             text.setTextSize(size * maxW / tw);
