@@ -1058,6 +1058,16 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         clip.addRoundRect(r, rad, rad, Path.Direction.CW);
         cv.save();
         cv.clipPath(clip);
+        // The net shivering after a goal, the ground's weather: when each is on.
+        long mesh = gt - meshAt();
+        boolean rippling = !look.f1 && gt >= 0 && mesh >= 0 && mesh < com.gathin.broadcast.BoardFx.MESH_MS;
+        long wt = weatherSky == null ? -1 : weatherFrozen >= 0 ? weatherFrozen : now - weatherAt;
+        boolean weathering = !look.f1 && wt >= 0 && wt < com.gathin.broadcast.BoardFx.WEATHER_MS;
+        // The Lab's moments over a competition's look are kept to its own shapes (Duo's pills, Floodlight's tab under its
+        // row), never the gaps between: the look drawn on a layer of its own while one is on, each moment laid only where
+        // the look has drawn.
+        boolean layered = kind() != null && (goalOn && !band || rippling || weathering);
+        int base = layered ? cv.saveLayer(0, 0, w, h, null) : -1;
         fill.setShader(null);
         fill.setColor(p.ground);
         if (p.groundFoot != 0) fill.setShader(new LinearGradient(0, 0, 0, h, p.ground, p.groundFoot, Shader.TileMode.CLAMP));
@@ -1109,13 +1119,20 @@ final class OverlayBug extends View implements BurnGuard.Dims {
             row = null;
         }
         if (goalOn && !look.f1 && style != Style.KITS) {
-            if (band) goalMoment(cv, w, mh, gt);
-            else labGoal(cv, w, mh, gt, ck != null);
+            if (band) {
+                goalMoment(cv, w, mh, gt);
+            } else {
+                int a = atop(cv, layered, w, mh);
+                labGoal(cv, w, mh, gt, ck != null);
+                if (a >= 0) cv.restoreToCount(a);
+            }
         }
         // The net shivering across the board after every goal (the Lab's net); VAR checking; FULL TIME stamped.
-        long mesh = gt - meshAt();
-        boolean rippling = !look.f1 && gt >= 0 && mesh >= 0 && mesh < com.gathin.broadcast.BoardFx.MESH_MS;
-        if (rippling) fx.netMesh(cv, w, mh, mesh);
+        if (rippling) {
+            int a = atop(cv, layered, w, mh);
+            fx.netMesh(cv, w, mh, mesh);
+            if (a >= 0) cv.restoreToCount(a);
+        }
         boolean scanning = varUntil > now && !look.f1;
         if (scanning) varScan(cv, w, mh, now);
         long ft = ftAt > 0 && !look.f1 ? now - ftAt : -1;
@@ -1123,9 +1140,12 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         if (stamping) fullTimeStamp(cv, w, mh, ft);
         if (row != null) cv.restore();
         // The ground's weather lightly over the board, two or three times a game.
-        long wt = weatherSky == null ? -1 : weatherFrozen >= 0 ? weatherFrozen : now - weatherAt;
-        boolean weathering = !look.f1 && wt >= 0 && wt < com.gathin.broadcast.BoardFx.WEATHER_MS;
-        if (weathering) fx.weather(cv, w, h, weatherSky, wt);
+        if (weathering) {
+            int a = atop(cv, layered, w, h);
+            fx.weather(cv, w, h, weatherSky, wt);
+            if (a >= 0) cv.restoreToCount(a);
+        }
+        if (base >= 0) cv.restoreToCount(base);
         if (p.edgeLine) {
             float e = Math.max(1f, h * 0.025f);
             edge.setStyle(Paint.Style.STROKE);
@@ -1212,6 +1232,18 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         if (w / (float) h < 2.2f) out.set(0, home ? 0 : h / 2f, w * 0.62f, home ? h / 2f : h);
         else if (home) out.set(0, 0, w * 0.36f, h);
         else out.set(w * 0.64f, 0, w, h);
+    }
+
+    /** Laying a moment only where the board has drawn (its look's own shapes, on their layer). */
+    private final Paint atop = new Paint();
+
+    {
+        atop.setXfermode(new android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.SRC_ATOP));
+    }
+
+    /** A layer for a moment laid only where the look has drawn (on: the look is on its own layer); -1 for none. */
+    private int atop(Canvas cv, boolean on, float w, float h) {
+        return on ? cv.saveLayer(0, 0, w, h, atop) : -1;
     }
 
     /** A side's crest in its own place on the board, that place kept for the burst. */
@@ -1783,8 +1815,16 @@ final class OverlayBug extends View implements BurnGuard.Dims {
     /** The shootout's tab's width at height h: two rows of five dots (more in sudden death), with room round them. */
     private float pensTabW(int h) {
         if (pensHome == null || pensAway == null) return 0f;
-        float th = tabH(h);
+        float th = pensTabH(h);
         return th * 0.5f + com.gathin.broadcast.BoardFx.pensCols(pensHome.size(), pensAway.size()) * th * 0.46f;
+    }
+
+    /** The shootout's tab's height at board height h: the added time's, or along a competition look's main row. */
+    private float pensTabH(int h) {
+        CompBug.Kind k = kind();
+        if (k == null) return tabH(h);
+        float[] row = CompBug.bar(k, h);
+        return (row[1] - row[0]) * 0.8f;
     }
 
     /**
@@ -1793,9 +1833,11 @@ final class OverlayBug extends View implements BurnGuard.Dims {
      * where the clock has none of its own), solid over the picture.
      */
     private void pensTab(Canvas cv, int bodyW, int full, int h) {
-        float gap = h * 0.06f, th = tabH(h), tw = Math.min(pensTabW(h), full - bodyW - gap);
+        float gap = h * 0.06f, th = pensTabH(h), tw = Math.min(pensTabW(h), full - bodyW - gap);
         if (tw <= 0 || th <= 0) return;
-        float x = bodyW + gap, y = tallTab() ? h - th : (h - th) / 2f;
+        CompBug.Kind k = kind();
+        float[] row = k != null ? CompBug.bar(k, h) : null;
+        float x = bodyW + gap, y = row != null ? row[0] + (row[1] - row[0] - th) / 2f : tallTab() ? h - th : (h - th) / 2f;
         boolean own = (p.clock >>> 24) >= 0xC0;
         int ground = 0xFF000000 | ((own ? p.clock : p.ground) & 0xFFFFFF), ink = own ? p.clockInk : p.ink;
         fill.setShader(null);

@@ -24,6 +24,7 @@ final class BoardLab {
             {"ratings", "Player ratings", "The top rated, and the player of the match"},
             {"basics", "Possession, shots and corners", "And passing, fouls and the rest of the basics"},
             {"form", "Form", "Each side's last five, before kick-off"},
+            {"winchance", "Win chance", "Each side's chance before kick-off, in percentages only"},
             {"streaks", "Streaks", "Unbeaten runs, winning runs, clean sheets"},
             {"h2h", "Head to head", "The record between the two, and the last away win"},
             {"drought", "Goal droughts", "A side without a goal in their last few games"},
@@ -48,6 +49,7 @@ final class BoardLab {
             case "yellow cards": case "saves": case "offsides":
                 return "basics";
             case "form": return "form";
+            case "win chance": return "winchance";
             case "head to head": return "h2h";
             case "goal drought": return "drought";
             case "comeback": return "comeback";

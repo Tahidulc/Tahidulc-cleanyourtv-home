@@ -11,6 +11,7 @@
     <string name="lab_stat_ratings">Player ratings and the player of the match</string>
     <string name="lab_stat_basics">Possession, shots and corners</string>
     <string name="lab_stat_form">Form before kick-off</string>
+    <string name="lab_stat_winchance">Win chance before kick-off, in percentages only</string>
     <string name="lab_stat_streaks">Streaks: unbeaten and winning runs, clean sheets</string>
     <string name="lab_stat_h2h">Head to head</string>
     <string name="lab_stat_drought">Goal droughts</string>

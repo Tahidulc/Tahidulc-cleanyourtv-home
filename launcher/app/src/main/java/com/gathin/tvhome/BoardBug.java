@@ -1002,6 +1002,18 @@ final class BoardBug extends View {
         clip.addRoundRect(r, rad, rad, Path.Direction.CW);
         cv.save();
         cv.clipPath(clip);
+        // The net shivering after every goal (the Lab's net) at its own moment in each set; the ground's weather lightly
+        // over it all two or three times a game.
+        long mesh = gt < 0 ? -1 : gt - meshAt(set);
+        boolean meshing = mesh >= 0 && mesh < com.gathin.broadcast.BoardFx.MESH_MS;
+        long wt = weatherSky == null ? -1 : weatherFrozen >= 0 ? weatherFrozen : weatherAt > 0 ? now - weatherAt : -1;
+        boolean weathering = wt >= 0 && wt < com.gathin.broadcast.BoardFx.WEATHER_MS;
+        // The Lab's moments over a competition's look are kept to its own shapes (Duo's pills, Floodlight's tab under its
+        // row), never the gaps between: the look drawn on a layer of its own while one is on, each moment laid only where
+        // the look has drawn (as the phone's).
+        boolean band = set == com.gathin.broadcast.BoardFx.GOAL_BAND;
+        boolean layered = kind() != null && (goalOn && !band || meshing || weathering);
+        int base = layered ? cv.saveLayer(0, 0, body, h, null) : -1;
         fill.setShader(null);
         fill.setColor(p.ground);
         if (p.groundFoot != 0) fill.setShader(new LinearGradient(0, 0, 0, h, p.ground, p.groundFoot, Shader.TileMode.CLAMP));
@@ -1050,22 +1062,30 @@ final class BoardBug extends View {
             row = null;
         }
         if (goalOn && style != Style.KITS) {
-            if (set == com.gathin.broadcast.BoardFx.GOAL_FLIP) flipMoment(cv, body, mh, gt);
-            else if (set == com.gathin.broadcast.BoardFx.GOAL_BURST) burstMoment(cv, body, mh, gt);
-            else goalMoment(cv, body, mh, gt);
+            if (band) {
+                goalMoment(cv, body, mh, gt);
+            } else {
+                int a = atop(cv, layered, body, mh);
+                if (set == com.gathin.broadcast.BoardFx.GOAL_FLIP) flipMoment(cv, body, mh, gt);
+                else burstMoment(cv, body, mh, gt);
+                if (a >= 0) cv.restoreToCount(a);
+            }
         }
-        // The net shivering across it after every goal (the Lab's net), at its own moment in each set.
-        long mesh = gt < 0 ? -1 : gt - meshAt(set);
-        boolean meshing = mesh >= 0 && mesh < com.gathin.broadcast.BoardFx.MESH_MS;
-        if (meshing) fx.netMesh(cv, body, mh, mesh);
+        if (meshing) {
+            int a = atop(cv, layered, body, mh);
+            fx.netMesh(cv, body, mh, mesh);
+            if (a >= 0) cv.restoreToCount(a);
+        }
         if (varUntil > now) varScan(cv, body, mh, now);
         long ft = ftAt > 0 ? now - ftAt : -1;
         if (ft >= 0 && ft < FT_MS) fullTimeStamp(cv, body, mh, ft);
         if (row != null) cv.restore();
-        // The ground's weather, lightly over it all two or three times a game.
-        long wt = weatherSky == null ? -1 : weatherFrozen >= 0 ? weatherFrozen : weatherAt > 0 ? now - weatherAt : -1;
-        boolean weathering = wt >= 0 && wt < com.gathin.broadcast.BoardFx.WEATHER_MS;
-        if (weathering) fx.weather(cv, body, h, weatherSky, wt);
+        if (weathering) {
+            int a = atop(cv, layered, body, h);
+            fx.weather(cv, body, h, weatherSky, wt);
+            if (a >= 0) cv.restoreToCount(a);
+        }
+        if (base >= 0) cv.restoreToCount(base);
         if (p.edgeLine) {
             float e = Math.max(1f, h * 0.025f);
             edge.setPathEffect(null);
@@ -1109,6 +1129,18 @@ final class BoardBug extends View {
         if (goalOn && goalFrozen < 0) postInvalidateOnAnimation();
         // The 3D kits: every frame while they turn in, else when the sway next shows another frame.
         if (style == Style.KITS && !part && animFrozen < 0) kitsNext(now);
+    }
+
+    /** Laying a moment only where the board has drawn (its look's own shapes, on their layer). */
+    private final Paint atop = new Paint();
+
+    {
+        atop.setXfermode(new android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.SRC_ATOP));
+    }
+
+    /** A layer for a moment laid only where the look has drawn (on: the look is on its own layer); -1 for none. */
+    private int atop(Canvas cv, boolean on, float w, float h) {
+        return on ? cv.saveLayer(0, 0, w, h, atop) : -1;
     }
 
     /** Its corners' radius: a pill's half its height while it is long, else its look's own (Glass nearer square: round corners). */

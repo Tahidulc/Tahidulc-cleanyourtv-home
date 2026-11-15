@@ -393,24 +393,26 @@ public class ScoreboardLabTest {
     // ---- the Lab's stats, each with its switch ----------------------------------------------------------------------
 
     @Test
-    public void eachLabStatHasItsOwnSwitchAndNoPaidOneOrWinChance() {
+    public void eachLabStatHasItsOwnSwitchAndNoPaidOneOrBettingWord() {
         Set<String> keys = new HashSet<>();
         for (String[] s : BoardLab.STATS) {
             assertEquals(3, s.length);
             assertTrue(keys.add(s[0]));
             assertFalse(s[1].isEmpty() || s[2].isEmpty());
             String all = (s[1] + " " + s[2]).toLowerCase(java.util.Locale.ROOT);
-            assertFalse(all, all.contains("win chance") || all.contains("odds") || all.contains("field tilt") || all.contains("ppda"));
+            // The win chance before kick-off is percentages only: never odds, a bookmaker or a bet. Nothing paid.
+            assertFalse(all, all.contains("odds") || all.contains("bookmaker") || all.matches(".*\\bbet(s|ting)?\\b.*")
+                    || all.contains("field tilt") || all.contains("ppda"));
         }
         assertTrue(keys.containsAll(Arrays.asList("xg", "xgot", "chances", "touches", "momentum", "ratings", "basics", "form",
-                "streaks", "h2h", "drought", "comeback", "early", "referee", "table", "shots")));
+                "streaks", "h2h", "drought", "comeback", "early", "referee", "table", "shots", "winchance")));
         // What each stat on the board comes under.
         String[][] by = {{"Expected goals", "xg"}, {"xG on target", "xgot"}, {"Big chances", "chances"}, {"Touches in box", "touches"},
                 {"Momentum", "momentum"}, {"Top rated", "ratings"}, {"Player of the match", "ratings"}, {"Possession", "basics"},
                 {"Shots", "basics"}, {"On target", "basics"}, {"Corners", "basics"}, {"Pass accuracy", "basics"}, {"Fouls", "basics"},
                 {"Yellow cards", "basics"}, {"Form", "form"}, {"Streak", "streaks"}, {"Head to head", "h2h"}, {"Goal drought", "drought"},
                 {"Comeback", "comeback"}, {"Early goal", "early"}, {"Referee", "referee"}, {"League table", "table"},
-                {"As it stands", "table"}, {"Big save", "shots"}, {"Great finish", "shots"}};
+                {"As it stands", "table"}, {"Big save", "shots"}, {"Great finish", "shots"}, {"Win chance", "winchance"}};
         for (String[] b : by) {
             assertEquals(b[0], b[1], BoardLab.statKey(b[0]));
             assertTrue(b[1], keys.contains(BoardLab.statKey(b[0])));

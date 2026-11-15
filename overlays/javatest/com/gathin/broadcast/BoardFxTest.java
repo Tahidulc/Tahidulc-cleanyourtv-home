@@ -269,4 +269,16 @@ public class BoardFxTest {
         assertEquals(5, BoardFx.pensCols(5, 4));
         assertEquals(7, BoardFx.pensCols(7, 6));
     }
+
+    @Test
+    public void theBurstsCrestSettlesBackAndAMissingCrestOnlyFlashes() {
+        assertEquals(1f, BoardFx.crestAlpha(0), 1e-6f);
+        assertEquals(1f, BoardFx.crestAlpha(BoardFx.POP_MS), 1e-6f);
+        assertEquals(0.5f, BoardFx.crestAlpha(BoardFx.POP_MS + BoardFx.SETTLE_MS / 2), 1e-3f);
+        assertEquals(0f, BoardFx.crestAlpha(BoardFx.POP_MS + BoardFx.SETTLE_MS), 1e-6f);
+        assertEquals(0f, BoardFx.crestAlpha(BoardFx.BURST_MS - 1), 1e-6f);
+        assertEquals(1f, BoardFx.discAlpha(0), 1e-6f);
+        assertEquals(0f, BoardFx.discAlpha(BoardFx.POP_MS), 1e-6f);
+        assertEquals(0f, BoardFx.discAlpha(-1), 1e-6f);
+    }
 }

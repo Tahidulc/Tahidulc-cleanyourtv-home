@@ -69,7 +69,7 @@ public class LabWiringTest {
 
     @Test
     public void eachStatHasItsSwitchAndItsName() {
-        assertEquals(17, BoardLab.KEYS.length);
+        assertEquals(18, BoardLab.KEYS.length);
         assertEquals(BoardLab.KEYS.length, BoardLab.NAMES.length);
         assertEquals(BoardLab.KEYS.length, new HashSet<>(Arrays.asList(BoardLab.KEYS)).size());
         // what the board's stats are called, to the switch each comes under
@@ -78,7 +78,7 @@ public class LabWiringTest {
                 {"Shots", "basics"}, {"On target", "basics"}, {"Corners", "basics"}, {"Pass accuracy", "basics"}, {"Fouls", "basics"},
                 {"Distance run", "basics"}, {"Form", "form"}, {"Streak", "streaks"}, {"Head to head", "h2h"}, {"Goal drought", "drought"},
                 {"Comeback", "comeback"}, {"Early goal", "early"}, {"Referee", "referee"}, {"League table", "table"},
-                {"As it stands", "table"}, {"Big save", "shots"}, {"Great finish", "shots"}};
+                {"As it stands", "table"}, {"Big save", "shots"}, {"Great finish", "shots"}, {"Win chance", "winchance"}};
         Set<String> keys = new HashSet<>(Arrays.asList(BoardLab.KEYS));
         for (String[] b : by) {
             assertEquals(b[0], b[1], BoardLab.statKey(b[0]));
@@ -285,6 +285,34 @@ public class LabWiringTest {
         assertEquals(1, more.shotsRaw.length());
         assertEquals(1, more.homeForm.length());
         assertEquals(0, more.awayForm.length());
+    }
+
+    @Test
+    public void aComebackOnlyWithEveryGoalSeen() {
+        // seen from 0-0: the first goal, then each after it in turn
+        assertTrue(ScoreBoard.everyGoalSeen(true, 1, 0));
+        assertTrue(ScoreBoard.everyGoalSeen(true, 4, 3));
+        // one missed while the board was away (two goals before this one, one seen), or taken back since
+        assertFalse(ScoreBoard.everyGoalSeen(true, 2, 2));
+        assertFalse(ScoreBoard.everyGoalSeen(true, 3, 1));
+        // the board came up after goals were scored: none of the game's comebacks
+        assertFalse(ScoreBoard.everyGoalSeen(false, 1, 0));
+        assertFalse(ScoreBoard.everyGoalSeen(true, 1, -1));
+    }
+
+    @Test
+    public void aWeatherMinuteWaitsForItsSky() {
+        // A minute not taken while FotMob has no sky yet stays due for its few minutes, then is gone.
+        for (int i = 0; i < 20; i++) {
+            String id = "93" + i;
+            int m = BoardFx.weatherMinutes(id)[0];
+            Set<String> shown = new HashSet<>();
+            assertTrue(id, BoardFx.weatherDue(id, m + 2, new HashSet<>()));
+            assertFalse(id, BoardFx.weatherDue(id, m + 4, shown));
+            // taken once, never again
+            assertTrue(id, BoardFx.weatherDue(id, m + 1, shown));
+            assertFalse(id, BoardFx.weatherDue(id, m + 2, shown));
+        }
     }
 
     @Test

@@ -331,7 +331,8 @@ final class BoardPanel extends SportPanel {
         add(fot, subs);
         Row pens = row("Penalty shootout tracker", true);
         pens.on = () -> BoardCover.pensOn(c);
-        pens.words = () -> BoardCover.pensOn(c) ? "Every kick under the board as it is taken: in, missed, still to come" : "Off";
+        pens.words = () -> BoardCover.pensOn(c) ? "Every kick as it is taken: in, missed, still to come, under the board or "
+                + "beside its clock (the game decides which)" : "Off";
         pens.ok = () -> BoardCover.setPensOn(c, !BoardCover.pensOn(c));
         add(pens);
         Row milestones = row("Player milestones", true);

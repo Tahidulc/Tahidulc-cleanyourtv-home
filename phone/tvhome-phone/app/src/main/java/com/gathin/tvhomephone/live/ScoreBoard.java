@@ -1493,17 +1493,20 @@ public final class ScoreBoard implements LiveAlerts.Listener {
      */
     private void labGoal(Game g, int side, String clock, int homeBefore, int awayBefore) {
         if (g.id == null) return;
+        int had = homeBefore >= 0 && awayBefore >= 0 ? homeBefore + awayBefore : -1;
         if (!g.id.equals(labGoalsFor)) {
             labGoalsFor = g.id;
             labSides.clear();
             labMinutes.clear();
-            labFromStart = homeBefore == 0 && awayBefore == 0;
+            labFromStart = had == 0;
         }
         labSides.add(side);
         labMinutes.add(Math.max(0, minuteOfClock(clock)));
         String[] early = com.gathin.broadcast.MatchStats.early(clock);
         if (early != null) labWait(g.id, early);
-        if (labFromStart) {
+        // Every goal of the game seen (none missed while the board was away, none taken back since), as the TV's: else no
+        // comeback all game.
+        if (everyGoalSeen(labFromStart, labSides.size(), had)) {
             int[] sides = new int[labSides.size()], minutes = new int[labMinutes.size()];
             for (int i = 0; i < sides.length; i++) {
                 sides[i] = labSides.get(i);
@@ -1512,6 +1515,14 @@ public final class ScoreBoard implements LiveAlerts.Listener {
             String[] back = com.gathin.broadcast.MatchStats.comeback(sides, minutes, code(g.home, g.homeName), code(g.away, g.awayName));
             if (back != null) labWait(g.id, back);
         }
+    }
+
+    /**
+     * Pure: whether every goal of a game is known at its latest: seen from 0-0 (fromStart), the goals seen (this one's
+     * with them) one more than the goals there were before it.
+     */
+    static boolean everyGoalSeen(boolean fromStart, int seen, int had) {
+        return fromStart && had >= 0 && seen == had + 1;
     }
 
     /** The Lab's stats for the game now, by name (BoardLab.pick): the head to head and runs, each side's drought, the table as it stands. */
@@ -1545,10 +1556,10 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         int minute = boardMinute;
         boolean live = g.state == Game.LIVE && !g.halftime;
         if (labShown.size() > 300) labShown.clear();
-        // The weather touch, the sky as it is now (none when FotMob has none).
-        if (live && minute >= 0 && statOn(c, "weather") && com.gathin.broadcast.BoardFx.weatherDue(g.id, minute, labShown)) {
-            com.gathin.broadcast.BoardFx.Sky sky = labSky.get(g.id);
-            if (sky != null) bug.weather(sky);
+        // The weather touch, the sky as it is now: its minute kept open (within its few minutes) until FotMob has a sky.
+        com.gathin.broadcast.BoardFx.Sky sky = labSky.get(g.id);
+        if (live && minute >= 0 && sky != null && statOn(c, "weather") && com.gathin.broadcast.BoardFx.weatherDue(g.id, minute, labShown)) {
+            bug.weather(sky);
         }
         // The stats wait: something out beside the board, a goal just in, the scores ahead of the picture.
         if (dropping || lineups.isOut() || stats.isOut() || bug.closing()) return;

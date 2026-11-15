@@ -554,7 +554,10 @@ final class LogoMark extends View {
         }
         com.gathin.broadcast.LabMarks.Look lab = look.lab();
         if (lab != null) {
-            // Its own plate over the cover (the channel's logo under it never shows), in from the edge when see-through.
+            // Its own plate over the cover, in from the edge when see-through; on its plate, its ground solid under all of
+            // the cover first (its plate is less tall where its words want the room, a little see-through in two of the
+            // looks), so the channel's logo under it never shows. As the phone's.
+            if (!clear) labGround(cv, lab, w, h);
             float p = clear ? in : inset;
             labLook(cv, lab, p, p, w - 2 * p, h - 2 * p);
             return;
@@ -583,6 +586,27 @@ final class LogoMark extends View {
         cv.translate(x, y + (bh - lh) / 2f);
         labMarks.draw(cv, l, bw, lh, NAME, sports, t);
         cv.restore();
+    }
+
+    /** A Lab logo's own ground, solid, over the whole cover w by h, its corners as its plate's. */
+    private void labGround(Canvas cv, com.gathin.broadcast.LabMarks.Look l, float w, float h) {
+        int[] g = labGround(l);
+        float rad = l == com.gathin.broadcast.LabMarks.Look.DUO ? h / 2f : h * g[1] / 1000f;
+        fill.setShader(null);
+        fill.setColor(g[0]);
+        r.set(0, 0, w, h);
+        cv.drawRoundRect(r, rad, rad, fill);
+    }
+
+    /** Pure: a Lab logo's ground {its colour, its corners' radius in thousandths of its height} (Floodlight's white plate, the rest dark). */
+    static int[] labGround(com.gathin.broadcast.LabMarks.Look l) {
+        switch (l) {
+            case FLOODLIGHT: return new int[]{0xFFF6F7FA, 74};
+            case SPLITKIT: return new int[]{0xFF0B0E16, 80};
+            case TICKER: return new int[]{0xFF080A10, 80};
+            case DUO: return new int[]{0xFF080A10, 500};
+            case LED: default: return new int[]{0xFF1A1A1A, 130};
+        }
     }
 
     /** Pure: how tall a Lab logo is drawn in a box bw by bh, natural its width when as tall as the box: the box's height, or less to fit. */

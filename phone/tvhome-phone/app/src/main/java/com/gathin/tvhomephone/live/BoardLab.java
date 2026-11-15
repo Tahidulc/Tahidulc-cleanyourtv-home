@@ -20,13 +20,13 @@ final class BoardLab {
     }
 
     /** Each of the Lab's stats the settings can switch off, by its key (as the TV's): on unless switched off. */
-    static final String[] KEYS = {"xg", "xgot", "chances", "touches", "momentum", "ratings", "basics", "form", "streaks", "h2h",
-            "drought", "comeback", "early", "referee", "table", "shots", "weather"};
+    static final String[] KEYS = {"xg", "xgot", "chances", "touches", "momentum", "ratings", "basics", "form", "winchance", "streaks",
+            "h2h", "drought", "comeback", "early", "referee", "table", "shots", "weather"};
 
     /** Each key's name in the settings, in the same order. */
     static final int[] NAMES = {R.string.lab_stat_xg, R.string.lab_stat_xgot, R.string.lab_stat_chances, R.string.lab_stat_touches,
             R.string.lab_stat_momentum, R.string.lab_stat_ratings, R.string.lab_stat_basics, R.string.lab_stat_form,
-            R.string.lab_stat_streaks, R.string.lab_stat_h2h, R.string.lab_stat_drought, R.string.lab_stat_comeback,
+            R.string.lab_stat_winchance, R.string.lab_stat_streaks, R.string.lab_stat_h2h, R.string.lab_stat_drought, R.string.lab_stat_comeback,
             R.string.lab_stat_early, R.string.lab_stat_referee, R.string.lab_stat_table, R.string.lab_stat_shots,
             R.string.lab_stat_weather};
 
@@ -43,6 +43,7 @@ final class BoardLab {
             case "possession": case "shots": case "on target": case "corners": case "pass accuracy": case "fouls": case "distance run":
                 return "basics";
             case "form": return "form";
+            case "win chance": return "winchance";
             case "head to head": return "h2h";
             case "goal drought": return "drought";
             case "comeback": return "comeback";

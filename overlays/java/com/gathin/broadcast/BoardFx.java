@@ -514,15 +514,40 @@ public final class BoardFx {
         line.setAlpha(255);
         float k = popAt(t), s = rad * k;
         if (crest != null && !crest.isRecycled() && crest.getWidth() > 0 && crest.getHeight() > 0) {
+            // After its pop the crest settles back into the board's own, gone by SETTLE_MS after the pop.
+            float a = crestAlpha(t);
+            if (a <= 0f) return;
             float f = Math.min(2 * s / crest.getWidth(), 2 * s / crest.getHeight());
             float bw = crest.getWidth() * f, bh = crest.getHeight() * f;
             r.set(cx - bw / 2f, cy - bh / 2f, cx + bw / 2f, cy + bh / 2f);
+            img.setAlpha(Math.round(255 * a));
             cv.drawBitmap(crest, null, r, img);
+            img.setAlpha(255);
         } else {
+            // No crest to show: a soft flash of their colour while it pops, never a disc left over the board.
+            float a = discAlpha(t);
+            if (a <= 0f) return;
             fill.setShader(null);
             fill.setColor(0xFF000000 | colour);
+            fill.setAlpha(Math.round(150 * a));
             cv.drawCircle(cx, cy, s, fill);
+            fill.setAlpha(255);
         }
+    }
+
+    /** How long the burst's crest takes to settle back into the board's own after its pop, in ms. */
+    public static final long SETTLE_MS = 700;
+
+    /** Pure: the burst's crest's strength t ms in: whole through its pop, then fading over SETTLE_MS. */
+    public static float crestAlpha(long t) {
+        if (t < 0) return 0f;
+        if (t <= POP_MS) return 1f;
+        return Math.max(0f, 1f - (t - POP_MS) / (float) SETTLE_MS);
+    }
+
+    /** Pure: the flash of colour where there is no crest, t ms in: strongest as it starts, gone by the end of the pop. */
+    public static float discAlpha(long t) {
+        return t < 0 || t >= POP_MS ? 0f : 1f - t / (float) POP_MS;
     }
 
     /** The red card swinging up about its foot (cx, foot), h high, t ms in (RED_MS), glowing red; hidden below at either end. */
