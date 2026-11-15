@@ -391,9 +391,9 @@ final class BoardPanel extends SportPanel {
         Row classicPop = row("Kick-off pop-up", false);
         classicPop.words = () -> {
             String st = ClassicIntro.popupStyle(c);
-            return "strap".equals(st) ? "In the scoreboard's look: a strap that folds into the board · OK: off"
-                    : "off".equals(st) ? "Off · OK: classic (crests, trophy and teams)"
-                    : "Classic: crests, trophy and teams, from your clip · OK: in the scoreboard's look";
+            return "strap".equals(st) ? "In the scoreboard's look: a strap that folds into the board; after a goal, no goal card or scorer beside the board · OK: off"
+                    : "off".equals(st) ? "Off · goals come as the card and the scorer beside the board · OK: classic (crests, trophy and teams)"
+                    : "Classic: crests, trophy and teams, from your clip; after a goal, no goal card or scorer beside the board · OK: in the scoreboard's look";
         };
         classicPop.ok = () -> ClassicIntro.setPopupStyle(c, ClassicIntro.nextStyle(ClassicIntro.popupStyle(c), "strap"));
         Row classicLu = row("Line-ups before kick-off", false);

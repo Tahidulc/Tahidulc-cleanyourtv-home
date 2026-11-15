@@ -310,6 +310,33 @@ final class ClassicIntro {
 
     /** Until when a goal's restart pop-up may still come (uptime; 0: none waiting). */
     private static long restartUntil;
+    /** The game and the side of the goal whose restart pop-up may still come. */
+    private static String restartGame;
+    private static int restartSide;
+    /**
+     * The goals whose restart pop-up came up (Moments.restartKey: the game, the side, that side's goals with it): their
+     * card over the app (GoalWatchService) and their scorer beside the board (BoardCover) are left out, the pop-up said it.
+     */
+    private static final Set<String> restartsUp = new HashSet<>();
+
+    /** Whether the restart pop-up came up for the side's n-th goal of the game (1 home, 2 away). */
+    static boolean restartShowed(String gameId, int side, int n) {
+        return gameId != null && n > 0 && restartsUp.contains(Moments.restartKey(gameId, side, n));
+    }
+
+    /** Whether a goal's restart pop-up may still come in this game (its card waits to see). */
+    static boolean restartPending(String gameId) {
+        return gameId != null && gameId.equals(restartGame) && restartWaiting();
+    }
+
+    /** The restart pop-up up for the game at this score (the goal's side as it was scored). */
+    private static void restartUp(String gameId, int[] score) {
+        if (gameId == null || !gameId.equals(restartGame)) return;
+        String k = Moments.restartKey(gameId, restartSide, score);
+        if (k == null) return;
+        if (restartsUp.size() > 200) restartsUp.clear();
+        restartsUp.add(k);
+    }
 
     /** Whether a goal's restart pop-up is still to come: what comes out of the board after the goal waits for it. */
     static boolean restartWaiting() {
@@ -391,6 +418,8 @@ final class ClassicIntro {
         long at = android.os.SystemClock.uptimeMillis();
         // What comes out of the board after the goal waits for this pop-up (restartWaiting), so they never meet.
         restartUntil = at + Moments.RESTART_WAIT_MS;
+        restartGame = id;
+        restartSide = side;
         handler().postDelayed(new Runnable() {
             @Override public void run() {
                 String ph = phases.get(id);
@@ -451,7 +480,11 @@ final class ClassicIntro {
     private static void popup(Context c, ScoresTicker.Game g, String kind, int[] score, String scorer, String minute) {
         String key = g.id + "|" + kind + (score == null ? "" : "|" + score[0] + "-" + score[1]);
         if (shown.contains(key) || showing() || !BoardCover.playerUp(c)) return;
-        if (goPrepared(key)) return;
+        boolean restart = "restart".equals(kind);
+        if (goPrepared(key)) {
+            if (restart) restartUp(g.id, score);
+            return;
+        }
         shown.add(key);
         BroadcastData.Match m = match(g);
         Context app = c.getApplicationContext();
@@ -465,7 +498,9 @@ final class ClassicIntro {
             }
             handler().post(() -> {
                 if (showing() || !BoardCover.playerUp(app)) return;
-                show(app, BroadcastView.page(app, page, cfg, ClassicIntro::gone), "strap".equals(page) ? "strap" : kind);
+                if (show(app, BroadcastView.page(app, page, cfg, ClassicIntro::gone), "strap".equals(page) ? "strap" : kind) && restart) {
+                    restartUp(g.id, score);
+                }
             });
         });
     }

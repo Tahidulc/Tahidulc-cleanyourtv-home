@@ -106,6 +106,34 @@ public final class Moments {
         return untilKickoffMs <= INTRO_FROM_MS && untilKickoffMs >= INTRO_UNTIL_MS;
     }
 
+    /**
+     * Pure: what the after-goal pop-up shown for a goal is known by: its game, the side that scored (1 home, 2 away) and
+     * that side's goals with it. The goal's card over the app and its caption beside the board are left out for it.
+     */
+    public static String restartKey(String gameId, int side, int n) {
+        return gameId + "|" + side + "|" + n;
+    }
+
+    /** Pure: the same for a score just made ({home, away}) by side; null for no score or no side. */
+    public static String restartKey(String gameId, int side, int[] score) {
+        return score == null || score.length < 2 || side < 1 || side > 2 ? null : restartKey(gameId, side, score[side - 1]);
+    }
+
+    /**
+     * Pure: which of its side's goals a goal is among the game's ({key, scorer, minute, side, ...} in the order they came,
+     * by key), counting it: what its after-goal pop-up is known by. 0 when it is not among them.
+     */
+    public static int goalNumber(List<String[]> goals, String[] goal) {
+        if (goals == null || goal == null || goal.length < 4 || goal[3] == null) return 0;
+        int n = 0;
+        for (String[] x : goals) {
+            if (x == null || x.length < 4 || !goal[3].equals(x[3])) continue;
+            n++;
+            if (x == goal || x[0] != null && x[0].equals(goal[0])) return n;
+        }
+        return 0;
+    }
+
     /** The matchday intro is left out when an advert break has had one this lately: the channel's breaks bring them. */
     public static final long INTRO_AFTER_BREAK_MS = 20 * 60_000L;
 

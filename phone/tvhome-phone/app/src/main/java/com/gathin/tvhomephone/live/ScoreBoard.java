@@ -466,6 +466,8 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         boolean own;
         /** The goal it captions (its key), to caption each goal once; null for the rest. */
         String key;
+        /** A goal's caption: which of its side's goals it is (its after-goal pop-up's, Moments.restartKey); 0 for the rest. */
+        int goalN;
         /** The scorer's (or the player's) photo, head and shoulders; both clubs' crests; each may be null. */
         Bitmap photo, homeCrest, awayCrest;
         Events.Alert alert;
@@ -2019,6 +2021,18 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         introBusy = s == null ? () -> false : s;
     }
 
+    /** Whether the after-goal pop-up showed a side's n-th goal of a game (PlayerIntro.restartShowed). */
+    interface GoalShown {
+        boolean showed(String gameId, int side, int n);
+    }
+
+    /** The after-goal pop-up's goals: their scorer beside the board is left out (only with it switched off does it come). */
+    private GoalShown afterGoal = (id, side, n) -> false;
+
+    void afterGoal(GoalShown s) {
+        afterGoal = s == null ? (id, side, n) -> false : s;
+    }
+
     /** A moment's pop-up on the picture now (PlayerIntro): the board away meanwhile. */
     private java.util.function.BooleanSupplier momentUp = () -> false;
     /** A goal's restart pop-up still to come (PlayerIntro): away in the replays, the board stays away until it has been. */
@@ -2317,6 +2331,8 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         d.colour = colour("goal");
         d.own = true;
         d.key = goal[0];
+        d.gameId = g.id;
+        d.goalN = com.gathin.broadcast.Moments.goalNumber(g.goals, goal);
         d.side = "home".equals(goal[3]) ? 1 : 2;
         d.title = g.homeName + " " + g.homeScore + "–" + g.awayScore + " " + g.awayName;
         d.line = goal[1] + " " + goal[2] + kindWords(goal.length > 4 ? goal[4] : "");
@@ -2679,6 +2695,11 @@ public final class ScoreBoard implements LiveAlerts.Listener {
             drops.remove(d);
         } else {
             d = drops.pollFirst();
+        }
+        // A goal's scorer, when the after-goal pop-up showed that goal (its scorer, its minute): left out, the pop-up said it.
+        if (d.own && d.goalN > 0 && d.gameId != null && afterGoal.showed(d.gameId, d.side, d.goalN)) {
+            h.post(nextDrop);
+            return;
         }
         if (d.lineups && d.alert != null && d.alert.summary != null && d.alert.game != null && boardUp() && !(src instanceof FloatService)) {
             dropping = false;

@@ -2927,12 +2927,42 @@ public class GoalWatchService extends Service {
         }
     }
 
+    /**
+     * The after-goal pop-up and a goal's card (ClassicIntro): 1 when it showed the goal on the board's own game (no card),
+     * -1 while it may still come (the card waits a little), 0 when the card goes (another game, the pop-up off, or it did
+     * not come).
+     */
+    private int afterGoalPopup(ScoresTicker.Game g, String[] goal) {
+        if (g == null || g.id == null || goal == null || goal.length < 4 || !g.id.equals(BoardCover.game(this))
+                || !ClassicIntro.popupOn(this)) return 0;
+        int side = "home".equals(goal[3]) ? 1 : "away".equals(goal[3]) ? 2 : 0;
+        int n = com.gathin.broadcast.Moments.goalNumber(g.goals, goal);
+        if (side == 0 || n <= 0) return 0;
+        if (ClassicIntro.restartShowed(g.id, side, n)) return 1;
+        return ClassicIntro.restartPending(g.id) ? -1 : 0;
+    }
+
     private void enqueue(ScoresTicker.Game g, String[] goal, boolean red) {
         // A Championship or LaLiga game: only while Home is in front.
         if (homeOnly(g) && !homeInFront) {
             AlertLog.note(this, "not shown (a Home-only game, Home not in front): " + AlertLog.game(g) + " " + goal[1] + " " + goal[2]);
             AlertToday.why(this, goal[0], "Home wasn't open");
             return;
+        }
+        // The board's own game with the after-goal pop-up on: the pop-up is this goal's (its scorer, its minute), so no card
+        // over the app as well. While it may still come the card waits to see; it comes all the same where the pop-up did
+        // not (the half over first, the board away, the pop-up switched off).
+        if (!red && !"ft".equals(goal[4])) {
+            int ag = afterGoalPopup(g, goal);
+            if (ag > 0) {
+                AlertLog.note(this, "not shown (the after-goal pop-up showed it): " + AlertLog.game(g) + " " + goal[1] + " " + goal[2]);
+                AlertToday.why(this, goal[0], "the after-goal pop-up showed it");
+                return;
+            }
+            if (ag < 0) {
+                main.postDelayed(() -> enqueue(g, goal, false), 3_000L);
+                return;
+            }
         }
         if (skyAlerts) {
             skyFootball(g, red ? "red" : "ft".equals(goal[4]) ? "ft" : "goal", goal[1], goal[2], goal[3], goal[4], goal[0], null);

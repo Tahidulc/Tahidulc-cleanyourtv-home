@@ -228,4 +228,26 @@ public class MomentsTest {
         org.junit.Assert.assertFalse(Moments.boardMoment("intro"));
         org.junit.Assert.assertFalse(Moments.boardMoment(null));
     }
+
+    @Test
+    public void anAfterGoalPopUpIsKnownByItsGameItsSideAndThatSidesGoals() {
+        java.util.List<String[]> goals = Arrays.asList(
+                new String[]{"g1", "Leo Brandt", "12'", "home", ""},
+                new String[]{"g2", "Sam Okafor", "30'", "away", ""},
+                new String[]{"g3", "Jay Hollis", "61'", "home", "pen"});
+        // the home side's second goal (the third of the game), its pop-up made at 2-1 by the home side
+        assertEquals(2, Moments.goalNumber(goals, goals.get(2)));
+        assertEquals(1, Moments.goalNumber(goals, goals.get(1)));
+        assertEquals(Moments.restartKey("m", 1, new int[]{2, 1}), Moments.restartKey("m", 1, Moments.goalNumber(goals, goals.get(2))));
+        // the away side's first: its pop-up at 1-1, not the home side's
+        assertEquals(Moments.restartKey("m", 2, new int[]{1, 1}), Moments.restartKey("m", 2, 1));
+        assertFalse(Moments.restartKey("m", 2, new int[]{1, 1}).equals(Moments.restartKey("m", 1, new int[]{1, 1})));
+        // by its key, when the entry is a copy
+        assertEquals(2, Moments.goalNumber(goals, new String[]{"g3", "Jay Hollis", "61'", "home", "pen"}));
+        // not among them, no side, no score
+        assertEquals(0, Moments.goalNumber(goals, new String[]{"g9", "Theo Marsh", "88'", "away", ""}));
+        assertEquals(0, Moments.goalNumber(null, goals.get(0)));
+        assertNull(Moments.restartKey("m", 0, new int[]{1, 0}));
+        assertNull(Moments.restartKey("m", 1, (int[]) null));
+    }
 }

@@ -546,3 +546,5 @@ Intros away from kick-off (4.98): the matchday intro comes twelve minutes before
 A substitution comes out once (4.99): when the match data put its minute right a minute later, the same change came out a second time; it is known now by its two players, never by its minute.
 
 Added time in one piece (5.00): while the minutes added stand out beside the scoreboard for the rest of the half, the board drops its own +minutes tab and the panel tucks under the board's end, reading ADDED TIME and the minutes counting up.
+
+After a goal, the after-goal pop-up alone (5.01): with the kick-off pop-up on, a goal it has shown gets no scorer beside the scoreboard as well; with it off, the scorer comes out beside the board as before.

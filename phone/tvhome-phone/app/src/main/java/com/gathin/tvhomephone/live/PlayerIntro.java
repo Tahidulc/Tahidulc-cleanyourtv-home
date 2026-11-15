@@ -492,6 +492,8 @@ final class PlayerIntro {
         long at = android.os.SystemClock.uptimeMillis();
         // What comes out of the scoreboard after the goal waits for this pop-up (restartWaiting), so they never meet.
         restartUntil = at + Moments.RESTART_WAIT_MS;
+        restartGame = id;
+        restartSide = side;
         h.postDelayed(new Runnable() {
             @Override public void run() {
                 String ph = phases.get(id);
@@ -520,6 +522,19 @@ final class PlayerIntro {
 
     /** Until when a goal's restart pop-up may still come (uptime; 0: none waiting). */
     private long restartUntil;
+    /** The game and the side of the goal whose restart pop-up may still come. */
+    private String restartGame;
+    private int restartSide;
+    /**
+     * The goals whose restart pop-up came up (Moments.restartKey: the game, the side, that side's goals with it): their
+     * scorer beside the scoreboard is left out, the pop-up said it.
+     */
+    private final Set<String> restartsUp = new HashSet<>();
+
+    /** Whether the restart pop-up came up for the side's n-th goal of the game (1 home, 2 away). */
+    boolean restartShowed(String gameId, int side, int n) {
+        return gameId != null && n > 0 && restartsUp.contains(Moments.restartKey(gameId, side, n));
+    }
 
     /** Whether a goal's restart pop-up is still to come: what comes out of the scoreboard after the goal waits for it. */
     boolean restartWaiting() {
@@ -598,6 +613,14 @@ final class PlayerIntro {
             h.post(() -> {
                 if (showing() || !canShow.getAsBoolean() || a.isFinishing()) return;
                 show(BroadcastView.page(a, strap ? "strap" : "kickoff", cfg, this::gone), strap ? "strap" : kind);
+                // A goal's: its scorer beside the scoreboard is left out (ScoreBoard), the pop-up said it.
+                if ("restart".equals(kind) && g.id != null && g.id.equals(restartGame)) {
+                    String k = Moments.restartKey(g.id, restartSide, score);
+                    if (k != null) {
+                        if (restartsUp.size() > 200) restartsUp.clear();
+                        restartsUp.add(k);
+                    }
+                }
             });
         });
     }

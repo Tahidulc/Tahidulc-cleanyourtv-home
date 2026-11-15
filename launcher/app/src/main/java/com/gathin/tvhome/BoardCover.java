@@ -3443,6 +3443,13 @@ final class BoardCover {
             return;
         }
         BoardDrop.Drop d = drops.pollFirst();
+        // A goal's scorer beside the board, when the after-goal pop-up showed that goal (its scorer, its minute): left out,
+        // the pop-up said it. Only with that pop-up switched off (or where it did not come) does the scorer come out here.
+        if (afterGoalShowed(d)) {
+            if (app != null) AlertLog.note(app, "goal beside the board left out: the after-goal pop-up showed it (" + d.title + ")");
+            main().post(nextDropRun);
+            return;
+        }
         lastOut = d;
         // The line-ups out: the remote's Back is taken for them meanwhile (it closes them), also where Hold OK is off.
         lineupKeys(d != null && d.lineups);
@@ -3996,6 +4003,13 @@ final class BoardCover {
                 if (key.equals(scorerFor)) scorerPhoto = b;
             });
         });
+    }
+
+    /** Whether d is a goal's scorer beside the board that the after-goal pop-up has shown (ClassicIntro.restartShowed). */
+    private static boolean afterGoalShowed(BoardDrop.Drop d) {
+        if (d == null || !"GOAL".equals(d.chip) || d.key == null || d.gameId == null || d.side < 1) return false;
+        int bar = d.key.indexOf('|');
+        return bar > 0 && ClassicIntro.restartShowed(d.gameId, d.side, goalsOf(d.key.substring(bar + 1), d.side));
     }
 
     /** Pure: a side's goals in a score ("2–1", side 1: 2); -1 when it is not a score. */
