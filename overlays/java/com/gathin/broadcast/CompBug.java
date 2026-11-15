@@ -1226,6 +1226,268 @@ public final class CompBug {
         words(cv, d.clock, mid, bb + u * 0.3f, u * 0.66f, x[3] - x[2] - u * 0.3f, d.stoppage ? INK : 0xFF1A1A1A, rubik6, 0);
     }
 
+    // ---- the Scoreboard Lab's looks ---------------------------------------------------------------------------------
+
+    /**
+     * Floodlight: a crisp white row, each club's code underlined in its colour, the score in white on near black between
+     * them; the clock and the competition (in yellow) in a slim dark tab tucked under the row's start.
+     */
+    private void floodlight(Canvas cv, Data d, float[] x, float u, String[] sc) {
+        float rowR = x[3], rad = u * 0.11f;
+        softShadow(cv, x[0], u, rowR, u * 0.22f);
+        r.set(x[0], 0, rowR, u);
+        fill.setShader(null);
+        fill.setColor(FLOOD);
+        cv.drawRoundRect(r, rad, rad, fill);
+        rect(cv, x[1], 0, x[2], u, LAB_DARK);
+        for (int side = 0; side < 2; side++) {
+            float l = side == 0 ? x[0] : x[2], rr = side == 0 ? x[1] : x[3], cw = rr - l;
+            lwords(cv, side == 0 ? d.home : d.away, (l + rr) / 2f, u * 0.48f, u * 0.44f, cw - u * 0.3f, FLOOD_INK, outfit, 0, W800, 0.04f);
+            rect(cv, l + cw * 0.18f, u - u * 0.085f, rr - cw * 0.18f, u, solid(side == 0 ? d.homeColour : d.awayColour));
+        }
+        digits(cv, d, sc, x[1], x[2], u / 2f, u * 0.44f, INK, outfit, W800, 0.04f, "–", 0.7f);
+        // The tab under the row's start: the clock, then the competition in yellow.
+        String cp = compShort(d.comp), clock = d.clock == null ? "" : d.clock;
+        float tt = u * 1.08f, tb = u * 1.6f, pad = u * 0.28f;
+        float cw = clock.isEmpty() ? 0f : lw(clockSample(d), u * 0.36f, mono, W760, 0f);
+        float pw = cp.isEmpty() ? 0f : lw(cp, u * 0.3f, outfit, W600, 0.1f);
+        if (cw <= 0f && pw <= 0f) return;
+        float tabW = pad * 2f + cw + (cw > 0f && pw > 0f ? u * 0.22f : 0f) + pw;
+        r.set(x[0], tt, Math.min(x[x.length - 1], x[0] + tabW), tb);
+        fill.setColor(d.stoppage ? RED : 0xD1080A10);
+        cv.drawRoundRect(r, rad, rad, fill);
+        float cy = (tt + tb) / 2f, at = x[0] + pad;
+        if (cw > 0f) {
+            lwords(cv, clock, at, cy, u * 0.36f, cw * 1.05f, INK, mono, -1, W760, 0f);
+            at += cw + u * 0.22f;
+        }
+        if (pw > 0f) lwords(cv, cp, at, cy, u * 0.3f, 0, d.stoppage ? INK : YELLOW, outfit, -1, W600, 0.1f);
+    }
+
+    /** Floodlight's tab under the row, as wide as its clock and competition need. */
+    private float floodTab(Data d, float u) {
+        String cp = compShort(d.comp);
+        boolean clock = d.clock != null && !d.clock.isEmpty();
+        float cw = clock ? lw(clockSample(d), u * 0.36f, mono, W760, 0f) : 0f, pw = cp.isEmpty() ? 0f : lw(cp, u * 0.3f, outfit, W600, 0.1f);
+        return cw <= 0f && pw <= 0f ? 0f : u * 0.56f + cw + (cw > 0f && pw > 0f ? u * 0.22f : 0f) + pw;
+    }
+
+    /**
+     * Split kit: the board in two halves of the clubs' colours, cut on an angle where they meet, each club's code with its
+     * score beside the cut; the clock on near black at the end.
+     */
+    private void splitKit(Canvas cv, Data d, float[] x, float u, String[] sc) {
+        float cut = u * 0.35f, rad = u * 0.15f, cy = u / 2f, num = numW(d, u * 0.55f);
+        int hc = solid(d.homeColour), ac = solid(d.awayColour);
+        path.reset();
+        path.moveTo(x[0] + rad, 0);
+        path.lineTo(x[1], 0);
+        path.lineTo(x[1] - cut, u);
+        path.lineTo(x[0] + rad, u);
+        path.quadTo(x[0], u, x[0], u - rad);
+        path.lineTo(x[0], rad);
+        path.quadTo(x[0], 0, x[0] + rad, 0);
+        path.close();
+        fillPath(cv, hc, 0, u);
+        path.reset();
+        path.moveTo(x[1], 0);
+        path.lineTo(x[2], 0);
+        path.lineTo(x[2], u);
+        path.lineTo(x[1] - cut, u);
+        path.close();
+        fillPath(cv, ac, 0, u);
+        block(cv, x[2], 0, x[3], u, d.stoppage ? RED : LAB_DARK, rad, false, true);
+        int hi = ink(hc), ai = ink(ac);
+        float hn = x[1] - u * 0.7f - num / 2f, an = x[1] + u * 0.4f + num / 2f;
+        lwords(cv, d.home, x[0] + u * 0.5f, cy, u * 0.42f, hn - num / 2f - x[0] - u * 0.7f, hi, outfit, -1, W800, 0.04f);
+        lwords(cv, d.away, x[2] - u * 0.5f, cy, u * 0.42f, x[2] - u * 0.7f - (an + num / 2f), ai, outfit, 1, W800, 0.04f);
+        if (sc != null) {
+            wght = W800;
+            scoreOne(cv, d, sc[0], 1, hn, cy, u * 0.55f, hi, outfit);
+            scoreOne(cv, d, sc[1], 2, an, cy, u * 0.55f, ai, outfit);
+            wght = W760;
+        }
+        lwords(cv, splitClock(d, false), (x[2] + x[3]) / 2f, cy, u * 0.36f, x[3] - x[2] - u * 0.3f, INK, mono, 0, W760, 0f);
+    }
+
+    /** Split kit's and Duo's clock: the game's clock, or before kick-off its time (the score's place has it). */
+    private static String splitClock(Data d, boolean sample) {
+        String c = d.clock == null ? "" : d.clock;
+        if (c.isEmpty() && scores(d.score) == null && d.score != null) c = d.score;
+        return sample && c.length() <= 5 ? "88:88" : c;
+    }
+
+    private static String duoClock(Data d, boolean sample) {
+        return splitClock(d, sample);
+    }
+
+    /** Ticker: one slim line, the competition first on the family's violet to coral, the score on white, the minute last. */
+    private void ticker(Canvas cv, Data d, float[] x, float u, String[] sc) {
+        float right = x[5], rad = u * 0.1f, cy = u / 2f;
+        r.set(x[0], 0, right, u);
+        fill.setShader(null);
+        fill.setColor(0xDB080A10);
+        cv.drawRoundRect(r, rad, rad, fill);
+        fill.setShader(new LinearGradient(x[0], 0, x[1], 0, VIOLET, CORAL, Shader.TileMode.CLAMP));
+        r.set(x[0], 0, x[1], u);
+        cv.drawRoundRect(r, rad, rad, fill);
+        cv.drawRect(Math.max(x[0], x[1] - rad), 0, x[1], u, fill);
+        fill.setShader(null);
+        String cp = compShort(d.comp);
+        if (!cp.isEmpty()) {
+            lwords(cv, cp, (x[0] + x[1]) / 2f, cy, u * 0.5f, x[1] - x[0] - u * 0.3f, INK, outfit, 0, W800, 0.06f);
+        } else {
+            float s = u * 0.56f;
+            mark(cv, (x[0] + x[1]) / 2f - s / 2f, cy - s / 2f, s, INK, 0xFF8C3FB0);
+        }
+        lwords(cv, d.home, (x[1] + x[2]) / 2f, cy, u * 0.5f, x[2] - x[1] - u * 0.3f, INK, outfit, 0, W760, 0.06f);
+        rect(cv, x[2], 0, x[3], u, 0xFFFFFFFF);
+        digits(cv, d, sc, x[2], x[3], cy, u * 0.5f, LAB_DARK, outfit, W800, 0.06f, "–", 1f);
+        lwords(cv, d.away, (x[3] + x[4]) / 2f, cy, u * 0.5f, x[4] - x[3] - u * 0.3f, INK, outfit, 0, W760, 0.06f);
+        if (d.stoppage) block(cv, x[4], 0, right, u, RED, rad, false, true);
+        lwords(cv, minuteMark(d.clock), (x[4] + right) / 2f, cy, u * 0.46f, right - x[4] - u * 0.3f, d.stoppage ? INK : 0xFFCFD5E4,
+                mono, 0, W760, 0f);
+    }
+
+    /** Duo pills: each side a dark pill of its own, its score on a disc in its colour; the clock on a white pill between them. */
+    private void duo(Canvas cv, Data d, float[] x, float u, String[] sc) {
+        int hc = solid(d.homeColour), ac = solid(d.awayColour);
+        float disc = u * 0.78f, cy = u / 2f;
+        for (int side = 0; side < 2; side++) {
+            float l = side == 0 ? x[0] : x[4], rr = side == 0 ? x[1] : x[5];
+            r.set(l, 0, rr, u);
+            fill.setShader(null);
+            fill.setColor(0xD1080A10);
+            cv.drawRoundRect(r, u / 2f, u / 2f, fill);
+            int colour = side == 0 ? hc : ac;
+            float dcx = side == 0 ? rr - u * 0.11f - disc / 2f : l + u * 0.11f + disc / 2f;
+            fill.setColor(colour);
+            cv.drawCircle(dcx, cy, disc / 2f, fill);
+            if (side == 0) {
+                lwords(cv, d.home, l + u * 0.35f, cy, u * 0.4f, dcx - disc / 2f - l - u * 0.5f, INK, outfit, -1, W760, 0.04f);
+            } else {
+                lwords(cv, d.away, rr - u * 0.35f, cy, u * 0.4f, rr - u * 0.5f - (dcx + disc / 2f), INK, outfit, 1, W760, 0.04f);
+            }
+            if (sc != null) {
+                wght = W800;
+                scoreOne(cv, d, sc[side], side + 1, dcx, cy, u * 0.44f, ink(colour), outfit);
+                wght = W760;
+            }
+        }
+        float ch = u * 0.76f, ct = (u - ch) / 2f;
+        r.set(x[2], ct, x[3], ct + ch);
+        fill.setColor(d.stoppage ? RED : 0xFFFFFFFF);
+        cv.drawRoundRect(r, ch / 2f, ch / 2f, fill);
+        lwords(cv, duoClock(d, false), (x[2] + x[3]) / 2f, cy, u * 0.36f, x[3] - x[2] - u * 0.3f, d.stoppage ? INK : LAB_DARK, mono, 0, W760, 0f);
+    }
+
+    /** Stadium LED: amber figures glowing on black under a fine dot matrix, the score bigger, the minute in red-orange. */
+    private void led(Canvas cv, Data d, float[] x, float u, String[] sc) {
+        float right = x[4], rad = u * 0.13f, edge = Math.max(1f, u * 0.045f), cy = u / 2f, gap = u * 0.3f, pad = u * 0.26f;
+        r.set(x[0], 0, right, u);
+        fill.setShader(null);
+        fill.setColor(0xFF1A1A1A);
+        cv.drawRoundRect(r, rad, rad, fill);
+        r.set(x[0] + edge, edge, right - edge, u - edge);
+        fill.setColor(0xFF050505);
+        cv.drawRoundRect(r, rad - edge, rad - edge, fill);
+        if (d.stoppage) rect(cv, x[3] + gap / 4f, edge * 2f, right - edge * 2f, u - edge * 2f, 0xFF3A0B06);
+        text.setShadowLayer(u * 0.14f, 0, 0, 0xE6FFB21E);
+        lwords(cv, d.home, (x[0] + pad + x[1] - gap / 2f) / 2f, cy, u * 0.44f, 0, AMBER, mono, 0, W760, 0.12f);
+        digits(cv, d, sc, x[1] + gap / 2f, x[2] - gap / 2f, cy, u * 0.62f, AMBER, mono, W760, 0.12f, "-", 1f);
+        lwords(cv, d.away, (x[2] + gap / 2f + x[3] - gap / 2f) / 2f, cy, u * 0.44f, 0, AMBER, mono, 0, W760, 0.12f);
+        text.setShadowLayer(u * 0.14f, 0, 0, 0xE6FF5A3C);
+        lwords(cv, minuteMark(d.clock), (x[3] + gap / 2f + right - pad) / 2f, cy, u * 0.44f, right - x[3] - pad, LED_RED, mono, 0, W760, 0.12f);
+        text.clearShadowLayer();
+        dotMatrix(cv, x[0], 0, right, u, u, rad);
+    }
+
+    /** The LED board's score: the two figures with a plain dash ("2-1"), or the score as it is before kick-off. */
+    private static String ledScore(Data d) {
+        String[] sc = scores(d.score);
+        return sc == null ? (d.score == null ? "" : d.score) : sc[0] + "-" + sc[1];
+    }
+
+    /** A fine dark dot matrix over l..rr, t..b (round-cornered as the panel), cut once for its cell's size. */
+    private void dotMatrix(Canvas cv, float l, float t, float rr, float b, float u, float rad) {
+        int cell = Math.max(3, Math.round(u / 15f));
+        if (dotShader == null || dotCell != cell) {
+            int[] px = new int[cell * cell];
+            float c = (cell - 1) / 2f, far = (float) Math.hypot(c + 0.5f, c + 0.5f);
+            for (int y = 0; y < cell; y++) {
+                for (int xx = 0; xx < cell; xx++) px[y * cell + xx] = Math.hypot(xx - c, y - c) / far > 0.555f ? 0x8C000000 : 0;
+            }
+            Bitmap tile = Bitmap.createBitmap(px, cell, cell, Bitmap.Config.ARGB_8888);
+            if (dotTile != null && !dotTile.isRecycled()) dotTile.recycle();
+            dotTile = tile;
+            dotShader = new android.graphics.BitmapShader(tile, Shader.TileMode.REPEAT, Shader.TileMode.REPEAT);
+            dotCell = cell;
+        }
+        fill.setShader(dotShader);
+        r.set(l, t, rr, b);
+        cv.drawRoundRect(r, rad, rad, fill);
+        fill.setShader(null);
+    }
+
+    /** A soft shadow falling under a block's foot (t), depth deep. */
+    private void softShadow(Canvas cv, float l, float t, float rr, float depth) {
+        if (depth <= 0f) return;
+        fill.setShader(new LinearGradient(0, t, 0, t + depth, 0x47000000, 0x00000000, Shader.TileMode.CLAMP));
+        cv.drawRect(l + depth * 0.3f, t, rr - depth * 0.3f, t + depth, fill);
+        fill.setShader(null);
+    }
+
+    /** The family's house-and-play mark in a size-square at (l, t): the house in ink, the play cut into it in cut. */
+    private void mark(Canvas cv, float l, float t, float size, int ink, int cut) {
+        LabMarks.house(path, path2, l, t, size);
+        fill.setShader(null);
+        fill.setColor(ink);
+        cv.drawPath(path, fill);
+        fill.setColor(cut);
+        cv.drawPath(path2, fill);
+    }
+
+    private final Path path2 = new Path();
+
+    /** The Lab's looks' scores: both figures with a dash between them, centred in l..rr; the score as it is before kick-off. */
+    private void digits(Canvas cv, Data d, String[] sc, float l, float rr, float cy, float size, int ink, Typeface tf, String weight, float em,
+            String dash, float dashAlpha) {
+        float mid = (l + rr) / 2f;
+        if (sc == null) {
+            lwords(cv, d.score, mid, cy, size * 0.85f, rr - l - size * 0.4f, ink, tf, 0, weight, em);
+            return;
+        }
+        float dw = lw(dash, size, tf, weight, em), a = lw(sc[0], size, tf, weight, em), b = lw(sc[1], size, tf, weight, em);
+        float gap = size * 0.1f, start = mid - (a + dw + b + gap * 2f) / 2f;
+        wght = weight;
+        spacing = em;
+        scoreOne(cv, d, sc[0], 1, start + a / 2f, cy, size, ink, tf);
+        int dashInk = dashAlpha >= 1f ? ink : (Math.round((ink >>> 24) * dashAlpha) << 24) | (ink & 0xFFFFFF);
+        words(cv, dash, start + a + gap + dw / 2f, cy, size, 0, dashInk, tf, 0);
+        scoreOne(cv, d, sc[1], 2, start + a + gap * 2f + dw + b / 2f, cy, size, ink, tf);
+        wght = W760;
+        spacing = 0f;
+    }
+
+    /** The score's text in the Lab's looks ("2–1"), or the score as it is before kick-off. */
+    private static String scoreText(Data d) {
+        String[] sc = scores(d.score);
+        return sc == null ? (d.score == null ? "" : d.score) : sc[0] + "–" + sc[1];
+    }
+
+    /** The widest of a score's figures at size (at least a nought's), for the looks that keep a cell for each. */
+    private float numW(Data d, float size) {
+        String[] sc = scores(d.score);
+        float w = lw("0", size, outfit, W800, 0f);
+        if (sc != null) w = Math.max(w, Math.max(lw(sc[0], size, outfit, W800, 0f), lw(sc[1], size, outfit, W800, 0f)));
+        return w;
+    }
+
+    /** The wider of the two clubs' codes in Outfit at a weight and spacing. */
+    private float labCodes(Data d, float size, String weight, float em) {
+        return Math.max(lw(d.home, size, outfit, weight, em), lw(d.away, size, outfit, weight, em));
+    }
+
     // ---- small parts ------------------------------------------------------------------------------------------------
 
     private void rect(Canvas cv, float l, float t, float rr, float b, int colour) {
@@ -1349,7 +1611,10 @@ public final class CompBug {
         scoreOne(cv, d, sc[1], 2, cx, half * 1.5f, size, ink, tf);
     }
 
-    /** One side's score; the scorers' grows and glows as a goal's new score comes out. */
+    /**
+     * One side's score; the scorers' grows and glows as a goal's new score comes out, and moves in (rolling up, or turning
+     * down into place) when the board asks for that; at half time, in its own small block turned over (Data.htFace).
+     */
     private void scoreOne(Canvas cv, Data d, String s, int side, float cx, float cy, float size, int ink, Typeface tf) {
         float g = d.glowSide == side ? Math.max(0f, Math.min(1f, d.glow)) : 0f;
         if (g > 0f) {
@@ -1359,7 +1624,51 @@ public final class CompBug {
             cv.drawCircle(cx, cy, size * 0.9f, fill);
             fill.setShader(null);
         }
-        words(cv, s, cx, cy, size * (1f + 0.38f * g * g), 0, ink, tf, 0);
+        float sz = size * (1f + 0.38f * g * g);
+        if (d.htFace) ink = faceBlock(cv, s, cx, cy, size, ink, tf);
+        String was = d.move != 0 && d.moveAt < 1f && d.before != null && d.before.length >= side ? d.before[side - 1] : null;
+        if (was != null && s != null && !was.equals(s)) {
+            moving(cv, d, was, s, cx, cy, sz, ink, tf);
+            return;
+        }
+        words(cv, s, cx, cy, sz, 0, ink, tf, 0);
+    }
+
+    /** Half time's face: a small block behind a figure, white under dark figures on a dark board, dark on a light one; its ink. */
+    private int faceBlock(Canvas cv, String s, float cx, float cy, float size, int ink, Typeface tf) {
+        int r0 = (ink >> 16) & 0xFF, g0 = (ink >> 8) & 0xFF, b0 = ink & 0xFF;
+        boolean darkInk = (r0 * 299 + g0 * 587 + b0 * 114) / 1000 < 128;
+        float w = Math.max(tw(s, size, tf), tw("0", size, tf)) + size * 0.36f, hh = size * 1.06f, rad = size * 0.16f;
+        r.set(cx - w / 2f, cy - hh / 2f, cx + w / 2f, cy + hh / 2f);
+        fill.setShader(null);
+        fill.setColor(darkInk ? LAB_DARK : 0xF2F6F7FA);
+        cv.drawRoundRect(r, rad, rad, fill);
+        return darkInk ? INK : LAB_DARK;
+    }
+
+    /** A figure on its way in: rolling up as the one before it rolls away, or turning down into place from above. */
+    private void moving(Canvas cv, Data d, String was, String now, float cx, float cy, float size, int ink, Typeface tf) {
+        float at = Math.max(0f, d.moveAt);
+        float w = Math.max(tw(was, size, tf), tw(now, size, tf)) + size * 0.4f;
+        cv.save();
+        cv.clipRect(cx - w / 2f, cy - size * 0.66f, cx + w / 2f, cy + size * 0.66f);
+        if (d.move == MOVE_ROLL) {
+            float e = rollEase(at), travel = size * 1.15f;
+            words(cv, was, cx, cy - e * travel, size, 0, faded(ink, 1f - Math.min(1f, e)), tf, 0);
+            words(cv, now, cx, cy + (1f - e) * travel, size, 0, ink, tf, 0);
+        } else if (at <= 0f) {
+            words(cv, was, cx, cy, size, 0, ink, tf, 0);
+        } else {
+            cv.translate(0, -flipLift(at) * size);
+            cv.scale(1f, Math.max(0.04f, flipScale(at)), cx, cy);
+            words(cv, now, cx, cy, size, 0, faded(ink, Math.min(1f, at * 1.6f)), tf, 0);
+        }
+        cv.restore();
+    }
+
+    /** A colour at a share of its own see-through. */
+    private static int faded(int c, float a) {
+        return (Math.round((c >>> 24) * Math.max(0f, Math.min(1f, a))) << 24) | (c & 0xFFFFFF);
     }
 
     /** The world feed's large score: white with a soft shadow under it. */
