@@ -245,7 +245,15 @@ final class BoardPanel extends SportPanel {
         sponsor.on = () -> BoardCover.sponsorOn(c);
         sponsor.words = () -> BoardCover.sponsorOn(c) ? "A slim Sponsored by Stride strap under each alert (the family's own made-up sponsor)" : "Off · no strap";
         sponsor.ok = () -> BoardCover.setSponsorOn(c, !BoardCover.sponsorOn(c));
-        add(added, sponsor);
+        Row shotMap = row("Shot map at half and full time", true);
+        shotMap.on = () -> BoardCover.shotMapOn(c);
+        shotMap.words = () -> BoardCover.shotMapOn(c) ? "Every shot on a small pitch beside the board, after the stats" : "Off";
+        shotMap.ok = () -> BoardCover.setShotMapOn(c, !BoardCover.shotMapOn(c));
+        Row referee = row("Referee at kick-off", true);
+        referee.on = () -> BoardCover.refereeOn(c);
+        referee.words = () -> BoardCover.refereeOn(c) ? "The referee's name and country slide out once the game is on" : "Off";
+        referee.ok = () -> BoardCover.setRefereeOn(c, !BoardCover.refereeOn(c));
+        add(added, sponsor, shotMap, referee);
         Row swish = row("Swish as they move", true);
         swish.on = () -> BoardCover.swishOn(c);
         swish.words = () -> BoardCover.swishOn(c) ? "A swish each time the scorer, stats or an alert moves: out, every page, back in" : "Off · they move silently";

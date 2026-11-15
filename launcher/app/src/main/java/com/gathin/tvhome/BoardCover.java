@@ -1144,6 +1144,24 @@ final class BoardCover {
     private static BoardDrop.Drop lastOut;
     private static boolean addedGoing;
 
+    /** The shot map beside the board at half time and full time: on unless switched off. */
+    static boolean shotMapOn(Context c) {
+        return prefs(c).getBoolean("shot_map", true);
+    }
+
+    static void setShotMapOn(Context c, boolean on) {
+        prefs(c).edit().putBoolean("shot_map", on).apply();
+    }
+
+    /** The referee's name and country beside the board at kick-off: on unless switched off. */
+    static boolean refereeOn(Context c) {
+        return prefs(c).getBoolean("referee", true);
+    }
+
+    static void setRefereeOn(Context c, boolean on) {
+        prefs(c).edit().putBoolean("referee", on).apply();
+    }
+
     /** Stride's "Sponsored by" strap under the alerts beside the board (the family's made-up sponsor): on unless switched off. */
     static boolean sponsorOn(Context c) {
         return prefs(c).getBoolean("sponsor", true);
@@ -2182,7 +2200,8 @@ final class BoardCover {
                 stop(c, "full time");
                 return 0;
             }
-            if (now - ft > FT_SHOWN_MS && (!dropping || now - ft > FT_GONE_MS)) {
+            boolean mapUp = ShotMapCard.isShowing();
+            if (now - ft > FT_SHOWN_MS && (!dropping && !mapUp || now - ft > FT_GONE_MS + (mapUp ? 20_000L : 0L))) {
                 // Up by hand: the board rests, the logo's cover stays until switched off.
                 if (byHand) logoOnly(c, now);
                 else closeAll();
@@ -2197,7 +2216,7 @@ final class BoardCover {
                 htFor = id;
                 htAt = now;
             }
-            if (htRests(now - htAt, dropping, stats != null && stats.isOut())) {
+            if (htRests(now - htAt, dropping, stats != null && stats.isOut() || ShotMapCard.isShowing())) {
                 if (byHand) logoOnly(c, now);
                 else closeAll();
                 return 1_000L;
@@ -2406,6 +2425,8 @@ final class BoardCover {
             fresh = false;
         }
         stats.colours(l.homeColour, l.awayColour, l.homeOwn, l.awayOwn);
+        mapHome = l.homeColour;
+        mapAway = l.awayColour;
         // The logo's cover in Broadcast: the picture's tag, LIVE while the game is, the scoreboard's colours.
         if (mark != null) {
             mark.tag(tagNow(c).on(InStep.channel(c)));
@@ -2432,7 +2453,10 @@ final class BoardCover {
                 underTick(c, g, now);
                 milestonesTick(c, g, now);
                 if (pre != null) maybeStats(c, g, null, now, true);
-                else if (r != null) maybeStats(c, g, r, now, false);
+                else if (r != null) {
+                    maybeStats(c, g, r, now, false);
+                    maybeShotMap(c, g, r);
+                }
             }
         }
     }
@@ -3109,6 +3133,7 @@ final class BoardCover {
         drops.clear();
         dropping = false;
         lineupKeys(false);
+        ShotMapCard.close();
         ClassicIntro.hide();
         if (stats != null) stats.gone();
         if (drop != null) drop.gone();
@@ -3158,6 +3183,7 @@ final class BoardCover {
         if (app != null) VarWhy.fold(app, null);
         if (drop != null) drop.fold(null);
         if (under != null) under.fold(null);
+        ShotMapCard.close();
         bug.close(BoardCover::hideAll);
     }
 
@@ -4066,6 +4092,11 @@ final class BoardCover {
     /** FotMob's game read (main thread): its VAR check on the board, and each new substitution beside it. */
     private static void fotmobRead(Context c, ScoresTicker.Game g, FotMob.Match m) {
         boolean own = g.id.equals(game(c));
+        if (own) {
+            shotsFor = g.id;
+            shots = new java.util.ArrayList<>(m.shots);
+            refereeOut(c, g, m);
+        }
         // FotMob's VAR events kept for VAR explained (the reason and the on-field call ESPN's words lack).
         VarExplained.fotmob(g.id, m.vars, m.reds);
         if (own && m.varPending && bug != null && !varExplainedOn(c)) bug.varCheck(8_000L);
@@ -4083,6 +4114,70 @@ final class BoardCover {
         }
         // A club's changes in the same minute together: a double, triple or more on one OFF page and one ON page.
         for (java.util.List<String[]> group : SubsPage.group(fresh)) subsOut(c, g, group);
+    }
+
+    // ---- the shot map at half time and full time, the referee at kick-off ----------------------------------------------
+
+    /** The board's game's shots as FotMob read them last, and the board's two colours. */
+    private static String shotsFor = "";
+    private static java.util.List<com.gathin.broadcast.ShotMap.Shot> shots = new java.util.ArrayList<>();
+    private static int mapHome = 0xFFDDE3FF, mapAway = 0xFF9AA4C8;
+    private static final java.util.Set<String> mapShown = new java.util.HashSet<>(), refShown = new java.util.HashSet<>();
+
+    /** Pure: which shot map is due ("ht", "ft" or null), once the half's or the game's stats have had their turn. */
+    static String mapSlot(boolean halftime, int state, boolean statsDone) {
+        if (!statsDone) return null;
+        if (halftime) return "ht";
+        return state == 2 ? "ft" : null;
+    }
+
+    /**
+     * At half time and full time, once the stats beside the board have been and gone (or have none to show): the shot
+     * map beside the board, the half's at half time and the whole game's at full time. Once each.
+     */
+    private static void maybeShotMap(Context c, ScoresTicker.Game g, Reading r) {
+        if (!shotMapOn(c) || r == null || g == null || g.id == null || !g.id.equals(shotsFor) || shots.isEmpty()) return;
+        if (dropping || ShotMapCard.isShowing() || LineupCard.isShowing() || bug == null || bug.closing() || bug.getWidth() <= 0) return;
+        if (stats != null && stats.isOut()) return;
+        String half = r.halftime ? "ht" : r.state == 2 ? "ft" : null;
+        if (half == null) return;
+        boolean statsDone = statsShown.contains(g.id + "|" + half) || statsFor(half, statsBy).isEmpty() || !statsOn(c);
+        String slot = mapSlot(r.halftime, r.state, statsDone);
+        if (slot == null || !mapShown.add(g.id + "|" + slot)) return;
+        if (mapShown.size() > 60) mapShown.clear();
+        java.util.List<com.gathin.broadcast.ShotMap.Shot> these = com.gathin.broadcast.ShotMap.of(shots, "ht".equals(slot));
+        if (these.isEmpty()) return;
+        int h = Math.max(220, Math.round(boardH * 5.2f)), w = Math.round(h * 1.4f);
+        int ground = bug.stripLook().ground | 0xFF000000;
+        android.graphics.Bitmap map = com.gathin.broadcast.ShotMap.draw(these, w, h, (0xF0 << 24) | (ground & 0xFFFFFF),
+                "ht".equals(slot) ? "First half" : "Full time", code(g.home, g.homeName), mapHome, code(g.away, g.awayName), mapAway);
+        poke();
+        ShotMapCard.show(c, map, sideLeft ? -0.4f : 0.4f);
+    }
+
+    /** At kick-off (its first ten minutes, once): the referee's name and country out beside the board as an alert. */
+    private static void refereeOut(Context c, ScoresTicker.Game g, FotMob.Match m) {
+        if (!refereeOn(c) || !dropsOn(c) || m.referee.isEmpty() || g.state != 0) return;
+        long since = System.currentTimeMillis() - g.kickoff;
+        if (since < 0 || since > 10 * 60_000L || !refShown.add(g.id)) return;
+        if (refShown.size() > 60) refShown.clear();
+        BoardDrop.Drop d = refereeDrop(g, m.referee, m.refereeCountry);
+        d.homeCrest = homeCrest;
+        d.awayCrest = awayCrest;
+        drop(c, d);
+    }
+
+    /** Pure: the referee's alert ("REFEREE", the name, the country under it). */
+    static BoardDrop.Drop refereeDrop(ScoresTicker.Game g, String name, String country) {
+        BoardDrop.Drop d = new BoardDrop.Drop();
+        d.gameId = g.id;
+        d.chip = "REFEREE";
+        d.title = name;
+        d.line = country == null ? "" : country;
+        d.homeColour = BoardBug.colour(g.homeColor, g.homeAlt);
+        d.awayColour = BoardBug.colour(g.awayColor, g.awayAlt);
+        d.what = "REFEREE " + name + (d.line.isEmpty() ? "" : " (" + d.line + ")");
+        return d;
     }
 
     /** One club's substitution(s) out beside the board, once every player's picture has been looked for (off the main thread). */

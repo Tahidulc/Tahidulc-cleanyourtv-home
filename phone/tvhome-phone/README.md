@@ -534,3 +534,5 @@ Updates inside the app (4.92): Homefield updates itself from the family's TVs, w
 Added time stays out (4.93): once the minutes added are put up, their pop-out stays beside the scoreboard until the half is over, covering the channel's own; another alert in added time comes out in its place and it returns after. Scoreboard settings: The minutes added stay out.
 
 Sponsored by Stride (4.94): a slim strap under each alert beside the scoreboard with Stride, the family's own made-up sponsor (its own drawn mark, no real company), a light sweeping across it as it comes out. Scoreboard settings: Sponsored by Stride.
+
+Shot map and referee (4.95): at half time and full time, after the stats, a small pitch beside the scoreboard with every shot (bigger the better the chance, gold for a goal) and each side's shots, on target and xG; at kick-off the referee's name and country slide out once. Scoreboard settings: Shot map, Referee.

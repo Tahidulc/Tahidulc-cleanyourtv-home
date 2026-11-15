@@ -334,6 +334,16 @@ public final class ScoreBoard implements LiveAlerts.Listener {
 
     static void setSponsored(Context c, boolean v) { prefs(c).edit().putBoolean("sponsor", v).apply(); }
 
+    /** The shot map beside the board at half time and full time: on unless switched off. */
+    static boolean shotMap(Context c) { return prefs(c).getBoolean("shot_map", true); }
+
+    static void setShotMap(Context c, boolean v) { prefs(c).edit().putBoolean("shot_map", v).apply(); }
+
+    /** The referee's name and country beside the board at kick-off: on unless switched off. */
+    static boolean referee(Context c) { return prefs(c).getBoolean("referee", true); }
+
+    static void setReferee(Context c, boolean v) { prefs(c).edit().putBoolean("referee", v).apply(); }
+
     /** VAR explained: the check out of the board, then its decision with a WHY under it: on unless switched off. */
     static boolean varExplained(Context c) { return prefs(c).getBoolean("var_explained", true); }
 
@@ -916,7 +926,7 @@ public final class ScoreBoard implements LiveAlerts.Listener {
                         ftAt = now;
                         if (changed != null) changed.run();
                     }
-                    if (ftGone(now - ftAt, dropping || lineups.isOut() || under.mode() == BoardUnder.PENS)) l = null;
+                    if (ftGone(now - ftAt, dropping || lineups.isOut() || under.mode() == BoardUnder.PENS || mapView != null)) l = null;
                 } else if (id.equals(ftFor)) {
                     ftFor = "";
                 }
@@ -928,7 +938,7 @@ public final class ScoreBoard implements LiveAlerts.Listener {
                         htAt = now;
                         if (changed != null) changed.run();
                     }
-                    if (htGone(now - htAt, dropping || lineups.isOut() || stats.isOut())) l = null;
+                    if (htGone(now - htAt, dropping || lineups.isOut() || stats.isOut() || mapView != null)) l = null;
                 } else if (id.equals(htFor)) {
                     htFor = "";
                 }
@@ -954,6 +964,7 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         if (l == null || hidden || replay || popup) {
             // Away as a broadcaster's goes: what is out beside it back in, wiped back into its first block, closed to a line.
             under.away();
+            hideMap();
             if (bug.getVisibility() == View.VISIBLE && !bug.closing()) {
                 stats.fold(null);
                 if (strip.isOut()) strip.fold(null);
@@ -975,8 +986,93 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         }
         swishBack = false;
         stats.colours(l.homeColour, l.awayColour);
-        if (mode == FOOTBALL_MODE && shown != null) maybeStats(shown, now);
+        mapHome = l.homeColour;
+        mapAway = l.awayColour;
+        if (mode == FOOTBALL_MODE && shown != null) {
+            maybeStats(shown, now);
+            maybeShotMap(shown);
+        }
         underNow(mode == FOOTBALL_MODE ? shown : null, l, now);
+    }
+
+    // ---- the shot map at half time and full time, the referee at kick-off ----------------------------------------------
+
+    private String shotsFor = "";
+    private List<com.gathin.broadcast.ShotMap.Shot> shots = new java.util.ArrayList<>();
+    private int mapHome = 0xFFDDE3FF, mapAway = 0xFF9AA4C8;
+    private final Set<String> mapShown = new java.util.HashSet<>(), refShown = new java.util.HashSet<>();
+    private android.widget.ImageView mapView;
+    private final Runnable mapGone = this::hideMap;
+
+    /**
+     * At half time and full time, once the stats beside the board have had their turn (or have none): the shot map
+     * beside the board (under it where there is no room beside), the half's at half time, the game's at full time.
+     */
+    private void maybeShotMap(Game g) {
+        if (small || preview || hidden || !shotMap(c) || g == null || g.id == null || !g.id.equals(shotsFor) || shots.isEmpty()) return;
+        if (dropping || mapView != null || lineups.isOut() || stats.isOut() || bug.closing() || !boardUp()) return;
+        String half = g.state == Game.POST ? "ft" : g.halftime ? "ht" : null;
+        if (half == null || holdBreak) return;
+        boolean statsDone = statsShown.contains(lastId + "|" + half) || statsFor(half, statsBy).isEmpty();
+        if (!statsDone || !mapShown.add(g.id + "|" + half)) return;
+        if (mapShown.size() > 60) mapShown.clear();
+        List<com.gathin.broadcast.ShotMap.Shot> these = com.gathin.broadcast.ShotMap.of(shots, "ht".equals(half));
+        if (these.isEmpty()) return;
+        int bh = boardH(), mh = Math.max(Math.round(bh * 5.2f), Math.round(150 * c.getResources().getDisplayMetrics().density));
+        int mw = Math.round(mh * 1.4f);
+        int roomRight = view.getWidth() - (boardAt + boardW() + sideGap), roomLeft = boardAt - sideGap;
+        boolean left = sideLeft ? roomLeft >= mw : roomRight < mw && roomLeft >= mw;
+        boolean beside = (left ? roomLeft : roomRight) >= mw;
+        if (!beside && view.getHeight() - (head + bh + sideGap) < mh) return;
+        int ground = bug.stripLook().ground | 0xFF000000;
+        android.graphics.Bitmap map = com.gathin.broadcast.ShotMap.draw(these, mw, mh, (0xF0 << 24) | (ground & 0xFFFFFF),
+                "ht".equals(half) ? "First half" : "Full time", code(g.home, g.homeName), mapHome, code(g.away, g.awayName), mapAway);
+        android.widget.ImageView v = new android.widget.ImageView(c);
+        v.setImageBitmap(map);
+        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(mw, mh);
+        lp.leftMargin = beside ? (left ? boardAt - sideGap - mw : boardAt + boardW() + sideGap) : Math.max(0, Math.min(boardAt, view.getWidth() - mw));
+        lp.topMargin = beside ? head : head + bh + sideGap;
+        view.addView(v, lp);
+        mapView = v;
+        if (changed != null) changed.run();
+        v.setAlpha(0f);
+        v.setTranslationX(left ? mw * 0.18f : -mw * 0.18f);
+        v.animate().alpha(1f).translationX(0f).setDuration(380).start();
+        if (PlayerIntro.swishOn(c)) com.gathin.broadcast.Sfx.play(c, com.gathin.broadcast.Sfx.SWISH, left ? -0.4f : 0.4f, 0.7f);
+        h.postDelayed(mapGone, 12_000L);
+    }
+
+    /** The shot map away (its time up, or the board going). */
+    private void hideMap() {
+        h.removeCallbacks(mapGone);
+        android.widget.ImageView v = mapView;
+        mapView = null;
+        if (v == null) return;
+        v.animate().alpha(0f).setDuration(300).withEndAction(() -> view.removeView(v)).start();
+    }
+
+    /** At kick-off (its first ten minutes, once): the referee's name and country out beside the board as an alert. */
+    private void refereeOut(Game g, FotMob.Match m) {
+        if (!referee(c) || m.referee.isEmpty() || g.state != Game.LIVE || small || !shows(c, FOOTBALL)) return;
+        long since = System.currentTimeMillis() - g.kickoff;
+        if (since < 0 || since > 10 * 60_000L || !refShown.add(g.id)) return;
+        if (refShown.size() > 60) refShown.clear();
+        Drop d = refereeDrop(g, m.referee, m.refereeCountry);
+        d.own = true;
+        d.homeCrest = bug.homeCrest;
+        d.awayCrest = bug.awayCrest;
+        drop(d);
+    }
+
+    /** Pure: the referee's alert ("REFEREE", the name, the country under it). */
+    static Drop refereeDrop(Game g, String name, String country) {
+        Drop d = new Drop();
+        d.chip = "REFEREE";
+        d.title = name;
+        d.line = country == null ? "" : country;
+        d.homeColour = OverlayBug.colour(g.homeColor, g.homeAlt);
+        d.awayColour = OverlayBug.colour(g.awayColor, g.awayAlt);
+        return d;
     }
 
     /** Pure: whether half time has been shown long enough: 25 seconds, or a minute at most whatever is out of it. */
@@ -1503,6 +1599,11 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         if (own) varFromFotMob(g, m);
         // The minutes added FotMob has where ESPN's commentary has none (not every game has commentary).
         if (own) for (int i = 0; i < 4; i++) if (addedUp[i] <= 0 && m.added[i] > 0) addedUp[i] = m.added[i];
+        if (own) {
+            shotsFor = g.id;
+            shots = new java.util.ArrayList<>(m.shots);
+            refereeOut(g, m);
+        }
         boolean first = subsGames.add(g.id);
         List<String[]> fresh = new java.util.ArrayList<>();
         for (String[] e : m.events) {

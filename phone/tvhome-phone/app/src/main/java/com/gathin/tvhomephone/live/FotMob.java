@@ -60,6 +60,10 @@ public final class FotMob {
         final List<String[]> vars = new ArrayList<>();
         /** The red cards with FotMob's reason for each: {minute, player, reason key ("card_desc_violent_conduct") or ""}. */
         final List<String[]> reds = new ArrayList<>();
+        /** Every shot so far, for the shot map at half time and full time (ShotMap). */
+        final List<com.gathin.broadcast.ShotMap.Shot> shots = new ArrayList<>();
+        /** The referee's name and country ("" until FotMob names one). */
+        String referee = "", refereeCountry = "";
     }
 
     /** Pure: FotMob's VAR event as VarExplained reads it ({minute, player, key, words, second key}); null for none. */
@@ -262,6 +266,13 @@ public final class FotMob {
         }
         JSONObject c = d.optJSONObject("content");
         if (c == null) return m;
+        m.shots.addAll(com.gathin.broadcast.ShotMap.parse(c, m.homeTeamId));
+        JSONObject info = c.optJSONObject("matchFacts") == null ? null : c.optJSONObject("matchFacts").optJSONObject("infoBox");
+        JSONObject ref = info == null ? null : info.optJSONObject("Referee");
+        if (ref != null) {
+            m.referee = ref.optString("text").trim();
+            m.refereeCountry = ref.optString("country").trim();
+        }
         // The stats, every group's, by key.
         JSONObject per = c.optJSONObject("stats") == null ? null : c.optJSONObject("stats").optJSONObject("Periods");
         JSONObject all = per == null ? null : per.optJSONObject("All");
