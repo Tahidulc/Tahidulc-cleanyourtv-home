@@ -1171,13 +1171,16 @@ final class BoardCover {
         prefs(c).edit().putBoolean("penalty_card", on).apply();
     }
 
-    /** Stride's "Sponsored by" strap under the alerts beside the board (the family's made-up sponsor): on unless switched off. */
+    /**
+     * Stride's "Sponsored by" strap under the alerts beside the board (the family's made-up sponsor): off unless switched on
+     * (taken off at the family's ask in 5.23, under a new key so it is off whatever the old one held).
+     */
     static boolean sponsorOn(Context c) {
-        return prefs(c).getBoolean("sponsor", true);
+        return prefs(c).getBoolean("sponsor_on", false);
     }
 
     static void setSponsorOn(Context c, boolean on) {
-        prefs(c).edit().putBoolean("sponsor", on).apply();
+        prefs(c).edit().putBoolean("sponsor_on", on).apply();
     }
 
     /** The minutes added stay out beside the board until the half is over: on unless switched off. */

@@ -58,6 +58,11 @@ final class PlayerIntro {
     private long matchAt;
     private boolean matchMaking;
     private final Map<String, Integer> breaksSeen = new HashMap<>();
+    /**
+     * When each game's last intro started (any: a break's or the matchday's) and its last break's intro (wall clock):
+     * never one straight after another, and no matchday intro just after a break has had one (Moments).
+     */
+    private final Map<String, Long> introAt = new HashMap<>(), breakIntroAt = new HashMap<>();
     private final Set<String> shown = new HashSet<>();
     private final Map<String, String> phases = new HashMap<>();
     private final Map<String, Long> tried = new HashMap<>();
@@ -138,7 +143,10 @@ final class PlayerIntro {
         prefs(c).edit().putString("lineups_style", style).apply();
     }
 
-    /** The intros (reveal.html) over the last break before kick-off, and as F1, UFC and boxing begin: on unless off. */
+    /**
+     * The intros (reveal.html) over the ad breaks before kick-off (to eight minutes before it), else twelve minutes before
+     * it, and as F1, UFC and boxing begin: on unless off.
+     */
     static boolean introOn(Context c) {
         return prefs(c).getBoolean("intro", true);
     }
@@ -170,6 +178,29 @@ final class PlayerIntro {
 
     static void setMatch(Context c, boolean on) {
         prefs(c).edit().putBoolean("match", on).apply();
+    }
+
+    /** Whether any intro the breaks before a game can have is on: the match intro, a league's season intro, the competition's film. */
+    static boolean breaksOn(Context c) {
+        return matchOn(c) || seasonOn(c) || introOn(c);
+    }
+
+    /**
+     * Whether the channel's logo should be watched now for the intros over g's ad breaks (ScoreOverlay), the ad-break
+     * screen on or off: one of them is on and the kick-off is from two hours to seven minutes off (Moments.breaksWatch).
+     */
+    boolean breaksWatch(Game g, long now) {
+        return g != null && g.id != null && g.kickoff > 0 && breaksOn(a) && Moments.breaksWatch(g.kickoff - now);
+    }
+
+    private static long at(Map<String, Long> m, String id) {
+        Long t = m.get(id);
+        return t == null ? 0 : t;
+    }
+
+    /** Whether g's matchday intro may come now: no break's intro lately, none started just before (Moments). */
+    private boolean matchdayWanted(String id, long now) {
+        return Moments.matchdayWanted(at(breakIntroAt, id), now) && Moments.introSpaced(at(introAt, id), now);
     }
 
     /** The match intro's settings for g made (again) out of sight, ready for its breaks (main thread). */
@@ -267,7 +298,8 @@ final class PlayerIntro {
         if (kind != null && popupOn(a)) popup(g, kind, "kickoff".equals(kind) ? null : new int[]{g.homeScore, g.awayScore}, null, null);
         if ("pre".equals(now) && g.kickoff > 0 && lineupsOn(a) && Moments.lineupsDue(lineupsStyle(a), g.kickoff - screenNow)) lineups(g);
         if ("pre".equals(now) && g.kickoff > 0 && matchOn(a) && Moments.matchWarm(g.kickoff - screenNow)) warmMatch(g);
-        if ("pre".equals(now) && g.kickoff > 0 && introOn(a) && Moments.introDue(g.kickoff - screenNow)) intro(g);
+        if ("pre".equals(now) && g.kickoff > 0 && introOn(a) && Moments.introDue(g.kickoff - screenNow)
+                && matchdayWanted(g.id, System.currentTimeMillis())) intro(g);
     }
 
     /**
@@ -281,6 +313,7 @@ final class PlayerIntro {
         try {
             BroadcastData.Match m = match(g);
             String mc = matchOn(a) ? matchJson(g, ucl(g) ? "ucl" : "network") : null;
+            introAt.put(g.id, System.currentTimeMillis());
             if (mc != null) {
                 show(BroadcastView.page(a, "match", mc, this::gone), "intro");
                 return;
@@ -312,13 +345,14 @@ final class PlayerIntro {
     }
 
     /**
-     * An ad break has started (the channel's logo gone), from an hour and a half to five and a half minutes before the
+     * An ad break has started (the channel's logo gone), from an hour and a half to eight minutes before the
      * game's kick-off: an intro over it, every break, in the style made for its competition (a top-five league's season
      * intro, else the competition's own film). True when it is on.
      */
     boolean breakIntros(Game g) {
         if (breakDone || g == null || g.id == null || g.kickoff <= 0 || showing() || fetching || !canShow.getAsBoolean()) return false;
-        if (!Moments.breakIntrosDue(g.kickoff - System.currentTimeMillis())) return false;
+        long t = System.currentTimeMillis();
+        if (!Moments.breakIntrosDue(g.kickoff - t) || !Moments.introSpaced(at(introAt, g.id), t)) return false;
         BroadcastData.Match m = match(g);
         String sk = seasonOn(a) ? BroadcastData.seasonKey(m.compId, m.compName) : "";
         String ck = introOn(a) ? BroadcastData.introKey(m.compId, m.compName) : "";
@@ -333,6 +367,8 @@ final class PlayerIntro {
             return false;
         }
         breaksSeen.put(g.id, n + 1);
+        introAt.put(g.id, t);
+        breakIntroAt.put(g.id, t);
         shown.add(g.id + "|break");
         breakUp = true;
         breakDone = true;

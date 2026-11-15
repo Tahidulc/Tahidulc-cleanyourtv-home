@@ -94,15 +94,43 @@ public final class Moments {
     }
 
     /**
-     * The matchday intro: over the channel's last advert break before the kick-off, taken as four minutes before it on the
-     * screen (after the classic line-ups, before the stadium line-ups and the walk-out), not later than 100 seconds before;
-     * made ready out of sight from five and a half minutes before.
+     * The matchday intro, for a channel whose adverts have not brought one (the BBC's, which has none, or a break not seen):
+     * twelve minutes before the kick-off on the screen, well before the line-ups, the walk-out and the anthems, not later
+     * than nine; made ready out of sight from thirteen and a half. A break's intro in the twenty minutes before leaves it
+     * out (matchdayWanted), and no intro comes within five minutes of another (introSpaced).
      */
-    public static final long INTRO_FROM_MS = 240_000L, INTRO_UNTIL_MS = 100_000L, INTRO_PREP_MS = 330_000L;
+    public static final long INTRO_FROM_MS = 12 * 60_000L, INTRO_UNTIL_MS = 9 * 60_000L, INTRO_PREP_MS = 810_000L;
 
     /** Pure: whether the intro is due this long before the kick-off. */
     public static boolean introDue(long untilKickoffMs) {
         return untilKickoffMs <= INTRO_FROM_MS && untilKickoffMs >= INTRO_UNTIL_MS;
+    }
+
+    /** The matchday intro is left out when an advert break has had one this lately: the channel's breaks bring them. */
+    public static final long INTRO_AFTER_BREAK_MS = 20 * 60_000L;
+
+    /** Pure: whether the matchday intro is wanted now, a break's intro for the game last shown at lastBreakAt (0: none). */
+    public static boolean matchdayWanted(long lastBreakAt, long now) {
+        return lastBreakAt <= 0 || now < lastBreakAt || now - lastBreakAt >= INTRO_AFTER_BREAK_MS;
+    }
+
+    /** No intro starts within this of the last one's start (a break straight after the matchday intro has the ad-break screen). */
+    public static final long INTRO_GAP_MS = 5 * 60_000L;
+
+    /** Pure: whether an intro may start now, the game's last (of any kind) having started at lastAt (0: none). */
+    public static boolean introSpaced(long lastAt, long now) {
+        return lastAt <= 0 || now < lastAt || now - lastAt >= INTRO_GAP_MS;
+    }
+
+    /**
+     * A sport's programme (UFC, boxing, F1's race): its intro as its titles, from four minutes before its start, not later
+     * than 100 seconds before (the race's) or a minute into it (a programme's).
+     */
+    public static final long PROGRAMME_FROM_MS = 240_000L, PROGRAMME_UNTIL_MS = 100_000L;
+
+    /** Pure: whether F1's race, starting this far off, is due its intro. */
+    public static boolean raceIntroDue(long untilStartMs) {
+        return untilStartMs <= PROGRAMME_FROM_MS && untilStartMs >= PROGRAMME_UNTIL_MS;
     }
 
     /** Where the film ends in the intro's music: the flash into the trophy (40 s). */
@@ -121,7 +149,7 @@ public final class Moments {
     /** Pure: whether a programme starting at startMs is due its intro now: four minutes before it, or up to a minute into it. */
     public static boolean programmeDue(long startMs, long now) {
         long until = startMs - now;
-        return startMs > 0 && until <= INTRO_FROM_MS && until >= -60_000L;
+        return startMs > 0 && until <= PROGRAMME_FROM_MS && until >= -60_000L;
     }
 
     /**
@@ -153,13 +181,25 @@ public final class Moments {
 
     /**
      * The intro over the advert breaks before the game (the one in its competition's style): every break that starts from
-     * an hour and a half to five and a half minutes before the kick-off (the last minutes are the matchday intro's).
+     * an hour and a half to eight minutes before the kick-off (none nearer it: the line-ups, the walk-out and the anthems
+     * are the programme's).
      */
-    public static final long BREAKS_FROM_MS = 90 * 60_000L, BREAKS_UNTIL_MS = INTRO_PREP_MS;
+    public static final long BREAKS_FROM_MS = 90 * 60_000L, BREAKS_UNTIL_MS = 8 * 60_000L;
 
     /** Pure: whether an advert break starting this long before the kick-off has the intros over it. */
     public static boolean breakIntrosDue(long untilKickoffMs) {
         return untilKickoffMs <= BREAKS_FROM_MS && untilKickoffMs >= BREAKS_UNTIL_MS;
+    }
+
+    /** The channel's logo is learnt from this long before the breaks' intros begin, so their first break is not missed. */
+    public static final long BREAKS_LEARN_MS = 30 * 60_000L;
+
+    /**
+     * Pure: whether the channel's logo should be watched for the breaks' intros this long before the kick-off (whether
+     * or not the ad-break screen is on): from half an hour before they begin to a minute after they end.
+     */
+    public static boolean breaksWatch(long untilKickoffMs) {
+        return untilKickoffMs <= BREAKS_FROM_MS + BREAKS_LEARN_MS && untilKickoffMs >= BREAKS_UNTIL_MS - 60_000L;
     }
 
     /**

@@ -38,7 +38,7 @@
     <string name="live46_own">Your own video…</string>
     <string name="live46_back">Back to the built-in films, here and on the TVs</string>
     <string name="live47_title">MATCHDAY INTRO</string>
-    <string name="live47_line">Plays 4 minutes before kick-off on the phone and the TVs, with the channel\'s sound off until it ends: the competition\'s own film (Premier League, LaLiga, Champions League and the rest; plain football\'s with the Champions League-style ball when there\'s no competition), ending on Whitebrook Road Sports and the fixture. F1, UFC and boxing get theirs as the race or fight night begins.</string>
+    <string name="live47_line">Plays over every ad break up to 8 minutes before kick-off on the phone and the TVs (else 12 minutes before, when no break has had one lately), with the channel\'s sound off until it ends: the competition\'s own film (Premier League, LaLiga, Champions League and the rest; plain football\'s with the Champions League-style ball when there\'s no competition), ending on Whitebrook Road Sports and the fixture. F1, UFC and boxing get theirs as the race or fight night begins.</string>
     <string name="live47_hint">Your video plays in place of the built-in film, without its sound, then the Whitebrook Road Sports ending with its music: trim it first to the part you want (40 seconds at most is used).</string>
     <string name="live47_resend">Send it to the TV again</string>
     <string name="live47_now_builtin">Now: the built-in films</string>

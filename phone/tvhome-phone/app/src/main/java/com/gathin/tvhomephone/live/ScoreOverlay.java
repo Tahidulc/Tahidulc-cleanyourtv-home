@@ -1558,8 +1558,10 @@ final class ScoreOverlay implements ScoreBoard.Source {
     /** A few seconds of small frames for BugFinder, then the scoreboard placed; looked at again now and then. */
     private void look() {
         h.removeCallbacks(look);
+        // The intros over the ad breaks before the game: the channel's logo learnt for them, the ad-break screen on or off.
+        boolean introBreaks = introBreaks();
         boolean scoreboard = board.football(),
-                logos = lookHere() != LogoCover.Look.OFF || (ScoreBoard.adBreak(a) && board.football());
+                logos = lookHere() != LogoCover.Look.OFF || ((ScoreBoard.adBreak(a) || introBreaks) && board.football());
         // The ad-break screen: its session's logo learnt as soon as there is one (so the first break isn't missed), and
         // on a sports channel without a game the broadcaster's scoreboard looked for (a match on: a general session).
         boolean adverts = ScoreBoard.adBreak(a) && (host.adSession() != null || host.sportsNow());
@@ -1585,7 +1587,7 @@ final class ScoreOverlay implements ScoreBoard.Source {
             // Without a game on the board: the broadcaster's scoreboard only looked for, never placed over.
             BugFinder.Box seenBoard = done && !scoreboard && adverts ? f.find() : null;
             // The adverts watched for the ad-break screen, and for your logo stepping aside in them.
-            boolean watchAdverts = ScoreBoard.adBreak(a) || ScoreBoard.logoAway(a);
+            boolean watchAdverts = ScoreBoard.adBreak(a) || ScoreBoard.logoAway(a) || introBreaks;
             BugFinder.Box mark = done && (logos || watchAdverts) ? f.logo(found) : null;
             boolean[] outline = mark != null && watchAdverts ? f.logoMask(mark) : null;
             h.post(() -> safely(() -> {
@@ -1932,7 +1934,9 @@ final class ScoreOverlay implements ScoreBoard.Source {
     private void checkBreak() {
         h.removeCallbacks(checkBreak);
         BreakWatch w = breaks;
-        if (!started || w == null || sampler == null || !ScoreBoard.adBreak(a) && !ScoreBoard.logoAway(a)) {
+        // Watched for the ad-break screen, your logo stepping aside, or the intros over the breaks before the game.
+        boolean introBreaks = introBreaks();
+        if (!started || w == null || sampler == null || !ScoreBoard.adBreak(a) && !ScoreBoard.logoAway(a) && !introBreaks) {
             logoAway(false);
             return;
         }
@@ -1953,13 +1957,15 @@ final class ScoreOverlay implements ScoreBoard.Source {
                     if (!on) adBreakHidden = false;
                     // The ad-break screen takes every break of its session (the listings' programme, else the game's,
                     // else a match's scoreboard seen): the build-up, half time, after the game (AdBreak.take).
-                    AdBreak.Session sn = ScoreBoard.adBreak(a) ? session() : null;
-                    int take = AdBreak.take(ScoreBoard.adBreak(a), sn, now);
+                    // The intros before the game take their breaks with the ad-break screen switched off too.
+                    boolean screenOn = ScoreBoard.adBreak(a);
+                    AdBreak.Session sn = screenOn || introBreaks ? session() : null;
+                    int take = AdBreak.take(screenOn || introBreaks, sn, now);
                     boolean takeIt = on && take == AdBreak.TAKE_AD_BREAK && adBreak == null && !adBreakHidden;
                     // An intro on, or the intros this break gets before the game (every break): the screen after them.
                     if (takeIt && (intro.introShowing() || sn != null && sn.game != null && intro.breakIntros(sn.game))) {
                         // the break's screen waits for the intros' end
-                    } else if (takeIt) startAdBreak(sn, false);
+                    } else if (takeIt && screenOn) startAdBreak(sn, false);
                     else if (adBreak != null && !manualAdBreak && (!on || take != AdBreak.TAKE_AD_BREAK)) endAdBreak();
                     if (!on) intro.breakOver();
                 }
@@ -2033,6 +2039,14 @@ final class ScoreOverlay implements ScoreBoard.Source {
     /** The broadcaster's scoreboard last seen on the picture, and on which channel (a general session's sign). */
     private long boardSeenAt;
     private String boardSeenOn;
+
+    /**
+     * Whether the channel's logo is watched now for the intros over the breaks before the game on (PlayerIntro.breaksWatch:
+     * from two hours to seven minutes before its kick-off), the ad-break screen switched on or off.
+     */
+    private boolean introBreaks() {
+        return intro.breaksWatch(game(), System.currentTimeMillis());
+    }
 
     /** The ad-break screen's session now: the player's (listings, a game found), else a general one from the scoreboard seen. */
     private AdBreak.Session session() {

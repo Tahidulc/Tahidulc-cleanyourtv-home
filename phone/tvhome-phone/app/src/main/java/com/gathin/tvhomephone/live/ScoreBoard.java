@@ -332,10 +332,13 @@ public final class ScoreBoard implements LiveAlerts.Listener {
 
     static void setAddedStays(Context c, boolean v) { prefs(c).edit().putBoolean("added_stays", v).apply(); }
 
-    /** Stride's "Sponsored by" strap under the alerts (the family's made-up sponsor): on unless switched off. */
-    static boolean sponsored(Context c) { return prefs(c).getBoolean("sponsor", true); }
+    /**
+     * Stride's "Sponsored by" strap under the alerts (the family's made-up sponsor): off unless switched on (taken off at
+     * the family's ask in 4.98, under a new key so it is off whatever the old one held).
+     */
+    static boolean sponsored(Context c) { return prefs(c).getBoolean("sponsor_on", false); }
 
-    static void setSponsored(Context c, boolean v) { prefs(c).edit().putBoolean("sponsor", v).apply(); }
+    static void setSponsored(Context c, boolean v) { prefs(c).edit().putBoolean("sponsor_on", v).apply(); }
 
     /** The shot map beside the board at half time and full time: on unless switched off. */
     static boolean shotMap(Context c) { return prefs(c).getBoolean("shot_map", true); }

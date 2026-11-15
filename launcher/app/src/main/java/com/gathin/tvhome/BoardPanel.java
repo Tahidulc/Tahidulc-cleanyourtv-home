@@ -409,8 +409,8 @@ final class BoardPanel extends SportPanel {
         Row intro = row("Intros", true);
         intro.on = () -> ClassicIntro.introOn(c);
         intro.words = () -> ClassicIntro.introOn(c)
-                ? "Over every ad break before kick-off, in its competition's style (the season intro for the top five leagues), F1, UFC and boxing as they begin · the channel's sound off meanwhile"
-                : "Off · OK to play them over the last break before kick-off";
+                ? "Over every ad break up to 8 minutes before kick-off, in its competition's style (the season intro for the top five leagues), else 12 minutes before when no break has had one lately; F1, UFC and boxing as they begin · the channel's sound off meanwhile"
+                : "Off · OK to play them over the ad breaks before kick-off";
         intro.ok = () -> ClassicIntro.setIntro(c, !ClassicIntro.introOn(c));
         Row film = row("Intro video", false);
         film.words = () -> IntroVideo.useOwn(c) ? "Your own: " + IntroVideo.words(c) + " · OK: the built-in films"

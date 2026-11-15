@@ -70,6 +70,11 @@ final class ClassicIntro {
     private static boolean matchMaking;
     /** Each game's ad breaks so far that had an intro (the styles take turns). */
     private static final Map<String, Integer> breaksSeen = new HashMap<>();
+    /**
+     * When each game's last intro started (any: a break's or the matchday's) and its last break's intro (wall clock):
+     * never one straight after another, and no matchday intro just after a break has had one (Moments).
+     */
+    private static final Map<String, Long> introAt = new HashMap<>(), breakIntroAt = new HashMap<>();
     private static boolean fetching;
     /** A try from the Scoreboard card or adb is on: over whatever is in front, not taken down with the board. */
     private static boolean trial;
@@ -144,8 +149,9 @@ final class ClassicIntro {
     }
 
     /**
-     * The intros (reveal.html: the competition's own film, then Whitebrook Road Sports) over the last advert break before
-     * kick-off, and as F1, UFC and boxing begin on the channel watched: on or off.
+     * The intros (reveal.html: the competition's own film, then Whitebrook Road Sports) over the advert breaks before
+     * kick-off (to eight minutes before it), else twelve minutes before it, and as F1, UFC and boxing begin on the channel
+     * watched: on or off.
      */
     static boolean introOn(Context c) {
         return prefs(c).getBoolean("intro", true);
@@ -178,6 +184,29 @@ final class ClassicIntro {
 
     static void setMatch(Context c, boolean on) {
         prefs(c).edit().putBoolean("match", on).apply();
+    }
+
+    /** Whether any intro the breaks before a game can have is on: the match intro, a league's season intro, the competition's film. */
+    static boolean breaksOn(Context c) {
+        return matchOn(c) || seasonOn(c) || introOn(c);
+    }
+
+    /**
+     * Whether the channel's logo should be watched now for the intros over g's advert breaks (AdBreak), the ad-break
+     * screen on or off: one of them is on and the kick-off is from two hours to seven minutes off (Moments.breaksWatch).
+     */
+    static boolean breaksWatch(Context c, ScoresTicker.Game g, long now) {
+        return g != null && g.id != null && g.kickoff > 0 && breaksOn(c) && Moments.breaksWatch(g.kickoff - now);
+    }
+
+    private static long at(Map<String, Long> m, String id) {
+        Long t = m.get(id);
+        return t == null ? 0 : t;
+    }
+
+    /** Whether g's matchday intro may come now: no break's intro lately, none started just before (Moments). */
+    private static boolean matchdayWanted(String id, long now) {
+        return Moments.matchdayWanted(at(breakIntroAt, id), now) && Moments.introSpaced(at(introAt, id), now);
     }
 
     /** The match intro's settings for g made (again) out of sight, ready for its breaks (main thread). */
@@ -319,11 +348,14 @@ final class ClassicIntro {
         if ("pre".equals(now) && g.kickoff > 0 && lineupsOn(c) && Moments.lineupsDue(lineupsStyle(c), g.kickoff - screenNow)) lineups(c, g);
         // the match intro's clubs and players gathered ahead of the breaks before the game
         if ("pre".equals(now) && g.kickoff > 0 && matchOn(c) && Moments.matchWarm(g.kickoff - screenNow)) warmMatch(c, g);
-        // the matchday intro over the last break: made ready a little before, then on the whole screen
+        // the matchday intro twelve minutes before, where no break has brought one lately: made ready a little before,
+        // then on the whole screen
         if ("pre".equals(now) && g.kickoff > 0 && introOn(c)) {
             long until = g.kickoff - screenNow;
             String key = g.id + "|intro";
-            if (Moments.introDue(until)) intro(c, g, key);
+            if (!matchdayWanted(g.id, System.currentTimeMillis())) {
+                if (key.equals(prepKey)) dropPrepared();
+            } else if (Moments.introDue(until)) intro(c, g, key);
             else if (Moments.introPrep(until) && !showing() && !fetching && !preparing && BoardCover.playerUp(c)
                     && !key.equals(prepKey) && !shown.contains(key)) holdIntro(c, g, key, null);
         }
@@ -468,14 +500,16 @@ final class ClassicIntro {
     }
 
     /**
-     * An advert break has started on the channel (AdBreak, the channel's logo gone), from an hour and a half to five and a
-     * half minutes before the game's kick-off: an intro over it, every break, in the style made for its competition (a
-     * top-five league's season intro, else the competition's own film), the channel's sound off meanwhile. True when it is
-     * on (the break's own screen waits for its end; it is never on the screen with it). Main thread.
+     * An advert break has started on the channel (AdBreak, the channel's logo gone), from an hour and a half to eight
+     * minutes before the game's kick-off: an intro over it, every break, in the style made for its competition (a
+     * top-five league's season intro, else the competition's own film), the channel's sound off meanwhile; not when the
+     * game's last intro started under five minutes before. True when it is on (the break's own screen waits for its end;
+     * it is never on the screen with it). Main thread.
      */
     static boolean breakIntros(Context c, ScoresTicker.Game g) {
         if (g == null || g.id == null || g.kickoff <= 0 || showing() || fetching) return false;
-        if (!Moments.breakIntrosDue(g.kickoff - System.currentTimeMillis())) return false;
+        long t = System.currentTimeMillis();
+        if (!Moments.breakIntrosDue(g.kickoff - t) || !Moments.introSpaced(at(introAt, g.id), t)) return false;
         String sk = seasonOn(c) ? BroadcastData.seasonKey(g.slug, g.league) : "";
         String ck = introOn(c) ? BroadcastData.introKey(g.slug, g.league) : "";
         boolean uclGame = ucl(g);
@@ -485,6 +519,8 @@ final class ClassicIntro {
         String style = Moments.breakStyle(n, matchReady, !sk.isEmpty() || !ck.isEmpty(), uclGame);
         if (style.isEmpty()) return false;
         Context app = c.getApplicationContext();
+        // the matchday intro made ready meanwhile is let go: this break's leaves it out
+        if ((g.id + "|intro").equals(prepKey)) dropPrepared();
         try {
             boolean ok = "other".equals(style)
                     ? show(app, BroadcastView.page(app, "reveal", BroadcastData.breakIntros(sk, ck, fixtureOf(g)), ClassicIntro::gone), "intro")
@@ -494,6 +530,8 @@ final class ClassicIntro {
             return false;
         }
         breaksSeen.put(g.id, n + 1);
+        introAt.put(g.id, t);
+        breakIntroAt.put(g.id, t);
         shown.add(g.id + "|break");
         breakUp = true;
         IntroQuiet.hush(app);
@@ -537,13 +575,19 @@ final class ClassicIntro {
     /** The intro now (made ready before, else as soon as it is ready), once a game. */
     private static void intro(Context c, ScoresTicker.Game g, String key) {
         if (shown.contains(key) || showing() || !BoardCover.playerUp(c)) return;
-        if (goPrepared(key)) return;
+        if (goPrepared(key)) {
+            introAt.put(g.id, System.currentTimeMillis());
+            return;
+        }
         if (preparing || fetching) return;
         shown.add(key);
         Context app = c.getApplicationContext();
         try {
             String mc = matchOn(app) ? matchJson(g, ucl(g) ? "ucl" : "network") : null;
-            if (show(app, mc != null ? BroadcastView.page(app, "match", mc, ClassicIntro::gone) : BroadcastView.page(app, "reveal", introCfg(app, g), ClassicIntro::gone), "intro")) IntroQuiet.hush(app);
+            if (show(app, mc != null ? BroadcastView.page(app, "match", mc, ClassicIntro::gone) : BroadcastView.page(app, "reveal", introCfg(app, g), ClassicIntro::gone), "intro")) {
+                IntroQuiet.hush(app);
+                introAt.put(g.id, System.currentTimeMillis());
+            }
             android.util.Log.i("Sport", "matchday intro shown (not made ready before): " + key);
         } catch (Exception e) {
             android.util.Log.w("Sport", "matchday intro: " + e);
@@ -1051,7 +1095,7 @@ final class ClassicIntro {
         String sport = Moments.sportOf(title);
         if (weekend != null) {
             for (F1Results.Session s : weekend.sessions) {
-                if (!"Race".equals(s.abbr) || !"pre".equals(s.state) || !Moments.introDue(s.start - now)) continue;
+                if (!"Race".equals(s.abbr) || !"pre".equals(s.state) || !Moments.raceIntroDue(s.start - now)) continue;
                 if ("f1".equals(sport) || tunedF1(c)) sportIntro(c, "f1", weekend.name, "f1|" + s.id);
                 return;
             }

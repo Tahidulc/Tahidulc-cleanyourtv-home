@@ -66,20 +66,57 @@ public class MomentsTest {
     }
 
     @Test
-    public void introOverTheLastBreakBeforeKickoff() {
-        assertFalse(Moments.introDue(300_000L));
-        assertTrue(Moments.introDue(240_000L));
-        assertTrue(Moments.introDue(150_000L));
-        assertFalse(Moments.introDue(90_000L));
-        // the intros over every break from an hour and a half to five and a half minutes before (then the matchday intro's)
-        assertTrue(Moments.breakIntrosDue(20 * 60_000L));
-        assertTrue(Moments.breakIntrosDue(6 * 60_000L));
-        assertFalse(Moments.breakIntrosDue(5 * 60_000L));
-        assertFalse(Moments.breakIntrosDue(2 * 3_600_000L));
-        assertFalse(Moments.breakIntrosDue(-60_000L));
-        assertTrue(Moments.introPrep(300_000L));
-        assertFalse(Moments.introPrep(240_000L));
-        assertFalse(Moments.introPrep(400_000L));
+    public void theMatchdayIntroComesTwelveMinutesBeforeKickoffNotInTheLastFew() {
+        long min = 60_000L;
+        assertFalse(Moments.introDue(13 * min));
+        assertTrue(Moments.introDue(12 * min));
+        assertTrue(Moments.introDue(10 * min));
+        assertTrue(Moments.introDue(9 * min));
+        assertFalse(Moments.introDue(8 * min));
+        // never over the walk-out or the anthems (it was four minutes before)
+        assertFalse(Moments.introDue(4 * min));
+        assertFalse(Moments.introDue(100_000L));
+        // made ready out of sight a minute and a half before
+        assertTrue(Moments.introPrep(13 * min));
+        assertFalse(Moments.introPrep(12 * min));
+        assertFalse(Moments.introPrep(14 * min));
+    }
+
+    @Test
+    public void theIntrosOverEveryBreakFromAnHourAndAHalfToEightMinutesBefore() {
+        long min = 60_000L;
+        assertTrue(Moments.breakIntrosDue(90 * min));
+        assertTrue(Moments.breakIntrosDue(20 * min));
+        assertTrue(Moments.breakIntrosDue(8 * min));
+        assertFalse(Moments.breakIntrosDue(7 * min));
+        assertFalse(Moments.breakIntrosDue(5 * min));
+        assertFalse(Moments.breakIntrosDue(91 * min));
+        assertFalse(Moments.breakIntrosDue(-min));
+        // the logo watched for them from half an hour before they begin, the ad-break screen on or not
+        assertTrue(Moments.breaksWatch(120 * min));
+        assertFalse(Moments.breaksWatch(121 * min));
+        assertTrue(Moments.breaksWatch(7 * min));
+        assertFalse(Moments.breaksWatch(6 * min));
+        assertFalse(Moments.breaksWatch(-10 * min));
+    }
+
+    @Test
+    public void aBreaksIntroLeavesTheMatchdaysOutAndNoneComesStraightAfterAnother() {
+        long min = 60_000L, now = 1_000_000_000L;
+        // no break has had one: the matchday intro comes
+        assertTrue(Moments.matchdayWanted(0, now));
+        // a break's intro in the twenty minutes before: the adverts bring them, so not
+        assertFalse(Moments.matchdayWanted(now - 6 * min, now));
+        assertFalse(Moments.matchdayWanted(now - 19 * min, now));
+        assertTrue(Moments.matchdayWanted(now - 20 * min, now));
+        // five minutes at least from one intro's start to the next's
+        assertTrue(Moments.introSpaced(0, now));
+        assertFalse(Moments.introSpaced(now - 2 * min, now));
+        assertFalse(Moments.introSpaced(now - 4 * min, now));
+        assertTrue(Moments.introSpaced(now - 5 * min, now));
+        // a clock put back never holds one back
+        assertTrue(Moments.introSpaced(now + min, now));
+        assertTrue(Moments.matchdayWanted(now + min, now));
     }
 
     @Test
@@ -130,6 +167,11 @@ public class MomentsTest {
         assertTrue(Moments.programmeDue(start, start + 30_000L));
         assertFalse(Moments.programmeDue(start, start + 90_000L));
         assertFalse(Moments.programmeDue(0, start));
+        // F1's race: four minutes before its start, not later than 100 seconds (the football's moved, this did not)
+        assertFalse(Moments.raceIntroDue(300_000L));
+        assertTrue(Moments.raceIntroDue(240_000L));
+        assertTrue(Moments.raceIntroDue(150_000L));
+        assertFalse(Moments.raceIntroDue(90_000L));
     }
 
     @Test

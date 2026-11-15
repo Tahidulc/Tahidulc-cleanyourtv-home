@@ -61,7 +61,9 @@ import java.util.concurrent.Executors;
  *
  * <p>The logo is told by its own learned shape (LogoShape), from pictures of its place of the player's window alone
  * (ScreenShots), about one a second from half an hour before the window opens; where such pictures cannot be had
- * (before Android 14) the screen never comes by itself. The remote stays with the player: Down goes into the cards (a
+ * (before Android 14) the screen never comes by itself. The logo is watched for the intros over the breaks before a
+ * game as well (ClassicIntro.breaksWatch), this screen switched on or off, and on a channel whose name was not read
+ * while the scoreboard is up over it for a game (boardSession). The remote stays with the player: Down goes into the cards (a
  * white ring on the card picked), Left and Right pick, Up and Down scroll it (it holds still while picked), OK does what
  * the widget offers (another game's channel, Match mode, the hop), Back hands the remote back. adb can bring it up over
  * anything (AdBreakReceiver) for ten minutes, or log what would count now ("session").
@@ -154,7 +156,7 @@ final class AdBreak {
 
         @Override public String toString() {
             java.text.SimpleDateFormat hm = new java.text.SimpleDateFormat("HH:mm", Locale.UK);
-            return source + (g == null ? ", no game" : ", " + AlertLog.game(g)) + ", on " + channel + ", "
+            return source + (g == null ? ", no game" : ", " + AlertLog.game(g)) + ", on " + (channel.isEmpty() ? "the channel watched (its name not read)" : channel) + ", "
                     + hm.format(new java.util.Date(from)) + "–" + hm.format(new java.util.Date(to)) + (title == null ? "" : ", \"" + title + "\"");
         }
     }
@@ -177,14 +179,19 @@ final class AdBreak {
             }
         }
         if (checking || games == null) return;
-        if (!on(app)) {
+        // The screen switched off: the breaks are still watched for the intros before a game, while one of those is on.
+        if (!on(app) && !ClassicIntro.breaksOn(app)) {
             session = null;
             if (!forced) hide("switched off");
             return;
         }
+        if (!on(app) && isShowing() && !forced) hide("switched off");
         String channel = InStep.channel(app);
         boolean front = BoardCover.playerInFront(app) && !GoalWatchService.homeInFront;
-        if (!front || channel.isEmpty()) {
+        // The channel's name not read (the player opened on its last channel): the game whose scoreboard is up over it.
+        String boardGame = channel.isEmpty() ? BoardCover.game(app) : null;
+        boolean byBoard = boardGame != null && !boardGame.isEmpty();
+        if (!front || channel.isEmpty() && !byBoard) {
             // Nothing new to work out with no player in front; a session whose window is over is let go.
             Session ss = session;
             if (ss != null && System.currentTimeMillis() > ss.to) session = null;
@@ -196,7 +203,8 @@ final class AdBreak {
         io.execute(() -> {
             Session found = null;
             try {
-                found = find(a, channel, all, System.currentTimeMillis());
+                long t = System.currentTimeMillis();
+                found = byBoard ? boardSession(all, boardGame, t) : find(a, channel, all, t);
             } catch (RuntimeException e) {
                 android.util.Log.w(TAG, "what is on not worked out: " + e.getClass().getSimpleName());
             }
@@ -216,6 +224,22 @@ final class AdBreak {
                 else if (was != null && isShowing() && !forced) hide("nothing on to break from");
             });
         });
+    }
+
+    /**
+     * The channel's name not read (the player opened on its last channel, its banner not seen) but the scoreboard up over
+     * it for a game (by hand, or found): that game round its kick-off, on the channel as it is, its logo looked for where
+     * your logo goes (BoardPlace's own for no channel). Null when the game is not among the scores, or its time is over.
+     */
+    static Session boardSession(List<ScoresTicker.Game> games, String id, long now) {
+        if (games == null || id == null || id.isEmpty()) return null;
+        for (ScoresTicker.Game g : games) {
+            if (g == null || !id.equals(g.id) || g.kickoff <= 0 || g.drivers != null || g.text != null) continue;
+            Long live = liveSeen.get(g.id);
+            long[] w = AdBreakLogic.gameWindow(g.kickoff, g.state, now, live == null ? 0 : live);
+            return now <= w[1] ? new Session(g, "board", w, null, "") : null;
+        }
+        return null;
     }
 
     /**
@@ -351,10 +375,14 @@ final class AdBreak {
         Context a = c.getApplicationContext();
         String channel = InStep.channel(a);
         List<ScoresTicker.Game> all = new ArrayList<>(latest);
+        String boardGame = channel.isEmpty() ? BoardCover.game(a) : null;
         io.execute(() -> {
-            Session ss = channel.isEmpty() ? null : find(a, channel, all, System.currentTimeMillis());
-            android.util.Log.i(TAG, "session now: " + (channel.isEmpty() ? "no channel tuned" : ss == null ? "nothing on " + channel : ss.toString())
-                    + "; player in front: " + BoardCover.playerInFront(a));
+            long now = System.currentTimeMillis();
+            Session ss = !channel.isEmpty() ? find(a, channel, all, now)
+                    : boardGame != null && !boardGame.isEmpty() ? boardSession(all, boardGame, now) : null;
+            android.util.Log.i(TAG, "session now: " + (ss != null ? ss.toString() : channel.isEmpty() ? "no channel tuned, no scoreboard up" : "nothing on " + channel)
+                    + "; player in front: " + BoardCover.playerInFront(a) + "; screen " + (on(a) ? "on" : "off")
+                    + ", intros over the breaks " + (ClassicIntro.breaksOn(a) ? "on" : "off"));
         });
     }
 
@@ -395,12 +423,17 @@ final class AdBreak {
         }
         boolean front = BoardCover.playerInFront(c) && !GoalWatchService.homeInFront;
         String channel = InStep.channel(c);
-        boolean onChannel = live && !channel.isEmpty() && InStep.base(channel).equals(InStep.base(ss.channel));
+        // A session on a channel whose name was not read (the board's game, boardSession): still on it while no name is read.
+        boolean onChannel = live && (ss.channel.isEmpty()
+                ? channel.isEmpty() && ss.g != null && ss.g.id.equals(BoardCover.game(c))
+                : !channel.isEmpty() && InStep.base(channel).equals(InStep.base(ss.channel)));
         boolean inWindow = live && AdBreakLogic.inside(ss.window(), now) && mayCome(c, ss, now);
+        // Looked for the screen, or for the intros over the breaks before the game, the screen switched on or not.
+        boolean wanted = live && (on(c) || ClassicIntro.breaksWatch(c, fresh(ss.g), now));
         // The logo is looked at (and learned) from LEARN_AHEAD_MS before the window opens; the screen comes only inside it.
-        boolean forScreen = live && on(c) && front && onChannel && AdBreakLogic.watch(ss.window(), now);
+        boolean forScreen = wanted && front && onChannel && AdBreakLogic.watch(ss.window(), now);
         boolean forCover = cover && front && !channel.isEmpty();
-        if (live && !forScreen) act(c, ss, trigger.step(now, on(c), front, onChannel, inWindow, -1));
+        if (live && !forScreen) act(c, ss, trigger.step(now, wanted, front, onChannel, inWindow, -1));
         if (!forCover) awayAct(away.step(now, cover, front, true, true, -1));
         if (!forScreen && !forCover) {
             main.postDelayed(lookRun, 2_000L);
@@ -445,7 +478,7 @@ final class AdBreak {
             if (got != null) got.recycle();
             Session now2 = session;
             long t = System.currentTimeMillis();
-            if (forScreen && now2 != null) act(c, now2, trigger.step(t, on(c), true, true, AdBreakLogic.inside(now2.window(), t) && mayCome(c, now2, t), presence));
+            if (forScreen && now2 != null) act(c, now2, trigger.step(t, wanted, true, true, AdBreakLogic.inside(now2.window(), t) && mayCome(c, now2, t), presence));
             if (forCover) awayAct(away.step(t, BoardCover.logoCoverUp(), true, true, true, presence));
             // Away: looked at twice as often, so your logo is back hardly a moment after the channel's.
             main.postDelayed(lookRun, away.showing ? 500L : 1_000L);
@@ -498,19 +531,20 @@ final class AdBreak {
 
     private static void act(Context c, Session ss, int what) {
         if (what == AdBreakLogic.SHOW) {
-            android.util.Log.i(TAG, "the channel's logo gone: up (" + ss.source + ")");
+            boolean screen = on(c);
+            android.util.Log.i(TAG, "the channel's logo gone: up (" + ss.source + (screen ? ")" : ", for the intros only)"));
             // The half-time card or the hop's card gives way: the screen covers the break.
-            if (LineupCard.halfOrHopShowing()) {
+            if (screen && LineupCard.halfOrHopShowing()) {
                 AlertLog.note(c, "half-time card closed: the ad-break screen covers the break");
                 LineupCard.close(false);
             }
             // An intro on, or the intros this break gets before the game (every break): the screen after them.
             ScoresTicker.Game g = fresh(ss.g);
             if (ClassicIntro.introShowing() || g != null && ClassicIntro.breakIntros(c, g)) {
-                afterIntro = ss;
+                afterIntro = screen ? ss : null;
                 return;
             }
-            show(c, ss);
+            if (screen) show(c, ss);
         } else if (what == AdBreakLogic.HIDE) {
             android.util.Log.i(TAG, "away");
             afterIntro = null;
