@@ -37,13 +37,13 @@ final class PlayerTests {
     static final String ALL = "all", LINEUPS_ALERT = "lineups_alert";
     /** The kick-off pop-up's moments (both styles), and the line-ups' two styles. */
     static final String[] MOMENTS = {"kickoff", "restart", "second"};
-    static final String[] LINEUP_STYLES = {"lineups", "stadium", "intro"};
+    static final String[] LINEUP_STYLES = {"lineups", "stadium", "studio", "intro"};
     /** The other intros: F1's, UFC's, boxing's and plain football's (no competition). */
     static final String[] SPORT_INTROS = {"intro:f1", "intro:ufc", "intro:boxing", "intro:football"};
     /** The scoreboard's own: a goal each way (with the goal sound), its scorer, the stats, the line-up card, a
      * substitution, VAR checking, the added time's "+N". */
     static final String[] BOARD_TESTS = {"goal_home", "goal_away", "scorer", "stats", "card", "sub", "var", "added", "logo_away", "pens",
-            "milestones"};
+            "milestones", "goal_shirt"};
     /** On the full screen only: the banner for a goal in another game, an alert waiting for the stream, the break. */
     static final String BANNER = "banner", HELD = "held", BREAK = "break";
     /** How long the test alert waits for the stream. */
@@ -224,8 +224,8 @@ final class PlayerTests {
                         : R.string.live7_second);
             case LINEUPS:
                 if (id.startsWith("intro:")) return c.getString(sportLabel(id.substring(6)));
-                return c.getString("stadium".equals(id) ? R.string.live35_style_stadium : "intro".equals(id) ? R.string.live45_intro_test
-                        : R.string.live35_style_beam);
+                return c.getString("stadium".equals(id) ? R.string.live35_style_stadium : "studio".equals(id) ? R.string.live_style_studio
+                        : "intro".equals(id) ? R.string.live45_intro_test : R.string.live35_style_beam);
             case BOARD:
                 return c.getString(boardLabel(id));
             case SOUNDS:
@@ -252,6 +252,7 @@ final class PlayerTests {
             case "logo_away": return R.string.live68_test_logo_away;
             case "pens": return R.string.live69_test_pens;
             case "milestones": return R.string.live69_test_milestones;
+            case "goal_shirt": return R.string.live_shirt_test;
             default: return R.string.live7_added;
         }
     }

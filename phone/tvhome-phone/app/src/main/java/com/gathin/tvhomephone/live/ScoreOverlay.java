@@ -46,6 +46,9 @@ final class ScoreOverlay implements ScoreBoard.Source {
         /** The channel's sound off (a Homefield break) or back. */
         void mute(boolean on);
 
+        /** The channel's sound lowered (on) under the studio line-ups' music, or back. */
+        default void duck(boolean on) {}
+
         /** Move and resize is opening: the player's own tile and buttons out of the way. */
         default void hideControls() {}
 
@@ -162,6 +165,8 @@ final class ScoreOverlay implements ScoreBoard.Source {
         });
         // the intros: the channel's own sound off while one plays
         intro.hush(host::mute);
+        // the studio line-ups: the channel's own sound lowered under their music
+        intro.duck(host::duck);
         // a goal's restart pop-up waits out the channel's replays (the board away in them), and comes with live play
         // as the whole picture shows it (LivePlay), where the channel's own scoreboard stays up in its replays
         intro.inReplay(board::replayAway);
@@ -924,6 +929,11 @@ final class ScoreOverlay implements ScoreBoard.Source {
         // Up by hand for a game: that one, as the channel's own.
         if (handGame != null && byHand() && ScoreBoard.handOn(a) && handGame.id != null && handGame.id.equals(ScoreBoard.handGame(a))) return handGame;
         return host.game();
+    }
+
+    /** The player's layout: the 3D kits' hidden page goes in it, and a goal's shirt turns over the picture in it. */
+    @Override public FrameLayout kitRoot() {
+        return root;
     }
 
     @Override public long behindMs(boolean channelGame) {
@@ -2245,6 +2255,10 @@ final class ScoreOverlay implements ScoreBoard.Source {
             case "sub":
                 ok = board.testSub();
                 break;
+            case "goal_shirt":
+                // the last goal's scorer's shirt in the game watched (else a made-up one) out of the board and round
+                PhoneKits.tryIt(a, host.game(), board.bug, root, note);
+                return;
             case "logo_away":
                 ok = testLogoAway();
                 break;

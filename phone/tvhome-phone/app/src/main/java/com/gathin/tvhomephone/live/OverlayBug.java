@@ -74,6 +74,9 @@ final class OverlayBug extends View implements BurnGuard.Dims {
             CARD_SOFT = 0xFFF6D3D8, CARD_HT = 0xFFFFE7A3;
     /** Card's own blue in the middle (as the clubs' results cards have it); red only in added time. */
     static final int CARD_BLUE = 0xFF2A3DC9, CARD_BLUE_FOOT = 0xFF0F1B7E, CARD_BLUE_SOFT = 0xFFC3CBF4;
+    /** The 3D kits look's navy, its competition's and kits' cells (top, foot), the letters' white, its clock and its gold. */
+    static final int KIT_NAVY = 0xFF10185A, KIT_COMP0 = 0xFF1B2A8F, KIT_COMP1 = 0xFF0A1250, KIT_CELL0 = 0xFF24359E,
+            KIT_CELL1 = 0xFF0D1660, KIT_CODE = 0xFFF4F5FB, KIT_INK = 0xFF0E1550, KIT_CLOCK = 0xFF070B2C, KIT_GOLD = 0xFFF5C518;
     /**
      * Card's red, and every look's score in added time, alive: its slants drift a slant's period every DRIFT_MS; a shine
      * sweeps it over SHINE_MS every SHINE_EVERY_MS (in added time the first as it begins).
@@ -125,6 +128,8 @@ final class OverlayBug extends View implements BurnGuard.Dims {
     enum Style {
         CLASSIC("Classic"), GLASS("Glass"), LIGHT("Light"), CLUB("Club colours"), MINIMAL("Minimal"),
         CRESTS("Crests and time"), STACKED("Stacked", 1.7f), CARD("Card", 1.6f), FROSTED("Frosted glass"),
+        /** Each side's kit in 3D in a cell of its own (KitSheets' frames), turning in and swaying; GOAL on gold. */
+        KITS("3D kits", 1.25f),
         /** Each game in its own competition's look, with its logo (CompBug); Classic for one with no look of its own. */
         COMPETITION("By competition"),
         PL_WORLD(CompBug.Kind.PL), PL_US(CompBug.Kind.PL_US), FA_CUP(CompBug.Kind.FACUP), EFL(CompBug.Kind.EFL),
@@ -238,6 +243,14 @@ final class OverlayBug extends View implements BurnGuard.Dims {
                 p.round = 0.3f;
                 p.sheen = true;
                 p.edgeLine = true;
+                break;
+            case KITS:
+                // Navy, the competition's block and the kits' cells in a deeper blue, the letters on white, the clock darker.
+                p.ground = KIT_NAVY;
+                p.comp = 0;
+                p.score0 = p.score1 = KIT_NAVY;
+                p.clock = KIT_CLOCK;
+                p.round = 0.08f;
                 break;
             case CARD:
                 // Each crest on white, the score over the clock on red between them, each club's colour at its end.
@@ -688,6 +701,7 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         if (style == Style.CRESTS || style == Style.FROSTED) return Math.round(crestsWidth(h));
         if (style == Style.STACKED) return Math.round(stackedWidth(h));
         if (style == Style.CARD) return Math.round(cardWidth(h));
+        if (style == Style.KITS) return Math.round(kitsWidth(h));
         return Math.round(h + 2 * (h * 0.1f + crestW(h) + code(h)) + scoreW(h) + clockW(h));
     }
 
@@ -751,6 +765,7 @@ final class OverlayBug extends View implements BurnGuard.Dims {
     /** In as the broadcasters' come in: its first block opens out of a thin line, then the rest wipes out to the right. */
     void open() {
         closing = false;
+        kitsAt = System.currentTimeMillis();
         to(1f, 720, null);
     }
 
@@ -879,6 +894,8 @@ final class OverlayBug extends View implements BurnGuard.Dims {
             stacked(cv, w, h);
         } else if (style == Style.CARD) {
             card(cv, w, h);
+        } else if (style == Style.KITS) {
+            kitsRow(cv, w, h, now, goalOn ? gt : -1);
         } else if (w / (float) h >= 3.6f) {
             oneRow(cv, 0, 0, w, h, true);
         } else {
@@ -896,7 +913,7 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         } else {
             row = null;
         }
-        if (goalOn && !look.f1) goalMoment(cv, w, mh, gt);
+        if (goalOn && !look.f1 && style != Style.KITS) goalMoment(cv, w, mh, gt);
         // The net shivering after the ball goes in, once the scorers' band has gone; VAR checking; FULL TIME stamped.
         boolean rippling = !look.f1 && gt >= RIPPLE_AT && gt < RIPPLE_AT + RIPPLE_MS;
         if (rippling) netRipple(cv, w, mh, gt - RIPPLE_AT);
@@ -928,6 +945,8 @@ final class OverlayBug extends View implements BurnGuard.Dims {
             }
         }
         if ((goalOn && goalFrozen < 0) || ((turning || rippling || scanning || stamping) && !part)) postInvalidateOnAnimation();
+        // The 3D kits: every frame while they turn in, else when the sway next shows another frame.
+        if (style == Style.KITS && !look.f1 && !part && animFrozen < 0) kitsNext(now);
         // Added time is red and still now: nothing on it moves, so nothing more to draw for it.
     }
 
@@ -1820,6 +1839,185 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         float bw = b.getWidth() * s, bh = b.getHeight() * s;
         r.set(x + (size - bw) / 2, y + (size - bh) / 2, x + (size + bw) / 2, y + (size + bh) / 2);
         cv.drawBitmap(b, null, r, image);
+    }
+
+    // ---- 3D kits: each side's shirt in a cell of its own ---------------------------------------------------------------
+
+    /** Each side's frames (KitSheets.boardAngles), null until made: a flat shirt in its colours meanwhile. */
+    private com.gathin.broadcast.KitSheets.Sheet kitHome, kitAway;
+    private int homeBody = 0xC8102E, homeTrim = 0xFFFFFF, awayBody = 0x1B458F, awayTrim = 0xFFFFFF;
+    /** When the shirts last turned in (the board opening); until when each side's is out of its cell (a goal's turn). */
+    private long kitsAt;
+    private final long[] shirtOut = new long[3];
+    /** Where each side's shirt was last drawn: its middle and its size, in this view's pixels (home 1, away 2). */
+    private final float[] kitX = new float[3], kitY = new float[3], kitSize = new float[3];
+    private LinearGradient compShade, cellShade;
+    private float kitShadeH = -1;
+    private final Paint kitPaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+
+    /** Each side's frames (either may be null: its flat shirt then). */
+    void kits(com.gathin.broadcast.KitSheets.Sheet home, com.gathin.broadcast.KitSheets.Sheet away) {
+        kitHome = home;
+        kitAway = away;
+        invalidate();
+    }
+
+    /** Each side's kit colours, for its flat shirt until its frames come. */
+    void kitColours(int hb, int ht, int ab, int at) {
+        if (hb == homeBody && ht == homeTrim && ab == awayBody && at == awayTrim) return;   // every refresh: no redraw for nothing
+        homeBody = hb;
+        homeTrim = ht;
+        awayBody = ab;
+        awayTrim = at;
+        invalidate();
+    }
+
+    /** The shirts turning in again (a preview, a try). */
+    void kitsIn() {
+        kitsAt = System.currentTimeMillis();
+        invalidate();
+    }
+
+    /** Side 1 (home) or 2's shirt out of its cell for ms (it is turning for a goal, drawn over the picture meanwhile). */
+    void shirtOut(int side, long ms) {
+        if (side < 1 || side > 2) return;
+        shirtOut[side] = System.currentTimeMillis() + ms;
+        invalidate();
+        postInvalidateDelayed(ms + 20);
+    }
+
+    /** {x, y, size} of side 1 or 2's shirt as last drawn, in this view's pixels; null when this look has none. */
+    float[] kitCell(int side) {
+        if (style != Style.KITS || look.f1 || side < 1 || side > 2 || kitSize[side] <= 0) return null;
+        return new float[]{kitX[side], kitY[side], kitSize[side]};
+    }
+
+    /** Pure: a side's shirt at rest: turned a little towards the middle (the home side one way, the away side the other). */
+    static float kitRest(boolean home) {
+        return home ? 0.35f : -0.35f;
+    }
+
+    private float kitCode(int h) {
+        return Math.max(h * 1.5f, Math.max(measure(look.home, h * 0.5f), measure(look.away, h * 0.5f)) + h * 0.5f);
+    }
+
+    private float kitClock(int h) {
+        return look.clock.isEmpty() ? h * 1.2f : Math.max(h * 1.75f, measure("88:88", h * 0.48f) + h * 0.6f);
+    }
+
+    private float kitsWidth(int h) {
+        return h + 2 * h * 1.45f + 2 * kitCode(h) + h * 2.0f + kitClock(h);
+    }
+
+    private static float kprog(long t, long a, long b) {
+        return Math.max(0f, Math.min(1f, (t - a) / (float) (b - a)));
+    }
+
+    private static float eBack(float k) {
+        float c1 = 1.70158f, c3 = c1 + 1;
+        return 1 + c3 * (float) Math.pow(k - 1, 3) + c1 * (float) Math.pow(k - 1, 2);
+    }
+
+    /** The competition, a shirt, the letters, the score (GOAL on gold as it goes in), the letters, a shirt, the clock. */
+    private void kitsRow(Canvas cv, int w, int h, long now, long gt) {
+        float need = kitsWidth(h), k = need > w + 1 ? w / need : 1f;
+        float compW = h * k, kit = h * 1.45f * k, code = kitCode(h) * k, score = h * 2.0f * k;
+        float clock = Math.max(0, w - (compW + 2 * kit + 2 * code + score));
+        if (compShade == null || kitShadeH != h) {
+            compShade = new LinearGradient(0, 0, 0, h, KIT_COMP0, KIT_COMP1, Shader.TileMode.CLAMP);
+            cellShade = new LinearGradient(0, 0, 0, h, KIT_CELL0, KIT_CELL1, Shader.TileMode.CLAMP);
+            kitShadeH = h;
+        }
+        float x = 0;
+        fill.setShader(compShade);
+        cv.drawRect(x, 0, x + compW, h, fill);
+        fill.setShader(null);
+        if (comp != null) drawImage(cv, comp, x + compW * 0.14f, h * 0.14f, Math.min(compW, h) * 0.72f);
+        else words(cv, look.tag, x + compW / 2, 0, h, h * 0.3f, p.dim);
+        x += compW;
+        float homeAt = x;
+        fill.setShader(cellShade);
+        cv.drawRect(x, 0, x + kit, h, fill);
+        fill.setShader(null);
+        x += kit;
+        boolean litHome = flash > 0 && flashSide == 1, litAway = flash > 0 && flashSide == 2;
+        fill.setColor(KIT_CODE);
+        cv.drawRect(x, 0, x + code, h, fill);
+        if (litHome) { fill.setColor(look.homeColour); fill.setAlpha(Math.round(110 * flash)); cv.drawRect(x, 0, x + code, h, fill); fill.setAlpha(255); }
+        words(cv, look.home, x + code / 2, 0, h, h * 0.5f * k, KIT_INK);
+        x += code;
+        // the score: GOAL on gold while it goes in, then the new score popping up as the others' does
+        boolean gold = gt >= HIT_MS && gt < BAND_OUT + BAND_MS;
+        fill.setColor(gold ? KIT_GOLD : KIT_NAVY);
+        cv.drawRect(x, 0, x + score, h, fill);
+        if (!gold) alive(cv, x, 0, score, h);
+        if (gold) {
+            float pk = Math.max(0.05f, eBack(kprog(gt, HIT_MS, HIT_MS + 300)));
+            words(cv, "GOAL", x + score / 2, 0, h, h * 0.56f * k * pk, KIT_INK);
+        } else {
+            words(cv, look.score, x + score / 2, 0, h, h * 0.56f * k * scoreZoom, p.scoreInk);
+        }
+        x += score;
+        fill.setColor(KIT_CODE);
+        cv.drawRect(x, 0, x + code, h, fill);
+        if (litAway) { fill.setColor(look.awayColour); fill.setAlpha(Math.round(110 * flash)); cv.drawRect(x, 0, x + code, h, fill); fill.setAlpha(255); }
+        words(cv, look.away, x + code / 2, 0, h, h * 0.5f * k, KIT_INK);
+        x += code;
+        float awayAt = x;
+        fill.setShader(cellShade);
+        cv.drawRect(x, 0, x + kit, h, fill);
+        fill.setShader(null);
+        x += kit;
+        if (clock > 0) clock(cv, x, 0, clock, h, k);
+        // the shirts, standing in their cells: in with a whole turn as the board opens, then swaying
+        kitShirt(cv, true, homeAt + kit / 2, h / 2f, h, now);
+        kitShirt(cv, false, awayAt + kit / 2, h / 2f, h, now);
+    }
+
+    private void kitShirt(Canvas cv, boolean home, float cx, float cy, int h, long now) {
+        int side = home ? 1 : 2;
+        float size = h * 1.22f;
+        kitX[side] = cx;
+        kitY[side] = cy;
+        kitSize[side] = size;
+        if (now < shirtOut[side]) return;
+        long it = animFrozen >= 0 ? 100_000L : kitsAt > 0 ? now - kitsAt : 100_000L;
+        float drop = eBack(kprog(it, 550, 1200));
+        if (drop <= 0.01f) return;
+        float spin = (1 - (1 - (float) Math.pow(1 - kprog(it, 550, 1600), 4))) * (float) Math.PI * 2;
+        float sway = (float) Math.sin(now / 1000.0 * 1.1 + (home ? 0 : 1.7)) * 0.28f;
+        float rest = kitRest(home), s = size * drop;
+        com.gathin.broadcast.KitSheets.Sheet sh = home ? kitHome : kitAway;
+        if (sh != null && !sh.bitmap.isRecycled()) {
+            int i = spin > 0.02f ? sh.nearest(rest + spin, 0, com.gathin.broadcast.KitSheets.TURN_N)
+                    : sh.nearest(rest + sway, com.gathin.broadcast.KitSheets.SWAY_AT, com.gathin.broadcast.KitSheets.SWAY_AT + com.gathin.broadcast.KitSheets.SWAY_N);
+            r.set(cx - s / 2, cy - s / 2, cx + s / 2, cy + s / 2);
+            sh.draw(cv, i, r, kitPaint);
+        } else {
+            com.gathin.broadcast.KitSheets.flatShirt(cv, cx, cy, s * 0.8f, home ? homeBody : awayBody, home ? homeTrim : awayTrim, rest + spin, kitPaint);
+        }
+    }
+
+    /** Drawn again every frame while the shirts turn in, else when either's sway next shows another frame. */
+    private void kitsNext(long now) {
+        long it = kitsAt > 0 ? now - kitsAt : 100_000L;
+        if (it < 1700) { postInvalidateOnAnimation(); return; }
+        if (kitHome == null && kitAway == null) return;
+        int[] was = {swayFrame(true, now), swayFrame(false, now)};
+        for (long dt = 40; dt <= 1000; dt += 40) {
+            if (swayFrame(true, now + dt) != was[0] || swayFrame(false, now + dt) != was[1]) {
+                postInvalidateDelayed(dt);
+                return;
+            }
+        }
+        postInvalidateDelayed(1000);
+    }
+
+    private int swayFrame(boolean home, long t) {
+        com.gathin.broadcast.KitSheets.Sheet sh = home ? kitHome : kitAway;
+        if (sh == null) return -1;
+        float sway = (float) Math.sin(t / 1000.0 * 1.1 + (home ? 0 : 1.7)) * 0.28f;
+        return sh.nearest(kitRest(home) + sway, com.gathin.broadcast.KitSheets.SWAY_AT, com.gathin.broadcast.KitSheets.SWAY_AT + com.gathin.broadcast.KitSheets.SWAY_N);
     }
 
     /** Dark words on a light colour, white on a dark one. */

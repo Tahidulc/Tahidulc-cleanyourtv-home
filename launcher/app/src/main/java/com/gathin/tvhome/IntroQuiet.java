@@ -49,6 +49,30 @@ final class IntroQuiet {
         main.postDelayed(() -> pauseOthers(app), 700L);
     }
 
+    private static AudioFocusRequest duckFocus;
+
+    /**
+     * The channel's sound lowered (not stopped) under the studio line-ups' music: focus held "may duck", as the doorbell's
+     * chime holds it, so the channel plays on, quieter, and in step; unduck gives it back.
+     */
+    static void duck(Context c) {
+        AudioManager am = c.getApplicationContext().getSystemService(AudioManager.class);
+        if (am == null || duckFocus != null) return;
+        duckFocus = new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
+                .setAudioAttributes(new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build())
+                .build();
+        android.util.Log.i("Sport", "line-ups: the channel's sound lowered, focus " + am.requestAudioFocus(duckFocus));
+    }
+
+    static void unduck(Context c) {
+        if (duckFocus == null) return;
+        AudioManager am = c.getApplicationContext().getSystemService(AudioManager.class);
+        if (am != null) am.abandonAudioFocusRequest(duckFocus);
+        duckFocus = null;
+        android.util.Log.i("Sport", "line-ups: the channel's sound back");
+    }
+
     static void release(Context c) {
         if (!holding && focus == null && paused.isEmpty()) return;
         holding = false;

@@ -258,6 +258,21 @@ final class BoardPanel extends SportPanel {
         penalty.words = () -> BoardCover.penaltyOn(c) ? "Who won it, the likely taker and the keeper, out until the kick" : "Off";
         penalty.ok = () -> BoardCover.setPenaltyOn(c, !BoardCover.penaltyOn(c));
         add(added, sponsor, shotMap, referee, penalty);
+        // A goal's shirt (KitBoard): out of the board and round to the scorer's name and number; any look.
+        Row goalShirt = row("Goal: the scorer's shirt", true);
+        goalShirt.on = () -> KitBoard.goalShirtOn(c);
+        goalShirt.words = () -> KitBoard.goalShirtOn(c)
+                ? "As a goal goes in, his side's shirt comes out of the scoreboard in 3D and turns to show his name and number"
+                : "Off · OK to have it (any look; the 3D kits look below has the shirts in the board)";
+        goalShirt.ok = () -> KitBoard.setGoalShirtOn(c, !KitBoard.goalShirtOn(c));
+        Row tryShirt = row("Try the goal shirt", false);
+        tryShirt.words = () -> "Plays it now with " + tryGame() + "'s kit: its last scorer's shirt, else a made-up one";
+        tryShirt.ok = () -> {
+            ScoresTicker.Game g = game();
+            hide();
+            KitBoard.tryIt(c, g, BoardCover.bugNow(), (why) -> android.widget.Toast.makeText(c, why, android.widget.Toast.LENGTH_SHORT).show());
+        };
+        add(goalShirt, tryShirt);
         Row swish = row("Swish as they move", true);
         swish.on = () -> BoardCover.swishOn(c);
         swish.words = () -> BoardCover.swishOn(c) ? "A swish each time the scorer, stats or an alert moves: out, every page, back in" : "Off · they move silently";
@@ -384,11 +399,12 @@ final class BoardPanel extends SportPanel {
         Row classicLu = row("Line-ups before kick-off", false);
         classicLu.words = () -> {
             String st = ClassicIntro.lineupsStyle(c);
-            return "stadium".equals(st) ? "Stadium: each eleven on a board over a ground lit for the day, 3½ minutes before · OK: off"
+            return "stadium".equals(st) ? "Stadium: each eleven on a board over a ground lit for the day, 3½ minutes before · OK: the studio"
+                    : "studio".equals(st) ? "Studio: each team by position beside a panel in its competition's colours, its kit turning in 3D, a swish each page, music, 7 minutes before · OK: off"
                     : "off".equals(st) ? "Off · OK: classic beam-in"
                     : "Classic beam-in, from the reel, 7 minutes before · OK: the stadium board";
         };
-        classicLu.ok = () -> ClassicIntro.setLineupsStyle(c, ClassicIntro.nextStyle(ClassicIntro.lineupsStyle(c), "stadium"));
+        classicLu.ok = () -> ClassicIntro.setLineupsStyle(c, ClassicIntro.nextLineups(ClassicIntro.lineupsStyle(c)));
         add(classicPop, classicLu);
         Row intro = row("Intros", true);
         intro.on = () -> ClassicIntro.introOn(c);
@@ -461,7 +477,8 @@ final class BoardPanel extends SportPanel {
         trySecond.words = () -> "The second half's kick-off, with the score";
         trySecond.ok = () -> tryClassic("second");
         Row tryLineups = row("Try the line-ups", false);
-        tryLineups.words = () -> ("stadium".equals(ClassicIntro.lineupsStyle(c)) ? "Stadium board" : "Classic beam-in")
+        tryLineups.words = () -> ("stadium".equals(ClassicIntro.lineupsStyle(c)) ? "Stadium board"
+                : "studio".equals(ClassicIntro.lineupsStyle(c)) ? "Studio" : "Classic beam-in")
                 + ": the chosen game's when they're out, else the last Premier League game's · Back closes them";
         tryLineups.ok = () -> tryClassic("lineups");
         add(trySecond, tryLineups);
@@ -625,6 +642,8 @@ final class BoardPanel extends SportPanel {
         if (crests != null) b.images(crests[0], crests[1], crests[2]);
         previews.add(b);
         int bh = Math.round(h.px(36) * b.tall());
+        // the 3D kits look: the chosen game's shirts made for its tile (flat shirts in its colours meanwhile)
+        if (style == BoardBug.Style.KITS && pg != null) KitBoard.preview(c, pg, b, bh - 2);
         stage.addView(b, new FrameLayout.LayoutParams(-1, bh, Gravity.CENTER));
         t.addView(stage, new LinearLayout.LayoutParams(-1, 0, 1f));
         TextView name = h.text(17, semi, 0xE6FFFFFF);

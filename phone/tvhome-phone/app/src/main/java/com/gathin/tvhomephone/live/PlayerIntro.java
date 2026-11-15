@@ -125,7 +125,10 @@ final class PlayerIntro {
         prefs(c).edit().putString("popup_style", style).apply();
     }
 
-    /** The line-ups' style: "classic" (the beam-in), "stadium" (each eleven on a board over a ground lit for the day) or "off". */
+    /**
+     * The line-ups' style: "classic" (the beam-in), "stadium" (each eleven on a board over a ground lit for the day), "studio"
+     * (each team beside a panel in its competition's colours, its kit turning in 3D, a page a position on the beat) or "off".
+     */
     static String lineupsStyle(Context c) {
         String s = prefs(c).getString("lineups_style", null);
         return s != null ? s : prefs(c).getBoolean("lineups", true) ? "classic" : "off";
@@ -361,6 +364,18 @@ final class PlayerIntro {
         hush = h == null ? (on) -> { } : h;
     }
 
+    /** The channel's own sound lowered under the studio line-ups' music (the player's volume), back after. */
+    private Consumer<Boolean> duck = (on) -> { };
+
+    void duck(Consumer<Boolean> d) {
+        duck = d == null ? (on) -> { } : d;
+    }
+
+    /** Pure: the page for a line-ups style ("lineups" the classic's). */
+    static String lineupsPage(String style) {
+        return "stadium".equals(style) ? "stadium" : "studio".equals(style) ? "studio" : "lineups";
+    }
+
     /** The programmes on the channel now and next: F1's, UFC's and boxing's intros four minutes before they begin. */
     void sportTick(List<OverMatches.Programme> guide) {
         if (guide == null || !introOn(a) || showing() || fetching || !canShow.getAsBoolean()) return;
@@ -519,6 +534,11 @@ final class PlayerIntro {
         m.compName = g.leagueName == null ? "" : g.leagueName;
         m.venue = g.venue == null ? "" : g.venue;
         m.kickoff = g.kickoff;
+        m.homeId = g.homeId == null ? "" : g.homeId;
+        m.awayId = g.awayId == null ? "" : g.awayId;
+        com.gathin.broadcast.Worn.Kit[] kits = com.gathin.broadcast.Worn.get(g.id);
+        m.homeKit = kits == null || kits[0] == null ? "" : kits[0].type;
+        m.awayKit = kits == null || kits[1] == null ? "" : kits[1].type;
         return m;
     }
 
@@ -556,11 +576,13 @@ final class PlayerIntro {
         BroadcastData.Match m = match(g);
         File cache = a.getCacheDir();
         String homeName = g.homeName, awayName = g.awayName;
+        String style = lineupsStyle(a);
         io.execute(() -> {
             JSONObject cfg = null;
             try {
                 int id = FotMob.find(g.id, homeName, awayName, g.kickoff);
                 cfg = BroadcastData.lineups(m, FotMob.raw(id), cache);
+                if ("studio".equals(style)) BroadcastData.studio(cfg, m);
             } catch (Exception ignored) {
                 // tried again in a minute
             }
@@ -569,7 +591,7 @@ final class PlayerIntro {
                 fetching = false;
                 if (got == null || shown.contains(key) || showing() || !canShow.getAsBoolean() || a.isFinishing()) return;
                 shown.add(key);
-                String page = "stadium".equals(lineupsStyle(a)) ? "stadium" : "lineups";
+                String page = lineupsPage(style);
                 show(BroadcastView.page(a, page, got, this::gone), page);
             });
         });
@@ -588,12 +610,13 @@ final class PlayerIntro {
             hush.accept(true);
             introUp.run();
         }
+        if ("studio".equals(kind)) duck.accept(true);
         if (moment(kind)) momentChanged.run();
     }
 
     /** The line-ups (either) and the strap (which draws the board itself as it folds into it): the board out of the way. */
     private static boolean hidesBoard(String kind) {
-        return "lineups".equals(kind) || "stadium".equals(kind) || "strap".equals(kind) || "intro".equals(kind);
+        return "lineups".equals(kind) || "stadium".equals(kind) || "studio".equals(kind) || "strap".equals(kind) || "intro".equals(kind);
     }
 
     private void gone(BroadcastView v) {
@@ -602,6 +625,7 @@ final class PlayerIntro {
         boolean wasMoment = moment(viewKind);
         breakUp = false;
         if ("intro".equals(viewKind)) hush.accept(false);
+        if ("studio".equals(viewKind)) duck.accept(false);
         view = null;
         viewKind = "";
         root.removeView(v);
@@ -629,7 +653,7 @@ final class PlayerIntro {
 
     /** Back: the line-ups fade away if they are on (true), before anything else Back does. */
     boolean back() {
-        if (!showing() || !("lineups".equals(viewKind) || "stadium".equals(viewKind) || "intro".equals(viewKind))) return false;
+        if (!showing() || !("lineups".equals(viewKind) || "stadium".equals(viewKind) || "studio".equals(viewKind) || "intro".equals(viewKind))) return false;
         view.back();
         return true;
     }
@@ -712,7 +736,7 @@ final class PlayerIntro {
     }
 
     /**
-     * Tests: the line-ups in a style ("lineups", the classic beam-in, or "stadium") now, whatever the style chosen: on
+     * Tests: the line-ups in a style ("lineups", the classic beam-in, "stadium" or "studio") now, whatever the style chosen: on
      * the game watched when FotMob has its line-ups, else on a recent Premier League game's (as the TV's tries find one).
      * Back closes them, as the real ones. note: why not now.
      */
@@ -729,7 +753,9 @@ final class PlayerIntro {
             try {
                 cfg = TestAlerts.tryOn(watching, 5, g -> {
                     try {
-                        return BroadcastData.lineups(match(g), FotMob.raw(FotMob.find(g.id, g.homeName, g.awayName, g.kickoff)), cache);
+                        BroadcastData.Match m = match(g);
+                        JSONObject o = BroadcastData.lineups(m, FotMob.raw(FotMob.find(g.id, g.homeName, g.awayName, g.kickoff)), cache);
+                        return "studio".equals(style) ? BroadcastData.studio(o, m) : o;
                     } catch (Exception oneGame) {
                         return null;
                     }
@@ -748,7 +774,7 @@ final class PlayerIntro {
                     note.accept(R.string.live7_wait);
                     return;
                 }
-                String page = "stadium".equals(style) ? "stadium" : "lineups";
+                String page = "stadium".equals(style) || "studio".equals(style) ? style : "lineups";
                 show(BroadcastView.page(a, page, got, this::gone), page);
             });
         });

@@ -4,9 +4,11 @@ set -e
 cd "$(dirname "$0")"
 OUT=assets/broadcast
 rm -rf "$OUT"
-mkdir -p "$OUT/fonts" "$OUT/sfx"
+mkdir -p "$OUT/fonts" "$OUT/sfx" "$OUT/flags"
 cp src/fonts/*.ttf src/fonts/OFL.txt "$OUT/fonts/"
 cp src/sfx/*.ogg "$OUT/sfx/"
+# the players' flags for the studio line-ups (Twemoji, CC-BY 4.0: tools/flags.py fetched them)
+cp src/flags/*.svg "$OUT/flags/"
 cp src/host/*.html src/host/*.js "$OUT/"
 cat src/kickoff/scene-part.js src/kickoff/popup-part.js > "$OUT/kickoff.js"
 cat src/lineups/head.js src/lineups/body.js > "$OUT/lineups.js"
@@ -19,4 +21,9 @@ npx --yes esbuild@0.24.0 src/kickoff/trophy3d.js --bundle --format=iife --minify
 # the match intro (src/match): three.js and its scenes, one file
 npx --yes esbuild@0.24.0 src/match/match.js --bundle --format=iife --minify --target=es2019 \
   --alias:three="$(pwd)/src/vendor/three.module.js" --outfile="$OUT/match3d.js" --log-level=warning
+# the studio line-ups (src/studio) and the kit pictures the scoreboards draw (src/kits): three.js and the 3D shirt each
+npx --yes esbuild@0.24.0 src/studio/studio.js --bundle --format=iife --minify --target=es2019 \
+  --alias:three="$(pwd)/src/vendor/three.module.js" --outfile="$OUT/studio3d.js" --log-level=warning
+npx --yes esbuild@0.24.0 src/kits/sheet.js --bundle --format=iife --minify --target=es2019 \
+  --alias:three="$(pwd)/src/vendor/three.module.js" --outfile="$OUT/kits3d.js" --log-level=warning
 echo "built $OUT: $(du -sh "$OUT" | cut -f1)"

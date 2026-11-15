@@ -375,8 +375,10 @@ public class BoardCoverTest {
 
     @Test
     public void theLooksAreThePhonesEight() {
-        // The nine of the board's own, By competition, the sixteen competitions' own looks and four retro ones (4.97).
-        assertEquals(30, BoardBug.Style.values().length);
+        // The nine of the board's own, By competition, the sixteen competitions' own looks and four retro ones (4.97), and
+        // 3D kits (5.22).
+        assertEquals(31, BoardBug.Style.values().length);
+        assertEquals(BoardBug.Style.KITS, BoardBug.Style.of("KITS"));
         assertEquals("By competition", BoardBug.Style.COMPETITION.label);
         assertEquals(com.gathin.broadcast.CompBug.Kind.LALIGA, BoardBug.Style.LALIGA.kind);
         assertEquals(BoardBug.Style.UCL, BoardBug.Style.of("UCL"));

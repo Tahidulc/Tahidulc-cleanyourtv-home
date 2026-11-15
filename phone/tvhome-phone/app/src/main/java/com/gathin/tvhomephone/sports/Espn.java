@@ -142,12 +142,14 @@ public final class Espn {
             if (!x.optBoolean("scoringPlay") && !red) continue;
             JSONArray who = x.optJSONArray("athletesInvolved");
             String player = who != null && who.length() > 0 ? who.getJSONObject(0).optString("displayName") : "";
+            // ESPN's id for him: his shirt number from the line-ups (Shirts), for a goal's shirt turning to his name
+            String athlete = who != null && who.length() > 0 ? who.getJSONObject(0).optString("id", "") : "";
             String minute = x.optJSONObject("clock") != null ? x.getJSONObject("clock").optString("displayValue") : "";
             JSONObject team = x.optJSONObject("team");
             String side = g.homeId.equals(team != null ? team.optString("id") : "") ? "home" : "away";
             String kind = x.optBoolean("ownGoal") ? "og" : x.optBoolean("penaltyKick") ? "pen" : "";
             if (red) g.reds.add(new String[]{"R|" + g.id + "|" + minute + "|" + player, player, minute, side});
-            else g.goals.add(new String[]{"G|" + g.id + "|" + minute + "|" + player, player, minute, side, kind});
+            else g.goals.add(new String[]{"G|" + g.id + "|" + minute + "|" + player, player, minute, side, kind, athlete});
         }
         g.homeScore = parseInt(home.optString("score", "0"));
         g.awayScore = parseInt(away.optString("score", "0"));
@@ -368,6 +370,8 @@ public final class Espn {
             }
             s.homeId = homeId;
             s.worn = com.gathin.broadcast.Worn.of(rosters, homeId);
+            // every player's shirt number, for a goal's shirt turning to the scorer's name and number
+            com.gathin.broadcast.Shirts.note(id, rosters);
             for (int i = 0; competitors != null && i < competitors.length(); i++) {
                 JSONObject t = competitors.getJSONObject(i);
                 if (!"home".equals(t.optString("homeAway"))) s.awayId = t.optString("id");

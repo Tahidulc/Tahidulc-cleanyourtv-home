@@ -46,6 +46,8 @@ public final class BroadcastData {
         public String compId = "", compName = "";
         public String venue = "";
         public long kickoff;
+        /** ESPN's ids for the clubs ("" when not known), and the kit each wears ("home", "away", "third"...: Worn; "" not named). */
+        public String homeId = "", awayId = "", homeKit = "", awayKit = "";
     }
 
     // ---- the competition ---------------------------------------------------------------------------------------------
@@ -482,9 +484,40 @@ public final class BroadcastData {
         }
         q.put("name", name);
         q.put("last", last);
+        q.put("first", firstName(name, p.optString("firstName"), last));
         q.put("id", p.optLong("id"));
         q.put("gk", p.optInt("positionId", -1) == 11 || p.optInt("usualPlayingPositionId", -1) == 0);
+        // the studio line-ups' pages (a keeper, defenders, midfielders, forwards) and the player's flag
+        if (p.has("usualPlayingPositionId")) q.put("role", p.optInt("usualPlayingPositionId", -1));
+        String cc = p.optString("countryCode", "").trim().toUpperCase(Locale.ROOT);
+        if (cc.matches("[A-Z]{2,3}")) q.put("country", cc);
         return q;
+    }
+
+    /** Pure: a player's first name: FotMob's own, else his name before the surname ("" when he goes by one name). */
+    static String firstName(String name, String given, String last) {
+        if (given != null && !given.trim().isEmpty() && !given.trim().equals(last == null ? "" : last.trim())) return given.trim();
+        String n = name == null ? "" : name.trim(), l = last == null ? "" : last.trim();
+        if (l.isEmpty() || !n.endsWith(l) || n.length() == l.length()) return "";
+        return n.substring(0, n.length() - l.length()).trim();
+    }
+
+    /**
+     * The studio line-ups' extras on the line-ups' settings (lineups): the competition (its key for the panel's colours,
+     * its name, its logo for dark grounds) and each side's ESPN id and the kit it wears, for its 3D shirt. o is changed.
+     */
+    public static JSONObject studio(JSONObject o, Match m) throws JSONException {
+        if (o == null) return null;
+        JSONObject comp = new JSONObject();
+        comp.put("key", mark(m.compId, m.compName));
+        comp.put("name", compName(compKey(m.compId, m.compName), m.compName));
+        String logo = image(m.compLogo, m.compLogoUrl, false);
+        if (logo != null) comp.put("logo", logo);
+        o.put("comp", comp);
+        JSONObject h = o.optJSONObject("home"), a = o.optJSONObject("away");
+        if (h != null) { h.put("espnId", m.homeId == null ? "" : m.homeId); h.put("kitType", m.homeKit == null ? "" : m.homeKit); }
+        if (a != null) { a.put("espnId", m.awayId == null ? "" : m.awayId); a.put("kitType", m.awayKit == null ? "" : m.awayKit); }
+        return o;
     }
 
     private static int size(JSONArray a) {

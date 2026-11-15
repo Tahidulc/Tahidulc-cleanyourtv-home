@@ -1870,6 +1870,11 @@ public class PlayerActivity extends AppCompatActivity {
                 if (p != null) p.setVolume(on ? 0f : 1f);
             }
 
+            @Override public void duck(boolean on) {
+                ExoPlayer p = pb.player();
+                if (p != null) p.setVolume(on ? 0.3f : 1f);
+            }
+
             @Override public void hideControls() {
                 hideOverlay();
             }

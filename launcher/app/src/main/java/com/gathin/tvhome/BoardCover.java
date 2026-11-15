@@ -1957,6 +1957,11 @@ final class BoardCover {
     /** The board and, beside it in line with it, what slides out of it (the stats, an alert), drawn over their tucked ends. */
     private static FrameLayout column;
     private static BoardBug bug;
+
+    /** The board's view while it is up (a try of the goal's shirt starts from it), else null. */
+    static BoardBug bugNow() {
+        return bug;
+    }
     private static BoardStats stats;
     private static BoardDrop drop;
     /** The slim strip down from under the board: a penalty shootout's kicks (BoardUnder). */
@@ -2375,6 +2380,8 @@ final class BoardCover {
                 BugCover.PLAY.goal(SystemClock.uptimeMillis());
                 bug.goal(side);
                 com.gathin.broadcast.Sfx.goal(c, goalSound(c));
+                // the scorer's shirt out of the board and round to his name and number (its own switch)
+                KitBoard.goal(c, g, side, bug);
                 goalShownAt = now;
                 expectScorer(c, g, l.score, side);
                 ClassicIntro.goal(c, g, l.score, side);
@@ -2390,6 +2397,11 @@ final class BoardCover {
         if (g != null) {
             bug.competition(g.slug, g.league);
             bug.names(g.homeName, g.awayName);
+            // the 3D kits: the look's two shirts made for the kits worn, a new goal's shirt made ahead of its moment
+            if (style(c) == BoardBug.Style.KITS && bug.getLayoutParams() != null) {
+                KitBoard.board(c, g, bug, Math.max(1, bug.getLayoutParams().height - 2 * edge));
+            }
+            if (pre == null) KitBoard.feed(c, g);
         }
         bug.set(l);
         boolean board = adjusting || testUntil > now || boardShown(c);
@@ -3147,6 +3159,9 @@ final class BoardCover {
         if (stats != null) stats.gone();
         if (drop != null) drop.gone();
         if (under != null) under.gone();
+        // a goal's shirt on stops with the board, and the next board (a new view) gets its 3D shirts again
+        KitBoard.stop();
+        KitBoard.boardGone();
         if (c != null) VarWhy.away(c);
         holdKeys(false);
         if (main != null) main.removeCallbacks(menuOnHold);
@@ -4153,6 +4168,8 @@ final class BoardCover {
      */
     static void wornRead(Context c, ScoresTicker.Game g, org.json.JSONObject summary) {
         wornKept(c);
+        // every player's shirt number, for a goal's shirt turning to his name and number
+        if (summary != null) com.gathin.broadcast.Shirts.note(g.id, summary.optJSONArray("rosters"));
         if (com.gathin.broadcast.Worn.note(g.id, com.gathin.broadcast.Worn.of(summary, g.homeId))) {
             int[] k = com.gathin.broadcast.Worn.pick(com.gathin.broadcast.Worn.get(g.id), g.homeColor, g.homeAlt, g.awayColor, g.awayAlt);
             g.homeColor = k[0];

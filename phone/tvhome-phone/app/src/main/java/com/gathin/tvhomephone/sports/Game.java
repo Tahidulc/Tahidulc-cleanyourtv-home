@@ -36,7 +36,7 @@ public final class Game {
     public String displayClock = "";
     /** ESPN's own channel names for the game (mostly American), best first. */
     public List<String> broadcasts = new ArrayList<>();
-    /** {key, player, minute, "home"/"away", kind ("pen", "og" or "")}, oldest first. */
+    /** {key, player, minute, "home"/"away", kind ("pen", "og" or ""), ESPN's id for the player ("" none)}, oldest first. */
     public List<String[]> goals = new ArrayList<>();
     /** {key, player, minute, "home"/"away"}. */
     public List<String[]> reds = new ArrayList<>();

@@ -66,6 +66,9 @@ public final class ScoreBoard implements LiveAlerts.Listener {
 
         /** A goal of the channel's own game reached the picture: 1 home, 2 away. */
         default void goalShown(Game g, int side) {}
+
+        /** The player's layout, for the 3D kits' hidden page and a goal's shirt turning over the picture; null: none. */
+        default FrameLayout kitRoot() { return null; }
     }
 
     static final String FOOTBALL = "football", SPORT = "sport", NEWS = "news";
@@ -549,6 +552,13 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         layoutSide();
     }
 
+    /** The board's own height inside, in pixels (its 3D kits' frames are made a little taller). */
+    private int kitInner() {
+        android.view.ViewGroup.LayoutParams lp = bug.getLayoutParams();
+        int h = bug.getHeight() > 0 ? bug.getHeight() : lp != null ? lp.height : 0;
+        return Math.max(1, h);
+    }
+
     /** How far the board stands from view's left and top. */
     int boardDx() {
         return boardAt;
@@ -686,6 +696,7 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         lineups.gone();
         under.gone();
         yellowsWaiting.clear();
+        PhoneKits.stop(src.kitRoot());
     }
 
     /** The small window: the board alone, no drops (they'd cover the picture). */
@@ -700,6 +711,7 @@ public final class ScoreBoard implements LiveAlerts.Listener {
             stats.fold(null);
             lineups.gone();
             under.gone();
+            PhoneKits.stop(src.kitRoot());   // a goal's shirt would cover the small picture
         }
     }
 
@@ -868,6 +880,10 @@ public final class ScoreBoard implements LiveAlerts.Listener {
                     // The game's competition: By competition draws its own look, and its logo with it; the retro looks name the clubs.
                     bug.competition(got.slug, got.leagueName != null && !got.leagueName.isEmpty() ? got.leagueName : got.league);
                     bug.names(got.homeName, got.awayName);
+                    // the 3D kits: the look's two shirts made for the kits worn, a new goal's shirt made ahead of its moment
+                    FrameLayout kitRoot = src.kitRoot();
+                    if (style(c) == OverlayBug.Style.KITS) PhoneKits.board(c, got, bug, kitInner(), kitRoot);
+                    PhoneKits.feed(c, got, kitRoot);
                     prefetchGoals(got);
                 } else if (session != null) {
                     channelGame = false;
@@ -914,6 +930,8 @@ public final class ScoreBoard implements LiveAlerts.Listener {
                         play.goal(now);
                         bug.goal(side);
                         com.gathin.broadcast.Sfx.goal(c, PlayerIntro.goalSound(c));
+                        // the scorer's shirt out of the board and round to his name and number (its own switch)
+                        PhoneKits.goal(c, g, side, bug, small ? null : src.kitRoot());
                         goalShownAt = now;
                         if (changed != null) changed.run();
                         caption(g, side);

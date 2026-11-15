@@ -91,13 +91,19 @@ public class ScoreBoardTest {
         assertEquals(OverlayBug.Style.STACKED, OverlayBug.Style.of("STACKED"));
         assertEquals(OverlayBug.Style.CLASSIC, OverlayBug.Style.of("nonsense"));
         assertEquals("Crests and time", OverlayBug.Style.CRESTS.label);
-        // Stacked is drawn taller in its own corner (its clubs one above the other), Card too (its big crests); the rest as they were.
+        // Stacked is drawn taller in its own corner (its clubs one above the other), Card too (its big crests), 3D kits a
+        // little (its shirts' cells); the rest as they were.
         assertTrue(OverlayBug.Style.STACKED.tall > 1.5f);
         assertTrue(OverlayBug.Style.CARD.tall > 1.5f);
+        assertEquals(1.25f, OverlayBug.Style.KITS.tall, 0f);
         for (OverlayBug.Style st : OverlayBug.Style.values())
-            if (st.kind == null && st != OverlayBug.Style.STACKED && st != OverlayBug.Style.CARD) assertEquals(1f, st.tall, 0f);
-        // 4.74: By competition, the sixteen competitions' own looks and four retro ones, each as tall as its look.
-        assertEquals(30, OverlayBug.Style.values().length);
+            if (st.kind == null && st != OverlayBug.Style.STACKED && st != OverlayBug.Style.CARD && st != OverlayBug.Style.KITS)
+                assertEquals(1f, st.tall, 0f);
+        // 4.74: By competition, the sixteen competitions' own looks and four retro ones, each as tall as its look; and
+        // 3D kits (4.97).
+        assertEquals(31, OverlayBug.Style.values().length);
+        assertEquals(OverlayBug.Style.KITS, OverlayBug.Style.of("KITS"));
+        assertEquals("3D kits", OverlayBug.Style.KITS.label);
         assertEquals("By competition", OverlayBug.Style.COMPETITION.label);
         for (OverlayBug.Style st : OverlayBug.Style.values()) if (st.kind != null) assertEquals(st.kind.tall, st.tall, 0f);
         for (com.gathin.broadcast.CompBug.Kind k : com.gathin.broadcast.CompBug.Kind.values()) {
@@ -111,9 +117,10 @@ public class ScoreBoardTest {
     public void theCardLookIsTheLastAndLightsOnItsWhite() {
         OverlayBug.Style[] all = OverlayBug.Style.values();
         assertEquals(OverlayBug.Style.CARD, all[7]);
-        // 4.26: Frosted glass after it, the last of the board's own (the competitions' looks after them, 4.74).
+        // 4.26: Frosted glass after it; 3D kits the last of the board's own (4.97; the competitions' looks after them, 4.74).
         assertEquals(OverlayBug.Style.FROSTED, all[8]);
-        assertEquals(OverlayBug.Style.COMPETITION, all[9]);
+        assertEquals(OverlayBug.Style.KITS, all[9]);
+        assertEquals(OverlayBug.Style.COMPETITION, all[10]);
         assertEquals(OverlayBug.Style.CARD, OverlayBug.Style.of("CARD"));
         assertEquals("Card", OverlayBug.Style.CARD.label);
         // Its white over its blue: a light blend stays light, the club's colour laid fully over is the club's.

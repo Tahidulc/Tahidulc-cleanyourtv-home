@@ -51,7 +51,8 @@ public final class BoardSettings {
             LinearLayout one = choice(c, st.label, ScoreBoard.style(c) == st);
             OverlayBug b = new OverlayBug(c);
             b.style(st);
-            b.set(sample());
+            b.set(st == OverlayBug.Style.KITS ? kitsSample() : sample());
+            if (st == OverlayBug.Style.KITS) PhoneKits.preview(a, b, Ui.dp(c, Math.round(30 * st.tall)));
             LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(-2, Ui.dp(c, Math.round(30 * st.tall)));
             one.addView(b, 0, bp);
             one.setOnClickListener(v -> {
@@ -207,14 +208,16 @@ public final class BoardSettings {
         styles(c, col, c.getString(R.string.live33_classic_popup), new String[]{"classic", "strap", "off"},
                 new String[]{c.getString(R.string.live35_style_classic), c.getString(R.string.live35_style_strap), c.getString(R.string.live35_style_off)},
                 PlayerIntro.popupStyle(c), st -> PlayerIntro.setPopupStyle(c, st));
-        styles(c, col, c.getString(R.string.live33_classic_lineups), new String[]{"classic", "stadium", "off"},
-                new String[]{c.getString(R.string.live35_style_beam), c.getString(R.string.live35_style_stadium), c.getString(R.string.live35_style_off)},
+        styles(c, col, c.getString(R.string.live33_classic_lineups), new String[]{"classic", "stadium", "studio", "off"},
+                new String[]{c.getString(R.string.live35_style_beam), c.getString(R.string.live35_style_stadium),
+                        c.getString(R.string.live_style_studio), c.getString(R.string.live35_style_off)},
                 PlayerIntro.lineupsStyle(c), st -> PlayerIntro.setLineupsStyle(c, st));
         row(c, col, c.getString(R.string.live_added_stays), ScoreBoard.addedStays(c), on -> ScoreBoard.setAddedStays(c, on));
         row(c, col, c.getString(R.string.live_sponsor), ScoreBoard.sponsored(c), on -> ScoreBoard.setSponsored(c, on));
         row(c, col, c.getString(R.string.live_shot_map), ScoreBoard.shotMap(c), on -> ScoreBoard.setShotMap(c, on));
         row(c, col, c.getString(R.string.live_referee), ScoreBoard.referee(c), on -> ScoreBoard.setReferee(c, on));
         row(c, col, c.getString(R.string.live_penalty), ScoreBoard.penaltyCard(c), on -> ScoreBoard.setPenaltyCard(c, on));
+        row(c, col, c.getString(R.string.live_goal_shirt), PhoneKits.goalShirtOn(c), on -> PhoneKits.setGoalShirtOn(c, on));
         row(c, col, c.getString(R.string.live34_swish), PlayerIntro.swishOn(c), on -> PlayerIntro.setSwishOn(c, on));
         row(c, col, c.getString(R.string.live69_score_swish), PlayerIntro.scoreSwishOn(c), on -> PlayerIntro.setScoreSwishOn(c, on));
         row(c, col, c.getString(R.string.live68_logo_away), ScoreBoard.logoAway(c), on -> ScoreBoard.setLogoAway(c, on));
@@ -268,6 +271,17 @@ public final class BoardSettings {
     }
 
     /** A made-up game for the looks' pictures. */
+    /** The 3D kits look's tile: the made-up Arsenal v Newcastle whose kits it draws (PhoneKits.sample). */
+    private static OverlayBug.Look kitsSample() {
+        com.gathin.tvhomephone.sports.Game g = PhoneKits.sample();
+        OverlayBug.Look l = sample();
+        l.home = g.home;
+        l.away = g.away;
+        l.homeColour = OverlayBug.colour(g.homeColor, g.homeAlt);
+        l.awayColour = OverlayBug.colour(g.awayColor, g.awayAlt);
+        return l;
+    }
+
     private static OverlayBug.Look sample() {
         OverlayBug.Look l = new OverlayBug.Look();
         l.home = "HOM";

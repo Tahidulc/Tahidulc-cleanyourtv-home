@@ -678,6 +678,7 @@ final class ScoresTicker {
                     + "/summary?event=" + g.id));
             JSONArray rosters = summary.optJSONArray("rosters");
             com.gathin.broadcast.Worn.note(g.id, com.gathin.broadcast.Worn.of(rosters, g.homeId));
+            com.gathin.broadcast.Shirts.note(g.id, rosters);
             Side home = null, away = null;
             for (int i = 0; rosters != null && i < rosters.length(); i++) {
                 JSONObject r = rosters.getJSONObject(i);

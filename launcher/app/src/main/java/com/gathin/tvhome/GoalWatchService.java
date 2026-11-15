@@ -1716,6 +1716,10 @@ public class GoalWatchService extends Service {
             main.post(() -> BoardCover.logoAway(true));
             main.postDelayed(() -> BoardCover.logoAway(false), 5_000L);
         }
+        if (intent != null && intent.getBooleanExtra("test_goal_shirt", false)) {
+            // adb only: a made-up scorer's shirt (HOLLIS 27) out of the board in Arsenal's kit and round
+            main.post(() -> KitBoard.testSample(this));
+        }
         if (intent != null && intent.getBooleanExtra("test_board_penalty", false)) {
             // adb only: the board over whatever is on, a made-up penalty's card out of it, taken in 20 s later
             main.post(() -> BoardCover.testPenalty(this));

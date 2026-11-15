@@ -110,7 +110,10 @@ final class ClassicIntro {
         prefs(c).edit().putString("popup_style", style).apply();
     }
 
-    /** The line-ups' style before kick-off: "classic" (the beam-in, from the reel), "stadium" (the first design) or "off". */
+    /**
+     * The line-ups' style before kick-off: "classic" (the beam-in, from the reel), "stadium" (the first design), "studio"
+     * (each team beside a panel in its competition's colours, its kit turning in 3D, a page a position on the beat) or "off".
+     */
     static String lineupsStyle(Context c) {
         String s = prefs(c).getString("lineups_style", null);
         return s != null ? s : prefs(c).getBoolean("lineups", true) ? "classic" : "off";
@@ -123,6 +126,21 @@ final class ClassicIntro {
     /** Pure: the next style on the card's OK: classic, then the first design, then off. */
     static String nextStyle(String style, String first) {
         return "classic".equals(style) ? first : first.equals(style) ? "off" : "classic";
+    }
+
+    /** Pure: the line-ups' next style on the card's OK: classic, the stadium board, the studio, then off. */
+    static String nextLineups(String style) {
+        switch (style == null ? "" : style) {
+            case "classic": return "stadium";
+            case "stadium": return "studio";
+            case "studio": return "off";
+            default: return "classic";
+        }
+    }
+
+    /** Pure: the page for a line-ups style ("lineups" the classic's). */
+    static String lineupsPage(String style) {
+        return "stadium".equals(style) ? "stadium" : "studio".equals(style) ? "studio" : "lineups";
     }
 
     /**
@@ -270,12 +288,12 @@ final class ClassicIntro {
     }
 
     static boolean showingLineups() {
-        return showing() && ("lineups".equals(viewKind) || "stadium".equals(viewKind));
+        return showing() && ("lineups".equals(viewKind) || "stadium".equals(viewKind) || "studio".equals(viewKind));
     }
 
     /** Whether the overlay on now covers the board and takes Back: the line-ups and the intro. */
     private static boolean covers(String kind) {
-        return "lineups".equals(kind) || "stadium".equals(kind) || "intro".equals(kind);
+        return "lineups".equals(kind) || "stadium".equals(kind) || "studio".equals(kind) || "intro".equals(kind);
     }
 
     // ---- when (com.gathin.broadcast.Moments: the same on the phone) ---------------------------------------------
@@ -390,6 +408,11 @@ final class ClassicIntro {
         m.compName = g.league == null ? "" : g.league;
         m.venue = g.venue == null ? "" : g.venue;
         m.kickoff = g.kickoff;
+        m.homeId = g.homeId == null ? "" : g.homeId;
+        m.awayId = g.awayId == null ? "" : g.awayId;
+        com.gathin.broadcast.Worn.Kit[] kits = com.gathin.broadcast.Worn.get(g.id);
+        m.homeKit = kits == null || kits[0] == null ? "" : kits[0].type;
+        m.awayKit = kits == null || kits[1] == null ? "" : kits[1].type;
         return m;
     }
 
@@ -550,11 +573,13 @@ final class ClassicIntro {
         BroadcastData.Match m = match(g);
         Context app = c.getApplicationContext();
         File cache = app.getCacheDir();
+        String style = lineupsStyle(app);
         io.execute(() -> {
             JSONObject cfg = null;
             try {
                 int id = FotMob.find(g.id, g.homeName, g.awayName, g.kickoff);
                 cfg = BroadcastData.lineups(m, FotMob.raw(id), cache);
+                if ("studio".equals(style)) BroadcastData.studio(cfg, m);
             } catch (Exception ignored) {
                 // tried again in a minute
             }
@@ -563,7 +588,7 @@ final class ClassicIntro {
                 fetching = false;
                 if (got == null || shown.contains(key) || showing() || !BoardCover.playerUp(app)) return;
                 shown.add(key);
-                String page = "stadium".equals(lineupsStyle(app)) ? "stadium" : "lineups";
+                String page = lineupsPage(style);
                 show(app, BroadcastView.page(app, page, got, ClassicIntro::gone), page);
             });
         });
@@ -584,6 +609,7 @@ final class ClassicIntro {
         view = v;
         viewKind = kind;
         if ("intro".equals(kind)) AdBreak.introUp();
+        if ("studio".equals(kind)) IntroQuiet.duck(c);   // its music over the channel, the channel's sound lowered meanwhile
         lineupsUp(kind);
         if (moment(kind)) BoardCover.resume(c);   // the board away at once, not on the screen with it
         return true;
@@ -695,6 +721,7 @@ final class ClassicIntro {
         win = f;
         view = v;
         viewKind = prepKind;
+        if ("studio".equals(prepKind)) IntroQuiet.duck(f.getContext());
         lineupsUp(prepKind);
         if (moment(prepKind)) BoardCover.resume(f.getContext());   // the board away at once, not on the screen with it
         if ("intro".equals(prepKind)) {
@@ -736,6 +763,7 @@ final class ClassicIntro {
         boolean wasIntro = "intro".equals(viewKind);
         breakUp = false;
         if ("intro".equals(viewKind) && v != null) IntroQuiet.release(v.getContext());
+        if ("studio".equals(viewKind) && v != null) IntroQuiet.unduck(v.getContext());
         view = null;
         viewKind = "";
         trial = false;
@@ -800,8 +828,8 @@ final class ClassicIntro {
         if (head.startsWith("strap:") || head.startsWith("classic:")) {
             forced = head.substring(0, head.indexOf(':'));
             head = head.substring(head.indexOf(':') + 1);
-        } else if ("stadium".equals(head)) {
-            forced = "stadium";
+        } else if ("stadium".equals(head) || "studio".equals(head)) {
+            forced = head;
             head = "lineups";
         } else if ("lineups".equals(head)) {
             forced = "classic";
@@ -840,6 +868,7 @@ final class ClassicIntro {
                     try {
                         if (lu) {
                             cfg = BroadcastData.lineups(m, FotMob.raw(FotMob.find(g.id, g.homeName, g.awayName, g.kickoff)), app.getCacheDir());
+                            if (cfg != null && "studio".equals(tryLineupsPage(app, force))) BroadcastData.studio(cfg, m);
                             if (cfg != null && q.length() > 0) cfg.put("q", q);
                         } else {
                             int[] score = "kickoff".equals(kind) ? null : trialScore(g);
@@ -1053,8 +1082,9 @@ final class ClassicIntro {
     /** A try's line-ups page: the style adb named, else this TV's. */
     private static String tryLineupsPage(Context c, String force) {
         if ("stadium".equals(force)) return "stadium";
+        if ("studio".equals(force)) return "studio";
         if ("classic".equals(force)) return "lineups";
-        return "stadium".equals(lineupsStyle(c)) ? "stadium" : "lineups";
+        return lineupsPage(lineupsStyle(c));
     }
 
     /** "scale=0.6,flat,t3every=2" as the page's q: {"scale":0.6,"flat":true,"t3every":2}. */

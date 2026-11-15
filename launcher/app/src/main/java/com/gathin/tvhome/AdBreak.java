@@ -749,6 +749,7 @@ final class AdBreak {
             String sum = espn(base + "/summary?event=" + g.id);
             if (sum != null) p.summary = new JSONObject(sum);
             if (p.summary != null) com.gathin.broadcast.Worn.note(g.id, com.gathin.broadcast.Worn.of(p.summary, g.homeId));
+            if (p.summary != null) com.gathin.broadcast.Shirts.note(g.id, p.summary.optJSONArray("rosters"));
         } catch (Exception ignored) {
             // the widgets from it are left out
         }

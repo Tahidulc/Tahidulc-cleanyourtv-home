@@ -25,7 +25,8 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * One of the live overlays playing once: the kick-off pop-up (kickoff.html) or the classic line-ups (lineups.html), drawn
+ * One of the live overlays playing once: the kick-off pop-up (kickoff.html) or the line-ups (lineups.html, stadium.html,
+ * studio.html), drawn
  * by the page over a see-through view (put it over the channel's picture, the size of the picture), its sounds played
  * here as the page calls for them. It takes no keys or touches; Back for the line-ups is the app's, through back().
  * When it is over (or fails, or runs too long) the listener is told once and the view is empty: take it down then.
@@ -74,6 +75,7 @@ public final class BroadcastView extends FrameLayout {
         switch (page) {
             case "lineups": return 180_000L;
             case "stadium": return 150_000L;
+            case "studio": return 90_000L;    // both teams on the beat (45 s), its music played here
             case "strap": return 20_000L;
             case "reveal": return 60_000L;   // a competition's intro (20 s), or a family's own video and the tail
             case "match": return 75_000L;    // the match intro (48 s, or the Champions League's 38), drawn live
@@ -82,8 +84,8 @@ public final class BroadcastView extends FrameLayout {
     }
 
     private static String pageOf(String page) {
-        return "lineups".equals(page) || "strap".equals(page) || "stadium".equals(page) || "reveal".equals(page) || "match".equals(page)
-                ? page : "kickoff";
+        return "lineups".equals(page) || "strap".equals(page) || "stadium".equals(page) || "studio".equals(page) || "reveal".equals(page)
+                || "match".equals(page) ? page : "kickoff";
     }
 
     private final Handler main = new Handler(Looper.getMainLooper());
@@ -103,7 +105,7 @@ public final class BroadcastView extends FrameLayout {
     private long born;
     private final Runnable tooLong = this::finish;
 
-    /** Any page ("kickoff", "lineups", "strap", "stadium", "reveal", "match") playing as soon as it is ready. */
+    /** Any page ("kickoff", "lineups", "strap", "stadium", "studio", "reveal", "match") playing as soon as it is ready. */
     public static BroadcastView page(Context c, String page, JSONObject cfg, Listener l) {
         return page(c, page, cfg.toString(), l);
     }
@@ -154,7 +156,8 @@ public final class BroadcastView extends FrameLayout {
         setBackgroundColor(Color.TRANSPARENT);
         setFocusable(false);
         setClickable(false);
-        pool = new SoundPool.Builder().setMaxStreams(4).setAudioAttributes(new AudioAttributes.Builder()
+        // the studio line-ups' plucks come four at a time over a swish and a stab
+        pool = new SoundPool.Builder().setMaxStreams("studio".equals(page) ? 8 : 4).setAudioAttributes(new AudioAttributes.Builder()
                 .setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build()).build();
         for (String s : sounds(c, page, cfg)) {
             try (AssetFileDescriptor fd = c.getAssets().openFd("broadcast/sfx/" + s + ".ogg")) {
@@ -254,7 +257,8 @@ public final class BroadcastView extends FrameLayout {
     /** Back: the line-ups and the intros fade away to the channel at once (the pop-up, being short, just goes). */
     public void back() {
         if (over) return;
-        if (web != null && ("lineups".equals(page) || "stadium".equals(page) || "reveal".equals(page) || "match".equals(page)) && started) {
+        if (web != null && ("lineups".equals(page) || "stadium".equals(page) || "studio".equals(page) || "reveal".equals(page)
+                || "match".equals(page)) && started) {
             web.evaluateJavascript("BROADCAST.back()", null);
         } else {
             finish();
