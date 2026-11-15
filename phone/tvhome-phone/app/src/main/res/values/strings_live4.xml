@@ -64,7 +64,7 @@
     <string name="live_penalty">Penalty card: who won it, the likely taker and the keeper, out until the kick</string>
     <string name="live_referee">Referee at kick-off: the referee\'s name and country slide out once the game is on</string>
     <string name="live_sponsor">Sponsored by Stride: a slim strap under each alert beside the scoreboard (the family\'s own made-up sponsor)</string>
-    <string name="live_added_stays">The minutes added stay out beside the scoreboard until the half is over, over the channel\'s own</string>
+    <string name="live_added_stays">The minutes added stay out beside the scoreboard until the half is over, over the channel\'s own, in place of its +minutes tab</string>
     <string name="live34_swish">A swish each time the scorer, stats or an alert moves beside the scoreboard: out, every page, back in</string>
     <!-- Settings' "Scoreboard over matches" (OverMatches), the TV's setting: Automatic, Ask (the player as it always was;
          the phone asks nothing) or Off (no scoreboard on the picture). -->

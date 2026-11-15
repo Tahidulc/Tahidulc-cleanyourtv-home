@@ -923,6 +923,9 @@ public final class ScoreBoard implements LiveAlerts.Listener {
                 // The minutes added, once known for this half: out beside the board once as an alert, then in its tab.
                 if (l.live && !l.added.isEmpty()) addedOut(g, l.added, period(g, l.clock));
                 keepAdded(g, l);
+                // The minutes added standing out beside the board for the rest of the half (their panel says them): no tab
+                // of the board's own meanwhile, the panel tucked under its end as the other pop-outs are.
+                l.added = boardAdded(l.added, standing != null && g.id != null && g.id.equals(standingGame));
                 // Another game on the board, half time, full time: nothing after a goal waits any more (LivePlay).
                 if (g.id == null || !g.id.equals(lastShownId) || g.halftime || g.state != Game.LIVE) play.clear();
                 else play.var(VarExplained.checking(g.id, now));
@@ -2561,6 +2564,11 @@ public final class ScoreBoard implements LiveAlerts.Listener {
     private boolean addedGoing;
 
     /** Pure: whether the minutes added stay out now: the game live, not half or full time, still the half they came in. */
+    /** Pure: the minutes added in the board's own tab: none while their panel stands out beside it (it says them). */
+    static String boardAdded(String added, boolean panelStands) {
+        return panelStands || added == null ? "" : added;
+    }
+
     static boolean addedStands(int state, boolean halftime, boolean live, int period, int standingPeriod) {
         return state == Game.LIVE && !halftime && live && period == standingPeriod;
     }

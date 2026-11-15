@@ -282,11 +282,11 @@ final class BoardDrop extends BoardSide {
             return o;
         }
         if (d.addedMins > 0) {
-            // ADDED TIME: the minutes counting up to them as it comes out (+1, +2 ... +4), big; MINUTES ADDED, small.
+            // ADDED TIME: the minutes counting up to them as it comes out (+1, +2 ... +4), big after its chip, and no more
+            // words: the chip says what they are, and the board keeps no tab of its own while this is out.
             int n = d.addedMins;
             o.head = "+" + countUp(n, d == shownDrop ? android.os.SystemClock.uptimeMillis() - shownAt : -1);
             o.headScale = 1.3f;
-            o.line = n == 1 ? "MINUTE ADDED" : "MINUTES ADDED";
             return o;
         }
         if (d.lineups) {

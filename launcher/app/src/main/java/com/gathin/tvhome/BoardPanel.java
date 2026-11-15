@@ -238,7 +238,7 @@ final class BoardPanel extends SportPanel {
         add(drops, stats);
         Row added = row("Added time stays out", true);
         added.on = () -> BoardCover.addedStaysOn(c);
-        added.words = () -> BoardCover.addedStaysOn(c) ? "The minutes added stay out beside the board until the half is over, over the channel's own"
+        added.words = () -> BoardCover.addedStaysOn(c) ? "The minutes added stay out beside the board until the half is over, over the channel's own, in place of its +minutes tab"
                 : "Off · the minutes added come out for a few seconds";
         added.ok = () -> BoardCover.setAddedStaysOn(c, !BoardCover.addedStaysOn(c));
         Row sponsor = row("Sponsored by Stride", true);

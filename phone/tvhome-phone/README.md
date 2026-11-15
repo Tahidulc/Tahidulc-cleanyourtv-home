@@ -544,3 +544,5 @@ Studio line-ups, 3D kits and the goal's shirt (4.97), each off until chosen: the
 Intros away from kick-off (4.98): the matchday intro comes twelve minutes before kick-off (it came four minutes before, over the walk-out and the anthems), and only when no ad break has had an intro in the twenty minutes before; the ad breaks have theirs from an hour and a half to eight minutes before kick-off, never two within five minutes, and with the ad-break screen switched off as well. F1, UFC and boxing keep theirs as they begin. The Sponsored by Stride strap under the alerts is off (its row in the scoreboard settings turns it back on).
 
 A substitution comes out once (4.99): when the match data put its minute right a minute later, the same change came out a second time; it is known now by its two players, never by its minute.
+
+Added time in one piece (5.00): while the minutes added stand out beside the scoreboard for the rest of the half, the board drops its own +minutes tab and the panel tucks under the board's end, reading ADDED TIME and the minutes counting up.

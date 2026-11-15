@@ -1193,6 +1193,11 @@ final class BoardCover {
         if (!on) endAdded();
     }
 
+    /** Pure: the minutes added in the board's own tab: none while their panel stands out beside it (it says them). */
+    static String boardAdded(String added, boolean panelStands) {
+        return panelStands || added == null ? "" : added;
+    }
+
     /** Pure: whether the minutes added stay out now: the game live, not half or full time, still the half they came in. */
     static boolean addedStands(int state, boolean halftime, boolean live, int period, int standingPeriod) {
         return state == 0 && !halftime && live && period == standingPeriod;
@@ -2355,6 +2360,9 @@ final class BoardCover {
                 if (!l.added.isEmpty()) addedOut(c, g, l.added, periodOf(l.clock, r.detail));
             }
             keepAdded(g, r, l);
+            // The minutes added standing out beside the board for the rest of the half (their panel says them): no tab of
+            // the board's own meanwhile, the panel tucked under its end as the other pop-outs are.
+            l.added = boardAdded(l.added, standing != null && g.id != null && g.id.equals(standing.gameId));
         } else if (orSample) {
             l = sample();
         } else {

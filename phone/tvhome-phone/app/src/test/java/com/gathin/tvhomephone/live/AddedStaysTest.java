@@ -1,5 +1,6 @@
 package com.gathin.tvhomephone.live;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
@@ -16,5 +17,11 @@ public class AddedStaysTest {
         assertFalse(ScoreBoard.addedStands(Game.LIVE, false, true, 2, 1));  // the second half begun
         assertFalse(ScoreBoard.addedStands(Game.LIVE, false, false, 1, 1)); // not live on the board
         assertTrue(ScoreBoard.addedStands(Game.LIVE, false, true, 3, 3));   // extra time's first half
+    }
+
+    @Test public void theBoardKeepsNoTabWhileTheMinutesAddedStandOutBesideIt() {
+        assertEquals("", ScoreBoard.boardAdded("+4", true));
+        assertEquals("+4", ScoreBoard.boardAdded("+4", false));
+        assertEquals("", ScoreBoard.boardAdded(null, false));
     }
 }

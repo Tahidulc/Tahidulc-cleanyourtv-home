@@ -78,4 +78,12 @@ public class AddedTimeTest {
         assertEquals(-1f, BoardBug.addedRun("HT", "+2"), 0.001f);
         assertEquals(-1f, BoardBug.addedRun("92:00", ""), 0.001f);
     }
+
+    @Test public void theBoardKeepsNoTabWhileTheMinutesAddedStandOutBesideIt() {
+        // their panel out for the rest of the half says them: the board's own tab goes meanwhile
+        assertEquals("", BoardCover.boardAdded("+4", true));
+        // the panel not standing (switched to a few seconds, or another half): the tab keeps them
+        assertEquals("+4", BoardCover.boardAdded("+4", false));
+        assertEquals("", BoardCover.boardAdded(null, false));
+    }
 }
