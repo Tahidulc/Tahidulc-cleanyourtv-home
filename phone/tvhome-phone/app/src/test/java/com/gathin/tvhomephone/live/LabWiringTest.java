@@ -22,8 +22,8 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 /**
- * 5.02: the Scoreboard Lab wired into the phone's board, as the TV's: each game's goal set (the 3D kits keeping the
- * band), the Lab's stats under their own switches and at their own minutes, the momentum wave's stat, the red card's and
+ * 5.02: the Scoreboard Lab wired into the phone's board, as the TV's: a goal's crest burst and then its net, every game
+ * since 5.03 (the 3D kits keeping the band), the Lab's stats under their own switches and at their own minutes, the momentum wave's stat, the red card's and
  * the substitution's moments on the pop-outs, FotMob's weather for the weather touch, the five Lab logos.
  */
 public class LabWiringTest {
@@ -31,25 +31,21 @@ public class LabWiringTest {
     // ---- the goal sets -------------------------------------------------------------------------------------------------
 
     @Test
-    public void aGameKeepsItsGoalSetAndTheKitsKeepTheBand() {
-        int band = 0, flip = 0, burst = 0;
+    public void everyGoalIsTheCrestBurstAndTheKitsKeepTheBand() {
         for (int i = 0; i < 300; i++) {
             String id = "40" + i;
             int set = OverlayBug.setFor(OverlayBug.Style.CLASSIC, id);
             assertEquals(BoardFx.goalSet(id), set);
-            // the same every time for the same game, whatever look shows it (bar the 3D kits)
+            // the crest burst, then the net, every game, whatever look shows it (bar the 3D kits' own gold GOAL)
+            assertEquals(BoardFx.GOAL_BURST, set);
             assertEquals(set, OverlayBug.setFor(OverlayBug.Style.FLOODLIGHT, id));
+            assertEquals(set, OverlayBug.setFor(OverlayBug.Style.PL_WORLD, id));
             assertEquals(BoardFx.GOAL_BAND, OverlayBug.setFor(OverlayBug.Style.KITS, id));
-            if (set == BoardFx.GOAL_BAND) band++;
-            else if (set == BoardFx.GOAL_FLIP) flip++;
-            else if (set == BoardFx.GOAL_BURST) burst++;
         }
-        // all three sets come round, game by game
-        assertTrue(band > 30 && flip > 30 && burst > 30);
-        assertEquals(300, band + flip + burst);
-        // no game known: today's band
-        assertEquals(BoardFx.GOAL_BAND, OverlayBug.setFor(OverlayBug.Style.CLASSIC, null));
-        assertEquals(BoardFx.GOAL_BAND, OverlayBug.setFor(OverlayBug.Style.CLASSIC, ""));
+        // no game known: the burst all the same
+        assertEquals(BoardFx.GOAL_BURST, OverlayBug.setFor(OverlayBug.Style.CLASSIC, null));
+        assertEquals(BoardFx.GOAL_BURST, OverlayBug.setFor(OverlayBug.Style.CLASSIC, ""));
+        assertEquals(BoardFx.GOAL_BAND, OverlayBug.setFor(OverlayBug.Style.KITS, null));
     }
 
     @Test

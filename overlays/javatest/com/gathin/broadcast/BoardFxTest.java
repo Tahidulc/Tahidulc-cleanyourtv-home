@@ -21,18 +21,19 @@ public class BoardFxTest {
     public void aGameKeepsItsChoiceAndGamesSpreadOverThem() {
         assertEquals(BoardFx.pick("401861175", "goal", 3), BoardFx.pick("401861175", "goal", 3));
         assertEquals(0, BoardFx.pick("any", "goal", 1));
-        assertEquals(BoardFx.goalSet("g1"), BoardFx.goalSet("g1"));
         int[] seen = new int[3];
         int ht = 0, pens = 0;
         for (int i = 0; i < 3000; i++) {
             String id = String.valueOf(400000000 + i * 7);
-            int s = BoardFx.goalSet(id);
-            assertTrue(s >= 0 && s < 3);
-            seen[s]++;
+            seen[BoardFx.pick(id, "goal", 3)]++;
+            // Every game's goals: the crest burst, then the net (the family's choice), with or without a game known.
+            assertEquals(BoardFx.GOAL_BURST, BoardFx.goalSet(id));
             if (BoardFx.htFace(id)) ht++;
             if (BoardFx.pensInClock(id)) pens++;
         }
-        // Each set for about a third of games, each two-way choice about half.
+        assertEquals(BoardFx.GOAL_BURST, BoardFx.goalSet(null));
+        assertEquals(BoardFx.GOAL_BURST, BoardFx.goalSet(""));
+        // A three-way pick for about a third of games each, each two-way choice about half.
         for (int n : seen) assertTrue("spread " + Arrays.toString(seen), n > 800 && n < 1200);
         assertTrue(ht > 1300 && ht < 1700);
         assertTrue(pens > 1300 && pens < 1700);
@@ -96,6 +97,15 @@ public class BoardFxTest {
         // Each set's net comes once its own part is done.
         assertTrue(BoardFx.MESH_AFTER_FLIP + BoardFx.MESH_MS <= BoardFx.FLIP_MS + BoardFx.MESH_MS);
         assertTrue(BoardFx.MESH_AFTER_FLIP >= BoardFx.FLIP_TO && BoardFx.MESH_AFTER_BURST >= BoardFx.ROLL_TO);
+        // The burst's net after the burst, not over it: the crest back in the board, the new score landed, the rings
+        // gone (the second all but faded, the first over); the set's length runs to the net's end.
+        assertEquals(0f, BoardFx.crestAlpha(BoardFx.MESH_AFTER_BURST), 0f);
+        assertEquals(1f, BoardFx.rollMove(BoardFx.MESH_AFTER_BURST), 0f);
+        assertNull(BoardFx.ringAt(BoardFx.MESH_AFTER_BURST, 0));
+        float[] last = BoardFx.ringAt(BoardFx.MESH_AFTER_BURST, 1);
+        assertTrue(last == null || last[1] < 0.02f);
+        assertTrue(BoardFx.glowAlpha(BoardFx.MESH_AFTER_BURST) < 0.15f);
+        assertEquals(BoardFx.MESH_AFTER_BURST + BoardFx.MESH_MS, BoardFx.BURST_MS);
     }
 
     @Test
