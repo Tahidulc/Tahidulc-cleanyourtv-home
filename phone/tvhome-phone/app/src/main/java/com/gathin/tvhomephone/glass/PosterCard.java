@@ -41,12 +41,15 @@ import com.gathin.tvhomephone.live.SourceQuality;
  * poster's own colour (read from the picture, darkened), the title's logo over the fade with its genre and rating under
  * it, where it stands today on the top left ("#1 Today", "Trending", "New") and what the family's own sources have of it
  * on the top right (4K, 1080p, 720p, and Dolby's mark for Dolby Vision or Atmos); the title and its year under the card.
- * Every size follows the card's width, so a row's large cards and a grid's smaller ones look alike.
+ * Every size follows the card's width, so a row's large cards and a grid's smaller ones look alike. Landscape cards (the
+ * family's choice in Settings, "Posters: Landscape") show the title's backdrop at 16:9 with its logo at the foot's left.
  */
 public final class PosterCard extends LinearLayout {
     /** What a card shows. */
     public static final class Info {
         public String title = "", year = "", poster, logo, line = "", badge;
+        /** The backdrop (w780) for a landscape card; the poster stands in where a title has none. */
+        public String backdrop;
         /** The badge's fill for words of its own ("THU 5 · TOMORROW", "3 LEFT"); the known words have their own. */
         public int badgeFill = 0xCC080A1E;
         /** What the sources have (SourceQuality's bits). */
@@ -59,10 +62,13 @@ public final class PosterCard extends LinearLayout {
 
     /** The reference's card is 160dp wide; everything else is in proportion to the width. */
     static final float BASE_DP = 160f;
+    /** A landscape card's words and marks are the size of a 160dp portrait card's at this width. */
+    static final float WIDE_BASE_DP = 256f;
+    private static final String PREFS = "posters", WIDE = "landscape";
     /** The fade's colour for each poster read, so a card scrolled back to has it at once. */
     private static final LruCache<String, Integer> TINTS = new LruCache<>(400);
 
-    /** The picture's card (rounded, 2:3), for a shimmer while its row loads. */
+    /** The picture's card (rounded, 2:3, or 16:9 when landscape), for a shimmer while its row loads. */
     public final FrameLayout art;
     private final ImageView picture, logo;
     private final View bar, barBack;
@@ -72,17 +78,26 @@ public final class PosterCard extends LinearLayout {
     private final TextView dolbyWords;
     private final float scale, radius;
     private final int widthPx, logoW, logoH;
+    /** A landscape card: the backdrop at 16:9, the logo and its line at the foot's left. */
+    private final boolean wide;
     private String bound = "";
     private ValueAnimator tintMove;
     private boolean roomForDolby;
 
     /** widthPx: the card's width; fixed: the card is exactly that wide (a row's), else it fills its cell (a grid's). */
     public PosterCard(Context c, int widthPx, boolean fixed) {
+        this(c, widthPx, fixed, false);
+    }
+
+    /** As above; wide: a landscape card (the backdrop at 16:9) rather than a portrait poster. */
+    public PosterCard(Context c, int widthPx, boolean fixed, boolean wide) {
         super(c);
         setOrientation(VERTICAL);
+        this.wide = wide;
         this.widthPx = Math.max(1, widthPx);
         float density = c.getResources().getDisplayMetrics().density;
-        scale = this.widthPx / (BASE_DP * density);
+        scale = this.widthPx / ((wide ? WIDE_BASE_DP : BASE_DP) * density);
+        fade.wide = wide;
         radius = Math.max(dp(c, 8), px(12));
         float words = Math.max(0.82f, Math.min(1.1f, scale));
 
@@ -103,13 +118,13 @@ public final class PosterCard extends LinearLayout {
         shade.setBackground(fade);
         art.addView(shade, new FrameLayout.LayoutParams(-1, -1));
 
-        // The foot: the logo (or the title in words), then "Genre • ★ 8.2".
+        // The foot: the logo (or the title in words), then "Genre • ★ 8.2"; at the left on a landscape card.
         LinearLayout foot = new LinearLayout(c);
         foot.setOrientation(VERTICAL);
-        foot.setGravity(Gravity.CENTER_HORIZONTAL);
-        foot.setPadding(px(10), 0, px(10), px(13));
-        logoW = Math.round(this.widthPx * 0.8f);
-        logoH = Math.round(this.widthPx * 0.3f);
+        foot.setGravity(wide ? Gravity.START : Gravity.CENTER_HORIZONTAL);
+        foot.setPadding(px(wide ? 13 : 10), 0, px(wide ? 13 : 10), px(wide ? 11 : 13));
+        logoW = Math.round(this.widthPx * (wide ? 0.5f : 0.8f));
+        logoH = Math.round(this.widthPx * (wide ? 0.17f : 0.3f));
         logo = new ImageView(c);
         logo.setAdjustViewBounds(true);
         logo.setMaxWidth(logoW);
@@ -118,7 +133,7 @@ public final class PosterCard extends LinearLayout {
         logo.setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
         foot.addView(logo, new LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT));
         name = Glass.text(c, "", Math.max(13f, 18f * scale), Glass.TEXT, Glass.heading(c, 700));
-        name.setGravity(Gravity.CENTER);
+        name.setGravity(wide ? Gravity.START : Gravity.CENTER);
         name.setMaxLines(2);
         name.setEllipsize(TextUtils.TruncateAt.END);
         name.setLineSpacing(0, 0.92f);
@@ -126,7 +141,7 @@ public final class PosterCard extends LinearLayout {
         name.setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
         foot.addView(name, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
         line = Glass.text(c, "", Math.max(10f, 13.5f * scale), 0xC4FFFFFF, Glass.bodySemi(c));
-        line.setGravity(Gravity.CENTER);
+        line.setGravity(wide ? Gravity.START : Gravity.CENTER);
         line.setSingleLine(true);
         line.setEllipsize(TextUtils.TruncateAt.END);
         line.setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
@@ -259,7 +274,7 @@ public final class PosterCard extends LinearLayout {
             bar.setLayoutParams(lp);
         }
 
-        String url = i.poster == null ? "" : i.poster;
+        String url = wide && i.backdrop != null && !i.backdrop.isEmpty() ? i.backdrop : i.poster == null ? "" : i.poster;
         bound = url;
         if (tintMove != null) tintMove.cancel();
         Integer had = url.isEmpty() ? null : TINTS.get(url);
@@ -269,7 +284,7 @@ public final class PosterCard extends LinearLayout {
             return;
         }
         try {
-            Glide.with(picture).asBitmap().load(url).override(widthPx, widthPx * 3 / 2).centerCrop()
+            Glide.with(picture).asBitmap().load(url).override(widthPx, height(widthPx)).centerCrop()
                     .format(DecodeFormat.PREFER_RGB_565).transition(BitmapTransitionOptions.withCrossFade(180))
                     .into(new BitmapImageViewTarget(picture) {
                         @Override public void onResourceReady(@NonNull Bitmap b, Transition<? super Bitmap> t) {
@@ -347,7 +362,12 @@ public final class PosterCard extends LinearLayout {
         v.setImageDrawable(null);
     }
 
-    /** The card's 2:3 frame, which gives Dolby's mark up when the badge on the left would run into it. */
+    /** The picture's height for a width: 2:3 for a poster, 16:9 for a landscape card. */
+    private int height(int width) {
+        return wide ? width * 9 / 16 : width * 3 / 2;
+    }
+
+    /** The card's 2:3 (or 16:9) frame, which gives Dolby's mark up when the badge on the left would run into it. */
     private final class Art extends FrameLayout {
         Art(Context c) {
             super(c);
@@ -355,7 +375,7 @@ public final class PosterCard extends LinearLayout {
 
         @Override protected void onMeasure(int w, int h) {
             int width = MeasureSpec.getSize(w);
-            super.onMeasure(w, MeasureSpec.makeMeasureSpec(width * 3 / 2, MeasureSpec.EXACTLY));
+            super.onMeasure(w, MeasureSpec.makeMeasureSpec(height(width), MeasureSpec.EXACTLY));
         }
 
         @Override protected void onLayout(boolean changed, int l, int t, int r, int b) {
@@ -464,10 +484,11 @@ public final class PosterCard extends LinearLayout {
         return 0xFF000000 | Math.round((r + m) * 255) << 16 | Math.round((g + m) * 255) << 8 | Math.round((b + m) * 255);
     }
 
-    /** The fade over a poster's foot: clear above, then into its colour, solid at the bottom. */
+    /** The fade over a poster's foot: clear above, then into its colour, solid at the bottom (from higher up on a landscape card). */
     static final class Fade extends Drawable {
         private final Paint paint = new Paint();
         int colour = 0xFF16171C;
+        boolean wide;
         private int madeFor = 1, madeHeight = -1;
 
         void setColour(int c) {
@@ -483,7 +504,7 @@ public final class PosterCard extends LinearLayout {
                 int c = colour & 0x00FFFFFF;
                 paint.setShader(new LinearGradient(0, b.top, 0, b.bottom,
                         new int[]{c, c | 0x8C000000, c | 0xEB000000, c | 0xFF000000},
-                        new float[]{0.42f, 0.64f, 0.82f, 1f}, Shader.TileMode.CLAMP));
+                        wide ? new float[]{0.24f, 0.52f, 0.8f, 1f} : new float[]{0.42f, 0.64f, 0.82f, 1f}, Shader.TileMode.CLAMP));
                 madeFor = colour;
                 madeHeight = b.height();
             }
@@ -505,8 +526,30 @@ public final class PosterCard extends LinearLayout {
 
     /** A row's card width for this screen: 37% of a phone's width (two and a bit across, as the reference), 136–176dp; 176dp on a tablet. */
     public static int rowWidth(Context c) {
+        return rowWidth(c, false);
+    }
+
+    /** As above, or a landscape card's: 66% of a phone's width (one and a half across), 220–300dp; 300dp on a tablet. */
+    public static int rowWidth(Context c, boolean wide) {
         int sw = c.getResources().getConfiguration().screenWidthDp;
-        float w = sw >= 600 ? 176f : Math.max(136f, Math.min(176f, sw * 0.37f));
+        float w = wide ? (sw >= 600 ? 300f : Math.max(220f, Math.min(300f, sw * 0.66f)))
+                : sw >= 600 ? 176f : Math.max(136f, Math.min(176f, sw * 0.37f));
         return Math.round(TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, w, c.getResources().getDisplayMetrics()));
+    }
+
+    /** Whether the family chose landscape posters (Settings, "Posters"); portrait unless chosen. */
+    public static boolean wide(Context c) {
+        return c.getApplicationContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(WIDE, false);
+    }
+
+    /** Portrait or landscape posters from now on: Home and Watch draw them so as they next open. */
+    public static void setWide(Context c, boolean wide) {
+        c.getApplicationContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean(WIDE, wide).apply();
+    }
+
+    /** Pure: a TMDB picture's address at the card's size (w780) when it was asked for larger (w1280, original). */
+    public static String cardSize(String url) {
+        if (url == null || url.isEmpty()) return url;
+        return url.replace("/w1280/", "/w780/").replace("/original/", "/w780/");
     }
 }

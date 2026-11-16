@@ -210,11 +210,11 @@ final class GuideGrid extends FrameLayout {
     }
 
     /**
-     * The width the time runs across: the whole row from its start to the screen's edge (the logo's tile lies over its
-     * start; the programmes run on past the right edge, as the screen is filled).
+     * The width the time runs across: the whole row, edge to edge of the screen (the logo's tile lies over its start;
+     * the programmes run on past the right edge, as the screen is filled).
      */
     private float viewport() {
-        return getWidth() - (float) margin;
+        return getWidth();
     }
 
     private void setOffset(float o) {
@@ -618,13 +618,13 @@ final class GuideGrid extends FrameLayout {
             Timeline tl = st.tl;
             if (tl == null || Float.isNaN(st.offset)) return;
             float w = getWidth(), h = getHeight(), off = st.offset, base = h * 0.66f;
-            // Nothing under the day's name: the times start after the logos' column.
-            float from = margin + colW + Ui.dp(getContext(), 24);
-            float nx = margin + tl.x(st.now) - off;
+            // Nothing under the day's name: the times start after the logos' column (the rows start at the screen's edge).
+            float from = colW + Ui.dp(getContext(), 24);
+            float nx = tl.x(st.now) - off;
             boolean nowSeen = nx >= from - markW && nx <= w;
             long tL = tl.time(off - room), tR = tl.time(off + w);
             for (long t = Timeline.ceilHalfHour(tL, st.tz); t <= tR; t += Timeline.HALF_HOUR) {
-                float x = margin + tl.x(t) - off;
+                float x = tl.x(t) - off;
                 if (x < from) continue;
                 if (nowSeen && Math.abs(x - nx) < room * 1.2f) continue;
                 int len = st.clock(t, 0);
@@ -678,15 +678,17 @@ final class GuideGrid extends FrameLayout {
             super(new FrameLayout(c));
             FrameLayout item = (FrameLayout) itemView;
             item.setLayoutParams(new RecyclerView.LayoutParams(-1, rowH));
-            // No inset at the right: the programmes run to the screen's edge (5.15), not into a black strip.
-            item.setPadding(margin, 0, 0, Ui.dp(c, 8));
+            // No inset at either side: the logos' column starts at the screen's left edge (5.16) and the programmes run to
+            // its right edge (5.15), with no black strip at either.
+            item.setPadding(0, 0, 0, Ui.dp(c, 8));
             blocks = new Blocks(c, st);
             blocks.noGuide = c.getString(R.string.live_no_guide_info);
             item.addView(blocks, new FrameLayout.LayoutParams(-1, -1));
             // The logo's tile over the row's start, in the logo's colour.
             tile = new FrameLayout(c);
             ground = new android.graphics.drawable.GradientDrawable();
-            ground.setCornerRadius(st.radius);
+            // Square at the screen's edge, round where it meets the programmes.
+            ground.setCornerRadii(new float[]{0, 0, st.radius, st.radius, st.radius, st.radius, 0, 0});
             tile.setBackground(new android.graphics.drawable.RippleDrawable(ColorStateList.valueOf(0x33FFFFFF), ground, null));
             tile.setClipToOutline(true);
             initials = Ui.text(c, "", wide ? 18 : 16, Ui.TEXT, true);

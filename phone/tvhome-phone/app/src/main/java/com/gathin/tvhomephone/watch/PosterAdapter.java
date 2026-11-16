@@ -68,7 +68,7 @@ public final class PosterAdapter extends RecyclerView.Adapter<PosterAdapter.Hold
         int pad = Ui.dp(c, 6);
         cell.setPadding(pad, pad, pad, pad);
         int w = widthPx > 0 ? widthPx : columnWidth(parent, c) - 2 * pad;
-        PosterCard card = new PosterCard(c, w, widthPx > 0);
+        PosterCard card = new PosterCard(c, w, widthPx > 0, PosterCard.wide(c));
         cell.addView(card, new LinearLayout.LayoutParams(widthPx > 0 ? widthPx : -1, -2));
         cell.setLayoutParams(new RecyclerView.LayoutParams(widthPx > 0 ? widthPx + 2 * pad : -1, -2));
         return new Holder(cell, card);
@@ -116,6 +116,7 @@ public final class PosterAdapter extends RecyclerView.Adapter<PosterAdapter.Hold
         i.title = t.title;
         i.year = t.year;
         i.poster = t.poster;
+        i.backdrop = PosterCard.cardSize(t.backdrop);
         String logo = t.logo != null ? t.logo : Logos.known(t.tv, t.id);
         i.logo = logo;
         i.logoKnown = logo != null || t.id <= 0;

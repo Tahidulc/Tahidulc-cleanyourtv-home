@@ -54,7 +54,7 @@ public final class HomeWatch {
         box.addView(night, Ui.fill());
         filmNight(host, night);
 
-        PosterAdapter resume = new PosterAdapter((t, i) -> TitleActivity.open(c, t), null, com.gathin.tvhomephone.glass.PosterCard.rowWidth(c));
+        PosterAdapter resume = new PosterAdapter((t, i) -> TitleActivity.open(c, t), null, com.gathin.tvhomephone.glass.PosterCard.rowWidth(c, com.gathin.tvhomephone.glass.PosterCard.wide(c)));
         LinearLayout resumeBox = rowSection(c, "Continue watching", resume);
         box.addView(resumeBox, Ui.fill());
         List<Title> cached = withResume ? Lists.resume(c) : new ArrayList<>();
@@ -67,7 +67,7 @@ public final class HomeWatch {
             resumeBox.setVisibility(now.isEmpty() ? View.GONE : View.VISIBLE);
         });
 
-        PosterAdapter fresh = new PosterAdapter((t, i) -> TitleActivity.open(c, t), null, com.gathin.tvhomephone.glass.PosterCard.rowWidth(c));
+        PosterAdapter fresh = new PosterAdapter((t, i) -> TitleActivity.open(c, t), null, com.gathin.tvhomephone.glass.PosterCard.rowWidth(c, com.gathin.tvhomephone.glass.PosterCard.wide(c)));
         LinearLayout freshBox = rowSection(c, "New today", fresh);
         freshBox.setVisibility(View.GONE);
         box.addView(freshBox, Ui.fill());

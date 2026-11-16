@@ -595,3 +595,8 @@ along the top already did. The channels' logo tiles keep their place at the left
 now names the channel from the family's own playlists likeliest to show it, with its logo, and a tap plays it. English
 channels come first: a "UK:", "US:" or "IE -" tag, or a British, Irish or American network. Next come channels that don't
 say, then those in another language. "Also Showing On" and the Watch buttons on alerts list English channels first too.
+
+**Posters your way, and the guide to both edges (5.16).** Settings has a Films and TV shows section with one choice,
+Posters: Portrait or Landscape. Landscape cards show each title's picture wide (16:9), with its logo, genre and rating
+at the foot's left, and the same "#1 Today", "Trending" and "New" badges and 4K and Dolby marks; Watch's grid goes to
+two across. The Live TV guide's logos now start at the screen's left edge, so neither side of the guide has a black strip.

@@ -2,6 +2,7 @@ package com.gathin.tvhomephone.glass;
 
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 import com.gathin.tvhomephone.live.SourceQuality;
@@ -24,6 +25,14 @@ public class PosterCardTest {
         assertEquals("VISION", PosterCard.dolbyWords(SourceQuality.of("Film 2160p Dolby Vision")));
         assertEquals("ATMOS", PosterCard.dolbyWords(SourceQuality.of("Film 1080p DDPA5.1")));
         assertEquals("", PosterCard.dolbyWords(SourceQuality.of("Film 2160p HDR10")));
+    }
+
+    @Test public void aLandscapeCardAsksForTheBackdropAtItsOwnSize() {
+        assertEquals("https://image.tmdb.org/t/p/w780/a.jpg", PosterCard.cardSize("https://image.tmdb.org/t/p/w1280/a.jpg"));
+        assertEquals("https://image.tmdb.org/t/p/w780/a.jpg", PosterCard.cardSize("https://image.tmdb.org/t/p/original/a.jpg"));
+        assertEquals("https://image.tmdb.org/t/p/w780/a.jpg", PosterCard.cardSize("https://image.tmdb.org/t/p/w780/a.jpg"));
+        assertEquals("", PosterCard.cardSize(""));
+        assertNull(PosterCard.cardSize(null));
     }
 
     @Test public void eachKindOfBadgeHasItsLook() {

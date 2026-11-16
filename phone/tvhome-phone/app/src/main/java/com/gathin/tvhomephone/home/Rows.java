@@ -116,8 +116,8 @@ final class Rows {
     static final class PosterHolder extends RecyclerView.ViewHolder {
         final PosterCard card;
 
-        PosterHolder(Context c, int w) {
-            super(new PosterCard(c, w, true));
+        PosterHolder(Context c, int w, boolean wide) {
+            super(new PosterCard(c, w, true, wide));
             card = (PosterCard) itemView;
             RecyclerView.LayoutParams lp = new RecyclerView.LayoutParams(w, ViewGroup.LayoutParams.WRAP_CONTENT);
             lp.rightMargin = Glass.dp(c, GAP);
@@ -139,6 +139,7 @@ final class Rows {
         i.title = p.title;
         i.year = p.year;
         i.poster = p.poster;
+        i.backdrop = PosterCard.cardSize(p.backdrop);
         String logo = p.logo != null ? p.logo : Logos.known(p.tv, p.id);
         i.logo = logo;
         i.logoKnown = logo != null || p.id <= 0;
@@ -163,10 +164,13 @@ final class Rows {
         private List<Pick> items;
         private final OnPick tap;
         private final int w;
+        /** Landscape cards (Settings, "Posters"), as the row was made. */
+        private final boolean wide;
 
         Posters(Context c, OnPick tap) {
             this.tap = tap;
-            w = PosterCard.rowWidth(c);
+            wide = PosterCard.wide(c);
+            w = PosterCard.rowWidth(c, wide);
         }
 
         void set(List<Pick> list) {
@@ -179,7 +183,7 @@ final class Rows {
         }
 
         @NonNull @Override public PosterHolder onCreateViewHolder(@NonNull ViewGroup parent, int type) {
-            return new PosterHolder(parent.getContext(), w);
+            return new PosterHolder(parent.getContext(), w, wide);
         }
 
         @Override public void onBindViewHolder(@NonNull PosterHolder holder, int i) {
