@@ -38,7 +38,10 @@ public final class TorBox {
     /** The library read again after this long: a film just added to TorBox shows here within it (or at once, Check). */
     private static final long FRESH_MS = 2 * 60_000L;
     /** At most this many versions of a film offered. */
-    private static final int VERSIONS = 4;
+    /** Every version of a film the account has (TorBox's are listed first and all of them); this only a guard. */
+    private static final int VERSIONS = 12;
+    /** After TorBox didn't answer, the pages go without it this long (then ask again; a retry first, at once). */
+    private static final long FAILED_MS = 20_000L;
     /** A list read a page at a time, at most this many pages. */
     private static final int PAGE = 1000, PAGES = 5;
     private static final long MB = 1024L * 1024;
@@ -166,14 +169,21 @@ public final class TorBox {
         List<File> have = library;
         if (!fresh && have != null && k.equals(libraryFor) && now - libraryAt < FRESH_MS) return have;
         // Not answering a moment ago: the pages don't wait on it again until the while is up.
-        if (!fresh && k.equals(failedFor) && now - failedAt < FRESH_MS) throw new IOException("TorBox wasn't answering");
+        if (!fresh && k.equals(failedFor) && now - failedAt < FAILED_MS) throw new IOException("TorBox wasn't answering");
         List<File> out = new ArrayList<>();
         try {
             read(out, k, "torrents", "torrent");
-        } catch (IOException e) {
-            failedAt = now;
-            failedFor = k;
-            throw e;
+        } catch (IOException first) {
+            // A moment's retry before the page goes without TorBox: its files are the ones listed first.
+            out.clear();
+            try {
+                Thread.sleep(1200);
+                read(out, k, "torrents", "torrent");
+            } catch (IOException | InterruptedException e) {
+                failedAt = System.currentTimeMillis();
+                failedFor = k;
+                throw first;
+            }
         }
         try {
             read(out, k, "usenet", "usenet");

@@ -147,7 +147,7 @@ final class Feed {
     /** What the picks depend on: the playlists in use, TMDB, what was watched and rated. Changes make them again. */
     static String signature(Context c) {
         // "p2": the picks carry their posters' badges and the sources' picture (5.13); older ones are made again once.
-        StringBuilder b = new StringBuilder("p2|");
+        StringBuilder b = new StringBuilder("p3|");
         for (Sources.Entry e : Sources.inUse(c)) b.append(e.id).append(',');
         b.append(Tmdb.ready(c) ? "T" : "-").append('|');
         for (Watched.Entry e : Watched.list(c)) {

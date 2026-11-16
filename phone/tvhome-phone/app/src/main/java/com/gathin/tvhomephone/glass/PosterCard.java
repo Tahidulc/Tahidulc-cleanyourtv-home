@@ -74,8 +74,10 @@ public final class PosterCard extends LinearLayout {
     private final View bar, barBack;
     private final Fade fade = new Fade();
     private final TextView badge, name, line, title, year, chip;
-    private final LinearLayout marks, dolby;
-    private final TextView dolbyWords;
+    private final LinearLayout marks, dolby, corner;
+    private final TextView dolbyWords, hdrChip;
+    /** What the sources have, as last shown (SourceQuality's bits). */
+    private int quality;
     private final float scale, radius;
     private final int widthPx, logoW, logoH;
     /** A landscape card: the backdrop at 16:9, the logo and its line at the foot's left. */
@@ -189,9 +191,27 @@ public final class PosterCard extends LinearLayout {
         white.setCornerRadius(px(4));
         chip.setBackground(white);
         marks.addView(chip);
+        // Under them, the HDR in words ("HDR10", "HDR10+", "HLG", "HDR"; "DV" when Dolby's mark has no room), outlined.
+        hdrChip = Glass.text(c, "", Math.max(8.5f, 9.5f * scale), 0xFFFFFFFF, Glass.heading(c, 700));
+        hdrChip.setSingleLine(true);
+        hdrChip.setLetterSpacing(0.04f);
+        hdrChip.setPadding(px(4.5f), px(1.5f), px(4.5f), px(1.5f));
+        GradientDrawable outline = new GradientDrawable();
+        outline.setColor(0x73000000);
+        outline.setStroke(Math.max(1, px(1)), 0xE6FFFFFF);
+        outline.setCornerRadius(px(4));
+        hdrChip.setBackground(outline);
+        hdrChip.setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
+        corner = new LinearLayout(c);
+        corner.setOrientation(VERTICAL);
+        corner.setGravity(Gravity.END);
+        corner.addView(marks, new LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT));
+        LayoutParams hp = new LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT);
+        hp.topMargin = px(4);
+        corner.addView(hdrChip, hp);
         FrameLayout.LayoutParams mp = new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.END);
         mp.setMargins(0, px(11), px(10), 0);
-        art.addView(marks, mp);
+        art.addView(corner, mp);
 
         // How far through, along the foot.
         barBack = new View(c);
@@ -250,14 +270,7 @@ public final class PosterCard extends LinearLayout {
             badge.setBackground(pill);
         }
 
-        String pic = SourceQuality.picture(i.quality);
-        chip.setText(pic);
-        chip.setVisibility(pic.isEmpty() ? GONE : VISIBLE);
-        String dw = dolbyWords(i.quality);
-        roomForDolby = scale >= 0.8f;
-        dolbyWords.setText(dw);
-        dolby.setVisibility(dw.isEmpty() || !roomForDolby ? GONE : VISIBLE);
-        marks.setVisibility(pic.isEmpty() && dolby.getVisibility() == GONE ? GONE : VISIBLE);
+        showQuality(i.quality);
 
         line.setText(i.line == null ? "" : i.line);
         line.setVisibility(i.line == null || i.line.isEmpty() ? GONE : VISIBLE);
@@ -301,6 +314,32 @@ public final class PosterCard extends LinearLayout {
         }
     }
 
+    /** What the sources have, learnt after the card showed (the provider's own facts): its corner's marks again. */
+    public void setQuality(int q) {
+        if (q != quality) showQuality(q);
+    }
+
+    /** The corner: the picture's chip, Dolby's mark beside it (room allowing), the HDR in words under them. */
+    private void showQuality(int q) {
+        quality = q;
+        String pic = SourceQuality.picture(q);
+        chip.setText(pic);
+        chip.setVisibility(pic.isEmpty() ? GONE : VISIBLE);
+        String dw = dolbyWords(q);
+        roomForDolby = scale >= 0.8f;
+        dolbyWords.setText(dw);
+        dolby.setVisibility(dw.isEmpty() || !roomForDolby ? GONE : VISIBLE);
+        marks.setVisibility(pic.isEmpty() && dolby.getVisibility() == GONE ? GONE : VISIBLE);
+        showHdr();
+    }
+
+    private void showHdr() {
+        String hw = hdrWords(quality, dolby.getVisibility() == VISIBLE);
+        hdrChip.setText(hw);
+        hdrChip.setVisibility(hw.isEmpty() ? GONE : VISIBLE);
+        corner.setVisibility(marks.getVisibility() == GONE && hdrChip.getVisibility() == GONE ? GONE : VISIBLE);
+    }
+
     /** The logo, read after the card showed ("" for none: the title in words instead). */
     public void setLogo(String url) {
         showLogo(true, url, title.getText().toString());
@@ -333,7 +372,8 @@ public final class PosterCard extends LinearLayout {
         clear(logo);
         fade.setColour(0x00000000);
         badge.setVisibility(GONE);
-        marks.setVisibility(GONE);
+        corner.setVisibility(GONE);
+        quality = 0;
         name.setVisibility(GONE);
         logo.setVisibility(GONE);
         line.setVisibility(GONE);
@@ -381,9 +421,11 @@ public final class PosterCard extends LinearLayout {
         @Override protected void onLayout(boolean changed, int l, int t, int r, int b) {
             super.onLayout(changed, l, t, r, b);
             if (dolby.getVisibility() == VISIBLE && badge.getVisibility() == VISIBLE
-                    && badge.getRight() + px(6) > marks.getLeft()) {
-                // Too tight for both: the picture's chip stays, Dolby's mark goes.
+                    && badge.getRight() + px(6) > corner.getLeft() + marks.getLeft()) {
+                // Too tight for both: the picture's chip stays, Dolby's mark goes (its Vision said as "DV" under it).
                 dolby.setVisibility(GONE);
+                if (chip.getVisibility() == GONE) marks.setVisibility(GONE);
+                showHdr();
                 post(this::requestLayout);
             }
         }
@@ -417,6 +459,15 @@ public final class PosterCard extends LinearLayout {
         if (dv && atmos) return "ATMOS·VISION";
         if (dv) return "VISION";
         return atmos ? "ATMOS" : "";
+    }
+
+    /**
+     * Pure: the HDR in words for the chip under the picture's: "HDR10+", "HDR10", "HLG", "HDR"; Dolby Vision as "DV"
+     * only when Dolby's own mark isn't shown (it says "VISION" itself); "" for none.
+     */
+    static String hdrWords(int quality, boolean dolbyShown) {
+        if (SourceQuality.dolbyVision(quality)) return dolbyShown ? "" : "DV";
+        return SourceQuality.hdr(quality);
     }
 
     /** Pure: a badge's fill and ink: "#1 Today" dark, "Trending" light teal, "New" amber; any other, the fill given in white. */

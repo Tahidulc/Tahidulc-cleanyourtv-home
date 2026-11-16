@@ -103,6 +103,11 @@ public final class Vod {
     /** The first playlist's index (as it was before there could be several); the others' are vod.<id>.tsv. */
     private static final String FILE = "vod.tsv";
     private static final long DAY = 24 * 3600_000L;
+    /**
+     * The index's first line: which kind of playlist it is and its columns' version. "2": each row's category too (its
+     * 12th column), for what a category says of its titles' picture ("4K UHD MOVIES"); an older index is read again.
+     */
+    private static final String XTREAM = "#xtream2", M3U = "#m3u2";
     private static final Pattern EPISODE = Pattern.compile("(?i)^(.*?)[\\s._-]*S(\\d{1,2})[\\s._-]*E(\\d{1,3})\\b[\\s._-]*(.*)$");
     private static final Pattern LEAD = Pattern.compile("^\\s*[\\[(|]?\\s*([A-Za-z0-9+]{1,6})\\s*[\\])|:\\-]+\\s*");
     private static final Pattern YEAR = Pattern.compile("(?:^|[\\s(\\[._-])((?:19|20)\\d{2})(?:$|[\\s)\\]._-])");
@@ -122,15 +127,15 @@ public final class Vod {
         File f = file(c, id);
         File tmp = new File(f.getPath() + ".part");
         try (BufferedWriter w = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(tmp), StandardCharsets.UTF_8))) {
-            w.write("#m3u\n");
+            w.write(M3U + "\n");
             for (String[] e : entries) {
                 String name = e[0], url = e[1], ua = e[3] == null ? "" : e[3], ref = e[4] == null ? "" : e[4];
                 Matcher m = EPISODE.matcher(name);
                 boolean series = url.contains("/series/") || "series".equalsIgnoreCase(e[5]) || m.matches();
                 if (series && m.matches()) {
-                    row(w, "episode", m.group(1).trim(), m.group(2), m.group(3), m.group(4).trim(), url, ua, ref, "", "", "");
+                    row(w, "episode", m.group(1).trim(), m.group(2), m.group(3), m.group(4).trim(), url, ua, ref, "", "", "", e[2]);
                 } else {
-                    row(w, "movie", name, "", "", "", url, ua, ref, "", year(name), "");
+                    row(w, "movie", name, "", "", "", url, ua, ref, "", year(name), "", e[2]);
                 }
             }
         } catch (IOException e) {
@@ -171,8 +176,8 @@ public final class Vod {
         File f = file(c, e.id);
         Source s = e.source;
         if (Source.XTREAM.equals(s.type)) {
-            if (!f.exists() || System.currentTimeMillis() - f.lastModified() > DAY || !header(f).equals("#xtream")) xtream(c, s, f);
-        } else if (!f.exists() || !header(f).equals("#m3u")) {
+            if (!f.exists() || System.currentTimeMillis() - f.lastModified() > DAY || !header(f).equals(XTREAM)) xtream(c, s, f);
+        } else if (!f.exists() || !header(f).equals(M3U)) {
             // Not read yet (Live TV reads it too, and keeps its films then): the playlist read for them now.
             try (InputStream in = Fetch.open(s.m3uUrl, null); Reader r = new InputStreamReader(in, StandardCharsets.UTF_8)) {
                 saveM3u(c, e.id, M3u.parse(r).vod);
@@ -198,9 +203,11 @@ public final class Vod {
         if (base.isEmpty()) return;
         File tmp = new File(f.getPath() + ".part");
         try (BufferedWriter w = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(tmp), StandardCharsets.UTF_8))) {
-            w.write("#xtream\n");
-            list(Xtream.api(base, s.user, s.pass, "get_vod_streams"), w, false);
-            list(Xtream.api(base, s.user, s.pass, "get_series"), w, true);
+            w.write(XTREAM + "\n");
+            list(Xtream.api(base, s.user, s.pass, "get_vod_streams"), w, false,
+                    categories(Xtream.api(base, s.user, s.pass, "get_vod_categories")));
+            list(Xtream.api(base, s.user, s.pass, "get_series"), w, true,
+                    categories(Xtream.api(base, s.user, s.pass, "get_series_categories")));
         } catch (IOException e) {
             tmp.delete();
             return;
@@ -208,7 +215,22 @@ public final class Vod {
         if (!tmp.renameTo(f)) tmp.delete();
     }
 
-    private static void list(String url, BufferedWriter w, boolean series) throws IOException {
+    /** An Xtream account's categories, id → name ("4K UHD MOVIES"); none when they can't be read (the names alone then). */
+    private static java.util.Map<String, String> categories(String url) {
+        java.util.Map<String, String> out = new java.util.HashMap<>();
+        try (InputStream in = Fetch.open(url, null)) {
+            JSONArray a = new JSONArray(new String(readAll(in), StandardCharsets.UTF_8));
+            for (int i = 0; i < a.length(); i++) {
+                JSONObject o = a.optJSONObject(i);
+                if (o != null && !o.optString("category_id").isEmpty()) out.put(o.optString("category_id"), o.optString("category_name"));
+            }
+        } catch (Exception ignored) {
+            // the names alone
+        }
+        return out;
+    }
+
+    private static void list(String url, BufferedWriter w, boolean series, java.util.Map<String, String> cats) throws IOException {
         try (InputStream in = Fetch.open(url, null); JsonReader jr = new JsonReader(new InputStreamReader(in, StandardCharsets.UTF_8))) {
             jr.setLenient(true);
             if (jr.peek() != JsonToken.BEGIN_ARRAY) return;
@@ -218,7 +240,7 @@ public final class Vod {
                     jr.skipValue();
                     continue;
                 }
-                String id = "", name = "", tmdb = "", ext = "", year = "";
+                String id = "", name = "", tmdb = "", ext = "", year = "", cat = "";
                 jr.beginObject();
                 while (jr.hasNext()) {
                     String k = jr.nextName();
@@ -234,14 +256,16 @@ public final class Vod {
                         case "tmdb": case "tmdb_id": if (tmdb.isEmpty()) tmdb = v; break;
                         case "container_extension": ext = v; break;
                         case "releaseDate": case "release_date": case "year": if (year.isEmpty()) year = year(v); break;
+                        case "category_id": cat = v; break;
                         default: break;
                     }
                 }
                 jr.endObject();
                 if (id.isEmpty() || name.isEmpty()) continue;
                 if (year.isEmpty()) year = year(name);
-                if (series) row(w, "series", name, "", "", "", "", "", "", tmdb, year, id);
-                else row(w, "movie", name, "", "", "", "x:movie:" + id + "." + (ext.isEmpty() ? "mp4" : ext), "", "", tmdb, year, "");
+                String group = cats.get(cat);
+                if (series) row(w, "series", name, "", "", "", "", "", "", tmdb, year, id, group);
+                else row(w, "movie", name, "", "", "", "x:movie:" + id + "." + (ext.isEmpty() ? "mp4" : ext), "", "", tmdb, year, "", group);
             }
             jr.endArray();
         } catch (IllegalStateException | NumberFormatException e) {
@@ -275,6 +299,15 @@ public final class Vod {
             else main.alternates.add(it);
         }
         return main;
+    }
+
+    /** The Xtream accounts' versions of a title, for asking their providers about them (StreamFacts). Off the main thread. */
+    static List<Item> inXtream(Context c, String title, String year, int tmdbId, boolean tv) {
+        List<Item> out = new ArrayList<>();
+        for (Sources.Entry e : Sources.inUse(c)) {
+            if (e.source != null && Source.XTREAM.equals(e.source.type)) out.addAll(findIn(c, e, title, null, year, tmdbId, tv));
+        }
+        return out;
     }
 
     /** At most this many versions of a title from one playlist (its 4K, its HD, …). */

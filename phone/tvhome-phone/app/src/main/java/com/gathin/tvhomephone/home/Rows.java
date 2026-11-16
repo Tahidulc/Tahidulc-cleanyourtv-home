@@ -194,9 +194,17 @@ final class Rows {
             }
             Pick p = items.get(i);
             PosterCard.Info info = info(p);
+            int said = com.gathin.tvhomephone.live.StreamFacts.known(c, p.tv, p.id, p.title, p.year);
+            if (said > 0) info.quality = SourceQuality.best(info.quality, said);
             holder.card.bind(info);
             String key = (p.tv ? "tv:" : "mv:") + p.id + ":" + p.title;
             holder.itemView.setTag(key);
+            if (said < 0) {
+                // What the provider itself says of the stream (its picture, HDR, Atmos), once a title.
+                com.gathin.tvhomephone.live.StreamFacts.ask(c, p.tv, p.id, p.title, p.year, bits -> {
+                    if (key.equals(holder.itemView.getTag())) holder.card.setQuality(SourceQuality.best(p.quality, bits));
+                });
+            }
             if (!info.logoKnown) {
                 Logos.ask(c, p.tv, p.id, logo -> {
                     if (key.equals(holder.itemView.getTag())) holder.card.setLogo(logo);

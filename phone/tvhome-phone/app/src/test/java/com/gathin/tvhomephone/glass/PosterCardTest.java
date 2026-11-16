@@ -35,6 +35,16 @@ public class PosterCardTest {
         assertNull(PosterCard.cardSize(null));
     }
 
+    @Test public void theHdrInWordsUnderThePicturesChip() {
+        assertEquals("HDR10", PosterCard.hdrWords(SourceQuality.of("Film 2160p HDR10"), false));
+        assertEquals("HDR10+", PosterCard.hdrWords(SourceQuality.of("Film 2160p HDR10+"), false));
+        assertEquals("HLG", PosterCard.hdrWords(SourceQuality.of("Film 2160p HLG"), false));
+        // Dolby's own mark says Vision; without room for it, "DV".
+        assertEquals("", PosterCard.hdrWords(SourceQuality.of("Film 2160p DV"), true));
+        assertEquals("DV", PosterCard.hdrWords(SourceQuality.of("Film 2160p DV"), false));
+        assertEquals("", PosterCard.hdrWords(SourceQuality.of("Film 1080p"), false));
+    }
+
     @Test public void eachKindOfBadgeHasItsLook() {
         assertArrayEquals(new int[]{0xD9161618, 0xFFFFFFFF}, PosterCard.badgeLook("#1 Today", 0));
         assertArrayEquals(new int[]{0xFFC9EBEE, 0xFF0F2A2E}, PosterCard.badgeLook("Trending", 0));

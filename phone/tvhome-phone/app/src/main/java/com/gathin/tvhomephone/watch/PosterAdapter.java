@@ -87,10 +87,19 @@ public final class PosterAdapter extends RecyclerView.Adapter<PosterAdapter.Hold
     @Override public void onBindViewHolder(@NonNull Holder h, int position) {
         Title t = items.get(position);
         Context c = h.itemView.getContext();
+        int said = com.gathin.tvhomephone.live.StreamFacts.known(c, t.tv, t.id, t.title, t.year);
+        if (said > 0) t.quality = SourceQuality.best(t.quality, said);
         PosterCard.Info info = info(t);
         h.card.bind(info);
         String key = t.key() + ":" + t.title;
         h.itemView.setTag(key);
+        if (said < 0) {
+            // What the provider itself says of the stream (its picture, HDR, Atmos), once a title.
+            com.gathin.tvhomephone.live.StreamFacts.ask(c, t.tv, t.id, t.title, t.year, bits -> {
+                t.quality = SourceQuality.best(t.quality, bits);
+                if (key.equals(h.itemView.getTag())) h.card.setQuality(t.quality);
+            });
+        }
         if (!info.logoKnown) {
             Logos.ask(c, t.tv, t.id, logo -> {
                 t.logo = logo;

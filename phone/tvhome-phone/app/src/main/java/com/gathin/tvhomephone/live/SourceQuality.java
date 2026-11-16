@@ -44,6 +44,20 @@ public final class SourceQuality {
         return v | h << 3 | (atmos ? ATMOS : 0);
     }
 
+    /** A category's name that says its picture outright ("4K MOVIES", "UHD", "2160p", "FHD | 1080p", "720p"). */
+    private static final Pattern GROUP_PICTURE = Pattern.compile("(?i)(?:^|[^a-z0-9])(4k|uhd|2160p?|fhd|1080p?|720p)(?:$|[^a-z0-9])");
+
+    /**
+     * Pure: what a playlist's category says of every title in it ("4K UHD MOVIES", "DOLBY VISION", "HDR | 4K"), its
+     * strong words only: a bare "HD" or "SD" in a category's name ("HD MOVIES") says nothing of a film's picture.
+     */
+    public static int ofGroup(String group) {
+        int q = of(group);
+        if (q == 0) return 0;
+        if (!GROUP_PICTURE.matcher(group).find()) q &= ~7;
+        return q;
+    }
+
     /** Pure: the better of two, part by part (the sharpest picture, the best HDR, Atmos if either has it). */
     public static int best(int a, int b) {
         int v = Math.max(a & 7, b & 7), h = Math.max(a >> 3 & 7, b >> 3 & 7);

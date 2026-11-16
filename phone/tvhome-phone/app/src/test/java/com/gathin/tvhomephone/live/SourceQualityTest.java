@@ -84,4 +84,26 @@ public class SourceQualityTest {
         assertEquals("odyssey", TorBox.firstWord("The Odyssey"));
         assertEquals("", TorBox.firstWord("It"));
     }
+
+    @Test public void aCategorysStrongWordsCountForItsTitles() {
+        assertEquals("4K", SourceQuality.picture(SourceQuality.ofGroup("|EN| 4K UHD MOVIES")));
+        assertEquals("4K", SourceQuality.picture(SourceQuality.ofGroup("Movies 2160p")));
+        assertEquals("1080p", SourceQuality.picture(SourceQuality.ofGroup("FHD | Films")));
+        assertEquals("Dolby Vision", SourceQuality.hdr(SourceQuality.ofGroup("4K - DOLBY VISION")));
+        assertEquals("HDR10", SourceQuality.hdr(SourceQuality.ofGroup("HDR10 Collection")));
+        // A bare HD or SD in a category's name says nothing of a film's picture.
+        assertEquals(0, SourceQuality.ofGroup("HD MOVIES"));
+        assertEquals(0, SourceQuality.ofGroup("SD Classics"));
+        assertEquals(0, SourceQuality.ofGroup("Action"));
+        assertEquals(0, SourceQuality.ofGroup(null));
+    }
+
+    @Test public void aTitleIsAsGoodAsItsCategorySays() {
+        Catalogue cat = new Catalogue(2025);
+        cat.add("movie", "Harbour Lights (2024)", "9001", "2024", "", "4K UHD MOVIES");
+        cat.add("movie", "Quiet Field (2023)", "9002", "2023", "", "HD MOVIES");
+        assertEquals("4K", SourceQuality.picture(cat.quality(9001, false, "Harbour Lights", null, "2024")));
+        assertEquals("4K", SourceQuality.picture(cat.quality(0, false, "Harbour Lights", null, "2024")));
+        assertEquals(0, cat.quality(9002, false, "Quiet Field", null, "2023"));
+    }
 }

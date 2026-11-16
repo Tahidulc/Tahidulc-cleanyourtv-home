@@ -600,3 +600,11 @@ say, then those in another language. "Also Showing On" and the Watch buttons on 
 Posters: Portrait or Landscape. Landscape cards show each title's picture wide (16:9), with its logo, genre and rating
 at the foot's left, and the same "#1 Today", "Trending" and "New" badges and 4K and Dolby marks; Watch's grid goes to
 two across. The Live TV guide's logos now start at the screen's left edge, so neither side of the guide has a black strip.
+
+**Cast, automatic subtitles, and posters that say their quality (5.17).** Live TV has a Cast button, in its top bar
+and in the player: the family's TVs (Homefield TV plays the channel itself), Chromecasts and Google TVs, and DLNA sets
+on the same Wi-Fi. The player's subtitles add Automatic: captions made on the phone from the channel's speech (the
+phone's own recogniser, or an English model of about 40 MB downloaded once), which never leave it. Posters say their
+picture and HDR (4K, 1080p, HDR10, HDR10+, HLG, DV) from the playlists' categories too, and from what the provider
+itself read of each stream, asked once a title as its poster shows. TorBox's films come first with every version the
+account has, with a moment's retry when TorBox is slow to answer.

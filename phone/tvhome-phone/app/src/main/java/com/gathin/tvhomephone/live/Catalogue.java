@@ -60,6 +60,11 @@ public final class Catalogue {
 
     /** The same, with an episode's own name too (what it says of the picture counts for its series). Pure. */
     public void add(String kind, String name, String tmdb, String year, String also) {
+        add(kind, name, tmdb, year, also, null);
+    }
+
+    /** The same, with the playlist's category it is in ("4K UHD MOVIES": what it says counts for its titles). Pure. */
+    public void add(String kind, String name, String tmdb, String year, String also, String group) {
         if (name == null || name.isEmpty()) return;
         boolean tv = "series".equals(kind) || "episode".equals(kind);
         if (!tv && !"movie".equals(kind)) return;
@@ -67,7 +72,7 @@ public final class Catalogue {
         if (k.isEmpty()) return;
         String y = year == null || year.isEmpty() ? Vod.year(name) : year;
         int id = number(tmdb);
-        int q = SourceQuality.best(SourceQuality.of(name), SourceQuality.of(also));
+        int q = SourceQuality.best(SourceQuality.best(SourceQuality.of(name), SourceQuality.of(also)), SourceQuality.ofGroup(group));
         if (id > 0) {
             (tv ? shows : films).add(id);
             if (q != 0) (tv ? showQuality : filmQuality).merge(id, q, SourceQuality::best);
@@ -216,7 +221,7 @@ public final class Catalogue {
                 // A series' episodes come together: its name is read once.
                 if ("episode".equals(p[0]) && p[1].equals(last)) continue;
                 last = "episode".equals(p[0]) ? p[1] : "";
-                into.add(p[0], p[1], p[8], p[9], p[4]);
+                into.add(p[0], p[1], p[8], p[9], p[4], p.length > 11 ? p[11] : null);
             }
         } catch (IOException ignored) {
             // what was read
