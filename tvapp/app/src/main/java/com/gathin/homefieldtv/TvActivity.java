@@ -45,6 +45,8 @@ public final class TvActivity extends Activity {
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
         Ui.init(this);
+        Dark.init(this);
+        PosterArt.init(this);
         Pics.init(this);
         FrameLayout root = new FrameLayout(this);
         screens = new FrameLayout(this);
@@ -152,8 +154,13 @@ public final class TvActivity extends Activity {
         if (resumed) s.shown();
     }
 
-    HomeScreen home() {
+    HomeScreen homeScreen() {
         return (HomeScreen) stack.get(0);
+    }
+
+    /** Back to Home, every screen over it closed. */
+    void home() {
+        while (stack.size() > 1) pop();
     }
 
     /** The channel for the mini TV: the one playing while it is still in the playlists, else the last one watched. */

@@ -1,39 +1,32 @@
 package com.gathin.homefieldtv;
 
-import android.content.Context;
-import android.graphics.Canvas;
-import android.graphics.Paint;
-import android.graphics.RectF;
-import android.text.TextPaint;
+import android.content.ActivityNotFoundException;
+import android.content.Intent;
+import android.net.Uri;
 import android.view.KeyEvent;
 import android.view.View;
 import android.widget.FrameLayout;
+import android.widget.Toast;
 
 import com.gathin.homefieldtv.engine.Catalog;
-import com.gathin.homefieldtv.engine.Exec;
+import com.gathin.homefieldtv.engine.MyList;
 import com.gathin.homefieldtv.engine.Resume;
 
 import java.util.ArrayList;
 import java.util.List;
 
 /**
- * A film's or a series' page: its picture, title, stars, running time and synopsis, who is in it, Play (or Resume
- * where it was left), and for a series its seasons and episodes; for a film, more from its category.
+ * A film's or a series' page, dark: its backdrop filling the screen, its title large at the top left, and at the foot
+ * Play (or Resume where it was left) with round buttons beside it (My list's heart, from the start, the trailer), the
+ * story and facts in the middle and who is in it on the right. Down from there: for a series its seasons as pills over
+ * one row of every episode, season after season, the season's pill moving along as the row goes (and a season chosen
+ * sliding the row to its first episode); then the trailer, the cast, and more from its category.
  */
-final class TitleScreen extends Screen implements Rows.Host {
-    private static final int BUTTONS = 0, SEASONS = 1, ROWS = 2;
-
+final class TitleScreen extends Screen implements DetailPage.Host {
     private Catalog.Title title;
     private Catalog.Details details;
     private boolean asked, asking;
-    private FrameLayout page;
-    private Strip strip;
-    private Hero hero;
-    private Extras extras;
-    private Rows rows;
-    private int area = BUTTONS, button, season;
-    private final List<String> labels = new ArrayList<>();
-    private final List<Runnable> actions = new ArrayList<>();
+    private DetailPage page;
 
     TitleScreen(TvActivity tv, Catalog.Title t) {
         super(tv);
@@ -42,28 +35,9 @@ final class TitleScreen extends Screen implements Rows.Host {
 
     @Override View build() {
         FrameLayout f = new FrameLayout(tv);
-        page = new FrameLayout(tv);
-        strip = new Strip(tv);
-        hero = new Hero(tv);
-        hero.textX = 262f;
-        hero.textY = 78f;
-        hero.textW = 900f;
-        hero.pic.set(700f, 0f, 1920f, 720f);
-        hero.titleLines = 2;
-        hero.plotLines = title.series ? 5 : 4;
-        hero.setTitleSize(60f);
-        extras = new Extras(tv);
-        rows = new Rows(tv);
-        rows.left = 262f;
-        rows.top = title.series ? 762f : 680f;
-        rows.hideAbove = false;
-        rows.setHost(this);
-        rows.setActive(false);
-        page.addView(hero, new FrameLayout.LayoutParams(-1, -1));
-        page.addView(extras, new FrameLayout.LayoutParams(-1, -1));
-        page.addView(rows, new FrameLayout.LayoutParams(-1, -1));
+        f.setBackgroundColor(Dark.GROUND);
+        page = new DetailPage(tv, this);
         f.addView(page, new FrameLayout.LayoutParams(-1, -1));
-        f.addView(strip, new FrameLayout.LayoutParams(-1, -1));
         details = Catalog.get(tv).cachedDetails(title);
         fill();
         if (details == null) ask();
@@ -90,10 +64,6 @@ final class TitleScreen extends Screen implements Rows.Host {
         if (built()) fill();
     }
 
-    @Override void tick() {
-        strip.invalidate();
-    }
-
     @Override void catalogChanged() {
         Catalog.Title now = Catalog.get(tv).title(title.key);
         if (now != null && now != title) {
@@ -107,261 +77,115 @@ final class TitleScreen extends Screen implements Rows.Host {
     }
 
     private void fill() {
-        HomeScreen.heroFor(tv, hero, tileOf(title), System.currentTimeMillis());
-        labels.clear();
-        actions.clear();
         Resume.Point p = point();
+        List<DetailPage.Button> buttons = new ArrayList<>();
         if (!title.series) {
             if (p != null && p.position > 0) {
-                labels.add("Resume  ·  " + Ui.left(p.duration - p.position));
-                actions.add(() -> tv.play(title, null, p.position));
-                labels.add("Play from the start");
-                actions.add(() -> tv.play(title, null, 0));
+                buttons.add(new DetailPage.Button("Resume  ·  " + Ui.left(p.duration - p.position), -1, () -> tv.play(title, null, p.position)));
+                buttons.add(new DetailPage.Button("From the start", Dark.RESTART, () -> tv.play(title, null, 0)));
             } else {
-                labels.add("Play");
-                actions.add(() -> tv.play(title, null, 0));
+                buttons.add(new DetailPage.Button("Play", -1, () -> tv.play(title, null, 0)));
             }
         } else if (details == null) {
-            labels.add(asked && !asking ? "Couldn't get the episodes: try again" : "Finding the episodes…");
-            actions.add(this::ask);
+            buttons.add(new DetailPage.Button(asked && !asking ? "Couldn't get the episodes: try again" : "Finding the episodes…", -1, this::ask));
         } else {
             List<Catalog.Episode> all = details.episodes();
             Catalog.Episode resume = p == null ? null : details.episode(p.episode);
             if (resume != null) {
-                labels.add("Resume S" + resume.season + " E" + resume.number + (p.position > 0 ? "  ·  " + Ui.left(p.duration - p.position) : ""));
-                actions.add(() -> tv.play(title, resume, p.position));
-            }
-            if (!all.isEmpty()) {
+                String label = (p.position > 0 ? "Resume" : "Play") + " S" + resume.season + " E" + resume.number
+                        + (p.position > 0 ? "  ·  " + Ui.left(p.duration - p.position) : "");
+                buttons.add(new DetailPage.Button(label, -1, () -> tv.play(title, resume, p.position)));
+            } else if (!all.isEmpty()) {
                 Catalog.Episode first = all.get(0);
-                labels.add((resume == null ? "Play" : "Start") + " S" + first.season + " E" + first.number);
-                actions.add(() -> tv.play(title, first, 0));
+                buttons.add(new DetailPage.Button("Play S" + first.season + " E" + first.number, -1, () -> tv.play(title, first, 0)));
+            } else {
+                buttons.add(new DetailPage.Button("No episodes in your playlist", -1, () -> { }));
             }
-            if (all.isEmpty()) {
-                labels.add("No episodes in your playlist");
-                actions.add(() -> { });
-            }
-            if (resume != null && season == 0) {
-                for (int i = 0; i < details.seasons.size(); i++) if (details.seasons.get(i).number == resume.season) season = i;
+            if (resume != null && !all.isEmpty()) {
+                Catalog.Episode first = all.get(0);
+                buttons.add(new DetailPage.Button("From the first episode", Dark.RESTART, () -> tv.play(title, first, 0)));
             }
         }
-        button = Math.min(button, labels.size() - 1);
-        fillRows();
-        extras.invalidate();
-    }
+        boolean on = MyList.has(tv, title.key);
+        buttons.add(1, new DetailPage.Button(on ? "On My list" : "Add to My list", on ? Dark.HEART_FULL : Dark.HEART, this::toggleList));
+        String trailer = trailerId(details == null ? "" : details.trailer);
+        if (!trailer.isEmpty()) buttons.add(new DetailPage.Button("Trailer", Dark.PLAY, () -> trailer(trailer)));
 
-    private static Rows.Tile tileOf(Catalog.Title t) {
-        Rows.Tile tile = new Rows.Tile(t);
-        tile.picture = t.poster;
-        tile.title = t.name;
-        return tile;
-    }
-
-    private float rowsTop() {
-        return title.series ? 762f : 680f;
-    }
-
-    private void fillRows() {
-        List<Rows.Row> list = new ArrayList<>();
-        if (area != ROWS) rows.moveTop(rowsTop());
-        if (title.series) {
-            if (details != null && !details.seasons.isEmpty()) {
-                season = Math.max(0, Math.min(season, details.seasons.size() - 1));
-                Catalog.Season s = details.seasons.get(season);
-                Resume.Point p = point();
-                List<Rows.Tile> eps = new ArrayList<>();
-                for (Catalog.Episode e : s.episodes) {
-                    Rows.Tile t = new Rows.Tile(e);
-                    t.picture = e.still;
-                    t.fallback = !details.backdrop.isEmpty() ? details.backdrop : title.backdrop.isEmpty() ? title.poster : title.backdrop;
-                    t.title = e.number + ". " + (e.title.isEmpty() ? "Episode " + e.number : e.title);
-                    t.subtitle = Ui.duration(e.minutes);
-                    if (p != null && p.episode.equals(e.id) && p.position > 0) {
-                        t.progress = p.progress();
-                        t.subtitle = (t.subtitle.isEmpty() ? "" : t.subtitle + "  ·  ") + Ui.left(p.duration - p.position);
-                    }
-                    eps.add(t);
-                }
-                list.add(new Rows.Row("", Rows.EPISODE, eps));
+        List<PosterArt.Item> more = new ArrayList<>();
+        for (Catalog.Category c : Catalog.get(tv).categories(title.series)) {
+            if (!c.name.equals(title.category)) continue;
+            for (Catalog.Title t : c.titles) {
+                if (t == title || more.size() >= 30) continue;
+                PosterArt.Item it = new PosterArt.Item(t);
+                it.genre = PosterArt.genreOf(t.category);
+                more.add(it);
             }
-        } else {
-            List<Rows.Tile> more = new ArrayList<>();
-            for (Catalog.Category c : Catalog.get(tv).categories(false)) {
-                if (!c.name.equals(title.category)) continue;
-                for (Catalog.Title t : c.titles) {
-                    if (t != title && more.size() < 30) more.add(tileOf(t));
-                }
-            }
-            if (!more.isEmpty()) list.add(new Rows.Row("More like this", Rows.POSTER, more));
         }
-        rows.setRows(list);
+        page.set(title, details, buttons, trailer, more, resumeEpisode(p));
+    }
+
+    private String resumeEpisode(Resume.Point p) {
+        return p == null || details == null || details.episode(p.episode) == null ? "" : p.episode;
+    }
+
+    private void toggleList() {
+        boolean on = MyList.toggle(tv, title.key);
+        Toast.makeText(tv, on ? title.name + " added to My list" : title.name + " taken off My list", Toast.LENGTH_SHORT).show();
+        fill();
+    }
+
+    /** Pure: a trailer's YouTube id from what a provider gives ("dQw4w9WgXcQ", a watch or youtu.be address), else "". */
+    static String trailerId(String s) {
+        if (s == null) return "";
+        String t = s.trim();
+        if (t.matches("[A-Za-z0-9_-]{11}")) return t;
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("(?:v=|youtu\\.be/|embed/|shorts/)([A-Za-z0-9_-]{11})").matcher(t);
+        return m.find() ? m.group(1) : "";
+    }
+
+    /** The trailer in the TV's YouTube app (nothing is played here). */
+    private void trailer(String id) {
+        try {
+            tv.startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/watch?v=" + id))
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        } catch (ActivityNotFoundException | SecurityException e) {
+            Toast.makeText(tv, "There's no app on this TV to play the trailer", Toast.LENGTH_SHORT).show();
+        }
     }
 
     // ---- the remote ---------------------------------------------------------------------------------------------
 
-    private void setArea(int a) {
-        area = a;
-        rows.setActive(a == ROWS);
-        float shift = a == ROWS ? (title.series ? -140f : -280f) : 0f;
-        if (Exec.inline) {
-            hero.setTranslationY(Ui.f(shift));
-            extras.setTranslationY(Ui.f(shift));
-        } else {
-            hero.animate().translationY(Ui.f(shift)).setDuration(220).start();
-            extras.animate().translationY(Ui.f(shift)).setDuration(220).start();
-        }
-        rows.moveTop(rowsTop() + shift);
-        extras.invalidate();
-    }
-
-    private boolean hasSeasons() {
-        return title.series && details != null && details.seasons.size() > 0;
-    }
-
     @Override boolean key(int code, KeyEvent e) {
-        switch (area) {
-            case BUTTONS:
-                if (code == KeyEvent.KEYCODE_DPAD_LEFT) {
-                    if (button > 0) button--;
-                    else tv.pop();
-                } else if (code == KeyEvent.KEYCODE_DPAD_RIGHT) {
-                    if (button < labels.size() - 1) button++;
-                } else if (code == KeyEvent.KEYCODE_DPAD_DOWN) {
-                    if (hasSeasons()) setArea(SEASONS);
-                    else if (!rows.isEmpty()) setArea(ROWS);
-                } else {
-                    return code == KeyEvent.KEYCODE_DPAD_UP;
-                }
-                extras.invalidate();
-                return true;
-            case SEASONS:
-                if (code == KeyEvent.KEYCODE_DPAD_LEFT) {
-                    if (season > 0) {
-                        season--;
-                        fillRows();
-                    } else {
-                        tv.pop();
-                    }
-                } else if (code == KeyEvent.KEYCODE_DPAD_RIGHT) {
-                    if (season < details.seasons.size() - 1) {
-                        season++;
-                        fillRows();
-                    }
-                } else if (code == KeyEvent.KEYCODE_DPAD_UP) {
-                    setArea(BUTTONS);
-                } else if (code == KeyEvent.KEYCODE_DPAD_DOWN) {
-                    if (!rows.isEmpty()) setArea(ROWS);
-                } else {
-                    return false;
-                }
-                extras.invalidate();
-                return true;
-            default:
-                return rows.key(code);
-        }
+        return page.key(code);
     }
 
     @Override void ok() {
-        if (area == BUTTONS) {
-            if (button >= 0 && button < actions.size()) actions.get(button).run();
-        } else if (area == SEASONS) {
-            if (!rows.isEmpty()) setArea(ROWS);
-        } else {
-            rows.ok(false);
-        }
+        page.ok();
     }
 
     @Override boolean back() {
-        if (area != BUTTONS) {
-            setArea(BUTTONS);
-            return true;
-        }
-        return false;
+        return page.back();
     }
 
-    @Override public void focused(Rows.Row row, Rows.Tile tile) {}
-
-    @Override public void chosen(Rows.Row row, Rows.Tile tile, boolean held) {
-        if (tile.item instanceof Catalog.Episode) {
-            Catalog.Episode e = (Catalog.Episode) tile.item;
-            Resume.Point p = Resume.get(tv, title.key, e.id);
-            tv.play(title, e, p == null ? 0 : p.position);
-        } else if (tile.item instanceof Catalog.Title) {
-            tv.openTitle((Catalog.Title) tile.item);
-        }
+    @Override public void play(Catalog.Episode ep) {
+        Resume.Point p = Resume.get(tv, title.key, ep.id);
+        tv.play(title, ep, p == null ? 0 : p.position);
     }
 
-    @Override public boolean edge(int dir) {
-        if (dir == Ui.UP) {
-            setArea(hasSeasons() ? SEASONS : BUTTONS);
-            return true;
-        }
-        if (dir == Ui.LEFT) {
-            tv.pop();
-            return true;
-        }
-        return false;
+    @Override public void open(Catalog.Title t) {
+        tv.openTitle(t);
     }
 
-    // ---- under the synopsis: who is in it, the buttons, the seasons --------------------------------------------
+    @Override public void trailerChosen(String id) {
+        trailer(id);
+    }
 
-    private final class Extras extends View {
-        private final TextPaint people = Ui.paint(26, false, Ui.FAINT), peopleKey = Ui.paint(26, true, Ui.DIM);
-        private final TextPaint btnP = Ui.paint(30, false, Ui.WHITE), btnOn = Ui.paint(30, true, Ui.WHITE);
-        private final TextPaint tabP = Ui.paint(30, false, Ui.DIM), tabOn = Ui.paint(30, true, Ui.WHITE);
-        private final Paint btnBack = Ui.fill(0x26FFFFFF), under = Ui.fill(Ui.CYAN);
-        private final Glow glow = new Glow();
-        private final RectF r = new RectF();
+    @Override public void left() {
+        tv.pop();
+    }
 
-        Extras(Context c) {
-            super(c);
-        }
-
-        @Override protected void onDraw(Canvas c) {
-            float x = Ui.f(262), w = Ui.f(1000);
-            float y = title.series ? 528 : 500;
-            if (details != null) {
-                if (!details.cast.isEmpty()) {
-                    c.drawText("Starring", x, Ui.f(y), peopleKey);
-                    float k = peopleKey.measureText("Starring") + Ui.f(12);
-                    c.drawText(Ui.fit(details.cast, people, w - k), x + k, Ui.f(y), people);
-                    y += 38;
-                }
-                if (!details.director.isEmpty()) {
-                    c.drawText("Director", x, Ui.f(y), peopleKey);
-                    float k = peopleKey.measureText("Director") + Ui.f(12);
-                    c.drawText(Ui.fit(details.director, people, w - k), x + k, Ui.f(y), people);
-                }
-            }
-            // The buttons.
-            float bx = x, by = Ui.f(title.series ? 586 : 566), bh = Ui.f(66);
-            for (int i = 0; i < labels.size(); i++) {
-                boolean on = area == BUTTONS && i == button;
-                TextPaint p = on ? btnOn : btnP;
-                float bw = p.measureText(labels.get(i)) + Ui.f(64);
-                r.set(bx, by, bx + bw, by + bh);
-                if (on) glow.draw(c, r);
-                else c.drawRect(r, btnBack);
-                c.drawText(labels.get(i), bx + Ui.f(32), by + bh / 2f + Ui.f(10), p);
-                bx += bw + Ui.f(22);
-            }
-            // The seasons.
-            if (hasSeasons()) {
-                float tx = x, ty = Ui.f(708);
-                for (int i = 0; i < details.seasons.size(); i++) {
-                    String name = details.seasons.get(i).name;
-                    boolean sel = i == season, on = sel && area == SEASONS;
-                    TextPaint p = sel ? tabOn : tabP;
-                    float tw = p.measureText(name);
-                    if (on) {
-                        r.set(tx - Ui.f(18), ty - Ui.f(40), tx + tw + Ui.f(18), ty + Ui.f(18));
-                        glow.draw(c, r);
-                    }
-                    c.drawText(name, tx, ty, p);
-                    if (sel) c.drawRect(tx, ty + Ui.f(10), tx + tw, ty + Ui.f(14), under);
-                    tx += tw + Ui.f(52);
-                    if (tx > getWidth() - Ui.f(120)) break;
-                }
-            }
-        }
+    @Override public float progress(Catalog.Episode ep) {
+        Resume.Point p = Resume.get(tv, title.key, ep.id);
+        return p == null || p.position <= 0 ? -1f : p.progress();
     }
 }

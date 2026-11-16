@@ -168,10 +168,14 @@ public final class PreviewData {
                 if (!seen.add("m" + id)) continue;
                 String year = f.optString("year");
                 long when = l[1].equals("1") ? added - i * 3600L : added - 86_400L * 30 - i * 3600L;
-                rows.add("m\t" + id + "\t" + f.getString("name") + " (" + year + ")\t" + l[1] + "\t" + pic(root, f.optString("poster")) + "\t"
-                        + f.optDouble("vote", 0) + "\t" + when + "\tmkv\t" + year + "\t\t\t");
+                // As providers name their copies: some say their picture and sound.
+                String[] tags = {" 4K", " 1080p", "", " 4K DV Atmos", " 720p", " 1080p Atmos"};
+                rows.add("m\t" + id + "\t" + f.getString("name") + " (" + year + ")" + tags[seen.size() % tags.length] + "\t" + l[1] + "\t"
+                        + pic(root, f.optString("poster")) + "\t" + f.optDouble("vote", 0) + "\t" + when * 1000L + "\tmkv\t" + year + "\t\t\t");
+                JSONObject yt = f.optJSONObject("yt");
                 pages.put("p0|m|" + id, Catalog.previewDetails(f.optString("overview"), genres(f), "", "", f.optString("date"),
-                        pic(root, f.optString("bd")), String.valueOf(f.optDouble("vote", 0)), f.optString("cert"), f.optInt("runtime"), null));
+                        pic(root, f.optString("bd")), String.valueOf(f.optDouble("vote", 0)), f.optString("cert"), f.optInt("runtime"), null,
+                        yt == null ? "" : yt.optString("key")));
             }
         }
         String[][] showLists = {{"top_tv", "1"}, {"kids_tv", "2"}};
@@ -195,7 +199,8 @@ public final class PreviewData {
                         for (int k = 0; k < he.length(); k++) {
                             JSONObject e = he.getJSONObject(k);
                             eps.add(new String[]{id + "-" + season + "-" + e.getInt("n"), String.valueOf(season), String.valueOf(e.getInt("n")),
-                                    e.optString("name"), e.optString("overview"), pic(root, e.optString("still")), String.valueOf(e.optInt("runtime"))});
+                                    e.optString("name"), e.optString("overview"), pic(root, e.optString("still")), String.valueOf(e.optInt("runtime")),
+                                    e.optString("date")});
                         }
                         JSONArray people = hero.optJSONArray("cast");
                         List<String> names = new ArrayList<>();
@@ -209,8 +214,10 @@ public final class PreviewData {
                         }
                     }
                 }
+                JSONObject yt = s.optJSONObject("yt");
                 pages.put("p0|s|" + id, Catalog.previewDetails(s.optString("overview"), genres(s), cast, "", s.optString("year"),
-                        pic(root, s.optString("bd")), String.valueOf(s.optDouble("vote", 0)), s.optString("cert"), 0, eps.toArray(new String[0][])));
+                        pic(root, s.optString("bd")), String.valueOf(s.optDouble("vote", 0)), s.optString("cert"), 0, eps.toArray(new String[0][]),
+                        yt == null ? "" : yt.optString("key")));
             }
         }
         Catalog.get(c).useForPreview(rows, pages);
