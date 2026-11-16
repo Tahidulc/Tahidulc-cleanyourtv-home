@@ -288,9 +288,12 @@ final class Rows {
 
     // ---- headlines ----------------------------------------------------------------------------------------------
 
-    /** A headline's frosted card: its picture on top, then the source and how long ago, then the headline. */
+    /**
+     * A headline's frosted card: its picture on top with its source's mark on its corner (BBC News's or BBC Sport's), then
+     * how long ago, then the headline.
+     */
     static final class StoryHolder extends RecyclerView.ViewHolder {
-        final ImageView picture;
+        final ImageView picture, mark;
         final FrameLayout frame;
         final TextView kicker, headline;
         final GlassDrawable glass, rim;
@@ -310,6 +313,12 @@ final class Rows {
             picture.setScaleType(ImageView.ScaleType.CENTER_CROP);
             picture.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
             frame.addView(picture, new FrameLayout.LayoutParams(-1, -1));
+            mark = new ImageView(c);
+            mark.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+            FrameLayout.LayoutParams mp = new FrameLayout.LayoutParams(-2, Glass.dp(c, 20), android.view.Gravity.TOP | android.view.Gravity.START);
+            mp.leftMargin = mp.topMargin = Glass.dp(c, 10);
+            mark.setAdjustViewBounds(true);
+            frame.addView(mark, mp);
             card.addView(frame, new LinearLayout.LayoutParams(w, w * 9 / 16));
             LinearLayout words = new LinearLayout(c);
             words.setOrientation(LinearLayout.VERTICAL);
@@ -363,6 +372,7 @@ final class Rows {
                 h.itemView.setForeground(null);
                 h.frame.setBackground(null);
                 clear(h.picture);
+                h.mark.setImageDrawable(null);
                 h.kicker.setText(" ");
                 h.headline.setText("");
                 h.itemView.setContentDescription(null);
@@ -376,8 +386,13 @@ final class Rows {
             h.frame.setBackground(Glass.placeholder(s.title, 0));
             load(h.picture, s.picture.isEmpty() ? null : s.picture, w, w * 9 / 16);
             String ago = Headlines.ago(s.at, System.currentTimeMillis());
+            // The source's own mark on the picture (BBC News's, BBC Sport's); the line under it says how long ago.
+            com.gathin.tvhomephone.glass.BbcMark bbc = com.gathin.tvhomephone.glass.BbcMark.of(c, source, 20);
+            h.mark.setImageDrawable(bbc);
             h.kicker.setTextColor(accent);
-            h.kicker.setText(source.toUpperCase(java.util.Locale.UK) + (ago.isEmpty() ? "" : "  ·  " + ago));
+            String when = ago.isEmpty() ? "Latest" : ago;
+            h.kicker.setText(bbc != null ? when.toUpperCase(java.util.Locale.UK)
+                    : source.toUpperCase(java.util.Locale.UK) + (ago.isEmpty() ? "" : "  ·  " + ago));
             h.headline.setText(s.title);
             h.itemView.setContentDescription(s.title + ", " + source + (ago.isEmpty() ? "" : ", " + ago));
             h.itemView.setOnClickListener(v -> tap.on(s));

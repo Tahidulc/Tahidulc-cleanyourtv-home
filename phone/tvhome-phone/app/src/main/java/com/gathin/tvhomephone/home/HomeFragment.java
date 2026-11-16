@@ -25,6 +25,7 @@ import com.gathin.tvhomephone.R;
 import com.gathin.tvhomephone.SyncStore;
 import com.gathin.tvhomephone.glass.Glass;
 import com.gathin.tvhomephone.live.BreakingNews.Story;
+import com.gathin.tvhomephone.live.FanFeed;
 import com.gathin.tvhomephone.live.Watched;
 import com.gathin.tvhomephone.sports.AlertLog;
 import com.gathin.tvhomephone.sports.Channels;
@@ -61,7 +62,8 @@ import java.util.Set;
  * Watch's films and TV, its search, and Live TV; a frosted card for each section below; Continue watching (what you're
  * part-way through, each over its own backdrop with its logo); Favourites from My list; the scores box (today's games,
  * your clubs and live ones first, moving on by itself every 8 seconds as the TV's does) and your clubs' games today;
- * the films and TV picked for you from your own playlists; BBC News's and BBC Sport's headlines; the latest alerts;
+ * the films and TV picked for you from your own playlists; BBC News's and BBC Sport's headlines; what fans of your
+ * clubs are posting (read again every two minutes while Home shows, new posts dropping in); the latest alerts;
  * Recently watched; then the TVs' cards. Every row reads at the same time, off the main thread, and shows what it had
  * last time until then.
  */
@@ -76,7 +78,7 @@ public class HomeFragment extends Fragment implements HomeScreen.Host {
     /** Recently watched, under the alerts. */
     private RecentRow recent;
     private boolean visible, touching;
-    private int gen, picksGen, newsGen, listGen;
+    private int gen, picksGen, newsGen, listGen, socialGen;
     private Pager pager;
     /**
      * Each Continue watching title's backdrop and logo (by its card's key), kept while it is in Continue watching, so
@@ -105,6 +107,14 @@ public class HomeFragment extends Fragment implements HomeScreen.Host {
             App.main.postDelayed(this, 30_000L);
         }
     };
+    /** The fans' posts read again every two minutes while Home shows (the first at once). */
+    private final Runnable socialAgain = new Runnable() {
+        @Override public void run() {
+            if (!visible) return;
+            social(false);
+            App.main.postDelayed(this, 120_000L);
+        }
+    };
     /** Something kept changed (My list here, or synced from a TV): Favourites read again. */
     private final Runnable listChanged = () -> App.main.post(this::favourites);
 
@@ -116,6 +126,7 @@ public class HomeFragment extends Fragment implements HomeScreen.Host {
             picks(true);
             headlines(true);
             favourites();
+            social(true);
         });
 
         // The scores, in their frosted box: the box to swipe through, its count, then the clubs' games today.
@@ -176,6 +187,7 @@ public class HomeFragment extends Fragment implements HomeScreen.Host {
         // What it had last time, at once; then everything read again at the same time.
         screen.feed(Feed.kept(c));
         screen.news(Headlines.kept(c));
+        if (FanFeed.on(c)) screen.social(FanFeed.kept(), FanFeed.keptClubs());
         if (listKept != null) screen.favourites(listKept);
         resume();
         if (Tvs.paired(c)) Tvs.watching(c, (w, e) -> {
@@ -200,6 +212,7 @@ public class HomeFragment extends Fragment implements HomeScreen.Host {
         screen.visible(true);
         App.main.post(tick);
         App.main.post(reread);
+        App.main.post(socialAgain);
         autoLater();
     }
 
@@ -209,6 +222,7 @@ public class HomeFragment extends Fragment implements HomeScreen.Host {
         SyncStore.removeListener(listChanged);
         App.main.removeCallbacks(tick);
         App.main.removeCallbacks(reread);
+        App.main.removeCallbacks(socialAgain);
         App.main.removeCallbacks(auto);
         super.onPause();
     }
@@ -297,6 +311,20 @@ public class HomeFragment extends Fragment implements HomeScreen.Host {
         });
     }
 
+    /** The fans' posts about the starred clubs (off in Settings, or no clubs: the section hidden). */
+    private void social(boolean force) {
+        Context app = requireContext().getApplicationContext();
+        int my = ++socialGen;
+        App.io.execute(() -> {
+            List<FanFeed.Item> items = FanFeed.load(app, SocialCard.MAX + 3, force);
+            List<String> clubs = FanFeed.keptClubs();
+            App.main.post(() -> {
+                if (my != socialGen || !isAdded() || screen == null) return;
+                screen.social(items, clubs);
+            });
+        });
+    }
+
     // ---- the page's taps ------------------------------------------------------------------------------------------
 
     @Override public void open(Pick p) {
@@ -326,6 +354,15 @@ public class HomeFragment extends Fragment implements HomeScreen.Host {
         if (s.link == null || !s.link.startsWith("https://")) return;
         try {
             startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(s.link)));
+        } catch (RuntimeException e) {
+            Toast.makeText(requireContext(), "No browser to open it in", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    @Override public void post(FanFeed.Item p) {
+        if (p.link.isEmpty()) return;
+        try {
+            startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(p.link)));
         } catch (RuntimeException e) {
             Toast.makeText(requireContext(), "No browser to open it in", Toast.LENGTH_SHORT).show();
         }
@@ -495,7 +532,19 @@ public class HomeFragment extends Fragment implements HomeScreen.Host {
             band.setGravity(Gravity.CENTER_VERTICAL);
             // The competition's logo (its version for light grounds, on the silver band), F1's for an F1 alert.
             String kind = a.optString("kind");
-            String logo = kind.startsWith("f1") ? Competitions.F1_LOGO : Competitions.lightLogo(a.optString("slug", null));
+            // A breaking story: its source's mark (BBC News's, BBC Sport's), by its source or its link.
+            String section = "news".equals(kind) ? com.gathin.tvhomephone.glass.BbcMark.section(a.optString("channel", "")) : null;
+            if ("news".equals(kind) && section == null) section = com.gathin.tvhomephone.glass.BbcMark.sectionOfLink(a.optString("slug", ""));
+            String logo = section != null ? null : kind.startsWith("f1") ? Competitions.F1_LOGO : Competitions.lightLogo(a.optString("slug", null));
+            if (section != null) {
+                android.widget.ImageView v = new android.widget.ImageView(c);
+                v.setImageDrawable(com.gathin.tvhomephone.glass.BbcMark.chip(c, section, 20));
+                v.setAdjustViewBounds(true);
+                v.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, Ui.dp(c, 20));
+                lp.rightMargin = Ui.dp(c, 10);
+                band.addView(v, lp);
+            }
             if (logo != null) {
                 android.widget.ImageView v = new android.widget.ImageView(c);
                 v.setScaleType(android.widget.ImageView.ScaleType.FIT_CENTER);

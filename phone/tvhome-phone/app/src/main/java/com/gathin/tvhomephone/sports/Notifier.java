@@ -129,8 +129,10 @@ public final class Notifier {
         if (a.picture == null || a.picture.isEmpty()) return false;
         Bitmap pic = NotifCard.logo(c, a.picture, 960, 540);
         if (pic == null) return false;
-        String channelUrl = a.channel == null || a.channel.isEmpty() ? null : ChannelLogos.find(c, a.channel);
-        Bitmap source = bitmap(c, channelUrl, Ui.dp(c, 64), Ui.dp(c, 64));
+        // The BBC's own mark (on its colour) for a BBC story; any other source's logo from the playlist.
+        com.gathin.tvhomephone.glass.BbcMark bbc = bbcMark(c, a);
+        String channelUrl = bbc != null || a.channel == null || a.channel.isEmpty() ? null : ChannelLogos.find(c, a.channel);
+        Bitmap source = bbc != null ? bbc.square(Ui.dp(c, 64)) : bitmap(c, channelUrl, Ui.dp(c, 64), Ui.dp(c, 64));
         b.setLargeIcon(source != null ? source : pic)
                 .setStyle(new NotificationCompat.BigPictureStyle().bigPicture(pic).bigLargeIcon((Bitmap) null)
                         .setSummaryText(a.text == null ? "" : a.text));
@@ -357,6 +359,14 @@ public final class Notifier {
 
     // ---- the competition's and the channel's logos --------------------------------------------------------------
 
+    /** A breaking story's BBC mark (BBC News's, BBC Sport's) by its source or its link; null for any other's. */
+    private static com.gathin.tvhomephone.glass.BbcMark bbcMark(Context c, Events.Alert a) {
+        com.gathin.tvhomephone.glass.BbcMark m = com.gathin.tvhomephone.glass.BbcMark.of(c, a.channel, 24);
+        if (m != null) return m;
+        String s = com.gathin.tvhomephone.glass.BbcMark.sectionOfLink(a.slug);
+        return s == null ? null : com.gathin.tvhomephone.glass.BbcMark.chip(c, s, 24);
+    }
+
     /**
      * The alert with its competition's logo beside the title and, for a reminder or a kick-off, the channel's logo for
      * where it is on (each on a navy chip: the logos are drawn for dark grounds). As it is when neither is known.
@@ -368,9 +378,10 @@ public final class Notifier {
         if ((channel == null || channel.isEmpty()) && a.game != null && "kickoff".equals(a.kind) && a.game.state != Game.POST) {
             channel = Channels.best(c, a.game);
         }
-        String channelUrl = channel == null || channel.isEmpty() ? null : ChannelLogos.find(c, channel);
+        com.gathin.tvhomephone.glass.BbcMark bbc = "news".equals(a.kind) ? bbcMark(c, a) : null;
+        String channelUrl = bbc != null || channel == null || channel.isEmpty() ? null : ChannelLogos.find(c, channel);
         Bitmap comp = bitmap(c, compUrl, Ui.dp(c, 24), Ui.dp(c, 24));
-        Bitmap ch = bitmap(c, channelUrl, Ui.dp(c, 120), Ui.dp(c, 18));
+        Bitmap ch = bbc != null ? bbc.bitmap() : bitmap(c, channelUrl, Ui.dp(c, 120), Ui.dp(c, 18));
         if (comp == null && ch == null) return;
         String text = a.text == null ? "" : a.text;
         // The channel's name goes from the words when its logo stands for it ("At 20:00 on Sky Sports F1").

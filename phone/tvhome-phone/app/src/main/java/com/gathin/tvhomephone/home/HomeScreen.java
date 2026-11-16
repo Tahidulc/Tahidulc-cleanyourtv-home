@@ -18,6 +18,7 @@ import com.gathin.tvhomephone.glass.Glass;
 import com.gathin.tvhomephone.glass.Icons;
 import com.gathin.tvhomephone.glass.LensBar;
 import com.gathin.tvhomephone.live.BreakingNews.Story;
+import com.gathin.tvhomephone.live.FanFeed;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -29,7 +30,8 @@ import java.util.Map;
  * date with the weather under it; the pill (search, then Home, Films, Shows and Live); a row of frosted cards, one for
  * each section below that has something, with three of its pictures fanned in it (a tap slides the page there); then
  * Continue watching's landscape cards, Favourites (My list), the scores and the clubs' games, films and TV from the
- * playlists, BBC News's and BBC Sport's headlines, what's new in the playlists, the alerts, Recently watched and the
+ * playlists, BBC News's and BBC Sport's headlines (each story marked as the BBC's section marks it), the fans' posts
+ * about the starred clubs dropping in as they come, what's new in the playlists, the alerts, Recently watched and the
  * TVs' cards. It only lays things out and shows what it is given; HomeFragment reads and gives (and a test can give
  * it made-up titles and draw it).
  */
@@ -54,6 +56,10 @@ final class HomeScreen {
 
         /** The Live TV tab. */
         void live();
+
+        /** A fan's post: opened on its own site. */
+        default void post(FanFeed.Item p) {
+        }
     }
 
     /** The pill's words; Home is chosen. */
@@ -83,7 +89,9 @@ final class HomeScreen {
     /** Recently watched, then the TVs' cards. */
     final LinearLayout recent, tvs;
     private final HorizontalScrollView fanScroll;
-    private final Section resumeSection, favSection, films, shows, fresh, newsSection, sportSection, note;
+    private final Section resumeSection, favSection, films, shows, fresh, newsSection, sportSection, socialSection, note;
+    /** The fans' posts about the starred clubs. */
+    private final SocialCard social;
     private final Rows.Watching watching;
     private final Rows.Posters favRow, filmRow, showRow, freshRow;
     private final Rows.Stories newsRow, sportRow;
@@ -233,6 +241,13 @@ final class HomeScreen {
         sportRow = new Rows.Stories(c, "BBC Sport", Art.SPORT, host::story);
         sportSection = section("Sport headlines", null, Rows.row(c, sportRow));
         col.addView(sportSection.box);
+
+        // What the starred clubs' fans are saying now: hidden until there are posts (or when it is off in Settings).
+        social = new SocialCard(c, p -> host.post(p));
+        socialSection = section("Fans right now", null, null);
+        socialSection.box.addView(social.view, sides());
+        socialSection.box.setVisibility(View.GONE);
+        col.addView(socialSection.box);
 
         freshRow = new Rows.Posters(c, host::open);
         fresh = section("New in your playlist", v -> host.watch(DISCOVER, false), Rows.row(c, freshRow));
@@ -463,15 +478,23 @@ final class HomeScreen {
         fans();
     }
 
+    /** The fans' posts, newest first, and the clubs they are about (none: the section hidden). */
+    void social(List<FanFeed.Item> items, List<String> clubs) {
+        boolean has = items != null && !items.isEmpty();
+        social.set(has ? items : null, clubs);
+        socialSection.box.setVisibility(has ? View.VISIBLE : View.GONE);
+    }
+
     /** The line under the date: the weather ("12° · Manchester"). */
     void weather(String line) {
         under = line == null || line.isEmpty() ? "Manchester" : line;
         header.now(under);
     }
 
-    /** The greeting and the date as they are now (the clock's tick). */
+    /** The greeting and the date as they are now, and how long ago each fan posted (the clock's tick). */
     void stamp() {
         header.now(under);
+        social.tick(System.currentTimeMillis());
     }
 
     /** Home on the screen again: the pill's lens on Home. */

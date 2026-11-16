@@ -18,6 +18,7 @@ import androidx.fragment.app.Fragment;
 
 import com.gathin.tvhomephone.App;
 import com.gathin.tvhomephone.R;
+import com.gathin.tvhomephone.live.FanFeed;
 import com.google.android.material.materialswitch.MaterialSwitch;
 
 import java.util.ArrayList;
@@ -116,6 +117,23 @@ public final class SportsSettings {
                 });
             }
         });
+
+        // The fans' posts about these clubs on Home: on unless switched off here.
+        LinearLayout fans = Ui.row(c);
+        fans.setPadding(0, Ui.dp(c, 14), 0, Ui.dp(c, 4));
+        LinearLayout fansWords = Ui.column(c);
+        fansWords.addView(Ui.text(c, c.getString(R.string.fans_home_on), 16, c.getColor(R.color.text), false));
+        TextView fansLine = Ui.text(c, c.getString(R.string.fans_home_line), 13, c.getColor(R.color.text_dim), false);
+        fansLine.setPadding(0, Ui.dp(c, 2), Ui.dp(c, 12), 0);
+        fansWords.addView(fansLine);
+        fans.addView(fansWords, Ui.weight(1));
+        MaterialSwitch fansSwitch = new MaterialSwitch(c);
+        fansSwitch.setChecked(FanFeed.on(c));
+        fansSwitch.setContentDescription(c.getString(R.string.fans_home_on));
+        fansSwitch.setOnCheckedChangeListener((b, on) -> FanFeed.setOn(c, on));
+        fans.addView(fansSwitch);
+        fans.setOnClickListener(v -> fansSwitch.toggle());
+        col.addView(fans);
 
         if (!Watcher.exactAllowed(c) && Build.VERSION.SDK_INT >= 31) {
             LinearLayout card = Ui.card(c, null);

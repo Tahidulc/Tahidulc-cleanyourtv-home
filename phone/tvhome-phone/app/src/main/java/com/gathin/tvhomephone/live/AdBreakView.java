@@ -744,7 +744,7 @@ final class AdBreakView extends FrameLayout {
                     out.add(l);
                     if (out.size() >= 3) break;
                 }
-                out.add(foot("BBC Sport"));
+                out.add(bbcFoot(""));
                 return out;
             }));
         }
@@ -804,7 +804,7 @@ final class AdBreakView extends FrameLayout {
                     t.setEllipsize(TextUtils.TruncateAt.END);
                     out.add(t);
                 }
-                out.add(foot("BBC Sport · football"));
+                out.add(bbcFoot("football"));
                 return out;
             }));
         }
@@ -1416,6 +1416,18 @@ final class AdBreakView extends FrameLayout {
         TextView t = words(s, sp, colour, bold);
         t.setGravity(Gravity.END);
         t.setLayoutParams(new LinearLayout.LayoutParams(px(widthDp), -2));
+        return t;
+    }
+
+    /** BBC Sport's mark at the foot of its headlines, with what they are beside it ("football"). */
+    private TextView bbcFoot(String words) {
+        TextView t = foot(words);
+        com.gathin.tvhomephone.glass.BbcMark m = com.gathin.tvhomephone.glass.BbcMark.chip(getContext(), "SPORT", 13);
+        m.setBounds(0, 0, m.getIntrinsicWidth(), m.getIntrinsicHeight());
+        t.setCompoundDrawables(m, null, null, null);
+        t.setCompoundDrawablePadding(px(6));
+        t.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        t.setContentDescription("BBC Sport" + (words.isEmpty() ? "" : ", " + words));
         return t;
     }
 

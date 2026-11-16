@@ -29,6 +29,8 @@ final class BoardDrop extends BoardSide {
     /** One page's words: the bold ones (with a crest before them, and after them for another game's score), the line. */
     private static final class Part {
         Bitmap crestA, crestB;
+        /** A wide mark after the chip, as wide as it is (a breaking story's source: BBC News's, BBC Sport's); null for none. */
+        Bitmap mark;
         String head = "", line = "";
         int headColour, lineColour;
         boolean lineBold;
@@ -342,6 +344,7 @@ final class BoardDrop extends BoardSide {
             o.tag = d.tag;
             o.tagKind = d.tagKind;
         }
+        if (d.alert != null && "news".equals(d.alert.kind)) o.mark = bbc(d.alert);
         return o;
     }
 
@@ -480,6 +483,15 @@ final class BoardDrop extends BoardSide {
                 }
                 rx += cardH * 0.7f + unit * 0.26f;
             }
+        }
+        if (o.mark != null) {
+            float mh = cs * 0.8f, mw = mh * o.mark.getWidth() / (float) Math.max(1, o.mark.getHeight());
+            if (cv != null) {
+                r.set(rx, dy + rowY + (rowH - mh) / 2f, rx + mw, dy + rowY + (rowH + mh) / 2f);
+                image.setAlpha(a);
+                cv.drawBitmap(o.mark, null, r, image);
+            }
+            rx += mw + unit * 0.2f;
         }
         if (o.crestA != null) {
             if (cv != null) image(cv, o.crestA, rx, dy + rowY + (rowH - cs) / 2f, cs, a);
@@ -793,6 +805,21 @@ final class BoardDrop extends BoardSide {
         p.setTextAlign(Paint.Align.LEFT);
         Paint.FontMetrics fm = p.getFontMetrics();
         cv.drawText(s, x, y + rowH / 2f - (fm.ascent + fm.descent) / 2f, p);
+    }
+
+    private final java.util.Map<String, Bitmap> bbcMarks = new java.util.HashMap<>();
+
+    /** A breaking story's BBC mark (BBC News's, BBC Sport's) by its source or its link, drawn once each; null for others. */
+    private Bitmap bbc(com.gathin.tvhomephone.sports.Events.Alert a) {
+        String s = com.gathin.tvhomephone.glass.BbcMark.section(a.channel);
+        if (s == null) s = com.gathin.tvhomephone.glass.BbcMark.sectionOfLink(a.slug);
+        if (s == null) return null;
+        Bitmap b = bbcMarks.get(s);
+        if (b == null) {
+            b = com.gathin.tvhomephone.glass.BbcMark.px(96f, s).bitmap();
+            bbcMarks.put(s, b);
+        }
+        return b;
     }
 
     /** A crest filling a square of side size at (x, y). */

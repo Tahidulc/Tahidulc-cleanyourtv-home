@@ -115,8 +115,19 @@ public final class Popups {
             p.head = "Formula 1";
         } else if ("news".equals(a.kind)) {
             p.head = a.channel == null ? "News" : a.channel;
-            // The source's logo (from the playlist) by its name, the story's own picture as its card.
-            if (a.channel != null && !a.channel.isEmpty()) p.comp = NotifCard.logo(app, ChannelLogos.find(app, a.channel), logo * 2, logo);
+            // The source's mark: the BBC's own (BBC News's, BBC Sport's) drawn here, any other's logo from the playlist by
+            // its name; the story's own picture as its card.
+            com.gathin.tvhomephone.glass.BbcMark bbc = com.gathin.tvhomephone.glass.BbcMark.of(app, a.channel, 20);
+            if (bbc == null && a.slug != null) {
+                String s = com.gathin.tvhomephone.glass.BbcMark.sectionOfLink(a.slug);
+                if (s != null) bbc = com.gathin.tvhomephone.glass.BbcMark.chip(app, s, 20);
+            }
+            if (bbc != null) {
+                p.comp = bbc.bitmap();
+                p.head = "";
+            } else if (a.channel != null && !a.channel.isEmpty()) {
+                p.comp = NotifCard.logo(app, ChannelLogos.find(app, a.channel), logo * 2, logo);
+            }
             if (a.picture != null && !a.picture.isEmpty()) p.card = NotifCard.logo(app, a.picture, 960, 540);
         } else if ("weather".equals(a.kind)) {
             p.head = "Weather";
@@ -226,7 +237,9 @@ public final class Popups {
         if (p.comp != null) {
             ImageView logo = new ImageView(c);
             logo.setImageBitmap(p.comp);
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(Ui.dp(c, 20), Ui.dp(c, 20));
+            // A wide mark (the BBC's) as wide as it is, 20dp tall; a competition's logo in its square.
+            int lh = Ui.dp(c, 20), lw = p.comp.getHeight() > 0 ? Math.round(lh * p.comp.getWidth() / (float) p.comp.getHeight()) : lh;
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(Math.max(lh, Math.min(lw, lh * 6)), lh);
             lp.leftMargin = Ui.dp(c, 10);
             head.addView(logo, lp);
         }

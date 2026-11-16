@@ -32,18 +32,25 @@ final class FanPosts {
         UA.put("User-Agent", "HomefieldPhone/1.0 (personal app)");
     }
 
-    /** One post: where from, who (name, handle), their picture (Bluesky's; "" for Reddit), the words, when. */
+    /** One post: where from, who (name, handle), their picture (Bluesky's; "" for Reddit), the words, when, its page. */
     static final class Post {
-        final String source, name, handle, avatar, text;
+        final String source, name, handle, avatar, text, link;
         final long at;
+        /** Which community it is in ("r/reddevils"; "" for Bluesky's). */
+        String where = "";
 
         Post(String source, String name, String handle, String avatar, String text, long at) {
+            this(source, name, handle, avatar, text, at, "");
+        }
+
+        Post(String source, String name, String handle, String avatar, String text, long at, String link) {
             this.source = source;
             this.name = name;
             this.handle = handle;
             this.avatar = avatar == null ? "" : avatar;
             this.text = text;
             this.at = at;
+            this.link = link == null ? "" : link;
         }
     }
 
@@ -96,6 +103,52 @@ final class FanPosts {
         return mix(all, max);
     }
 
+    /**
+     * Off the main thread: what fans of these clubs (by their names) are saying now, for Home: Bluesky's newest posts
+     * naming each and each club's own Reddit community's, through FanFilter, no bots, none older than maxAgeMs; both
+     * sources mixed, newest first, at most max. A source that fails gives none.
+     */
+    static List<Post> clubs(List<String> names, int max, long maxAgeMs) {
+        List<Post> all = new ArrayList<>();
+        Set<String> subs = new HashSet<>();
+        for (String club : names) {
+            if (club == null || club.trim().isEmpty()) continue;
+            try {
+                String q = "\"" + club.trim() + "\" lang:en";
+                String url = "https://api.bsky.app/xrpc/app.bsky.feed.searchPosts?limit=25&sort=latest&q=" + java.net.URLEncoder.encode(q, "UTF-8");
+                all.addAll(bluesky(new JSONObject(Net.get(url, UA, 8000))));
+            } catch (Exception ignored) {
+                // none from Bluesky this time
+            }
+            String sub = sub(club);
+            if ("soccer".equals(sub) || !subs.add(sub)) continue;
+            try {
+                for (Post p : reddit(sub)) {
+                    p.where = "r/" + sub;
+                    all.add(p);
+                }
+            } catch (Exception ignored) {
+                // none from Reddit this time
+            }
+        }
+        long now = System.currentTimeMillis();
+        List<Post> kept = new ArrayList<>();
+        for (Post p : all) if (!bot(p) && (p.at <= 0 || now - p.at <= maxAgeMs)) kept.add(p);
+        return mix(kept, max);
+    }
+
+    /**
+     * "bot" as a word of its own ("NUFC Bot", "@nufc-bot.bsky.social", "bot2"), or after the words feeds are named with
+     * ("@clubnewsbot…", "goalbot"); never inside a name (Talbot, Abbot, Cabot, robotics).
+     */
+    private static final Pattern BOT = Pattern.compile("(?i)(^|[^a-z])bot([^a-z]|$)"
+            + "|(news|goal|goals|score|scores|feed|alert|alerts|transfer|transfers|rss|auto|post|update|updates|match|live|stats|club|fc|headline|headlines)bot");
+
+    /** Pure: a post by a bot account (its name or handle says so: "NUFC Twitter Bot", "@clubnewsbot.bsky.social"). */
+    static boolean bot(Post p) {
+        return BOT.matcher(p.name == null ? "" : p.name).find() || BOT.matcher(p.handle == null ? "" : p.handle).find();
+    }
+
     private static String name(String a, String b) {
         return a != null && !a.isEmpty() ? a : b == null ? "" : b;
     }
@@ -137,7 +190,10 @@ final class FanPosts {
             String name = author.optString("displayName", "");
             if (name.trim().isEmpty()) name = handle;
             if (text == null || handle.isEmpty() || !FanFilter.nameOk(name) || !FanFilter.nameOk(handle)) continue;
-            out.add(new Post(BLUESKY, name.trim(), "@" + handle, author.optString("avatar", ""), text, AdBreak.when(record.optString("createdAt"))));
+            String uri = p.optString("uri", "");
+            String rkey = uri.contains("/") ? uri.substring(uri.lastIndexOf('/') + 1) : "";
+            String link = rkey.isEmpty() ? "" : "https://bsky.app/profile/" + handle + "/post/" + rkey;
+            out.add(new Post(BLUESKY, name.trim(), "@" + handle, author.optString("avatar", ""), text, AdBreak.when(record.optString("createdAt")), link));
         }
         return out;
     }
@@ -197,7 +253,7 @@ final class FanPosts {
             String text = FanFilter.show(words);
             String user = e[1].startsWith("/u/") ? e[1].substring(3) : e[1];
             if (text == null || user.isEmpty() || "AutoModerator".equalsIgnoreCase(user) || !FanFilter.nameOk(user)) continue;
-            out.add(new Post(REDDIT, user, "u/" + user, "", text, AdBreak.when(e[2])));
+            out.add(new Post(REDDIT, user, "u/" + user, "", text, AdBreak.when(e[2]), e.length > 4 ? e[4] : ""));
         }
         return out;
     }

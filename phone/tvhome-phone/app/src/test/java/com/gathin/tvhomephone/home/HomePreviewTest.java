@@ -13,6 +13,7 @@ import android.view.View;
 
 import com.gathin.tvhomephone.glass.Glass;
 import com.gathin.tvhomephone.live.BreakingNews.Story;
+import com.gathin.tvhomephone.live.FanFeed;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -129,6 +130,20 @@ public class HomePreviewTest {
         return r;
     }
 
+    /** Made-up fans' posts (invented people), as the fans' card shows them. */
+    private static List<FanFeed.Item> fans() {
+        long now = System.currentTimeMillis();
+        return Arrays.asList(
+                new FanFeed.Item("Bluesky", "Goodison Lou", "@goodisonlou.example", "Away end already in full voice. Monday night "
+                        + "under the lights, nothing to lose.", "https://bsky.app/profile/goodisonlou.example/post/1", "", now - 2 * 60_000L),
+                new FanFeed.Item("Reddit", "tidewater_fan", "u/tidewater_fan", "Whoever starts on the left, we need him tracking back. "
+                        + "Their full-backs bomb on all game.", "https://www.reddit.com/r/reddevils/comments/1/", "r/reddevils", now - 6 * 60_000L),
+                new FanFeed.Item("Bluesky", "Red Devil Dan", "@reddevildan.example", "Train's packed already. Scarves out, flask of tea, "
+                        + "let's have a good one.", "https://bsky.app/profile/reddevildan.example/post/2", "", now - 14 * 60_000L),
+                new FanFeed.Item("Reddit", "bluenose_93", "u/bluenose_93", "Clean sheet and I'll be happy. Anything else is a bonus.",
+                        "https://www.reddit.com/r/Everton/comments/2/", "r/Everton", now - 31 * 60_000L));
+    }
+
     private void draw(String name, int w, int h, boolean withResume) throws Exception {
         String dir = System.getProperty("preview.out", "");
         assumeTrue("PREVIEW_OUT not set", !dir.isEmpty());
@@ -143,6 +158,9 @@ public class HomePreviewTest {
         s.feed(feed());
         s.news(news());
         s.favourites(favourites());
+        s.social(fans(), Arrays.asList("Manchester United", "Everton"));
+        // The posts drop in one after another: drawn once they have settled.
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1500));
         idle();
         View root = a.getWindow().getDecorView();
         root.measure(View.MeasureSpec.makeMeasureSpec(w, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(h, View.MeasureSpec.EXACTLY));
