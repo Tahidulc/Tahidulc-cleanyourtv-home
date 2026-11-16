@@ -305,6 +305,15 @@ public final class FotMob {
         return 0;
     }
 
+    /**
+     * A game's match details as FotMob gives them (its line-ups with every player's live rating, place, country and
+     * events), found by both clubs' names on its day of matches; null when it doesn't have the game. Off the main thread.
+     */
+    public static JSONObject matchJson(String espnId, String home, String away, long kickoff) {
+        int id = find(espnId, home, away, kickoff);
+        return id > 0 ? raw(id) : null;
+    }
+
     /** FotMob's page of a club (its squad, its season's figures, its games) as it gives it; null when not read. Off the main thread. */
     public static JSONObject team(int id) {
         if (id <= 0) return null;
