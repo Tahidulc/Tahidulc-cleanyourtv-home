@@ -6,6 +6,7 @@ import android.view.KeyEvent;
 import android.view.View;
 import android.widget.FrameLayout;
 
+import com.gathin.homefieldtv.engine.Catchup;
 import com.gathin.homefieldtv.engine.Channel;
 import com.gathin.homefieldtv.engine.Exec;
 import com.gathin.homefieldtv.engine.Genres;
@@ -23,9 +24,10 @@ import java.util.Set;
  * The TV guide, dark, in the phone's guide's colours: the rail; the categories down the side (All channels, Favourites,
  * Recently watched, the guide's own kinds, then the playlist's groups, each with how many channels it has); at the top
  * the programme the remote is on (its title, channel, times and story) with its picture at the top right; then the
- * grid, with a strip under the channel's row about that programme. OK watches the channel; OK held adds it to the
- * favourites (or takes it off); the number keys go to a channel. No mini TV here: the stream is let go until a channel
- * is chosen.
+ * grid, with a strip under the channel's row about that programme. OK watches the channel, or plays a programme
+ * already shown from the provider's archive (catch-up); OK held brings up a small menu (watch it live, from the start,
+ * the favourites); Back from the past comes back to now; the number keys go to a channel. No mini TV here: the stream
+ * is let go until a channel is chosen.
  */
 final class GuideScreen extends Screen implements GuideGrid.Host {
     private static final int RAIL = 0, PANEL = 1, GRID = 2;
@@ -37,6 +39,7 @@ final class GuideScreen extends Screen implements GuideGrid.Host {
     private GuideGrid grid;
     private GuideBand band;
     private Backdrop backdrop;
+    private PopMenu menu;
     private int area = GRID;
     /** The list in the grid: ALL, FAV, RECENT, or GENRE / GROUP and its name. */
     private String shown = ALL;
@@ -69,6 +72,8 @@ final class GuideScreen extends Screen implements GuideGrid.Host {
         f.addView(band, new FrameLayout.LayoutParams(-1, -1));
         f.addView(panel, new FrameLayout.LayoutParams(-1, -1));
         f.addView(rail, new FrameLayout.LayoutParams(-1, -1));
+        menu = new PopMenu(tv);
+        f.addView(menu, new FrameLayout.LayoutParams(-1, -1));
         String first = startCategory == null ? ALL : GENRE + startCategory;
         fillPanel(first);
         load(first, null);
@@ -151,6 +156,7 @@ final class GuideScreen extends Screen implements GuideGrid.Host {
         h.removeCallbacks(digitsDone);
         h.removeCallbacks(switchList);
         h.removeCallbacks(askPicture);
+        if (menu.isOpen()) menu.close();
     }
 
     @Override void tick() {
@@ -203,6 +209,7 @@ final class GuideScreen extends Screen implements GuideGrid.Host {
     }
 
     @Override boolean key(int code, KeyEvent e) {
+        if (menu.isOpen()) return menu.key(code);
         if (code >= KeyEvent.KEYCODE_0 && code <= KeyEvent.KEYCODE_9) {
             digits += (char) ('0' + code - KeyEvent.KEYCODE_0);
             band.typed(digits);
@@ -282,6 +289,10 @@ final class GuideScreen extends Screen implements GuideGrid.Host {
     }
 
     @Override void ok() {
+        if (menu.isOpen()) {
+            menu.ok();
+            return;
+        }
         switch (area) {
             case RAIL:
                 Rail.go(tv, rail.focus, Rail.GUIDE);
@@ -291,25 +302,68 @@ final class GuideScreen extends Screen implements GuideGrid.Host {
                 break;
             default: {
                 Channel c = grid.channel();
-                if (c != null) tv.watch(c);
+                if (c == null) break;
+                // A programme already shown that the provider's archive keeps: played from its start (catch-up).
+                long[] p = grid.times();
+                long now = System.currentTimeMillis();
+                if (p != null && p[1] <= now && Catchup.has(c, p[0], now)) tv.watchFrom(c, p[0], p[1]);
+                else tv.watch(c);
                 break;
             }
         }
     }
 
+    /** OK held on a programme: a small menu (watch it live, from its start, the channel in the favourites or out). */
     @Override void okLong() {
+        if (menu.isOpen()) return;
         if (area != GRID) {
             ok();
             return;
         }
         Channel c = grid.channel();
         if (c == null) return;
-        boolean now = Library.get(tv).toggleFavourite(c);
-        android.widget.Toast.makeText(tv, now ? c.name + " added to your favourites" : c.name + " taken off your favourites",
-                android.widget.Toast.LENGTH_SHORT).show();
+        long now = System.currentTimeMillis();
+        long[] p = grid.times();
+        Guide.Schedule s = Library.get(tv).schedule(c.key);
+        int i = grid.programme();
+        boolean shown = p != null && p[1] <= now, onNow = p != null && p[0] <= now && now < p[1];
+        boolean archived = p != null && Catchup.has(c, p[0], now);
+        List<String[]> items = new ArrayList<>();
+        if (shown && archived) items.add(new String[]{"start", "Watch it"});
+        if (onNow && archived && now - p[0] >= LiveTv.LIVE_EDGE_MS) items.add(new String[]{"start", "Watch from the start"});
+        items.add(new String[]{"live", shown && archived ? "Watch " + c.name + " live" : "Watch " + c.name});
+        boolean fav = Library.get(tv).isFavourite(c);
+        items.add(new String[]{"fav", fav ? "Remove from favourites" : "Add to favourites"});
+        String title = i >= 0 && s != null ? s.title[i] : c.name;
+        String line = p == null ? c.name : Ui.day(p[0], now) + ", " + LiveText.span(p[0], p[1]) + "  ·  " + c.name;
+        menu.open(title, line, items, 760f, 360f, key -> {
+            switch (key) {
+                case "start":
+                    if (p != null) tv.watchFrom(c, p[0], p[1]);
+                    break;
+                case "live":
+                    tv.watch(c);
+                    break;
+                default: {
+                    boolean on = Library.get(tv).toggleFavourite(c);
+                    android.widget.Toast.makeText(tv, on ? c.name + " added to your favourites" : c.name + " taken off your favourites",
+                            android.widget.Toast.LENGTH_SHORT).show();
+                    break;
+                }
+            }
+        });
     }
 
     @Override boolean back() {
+        if (menu.isOpen()) {
+            menu.close();
+            return true;
+        }
+        if (area == GRID && grid.inPast()) {
+            // Back from the archive's past: the guide at the time now.
+            grid.toNow();
+            return true;
+        }
         if (area == RAIL) {
             to(PANEL);
             return true;

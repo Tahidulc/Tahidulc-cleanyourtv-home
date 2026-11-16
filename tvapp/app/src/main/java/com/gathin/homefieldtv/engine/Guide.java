@@ -16,8 +16,10 @@ import java.util.TimeZone;
 /**
  * The guide (XMLTV, from the playlist's own address or the Xtream account's xmltv.php): what is on each channel now
  * and next, with each programme's description. Read as a stream, keeping only the channels in the playlist and a window
- * from an hour ago to twelve hours ahead, so a large guide stays small in memory: repeated titles and descriptions are
- * kept once, a description is cut to a few lines, and past a budget the rest of the guide keeps its titles only.
+ * from an hour ago to twelve hours ahead (further back for a channel with catch-up: its archive, at most three days),
+ * so a large guide stays small in memory: repeated titles and descriptions are kept once, a description is cut to a
+ * few lines, and past a budget the rest of the guide keeps its titles only (the older programmes have a smaller budget
+ * of their own, so what's on now and next keeps its descriptions).
  */
 public final class Guide {
     private Guide() {}
@@ -25,6 +27,8 @@ public final class Guide {
     static final long BEHIND_MS = 3600_000L, AHEAD_MS = 12 * 3600_000L;
     /** A description's most characters, and all descriptions' together (about 12 MB) before the rest are left out. */
     static final int DESC_MAX = 360, DESC_BUDGET = 6_000_000;
+    /** Catch-up: the most days of past programmes kept, and their descriptions' own budget (about 3 MB). */
+    static final int PAST_DAYS = 3, PAST_BUDGET = 1_500_000;
 
     /** One channel's programmes in time order. */
     public static final class Schedule {
@@ -135,10 +139,16 @@ public final class Guide {
      */
     static Map<String, Schedule> read(InputStream in, Map<String, List<String>> byId, Map<String, List<String>> byName, long now)
             throws IOException {
+        return read(in, byId, byName, now, null);
+    }
+
+    /** As above, keeping the programmes back to since's time for the channels in it (their catch-up). */
+    static Map<String, Schedule> read(InputStream in, Map<String, List<String>> byId, Map<String, List<String>> byName, long now,
+                                      Map<String, Long> since) throws IOException {
         Map<String, Builder> out = new HashMap<>();
         Map<String, List<String>> idKeys = new HashMap<>(byId);
         Map<String, String> pool = new HashMap<>();
-        int[] budget = {DESC_BUDGET};
+        int[] budget = {DESC_BUDGET}, pastBudget = {PAST_BUDGET};
         try {
             XmlPullParser p = android.util.Xml.newPullParser();
             p.setFeature(XmlPullParser.FEATURE_PROCESS_NAMESPACES, false);
@@ -166,22 +176,24 @@ public final class Guide {
                     String ch = p.getAttributeValue(null, "channel");
                     List<String> keys = ch == null ? null : idKeys.get(ch.toLowerCase(Locale.ROOT));
                     long a = time(p.getAttributeValue(null, "start")), b = time(p.getAttributeValue(null, "stop"));
-                    if (keys == null || a == 0 || b <= a || b < from || a > to) {
+                    if (keys == null || a == 0 || b <= a || b < earliest(keys, from, since) || a > to) {
                         skip(p);
                         continue;
                     }
+                    // Kept only for catch-up: its description from the older programmes' own budget.
+                    int[] room = b < from ? pastBudget : budget;
                     String title = "", desc = "";
                     int depth = p.getDepth();
                     while ((ev = p.next()) != XmlPullParser.END_DOCUMENT && !(ev == XmlPullParser.END_TAG && p.getDepth() == depth)) {
                         if (ev != XmlPullParser.START_TAG) continue;
                         String inner = p.getName();
                         if ("title".equals(inner) && title.isEmpty()) title = p.nextText().trim();
-                        else if ("desc".equals(inner) && desc.isEmpty() && budget[0] > 0) desc = shortDesc(p.nextText());
+                        else if ("desc".equals(inner) && desc.isEmpty() && room[0] > 0) desc = shortDesc(p.nextText());
                     }
                     title = once(pool, title);
                     if (!desc.isEmpty()) {
                         String had = pool.get(desc);
-                        if (had == null) budget[0] -= desc.length();
+                        if (had == null) room[0] -= desc.length();
                         desc = once(pool, desc);
                     }
                     for (String k : keys) {
@@ -197,6 +209,17 @@ public final class Guide {
         Map<String, Schedule> done = new HashMap<>();
         for (Map.Entry<String, Builder> e : out.entrySet()) done.put(e.getKey(), e.getValue().build());
         return done;
+    }
+
+    /** Pure: the earliest end a programme may have to be kept for these channels: from, or further back for catch-up. */
+    static long earliest(List<String> keys, long from, Map<String, Long> since) {
+        if (since == null || since.isEmpty()) return from;
+        long f = from;
+        for (String k : keys) {
+            Long s = since.get(k);
+            if (s != null && s < f) f = s;
+        }
+        return f;
     }
 
     /** The one copy of a string that is repeated through the guide (a series' title on every channel showing it). */

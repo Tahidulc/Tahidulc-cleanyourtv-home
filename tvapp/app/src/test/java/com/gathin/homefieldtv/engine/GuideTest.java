@@ -13,6 +13,21 @@ public class GuideTest {
         assertEquals(0, Guide.time("nonsense"));
     }
 
+    @Test public void catchUpChannelsKeepTheirPast() {
+        java.util.Map<String, Long> since = new java.util.HashMap<>();
+        since.put("x:1", 1000L);
+        since.put("x:2", 500L);
+        // A channel with catch-up keeps what its archive does; one without, from the usual hour back.
+        assertEquals(1000L, Guide.earliest(java.util.Arrays.asList("x:1"), 5000L, since));
+        assertEquals(5000L, Guide.earliest(java.util.Arrays.asList("m:3"), 5000L, since));
+        // The guide's programme shared by several channels: kept as far back as any of them needs.
+        assertEquals(500L, Guide.earliest(java.util.Arrays.asList("m:3", "x:1", "x:2"), 5000L, since));
+        assertEquals(5000L, Guide.earliest(java.util.Arrays.asList("x:1"), 5000L, null));
+        // An archive never shortens the usual hour.
+        since.put("x:4", 9000L);
+        assertEquals(5000L, Guide.earliest(java.util.Arrays.asList("x:4"), 5000L, since));
+    }
+
     @Test public void nowAndNext() {
         Guide.Builder b = new Guide.Builder();
         b.add(2000, 3000, "B");

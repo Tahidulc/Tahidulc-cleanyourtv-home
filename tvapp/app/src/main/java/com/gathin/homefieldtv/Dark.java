@@ -82,6 +82,26 @@ final class Dark {
         c.drawRoundRect(r.left - k, r.top - k, r.right + k, r.bottom + k, radius + k, radius + k, ring);
     }
 
+    private static final Path REPLAY = new Path();
+    private static final RectF REPLAY_OVAL = new RectF();
+
+    /**
+     * Catch-up's mark: a circle arrow turning back (anticlockwise), open at the top, its head at half past one pointing
+     * up and to the left, centred on (cx, cy) with radius r (screen pixels); the arc in stroke, the head in fill.
+     */
+    static void replay(Canvas c, float cx, float cy, float r, Paint stroke, Paint fill) {
+        REPLAY_OVAL.set(cx - r, cy - r, cx + r, cy + r);
+        c.drawArc(REPLAY_OVAL, 315f, 270f, false, stroke);
+        float px = cx + r * 0.707f, py = cy - r * 0.707f, dx = -0.707f, dy = -0.707f, a = r * 0.8f;
+        float nx = -dy, ny = dx;
+        REPLAY.reset();
+        REPLAY.moveTo(px + dx * a * 1.2f, py + dy * a * 1.2f);
+        REPLAY.lineTo(px - dx * a * 0.4f + nx * a * 0.65f, py - dy * a * 0.4f + ny * a * 0.65f);
+        REPLAY.lineTo(px - dx * a * 0.4f - nx * a * 0.65f, py - dy * a * 0.4f - ny * a * 0.65f);
+        REPLAY.close();
+        c.drawPath(REPLAY, fill);
+    }
+
     // ---- people ---------------------------------------------------------------------------------------------------
 
     private static final int[] FACES = {0xFF5B6CFF, 0xFFE0703A, 0xFF2E9D72, 0xFF9B5DE5, 0xFF1F9AA8, 0xFFC0485A, 0xFFB08A1E, 0xFF5E7186};
