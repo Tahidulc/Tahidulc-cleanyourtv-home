@@ -46,10 +46,15 @@ public class GameActivity extends AppCompatActivity {
     private Espn.Summary summary = new Espn.Summary();
     private String channel;
     /** No British channel listed for the game: the playlist channel likeliest to show it (an English one first). */
-    private com.gathin.tvhomephone.live.AlsoShowing.Shown shown;
+    private com.gathin.tvhomephone.live.AlsoShowing.Listed shown;
     private boolean channelKnown;
+    /** Every channel in the family's playlists that shows it, the likeliest first (null until read); all of them shown. */
+    private List<com.gathin.tvhomephone.live.AlsoShowing.Listed> listed;
+    private boolean listAll;
+    /** Its highlights found so far (FotMob's link, ESPN's videos). */
+    private List<Highlights.Clip> clips = new java.util.ArrayList<>();
     private int tab = -1;
-    private LinearLayout hero, tabs, body;
+    private LinearLayout hero, where, clipsBox, tabs, body;
     private boolean open;
     /** The tabs' pages (GameTabs, shared with the player's match centre). */
     private GameTabs parts;
@@ -68,6 +73,7 @@ public class GameActivity extends AppCompatActivity {
             return;
         }
         parts = new GameTabs(this, () -> !isFinishing());
+        parts.tvCard(true);
         ScrollView scroll = new ScrollView(this);
         scroll.setBackgroundColor(getColor(R.color.ground));
         scroll.setFillViewport(true);
@@ -86,6 +92,10 @@ public class GameActivity extends AppCompatActivity {
         col.addView(top);
         hero = Ui.column(this);
         col.addView(hero, Ui.matchWrap());
+        where = Ui.column(this);
+        col.addView(where, Ui.margins(this, 0, 14, 0, 0));
+        clipsBox = Ui.column(this);
+        col.addView(clipsBox, Ui.margins(this, 0, 16, 0, 0));
         tabs = Ui.row(this);
         col.addView(tabs, Ui.margins(this, 0, 16, 0, 4));
         body = Ui.column(this);
@@ -95,20 +105,24 @@ public class GameActivity extends AppCompatActivity {
         android.content.Context app = getApplicationContext();
         App.io.execute(() -> {
             String ch = Channels.best(this, game);
-            com.gathin.tvhomephone.live.AlsoShowing.Shown alt = null;
-            if (ch == null && game.state != Game.POST) {
+            List<com.gathin.tvhomephone.live.AlsoShowing.Listed> all = null;
+            if (game.state != Game.POST) {
                 try {
-                    alt = com.gathin.tvhomephone.live.AlsoShowing.shown(app, game);
+                    all = com.gathin.tvhomephone.live.AlsoShowing.listed(app, game);
                 } catch (RuntimeException ignored) {
                     // the playlists not readable now: Also Showing On alone, as before
                 }
             }
-            com.gathin.tvhomephone.live.AlsoShowing.Shown pick = alt;
+            List<com.gathin.tvhomephone.live.AlsoShowing.Listed> got = all;
             App.main.post(() -> {
                 channel = ch;
-                shown = pick;
+                listed = got;
+                // No British channel listed for it: the likeliest of the family's own in its place.
+                shown = ch == null && got != null && !got.isEmpty() ? got.get(0) : null;
                 channelKnown = true;
-                if (!isFinishing()) paintHero();
+                if (isFinishing()) return;
+                paintHero();
+                paintWhere();
             });
         });
     }
@@ -132,10 +146,18 @@ public class GameActivity extends AppCompatActivity {
             Espn.Summary s = Espn.summary(game.slug, game.id, 20_000L);
             if (game.state != Game.PRE) com.gathin.tvhomephone.live.FotMob.addTo(s.stats, game.id, game.homeName, game.awayName, game.kickoff);
             Game got = fresh;
+            List<Highlights.Clip> hl;
+            try {
+                hl = Highlights.forGame(getApplicationContext(), got != null ? got : game);
+            } catch (RuntimeException e) {
+                hl = new java.util.ArrayList<>();
+            }
+            List<Highlights.Clip> found = hl;
             App.main.post(() -> {
                 if (isFinishing()) return;
                 if (got != null) game = got;
                 summary = s;
+                clips = found;
                 paint();
                 if (open && game.state == Game.LIVE) App.main.postDelayed(this::refresh, 30_000L);
             });
@@ -144,8 +166,31 @@ public class GameActivity extends AppCompatActivity {
 
     private void paint() {
         paintHero();
+        paintWhere();
+        paintClips();
         paintTabs();
         paintBody();
+    }
+
+    /** Every channel of the family's that shows it (not once it is over): read once, as the page opens. */
+    private void paintWhere() {
+        where.removeAllViews();
+        if (listed == null || game.state == Game.POST) {
+            where.setVisibility(View.GONE);
+            return;
+        }
+        where.setVisibility(View.VISIBLE);
+        where.addView(EventViews.channels(this, listed, listAll, () -> {
+            listAll = !listAll;
+            paintWhere();
+        }), Ui.matchWrap());
+    }
+
+    /** Its highlights, when there are any. */
+    private void paintClips() {
+        clipsBox.removeAllViews();
+        clipsBox.setVisibility(clips.isEmpty() ? View.GONE : View.VISIBLE);
+        if (!clips.isEmpty()) clipsBox.addView(EventViews.highlights(this, clips), Ui.matchWrap());
     }
 
     // ---- colours ------------------------------------------------------------------------------------------------
@@ -191,14 +236,16 @@ public class GameActivity extends AppCompatActivity {
         LinearLayout actions = Ui.column(this);
         actions.setGravity(Gravity.CENTER_HORIZONTAL);
         if (channel != null || shown != null) {
-            com.gathin.tvhomephone.live.AlsoShowing.Shown s = shown;
+            com.gathin.tvhomephone.live.AlsoShowing.Listed s = shown;
             View on = channel != null ? Ui.liveOn(this, channel) : Ui.liveOnPlaylist(this, s.name, s.logo,
                     () -> com.gathin.tvhomephone.live.PlayerActivity.start(this, s.ch.key, com.gathin.tvhomephone.live.Library.ALL));
             on.setBackground(Ui.fill(this, 0x24FFFFFF, 18));
             on.setPadding(Ui.dp(this, 14), Ui.dp(this, 6), Ui.dp(this, 14), Ui.dp(this, 6));
             actions.addView(on, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         }
-        if (game.state != Game.POST && channelKnown) {
+        // Every channel of the family's is listed under the card; the sheet only when they have none (the broadcasters
+        // the game is on, though not in the playlists, are named there).
+        if (game.state != Game.POST && channelKnown && (listed == null || listed.isEmpty())) {
             TextView also = Ui.text(this, getString(R.string.tile_also_showing) + "  ›", 13.5f, getColor(R.color.text), true);
             also.setGravity(Gravity.CENTER);
             also.setBackground(Ui.fill(this, 0x1FFFFFFF, 16));

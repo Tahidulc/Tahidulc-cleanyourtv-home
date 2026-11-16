@@ -140,6 +140,21 @@ public final class Notifier {
     }
 
     /**
+     * The line-ups as the TV's card draws them, for the notification opened out: the band with the competition and both
+     * crests and shapes, both elevens on the pitch (no photos needed, so nothing waits for them); null when it can't.
+     */
+    static Bitmap lineupsCard(Context c, Events.Alert a) {
+        try {
+            com.gathin.tvhomephone.live.BoardLineups.Data d =
+                    com.gathin.tvhomephone.live.ScoreBoard.lineupsData(c, a.game, a.summary, Ui.dp(c, 48), false);
+            if (!d.full()) return null;
+            return com.gathin.tvhomephone.live.BoardLineups.picture(c, d, 0, -1, 960, Math.round(960 / Popups.LINEUP_SHAPE));
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
+    /**
      * The other drawn cards: the line-ups on a pitch, the F1 podium. Folded, the competition's (or F1's) logo with the
      * words; opened out, the card. False when there is none to draw.
      */
@@ -148,7 +163,8 @@ public final class Notifier {
         String title = a.title, line = a.text == null ? "" : a.text.replace('\n', ' ');
         try {
             if (a.key.startsWith("L|") && a.game != null && a.summary != null) {
-                card = NotifCard.lineups(c, a.game, a.summary);
+                card = lineupsCard(c, a);
+                if (card == null) card = NotifCard.lineups(c, a.game, a.summary);
                 title = "Line-ups · " + a.game.homeName + " v " + a.game.awayName;
                 line = (a.summary.homeFormation.isEmpty() ? "" : a.game.homeName + " " + a.summary.homeFormation + " · ")
                         + (a.summary.awayFormation.isEmpty() ? "" : a.game.awayName + " " + a.summary.awayFormation);

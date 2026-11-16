@@ -2616,7 +2616,15 @@ public final class ScoreBoard implements LiveAlerts.Listener {
     }
 
     /** Everything the card shows: each side's eleven in its lines with their photos, crests, kits and shapes. */
-    static BoardLineups.Data lineupsData(Context c, Game g, Espn.Summary sum, int px) {
+    public static BoardLineups.Data lineupsData(Context c, Game g, Espn.Summary sum, int px) {
+        return lineupsData(c, g, sum, px, true);
+    }
+
+    /**
+     * Everything the card shows, the players' photos only when asked for (the pitch alone, as a notification draws it,
+     * needs none). Off the main thread.
+     */
+    public static BoardLineups.Data lineupsData(Context c, Game g, Espn.Summary sum, int px, boolean photos) {
         BoardLineups.Data d = new BoardLineups.Data();
         int[] kits = com.gathin.tvhomephone.sports.Glyphs.kits(sum.homeKit, sum.homeKitAlt, g.homeColor, sum.awayKit, sum.awayKitAlt, g.awayColor);
         d.home.name = g.homeName == null ? "" : g.homeName;
@@ -2635,6 +2643,7 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         } catch (RuntimeException ignored) {
             // without them
         }
+        if (!photos) return d;
         // Each starter's photo: a few at a time, eight seconds at most for them all.
         java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(4);
         List<java.util.concurrent.Callable<Void>> jobs = new ArrayList<>();
@@ -2752,6 +2761,7 @@ public final class ScoreBoard implements LiveAlerts.Listener {
             case "ht": return "HALF TIME";
             case "ft": return "FULL TIME";
             case "kickoff": return "KICK-OFF";
+            case "lineups": return "LINE-UPS";
             case "drama": return "LATE DRAMA";
             case "table": return "LIVE TABLE";
             case "milestone": return "MILESTONE";

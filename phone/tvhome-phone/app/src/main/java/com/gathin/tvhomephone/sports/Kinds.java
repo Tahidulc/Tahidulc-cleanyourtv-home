@@ -20,7 +20,8 @@ public final class Kinds {
     public static final String[][] ALL = {
             {"goal", "Goals", "Every goal in the games you follow", FOOTBALL},
             {"red", "Red cards", "A player sent off", FOOTBALL},
-            {"kickoff", "Kick-off and line-ups", "Both starting elevens before kick-off, then kick-off", FOOTBALL},
+            {"lineups", "Line-ups", "Both starting elevens with their photos, about an hour before kick-off, as the TV shows them", FOOTBALL},
+            {"kickoff", "Kick-off", "A game you follow under way", FOOTBALL},
             {"ht", "Half time", "The score and the scorers at the break", FOOTBALL},
             {"ft", "Full time", "The final score as a game ends", FOOTBALL},
             {"var", "VAR and penalties", "A check under way, its decision, a penalty missed", FOOTBALL},
@@ -71,7 +72,10 @@ public final class Kinds {
     }
 
     public static boolean on(Context c, String kind) {
-        return prefs(c).getBoolean(kind, true);
+        SharedPreferences p = prefs(c);
+        // The line-ups came with kick-off before they had their own switch: as that one was set, until set themselves.
+        if ("lineups".equals(kind) && !p.contains(kind)) return p.getBoolean("kickoff", true);
+        return p.getBoolean(kind, true);
     }
 
     public static void set(Context c, String kind, boolean on) {

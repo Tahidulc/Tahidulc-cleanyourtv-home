@@ -50,6 +50,10 @@ final class SportsScreen {
 
         /** Settings, where the clubs and the alerts are chosen. */
         void settings();
+
+        /** Another sport's event on its own page (every channel showing it, its highlights). */
+        default void event(SportEvent e) {
+        }
     }
 
     /** The pill's places. */
@@ -559,7 +563,7 @@ final class SportsScreen {
             for (OnTv.Listing l : tv) {
                 if (shown >= max) break;
                 if (shown > 0) card.addView(SportCards.divider(c));
-                card.addView(SportCards.listingRow(c, l, now, x -> host.watch(l.channel())));
+                card.addView(SportCards.listingRow(c, l, now, x -> host.event(SportEvent.listing(l))));
                 shown++;
             }
             if (tv.size() > 8) card.addView(more(tvAll ? "Show less" : "Show all " + tv.size(), () -> {
@@ -737,7 +741,8 @@ final class SportsScreen {
                 card.addView(SportCards.divider(c));
                 for (int i = 0; i < drivers.size() && i < 5; i++) card.addView(driver(drivers.get(i)));
             }
-            if (channel != null) card.setOnClickListener(x -> host.watch(channel));
+            if (w != null) card.setOnClickListener(x -> host.event(SportEvent.grandPrix(w, channel, System.currentTimeMillis())));
+            else if (channel != null) card.setOnClickListener(x -> host.watch(channel));
             v.add(card);
         }
         fill("f1", v);
@@ -808,7 +813,10 @@ final class SportsScreen {
             boolean first = true;
             for (SportBoard s : pickMatches(matches, 6)) {
                 if (!first) card.addView(SportCards.divider(c));
-                card.addView(SportCards.tennisRow(c, s), first ? gap : new LinearLayout.LayoutParams(-1, -2));
+                View row = SportCards.tennisRow(c, s);
+                row.setOnClickListener(x -> host.event(SportEvent.tennis(s, tour, channel)));
+                row.setBackground(SportCards.touch(c));
+                card.addView(row, first ? gap : new LinearLayout.LayoutParams(-1, -2));
                 first = false;
             }
             if (channel != null) card.setOnClickListener(x -> host.watch(channel));
@@ -836,7 +844,7 @@ final class SportsScreen {
     /** UFC's next card: the main event's fighters face to face, then the other bouts. */
     void fights(List<SportBoard> card, String channel) {
         List<View> v = new ArrayList<>();
-        if (card != null && !card.isEmpty()) v.add(SportCards.fightCard(c, card, channel, channel == null ? null : x -> host.watch(channel)));
+        if (card != null && !card.isEmpty()) v.add(SportCards.fightCard(c, card, channel, x -> host.event(SportEvent.fightNight(card, channel))));
         fill("ufc", v);
     }
 
@@ -862,7 +870,7 @@ final class SportsScreen {
             for (int i = 0; i < games.size() && i < max; i++) {
                 MoreSports.Match m = games.get(i);
                 if (i > 0) card.addView(SportCards.divider(c));
-                card.addView(SportCards.matchRow(c, m, m.channel == null ? null : x -> host.watch(m.channel)));
+                card.addView(SportCards.matchRow(c, m, x -> host.event(SportEvent.game(m, key))));
             }
             if (games.size() > 6) card.addView(more(all ? "Show less" : "Show all " + games.size(), () -> {
                 allShown.put(key, !all);
@@ -875,7 +883,12 @@ final class SportsScreen {
 
     void golf(List<MoreSports.Leaderboard> boards) {
         List<View> v = new ArrayList<>();
-        for (MoreSports.Leaderboard b : boards) if (b != null && !b.rows.isEmpty()) v.add(SportCards.golfCard(c, b));
+        for (MoreSports.Leaderboard b : boards) {
+            if (b == null || b.rows.isEmpty()) continue;
+            View card = SportCards.golfCard(c, b);
+            card.setOnClickListener(x -> host.event(SportEvent.golf(b)));
+            v.add(card);
+        }
         fill("golf", v);
     }
 

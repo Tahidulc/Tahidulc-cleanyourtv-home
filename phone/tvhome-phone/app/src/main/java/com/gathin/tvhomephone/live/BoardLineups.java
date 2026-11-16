@@ -28,13 +28,13 @@ import java.util.Locale;
  * colours. Each page comes in behind a slanted navy wipe, a line along the foot filling as it runs. Drawn, not built of
  * views, so it is light over the playing picture.
  */
-final class BoardLineups extends View {
-    static final class Player {
+public final class BoardLineups extends View {
+    public static final class Player {
         String number = "", first = "", last = "";
         Bitmap photo;
     }
 
-    static final class Team {
+    public static final class Team {
         String name = "", formation = "";
         Bitmap crest;
         int kit = 0xFF2A4FD0;
@@ -42,10 +42,15 @@ final class BoardLineups extends View {
         final List<List<Player>> rows = new ArrayList<>();
     }
 
-    static final class Data {
+    public static final class Data {
         Team home = new Team(), away = new Team();
         String competition = "";
         Bitmap leagueLogo;
+
+        /** Both elevens are there to show. */
+        public boolean full() {
+            return home != null && away != null && !home.rows.isEmpty() && !away.rows.isEmpty();
+        }
     }
 
     /** One page: a club's players (and what line they are), or the pitch (team null). */
@@ -63,10 +68,16 @@ final class BoardLineups extends View {
     private final List<Page> pages = new ArrayList<>();
     private Data data;
     private int at;
+    /** The page this one turned from (-1: none, it came in on its own). */
+    private int prev = -1;
     /** The turn to this page (0 the last, 1 this one); how far this page has run (0 to 1, its line along the foot). */
     private float turn = 1f, ran;
     private ValueAnimator turning, running;
     private Runnable done;
+    /** Players a page at most (0: as the TV's card has them); how long a page stays; round again after the last. */
+    private int perPage;
+    private long pageMs = PAGE_MS;
+    private boolean loop;
     private final float dp;
     private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG), text = new Paint(Paint.ANTI_ALIAS_FLAG),
             image = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG), streak = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -74,7 +85,7 @@ final class BoardLineups extends View {
     private final Path path = new Path(), card = new Path();
     private final Runnable next = this::next;
 
-    BoardLineups(Context c) {
+    public BoardLineups(Context c) {
         super(c);
         dp = c.getResources().getDisplayMetrics().density;
         text.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD));
@@ -87,25 +98,53 @@ final class BoardLineups extends View {
         return Math.round(h * 2.95f);
     }
 
+    /**
+     * On a phone's page or pop-up (narrower than the TV's, so taller for its width): at most n players a page, each page
+     * for ms, round again after the last (the match page), a tap turning to the next.
+     */
+    public void phone(int n, long ms, boolean round) {
+        perPage = Math.max(0, n);
+        pageMs = Math.max(1500L, ms);
+        loop = round;
+        setOnClickListener(v -> {
+            if (data == null || pages.size() < 2) return;
+            removeCallbacks(next);
+            next();
+        });
+    }
+
+    /** Pure: how many players a page has room for on a card w by h: each a head and shoulders at least 0.38 of h wide. */
+    public static int perPageFor(int w, int h) {
+        if (w <= 0 || h <= 0) return 6;
+        float band = Math.round(h * 0.36f), stage = w - band - 2 * h * 0.03f;
+        return Math.max(3, Math.min(6, (int) Math.floor(stage / (h * 0.38f))));
+    }
+
     /** Pure: how long it shows these elevens, page by page. */
     static long showFor(Data d) {
+        return showFor(d, 0, PAGE_MS);
+    }
+
+    /** Pure: how long it shows these elevens, page by page, n a page, each page for ms. */
+    public static long showFor(Data d, int n, long ms) {
         long all = 0;
-        for (Page p : pages(d)) all += p.ms + TURN_MS;
+        for (Page p : pages(d, n, ms)) all += p.ms + TURN_MS;
         return all;
     }
 
-    /** In with these elevens, page after page; then() once the last has run and it has gone. */
-    void show(Data d, Runnable then) {
+    /** In with these elevens, page after page; then() once the last has run and it has gone (never, going round). */
+    public void show(Data d, Runnable then) {
         removeCallbacks(next);
         data = d;
         pages.clear();
-        pages.addAll(pages(d));
+        pages.addAll(pages(d, perPage, pageMs));
         done = then;
         if (pages.isEmpty()) {
             finish();
             return;
         }
         at = 0;
+        prev = -1;
         setVisibility(VISIBLE);
         setAlpha(0f);
         setTranslationX(-12 * dp);
@@ -114,12 +153,13 @@ final class BoardLineups extends View {
     }
 
     /** Previews: shown at once on page i, this far through it. */
-    void showNow(Data d, int i, float through) {
+    public void showNow(Data d, int i, float through) {
         removeCallbacks(next);
         data = d;
         pages.clear();
-        pages.addAll(pages(d));
+        pages.addAll(pages(d, perPage, pageMs));
         at = Math.max(0, Math.min(i, pages.size() - 1));
+        prev = -1;
         turn = 1f;
         ran = through;
         setAlpha(1f);
@@ -127,8 +167,30 @@ final class BoardLineups extends View {
         invalidate();
     }
 
+    /** How many pages these elevens make here. */
+    public int pageCount() {
+        return pages.size();
+    }
+
+    /**
+     * Its page i drawn still into a picture w by h (a notification's): the last page (both elevens on the pitch) for i
+     * below 0. Off the main thread is fine: the view is never shown.
+     */
+    public static Bitmap picture(Context c, Data d, int perPage, int i, int w, int h) {
+        BoardLineups v = new BoardLineups(c);
+        v.setLayerType(LAYER_TYPE_NONE, null);
+        v.perPage = Math.max(0, perPage);
+        v.showNow(d, i < 0 ? Integer.MAX_VALUE : i, 0f);
+        if (v.pages.isEmpty()) return null;
+        v.measure(MeasureSpec.makeMeasureSpec(w, MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec(h, MeasureSpec.EXACTLY));
+        v.layout(0, 0, w, h);
+        Bitmap b = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
+        v.draw(new Canvas(b));
+        return b;
+    }
+
     /** Away at once (the board going, the small window). */
-    void gone() {
+    public void gone() {
         removeCallbacks(next);
         if (turning != null) turning.cancel();
         if (running != null) running.cancel();
@@ -156,9 +218,10 @@ final class BoardLineups extends View {
         at = i;
         if (turning != null) turning.cancel();
         if (running != null) running.cancel();
-        turn = i == 0 ? 1f : 0f;
+        boolean wipe = prev >= 0 && prev != i && prev < pages.size();
+        turn = wipe ? 0f : 1f;
         ran = 0f;
-        if (i > 0) {
+        if (wipe) {
             ValueAnimator t = ValueAnimator.ofFloat(0f, 1f);
             t.setDuration(TURN_MS);
             t.addUpdateListener(a -> {
@@ -170,7 +233,7 @@ final class BoardLineups extends View {
         }
         ValueAnimator run = ValueAnimator.ofFloat(0f, 1f);
         run.setDuration(pages.get(i).ms);
-        run.setStartDelay(i > 0 ? TURN_MS : 0);
+        run.setStartDelay(wipe ? TURN_MS : 0);
         run.setInterpolator(null);
         run.addUpdateListener(a -> {
             ran = (float) a.getAnimatedValue();
@@ -178,13 +241,20 @@ final class BoardLineups extends View {
         });
         running = run;
         run.start();
-        postDelayed(next, pages.get(i).ms + (i > 0 ? TURN_MS : 0));
+        postDelayed(next, pages.get(i).ms + (wipe ? TURN_MS : 0));
     }
 
     private void next() {
         if (data == null) return;
         if (at + 1 < pages.size()) {
+            prev = at;
             page(at + 1);
+            return;
+        }
+        if (loop && pages.size() > 1) {
+            // Round again: the first page wipes in over the pitch.
+            prev = at;
+            page(0);
             return;
         }
         animate().alpha(0f).translationX(-12 * dp).setDuration(300).withEndAction(this::finish).start();
@@ -252,6 +322,79 @@ final class BoardLineups extends View {
     }
 
     /**
+     * Pure: the pages with at most n players each (the TV card's own for n 0), each page for ms (the pitch a little
+     * longer): line after line from the keeper, a line joining the page before while it fits (the keeper with his
+     * defence, and a lone player, one over), a line too long for a page split across two.
+     */
+    static List<Page> pages(Data d, int n, long ms) {
+        if (n <= 0) {
+            List<Page> tv = pages(d);
+            if (ms != PAGE_MS) for (Page p : tv) p.ms = p.team == null ? ms * PITCH_MS / PAGE_MS : ms;
+            return tv;
+        }
+        List<Page> out = new ArrayList<>();
+        if (d == null) return out;
+        for (Team t : new Team[]{d.home, d.away}) {
+            if (t == null || t.rows.isEmpty()) continue;
+            List<List<Player>> rows = t.rows;
+            boolean known = rows.size() > 2;
+            List<Player> cur = new ArrayList<>();
+            List<String> names = new ArrayList<>();
+            for (int i = 0; i < rows.size(); i++) {
+                List<Player> line = rows.get(i);
+                String name = known ? lineName(i, rows.size()) : "";
+                for (int from = 0; from < line.size(); from += n) {
+                    List<Player> part = line.subList(from, Math.min(line.size(), from + n));
+                    boolean keeper = known && i == 1 && names.size() == 1 && "KEEPER".equals(names.get(0)) && cur.size() == 1;
+                    int room = keeper || part.size() <= 1 ? n + 1 : n;
+                    if (!cur.isEmpty() && cur.size() + part.size() > room) {
+                        out.add(timed(page(t, cur, String.join(" · ", names)), ms));
+                        cur = new ArrayList<>();
+                        names = new ArrayList<>();
+                    }
+                    cur.addAll(part);
+                    if (!name.isEmpty() && !names.contains(name)) names.add(name);
+                }
+            }
+            if (!cur.isEmpty()) out.add(timed(page(t, cur, String.join(" · ", names)), ms));
+        }
+        if (d.full()) {
+            Page p = new Page();
+            p.ms = ms * PITCH_MS / PAGE_MS;
+            out.add(p);
+        }
+        return out;
+    }
+
+    private static Page timed(Page p, long ms) {
+        p.ms = ms;
+        return p;
+    }
+
+    /** Pure: a line's name by its place: the keeper, the defence, the midfield (every line between), the attack. */
+    static String lineName(int i, int lines) {
+        if (i == 0) return "KEEPER";
+        if (i == 1) return "DEFENCE";
+        if (i == lines - 1) return "ATTACK";
+        return "MIDFIELD";
+    }
+
+    /** Pure, for tests: each page's players' numbers ("1 2 3 4 5") and its line's words, the pitch as "PITCH". */
+    static List<String> describe(Data d, int n) {
+        List<String> out = new ArrayList<>();
+        for (Page p : pages(d, n, PAGE_MS)) {
+            if (p.team == null) {
+                out.add("PITCH");
+                continue;
+            }
+            StringBuilder b = new StringBuilder();
+            for (Player pl : p.players) b.append(b.length() == 0 ? "" : " ").append(pl.number);
+            out.add(b + (p.caption.isEmpty() ? "" : " | " + p.caption));
+        }
+        return out;
+    }
+
+    /**
      * Pure: a side's eleven from ESPN's line-up (Espn.Summary's rows) in its lines, as Formation gives them (the keeper,
      * then each line from the back); its first names and surnames.
      */
@@ -291,8 +434,8 @@ final class BoardLineups extends View {
         // The stage, the page before it under the slanted wipe as this one comes in.
         cv.save();
         cv.clipRect(band, 0, w, h);
-        if (turn < 1f && at > 0) {
-            stage(cv, pages.get(at - 1), band, w, h);
+        if (turn < 1f && prev >= 0 && prev < pages.size()) {
+            stage(cv, pages.get(prev), band, w, h);
             float e = BoardSide.ease(turn), slant = h * 0.32f;
             float x = w + slant - (w - band + 2 * slant) * e;
             path.reset();

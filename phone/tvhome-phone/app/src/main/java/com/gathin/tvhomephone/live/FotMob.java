@@ -78,6 +78,26 @@ public final class FotMob {
         JSONArray homeForm, awayForm;
         /** The shot map's shots as FotMob gives them (content.shotmap.shots), for a big save or a great finish; null without. */
         JSONArray shotsRaw;
+        /** The match's highlights as FotMob links them (matchFacts.highlights): {address, picture, source}; null without. */
+        String[] highlights;
+    }
+
+    /**
+     * The game's highlights as FotMob links them, {address (YouTube's or the league's page), picture, source}, read with
+     * its figures (off the main thread, at most once a minute); null when FotMob has none.
+     */
+    public static String[] highlights(String espnId, String home, String away, long kickoff) {
+        Match m = forGame(espnId, home, away, kickoff);
+        return m == null ? null : m.highlights;
+    }
+
+    /** Pure: matchFacts.highlights as {address, picture, source}; null when it has no web address. */
+    static String[] highlightsOf(JSONObject matchFacts) {
+        JSONObject h = matchFacts == null ? null : matchFacts.optJSONObject("highlights");
+        if (h == null) return null;
+        String url = h.optString("url", "").trim();
+        if (!url.startsWith("https://") && !url.startsWith("http://")) return null;
+        return new String[]{url, h.optString("image", "").trim(), h.optString("source", "").trim()};
     }
 
     /** Pure: the sky over the ground from a read's weather (BoardFx.sky), or null when FotMob gave none. */
@@ -307,6 +327,7 @@ public final class FotMob {
             m.homeForm = tf.optJSONArray(0);
             m.awayForm = tf.optJSONArray(1);
         }
+        m.highlights = highlightsOf(mf);
         m.shots.addAll(com.gathin.broadcast.ShotMap.parse(c, m.homeTeamId));
         JSONObject info = c.optJSONObject("matchFacts") == null ? null : c.optJSONObject("matchFacts").optJSONObject("infoBox");
         JSONObject ref = info == null ? null : info.optJSONObject("Referee");

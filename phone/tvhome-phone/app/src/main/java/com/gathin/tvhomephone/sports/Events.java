@@ -181,7 +181,7 @@ public final class Events {
         if (h.isEmpty() || a.isEmpty()) return null;
         String when = java.time.Instant.ofEpochMilli(g.kickoff).atZone(java.time.ZoneId.systemDefault())
                 .format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"));
-        Alert out = new Alert("kickoff", "L|" + g.id, "LINE-UPS · " + g.homeName + " v " + g.awayName + " · " + when,
+        Alert out = new Alert("lineups", "L|" + g.id, "LINE-UPS · " + g.homeName + " v " + g.awayName + " · " + when,
                 g.homeName + (s.homeFormation.isEmpty() ? "" : " (" + s.homeFormation + ")") + ": " + h + "\n"
                         + g.awayName + (s.awayFormation.isEmpty() ? "" : " (" + s.awayFormation + ")") + ": " + a, g);
         out.summary = s;

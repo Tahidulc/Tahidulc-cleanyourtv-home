@@ -47,6 +47,15 @@ public final class GameTabs {
     private final java.util.Set<String> asked = java.util.Collections.newSetFromMap(new java.util.concurrent.ConcurrentHashMap<>());
     /** The pitch on the page now (a new one each time the line-ups are drawn again). */
     private Pitch shownPitch;
+    /** The line-ups as the TV's card shows them, above the pitch (the game's own page; not the player's panel). */
+    private boolean tvCard;
+    /** The card's elevens with their photos (read once for these line-ups), what they were read for, the card shown. */
+    private com.gathin.tvhomephone.live.BoardLineups.Data cardData;
+    private String cardFor = "";
+    private com.gathin.tvhomephone.live.BoardLineups shownCard;
+    /** The card's shape on a phone: the TV's, made taller for the narrower page. */
+    static final float CARD_SHAPE = 2.3f;
+    static final long CARD_PAGE_MS = 3_400L;
 
     public GameTabs(Context c, BooleanSupplier alive) {
         this.c = c;
@@ -67,6 +76,11 @@ public final class GameTabs {
     /** A low, wide panel: the timeline's moments before its shot map. */
     public void compact(boolean on) {
         compact = on;
+    }
+
+    /** The line-ups led by the TV's line-up card (the game's own page). */
+    public void tvCard(boolean on) {
+        tvCard = on;
     }
 
     /** The tabs there is something to show in, in order. */
@@ -362,6 +376,7 @@ public final class GameTabs {
 
     private void lineups() {
         int[] k = kits();
+        if (tvCard) body.addView(tvCardView(), Ui.margins(c, 0, 10, 0, 4));
         body.addView(teamBar(true), Ui.margins(c, 0, 10, 0, 8));
         Pitch pitch = new Pitch(c);
         pitch.show(summary.homeLineup, summary.homeFormation, k[0], summary.awayLineup, summary.awayFormation, k[1]);
@@ -380,6 +395,57 @@ public final class GameTabs {
         two.addView(gap, new LinearLayout.LayoutParams(Ui.dp(c, 12), 1));
         two.addView(bench(summary.awayLineup, k[1]), Ui.weight(1));
         body.addView(two);
+    }
+
+    /** Pure: what a game's line-ups are, to know when they changed: its id and each starter's number and name. */
+    static String lineupsKey(String gameId, Espn.Summary s) {
+        StringBuilder b = new StringBuilder(gameId == null ? "" : gameId);
+        for (List<String[]> side : java.util.Arrays.asList(s.homeLineup, s.awayLineup)) {
+            b.append('|');
+            for (String[] p : side) if ("1".equals(p[Espn.P_STARTER])) b.append(p[Espn.P_NUMBER]).append(':').append(p[Espn.P_NAME]).append(',');
+        }
+        return b.toString();
+    }
+
+    /**
+     * The TV's line-up card as wide as the page: each side's players head and shoulders a page at a time, then both on
+     * the pitch, round and round, a tap turning to the next page. Its elevens' photos are read once (off the main
+     * thread); the card comes in when they have.
+     */
+    private View tvCardView() {
+        int screen = c.getResources().getDisplayMetrics().widthPixels;
+        int side = Math.max(Ui.dp(c, 14), (screen - Ui.dp(c, 620)) / 2);
+        int w = screen - 2 * side, h = Math.round(w / CARD_SHAPE);
+        com.gathin.tvhomephone.live.BoardLineups board = new com.gathin.tvhomephone.live.BoardLineups(c);
+        board.phone(com.gathin.tvhomephone.live.BoardLineups.perPageFor(w, h), CARD_PAGE_MS, true);
+        board.setContentDescription("Line-ups: " + describe(game.homeName, summary.homeFormation, summary.homeLineup) + " "
+                + describe(game.awayName, summary.awayFormation, summary.awayLineup) + " Tap for the next page.");
+        board.setLayoutParams(new LinearLayout.LayoutParams(-1, h));
+        shownCard = board;
+        String key = lineupsKey(game.id, summary);
+        if (cardData != null && key.equals(cardFor)) {
+            board.show(cardData, null);
+            return board;
+        }
+        Game g = game;
+        Espn.Summary s = summary;
+        android.content.Context app = c.getApplicationContext();
+        int px = Ui.dp(c, 56);
+        App.io.execute(() -> {
+            com.gathin.tvhomephone.live.BoardLineups.Data d;
+            try {
+                d = com.gathin.tvhomephone.live.ScoreBoard.lineupsData(app, g, s, px, true);
+            } catch (RuntimeException e) {
+                return;
+            }
+            App.main.post(() -> {
+                if (!alive.getAsBoolean()) return;
+                cardData = d;
+                cardFor = key;
+                if (shownCard == board && d.full()) board.show(d, null);
+            });
+        });
+        return board;
     }
 
     /** The starters' photos on the pitch: those found already at once, the rest as they come (one at a time). */

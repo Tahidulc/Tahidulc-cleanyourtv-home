@@ -52,7 +52,7 @@ public final class NotifCard {
 
     static int[] pillColours(String kind) {
         switch (kind) {
-            case "goal": case "kickoff": return new int[]{0xFF3DDC84, 0xFF06281A};
+            case "goal": case "kickoff": case "lineups": return new int[]{0xFF3DDC84, 0xFF06281A};
             case "red": return new int[]{Glyphs.RED_CARD, Color.WHITE};
             case "ht": case "var": return new int[]{Glyphs.AMBER, 0xFF2A1A00};
             case "ft": return new int[]{Color.WHITE, 0xFF10164A};
