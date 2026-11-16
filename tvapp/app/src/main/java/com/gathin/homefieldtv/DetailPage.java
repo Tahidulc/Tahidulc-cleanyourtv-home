@@ -611,10 +611,24 @@ final class DetailPage extends View {
         int from = Math.max(0, (int) Math.floor(moreX) - 1);
         int to = Math.min(n - 1, from + (int) Math.ceil(getWidth() / pitch) + 2);
         boolean here = area == MORE;
+        // The poster the remote is on grows into its lift and ring as the one it left settles back; both drawn last.
+        boolean moving = moreLift.step(here && n > 0 ? more.get(moreFocus) : null);
+        Object leaving = moreLift.leaving();
+        int settling = -1;
         for (int i = from; i <= to; i++) {
-            if (here && i == moreFocus) continue;
-            art.draw(c, more.get(i), x0 + (i - moreX) * pitch, ty, false, 255, redraw);
+            PosterArt.Item it = more.get(i);
+            if (moreLift.of(it) > 0f) {
+                if (it == leaving) settling = i;
+                continue;
+            }
+            art.draw(c, it, x0 + (i - moreX) * pitch, ty, 0f, 255, redraw);
         }
-        if (n > 0 && here) art.draw(c, more.get(moreFocus), x0 + (moreFocus - moreX) * pitch, ty, true, 255, redraw);
+        if (settling >= 0) art.draw(c, more.get(settling), x0 + (settling - moreX) * pitch, ty, moreLift.of(more.get(settling)), 255, redraw);
+        if (n > 0 && here && more.get(moreFocus) != leaving) {
+            art.draw(c, more.get(moreFocus), x0 + (moreFocus - moreX) * pitch, ty, moreLift.of(more.get(moreFocus)), 255, redraw);
+        }
+        if (moving) postInvalidateOnAnimation();
     }
+
+    private final Lift moreLift = new Lift();
 }

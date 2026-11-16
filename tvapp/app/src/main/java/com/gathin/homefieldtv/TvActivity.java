@@ -13,6 +13,7 @@ import android.widget.FrameLayout;
 
 import com.gathin.homefieldtv.engine.Catalog;
 import com.gathin.homefieldtv.engine.Channel;
+import com.gathin.homefieldtv.engine.Exec;
 import com.gathin.homefieldtv.engine.Library;
 
 import java.util.ArrayList;
@@ -111,20 +112,18 @@ public final class TvActivity extends Activity {
         return top() == s;
     }
 
-    /** A screen opened over the one on top. */
+    /** A screen opened over the one on top: it fades in over it, and the one under goes when it has. */
     void push(Screen s) {
         Screen was = top();
-        if (was != null) {
-            if (resumed) was.hidden();
-            was.view().setVisibility(View.GONE);
-        }
+        if (was != null && resumed) was.hidden();
         stack.add(s);
         View v = s.view();
         (s.overVideo() ? over : screens).addView(v, full());
+        crossFade(v, was == null ? null : was.view(), false);
         if (resumed) s.shown();
     }
 
-    /** The top screen closed (at Home: the app goes to the background). */
+    /** The top screen closed (at Home: the app goes to the background): it fades away over the one under it. */
     void pop() {
         if (stack.size() <= 1) {
             moveTaskToBack(true);
@@ -132,26 +131,72 @@ public final class TvActivity extends Activity {
         }
         Screen s = stack.remove(stack.size() - 1);
         if (resumed) s.hidden();
-        ViewGroup parent = (ViewGroup) s.view().getParent();
-        if (parent != null) parent.removeView(s.view());
         Screen t = top();
-        t.view().setVisibility(View.VISIBLE);
+        View under = t.view();
+        under.animate().cancel();
+        under.setAlpha(1f);
+        under.setVisibility(View.VISIBLE);
+        View gone = s.view();
+        gone.animate().cancel();
+        if (Exec.inline) {
+            detach(gone);
+        } else {
+            gone.animate().alpha(0f).setStartDelay(0).setDuration(PAGE_MS).setInterpolator(Fade.EASE).withLayer()
+                    .withEndAction(() -> {
+                        detach(gone);
+                        gone.setAlpha(1f);
+                    }).start();
+        }
         if (resumed) t.shown();
     }
 
-    /** Back to Home, then s over it. */
+    /** Back to Home, then s over it, fading in over the screen that was on top. */
     void fromHome(Screen s) {
         Screen was = top();
         if (was != null && resumed) was.hidden();
+        View showing = was == null ? null : was.view();
+        boolean homeShowing = was == stack.get(0);
         while (stack.size() > 1) {
             Screen x = stack.remove(stack.size() - 1);
-            ViewGroup parent = (ViewGroup) x.view().getParent();
-            if (parent != null) parent.removeView(x.view());
+            if (x.view() != showing) detach(x.view());
         }
-        stack.get(0).view().setVisibility(View.GONE);
+        if (!homeShowing) stack.get(0).view().setVisibility(View.GONE);
         stack.add(s);
         (s.overVideo() ? over : screens).addView(s.view(), full());
+        crossFade(s.view(), showing, !homeShowing);
         if (resumed) s.shown();
+    }
+
+    private static final long PAGE_MS = 220;
+
+    /**
+     * in fades up as out fades away (whichever layer each is in); then out is removed (gone) or hidden. Coming back to
+     * out before then cancels its going (pop).
+     */
+    private void crossFade(View in, View out, boolean gone) {
+        in.animate().cancel();
+        in.setVisibility(View.VISIBLE);
+        if (Exec.inline || out == null) {
+            in.setAlpha(1f);
+            if (out != null) {
+                if (gone) detach(out);
+                else out.setVisibility(View.GONE);
+            }
+            return;
+        }
+        in.setAlpha(0f);
+        in.animate().alpha(1f).setStartDelay(0).setDuration(PAGE_MS).setInterpolator(Fade.EASE).withLayer().start();
+        out.animate().cancel();
+        out.animate().alpha(0f).setStartDelay(0).setDuration(PAGE_MS).setInterpolator(Fade.EASE).withLayer().withEndAction(() -> {
+            out.setAlpha(1f);
+            if (gone) detach(out);
+            else out.setVisibility(View.GONE);
+        }).start();
+    }
+
+    private static void detach(View v) {
+        ViewGroup parent = (ViewGroup) v.getParent();
+        if (parent != null) parent.removeView(v);
     }
 
     HomeScreen homeScreen() {

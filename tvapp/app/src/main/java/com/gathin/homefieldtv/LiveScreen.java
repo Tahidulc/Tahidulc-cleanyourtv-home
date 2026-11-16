@@ -7,44 +7,77 @@ import android.graphics.LinearGradient;
 import android.graphics.Paint;
 import android.graphics.RectF;
 import android.graphics.Shader;
+import android.graphics.drawable.GradientDrawable;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
 import android.text.StaticLayout;
 import android.text.TextPaint;
 import android.view.KeyEvent;
 import android.view.View;
+import android.widget.FrameLayout;
 
 import com.gathin.homefieldtv.engine.Channel;
+import com.gathin.homefieldtv.engine.Exec;
 import com.gathin.homefieldtv.engine.Guide;
 import com.gathin.homefieldtv.engine.Library;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 
 /**
- * A channel full screen. OK, or a change of channel, brings up the banner along the foot: the channel's name and
- * number between Up and Down chevrons, the day and time, and what's on now and next. Up and Down in the banner look
- * through the other channels without leaving this one; OK watches the one shown. Left goes to the menu (Home), Back
- * hides the banner.
+ * A channel full screen, with two things over it in Homefield's dark look.
+ *
+ * OK brings up the channel banner over a dark scrim: the channel's group and small logo at the top; its large logo,
+ * what's on (its times, how far through, what's left, the channel and the picture the player has: its size and frames
+ * a second), what's next, a thin amber line across for how far through it is, and a row of the channels last watched
+ * on this TV, each with what's on and how far through. Left and Right go along the row; OK changes to one at once.
+ *
+ * Up and Down go through the channels without leaving this one, in the live screen's look: the picture of what's on
+ * the channel the remote is on fills the screen behind, darkened; along the top what's on after it, then its logo, the
+ * programme's title, the channel, the times and three lines of what it's about; under that its category's row of
+ * channels, each tile its logo over a picture of what's on with the title, a line of what it's about and how far
+ * through it is, and the next category's row below. Left and Right go along the row too; OK changes to the channel.
+ *
+ * The channel keys and the number keys change at once. Back, or a few seconds with no key, hides it all.
  */
 final class LiveScreen extends Screen implements LiveTv.Listener {
-    private static final long SHOW_MS = 6000;
+    private static final long BANNER_MS = 6000, CHOOSING_MS = 9000, BROWSE_MS = 12000;
+    private static final int NONE = 0, BANNER = 1, BROWSE = 2;
+    private static final float LIFT = 1.07f;
 
     private Channel start;
-    /** The channel in the banner (another one while looking through them). */
-    private Channel showing;
-    private boolean banner = true;
-    /** 0 the programme on now, 1 the next. */
-    private int card;
+    private int mode = BANNER;
+    /** The recent channel the remote is on in the banner's row, or -1 for none. */
+    private int pick = -1;
+    private List<Channel> recent = new ArrayList<>();
     private String digits = "";
-    private Banner view;
+    private FrameLayout browse;
+    private Banner banner;
+    private Backdrop browseBack;
+    private BrowseInfo info;
+    private BrowseRows rows;
+    /** The live screen's rows (the playlist's groups) and where the remote is in them. */
+    private final List<Row> groups = new ArrayList<>();
+    private int row, col;
     private final Handler h = new Handler(Looper.getMainLooper());
-    private final Runnable hide = () -> {
-        banner = false;
-        showing = null;
-        card = 0;
-        if (view != null) view.invalidate();
-    };
+    private final Runnable hide = () -> setMode(NONE);
     private final Runnable digitsDone = this::tuneDigits;
+    private final Runnable askPicture = this::askPicture;
+
+    /** A category's row on the live screen. */
+    static final class Row {
+        final String name;
+        final List<Channel> channels;
+
+        Row(String name, List<Channel> channels) {
+            this.name = name;
+            this.channels = channels;
+        }
+    }
 
     LiveScreen(TvActivity tv, Channel c) {
         super(tv);
@@ -56,8 +89,28 @@ final class LiveScreen extends Screen implements LiveTv.Listener {
     }
 
     @Override View build() {
-        view = new Banner(tv);
-        return view;
+        FrameLayout root = new FrameLayout(tv);
+        browse = new FrameLayout(tv);
+        View shade = new View(tv);
+        shade.setBackgroundColor(0xE00E0E11);
+        browseBack = new Backdrop(tv, 0f, 0f, 1920f, 1080f, Pics.DARK_FULL, 0.5f);
+        info = new BrowseInfo(tv);
+        rows = new BrowseRows(tv);
+        // Over the picture, darker at the left (for the words) and at the foot (for the rows).
+        View left = new View(tv), foot = new View(tv);
+        left.setBackground(new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, new int[]{0xD90E0E11, 0x800E0E11, 0x000E0E11}));
+        foot.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0x000E0E11, 0x330E0E11, 0xE60E0E11}));
+        browse.addView(shade, new FrameLayout.LayoutParams(-1, -1));
+        browse.addView(browseBack, new FrameLayout.LayoutParams(-1, -1));
+        browse.addView(left, new FrameLayout.LayoutParams(-1, -1));
+        browse.addView(foot, new FrameLayout.LayoutParams(-1, -1));
+        browse.addView(info, new FrameLayout.LayoutParams(-1, -1));
+        browse.addView(rows, new FrameLayout.LayoutParams(-1, -1));
+        browse.setVisibility(View.GONE);
+        banner = new Banner(tv);
+        root.addView(browse, new FrameLayout.LayoutParams(-1, -1));
+        root.addView(banner, new FrameLayout.LayoutParams(-1, -1));
+        return root;
     }
 
     @Override void shown() {
@@ -69,36 +122,55 @@ final class LiveScreen extends Screen implements LiveTv.Listener {
         } else if (tv.live.channel() != null) {
             tv.live.play(tv.live.channel());
         }
-        showBanner();
+        setMode(BANNER);
     }
 
     @Override void hidden() {
         tv.live.removeListener(this);
         h.removeCallbacks(hide);
         h.removeCallbacks(digitsDone);
+        h.removeCallbacks(askPicture);
     }
 
     @Override public void liveChanged() {
-        view.invalidate();
+        banner.invalidate();
     }
 
     @Override void tick() {
-        view.invalidate();
+        banner.invalidate();
+        info.invalidate();
+        rows.invalidate();
     }
 
     @Override void channelsChanged() {
-        view.invalidate();
+        if (mode == BROWSE) {
+            Channel on = browseChannel();
+            buildRows();
+            find(on);
+            rows.moved(-1, 0);
+            info.show(browseChannel());
+        }
+        recent = Library.get(tv).recent(tv.live.channel());
+        if (pick >= recent.size()) pick = recent.size() - 1;
+        banner.invalidate();
     }
 
-    private void showBanner() {
-        banner = true;
+    /** What shows: nothing, the banner, or the live screen's rows; each fades in and out. */
+    private void setMode(int m) {
+        mode = m;
         h.removeCallbacks(hide);
-        h.postDelayed(hide, SHOW_MS);
-        view.invalidate();
-    }
-
-    private Channel inBanner() {
-        return showing != null ? showing : tv.live.channel();
+        if (m == BANNER) {
+            recent = Library.get(tv).recent(tv.live.channel());
+            if (pick >= recent.size()) pick = recent.size() - 1;
+            h.postDelayed(hide, pick >= 0 ? CHOOSING_MS : BANNER_MS);
+        } else {
+            pick = -1;
+        }
+        if (m == BROWSE) h.postDelayed(hide, BROWSE_MS);
+        else h.removeCallbacks(askPicture);
+        Fade.show(banner, m == BANNER, 180);
+        Fade.show(browse, m == BROWSE, 220);
+        banner.invalidate();
     }
 
     private Channel step(Channel from, int dir) {
@@ -110,12 +182,12 @@ final class LiveScreen extends Screen implements LiveTv.Listener {
         return all.get(((i + dir) % all.size() + all.size()) % all.size());
     }
 
+    /** A channel now: the banner comes up on it. */
     private void tune(Channel c) {
         if (c == null) return;
-        showing = null;
-        card = 0;
+        pick = -1;
         tv.live.play(c);
-        showBanner();
+        setMode(BANNER);
     }
 
     private void tuneDigits() {
@@ -136,7 +208,114 @@ final class LiveScreen extends Screen implements LiveTv.Listener {
                 return;
             }
         }
-        view.invalidate();
+        banner.invalidate();
+    }
+
+    // ---- the live screen's rows -------------------------------------------------------------------------------------
+
+    /** The playlist's groups as rows, in the playlist's order. */
+    private void buildRows() {
+        groups.clear();
+        Map<String, List<Channel>> by = new LinkedHashMap<>();
+        for (Channel c : Library.get(tv).all()) {
+            List<Channel> l = by.get(c.group);
+            if (l == null) by.put(c.group, l = new ArrayList<>());
+            l.add(c);
+        }
+        for (Map.Entry<String, List<Channel>> e : by.entrySet()) {
+            groups.add(new Row(e.getKey().isEmpty() ? "Channels" : e.getKey(), e.getValue()));
+        }
+    }
+
+    private void find(Channel c) {
+        row = 0;
+        col = 0;
+        if (c == null) return;
+        for (int r = 0; r < groups.size(); r++) {
+            List<Channel> l = groups.get(r).channels;
+            for (int k = 0; k < l.size(); k++) {
+                if (l.get(k).key.equals(c.key)) {
+                    row = r;
+                    col = k;
+                    return;
+                }
+            }
+        }
+    }
+
+    private Channel browseChannel() {
+        if (row < 0 || row >= groups.size()) return null;
+        List<Channel> l = groups.get(row).channels;
+        return col >= 0 && col < l.size() ? l.get(col) : null;
+    }
+
+    /** Up or Down while watching: the live screen, on the channel before or after the one playing. */
+    private void openBrowse(int dir) {
+        buildRows();
+        if (groups.isEmpty()) return;
+        find(tv.live.channel());
+        rows.moved(-1, 0);
+        setMode(BROWSE);
+        browseStep(dir);
+    }
+
+    /** To the channel before or after, on into the row before or after at either end. */
+    private void browseStep(int dir) {
+        if (groups.isEmpty()) return;
+        int r = row, k = col + dir;
+        if (k < 0) {
+            r = (r - 1 + groups.size()) % groups.size();
+            k = groups.get(r).channels.size() - 1;
+        } else if (k >= groups.get(r).channels.size()) {
+            r = (r + 1) % groups.size();
+            k = 0;
+        }
+        moveTo(r, k, r == row ? 0 : dir);
+    }
+
+    /** Along the row, stopping at its ends. */
+    private void browseAlong(int dir) {
+        if (groups.isEmpty()) return;
+        int k = col + dir;
+        if (k < 0 || k >= groups.get(row).channels.size()) {
+            h.removeCallbacks(hide);
+            h.postDelayed(hide, BROWSE_MS);
+            return;
+        }
+        moveTo(row, k, 0);
+    }
+
+    private void moveTo(int r, int k, int rowDir) {
+        int was = row;
+        row = r;
+        col = k;
+        rows.moved(was, rowDir);
+        Channel c = browseChannel();
+        info.show(c);
+        // The picture behind: the one known now, else none until the remote rests and it is found.
+        Guide.Schedule s = c == null ? null : Library.get(tv).schedule(c.key);
+        browseBack.set(ProgrammePictures.peek(c, s, s == null ? -1 : s.at(System.currentTimeMillis())));
+        h.removeCallbacks(askPicture);
+        if (Exec.inline) askPicture();
+        else h.postDelayed(askPicture, ProgrammePictures.REST_MS);
+        h.removeCallbacks(hide);
+        h.postDelayed(hide, BROWSE_MS);
+    }
+
+    private void askPicture() {
+        if (mode != BROWSE) return;
+        Channel c = browseChannel();
+        Guide.Schedule s = c == null ? null : Library.get(tv).schedule(c.key);
+        String url = ProgrammePictures.get(tv, c, s, s == null ? -1 : s.at(System.currentTimeMillis()), this::pictureCame);
+        if (url != null) browseBack.set(url);
+    }
+
+    private void pictureCame() {
+        if (mode != BROWSE) return;
+        Channel c = browseChannel();
+        Guide.Schedule s = c == null ? null : Library.get(tv).schedule(c.key);
+        String url = ProgrammePictures.peek(c, s, s == null ? -1 : s.at(System.currentTimeMillis()));
+        if (url != null) browseBack.set(url);
     }
 
     // ---- the remote ---------------------------------------------------------------------------------------------
@@ -147,7 +326,7 @@ final class LiveScreen extends Screen implements LiveTv.Listener {
             h.removeCallbacks(digitsDone);
             if (digits.length() >= 4) tuneDigits();
             else h.postDelayed(digitsDone, 1600);
-            showBanner();
+            setMode(BANNER);
             return true;
         }
         switch (code) {
@@ -158,32 +337,35 @@ final class LiveScreen extends Screen implements LiveTv.Listener {
                 tune(step(tv.live.channel(), 1));
                 return true;
             case KeyEvent.KEYCODE_DPAD_UP:
-            case KeyEvent.KEYCODE_DPAD_DOWN:
-                // In the banner: through the other channels' now and next, this one still playing.
-                showing = step(inBanner(), code == KeyEvent.KEYCODE_DPAD_UP ? -1 : 1);
-                card = 0;
-                showBanner();
+            case KeyEvent.KEYCODE_DPAD_DOWN: {
+                int dir = code == KeyEvent.KEYCODE_DPAD_UP ? -1 : 1;
+                if (mode == BROWSE) browseStep(dir);
+                else openBrowse(dir);
                 return true;
+            }
             case KeyEvent.KEYCODE_DPAD_RIGHT:
-                if (!banner) {
-                    showBanner();
+                if (mode == BROWSE) {
+                    browseAlong(1);
                     return true;
                 }
-                card = 1;
-                showBanner();
+                if (mode == BANNER && pick < recent.size() - 1) pick++;
+                setMode(BANNER);
                 return true;
             case KeyEvent.KEYCODE_DPAD_LEFT:
-                if (banner && card == 1) {
-                    card = 0;
-                    showBanner();
+                if (mode == BROWSE) {
+                    browseAlong(-1);
                     return true;
                 }
-                // "‹ Menu".
-                tv.pop();
+                if (mode == NONE) {
+                    // "‹ Menu", as before.
+                    tv.pop();
+                    return true;
+                }
+                if (pick >= 0) pick--;
+                setMode(BANNER);
                 return true;
             case KeyEvent.KEYCODE_INFO:
-                if (banner) hide.run();
-                else showBanner();
+                setMode(mode == BANNER ? NONE : BANNER);
                 return true;
             default:
                 return false;
@@ -191,161 +373,510 @@ final class LiveScreen extends Screen implements LiveTv.Listener {
     }
 
     @Override void ok() {
-        if (!banner) {
-            showBanner();
-            return;
+        switch (mode) {
+            case BROWSE:
+                tune(browseChannel());
+                return;
+            case BANNER:
+                if (pick >= 0 && pick < recent.size()) {
+                    tune(recent.get(pick));
+                    return;
+                }
+                if (tv.live.state() == LiveTv.FAILED) {
+                    tv.live.tryAgain();
+                    setMode(BANNER);
+                    return;
+                }
+                setMode(NONE);
+                return;
+            default:
+                setMode(BANNER);
         }
-        if (showing != null && (tv.live.channel() == null || !showing.key.equals(tv.live.channel().key))) {
-            tune(showing);
-            return;
-        }
-        if (tv.live.state() == LiveTv.FAILED) {
-            tv.live.tryAgain();
-            showBanner();
-            return;
-        }
-        hide.run();
     }
 
     @Override void okLong() {
-        Channel c = inBanner();
+        Channel c = mode == BROWSE ? browseChannel() : mode == BANNER && pick >= 0 && pick < recent.size() ? recent.get(pick) : tv.live.channel();
         if (c == null) return;
         boolean now = Library.get(tv).toggleFavourite(c);
         android.widget.Toast.makeText(tv, now ? c.name + " added to your favourites" : c.name + " taken off your favourites",
                 android.widget.Toast.LENGTH_SHORT).show();
-        showBanner();
+        if (mode == NONE) setMode(BANNER);
     }
 
     @Override boolean back() {
-        if (banner) {
-            hide.run();
+        if (mode != NONE) {
+            setMode(NONE);
             return true;
         }
         return false;
     }
 
-    // ---- the banner ---------------------------------------------------------------------------------------------
+    // ---- the banner -------------------------------------------------------------------------------------------------
 
+    /** The channel banner, and the channel number being typed. */
     private final class Banner extends View {
-        private final Paint band = new Paint(), line = new Paint(), cardBack = Ui.fill(0x1AFFFFFF), thumb = new Paint();
-        private final Paint tileBack = Ui.fill(com.gathin.broadcast.LogoTile.GROUND);
-        private final Paint chev = Ui.stroke(Ui.WHITE, 3f), chevDim = Ui.stroke(Ui.DIM, 3f), bar = Ui.fill(Ui.CYAN);
-        private final Paint track = Ui.fill(0x55FFFFFF), bmp = new Paint(Paint.FILTER_BITMAP_FLAG), digitBack = Ui.fill(0xCC062A66);
-        private final TextPaint menuP = Ui.paint(28, false, Ui.DIM), nameP = Ui.paint(34, false, Ui.WHITE);
-        private final TextPaint dayP = Ui.paint(26, false, Ui.DIM), labelP = Ui.paint(24, true, Ui.CYAN), labelDim = Ui.paint(24, true, Ui.DIM);
-        private final TextPaint timeP = Ui.paint(24, false, Ui.DIM), titleP = Ui.paint(38, false, Ui.WHITE);
-        private final TextPaint descP = Ui.paint(24, false, Ui.DIM), hintP = Ui.paint(26, false, Ui.WHITE), digitP = Ui.paint(64, true, Ui.WHITE);
-        private final TextPaint thumbName = Ui.paint(26, true, Ui.WHITE);
-        private final Glow glow = new Glow();
+        private final Fade fade = new Fade();
+        private final Lift lift = new Lift();
+        private final Paint top = new Paint(), foot = new Paint(), bmp = new Paint(Paint.FILTER_BITMAP_FLAG), logoPaint = new Paint(Paint.FILTER_BITMAP_FLAG);
+        private final Paint track = Dark.fill(0x4DFFFFFF), white = Dark.fill(0xFFFFFFFF), line = Dark.fill(0x40FFFFFF), lineAccent = Dark.fill(Dark.ACCENT);
+        private final Paint chip = Dark.line(0x8CFFFFFF, 1.6f), thin = Dark.fill(0x40FFFFFF), accent = Dark.fill(Dark.ACCENT);
+        private final Paint tileBack = Dark.fill(0xFF000000), ring = Dark.line(0xE6FFFFFF, 3f), pillBack = Dark.fill(0xE6141417);
+        private final TextPaint groupP = Dark.text(26, 600, Dark.SOFT), titleP = Dark.text(58, 600, Dark.TEXT);
+        private final TextPaint lineP = Dark.text(30, 500, Dark.SOFT), numP = Dark.text(30, 400, Dark.MUTED), nameP = Dark.text(30, 700, Dark.TEXT);
+        private final TextPaint chipP = Dark.text(22, 600, Dark.SOFT), nextLabel = Dark.text(24, 700, Dark.MUTED), nextP = Dark.text(28, 500, Dark.SOFT);
+        private final TextPaint logoName = Dark.text(40, 700, Dark.TEXT), noneP = Dark.text(28, 500, Dark.MUTED);
+        private final TextPaint tileP = Dark.text(24, 500, Dark.SOFT), tileOn = Dark.text(24, 600, Dark.TEXT), tileName = Dark.text(24, 700, Dark.TEXT);
+        private final TextPaint hintP = Dark.text(26, 600, Dark.TEXT), digitP = Dark.text(64, 600, Dark.TEXT);
         private final RectF r = new RectF();
-        private float bandFor = -1, thumbFor = -1;
+        private float topFor = -1f, footFor = -1f, scroll;
+        private long last;
         private final Runnable redraw = this::invalidate;
 
         Banner(Context c) {
             super(c);
-            line.setColor(0x80CFE3F5);
+            groupP.setLetterSpacing(0.06f);
         }
 
         @Override protected void onDraw(Canvas c) {
-            if (!digits.isEmpty()) {
-                r.set(Ui.f(1580), Ui.f(60), Ui.f(1860), Ui.f(170));
-                c.drawRoundRect(r, Ui.f(6), Ui.f(6), digitBack);
-                StringBuilder b = new StringBuilder(digits);
-                while (b.length() < 3) b.append('-');
-                String d = b.toString();
-                c.drawText(d, r.centerX() - digitP.measureText(d) / 2f, r.centerY() + Ui.f(22), digitP);
-            }
-            if (!banner) return;
-            Channel ch = inBanner();
-            if (ch == null) return;
-            int h = getHeight(), w = getWidth();
-            float top = Ui.f(752);
-            if (bandFor != top) {
-                band.setShader(new LinearGradient(0, top - Ui.f(60), 0, h, new int[]{0x00000000, 0xB3000814, 0xD9000814},
-                        new float[]{0f, 0.2f, 1f}, Shader.TileMode.CLAMP));
-                bandFor = top;
-            }
-            c.drawRect(0, top - Ui.f(60), w, h, band);
-            c.drawRect(0, top, w, top + Math.max(1f, Ui.f(2)), line);
+            int w = getWidth(), hh = getHeight();
+            boolean moving = false;
+            Channel ch = tv.live.channel();
+            if (ch != null && mode == BANNER) moving = drawBanner(c, ch, w, hh);
+            if (!digits.isEmpty()) drawDigits(c, w);
+            if (moving) postInvalidateOnAnimation();
+        }
 
+        /** The banner; true while anything in it still moves. */
+        private boolean drawBanner(Canvas c, Channel ch, int w, int hh) {
             Library lib = Library.get(tv);
             long now = System.currentTimeMillis();
-            // The left column: the menu, the channel between its chevrons, the day and time.
-            float right = Ui.f(410);
-            Ui.chevron(c, Ui.f(106), Ui.f(791), Ui.f(13), Ui.LEFT, chevDim);
-            c.drawText("Menu", Ui.f(130), Ui.f(801), menuP);
-            Ui.chevron(c, right - Ui.f(20), Ui.f(848), Ui.f(15), Ui.UP, chev);
-            String num = String.valueOf(lib.number(ch));
-            float nw = nameP.measureText(num);
-            c.drawText(num, right - nw, Ui.f(910), nameP);
-            String name = Ui.fit(ch.name, nameP, Ui.f(300) - nw);
-            c.drawText(name, right - nw - Ui.f(16) - nameP.measureText(name), Ui.f(910), nameP);
-            Ui.chevron(c, right - Ui.f(20), Ui.f(954), Ui.f(15), Ui.DOWN, chev);
-            String day = Ui.dayClock(now);
-            c.drawText(day, right - dayP.measureText(day), Ui.f(1030), dayP);
+            boolean row = !recent.isEmpty();
+            float base = row ? 0f : 190f;
+            shades(hh, base);
+            c.drawRect(0, 0, w, Ui.f(260), top);
+            c.drawRect(0, Ui.f(470 + base), w, hh, foot);
 
-            // Now and next.
+            // The channel's words fade and rise in again when it changes.
+            fade.focus(ch.key);
+            int a = Math.round(255 * fade.text());
+            float rise = fade.rise();
+            alpha(a);
+
+            // At the top: its group, its small logo under it.
+            String group = ch.group.toUpperCase(Locale.ROOT);
+            if (!group.isEmpty()) c.drawText(Ui.fit(group, groupP, Ui.f(900)), Ui.f(96), Ui.f(92) + rise, groupP);
+            int logoMode = Pics.tiles ? Pics.READY : Pics.FIT;
+            Bitmap small = Pics.get(ch.logo, Ui.px(150), Ui.px(60), logoMode, redraw);
+            if (small != null) c.drawBitmap(small, Ui.f(96), Ui.f(group.isEmpty() ? 60 : 110) + rise, logoPaint);
+
+            // Its large logo, what's on, the channel and the picture the player has.
+            float lx = Ui.f(96), ly = Ui.f(600 + base) + rise, lw = Ui.f(280), lh = Ui.f(150);
+            Bitmap big = Pics.get(ch.logo, Ui.px(280), Ui.px(150), logoMode, redraw);
+            if (big != null) c.drawBitmap(big, lx, ly + (lh - big.getHeight()) / 2f, logoPaint);
+            else c.drawText(Ui.fit(ch.name, logoName, lw), lx, ly + lh / 2f + Ui.f(14), logoName);
+
             Guide.Schedule s = lib.schedule(ch.key);
             int i = s == null ? -1 : s.at(now);
             int n = s == null ? -1 : i >= 0 ? (i + 1 < s.start.length ? i + 1 : -1) : s.after(now);
-            programme(c, ch, s, i, 0, Ui.f(446), Ui.f(1170), now);
-            programme(c, ch, s, n, 1, Ui.f(1194), Ui.f(1890), now);
+            float x0 = Ui.f(420), right = w - Ui.f(96);
+            String title = i >= 0 ? s.title[i] : ch.name;
+            c.drawText(Ui.fit(title, titleP, right - x0), x0, Ui.f(662 + base) + rise, titleP);
+            float y = Ui.f(718 + base) + rise, x = x0;
+            if (i >= 0) {
+                String span = LiveText.span(s.start[i], s.stop[i]);
+                c.drawText(span, x, y, lineP);
+                x += lineP.measureText(span) + Ui.f(22);
+                float p = LiveText.progress(now, s.start[i], s.stop[i]), bw = Ui.f(120), by = y - Ui.f(11);
+                r.set(x, by, x + bw, by + Ui.f(5));
+                c.drawRoundRect(r, Ui.f(3), Ui.f(3), track);
+                r.set(x, by, x + bw * p, by + Ui.f(5));
+                c.drawRoundRect(r, Ui.f(3), Ui.f(3), white);
+                x += bw + Ui.f(18);
+                String left = LiveText.left(now, s.stop[i]);
+                c.drawText(left, x, y, lineP);
+                x += lineP.measureText(left) + Ui.f(30);
+            } else {
+                String none = s == null ? "No programme information" : "Nothing in the guide now";
+                c.drawText(none, x, y, noneP);
+                x += noneP.measureText(none) + Ui.f(30);
+            }
+            String num = String.valueOf(lib.number(ch));
+            c.drawText(num, x, y, numP);
+            x += numP.measureText(num) + Ui.f(10);
+            String name = Ui.fit(ch.name, nameP, Math.max(Ui.f(120), right - x - Ui.f(280)));
+            c.drawText(name, x, y, nameP);
+            x += nameP.measureText(name) + Ui.f(24);
+            // The chips: only what the player itself knows of the picture.
+            for (String f : tv.live.format()) {
+                if (f.isEmpty()) continue;
+                float cw = chipP.measureText(f) + Ui.f(24);
+                if (x + cw > right) break;
+                r.set(x, y - Ui.f(28), x + cw, y + Ui.f(8));
+                c.drawRoundRect(r, Ui.f(8), Ui.f(8), chip);
+                c.drawText(f, x + Ui.f(12), y - Ui.f(2), chipP);
+                x += cw + Ui.f(12);
+            }
+            if (n >= 0) {
+                float ny = Ui.f(770 + base) + rise;
+                c.drawText("Next", x0, ny, nextLabel);
+                float nx = x0 + nextLabel.measureText("Next") + Ui.f(16);
+                String sp = LiveText.span(s.start[n], s.stop[n]);
+                c.drawText(sp, nx, ny, nextP);
+                nx += nextP.measureText(sp) + Ui.f(18);
+                c.drawText(Ui.fit(s.title[n], nextP, right - nx), nx, ny, nextP);
+            }
+            // A thin line across for how far through it is.
+            if (i >= 0) {
+                float ax0 = Ui.f(96), ax1 = w - Ui.f(96), ay = Ui.f(816 + base);
+                float px = ax0 + (ax1 - ax0) * LiveText.progress(now, s.start[i], s.stop[i]);
+                c.drawRect(ax0, ay - Ui.f(1.5f), ax1, ay + Ui.f(1.5f), line);
+                c.drawRect(ax0, ay - Ui.f(2), px, ay + Ui.f(2), lineAccent);
+                c.drawCircle(px, ay, Ui.f(9), lineAccent);
+            }
+            if (tv.live.state() == LiveTv.FAILED) hint(c, "OK to try again", right, Ui.f(560 + base));
+            alpha(255);
+            boolean moving = fade.busy();
+            if (row) moving |= drawRecent(c, w, now, lib);
+            return moving;
+        }
 
-            boolean other = showing != null && tv.live.channel() != null && !showing.key.equals(tv.live.channel().key);
-            if (other) {
-                String hint = "OK to watch " + ch.name;
-                c.drawText(hint, w - Ui.f(40) - hintP.measureText(hint), top - Ui.f(22), hintP);
-            } else if (tv.live.state() == LiveTv.FAILED) {
-                String hint = "OK to try again";
-                c.drawText(hint, w - Ui.f(40) - hintP.measureText(hint), top - Ui.f(22), hintP);
+        /** The channel's words' opacity (the recent row keeps its own). */
+        private void alpha(int a) {
+            groupP.setAlpha(a);
+            titleP.setAlpha(a);
+            lineP.setAlpha(a);
+            numP.setAlpha(a);
+            nameP.setAlpha(a);
+            chipP.setAlpha(a);
+            nextLabel.setAlpha(a);
+            nextP.setAlpha(a);
+            logoName.setAlpha(a);
+            noneP.setAlpha(a);
+            logoPaint.setAlpha(a);
+            track.setAlpha(a * 0x4D / 255);
+            white.setAlpha(a);
+            chip.setAlpha(a * 0x8C / 255);
+            line.setAlpha(a * 0x40 / 255);
+            lineAccent.setAlpha(a);
+        }
+
+        private void shades(int hh, float base) {
+            if (topFor != hh) {
+                top.setShader(new LinearGradient(0, 0, 0, Ui.f(260), 0xB3000000, 0x00000000, Shader.TileMode.CLAMP));
+                topFor = hh;
+            }
+            float from = Ui.f(470 + base);
+            if (footFor != from + hh) {
+                foot.setShader(new LinearGradient(0, from, 0, hh, new int[]{0x00000000, 0xC7000000, 0xF2000000},
+                        new float[]{0f, 0.38f, 1f}, Shader.TileMode.CLAMP));
+                footFor = from + hh;
             }
         }
 
-        private void programme(Canvas c, Channel ch, Guide.Schedule s, int i, int which, float x0, float x1, long now) {
-            r.set(x0, Ui.f(774), x1, Ui.f(992));
-            if (card == which) glow.draw(c, r);
-            else c.drawRect(r, cardBack);
-            // The picture: the channel's logo on the guide's blue.
-            float tx = x0 + Ui.f(16), ty = Ui.f(790), tw = Ui.f(290), th = Ui.f(163);
-            if (thumbFor != ty) {
-                thumb.setShader(new LinearGradient(0, ty, 0, ty + th, Ui.CARD_LIGHT, Ui.NAVY, Shader.TileMode.CLAMP));
-                thumbFor = ty;
+        /** The channels last watched: each its logo on its tile, what's on and how far through; true while moving. */
+        private boolean drawRecent(Canvas c, int w, long now, Library lib) {
+            long t = SystemClock.uptimeMillis();
+            float dt = last == 0 ? 16f : Math.min(48f, t - last);
+            last = t;
+            float tw = Ui.f(232), th = Ui.f(130), gap = Ui.f(28), y0 = Ui.f(852), x0 = Ui.f(96), pitch = tw + gap;
+            int fit = Math.max(1, (int) ((w - Ui.f(192) + gap) / pitch));
+            float to = pick < fit ? 0f : (pick - fit + 1) * pitch;
+            boolean moving = false;
+            if (Math.abs(to - scroll) > 0.5f) {
+                scroll += (to - scroll) * (Exec.inline ? 1f : 1f - (float) Math.exp(-dt / 70.0));
+                moving = true;
+            } else {
+                scroll = to;
             }
-            // On a black tile (Pics.tiles): the logo made ready for black, in the tile's own room.
-            if (Pics.tiles) c.drawRect(tx, ty, tx + tw, ty + th, tileBack);
-            else c.drawRect(tx, ty, tx + tw, ty + th, thumb);
-            Bitmap logo = Pics.tiles
-                    ? Pics.get(ch.logo, Math.round(tw * com.gathin.broadcast.LogoTile.FILL_W), Math.round(th * com.gathin.broadcast.LogoTile.FILL_H), Pics.READY, redraw)
-                    : Pics.get(ch.logo, Math.round(tw * 0.7f), Math.round(th * 0.5f), Pics.FIT, redraw);
-            if (logo != null) c.drawBitmap(logo, tx + (tw - logo.getWidth()) / 2f, ty + (th - logo.getHeight()) / 2f, bmp);
-            else {
-                String nm = Ui.fit(ch.name, thumbName, tw - Ui.f(24));
-                c.drawText(nm, tx + (tw - thumbName.measureText(nm)) / 2f, ty + th / 2f + Ui.f(9), thumbName);
+            moving |= lift.step(pick >= 0 && pick < recent.size() ? recent.get(pick) : null);
+            if (!moving) last = 0;
+            for (int k = 0; k < recent.size(); k++) {
+                float tx = x0 + k * pitch - scroll;
+                if (tx > w) break;
+                if (tx + tw < 0) continue;
+                Channel rc = recent.get(k);
+                float l = lift.of(rc);
+                c.save();
+                if (l > 0f) {
+                    float sc = 1f + (LIFT - 1f) * l;
+                    c.scale(sc, sc, tx + tw / 2f, y0 + th / 2f);
+                }
+                r.set(tx, y0, tx + tw, y0 + th);
+                Bitmap tile = Pics.tiles ? Pics.get(rc.logo, Ui.px(232), Ui.px(130), Pics.TILE, redraw) : null;
+                if (tile != null) {
+                    c.drawBitmap(tile, tx, y0, bmp);
+                } else {
+                    c.drawRoundRect(r, Ui.f(16), Ui.f(16), tileBack);
+                    Bitmap f = Pics.tiles ? null : Pics.get(rc.logo, Ui.px(172), Ui.px(80), Pics.FIT, redraw);
+                    if (f != null) c.drawBitmap(f, tx + (tw - f.getWidth()) / 2f, y0 + (th - f.getHeight()) / 2f, bmp);
+                    else {
+                        String nm = Ui.fit(rc.name, tileName, tw - Ui.f(24));
+                        c.drawText(nm, tx + (tw - tileName.measureText(nm)) / 2f, y0 + th / 2f + Ui.f(9), tileName);
+                    }
+                }
+                if (l > 0f) {
+                    ring.setAlpha(Math.round(0xE6 * l));
+                    Dark.ring(c, r, Ui.f(16), ring);
+                }
+                c.restore();
+                // What's on, and how far through.
+                Guide.Schedule s = lib.schedule(rc.key);
+                int i = s == null ? -1 : s.at(now);
+                float under = (LIFT - 1f) * th / 2f * l;
+                TextPaint p = l > 0.5f ? tileOn : tileP;
+                c.drawText(Ui.fit(i >= 0 ? s.title[i] : rc.name, p, tw), tx, y0 + th + Ui.f(36) + under, p);
+                float by = y0 + th + Ui.f(50) + under;
+                c.drawRect(tx, by, tx + tw, by + Ui.f(3), thin);
+                if (i >= 0) c.drawRect(tx, by, tx + tw * LiveText.progress(now, s.start[i], s.stop[i]), by + Ui.f(3), l > 0.5f ? accent : white);
             }
-            float x = tx + tw + Ui.f(24), room = x1 - x - Ui.f(18);
-            String label = which == 0 ? "Now" : "Next";
-            TextPaint lp = which == 0 ? labelP : labelDim;
-            c.drawText(label, x, Ui.f(822), lp);
-            if (i < 0) {
-                c.drawText(Ui.fit(which == 0 ? ch.name : "", titleP, room), x, Ui.f(874), titleP);
-                if (which == 0) c.drawText(Ui.fit(s == null ? "No programme information" : "", descP, room), x, Ui.f(914), descP);
-                return;
+            return moving;
+        }
+
+        private void hint(Canvas c, String t, float right, float y) {
+            float tw = hintP.measureText(t);
+            r.set(right - tw - Ui.f(44), y - Ui.f(40), right, y + Ui.f(10));
+            c.drawRoundRect(r, Ui.f(25), Ui.f(25), pillBack);
+            c.drawText(t, right - tw - Ui.f(22), y - Ui.f(6), hintP);
+        }
+
+        private void drawDigits(Canvas c, int w) {
+            r.set(w - Ui.f(340), Ui.f(60), w - Ui.f(96), Ui.f(170));
+            c.drawRoundRect(r, Ui.f(18), Ui.f(18), pillBack);
+            String d = digits.length() >= 3 ? digits : (digits + "---").substring(0, 3);
+            c.drawText(d, r.centerX() - digitP.measureText(d) / 2f, r.centerY() + Ui.f(22), digitP);
+        }
+    }
+
+    // ---- the live screen: what's on the channel the remote is on ----------------------------------------------------
+
+    /** Along the top what's on after, then the channel's logo, the programme's title, the channel, times and story. */
+    private final class BrowseInfo extends View {
+        private Channel ch;
+        private final Paint bmp = new Paint(Paint.FILTER_BITMAP_FLAG), sep = Dark.fill(0x4DFFFFFF);
+        private final Paint track = Dark.fill(0x40FFFFFF), accent = Dark.fill(Dark.ACCENT);
+        private final TextPaint atP = Dark.text(22, 600, Dark.MUTED), laterP = Dark.text(22, 500, Dark.SOFT);
+        private final TextPaint titleP = Dark.text(60, 600, Dark.TEXT), chanP = Dark.text(24, 500, Dark.MUTED);
+        private final TextPaint timeP = Dark.text(24, 500, Dark.SOFT), descP = Dark.text(26, 400, Dark.SOFT);
+        private final TextPaint logoName = Dark.text(34, 700, Dark.TEXT);
+        private final RectF r = new RectF();
+        private String descKey = "";
+        private StaticLayout descL;
+        private final Runnable redraw = this::invalidate;
+
+        BrowseInfo(Context c) {
+            super(c);
+        }
+
+        void show(Channel c) {
+            boolean other = c == null ? ch != null : ch == null || !c.key.equals(ch.key);
+            ch = c;
+            if (other && c != null) Fade.in(this);
+            invalidate();
+        }
+
+        @Override protected void onDraw(Canvas c) {
+            if (ch == null) return;
+            Library lib = Library.get(tv);
+            long now = System.currentTimeMillis();
+            Guide.Schedule s = lib.schedule(ch.key);
+            int i = s == null ? -1 : s.at(now);
+            float x0 = Ui.f(96), right = getWidth() - Ui.f(96);
+
+            // Along the top: what's on after it.
+            int from = s == null ? -1 : i >= 0 ? i + 1 : s.after(now);
+            float x = x0, y = Ui.f(64);
+            for (int k = from; s != null && k >= 0 && k < s.start.length && k < from + 6; k++) {
+                String at = LiveText.hm(s.start[k]);
+                float aw = atP.measureText(at);
+                if (x + aw + Ui.f(140) > right) break;
+                c.drawText(at, x, y, atP);
+                x += aw + Ui.f(12);
+                String t = Ui.fit(s.title[k], laterP, Math.min(Ui.f(330), right - x));
+                c.drawText(t, x, y, laterP);
+                x += laterP.measureText(t) + Ui.f(22);
+                c.drawRect(x, y - Ui.f(18), x + Math.max(1f, Ui.f(1.5f)), y + Ui.f(4), sep);
+                x += Ui.f(22);
             }
-            c.drawText(Ui.fit(Ui.span(s.start[i], s.stop[i]), timeP, room - lp.measureText(label) - Ui.f(16)),
-                    x + lp.measureText(label) + Ui.f(16), Ui.f(822), timeP);
-            StaticLayout t = Ui.layout(s.title[i], titleP, Math.round(room), 2);
-            Ui.draw(c, t, x, Ui.f(838));
-            float after = Ui.f(838) + t.getHeight() + Ui.f(6);
-            if (!s.desc[i].isEmpty() && after < Ui.f(950)) {
-                StaticLayout d = Ui.layout(s.desc[i], descP, Math.round(room), t.getLineCount() > 1 ? 1 : 2);
-                Ui.draw(c, d, x, after);
+
+            // The channel's logo, the programme's title, the channel, the times and the story.
+            Bitmap logo = Pics.get(ch.logo, Ui.px(200), Ui.px(72), Pics.tiles ? Pics.READY : Pics.FIT, redraw);
+            if (logo != null) c.drawBitmap(logo, x0, Ui.f(100) + (Ui.f(72) - logo.getHeight()) / 2f, bmp);
+            else c.drawText(Ui.fit(ch.name, logoName, Ui.f(600)), x0, Ui.f(150), logoName);
+            String title = i >= 0 ? s.title[i] : ch.name;
+            c.drawText(Ui.fit(title, titleP, Ui.f(1400)), x0, Ui.f(250), titleP);
+            String chan = lib.number(ch) + "  " + ch.name + (ch.group.isEmpty() ? "" : "  ·  " + ch.group);
+            c.drawText(Ui.fit(chan, chanP, Ui.f(1400)), x0, Ui.f(294), chanP);
+            if (i >= 0) {
+                String t = LiveText.span(s.start[i], s.stop[i]) + "  ·  " + LiveText.left(now, s.stop[i]);
+                c.drawText(t, x0, Ui.f(334), timeP);
+                float bx = x0 + timeP.measureText(t) + Ui.f(20), by = Ui.f(326), bw = Ui.f(120);
+                r.set(bx, by, bx + bw, by + Ui.f(5));
+                c.drawRoundRect(r, Ui.f(3), Ui.f(3), track);
+                r.set(bx, by, bx + bw * LiveText.progress(now, s.start[i], s.stop[i]), by + Ui.f(5));
+                c.drawRoundRect(r, Ui.f(3), Ui.f(3), accent);
+                if (!s.desc[i].isEmpty()) {
+                    String key = ch.key + "|" + s.start[i];
+                    if (!key.equals(descKey) || descL == null) {
+                        descL = Ui.layout(s.desc[i], descP, Ui.px(1000), 3);
+                        descKey = key;
+                    }
+                    Ui.draw(c, descL, x0, Ui.f(358));
+                }
+            } else {
+                c.drawText(s == null ? "No programme information" : "Nothing in the guide now", x0, Ui.f(334), timeP);
             }
-            if (which == 0 && s.start[i] <= now) {
-                float p = (now - s.start[i]) / (float) Math.max(1, s.stop[i] - s.start[i]);
-                float by = ty + th + Ui.f(12);
-                c.drawRect(tx, by, tx + tw, by + Ui.f(5), track);
-                c.drawRect(tx, by, tx + tw * Math.min(1f, p), by + Ui.f(5), bar);
+        }
+    }
+
+    /** The category's row of channels, its name over it, and the next category's row below. */
+    private final class BrowseRows extends View {
+        private static final float X0 = 96f, TILE_W = 320f, TILE_H = 180f, GAP_X = 24f, HEAD_Y = 610f, PITCH = 300f;
+        private final Lift lift = new Lift();
+        private float scroll, scrollTo, shift, leftScroll;
+        private int first, leftRow = -1;
+        private boolean settled;
+        private long last;
+        private final Paint bmp = new Paint(Paint.FILTER_BITMAP_FLAG), tileBack = Dark.fill(0xFF000000);
+        private final Paint track = Dark.fill(0x40FFFFFF), bar = Dark.fill(Dark.ACCENT), ring = Dark.line(0xE6FFFFFF, 3f);
+        private final TextPaint headP = Dark.text(26, 700, Dark.TEXT), headNext = Dark.text(24, 700, Dark.MUTED);
+        private final TextPaint nameP = Dark.text(20, 500, Dark.MUTED), nameOn = Dark.text(20, 600, Dark.SOFT);
+        private final TextPaint tTitle = Dark.text(23, 600, Dark.TEXT), tDesc = Dark.text(18, 400, Dark.SOFT);
+        private final TextPaint logoName = Dark.text(26, 700, Dark.TEXT);
+        private final RectF r = new RectF();
+        private final Runnable redraw = this::invalidate;
+        private final Runnable rest = () -> {
+            settled = true;
+            invalidate();
+        };
+
+        BrowseRows(Context c) {
+            super(c);
+            headP.setLetterSpacing(0.04f);
+            headNext.setLetterSpacing(0.04f);
+        }
+
+        /** The remote moved (from row was; rowDir +1 down into the next row, -1 up, 0 along the same one). */
+        void moved(int was, int rowDir) {
+            int n = Math.max(1, (int) ((1920f - X0 - 40f + GAP_X) / (TILE_W + GAP_X)));
+            int size = row < groups.size() ? groups.get(row).channels.size() : 0;
+            if (rowDir != 0 || was < 0) {
+                leftRow = was;
+                leftScroll = scroll;
+                first = 0;
             }
+            if (col < first + 1) first = Math.max(0, col - 1);
+            if (col > first + n - 2) first = col - n + 2;
+            first = Math.max(0, Math.min(first, Math.max(0, size - n)));
+            scrollTo = first * (TILE_W + GAP_X);
+            if (rowDir != 0 || was < 0 || Exec.inline) scroll = scrollTo;
+            shift = rowDir != 0 && !Exec.inline ? rowDir * PITCH : 0f;
+            settled = Exec.inline;
+            removeCallbacks(rest);
+            if (!Exec.inline) postDelayed(rest, ProgrammePictures.REST_MS);
+            invalidate();
+        }
+
+        @Override protected void onDetachedFromWindow() {
+            removeCallbacks(rest);
+            super.onDetachedFromWindow();
+        }
+
+        @Override protected void onDraw(Canvas c) {
+            if (groups.isEmpty()) return;
+            long t = SystemClock.uptimeMillis();
+            float dt = last == 0 ? 16f : Math.min(48f, t - last);
+            last = t;
+            float k = Exec.inline ? 1f : 1f - (float) Math.exp(-dt / 70.0);
+            boolean moving = false;
+            if (Math.abs(scrollTo - scroll) > 0.5f) {
+                scroll += (scrollTo - scroll) * k;
+                moving = true;
+            } else {
+                scroll = scrollTo;
+            }
+            if (Math.abs(shift) > 0.5f) {
+                shift -= shift * k;
+                moving = true;
+            } else {
+                shift = 0f;
+            }
+            moving |= lift.step(browseChannel());
+            if (!moving) last = 0;
+            Library lib = Library.get(tv);
+            long now = System.currentTimeMillis();
+            c.save();
+            c.clipRect(0, Ui.f(HEAD_Y - 46), getWidth(), getHeight());
+            for (int d = -1; d <= 1; d++) {
+                int idx = row + d;
+                if (idx < 0 || idx >= groups.size()) continue;
+                float y = HEAD_Y + d * PITCH + shift;
+                if (y > 1080f + 40f || y + PITCH < HEAD_Y - 46f) continue;
+                float sc = d == 0 ? scroll : idx == leftRow ? leftScroll : 0f;
+                drawRow(c, groups.get(idx), y, sc, d == 0, now, lib);
+            }
+            c.restore();
+            if (moving) postInvalidateOnAnimation();
+        }
+
+        private void drawRow(Canvas c, Row g, float y, float sc, boolean mine, long now, Library lib) {
+            TextPaint hp = mine ? headP : headNext;
+            c.drawText(Ui.fit(g.name.toUpperCase(Locale.ROOT), hp, Ui.f(1500)), Ui.f(X0), Ui.f(y), hp);
+            float pitch = TILE_W + GAP_X;
+            int from = Math.max(0, (int) Math.floor(sc / pitch));
+            for (int k = from; k < g.channels.size(); k++) {
+                float x = X0 + k * pitch - sc;
+                if (x > 1920f) break;
+                drawTile(c, g.channels.get(k), Ui.f(x), Ui.f(y + 22f), mine, now, lib);
+            }
+        }
+
+        /** A channel's tile: its logo over a picture of what's on, the title, a line of what it's about, how far through. */
+        private void drawTile(Canvas c, Channel ch, float x, float y, boolean mine, long now, Library lib) {
+            float w = Ui.f(TILE_W), hgt = Ui.f(TILE_H), l = lift.of(ch);
+            Guide.Schedule s = lib.schedule(ch.key);
+            int i = s == null ? -1 : s.at(now);
+            String url = i < 0 ? "" : mine && settled ? ProgrammePictures.get(getContext(), ch, s, i, redraw) : ProgrammePictures.peek(ch, s, i);
+            Bitmap pic = url == null || url.isEmpty() ? null : Pics.get(url, Ui.px(TILE_W), Ui.px(TILE_H), Pics.CARD, redraw);
+            int logoMode = Pics.tiles ? Pics.READY : Pics.FIT;
+            c.save();
+            if (l > 0f) {
+                float k = 1f + (LIFT - 1f) * l;
+                c.scale(k, k, x + w / 2f, y + hgt / 2f);
+            }
+            r.set(x, y, x + w, y + hgt);
+            if (pic != null) {
+                c.drawBitmap(pic, x, y, bmp);
+                Bitmap logo = Pics.get(ch.logo, Ui.px(120), Ui.px(46), logoMode, redraw);
+                if (logo != null) c.drawBitmap(logo, x + Ui.f(16), y + Ui.f(14), bmp);
+            } else {
+                c.drawRoundRect(r, Ui.f(16), Ui.f(16), tileBack);
+                Bitmap logo = Pics.get(ch.logo, Ui.px(170), Ui.px(62), logoMode, redraw);
+                if (logo != null) c.drawBitmap(logo, x + (w - logo.getWidth()) / 2f, y + Ui.f(58) - logo.getHeight() / 2f, bmp);
+                else {
+                    String nm = Ui.fit(ch.name, logoName, w - Ui.f(32));
+                    c.drawText(nm, x + (w - logoName.measureText(nm)) / 2f, y + Ui.f(66), logoName);
+                }
+            }
+            // On the tile: what's on, a line of what it's about, how far through.
+            float room = w - Ui.f(32);
+            String title = i >= 0 ? s.title[i] : ch.name;
+            c.drawText(Ui.fit(title, tTitle, room), x + Ui.f(16), y + hgt - Ui.f(46), tTitle);
+            String about = i < 0 ? "No programme information" : s.desc[i].isEmpty() ? LiveText.span(s.start[i], s.stop[i]) : s.desc[i];
+            c.drawText(Ui.fit(about, tDesc, room), x + Ui.f(16), y + hgt - Ui.f(22), tDesc);
+            if (i >= 0) {
+                float bx = x + Ui.f(16), by = y + hgt - Ui.f(10);
+                c.drawRect(bx, by, bx + room, by + Ui.f(3), track);
+                c.drawRect(bx, by, bx + room * LiveText.progress(now, s.start[i], s.stop[i]), by + Ui.f(3), bar);
+            }
+            if (l > 0f) {
+                ring.setAlpha(Math.round(0xE6 * l));
+                Dark.ring(c, r, Ui.f(16), ring);
+            }
+            c.restore();
+            // Under it: the channel's number and name.
+            TextPaint np = l > 0.5f ? nameOn : nameP;
+            String nm = Ui.fit(lib.number(ch) + "  " + ch.name, np, w);
+            c.drawText(nm, x, y + hgt + Ui.f(32) + (LIFT - 1f) * hgt / 2f * l, np);
         }
     }
 }

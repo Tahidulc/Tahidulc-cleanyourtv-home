@@ -17,6 +17,7 @@ import androidx.annotation.NonNull;
 import androidx.annotation.OptIn;
 import androidx.media3.common.AudioAttributes;
 import androidx.media3.common.C;
+import androidx.media3.common.Format;
 import androidx.media3.common.PlaybackException;
 import androidx.media3.common.Player;
 import androidx.media3.common.VideoSize;
@@ -44,8 +45,10 @@ final class LiveTv {
     static final int IDLE = 0, LOADING = 1, PLAYING = 2, RETRYING = 3, FAILED = 4;
     private static final int RETRIES = 4;
     private static final long STALL_MS = 15_000L;
-    /** Previews: a still picture stands in for the stream. */
+    /** Previews: a still picture stands in for the stream, and its format for the player's. */
     static Bitmap previewStill;
+    static int previewWidth, previewHeight;
+    static float previewFps;
 
     interface Listener {
         void liveChanged();
@@ -63,7 +66,7 @@ final class LiveTv {
     private int alt, retries, state = IDLE;
     private boolean asHls;
     private long bufferingSince;
-    private int videoW, videoH;
+    private int videoW, videoH, rawW, rawH;
 
     private final Runnable retry = this::prepare;
     private final Runnable stallCheck = new Runnable() {
@@ -167,6 +170,34 @@ final class LiveTv {
         return state;
     }
 
+    /**
+     * The picture as the player has it, for the banner's chips: its size ("1280×720") and frames a second ("25 fps"),
+     * each "" when the player doesn't know it (or nothing is playing).
+     */
+    String[] format() {
+        int w = 0, hh = 0;
+        float fps = 0f;
+        if (Exec.inline) {
+            if (cur != null) {
+                w = previewWidth;
+                hh = previewHeight;
+                fps = previewFps;
+            }
+        } else if (player != null && (state == PLAYING || state == LOADING)) {
+            Format f = player.getVideoFormat();
+            if (f != null) {
+                w = f.width;
+                hh = f.height;
+                fps = f.frameRate;
+            }
+            if (w <= 0 || hh <= 0) {
+                w = rawW;
+                hh = rawH;
+            }
+        }
+        return new String[]{LiveText.size(w, hh), LiveText.fps(fps)};
+    }
+
     /** The copy playing: the channel's own, or its copy in another playlist. */
     Channel stream() {
         if (cur == null) return null;
@@ -185,7 +216,7 @@ final class LiveTv {
         alt = 0;
         retries = 0;
         asHls = Streams.looksHls(stream().url);
-        videoW = videoH = 0;
+        videoW = videoH = rawW = rawH = 0;
         Library.get(app).watched(c);
         if (!where.isEmpty()) {
             layout();
@@ -332,6 +363,8 @@ final class LiveTv {
 
         @Override public void onVideoSizeChanged(@NonNull VideoSize size) {
             if (size.width <= 0 || size.height <= 0) return;
+            rawW = size.width;
+            rawH = size.height;
             videoW = Math.round(size.width * size.pixelWidthHeightRatio);
             videoH = size.height;
             layout();

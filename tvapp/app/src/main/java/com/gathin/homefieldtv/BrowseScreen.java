@@ -70,6 +70,7 @@ final class BrowseScreen extends Screen implements Shelves.Host, PosterGrid.Host
         shade.setBackgroundColor(0x99000000);
         panel = new SidePanel(tv);
         rail = new Rail(tv, series ? Rail.SHOWS : Rail.FILMS);
+        f.addView(billboard.picture, new FrameLayout.LayoutParams(-1, -1));
         f.addView(billboard, new FrameLayout.LayoutParams(-1, -1));
         f.addView(shelves, new FrameLayout.LayoutParams(-1, -1));
         f.addView(grid, new FrameLayout.LayoutParams(-1, -1));
@@ -238,7 +239,7 @@ final class BrowseScreen extends Screen implements Shelves.Host, PosterGrid.Host
     /** Which views show for where the remote is and what is shown. */
     private void place() {
         boolean walls = showing.equals(WALLS);
-        billboard.setVisibility(walls ? View.VISIBLE : View.GONE);
+        billboard.showing(walls);
         shelves.setVisibility(walls ? View.VISIBLE : View.GONE);
         grid.setVisibility(walls ? View.GONE : View.VISIBLE);
         boolean panelOut = !walls || area == PANEL || area == RAIL && !walls;

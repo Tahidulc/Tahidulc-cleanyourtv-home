@@ -165,8 +165,26 @@ public final class Library {
         return ch.isEmpty() ? null : ch.get(0);
     }
 
+    /** A channel played: the last one, and first of the recent channels (kept on this TV only). */
     public void watched(Channel c) {
-        if (c != null) prefs().edit().putString("last", c.key).apply();
+        if (c == null) return;
+        SharedPreferences p = prefs();
+        List<String> recent = RecentChannels.add(RecentChannels.parse(p.getString("recent", "")), c.key);
+        p.edit().putString("last", c.key).putString("recent", RecentChannels.join(recent)).apply();
+    }
+
+    /**
+     * The channels last watched on this TV that the playlists still have, newest first: without the one playing (null
+     * for none), RecentChannels.MAX at most.
+     */
+    public List<Channel> recent(Channel playing) {
+        List<Channel> out = new ArrayList<>();
+        List<String> keys = RecentChannels.parse(prefs().getString("recent", ""));
+        for (String k : RecentChannels.shown(keys, playing == null ? null : playing.key)) {
+            Channel c = byKey(k);
+            if (c != null) out.add(c);
+        }
+        return out;
     }
 
     // ---- loading ----------------------------------------------------------------------------------------------

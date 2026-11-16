@@ -52,6 +52,7 @@ final class Shelves extends View {
     float left = 160f, top = 600f;
     private float scrollY;
     private long last;
+    private final Lift lift = new Lift();
     private final PosterArt art;
     private final TextPaint headP = Dark.text(30, 600, Dark.TEXT);
     private final Runnable redraw = this::invalidate;
@@ -186,6 +187,7 @@ final class Shelves extends View {
 
     @Override protected void onDraw(Canvas c) {
         boolean moving = step();
+        moving |= lift.step(active ? item() : null);
         float topPx = Ui.f(top), h = Ui.f(rowH());
         float y = topPx - scrollY;
         for (int i = 0; i < shelves.size(); i++) {
@@ -208,14 +210,26 @@ final class Shelves extends View {
         int n = s.items.size();
         int from = Math.max(0, (int) Math.floor(s.x) - 1);
         int to = Math.min(n - 1, from + (int) Math.ceil((getWidth() - x0) / pitch) + 2);
-        boolean here = focusedRow && active;
+        // The poster the remote is on grows into its lift and ring as the one it left settles back (drawn last, over).
+        Object leaving = lift.leaving();
+        int settling = -1;
         for (int i = from; i <= to; i++) {
-            if (here && i == s.focus) continue;
+            PosterArt.Item it = s.items.get(i);
+            float l = lift.of(it);
+            if (l > 0f) {
+                if (it == leaving) settling = i;
+                continue;
+            }
             float tx = x0 + (i - s.x) * pitch;
             if (tx + art.w < 0) continue;
-            art.draw(c, s.items.get(i), tx, ty, false, a, redraw);
+            art.draw(c, it, tx, ty, 0f, a, redraw);
         }
-        if (here && s.focus < n) art.draw(c, s.items.get(s.focus), x0 + (s.focus - s.x) * pitch, ty, true, a, redraw);
+        if (settling >= 0) art.draw(c, s.items.get(settling), x0 + (settling - s.x) * pitch, ty, lift.of(s.items.get(settling)), a, redraw);
+        if (s.focus < n && s.focus >= from && s.focus <= to) {
+            PosterArt.Item it = s.items.get(s.focus);
+            float l = lift.of(it);
+            if (l > 0f && it != leaving) art.draw(c, it, x0 + (s.focus - s.x) * pitch, ty, l, a, redraw);
+        }
         // The next posters along asked for early, so the row slides on to pictures.
         if (focusedRow) for (int i = to + 1; i <= Math.min(n - 1, to + 4); i++) art.prefetch(s.items.get(i), null);
     }

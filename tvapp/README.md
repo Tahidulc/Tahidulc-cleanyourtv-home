@@ -1,23 +1,44 @@
 # Homefield TV
 
-An IPTV app for Android TV only, in the look of Sky Q's interface: the blue screens, the menu down the left with the
-time and a mini TV, the TV guide, the channel banner over live TV and the playback bar. It plays the family's own
-playlists (an M3U address or an Xtream Codes login): their live channels and guide, and their own films and TV shows,
-browsed by the playlist's categories. It ships with no playlists or sources of its own, and films and series come only
-from the playlists added to it. The app's name and wordmark are Homefield; it carries no Sky logo or name.
+An IPTV app for Android TV only. Home, Search, Settings and the playback bar are in the look of Sky Q's interface (the
+blue screens, the menu down the left with the time and a mini TV); the TV guide, live TV, films and TV shows are in
+Homefield's own dark look. It plays the family's own playlists (an M3U address or an Xtream Codes login): their live
+channels and guide, and their own films and TV shows, browsed by the playlist's categories. It ships with no
+playlists or sources of its own, and films and series come only from the playlists added to it. The app's name and
+wordmark are Homefield; it carries no Sky logo or name.
 
 ## Screens
 
 - **Home:** the menu (Home, TV guide, Movies, TV shows, Sports, Search, Settings), the time and a mini TV playing the
   last channel; a large picture of what is highlighted, then rows: On now, Continue watching, New films, New TV shows,
   Sport on now and favourite channels.
-- **TV guide:** categories down the left (All channels, Entertainment, Sport, News, Movies, Kids, Documentaries, Music,
-  Favourites, then the playlist's own groups), the highlighted programme's details at the top, the channels with their
-  numbers and logos, a now line. Left and Right move through time, Up and Down through the channels, OK watches, holding
-  OK makes a channel a favourite, the number keys go to a channel.
-- **Live TV:** full screen with the channel banner (the channel between up and down arrows, the day and time, now and
-  next). Up and Down look along the channels, OK changes to one, the channel keys change at once, Back hides the banner.
-  A stream that drops is tried on the same channel in another playlist, then again.
+- **TV guide (dark):** the rail, then the categories down the side with how many channels each has (All channels,
+  Favourites, Recently watched, Entertainment, Sport, News, Movies, Kids, Documentaries, Music, then the playlist's own
+  groups). At the top, the channel the remote is on (its logo on its tile, its number and name, what's on now with how
+  far through it is and what's left, and what's next) over the picture of the programme the remote is on; the times
+  along a ruler (Today, 24-hour times, a mark at the time now); then a row a channel, its number and logo and its
+  programmes in their own deep colours (as the phone's guide has them) with their times over their titles and the part
+  already shown shaded, the programme the remote is on in amber. Under the channel's row a strip opens with the
+  programme's picture (from Sky's public UK guide, else the channel's logo on its tile), its title, its times, Live or
+  Starts in…, HD or 4K as the channel's name says, and two lines about it; the rows below move down to make room.
+  Left and Right move through time, Up and Down through the channels, OK watches, holding OK makes a channel a
+  favourite, the number keys go to a channel. No mini TV here: the stream is let go until a channel is chosen.
+- **Live TV:** full screen. OK brings up the channel banner over a dark scrim: the channel's group and small logo at
+  the top; its large logo, what's on (its times, how far through, what's left), the channel, the picture's size and
+  frames a second as the player has them, what's next, a thin amber line across for how far through it is, and a row
+  of the last ten channels watched on this TV (not the one playing), each with what's on and how far through. Left and
+  Right go along the row; OK changes to one at once. Up and Down bring up the live screen without leaving the channel:
+  the picture of what's on the channel the remote is on fills the screen behind, darkened; along the top what's on
+  after it; its logo, the programme's title, the channel, the times and three lines about it; then the category's row
+  of channels, each tile the channel's logo over a picture of what's on with its title, a line about it and how far
+  through it is (on its black tile when there is no picture), and the next category's row below. Up and Down go
+  through the channels, Left and Right along the row, OK changes to the one the remote is on. The channel keys and the
+  number keys change at once; Back, or a few seconds with no key, hides it all. A stream that drops is tried on the
+  same channel in another playlist, then again.
+- **Moving about:** on the dark screens the picture behind cross-fades as the remote moves to another title or
+  channel, the words fade in and rise into place a moment after, pages cross-fade into each other, and the poster or
+  tile the remote is on grows a little inside a soft white ring. Opacity, a small move and scale only, nothing
+  blurred, and each picture read once at the size it is shown, so it stays light on a TV with 1 GB of memory.
 - **Films and TV shows (dark):** a slim rail down the left (Homefield's mark, the time, Home, the TV guide, Films, TV
   shows, Search, Settings). First every category at a glance: a row of posters a category (Continue watching and My
   list first, then Recently added) under a big picture of whatever the remote is on: its backdrop, title, facts (★
@@ -77,3 +98,4 @@ The APK is `app/build/outputs/apk/release/app-release.apk`, signed with the debu
 | 1.0 | The first version: Home, the TV guide, live TV with the channel banner, Movies and TV shows from the playlists, title pages with seasons and episodes, the player with the playback bar, Search and Settings. |
 | 1.1 | Channel logos on black tiles, drawn as the TV launcher and the phone draw them: in the guide (the channel column and the large logo at the top), the channel banner's cards, Home's channel cards and its large picture, and Search. Each logo from the playlist is trimmed and set in the middle of a black tile; a white JPEG box round it is taken away and a mostly dark logo is turned light. Settings, Channel logos: on black tiles, or as the playlist gives them. |
 | 1.2 | Films and TV shows in a new dark look: the rail; every category at a glance under a big picture of the title the remote is on; the side panel of lists (All categories, all of them, Continue watching, My list, the categories with their counts) and a grid for each; posters drawn as the phone's (a fade into the poster's own colour, New, 4K / 1080p / 720p and Dolby marks from the playlists' names, genre and rating, title and year); a title's page with the backdrop full screen, Play and round buttons, the story, facts and cast, a series' season pills over one row of every episode, the trailer, the cast and more like it. My list (the heart). Names lose the picture and sound tags after them. Outfit (SIL Open Font License 1.1) for the dark screens. |
+| 1.3 | The TV guide and live TV in the dark look. The guide in the phone's guide's colours, with the categories (and their counts) down the side, the channel's band at the top over the programme's picture, and a strip under the channel's row with the programme's picture from Sky's public UK guide, its times, what it is and two lines about it. OK while watching brings up the banner with the picture's size and frame rate as the player has them and a row of the last ten channels watched on this TV; Up and Down bring up the live screen, the programme's picture behind and each category's channels as tiles with a picture of what's on, its title and a line about it. Pictures cross-fade, words fade and rise, pages cross-fade, and posters and tiles grow inside a ring as the remote moves. |

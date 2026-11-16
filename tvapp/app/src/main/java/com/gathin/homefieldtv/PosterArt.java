@@ -234,9 +234,18 @@ final class PosterArt {
 
     /** One poster at (x, y): its card, then the writing under it; lifted inside a ring where the remote is. */
     void draw(Canvas c, Item it, float x, float y, boolean focused, int alpha, Runnable redraw) {
+        draw(c, it, x, y, focused ? 1f : 0f, alpha, redraw);
+    }
+
+    /** lift: 0 resting, 1 where the remote is (grown to LIFT inside a ring), between as it grows or settles (Lift). */
+    void draw(Canvas c, Item it, float x, float y, float lift, int alpha, Runnable redraw) {
         Catalog.Title t = it.title;
+        boolean focused = lift > 0.5f;
         c.save();
-        if (focused) c.scale(LIFT, LIFT, x + w / 2f, y + h / 2f);
+        if (lift > 0f) {
+            float s = 1f + (LIFT - 1f) * lift;
+            c.scale(s, s, x + w / 2f, y + h / 2f);
+        }
         rect.set(x, y, x + w, y + h);
         Bitmap b = t.poster.isEmpty() ? null : Pics.get(t.poster, pw, ph, Pics.POSTER, redraw);
         bmp.setAlpha(alpha);
@@ -270,13 +279,13 @@ final class PosterArt {
             tmp.set(bx, by - bh, bx + bw * Math.max(0.03f, Math.min(1f, it.progress)), by);
             c.drawRoundRect(tmp, bh / 2, bh / 2, bar);
         }
-        if (focused) {
+        if (lift > 0f) {
             ring.setStrokeWidth(Math.max(2f, w * 0.016f));
-            ring.setAlpha(alpha);
+            ring.setAlpha(Math.round(alpha * 0.92f * lift));
             Dark.ring(c, rect, r, ring);
         }
         c.restore();
-        underWriting(c, it, x, y + h + (focused ? h * (LIFT - 1f) / 2f : 0f), focused, alpha);
+        underWriting(c, it, x, y + h + h * (LIFT - 1f) / 2f * lift, focused, alpha);
     }
 
     /** The title and the line under it, over the poster's fade. */

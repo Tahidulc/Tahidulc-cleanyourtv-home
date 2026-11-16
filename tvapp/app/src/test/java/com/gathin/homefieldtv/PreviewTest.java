@@ -148,9 +148,10 @@ public class PreviewTest {
         press(a, KeyEvent.KEYCODE_BACK);
         press(a, KeyEvent.KEYCODE_BACK);
 
-        // Search.
-        press(a, KeyEvent.KEYCODE_DPAD_DOWN, 2);
-        press(a, KeyEvent.KEYCODE_DPAD_CENTER);
+        // Search (opened as its key does, from wherever the remote is now).
+        a.home();
+        a.openSearch();
+        idle();
         ((SearchScreen) a.top()).type("re");
         press(a, KeyEvent.KEYCODE_DPAD_RIGHT, 6);
         press(a, KeyEvent.KEYCODE_DPAD_DOWN);
@@ -159,8 +160,9 @@ public class PreviewTest {
         press(a, KeyEvent.KEYCODE_BACK);
 
         // Settings: the playlists, then a login being typed in.
-        press(a, KeyEvent.KEYCODE_DPAD_DOWN);
-        press(a, KeyEvent.KEYCODE_DPAD_CENTER);
+        a.home();
+        a.openSettings();
+        idle();
         shot(a, "16-settings");
         ((SettingsScreen) a.top()).preview(2, "Home", "http://provider.example:8080", "family");
         press(a, KeyEvent.KEYCODE_DPAD_RIGHT);
