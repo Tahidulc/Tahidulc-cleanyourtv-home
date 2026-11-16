@@ -169,28 +169,22 @@ public class BoardFxTest {
     }
 
     @Test
-    public void theMomentumWaveComesOnceOrTwiceAHalf() {
-        int one = 0, two = 0;
+    public void theMomentumWaveComesOnceAHalf() {
+        Set<Integer> firsts = new HashSet<>(), seconds = new HashSet<>();
         for (int i = 0; i < 400; i++) {
             String id = "40186" + i;
             int[] m = BoardFx.waveMinutes(id);
             assertArrayEquals(m, BoardFx.waveMinutes(id));
-            assertTrue(m.length >= 2 && m.length <= 4);
-            int first = 0, second = 0;
-            for (int x : m) {
-                boolean ok = x >= 20 && x <= 28 || x >= 34 && x <= 40 || x >= 58 && x <= 66 || x >= 74 && x <= 82;
-                assertTrue("minute " + x, ok);
-                if (x <= 45) first++;
-                else second++;
-            }
-            assertTrue(first >= 1 && first <= 2 && second >= 1 && second <= 2);
-            // In order, at most one in each window.
-            for (int k = 1; k < m.length; k++) assertTrue(m[k] > m[k - 1]);
-            if (first == 1) one++;
-            else two++;
+            // One in each half, never two: the first in 20 to 28, the second in 58 to 66.
+            assertEquals(2, m.length);
+            assertTrue("minute " + m[0], m[0] >= 20 && m[0] <= 28);
+            assertTrue("minute " + m[1], m[1] >= 58 && m[1] <= 66);
+            firsts.add(m[0]);
+            seconds.add(m[1]);
         }
-        // Some games once a half, some twice.
-        assertTrue(one > 100 && two > 100);
+        // Spread over each window's minutes, game by game.
+        assertEquals(9, firsts.size());
+        assertEquals(9, seconds.size());
         // Due at its minute (or up to three after, a board up late), once a game.
         String id = "401861175";
         int[] m = BoardFx.waveMinutes(id);

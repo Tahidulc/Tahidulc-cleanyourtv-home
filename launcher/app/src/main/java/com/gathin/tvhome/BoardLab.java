@@ -20,7 +20,7 @@ final class BoardLab {
             {"xgot", "xG on target", "How good the shots on target were"},
             {"chances", "Big chances", "The chances a player should score"},
             {"touches", "Touches in the box", "Who keeps getting into dangerous areas"},
-            {"momentum", "Momentum", "Who is on top, and its wave once or twice a half"},
+            {"momentum", "Momentum", "Who is on top, and its wave once a half"},
             {"ratings", "Player ratings", "The top rated, and the player of the match"},
             {"basics", "Possession, shots and corners", "And passing, fouls and the rest of the basics"},
             {"form", "Form", "Each side's last five, before kick-off"},

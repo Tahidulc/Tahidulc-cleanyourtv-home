@@ -26,7 +26,7 @@ import java.util.Set;
  *   turning figure, the burst) stay for that look and for a choice by game should one come back (pick).</li>
  *   <li>A red card swinging up under the board and tucking away; VAR's dot pulsing on its check; the substitution
  *   card's players crossing over with their green and red arrows; half time's face; a shootout's dots in the clock's
- *   place; the momentum wave once or twice a half; the ground's weather two or three times a game.</li>
+ *   place; the momentum wave once a half; the ground's weather two or three times a game.</li>
  * </ul>
  */
 public final class BoardFx {
@@ -286,24 +286,17 @@ public final class BoardFx {
         }
     }
 
-    // ---- the momentum wave: once or twice a half ---------------------------------------------------------------------
+    // ---- the momentum wave: once a half ------------------------------------------------------------------------------
 
     /** How long the wave is out under the board; drawn in over WAVE_IN, fading out over its last WAVE_OUT. */
     public static final long WAVE_MS = 7000, WAVE_IN = 2000, WAVE_OUT = 600;
 
     /**
-     * Pure: the minutes a game's wave comes out, stable for that game: in the first half one in 20 to 28 and, when the game
-     * picks a second, one in 34 to 40; in the second half one in 58 to 66 and maybe one in 74 to 82. Two to four, in order.
+     * Pure: the minutes a game's wave comes out, stable for that game: once a half, one in 20 to 28 and one in 58 to 66
+     * (the minutes each game had for its first wave of each half before, when some had a second).
      */
     public static int[] waveMinutes(String gameId) {
-        List<Integer> m = new ArrayList<>();
-        m.add(20 + pick(gameId, "wave1", 9));
-        if (pick(gameId, "wave1+", 2) == 1) m.add(34 + pick(gameId, "wave1b", 7));
-        m.add(58 + pick(gameId, "wave2", 9));
-        if (pick(gameId, "wave2+", 2) == 1) m.add(74 + pick(gameId, "wave2b", 9));
-        int[] out = new int[m.size()];
-        for (int i = 0; i < out.length; i++) out[i] = m.get(i);
-        return out;
+        return new int[]{20 + pick(gameId, "wave1", 9), 58 + pick(gameId, "wave2", 9)};
     }
 
     /**

@@ -230,7 +230,7 @@ public class LabWiringTest {
     }
 
     @Test
-    public void theWaveOnceOrTwiceAHalf() {
+    public void theWaveOnceAHalf() {
         for (int i = 0; i < 50; i++) {
             String id = "77" + i;
             Set<String> shown = new HashSet<>();
@@ -241,8 +241,8 @@ public class LabWiringTest {
                     else second++;
                 }
             }
-            assertTrue(id, first >= 1 && first <= 2);
-            assertTrue(id, second >= 1 && second <= 2);
+            assertEquals(id, 1, first);
+            assertEquals(id, 1, second);
         }
     }
 

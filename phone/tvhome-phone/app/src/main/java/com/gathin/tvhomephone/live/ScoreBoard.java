@@ -1547,7 +1547,7 @@ public final class ScoreBoard implements LiveAlerts.Listener {
     /**
      * Each look at the board for its game (main thread): the Scoreboard Lab's moments, as the TV's. The ground's weather
      * lightly over the board two or three times a game (BoardFx.weatherMinutes), the sky as FotMob has it then; the
-     * momentum wave once or twice a half; the Lab stats' own moments (early on, after the break, late on); and what
+     * momentum wave once a half; the Lab stats' own moments (early on, after the break, late on); and what
      * happened worth a word (an early goal, a comeback, a big save or great finish, the referee's first booking), each in
      * its turn. Each under its own switch (Stats to show); never in the small window, over an alert or just after a goal.
      */
@@ -1565,7 +1565,7 @@ public final class ScoreBoard implements LiveAlerts.Listener {
         if (dropping || lineups.isOut() || stats.isOut() || bug.closing()) return;
         if (now - goalShownAt < 90_000L || screen.ahead(now)) return;
         String hc = code(g.home, g.homeName), ac = code(g.away, g.awayName);
-        // The momentum wave once or twice a half.
+        // The momentum wave once a half.
         if (live && minute >= 0 && statOn(c, "momentum") && g.id.equals(labFor)) {
             String due = com.gathin.broadcast.BoardFx.waveDue(g.id, minute, labShown);
             String[] w = due == null ? null : BoardLab.wave(labMomentum, minute, hc, ac);

@@ -372,7 +372,7 @@ public class ScoreboardLabTest {
     }
 
     @Test
-    public void theWaveComesOnceOrTwiceAHalfAndIsLogged() {
+    public void theWaveComesOnceAHalfAndIsLogged() {
         for (String g : GAMES) {
             Set<String> shown = new HashSet<>();
             int first = 0, second = 0;
@@ -381,8 +381,8 @@ public class ScoreboardLabTest {
                 if (m <= 45) first++;
                 else second++;
             }
-            assertTrue(g, first >= 1 && first <= 2);
-            assertTrue(g, second >= 1 && second <= 2);
+            assertEquals(g, 1, first);
+            assertEquals(g, 1, second);
             // Each once: a board looking again at the same minute shows none.
             for (int m = 0; m <= 95; m++) assertNull(BoardFx.waveDue(g, m, shown));
         }

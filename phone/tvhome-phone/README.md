@@ -555,3 +555,5 @@ The Scoreboard Lab (5.02), as on the TV: five new scoreboard looks (Floodlight, 
 Goals as in 5.02 again (5.04): 5.03's crest burst on every goal undone at the family's ask; each game keeps one of the three goal moments (the GOAL band, the flip or the crest burst), the net after each.
 
 Every goal in one order (5.05), as on the TV: the GOAL board across the whole scoreboard in the scorers' colour with their crest, then their crest bursting with rings as the score rolls up, then the net shivering across the board; the same every goal, every game (the 3D kits keep their gold GOAL); on the competitions' and the Lab's boards the rolling figure stays in its own cell, its shadow with it.
+
+The momentum wave once a half (5.06), as on the TV: one in the first half (20 to 28 minutes in) and one in the second (58 to 66), never a second in the same half; its line under Stats to show says so.
