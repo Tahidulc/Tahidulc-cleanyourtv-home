@@ -19,10 +19,11 @@ import java.util.Set;
  * for the tests), and how it is drawn over the board (an instance per board, its paints kept, nothing made per frame).
  *
  * <ul>
- *   <li>A goal, in one of three sets a game keeps all through (pick): today's broadcast band; the Lab's flip (the
- *   scorers' side washes in their colour, a shine sweeps the board, the new figure turns down into place); or the Lab's
- *   burst (the scorers' crest pops with rings in their colour, the score rolls up, their side glows). Every goal ends
- *   with the net shivering across the board (netMesh).</li>
+ *   <li>A goal, every game and every goal in the same order (the sequence, goalSet): the GOAL band across the whole
+ *   board in the scorers' colour with their crest; then, as it goes, the Lab's burst (the scorers' crest pops with rings
+ *   in their colour, the score rolls up, their side glows); then the net shivering across the board (netMesh). The 3D
+ *   kits look keeps its own gold GOAL. The three sets apart (today's band, the Lab's flip with its wash, shine and
+ *   turning figure, the burst) stay for that look and for a choice by game should one come back (pick).</li>
  *   <li>A red card swinging up under the board and tucking away; VAR's dot pulsing on its check; the substitution
  *   card's players crossing over with their green and red arrows; half time's face; a shootout's dots in the clock's
  *   place; the momentum wave once or twice a half; the ground's weather two or three times a game.</li>
@@ -46,12 +47,48 @@ public final class BoardFx {
         return Math.floorMod(h, n);
     }
 
-    /** A goal's sets: today's band, the Lab's flip, the Lab's burst. */
-    public static final int GOAL_BAND = 0, GOAL_FLIP = 1, GOAL_BURST = 2;
+    /**
+     * A goal's sets: today's band, the Lab's flip, the Lab's burst; and the sequence: the GOAL band, then the burst, then
+     * the net, one after the other.
+     */
+    public static final int GOAL_BAND = 0, GOAL_FLIP = 1, GOAL_BURST = 2, GOAL_SEQUENCE = 3;
 
-    /** Pure: the goal set a game keeps for all its goals. */
+    /**
+     * Pure: the goal set a game's goals come in: the sequence, every game and every goal (the family's choice, 16 Nov
+     * 2026): the GOAL band across the whole board, then the scorers' crest bursting as the score rolls up, then the net.
+     */
     public static int goalSet(String gameId) {
-        return pick(gameId, "goal", 3);
+        return GOAL_SEQUENCE;
+    }
+
+    /**
+     * In the sequence, when the burst starts, in ms from the goal: as the GOAL band has gone from the board (each board's
+     * BAND_OUT + BAND_MS, 3.3 s held and half a second going). The burst's own timings run from there (seqBurst), its net
+     * MESH_AFTER_BURST into it: the band 0 to 3.8 s, the burst 3.8 to 5.1 s, the net 5.1 to 6.2 s.
+     */
+    public static final long SEQ_BURST_AT = 3800;
+
+    /** Pure: how far into the sequence's burst a goal t ms in is (negative before it). */
+    public static long seqBurst(long t) {
+        return t - SEQ_BURST_AT;
+    }
+
+    /** Pure: the sequence's whole length, from the goal to its net's end. */
+    public static long seqMs() {
+        return SEQ_BURST_AT + Math.max(BURST_MS, MESH_AFTER_BURST + MESH_MS);
+    }
+
+    /** Pure: when the sequence's net shivers, in ms from the goal: once the burst's score has landed. */
+    public static long seqMeshAt() {
+        return SEQ_BURST_AT + MESH_AFTER_BURST;
+    }
+
+    /**
+     * Pure: when the family's swish (on its own switch) starts in the sequence, in ms from the goal: its loudest moment
+     * on the new score landing as it rolls up in the burst, as it is on the new score after today's band.
+     */
+    public static long seqSwishAt() {
+        return SEQ_BURST_AT + ROLL_TO - Sfx.SCORE_PEAK_MS;
     }
 
     /** Pure: whether a game's half time shows the score turned over (each figure in its own small block) after the board turns. */

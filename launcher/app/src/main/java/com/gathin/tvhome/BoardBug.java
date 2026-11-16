@@ -254,7 +254,7 @@ final class BoardBug extends View {
     private final com.gathin.broadcast.BoardFx fx = new com.gathin.broadcast.BoardFx();
     /** The game shown (its moments are picked by it), its goals' set, whether its half time and shootout have the Lab's. */
     private String gameId = "";
-    private int goalSet = com.gathin.broadcast.BoardFx.GOAL_BAND;
+    private int goalSet = com.gathin.broadcast.BoardFx.goalSet(gameId);
     private boolean htFaceGame, pensClockGame;
     /** The score before the goal on now: its new figure rolls or flips in from it. */
     private String scoreWas = "";
@@ -451,9 +451,9 @@ final class BoardBug extends View {
     private final Matrix shineAt = new Matrix();
 
     /**
-     * A goal for side 1 (home) or 2 (away), in the game's set (BoardFx.goalSet): as broadcasters show one with the family's
-     * swish on its new score (today's band), the Lab's flip or its crest burst; the net shivering across the board after
-     * every one, each with its own quiet sound.
+     * A goal for side 1 (home) or 2 (away), in the game's set (BoardFx.goalSet): every game now the sequence, the GOAL band
+     * across the whole board, then the scorers' crest bursting as the score rolls up, then the net shivering across it
+     * (the 3D kits their own gold GOAL); the family's swish on its new score, and the Lab's quiet sounds each at its moment.
      */
     void goal(int side) {
         flashSide = side;
@@ -462,8 +462,10 @@ final class BoardBug extends View {
         goalFrozen = -1;
         removeCallbacks(scoreSwish);
         int set = goalSetNow();
-        // Today's band: the family's swish on its new score, every look (its own switch); the Lab's sets their own sounds.
+        // The family's swish on the new score, every look (its own switch): as it comes out from under today's band, or as
+        // it lands rolling up in the sequence's burst; the Lab's sets their own sounds.
         if (set == com.gathin.broadcast.BoardFx.GOAL_BAND) postDelayed(scoreSwish, scoreSwishAt());
+        else if (set == com.gathin.broadcast.BoardFx.GOAL_SEQUENCE) postDelayed(scoreSwish, com.gathin.broadcast.BoardFx.seqSwishAt());
         labGoalSounds(set);
         postInvalidateOnAnimation();
     }
@@ -505,17 +507,36 @@ final class BoardBug extends View {
         switch (set) {
             case com.gathin.broadcast.BoardFx.GOAL_FLIP: return com.gathin.broadcast.BoardFx.FLIP_MS;
             case com.gathin.broadcast.BoardFx.GOAL_BURST: return com.gathin.broadcast.BoardFx.BURST_MS;
+            case com.gathin.broadcast.BoardFx.GOAL_SEQUENCE: return com.gathin.broadcast.BoardFx.seqMs();
             default: return BAND_OUT + BAND_MS;
         }
     }
 
-    /** Pure: when the net shivers in a set, in ms from the goal (after the band in today's). */
+    /** Pure: when the net shivers in a set, in ms from the goal (after the band in today's, after the burst in the sequence). */
     static long meshAt(int set) {
         switch (set) {
             case com.gathin.broadcast.BoardFx.GOAL_FLIP: return com.gathin.broadcast.BoardFx.MESH_AFTER_FLIP;
             case com.gathin.broadcast.BoardFx.GOAL_BURST: return com.gathin.broadcast.BoardFx.MESH_AFTER_BURST;
+            case com.gathin.broadcast.BoardFx.GOAL_SEQUENCE: return com.gathin.broadcast.BoardFx.seqMeshAt();
             default: return RIPPLE_AT;
         }
+    }
+
+    /** Pure: whether today's GOAL band is across the board t ms into a goal of a set (its own, or the sequence's first part). */
+    static boolean bandOn(int set, long t) {
+        boolean has = set == com.gathin.broadcast.BoardFx.GOAL_BAND || set == com.gathin.broadcast.BoardFx.GOAL_SEQUENCE;
+        return has && t >= 0 && t < BAND_OUT + BAND_MS;
+    }
+
+    /**
+     * Pure: how far into the Lab's own moment (the flip or the burst) a goal of a set is, t ms in: the flip's and the
+     * burst's from the goal, the sequence's burst from SEQ_BURST_AT (the band gone); -1 when none is on.
+     */
+    static long labAt(int set, long t) {
+        if (t < 0 || set == com.gathin.broadcast.BoardFx.GOAL_BAND) return -1;
+        long lt = set == com.gathin.broadcast.BoardFx.GOAL_SEQUENCE ? com.gathin.broadcast.BoardFx.seqBurst(t) : t;
+        long len = set == com.gathin.broadcast.BoardFx.GOAL_FLIP ? com.gathin.broadcast.BoardFx.FLIP_MS : com.gathin.broadcast.BoardFx.BURST_MS;
+        return lt >= 0 && lt < len ? lt : -1;
     }
 
     /** Pure: the whole goal's length in a set: its moment and the net's shiver (and today's glow after the band). */
@@ -539,6 +560,9 @@ final class BoardBug extends View {
                 return new float[]{rolls ? CompBug.MOVE_ROLL : CompBug.MOVE_FLIP, com.gathin.broadcast.BoardFx.flipMove(t)};
             case com.gathin.broadcast.BoardFx.GOAL_BURST:
                 return new float[]{CompBug.MOVE_ROLL, com.gathin.broadcast.BoardFx.rollMove(t)};
+            case com.gathin.broadcast.BoardFx.GOAL_SEQUENCE:
+                // the score as it was under the band and as the burst begins, rolling up in it
+                return new float[]{CompBug.MOVE_ROLL, com.gathin.broadcast.BoardFx.rollMove(com.gathin.broadcast.BoardFx.seqBurst(t))};
             default:
                 if (!rolls) return new float[]{0f, 1f};
                 float k = t <= BAND_ROLL_FROM ? 0f : t >= BAND_ROLL_TO ? 1f : (t - BAND_ROLL_FROM) / (float) (BAND_ROLL_TO - BAND_ROLL_FROM);
@@ -596,6 +620,9 @@ final class BoardBug extends View {
         } else if (set == com.gathin.broadcast.BoardFx.GOAL_BURST) {
             out.put(com.gathin.broadcast.Sfx.BURST, 0L);
             out.put(com.gathin.broadcast.Sfx.ROLL, com.gathin.broadcast.BoardFx.ROLL_FROM);
+        } else if (set == com.gathin.broadcast.BoardFx.GOAL_SEQUENCE) {
+            // the crest's burst as the band goes (its score's landing has the family's swish, as after today's band)
+            out.put(com.gathin.broadcast.Sfx.BURST, com.gathin.broadcast.BoardFx.SEQ_BURST_AT);
         }
         out.put(com.gathin.broadcast.Sfx.NET, meshAt(set));
         return out;
@@ -1011,8 +1038,10 @@ final class BoardBug extends View {
         // The Lab's moments over a competition's look are kept to its own shapes (Duo's pills, Floodlight's tab under its
         // row), never the gaps between: the look drawn on a layer of its own while one is on, each moment laid only where
         // the look has drawn (as the phone's).
-        boolean band = set == com.gathin.broadcast.BoardFx.GOAL_BAND;
-        boolean layered = kind() != null && (goalOn && !band || meshing || weathering);
+        // the GOAL band across the board (its own set, or the sequence's first part); the Lab's flip or burst, how far in
+        boolean banding = goalOn && bandOn(set, gt);
+        long lab = goalOn ? labAt(set, gt) : -1;
+        boolean layered = kind() != null && (lab >= 0 || meshing || weathering);
         int base = layered ? cv.saveLayer(0, 0, body, h, null) : -1;
         fill.setShader(null);
         fill.setColor(p.ground);
@@ -1062,12 +1091,12 @@ final class BoardBug extends View {
             row = null;
         }
         if (goalOn && style != Style.KITS) {
-            if (band) {
-                goalMoment(cv, body, mh, gt);
-            } else {
+            // the sequence: the GOAL band first, the burst once it has gone, the net after (below)
+            if (banding) goalMoment(cv, body, mh, gt);
+            if (lab >= 0) {
                 int a = atop(cv, layered, body, mh);
-                if (set == com.gathin.broadcast.BoardFx.GOAL_FLIP) flipMoment(cv, body, mh, gt);
-                else burstMoment(cv, body, mh, gt);
+                if (set == com.gathin.broadcast.BoardFx.GOAL_FLIP) flipMoment(cv, body, mh, lab);
+                else burstMoment(cv, body, mh, lab);
                 if (a >= 0) cv.restoreToCount(a);
             }
         }

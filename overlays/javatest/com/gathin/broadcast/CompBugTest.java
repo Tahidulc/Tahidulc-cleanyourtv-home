@@ -189,6 +189,21 @@ public class CompBugTest {
     }
 
     @Test
+    public void aRollingFigureStaysInItsOwnCell() {
+        // However big a look's figures (the world feed's stand over its clock), the roll is seen only in the figure's own
+        // cell: the figure whole in it with a little room, never more than its own size high.
+        for (float size : new float[]{20f, 60f, 240f}) {
+            float cap = size * 0.7f;
+            float[] cell = CompBug.rollCell(cap, size);
+            assertTrue(cell[0] > cap / 2f && cell[0] < size / 2f);
+            // the old figure wholly out of the top as the new one lands, the new one wholly below as it starts
+            assertTrue(cell[1] >= cell[0] + cap / 2f);
+            // and not so far that a figure is lost from sight for long between them
+            assertTrue(cell[1] < cap * 1.5f);
+        }
+    }
+
+    @Test
     public void theRetroBoardsNameTheClubsShort() {
         assertEquals("MAN UTD", CompBug.shortName("Manchester United", "MUN"));
         assertEquals("MAN CITY", CompBug.shortName("Manchester City", "MCI"));

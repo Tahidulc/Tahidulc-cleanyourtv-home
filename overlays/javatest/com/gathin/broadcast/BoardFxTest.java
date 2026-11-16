@@ -21,18 +21,19 @@ public class BoardFxTest {
     public void aGameKeepsItsChoiceAndGamesSpreadOverThem() {
         assertEquals(BoardFx.pick("401861175", "goal", 3), BoardFx.pick("401861175", "goal", 3));
         assertEquals(0, BoardFx.pick("any", "goal", 1));
-        assertEquals(BoardFx.goalSet("g1"), BoardFx.goalSet("g1"));
         int[] seen = new int[3];
         int ht = 0, pens = 0;
         for (int i = 0; i < 3000; i++) {
             String id = String.valueOf(400000000 + i * 7);
-            int s = BoardFx.goalSet(id);
-            assertTrue(s >= 0 && s < 3);
-            seen[s]++;
+            seen[BoardFx.pick(id, "goal", 3)]++;
+            // Every game's goals: the sequence, the same order every goal (the family's choice).
+            assertEquals(BoardFx.GOAL_SEQUENCE, BoardFx.goalSet(id));
             if (BoardFx.htFace(id)) ht++;
             if (BoardFx.pensInClock(id)) pens++;
         }
-        // Each set for about a third of games, each two-way choice about half.
+        assertEquals(BoardFx.GOAL_SEQUENCE, BoardFx.goalSet(null));
+        assertEquals(BoardFx.GOAL_SEQUENCE, BoardFx.goalSet(""));
+        // A three-way pick for about a third of games each, each two-way choice about half.
         for (int n : seen) assertTrue("spread " + Arrays.toString(seen), n > 800 && n < 1200);
         assertTrue(ht > 1300 && ht < 1700);
         assertTrue(pens > 1300 && pens < 1700);
@@ -46,6 +47,27 @@ public class BoardFxTest {
         assertEquals(BoardFx.GOAL_BAND, 0);
         assertEquals(BoardFx.GOAL_FLIP, 1);
         assertEquals(BoardFx.GOAL_BURST, 2);
+        assertEquals(BoardFx.GOAL_SEQUENCE, 3);
+    }
+
+    @Test
+    public void theSequenceRunsBandThenBurstThenNet() {
+        // The burst begins as the GOAL band has gone (3.3 s held, half a second going), never under it.
+        assertEquals(3800L, BoardFx.SEQ_BURST_AT);
+        assertEquals(-1L, BoardFx.seqBurst(BoardFx.SEQ_BURST_AT - 1));
+        assertEquals(0L, BoardFx.seqBurst(BoardFx.SEQ_BURST_AT));
+        // The score keeps its old figure until the burst rolls it up: whole before, landed by ROLL_TO into it.
+        assertEquals(0f, BoardFx.rollMove(BoardFx.seqBurst(1500)), 0f);
+        assertEquals(0f, BoardFx.rollMove(BoardFx.seqBurst(BoardFx.SEQ_BURST_AT + BoardFx.ROLL_FROM)), 0f);
+        assertEquals(1f, BoardFx.rollMove(BoardFx.seqBurst(BoardFx.SEQ_BURST_AT + BoardFx.ROLL_TO)), 0f);
+        // Then the net, once the score has landed, and its end the sequence's.
+        assertEquals(BoardFx.SEQ_BURST_AT + BoardFx.MESH_AFTER_BURST, BoardFx.seqMeshAt());
+        assertTrue(BoardFx.seqMeshAt() >= BoardFx.SEQ_BURST_AT + BoardFx.ROLL_TO);
+        assertEquals(BoardFx.seqMeshAt() + BoardFx.MESH_MS, BoardFx.seqMs());
+        assertTrue(BoardFx.seqMs() >= BoardFx.SEQ_BURST_AT + BoardFx.BURST_MS);
+        // The family's swish loudest as the new score lands.
+        assertEquals(BoardFx.SEQ_BURST_AT + BoardFx.ROLL_TO, BoardFx.seqSwishAt() + Sfx.SCORE_PEAK_MS);
+        assertTrue(BoardFx.seqSwishAt() > BoardFx.SEQ_BURST_AT);
     }
 
     @Test

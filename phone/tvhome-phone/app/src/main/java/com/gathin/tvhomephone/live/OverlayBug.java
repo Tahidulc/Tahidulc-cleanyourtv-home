@@ -442,7 +442,11 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         BurnGuard.dimLayer(this, on);
     }
 
-    /** A goal for side 1 (home) or 2 (away), as broadcasters show one (GOAL_MS in all), the family's swish on its new score. */
+    /**
+     * A goal for side 1 (home) or 2 (away) in its set (setFor): every game now the sequence, the GOAL band across the
+     * whole board, then the scorers' crest bursting as the score rolls up, then the net (the 3D kits their own gold GOAL);
+     * the family's swish on its new score, the Lab's quiet sounds each at its moment.
+     */
     void goal(int side) {
         flashSide = side;
         goalAt = System.currentTimeMillis();
@@ -462,6 +466,13 @@ final class OverlayBug extends View implements BurnGuard.Dims {
                 post(burstSound);
                 postDelayed(rollSound, com.gathin.broadcast.BoardFx.ROLL_FROM);
                 postDelayed(netSound, com.gathin.broadcast.BoardFx.MESH_AFTER_BURST);
+                break;
+            case com.gathin.broadcast.BoardFx.GOAL_SEQUENCE:
+                // The GOAL band (the family's swoosh is the goal's own), the crest's burst as it goes, the family's swish
+                // as the new score lands rolling up, then the net.
+                postDelayed(burstSound, com.gathin.broadcast.BoardFx.SEQ_BURST_AT);
+                postDelayed(scoreSwish, com.gathin.broadcast.BoardFx.seqSwishAt());
+                postDelayed(netSound, com.gathin.broadcast.BoardFx.seqMeshAt());
                 break;
             default:
                 // Today's band: the family's swish on the new score, then the net.
@@ -507,9 +518,12 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         return gameId;
     }
 
-    /** Pure: the set a look shows a game's goals in: the 3D kits keep their own (the band's), no game the band; else the game's. */
+    /**
+     * Pure: the set a look shows a game's goals in: the 3D kits keep their own (the band's); every other look the game's,
+     * the sequence (BoardFx.goalSet), a game known or not.
+     */
     static int setFor(Style s, String gameId) {
-        if (s == Style.KITS || gameId == null || gameId.isEmpty()) return com.gathin.broadcast.BoardFx.GOAL_BAND;
+        if (s == Style.KITS) return com.gathin.broadcast.BoardFx.GOAL_BAND;
         return com.gathin.broadcast.BoardFx.goalSet(gameId);
     }
 
@@ -519,16 +533,48 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         return k != null && k.rolls();
     }
 
-    /** How long the goal's moment is in its set: the band's GOAL_MS, the flip's and the burst's own. */
+    /** How long the goal's moment is in its set: the band's GOAL_MS, the flip's and the burst's own, the sequence's whole. */
     private long goalLen() {
-        return goalSet == com.gathin.broadcast.BoardFx.GOAL_FLIP ? com.gathin.broadcast.BoardFx.FLIP_MS
-                : goalSet == com.gathin.broadcast.BoardFx.GOAL_BURST ? com.gathin.broadcast.BoardFx.BURST_MS : GOAL_MS;
+        return goalLen(goalSet);
+    }
+
+    /** Pure: how long a goal's moment is in a set. */
+    static long goalLen(int set) {
+        switch (set) {
+            case com.gathin.broadcast.BoardFx.GOAL_FLIP: return com.gathin.broadcast.BoardFx.FLIP_MS;
+            case com.gathin.broadcast.BoardFx.GOAL_BURST: return com.gathin.broadcast.BoardFx.BURST_MS;
+            case com.gathin.broadcast.BoardFx.GOAL_SEQUENCE: return com.gathin.broadcast.BoardFx.seqMs();
+            default: return GOAL_MS;
+        }
     }
 
     /** When the net shivers in the goal's set, in ms from the goal: after the band goes, or the Lab's own moment. */
     private long meshAt() {
-        return goalSet == com.gathin.broadcast.BoardFx.GOAL_FLIP ? com.gathin.broadcast.BoardFx.MESH_AFTER_FLIP
-                : goalSet == com.gathin.broadcast.BoardFx.GOAL_BURST ? com.gathin.broadcast.BoardFx.MESH_AFTER_BURST : RIPPLE_AT;
+        return meshAt(goalSet);
+    }
+
+    /** Pure: when the net shivers in a set: after today's band, in the flip's or the burst's own time, after the sequence's burst. */
+    static long meshAt(int set) {
+        switch (set) {
+            case com.gathin.broadcast.BoardFx.GOAL_FLIP: return com.gathin.broadcast.BoardFx.MESH_AFTER_FLIP;
+            case com.gathin.broadcast.BoardFx.GOAL_BURST: return com.gathin.broadcast.BoardFx.MESH_AFTER_BURST;
+            case com.gathin.broadcast.BoardFx.GOAL_SEQUENCE: return com.gathin.broadcast.BoardFx.seqMeshAt();
+            default: return RIPPLE_AT;
+        }
+    }
+
+    /** Pure: whether the GOAL band is across the board t ms into a goal of a set (its own, or the sequence's first part). */
+    static boolean bandOn(int set, long t) {
+        boolean has = set == com.gathin.broadcast.BoardFx.GOAL_BAND || set == com.gathin.broadcast.BoardFx.GOAL_SEQUENCE;
+        return has && t >= 0 && t < BAND_OUT + BAND_MS;
+    }
+
+    /** Pure: how far into the Lab's flip or burst a goal of a set is, t ms in (the sequence's burst once the band has gone); -1: none. */
+    static long labAt(int set, long t) {
+        if (t < 0 || set == com.gathin.broadcast.BoardFx.GOAL_BAND) return -1;
+        long lt = set == com.gathin.broadcast.BoardFx.GOAL_SEQUENCE ? com.gathin.broadcast.BoardFx.seqBurst(t) : t;
+        long len = set == com.gathin.broadcast.BoardFx.GOAL_FLIP ? com.gathin.broadcast.BoardFx.FLIP_MS : com.gathin.broadcast.BoardFx.BURST_MS;
+        return lt >= 0 && lt < len ? lt : -1;
     }
 
     /** Pure: how far t is from a to b, 0 to 1. */
@@ -548,6 +594,10 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         } else if (goalSet == com.gathin.broadcast.BoardFx.GOAL_BURST) {
             moveKind = CompBug.MOVE_ROLL;
             moveAt = com.gathin.broadcast.BoardFx.rollMove(gt);
+        } else if (goalSet == com.gathin.broadcast.BoardFx.GOAL_SEQUENCE) {
+            // the score as it was under the band and as the burst begins, rolling up in it
+            moveKind = CompBug.MOVE_ROLL;
+            moveAt = com.gathin.broadcast.BoardFx.rollMove(com.gathin.broadcast.BoardFx.seqBurst(gt));
         } else if (rolls) {
             moveKind = CompBug.MOVE_ROLL;
             moveAt = along(gt, ROLL_BAND_FROM, ROLL_BAND_TO);
@@ -1040,9 +1090,12 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         long gt = goalFrozen >= 0 ? goalFrozen : goalAt > 0 ? now - goalAt : -1;
         boolean goalOn = gt >= 0 && gt < goalLen();
         boolean band = goalSet == com.gathin.broadcast.BoardFx.GOAL_BAND;
-        // The scorers' side lit: the band's glow once it goes, the flip's wash, the burst's glow.
-        flash = !goalOn ? 0f : band ? glow(gt) : goalSet == com.gathin.broadcast.BoardFx.GOAL_FLIP
-                ? com.gathin.broadcast.BoardFx.washAlpha(gt) / 0.75f * 0.9f : com.gathin.broadcast.BoardFx.glowAlpha(gt) / 0.6f * 0.75f;
+        // The GOAL band across the board (its own set, or the sequence's first part); the Lab's flip or burst, how far in.
+        boolean banding = goalOn && bandOn(goalSet, gt);
+        long lab = goalOn ? labAt(goalSet, gt) : -1;
+        // The scorers' side lit: the band's glow once it goes, the flip's wash, the burst's glow (the sequence's in its burst).
+        flash = !goalOn ? 0f : band ? glow(gt) : lab < 0 ? 0f : goalSet == com.gathin.broadcast.BoardFx.GOAL_FLIP
+                ? com.gathin.broadcast.BoardFx.washAlpha(lab) / 0.75f * 0.9f : com.gathin.broadcast.BoardFx.glowAlpha(lab) / 0.6f * 0.75f;
         // The band's new score pops up big as the band goes, and settles; in the Lab's sets (and on a rolling board) the
         // new figure moves in instead.
         scoreZoom = band && !rollsNow() ? 1f + 0.38f * flash * flash : 1f;
@@ -1066,7 +1119,7 @@ final class OverlayBug extends View implements BurnGuard.Dims {
         // The Lab's moments over a competition's look are kept to its own shapes (Duo's pills, Floodlight's tab under its
         // row), never the gaps between: the look drawn on a layer of its own while one is on, each moment laid only where
         // the look has drawn.
-        boolean layered = kind() != null && (goalOn && !band || rippling || weathering);
+        boolean layered = kind() != null && (lab >= 0 || rippling || weathering);
         int base = layered ? cv.saveLayer(0, 0, w, h, null) : -1;
         fill.setShader(null);
         fill.setColor(p.ground);
@@ -1119,11 +1172,11 @@ final class OverlayBug extends View implements BurnGuard.Dims {
             row = null;
         }
         if (goalOn && !look.f1 && style != Style.KITS) {
-            if (band) {
-                goalMoment(cv, w, mh, gt);
-            } else {
+            // the sequence: the GOAL band first, the burst once it has gone, the net after (below)
+            if (banding) goalMoment(cv, w, mh, gt);
+            if (lab >= 0) {
                 int a = atop(cv, layered, w, mh);
-                labGoal(cv, w, mh, gt, ck != null);
+                labGoal(cv, w, mh, lab, ck != null);
                 if (a >= 0) cv.restoreToCount(a);
             }
         }

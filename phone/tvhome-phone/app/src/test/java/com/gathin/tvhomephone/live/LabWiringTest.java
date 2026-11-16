@@ -31,25 +31,41 @@ public class LabWiringTest {
     // ---- the goal sets -------------------------------------------------------------------------------------------------
 
     @Test
-    public void aGameKeepsItsGoalSetAndTheKitsKeepTheBand() {
-        int band = 0, flip = 0, burst = 0;
+    public void everyGoalIsTheSequenceAndTheKitsKeepTheBand() {
         for (int i = 0; i < 300; i++) {
             String id = "40" + i;
             int set = OverlayBug.setFor(OverlayBug.Style.CLASSIC, id);
             assertEquals(BoardFx.goalSet(id), set);
-            // the same every time for the same game, whatever look shows it (bar the 3D kits)
+            // the GOAL band, then the burst, then the net, every game, whatever look shows it (bar the 3D kits)
+            assertEquals(BoardFx.GOAL_SEQUENCE, set);
             assertEquals(set, OverlayBug.setFor(OverlayBug.Style.FLOODLIGHT, id));
+            assertEquals(set, OverlayBug.setFor(OverlayBug.Style.PL_WORLD, id));
             assertEquals(BoardFx.GOAL_BAND, OverlayBug.setFor(OverlayBug.Style.KITS, id));
-            if (set == BoardFx.GOAL_BAND) band++;
-            else if (set == BoardFx.GOAL_FLIP) flip++;
-            else if (set == BoardFx.GOAL_BURST) burst++;
         }
-        // all three sets come round, game by game
-        assertTrue(band > 30 && flip > 30 && burst > 30);
-        assertEquals(300, band + flip + burst);
-        // no game known: today's band
-        assertEquals(BoardFx.GOAL_BAND, OverlayBug.setFor(OverlayBug.Style.CLASSIC, null));
-        assertEquals(BoardFx.GOAL_BAND, OverlayBug.setFor(OverlayBug.Style.CLASSIC, ""));
+        // no game known: the sequence all the same
+        assertEquals(BoardFx.GOAL_SEQUENCE, OverlayBug.setFor(OverlayBug.Style.CLASSIC, null));
+        assertEquals(BoardFx.GOAL_SEQUENCE, OverlayBug.setFor(OverlayBug.Style.CLASSIC, ""));
+        assertEquals(BoardFx.GOAL_BAND, OverlayBug.setFor(OverlayBug.Style.KITS, null));
+    }
+
+    @Test
+    public void theSequenceRunsBandThenBurstThenNetAsTheTvs() {
+        int set = BoardFx.GOAL_SEQUENCE;
+        // the burst waits for the band to have gone, as on the TV
+        assertEquals(OverlayBug.BAND_OUT + OverlayBug.BAND_MS, BoardFx.SEQ_BURST_AT);
+        for (long t = 0; t < OverlayBug.goalLen(set); t += 10) {
+            assertFalse("at " + t, OverlayBug.bandOn(set, t) && OverlayBug.labAt(set, t) >= 0);
+            if (t < BoardFx.SEQ_BURST_AT) assertTrue(OverlayBug.bandOn(set, t));
+            else if (t < BoardFx.SEQ_BURST_AT + BoardFx.BURST_MS) assertEquals(t - BoardFx.SEQ_BURST_AT, OverlayBug.labAt(set, t));
+        }
+        assertEquals(BoardFx.seqMs(), OverlayBug.goalLen(set));
+        assertEquals(BoardFx.seqMeshAt(), OverlayBug.meshAt(set));
+        assertTrue(OverlayBug.meshAt(set) >= BoardFx.SEQ_BURST_AT + BoardFx.ROLL_TO);
+        // the sets on their own as before
+        assertEquals(OverlayBug.RIPPLE_AT, OverlayBug.meshAt(BoardFx.GOAL_BAND));
+        assertEquals(BoardFx.MESH_AFTER_BURST, OverlayBug.meshAt(BoardFx.GOAL_BURST));
+        assertEquals(-1, OverlayBug.labAt(BoardFx.GOAL_BAND, 1000));
+        assertEquals(1000, OverlayBug.labAt(BoardFx.GOAL_BURST, 1000));
     }
 
     @Test

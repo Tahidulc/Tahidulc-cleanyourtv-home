@@ -11,6 +11,7 @@ import org.junit.Test;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -97,15 +98,13 @@ public class ScoreboardLabTest {
         assertEquals(40f, LogoMark.labHeight(0f, 160f, 40f), 0f);
     }
 
-    // ---- a goal: three sets, by game -------------------------------------------------------------------------------
+    // ---- a goal: the GOAL band, then the burst, then the net, every game ----------------------------------------------
 
     @Test
-    public void eachGameHasOneOfTheThreeGoalSetsAndKeepsIt() {
+    public void everyGameScoresInTheSequenceAndTheKitsKeepTheirOwn() {
         Set<Integer> seen = new HashSet<>();
         for (String g : GAMES) {
             int set = BoardFx.goalSet(g);
-            assertTrue(set >= BoardFx.GOAL_BAND && set <= BoardFx.GOAL_BURST);
-            assertEquals(set, BoardFx.goalSet(g));
             seen.add(set);
             // Every look draws the game's set; the 3D kits keep their own gold GOAL (today's band).
             assertEquals(set, BoardBug.setFor(BoardBug.Style.CLASSIC, set));
@@ -113,7 +112,45 @@ public class ScoreboardLabTest {
             assertEquals(set, BoardBug.setFor(BoardBug.Style.PL_WORLD, set));
             assertEquals(BoardFx.GOAL_BAND, BoardBug.setFor(BoardBug.Style.KITS, set));
         }
-        assertEquals(3, seen.size());
+        // the same order, game after game, a game known or not
+        assertEquals(Collections.singleton(BoardFx.GOAL_SEQUENCE), seen);
+        assertEquals(BoardFx.GOAL_SEQUENCE, BoardFx.goalSet(""));
+    }
+
+    @Test
+    public void theSequenceIsTheBandThenTheBurstThenTheNetNeverTwoAtOnce() {
+        int set = BoardFx.GOAL_SEQUENCE;
+        // The burst waits for the board's own band to have gone.
+        assertEquals(BoardBug.BAND_OUT + BoardBug.BAND_MS, BoardFx.SEQ_BURST_AT);
+        long bandEnd = -1, labFrom = -1, labEnd = -1, meshFrom = BoardBug.meshAt(set);
+        for (long t = 0; t < BoardBug.goalMs(set); t += 10) {
+            boolean band = BoardBug.bandOn(set, t);
+            long lab = BoardBug.labAt(set, t);
+            // never the band and the burst over each other
+            assertFalse("at " + t, band && lab >= 0);
+            if (band) bandEnd = t;
+            if (lab >= 0 && labFrom < 0) labFrom = t;
+            if (lab >= 0) labEnd = t;
+        }
+        assertEquals(BoardFx.SEQ_BURST_AT - 10, bandEnd);
+        assertEquals(BoardFx.SEQ_BURST_AT, labFrom);
+        assertTrue(labEnd < BoardBug.goalMs(set));
+        // the net once the burst's score has landed, inside the goal's moment
+        assertEquals(BoardFx.SEQ_BURST_AT + BoardFx.MESH_AFTER_BURST, meshFrom);
+        assertTrue(meshFrom >= BoardFx.SEQ_BURST_AT + BoardFx.ROLL_TO);
+        assertEquals(BoardFx.seqMs(), BoardBug.goalMs(set));
+        assertTrue(meshFrom + BoardFx.MESH_MS <= BoardBug.goalMs(set));
+        // the band as it always was: the hit and its sweep from the start; nothing before the goal or after it
+        assertTrue(BoardBug.bandOn(set, 0));
+        assertFalse(BoardBug.bandOn(set, -1));
+        assertEquals(-1, BoardBug.labAt(set, -1));
+        assertEquals(-1, BoardBug.labAt(set, BoardFx.SEQ_BURST_AT + BoardFx.BURST_MS));
+        // today's band and the two Lab sets on their own as before
+        assertTrue(BoardBug.bandOn(BoardFx.GOAL_BAND, 1000));
+        assertEquals(-1, BoardBug.labAt(BoardFx.GOAL_BAND, 1000));
+        assertFalse(BoardBug.bandOn(BoardFx.GOAL_BURST, 1000));
+        assertEquals(1000, BoardBug.labAt(BoardFx.GOAL_BURST, 1000));
+        assertEquals(1000, BoardBug.labAt(BoardFx.GOAL_FLIP, 1000));
     }
 
     @Test
@@ -130,7 +167,10 @@ public class ScoreboardLabTest {
         assertEquals(BoardFx.BURST_MS, BoardBug.setMs(BoardFx.GOAL_BURST));
         assertEquals(BoardFx.MESH_AFTER_BURST, BoardBug.meshAt(BoardFx.GOAL_BURST));
         assertEquals(Math.max(BoardFx.BURST_MS, BoardFx.MESH_AFTER_BURST + BoardFx.MESH_MS), BoardBug.goalMs(BoardFx.GOAL_BURST));
-        for (int set = BoardFx.GOAL_BAND; set <= BoardFx.GOAL_BURST; set++) {
+        // The sequence: the band, the burst from 3.8 s, the net from 5.1 s, 6.2 s in all.
+        assertEquals(BoardFx.seqMs(), BoardBug.setMs(BoardFx.GOAL_SEQUENCE));
+        assertEquals(BoardFx.seqMeshAt(), BoardBug.meshAt(BoardFx.GOAL_SEQUENCE));
+        for (int set = BoardFx.GOAL_BAND; set <= BoardFx.GOAL_SEQUENCE; set++) {
             // The net always shivers inside the goal's moment, after every goal.
             assertTrue(BoardBug.meshAt(set) > 0);
             assertTrue(BoardBug.meshAt(set) + BoardFx.MESH_MS <= BoardBug.goalMs(set));
@@ -140,7 +180,7 @@ public class ScoreboardLabTest {
     @Test
     public void alertsWaitForTheGoalsOwnMomentInItsSet() {
         long at = 1_000_000L;
-        for (int set = BoardFx.GOAL_BAND; set <= BoardFx.GOAL_BURST; set++) {
+        for (int set = BoardFx.GOAL_BAND; set <= BoardFx.GOAL_SEQUENCE; set++) {
             long len = BoardBug.setMs(set);
             assertEquals(len, BoardBug.bandLeft(at, set, at));
             assertEquals(len - 1000, BoardBug.bandLeft(at, set, at + 1000));
@@ -148,9 +188,10 @@ public class ScoreboardLabTest {
             assertEquals(0, BoardBug.bandLeft(at, set, at + len + 5000));
             assertEquals(0, BoardBug.bandLeft(0, set, at));
         }
-        // The Lab's two are over sooner than today's band.
+        // The Lab's two are over sooner than today's band; the sequence (the band, the burst and the net) after both.
         assertTrue(BoardBug.bandLeft(at, BoardFx.GOAL_FLIP, at) < BoardBug.bandLeft(at, BoardFx.GOAL_BAND, at));
         assertTrue(BoardBug.bandLeft(at, BoardFx.GOAL_BURST, at) < BoardBug.bandLeft(at, BoardFx.GOAL_BAND, at));
+        assertEquals(BoardFx.seqMs(), BoardBug.bandLeft(at, BoardFx.GOAL_SEQUENCE, at));
     }
 
     @Test
@@ -172,8 +213,17 @@ public class ScoreboardLabTest {
         float[] burst = BoardBug.moveAt(BoardFx.GOAL_BURST, false, 900);
         assertEquals(CompBug.MOVE_ROLL, (int) burst[0]);
         assertEquals(BoardFx.rollMove(900), burst[1], 0f);
+        // The sequence: the old figure under the band and as the burst begins, rolled up in the burst, on any look.
+        for (boolean rolls : new boolean[]{false, true}) {
+            float[] under = BoardBug.moveAt(BoardFx.GOAL_SEQUENCE, rolls, 2000);
+            assertEquals(CompBug.MOVE_ROLL, (int) under[0]);
+            assertEquals(0f, under[1], 0f);
+            float[] mid = BoardBug.moveAt(BoardFx.GOAL_SEQUENCE, rolls, BoardFx.SEQ_BURST_AT + 900);
+            assertEquals(BoardFx.rollMove(900), mid[1], 0f);
+            assertEquals(1f, BoardBug.moveAt(BoardFx.GOAL_SEQUENCE, rolls, BoardFx.SEQ_BURST_AT + BoardFx.ROLL_TO)[1], 0f);
+        }
         // Before and after the goal: still.
-        for (int set = BoardFx.GOAL_BAND; set <= BoardFx.GOAL_BURST; set++) {
+        for (int set = BoardFx.GOAL_BAND; set <= BoardFx.GOAL_SEQUENCE; set++) {
             assertArrayEquals(new float[]{0f, 1f}, BoardBug.moveAt(set, true, -1), 0f);
             assertArrayEquals(new float[]{0f, 1f}, BoardBug.moveAt(set, true, BoardBug.goalMs(set)), 0f);
         }
@@ -212,9 +262,18 @@ public class ScoreboardLabTest {
             assertEquals(Arrays.asList(Sfx.NET), new ArrayList<>(band.keySet()));
             assertEquals(BoardBug.RIPPLE_AT, (long) band.get(Sfx.NET));
         }
+        // The sequence: the crest's burst as the band goes, the net's after the score lands (the family's swish on the
+        // score between, loudest as it lands).
+        for (boolean rolls : new boolean[]{false, true}) {
+            LinkedHashMap<String, Long> seq = BoardBug.goalSounds(BoardFx.GOAL_SEQUENCE, rolls);
+            assertEquals(Arrays.asList(Sfx.BURST, Sfx.NET), new ArrayList<>(seq.keySet()));
+            assertEquals(BoardFx.SEQ_BURST_AT, (long) seq.get(Sfx.BURST));
+            assertEquals(BoardFx.seqMeshAt(), (long) seq.get(Sfx.NET));
+        }
+        assertTrue(BoardFx.seqSwishAt() > BoardFx.SEQ_BURST_AT && BoardFx.seqSwishAt() < BoardFx.seqMeshAt());
         // Every one is one of the Lab's own, each inside its goal's moment.
         Set<String> lab = new HashSet<>(Arrays.asList(Sfx.LAB));
-        for (int set = BoardFx.GOAL_BAND; set <= BoardFx.GOAL_BURST; set++) {
+        for (int set = BoardFx.GOAL_BAND; set <= BoardFx.GOAL_SEQUENCE; set++) {
             for (boolean rolls : new boolean[]{false, true}) {
                 for (Map.Entry<String, Long> e : BoardBug.goalSounds(set, rolls).entrySet()) {
                     assertTrue(e.getKey(), lab.contains(e.getKey()));

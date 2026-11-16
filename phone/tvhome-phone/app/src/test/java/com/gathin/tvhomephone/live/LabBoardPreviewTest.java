@@ -30,7 +30,7 @@ import java.util.List;
 
 /**
  * 5.02: the Scoreboard Lab on the phone's board drawn without a phone (made-up clubs WHI v RIV): the five new looks at
- * rest; a goal in the Lab's flip and in its burst (and the net after each) on a board of its own and on a rolling one;
+ * rest; a goal's GOAL band, then its crest burst with the score rolling up, then its net (every game's since 5.05);
  * half time's face, a shootout beside the clock and the weather touch; the red card swinging up, VAR's pulse and a
  * substitution's players crossing in on their pop-outs, and the momentum wave's stat; the five Lab logos. Checked for
  * what each moment must show; the pictures are written only when PREVIEW_OUT names a folder for them.
@@ -178,55 +178,44 @@ public class LabBoardPreviewTest {
         String out = System.getProperty("preview.out", "");
         Context ctx = RuntimeEnvironment.getApplication();
         FrameLayout[] root = new FrameLayout[1];
-        String band = idWhere(id -> BoardFx.goalSet(id) == BoardFx.GOAL_BAND);
-        String flip = idWhere(id -> BoardFx.goalSet(id) == BoardFx.GOAL_FLIP);
-        String burst = idWhere(id -> BoardFx.goalSet(id) == BoardFx.GOAL_BURST);
+        // Any game: every one's goals come in the sequence (5.05): the GOAL band, the burst, the net.
+        String game = "lab-preview-0";
+        assertTrue(BoardFx.goalSet(game) == BoardFx.GOAL_SEQUENCE);
 
         // The five looks at rest.
         Sheet looks = new Sheet();
         for (OverlayBug.Style st : LAB) {
-            OverlayBug b = board(ctx, root, st, band, look("2–1", "67:23"));
+            OverlayBug b = board(ctx, root, st, game, look("2–1", "67:23"));
             Bitmap rest = draw(root[0], b, Math.round(H * st.tall));
             assertTrue(st + " drawn", rest.getWidth() > H * 2);
             looks.add(st.label, rest);
         }
         save(out, "lab-looks.png", looks.draw());
 
-        // A goal in the flip and in the burst, then the net after each: on a board of its own and on a rolling one.
+        // A goal: the GOAL band across the board, then the scorers' crest bursting as the score rolls up, then the net;
+        // on boards of their own, a rolling one and a competition's.
         Sheet goals = new Sheet();
         OverlayBug.Style[] on = {OverlayBug.Style.CLASSIC, OverlayBug.Style.CRESTS, OverlayBug.Style.STACKED, OverlayBug.Style.FLOODLIGHT,
-                OverlayBug.Style.DUO};
+                OverlayBug.Style.DUO, OverlayBug.Style.PL_WORLD};
+        long s = BoardFx.SEQ_BURST_AT;
+        long[] bt = {1500, s + 250, s + (BoardFx.ROLL_FROM + BoardFx.ROLL_TO) / 2, BoardFx.seqMeshAt() + BoardFx.MESH_PEAK};
+        String[] bw = {"the GOAL band", "then the crest's rings", "the score rolling", "then the net"};
         for (OverlayBug.Style st : on) {
             int h = Math.round(H * st.tall);
-            OverlayBug rest = board(ctx, root, st, flip, look("2–1", "67:23"));
+            OverlayBug rest = board(ctx, root, st, game, look("1–2", "67:23"));
             Bitmap still = draw(root[0], rest, h);
-            long[] at = {300, (BoardFx.FLIP_FROM + BoardFx.FLIP_TO) / 2, BoardFx.MESH_AFTER_FLIP + BoardFx.MESH_MS / 2};
-            String[] what = {"flip: wash and shine", "flip: the digit turning", "flip: the net"};
-            for (int i = 0; i < at.length; i++) {
-                OverlayBug b = board(ctx, root, st, flip, look("2–1", "67:23"));
-                b.goalNow(1, at[i], "1–1");
-                Bitmap g = draw(root[0], b, h);
-                assertTrue(st + " " + what[i] + " shows", differ(still, g) > 20);
-                goals.add(st.label + ", " + what[i], g);
-            }
-            long[] bt = {250, (BoardFx.ROLL_FROM + BoardFx.ROLL_TO) / 2, BoardFx.MESH_AFTER_BURST + BoardFx.MESH_MS / 2};
-            String[] bw = {"burst: the crest's rings", "burst: the score rolling", "burst: the net"};
             for (int i = 0; i < bt.length; i++) {
-                OverlayBug b = board(ctx, root, st, burst, look("1–2", "67:23"));
+                OverlayBug b = board(ctx, root, st, game, look("1–2", "67:23"));
                 b.goalNow(2, bt[i], "1–1");
                 Bitmap g = draw(root[0], b, h);
                 assertTrue(st + " " + bw[i] + " shows", differ(still, g) > 20);
                 goals.add(st.label + ", " + bw[i], g);
             }
-            // today's band, its net after it
-            OverlayBug b = board(ctx, root, st, band, look("2–1", "67:23"));
-            b.goalNow(1, OverlayBug.RIPPLE_AT + 300, "1–1");
-            goals.add(st.label + ", band: the net", draw(root[0], b, h));
         }
         // No crests yet (a look without them): the burst over the scorers' part, fading once it has popped.
         for (long t : new long[]{250, 1000, 1600}) {
-            OverlayBug b = board(ctx, root, OverlayBug.Style.CLASSIC, burst, look("1–2", "67:23"), false);
-            b.goalNow(2, t, "1–1");
+            OverlayBug b = board(ctx, root, OverlayBug.Style.CLASSIC, game, look("1–2", "67:23"), false);
+            b.goalNow(2, s + t, "1–1");
             goals.add("Classic, no crests, burst at " + t + " ms", draw(root[0], b, H));
         }
         assertTrue(OverlayBug.burstFade(BoardFx.POP_MS) == 1f && OverlayBug.burstFade(BoardFx.BURST_MS) == 0f);
@@ -254,9 +243,9 @@ public class LabBoardPreviewTest {
         for (int i = 0; i < skies.length; i++) {
             OverlayBug.Style st = wxOn[i];
             int h = Math.round(H * st.tall);
-            OverlayBug still = board(ctx, root, st, band, look("0–0", "23:10"));
+            OverlayBug still = board(ctx, root, st, game, look("0–0", "23:10"));
             Bitmap s0 = draw(root[0], still, h);
-            OverlayBug b = board(ctx, root, st, band, look("0–0", "23:10"));
+            OverlayBug b = board(ctx, root, st, game, look("0–0", "23:10"));
             b.weatherNow(BoardFx.Sky.valueOf(skies[i]), 2500);
             Bitmap wx = draw(root[0], b, h);
             assertTrue(st + " " + skies[i] + " shows", differ(s0, wx) > 5);
