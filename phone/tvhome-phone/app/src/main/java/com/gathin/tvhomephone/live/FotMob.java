@@ -207,7 +207,7 @@ public final class FotMob {
     }
 
     /** A player's picture at FotMob, by its id. */
-    static String photoUrl(int playerId) {
+    public static String photoUrl(int playerId) {
         return "https://images.fotmob.com/image_resources/playerimages/" + playerId + ".png";
     }
 
@@ -255,6 +255,18 @@ public final class FotMob {
 
     /** Pure: the id of the match between these two clubs among FotMob's leagues of matches; 0 when none. */
     static int matchIn(JSONArray leagues, String home, String away) {
+        JSONObject m = matchOf(leagues, home, away);
+        return m == null ? 0 : m.optInt("id");
+    }
+
+    /** Pure: FotMob's id for the home club (or the away one) of the match between these two clubs; 0 when none. */
+    static int sideIn(JSONArray leagues, String home, String away, boolean atHome) {
+        JSONObject m = matchOf(leagues, home, away);
+        JSONObject side = m == null ? null : m.optJSONObject(atHome ? "home" : "away");
+        return side == null ? 0 : side.optInt("id");
+    }
+
+    private static JSONObject matchOf(JSONArray leagues, String home, String away) {
         for (int i = 0; leagues != null && i < leagues.length(); i++) {
             JSONObject lg = leagues.optJSONObject(i);
             JSONArray ms = lg == null ? null : lg.optJSONArray("matches");
@@ -265,11 +277,42 @@ public final class FotMob {
                 if (h == null || a == null) continue;
                 if (sameClub(h.optString("name"), home) && sameClub(a.optString("name"), away)
                         || sameClub(h.optString("longName", h.optString("name")), home) && sameClub(a.optString("longName", a.optString("name")), away)) {
-                    return m.optInt("id");
+                    return m;
                 }
             }
         }
+        return null;
+    }
+
+    /**
+     * FotMob's id for a club, read off FotMob's day of one of its games (both clubs' names, the kick-off, and whether the
+     * club was at home); 0 when the game is not found. Off the main thread.
+     */
+    public static int teamId(String home, String away, long kickoff, boolean atHome) {
+        if (home == null || away == null || kickoff <= 0) return 0;
+        SimpleDateFormat f = new SimpleDateFormat("yyyyMMdd", Locale.ROOT);
+        f.setTimeZone(TimeZone.getTimeZone("UTC"));
+        // The game's own day, then the day before by FotMob's reckoning (a late kick-off listed on the evening's date).
+        String day = f.format(new Date(kickoff)), before = f.format(new Date(kickoff - 6 * 3_600_000L));
+        for (String date : before.equals(day) ? new String[]{day} : new String[]{day, before}) {
+            try {
+                int id = sideIn(new JSONObject(get(BASE + "matches?date=" + date)).optJSONArray("leagues"), home, away, atHome);
+                if (id > 0) return id;
+            } catch (Exception ignored) {
+                // not this day
+            }
+        }
         return 0;
+    }
+
+    /** FotMob's page of a club (its squad, its season's figures, its games) as it gives it; null when not read. Off the main thread. */
+    public static JSONObject team(int id) {
+        if (id <= 0) return null;
+        try {
+            return new JSONObject(get(BASE + "teams?id=" + id));
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     /** The game's figures (off the main thread); null when FotMob cannot be read. */

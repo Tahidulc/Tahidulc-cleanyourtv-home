@@ -281,6 +281,14 @@ public class GameActivity extends AppCompatActivity {
         name.setMaxLines(2);
         name.setEllipsize(TextUtils.TruncateAt.END);
         c.addView(name, Ui.margins(this, 0, 9, 0, 0));
+        // The crest and the name open the club's own page.
+        String teamId = home ? game.homeId : game.awayId;
+        if (teamId != null && !teamId.isEmpty() && game.slug != null && !game.slug.isEmpty()) {
+            View.OnClickListener open = v -> startActivity(TeamActivity.intent(this, game.slug, teamId,
+                    home ? game.homeName : game.awayName, home ? game.homeLogo : game.awayLogo));
+            disc.setOnClickListener(open);
+            name.setOnClickListener(open);
+        }
         String side = home ? "home" : "away";
         StringBuilder scorers = new StringBuilder();
         for (String[] g : game.goals) {

@@ -54,6 +54,10 @@ final class SportsScreen {
         /** Another sport's event on its own page (every channel showing it, its highlights). */
         default void event(SportEvent e) {
         }
+
+        /** A club's own page, from a table's row ({rank, team id, name, logo, …} as Espn.table gives it). */
+        default void team(String slug, String[] row) {
+        }
     }
 
     /** The pill's places. */
@@ -623,27 +627,8 @@ final class SportsScreen {
         if (tableRows != null && !tableRows.isEmpty()) {
             LinearLayout card = SportCards.card(c);
             card.addView(SportCards.compHead(c, Competitions.logo(tableSlug), name, ""));
-            LinearLayout head = tableRow(new String[]{"", null, "", "P", "GD", "Pts"}, false, true);
-            card.addView(head);
             List<Integer> shown = tableFull ? all(tableRows.size()) : condensed(tableRows, tableMine);
-            int last = -1;
-            String group = null;
-            for (int i : shown) {
-                String[] r = tableRows.get(i);
-                if (!r[7].isEmpty() && !r[7].equals(group)) {
-                    group = r[7];
-                    TextView g = SportCards.text(c, group, 12, Glass.MUTED, Glass.bodySemi(c));
-                    g.setPadding(0, Glass.dp(c, 8), 0, Glass.dp(c, 4));
-                    card.addView(g);
-                }
-                if (last >= 0 && i != last + 1) {
-                    TextView gap = SportCards.text(c, "· · ·", 12, Glass.FAINT, Glass.body(c));
-                    gap.setGravity(Gravity.CENTER);
-                    card.addView(gap, new LinearLayout.LayoutParams(-1, -2));
-                }
-                card.addView(tableRow(new String[]{r[0], r[3], r[2], r[4], r[5], r[6]}, tableMine != null && tableMine.contains(r[1]), false));
-                last = i;
-            }
+            card.addView(tableGrid(shown), new LinearLayout.LayoutParams(-1, -2));
             card.addView(more(tableFull ? "Top and your clubs" : "Full table", () -> {
                 tableFull = !tableFull;
                 drawTable();
@@ -672,25 +657,145 @@ final class SportsScreen {
         return new ArrayList<>(keep);
     }
 
-    private LinearLayout tableRow(String[] cells, boolean mine, boolean head) {
-        LinearLayout r = SportCards.row(c);
-        r.setPadding(Glass.dp(c, 6), Glass.dp(c, 6), Glass.dp(c, 6), Glass.dp(c, 6));
-        if (mine) r.setBackground(roundFill(0x223DDC84, 10));
-        int ink = head ? Glass.FAINT : Glass.MUTED;
-        r.addView(SportCards.text(c, cells[0], 13, ink, Glass.bodySemi(c)), new LinearLayout.LayoutParams(Glass.dp(c, 26), -2));
-        if (head) r.addView(new View(c), new LinearLayout.LayoutParams(Glass.dp(c, 20), 1));
-        else r.addView(SportCards.image(c, cells[1], 20, 20));
-        TextView n = SportCards.text(c, cells[2], 14, Glass.TEXT, mine ? Glass.bodySemi(c) : Glass.body(c));
-        LinearLayout.LayoutParams np = new LinearLayout.LayoutParams(0, -2, 1f);
-        np.leftMargin = Glass.dp(c, 10);
-        r.addView(n, np);
-        for (int i = 3; i <= 5; i++) {
-            TextView t = SportCards.text(c, cells[i], i == 5 ? 14 : 13, i == 5 && !head ? Glass.TEXT : ink, i == 5 ? Glass.bodySemi(c) : Glass.body(c));
-            t.setGravity(Gravity.END);
-            r.addView(t, new LinearLayout.LayoutParams(Glass.dp(c, i == 4 ? 40 : 34), -2));
+    /** The table's number columns, in order. */
+    static final String[] NUMBER_HEADS = {"Pld", "W", "D", "L", "GD", "Pts"};
+    /** Each number column's width, in sp so that it grows with the text. */
+    private static final int[] NUMBER_SP = {28, 23, 23, 23, 33, 34};
+
+    /** Pure: a table row's numbers ({rank, id, name, logo, played, GD, points, group, won, drawn, lost}) as the columns go. */
+    static String[] numbersOf(String[] r) {
+        return new String[]{r[4], at(r, 8), at(r, 9), at(r, 10), r[5], r[6]};
+    }
+
+    private static String at(String[] r, int i) {
+        return r.length > i && r[i] != null ? r[i] : "";
+    }
+
+    /**
+     * The table's rows: the place, crest and club fixed at the left, the numbers (Pld, W, D, L, GD, Pts) beside them,
+     * sliding sideways under the club's column when the phone is too narrow for all of them (the first few start slid
+     * under it whole, so the points always show). A row opens the club's page.
+     */
+    private View tableGrid(List<Integer> shown) {
+        android.util.DisplayMetrics dm = c.getResources().getDisplayMetrics();
+        int[] cols = new int[NUMBER_SP.length];
+        for (int i = 0; i < cols.length; i++) cols[i] = sp(dm, NUMBER_SP[i]);
+        // The section's margins and the card's padding either side.
+        int inner = dm.widthPixels - 2 * Glass.dp(c, 16) - 2 * Glass.dp(c, 14);
+        int[] fit = fit(inner, Glass.dp(c, 154), cols, Glass.dp(c, 6));
+        int left = fit[0];
+        int rowH = sp(dm, 34), groupH = sp(dm, 30), gapH = sp(dm, 18);
+        LinearLayout fixed = SportCards.column(c), sliding = SportCards.column(c);
+        fixed.addView(tableLeft(null, true, false), new LinearLayout.LayoutParams(left, rowH));
+        sliding.addView(tableNumbers(NUMBER_HEADS, cols, true, false), new LinearLayout.LayoutParams(-1, rowH));
+        int last = -1;
+        String group = null;
+        for (int i : shown) {
+            String[] r = tableRows.get(i);
+            if (!r[7].isEmpty() && !r[7].equals(group)) {
+                group = r[7];
+                TextView g = SportCards.text(c, group, 12, Glass.MUTED, Glass.bodySemi(c));
+                g.setGravity(Gravity.BOTTOM);
+                g.setPadding(Glass.dp(c, 6), 0, 0, Glass.dp(c, 4));
+                fixed.addView(g, new LinearLayout.LayoutParams(left, groupH));
+                sliding.addView(new View(c), new LinearLayout.LayoutParams(1, groupH));
+            }
+            if (last >= 0 && i != last + 1) {
+                TextView gap = SportCards.text(c, "· · ·", 12, Glass.FAINT, Glass.body(c));
+                gap.setGravity(Gravity.CENTER);
+                fixed.addView(gap, new LinearLayout.LayoutParams(left, gapH));
+                sliding.addView(new View(c), new LinearLayout.LayoutParams(1, gapH));
+            }
+            boolean mine = tableMine != null && tableMine.contains(r[1]);
+            String[] n = numbersOf(r);
+            View club = tableLeft(r, false, mine), figures = tableNumbers(n, cols, false, mine);
+            View.OnClickListener open = x -> host.team(tableSlug, r);
+            club.setOnClickListener(open);
+            figures.setOnClickListener(open);
+            figures.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+            club.setContentDescription(r[0] + ", " + r[2] + ": played " + n[0] + (n[1].isEmpty() ? "" : ", won " + n[1] + ", drawn " + n[2]
+                    + ", lost " + n[3]) + ", goal difference " + n[4] + ", " + n[5] + " points. Opens the club's page.");
+            fixed.addView(club, new LinearLayout.LayoutParams(left, rowH));
+            sliding.addView(figures, new LinearLayout.LayoutParams(-1, rowH));
+            last = i;
         }
-        if (!head) r.setContentDescription(cells[0] + ", " + cells[2] + ": played " + cells[3] + ", goal difference " + cells[4] + ", " + cells[5] + " points");
-        return r;
+        HorizontalScrollView hs = new HorizontalScrollView(c);
+        hs.setHorizontalScrollBarEnabled(false);
+        hs.setFillViewport(true);
+        hs.setOverScrollMode(View.OVER_SCROLL_NEVER);
+        hs.addView(sliding, new FrameLayout.LayoutParams(-2, -2));
+        LinearLayout grid = SportCards.row(c);
+        grid.setGravity(Gravity.TOP);
+        grid.addView(fixed, new LinearLayout.LayoutParams(left, -2));
+        grid.addView(hs, new LinearLayout.LayoutParams(0, -2, 1f));
+        if (fit[1] > 0) {
+            hs.setHorizontalFadingEdgeEnabled(true);
+            hs.setFadingEdgeLength(Glass.dp(c, 14));
+            hs.post(() -> hs.scrollTo(fit[1], 0));
+        }
+        return grid;
+    }
+
+    /**
+     * Pure: the club's column's width and how far the numbers start slid, for a card inner pixels wide, the numbers'
+     * columns cols wide with pad after them. The club's column takes what the numbers leave (at least min); when they
+     * don't all fit, the first few slide under it whole (the points always showing) and it widens to fill what the rest
+     * leave.
+     */
+    static int[] fit(int inner, int min, int[] cols, int pad) {
+        int numbers = pad;
+        for (int c : cols) numbers += c;
+        if (inner - min >= numbers) return new int[]{inner - numbers, 0};
+        int hidden = 0;
+        for (int k = 0; k < cols.length - 1 && numbers - hidden > inner - min; k++) hidden += cols[k];
+        return new int[]{Math.max(min, inner - (numbers - hidden)), hidden};
+    }
+
+    private static int sp(android.util.DisplayMetrics dm, float v) {
+        return Math.round(android.util.TypedValue.applyDimension(android.util.TypedValue.COMPLEX_UNIT_SP, v, dm));
+    }
+
+    /** A row's fixed part: its place, crest and club (the heading's is empty). */
+    private LinearLayout tableLeft(String[] r, boolean head, boolean mine) {
+        LinearLayout row = SportCards.row(c);
+        row.setPadding(Glass.dp(c, 6), 0, Glass.dp(c, 4), 0);
+        if (mine) row.setBackground(half(true));
+        row.addView(SportCards.text(c, head ? "" : r[0], 13, head ? Glass.FAINT : Glass.MUTED, Glass.bodySemi(c)),
+                new LinearLayout.LayoutParams(Glass.dp(c, 24), -2));
+        if (head) row.addView(new View(c), new LinearLayout.LayoutParams(Glass.dp(c, 20), 1));
+        else row.addView(SportCards.image(c, r[3], 20, 20));
+        TextView n = SportCards.text(c, head ? "" : r[2], 14, Glass.TEXT, mine ? Glass.bodySemi(c) : Glass.body(c));
+        LinearLayout.LayoutParams np = new LinearLayout.LayoutParams(0, -2, 1f);
+        np.leftMargin = Glass.dp(c, 8);
+        row.addView(n, np);
+        if (!head) row.setForeground(SportCards.touch(c));
+        return row;
+    }
+
+    /** A row's numbers, each in its column, to the right. */
+    private LinearLayout tableNumbers(String[] cells, int[] cols, boolean head, boolean mine) {
+        LinearLayout row = SportCards.row(c);
+        row.setGravity(Gravity.CENTER_VERTICAL | Gravity.END);
+        row.setPadding(0, 0, Glass.dp(c, 6), 0);
+        if (mine) row.setBackground(half(false));
+        for (int i = 0; i < cells.length; i++) {
+            boolean pts = i == cells.length - 1;
+            TextView t = SportCards.text(c, cells[i], pts && !head ? 14 : 13, head ? Glass.FAINT : pts ? Glass.TEXT : Glass.MUTED,
+                    pts ? Glass.bodySemi(c) : Glass.body(c));
+            t.setGravity(Gravity.END);
+            row.addView(t, new LinearLayout.LayoutParams(cols[i], -2));
+        }
+        if (!head) row.setForeground(SportCards.touch(c));
+        return row;
+    }
+
+    /** Your club's mark, in two halves (the fixed column's and the numbers'), rounded on its own side. */
+    private android.graphics.drawable.GradientDrawable half(boolean left) {
+        android.graphics.drawable.GradientDrawable d = new android.graphics.drawable.GradientDrawable();
+        d.setColor(0x223DDC84);
+        float r = Glass.dp(c, 10);
+        d.setCornerRadii(left ? new float[]{r, r, 0, 0, 0, 0, r, r} : new float[]{0, 0, r, r, r, r, 0, 0});
+        return d;
     }
 
     // ---- Formula 1 --------------------------------------------------------------------------------------------------

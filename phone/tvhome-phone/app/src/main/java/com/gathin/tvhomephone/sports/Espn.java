@@ -915,6 +915,18 @@ public final class Espn {
         }
     }
 
+    /**
+     * ESPN's soccer pages at this path (after ".../sports/soccer/": a club, its schedule, its roster), kept as fresh as
+     * asked; null when it can't be read. Off the main thread.
+     */
+    static JSONObject site(String path, long freshMs) {
+        try {
+            return new JSONObject(cached(SITE + path, freshMs));
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
     /** Pure: the first video in a summary that has an mp4 to play. */
     static String[] video(JSONObject root) {
         JSONArray vs = root.optJSONArray("videos");
