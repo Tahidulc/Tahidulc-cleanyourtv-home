@@ -618,3 +618,7 @@ the subs with their ratings and the manager under it; the line-up alert and its 
 show W, D and L, and a club's row opens its page: crest, position, form, last and next games, its season in figures
 (ESPN and FotMob, each with its place in the league), its leading players, and the squad by position with photos,
 numbers, ages and flags.
+
+**Your own channel first on a match's card (5.19).** When the broadcaster ESPN names for a game isn't in the family's
+playlists ("USA Net" for a game Sky shows here), the card's "Live on" names their likeliest channel instead, with its
+logo, and a tap plays it.
