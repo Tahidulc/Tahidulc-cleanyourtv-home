@@ -39,6 +39,7 @@ final class PosterGrid extends View {
     private String title = "", empty = "";
     private float scroll, scrollTo;
     private long last;
+    private final Lift lift = new Lift();
     private PosterArt art;
     private float artFor = -1f;
     private final TextPaint headP = Dark.text(40, 600, Dark.TEXT), countP = Dark.text(24, 500, Dark.MUTED);
@@ -192,23 +193,33 @@ final class PosterGrid extends View {
         c.clipRect(x0 - Ui.f(30), Ui.f(HEAD) - Ui.f(4), getWidth(), getHeight());
         int firstRow = Math.max(0, (int) Math.floor(scroll / pitchY) - 1);
         int lastRow = (int) Math.ceil((scroll + getHeight()) / pitchY) + 1;
-        PosterArt.Item lifted = null;
-        float lx = 0, ly = 0;
+        // The poster the remote is on grows into its lift and ring as the one it left settles back; both drawn last.
+        moving |= lift.step(active ? item() : null);
+        PosterArt.Item lifted = null, settling = null;
+        float lx = 0, ly = 0, sx = 0, sy = 0;
         for (int r = firstRow; r <= lastRow; r++) {
             for (int k = 0; k < cols; k++) {
                 int i = r * cols + k;
                 if (i >= items.size()) break;
                 float x = x0 + k * pitchX, y = top + r * pitchY - scroll;
-                if (active && i == focus) {
-                    lifted = items.get(i);
-                    lx = x;
-                    ly = y;
+                PosterArt.Item it = items.get(i);
+                if (lift.of(it) > 0f) {
+                    if (it == lift.leaving()) {
+                        settling = it;
+                        sx = x;
+                        sy = y;
+                    } else {
+                        lifted = it;
+                        lx = x;
+                        ly = y;
+                    }
                     continue;
                 }
-                a.draw(c, items.get(i), x, y, false, 255, redraw);
+                a.draw(c, it, x, y, 0f, 255, redraw);
             }
         }
-        if (lifted != null) a.draw(c, lifted, lx, ly, true, 255, redraw);
+        if (settling != null) a.draw(c, settling, sx, sy, lift.of(settling), 255, redraw);
+        if (lifted != null) a.draw(c, lifted, lx, ly, lift.of(lifted), 255, redraw);
         c.restore();
         if (moving) postInvalidateOnAnimation();
     }

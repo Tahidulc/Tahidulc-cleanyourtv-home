@@ -1,16 +1,13 @@
 package com.gathin.homefieldtv;
 
 import android.content.Context;
-import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Paint;
-import android.os.SystemClock;
 import android.text.StaticLayout;
 import android.text.TextPaint;
 import android.view.View;
 
 import com.gathin.homefieldtv.engine.Catalog;
-import com.gathin.homefieldtv.engine.Exec;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -19,17 +16,20 @@ import java.util.List;
  * The big picture over Films' and TV shows' rows: whatever the remote is on, its backdrop on the right fading into the
  * dark, and at the left its name and year small, its title large, a line of facts (★ rating · genre · running time and
  * the age rating), a few lines of its story, and who is in it (their initials in circles, then their names). The
- * picture is faded once as it loads, so moving along a row costs nothing.
+ * picture (a Backdrop under this view) cross-fades into the next title's as the remote moves, and the writing fades
+ * and rises into place a moment after.
  */
 final class Billboard extends View {
     /** Where the writing goes, and the picture (design pixels). */
-    float textX = 160f, textW = 860f, picLeft = 640f, picBottom = 760f;
+    static final float TEXT_X = 160f, TEXT_W = 860f, PIC_LEFT = 640f, PIC_BOTTOM = 760f;
+    private static final float textX = TEXT_X, textW = TEXT_W;
 
+    /** The picture, drawn under this view (the screen adds it first). */
+    final Backdrop picture;
     private Catalog.Title title;
-    private String kicker = "", meta = "", age = "", plot = "", picture = "", note = "";
+    private String kicker = "", meta = "", age = "", plot = "", note = "";
     private List<String> cast = new ArrayList<>();
     private float rating;
-    private long shownAt;
     private StaticLayout titleL, plotL;
 
     private final TextPaint kickerP = Dark.text(24, 500, Dark.MUTED), titleP = Dark.text(82, 700, Dark.TEXT);
@@ -37,12 +37,18 @@ final class Billboard extends View {
     private final TextPaint castP = Dark.text(23, 500, Dark.SOFT), initialsP = Dark.text(18, 600, Dark.TEXT);
     private final TextPaint ageP = Dark.text(19, 700, Dark.SOFT), noteP = Dark.text(24, 600, Dark.ACCENT);
     private final Paint star = Dark.fill(Dark.ACCENT), disc = Dark.fill(0), discRim = Dark.line(Dark.GROUND, 3f);
-    private final Paint ageBox = Dark.line(0x99FFFFFF, 1.5f), fade = new Paint(Paint.FILTER_BITMAP_FLAG);
-    private final Runnable redraw = this::invalidate;
+    private final Paint ageBox = Dark.line(0x99FFFFFF, 1.5f);
 
     Billboard(Context c) {
         super(c);
         titleP.setLetterSpacing(-0.01f);
+        picture = new Backdrop(c, PIC_LEFT, 0f, 1920f - PIC_LEFT, PIC_BOTTOM, Pics.DARK);
+    }
+
+    /** Shown or hidden with its picture. */
+    void showing(boolean on) {
+        setVisibility(on ? VISIBLE : GONE);
+        picture.setVisibility(on ? VISIBLE : GONE);
     }
 
     /** What to show: a title, its details when read (null until then), and a line about it ("S2 E3 · 21m left"). */
@@ -52,9 +58,10 @@ final class Billboard extends View {
             return;
         }
         String pic = d != null && !d.backdrop.isEmpty() ? d.backdrop : t.backdrop;
-        if (!pic.equals(picture) || t != title) shownAt = SystemClock.uptimeMillis();
+        boolean other = t != title;
         title = t;
-        picture = pic;
+        picture.set(pic);
+        if (other) Fade.in(this);
         kicker = t.name + (t.year.isEmpty() ? "" : " (" + t.year + ")");
         rating = rating(d != null && !d.rating.isEmpty() ? d.rating : t.rating);
         meta = facts(t, d);
@@ -69,7 +76,7 @@ final class Billboard extends View {
 
     void clear() {
         title = null;
-        picture = "";
+        picture.set("");
         titleL = plotL = null;
         invalidate();
     }
@@ -108,7 +115,6 @@ final class Billboard extends View {
 
     @Override protected void onDraw(Canvas c) {
         if (title == null) return;
-        drawPicture(c);
         float x = Ui.f(textX), y = Ui.f(104);
         c.drawText(Ui.fit(kicker, kickerP, Ui.f(textW)), x, y, kickerP);
         y += Ui.f(24);
@@ -158,18 +164,5 @@ final class Billboard extends View {
             float tx = cx + (cast.size() - 1) * Ui.f(32) + r + Ui.f(16);
             c.drawText(Ui.fit(String.join(", ", cast), castP, Ui.f(textX + textW) - tx), tx, cy + Ui.f(8), castP);
         }
-    }
-
-    private void drawPicture(Canvas c) {
-        if (picture.isEmpty()) return;
-        int pw = Ui.px(1920 - picLeft), ph = Ui.px(picBottom);
-        Bitmap b = Pics.get(picture, pw, ph, Pics.DARK, redraw);
-        if (b == null) return;
-        long age = SystemClock.uptimeMillis() - shownAt;
-        int alpha = Exec.inline ? 255 : (int) Math.min(255, age * 255 / 260);
-        fade.setAlpha(alpha);
-        c.drawBitmap(b, Ui.f(picLeft), 0, fade);
-        fade.setAlpha(255);
-        if (alpha < 255) postInvalidateOnAnimation();
     }
 }

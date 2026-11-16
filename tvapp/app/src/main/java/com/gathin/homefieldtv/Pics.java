@@ -55,6 +55,11 @@ final class Pics {
      * the foot (a title's backdrop behind the writing); DARK_FULL fades only at the foot and a little at the left.
      */
     static final int POSTER = 6, DARK = 7, DARK_FULL = 8;
+    /**
+     * CARD is a programme's picture as a channel's tile on the live screens: CROP with its corners rounded, a little
+     * darker at the top (for the channel's logo) and much darker towards its foot (for the words), done once as it loads.
+     */
+    static final int CARD = 9;
 
     /** Each poster's fade colour as worked out when it loaded, by its address (0 until then). */
     private static final java.util.Map<String, Integer> FADES = java.util.Collections.synchronizedMap(new java.util.LinkedHashMap<String, Integer>(64, 0.75f, true) {
@@ -120,6 +125,11 @@ final class Pics {
         //noinspection ResultOfMethodCallIgnored
         disk.mkdirs();
         if (!Exec.inline) Exec.io(Pics::prune);
+    }
+
+    /** True when a picture could not be read (Pics.get gives null for it from then on, not "still loading"). */
+    static boolean failed(String url) {
+        return url != null && failed.contains(url);
     }
 
     /**
@@ -258,6 +268,7 @@ final class Pics {
             new Canvas(out).drawBitmap(src, m, p);
             if (src != out) src.recycle();
             if (mode == POSTER) return poster(url, out);
+            if (mode == CARD) return card(out);
             if (mode == DARK || mode == DARK_FULL) return darkFade(out, mode == DARK_FULL);
             return mode == CROP ? out : fadeOut(out, mode == FADE_TALL);
         }
@@ -291,6 +302,24 @@ final class Pics {
         fade.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.SRC_ATOP));
         fade.setShader(PosterArt.fadeShader(colour, h));
         c.drawRect(0, 0, w, h, fade);
+        src.recycle();
+        return out;
+    }
+
+    /** A programme's picture as a channel's tile: its corners rounded, darkened at the top a little and the foot a lot. */
+    private static Bitmap card(Bitmap src) {
+        int w = src.getWidth(), h = src.getHeight();
+        Bitmap out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
+        Canvas c = new Canvas(out);
+        Paint shape = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+        shape.setShader(new android.graphics.BitmapShader(src, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP));
+        float r = h * 0.09f;
+        c.drawRoundRect(0, 0, w, h, r, r, shape);
+        Paint shade = new Paint(Paint.ANTI_ALIAS_FLAG);
+        shade.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.SRC_ATOP));
+        shade.setShader(new LinearGradient(0, 0, 0, h, new int[]{0x59000000, 0x14000000, 0x8C000000, 0xF0000000},
+                new float[]{0f, 0.32f, 0.62f, 1f}, Shader.TileMode.CLAMP));
+        c.drawRect(0, 0, w, h, shade);
         src.recycle();
         return out;
     }

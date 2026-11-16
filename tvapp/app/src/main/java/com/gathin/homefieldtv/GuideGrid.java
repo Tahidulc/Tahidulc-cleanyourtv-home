@@ -2,10 +2,13 @@ package com.gathin.homefieldtv;
 
 import android.content.Context;
 import android.graphics.Bitmap;
+import android.graphics.BitmapShader;
 import android.graphics.Canvas;
+import android.graphics.Matrix;
 import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.RectF;
+import android.graphics.Shader;
 import android.os.SystemClock;
 import android.text.StaticLayout;
 import android.text.TextPaint;
@@ -21,10 +24,14 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * The TV guide's grid, drawn by one view: the programme the remote is on written large across the top, the times
- * along a ruler, and a row a channel (its number and logo, then its programmes as blocks across two hours), with the
- * programme the remote is on lit and a line at the time now. Up and Down go through the channels, Left and Right
- * through the programmes, the hours sliding along as they go.
+ * The TV guide's grid, dark, drawn by one view beside the categories, under the programme's band (GuideBand): the times
+ * along a ruler, then a row a channel, its number and logo and then its programmes as blocks across two hours, each in
+ * its own deep colour (by its title, as the phone's guide has them) with its times over its title and the part already
+ * shown shaded. The programme the remote is on is amber, the part of it already shown a lighter amber, and under its
+ * channel a strip opens: its picture (Sky's, else the channel's logo on its tile), its title, times, what it is (Live,
+ * Starts in 12 min, HD or 4K) and two lines of what it is about. The rows below move down to make room as the strip
+ * closes under the row left; its writing fades and rises into place. Up and Down go through the channels, Left and
+ * Right through the programmes, the hours sliding along as they go.
  */
 final class GuideGrid extends View {
     interface Host {
@@ -36,9 +43,13 @@ final class GuideGrid extends View {
     }
 
     static final long HALF = 30 * 60_000L, WINDOW = 4 * HALF;
+    /** The programmes' own deep colours, picked by title. */
+    private static final int[] DEEP = {0xFF213B32, 0xFF4A2323, 0xFF3B2550, 0xFF45421F, 0xFF233552, 0xFF4E3220, 0xFF1E3F4A, 0xFF4A2340};
+    static final int LIT_AIRED = 0xFFFFD48A, AIRED = 0x59000000, NONE = 0xFF1E1E23;
     // Where things go (design pixels).
-    private static final float X = 545f, RIGHT = 1880f, CHAN_W = 220f, RULER_Y = 352f, ROWS_Y = 412f, ROW_H = 92f, BOTTOM = 1066f;
-    private static final float PROG_X = X + CHAN_W;
+    static final float X = SidePanel.X + SidePanel.W + 36f, RIGHT = 1888f, RULER_Y = 302f, ROWS_Y = 328f;
+    private static final float CHAN_W = 236f, PROG_X = X + CHAN_W, GAP = 6f, ROW_H = 80f, BOTTOM = 1064f;
+    private static final float STRIP_H = 224f, PIC_W = 324f, PIC_H = 182f;
 
     private final Library lib;
     private Host host;
@@ -46,27 +57,44 @@ final class GuideGrid extends View {
     private int focus;
     private long cursor, winStart;
     private float topRow, topRowTo;
-    private boolean active = true;
+    private boolean active = true, settled;
     private long last;
+    /** The strip under the channel the remote is on (0 shut, 1 open), and the one closing under the row it left. */
+    private float open = 1f, closing;
+    private int closingRow = -1;
     /** Shown when there are no channels. */
     String empty = "";
 
-    private final Glow glow = new Glow();
-    private final Paint cell = Ui.fill(Ui.CELL), cellNow = Ui.fill(Ui.CELL_NOW), nowLine = Ui.fill(0xE6FFFFFF);
-    private final Paint rowLit = Ui.fill(0x1AFFFFFF), bar = Ui.fill(Ui.CYAN), track = Ui.fill(0x40FFFFFF);
-    private final Paint arrow = Ui.stroke(Ui.FAINT, 2f), bmp = new Paint(Paint.FILTER_BITMAP_FLAG);
-    private final TextPaint titleP = Ui.paint(46, false, Ui.WHITE), lineP = Ui.paint(28, false, Ui.DIM);
-    private final TextPaint descP = Ui.paint(28, false, Ui.DIM), rulerDay = Ui.paint(28, true, Ui.WHITE);
-    private final TextPaint rulerP = Ui.paint(26, false, Ui.DIM), numP = Ui.paint(26, false, Ui.DIM), numOn = Ui.paint(26, true, Ui.WHITE);
-    private final TextPaint progP = Ui.paint(27, false, Ui.WHITE), progOn = Ui.paint(27, true, Ui.WHITE);
-    private final TextPaint nameP = Ui.paint(24, false, Ui.DIM), noneP = Ui.paint(26, false, Ui.FAINT), emptyP = Ui.paint(32, false, Ui.DIM);
+    private final Paint cell = Dark.fill(Dark.CARD), cellLit = Dark.fill(0xFF303038), block = Dark.fill(NONE);
+    private final Paint aired = Dark.fill(AIRED), lit = Dark.fill(Dark.ACCENT), litAired = Dark.fill(LIT_AIRED);
+    private final Paint ring = Dark.line(0xE6FFFFFF, 2.5f), nowLine = Dark.fill(0x8CFFFFFF), nowMark = Dark.fill(0xFFFFFFFF);
+    private final Paint tick = Dark.fill(0x33FFFFFF), stripBack = Dark.fill(0xFF1C1C22), tileBack = Dark.fill(0xFF000000);
+    private final Paint tagFill = Dark.fill(Dark.ACCENT), tagLine = Dark.line(0x80FFFFFF, 1.5f);
+    private final Paint chevron = Dark.line(0xB3FFFFFF, 2f), chevronInk = Dark.line(0xB31E1606, 2f);
+    private final Paint bmp = new Paint(Paint.FILTER_BITMAP_FLAG), picPaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+    private final TextPaint numP = Dark.text(36, 300, Dark.SOFT), numLit = Dark.text(36, 400, Dark.TEXT), nameP = Dark.text(22, 600, Dark.SOFT);
+    private final TextPaint spanP = Dark.text(19, 500, 0xB3FFFFFF), titleP = Dark.text(25, 600, Dark.TEXT);
+    private final TextPaint spanInk = Dark.text(19, 500, 0xB31E1606), titleInk = Dark.text(25, 700, Dark.ACCENT_INK);
+    private final TextPaint dayP = Dark.text(26, 600, Dark.TEXT), rulerP = Dark.text(22, 500, Dark.MUTED);
+    private final TextPaint stripTitle = Dark.text(34, 600, Dark.TEXT), stripSpan = Dark.text(26, 500, Dark.SOFT);
+    private final TextPaint stripDesc = Dark.text(25, 400, Dark.SOFT), tagP = Dark.text(20, 600, Dark.SOFT);
+    private final TextPaint tagInk = Dark.text(20, 700, Dark.ACCENT_INK), emptyP = Dark.text(32, 400, Dark.SOFT);
+    private final TextPaint tileName = Dark.text(24, 700, Dark.TEXT);
     private final RectF r = new RectF();
     private final Path tri = new Path();
+    private final Matrix picMatrix = new Matrix();
+    private Bitmap shaderFor;
+    private final Fade strip = new Fade();
     private final Runnable redraw = this::invalidate;
-
-    // The details at the top, made again only when the programme changes.
-    private String shownKey = "";
+    private final Runnable rest = () -> {
+        settled = true;
+        invalidate();
+    };
+    // What the strip says, made again only when the programme changes.
+    private String descKey = "";
     private StaticLayout descL;
+    private StaticLayout emptyL;
+    private String emptyFor = "";
 
     GuideGrid(Context c, Library lib) {
         super(c);
@@ -100,19 +128,29 @@ final class GuideGrid extends View {
         long now = System.currentTimeMillis();
         cursor = Math.max(cursor, now);
         if (cursor > winStart + WINDOW - 15 * 60_000L || cursor < winStart) winStart = now - now % HALF;
+        closingRow = -1;
+        closing = 0f;
+        open = Exec.inline ? 1f : 0f;
         settle(true);
-        shownKey = "";
-        invalidate();
+        descKey = "";
+        moved();
     }
 
     /** The same channels again (the guide was read): the remote stays where it is. */
     void refresh() {
-        shownKey = "";
+        descKey = "";
         invalidate();
     }
 
     Channel channel() {
         return focus < channels.size() ? channels.get(focus) : null;
+    }
+
+    /** The programme the remote is on in its channel's schedule (-1 for none), and when the remote is. */
+    int programme() {
+        Channel ch = channel();
+        Guide.Schedule s = ch == null ? null : lib.schedule(ch.key);
+        return s == null ? -1 : s.at(cursor);
     }
 
     int count() {
@@ -123,30 +161,56 @@ final class GuideGrid extends View {
     boolean jumpTo(int number) {
         for (int i = 0; i < channels.size(); i++) {
             if (lib.number(channels.get(i)) == number) {
-                focus = i;
-                settle(false);
-                moved();
+                if (i != focus) toRow(i);
+                else moved();
                 return true;
             }
         }
         return false;
     }
 
+    /** Pure: a programme's own deep colour, the same for the same title. */
+    static int deep(String title) {
+        return DEEP[Math.floorMod(title == null ? 0 : title.hashCode(), DEEP.length)];
+    }
+
     private void moved() {
         invalidate();
+        settled = Exec.inline;
+        removeCallbacks(rest);
+        if (!Exec.inline) postDelayed(rest, ProgrammePictures.REST_MS);
         if (host != null) host.moved();
     }
 
+    /** To another channel: the strip closes under the row left and opens under this one. */
+    private void toRow(int to) {
+        if (to == focus || to < 0 || to >= channels.size()) return;
+        if (!Exec.inline) {
+            closingRow = focus;
+            closing = open;
+            open = 0f;
+        }
+        focus = to;
+        settle(false);
+        moved();
+    }
+
+    /** How many rows fit with the strip open. */
+    private int fit() {
+        return Math.max(1, (int) ((BOTTOM - ROWS_Y - STRIP_H) / ROW_H));
+    }
+
     private void settle(boolean now) {
-        int rows = visibleRows();
+        int rows = fit();
         if (focus < topRowTo) topRowTo = focus;
         if (focus > topRowTo + rows - 1) topRowTo = focus - rows + 1;
         topRowTo = Math.max(0, Math.min(topRowTo, Math.max(0, channels.size() - rows)));
         if (now || Exec.inline) topRow = topRowTo;
     }
 
-    private int visibleRows() {
-        return (int) ((BOTTOM - ROWS_Y) / ROW_H);
+    @Override protected void onDetachedFromWindow() {
+        removeCallbacks(rest);
+        super.onDetachedFromWindow();
     }
 
     // ---- the remote ---------------------------------------------------------------------------------------------
@@ -156,32 +220,20 @@ final class GuideGrid extends View {
         long now = System.currentTimeMillis();
         switch (code) {
             case KeyEvent.KEYCODE_DPAD_UP:
-                if (focus > 0) {
-                    focus--;
-                    settle(false);
-                    moved();
-                }
+                toRow(focus - 1);
                 return true;
             case KeyEvent.KEYCODE_DPAD_DOWN:
-                if (focus < channels.size() - 1) {
-                    focus++;
-                    settle(false);
-                    moved();
-                }
+                toRow(focus + 1);
                 return true;
             case KeyEvent.KEYCODE_CHANNEL_UP:
             case KeyEvent.KEYCODE_PAGE_UP:
-                focus = Math.max(0, focus - visibleRows());
-                topRowTo = Math.max(0, topRowTo - visibleRows());
-                settle(false);
-                moved();
+                topRowTo = Math.max(0, topRowTo - fit());
+                toRow(Math.max(0, focus - fit()));
                 return true;
             case KeyEvent.KEYCODE_CHANNEL_DOWN:
             case KeyEvent.KEYCODE_PAGE_DOWN:
-                focus = Math.min(channels.size() - 1, focus + visibleRows());
-                topRowTo = topRowTo + visibleRows();
-                settle(false);
-                moved();
+                topRowTo = topRowTo + fit();
+                toRow(Math.min(channels.size() - 1, focus + fit()));
                 return true;
             case KeyEvent.KEYCODE_DPAD_RIGHT: {
                 Guide.Schedule s = lib.schedule(channel().key);
@@ -227,49 +279,92 @@ final class GuideGrid extends View {
 
     // ---- drawing ------------------------------------------------------------------------------------------------
 
-    @Override protected void onDraw(Canvas c) {
-        long now = System.currentTimeMillis();
+    /** One frame's step of the scrolling and the strips; true while anything still moves. */
+    private boolean step() {
         long t = SystemClock.uptimeMillis();
         float dt = last == 0 ? 16f : Math.min(48f, t - last);
         last = t;
         boolean moving = false;
+        float k = Exec.inline ? 1f : 1f - (float) Math.exp(-dt / 70.0);
         if (Math.abs(topRowTo - topRow) > 0.004f) {
-            topRow += (topRowTo - topRow) * (Exec.inline ? 1f : 1f - (float) Math.exp(-dt / 70.0));
+            topRow += (topRowTo - topRow) * k;
             moving = true;
         } else {
             topRow = topRowTo;
-            last = 0;
         }
+        float ks = Exec.inline ? 1f : 1f - (float) Math.exp(-dt / 55.0);
+        if (open < 0.996f) {
+            open += (1f - open) * ks;
+            moving = true;
+        } else {
+            open = 1f;
+        }
+        if (closing > 0.004f) {
+            closing -= closing * ks;
+            moving = true;
+        } else {
+            closing = 0f;
+            closingRow = -1;
+        }
+        if (!moving) last = 0;
+        return moving;
+    }
+
+    private float rowY(int i) {
+        float y = ROWS_Y + (i - topRow) * ROW_H;
+        if (closingRow >= 0 && i > closingRow) y += closing * STRIP_H;
+        if (i > focus) y += open * STRIP_H;
+        return y;
+    }
+
+    @Override protected void onDraw(Canvas c) {
+        long now = System.currentTimeMillis();
+        boolean moving = step();
         if (channels.isEmpty()) {
-            if (!empty.isEmpty()) {
-                StaticLayout l = Ui.layout(empty, emptyP, Ui.px(RIGHT - X - 100), 4);
-                Ui.draw(c, l, Ui.f(X), Ui.f(160));
-            }
+            drawEmpty(c);
             return;
         }
-        drawDetails(c, now);
         drawRuler(c, now);
         c.save();
-        c.clipRect(Ui.f(X - 20), Ui.f(ROWS_Y - 14), Ui.f(RIGHT + 20), Ui.f(BOTTOM + 14));
-        int first = Math.max(0, (int) Math.floor(topRow));
+        c.clipRect(Ui.f(X - 4), Ui.f(ROWS_Y - 4), Ui.f(RIGHT + 8), Ui.f(BOTTOM));
+        int first = Math.max(0, (int) Math.floor(topRow) - 1);
+        float stripY = -1f, closingY = -1f;
         for (int i = first; i < channels.size(); i++) {
-            float y = ROWS_Y + (i - topRow) * ROW_H;
+            float y = rowY(i);
             if (y > BOTTOM) break;
+            if (i == focus) stripY = y + ROW_H;
+            if (i == closingRow) closingY = y + ROW_H;
+            if (y + ROW_H < ROWS_Y) continue;
             drawRow(c, i, y, now);
         }
-        c.restore();
-        // The time now, down through the rows.
-        if (now >= winStart && now < winStart + WINDOW) {
+        // The time now, down through the rows (the strips go over it).
+        boolean nowShown = now >= winStart && now < winStart + WINDOW;
+        if (nowShown) {
             float x = xAt(now);
-            c.drawRect(x - Ui.f(1), Ui.f(ROWS_Y - 6), x + Ui.f(1), Ui.f(BOTTOM), nowLine);
-            tri.reset();
-            tri.moveTo(x - Ui.f(9), Ui.f(RULER_Y + 30));
-            tri.lineTo(x + Ui.f(9), Ui.f(RULER_Y + 30));
-            tri.lineTo(x, Ui.f(RULER_Y + 42));
-            tri.close();
-            c.drawPath(tri, nowLine);
+            c.drawRect(x - Ui.f(1), Ui.f(ROWS_Y - 4), x + Ui.f(1), Ui.f(BOTTOM), nowLine);
         }
-        if (moving) postInvalidateOnAnimation();
+        if (closingY >= 0f && closing > 0.01f) drawStripBack(c, closingY, closing * STRIP_H);
+        if (stripY >= 0f && open > 0.01f) drawStrip(c, stripY, open * STRIP_H, now);
+        c.restore();
+        if (nowShown) {
+            float x = xAt(now);
+            tri.reset();
+            tri.moveTo(x - Ui.f(9), Ui.f(ROWS_Y - 17));
+            tri.lineTo(x + Ui.f(9), Ui.f(ROWS_Y - 17));
+            tri.lineTo(x, Ui.f(ROWS_Y - 6));
+            tri.close();
+            c.drawPath(tri, nowMark);
+        }
+        if (moving || strip.busy()) postInvalidateOnAnimation();
+    }
+
+    private void drawEmpty(Canvas c) {
+        if (empty.isEmpty()) return;
+        if (emptyL == null || !emptyFor.equals(empty)) {
+            emptyL = Ui.layout(empty, emptyP, Ui.px(RIGHT - X - 100), 4);
+            emptyFor = empty;
+        }
+        Ui.draw(c, emptyL, Ui.f(X), Ui.f(160));
     }
 
     private float pxPerMs() {
@@ -280,116 +375,215 @@ final class GuideGrid extends View {
         return Ui.f(PROG_X) + (time - winStart) * pxPerMs();
     }
 
-    private void drawDetails(Canvas c, long now) {
-        Channel ch = channel();
-        if (ch == null) return;
-        Guide.Schedule s = lib.schedule(ch.key);
-        int i = s == null ? -1 : s.at(cursor);
-        float x = Ui.f(X), w = Ui.f(RIGHT - X - 300);
-        String title = i >= 0 ? s.title[i] : ch.name;
-        c.drawText(Ui.fit(title, titleP, w), x, Ui.f(100), titleP);
-        String line;
-        if (i >= 0) line = Ui.span(s.start[i], s.stop[i]) + "  ·  " + Ui.day(s.start[i], now) + "  ·  " + lib.number(ch) + " " + ch.name;
-        else line = lib.number(ch) + " " + ch.name + (s == null ? "  ·  No programme information" : "");
-        c.drawText(Ui.fit(line, lineP, w), x, Ui.f(150), lineP);
-        float dy = 178;
-        if (i >= 0 && s.start[i] <= now && now < s.stop[i]) {
-            float bw = Ui.f(300), p = (now - s.start[i]) / (float) Math.max(1, s.stop[i] - s.start[i]);
-            c.drawRect(x, Ui.f(dy), x + bw, Ui.f(dy + 5), track);
-            c.drawRect(x, Ui.f(dy), x + bw * p, Ui.f(dy + 5), bar);
-            c.drawText(Ui.left(s.stop[i] - now), x + bw + Ui.f(16), Ui.f(dy + 11), lineP);
-            dy += 30;
-        }
-        String key = ch.key + "|" + (i >= 0 ? s.start[i] : -1);
-        if (!key.equals(shownKey)) {
-            shownKey = key;
-            String d = i >= 0 ? s.desc[i] : "";
-            descL = d.isEmpty() ? null : Ui.layout(d, descP, Math.round(w), 3);
-        }
-        if (descL != null) Ui.draw(c, descL, x, Ui.f(dy + 8));
-        // The channel's logo, large, at the right (on its black tile: Pics.tiles).
-        Bitmap logo = Pics.tiles ? Pics.get(ch.logo, Ui.px(214), Ui.px(120), Pics.TILE, redraw)
-                : Pics.get(ch.logo, Ui.px(250), Ui.px(120), Pics.FIT, redraw);
-        if (logo != null) c.drawBitmap(logo, Ui.f(RIGHT) - logo.getWidth(), Ui.f(60) + (Ui.f(120) - logo.getHeight()) / 2f, bmp);
-    }
-
     private void drawRuler(Canvas c, long now) {
-        c.drawText(Ui.day(Math.max(winStart, now), now), Ui.f(X), Ui.f(RULER_Y + 30), rulerDay);
+        c.drawText(Ui.day(Math.max(winStart, now), now), Ui.f(X), Ui.f(RULER_Y), dayP);
         for (long t = winStart; t < winStart + WINDOW; t += HALF) {
             float x = xAt(t);
-            c.drawRect(x, Ui.f(RULER_Y + 8), x + Math.max(1f, Ui.f(1.5f)), Ui.f(RULER_Y + 38), track);
-            c.drawText(Ui.clock(t), x + Ui.f(10), Ui.f(RULER_Y + 30), rulerP);
+            c.drawRect(x, Ui.f(RULER_Y - 20), x + Math.max(1f, Ui.f(1.5f)), Ui.f(RULER_Y + 4), tick);
+            c.drawText(LiveText.hm(t), x + Ui.f(10), Ui.f(RULER_Y), rulerP);
         }
     }
 
     private void drawRow(Canvas c, int index, float y, long now) {
         Channel ch = channels.get(index);
-        boolean lit = index == focus;
-        float top = Ui.f(y), bottom = Ui.f(y + ROW_H - 6);
-        if (lit) c.drawRect(Ui.f(X), top, Ui.f(PROG_X - 8), bottom, rowLit);
+        boolean here = index == focus;
+        float top = Ui.f(y), bottom = Ui.f(y + ROW_H - GAP), mid = (top + bottom) / 2f;
+        // The channel: its number and logo, on a cell lighter for the row the remote is on.
+        r.set(Ui.f(X), top, Ui.f(PROG_X - GAP), bottom);
+        c.drawRoundRect(r, Ui.f(10), Ui.f(10), here ? cellLit : cell);
         String num = String.valueOf(lib.number(ch));
-        TextPaint np = lit ? numOn : numP;
-        c.drawText(num, Ui.f(X + 64) - np.measureText(num), (top + bottom) / 2f + Ui.f(9), np);
-        // On its black tile (Pics.tiles), a little wider and taller than the logo's own room was.
-        Bitmap logo = Pics.tiles ? Pics.get(ch.logo, Ui.px(132), Ui.px(70), Pics.TILE, redraw)
-                : Pics.get(ch.logo, Ui.px(128), Ui.px(58), Pics.FIT, redraw);
-        if (logo != null) {
-            c.drawBitmap(logo, Ui.f(X + 80) + (Ui.f(128) - logo.getWidth()) / 2f, (top + bottom - logo.getHeight()) / 2f, bmp);
-        } else {
-            c.drawText(Ui.fit(ch.name, nameP, Ui.f(CHAN_W - 90)), Ui.f(X + 80), (top + bottom) / 2f + Ui.f(8), nameP);
-        }
+        TextPaint np = here ? numLit : numP;
+        c.drawText(num, Ui.f(X + 82) - np.measureText(num), mid + Ui.f(13), np);
+        float lx = Ui.f(X + 96), lw = Ui.f(128);
+        Bitmap logo = Pics.get(ch.logo, Ui.px(128), Ui.px(66), Pics.logoMode(), redraw);
+        if (logo != null) c.drawBitmap(logo, lx + (lw - logo.getWidth()) / 2f, mid - logo.getHeight() / 2f, bmp);
+        else c.drawText(Ui.fit(ch.name, nameP, Ui.f(CHAN_W - 110)), lx, mid + Ui.f(8), nameP);
+
+        // Its programmes.
         Guide.Schedule s = lib.schedule(ch.key);
         long winEnd = winStart + WINDOW;
-        float gap = Ui.f(3);
-        boolean drewFocus = false;
-        if (s != null) {
-            for (int i = 0; i < s.start.length; i++) {
-                if (s.stop[i] <= winStart) continue;
-                if (s.start[i] >= winEnd) break;
-                float x0 = xAt(Math.max(s.start[i], winStart)) + gap, x1 = xAt(Math.min(s.stop[i], winEnd)) - gap;
-                if (x1 - x0 < Ui.f(4)) continue;
-                boolean on = s.start[i] <= now && now < s.stop[i];
-                boolean focused = lit && s.start[i] <= cursor && cursor < s.stop[i];
-                r.set(x0, top, x1, bottom);
-                if (focused && active) {
-                    glow.draw(c, r);
-                    drewFocus = true;
-                } else if (focused) {
-                    glow.box(c, r);
-                    drewFocus = true;
-                } else {
-                    c.drawRect(r, on ? cellNow : cell);
-                }
-                float tx = x0 + Ui.f(14);
-                if (s.start[i] < winStart) {
-                    Ui.chevron(c, x0 + Ui.f(12), (top + bottom) / 2f, Ui.f(9), Ui.LEFT, arrow);
-                    tx += Ui.f(12);
-                }
-                TextPaint p = focused ? progOn : progP;
-                float room = x1 - tx - Ui.f(10);
-                if (room > Ui.f(24)) {
-                    c.save();
-                    c.clipRect(x0, top, x1, bottom);
-                    c.drawText(Ui.fit(s.title[i], p, room), tx, (top + bottom) / 2f + Ui.f(9), p);
-                    c.restore();
-                }
-            }
+        float gap = Ui.f(GAP);
+        if (s == null) {
+            // No guide for this channel: one block across.
+            drawBlock(c, Ui.f(PROG_X), top, Ui.f(RIGHT) - gap, bottom, "No programme information", ch.name, NONE, -1f, here, false);
+            return;
         }
-        if (!drewFocus) {
-            // No programme known at that time: one block across, still lit when the remote is on it.
-            float x0 = Ui.f(PROG_X) + gap, x1 = Ui.f(RIGHT) - gap;
-            if (s == null) {
-                r.set(x0, top, x1, bottom);
-                if (lit && active) glow.draw(c, r);
-                else if (lit) glow.box(c, r);
-                else c.drawRect(r, cell);
-                c.drawText(Ui.fit(ch.name, noneP, x1 - x0 - Ui.f(28)), x0 + Ui.f(14), (top + bottom) / 2f + Ui.f(9), noneP);
-            } else if (lit) {
-                long a = cursor - cursor % HALF, b = a + HALF;
-                r.set(xAt(Math.max(a, winStart)) + gap, top, xAt(Math.min(b, winEnd)) - gap, bottom);
-                if (active) glow.draw(c, r);
-                else glow.box(c, r);
+        boolean drewFocus = false;
+        for (int i = 0; i < s.start.length; i++) {
+            if (s.stop[i] <= winStart) continue;
+            if (s.start[i] >= winEnd) break;
+            float x0 = xAt(Math.max(s.start[i], winStart)), x1 = xAt(Math.min(s.stop[i], winEnd)) - gap;
+            if (x1 - x0 < Ui.f(6)) continue;
+            boolean focused = here && s.start[i] <= cursor && cursor < s.stop[i];
+            float airedTo = s.start[i] < now ? xAt(Math.min(now, s.stop[i])) : -1f;
+            drawBlock(c, x0, top, x1, bottom, LiveText.span(s.start[i], s.stop[i]), s.title[i], deep(s.title[i]), airedTo,
+                    focused, s.start[i] < winStart);
+            if (focused) drewFocus = true;
+        }
+        if (here && !drewFocus) {
+            // Nothing in the guide at that time: the half hour the remote is on, lit.
+            long a = cursor - cursor % HALF, b = a + HALF;
+            drawBlock(c, xAt(Math.max(a, winStart)), top, xAt(Math.min(b, winEnd)) - gap, bottom, "", "", NONE, -1f, true, false);
+        }
+    }
+
+    /** One programme's block: its colour (amber where the remote is), the part already shown, its times over its title. */
+    private void drawBlock(Canvas c, float x0, float top, float x1, float bottom, String span, String title, int colour,
+                           float airedTo, boolean focused, boolean cut) {
+        r.set(x0, top, x1, bottom);
+        float rad = Ui.f(8);
+        boolean amber = focused && active;
+        if (amber) {
+            c.drawRoundRect(r, rad, rad, lit);
+            if (airedTo > x0) {
+                c.save();
+                c.clipRect(x0, top, Math.min(airedTo, x1), bottom);
+                c.drawRoundRect(r, rad, rad, litAired);
+                c.restore();
             }
+        } else {
+            block.setColor(colour);
+            c.drawRoundRect(r, rad, rad, block);
+            if (airedTo > x0) {
+                c.save();
+                c.clipRect(x0, top, Math.min(airedTo, x1), bottom);
+                c.drawRoundRect(r, rad, rad, aired);
+                c.restore();
+            }
+            if (focused) Dark.ring(c, r, rad, ring);
+        }
+        float tx = x0 + Ui.f(14);
+        if (cut) {
+            Ui.chevron(c, x0 + Ui.f(11), (top + bottom) / 2f, Ui.f(8), Ui.LEFT, amber ? chevronInk : chevron);
+            tx += Ui.f(12);
+        }
+        float room = x1 - tx - Ui.f(10);
+        if (room < Ui.f(28)) return;
+        c.save();
+        c.clipRect(x0, top, x1, bottom);
+        TextPaint sp = amber ? spanInk : spanP, tp = amber ? titleInk : titleP;
+        if (!span.isEmpty()) c.drawText(Ui.fit(span, sp, room), tx, top + Ui.f(29), sp);
+        if (!title.isEmpty()) c.drawText(Ui.fit(title, tp, room), tx, top + Ui.f(span.isEmpty() ? 46 : 59), tp);
+        c.restore();
+    }
+
+    /** The strip closing under the row the remote left: its ground only. */
+    private void drawStripBack(Canvas c, float y, float h) {
+        float top = Ui.f(y), bottom = Ui.f(y + h - GAP);
+        if (bottom - top < 1f) return;
+        r.set(Ui.f(PROG_X), top, Ui.f(RIGHT), bottom);
+        c.drawRoundRect(r, Ui.f(12), Ui.f(12), stripBack);
+    }
+
+    /** The strip under the channel the remote is on, h of it open so far. */
+    private void drawStrip(Canvas c, float y, float h, long now) {
+        Channel ch = channel();
+        if (ch == null) return;
+        float top = Ui.f(y), shown = Ui.f(y + h - GAP);
+        if (shown - top < 1f) return;
+        c.save();
+        c.clipRect(Ui.f(PROG_X), top, Ui.f(RIGHT), shown);
+        r.set(Ui.f(PROG_X), top, Ui.f(RIGHT), Ui.f(y + STRIP_H - GAP));
+        c.drawRoundRect(r, Ui.f(12), Ui.f(12), stripBack);
+        Guide.Schedule s = lib.schedule(ch.key);
+        int i = s == null ? -1 : s.at(cursor);
+        String key = i >= 0 ? ch.key + "|" + s.start[i] : ch.key + "|-";
+        strip.focus(key);
+
+        // The picture: Sky's, else the channel's logo on its tile.
+        float px = Ui.f(PROG_X + 18), py = top + Ui.f(18), pw = Ui.f(PIC_W), ph = Ui.f(PIC_H);
+        String url = i < 0 ? "" : settled ? ProgrammePictures.get(getContext(), ch, s, i, redraw) : ProgrammePictures.peek(ch, s, i);
+        Bitmap pic = url == null || url.isEmpty() ? null : Pics.get(url, Ui.px(PIC_W), Ui.px(PIC_H), Pics.CROP, redraw);
+        if (pic != null) drawPicture(c, pic, px, py, pw, ph);
+        else drawLogoTile(c, ch, px, py, pw, ph);
+
+        // Its words, fading and rising into place.
+        int a = Math.round(255 * strip.text());
+        float rise = strip.rise();
+        stripTitle.setAlpha(a);
+        stripSpan.setAlpha(a);
+        stripDesc.setAlpha(a);
+        tagP.setAlpha(a);
+        tagInk.setAlpha(a);
+        tagFill.setAlpha(a);
+        tagLine.setAlpha(a / 2);
+        float tx = px + pw + Ui.f(28), room = Ui.f(RIGHT - 24) - tx;
+        String title = i >= 0 ? s.title[i] : ch.name;
+        c.drawText(Ui.fit(title, stripTitle, room), tx, top + Ui.f(62) + rise, stripTitle);
+        float ly = top + Ui.f(108) + rise, lx = tx;
+        if (i >= 0) {
+            String day = Ui.day(s.start[i], now);
+            String sp = LiveText.span(s.start[i], s.stop[i]);
+            if (!"Today".equals(day)) sp = day + ", " + sp;
+            c.drawText(sp, lx, ly, stripSpan);
+            lx += stripSpan.measureText(sp) + Ui.f(20);
+            if (s.start[i] <= now && now < s.stop[i]) lx = tag(c, "Live", lx, ly, true);
+            else lx = tag(c, LiveText.startsIn(now, s.start[i]), lx, ly, false);
+        } else {
+            String none = s == null ? "No programme information" : "Nothing in the guide at this time";
+            c.drawText(none, lx, ly, stripSpan);
+            lx += stripSpan.measureText(none) + Ui.f(20);
+        }
+        tag(c, LiveText.quality(ch.name), lx, ly, false);
+        if (i >= 0 && !s.desc[i].isEmpty()) {
+            if (!key.equals(descKey) || descL == null) {
+                descL = Ui.layout(s.desc[i], stripDesc, Math.round(room), 2);
+                descKey = key;
+            }
+            Ui.draw(c, descL, tx, top + Ui.f(128) + rise);
+        }
+        stripTitle.setAlpha(255);
+        stripSpan.setAlpha(255);
+        stripDesc.setAlpha(255);
+        tagP.setAlpha(255);
+        tagInk.setAlpha(255);
+        tagFill.setAlpha(255);
+        tagLine.setAlpha(0x80);
+        c.restore();
+    }
+
+    /** A tag after the times (Live in amber; Starts in 12 min, HD, 4K outlined); "" draws nothing. */
+    private float tag(Canvas c, String t, float x, float base, boolean live) {
+        if (t == null || t.isEmpty()) return x;
+        float w = (live ? tagInk : tagP).measureText(t) + Ui.f(24), hgt = Ui.f(34);
+        r.set(x, base - Ui.f(25), x + w, base - Ui.f(25) + hgt);
+        if (live) {
+            c.drawRoundRect(r, hgt / 2f, hgt / 2f, tagFill);
+            c.drawText(t, x + Ui.f(12), base - Ui.f(1), tagInk);
+        } else {
+            c.drawRoundRect(r, hgt / 2f, hgt / 2f, tagLine);
+            c.drawText(t, x + Ui.f(12), base - Ui.f(1), tagP);
+        }
+        return x + w + Ui.f(12);
+    }
+
+    /** A programme's picture with rounded corners (a shader made once a picture). */
+    private void drawPicture(Canvas c, Bitmap pic, float x, float y, float w, float h) {
+        if (pic != shaderFor) {
+            picPaint.setShader(new BitmapShader(pic, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP));
+            shaderFor = pic;
+        }
+        picMatrix.setTranslate(x, y);
+        picPaint.getShader().setLocalMatrix(picMatrix);
+        r.set(x, y, x + w, y + h);
+        c.drawRoundRect(r, Ui.f(10), Ui.f(10), picPaint);
+    }
+
+    /** No programme picture: the channel's logo on its black tile (or its name). */
+    private void drawLogoTile(Canvas c, Channel ch, float x, float y, float w, float h) {
+        Bitmap t = Pics.tiles ? Pics.get(ch.logo, Ui.px(PIC_W), Ui.px(PIC_H), Pics.TILE, redraw) : null;
+        if (t != null) {
+            c.drawBitmap(t, x, y, bmp);
+            return;
+        }
+        r.set(x, y, x + w, y + h);
+        c.drawRoundRect(r, Ui.f(10), Ui.f(10), tileBack);
+        Bitmap f = Pics.tiles ? null : Pics.get(ch.logo, Math.round(w * 0.7f), Math.round(h * 0.6f), Pics.FIT, redraw);
+        if (f != null) {
+            c.drawBitmap(f, x + (w - f.getWidth()) / 2f, y + (h - f.getHeight()) / 2f, bmp);
+        } else {
+            String n = Ui.fit(ch.name, tileName, w - Ui.f(24));
+            c.drawText(n, x + (w - tileName.measureText(n)) / 2f, y + h / 2f + Ui.f(8), tileName);
         }
     }
 }
