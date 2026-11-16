@@ -23,6 +23,12 @@ final class Pick {
     double vote;
     /** Its kicker: "Because you watched Dune", "More Thriller", "New in your playlist"; "" for none. */
     String why = "";
+    /** On its poster's corner: "#1 Today", "Trending", "New"; "" for none. */
+    String badge = "";
+    /** When it came out ("2026-10-31"; "" when not known). */
+    String date = "";
+    /** What the family's own sources have of it (SourceQuality's bits). */
+    int quality;
 
     /** As TitleActivity opens it. */
     Title title() {
@@ -33,6 +39,9 @@ final class Pick {
         t.poster = poster;
         t.backdrop = backdrop;
         t.year = year;
+        t.date = date;
+        t.logo = logo;
+        t.quality = quality;
         return t;
     }
 
@@ -46,6 +55,13 @@ final class Pick {
         p.year = t.year == null ? "" : t.year;
         p.poster = t.poster == null || t.poster.isEmpty() ? null : t.poster;
         p.backdrop = t.backdrop == null || t.backdrop.isEmpty() ? null : t.backdrop;
+        p.logo = t.logo == null || t.logo.isEmpty() ? null : t.logo;
+        p.date = t.date == null ? "" : t.date;
+        p.badge = t.badge == null ? "" : t.badge;
+        p.quality = t.quality;
+        p.vote = t.vote;
+        p.genre = t.genres != null && t.genres.length > 0 && com.gathin.tvhomephone.watch.Tmdb.genre(t.genres[0]) != null
+                ? com.gathin.tvhomephone.watch.Tmdb.genre(t.genres[0]) : "";
         return p;
     }
 
@@ -79,7 +95,8 @@ final class Pick {
     JSONObject json() throws JSONException {
         return new JSONObject().put("id", id).put("tv", tv).put("title", title).put("year", year).put("genre", genre)
                 .put("overview", overview).put("cert", cert).put("length", length).put("poster", poster == null ? "" : poster)
-                .put("backdrop", backdrop == null ? "" : backdrop).put("logo", logo == null ? "" : logo).put("vote", vote).put("why", why);
+                .put("backdrop", backdrop == null ? "" : backdrop).put("logo", logo == null ? "" : logo).put("vote", vote).put("why", why)
+                .put("badge", badge).put("date", date).put("q", quality);
     }
 
     static Pick from(JSONObject o) {
@@ -98,6 +115,9 @@ final class Pick {
         p.logo = blank(o.optString("logo"));
         p.vote = o.optDouble("vote", 0);
         p.why = o.optString("why");
+        p.badge = o.optString("badge");
+        p.date = o.optString("date");
+        p.quality = o.optInt("q");
         return p.title.isEmpty() ? null : p;
     }
 

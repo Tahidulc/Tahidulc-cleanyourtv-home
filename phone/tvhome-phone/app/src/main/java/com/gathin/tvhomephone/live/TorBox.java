@@ -511,6 +511,65 @@ public final class TorBox {
         return out;
     }
 
+    private static final java.util.concurrent.atomic.AtomicBoolean WARMING = new java.util.concurrent.atomic.AtomicBoolean();
+
+    /**
+     * For a poster's corner: the best picture and sound the account's own files of a title say they are (SourceQuality's
+     * bits), from the library read last, whatever its age. Nothing is read for a poster: with no library yet, a first
+     * read is started in the background and this says nothing. 0 with TorBox off, or nothing found. Off the main thread.
+     */
+    static int posterQuality(Context c, String title, String year, boolean tv) {
+        if (title == null || title.isEmpty() || !on(c)) return 0;
+        List<File> lib = library;
+        if (lib == null || !key(c).equals(libraryFor)) {
+            warm(c);
+            return 0;
+        }
+        return posterQuality(lib, title, year, tv);
+    }
+
+    /** Pure: the same, given the library. */
+    static int posterQuality(List<File> lib, String title, String year, boolean tv) {
+        // Only the files that name the title's first word are looked at closely.
+        String word = firstWord(title);
+        List<File> near = new ArrayList<>();
+        for (File f : lib) if (word.isEmpty() || mentions(f, word)) near.add(f);
+        if (near.isEmpty()) return 0;
+        int q = 0;
+        for (File f : tv ? episodeFiles(near, title, null) : films(near, title, null, year)) {
+            q = SourceQuality.best(q, SourceQuality.best(SourceQuality.of(f.name), SourceQuality.of(f.item)));
+        }
+        return q;
+    }
+
+    /** Pure: a title's first word as names compare ("dune" for "Dune: Part Two"); "" when it is under three letters. */
+    static String firstWord(String title) {
+        String k = Vod.key(title);
+        int space = k.indexOf(' ');
+        String w = space < 0 ? k : k.substring(0, space);
+        return w.length() < 3 ? "" : w;
+    }
+
+    private static boolean mentions(File f, String word) {
+        java.util.Locale root = java.util.Locale.ROOT;
+        return f.name.toLowerCase(root).contains(word) || f.item.toLowerCase(root).contains(word)
+                || f.path.toLowerCase(root).contains(word);
+    }
+
+    private static void warm(Context c) {
+        Context app = c.getApplicationContext();
+        if (!WARMING.compareAndSet(false, true)) return;
+        com.gathin.tvhomephone.App.io.execute(() -> {
+            try {
+                library(app, false);
+            } catch (IOException | RuntimeException ignored) {
+                // none this time
+            } finally {
+                WARMING.set(false);
+            }
+        });
+    }
+
     /** Pure: the picture a file's name says, else its download's ("1080p", "4K", "HD", "SD", or ""). */
     static String quality(File f) {
         String q = Vod.quality(f.name);

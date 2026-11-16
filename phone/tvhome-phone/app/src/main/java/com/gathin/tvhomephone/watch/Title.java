@@ -22,6 +22,12 @@ public final class Title {
     public int rank;
     /** Coming up: when (ms) it's out; 0 otherwise. */
     public long when;
+    /** When it came out ("2026-10-31"; "" when not known). */
+    public String date = "";
+    /** Its logo once read (w500); null while not known. */
+    public String logo;
+    /** What the family's own sources have of it (SourceQuality's bits); 0 when they say nothing. */
+    public int quality;
 
     public String key() {
         return (tv ? "tv:" : "mv:") + id;
@@ -40,6 +46,7 @@ public final class Title {
         t.backdrop = Tmdb.image(r.optString("backdrop_path", null), "w780");
         String date = r.optString(t.tv ? "first_air_date" : "release_date", "");
         t.year = date.length() >= 4 ? date.substring(0, 4) : "";
+        t.date = date;
         t.vote = r.optDouble("vote_average", 0);
         t.overview = r.optString("overview", "");
         JSONArray g = r.optJSONArray("genre_ids");

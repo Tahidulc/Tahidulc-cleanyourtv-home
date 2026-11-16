@@ -20,8 +20,11 @@ import com.bumptech.glide.load.DecodeFormat;
 import com.bumptech.glide.load.resource.drawable.DrawableTransitionOptions;
 import com.gathin.tvhomephone.glass.Glass;
 import com.gathin.tvhomephone.glass.GlassDrawable;
+import com.gathin.tvhomephone.glass.PosterCard;
 import com.gathin.tvhomephone.glass.WatchCard;
 import com.gathin.tvhomephone.live.BreakingNews.Story;
+import com.gathin.tvhomephone.live.SourceQuality;
+import com.gathin.tvhomephone.watch.Logos;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -29,7 +32,8 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Home's rows, in glass: poster tiles (films and TV from the playlists, My list), Continue watching's landscape cards
+ * Home's rows, in glass: posters as the family's reference picture draws them (PosterCard: the logo over the poster's own
+ * colour, where it stands today, what the sources have of it, the title and year under it), Continue watching's landscape cards
  * (the picture, the title's logo, how far in and the time still to go) and the headlines' frosted cards (the picture
  * on top, then the source, how long ago and the headline). Every card has its size before anything loads, and shows
  * a shimmer while its row is still coming, so nothing moves when the pictures arrive. Pictures are read at the size
@@ -40,8 +44,8 @@ final class Rows {
 
     /** Shimmer cards a row shows while it loads. */
     static final int LOADING = 6;
-    /** A poster tile (dp): 112 by 168, its corners rounded 14, the tiles 12 apart. */
-    static final int POSTER_W = 112, POSTER_H = 168, POSTER_R = 14, GAP = 12;
+    /** The cards are 12dp apart (a poster's width follows the screen: PosterCard.rowWidth); a poster's corners while it loads. */
+    static final int POSTER_R = 12, GAP = 12;
     /** Continue watching's card (dp), and a headline card's corners. */
     static final int WATCH_W = 250, WATCH_H = 140, STORY_R = 18;
 
@@ -108,72 +112,65 @@ final class Rows {
 
     // ---- posters ------------------------------------------------------------------------------------------------
 
-    /**
-     * One poster tile: the picture under the glass rim (the title's own colours until it comes), with its name under
-     * it only when there is no picture.
-     */
+    /** One poster: PosterCard, its logo read after it shows when Home's picks didn't bring it. */
     static final class PosterHolder extends RecyclerView.ViewHolder {
-        final ImageView tile;
-        final TextView name;
+        final PosterCard card;
 
-        PosterHolder(Context c, int w, int h) {
-            super(new LinearLayout(c));
-            LinearLayout col = (LinearLayout) itemView;
-            col.setOrientation(LinearLayout.VERTICAL);
+        PosterHolder(Context c, int w) {
+            super(new PosterCard(c, w, true));
+            card = (PosterCard) itemView;
             RecyclerView.LayoutParams lp = new RecyclerView.LayoutParams(w, ViewGroup.LayoutParams.WRAP_CONTENT);
             lp.rightMargin = Glass.dp(c, GAP);
-            col.setLayoutParams(lp);
-            tile = Glass.poster(c, "", POSTER_R);
-            tile.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-            col.addView(tile, new LinearLayout.LayoutParams(w, h));
-            // Two lines, filled or not, so every tile in a row with names is the same height.
-            name = text(c, 13, Glass.SOFT, Type.interSemi(c), 2);
-            name.setLines(2);
-            name.setLineSpacing(Glass.dp(c, 2), 1f);
-            name.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-            LinearLayout.LayoutParams nl = new LinearLayout.LayoutParams(-1, -2);
-            nl.topMargin = Glass.dp(c, 8);
-            col.addView(name, nl);
+            card.setLayoutParams(lp);
         }
 
         void loading(Context c) {
             itemView.setOnClickListener(null);
             itemView.setClickable(false);
             itemView.setContentDescription(null);
-            clear(tile);
-            tile.setBackground(new Art.Shimmer(Glass.dp(c, POSTER_R)));
-            name.setVisibility(View.GONE);
-        }
-
-        /** The picture, else the title's own colours with its name under them; room: the row keeps space for names. */
-        void show(Context c, String url, String words, int w, int h, boolean room) {
-            tile.setBackground(Glass.placeholder(words, Glass.dp(c, POSTER_R)));
-            boolean has = url != null && !url.isEmpty();
-            if (has) load(tile, url, w, h);
-            else clear(tile);
-            name.setText(has ? "" : words);
-            name.setVisibility(!has ? View.VISIBLE : room ? View.INVISIBLE : View.GONE);
+            itemView.setTag(null);
+            card.loading(new Art.Shimmer(Glass.dp(c, POSTER_R)));
         }
     }
 
-    /** Films and TV from the playlists, or My list. Null until loaded: shimmer tiles. */
+    /** Pure: what a pick's poster shows. */
+    static PosterCard.Info info(Pick p) {
+        PosterCard.Info i = new PosterCard.Info();
+        i.title = p.title;
+        i.year = p.year;
+        i.poster = p.poster;
+        String logo = p.logo != null ? p.logo : Logos.known(p.tv, p.id);
+        i.logo = logo;
+        i.logoKnown = logo != null || p.id <= 0;
+        i.line = PosterCard.line(p.genre, p.vote);
+        i.badge = p.badge == null || p.badge.isEmpty() ? null : p.badge;
+        i.quality = p.quality;
+        return i;
+    }
+
+    /** Pure: what a screen reader says for a pick's poster ("Dune, 2021, #2 Today, 4K"). */
+    static String spoken(Pick p) {
+        StringBuilder b = new StringBuilder(p.title);
+        if (!p.year.isEmpty()) b.append(", ").append(p.year);
+        if (p.badge != null && !p.badge.isEmpty()) b.append(", ").append(p.badge);
+        String q = SourceQuality.spoken(p.quality);
+        if (!q.isEmpty()) b.append(", ").append(q);
+        return b.toString();
+    }
+
+    /** Films and TV from the playlists, or My list. Null until loaded: shimmer cards. */
     static final class Posters extends RecyclerView.Adapter<PosterHolder> {
         private List<Pick> items;
-        /** Some title has no picture: every tile keeps room for a name under it. */
-        private boolean room;
         private final OnPick tap;
-        private final int w, h;
+        private final int w;
 
         Posters(Context c, OnPick tap) {
             this.tap = tap;
-            w = Glass.dp(c, POSTER_W);
-            h = Glass.dp(c, POSTER_H);
+            w = PosterCard.rowWidth(c);
         }
 
         void set(List<Pick> list) {
             items = list == null ? null : new ArrayList<>(list);
-            room = false;
-            if (items != null) for (Pick p : items) room |= p.poster == null || p.poster.isEmpty();
             notifyDataSetChanged();
         }
 
@@ -182,7 +179,7 @@ final class Rows {
         }
 
         @NonNull @Override public PosterHolder onCreateViewHolder(@NonNull ViewGroup parent, int type) {
-            return new PosterHolder(parent.getContext(), w, h);
+            return new PosterHolder(parent.getContext(), w);
         }
 
         @Override public void onBindViewHolder(@NonNull PosterHolder holder, int i) {
@@ -192,8 +189,16 @@ final class Rows {
                 return;
             }
             Pick p = items.get(i);
-            holder.show(c, p.poster, p.title, w, h, room);
-            holder.itemView.setContentDescription(p.title + (p.year.isEmpty() ? "" : ", " + p.year));
+            PosterCard.Info info = info(p);
+            holder.card.bind(info);
+            String key = (p.tv ? "tv:" : "mv:") + p.id + ":" + p.title;
+            holder.itemView.setTag(key);
+            if (!info.logoKnown) {
+                Logos.ask(c, p.tv, p.id, logo -> {
+                    if (key.equals(holder.itemView.getTag())) holder.card.setLogo(logo);
+                });
+            }
+            holder.itemView.setContentDescription(spoken(p));
             holder.itemView.setOnClickListener(v -> tap.on(p));
         }
     }

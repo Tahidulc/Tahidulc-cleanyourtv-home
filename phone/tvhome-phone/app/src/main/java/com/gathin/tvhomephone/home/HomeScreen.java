@@ -194,7 +194,7 @@ final class HomeScreen {
         col.addView(favSection.box);
 
         sports = column();
-        sports.addView(Glass.section(c, "Live & today", null));
+        sports.addView(head("Live & today", null));
         sportsBox = column();
         sportsBox.setBackground(Glass.card(c, 20));
         int inside = Glass.dp(c, 12);
@@ -255,7 +255,7 @@ final class HomeScreen {
         col.addView(fresh.box);
 
         alerts = column();
-        alerts.addView(Glass.section(c, "Latest alerts", null));
+        alerts.addView(head("Latest alerts", null));
         alertList = column();
         alerts.addView(alertList, sides());
         alerts.setVisibility(View.GONE);
@@ -291,12 +291,21 @@ final class HomeScreen {
         }
     }
 
+    /**
+     * A section: its heading in the reference's weight, with a round chevron button at the right edge when it leads
+     * somewhere (the heading leads there too), then what it holds.
+     */
     private Section section(String title, View.OnClickListener more, View content) {
         LinearLayout box = column();
-        TextView head = Glass.section(c, title, more);
-        box.addView(head);
+        LinearLayout head = head(title, more);
+        box.addView(head, new LinearLayout.LayoutParams(-1, -2));
         if (content != null) box.addView(content, new LinearLayout.LayoutParams(-1, -2));
-        return new Section(box, head);
+        return new Section(box, (TextView) head.getChildAt(0));
+    }
+
+    /** A section's heading row: its words (first), then the round chevron button when it leads somewhere. */
+    private LinearLayout head(String title, View.OnClickListener more) {
+        return Glass.sectionRow(c, title, more);
     }
 
     private LinearLayout column() {

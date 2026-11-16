@@ -104,4 +104,24 @@ public class PicksTest {
         assertEquals(0xFFE6007E, Hero.certColour("15"));
         assertEquals(0xFFD1D5DB, Hero.certColour("NR"));
     }
+    @Test public void aPicksPosterCornersAreKept() throws Exception {
+        Pick p = new Pick();
+        p.id = 42;
+        p.title = "Wicked";
+        p.year = "2024";
+        p.badge = "#3 Today";
+        p.date = "2024-11-22";
+        p.quality = com.gathin.tvhomephone.live.SourceQuality.of("Wicked 2160p DV Atmos");
+        Pick back = Pick.from(p.json());
+        assertEquals("#3 Today", back.badge);
+        assertEquals("2024-11-22", back.date);
+        assertEquals(p.quality, back.quality);
+        assertEquals("Wicked, 2024, #3 Today, 4K, Dolby Vision, Dolby Atmos", Rows.spoken(back));
+        assertEquals("#3 Today", Rows.info(back).badge);
+        // Older picks kept before 5.13 have none.
+        Pick old = Pick.from(new JSONObject().put("title", "Dune").put("id", 1));
+        assertEquals("", old.badge);
+        assertEquals(0, old.quality);
+        assertNull(Rows.info(old).badge);
+    }
 }
